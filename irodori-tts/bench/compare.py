@@ -24,19 +24,37 @@ def load_result_file(path: Path) -> dict:
     return data
 
 
-def format_comparison_table(results: list[dict]) -> str:
-    """Render an ASCII comparison table sorted by configuration label.
+def format_speed(speed: float) -> str:
+    """Format speed value like 1.0, 1.5, 2.0."""
+    formatted = f"{float(speed):.4f}".rstrip("0")
+    if formatted.endswith("."):
+        formatted += "0"
+    return formatted
 
-    Columns: Label, Budget Pass, Effective Peak (MiB)*, Peak Proc (MiB),
+
+def format_comparison_table(results: list[dict]) -> str:
+    """Render an ASCII comparison table sorted by configuration label and speed.
+
+    Columns: Label, Speed, Budget Pass, Effective Peak (MiB)*, Peak Proc (MiB),
              Peak Reserved (MiB), PID Hits, RTF p50, RTF p95, Failures, Both Gates.
     """
     if not results:
         return "No results to compare."
 
-    sorted_results = sorted(results, key=lambda r: str(r.get("label", "")))
+    def sort_key(r: dict) -> tuple[str, float]:
+        label = str(r.get("label", ""))
+        speed_val = r.get("speed")
+        try:
+            speed = float(speed_val) if speed_val is not None else 1.0
+        except (ValueError, TypeError):
+            speed = 1.0
+        return (label, speed)
+
+    sorted_results = sorted(results, key=sort_key)
 
     headers = [
         "Label",
+        "Speed",
         "Budget Pass",
         "Effective Peak (MiB)*",
         "Peak Proc (MiB)",
@@ -51,6 +69,17 @@ def format_comparison_table(results: list[dict]) -> str:
     rows = []
     for r in sorted_results:
         label = str(r.get("label", "unknown"))
+        speed_val = r.get("speed")
+        if isinstance(speed_val, (int, float)):
+            speed_str = f"{format_speed(speed_val)}x"
+        elif speed_val is not None:
+            try:
+                speed_str = f"{format_speed(float(speed_val))}x"
+            except (ValueError, TypeError):
+                speed_str = str(speed_val)
+        else:
+            speed_str = "1.0x"
+
         b_pass = "PASS" if r.get("budget_pass") else "FAIL"
 
         eff_peak = r.get("effective_peak_mib")
@@ -81,6 +110,7 @@ def format_comparison_table(results: list[dict]) -> str:
         rows.append(
             [
                 label,
+                speed_str,
                 b_pass,
                 eff_str,
                 proc_str,
@@ -102,7 +132,7 @@ def format_comparison_table(results: list[dict]) -> str:
     def make_row(cells: list[str]) -> str:
         padded = [
             cells[i].ljust(col_widths[i])
-            if i in (0, 1, len(cells) - 1)
+            if i in (0, 2, len(cells) - 1)
             else cells[i].rjust(col_widths[i])
             for i in range(len(cells))
         ]

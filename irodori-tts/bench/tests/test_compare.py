@@ -143,6 +143,69 @@ class TestCompare(unittest.TestCase):
         table = format_comparison_table([])
         self.assertEqual(table, "No results to compare.")
 
+    def test_format_comparison_table_speed_column_and_ordering(self):
+        results = [
+            {
+                "label": "C1",
+                "speed": 1.5,
+                "budget_pass": True,
+                "rtf_pass": True,
+                "all_passed": True,
+                "effective_peak_mib": 2150.0,
+                "peak_process_mib": 2100.0,
+                "peak_reserved_mib": 2000.0,
+                "pid_hits": 12,
+                "rtf": {"p50": 0.30, "p95": 0.45},
+                "failures": 0,
+            },
+            {
+                "label": "C1",
+                "speed": 1.0,
+                "budget_pass": True,
+                "rtf_pass": True,
+                "all_passed": True,
+                "effective_peak_mib": 2150.0,
+                "peak_process_mib": 2100.0,
+                "peak_reserved_mib": 2000.0,
+                "pid_hits": 12,
+                "rtf": {"p50": 0.40, "p95": 0.60},
+                "failures": 0,
+            },
+            {
+                "label": "C2",
+                "speed": 1.0,
+                "budget_pass": True,
+                "rtf_pass": True,
+                "all_passed": True,
+                "effective_peak_mib": 2450.0,
+                "peak_process_mib": 2400.0,
+                "peak_reserved_mib": 2300.0,
+                "pid_hits": 15,
+                "rtf": {"p50": 0.30, "p95": 0.45},
+                "failures": 0,
+            },
+        ]
+
+        table = format_comparison_table(results)
+
+        # 1. Speed column header check
+        self.assertIn("Speed", table)
+
+        # 2. Ordering check: C1 at 1.0x must appear before C1 at 1.5x, before C2 at 1.0x
+        lines = [
+            line for line in table.splitlines() if "|" in line and "Label" not in line
+        ]
+        self.assertEqual(len(lines), 3)
+
+        self.assertIn("C1", lines[0])
+        self.assertIn("1.0x", lines[0])
+
+        self.assertIn("C1", lines[1])
+        self.assertIn("1.5x", lines[1])
+
+        self.assertIn("C2", lines[2])
+        self.assertIn("1.0x", lines[2])
+
 
 if __name__ == "__main__":
     unittest.main()

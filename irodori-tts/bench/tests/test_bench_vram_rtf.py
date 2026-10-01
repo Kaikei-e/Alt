@@ -15,7 +15,14 @@ BENCH_DIR = Path(__file__).resolve().parent.parent
 if str(BENCH_DIR) not in sys.path:
     sys.path.insert(0, str(BENCH_DIR))
 
-from bench_vram_rtf import SetupError, format_summary, main, run_benchmark
+from bench_vram_rtf import (
+    SetupError,
+    format_summary,
+    main,
+    parse_args,
+    run_benchmark,
+    send_speech_request,
+)
 
 
 def make_dummy_wav(duration_s: float = 1.0, sample_rate: int = 48000) -> bytes:
@@ -296,6 +303,103 @@ class TestBenchVramRtfFlow(unittest.TestCase):
         self.assertIsNone(result["peak_reserved_mib"])
         self.assertFalse(result["all_passed"])
         self.assertFalse(result["budget_pass"])
+
+    def test_send_speech_request_payload_speed_and_default(self):
+        captured_payloads = []
+
+        def dummy_http(url, method="POST", headers=None, data=None, timeout=120.0):
+            if data:
+                captured_payloads.append(json.loads(data.decode("utf-8")))
+            return 200, self.dummy_wav, {}
+
+        # Default speed is 1.0
+        send_speech_request(
+            "http://localhost", "key", "hello", "default", http_fn=dummy_http
+        )
+        self.assertEqual(len(captured_payloads), 1)
+        self.assertIn("speed", captured_payloads[0])
+        self.assertEqual(captured_payloads[0]["speed"], 1.0)
+
+        # Custom speed
+        send_speech_request(
+            "http://localhost",
+            "key",
+            "hello",
+            "default",
+            speed=1.5,
+            http_fn=dummy_http,
+        )
+        self.assertEqual(len(captured_payloads), 2)
+        self.assertIn("speed", captured_payloads[1])
+        self.assertEqual(captured_payloads[1]["speed"], 1.5)
+
+    def test_run_benchmark_speed_in_requests_and_result_json(self):
+        captured_speeds = []
+
+        def dummy_http(url, method="GET", headers=None, data=None, timeout=60.0):
+            if "/v1/audio/speech" in url and data:
+                payload = json.loads(data.decode("utf-8"))
+                captured_speeds.append(payload.get("speed"))
+                return 200, self.dummy_wav, {}
+            if "/internal/cuda-memory/reset-peak" in url:
+                return 200, b'{"status": "ok"}', {}
+            if "/internal/cuda-memory" in url:
+                probe = {
+                    "device": "cuda:0",
+                    "allocated_bytes": 100 * 1024 * 1024,
+                    "reserved_bytes": 150 * 1024 * 1024,
+                    "max_allocated_bytes": 200 * 1024 * 1024,
+                    "max_reserved_bytes": 250 * 1024 * 1024,
+                }
+                return 200, json.dumps(probe).encode("utf-8"), {}
+            return 404, b"", {}
+
+        result = run_benchmark(
+            label="C1",
+            base_url="http://127.0.0.1:8088",
+            api_key="key",
+            voice="default",
+            input_lines=self.inputs,
+            budget_mib=1000.0,
+            count=2,
+            warmup=1,
+            pid=123,
+            speed=1.5,
+            http_fn=dummy_http,
+            query_apps_fn=lambda: "123, 200.0\n",
+            query_gpu_fn=lambda: "500.0\n",
+        )
+
+        # 1 warmup + 2 measured = 3 requests, all should have speed 1.5
+        self.assertEqual(len(captured_speeds), 3)
+        self.assertEqual(captured_speeds, [1.5, 1.5, 1.5])
+
+        # Top-level speed in result dict
+        self.assertIn("speed", result)
+        self.assertEqual(result["speed"], 1.5)
+
+    def test_run_benchmark_invalid_speed_raises_setup_error(self):
+        with self.assertRaises(SetupError):
+            run_benchmark(
+                label="C1",
+                base_url="http://127.0.0.1:8088",
+                api_key="key",
+                voice="default",
+                input_lines=self.inputs,
+                budget_mib=1000.0,
+                speed=0.0,
+            )
+
+        with self.assertRaises(SetupError):
+            run_benchmark(
+                label="C1",
+                base_url="http://127.0.0.1:8088",
+                api_key="key",
+                voice="default",
+                input_lines=self.inputs,
+                budget_mib=1000.0,
+                speed=4.5,
+            )
 
 
 class TestMainCli(unittest.TestCase):
@@ -772,6 +876,187 @@ class TestMainCli(unittest.TestCase):
         finally:
             sys.stderr = old_stderr
         self.assertIn("--budget-mib", stderr_buf.getvalue())
+
+    def test_main_speed_cli_options_and_invalid_exits_2(self):
+        # 1. Default speed is 1.0
+        parsed = parse_args(
+            ["--label", "C1", "--api-key-file", "k", "--budget-mib", "100"]
+        )
+        self.assertEqual(parsed.speed, 1.0)
+
+        # 2. Custom speed
+        parsed = parse_args(
+            [
+                "--label",
+                "C1",
+                "--api-key-file",
+                "k",
+                "--budget-mib",
+                "100",
+                "--speed",
+                "2.0",
+            ]
+        )
+        self.assertEqual(parsed.speed, 2.0)
+
+        # 3. Invalid speeds exit 2
+        stderr_buf = io.StringIO()
+        old_stderr = sys.stderr
+        sys.stderr = stderr_buf
+        try:
+            # <= 0 exits 2
+            code_zero = main(
+                [
+                    "--label",
+                    "C1",
+                    "--api-key-file",
+                    "/dev/null",
+                    "--budget-mib",
+                    "100",
+                    "--speed",
+                    "0",
+                ]
+            )
+            self.assertEqual(code_zero, 2)
+
+            code_neg = main(
+                [
+                    "--label",
+                    "C1",
+                    "--api-key-file",
+                    "/dev/null",
+                    "--budget-mib",
+                    "100",
+                    "--speed",
+                    "-0.5",
+                ]
+            )
+            self.assertEqual(code_neg, 2)
+
+            # > 4.0 exits 2
+            code_over = main(
+                [
+                    "--label",
+                    "C1",
+                    "--api-key-file",
+                    "/dev/null",
+                    "--budget-mib",
+                    "100",
+                    "--speed",
+                    "4.1",
+                ]
+            )
+            self.assertEqual(code_over, 2)
+
+            # Non-float exits 2 (argparse SystemExit)
+            with self.assertRaises(SystemExit) as ctx:
+                main(
+                    [
+                        "--label",
+                        "C1",
+                        "--api-key-file",
+                        "/dev/null",
+                        "--budget-mib",
+                        "100",
+                        "--speed",
+                        "not-a-float",
+                    ]
+                )
+            self.assertEqual(ctx.exception.code, 2)
+        finally:
+            sys.stderr = old_stderr
+
+    def test_main_result_filename_format_and_json_has_speed(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            key_file = tmp / "api_key.txt"
+            key_file.write_text(self.secret_token, encoding="utf-8")
+            inputs_file = tmp / "inputs.txt"
+            inputs_file.write_text(
+                "Test sentence 1\nTest sentence 2\n", encoding="utf-8"
+            )
+            out_results = tmp / "results"
+
+            def fake_http(url, method="GET", headers=None, data=None, timeout=60.0):
+                if "/v1/audio/speech" in url:
+                    return 200, self.dummy_wav, {}
+                if "/internal/cuda-memory/reset-peak" in url:
+                    return 200, b'{"status": "ok"}', {}
+                if "/internal/cuda-memory" in url:
+                    probe = {
+                        "device": "cuda:0",
+                        "allocated_bytes": 100 * 1024 * 1024,
+                        "reserved_bytes": 200 * 1024 * 1024,
+                        "max_allocated_bytes": 300 * 1024 * 1024,
+                        "max_reserved_bytes": 400 * 1024 * 1024,
+                    }
+                    return 200, json.dumps(probe).encode("utf-8"), {}
+                return 404, b"", {}
+
+            import bench_vram_rtf
+
+            orig_http = bench_vram_rtf.default_http_request
+            orig_check = bench_vram_rtf.check_nvidia_smi
+            orig_resolve = bench_vram_rtf.resolve_container_pid
+            orig_apps = bench_vram_rtf.run_query_compute_apps
+            orig_gpu = bench_vram_rtf.run_query_gpu_used
+            try:
+                bench_vram_rtf.default_http_request = fake_http
+                bench_vram_rtf.check_nvidia_smi = lambda: True
+                bench_vram_rtf.resolve_container_pid = lambda **k: 999
+                bench_vram_rtf.run_query_compute_apps = lambda: "999, 500.0\n"
+                bench_vram_rtf.run_query_gpu_used = lambda: "600.0\n"
+
+                stdout_buf = io.StringIO()
+                old_stdout = sys.stdout
+                sys.stdout = stdout_buf
+                try:
+                    code = main(
+                        [
+                            "--label",
+                            "C-speed",
+                            "--api-key-file",
+                            str(key_file),
+                            "--inputs",
+                            str(inputs_file),
+                            "--count",
+                            "1",
+                            "--warmup",
+                            "1",
+                            "--pid",
+                            "999",
+                            "--budget-mib",
+                            "1000",
+                            "--speed",
+                            "1.5",
+                            "--out-dir",
+                            str(out_results),
+                        ]
+                    )
+                finally:
+                    sys.stdout = old_stdout
+
+                self.assertEqual(code, 0)
+                stdout_text = stdout_buf.getvalue()
+                self.assertIn("Speed:                 1.5x", stdout_text)
+
+                json_files = list(out_results.glob("*.json"))
+                self.assertEqual(len(json_files), 1)
+                result_filename = json_files[0].name
+                # Must match <label>-x<speed>-<UTC timestamp>.json
+                pattern = r"^C-speed-x1\.5-\d{8}T\d{6}Z\.json$"
+                self.assertRegex(result_filename, pattern)
+
+                saved = json.loads(json_files[0].read_text(encoding="utf-8"))
+                self.assertIn("speed", saved)
+                self.assertEqual(saved["speed"], 1.5)
+                self.assertEqual(saved["label"], "C-speed")
+            finally:
+                bench_vram_rtf.check_nvidia_smi = orig_check
+                bench_vram_rtf.resolve_container_pid = orig_resolve
+                bench_vram_rtf.run_query_compute_apps = orig_apps
+                bench_vram_rtf.run_query_gpu_used = orig_gpu
+                bench_vram_rtf.default_http_request = orig_http
 
 
 if __name__ == "__main__":

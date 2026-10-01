@@ -64,6 +64,14 @@ def get_wav_duration_seconds(wav_bytes: bytes) -> float:
         return 0.0
 
 
+def format_speed(speed: float) -> str:
+    """Format speed value like 1.0, 1.5, 2.0."""
+    formatted = f"{float(speed):.4f}".rstrip("0")
+    if formatted.endswith("."):
+        formatted += "0"
+    return formatted
+
+
 def parse_compute_apps_csv(output: str) -> dict[int, float]:
     """Parse nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader,nounits.
 
@@ -285,6 +293,7 @@ def send_speech_request(
     api_key: str,
     text: str,
     voice: str,
+    speed: float = 1.0,
     seed: int | None = None,
     http_fn=None,
     timeout: float = 120.0,
@@ -304,6 +313,7 @@ def send_speech_request(
         "model": "irodori-tts",
         "input": text,
         "voice": voice,
+        "speed": speed,
         "response_format": "wav",
         "irodori": irodori_cfg,
     }
@@ -397,6 +407,7 @@ def build_result_dict(
     budget_mib: float,
     budget_ratio: float,
     rtf_max: float,
+    speed: float = 1.0,
 ) -> dict:
     """Build unified benchmark result dictionary."""
     budget_limit_mib = budget_mib * budget_ratio
@@ -412,6 +423,7 @@ def build_result_dict(
 
     return {
         "label": label,
+        "speed": speed,
         "timestamp_utc": timestamp_utc,
         "counts": {
             "requested": requested,
@@ -505,10 +517,16 @@ def format_summary(result: dict) -> str:
     r_pass = "PASS" if result.get("rtf_pass") else "FAIL"
     o_pass = "PASS" if result.get("all_passed") else "FAIL"
 
+    speed = result.get("speed", 1.0)
+    speed_str = (
+        f"{format_speed(speed)}x" if isinstance(speed, (int, float)) else str(speed)
+    )
+
     lines = [
         "=" * 66,
         f"Irodori-TTS Benchmark Summary: {label}",
         "=" * 66,
+        f"Speed:                 {speed_str}",
         (
             f"Requests: {completed}/{requested} completed, {failures} failures"
             f" ({warmup} warmup)"
@@ -553,11 +571,15 @@ def run_benchmark(
     budget_ratio: float = 0.9,
     seed: int | None = None,
     rtf_max: float = 1.0,
+    speed: float = 1.0,
     http_fn=None,
     query_apps_fn=None,
     query_gpu_fn=None,
 ) -> dict:
     """Execute complete benchmark flow against target server."""
+    if not (0.0 < speed <= 4.0):
+        raise SetupError(f"Invalid speed {speed}. Must be > 0 and <= 4.0")
+
     # Take result timestamp at start of run
     timestamp_utc = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
@@ -566,7 +588,13 @@ def run_benchmark(
     for i in range(warmup):
         text = input_lines[i % len(input_lines)]
         status, body, _ = send_speech_request(
-            base_url, api_key, text, voice, seed=seed, http_fn=http_fn
+            base_url,
+            api_key,
+            text,
+            voice,
+            speed=speed,
+            seed=seed,
+            http_fn=http_fn,
         )
         if status == 0:
             err_msg = body.decode("utf-8", errors="replace")[:200]
@@ -595,6 +623,7 @@ def run_benchmark(
     if warmup_failure is not None:
         return build_result_dict(
             label=label,
+            speed=speed,
             timestamp_utc=timestamp_utc,
             requested=count,
             completed=0,
@@ -663,7 +692,13 @@ def run_benchmark(
     for i in range(count):
         text = input_lines[i % len(input_lines)]
         status, body, wall_time = send_speech_request(
-            base_url, api_key, text, voice, seed=seed, http_fn=http_fn
+            base_url,
+            api_key,
+            text,
+            voice,
+            speed=speed,
+            seed=seed,
+            http_fn=http_fn,
         )
         if status != 200:
             failures = 1
@@ -752,6 +787,7 @@ def run_benchmark(
         budget_mib=budget_mib,
         budget_ratio=budget_ratio,
         rtf_max=rtf_max,
+        speed=speed,
     )
 
 
@@ -844,6 +880,12 @@ def parse_args(args=None):
         default=1.0,
         help="Maximum allowed RTF p95 gate threshold (default: 1.0)",
     )
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        help="Playback speed multiplier (default: 1.0, must be > 0 and <= 4.0)",
+    )
     return parser.parse_args(args)
 
 
@@ -855,6 +897,12 @@ def main(args=None) -> int:
         sys.stderr.write(
             f"Setup error: Invalid label '{parsed.label}'. Must match"
             " ^[A-Za-z0-9_.-]+$\n"
+        )
+        return 2
+
+    if not (0.0 < parsed.speed <= 4.0):
+        sys.stderr.write(
+            f"Setup error: Invalid speed {parsed.speed}. Must be > 0 and <= 4.0\n"
         )
         return 2
 
@@ -924,6 +972,7 @@ def main(args=None) -> int:
             budget_ratio=parsed.budget_ratio,
             seed=parsed.seed,
             rtf_max=parsed.rtf_max,
+            speed=parsed.speed,
         )
     except SetupError as e:
         sys.stderr.write(f"Setup error: {e}\n")
@@ -932,7 +981,8 @@ def main(args=None) -> int:
     # 6. Save result JSON
     out_dir = Path(parsed.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{parsed.label}-{result['timestamp_utc']}.json"
+    speed_formatted = format_speed(result.get("speed", parsed.speed))
+    filename = f"{parsed.label}-x{speed_formatted}-{result['timestamp_utc']}.json"
     result_file = out_dir / filename
     result_file.write_text(
         json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"

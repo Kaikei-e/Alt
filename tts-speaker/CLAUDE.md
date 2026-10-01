@@ -38,7 +38,7 @@ The compose healthcheck calls `https://localhost:9443/health` with the service's
 - `TTS_VOICE_ID` — Upstream voice reference ID (required; disallowed: empty, `none`, `no-ref`, `text-only`).
 - `PEER_IDENTITY_STRICT` — Required boolean (no default). When `true`, unauthenticated plaintext callers receive 401; callers use mTLS on `:9443`.
 - `TTS_QUEUE_TIMEOUT_SECONDS` — Queue lock wait timeout before returning 503 `SynthesisBusyError` (default: 600.0).
-- `TTS_MAX_CHUNK_CHARS` — Maximum characters per synthesis chunk (default: 100, 20..200).
+- `TTS_MAX_CHUNK_CHARS` — Maximum characters per synthesis chunk (default: 60, 20..200).
 - `TTS_MAX_TEXT_CHARS` — Maximum allowed characters in a request (default: 5000, 1..30000).
 - `TTS_CHUNK_GAP_MS` — Silence gap between concatenated WAV chunks in milliseconds (default: 200, 0..2000).
 - `MTLS_ALLOWED_PEERS` — Comma-separated list of allowed peer CNs (e.g. `alt-butterfly-facade`).

@@ -31,6 +31,8 @@ services:
       - IRODORI_PRELOAD=true
       - IRODORI_MAX_CONCURRENT_SYNTHESIS=1
       - IRODORI_EMPTY_CACHE_INTERVAL=1
+      # Cuts allocator fragmentation; the peak otherwise exceeds the VRAM budget at 1.0x
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
       - IRODORI_DEFAULT_NUM_CANDIDATES=1
       - IRODORI_DEFAULT_DECODE_MODE=sequential
       - IRODORI_DEFAULT_CHUNKING_ENABLED=false

@@ -23,7 +23,7 @@ def test_valid_settings_with_defaults(dummy_api_key_file: Path) -> None:
     assert settings.irodori_retry_backoff_seconds == 1.0
     assert settings.tts_voice_id == "speaker_01"
     assert settings.peer_identity_strict is False
-    assert settings.tts_max_chunk_chars == 100
+    assert settings.tts_max_chunk_chars == 60
     assert settings.tts_max_text_chars == 5000
     assert settings.tts_chunk_gap_ms == 200
     assert settings.log_level == "INFO"

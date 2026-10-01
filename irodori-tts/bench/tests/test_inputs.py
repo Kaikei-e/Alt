@@ -24,12 +24,12 @@ class TestWorstCaseJaInputs(unittest.TestCase):
         self.assertGreaterEqual(len(lines), 18)
         self.assertLessEqual(len(lines), 25)
 
-        # Every line must be between 90 and 100 characters (inclusive)
+        # Every line must be between 55 and 60 characters (inclusive)
         for i, line in enumerate(lines, 1):
             char_count = len(line)
             self.assertTrue(
-                90 <= char_count <= 100,
-                f"Line {i} character count {char_count} not in range [90, 100]: '{line}'",
+                55 <= char_count <= 60,
+                f"Line {i} character count {char_count} not in range [55, 60]: '{line}'",
             )
 
     def test_content_diversity(self):
