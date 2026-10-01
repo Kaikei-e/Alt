@@ -29,14 +29,14 @@ class SynthesizeUsecase:
         max_text_chars: int,
         chunk_gap_ms: int,
         queue_timeout_seconds: float,
-        default_speed: float = 1.0,
+        default_speed: float,
     ) -> None:
         self._synthesizer = synthesizer
         self._max_chunk_chars = max_chunk_chars
         self._max_text_chars = max_text_chars
         self._chunk_gap_ms = chunk_gap_ms
         self._queue_timeout_seconds = queue_timeout_seconds
-        self._default_speed = 1.0  # minimal stub: ignored
+        self._default_speed = default_speed
         self._lock = asyncio.Lock()
 
     @property
@@ -44,12 +44,14 @@ class SynthesizeUsecase:
         """Configured default playback speed."""
         return self._default_speed
 
-    async def execute(self, text: str, speed: float = 1.0) -> SynthesisResult:
+    async def execute(self, text: str, speed: float | None = None) -> SynthesisResult:
         """Synthesize input text into combined speech audio."""
         if not text or not text.strip():
             raise EmptyTextError("Input text cannot be empty")
         if len(text) > self._max_text_chars:
             raise TextTooLongError(f"Input text length {len(text)} exceeds maximum of {self._max_text_chars}")
+
+        effective_speed = self._default_speed if speed is None else speed
 
         try:
             async with asyncio.timeout(self._queue_timeout_seconds):
@@ -65,7 +67,7 @@ class SynthesizeUsecase:
 
             parts: list[bytes] = []
             for chunk in chunks:
-                audio = await self._synthesizer.synthesize_chunk(chunk, speed=speed)
+                audio = await self._synthesizer.synthesize_chunk(chunk, speed=effective_speed)
                 parts.append(audio)
 
             combined_wav = concat_wav(parts, gap_ms=self._chunk_gap_ms)

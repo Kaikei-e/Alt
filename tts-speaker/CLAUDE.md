@@ -3,6 +3,7 @@
 ## Overview
 
 HTTP gateway in front of Irodori-TTS-Server. **Python 3.14**, **FastAPI**, **uv**.
+Synthesizes speech at a default speed of 1.25x (`TTS_DEFAULT_SPEED`). Request `speed` is optional with a 1.5 cap (2.0x dropped characters in listening tests).
 
 ## Commands
 
@@ -36,6 +37,7 @@ The compose healthcheck calls `https://localhost:9443/health` with the service's
 - `IRODORI_BASE_URL` — Upstream Irodori-TTS-Server URL (e.g. `http://irodori-tts:8088`).
 - `IRODORI_API_KEY_FILE` — Path to file containing Irodori secret API key.
 - `TTS_VOICE_ID` — Upstream voice reference ID (required; disallowed: empty, `none`, `no-ref`, `text-only`).
+- `TTS_DEFAULT_SPEED` — Default playback speed factor (default: 1.25, 0.5..1.5).
 - `PEER_IDENTITY_STRICT` — Required boolean (no default). When `true`, unauthenticated plaintext callers receive 401; callers use mTLS on `:9443`.
 - `TTS_QUEUE_TIMEOUT_SECONDS` — Queue lock wait timeout before returning 503 `SynthesisBusyError` (default: 600.0).
 - `TTS_MAX_CHUNK_CHARS` — Maximum characters per synthesis chunk (default: 60, 20..200).
@@ -51,7 +53,7 @@ The compose healthcheck calls `https://localhost:9443/health` with the service's
 Clean Architecture layers:
 `handler -> usecase -> port <- gateway -> driver; domain has no framework imports`
 
-- `handler/`: FastAPI routers, request parsing, HTTP status mappings
+- `handler/`: FastAPI routers, request parsing, HTTP status mappings; request `speed` is optional (defaults to `TTS_DEFAULT_SPEED`) with a 1.5 cap (2.0x dropped characters in listening tests)
 - `usecase/`: Orchestration, input validation, chunking coordination, concurrency locking
 - `port/`: Protocol contracts (`SpeechSynthesizerPort`)
 - `gateway/`: Implementation of `SpeechSynthesizerPort`, retry policy, response handling

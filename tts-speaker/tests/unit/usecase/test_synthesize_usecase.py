@@ -22,6 +22,7 @@ async def test_empty_text_raises_error(mock_synthesizer: AsyncMock) -> None:
         max_text_chars=5000,
         chunk_gap_ms=200,
         queue_timeout_seconds=600.0,
+        default_speed=1.25,
     )
     with pytest.raises(EmptyTextError):
         await usecase.execute("")
@@ -40,6 +41,7 @@ async def test_text_too_long_raises_error(mock_synthesizer: AsyncMock) -> None:
         max_text_chars=10,
         chunk_gap_ms=200,
         queue_timeout_seconds=600.0,
+        default_speed=1.25,
     )
     with pytest.raises(TextTooLongError):
         await usecase.execute("This is longer than 10 characters")
@@ -53,6 +55,7 @@ async def test_successful_synthesis_single_chunk(mock_synthesizer: AsyncMock, sa
         max_text_chars=5000,
         chunk_gap_ms=200,
         queue_timeout_seconds=600.0,
+        default_speed=1.25,
     )
     result = await usecase.execute("こんにちは", speed=1.2)
     assert isinstance(result, SynthesisResult)
@@ -72,6 +75,7 @@ async def test_successful_synthesis_multiple_chunks_in_order(
         max_text_chars=5000,
         chunk_gap_ms=200,
         queue_timeout_seconds=600.0,
+        default_speed=1.25,
     )
     text = "吾輩は猫である。名前はまだ無い。"
     speed = 1.3
@@ -91,6 +95,7 @@ async def test_lock_wait_timeout_raises_synthesis_busy_error(mock_synthesizer: A
         max_text_chars=5000,
         chunk_gap_ms=200,
         queue_timeout_seconds=0.01,
+        default_speed=1.25,
     )
     await usecase._lock.acquire()
     try:
@@ -108,6 +113,7 @@ async def test_port_error_propagates(mock_synthesizer: AsyncMock) -> None:
         max_text_chars=5000,
         chunk_gap_ms=200,
         queue_timeout_seconds=600.0,
+        default_speed=1.25,
     )
     with pytest.raises(UpstreamUnavailableError, match="upstream down"):
         await usecase.execute("こんにちは")
@@ -132,6 +138,7 @@ async def test_concurrent_requests_do_not_interleave(sample_wav_bytes: bytes) ->
         max_text_chars=5000,
         chunk_gap_ms=200,
         queue_timeout_seconds=600.0,
+        default_speed=1.25,
     )
 
     # Each text has 2 sentences that split into separate chunks

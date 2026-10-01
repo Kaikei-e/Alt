@@ -36,10 +36,11 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger.info(
     "Starting tts-speaker: irodori_host=%s, "
-    "model=%s, voice_id=%s, max_chunk_chars=%d, max_text_chars=%d, chunk_gap_ms=%d",
+    "model=%s, voice_id=%s, default_speed=%.2f, max_chunk_chars=%d, max_text_chars=%d, chunk_gap_ms=%d",
     settings.irodori_base_url.host,
     settings.irodori_model_name,
     settings.tts_voice_id,
+    settings.tts_default_speed,
     settings.tts_max_chunk_chars,
     settings.tts_max_text_chars,
     settings.tts_chunk_gap_ms,
@@ -77,6 +78,7 @@ usecase = SynthesizeUsecase(
     max_text_chars=settings.tts_max_text_chars,
     chunk_gap_ms=settings.tts_chunk_gap_ms,
     queue_timeout_seconds=settings.tts_queue_timeout_seconds,
+    default_speed=settings.tts_default_speed,
 )
 
 

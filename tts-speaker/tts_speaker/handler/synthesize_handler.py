@@ -26,7 +26,7 @@ class SynthesizeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(min_length=1)
-    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    speed: float | None = Field(default=None, ge=0.5, le=1.5)
 
 
 router = APIRouter()
