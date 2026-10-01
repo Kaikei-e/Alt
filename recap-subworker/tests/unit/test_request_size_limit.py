@@ -17,6 +17,8 @@ from recap_subworker.app.main import (
 )
 from recap_subworker.infra.config import Settings, get_settings
 
+pytestmark = pytest.mark.usefixtures("stub_startup_sweep")
+
 
 def test_settings_max_request_body_bytes_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Settings should default max_request_body_bytes to 64 MiB after clearing env aliases."""
