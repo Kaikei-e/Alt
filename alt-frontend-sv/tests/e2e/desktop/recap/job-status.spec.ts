@@ -292,13 +292,15 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		await page.route(JOB_DASHBOARD_PATHS.trigger3DaysCardsJob, (route) =>
-			fulfillJson(route, {
+		let triggeredPath = "";
+		await page.route(JOB_DASHBOARD_PATHS.triggerTopicCardsJob, (route) => {
+			triggeredPath = route.request().url();
+			return fulfillJson(route, {
 				job_id: "cards-job-123",
 				genres: [],
 				status: "running",
-			}),
-		);
+			});
+		});
 
 		await page.goto("./recap/job-status");
 
@@ -308,6 +310,7 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 		await expect(page.getByText("Topic cards job started")).toBeVisible({
 			timeout: 5000,
 		});
+		expect(triggeredPath).toContain("/api/v1/generate/topic-cards");
 	});
 
 	test("shows already running error when cards job returns 409", async ({
@@ -318,7 +321,7 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		await page.route(JOB_DASHBOARD_PATHS.trigger3DaysCardsJob, (route) =>
+		await page.route(JOB_DASHBOARD_PATHS.triggerTopicCardsJob, (route) =>
 			route.fulfill({
 				status: 409,
 				contentType: "application/json",
@@ -346,7 +349,7 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		await page.route(JOB_DASHBOARD_PATHS.trigger3DaysCardsJob, (route) =>
+		await page.route(JOB_DASHBOARD_PATHS.triggerTopicCardsJob, (route) =>
 			route.fulfill({
 				status: 503,
 				contentType: "application/json",

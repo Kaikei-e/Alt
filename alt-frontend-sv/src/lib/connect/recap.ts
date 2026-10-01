@@ -9,8 +9,8 @@ import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 import {
 	type GetSevenDayRecapResponse,
-	type GetThreeDayRecapCardsResponse,
 	type GetThreeDayRecapResponse,
+	type GetTopicCardsResponse,
 	type RecapSearchResultItem as ProtoRecapSearchResultItem,
 	RecapService,
 	type SearchRecapsByTagResponse,
@@ -260,7 +260,7 @@ export async function searchRecapsByTag(
 }
 
 // =============================================================================
-// Three-Day Topic Cards
+// Topic Cards
 // =============================================================================
 
 export interface RecapCardSource {
@@ -295,24 +295,31 @@ export interface RecapCardsJob {
 	degraded: boolean;
 }
 
-export interface ThreeDayRecapCardsResponse {
+export interface RecapCardsRun {
+	jobId: string;
+	/** Known values: "pending" | "running" | "completed" | "failed" */
+	status: string;
+	kickedAt: string;
+	updatedAt: string;
+}
+
+export interface TopicCardsResponse {
 	job: RecapCardsJob | null;
 	cards: RecapCard[];
+	latestRun: RecapCardsRun | null;
 }
 
 /**
- * Gets 3-day topic recap cards via Connect-RPC.
+ * Gets daily topic recap cards via Connect-RPC.
  *
  * @param transport - The Connect transport to use (must include auth)
- * @returns 3-day topic cards with job metadata
+ * @returns Topic cards with job metadata and latest run status
  */
-export async function getThreeDayRecapCards(
+export async function getTopicCards(
 	transport: Transport,
-): Promise<ThreeDayRecapCardsResponse> {
+): Promise<TopicCardsResponse> {
 	const client = createRecapClient(transport);
-	const response = (await client.getThreeDayRecapCards(
-		{},
-	)) as GetThreeDayRecapCardsResponse;
+	const response = (await client.getTopicCards({})) as GetTopicCardsResponse;
 
 	return {
 		job: response.job
@@ -345,5 +352,13 @@ export async function getThreeDayRecapCards(
 				pubDate: s.pubDate || undefined,
 			})),
 		})),
+		latestRun: response.latestRun
+			? {
+					jobId: response.latestRun.jobId,
+					status: response.latestRun.status,
+					kickedAt: response.latestRun.kickedAt,
+					updatedAt: response.latestRun.updatedAt,
+				}
+			: null,
 	};
 }

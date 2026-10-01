@@ -1,9 +1,9 @@
 /**
- * Three-Day Topic Recap Cards Contract Tests
+ * Topic Recap Cards Contract Tests
  *
- * Validates GetThreeDayRecapCardsResponse proto schema conformance,
+ * Validates GetTopicCardsResponse proto schema conformance,
  * including nullability of why_ja, genre, continues_card_id, pub_date,
- * and empty job state.
+ * latest_run, and empty job state.
  */
 
 import {
@@ -15,23 +15,24 @@ import {
 } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import {
-	GetThreeDayRecapCardsResponseSchema,
+	GetTopicCardsResponseSchema,
 	RecapCardSchema,
 	RecapCardSourceSchema,
 	RecapCardsJobSchema,
+	RecapCardsRunSchema,
 } from "$lib/gen/alt/recap/v2/recap_pb";
 import {
 	buildMockDegradedRecapCardsResponse,
 	buildMockRecapCardsResponse,
 } from "../../../tests/e2e/fixtures/factories";
 
-describe("Three-Day Recap Cards Contract", () => {
-	it("GetThreeDayRecapCardsResponse conforms to proto schema when fully populated", () => {
+describe("Topic Cards Contract", () => {
+	it("GetTopicCardsResponse conforms to proto schema when fully populated", () => {
 		const mockData = buildMockRecapCardsResponse();
 		if (!mockData.job) {
 			throw new Error("mockData.job is required for this test");
 		}
-		const response = create(GetThreeDayRecapCardsResponseSchema, {
+		const response = create(GetTopicCardsResponseSchema, {
 			job: create(RecapCardsJobSchema, {
 				jobId: mockData.job.jobId,
 				kickedAt: mockData.job.kickedAt,
@@ -40,6 +41,12 @@ describe("Three-Day Recap Cards Contract", () => {
 				paramsVersion: mockData.job.paramsVersion,
 				cardsSelected: mockData.job.cardsSelected,
 				degraded: mockData.job.degraded,
+			}),
+			latestRun: create(RecapCardsRunSchema, {
+				jobId: "run-001",
+				status: "completed",
+				kickedAt: "2026-09-22T17:00:00Z",
+				updatedAt: "2026-09-22T17:05:00Z",
 			}),
 			cards: mockData.cards.map((c) =>
 				create(RecapCardSchema, {
@@ -73,6 +80,7 @@ describe("Three-Day Recap Cards Contract", () => {
 		expect(response.job.jobId).toBe("33333333-3333-3333-3333-333333333333");
 		expect(response.job.cardsSelected).toBe(3);
 		expect(response.job.degraded).toBe(false);
+		expect(response.latestRun?.status).toBe("completed");
 		expect(response.cards).toHaveLength(3);
 		expect(response.cards[0]?.headlineJa).toBe(
 			"大規模推論モデルの国内展開が加速",
@@ -80,8 +88,7 @@ describe("Three-Day Recap Cards Contract", () => {
 		expect(response.cards[0]?.sources).toHaveLength(2);
 	});
 
-	it("handles nullability of why_ja, genre, continues_card_id, and pub_date", () => {
-		// Card with all optional fields omitted
+	it("handles nullability of why_ja, genre, continues_card_id, pub_date, and latest_run", () => {
 		const card = create(RecapCardSchema, {
 			id: "card-minimal",
 			rank: 1,
@@ -105,11 +112,12 @@ describe("Three-Day Recap Cards Contract", () => {
 		expect(card.genre).toBeUndefined();
 		expect(card.sources[0]?.pubDate).toBeUndefined();
 
-		const response = create(GetThreeDayRecapCardsResponseSchema, {
+		const response = create(GetTopicCardsResponseSchema, {
 			cards: [card],
 		});
 
 		expect(response.job).toBeUndefined();
+		expect(response.latestRun).toBeUndefined();
 		expect(response.cards).toHaveLength(1);
 	});
 
@@ -118,7 +126,7 @@ describe("Three-Day Recap Cards Contract", () => {
 		if (!mockData.job) {
 			throw new Error("mockData.job is required for this test");
 		}
-		const original = create(GetThreeDayRecapCardsResponseSchema, {
+		const original = create(GetTopicCardsResponseSchema, {
 			job: create(RecapCardsJobSchema, {
 				jobId: mockData.job.jobId,
 				kickedAt: mockData.job.kickedAt,
@@ -127,6 +135,12 @@ describe("Three-Day Recap Cards Contract", () => {
 				paramsVersion: mockData.job.paramsVersion,
 				cardsSelected: mockData.job.cardsSelected,
 				degraded: mockData.job.degraded,
+			}),
+			latestRun: create(RecapCardsRunSchema, {
+				jobId: "run-failed",
+				status: "failed",
+				kickedAt: "2026-09-22T18:00:00Z",
+				updatedAt: "2026-09-22T18:02:00Z",
 			}),
 			cards: mockData.cards.map((c) =>
 				create(RecapCardSchema, {
@@ -153,13 +167,11 @@ describe("Three-Day Recap Cards Contract", () => {
 			),
 		});
 
-		const binary = toBinary(GetThreeDayRecapCardsResponseSchema, original);
-		const deserialized = fromBinary(
-			GetThreeDayRecapCardsResponseSchema,
-			binary,
-		);
+		const binary = toBinary(GetTopicCardsResponseSchema, original);
+		const deserialized = fromBinary(GetTopicCardsResponseSchema, binary);
 
 		expect(deserialized.job?.jobId).toBe(original.job?.jobId);
+		expect(deserialized.latestRun?.status).toBe("failed");
 		expect(deserialized.cards).toHaveLength(3);
 		expect(deserialized.cards[1]?.continuesCardId).toBe(
 			"11111111-0000-0000-0000-000000000001",
@@ -173,7 +185,7 @@ describe("Three-Day Recap Cards Contract", () => {
 		if (!mockData.job) {
 			throw new Error("mockData.job is required for this test");
 		}
-		const original = create(GetThreeDayRecapCardsResponseSchema, {
+		const original = create(GetTopicCardsResponseSchema, {
 			job: create(RecapCardsJobSchema, {
 				jobId: mockData.job.jobId,
 				kickedAt: mockData.job.kickedAt,
@@ -182,6 +194,12 @@ describe("Three-Day Recap Cards Contract", () => {
 				paramsVersion: mockData.job.paramsVersion,
 				cardsSelected: mockData.job.cardsSelected,
 				degraded: mockData.job.degraded,
+			}),
+			latestRun: create(RecapCardsRunSchema, {
+				jobId: "run-running",
+				status: "running",
+				kickedAt: "2026-09-22T19:00:00Z",
+				updatedAt: "2026-09-22T19:01:00Z",
 			}),
 			cards: mockData.cards.map((c) =>
 				create(RecapCardSchema, {
@@ -196,26 +214,29 @@ describe("Three-Day Recap Cards Contract", () => {
 			),
 		});
 
-		const json = toJson(GetThreeDayRecapCardsResponseSchema, original);
-		const deserialized = fromJson(GetThreeDayRecapCardsResponseSchema, json);
+		const json = toJson(GetTopicCardsResponseSchema, original);
+		const deserialized = fromJson(GetTopicCardsResponseSchema, json);
 
 		expect(deserialized.job?.degraded).toBe(true);
+		expect(deserialized.latestRun?.status).toBe("running");
 		expect(deserialized.cards[0]?.headlineJa).toBe(
 			"データ不足による縮退生成カード",
 		);
 	});
 
 	it("conforms to empty state when no job exists", () => {
-		const empty = create(GetThreeDayRecapCardsResponseSchema, {
+		const empty = create(GetTopicCardsResponseSchema, {
 			cards: [],
 		});
 
 		expect(empty.job).toBeUndefined();
+		expect(empty.latestRun).toBeUndefined();
 		expect(empty.cards).toHaveLength(0);
 
-		const json = toJson(GetThreeDayRecapCardsResponseSchema, empty);
-		const deserialized = fromJson(GetThreeDayRecapCardsResponseSchema, json);
+		const json = toJson(GetTopicCardsResponseSchema, empty);
+		const deserialized = fromJson(GetTopicCardsResponseSchema, json);
 		expect(deserialized.job).toBeUndefined();
+		expect(deserialized.latestRun).toBeUndefined();
 		expect(deserialized.cards).toEqual([]);
 	});
 });
