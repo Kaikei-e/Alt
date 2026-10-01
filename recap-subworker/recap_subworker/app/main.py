@@ -11,6 +11,7 @@ import warnings
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMBA_NUM_THREADS", "1")
 os.environ.setdefault("NUMBA_THREADING_LAYER", "tbb")
 # Silence HuggingFace tokenizers fork-safety warning and avoid a potential
 # deadlock when spawn ProcessPoolExecutor bootstraps re-import tokenizers.
@@ -28,9 +29,12 @@ from starlette.status import (
 )
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ..db.dao import SubworkerDAO
 from ..infra.config import get_settings
 from ..infra.logging import configure_logging
+from ..infra.loop_watchdog import LoopWatchdog
 from ..infra.telemetry import setup_metrics
+from ..services.run_manager import ORPHANED_RUN_MESSAGE, SessionFactory
 from .container import ServiceContainer
 from .infra.admin_auth import load_admin_auth_config, require_admin_token
 from .routers import (
@@ -147,12 +151,22 @@ class RequestSizeLimitMiddleware:
         await self.app(scope, receive, send)
 
 
+async def sweep_orphaned_runs(session_factory: SessionFactory) -> int:
+    """Mark any runs left in 'running' state as failed at startup."""
+    async with session_factory() as session:
+        dao = SubworkerDAO(session)
+        swept = await dao.fail_orphaned_runs(ORPHANED_RUN_MESSAGE)
+        await session.commit()
+    if swept:
+        logger.warning("run.orphans.swept", swept=swept)
+    return swept
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Own the ServiceContainer lifecycle for the app instance."""
     settings = get_settings()
     container = ServiceContainer(settings)
-    app.state.container = container
     app.state.deep_health_runner = health.build_deep_health_runner(settings)
     # Fail-closed: a misconfigured ADMIN_AUTH/ADMIN_TOKEN_FILE aborts
     # startup here rather than serving protected routes either
@@ -176,10 +190,26 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         max_request_body_mib=settings.max_request_body_bytes / (1024 * 1024),
     )
 
+    watchdog = LoopWatchdog(timeout_seconds=settings.loop_watchdog_timeout_seconds)
+    watchdog.start()
+    structlog.get_logger(__name__).info(
+        "loop_watchdog_enabled",
+        timeout_seconds=settings.loop_watchdog_timeout_seconds,
+    )
+
     try:
+        try:
+            await sweep_orphaned_runs(container.db.session_factory)
+        except Exception:
+            logger.exception("startup orphan sweep failed")
+            raise
+        app.state.container = container
         yield
     finally:
-        await container.shutdown()
+        try:
+            await watchdog.stop()
+        finally:
+            await container.shutdown()
 
 
 def create_app() -> FastAPI:

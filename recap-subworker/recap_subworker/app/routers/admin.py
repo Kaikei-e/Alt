@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from uuid import UUID
 
@@ -41,7 +42,7 @@ async def warmup(
 ) -> WarmupResponse:
     if runner is not None:
         return await runner.warmup()
-    return pipeline.warmup()
+    return await asyncio.to_thread(pipeline.warmup)
 
 
 @router.post("/build-graph", status_code=status.HTTP_200_OK)

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from recap_subworker.app import deps
 from recap_subworker.app.main import create_app
 from recap_subworker.db.dao import RunRecord
 from recap_subworker.services.run_manager import RunSubmission
+
+pytestmark = pytest.mark.usefixtures("stub_startup_sweep")
 
 
 class FakeRunManager:

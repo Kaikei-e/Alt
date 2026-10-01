@@ -1,0 +1,80 @@
+# promtool unit tests for recap pipeline alerts.
+#
+# Tests coverage:
+#   - RecapSubworkerDown:
+#       - Non-firing when up{job="recap-subworker"} == 1
+#       - Firing when up{job="recap-subworker"} == 0 for 5m
+#       - Pending (<5m) when up{job="recap-subworker"} == 0
+#       - Firing when up{job="recap-subworker"} is absent (via absent())
+
+rule_files:
+  - ../rules/recap-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # RecapSubworkerDown: healthy target reports up=1, does not fire.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="recap-subworker",service="recap-subworker",instance="recap-subworker:8002"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RecapSubworkerDown
+        exp_alerts: []
+
+  # RecapSubworkerDown: target crashes or event loop freezes (scrape timeout -> up=0).
+  # At 4m it is pending (for: 5m), at 6m it fires with severity warning.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="recap-subworker",service="recap-subworker",instance="recap-subworker:8002"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RecapSubworkerDown
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: RecapSubworkerDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: recap-subworker
+              stack: recap
+              job: recap-subworker
+              instance: recap-subworker:8002
+            exp_annotations:
+              summary: "recap-subworker is not answering Prometheus scrapes"
+              description: |
+                up{job="recap-subworker"} is 0, or the target has gone from the
+                scrape config entirely. A frozen Python event loop times out the
+                scrape, so this covers both a crashed and a frozen process.
+                Recap and topic-cards jobs cannot classify or cluster without it.
+                Check: docker compose -f compose/compose.yaml -p alt logs recap-subworker
+                Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+              runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
+
+  # RecapSubworkerDown: target removed from scrape config entirely.
+  # absent() fires to prevent silent blindness.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="prometheus",service="prometheus",instance="localhost:9090"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RecapSubworkerDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: recap-subworker
+              stack: recap
+              job: recap-subworker
+            exp_annotations:
+              summary: "recap-subworker is not answering Prometheus scrapes"
+              description: |
+                up{job="recap-subworker"} is 0, or the target has gone from the
+                scrape config entirely. A frozen Python event loop times out the
+                scrape, so this covers both a crashed and a frozen process.
+                Recap and topic-cards jobs cannot classify or cluster without it.
+                Check: docker compose -f compose/compose.yaml -p alt logs recap-subworker
+                Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+              runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"

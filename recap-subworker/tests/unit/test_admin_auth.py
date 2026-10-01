@@ -15,6 +15,8 @@ from recap_subworker.app.infra.admin_auth import (
     require_admin_token,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_startup_sweep")
+
 
 def _protected_app(config: AdminAuthConfig) -> FastAPI:
     app = FastAPI()

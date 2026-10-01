@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Sequence
+from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
@@ -319,3 +320,14 @@ def _override_heavy_dependencies(request):
         yield
     finally:
         _TestClient.__enter__ = original_enter
+
+
+@pytest.fixture
+def stub_startup_sweep(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Stub the narrow startup orphan sweep for tests booting the app.
+
+    Avoids connecting to a real database during lifespan startup.
+    """
+    mock = AsyncMock(return_value=0)
+    monkeypatch.setattr("recap_subworker.app.main.sweep_orphaned_runs", mock)
+    return mock

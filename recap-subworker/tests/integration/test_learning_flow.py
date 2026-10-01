@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 
 from recap_subworker.app.main import create_app
 
+pytestmark = pytest.mark.usefixtures("stub_startup_sweep")
+
 
 @pytest.fixture
 def client():
