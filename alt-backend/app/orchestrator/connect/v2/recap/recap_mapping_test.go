@@ -84,21 +84,24 @@ func TestDomainToProto_TableDriven(t *testing.T) {
 	}
 }
 
-func TestDomainToProtoThreeDaysCards_TableDriven(t *testing.T) {
+func TestDomainToProtoTopicCards_TableDriven(t *testing.T) {
 	tests := []struct {
 		name          string
 		input         *domain.RecapCardsResponse
 		expectedCards int
 		hasJob        bool
+		hasLatestRun  bool
+		runStatus     string
 	}{
 		{
-			name:          "nil response returns empty cards",
+			name:          "nil response returns empty cards and nil latest_run",
 			input:         nil,
 			expectedCards: 0,
 			hasJob:        false,
+			hasLatestRun:  false,
 		},
 		{
-			name: "response with cards and sources",
+			name: "response with cards, sources, and completed latest_run",
 			input: &domain.RecapCardsResponse{
 				Job: &domain.RecapCardsJob{
 					JobID:         "job-cards",
@@ -119,20 +122,69 @@ func TestDomainToProtoThreeDaysCards_TableDriven(t *testing.T) {
 					},
 					nil,
 				},
+				LatestRun: &domain.RecapCardsRun{
+					JobID:     "job-cards",
+					Status:    "completed",
+					KickedAt:  "2026-09-22T17:00:00Z",
+					UpdatedAt: "2026-09-22T17:05:00Z",
+				},
 			},
 			expectedCards: 1,
 			hasJob:        true,
+			hasLatestRun:  true,
+			runStatus:     "completed",
+		},
+		{
+			name: "response with failed latest_run",
+			input: &domain.RecapCardsResponse{
+				Job: &domain.RecapCardsJob{
+					JobID: "job-completed",
+				},
+				Cards: []*domain.RecapCard{},
+				LatestRun: &domain.RecapCardsRun{
+					JobID:     "job-failed",
+					Status:    "failed",
+					KickedAt:  "2026-09-22T18:00:00Z",
+					UpdatedAt: "2026-09-22T18:02:00Z",
+				},
+			},
+			expectedCards: 0,
+			hasJob:        true,
+			hasLatestRun:  true,
+			runStatus:     "failed",
+		},
+		{
+			name: "response with nil latest_run",
+			input: &domain.RecapCardsResponse{
+				Job:       nil,
+				Cards:     []*domain.RecapCard{},
+				LatestRun: nil,
+			},
+			expectedCards: 0,
+			hasJob:        false,
+			hasLatestRun:  false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			protoResp := domainToProtoThreeDaysCards(tt.input)
+			protoResp := domainToProtoTopicCards(tt.input)
 			require.NotNil(t, protoResp)
 			assert.Len(t, protoResp.Cards, tt.expectedCards)
 			if tt.hasJob {
 				assert.NotNil(t, protoResp.Job)
 				assert.Equal(t, tt.input.Job.JobID, protoResp.Job.JobId)
+			} else {
+				assert.Nil(t, protoResp.Job)
+			}
+			if tt.hasLatestRun {
+				require.NotNil(t, protoResp.LatestRun)
+				assert.Equal(t, tt.input.LatestRun.JobID, protoResp.LatestRun.JobId)
+				assert.Equal(t, tt.runStatus, protoResp.LatestRun.Status)
+				assert.Equal(t, tt.input.LatestRun.KickedAt, protoResp.LatestRun.KickedAt)
+				assert.Equal(t, tt.input.LatestRun.UpdatedAt, protoResp.LatestRun.UpdatedAt)
+			} else {
+				assert.Nil(t, protoResp.LatestRun)
 			}
 		})
 	}

@@ -61,15 +61,15 @@ func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayReca
 	}
 }
 
-// domainToProtoThreeDaysCards converts domain.RecapCardsResponse to proto response.
-func domainToProtoThreeDaysCards(resp *domain.RecapCardsResponse) *recapv2.GetThreeDayRecapCardsResponse {
+// domainToProtoTopicCards converts domain.RecapCardsResponse to proto response.
+func domainToProtoTopicCards(resp *domain.RecapCardsResponse) *recapv2.GetTopicCardsResponse {
 	if resp == nil {
-		return &recapv2.GetThreeDayRecapCardsResponse{
+		return &recapv2.GetTopicCardsResponse{
 			Cards: []*recapv2.RecapCard{},
 		}
 	}
 
-	protoResp := &recapv2.GetThreeDayRecapCardsResponse{
+	protoResp := &recapv2.GetTopicCardsResponse{
 		Cards: make([]*recapv2.RecapCard, 0, len(resp.Cards)),
 	}
 
@@ -82,6 +82,15 @@ func domainToProtoThreeDaysCards(resp *domain.RecapCardsResponse) *recapv2.GetTh
 			ParamsVersion: resp.Job.ParamsVersion,
 			CardsSelected: safeconv.Int32(resp.Job.CardsSelected),
 			Degraded:      resp.Job.Degraded,
+		}
+	}
+
+	if resp.LatestRun != nil {
+		protoResp.LatestRun = &recapv2.RecapCardsRun{
+			JobId:     resp.LatestRun.JobID,
+			Status:    resp.LatestRun.Status,
+			KickedAt:  resp.LatestRun.KickedAt,
+			UpdatedAt: resp.LatestRun.UpdatedAt,
 		}
 	}
 

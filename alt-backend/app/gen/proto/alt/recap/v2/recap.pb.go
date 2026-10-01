@@ -489,27 +489,27 @@ func (x *GetThreeDayRecapResponse) GetClusterDraft() *ClusterDraft {
 	return nil
 }
 
-// GetThreeDayRecapCardsRequest is the request for getting 3-day topic recap cards
-type GetThreeDayRecapCardsRequest struct {
+// GetTopicCardsRequest is the request for getting topic cards
+type GetTopicCardsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetThreeDayRecapCardsRequest) Reset() {
-	*x = GetThreeDayRecapCardsRequest{}
+func (x *GetTopicCardsRequest) Reset() {
+	*x = GetTopicCardsRequest{}
 	mi := &file_alt_recap_v2_recap_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetThreeDayRecapCardsRequest) String() string {
+func (x *GetTopicCardsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetThreeDayRecapCardsRequest) ProtoMessage() {}
+func (*GetTopicCardsRequest) ProtoMessage() {}
 
-func (x *GetThreeDayRecapCardsRequest) ProtoReflect() protoreflect.Message {
+func (x *GetTopicCardsRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_alt_recap_v2_recap_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -521,36 +521,38 @@ func (x *GetThreeDayRecapCardsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetThreeDayRecapCardsRequest.ProtoReflect.Descriptor instead.
-func (*GetThreeDayRecapCardsRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetTopicCardsRequest.ProtoReflect.Descriptor instead.
+func (*GetTopicCardsRequest) Descriptor() ([]byte, []int) {
 	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{4}
 }
 
-// GetThreeDayRecapCardsResponse contains the 3-day topic recap cards
-type GetThreeDayRecapCardsResponse struct {
+// GetTopicCardsResponse contains the latest topic cards
+type GetTopicCardsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Recap cards job metadata (null/omitted when no completed job exists)
 	Job *RecapCardsJob `protobuf:"bytes,1,opt,name=job,proto3,oneof" json:"job,omitempty"`
-	// Selected recap cards for the 3-day window
-	Cards         []*RecapCard `protobuf:"bytes,2,rep,name=cards,proto3" json:"cards,omitempty"`
+	// Selected topic cards for the job's window
+	Cards []*RecapCard `protobuf:"bytes,2,rep,name=cards,proto3" json:"cards,omitempty"`
+	// Most recent topic cards run of any status (omitted when none exists)
+	LatestRun     *RecapCardsRun `protobuf:"bytes,3,opt,name=latest_run,json=latestRun,proto3,oneof" json:"latest_run,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetThreeDayRecapCardsResponse) Reset() {
-	*x = GetThreeDayRecapCardsResponse{}
+func (x *GetTopicCardsResponse) Reset() {
+	*x = GetTopicCardsResponse{}
 	mi := &file_alt_recap_v2_recap_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetThreeDayRecapCardsResponse) String() string {
+func (x *GetTopicCardsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetThreeDayRecapCardsResponse) ProtoMessage() {}
+func (*GetTopicCardsResponse) ProtoMessage() {}
 
-func (x *GetThreeDayRecapCardsResponse) ProtoReflect() protoreflect.Message {
+func (x *GetTopicCardsResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_alt_recap_v2_recap_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -562,26 +564,106 @@ func (x *GetThreeDayRecapCardsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetThreeDayRecapCardsResponse.ProtoReflect.Descriptor instead.
-func (*GetThreeDayRecapCardsResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetTopicCardsResponse.ProtoReflect.Descriptor instead.
+func (*GetTopicCardsResponse) Descriptor() ([]byte, []int) {
 	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *GetThreeDayRecapCardsResponse) GetJob() *RecapCardsJob {
+func (x *GetTopicCardsResponse) GetJob() *RecapCardsJob {
 	if x != nil {
 		return x.Job
 	}
 	return nil
 }
 
-func (x *GetThreeDayRecapCardsResponse) GetCards() []*RecapCard {
+func (x *GetTopicCardsResponse) GetCards() []*RecapCard {
 	if x != nil {
 		return x.Cards
 	}
 	return nil
 }
 
-// RecapCardsJob represents metadata of the 3-day cards generation job
+func (x *GetTopicCardsResponse) GetLatestRun() *RecapCardsRun {
+	if x != nil {
+		return x.LatestRun
+	}
+	return nil
+}
+
+// RecapCardsRun represents a topic cards generation run
+type RecapCardsRun struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// UUID
+	JobId string `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	// pending | running | completed | failed
+	Status string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	// RFC3339
+	KickedAt string `protobuf:"bytes,3,opt,name=kicked_at,json=kickedAt,proto3" json:"kicked_at,omitempty"`
+	// RFC3339
+	UpdatedAt     string `protobuf:"bytes,4,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecapCardsRun) Reset() {
+	*x = RecapCardsRun{}
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecapCardsRun) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecapCardsRun) ProtoMessage() {}
+
+func (x *RecapCardsRun) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecapCardsRun.ProtoReflect.Descriptor instead.
+func (*RecapCardsRun) Descriptor() ([]byte, []int) {
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *RecapCardsRun) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *RecapCardsRun) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *RecapCardsRun) GetKickedAt() string {
+	if x != nil {
+		return x.KickedAt
+	}
+	return ""
+}
+
+func (x *RecapCardsRun) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+// RecapCardsJob represents metadata of the topic cards generation job
 type RecapCardsJob struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Job ID (UUID)
@@ -604,7 +686,7 @@ type RecapCardsJob struct {
 
 func (x *RecapCardsJob) Reset() {
 	*x = RecapCardsJob{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[6]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -616,7 +698,7 @@ func (x *RecapCardsJob) String() string {
 func (*RecapCardsJob) ProtoMessage() {}
 
 func (x *RecapCardsJob) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[6]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -629,7 +711,7 @@ func (x *RecapCardsJob) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecapCardsJob.ProtoReflect.Descriptor instead.
 func (*RecapCardsJob) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{6}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RecapCardsJob) GetJobId() string {
@@ -710,7 +792,7 @@ type RecapCard struct {
 
 func (x *RecapCard) Reset() {
 	*x = RecapCard{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[7]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -722,7 +804,7 @@ func (x *RecapCard) String() string {
 func (*RecapCard) ProtoMessage() {}
 
 func (x *RecapCard) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[7]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -735,7 +817,7 @@ func (x *RecapCard) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecapCard.ProtoReflect.Descriptor instead.
 func (*RecapCard) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{7}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RecapCard) GetId() string {
@@ -829,7 +911,7 @@ type RecapCardSource struct {
 
 func (x *RecapCardSource) Reset() {
 	*x = RecapCardSource{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[8]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -841,7 +923,7 @@ func (x *RecapCardSource) String() string {
 func (*RecapCardSource) ProtoMessage() {}
 
 func (x *RecapCardSource) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[8]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -854,7 +936,7 @@ func (x *RecapCardSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecapCardSource.ProtoReflect.Descriptor instead.
 func (*RecapCardSource) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{8}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RecapCardSource) GetN() int32 {
@@ -924,7 +1006,7 @@ type RecapGenre struct {
 
 func (x *RecapGenre) Reset() {
 	*x = RecapGenre{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[9]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -936,7 +1018,7 @@ func (x *RecapGenre) String() string {
 func (*RecapGenre) ProtoMessage() {}
 
 func (x *RecapGenre) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[9]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -949,7 +1031,7 @@ func (x *RecapGenre) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecapGenre.ProtoReflect.Descriptor instead.
 func (*RecapGenre) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{9}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RecapGenre) GetGenre() string {
@@ -1027,7 +1109,7 @@ type EvidenceLink struct {
 
 func (x *EvidenceLink) Reset() {
 	*x = EvidenceLink{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[10]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1039,7 +1121,7 @@ func (x *EvidenceLink) String() string {
 func (*EvidenceLink) ProtoMessage() {}
 
 func (x *EvidenceLink) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[10]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1052,7 +1134,7 @@ func (x *EvidenceLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvidenceLink.ProtoReflect.Descriptor instead.
 func (*EvidenceLink) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{10}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *EvidenceLink) GetArticleId() string {
@@ -1107,7 +1189,7 @@ type Reference struct {
 
 func (x *Reference) Reset() {
 	*x = Reference{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[11]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1119,7 +1201,7 @@ func (x *Reference) String() string {
 func (*Reference) ProtoMessage() {}
 
 func (x *Reference) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[11]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1132,7 +1214,7 @@ func (x *Reference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Reference.ProtoReflect.Descriptor instead.
 func (*Reference) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{11}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Reference) GetId() int32 {
@@ -1184,7 +1266,7 @@ type ClusterDraft struct {
 
 func (x *ClusterDraft) Reset() {
 	*x = ClusterDraft{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[12]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1196,7 +1278,7 @@ func (x *ClusterDraft) String() string {
 func (*ClusterDraft) ProtoMessage() {}
 
 func (x *ClusterDraft) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[12]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1209,7 +1291,7 @@ func (x *ClusterDraft) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterDraft.ProtoReflect.Descriptor instead.
 func (*ClusterDraft) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{12}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ClusterDraft) GetDraftId() string {
@@ -1271,7 +1353,7 @@ type ClusterGenre struct {
 
 func (x *ClusterGenre) Reset() {
 	*x = ClusterGenre{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[13]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1283,7 +1365,7 @@ func (x *ClusterGenre) String() string {
 func (*ClusterGenre) ProtoMessage() {}
 
 func (x *ClusterGenre) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[13]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1296,7 +1378,7 @@ func (x *ClusterGenre) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterGenre.ProtoReflect.Descriptor instead.
 func (*ClusterGenre) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{13}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ClusterGenre) GetGenre() string {
@@ -1358,7 +1440,7 @@ type ClusterSegment struct {
 
 func (x *ClusterSegment) Reset() {
 	*x = ClusterSegment{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[14]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1370,7 +1452,7 @@ func (x *ClusterSegment) String() string {
 func (*ClusterSegment) ProtoMessage() {}
 
 func (x *ClusterSegment) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[14]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1383,7 +1465,7 @@ func (x *ClusterSegment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterSegment.ProtoReflect.Descriptor instead.
 func (*ClusterSegment) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{14}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ClusterSegment) GetClusterId() string {
@@ -1486,7 +1568,7 @@ type ClusterArticle struct {
 
 func (x *ClusterArticle) Reset() {
 	*x = ClusterArticle{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[15]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1498,7 +1580,7 @@ func (x *ClusterArticle) String() string {
 func (*ClusterArticle) ProtoMessage() {}
 
 func (x *ClusterArticle) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[15]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1511,7 +1593,7 @@ func (x *ClusterArticle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterArticle.ProtoReflect.Descriptor instead.
 func (*ClusterArticle) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{15}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ClusterArticle) GetArticleId() string {
@@ -1574,7 +1656,7 @@ type GetEveningPulseRequest struct {
 
 func (x *GetEveningPulseRequest) Reset() {
 	*x = GetEveningPulseRequest{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[16]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1586,7 +1668,7 @@ func (x *GetEveningPulseRequest) String() string {
 func (*GetEveningPulseRequest) ProtoMessage() {}
 
 func (x *GetEveningPulseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[16]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1599,7 +1681,7 @@ func (x *GetEveningPulseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEveningPulseRequest.ProtoReflect.Descriptor instead.
 func (*GetEveningPulseRequest) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{16}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetEveningPulseRequest) GetDate() string {
@@ -1630,7 +1712,7 @@ type GetEveningPulseResponse struct {
 
 func (x *GetEveningPulseResponse) Reset() {
 	*x = GetEveningPulseResponse{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[17]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1642,7 +1724,7 @@ func (x *GetEveningPulseResponse) String() string {
 func (*GetEveningPulseResponse) ProtoMessage() {}
 
 func (x *GetEveningPulseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[17]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1655,7 +1737,7 @@ func (x *GetEveningPulseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEveningPulseResponse.ProtoReflect.Descriptor instead.
 func (*GetEveningPulseResponse) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{17}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetEveningPulseResponse) GetJobId() string {
@@ -1737,7 +1819,7 @@ type PulseTopic struct {
 
 func (x *PulseTopic) Reset() {
 	*x = PulseTopic{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[18]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1749,7 +1831,7 @@ func (x *PulseTopic) String() string {
 func (*PulseTopic) ProtoMessage() {}
 
 func (x *PulseTopic) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[18]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1762,7 +1844,7 @@ func (x *PulseTopic) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PulseTopic.ProtoReflect.Descriptor instead.
 func (*PulseTopic) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{18}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PulseTopic) GetClusterId() int64 {
@@ -1882,7 +1964,7 @@ type RepresentativeArticle struct {
 
 func (x *RepresentativeArticle) Reset() {
 	*x = RepresentativeArticle{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[19]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1894,7 +1976,7 @@ func (x *RepresentativeArticle) String() string {
 func (*RepresentativeArticle) ProtoMessage() {}
 
 func (x *RepresentativeArticle) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[19]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1907,7 +1989,7 @@ func (x *RepresentativeArticle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepresentativeArticle.ProtoReflect.Descriptor instead.
 func (*RepresentativeArticle) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{19}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *RepresentativeArticle) GetArticleId() string {
@@ -1958,7 +2040,7 @@ type PulseRationale struct {
 
 func (x *PulseRationale) Reset() {
 	*x = PulseRationale{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[20]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1970,7 +2052,7 @@ func (x *PulseRationale) String() string {
 func (*PulseRationale) ProtoMessage() {}
 
 func (x *PulseRationale) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[20]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1983,7 +2065,7 @@ func (x *PulseRationale) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PulseRationale.ProtoReflect.Descriptor instead.
 func (*PulseRationale) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{20}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *PulseRationale) GetText() string {
@@ -2013,7 +2095,7 @@ type QuietDayInfo struct {
 
 func (x *QuietDayInfo) Reset() {
 	*x = QuietDayInfo{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[21]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2025,7 +2107,7 @@ func (x *QuietDayInfo) String() string {
 func (*QuietDayInfo) ProtoMessage() {}
 
 func (x *QuietDayInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[21]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2038,7 +2120,7 @@ func (x *QuietDayInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuietDayInfo.ProtoReflect.Descriptor instead.
 func (*QuietDayInfo) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{21}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *QuietDayInfo) GetMessage() string {
@@ -2072,7 +2154,7 @@ type WeeklyHighlight struct {
 
 func (x *WeeklyHighlight) Reset() {
 	*x = WeeklyHighlight{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[22]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2084,7 +2166,7 @@ func (x *WeeklyHighlight) String() string {
 func (*WeeklyHighlight) ProtoMessage() {}
 
 func (x *WeeklyHighlight) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[22]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2097,7 +2179,7 @@ func (x *WeeklyHighlight) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeeklyHighlight.ProtoReflect.Descriptor instead.
 func (*WeeklyHighlight) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{22}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *WeeklyHighlight) GetId() string {
@@ -2143,7 +2225,7 @@ type SearchRecapsByTagRequest struct {
 
 func (x *SearchRecapsByTagRequest) Reset() {
 	*x = SearchRecapsByTagRequest{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[23]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2155,7 +2237,7 @@ func (x *SearchRecapsByTagRequest) String() string {
 func (*SearchRecapsByTagRequest) ProtoMessage() {}
 
 func (x *SearchRecapsByTagRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[23]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2168,7 +2250,7 @@ func (x *SearchRecapsByTagRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchRecapsByTagRequest.ProtoReflect.Descriptor instead.
 func (*SearchRecapsByTagRequest) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{23}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SearchRecapsByTagRequest) GetTagName() string {
@@ -2215,7 +2297,7 @@ type RecapSearchResultItem struct {
 
 func (x *RecapSearchResultItem) Reset() {
 	*x = RecapSearchResultItem{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[24]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2227,7 +2309,7 @@ func (x *RecapSearchResultItem) String() string {
 func (*RecapSearchResultItem) ProtoMessage() {}
 
 func (x *RecapSearchResultItem) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[24]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2240,7 +2322,7 @@ func (x *RecapSearchResultItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecapSearchResultItem.ProtoReflect.Descriptor instead.
 func (*RecapSearchResultItem) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{24}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *RecapSearchResultItem) GetJobId() string {
@@ -2303,7 +2385,7 @@ type SearchRecapsByTagResponse struct {
 
 func (x *SearchRecapsByTagResponse) Reset() {
 	*x = SearchRecapsByTagResponse{}
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[25]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2315,7 +2397,7 @@ func (x *SearchRecapsByTagResponse) String() string {
 func (*SearchRecapsByTagResponse) ProtoMessage() {}
 
 func (x *SearchRecapsByTagResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_recap_v2_recap_proto_msgTypes[25]
+	mi := &file_alt_recap_v2_recap_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2328,7 +2410,7 @@ func (x *SearchRecapsByTagResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchRecapsByTagResponse.ProtoReflect.Descriptor instead.
 func (*SearchRecapsByTagResponse) Descriptor() ([]byte, []int) {
-	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{25}
+	return file_alt_recap_v2_recap_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SearchRecapsByTagResponse) GetResults() []*RecapSearchResultItem {
@@ -2370,12 +2452,21 @@ const file_alt_recap_v2_recap_proto_rawDesc = "" +
 	"\x0etotal_articles\x18\x05 \x01(\x05R\rtotalArticles\x120\n" +
 	"\x06genres\x18\x06 \x03(\v2\x18.alt.recap.v2.RecapGenreR\x06genres\x12D\n" +
 	"\rcluster_draft\x18\a \x01(\v2\x1a.alt.recap.v2.ClusterDraftH\x00R\fclusterDraft\x88\x01\x01B\x10\n" +
-	"\x0e_cluster_draft\"\x1e\n" +
-	"\x1cGetThreeDayRecapCardsRequest\"\x8a\x01\n" +
-	"\x1dGetThreeDayRecapCardsResponse\x122\n" +
+	"\x0e_cluster_draft\"\x16\n" +
+	"\x14GetTopicCardsRequest\"\xd2\x01\n" +
+	"\x15GetTopicCardsResponse\x122\n" +
 	"\x03job\x18\x01 \x01(\v2\x1b.alt.recap.v2.RecapCardsJobH\x00R\x03job\x88\x01\x01\x12-\n" +
-	"\x05cards\x18\x02 \x03(\v2\x17.alt.recap.v2.RecapCardR\x05cardsB\x06\n" +
-	"\x04_job\"\xd1\x01\n" +
+	"\x05cards\x18\x02 \x03(\v2\x17.alt.recap.v2.RecapCardR\x05cards\x12?\n" +
+	"\n" +
+	"latest_run\x18\x03 \x01(\v2\x1b.alt.recap.v2.RecapCardsRunH\x01R\tlatestRun\x88\x01\x01B\x06\n" +
+	"\x04_jobB\r\n" +
+	"\v_latest_run\"z\n" +
+	"\rRecapCardsRun\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1b\n" +
+	"\tkicked_at\x18\x03 \x01(\tR\bkickedAt\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\x04 \x01(\tR\tupdatedAt\"\xd1\x01\n" +
 	"\rRecapCardsJob\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1b\n" +
 	"\tkicked_at\x18\x02 \x01(\tR\bkickedAt\x12\x12\n" +
@@ -2564,11 +2655,11 @@ const file_alt_recap_v2_recap_proto_rawDesc = "" +
 	"\x16CONFIDENCE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fCONFIDENCE_HIGH\x10\x01\x12\x15\n" +
 	"\x11CONFIDENCE_MEDIUM\x10\x02\x12\x12\n" +
-	"\x0eCONFIDENCE_LOW\x10\x032\x92\x04\n" +
+	"\x0eCONFIDENCE_LOW\x10\x032\xfa\x03\n" +
 	"\fRecapService\x12a\n" +
 	"\x10GetSevenDayRecap\x12%.alt.recap.v2.GetSevenDayRecapRequest\x1a&.alt.recap.v2.GetSevenDayRecapResponse\x12a\n" +
-	"\x10GetThreeDayRecap\x12%.alt.recap.v2.GetThreeDayRecapRequest\x1a&.alt.recap.v2.GetThreeDayRecapResponse\x12p\n" +
-	"\x15GetThreeDayRecapCards\x12*.alt.recap.v2.GetThreeDayRecapCardsRequest\x1a+.alt.recap.v2.GetThreeDayRecapCardsResponse\x12^\n" +
+	"\x10GetThreeDayRecap\x12%.alt.recap.v2.GetThreeDayRecapRequest\x1a&.alt.recap.v2.GetThreeDayRecapResponse\x12X\n" +
+	"\rGetTopicCards\x12\".alt.recap.v2.GetTopicCardsRequest\x1a#.alt.recap.v2.GetTopicCardsResponse\x12^\n" +
 	"\x0fGetEveningPulse\x12$.alt.recap.v2.GetEveningPulseRequest\x1a%.alt.recap.v2.GetEveningPulseResponse\x12d\n" +
 	"\x11SearchRecapsByTag\x12&.alt.recap.v2.SearchRecapsByTagRequest\x1a'.alt.recap.v2.SearchRecapsByTagResponse\x1a\x04\x88\xb5\x18\x01B$Z\"alt/gen/proto/alt/recap/v2;recapv2b\x06proto3"
 
@@ -2585,75 +2676,77 @@ func file_alt_recap_v2_recap_proto_rawDescGZIP() []byte {
 }
 
 var file_alt_recap_v2_recap_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_alt_recap_v2_recap_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_alt_recap_v2_recap_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_alt_recap_v2_recap_proto_goTypes = []any{
-	(PulseStatus)(0),                      // 0: alt.recap.v2.PulseStatus
-	(TopicRole)(0),                        // 1: alt.recap.v2.TopicRole
-	(Confidence)(0),                       // 2: alt.recap.v2.Confidence
-	(*GetSevenDayRecapRequest)(nil),       // 3: alt.recap.v2.GetSevenDayRecapRequest
-	(*GetSevenDayRecapResponse)(nil),      // 4: alt.recap.v2.GetSevenDayRecapResponse
-	(*GetThreeDayRecapRequest)(nil),       // 5: alt.recap.v2.GetThreeDayRecapRequest
-	(*GetThreeDayRecapResponse)(nil),      // 6: alt.recap.v2.GetThreeDayRecapResponse
-	(*GetThreeDayRecapCardsRequest)(nil),  // 7: alt.recap.v2.GetThreeDayRecapCardsRequest
-	(*GetThreeDayRecapCardsResponse)(nil), // 8: alt.recap.v2.GetThreeDayRecapCardsResponse
-	(*RecapCardsJob)(nil),                 // 9: alt.recap.v2.RecapCardsJob
-	(*RecapCard)(nil),                     // 10: alt.recap.v2.RecapCard
-	(*RecapCardSource)(nil),               // 11: alt.recap.v2.RecapCardSource
-	(*RecapGenre)(nil),                    // 12: alt.recap.v2.RecapGenre
-	(*EvidenceLink)(nil),                  // 13: alt.recap.v2.EvidenceLink
-	(*Reference)(nil),                     // 14: alt.recap.v2.Reference
-	(*ClusterDraft)(nil),                  // 15: alt.recap.v2.ClusterDraft
-	(*ClusterGenre)(nil),                  // 16: alt.recap.v2.ClusterGenre
-	(*ClusterSegment)(nil),                // 17: alt.recap.v2.ClusterSegment
-	(*ClusterArticle)(nil),                // 18: alt.recap.v2.ClusterArticle
-	(*GetEveningPulseRequest)(nil),        // 19: alt.recap.v2.GetEveningPulseRequest
-	(*GetEveningPulseResponse)(nil),       // 20: alt.recap.v2.GetEveningPulseResponse
-	(*PulseTopic)(nil),                    // 21: alt.recap.v2.PulseTopic
-	(*RepresentativeArticle)(nil),         // 22: alt.recap.v2.RepresentativeArticle
-	(*PulseRationale)(nil),                // 23: alt.recap.v2.PulseRationale
-	(*QuietDayInfo)(nil),                  // 24: alt.recap.v2.QuietDayInfo
-	(*WeeklyHighlight)(nil),               // 25: alt.recap.v2.WeeklyHighlight
-	(*SearchRecapsByTagRequest)(nil),      // 26: alt.recap.v2.SearchRecapsByTagRequest
-	(*RecapSearchResultItem)(nil),         // 27: alt.recap.v2.RecapSearchResultItem
-	(*SearchRecapsByTagResponse)(nil),     // 28: alt.recap.v2.SearchRecapsByTagResponse
+	(PulseStatus)(0),                  // 0: alt.recap.v2.PulseStatus
+	(TopicRole)(0),                    // 1: alt.recap.v2.TopicRole
+	(Confidence)(0),                   // 2: alt.recap.v2.Confidence
+	(*GetSevenDayRecapRequest)(nil),   // 3: alt.recap.v2.GetSevenDayRecapRequest
+	(*GetSevenDayRecapResponse)(nil),  // 4: alt.recap.v2.GetSevenDayRecapResponse
+	(*GetThreeDayRecapRequest)(nil),   // 5: alt.recap.v2.GetThreeDayRecapRequest
+	(*GetThreeDayRecapResponse)(nil),  // 6: alt.recap.v2.GetThreeDayRecapResponse
+	(*GetTopicCardsRequest)(nil),      // 7: alt.recap.v2.GetTopicCardsRequest
+	(*GetTopicCardsResponse)(nil),     // 8: alt.recap.v2.GetTopicCardsResponse
+	(*RecapCardsRun)(nil),             // 9: alt.recap.v2.RecapCardsRun
+	(*RecapCardsJob)(nil),             // 10: alt.recap.v2.RecapCardsJob
+	(*RecapCard)(nil),                 // 11: alt.recap.v2.RecapCard
+	(*RecapCardSource)(nil),           // 12: alt.recap.v2.RecapCardSource
+	(*RecapGenre)(nil),                // 13: alt.recap.v2.RecapGenre
+	(*EvidenceLink)(nil),              // 14: alt.recap.v2.EvidenceLink
+	(*Reference)(nil),                 // 15: alt.recap.v2.Reference
+	(*ClusterDraft)(nil),              // 16: alt.recap.v2.ClusterDraft
+	(*ClusterGenre)(nil),              // 17: alt.recap.v2.ClusterGenre
+	(*ClusterSegment)(nil),            // 18: alt.recap.v2.ClusterSegment
+	(*ClusterArticle)(nil),            // 19: alt.recap.v2.ClusterArticle
+	(*GetEveningPulseRequest)(nil),    // 20: alt.recap.v2.GetEveningPulseRequest
+	(*GetEveningPulseResponse)(nil),   // 21: alt.recap.v2.GetEveningPulseResponse
+	(*PulseTopic)(nil),                // 22: alt.recap.v2.PulseTopic
+	(*RepresentativeArticle)(nil),     // 23: alt.recap.v2.RepresentativeArticle
+	(*PulseRationale)(nil),            // 24: alt.recap.v2.PulseRationale
+	(*QuietDayInfo)(nil),              // 25: alt.recap.v2.QuietDayInfo
+	(*WeeklyHighlight)(nil),           // 26: alt.recap.v2.WeeklyHighlight
+	(*SearchRecapsByTagRequest)(nil),  // 27: alt.recap.v2.SearchRecapsByTagRequest
+	(*RecapSearchResultItem)(nil),     // 28: alt.recap.v2.RecapSearchResultItem
+	(*SearchRecapsByTagResponse)(nil), // 29: alt.recap.v2.SearchRecapsByTagResponse
 }
 var file_alt_recap_v2_recap_proto_depIdxs = []int32{
-	12, // 0: alt.recap.v2.GetSevenDayRecapResponse.genres:type_name -> alt.recap.v2.RecapGenre
-	15, // 1: alt.recap.v2.GetSevenDayRecapResponse.cluster_draft:type_name -> alt.recap.v2.ClusterDraft
-	12, // 2: alt.recap.v2.GetThreeDayRecapResponse.genres:type_name -> alt.recap.v2.RecapGenre
-	15, // 3: alt.recap.v2.GetThreeDayRecapResponse.cluster_draft:type_name -> alt.recap.v2.ClusterDraft
-	9,  // 4: alt.recap.v2.GetThreeDayRecapCardsResponse.job:type_name -> alt.recap.v2.RecapCardsJob
-	10, // 5: alt.recap.v2.GetThreeDayRecapCardsResponse.cards:type_name -> alt.recap.v2.RecapCard
-	11, // 6: alt.recap.v2.RecapCard.sources:type_name -> alt.recap.v2.RecapCardSource
-	13, // 7: alt.recap.v2.RecapGenre.evidence_links:type_name -> alt.recap.v2.EvidenceLink
-	14, // 8: alt.recap.v2.RecapGenre.references:type_name -> alt.recap.v2.Reference
-	16, // 9: alt.recap.v2.ClusterDraft.genres:type_name -> alt.recap.v2.ClusterGenre
-	17, // 10: alt.recap.v2.ClusterGenre.clusters:type_name -> alt.recap.v2.ClusterSegment
-	18, // 11: alt.recap.v2.ClusterSegment.representative_articles:type_name -> alt.recap.v2.ClusterArticle
-	0,  // 12: alt.recap.v2.GetEveningPulseResponse.status:type_name -> alt.recap.v2.PulseStatus
-	21, // 13: alt.recap.v2.GetEveningPulseResponse.topics:type_name -> alt.recap.v2.PulseTopic
-	24, // 14: alt.recap.v2.GetEveningPulseResponse.quiet_day:type_name -> alt.recap.v2.QuietDayInfo
-	1,  // 15: alt.recap.v2.PulseTopic.role:type_name -> alt.recap.v2.TopicRole
-	23, // 16: alt.recap.v2.PulseTopic.rationale:type_name -> alt.recap.v2.PulseRationale
-	22, // 17: alt.recap.v2.PulseTopic.representative_articles:type_name -> alt.recap.v2.RepresentativeArticle
-	2,  // 18: alt.recap.v2.PulseRationale.confidence:type_name -> alt.recap.v2.Confidence
-	25, // 19: alt.recap.v2.QuietDayInfo.weekly_highlights:type_name -> alt.recap.v2.WeeklyHighlight
-	27, // 20: alt.recap.v2.SearchRecapsByTagResponse.results:type_name -> alt.recap.v2.RecapSearchResultItem
-	3,  // 21: alt.recap.v2.RecapService.GetSevenDayRecap:input_type -> alt.recap.v2.GetSevenDayRecapRequest
-	5,  // 22: alt.recap.v2.RecapService.GetThreeDayRecap:input_type -> alt.recap.v2.GetThreeDayRecapRequest
-	7,  // 23: alt.recap.v2.RecapService.GetThreeDayRecapCards:input_type -> alt.recap.v2.GetThreeDayRecapCardsRequest
-	19, // 24: alt.recap.v2.RecapService.GetEveningPulse:input_type -> alt.recap.v2.GetEveningPulseRequest
-	26, // 25: alt.recap.v2.RecapService.SearchRecapsByTag:input_type -> alt.recap.v2.SearchRecapsByTagRequest
-	4,  // 26: alt.recap.v2.RecapService.GetSevenDayRecap:output_type -> alt.recap.v2.GetSevenDayRecapResponse
-	6,  // 27: alt.recap.v2.RecapService.GetThreeDayRecap:output_type -> alt.recap.v2.GetThreeDayRecapResponse
-	8,  // 28: alt.recap.v2.RecapService.GetThreeDayRecapCards:output_type -> alt.recap.v2.GetThreeDayRecapCardsResponse
-	20, // 29: alt.recap.v2.RecapService.GetEveningPulse:output_type -> alt.recap.v2.GetEveningPulseResponse
-	28, // 30: alt.recap.v2.RecapService.SearchRecapsByTag:output_type -> alt.recap.v2.SearchRecapsByTagResponse
-	26, // [26:31] is the sub-list for method output_type
-	21, // [21:26] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	13, // 0: alt.recap.v2.GetSevenDayRecapResponse.genres:type_name -> alt.recap.v2.RecapGenre
+	16, // 1: alt.recap.v2.GetSevenDayRecapResponse.cluster_draft:type_name -> alt.recap.v2.ClusterDraft
+	13, // 2: alt.recap.v2.GetThreeDayRecapResponse.genres:type_name -> alt.recap.v2.RecapGenre
+	16, // 3: alt.recap.v2.GetThreeDayRecapResponse.cluster_draft:type_name -> alt.recap.v2.ClusterDraft
+	10, // 4: alt.recap.v2.GetTopicCardsResponse.job:type_name -> alt.recap.v2.RecapCardsJob
+	11, // 5: alt.recap.v2.GetTopicCardsResponse.cards:type_name -> alt.recap.v2.RecapCard
+	9,  // 6: alt.recap.v2.GetTopicCardsResponse.latest_run:type_name -> alt.recap.v2.RecapCardsRun
+	12, // 7: alt.recap.v2.RecapCard.sources:type_name -> alt.recap.v2.RecapCardSource
+	14, // 8: alt.recap.v2.RecapGenre.evidence_links:type_name -> alt.recap.v2.EvidenceLink
+	15, // 9: alt.recap.v2.RecapGenre.references:type_name -> alt.recap.v2.Reference
+	17, // 10: alt.recap.v2.ClusterDraft.genres:type_name -> alt.recap.v2.ClusterGenre
+	18, // 11: alt.recap.v2.ClusterGenre.clusters:type_name -> alt.recap.v2.ClusterSegment
+	19, // 12: alt.recap.v2.ClusterSegment.representative_articles:type_name -> alt.recap.v2.ClusterArticle
+	0,  // 13: alt.recap.v2.GetEveningPulseResponse.status:type_name -> alt.recap.v2.PulseStatus
+	22, // 14: alt.recap.v2.GetEveningPulseResponse.topics:type_name -> alt.recap.v2.PulseTopic
+	25, // 15: alt.recap.v2.GetEveningPulseResponse.quiet_day:type_name -> alt.recap.v2.QuietDayInfo
+	1,  // 16: alt.recap.v2.PulseTopic.role:type_name -> alt.recap.v2.TopicRole
+	24, // 17: alt.recap.v2.PulseTopic.rationale:type_name -> alt.recap.v2.PulseRationale
+	23, // 18: alt.recap.v2.PulseTopic.representative_articles:type_name -> alt.recap.v2.RepresentativeArticle
+	2,  // 19: alt.recap.v2.PulseRationale.confidence:type_name -> alt.recap.v2.Confidence
+	26, // 20: alt.recap.v2.QuietDayInfo.weekly_highlights:type_name -> alt.recap.v2.WeeklyHighlight
+	28, // 21: alt.recap.v2.SearchRecapsByTagResponse.results:type_name -> alt.recap.v2.RecapSearchResultItem
+	3,  // 22: alt.recap.v2.RecapService.GetSevenDayRecap:input_type -> alt.recap.v2.GetSevenDayRecapRequest
+	5,  // 23: alt.recap.v2.RecapService.GetThreeDayRecap:input_type -> alt.recap.v2.GetThreeDayRecapRequest
+	7,  // 24: alt.recap.v2.RecapService.GetTopicCards:input_type -> alt.recap.v2.GetTopicCardsRequest
+	20, // 25: alt.recap.v2.RecapService.GetEveningPulse:input_type -> alt.recap.v2.GetEveningPulseRequest
+	27, // 26: alt.recap.v2.RecapService.SearchRecapsByTag:input_type -> alt.recap.v2.SearchRecapsByTagRequest
+	4,  // 27: alt.recap.v2.RecapService.GetSevenDayRecap:output_type -> alt.recap.v2.GetSevenDayRecapResponse
+	6,  // 28: alt.recap.v2.RecapService.GetThreeDayRecap:output_type -> alt.recap.v2.GetThreeDayRecapResponse
+	8,  // 29: alt.recap.v2.RecapService.GetTopicCards:output_type -> alt.recap.v2.GetTopicCardsResponse
+	21, // 30: alt.recap.v2.RecapService.GetEveningPulse:output_type -> alt.recap.v2.GetEveningPulseResponse
+	29, // 31: alt.recap.v2.RecapService.SearchRecapsByTag:output_type -> alt.recap.v2.SearchRecapsByTagResponse
+	27, // [27:32] is the sub-list for method output_type
+	22, // [22:27] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_alt_recap_v2_recap_proto_init() }
@@ -2666,20 +2759,20 @@ func file_alt_recap_v2_recap_proto_init() {
 	file_alt_recap_v2_recap_proto_msgTypes[2].OneofWrappers = []any{}
 	file_alt_recap_v2_recap_proto_msgTypes[3].OneofWrappers = []any{}
 	file_alt_recap_v2_recap_proto_msgTypes[5].OneofWrappers = []any{}
-	file_alt_recap_v2_recap_proto_msgTypes[7].OneofWrappers = []any{}
 	file_alt_recap_v2_recap_proto_msgTypes[8].OneofWrappers = []any{}
-	file_alt_recap_v2_recap_proto_msgTypes[11].OneofWrappers = []any{}
-	file_alt_recap_v2_recap_proto_msgTypes[16].OneofWrappers = []any{}
+	file_alt_recap_v2_recap_proto_msgTypes[9].OneofWrappers = []any{}
+	file_alt_recap_v2_recap_proto_msgTypes[12].OneofWrappers = []any{}
 	file_alt_recap_v2_recap_proto_msgTypes[17].OneofWrappers = []any{}
 	file_alt_recap_v2_recap_proto_msgTypes[18].OneofWrappers = []any{}
-	file_alt_recap_v2_recap_proto_msgTypes[23].OneofWrappers = []any{}
+	file_alt_recap_v2_recap_proto_msgTypes[19].OneofWrappers = []any{}
+	file_alt_recap_v2_recap_proto_msgTypes[24].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_alt_recap_v2_recap_proto_rawDesc), len(file_alt_recap_v2_recap_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   26,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

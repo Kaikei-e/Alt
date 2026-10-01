@@ -28,7 +28,7 @@ type Handler struct {
 type RecapUsecaseInterface interface {
 	GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error)
-	GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error)
+	GetTopicCards(ctx context.Context) (*domain.RecapCardsResponse, error)
 	GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error)
 	SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error)
 	SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error)
@@ -116,23 +116,23 @@ func (h *Handler) GetThreeDayRecap(
 	return connect.NewResponse(resp), nil
 }
 
-// GetThreeDayRecapCards returns 3-day topic recap cards.
-func (h *Handler) GetThreeDayRecapCards(
+// GetTopicCards returns topic recap cards.
+func (h *Handler) GetTopicCards(
 	ctx context.Context,
-	_ *connect.Request[recapv2.GetThreeDayRecapCardsRequest],
-) (*connect.Response[recapv2.GetThreeDayRecapCardsResponse], error) {
+	_ *connect.Request[recapv2.GetTopicCardsRequest],
+) (*connect.Response[recapv2.GetTopicCardsResponse], error) {
 	userCtx, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
-	h.logger.InfoContext(ctx, "GetThreeDayRecapCards called", "user_id", userCtx.UserID)
+	h.logger.InfoContext(ctx, "GetTopicCards called", "user_id", userCtx.UserID)
 
-	cardsResp, err := h.recapUsecase.GetThreeDayRecapCards(ctx)
+	cardsResp, err := h.recapUsecase.GetTopicCards(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetThreeDayRecapCards")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetTopicCards")
 	}
 
-	resp := domainToProtoThreeDaysCards(cardsResp)
+	resp := domainToProtoTopicCards(cardsResp)
 	return connect.NewResponse(resp), nil
 }
 

@@ -34,7 +34,7 @@ func (m *MockRecapPort) GetThreeDayRecap(ctx context.Context) (*domain.RecapSumm
 	return args.Get(0).(*domain.RecapSummary), args.Error(1)
 }
 
-func (m *MockRecapPort) GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
+func (m *MockRecapPort) GetTopicCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -168,8 +168,8 @@ func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 	})
 }
 
-func TestRecapUsecase_GetThreeDayRecapCards(t *testing.T) {
-	t.Run("success - returns cards response", func(t *testing.T) {
+func TestRecapUsecase_GetTopicCards(t *testing.T) {
+	t.Run("success - returns cards response with completed latest_run", func(t *testing.T) {
 		mockPort := new(MockRecapPort)
 		expected := &domain.RecapCardsResponse{
 			Job: &domain.RecapCardsJob{
@@ -191,42 +191,50 @@ func TestRecapUsecase_GetThreeDayRecapCards(t *testing.T) {
 					CreatedAt:  "2026-09-22T17:05:00Z",
 				},
 			},
+			LatestRun: &domain.RecapCardsRun{
+				JobID:     "job-1",
+				Status:    "completed",
+				KickedAt:  "2026-09-22T17:00:00Z",
+				UpdatedAt: "2026-09-22T17:05:00Z",
+			},
 		}
 
-		mockPort.On("GetThreeDayRecapCards", mock.Anything).Return(expected, nil)
+		mockPort.On("GetTopicCards", mock.Anything).Return(expected, nil)
 
 		uc := NewRecapUsecase(mockPort, nil)
-		result, err := uc.GetThreeDayRecapCards(context.Background())
+		result, err := uc.GetTopicCards(context.Background())
 
 		require.NoError(t, err)
 		assert.Equal(t, expected, result)
 		mockPort.AssertExpectations(t)
 	})
 
-	t.Run("success - empty cards response", func(t *testing.T) {
+	t.Run("success - empty cards response with nil latest_run", func(t *testing.T) {
 		mockPort := new(MockRecapPort)
 		expected := &domain.RecapCardsResponse{
-			Job:   nil,
-			Cards: []*domain.RecapCard{},
+			Job:       nil,
+			Cards:     []*domain.RecapCard{},
+			LatestRun: nil,
 		}
 
-		mockPort.On("GetThreeDayRecapCards", mock.Anything).Return(expected, nil)
+		mockPort.On("GetTopicCards", mock.Anything).Return(expected, nil)
 
 		uc := NewRecapUsecase(mockPort, nil)
-		result, err := uc.GetThreeDayRecapCards(context.Background())
+		result, err := uc.GetTopicCards(context.Background())
 
 		require.NoError(t, err)
 		assert.Nil(t, result.Job)
 		assert.Empty(t, result.Cards)
+		assert.Nil(t, result.LatestRun)
 		mockPort.AssertExpectations(t)
 	})
 
 	t.Run("error - port failure propagates", func(t *testing.T) {
 		mockPort := new(MockRecapPort)
-		mockPort.On("GetThreeDayRecapCards", mock.Anything).Return(nil, errors.New("upstream failure"))
+		mockPort.On("GetTopicCards", mock.Anything).Return(nil, errors.New("upstream failure"))
 
 		uc := NewRecapUsecase(mockPort, nil)
-		result, err := uc.GetThreeDayRecapCards(context.Background())
+		result, err := uc.GetTopicCards(context.Background())
 
 		require.Error(t, err)
 		assert.Nil(t, result)
