@@ -478,10 +478,27 @@ impl CardsPipeline {
             "cards"
         };
 
-        // 1. Create job record in recap_jobs with trigger_source and window_days = 3
+        // 1. Create job record in recap_jobs with trigger_source and window_days derived from span
+        let span = to - from;
+        let span_days = span.num_days();
+        if span_days < 1 {
+            let actual_hours = span.num_hours();
+            anyhow::bail!(
+                "invalid topic cards window: window must span at least one whole day, got {actual_hours} hours (from {from} to {to})"
+            );
+        }
+        // Truncate to whole days because window_days is an integer column.
+        let window_days = u32::try_from(span_days).map_err(|e| {
+            anyhow::anyhow!("window span {span_days} days does not fit in u32: {e}")
+        })?;
         let lock = self
             .dao
-            .create_job_with_lock_and_window(job_id, Some("cards pipeline"), 3, trigger_source)
+            .create_job_with_lock_and_window(
+                job_id,
+                Some("cards pipeline"),
+                window_days,
+                trigger_source,
+            )
             .await
             .context("failed to create recap_jobs row")?;
 
@@ -2023,6 +2040,12 @@ mod tests {
     type MockStatusEntry = (Uuid, JobStatus, Option<String>, Option<String>);
     type MockEmbeddingCache = Mutex<HashMap<String, (String, usize, Vec<f32>)>>;
 
+    fn test_window_3d() -> (DateTime<Utc>, DateTime<Utc>) {
+        let to = Utc::now();
+        let from = to - chrono::Duration::days(3);
+        (from, to)
+    }
+
     #[derive(Default)]
     pub struct MockCardsPipelineDao {
         pub jobs: Mutex<Vec<MockJobEntry>>,
@@ -2240,8 +2263,7 @@ mod tests {
         .with_user_id(user_id);
 
         let job_id = Uuid::new_v4();
-        let from = Utc::now();
-        let to = Utc::now();
+        let (from, to) = test_window_3d();
         let params = CardsParams::default();
 
         let res1 = pipeline1
@@ -2288,8 +2310,7 @@ mod tests {
             Arc::new(FakeGenreTagger::new()),
         )
         .with_user_id(Uuid::new_v4());
-        let from = Utc::now();
-        let to = Utc::now();
+        let (from, to) = test_window_3d();
         let params = CardsParams::default();
 
         let replay_res = pipeline
@@ -2349,8 +2370,7 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
         let job_id = Uuid::new_v4();
-        let from = Utc::now();
-        let to = Utc::now();
+        let (from, to) = test_window_3d();
         let params = CardsParams::default();
 
         let res = pipeline.run(job_id, from, to, &params).await;
@@ -2423,8 +2443,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
         let job_id = Uuid::new_v4();
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(job_id, Utc::now(), Utc::now(), &CardsParams::default())
+            .run(job_id, from, to, &CardsParams::default())
             .await;
         assert!(res.is_err());
         let err_str = res.unwrap_err().to_string();
@@ -2461,13 +2482,9 @@ mod tests {
             Arc::new(FakeGenreTagger::new()),
         )
         .with_user_id(Uuid::new_v4());
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await;
         assert!(res.is_err());
         assert!(
@@ -2754,13 +2771,9 @@ mod tests {
             dao.clone(),
             Arc::new(FakeGenreTagger::new()),
         );
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await;
         assert!(res.is_err(), "missing user_id must fail");
         assert!(
@@ -2797,8 +2810,7 @@ mod tests {
         .with_user_id(Uuid::new_v4());
 
         let job_id = Uuid::new_v4();
-        let from = Utc::now();
-        let to = Utc::now();
+        let (from, to) = test_window_3d();
         let params = CardsParams::default();
 
         let res = pipeline
@@ -2874,8 +2886,9 @@ mod tests {
         .with_user_id(Uuid::new_v4());
 
         let job_id = Uuid::new_v4();
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(job_id, Utc::now(), Utc::now(), &CardsParams::default())
+            .run(job_id, from, to, &CardsParams::default())
             .await
             .expect("pipeline should complete with dropped card");
 
@@ -2936,8 +2949,9 @@ mod tests {
         .with_user_id(Uuid::new_v4());
 
         let job_id = Uuid::new_v4();
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(job_id, Utc::now(), Utc::now(), &CardsParams::default())
+            .run(job_id, from, to, &CardsParams::default())
             .await;
 
         assert!(res.is_err());
@@ -3011,13 +3025,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await
             .expect("pipeline completes");
 
@@ -3103,13 +3113,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await
             .expect("pipeline completes");
 
@@ -3171,13 +3177,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await
             .expect("pipeline completes");
 
@@ -3251,13 +3253,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await
             .expect("pipeline completes");
 
@@ -3420,13 +3418,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await
             .expect("pipeline completes");
 
@@ -3595,13 +3589,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await
             .expect("pipeline completes");
 
@@ -3721,13 +3711,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await
             .expect("pipeline completes");
 
@@ -3766,8 +3752,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
+            .run(Uuid::new_v4(), from, to, &params)
             .await
             .expect("pipeline completes when genre tagging is disabled");
 
@@ -3828,13 +3815,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await;
 
         assert!(res.is_err());
@@ -3869,13 +3852,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await
             .expect("pipeline succeeds");
 
@@ -3910,8 +3889,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         pipeline
-            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
+            .run(Uuid::new_v4(), from, to, &params)
             .await
             .expect("pipeline succeeds");
 
@@ -3953,13 +3933,9 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         pipeline
-            .run(
-                Uuid::new_v4(),
-                Utc::now(),
-                Utc::now(),
-                &CardsParams::default(),
-            )
+            .run(Uuid::new_v4(), from, to, &CardsParams::default())
             .await
             .expect("pipeline succeeds");
 
@@ -3996,8 +3972,7 @@ mod tests {
         )
         .with_user_id(user_id);
 
-        let from = Utc::now();
-        let to = Utc::now();
+        let (from, to) = test_window_3d();
         let params = CardsParams::default()
             .with_override("expected_embed_dim", &serde_json::json!(4))
             .unwrap();
@@ -4101,9 +4076,8 @@ mod tests {
             .with_override("expected_embed_dim", &serde_json::json!(4))
             .unwrap();
 
-        let res = pipeline
-            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
-            .await;
+        let (from, to) = test_window_3d();
+        let res = pipeline.run(Uuid::new_v4(), from, to, &params).await;
         assert!(res.is_err(), "pipeline must fail on dimension mismatch");
         let err = format!("{:#}", res.unwrap_err());
         assert!(
@@ -4142,9 +4116,8 @@ mod tests {
             .with_override("expected_embed_dim", &serde_json::json!(4))
             .unwrap();
 
-        let res = pipeline
-            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
-            .await;
+        let (from, to) = test_window_3d();
+        let res = pipeline.run(Uuid::new_v4(), from, to, &params).await;
         assert!(
             res.is_err(),
             "pipeline must fail closed on model identity mismatch"
@@ -4198,8 +4171,9 @@ mod tests {
             .with_override("expected_embed_dim", &serde_json::json!(4))
             .unwrap();
 
+        let (from, to) = test_window_3d();
         let res = pipeline
-            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
+            .run(Uuid::new_v4(), from, to, &params)
             .await
             .expect("pipeline succeeds with partial cache hits");
 
@@ -4241,12 +4215,13 @@ mod tests {
         )
         .with_user_id(Uuid::new_v4());
 
+        let (from, to) = test_window_3d();
         // 1. When min_cluster_size_by_language is empty, cluster request has None
         let params_default = CardsParams::default()
             .with_override("expected_embed_dim", &serde_json::json!(4))
             .unwrap();
         pipeline
-            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params_default)
+            .run(Uuid::new_v4(), from, to, &params_default)
             .await
             .expect("pipeline succeeds");
 
@@ -4268,7 +4243,7 @@ mod tests {
             .unwrap();
 
         pipeline
-            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params_with_lang)
+            .run(Uuid::new_v4(), from, to, &params_with_lang)
             .await
             .expect("pipeline succeeds");
 
@@ -4314,8 +4289,9 @@ mod tests {
             .unwrap();
 
         let job_id = Uuid::new_v4();
+        let (from, to) = test_window_3d();
         pipeline
-            .run(job_id, Utc::now(), Utc::now(), &params)
+            .run(job_id, from, to, &params)
             .await
             .expect("full pipeline succeeds");
 
@@ -4327,6 +4303,105 @@ mod tests {
             snap.params.get("mode"),
             Some(&serde_json::Value::String("full".to_string())),
             "full mode pipeline snapshot must record mode 'full'"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_records_window_days_from_span() {
+        let feed_source = Arc::new(FakeFeedSource::new(vec![]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        let generator = Arc::new(FakeCardGenerator::new());
+        let verifier = Arc::new(FakeCardVerifier::new());
+
+        let pipeline = CardsPipeline::full(
+            feed_source,
+            ml_port,
+            dao.clone(),
+            generator,
+            verifier,
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        let params = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap();
+
+        let job_id = Uuid::new_v4();
+        let to = Utc::now();
+        let from = to - chrono::Duration::days(5);
+        let res = pipeline.run(job_id, from, to, &params).await;
+        assert!(res.is_ok(), "pipeline run must succeed");
+
+        let jobs = dao.jobs.lock().unwrap().clone();
+        assert!(!jobs.is_empty());
+        let (_, _, window_days, _) = jobs[0];
+        assert_eq!(
+            window_days, 5,
+            "must record window_days derived from 5-day span in recap_jobs"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_rejects_non_positive_window_span() {
+        let feed_source = Arc::new(FakeFeedSource::new(vec![]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        let generator = Arc::new(FakeCardGenerator::new());
+        let verifier = Arc::new(FakeCardVerifier::new());
+
+        let pipeline = CardsPipeline::full(
+            feed_source,
+            ml_port,
+            dao.clone(),
+            generator,
+            verifier,
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        let params = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap();
+
+        let now = Utc::now();
+
+        // 1. Zero span (from == to)
+        let job_id_zero = Uuid::new_v4();
+        let res_zero = pipeline.run(job_id_zero, now, now, &params).await;
+        assert!(res_zero.is_err(), "zero span must return an error");
+        let err_zero = res_zero.unwrap_err().to_string();
+        assert!(
+            err_zero.contains("window must span at least one whole day"),
+            "zero span error must mention requirement of at least one whole day, got: {err_zero}"
+        );
+        assert!(
+            err_zero.contains("0 hours"),
+            "zero span error must include actual span in hours, got: {err_zero}"
+        );
+        assert!(
+            dao.jobs.lock().unwrap().is_empty(),
+            "no job row inserted on zero span"
+        );
+
+        // 2. Negative span (to < from)
+        let job_id_neg = Uuid::new_v4();
+        let from_future = now + chrono::Duration::days(2);
+        let res_neg = pipeline.run(job_id_neg, from_future, now, &params).await;
+        assert!(res_neg.is_err(), "negative span must return an error");
+        let err_neg = res_neg.unwrap_err().to_string();
+        assert!(
+            err_neg.contains("window must span at least one whole day"),
+            "negative span error must mention requirement of at least one whole day, got: {err_neg}"
+        );
+        assert!(
+            err_neg.contains("-48 hours"),
+            "negative span error must include actual span in hours, got: {err_neg}"
+        );
+        assert!(
+            dao.jobs.lock().unwrap().is_empty(),
+            "no job row inserted on negative span"
         );
     }
 }

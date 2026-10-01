@@ -505,7 +505,7 @@ mod tests {
             let res_selection = rt.block_on(run_eval_replay(
                 &pool,
                 &config,
-                Utc::now(),
+                Utc::now() - chrono::Duration::days(1),
                 Utc::now(),
                 &params,
                 false,
