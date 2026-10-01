@@ -11,6 +11,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 
+const { mockSpeechPlay, mockSpeechStop, speechState } = vi.hoisted(() => ({
+	mockSpeechPlay: vi.fn(),
+	mockSpeechStop: vi.fn(),
+	speechState: { value: "idle" },
+}));
+
+vi.mock("$lib/hooks/useSummarySpeech.svelte", () => ({
+	createSummarySpeech: vi.fn(() => ({
+		get state() {
+			return speechState.value;
+		},
+		play: mockSpeechPlay,
+		stop: mockSpeechStop,
+	})),
+}));
+
 const mockGetFeedContent = vi.fn();
 vi.mock("$lib/api/client/articles", () => ({
 	getFeedContentOnTheFlyClient: (...args: unknown[]) =>
@@ -29,7 +45,29 @@ vi.mock("$lib/utils/articlePrefetcher", () => ({
 
 vi.mock("$lib/connect", () => ({
 	createClientTransport: vi.fn(() => ({})),
-	streamSummarizeWithAbortAdapter: vi.fn(() => new AbortController()),
+	streamSummarizeWithAbortAdapter: vi.fn(
+		(
+			_transport: unknown,
+			_options: unknown,
+			updateState?: (text: string) => void,
+			_rendererOptions?: unknown,
+			onComplete?: (result: unknown) => void,
+			_onError?: (error: Error) => void,
+		) => {
+			updateState?.("This is a test summary.");
+			if (onComplete) {
+				onComplete({
+					hasReceivedData: true,
+					articleId: "article-123",
+					chunkCount: 1,
+					totalLength: 23,
+					summary: "This is a test summary.",
+					wasCached: false,
+				});
+			}
+			return new AbortController();
+		},
+	),
 }));
 
 import FeedDetailModal from "./FeedDetailModal.svelte";
@@ -67,6 +105,9 @@ function renderModal() {
 describe("FeedDetailModal content states", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockSpeechPlay.mockReset();
+		mockSpeechStop.mockReset();
+		speechState.value = "idle";
 	});
 
 	it("says what it is doing while the body is in flight", async () => {
@@ -172,5 +213,145 @@ describe("FeedDetailModal content states", () => {
 			.toBeInTheDocument();
 		await new Promise((r) => setTimeout(r, 900));
 		expect(mockGetFeedContent).toHaveBeenCalledTimes(1);
+	});
+
+	describe("AI summary speech button", () => {
+		it("does not render the speech button while chunks are still typing before completion even though text is visible", async () => {
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Article body</p>",
+				article_id: "a1",
+			});
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
+				(
+					_transport: unknown,
+					_options: unknown,
+					updateState?: (chunk: string) => void,
+					rendererOptions?: {
+						onChunk?: (
+							count: number,
+							size: number,
+							decLen: number,
+							totLen: number,
+							preview: string,
+						) => void;
+					},
+				) => {
+					rendererOptions?.onChunk?.(1, 25, 25, 25, "Typing partial");
+					updateState?.("Typing partial summary...");
+					return new AbortController();
+				},
+			);
+
+			renderModal();
+
+			const summarizeBtn = testPage.getByRole("button", { name: /summarize/i });
+			await expect.element(summarizeBtn).toBeEnabled();
+			await summarizeBtn.click();
+
+			await expect
+				.element(testPage.getByText("Typing partial summary..."))
+				.toBeInTheDocument();
+			await expect
+				.element(testPage.getByTestId("summary-speech-button"))
+				.not.toBeInTheDocument();
+		});
+
+		it("renders speech button with 'Play summary' once summary stream completes via real update path", async () => {
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Article body</p>",
+				article_id: "a1",
+			});
+
+			renderModal();
+
+			const summarizeBtn = testPage.getByRole("button", { name: /summarize/i });
+			await expect.element(summarizeBtn).toBeEnabled();
+			await summarizeBtn.click();
+
+			const speechBtn = testPage.getByTestId("summary-speech-button");
+			await expect.element(speechBtn).toBeInTheDocument();
+			await expect.element(speechBtn).toHaveTextContent("Play summary");
+		});
+
+		it("clicking plays the full summary", async () => {
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Article body</p>",
+				article_id: "a1",
+			});
+
+			renderModal();
+
+			const summarizeBtn = testPage.getByRole("button", { name: /summarize/i });
+			await expect.element(summarizeBtn).toBeEnabled();
+			await summarizeBtn.click();
+
+			const speechBtn = testPage.getByTestId("summary-speech-button");
+			await expect.element(speechBtn).toBeInTheDocument();
+
+			await speechBtn.click();
+
+			expect(mockSpeechPlay).toHaveBeenCalledWith("This is a test summary.");
+		});
+
+		it("speaks the full received summary text even when displayed text is still typing (cached single-chunk)", async () => {
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Article body</p>",
+				article_id: "a1",
+			});
+			const fullCachedText =
+				"This is the full comprehensive cached summary that arrived in a single chunk.";
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
+				(_transport, _options, updateState, _rendererOptions, onComplete) => {
+					updateState?.("T");
+					onComplete?.({
+						hasReceivedData: true,
+						articleId: "art-1",
+						chunkCount: 1,
+						totalLength: fullCachedText.length,
+						summary: fullCachedText,
+						wasCached: true,
+					});
+					return new AbortController();
+				},
+			);
+
+			renderModal();
+
+			const summarizeBtn = testPage.getByRole("button", { name: /summarize/i });
+			await expect.element(summarizeBtn).toBeEnabled();
+			await summarizeBtn.click();
+
+			const speechBtn = testPage.getByTestId("summary-speech-button");
+			await expect.element(speechBtn).toBeInTheDocument();
+
+			await speechBtn.click();
+
+			expect(mockSpeechPlay).toHaveBeenCalledWith(fullCachedText);
+		});
+
+		it("stops speech when the modal closes", async () => {
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Article body</p>",
+				article_id: "a1",
+			});
+
+			const { unmount } = renderModal();
+
+			const summarizeBtn = testPage.getByRole("button", { name: /summarize/i });
+			await expect.element(summarizeBtn).toBeEnabled();
+			await summarizeBtn.click();
+
+			const speechBtn = testPage.getByTestId("summary-speech-button");
+			await expect.element(speechBtn).toBeInTheDocument();
+
+			await speechBtn.click();
+			expect(mockSpeechPlay).toHaveBeenCalledWith("This is a test summary.");
+
+			unmount();
+
+			expect(mockSpeechStop).toHaveBeenCalled();
+		});
 	});
 });

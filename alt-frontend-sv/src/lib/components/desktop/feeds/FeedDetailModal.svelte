@@ -1,13 +1,14 @@
 <script lang="ts">
 import { ChevronLeft, ChevronRight, X } from "@lucide/svelte";
 import { Dialog as DialogPrimitive } from "bits-ui";
-import { tick } from "svelte";
+import { onDestroy, tick } from "svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
+import { createSummarySpeech } from "$lib/hooks/useSummarySpeech.svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import {
 	type ArticleContentPhase,
@@ -80,8 +81,35 @@ let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
 // AI summary state
 let isSummarizing = $state(false);
 let summary = $state<string | null>(null);
+let fullSummaryText = $state<string | null>(null);
 let summaryError = $state<string | null>(null);
+let isSummaryComplete = $state(false);
 let abortController = $state<AbortController | null>(null);
+
+const speech = createSummarySpeech();
+
+const speechStatusText = $derived.by(() => {
+	switch (speech.state) {
+		case "loading":
+			return "Preparing audio…";
+		case "playing":
+			return "Playing";
+		case "unavailable":
+			return "Speech unavailable";
+		case "error":
+			return "Couldn't play the summary. Try again.";
+		default:
+			return "";
+	}
+});
+
+function handleToggleSpeech() {
+	if (speech.state === "playing" || speech.state === "loading") {
+		speech.stop();
+	} else if (fullSummaryText) {
+		speech.play(fullSummaryText);
+	}
+}
 
 // Content fetch abort controller
 let contentAbortController = $state<AbortController | null>(null);
@@ -154,9 +182,14 @@ const markAsReadLabel = $derived(
 );
 
 function requestClose() {
+	speech.stop();
 	open = false;
 	onOpenChange(false);
 }
+
+onDestroy(() => {
+	speech.stop();
+});
 
 // Track previous feed URL to detect actual feed changes
 let previousFeedUrl = $state<string | null>(null);
@@ -164,6 +197,7 @@ let previousFeedUrl = $state<string | null>(null);
 // Cleanup on modal close
 $effect(() => {
 	if (!open) {
+		speech.stop();
 		// Cancel any ongoing content fetch request
 		if (contentAbortController) {
 			contentAbortController.abort();
@@ -178,6 +212,8 @@ $effect(() => {
 		articleContent = null;
 		articleID = null;
 		summary = null;
+		fullSummaryText = null;
+		isSummaryComplete = false;
 		contentPhase = "idle";
 		isSummarizing = false;
 		contentError = null;
@@ -208,6 +244,8 @@ $effect(() => {
 
 	previousFeedUrl = currentFeedUrl;
 
+	speech.stop();
+
 	// Cancel any ongoing content fetch request
 	if (contentAbortController) {
 		contentAbortController.abort();
@@ -222,6 +260,8 @@ $effect(() => {
 	articleContent = null;
 	articleID = null;
 	summary = null;
+	fullSummaryText = null;
+	isSummaryComplete = false;
 	contentPhase = "idle";
 	isSummarizing = false;
 	contentError = null;
@@ -275,10 +315,13 @@ $effect(() => {
 });
 
 async function handleRefetchArticle() {
+	speech.stop();
 	// Clear existing content and summary, then re-fetch with force refresh
 	articleContent = null;
 	articleID = null;
 	summary = null;
+	fullSummaryText = null;
+	isSummaryComplete = false;
 	summaryError = null;
 	contentError = null;
 	// A reader asking again is a fresh budget: the automatic attempt is spent
@@ -436,9 +479,12 @@ async function handleSummarize(forceRefresh = false) {
 		abortController.abort();
 	}
 
+	speech.stop();
 	isSummarizing = true;
+	isSummaryComplete = false;
 	summaryError = null;
 	summary = "";
+	fullSummaryText = null;
 
 	try {
 		const transport = createClientTransport();
@@ -456,9 +502,11 @@ async function handleSummarize(forceRefresh = false) {
 				summary = (summary || "") + chunk;
 			},
 			buildSummaryRendererOptions({ tick }),
-			(_result) => {
+			(result) => {
 				// onComplete — discard if feed changed
 				if (feed.normalizedUrl !== targetFeedUrl) return;
+				fullSummaryText = result?.summary || "";
+				isSummaryComplete = true;
 				isSummarizing = false;
 				abortController = null;
 			},
@@ -663,10 +711,33 @@ async function handleSummarize(forceRefresh = false) {
 								</section>
 							{/if}
 
-							{#if summary}
+							{#if summary || (isSummaryComplete && fullSummaryText)}
 								<section class="rail-section">
 									<h3 class="section-label">AI SUMMARY</h3>
 									<div class="section-prose rail-prose">{summary}</div>
+									{#if isSummaryComplete && fullSummaryText}
+										<div class="summary-speech-controls mt-2 flex items-center gap-2">
+											<button
+												type="button"
+												class="speech-btn"
+												data-testid="summary-speech-button"
+												disabled={speech.state === "unavailable"}
+												onclick={handleToggleSpeech}
+											>
+												{#if speech.state === "playing" || speech.state === "loading"}
+													Stop
+												{:else}
+													Play summary
+												{/if}
+											</button>
+											<span
+												class="speech-status"
+												data-testid="summary-speech-status"
+												role="status"
+												aria-live="polite"
+											>{speechStatusText}</span>
+										</div>
+									{/if}
 								</section>
 							{:else if summaryError}
 								<section class="rail-section rail-section--error" role="alert">
@@ -1238,5 +1309,47 @@ async function handleSummarize(forceRefresh = false) {
 			animation: none;
 			opacity: 1;
 		}
+	}
+
+	/* ── Speech Controls ── */
+	.summary-speech-controls {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.5rem;
+	}
+
+	.speech-btn {
+		font-family: var(--font-body);
+		font-size: 0.7rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		padding: 0.4rem 0.8rem;
+		min-height: 40px;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.speech-btn:active:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.speech-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.speech-status {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		color: var(--alt-ash);
 	}
 </style>
