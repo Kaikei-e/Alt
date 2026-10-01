@@ -1,0 +1,82 @@
+name: TTS-Speaker Quality Gates
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "tts-speaker/**"
+      - ".github/workflows/tts-speaker.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "tts-speaker/**"
+      - ".github/workflows/tts-speaker.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "tts-speaker"
+      python-version: "3.14"
+      sparse-checkout: "tts-speaker"
+      coverage-flags: "tts-speaker"
+      upload-coverage: true
+      job-type: "test"
+      test-command: "pytest -v --cov=tts_speaker --cov-report=xml --junit-xml=tests/results.xml"
+    permissions:
+      contents: read
+    secrets: inherit
+
+  lint:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "tts-speaker"
+      python-version: "3.14"
+      sparse-checkout: "tts-speaker"
+      job-type: "lint"
+    permissions:
+      contents: read
+
+  security:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "tts-speaker"
+      python-version: "3.14"
+      sparse-checkout: "tts-speaker"
+      job-type: "security"
+    permissions:
+      contents: read
+
+  typecheck:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "tts-speaker"
+      python-version: "3.14"
+      sparse-checkout: "tts-speaker"
+      job-type: "typecheck"
+    permissions:
+      contents: read
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [tests, lint, security, typecheck]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.tests.result }}" != "success" ] || \
+             [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.security.result }}" != "success" ] || \
+             [ "${{ needs.typecheck.result }}" != "success" ]; then
+            echo "One or more quality gates failed"
+            exit 1
+          fi
+          echo "All quality gates passed"

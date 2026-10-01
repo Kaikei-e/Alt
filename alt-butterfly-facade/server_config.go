@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 
 	"alt-butterfly-facade/config"
 	"alt-butterfly-facade/internal/handler"
@@ -24,7 +25,13 @@ import (
 // ProxyHandler regardless of the configured flags. See
 // TestBuildServerConfig_WiresBFFConfigFromAppConfig and
 // TestBuildServerConfig_ResultingServer_UsesBFFHandler in main_test.go.
-func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, acolyteURL string, secret []byte, operatorToken string) server.Config {
+func buildServerConfig(
+	cfg *config.Config,
+	backendURL, internalBackendURL, acolyteURL string,
+	ttsTransport http.RoundTripper,
+	secret []byte,
+	operatorToken string,
+) server.Config {
 	return server.Config{
 		BackendURL:           backendURL,
 		BackendInternalURL:   internalBackendURL,
@@ -35,6 +42,9 @@ func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, acoly
 		Audience:             cfg.BackendTokenAudience,
 		RequestTimeout:       cfg.RequestTimeout,
 		StreamingTimeout:     cfg.StreamingTimeout,
+		TTSProxy:             cfg.TTSProxy,
+		TTSConnectURL:        cfg.TTSConnectURL,
+		TTSTransport:         ttsTransport,
 		AcolyteConnectURL:    acolyteURL,
 		BFFConfig: handler.BFFConfig{
 			EnableCache:              cfg.EnableCache,
@@ -91,4 +101,19 @@ func logBFFFeatureWiring(ctx context.Context, cfg *config.Config) {
 		"url", cfg.AcolyteConnectURL,
 		"reason", acolyteReason,
 	)
+
+	// Log TTS proxy wiring state (CLAUDE.md Rule 8).
+	if cfg.TTSProxy == "enabled" {
+		slog.InfoContext(ctx, "bff.tts_proxy.wiring",
+			"enabled", true,
+			"url", cfg.TTSConnectURL,
+			"transport", "mtls",
+			"reason", "TTS_PROXY=enabled — tts proxy route registered",
+		)
+	} else {
+		slog.InfoContext(ctx, "bff.tts_proxy.wiring",
+			"enabled", false,
+			"reason", "TTS_PROXY=disabled — tts route returns failed_precondition",
+		)
+	}
 }

@@ -445,8 +445,8 @@ check(
     and PROD_INV["long_running_osu_baseline"] == 63,
 )
 check(
-    "declared total is 78 (77 after the PKI cutover plus the read-only socket proxy)",
-    len(prod_services) == 78 and prod_baseline["counts"]["declared_total"] == 78,
+    "declared total is 80 (78 plus two opt-in TTS services: irodori-tts and tts-speaker under profile tts)",
+    len(prod_services) == 80 and prod_baseline["counts"]["declared_total"] == 80,
 )
 check(
     "Wave 1b reduced ephemeral oneshots to 10",
@@ -462,9 +462,9 @@ check(
     == 74,
 )
 check(
-    "production full render count is declared_total (78)",
-    prod_inv["counts"].get("compose_config_full_profiles") == 78
-    and prod_inv["counts"]["declared_total"] == 78,
+    "production full render count is declared_total (80)",
+    prod_inv["counts"].get("compose_config_full_profiles") == 80
+    and prod_inv["counts"]["declared_total"] == 80,
 )
 check(
     "baseline discrepancy default/full match the computed render counts (not a stale 87)",
@@ -580,7 +580,7 @@ ok_payload, ok_found = audit.prepare_baseline_write(
     budget_found=[],
 )
 check(
-    "--write-baseline preserves the 22-edge allowlist and writes computed 74/78",
+    "--write-baseline preserves the 22-edge allowlist and writes computed 74/80",
     ok_found == []
     and ok_payload is not None
     and ok_payload["init_edges_allowlist"]
@@ -588,7 +588,7 @@ check(
     and (ok_payload.get("discrepancy") or {}).get("compose_config_default_profiles")
     == 74
     and (ok_payload.get("discrepancy") or {}).get("compose_config_full_profiles")
-    == 78
+    == 80
     and (ok_payload.get("counts") or {}).get("compose_config_default_profiles")
     == 74,
 )

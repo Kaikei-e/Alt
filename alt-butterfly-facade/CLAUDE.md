@@ -15,8 +15,8 @@ go test ./...
 # Build
 go build -o alt-butterfly-facade .
 
-# Run (default 9200; compose uses 9250)
-BFF_PORT=9250 ./alt-butterfly-facade
+# Run (TTS_PROXY is required: 'enabled' or 'disabled'; default port 9200, compose uses 9250)
+TTS_PROXY=disabled BFF_PORT=9250 ./alt-butterfly-facade
 
 # Health check
 curl http://localhost:9250/health
@@ -34,3 +34,4 @@ curl http://localhost:9250/health
 2. **Transparent Proxy**: Forward requests without modification
 3. **JWT Validation**: Always validate before forwarding
 4. **Logging**: Use `log/slog` with JSON format
+5. **TTS Proxy**: `TTS_PROXY` is required (`enabled` or `disabled`; missing/other -> startup failure). When enabled, `TTS_CONNECT_URL` must be `https://` and uses a dedicated HTTP/1.1 mTLS transport (`MTLS_ENFORCE` does not affect TTS).

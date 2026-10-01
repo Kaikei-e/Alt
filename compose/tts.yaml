@@ -1,0 +1,149 @@
+# compose/tts.yaml - OpenAI-compatible Japanese TTS stack (Irodori-TTS, CUDA)
+# Opt-in stack: both services are under profiles: [tts]
+
+include:
+  - base.yaml
+  - pki.yaml
+
+x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown -R 1000:1000 /certs && chmod 0750 /certs
+
+services:
+  irodori-tts:
+    profiles:
+      - tts
+    image: alt-irodori-tts:local
+    pull_policy: build
+    build:
+      context: ../irodori-tts
+    env_file:
+      - ../irodori-tts/configs/${IRODORI_CONFIG:-C3}.env
+    environment:
+      - IRODORI_MODEL_DEVICE=cuda
+      - IRODORI_CODEC_DEVICE=cuda
+      - IRODORI_MODEL_PRECISION=bf16
+      - IRODORI_CODEC_PRECISION=bf16
+      - IRODORI_PRELOAD=true
+      - IRODORI_MAX_CONCURRENT_SYNTHESIS=1
+      - IRODORI_EMPTY_CACHE_INTERVAL=1
+      # Cuts allocator fragmentation; the peak otherwise exceeds the VRAM budget at 1.0x
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      - IRODORI_DEFAULT_NUM_CANDIDATES=1
+      - IRODORI_DEFAULT_DECODE_MODE=sequential
+      - IRODORI_DEFAULT_CHUNKING_ENABLED=false
+      - IRODORI_DEFAULT_MAX_REF_SECONDS=10
+      - IRODORI_CODEC_REPO=/models/codec/weights.pth
+      - IRODORI_VOICES_DIR=/voices
+      - IRODORI_ALLOW_NO_REF_VOICE=${IRODORI_ALLOW_NO_REF_VOICE:-false}
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    command:
+      - sh
+      - -c
+      - export IRODORI_API_KEY=$$(cat /run/secrets/irodori_api_key) && exec python -m alt_irodori
+    secrets:
+      - irodori_api_key
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - type: bind
+        source: ${IRODORI_MODELS_HOST_PATH:-/var/lib/alt-irodori-models}
+        target: /models
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${IRODORI_VOICES_HOST_PATH:-/var/lib/alt-irodori-voices}
+        target: /voices
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "127.0.0.1:8088:8088"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, sys, urllib.request; data = json.load(urllib.request.urlopen('http://localhost:8088/health')); sys.exit(0 if data.get('runtime', {}).get('loaded') is True else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+    networks:
+      - alt-network
+    restart: unless-stopped
+    labels:
+      - rask.group=irodori-tts
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tts-speaker:
+    profiles:
+      - tts
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-tts-speaker:${IMAGE_TAG:-main}
+    build:
+      context: ../tts-speaker
+    depends_on:
+      irodori-tts:
+        condition: service_healthy
+    secrets:
+      - irodori_api_key
+      - pki-agent-tts-speaker-jwk
+    environment:
+      - IRODORI_BASE_URL=http://irodori-tts:8088
+      - IRODORI_API_KEY_FILE=/run/secrets/irodori_api_key
+      - TTS_VOICE_ID=${TTS_VOICE_ID:-alt-narrator}
+      - INBOUND_MTLS=true
+      - INBOUND_MTLS_PORT=9443
+      - MTLS_CERT_FILE=/certs/svc-cert.pem
+      - MTLS_KEY_FILE=/certs/svc-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - MTLS_ALLOWED_PEERS=alt-butterfly-facade
+      - PEER_IDENTITY_STRICT=true
+      - PEER_IDENTITY_TRUSTED=off
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=tts-speaker
+      - CERT_SANS=tts-speaker,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-tts-speaker
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-tts-speaker-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
+    volumes:
+      - tts_speaker_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown-appuser
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--cacert", "/trust/ca-bundle.pem", "--cert", "/certs/svc-cert.pem", "--key", "/certs/svc-key.pem", "https://localhost:9443/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    networks:
+      - alt-network
+    restart: unless-stopped
+    labels:
+      - rask.group=tts-speaker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  tts_speaker_certs:

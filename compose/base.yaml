@@ -134,6 +134,8 @@ secrets:
     file: ../secrets/pki-agent-recap-subworker-jwk.txt
   pki-agent-news-creator-jwk:
     file: ../secrets/pki-agent-news-creator-jwk.txt
+  pki-agent-tts-speaker-jwk:
+    file: ../secrets/pki-agent-tts-speaker-jwk.txt
   pact_broker_basic_auth_password:
     file: ../secrets/pact_broker_basic_auth_password.txt
   # Separate from broker basic-auth so DB credentials are not shared with
@@ -157,6 +159,8 @@ secrets:
     file: ../secrets/redis_password.txt
   rag_api_token:
     file: ../secrets/rag_api_token.txt
+  irodori_api_key:
+    file: ../secrets/irodori_api_key.txt
 
 # In-repo static files. Compose `configs:` refuse a missing source at
 # `up` (unlike short-syntax file binds, which become empty directories —

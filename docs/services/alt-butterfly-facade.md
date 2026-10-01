@@ -61,6 +61,7 @@ flowchart LR
 - `/alt.knowledge_home.v1.KnowledgeHomeAdminService/*` - Knowledge Home Admin API routing。呼び出し元 JWT の admin role check を BFF 境界で行い、alt-backend の internal listener (`BACKEND_INTERNAL_CONNECT_URL`, デフォルト `:9102`) へ転送
 - `/alt.admin_monitor.v1.AdminMonitorService/*` - システム監視 (Prometheus 由来メトリクス)。同じく internal listener 宛、admin role check あり。長時間の `Watch` ストリーム向けに短いリクエストタイムアウトを課さない
 - `/alt.acolyte.v1.AcolyteService/*` - acolyte-orchestrator への Connect-RPC 中継 (`ACOLYTE_CONNECT_URL` が設定されている場合のみ有効)。認証は TLS transport layer (mTLS) 側に委ねる設計
+- `/alt.tts.v1.TTSService/*` - tts-speaker への Connect-RPC 音声ストリーミング中継 (`TTS_PROXY=enabled` 時は専用 HTTP/1.1 mTLS トランスポート経由の透過ストリーミングプロキシ、`TTS_PROXY=disabled` 時は Connect `failed_precondition` "tts is disabled" を返却、upstream にダイヤルしない)
 - `/* (proxy)` - それ以外の Connect-RPC は、生成済みの正の allowlist (`(alt.api.v1.visibility)` proto option 由来) に載っているサービスのみ alt-backend へ転送。allowlist 外は 404
 
 ### Streaming Procedures
@@ -70,6 +71,8 @@ flowchart LR
 - `/alt.augur.v2.AugurService/StreamChat`
 - `/alt.morning_letter.v2.MorningLetterService/StreamChat`
 - `/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates`
+- `/alt.acolyte.v1.AcolyteService/StreamRunProgress`
+- `/alt.tts.v1.TTSService/SynthesizeStream`
 
 `StreamRecallRailUpdates` はこのリストに **含まれない**。RPC 自体は deprecated のまま alt-backend 側で稼働中だが ([[knowledge-loop-recall-deprecation]])、BFF のストリーミング判定には登録されていない。新しい streaming RPC を追加する際は、この一覧と proxy_handler.go の `streamingProcedures` マップの両方を更新すること — 片方だけ更新するとバッファリングまたはタイムアウトで静かに壊れる ([[000555]])。
 
@@ -83,6 +86,8 @@ flowchart LR
 | `BACKEND_CONNECT_URL` | http://alt-backend:9101 | alt-backend の browser-facing Connect-RPC URL |
 | `BACKEND_INTERNAL_CONNECT_URL` | http://alt-backend:9102 | alt-backend の internal listener (Knowledge Home Admin / AdminMonitor 専用) |
 | `BACKEND_REST_URL` | http://alt-backend:9000 | alt-backend の REST (Echo) listener |
+| `TTS_PROXY` | - (必須) | TTS プロキシモード (`enabled` または `disabled`; 未設定は起動時エラー) |
+| `TTS_CONNECT_URL` | - | tts-speaker の Connect-RPC `https://` URL (例: `https://tts-speaker:9443`; `TTS_PROXY=enabled` 時に必須)。`MTLS_ENFORCE` の影響を受けず、常に専用 HTTP/1.1 mTLS トランスポートで接続する |
 | `ACOLYTE_CONNECT_URL` | - (空なら Acolyte ルーティング無効) | acolyte-orchestrator の Connect-RPC URL |
 | `BACKEND_TOKEN_SECRET_FILE` | - | JWT シークレットファイルパス |
 | `BACKEND_TOKEN_SECRET` | - | JWT シークレット (フォールバック) |
@@ -104,7 +109,7 @@ flowchart LR
 | `MTLS_LISTEN` | true (Compose default) | `true` で BFF 自身が inbound mTLS HTTPS listener を張る |
 | `MTLS_PORT` | 9443 | inbound mTLS listener のポート |
 
-REST プロキシは `MTLS_ENFORCE` の影響を受けない — alt-backend の Echo listener (`:9000`) は常に plaintext なので、REST 用トランスポートは常に別扱い。
+REST プロキシおよび TTS プロキシは `MTLS_ENFORCE` の影響を受けない — alt-backend の Echo listener (`:9000`) は常に plaintext であり、TTS プロキシ (`tts-speaker`) は `MTLS_ENFORCE` と無関係に常に専用の HTTP/1.1 mTLS トランスポートを使用する。
 
 ### Feature Flags
 

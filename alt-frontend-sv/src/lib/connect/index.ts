@@ -210,5 +210,12 @@ export {
 	streamSummarizeWithAbortAdapter,
 	streamSummarizeWithRenderer,
 } from "./streamingAdapter";
+// TTSService client
+export {
+	type SpeechChunk,
+	type SynthesizeSpeechStreamOptions,
+	synthesizeSpeechStream,
+} from "./tts";
 // Client-side transport (safe for browser)
 export { createClientTransport } from "./transport-client";
+

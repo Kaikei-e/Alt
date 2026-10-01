@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -36,6 +37,29 @@ func newMTLSBackendTransport() (http.RoundTripper, error) {
 	}
 	return &http2.Transport{
 		TLSClientConfig: tlsCfg,
+	}, nil
+}
+
+// newMTLSTTSTransport builds a dedicated HTTP/1.1 RoundTripper that presents
+// the alt-butterfly-facade leaf cert on every handshake. tts-speaker's TLS
+// listener speaks HTTP/1.1 only (uvicorn), so this dedicated transport must not
+// use HTTP/2. It retains the dynamic certificate reloader via tlsutil.LoadClientConfig.
+func newMTLSTTSTransport() (http.RoundTripper, error) {
+	tlsCfg, err := tlsutil.LoadClientConfig(
+		os.Getenv("MTLS_CERT_FILE"),
+		os.Getenv("MTLS_KEY_FILE"),
+		os.Getenv("MTLS_CA_FILE"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 5 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: 10 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+		TLSClientConfig:     tlsCfg,
 	}, nil
 }
 
@@ -137,10 +161,10 @@ func main() {
 			acolyteURL = v
 		}
 		slog.InfoContext(ctx, "BFF outbound clients: mtls_enforce_enabled",
-			"backend", backendURL, "acolyte", acolyteURL)
+			"backend", backendURL, "acolyte", acolyteURL, "tts", cfg.TTSConnectURL)
 	} else {
 		slog.InfoContext(ctx, "BFF outbound clients: mtls_enforce_disabled",
-			"backend", backendURL, "acolyte", acolyteURL)
+			"backend", backendURL, "acolyte", acolyteURL, "tts", cfg.TTSConnectURL)
 	}
 
 	// Loud wiring log per BFF feature (cache / circuit breaker / dedup /
@@ -148,8 +172,19 @@ func main() {
 	// intentional disable (CLAUDE.md Rule 8).
 	logBFFFeatureWiring(ctx, cfg)
 
+	// Build dedicated HTTP/1.1 mTLS transport for TTS when enabled, independent
+	// of MTLS_ENFORCE (tts-speaker requires client certificate on :9443).
+	var ttsTransport http.RoundTripper
+	if cfg.TTSProxy == "enabled" {
+		ttsTransport, err = newMTLSTTSTransport()
+		if err != nil {
+			slog.ErrorContext(ctx, "tts mTLS transport (fail-closed)", "error", err)
+			os.Exit(1)
+		}
+	}
+
 	// Create server configuration
-	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, acolyteURL, secret, operatorToken)
+	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, acolyteURL, ttsTransport, secret, operatorToken)
 
 	// Connect-RPC uses the mTLS transport when enforcement is on; REST
 	// proxies always stay on the default plaintext transport so that

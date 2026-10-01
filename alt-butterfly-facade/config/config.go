@@ -34,6 +34,10 @@ type Config struct {
 	RequestTimeout time.Duration
 	// StreamingTimeout is the timeout for streaming RPC requests
 	StreamingTimeout time.Duration
+	// TTSProxy is the explicit mode for the TTS proxy: "enabled" or "disabled"
+	TTSProxy string
+	// TTSConnectURL is the URL of the TTS service (e.g., http://tts-speaker:9700)
+	TTSConnectURL string
 	// AcolyteConnectURL is the URL of the Acolyte orchestrator (e.g., http://acolyte-orchestrator:8090)
 	AcolyteConnectURL string
 	// BackendOperatorTokenFile is the path to the operator token file for alt-backend :9102
@@ -92,6 +96,8 @@ func NewConfig() *Config {
 		BackendTokenAudience:      getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
 		RequestTimeout:            getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
 		StreamingTimeout:          getDurationEnv("BFF_STREAMING_TIMEOUT", 40*time.Minute),
+		TTSProxy:                  getEnv("TTS_PROXY", ""),
+		TTSConnectURL:             getEnv("TTS_CONNECT_URL", ""),
 		AcolyteConnectURL:         getEnv("ACOLYTE_CONNECT_URL", ""),
 		BackendOperatorTokenFile:  getEnv("BACKEND_OPERATOR_TOKEN_FILE", ""),
 		BackendOperatorToken:      getEnv("BACKEND_OPERATOR_TOKEN", ""),
@@ -204,6 +210,20 @@ func (c *Config) Validate() error {
 	}
 	if c.BackendConnectURL == "" {
 		return errors.New("BACKEND_CONNECT_URL is required")
+	}
+	if c.TTSProxy == "" {
+		return errors.New("TTS_PROXY is required")
+	}
+	if c.TTSProxy != "enabled" && c.TTSProxy != "disabled" {
+		return errors.New("TTS_PROXY must be 'enabled' or 'disabled'")
+	}
+	if c.TTSProxy == "enabled" {
+		if c.TTSConnectURL == "" {
+			return errors.New("TTS_CONNECT_URL is required when TTS_PROXY is enabled")
+		}
+		if !strings.HasPrefix(c.TTSConnectURL, "https://") {
+			return errors.New("TTS_CONNECT_URL must be https:// when TTS_PROXY is enabled")
+		}
 	}
 	return nil
 }

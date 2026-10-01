@@ -45,6 +45,8 @@ export interface StreamSummarizeAdapterResult {
 	chunkCount: number;
 	/** Total length of text rendered */
 	totalLength: number;
+	/** Full summary text received from stream */
+	summary?: string;
 	/** Whether any data was received */
 	hasReceivedData: boolean;
 	/** The article ID */
@@ -156,6 +158,7 @@ export async function streamSummarizeWithRenderer(
 				resolve({
 					chunkCount: renderer.getChunkCount(),
 					totalLength: renderer.getTotalLength(),
+					summary: result.summary,
 					hasReceivedData: state.hasReceivedData,
 					articleId: result.articleId,
 					wasCached: result.wasCached,
@@ -208,6 +211,7 @@ export function streamSummarizeWithAbortAdapter(
 				onComplete({
 					chunkCount: renderer.getChunkCount(),
 					totalLength: renderer.getTotalLength(),
+					summary: result.summary,
 					hasReceivedData: state.hasReceivedData,
 					articleId: result.articleId,
 					wasCached: result.wasCached,

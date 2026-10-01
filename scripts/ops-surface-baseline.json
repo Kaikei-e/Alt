@@ -2,12 +2,12 @@
   "schema_version": 1,
   "generated_from": "compose/compose.yaml include chain",
   "counts": {
-    "declared_total": 78,
+    "declared_total": 80,
     "long_running": 64,
     "ephemeral": 10,
-    "profiled": 4,
+    "profiled": 6,
     "compose_config_default_profiles": 74,
-    "compose_config_full_profiles": 78
+    "compose_config_full_profiles": 80
   },
   "long_running": [
     "acolyte-db",
@@ -90,21 +90,25 @@
   "profiled": [
     "alt-perf",
     "docker-socket-proxy",
+    "irodori-tts",
     "k6",
-    "restic-backup"
+    "restic-backup",
+    "tts-speaker"
   ],
-  "measured_at": "2026-09-20",
+  "measured_at": "2026-10-01",
   "discrepancy": {
     "false_94": "compose/backup.yaml top-level networks.backup-docker-proxy is a network, not a service. A grep of indented `name:` keys counts it and reports 94. Unique keys under services: across the include chain are the declared total.",
     "compose_config_default_profiles": 74,
-    "compose_config_full_profiles": 78,
+    "compose_config_full_profiles": 80,
     "compose_config_note": "docker compose -f compose/compose.yaml config without --profile omits the 4 profiled services (backup + perf).",
-    "yaml_declared": 78,
+    "yaml_declared": 80,
     "profiled_excluded_from_default_up": [
       "alt-perf",
       "docker-socket-proxy",
+      "irodori-tts",
       "k6",
-      "restic-backup"
+      "restic-backup",
+      "tts-speaker"
     ]
   },
   "classification": "profiled = non-empty profiles:; ephemeral = not profiled, restart is no/omitted, and (name matches migrat/bootstrap/-init OR is a service_completed_successfully target); long_running = the rest.",

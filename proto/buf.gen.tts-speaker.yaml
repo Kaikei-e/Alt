@@ -1,0 +1,15 @@
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - alt/tts
+plugins:
+  # Python protobuf messages (pinned to v33.5 for protobuf 6.x runtime compatibility)
+  - remote: buf.build/protocolbuffers/python:v33.5
+    out: ../tts-speaker/tts_speaker/gen/proto
+  # Python protobuf type stubs
+  - remote: buf.build/protocolbuffers/pyi:v33.5
+    out: ../tts-speaker/tts_speaker/gen/proto
+  # Connect-RPC Python service stubs (pinned to the connect-python runtime v0.9.0)
+  - remote: buf.build/connectrpc/python:v0.9.0
+    out: ../tts-speaker/tts_speaker/gen/proto

@@ -28,9 +28,28 @@ import { getFeedContentOnTheFlyClient } from "$lib/api/client";
 import type { RenderFeed } from "$lib/schema/feed";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
 
-const { loadProxyImageDefault, resolveOgImage } = vi.hoisted(() => ({
+const {
+	loadProxyImageDefault,
+	resolveOgImage,
+	mockSpeechPlay,
+	mockSpeechStop,
+	speechState,
+} = vi.hoisted(() => ({
 	loadProxyImageDefault: vi.fn(),
 	resolveOgImage: vi.fn(),
+	mockSpeechPlay: vi.fn(),
+	mockSpeechStop: vi.fn(),
+	speechState: { value: "idle" },
+}));
+
+vi.mock("$lib/hooks/useSummarySpeech.svelte", () => ({
+	createSummarySpeech: vi.fn(() => ({
+		get state() {
+			return speechState.value;
+		},
+		play: mockSpeechPlay,
+		stop: mockSpeechStop,
+	})),
 }));
 
 vi.mock("$lib/utils/loadProxyImage", () => ({ loadProxyImageDefault }));
@@ -105,17 +124,19 @@ vi.mock("$lib/connect", () => ({
 		(
 			_transport: unknown,
 			_options: unknown,
-			_updateState: unknown,
-			_rendererOptions: unknown,
+			updateState?: (text: string) => void,
+			_rendererOptions?: unknown,
 			onComplete?: (result: unknown) => void,
 			_onError?: (error: Error) => void,
 		) => {
+			updateState?.("This is a test summary.");
 			if (onComplete) {
 				onComplete({
 					hasReceivedData: true,
 					articleId: "article-123",
 					chunkCount: 1,
-					totalLength: 20,
+					totalLength: 23,
+					summary: "This is a test summary.",
 					wasCached: false,
 				});
 			}
@@ -141,6 +162,9 @@ describe("VisualPreviewCard", () => {
 		loadProxyImageDefault.mockResolvedValue({ status: "loaded" });
 		resolveOgImage.mockReset();
 		resolveOgImage.mockResolvedValue({ status: "absent" });
+		mockSpeechPlay.mockReset();
+		mockSpeechStop.mockReset();
+		speechState.value = "idle";
 	});
 
 	describe("rendering", () => {
@@ -759,6 +783,138 @@ describe("VisualPreviewCard", () => {
 			await expect
 				.element(page.getByText("Back on its feet."))
 				.toBeInTheDocument();
+		});
+	});
+
+	describe("AI summary speech button", () => {
+		it("does not render the speech button while chunks are still typing before completion even though text is visible", async () => {
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
+				(
+					_transport: unknown,
+					_options: unknown,
+					updateState?: (chunk: string) => void,
+					rendererOptions?: {
+						onChunk?: (
+							count: number,
+							size: number,
+							decLen: number,
+							totLen: number,
+							preview: string,
+						) => void;
+					},
+				) => {
+					rendererOptions?.onChunk?.(1, 25, 25, 25, "Typing partial");
+					updateState?.("Typing partial summary...");
+					return new AbortController();
+				},
+			);
+
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await page.getByRole("button", { name: /summary/i }).click();
+
+			await expect
+				.element(page.getByTestId("ai-summary-section"))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByText("Typing partial summary..."))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("summary-speech-button"))
+				.not.toBeInTheDocument();
+		});
+
+		it("renders speech button with 'Play summary' once summary stream completes via real update path", async () => {
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await page.getByRole("button", { name: /summary/i }).click();
+
+			await expect
+				.element(page.getByTestId("ai-summary-section"))
+				.toBeInTheDocument();
+			const speechBtn = page.getByTestId("summary-speech-button");
+			await expect.element(speechBtn).toBeInTheDocument();
+			await expect.element(speechBtn).toHaveTextContent("Play summary");
+		});
+
+		it("speaks the full received summary text even when displayed text is still typing (cached single-chunk)", async () => {
+			const fullCachedText =
+				"This is the full comprehensive cached summary that arrived in a single chunk.";
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
+				(_transport, _options, updateState, _rendererOptions, onComplete) => {
+					// Simulate typewriter has only received or typed first character
+					updateState?.("T");
+					onComplete?.({
+						hasReceivedData: true,
+						articleId: "art-1",
+						chunkCount: 1,
+						totalLength: fullCachedText.length,
+						summary: fullCachedText,
+						wasCached: true,
+					});
+					return new AbortController();
+				},
+			);
+
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await page.getByRole("button", { name: /summary/i }).click();
+
+			const speechBtn = page.getByTestId("summary-speech-button");
+			await expect.element(speechBtn).toBeInTheDocument();
+
+			await speechBtn.click();
+
+			expect(mockSpeechPlay).toHaveBeenCalledWith(fullCachedText);
+		});
+
+		it("speaks the full fallback text when stream fails and REST fallback succeeds", async () => {
+			const fallbackSummary =
+				"This is the complete fallback summary generated via REST client.";
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			const { summarizeArticleClient } = await import("$lib/api/client");
+
+			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
+				(
+					_transport,
+					_options,
+					_updateState,
+					_rendererOptions,
+					_onComplete,
+					onError,
+				) => {
+					onError?.(new Error("Network connection closed"));
+					return new AbortController();
+				},
+			);
+
+			vi.mocked(summarizeArticleClient).mockResolvedValueOnce({
+				success: true,
+				summary: fallbackSummary,
+				article_id: "article-123",
+				feed_url: mockFeed.link,
+			});
+
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await page.getByRole("button", { name: /summary/i }).click();
+
+			const speechBtn = page.getByTestId("summary-speech-button");
+			await expect.element(speechBtn).toBeInTheDocument();
+
+			await speechBtn.click();
+
+			expect(mockSpeechPlay).toHaveBeenCalledWith(fallbackSummary);
 		});
 	});
 });

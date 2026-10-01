@@ -35,6 +35,9 @@
 #     CRUD scenarios run against the migrated DB only; the run-
 #     lifecycle scenarios additionally activate the news-creator and
 #     search-indexer profiles to drive the LangGraph pipeline.)
+#   tts-speaker suite          → profile `tts-speaker`
+#     irodori-stub, tts-speaker
+#     (deterministic fake Irodori upstream + Python FastAPI / Connect-RPC service)
 #   rag-orchestrator suite    → profile `rag-orchestrator`
 #     rag-db, rag-db-migrator, rag-orchestrator
 #     (Postgres + pgvector + Atlas migrator + Echo REST /
@@ -886,6 +889,61 @@ services:
       timeout: 3s
       retries: 30
       start_period: 10s
+
+  # tts-speaker suite — deterministic fake Irodori upstream + tts-speaker
+  irodori-stub:
+    image: python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1
+    container_name: alt-staging-irodori-stub
+    profiles: [tts-speaker]
+    volumes:
+      - ../e2e/playwright/tts-speaker/irodori_stub.py:/app/irodori_stub.py:ro
+    command: ["python", "/app/irodori_stub.py", "8088"]
+    networks:
+      - alt-staging
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health').read()",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  tts-speaker:
+    build:
+      context: ../tts-speaker
+      dockerfile: Dockerfile
+    image: alt-staging/tts-speaker:local
+    container_name: alt-staging-tts-speaker
+    profiles: [tts-speaker]
+    depends_on:
+      irodori-stub:
+        condition: service_healthy
+    environment:
+      - IRODORI_BASE_URL=http://irodori-stub:8088
+      - IRODORI_API_KEY_FILE=/run/secrets/backend_token_secret # Dummy key for stub (stub ignores credentials)
+      - TTS_VOICE_ID=alt-narrator
+      - PEER_IDENTITY_STRICT=false
+      - PEER_IDENTITY_TRUSTED=off
+      - PKI_ENROLLMENT=disabled
+      - INBOUND_MTLS=false
+      - LOG_LEVEL=info
+    secrets:
+      - backend_token_secret # Reused as dummy key for the stub
+    ports:
+      - "19700:9700"
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9700/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
 
   # alt-backend suite — Postgres + Atlas migrator + deps stub + alt-backend
   alt-backend-db:

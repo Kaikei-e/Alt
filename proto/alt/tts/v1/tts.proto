@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package alt.tts.v1;
+
+import "alt/api/v1/visibility.proto";
+
+option go_package = "alt/gen/proto/alt/tts/v1;ttsv1";
+
+service TTSService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
+  rpc SynthesizeStream(SynthesizeStreamRequest) returns (stream SynthesizeStreamResponse);
+}
+
+message SynthesizeStreamRequest {
+  string text = 1;
+  // Voice selection is fixed server-side.
+  optional double speed = 2;
+}
+
+message SynthesizeStreamResponse {
+  // Each chunk is a self-contained 16-bit PCM WAV file because browsers decode
+  // only complete audio containers rather than raw PCM streams.
+  bytes audio_wav = 1;
+  int32 sample_rate = 2;
+  double duration_seconds = 3;
+}

@@ -3,18 +3,18 @@
 ## Overview
 
 **Tooling only.** Compose workload sidecars are **0**. Leaf issue/renew is
-in-process on **14 parents** (`PKI_ENROLLMENT=enabled`, [[000978]]). Do not
+in-process on **15 parents** (`PKI_ENROLLMENT=enabled`, [[000978]]). Do not
 re-add `pki-agent-*` services — a leftover container on the same cert volume
 is a **dual writer**.
 
-The 14 parents:
+The 15 parents:
 
 ```
 alt-backend          alt-harvester           alt-data-hub
 alt-notifier         alt-butterfly-facade    auth-hub
 pre-processor        search-indexer          tag-generator
 recap-worker         recap-subworker         news-creator
-rag-orchestrator     acolyte-orchestrator
+rag-orchestrator     acolyte-orchestrator    tts-speaker
 ```
 
 `compose/pki.yaml` is **step-ca + step-ca-bootstrap** only. This directory
@@ -24,7 +24,7 @@ operators can mint emergency leaves and provision subject-scoped JWKs.
 The authoritative CN list is `SUBJECTS` in
 `pki-agent/scripts/bootstrap-pki-provisioner.sh`, kept in lockstep with
 `EXPECTED_CNS` in `pki-agent/scripts/verify-cn-allowlist.sh` and with the
-14 in-process parents. Adding a service means adding it to the step-ca CN
+15 in-process parents. Adding a service means adding it to the step-ca CN
 allowlist **first**.
 
 Live Prometheus scrape is parent `:9110` `pki_enrollment_*` (unpublished
@@ -37,7 +37,7 @@ pair (and later the 14 workload sidecars).
 Responsibility of the remaining **tooling** binary: keep
 `/certs/svc-cert.pem` + `/certs/svc-key.pem` inside a target volume within
 its validity window when an operator runs it by hand (emergency mint).
-Period. Production writers are the 14 parents.
+Period. Production writers are the 15 parents.
 
 ## Architecture
 
@@ -120,7 +120,7 @@ docker run --rm --network alt_alt-network \
 
 ## Prometheus metrics
 
-Live (14 parents, `:9110/metrics`):
+Live (15 parents, `:9110/metrics`):
 
 - `pki_enrollment_healthy{subject}` and siblings — scraped by Prometheus.
   Absence pages via `absent()`.

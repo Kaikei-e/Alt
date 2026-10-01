@@ -39,6 +39,8 @@ services:
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BFF_REQUEST_TIMEOUT=30s
       - BFF_STREAMING_TIMEOUT=40m
+      - TTS_PROXY=enabled
+      - TTS_CONNECT_URL=https://tts-speaker:9443
       - ACOLYTE_CONNECT_URL=http://acolyte-orchestrator:8090
       # Service-specific (not the shared MTLS_LISTEN=true default other
       # services use, e.g. compose/auth.yaml auth-hub): no caller dials

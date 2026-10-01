@@ -246,7 +246,7 @@ func TestConfig_Validate(t *testing.T) {
 	}{
 		{
 			name:    "valid config",
-			modify:  func(c *Config) {},
+			modify:  func(c *Config) { c.TTSProxy = "disabled" },
 			wantErr: false,
 		},
 		{
@@ -307,4 +307,87 @@ func TestNewConfig_BFFFeatureFlags_Defaults(t *testing.T) {
 
 	// Hardcoded dedup configuration
 	assert.Equal(t, 100*time.Millisecond, cfg.DedupWindow)
+}
+
+func TestConfig_TTSProxy_Validation(t *testing.T) {
+	tests := []struct {
+		name    string
+		proxy   string
+		url     string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "missing TTS_PROXY fails validation (no default)",
+			proxy:   "",
+			url:     "",
+			wantErr: true,
+			errMsg:  "TTS_PROXY is required",
+		},
+		{
+			name:    "invalid TTS_PROXY value fails validation",
+			proxy:   "invalid",
+			url:     "",
+			wantErr: true,
+			errMsg:  "TTS_PROXY must be 'enabled' or 'disabled'",
+		},
+		{
+			name:    "arbitrary string like true fails validation",
+			proxy:   "true",
+			url:     "",
+			wantErr: true,
+			errMsg:  "TTS_PROXY must be 'enabled' or 'disabled'",
+		},
+		{
+			name:    "disabled mode succeeds without URL",
+			proxy:   "disabled",
+			url:     "",
+			wantErr: false,
+		},
+		{
+			name:    "disabled mode succeeds even with URL",
+			proxy:   "disabled",
+			url:     "http://tts-speaker:9700",
+			wantErr: false,
+		},
+		{
+			name:    "enabled mode without URL fails validation",
+			proxy:   "enabled",
+			url:     "",
+			wantErr: true,
+			errMsg:  "TTS_CONNECT_URL is required when TTS_PROXY is enabled",
+		},
+		{
+			name:    "enabled mode with http URL fails validation",
+			proxy:   "enabled",
+			url:     "http://tts-speaker:9700",
+			wantErr: true,
+			errMsg:  "TTS_CONNECT_URL must be https:// when TTS_PROXY is enabled",
+		},
+		{
+			name:    "enabled mode with https URL succeeds",
+			proxy:   "enabled",
+			url:     "https://tts-speaker:9443",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Clearenv()
+			cfg := NewConfig()
+			cfg.TTSProxy = tt.proxy
+			cfg.TTSConnectURL = tt.url
+
+			err := cfg.Validate()
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
