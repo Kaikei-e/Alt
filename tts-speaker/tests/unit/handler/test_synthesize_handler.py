@@ -56,7 +56,23 @@ def test_synthesize_default_speed(sample_wav_bytes: bytes) -> None:
 
     response = client.post("/v1/synthesize", json={"text": "テスト"})
     assert response.status_code == 200
-    mock_usecase.execute.assert_called_once_with("テスト", 1.0)
+    mock_usecase.execute.assert_called_once_with("テスト", None)
+
+
+def test_synthesize_explicit_none_speed(sample_wav_bytes: bytes) -> None:
+    mock_usecase = AsyncMock(spec=SynthesizeUsecase)
+    mock_usecase.execute.return_value = SynthesisResult(
+        wav=sample_wav_bytes,
+        chunk_count=1,
+        duration_seconds=0.1,
+    )
+
+    app = create_app(usecase=mock_usecase)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post("/v1/synthesize", json={"text": "テスト", "speed": None})
+    assert response.status_code == 200
+    mock_usecase.execute.assert_called_once_with("テスト", None)
 
 
 def test_extra_fields_forbidden() -> None:
@@ -94,9 +110,28 @@ def test_speed_out_of_bounds() -> None:
     res1 = client.post("/v1/synthesize", json={"text": "テスト", "speed": 0.4})
     assert res1.status_code == 422
 
-    # Above 2.0
-    res2 = client.post("/v1/synthesize", json={"text": "テスト", "speed": 2.1})
+    # Above 1.5 (2.0 was previously valid, now rejected)
+    res2 = client.post("/v1/synthesize", json={"text": "テスト", "speed": 2.0})
     assert res2.status_code == 422
+
+    res3 = client.post("/v1/synthesize", json={"text": "テスト", "speed": 1.6})
+    assert res3.status_code == 422
+
+
+def test_speed_upper_bound_accepted(sample_wav_bytes: bytes) -> None:
+    mock_usecase = AsyncMock(spec=SynthesizeUsecase)
+    mock_usecase.execute.return_value = SynthesisResult(
+        wav=sample_wav_bytes,
+        chunk_count=1,
+        duration_seconds=0.1,
+    )
+
+    app = create_app(usecase=mock_usecase)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post("/v1/synthesize", json={"text": "テスト", "speed": 1.5})
+    assert response.status_code == 200
+    mock_usecase.execute.assert_called_once_with("テスト", 1.5)
 
 
 def test_empty_text_error_from_usecase_maps_to_422() -> None:

@@ -247,3 +247,54 @@ def test_invalid_queue_timeout(dummy_api_key_file: Path, timeout: float) -> None
             peer_identity_strict=False,
             tts_queue_timeout_seconds=timeout,
         )
+
+
+def test_default_tts_default_speed(dummy_api_key_file: Path) -> None:
+    settings = Settings(
+        irodori_base_url="http://localhost:8000",
+        irodori_api_key_file=dummy_api_key_file,
+        tts_voice_id="speaker_01",
+        peer_identity_strict=False,
+    )
+    assert getattr(settings, "tts_default_speed", None) == 1.25
+
+
+def test_env_loading_tts_default_speed(dummy_api_key_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IRODORI_BASE_URL", "http://env-host:9000")
+    monkeypatch.setenv("IRODORI_API_KEY_FILE", str(dummy_api_key_file))
+    monkeypatch.setenv("TTS_VOICE_ID", "env_voice")
+    monkeypatch.setenv("PEER_IDENTITY_STRICT", "false")
+    monkeypatch.setenv("TTS_DEFAULT_SPEED", "1.4")
+
+    settings = Settings()
+    assert getattr(settings, "tts_default_speed", None) == 1.4
+
+
+@pytest.mark.parametrize("speed", [0.4, 0.49, 1.51, 1.6])
+def test_invalid_tts_default_speed(dummy_api_key_file: Path, speed: float) -> None:
+    with pytest.raises(
+        ValidationError,
+        match=r"(?i)greater_than_equal|less_than_equal|greater than or equal|less than or equal",
+    ):
+        Settings(
+            irodori_base_url="http://localhost:8000",
+            irodori_api_key_file=dummy_api_key_file,
+            tts_voice_id="speaker_01",
+            peer_identity_strict=False,
+            tts_default_speed=speed,
+        )
+
+
+@pytest.mark.parametrize("speed", [0.5, 1.5])
+def test_valid_tts_default_speed_bounds(dummy_api_key_file: Path, speed: float) -> None:
+    try:
+        settings = Settings(
+            irodori_base_url="http://localhost:8000",
+            irodori_api_key_file=dummy_api_key_file,
+            tts_voice_id="speaker_01",
+            peer_identity_strict=False,
+            tts_default_speed=speed,
+        )
+    except ValidationError:
+        pytest.fail(f"Valid speed {speed} was rejected by Settings validation")
+    assert getattr(settings, "tts_default_speed", None) == speed

@@ -155,3 +155,67 @@ async def test_concurrent_requests_do_not_interleave(sample_wav_bytes: bytes) ->
     other_req_indices = [call_log.index(x) for x in other_req_calls]
 
     assert max(first_req_indices) < min(other_req_indices), f"Calls were interleaved: {call_log}"
+
+
+async def test_default_speed_used_when_speed_is_none(mock_synthesizer: AsyncMock, sample_wav_bytes: bytes) -> None:
+    mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
+    usecase = SynthesizeUsecase(
+        synthesizer=mock_synthesizer,
+        max_chunk_chars=100,
+        max_text_chars=5000,
+        chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
+        default_speed=1.25,
+    )
+    result = await usecase.execute("こんにちは", speed=None)
+    assert isinstance(result, SynthesisResult)
+    mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=1.25)
+
+
+async def test_default_speed_used_when_speed_omitted(mock_synthesizer: AsyncMock, sample_wav_bytes: bytes) -> None:
+    mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
+    usecase = SynthesizeUsecase(
+        synthesizer=mock_synthesizer,
+        max_chunk_chars=100,
+        max_text_chars=5000,
+        chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
+        default_speed=1.25,
+    )
+    result = await usecase.execute("こんにちは")
+    assert isinstance(result, SynthesisResult)
+    mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=1.25)
+
+
+async def test_default_speed_forwarded_to_all_chunks(mock_synthesizer: AsyncMock, sample_wav_bytes: bytes) -> None:
+    mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
+    usecase = SynthesizeUsecase(
+        synthesizer=mock_synthesizer,
+        max_chunk_chars=10,
+        max_text_chars=5000,
+        chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
+        default_speed=1.25,
+    )
+    text = "吾輩は猫である。名前はまだ無い。"
+    result = await usecase.execute(text, speed=None)
+    assert isinstance(result, SynthesisResult)
+    assert mock_synthesizer.synthesize_chunk.call_args_list == [
+        call("吾輩は猫である。", speed=1.25),
+        call("名前はまだ無い。", speed=1.25),
+    ]
+
+
+async def test_explicit_speed_overrides_default_speed(mock_synthesizer: AsyncMock, sample_wav_bytes: bytes) -> None:
+    mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
+    usecase = SynthesizeUsecase(
+        synthesizer=mock_synthesizer,
+        max_chunk_chars=100,
+        max_text_chars=5000,
+        chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
+        default_speed=1.25,
+    )
+    result = await usecase.execute("こんにちは", speed=0.8)
+    assert isinstance(result, SynthesisResult)
+    mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=0.8)

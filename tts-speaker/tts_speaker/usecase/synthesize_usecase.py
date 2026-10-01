@@ -29,13 +29,20 @@ class SynthesizeUsecase:
         max_text_chars: int,
         chunk_gap_ms: int,
         queue_timeout_seconds: float,
+        default_speed: float = 1.0,
     ) -> None:
         self._synthesizer = synthesizer
         self._max_chunk_chars = max_chunk_chars
         self._max_text_chars = max_text_chars
         self._chunk_gap_ms = chunk_gap_ms
         self._queue_timeout_seconds = queue_timeout_seconds
+        self._default_speed = 1.0  # minimal stub: ignored
         self._lock = asyncio.Lock()
+
+    @property
+    def default_speed(self) -> float:
+        """Configured default playback speed."""
+        return self._default_speed
 
     async def execute(self, text: str, speed: float = 1.0) -> SynthesisResult:
         """Synthesize input text into combined speech audio."""

@@ -105,3 +105,17 @@ def test_main_startup_log_strict_enabled(
         importlib.import_module("tts_speaker.main")
 
     assert any("peer_identity_strict_enabled allowed=peer-a,peer-b" in record.message for record in caplog.records)
+
+
+def test_main_wires_default_speed_into_usecase(
+    dummy_api_key_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """main wires settings.tts_default_speed into the usecase default_speed."""
+    monkeypatch.setenv("IRODORI_BASE_URL", "http://localhost:8000")
+    monkeypatch.setenv("IRODORI_API_KEY_FILE", str(dummy_api_key_file))
+    monkeypatch.setenv("TTS_VOICE_ID", "speaker_01")
+    monkeypatch.setenv("PEER_IDENTITY_STRICT", "false")
+
+    module = importlib.import_module("tts_speaker.main")
+    assert getattr(module.usecase, "default_speed", getattr(module.usecase, "_default_speed", None)) == 1.25
