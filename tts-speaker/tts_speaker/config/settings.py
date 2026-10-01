@@ -36,6 +36,13 @@ class Settings(BaseSettings):
         """Read-only access to loaded API key."""
         return self._irodori_api_key
 
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _normalize_log_level(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.upper()
+        return v
+
     @field_validator("tts_voice_id")
     @classmethod
     def _validate_voice(cls, v: str) -> str:
