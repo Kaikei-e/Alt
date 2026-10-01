@@ -13,6 +13,8 @@ suite_init tts-speaker
 
 suite_endpoint BASE_URL "http://tts-speaker:9700"
 
-suite_up tts-speaker
+suite_up --build \
+  irodori-stub \
+  tts-speaker
 
 suite_test

@@ -15,8 +15,8 @@ go test ./...
 # Build
 go build -o alt-butterfly-facade .
 
-# Run
-./alt-butterfly-facade
+# Run (TTS_PROXY is required: 'enabled' or 'disabled')
+TTS_PROXY=disabled ./alt-butterfly-facade
 
 # Health check
 curl http://localhost:9200/health
@@ -37,3 +37,4 @@ curl http://localhost:9200/health
 3. **Transparent Proxy**: Forward requests without modification
 4. **JWT Validation**: Always validate before forwarding
 5. **Logging**: Use `log/slog` with JSON format
+6. **TTS Proxy**: `TTS_PROXY` is required (`enabled` or `disabled`; missing/other -> startup failure). When enabled, `TTS_CONNECT_URL` must be `https://` and uses a dedicated HTTP/1.1 mTLS transport (`MTLS_ENFORCE` does not affect TTS).

@@ -125,6 +125,14 @@ suites:
       cannot reach HuggingFace from inside. See the warmup step in
       .github/workflows/e2e-playwright.yml.
 
+  tts-speaker:
+    images: []
+    notes: >-
+      tts-speaker has no GHCR image in the staging slice; it is a local build
+      context in compose.staging.yaml, so run.sh passes `--build` and compose
+      builds it from the working tree. irodori-stub is a standard Python container
+      serving the deterministic fake upstream.
+
 # Images built from a context that is not a registered service.
 stubs:
   alt-backend-deps-stub:

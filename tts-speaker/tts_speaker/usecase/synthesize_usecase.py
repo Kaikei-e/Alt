@@ -1,13 +1,17 @@
 """Usecase for synthesizing speech from text."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
 from tts_speaker.domain.chunker import split_into_chunks
-from tts_speaker.domain.errors import EmptyTextError, SynthesisBusyError, TextTooLongError
+from tts_speaker.domain.errors import (
+    EmptyTextError,
+    SynthesisBusyError,
+    TextTooLongError,
+)
 from tts_speaker.domain.text_normalizer import normalize_for_tts
-from tts_speaker.domain.wav import concat_wav, wav_duration_seconds
+from tts_speaker.domain.wav import append_silence, wav_info
 from tts_speaker.port.speech_synthesizer_port import SpeechSynthesizerPort
 
 
@@ -17,15 +21,6 @@ class ChunkAudio:
 
     wav: bytes
     sample_rate: int
-    duration_seconds: float
-
-
-@dataclass(frozen=True, slots=True)
-class SynthesisResult:
-    """Result of speech synthesis."""
-
-    wav: bytes
-    chunk_count: int
     duration_seconds: float
 
 
@@ -49,17 +44,17 @@ class SynthesizeUsecase:
         self._default_speed = default_speed
         self._lock = asyncio.Lock()
 
-    @property
-    def default_speed(self) -> float:
-        """Configured default playback speed."""
-        return self._default_speed
-
-    async def execute(self, text: str, speed: float | None = None) -> SynthesisResult:
-        """Synthesize input text into combined speech audio."""
+    async def stream(self, text: str, speed: float | None = None) -> AsyncGenerator[ChunkAudio]:
+        """Synthesize input text into streamed speech audio chunks."""
         if not text or not text.strip():
             raise EmptyTextError("Input text cannot be empty")
         if len(text) > self._max_text_chars:
             raise TextTooLongError(f"Input text length {len(text)} exceeds maximum of {self._max_text_chars}")
+
+        normalized = normalize_for_tts(text)
+        chunks = split_into_chunks(normalized, max_chars=self._max_chunk_chars)
+        if not chunks:
+            raise EmptyTextError("Input text contains no synthesizable content")
 
         effective_speed = self._default_speed if speed is None else speed
 
@@ -70,28 +65,20 @@ class SynthesizeUsecase:
             raise SynthesisBusyError(f"Queue wait exceeded {self._queue_timeout_seconds}s deadline") from err
 
         try:
-            normalized = normalize_for_tts(text)
-            chunks = split_into_chunks(normalized, max_chars=self._max_chunk_chars)
-            if not chunks:
-                raise EmptyTextError("Input text contains no synthesizable content")
+            for i, chunk_text in enumerate(chunks):
+                raw_wav = await self._synthesizer.synthesize_chunk(chunk_text, speed=effective_speed)
+                is_last = i == len(chunks) - 1
+                if not is_last and self._chunk_gap_ms > 0:
+                    final_wav = append_silence(raw_wav, ms=self._chunk_gap_ms)
+                else:
+                    final_wav = raw_wav
 
-            parts: list[bytes] = []
-            for chunk in chunks:
-                audio = await self._synthesizer.synthesize_chunk(chunk, speed=effective_speed)
-                parts.append(audio)
+                sample_rate, duration = wav_info(final_wav)
 
-            combined_wav = concat_wav(parts, gap_ms=self._chunk_gap_ms)
-            duration = wav_duration_seconds(combined_wav)
-            return SynthesisResult(
-                wav=combined_wav,
-                chunk_count=len(chunks),
-                duration_seconds=duration,
-            )
+                yield ChunkAudio(
+                    wav=final_wav,
+                    sample_rate=sample_rate,
+                    duration_seconds=duration,
+                )
         finally:
             self._lock.release()
-
-    async def stream(self, text: str, speed: float | None = None) -> AsyncIterator[ChunkAudio]:
-        """Synthesize input text into streamed speech audio chunks."""
-        raise NotImplementedError
-        if False:
-            yield

@@ -246,7 +246,7 @@ func TestConfig_Validate(t *testing.T) {
 	}{
 		{
 			name:    "valid config",
-			modify:  func(c *Config) {},
+			modify:  func(c *Config) { c.TTSProxy = "disabled" },
 			wantErr: false,
 		},
 		{
@@ -358,9 +358,16 @@ func TestConfig_TTSProxy_Validation(t *testing.T) {
 			errMsg:  "TTS_CONNECT_URL is required when TTS_PROXY is enabled",
 		},
 		{
-			name:    "enabled mode with URL succeeds",
+			name:    "enabled mode with http URL fails validation",
 			proxy:   "enabled",
 			url:     "http://tts-speaker:9700",
+			wantErr: true,
+			errMsg:  "TTS_CONNECT_URL must be https:// when TTS_PROXY is enabled",
+		},
+		{
+			name:    "enabled mode with https URL succeeds",
+			proxy:   "enabled",
+			url:     "https://tts-speaker:9443",
 			wantErr: false,
 		},
 	}

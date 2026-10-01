@@ -53,6 +53,8 @@ curl http://localhost:9200/health
 | `BACKEND_TOKEN_AUDIENCE` | alt-backend | Expected JWT audience |
 | `BFF_REQUEST_TIMEOUT` | 30s | Timeout for unary requests |
 | `BFF_STREAMING_TIMEOUT` | 40m | Default context deadline for streaming requests |
+| `TTS_PROXY` | - (required) | TTS proxy mode: `enabled` or `disabled` (missing fails startup) |
+| `TTS_CONNECT_URL` | - | Target `https://` URL for TTS service (e.g. `https://tts-speaker:9443`; required when `TTS_PROXY=enabled`). Dialed over a dedicated HTTP/1.1 mTLS transport; `MTLS_ENFORCE` does not affect TTS. |
 
 ## Streaming Endpoints
 
@@ -64,6 +66,7 @@ The following endpoints use server streaming with extended timeout:
 - `/alt.morning_letter.v2.MorningLetterService/StreamChat`
 - `/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates`
 - `/alt.knowledge_home.v1.KnowledgeHomeService/StreamRecallRailUpdates`
+- `/alt.tts.v1.TTSService/SynthesizeStream`
 
 ### Timeout design
 
@@ -83,6 +86,7 @@ docker build -t alt-butterfly-facade .
 docker run -p 9250:9250 \
   -e BACKEND_CONNECT_URL=http://alt-backend:9101 \
   -e BACKEND_TOKEN_SECRET=your-secret \
+  -e TTS_PROXY=disabled \
   alt-butterfly-facade
 ```
 

@@ -1,5 +1,6 @@
 """Unit tests for TTSConnectService handler."""
 
+import logging
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock
 
@@ -179,3 +180,67 @@ async def test_error_message_never_leaks_upstream_url_or_key() -> None:
     assert "8088" not in msg
     assert "secret_api_key" not in msg
     assert "http://" not in msg
+
+
+async def test_caller_errors_logged_at_info(caplog: pytest.LogCaptureFixture) -> None:
+    mock_usecase = AsyncMock(spec=SynthesizeUsecase)
+    mock_usecase.stream.return_value = _async_error(EmptyTextError("Empty text"))
+
+    service = TTSConnectService(usecase=mock_usecase)
+    request = SynthesizeStreamRequest(text="")
+    ctx = _make_context()
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(ConnectError) as exc_info:
+        async for _ in service.synthesize_stream(request, ctx):
+            pass
+
+    assert exc_info.value.code == Code.INVALID_ARGUMENT
+    info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert len(info_records) >= 1
+    assert any("EmptyTextError" in r.message for r in info_records)
+    assert not any(r.levelno >= logging.WARNING for r in caplog.records)
+
+
+async def test_unexpected_exception_logged_with_exception_traceback(caplog: pytest.LogCaptureFixture) -> None:
+    mock_usecase = AsyncMock(spec=SynthesizeUsecase)
+    mock_usecase.stream.return_value = _async_error(RuntimeError("deep internal crash"))
+
+    service = TTSConnectService(usecase=mock_usecase)
+    request = SynthesizeStreamRequest(text="trigger-crash")
+    ctx = _make_context()
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(ConnectError) as exc_info:
+        async for _ in service.synthesize_stream(request, ctx):
+            pass
+
+    assert exc_info.value.code == Code.INTERNAL
+    assert exc_info.value.message == "Internal server error"
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(error_records) >= 1
+    assert error_records[0].exc_info is not None
+
+
+async def test_stream_closes_inner_generator_via_aclosing(sample_wav_bytes: bytes) -> None:
+    closed = False
+
+    async def mock_generator() -> AsyncIterator[ChunkAudio]:
+        nonlocal closed
+        try:
+            yield ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.1)
+            yield ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.1)
+        finally:
+            closed = True
+
+    mock_usecase = AsyncMock(spec=SynthesizeUsecase)
+    mock_usecase.stream.side_effect = lambda text, speed=None: mock_generator()
+
+    service = TTSConnectService(usecase=mock_usecase)
+    request = SynthesizeStreamRequest(text="hello")
+    ctx = _make_context()
+
+    gen = service.synthesize_stream(request, ctx)
+    async for _ in gen:
+        break
+    await gen.aclose()
+
+    assert closed is True

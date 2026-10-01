@@ -49,9 +49,3 @@ cd e2e/playwright
 BASE_URL="http://localhost:9700" npx playwright test --config tts-speaker/playwright.config.ts --grep '@contract'
 ```
 
-## CI Wiring Follow-ups
-
-Integrating this suite into CI requires:
-1. Adding `tts-speaker` suite entry to `e2e/playwright/suites.yaml`.
-2. Staging compose definition for `tts-speaker` and `irodori-stub` (mirroring the `news-creator-ollama-stub` precedent).
-3. Ensuring `e2e-playwright.yml` matrix includes `tts-speaker`.

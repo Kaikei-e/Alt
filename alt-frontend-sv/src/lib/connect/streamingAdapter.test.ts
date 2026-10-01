@@ -1,7 +1,10 @@
 import type { Transport } from "@connectrpc/connect";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { StreamSummarizeChunk, StreamSummarizeResult } from "./feeds";
-import { streamSummarizeWithAbortAdapter } from "./streamingAdapter";
+import {
+	type StreamSummarizeAdapterResult,
+	streamSummarizeWithAbortAdapter,
+} from "./streamingAdapter";
 
 vi.mock("./feeds", () => ({
 	streamSummarizeWithAbort: vi.fn(),
@@ -165,5 +168,32 @@ describe("streamSummarizeWithAbortAdapter on a cut stream", () => {
 		captured.onError(error);
 
 		expect(onError).toHaveBeenCalledWith(error);
+	});
+
+	test("returns full server summary in onComplete for multi-chunk stream", async () => {
+		let completedResult: StreamSummarizeAdapterResult | null = null;
+
+		streamSummarizeWithAbortAdapter(
+			transport,
+			{ feedUrl: "https://example.com/article" },
+			() => {},
+			{ typewriter: false, tick: async () => {} },
+			(result) => {
+				completedResult = result;
+			},
+		);
+
+		await captured.onChunk(textChunk("First chunk "));
+		await captured.onChunk(textChunk("second chunk"));
+		captured.onComplete({
+			articleId: "article-1",
+			summary: "First chunk second chunk",
+			wasCached: false,
+		});
+
+		expect(completedResult).not.toBeNull();
+		expect(
+			(completedResult as StreamSummarizeAdapterResult | null)?.summary,
+		).toBe("First chunk second chunk");
 	});
 });

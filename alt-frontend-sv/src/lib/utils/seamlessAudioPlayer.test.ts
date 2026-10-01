@@ -167,4 +167,75 @@ describe("createSeamlessAudioPlayer", () => {
 		await drainPromise;
 		expect(drained).toBe(true);
 	});
+
+	it("schedules a late chunk at context.currentTime when currentTime > nextStartTime", async () => {
+		const player = createSeamlessAudioPlayer(
+			fakeContext as unknown as AudioContext,
+		);
+
+		// First chunk at 1.0 + 0.05 = 1.05. Duration is 2.0s -> nextStartTime is 3.05
+		await player.enqueue(new Uint8Array([1]));
+		expect(fakeContext.sources[0]?.startTime).toBe(1.05);
+
+		// Late arrival: currentTime is now 5.0 (> 3.05)
+		fakeContext.currentTime = 5.0;
+		await player.enqueue(new Uint8Array([2]));
+
+		// Must be scheduled at currentTime (5.0), not the past nextStartTime (3.05)
+		expect(fakeContext.sources[1]?.startTime).toBe(5.0);
+	});
+
+	it("does not schedule a source if decode was pending when stop() ran", async () => {
+		let resolveDecode!: (buffer: AudioBuffer) => void;
+		fakeContext.decodeAudioData = vi.fn(
+			() =>
+				new Promise<AudioBuffer>((resolve) => {
+					resolveDecode = resolve;
+				}),
+		);
+
+		const player = createSeamlessAudioPlayer(
+			fakeContext as unknown as AudioContext,
+		);
+
+		const enqueuePromise = player.enqueue(new Uint8Array([1, 2, 3]));
+
+		// Stop while decodeAudioData is still in flight
+		player.stop();
+
+		// Now let decodeAudioData resolve
+		resolveDecode({
+			duration: 1.0,
+			sampleRate: 24000,
+			length: 24000,
+			numberOfChannels: 1,
+		} as AudioBuffer);
+
+		await enqueuePromise;
+
+		// No source should have been created or started
+		expect(fakeContext.createBufferSource).not.toHaveBeenCalled();
+	});
+
+	it("decodes on its own copy when given a subarray with a byteOffset", async () => {
+		const player = createSeamlessAudioPlayer(
+			fakeContext as unknown as AudioContext,
+		);
+
+		const underlying = new Uint8Array([0, 0, 0, 0, 42, 43, 44, 45, 0, 0]);
+		const subarray = underlying.subarray(4, 8); // offset 4, length 4
+
+		await player.enqueue(subarray);
+
+		expect(fakeContext.decodeAudioData).toHaveBeenCalledTimes(1);
+		const decodedBuffer = fakeContext.decodeAudioData.mock
+			.calls[0]?.[0] as ArrayBuffer;
+		expect(decodedBuffer.byteLength).toBe(4);
+		const decodedBytes = new Uint8Array(decodedBuffer);
+		expect(Array.from(decodedBytes)).toEqual([42, 43, 44, 45]);
+
+		// Mutating the original underlying buffer after enqueue must not affect the decoded copy
+		underlying[4] = 99;
+		expect(decodedBytes[0]).toBe(42);
+	});
 });

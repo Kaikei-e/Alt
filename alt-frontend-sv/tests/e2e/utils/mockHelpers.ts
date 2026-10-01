@@ -66,6 +66,41 @@ export async function fulfillConnectStream(
 }
 
 /**
+ * Fulfill a route with a Connect-RPC streaming end-of-stream error.
+ * Connect-RPC server-streaming returns HTTP 200 with application/connect+json
+ * and an end-of-stream trailer frame (flag 0x02) containing the error JSON.
+ */
+export async function fulfillConnectStreamError(
+	route: Route,
+	code = "failed_precondition",
+	message = "tts is disabled",
+): Promise<void> {
+	const trailerPayload = Buffer.from(
+		JSON.stringify({
+			error: {
+				code,
+				message,
+			},
+		}),
+		"utf-8",
+	);
+	const trailer = Buffer.alloc(5 + trailerPayload.length);
+	trailer[0] = 0x02; // flags: end-of-stream trailer
+	trailer.writeUInt32BE(trailerPayload.length, 1);
+	trailerPayload.copy(trailer, 5);
+
+	await route.fulfill({
+		status: 200,
+		contentType: "application/connect+json",
+		headers: {
+			"Connect-Content-Encoding": "identity",
+			"Connect-Accept-Encoding": "identity",
+		},
+		body: trailer,
+	});
+}
+
+/**
  * Fulfill a route with a streaming (SSE) response.
  * Useful for mocking Augur chat and other streaming endpoints.
  *

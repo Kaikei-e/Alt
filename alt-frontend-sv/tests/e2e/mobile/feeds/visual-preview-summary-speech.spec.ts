@@ -2,8 +2,8 @@ import { CONNECT_RPC_PATHS } from "../../fixtures/mockData";
 import { expect, test } from "../../fixtures/pomFixtures";
 import { gotoMobileRoute } from "../../helpers/navigation";
 import {
-	fulfillConnectError,
 	fulfillConnectStream,
+	fulfillConnectStreamError,
 	fulfillJson,
 } from "../../utils/mockHelpers";
 
@@ -250,11 +250,10 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 		page,
 	}) => {
 		await page.route(CONNECT_RPC_PATHS.ttsSynthesizeStream, (route) =>
-			fulfillConnectError(
+			fulfillConnectStreamError(
 				route,
-				"TTS service disabled",
 				"failed_precondition",
-				412,
+				"tts is disabled",
 			),
 		);
 
@@ -293,12 +292,10 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 		await page.route(CONNECT_RPC_PATHS.ttsSynthesizeStream, async (route) => {
 			callCount++;
 			if (callCount === 1) {
-				await fulfillConnectError(
-					route,
-					"Upstream service unavailable",
-					"unavailable",
-					503,
-				);
+				await route.fulfill({
+					status: 502,
+					body: "Bad Gateway",
+				});
 			} else {
 				await fulfillConnectStream(route, TTS_THREE_CHUNKS);
 			}

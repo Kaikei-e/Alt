@@ -11,7 +11,7 @@ from tts_speaker.domain.errors import (
     TextTooLongError,
     UpstreamUnavailableError,
 )
-from tts_speaker.domain.wav import wav_duration_seconds
+from tts_speaker.domain.wav import wav_info
 from tts_speaker.port.speech_synthesizer_port import SpeechSynthesizerPort
 from tts_speaker.usecase.synthesize_usecase import ChunkAudio, SynthesizeUsecase
 
@@ -112,11 +112,11 @@ async def test_trailing_silence_appended_to_all_except_last_chunk(
     assert len(chunks) == 2
 
     # Chunk 0 (not last) should have 200ms silence appended -> 0.1 + 0.2 = 0.3s
-    assert pytest.approx(wav_duration_seconds(chunks[0].wav), abs=0.01) == 0.3
+    assert pytest.approx(wav_info(chunks[0].wav)[1], abs=0.01) == 0.3
     assert pytest.approx(chunks[0].duration_seconds, abs=0.01) == 0.3
 
     # Chunk 1 (last) should NOT have trailing silence -> 0.1s
-    assert pytest.approx(wav_duration_seconds(chunks[1].wav), abs=0.01) == 0.1
+    assert pytest.approx(wav_info(chunks[1].wav)[1], abs=0.01) == 0.1
     assert pytest.approx(chunks[1].duration_seconds, abs=0.01) == 0.1
 
 

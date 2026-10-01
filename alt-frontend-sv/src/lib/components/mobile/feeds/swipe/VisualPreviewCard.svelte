@@ -18,6 +18,7 @@ import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
+import { createSummarySpeech } from "$lib/hooks/useSummarySpeech.svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import {
 	type ArticleContentPhase,
@@ -79,8 +80,27 @@ const {
 // State
 let isAISummaryRequested = $state(false);
 let aiSummary = $state<string | null>(null);
+let fullSummaryText = $state<string | null>(null);
 let summaryError = $state<string | null>(null);
 let isSummarizing = $state(false);
+let isSummaryComplete = $state(false);
+
+const speech = createSummarySpeech();
+
+const speechStatusText = $derived.by(() => {
+	switch (speech.state) {
+		case "loading":
+			return "Preparing audio…";
+		case "playing":
+			return "Playing";
+		case "unavailable":
+			return "Speech unavailable";
+		case "error":
+			return "Couldn't play the summary. Try again.";
+		default:
+			return "";
+	}
+});
 
 let isContentExpanded = $state(false);
 let fullContent = $state<string | null>(null);
@@ -227,6 +247,7 @@ onMount(() => {
 });
 
 onDestroy(() => {
+	speech.stop();
 	// A re-attempt parked in its Retry-After wait outlives the card otherwise:
 	// it wakes after unmount and writes $state on a destroyed instance.
 	contentToken++;
@@ -404,8 +425,11 @@ function handleGenerateAISummary() {
 
 	isAISummaryRequested = true;
 	isSummarizing = true;
+	isSummaryComplete = false;
+	speech.stop();
 	summaryError = null;
 	aiSummary = "";
+	fullSummaryText = null;
 
 	summaryAbortController?.abort();
 
@@ -435,10 +459,12 @@ function handleGenerateAISummary() {
 					isSummarizing = false;
 				}
 			},
-			onComplete: (_totalLength, _chunkCount) => {},
 		},
-		(_result) => {
+		(result) => {
 			summaryAbortController = null;
+			fullSummaryText = result.summary || "";
+			isSummaryComplete = true;
+			isSummarizing = false;
 		},
 		async (err) => {
 			summaryAbortController = null;
@@ -473,13 +499,15 @@ function handleGenerateAISummary() {
 				const res = await summarizeArticleClient(feed.link);
 				if (res.success && res.summary) {
 					isSummarizing = false;
+					fullSummaryText = res.summary;
+					isSummaryComplete = true;
 					const typewriter = simulateTypewriterEffect(
 						(char) => {
 							aiSummary = (aiSummary || "") + char;
 						},
 						{ tick, delay: 10 },
 					);
-					await typewriter.add(res.summary);
+					typewriter.add(res.summary);
 				} else {
 					isSummarizing = false;
 					summaryError = "Failed to generate the summary";
@@ -490,6 +518,14 @@ function handleGenerateAISummary() {
 			}
 		},
 	);
+}
+
+function handleToggleSpeech() {
+	if (speech.state === "playing" || speech.state === "loading") {
+		speech.stop();
+	} else if (fullSummaryText) {
+		speech.play(fullSummaryText);
+	}
 }
 
 async function handleFavorite() {
@@ -640,10 +676,35 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
               </div>
             {:else if summaryError}
               <p class="error-hint">{summaryError}</p>
-            {:else if aiSummary}
-              <p class="summary-prose ai-summary-text">
-                {aiSummary}
-              </p>
+            {:else}
+              {#if aiSummary}
+                <p class="summary-prose ai-summary-text">
+                  {aiSummary}
+                </p>
+              {/if}
+              {#if isSummaryComplete && fullSummaryText}
+                <div class="summary-speech-controls mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    class="speech-btn"
+                    data-testid="summary-speech-button"
+                    disabled={speech.state === "unavailable"}
+                    onclick={handleToggleSpeech}
+                  >
+                    {#if speech.state === "playing" || speech.state === "loading"}
+                      Stop
+                    {:else}
+                      Play summary
+                    {/if}
+                  </button>
+                  <span
+                    class="speech-status"
+                    data-testid="summary-speech-status"
+                    role="status"
+                    aria-live="polite"
+                  >{speechStatusText}</span>
+                </div>
+              {/if}
             {/if}
           </div>
         {/if}
@@ -1178,6 +1239,48 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
   .action-btn--active {
     background: var(--alt-charcoal);
     color: var(--surface-bg);
+  }
+
+  /* ── Speech Controls ── */
+  .summary-speech-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .speech-btn {
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--alt-charcoal);
+    background: transparent;
+    border: 1.5px solid var(--alt-charcoal);
+    padding: 0.4rem 0.8rem;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .speech-btn:active:not(:disabled) {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  .speech-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .speech-status {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    color: var(--alt-ash);
   }
 
   /* ── Animations ── */

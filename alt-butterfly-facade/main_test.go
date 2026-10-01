@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -28,7 +27,7 @@ func TestBuildServerConfig_WiresBFFConfigFromAppConfig(t *testing.T) {
 	cfg := config.NewConfig()
 	secret := []byte("this-is-a-valid-backend-token-secret-32-chars-long")
 
-	serverCfg := buildServerConfig(cfg, "http://alt-backend:9101", "http://alt-backend:9102", "", "", secret, "")
+	serverCfg := buildServerConfig(cfg, "http://alt-backend:9101", "http://alt-backend:9102", "", nil, secret, "")
 
 	assert.True(t, serverCfg.BFFConfig.EnableCache, "cfg.EnableCache must reach serverCfg.BFFConfig")
 	assert.True(t, serverCfg.BFFConfig.EnableCircuitBreaker, "cfg.EnableCircuitBreaker must reach serverCfg.BFFConfig")
@@ -54,7 +53,7 @@ func TestBuildServerConfig_ResultingServer_UsesBFFHandler(t *testing.T) {
 	cfg := config.NewConfig()
 	secret := []byte("this-is-a-valid-backend-token-secret-32-chars-long")
 
-	serverCfg := buildServerConfig(cfg, "http://127.0.0.1:1", "http://127.0.0.1:1", "", "", secret, "")
+	serverCfg := buildServerConfig(cfg, "http://127.0.0.1:1", "http://127.0.0.1:1", "", nil, secret, "")
 	handler := server.NewServerWithTransport(serverCfg, nil, http.DefaultTransport)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
@@ -87,28 +86,35 @@ func adminToken(t *testing.T, secret []byte, issuer, audience string) string {
 	return signed
 }
 
-// TestLogBFFFeatureWiring_TTSProxy pins requirement 4(e):
-// Startup log bff.tts_proxy.wiring is emitted with enabled + reason (+ url when enabled).
+// TestLogBFFFeatureWiring_TTSProxy pins requirement 4(e) and S2:
+// Startup log bff.tts_proxy.wiring is emitted with enabled, url, transport=mtls, and reason.
 func TestLogBFFFeatureWiring_TTSProxy(t *testing.T) {
-	t.Run("enabled logs url and reason", func(t *testing.T) {
+	t.Run("enabled logs url, transport, and reason", func(t *testing.T) {
+		oldLogger := slog.Default()
+		t.Cleanup(func() { slog.SetDefault(oldLogger) })
+
 		buf := &bytes.Buffer{}
 		logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 		slog.SetDefault(logger)
 
 		cfg := config.NewConfig()
 		cfg.TTSProxy = "enabled"
-		cfg.TTSConnectURL = "http://tts-speaker:9700"
+		cfg.TTSConnectURL = "https://tts-speaker:9443"
 
 		logBFFFeatureWiring(context.Background(), cfg)
 
 		logOutput := buf.String()
 		assert.Contains(t, logOutput, `"msg":"bff.tts_proxy.wiring"`, "log line bff.tts_proxy.wiring must be emitted")
 		assert.Contains(t, logOutput, `"enabled":true`)
-		assert.Contains(t, logOutput, `"url":"http://tts-speaker:9700"`)
+		assert.Contains(t, logOutput, `"url":"https://tts-speaker:9443"`)
+		assert.Contains(t, logOutput, `"transport":"mtls"`)
 		assert.Contains(t, logOutput, `"reason":`)
 	})
 
 	t.Run("disabled logs false and reason", func(t *testing.T) {
+		oldLogger := slog.Default()
+		t.Cleanup(func() { slog.SetDefault(oldLogger) })
+
 		buf := &bytes.Buffer{}
 		logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 		slog.SetDefault(logger)
@@ -124,20 +130,4 @@ func TestLogBFFFeatureWiring_TTSProxy(t *testing.T) {
 		assert.Contains(t, logOutput, `"enabled":false`)
 		assert.Contains(t, logOutput, `"reason":`)
 	})
-}
-
-// TestResolveTTSURL_MTLSOverride pins requirement 1 (and 4(d)):
-// When MTLS_ENFORCE=true, TTS_CONNECT_MTLS_URL overrides TTS_CONNECT_URL (same shape as Acolyte).
-func TestResolveTTSURL_MTLSOverride(t *testing.T) {
-	os.Clearenv()
-	os.Setenv("MTLS_ENFORCE", "true")
-	os.Setenv("TTS_CONNECT_URL", "http://tts-speaker:9700")
-	os.Setenv("TTS_CONNECT_MTLS_URL", "https://tts-speaker:9443")
-	defer os.Clearenv()
-
-	cfg := config.NewConfig()
-	cfg.TTSProxy = "enabled"
-	cfg.TTSConnectURL = "http://tts-speaker:9700"
-	resolved := resolveTTSURL(cfg)
-	assert.Equal(t, "https://tts-speaker:9443", resolved, "TTS_CONNECT_MTLS_URL must override TTS_CONNECT_URL when MTLS_ENFORCE=true")
 }

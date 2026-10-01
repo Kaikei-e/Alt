@@ -16,7 +16,10 @@ test.describe("alt.tts.v1.TTSService/SynthesizeStream @contract", () => {
 	test("SynthesizeStream yields audio frames with valid RIFF header and clean end-stream @contract", async ({
 		tts,
 	}) => {
-		const requestData = encodeConnectFrame({ text: "こんにちは世界" });
+		// Input > 60 chars to force multiple chunks (default max_chunk_chars: 60)
+		const text =
+			"これは音声合成ストリーミングのテストです。長いテキストを送信して複数のチャンクに分割されることを確認します。最後の文です。";
+		const requestData = encodeConnectFrame({ text });
 		const response = await tts.post("/alt.tts.v1.TTSService/SynthesizeStream", {
 			headers: {
 				"Content-Type": "application/connect+json",
@@ -34,7 +37,7 @@ test.describe("alt.tts.v1.TTSService/SynthesizeStream @contract", () => {
 		const dataFrames = frames.filter((f) => f.flag === 0);
 		const endFrames = frames.filter((f) => f.flag === 2);
 
-		expect(dataFrames.length).toBeGreaterThanOrEqual(1);
+		expect(dataFrames.length).toBeGreaterThanOrEqual(2);
 		for (const frame of dataFrames) {
 			expect(typeof frame.data.audioWav).toBe("string");
 			const wavBytes = Buffer.from(frame.data.audioWav, "base64");
@@ -43,11 +46,21 @@ test.describe("alt.tts.v1.TTSService/SynthesizeStream @contract", () => {
 			expect(wavBytes.subarray(8, 12).toString("ascii")).toBe("WAVE");
 
 			expect(Number.isInteger(frame.data.sampleRate)).toBe(true);
-			expect(frame.data.sampleRate).toBeGreaterThan(0);
+			expect(frame.data.sampleRate).toBe(48000);
 
 			expect(typeof frame.data.durationSeconds).toBe("number");
 			expect(frame.data.durationSeconds).toBeGreaterThan(0);
 		}
+
+		// The stub produces 0.1s chunks; default chunk_gap_ms is 200ms (0.2s).
+		// Non-last chunks have trailing silence gap (0.1 + 0.2 = 0.3s); last chunk has no gap (0.1s).
+		const chunkDuration = 0.1;
+		const gapDuration = 0.2;
+		for (let i = 0; i < dataFrames.length - 1; i++) {
+			expect(dataFrames[i]?.data.durationSeconds).toBeCloseTo(chunkDuration + gapDuration, 2);
+		}
+		const lastFrame = dataFrames[dataFrames.length - 1];
+		expect(lastFrame?.data.durationSeconds).toBeCloseTo(chunkDuration, 2);
 
 		expect(endFrames.length).toBe(1);
 		expect(endFrames[0]?.data.error).toBeUndefined();

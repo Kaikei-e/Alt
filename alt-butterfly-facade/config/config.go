@@ -211,6 +211,20 @@ func (c *Config) Validate() error {
 	if c.BackendConnectURL == "" {
 		return errors.New("BACKEND_CONNECT_URL is required")
 	}
+	if c.TTSProxy == "" {
+		return errors.New("TTS_PROXY is required")
+	}
+	if c.TTSProxy != "enabled" && c.TTSProxy != "disabled" {
+		return errors.New("TTS_PROXY must be 'enabled' or 'disabled'")
+	}
+	if c.TTSProxy == "enabled" {
+		if c.TTSConnectURL == "" {
+			return errors.New("TTS_CONNECT_URL is required when TTS_PROXY is enabled")
+		}
+		if !strings.HasPrefix(c.TTSConnectURL, "https://") {
+			return errors.New("TTS_CONNECT_URL must be https:// when TTS_PROXY is enabled")
+		}
+	}
 	return nil
 }
 

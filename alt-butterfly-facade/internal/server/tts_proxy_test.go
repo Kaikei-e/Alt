@@ -1,15 +1,27 @@
 package server
 
 import (
-	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/binary"
 	"encoding/json"
+	"encoding/pem"
 	"io"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"alt-butterfly-facade/internal/tlsutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,7 +83,7 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 		flusher.Flush()
 
 		select {
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(100 * time.Millisecond):
 		case <-r.Context().Done():
 			return
 		}
@@ -89,10 +101,11 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 		BackendURL:       "http://127.0.0.1:1",
 		TTSProxy:         "enabled",
 		TTSConnectURL:    upstream.URL,
+		TTSTransport:     http.DefaultTransport,
 		Secret:           secret,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
-		RequestTimeout:   30 * time.Second,
+		RequestTimeout:   50 * time.Millisecond,
 		StreamingTimeout: 5 * time.Minute,
 	}
 
@@ -157,6 +170,7 @@ func TestTTSProxy_AuthRequired(t *testing.T) {
 		BackendURL:       "http://127.0.0.1:1",
 		TTSProxy:         "enabled",
 		TTSConnectURL:    upstream.URL,
+		TTSTransport:     http.DefaultTransport,
 		Secret:           secret,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
@@ -271,10 +285,20 @@ func TestTTSProxy_DisabledMode(t *testing.T) {
 	require.NoError(t, json.Unmarshal(eosPayload, &eosMessage), "payload must be valid JSON: %s", string(eosPayload))
 	assert.Equal(t, "failed_precondition", eosMessage.Error.Code)
 	assert.Equal(t, "tts is disabled", eosMessage.Error.Message)
+
+	// Compare exact expected bytes (N4)
+	expectedPayload := []byte(`{"error":{"code":"failed_precondition","message":"tts is disabled"}}`)
+	expectedEnvelope := make([]byte, 5+len(expectedPayload))
+	expectedEnvelope[0] = 0x02
+	binary.BigEndian.PutUint32(expectedEnvelope[1:5], uint32(len(expectedPayload)))
+	copy(expectedEnvelope[5:], expectedPayload)
+	fullReceived := append(append([]byte{}, eosHeader...), eosPayload...)
+	assert.Equal(t, expectedEnvelope, fullReceived, "disabled response must match exact expected frame bytes")
 }
 
-// TestTTSProxy_UnreachableUpstream pins requirement 4(f):
-// When enabled and upstream is unreachable, the client receives a Connect unavailable error.
+// TestTTSProxy_UnreachableUpstream pins requirement 4(f) and S5:
+// When enabled and upstream is unreachable, the client receives exactly HTTP 502 Bad Gateway
+// with Content-Type not application/connect+*.
 func TestTTSProxy_UnreachableUpstream(t *testing.T) {
 	// Create and immediately close a listener to get an unreachable port
 	closedUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
@@ -286,6 +310,7 @@ func TestTTSProxy_UnreachableUpstream(t *testing.T) {
 		BackendURL:       "http://127.0.0.1:1",
 		TTSProxy:         "enabled",
 		TTSConnectURL:    unreachableURL,
+		TTSTransport:     http.DefaultTransport,
 		Secret:           secret,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
@@ -309,23 +334,213 @@ func TestTTSProxy_UnreachableUpstream(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	// An unreachable upstream maps to Connect unavailable.
-	// In the Connect protocol, this surfaces as HTTP 502 (Bad Gateway) or HTTP 503 (Service Unavailable).
-	assert.True(t,
-		resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable,
-		"expected HTTP 502 Bad Gateway or 503 Service Unavailable mapping to Connect unavailable; got %d",
-		resp.StatusCode,
-	)
+	// S5: assert exactly StatusBadGateway, assert Content-Type is not application/connect+*
+	assert.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	assert.False(t, strings.HasPrefix(resp.Header.Get("Content-Type"), "application/connect+"),
+		"content type must not be application/connect+*")
+}
 
-	// If body contains JSON error, code must be unavailable
-	bodyBytes, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	if bytes.Contains(bodyBytes, []byte(`"code"`)) {
-		var errResp struct {
-			Code string `json:"code"`
-		}
-		if json.Unmarshal(bodyBytes, &errResp) == nil && errResp.Code != "" {
-			assert.Equal(t, "unavailable", errResp.Code)
-		}
+// TestTTSProxy_EnabledNilTransportPanics proves that when TTS_PROXY=enabled
+// but TTSTransport is nil, NewServer panics fail-fast (rule 8).
+func TestTTSProxy_EnabledNilTransportPanics(t *testing.T) {
+	cfg := Config{
+		BackendURL:       "http://127.0.0.1:1",
+		TTSProxy:         "enabled",
+		TTSConnectURL:    "https://127.0.0.1:9443",
+		TTSTransport:     nil,
+		Secret:           []byte("test-secret-at-least-32-chars-long!"),
+		Issuer:           "auth-hub",
+		Audience:         "alt-backend",
+		RequestTimeout:   30 * time.Second,
+		StreamingTimeout: 5 * time.Minute,
 	}
+	assert.PanicsWithValue(t, "server: TTSTransport is required when TTS_PROXY=enabled", func() {
+		NewServer(cfg, nil)
+	})
+}
+
+func generateThrowawayMTLSCerts(t *testing.T) (caPEM []byte, serverCert tls.Certificate, clientCertPEM, clientKeyPEM []byte) {
+	t.Helper()
+
+	// 1. Generate CA
+	caPrivKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	now := time.Now()
+	caTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Throwaway Test CA"},
+		NotBefore:             now.Add(-1 * time.Hour),
+		NotAfter:              now.Add(24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+	}
+
+	caDer, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caPrivKey.PublicKey, caPrivKey)
+	require.NoError(t, err)
+
+	caPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDer})
+	require.NotEmpty(t, caPEM)
+
+	// 2. Generate Server Cert
+	serverPrivKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	serverTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    now.Add(-1 * time.Hour),
+		NotAfter:     now.Add(24 * time.Hour),
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		DNSNames:     []string{"localhost"},
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+
+	serverDer, err := x509.CreateCertificate(rand.Reader, serverTemplate, caTemplate, &serverPrivKey.PublicKey, caPrivKey)
+	require.NoError(t, err)
+
+	serverCertPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverDer})
+	serverKeyDer, err := x509.MarshalECPrivateKey(serverPrivKey)
+	require.NoError(t, err)
+	serverKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: serverKeyDer})
+
+	serverCert, err = tls.X509KeyPair(serverCertPEM, serverKeyPEM)
+	require.NoError(t, err)
+
+	// 3. Generate Client Cert
+	clientPrivKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	clientTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(3),
+		Subject:      pkix.Name{CommonName: "alt-butterfly-facade"},
+		NotBefore:    now.Add(-1 * time.Hour),
+		NotAfter:     now.Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+
+	clientDer, err := x509.CreateCertificate(rand.Reader, clientTemplate, caTemplate, &clientPrivKey.PublicKey, caPrivKey)
+	require.NoError(t, err)
+
+	clientCertPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: clientDer})
+	clientKeyDer, err := x509.MarshalECPrivateKey(clientPrivKey)
+	require.NoError(t, err)
+	clientKeyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: clientKeyDer})
+
+	return caPEM, serverCert, clientCertPEM, clientKeyPEM
+}
+
+// TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert pins B1/B2:
+// Proves that when TTS_PROXY=enabled with dedicated HTTP/1.1 mTLS transport,
+// the BFF successfully streams through a TLS upstream that requires a client certificate.
+func TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert(t *testing.T) {
+	caPEM, serverCert, clientCertPEM, clientKeyPEM := generateThrowawayMTLSCerts(t)
+
+	// Save certs to temp files for tlsutil.LoadClientConfig
+	tmpDir := t.TempDir()
+	caFile := filepath.Join(tmpDir, "ca.pem")
+	certFile := filepath.Join(tmpDir, "client.pem")
+	keyFile := filepath.Join(tmpDir, "client.key")
+
+	require.NoError(t, os.WriteFile(caFile, caPEM, 0600))
+	require.NoError(t, os.WriteFile(certFile, clientCertPEM, 0600))
+	require.NoError(t, os.WriteFile(keyFile, clientKeyPEM, 0600))
+
+	caPool := x509.NewCertPool()
+	require.True(t, caPool.AppendCertsFromPEM(caPEM))
+
+	frame1Payload := []byte(`{"chunk":1,"audio_wav":"Y2h1bmsx"}`)
+	frame2Payload := []byte(`{}`) // end-of-stream
+	frame1 := createConnectEnvelope(0x00, frame1Payload)
+	frame2 := createConnectEnvelope(0x02, frame2Payload)
+	expectedBytes := append(append([]byte{}, frame1...), frame2...)
+
+	upstreamCalled := false
+	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		require.NotNil(t, r.TLS, "must be TLS request")
+		require.NotEmpty(t, r.TLS.PeerCertificates, "upstream requires client cert")
+		assert.Equal(t, "alt-butterfly-facade", r.TLS.PeerCertificates[0].Subject.CommonName)
+		assert.Equal(t, "/alt.tts.v1.TTSService/SynthesizeStream", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/connect+json")
+		w.WriteHeader(http.StatusOK)
+		flusher, ok := w.(http.Flusher)
+		require.True(t, ok)
+
+		_, err := w.Write(frame1)
+		require.NoError(t, err)
+		flusher.Flush()
+
+		_, err = w.Write(frame2)
+		require.NoError(t, err)
+		flusher.Flush()
+	}))
+
+	upstream.TLS = &tls.Config{
+		Certificates: []tls.Certificate{serverCert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    caPool,
+	}
+	upstream.StartTLS()
+	defer upstream.Close()
+
+	// 1. Verify that a client without a client certificate is rejected by the upstream TLS handshake
+	noCertClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caPool,
+			},
+		},
+	}
+	_, err := noCertClient.Get(upstream.URL)
+	require.Error(t, err, "direct dial to upstream without client cert must fail TLS handshake")
+
+	// 2. Build dedicated HTTP/1.1 TTS transport using tlsutil.LoadClientConfig (same as main.go)
+	tlsClientCfg, err := tlsutil.LoadClientConfig(certFile, keyFile, caFile)
+	require.NoError(t, err)
+
+	ttsTransport := &http.Transport{
+		TLSClientConfig: tlsClientCfg,
+	}
+
+	secret := []byte("test-secret-at-least-32-chars-long!")
+	cfg := Config{
+		BackendURL:       "http://127.0.0.1:1",
+		TTSProxy:         "enabled",
+		TTSConnectURL:    upstream.URL,
+		TTSTransport:     ttsTransport,
+		Secret:           secret,
+		Issuer:           "auth-hub",
+		Audience:         "alt-backend",
+		RequestTimeout:   30 * time.Second,
+		StreamingTimeout: 5 * time.Minute,
+	}
+
+	bffSrv := httptest.NewServer(NewServer(cfg, nil))
+	defer bffSrv.Close()
+
+	req, err := http.NewRequest(
+		http.MethodPost,
+		bffSrv.URL+"/alt.tts.v1.TTSService/SynthesizeStream",
+		strings.NewReader(`{"text":"hello"}`),
+	)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/connect+json")
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, secret))
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Content-Type"), "application/connect+json")
+	assert.True(t, upstreamCalled, "upstream must have been called")
+
+	receivedBytes, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, expectedBytes, receivedBytes, "streamed bytes through mTLS upstream must match exactly")
 }

@@ -1,7 +1,7 @@
 [project]
 name = "tts-speaker"
 version = "0.1.0"
-description = "HTTP gateway in front of Irodori-TTS-Server"
+description = "Connect streaming gateway in front of Irodori-TTS-Server"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "fastapi>=0.135.0",

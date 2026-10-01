@@ -6,6 +6,8 @@ from typing import Literal, Self
 from pydantic import Field, HttpUrl, PrivateAttr, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from tts_speaker.domain.speed import MAX_SPEED, MIN_SPEED
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -20,7 +22,7 @@ class Settings(BaseSettings):
     irodori_retry_backoff_seconds: float = Field(default=1.0, ge=0.0)
     tts_voice_id: str
     peer_identity_strict: bool
-    tts_default_speed: float = Field(default=1.25, ge=0.5, le=1.5)
+    tts_default_speed: float = Field(default=1.25, ge=MIN_SPEED, le=MAX_SPEED)
     tts_max_chunk_chars: int = Field(default=60, ge=20, le=200)
     tts_max_text_chars: int = Field(default=5000, ge=1, le=30000)
     tts_chunk_gap_ms: int = Field(default=200, ge=0, le=2000)
