@@ -176,8 +176,8 @@ export function createBackendServer(): http.Server {
 		}
 
 		if (
-			path === "/api/v1/generate/recaps/3days/cards" ||
-			path === "/v1/generate/recaps/3days/cards"
+			path === "/api/v1/generate/topic-cards" ||
+			path === "/v1/generate/topic-cards"
 		) {
 			res.writeHead(202, { "Content-Type": "application/json" });
 			res.end(
@@ -469,8 +469,8 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
-		// GetThreeDayRecapCards (Connect-RPC)
-		if (path === "/alt.recap.v2.RecapService/GetThreeDayRecapCards") {
+		// GetTopicCards (Connect-RPC)
+		if (path === "/alt.recap.v2.RecapService/GetTopicCards") {
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify(CONNECT_RECAP_CARDS_RESPONSE));

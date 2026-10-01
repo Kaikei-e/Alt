@@ -25,21 +25,18 @@ function makeEvent(
 	if (csrfHeader !== undefined) headers.set("X-CSRF-Token", csrfHeader);
 	headers.set("cookie", "ory_kratos_session=abc");
 	return {
-		request: new Request(
-			"http://localhost/api/v1/generate/recaps/3days/cards",
-			{
-				method: "POST",
-				headers,
-				body: JSON.stringify(body),
-			},
-		),
+		request: new Request("http://localhost/api/v1/generate/topic-cards", {
+			method: "POST",
+			headers,
+			body: JSON.stringify(body),
+		}),
 		cookies: {
 			get: (name: string) => (name === "csrf_token" ? cookieCsrf : undefined),
 		},
 	} as unknown as Parameters<typeof POST>[0];
 }
 
-describe("POST /api/v1/generate/recaps/3days/cards", () => {
+describe("POST /api/v1/generate/topic-cards", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		getBackendToken.mockResolvedValue("backend-token");
@@ -76,15 +73,13 @@ describe("POST /api/v1/generate/recaps/3days/cards", () => {
 		expect(fetch).not.toHaveBeenCalled();
 	});
 
-	it("forwards to recap-worker /v1/generate/recaps/3days/cards on happy path", async () => {
+	it("forwards to recap-worker /v1/generate/topic-cards on happy path", async () => {
 		const res = await POST(makeEvent({}, { csrfHeader: "expected-token" }));
 
 		expect(res.status).toBe(202);
 		expect(fetch).toHaveBeenCalledTimes(1);
 		const call = vi.mocked(fetch).mock.calls[0];
-		expect(call?.[0]).toBe(
-			"http://recap-worker.test/v1/generate/recaps/3days/cards",
-		);
+		expect(call?.[0]).toBe("http://recap-worker.test/v1/generate/topic-cards");
 		const body = await res.json();
 		expect(body).toEqual({ job_id: "cards-1" });
 	});

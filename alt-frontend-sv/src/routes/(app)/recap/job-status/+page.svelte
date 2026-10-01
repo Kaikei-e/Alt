@@ -1,6 +1,9 @@
 <script lang="ts">
 import { onDestroy, onMount } from "svelte";
-import { triggerRecapCardsJob, triggerRecapJob } from "$lib/api/client/dashboard";
+import {
+	triggerRecapJob,
+	triggerTopicCardsJob,
+} from "$lib/api/client/dashboard";
 import {
 	ActiveJobCard,
 	JobHistoryTable,
@@ -120,7 +123,8 @@ async function handleTriggerJob() {
 function mapCardsTriggerError(e: unknown): string {
 	if (e && typeof e === "object" && "status" in e) {
 		if (e.status === 409) return "A topic cards job is already running.";
-		if (e.status === 503) return "Topic cards are not configured on the server.";
+		if (e.status === 503)
+			return "Topic cards are not configured on the server.";
 	}
 	return "Could not start the topic cards job.";
 }
@@ -133,7 +137,7 @@ async function handleTriggerCardsJob() {
 	triggerSuccess = null;
 
 	try {
-		const result = await triggerRecapCardsJob(fetch);
+		const result = await triggerTopicCardsJob(fetch);
 		justStartedJobId = result.job_id;
 		triggerSuccess = "Topic cards job started";
 

@@ -23,7 +23,8 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use recap_worker::api::cards::{
-    CardsDao, PreviousCardsJobMeta, RecapCard, RecapCardJobStats, get_3days_cards_impl,
+    CardsDao, LatestCardsRun, PreviousCardsJobMeta, RecapCard, RecapCardJobStats,
+    get_topic_cards_impl,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -119,7 +120,8 @@ impl CardsDao for VerificationCardsDao {
             Some("no cards job exists") => Ok(None),
             Some(
                 "a completed cards job with cards exists"
-                | "a completed cards job whose card has no genre and no why",
+                | "a completed cards job whose card has no genre and no why"
+                | "a failed topic cards run is newer than the latest completed run",
             ) => Ok(Some(PreviousCardsJobMeta {
                 job_id: Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap(),
                 kicked_at: DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
@@ -144,7 +146,10 @@ impl CardsDao for VerificationCardsDao {
         let current = self.provider_state.read().unwrap().clone();
         match current.as_deref() {
             Some("no cards job exists") => Ok(Vec::new()),
-            Some("a completed cards job with cards exists") => Ok(vec![RecapCard {
+            Some(
+                "a completed cards job with cards exists"
+                | "a failed topic cards run is newer than the latest completed run",
+            ) => Ok(vec![RecapCard {
                 id: Uuid::parse_str("22222222-3333-4444-5555-666666666666").unwrap(),
                 job_id,
                 rank: 1,
@@ -225,7 +230,8 @@ impl CardsDao for VerificationCardsDao {
             Some("no cards job exists") => Ok(None),
             Some(
                 "a completed cards job with cards exists"
-                | "a completed cards job whose card has no genre and no why",
+                | "a completed cards job whose card has no genre and no why"
+                | "a failed topic cards run is newer than the latest completed run",
             ) => Ok(Some(RecapCardJobStats {
                 job_id,
                 items_fetched: 100,
@@ -246,6 +252,42 @@ impl CardsDao for VerificationCardsDao {
                     .unwrap()
                     .with_timezone(&Utc),
             })),
+            Some(unknown) => {
+                panic!("unrecognised provider state in VerificationCardsDao: {unknown}")
+            }
+            None => panic!("missing provider state in VerificationCardsDao"),
+        }
+    }
+
+    async fn get_latest_cards_run(&self) -> Result<Option<LatestCardsRun>, String> {
+        let current = self.provider_state.read().unwrap().clone();
+        match current.as_deref() {
+            Some("no cards job exists") => Ok(None),
+            Some(
+                "a completed cards job with cards exists"
+                | "a completed cards job whose card has no genre and no why",
+            ) => Ok(Some(LatestCardsRun {
+                job_id: Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap(),
+                status: "completed".to_string(),
+                kicked_at: DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+                updated_at: DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            })),
+            Some("a failed topic cards run is newer than the latest completed run") => {
+                Ok(Some(LatestCardsRun {
+                    job_id: Uuid::parse_str("99999999-8888-7777-6666-555555555555").unwrap(),
+                    status: "failed".to_string(),
+                    kicked_at: DateTime::parse_from_rfc3339("2026-09-23T17:00:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    updated_at: DateTime::parse_from_rfc3339("2026-09-23T17:05:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc),
+                }))
+            }
             Some(unknown) => {
                 panic!("unrecognised provider state in VerificationCardsDao: {unknown}")
             }
@@ -368,7 +410,7 @@ fn stub_router_with_state(state: StubState) -> Router {
         )
         // alt-backend-recap-worker.json
         .route(
-            "/v1/recaps/3days/cards",
+            "/v1/topic-cards",
             get({
                 let state = state.clone();
                 move || {
@@ -377,7 +419,7 @@ fn stub_router_with_state(state: StubState) -> Router {
                         let dao = VerificationCardsDao {
                             provider_state: state.provider_state.clone(),
                         };
-                        get_3days_cards_impl(&dao).await
+                        get_topic_cards_impl(&dao).await
                     }
                 }
             }),
@@ -742,6 +784,7 @@ async fn verify_rag_orchestrator_pact() {
 
 #[tokio::test]
 #[ignore = "provider verification: run with --ignored"]
+#[allow(clippy::too_many_lines)]
 async fn verify_alt_backend_pact() {
     let addr = start_stub_server().await;
     let pact = load_pact("../../pacts/alt-backend-recap-worker.json");
@@ -817,6 +860,24 @@ async fn verify_alt_backend_pact() {
                     body["cards"],
                     json!([]),
                     "expected empty cards for state: {state_name}"
+                );
+            }
+            "a failed topic cards run is newer than the latest completed run" => {
+                assert!(
+                    body["job"].is_object(),
+                    "expected job object for state: {state_name}"
+                );
+                assert!(
+                    body["cards"].as_array().is_some_and(|c| !c.is_empty()),
+                    "expected non-empty cards for state: {state_name}"
+                );
+                assert!(
+                    body["latest_run"].is_object(),
+                    "expected latest_run object for state: {state_name}"
+                );
+                assert_eq!(
+                    body["latest_run"]["status"], "failed",
+                    "expected latest_run status to be failed for state: {state_name}"
                 );
             }
             unknown => panic!("unrecognised provider state in verify_alt_backend_pact: {unknown}"),

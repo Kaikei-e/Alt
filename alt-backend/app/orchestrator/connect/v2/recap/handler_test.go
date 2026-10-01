@@ -41,7 +41,7 @@ func (m *MockRecapUsecase) GetThreeDayRecap(ctx context.Context) (*domain.RecapS
 	return args.Get(0).(*domain.RecapSummary), args.Error(1)
 }
 
-func (m *MockRecapUsecase) GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
+func (m *MockRecapUsecase) GetTopicCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -247,15 +247,15 @@ func TestHandler_SearchRecapsByTag(t *testing.T) {
 	})
 }
 
-func TestHandler_GetThreeDayRecapCards(t *testing.T) {
+func TestHandler_GetTopicCards(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("unauthenticated - returns CodeUnauthenticated", func(t *testing.T) {
 		mockUsecase := new(MockRecapUsecase)
 		handler := NewHandler(mockUsecase, nil, logger)
 
-		req := connect.NewRequest(&recapv2.GetThreeDayRecapCardsRequest{})
-		_, err := handler.GetThreeDayRecapCards(context.Background(), req)
+		req := connect.NewRequest(&recapv2.GetTopicCardsRequest{})
+		_, err := handler.GetTopicCards(context.Background(), req)
 
 		require.Error(t, err)
 		connectErr, ok := err.(*connect.Error)
@@ -263,7 +263,7 @@ func TestHandler_GetThreeDayRecapCards(t *testing.T) {
 		assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 	})
 
-	t.Run("success - returns job and cards", func(t *testing.T) {
+	t.Run("success - returns job, cards, and latest_run", func(t *testing.T) {
 		mockUsecase := new(MockRecapUsecase)
 		handler := NewHandler(mockUsecase, nil, logger)
 		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
@@ -306,12 +306,18 @@ func TestHandler_GetThreeDayRecapCards(t *testing.T) {
 					CreatedAt: "2026-09-22T17:05:00Z",
 				},
 			},
+			LatestRun: &domain.RecapCardsRun{
+				JobID:     "11111111-1111-1111-1111-111111111111",
+				Status:    "completed",
+				KickedAt:  "2026-09-22T17:00:00Z",
+				UpdatedAt: "2026-09-22T17:05:00Z",
+			},
 		}
 
-		mockUsecase.On("GetThreeDayRecapCards", mock.Anything).Return(cardsResp, nil)
+		mockUsecase.On("GetTopicCards", mock.Anything).Return(cardsResp, nil)
 
-		req := connect.NewRequest(&recapv2.GetThreeDayRecapCardsRequest{})
-		resp, err := handler.GetThreeDayRecapCards(ctx, req)
+		req := connect.NewRequest(&recapv2.GetTopicCardsRequest{})
+		resp, err := handler.GetTopicCards(ctx, req)
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
@@ -335,6 +341,11 @@ func TestHandler_GetThreeDayRecapCards(t *testing.T) {
 		assert.Equal(t, "example.com", card.Sources[0].Host)
 		require.NotNil(t, card.Sources[0].PubDate)
 		assert.Equal(t, pubDate, *card.Sources[0].PubDate)
+		require.NotNil(t, resp.Msg.LatestRun)
+		assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.Msg.LatestRun.JobId)
+		assert.Equal(t, "completed", resp.Msg.LatestRun.Status)
+		assert.Equal(t, "2026-09-22T17:00:00Z", resp.Msg.LatestRun.KickedAt)
+		assert.Equal(t, "2026-09-22T17:05:00Z", resp.Msg.LatestRun.UpdatedAt)
 
 		mockUsecase.AssertExpectations(t)
 	})
@@ -345,18 +356,20 @@ func TestHandler_GetThreeDayRecapCards(t *testing.T) {
 		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
 
 		emptyResp := &domain.RecapCardsResponse{
-			Job:   nil,
-			Cards: []*domain.RecapCard{},
+			Job:       nil,
+			Cards:     []*domain.RecapCard{},
+			LatestRun: nil,
 		}
-		mockUsecase.On("GetThreeDayRecapCards", mock.Anything).Return(emptyResp, nil)
+		mockUsecase.On("GetTopicCards", mock.Anything).Return(emptyResp, nil)
 
-		req := connect.NewRequest(&recapv2.GetThreeDayRecapCardsRequest{})
-		resp, err := handler.GetThreeDayRecapCards(ctx, req)
+		req := connect.NewRequest(&recapv2.GetTopicCardsRequest{})
+		resp, err := handler.GetTopicCards(ctx, req)
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		assert.Nil(t, resp.Msg.Job)
 		assert.Empty(t, resp.Msg.Cards)
+		assert.Nil(t, resp.Msg.LatestRun)
 
 		mockUsecase.AssertExpectations(t)
 	})
@@ -366,10 +379,10 @@ func TestHandler_GetThreeDayRecapCards(t *testing.T) {
 		handler := NewHandler(mockUsecase, nil, logger)
 		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
 
-		mockUsecase.On("GetThreeDayRecapCards", mock.Anything).Return(nil, errors.New("upstream failure"))
+		mockUsecase.On("GetTopicCards", mock.Anything).Return(nil, errors.New("upstream failure"))
 
-		req := connect.NewRequest(&recapv2.GetThreeDayRecapCardsRequest{})
-		_, err := handler.GetThreeDayRecapCards(ctx, req)
+		req := connect.NewRequest(&recapv2.GetTopicCardsRequest{})
+		_, err := handler.GetTopicCards(ctx, req)
 
 		require.Error(t, err)
 		mockUsecase.AssertExpectations(t)

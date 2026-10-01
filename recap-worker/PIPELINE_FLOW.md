@@ -249,14 +249,14 @@ flowchart TB
     style MorningEnd fill:#d4edda
 ```
 
-## Three-Day Topic Cards Pipeline
+## Topic Cards (daily routine)
 
 ```mermaid
 flowchart TB
     Trigger(["Cards Trigger<br/>Daily Daemon (when RECAP_CARDS_JOB=enabled)<br/>or Manual POST API"]) --> InFlightGuard{"In-Flight Guard<br/>Another Cards Run Active?"}
 
     InFlightGuard -->|Yes| Conflict409["Return 409 Conflict<br/>(or skip daemon tick)"]
-    InFlightGuard -->|No| Snapshot["Snapshot Stage<br/>Fetch 3-day feeds &amp; 30-day read items from alt-data-hub<br/>Acquire advisory lock in recap_jobs"]
+    InFlightGuard -->|No| Snapshot["Snapshot Stage<br/>Fetch candidate feeds &amp; 30-day read items from alt-data-hub<br/>Acquire advisory lock in recap_jobs"]
 
     Snapshot --> NormalizeNoise["Normalize &amp; Noise Filter<br/>HTML strip, language check, noise rules"]
 
@@ -276,7 +276,7 @@ flowchart TB
 
     GenVerify --> PersistCards["Persist Stage<br/>Atomic write to recap_card_snapshots,<br/>recap_card_candidates, recap_cards, recap_card_job_stats"]
 
-    PersistCards --> ServeAPI["Serve Topic Cards<br/>GET /v1/recaps/3days/cards"]
+    PersistCards --> ServeAPI["Serve Topic Cards<br/>GET /v1/topic-cards"]
 
     style Trigger fill:#e1f5ff
     style Conflict409 fill:#f8d7da
@@ -367,8 +367,15 @@ flowchart LR
 - **Generation & Enrichment**: Calls `news-creator` `/v1/morning-letter/generate`, attaches deterministic through-line and per-bullet `why_reasons` codes (`in_weekly_recap`, `pulse_need_to_know`, `new_unread`)
 - **Persistence**: Saved to `morning_letters` with source references in `morning_letter_sources`
 
-### Three-Day Topic Cards
-- **Triggers**: Scheduled daily daemon (`CardsBatchDaemon` via `spawn_cards_batch_daemon` at `RECAP_CARDS_JOB_UTC_TIME`, active only when `RECAP_CARDS_JOB=enabled` and `RECAP_CARDS_USER_ID` is set) and manual endpoint (`POST /v1/generate/recaps/3days/cards`)
+### Topic Cards (daily routine)
+- **Triggers**: Scheduled daily daemon (`CardsBatchDaemon` via `spawn_cards_batch_daemon` at `RECAP_CARDS_JOB_UTC_TIME`, active only when `RECAP_CARDS_JOB=enabled` and `RECAP_CARDS_USER_ID` is set) and manual endpoint (`POST /v1/generate/topic-cards`)
 - **In-Flight Guard**: Rejects overlapping runs with HTTP 409 Conflict using in-process `Mutex<Option<Uuid>>` and database running job check
-- **Pipeline Stages**: Snapshot (3d candidate feeds + 30d user read items from `alt-data-hub`) → normalize & noise rules → exact dedup → optional genre tagging (`classify_coarse` per text, run concurrently via `SubworkerGenreTagger`) → cached embeddings (`bge-m3` dim 1024) → near-duplicate dedup (cosine threshold) → personal preference vector (recency decay) → story clustering (`recap-subworker` sklearn `AgglomerativeClustering` with `distance_threshold = 1 - threshold`) → provisional ranking → LLM card generation (`news-creator`) & factual verification (`recap-subworker`)
-- **Persistence & Serving**: Atomic output written to `recap_card_snapshots`, `recap_card_candidates`, `recap_cards`, and `recap_card_job_stats`; served via `GET /v1/recaps/3days/cards`
+- **Configuration Knobs**:
+  - `RECAP_CARDS_WINDOW_DAYS`: Candidate feed window span in days (1..=8, default 3).
+  - `RECAP_CARDS_RETRY_DELAY_MINUTES`: Delay between retry attempts and grace duration before catch-up (1..=180, default 15).
+  - `RECAP_CARDS_MAX_ATTEMPTS`: Maximum attempts per scheduled slot (1..=5, default 3).
+  - `RECAP_CARDS_CATCHUP`: Startup catch-up policy (`enabled` or `disabled`, required when `RECAP_CARDS_JOB=enabled`).
+- **Retry Behavior**: If a run fails, the daemon retries up to `RECAP_CARDS_MAX_ATTEMPTS` with `RECAP_CARDS_RETRY_DELAY_MINUTES` delay between attempts. Every attempt generates a new `job_id` and skips if another run is in flight.
+- **Startup Catch-Up**: On startup, if catch-up is enabled, the daemon finds the latest scheduled slot and checks if a completed cards job exists since that slot. If missing, it waits `RECAP_CARDS_RETRY_DELAY_MINUTES` grace time, re-checks whether a completed run appeared, and triggers catch-up if still missing.
+- **Pipeline Stages**: Snapshot (candidate feeds over configured window + 30d user read items from `alt-data-hub`) → normalize & noise rules → exact dedup → optional genre tagging (`classify_coarse` per text, run concurrently via `SubworkerGenreTagger`) → cached embeddings (`bge-m3` dim 1024) → near-duplicate dedup (cosine threshold) → personal preference vector (recency decay) → story clustering (`recap-subworker` sklearn `AgglomerativeClustering` with `distance_threshold = 1 - threshold`) → provisional ranking → LLM card generation (`news-creator`) & factual verification (`recap-subworker`)
+- **Persistence & Serving**: Atomic output written to `recap_card_snapshots`, `recap_card_candidates`, `recap_cards`, and `recap_card_job_stats`; served via `GET /v1/topic-cards` (including `latest_run` metadata)

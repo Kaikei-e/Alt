@@ -7,24 +7,36 @@ import { CONNECT_RPC_PATHS } from "../../fixtures/mockData";
 import { expect, test } from "../../fixtures/pomFixtures";
 import { fulfillConnectError, fulfillJson } from "../../utils/mockHelpers";
 
-test.describe("Mobile 3-Day Topic Cards", () => {
-	test("renders job window, rank, headline, what, why, genre, continues marker, and sources", async ({
+test.describe("Mobile Topic Cards", () => {
+	test("renders job window, freshness line, rank, headline, what, why, genre, continues marker, and sources", async ({
 		page,
 		mobileRecapCardsPage,
 	}) => {
 		const mockData = buildMockRecapCardsResponse();
-		await page.route(CONNECT_RPC_PATHS.getThreeDayRecapCards, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
 			fulfillJson(route, mockData),
 		);
 
 		await mobileRecapCardsPage.goto();
 		await mobileRecapCardsPage.waitForLoaded();
 
-		// Page title
+		// Page title & subtitle
 		await expect(mobileRecapCardsPage.pageTitle).toBeVisible();
+		await expect(page.locator("header").first()).toContainText(
+			"Daily cross-source topic cards",
+		);
+
+		// Freshness line
+		await expect(page.getByTestId("recap-cards-freshness")).toBeVisible();
+		await expect(page.getByTestId("recap-cards-freshness")).toContainText(
+			"Updated",
+		);
 
 		// Job window
 		await expect(mobileRecapCardsPage.jobWindow).toBeVisible();
+		await expect(mobileRecapCardsPage.jobWindow).toContainText(
+			"72-hour window",
+		);
 		if (!mockData.job) {
 			throw new Error("mockData.job is required for this test");
 		}
@@ -77,12 +89,12 @@ test.describe("Mobile 3-Day Topic Cards", () => {
 		await expect(mobileRecapCardsPage.getCardGenre(3)).not.toBeVisible();
 	});
 
-	test("shows empty state when job is null", async ({
+	test("shows empty state when job is null and no active run", async ({
 		page,
 		mobileRecapCardsPage,
 	}) => {
 		const emptyData = buildMockEmptyRecapCardsResponse();
-		await page.route(CONNECT_RPC_PATHS.getThreeDayRecapCards, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
 			fulfillJson(route, emptyData),
 		);
 
@@ -94,8 +106,93 @@ test.describe("Mobile 3-Day Topic Cards", () => {
 			"No topic cards yet",
 		);
 		await expect(mobileRecapCardsPage.emptyState).toContainText(
-			"Three-day topic recap cards will appear here once generated.",
+			"Topic cards will appear here after the first daily run.",
 		);
+		await expect(mobileRecapCardsPage.cards).toHaveCount(0);
+	});
+
+	for (const status of ["running", "pending"] as const) {
+		test(`shows running status notice when latestRun is ${status}`, async ({
+			page,
+			mobileRecapCardsPage,
+		}) => {
+			const mockData = buildMockRecapCardsResponse({
+				latestRun: {
+					jobId: `run-${status}-001`,
+					status,
+					kickedAt: "2026-09-22T19:00:00Z",
+					updatedAt: "2026-09-22T19:01:00Z",
+				},
+			});
+			await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
+				fulfillJson(route, mockData),
+			);
+
+			await mobileRecapCardsPage.goto();
+			await mobileRecapCardsPage.waitForLoaded();
+
+			await expect(
+				page.getByText(/Update in progress \(started /),
+			).toBeVisible();
+			await expect(page.getByRole("status")).toContainText(
+				"Update in progress",
+			);
+			await expect(mobileRecapCardsPage.cards).toHaveCount(3);
+		});
+	}
+
+	test("shows failed status notice with job context when latestRun is failed and job exists", async ({
+		page,
+		mobileRecapCardsPage,
+	}) => {
+		const mockData = buildMockRecapCardsResponse({
+			latestRun: {
+				jobId: "run-failed-001",
+				status: "failed",
+				kickedAt: "2026-09-22T19:00:00Z",
+				updatedAt: "2026-09-22T19:02:00Z",
+			},
+		});
+		await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
+			fulfillJson(route, mockData),
+		);
+
+		await mobileRecapCardsPage.goto();
+		await mobileRecapCardsPage.waitForLoaded();
+
+		await expect(
+			page.getByText(/The latest update failed at .* Showing cards from /),
+		).toBeVisible();
+		await expect(page.getByRole("alert")).toContainText(
+			"The latest update failed",
+		);
+		await expect(mobileRecapCardsPage.cards).toHaveCount(3);
+	});
+
+	test("shows failed status notice without job context when latestRun is failed and job is null", async ({
+		page,
+		mobileRecapCardsPage,
+	}) => {
+		const mockData = buildMockEmptyRecapCardsResponse({
+			latestRun: {
+				jobId: "run-failed-002",
+				status: "failed",
+				kickedAt: "2026-09-22T19:00:00Z",
+				updatedAt: "2026-09-22T19:02:00Z",
+			},
+		});
+		await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
+			fulfillJson(route, mockData),
+		);
+
+		await mobileRecapCardsPage.goto();
+		await mobileRecapCardsPage.waitForLoaded();
+
+		await expect(page.getByText(/The latest update failed at /)).toBeVisible();
+		await expect(page.getByRole("alert")).toContainText(
+			"The latest update failed",
+		);
+		await expect(page.getByText(/Showing cards from/)).not.toBeVisible();
 		await expect(mobileRecapCardsPage.cards).toHaveCount(0);
 	});
 
@@ -104,7 +201,7 @@ test.describe("Mobile 3-Day Topic Cards", () => {
 		mobileRecapCardsPage,
 	}) => {
 		const degradedData = buildMockDegradedRecapCardsResponse();
-		await page.route(CONNECT_RPC_PATHS.getThreeDayRecapCards, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
 			fulfillJson(route, degradedData),
 		);
 
@@ -122,7 +219,7 @@ test.describe("Mobile 3-Day Topic Cards", () => {
 		page,
 		mobileRecapCardsPage,
 	}) => {
-		await page.route(CONNECT_RPC_PATHS.getThreeDayRecapCards, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
 			fulfillConnectError(route, "Internal server error", "internal"),
 		);
 

@@ -32,7 +32,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		}
 
 		const response = await fetch(
-			`${RECAP_WORKER_URL}/v1/generate/recaps/3days/cards`,
+			`${RECAP_WORKER_URL}/v1/generate/topic-cards`,
 			{
 				method: "POST",
 				headers,
@@ -67,7 +67,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		const data = await response.json();
 		return json(data, { status: response.status });
 	} catch (error) {
-		console.error("Error in /api/v1/generate/recaps/3days/cards:", error);
+		console.error("Error in /api/v1/generate/topic-cards:", error);
 		return json({ error: "Internal server error" }, { status: 500 });
 	}
 };

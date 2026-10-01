@@ -81,6 +81,27 @@ pub enum CardsJobConfig {
     },
 }
 
+impl CardsJobConfig {
+    #[must_use]
+    pub const fn is_enabled(&self) -> bool {
+        matches!(self, CardsJobConfig::Enabled { .. })
+    }
+}
+
+/// Configuration for cards startup catch-up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardsCatchupConfig {
+    Enabled,
+    Disabled,
+}
+
+impl CardsCatchupConfig {
+    #[must_use]
+    pub const fn is_enabled(self) -> bool {
+        matches!(self, CardsCatchupConfig::Enabled)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     http_bind: SocketAddr,
@@ -150,6 +171,10 @@ pub struct Config {
     eval_listener: EvalListenerConfig,
     cards_job: CardsJobConfig,
     cards_user_id: Option<uuid::Uuid>,
+    cards_window_days: u32,
+    cards_retry_delay_minutes: u64,
+    cards_max_attempts: u32,
+    cards_catchup: CardsCatchupConfig,
 }
 
 /// Resolved knowledge-loop owner ids sourced from
@@ -380,6 +405,10 @@ impl Config {
         let eval_listener = load_eval_listener(&admin_auth)?;
         let cards_user_id = load_cards_user_id()?;
         let cards_job = load_cards_job(cards_user_id)?;
+        let cards_catchup = load_cards_catchup(cards_job.is_enabled())?;
+        let cards_window_days = parse_cards_window_days()?;
+        let cards_retry_delay_minutes = parse_cards_retry_delay_minutes()?;
+        let cards_max_attempts = parse_cards_max_attempts()?;
 
         Ok(Self::from_components(
             basic,
@@ -405,6 +434,10 @@ impl Config {
             eval_listener,
             cards_job,
             cards_user_id,
+            cards_window_days,
+            cards_retry_delay_minutes,
+            cards_max_attempts,
+            cards_catchup,
         ))
     }
 
@@ -433,6 +466,10 @@ impl Config {
         eval_listener: EvalListenerConfig,
         cards_job: CardsJobConfig,
         cards_user_id: Option<uuid::Uuid>,
+        cards_window_days: u32,
+        cards_retry_delay_minutes: u64,
+        cards_max_attempts: u32,
+        cards_catchup: CardsCatchupConfig,
     ) -> Self {
         Self {
             http_bind: basic.http_bind,
@@ -502,6 +539,10 @@ impl Config {
             eval_listener,
             cards_job,
             cards_user_id,
+            cards_window_days,
+            cards_retry_delay_minutes,
+            cards_max_attempts,
+            cards_catchup,
         }
     }
 
@@ -944,6 +985,36 @@ impl Config {
     #[must_use]
     pub fn cards_user_id(&self) -> Option<uuid::Uuid> {
         self.cards_user_id
+    }
+
+    /// Window in days for topic cards aggregation (1..=8, default 3).
+    #[must_use]
+    pub fn cards_window_days(&self) -> u32 {
+        self.cards_window_days
+    }
+
+    /// Retry delay in minutes for failed topic cards runs (1..=180, default 15).
+    #[must_use]
+    pub fn cards_retry_delay_minutes(&self) -> u64 {
+        self.cards_retry_delay_minutes
+    }
+
+    /// Maximum total attempts for a topic cards run (1..=5, default 3).
+    #[must_use]
+    pub fn cards_max_attempts(&self) -> u32 {
+        self.cards_max_attempts
+    }
+
+    /// Cards startup catch-up policy.
+    #[must_use]
+    pub fn cards_catchup(&self) -> CardsCatchupConfig {
+        self.cards_catchup
+    }
+
+    /// Returns true if cards startup catch-up is enabled.
+    #[must_use]
+    pub fn cards_catchup_enabled(&self) -> bool {
+        self.cards_catchup.is_enabled()
     }
 }
 
@@ -1446,6 +1517,75 @@ fn parse_utc_time(name: &'static str, raw: &str) -> Result<(u32, u32), ConfigErr
     Ok((hour, minute))
 }
 
+fn parse_cards_window_days() -> Result<u32, ConfigError> {
+    let raw = env_var_optional("RECAP_CARDS_WINDOW_DAYS").unwrap_or_else(|| "3".to_string());
+    let val: u32 = raw
+        .parse()
+        .map_err(|e| invalid_config("RECAP_CARDS_WINDOW_DAYS", e))?;
+    if !(1..=8).contains(&val) {
+        return Err(invalid_config(
+            "RECAP_CARDS_WINDOW_DAYS",
+            format!("value must be between 1 and 8, got {val}"),
+        ));
+    }
+    Ok(val)
+}
+
+fn parse_cards_retry_delay_minutes() -> Result<u64, ConfigError> {
+    let raw =
+        env_var_optional("RECAP_CARDS_RETRY_DELAY_MINUTES").unwrap_or_else(|| "15".to_string());
+    let val: u64 = raw
+        .parse()
+        .map_err(|e| invalid_config("RECAP_CARDS_RETRY_DELAY_MINUTES", e))?;
+    if !(1..=180).contains(&val) {
+        return Err(invalid_config(
+            "RECAP_CARDS_RETRY_DELAY_MINUTES",
+            format!("value must be between 1 and 180, got {val}"),
+        ));
+    }
+    Ok(val)
+}
+
+fn parse_cards_max_attempts() -> Result<u32, ConfigError> {
+    let raw = env_var_optional("RECAP_CARDS_MAX_ATTEMPTS").unwrap_or_else(|| "3".to_string());
+    let val: u32 = raw
+        .parse()
+        .map_err(|e| invalid_config("RECAP_CARDS_MAX_ATTEMPTS", e))?;
+    if !(1..=5).contains(&val) {
+        return Err(invalid_config(
+            "RECAP_CARDS_MAX_ATTEMPTS",
+            format!("value must be between 1 and 5, got {val}"),
+        ));
+    }
+    Ok(val)
+}
+
+fn load_cards_catchup(cards_job_enabled: bool) -> Result<CardsCatchupConfig, ConfigError> {
+    if cards_job_enabled {
+        let raw = env_var("RECAP_CARDS_CATCHUP")?;
+        parse_cards_catchup_str("RECAP_CARDS_CATCHUP", &raw)
+    } else {
+        match env_var_optional("RECAP_CARDS_CATCHUP") {
+            Some(raw) => parse_cards_catchup_str("RECAP_CARDS_CATCHUP", &raw),
+            None => Ok(CardsCatchupConfig::Disabled),
+        }
+    }
+}
+
+fn parse_cards_catchup_str(
+    name: &'static str,
+    raw: &str,
+) -> Result<CardsCatchupConfig, ConfigError> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "enabled" => Ok(CardsCatchupConfig::Enabled),
+        "disabled" => Ok(CardsCatchupConfig::Disabled),
+        other => Err(invalid_config(
+            name,
+            format!("must be 'enabled' or 'disabled', got '{other}'"),
+        )),
+    }
+}
+
 /// Resolve the knowledge-loop owner from the two owner env vars.
 ///
 /// Returns `Some` only when BOTH `RECAP_KNOWLEDGE_OWNER_USER_ID` and
@@ -1694,6 +1834,10 @@ mod tests {
             ("RECAP_CARDS_JOB", Some("disabled")),
             ("RECAP_CARDS_JOB_UTC_TIME", None),
             ("RECAP_CARDS_USER_ID", None),
+            ("RECAP_CARDS_WINDOW_DAYS", None),
+            ("RECAP_CARDS_RETRY_DELAY_MINUTES", None),
+            ("RECAP_CARDS_MAX_ATTEMPTS", None),
+            ("RECAP_CARDS_CATCHUP", None),
         ]
     }
 
@@ -2793,12 +2937,14 @@ mod tests {
                 *name != "RECAP_CARDS_JOB"
                     && *name != "RECAP_CARDS_JOB_UTC_TIME"
                     && *name != "RECAP_CARDS_USER_ID"
+                    && *name != "RECAP_CARDS_CATCHUP"
             })
             .collect();
         vars.extend([
             ("RECAP_CARDS_JOB", Some("enabled")),
             ("RECAP_CARDS_JOB_UTC_TIME", None),
             ("RECAP_CARDS_USER_ID", Some(user_id_str)),
+            ("RECAP_CARDS_CATCHUP", Some("enabled")),
         ]);
         temp_env::with_vars(vars, || {
             let config = Config::from_env().expect("config should load with cards_job enabled");
@@ -2826,12 +2972,14 @@ mod tests {
                 *name != "RECAP_CARDS_JOB"
                     && *name != "RECAP_CARDS_JOB_UTC_TIME"
                     && *name != "RECAP_CARDS_USER_ID"
+                    && *name != "RECAP_CARDS_CATCHUP"
             })
             .collect();
         vars.extend([
             ("RECAP_CARDS_JOB", Some("enabled")),
             ("RECAP_CARDS_JOB_UTC_TIME", Some("04:15")),
             ("RECAP_CARDS_USER_ID", Some(user_id_str)),
+            ("RECAP_CARDS_CATCHUP", Some("enabled")),
         ]);
         temp_env::with_vars(vars, || {
             let config = Config::from_env().expect("config should load with cards_job enabled");
@@ -3007,6 +3155,230 @@ mod tests {
                 ),
                 "expected ConfigError::Invalid for NEWS_CREATOR_BASE_URL, got {err:?}"
             );
+        });
+    }
+
+    #[test]
+    fn from_env_cards_defaults() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let vars = required_base();
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config loads");
+            assert_eq!(config.cards_window_days(), 3);
+            assert_eq!(config.cards_retry_delay_minutes(), 15);
+            assert_eq!(config.cards_max_attempts(), 3);
+            assert_eq!(config.cards_catchup(), CardsCatchupConfig::Disabled);
+            assert!(!config.cards_catchup_enabled());
+        });
+    }
+
+    #[test]
+    fn from_env_cards_window_days_ranges() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        for invalid in ["0", "9", "abc"] {
+            let mut vars: Vec<_> = required_base()
+                .into_iter()
+                .filter(|(name, _)| *name != "RECAP_CARDS_WINDOW_DAYS")
+                .collect();
+            vars.push(("RECAP_CARDS_WINDOW_DAYS", Some(invalid)));
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(
+                        res,
+                        Err(ConfigError::Invalid {
+                            name: "RECAP_CARDS_WINDOW_DAYS",
+                            ..
+                        })
+                    ),
+                    "RECAP_CARDS_WINDOW_DAYS={invalid} must fail range validation"
+                );
+            });
+        }
+
+        for valid in [1, 3, 8] {
+            let val_str = valid.to_string();
+            let mut vars: Vec<_> = required_base()
+                .into_iter()
+                .filter(|(name, _)| *name != "RECAP_CARDS_WINDOW_DAYS")
+                .collect();
+            vars.push(("RECAP_CARDS_WINDOW_DAYS", Some(&val_str)));
+            temp_env::with_vars(vars, || {
+                let config = Config::from_env().expect("valid window_days should succeed");
+                assert_eq!(config.cards_window_days(), valid);
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_cards_retry_delay_ranges() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        for invalid in ["0", "181", "abc"] {
+            let mut vars: Vec<_> = required_base()
+                .into_iter()
+                .filter(|(name, _)| *name != "RECAP_CARDS_RETRY_DELAY_MINUTES")
+                .collect();
+            vars.push(("RECAP_CARDS_RETRY_DELAY_MINUTES", Some(invalid)));
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(
+                        res,
+                        Err(ConfigError::Invalid {
+                            name: "RECAP_CARDS_RETRY_DELAY_MINUTES",
+                            ..
+                        })
+                    ),
+                    "RECAP_CARDS_RETRY_DELAY_MINUTES={invalid} must fail range validation"
+                );
+            });
+        }
+
+        for valid in [1, 15, 180] {
+            let val_str = valid.to_string();
+            let mut vars: Vec<_> = required_base()
+                .into_iter()
+                .filter(|(name, _)| *name != "RECAP_CARDS_RETRY_DELAY_MINUTES")
+                .collect();
+            vars.push(("RECAP_CARDS_RETRY_DELAY_MINUTES", Some(&val_str)));
+            temp_env::with_vars(vars, || {
+                let config = Config::from_env().expect("valid retry_delay should succeed");
+                assert_eq!(config.cards_retry_delay_minutes(), valid);
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_cards_max_attempts_ranges() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        for invalid in ["0", "6", "abc"] {
+            let mut vars: Vec<_> = required_base()
+                .into_iter()
+                .filter(|(name, _)| *name != "RECAP_CARDS_MAX_ATTEMPTS")
+                .collect();
+            vars.push(("RECAP_CARDS_MAX_ATTEMPTS", Some(invalid)));
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(
+                        res,
+                        Err(ConfigError::Invalid {
+                            name: "RECAP_CARDS_MAX_ATTEMPTS",
+                            ..
+                        })
+                    ),
+                    "RECAP_CARDS_MAX_ATTEMPTS={invalid} must fail range validation"
+                );
+            });
+        }
+
+        for valid in [1, 3, 5] {
+            let val_str = valid.to_string();
+            let mut vars: Vec<_> = required_base()
+                .into_iter()
+                .filter(|(name, _)| *name != "RECAP_CARDS_MAX_ATTEMPTS")
+                .collect();
+            vars.push(("RECAP_CARDS_MAX_ATTEMPTS", Some(&val_str)));
+            temp_env::with_vars(vars, || {
+                let config = Config::from_env().expect("valid max_attempts should succeed");
+                assert_eq!(config.cards_max_attempts(), valid);
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_fails_when_cards_job_enabled_without_catchup() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let user_id_str = "11111111-1111-1111-1111-111111111111";
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| {
+                *name != "RECAP_CARDS_JOB"
+                    && *name != "RECAP_CARDS_USER_ID"
+                    && *name != "RECAP_CARDS_CATCHUP"
+            })
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("enabled")),
+            ("RECAP_CARDS_USER_ID", Some(user_id_str)),
+            ("RECAP_CARDS_CATCHUP", None),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                matches!(res, Err(ConfigError::Missing("RECAP_CARDS_CATCHUP"))),
+                "RECAP_CARDS_CATCHUP is required when RECAP_CARDS_JOB=enabled"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_cards_catchup_invalid() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_CATCHUP")
+            .collect();
+        vars.push(("RECAP_CARDS_CATCHUP", Some("invalid_catchup")));
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                matches!(
+                    res,
+                    Err(ConfigError::Invalid {
+                        name: "RECAP_CARDS_CATCHUP",
+                        ..
+                    })
+                ),
+                "RECAP_CARDS_CATCHUP must be 'enabled' or 'disabled'"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_succeeds_when_cards_catchup_explicit() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let user_id_str = "11111111-1111-1111-1111-111111111111";
+        for (raw, expected_mode, expected_bool) in [
+            ("enabled", CardsCatchupConfig::Enabled, true),
+            ("disabled", CardsCatchupConfig::Disabled, false),
+        ] {
+            let mut vars: Vec<_> = required_base()
+                .into_iter()
+                .filter(|(name, _)| {
+                    *name != "RECAP_CARDS_JOB"
+                        && *name != "RECAP_CARDS_USER_ID"
+                        && *name != "RECAP_CARDS_CATCHUP"
+                })
+                .collect();
+            vars.extend([
+                ("RECAP_CARDS_JOB", Some("enabled")),
+                ("RECAP_CARDS_USER_ID", Some(user_id_str)),
+                ("RECAP_CARDS_CATCHUP", Some(raw)),
+            ]);
+            temp_env::with_vars(vars, || {
+                let config = Config::from_env().expect("explicit catchup should succeed");
+                assert_eq!(config.cards_catchup(), expected_mode);
+                assert_eq!(config.cards_catchup_enabled(), expected_bool);
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_succeeds_when_cards_job_disabled_without_catchup() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_JOB" && *name != "RECAP_CARDS_CATCHUP")
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_CARDS_CATCHUP", None),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("catchup optional when cards_job disabled");
+            assert_eq!(config.cards_catchup(), CardsCatchupConfig::Disabled);
+            assert!(!config.cards_catchup_enabled());
         });
     }
 }

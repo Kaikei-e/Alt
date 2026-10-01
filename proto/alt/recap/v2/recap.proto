@@ -22,8 +22,8 @@ service RecapService {
   // Faster processing with smaller prompt sizes for daily use
   rpc GetThreeDayRecap(GetThreeDayRecapRequest) returns (GetThreeDayRecapResponse);
 
-  // GetThreeDayRecapCards returns 3-day topic recap cards (authentication required)
-  rpc GetThreeDayRecapCards(GetThreeDayRecapCardsRequest) returns (GetThreeDayRecapCardsResponse);
+  // GetTopicCards returns the latest daily topic cards (authentication required)
+  rpc GetTopicCards(GetTopicCardsRequest) returns (GetTopicCardsResponse);
 
   // GetEveningPulse returns Evening Pulse data (authentication required)
   // Evening Pulse provides 3 key topics for quick daily catch-up
@@ -86,18 +86,32 @@ message GetThreeDayRecapResponse {
   optional ClusterDraft cluster_draft = 7;
 }
 
-// GetThreeDayRecapCardsRequest is the request for getting 3-day topic recap cards
-message GetThreeDayRecapCardsRequest {}
+// GetTopicCardsRequest is the request for getting topic cards
+message GetTopicCardsRequest {}
 
-// GetThreeDayRecapCardsResponse contains the 3-day topic recap cards
-message GetThreeDayRecapCardsResponse {
+// GetTopicCardsResponse contains the latest topic cards
+message GetTopicCardsResponse {
   // Recap cards job metadata (null/omitted when no completed job exists)
   optional RecapCardsJob job = 1;
-  // Selected recap cards for the 3-day window
+  // Selected topic cards for the job's window
   repeated RecapCard cards = 2;
+  // Most recent topic cards run of any status (omitted when none exists)
+  optional RecapCardsRun latest_run = 3;
 }
 
-// RecapCardsJob represents metadata of the 3-day cards generation job
+// RecapCardsRun represents a topic cards generation run
+message RecapCardsRun {
+  // UUID
+  string job_id = 1;
+  // pending | running | completed | failed
+  string status = 2;
+  // RFC3339
+  string kicked_at = 3;
+  // RFC3339
+  string updated_at = 4;
+}
+
+// RecapCardsJob represents metadata of the topic cards generation job
 message RecapCardsJob {
   // Job ID (UUID)
   string job_id = 1;

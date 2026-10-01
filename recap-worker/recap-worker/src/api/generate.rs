@@ -40,7 +40,7 @@ pub(crate) async fn trigger_3days(
     trigger_recap(state, payload, 3, "3days")
 }
 
-pub(crate) async fn trigger_3days_cards(
+pub(crate) async fn trigger_topic_cards(
     State(state): State<AppState>,
     body: axum::body::Bytes,
 ) -> axum::response::Response {
@@ -108,7 +108,7 @@ pub(crate) async fn trigger_3days_cards(
     }
 
     let to = chrono::Utc::now();
-    let from = to - chrono::Duration::days(3);
+    let from = to - chrono::Duration::days(i64::from(state.config().cards_window_days()));
     let runner = state.cards_runner();
     let in_flight_task = Arc::clone(&in_flight);
 
@@ -347,7 +347,7 @@ mod tests {
         .await;
 
         let app = build_router(registry);
-        let request = Request::post("/v1/generate/recaps/3days/cards")
+        let request = Request::post("/v1/generate/topic-cards")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -407,7 +407,7 @@ mod tests {
         let registry = registry.with_recap_dao(Arc::new(mock_dao));
 
         let app = build_router(registry);
-        let request = Request::post("/v1/generate/recaps/3days/cards")
+        let request = Request::post("/v1/generate/topic-cards")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -476,7 +476,7 @@ mod tests {
             .with_cards_runner(fake_runner.clone());
 
         let app = build_router(registry);
-        let request = Request::post("/v1/generate/recaps/3days/cards")
+        let request = Request::post("/v1/generate/topic-cards")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -519,7 +519,86 @@ mod tests {
         assert_eq!(trigger_source, "cards");
         assert!(to >= before);
         let window = to - from;
-        assert_eq!(window.num_days(), 3, "cards job window must be 3 days");
+        assert_eq!(
+            window.num_days(),
+            3,
+            "cards job window must be 3 days by default"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn trigger_cards_uses_configured_window_days() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let user_id = Uuid::new_v4();
+        let user_id_str = user_id.to_string();
+
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_CARDS_USER_ID", Some(user_id_str.as_str())),
+                ("RECAP_CARDS_WINDOW_DAYS", Some("5")),
+                ("RECAP_GENRES", Some("ai,space")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let mock_dao = MockRecapDao::new();
+        mock_dao.set_running_cards_job(None);
+        let fake_runner = Arc::new(FakeCardsJobRunner::new());
+
+        let registry = registry
+            .with_recap_dao(Arc::new(mock_dao))
+            .with_cards_runner(fake_runner.clone());
+
+        let app = build_router(registry);
+        let request = Request::post("/v1/generate/topic-cards")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .expect("request builds");
+
+        let response = app.oneshot(request).await.expect("request succeeds");
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            fake_runner.notify_on_start.notified(),
+        )
+        .await
+        .expect("fake runner should be notified within timeout");
+
+        let invocations = fake_runner.invocations();
+        assert_eq!(invocations.len(), 1);
+        let (_, from, to, _) = invocations[0];
+        let window = to - from;
+        assert_eq!(
+            window.num_days(),
+            5,
+            "cards job window must be 5 days as configured"
+        );
     }
 
     #[tokio::test]
@@ -573,7 +652,7 @@ mod tests {
         let app = build_router(registry);
 
         // First call starts the run, which is held in-flight by the fake runner
-        let req1 = Request::post("/v1/generate/recaps/3days/cards")
+        let req1 = Request::post("/v1/generate/topic-cards")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -595,7 +674,7 @@ mod tests {
         .expect("first run started");
 
         // Second call while first is still pending must receive 409 naming the in-flight job
-        let req2 = Request::post("/v1/generate/recaps/3days/cards")
+        let req2 = Request::post("/v1/generate/topic-cards")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -625,7 +704,7 @@ mod tests {
         .expect("first run finished");
 
         // Third call after completion must return 202 again
-        let req3 = Request::post("/v1/generate/recaps/3days/cards")
+        let req3 = Request::post("/v1/generate/topic-cards")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");

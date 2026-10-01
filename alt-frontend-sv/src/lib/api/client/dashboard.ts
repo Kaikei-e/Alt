@@ -200,10 +200,10 @@ export async function triggerRecapJob(
 	return res.json();
 }
 
-export async function triggerRecapCardsJob(
+export async function triggerTopicCardsJob(
 	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 ): Promise<TriggerJobResponse> {
-	const endpoint = `${base}/api/v1/generate/recaps/3days/cards`;
+	const endpoint = `${base}/api/v1/generate/topic-cards`;
 	const csrfToken = await getClientCSRFToken();
 	const res = await fetch(endpoint, {
 		method: "POST",
