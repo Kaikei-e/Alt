@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends
 
 from ...domain.models import EvidenceRequest, EvidenceResponse
@@ -18,4 +20,4 @@ async def cluster_evidence(
 ) -> EvidenceResponse:
     if runner is not None:
         return await runner.run(payload)
-    return pipeline.run(payload)
+    return await asyncio.to_thread(pipeline.run, payload)

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import concurrent.futures
+import threading
+import time
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import numpy as np
@@ -15,6 +18,58 @@ from ..domain.models import HDBSCANSettings
 from ..infra.config import Settings
 
 _LOGGER = structlog.get_logger(__name__)
+
+_NATIVE_CLUSTERING_LOCK = threading.Lock()
+_ABANDONED_HDBSCAN_FUTURE: concurrent.futures.Future | None = None
+_ABANDONED_HDBSCAN_LOCK = threading.Lock()
+
+
+def _set_abandoned_hdbscan_future(future: concurrent.futures.Future) -> None:
+    with _ABANDONED_HDBSCAN_LOCK:
+        global _ABANDONED_HDBSCAN_FUTURE
+        _ABANDONED_HDBSCAN_FUTURE = future
+
+    def _on_done(fut: concurrent.futures.Future) -> None:
+        with _ABANDONED_HDBSCAN_LOCK:
+            global _ABANDONED_HDBSCAN_FUTURE
+            if _ABANDONED_HDBSCAN_FUTURE is fut:
+                _ABANDONED_HDBSCAN_FUTURE = None
+
+    future.add_done_callback(_on_done)
+
+
+def _is_abandoned_hdbscan_running() -> bool:
+    with _ABANDONED_HDBSCAN_LOCK:
+        global _ABANDONED_HDBSCAN_FUTURE
+        if _ABANDONED_HDBSCAN_FUTURE is not None:
+            if not _ABANDONED_HDBSCAN_FUTURE.done():
+                return True
+            _ABANDONED_HDBSCAN_FUTURE = None
+    return False
+
+
+@contextmanager
+def _guard_native_clustering():
+    # WHY: Held by the waiting thread across the native section so timeouts release
+    # cleanly and abandoned background threads cannot acquire or deadlock the lock.
+    wait_start = time.monotonic()
+    if not _NATIVE_CLUSTERING_LOCK.acquire(blocking=False):
+        _LOGGER.debug(
+            "clustering_lock.waiting",
+            message="Waiting for native clustering lock",
+        )
+        _NATIVE_CLUSTERING_LOCK.acquire()
+        wait_duration = time.monotonic() - wait_start
+        if wait_duration > 1.0:
+            _LOGGER.info(
+                "clustering_lock.acquired",
+                wait_duration_seconds=wait_duration,
+                message="Native clustering lock acquired after wait exceeding 1 s",
+            )
+    try:
+        yield
+    finally:
+        _NATIVE_CLUSTERING_LOCK.release()
 
 
 def compute_knn_faiss(embeddings: np.ndarray, n_neighbors: int) -> tuple[np.ndarray, np.ndarray]:
@@ -83,7 +138,9 @@ class Clusterer:
     def _run_with_timeout(
         self,
         func: Callable[[], tuple[np.ndarray, np.ndarray]],
-        timeout_seconds: int,
+        timeout_seconds: float | int,
+        *,
+        track_abandoned: bool = False,
     ) -> tuple[np.ndarray, np.ndarray] | None:
         """
         Run a function with a timeout.
@@ -91,6 +148,7 @@ class Clusterer:
         Args:
             func: Callable returning (labels, probabilities)
             timeout_seconds: Timeout in seconds
+            track_abandoned: Whether to track the future if the function times out
 
         Returns:
             (labels, probabilities) or None if timeout occurred
@@ -115,6 +173,8 @@ class Clusterer:
                 timeout_seconds=timeout_seconds,
                 message="HDBSCAN clustering timed out, will use MiniBatchKMeans fallback",
             )
+            if track_abandoned:
+                _set_abandoned_hdbscan_future(future)
             executor.shutdown(wait=False, cancel_futures=True)
             return None
         executor.shutdown(wait=False)
@@ -223,180 +283,192 @@ class Clusterer:
                 empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0), 0.0
             )
 
-        # Force UMAP if enabled, otherwise use threshold-based auto-enable
-        use_umap = bool(
-            self.settings.enable_umap_force
-            or (
-                self.settings.enable_umap_auto
-                and embeddings.shape[0] >= self.settings.umap_threshold_sentences
-            )
-        )
-        reduced = embeddings
-        if use_umap:
-            from umap import UMAP  # lazy import
-
-            n_data_points = embeddings.shape[0]
-            requested_n_neighbors = umap_n_neighbors or self.settings.umap_n_neighbors
-            # Safety margin: limit n_neighbors to at most N/3 for stability
-            safety_limit = max(2, n_data_points // 3)
-            adjusted_n_neighbors = max(2, min(requested_n_neighbors, safety_limit))
-
-            # If we have very few data points, skip UMAP to avoid issues
-            if n_data_points < 3:
-                use_umap = False
-            else:
-                # Use FAISS for k-NN computation instead of pynndescent
-                # This avoids the integer overflow bug in pynndescent 0.6.0
-                try:
-                    knn_indices, knn_dists = compute_knn_faiss(embeddings, adjusted_n_neighbors)
-
-                    reducer = UMAP(
-                        n_components=umap_n_components or self.settings.umap_n_components,
-                        n_neighbors=adjusted_n_neighbors,
-                        metric="cosine",
-                        min_dist=umap_min_dist or self.settings.umap_min_dist,
-                        random_state=42,  # reproducible
-                        n_jobs=1,
-                        precomputed_knn=(knn_indices, knn_dists),
-                    )
-                    reduced = reducer.fit_transform(embeddings)
-                except Exception as e:
-                    # Fallback: skip UMAP if FAISS fails
-                    _LOGGER.warning(
-                        "faiss_knn_failed_fallback_no_umap",
-                        error=str(e),
-                        n_samples=n_data_points,
-                    )
-                    use_umap = False
-
-        # HDBSCAN (using sklearn.cluster.HDBSCAN) with timeout and fallback
-        used_fallback = False
-        effective_mcs = (
-            min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size
-        )
-        effective_ms = min_samples if min_samples > 0 else self.settings.hdbscan_min_samples
-
-        def run_hdbscan() -> tuple[np.ndarray, np.ndarray]:
-            clusterer = HDBSCAN(
-                min_cluster_size=effective_mcs,
-                min_samples=effective_ms,
-                metric="euclidean",
-                cluster_selection_epsilon=hdbscan_cluster_selection_epsilon
-                if hdbscan_cluster_selection_epsilon is not None
-                else 0.0,
-                allow_single_cluster=hdbscan_allow_single_cluster
-                if hdbscan_allow_single_cluster is not None
-                else False,
-                cluster_selection_method=hdbscan_cluster_selection_method
-                or self.settings.hdbscan_cluster_selection_method,
-            )
-            clusterer.fit(reduced)
-            return clusterer.labels_, clusterer.probabilities_
-
-        # Run HDBSCAN with timeout
-        timeout_seconds = self.settings.hdbscan_timeout_seconds
-        result = self._run_with_timeout(run_hdbscan, timeout_seconds)
-
-        if result is not None:
-            labels, probs = result
-        else:
-            # Fallback to MiniBatchKMeans
-            _LOGGER.warning(
-                "hdbscan_fallback_triggered",
-                timeout_seconds=timeout_seconds,
-                n_samples=reduced.shape[0],
-                min_cluster_size=effective_mcs,
-            )
-            labels, probs = self._fallback_minibatch_kmeans(reduced)
-            used_fallback = True
-
-        if (labels >= 0).sum() == 0:
-            labels = np.arange(embeddings.shape[0], dtype=int)
-            probs = np.ones_like(labels, dtype=float)
-            use_umap = False
-
-        # Noise reclustering: attempt to cluster noise points (-1) using KMeans
-        if self.settings.noise_recluster_enabled:
-            noise_mask = labels == -1
-            n_noise = noise_mask.sum()
-
-            if n_noise >= self.settings.noise_recluster_min_points:
-                noise_embeddings = reduced[noise_mask]
-
-                # Determine optimal number of clusters for noise points
-                # Use silhouette score to select k
-                max_k = min(
-                    self.settings.noise_recluster_max_clusters, n_noise // max(2, min_cluster_size)
+        with _guard_native_clustering():
+            # Force UMAP if enabled, otherwise use threshold-based auto-enable
+            use_umap = bool(
+                self.settings.enable_umap_force
+                or (
+                    self.settings.enable_umap_auto
+                    and embeddings.shape[0] >= self.settings.umap_threshold_sentences
                 )
+            )
+            reduced = embeddings
+            if use_umap:
+                from umap import UMAP  # lazy import
 
-                if max_k >= 2:
-                    best_k = 2
-                    best_sil = -1.0
+                n_data_points = embeddings.shape[0]
+                requested_n_neighbors = umap_n_neighbors or self.settings.umap_n_neighbors
+                # Safety margin: limit n_neighbors to at most N/3 for stability
+                safety_limit = max(2, n_data_points // 3)
+                adjusted_n_neighbors = max(2, min(requested_n_neighbors, safety_limit))
 
-                    for k in range(2, max_k + 1):
-                        try:
-                            from sklearn.cluster import KMeans
+                # If we have very few data points, skip UMAP to avoid issues
+                if n_data_points < 3:
+                    use_umap = False
+                else:
+                    # Use FAISS for k-NN computation instead of pynndescent
+                    # This avoids the integer overflow bug in pynndescent 0.6.0
+                    try:
+                        knn_indices, knn_dists = compute_knn_faiss(embeddings, adjusted_n_neighbors)
 
-                            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-                            kmeans_labels = kmeans.fit_predict(noise_embeddings)
+                        reducer = UMAP(
+                            n_components=umap_n_components or self.settings.umap_n_components,
+                            n_neighbors=adjusted_n_neighbors,
+                            metric="cosine",
+                            min_dist=umap_min_dist or self.settings.umap_min_dist,
+                            random_state=42,  # reproducible
+                            n_jobs=1,
+                            precomputed_knn=(knn_indices, knn_dists),
+                        )
+                        reduced = reducer.fit_transform(embeddings)
+                    except Exception as e:
+                        # Fallback: skip UMAP if FAISS fails
+                        _LOGGER.warning(
+                            "faiss_knn_failed_fallback_no_umap",
+                            error=str(e),
+                            n_samples=n_data_points,
+                        )
+                        use_umap = False
 
-                            # Calculate silhouette for this k
-                            if len(set(kmeans_labels)) >= 2 and len(kmeans_labels) >= 2:
-                                sil = silhouette_score(noise_embeddings, kmeans_labels)
-                                if sil > best_sil:
-                                    best_sil = sil
-                                    best_k = k
-                        except (ValueError, RuntimeError) as exc:
-                            _LOGGER.debug(
-                                "noise_recluster.kmeans_k_search_failed",
-                                k=k,
-                                error=str(exc),
-                            )
-                            continue
+            # HDBSCAN (using sklearn.cluster.HDBSCAN) with timeout and fallback
+            used_fallback = False
+            effective_mcs = (
+                min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size
+            )
+            effective_ms = min_samples if min_samples > 0 else self.settings.hdbscan_min_samples
 
-                    # Apply best k clustering
-                    if best_k >= 2:
-                        try:
-                            from sklearn.cluster import KMeans
+            def run_hdbscan() -> tuple[np.ndarray, np.ndarray]:
+                clusterer = HDBSCAN(
+                    min_cluster_size=effective_mcs,
+                    min_samples=effective_ms,
+                    metric="euclidean",
+                    cluster_selection_epsilon=hdbscan_cluster_selection_epsilon
+                    if hdbscan_cluster_selection_epsilon is not None
+                    else 0.0,
+                    allow_single_cluster=hdbscan_allow_single_cluster
+                    if hdbscan_allow_single_cluster is not None
+                    else False,
+                    cluster_selection_method=hdbscan_cluster_selection_method
+                    or self.settings.hdbscan_cluster_selection_method,
+                )
+                clusterer.fit(reduced)
+                return clusterer.labels_, clusterer.probabilities_
 
-                            kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
-                            noise_labels = kmeans.fit_predict(noise_embeddings)
+            # Run HDBSCAN with timeout or fallback if abandoned HDBSCAN still running
+            if _is_abandoned_hdbscan_running():
+                _LOGGER.warning(
+                    "abandoned_hdbscan_still_running",
+                    reason="abandoned_hdbscan_still_running",
+                    n_samples=reduced.shape[0],
+                    min_cluster_size=effective_mcs,
+                )
+                labels, probs = self._fallback_minibatch_kmeans(reduced)
+                used_fallback = True
+            else:
+                timeout_seconds = self.settings.hdbscan_timeout_seconds
+                result = self._run_with_timeout(run_hdbscan, timeout_seconds, track_abandoned=True)
 
-                            # Assign new cluster IDs (starting from max existing label + 1)
-                            max_existing_label = labels.max() if labels.size > 0 else -1
-                            base_id = max_existing_label + 1
-                            new_noise_labels = base_id + noise_labels
+                if result is not None:
+                    labels, probs = result
+                else:
+                    # Fallback to MiniBatchKMeans
+                    _LOGGER.warning(
+                        "hdbscan_fallback_triggered",
+                        timeout_seconds=timeout_seconds,
+                        n_samples=reduced.shape[0],
+                        min_cluster_size=effective_mcs,
+                    )
+                    labels, probs = self._fallback_minibatch_kmeans(reduced)
+                    used_fallback = True
 
-                            # Update labels and probabilities
-                            labels[noise_mask] = new_noise_labels
-                            probs[noise_mask] = 1.0  # Hard clustering
-                        except (ValueError, RuntimeError) as exc:
-                            # If reclustering fails, keep noise as -1
-                            _LOGGER.warning(
-                                "noise_recluster.kmeans_apply_failed",
-                                best_k=best_k,
-                                error=str(exc),
-                            )
+            if (labels >= 0).sum() == 0:
+                labels = np.arange(embeddings.shape[0], dtype=int)
+                probs = np.ones_like(labels, dtype=float)
+                use_umap = False
 
-        # Calculate DBCV score using the reduced space (or embeddings if UMAP not used)
-        # This ensures consistency with the space HDBSCAN actually operated on
-        dbcv = self._calculate_dbcv(reduced, labels)
+            # Noise reclustering: attempt to cluster noise points (-1) using KMeans
+            if self.settings.noise_recluster_enabled:
+                noise_mask = labels == -1
+                n_noise = noise_mask.sum()
 
-        # Recalculate silhouette after potential noise reclustering
-        sil_score = self._calculate_silhouette(reduced, labels)
+                if n_noise >= self.settings.noise_recluster_min_points:
+                    noise_embeddings = reduced[noise_mask]
 
-        return ClusterResult(
-            labels=labels,
-            probabilities=probs,
-            used_umap=use_umap,
-            params=HDBSCANSettings(
-                min_cluster_size=min_cluster_size,
-                min_samples=min_samples,
-            ),
-            dbcv_score=dbcv,
-            silhouette_score=sil_score,
-            used_fallback=used_fallback,
-        )
+                    # Determine optimal number of clusters for noise points
+                    # Use silhouette score to select k
+                    max_k = min(
+                        self.settings.noise_recluster_max_clusters,
+                        n_noise // max(2, min_cluster_size),
+                    )
+
+                    if max_k >= 2:
+                        best_k = 2
+                        best_sil = -1.0
+
+                        for k in range(2, max_k + 1):
+                            try:
+                                from sklearn.cluster import KMeans
+
+                                kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+                                kmeans_labels = kmeans.fit_predict(noise_embeddings)
+
+                                # Calculate silhouette for this k
+                                if len(set(kmeans_labels)) >= 2 and len(kmeans_labels) >= 2:
+                                    sil = silhouette_score(noise_embeddings, kmeans_labels)
+                                    if sil > best_sil:
+                                        best_sil = sil
+                                        best_k = k
+                            except (ValueError, RuntimeError) as exc:
+                                _LOGGER.debug(
+                                    "noise_recluster.kmeans_k_search_failed",
+                                    k=k,
+                                    error=str(exc),
+                                )
+                                continue
+
+                        # Apply best k clustering
+                        if best_k >= 2:
+                            try:
+                                from sklearn.cluster import KMeans
+
+                                kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+                                noise_labels = kmeans.fit_predict(noise_embeddings)
+
+                                # Assign new cluster IDs (starting from max existing label + 1)
+                                max_existing_label = labels.max() if labels.size > 0 else -1
+                                base_id = max_existing_label + 1
+                                new_noise_labels = base_id + noise_labels
+
+                                # Update labels and probabilities
+                                labels[noise_mask] = new_noise_labels
+                                probs[noise_mask] = 1.0  # Hard clustering
+                            except (ValueError, RuntimeError) as exc:
+                                # If reclustering fails, keep noise as -1
+                                _LOGGER.warning(
+                                    "noise_recluster.kmeans_apply_failed",
+                                    best_k=best_k,
+                                    error=str(exc),
+                                )
+
+            # Calculate DBCV score using the reduced space (or embeddings if UMAP not used)
+            # This ensures consistency with the space HDBSCAN actually operated on
+            dbcv = self._calculate_dbcv(reduced, labels)
+
+            # Recalculate silhouette after potential noise reclustering
+            sil_score = self._calculate_silhouette(reduced, labels)
+
+            return ClusterResult(
+                labels=labels,
+                probabilities=probs,
+                used_umap=use_umap,
+                params=HDBSCANSettings(
+                    min_cluster_size=min_cluster_size,
+                    min_samples=min_samples,
+                ),
+                dbcv_score=dbcv,
+                silhouette_score=sil_score,
+                used_fallback=used_fallback,
+            )
 
     def _calculate_dbcv(self, X: np.ndarray, labels: np.ndarray) -> float | None:
         """
