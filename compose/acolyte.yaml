@@ -113,9 +113,10 @@ services:
     environment:
       - ACOLYTE_DB_DSN=postgresql://${ACOLYTE_DB_USER:-acolyte_user}:placeholder@acolyte-db:5432/${ACOLYTE_DB_NAME:-acolyte}
       - ACOLYTE_DB_PASSWORD_FILE=/run/secrets/acolyte_db_password
-      # LLM inference: defaults to the local news-creator proxy (HybridPrioritySemaphore);
-      # override ACOLYTE_LLM_URL in .env only to route elsewhere
-      - NEWS_CREATOR_URL=${ACOLYTE_LLM_URL:-http://news-creator:11434}
+      # LLM inference: defaults to news-creator mTLS endpoint (:9443). Acolyte
+      # holds a valid leaf cert (CN=acolyte-orchestrator) and is in news-creator's
+      # MTLS_ALLOWED_PEERS. Override ACOLYTE_LLM_URL in .env for dev/plaintext.
+      - NEWS_CREATOR_URL=${ACOLYTE_LLM_URL:-https://news-creator:9443}
       - LLM_PROVIDER=${ACOLYTE_LLM_PROVIDER:-ollama}
       - VLLM_API_KEY=${ACOLYTE_VLLM_API_KEY:-}
       - SEARCH_INDEXER_URL=${ACOLYTE_SEARCH_URL:-http://search-indexer:9300}

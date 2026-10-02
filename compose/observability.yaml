@@ -160,10 +160,18 @@ services:
         max-file: "3"
 
   # cAdvisor for container resource metrics (CPU, memory, disk, network)
-  # Required for Saturation monitoring in Golden Signals dashboard
+  # Required for Saturation monitoring in Golden Signals dashboard.
+  # Security Hardening (D-H01):
+  # - Host root filesystem mount (/:/rootfs:ro) removed to eliminate indirect /rootfs/run/docker.sock bypass;
+  #   container rootfs uses its own filesystem (minimal hostinfo loss documented).
+  # - Explicit non-root UID/GID (65534:65534 / nobody:nogroup) with no Docker GID supplementary group.
+  # - Dropped ALL Linux capabilities (cap_drop: [ALL]); removed SYSLOG grant and /dev/kmsg device.
+  # - Docker socket access strictly mediated via read-only GET proxy (tcp://docker-socket-proxy-ro:2375).
+  # Runtime UID/DAC/collector behavior pending container recreation (no actual deploy in test).
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.51.0
     restart: unless-stopped
+    user: "65534:65534"
     mem_limit: 384m
     environment:
       - DOCKER_API_VERSION=1.44
@@ -172,23 +180,16 @@ services:
         condition: service_healthy
     command:
       - '--docker=tcp://docker-socket-proxy-ro:2375'
+    cap_drop:
+      - ALL
     volumes:
-      # Host root filesystem inspection and root cgroup hierarchy resolution
-      - /:/rootfs:ro
       # Host cgroup v1/v2 controller hierarchy for CPU, memory, and I/O metrics
       - /sys:/sys:ro
       # Docker container storage driver layer metadata and disk usage
       - /var/lib/docker/:/var/lib/docker:ro
       # Physical block device identification for disk I/O metrics mapping
       - /dev/disk/:/dev/disk:ro
-    devices:
-      # Kernel log buffer device for container OOM event tracking without privileged mode
-      - /dev/kmsg:/dev/kmsg
-    cap_add:
-      # Required with /dev/kmsg to read kernel log buffer on hosts with kernel.dmesg_restrict=1.
-      # Per-container network counters may degrade without CAP_NET_ADMIN and must be checked post-deploy on /metrics.
-      - SYSLOG
-    # Host FS mounts and loopback metrics publishing (same pattern as prometheus / pact-broker).
+    # Host loopback metrics publishing (same pattern as prometheus / pact-broker).
     ports:
       - "127.0.0.1:8181:8080"
     networks:

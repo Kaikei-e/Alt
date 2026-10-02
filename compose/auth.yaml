@@ -60,7 +60,7 @@ services:
 
   kratos-migrate:
     image: oryd/kratos:v1.3.0
-    command: ["kratos", "migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
+    command: ["kratos", "migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos_template.yml"]
     environment:
       - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
       - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
@@ -71,6 +71,8 @@ services:
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
     secrets:
       - kratos_db_password
+      - kratos_cookie_secret
+      - kratos_cipher_secret
     volumes:
       - ../kratos:/etc/config/kratos:ro
     entrypoint: ["/etc/config/kratos/entrypoint.sh"]
@@ -84,7 +86,7 @@ services:
   kratos:
     image: oryd/kratos:v1.3.0
     mem_limit: 128m
-    command: ["kratos", "serve", "all", "--config", "/etc/config/kratos/kratos.yml"]
+    command: ["kratos", "serve", "all", "--config", "/etc/config/kratos/kratos_template.yml"]
     ports:
       # Browsers reach Kratos through plecto's /ory route (KRATOS_PUBLIC_URL),
       # never this port directly, so publishing it on every NIC only adds a
@@ -111,6 +113,7 @@ services:
       - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:4173/sv/settings}
       - KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:4173/sv/recovery}
       - KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-http://localhost:4173/sv/verification}
+      - KRATOS_COOKIE_DOMAIN=${KRATOS_COOKIE_DOMAIN:-}
       - KRATOS_COOKIE_SECRET_FILE=/run/secrets/kratos_cookie_secret
       - KRATOS_CIPHER_SECRET_FILE=/run/secrets/kratos_cipher_secret
       - SERVE_ADMIN_HOST=${KRATOS_ADMIN_IP:-172.16.250.2}
@@ -162,13 +165,17 @@ services:
       # so it reaches access logs and OTel span attributes — which is why the
       # HS256 signing key above no longer doubles as it.
       - INTERNAL_AUTH_SECRET_FILE=/run/secrets/auth_hub_internal_secret
+      - FRONTEND_TLS_LISTEN=true
+      - FRONTEND_TLS_PORT=8443
+      - FRONTEND_TLS_CERT_FILE=/certs/svc-cert.pem
+      - FRONTEND_TLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_LISTEN=${MTLS_LISTEN:-true}
       - MTLS_PORT=9443
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_CLIENT_AUTH=${AUTH_HUB_MTLS_CLIENT_AUTH:-require_and_verify}
-      - MTLS_ALLOWED_PEERS=${AUTH_HUB_MTLS_ALLOWED_PEERS:-alt-backend,alt-butterfly-facade,alt-data-hub}
+      - MTLS_ALLOWED_PEERS=${AUTH_HUB_MTLS_ALLOWED_PEERS:-alt-backend,alt-data-hub,search-indexer,knowledge-sovereign}
       - PKI_ENROLLMENT=enabled
       - CERT_SUBJECT=auth-hub
       - CERT_SANS=auth-hub,localhost
@@ -183,11 +190,13 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=auth-hub
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     secrets:
       - csrf_secret
       - backend_token_secret
       - auth_hub_internal_secret
       - pki-agent-auth-hub-jwk
+      - rask_ingest_token
     volumes:
       - auth_hub_certs:/certs
       - pki_trust_bundle:/trust:ro

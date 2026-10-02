@@ -32,17 +32,25 @@ services:
     # so this must state the user explicitly.
     user: redis
     entrypoint:
-      - /bin/sh
-      - -c
-      - exec redis-server --requirepass "$$(cat /run/secrets/redis_password)" --maxmemory 256mb --maxmemory-policy allkeys-lru
+      - /entrypoint.sh
+      - cache
+    command:
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
     volumes:
       - redis-cache-data:/data
+    configs:
+      - source: redis_entrypoint
+        target: /entrypoint.sh
+        mode: 0555
     networks:
       - alt-network
     secrets:
-      - redis_password
+      - redis_cache_password
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_cache_password)\" redis-cli --user cache ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -135,10 +143,8 @@ services:
     volumes:
       - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:11435:11435"
-    networks:
-      - alt-network
+    # No host-port publish: news-creator-backend is a private upstream on
+    # generation-raw-network only. generation-proxy is the sole alt-network bridge.
     # Wave 1b / P2-13: chown the named volume before the non-root
     # ollama-user (uid 2000) starts. alpine runs as root; idempotent.
     # Shares the service mounts, so rolling `up --no-deps --force-recreate`
@@ -163,6 +169,30 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    networks:
+      - generation-raw-network
+
+  generation-proxy:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-inference-proxy:${IMAGE_TAG:-main}
+    build:
+      context: ../docker/inference-proxy
+      dockerfile: Dockerfile
+    environment:
+      - UPSTREAM_URL=http://news-creator-backend:11435
+      - LISTEN_ADDR=:11436
+      - INFERENCE_TOKEN_FILE=/run/secrets/inference_service_token
+    secrets:
+      - inference_service_token
+    networks:
+      - alt-network
+      - generation-raw-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/inference-proxy", "healthcheck", "-port", "11436"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    command: ["--target", "http://news-creator-backend:11435", "--port", "11436", "--token-file", "/run/secrets/inference_service_token"]
 
   # FastAPI application (lightweight, separated from Ollama)
   # Startup warms BAAI/bge-reranker-v2-m3 (~568M) on CPU; observed peak ~2.0GiB during
@@ -178,7 +208,8 @@ services:
       context: ../news-creator
       dockerfile: Dockerfile
     environment:
-      - LLM_SERVICE_URL=http://news-creator-backend:11435
+      - LLM_SERVICE_URL=http://generation-proxy:11436
+      - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
       - LLM_MODEL=gemma4-e4b-12k
       - MODEL_ROUTING_ENABLED=false
       - LLM_KEEP_ALIVE_8K=24h
@@ -200,8 +231,8 @@ services:
       - HIERARCHICAL_CHUNK_MAX_CHARS=${HIERARCHICAL_CHUNK_MAX_CHARS:-6000}
       # Cache settings
       - CACHE_ENABLED=${CACHE_ENABLED:-true}
-      - CACHE_REDIS_URL=redis://redis-cache:6379/0
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      - CACHE_REDIS_URL=redis://cache@redis-cache:6379/0
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_cache_password
       - CACHE_TTL_SECONDS=${CACHE_TTL_SECONDS:-86400}
       # Hybrid RT/BE scheduling for TTFT optimization
       # RT slot reserved for streaming requests, BE slot for batch processing
@@ -227,7 +258,9 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      - MTLS_ALLOWED_PEERS=${NEWS_CREATOR_MTLS_ALLOWED_PEERS:-recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator}
+      # Python requests library uses REQUESTS_CA_BUNDLE for outbound TLS verification
+      - REQUESTS_CA_BUNDLE=/trust/ca-bundle.pem
+      - MTLS_ALLOWED_PEERS=${NEWS_CREATOR_MTLS_ALLOWED_PEERS:-recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator,pre-processor}
       # Plaintext-side switch only; the :9443 allowlist above is enforced
       # unconditionally regardless of this flag.
       - PEER_IDENTITY_STRICT=${NEWS_CREATOR_PEER_IDENTITY_STRICT:-false}
@@ -246,6 +279,7 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=news-creator
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     restart: unless-stopped
     ports:
       - "127.0.0.1:11434:11434"
@@ -253,7 +287,9 @@ services:
       - alt-network
     secrets:
       - pki-agent-news-creator-jwk
-      - redis_password
+      - redis_cache_password
+      - inference_service_token
+      - rask_ingest_token
     volumes:
       - news_creator_certs:/certs
       - pki_trust_bundle:/trust:ro
@@ -343,18 +379,25 @@ services:
       - PP_DB_PASSWORD_FILE=/run/secrets/pp_db_password
       - LOG_LEVEL=info
       - SERVICE_NAME=pre-processor
-      - REDIS_STREAMS_URL=redis://redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      - REDIS_STREAMS_URL=redis://streams@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=pre-processor-group
       - CONSUMER_NAME=pre-processor-1
+      - NEWS_CREATOR_HOST=https://news-creator:9443
+      - NEWS_CREATOR_TIMEOUT=600
+      - NEWS_CREATOR_CLIENT_CERT_FILE=/certs/svc-cert.pem
+      - NEWS_CREATOR_CLIENT_KEY_FILE=/certs/svc-key.pem
+      - NEWS_CREATOR_CA_FILE=/trust/ca-bundle.pem
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=pre-processor
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     secrets:
       - pp_db_password
       - pki-agent-pre-processor-jwk
-      - redis_password
+      - redis_streams_password
+      - rask_ingest_token
     restart: always
     ports:
       # East-west surfaces. Loopback bind so the only cross-host entrance is
@@ -386,3 +429,11 @@ services:
 
 volumes:
   redis-cache-data:
+
+networks:
+  # Private network shared only between news-creator-backend (Ollama) and
+  # generation-proxy (the token-auth wrapper). news-creator-backend is NOT on
+  # alt-network: generation-proxy is the sole bridge so only token-bearing
+  # callers can reach the raw Ollama endpoint.
+  generation-raw-network:
+    internal: true

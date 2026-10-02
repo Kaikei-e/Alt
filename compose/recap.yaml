@@ -166,6 +166,7 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-worker
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
       # Persist-stage emit of recap.topic_snapshotted.v1 into
       # knowledge-sovereign so Surface Planner v2 can credit Loop entries
       # with topic_overlap_count / recap_cluster_momentum signals.
@@ -178,7 +179,7 @@ services:
       - RECAP_KNOWLEDGE_SOVEREIGN_URL=${RECAP_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
       - RECAP_KNOWLEDGE_OWNER_USER_ID=${RECAP_KNOWLEDGE_OWNER_USER_ID:-}
       - RECAP_KNOWLEDGE_OWNER_TENANT_ID=${RECAP_KNOWLEDGE_OWNER_TENANT_ID:-}
-      - RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE=/run/secrets/sovereign_event_token
+      - RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE=/run/secrets/sovereign_recap_token
       - RECAP_KNOWLEDGE_SOVEREIGN_AUTH=${RECAP_KNOWLEDGE_SOVEREIGN_AUTH:-}
       # Bearer guard for /admin/jobs/retry, /admin/genre-learning and this
       # process's own calls into recap-subworker's /admin/* + /v1/runs — the
@@ -197,9 +198,10 @@ services:
     secrets:
       - recap_db_password
       - hugging_face_token
-      - sovereign_event_token
+      - sovereign_recap_token
       - pki-agent-recap-worker-jwk
       - recap_admin_token
+      - rask_ingest_token
     volumes:
       - recap_worker_certs:/certs
       - pki_trust_bundle:/trust:ro
@@ -262,7 +264,10 @@ services:
       - RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES=67108864
       - RECAP_SUBWORKER_MODEL_BACKEND=${RECAP_SUBWORKER_MODEL_BACKEND:-ollama-remote}
       - RECAP_SUBWORKER_MODEL_ID=${RECAP_SUBWORKER_MODEL_ID:-BAAI/bge-m3}
-      - RECAP_SUBWORKER_OLLAMA_EMBED_URL=${OLLAMA_EMBED_URL:-http://knowledge-embedder-local:11434}
+      # Embedding endpoint: routes through embedding-proxy (token-authenticated
+      # Ollama bridge at :11436) rather than knowledge-embedder-local directly.
+      # All embedding callers must go through the proxy auth boundary.
+      - RECAP_SUBWORKER_OLLAMA_EMBED_URL=${OLLAMA_EMBED_URL:-http://embedding-proxy:11436}
       - RECAP_SUBWORKER_OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-bge-m3}
       - RECAP_SUBWORKER_PIPELINE_MODE=inprocess
       # Single worker for CUDA compatibility (CUDA context survives fork only in single worker mode)
@@ -317,6 +322,7 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-subworker
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
       # Bearer guard for /admin/* and /v1/runs. recap-worker is the only
       # caller, and reads the same recap_admin_token secret to send it.
       - ADMIN_TOKEN_FILE=/run/secrets/recap_admin_token
@@ -329,6 +335,7 @@ services:
       - recap_db_password
       - pki-agent-recap-subworker-jwk
       - recap_admin_token
+      - rask_ingest_token
     volumes:
       # joblib artefacts (genre_classifier*.joblib, tfidf_vectorizer*.joblib,
       # genre_thresholds*.json, golden_classification.json) live on the
@@ -459,7 +466,7 @@ services:
       - RECAP_DB_USER=${RECAP_DB_USER}
       - RECAP_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_DB_NAME=${RECAP_DB_NAME}
-      - OLLAMA_URL=http://news-creator:11434
+      - OLLAMA_URL=https://news-creator:9443
       - OLLAMA_MODEL=gemma4-e4b-12k
       - RECAP_WORKER_URL=http://recap-worker:9005
       - EVALUATION_SCHEDULE=0 6 * * *
@@ -468,16 +475,36 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-evaluator
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
+      - MTLS_CERT_FILE=/certs/svc-cert.pem
+      - MTLS_KEY_FILE=/certs/svc-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - REQUESTS_CA_BUNDLE=/trust/ca-bundle.pem
+    volumes:
+      - recap_evaluator_certs:/certs:ro
+      - pki_trust_bundle:/trust:ro
     secrets:
       - recap_db_password
-    ports:
-      - "127.0.0.1:8085:8080"
+      - rask_ingest_token
     depends_on:
       recap-db:
+        condition: service_healthy
+      pki-agent-recap-evaluator:
         condition: service_healthy
     networks:
       - alt-network
     restart: unless-stopped
+    healthcheck:
+      # :8080/health is the plaintext health endpoint from the FastAPI app.
+      # The evaluator's pki-agent sidecar must be healthy (depends_on) before
+      # certs are available, but the health endpoint itself doesn't require TLS.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    ports:
+      - "127.0.0.1:8085:8080"
     deploy:
       resources:
         reservations:
@@ -489,6 +516,45 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  pki-agent-recap-evaluator:
+    build:
+      context: ../pki-agent
+      dockerfile: Dockerfile
+    user: "root"
+    entrypoint: ["/usr/local/bin/pki-agent"]
+    environment:
+      CERT_SUBJECT: recap-evaluator
+      CERT_SANS: "recap-evaluator,localhost"
+      STEP_CA_URL: https://step-ca:9000
+      STEP_CA_ROOT_FILE: /trust/ca-bundle.pem
+      STEP_CA_PROVISIONER: pki-agent-recap-evaluator
+      STEP_CA_PROVISIONER_PASSWORD_FILE: /run/secrets/pki-agent-recap-evaluator-jwk
+      CERT_PATH: /certs/svc-cert.pem
+      KEY_PATH: /certs/svc-key.pem
+      CERT_OWNER_UID: "65533"
+      CERT_OWNER_GID: "65533"
+      RENEW_AT_FRACTION: "0.66"
+      TICK_INTERVAL: "5m"
+      METRICS_ADDR: ":9510"
+    volumes:
+      - recap_evaluator_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    secrets:
+      - pki-agent-recap-evaluator-jwk
+    depends_on:
+      step-ca:
+        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/pki-agent", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 secrets:
   dashboard_sse_token:

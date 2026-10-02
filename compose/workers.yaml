@@ -131,8 +131,13 @@ services:
       - MEILI_MASTER_KEY_FILE=/run/secrets/meili_master_key
       - MEILI_HYBRID_EMBEDDER=${MEILI_HYBRID_EMBEDDER:-bge-m3}
       - MEILI_HYBRID_SEMANTIC_RATIO=${MEILI_HYBRID_SEMANTIC_RATIO:-0.7}
-      - REDIS_STREAMS_URL=redis://redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      # Meilisearch hybrid-search embedder endpoint. Points at embedding-proxy
+      # (token-authed Ollama bridge) rather than knowledge-embedder-local directly.
+      # The API key is set by the indexer's EmbedderSettings call using the
+      # inference_service_token secret — not mounted into Meilisearch itself.
+      - MEILI_EMBEDDER_URL=${MEILI_EMBEDDER_URL:-http://embedding-proxy:11436/api/embed}
+      - REDIS_STREAMS_URL=redis://streams@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=search-indexer-group
       - CONSUMER_NAME=search-indexer-1
@@ -141,11 +146,16 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=search-indexer
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     secrets:
       - meili_master_key
       - meili_search_key
       - pki-agent-search-indexer-jwk
-      - redis_password
+      - redis_streams_password
+      # inference_service_token: used by the indexer when setting the Meilisearch
+      # embedder API key (EmbedderSettings). Not mounted into Meilisearch itself.
+      - inference_service_token
+      - rask_ingest_token
     networks:
       - alt-network
     volumes:
@@ -233,8 +243,8 @@ services:
       - BACKEND_API_MTLS_URL=https://alt-data-hub:9443
       - PORT=9400
       - CUDA_VISIBLE_DEVICES=""
-      - REDIS_STREAMS_URL=redis://redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      - REDIS_STREAMS_URL=redis://streams@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=tag-generator-group
       - CONSUMER_NAME=tag-generator-1
@@ -246,9 +256,11 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=tag-generator
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     secrets:
       - pki-agent-tag-generator-jwk
-      - redis_password
+      - redis_streams_password
+      - rask_ingest_token
     volumes:
       - ../scripts:/scripts:ro
       # ONNX classifier models — 479 MB and gitignored, so a path relative to
@@ -307,10 +319,20 @@ services:
       - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
       - LOG_LEVEL=info
       - INTERNAL_AUTH_TOKEN_FILE=/run/secrets/internal_auth_token
+      # OpenTelemetry / Rask (D02 cohort). OTEL_ENABLED=true lets the SDK
+      # initialise; OTEL_EXPORTER_OTLP_ENDPOINT must match rask-log-aggregator
+      # (traces only — metrics are disabled, Rask 404s on /v1/metrics).
+      - OTEL_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=auth-token-manager
+      # Rask forwarder auth. The forwarder reads this file at startup; the
+      # same secret is already mounted into the forwarder services in logging.yaml.
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     secrets:
       - internal_auth_token
       - inoreader_client_id
       - inoreader_client_secret
+      - rask_ingest_token
     restart: always
     ports:
       - "127.0.0.1:9201:9201"
@@ -325,8 +347,9 @@ services:
         # list does not know about (OTEL_EXPORTER_OTLP_LOGS_TIMEOUT among them),
         # and Deno turns an unpermitted read into an uncaught NotCapable — so
         # enumerating them made this probe fail on every run since boot while
-        # the service itself was healthy.
-        "--allow-env=CONNECTIVITY_CHECK,CONNECTIVITY_TIMEOUT,DENO_ENV,DEPLOYMENT_ENV,HTTP_PROXY,HTTPS_PROXY,HTTP_TIMEOUT,INOREADER_CLIENT_ID,INOREADER_CLIENT_ID_FILE,INOREADER_CLIENT_SECRET,INOREADER_CLIENT_SECRET_FILE,INOREADER_REDIRECT_URI,INTERNAL_AUTH_TOKEN,INTERNAL_AUTH_TOKEN_FILE,LOG_INCLUDE_STACK_TRACE,LOG_INCLUDE_TIMESTAMP,LOG_LEVEL,NETWORK_FALLBACK_TO_DIRECT,NODE_ENV,OTEL_*,RETRY_BACKOFF_FACTOR,RETRY_BASE_DELAY,RETRY_MAX_ATTEMPTS,RETRY_MAX_DELAY,SERVICE_VERSION,TOKEN_STORAGE_PATH",
+        # the service itself was healthy. OTEL_ENABLED and RASK_INGEST_TOKEN_FILE
+        # are added for D02 Rask/OTEL cohort enrollment.
+        "--allow-env=CONNECTIVITY_CHECK,CONNECTIVITY_TIMEOUT,DENO_ENV,DEPLOYMENT_ENV,HTTP_PROXY,HTTPS_PROXY,HTTP_TIMEOUT,INOREADER_CLIENT_ID,INOREADER_CLIENT_ID_FILE,INOREADER_CLIENT_SECRET,INOREADER_CLIENT_SECRET_FILE,INOREADER_REDIRECT_URI,INTERNAL_AUTH_TOKEN,INTERNAL_AUTH_TOKEN_FILE,LOG_INCLUDE_STACK_TRACE,LOG_INCLUDE_TIMESTAMP,LOG_LEVEL,NETWORK_FALLBACK_TO_DIRECT,NODE_ENV,OTEL_*,OTEL_ENABLED,RASK_INGEST_TOKEN_FILE,RETRY_BACKOFF_FACTOR,RETRY_BASE_DELAY,RETRY_MAX_ATTEMPTS,RETRY_MAX_DELAY,SERVICE_VERSION,TOKEN_STORAGE_PATH",
         "main.ts", "health"]
       interval: 30s
       timeout: 10s

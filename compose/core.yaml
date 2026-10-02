@@ -101,18 +101,21 @@ services:
       - "80:8443"
       - "127.0.0.1:8080:8080"  # admin: /metrics /healthz /readyz (replaces nginx-exporter's job)
     volumes:
-      # The whole deploy directory, not a single file — SIGHUP reload survives
-      # editor inode swaps. [state] is left at the default "memory" backend for
-      # this trial, so :ro is fine (no on-disk write needed at runtime).
-      - ../plecto:/etc/plecto:ro
+      - ../plecto/manifest.toml:/etc/plecto/manifest.toml:ro
+      - ../plecto/.plecto/dev-key.pub:/etc/plecto/.plecto/dev-key.pub:ro
+      - ../plecto/artifacts/stale-chunk-heal:/etc/plecto/artifacts/stale-chunk-heal:ro
+      - pki_trust_bundle:/trust:ro
     depends_on:
       alt-frontend-sv:
         condition: service_healthy
       alt-backend:
         condition: service_healthy
+      otel-relay:
+        condition: service_healthy
       kratos:
         condition: service_healthy
     networks:
+      - plecto-relay-network
       - alt-network
     deploy:
       resources:
@@ -157,7 +160,8 @@ services:
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-http://localhost:9000}
       - BACKEND_CONNECT_URL=${BACKEND_CONNECT_URL:-http://alt-butterfly-facade:9250}
-      - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-http://auth-hub:8888}
+      - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-https://auth-hub:8443}
+      - NODE_EXTRA_CA_CERTS=/trust/ca-bundle.pem
       - PUBLIC_USE_CONNECT_STREAMING=${PUBLIC_USE_CONNECT_STREAMING:-false}
       - SOVEREIGN_METRICS_URL=${SOVEREIGN_METRICS_URL:-http://knowledge-sovereign:9501}
       # Same Bearer token knowledge-sovereign gates /admin/* with; without it
@@ -166,6 +170,8 @@ services:
       - SOVEREIGN_ADMIN_TOKEN_FILE=/run/secrets/sovereign_admin_token
     secrets:
       - sovereign_admin_token
+    volumes:
+      - pki_trust_bundle:/trust:ro
     ports:
       # plecto-proxy is the only edge; it reaches the frontend as
       # alt-frontend-sv:4173 over the container network.
@@ -317,11 +323,12 @@ services:
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
-      - AUTH_HUB_URL=http://auth-hub:8888
+      - AUTH_HUB_URL=https://auth-hub:9443
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub:9500
       - SOVEREIGN_URL=http://knowledge-sovereign:9500
-      - SOVEREIGN_EVENT_TOKEN_FILE=/run/secrets/sovereign_event_token
+      - SOVEREIGN_BACKEND_TOKEN_FILE=/run/secrets/sovereign_backend_token
+      - SOVEREIGN_OPERATOR_TOKEN_FILE=/run/secrets/sovereign_operator_token
       # https scheme makes alt-backend present its leaf cert; rag-orchestrator
       # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml).
       - RAG_ORCHESTRATOR_CONNECT_URL=${RAG_ORCHESTRATOR_CONNECT_URL:-https://rag-orchestrator:9011}
@@ -341,8 +348,8 @@ services:
       # carry the *same* value or they arbitrate nothing; db 3 keeps the slot
       # keys clear of mq-hub's streams on db 0. Unset = local mode, logged
       # loudly at startup as a per-process-only guarantee.
-      - HOST_RATE_LIMITER_REDIS_URL=redis://redis-streams:6379/3
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      - HOST_RATE_LIMITER_REDIS_URL=redis://limiter@redis-streams:6379/3
+      - HOST_RATE_LIMITER_REDIS_PASSWORD_FILE=/run/secrets/redis_limiter_password
       # alt-data-hub is reachable over mTLS only; there is no plaintext
       # east-west port to fall back to (see alt-data-hub below).
       #
@@ -370,6 +377,7 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=alt-backend
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
       # Admin observability (Prometheus-backed Admin UI). Off by default.
       - ADMIN_MONITOR_ENABLED=${ADMIN_MONITOR_ENABLED:-false}
       - ADMIN_MONITOR_PROMETHEUS_URL=${ADMIN_MONITOR_PROMETHEUS_URL:-http://prometheus:9090}
@@ -388,11 +396,13 @@ services:
       # Public half only. This process serves the key to browsers and sends no
       # pushes, so the signing key stays out of it — see alt-notifier below.
       - vapid_public_key
-      - sovereign_event_token
+      - sovereign_backend_token
+      - sovereign_operator_token
       - pki-agent-alt-backend-jwk
-      - redis_password
+      - redis_limiter_password
       - backend_operator_token
       - rag_api_token
+      - rask_ingest_token
     deploy:
       # memory used to sit under reservations alone, which is a scheduling
       # hint and not a cap: a leak in the user-facing API would have run until
@@ -520,7 +530,7 @@ services:
       RENEW_AT_FRACTION: "0.66"
       # --- upstreams the jobs call --------------------------------------
       SOVEREIGN_URL: http://knowledge-sovereign:9500
-      SOVEREIGN_EVENT_TOKEN_FILE: /run/secrets/sovereign_event_token
+      SOVEREIGN_HARVESTER_TOKEN_FILE: /run/secrets/sovereign_harvester_token
       # https makes alt-harvester present its leaf cert; rag-orchestrator
       # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml). Its
       # PEER_IDENTITY_ALLOWED_PEERS must name alt-harvester once outbox-worker
@@ -537,17 +547,19 @@ services:
       # Same arbiter, same value as alt-backend above — that is what makes the
       # per-host interval hold across the two internet-facing binaries instead
       # of once each (CLAUDE.md rule 2). See the comment there.
-      HOST_RATE_LIMITER_REDIS_URL: redis://redis-streams:6379/3
-      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      HOST_RATE_LIMITER_REDIS_URL: redis://limiter@redis-streams:6379/3
+      HOST_RATE_LIMITER_REDIS_PASSWORD_FILE: /run/secrets/redis_limiter_password
       OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
       OTEL_SERVICE_NAME: alt-harvester
+      RASK_INGEST_TOKEN_FILE: /run/secrets/rask_ingest_token
     secrets:
       # postgres_password went with the DB_* block (ADR-000954 Wave 3 batch 6).
       - image_proxy_secret
-      - sovereign_event_token
+      - sovereign_harvester_token
       - pki-agent-alt-harvester-jwk
-      - redis_password
+      - redis_limiter_password
       - rag_api_token
+      - rask_ingest_token
     deploy:
       # Memory belongs under deploy.resources.limits, not mem_limit: compose
       # rejects a project that sets both unless the values agree, and the
@@ -640,9 +652,11 @@ services:
       IMAGE_PROXY_ENABLED: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
       OTEL_SERVICE_NAME: alt-notifier
+      RASK_INGEST_TOKEN_FILE: /run/secrets/rask_ingest_token
     secrets:
       - vapid_private_key
       - pki-agent-alt-notifier-jwk
+      - rask_ingest_token
     deploy:
       resources:
         limits:
@@ -768,7 +782,7 @@ services:
       # Same audience as alt-backend on purpose: changing it would invalidate
       # every token auth-hub has already minted.
       BACKEND_TOKEN_AUDIENCE: alt-backend
-      AUTH_HUB_URL: http://auth-hub:8888
+      AUTH_HUB_URL: https://auth-hub:9443
       # The bearer this binary puts in X-Internal-Auth when it asks auth-hub
       # for the system user. Separate from backend_token_secret on purpose:
       # that header is plaintext and is copied into nginx access logs and OTel
@@ -778,7 +792,7 @@ services:
       # SOVEREIGN_URL has no default; unset means the sovereign client no-ops
       # every append while the caller still records success.
       SOVEREIGN_URL: http://knowledge-sovereign:9500
-      SOVEREIGN_EVENT_TOKEN_FILE: /run/secrets/sovereign_event_token
+      SOVEREIGN_DATAHUB_TOKEN_FILE: /run/secrets/sovereign_datahub_token
       # MQHUB_ENABLED defaults to false, and a disabled client no-ops every
       # publish — DataHubService article RPCs would answer 200 having
       # emitted nothing (ADR-000928). ValidateDataHubConfig rejects false
@@ -797,12 +811,14 @@ services:
       DB_MIN_CONNS: "10"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
       OTEL_SERVICE_NAME: alt-data-hub
+      RASK_INGEST_TOKEN_FILE: /run/secrets/rask_ingest_token
     secrets:
       - postgres_password
       - backend_token_secret
       - auth_hub_internal_secret
-      - sovereign_event_token
+      - sovereign_datahub_token
       - pki-agent-alt-data-hub-jwk
+      - rask_ingest_token
     deploy:
       # See alt-harvester: mem_limit and deploy.resources.limits cannot both
       # be set unless they agree, so memory lives in the limits block.
@@ -866,3 +882,27 @@ services:
         condition: service_healthy
     networks:
       - alt-network
+
+  otel-relay:
+    build:
+      context: ../docker/otel-relay
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318/v1/traces
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
+    secrets:
+      - rask_ingest_token
+    networks:
+      - plecto-relay-network
+      - plecto-otlp-collector
+    healthcheck:
+      test: ["CMD", "/otel-relay", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  plecto-relay-network:
+    internal: true

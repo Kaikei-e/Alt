@@ -4,7 +4,7 @@ services:
       context: ./knowledge-augur # TODO: change to knowledge-augur
       dockerfile: Dockerfile
     ports:
-      - "11435:11434"
+      - "127.0.0.1:11435:11434"
     volumes:
       - knowledge_augur_models:/home/ollama-user/.ollama
     # environment variables moved to Dockerfile
@@ -47,7 +47,7 @@ services:
       context: ./knowledge-embedder
       dockerfile: Dockerfile
     ports:
-      - "11436:11434"
+      - "127.0.0.1:11436:11434"
     volumes:
       - knowledge_embedder_models:/home/ollama-user/.ollama
     environment:

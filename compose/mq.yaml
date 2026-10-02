@@ -26,17 +26,32 @@ services:
     # /data ownership check this requires on the existing named volume.
     user: redis
     entrypoint:
-      - /bin/sh
-      - -c
-      - exec redis-server --requirepass "$$(cat /run/secrets/redis_password)" --maxmemory 1gb --maxmemory-policy noeviction --appendonly yes --io-threads 4 --io-threads-do-reads yes
+      - /entrypoint.sh
+      - streams
+    command:
+      - --maxmemory
+      - 1gb
+      - --maxmemory-policy
+      - noeviction
+      - --appendonly
+      - "yes"
+      - --io-threads
+      - "4"
+      - --io-threads-do-reads
+      - "yes"
     volumes:
       - redis-streams-data:/data
+    configs:
+      - source: redis_entrypoint
+        target: /entrypoint.sh
+        mode: 0555
     networks:
       - alt-network
     secrets:
-      - redis_password
+      - redis_streams_password
+      - redis_limiter_password
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_streams_password)\" redis-cli --user streams ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -60,8 +75,8 @@ services:
     container_name: mq-hub
     mem_limit: 128m
     environment:
-      - REDIS_URL=redis://redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      - REDIS_URL=redis://streams@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
       - CONNECT_PORT=9500
       - LOG_LEVEL=info
       # OpenTelemetry
@@ -95,7 +110,7 @@ services:
       retries: 5
       start_period: 10s
     secrets:
-      - redis_password
+      - redis_streams_password
     restart: unless-stopped
     labels:
       - rask.group=mq-hub
