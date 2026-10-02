@@ -440,6 +440,7 @@ mod replay_tests {
             endpoint,
             timeout: Duration::from_millis(500),
             connection_timeout: Duration::from_millis(500),
+            ingest_token: "test-token-valid".to_string(),
             ..Default::default()
         })
         .await
@@ -618,6 +619,7 @@ mod replay_tests {
             endpoint: "http://127.0.0.1:1".to_string(),
             timeout: Duration::from_millis(500),
             connection_timeout: Duration::from_millis(500),
+            ingest_token: "test-token-valid".to_string(),
             ..Default::default()
         })
         .await

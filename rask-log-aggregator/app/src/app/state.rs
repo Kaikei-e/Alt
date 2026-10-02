@@ -1,4 +1,5 @@
 use crate::adapter::clickhouse::BatchWriter;
+use crate::auth::IngestToken;
 use crate::config::Settings;
 use crate::port::{LogExporter, OTelExporter};
 use clickhouse::Client;
@@ -14,6 +15,8 @@ pub struct AppState {
     /// shutdown token is cancelled so the final flush completes before the
     /// process exits (see `app::run`).
     pub flush_handle: JoinHandle<()>,
+    /// D-02: Shared ingest bearer token for authenticating forwarders/OTLP clients.
+    pub ingest_token: Arc<IngestToken>,
 }
 
 impl AppState {
@@ -37,10 +40,13 @@ impl AppState {
         let log_exporter: Arc<dyn LogExporter> = batch_writer.clone();
         let otel_exporter: Arc<dyn OTelExporter> = batch_writer;
 
+        let ingest_token = Arc::new(IngestToken(settings.ingest_token.clone()));
+
         Self {
             log_exporter,
             otel_exporter,
             flush_handle,
+            ingest_token,
         }
     }
 }

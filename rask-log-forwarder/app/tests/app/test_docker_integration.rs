@@ -1,20 +1,20 @@
+use super::fixture::{EnvGuard, create_token_in_temp_dir};
 use rask_log_forwarder::app::{
     Config,
     docker::{DockerEnvironment, validate_docker_requirements},
 };
 use serial_test::serial;
 use std::collections::HashMap;
-use std::env;
 
 #[test]
 #[serial]
 fn test_docker_environment_detection() {
-    // Simulate Docker environment variables
-    unsafe {
-        env::set_var("HOSTNAME", "nginx-logs");
-        env::set_var("TARGET_SERVICE", "nginx");
-        env::set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/v1/aggregate");
-    }
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    _guard.set_var("HOSTNAME", "nginx-logs");
+    _guard.set_var("TARGET_SERVICE", "nginx");
+    _guard.set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/v1/aggregate");
 
     let docker_env = DockerEnvironment::detect().unwrap();
 
@@ -24,17 +24,15 @@ fn test_docker_environment_detection() {
         docker_env.rask_endpoint,
         "http://rask-aggregator:9600/v1/aggregate"
     );
-
-    // Cleanup
-    unsafe {
-        env::remove_var("HOSTNAME");
-        env::remove_var("TARGET_SERVICE");
-        env::remove_var("RASK_ENDPOINT");
-    }
 }
 
 #[test]
+#[serial]
 fn test_sidecar_configuration() {
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+
     let docker_env = DockerEnvironment {
         hostname: "alt-backend-logs".to_string(),
         target_service: Some("alt-backend".to_string()),
@@ -88,6 +86,8 @@ fn test_sidecar_mode_detection() {
 
 #[test]
 fn test_docker_compose_integration() {
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+
     // Test configuration that matches the compose.yaml structure
     let config = Config {
         target_service: Some("nginx".to_string()),
@@ -99,6 +99,9 @@ fn test_docker_compose_integration() {
         enable_metrics: true,
         metrics_port: 9090,
         enable_compression: true,
+        ingest_token_file: Some(token_path),
+        ingest_token: "test-token".to_string(),
+
         ..Default::default()
     };
 
@@ -110,10 +113,15 @@ fn test_docker_compose_integration() {
 
 #[test]
 fn test_docker_requirements_validation() {
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+
     let config = Config {
         endpoint: "http://rask-aggregator:9600/v1/aggregate".to_string(),
         enable_disk_fallback: true,
         disk_fallback_path: std::path::PathBuf::from("/tmp/rask-fallback"),
+        ingest_token_file: Some(token_path),
+        ingest_token: "test-token".to_string(),
+
         ..Default::default()
     };
 
@@ -122,8 +130,13 @@ fn test_docker_requirements_validation() {
 
 #[test]
 fn test_docker_requirements_validation_fails() {
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+
     let config = Config {
         endpoint: "http://wrong-endpoint:9600/v1/aggregate".to_string(),
+        ingest_token_file: Some(token_path),
+        ingest_token: "test-token".to_string(),
+
         ..Default::default()
     };
 
@@ -133,21 +146,15 @@ fn test_docker_requirements_validation_fails() {
 #[tokio::test]
 #[serial]
 async fn test_docker_environment_config() {
-    unsafe {
-        env::set_var("HOSTNAME", "nginx-logs");
-        env::set_var("TARGET_SERVICE", "nginx");
-        env::set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/v1/aggregate");
-    }
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    _guard.set_var("HOSTNAME", "nginx-logs");
+    _guard.set_var("TARGET_SERVICE", "nginx");
+    _guard.set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/v1/aggregate");
 
     let config = Config::from_env().unwrap();
 
     assert_eq!(config.target_service, Some("nginx".to_string()));
     assert_eq!(config.endpoint, "http://rask-aggregator:9600/v1/aggregate");
-
-    // Cleanup
-    unsafe {
-        env::remove_var("HOSTNAME");
-        env::remove_var("TARGET_SERVICE");
-        env::remove_var("RASK_ENDPOINT");
-    }
 }

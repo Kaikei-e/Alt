@@ -50,6 +50,7 @@ async fn test_reliability_manager_success_path() {
         user_agent: "rask-test/0.1.0".to_string(),
         enable_compression: false,
         retry_attempts: 1,
+        ingest_token: String::new(),
     };
 
     let log_sender = LogSender::new(client_config).await.unwrap();
@@ -106,6 +107,7 @@ async fn test_reliability_manager_metrics_collection() {
         user_agent: "rask-test/0.1.0".to_string(),
         enable_compression: false,
         retry_attempts: 1,
+        ingest_token: String::new(),
     };
 
     let log_sender = LogSender::new(client_config).await.unwrap();
@@ -156,6 +158,7 @@ async fn test_reliability_manager_health_monitoring() {
         user_agent: "rask-test/0.1.0".to_string(),
         enable_compression: false,
         retry_attempts: 1,
+        ingest_token: String::new(),
     };
 
     let log_sender = LogSender::new(client_config).await.unwrap();

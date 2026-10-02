@@ -66,6 +66,10 @@ pub struct ServiceManager {
 
 impl ServiceManager {
     pub async fn new(mut config: Config) -> Result<Self, ServiceError> {
+        // Enforce configuration post-processing and validation before any component initialization
+        config.post_process()?;
+        config.validate()?;
+
         // Auto-detect target service if not provided
         config.auto_detect_service()?;
         let target_service = config.get_target_service()?;
@@ -228,6 +232,7 @@ impl ServiceManager {
             user_agent: format!("rask-log-forwarder/{}", env!("CARGO_PKG_VERSION")),
             enable_compression: self.config.enable_compression,
             retry_attempts: self.config.retry_config.max_attempts,
+            ingest_token: self.config.ingest_token.clone(),
         };
         self.sender = Some(LogSender::new(client_config).await?);
 
@@ -325,16 +330,21 @@ mod tests {
     use super::*;
     use crate::app::Config;
 
-    fn create_test_config() -> Config {
-        Config {
+    fn create_test_config() -> (Config, tempfile::NamedTempFile) {
+        use std::io::Write;
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(file, "valid-token-123").unwrap();
+        let config = Config {
             target_service: Some("test-service".to_string()),
+            ingest_token_file: Some(file.path().to_path_buf()),
             ..Default::default()
-        }
+        };
+        (config, file)
     }
 
     #[tokio::test]
     async fn test_component_initialization_error_handling() {
-        let config = create_test_config();
+        let (config, _token_file) = create_test_config();
         let service = ServiceManager::new(config).await.unwrap();
 
         assert!(!service.is_initialized());
@@ -363,7 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_service_initialization_state() {
-        let config = create_test_config();
+        let (config, _token_file) = create_test_config();
         let service = ServiceManager::new(config).await.unwrap();
 
         assert!(!service.is_initialized());

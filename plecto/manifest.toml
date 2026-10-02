@@ -23,7 +23,7 @@ access_log = true
 # Export is a bounded queue drained by a pump, never the request path: a down
 # collector costs dropped spans (plecto_otlp_dropped_spans_total), not latency.
 # Captured at startup like admin_addr — changing it is a restart, not a reload.
-otlp_endpoint = "http://rask-log-aggregator:4318"
+otlp_endpoint = "http://otel-relay:4318"
 
 [listen]
 addr = "0.0.0.0:8443"          # published as host 80 -> container 8443 (nonroot: no <1024 bind)

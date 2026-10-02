@@ -1,4 +1,4 @@
-mod router;
+pub mod router;
 pub mod server;
 mod state;
 pub mod tracing;
@@ -46,8 +46,8 @@ pub async fn run() -> Result<(), AggregatorError> {
 
     let app_state = state::AppState::from_settings(&settings, shutdown_token.clone());
 
-    let main_app = router::main_router(app_state.log_exporter);
-    let otlp_app = router::otlp_router(app_state.otel_exporter);
+    let main_app = router::main_router(app_state.log_exporter, app_state.ingest_token.clone());
+    let otlp_app = router::otlp_router(app_state.otel_exporter, app_state.ingest_token.clone());
 
     let serve_result = server::serve(
         main_app,

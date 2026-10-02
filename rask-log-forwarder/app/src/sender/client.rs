@@ -25,7 +25,7 @@ pub enum ClientError {
     NetworkError(#[from] reqwest::Error),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ClientConfig {
     pub endpoint: String,
     pub timeout: Duration,
@@ -35,6 +35,23 @@ pub struct ClientConfig {
     pub user_agent: String,
     pub enable_compression: bool,
     pub retry_attempts: u32,
+    pub ingest_token: String,
+}
+
+impl std::fmt::Debug for ClientConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientConfig")
+            .field("endpoint", &self.endpoint)
+            .field("timeout", &self.timeout)
+            .field("connection_timeout", &self.connection_timeout)
+            .field("max_connections", &self.max_connections)
+            .field("keep_alive_timeout", &self.keep_alive_timeout)
+            .field("user_agent", &self.user_agent)
+            .field("enable_compression", &self.enable_compression)
+            .field("retry_attempts", &self.retry_attempts)
+            .field("ingest_token", &"[REDACTED]")
+            .finish()
+    }
 }
 
 impl Default for ClientConfig {
@@ -48,6 +65,7 @@ impl Default for ClientConfig {
             user_agent: "rask-log-forwarder/0.1.0".to_string(),
             enable_compression: true,
             retry_attempts: 3,
+            ingest_token: String::new(),
         }
     }
 }
@@ -133,13 +151,14 @@ impl HttpClient {
             url
         };
 
-        // Configure HTTP client with connection pooling
+        // Configure HTTP client with connection pooling and NO redirects (D-02 requirement)
         let mut client_builder = ClientBuilder::new()
             .timeout(config.timeout)
             .connect_timeout(config.connection_timeout)
             .pool_max_idle_per_host(config.max_connections)
             .pool_idle_timeout(config.keep_alive_timeout)
-            .user_agent(&config.user_agent);
+            .user_agent(&config.user_agent)
+            .redirect(reqwest::redirect::Policy::none());
 
         if config.enable_compression {
             client_builder = client_builder.gzip(true);

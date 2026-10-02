@@ -211,6 +211,21 @@ impl BatchTransmitter {
             })?,
         );
 
+        if self.client.config.ingest_token.is_empty() {
+            return Err(TransmissionError::InvalidHeaderValue(
+                "Ingest token is required: unauthenticated HTTP requests are forbidden".to_string(),
+            ));
+        }
+        let mut auth_val = HeaderValue::from_str(&format!(
+            "Bearer {}",
+            self.client.config.ingest_token
+        ))
+        .map_err(|e| {
+            TransmissionError::InvalidHeaderValue(format!("Invalid ingest token header: {e}"))
+        })?;
+        auth_val.set_sensitive(true);
+        headers.insert(reqwest::header::AUTHORIZATION, auth_val);
+
         Ok(headers)
     }
 }
@@ -397,6 +412,83 @@ impl OtlpBatchTransmitter {
             })?,
         );
 
+        if self.client.config.ingest_token.is_empty() {
+            return Err(TransmissionError::InvalidHeaderValue(
+                "Ingest token is required: unauthenticated HTTP requests are forbidden".to_string(),
+            ));
+        }
+        let mut auth_val = HeaderValue::from_str(&format!(
+            "Bearer {}",
+            self.client.config.ingest_token
+        ))
+        .map_err(|e| {
+            TransmissionError::InvalidHeaderValue(format!("Invalid ingest token header: {e}"))
+        })?;
+        auth_val.set_sensitive(true);
+        headers.insert(reqwest::header::AUTHORIZATION, auth_val);
+
         Ok(headers)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Batch;
+    use super::*;
+    use crate::buffer::BatchType;
+    use crate::sender::{ClientConfig, HttpClient};
+
+    #[tokio::test]
+    async fn proof_no_unauth_http_request_when_token_empty() {
+        let config = ClientConfig {
+            ingest_token: String::new(),
+            ..ClientConfig::default()
+        };
+        let client = HttpClient::new(config).await.unwrap();
+        let transmitter = BatchTransmitter::new(client);
+        let batch = Batch::new(vec![], BatchType::TimeBased);
+        let err = transmitter.build_headers(&batch, false).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unauthenticated HTTP requests are forbidden")
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_header_set_when_token_present() {
+        let config = ClientConfig {
+            ingest_token: "valid-bearer-token".to_string(),
+            ..ClientConfig::default()
+        };
+        let client = HttpClient::new(config).await.unwrap();
+        let transmitter = BatchTransmitter::new(client);
+        let batch = Batch::new(vec![], BatchType::TimeBased);
+        let headers = transmitter.build_headers(&batch, false).unwrap();
+        assert_eq!(
+            headers
+                .get(reqwest::header::AUTHORIZATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "Bearer valid-bearer-token"
+        );
+    }
+
+    #[cfg(feature = "otlp")]
+    #[tokio::test]
+    async fn proof_no_unauth_otlp_http_request_when_token_empty() {
+        let config = ClientConfig {
+            ingest_token: String::new(),
+            ..ClientConfig::default()
+        };
+        let client = HttpClient::new(config).await.unwrap();
+        let url = url::Url::parse("http://localhost:4318/v1/logs").unwrap();
+        let transmitter = OtlpBatchTransmitter::new(client, url.as_str()).unwrap();
+        let batch = Batch::new(vec![], BatchType::TimeBased);
+        let err = transmitter.build_otlp_headers(&batch, false).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unauthenticated HTTP requests are forbidden")
+        );
     }
 }

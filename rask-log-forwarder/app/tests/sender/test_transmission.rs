@@ -32,6 +32,8 @@ async fn test_transmitter_creation() {
     let config = ClientConfig {
         endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         timeout: Duration::from_secs(10),
+        ingest_token: "test-token".to_string(),
+
         ..Default::default()
     };
 
@@ -57,6 +59,8 @@ async fn test_payload_preparation() {
     let config = ClientConfig {
         endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         enable_compression: false,
+        ingest_token: "test-token".to_string(),
+
         ..Default::default()
     };
 
@@ -93,6 +97,8 @@ async fn test_compression() {
     let config = ClientConfig {
         endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         enable_compression: true,
+        ingest_token: "test-token".to_string(),
+
         ..Default::default()
     };
 
@@ -130,6 +136,8 @@ async fn test_header_building() {
     let config = ClientConfig {
         endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         user_agent: "test-forwarder/1.0".to_string(),
+        ingest_token: "test-token".to_string(),
+
         ..Default::default()
     };
 
@@ -203,7 +211,8 @@ async fn test_header_building() {
 async fn test_large_batch_payload() {
     let config = ClientConfig {
         endpoint: "http://localhost:9600/v1/aggregate".to_string(),
-        timeout: Duration::from_secs(60), // Longer timeout for large batches
+        timeout: Duration::from_secs(60), // Longer timeout for large batches        ingest_token: "test-token".to_string(),
+
         ..Default::default()
     };
 
@@ -242,7 +251,8 @@ async fn test_large_batch_payload() {
 
 #[tokio::test]
 async fn test_batch_metadata_headers() {
-    let config = ClientConfig::default();
+    let mut config = ClientConfig::default();
+    config.ingest_token = "test-token".to_string();
 
     let result = HttpClient::new(config).await;
 
@@ -276,7 +286,8 @@ async fn test_batch_metadata_headers() {
 
 #[tokio::test]
 async fn test_empty_batch_handling() {
-    let config = ClientConfig::default();
+    let mut config = ClientConfig::default();
+    config.ingest_token = "test-token".to_string();
 
     let result = HttpClient::new(config).await;
 
