@@ -51,6 +51,8 @@ SUBJECTS=(
   news-creator
   rag-orchestrator
   tts-speaker
+  knowledge-sovereign
+  recap-evaluator
   localhost
 )
 
@@ -105,47 +107,156 @@ echo "==> adding per-subject JWK provisioners (offline, --ca-config)..."
 PROVISIONER_ADDED=0
 mkdir -p "$SECRET_DIR"
 for subject in "${SUBJECTS[@]}"; do
-  if [ "$subject" = "localhost" ]; then
-    echo "    skip provisioner for allowlist-only name localhost"
-    continue
-  fi
   name="$(provisioner_name_for "$subject")"
   host_pw="$(host_password_file_for "$subject")"
   container_pw="/tmp/${name}.pw"
   ensure_host_password_file "$host_pw"
-  if docker exec -u 0 "$STEP_CA" jq -e --arg n "$name" '.authority.provisioners[]? | select(.name==$n and .type=="JWK")' "$CA_CONFIG" >/dev/null 2>&1; then
-    echo "    provisioner ${name} already present."
-    continue
+  container_tpl="/tmp/${name}.tpl"
+
+  if [ "$subject" = "localhost" ]; then
+    cat > "/tmp/${name}.tpl.host" <<EOF
+{
+  "subject": {
+    "commonName": "localhost"
+  },
+  "sans": [{"type": "dns", "value": "localhost"}],
+  "keyUsage": ["digitalSignature", "keyEncipherment"],
+  "extKeyUsage": ["serverAuth", "clientAuth"]
+}
+{{- if ne .Token.sub "localhost" }}
+  {{ fail "Invalid OTT claims: sub mismatch" }}
+{{- end }}
+{{- if gt (len .Token.sans) 1 }}
+  {{ fail "Invalid OTT claims: duplicates or too many SANs" }}
+{{- end }}
+{{- range .Token.sans }}
+  {{- if ne . "localhost" }}
+    {{ fail "Invalid OTT claims: unapproved SAN" }}
+  {{- end }}
+{{- end }}
+{{- if ne .Insecure.CR.Subject.CommonName "localhost" }}
+  {{ fail "Invalid CSR CommonName" }}
+{{- end }}
+{{- if gt (len .Insecure.CR.DNSNames) 1 }}
+  {{ fail "Invalid CSR DNSNames: duplicates or too many SANs" }}
+{{- end }}
+{{- range .Insecure.CR.DNSNames }}
+  {{- if ne . "localhost" }}
+    {{ fail "Invalid CSR DNSNames: unapproved SAN" }}
+  {{- end }}
+{{- end }}
+{{- \$has_subject := false }}
+{{- range .Insecure.CR.DNSNames }}
+  {{- if eq . "localhost" }}{{ \$has_subject = true }}{{ end }}
+{{- end }}
+{{- if not \$has_subject }}
+  {{ fail "Invalid CSR DNSNames: missing subject" }}
+{{- end }}
+{{- if or .Insecure.CR.IPAddresses .Insecure.CR.URIs .Insecure.CR.EmailAddresses }}
+  {{ fail "No extra SAN types allowed" }}
+{{- end }}
+EOF
+  else
+    cat > "/tmp/${name}.tpl.host" <<EOF
+{
+  "subject": {
+    "commonName": "${subject}"
+  },
+  "sans": [{"type": "dns", "value": "${subject}"}, {"type": "dns", "value": "localhost"}],
+  "keyUsage": ["digitalSignature", "keyEncipherment"],
+  "extKeyUsage": ["serverAuth", "clientAuth"]
+}
+{{- if ne .Token.sub "${subject}" }}
+  {{ fail "Invalid OTT claims: sub mismatch" }}
+{{- end }}
+{{- if gt (len .Token.sans) 2 }}
+  {{ fail "Invalid OTT claims: duplicates or too many SANs" }}
+{{- end }}
+{{- if and (eq (len .Token.sans) 2) (eq (index .Token.sans 0) (index .Token.sans 1)) }}
+  {{ fail "Invalid OTT claims: duplicate SAN" }}
+{{- end }}
+{{- range .Token.sans }}
+  {{- if and (ne . "${subject}") (ne . "localhost") }}
+    {{ fail "Invalid OTT claims: unapproved SAN" }}
+  {{- end }}
+{{- end }}
+{{- if ne .Insecure.CR.Subject.CommonName "${subject}" }}
+  {{ fail "Invalid CSR CommonName" }}
+{{- end }}
+{{- if gt (len .Insecure.CR.DNSNames) 2 }}
+  {{ fail "Invalid CSR DNSNames: duplicates or too many SANs" }}
+{{- end }}
+{{- if and (eq (len .Insecure.CR.DNSNames) 2) (eq (index .Insecure.CR.DNSNames 0) (index .Insecure.CR.DNSNames 1)) }}
+  {{ fail "Invalid CSR DNSNames: duplicate SAN" }}
+{{- end }}
+{{- range .Insecure.CR.DNSNames }}
+  {{- if and (ne . "${subject}") (ne . "localhost") }}
+    {{ fail "Invalid CSR DNSNames: unapproved SAN" }}
+  {{- end }}
+{{- end }}
+{{- \$has_subject := false }}
+{{- range .Insecure.CR.DNSNames }}
+  {{- if eq . "${subject}" }}{{ \$has_subject = true }}{{ end }}
+{{- end }}
+{{- if not \$has_subject }}
+  {{ fail "Invalid CSR DNSNames: missing subject" }}
+{{- end }}
+{{- if or .Insecure.CR.IPAddresses .Insecure.CR.URIs .Insecure.CR.EmailAddresses }}
+  {{ fail "No extra SAN types allowed" }}
+{{- end }}
+EOF
   fi
-  echo "    adding provisioner ${name}"
-  copy_password_into_ca "$host_pw" "$container_pw"
-  docker exec -u 0 "$STEP_CA" step ca provisioner add "$name" \
-    --type JWK \
-    --create \
-    --password-file "$container_pw" \
-    --ca-config "$CA_CONFIG"
-  docker exec -u 0 "$STEP_CA" rm -f "$container_pw"
-  PROVISIONER_ADDED=1
+  docker cp "/tmp/${name}.tpl.host" "${STEP_CA}:${container_tpl}"
+
+  if docker exec -u 0 "$STEP_CA" jq -e --arg n "$name" --rawfile desired "$container_tpl" '
+    ([.authority.provisioners[]? | select(.name==$n and .type=="JWK")] as $p |
+     ($p|length)==1 and $p[0].options.x509.template==$desired and (($p[0].options.x509.templateFile//"")==""))
+  ' "$CA_CONFIG" >/dev/null 2>&1; then
+    echo "    provisioner ${name} already up to date"
+  elif docker exec -u 0 "$STEP_CA" jq -e --arg n "$name" '.authority.provisioners[]? | select(.name==$n and .type=="JWK")' "$CA_CONFIG" >/dev/null 2>&1; then
+    echo "    updating provisioner ${name} with template"
+    docker exec -u 0 "$STEP_CA" step ca provisioner update "$name" \
+      --x509-template "$container_tpl" \
+      --ca-config "$CA_CONFIG"
+    PROVISIONER_ADDED=1
+  else
+    echo "    adding provisioner ${name}"
+    copy_password_into_ca "$host_pw" "$container_pw"
+    docker exec -u 0 "$STEP_CA" step ca provisioner add "$name" \
+      --type JWK \
+      --create \
+      --password-file "$container_pw" \
+      --ca-config "$CA_CONFIG"
+    docker exec -u 0 "$STEP_CA" step ca provisioner update "$name" \
+      --x509-template "$container_tpl" \
+      --ca-config "$CA_CONFIG"
+    docker exec -u 0 "$STEP_CA" rm -f "$container_pw"
+    PROVISIONER_ADDED=1
+  fi
+  docker exec -u 0 "$STEP_CA" rm -f "$container_tpl"
+  rm -f "/tmp/${name}.tpl.host"
 done
 
 echo "==> checking authority.policy state..."
 EXPECTED_POLICY=$(build_subjects_json)
-CURRENT_DNS=$(docker exec -u 0 "$STEP_CA" jq -c '.authority.policy.x509.allow.dns // []' "$CA_CONFIG")
 POLICY_UPDATED=0
-if [ "$CURRENT_DNS" = "$EXPECTED_POLICY" ]; then
+if docker exec -u 0 "$STEP_CA" jq -e --argjson expected "$EXPECTED_POLICY" '
+  ((.authority.policy.x509.allow.cn // [] | sort) == ($expected | sort)) and
+  ((.authority.policy.x509.allow.dns // [] | sort) == ($expected | sort)) and
+  (.authority.policy.x509.allowWildcardNames == false)
+' "$CA_CONFIG" >/dev/null 2>&1; then
   echo "    authority.policy.x509 already matches expected allowlist."
 else
   echo "==> injecting authority-level X.509 CN/DNS allowlist..."
   docker exec -u 0 "$STEP_CA" sh -c "
-    jq '.authority.policy = {
-      \"x509\": {
-        \"allow\": {
-          \"dns\": $EXPECTED_POLICY,
-          \"cn\":  $EXPECTED_POLICY
-        },
-        \"allowWildcardNames\": false
-      }
-    }' $CA_CONFIG > /tmp/ca.json.new && mv /tmp/ca.json.new $CA_CONFIG && chown step:step $CA_CONFIG
+    jq --argjson expected '$EXPECTED_POLICY' '
+      .authority.policy = (.authority.policy // {}) |
+      .authority.policy.x509 = (.authority.policy.x509 // {}) |
+      .authority.policy.x509.allow = (.authority.policy.x509.allow // {}) |
+      .authority.policy.x509.allow.dns = \$expected |
+      .authority.policy.x509.allow.cn = \$expected |
+      .authority.policy.x509.allowWildcardNames = false
+    ' $CA_CONFIG > /tmp/ca.json.new && mv /tmp/ca.json.new $CA_CONFIG && chown step:step $CA_CONFIG
   "
   POLICY_UPDATED=1
 fi
