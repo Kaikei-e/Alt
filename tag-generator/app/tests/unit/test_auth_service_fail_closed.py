@@ -14,10 +14,23 @@ from fastapi.testclient import TestClient
 
 import auth_service
 
+SIDECAR = ("127.0.0.1", 44444)
+
 
 @pytest.fixture()
-def client():
-    return TestClient(auth_service.app)
+def client(monkeypatch: pytest.MonkeyPatch):
+    import sys
+
+    monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
+    monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
+    monkeypatch.delitem(sys.modules, "auth_service", raising=False)
+    from auth_service import app
+
+    return TestClient(
+        app,
+        client=SIDECAR,
+        headers={"x-alt-peer-identity": "recap-worker"},
+    )
 
 
 class TestRequireAuthFallbackFailsClosed:
@@ -105,3 +118,15 @@ class TestProtectedEndpointsFailClosed:
 
         assert resp.status_code == 503
         assert "user_id" not in resp.json()
+
+    def test_endpoint_returns_401_when_peer_identity_missing(self, client):
+        """Unauthenticated caller without peer identity must be rejected with 401."""
+        client.headers.pop("x-alt-peer-identity", None)
+        resp = client.post(
+            "/api/v1/generate-tags",
+            json={
+                "request": {"article_id": "a-1", "title": "t", "content": "c"},
+                "user_context": {},
+            },
+        )
+        assert resp.status_code == 401
