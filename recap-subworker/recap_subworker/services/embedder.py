@@ -306,14 +306,18 @@ class Embedder:
             # Using conservative 400 chars to ensure texts fit (512 / 1.3 ≈ 400)
             MAX_CHUNK_CHARS = 400
 
-            def __init__(self, url: str, model: str, timeout: float, token: str | None = None) -> None:
+            def __init__(
+                self, url: str, model: str, timeout: float, token: str | None = None
+            ) -> None:
                 self.url = url.rstrip("/")
                 self.model = model
                 self.timeout = timeout
                 headers = {}
                 if token:
                     headers["Authorization"] = f"Bearer {token}"
-                self._client = httpx.Client(timeout=timeout, headers=headers, follow_redirects=False)
+                self._client = httpx.Client(
+                    timeout=timeout, headers=headers, follow_redirects=False
+                )
                 self._embedding_dim: int | None = None
 
             # ADR-890 followup: bge-m3 endpoint への transient timeout/connect error を
@@ -449,7 +453,11 @@ class Embedder:
         raw_token = getattr(self.config, "inference_service_token", None)
         token_str = None
         if raw_token:
-            token_str = raw_token.get_secret_value() if hasattr(raw_token, "get_secret_value") else str(raw_token)
+            token_str = (
+                raw_token.get_secret_value()
+                if hasattr(raw_token, "get_secret_value")
+                else str(raw_token)
+            )
         return OllamaRemoteAdapter(
             self.config.ollama_embed_url,
             self.config.ollama_embed_model,

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 from collections.abc import Sequence
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import numpy as np
@@ -16,6 +19,38 @@ from recap_subworker.domain.models import (
 )
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.clusterer import ClusterResult, HDBSCANSettings
+
+
+_rask_test_directory: tempfile.TemporaryDirectory[str] | None = None
+_original_rask_token_file: str | None = None
+_original_otel_enabled: str | None = None
+
+
+def pytest_configure() -> None:
+    """Provide a test-only credential before test-module application imports."""
+    global _rask_test_directory, _original_rask_token_file, _original_otel_enabled
+    _original_rask_token_file = os.environ.get("RASK_INGEST_TOKEN_FILE")
+    _original_otel_enabled = os.environ.get("OTEL_ENABLED")
+    _rask_test_directory = tempfile.TemporaryDirectory(prefix="recap-test-rask-")
+    token_path = Path(_rask_test_directory.name) / "ingest-token"
+    token_path.write_text("TestRaskIngestToken1234567890", encoding="utf-8")
+    os.environ["RASK_INGEST_TOKEN_FILE"] = str(token_path)
+    # Wire tests explicitly enable the real SDK in isolated child processes.
+    os.environ["OTEL_ENABLED"] = "false"
+
+
+def pytest_unconfigure() -> None:
+    """Restore the caller environment and remove the test-only credential."""
+    if _original_rask_token_file is None:
+        os.environ.pop("RASK_INGEST_TOKEN_FILE", None)
+    else:
+        os.environ["RASK_INGEST_TOKEN_FILE"] = _original_rask_token_file
+    if _original_otel_enabled is None:
+        os.environ.pop("OTEL_ENABLED", None)
+    else:
+        os.environ["OTEL_ENABLED"] = _original_otel_enabled
+    if _rask_test_directory is not None:
+        _rask_test_directory.cleanup()
 
 
 class HashEmbedder:

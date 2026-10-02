@@ -16,12 +16,12 @@ Environment contract verified:
 """
 
 import gzip
-import logging
 import os
 import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any, cast
 
 import pytest
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
@@ -35,13 +35,21 @@ _FAKE_TOKEN = "ValidRaskIngestToken1234567890abcdefgh"
 # ---------------------------------------------------------------------------
 
 
+class _WireHTTPServer(HTTPServer):
+    """Typed recording state shared by the wire-test request handlers."""
+
+    requests: list[Any]
+    hit_count: int = 0
+    destination_base: str = "http://127.0.0.1:1"
+
+
 class _CollectingHandler(BaseHTTPRequestHandler):
     """Captures every POST: path, Authorization, Content-Type, Content-Encoding, body."""
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
-        self.server.requests.append(
+        cast(_WireHTTPServer, self.server).requests.append(
             {
                 "path": self.path,
                 "auth": self.headers.get("Authorization"),
@@ -55,7 +63,7 @@ class _CollectingHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"")
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
 
@@ -63,13 +71,13 @@ class _RedirectHandler(BaseHTTPRequestHandler):
     """Returns 307 for every POST; directs to destination server base."""
 
     def do_POST(self):
-        self.server.requests.append(self.path)
+        cast(_WireHTTPServer, self.server).requests.append(self.path)
         dest_base = getattr(self.server, "destination_base", "http://127.0.0.1:1")
         self.send_response(307)
         self.send_header("Location", f"{dest_base}{self.path}")
         self.end_headers()
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
 
@@ -77,16 +85,16 @@ class _DestinationHandler(BaseHTTPRequestHandler):
     """Destination server: should receive ZERO requests when redirect guard is active."""
 
     def do_POST(self):
-        self.server.hit_count += 1
+        cast(_WireHTTPServer, self.server).hit_count += 1
         self.send_response(200)
         self.end_headers()
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
 
 def _start_server(handler_cls, **extra_attrs):
-    srv = HTTPServer(("127.0.0.1", 0), handler_cls)
+    srv = _WireHTTPServer(("127.0.0.1", 0), handler_cls)
     srv.requests = []
     for k, v in extra_attrs.items():
         setattr(srv, k, v)
@@ -187,21 +195,14 @@ finally:
         text=True,
     )
     if res.returncode != 0:
-        raise RuntimeError(
-            f"Child process failed (code {res.returncode}):\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}"
-        )
+        raise RuntimeError(f"Child process failed (code {res.returncode}):\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}")
 
 
 def _decode_spans(body: bytes, content_encoding: str | None) -> list[str]:
     raw = gzip.decompress(body) if content_encoding == "gzip" else body
     req = ExportTraceServiceRequest()
     req.ParseFromString(raw)
-    return [
-        span.name
-        for rs in req.resource_spans
-        for ss in rs.scope_spans
-        for span in ss.spans
-    ]
+    return [span.name for rs in req.resource_spans for ss in rs.scope_spans for span in ss.spans]
 
 
 def _decode_logs(body: bytes, content_encoding: str | None) -> list[str]:
@@ -209,10 +210,7 @@ def _decode_logs(body: bytes, content_encoding: str | None) -> list[str]:
     req = ExportLogsServiceRequest()
     req.ParseFromString(raw)
     return [
-        lr_record.body.string_value
-        for rl in req.resource_logs
-        for sl in rl.scope_logs
-        for lr_record in sl.log_records
+        lr_record.body.string_value for rl in req.resource_logs for sl in rl.scope_logs for lr_record in sl.log_records
     ]
 
 
@@ -221,9 +219,7 @@ def _decode_logs(body: bytes, content_encoding: str | None) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def test_init_otel_provider_sends_bearer_to_traces_and_logs(
-    rask_token_file, otlp_server
-):
+def test_init_otel_provider_sends_bearer_to_traces_and_logs(rask_token_file, otlp_server):
     """init_otel_provider wires Bearer token and emits decoded span + log records."""
     endpoint = f"http://127.0.0.1:{otlp_server.server_port}"
     _run_client_in_subprocess(
@@ -255,9 +251,7 @@ def test_init_otel_provider_sends_bearer_to_traces_and_logs(
     assert "test-log-tag-wire" in logs, f"Expected log not found; got {logs}"
 
 
-def test_redirect_307_hits_destination_zero_times(
-    rask_token_file, redirect_server, destination_server
-):
+def test_redirect_307_hits_destination_zero_times(rask_token_file, redirect_server, destination_server):
     """307 redirect: positive origin receives BOTH routes before distinct redirect dest 0."""
     dest_base = f"http://127.0.0.1:{destination_server.server_port}"
     redirect_server.destination_base = dest_base
@@ -280,9 +274,7 @@ def test_redirect_307_hits_destination_zero_times(
     )
 
 
-def test_separate_trace_log_compression_no_cross_contamination(
-    rask_token_file, otlp_server
-):
+def test_separate_trace_log_compression_no_cross_contamination(rask_token_file, otlp_server):
     """Separate trace/log compression env preserves correct body/header decode (no contamination)."""
     endpoint = f"http://127.0.0.1:{otlp_server.server_port}"
 
@@ -360,7 +352,6 @@ def test_missing_or_invalid_token_file_raises_when_enabled(tmp_path, monkeypatch
     with pytest.raises(RuntimeError) as exc_info:
         init_otel_provider(OTelConfig())
     assert bad_val not in str(exc_info.value), "Secret leaked in exception message"
-
 
 
 def test_disabled_returns_noop_without_token_file(monkeypatch):

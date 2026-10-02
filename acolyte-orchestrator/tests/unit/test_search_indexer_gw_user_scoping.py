@@ -105,6 +105,7 @@ async def test_search_articles_fails_without_owner_jwt(content_store: MemoryCont
 
     This is NOT a broad raises(Exception) — the exact status code is pinned.
     """
+
     def inspecting_handler(request: httpx.Request) -> httpx.Response:
         # Simulates upstream: auth check rejects requests without a backend token
         if not request.headers.get("x-alt-backend-token"):

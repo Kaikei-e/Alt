@@ -104,8 +104,8 @@ class Settings(BaseSettings):
 
         # Load inference token if file is provided
         import os
-        from pathlib import Path
         import re
+        from pathlib import Path
 
         token_file = os.getenv("INFERENCE_SERVICE_TOKEN_FILE")
         if token_file:

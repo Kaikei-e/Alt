@@ -19,48 +19,61 @@ async def wire_server():
 
     async def handle_generate(request):
         body = await request.json()
-        received_requests.append({
-            "path": request.path,
-            "method": request.method,
-            "headers": dict(request.headers),
-            "body": body,
-        })
-        return web.json_response({
-            "response": "ok",
-            "model": "test-model",
-            "done": True,
-            "total_duration": 1000,
-            "prompt_eval_count": 10,
-            "eval_count": 20,
-        })
+        received_requests.append(
+            {
+                "path": request.path,
+                "method": request.method,
+                "headers": dict(request.headers),
+                "body": body,
+            }
+        )
+        return web.json_response(
+            {
+                "response": "ok",
+                "model": "test-model",
+                "done": True,
+                "total_duration": 1000,
+                "prompt_eval_count": 10,
+                "eval_count": 20,
+            }
+        )
 
     async def handle_chat(request):
         body = await request.json()
-        received_requests.append({
-            "path": request.path,
-            "method": request.method,
-            "headers": dict(request.headers),
-            "body": body,
-        })
+        received_requests.append(
+            {
+                "path": request.path,
+                "method": request.method,
+                "headers": dict(request.headers),
+                "body": body,
+            }
+        )
         response = web.StreamResponse(
             status=200,
             headers={"Content-Type": "application/x-ndjson"},
         )
         await response.prepare(request)
-        chunk = json.dumps({
-            "message": {"role": "assistant", "content": "streamed-token"},
-            "done": True,
-        }) + "\n"
+        chunk = (
+            json.dumps(
+                {
+                    "message": {"role": "assistant", "content": "streamed-token"},
+                    "done": True,
+                }
+            )
+            + "\n"
+        )
         await response.write(chunk.encode("utf-8"))
         await response.write_eof()
         return response
 
     async def handle_tags(request):
-        received_requests.append({
-            "path": request.path,
-            "method": request.method,
-            "headers": dict(request.headers),
-        })
+        received_requests.append(
+            {
+                "path": request.path,
+                "method": request.method,
+                "headers": dict(request.headers),
+            }
+        )
         return web.json_response({"models": [{"name": "test-model"}]})
 
     async def handle_307(request):
@@ -100,7 +113,9 @@ async def wire_server():
 
 
 @pytest.mark.asyncio
-async def test_production_constructors_wire_auth_and_no_redirect(wire_server, tmp_path, monkeypatch, dummy_redis_password_file):
+async def test_production_constructors_wire_auth_and_no_redirect(
+    wire_server, tmp_path, monkeypatch, dummy_redis_password_file
+):
     """Production constructors emit real requests with Bearer and refuse 307 redirect."""
     token_val = "prod-test-secret-token123="
     token_file = tmp_path / "inference.token"
@@ -136,7 +151,9 @@ async def test_production_constructors_wire_auth_and_no_redirect(wire_server, tm
     stream_driver = OllamaStreamDriver(cfg)
     await stream_driver.initialize()
     chunks = []
-    async for chunk in stream_driver.chat_stream({"messages": [{"role": "user", "content": "hi"}], "model": "test-model"}):
+    async for chunk in stream_driver.chat_stream(
+        {"messages": [{"role": "user", "content": "hi"}], "model": "test-model"}
+    ):
         chunks.append(chunk)
     assert len(chunks) == 1
     assert chunks[0]["message"]["content"] == "streamed-token"
@@ -145,7 +162,9 @@ async def test_production_constructors_wire_auth_and_no_redirect(wire_server, tm
     redirect_stream_driver = OllamaStreamDriver(redirect_cfg)
     await redirect_stream_driver.initialize()
     with pytest.raises(RuntimeError):
-        async for _ in redirect_stream_driver.chat_stream({"messages": [{"role": "user", "content": "hi"}], "model": "test-model"}):
+        async for _ in redirect_stream_driver.chat_stream(
+            {"messages": [{"role": "user", "content": "hi"}], "model": "test-model"}
+        ):
             pass
     assert wire_server["dest_counter"]["count"] == 0
 
@@ -190,7 +209,10 @@ async def test_production_constructors_wire_auth_and_no_redirect(wire_server, tm
     )
     redirect_checker._session = aiohttp.ClientSession(timeout=timeout, headers=headers)
     await redirect_checker._check_all()
-    assert redirect_checker._states[f"{wire_server['base_url']}/redirect-307"]["healthy"] is False
+    assert (
+        redirect_checker._states[f"{wire_server['base_url']}/redirect-307"]["healthy"]
+        is False
+    )
     assert wire_server["dest_counter"]["count"] == 0
 
     # Verify all received requests had valid Authorization header
@@ -211,7 +233,9 @@ async def test_production_constructors_wire_auth_and_no_redirect(wire_server, tm
 def test_token_file_validation_paths(tmp_path, monkeypatch):
     """Test token file failure modes (startup fail) vs inactive mode."""
     # 1. Missing file -> fails fast
-    monkeypatch.setenv("INFERENCE_SERVICE_TOKEN_FILE", str(tmp_path / "nonexistent.token"))
+    monkeypatch.setenv(
+        "INFERENCE_SERVICE_TOKEN_FILE", str(tmp_path / "nonexistent.token")
+    )
     with pytest.raises(ValueError, match="not found"):
         LLMConfig.from_env()
 

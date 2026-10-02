@@ -16,16 +16,20 @@ Environment contract verified:
 """
 
 import gzip
-import logging
 import os
 import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any, cast
 
 import pytest
-from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
-from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
+    ExportLogsServiceRequest,
+)
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+    ExportTraceServiceRequest,
+)
 
 _FAKE_TOKEN = "ValidRaskIngestToken1234567890abcdefgh"
 
@@ -35,13 +39,21 @@ _FAKE_TOKEN = "ValidRaskIngestToken1234567890abcdefgh"
 # ---------------------------------------------------------------------------
 
 
+class _WireHTTPServer(HTTPServer):
+    """Typed recording state shared by the wire-test request handlers."""
+
+    requests: list[Any]
+    hit_count: int = 0
+    destination_base: str = "http://127.0.0.1:1"
+
+
 class _CollectingHandler(BaseHTTPRequestHandler):
     """Captures every POST: path, Authorization, Content-Type, Content-Encoding, body."""
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
-        self.server.requests.append(
+        cast(_WireHTTPServer, self.server).requests.append(
             {
                 "path": self.path,
                 "auth": self.headers.get("Authorization"),
@@ -55,7 +67,7 @@ class _CollectingHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"")
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
 
@@ -63,13 +75,13 @@ class _RedirectHandler(BaseHTTPRequestHandler):
     """Returns 307 for every POST; directs to destination server base."""
 
     def do_POST(self):
-        self.server.requests.append(self.path)
+        cast(_WireHTTPServer, self.server).requests.append(self.path)
         dest_base = getattr(self.server, "destination_base", "http://127.0.0.1:1")
         self.send_response(307)
         self.send_header("Location", f"{dest_base}{self.path}")
         self.end_headers()
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
 
@@ -77,16 +89,16 @@ class _DestinationHandler(BaseHTTPRequestHandler):
     """Destination server: should receive ZERO requests when redirect guard is active."""
 
     def do_POST(self):
-        self.server.hit_count += 1
+        cast(_WireHTTPServer, self.server).hit_count += 1
         self.send_response(200)
         self.end_headers()
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
 
 def _start_server(handler_cls, **extra_attrs):
-    srv = HTTPServer(("127.0.0.1", 0), handler_cls)
+    srv = _WireHTTPServer(("127.0.0.1", 0), handler_cls)
     srv.requests = []
     for k, v in extra_attrs.items():
         setattr(srv, k, v)
@@ -302,7 +314,9 @@ def test_separate_trace_log_compression_no_cross_contamination(
     tr = by_path["/v1/traces"]
     lr = by_path["/v1/logs"]
 
-    assert tr["content_encoding"] == "gzip", f"Expected trace gzip encoding; got {tr['content_encoding']}"
+    assert tr["content_encoding"] == "gzip", (
+        f"Expected trace gzip encoding; got {tr['content_encoding']}"
+    )
     assert lr["content_encoding"] is None or lr["content_encoding"] == "none", (
         f"Log was contaminated with gzip encoding! Got {lr['content_encoding']}"
     )
@@ -332,7 +346,9 @@ def test_separate_trace_log_compression_no_cross_contamination(
     assert tr2["content_encoding"] is None or tr2["content_encoding"] == "none", (
         f"Trace was contaminated with gzip encoding! Got {tr2['content_encoding']}"
     )
-    assert lr2["content_encoding"] == "gzip", f"Expected log gzip encoding; got {lr2['content_encoding']}"
+    assert lr2["content_encoding"] == "gzip", (
+        f"Expected log gzip encoding; got {lr2['content_encoding']}"
+    )
 
     spans2 = _decode_spans(tr2["body"], tr2["content_encoding"])
     logs2 = _decode_logs(lr2["body"], lr2["content_encoding"])
@@ -360,7 +376,6 @@ def test_missing_or_invalid_token_file_raises_when_enabled(tmp_path, monkeypatch
     with pytest.raises(RuntimeError) as exc_info:
         init_otel_provider(OTelConfig())
     assert bad_val not in str(exc_info.value), "Secret leaked in exception message"
-
 
 
 def test_disabled_returns_noop_without_token_file(monkeypatch):

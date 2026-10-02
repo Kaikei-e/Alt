@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
-import jwt
-from datetime import datetime, UTC
-import tempfile
-import os
 
+import jwt
 import pytest
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
@@ -28,13 +28,13 @@ from acolyte.usecase.start_run_uc import StartRunUsecase
 from tests.conftest import make_request_ctx
 
 
-
 def _generate_test_token(user_id: UUID, secret: str) -> str:
     return jwt.encode(
         {"sub": str(user_id), "iss": "auth-hub", "aud": "alt-backend", "exp": datetime.now(UTC).timestamp() + 300},
         secret,
-        algorithm="HS256"
+        algorithm="HS256",
     )
+
 
 @pytest.mark.asyncio
 async def test_create_report_stores_user_id() -> None:
@@ -346,12 +346,14 @@ async def test_resume_pipeline_derives_owner_from_report(monkeypatch: pytest.Mon
         settings = Settings(checkpoint_enabled=False)
         service = AcolyteConnectService(settings, repo, jobs, graph=graph)
 
-        await service.resume_pipeline(str(report.report_id), str(run.run_id), {"topic": "AI"}, token=_generate_test_token(report.user_id, "test-secret"))
+        await service.resume_pipeline(
+            str(report.report_id), str(run.run_id), {"topic": "AI"}, token=_generate_test_token(owner_id, "test-secret")
+        )
         graph.ainvoke.assert_awaited_once()
         invoked_state = graph.ainvoke.call_args[0][0]
         assert invoked_state["user_id"] == owner_id
     finally:
-        os.unlink(temp_path)
+        await asyncio.to_thread(Path(temp_path).unlink)
 
 
 @pytest.mark.asyncio
@@ -383,11 +385,13 @@ async def test_resume_pipeline_refuses_null_owner_report(monkeypatch: pytest.Mon
         settings = Settings(checkpoint_enabled=False)
         service = AcolyteConnectService(settings, repo, jobs)
         with pytest.raises(ConnectError) as exc_info:
-            await service.resume_pipeline(str(legacy_id), str(run.run_id), {"topic": "AI"}, token=_generate_test_token(uuid4(), "test-secret"))
+            await service.resume_pipeline(
+                str(legacy_id), str(run.run_id), {"topic": "AI"}, token=_generate_test_token(uuid4(), "test-secret")
+            )
         assert exc_info.value.code == Code.FAILED_PRECONDITION
         assert "backfill" in exc_info.value.message.lower()
     finally:
-        os.unlink(temp_path)
+        await asyncio.to_thread(Path(temp_path).unlink)
 
 
 def test_disabled_mode_dev_user_resolution() -> None:

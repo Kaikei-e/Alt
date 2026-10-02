@@ -16,7 +16,6 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-
 _RFC6750_B64TOKEN = re.compile(r"^[A-Za-z0-9\-._~+/]+=*\Z")
 
 _DEFAULT_TIMEOUT_S = 7.0  # finite cap; SDK supplies its own value when calling post()
@@ -33,8 +32,7 @@ def _cap_timeout(timeout: object) -> object:
         return min(float(timeout), _DEFAULT_TIMEOUT_S)
     if isinstance(timeout, (tuple, list)):
         return tuple(
-            min(float(t), _DEFAULT_TIMEOUT_S) if isinstance(t, (int, float)) else _DEFAULT_TIMEOUT_S
-            for t in timeout
+            min(float(t), _DEFAULT_TIMEOUT_S) if isinstance(t, (int, float)) else _DEFAULT_TIMEOUT_S for t in timeout
         )
     return _DEFAULT_TIMEOUT_S
 
@@ -71,15 +69,11 @@ def load_rask_ingest_token() -> str:
     try:
         raw = Path(token_file).read_text(encoding="utf-8")
     except OSError as exc:
-        raise RuntimeError(
-            f"RASK_INGEST_TOKEN_FILE ({token_file}) could not be read: {exc}"
-        ) from exc
+        raise RuntimeError(f"RASK_INGEST_TOKEN_FILE ({token_file}) could not be read: {exc}") from exc
     except UnicodeDecodeError:
-        raise RuntimeError(
-            f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid characters"
-        ) from None
+        raise RuntimeError(f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid characters") from None
 
-    token = raw.rstrip('\r\n')
+    token = raw.rstrip("\r\n")
     if not token or not _RFC6750_B64TOKEN.match(token):
         raise RuntimeError(f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid characters")
     return token

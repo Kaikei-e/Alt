@@ -80,8 +80,9 @@ class _DummyDistributedGateway:
 
 
 class _DummyRemoteDriver:
-    def __init__(self, timeout_seconds=None):
+    def __init__(self, timeout_seconds=None, inference_token=""):
         self.timeout_seconds = timeout_seconds
+        self.inference_token = inference_token
 
 
 @pytest.fixture(autouse=True)
@@ -104,6 +105,7 @@ class _DummyConfig(SimpleNamespace):
     def __init__(self):
         super().__init__(
             distributed_be_enabled=True,
+            llm=SimpleNamespace(inference_service_token="test-inference-service-token"),
             distributed_be_remotes=["http://remote-a:11434"],
             distributed_be_health_interval_seconds=30,
             distributed_be_timeout_seconds=300,
@@ -192,6 +194,14 @@ def test_dependency_container_keeps_summarize_usecase_local(monkeypatch):
 
     container = main_module.DependencyContainer()
 
+    assert (
+        container.llm_provider.remote_driver.inference_token
+        == container.config.llm.inference_service_token
+    )
+    assert (
+        container.llm_provider.health_checker.kwargs["inference_token"]
+        == container.config.llm.inference_service_token
+    )
     assert container.summarize_usecase.llm_provider is container.llm_provider
     assert container.recap_summary_usecase.llm_provider is container.llm_provider
     assert container.recap_card_usecase.llm_provider is container.llm_provider

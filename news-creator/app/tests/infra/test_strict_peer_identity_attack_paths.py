@@ -60,7 +60,9 @@ def test_strict_default_is_true(monkeypatch: pytest.MonkeyPatch) -> None:
     assert strict_from_env() is True
 
 
-def test_anonymous_inference_rejected_on_plaintext(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_anonymous_inference_rejected_on_plaintext(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Anonymous request to inference endpoint must be rejected with 401."""
     monkeypatch.delenv("PEER_IDENTITY_TRUSTED", raising=False)
     app = _build_test_app(allowed=["recap-worker", "alt-backend"], strict=True)
@@ -70,12 +72,18 @@ def test_anonymous_inference_rejected_on_plaintext(monkeypatch: pytest.MonkeyPat
         assert "unauthenticated peer" in resp.text
 
 
-def test_spoofed_peer_header_rejected_on_direct_plaintext(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spoofed_peer_header_rejected_on_direct_plaintext(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Spoofed peer header directly on plaintext must be rejected with 401."""
-    monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")  # Even if trusted is on, transport is DIRECT
+    monkeypatch.setenv(
+        "PEER_IDENTITY_TRUSTED", "on"
+    )  # Even if trusted is on, transport is DIRECT
     app = _build_test_app(allowed=["recap-worker", "alt-backend"], strict=True)
     with TestClient(app, client=DIRECT) as client:
-        resp = client.post("/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"})
+        resp = client.post(
+            "/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"}
+        )
         assert resp.status_code == 401
         assert "unauthenticated peer" in resp.text
 
@@ -85,9 +93,12 @@ def test_verified_sidecar_peer_passes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
     app = _build_test_app(allowed=["alt-backend"], strict=True)
     with TestClient(app, client=SIDECAR) as client:
-        resp = client.post("/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"})
+        resp = client.post(
+            "/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"}
+        )
         assert resp.status_code == 200
         assert resp.json() == {"peer": "alt-backend"}
+
 
 def test_verified_tls_peer_passes() -> None:
     """TLS client cert peer in allowlist passes without extra token."""
@@ -117,7 +128,9 @@ def test_tls_peer_not_in_allowlist_rejected() -> None:
         forget_tls_peer(client_addr)
 
 
-def test_health_and_metrics_exempt_on_plaintext(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_and_metrics_exempt_on_plaintext(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Exact health/metrics paths are accessible on plaintext without credentials."""
     monkeypatch.delenv("PEER_IDENTITY_TRUSTED", raising=False)
     app = _build_test_app(allowed=["recap-worker"], strict=True)
@@ -146,7 +159,9 @@ def test_health_and_metrics_exempt_on_tls() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_otel_enabled_without_token_file_fails_fast(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_otel_enabled_without_token_file_fails_fast(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """When OTEL is enabled, missing RASK_INGEST_TOKEN_FILE must raise RuntimeError."""
     monkeypatch.setenv("OTEL_ENABLED", "true")
     monkeypatch.setenv("RASK_INGEST_TOKEN_FILE", str(tmp_path / "nonexistent_token"))
@@ -155,7 +170,9 @@ def test_otel_enabled_without_token_file_fails_fast(monkeypatch: pytest.MonkeyPa
         init_otel_provider(cfg)
 
 
-def test_otel_enabled_with_empty_token_file_fails_fast(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_otel_enabled_with_empty_token_file_fails_fast(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """When OTEL is enabled, empty RASK_INGEST_TOKEN_FILE must raise RuntimeError."""
     token_file = tmp_path / "empty_token"
     token_file.write_text("   \n")
@@ -193,7 +210,9 @@ def test_otel_enabled_with_valid_token_sets_bearer_header(
         try:
             # Check headers passed to OTLPSpanExporter
             _, span_kwargs = mock_span_exp.call_args
-            assert span_kwargs.get("headers") == {"Authorization": f"Bearer {token_val}"}
+            assert span_kwargs.get("headers") == {
+                "Authorization": f"Bearer {token_val}"
+            }
 
             # Check headers passed to OTLPLogExporter
             _, log_kwargs = mock_log_exp.call_args
@@ -202,7 +221,9 @@ def test_otel_enabled_with_valid_token_sets_bearer_header(
             shutdown()
 
 
-def test_otel_disabled_does_not_require_token_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_otel_disabled_does_not_require_token_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """When OTEL is disabled, RASK_INGEST_TOKEN_FILE is not loaded and shutdown is a no-op."""
     monkeypatch.setenv("OTEL_ENABLED", "false")
     monkeypatch.setenv("RASK_INGEST_TOKEN_FILE", str(tmp_path / "nonexistent_token"))
@@ -212,7 +233,9 @@ def test_otel_disabled_does_not_require_token_file(monkeypatch: pytest.MonkeyPat
     shutdown()
 
 
-def test_health_prefix_attack_rejected_on_plaintext(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_prefix_attack_rejected_on_plaintext(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Non-exact health paths (like /health-admin or /healthbypass) must not be exempt and be rejected."""
     monkeypatch.delenv("PEER_IDENTITY_TRUSTED", raising=False)
     app = _build_test_app(allowed=["recap-worker"], strict=True)
@@ -256,7 +279,9 @@ def test_strict_blank_allowlist_rejects_valid_cn_on_trusted_proxy(
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
     app = _build_test_app(allowed=[], strict=True)
     with TestClient(app, client=SIDECAR) as client:
-        resp = client.post("/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"})
+        resp = client.post(
+            "/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"}
+        )
         assert resp.status_code == 403
         assert "peer not allowlisted" in resp.text
 
@@ -268,6 +293,8 @@ def test_strict_matching_allowlist_accepts_valid_cn_on_trusted_proxy(
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
     app = _build_test_app(allowed=["alt-backend"], strict=True)
     with TestClient(app, client=SIDECAR) as client:
-        resp = client.post("/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"})
+        resp = client.post(
+            "/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"}
+        )
         assert resp.status_code == 200
         assert resp.json() == {"peer": "alt-backend"}

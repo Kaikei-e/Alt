@@ -4,13 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-_f = tempfile.NamedTemporaryFile(delete=False)
-_f.write(b"test-secret")
-_f.close()
-os.environ["BACKEND_TOKEN_SECRET_FILE"] = _f.name
-
-
-import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 from uuid import UUID
@@ -30,6 +24,17 @@ if TYPE_CHECKING:
 
 _TEST_DB_DSN = "postgresql://test:test@localhost:5439/test"
 _TEST_DEV_USER_ID = "00000000-0000-0000-0000-000000000001"
+_TEST_ENV_KEYS = (
+    "BACKEND_TOKEN_SECRET_FILE",
+    "ACOLYTE_DB_DSN",
+    "BACKEND_TOKEN_VERIFICATION",
+    "USER_IDENTITY_DEV_USER_ID",
+)
+_ORIGINAL_TEST_ENV = {key: os.environ.get(key) for key in _TEST_ENV_KEYS}
+_TEST_SECRET_DIRECTORY = tempfile.TemporaryDirectory(prefix="acolyte-test-secret-")
+_TEST_SECRET_FILE = Path(_TEST_SECRET_DIRECTORY.name) / "backend-token-secret"
+_TEST_SECRET_FILE.write_bytes(b"test-secret")
+os.environ["BACKEND_TOKEN_SECRET_FILE"] = str(_TEST_SECRET_FILE)
 
 # Force (not setdefault) before any Settings()/main imports during collection,
 # so a CI-provided ACOLYTE_DB_DSN cannot leak into unit tests that import main.
@@ -48,6 +53,16 @@ from acolyte.gateway.memory_report_gw import MemoryReportGateway  # noqa: E402
 from acolyte.gen.proto.alt.acolyte.v1.acolyte_connect import AcolyteServiceASGIApplication  # noqa: E402
 from acolyte.handler.connect_service import AcolyteConnectService  # noqa: E402
 from acolyte.infra.user_identity import UserIdentityInterceptor, attach_acting_user_id  # noqa: E402
+
+
+def pytest_unconfigure() -> None:
+    """Remove the bootstrap credential and restore the invoking process environment."""
+    for key, value in _ORIGINAL_TEST_ENV.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    _TEST_SECRET_DIRECTORY.cleanup()
 
 
 def make_request_ctx(method_name: str, user_id: UUID | None = TEST_USER_ID) -> RequestContext:

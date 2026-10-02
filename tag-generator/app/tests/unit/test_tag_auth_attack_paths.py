@@ -82,10 +82,13 @@ def test_valid_recap_worker_mtls_passes_without_extra_token(
 ) -> None:
     """Valid recap-worker identity passes to inference without needing any extra token."""
     import sys
+
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
-    if "auth_service" in sys.modules: del sys.modules["auth_service"]
+    if "auth_service" in sys.modules:
+        del sys.modules["auth_service"]
     from auth_service import app
+
     with patch("auth_service._background_tag_service") as mock_service:
         mock_service.tag_extractor = mock_tag_extractor
         client = TestClient(app, client=SIDECAR)
@@ -103,9 +106,12 @@ def test_valid_recap_worker_mtls_passes_without_extra_token(
 def test_in_process_tls_recap_worker_passes(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor) -> None:
     """Request with TLS client_cn 'recap-worker' in ASGI scope extension passes without extra token."""
     import sys
+
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
-    if "auth_service" in sys.modules: del sys.modules["auth_service"]
+    if "auth_service" in sys.modules:
+        del sys.modules["auth_service"]
     from auth_service import app
+
     with patch("auth_service._background_tag_service") as mock_service:
         mock_service.tag_extractor = mock_tag_extractor
 
@@ -129,9 +135,7 @@ def test_in_process_tls_recap_worker_passes(monkeypatch: pytest.MonkeyPatch, moc
 # ---------------------------------------------------------------------------
 
 
-def test_tag_otel_enabled_without_token_file_fails_fast(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_tag_otel_enabled_without_token_file_fails_fast(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """When OTEL is enabled, missing RASK_INGEST_TOKEN_FILE must raise RuntimeError."""
     monkeypatch.setenv("OTEL_ENABLED", "true")
     monkeypatch.setenv("RASK_INGEST_TOKEN_FILE", str(tmp_path / "nonexistent_token"))
@@ -140,9 +144,7 @@ def test_tag_otel_enabled_without_token_file_fails_fast(
         init_otel_provider(cfg)
 
 
-def test_tag_otel_enabled_with_empty_token_file_fails_fast(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_tag_otel_enabled_with_empty_token_file_fails_fast(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """When OTEL is enabled, empty RASK_INGEST_TOKEN_FILE must raise RuntimeError."""
     token_file = tmp_path / "empty_token"
     token_file.write_text("   \n")
@@ -153,9 +155,7 @@ def test_tag_otel_enabled_with_empty_token_file_fails_fast(
         init_otel_provider(cfg)
 
 
-def test_tag_otel_enabled_with_valid_token_sets_bearer_header(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_tag_otel_enabled_with_valid_token_sets_bearer_header(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """When OTEL is enabled with valid token, Authorization: Bearer header is added to exporters."""
     token_val = secrets.token_urlsafe(32)
     token_file = tmp_path / "rask_token"
@@ -181,9 +181,7 @@ def test_tag_otel_enabled_with_valid_token_sets_bearer_header(
             shutdown()
 
 
-def test_tag_otel_disabled_does_not_require_token_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_tag_otel_disabled_does_not_require_token_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """When OTEL is disabled, RASK_INGEST_TOKEN_FILE is not loaded and shutdown is a no-op."""
     monkeypatch.setenv("OTEL_ENABLED", "false")
     monkeypatch.setenv("RASK_INGEST_TOKEN_FILE", str(tmp_path / "nonexistent_token"))
@@ -191,6 +189,7 @@ def test_tag_otel_disabled_does_not_require_token_file(
     shutdown = init_otel_provider(cfg)
     assert callable(shutdown)
     shutdown()
+
 
 def test_blank_allowlist_denies_tls_peer(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor) -> None:
     """TLS request with valid CN but empty MTLS_ALLOWED_PEERS -> 403"""

@@ -152,7 +152,9 @@ class OllamaDriver:
                     raise AssertionError(
                         "Session not initialized. Call initialize() first."
                     )
-                async with self.session.post(url, json=payload, allow_redirects=False) as response:
+                async with self.session.post(
+                    url, json=payload, allow_redirects=False
+                ) as response:
                     if response.status != 200:
                         text_body = await response.text()
                         error_msg = (

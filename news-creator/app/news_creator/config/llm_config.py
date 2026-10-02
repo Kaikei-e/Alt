@@ -106,6 +106,7 @@ class LLMConfig:
         token_file = os.getenv("INFERENCE_SERVICE_TOKEN_FILE")
         if token_file:
             from news_creator.config.inference_token import load_inference_token
+
             if not os.path.isfile(token_file):
                 raise ValueError(f"Inference token file {token_file} not found")
             inference_service_token = load_inference_token(token_file)

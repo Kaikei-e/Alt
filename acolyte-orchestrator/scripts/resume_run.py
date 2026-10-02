@@ -23,6 +23,7 @@ import argparse
 import asyncio
 import os
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -176,14 +177,15 @@ async def _resume(run_id: str, token: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Resume an Acolyte pipeline run from checkpoint")
     parser.add_argument("--run-id", required=True, help="UUID of the run to resume")
-    parser.add_argument("--token-file", required=True, help="Path to file containing valid JWT token proving ownership of the report")
+    parser.add_argument(
+        "--token-file", required=True, help="Path to file containing valid JWT token proving ownership of the report"
+    )
     args = parser.parse_args()
 
     try:
-        with open(args.token_file, "r") as f:
-            token = f.read().strip()
-    except Exception as e:
-        logger.error("Failed to read token file", error=str(e))
+        token = Path(args.token_file).read_text(encoding="utf-8").strip()
+    except OSError, UnicodeError:
+        logger.exception("Failed to read token file")
         sys.exit(1)
 
     if not token:

@@ -7,6 +7,7 @@ import json
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+import jwt
 import structlog
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
@@ -14,7 +15,7 @@ from connectrpc.errors import ConnectError
 import acolyte.gen  # noqa: F401 — must precede generated imports
 from acolyte.domain.brief import ReportBrief
 from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
-from acolyte.infra.user_identity import current_user_id, get_acting_user_id
+from acolyte.infra.user_identity import current_user_id, current_user_jwt, get_acting_user_id
 from acolyte.usecase.create_report_uc import CreateReportUsecase
 from acolyte.usecase.get_report_uc import GetReportUsecase
 from acolyte.usecase.list_reports_uc import ListReportsUsecase
@@ -282,11 +283,6 @@ class AcolyteConnectService:
         to resume a checkpointed run outside of start_report_run's background task.
         Requires a valid JWT token proving ownership of the report.
         """
-        import jwt
-        from connectrpc.code import Code
-        from connectrpc.errors import ConnectError
-        from acolyte.infra.user_identity import attach_acting_user_id, current_user_id, current_user_jwt
-
         try:
             rid = UUID(report_id)
         except ValueError as e:
@@ -324,7 +320,7 @@ class AcolyteConnectService:
             if str(report.user_id) != str(token_sub):
                 raise ConnectError(Code.PERMISSION_DENIED, "JWT subject does not exactly match report owner")
         except jwt.PyJWTError as e:
-            raise ConnectError(Code.UNAUTHENTICATED, f"Invalid or expired JWT proof: {e}")
+            raise ConnectError(Code.UNAUTHENTICATED, f"Invalid or expired JWT proof: {e}") from e
 
         c_tok_id = current_user_id.set(report.user_id)
         c_tok_jwt = current_user_jwt.set(token)

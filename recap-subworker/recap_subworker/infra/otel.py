@@ -10,7 +10,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 import requests as _requests
-
 from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
@@ -93,9 +92,7 @@ def load_rask_ingest_token() -> str:
 
     token = raw.rstrip("\r\n")
     if not token or not _TOKEN68_RE.match(token):
-        raise RuntimeError(
-            f"RASK_INGEST_TOKEN_FILE ({token_file}) contains an invalid token"
-        )
+        raise RuntimeError(f"RASK_INGEST_TOKEN_FILE ({token_file}) contains an invalid token")
     return token
 
 

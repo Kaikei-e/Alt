@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 def client(monkeypatch: pytest.MonkeyPatch):
     """Create a test client authenticated as legitimate caller recap-worker."""
     import sys
+
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
     if "auth_service" in sys.modules:

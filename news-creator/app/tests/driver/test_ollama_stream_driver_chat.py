@@ -211,7 +211,6 @@ def _make_mock_session(
     return session, captured
 
 
-
 class TestChatStreamUsesApiChat:
     """chat_stream() must call /api/chat (not /api/generate) and set think=false."""
 

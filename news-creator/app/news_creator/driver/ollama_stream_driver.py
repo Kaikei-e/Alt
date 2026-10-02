@@ -125,7 +125,9 @@ class OllamaStreamDriver:
 
         if self.session is None:
             raise RuntimeError("HTTP session is not initialized")
-        async with self.session.post(url, json=chat_payload, allow_redirects=False) as response:
+        async with self.session.post(
+            url, json=chat_payload, allow_redirects=False
+        ) as response:
             if response.status != 200:
                 text_body = await response.text()
                 raise RuntimeError(
@@ -197,7 +199,9 @@ class OllamaStreamDriver:
 
         if self.session is None:
             raise RuntimeError("HTTP session is not initialized")
-        async with self.session.post(url, json=chat_payload, allow_redirects=False) as response:
+        async with self.session.post(
+            url, json=chat_payload, allow_redirects=False
+        ) as response:
             if response.status != 200:
                 text_body = await response.text()
                 raise RuntimeError(
@@ -247,7 +251,9 @@ class OllamaStreamDriver:
 
         if not (self.session is not None):
             raise AssertionError("Session not initialized. Call initialize() first.")
-        async with self.session.post(url, json=payload, allow_redirects=False) as response:
+        async with self.session.post(
+            url, json=payload, allow_redirects=False
+        ) as response:
             if response.status != 200:
                 text_body = await response.text()
                 error_msg = (

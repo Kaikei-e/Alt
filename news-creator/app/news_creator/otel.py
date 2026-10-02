@@ -45,7 +45,9 @@ def _cap_timeout(timeout: object) -> object:
         return min(float(timeout), _DEFAULT_TIMEOUT_S)
     if isinstance(timeout, (tuple, list)):
         return tuple(
-            min(float(t), _DEFAULT_TIMEOUT_S) if isinstance(t, (int, float)) else _DEFAULT_TIMEOUT_S
+            min(float(t), _DEFAULT_TIMEOUT_S)
+            if isinstance(t, (int, float))
+            else _DEFAULT_TIMEOUT_S
             for t in timeout
         )
     return _DEFAULT_TIMEOUT_S
@@ -94,7 +96,9 @@ def load_rask_ingest_token() -> str:
 
     token = raw.strip()
     if not token or not _RFC6750_B64TOKEN.match(token):
-        raise RuntimeError(f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid characters")
+        raise RuntimeError(
+            f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid characters"
+        )
     return token
 
 
