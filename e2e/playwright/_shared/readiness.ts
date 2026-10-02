@@ -33,6 +33,7 @@ export type Probe = {
 export type WaitOptions = {
 	readonly timeout?: number;
 	readonly interval?: number;
+	readonly context?: Parameters<typeof request.newContext>[0];
 };
 
 async function waitFor(
@@ -73,7 +74,7 @@ export async function waitForReady(
 	probes: readonly Probe[],
 	options: WaitOptions = {},
 ): Promise<void> {
-	const api = await request.newContext();
+	const api = await request.newContext(options.context);
 	try {
 		for (const probe of probes) {
 			await waitFor(api, probe, options);

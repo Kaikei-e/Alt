@@ -3,6 +3,7 @@ import type { APIRequestContext, APIResponse } from "@playwright/test";
 import { uuid } from "../../_shared/ids.js";
 import { expectJsonStatus } from "../../_shared/http.js";
 import { env } from "./env.js";
+import { clientCertificates } from "../../_shared/client-auth.js";
 import { extractTagsSchema } from "./schemas.js";
 
 /**
@@ -48,6 +49,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 		async ({ playwright }, use) => {
 			const context = await playwright.request.newContext({
 				baseURL: env.baseURL,
+				clientCertificates: clientCertificates(env.baseURL, env.clientCert, env.clientKey),
 				extraHTTPHeaders: { "Content-Type": "application/json" },
 			});
 			await use(context);
@@ -61,6 +63,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 			const context = await playwright.request.newContext({
 				baseURL: env.mqhubURL,
 				extraHTTPHeaders: {
+					Authorization: `Bearer ${env.mqhubToken}`,
 					"Content-Type": "application/json",
 					// connect-go does not *require* this header (mq-hub mounts its
 					// handler without `WithRequireConnectProtocolHeader`), but every

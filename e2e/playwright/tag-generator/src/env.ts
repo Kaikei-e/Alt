@@ -9,11 +9,17 @@
  * instead of "you forgot to export BASE_URL", and a suite pointed at the
  * *wrong* host reports green. `run.sh` is the single place these are set.
  */
-import { requiredEnv, runId } from "../../_shared/env.js";
+import { requiredEnv, requiredSecretFile, runId } from "../../_shared/env.js";
 
 export const env = {
 	/** tag-generator's FastAPI listener (compose staging sets `PORT=9400`). */
 	baseURL: requiredEnv("BASE_URL"),
+	plaintextURL: requiredEnv("PLAINTEXT_URL"),
+	clientCert: requiredEnv("TLS_CLIENT_CERT_FILE"),
+	clientKey: requiredEnv("TLS_CLIENT_KEY_FILE"),
+	deniedCert: requiredEnv("TLS_DENIED_CERT_FILE"),
+	deniedKey: requiredEnv("TLS_DENIED_KEY_FILE"),
+	mqhubToken: requiredSecretFile("MQHUB_AUTH_TOKEN_FILE"),
 
 	/**
 	 * mq-hub's Connect-RPC listener.

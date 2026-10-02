@@ -71,7 +71,7 @@ test.describe("rate limiting", () => {
 		expect(Number.parseInt(retryAfter ?? "", 10)).toBe(2);
 	});
 
-	test("the /internal limiter refuses past burst 3 @contract", async ({ hub }) => {
+	test("the /internal limiter refuses past burst 3 @contract", async ({ internalHub: hub }) => {
 		// main.go:174 — `NewRateLimiter(10.0/60.0, 3)`, hard-coded and explicitly
 		// not env-tunable, which the Hurl suite worked around with per-scenario
 		// `retry-interval: 6000`. The limiter is group middleware installed ahead

@@ -33,6 +33,7 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 source "$ROOT/e2e/playwright/_lib/suite.sh"
 
 suite_init mq-hub
+suite_endpoint MQHUB_AUTH_TOKEN_FILE "$ROOT/e2e/playwright/_fixtures/test-credentials/mqhub_auth_token.txt"
 
 # compose.staging.yaml keys the image off MQ_HUB_IMAGE_TAG (default `main`) so
 # unrelated services stay on the last successful main build; this forwards the

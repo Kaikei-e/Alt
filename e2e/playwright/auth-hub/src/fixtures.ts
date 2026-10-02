@@ -2,6 +2,7 @@ import { randomBytes, randomInt } from "node:crypto";
 import { test as base } from "@playwright/test";
 import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test";
 import { env } from "./env.js";
+import { clientCertificates } from "../../_shared/client-auth.js";
 import {
 	kratosIdentitySchema,
 	kratosLoginFlowSchema,
@@ -229,6 +230,8 @@ type WorkerFixtures = {
 };
 
 type TestFixtures = {
+	/** Private :9443, verified client certificate; bearer supplied per test. */
+	internalHub: APIRequestContext;
 	/** This test's private client address — see the module comment. */
 	clientIP: string;
 	/** auth-hub :8888, anonymous, carrying this test's client address. */
@@ -253,6 +256,15 @@ type TestFixtures = {
 };
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
+	internalHub: async ({ playwright, clientIP, session }, use) => {
+		void session; // Ensure a resolvable identity exists before system-user reads.
+		const context = await playwright.request.newContext({
+			baseURL: env.mtlsURL,
+			clientCertificates: clientCertificates(env.mtlsURL, env.clientCert, env.clientKey),
+			extraHTTPHeaders: { "X-Forwarded-For": clientIP },
+		});
+		try { await use(context); } finally { await context.dispose(); }
+	},
 	kratosAdmin: [
 		async ({ playwright }, use) => {
 			const context = await playwright.request.newContext({ baseURL: env.kratosAdminURL });

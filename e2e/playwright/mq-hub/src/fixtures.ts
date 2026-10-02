@@ -7,8 +7,8 @@ import { env, Procedure } from "./env.js";
 /**
  * Suite-wide fixtures.
  *
- * mq-hub has no authentication and no tenancy, so there is nothing to seed a
- * *session* with — the clients are cheap and worker-scoped. What each test
+ * mq-hub requires the staging bearer; it has no tenancy. Clients are
+ * worker-scoped. What each test
  * does need of its own is a **stream key**, and that is the fixture that
  * breaks the ordering the Hurl suite was built on.
  *
@@ -72,7 +72,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 		async ({ playwright }, use) => {
 			const context = await playwright.request.newContext({
 				baseURL: env.baseURL,
-				extraHTTPHeaders: { "Connect-Protocol-Version": "1" },
+				extraHTTPHeaders: { "Connect-Protocol-Version": "1", Authorization: `Bearer ${env.authToken}` },
 			});
 			await use(context);
 			await context.dispose();
@@ -82,7 +82,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
 	bare: [
 		async ({ playwright }, use) => {
-			const context = await playwright.request.newContext({ baseURL: env.baseURL });
+			const context = await playwright.request.newContext({ baseURL: env.baseURL, extraHTTPHeaders: { Authorization: `Bearer ${env.authToken}` } });
 			await use(context);
 			await context.dispose();
 		},

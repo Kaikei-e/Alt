@@ -38,7 +38,7 @@ export function mintBackendToken(options: MintTokenOptions = {}): string {
 	const issuer = options.issuer ?? "auth-hub";
 	const audience = options.audience ?? "alt-backend";
 	const now = options.iat ?? Math.floor(Date.now() / 1000);
-	const exp = options.exp ?? now + (options.expiresInSeconds ?? 900); // 15-minute short-lived exp
+	const exp = options.exp ?? now + (options.expiresInSeconds ?? 300);
 
 	const header = {
 		alg: "HS256",
@@ -48,6 +48,7 @@ export function mintBackendToken(options: MintTokenOptions = {}): string {
 		iss: issuer,
 		aud: audience,
 		sub: userId,
+		tenant_id: userId,
 		iat: now,
 		exp: exp,
 	};

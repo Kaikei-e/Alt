@@ -47,6 +47,7 @@ suite_up \
   alt-backend-db \
   alt-backend-db-migrator \
   alt-backend-deps-stub \
+  auth-introspection \
   alt-data-hub \
   alt-backend
 

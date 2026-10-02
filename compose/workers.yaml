@@ -120,6 +120,7 @@ services:
       # be a SAN of the alt-data-hub leaf (in-process enrollment mints
       # CERT_SANS=alt-data-hub,localhost).
       - BACKEND_MTLS_SERVER_NAME=alt-data-hub
+      - USER_JWT_INTROSPECTION_URL=https://auth-hub:9443/internal/token/introspect
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
       # alt-backend's operator listener and carries no data plane at all —
       # `services.datahub.v1.DataHubService` is alt-data-hub's, over mTLS only.
@@ -136,6 +137,7 @@ services:
       # The API key is set by the indexer's EmbedderSettings call using the
       # inference_service_token secret — not mounted into Meilisearch itself.
       - MEILI_EMBEDDER_URL=${MEILI_EMBEDDER_URL:-http://embedding-proxy:11436/api/embed}
+      - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
       - REDIS_STREAMS_URL=redis://streams@redis-streams:6379
       - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
       - CONSUMER_ENABLED=true

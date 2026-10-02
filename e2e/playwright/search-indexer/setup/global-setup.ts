@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { httpBody, waitForReady } from "../../_shared/readiness.js";
 import { seedDocuments } from "../src/corpus.js";
 import { env, meiliEnv, seedDocsPath, SharedCorpus } from "../src/env.js";
+import { fixtureToken, fixtureUserId } from "../src/auth.js";
 
 /**
  * Readiness gate + shared-corpus seed — the replacement for
@@ -88,7 +89,7 @@ export default async function globalSetup(): Promise<void> {
 	await seedDocuments({
 		meiliURL: meili.url,
 		masterKey: meili.masterKey,
-		documents: JSON.parse(readFileSync(seedDocsPath(), "utf8")) as unknown,
+		documents: (JSON.parse(readFileSync(seedDocsPath(), "utf8")) as Array<Record<string, unknown>>).map((doc) => ({ ...doc, user_id: fixtureUserId(String(doc["user_id"])) })),
 		label: "the shared fixture corpus",
 	});
 
@@ -116,7 +117,7 @@ export default async function globalSetup(): Promise<void> {
 						`${env.baseURL}/v1/search?q=${encodeURIComponent(SharedCorpus.rustQuery)}` +
 						`&user_id=${encodeURIComponent(SharedCorpus.aliceUser)}` +
 						`&limit=5`;
-					const response = await api.get(url, { timeout: 10_000 });
+					const response = await api.get(url, { timeout: 10_000, headers: { Authorization: `Bearer ${fixtureToken(SharedCorpus.aliceUser)}` } });
 					if (!response.ok()) {
 						throw new Error(`status ${response.status()}`);
 					}

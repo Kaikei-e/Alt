@@ -28,6 +28,9 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 source "$ROOT/e2e/playwright/_lib/suite.sh"
 
 suite_init acolyte-orchestrator
+# Search's outbound introspection client remains mTLS even with its inbound
+# listener disabled in this suite.
+suite_pki auth-hub search-indexer
 
 # No `suite_image_tags` on purpose, and this is a behavioural choice rather than
 # an omission: acolyte-orchestrator, acolyte-db-migrator and
@@ -71,6 +74,7 @@ suite_up --build \
   news-creator-ollama-stub \
   meilisearch \
   stub-backend \
+  auth-introspection \
   search-indexer
 
 suite_test

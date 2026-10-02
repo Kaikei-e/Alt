@@ -9,7 +9,7 @@
  * of "you forgot to export BASE_URL", and a suite pointed at the *wrong* host
  * reports green. `run.sh` is the single place these are set.
  */
-import { requiredEnv, runId } from "../../_shared/env.js";
+import { requiredEnv, requiredSecretFile, runId } from "../../_shared/env.js";
 
 export const env = {
 	/**
@@ -20,6 +20,7 @@ export const env = {
 	 * so this URL is the whole service.
 	 */
 	baseURL: requiredEnv("BASE_URL"),
+	authToken: requiredSecretFile("MQHUB_AUTH_TOKEN_FILE"),
 
 	/**
 	 * A port mq-hub must **not** answer on.

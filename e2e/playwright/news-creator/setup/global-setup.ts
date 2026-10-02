@@ -1,5 +1,6 @@
 import { httpBody, waitForReady } from "../../_shared/readiness.js";
 import { env } from "../src/env.js";
+import { clientCertificates } from "../../_shared/client-auth.js";
 
 /**
  * Readiness gate — the direct replacement for `00-setup.hurl`.
@@ -59,5 +60,5 @@ export default async function globalSetup(): Promise<void> {
 			},
 			`GET ${env.baseURL}/queue/status reports a wired semaphore (total_slots >= 1)`,
 		),
-	]);
+	], { context: { clientCertificates: clientCertificates(env.baseURL, env.clientCert, env.clientKey) } });
 }

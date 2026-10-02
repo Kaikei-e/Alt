@@ -53,7 +53,7 @@ suite_image_tags ALT_DATA_HUB_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG
 # name the allowlist gets and the name the leaf is minted under ever drifted,
 # every positive scenario would die in the TLS handshake with no assertion to
 # point at the cause — so both come from one variable, exported once.
-: "${ALLOWED_PEER:=pre-processor}"
+: "${ALLOWED_PEER:=alt-backend}"
 : "${DENIED_PEER:=rogue-peer}"
 export ALLOWED_PEER DENIED_PEER
 
@@ -62,7 +62,7 @@ export ALLOWED_PEER DENIED_PEER
 # client leaves: one on the allowlist and one deliberately off it. The second
 # is the whole point — it proves the boundary rejects a *valid chain* with the
 # wrong identity, which is the failure a shared internal CA makes possible.
-suite_pki alt-data-hub "$ALLOWED_PEER" "$DENIED_PEER"
+suite_pki alt-data-hub "$ALLOWED_PEER" "$DENIED_PEER" pre-processor
 
 suite_endpoint DATA_HUB_URL "https://alt-data-hub:9443"
 suite_endpoint OPS_URL      "http://alt-data-hub:9110"
@@ -87,6 +87,7 @@ suite_up \
   alt-backend-db \
   alt-backend-db-migrator \
   alt-backend-deps-stub \
+  auth-introspection \
   alt-data-hub
 
 suite_test

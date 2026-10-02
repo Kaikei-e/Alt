@@ -8,33 +8,9 @@ import {
 import { expectConnectionRefused } from "../../_shared/net.js";
 import { env, Procedure, SharedCorpus } from "../src/env.js";
 import { nonEmptySearchResponseSchema } from "../src/schemas.js";
+import { fixtureToken } from "../src/auth.js";
 
-/**
- * Listener topology and the access-control posture that follows from it — new
- * coverage, and the part of this service the Hurl suite could not express at
- * all.
- *
- * search-indexer binds up to three listeners, and which ones is a
- * configuration decision made in `bootstrap/app.go`:
- *
- *   :9300  REST     — always
- *   :9301  Connect  — always
- *   :9443  REST + Connect behind mutual TLS — **only** when
- *          `os.Getenv("MTLS_LISTEN") == "true"`
- *
- * The consequence is stated plainly in `bootstrap/servers.go`: *"/v1/search is
- * gated at the transport layer (mTLS peer-identity on the :9443 listener). The
- * plaintext :9300 path here serves only rate-limited handlers; auth has been
- * removed pending retirement of the listener itself."* On the plaintext ports,
- * **network reachability is the entire access control** for an endpoint that
- * can read any tenant's articles. That is a deliberate migration-window
- * posture, not an oversight — but nothing was asserting it, so nothing would
- * have noticed it changing in either direction.
- *
- * Every negative below asserts **404**, never 401 or 403. A 401 would mean the
- * route is registered on the wrong mux and only a middleware stands between a
- * caller and it; 404 is the only status that says "this surface is not here".
- */
+/** Split REST/Connect routes remain separate; both search surfaces require owner proof. */
 
 test.describe("the plaintext listeners answer only their own routes", () => {
 	test("the positive control", { tag: "@smoke" }, async ({ rest, bare }) => {
@@ -140,25 +116,11 @@ test.describe("the mutual-TLS listener is opt-in", () => {
 });
 
 test.describe("access-control posture on the plaintext ports", () => {
-	test("searching requires no credential whatsoever", { tag: "@authz" }, async ({ bare }) => {
-		// Stated as a test rather than left in a README, because it is the whole
-		// reason the mTLS listener exists and the whole reason this suite needs
-		// no auth fixture. `bare` sends no cookie, no bearer token, no client
-		// certificate and no peer-identity header.
-		//
-		// When `/v1/search` does start requiring a credential on this port —
-		// which is what "pending retirement of the listener itself" in
-		// bootstrap/servers.go anticipates — this test fails. That is the
-		// intended signal, not a bug in the test.
-		//
-		// The posture claim is that the credential-free path is *served*, not
-		// merely un-rejected, so the hit is asserted rather than the status
-		// alone. `q=rust` matches exactly the two shared-corpus documents
-		// globalSetup indexed before any worker started, and `limit=1` caps the
-		// page at one — so `hits: []` under a 200, which is what a search path
-		// that stopped reaching Meilisearch returns forever, fails here.
+	test("searching requires an owner token", { tag: "@authz" }, async ({ bare, rest }) => {
+		// Compare unauthenticated rejection with a real nonempty authorized result.
+		await expectStatus(await bare.get(`${env.baseURL}/v1/search?q=${SharedCorpus.rustQuery}&user_id=${SharedCorpus.aliceUser}&limit=1`), 401);
 		const body = await expectJsonStatus(
-			await bare.get(
+			await rest.get(
 				`${env.baseURL}/v1/search?q=${SharedCorpus.rustQuery}&user_id=${SharedCorpus.aliceUser}&limit=1`,
 			),
 			200,
@@ -206,7 +168,7 @@ test.describe("access-control posture on the plaintext ports", () => {
 
 		const spoofed = await expectJsonStatus(
 			await bare.get(`${env.baseURL}${path}`, {
-				headers: { "X-Alt-Peer-Identity": "alt-backend" },
+				headers: { "X-Alt-Peer-Identity": "alt-backend", Authorization: `Bearer ${fixtureToken(corpus.userId)}` },
 			}),
 			200,
 			nonEmptySearchResponseSchema,

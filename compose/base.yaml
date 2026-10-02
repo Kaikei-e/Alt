@@ -183,6 +183,10 @@ secrets:
     file: ../secrets/rask_ingest_token.txt
   inference_service_token:
     file: ../secrets/inference_service_token.txt
+  # Shared by the broker and enabled RPC producers; altctl init discovers
+  # this declaration and generates one cryptographically random token file.
+  mqhub_auth_token:
+    file: ../secrets/mqhub_auth_token.txt
   k6_api_token:
     file: ../secrets/k6_api_token.txt
   rag_api_token:

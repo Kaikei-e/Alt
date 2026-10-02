@@ -53,19 +53,7 @@ test.describe("health", () => {
 	});
 
 	test("a junk credential does not turn /health into a 401 @smoke @authz", async ({ api }) => {
-		// news-creator carries no auth middleware other than
-		// `PeerIdentityMiddleware`, which runs with `strict=False` (main.py:239),
-		// so the listener answers anonymously by design. The container healthcheck
-		// (`urllib.request.urlopen('http://127.0.0.1:11434/health')`) sends no
-		// headers at all and would deadlock the whole slice if that changed.
-		//
-		// Sending credentials the service must ignore rather than sending none is
-		// what makes this a claim: an *absent* header proves nothing here, because
-		// no test in this suite ever sends one — omitting it is the same request
-		// the @smoke test above already makes. A bearer token and a Kratos session
-		// cookie are the two shapes an accidentally-mounted auth middleware would
-		// try to validate, and a middleware that rejected them would answer
-		// 401/403 rather than the healthy envelope.
+		// Health is explicitly exempt; junk user credentials do not change it.
 		const response = await api.get("/health", {
 			headers: {
 				Authorization: "Bearer not-a-real-token",

@@ -10,6 +10,7 @@
  * reports green. `run.sh` is the single place these are set.
  */
 import { requiredEnv, requiredSecretFile, runId } from "../../_shared/env.js";
+import { fixtureUserId } from "./auth.js";
 
 export const env = {
 	/** Plaintext REST listener: `/health` + `/v1/search` (`config.HTTPAddr`, default :9300). */
@@ -90,10 +91,10 @@ export const SharedCorpus = {
 	rustQuery: "rust",
 	aliceDocId: "doc-rust-tokio",
 	bobDocId: "doc-rust-borrow",
-	aliceUser: "alice",
-	bobUser: "bob",
+	aliceUser: fixtureUserId("alice"),
+	bobUser: fixtureUserId("bob"),
 	/** A user id that owns nothing — the "empty result set, not a 4xx" case. */
-	unknownUser: "nobody",
+	unknownUser: fixtureUserId("nobody"),
 	/** How many documents `q=rust` matches across the whole fixture corpus. */
 	rustHitCount: 2,
 	/** How many documents `q=rust` matches for tenant alice. */

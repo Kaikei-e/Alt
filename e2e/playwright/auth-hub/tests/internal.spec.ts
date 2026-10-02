@@ -41,7 +41,7 @@ function lengthMatchedWrongSecret(): string {
 
 test.describe("internal system-user", () => {
 	test("GET /internal/system-user returns a resolvable identity @contract", async ({
-		hub,
+		internalHub: hub,
 		kratosAdmin,
 	}) => {
 		const body = await expectJsonStatus(
@@ -60,7 +60,7 @@ test.describe("internal system-user", () => {
 		expect((await identity.json()) as { id?: unknown }).toMatchObject({ id: body.user_id });
 	});
 
-	test("the answer is stable across calls @contract", async ({ hub }) => {
+	test("the answer is stable across calls @contract", async ({ internalHub: hub }) => {
 		// `GetFirstIdentityID` is uncached and re-queries Kratos every time, so
 		// two calls in quick succession must agree. They would not if the handler
 		// were sensitive to Kratos's pagination ordering — which is exactly the
@@ -86,7 +86,7 @@ test.describe("internal system-user", () => {
 });
 
 test.describe("internal auth boundary", () => {
-	test("no X-Internal-Auth header → 401 @authz", async ({ hub }) => {
+	test("no X-Internal-Auth header → 401 @authz", async ({ internalHub: hub }) => {
 		// internal_auth.go:19-21 — `len(provided) == 0` short-circuits before the
 		// comparison. 401 rather than 403 is the deliberate signal "you did not
 		// present a credential", which is what makes a misconfigured caller
@@ -96,7 +96,7 @@ test.describe("internal auth boundary", () => {
 		await expectJson(response, echoErrorSchema);
 	});
 
-	test("an empty X-Internal-Auth header → 401, not 403 @authz", async ({ hub }) => {
+	test("an empty X-Internal-Auth header → 401, not 403 @authz", async ({ internalHub: hub }) => {
 		// New. `""` is a header that is *present* but carries nothing, and it is
 		// what a caller with an unset environment variable actually sends —
 		// CLAUDE.md rule 9's failure mode arriving over the wire. The middleware
@@ -108,7 +108,7 @@ test.describe("internal auth boundary", () => {
 		await expectStatus(response, 401);
 	});
 
-	test("a wrong secret of the same length → 403 @authz", async ({ hub }) => {
+	test("a wrong secret of the same length → 403 @authz", async ({ internalHub: hub }) => {
 		// internal_auth.go:22-24. `subtle.ConstantTimeCompare` returns 0, and the
 		// middleware distinguishes invalid (403) from missing (401). Matching the
 		// real secret's length is what makes this exercise the comparison itself
@@ -121,7 +121,7 @@ test.describe("internal auth boundary", () => {
 		await expectJson(response, echoErrorSchema);
 	});
 
-	test("a wrong secret of a different length → 403 @authz", async ({ hub }) => {
+	test("a wrong secret of a different length → 403 @authz", async ({ internalHub: hub }) => {
 		// New. `ConstantTimeCompare` returns 0 for unequal lengths without
 		// comparing anything, so this reaches the same branch by a different
 		// route. It is worth its own test because the natural "optimisation" —
@@ -134,7 +134,7 @@ test.describe("internal auth boundary", () => {
 		await expectStatus(response, 403);
 	});
 
-	test("a rejected call leaks no identity @authz", async ({ hub }) => {
+	test("a rejected call leaks no identity @authz", async ({ internalHub: hub }) => {
 		// The body of a 403 must not contain a user id. `mapDomainError` is never
 		// reached on this path, but a future handler that logged-and-returned the
 		// system user before checking auth would still answer 403 — and would
@@ -146,7 +146,7 @@ test.describe("internal auth boundary", () => {
 		expect(await response.text()).not.toContain("user_id");
 	});
 
-	test("POST /internal/system-user is not routed @contract", async ({ hub }) => {
+	test("POST /internal/system-user is not routed @contract", async ({ internalHub: hub }) => {
 		// `internalGroup.GET("/system-user", ...)` — GET is the only verb.
 		//
 		// A band, and both members are correct answers to the same question.
@@ -165,7 +165,7 @@ test.describe("internal auth boundary", () => {
 		await expectStatusIn(response, [404, 405]);
 	});
 
-	test("an unregistered /internal path 404s even with the secret @contract", async ({ hub }) => {
+	test("an unregistered /internal path 404s even with the secret @contract", async ({ internalHub: hub }) => {
 		// The group is `/internal`, but only `/system-user` is mounted under it.
 		// A valid secret must not make the group itself a wildcard: 404 says the
 		// route table has no entry, which is the only status that distinguishes

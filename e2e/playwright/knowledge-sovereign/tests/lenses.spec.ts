@@ -205,20 +205,8 @@ test.describe("create and list", () => {
 		"CreateLensVersion for a lens that does not exist fails the write",
 		{ tag: "@contract" },
 		async ({ rpc }) => {
-			// New coverage, and this one pins **current** behaviour rather
-			// than desired behaviour — when it is fixed, this test fails,
-			// which is the intended signal.
-			//
-			// `knowledge_lens_versions.lens_id` has a foreign key into
-			// `knowledge_lenses`, so this is a caller error: the client named a
-			// lens that is not there. The handler wraps every driver error in
-			// `connect.CodeInternal`, so it surfaces as HTTP 500 — a page-an-
-			// operator status for a bad request. `failed_precondition` or
-			// `not_found` is what a client could actually act on.
-			//
-			// The assertion is worth having anyway: without it, a handler that
-			// dropped the version silently on FK violation would look
-			// identical to one that stored it.
+			// The owner lookup rejects an absent lens before the write. Assert
+			// the specific caller error, rather than accepting a generic 500.
 			await expectUnaryError(
 				rpc,
 				procedure("CreateLensVersion"),
@@ -230,7 +218,7 @@ test.describe("create and list", () => {
 						createdAt: instant().occurredAt,
 					},
 				},
-				"internal",
+				"not_found",
 			);
 		},
 	);

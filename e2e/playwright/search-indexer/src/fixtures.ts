@@ -3,14 +3,13 @@ import type { APIRequestContext } from "@playwright/test";
 import { buildWorkerDocs, corpusNonce, seedDocuments } from "./corpus.js";
 import type { WorkerCorpus } from "./corpus.js";
 import { env, meiliEnv } from "./env.js";
+import { fixtureUserId, withSearchFixtureAuth } from "./auth.js";
 
 /**
  * Suite-wide fixtures.
  *
- * search-indexer's plaintext listeners authenticate nobody — `newHTTPServer`
- * wraps `/v1/search` in a rate limiter and nothing else, and the Connect mux
- * carries only the rate-limit and OTel interceptors — so there is no session
- * to establish and the HTTP clients are cheap, worker-scoped context objects.
+ * Positive search clients sign their own UUID with a bounded public fixture JWT.
+ * Explicit proof headers and the bare negative client are never replaced.
  *
  * What each worker does need of its own is a **corpus**, and that is the
  * fixture that replaces the Hurl suite's serial pre-step. The old runner ran
@@ -58,7 +57,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 	rest: [
 		async ({ playwright }, use) => {
 			const context = await playwright.request.newContext({ baseURL: env.baseURL });
-			await use(context);
+			await use(withSearchFixtureAuth(context, env.baseURL));
 			await context.dispose();
 		},
 		{ scope: "worker" },
@@ -70,7 +69,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 				baseURL: env.connectURL,
 				extraHTTPHeaders: { "Content-Type": "application/json" },
 			});
-			await use(context);
+			await use(withSearchFixtureAuth(context, env.connectURL));
 			await context.dispose();
 		},
 		{ scope: "worker" },
@@ -79,7 +78,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 	connectBare: [
 		async ({ playwright }, use) => {
 			const context = await playwright.request.newContext({ baseURL: env.connectURL });
-			await use(context);
+			await use(withSearchFixtureAuth(context, env.connectURL));
 			await context.dispose();
 		},
 		{ scope: "worker" },
@@ -115,8 +114,8 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 			// Two distinct derived ids so a `user_id` can never be matched as a
 			// *search term* by accident: the tenant negative below would otherwise
 			// be satisfied by full-text recall rather than by the filter.
-			const userId = `usr-${nonce}`;
-			const foreignUserId = `nul-${nonce}`;
+			const userId = fixtureUserId(`usr-${nonce}`);
+			const foreignUserId = fixtureUserId(`nul-${nonce}`);
 			const docs = buildWorkerDocs(nonce, userId);
 			const meili = meiliEnv();
 

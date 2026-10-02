@@ -47,28 +47,84 @@ class TestGroup1Security(unittest.TestCase):
 
         # Must not mount the whole ../plecto directory
         for v in volumes:
-            self.assertNotEqual(v, "../plecto:/etc/plecto:ro")
-            self.assertFalse(v.startswith("../plecto:/"))
-            # Must not mount private key
-            self.assertNotIn("dev-key:", v)
-            self.assertNotIn("dev-key.pem", v)
+            if isinstance(v, str):
+                self.assertNotEqual(v, "../plecto:/etc/plecto:ro")
+                self.assertFalse(v.startswith("../plecto:/"))
+                # Must not mount private key
+                self.assertNotIn("dev-key:", v)
+                self.assertNotIn("dev-key.pem", v)
+            elif isinstance(v, dict):
+                src = str(v.get("source", ""))
+                # Forbid mounting whole ../plecto directory regardless of target
+                self.assertNotEqual(src, "../plecto")
+                self.assertNotEqual(src, "../plecto/")
+                self.assertFalse(src.startswith("../plecto:/"))
+                # Must not mount private key
+                self.assertNotIn("dev-key:", src)
+                self.assertNotIn("dev-key.pem", src)
 
-        # Expected mounts
-        expected = [
-            "../plecto/manifest.toml:/etc/plecto/manifest.toml:ro",
-            "../plecto/.plecto/dev-key.pub:/etc/plecto/.plecto/dev-key.pub:ro",
-            "../plecto/artifacts/stale-chunk-heal:/etc/plecto/artifacts/stale-chunk-heal:ro",
-            "pki_trust_bundle:/trust:ro",
-        ]
-        for exp in expected:
-            self.assertIn(exp, volumes, f"Expected volume mount {exp} in plecto-proxy")
+        # Expected mounts: either legacy short string or long-form bind dict with read_only=True
+        manifest_mount = next(
+            (
+                v for v in volumes
+                if (v == "../plecto/manifest.toml:/etc/plecto/manifest.toml:ro" or
+                    (isinstance(v, dict) and v.get("target") == "/etc/plecto/manifest.toml"))
+            ),
+            None,
+        )
+        self.assertIsNotNone(manifest_mount, "Expected manifest.toml mount in plecto-proxy")
+        if isinstance(manifest_mount, dict):
+            self.assertEqual(manifest_mount.get("type"), "bind")
+            self.assertEqual(manifest_mount.get("source"), "../plecto/manifest.toml")
+            self.assertIs(manifest_mount.get("read_only"), True)
+            self.assertFalse(manifest_mount.get("bind", {}).get("create_host_path", True))
 
-        # Verify artifacts directory structure on disk
-        artifacts_dir = REPO_ROOT / "plecto" / "artifacts" / "stale-chunk-heal"
-        self.assertTrue(artifacts_dir.is_dir(), "artifacts/stale-chunk-heal directory missing")
-        self.assertTrue((artifacts_dir / "blobs").is_dir(), "artifacts/stale-chunk-heal/blobs directory missing")
-        self.assertTrue((artifacts_dir / "index.json").is_file(), "artifacts/stale-chunk-heal/index.json missing")
-        self.assertTrue((artifacts_dir / "oci-layout").is_file(), "artifacts/stale-chunk-heal/oci-layout missing")
+        key_mount = next(
+            (
+                v for v in volumes
+                if (v == "../plecto/.plecto/dev-key.pub:/etc/plecto/.plecto/dev-key.pub:ro" or
+                    (isinstance(v, dict) and v.get("target") == "/etc/plecto/.plecto/dev-key.pub"))
+            ),
+            None,
+        )
+        self.assertIsNotNone(key_mount, "Expected dev-key.pub mount in plecto-proxy")
+        if isinstance(key_mount, dict):
+            self.assertEqual(key_mount.get("type"), "bind")
+            self.assertEqual(
+                key_mount.get("source"),
+                "${PLECTO_PUBLIC_KEY_HOST_PATH:-/var/lib/alt-plecto/dev-key.pub}",
+            )
+            self.assertIs(key_mount.get("read_only"), True)
+            self.assertFalse(key_mount.get("bind", {}).get("create_host_path", True))
+
+        artifacts_mount = next(
+            (
+                v for v in volumes
+                if (v == "../plecto/artifacts/stale-chunk-heal:/etc/plecto/artifacts/stale-chunk-heal:ro" or
+                    (isinstance(v, dict) and v.get("target") == "/etc/plecto/artifacts/stale-chunk-heal"))
+            ),
+            None,
+        )
+        self.assertIsNotNone(artifacts_mount, "Expected artifacts/stale-chunk-heal mount in plecto-proxy")
+        if isinstance(artifacts_mount, dict):
+            self.assertEqual(artifacts_mount.get("type"), "bind")
+            self.assertEqual(
+                artifacts_mount.get("source"),
+                "${PLECTO_ARTIFACTS_HOST_PATH:-/var/lib/alt-plecto/artifacts/stale-chunk-heal}",
+            )
+            self.assertIs(artifacts_mount.get("read_only"), True)
+            self.assertFalse(artifacts_mount.get("bind", {}).get("create_host_path", True))
+
+        self.assertIn("pki_trust_bundle:/trust:ro", volumes, "Expected volume mount pki_trust_bundle:/trust:ro in plecto-proxy")
+
+        # Verify artifacts directory structure on disk if staged in checkout or operator path
+        artifacts_source = Path(os.environ.get("PLECTO_ARTIFACTS_HOST_PATH", "/var/lib/alt-plecto/artifacts/stale-chunk-heal"))
+        for candidate in [REPO_ROOT / "plecto" / "artifacts" / "stale-chunk-heal", artifacts_source]:
+            if candidate.is_dir():
+                self.assertTrue((candidate / "blobs").is_dir(), f"{candidate}/blobs directory missing")
+                self.assertTrue((candidate / "index.json").is_file(), f"{candidate}/index.json missing")
+                self.assertTrue((candidate / "oci-layout").is_file(), f"{candidate}/oci-layout missing")
+                break
 
     # -------------------------------------------------------------------------
     # A03: Kratos Entrypoint & Canonical Template
@@ -621,7 +677,24 @@ class TestGroup1Security(unittest.TestCase):
         """ClickHouse in compose/db.yaml configures backup_disk and mounts /backups/clickhouse."""
         ch = self.compose_db["services"]["clickhouse"]
         volumes = ch.get("volumes", [])
-        self.assertIn("../backups/clickhouse:/backups/clickhouse", volumes)
+        backup_mount = next(
+            (
+                v for v in volumes
+                if (v == "../backups/clickhouse:/backups/clickhouse" or
+                    (isinstance(v, dict) and v.get("target") == "/backups/clickhouse"))
+            ),
+            None,
+        )
+        self.assertIsNotNone(backup_mount, "Missing /backups/clickhouse volume mount in clickhouse service")
+        if isinstance(backup_mount, dict):
+            self.assertEqual(backup_mount.get("type"), "bind")
+            self.assertEqual(
+                backup_mount.get("source"),
+                "${CLICKHOUSE_BACKUP_HOST_PATH:-/var/lib/alt-clickhouse-backups}",
+            )
+            # Writable backup directory
+            self.assertFalse(backup_mount.get("read_only", False))
+            self.assertFalse(backup_mount.get("bind", {}).get("create_host_path", True))
 
         configs = ch.get("configs", [])
         backup_cfg = [c for c in configs if c.get("source") == "clickhouse_backup_disk"]
@@ -636,6 +709,65 @@ class TestGroup1Security(unittest.TestCase):
     # -------------------------------------------------------------------------
     # Base Secret Declarations
     # -------------------------------------------------------------------------
+    @staticmethod
+    def _environment(service):
+        env = service.get("environment", {})
+        if isinstance(env, dict):
+            return env
+        return dict(item.split("=", 1) for item in env if "=" in item)
+
+    def test_mqhub_broker_and_enabled_clients_share_generated_secret(self):
+        """Every enabled broker client must authenticate with the broker's file secret."""
+        secret_name = "mqhub_auth_token"
+        token_path = f"/run/secrets/{secret_name}"
+        self.assertEqual(
+            self.compose_base["secrets"].get(secret_name),
+            {"file": "../secrets/mqhub_auth_token.txt"},
+        )
+        services = {}
+        for document in (self.compose_core, self.compose_ai, self.compose_workers, self.compose_mq):
+            services.update(document["services"])
+        enabled = {
+            name for name, service in services.items()
+            if str(self._environment(service).get("MQHUB_ENABLED", "false")).lower() == "true"
+        }
+        self.assertEqual(enabled, {"alt-backend", "alt-harvester", "alt-data-hub"})
+        for name in enabled | {"mq-hub"}:
+            with self.subTest(service=name):
+                service = services[name]
+                environment = self._environment(service)
+                self.assertEqual(environment.get("MQHUB_AUTH_TOKEN_FILE"), token_path)
+                self.assertNotIn("MQHUB_AUTH_TOKEN", environment)
+                self.assertIn(secret_name, service.get("secrets", []))
+
+    def test_search_introspection_uses_own_leaf_and_auth_hub_mtls_route(self):
+        """Search's mandatory introspection URL must use the authorized mTLS listener."""
+        service = self.compose_workers["services"]["search-indexer"]
+        env = self._environment(service)
+        self.assertEqual(
+            env.get("USER_JWT_INTROSPECTION_URL"),
+            "https://auth-hub:9443/internal/token/introspect",
+        )
+        self.assertEqual(env["CERT_SUBJECT"], "search-indexer")
+        self.assertEqual(env["MTLS_CERT_FILE"], "/certs/svc-cert.pem")
+        self.assertEqual(env["MTLS_KEY_FILE"], "/certs/svc-key.pem")
+        self.assertEqual(env["MTLS_CA_FILE"], "/trust/ca-bundle.pem")
+        self.assertIn("search_indexer_certs:/certs", service["volumes"])
+        self.assertIn("pki_trust_bundle:/trust:ro", service["volumes"])
+        auth_env = self._environment(self.compose_auth["services"]["auth-hub"])
+        self.assertEqual(auth_env["MTLS_PORT"], "9443")
+        peers = auth_env["MTLS_ALLOWED_PEERS"].split(":-", 1)[1].removesuffix("}").split(",")
+        self.assertIn("search-indexer", peers)
+
+    def test_search_loads_mounted_inference_token_for_embedder_api_key(self):
+        """A mounted token without its loader environment key yields an empty embedder API key."""
+        service = self.compose_workers["services"]["search-indexer"]
+        self.assertEqual(
+            self._environment(service).get("INFERENCE_SERVICE_TOKEN_FILE"),
+            "/run/secrets/inference_service_token",
+        )
+        self.assertIn("inference_service_token", service["secrets"])
+
     def test_base_yaml_secrets_declarations(self):
         """compose/base.yaml declares new named role passwords and tokens."""
         secrets = self.compose_base.get("secrets", {})

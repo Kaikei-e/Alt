@@ -344,6 +344,7 @@ services:
       - AUTH_HUB_URL=https://auth-hub:9443
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub:9500
+      - MQHUB_AUTH_TOKEN_FILE=/run/secrets/mqhub_auth_token
       - SOVEREIGN_URL=http://knowledge-sovereign:9500
       - SOVEREIGN_BACKEND_TOKEN_FILE=/run/secrets/sovereign_backend_token
       - SOVEREIGN_OPERATOR_TOKEN_FILE=/run/secrets/sovereign_operator_token
@@ -421,6 +422,7 @@ services:
       - backend_operator_token
       - rag_api_token
       - rask_ingest_token
+      - mqhub_auth_token
     deploy:
       # memory used to sit under reservations alone, which is a scheduling
       # hint and not a cap: a leak in the user-facing API would have run until
@@ -558,6 +560,7 @@ services:
       RAG_API_AUTH: ${RAG_API_AUTH:-}
       MQHUB_ENABLED: "true"
       MQHUB_CONNECT_URL: http://mq-hub:9500
+      MQHUB_AUTH_TOKEN_FILE: /run/secrets/mqhub_auth_token
       # ogp-image-warmer / og-image-backfill mint proxy URLs, so the signing
       # secret follows the jobs. alt-backend keeps its own copy for the
       # serving-side signature check.
@@ -578,6 +581,7 @@ services:
       - redis_limiter_password
       - rag_api_token
       - rask_ingest_token
+      - mqhub_auth_token
     deploy:
       # Memory belongs under deploy.resources.limits, not mem_limit: compose
       # rejects a project that sets both unless the values agree, and the
@@ -817,6 +821,7 @@ services:
       # outside development, so this is not optional here.
       MQHUB_ENABLED: "true"
       MQHUB_CONNECT_URL: http://mq-hub:9500
+      MQHUB_AUTH_TOKEN_FILE: /run/secrets/mqhub_auth_token
       # IMAGE_PROXY_ENABLED defaults to true and validateImageProxyConfig
       # then demands a signing secret at boot. The proxy is served by
       # alt-backend and its URLs are minted by alt-harvester — this binary
@@ -837,6 +842,7 @@ services:
       - sovereign_datahub_token
       - pki-agent-alt-data-hub-jwk
       - rask_ingest_token
+      - mqhub_auth_token
     deploy:
       # See alt-harvester: mem_limit and deploy.resources.limits cannot both
       # be set unless they agree, so memory lives in the limits block.

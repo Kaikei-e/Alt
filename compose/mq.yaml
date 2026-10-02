@@ -78,6 +78,7 @@ services:
       - REDIS_URL=redis://streams@redis-streams:6379
       - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
       - CONNECT_PORT=9500
+      - MQHUB_AUTH_TOKEN_FILE=/run/secrets/mqhub_auth_token
       - LOG_LEVEL=info
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
@@ -99,9 +100,7 @@ services:
     networks:
       - alt-network
     ports:
-      # PublishBatch lets the caller choose the destination stream and mq-hub's
-      # only interceptor logs. Until that surface authenticates, reachability
-      # is the whole control, so it stops at loopback.
+      # Authenticated RPC access remains loopback-only on the host.
       - "127.0.0.1:9500:9500"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9500/health"]
@@ -111,6 +110,7 @@ services:
       start_period: 10s
     secrets:
       - redis_streams_password
+      - mqhub_auth_token
     restart: unless-stopped
     labels:
       - rask.group=mq-hub

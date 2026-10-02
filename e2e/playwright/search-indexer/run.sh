@@ -50,11 +50,11 @@ suite_init search-indexer
 # straight from Docker Hub (`getmeili/meilisearch:v1.11`, `nginx:1.27-alpine`)
 # and have no tag of ours.
 suite_image_tags SEARCH_INDEXER_IMAGE_TAG
+suite_pki auth-hub search-indexer
+suite_endpoint STAGING_JWT_KEY_FILE "$ROOT/e2e/fixtures/staging-secrets/alt_backend_token_secret.txt"
 
-# No suite_pki, and that is asserted rather than assumed. The slice sets
-# MTLS_LISTEN=false, so bootstrap/app.go never binds :9443 and there is no
-# mutual-TLS material for anything to present — tests/topology.spec.ts proves
-# the port is closed instead of leaving it an unstated premise.
+# The inbound mTLS listener stays disabled; the leaf above authenticates the
+# separate outbound HTTPS introspection client. Topology tests assert :9443 closed.
 
 suite_endpoint BASE_URL        "http://search-indexer:9300"
 suite_endpoint CONNECT_URL     "http://search-indexer:9301"
@@ -73,6 +73,6 @@ suite_endpoint MEILI_SEED_DOCS "$ROOT/e2e/fixtures/search-indexer/seed-docs.json
 # BACKEND_API_URL for reachability at startup and never validates the body. It
 # is also what RECAP_WORKER_URL and REDIS_STREAMS_URL point at, which is why
 # the recap index stays empty and CONSUMER_ENABLED is false in this slice.
-suite_up meilisearch stub-backend search-indexer
+suite_up meilisearch stub-backend auth-introspection search-indexer
 
 suite_test

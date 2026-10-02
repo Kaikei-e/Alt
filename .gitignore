@@ -48,7 +48,7 @@ recap-subworker/data/
 # ============================================
 # TypeScript / Node
 # ============================================
-node_modules/
+node_modules
 
 # ============================================
 # SvelteKit (alt-frontend-sv)
