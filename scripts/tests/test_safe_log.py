@@ -51,9 +51,9 @@ class CheckStdoutTests(unittest.TestCase):
         self.assertNotIn("/run/secrets/", out)
 
     def test_pass_stdout_omits_secret_detail(self) -> None:
-        out = self._capture("no root password", True, SECRET_PATH_DETAIL)
+        out = self._capture("allowlist verification", True, SECRET_PATH_DETAIL)
         self.assertIn("PASS", out)
-        self.assertIn("no root password", out)
+        self.assertIn("allowlist verification", out)
         self.assertNotIn("/run/secrets/", out)
         self.assertNotIn("step_ca_root_password", out)
         self.assertEqual(safe_log.PASS, 1)
@@ -64,6 +64,60 @@ class CheckStdoutTests(unittest.TestCase):
         self._capture("bad", False, PASSWORD_FILE_DETAIL)
         self.assertEqual(safe_log.PASS, 1)
         self.assertEqual(safe_log.FAIL, 1)
+
+    def test_sensitive_name_and_prefix_mapped_to_constant_category(self) -> None:
+        out = self._capture("workload mounts secret_api_token_12345", True, "")
+        self.assertIn("PASS", out)
+        self.assertNotIn("secret_api_token_12345", out)
+        self.assertNotIn("12345", out)
+        self.assertIn("[assertion #1] secret mount verification", out)
+
+    def test_sensitive_declaration_and_unknown_prefix_mapped_to_constant_category(self) -> None:
+        out = self._capture("compose declares pki-agent-custom-jwk with key sk_live_99999", False, "")
+        self.assertIn("FAIL", out)
+        self.assertNotIn("pki-agent-custom-jwk", out)
+        self.assertNotIn("sk_live_99999", out)
+        self.assertIn("[assertion #1] compose secret declaration verification", out)
+
+    def test_counters_and_numeric_assertion_ordinal(self) -> None:
+        self.assertEqual(safe_log.COUNT, 0)
+        out1 = self._capture("first benign check", True, "")
+        self.assertEqual(safe_log.COUNT, 1)
+        self.assertEqual(safe_log.PASS, 1)
+        self.assertIn("[assertion #1] contract assertion", out1)
+        self.assertNotIn("first benign check", out1)
+
+        out2 = self._capture("second check password protection", False, "")
+        self.assertEqual(safe_log.COUNT, 2)
+        self.assertEqual(safe_log.FAIL, 1)
+        self.assertIn("[assertion #2] password protection verification", out2)
+        self.assertNotIn("second check password protection", out2)
+
+        safe_log.reset()
+        self.assertEqual(safe_log.COUNT, 0)
+        self.assertEqual(safe_log.PASS, 0)
+        self.assertEqual(safe_log.FAIL, 0)
+
+    def test_regression_arbitrary_keyword_free_name_never_leaks(self) -> None:
+        cases = [
+            ("xQ9vRm7wA2zC6dE8", "xQ9vRm7wA2zC6dE8"),
+            ("sk_live_99999", "sk_live_99999"),
+            ("safe_prefix\r\nINJECTED_LOG_LINE", "INJECTED_LOG_LINE"),
+            ("/run/secrets/step_ca_root_password", "/run/secrets/"),
+            ("/run/secrets/step_ca_root_password", "step_ca_root_password"),
+            ("pki-agent-custom-jwk", "pki-agent-custom-jwk"),
+        ]
+        for name, leak_candidate in cases:
+            for condition in (True, False):
+                out = self._capture(name, condition, PASSWORD_FILE_DETAIL)
+                status = "PASS" if condition else "FAIL"
+                self.assertIn(status, out)
+                self.assertNotIn(leak_candidate, out)
+                self.assertNotIn("\r", out)
+                self.assertNotIn("password-file", out)
+                self.assertNotIn("/run/secrets/", out)
+                self.assertRegex(out.strip(), r"^(PASS|FAIL)\s+\[assertion #\d+\]\s+[a-z ]+$")
+
 
 
 if __name__ == "__main__":

@@ -324,6 +324,14 @@ async function run() {
 }
 
 run().catch((err) => {
-  console.error("Test failed:", err);
+  const category =
+    err instanceof assert.AssertionError
+      ? "AssertionError"
+      : err instanceof TypeError
+      ? "TypeError"
+      : err instanceof RangeError
+      ? "RangeError"
+      : "ExecutionError";
+  console.error("Test failed:", category);
   process.exit(1);
 });

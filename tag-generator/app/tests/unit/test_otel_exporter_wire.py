@@ -73,8 +73,14 @@ class _RedirectHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         cast(_WireHTTPServer, self.server).requests.append(self.path)
         dest_base = getattr(self.server, "destination_base", "http://127.0.0.1:1")
+        if self.path == "/v1/traces":
+            dest_path = "/v1/traces"
+        elif self.path == "/v1/logs":
+            dest_path = "/v1/logs"
+        else:
+            dest_path = "/"
         self.send_response(307)
-        self.send_header("Location", f"{dest_base}{self.path}")
+        self.send_header("Location", f"{dest_base}{dest_path}")
         self.end_headers()
 
     def log_message(self, format: str, *args: Any) -> None:
