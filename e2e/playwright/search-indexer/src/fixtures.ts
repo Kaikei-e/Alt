@@ -1,5 +1,6 @@
 import { test as base } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
+import { clientCertificates } from "../../_shared/client-auth.js";
 import { buildWorkerDocs, corpusNonce, seedDocuments } from "./corpus.js";
 import type { WorkerCorpus } from "./corpus.js";
 import { env, meiliEnv } from "./env.js";
@@ -8,7 +9,8 @@ import { fixtureUserId, withSearchFixtureAuth } from "./auth.js";
 /**
  * Suite-wide fixtures.
  *
- * Positive search clients sign their own UUID with a bounded public fixture JWT.
+ * Positive search clients carry valid alt-backend peer certificates and sign
+ * their own UUID with a bounded public fixture JWT.
  * Explicit proof headers and the bare negative client are never replaced.
  *
  * What each worker does need of its own is a **corpus**, and that is the
@@ -24,12 +26,12 @@ import { fixtureUserId, withSearchFixtureAuth } from "./auth.js";
  */
 
 export type WorkerFixtures = {
-	/** REST :9300 — `/health` and `/v1/search`. */
+	/** REST :9443 (mTLS) — `/health` and `/v1/search`. */
 	rest: APIRequestContext;
-	/** Connect-RPC :9301, JSON codec. */
+	/** Connect-RPC :9443 (mTLS), JSON codec. */
 	connect: APIRequestContext;
 	/**
-	 * Connect-RPC :9301 with **no** default headers.
+	 * Connect-RPC :9443 (mTLS) with **no** default headers.
 	 *
 	 * Playwright's `extraHTTPHeaders` cannot be removed per request, so proving
 	 * "connect-go rejects an unsupported Content-Type" or "the
@@ -56,7 +58,10 @@ export type WorkerFixtures = {
 export const test = base.extend<Record<never, never>, WorkerFixtures>({
 	rest: [
 		async ({ playwright }, use) => {
-			const context = await playwright.request.newContext({ baseURL: env.baseURL });
+			const context = await playwright.request.newContext({
+				baseURL: env.baseURL,
+				clientCertificates: clientCertificates(env.baseURL, env.clientCert, env.clientKey),
+			});
 			await use(withSearchFixtureAuth(context, env.baseURL));
 			await context.dispose();
 		},
@@ -68,6 +73,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 			const context = await playwright.request.newContext({
 				baseURL: env.connectURL,
 				extraHTTPHeaders: { "Content-Type": "application/json" },
+				clientCertificates: clientCertificates(env.connectURL, env.clientCert, env.clientKey),
 			});
 			await use(withSearchFixtureAuth(context, env.connectURL));
 			await context.dispose();
@@ -77,7 +83,10 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 
 	connectBare: [
 		async ({ playwright }, use) => {
-			const context = await playwright.request.newContext({ baseURL: env.connectURL });
+			const context = await playwright.request.newContext({
+				baseURL: env.connectURL,
+				clientCertificates: clientCertificates(env.connectURL, env.clientCert, env.clientKey),
+			});
 			await use(withSearchFixtureAuth(context, env.connectURL));
 			await context.dispose();
 		},

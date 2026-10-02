@@ -13,25 +13,25 @@ import { requiredEnv, requiredSecretFile, runId } from "../../_shared/env.js";
 import { fixtureUserId } from "./auth.js";
 
 export const env = {
-	/** Plaintext REST listener: `/health` + `/v1/search` (`config.HTTPAddr`, default :9300). */
+	/** Mutual-TLS listener: `/v1/search` + Connect-RPC (`config.MTLSPort`, default :9443). */
 	baseURL: requiredEnv("BASE_URL"),
 
-	/**
-	 * Plaintext Connect-RPC listener (`config.ConnectAddr`, default :9301).
-	 *
-	 * h2c in production, but connect-go serves unary JSON over HTTP/1.1 too,
-	 * which is what `APIRequestContext` speaks. That is the whole reason the
-	 * Hurl suite listed this port as "out of scope" and this one does not.
-	 */
+	/** Mutual-TLS Connect-RPC listener (`https://search-indexer:9443`). */
 	connectURL: requiredEnv("CONNECT_URL"),
 
-	/**
-	 * The port `bootstrap/app.go` binds the mutual-TLS mux on — but only when
-	 * `MTLS_LISTEN == "true"`. compose.staging.yaml sets `MTLS_LISTEN=false`,
-	 * so nothing may answer here; tests/topology.spec.ts asserts that rather
-	 * than assuming it.
-	 */
-	mtlsAbsentURL: requiredEnv("MTLS_ABSENT_URL"),
+	/** Plaintext health-only listener: `/health` + `/health/deep` (`config.HTTPAddr`, default :9300). */
+	plaintextURL: requiredEnv("PLAINTEXT_URL"),
+
+	/** Retired legacy Connect-RPC listener: asserted refused (:9301). */
+	retiredConnectURL: requiredEnv("RETIRED_CONNECT_URL"),
+
+	/** Staging mTLS client certificate for authorized peer (alt-backend). */
+	clientCert: requiredEnv("TLS_CLIENT_CERT_FILE"),
+	clientKey: requiredEnv("TLS_CLIENT_KEY_FILE"),
+
+	/** Staging mTLS client certificate for unauthorized peer (denied-peer). */
+	deniedCert: requiredEnv("TLS_DENIED_CERT_FILE"),
+	deniedKey: requiredEnv("TLS_DENIED_KEY_FILE"),
 
 	/** Meilisearch, which both the seed and the "is the key enforced" negative talk to. */
 	meiliURL: requiredEnv("MEILI_URL"),
