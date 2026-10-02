@@ -8,6 +8,7 @@ import os
 import re
 import ssl
 import time
+import urllib.error
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -65,17 +66,55 @@ class Handler(BaseHTTPRequestHandler):
                     return value
         return ""
 
+    def forward_upstream(self, method="POST"):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= length <= 65536:
+                return self.reply(400, {})
+            body = self.rfile.read(length) if length > 0 else (b"" if method == "POST" else None)
+            headers = {}
+            for h in ("Content-Type", "X-Alt-Backend-Token", "Connect-Protocol-Version"):
+                if h in self.headers:
+                    headers[h] = self.headers[h]
+            if "Content-Type" not in headers and method == "POST":
+                headers["Content-Type"] = "application/json"
+            request = urllib.request.Request(
+                "http://alt-backend-deps-stub" + self.path,
+                data=body,
+                headers=headers,
+                method=method,
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                res_body = response.read(65537)
+                self.send_response(response.status)
+                for k, v in response.headers.items():
+                    if k.lower() in {"content-type", "connect-protocol-version"}:
+                        self.send_header(k, v)
+                self.send_header("Content-Length", str(len(res_body)))
+                self.end_headers()
+                self.wfile.write(res_body)
+                return
+        except urllib.error.HTTPError as err:
+            res_body = err.read(65537)
+            self.send_response(err.code)
+            for k, v in err.headers.items():
+                if k.lower() in {"content-type", "connect-protocol-version"}:
+                    self.send_header(k, v)
+            self.send_header("Content-Length", str(len(res_body)))
+            self.end_headers()
+            self.wfile.write(res_body)
+            return
+        except (ValueError, OSError):
+            return self.reply(502, {})
+
     def do_POST(self):
-        if self.path in {"/services.search.v2.SearchService/SearchArticles", "/services.search.v2.SearchService/SearchRecaps"} and self.peer() == "alt-backend":
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                if not 0 <= length <= 65536:
-                    return self.reply(400, {})
-                request = urllib.request.Request("http://alt-backend-deps-stub" + self.path, data=self.rfile.read(length), headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(request, timeout=5) as response:
-                    return self.reply(response.status, json.loads(response.read(65537)))
-            except (ValueError, OSError):
-                return self.reply(502, {})
+        is_preprocessor = os.environ.get("STAGING_FORWARD_PREPROCESSOR") == "true" and (
+            self.path.startswith("/services.preprocessor.v2.PreProcessorService/") or self.path.startswith("/api/v1/summarize")
+        )
+        is_search = self.path in {"/services.search.v2.SearchService/SearchArticles", "/services.search.v2.SearchService/SearchRecaps"}
+        if (is_search and self.peer() == "alt-backend") or (is_preprocessor and self.peer() in {"alt-backend", "alt-harvester"}):
+            return self.forward_upstream(method="POST")
+
         if self.path != "/internal/token/introspect":
             return self.reply(404, {})
         if self.peer() != "search-indexer":
@@ -95,6 +134,9 @@ class Handler(BaseHTTPRequestHandler):
         return self.reply(200, result)
 
     def do_GET(self):
+        if os.environ.get("STAGING_FORWARD_PREPROCESSOR") == "true" and self.path.startswith("/api/v1/summarize") and self.peer() in {"alt-backend", "alt-harvester"}:
+            return self.forward_upstream(method="GET")
+
         if self.path != "/internal/system-user":
             return self.reply(404, {})
         if self.peer() not in {"alt-backend", "alt-data-hub"}:

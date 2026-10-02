@@ -3,9 +3,11 @@ import base64
 import hashlib
 import hmac
 import importlib.util
+import io
 import json
 from pathlib import Path
 import unittest
+import unittest.mock
 
 spec = importlib.util.spec_from_file_location("fixture_auth", Path(__file__).parents[1] / "_fixtures/auth-introspection.py")
 fixture = importlib.util.module_from_spec(spec)
@@ -45,6 +47,89 @@ class FixtureAuthTest(unittest.TestCase):
     def test_bad_alg_signature_encoding_and_compact_shape_fail_closed(self):
         for token in ["", "a.b", "a.b.c.d", "!a.b.c", sign(self.claims(), header={"alg": "none"}), sign(self.claims(), key=b"other")]:
             self.assertFalse(fixture.introspect(token, KEY, 1000)["active"])
+
+
+class HandlerForwardingTest(unittest.TestCase):
+    def make_handler(self, path, method="POST", headers=None, body=b"", peer_name="alt-backend"):
+        h = fixture.Handler.__new__(fixture.Handler)
+        h.path = path
+        h.command = method
+        h.headers = headers or {"Content-Length": str(len(body)), "Content-Type": "application/json"}
+        h.rfile = io.BytesIO(body)
+        h.wfile = io.BytesIO()
+        h._headers_buffer = []
+        h.peer = lambda: peer_name
+        h.send_response = unittest.mock.MagicMock()
+        h.send_header = unittest.mock.MagicMock()
+        h.end_headers = unittest.mock.MagicMock()
+        return h
+
+    def test_empty_post_retains_post_method(self):
+        h = self.make_handler(
+            "/services.search.v2.SearchService/SearchArticles",
+            method="POST",
+            headers={"Content-Length": "0"},
+            body=b"",
+            peer_name="alt-backend",
+        )
+        with unittest.mock.patch("urllib.request.urlopen") as mock_urlopen:
+            mock_resp = unittest.mock.MagicMock()
+            mock_resp.status = 200
+            mock_resp.read.return_value = b"{}"
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_urlopen.return_value.__enter__.return_value = mock_resp
+            h.do_POST()
+            self.assertTrue(mock_urlopen.called)
+            req = mock_urlopen.call_args[0][0]
+            self.assertEqual(req.get_method(), "POST")
+
+    def test_wrong_search_peer_rejected(self):
+        h = self.make_handler(
+            "/services.search.v2.SearchService/SearchArticles",
+            method="POST",
+            body=b"{}",
+            peer_name="alt-harvester",
+        )
+        with unittest.mock.patch("urllib.request.urlopen") as mock_urlopen:
+            h.do_POST()
+            self.assertFalse(mock_urlopen.called)
+            h.send_response.assert_called_with(404)
+
+    def test_preprocessor_allowed_and_denied_peers(self):
+        with unittest.mock.patch.dict("os.environ", {"STAGING_FORWARD_PREPROCESSOR": "true"}):
+            # Allowed peers: alt-backend and alt-harvester
+            for peer in ("alt-backend", "alt-harvester"):
+                h = self.make_handler("/api/v1/summarize", method="POST", body=b"{}", peer_name=peer)
+                with unittest.mock.patch("urllib.request.urlopen") as mock_urlopen:
+                    mock_resp = unittest.mock.MagicMock()
+                    mock_resp.status = 200
+                    mock_resp.read.return_value = b"{}"
+                    mock_resp.headers = {"Content-Type": "application/json"}
+                    mock_urlopen.return_value.__enter__.return_value = mock_resp
+                    h.do_POST()
+                    self.assertTrue(mock_urlopen.called, f"expected {peer} to be forwarded")
+            # Denied peer: unauthorized-client
+            h_denied = self.make_handler("/api/v1/summarize", method="POST", body=b"{}", peer_name="unauthorized-client")
+            with unittest.mock.patch("urllib.request.urlopen") as mock_urlopen:
+                h_denied.do_POST()
+                self.assertFalse(mock_urlopen.called)
+                h_denied.send_response.assert_called_with(404)
+
+    def test_upstream_http_error_response_preservation(self):
+        with unittest.mock.patch.dict("os.environ", {"STAGING_FORWARD_PREPROCESSOR": "true"}):
+            h = self.make_handler("/api/v1/summarize", method="POST", body=b"{}", peer_name="alt-backend")
+            import urllib.error
+            error = urllib.error.HTTPError(
+                url="http://alt-backend-deps-stub/api/v1/summarize",
+                code=422,
+                msg="Unprocessable Entity",
+                hdrs={"Content-Type": "application/json"},
+                fp=io.BytesIO(b'{"detail":"invalid input"}'),
+            )
+            with unittest.mock.patch("urllib.request.urlopen", side_effect=error):
+                h.do_POST()
+                h.send_response.assert_called_with(422)
+                self.assertEqual(h.wfile.getvalue(), b'{"detail":"invalid input"}')
 
 
 if __name__ == "__main__":

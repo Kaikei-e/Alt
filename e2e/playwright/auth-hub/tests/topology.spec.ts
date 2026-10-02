@@ -84,7 +84,9 @@ test.describe("listener boundary", () => {
 		try {
 			await expectStatus(await plain.get("/health"), 200);
 			for (const path of ["/session", "/validate", "/internal/system-user"]) {
-				await expectStatus(await plain.get(path, { headers: { "X-Internal-Auth": env.internalAuthSecret } }), 404);
+				const response = await plain.get(path, { headers: { "X-Internal-Auth": env.internalAuthSecret } });
+				await expectStatus(response, 403);
+				expect(await response.json()).toEqual({ error: "business endpoints require HTTPS" });
 			}
 			await expectStatus(await hub.get("/internal/system-user", { headers: { "X-Internal-Auth": env.internalAuthSecret } }), 403);
 		} finally { await plain.dispose(); }

@@ -101,6 +101,26 @@ class SecurityWiringTests(unittest.TestCase):
         for name in ("MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
             self.assertTrue(env.get(name), name)
 
+    def test_rag_orchestrator_has_inference_token_wiring(self):
+        svc = self.services["rag-orchestrator"]
+        env = environment(svc)
+        self.assertEqual(env.get("INFERENCE_SERVICE_TOKEN_FILE"), "/run/secrets/inference_service_token")
+        self.assertIn("inference_service_token", svc.get("secrets", []))
+        secret_file = ROOT / "compose" / self.compose["secrets"]["inference_service_token"]["file"]
+        self.assertTrue(secret_file.exists(), f"secret file {secret_file} must exist")
+        token = secret_file.read_text().strip()
+        self.assertGreaterEqual(len(token), 16)
+
+    def test_preprocessor_upstream_uses_verified_https_and_server_name(self):
+        for name in ("alt-backend", "alt-harvester"):
+            with self.subTest(service=name):
+                env = environment(self.services[name])
+                self.assertTrue(env.get("PRE_PROCESSOR_URL", "").startswith("https://"))
+                self.assertTrue(env.get("PRE_PROCESSOR_CONNECT_URL", "").startswith("https://"))
+                self.assertEqual(env.get("PRE_PROCESSOR_MTLS_SERVER_NAME"), "auth-hub")
+        auth_env = environment(self.services["auth-introspection"])
+        self.assertEqual(auth_env.get("STAGING_FORWARD_PREPROCESSOR"), "true")
+
 
 if __name__ == "__main__":
     unittest.main()

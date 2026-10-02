@@ -137,7 +137,10 @@ services:
       auth-introspection:
         condition: service_started
     environment:
-      - MTLS_LISTEN=false
+      - MTLS_LISTEN=true
+      - MTLS_PORT=9443
+      - MTLS_CLIENT_AUTH=require_and_verify
+      - MTLS_ALLOWED_PEERS=alt-backend,rag-orchestrator,acolyte-orchestrator,search-indexer
       - MTLS_ENFORCE=false
       - BACKEND_API_URL=http://stub-backend
       - BACKEND_API_MTLS_URL=http://stub-backend
@@ -462,8 +465,10 @@ services:
       - MTLS_CERT_FILE=/certs/rag-orchestrator.pem
       - MTLS_KEY_FILE=/certs/rag-orchestrator-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
     secrets:
       - rask_ingest_token
+      - inference_service_token
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
@@ -1157,8 +1162,9 @@ services:
       # Upstream targets — every alias resolves to alt-backend-deps-stub.
       - SEARCH_INDEXER_CONNECT_URL=https://auth-hub:9443/
       - SEARCH_INDEXER_MTLS_SERVER_NAME=auth-hub
-      - PRE_PROCESSOR_URL=http://pre-processor/
-      - PRE_PROCESSOR_CONNECT_URL=http://pre-processor/
+      - PRE_PROCESSOR_URL=https://auth-hub:9443/
+      - PRE_PROCESSOR_CONNECT_URL=https://auth-hub:9443/
+      - PRE_PROCESSOR_MTLS_SERVER_NAME=auth-hub
       - RECAP_WORKER_URL=http://recap-worker/
       - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
       - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
@@ -1307,8 +1313,9 @@ services:
       - RAG_API_AUTH=disabled
       - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
       - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
-      - PRE_PROCESSOR_URL=http://pre-processor/
-      - PRE_PROCESSOR_CONNECT_URL=http://pre-processor/
+      - PRE_PROCESSOR_URL=https://auth-hub:9443/
+      - PRE_PROCESSOR_CONNECT_URL=https://auth-hub:9443/
+      - PRE_PROCESSOR_MTLS_SERVER_NAME=auth-hub
       - SEARCH_INDEXER_CONNECT_URL=http://search-indexer/
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub/
@@ -1631,6 +1638,7 @@ services:
     environment:
       STAGING_JWT_KEY_FILE: /run/secrets/alt_backend_token_secret
       STAGING_INTERNAL_AUTH: staging-fixture-internal-auth-secret-not-a-real-key
+      STAGING_FORWARD_PREPROCESSOR: "true"
     secrets:
       - alt_backend_token_secret
       - backend_token_secret
@@ -1674,3 +1682,5 @@ secrets:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cipher_secret.txt
   redis_password:
     file: ../e2e/fixtures/staging-secrets/redis_password.txt
+  inference_service_token:
+    file: ../e2e/playwright/_fixtures/test-credentials/inference_service_token.txt
