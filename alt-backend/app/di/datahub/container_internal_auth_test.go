@@ -49,8 +49,12 @@ func writeTestPKIWithHosts(t *testing.T, dir string, cn string, dnsNames []strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	pem.Encode(caOut, &pem.Block{Type: "CERTIFICATE", Bytes: caDER})
-	caOut.Close()
+	if err := pem.Encode(caOut, &pem.Block{Type: "CERTIFICATE", Bytes: caDER}); err != nil {
+		t.Fatal(err)
+	}
+	if err := caOut.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -75,8 +79,12 @@ func writeTestPKIWithHosts(t *testing.T, dir string, cn string, dnsNames []strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: leafDER})
-	certOut.Close()
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: leafDER}); err != nil {
+		t.Fatal(err)
+	}
+	if err := certOut.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	keyPath = filepath.Join(dir, "key.pem")
 	keyOut, err := os.Create(keyPath)
@@ -87,8 +95,12 @@ func writeTestPKIWithHosts(t *testing.T, dir string, cn string, dnsNames []strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
-	keyOut.Close()
+	if err := pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes}); err != nil {
+		t.Fatal(err)
+	}
+	if err := keyOut.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	return certPath, keyPath, caPath
 }
@@ -119,7 +131,11 @@ func TestDataHubComponents_KratosClientPresentsInternalAuthSecret(t *testing.T) 
 		_, _ = w.Write([]byte(`{"user_id":"11111111-2222-3333-4444-555555555555"}`))
 	}))
 	go func() { _ = srv.Serve(tls.NewListener(ln, tlsCfg)) }()
-	defer srv.Close()
+	defer func() {
+		if err := srv.Close(); err != nil {
+			t.Errorf("srv.Close() error = %v", err)
+		}
+	}()
 
 	cfg := &config.Config{
 		AppEnv:    "development",
@@ -172,7 +188,11 @@ func TestDataHubComponents_MTLSClientValidWire(t *testing.T) {
 		_, _ = w.Write([]byte(`{"user_id":"11111111-2222-3333-4444-555555555555"}`))
 	}))
 	go func() { _ = srv.Serve(tls.NewListener(ln, tlsCfg)) }()
-	defer srv.Close()
+	defer func() {
+		if err := srv.Close(); err != nil {
+			t.Errorf("srv.Close() error = %v", err)
+		}
+	}()
 
 	cfg := &config.Config{
 		AppEnv:    "development",
@@ -216,7 +236,11 @@ func TestDataHubComponents_MTLSClientRejectsWrongCA(t *testing.T) {
 		_, _ = w.Write([]byte(`{"user_id":"11111111-2222-3333-4444-555555555555"}`))
 	}))
 	go func() { _ = srv.Serve(tls.NewListener(ln, tlsCfg)) }()
-	defer srv.Close()
+	defer func() {
+		if err := srv.Close(); err != nil {
+			t.Errorf("srv.Close() error = %v", err)
+		}
+	}()
 
 	// Client uses CA B (foreign CA, not trusted by server and server not trusted by client)
 	dirB := t.TempDir()
@@ -260,7 +284,11 @@ func TestDataHubComponents_MTLSClientRejectsWrongHostname(t *testing.T) {
 		_, _ = w.Write([]byte(`{"user_id":"11111111-2222-3333-4444-555555555555"}`))
 	}))
 	go func() { _ = srv.Serve(tls.NewListener(ln, tlsCfg)) }()
-	defer srv.Close()
+	defer func() {
+		if err := srv.Close(); err != nil {
+			t.Errorf("srv.Close() error = %v", err)
+		}
+	}()
 
 	// Client dials by IP address 127.0.0.1
 	client, err := tlsutil.NewMTLSClient(certPath, keyPath, caPath)
@@ -305,7 +333,11 @@ func TestDataHubComponents_MTLSClientRejectsMissingClientCert(t *testing.T) {
 		_, _ = w.Write([]byte(`{"user_id":"11111111-2222-3333-4444-555555555555"}`))
 	}))
 	go func() { _ = srv.Serve(tls.NewListener(ln, tlsCfg)) }()
-	defer srv.Close()
+	defer func() {
+		if err := srv.Close(); err != nil {
+			t.Errorf("srv.Close() error = %v", err)
+		}
+	}()
 
 	// Client trusts CA, but presents NO client certificate (standard TLS client)
 	caPEM, err := os.ReadFile(caPath)

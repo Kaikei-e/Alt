@@ -110,7 +110,9 @@ func TestFetchHTMLFromURL_SuccessValidHTML(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(htmlContent))
+		if _, err := w.Write([]byte(htmlContent)); err != nil {
+			t.Errorf("write response failed: %v", err)
+		}
 	}))
 	defer ts.Close()
 

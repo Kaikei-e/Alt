@@ -39,7 +39,11 @@ func writeDITestPEM(t *testing.T, path, blockType string, der []byte) {
 	if err != nil {
 		t.Fatalf("create %s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close %s: %v", path, err)
+		}
+	}()
 	if err := pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}); err != nil {
 		t.Fatalf("pem encode %s: %v", path, err)
 	}
@@ -188,7 +192,11 @@ func TestNewRagConnectHTTPClient_Positive_RealTLSHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatalf("real mTLS request with genuine client failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("close response body: %v", err)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", resp.StatusCode)
 	}
@@ -353,7 +361,11 @@ func TestNewRagConnectHTTPClient_RedirectSeparatedest0_NeverFollows(t *testing.T
 	if err != nil {
 		t.Fatalf("request to redirect endpoint failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("expected status 302 (Found) from last response, got: %d", resp.StatusCode)

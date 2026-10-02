@@ -199,7 +199,11 @@ func (c *Client) runHealthProbe(ctx context.Context) {
 		slog.Warn("knowledge sovereign health probe failed", "base_url", c.baseURL, "error", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		// Deliberate best-effort cleanup of response body before caller retries or subsequent RPCs;
+		// close error is explicitly ignored to preserve HTTP probe semantics without masking primary errors or logging secrets.
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		slog.Warn("knowledge sovereign health probe returned non-200 status", "base_url", c.baseURL, "status_code", resp.StatusCode)
