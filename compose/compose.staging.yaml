@@ -1194,6 +1194,7 @@ services:
       # dedupe-barrier branch of the usecase.
       - SOVEREIGN_URL=http://knowledge-sovereign
       - SOVEREIGN_EVENT_AUTH=disabled
+      - SOVEREIGN_OPERATOR_TOKEN_FILE=/run/secrets/sovereign_operator_token
       # SSRF allowlist — only stub.invalid is reachable and feed
       # registration needs to bypass the private-IP guard for it.
       - FEED_ALLOWED_HOSTS=stub.invalid
@@ -1237,6 +1238,7 @@ services:
     secrets:
       - alt_backend_token_secret
       - rask_ingest_token
+      - sovereign_operator_token
     ports:
       - "19000:9000"
       - "19101:9101"
@@ -1684,3 +1686,5 @@ secrets:
     file: ../e2e/fixtures/staging-secrets/redis_password.txt
   inference_service_token:
     file: ../e2e/playwright/_fixtures/test-credentials/inference_service_token.txt
+  sovereign_operator_token:
+    file: ../e2e/playwright/_fixtures/test-credentials/sovereign_operator_token.txt

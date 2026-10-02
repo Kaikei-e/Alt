@@ -10,6 +10,54 @@ import { clientCertificates } from "../../_shared/client-auth.js";
 import { env, Procedure, SharedCorpus } from "../src/env.js";
 import { nonEmptySearchResponseSchema } from "../src/schemas.js";
 
+/**
+ * Asserts that the request fails specifically due to the TLS handshake rejecting
+ * an unauthorized client certificate with SSL alert 42 (bad certificate).
+ * Generic connection resets, timeouts, or refused connections are never accepted.
+ */
+function isTlsBadCertificate(errorMsg: string): boolean {
+	const hasBadCertAlert =
+		/ssl\/tls alert bad certificate/i.test(errorMsg) ||
+		/SSL alert number 42/i.test(errorMsg) ||
+		/alert bad certificate/i.test(errorMsg);
+	if (!hasBadCertAlert) {
+		return false;
+	}
+	const isGeneric =
+		/ECONNRESET/i.test(errorMsg) ||
+		/ECONNREFUSED/i.test(errorMsg) ||
+		/ETIMEDOUT/i.test(errorMsg) ||
+		/socket hang up/i.test(errorMsg);
+	return !isGeneric;
+}
+
+async function expectTlsBadCertificate(
+	action: Promise<unknown>,
+	what: string,
+): Promise<void> {
+	try {
+		const res = await action;
+		const status = (res && typeof res === "object" && "status" in res && typeof res.status === "function")
+			? res.status()
+			: JSON.stringify(res);
+		throw new Error(
+			`${what}\n  expected: TLS handshake rejected with bad certificate alert (alert 42)\n` +
+				`  actual:   server answered with HTTP ${status}`,
+		);
+	} catch (error) {
+		if (error instanceof Error && error.message.startsWith(what)) {
+			throw error;
+		}
+		const msg = error instanceof Error ? error.message : String(error);
+		if (!isTlsBadCertificate(msg)) {
+			throw new Error(
+				`${what}\n  expected: TLS handshake rejected with bad certificate alert (alert 42)\n` +
+					`  actual error: ${msg}`,
+			);
+		}
+	}
+}
+
 /** Plaintext :9300 serves health only; business REST/Connect routes require mTLS on :9443. */
 
 test.describe("the plaintext listeners answer only their own routes", () => {
@@ -111,23 +159,23 @@ test.describe("the mutual-TLS listener enforces peer identity", () => {
 		);
 	});
 
-	test("TLS business endpoints reject unauthorized peer certificate with 403", { tag: "@authz" }, async ({
+	test("TLS business endpoints reject unauthorized peer certificate at handshake", { tag: "@authz" }, async ({
 		playwright,
 	}) => {
 		const denied = await playwright.request.newContext({
 			clientCertificates: clientCertificates(env.baseURL, env.deniedCert, env.deniedKey),
 		});
 		try {
-			await expectStatus(
-				await denied.get(`${env.baseURL}/v1/search?q=rust&user_id=${SharedCorpus.aliceUser}&limit=1`),
-				403,
+			await expectTlsBadCertificate(
+				denied.get(`${env.baseURL}/v1/search?q=rust&user_id=${SharedCorpus.aliceUser}&limit=1`),
+				"search-indexer mTLS listener rejects unauthorized peer certificate at handshake",
 			);
-			await expectStatus(
-				await denied.post(`${env.connectURL}/${Procedure.searchArticles}`, {
+			await expectTlsBadCertificate(
+				denied.post(`${env.connectURL}/${Procedure.searchArticles}`, {
 					headers: { "Content-Type": "application/json" },
 					data: {},
 				}),
-				403,
+				"search-indexer mTLS listener rejects unauthorized peer certificate at handshake",
 			);
 		} finally {
 			await denied.dispose();
@@ -193,13 +241,12 @@ test.describe("access-control posture on business endpoints", () => {
 		const denied = await playwright.request.newContext({
 			baseURL: env.baseURL,
 			clientCertificates: clientCertificates(env.baseURL, env.deniedCert, env.deniedKey),
+			extraHTTPHeaders: { "X-Alt-Peer-Identity": "alt-backend" },
 		});
 		try {
-			await expectStatus(
-				await denied.get(path, {
-					headers: { "X-Alt-Peer-Identity": "alt-backend" },
-				}),
-				403,
+			await expectTlsBadCertificate(
+				denied.get(path),
+				"denied peer certificate is rejected at handshake before HTTP headers are evaluated",
 			);
 		} finally {
 			await denied.dispose();

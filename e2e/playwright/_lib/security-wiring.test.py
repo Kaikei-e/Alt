@@ -121,6 +121,16 @@ class SecurityWiringTests(unittest.TestCase):
         auth_env = environment(self.services["auth-introspection"])
         self.assertEqual(auth_env.get("STAGING_FORWARD_PREPROCESSOR"), "true")
 
+    def test_alt_backend_has_sovereign_operator_token_wiring(self):
+        svc = self.services["alt-backend"]
+        env = environment(svc)
+        self.assertEqual(env.get("SOVEREIGN_OPERATOR_TOKEN_FILE"), "/run/secrets/sovereign_operator_token")
+        self.assertIn("sovereign_operator_token", svc.get("secrets", []))
+        secret_file = ROOT / "compose" / self.compose["secrets"]["sovereign_operator_token"]["file"]
+        self.assertTrue(secret_file.exists(), f"secret file {secret_file} must exist")
+        token = secret_file.read_text().strip()
+        self.assertGreaterEqual(len(token), 24)
+
 
 if __name__ == "__main__":
     unittest.main()

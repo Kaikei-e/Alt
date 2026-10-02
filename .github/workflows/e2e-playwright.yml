@@ -90,6 +90,7 @@ jobs:
           python3 e2e/playwright/_lib/security-wiring.test.py
           python3 e2e/playwright/_lib/auth-introspection.test.py
           node e2e/playwright/_lib/search-auth.test.cjs
+          python3 e2e/playwright/_lib/staging-pki.test.py
 
   plan:
     name: Plan matrices
