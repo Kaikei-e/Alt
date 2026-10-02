@@ -2,29 +2,15 @@ import { test as base, expect } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
 import { ConnectCode, expectUnaryError } from "../../_shared/connect.js";
 import { testToken } from "../../_shared/ids.js";
-import { env, Procedure } from "./env.js";
+import { env, Procedure, CanonicalStream, CanonicalGroup } from "./env.js";
+import { assertCanonicalStreamsReset } from "./redis.js";
 
 /**
  * Suite-wide fixtures.
  *
- * mq-hub requires the staging bearer; it has no tenancy. Clients are
- * worker-scoped. What each test
- * does need of its own is a **stream key**, and that is the fixture that
- * breaks the ordering the Hurl suite was built on.
- *
- * `e2e/hurl/mq-hub/run.sh` passed `--jobs 1` and called it load-bearing:
- * `12-stream-info.hurl` asserted `length >= 1` and `groups[*].name includes
- * hurl-e2e-cg-<run_id>` on `alt:events:articles`, which only held because
- * `04`, `07` and `10` had already run against that same shared key. Run them
- * in any other order and XINFO answered 500 on a stream that did not exist
- * yet.
- *
- * The fix is not a serial project — it is that nothing forced those scenarios
- * onto one key in the first place. `StreamGateway.Publish` only *warns* for an
- * unrecognised stream key (stream_gateway.go:31-36) and publishes anyway, so
- * every test can own a stream nothing else writes to. That turns "at least one
- * entry" into "exactly the three I published", which is a strictly stronger
- * assertion and an order-independent one.
+ * Provides worker-scoped Connect API clients and per-test Redis stream isolation.
+ * When explicit E2E opt-in is enabled in CI, canonical streams are cleanly reset
+ * before and after each test to ensure test independence regardless of execution order.
  */
 
 export type WorkerFixtures = {
@@ -54,16 +40,18 @@ export type WorkerFixtures = {
 
 export type TestFixtures = {
 	/**
-	 * A Redis Stream key owned by exactly one test.
-	 *
-	 * Not one of the four `domain.StreamKey` constants on purpose — see the
-	 * file comment. Deliberately prefixed `alt:events:` so it sorts with the
-	 * real keys in `redis-cli --scan` when someone is debugging a failure with
-	 * `KEEP_STACK=1`.
+	 * Automatic per-test Redis stream isolation.
+	 * In staging/CI with MQ_E2E_ALLOW_REDIS_RESET=1, cleans canonical streams
+	 * before and after each test. Refuses/resets nothing for default localhost/user's running stack.
+	 */
+	resetIsolation: void;
+
+	/**
+	 * A canonical Redis Stream key (alt:events:articles) satisfying domain.StreamKey.IsValid().
 	 */
 	stream: string;
 
-	/** A consumer-group name owned by exactly one test. */
+	/** A canonical consumer-group name (pre-processor-group) satisfying domain.ConsumerGroup.IsValid(). */
 	group: string;
 };
 
@@ -89,17 +77,24 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 		{ scope: "worker" },
 	],
 
-	stream: async ({}, use, testInfo) => {
-		// testToken folds in RUN_ID, the worker index and a random tail, so two
-		// shards on one daemon and a rerun against a still-warm Redis never
-		// inherit each other's entries. No teardown: the slice is destroyed
-		// with `docker compose down -v` per dispatch, and deleting the key here
-		// would only race a sibling worker's XINFO.
-		await use(`alt:events:e2e-${testToken(testInfo.workerIndex, testInfo.title)}`);
+	resetIsolation: [
+		async ({}, use) => {
+			await assertCanonicalStreamsReset();
+			try {
+				await use();
+			} finally {
+				await assertCanonicalStreamsReset();
+			}
+		},
+		{ auto: true },
+	],
+
+	stream: async ({}, use) => {
+		await use(CanonicalStream.articles);
 	},
 
-	group: async ({}, use, testInfo) => {
-		await use(`e2e-cg-${testToken(testInfo.workerIndex, testInfo.title)}`);
+	group: async ({}, use) => {
+		await use(CanonicalGroup.preProcessor);
 	},
 });
 
@@ -108,18 +103,8 @@ export { expect };
 /**
  * Asserts a stream key does not exist in Redis.
  *
- * The claim is spelled once, here, because two specs need it and it is the one
- * assertion in this suite inferred from the code rather than from an observed
- * response. The chain: `XINFO STREAM` on a missing key replies `ERR no such
- * key`; redis_driver.go:199 wraps it; handler.go:139 returns it **unwrapped by
- * `mapPublishErr`** — unlike every other RPC on this service — so connect-go
- * classifies it as `CodeUnknown`, which the protocol pairs with HTTP 500.
- *
- * That un-classified error is itself worth pinning. `GetStreamInfo` is the one
- * procedure whose "you asked about something that isn't there" answer is a 500
- * rather than a `not_found`, and a caller cannot retry-or-not on it. If this
- * test starts failing because the code became `not_found`, that is a fix and
- * this helper should follow it.
+ * `XINFO STREAM` on a missing key replies `ERR no such key`; redis_driver.go wraps
+ * it, and handler.go maps it through `mapPublishErr` as `CodeUnavailable` (HTTP 503).
  */
 export async function expectStreamAbsent(
 	api: APIRequestContext,
@@ -129,7 +114,7 @@ export async function expectStreamAbsent(
 		api,
 		Procedure.getStreamInfo,
 		{ stream },
-		ConnectCode.unknown,
+		ConnectCode.unavailable,
 	);
 	expect(
 		error.message ?? "",

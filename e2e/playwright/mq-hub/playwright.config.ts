@@ -16,26 +16,10 @@ export default defineApiSuite({
 	service: "mq-hub",
 
 	/**
-	 * Sized against Redis, not CPU.
-	 *
-	 * The bottleneck downstream of every test in this suite is one
-	 * `redis-streams` container: a single-threaded server, reached through
-	 * mq-hub's connection pool (`REDIS_POOL_SIZE=20` in
-	 * compose/compose.staging.yaml). Four workers keep at most a handful of
-	 * commands in flight — an order of magnitude inside the pool — while
-	 * acknowledging that adding workers beyond that buys nothing, because
-	 * Redis executes their commands one after another anyway. It is also
-	 * enough headroom for the two `@slow` batch specs, which each push
-	 * 1000+ XADDs through the pipeline in a single request.
-	 *
-	 * No `workers: 1` project is needed. The only genuinely global state this
-	 * service has is the Prometheus registry, and tests/metrics.spec.ts warms
-	 * every family it asserts inside its own test and then asserts *presence*
-	 * — a monotone property that a sibling worker publishing concurrently can
-	 * only reinforce. Everything else is isolated by stream key: each test
-	 * gets `alt:events:e2e-<testToken>` of its own.
+	 * Run serially (workers: 1) to prevent collisions and event count races
+	 * across the shared canonical Redis Streams.
 	 */
-	workers: 4,
+	workers: 1,
 
 	globalSetup: "./setup/global-setup.ts",
 });

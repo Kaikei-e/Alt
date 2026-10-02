@@ -49,6 +49,12 @@ suite_image_tags MQ_HUB_IMAGE_TAG
 suite_endpoint BASE_URL       "http://mq-hub:9500"
 suite_endpoint OPS_ABSENT_URL "http://mq-hub:9110"
 
+# Staging Redis endpoints for ephemeral E2E stream isolation inside the staging network.
+# Only canonical streams are reset, and only when explicitly opted in via MQ_E2E_ALLOW_REDIS_RESET=1.
+suite_endpoint REDIS_URL                "redis://redis-streams:6379"
+suite_endpoint REDIS_PASSWORD_FILE      "$ROOT/e2e/fixtures/staging-secrets/redis_password.txt"
+suite_endpoint MQ_E2E_ALLOW_REDIS_RESET "1"
+
 # The whole slice. mq-hub `depends_on: redis-streams (service_healthy)`, so
 # compose orders them; naming both keeps the teardown symmetric and makes the
 # dependency visible here rather than only in compose.staging.yaml.
