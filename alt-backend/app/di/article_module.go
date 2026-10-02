@@ -132,7 +132,7 @@ func logArticlePrefetchWiring(wiring articles.ArticlePrefetchWiring) {
 		"note", "warms take a host's turn from the same limiter and namespace as interactive fetches, and give it up after slot_wait rather than queueing for it")
 }
 
-func newArticleModule(infra *InfraModule, feed *FeedModule) *ArticleModule {
+func newArticleModule(infra *InfraModule, feed *FeedModule) (*ArticleModule, error) {
 	// No alt_db handle. The two that were left here through batch 5 — the Tag
 	// Trail's paged read and RecallRailUsecase's article fallback — became
 	// procedures of their own in ADR-000954 Wave 3 batch 6, which is what let
@@ -261,7 +261,10 @@ func newArticleModule(infra *InfraModule, feed *FeedModule) *ArticleModule {
 	// consolidating what was previously ~600 lines duplicated across
 	// rest/utils.go, rest/rest_feeds/utils.go, and
 	// rest/rest_feeds/summarization/helpers.go.
-	preprocessorClient := preprocessor_client.NewClient(infra.Config.PreProcessor.URL)
+	preprocessorClient, err := preprocessor_client.NewClient(infra.Config.PreProcessor.URL)
+	if err != nil {
+		return nil, fmt.Errorf("preprocessor client: %w", err)
+	}
 	preprocessorSummarizeGw := preprocessor_summarize_gateway.NewGateway(preprocessorClient)
 	//
 	// One source since ADR-000954 Wave 3 batch 5. The article read and write
@@ -300,7 +303,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule) *ArticleModule {
 
 		FetchArticleTagsGateway: fetchArticleTagsGw,
 		FetchArticleGateway:     fetchArticleGw,
-	}
+	}, nil
 }
 
 // summarize_article_repository satisfies the local ArticleRepository

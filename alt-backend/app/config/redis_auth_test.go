@@ -173,4 +173,34 @@ func TestResolveCoordinationRedisPassword(t *testing.T) {
 		require.Error(t, err)
 		assert.Empty(t, pwd)
 	})
+
+	t.Run("coordination prefers HOST_RATE_LIMITER_REDIS_PASSWORD_FILE over REDIS_PASSWORD_FILE", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		coordFile := filepath.Join(tmpDir, "coord_password.txt")
+		genericFile := filepath.Join(tmpDir, "generic_password.txt")
+		require.NoError(t, os.WriteFile(coordFile, []byte("coord-secret"), 0600))
+		require.NoError(t, os.WriteFile(genericFile, []byte("generic-secret"), 0600))
+
+		t.Setenv("HOST_RATE_LIMITER_REDIS_PASSWORD_FILE", coordFile)
+		t.Setenv("REDIS_PASSWORD_FILE", genericFile)
+
+		pwd, err := resolveCoordinationRedisPassword("redis://redis-streams:6379/3")
+		require.NoError(t, err)
+		assert.Equal(t, "coord-secret", pwd)
+	})
+
+	t.Run("coordination prefers COORDINATION_REDIS_PASSWORD_FILE over REDIS_PASSWORD_FILE", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		coordFile := filepath.Join(tmpDir, "coord_password.txt")
+		genericFile := filepath.Join(tmpDir, "generic_password.txt")
+		require.NoError(t, os.WriteFile(coordFile, []byte("coord-alt-secret"), 0600))
+		require.NoError(t, os.WriteFile(genericFile, []byte("generic-secret"), 0600))
+
+		t.Setenv("COORDINATION_REDIS_PASSWORD_FILE", coordFile)
+		t.Setenv("REDIS_PASSWORD_FILE", genericFile)
+
+		pwd, err := resolveCoordinationRedisPassword("redis://redis-streams:6379/3")
+		require.NoError(t, err)
+		assert.Equal(t, "coord-alt-secret", pwd)
+	})
 }

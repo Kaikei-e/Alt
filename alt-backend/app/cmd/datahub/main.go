@@ -75,7 +75,15 @@ func main() {
 	// see internal/bootstrap/dbboot and di/import_boundary_test.go.
 	pool := dbboot.MustOpen(ctx, rt, serviceName)
 
-	container := datahubdi.NewDataHubComponents(pool, cfg)
+	// A04: DataHub acts as a client to auth-hub's /internal/system-user endpoint
+	// via mTLS, using the same client cert it serves.
+	authHubMTLSClient, err := tlsutil.NewMTLSClient(dcfg.CertFile, dcfg.KeyFile, dcfg.CAFile)
+	if err != nil {
+		log.ErrorContext(ctx, "failed to configure mTLS client for auth-hub, refusing to start", "error", err)
+		os.Exit(1)
+	}
+
+	container := datahubdi.NewDataHubComponents(pool, cfg, authHubMTLSClient)
 
 	// Client authentication is a constant here, not a setting. The listener it
 	// replaced read MTLS_CLIENT_AUTH and fell back to tls.NoClientCert — TLS
@@ -119,6 +127,7 @@ func main() {
 		"legacy_prefix", datahubapi.LegacyNamespacePrefix,
 		"removal_condition", "every deployed DataHubService consumer publishes pacts on services.datahub.v1",
 	)
+	handler = middleware.RequirePeerProcedure(nil, handler)
 	// The allowlist is re-checked per request, not only at handshake time: a
 	// TLS terminator moving in front of this process would otherwise silently
 	// retire the handshake-time check. See middleware.RequirePeerIdentity.

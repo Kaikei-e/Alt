@@ -62,6 +62,10 @@ func NewConfig() (*Config, error) {
 		return nil, fmt.Errorf("auth config validation failed: %w", err)
 	}
 
+	if config.AppEnv == "production" && config.AuthHub.URL != "" && !strings.HasPrefix(config.AuthHub.URL, "https://") {
+		return nil, fmt.Errorf("auth-hub config: AUTH_HUB_URL must use https:// in production, got %q", config.AuthHub.URL)
+	}
+
 	// Validate sovereign event authentication configuration when sovereign is configured.
 	if config.Sovereign.URL != "" {
 		if err := validateSovereignConfig(&config.Sovereign, config.AppEnv, os.ReadFile); err != nil {
@@ -83,6 +87,42 @@ func NewConfig() (*Config, error) {
 	return config, nil
 }
 
+func resolveSovereignEventTokenFile(cfg *SovereignConfig) {
+	service := strings.TrimSpace(os.Getenv("OTEL_SERVICE_NAME"))
+	if service == "" {
+		service = strings.TrimSpace(os.Getenv("SERVICE_NAME"))
+	}
+
+	var specificFile string
+	switch service {
+	case "alt-backend":
+		specificFile = os.Getenv("SOVEREIGN_BACKEND_TOKEN_FILE")
+	case "alt-harvester":
+		specificFile = os.Getenv("SOVEREIGN_HARVESTER_TOKEN_FILE")
+	case "alt-data-hub", "alt-datahub":
+		specificFile = os.Getenv("SOVEREIGN_DATAHUB_TOKEN_FILE")
+	}
+
+	if specificFile != "" {
+		cfg.EventTokenFile = specificFile
+		return
+	}
+
+	// Also check if any specific file is set when service is unset or matches
+	if f := os.Getenv("SOVEREIGN_BACKEND_TOKEN_FILE"); f != "" && (service == "" || service == "alt-backend") {
+		cfg.EventTokenFile = f
+		return
+	}
+	if f := os.Getenv("SOVEREIGN_HARVESTER_TOKEN_FILE"); f != "" && (service == "" || service == "alt-harvester") {
+		cfg.EventTokenFile = f
+		return
+	}
+	if f := os.Getenv("SOVEREIGN_DATAHUB_TOKEN_FILE"); f != "" && (service == "" || service == "alt-data-hub" || service == "alt-datahub") {
+		cfg.EventTokenFile = f
+		return
+	}
+}
+
 func validateSovereignConfig(cfg *SovereignConfig, appEnv string, readFile FileReader) error {
 	if strings.EqualFold(strings.TrimSpace(cfg.EventAuth), "disabled") {
 		if appEnv == "production" {
@@ -91,6 +131,8 @@ func validateSovereignConfig(cfg *SovereignConfig, appEnv string, readFile FileR
 		cfg.EventToken = ""
 		return nil
 	}
+
+	resolveSovereignEventTokenFile(cfg)
 
 	if cfg.EventTokenFile != "" {
 		if err := loadSovereignSecret(cfg, readFile); err != nil {

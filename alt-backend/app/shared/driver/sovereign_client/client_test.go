@@ -5,6 +5,7 @@ import (
 	"alt/orchestrator/port/knowledge_sovereign_port"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -238,4 +239,111 @@ func TestNewClient_StaysEnabledOnNonConnectResponse(t *testing.T) {
 	require.NotNil(t, client)
 	assert.True(t, client.Enabled(),
 		"client must stay enabled even when probe sees non-Connect response (stub catch-all, real misroute, etc. cannot be distinguished from the wire)")
+}
+
+func TestNewClient_PublicHealthProbeSuccess(t *testing.T) {
+	var healthCalled atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" && r.Method == http.MethodGet {
+			healthCalled.Store(true)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"status":  "ok",
+				"service": "knowledge-sovereign",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, true)
+	require.NotNil(t, client)
+	assert.True(t, client.Enabled())
+	assert.True(t, healthCalled.Load(), "public /health probe must be called during client construction")
+}
+
+type roleEnforcingMockHandler struct {
+	sovereignv1connect.UnimplementedKnowledgeSovereignServiceHandler
+	narrowToken   string
+	operatorToken string
+}
+
+func (h *roleEnforcingMockHandler) AppendKnowledgeEvent(
+	_ context.Context,
+	req *connect.Request[sovereignv1.AppendKnowledgeEventRequest],
+) (*connect.Response[sovereignv1.AppendKnowledgeEventResponse], error) {
+	auth := req.Header().Get("Authorization")
+	if auth != "Bearer "+h.narrowToken && auth != "Bearer "+h.operatorToken {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
+	}
+	return connect.NewResponse(&sovereignv1.AppendKnowledgeEventResponse{
+		EventSeq: 42,
+	}), nil
+}
+
+func (h *roleEnforcingMockHandler) GetActiveProjectionVersion(
+	_ context.Context,
+	req *connect.Request[sovereignv1.GetActiveProjectionVersionRequest],
+) (*connect.Response[sovereignv1.GetActiveProjectionVersionResponse], error) {
+	auth := req.Header().Get("Authorization")
+	if auth == "Bearer "+h.operatorToken {
+		return connect.NewResponse(&sovereignv1.GetActiveProjectionVersionResponse{
+			Version: &sovereignv1.ProjectionVersion{
+				Version:     1,
+				Description: "v1",
+				Status:      "active",
+			},
+		}), nil
+	}
+	return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied: narrow event role cannot access projection versions"))
+}
+
+func TestNewClient_NarrowEventRole_HealthWorks_PrivilegedDenied(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "knowledge-sovereign"})
+	})
+
+	const narrowEventToken = "narrow-event-token-value-12345678"
+	const operatorToken = "operator-token-value-1234567890"
+
+	roleHandler := &roleEnforcingMockHandler{
+		narrowToken:   narrowEventToken,
+		operatorToken: operatorToken,
+	}
+	path, h := sovereignv1connect.NewKnowledgeSovereignServiceHandler(roleHandler)
+	mux.Handle(path, h)
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// 1. Construct client with narrow event token. Public health probe succeeds without error.
+	eventClient := NewClient(srv.URL, true, WithEventToken(narrowEventToken))
+	require.NotNil(t, eventClient)
+	assert.True(t, eventClient.Enabled())
+
+	// 2. Narrow event method succeeds.
+	seq, err := eventClient.AppendKnowledgeEvent(context.Background(), domain.KnowledgeEvent{
+		EventID:   uuid.New(),
+		EventType: domain.EventSummaryVersionCreated,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), seq)
+
+	// 3. Privileged method is denied for narrow event token.
+	_, err = eventClient.GetActiveProjectionVersion(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "permission denied")
+
+	// 4. Operator client succeeds on privileged method.
+	opClient := NewClient(srv.URL, true, WithEventToken(operatorToken))
+	require.NotNil(t, opClient)
+	ver, err := opClient.GetActiveProjectionVersion(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, ver)
+	assert.Equal(t, 1, ver.Version)
 }

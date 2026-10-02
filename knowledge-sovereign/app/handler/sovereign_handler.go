@@ -3,8 +3,10 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -103,15 +105,73 @@ func WithProjectorWatcherOpener(opener ProjectorWatcherOpener) Option {
 	return func(h *SovereignHandler) { h.watcherOpener = opener }
 }
 
+func normalizeMutationPayload(ctx context.Context, rawPayload json.RawMessage, mutationType string) (json.RawMessage, error) {
+	claims, hasClaims := BackendClaimsFromContext(ctx)
+	if !hasClaims {
+		return rawPayload, nil
+	}
+
+	if claims.Subject == "" || claims.TenantID == "" {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("delegation token missing subject or tenant_id"))
+	}
+
+	var p map[string]any
+	dec := json.NewDecoder(strings.NewReader(string(rawPayload)))
+	dec.UseNumber()
+	if err := dec.Decode(&p); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid json payload"))
+	}
+	if p == nil {
+		p = make(map[string]any)
+	}
+
+	keysToDelete := make([]string, 0, len(p))
+	for k, v := range p {
+		normKey := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(k, "_", ""), "-", ""))
+		if normKey == "tenantid" || normKey == "tenant" {
+			keysToDelete = append(keysToDelete, k)
+			if v != nil {
+				strVal := strings.TrimSpace(fmt.Sprintf("%v", v))
+				if strVal != "" && strVal != "<nil>" && strVal != claims.TenantID {
+					return nil, connect.NewError(connect.CodePermissionDenied, errors.New("delegation token tenant_id does not match requested tenant"))
+				}
+			}
+		} else if normKey == "userid" || normKey == "user" {
+			keysToDelete = append(keysToDelete, k)
+			if v != nil {
+				strVal := strings.TrimSpace(fmt.Sprintf("%v", v))
+				if strVal != "" && strVal != "<nil>" && strVal != claims.Subject {
+					return nil, connect.NewError(connect.CodePermissionDenied, errors.New("delegation token subject does not match requested user"))
+				}
+			}
+		}
+	}
+
+	for _, k := range keysToDelete {
+		delete(p, k)
+	}
+
+	p["tenant_id"] = claims.TenantID
+	p["user_id"] = claims.Subject
+
+	normalized, err := json.Marshal(p)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to marshal normalized payload: %w", err))
+	}
+	return json.RawMessage(normalized), nil
+}
+
 // ApplyProjectionMutation dispatches a projection mutation to the repository.
 func (h *SovereignHandler) ApplyProjectionMutation(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ApplyProjectionMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyProjectionMutationResponse], error) {
 	msg := req.Msg
-	payload := json.RawMessage(msg.Payload)
+	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
+	if err != nil {
+		return nil, err
+	}
 
-	var err error
 	switch msg.MutationType {
 	case MutationUpsertHomeItem:
 		err = h.repo.UpsertKnowledgeHomeItem(ctx, payload)
@@ -120,7 +180,7 @@ func (h *SovereignHandler) ApplyProjectionMutation(
 	case MutationClearSupersede:
 		err = h.repo.ClearSupersedeState(ctx, payload)
 	case MutationUpsertTodayDigest:
-		err = h.repo.UpsertTodayDigest(ctx, payload)
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("upsert_today_digest is restricted to local projector"))
 	case MutationUpsertRecallCandidate:
 		err = h.repo.UpsertRecallCandidate(ctx, payload)
 	case MutationPatchHomeItemURL:
@@ -133,6 +193,9 @@ func (h *SovereignHandler) ApplyProjectionMutation(
 	if err != nil {
 		slog.ErrorContext(ctx, "projection mutation failed",
 			"type", msg.MutationType, "entity_id", msg.EntityId, "error", err)
+		if errors.Is(err, sovereign_db.ErrHomeItemTenantMismatch) || errors.Is(err, sovereign_db.ErrRecallHomeAssociationDenied) {
+			return nil, connect.NewError(connect.CodePermissionDenied, err)
+		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
@@ -145,9 +208,11 @@ func (h *SovereignHandler) ApplyRecallMutation(
 	req *connect.Request[sovereignv1.ApplyRecallMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyRecallMutationResponse], error) {
 	msg := req.Msg
-	payload := json.RawMessage(msg.Payload)
+	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
+	if err != nil {
+		return nil, err
+	}
 
-	var err error
 	switch msg.MutationType {
 	case MutationUpsertCandidate:
 		err = h.repo.UpsertRecallCandidate(ctx, payload)
@@ -163,6 +228,9 @@ func (h *SovereignHandler) ApplyRecallMutation(
 	if err != nil {
 		slog.ErrorContext(ctx, "recall mutation failed",
 			"type", msg.MutationType, "entity_id", msg.EntityId, "error", err)
+		if errors.Is(err, sovereign_db.ErrRecallHomeAssociationDenied) || errors.Is(err, sovereign_db.ErrHomeItemTenantMismatch) {
+			return nil, connect.NewError(connect.CodePermissionDenied, err)
+		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
@@ -175,9 +243,11 @@ func (h *SovereignHandler) ApplyCurationMutation(
 	req *connect.Request[sovereignv1.ApplyCurationMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyCurationMutationResponse], error) {
 	msg := req.Msg
-	payload := json.RawMessage(msg.Payload)
+	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
+	if err != nil {
+		return nil, err
+	}
 
-	var err error
 	switch msg.MutationType {
 	case MutationDismissCuration:
 		err = h.repo.DismissKnowledgeHomeItem(ctx, payload)

@@ -244,3 +244,40 @@ func TestStreamGatewaySubscribeWithTimeout_MapsTimeoutError(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrReplyTimeout)
 	drv.AssertExpectations(t)
 }
+
+func TestStreamGateway_DirectDefense_RejectsInvalidStreamKey(t *testing.T) {
+	drv := new(mockStreamDriver)
+	gw := NewStreamGateway(drv)
+	ctx := context.Background()
+
+	event := &domain.Event{
+		EventID:   "evt-1",
+		EventType: domain.EventTypeArticleCreated,
+		Source:    "alt-backend",
+		CreatedAt: time.Now(),
+	}
+
+	t.Run("Publish rejects invalid stream before driver", func(t *testing.T) {
+		_, err := gw.Publish(ctx, domain.StreamKey("evil:stream"), event)
+		require.ErrorIs(t, err, domain.ErrInvalidStreamKey)
+		drv.AssertNotCalled(t, "Publish")
+	})
+
+	t.Run("PublishBatch rejects invalid stream before driver", func(t *testing.T) {
+		_, err := gw.PublishBatch(ctx, domain.StreamKey("evil:stream"), []*domain.Event{event})
+		require.ErrorIs(t, err, domain.ErrInvalidStreamKey)
+		drv.AssertNotCalled(t, "PublishBatch")
+	})
+
+	t.Run("CreateConsumerGroup rejects invalid stream before driver", func(t *testing.T) {
+		err := gw.CreateConsumerGroup(ctx, domain.StreamKey("evil:stream"), domain.ConsumerGroupPreProcessor, "0")
+		require.ErrorIs(t, err, domain.ErrInvalidStreamKey)
+		drv.AssertNotCalled(t, "CreateConsumerGroup")
+	})
+
+	t.Run("CreateConsumerGroup rejects invalid consumer group before driver", func(t *testing.T) {
+		err := gw.CreateConsumerGroup(ctx, domain.StreamKeyArticles, domain.ConsumerGroup("evil-group"), "0")
+		require.ErrorIs(t, err, domain.ErrInvalidConsumerGroup)
+		drv.AssertNotCalled(t, "CreateConsumerGroup")
+	})
+}

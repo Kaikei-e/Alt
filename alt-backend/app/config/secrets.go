@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -126,15 +127,44 @@ func loadRAGAPIToken(cfg *RAGConfig, readFile FileReader) error {
 
 // loadSovereignSecret loads the event caller authentication token for Knowledge Sovereign from file.
 func loadSovereignSecret(cfg *SovereignConfig, readFile FileReader) error {
+	var envName string
+	switch cfg.EventTokenFile {
+	case os.Getenv("SOVEREIGN_BACKEND_TOKEN_FILE"):
+		envName = "SOVEREIGN_BACKEND_TOKEN_FILE"
+	case os.Getenv("SOVEREIGN_HARVESTER_TOKEN_FILE"):
+		envName = "SOVEREIGN_HARVESTER_TOKEN_FILE"
+	case os.Getenv("SOVEREIGN_DATAHUB_TOKEN_FILE"):
+		envName = "SOVEREIGN_DATAHUB_TOKEN_FILE"
+	default:
+		envName = "SOVEREIGN_EVENT_TOKEN_FILE"
+	}
 	content, err := readFile(cfg.EventTokenFile)
 	if err != nil {
-		return fmt.Errorf("read SOVEREIGN_EVENT_TOKEN_FILE %s: %w", cfg.EventTokenFile, err)
+		return fmt.Errorf("read %s %s: %w", envName, cfg.EventTokenFile, err)
 	}
 	token := strings.TrimSpace(string(content))
 	if len(token) < minSovereignEventTokenLen {
-		return fmt.Errorf("event token from SOVEREIGN_EVENT_TOKEN_FILE must be at least %d characters", minSovereignEventTokenLen)
+		return fmt.Errorf("event token from %s must be at least %d characters", envName, minSovereignEventTokenLen)
 	}
 	cfg.EventToken = token
+	return nil
+}
+
+// loadMQHubAuthToken loads the authentication token for mq-hub from file if configured.
+func loadMQHubAuthToken(cfg *MQHubConfig, readFile FileReader) error {
+	if cfg.AuthTokenFile != "" {
+		content, err := readFile(cfg.AuthTokenFile)
+		if err != nil {
+			return fmt.Errorf("read MQHUB_AUTH_TOKEN_FILE %s: %w", cfg.AuthTokenFile, err)
+		}
+		secret := strings.TrimSpace(string(content))
+		if secret == "" {
+			return fmt.Errorf("MQHUB_AUTH_TOKEN_FILE=%s resolved to an empty token: "+
+				"mount a non-empty secret or set MQHUB_AUTH_TOKEN instead",
+				cfg.AuthTokenFile)
+		}
+		cfg.AuthToken = secret
+	}
 	return nil
 }
 
@@ -153,6 +183,9 @@ func loadSecrets(cfg *Config, readFile FileReader) error {
 		return err
 	}
 	if err := loadRAGAPIToken(&cfg.Rag, readFile); err != nil {
+		return err
+	}
+	if err := loadMQHubAuthToken(&cfg.MQHub, readFile); err != nil {
 		return err
 	}
 	return nil

@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "services": [
+    {
+      "name": "alt-backend",
+      "token_file": "/run/secrets/sovereign_backend_token",
+      "allowed_methods": [
+        "/services.sovereign.v1.KnowledgeSovereignService/GetKnowledgeHomeItems",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetTodayDigest",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetRecallCandidates",
+        "/services.sovereign.v1.KnowledgeSovereignService/CountNeedToKnowItems",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetProjectionFreshness",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetActiveProjectionVersion",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetTrailBranchesForAnchor",
+        "/services.sovereign.v1.KnowledgeSovereignService/AppendRecallSignal",
+        "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+        "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeUserEvent",
+        "/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation",
+        "/services.sovereign.v1.KnowledgeSovereignService/ApplyRecallMutation",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListKnowledgeEvents",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetLatestEventSeq",
+        "/services.sovereign.v1.KnowledgeSovereignService/AreArticlesVisibleInLens",
+        "/services.sovereign.v1.KnowledgeSovereignService/CreateLens",
+        "/services.sovereign.v1.KnowledgeSovereignService/CreateLensVersion",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListLenses",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetLens",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetCurrentLensSelection",
+        "/services.sovereign.v1.KnowledgeSovereignService/ResolveLensFilter",
+        "/services.sovereign.v1.KnowledgeSovereignService/SelectCurrentLens",
+        "/services.sovereign.v1.KnowledgeSovereignService/ClearCurrentLens",
+        "/services.sovereign.v1.KnowledgeSovereignService/ArchiveLens"
+      ],
+      "allowed_events": [
+        "SummaryVersionCreated",
+        "SummarySuperseded",
+        "HomeItemsSeen",
+        "HomeItemOpened",
+        "HomeItemAsked",
+        "HomeItemListened",
+        "HomeItemDismissed",
+        "HomeItemTagClicked",
+        "RecallSnoozed",
+        "RecallDismissed",
+        "trail.branch_resolved.v1",
+        "trail.act_outcome.v1",
+        "open",
+        "dismiss",
+        "ask",
+        "listen",
+        "open_recap",
+        "open_search",
+        "tag_click"
+      ],
+      "require_user_token": true,
+      "allow_system_scope": false
+    },
+    {
+      "name": "alt-data-hub",
+      "token_file": "/run/secrets/sovereign_datahub_token",
+      "allowed_methods": [
+        "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      ],
+      "allowed_events": [
+        "SummaryVersionCreated",
+        "SummarySuperseded",
+        "TagSetVersionCreated",
+        "TagSetSuperseded"
+      ],
+      "require_user_token": false,
+      "allow_system_scope": false
+    },
+    {
+      "name": "harvester",
+      "token_file": "/run/secrets/sovereign_harvester_token",
+      "allowed_methods": [
+        "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListDistinctUserIDs",
+        "/services.sovereign.v1.KnowledgeSovereignService/CountNeedToKnowItems"
+      ],
+      "allowed_events": [
+        "ArticleCreated"
+      ],
+      "require_user_token": false,
+      "allow_system_scope": true
+    },
+    {
+      "name": "rag-orchestrator",
+      "token_file": "/run/secrets/sovereign_rag_token",
+      "allowed_methods": [
+        "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      ],
+      "allowed_events": [
+        "augur.conversation_linked.v1"
+      ],
+      "require_user_token": false,
+      "allow_system_scope": false
+    },
+    {
+      "name": "recap-worker",
+      "token_file": "/run/secrets/sovereign_recap_token",
+      "allowed_methods": [
+        "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      ],
+      "allowed_events": [
+        "recap.topic_snapshotted.v1"
+      ],
+      "require_user_token": false,
+      "allow_system_scope": false
+    },
+    {
+      "name": "operator",
+      "token_file": "/run/secrets/sovereign_operator_token",
+      "allowed_methods": [
+        "/services.sovereign.v1.KnowledgeSovereignService/GetActiveProjectionVersion",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetProjectionCheckpoint",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetProjectionFreshness",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListBackfillJobs",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetProjectionLag",
+        "/services.sovereign.v1.KnowledgeSovereignService/CreateProjectionAudit",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetReprojectRun",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListReprojectRuns",
+        "/services.sovereign.v1.KnowledgeSovereignService/CompareProjections",
+        "/services.sovereign.v1.KnowledgeSovereignService/UpdateReprojectRun",
+        "/services.sovereign.v1.KnowledgeSovereignService/ActivateProjectionVersion",
+        "/services.sovereign.v1.KnowledgeSovereignService/UpdateProjectionCheckpoint",
+        "/services.sovereign.v1.KnowledgeSovereignService/GetBackfillJob",
+        "/services.sovereign.v1.KnowledgeSovereignService/UpdateBackfillJob",
+        "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      ],
+      "allowed_events": [
+        "ArticleUrlBackfilled"
+      ],
+      "require_user_token": false,
+      "allow_system_scope": false
+    }
+  ]
+}

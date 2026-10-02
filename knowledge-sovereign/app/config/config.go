@@ -35,6 +35,11 @@ type Config struct {
 	// open" are never indistinguishable (Rule 8).
 	EventAuthEnabled bool
 
+	// AuthPolicy holds the per-service capability policy.
+	AuthPolicy *AuthPolicy
+	// UserJWTVerifier verifies caller delegation tokens (X-Alt-Backend-Token).
+	UserJWTVerifier TokenVerifier
+
 	// Snapshot / retention filesystem paths and build identity.
 	SnapshotDir   string
 	ArchiveDir    string
@@ -87,9 +92,44 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	eventToken, eventAuthEnabled, err := loadEventAuth()
-	if err != nil {
-		return nil, err
+	authPolicyFile := os.Getenv("EVENT_AUTH_POLICY_FILE")
+	if authPolicyFile == "" {
+		authPolicyFile = os.Getenv("SOVEREIGN_AUTH_POLICY_FILE")
+	}
+
+	var authPolicy *AuthPolicy
+	if authPolicyFile != "" {
+		pol, err := LoadPolicyFile(authPolicyFile)
+		if err != nil {
+			return nil, fmt.Errorf("load auth policy: %w", err)
+		}
+		authPolicy = pol
+	}
+
+	var eventToken string
+	var eventAuthEnabled bool
+	if os.Getenv("EVENT_AUTH") == "disabled" {
+		eventAuthEnabled = false
+	} else if authPolicy != nil {
+		// When policy is enabled, legacy shared-token escape is strictly disabled.
+		eventAuthEnabled = true
+		eventToken = ""
+	} else {
+		tok, enabled, err := loadEventAuth()
+		if err != nil {
+			return nil, err
+		}
+		eventToken = tok
+		eventAuthEnabled = enabled
+	}
+
+	var userVerifier TokenVerifier
+	if authPolicy != nil || os.Getenv("USER_JWT_INTROSPECTION_URL") != "" || mTLSCertsConfigured() {
+		uv, err := LoadRemoteUserJWTVerifier("")
+		if err != nil {
+			return nil, fmt.Errorf("load remote JWT verifier: %w", err)
+		}
+		userVerifier = uv
 	}
 
 	return &Config{
@@ -100,6 +140,8 @@ func Load() (*Config, error) {
 		AdminAuthEnabled:             adminAuthEnabled,
 		EventToken:                   eventToken,
 		EventAuthEnabled:             eventAuthEnabled,
+		AuthPolicy:                   authPolicy,
+		UserJWTVerifier:              userVerifier,
 		SnapshotDir:                  snapshotDir,
 		ArchiveDir:                   archiveDir,
 		BuildRef:                     buildRef,
@@ -212,4 +254,19 @@ func parseIntEnv(name string, fallback int) int {
 		return fallback
 	}
 	return i
+}
+
+func mTLSCertsConfigured() bool {
+	certPath := os.Getenv("MTLS_CERT_FILE")
+	if certPath == "" {
+		certPath = os.Getenv("CERT_PATH")
+	}
+	if certPath == "" {
+		certPath = os.Getenv("USER_JWT_CERT_FILE")
+	}
+	if certPath != "" {
+		return true
+	}
+	_, err := os.Stat("/certs/svc-cert.pem")
+	return err == nil
 }

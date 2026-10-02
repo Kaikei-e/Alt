@@ -16,7 +16,12 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"time"
+
+	"alt/shared/domain/authcontext"
+	"alt/tlsutil"
 )
 
 // SummarizeStatus represents the status of an asynchronous summarization job.
@@ -28,12 +33,31 @@ type SummarizeStatus struct {
 	ArticleID    string
 }
 
-// sharedStreamClient is a connection-pooled HTTP client for streaming
-// requests. Sharing a client enables keep-alive connection reuse, reducing
-// TTFT by eliminating repeated TCP/TLS handshakes.
-var sharedStreamClient = &http.Client{
-	Timeout: 0, // No timeout for streaming; context cancellation handles cleanup.
-	Transport: &http.Transport{
+func buildPreProcessorHTTPTransport(baseURL string) (*http.Transport, error) {
+	if !strings.HasPrefix(baseURL, "https://") {
+		return nil, fmt.Errorf("pre-processor baseURL must use https:// scheme, got: %s", baseURL)
+	}
+
+	certFile := os.Getenv("MTLS_CERT_FILE")
+	keyFile := os.Getenv("MTLS_KEY_FILE")
+	caFile := os.Getenv("MTLS_CA_FILE")
+
+	if certFile == "" || keyFile == "" || caFile == "" {
+		return nil, fmt.Errorf("missing MTLS cert/key/ca environment variables")
+	}
+
+	tlsCfg, err := tlsutil.LoadClientConfig(certFile, keyFile, caFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS client config: %w", err)
+	}
+
+	serverName := os.Getenv("PRE_PROCESSOR_MTLS_SERVER_NAME")
+	if serverName == "" {
+		serverName = "pre-processor"
+	}
+	tlsCfg.ServerName = serverName
+
+	transport := &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
@@ -42,19 +66,73 @@ var sharedStreamClient = &http.Client{
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
 		ForceAttemptHTTP2:   true,
-	},
+		TLSClientConfig:     tlsCfg,
+	}
+	return transport, nil
 }
 
 // Client is the driver-layer HTTP client bound to a single pre-processor
 // base URL. It is the sole place in alt-backend that speaks the
 // pre-processor's REST v1 summarization protocol.
 type Client struct {
-	baseURL string
+	baseURL      string
+	streamClient *http.Client
+	httpClient   *http.Client
 }
 
-// NewClient creates a pre-processor REST client bound to baseURL.
-func NewClient(baseURL string) *Client {
-	return &Client{baseURL: baseURL}
+// NewClient creates a pre-processor REST client bound to baseURL with mTLS support.
+func NewClient(baseURL string) (*Client, error) {
+	transport, err := buildPreProcessorHTTPTransport(baseURL)
+	if err != nil {
+		return nil, err
+	}
+
+	streamClient := &http.Client{
+		Timeout:   0,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	httpClient := &http.Client{
+		Timeout:   300 * time.Second,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	return &Client{
+		baseURL:      baseURL,
+		streamClient: streamClient,
+		httpClient:   httpClient,
+	}, nil
+}
+
+// NewClientWithTransport creates a client with injected transport (for tests only).
+func NewClientWithTransport(baseURL string, transport http.RoundTripper) *Client {
+	streamClient := &http.Client{
+		Timeout:   0,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	httpClient := &http.Client{
+		Timeout:   300 * time.Second,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	return &Client{
+		baseURL:      baseURL,
+		streamClient: streamClient,
+		httpClient:   httpClient,
+	}
 }
 
 // Summarize calls the synchronous summarization endpoint. content may be
@@ -74,16 +152,16 @@ func (c *Client) Summarize(ctx context.Context, content, articleID, title string
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Extended timeout for LLM-based summarization (1000 tokens + continuation generation).
-	client := &http.Client{Timeout: 300 * time.Second}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/summarize", bytes.NewReader(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+		req.Header.Set("X-Alt-Backend-Token", jwtToken)
+	}
 
-	resp, err := client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to call pre-processor: %w", err)
 	}
@@ -130,8 +208,11 @@ func (c *Client) StreamSummarize(ctx context.Context, content, articleID, title 
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+		req.Header.Set("X-Alt-Backend-Token", jwtToken)
+	}
 
-	resp, err := sharedStreamClient.Do(req)
+	resp, err := c.streamClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call pre-processor stream: %w", err)
 	}
@@ -165,15 +246,16 @@ func (c *Client) QueueSummarize(ctx context.Context, articleID, title string) (s
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/summarize/queue", bytes.NewReader(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+		req.Header.Set("X-Alt-Backend-Token", jwtToken)
+	}
 
-	resp, err := client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to call pre-processor: %w", err)
 	}
@@ -202,15 +284,16 @@ func (c *Client) GetSummarizeStatus(ctx context.Context, jobID string) (*Summari
 		return nil, fmt.Errorf("job_id is required")
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1/summarize/status/%s", c.baseURL, jobID), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+		req.Header.Set("X-Alt-Backend-Token", jwtToken)
+	}
 
-	resp, err := client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call pre-processor: %w", err)
 	}

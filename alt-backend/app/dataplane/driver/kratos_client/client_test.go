@@ -6,10 +6,37 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNewKratosClient_ProductionSecurityInvariants(t *testing.T) {
+	t.Run("rejects plaintext http URL fail-closed", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewKratosClient("http://auth-hub:8888", "secret", &http.Client{})
+		}, "NewKratosClient must panic on plaintext http URL")
+	})
+
+	t.Run("rejects nil httpClient fail-closed", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewKratosClient("https://auth-hub:9443", "secret", nil)
+		}, "NewKratosClient must panic on nil httpClient")
+	})
+
+	t.Run("configures timeout and prevents credential redirect forward", func(t *testing.T) {
+		rawClient := &http.Client{}
+		client := NewKratosClient("https://auth-hub:9443", "secret", rawClient)
+		impl, ok := client.(*authHubClientImpl)
+		require.True(t, ok)
+		assert.Equal(t, 10*time.Second, impl.httpClient.Timeout)
+		require.NotNil(t, impl.httpClient.CheckRedirect)
+
+		err := impl.httpClient.CheckRedirect(nil, nil)
+		assert.ErrorIs(t, err, http.ErrUseLastResponse, "must not follow redirects (prevent credential forwarding)")
+	})
+}
 
 func TestKratosClient_GetFirstIdentityID(t *testing.T) {
 	tests := []struct {
@@ -71,7 +98,7 @@ func TestKratosClient_GetFirstIdentityID(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewKratosClient(server.URL, tt.sharedSecret)
+			client := NewKratosClientForTest(server.URL, tt.sharedSecret, nil)
 			id, err := client.GetFirstIdentityID(context.Background())
 
 			if tt.wantErr {
@@ -95,7 +122,7 @@ func TestKratosClient_GetFirstIdentityID_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewKratosClient(server.URL, "test-secret")
+	client := NewKratosClientForTest(server.URL, "test-secret", nil)
 	_, err := client.GetFirstIdentityID(context.Background())
 
 	require.Error(t, err)
@@ -103,7 +130,7 @@ func TestKratosClient_GetFirstIdentityID_InvalidJSON(t *testing.T) {
 }
 
 func TestKratosClient_GetFirstIdentityID_ConnectionError(t *testing.T) {
-	client := NewKratosClient("http://localhost:99999", "test-secret")
+	client := NewKratosClientForTest("http://localhost:99999", "test-secret", nil)
 	_, err := client.GetFirstIdentityID(context.Background())
 
 	require.Error(t, err)

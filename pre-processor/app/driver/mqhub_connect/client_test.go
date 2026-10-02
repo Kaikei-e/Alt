@@ -1,9 +1,9 @@
-// Package mqhub_connect provides Connect-RPC client for mq-hub service.
 package mqhub_connect
 
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,32 +11,44 @@ import (
 )
 
 func TestNewClient_Disabled(t *testing.T) {
-	client := NewClient("http://localhost:9500", false)
-
+	client, err := NewClient("http://localhost:9500", "", false)
+	assert.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.False(t, client.IsEnabled())
 }
 
 func TestNewClient_Enabled(t *testing.T) {
-	client := NewClient("http://localhost:9500", true)
+	f, err := os.CreateTemp("", "token")
+	require.NoError(t, err)
+	_, _ = f.WriteString("valid-token")
+	_ = f.Close()
+	defer os.Remove(f.Name())
 
+	client, err := NewClient("http://localhost:9500", f.Name(), true)
+	assert.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.True(t, client.IsEnabled())
 }
 
+func TestNewClient_EmptyToken(t *testing.T) {
+	f, err := os.CreateTemp("", "token")
+	require.NoError(t, err)
+	_, _ = f.WriteString("   \n")
+	_ = f.Close()
+	defer os.Remove(f.Name())
+
+	client, err := NewClient("http://localhost:9500", f.Name(), true)
+	assert.Error(t, err)
+	assert.Nil(t, client)
+	assert.Contains(t, err.Error(), "token is empty")
+}
+
 func TestPublishArticleSummarized_Disabled(t *testing.T) {
-	client := NewClient("http://localhost:9500", false)
-
-	payload := ArticleSummarizedPayload{
-		ArticleID: "test-article-id",
-		UserID:    "test-user-id",
-		Summary:   "This is a test summary.",
-	}
-
+	client, _ := NewClient("http://localhost:9500", "", false)
+	payload := ArticleSummarizedPayload{}
 	messageID, err := client.PublishArticleSummarized(context.Background(), payload)
-
 	assert.NoError(t, err)
-	assert.Empty(t, messageID, "Message ID should be empty when client is disabled")
+	assert.Empty(t, messageID)
 }
 
 func TestArticleSummarizedPayload_MarshalJSON(t *testing.T) {

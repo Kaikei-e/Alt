@@ -5,11 +5,14 @@ import (
 	"log/slog"
 	"net/http"
 
+	"os"
+
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
 	"pre-processor/connect/v2/preprocessor"
 	preprocessorv2connect "pre-processor/gen/proto/services/preprocessor/v2/preprocessorv2connect"
+	"pre-processor/middleware"
 	"pre-processor/repository"
 )
 
@@ -30,10 +33,13 @@ func CreateConnectServer(
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"connect-rpc"}`))
 	})
 
-	// Authentication is established at the TLS transport layer (mTLS on :9443).
+	allowed := middleware.ParseAllowedPeers(os.Getenv("MTLS_ALLOWED_PEERS"))
+	peer := middleware.NewPeerIdentityMiddleware(allowed, logger)
+
+	// Business procedures are protected by peer identity (TLS client-cert allowlist).
 	handler := preprocessor.NewHandler(apiRepo, summaryRepo, articleRepo, jobRepo, logger)
 	path, serviceHandler := preprocessorv2connect.NewPreProcessorServiceHandler(handler)
-	mux.Handle(path, serviceHandler)
+	mux.Handle(path, peer.Require(serviceHandler))
 	logger.Info("Registered Connect-RPC PreProcessorService", "path", path)
 
 	// Support HTTP/2 without TLS (h2c) for internal communication

@@ -21,7 +21,7 @@ func baseConfig() *Config {
 		SearchIndexer: SearchIndexerConfig{ConnectURL: "http://search-indexer:9301"},
 		PreProcessor:  PreProcessorConfig{URL: "http://pre-processor:9200", ConnectURL: "http://pre-processor:9202"},
 		Rag:           RAGConfig{OrchestratorURL: "http://rag-orchestrator:9010", OrchestratorConnectURL: "http://rag-orchestrator:9011", APIToken: "test-rag-api-token-minimum-24-characters"},
-		MQHub:         MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
+		MQHub:         MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500", AuthToken: "test-mqhub-auth-token"},
 		AuthHub:       AuthHubConfig{URL: "http://auth-hub:8888"},
 		// Two distinct secrets, as every environment must supply: the /internal
 		// shared bearer travels in a plaintext header and the signing key must
@@ -422,6 +422,10 @@ func TestValidateBinaryConfig(t *testing.T) {
 		{name: "datahub accepts a complete config", validate: ValidateDataHubConfig, mutate: func(*Config) {}},
 		{name: "datahub needs auth-hub", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.AuthHub.URL = "" }, wantErr: "AUTH_HUB_URL"},
+		{name: "datahub refuses plaintext auth-hub in prod", validate: ValidateDataHubConfig,
+			mutate: func(c *Config) { c.AppEnv = "production"; c.AuthHub.URL = "http://auth-hub:8888" }, wantErr: "AUTH_HUB_URL"},
+		{name: "datahub accepts https auth-hub in prod", validate: ValidateDataHubConfig,
+			mutate: func(c *Config) { c.AppEnv = "production"; c.AuthHub.URL = "https://auth-hub:9443" }, wantErr: ""},
 		{name: "datahub needs the backend token secret", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.Auth.BackendTokenSecret = "" }, wantErr: "BACKEND_TOKEN_SECRET"},
 		{name: "datahub needs sovereign in every environment", validate: ValidateDataHubConfig,

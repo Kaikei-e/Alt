@@ -1,6 +1,10 @@
 package di
 
 import (
+	"fmt"
+	"log/slog"
+	"net/http"
+
 	"alt/config"
 	"alt/domain"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
@@ -12,8 +16,6 @@ import (
 	"alt/shared/gateway/datahub_gateway"
 	"alt/utils"
 	"alt/utils/rate_limiter"
-	"log/slog"
-	"net/http"
 )
 
 // InfraModule holds the infrastructure cmd/backend's domain modules share.
@@ -128,7 +130,7 @@ type InfraModule struct {
 // DataHubService article mutations) live in cmd/datahub now, so building them for the
 // backend would hand that process an auth-hub token and an event-publishing
 // client it has no surface to use.
-func newInfraModule(cfg *config.Config) *InfraModule {
+func newInfraModule(cfg *config.Config) (*InfraModule, error) {
 	// Rate limiter configuration is read through the config gateway; the port
 	// itself has no consumer beyond this function, so it stays a local.
 
@@ -149,11 +151,14 @@ func newInfraModule(cfg *config.Config) *InfraModule {
 
 	// MQ-Hub client. The backend uses it for on-the-fly tag generation only;
 	// event publishing moved to cmd/datahub.
-	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled)
+	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled, cfg.MQHub.AuthToken)
 	LogMQHubWiringState("alt-backend", cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
 
 	// Search indexer driver and gateway (shared between article search and feed search)
-	searchIndexerClient := search_indexer_connect.NewClient(cfg.SearchIndexer.ConnectURL)
+	searchIndexerClient, err := search_indexer_connect.NewClient(cfg.SearchIndexer.ConnectURL)
+	if err != nil {
+		return nil, fmt.Errorf("search indexer connect client: %w", err)
+	}
 	searchIndexerGw := search_indexer_gateway.NewSearchIndexerGateway(searchIndexerClient)
 
 	// alt-data-hub client. Not optional and not lazily built: three of the
@@ -196,7 +201,7 @@ func newInfraModule(cfg *config.Config) *InfraModule {
 		ArticleRefGateway: datahub_gateway.NewArticleRefGateway(dataHubClient),
 
 		PushSubscriptionGateway: datahub_gateway.NewPushSubscriptionGateway(dataHubClient),
-	}
+	}, nil
 }
 
 // LogMQHubWiringState emits the loud enabled/disabled signal CLAUDE.md rule 8

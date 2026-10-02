@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -28,6 +29,13 @@ const (
 	// nothing consumes a DLQ, so the only things that ever shorten it are the
 	// producer's own XADD cap and the trim pass below.
 	StreamKeyArticlesDLQ StreamKey = "alt:events:articles:dlq"
+)
+
+var (
+	// ErrInvalidStreamKey is returned when an invalid stream key is supplied.
+	ErrInvalidStreamKey = errors.New("invalid stream key")
+	// ErrInvalidConsumerGroup is returned when an invalid consumer group is supplied.
+	ErrInvalidConsumerGroup = errors.New("invalid consumer group")
 )
 
 // validStreamKeys contains all valid stream keys.
@@ -72,15 +80,18 @@ const (
 	ConsumerGroupPreProcessor ConsumerGroup = "pre-processor-group"
 	// ConsumerGroupTagGenerator is the group for tag-generator service.
 	ConsumerGroupTagGenerator ConsumerGroup = "tag-generator-group"
+	// ConsumerGroupTagGeneratorTags is the group for tag-generator service tags stream.
+	ConsumerGroupTagGeneratorTags ConsumerGroup = "tag-generator-tags-group"
 	// ConsumerGroupSearchIndexer is the group for search-indexer service.
 	ConsumerGroupSearchIndexer ConsumerGroup = "search-indexer-group"
 )
 
 // validConsumerGroups contains all valid consumer groups.
 var validConsumerGroups = map[ConsumerGroup]bool{
-	ConsumerGroupPreProcessor:  true,
-	ConsumerGroupTagGenerator:  true,
-	ConsumerGroupSearchIndexer: true,
+	ConsumerGroupPreProcessor:     true,
+	ConsumerGroupTagGenerator:     true,
+	ConsumerGroupTagGeneratorTags: true,
+	ConsumerGroupSearchIndexer:    true,
 }
 
 // IsValid returns true if the consumer group is a known valid group.

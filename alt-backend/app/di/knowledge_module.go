@@ -1,6 +1,7 @@
 package di
 
 import (
+	"alt/config"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/orchestrator/driver/health_checker"
 	"alt/orchestrator/gateway/feature_flag_gateway"
@@ -75,7 +76,8 @@ type KnowledgeModule struct {
 	FeatureFlagGateway *feature_flag_gateway.Gateway
 
 	// Sovereign client
-	SovereignClient *sovereign_client.Client
+	SovereignClient         *sovereign_client.Client
+	SovereignOperatorClient *sovereign_client.Client
 
 	// Observability
 	KnowledgeHomeMetrics *altotel.KnowledgeHomeMetrics
@@ -88,6 +90,13 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	sovereignURL := cfg.Sovereign.URL
 	sovereignEnabled := LogSovereignWiringState("alt-backend", sovereignURL, cfg.AppEnv, cfg.Sovereign.EventToken != "")
 	sovereignCli := sovereign_client.NewClient(sovereignURL, sovereignEnabled, sovereign_client.WithEventToken(cfg.Sovereign.EventToken))
+
+	// Knowledge Sovereign: dedicated operator client for privileged operator usecases
+	operatorToken, operatorEnabled, err := config.LoadSovereignOperatorToken(sovereignURL)
+	if err != nil {
+		panic("sovereign operator client configuration invalid: " + err.Error())
+	}
+	sovereignOperatorCli := sovereign_client.NewClient(sovereignURL, operatorEnabled, sovereign_client.WithEventToken(operatorToken))
 
 	// Knowledge Home gateways.
 	//
@@ -130,17 +139,22 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(versionGw, sovereignCli, versionGw)
 	createTagSetVersionUC := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(versionGw, sovereignCli, versionGw)
 	knowledgeBackfillUC := knowledge_backfill_usecase.NewUsecase(
-		sovereignCli,
-		sovereignCli,
-		sovereignCli,
-		sovereignCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
 		knowledgeBackfillGw, // ListBackfillArticlesPort (articles table in alt-db)
 	)
 	knowledgeURLBackfillUC := knowledge_url_backfill_usecase.NewUsecase(
-		knowledgeBackfillGw, // same articles source as TriggerBackfill
-		sovereignCli,        // AppendKnowledgeEventPort
+		knowledgeBackfillGw,  // same articles source as TriggerBackfill
+		sovereignOperatorCli, // AppendKnowledgeEventPort
 	)
-	knowledgeProjectionHealthUC := knowledge_projection_health_usecase.NewUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli)
+	knowledgeProjectionHealthUC := knowledge_projection_health_usecase.NewUsecase(
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+	)
 
 	// Reproject, SLO, Audit
 	//
@@ -152,15 +166,15 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	// recording work nobody will do. Whoever rebuilds the executor wires it
 	// here by name.
 	reprojectUC := knowledge_reproject_usecase.NewUsecase(
-		sovereignCli,
-		sovereignCli,
-		sovereignCli,
-		sovereignCli,
-		sovereignCli,
-		sovereignCli,
-		sovereignCli,
-		sovereignCli,
-	).WithUpdateCheckpointPort(sovereignCli)
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+		sovereignOperatorCli,
+	).WithUpdateCheckpointPort(sovereignOperatorCli)
 	// Rule 8: say the capability's state out loud at startup, so "the executor
 	// was never rebuilt" is visible before an operator presses the button
 	// rather than after a run has sat at pending for an hour.
@@ -172,8 +186,8 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		"enabled", knowledgeBackfillUC.ExecutorWired(),
 		"reason", "ADR-000944 removed the scheduled executor without naming a new owner; jobs would stay pending",
 		"effect", "TriggerBackfill rejects with FAILED_PRECONDITION")
-	sloUC := knowledge_slo_usecase.NewUsecase(sovereignCli)
-	auditUC := knowledge_audit_usecase.NewUsecase(sovereignCli, sovereignCli)
+	sloUC := knowledge_slo_usecase.NewUsecase(sovereignOperatorCli)
+	auditUC := knowledge_audit_usecase.NewUsecase(sovereignOperatorCli, sovereignOperatorCli)
 
 	// System metrics: health check endpoints (config already applies defaults)
 	sovereignMetricsURL := cfg.Sovereign.MetricsURL
@@ -248,7 +262,8 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 
 		FeatureFlagGateway: featureFlagGw,
 
-		SovereignClient: sovereignCli,
+		SovereignClient:         sovereignCli,
+		SovereignOperatorClient: sovereignOperatorCli,
 
 		KnowledgeHomeMetrics: knowledgeHomeMetrics,
 	}

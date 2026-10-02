@@ -1,11 +1,13 @@
 package main
 
 import (
+	"alt/utils"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -47,35 +49,60 @@ func ExtractTitle(raw string) string {
 	return ""
 }
 
-// FetchHTMLFromURL fetches HTML content from a URL
-func FetchHTMLFromURL(ctx context.Context, url string) (string, error) {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
+const maxTitleHTMLBytes = 2 * 1024 * 1024 // 2 MiB
+
+// FetchHTMLFromURL fetches HTML content from a URL using direct SSRF-safe transport and bounded reading.
+func FetchHTMLFromURL(ctx context.Context, targetURL string) (string, error) {
+	client := utils.SecureHTTPClientWithConfig(&utils.HTTPConfig{
+		ClientTimeout:       30 * time.Second,
+		DialTimeout:         10 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+	})
+	return fetchHTMLWithClient(ctx, client, targetURL)
+}
+
+// FetchHTMLFromURLWithResolver fetches HTML content using a custom resolver for testing.
+func FetchHTMLFromURLWithResolver(ctx context.Context, resolver utils.IPResolver, targetURL string) (string, error) {
+	client := utils.SecureHTTPClientWithConfigAndResolver(&utils.HTTPConfig{
+		ClientTimeout:       30 * time.Second,
+		DialTimeout:         10 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+	}, resolver)
+	return fetchHTMLWithClient(ctx, client, targetURL)
+}
+
+func fetchHTMLWithClient(ctx context.Context, client *http.Client, targetURL string) (string, error) {
+	parsed, err := url.Parse(targetURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("invalid URL scheme: %s", targetURL)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("User-Agent", "Alt-TitleFetcher/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch URL: %w", err)
 	}
 	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Log but don't fail - data has been read
-			_ = closeErr
-		}
+		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("HTTP status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxTitleHTMLBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+	if int64(len(body)) > maxTitleHTMLBytes {
+		return "", fmt.Errorf("response body exceeds maximum allowed size of %d bytes", maxTitleHTMLBytes)
 	}
 
 	return string(body), nil

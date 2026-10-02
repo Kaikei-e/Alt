@@ -84,15 +84,15 @@ type RecapConfig struct {
 }
 
 type RAGConfig struct {
-	OrchestratorURL        string `json:"orchestrator_url" env:"RAG_ORCHESTRATOR_URL" default:"http://rag-orchestrator:9010"`
-	OrchestratorConnectURL string `json:"orchestrator_connect_url" env:"RAG_ORCHESTRATOR_CONNECT_URL" default:"http://rag-orchestrator:9011"`
+	OrchestratorURL        string `json:"orchestrator_url" env:"RAG_ORCHESTRATOR_URL" default:"https://rag-orchestrator:9010"`
+	OrchestratorConnectURL string `json:"orchestrator_connect_url" env:"RAG_ORCHESTRATOR_CONNECT_URL" default:"https://rag-orchestrator:9011"`
 	APITokenFile           string `json:"-" env:"RAG_API_TOKEN_FILE"`
 	APIToken               string `json:"-" env:"RAG_API_TOKEN"`
 	APIAuth                string `json:"-" env:"RAG_API_AUTH" default:""`
 }
 
 type AuthHubConfig struct {
-	URL string `json:"url" env:"AUTH_HUB_URL" default:"http://auth-hub:8888"`
+	URL string `json:"url" env:"AUTH_HUB_URL" default:"https://auth-hub:9443"`
 }
 
 // MQHubConfig holds configuration for mq-hub event broker.
@@ -101,6 +101,10 @@ type MQHubConfig struct {
 	Enabled bool `json:"enabled" env:"MQHUB_ENABLED" default:"false"`
 	// ConnectURL is the Connect-RPC URL for mq-hub service.
 	ConnectURL string `json:"connect_url" env:"MQHUB_CONNECT_URL" default:"http://mq-hub:9500"`
+	// AuthToken is the bearer token used to authenticate to mq-hub.
+	AuthToken string `json:"-" env:"MQHUB_AUTH_TOKEN"`
+	// AuthTokenFile is the file containing the bearer token for mq-hub.
+	AuthTokenFile string `json:"-" env:"MQHUB_AUTH_TOKEN_FILE"`
 }
 
 // ImageProxyConfig holds configuration for the OGP image proxy.

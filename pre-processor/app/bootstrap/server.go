@@ -66,12 +66,18 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 	e.GET("/api/v1/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
 	})
+	e.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
+	})
 
 	// No /metrics route here. This listener's access control is "who can open
 	// a socket", so anything hung off it is a new unauthenticated surface on
 	// the service API. Prometheus exposition — including the
 	// notification-outbox relay gauges — is served by the dedicated metrics
 	// listener (metrics.Collector, :9201, /metrics/prometheus).
+
+	allowed := appmiddleware.ParseAllowedPeers(os.Getenv("MTLS_ALLOWED_PEERS"))
+	peer := appmiddleware.NewPeerIdentityMiddleware(allowed, deps.Logger)
 
 	// Summarize endpoints are service-to-service only. Authentication is
 	// established at the TLS transport layer (mTLS on :9443).
@@ -80,6 +86,7 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 	// alt-backend, so 1 MiB comfortably covers real inputs while rejecting
 	// DoS payloads before they reach the summarize pipeline.
 	api.Use(middleware.BodyLimit("1M"))
+	api.Use(peer.EchoMiddleware())
 	api.POST("/summarize", deps.SummarizeHandler.HandleSummarize)
 	api.POST("/summarize/stream", deps.SummarizeHandler.HandleStreamSummarize)
 	api.POST("/summarize/queue", deps.SummarizeHandler.HandleSummarizeQueue)
@@ -119,7 +126,8 @@ type ConnectServers struct {
 // MTLS_LISTEN=true, an additional HTTPS listener on MTLS_PORT (default 9443)
 // is started alongside the plaintext listener. Any ListenAndServe failure is
 // sent on errCh so the caller can fail the whole process.
-func StartConnectServer(deps *Dependencies, errCh chan<- error) *ConnectServers {
+// An optional Echo server can be passed to be multiplexed onto the mTLS listener.
+func StartConnectServer(deps *Dependencies, errCh chan<- error, echoServers ...*echo.Echo) *ConnectServers {
 	connectHandler := connectv2.CreateConnectServer(deps.APIRepo, deps.SummaryRepo, deps.ArticleRepo, deps.JobRepo, deps.Logger)
 
 	port := os.Getenv("CONNECT_PORT")
@@ -193,7 +201,17 @@ func StartConnectServer(deps *Dependencies, errCh chan<- error) *ConnectServers 
 			deps.Logger.Error("mTLS listener config failed, aborting startup (fail-closed)", "error", err)
 			os.Exit(1)
 		}
-		mtlsServer := tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, connectHandler)
+
+		var echoSrv *echo.Echo
+		if len(echoServers) > 0 && echoServers[0] != nil {
+			echoSrv = echoServers[0]
+		} else {
+			echoSrv = NewHTTPServer(deps, false, "")
+		}
+		allowed := appmiddleware.ParseAllowedPeers(os.Getenv("MTLS_ALLOWED_PEERS"))
+		mtlsMux := NewMTLSMuxHandler(echoSrv, connectHandler, allowed, deps.Logger)
+
+		mtlsServer := tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, mtlsMux)
 		servers.MTLSServer = mtlsServer
 		go func() {
 			deps.Logger.Info("Starting mTLS HTTPS listener", "port", mtlsPort)
@@ -205,4 +223,39 @@ func StartConnectServer(deps *Dependencies, errCh chan<- error) *ConnectServers 
 	}
 
 	return servers
+}
+
+// NewMTLSMuxHandler returns an http.Handler multiplexing:
+// - /health, /api/v1/health (unauthenticated)
+// - /services.preprocessor.v2.PreProcessorService/* (Connect-RPC, peer-gated)
+// - /api/v1/* (REST business endpoints on Echo, peer-gated with 1MiB body limit)
+// - fallback to Connect-RPC handler
+func NewMTLSMuxHandler(
+	echoServer *echo.Echo,
+	connectServerHandler http.Handler,
+	allowedPeers []string,
+	logger *slog.Logger,
+) http.Handler {
+	mux := http.NewServeMux()
+
+	health := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"healthy"}`))
+	})
+
+	mux.Handle("/health", health)
+	mux.Handle("/api/v1/health", health)
+
+	// Connect-RPC service path
+	mux.Handle("/services.preprocessor.v2.PreProcessorService/", connectServerHandler)
+
+	// REST API paths
+	mux.Handle("/api/v1/", echoServer)
+	mux.Handle("/api/", echoServer)
+
+	// Fallback for any other Connect-RPC-style prefixes
+	mux.Handle("/", connectServerHandler)
+
+	return mux
 }

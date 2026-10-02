@@ -13,6 +13,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	google.golang.org/protobuf v1.36.11
 )
 

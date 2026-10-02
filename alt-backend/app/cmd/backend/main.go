@@ -92,7 +92,11 @@ func main() {
 	pprofSrv := profiling.Start(ctx, log)
 	defer pprofSrv.Close()
 
-	container := di.NewBackendComponents(cfg)
+	container, err := di.NewBackendComponents(cfg)
+	if err != nil {
+		log.ErrorContext(ctx, "failed to initialize backend components", "error", err)
+		os.Exit(1)
+	}
 
 	otelEnabled := altotel.ConfigFromEnv().Enabled
 

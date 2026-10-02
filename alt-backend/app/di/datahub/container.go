@@ -17,6 +17,7 @@ package datahub
 
 import (
 	"log/slog"
+	"net/http"
 
 	"alt/config"
 	"alt/dataplane/driver/kratos_client"
@@ -177,7 +178,7 @@ type DataHubComponents struct {
 //   - The sovereign client no-ops every knowledge-event append when
 //     SOVEREIGN_URL is unset, which silently breaks the append-first
 //     invariant. Required in every environment for this binary.
-func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubComponents {
+func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config, mtlsClient *http.Client) *DataHubComponents {
 	altDB := alt_db.NewAltDBRepository(pool)
 
 	// Identity lookup for /v1/internal/system-user. The bearer is
@@ -185,10 +186,10 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	// on — handing it BackendTokenSecret instead puts the HS256 signing key in
 	// a plaintext header and gets 403 on every call, since auth-hub refuses to
 	// start with the two secrets equal.
-	kratosCli := kratos_client.NewKratosClient(cfg.AuthHub.URL, cfg.Auth.InternalAuthSecret)
+	kratosCli := kratos_client.NewKratosClient(cfg.AuthHub.URL, cfg.Auth.InternalAuthSecret, mtlsClient)
 
 	// Event publishing.
-	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled)
+	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled, cfg.MQHub.AuthToken)
 	di.LogMQHubWiringState("alt-data-hub", cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
 	eventPublisher := event_publisher_gateway.NewEventPublisherGateway(mqhubClient, slog.Default())
 

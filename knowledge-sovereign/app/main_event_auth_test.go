@@ -125,9 +125,77 @@ func TestEventAuth_StartupFailureWhenNeitherSet(t *testing.T) {
 	t.Setenv("ADMIN_AUTH", "disabled")
 	t.Setenv("EVENT_TOKEN", "")
 	t.Setenv("EVENT_TOKEN_FILE", "")
+	t.Setenv("EVENT_AUTH_POLICY_FILE", "")
+	t.Setenv("SOVEREIGN_AUTH_POLICY_FILE", "")
 	t.Setenv("EVENT_AUTH", "")
 
 	_, err := config.Load()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "EVENT_TOKEN")
+}
+
+func TestEventAuth_PolicyWiringInServer(t *testing.T) {
+	const (
+		recapToken   = "recap-token-value-with-length-24-plus"
+		legacyToken  = "legacy-shared-token-value-24-plus"
+		allowedEvent = "recap.topic_snapshotted.v1"
+	)
+
+	cfg := &config.Config{
+		EventAuthEnabled: true,
+		EventToken:       "", // explicitly cleared when policy is active
+		AuthPolicy: &config.AuthPolicy{
+			Services: []config.ServicePolicy{
+				{
+					Name:  "recap-worker",
+					Token: recapToken,
+					AllowedMethods: map[string]bool{
+						"/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent": true,
+					},
+					AllowedEvents: map[string]bool{
+						allowedEvent: true,
+					},
+				},
+			},
+		},
+	}
+
+	mux := buildRPCMux(testSovereignHandler{}, cfg)
+
+	// Health check stays open
+	healthReq := httptest.NewRequest(http.MethodGet, "/health", nil)
+	healthRec := httptest.NewRecorder()
+	mux.ServeHTTP(healthRec, healthReq)
+	assert.Equal(t, http.StatusOK, healthRec.Code)
+
+	// Unauthenticated fails 401
+	unauthReq := httptest.NewRequest(http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"`+allowedEvent+`"}}`))
+	unauthReq.Header.Set("Content-Type", "application/json")
+	unauthRec := httptest.NewRecorder()
+	mux.ServeHTTP(unauthRec, unauthReq)
+	assert.Equal(t, http.StatusUnauthorized, unauthRec.Code)
+
+	// Legacy shared token fails 401 (no legacy escape when policy enabled)
+	legacyReq := httptest.NewRequest(http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"`+allowedEvent+`"}}`))
+	legacyReq.Header.Set("Content-Type", "application/json")
+	legacyReq.Header.Set("Authorization", "Bearer "+legacyToken)
+	legacyRec := httptest.NewRecorder()
+	mux.ServeHTTP(legacyRec, legacyReq)
+	assert.Equal(t, http.StatusUnauthorized, legacyRec.Code)
+
+	// Valid policy token for allowed event succeeds 200
+	validReq := httptest.NewRequest(http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"`+allowedEvent+`"}}`))
+	validReq.Header.Set("Content-Type", "application/json")
+	validReq.Header.Set("Authorization", "Bearer "+recapToken)
+	validRec := httptest.NewRecorder()
+	mux.ServeHTTP(validRec, validReq)
+	assert.Equal(t, http.StatusOK, validRec.Code)
+
+	// Wrong event type fails 403 PermissionDenied
+	wrongEvtReq := httptest.NewRequest(http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"forbidden.event.v1"}}`))
+	wrongEvtReq.Header.Set("Content-Type", "application/json")
+	wrongEvtReq.Header.Set("Authorization", "Bearer "+recapToken)
+	wrongEvtRec := httptest.NewRecorder()
+	mux.ServeHTTP(wrongEvtRec, wrongEvtReq)
+	assert.Equal(t, http.StatusForbidden, wrongEvtRec.Code)
 }

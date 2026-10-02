@@ -3,6 +3,7 @@ package augur_adapter
 //go:generate go run go.uber.org/mock/mockgen -source=augur_adapter.go -destination=mock_rag_client_interface_test.go -package=augur_adapter
 
 import (
+	"alt/domain"
 	"alt/orchestrator/gateway/rag_gateway"
 	"alt/orchestrator/port/rag_integration_port"
 	"alt/utils/logger"
@@ -170,6 +171,11 @@ func (a *AugurAdapter) RetrieveContext(ctx context.Context, query string, candid
 func (a *AugurAdapter) Answer(ctx context.Context, input rag_integration_port.AnswerInput) (<-chan string, error) {
 	reqBody := rag_gateway.AnswerRequest{
 		Query: input.Query,
+	}
+	if user, err := domain.GetUserFromContext(ctx); err == nil && user != nil {
+		if uid := user.UserID.String(); uid != "" && uid != "00000000-0000-0000-0000-000000000000" {
+			reqBody.UserId = &uid
+		}
 	}
 	// SessionID is reserved for future use when session context is needed
 	_ = input.SessionID

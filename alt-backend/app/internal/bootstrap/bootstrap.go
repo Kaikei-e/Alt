@@ -100,12 +100,8 @@ func MustBoot(ctx context.Context, opts Options) *Runtime {
 
 	otelResult, err := altotel.InitProviderWithMetrics(ctx, otelCfg)
 	if err != nil {
-		bootLog.Error("failed to initialize OpenTelemetry", "error", err)
-		// Continue without OTel — non-fatal, matching the single-binary behaviour.
-		otelCfg.Enabled = false
-		otelResult = &altotel.InitResult{
-			Shutdown: func(context.Context) error { return nil },
-		}
+		bootLog.Error("failed to initialize OpenTelemetry", "error", err, "service", opts.ServiceName)
+		os.Exit(1)
 	}
 
 	log := logger.InitLoggerWithOTel(otelCfg.Enabled)

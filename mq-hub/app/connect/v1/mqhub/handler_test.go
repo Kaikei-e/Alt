@@ -80,11 +80,11 @@ func TestHandler_Publish(t *testing.T) {
 		ctx := context.Background()
 		now := time.Now()
 
-		mockPort.On("Publish", ctx, domain.StreamKey("articles"), mock.AnythingOfType("*domain.Event")).
+		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.AnythingOfType("*domain.Event")).
 			Return("1234567890123-0", nil)
 
 		req := connect.NewRequest(&mqhubv1.PublishRequest{
-			Stream: "articles",
+			Stream: string(domain.StreamKeyArticles),
 			Event: &mqhubv1.Event{
 				EventId:   "test-1",
 				EventType: "ArticleCreated",
@@ -110,7 +110,7 @@ func TestHandler_Publish(t *testing.T) {
 		ctx := context.Background()
 
 		req := connect.NewRequest(&mqhubv1.PublishRequest{
-			Stream: "articles",
+			Stream: string(domain.StreamKeyArticles),
 			Event:  nil,
 		})
 
@@ -128,11 +128,11 @@ func TestHandler_Publish(t *testing.T) {
 
 		ctx := context.Background()
 
-		mockPort.On("Publish", ctx, domain.StreamKey("articles"), mock.AnythingOfType("*domain.Event")).
+		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.AnythingOfType("*domain.Event")).
 			Return("", errors.New("redis error"))
 
 		req := connect.NewRequest(&mqhubv1.PublishRequest{
-			Stream: "articles",
+			Stream: string(domain.StreamKeyArticles),
 			Event: &mqhubv1.Event{
 				EventId:   "test-1",
 				EventType: "ArticleCreated",
@@ -161,11 +161,11 @@ func TestHandler_PublishBatch(t *testing.T) {
 
 		ctx := context.Background()
 
-		mockPort.On("PublishBatch", ctx, domain.StreamKey("articles"), mock.AnythingOfType("[]*domain.Event")).
+		mockPort.On("PublishBatch", ctx, domain.StreamKeyArticles, mock.AnythingOfType("[]*domain.Event")).
 			Return([]string{"123-0", "123-1"}, nil)
 
 		req := connect.NewRequest(&mqhubv1.PublishBatchRequest{
-			Stream: "articles",
+			Stream: string(domain.StreamKeyArticles),
 			Events: []*mqhubv1.Event{
 				{
 					EventId:   "test-1",
@@ -198,11 +198,11 @@ func TestHandler_PublishBatch(t *testing.T) {
 
 		ctx := context.Background()
 
-		mockPort.On("PublishBatch", ctx, domain.StreamKey("articles"), mock.AnythingOfType("[]*domain.Event")).
+		mockPort.On("PublishBatch", ctx, domain.StreamKeyArticles, mock.AnythingOfType("[]*domain.Event")).
 			Return(nil, errors.New("redis error"))
 
 		req := connect.NewRequest(&mqhubv1.PublishBatchRequest{
-			Stream: "articles",
+			Stream: string(domain.StreamKeyArticles),
 			Events: []*mqhubv1.Event{
 				{
 					EventId:   "test-1",
@@ -235,11 +235,11 @@ func TestHandler_PublishBatch(t *testing.T) {
 				{Index: 1, Err: errors.New("connection reset")},
 			},
 		}
-		mockPort.On("PublishBatch", ctx, domain.StreamKey("articles"), mock.AnythingOfType("[]*domain.Event")).
+		mockPort.On("PublishBatch", ctx, domain.StreamKeyArticles, mock.AnythingOfType("[]*domain.Event")).
 			Return([]string{"123-0", ""}, partialErr)
 
 		req := connect.NewRequest(&mqhubv1.PublishBatchRequest{
-			Stream: "articles",
+			Stream: string(domain.StreamKeyArticles),
 			Events: []*mqhubv1.Event{
 				{EventId: "test-1", EventType: "ArticleCreated", Source: "alt-backend", CreatedAt: timestamppb.New(time.Now())},
 				{EventId: "test-2", EventType: "ArticleCreated", Source: "alt-backend", CreatedAt: timestamppb.New(time.Now())},
@@ -272,7 +272,7 @@ func TestHandler_PublishBatch(t *testing.T) {
 		ctx := context.Background()
 
 		req := connect.NewRequest(&mqhubv1.PublishBatchRequest{
-			Stream: "articles",
+			Stream: string(domain.StreamKeyArticles),
 			Events: []*mqhubv1.Event{
 				{EventId: "test-1", EventType: "ArticleCreated", Source: "alt-backend", CreatedAt: timestamppb.New(time.Now())},
 				{EventId: "test-2", EventType: "ArticleCreated", Source: "alt-backend", CreatedAt: timestamppb.New(time.Now())},
@@ -300,12 +300,12 @@ func TestHandler_CreateConsumerGroup(t *testing.T) {
 
 		ctx := context.Background()
 
-		mockPort.On("CreateConsumerGroup", ctx, domain.StreamKey("articles"), domain.ConsumerGroup("pre-processor"), "0").
+		mockPort.On("CreateConsumerGroup", ctx, domain.StreamKeyArticles, domain.ConsumerGroupPreProcessor, "0").
 			Return(nil)
 
 		req := connect.NewRequest(&mqhubv1.CreateConsumerGroupRequest{
-			Stream:  "articles",
-			Group:   "pre-processor",
+			Stream:  string(domain.StreamKeyArticles),
+			Group:   string(domain.ConsumerGroupPreProcessor),
 			StartId: "0",
 		})
 
@@ -324,12 +324,12 @@ func TestHandler_CreateConsumerGroup(t *testing.T) {
 
 		ctx := context.Background()
 
-		mockPort.On("CreateConsumerGroup", ctx, domain.StreamKey("articles"), domain.ConsumerGroup("pre-processor"), "0").
+		mockPort.On("CreateConsumerGroup", ctx, domain.StreamKeyArticles, domain.ConsumerGroupPreProcessor, "0").
 			Return(errors.New("stream not found"))
 
 		req := connect.NewRequest(&mqhubv1.CreateConsumerGroupRequest{
-			Stream:  "articles",
-			Group:   "pre-processor",
+			Stream:  string(domain.StreamKeyArticles),
+			Group:   string(domain.ConsumerGroupPreProcessor),
 			StartId: "0",
 		})
 
@@ -356,7 +356,7 @@ func TestHandler_GetStreamInfo(t *testing.T) {
 			LastEntryID:    "123-99",
 			Groups: []domain.ConsumerGroupInfo{
 				{
-					Name:            "pre-processor",
+					Name:            string(domain.ConsumerGroupPreProcessor),
 					Consumers:       2,
 					Pending:         5,
 					LastDeliveredID: "123-50",
@@ -364,10 +364,10 @@ func TestHandler_GetStreamInfo(t *testing.T) {
 			},
 		}
 
-		mockPort.On("GetStreamInfo", ctx, domain.StreamKey("articles")).Return(expectedInfo, nil)
+		mockPort.On("GetStreamInfo", ctx, domain.StreamKeyArticles).Return(expectedInfo, nil)
 
 		req := connect.NewRequest(&mqhubv1.GetStreamInfoRequest{
-			Stream: "articles",
+			Stream: string(domain.StreamKeyArticles),
 		})
 
 		resp, err := handler.GetStreamInfo(ctx, req)
@@ -379,7 +379,7 @@ func TestHandler_GetStreamInfo(t *testing.T) {
 		assert.Equal(t, "123-0", resp.Msg.FirstEntryId)
 		assert.Equal(t, "123-99", resp.Msg.LastEntryId)
 		assert.Len(t, resp.Msg.Groups, 1)
-		assert.Equal(t, "pre-processor", resp.Msg.Groups[0].Name)
+		assert.Equal(t, string(domain.ConsumerGroupPreProcessor), resp.Msg.Groups[0].Name)
 		mockPort.AssertExpectations(t)
 	})
 
@@ -389,9 +389,6 @@ func TestHandler_GetStreamInfo(t *testing.T) {
 		handler := NewHandler(uc)
 
 		ctx := context.Background()
-
-		mockPort.On("GetStreamInfo", ctx, domain.StreamKey("nonexistent")).
-			Return(nil, errors.New("stream not found"))
 
 		req := connect.NewRequest(&mqhubv1.GetStreamInfoRequest{
 			Stream: "nonexistent",

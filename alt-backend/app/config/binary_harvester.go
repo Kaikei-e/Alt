@@ -31,5 +31,8 @@ func ValidateHarvesterConfig(cfg *Config) error {
 	} else {
 		slog.Warn("rag_api_auth_disabled", "binary", "harvester", "reason", "RAG_API_AUTH=disabled (explicit opt-out)")
 	}
+	if cfg.MQHub.Enabled && cfg.MQHub.AuthToken == "" {
+		return fmt.Errorf("harvester config: MQHUB_AUTH_TOKEN_FILE or MQHUB_AUTH_TOKEN is required when MQHUB_ENABLED=true")
+	}
 	return nil
 }

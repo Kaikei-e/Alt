@@ -41,3 +41,9 @@ func NewRepository(pool PgxIface) *Repository {
 
 // ErrDismissTargetNotFound is returned when the dismiss target does not exist.
 var ErrDismissTargetNotFound = fmt.Errorf("dismiss target not found")
+
+// ErrHomeItemTenantMismatch is returned when an upsert targets an existing home item belonging to another tenant.
+var ErrHomeItemTenantMismatch = fmt.Errorf("home item tenant mismatch")
+
+// ErrRecallHomeAssociationDenied is returned when a recall candidate has no matching home item association in the tenant.
+var ErrRecallHomeAssociationDenied = fmt.Errorf("recall home association denied or missing")

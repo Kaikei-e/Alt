@@ -42,6 +42,17 @@ WHERE user_id = $2
   AND $1 <> ''
 `
 
+const patchKnowledgeHomeItemURLWithTenantQuery = `
+UPDATE knowledge_home_items
+SET url = $1,
+    updated_at = NOW()
+WHERE user_id = $2
+  AND item_key = $3
+  AND projection_version = $4
+  AND $1 <> ''
+  AND tenant_id = $5
+`
+
 // PatchKnowledgeHomeItemURLPayload is the JSON payload accepted on the
 // Connect-RPC ApplyProjectionMutation envelope when MutationType ==
 // MutationPatchHomeItemURL. The single source of truth for the wire
@@ -49,6 +60,7 @@ WHERE user_id = $2
 // struct mirrors it for unmarshalling.
 type PatchKnowledgeHomeItemURLPayload struct {
 	UserID            string `json:"user_id"`
+	TenantID          string `json:"tenant_id,omitempty"`
 	ItemKey           string `json:"item_key"`
 	ProjectionVersion int    `json:"projection_version"`
 	URL               string `json:"url"`
@@ -72,6 +84,18 @@ func (r *Repository) PatchKnowledgeHomeItemURL(ctx context.Context, payload json
 	userID, err := uuid.Parse(p.UserID)
 	if err != nil {
 		return fmt.Errorf("PatchKnowledgeHomeItemURL: parse user_id: %w", err)
+	}
+	if p.TenantID != "" {
+		tenantID, err := uuid.Parse(p.TenantID)
+		if err != nil {
+			return fmt.Errorf("PatchKnowledgeHomeItemURL: parse tenant_id: %w", err)
+		}
+		if _, err := r.pool.Exec(ctx, patchKnowledgeHomeItemURLWithTenantQuery,
+			p.URL, userID, p.ItemKey, p.ProjectionVersion, tenantID,
+		); err != nil {
+			return fmt.Errorf("PatchKnowledgeHomeItemURL: %w", err)
+		}
+		return nil
 	}
 	if _, err := r.pool.Exec(ctx, patchKnowledgeHomeItemURLQuery,
 		p.URL, userID, p.ItemKey, p.ProjectionVersion,

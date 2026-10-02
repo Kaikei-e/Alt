@@ -2,6 +2,7 @@
 package middleware
 
 import (
+	"alt/shared/driver/sovereign_client"
 	"context"
 	"errors"
 	"fmt"
@@ -88,6 +89,8 @@ func (i *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 
 		// Use domain's SetUserContext to attach user to context
 		ctx = domain.SetUserContext(ctx, userCtx)
+		// Propagate the raw JWT for sovereign_client
+		ctx = sovereign_client.WithJWT(ctx, req.Header().Get(backendTokenHeader))
 		return next(ctx, req)
 	}
 }
@@ -110,6 +113,8 @@ func (i *authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc
 
 		// Use domain's SetUserContext to attach user to context
 		ctx = domain.SetUserContext(ctx, userCtx)
+		// Propagate the raw JWT for sovereign_client
+		ctx = sovereign_client.WithJWT(ctx, conn.RequestHeader().Get(backendTokenHeader))
 		return next(ctx, conn)
 	}
 }

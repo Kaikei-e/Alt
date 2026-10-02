@@ -28,10 +28,11 @@ const maxInternalResponseBytes = 10 * 1024 * 1024
 
 // ExternalAPIRepository implementation.
 type externalAPIRepository struct {
-	logger  *slog.Logger
-	client  *http.Client
-	dataHub datahubv1connect.DataHubServiceClient
-	config  *config.Config
+	logger        *slog.Logger
+	client        *http.Client
+	dataHub       datahubv1connect.DataHubServiceClient
+	dataHubClient *http.Client
+	config        *config.Config
 }
 
 // NewExternalAPIRepository creates a new external API repository.
@@ -48,11 +49,12 @@ type externalAPIRepository struct {
 // r.client (used by CheckHealth) shares the same *http.Client, so the
 // transport substitution the tests rely on applies to both the REST health
 // check and the Connect-RPC calls.
-func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger, dataHubClient *http.Client, dataHubBaseURL string) ExternalAPIRepository {
+func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger, dataHubClient *http.Client, dataHubBaseURL string, newsClient *http.Client) ExternalAPIRepository {
 	return &externalAPIRepository{
-		logger: logger,
-		config: cfg,
-		client: dataHubClient,
+		logger:        logger,
+		config:        cfg,
+		client:        newsClient,
+		dataHubClient: dataHubClient,
 		dataHub: datahubv1connect.NewDataHubServiceClient(dataHubClient, dataHubBaseURL,
 			connect.WithReadMaxBytes(maxInternalResponseBytes)),
 	}
@@ -85,7 +87,7 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *d
 	}
 
 	// Use existing driver function
-	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, payload, r.config, r.logger, priority)
+	driverSummary, err := driver.ArticleSummarizerAPIClient(ctx, payload, r.config, r.logger, priority, r.client)
 	if err != nil {
 		// Handle content too short as a normal case, not an error
 		if errors.Is(err, driver.ErrContentTooShort) {
@@ -156,7 +158,7 @@ func (r *externalAPIRepository) StreamSummarizeArticle(ctx context.Context, arti
 	}
 
 	// Use driver function for streaming
-	streamBody, err := driver.StreamArticleSummarizerAPIClient(ctx, payload, r.config, r.logger, priority)
+	streamBody, err := driver.StreamArticleSummarizerAPIClient(ctx, payload, r.config, r.logger, priority, r.client)
 	if err != nil {
 		if errors.Is(err, driver.ErrContentTooShort) {
 			r.logger.InfoContext(ctx, "skipping summarization: content too short", "article_id", article.ID)

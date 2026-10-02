@@ -23,6 +23,10 @@ import (
 // writeTestPKI generates a throwaway self-signed CA, a leaf cert/key for the
 // given Subject CN, and writes them (cert, key, ca-bundle) as PEM files into
 // dir. Returns the paths.
+func WriteTestPKI(t *testing.T, dir, cn string) (certPath, keyPath, caPath string) {
+	return writeTestPKI(t, dir, cn)
+}
+
 func writeTestPKI(t *testing.T, dir, cn string) (certPath, keyPath, caPath string) {
 	t.Helper()
 

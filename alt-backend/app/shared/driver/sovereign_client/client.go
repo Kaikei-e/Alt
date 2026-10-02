@@ -8,8 +8,10 @@ package sovereign_client
 import (
 	"alt/orchestrator/port/knowledge_sovereign_port"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -35,19 +37,29 @@ var ErrSovereignDisabled = errors.New("sovereign_client: disabled (SOVEREIGN_URL
 // second on localhost; 5 s is safe headroom for slow networks.
 const healthProbeTimeout = 5 * time.Second
 
+// maxHealthResponseBytes limits the health response read to prevent memory exhaustion.
+const maxHealthResponseBytes = 4096
+
+type healthProbeResponse struct {
+	Status  string `json:"status"`
+	Service string `json:"service"`
+}
+
 // Client provides Connect-RPC client for Knowledge Sovereign.
 type Client struct {
-	client  sovereignv1connect.KnowledgeSovereignServiceClient
-	baseURL string
-	token   string
-	enabled bool
+	client     sovereignv1connect.KnowledgeSovereignServiceClient
+	httpClient *http.Client
+	baseURL    string
+	token      string
+	enabled    bool
 }
 
 // Option configures Client.
 type Option func(*clientOptions)
 
 type clientOptions struct {
-	token string
+	token      string
+	httpClient *http.Client
 }
 
 // WithEventToken supplies the Bearer token for authenticating to
@@ -55,6 +67,13 @@ type clientOptions struct {
 func WithEventToken(token string) Option {
 	return func(o *clientOptions) {
 		o.token = token
+	}
+}
+
+// WithHTTPClient supplies a custom HTTP client (e.g. for testing or strict TLS).
+func WithHTTPClient(client *http.Client) Option {
+	return func(o *clientOptions) {
+		o.httpClient = client
 	}
 }
 
@@ -67,6 +86,9 @@ func (i *clientAuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryF
 		if i.token != "" {
 			req.Header().Set("Authorization", "Bearer "+i.token)
 		}
+		if jwtToken, ok := JWTFromContext(ctx); ok && jwtToken != "" {
+			req.Header().Set("X-Alt-Backend-Token", jwtToken)
+		}
 		return next(ctx, req)
 	}
 }
@@ -76,6 +98,9 @@ func (i *clientAuthInterceptor) WrapStreamingClient(next connect.StreamingClient
 		conn := next(ctx, spec)
 		if i.token != "" {
 			conn.RequestHeader().Set("Authorization", "Bearer "+i.token)
+		}
+		if jwtToken, ok := JWTFromContext(ctx); ok && jwtToken != "" {
+			conn.RequestHeader().Set("X-Alt-Backend-Token", jwtToken)
 		}
 		return conn
 	}
@@ -110,13 +135,16 @@ func NewClient(baseURL string, enabled bool, opts ...Option) *Client {
 		opt(&co)
 	}
 
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        50,
-			MaxIdleConnsPerHost: 25,
-			IdleConnTimeout:     90 * time.Second,
-		},
-		Timeout: 30 * time.Second,
+	httpClient := co.httpClient
+	if httpClient == nil {
+		httpClient = &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConns:        50,
+				MaxIdleConnsPerHost: 25,
+				IdleConnTimeout:     90 * time.Second,
+			},
+			Timeout: 30 * time.Second,
+		}
 	}
 
 	var clientOpts []connect.ClientOption
@@ -130,10 +158,11 @@ func NewClient(baseURL string, enabled bool, opts ...Option) *Client {
 		clientOpts...,
 	)
 	c := &Client{
-		client:  client,
-		baseURL: baseURL,
-		token:   co.token,
-		enabled: true,
+		client:     client,
+		httpClient: httpClient,
+		baseURL:    baseURL,
+		token:      co.token,
+		enabled:    true,
 	}
 
 	c.runHealthProbe(context.Background())
@@ -146,39 +175,55 @@ func (c *Client) Enabled() bool {
 	return c.enabled
 }
 
-// runHealthProbe issues one cheap unary RPC and logs the outcome. The probe
-// always lets the caller stay enabled; its job is to make startup-time
-// misconfiguration loud in operator-facing logs, not to silently degrade.
+// runHealthProbe issues a bounded public GET /health request and logs the outcome.
+// Both the RPC listener (:9500) and the metrics/ops listener (:9501) expose /health.
+// The probe is observational only — it leaves the client enabled so test stubs
+// or delayed startup do not crash callers, while surfacing misconfigurations.
 func (c *Client) runHealthProbe(ctx context.Context) {
 	probeCtx, cancel := context.WithTimeout(ctx, healthProbeTimeout)
 	defer cancel()
 
-	_, err := c.client.GetActiveProjectionVersion(probeCtx,
-		connect.NewRequest(&sovereignv1.GetActiveProjectionVersionRequest{}))
-	if err == nil {
-		slog.Info("knowledge sovereign health probe ok", "base_url", c.baseURL)
-		return
+	healthURL := strings.TrimRight(c.baseURL, "/") + "/health"
+	if !strings.HasPrefix(healthURL, "http://") && !strings.HasPrefix(healthURL, "https://") {
+		healthURL = "http://" + healthURL
 	}
-	if isContentTypeMismatch(err) {
-		// This signal is shared by two very different conditions: a real
-		// upstream misroute (the PM-2026-042 staging slice scenario) AND a
-		// reachable Connect server that simply does not implement the probe
-		// method (common in test stubs). Surface a loud warning so operators
-		// can investigate, but keep the client enabled so legitimate stub
-		// environments are not broken.
-		slog.Warn("knowledge sovereign health probe saw non-Connect response; verify upstream routing",
-			"base_url", c.baseURL,
-			"error", err,
-			"hint", "if running against the real sovereign service, check KNOWLEDGE_SOVEREIGN_BASE_URL")
-		return
-	}
-	slog.Info("knowledge sovereign health probe returned a non-fatal error; client stays enabled",
-		"base_url", c.baseURL,
-		"error", err)
-}
 
-func isContentTypeMismatch(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "invalid content-type")
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		slog.Warn("knowledge sovereign health probe request creation failed", "base_url", c.baseURL, "error", err)
+		return
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		slog.Warn("knowledge sovereign health probe failed", "base_url", c.baseURL, "error", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("knowledge sovereign health probe returned non-200 status", "base_url", c.baseURL, "status_code", resp.StatusCode)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxHealthResponseBytes))
+	if err != nil {
+		slog.Warn("knowledge sovereign health probe failed reading body", "base_url", c.baseURL, "error", err)
+		return
+	}
+
+	var hr healthProbeResponse
+	if err := json.Unmarshal(body, &hr); err != nil {
+		slog.Warn("knowledge sovereign health probe returned invalid JSON", "base_url", c.baseURL, "error", err)
+		return
+	}
+
+	if hr.Status != "ok" {
+		slog.Warn("knowledge sovereign health probe reported non-ok status", "base_url", c.baseURL, "status", hr.Status)
+		return
+	}
+
+	slog.Info("knowledge sovereign health probe ok", "base_url", c.baseURL)
 }
 
 // ApplyProjectionMutation implements knowledge_sovereign_port.ProjectionMutator.

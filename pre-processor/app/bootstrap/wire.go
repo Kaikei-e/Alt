@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"net/http"
 
 	"pre-processor/config"
 	"pre-processor/consumer"
@@ -35,6 +35,9 @@ func buildBackendHTTPClient(log *slog.Logger) (*http.Client, error) {
 	if os.Getenv("MTLS_ENFORCE") != "true" {
 		return &http.Client{
 			Timeout: 30 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 			Transport: &http.Transport{
 				IdleConnTimeout:     30 * time.Second,
 				MaxIdleConnsPerHost: 4,
@@ -49,9 +52,11 @@ func buildBackendHTTPClient(log *slog.Logger) (*http.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("backend mTLS client (fail-closed): %w", err)
 	}
-	if sn := os.Getenv("BACKEND_MTLS_SERVER_NAME"); sn != "" {
-		tlsCfg.ServerName = sn
+	sn := os.Getenv("BACKEND_MTLS_SERVER_NAME")
+	if sn == "" {
+		sn = "alt-data-hub"
 	}
+	tlsCfg.ServerName = sn
 	log.Info("backend API client: mTLS enforce enabled",
 		"server_name", tlsCfg.ServerName,
 	)
@@ -67,6 +72,9 @@ func buildBackendHTTPClient(log *slog.Logger) (*http.Client, error) {
 	// ticker loop. Values mirror utils.HTTPClientManager's defaultClient.
 	return &http.Client{
 		Timeout: 30 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 		Transport: &http.Transport{
 			TLSClientConfig:       tlsCfg,
 			DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
@@ -167,16 +175,108 @@ func buildNotificationRelay(
 	)
 }
 
+// ValidateServiceURL checks that a URL string is valid, non-empty, has a host,
+// has no embedded user credentials (userinfo), and satisfies the HTTPS requirement
+// when mTLS is enforced.
+func ValidateServiceURL(rawURL string, requireHTTPS bool, serviceName string) (*url.URL, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, fmt.Errorf("%s URL is required and cannot be empty", serviceName)
+	}
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("%s URL is malformed", serviceName)
+	}
+
+	if u.Host == "" {
+		return nil, fmt.Errorf("%s URL is missing a host", serviceName)
+	}
+
+	if u.User != nil {
+		return nil, fmt.Errorf("%s URL must not contain user credentials/userinfo", serviceName)
+	}
+
+	if requireHTTPS {
+		if u.Scheme != "https" {
+			return nil, fmt.Errorf("%s URL must use https when mTLS is enforced", serviceName)
+		}
+	} else {
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return nil, fmt.Errorf("%s URL must use http or https", serviceName)
+		}
+	}
+
+	return u, nil
+}
+
+// ResolveServiceURLs determines and validates the DataHub backend URL and NewsCreator URL
+// before any database connection or network calls are made.
+//
+// When mtlsEnforced is true:
+//   - DataHub URL MUST be provided by backendAPIMtlsURL (BACKEND_API_MTLS_URL) and MUST be HTTPS.
+//     Silent fallback to plaintext backendAPIURL (BACKEND_API_URL) is forbidden.
+//   - NewsCreator URL (from newsCreatorHost) MUST be HTTPS.
+//
+// When mtlsEnforced is false (development mode):
+//   - DataHub URL uses backendAPIMtlsURL if set, else falls back to backendAPIURL (HTTP or HTTPS allowed).
+//   - NewsCreator URL allows HTTP or HTTPS.
+//
+// Both URLs reject userinfo, empty strings, and malformed inputs fail-closed.
+func ResolveServiceURLs(mtlsEnforced bool, backendAPIURL, backendAPIMtlsURL, newsCreatorHost string) (resolvedBackendURL, resolvedNewsURL string, err error) {
+	var targetBackend string
+	if mtlsEnforced {
+		if strings.TrimSpace(backendAPIMtlsURL) == "" {
+			return "", "", fmt.Errorf("BACKEND_API_MTLS_URL is required and must be nonempty HTTPS when MTLS_ENFORCE=true; cannot fallback to BACKEND_API_URL")
+		}
+		targetBackend = backendAPIMtlsURL
+	} else {
+		if strings.TrimSpace(backendAPIMtlsURL) != "" {
+			targetBackend = backendAPIMtlsURL
+		} else if strings.TrimSpace(backendAPIURL) != "" {
+			targetBackend = backendAPIURL
+		} else {
+			return "", "", fmt.Errorf("BACKEND_API_URL is required; legacy direct-DB mode has been removed")
+		}
+	}
+
+	uBackend, err := ValidateServiceURL(targetBackend, mtlsEnforced, "DataHub backend")
+	if err != nil {
+		return "", "", err
+	}
+
+	uNews, err := ValidateServiceURL(newsCreatorHost, mtlsEnforced, "NewsCreator")
+	if err != nil {
+		return "", "", err
+	}
+
+	return uBackend.String(), uNews.String(), nil
+}
+
 // BuildDependencies constructs all application dependencies.
 // Returns a cleanup function that should be deferred.
 func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) (*Dependencies, func(), error) {
-	// BACKEND_API_URL is required — legacy alt-db mode has been removed.
-	backendAPIURL := os.Getenv("BACKEND_API_URL")
-	if backendAPIURL == "" {
-		return nil, nil, fmt.Errorf("BACKEND_API_URL is required; legacy direct-DB mode has been removed")
+	// 1. Load application config and resolve/validate service URLs BEFORE any database initialization
+	// or network side-effects. In production (MTLS_ENFORCE=true), DataHub and NewsCreator must both be
+	// nonempty HTTPS (fail-closed, no silent fallback).
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return nil, nil, fmt.Errorf("load config: %w", err)
 	}
 
-	// Initialize pre-processor-db (ADR-000246) — required for job queue and inoreader tables
+	mtlsEnforced := os.Getenv("MTLS_ENFORCE") == "true"
+	backendAPIURL, newsURL, err := ResolveServiceURLs(
+		mtlsEnforced,
+		os.Getenv("BACKEND_API_URL"),
+		os.Getenv("BACKEND_API_MTLS_URL"),
+		cfg.NewsCreator.Host,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("service URL validation failed (fail-closed): %w", err)
+	}
+	cfg.NewsCreator.Host = newsURL
+
+	// 2. Initialize pre-processor-db (ADR-000246) — required for job queue and inoreader tables
 	ppDBPool, err := driver.InitPreProcessorDB(ctx)
 	if err != nil {
 		log.Error("Failed to connect to pre-processor-db", "error", err)
@@ -185,12 +285,6 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	log.Info("Using dedicated pre-processor-db for job queue and inoreader tables")
 	ppDBPoolCleanup := func() { ppDBPool.Close() }
 
-	// Load application config
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		ppDBPoolCleanup()
-		return nil, nil, err
-	}
 	qualitychecker.Configure(cfg)
 
 	// Initialize repositories — API mode via Connect-RPC to alt-backend.
@@ -200,14 +294,17 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		ppDBPoolCleanup()
 		return nil, nil, err
 	}
-	if mtlsURL := os.Getenv("BACKEND_API_MTLS_URL"); mtlsURL != "" && os.Getenv("MTLS_ENFORCE") == "true" {
-		backendAPIURL = mtlsURL
-	}
 	log.Info("Using backend API driver for article/feed/summary repos",
 		"url", backendAPIURL,
-		"mtls_enforce", os.Getenv("MTLS_ENFORCE") == "true",
+		"mtls_enforce", mtlsEnforced,
 	)
+
+	// Reuse the already-configured mTLS backend HTTP client as the DataHub
+	// Connect-RPC transport — same cert rotation, same dial parameters, no
+	// second LoadX509KeyPair call, no ppDBPoolCleanup leak on cert errors.
+	// SNI for alt-data-hub is set by buildBackendHTTPClient via BACKEND_MTLS_SERVER_NAME.
 	client := backend_api.NewClient(backendAPIURL, "", backendHTTPClient)
+
 	articleRepo := repository.NewArticleRepository(client, ppDBPool)
 	summaryRepo := repository.NewSummaryRepository(client)
 
@@ -218,13 +315,21 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	// exactly the wiring bug ADR-000954 left behind (that field targets
 	// alt-backend's plaintext operator listener, which does not serve
 	// DataHubService).
-	apiRepo := repository.NewExternalAPIRepository(cfg, log, backendHTTPClient, backendAPIURL)
+	newsHTTPClient, err := buildNewsHTTPClient(cfg, log)
+	if err != nil {
+		ppDBPoolCleanup()
+		return nil, nil, err
+	}
+	apiRepo := repository.NewExternalAPIRepository(cfg, log, backendHTTPClient, backendAPIURL, newsHTTPClient)
 	jobRepo := repository.NewSummarizeJobRepository(ppDBPool, log)
 
 	// Initialize services
 	articleSummarizerService := service.NewArticleSummarizerService(articleRepo, summaryRepo, apiRepo, log)
 	qualityCheckerService := service.NewQualityCheckerService(summaryRepo, articleRepo, apiRepo, jobRepo, log)
-	healthCheckerService := service.NewHealthCheckerServiceWithFactory(cfg, cfg.NewsCreator.Host, log)
+	// Inject the actual configured news client so the health checker validates
+	// the same TLS/CA that the summarizer uses; uncertified factory transport
+	// would accept wrong-CA responses.
+	healthCheckerService := service.NewHealthCheckerServiceWithClient(newsHTTPClient, cfg.NewsCreator.Host, log)
 	articleSyncService := service.NewArticleSyncService(articleRepo, apiRepo, log)
 	summarizeQueueWorker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, batchSize)
 	summarizeQueueWorker.SetConcurrency(cfg.SummarizeQueue.Concurrency)
@@ -364,4 +469,55 @@ func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepo
 		"max_deliveries", consumerCfg.MaxDeliveries)
 
 	return redisConsumer, nil
+}
+
+// buildNewsHTTPClient constructs the *http.Client for the news-creator API.
+// It uses a dedicated SNI ("news-creator") distinct from the DataHub client
+// (whose SNI is "alt-data-hub" / BACKEND_MTLS_SERVER_NAME) and honours
+// cfg.NewsCreator.Timeout (default 600s) so streaming LLM calls are not cut
+// short by a hard 30s ceiling. CheckRedirect is disabled fail-closed: internal
+// services must not silently forward to unexpected hosts.
+func buildNewsHTTPClient(cfg *config.Config, log *slog.Logger) (*http.Client, error) {
+	timeout := cfg.NewsCreator.Timeout
+	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+	if os.Getenv("MTLS_ENFORCE") != "true" {
+		return &http.Client{
+			Timeout:       timeout,
+			CheckRedirect: noRedirect,
+			Transport: &http.Transport{
+				IdleConnTimeout:     30 * time.Second,
+				MaxIdleConnsPerHost: 4,
+			},
+		}, nil
+	}
+	tlsCfg, err := tlsutil.LoadClientConfig(
+		os.Getenv("MTLS_CERT_FILE"),
+		os.Getenv("MTLS_KEY_FILE"),
+		os.Getenv("MTLS_CA_FILE"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("news mTLS client (fail-closed): %w", err)
+	}
+	// SNI must be "news-creator" — separate from the DataHub client whose SNI
+	// is "alt-data-hub". NEWS_CREATOR_MTLS_SERVER_NAME overrides for non-standard deployments.
+	sn := os.Getenv("NEWS_CREATOR_MTLS_SERVER_NAME")
+	if sn == "" {
+		sn = "news-creator"
+	}
+	tlsCfg.ServerName = sn
+	log.Info("news-creator client: mTLS enforce enabled",
+		"server_name", tlsCfg.ServerName,
+		"timeout", timeout,
+	)
+
+	return &http.Client{
+		Timeout:       timeout,
+		CheckRedirect: noRedirect,
+		Transport: &http.Transport{
+			TLSClientConfig:     tlsCfg,
+			IdleConnTimeout:     30 * time.Second,
+			MaxIdleConnsPerHost: 4,
+		},
+	}, nil
 }

@@ -28,11 +28,15 @@ func newHTTPServer(addr string, h http.Handler, writeTimeout time.Duration) *htt
 	}
 }
 
-func logEventAuthStatus(enabled bool) {
-	if enabled {
-		slog.Info("event_auth_enabled")
-	} else {
+func logEventAuthStatus(cfg *config.Config) {
+	if !cfg.EventAuthEnabled {
 		slog.Warn("event_auth_disabled: EVENT_AUTH=disabled was set explicitly; event listener accepts unauthenticated RPCs")
+		return
+	}
+	if cfg.AuthPolicy != nil {
+		slog.Info("event_auth_policy_enabled", "service_count", len(cfg.AuthPolicy.Services))
+	} else {
+		slog.Info("event_auth_enabled")
 	}
 }
 
@@ -65,9 +69,16 @@ func buildRPCMux(sovereignHandler sovereignv1connect.KnowledgeSovereignServiceHa
 	mainMux := http.NewServeMux()
 	mainMux.HandleFunc("/health", handler.HealthHandler)
 
+	var interceptor connect.Interceptor
+	if cfg.AuthPolicy != nil {
+		interceptor = handler.NewPolicyAuthInterceptor(cfg.AuthPolicy, cfg.UserJWTVerifier, cfg.EventAuthEnabled)
+	} else {
+		interceptor = handler.NewEventAuthInterceptor(cfg.EventToken, cfg.EventAuthEnabled)
+	}
+
 	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(
 		sovereignHandler,
-		connect.WithInterceptors(handler.NewEventAuthInterceptor(cfg.EventToken, cfg.EventAuthEnabled)),
+		connect.WithInterceptors(interceptor),
 	)
 	mainMux.Handle(path, rpcHandler)
 	return mainMux
@@ -91,7 +102,7 @@ func startServers(cfg *config.Config, repo *sovereign_db.Repository, sovereignHa
 		}
 	}()
 
-	logEventAuthStatus(cfg.EventAuthEnabled)
+	logEventAuthStatus(cfg)
 	mainMux := buildRPCMux(sovereignHandler, cfg)
 	// WriteTimeout is intentionally unset: WatchProjectorEvents is a
 	// long-lived server-streaming RPC on this mux, and a finite write

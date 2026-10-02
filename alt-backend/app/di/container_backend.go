@@ -1,9 +1,11 @@
 package di
 
 import (
+	"fmt"
+	"log/slog"
+
 	"alt/config"
 	"alt/orchestrator/driver/preprocessor_connect"
-	"log/slog"
 )
 
 // NewBackendComponents is cmd/backend's composition root: the browser-facing
@@ -33,9 +35,12 @@ import (
 // The catalog gateways are gone with the pool. They were the internal-looking
 // components the backend kept, for RecallRailUsecase's article fallback, and
 // that read is now a procedure (catalog §2.C).
-func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
+func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 	// 1. Infrastructure (shared deps)
-	infra := newInfraModule(cfg)
+	infra, err := newInfraModule(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("infra module: %w", err)
+	}
 
 	// 2. Subscription module (needed by feed module for auto-subscribe)
 	sub := newSubscriptionModule(infra)
@@ -47,7 +52,10 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 	rag := newRAGModule(infra, feed)
 
 	// 5. Article module (depends on feed)
-	article := newArticleModule(infra, feed)
+	article, err := newArticleModule(infra, feed)
+	if err != nil {
+		return nil, fmt.Errorf("article module: %w", err)
+	}
 
 	// 6. Knowledge module (depends on article module)
 	knowledge := newKnowledgeModule(infra, article)
@@ -63,6 +71,11 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 
 	// 10. Admin observability (gated by AdminMonitor.Enabled)
 	adminMonitor := newAdminMonitorModule(infra.Config, slog.Default())
+
+	preprocConnectClient, err := preprocessor_connect.NewConnectPreProcessorClient(infra.Config.PreProcessor.ConnectURL, "")
+	if err != nil {
+		return nil, fmt.Errorf("preprocessor connect client: %w", err)
+	}
 
 	return &ApplicationComponents{
 		// Modules
@@ -161,7 +174,7 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 		CSRFTokenUsecase:         sub.CSRFTokenUsecase,
 
 		// Service-to-service Connect-RPC clients
-		PreProcessorConnectClient: preprocessor_connect.NewConnectPreProcessorClient(infra.Config.PreProcessor.ConnectURL, ""),
+		PreProcessorConnectClient: preprocConnectClient,
 
 		// Knowledge Home
 		GetKnowledgeHomeUsecase:          knowledge.GetKnowledgeHomeUsecase,
@@ -200,5 +213,5 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 
 		// Admin observability
 		AdminMonitor: adminMonitor,
-	}
+	}, nil
 }
