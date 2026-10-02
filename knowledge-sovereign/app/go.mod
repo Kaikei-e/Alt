@@ -1,6 +1,6 @@
 module knowledge-sovereign
 
-go 1.26.6
+go 1.27.1
 
 require (
 	connectrpc.com/connect v1.20.0

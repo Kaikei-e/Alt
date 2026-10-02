@@ -140,10 +140,10 @@ jobs:
       # non-blocking until branch protection is re-wired.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: "1.27.1"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
           # lags patch releases, and setup-go v7 sets GOTOOLCHAIN=local, so a
-          # stale 1.26.x here fails every go.mod that already moved on.
+          # stale 1.27.x here fails every go.mod that already moved on.
           check-latest: true
           cache: true
           # Monorepo: no root go.mod, so point the cache at the tool's own sums.
@@ -270,10 +270,10 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: "1.27.1"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
           # lags patch releases, and setup-go v7 sets GOTOOLCHAIN=local, so a
-          # stale 1.26.x here fails every go.mod that already moved on.
+          # stale 1.27.x here fails every go.mod that already moved on.
           check-latest: true
           cache: true
           # Sparse checkout leaves no go.mod at the repo root, so the default
@@ -430,10 +430,10 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: "1.27.1"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
           # lags patch releases, and setup-go v7 sets GOTOOLCHAIN=local, so a
-          # stale 1.26.x here fails every go.mod that already moved on.
+          # stale 1.27.x here fails every go.mod that already moved on.
           check-latest: true
           cache: true
           # Monorepo: no root go.mod, so point the cache at the per-service sums.

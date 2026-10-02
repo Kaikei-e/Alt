@@ -1,6 +1,6 @@
 # alt-backend
 
-**Go 1.26+**, **Echo** + **Connect-RPC**, Clean Architecture. 1 ディレクトリ 4 バイナリ。
+**Go 1.27.1**, **Echo** + **Connect-RPC**, Clean Architecture. 1 ディレクトリ 4 バイナリ。
 
 > Details: `docs/services/alt-backend.md` / 分割の根拠: `docs/ADR/000954.md`
 

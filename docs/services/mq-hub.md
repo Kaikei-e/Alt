@@ -171,7 +171,7 @@ Port 9500 で Connect-RPC API を提供。
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| Go | 1.26+ | 言語ランタイム |
+| Go | 1.27.1 | 言語ランタイム |
 | connectrpc.com/connect | v1.20.0 | Connect-RPC フレームワーク |
 | github.com/redis/go-redis/v9 | v9.21.0 | Redis クライアント |
 | github.com/prometheus/client_golang | v1.23.2 | Prometheus メトリクス |

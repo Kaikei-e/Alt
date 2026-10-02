@@ -5,7 +5,7 @@ _Last reviewed: September 5, 2026_
 **Location:** `search-indexer/app`
 
 ## Role
-- Go 1.26+ サービスで Meilisearch への記事バッチインデックスと `/v1/search` エンドポイントを提供
+- Go 1.27.1 サービスで Meilisearch への記事バッチインデックスと `/v1/search` エンドポイントを提供
 - デュアルフェーズインデックスループ (Backfill + Incremental, 200 ドキュメント/バッチ) + 軽量 HTTP ハンドラーで検索クエリ処理
 - recap-worker のジャンルも同じデュアルフェーズパターンで `recaps` インデックスへ別途インデックス (`RECAP_WORKER_URL` 設定時のみ有効)
 - Clean Architecture レイヤーと共通トークナイザーを使用

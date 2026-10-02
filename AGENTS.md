@@ -24,7 +24,7 @@
 
 ## Repository Map
 - `alt-frontend-sv/` – SvelteKit 2 + Svelte 5 Runes client (TailwindCSS v4, Vitest, Playwright).
-- `alt-backend/app/` – Go 1.26 HTTP API in Clean Architecture layers.
+- `alt-backend/app/` – Go 1.27.1 HTTP API in Clean Architecture layers.
 - `alt-backend/sidecar-proxy/` – Go egress proxy (historical; not run by compose).
 - `pre-processor/app/` – Go feed and summarization worker with exponential-backoff retries.
 - `pre-processor-sidecar/app/` – Go scheduler service for Inoreader ingestion.
@@ -68,7 +68,7 @@
   - Auth Hub (in-container, port 8888 not published to host): `docker compose -f compose/compose.yaml -p alt exec auth-hub /auth-hub healthcheck`
 
 ## Language Playbooks
-- **Go 1.26** – Enforce Clean Architecture boundaries, use `log/slog`, wrap errors with context, propagate `context.Context`, throttle external calls (≥5 s between repeat host hits), prefer table-driven tests and GoMock fakes.
+- **Go 1.27.1** – Enforce Clean Architecture boundaries, use `log/slog`, wrap errors with context, propagate `context.Context`, throttle external calls (≥5 s between repeat host hits), prefer table-driven tests and GoMock fakes.
 - **SvelteKit / TypeScript** – Strict TypeScript, Svelte 5 Runes only (`$state` / `$derived` / `$effect`), TailwindCSS v4, Vitest + Testing Library; use `bun run test` (not bare `bun test`).
 - **Python (FastAPI)** – Dependency injection via containers, async handlers, pytest + `pytest-asyncio`, maintain golden datasets for LLM prompt regressions, sanitize LLM outputs.
 - **Rust 2024** – Favor `async fn` in traits, zero-copy parsing, lock-free data structures, test with `axum-test`, benchmark critical code paths with `criterion`.

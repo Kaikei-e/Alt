@@ -1,6 +1,6 @@
 # rag-orchestrator Playwright API suite
 
-Black-box coverage for Alt's RAG control plane — Go 1.26, Echo REST on `:9010`
+Black-box coverage for Alt's RAG control plane — Go 1.27.1, Echo REST on `:9010`
 and a Connect-RPC mux on `:9011`. Migrated from `e2e/hurl/rag-orchestrator/`.
 
 HTTP only: no spec touches `page`, `browser` or `context`, so Playwright never

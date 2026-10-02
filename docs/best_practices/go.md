@@ -599,7 +599,7 @@ rows, err := pool.Query(ctx, fmt.Sprintf("SELECT * FROM projects WHERE id = '%s'
 
 ```dockerfile
 # Build stage
-FROM golang:1.26-alpine AS build
+FROM golang:1.27.1-alpine AS build
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
