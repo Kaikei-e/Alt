@@ -443,17 +443,17 @@ func runHealthcheck(port string, client *http.Client) int {
 	}
 
 	url := fmt.Sprintf("http://127.0.0.1:%d/healthz", portNum)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil) // #nosec G704 -- fixed loopback host and validated numeric port; no user URL
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "healthcheck request build failed: %v\n", err)
 		return 1
 	}
-	resp, err := httpClient.Do(req)
+	resp, err := httpClient.Do(req) // #nosec G704 -- fixed loopback request; redirects disabled above
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
 		return 1
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Body bounded to max 4KiB (4096 bytes); oversize fails closed.
 	const maxHealthBodyBytes int64 = 4096

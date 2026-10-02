@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -166,7 +167,7 @@ func TestRemoteUserJWTVerifier_LiveMTLS(t *testing.T) {
 			http.Redirect(w, r, "/internal/token/introspect-redirected", http.StatusFound)
 		case "valid-prefix-with-junk":
 			_, _ = w.Write([]byte(`{"active":true,"sub":"a0000000-0000-0000-0000-000000000001","tenant_id":"b0000000-0000-0000-0000-000000000002","exp":` +
-				time.Now().Add(time.Hour).Format("150405") + `} trailing junk data`))
+				strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10) + `} trailing junk data`))
 		case "second-json-object":
 			_, _ = w.Write([]byte(`{"active":true,"sub":"a0000000-0000-0000-0000-000000000001","tenant_id":"b0000000-0000-0000-0000-000000000002","exp":9999999999}{"active":false}`))
 		case "oversized-suffix":

@@ -107,6 +107,10 @@ echo "==> adding per-subject JWK provisioners (offline, --ca-config)..."
 PROVISIONER_ADDED=0
 mkdir -p "$SECRET_DIR"
 for subject in "${SUBJECTS[@]}"; do
+  if [ "$subject" = "localhost" ]; then
+    echo "==> skip provisioner for allowlist-only name localhost"
+    continue
+  fi
   name="$(provisioner_name_for "$subject")"
   host_pw="$(host_password_file_for "$subject")"
   container_pw="/tmp/${name}.pw"

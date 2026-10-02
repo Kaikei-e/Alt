@@ -50,7 +50,7 @@ func TestWire_RedirectFail(t *testing.T) {
 	var originCount int32
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&originCount, 1)
-		http.Redirect(w, r, dest.URL+r.URL.Path, http.StatusFound)
+		http.Redirect(w, r, dest.URL+r.URL.Path, http.StatusFound) // #nosec G710 -- redirect to a controlled test server verifies exporter never follows it
 	}))
 	defer origin.Close()
 
@@ -139,9 +139,13 @@ func TestWire_TokenFileLoader_Failures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cannot create temp file: %v", err)
 		}
-		f.WriteString("valid-file-token-123=\n")
-		f.Close()
-		defer os.Remove(f.Name())
+		if _, err := f.WriteString("valid-file-token-123=\n"); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = os.Remove(f.Name()) }()
 
 		t.Setenv("RASK_INGEST_TOKEN", "")
 		t.Setenv("RASK_INGEST_TOKEN_FILE", f.Name())
@@ -175,9 +179,13 @@ func TestWire_TokenFileLoader_Failures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("cannot create temp file: %v", err)
 			}
-			f.WriteString(tc.content)
-			f.Close()
-			defer os.Remove(f.Name())
+			if _, err := f.WriteString(tc.content); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = os.Remove(f.Name()) }()
 
 			t.Setenv("RASK_INGEST_TOKEN_FILE", f.Name())
 			cfg := Config{Enabled: true, OTLPEndpoint: "http://localhost:4318"}
@@ -300,12 +308,20 @@ func wireNewTLSTestServer(t *testing.T, srvCert tls.Certificate, requireClientAu
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/traces", func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&traceReceived, 1)
-		io.ReadAll(r.Body)
+		if _, err := io.ReadAll(r.Body); err != nil {
+			t.Errorf("read exported telemetry: %v", err)
+			http.Error(w, "invalid telemetry body", http.StatusBadRequest)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("/v1/logs", func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&logReceived, 1)
-		io.ReadAll(r.Body)
+		if _, err := io.ReadAll(r.Body); err != nil {
+			t.Errorf("read exported telemetry: %v", err)
+			http.Error(w, "invalid telemetry body", http.StatusBadRequest)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 	srv := httptest.NewUnstartedServer(mux)

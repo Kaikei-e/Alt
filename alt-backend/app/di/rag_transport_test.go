@@ -23,10 +23,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )

@@ -39,6 +39,8 @@ EXPECTED_CNS=(
   news-creator
   rag-orchestrator
   tts-speaker
+  knowledge-sovereign
+  recap-evaluator
   localhost
 )
 

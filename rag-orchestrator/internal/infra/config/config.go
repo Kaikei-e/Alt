@@ -682,22 +682,3 @@ func getEnvBool(key string, fallback bool) bool {
 	}
 	return fallback
 }
-
-func readOptionalTokenFile(envKey string) (string, error) {
-	if filePath, ok := os.LookupEnv(envKey); ok && filePath != "" {
-		content, err := os.ReadFile(filePath) //nolint:gosec
-		if err != nil {
-			return "", fmt.Errorf("failed to read %s (%s): %w", envKey, filePath, err)
-		}
-
-		// Ensure rfc-safe header value
-		token := strings.TrimSpace(string(content))
-		for _, c := range token {
-			if c < 32 || c > 126 {
-				return "", fmt.Errorf("token from %s contains non-ASCII or control characters", envKey)
-			}
-		}
-		return token, nil
-	}
-	return "", nil
-}

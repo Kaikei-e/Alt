@@ -5,18 +5,24 @@
 // Replays the Pact files published by search-indexer's consumers against the
 // real rest.Handler and the real connectv2.CreateConnectServer mux, backed by
 // fake port.SearchEngine / port.RecapSearchEngine implementations so no
-// Meilisearch instance is required. Authentication is established at the TLS
-// transport layer (mTLS peer-identity allowlist); the replay does not gate on
-// X-Service-Token because it does not present a TLS peer.
+// Meilisearch instance is required. The real user-auth usecase consumes fixed
+// introspection fixtures. Pact replay supplies only a fixture Bearer header;
+// request payloads, validation and response mapping remain unchanged.
 package contract
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,6 +43,67 @@ import (
 // emptyResultState is toggled by the "search-indexer has no matching articles"
 // provider state so the REST stub returns empty hits for that interaction.
 var emptyResultState atomic.Bool
+
+const contractUserID = "00000000-0000-0000-0000-000000000001"
+
+// These are test-only, signed JWTs, mapped to the subjects represented by
+// existing consumer fixtures. Unknown tokens never receive active claims.
+var (
+	contractExpiry = time.Now().Add(5 * time.Minute).Unix()
+	contractTokens = makeContractTokens()
+)
+
+func makeContractTokens() map[string]string {
+	tokens := make(map[string]string)
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
+	for _, sub := range []string{contractUserID, "user-1"} {
+		claims := fmt.Sprintf(`{"sub":%q,"tenant_id":"default","iss":"auth-hub","exp":%d}`, sub, contractExpiry)
+		unsigned := header + "." + base64.RawURLEncoding.EncodeToString([]byte(claims))
+		mac := hmac.New(sha256.New, []byte("pact-fixture-signing-key-only-32-bytes"))
+		_, _ = mac.Write([]byte(unsigned))
+		tokens[sub] = unsigned + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	}
+	return tokens
+}
+
+type contractAuthHub struct{}
+
+func (*contractAuthHub) IntrospectToken(_ context.Context, token string) (*port.TokenIntrospection, error) {
+	for sub, fixture := range contractTokens {
+		if token == fixture {
+			return &port.TokenIntrospection{Active: time.Now().Unix() < contractExpiry, Sub: sub, TenantID: "default", Exp: contractExpiry}, nil
+		}
+	}
+	return nil, fmt.Errorf("unknown contract token")
+}
+
+// Pact's dynamic-credential hook complements the legacy fixture requests.
+// Explicit auth headers are preserved, including negative auth interactions.
+func contractAuthFilter(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(r.Header.Values("Authorization")) == 0 && len(r.Header.Values("X-Alt-Backend-Token")) == 0 {
+			userID := r.URL.Query().Get("user_id")
+			if userID == "" && r.Body != nil && strings.HasSuffix(r.URL.Path, "/SearchArticles") {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					http.Error(w, "read contract request", http.StatusBadRequest)
+					return
+				}
+				r.Body = io.NopCloser(strings.NewReader(string(body)))
+				var payload struct {
+					UserID string `json:"userId"`
+				}
+				if err := json.Unmarshal(body, &payload); err == nil {
+					userID = payload.UserID
+				}
+			}
+			if token, ok := contractTokens[userID]; ok {
+				r.Header.Set("Authorization", "Bearer "+token)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 const (
 	providerPactDirAltBackend = "../../../../alt-backend/pacts"
@@ -166,7 +233,8 @@ func startProviderStub(t *testing.T) int {
 	// returning canned hits. emptyResultState toggles empty-hits responses for
 	// the acolyte "no matching articles" provider state.
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(&fakeContractSearchEngine{})
-	restHandler := rest.NewHandler(searchByUserUsecase)
+	authUsecase := usecase.NewAuthUsecase(&contractAuthHub{})
+	restHandler := rest.NewHandler(searchByUserUsecase, authUsecase)
 
 	// Connect-RPC mounts the real server (SearchArticles + SearchRecaps +
 	// /health) so the pact replay reaches connectv2.CreateConnectServer
@@ -174,7 +242,7 @@ func startProviderStub(t *testing.T) int {
 	// only mirrors the response shape.
 	searchRecapsUsecase := usecase.NewSearchRecapsUsecase(&fakeContractRecapSearchEngine{})
 	rlCfg := config.RateLimitConfig{RequestsPerSecond: 1000, Burst: 1000}
-	connectServer := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase, rlCfg)
+	connectServer := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase, authUsecase, rlCfg)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/search", restHandler.SearchArticles)
@@ -261,6 +329,7 @@ func TestVerifySearchIndexerProviderContracts(t *testing.T) {
 		PactFiles:          pactFiles,
 		StateHandlers:      stateHandlers,
 		FailIfNoPactsFound: true,
+		RequestFilter:      contractAuthFilter,
 	}
 
 	if brokerURL := os.Getenv("PACT_BROKER_BASE_URL"); brokerURL != "" {
@@ -310,14 +379,113 @@ func TestProviderStub_RejectsInvalidRequests(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
 	// Malformed date filter rejected
-	resp2, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/search?q=LLM&user_id=u1&published_after=invalid-date", port))
+	resp2, err := providerGET(fmt.Sprintf("http://127.0.0.1:%d/v1/search?q=LLM&user_id=%s&published_after=invalid-date", port, contractUserID), contractTokens[contractUserID])
 	require.NoError(t, err)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	require.Equal(t, http.StatusBadRequest, resp2.StatusCode)
 
 	// Inverted date filter rejected
-	resp3, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/search?q=LLM&user_id=u1&published_after=2026-04-20T00:00:00Z&published_before=2026-04-10T00:00:00Z", port))
+	resp3, err := providerGET(fmt.Sprintf("http://127.0.0.1:%d/v1/search?q=LLM&user_id=%s&published_after=2026-04-20T00:00:00Z&published_before=2026-04-10T00:00:00Z", port, contractUserID), contractTokens[contractUserID])
 	require.NoError(t, err)
-	defer resp3.Body.Close()
+	defer func() { _ = resp3.Body.Close() }()
 	require.Equal(t, http.StatusBadRequest, resp3.StatusCode)
+}
+
+func providerGET(url, token string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return http.DefaultClient.Do(req)
+}
+
+func TestProviderStub_RequiresMatchingUserAuthorization(t *testing.T) {
+	port := startProviderStub(t)
+	url := fmt.Sprintf("http://127.0.0.1:%d/v1/search?q=LLM&user_id=%s", port, contractUserID)
+	for _, tc := range []struct {
+		name   string
+		token  string
+		status int
+	}{
+		{"missing", "", http.StatusUnauthorized},
+		{"invalid", "invalid-token", http.StatusForbidden},
+		{"wrong_subject", contractTokens["user-1"], http.StatusForbidden},
+		{"matching_subject", contractTokens[contractUserID], http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := providerGET(url, tc.token)
+			require.NoError(t, err)
+			defer func() { _ = resp.Body.Close() }()
+			require.Equal(t, tc.status, resp.StatusCode)
+		})
+	}
+}
+
+func TestProviderStub_ConnectRequiresMatchingUserAuthorization(t *testing.T) {
+	port := startProviderStub(t)
+	url := fmt.Sprintf("http://127.0.0.1:%d/services.search.v2.SearchService/SearchArticles", port)
+	payload := fmt.Sprintf(`{"query":"LLM","userId":%q,"limit":20}`, contractUserID)
+	for _, tc := range []struct {
+		name   string
+		token  string
+		status int
+	}{
+		{"missing", "", http.StatusUnauthorized},
+		{"invalid", "invalid-token", http.StatusForbidden},
+		{"wrong_subject", contractTokens["user-1"], http.StatusForbidden},
+		{"matching_subject", contractTokens[contractUserID], http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(payload))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Connect-Protocol-Version", "1")
+			if tc.token != "" {
+				req.Header.Set("Authorization", "Bearer "+tc.token)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer func() { _ = resp.Body.Close() }()
+			require.Equal(t, tc.status, resp.StatusCode)
+		})
+	}
+}
+
+func TestContractAuthFilterPreservesExplicitCredentials(t *testing.T) {
+	for _, header := range []string{"Authorization", "X-Alt-Backend-Token"} {
+		for _, credential := range []string{"invalid-credential", ""} {
+			t.Run(header+"/"+credential, func(t *testing.T) {
+				req, err := http.NewRequest(http.MethodGet, "/v1/search?user_id="+contractUserID, nil)
+				require.NoError(t, err)
+				req.Header.Set(header, credential)
+				called := false
+				contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					called = true
+					require.Equal(t, []string{credential}, r.Header.Values(header))
+					if header != "Authorization" {
+						require.Empty(t, r.Header.Get("Authorization"))
+					}
+				})).ServeHTTP(nil, req)
+				require.True(t, called)
+			})
+		}
+	}
+}
+
+func TestContractAuthFilterPreservesConnectPayload(t *testing.T) {
+	const payload = `{"query":"LLM","userId":"user-1","limit":20}`
+	req, err := http.NewRequest(http.MethodPost, "/services.search.v2.SearchService/SearchArticles", strings.NewReader(payload))
+	require.NoError(t, err)
+	called := false
+	contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		called = true
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.Equal(t, payload, string(body))
+		require.Equal(t, "Bearer "+contractTokens["user-1"], r.Header.Get("Authorization"))
+	})).ServeHTTP(nil, req)
+	require.True(t, called)
 }

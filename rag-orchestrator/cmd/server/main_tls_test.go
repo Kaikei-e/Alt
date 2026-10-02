@@ -147,7 +147,7 @@ func writePKIPEM(t *testing.T, path, blockType string, der []byte) {
 	if err != nil {
 		t.Fatalf("create %s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}); err != nil {
 		t.Fatalf("pem encode %s: %v", path, err)
 	}
@@ -222,7 +222,7 @@ func TestProductionTLSServer_RequireAndVerifyClientCert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request with valid mTLS client cert failed over real wire: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", resp.StatusCode)
 	}
@@ -385,7 +385,7 @@ func TestHealthPort9012_PublicHealthOnly_NeverBusinessRPC(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /healthz failed: %v", err)
 	}
-	defer respHealth.Body.Close()
+	defer func() { _ = respHealth.Body.Close() }()
 	if respHealth.StatusCode != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", respHealth.StatusCode)
 	}
@@ -395,7 +395,7 @@ func TestHealthPort9012_PublicHealthOnly_NeverBusinessRPC(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /readyz failed: %v", err)
 	}
-	defer respReady.Body.Close()
+	defer func() { _ = respReady.Body.Close() }()
 	if respReady.StatusCode != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", respReady.StatusCode)
 	}

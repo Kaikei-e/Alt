@@ -22,7 +22,7 @@ func TestNewClient_Enabled(t *testing.T) {
 	require.NoError(t, err)
 	_, _ = f.WriteString("valid-token")
 	_ = f.Close()
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	client, err := NewClient("http://localhost:9500", f.Name(), true)
 	assert.NoError(t, err)
@@ -35,7 +35,7 @@ func TestNewClient_EmptyToken(t *testing.T) {
 	require.NoError(t, err)
 	_, _ = f.WriteString("   \n")
 	_ = f.Close()
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	client, err := NewClient("http://localhost:9500", f.Name(), true)
 	assert.Error(t, err)

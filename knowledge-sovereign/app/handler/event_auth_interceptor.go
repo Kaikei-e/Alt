@@ -513,7 +513,8 @@ func (i *policyAuthInterceptor) verifyMutationDelegation(ctx context.Context, he
 	var hasExplicitTenantKey bool
 	for k, v := range rawMap {
 		normKey := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(k, "_", ""), "-", ""))
-		if normKey == "tenantid" || normKey == "tenant" {
+		switch normKey {
+		case "tenantid", "tenant":
 			hasExplicitTenantKey = true
 			if v != nil {
 				strVal := strings.TrimSpace(fmt.Sprintf("%v", v))
@@ -521,7 +522,7 @@ func (i *policyAuthInterceptor) verifyMutationDelegation(ctx context.Context, he
 					explicitTenantID = strVal
 				}
 			}
-		} else if normKey == "userid" || normKey == "user" {
+		case "userid", "user":
 			if v != nil {
 				strVal := strings.TrimSpace(fmt.Sprintf("%v", v))
 				if strVal != "" && strVal != "<nil>" {

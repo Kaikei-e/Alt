@@ -40,15 +40,16 @@ func TestProvider_InitAndExport(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		if r.URL.Path == "/v1/traces" {
+		switch r.URL.Path {
+		case "/v1/traces":
 			atomic.AddInt32(&traceReqCount, 1)
 			traceAuth = r.Header.Get("Authorization")
 			lastTraceBody = body
-		} else if r.URL.Path == "/v1/logs" {
+		case "/v1/logs":
 			atomic.AddInt32(&logReqCount, 1)
 			logAuth = r.Header.Get("Authorization")
 			lastLogBody = body
-		} else {
+		default:
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 
@@ -65,13 +66,17 @@ func TestProvider_InitAndExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Write([]byte(tokenContent))
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	if _, err := tmpFile.Write([]byte(tokenContent)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		t.Fatal(err)
+	}
 
-	os.Setenv("RASK_INGEST_TOKEN_FILE", tmpFile.Name())
-	os.Setenv("RASK_INGEST_TOKEN", tokenContent)
-	os.Setenv("OTEL_TRACE_SAMPLE_RATIO", "1.0")
+	t.Setenv("RASK_INGEST_TOKEN_FILE", tmpFile.Name())
+	t.Setenv("RASK_INGEST_TOKEN", tokenContent)
+	t.Setenv("OTEL_TRACE_SAMPLE_RATIO", "1.0")
 
 	cfg := ConfigFromEnv()
 	cfg.Enabled = true
@@ -101,13 +106,17 @@ func TestProvider_InitAndExport(t *testing.T) {
 	defer flushCancel()
 
 	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
-		tp.ForceFlush(ctxFlush)
+		if err := tp.ForceFlush(ctxFlush); err != nil {
+			t.Fatalf("flush telemetry: %v", err)
+		}
 	} else {
 		t.Errorf("TracerProvider is not sdktrace.TracerProvider")
 	}
 
 	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
-		lp.ForceFlush(ctxFlush)
+		if err := lp.ForceFlush(ctxFlush); err != nil {
+			t.Fatalf("flush telemetry: %v", err)
+		}
 	} else {
 		t.Errorf("LoggerProvider is not sdklog.LoggerProvider")
 	}
@@ -180,7 +189,7 @@ func TestProvider_RedirectFail(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	os.Setenv("OTEL_TRACE_SAMPLE_RATIO", "1.0")
+	t.Setenv("OTEL_TRACE_SAMPLE_RATIO", "1.0")
 	cfg := ConfigFromEnv()
 	cfg.Enabled = true
 	cfg.OTLPEndpoint = ts.URL

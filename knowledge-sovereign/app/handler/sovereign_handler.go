@@ -128,7 +128,8 @@ func normalizeMutationPayload(ctx context.Context, rawPayload json.RawMessage, m
 	keysToDelete := make([]string, 0, len(p))
 	for k, v := range p {
 		normKey := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(k, "_", ""), "-", ""))
-		if normKey == "tenantid" || normKey == "tenant" {
+		switch normKey {
+		case "tenantid", "tenant":
 			keysToDelete = append(keysToDelete, k)
 			if v != nil {
 				strVal := strings.TrimSpace(fmt.Sprintf("%v", v))
@@ -136,7 +137,7 @@ func normalizeMutationPayload(ctx context.Context, rawPayload json.RawMessage, m
 					return nil, connect.NewError(connect.CodePermissionDenied, errors.New("delegation token tenant_id does not match requested tenant"))
 				}
 			}
-		} else if normKey == "userid" || normKey == "user" {
+		case "userid", "user":
 			keysToDelete = append(keysToDelete, k)
 			if v != nil {
 				strVal := strings.TrimSpace(fmt.Sprintf("%v", v))

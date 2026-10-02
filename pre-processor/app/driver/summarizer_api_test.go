@@ -347,7 +347,7 @@ func TestStreamArticleSummarizerAPIClient_StreamingAndPolicyPreservation(t *test
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
-		defer bodyReader.Close()
+		defer func() { _ = bodyReader.Close() }()
 
 		data, err := io.ReadAll(bodyReader)
 		if err != nil {

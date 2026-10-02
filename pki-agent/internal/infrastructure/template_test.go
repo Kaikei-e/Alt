@@ -3,6 +3,7 @@ package infrastructure_test
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -177,12 +178,34 @@ func findRepoRoot() (string, error) {
 		if err != nil {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(abs, "compose", "compose.yaml")); err == nil {
+		if _, err := os.Stat(filepath.Join(abs, "pki-agent", "scripts", "bootstrap-pki-provisioner.sh")); err == nil {
 			return abs, nil
 		}
 	}
-	// Fallback to git root
-	return "/home/koko/Documents/dev/Alt", nil
+	return "", fmt.Errorf("cannot locate repository containing pki-agent/scripts/bootstrap-pki-provisioner.sh")
+}
+
+func TestFindRepoRootPortableWithoutCompose(t *testing.T) {
+	root := t.TempDir()
+	scriptsDir := filepath.Join(root, "pki-agent", "scripts")
+	if err := os.MkdirAll(scriptsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scriptsDir, "bootstrap-pki-provisioner.sh"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	packageDir := filepath.Join(root, "pki-agent", "internal", "infrastructure")
+	if err := os.MkdirAll(packageDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(packageDir)
+	got, err := findRepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != root {
+		t.Fatalf("repository root = %q, want sparse checkout root %q", got, root)
+	}
 }
 
 func extractHeredocTemplates(t *testing.T) (subjectTpl, localhostTpl string) {
@@ -253,7 +276,11 @@ func executeTemplateCases(t *testing.T, runnerBin string, cases []templateTestCa
 	dec := json.NewDecoder(bufio.NewReader(stdout))
 
 	go func() {
-		defer stdin.Close()
+		defer func() {
+			if err := stdin.Close(); err != nil {
+				t.Errorf("close template runner input: %v", err)
+			}
+		}()
 		for _, tc := range cases {
 			if err := enc.Encode(tc); err != nil {
 				return

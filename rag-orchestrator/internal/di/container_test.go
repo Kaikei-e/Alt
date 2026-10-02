@@ -188,17 +188,6 @@ func TestAugurGenerator_MTLSSuppressesRawToken(t *testing.T) {
 	}
 }
 
-func stringsContainsAny(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) > 0 && (s != "" && func() bool {
-		for i := 0; i+len(substr) <= len(s); i++ {
-			if s[i:i+len(substr)] == substr {
-				return true
-			}
-		}
-		return false
-	}()))
-}
-
 func TestBuildOllamaGenerator_ProductionFactoryTests(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 

@@ -24,7 +24,7 @@ import (
 )
 
 // DefaultRaskIngestTokenFile is the default path to the Rask ingest token secret.
-const DefaultRaskIngestTokenFile = "/run/secrets/rask_ingest_token"
+const DefaultRaskIngestTokenFile = "/run/secrets/rask_ingest_token" // #nosec G101 -- mounted secret path, not a credential value
 
 // ResolveRaskIngestToken resolves the Bearer token for authenticating OTLP telemetry
 // export to rask-log-aggregator. It loads from RASK_INGEST_TOKEN_FILE (defaulting to
@@ -40,7 +40,7 @@ func ResolveRaskIngestToken() (string, error) {
 	if filePath == "" {
 		filePath = DefaultRaskIngestTokenFile
 	}
-	content, err := os.ReadFile(filePath) // #nosec G304 -- trusted operator secret path
+	content, err := os.ReadFile(filePath) // #nosec G304 G703 -- trusted operator-configured secret path, not request input
 	if err != nil {
 		return "", fmt.Errorf("read RASK_INGEST_TOKEN_FILE %s: %w", filePath, err)
 	}
