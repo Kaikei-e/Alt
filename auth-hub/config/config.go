@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -23,7 +24,16 @@ type Config struct {
 	ValidateRateLimit    float64       // Validate endpoint: requests per second (default: 100/60 ≈ 1.67)
 	SessionRateLimit     float64       // Session endpoint: requests per second (default: 30/60 = 0.5)
 	CSRFRateLimit        float64       // CSRF endpoint: requests per second (default: 100)
+	IntrospectRateLimit  float64       // Introspect endpoint: requests per second (default: 1200/60 = 20.0)
+	IntrospectBurst      int           // Introspect endpoint: burst capacity (default: 100)
 }
+
+const (
+	MaxCacheTTL            = 60 * time.Second
+	DefaultCacheTTL        = 60 * time.Second
+	MaxBackendTokenTTL     = 5 * time.Minute
+	DefaultBackendTokenTTL = 5 * time.Minute
+)
 
 // Load reads configuration from environment variables with sensible defaults
 func Load() (*Config, error) {
@@ -31,23 +41,28 @@ func Load() (*Config, error) {
 		KratosURL:            getEnv("KRATOS_URL", "http://kratos:4433"),
 		KratosAdminURL:       getEnv("KRATOS_ADMIN_URL", "http://kratos-admin:4434"),
 		Port:                 getEnv("PORT", "8888"),
-		CacheTTL:             5 * time.Minute, // Default 5 minutes
+		CacheTTL:             DefaultCacheTTL,
 		CSRFSecret:           getEnv("CSRF_SECRET", ""),
 		BackendTokenSecret:   getEnv("BACKEND_TOKEN_SECRET", ""),
 		BackendTokenIssuer:   getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
 		BackendTokenAudience: getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
-		BackendTokenTTL:      5 * time.Minute, // Default 5 minutes
+		BackendTokenTTL:      DefaultBackendTokenTTL,
 		InternalAuthSecret:   getEnv("INTERNAL_AUTH_SECRET", ""),
-		ValidateRateLimit:    100.0 / 60.0, // Default: ~1.67 req/s (100 req/min)
-		SessionRateLimit:     30.0 / 60.0,  // Default: 0.5 req/s (30 req/min)
-		CSRFRateLimit:        100.0,        // Default: 100 req/s
+		ValidateRateLimit:    100.0 / 60.0,  // Default: ~1.67 req/s (100 req/min)
+		SessionRateLimit:     30.0 / 60.0,   // Default: 0.5 req/s (30 req/min)
+		CSRFRateLimit:        100.0,         // Default: 100 req/s
+		IntrospectRateLimit:  1200.0 / 60.0, // Default: 20 req/s (1200 req/min)
+		IntrospectBurst:      100,           // Default: burst 100
 	}
 
-	// Parse CACHE_TTL if provided
+	// Parse CACHE_TTL if provided (capped to MaxCacheTTL)
 	if cacheTTLStr := os.Getenv("CACHE_TTL"); cacheTTLStr != "" {
 		duration, err := time.ParseDuration(cacheTTLStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid CACHE_TTL format: %w", err)
+		}
+		if duration > MaxCacheTTL {
+			duration = MaxCacheTTL
 		}
 		config.CacheTTL = duration
 	}
@@ -79,11 +94,32 @@ func Load() (*Config, error) {
 		config.CSRFRateLimit = r
 	}
 
-	// Parse BACKEND_TOKEN_TTL if provided
+	// Parse INTROSPECT_RATE_LIMIT if provided (requests per second)
+	if v := os.Getenv("INTROSPECT_RATE_LIMIT"); v != "" {
+		r, err := strconv.ParseFloat(v, 64)
+		if err != nil || math.IsNaN(r) || math.IsInf(r, 0) || r <= 0 {
+			return nil, fmt.Errorf("invalid INTROSPECT_RATE_LIMIT: must be a finite positive number")
+		}
+		config.IntrospectRateLimit = r
+	}
+
+	// Parse INTROSPECT_BURST if provided
+	if v := os.Getenv("INTROSPECT_BURST"); v != "" {
+		b, err := strconv.Atoi(v)
+		if err != nil || b <= 0 {
+			return nil, fmt.Errorf("invalid INTROSPECT_BURST: must be positive")
+		}
+		config.IntrospectBurst = b
+	}
+
+	// Parse BACKEND_TOKEN_TTL if provided (capped to MaxBackendTokenTTL)
 	if ttlStr := os.Getenv("BACKEND_TOKEN_TTL"); ttlStr != "" {
 		duration, err := time.ParseDuration(ttlStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid BACKEND_TOKEN_TTL format: %w", err)
+		}
+		if duration > MaxBackendTokenTTL {
+			duration = MaxBackendTokenTTL
 		}
 		config.BackendTokenTTL = duration
 	}
@@ -108,6 +144,16 @@ func (c *Config) Validate() error {
 
 	if c.CacheTTL <= 0 {
 		return fmt.Errorf("CACHE_TTL must be positive")
+	}
+	if c.CacheTTL > MaxCacheTTL {
+		return fmt.Errorf("CACHE_TTL cannot exceed 60s")
+	}
+
+	if c.BackendTokenTTL <= 0 {
+		return fmt.Errorf("BACKEND_TOKEN_TTL must be positive")
+	}
+	if c.BackendTokenTTL > MaxBackendTokenTTL {
+		return fmt.Errorf("BACKEND_TOKEN_TTL cannot exceed 5m")
 	}
 
 	// CSRF_SECRET is required for security - no fallback to hardcoded values
@@ -141,6 +187,13 @@ func (c *Config) Validate() error {
 	if c.InternalAuthSecret == c.BackendTokenSecret {
 		return fmt.Errorf("INTERNAL_AUTH_SECRET must not equal BACKEND_TOKEN_SECRET: " +
 			"the JWT signing key would travel in plaintext X-Internal-Auth headers")
+	}
+
+	if c.IntrospectRateLimit < 0 {
+		return fmt.Errorf("INTROSPECT_RATE_LIMIT cannot be negative")
+	}
+	if c.IntrospectBurst < 0 {
+		return fmt.Errorf("INTROSPECT_BURST cannot be negative")
 	}
 
 	return nil

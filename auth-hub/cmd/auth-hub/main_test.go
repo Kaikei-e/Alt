@@ -54,3 +54,66 @@ func TestWireInternalAuth_AllowsValidSecret(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+func TestBuildPlaintextHandler_DefaultRejectsBusinessRoutes(t *testing.T) {
+	e := echo.New()
+	e.GET("/health", func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})
+	e.GET("/session", func(c echo.Context) error {
+		return c.String(http.StatusOK, "session-data")
+	})
+	e.GET("/validate", func(c echo.Context) error {
+		return c.String(http.StatusOK, "validate-data")
+	})
+	e.POST("/csrf", func(c echo.Context) error {
+		return c.String(http.StatusOK, "csrf-token")
+	})
+	e.GET("/internal/system-user", func(c echo.Context) error {
+		return c.String(http.StatusOK, "system-user-id")
+	})
+
+	// Default: devPlaintextAllowed is false
+	handler := buildPlaintextHandler(e, false)
+
+	// Health check MUST succeed on plaintext (bootstrap availability)
+	reqHealth := httptest.NewRequest(http.MethodGet, "/health", nil)
+	recHealth := httptest.NewRecorder()
+	handler.ServeHTTP(recHealth, reqHealth)
+	assert.Equal(t, http.StatusOK, recHealth.Code)
+
+	// Business routes MUST be rejected on plaintext (fail-closed A04)
+	businessEndpoints := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/session"},
+		{http.MethodGet, "/validate"},
+		{http.MethodPost, "/csrf"},
+		{http.MethodGet, "/internal/system-user"},
+	}
+
+	for _, ep := range businessEndpoints {
+		req := httptest.NewRequest(ep.method, ep.path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code, "endpoint %s must be forbidden on plaintext listener", ep.path)
+		assert.Contains(t, rec.Body.String(), "business endpoints require HTTPS")
+	}
+}
+
+func TestBuildPlaintextHandler_ExplicitDevPermitsRoutes(t *testing.T) {
+	e := echo.New()
+	e.GET("/session", func(c echo.Context) error {
+		return c.String(http.StatusOK, "dev-session-data")
+	})
+
+	// Explicit dev opt-in allows business routes
+	handler := buildPlaintextHandler(e, true)
+
+	req := httptest.NewRequest(http.MethodGet, "/session", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "dev-session-data", rec.Body.String())
+}

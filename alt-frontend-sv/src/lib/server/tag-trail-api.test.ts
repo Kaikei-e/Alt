@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("$env/dynamic/private", () => ({
 	env: {
 		BACKEND_REST_URL: "http://backend.test",
+		AUTH_HUB_INTERNAL_URL: "http://auth-hub:8888",
 	},
 }));
 

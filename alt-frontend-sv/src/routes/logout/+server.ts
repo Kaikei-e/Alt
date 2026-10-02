@@ -11,7 +11,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	// Bust the short-term session cache first so the cookie can no longer
 	// authenticate via a stale cache hit even if the logout flow below fails.
 	if (cookieHeader) {
-		invalidateSessionCache(cookieHeader);
+		try {
+			await invalidateSessionCache(cookieHeader);
+		} catch (error) {
+			// A01 revised: Even if auth-hub cache invalidation fails, we must
+			// continue to revoke the Kratos session. The cache bounds are 60s/5m.
+			// Returning 500 here would trap the user with a permanent Kratos session.
+			console.error("auth-hub session cache invalidation failed during logout", { error: error instanceof Error ? error.message : "Unknown error" });
+		}
 	}
 
 	try {
@@ -33,7 +40,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			throw error;
 		}
 
-		// Otherwise, redirect to login
-		throw redirect(303, "/login");
+		console.error("kratos browser logout flow creation failed", { error: error instanceof Error ? error.message : "Unknown error" });
+		return new Response("Internal Server Error: Failed to create logout flow", { status: 500 });
 	}
 };

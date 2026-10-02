@@ -37,7 +37,7 @@ func TestLoad(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("KRATOS_URL", "http://custom-kratos:4444")
 				os.Setenv("PORT", "9999")
-				os.Setenv("CACHE_TTL", "10m")
+				os.Setenv("CACHE_TTL", "30s")
 				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 				os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
 				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
@@ -53,7 +53,7 @@ func TestLoad(t *testing.T) {
 			expected: &Config{
 				KratosURL:  "http://custom-kratos:4444",
 				Port:       "9999",
-				CacheTTL:   10 * time.Minute,
+				CacheTTL:   30 * time.Second,
 				CSRFSecret: "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 			},
 			wantErr: false,
@@ -89,8 +89,85 @@ func TestLoad(t *testing.T) {
 			expected: &Config{
 				KratosURL:  "http://localhost:4433",
 				Port:       "8888",
-				CacheTTL:   5 * time.Minute,
+				CacheTTL:   60 * time.Second,
 				CSRFSecret: "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+			},
+			wantErr: false,
+		},
+		{
+			name: "INTROSPECT_RATE_LIMIT=NaN is rejected",
+			setupEnv: func() {
+				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+				os.Setenv("INTROSPECT_RATE_LIMIT", "NaN")
+			},
+			cleanupEnv: func() {
+				os.Unsetenv("CSRF_SECRET")
+				os.Unsetenv("BACKEND_TOKEN_SECRET")
+				os.Unsetenv("INTERNAL_AUTH_SECRET")
+				os.Unsetenv("INTROSPECT_RATE_LIMIT")
+			},
+			expected:    nil,
+			wantErr:     true,
+			errContains: "must be a finite positive number",
+		},
+		{
+			name: "INTROSPECT_RATE_LIMIT=+Inf is rejected",
+			setupEnv: func() {
+				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+				os.Setenv("INTROSPECT_RATE_LIMIT", "+Inf")
+			},
+			cleanupEnv: func() {
+				os.Unsetenv("CSRF_SECRET")
+				os.Unsetenv("BACKEND_TOKEN_SECRET")
+				os.Unsetenv("INTERNAL_AUTH_SECRET")
+				os.Unsetenv("INTROSPECT_RATE_LIMIT")
+			},
+			expected:    nil,
+			wantErr:     true,
+			errContains: "must be a finite positive number",
+		},
+		{
+			name: "INTROSPECT_RATE_LIMIT=-Inf is rejected",
+			setupEnv: func() {
+				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+				os.Setenv("INTROSPECT_RATE_LIMIT", "-Inf")
+			},
+			cleanupEnv: func() {
+				os.Unsetenv("CSRF_SECRET")
+				os.Unsetenv("BACKEND_TOKEN_SECRET")
+				os.Unsetenv("INTERNAL_AUTH_SECRET")
+				os.Unsetenv("INTROSPECT_RATE_LIMIT")
+			},
+			expected:    nil,
+			wantErr:     true,
+			errContains: "must be a finite positive number",
+		},
+		{
+			name: "INTROSPECT_RATE_LIMIT=20.0 is accepted",
+			setupEnv: func() {
+				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+				os.Setenv("INTROSPECT_RATE_LIMIT", "20.0")
+			},
+			cleanupEnv: func() {
+				os.Unsetenv("CSRF_SECRET")
+				os.Unsetenv("BACKEND_TOKEN_SECRET")
+				os.Unsetenv("INTERNAL_AUTH_SECRET")
+				os.Unsetenv("INTROSPECT_RATE_LIMIT")
+			},
+			expected: &Config{
+				KratosURL:           "http://kratos:4433",
+				Port:                "8888",
+				CacheTTL:            60 * time.Second,
+				CSRFSecret:          "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				IntrospectRateLimit: 20.0,
 			},
 			wantErr: false,
 		},
@@ -268,7 +345,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: &Config{
 				KratosURL:          "http://kratos:4433",
 				Port:               "8888",
-				CacheTTL:           5 * time.Minute,
+				CacheTTL:           60 * time.Second,
+				BackendTokenTTL:    5 * time.Minute,
 				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
 				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
@@ -278,9 +356,13 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing Kratos URL",
 			config: &Config{
-				KratosURL: "",
-				Port:      "8888",
-				CacheTTL:  5 * time.Minute,
+				KratosURL:          "",
+				Port:               "8888",
+				CacheTTL:           60 * time.Second,
+				BackendTokenTTL:    5 * time.Minute,
+				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr:     true,
 			errContains: "KRATOS_URL",
@@ -288,9 +370,13 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing port",
 			config: &Config{
-				KratosURL: "http://kratos:4433",
-				Port:      "",
-				CacheTTL:  5 * time.Minute,
+				KratosURL:          "http://kratos:4433",
+				Port:               "",
+				CacheTTL:           60 * time.Second,
+				BackendTokenTTL:    5 * time.Minute,
+				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr:     true,
 			errContains: "PORT",
@@ -298,9 +384,13 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "invalid cache TTL (zero)",
 			config: &Config{
-				KratosURL: "http://kratos:4433",
-				Port:      "8888",
-				CacheTTL:  0,
+				KratosURL:          "http://kratos:4433",
+				Port:               "8888",
+				CacheTTL:           0,
+				BackendTokenTTL:    5 * time.Minute,
+				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr:     true,
 			errContains: "CACHE_TTL",
@@ -308,9 +398,13 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "invalid cache TTL (negative)",
 			config: &Config{
-				KratosURL: "http://kratos:4433",
-				Port:      "8888",
-				CacheTTL:  -1 * time.Minute,
+				KratosURL:          "http://kratos:4433",
+				Port:               "8888",
+				CacheTTL:           -1 * time.Minute,
+				BackendTokenTTL:    5 * time.Minute,
+				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr:     true,
 			errContains: "CACHE_TTL",
@@ -318,10 +412,13 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing CSRF secret",
 			config: &Config{
-				KratosURL:  "http://kratos:4433",
-				Port:       "8888",
-				CacheTTL:   5 * time.Minute,
-				CSRFSecret: "",
+				KratosURL:          "http://kratos:4433",
+				Port:               "8888",
+				CacheTTL:           60 * time.Second,
+				BackendTokenTTL:    5 * time.Minute,
+				CSRFSecret:         "",
+				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr:     true,
 			errContains: "CSRF_SECRET",
@@ -329,10 +426,13 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "CSRF secret too short",
 			config: &Config{
-				KratosURL:  "http://kratos:4433",
-				Port:       "8888",
-				CacheTTL:   5 * time.Minute,
-				CSRFSecret: "short-secret",
+				KratosURL:          "http://kratos:4433",
+				Port:               "8888",
+				CacheTTL:           60 * time.Second,
+				BackendTokenTTL:    5 * time.Minute,
+				CSRFSecret:         "short-secret",
+				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr:     true,
 			errContains: "CSRF_SECRET must be at least 32 characters",
@@ -342,7 +442,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: &Config{
 				KratosURL:          "http://kratos:4433",
 				Port:               "8888",
-				CacheTTL:           5 * time.Minute,
+				CacheTTL:           60 * time.Second,
+				BackendTokenTTL:    5 * time.Minute,
 				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
 				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
@@ -354,9 +455,11 @@ func TestConfig_Validate(t *testing.T) {
 			config: &Config{
 				KratosURL:          "http://kratos:4433",
 				Port:               "8888",
-				CacheTTL:           5 * time.Minute,
+				CacheTTL:           60 * time.Second,
+				BackendTokenTTL:    5 * time.Minute,
 				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSecret: "",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr:     true,
 			errContains: "BACKEND_TOKEN_SECRET",
@@ -366,9 +469,11 @@ func TestConfig_Validate(t *testing.T) {
 			config: &Config{
 				KratosURL:          "http://kratos:4433",
 				Port:               "8888",
-				CacheTTL:           5 * time.Minute,
+				CacheTTL:           60 * time.Second,
+				BackendTokenTTL:    5 * time.Minute,
 				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSecret: "short-secret",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr:     true,
 			errContains: "BACKEND_TOKEN_SECRET must be at least 32 characters",
@@ -389,4 +494,149 @@ func TestConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfig_BoundedSessionCacheAndJWT(t *testing.T) {
+	// Test Load() caps CacheTTL to <= 60s
+	t.Run("Load caps CACHE_TTL to 60s", func(t *testing.T) {
+		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		os.Setenv("CACHE_TTL", "10m")
+		defer func() {
+			os.Unsetenv("CSRF_SECRET")
+			os.Unsetenv("BACKEND_TOKEN_SECRET")
+			os.Unsetenv("INTERNAL_AUTH_SECRET")
+			os.Unsetenv("CACHE_TTL")
+		}()
+
+		cfg, err := Load()
+		assert.NoError(t, err)
+		assert.Equal(t, 60*time.Second, cfg.CacheTTL, "CACHE_TTL must be capped to <= 60s")
+	})
+
+	// Test default CacheTTL is <= 60s
+	t.Run("default CacheTTL is 60s", func(t *testing.T) {
+		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		os.Unsetenv("CACHE_TTL")
+		defer func() {
+			os.Unsetenv("CSRF_SECRET")
+			os.Unsetenv("BACKEND_TOKEN_SECRET")
+			os.Unsetenv("INTERNAL_AUTH_SECRET")
+		}()
+
+		cfg, err := Load()
+		assert.NoError(t, err)
+		assert.Equal(t, 60*time.Second, cfg.CacheTTL, "Default CacheTTL must be 60s")
+	})
+
+	// Test Load() caps BackendTokenTTL to <= 5m
+	t.Run("Load caps BACKEND_TOKEN_TTL to 5m", func(t *testing.T) {
+		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		os.Setenv("BACKEND_TOKEN_TTL", "30m")
+		defer func() {
+			os.Unsetenv("CSRF_SECRET")
+			os.Unsetenv("BACKEND_TOKEN_SECRET")
+			os.Unsetenv("INTERNAL_AUTH_SECRET")
+			os.Unsetenv("BACKEND_TOKEN_TTL")
+		}()
+
+		cfg, err := Load()
+		assert.NoError(t, err)
+		assert.Equal(t, 5*time.Minute, cfg.BackendTokenTTL, "BACKEND_TOKEN_TTL must be capped to <= 5m")
+	})
+
+	// Test default BackendTokenTTL is <= 5m
+	t.Run("default BackendTokenTTL is 5m", func(t *testing.T) {
+		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		os.Unsetenv("BACKEND_TOKEN_TTL")
+		defer func() {
+			os.Unsetenv("CSRF_SECRET")
+			os.Unsetenv("BACKEND_TOKEN_SECRET")
+			os.Unsetenv("INTERNAL_AUTH_SECRET")
+		}()
+
+		cfg, err := Load()
+		assert.NoError(t, err)
+		assert.Equal(t, 5*time.Minute, cfg.BackendTokenTTL, "Default BackendTokenTTL must be 5m")
+	})
+
+	// Test Validate() bounds
+	t.Run("Validate enforces bounds and positive values", func(t *testing.T) {
+		baseCfg := func() *Config {
+			return &Config{
+				KratosURL:          "http://kratos:4433",
+				Port:               "8888",
+				CacheTTL:           60 * time.Second,
+				BackendTokenTTL:    5 * time.Minute,
+				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
+			}
+		}
+
+		// Valid
+		assert.NoError(t, baseCfg().Validate())
+
+		// CacheTTL > 60s
+		c := baseCfg()
+		c.CacheTTL = 61 * time.Second
+		err := c.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "CACHE_TTL cannot exceed 60s")
+
+		// BackendTokenTTL <= 0
+		c = baseCfg()
+		c.BackendTokenTTL = 0
+		err = c.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "BACKEND_TOKEN_TTL must be positive")
+
+		// BackendTokenTTL > 5m
+		c = baseCfg()
+		c.BackendTokenTTL = 6 * time.Minute
+		err = c.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "BACKEND_TOKEN_TTL cannot exceed 5m")
+
+		// IntrospectRateLimit < 0
+		c = baseCfg()
+		c.IntrospectRateLimit = -1
+		err = c.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "INTROSPECT_RATE_LIMIT cannot be negative")
+
+		// IntrospectBurst < 0
+		c = baseCfg()
+		c.IntrospectBurst = -1
+		err = c.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "INTROSPECT_BURST cannot be negative")
+	})
+
+	t.Run("introspect rate limit env parsing", func(t *testing.T) {
+		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		os.Setenv("INTROSPECT_RATE_LIMIT", "25.5")
+		os.Setenv("INTROSPECT_BURST", "150")
+		defer func() {
+			os.Unsetenv("CSRF_SECRET")
+			os.Unsetenv("BACKEND_TOKEN_SECRET")
+			os.Unsetenv("INTERNAL_AUTH_SECRET")
+			os.Unsetenv("INTROSPECT_RATE_LIMIT")
+			os.Unsetenv("INTROSPECT_BURST")
+		}()
+
+		cfg, err := Load()
+		assert.NoError(t, err)
+		assert.Equal(t, 25.5, cfg.IntrospectRateLimit)
+		assert.Equal(t, 150, cfg.IntrospectBurst)
+	})
 }

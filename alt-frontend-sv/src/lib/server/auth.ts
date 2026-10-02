@@ -2,7 +2,12 @@ import type { Cookies } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { parseAuthHubCsrfToken } from "$lib/schema/csrf";
 
-const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
+// A04: Default to HTTPS. When FRONTEND_TLS_LISTEN=true on auth-hub, the
+// frontend-facing listener runs on :8443 with server-only TLS (no client cert).
+// SvelteKit verifies the server's leaf certificate against the CA file
+// specified by NODE_EXTRA_CA_CERTS (native Node.js feature). Hostname
+// verification ensures the cert CN/SAN matches "auth-hub".
+const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "https://auth-hub:8443";
 const AUTH_HUB_TIMEOUT_MS = 3000;
 
 // Name of the double-submit cookie mirroring the auth-hub-issued CSRF token.

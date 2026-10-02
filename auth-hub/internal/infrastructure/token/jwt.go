@@ -6,6 +6,7 @@ import (
 	"auth-hub/internal/domain"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // JWTConfig holds JWT generation configuration.
@@ -72,4 +73,58 @@ func (j *JWTIssuer) IssueBackendToken(identity *domain.Identity, sessionID strin
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(j.cfg.Secret))
+}
+
+// IntrospectBackendToken validates a signed JWT token and returns its key claims.
+func (j *JWTIssuer) IntrospectBackendToken(tokenStr string) (*domain.IntrospectedToken, error) {
+	token, err := jwt.ParseWithClaims(tokenStr, &backendClaims{}, func(token *jwt.Token) (interface{}, error) {
+		// Strict HS256 enforcement
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		if token.Header["alg"] != "HS256" {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(j.cfg.Secret), nil
+	}, jwt.WithIssuer(j.cfg.Issuer), jwt.WithAudience(j.cfg.Audience), jwt.WithExpirationRequired())
+
+	if err != nil {
+		return &domain.IntrospectedToken{Active: false}, err
+	}
+
+	if claims, ok := token.Claims.(*backendClaims); ok && token.Valid {
+		if claims.Subject == "" || claims.TenantID == "" {
+			return &domain.IntrospectedToken{Active: false}, jwt.ErrInvalidKey
+		}
+
+		if err := validateUUID(claims.Subject); err != nil {
+			return &domain.IntrospectedToken{Active: false}, jwt.ErrInvalidKey
+		}
+		if err := validateUUID(claims.TenantID); err != nil {
+			return &domain.IntrospectedToken{Active: false}, jwt.ErrInvalidKey
+		}
+
+		var exp int64
+		if claims.ExpiresAt != nil {
+			exp = claims.ExpiresAt.Unix()
+		}
+
+		return &domain.IntrospectedToken{
+			Active:   true,
+			Sub:      claims.Subject,
+			TenantID: claims.TenantID,
+			Exp:      exp,
+		}, nil
+	}
+
+	return &domain.IntrospectedToken{Active: false}, jwt.ErrSignatureInvalid
+}
+
+func validateUUID(u string) error {
+	fromExt, err := uuid.Parse(u)
+	if err != nil {
+		return err
+	}
+	_ = fromExt
+	return nil
 }

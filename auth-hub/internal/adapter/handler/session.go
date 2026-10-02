@@ -11,12 +11,13 @@ import (
 
 // SessionHandler handles /session endpoint returning JSON for the frontend.
 type SessionHandler struct {
-	uc *usecase.GetSession
+	uc           *usecase.GetSession
+	invalidateUC *usecase.InvalidateSession
 }
 
 // NewSessionHandler creates a new session handler.
-func NewSessionHandler(uc *usecase.GetSession) *SessionHandler {
-	return &SessionHandler{uc: uc}
+func NewSessionHandler(uc *usecase.GetSession, invalidateUC *usecase.InvalidateSession) *SessionHandler {
+	return &SessionHandler{uc: uc, invalidateUC: invalidateUC}
 }
 
 // sessionUser represents the user object in the response.
@@ -71,4 +72,23 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 			Active: true,
 		},
 	})
+}
+
+// HandleInvalidate processes POST /session/invalidate.
+// Requires presenting the session cookie being invalidated (authenticated invalidation).
+func (h *SessionHandler) HandleInvalidate(c echo.Context) error {
+	cookie, err := c.Cookie("ory_kratos_session")
+	if err != nil || cookie == nil || cookie.Value == "" {
+		return echo.NewHTTPError(http.StatusUnauthorized, "session cookie not found")
+	}
+
+	if h.invalidateUC == nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "session invalidation not wired")
+	}
+
+	if err := h.invalidateUC.Execute(c.Request().Context(), cookie.Value); err != nil {
+		return mapDomainError(err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
 }

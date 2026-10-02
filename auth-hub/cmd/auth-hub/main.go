@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -53,6 +54,17 @@ func wireInternalAuth(cfg *config.Config) echo.MiddlewareFunc {
 	return appmiddleware.InternalAuth(cfg.InternalAuthSecret)
 }
 
+// buildPlaintextHandler resolves the http.Handler for the plaintext port :8888.
+// By default, it wraps the Echo router with PlaintextHealthOnly so that business
+// routes (/session, /validate, /csrf, /internal) are never served over unencrypted HTTP.
+// Only explicit dev opt-in (devPlaintextAllowed=true) serves business routes over plaintext.
+func buildPlaintextHandler(e *echo.Echo, devPlaintextAllowed bool) http.Handler {
+	if devPlaintextAllowed {
+		return e
+	}
+	return appmiddleware.PlaintextHealthOnly(e)
+}
+
 func main() {
 	// Handle healthcheck subcommand (for Docker healthcheck in distroless image)
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
@@ -70,9 +82,8 @@ func main() {
 	otelCfg := otel.ConfigFromEnv()
 	otelShutdown, err := otel.InitProvider(ctx, otelCfg)
 	if err != nil {
-		slog.Warn("failed to initialize OpenTelemetry, continuing without tracing", "error", err)
-		otelCfg.Enabled = false
-		otelShutdown = func(context.Context) error { return nil }
+		slog.Error("failed to initialize OpenTelemetry", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize structured logger
@@ -129,13 +140,15 @@ func main() {
 	sessionUC := usecase.NewGetSession(kratosGateway, sessionCache, jwtIssuer, slog.Default())
 	csrfUC := usecase.NewGenerateCSRF(kratosGateway, csrfGenerator, slog.Default())
 	systemUserUC := usecase.NewGetSystemUser(kratosGateway, slog.Default())
+	invalidateUC := usecase.NewInvalidateSession(sessionCache, slog.Default())
+	introspectUC := usecase.NewIntrospectToken(jwtIssuer)
 
 	// Handlers
 	validateHandler := adapterhandler.NewValidateHandler(validateUC, jwtIssuer)
-	sessionHandler := adapterhandler.NewSessionHandler(sessionUC)
+	sessionHandler := adapterhandler.NewSessionHandler(sessionUC, invalidateUC)
 	csrfHandler := adapterhandler.NewCSRFHandler(csrfUC)
 	healthHandler := adapterhandler.NewHealthHandler()
-	internalHandler := adapterhandler.NewInternalHandler(systemUserUC)
+	internalHandler := adapterhandler.NewInternalHandler(systemUserUC, invalidateUC, introspectUC)
 
 	// Setup Echo server
 	e := echo.New()
@@ -206,21 +219,38 @@ func main() {
 		csrfBurst = 10
 	}
 	csrfRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.CSRFRateLimit), csrfBurst)
-	internalRL := appmiddleware.NewRateLimiter(10.0/60.0, 3) // 10 req/min
+	internalRL := appmiddleware.NewRateLimiter(10.0/60.0, 3) // 10 req/min, burst 3 for cache invalidation & system user
+
+	introspectBurst := cfg.IntrospectBurst
+	if introspectBurst <= 0 {
+		introspectBurst = 100
+	}
+	introspectLimit := cfg.IntrospectRateLimit
+	if introspectLimit <= 0 {
+		introspectLimit = 1200.0 / 60.0
+	}
+	introspectRL := appmiddleware.NewRateLimiter(rate.Limit(introspectLimit), introspectBurst)
 
 	// Public routes
 	e.GET("/validate", validateHandler.Handle, validateRL.Middleware())
 	e.GET("/session", sessionHandler.Handle, sessionRL.Middleware())
+	e.POST("/session/invalidate", sessionHandler.HandleInvalidate, sessionRL.Middleware())
 	e.POST("/csrf", csrfHandler.Handle, csrfRL.Middleware())
 	e.GET("/health", healthHandler.Handle)
 
 	// Internal routes (protected by a shared bearer that is deliberately not
-	// the JWT signing key — see wireInternalAuth)
+	// the JWT signing key — see wireInternalAuth, and by mTLS).
 	internalGroup := e.Group("/internal",
 		internalRL.Middleware(),
+		appmiddleware.RequireMTLS(),
 	)
 	internalGroup.Use(wireInternalAuth(cfg))
 	internalGroup.GET("/system-user", internalHandler.HandleSystemUser)
+	internalGroup.POST("/session/invalidate", internalHandler.HandleInvalidateSession)
+
+	// Introspect route: dedicated high-capacity limiter for Search/Sov RPCs, mTLS ONLY (no shared bearer), narrow CN check
+	introspectGroup := e.Group("/internal", introspectRL.Middleware())
+	introspectGroup.POST("/token/introspect", internalHandler.HandleIntrospectToken, appmiddleware.RequireMTLSPeer([]string{"search-indexer", "knowledge-sovereign"}))
 	// Names the secret this group is keyed on, never its value: an operator
 	// reading the log can tell the two secrets apart without a way to learn
 	// either (auth-hub Rule 3).
@@ -228,16 +258,94 @@ func main() {
 
 	// Start server with errgroup for graceful shutdown
 	address := fmt.Sprintf(":%s", cfg.Port)
-	slog.InfoContext(ctx, "starting auth-hub server", "address", address)
+
+	// A04 — Optional frontend HTTPS listener (server-authenticated TLS, no
+	// client cert required). When enabled, the plaintext :8888 listener is
+	// restricted to /health only so that session cookies and backend JWTs
+	// never travel unencrypted.
+	var frontendTLSServer *http.Server
+	frontendTLSEnabled := os.Getenv("FRONTEND_TLS_LISTEN") == "true"
+	if frontendTLSEnabled {
+		frontendTLSPort := os.Getenv("FRONTEND_TLS_PORT")
+		if frontendTLSPort == "" {
+			frontendTLSPort = "8443"
+		}
+		// Reuse the mTLS leaf cert/key for the frontend listener. The frontend
+		// only verifies the server's identity (CA file on the SvelteKit side);
+		// it does not present its own client certificate.
+		certFile := os.Getenv("FRONTEND_TLS_CERT_FILE")
+		if certFile == "" {
+			certFile = os.Getenv("MTLS_CERT_FILE")
+		}
+		keyFile := os.Getenv("FRONTEND_TLS_KEY_FILE")
+		if keyFile == "" {
+			keyFile = os.Getenv("MTLS_KEY_FILE")
+		}
+
+		frontendTLSCfg, err := tlsutil.LoadServerOnlyConfig(certFile, keyFile)
+		if err != nil {
+			slog.ErrorContext(ctx, "frontend TLS listener config failed, aborting startup (fail-closed)", "error", err)
+			os.Exit(1)
+		}
+
+		frontendTLSServer = tlsutil.NewMTLSHTTPServer(":"+frontendTLSPort, frontendTLSCfg, e)
+		slog.InfoContext(ctx, "frontend_tls_listener_enabled",
+			"port", frontendTLSPort,
+			"client_auth", "none",
+			"cert_source", certFile,
+			"surfaces", "/session,/session/invalidate,/csrf,/validate,/health")
+
+	} else {
+		devPlaintextAllowed := os.Getenv("AUTH_HUB_DEV_PLAINTEXT") == "true"
+		if !devPlaintextAllowed {
+			slog.ErrorContext(ctx, "frontend TLS listener is disabled: production requires FRONTEND_TLS_LISTEN=true (set AUTH_HUB_DEV_PLAINTEXT=true to explicitly permit insecure dev mode)")
+			os.Exit(1)
+		}
+		slog.WarnContext(ctx, "auth_hub_dev_plaintext_enabled",
+			"tls", false,
+			"business_routes", "plaintext",
+			"warning", "explicit dev mode: do not use in production")
+	}
+
+	// Restrict the plaintext listener to /health only. Business routes
+	// must use the HTTPS frontend listener.
+	if os.Getenv("AUTH_HUB_DEV_PLAINTEXT") != "true" || frontendTLSEnabled {
+		slog.InfoContext(ctx, "plaintext_listener_restricted",
+			"allowed", "/health",
+			"reason", "A04: business endpoints require HTTPS")
+	}
+
+	slog.InfoContext(ctx, "starting auth-hub server", "address", address,
+		"frontend_tls_enabled", frontendTLSEnabled)
 
 	g, gCtx := errgroup.WithContext(ctx)
 
+	// Wrap the plaintext handler: ALWAYS PlaintextHealthOnly unless explicit dev opt-in
+	devPlaintextAllowed := os.Getenv("AUTH_HUB_DEV_PLAINTEXT") == "true"
+	plaintextHandler := buildPlaintextHandler(e, devPlaintextAllowed && !frontendTLSEnabled)
+
+	plaintextServer := &http.Server{
+		Addr:    address,
+		Handler: plaintextHandler,
+	}
+
 	g.Go(func() error {
-		if err := e.Start(address); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := plaintextServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 		return nil
 	})
+
+	if frontendTLSServer != nil {
+		g.Go(func() error {
+			slog.InfoContext(ctx, "frontend HTTPS listener starting",
+				"port", os.Getenv("FRONTEND_TLS_PORT"))
+			if err := frontendTLSServer.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return err
+			}
+			return nil
+		})
+	}
 
 	// Optional mTLS HTTPS listener mirroring the Echo handler.
 	// ClientAuth defaults to NoClientCert; enabled by MTLS_LISTEN=true.
@@ -251,7 +359,7 @@ func main() {
 			os.Getenv("MTLS_CERT_FILE"),
 			os.Getenv("MTLS_KEY_FILE"),
 			os.Getenv("MTLS_CA_FILE"),
-			tlsutil.OptionsFromEnv()...,
+			append(tlsutil.OptionsFromEnv(), tlsutil.WithClientAuth(tls.RequireAndVerifyClientCert))...,
 		)
 		if err != nil {
 			slog.ErrorContext(ctx, "mTLS listener config failed, aborting startup (fail-closed)", "error", err)
@@ -290,10 +398,13 @@ func main() {
 		slog.Info("shutting down server...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		if frontendTLSServer != nil {
+			_ = frontendTLSServer.Shutdown(shutdownCtx)
+		}
 		if mtlsServer != nil {
 			_ = mtlsServer.Shutdown(shutdownCtx)
 		}
-		return e.Shutdown(shutdownCtx)
+		return plaintextServer.Shutdown(shutdownCtx)
 	})
 
 	g.Go(func() error {

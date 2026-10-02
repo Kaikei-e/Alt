@@ -15,7 +15,8 @@ func baseValidConfig() *Config {
 	return &Config{
 		KratosURL:          "http://kratos:4433",
 		Port:               "8888",
-		CacheTTL:           5 * time.Minute,
+		CacheTTL:           60 * time.Second,
+		BackendTokenTTL:    5 * time.Minute,
 		CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 		BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
 		InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",

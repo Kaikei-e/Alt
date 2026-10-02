@@ -234,3 +234,24 @@ func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler)
 		IdleTimeout:       60 * time.Second,
 	}
 }
+
+// LoadServerOnlyConfig returns a *tls.Config wired for a server-authenticated
+// HTTPS listener that does NOT require client certificates. This is used for
+// the frontend-facing listener (A04): SvelteKit verifies the server's leaf
+// certificate against a CA file but does not present its own client certificate.
+//
+// The leaf cert/key are loaded via the same hot-reloading certReloader so that
+// step-ca rotations take effect without a restart, just like the mTLS listener.
+func LoadServerOnlyConfig(certPath, keyPath string) (*tls.Config, error) {
+	reloader, err := newCertReloader(certPath, keyPath)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		ClientAuth: tls.NoClientCert,
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return reloader.load()
+		},
+	}, nil
+}

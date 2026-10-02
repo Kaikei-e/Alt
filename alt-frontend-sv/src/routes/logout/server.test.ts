@@ -53,4 +53,26 @@ describe("POST /logout", () => {
 
 		expect(invalidateSessionCache).not.toHaveBeenCalled();
 	});
+
+	it("still revokes flow if auth-hub invalidateSessionCache throws 500", async () => {
+		const cookieHeader = "ory_kratos_session=to-be-logged-out";
+		invalidateSessionCache.mockRejectedValueOnce(new Error("auth-hub 500 error"));
+
+		await expect(POST(makeRequestEvent(cookieHeader))).rejects.toMatchObject({
+			status: 303,
+		});
+
+		expect(invalidateSessionCache).toHaveBeenCalledWith(cookieHeader);
+		expect(createBrowserLogoutFlow).toHaveBeenCalled();
+	});
+
+	it("returns 500 if flow creation fails (no false OK)", async () => {
+		const cookieHeader = "ory_kratos_session=to-be-logged-out";
+		createBrowserLogoutFlow.mockRejectedValueOnce(new Error("kratos 500 error"));
+
+		const response = await POST(makeRequestEvent(cookieHeader));
+
+		expect(response).toBeInstanceOf(Response);
+		expect(response.status).toBe(500);
+	});
 });

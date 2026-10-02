@@ -74,3 +74,18 @@ func TestSessionCache_NotYetExpired_StaysValid(t *testing.T) {
 	assert.True(t, found, "entry with a future expiresAt must still be valid")
 	assert.NotNil(t, got)
 }
+
+func TestSessionCache_Delete(t *testing.T) {
+	c := NewSessionCache(60 * time.Second)
+	c.Set("sess-to-delete", domain.CachedSession{UserID: "user-1"})
+
+	got, found := c.Get("sess-to-delete")
+	assert.True(t, found)
+	assert.NotNil(t, got)
+
+	c.Delete("sess-to-delete")
+
+	got, found = c.Get("sess-to-delete")
+	assert.False(t, found)
+	assert.Nil(t, got)
+}
