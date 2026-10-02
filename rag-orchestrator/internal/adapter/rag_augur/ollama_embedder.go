@@ -17,34 +17,45 @@ import (
 )
 
 type OllamaEmbedder struct {
-	BaseURL string
-	Model   string
-	Client  *http.Client
-	logger  *slog.Logger
+	BaseURL        string
+	Model          string
+	Client         *http.Client
+	InferenceToken string
+	logger         *slog.Logger
 }
 
 // NewOllamaEmbedder constructs an embedder.
 // If client is nil, a default http.Client is created with the given timeout.
 // If logger is nil, slog.Default() is used.
-func NewOllamaEmbedder(baseURL, model string, timeoutSeconds int, logger *slog.Logger, client ...*http.Client) *OllamaEmbedder {
+func NewOllamaEmbedder(baseURL, model string, timeoutSeconds int, logger *slog.Logger, inferenceToken string, client ...*http.Client) *OllamaEmbedder {
 	var c *http.Client
 	if len(client) > 0 && client[0] != nil {
-		c = client[0]
+		clone := *client[0]
+		clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+		c = &clone
 	} else {
 		timeout := 30 * time.Second
 		if timeoutSeconds > 0 {
 			timeout = time.Duration(timeoutSeconds) * time.Second
 		}
-		c = &http.Client{Timeout: timeout}
+		c = &http.Client{
+			Timeout: timeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &OllamaEmbedder{
-		BaseURL: baseURL,
-		Model:   model,
-		Client:  c,
-		logger:  logger,
+		BaseURL:        baseURL,
+		Model:          model,
+		Client:         c,
+		InferenceToken: inferenceToken,
+		logger:         logger,
 	}
 }
 
@@ -80,6 +91,9 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if e.InferenceToken != "" {
+		req.Header.Set("Authorization", "Bearer "+e.InferenceToken)
+	}
 
 	resp, err := e.Client.Do(req)
 	if err != nil {

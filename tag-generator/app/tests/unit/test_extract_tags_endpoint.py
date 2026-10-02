@@ -11,11 +11,18 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
-def client():
-    """Create a test client with mocked background service."""
+def client(monkeypatch: pytest.MonkeyPatch):
+    """Create a test client authenticated as legitimate caller recap-worker."""
+    import sys
+    monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
+    monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
+    if "auth_service" in sys.modules:
+        del sys.modules["auth_service"]
     from auth_service import app
 
-    return TestClient(app)
+    test_client = TestClient(app, client=("127.0.0.1", 44444))
+    test_client.headers = {"x-alt-peer-identity": "recap-worker"}  # type: ignore[assignment]
+    return test_client
 
 
 @pytest.fixture()

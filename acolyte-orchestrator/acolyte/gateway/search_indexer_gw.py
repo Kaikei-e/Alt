@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from acolyte.config.settings import Settings
     from acolyte.port.content_store import ContentStorePort
 
+from acolyte.infra.user_identity import get_acting_user_jwt
+
 logger = structlog.get_logger(__name__)
 
 # Cap the query string logged at INFO so HyDE-generated hypothetical passages
@@ -71,7 +73,7 @@ class SearchIndexerGateway:
         """Search articles via GET /v1/search.
 
         Stores content in ContentStore; returns metadata-only ArticleHit.
-        Authentication is established at the TLS transport layer (mTLS).
+        Authentication is established at the TLS transport layer (mTLS) and verified via JWT.
         """
         if not isinstance(user_id, UUID):
             msg = "user_id must be a UUID for article search"
@@ -87,10 +89,16 @@ class SearchIndexerGateway:
         if published_before is not None:
             params["published_before"] = published_before.isoformat()
 
+        headers = {}
+        token = get_acting_user_jwt()
+        if token:
+            headers["x-alt-backend-token"] = token
+
         try:
             resp = await self._client.get(
                 f"{self._base_url}/v1/search",
                 params=params,
+                headers=headers,
             )
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:

@@ -295,7 +295,7 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 		var indexers []usecase.IndexArticleUsecase
 		for _, eURL := range embedderURLs {
 			embedder := rag_augur.NewOllamaEmbedder(
-				strings.TrimSpace(eURL), embeddingModel, 120, logger,
+				strings.TrimSpace(eURL), embeddingModel, 120, logger, "",
 				httpclient.NewPooledClient(120*time.Second),
 			)
 			indexers = append(indexers, usecase.NewIndexArticleUsecase(
@@ -531,7 +531,7 @@ func newRebuildDeps(ctx context.Context, logger *slog.Logger) (*rebuildDeps, err
 	var versions []string
 	for _, url := range urls {
 		embedder := rag_augur.NewOllamaEmbedder(
-			url, model, rebuildEmbedderTimeoutSeconds, logger,
+			url, model, rebuildEmbedderTimeoutSeconds, logger, "",
 			httpclient.NewPooledClient(rebuildEmbedderTimeoutSeconds*time.Second),
 		)
 		versions = append(versions, embedder.Version())

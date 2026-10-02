@@ -5,6 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
+import jwt
+from datetime import datetime, UTC
+import tempfile
+import os
 
 import pytest
 from connectrpc.code import Code
@@ -23,6 +27,14 @@ from acolyte.usecase.rerun_section_uc import RerunSectionUsecase
 from acolyte.usecase.start_run_uc import StartRunUsecase
 from tests.conftest import make_request_ctx
 
+
+
+def _generate_test_token(user_id: UUID, secret: str) -> str:
+    return jwt.encode(
+        {"sub": str(user_id), "iss": "auth-hub", "aud": "alt-backend", "exp": datetime.now(UTC).timestamp() + 300},
+        secret,
+        algorithm="HS256"
+    )
 
 @pytest.mark.asyncio
 async def test_create_report_stores_user_id() -> None:
@@ -312,45 +324,70 @@ async def test_unauthenticated_requests_rejected() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resume_pipeline_derives_owner_from_report() -> None:
-    repo = MemoryReportGateway()
-    jobs = MemoryJobGateway()
-    owner_id = uuid4()
-    report = await repo.create_report("Owned Report", "weekly_briefing", user_id=owner_id)
-    run = await jobs.create_run(report.report_id, 1)
+async def test_resume_pipeline_derives_owner_from_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = b"test-secret"
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(secret)
+        temp_path = f.name
 
-    graph = MagicMock()
-    graph.ainvoke = AsyncMock(return_value={"final_version_no": 1})
-    service = AcolyteConnectService(Settings(checkpoint_enabled=False), repo, jobs, graph=graph)
+    try:
+        monkeypatch.setenv("BACKEND_TOKEN_SECRET_FILE", temp_path)
+        monkeypatch.setenv("BACKEND_TOKEN_VERIFICATION", "enabled")
 
-    await service.resume_pipeline(str(report.report_id), str(run.run_id), {"topic": "AI"})
-    graph.ainvoke.assert_awaited_once()
-    invoked_state = graph.ainvoke.call_args[0][0]
-    assert invoked_state["user_id"] == owner_id
+        repo = MemoryReportGateway()
+        jobs = MemoryJobGateway()
+        owner_id = uuid4()
+        report = await repo.create_report("Owned Report", "weekly_briefing", user_id=owner_id)
+        run = await jobs.create_run(report.report_id, 1)
+
+        graph = MagicMock()
+        graph.ainvoke = AsyncMock(return_value={"final_version_no": 1})
+
+        settings = Settings(checkpoint_enabled=False)
+        service = AcolyteConnectService(settings, repo, jobs, graph=graph)
+
+        await service.resume_pipeline(str(report.report_id), str(run.run_id), {"topic": "AI"}, token=_generate_test_token(report.user_id, "test-secret"))
+        graph.ainvoke.assert_awaited_once()
+        invoked_state = graph.ainvoke.call_args[0][0]
+        assert invoked_state["user_id"] == owner_id
+    finally:
+        os.unlink(temp_path)
 
 
 @pytest.mark.asyncio
-async def test_resume_pipeline_refuses_null_owner_report() -> None:
-    repo = MemoryReportGateway()
-    jobs = MemoryJobGateway()
-    legacy_id = uuid4()
-    legacy_report = Report(
-        report_id=legacy_id,
-        title="Unowned Legacy",
-        report_type="weekly_briefing",
-        current_version=0,
-        latest_successful_run_id=None,
-        created_at=datetime.now(UTC),
-        user_id=None,
-    )
-    repo._reports[legacy_id] = legacy_report
-    run = await jobs.create_run(legacy_id, 1)
+async def test_resume_pipeline_refuses_null_owner_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = b"test-secret"
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(secret)
+        temp_path = f.name
 
-    service = AcolyteConnectService(Settings(), repo, jobs)
-    with pytest.raises(ConnectError) as exc_info:
-        await service.resume_pipeline(str(legacy_id), str(run.run_id), {"topic": "AI"})
-    assert exc_info.value.code == Code.FAILED_PRECONDITION
-    assert "backfill" in exc_info.value.message.lower()
+    try:
+        monkeypatch.setenv("BACKEND_TOKEN_SECRET_FILE", temp_path)
+        monkeypatch.setenv("BACKEND_TOKEN_VERIFICATION", "enabled")
+
+        repo = MemoryReportGateway()
+        jobs = MemoryJobGateway()
+        legacy_id = uuid4()
+        legacy_report = Report(
+            report_id=legacy_id,
+            title="Unowned Legacy",
+            report_type="weekly_briefing",
+            current_version=0,
+            latest_successful_run_id=None,
+            created_at=datetime.now(UTC),
+            user_id=None,
+        )
+        repo._reports[legacy_id] = legacy_report
+        run = await jobs.create_run(legacy_id, 1)
+
+        settings = Settings(checkpoint_enabled=False)
+        service = AcolyteConnectService(settings, repo, jobs)
+        with pytest.raises(ConnectError) as exc_info:
+            await service.resume_pipeline(str(legacy_id), str(run.run_id), {"topic": "AI"}, token=_generate_test_token(uuid4(), "test-secret"))
+        assert exc_info.value.code == Code.FAILED_PRECONDITION
+        assert "backfill" in exc_info.value.message.lower()
+    finally:
+        os.unlink(temp_path)
 
 
 def test_disabled_mode_dev_user_resolution() -> None:

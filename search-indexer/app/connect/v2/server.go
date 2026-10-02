@@ -23,7 +23,7 @@ import (
 // on :9443); the plaintext h2c mux here carries only a shared rate limiter and
 // the OTel server-side interceptor so Connect-RPC procedures emit spans into
 // the rask_logs otel_traces table.
-func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, rlCfg config.RateLimitConfig) http.Handler {
+func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, authUsecase *usecase.AuthUsecase, rlCfg config.RateLimitConfig) http.Handler {
 	mux := http.NewServeMux()
 
 	// Health check endpoint stays open so orchestrators can probe liveness.
@@ -45,7 +45,7 @@ func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searc
 	}
 	interceptors = append(interceptors, rateLimit)
 
-	searchHandler := search.NewHandler(searchByUserUsecase, searchRecapsUsecase)
+	searchHandler := search.NewHandler(searchByUserUsecase, searchRecapsUsecase, authUsecase)
 	searchPath, searchServiceHandler := searchv2connect.NewSearchServiceHandler(
 		searchHandler,
 		connect.WithInterceptors(interceptors...),

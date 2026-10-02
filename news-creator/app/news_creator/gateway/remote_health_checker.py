@@ -29,6 +29,7 @@ class RemoteHealthChecker:
         cooldown_seconds: int = 60,
         timeout_seconds: int = 10,
         model_overrides: dict[str, str] | None = None,
+        inference_token: str | None = None,
     ):
         self._remotes = remotes
         self._required_model = required_model
@@ -36,6 +37,7 @@ class RemoteHealthChecker:
         self._interval_seconds = interval_seconds
         self._cooldown_seconds = cooldown_seconds
         self._timeout_seconds = timeout_seconds
+        self._inference_token = inference_token
         self._session: aiohttp.ClientSession | None = None
         self._task: asyncio.Task | None = None
 
@@ -158,7 +160,7 @@ class RemoteHealthChecker:
             tags_url = f"{url.rstrip('/')}/api/tags"
             if not (self._session is not None):
                 raise RuntimeError("Session not initialized")
-            async with self._session.get(tags_url) as response:
+            async with self._session.get(tags_url, allow_redirects=False) as response:
                 if response.status != 200:
                     state["healthy"] = False
                     state["consecutive_failures"] += 1
@@ -240,7 +242,10 @@ class RemoteHealthChecker:
             total=self._timeout_seconds,
             connect=5,
         )
-        self._session = aiohttp.ClientSession(timeout=timeout)
+        headers = {}
+        if self._inference_token:
+            headers["Authorization"] = f"Bearer {self._inference_token}"
+        self._session = aiohttp.ClientSession(timeout=timeout, headers=headers)
         await self._check_all()
         self._task = asyncio.create_task(self._loop())
         logger.info(

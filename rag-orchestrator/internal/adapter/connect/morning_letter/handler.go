@@ -12,6 +12,7 @@ import (
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/domain/authcontext"
 	"rag-orchestrator/internal/usecase"
 
 	"connectrpc.com/connect"
@@ -75,6 +76,10 @@ func (h *Handler) StreamChat(
 	if err != nil {
 		h.logger.Warn("morning letter stream chat rejected", slog.String("error", err.Error()))
 		return connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	if token := req.Header().Get("X-Alt-Backend-Token"); token != "" {
+		ctx = authcontext.WithJWT(ctx, token)
 	}
 
 	// Extract last user message as query

@@ -32,7 +32,13 @@ class OllamaDriver:
             connect=60,  # Connection timeout
             sock_read=self.config.llm_timeout_seconds,  # Bound per-attempt read stalls
         )
-        self.session = aiohttp.ClientSession(timeout=timeout)
+        headers = {}
+        llm_cfg = getattr(self.config, "llm", None)
+        token = getattr(llm_cfg, "inference_service_token", None) if llm_cfg else None
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        self.session = aiohttp.ClientSession(timeout=timeout, headers=headers)
         logger.info(
             "Ollama driver initialized (non-streaming)",
             extra={
@@ -146,7 +152,7 @@ class OllamaDriver:
                     raise AssertionError(
                         "Session not initialized. Call initialize() first."
                     )
-                async with self.session.post(url, json=payload) as response:
+                async with self.session.post(url, json=payload, allow_redirects=False) as response:
                     if response.status != 200:
                         text_body = await response.text()
                         error_msg = (
@@ -293,7 +299,7 @@ class OllamaDriver:
                 raise AssertionError(
                     "Session not initialized. Call initialize() first."
                 )
-            async with self.session.get(url) as response:
+            async with self.session.get(url, allow_redirects=False) as response:
                 text_body = await response.text()
 
                 if response.status != 200:

@@ -106,6 +106,7 @@ class DependencyContainer:
 
             remote_driver = RemoteOllamaDriver(
                 timeout_seconds=self.config.distributed_be_timeout_seconds,
+                inference_token=self.config.llm.inference_service_token,
             )
             health_checker = RemoteHealthChecker(
                 remotes=self.config.distributed_be_remotes,
@@ -114,6 +115,7 @@ class DependencyContainer:
                 cooldown_seconds=self.config.distributed_be_cooldown_seconds,
                 timeout_seconds=self.config.distributed_be_timeout_seconds,
                 model_overrides=self.config.distributed_be_model_overrides,
+                inference_token=self.config.llm.inference_service_token,
             )
             self.llm_provider = DistributingGateway(
                 local_gateway=self.ollama_gateway,

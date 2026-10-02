@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     )
 
     recap_db_password: SecretStr | None = Field(default=None)
+    inference_service_token: SecretStr | None = Field(default=None)
 
     @model_validator(mode="after")
     def inject_db_password(self) -> Settings:
@@ -100,6 +101,27 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"genre_subworker_threshold_overrides values must be numeric: {exc}"
             ) from exc
+
+        # Load inference token if file is provided
+        import os
+        from pathlib import Path
+        import re
+
+        token_file = os.getenv("INFERENCE_SERVICE_TOKEN_FILE")
+        if token_file:
+            path = Path(token_file)
+            if not path.is_file():
+                raise ValueError(f"Inference token file {token_file} not found")
+
+            token = path.read_text(encoding="utf-8").strip()
+            if not token:
+                raise ValueError(f"Inference token file {token_file} is empty")
+
+            token_pattern = re.compile(r"^[A-Za-z0-9._~+/-]+={0,2}$")
+            if not token_pattern.match(token):
+                raise ValueError(f"Invalid token format in {token_file}")
+
+            self.inference_service_token = SecretStr(token)
 
         return self
 

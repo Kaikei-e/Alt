@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 import os
+import tempfile
+_f = tempfile.NamedTemporaryFile(delete=False)
+_f.write(b"test-secret")
+_f.close()
+os.environ["BACKEND_TOKEN_SECRET_FILE"] = _f.name
+
+
+import os
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 from uuid import UUID

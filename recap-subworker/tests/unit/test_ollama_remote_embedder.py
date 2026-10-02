@@ -355,3 +355,96 @@ class TestOllamaRemoteEmbedder:
             # Normalized: [0.3/0.583, 0.5/0.583] ≈ [0.514, 0.857]
             # Each chunk gets a separate API call
             assert mock_client.post.call_count == 2
+
+
+class TestOllamaRemoteWire:
+    """Real wire tests for OllamaRemoteAdapter against actual local HTTP server."""
+
+    def test_ollama_remote_wire_auth_batch_and_no_redirect(self):
+        import http.server
+        import json
+        import threading
+
+        received_requests = []
+        dest_counter = [0]
+
+        class WireHandler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                pass
+
+            def do_POST(self):
+                content_len = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_len).decode("utf-8")
+                path = self.path
+                auth = self.headers.get("Authorization")
+                received_requests.append({"path": path, "auth": auth, "body": body})
+
+                if path == "/api/embed":
+                    req_json = json.loads(body)
+                    num_inputs = len(req_json.get("input", []))
+                    embeddings = [[0.1, 0.2, 0.3]] * num_inputs
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"embeddings": embeddings}).encode("utf-8"))
+
+                elif path == "/redirect-307/api/embed":
+                    self.send_response(307)
+                    self.send_header("Location", "/destination")
+                    self.end_headers()
+
+                elif path == "/destination":
+                    dest_counter[0] += 1
+                    self.send_response(200)
+                    self.end_headers()
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), WireHandler)
+        port = server.server_address[1]
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+
+        base_url = f"http://127.0.0.1:{port}"
+        try:
+            token_val = "recap-subworker-token-xyz="
+            config = EmbedderConfig(
+                model_id="test",
+                distill_model_id="test",
+                backend="ollama-remote",
+                device="cpu",
+                batch_size=8,
+                cache_size=100,
+                ollama_embed_url=base_url,
+                ollama_embed_model="test-model",
+                ollama_embed_timeout=5.0,
+                inference_service_token=token_val,
+            )
+            embedder = Embedder(config)
+            res = embedder.encode(["hello world", "test batch"])
+            assert res.shape == (2, 3)
+            assert len(received_requests) == 1
+            assert received_requests[0]["auth"] == f"Bearer {token_val}"
+
+            # 307 Redirect defense (follow_redirects=False)
+            redirect_config = EmbedderConfig(
+                model_id="test",
+                distill_model_id="test",
+                backend="ollama-remote",
+                device="cpu",
+                batch_size=8,
+                cache_size=100,
+                ollama_embed_url=f"{base_url}/redirect-307",
+                ollama_embed_model="test-model",
+                ollama_embed_timeout=5.0,
+                inference_service_token=token_val,
+            )
+            redirect_embedder = Embedder(redirect_config)
+            with pytest.raises(RuntimeError):
+                redirect_embedder.encode(["will not follow 307"])
+            assert dest_counter[0] == 0, "307 redirect destination must never be hit"
+
+        finally:
+            server.shutdown()
+            server.server_close()

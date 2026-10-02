@@ -4,7 +4,7 @@
  */
 
 import { config } from "./src/infra/config.ts";
-import { shutdownOTel, StructuredLogger } from "./src/infra/logger.ts";
+import { DataSanitizer, initializeOTel, shutdownOTel, StructuredLogger } from "./src/infra/logger.ts";
 import { EnvFileSecretManager } from "./src/gateway/env_file_secret_manager.ts";
 import { FetchHttpClient } from "./src/gateway/fetch_http_client.ts";
 import { InoreaderTokenClient } from "./src/gateway/inoreader_token_client.ts";
@@ -17,9 +17,46 @@ import { OAuthServer } from "./src/handler/oauth_server.ts";
 import { DaemonLoop } from "./src/handler/daemon.ts";
 import { CliHandler } from "./src/handler/cli.ts";
 
-const logger = new StructuredLogger("auth-token-manager");
+// StructuredLogger constructor is now pure (no OTel side-effects at import time).
+// The module-level `logger` singleton in each src file is therefore safe to import
+// for all commands.  initializeOTel() is called explicitly below only for commands
+// that export telemetry.  The health fast-path never calls it.
+
+function emergencyLog(msg: string, detail: Record<string, unknown>): void {
+  // Sanitize the full payload before serialising to stderr so that secrets
+  // passed in `detail` (e.g. error messages containing token snippets) are
+  // redacted by the same rules as structured log output.
+  const sanitized = DataSanitizer.sanitize({ level: "error", msg, ...detail });
+  console.error(JSON.stringify(sanitized));
+}
 
 async function main() {
+  const command = Deno.args[0] || "daemon";
+
+  // Health command: skip OTel entirely.  No RASK_INGEST_TOKEN_FILE read,
+  // no --allow-net to the OTLP collector.  The shared `logger` singleton from
+  // each imported module is still available – it just won't emit OTel spans.
+  if (command === "health") {
+    const configOptions = await config.loadConfig();
+    const secretManager = new EnvFileSecretManager(
+      configOptions.token_storage_path,
+    );
+    const healthUsecase = new HealthCheckUsecase(secretManager);
+    const result = await healthUsecase.execute();
+    if (result.status === "unhealthy") {
+      emergencyLog("Health check failed - service is unhealthy", {});
+      Deno.exit(1);
+    }
+    return;
+  }
+
+  // All other commands: initialise OTel BEFORE constructing the rest of the DI
+  // graph.  If RASK_INGEST_TOKEN_FILE is absent or invalid this throws and the
+  // process exits cleanly – no outbound traffic is attempted first.
+  initializeOTel();
+
+  const logger = new StructuredLogger("auth-token-manager");
+
   try {
     const configOptions = await config.loadConfig();
 
@@ -80,9 +117,9 @@ async function main() {
   }
 }
 
-// Error boundary
+// Error boundary – fires after main() so OTel may or may not be live.
 globalThis.addEventListener("error", (event) => {
-  logger.error("Unhandled error", {
+  emergencyLog("Unhandled error", {
     message: event.message,
     filename: event.filename,
     lineno: event.lineno,
@@ -91,7 +128,7 @@ globalThis.addEventListener("error", (event) => {
 });
 
 globalThis.addEventListener("unhandledrejection", (event) => {
-  logger.error("Unhandled promise rejection", {
+  emergencyLog("Unhandled promise rejection", {
     reason: event.reason instanceof Error
       ? event.reason.message
       : String(event.reason),

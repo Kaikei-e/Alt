@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/domain/authcontext"
 	"rag-orchestrator/internal/infra/httpclient"
 )
 
@@ -63,7 +64,17 @@ func (c *SearchIndexerClient) Search(ctx context.Context, query string, userID s
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	resp, err := c.Client.Do(req)
+
+	if token, ok := authcontext.JWTFromContext(ctx); ok && token != "" {
+		req.Header.Set("X-Alt-Backend-Token", token)
+	}
+
+	clientCopy := *c.Client
+	clientCopy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	resp, err := clientCopy.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("search request failed: %w", err)
 	}
@@ -115,7 +126,17 @@ func (c *SearchIndexerClient) SearchBM25(ctx context.Context, query string, limi
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	resp, err := c.Client.Do(req)
+
+	if token, ok := authcontext.JWTFromContext(ctx); ok && token != "" {
+		req.Header.Set("X-Alt-Backend-Token", token)
+	}
+
+	clientCopy := *c.Client
+	clientCopy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	resp, err := clientCopy.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("bm25 search request failed: %w", err)
 	}

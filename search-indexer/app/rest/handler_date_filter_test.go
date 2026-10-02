@@ -14,12 +14,12 @@ import (
 
 func TestHandler_SearchArticles_AcceptsPublishedAfterWithUserID(t *testing.T) {
 	mock := &mockSearchEngine{}
-	handler := NewHandler(
-		usecase.NewSearchByUserUsecase(mock),
-	)
+
+	handler := NewHandler(usecase.NewSearchByUserUsecase(mock), usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/search?q=iran&user_id=u1&published_after=2026-04-12T00:00:00Z", nil)
+	req.Header.Set("Authorization", "Bearer u1")
 	rec := httptest.NewRecorder()
 	handler.SearchArticles(rec, req)
 
@@ -30,12 +30,11 @@ func TestHandler_SearchArticles_AcceptsPublishedAfterWithUserID(t *testing.T) {
 
 func TestHandler_SearchArticles_AcceptsPublishedBeforeWithUserID(t *testing.T) {
 	mock := &mockSearchEngine{}
-	handler := NewHandler(
-		usecase.NewSearchByUserUsecase(mock),
-	)
+	handler := NewHandler(usecase.NewSearchByUserUsecase(mock), usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/search?q=iran&user_id=u1&published_before=2026-04-20T00:00:00Z", nil)
+	req.Header.Set("Authorization", "Bearer u1")
 	rec := httptest.NewRecorder()
 	handler.SearchArticles(rec, req)
 
@@ -48,14 +47,14 @@ func TestHandler_SearchArticles_AcceptsPublishedBeforeWithUserID(t *testing.T) {
 // a regression that silently drops the date window: it asserts the search
 // engine actually received the published_after/published_before bounds
 // parsed from the query string, not just that a 200 came back.
+
 func TestHandler_SearchArticles_AcceptsDateWindowWithUserID(t *testing.T) {
 	mock := &mockSearchEngine{}
-	handler := NewHandler(
-		usecase.NewSearchByUserUsecase(mock),
-	)
+	handler := NewHandler(usecase.NewSearchByUserUsecase(mock), usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/search?q=iran&user_id=u1&published_after=2026-04-12T00:00:00Z&published_before=2026-04-20T00:00:00Z", nil)
+	req.Header.Set("Authorization", "Bearer u1")
 	rec := httptest.NewRecorder()
 	handler.SearchArticles(rec, req)
 
@@ -83,12 +82,11 @@ func TestHandler_SearchArticles_AcceptsDateWindowWithUserID(t *testing.T) {
 
 func TestHandler_SearchArticles_RejectsInvertedDateFilter(t *testing.T) {
 	mock := &mockSearchEngine{}
-	handler := NewHandler(
-		usecase.NewSearchByUserUsecase(mock),
-	)
+	handler := NewHandler(usecase.NewSearchByUserUsecase(mock), usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/search?q=iran&user_id=u1&published_after=2026-04-20T00:00:00Z&published_before=2026-04-10T00:00:00Z", nil)
+	req.Header.Set("Authorization", "Bearer u1")
 	rec := httptest.NewRecorder()
 	handler.SearchArticles(rec, req)
 
@@ -102,12 +100,11 @@ func TestHandler_SearchArticles_RejectsInvertedDateFilter(t *testing.T) {
 
 func TestHandler_SearchArticles_RejectsMalformedPublishedAfter(t *testing.T) {
 	mock := &mockSearchEngine{}
-	handler := NewHandler(
-		usecase.NewSearchByUserUsecase(mock),
-	)
+	handler := NewHandler(usecase.NewSearchByUserUsecase(mock), usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/search?q=iran&user_id=u1&published_after=not-a-date", nil)
+	req.Header.Set("Authorization", "Bearer u1")
 	rec := httptest.NewRecorder()
 	handler.SearchArticles(rec, req)
 
@@ -121,12 +118,11 @@ func TestHandler_SearchArticles_RejectsMalformedPublishedAfter(t *testing.T) {
 
 func TestHandler_SearchArticles_RejectsMalformedPublishedBefore(t *testing.T) {
 	mock := &mockSearchEngine{}
-	handler := NewHandler(
-		usecase.NewSearchByUserUsecase(mock),
-	)
+	handler := NewHandler(usecase.NewSearchByUserUsecase(mock), usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/search?q=iran&user_id=u1&published_before=not-a-date", nil)
+	req.Header.Set("Authorization", "Bearer u1")
 	rec := httptest.NewRecorder()
 	handler.SearchArticles(rec, req)
 
@@ -140,12 +136,11 @@ func TestHandler_SearchArticles_RejectsMalformedPublishedBefore(t *testing.T) {
 
 func TestHandler_SearchArticles_RejectsDateFilterWithoutUserID(t *testing.T) {
 	mock := &mockSearchEngine{}
-	handler := NewHandler(
-		usecase.NewSearchByUserUsecase(mock),
-	)
+	handler := NewHandler(usecase.NewSearchByUserUsecase(mock), usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/search?q=iran&published_after=2026-04-12T00:00:00Z", nil)
+	req.Header.Set("Authorization", "Bearer u1")
 	rec := httptest.NewRecorder()
 	handler.SearchArticles(rec, req)
 
@@ -164,12 +159,11 @@ func TestHandler_SearchArticles_UserScopedResponseExposesPublishedAt(t *testing.
 			{ID: "a-1", Title: "t", Content: "c", Tags: []string{}, PublishedAt: publishedAt},
 		},
 	}
-	handler := NewHandler(
-		usecase.NewSearchByUserUsecase(mock),
-	)
+	handler := NewHandler(usecase.NewSearchByUserUsecase(mock), usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/search?q=iran&user_id=u1", nil)
+	req.Header.Set("Authorization", "Bearer u1")
 	rec := httptest.NewRecorder()
 	handler.SearchArticles(rec, req)
 

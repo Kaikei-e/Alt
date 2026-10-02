@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -93,7 +96,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	rerankHTTP := httpclient.NewPooledClient(time.Duration(cfg.Rerank.Timeout) * time.Second)
 
 	// External clients
-	embedder := rag_augur.NewOllamaEmbedder(cfg.Embedder.URL, cfg.Embedder.Model, cfg.Embedder.Timeout, log, embedderHTTP)
+	embedder := rag_augur.NewOllamaEmbedder(cfg.Embedder.URL, cfg.Embedder.Model, cfg.Embedder.Timeout, log, cfg.Embedder.InferenceToken, embedderHTTP)
 	log.Info("embedder_configured",
 		slog.String("url", cfg.Embedder.URL),
 		slog.String("model", cfg.Embedder.Model),
@@ -102,21 +105,17 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	queryExpander := rag_augur.NewQueryExpanderClient(cfg.QueryExpansion.URL, cfg.QueryExpansion.Timeout, log, queryExpanderHTTP)
 
 	var generator ragLLMClient
-	switch cfg.LLMBackend {
-	case "eino":
+	if cfg.LLMBackend == "eino" {
 		einoGenerator, err := eino.NewChatModelAdapter(context.Background(), cfg.Augur.URL, cfg.Augur.Model, log)
 		if err != nil {
-			// LLM_BACKEND=eino was explicitly requested; silently degrading to
-			// ollama would hide a real init failure behind seemingly-normal
-			// operation. Fail fast instead (CLAUDE.md rule 8).
 			log.Error("eino_generator_init_failed", slog.String("error", err.Error()))
 			panic(fmt.Errorf("LLM_BACKEND=eino explicitly configured but init failed: %w", err))
 		}
 		generator = einoGenerator
 		log.Info("llm_backend_selected", slog.String("backend", "eino"))
-	default:
-		generator = rag_augur.NewOllamaGenerator(cfg.Augur.URL, cfg.Augur.Model, cfg.Augur.Timeout, log, augurHTTP)
-		log.Info("llm_backend_selected", slog.String("backend", "ollama"))
+	} else {
+		generator = BuildOllamaGenerator(&cfg.Augur, augurHTTP, log)
+		log.Info("llm_backend_selected", slog.String("backend", "ollama"), slog.String("purpose", cfg.Augur.EndpointPurpose))
 	}
 
 	// Domain services
@@ -157,6 +156,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 			log,
 			rerankHTTP,
 		)
+		rerankerClient.AuthToken = cfg.Rerank.AuthToken
 		opts = append(opts, usecase.WithReranker(rerankerClient))
 		log.Info("reranker_enabled",
 			slog.String("url", cfg.Rerank.URL),
@@ -358,7 +358,11 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 
 	// Factories for hyper-boost
 	embedderFactory := func(url string, model string, timeout int) domain.VectorEncoder {
-		return rag_augur.NewOllamaEmbedder(url, model, timeout, log, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
+		token := ""
+		if sameCanonicalOrigin(url, cfg.Embedder.URL) {
+			token = cfg.Embedder.InferenceToken
+		}
+		return rag_augur.NewOllamaEmbedder(url, model, timeout, log, token, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
 	}
 	indexUsecaseFactory := func(encoder domain.VectorEncoder) usecase.IndexArticleUsecase {
 		return usecase.NewIndexArticleUsecase(docRepo, chunkRepo, txManager, hasher, chunker, encoder)
@@ -445,4 +449,56 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		EmbeddingModel:       cfg.Embedder.Model,
 		EmbedderTimeout:      cfg.Embedder.Timeout,
 	}
+}
+
+func sameCanonicalOrigin(target, configured string) bool {
+	tURL, err1 := url.Parse(strings.TrimSpace(target))
+	cURL, err2 := url.Parse(strings.TrimSpace(configured))
+	if err1 != nil || err2 != nil || tURL.Host == "" || cURL.Host == "" {
+		return false
+	}
+	if !strings.EqualFold(tURL.Scheme, cURL.Scheme) {
+		return false
+	}
+	tPort := tURL.Port()
+	if tPort == "" {
+		if strings.EqualFold(tURL.Scheme, "https") {
+			tPort = "443"
+		} else if strings.EqualFold(tURL.Scheme, "http") {
+			tPort = "80"
+		}
+	}
+	cPort := cURL.Port()
+	if cPort == "" {
+		if strings.EqualFold(cURL.Scheme, "https") {
+			cPort = "443"
+		} else if strings.EqualFold(cURL.Scheme, "http") {
+			cPort = "80"
+		}
+	}
+	return strings.EqualFold(tURL.Hostname(), cURL.Hostname()) && tPort == cPort
+}
+func BuildOllamaGenerator(cfg *config.AugurConfig, httpClient *http.Client, log *slog.Logger) *rag_augur.OllamaGenerator {
+	augurToken := cfg.InferenceToken
+	purpose := cfg.EndpointPurpose
+	if purpose == "" {
+		if sameCanonicalOrigin(cfg.URL, "https://news-creator:9443") {
+			purpose = "news_mtls"
+		} else {
+			purpose = "authenticated_proxy"
+		}
+	}
+
+	switch purpose {
+	case "news_mtls":
+		augurToken = ""
+	case "authenticated_proxy":
+		if augurToken == "" {
+			panic(fmt.Errorf("INFERENCE_SERVICE_TOKEN_FILE must provide a valid token when AUGUR_ENDPOINT_PURPOSE is authenticated_proxy (URL: %s)", cfg.URL))
+		}
+	default:
+		panic(fmt.Errorf("unknown AUGUR_ENDPOINT_PURPOSE %q; valid values are news_mtls, authenticated_proxy", purpose))
+	}
+
+	return rag_augur.NewOllamaGenerator(cfg.URL, cfg.Model, cfg.Timeout, log, augurToken, httpClient)
 }

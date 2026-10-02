@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     acolyte_db_password_file: str = ""
 
     # External services
-    news_creator_url: str = "http://news-creator:11434"
+    news_creator_url: str = "https://news-creator:9443"
     search_indexer_url: str = "http://search-indexer:9300"
 
     # DB pool

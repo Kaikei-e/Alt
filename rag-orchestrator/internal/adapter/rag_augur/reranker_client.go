@@ -35,12 +35,13 @@ type RerankResponse struct {
 	ProcessingTimeMs *float64               `json:"processing_time_ms,omitempty"`
 }
 
-// RerankerClient implements domain.Reranker via HTTP calls to news-creator.
+// RerankerClient implements domain.Reranker via HTTP calls to rerank-server.
 type RerankerClient struct {
-	BaseURL string
-	Model   string
-	Client  *http.Client
-	logger  *slog.Logger
+	BaseURL   string
+	Model     string
+	AuthToken string // Bearer token for rerank-server inference auth (B-SUPP01)
+	Client    *http.Client
+	logger    *slog.Logger
 }
 
 // NewRerankerClient constructs a new RerankerClient.
@@ -99,6 +100,9 @@ func (c *RerankerClient) Rerank(ctx context.Context, query string, candidates []
 		return nil, fmt.Errorf("failed to create rerank request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.AuthToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.AuthToken)
+	}
 
 	resp, err := c.Client.Do(req)
 	if err != nil {

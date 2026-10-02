@@ -89,7 +89,7 @@ async def _resolve_run_brief(
     return report_id, brief.to_dict()
 
 
-async def _resume(run_id: str) -> None:
+async def _resume(run_id: str, token: str) -> None:
     """Resume a pipeline run from its checkpoint."""
     # Late imports to avoid loading the full app at import time (keeps --help fast)
     import httpx  # noqa: PLC0415
@@ -168,7 +168,7 @@ async def _resume(run_id: str) -> None:
                     mtls=mtls_ctx is not None,
                     cert_file=os.environ.get("MTLS_CERT_FILE"),
                 )
-                await service.resume_pipeline(report_id, run_id, brief_dict)
+                await service.resume_pipeline(report_id, run_id, brief_dict, token)
 
         logger.info("Resume complete", run_id=run_id)
 
@@ -176,9 +176,21 @@ async def _resume(run_id: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Resume an Acolyte pipeline run from checkpoint")
     parser.add_argument("--run-id", required=True, help="UUID of the run to resume")
+    parser.add_argument("--token-file", required=True, help="Path to file containing valid JWT token proving ownership of the report")
     args = parser.parse_args()
 
-    asyncio.run(_resume(args.run_id))
+    try:
+        with open(args.token_file, "r") as f:
+            token = f.read().strip()
+    except Exception as e:
+        logger.error("Failed to read token file", error=str(e))
+        sys.exit(1)
+
+    if not token:
+        logger.error("Token file is empty")
+        sys.exit(1)
+
+    asyncio.run(_resume(args.run_id, token))
 
 
 if __name__ == "__main__":

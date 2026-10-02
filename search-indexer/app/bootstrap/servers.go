@@ -19,10 +19,10 @@ import (
 	appOtel "search-indexer/utils/otel"
 )
 
-// newHTTPServer creates the REST HTTP server.
+// newHTTPServer creates the plaintext health-only HTTP server on :9300.
+// Per C01, business search endpoints are retired from plaintext and served
+// exclusively over mTLS on :9443. Plaintext :9300 serves liveness and deep health only.
 func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, otelCfg appOtel.Config, rlCfg config.RateLimitConfig, meiliPing func(context.Context) error) *http.Server {
-	restHandler := rest.NewHandler(searchByUserUsecase)
-
 	mux := http.NewServeMux()
 
 	healthHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -39,23 +39,12 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, otelCfg app
 			Probe:    meiliPing,
 		}},
 	})
-
-	// /v1/search is gated at the transport layer (mTLS peer-identity on the
-	// :9443 listener, see newMTLSMuxHandler). The plaintext :9300 path here
-	// serves only rate-limited handlers; auth has been removed pending
-	// retirement of the listener itself.
-	rateLimiter := middleware.NewRateLimiter(rate.Limit(rlCfg.RequestsPerSecond), rlCfg.Burst)
-	searchHandler := rateLimiter.Middleware(http.HandlerFunc(restHandler.SearchArticles))
-	// /health/deep must always return the pass|warn|fail envelope. Sharing
-	// the user-search token bucket turned ops probes into generic 429s.
 	deepHandler := deep.Handler()
 
 	if otelCfg.Enabled {
-		mux.Handle("/v1/search", middleware.OTelStatusHandler(searchHandler, "GET /v1/search"))
 		mux.Handle("/health", middleware.OTelStatusHandlerFunc(healthHandler, "GET /health"))
 		mux.Handle("/health/deep", middleware.OTelStatusHandler(deepHandler, "GET /health/deep"))
 	} else {
-		mux.Handle("/v1/search", searchHandler)
 		mux.Handle("/health", healthHandler)
 		mux.Handle("/health/deep", deepHandler)
 	}
@@ -71,9 +60,10 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, otelCfg app
 	}
 }
 
-// newConnectServer creates the Connect-RPC server.
-func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, rlCfg config.RateLimitConfig) *http.Server {
-	handler := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase, rlCfg)
+// newConnectServer creates the Connect-RPC server handler.
+// Note: per C01, the standalone plaintext :9301 listener is retired.
+func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, authUsecase *usecase.AuthUsecase, rlCfg config.RateLimitConfig) *http.Server {
+	handler := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase, authUsecase, rlCfg)
 
 	return &http.Server{
 		Addr:              config.ConnectAddr,
@@ -87,21 +77,19 @@ func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRe
 }
 
 // newMTLSMuxHandler builds the combined handler served on the :9443 mTLS
-// listener: REST under /v1/* + Connect-RPC under /services.* + /health.
-// All REST endpoints are gated by peer_identity (TLS client-cert CN
-// allowlist). Connect-RPC already runs through the Connect interceptor stack
-// with its own auth chain; the same peer_identity check is applied at the
-// outer mux layer for belt-and-suspenders.
-//
-// this path will replace the plaintext :9300/:9301 listeners once all
-// callers have moved; until then the mTLS mux runs in parallel.
+// listener: REST under /v1/* + Connect-RPC under /services.* + /health + /health/deep.
+// All REST and Connect business endpoints are gated by peer_identity (TLS client-cert
+// CN allowlist). Health endpoints stay reachable unauthenticated.
+// Verified callers exercise deliberate service delegation on behalf of caller-specified user_id.
 func newMTLSMuxHandler(
+	authUsecase *usecase.AuthUsecase,
 	searchByUserUsecase *usecase.SearchByUserUsecase,
 	connectServerHandler http.Handler,
 	otelCfg appOtel.Config,
 	rlCfg config.RateLimitConfig,
+	meiliPing ...func(context.Context) error,
 ) http.Handler {
-	restHandler := rest.NewHandler(searchByUserUsecase)
+	restHandler := rest.NewHandler(searchByUserUsecase, authUsecase)
 
 	allowed := parseAllowedPeers(os.Getenv("MTLS_ALLOWED_PEERS"))
 	peer := middleware.NewPeerIdentityMiddleware(allowed)
@@ -109,8 +97,7 @@ func newMTLSMuxHandler(
 
 	// REST /v1/search guarded by peer identity + rate limit.
 	search := rateLimiter.Middleware(peer.Require(http.HandlerFunc(restHandler.SearchArticles)))
-	// Connect-RPC is also gated by peer identity at the mux layer — inside,
-	// the existing ServiceAuthInterceptor remains during the migration window.
+	// Connect-RPC is also gated by peer identity at the mux layer.
 	connect := peer.Require(connectServerHandler)
 
 	mux := http.NewServeMux()
@@ -121,12 +108,32 @@ func newMTLSMuxHandler(
 		_, _ = io.WriteString(w, `{"status":"ok"}`)
 	})
 
+	var pingFn func(context.Context) error
+	if len(meiliPing) > 0 && meiliPing[0] != nil {
+		pingFn = meiliPing[0]
+	}
+	var checks []healthdeep.Check
+	if pingFn != nil {
+		checks = append(checks, healthdeep.Check{
+			Name:     "meilisearch",
+			Critical: true,
+			Probe:    pingFn,
+		})
+	}
+	deep := healthdeep.NewRunner(healthdeep.Config{
+		Service: "search-indexer",
+		Checks:  checks,
+	})
+	deepHandler := deep.Handler()
+
 	if otelCfg.Enabled {
 		mux.Handle("/v1/search", middleware.OTelStatusHandler(search, "GET /v1/search"))
 		mux.Handle("/health", middleware.OTelStatusHandlerFunc(health, "GET /health"))
+		mux.Handle("/health/deep", middleware.OTelStatusHandler(deepHandler, "GET /health/deep"))
 	} else {
 		mux.Handle("/v1/search", search)
 		mux.Handle("/health", health)
+		mux.Handle("/health/deep", deepHandler)
 	}
 	// Connect-RPC service paths: /services.search.v2.SearchService/*
 	mux.Handle("/services.search.v2.SearchService/", connect)
@@ -137,7 +144,11 @@ func newMTLSMuxHandler(
 }
 
 func parseAllowedPeers(csv string) []string {
-	parts := strings.Split(csv, ",")
+	trimmed := strings.TrimSpace(csv)
+	if trimmed == "" {
+		return []string{"alt-backend", "rag-orchestrator", "acolyte-orchestrator"}
+	}
+	parts := strings.Split(trimmed, ",")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)

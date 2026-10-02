@@ -15,9 +15,10 @@ func TestLoad(t *testing.T) {
 		{
 			name: "valid configuration with backend API",
 			envVars: map[string]string{
-				"BACKEND_API_URL":     "http://alt-backend:9101",
-				"MEILISEARCH_HOST":    "http://localhost:7700",
-				"MEILISEARCH_API_KEY": "key",
+				"BACKEND_API_URL":            "http://alt-backend:9101",
+				"USER_JWT_INTROSPECTION_URL": "http://auth-hub:9443/internal/token/introspect",
+				"MEILISEARCH_HOST":           "http://localhost:7700",
+				"MEILISEARCH_API_KEY":        "key",
 			},
 			wantErr: false,
 		},
@@ -31,7 +32,8 @@ func TestLoad(t *testing.T) {
 		{
 			name: "missing MEILISEARCH_HOST",
 			envVars: map[string]string{
-				"BACKEND_API_URL": "http://alt-backend:9101",
+				"BACKEND_API_URL":            "http://alt-backend:9101",
+				"USER_JWT_INTROSPECTION_URL": "http://auth-hub:9443/internal/token/introspect",
 			},
 			wantErr: true,
 		},
@@ -71,6 +73,7 @@ func TestLoad(t *testing.T) {
 // so a broken secret mount must abort, not connect to Meilisearch with no auth.
 func TestLoad_SecretFileUnreadableFailsFast(t *testing.T) {
 	t.Setenv("BACKEND_API_URL", "http://alt-backend:9101")
+	t.Setenv("USER_JWT_INTROSPECTION_URL", "http://auth-hub:9443/internal/token/introspect")
 	t.Setenv("MEILISEARCH_HOST", "http://localhost:7700")
 	// _FILE is set but the path does not exist -> ReadFile fails.
 	t.Setenv("MEILISEARCH_API_KEY_FILE", filepath.Join(t.TempDir(), "does-not-exist"))
@@ -89,6 +92,7 @@ func TestLoad_SecretFileReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("BACKEND_API_URL", "http://alt-backend:9101")
+	t.Setenv("USER_JWT_INTROSPECTION_URL", "http://auth-hub:9443/internal/token/introspect")
 	t.Setenv("MEILISEARCH_HOST", "http://localhost:7700")
 	t.Setenv("MEILISEARCH_API_KEY_FILE", keyPath)
 

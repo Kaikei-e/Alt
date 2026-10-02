@@ -22,17 +22,13 @@ BACKEND_TOKEN_HEADER = "x-alt-backend-token"  # noqa: S105 — HTTP header name,
 
 logger = structlog.get_logger(__name__)
 
-# Request-scoped acting user UUID.
+# Request-scoped acting user UUID and JWT token.
 current_user_id: contextvars.ContextVar[UUID | None] = contextvars.ContextVar("current_user_id", default=None)
+current_user_jwt: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_user_jwt", default=None)
 
 
 def attach_acting_user_id(ctx: RequestContext, user_id: UUID) -> None:
-    """Attach the authenticated user UUID to the request context.
-
-    RequestContext is a third-party class with no slot for application state,
-    so the instance dict is written directly; ``ctx.user_id`` then reads back
-    as an ordinary attribute for handlers.
-    """
+    """Attach the authenticated user UUID to the request context."""
     ctx.__dict__["user_id"] = user_id
 
 
@@ -43,6 +39,11 @@ def get_acting_user_id(ctx: RequestContext | None = None) -> UUID | None:
         if isinstance(uid, UUID):
             return uid
     return current_user_id.get()
+
+
+def get_acting_user_jwt() -> str | None:
+    """Return the acting user JWT token from the contextvar."""
+    return current_user_jwt.get()
 
 
 def resolve_backend_token_secret(settings: Settings) -> bytes | None:
@@ -68,19 +69,17 @@ class UserIdentityInterceptor:
         self._audience = audience
         self._dev_user_id = dev_user_id
 
-    def authenticate(self, ctx: RequestContext) -> UUID:
+    def authenticate(self, ctx: RequestContext) -> tuple[UUID, str | None]:
         """Validate the JWT token in request headers or return dev user UUID when disabled."""
+        token = ctx.request_headers().get(BACKEND_TOKEN_HEADER)
         if self._dev_user_id is not None:
-            return self._dev_user_id
+            return self._dev_user_id, token
 
         secret = self._secret
         if secret is None:
-            # __init__ refuses this combination; reaching it means the interceptor
-            # was mutated after construction, which must not authenticate anyone.
             msg = "UserIdentityInterceptor has neither a JWT secret nor a dev user id"
             raise RuntimeError(msg)
 
-        token = ctx.request_headers().get(BACKEND_TOKEN_HEADER)
         if not token:
             raise ConnectError(Code.UNAUTHENTICATED, "missing backend token")
 
@@ -108,7 +107,7 @@ class UserIdentityInterceptor:
 
         sub = payload.get("sub")
         try:
-            return UUID(str(sub))
+            return UUID(str(sub)), token
         except (ValueError, TypeError) as exc:
             raise ConnectError(Code.UNAUTHENTICATED, "invalid user id in token") from exc
 
@@ -122,14 +121,16 @@ class UserIdentityInterceptor:
         if ctx.method().name == "HealthCheck":
             return await call_next(request, ctx)
 
-        user_id = self.authenticate(ctx)
+        user_id, token = self.authenticate(ctx)
         attach_acting_user_id(ctx, user_id)
-        c_tok = current_user_id.set(user_id)
+        c_tok_id = current_user_id.set(user_id)
+        c_tok_jwt = current_user_jwt.set(token)
         try:
             with structlog.contextvars.bound_contextvars(user_id=str(user_id)):
                 return await call_next(request, ctx)
         finally:
-            current_user_id.reset(c_tok)
+            current_user_id.reset(c_tok_id)
+            current_user_jwt.reset(c_tok_jwt)
 
     async def intercept_server_stream[REQ, RES](
         self,
@@ -143,12 +144,14 @@ class UserIdentityInterceptor:
                 yield resp
             return
 
-        user_id = self.authenticate(ctx)
+        user_id, token = self.authenticate(ctx)
         attach_acting_user_id(ctx, user_id)
-        c_tok = current_user_id.set(user_id)
+        c_tok_id = current_user_id.set(user_id)
+        c_tok_jwt = current_user_jwt.set(token)
         try:
             with structlog.contextvars.bound_contextvars(user_id=str(user_id)):
                 async for resp in call_next(request, ctx):
                     yield resp
         finally:
-            current_user_id.reset(c_tok)
+            current_user_id.reset(c_tok_id)
+            current_user_jwt.reset(c_tok_jwt)

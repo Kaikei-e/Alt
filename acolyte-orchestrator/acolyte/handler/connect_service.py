@@ -277,14 +277,16 @@ class AcolyteConnectService:
 
         return acolyte_pb2.StartReportRunResponse(run_id=str(run.run_id))
 
-    async def resume_pipeline(self, report_id: str, run_id: str, brief_dict: dict[str, Any]) -> None:
+    async def resume_pipeline(self, report_id: str, run_id: str, brief_dict: dict[str, Any], token: str) -> None:
         """Public entry point for operator tooling (e.g. scripts/resume_run.py)
         to resume a checkpointed run outside of start_report_run's background task.
-
-        The acting user is derived from the report row: operator tooling has no
-        request context to carry an identity, and a run must never execute
-        against an owner the report does not name.
+        Requires a valid JWT token proving ownership of the report.
         """
+        import jwt
+        from connectrpc.code import Code
+        from connectrpc.errors import ConnectError
+        from acolyte.infra.user_identity import attach_acting_user_id, current_user_id, current_user_jwt
+
         try:
             rid = UUID(report_id)
         except ValueError as e:
@@ -299,7 +301,38 @@ class AcolyteConnectService:
                 f"Report {report_id} has no owner: run the owner backfill for this report before resuming",
             )
 
-        await self._run_pipeline(report_id, run_id, brief_dict, user_id=report.user_id)
+        secret = self._settings.resolve_backend_token_secret()
+        if not secret:
+            raise ConnectError(Code.INTERNAL, "Backend token secret is not configured")
+
+        try:
+            payload = jwt.decode(
+                token,
+                secret,
+                algorithms=["HS256"],
+                issuer="auth-hub",
+                audience="alt-backend",
+                options={
+                    "verify_signature": True,
+                    "verify_exp": True,
+                    "verify_iss": True,
+                    "verify_aud": True,
+                    "require": ["exp", "iss", "aud", "sub"],
+                },
+            )
+            token_sub = payload.get("sub")
+            if str(report.user_id) != str(token_sub):
+                raise ConnectError(Code.PERMISSION_DENIED, "JWT subject does not exactly match report owner")
+        except jwt.PyJWTError as e:
+            raise ConnectError(Code.UNAUTHENTICATED, f"Invalid or expired JWT proof: {e}")
+
+        c_tok_id = current_user_id.set(report.user_id)
+        c_tok_jwt = current_user_jwt.set(token)
+        try:
+            await self._run_pipeline(report_id, run_id, brief_dict, user_id=report.user_id)
+        finally:
+            current_user_id.reset(c_tok_id)
+            current_user_jwt.reset(c_tok_jwt)
 
     async def _run_pipeline(self, report_id: str, run_id: str, brief_dict: dict[str, Any], user_id: UUID) -> None:
         """Execute LangGraph pipeline in background, bounded by max_concurrent_runs."""

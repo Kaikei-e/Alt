@@ -33,7 +33,7 @@ func TestEncode_RejectsAllZeroVector(t *testing.T) {
 
 	var buf bytes.Buffer
 	e := NewOllamaEmbedder(srv.URL, "bge-m3", 5,
-		slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+		slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})), "")
 
 	got, err := e.Encode(context.Background(), []string{"a", "b"})
 	if err == nil {
@@ -86,7 +86,7 @@ func TestEncode_RejectsEmptyVector(t *testing.T) {
 	srv := embedServer(t, `{"embeddings":[[]]}`)
 	defer srv.Close()
 
-	e := NewOllamaEmbedder(srv.URL, "bge-m3", 5, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	e := NewOllamaEmbedder(srv.URL, "bge-m3", 5, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), "")
 
 	if _, err := e.Encode(context.Background(), []string{"a"}); !errors.Is(err, ErrDegenerateEmbedding) {
 		t.Fatalf("expected ErrDegenerateEmbedding for an empty vector, got %v", err)
@@ -98,7 +98,7 @@ func TestEncode_AcceptsHealthyVectors(t *testing.T) {
 	srv := embedServer(t, `{"embeddings":[[0.1,-0.2,0.3],[0.4,0.5,-0.6]]}`)
 	defer srv.Close()
 
-	e := NewOllamaEmbedder(srv.URL, "bge-m3", 5, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	e := NewOllamaEmbedder(srv.URL, "bge-m3", 5, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), "")
 
 	got, err := e.Encode(context.Background(), []string{"a", "b"})
 	if err != nil {

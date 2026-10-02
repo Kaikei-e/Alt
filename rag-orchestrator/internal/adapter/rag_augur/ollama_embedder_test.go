@@ -33,7 +33,7 @@ func TestOllamaEmbedder_Encode_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil, "")
 
 	vecs, err := embedder.Encode(context.Background(), []string{"hello world"})
 	require.NoError(t, err)
@@ -47,7 +47,7 @@ func TestOllamaEmbedder_Encode_BadStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil, "")
 
 	_, err := embedder.Encode(context.Background(), []string{"hello"})
 	require.Error(t, err)
@@ -63,7 +63,7 @@ func TestOllamaEmbedder_Encode_Timeout(t *testing.T) {
 
 	// Very short timeout to trigger timeout error
 	client := &http.Client{Timeout: 50 * time.Millisecond}
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 0, nil, client)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 0, nil, "", client)
 
 	_, err := embedder.Encode(context.Background(), []string{"hello"})
 	require.Error(t, err)
@@ -77,7 +77,7 @@ func TestOllamaEmbedder_Encode_ContextDeadlineExceeded(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil, "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -94,7 +94,7 @@ func TestOllamaEmbedder_Encode_ContextCancelled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
@@ -111,7 +111,7 @@ func TestOllamaEmbedder_Encode_DecodeFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil)
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 10, nil, "")
 
 	_, err := embedder.Encode(context.Background(), []string{"hello"})
 	require.Error(t, err)
@@ -123,10 +123,10 @@ func TestOllamaEmbedder_Encode_DecodeFailure(t *testing.T) {
 // document version and re-triggers indexing without anyone remembering to
 // bump a constant.
 func TestOllamaEmbedder_Version(t *testing.T) {
-	assert.Equal(t, domain.EmbedderVersion("my-model"), NewOllamaEmbedder("http://localhost", "my-model", 10, nil).Version())
+	assert.Equal(t, domain.EmbedderVersion("my-model"), NewOllamaEmbedder("http://localhost", "my-model", 10, nil, "").Version(), "")
 	assert.NotEqual(t,
-		NewOllamaEmbedder("http://localhost", "my-model", 10, nil).Version(),
-		NewOllamaEmbedder("http://localhost", "other-model", 10, nil).Version(),
+		NewOllamaEmbedder("http://localhost", "my-model", 10, nil, "").Version(),
+		NewOllamaEmbedder("http://localhost", "other-model", 10, nil, "").Version(),
 		"a different embedding model must produce a different embedder version")
 }
 
@@ -186,4 +186,23 @@ func TestClassifyTransportError(t *testing.T) {
 			assert.Equal(t, tt.expected, classifyTransportError(tt.err))
 		})
 	}
+}
+
+func TestOllamaEmbedder_RefusesRedirect(t *testing.T) {
+	var destHit int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/embed", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/destination", http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("/destination", func(w http.ResponseWriter, r *http.Request) {
+		destHit++
+		w.WriteHeader(http.StatusOK)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	embedder := NewOllamaEmbedder(server.URL, "test-model", 5, nil, "secret")
+	_, err := embedder.Encode(context.Background(), []string{"test"})
+	require.Error(t, err)
+	assert.Equal(t, 0, destHit, "redirect destination must never be reached")
 }

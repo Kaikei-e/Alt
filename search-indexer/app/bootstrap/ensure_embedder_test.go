@@ -2,9 +2,11 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
+	"search-indexer/config"
 	"search-indexer/driver"
 	"search-indexer/logger"
 )
@@ -169,7 +171,7 @@ func TestEnsureEmbedderSettings_UpdateFailurePropagates(t *testing.T) {
 // TestDesiredEmbedder_DefaultsToBgeM3 pins the shipped defaults so the
 // declared embedder matches the model knowledge-embedder-local keeps resident.
 func TestDesiredEmbedder_DefaultsToBgeM3(t *testing.T) {
-	got := desiredEmbedder()
+	got := desiredEmbedder(&config.Config{})
 	want := driver.EmbedderSpec{
 		Source:           "ollama",
 		Model:            "bge-m3",
@@ -179,5 +181,149 @@ func TestDesiredEmbedder_DefaultsToBgeM3(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("desiredEmbedder() = %#v, want %#v", got, want)
+	}
+}
+
+// TestEnsureEmbedderSettings_NoPatchWhenIdenticalNoToken covers idempotence
+// when no inference token is configured: structural match + no token must
+// issue zero UpdateEmbedders calls (no credential PATCH needed).
+func TestEnsureEmbedderSettings_NoPatchWhenIdenticalNoToken(t *testing.T) {
+	logger.Init()
+	f := &fakeEmbedderSettings{live: map[string]driver.EmbedderSpec{"bge-m3": testDesiredSpec()}}
+
+	// testDesiredSpec() has empty APIKey, so no credential PATCH is expected.
+	if err := ensureEmbedderSettings(context.Background(), f, "bge-m3", testDesiredSpec()); err != nil {
+		t.Fatalf("ensureEmbedderSettings: %v", err)
+	}
+	if f.updateCall != 0 {
+		t.Fatalf("UpdateEmbedders calls = %d, want 0 for identical settings with no token", f.updateCall)
+	}
+}
+
+// TestEnsureEmbedderSettings_CredentialPatchWhenTokenConfigured verifies that
+// when structural fields already match and an inference token is configured,
+// a credential-only PATCH is issued so token rotation converges on boot.
+// Meilisearch masks apiKey in GET responses, making comparison impossible;
+// the credential PATCH is idempotent when the token is unchanged and triggers
+// re-embedding only when the actual key value changes.
+func TestEnsureEmbedderSettings_CredentialPatchWhenTokenConfigured(t *testing.T) {
+	logger.Init()
+	// Live has matching structural fields but empty apiKey (no key previously set).
+	liveSpec := driver.EmbedderSpec{
+		Source:           "ollama",
+		Model:            "bge-m3",
+		URL:              "http://knowledge-embedder-local:11434/api/embed",
+		Dimensions:       1024,
+		DocumentTemplate: embedderDocumentTemplate,
+		APIKey:           "",
+	}
+	f := &fakeEmbedderSettings{live: map[string]driver.EmbedderSpec{"bge-m3": liveSpec}}
+
+	desiredWithToken := driver.EmbedderSpec{
+		Source:           "ollama",
+		Model:            "bge-m3",
+		URL:              "http://knowledge-embedder-local:11434/api/embed",
+		Dimensions:       1024,
+		DocumentTemplate: embedderDocumentTemplate,
+		APIKey:           "mytoken123=",
+	}
+
+	if err := ensureEmbedderSettings(context.Background(), f, "bge-m3", desiredWithToken); err != nil {
+		t.Fatalf("ensureEmbedderSettings: %v", err)
+	}
+	if f.updateCall != 1 {
+		t.Fatalf("UpdateEmbedders calls = %d, want 1 for credential-only PATCH", f.updateCall)
+	}
+	got := f.gotPayload["bge-m3"]
+	if got == nil {
+		t.Fatal("credential PATCH payload missing desired embedder")
+	}
+	if got.APIKey != "mytoken123=" {
+		t.Fatalf("credential PATCH apiKey = %q, want %q", got.APIKey, "mytoken123=")
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal credential PATCH: %v", err)
+	}
+	if string(encoded) != `{"apiKey":"mytoken123="}` {
+		t.Fatalf("credential PATCH serialized extra fields: %s, want only apiKey", string(encoded))
+	}
+}
+
+// TestEnsureEmbedderSettings_MaskedAPIKeyDoesNotBlockRotation verifies that
+// a Meilisearch GET response returning a masked apiKey does not skip the
+// credential PATCH. Structural fields match; token configured → PATCH issued.
+//
+// Meilisearch 1.27 masks apiKey in GET /indexes/{uid}/settings/embedders to
+// prevent secret exposure. The reconciler must not compare masked vs. real
+// values — it issues the credential PATCH unconditionally when APIKey != "".
+// Reference: https://github.com/meilisearch/meilisearch/blob/v1.27.0/crates/meilisearch/src/routes/indexes/settings.rs
+func TestEnsureEmbedderSettings_MaskedAPIKeyDoesNotBlockRotation(t *testing.T) {
+	logger.Init()
+	// Meilisearch GET returns a masked value; exact string is engine-internal.
+	liveSpec := driver.EmbedderSpec{
+		Source:           "ollama",
+		Model:            "bge-m3",
+		URL:              "http://knowledge-embedder-local:11434/api/embed",
+		Dimensions:       1024,
+		DocumentTemplate: embedderDocumentTemplate,
+		APIKey:           "***", // masked value returned by Meilisearch GET
+	}
+	f := &fakeEmbedderSettings{live: map[string]driver.EmbedderSpec{"bge-m3": liveSpec}}
+
+	desiredWithToken := driver.EmbedderSpec{
+		Source:           "ollama",
+		Model:            "bge-m3",
+		URL:              "http://knowledge-embedder-local:11434/api/embed",
+		Dimensions:       1024,
+		DocumentTemplate: embedderDocumentTemplate,
+		APIKey:           "actual-inference-token=",
+	}
+
+	if err := ensureEmbedderSettings(context.Background(), f, "bge-m3", desiredWithToken); err != nil {
+		t.Fatalf("ensureEmbedderSettings: %v", err)
+	}
+	// APIKey not compared (masked) → credential PATCH must fire.
+	if f.updateCall != 1 {
+		t.Fatalf("UpdateEmbedders calls = %d, want 1 for credential PATCH on masked GET", f.updateCall)
+	}
+	got := f.gotPayload["bge-m3"]
+	if got == nil || got.APIKey != "actual-inference-token=" {
+		t.Fatalf("credential PATCH did not carry real apiKey: %#v", got)
+	}
+}
+
+// TestEnsureEmbedderSettings_StructuralPatchIncludesToken verifies that when a
+// structural field differs AND a token is configured, the single structural
+// PATCH also carries the apiKey (not a separate credential follow-up).
+func TestEnsureEmbedderSettings_StructuralPatchIncludesToken(t *testing.T) {
+	logger.Init()
+	liveSpec := driver.EmbedderSpec{
+		Source:           "ollama",
+		Model:            "old-model",
+		URL:              "http://knowledge-embedder-local:11434/api/embed",
+		Dimensions:       1024,
+		DocumentTemplate: embedderDocumentTemplate,
+	}
+	f := &fakeEmbedderSettings{live: map[string]driver.EmbedderSpec{"bge-m3": liveSpec}}
+
+	desiredWithToken := driver.EmbedderSpec{
+		Source:           "ollama",
+		Model:            "bge-m3",
+		URL:              "http://knowledge-embedder-local:11434/api/embed",
+		Dimensions:       1024,
+		DocumentTemplate: embedderDocumentTemplate,
+		APIKey:           "mytoken=",
+	}
+
+	if err := ensureEmbedderSettings(context.Background(), f, "bge-m3", desiredWithToken); err != nil {
+		t.Fatalf("ensureEmbedderSettings: %v", err)
+	}
+	if f.updateCall != 1 {
+		t.Fatalf("UpdateEmbedders calls = %d, want 1", f.updateCall)
+	}
+	got := f.gotPayload["bge-m3"]
+	if got == nil || got.Model != "bge-m3" || got.APIKey != "mytoken=" {
+		t.Fatalf("structural PATCH = %#v, want bge-m3 with apiKey", got)
 	}
 }
