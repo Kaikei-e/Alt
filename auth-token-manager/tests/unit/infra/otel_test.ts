@@ -1,6 +1,15 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/testing/asserts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "@std/testing/asserts";
 import { describe, it } from "@std/testing/bdd";
-import { emitOTelLog, getOTelConfig, initOTelProvider, loadRaskIngestToken } from "../../../src/infra/otel.ts";
+import {
+  emitOTelLog,
+  getOTelConfig,
+  initOTelProvider,
+  loadRaskIngestToken,
+} from "../../../src/infra/otel.ts";
 import { trace } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 
@@ -12,7 +21,11 @@ function protoFields(b: Uint8Array): Map<number, Uint8Array[]> {
   let p = 0;
   const num = () => {
     let n = 0, s = 0, v: number;
-    do { v = b[p++]!; n += (v & 127) * 2 ** s; s += 7; } while (v & 128);
+    do {
+      v = b[p++]!;
+      n += (v & 127) * 2 ** s;
+      s += 7;
+    } while (v & 128);
     return n;
   };
   while (p < b.length) {
@@ -22,9 +35,9 @@ function protoFields(b: Uint8Array): Map<number, Uint8Array[]> {
       const v = b.slice(p, p + n);
       p += n;
       out.set(f, [...(out.get(f) ?? []), v]);
-    } else if (w === 0) { num(); }
-    else if (w === 1) { p += 8; }
-    else if (w === 5) { p += 4; }
+    } else if (w === 0) num();
+    else if (w === 1) p += 8;
+    else if (w === 5) p += 4;
     else throw new Error(`unexpected protobuf wire type ${w}`);
   }
   return out;
@@ -41,12 +54,20 @@ function protoChild(b: Uint8Array, f: number): Uint8Array {
 describe("loadRaskIngestToken", () => {
   it("throws when env var is missing", () => {
     Deno.env.delete("RASK_INGEST_TOKEN_FILE");
-    assertThrows(() => loadRaskIngestToken(), Error, "RASK_INGEST_TOKEN_FILE must be set");
+    assertThrows(
+      () => loadRaskIngestToken(),
+      Error,
+      "RASK_INGEST_TOKEN_FILE must be set",
+    );
   });
 
   it("throws when token file is unreadable", () => {
     Deno.env.set("RASK_INGEST_TOKEN_FILE", "/path/to/nonexistent/file/12345");
-    assertThrows(() => loadRaskIngestToken(), Error, "Failed to read RASK_INGEST_TOKEN_FILE");
+    assertThrows(
+      () => loadRaskIngestToken(),
+      Error,
+      "Failed to read RASK_INGEST_TOKEN_FILE",
+    );
   });
 
   it("throws 'empty' when file contains only a bare newline", () => {
@@ -54,7 +75,11 @@ describe("loadRaskIngestToken", () => {
     try {
       Deno.writeTextFileSync(tmp, "\n");
       Deno.env.set("RASK_INGEST_TOKEN_FILE", tmp);
-      assertThrows(() => loadRaskIngestToken(), Error, "RASK_INGEST_TOKEN_FILE is empty");
+      assertThrows(
+        () => loadRaskIngestToken(),
+        Error,
+        "RASK_INGEST_TOKEN_FILE is empty",
+      );
     } finally {
       Deno.removeSync(tmp);
     }
@@ -65,7 +90,11 @@ describe("loadRaskIngestToken", () => {
     try {
       Deno.writeTextFileSync(tmp, "\r\n");
       Deno.env.set("RASK_INGEST_TOKEN_FILE", tmp);
-      assertThrows(() => loadRaskIngestToken(), Error, "RASK_INGEST_TOKEN_FILE is empty");
+      assertThrows(
+        () => loadRaskIngestToken(),
+        Error,
+        "RASK_INGEST_TOKEN_FILE is empty",
+      );
     } finally {
       Deno.removeSync(tmp);
     }
@@ -78,7 +107,11 @@ describe("loadRaskIngestToken", () => {
     try {
       Deno.writeTextFileSync(tmp, "   \n\t  ");
       Deno.env.set("RASK_INGEST_TOKEN_FILE", tmp);
-      assertThrows(() => loadRaskIngestToken(), Error, "RASK_INGEST_TOKEN_FILE contains invalid characters");
+      assertThrows(
+        () => loadRaskIngestToken(),
+        Error,
+        "RASK_INGEST_TOKEN_FILE contains invalid characters",
+      );
     } finally {
       Deno.removeSync(tmp);
     }
@@ -89,7 +122,11 @@ describe("loadRaskIngestToken", () => {
     try {
       Deno.writeTextFileSync(tmp, "invalid token with spaces");
       Deno.env.set("RASK_INGEST_TOKEN_FILE", tmp);
-      assertThrows(() => loadRaskIngestToken(), Error, "RASK_INGEST_TOKEN_FILE contains invalid characters");
+      assertThrows(
+        () => loadRaskIngestToken(),
+        Error,
+        "RASK_INGEST_TOKEN_FILE contains invalid characters",
+      );
     } finally {
       Deno.removeSync(tmp);
     }
@@ -100,7 +137,11 @@ describe("loadRaskIngestToken", () => {
     try {
       Deno.writeTextFileSync(tmp, "===");
       Deno.env.set("RASK_INGEST_TOKEN_FILE", tmp);
-      assertThrows(() => loadRaskIngestToken(), Error, "RASK_INGEST_TOKEN_FILE contains invalid characters");
+      assertThrows(
+        () => loadRaskIngestToken(),
+        Error,
+        "RASK_INGEST_TOKEN_FILE contains invalid characters",
+      );
     } finally {
       Deno.removeSync(tmp);
     }
@@ -111,7 +152,11 @@ describe("loadRaskIngestToken", () => {
     try {
       Deno.writeTextFileSync(tmp, "token\u00a0value");
       Deno.env.set("RASK_INGEST_TOKEN_FILE", tmp);
-      assertThrows(() => loadRaskIngestToken(), Error, "RASK_INGEST_TOKEN_FILE contains invalid characters");
+      assertThrows(
+        () => loadRaskIngestToken(),
+        Error,
+        "RASK_INGEST_TOKEN_FILE contains invalid characters",
+      );
     } finally {
       Deno.removeSync(tmp);
     }
@@ -153,7 +198,11 @@ describe("loadRaskIngestToken", () => {
       Deno.writeTextFileSync(tmp, "abc\ndef\n");
       Deno.env.set("RASK_INGEST_TOKEN_FILE", tmp);
       // "abc\ndef" contains \n which is not in the alphabet → invalid
-      assertThrows(() => loadRaskIngestToken(), Error, "RASK_INGEST_TOKEN_FILE contains invalid characters");
+      assertThrows(
+        () => loadRaskIngestToken(),
+        Error,
+        "RASK_INGEST_TOKEN_FILE contains invalid characters",
+      );
     } finally {
       Deno.removeSync(tmp);
     }
@@ -199,7 +248,8 @@ describe("OTel Provider lifecycle", () => {
 //   • 307 redirect is NOT followed (credentials stay on origin)
 // ---------------------------------------------------------------------------
 Deno.test({
-  name: "production wire: protobuf OTLP reaches local server with correct Bearer + no redirect follow",
+  name:
+    "production wire: protobuf OTLP reaches local server with correct Bearer + no redirect follow",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -212,28 +262,49 @@ Deno.test({
       const token = "fixture-hyphen_wire_token_123456";
       await Deno.writeTextFile(tokenFile, token + "\n");
       const loaded = loadRaskIngestToken();
-      assertEquals(loaded, token, "hyphen token loads (regression: hyphen was rejected)");
+      assertEquals(
+        loaded,
+        token,
+        "hyphen token loads (regression: hyphen was rejected)",
+      );
 
       // Destination server: counts requests (must stay at 0 after redirect test)
       let destinationHits = 0;
       const dest = Deno.serve(
         { hostname: "127.0.0.1", port: 0, onListen: () => {} },
-        () => { destinationHits++; return new Response(null, { status: 200 }); },
+        () => {
+          destinationHits++;
+          return new Response(null, { status: 200 });
+        },
       );
 
       // Origin server: captures requests and optionally redirects to dest
-      const captures: Array<{ path: string; auth: string | null; ct: string | null; body: Uint8Array }> = [];
+      const captures: Array<
+        {
+          path: string;
+          auth: string | null;
+          ct: string | null;
+          body: Uint8Array;
+        }
+      > = [];
       let redirect = false;
       const origin = Deno.serve(
         { hostname: "127.0.0.1", port: 0, onListen: () => {} },
         async (r) => {
           const path = new URL(r.url).pathname;
           const body = new Uint8Array(await r.arrayBuffer());
-          captures.push({ path, auth: r.headers.get("Authorization"), ct: r.headers.get("Content-Type"), body });
+          captures.push({
+            path,
+            auth: r.headers.get("Authorization"),
+            ct: r.headers.get("Content-Type"),
+            body,
+          });
           if (redirect) {
             return new Response(null, {
               status: 307,
-              headers: { Location: `http://127.0.0.1:${dest.addr.port}${path}` },
+              headers: {
+                Location: `http://127.0.0.1:${dest.addr.port}${path}`,
+              },
             });
           }
           return new Response(null, { status: 200 });
@@ -274,18 +345,33 @@ Deno.test({
             if (!redirect) throw e; // unexpected in positive mode
             // In redirect mode: exporter error is expected – SDK does not follow 307.
             const msg = e instanceof Error ? e.message : String(e);
-            if (!msg.includes("307") && !msg.includes("Redirect") && !msg.includes("Temporary")) {
-              throw new Error(`Unexpected shutdown error in redirect mode: ${msg}`);
+            if (
+              !msg.includes("307") && !msg.includes("Redirect") &&
+              !msg.includes("Temporary")
+            ) {
+              throw new Error(
+                `Unexpected shutdown error in redirect mode: ${msg}`,
+              );
             }
           }
 
           // Validate both signal routes
           for (const route of ["/v1/traces", "/v1/logs"]) {
             const c = captures.find((x) => x.path === route);
-            if (!c) throw new Error(`missing capture for ${route} (mode redirect=${mode})`);
-            assertEquals(c.auth, `Bearer ${token}`, `Bearer header for ${route}`);
+            if (!c) {
+              throw new Error(
+                `missing capture for ${route} (mode redirect=${mode})`,
+              );
+            }
+            assertEquals(
+              c.auth,
+              `Bearer ${token}`,
+              `Bearer header for ${route}`,
+            );
             if (!c.ct?.startsWith("application/x-protobuf")) {
-              throw new Error(`expected protobuf Content-Type for ${route}, got ${c.ct}`);
+              throw new Error(
+                `expected protobuf Content-Type for ${route}, got ${c.ct}`,
+              );
             }
 
             // Decode protobuf: ExportRequest → ResourceSpans/ResourceLogs [1] →
@@ -294,8 +380,16 @@ Deno.test({
             const record = protoChild(group, 2);
 
             if (route.endsWith("traces")) {
-              assertEquals(protoChild(record, 1).length, 16, "trace ID is 16 bytes");
-              assertEquals(protoChild(record, 2).length, 8, "span ID is 8 bytes");
+              assertEquals(
+                protoChild(record, 1).length,
+                16,
+                "trace ID is 16 bytes",
+              );
+              assertEquals(
+                protoChild(record, 2).length,
+                8,
+                "span ID is 8 bytes",
+              );
               assertEquals(
                 new TextDecoder().decode(protoChild(record, 5)),
                 "sol-wire-span",
@@ -311,7 +405,11 @@ Deno.test({
             }
           }
 
-          assertEquals(destinationHits, 0, "redirect destination must not receive any traffic");
+          assertEquals(
+            destinationHits,
+            0,
+            "redirect destination must not receive any traffic",
+          );
           console.log(
             mode
               ? "307-redirect: origin received credentials; destination received 0 requests ✓"

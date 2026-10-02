@@ -19,7 +19,7 @@ describe("A04 — durable Bun default fetch with startup NODE_EXTRA_CA_CERTS", (
 		try {
 			installedBunVersion = execSync("bun --version", { encoding: "utf-8" }).trim();
 		} catch (err) {
-			installedBunVersion = "1.3.11";
+			installedBunVersion = "unknown";
 		}
 
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "bun-ca-test-"));
@@ -163,9 +163,9 @@ describe("A04 — durable Bun default fetch with startup NODE_EXTRA_CA_CERTS", (
 		expect(res.stderr).toContain("EXPECTED_HOSTNAME_REJECTION");
 	});
 
-	it("reports Bun runtime version limit", () => {
-		// Documents that cached local Bun is 1.3.11, while target spec is 1.3.12.
-		// Native default fetch() respects NODE_EXTRA_CA_CERTS in both.
-		expect(installedBunVersion).toMatch(/^1\.3\./);
+	it("reports the installed Bun runtime version", () => {
+		// These cases exercise the installed Bun runtime.
+		expect(installedBunVersion).not.toBe("unknown");
+		expect(installedBunVersion).toMatch(/^\d+\.\d+\.\d+/);
 	});
 });

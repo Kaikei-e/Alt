@@ -21,9 +21,17 @@
  *     tests/unit/infra/main_health_test.ts
  */
 
-import { assertEquals, assertStringIncludes, assertThrows } from "@std/testing/asserts";
+import {
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+} from "@std/testing/asserts";
 import { describe, it } from "@std/testing/bdd";
-import { DataSanitizer, initializeOTel, StructuredLogger } from "../../../src/infra/logger.ts";
+import {
+  DataSanitizer,
+  initializeOTel,
+  StructuredLogger,
+} from "../../../src/infra/logger.ts";
 import { trace } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 
@@ -52,7 +60,10 @@ async function childRun(
 // ---------------------------------------------------------------------------
 // In-process unit tests (no child spawn, no --allow-run needed)
 // ---------------------------------------------------------------------------
-describe("StructuredLogger pure constructor", { sanitizeOps: false, sanitizeResources: false }, () => {
+describe("StructuredLogger pure constructor", {
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, () => {
   it("creating a StructuredLogger without RASK env does NOT throw", () => {
     Deno.env.delete("RASK_INGEST_TOKEN_FILE");
     // This must not throw – OTel is no longer initialised in the constructor.
@@ -126,7 +137,11 @@ describe("emergencyLog secret sanitization (DataSanitizer)", () => {
 
   it("emergencyLog-equivalent: stringify of sanitized {level, msg, ...detail} hides secrets", () => {
     const detail = { reason: "ya29.token_leak_12345 authentication failed" };
-    const sanitized = DataSanitizer.sanitize({ level: "error", msg: "startup failed", ...detail });
+    const sanitized = DataSanitizer.sanitize({
+      level: "error",
+      msg: "startup failed",
+      ...detail,
+    });
     const json = JSON.stringify(sanitized);
     if (json.includes("ya29.token_leak_12345")) {
       throw new Error(`Raw secret in emergency log output: ${json}`);
@@ -138,7 +153,10 @@ describe("emergencyLog secret sanitization (DataSanitizer)", () => {
 // ---------------------------------------------------------------------------
 // Child-process tests (require --allow-run=deno)
 // ---------------------------------------------------------------------------
-describe("main.ts child-process boot behavior", { sanitizeOps: false, sanitizeResources: false }, () => {
+describe("main.ts child-process boot behavior", {
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, () => {
   // All env vars that config.loadConfig() and health_check.ts legitimately read.
   // RASK_INGEST_TOKEN_FILE is intentionally NOT included: health fast-path must
   // never attempt to read it even when OTEL_ENABLED=true.
@@ -180,14 +198,18 @@ describe("main.ts child-process boot behavior", { sanitizeOps: false, sanitizeRe
 
       // Health must not attempt to read RASK_INGEST_TOKEN_FILE
       if (stderr.includes("RASK_INGEST_TOKEN_FILE must be set")) {
-        throw new Error(`health path called initializeOTel / loadRaskIngestToken:\n${stderr}`);
+        throw new Error(
+          `health path called initializeOTel / loadRaskIngestToken:\n${stderr}`,
+        );
       }
       // code 0 = healthy, 1 = unhealthy (empty token store), both acceptable
       // (code 1 is expected here since oauth2_token.env is empty)
       if (code !== 0 && code !== 1) {
         throw new Error(`unexpected exit code ${code}:\n${stderr}`);
       }
-      console.log(`health fast-path exit=${code} (0=healthy/1=unhealthy token, no RASK attempt) ✓`);
+      console.log(
+        `health fast-path exit=${code} (0=healthy/1=unhealthy token, no RASK attempt) ✓`,
+      );
     } finally {
       await Deno.remove(dir, { recursive: true });
     }
@@ -201,7 +223,10 @@ describe("main.ts child-process boot behavior", { sanitizeOps: false, sanitizeRe
     let inboundHits = 0;
     const captureServer = Deno.serve(
       { hostname: "127.0.0.1", port: 0, onListen: () => {} },
-      () => { inboundHits++; return new Response(null, { status: 200 }); },
+      () => {
+        inboundHits++;
+        return new Response(null, { status: 200 });
+      },
     );
     const port = captureServer.addr.port;
 
@@ -228,9 +253,15 @@ describe("main.ts child-process boot behavior", { sanitizeOps: false, sanitizeRe
       );
 
       if (code === 0) {
-        throw new Error("daemon should exit non-zero without RASK_INGEST_TOKEN_FILE");
+        throw new Error(
+          "daemon should exit non-zero without RASK_INGEST_TOKEN_FILE",
+        );
       }
-      assertEquals(inboundHits, 0, "capture server must receive ZERO requests before startup failure");
+      assertEquals(
+        inboundHits,
+        0,
+        "capture server must receive ZERO requests before startup failure",
+      );
       console.log(`daemon absent RASK: exit=${code}, outbound=0 ✓`);
     } finally {
       await captureServer.shutdown();

@@ -695,8 +695,10 @@ mod tests {
     }
 
     fn base_json_config(token_file: Option<&Path>) -> String {
-        let mut config = Config::default();
-        config.ingest_token_file = token_file.map(|p| p.to_path_buf());
+        let config = Config {
+            ingest_token_file: token_file.map(|p| p.to_path_buf()),
+            ..Default::default()
+        };
         serde_json::to_string(&config).unwrap()
     }
 

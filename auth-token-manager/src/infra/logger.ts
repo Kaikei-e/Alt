@@ -1,6 +1,11 @@
 import { ConsoleHandler, getLogger, setup as setupLogger } from "@std/log";
 import type { LevelName, LoggerConfig, LogRecord } from "@std/log";
-import { emitOTelLog, getOTelConfig, initOTelProvider, isOTelEnabled } from "./otel.ts";
+import {
+  emitOTelLog,
+  getOTelConfig,
+  initOTelProvider,
+  isOTelEnabled,
+} from "./otel.ts";
 
 const OAUTH_TOKEN_PATTERNS = [
   /ya29\.[A-Za-z0-9\-_]+/g,

@@ -106,10 +106,10 @@ impl Config {
         // Set disk fallback path to a Docker-appropriate location
         config.disk_fallback_path = std::path::PathBuf::from("/tmp/rask-fallback");
 
-        if config.ingest_token_file.is_none() {
-            if let Some(val) = std::env::var_os("RASK_INGEST_TOKEN_FILE") {
-                config.ingest_token_file = Some(std::path::PathBuf::from(val));
-            }
+        if config.ingest_token_file.is_none()
+            && let Some(val) = std::env::var_os("RASK_INGEST_TOKEN_FILE")
+        {
+            config.ingest_token_file = Some(std::path::PathBuf::from(val));
         }
         config.post_process()?;
         config.validate()?;

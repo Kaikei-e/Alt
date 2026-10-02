@@ -805,7 +805,7 @@ mod tests {
         };
         flush_with_retry("t", &mut buf, &sink, MAX_FLUSH_ATTEMPTS).await;
 
-        assert!(buf.is_empty());
+        assert_eq!(buf, [] as [i32; 0]);
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 

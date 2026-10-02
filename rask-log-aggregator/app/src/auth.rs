@@ -21,6 +21,7 @@ use crate::error::AggregatorError;
 
 /// Validates that a token adheres to RFC 6750 Section 2.1 token68 syntax:
 /// `1*( ALPHA / DIGIT / "-" / "." / "_" / "~" / "+" / "/" ) *"="`
+#[must_use]
 pub fn is_rfc6750_token68(token: &str) -> bool {
     if token.is_empty() {
         return false;
@@ -118,6 +119,10 @@ fn constant_time_token_eq(a: &str, b: &str) -> bool {
 /// Axum middleware that enforces `Authorization: Bearer <token>` on every
 /// request that reaches it. Wire this onto ingest routes only; health and
 /// metrics routes must be mounted outside this layer.
+///
+/// # Panics
+///
+/// Panics if the `IngestToken` extension is not set on the request extensions.
 pub async fn require_ingest_token(request: Request, next: Next) -> Result<Response, StatusCode> {
     let expected = request
         .extensions()

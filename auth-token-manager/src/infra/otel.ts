@@ -40,7 +40,11 @@ export function loadRaskIngestToken(): string {
   try {
     content = Deno.readTextFileSync(tokenFile);
   } catch (err) {
-    throw new Error(`Failed to read RASK_INGEST_TOKEN_FILE: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `Failed to read RASK_INGEST_TOKEN_FILE: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
   }
 
   // Strip exactly one trailing CRLF or LF; do NOT trim whitespace broadly.
@@ -94,15 +98,15 @@ export function initOTelProvider(config?: OTelConfig): () => Promise<void> {
   const logExporter = new OTLPLogExporter({
     url: `${cfg.otlpEndpoint}/v1/logs`,
     headers: {
-      "Authorization": `Bearer ${token}`
-    }
+      "Authorization": `Bearer ${token}`,
+    },
   });
 
   const traceExporter = new OTLPTraceExporter({
     url: `${cfg.otlpEndpoint}/v1/traces`,
     headers: {
-      "Authorization": `Bearer ${token}`
-    }
+      "Authorization": `Bearer ${token}`,
+    },
   });
 
   loggerProvider = new LoggerProvider({

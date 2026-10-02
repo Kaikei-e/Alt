@@ -4,7 +4,12 @@
  */
 
 import { config } from "./src/infra/config.ts";
-import { DataSanitizer, initializeOTel, shutdownOTel, StructuredLogger } from "./src/infra/logger.ts";
+import {
+  DataSanitizer,
+  initializeOTel,
+  shutdownOTel,
+  StructuredLogger,
+} from "./src/infra/logger.ts";
 import { EnvFileSecretManager } from "./src/gateway/env_file_secret_manager.ts";
 import { FetchHttpClient } from "./src/gateway/fetch_http_client.ts";
 import { InoreaderTokenClient } from "./src/gateway/inoreader_token_client.ts";

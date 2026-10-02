@@ -264,11 +264,11 @@ mod tests {
                         flags: 0,
                         trace_id: vec![1; 16],
                         span_id: vec![2; 8],
-                        event_name: "".to_string(),
+                        event_name: String::new(),
                     }],
-                    schema_url: "".to_string(),
+                    schema_url: String::new(),
                 }],
-                schema_url: "".to_string(),
+                schema_url: String::new(),
             }],
         }
     }
@@ -286,7 +286,7 @@ mod tests {
                     spans: vec![Span {
                         trace_id: vec![1; 16],
                         span_id: vec![2; 8],
-                        trace_state: "".to_string(),
+                        trace_state: String::new(),
                         parent_span_id: vec![],
                         name: "test-span".to_string(),
                         kind: 1,
@@ -301,9 +301,9 @@ mod tests {
                         status: None,
                         flags: 0,
                     }],
-                    schema_url: "".to_string(),
+                    schema_url: String::new(),
                 }],
-                schema_url: "".to_string(),
+                schema_url: String::new(),
             }],
         }
     }
