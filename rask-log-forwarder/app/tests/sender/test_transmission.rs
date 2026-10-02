@@ -251,8 +251,10 @@ async fn test_large_batch_payload() {
 
 #[tokio::test]
 async fn test_batch_metadata_headers() {
-    let mut config = ClientConfig::default();
-    config.ingest_token = "test-token".to_string();
+    let config = ClientConfig {
+        ingest_token: "test-token".to_string(),
+        ..Default::default()
+    };
 
     let result = HttpClient::new(config).await;
 
@@ -286,8 +288,10 @@ async fn test_batch_metadata_headers() {
 
 #[tokio::test]
 async fn test_empty_batch_handling() {
-    let mut config = ClientConfig::default();
-    config.ingest_token = "test-token".to_string();
+    let config = ClientConfig {
+        ingest_token: "test-token".to_string(),
+        ..Default::default()
+    };
 
     let result = HttpClient::new(config).await;
 

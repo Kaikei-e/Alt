@@ -48,19 +48,25 @@ func TestProvider_InitAndExport(t *testing.T) {
 	var lastTraceBody, lastLogBody []byte
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("ReadAll r.Body failed: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		mu.Lock()
 		defer mu.Unlock()
 
-		if r.URL.Path == "/v1/traces" {
+		switch r.URL.Path {
+		case "/v1/traces":
 			atomic.AddInt32(&traceReqCount, 1)
 			traceAuth = r.Header.Get("Authorization")
 			lastTraceBody = body
-		} else if r.URL.Path == "/v1/logs" {
+		case "/v1/logs":
 			atomic.AddInt32(&logReqCount, 1)
 			logAuth = r.Header.Get("Authorization")
 			lastLogBody = body
-		} else {
+		default:
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 
@@ -77,9 +83,17 @@ func TestProvider_InitAndExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Write([]byte(tokenContent))
-	tmpFile.Close()
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Errorf("Failed to remove temp file: %v", err)
+		}
+	}()
+	if _, err := tmpFile.Write([]byte(tokenContent)); err != nil {
+		t.Fatalf("Failed to write to temp file: %v", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
 
 	t.Setenv("RASK_INGEST_TOKEN_FILE", tmpFile.Name())
 	t.Setenv("RASK_INGEST_TOKEN", tokenContent)
@@ -113,13 +127,17 @@ func TestProvider_InitAndExport(t *testing.T) {
 	defer flushCancel()
 
 	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
-		tp.ForceFlush(ctxFlush)
+		if err := tp.ForceFlush(ctxFlush); err != nil {
+			t.Errorf("tp.ForceFlush failed: %v", err)
+		}
 	} else {
 		t.Errorf("TracerProvider is not sdktrace.TracerProvider")
 	}
 
 	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
-		lp.ForceFlush(ctxFlush)
+		if err := lp.ForceFlush(ctxFlush); err != nil {
+			t.Errorf("lp.ForceFlush failed: %v", err)
+		}
 	} else {
 		t.Errorf("LoggerProvider is not sdklog.LoggerProvider")
 	}
@@ -310,9 +328,17 @@ func TestProvider_TokenFileLoader_Failures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cannot create temp file: %v", err)
 		}
-		f.WriteString("valid-file-token-123=\n")
-		f.Close()
-		defer os.Remove(f.Name())
+		defer func() {
+			if err := os.Remove(f.Name()); err != nil {
+				t.Errorf("cannot remove temp file: %v", err)
+			}
+		}()
+		if _, err := f.WriteString("valid-file-token-123=\n"); err != nil {
+			t.Fatalf("cannot write temp file: %v", err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatalf("cannot close temp file: %v", err)
+		}
 
 		cfg := Config{
 			Enabled:         true,
@@ -346,9 +372,17 @@ func TestProvider_TokenFileLoader_Failures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("cannot create temp file: %v", err)
 			}
-			f.WriteString(tc.content)
-			f.Close()
-			defer os.Remove(f.Name())
+			defer func() {
+				if err := os.Remove(f.Name()); err != nil {
+					t.Errorf("cannot remove temp file: %v", err)
+				}
+			}()
+			if _, err := f.WriteString(tc.content); err != nil {
+				t.Fatalf("cannot write temp file: %v", err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatalf("cannot close temp file: %v", err)
+			}
 
 			cfg := Config{
 				Enabled:         true,
@@ -473,12 +507,20 @@ func newTLSTestServer(t *testing.T, srvCert tls.Certificate, requireClientAuth b
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/traces", func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&traceReceived, 1)
-		io.ReadAll(r.Body)
+		if _, err := io.ReadAll(r.Body); err != nil {
+			t.Errorf("read trace body failed: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("/v1/logs", func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&logReceived, 1)
-		io.ReadAll(r.Body)
+		if _, err := io.ReadAll(r.Body); err != nil {
+			t.Errorf("read log body failed: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 	srv := httptest.NewUnstartedServer(mux)

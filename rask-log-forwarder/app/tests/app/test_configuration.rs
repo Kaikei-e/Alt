@@ -11,9 +11,11 @@ fn create_test_config_with_temp_dir() -> (Config, TempDir) {
     let temp_dir = TempDir::new().unwrap();
     let token_path = temp_dir.path().join("ingest_token");
     std::fs::write(&token_path, "test-token").unwrap();
-    let mut config = Config::default();
-    config.ingest_token_file = Some(token_path);
-    config.ingest_token = "test-token".to_string();
+    let config = Config {
+        ingest_token_file: Some(token_path),
+        ingest_token: "test-token".to_string(),
+        ..Default::default()
+    };
 
     (config, temp_dir)
 }
@@ -177,9 +179,11 @@ fn test_config_auto_detect_service() {
         "TARGET_SERVICE should not be set before test"
     );
 
-    let mut config = Config::default();
-    config.ingest_token_file = Some(token_path);
-    config.ingest_token = "test-token".to_string();
+    let mut config = Config {
+        ingest_token_file: Some(token_path),
+        ingest_token: "test-token".to_string(),
+        ..Default::default()
+    };
 
     // Set environment variable
     _guard.set_var("TARGET_SERVICE", "test-service");
