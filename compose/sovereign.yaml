@@ -124,7 +124,12 @@ services:
         target: /tmp/snapshots
         bind:
           create_host_path: false
-      - ../knowledge-sovereign/config/event-auth-policy.json:/config/event-auth-policy.json:ro
+      - type: bind
+        source: ../knowledge-sovereign/config/event-auth-policy.json
+        target: /config/event-auth-policy.json
+        read_only: true
+        bind:
+          create_host_path: false
       - knowledge_sovereign_certs:/certs:ro
       - pki_trust_bundle:/trust:ro
     secrets:

@@ -8,7 +8,7 @@
 # Caps are frozen. --write-baseline does not raise them.
 schema_version: 1
 source: compose/compose.yaml include chain
-measured_at: "2026-08-19"
+measured_at: "2026-10-03"
 accidental_osu_baseline: 16
 long_running_osu_baseline: 63
 units:
@@ -81,14 +81,23 @@ units:
   db:
     class: essential
     kind: store
-  docker-socket-proxy:
-    class: ephemeral
-    kind: ephemeral
   docker-socket-proxy-ro:
     class: platform
     kind: platform
     # Read-only Docker API proxy that replaced the raw docker.sock mounts on the
     # 16 log forwarders and cAdvisor; long-running by design (security boundary).
+    exception: X-SECURITY-BOUNDARY
+    sunset: "2026-12-31"
+  embedding-proxy:
+    class: essential
+    kind: app
+    # Token-auth boundary; raw embedding Ollama has no alt-network access.
+    exception: X-SECURITY-BOUNDARY
+    sunset: "2026-12-31"
+  generation-proxy:
+    class: essential
+    kind: app
+    # Token-auth boundary; raw generation Ollama has no alt-network access.
     exception: X-SECURITY-BOUNDARY
     sunset: "2026-12-31"
   grafana:
@@ -151,6 +160,12 @@ units:
   oauth-token-init:
     class: ephemeral
     kind: ephemeral
+  otel-relay:
+    class: platform
+    kind: platform
+    # Private Plecto-to-Rask relay inserts the file-backed ingest credential.
+    exception: X-SECURITY-BOUNDARY
+    sunset: "2026-12-31"
   pact-broker:
     class: platform
     kind: platform
@@ -166,6 +181,18 @@ units:
   plecto-proxy:
     class: essential
     kind: app
+  pki-agent-knowledge-sovereign:
+    class: accidental
+    kind: sidecar-cert
+    # Only certificate writer until Sovereign supports in-process enrollment.
+    exception: X-SECURITY-BOUNDARY
+    sunset: "2026-12-31"
+  pki-agent-recap-evaluator:
+    class: accidental
+    kind: sidecar-cert
+    # Evaluator HTTP clients need their own CN; never reuse another leaf.
+    exception: X-SECURITY-BOUNDARY
+    sunset: "2026-12-31"
   pre-processor:
     class: essential
     kind: app

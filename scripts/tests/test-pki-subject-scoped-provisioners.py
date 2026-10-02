@@ -41,6 +41,8 @@ WORKLOAD = (
     "recap-subworker",
     "news-creator",
     "rag-orchestrator",
+    "knowledge-sovereign",
+    "recap-evaluator",
 )
 
 
@@ -95,12 +97,12 @@ check(
     f"bootstrap={boot_subjects!r} verify={verify_cns!r}",
 )
 check(
-    "all 14 workload CNs are in the allowlist",
-    set(WORKLOAD).issubset(set(boot_subjects)) and len(WORKLOAD) == 14,
+    "all 16 production workload CNs are in the allowlist",
+    set(WORKLOAD).issubset(set(boot_subjects)) and len(WORKLOAD) == 16,
     f"missing={sorted(set(WORKLOAD) - set(boot_subjects))}",
 )
 
-print("compose declares 14 subject-scoped JWK secrets; no shared workload provisioner")
+print("compose declares 16 subject-scoped JWK secrets; no shared workload provisioner")
 
 from compose_include import load_yaml, production_compose_files, production_services  # noqa: E402
 
@@ -172,8 +174,8 @@ check(
 )
 pki_agents = [name for name in prod if name.startswith("pki-agent-")]
 check(
-    "compose declares 0 pki-agent workload sidecars",
-    pki_agents == [],
+    "compose declares exactly the two certificate-only workload writers",
+    set(pki_agents) == {"pki-agent-knowledge-sovereign", "pki-agent-recap-evaluator"},
     f"{pki_agents}",
 )
 

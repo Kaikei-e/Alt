@@ -101,9 +101,27 @@ services:
       - "80:8443"
       - "127.0.0.1:8080:8080"  # admin: /metrics /healthz /readyz (replaces nginx-exporter's job)
     volumes:
-      - ../plecto/manifest.toml:/etc/plecto/manifest.toml:ro
-      - ../plecto/.plecto/dev-key.pub:/etc/plecto/.plecto/dev-key.pub:ro
-      - ../plecto/artifacts/stale-chunk-heal:/etc/plecto/artifacts/stale-chunk-heal:ro
+      - type: bind
+        source: ../plecto/manifest.toml
+        target: /etc/plecto/manifest.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      # Generated public payloads live outside the deploy checkout. Stage the
+      # public key and signed filter directory before starting Plecto, or set
+      # these paths to existing absolute operator paths. No private key mount.
+      - type: bind
+        source: ${PLECTO_PUBLIC_KEY_HOST_PATH:-/var/lib/alt-plecto/dev-key.pub}
+        target: /etc/plecto/.plecto/dev-key.pub
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PLECTO_ARTIFACTS_HOST_PATH:-/var/lib/alt-plecto/artifacts/stale-chunk-heal}
+        target: /etc/plecto/artifacts/stale-chunk-heal
+        read_only: true
+        bind:
+          create_host_path: false
       - pki_trust_bundle:/trust:ro
     depends_on:
       alt-frontend-sv:

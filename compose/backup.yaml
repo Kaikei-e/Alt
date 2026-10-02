@@ -62,6 +62,15 @@ services:
           create_host_path: false
       # Backup destination
       - ../backups:/backups
+      # Share the exact native BACKUP disk with ClickHouse. The existing
+      # restic repository stays under ../backups; only the native CH payload
+      # uses this host directory. Restic's retention removes old CH payloads,
+      # so both containers need write access to this dedicated directory.
+      - type: bind
+        source: ${CLICKHOUSE_BACKUP_HOST_PATH:-/var/lib/alt-clickhouse-backups}
+        target: /backups/clickhouse
+        bind:
+          create_host_path: false
       # Auxiliary raw volume copies (read-only)
       # WARNING: Live scans of mutable database volumes without filesystem snapshot
       # exclude pg_wal and cannot guarantee crash-consistency or physical recovery / PITR.

@@ -112,7 +112,13 @@ services:
     volumes:
       - ../clickhouse/migrations:/migrations:ro
       - clickhouse_data:/var/lib/clickhouse
-      - ../backups/clickhouse:/backups/clickhouse
+      # Same native BACKUP disk as restic-backup. Use an existing absolute
+      # directory when retaining historical backups; never silently create it.
+      - type: bind
+        source: ${CLICKHOUSE_BACKUP_HOST_PATH:-/var/lib/alt-clickhouse-backups}
+        target: /backups/clickhouse
+        bind:
+          create_host_path: false
     configs:
       - source: clickhouse_entrypoint_wrapper
         target: /entrypoint-wrapper.sh

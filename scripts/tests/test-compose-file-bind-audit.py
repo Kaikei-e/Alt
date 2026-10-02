@@ -201,6 +201,33 @@ check(
     audit.file_bind_violations(ARTEFACT_LONG_OK, pathlib.Path("/compose")) == [],
 )
 
+print("security artifact lifecycle guards")
+for source, target in [
+    ("/host/dev-key.pub", "/etc/plecto/.plecto/dev-key.pub"),
+    ("/host/signed-filter", "/etc/plecto/artifacts/stale-chunk-heal"),
+    ("/host/ch-backups", "/backups/clickhouse"),
+]:
+    check(
+        f"missing security payload {target} cannot be auto-created by short syntax",
+        bool(audit.file_bind_violations(
+            {"svc": {"volumes": [f"{source}:{target}:ro"]}},
+            pathlib.Path("/compose"),
+        )),
+    )
+    mount = {"type": "bind", "source": source, "target": target,
+             "read_only": True, "bind": {"create_host_path": False}}
+    check(
+        f"guarded security payload {target} is accepted",
+        audit.file_bind_violations({"svc": {"volumes": [mount]}},
+                                   pathlib.Path("/compose")) == [],
+    )
+    mount["bind"] = {}
+    check(
+        f"security payload {target} without explicit guard is rejected",
+        bool(audit.file_bind_violations({"svc": {"volumes": [mount]}},
+                                       pathlib.Path("/compose"))),
+    )
+
 CONFIGS_ONLY = {
     "prometheus": {
         "configs": [
@@ -367,6 +394,22 @@ check(
     any("${RESTIC_SSH_KEY_HOST_PATH" in s for s in restic_ssh_sources)
     and any("${RESTIC_SSH_KNOWN_HOSTS_HOST_PATH" in s for s in restic_ssh_sources)
     and not any("../secrets/" in s for s in restic_ssh_sources),
+)
+
+shared_backup_mounts = {}
+for _path, name, svc in audit.iter_production_services():
+    if name not in {"clickhouse", "restic-backup"}:
+        continue
+    for mount in svc.get("volumes") or []:
+        if isinstance(mount, dict) and mount.get("target") == "/backups/clickhouse":
+            shared_backup_mounts[name] = mount
+check(
+    "ClickHouse and Restic share one guarded writable native-backup directory",
+    set(shared_backup_mounts) == {"clickhouse", "restic-backup"}
+    and len({m.get("source") for m in shared_backup_mounts.values()}) == 1
+    and all(not m.get("read_only", False)
+            and (m.get("bind") or {}).get("create_host_path") is False
+            for m in shared_backup_mounts.values()),
 )
 
 print(f"\n{PASS} passed, {FAIL} failed")
