@@ -1,33 +1,34 @@
-// k6/helpers/jwt.js - JWT token generation for K6 load test authentication
+// k6/helpers/jwt.js - JWT token decoding for K6 load test authentication
 //
 // All endpoints use X-Alt-Backend-Token (JWT) for authentication.
-// This helper generates HMAC-SHA256 JWTs using k6's built-in
-// crypto and encoding modules.
-
-import crypto from "k6/crypto";
-import encoding from "k6/encoding";
+// This helper validates short-lived scoped tokens issued by AuthHub.
+// Compatible with both k6 runtime and Node.js test environments.
 
 /**
- * Base64url-encode a string (no padding, URL-safe alphabet).
- * @param {string} input
- * @returns {string}
- */
-function base64UrlEncode(input) {
-  return encoding.b64encode(input, "rawurl");
-}
-
-/**
- * Generate a signed JWT (HS256).
+ * Decode a JWT token without verifying the cryptographic signature.
  *
- * @param {string} secret - HMAC secret (BACKEND_TOKEN_SECRET)
- * @param {object} claims - JWT payload claims
- * @returns {string} Signed JWT string
+ * @param {string} token - JWT string
+ * @returns {object|null} Decoded claims or null if invalid
  */
-export function generateJWT(secret, claims) {
-  const header = '{"alg":"HS256","typ":"JWT"}';
-  const encodedHeader = base64UrlEncode(header);
-  const encodedPayload = base64UrlEncode(JSON.stringify(claims));
-  const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const signature = crypto.hmac("sha256", secret, signingInput, "base64rawurl");
-  return `${signingInput}.${signature}`;
+export function decodeJWT(token) {
+  try {
+    if (typeof token !== "string") return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+
+    let payloadStr;
+    if (typeof Buffer !== "undefined") {
+      payloadStr = Buffer.from(parts[1], "base64url").toString("utf-8");
+    } else {
+      let base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      while (base64.length % 4) {
+        base64 += "=";
+      }
+      payloadStr = atob(base64);
+    }
+
+    return JSON.parse(payloadStr);
+  } catch (e) {
+    return null;
+  }
 }

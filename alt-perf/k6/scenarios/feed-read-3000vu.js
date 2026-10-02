@@ -1,9 +1,21 @@
-// k6/scenarios/feed-read-3000vu.js - Feed read load test (3000 VU, 30 min)
+// k6/scenarios/feed-read-3000vu.js - Feed read load test (3000 VU bounded short cohort <=180s)
 //
 // Purpose: Simulate 3000 concurrent users reading feeds via Connect-RPC (v2).
+// Architecture & Semantics (D04):
+//   - Updated from legacy 30-minute ramp to bounded security-compliant short cohort (150s total:
+//     130s stages + 20s ramp-down <= 180s budget) to operate strictly within AuthHub JWT maximum
+//     validity window (5 minutes / 300s).
+//   - No local JWT minting, HMAC key sharing, admin role elevation, or artificial TTL extension.
+//   - Token loaded once from environment/secret must have remaining validity >= cohortDuration + 30s
+//     (180s) at init time; otherwise fails closed before load.
+//   - Each request fails closed immediately if token expires during execution.
+//   - Sustained 30-minute load testing requires future normal owner session renewal mechanism
+//     (active refresh token exchange against AuthHub/Kratos).
+//
 // Executor: ramping-vus (closed model)
-// Stages: 0→300 (2m) → 300→1000 (3m) → 1000→2000 (3m) → 2000→3000 (4m)
-//         → hold 3000 (15m) → 3000→0 (3m)
+// Stages: 0→1000 (20s) → 1000→3000 (25s) → hold 3000 (65s) → 3000→0 (20s)
+// Total Stage Duration: 130s + 20s gracefulRampDown = 150s (<=180s budget)
+// Peak 3000 VU achieved at 45s and held for 65s within token freshness.
 //
 // Behavior distribution:
 //   55% browse:    feed-list → feed-items
@@ -14,32 +26,54 @@
 // All endpoints are Connect-RPC v2 (POST + JSON body), DB-read only.
 // FetchArticleContent is NOT used (it fetches external URLs → SSRF issues).
 // Instead, FetchArticlesCursor is used for item-detail (pure DB read).
-//
-// Auth: JWT via X-Alt-Backend-Token (Connect-RPC auth interceptor).
-// Tokens are HMAC-SHA256 signed with BACKEND_TOKEN_SECRET.
-// User IDs must be valid UUIDs (auth interceptor calls uuid.Parse()).
-//
-// Prerequisites:
-//   - Run via ./alt-perf/scripts/run-feed-read-load-test.sh
-//     (sets DoS protection overrides, scales resources, targets port 9101)
-//   - K6_BACKEND_TOKEN_SECRET injected via Docker secret (docker-entrypoint.sh)
 
 import http from "k6/http";
 import { check, sleep } from "k6";
 import { SharedArray } from "k6/data";
 import { Counter, Trend } from "k6/metrics";
 import { getConfig } from "../helpers/config.js";
-import { generateJWT } from "../helpers/jwt.js";
+import { getAuthHeaders, validateCohortTokenAtInit, validateFixtureTokenAtInit } from "../helpers/auth.js";
 import { handleSummary } from "../helpers/summary.js";
+
+// ---------------------------------------------------------------------------
+// Cohort Constants & Init Token Validation
+// ---------------------------------------------------------------------------
+
+export const COHORT_DURATION_SECONDS = 150;
+export const COHORT_BUFFER_SECONDS = 30;
+export const REQUIRED_REMAINING_SECONDS = COHORT_DURATION_SECONDS + COHORT_BUFFER_SECONDS; // 180s
+
+// Fail closed at init if issued token does not have sufficient remaining validity
+const initCfg = getConfig();
+if (initCfg.apiToken) {
+  validateCohortTokenAtInit(initCfg.apiToken, COHORT_DURATION_SECONDS, initCfg);
+}
 
 // ---------------------------------------------------------------------------
 // Data (SharedArray for memory efficiency across 3000 VUs)
 // ---------------------------------------------------------------------------
 
 const users = new SharedArray("users", function () {
-  return JSON.parse(
+  const data = JSON.parse(
     open(__ENV.USERS_FILE || "/scripts/data/users.sample.json"),
   );
+  // Wire every fixture at init: validate remaining >= 180s, exp <= 5min,
+  // fixture ID matching JWT sub owner; fail init if short or expired.
+  for (const user of data) {
+    if (user && user.token) {
+      const fixtureUserId = user.user_id || user.id;
+      const claims = validateFixtureTokenAtInit(user.token, {
+        ...initCfg,
+        testUserId: fixtureUserId || initCfg.testUserId,
+      }, fixtureUserId);
+      if (fixtureUserId && claims.sub !== fixtureUserId) {
+        throw new Error(
+          `Fixture user_id mismatch with token sub: fixture=${fixtureUserId} sub=${claims.sub}`,
+        );
+      }
+    }
+  }
+  return data;
 });
 
 // ---------------------------------------------------------------------------
@@ -63,14 +97,13 @@ export const options = {
       executor: "ramping-vus",
       startVUs: 0,
       stages: [
-        { duration: "2m", target: 300 },
-        { duration: "3m", target: 1000 },
-        { duration: "3m", target: 2000 },
-        { duration: "4m", target: 3000 },
-        { duration: "15m", target: 3000 },
-        { duration: "3m", target: 0 },
+        { duration: "20s", target: 1000 },
+        { duration: "25s", target: 3000 },
+        { duration: "65s", target: 3000 },
+        { duration: "20s", target: 0 },
       ],
-      gracefulRampDown: "30s",
+      gracefulRampDown: "20s",
+      gracefulStop: "0s",
     },
   },
   thresholds: {
@@ -106,22 +139,11 @@ function thinkTime() {
 
 /** Build JWT auth headers for Connect-RPC (port 9101) */
 function buildAuthHeaders(user) {
-  const cfg = getConfig();
-  const now = Math.floor(Date.now() / 1000);
-  const token = generateJWT(cfg.backendTokenSecret, {
-    sub: user.user_id,
-    email: user.email,
-    role: "user",
-    sid: `loadtest-${user.user_id}`,
-    iss: "auth-hub",
-    aud: ["alt-backend"],
-    iat: now,
-    exp: now + 300, // 5 min
-  });
-  return {
-    "Content-Type": "application/json",
-    "X-Alt-Backend-Token": token,
-  };
+  // Parallel virtual users reuse the authorized test owner token (K6_API_TOKEN),
+  // or accept a per-user issued token if provided in a fixture list.
+  // Never target other users via fake IDs or mint tokens locally.
+  const token = (user && user.token) ? user.token : undefined;
+  return getAuthHeaders(token);
 }
 
 /** Send a Connect-RPC POST request */

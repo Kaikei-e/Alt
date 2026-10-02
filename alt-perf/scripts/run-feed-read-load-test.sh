@@ -20,6 +20,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+echo "BLOCKED: Legacy feed-read load test uses unjournaled inline SQL without RETURNING IDs." >&2
+echo "This violates D04 safety guardrails (unproven created IDs and global prefix deletion)." >&2
+echo "Refusing to execute until feed/article creation is journalled with proper run-manifest provenance." >&2
+echo "Restoration prerequisite: wire manifest journalRETURNING ids before running load tests." >&2
+exit 1
+
 VU_COUNT="${VU_COUNT:-3000}"
 VALIDATE_RATE_LIMIT="${VALIDATE_RATE_LIMIT:-10000}"
 AUTH_HUB_REPLICAS="${AUTH_HUB_REPLICAS:-3}"
@@ -56,6 +62,7 @@ GENERATED_OVERLAY="compose/feed-read-test-generated.yaml"
 RESTORE_ON_EXIT=0
 
 cleanup() {
+  local exit_code=$?
   set +e
 
   if [ "$RESTORE_ON_EXIT" -eq 1 ]; then
@@ -65,6 +72,7 @@ cleanup() {
   fi
 
   rm -f "$GENERATED_OVERLAY"
+  exit "$exit_code"
 }
 
 trap cleanup EXIT INT TERM

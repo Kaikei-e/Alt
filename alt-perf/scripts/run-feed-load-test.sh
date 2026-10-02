@@ -18,6 +18,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+echo "BLOCKED: Feed registration load test generates feeds via K6 without journalling created IDs into run-manifest." >&2
+echo "journalFeed/journalArticle have no generation callers capturing genuine production response IDs with owner/run proof." >&2
+echo "Refusing to execute until feed/article creation is journalled with proper run-manifest provenance." >&2
+echo "Restoration prerequisite: wire K6 / backend response RETURNING feed/article IDs into manifest.ts before enabling." >&2
+exit 1
+
 USER_COUNT="${USER_COUNT:-1000}"
 FEED_COUNT="${FEED_COUNT:-100}"
 DURATION="${DURATION:-60}"
@@ -27,6 +33,16 @@ DB_USER="${POSTGRES_USER:-alt_db_user}"
 DB_NAME="${POSTGRES_DB:-alt}"
 K6_SCENARIO="/scripts/scenarios/feed-registration.js"
 GENERATED_OVERLAY="compose/load-test-generated.yaml"
+RUN_ID="${RUN_ID:-feed-load-${USER_COUNT}u-$(date +%s)-${RANDOM}}"
+K6_EXIT=0
+
+cleanup() {
+  local exit_code=$?
+  set +e
+  rm -f "$GENERATED_OVERLAY"
+  exit "$exit_code"
+}
+trap cleanup EXIT INT TERM
 
 # Auto-calculate VALIDATE_RATE_LIMIT (per-IP rate in req/s).
 # With X-Real-IP forwarded to auth-hub, each VU gets its own rate limiter.
@@ -327,10 +343,11 @@ fi
 
 # --- Phase 2: Create test users ---
 echo ""
-echo "Phase 2: Creating $USER_COUNT test users..."
+echo "Phase 2: Creating $USER_COUNT test users (run-id: $RUN_ID)..."
 deno run \
   --allow-net --allow-write --allow-read --allow-env \
   "$SCRIPT_DIR/feed-load-test-setup.ts" \
+  --run-id="$RUN_ID" \
   --count="$USER_COUNT"
 
 echo ""
@@ -382,11 +399,13 @@ $COMPOSE exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c \
 echo "  Metrics saved to /tmp/*-loadtest.log"
 
 # --- Phase 4: Teardown ---
-echo "Phase 4: Cleaning up test data..."
+echo "Phase 4: Cleaning up test data (run-id: $RUN_ID)..."
 export COMPOSE_CMD="$COMPOSE"
 deno run \
   --allow-net --allow-read --allow-write --allow-env --allow-run \
-  "$SCRIPT_DIR/feed-load-test-teardown.ts"
+  "$SCRIPT_DIR/feed-load-test-teardown.ts" \
+  --run-id="$RUN_ID" \
+  --apply
 
 echo ""
 

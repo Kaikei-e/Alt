@@ -5,7 +5,7 @@ Connect-RPC (v2) の読み取り系 API に対して 3000VU の同時閲覧負�
 ## 前提
 
 - Alt スタックが起動済み (`docker compose -f compose/compose.yaml -p alt up -d`)
-- Docker secret `backend_token_secret` が設定済み
+- Docker secret `k6_api_token` (`/run/secrets/k6_api_token`) として発行者 (`auth-hub`) が発行した短期かつ有効期間制限付き JWT ファイルがマウント済みであること（所有者フィクスチャ合致、残存有効期間が最低180秒以上あること。自己署名・署名鍵 `backend_token_secret` マウントは禁止・廃止）
 - PostgreSQL にフィード・記事データが存在すること
 
 ## API 仕様の想定
@@ -25,35 +25,39 @@ Connect-RPC (v2) の読み取り系 API に対して 3000VU の同時閲覧負�
 ## 認証
 
 Connect-RPC (port 9101) は JWT 認証 (`X-Alt-Backend-Token`) を使用する。
+k6 内部での自己署名は行わず、発行者 (`auth-hub`) が発行した短期かつ有効期間制限付きの JWT ファイル (`k6_api_token`) を使用する。
 
 | 項目 | 値 | 備考 |
 |------|-----|------|
 | ヘッダー | `X-Alt-Backend-Token` | JWT トークン |
-| 署名方式 | HMAC-SHA256 | `BACKEND_TOKEN_SECRET` で署名 |
-| Issuer | `auth-hub` | デフォルト値 |
-| Audience | `alt-backend` | デフォルト値 |
-| Subject | `users.sample.json` の `user_id` | **有効な UUID** (`uuid.Parse()` 必須) |
-| Claims | `email`, `role`, `sid` | ユーザー属性 |
+| 署名方式 | 発行者署名済み JWT | 自己署名・署名鍵マウントは禁止・廃止 |
+| Issuer | `auth-hub` | 必須検証 |
+| Audience | `alt-backend` | 必須検証 |
+| Subject | `users.sample.json` の `user_id` | **有効な UUID** (`uuid.Parse()` 必須) かつ所有者合致 |
+| Claims | `email`, `role`, `sid`, `tenant_id` | 有効期間最大300秒、残存有効期間最低180秒以上 |
 
-JWT は `k6/helpers/jwt.js` で k6 内部で生成される。
+JWT は k6 内部で自己署名しない。コンテナ起動時に `docker-entrypoint.sh` がトークンファイル (`$K6_API_TOKEN_FILE`) を読み取って環境変数 `K6_API_TOKEN` に設定し、`k6/helpers/auth.js` がそのトークン文字列 (string) のフォーマットおよびクレーム・残存有効期間ガード（最低180秒）を検証する（auth.js が直接ファイルを読み取るのではない）。
 
 ## 環境変数
 
 | 変数 | デフォルト | 説明 |
 |------|-----------|------|
-| `K6_BASE_URL` | `http://alt-backend:9101` | Connect-RPC URL (実行スクリプトが自動設定) |
-| `K6_BACKEND_TOKEN_SECRET` | Docker secret から自動注入 | JWT 署名用秘密鍵 |
+| `K6_BASE_URL` | `http://alt-backend:9000` (Compose既定) / `http://alt-backend:9101` (Connect-RPC意図値) | Connect-RPCの意図するターゲット(:9101)と現行Compose定義(:9000)の差異を認識・再開時に要検証（現時点でCompose側の変更は行わない） |
+| `K6_API_TOKEN_FILE` | `/run/secrets/k6_api_token` | 発行者発行の短期 JWT トークンファイルパス |
 | `USERS_FILE` | `/scripts/data/users.sample.json` | ユーザーデータパス |
 | `FEEDS_FILE` | `/scripts/data/feeds.sample.json` | フィードデータパス |
 
-## 実行方法
+## 実行方法 (参考情報 / 現在安全停止中)
 
-### 推奨: 実行スクリプト経由
+> [!CAUTION]
+> 負荷テスト実行ラッパー (`run-feed-read-load-test.sh` 等) はインフラ先行の安全停止のため現在すべてフェイルクローズ（TEMPORARILY UNAVAILABLE）となっており、実行はブロックされます。以下の実行手順および手動実行コマンドは**将来の再開に向けた参考情報**であり、現在の安全ガードレールをバイパス・無効化して実行してはなりません。
 
-実行スクリプトが DoS Protection/リソースの環境変数オーバーライドを自動設定する。
+### 参考: 実行スクリプト経由 (現在実行不可)
+
+実行スクリプトが DoS Protection/リソースの環境変数オーバーライドを自動設定する想定（現在フェイルクローズ中）。
 
 ```bash
-# フルテスト (30分, 3000VU)
+# フルテスト (実際は130秒stage+20秒grace=150秒短期cohort。残存180秒以上・TTL 300秒以下と整合)
 ./alt-perf/scripts/run-feed-read-load-test.sh
 
 # Smoke test (1VU, 5イテレーション)
@@ -63,9 +67,9 @@ VU_COUNT=1 ./alt-perf/scripts/run-feed-read-load-test.sh
 VU_COUNT=100 ./alt-perf/scripts/run-feed-read-load-test.sh
 ```
 
-### 手動実行 (非推奨)
+### 参考: 手動実行 (現在実行不可・非推奨)
 
-DoS Protection の引き上げなしで実行すると、即座にレートリミットに引っかかる。
+DoS Protection の引き上げなしで実行すると即座にレートリミットに引っかかる。またラッパーおよびインフラの整合性が未解決のため実行不可。
 
 ```bash
 docker compose -f compose/compose.yaml -f compose/perf.yaml -p alt \
@@ -173,9 +177,9 @@ GROUP BY fl.id;
 
 ### `auth_errors` が大量に出る
 
-- `backend_token_secret` が Docker secret として存在するか確認: `docker secret ls` またはファイル `secrets/backend_token_secret.txt`
-- `users.sample.json` の `user_id` が有効な UUID か確認 (auth interceptor が `uuid.Parse()` する)
-- alt-backend の `BACKEND_TOKEN_SECRET` と k6 の `K6_BACKEND_TOKEN_SECRET` が同じ値か確認
+- `k6_api_token` が Docker secret として `/run/secrets/k6_api_token` にマウントされているか確認（発行者発行の短期JWTファイル、残存有効期間が最低180秒以上あること。自己署名・`backend_token_secret` 署名鍵マウントは禁止・廃止）
+- `users.sample.json` の `user_id` が有効な UUID かつ JWT の subject / 所有者フィクスチャと合致しているか確認
+- JWT の issuer (`auth-hub`)、audience (`alt-backend`)、有効期限 (`exp`) が正常か確認
 - **注意**: Connect-RPC (port 9101) は REST (port 9000) とは異なる認証方式を使用する
 
 ### `rate_limit_hits` が多い
