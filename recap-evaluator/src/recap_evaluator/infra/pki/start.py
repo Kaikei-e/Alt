@@ -32,8 +32,12 @@ class Handle:
         ops: OpsHandle | None = None,
         registry: CollectorRegistry | None = None,
         join_timeout: float = _DEFAULT_ISSUE_TIMEOUT + _JOIN_SLACK_SECONDS,
+        cert_path: str,
+        key_path: str,
     ) -> None:
         self._ctx = ctx
+        self.cert_path = cert_path
+        self.key_path = key_path
         self._thread = thread
         self._issuer = issuer
         self._ops = ops
@@ -134,6 +138,8 @@ def start_with_observer(
         ops=ops,
         registry=registry,
         join_timeout=timeout + _JOIN_SLACK_SECONDS,
+        cert_path=cfg.cert_path,
+        key_path=cfg.key_path,
     )
 
 

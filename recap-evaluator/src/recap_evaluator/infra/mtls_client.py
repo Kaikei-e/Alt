@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 import structlog
 
+from recap_evaluator.infra.pki.start import Handle
 from recap_evaluator.infra.pki.start import start as start_pki_enrollment
 
 logger = structlog.get_logger(__name__)
@@ -148,6 +149,27 @@ def require_client_cert_for_https(upstreams: Mapping[str, str], *, enforced: boo
         raise RuntimeError(msg)
 
 
+def require_enrolled_leaf(handle: Handle | None) -> None:
+    """Refuse a client leaf that the in-process enrollment does not renew."""
+    if handle is None:
+        msg = (
+            "MTLS_ENFORCE=true requires PKI_ENROLLMENT=enabled: nothing else "
+            "renews the client leaf"
+        )
+        raise RuntimeError(msg)
+    for env_name, enrolled_name, enrolled in (
+        ("MTLS_CERT_FILE", "CERT_PATH", handle.cert_path),
+        ("MTLS_KEY_FILE", "KEY_PATH", handle.key_path),
+    ):
+        configured = os.getenv(env_name, "")
+        if Path(configured) != Path(enrolled):
+            msg = (
+                f"{env_name}={configured!r} must equal the enrolled {enrolled_name}="
+                f"{enrolled!r}; any other file is never renewed"
+            )
+            raise RuntimeError(msg)
+
+
 @contextlib.asynccontextmanager
 async def outbound_mtls(
     service_name: str, *, upstreams: Mapping[str, str]
@@ -162,6 +184,8 @@ async def outbound_mtls(
     require_client_cert_for_https(upstreams, enforced=enforced)
     handle = await asyncio.to_thread(start_pki_enrollment, service_name)
     try:
+        if enforced:
+            require_enrolled_leaf(handle)
         ctx = build_ssl_context()
         if ctx is None:
             logger.info(
