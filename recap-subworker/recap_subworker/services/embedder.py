@@ -11,7 +11,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import structlog
@@ -22,6 +22,9 @@ from ..infra.embedding_identity import (
     DEFAULT_SENTENCE_TRANSFORMER_MODEL_ID,
     canonicalize_embedding_id,
 )
+
+if TYPE_CHECKING:
+    from ..infra.config import Settings
 
 logger = structlog.get_logger(__name__)
 
@@ -71,6 +74,32 @@ class EmbedderConfig:
     # warning instead of ConfigValidationError. See classifier.py.
     allow_embedding_drift: bool = False
     inference_service_token: Any = None
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> EmbedderConfig:
+        """Build the config every Embedder construction site shares.
+
+        Constructing EmbedderConfig field by field at each site let the
+        process-pool workers drift from the container (no bearer token, no
+        ONNX options), so all sites derive it from Settings here.
+        """
+        return cls(
+            model_id=settings.model_id,
+            distill_model_id=settings.distill_model_id,
+            backend=settings.model_backend,
+            device=settings.device,
+            batch_size=settings.batch_size,
+            cache_size=settings.embed_cache_size,
+            onnx_model_path=settings.onnx_model_path,
+            onnx_tokenizer_name=settings.onnx_tokenizer_name,
+            onnx_pooling=settings.onnx_pooling,
+            onnx_max_length=settings.onnx_max_length,
+            ollama_embed_url=settings.ollama_embed_url,
+            ollama_embed_model=settings.ollama_embed_model,
+            ollama_embed_timeout=settings.ollama_embed_timeout,
+            allow_embedding_drift=settings.allow_embedding_drift,
+            inference_service_token=settings.inference_service_token,
+        )
 
 
 class Embedder:

@@ -16,6 +16,7 @@ drift.
 
 import argparse
 import asyncio
+import dataclasses
 import hashlib
 import importlib.metadata
 import json
@@ -213,12 +214,9 @@ async def main(
     logger.info("Initializing Embedder...")
     from recap_subworker.services.embedder import EmbedderConfig
 
-    # Construct config from settings
-    embedder_config = EmbedderConfig(
-        model_id=settings.model_id,
-        backend=settings.model_backend,
+    embedder_config = dataclasses.replace(
+        EmbedderConfig.from_settings(settings),
         device="cuda",  # Force CUDA per user authorization
-        distill_model_id=settings.distill_model_id,
         batch_size=4,  # Reduced to 4 for extreme safety
         cache_size=1000,  # Default cache size
     )

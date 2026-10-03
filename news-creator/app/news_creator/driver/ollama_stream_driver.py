@@ -32,8 +32,7 @@ class OllamaStreamDriver:
             sock_read=None,  # No read timeout for streaming
         )
         headers = {}
-        llm_cfg = getattr(self.config, "llm", None)
-        token = getattr(llm_cfg, "inference_service_token", None) if llm_cfg else None
+        token = self.config.llm.inference_service_token
         if token:
             headers["Authorization"] = f"Bearer {token}"
 

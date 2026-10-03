@@ -11,6 +11,8 @@ import os
 import logging
 from dataclasses import dataclass
 
+from news_creator.config.inference_token import resolve_inference_token
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,17 +104,6 @@ class LLMConfig:
         if not stop_tokens:
             stop_tokens = ("<turn|>",)
 
-        inference_service_token = None
-        token_file = os.getenv("INFERENCE_SERVICE_TOKEN_FILE")
-        if token_file:
-            from news_creator.config.inference_token import load_inference_token
-
-            if not os.path.isfile(token_file):
-                raise ValueError(f"Inference token file {token_file} not found")
-            inference_service_token = load_inference_token(token_file)
-            if inference_service_token is None:
-                raise ValueError(f"Inference token file {token_file} is empty")
-
         return cls(
             service_url=os.getenv("LLM_SERVICE_URL", "http://localhost:11435"),
             model_name=os.getenv("LLM_MODEL", "gemma4-e4b-q4km"),
@@ -147,7 +138,7 @@ class LLMConfig:
             recap_summary_repair_attempts=_get_int("RECAP_SUMMARY_REPAIR_ATTEMPTS", 2),
             recap_card_max_new_tokens=_get_int("RECAP_CARD_MAX_NEW_TOKENS", 700),
             recap_card_temperature=_get_float("RECAP_CARD_TEMPERATURE", 0.2),
-            inference_service_token=inference_service_token,
+            inference_service_token=resolve_inference_token(),
         )
 
 
