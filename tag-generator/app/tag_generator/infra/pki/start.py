@@ -105,8 +105,8 @@ async def start_enrollment(
         except asyncio.CancelledError:
             pass
         raise
-    task = asyncio.create_task(mgr.run(), name="pki-enrollment-loop")
     ops = start_ops(cfg.subject, registry)
+    task = asyncio.create_task(mgr.run(), name="pki-enrollment-loop")
     handle = EnrollmentHandle(task, ops=ops, enroll_task=enroll_task)
     handle.registry = registry
     return handle

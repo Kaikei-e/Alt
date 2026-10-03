@@ -25,9 +25,7 @@ class EvaluationScheduler:
     async def _run_scheduled_evaluation(self) -> None:
         logger.info("Running scheduled evaluation")
         try:
-            run = await self._usecase.execute(
-                window_days=self._settings.evaluation_window_days
-            )
+            run = await self._usecase.execute(window_days=self._settings.evaluation_window_days)
             logger.info(
                 "Scheduled evaluation completed",
                 evaluation_id=str(run.evaluation_id),
@@ -48,9 +46,7 @@ class EvaluationScheduler:
             id="daily_evaluation",
         )
         self._scheduler.start()
-        logger.info(
-            "Scheduler started", schedule=self._settings.evaluation_schedule
-        )
+        logger.info("Scheduler started", schedule=self._settings.evaluation_schedule)
 
     def stop(self) -> None:
         if self._scheduler.running:

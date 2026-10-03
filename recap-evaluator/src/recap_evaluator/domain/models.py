@@ -255,9 +255,7 @@ class EvaluationRun:
         if self.genre_metrics is not None:
             metrics["genre"] = self.genre_metrics.to_dict()
         if self.cluster_metrics:
-            metrics["cluster"] = {
-                genre: m.to_dict() for genre, m in self.cluster_metrics.items()
-            }
+            metrics["cluster"] = {genre: m.to_dict() for genre, m in self.cluster_metrics.items()}
         if self.summary_metrics is not None:
             metrics["summary"] = self.summary_metrics.to_dict()
         if self.pipeline_metrics is not None:

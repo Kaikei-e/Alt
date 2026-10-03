@@ -1,9 +1,9 @@
 """Tests for PostgresGateway."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -63,12 +63,30 @@ class TestPostgresGateway:
         job_id_1 = uuid4()
         job_id_2 = uuid4()
         conn.fetch.return_value = [
-            {"job_id": job_id_1, "stage": "preprocess", "status": "completed",
-             "started_at": None, "finished_at": None, "message": None},
-            {"job_id": job_id_1, "stage": "classify", "status": "completed",
-             "started_at": None, "finished_at": None, "message": None},
-            {"job_id": job_id_2, "stage": "preprocess", "status": "completed",
-             "started_at": None, "finished_at": None, "message": None},
+            {
+                "job_id": job_id_1,
+                "stage": "preprocess",
+                "status": "completed",
+                "started_at": None,
+                "finished_at": None,
+                "message": None,
+            },
+            {
+                "job_id": job_id_1,
+                "stage": "classify",
+                "status": "completed",
+                "started_at": None,
+                "finished_at": None,
+                "message": None,
+            },
+            {
+                "job_id": job_id_2,
+                "stage": "preprocess",
+                "status": "completed",
+                "started_at": None,
+                "finished_at": None,
+                "message": None,
+            },
         ]
         gw = PostgresGateway(pool)
 
@@ -83,10 +101,15 @@ class TestPostgresGateway:
         pool, conn = mock_pool
         job_id = uuid4()
         conn.fetch.return_value = [
-            {"job_id": job_id, "total_articles_fetched": 100,
-             "articles_processed": 95, "articles_dropped_empty": 5,
-             "total_characters": 500000, "avg_chars_per_article": 5263,
-             "languages_detected": {}},
+            {
+                "job_id": job_id,
+                "total_articles_fetched": 100,
+                "articles_processed": 95,
+                "articles_dropped_empty": 5,
+                "total_characters": 500000,
+                "avg_chars_per_article": 5263,
+                "languages_detected": {},
+            },
         ]
         gw = PostgresGateway(pool)
 
@@ -112,7 +135,7 @@ class TestPostgresGateway:
             "evaluation_type": "full",
             "job_ids": [],
             "metrics": {},
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
         gw = PostgresGateway(pool)
 
@@ -126,7 +149,7 @@ class TestPostgresGateway:
         gw = PostgresGateway(pool)
         eval_id = uuid4()
         job_id = uuid4()
-        created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        created_at = datetime(2025, 1, 1, tzinfo=UTC)
         metrics = {"test": True}
 
         await gw.save_evaluation_run(

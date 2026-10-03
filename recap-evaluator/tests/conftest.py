@@ -5,12 +5,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from recap_evaluator.config import AlertThresholds, EvaluatorWeights, Settings
-from recap_evaluator.domain.models import (
-    ClusterMetrics,
-    GenreEvaluationResult,
-    PipelineMetrics,
-    SummaryMetrics,
-)
 from tests.fixtures.job_data import (
     SAMPLE_ARTICLE,
     SAMPLE_CLUSTER,
@@ -66,9 +60,7 @@ def mock_db() -> AsyncMock:
     db.fetch_stage_logs.return_value = SAMPLE_STAGE_LOGS
     db.fetch_stage_logs_batch.return_value = {SAMPLE_JOB_ID: SAMPLE_STAGE_LOGS}
     db.fetch_preprocess_metrics.return_value = SAMPLE_PREPROCESS_METRICS
-    db.fetch_preprocess_metrics_batch.return_value = {
-        SAMPLE_JOB_ID: SAMPLE_PREPROCESS_METRICS
-    }
+    db.fetch_preprocess_metrics_batch.return_value = {SAMPLE_JOB_ID: SAMPLE_PREPROCESS_METRICS}
     db.fetch_subworker_runs.return_value = [SAMPLE_SUBWORKER_RUN]
     db.fetch_clusters_for_run.return_value = [SAMPLE_CLUSTER]
     db.fetch_genre_learning_results.return_value = []

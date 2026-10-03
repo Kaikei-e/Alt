@@ -1,10 +1,7 @@
 """Tests for GenreEvaluator."""
 
-from unittest.mock import AsyncMock
-
 import pytest
 
-from recap_evaluator.config import AlertThresholds
 from recap_evaluator.domain.models import AlertLevel
 from recap_evaluator.evaluator.genre_evaluator import GenreEvaluator
 from tests.fixtures.evaluation_data import SAMPLE_GENRE_API_RESPONSE
@@ -16,12 +13,8 @@ def genre_evaluator(mock_db, mock_recap_worker, alert_thresholds):
 
 
 class TestGenreEvaluator:
-    async def test_fetch_latest_evaluation_returns_result(
-        self, genre_evaluator, mock_recap_worker
-    ):
-        mock_recap_worker.fetch_latest_genre_evaluation.return_value = (
-            SAMPLE_GENRE_API_RESPONSE
-        )
+    async def test_fetch_latest_evaluation_returns_result(self, genre_evaluator, mock_recap_worker):
+        mock_recap_worker.fetch_latest_genre_evaluation.return_value = SAMPLE_GENRE_API_RESPONSE
 
         result = await genre_evaluator.fetch_latest_evaluation()
 
@@ -39,9 +32,7 @@ class TestGenreEvaluator:
 
         assert result is None
 
-    async def test_alert_level_ok_when_above_threshold(
-        self, genre_evaluator, mock_recap_worker
-    ):
+    async def test_alert_level_ok_when_above_threshold(self, genre_evaluator, mock_recap_worker):
         mock_recap_worker.fetch_latest_genre_evaluation.return_value = {
             **SAMPLE_GENRE_API_RESPONSE,
             "macro_f1": 0.85,
@@ -82,9 +73,7 @@ class TestGenreEvaluator:
 
         mock_recap_worker.trigger_genre_evaluation.assert_called_once()
 
-    async def test_analyze_learning_results_empty(
-        self, genre_evaluator, mock_db
-    ):
+    async def test_analyze_learning_results_empty(self, genre_evaluator, mock_db):
         mock_db.fetch_genre_learning_results.return_value = []
 
         result = await genre_evaluator.analyze_learning_results([])

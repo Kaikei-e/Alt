@@ -32,8 +32,12 @@ class Handle:
         ops: OpsHandle | None = None,
         registry: CollectorRegistry | None = None,
         join_timeout: float = _DEFAULT_ISSUE_TIMEOUT + _JOIN_SLACK_SECONDS,
+        cert_path: str,
+        key_path: str,
     ) -> None:
         self._ctx = ctx
+        self.cert_path = cert_path
+        self.key_path = key_path
         self._thread = thread
         self._issuer = issuer
         self._ops = ops
@@ -114,6 +118,11 @@ def start_with_observer(
     )
     ctx = Ctx()
     mgr.enroll(ctx)
+    # Bind before the non-daemon thread exists: a bind error must exit the
+    # process, not leave the renewal thread holding it open.
+    ops: OpsHandle | None = None
+    if registry is not None:
+        ops = start_ops(cfg.subject, registry)
     thread = threading.Thread(
         target=_run_loop,
         args=(mgr, ctx),
@@ -121,9 +130,6 @@ def start_with_observer(
         daemon=False,
     )
     thread.start()
-    ops: OpsHandle | None = None
-    if registry is not None:
-        ops = start_ops(cfg.subject, registry)
     timeout = float(getattr(minted, "timeout", _DEFAULT_ISSUE_TIMEOUT) or _DEFAULT_ISSUE_TIMEOUT)
     return Handle(
         ctx,
@@ -132,6 +138,8 @@ def start_with_observer(
         ops=ops,
         registry=registry,
         join_timeout=timeout + _JOIN_SLACK_SECONDS,
+        cert_path=cfg.cert_path,
+        key_path=cfg.key_path,
     )
 
 

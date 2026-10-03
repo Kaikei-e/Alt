@@ -135,9 +135,7 @@ class TestROUGEEvaluator:
         candidates = ["The quick brown fox.", "Hello world."]
         references = ["The quick brown fox jumps.", "Hello world!"]
 
-        result = evaluator.compute_batch(
-            candidates, references, return_individual=True
-        )
+        result = evaluator.compute_batch(candidates, references, return_individual=True)
 
         assert "individual_scores" in result
         assert len(result["individual_scores"]) == 2

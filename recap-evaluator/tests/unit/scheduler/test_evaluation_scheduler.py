@@ -56,18 +56,14 @@ class TestEvaluationScheduler:
 
         assert not scheduler._scheduler.running
 
-    async def test_run_scheduled_evaluation_calls_usecase(
-        self, mock_usecase, scheduler_settings
-    ):
+    async def test_run_scheduled_evaluation_calls_usecase(self, mock_usecase, scheduler_settings):
         scheduler = EvaluationScheduler(mock_usecase, scheduler_settings)
 
         await scheduler._run_scheduled_evaluation()
 
         mock_usecase.execute.assert_called_once_with(window_days=7)
 
-    async def test_run_scheduled_evaluation_handles_error(
-        self, mock_usecase, scheduler_settings
-    ):
+    async def test_run_scheduled_evaluation_handles_error(self, mock_usecase, scheduler_settings):
         """A failed evaluation run must be logged (not silently dropped) and
         must not propagate out of the scheduled job — an uncaught exception
         here would kill the APScheduler job permanently (CLAUDE.md rule 8:
@@ -80,7 +76,6 @@ class TestEvaluationScheduler:
 
         mock_usecase.execute.assert_called_once_with(window_days=7)
         assert any(
-            entry["event"] == "Scheduled evaluation failed"
-            and entry["log_level"] == "error"
+            entry["event"] == "Scheduled evaluation failed" and entry["log_level"] == "error"
             for entry in logs
         )

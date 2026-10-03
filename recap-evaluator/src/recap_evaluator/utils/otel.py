@@ -7,6 +7,7 @@ import os
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import requests as _requests
 import structlog
@@ -55,7 +56,7 @@ class _NoRedirectSession(_requests.Session):
     Timeouts are capped at 7 seconds to prevent unbounded hangs.
     """
 
-    def request(self, method, url, **kwargs):  # type: ignore[override]
+    def request(self, method, url, **kwargs: Any):  # type: ignore[override]
         kwargs["allow_redirects"] = False
         t = kwargs.get("timeout")
         if t is None and "timeout" not in kwargs:
@@ -90,9 +91,7 @@ def load_rask_ingest_token() -> str:
 
     token = raw.rstrip("\r\n")
     if not token or not _TOKEN68_RE.match(token):
-        raise RuntimeError(
-            f"RASK_INGEST_TOKEN_FILE ({token_file}) contains an invalid token"
-        )
+        raise RuntimeError(f"RASK_INGEST_TOKEN_FILE ({token_file}) contains an invalid token")
     return token
 
 

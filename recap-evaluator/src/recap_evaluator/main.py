@@ -54,13 +54,18 @@ def create_app(
             load_bearer_token_from_file,
         )
 
-        if not EVALUATOR_AUTH_DISABLED:
-            app.state.api_token = load_bearer_token_from_file()
-        else:
-            app.state.api_token = ""
-
         configure_logging(log_level=cfg.log_level, log_format=cfg.log_format)
         app.state.settings = cfg
+
+        if EVALUATOR_AUTH_DISABLED:
+            app.state.api_token = ""
+            logger.warning(
+                "evaluator_auth_disabled",
+                detail="EVALUATOR_AUTH=disabled; /api/v1/evaluations/* accepts unauthenticated requests",
+            )
+        else:
+            app.state.api_token = load_bearer_token_from_file()
+            logger.info("evaluator_auth_enabled")
 
         logger.info(
             "Starting recap-evaluator",

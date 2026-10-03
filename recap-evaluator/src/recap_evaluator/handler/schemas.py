@@ -53,7 +53,10 @@ class GenreMetricsResponse(BaseModel):
     @classmethod
     def from_domain(cls, m: GenreMetrics) -> "GenreMetricsResponse":
         return cls(
-            genre=m.genre, tp=m.tp, fp=m.fp, fn=m.fn,
+            genre=m.genre,
+            tp=m.tp,
+            fp=m.fp,
+            fn=m.fn,
             precision=round(m.precision, 4),
             recall=round(m.recall, 4),
             f1_score=round(m.f1_score, 4),

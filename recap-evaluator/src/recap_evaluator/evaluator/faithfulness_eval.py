@@ -194,9 +194,7 @@ class FaithfulnessEvaluator:
         sentences = re.split(pattern, text.strip())
         return [s.strip() for s in sentences if s.strip()]
 
-    def _get_nli_scores_batch(
-        self, pairs: list[tuple[str, str]]
-    ) -> list[dict[str, float]]:
+    def _get_nli_scores_batch(self, pairs: list[tuple[str, str]]) -> list[dict[str, float]]:
         """Get NLI scores for many premise-hypothesis pairs in one pipeline call.
 
         Batches the model forward pass instead of invoking the pipeline once
@@ -266,9 +264,7 @@ class FaithfulnessEvaluator:
 
         # Score the full summary_sentence x source_sentence cross product in
         # one batched pipeline call instead of one call per pair.
-        pairs = [
-            (source, sent) for sent in summary_sentences for source in source_sentences
-        ]
+        pairs = [(source, sent) for sent in summary_sentences for source in source_sentences]
         all_scores = self._get_nli_scores_batch(pairs)
         scores_per_sentence = [
             all_scores[i : i + len(source_sentences)]
@@ -305,9 +301,7 @@ class FaithfulnessEvaluator:
 
         num_sentences = len(summary_sentences)
         avg_entailment = total_entailment / num_sentences if num_sentences > 0 else 0.0
-        avg_contradiction = (
-            total_contradiction / num_sentences if num_sentences > 0 else 0.0
-        )
+        avg_contradiction = total_contradiction / num_sentences if num_sentences > 0 else 0.0
         avg_neutral = total_neutral / num_sentences if num_sentences > 0 else 0.0
 
         # Hallucination score: 1 - entailment (higher means more hallucinated)

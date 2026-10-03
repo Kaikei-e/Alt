@@ -71,6 +71,20 @@ def test_load_config_enabled_requires_outbound_mtls_enforced(
     assert cfg.mode == MODE_ENABLED
 
 
+@pytest.mark.parametrize("mode", [None, MODE_DISABLED])
+def test_load_config_mtls_enforced_requires_enrollment(mode: str | None) -> None:
+    environ = {"MTLS_ENFORCE": "true"}
+    if mode is not None:
+        environ["PKI_ENROLLMENT"] = mode
+    with pytest.raises(ValueError, match="PKI_ENROLLMENT=enabled"):
+        load_config("recap-evaluator", environ=environ)
+
+
+def test_load_config_disabled_allowed_when_mtls_not_enforced() -> None:
+    cfg = load_config("recap-evaluator", environ={"MTLS_ENFORCE": "false"})
+    assert cfg.mode == MODE_DISABLED
+
+
 def test_load_config_enabled_subject_scoped_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

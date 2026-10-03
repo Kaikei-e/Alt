@@ -7,10 +7,11 @@ import secrets
 from pathlib import Path
 
 import pytest
+import structlog
 
 from recap_evaluator import main
 from recap_evaluator.config import Settings
-from recap_evaluator.infra import mtls_client
+from recap_evaluator.infra import bearer_auth, mtls_client
 
 
 class _FakeHandle:
@@ -74,3 +75,36 @@ async def test_lifespan_refuses_https_news_creator_without_client_cert(
             pass
 
     assert lifespan_env == []
+
+
+def _auth_events(logs: list[dict]) -> list[tuple[str, str]]:
+    return [
+        (entry["event"], entry["log_level"])
+        for entry in logs
+        if entry["event"] in {"evaluator_auth_enabled", "evaluator_auth_disabled"}
+    ]
+
+
+async def test_lifespan_logs_evaluator_auth_enabled_once(lifespan_env: list[str]) -> None:
+    app = main.create_app(settings=_settings("http://localhost:11434"))
+
+    with structlog.testing.capture_logs() as logs, pytest.raises(RuntimeError):
+        async with app.router.lifespan_context(app):
+            pass
+
+    assert _auth_events(logs) == [("evaluator_auth_enabled", "info")]
+    assert app.state.api_token
+
+
+async def test_lifespan_warns_when_evaluator_auth_disabled(
+    lifespan_env: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(bearer_auth, "EVALUATOR_AUTH_DISABLED", True)
+    app = main.create_app(settings=_settings("http://localhost:11434"))
+
+    with structlog.testing.capture_logs() as logs, pytest.raises(RuntimeError):
+        async with app.router.lifespan_context(app):
+            pass
+
+    assert _auth_events(logs) == [("evaluator_auth_disabled", "warning")]
+    assert app.state.api_token == ""

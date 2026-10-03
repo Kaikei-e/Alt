@@ -177,6 +177,8 @@ def load_config(service_name: str, environ: Mapping[str, str] | None = None) -> 
     _validate(cfg)
     if cfg.mode == MODE_ENABLED:
         _require_outbound_mtls(env)
+    else:
+        _forbid_unrenewed_outbound_mtls(env, cfg.mode)
     return cfg
 
 
@@ -189,6 +191,13 @@ def _require_outbound_mtls(env: Mapping[str, str]) -> None:
         raise PKIConfigError(
             f"pki: PKI_ENROLLMENT=enabled requires MTLS_ENFORCE=true (got {env['MTLS_ENFORCE']!r})"
         )
+
+
+def _forbid_unrenewed_outbound_mtls(env: Mapping[str, str], mode: str) -> None:
+    # In-process enrollment is the only writer of the leaf; without it the
+    # outbound client would present whatever stale cert sits on the volume.
+    if _has(env, "MTLS_ENFORCE") and env["MTLS_ENFORCE"].strip().lower() == "true":
+        raise PKIConfigError(f"pki: MTLS_ENFORCE=true requires PKI_ENROLLMENT=enabled (got {mode!r})")
 
 
 def _load_enrollment_mode(env: Mapping[str, str]) -> str:

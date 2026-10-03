@@ -129,9 +129,7 @@ class BERTScoreEvaluator:
             RuntimeError: If bert-score is not available.
         """
         if not BERT_SCORE_AVAILABLE:
-            raise RuntimeError(
-                "bert-score is not installed. Install with: pip install bert-score"
-            )
+            raise RuntimeError("bert-score is not installed. Install with: pip install bert-score")
 
         if len(candidates) != len(references):
             raise ValueError(

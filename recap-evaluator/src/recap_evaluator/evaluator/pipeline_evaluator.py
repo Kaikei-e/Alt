@@ -111,9 +111,7 @@ class PipelineEvaluator:
         }
 
         success_rate = completed / total if total > 0 else 0.0
-        avg_processing_time = (
-            float(np.mean(all_processing_times)) if all_processing_times else 0.0
-        )
+        avg_processing_time = float(np.mean(all_processing_times)) if all_processing_times else 0.0
         avg_articles = float(np.mean(all_article_counts)) if all_article_counts else 0.0
 
         warn = self._thresholds.get_warn("pipeline_success_rate")

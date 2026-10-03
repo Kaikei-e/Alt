@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 import time
 from collections import OrderedDict
 from collections.abc import Callable
@@ -18,6 +19,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from tag_generator.infra.redis_auth import resolve_redis_password
 
 logger = structlog.get_logger(__name__)
+
+# mq-hub's GenerateTagsForArticle names every reply stream ReplyStreamPrefix +
+# uuid.New().String(). The key arrives in event metadata, and XADD with MAXLEN
+# would write into and trim whatever stream a forged event names.
+_REPLY_STREAM_KEY = re.compile(r"alt:replies:tags:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def is_reply_stream_key(key: object) -> bool:
+    """True only for a reply stream key mq-hub generates."""
+    return isinstance(key, str) and _REPLY_STREAM_KEY.fullmatch(key) is not None
+
 
 # Redis rejects writes for reasons that clear on their own: the instance is at
 # maxmemory (OOM), still loading its dataset (LOADING), has lost its primary
@@ -564,6 +576,9 @@ class StreamConsumer:
         Returns:
             Message ID if successful, None otherwise
         """
+        if not is_reply_stream_key(stream_key):
+            logger.error("reply_publish_rejected_stream_key", stream_key=stream_key[:128])
+            return None
         if self.client is None:
             logger.warning("Cannot publish reply: client not initialized")
             return None
