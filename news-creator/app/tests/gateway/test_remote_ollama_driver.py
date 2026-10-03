@@ -11,7 +11,15 @@ from news_creator.domain.models import LLMGenerateResponse
 
 @pytest.fixture
 def driver():
-    return RemoteOllamaDriver(timeout_seconds=300)
+    return RemoteOllamaDriver(timeout_seconds=300, inference_token=None)
+
+
+def test_inference_token_is_required_keyword():
+    """Production wiring must state the bearer; omitting it is not 'disabled'."""
+    with pytest.raises(TypeError, match="inference_token"):
+        RemoteOllamaDriver(timeout_seconds=300)
+    with pytest.raises(TypeError):
+        RemoteOllamaDriver(300, "token")
 
 
 def _make_mock_session():

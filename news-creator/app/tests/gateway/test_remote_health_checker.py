@@ -55,7 +55,16 @@ def checker(remotes):
         interval_seconds=30,
         cooldown_seconds=60,
         timeout_seconds=10,
+        inference_token=None,
     )
+
+
+def test_inference_token_is_required_keyword():
+    """Production wiring must state the bearer; omitting it is not 'disabled'."""
+    with pytest.raises(TypeError, match="inference_token"):
+        RemoteHealthChecker(remotes=[], required_model="gemma4-e4b-q4km")
+    with pytest.raises(TypeError):
+        RemoteHealthChecker([], "gemma4-e4b-q4km", 30, 60, 10, None, "token")
 
 
 def test_acquire_idle_remote_prefers_first_never_completed_remote(checker, remotes):
@@ -224,6 +233,7 @@ def test_no_remotes_returns_none():
         interval_seconds=30,
         cooldown_seconds=60,
         timeout_seconds=10,
+        inference_token=None,
     )
     assert checker.acquire_idle_remote() is None
     assert checker.status() == []
