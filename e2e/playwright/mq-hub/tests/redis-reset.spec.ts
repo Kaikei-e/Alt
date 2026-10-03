@@ -249,6 +249,9 @@ test.describe("Redis reset safety guard and protocol", () => {
 					allowReset: true,
 					allowLocalhostForTesting: true,
 					redisUrl: `redis://127.0.0.1:${port}`,
+					// Hermetic: the live suite exports REDIS_PASSWORD_FILE, which
+					// would otherwise turn this into an AUTH exchange.
+					passwordFile: "",
 				}),
 			).rejects.toThrow(/Redis connection closed prematurely|Redis reset network error/);
 		} finally {
@@ -273,6 +276,8 @@ test.describe("Redis reset safety guard and protocol", () => {
 					allowReset: true,
 					allowLocalhostForTesting: true,
 					redisUrl: `redis://127.0.0.1:${port}`,
+					// Hermetic: no AUTH, so the malformed reply is the DEL reply.
+					passwordFile: "",
 				}),
 			).rejects.toThrow(/Redis protocol error/);
 		} finally {

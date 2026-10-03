@@ -194,8 +194,12 @@ class RedisAclParityTests(unittest.TestCase):
     def test_entrypoint_source_is_executable(self):
         # Compose ignores `configs[].mode` for file-backed configs and bind-mounts
         # the file as it is on disk, so exec needs the bit in git itself.
-        source = ROOT / "compose" / self.compose["configs"]["redis_entrypoint"]["file"]
-        self.assertTrue(os.access(source, os.X_OK), f"{source.relative_to(ROOT)} is not executable")
+        source = (ROOT / "compose" / self.compose["configs"]["redis_entrypoint"]["file"]).resolve()
+        self.assertTrue(
+            os.access(source, os.X_OK),
+            f"{source.relative_to(ROOT)} is not executable; `git update-index --chmod=+x` it "
+            "or redis-streams fails with exec permission denied in staging and production",
+        )
 
     def test_redis_streams_mounts_both_acl_passwords(self):
         svc = self.services["redis-streams"]
