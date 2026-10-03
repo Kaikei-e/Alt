@@ -64,6 +64,10 @@ secrets:
   # recap-subworker issues/verifies) as a follow-up; not done now.
   recap_admin_token:
     file: ../secrets/recap_admin_token.txt
+  # Bearer for recap-evaluator /api/v1/evaluations/*. No compose service calls
+  # that API; host operators send it to the loopback port 8085.
+  evaluator_api_token:
+    file: ../secrets/evaluator_api_token.txt
   rag_db_password:
     file: ../secrets/rag_db_password.txt
   kratos_db_password:

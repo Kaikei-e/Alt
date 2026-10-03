@@ -478,6 +478,8 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-evaluator
       - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
+      # Bearer guarding /api/v1/evaluations/*; a missing file stops startup.
+      - EVALUATOR_API_TOKEN_FILE=/run/secrets/evaluator_api_token
       # Outbound-only mTLS client: news-creator :9443 requires this leaf, and
       # httpx trusts the internal CA only through the SSLContext built from
       # MTLS_CA_FILE (it never reads REQUESTS_CA_BUNDLE).
@@ -511,6 +513,7 @@ services:
       - recap_db_password
       - rask_ingest_token
       - pki-agent-recap-evaluator-jwk
+      - evaluator_api_token
     depends_on:
       recap-db:
         condition: service_healthy
