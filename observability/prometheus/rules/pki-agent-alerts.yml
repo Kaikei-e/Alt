@@ -59,23 +59,23 @@ groups:
       # PAGE: the three in-process series shrank. count() is the only
       # signal that a parent stopped exporting after the sidecar was removed.
       - alert: PkiEnrollmentFleetIncomplete
-        expr: (count(count by (subject) (pki_enrollment_healthy)) or vector(0)) != 14
+        expr: (count(count by (subject) (pki_enrollment_healthy)) or vector(0)) != 16
         for: 10m
         labels:
           severity: page
           stack: mtls
         annotations:
-          summary: "in-process PKI unique-subject fleet is {{ $value }} (want exactly 14)"
+          summary: "in-process PKI unique-subject fleet is {{ $value }} (want exactly 16)"
           description: |
-            All 14 east-west parents must each export pki_enrollment_healthy
-            on :9110. Raw series count can be padded by duplicate labels; this
+            All 16 always-on east-west parents must each export
+            pki_enrollment_healthy on :9110. Raw series count can be padded by duplicate labels; this
             pin is unique subjects, and `or vector(0)` fires when every series
             is absent.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
       - alert: PkiEnrollmentOpsDown
         expr: >-
-          up{job=~"alt-backend|alt-harvester|alt-data-hub|alt-notifier|alt-butterfly-facade-ops|auth-hub|search-indexer|rag-orchestrator-ops|pre-processor-ops|tag-generator|recap-worker-ops|acolyte-orchestrator|recap-subworker-ops|news-creator-ops"} == 0
+          up{job=~"alt-backend|alt-harvester|alt-data-hub|alt-notifier|alt-butterfly-facade-ops|auth-hub|search-indexer|rag-orchestrator-ops|pre-processor-ops|tag-generator|recap-worker-ops|acolyte-orchestrator|recap-subworker-ops|news-creator-ops|knowledge-sovereign-ops|recap-evaluator"} == 0
         for: 5m
         labels:
           severity: page
@@ -105,6 +105,8 @@ groups:
           or absent(pki_enrollment_healthy{subject="acolyte-orchestrator"})
           or absent(pki_enrollment_healthy{subject="recap-subworker"})
           or absent(pki_enrollment_healthy{subject="news-creator"})
+          or absent(pki_enrollment_healthy{subject="knowledge-sovereign"})
+          or absent(pki_enrollment_healthy{subject="recap-evaluator"})
         for: 5m
         labels:
           severity: page
@@ -112,7 +114,7 @@ groups:
         annotations:
           summary: "an in-process PKI workload metric is absent"
           description: |
-            One of the 14 in-process parents is not exporting
+            One of the 16 in-process parents is not exporting
             pki_enrollment_healthy. After sidecar removal that series is the
             only cert-lifecycle signal for the subject.
             Runbook: docs/runbooks/pki-agent-recovery.md

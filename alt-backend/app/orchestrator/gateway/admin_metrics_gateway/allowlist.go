@@ -57,7 +57,7 @@ var allowlist = []allowEntry{
 		// death is otherwise the least visible outage in the stack: alerts
 		// keep evaluating and stop being delivered, which from inside looks
 		// like a quiet night.
-		promql:     `min by (job) (up{job=~"prometheus|alertmanager|plecto-proxy|cadvisor|mq-hub|pre-processor|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-notifier|alt-data-hub|alt-butterfly-facade-ops|auth-hub|search-indexer|rag-orchestrator-ops|pre-processor-ops|tag-generator|recap-worker-ops|acolyte-orchestrator|recap-subworker-ops|news-creator-ops|knowledge-sovereign|rag-orchestrator|alt-butterfly-facade"})`,
+		promql:     `min by (job) (up{job=~"prometheus|alertmanager|plecto-proxy|cadvisor|mq-hub|pre-processor|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-notifier|alt-data-hub|alt-butterfly-facade-ops|auth-hub|search-indexer|rag-orchestrator-ops|pre-processor-ops|tag-generator|recap-worker-ops|acolyte-orchestrator|recap-subworker-ops|news-creator-ops|knowledge-sovereign-ops|recap-evaluator|knowledge-sovereign|rag-orchestrator|alt-butterfly-facade"})`,
 		grafanaURL: "/d/otel-overview",
 	},
 	{

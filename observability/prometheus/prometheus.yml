@@ -257,6 +257,24 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: /metrics
 
+  # knowledge-sovereign's application metrics stay on the 'knowledge-sovereign'
+  # job (:9501); this job is its PKI ops listener.
+  - job_name: 'knowledge-sovereign-ops'
+    static_configs:
+      - targets: ['knowledge-sovereign:9110']
+        labels:
+          service: 'knowledge-sovereign'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'recap-evaluator'
+    static_configs:
+      - targets: ['recap-evaluator:9110']
+        labels:
+          service: 'recap-evaluator'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
   # knowledge-sovereign: /metrics on container port 9501 (host 9511 is for
   # external probes, not Prometheus). Surfaces the Knowledge Loop projector
   # counters wired in ADR-000852 — surface_bucket_assigned_total{version,bucket},

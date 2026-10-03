@@ -147,7 +147,7 @@ not updated when their jobs were added — see the Allowlist section above.
 
 | key | PromQL | unit |
 |---|---|---|
-| `availability_services` | `min by (job) (up{job=~"prometheus\|alertmanager\|plecto-proxy\|cadvisor\|mq-hub\|pre-processor\|recap-worker\|recap-subworker\|news-creator\|alt-backend\|alt-harvester\|alt-notifier\|alt-data-hub\|alt-butterfly-facade-ops\|auth-hub\|search-indexer\|rag-orchestrator-ops\|pre-processor-ops\|tag-generator\|recap-worker-ops\|acolyte-orchestrator\|recap-subworker-ops\|news-creator-ops\|knowledge-sovereign\|rag-orchestrator\|alt-butterfly-facade"})` | bool |
+| `availability_services` | `min by (job) (up{job=~"prometheus\|alertmanager\|plecto-proxy\|cadvisor\|mq-hub\|pre-processor\|recap-worker\|recap-subworker\|news-creator\|alt-backend\|alt-harvester\|alt-notifier\|alt-data-hub\|alt-butterfly-facade-ops\|auth-hub\|search-indexer\|rag-orchestrator-ops\|pre-processor-ops\|tag-generator\|recap-worker-ops\|acolyte-orchestrator\|recap-subworker-ops\|news-creator-ops\|knowledge-sovereign-ops\|recap-evaluator\|knowledge-sovereign\|rag-orchestrator\|alt-butterfly-facade"})` | bool |
 | `http_latency_p95` | `histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
 | `http_rps` | `sum by (job) (rate(http_requests_total[1m]))` | req/s |
 | `http_error_ratio` | `sum by (job) (rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum by (job) (rate(http_requests_total[5m])), 1e-9)` | ratio |
@@ -184,7 +184,8 @@ now ([[pki-agent-recovery]]) and no job in `prometheus.yml` scrapes a
 `pki-agent*` target. A single service can still split across two job names:
 `news-creator`/`news-creator-ops`, `recap-worker`/`recap-worker-ops`,
 `recap-subworker`/`recap-subworker-ops`, `pre-processor`/`pre-processor-ops`,
-`rag-orchestrator`/`rag-orchestrator-ops` and
+`rag-orchestrator`/`rag-orchestrator-ops`,
+`knowledge-sovereign`/`knowledge-sovereign-ops` and
 `alt-butterfly-facade`/`alt-butterfly-facade-ops` each expose an app port and
 a `:9110` ops port under separate jobs, and the alt-backend Go module's four
 binaries (`alt-backend`, `alt-harvester`, `alt-notifier`, `alt-data-hub`) are
