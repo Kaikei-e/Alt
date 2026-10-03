@@ -28,9 +28,11 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 source "$ROOT/e2e/playwright/_lib/suite.sh"
 
 suite_init acolyte-orchestrator
-# Search's outbound introspection client remains mTLS even with its inbound
-# listener disabled in this suite.
-suite_pki auth-hub search-indexer
+# Search uses mTLS for its business listener and outbound introspection client.
+# Acolyte queries the business listener on :9443.
+suite_pki auth-hub search-indexer acolyte-orchestrator
+mint_staging_leaf "$SUITE_PKI_DIR" search-indexer serverAuth,clientAuth
+chmod 0644 "$SUITE_PKI_DIR"/*.pem
 
 # No `suite_image_tags` on purpose, and this is a behavioural choice rather than
 # an omission: acolyte-orchestrator, acolyte-db-migrator and
@@ -41,15 +43,12 @@ suite_pki auth-hub search-indexer
 # dispatch SHA may never have built, turning an unrelated green build into a
 # `manifest unknown` on `compose pull`. The retired Hurl run.sh made the same
 # call for the same reason.
-#
-# No `suite_pki` either: the slice runs MTLS_ENFORCE=false /
-# PEER_IDENTITY_TRUSTED=off, so there is no mutual-TLS material to mint. The
-# consequences of that configuration are asserted, not assumed — see
-# tests/topology.spec.ts and the peer-identity cases in tests/health.spec.ts.
 
 suite_endpoint BASE_URL             "http://acolyte-orchestrator:8090"
 suite_endpoint MTLS_SIDECAR_URL     "http://acolyte-orchestrator:9443"
-suite_endpoint SEARCH_INDEXER_URL   "http://search-indexer:9300"
+suite_endpoint SEARCH_INDEXER_URL   "https://search-indexer:9443"
+suite_endpoint TLS_CLIENT_CERT_FILE "$SUITE_PKI_DIR/acolyte-orchestrator.pem"
+suite_endpoint TLS_CLIENT_KEY_FILE  "$SUITE_PKI_DIR/acolyte-orchestrator-key.pem"
 suite_endpoint MEILI_URL            "http://meilisearch:7700"
 suite_endpoint OLLAMA_STUB_URL      "http://news-creator-ollama-stub:11435"
 # Anchored on the same fixture file compose's `secrets:` block mounts, so

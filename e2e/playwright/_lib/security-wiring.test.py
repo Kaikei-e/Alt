@@ -143,6 +143,19 @@ class SecurityWiringTests(unittest.TestCase):
         token = secret_file.read_text().strip()
         self.assertGreaterEqual(len(token), 24)
 
+    def test_acolyte_orchestrator_search_indexer_mtls_wiring(self):
+        svc = self.services["acolyte-orchestrator"]
+        env = environment(svc)
+        self.assertEqual(env.get("SEARCH_INDEXER_URL"), "https://search-indexer:9443")
+        self.assertEqual(env.get("MTLS_ENFORCE"), "true")
+        self.assertEqual(env.get("MTLS_CERT_FILE"), "/certs/acolyte-orchestrator.pem")
+        self.assertEqual(env.get("MTLS_KEY_FILE"), "/certs/acolyte-orchestrator-key.pem")
+        self.assertEqual(env.get("MTLS_CA_FILE"), "/trust/ca-bundle.pem")
+        volumes = svc.get("volumes", [])
+        volume_targets = [v.split(":")[-2] for v in volumes if ":" in v]
+        self.assertIn("/certs", volume_targets)
+        self.assertIn("/trust", volume_targets)
+
 
 if __name__ == "__main__":
     unittest.main()

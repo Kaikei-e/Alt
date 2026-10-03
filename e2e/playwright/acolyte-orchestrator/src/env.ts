@@ -49,6 +49,8 @@ export function seedEnv() {
 		meiliMasterKey: requiredSecretFile("MEILI_MASTER_KEY_FILE"),
 		meiliSeedDocs: requiredEnv("MEILI_SEED_DOCS"),
 		searchIndexerURL: requiredEnv("SEARCH_INDEXER_URL"),
+		clientCert: requiredEnv("TLS_CLIENT_CERT_FILE"),
+		clientKey: requiredEnv("TLS_CLIENT_KEY_FILE"),
 		ollamaStubURL: requiredEnv("OLLAMA_STUB_URL"),
 	} as const;
 }
