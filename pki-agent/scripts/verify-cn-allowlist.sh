@@ -111,7 +111,8 @@ cleanup_smoke_password() {
 # Requests a certificate for subject $1 with SAN $2 through the smoke
 # provisioner, inside step-ca. Prints the step output followed by one verdict
 # line: REJECTED (non-zero exit and no cert file), ISSUED, or NO_TOKEN. The
-# token and password never reach stdout. `-u 0` because install_smoke_password
+# cert and key are removed before and after on every path, and the token and
+# password never reach stdout. `-u 0` because install_smoke_password
 # writes the password file as root with mode 400 — the image's default `step`
 # user cannot read it, and the attempt would then fail for a reason that has
 # nothing to do with the rejection under test.
@@ -182,19 +183,15 @@ for san in "10.0.0.99" "https://evil.com" "attacker@evil.com"; do
 done
 
 echo "=== Assertion 5: CA accepts cert request for ${SMOKE_SUBJECT} (smoke) ==="
-if docker exec -u 0 "$STEP_CA" sh -c "
-      TOKEN=\$(step ca token $SMOKE_SUBJECT \
-        --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
-        --provisioner '$SMOKE_PROVISIONER' --password-file '$SMOKE_PW_CA' \
-        --san $SMOKE_SUBJECT --force 2>/dev/null | tail -1)
-      step ca certificate $SMOKE_SUBJECT /tmp/ok-c.pem /tmp/ok-k.pem \
-        --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
-        --token \"\$TOKEN\" --force
-    " >/dev/null 2>&1; then
+# attempt_issue deletes the signed leaf and its key again, so no usable
+# credential is left behind in the CA container.
+out="$(attempt_issue "$SMOKE_SUBJECT" "$SMOKE_SUBJECT")"
+if [ "$(printf '%s' "$out" | tail -n 1)" = "ISSUED" ]; then
   echo "PASS  CA signs ${SMOKE_SUBJECT} with its own provisioner"
   pass=$((pass + 1))
 else
   echo "FAIL  CA did not sign ${SMOKE_SUBJECT} with ${SMOKE_PROVISIONER}"
+  show_attempt "$out"
   fail=$((fail + 1))
 fi
 cleanup_smoke_password
