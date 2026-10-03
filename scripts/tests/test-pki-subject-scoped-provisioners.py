@@ -287,6 +287,55 @@ for label, output, expected, should_pass in REJECTION_CASES:
         f"rc={result.returncode}",
     )
 
+print("verify leaves no signed leaf or key behind in the step-ca container")
+check(
+    "every step ca certificate call goes through attempt_issue's cleanup",
+    verify.count("step ca certificate") == 1 and attempt.count("step ca certificate") == 1,
+    f"verify={verify.count('step ca certificate')}",
+)
+check(
+    "assertion 5 (smoke) signs through attempt_issue and passes only on ISSUED",
+    'out="$(attempt_issue "$SMOKE_SUBJECT" "$SMOKE_SUBJECT")"' in verify
+    and 'tail -n 1)" = "ISSUED"' in verify,
+)
+
+# Run attempt_issue against a fake `docker` (runs the in-container script
+# locally) and a fake `step`, with the cert paths moved into a temp dir.
+FAKE_STEP = """#!/bin/sh
+case "$1 $2" in
+  "ca token") [ "$MODE" = notoken ] && exit 1; echo fake-token; exit 0 ;;
+  "ca certificate")
+    if [ "$MODE" = issue ]; then echo cert > "$4"; echo key > "$5"; exit 0; fi
+    echo "Invalid OTT claims: sub mismatch" >&2; exit 1 ;;
+esac
+exit 2
+"""
+with tempfile.TemporaryDirectory() as tmp:
+    tmpdir = pathlib.Path(tmp)
+    (tmpdir / "bin").mkdir()
+    fake_step = tmpdir / "bin" / "step"
+    fake_step.write_text(FAKE_STEP, encoding="utf-8")
+    fake_step.chmod(0o755)
+    cert, key = tmpdir / "c.pem", tmpdir / "k.pem"
+    local_attempt = attempt.replace("/tmp/c.pem", str(cert)).replace("/tmp/k.pem", str(key))
+    fake_docker = 'docker() { shift 4; PATH="$FAKE_BIN:$PATH" sh -c "$3"; }'
+    for mode, verdict in (("issue", "ISSUED"), ("reject", "REJECTED"), ("notoken", "NO_TOKEN")):
+        cert.write_text("stale\n", encoding="utf-8")
+        key.write_text("stale\n", encoding="utf-8")
+        result = run_shell_function(
+            f"{fake_docker}\n{local_attempt}",
+            'export MODE="$1" FAKE_BIN="$2"; STEP_CA=step-ca SMOKE_PROVISIONER=pki-agent-alt-backend '
+            'SMOKE_PW_CA=/nonexistent; attempt_issue alt-backend alt-backend',
+            mode,
+            str(tmpdir / "bin"),
+        )
+        lines = result.stdout.decode("utf-8", "replace").strip().splitlines()
+        check(
+            f"attempt_issue ({mode}) ends with {verdict} and leaves no cert or key file",
+            lines[-1:] == [verdict] and not cert.exists() and not key.exists(),
+            f"last={lines[-1:]!r} cert={cert.exists()} key={key.exists()}",
+        )
+
 print("compose-audit path coverage for provisioner scripts")
 from compose_include import load_yaml  # noqa: E402
 
