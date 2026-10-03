@@ -7,11 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/domain/authcontext"
-	"rag-orchestrator/internal/infra/httpclient"
 )
 
 type SearchIndexerClient struct {
@@ -20,12 +18,12 @@ type SearchIndexerClient struct {
 }
 
 // NewSearchIndexerClient constructs a client for search-indexer's REST API.
-// Authentication is established at the TLS transport layer (mTLS). The third
-// argument is retained for DI-signature compatibility and ignored.
-func NewSearchIndexerClient(baseURL string, timeout int, _ string) *SearchIndexerClient {
+// Peer authentication happens at the TLS layer, so client must present the
+// rag-orchestrator leaf (httpclient.NewPeerMTLSClient).
+func NewSearchIndexerClient(baseURL string, client *http.Client) *SearchIndexerClient {
 	return &SearchIndexerClient{
 		BaseURL: baseURL,
-		Client:  httpclient.NewPooledClient(time.Duration(timeout) * time.Second),
+		Client:  client,
 	}
 }
 

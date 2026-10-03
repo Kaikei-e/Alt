@@ -96,12 +96,20 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	rerankHTTP := httpclient.NewPooledClient(time.Duration(cfg.Rerank.Timeout) * time.Second)
 
 	// External clients
+	logInferenceAuth(cfg.InferenceAuth, log)
 	embedder := rag_augur.NewOllamaEmbedder(cfg.Embedder.URL, cfg.Embedder.Model, cfg.Embedder.Timeout, log, cfg.Embedder.InferenceToken, embedderHTTP)
 	log.Info("embedder_configured",
 		slog.String("url", cfg.Embedder.URL),
 		slog.String("model", cfg.Embedder.Model),
 		slog.Int("expected_dimension", domain.EmbeddingDimension))
-	searchClient := rag_http.NewSearchIndexerClient(cfg.Search.IndexerURL, cfg.Search.Timeout, "")
+	searchClient, err := newSearchIndexerClient(cfg.Search)
+	if err != nil {
+		log.Error("search_indexer_mtls_client_init_failed", slog.String("error", err.Error()))
+		panic(fmt.Errorf("search-indexer mTLS client: %w", err))
+	}
+	log.Info("search_indexer_client_configured",
+		slog.String("url", cfg.Search.IndexerURL),
+		slog.Int("timeout_seconds", cfg.Search.Timeout))
 	queryExpander := rag_augur.NewQueryExpanderClient(cfg.QueryExpansion.URL, cfg.QueryExpansion.Timeout, log, queryExpanderHTTP)
 
 	var generator ragLLMClient
@@ -225,7 +233,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// surface no longer exists — carrying on without a client would mean
 	// every tag-cloud and morning-letter request erroring at request time
 	// instead of the container refusing to start (CLAUDE.md rules 8/9).
-	dataHubHTTP, err := httpclient.NewDataHubClient(httpclient.DataHubTransportConfig{
+	dataHubHTTP, err := httpclient.NewPeerMTLSClient(httpclient.PeerMTLSConfig{
 		CertFile:   cfg.DataHub.CertFile,
 		KeyFile:    cfg.DataHub.KeyFile,
 		CAFile:     cfg.DataHub.CAFile,
@@ -357,13 +365,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	letterFetcher := recap_worker.NewClient(recapWorkerURL, httpclient.NewPooledClient(10*time.Second))
 
 	// Factories for hyper-boost
-	embedderFactory := func(url string, model string, timeout int) domain.VectorEncoder {
-		token := ""
-		if sameCanonicalOrigin(url, cfg.Embedder.URL) {
-			token = cfg.Embedder.InferenceToken
-		}
-		return rag_augur.NewOllamaEmbedder(url, model, timeout, log, token, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
-	}
+	embedderFactory := newEmbedderFactory(cfg.Embedder, log)
 	indexUsecaseFactory := func(encoder domain.VectorEncoder) usecase.IndexArticleUsecase {
 		return usecase.NewIndexArticleUsecase(docRepo, chunkRepo, txManager, hasher, chunker, encoder)
 	}
@@ -448,6 +450,49 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		LetterFetcher:        letterFetcher,
 		EmbeddingModel:       cfg.Embedder.Model,
 		EmbedderTimeout:      cfg.Embedder.Timeout,
+	}
+}
+
+// logInferenceAuth states once at startup whether calls to the inference
+// proxies carry the bearer, so an explicit opt-out is never mistaken for a
+// forgotten secret mount.
+func logInferenceAuth(cfg config.InferenceAuthConfig, log *slog.Logger) {
+	if cfg.Enabled {
+		log.Info("inference_auth_enabled",
+			slog.String("token_source", "INFERENCE_SERVICE_TOKEN_FILE"),
+			slog.String("surfaces", "embedding-proxy,rerank-local,generation-proxy"))
+		return
+	}
+	log.Warn("inference_auth_disabled",
+		slog.String("reason", "INFERENCE_AUTH=disabled (explicit opt-out); inference proxy calls carry no Authorization header"))
+}
+
+// newSearchIndexerClient dials search-indexer's mTLS listener with the
+// in-process leaf. The search API has no plaintext listener to fall back to,
+// so missing cert material is an error rather than a plaintext client.
+func newSearchIndexerClient(cfg config.SearchConfig) (*rag_http.SearchIndexerClient, error) {
+	client, err := httpclient.NewPeerMTLSClient(httpclient.PeerMTLSConfig{
+		CertFile: cfg.CertFile,
+		KeyFile:  cfg.KeyFile,
+		CAFile:   cfg.CAFile,
+	}, time.Duration(cfg.Timeout)*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	return rag_http.NewSearchIndexerClient(cfg.IndexerURL, client), nil
+}
+
+// newEmbedderFactory builds embedders for the X-Embedder-URL override
+// (hyper-boost backfill). The inference bearer goes only to the configured
+// embedder's origin; an override origin is a raw Ollama that must never see
+// the shared secret.
+func newEmbedderFactory(embedderCfg config.EmbedderConfig, log *slog.Logger) rag_http.EmbedderFactory {
+	return func(url string, model string, timeout int) domain.VectorEncoder {
+		token := ""
+		if sameCanonicalOrigin(url, embedderCfg.URL) {
+			token = embedderCfg.InferenceToken
+		}
+		return rag_augur.NewOllamaEmbedder(url, model, timeout, log, token, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
 	}
 }
 
