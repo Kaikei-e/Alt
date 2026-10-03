@@ -130,6 +130,12 @@ check(
     lambda: "acolyte-orchestrator" in peers(search_indexer),
 )
 
+print("alt-butterfly-facade never calls auth-hub")
+check(
+    "alt-butterfly-facade carries no AUTH_HUB_INTERNAL_URL (the BFF has no auth-hub client)",
+    lambda: "AUTH_HUB_INTERNAL_URL" not in env_map(services["alt-butterfly-facade"]),
+)
+
 print("kratos cookie domain: empty is host-only, unset is a misconfiguration")
 for name in ("kratos", "kratos-migrate"):
     check(
@@ -141,10 +147,22 @@ for name in ("kratos", "kratos-migrate"):
     )
 
 defaults = compose_defaults()
+required_env = load_yaml(ROOT / "deploy" / "host-prereqs.yaml").get("required_env") or []
 for template in (".env.template", ".env.example"):
     values = dotenv(ROOT / template)
     print(f"{template} does not override compose with dead values")
     check(f"{template} declares KRATOS_COOKIE_DOMAIN", lambda values=values: "KRATOS_COOKIE_DOMAIN" in values)
+    check(
+        f"{template} declares every deploy/host-prereqs.yaml required_env key",
+        lambda values=values: not [key for key in required_env if key not in values],
+    )
+    # The BFF pins its own BACKEND_CONNECT_URL; a template value only reaches
+    # the frontend's ${BACKEND_CONNECT_URL:-...} and must not skip the BFF.
+    check(
+        f"{template} does not route the frontend's Connect calls around the BFF",
+        lambda values=values: values.get("BACKEND_CONNECT_URL", "http://alt-butterfly-facade:9250")
+        .startswith("http://alt-butterfly-facade:"),
+    )
     check(
         f"{template} never points at knowledge-embedder-local (embedding-raw-network only)",
         lambda values=values: not [k for k, v in values.items() if "knowledge-embedder-local" in v],
@@ -164,6 +182,13 @@ for template in (".env.template", ".env.example"):
             if k.endswith("_MTLS_ALLOWED_PEERS") and v not in defaults.get(k, set())
         ],
     )
+
+print("compose/.env.example does not override compose with dead values")
+compose_example = dotenv(ROOT / "compose" / ".env.example")
+check(
+    "compose/.env.example never points at knowledge-embedder-local (embedding-raw-network only)",
+    lambda: not [k for k, v in compose_example.items() if "knowledge-embedder-local" in v],
+)
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

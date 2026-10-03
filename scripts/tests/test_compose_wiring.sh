@@ -16,7 +16,8 @@
 #
 # Rendered config (`docker compose config` against COMPOSE_ENV_FILE, default
 # .env.template), which is where `${VAR:-default}` and env_file overrides land:
-#   - embedding / generation / rerank callers resolve to their proxy hosts
+#   - embedding / generation / rerank callers resolve to their proxy hosts, and the
+#     frontend's Connect calls resolve to the BFF
 #   - every inference caller mounts inference_service_token and none disables it
 #   - every redis-streams / redis-cache URL names its ACL user and pairs with that
 #     user's password file and secret
@@ -301,6 +302,8 @@ for name, variable, expected in [
     ("search-indexer", "MEILI_EMBEDDER_URL", "embedding-proxy:11436/api/embed"),
     ("news-creator", "LLM_SERVICE_URL", "generation-proxy:11436"),
     ("rag-orchestrator", "RERANK_URL", "rerank-local:8080"),
+    # The frontend reaches alt-backend only through the BFF.
+    ("alt-frontend-sv", "BACKEND_CONNECT_URL", "alt-butterfly-facade:9250"),
 ]:
     got = endpoint(name, variable)
     check(got.startswith(expected),
