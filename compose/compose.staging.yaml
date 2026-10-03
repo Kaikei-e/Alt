@@ -462,7 +462,8 @@ services:
       - EMBEDDER_TIMEOUT=10
       - AUGUR_EXTERNAL=http://127.0.0.1:9
       - AUGUR_KNOWLEDGE_MODEL=gemma4-e4b-12k
-      - SEARCH_INDEXER_URL=http://127.0.0.1:9
+      # https even though nothing listens: config rejects a plaintext value.
+      - SEARCH_INDEXER_URL=https://127.0.0.1:9
       - QUERY_EXPANSION_URL=http://127.0.0.1:9
       - QUERY_EXPANSION_TIMEOUT=30
       - RERANK_ENABLED=false

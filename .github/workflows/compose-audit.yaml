@@ -39,6 +39,7 @@ on:
       - 'scripts/compose-pre-start-audit.py'
       - 'scripts/compose-ops-surface-audit.py'
       - 'scripts/compose-feature-gate.py'
+      - 'scripts/compose-reachability-audit.py'
       - 'scripts/ci-install-compose.sh'
       - 'scripts/compose_include.py'
       - 'scripts/ops-surface-baseline.json'
@@ -51,6 +52,9 @@ on:
       - 'scripts/tests/test-compose-pre-start-audit.py'
       - 'scripts/tests/test-compose-ops-surface-audit.py'
       - 'scripts/tests/test-compose-feature-gate.py'
+      - 'scripts/tests/test-compose-reachability-audit.py'
+      - 'scripts/tests/test_compose_wiring.sh'
+      - 'docker/redis/entrypoint.sh'
       - 'scripts/tests/test-pki-wave4-acceptance.py'
       - 'scripts/tests/test-retire-pki-writers.py'
       - 'scripts/tests/test-pki-subject-scoped-provisioners.py'
@@ -89,6 +93,7 @@ on:
       - 'scripts/compose-pre-start-audit.py'
       - 'scripts/compose-ops-surface-audit.py'
       - 'scripts/compose-feature-gate.py'
+      - 'scripts/compose-reachability-audit.py'
       - 'scripts/ci-install-compose.sh'
       - 'scripts/compose_include.py'
       - 'scripts/ops-surface-baseline.json'
@@ -101,6 +106,9 @@ on:
       - 'scripts/tests/test-compose-pre-start-audit.py'
       - 'scripts/tests/test-compose-ops-surface-audit.py'
       - 'scripts/tests/test-compose-feature-gate.py'
+      - 'scripts/tests/test-compose-reachability-audit.py'
+      - 'scripts/tests/test_compose_wiring.sh'
+      - 'docker/redis/entrypoint.sh'
       - 'scripts/tests/test-pki-wave4-acceptance.py'
       - 'scripts/tests/test-retire-pki-writers.py'
       - 'scripts/tests/test-pki-subject-scoped-provisioners.py'
@@ -155,8 +163,11 @@ jobs:
           # reading prod secrets (the runner has none anyway).
           # DOCKER_GROUP_ID was historically required by logging.yaml before the
           # socket proxy migration; kept here as placeholder for environment compatibility.
+          # KRATOS_COOKIE_DOMAIN uses `${VAR?}`: empty is a valid value, unset
+          # fails the render.
           {
             echo 'DOCKER_GROUP_ID=0'
+            echo 'KRATOS_COOKIE_DOMAIN='
           } > .env
 
       - name: Assert every service_healthy target has a healthcheck
@@ -227,7 +238,7 @@ jobs:
         # refuses to resolve when the file is absent. On a developer host
         # .env is a symlink to the canonical config, which a public runner
         # has no equivalent of — same dummy as the job above.
-        run: echo 'DOCKER_GROUP_ID=0' > .env
+        run: printf 'DOCKER_GROUP_ID=0\nKRATOS_COOKIE_DOMAIN=\n' > .env
 
       - name: Assert every published port is loopback-bound
         run: python3 scripts/compose-port-audit.py --overlays
@@ -425,3 +436,64 @@ jobs:
 
       - name: Validate the committed operator-host gate report
         run: python3 scripts/compose-feature-gate.py --gate-report
+
+  wiring-invariant:
+    # scripts/tests/test_compose_wiring.sh: the raw-YAML network and identity
+    # checks, plus the rendered config, where `${VAR:-default}` and env_file
+    # overrides decide which host a caller dials. A stale template entry that
+    # sends a caller around its auth proxy, a Redis URL without its ACL user,
+    # or a config-mounted entrypoint without the exec bit fails here instead of
+    # at the next deploy. Renders against .env.template plus the two values
+    # the dummy .env above carries; nothing is printed from the render.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Install the Compose build production renders with
+        run: ./scripts/ci-install-compose.sh
+
+      - name: Stage .env.template as the render input
+        # Services carry `env_file: ../.env`, so the template is staged there
+        # and the same file is the --env-file.
+        run: |
+          { cat .env.template; echo; echo 'DOCKER_GROUP_ID=0'; echo 'KRATOS_COOKIE_DOMAIN='; } > .env
+
+      - name: Assert compose wiring (raw and rendered)
+        env:
+          COMPOSE_ENV_FILE: .env
+        run: bash scripts/tests/test_compose_wiring.sh
+
+  reachability-invariant:
+    # Compose DNS answers a service name only on the networks it joined. A URL
+    # a service declares for a compose host it shares no network with fails
+    # at connect time, after deploy, on whichever path dials it first.
+    # Values that only arrive through the shared env_file are listed without
+    # failing: every env_file service receives them and few read them.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Pin the reachability audit logic
+        run: python3 scripts/tests/test-compose-reachability-audit.py
+
+      - name: Install the Compose build production renders with
+        run: ./scripts/ci-install-compose.sh
+
+      - name: Stage .env.template as the render input
+        run: |
+          { cat .env.template; echo; echo 'DOCKER_GROUP_ID=0'; echo 'KRATOS_COOKIE_DOMAIN='; } > .env
+
+      - name: Assert every declared compose-host URL shares a network with its caller
+        run: python3 scripts/compose-reachability-audit.py --env-file .env
