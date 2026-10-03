@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -450,7 +451,10 @@ func TestDiagnose_MissingDotEnvAndSecretsReported(t *testing.T) {
 	}
 }
 
-func TestDiagnose_LoggingStackTriggersDockerGroupIDCheck(t *testing.T) {
+// compose/logging.yaml pins the Docker socket's gid in
+// docker-socket-proxy-ro's user:, so the logging stack no longer
+// interpolates DOCKER_GROUP_ID and doctor must not demand it.
+func TestDiagnose_LoggingStackDoesNotRequireDockerGroupID(t *testing.T) {
 	reg, dir := buildTestRegistry(t)
 	writeEnvAndSecrets(t, dir)
 	t.Setenv("DOCKER_GROUP_ID", "")
@@ -480,14 +484,91 @@ func TestDiagnose_LoggingStackTriggersDockerGroupIDCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Diagnose error: %v", err)
 	}
-	found := false
 	for _, f := range report.Preflight {
-		if strings.Contains(f.Message, "DOCKER_GROUP_ID") {
-			found = true
+		if strings.Contains(f.Message, "DOCKER_GROUP_ID") || strings.Contains(strings.Join(f.Prescription, " "), "DOCKER_GROUP_ID") {
+			t.Fatalf("DOCKER_GROUP_ID is no longer a logging-stack input, got finding: %+v", f)
 		}
 	}
-	if !found {
-		t.Fatalf("expected a DOCKER_GROUP_ID finding when logging is in scope, got: %+v", report.Preflight)
+}
+
+// writeSocketProxyCompose writes a compose/logging.yaml whose
+// docker-socket-proxy-ro runs as the given user: value.
+func writeSocketProxyCompose(t *testing.T, user string) string {
+	t.Helper()
+	composeDir := t.TempDir()
+	body := "services:\n  docker-socket-proxy-ro:\n    image: proxy:latest\n    user: \"" + user + "\"\n"
+	if err := os.WriteFile(filepath.Join(composeDir, "logging.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return composeDir
+}
+
+// fakeSocket stands in for /var/run/docker.sock; its gid is the test
+// process's primary group.
+func fakeSocket(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "docker.sock")
+	if err := os.WriteFile(path, nil, 0o660); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestDockerSocketGroupFinding_MatchingGIDIsClean(t *testing.T) {
+	socket := fakeSocket(t)
+	composeDir := writeSocketProxyCompose(t, "65534:"+strconv.Itoa(os.Getgid()))
+
+	if f, bad := dockerSocketGroupFinding(composeDir, socket); bad {
+		t.Fatalf("expected no finding when the socket group matches, got %+v", f)
+	}
+}
+
+func TestDockerSocketGroupFinding_MismatchedGIDIsAnError(t *testing.T) {
+	socket := fakeSocket(t)
+	other := os.Getgid() + 1
+	composeDir := writeSocketProxyCompose(t, "65534:"+strconv.Itoa(other))
+
+	f, bad := dockerSocketGroupFinding(composeDir, socket)
+	if !bad {
+		t.Fatal("expected a finding when the socket group differs from docker-socket-proxy-ro's gid")
+	}
+	if f.Severity != SeverityError || f.Stack != "logging" {
+		t.Errorf("finding = %+v, want an error on the logging stack", f)
+	}
+	if !strings.Contains(f.Message, strconv.Itoa(other)) || !strings.Contains(f.Message, strconv.Itoa(os.Getgid())) {
+		t.Errorf("message %q should name both gids", f.Message)
+	}
+}
+
+func TestDockerSocketGroupFinding_UserWithoutGroupIsAnError(t *testing.T) {
+	composeDir := writeSocketProxyCompose(t, "65534")
+
+	f, bad := dockerSocketGroupFinding(composeDir, fakeSocket(t))
+	if !bad || f.Severity != SeverityError {
+		t.Fatalf("expected an error finding for a user: without a gid, got bad=%v %+v", bad, f)
+	}
+}
+
+func TestDockerSocketGroupFinding_MissingSocketIsReported(t *testing.T) {
+	composeDir := writeSocketProxyCompose(t, "65534:984")
+
+	f, bad := dockerSocketGroupFinding(composeDir, filepath.Join(t.TempDir(), "absent.sock"))
+	if !bad {
+		t.Fatal("expected a finding when the Docker socket cannot be inspected")
+	}
+	if f.Severity != SeverityWarning {
+		t.Errorf("severity = %v, want warning (the daemon check owns reachability)", f.Severity)
+	}
+}
+
+func TestDockerSocketGroupFinding_NoSocketProxyMeansNothingToCheck(t *testing.T) {
+	composeDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(composeDir, "logging.yaml"), []byte("services:\n  log-forwarder:\n    image: forwarder:latest\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if f, bad := dockerSocketGroupFinding(composeDir, fakeSocket(t)); bad {
+		t.Fatalf("expected no finding without docker-socket-proxy-ro, got %+v", f)
 	}
 }
 
