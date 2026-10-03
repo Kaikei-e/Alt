@@ -68,8 +68,9 @@ log-seeker progress
    ```bash
    bash ${CLAUDE_SKILL_DIR}/scripts/seek.sh --since <window> <service...>
    ```
-   It prints a summary and writes a bundle to `/tmp/log-seeker-<ts>/`. Read `SUMMARY.txt` first, then
-   open `error-summary.txt`, `logs/<svc>.log`, `clickhouse-errors.txt`, `pg-health.txt`,
+   It prints a summary and ends with `==> <bundle dir>`: by default a fresh owner-only (0700)
+   directory from `mktemp -d "${TMPDIR:-/tmp}/log-seeker-<UTC ts>.XXXXXX"`, or `--out DIR`. Read
+   `SUMMARY.txt` first, then open `error-summary.txt`, `logs/<svc>.log`, `clickhouse-errors.txt`, `pg-health.txt`,
    `sovereign-health.txt`, `pgbouncer.txt`, `redis-streams.txt` only as the trail leads you there.
 3. **Container logs.** For each suspect service:
    ```bash

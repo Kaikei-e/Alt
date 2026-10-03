@@ -136,8 +136,8 @@ $ altctl up core workers bff
 
 ```bash
 # Bootstrap
-altctl init                        # Prereq checks, .env/secrets, Atlas checksums
-altctl init --force                # Overwrite existing .env and secrets
+altctl init                        # Prereq checks, Atlas checksums; creates missing .env/secrets, keeps existing ones
+altctl init --force                # Also overwrite .env and rotate random secrets (DB passwords, service tokens); operator-provided secrets are kept
 altctl seed dev                    # Load dev seed data (db/seeds/dev-comprehensive.sql)
 altctl seed e2e                    # Load E2E seed data (db/seeds/e2e-integration.sql)
 

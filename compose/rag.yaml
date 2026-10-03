@@ -116,7 +116,8 @@ services:
       - EMBEDDER_TIMEOUT=60
       # RAG answer generation: routed through news-creator semaphore (ADR-565 follow-up)
       # Ask Augur chat uses HIGH PRIORITY to preempt batch summarization
-      # Override AUGUR_EXTERNAL in .env to route to remote Mac if needed
+      # A literal, and this service loads no env_file, so a .env entry cannot
+      # reroute generation; change it here (scripts/check-env-overrides.py).
       - AUGUR_EXTERNAL=https://news-creator:9443
       - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma4-e4b-12k}
       # search-indexer serves /v1/search only on its mTLS listener; plaintext
