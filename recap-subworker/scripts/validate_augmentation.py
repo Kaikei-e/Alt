@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import dataclasses
 from pathlib import Path
 
 import numpy as np
@@ -28,11 +29,9 @@ def load_embedder():
 
     settings = get_settings()
 
-    config = EmbedderConfig(
-        model_id=settings.model_id,
-        backend=settings.model_backend,
+    config = dataclasses.replace(
+        EmbedderConfig.from_settings(settings),
         device="cuda",
-        distill_model_id=settings.distill_model_id,
         batch_size=32,
         cache_size=1000,
     )

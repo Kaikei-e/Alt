@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlparse, urlunparse
@@ -15,6 +16,8 @@ from recap_subworker.infra.embedding_identity import (
     DEFAULT_SENTENCE_TRANSFORMER_MODEL_ID,
     canonicalize_embedding_id,
 )
+
+_INFERENCE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9._~+/-]+={0,2}$")
 
 
 class Settings(BaseSettings):
@@ -102,27 +105,54 @@ class Settings(BaseSettings):
                 f"genre_subworker_threshold_overrides values must be numeric: {exc}"
             ) from exc
 
-        # Load inference token if file is provided
+        return self
+
+    @model_validator(mode="after")
+    def _resolve_inference_auth(self) -> Settings:
+        """Resolve the embedding-proxy bearer for the ollama-remote backend.
+
+        embedding-proxy rejects unauthenticated calls, so a missing token file
+        must stop the boot instead of turning every embed call into a 401.
+        INFERENCE_AUTH=disabled is the only explicit opt-out.
+        """
+        if self.model_backend != "ollama-remote":
+            return self
+
         import os
-        import re
         from pathlib import Path
 
-        token_file = os.getenv("INFERENCE_SERVICE_TOKEN_FILE")
-        if token_file:
-            path = Path(token_file)
-            if not path.is_file():
-                raise ValueError(f"Inference token file {token_file} not found")
+        import structlog
 
-            token = path.read_text(encoding="utf-8").strip()
-            if not token:
-                raise ValueError(f"Inference token file {token_file} is empty")
+        logger = structlog.get_logger(__name__)
 
-            token_pattern = re.compile(r"^[A-Za-z0-9._~+/-]+={0,2}$")
-            if not token_pattern.match(token):
-                raise ValueError(f"Invalid token format in {token_file}")
+        if os.getenv("INFERENCE_AUTH", "").strip().lower() == "disabled":
+            self.inference_service_token = None
+            logger.warning(
+                "inference_auth_disabled",
+                detail="INFERENCE_AUTH=disabled was set explicitly; embedding requests carry no Authorization header",
+            )
+            return self
 
-            self.inference_service_token = SecretStr(token)
+        token_file = os.getenv("INFERENCE_SERVICE_TOKEN_FILE", "").strip()
+        if not token_file:
+            raise ValueError(
+                "model_backend='ollama-remote' requires INFERENCE_SERVICE_TOKEN_FILE "
+                "or INFERENCE_AUTH=disabled"
+            )
 
+        try:
+            token = Path(token_file).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ValueError(
+                f"Inference token file {token_file} not found or unreadable: {exc}"
+            ) from exc
+        if not token:
+            raise ValueError(f"Inference token file {token_file} is empty")
+        if not _INFERENCE_TOKEN_PATTERN.match(token):
+            raise ValueError(f"Invalid token format in {token_file}")
+
+        self.inference_service_token = SecretStr(token)
+        logger.info("inference_auth_enabled", token_file=token_file)
         return self
 
     @model_validator(mode="after")

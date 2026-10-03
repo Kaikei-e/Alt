@@ -123,23 +123,7 @@ class ServiceContainer:
     @property
     def embedder(self) -> Embedder:
         if self._embedder is None:
-            config = EmbedderConfig(
-                model_id=self.settings.model_id,
-                distill_model_id=self.settings.distill_model_id,
-                backend=self.settings.model_backend,
-                device=self.settings.device,
-                batch_size=self.settings.batch_size,
-                cache_size=self.settings.embed_cache_size,
-                onnx_model_path=self.settings.onnx_model_path,
-                onnx_tokenizer_name=self.settings.onnx_tokenizer_name,
-                onnx_pooling=self.settings.onnx_pooling,
-                onnx_max_length=self.settings.onnx_max_length,
-                ollama_embed_url=self.settings.ollama_embed_url,
-                ollama_embed_model=self.settings.ollama_embed_model,
-                ollama_embed_timeout=self.settings.ollama_embed_timeout,
-                allow_embedding_drift=self.settings.allow_embedding_drift,
-            )
-            self._embedder = Embedder(config)
+            self._embedder = Embedder(EmbedderConfig.from_settings(self.settings))
         return self._embedder
 
     @property

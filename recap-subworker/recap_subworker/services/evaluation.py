@@ -109,18 +109,7 @@ class EvaluationService:
         if embedder is not None:
             self.embedder = embedder
         else:
-            config = EmbedderConfig(
-                model_id=self.settings.model_id,
-                distill_model_id=self.settings.distill_model_id,
-                backend=self.settings.model_backend,
-                device=self.settings.device,
-                batch_size=self.settings.batch_size,
-                cache_size=self.settings.embed_cache_size,
-                ollama_embed_url=self.settings.ollama_embed_url,
-                ollama_embed_model=self.settings.ollama_embed_model,
-                ollama_embed_timeout=self.settings.ollama_embed_timeout,
-            )
-            self.embedder = Embedder(config)
+            self.embedder = Embedder(EmbedderConfig.from_settings(self.settings))
 
         # Initialize JA Classifier if config provided
         if self.weights_ja:
