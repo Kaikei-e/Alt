@@ -25,7 +25,7 @@ dev = [
 # GHSA-v396-v7q4-x2qj, GHSA-rwj8-pgh3-r573, GHSA-3rp5-jjmw-4wv2,
 # GHSA-6p8h-3wgx-97gf, GHSA-fjr4-x663-mwxc, GHSA-r9mr-m37c-5fr3,
 # GHSA-94p4-4cq8-9g67).
-constraint-dependencies = ["Pillow>=12.3.0", "gitpython>=3.1.58"]
+constraint-dependencies = ["Pillow>=12.3.0", "gitpython>=3.1.58", "urllib3>=2.8.0"]
 
 [tool.pyrefly]
 project-includes = ["."]

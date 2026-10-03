@@ -30,7 +30,7 @@ onnx = [
 ]
 
 [tool.uv]
-constraint-dependencies = ["Pygments>=2.20.0"]
+constraint-dependencies = ["Pygments>=2.20.0", "urllib3>=2.8.0"]
 
 # CPU-only index for torch: avoids pulling ~5GB of unused CUDA/nvidia/triton
 # packages into local `uv sync` on non-GPU Linux dev machines (this service

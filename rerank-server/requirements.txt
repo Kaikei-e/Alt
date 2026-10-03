@@ -20,6 +20,9 @@ uvicorn>=0.41.0
 #                          CVE-2026-5241 (arbitrary code exec in LightGlue
 #                          model loading, CVSS 9.6, fixed 5.5.0)
 #   setuptools   >=83.0.0  GHSA-h35f-9h28-mq5c
+#   urllib3      >=2.8.0   CVE-2026-97687 (TLS proxy bypass), CVE-2026-97689
+#                          (unbounded chunk buffer), CVE-2026-97688 (deflate loop)
 torch>=2.13.0
 transformers>=5.5.0
 setuptools>=83.0.0
+urllib3>=2.8.0
