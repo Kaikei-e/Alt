@@ -454,31 +454,48 @@ func TestProviderStub_ConnectRequiresMatchingUserAuthorization(t *testing.T) {
 	}
 }
 
-func TestContractAuthFilterPreservesExplicitCredentials(t *testing.T) {
-	for _, header := range []string{"Authorization", "X-Alt-Backend-Token"} {
-		for _, credential := range []string{"invalid-credential", ""} {
-			t.Run(header+"/"+credential, func(t *testing.T) {
-				req, err := http.NewRequest(http.MethodGet, "/v1/search?user_id="+contractUserID, nil)
-				require.NoError(t, err)
-				req.Header.Set(header, credential)
-				called := false
-				contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-					called = true
-					require.Equal(t, []string{credential}, r.Header.Values(header))
-					if header != "Authorization" {
-						require.Empty(t, r.Header.Get("Authorization"))
-					}
-				})).ServeHTTP(nil, req)
-				require.True(t, called)
-			})
-		}
+// A consumer that drops the user JWT must fail verification, so the filter
+// only swaps a credential the request already carries for a live fixture token;
+// it never supplies one that is missing.
+func TestContractAuthFilterReplacesPresentCredentials(t *testing.T) {
+	for _, tc := range []struct {
+		header string
+		want   string
+	}{
+		{"Authorization", "Bearer " + contractTokens[contractUserID]},
+		{"X-Alt-Backend-Token", contractTokens[contractUserID]},
+	} {
+		t.Run(tc.header, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "/v1/search?user_id="+contractUserID, nil)
+			require.NoError(t, err)
+			req.Header.Set(tc.header, "pact-header.pact-claims.pact-signature")
+			called := false
+			contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				called = true
+				require.Equal(t, []string{tc.want}, r.Header.Values(tc.header))
+			})).ServeHTTP(nil, req)
+			require.True(t, called)
+		})
 	}
+}
+
+func TestContractAuthFilterDoesNotAddMissingCredentials(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "/v1/search?user_id="+contractUserID, nil)
+	require.NoError(t, err)
+	called := false
+	contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		called = true
+		require.Empty(t, r.Header.Values("Authorization"))
+		require.Empty(t, r.Header.Values("X-Alt-Backend-Token"))
+	})).ServeHTTP(nil, req)
+	require.True(t, called)
 }
 
 func TestContractAuthFilterPreservesConnectPayload(t *testing.T) {
 	const payload = `{"query":"LLM","userId":"user-1","limit":20}`
 	req, err := http.NewRequest(http.MethodPost, "/services.search.v2.SearchService/SearchArticles", strings.NewReader(payload))
 	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer pact-header.pact-claims.pact-signature")
 	called := false
 	contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		called = true
