@@ -19,3 +19,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["."]
 include = ["*.py"]
+
+[tool.uv]
+constraint-dependencies = ["urllib3>=2.8.0"]

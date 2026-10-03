@@ -73,6 +73,7 @@ constraint-dependencies = [
     "Pillow>=12.2.0",
     "Pygments>=2.20.0",
     "nltk>=3.10.3",
+    "urllib3>=2.8.0",
 ]
 
 [[tool.uv.index]]

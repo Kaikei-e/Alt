@@ -21,7 +21,7 @@ dev = [
 
 [tool.uv]
 package = true
-constraint-dependencies = ["Pygments>=2.20.0"]
+constraint-dependencies = ["Pygments>=2.20.0", "urllib3>=2.8.0"]
 
 [build-system]
 requires = ["hatchling"]
