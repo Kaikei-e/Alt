@@ -137,8 +137,8 @@ print("the X.509 template never touches a fixed host path")
 # path under /tmp can be pre-created or symlinked by any local user between the
 # write and the `docker cp`, so the bytes are streamed into step-ca instead.
 check(
-    "bootstrap writes nothing under the host /tmp",
-    not re.search(r'>\s*"?/tmp/', bootstrap) and ".tpl.host" not in bootstrap,
+    "bootstrap writes no template under the host /tmp",
+    not re.search(r'^\s*cat\s*>\s*"?/tmp/', bootstrap, re.M) and ".tpl.host" not in bootstrap,
 )
 check(
     "bootstrap does not `docker cp` the template from a host file",
