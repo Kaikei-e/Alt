@@ -132,22 +132,22 @@ EXPECTED_24 = [
     "auth-hub -> step-ca-bootstrap",
     "auth-token-manager -> oauth-token-init",
     "knowledge-sovereign -> knowledge-sovereign-db-migrator",
+    "knowledge-sovereign -> step-ca-bootstrap",
     "kratos -> kratos-migrate",
     "news-creator -> step-ca-bootstrap",
-    "pki-agent-knowledge-sovereign -> step-ca-bootstrap",
-    "pki-agent-recap-evaluator -> step-ca-bootstrap",
     "pre-processor -> pre-processor-db-migrator",
     "pre-processor -> step-ca-bootstrap",
     "pre-processor-sidecar -> oauth-token-init",
     "pre-processor-sidecar -> pre-processor-db-migrator",
     "rag-orchestrator -> step-ca-bootstrap",
+    "recap-evaluator -> step-ca-bootstrap",
     "recap-subworker -> step-ca-bootstrap",
     "recap-worker -> step-ca-bootstrap",
     "search-indexer -> step-ca-bootstrap",
     "tag-generator -> step-ca-bootstrap",
 ]
 check(
-    "production has exactly 24 one-shot SCS edges (two new certificate writers)",
+    "production has exactly 24 one-shot SCS edges (sovereign and evaluator enroll in-process)",
     len(PROD_EDGES) == 24 and len(ALLOW) == 24,
 )
 check(

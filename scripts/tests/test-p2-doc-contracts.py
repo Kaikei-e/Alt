@@ -39,8 +39,8 @@ print("P2 documentation contracts")
 
 claude = read("pki-agent/CLAUDE.md")
 check(
-    "pki-agent/CLAUDE.md is tooling-only: 14 parents, 0 compose workloads",
-    "14" in claude
+    "pki-agent/CLAUDE.md is tooling-only: 17 parents, 0 compose workloads",
+    "17 parents" in claude
     and ("0" in claude)
     and ("tooling" in claude.lower() or "tooling" in claude)
     and "11 cert-only" not in claude,

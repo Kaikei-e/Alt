@@ -181,18 +181,6 @@ units:
   plecto-proxy:
     class: essential
     kind: app
-  pki-agent-knowledge-sovereign:
-    class: accidental
-    kind: sidecar-cert
-    # Only certificate writer until Sovereign supports in-process enrollment.
-    exception: X-SECURITY-BOUNDARY
-    sunset: "2026-12-31"
-  pki-agent-recap-evaluator:
-    class: accidental
-    kind: sidecar-cert
-    # Evaluator HTTP clients need their own CN; never reuse another leaf.
-    exception: X-SECURITY-BOUNDARY
-    sunset: "2026-12-31"
   pre-processor:
     class: essential
     kind: app

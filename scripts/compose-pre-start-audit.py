@@ -113,6 +113,16 @@ WAVE4_PKI_CERT_HOOKS = {
         "uid_gid": "1000:1000",
         "removed_sidecar": "pki-agent-news-creator",
     },
+    "knowledge-sovereign": {
+        "path": "/certs",
+        "uid_gid": "65532:65532",
+        "removed_sidecar": "pki-agent-knowledge-sovereign",
+    },
+    "recap-evaluator": {
+        "path": "/certs",
+        "uid_gid": "65533:65533",
+        "removed_sidecar": "pki-agent-recap-evaluator",
+    },
 }
 
 

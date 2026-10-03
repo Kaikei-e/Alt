@@ -2,9 +2,9 @@
 """Wave 4 PKI acceptance contract — final in-process cutover.
 
 Subject-scoped enrollment: every east-west parent mints with its own JWK
-provisioner. The original 14 parents enroll in-process; Sovereign and
-Evaluator have dedicated certificate-only writers until their in-process
-enrollment exists. Inbound TLS stays in the parent process.
+provisioner and enrolls in-process. Compose declares zero pki-agent
+workloads. Inbound TLS stays in the parent process. tts-speaker (profile
+`tts`) also enrolls in-process but is outside this always-on cohort.
 
 This file does not start or destroy a live stack and never reads secret
 bytes.
@@ -45,8 +45,9 @@ DATAHUB = ("DATAHUB_TLS_CERT_FILE", "DATAHUB_TLS_KEY_FILE", "DATAHUB_TLS_CA_FILE
 DISTROLESS = ("65532", "65532")
 APPUSER = ("1000", "1000")
 RECAP = ("999", "999")
+EVALUATOR = ("65533", "65533")
 
-# 14 workload parents. Compose service name == CERT_SUBJECT.
+# Always-on in-process parents. Compose service name == CERT_SUBJECT.
 INPROCESS = {
     "alt-backend": {
         "cert_vol": "alt_backend_certs",
@@ -160,10 +161,26 @@ INPROCESS = {
         "main": ROOT / "news-creator" / "app" / "news_creator" / "infra" / "pki" / "start.py",
         "start": "start_ops",
     },
+    "knowledge-sovereign": {
+        "cert_vol": "knowledge_sovereign_certs",
+        "tls": MTLS,
+        "uid_gid": DISTROLESS,
+        "ops_env": "OPS_LISTEN",
+        "main": ROOT / "knowledge-sovereign" / "app" / "main.go",
+        "start": "pki.Start(",
+    },
+    "recap-evaluator": {
+        "cert_vol": "recap_evaluator_certs",
+        "tls": MTLS,
+        "uid_gid": EVALUATOR,
+        "ops_env": "OPS_LISTEN",
+        "main": ROOT / "recap-evaluator" / "src" / "recap_evaluator" / "infra" / "mtls_client.py",
+        "start": "to_thread(start_pki_enrollment",
+    },
 }
 
 INPROCESS_PARENTS = tuple(INPROCESS)
-assert len(INPROCESS_PARENTS) == 14
+assert len(INPROCESS_PARENTS) == 16
 
 PATTERN_B_PARENTS = (
     "tag-generator",
@@ -202,10 +219,6 @@ PRESERVED_NON_PKI_SCRAPES = (
 )
 
 CUTOVER_SIDECARS = tuple(f"pki-agent-{name}" for name in INPROCESS_PARENTS)
-SIDECAR_PARENTS = {
-    "knowledge-sovereign": ("knowledge_sovereign_certs", "65532"),
-    "recap-evaluator": ("recap_evaluator_certs", "65533"),
-}
 
 
 def env_map(svc: dict) -> dict[str, str]:
@@ -328,57 +341,15 @@ def published_ports(svc: dict) -> str:
     return " ".join(str(p) for p in ports)
 
 
-print("subject-scoped certificate-only writers")
+print("zero pki-agent workload sidecars")
 
 services = audit.production_services()
-pki_agents = {
-    name: svc
-    for name, svc in services.items()
-    if name.startswith("pki-agent-")
-}
+pki_agents = sorted(name for name in services if name.startswith("pki-agent-"))
 check(
-    "only Sovereign and Evaluator use certificate-only sidecars",
-    set(pki_agents) == {f"pki-agent-{name}" for name in SIDECAR_PARENTS},
-    f"unexpected certificate writers: {sorted(pki_agents)}",
+    "compose declares no pki-agent-* workload",
+    pki_agents == [],
+    f"leftover certificate writers: {pki_agents}",
 )
-for parent, (cert_volume, owner) in SIDECAR_PARENTS.items():
-    writer_name = f"pki-agent-{parent}"
-    writer = services.get(writer_name) or {}
-    parent_svc = services.get(parent) or {}
-    writer_env = env_map(writer)
-    secret_id = f"{writer_name}-jwk"
-    check(
-        f"{writer_name} uses only its subject-scoped JWK",
-        writer_env.get("CERT_SUBJECT") == parent
-        and writer_env.get("CERT_SANS") == f"{parent},localhost"
-        and writer_env.get("STEP_CA_PROVISIONER") == writer_name
-        and writer_env.get("STEP_CA_PROVISIONER_PASSWORD_FILE")
-        == f"/run/secrets/{secret_id}"
-        and secret_names(writer) == {secret_id},
-    )
-    check(
-        f"{parent} has one certificate writer and reads certs with matching DAC",
-        any(volume_is_rw(v, cert_volume, "/certs")
-            for v in writer.get("volumes") or [] if isinstance(v, str))
-        and any(volume_is_ro(v, cert_volume, "/certs")
-                for v in parent_svc.get("volumes") or [] if isinstance(v, str))
-        and writer_env.get("CERT_OWNER_UID") == owner
-        and writer_env.get("CERT_OWNER_GID") == owner
-        and env_map(parent_svc).get("PKI_ENROLLMENT") != "enabled"
-        and secret_id not in secret_names(parent_svc),
-    )
-    check(
-        f"{writer_name} waits for CA bootstrap and parent waits for its writer",
-        (writer.get("depends_on") or {}).get("step-ca-bootstrap", {}).get("condition")
-        == "service_completed_successfully"
-        and (writer.get("depends_on") or {}).get("step-ca", {}).get("condition")
-        == "service_healthy"
-        and (parent_svc.get("depends_on") or {}).get(writer_name, {}).get("condition")
-        == "service_healthy"
-        and any(volume_is_ro(v, "pki_trust_bundle", "/trust")
-                for v in writer.get("volumes") or [] if isinstance(v, str))
-        and "step_ca_root_password" not in secret_names(writer),
-    )
 for sidecar in CUTOVER_SIDECARS:
     check(
         f"{sidecar} is not declared",
@@ -440,7 +411,7 @@ for parent in PATTERN_B_PARENTS:
         f"ports={parent_svc.get('ports')!r}",
     )
 
-print("14 in-process parents (final compose cutover)")
+print("16 in-process parents (final compose cutover)")
 
 secrets = production_secrets()
 tracked_files = git_tracked_files()
@@ -667,7 +638,7 @@ obs_audit = importlib.util.module_from_spec(obs_spec)
 obs_spec.loader.exec_module(obs_audit)
 pki_violations = obs_audit.audit_pki_ops_surface(prom_cfg, rules_cfg)
 check(
-    "observability YAML pin: 14 parent:9110 jobs, /metrics, no pki-agent, 14 absent()",
+    "observability YAML pin: 16 parent:9110 jobs, /metrics, no pki-agent, 16 absent()",
     pki_violations == [],
     "; ".join(pki_violations),
 )
@@ -701,15 +672,16 @@ for preserved in PRESERVED_NON_PKI_SCRAPES:
 
 runbook = (ROOT / "docs" / "runbooks" / "pki-agent-recovery.md").read_text(encoding="utf-8")
 check(
-    "recovery runbook distinguishes in-process parents from the two cert-only writers",
-    "14" in runbook and "in-process" in runbook.lower()
-    and all(f"pki-agent-{name}" in runbook for name in SIDECAR_PARENTS),
-    "runbook must preserve the two legitimate writers without reviving legacy sidecars",
+    "recovery runbook exempts no pki-agent-* service from the leftover sweep",
+    "in-process" in runbook.lower()
+    and not any(f'!= "pki-agent-{name}"' in runbook for name in INPROCESS_PARENTS)
+    and not any(f"pki-agent-{name})" in runbook for name in INPROCESS_PARENTS),
+    "every parent enrolls in-process; a surviving pki-agent-* is a dual writer",
 )
 check(
-    "recovery runbook names all 14 operator JWK files",
+    "recovery runbook names all 16 operator JWK files",
     all(f"pki-agent-{name}-jwk.txt" in runbook for name in INPROCESS_PARENTS),
-    "missing operator secret-file instructions for the final 14",
+    "missing operator secret-file instructions for the in-process parents",
 )
 check(
     "recovery runbook identifies old images + new compose as unsafe",

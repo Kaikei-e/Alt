@@ -9,7 +9,8 @@
 #     default) and nothing overrides RAG_HEALTH_PORT
 #   - rag-orchestrator reaches search-indexer over https://search-indexer:9443 and
 #     carries one inference token (no RERANK_INFERENCE_TOKEN_FILE)
-#   - recap-evaluator / pki-agent identities, news-creator inbound mTLS and peers,
+#   - recap-evaluator / knowledge-sovereign in-process enrollment (no pki-agent
+#     sidecar), news-creator inbound mTLS and peers,
 #     acolyte NEWS_CREATOR_URL, auth-token-manager OTEL/RASK enrollment, the six
 #     sovereign roles, and the embedding-proxy callers' token mounts
 #
@@ -153,17 +154,22 @@ check(bool(re_hc),
 check("8080" in str(re_hc.get("test", [])),
       "recap-evaluator healthcheck targets :8080")
 
-# ── 2i. pki-agent-recap-evaluator CERT_OWNER UID/GID=65533 ──────────────────
-pki_re_env = env_dict(recap["services"]["pki-agent-recap-evaluator"])
-uid, gid = pki_re_env.get("CERT_OWNER_UID", ""), pki_re_env.get("CERT_OWNER_GID", "")
-check(uid == "65533" and gid == "65533",
-      f"pki-agent-recap-evaluator CERT_OWNER_UID/GID=65533 (got uid={uid}, gid={gid})")
+# ── 2i/2j. recap-evaluator and knowledge-sovereign enroll in-process ────────
+# The parent writes 0400 keys as its runtime user, so pre_start must chown the
+# cert volume to that uid: evaluator 65533, distroless nonroot 65532.
+def chowns_certs_to(service, uid):
+    return any(f"chown -R {uid}:{uid} /certs" in " ".join(map(str, h.get("command") or []))
+               for h in service.get("pre_start") or [])
 
-# ── 2j. pki-agent-knowledge-sovereign CERT_OWNER UID/GID=65532 ──────────────
-pki_sov_env = env_dict(sov["services"]["pki-agent-knowledge-sovereign"])
-sov_uid, sov_gid = pki_sov_env.get("CERT_OWNER_UID", ""), pki_sov_env.get("CERT_OWNER_GID", "")
-check(sov_uid == "65532" and sov_gid == "65532",
-      f"pki-agent-knowledge-sovereign CERT_OWNER_UID/GID=65532 (got uid={sov_uid}, gid={sov_gid})")
+for svc_name, stack, uid in [("recap-evaluator", recap, "65533"),
+                             ("knowledge-sovereign", sov, "65532")]:
+    svc = stack["services"][svc_name]
+    check(env_dict(svc).get("PKI_ENROLLMENT") == "enabled",
+          f"{svc_name} PKI_ENROLLMENT=enabled (in-process enrollment)")
+    check(chowns_certs_to(svc, uid),
+          f"{svc_name} pre_start chowns /certs to {uid}:{uid}")
+    check(f"pki-agent-{svc_name}" not in stack["services"],
+          f"pki-agent-{svc_name} is not declared (it would be a dual writer)")
 
 # ── 2k. news-creator INBOUND_MTLS=true, MTLS_ALLOWED_PEERS includes pre-processor
 nc_env = ai["services"]["news-creator"].get("environment", [])
@@ -224,18 +230,15 @@ for role in ["sovereign_backend_token", "sovereign_operator_token",
     check(role in sov_secrets,
           f"knowledge-sovereign retains secret: {role}")
 
-# ── 2r. pki-agent-recap-evaluator secret uses own JWK ───────────────────────
-pki_re_secrets = recap["services"]["pki-agent-recap-evaluator"].get("secrets", [])
-check("pki-agent-recap-evaluator-jwk" in pki_re_secrets,
-      "pki-agent-recap-evaluator mounts its own JWK secret")
+# ── 2r. recap-evaluator enrolls with its own JWK ───────────────────────────
+re_svc = recap["services"]["recap-evaluator"]
+check("pki-agent-recap-evaluator-jwk" in re_svc.get("secrets", []),
+      "recap-evaluator mounts its own JWK secret")
 
-# ── 2s. recap-evaluator cert volume mounted RO from app, RW from pki-agent ───
-re_vols = recap["services"]["recap-evaluator"].get("volumes", [])
-pki_re_vols = recap["services"]["pki-agent-recap-evaluator"].get("volumes", [])
-re_cert_ro = any("recap_evaluator_certs" in str(v) and ":ro" in str(v) for v in re_vols)
-pki_cert_rw = any("recap_evaluator_certs" in str(v) and ":ro" not in str(v) for v in pki_re_vols)
-check(re_cert_ro, "recap-evaluator mounts recap_evaluator_certs:ro")
-check(pki_cert_rw, "pki-agent-recap-evaluator mounts recap_evaluator_certs (RW)")
+# ── 2s. recap-evaluator is the writer of its cert volume ─────────────────────
+re_vols = [str(v) for v in re_svc.get("volumes", [])]
+check("recap_evaluator_certs:/certs" in re_vols,
+      "recap-evaluator mounts recap_evaluator_certs:/certs read-write")
 
 # ── 2t. embedding-proxy callers carry the inference bearer ──────────────────
 for svc_name, svc in [("rag-orchestrator", ro),

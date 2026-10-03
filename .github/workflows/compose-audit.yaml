@@ -263,8 +263,8 @@ jobs:
         run: python3 scripts/compose-netns-cascade-audit.py
 
   pki-wave4-invariant:
-    # 14 parents own enrollment; two newer workloads have dedicated cert-only
-    # writers. Dual writers, shared root secrets, and a silent
+    # Every parent owns its enrollment in-process; compose declares zero
+    # pki-agent workloads. Dual writers, shared root secrets, and a silent
     # in-process series drop all fail this job. The recovery runbook test
     # is an executed python3 step (YAML `run:`), not a comment/string pin.
     # No live stack.
@@ -397,9 +397,9 @@ jobs:
         run: python3 scripts/compose-pre-start-audit.py
 
   ops-surface-invariant:
-    # P2-14 budget: compose is the source of long-running names (77
-    # declared after Wave 4 removed pki-agent workload sidecars; default
-    # render 73, full 77). scripts/ops-surface-inventory.yaml holds only
+    # P2-14 budget: compose is the source of long-running names (82
+    # declared with zero pki-agent workload sidecars; default render 77,
+    # full 82). scripts/ops-surface-inventory.yaml holds only
     # class/kind/exception metadata. F1–F5 freeze accidental OSU (16) and
     # require offset_of or a dated exception before a new long-running
     # unit lands.

@@ -68,14 +68,6 @@ BUILD_ONLY_ALLOWLIST: dict[str, str] = {
     "rerank-local": "ONNX reranker; the quantized model is produced into a host volume at first boot",
     "rag-db": "stateful PostgreSQL extended with pgvector",
     "recap-db": "stateful PostgreSQL extended with pg_cron",
-    "pki-agent-recap-evaluator": (
-        "cert-writer sidecar under the X-SECURITY-BOUNDARY exception in "
-        "scripts/ops-surface-inventory.yaml (sunset 2026-12-31)"
-    ),
-    "pki-agent-knowledge-sovereign": (
-        "cert-writer sidecar under the X-SECURITY-BOUNDARY exception in "
-        "scripts/ops-surface-inventory.yaml (sunset 2026-12-31)"
-    ),
 }
 
 

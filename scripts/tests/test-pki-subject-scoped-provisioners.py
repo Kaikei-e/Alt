@@ -217,10 +217,19 @@ check(
 )
 pki_agents = [name for name in prod if name.startswith("pki-agent-")]
 check(
-    "compose declares exactly the two certificate-only workload writers",
-    set(pki_agents) == {"pki-agent-knowledge-sovereign", "pki-agent-recap-evaluator"},
+    "compose declares no pki-agent-* workload (every subject enrolls in-process)",
+    pki_agents == [],
     f"{pki_agents}",
 )
+for subject in WORKLOAD:
+    env = _env_map(prod.get(subject) or {})
+    check(
+        f"{subject} enrolls in-process with its own provisioner",
+        env.get("PKI_ENROLLMENT") == "enabled"
+        and env.get("STEP_CA_PROVISIONER") == f"pki-agent-{subject}"
+        and f"pki-agent-{subject}-jwk" in _secret_names(prod.get(subject) or {}),
+        f"PKI_ENROLLMENT={env.get('PKI_ENROLLMENT')!r} provisioner={env.get('STEP_CA_PROVISIONER')!r}",
+    )
 
 print("verify script source")
 check(
