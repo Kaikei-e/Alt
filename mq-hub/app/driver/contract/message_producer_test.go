@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"mq-hub/domain"
+	"mq-hub/usecase"
 )
 
 const pactDir = "../../../../pacts"
@@ -110,10 +111,14 @@ func buildArticleCreatedEvent() *domain.Event {
 	return event
 }
 
+// tagRequestCorrelationID stands in for the uuid.New().String() that
+// GenerateTagsForArticle uses as the correlation id; tag-generator drops a
+// request whose reply_to is not the prefix plus a lowercase UUID.
+const tagRequestCorrelationID = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+
 // buildTagGenerationRequestedEvent creates a TagGenerationRequested event.
-// reply_to mirrors usecase.ReplyStreamPrefix + the correlation id, which is the
-// stream GenerateTagsForArticle actually blocks on; tag-generator publishes its
-// reply straight to whatever string arrives here.
+// reply_to is usecase.ReplyStreamPrefix + the correlation id, which is the
+// stream GenerateTagsForArticle actually blocks on.
 func buildTagGenerationRequestedEvent() *domain.Event {
 	payload := TagGenerationRequestedPayload{
 		ArticleID: "art-002",
@@ -128,8 +133,8 @@ func buildTagGenerationRequestedEvent() *domain.Event {
 		"mq-hub",
 		payloadJSON,
 		map[string]string{
-			"reply_to":       "alt:replies:tags:corr-001",
-			"correlation_id": "corr-001",
+			"reply_to":       usecase.ReplyStreamPrefix + tagRequestCorrelationID,
+			"correlation_id": tagRequestCorrelationID,
 		},
 	)
 	return event
