@@ -212,7 +212,13 @@ services:
       # "Read-only file system (os error 30)" で Embedding 初期化が失敗)。
       # populate 済前提の前提崩れに対する防御は ADR-000827 の
       # RECAP_WORKER_EMBEDDING_REQUIRED=true によるアプリ層 fail-closed に寄せる。
-      - /opt/rustbert-cache:/opt/rustbert-cache:rw
+      # Long syntax so a host without the populated directory fails at create
+      # instead of getting an empty root-owned one (PM-2026-036).
+      - type: bind
+        source: /opt/rustbert-cache
+        target: /opt/rustbert-cache
+        bind:
+          create_host_path: false
     pre_start:
       - <<: *pki-cert-volume-chown
     depends_on:
