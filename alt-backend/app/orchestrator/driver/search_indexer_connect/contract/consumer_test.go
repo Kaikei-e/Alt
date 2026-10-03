@@ -2,17 +2,20 @@
 
 // Pact consumer contract tests for alt-backend → search-indexer (Connect-RPC).
 //
-// These tests pin the invariant from ADR-000722: search-indexer requires an
-// X-Service-Token header on every call — including Connect-RPC. The previous
-// driver bypassed this because it was initialised with http.DefaultClient and
-// no interceptor; this contract turns that regression into a failing test.
+// search-indexer answers SearchArticles only for the user whose JWT arrives in
+// X-Alt-Backend-Token, and refuses a call without one with 401. The driver's
+// interceptor forwards the JWT from the request context, so the contract pins
+// the header. The client certificate the production transport presents cannot
+// be demanded by the Pact mock and stays with the driver tests.
 package contract
 
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/pact-foundation/pact-go/v2/consumer"
@@ -22,9 +25,22 @@ import (
 
 	searchv2 "alt/gen/proto/services/search/v2"
 	"alt/orchestrator/driver/search_indexer_connect"
+	"alt/shared/domain/authcontext"
 )
 
 const pactDir = "../../../../../pacts"
+
+// searchIndexerUserJWT is a placeholder with a JWT's three-segment shape. The
+// provider verification swaps it for a token minted for the request's userId,
+// so only the header's presence and shape are contractual.
+const searchIndexerUserJWT = "pact-header.pact-claims.pact-signature"
+
+func newContractClient(config consumer.MockServerConfig) *search_indexer_connect.Client {
+	return search_indexer_connect.NewClientWithHTTPClient(
+		fmt.Sprintf("http://%s:%d", config.Host, config.Port),
+		&http.Client{Timeout: 5 * time.Second},
+	)
+}
 
 func newSearchIndexerPact(t *testing.T) *consumer.V3HTTPMockProvider {
 	t.Helper()
@@ -48,7 +64,8 @@ func TestSearchIndexerSearchArticlesContract(t *testing.T) {
 			Method: "POST",
 			Path:   matchers.String("/services.search.v2.SearchService/SearchArticles"),
 			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(searchIndexerUserJWT, `^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`),
 			},
 			Body: matchers.MapMatcher{
 				"query":  matchers.Like("LLM"),
@@ -72,10 +89,8 @@ func TestSearchIndexerSearchArticlesContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			driver := search_indexer_connect.NewClient(
-				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
-			)
-			hits, err := driver.SearchArticles(context.Background(), "LLM", "user-1")
+			ctx := authcontext.WithJWT(context.Background(), searchIndexerUserJWT)
+			hits, err := newContractClient(config).SearchArticles(ctx, "LLM", "user-1")
 			if err != nil {
 				return fmt.Errorf("SearchArticles failed: %w", err)
 			}
@@ -124,10 +139,7 @@ func TestSearchIndexerSearchRecapsByTagContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			driver := search_indexer_connect.NewClient(
-				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
-			)
-			results, err := driver.SearchRecapsByTag(context.Background(), "technology", 10)
+			results, err := newContractClient(config).SearchRecapsByTag(context.Background(), "technology", 10)
 			if err != nil {
 				return fmt.Errorf("SearchRecapsByTag failed: %w", err)
 			}
