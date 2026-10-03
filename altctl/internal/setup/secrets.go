@@ -136,6 +136,7 @@ var knownSecretMeta = map[string]secretMeta{
 	"inference_service_token.txt":         randomSecret("Inference service auth token"),
 	"mqhub_auth_token.txt":                randomSecret("mq-hub broker / RPC producer Bearer token"),
 	"rag_api_token.txt":                   randomSecret("rag-orchestrator API Bearer token"),
+	"evaluator_api_token.txt":             randomSecret("recap-evaluator evaluations API Bearer token"),
 	"irodori_api_key.txt":                 randomSecret("Irodori-TTS API key"),
 	"hugging_face_token.txt":              operatorSecret("Hugging Face API token (for AI features)"),
 	"inoreader_client_id.txt":             operatorSecret("Inoreader OAuth client ID"),
