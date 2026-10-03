@@ -14,7 +14,7 @@
 #
 # Usage: bash pki-agent/scripts/bootstrap-pki-provisioner.sh
 #
-# Secret files (gitignored under secrets/):
+# Secret files (gitignored under secrets/, created 0644):
 #   secrets/pki-agent-<subject>-jwk.txt
 # In-container (compose cutover):
 #   /run/secrets/pki-agent-<subject>-jwk
@@ -75,17 +75,19 @@ build_subjects_json() {
   printf ']'
 }
 
+# 0644 like every other file in the canonical store (altctl secretFileMode):
+# compose mounts file secrets with the host mode for nonroot workloads, and the
+# deploy runner stages the store over a shared group. An existing file's mode
+# is the operator's to set, so it is left alone.
 ensure_host_password_file() {
   local path="$1"
   if [ -s "$path" ]; then
-    chmod 400 "$path" 2>/dev/null || true
     return 0
   fi
-  umask 077
   mkdir -p "$(dirname "$path")"
   # Do not print the bytes. /dev/urandom keeps this off openssl's CLI args.
   head -c 32 /dev/urandom | base64 > "$path"
-  chmod 400 "$path"
+  chmod 0644 "$path"
 }
 
 copy_password_into_ca() {
