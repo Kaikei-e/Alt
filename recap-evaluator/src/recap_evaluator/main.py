@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -51,7 +49,11 @@ def create_app(
         thresholds = alert_thresholds if alert_thresholds is not None else AlertThresholds()
         weights = evaluator_weights if evaluator_weights is not None else EvaluatorWeights()
 
-        from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file, EVALUATOR_AUTH_DISABLED
+        from recap_evaluator.infra.bearer_auth import (
+            EVALUATOR_AUTH_DISABLED,
+            load_bearer_token_from_file,
+        )
+
         if not EVALUATOR_AUTH_DISABLED:
             app.state.api_token = load_bearer_token_from_file()
         else:
@@ -66,100 +68,79 @@ def create_app(
             port=cfg.port,
         )
 
-        # --- Driver layer ---
-        pool = await asyncpg.create_pool(
-            dsn=cfg.recap_db_dsn,
-            min_size=cfg.db_pool_min_size,
-            max_size=cfg.db_pool_max_size,
-            init=register_jsonb_codec,
-        )
-        # mTLS outbound when MTLS_ENFORCE=true (ADR-000737). The SSLContext is
-        # kept live (same object) and its leaf cert is re-loaded in-place by the
-        # rotation watcher whenever pki-agent updates the on-disk files, so the
-        # shared httpx.AsyncClient never needs to be rebuilt.
-        from recap_evaluator.infra.mtls_client import (
-            SslContextReloader,
-            build_ssl_context,
-            watch_cert_rotation,
-        )
+        # Outbound identity (ADR-000978): in-process enrollment writes the leaf
+        # before the SSLContext loads it; the context object stays live and the
+        # rotation watcher reloads it in place, so the shared AsyncClient is never
+        # rebuilt.
+        from recap_evaluator.infra.mtls_client import outbound_mtls
 
-        ssl_ctx = build_ssl_context()
-        http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(
-                connect=5, read=cfg.ollama_timeout, write=10, pool=5
-            ),
-            limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
-            verify=ssl_ctx if ssl_ctx is not None else True,
-        )
-        cert_watch_task: asyncio.Task[None] | None = None
-        if ssl_ctx is not None:
-            logger.info("recap-evaluator outbound: mTLS enforce enabled")
-            cert_path = os.environ["MTLS_CERT_FILE"]
-            key_path = os.environ["MTLS_KEY_FILE"]
-            reloader = SslContextReloader(ssl_ctx, cert_path, key_path)
-            cert_watch_task = asyncio.create_task(
-                watch_cert_rotation(reloader, interval_seconds=30.0),
-                name="mtls-cert-rotation-watch",
+        async with outbound_mtls(
+            "recap-evaluator",
+            upstreams={"OLLAMA_URL": cfg.ollama_url, "RECAP_WORKER_URL": cfg.recap_worker_url},
+        ) as ssl_ctx:
+            # --- Driver layer ---
+            pool = await asyncpg.create_pool(
+                dsn=cfg.recap_db_dsn,
+                min_size=cfg.db_pool_min_size,
+                max_size=cfg.db_pool_max_size,
+                init=register_jsonb_codec,
+            )
+            http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=5, read=cfg.ollama_timeout, write=10, pool=5),
+                limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
+                verify=ssl_ctx if ssl_ctx is not None else True,
             )
 
-        # --- Gateway layer ---
-        db_gateway = PostgresGateway(pool)
-        ollama_gateway = OllamaGateway(http_client, cfg)
-        recap_worker_gw = RecapWorkerGateway(http_client, cfg)
+            # --- Gateway layer ---
+            db_gateway = PostgresGateway(pool)
+            ollama_gateway = OllamaGateway(http_client, cfg)
+            recap_worker_gw = RecapWorkerGateway(http_client, cfg)
 
-        # --- Evaluator layer ---
-        genre_eval = GenreEvaluator(recap_worker_gw, db_gateway, thresholds)
-        cluster_eval = ClusterEvaluator(db_gateway, thresholds)
-        summary_eval = SummaryEvaluator(
-            ollama_gateway, db_gateway, cfg, thresholds, weights
-        )
-        pipeline_eval = PipelineEvaluator(db_gateway, thresholds)
+            # --- Evaluator layer ---
+            genre_eval = GenreEvaluator(recap_worker_gw, db_gateway, thresholds)
+            cluster_eval = ClusterEvaluator(db_gateway, thresholds)
+            summary_eval = SummaryEvaluator(ollama_gateway, db_gateway, cfg, thresholds, weights)
+            pipeline_eval = PipelineEvaluator(db_gateway, thresholds)
 
-        # --- Usecase layer ---
-        run_eval_uc = RunEvaluationUsecase(
-            genre_eval, cluster_eval, summary_eval, pipeline_eval, db_gateway
-        )
-        get_metrics_uc = GetMetricsUsecase(
-            genre_eval, cluster_eval, pipeline_eval, db_gateway, thresholds
-        )
-
-        # --- Expose to handlers via app.state ---
-        app.state.run_evaluation = run_eval_uc
-        app.state.get_metrics = get_metrics_uc
-        app.state.genre_evaluator = genre_eval
-        app.state.cluster_evaluator = cluster_eval
-        app.state.summary_evaluator = summary_eval
-        app.state.db = db_gateway
-
-        # --- Scheduler ---
-        scheduler = EvaluationScheduler(run_eval_uc, cfg)
-        scheduler.start()
-
-        # Check Ollama health
-        ollama_healthy = await ollama_gateway.health_check()
-        if not ollama_healthy:
-            logger.warning(
-                "Ollama is not available. G-Eval summary evaluation will fail.",
-                ollama_url=cfg.ollama_url,
-                model=cfg.ollama_model,
+            # --- Usecase layer ---
+            run_eval_uc = RunEvaluationUsecase(
+                genre_eval, cluster_eval, summary_eval, pipeline_eval, db_gateway
+            )
+            get_metrics_uc = GetMetricsUsecase(
+                genre_eval, cluster_eval, pipeline_eval, db_gateway, thresholds
             )
 
-        logger.info("recap-evaluator started successfully")
+            # --- Expose to handlers via app.state ---
+            app.state.run_evaluation = run_eval_uc
+            app.state.get_metrics = get_metrics_uc
+            app.state.genre_evaluator = genre_eval
+            app.state.cluster_evaluator = cluster_eval
+            app.state.summary_evaluator = summary_eval
+            app.state.db = db_gateway
 
-        yield
+            # --- Scheduler ---
+            scheduler = EvaluationScheduler(run_eval_uc, cfg)
+            scheduler.start()
 
-        # --- Shutdown ---
-        logger.info("Shutting down recap-evaluator")
-        scheduler.stop()
-        summary_eval.shutdown()
-        if cert_watch_task is not None:
-            cert_watch_task.cancel()
-            try:
-                await cert_watch_task
-            except asyncio.CancelledError:
-                pass
-        await http_client.aclose()
-        await pool.close()
+            # Check Ollama health
+            ollama_healthy = await ollama_gateway.health_check()
+            if not ollama_healthy:
+                logger.warning(
+                    "Ollama is not available. G-Eval summary evaluation will fail.",
+                    ollama_url=cfg.ollama_url,
+                    model=cfg.ollama_model,
+                )
+
+            logger.info("recap-evaluator started successfully")
+
+            yield
+
+            # --- Shutdown ---
+            logger.info("Shutting down recap-evaluator")
+            scheduler.stop()
+            summary_eval.shutdown()
+            await http_client.aclose()
+            await pool.close()
         shutdown_logging()
         logger.info("recap-evaluator stopped")
 
@@ -173,9 +154,7 @@ def create_app(
     # CORS — use injected settings when available; otherwise safe defaults
     # until lifespan loads production Settings (middleware is fixed at create).
     cors_origins = (
-        settings.cors_allowed_origins
-        if settings is not None
-        else ["http://localhost:3000"]
+        settings.cors_allowed_origins if settings is not None else ["http://localhost:3000"]
     )
     application.add_middleware(
         CORSMiddleware,
@@ -195,11 +174,12 @@ def create_app(
         PeerIdentityMiddleware,
         allowed=allowed_peers_from_env(),
         strict=False,
-        exempt_paths={"/health", "/api/v1/metrics/latest"}
+        exempt_paths={"/health", "/api/v1/metrics/latest"},
     )
 
-    from recap_evaluator.infra.bearer_auth import require_bearer_token
     from fastapi import Depends
+
+    from recap_evaluator.infra.bearer_auth import require_bearer_token
 
     application.include_router(health_router)
     application.include_router(evaluation_router, dependencies=[Depends(require_bearer_token)])

@@ -133,10 +133,14 @@ ignore = [
 # Shared with the other Python in-process enrollment copies (news-creator,
 # recap-subworker, tts-speaker); keep their structure instead of restyling.
 "tests/unit/infra/pki/*.py" = ["PT011", "PT018", "A002", "N818"]
+"src/recap_evaluator/infra/pki/*.py" = ["N818", "PLR0911", "PLR0912", "TRY301", "A002"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+# py314 formatting drops the parentheses from multi-type except clauses; the
+# shared enrollment copy stays 3.13-parseable (tests/unit/infra/pki/test_compileall.py).
+exclude = ["src/recap_evaluator/infra/pki/**"]
 
 [tool.pyrefly]
 project-includes = ["src"]
