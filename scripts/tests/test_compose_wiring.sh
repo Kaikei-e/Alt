@@ -18,6 +18,7 @@
 #   - recap-subworker OLLAMA_EMBED_URL default uses embedding-proxy:11436
 #   - search-indexer has MEILI_EMBEDDER_URL pointing to embedding-proxy
 #   - search-indexer secrets include inference_service_token
+#   - rag-orchestrator / recap-subworker mount inference_service_token and set INFERENCE_SERVICE_TOKEN_FILE
 #   - auth-token-manager has OTEL_ENABLED, OTEL_EXPORTER_OTLP_ENDPOINT, RASK_INGEST_TOKEN_FILE
 #   - auth-token-manager secrets include rask_ingest_token
 #   - Six stable sovereign roles untouched: sovereign_backend_token, sovereign_operator_token,
@@ -232,6 +233,17 @@ re_cert_ro = any("recap_evaluator_certs" in str(v) and ":ro" in str(v) for v in 
 pki_cert_rw = any("recap_evaluator_certs" in str(v) and ":ro" not in str(v) for v in pki_re_vols)
 check(re_cert_ro, "recap-evaluator mounts recap_evaluator_certs:ro")
 check(pki_cert_rw, "pki-agent-recap-evaluator mounts recap_evaluator_certs (RW)")
+
+# ── 2s. embedding-proxy callers carry the inference bearer ──────────────────
+# Both read INFERENCE_SERVICE_TOKEN_FILE and send no Authorization header when
+# it is unset, which embedding-proxy rejects with 401.
+for svc_name, svc in [("rag-orchestrator", rag["services"]["rag-orchestrator"]),
+                      ("recap-subworker", recap["services"]["recap-subworker"])]:
+    svc_env_str = " ".join(str(e) for e in svc.get("environment", []))
+    check("INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token" in svc_env_str,
+          f"{svc_name} INFERENCE_SERVICE_TOKEN_FILE set")
+    check("inference_service_token" in svc.get("secrets", []),
+          f"{svc_name} secrets include inference_service_token")
 
 print(f"\n  Results: {PASS} passed, {FAIL} failed")
 if FAIL > 0:
