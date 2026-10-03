@@ -185,17 +185,43 @@ bash scripts/pgbouncer_stats.sh
 
 ## Redis Streams (mq-hub queue)
 
-Service/container `redis-streams` (host port `6380` → 6379). `redis-cli ping` needs no auth.
+Service/container `redis-streams` (host port `6380` → 6379). Redis runs ACLs
+(`docker/redis/entrypoint.sh`) with `user default off`, so an unauthenticated `redis-cli` —
+`ping` included — gets `NOAUTH`. Authenticate as a role user with the password read from the
+container's own secret file; `REDISCLI_AUTH` keeps it off argv and out of the output.
+
+| Role | Keys | Read-only commands that work |
+| --- | --- | --- |
+| `streams` (`/run/secrets/redis_streams_password`) | `alt:events:*`, `alt:replies:tags:*` | `PING`, `SCAN` (`--scan`), `XINFO STREAM`, `XINFO GROUPS`, `XPENDING`, `TTL` |
+| `limiter` (`/run/secrets/redis_limiter_password`, DB 3) | `host_rate_limiter:v1:*` | `PING`, `PTTL` |
+
+`INFO`, `XLEN`, `XRANGE`, `TYPE`, `DBSIZE` and `XINFO CONSUMERS` are `NOPERM` for every role:
+read the stream length from `XINFO STREAM` (`length`) instead of `XLEN`, and per-group backlog
+from `XINFO GROUPS` (`pending`, `lag`). The roles also hold write commands (`XADD`, `XACK`,
+`XTRIM`, `DEL`, `SET`, …) — never run them.
 
 ```bash
-docker compose -f compose/compose.yaml -p alt exec -T redis-streams redis-cli INFO clients
-docker compose -f compose/compose.yaml -p alt exec -T redis-streams redis-cli --scan --pattern '*' | head
-docker compose -f compose/compose.yaml -p alt exec -T redis-streams redis-cli XINFO STREAM <stream-key>
-docker compose -f compose/compose.yaml -p alt exec -T redis-streams redis-cli XLEN <stream-key>
-docker compose -f compose/compose.yaml -p alt exec -T redis-streams redis-cli XPENDING <stream-key> <group>
+rs() { docker compose -f compose/compose.yaml -p alt exec -T redis-streams sh -c \
+  'REDISCLI_AUTH="$(cat /run/secrets/redis_streams_password)" redis-cli --user streams "$@"' rs "$@"; }
+rs ping
+rs --scan --pattern 'alt:events:*' | head
+rs XINFO STREAM <stream-key>        # length, groups, last-generated-id (then entry payloads)
+rs XINFO GROUPS <stream-key>        # per group: pending, last-delivered-id, lag
+rs XPENDING <stream-key> <group>    # pending summary; append `- + 10` for the oldest entries
 ```
 
-(`mq-hub` reads `REDIS_URL=redis://redis-streams:6379`; check `compose/mq.yaml` for stream/group names.)
+(`mq-hub` reads `REDIS_URL=redis://streams@redis-streams:6379` + `REDIS_PASSWORD_FILE`; check
+`compose/mq.yaml` for stream/group names.)
+
+`redis-cache` (news-creator LLM cache, `alt-network` only) has a single `cache` role
+(`/run/secrets/redis_cache_password`, keys `recap_card:*` / `recap:summary:*`) limited to
+`PING` / `GET` (plus `SET` / `DEL`, never run). `SCAN`, `INFO` and `TTL` are `NOPERM`, so only
+a known key can be read:
+
+```bash
+docker compose -f compose/compose.yaml -p alt exec -T redis-cache sh -c \
+  'REDISCLI_AUTH="$(cat /run/secrets/redis_cache_password)" redis-cli --user cache ping'
+```
 
 ## Meilisearch
 
