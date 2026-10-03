@@ -244,6 +244,40 @@ class RedisAclParityTests(unittest.TestCase):
                 # docker/redis/entrypoint.sh rejects whitespace and control bytes.
                 self.assertTrue(all(32 < byte < 127 for byte in value))
 
+    def test_host_rate_limiters_authenticate_as_the_limiter_acl_user(self):
+        # Production (compose/core.yaml) points both internet-facing binaries at
+        # the `limiter` user on DB 3. With REDIS_AUTH=disabled and no URL, staging
+        # ran them in local mode and never sent that user a command.
+        core = yaml.safe_load((ROOT / "compose/core.yaml").read_text())["services"]
+        for name in ("alt-backend", "alt-harvester"):
+            with self.subTest(service=name):
+                svc = self.services[name]
+                env = environment(svc)
+                url = urlparse(env.get("HOST_RATE_LIMITER_REDIS_URL", ""))
+                self.assertEqual(
+                    (url.scheme, url.username, url.hostname, url.port, url.path),
+                    ("redis", "limiter", "redis-streams", 6379, "/3"),
+                )
+                self.assertIsNone(url.password, "the password belongs in the _PASSWORD_FILE, not the URL")
+                self.assertEqual(
+                    env.get("HOST_RATE_LIMITER_REDIS_URL"),
+                    environment(core[name]).get("HOST_RATE_LIMITER_REDIS_URL"),
+                )
+                self.assertEqual(env.get("HOST_RATE_LIMITER_REDIS_PASSWORD_FILE"), "/run/secrets/redis_limiter_password")
+                self.assertIn("redis_limiter_password", svc.get("secrets", []))
+                self.assertNotIn("REDIS_AUTH", env, "no Redis client in this binary reads REDIS_AUTH once the limiter has its own file")
+
+    def test_host_rate_limiter_suites_bring_up_redis_streams(self):
+        for name in ("alt-backend", "alt-harvester"):
+            with self.subTest(suite=name):
+                self.assertIn(name, self.services["redis-streams"].get("profiles", []))
+                depends = self.services[name].get("depends_on", {})
+                self.assertEqual(depends.get("redis-streams", {}).get("condition"), "service_healthy")
+                text = (ROOT / "e2e/playwright" / name / "run.sh").read_text()
+                block = re.search(r"^suite_up((?:[^\n]*\\\n)*[^\n]*)$", text, re.MULTILINE)
+                self.assertIsNotNone(block, "run.sh has no suite_up call")
+                self.assertIn("redis-streams", block.group(1).replace("\\", " ").split())
+
     def test_mq_hub_suite_resets_streams_as_the_acl_user(self):
         endpoints = suite_endpoints("mq-hub")
         url = urlparse(endpoints.get("REDIS_URL", ""))
@@ -252,6 +286,28 @@ class RedisAclParityTests(unittest.TestCase):
             endpoints.get("REDIS_PASSWORD_FILE"),
             "$ROOT/e2e/playwright/_fixtures/test-credentials/redis_streams_password.txt",
         )
+
+
+class ContainerHardeningParityTests(unittest.TestCase):
+    """Staging runs the production capability set, so a helper that suddenly
+    needs a capability fails E2E instead of the first production restart."""
+
+    PRODUCTION = (("redis-streams", "compose/mq.yaml"), ("generation-proxy", "compose/ai.yaml"))
+
+    @classmethod
+    def setUpClass(cls):
+        cls.services = yaml.safe_load((ROOT / "compose/compose.staging.yaml").read_text())["services"]
+
+    def test_staging_drops_capabilities_like_production(self):
+        for name, source in self.PRODUCTION:
+            with self.subTest(service=name):
+                production = yaml.safe_load((ROOT / source).read_text())["services"][name]
+                svc = self.services[name]
+                self.assertEqual(svc.get("cap_drop"), ["ALL"])
+                self.assertNotIn("cap_add", svc)
+                self.assertIn("no-new-privileges:true", svc.get("security_opt", []))
+                self.assertEqual(svc.get("cap_drop"), production.get("cap_drop"))
+                self.assertEqual(svc.get("security_opt"), production.get("security_opt"))
 
 
 class InferenceTokenWiringTests(unittest.TestCase):

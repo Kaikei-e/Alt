@@ -132,6 +132,52 @@ with tempfile.TemporaryDirectory() as tmp:
         f"rc={kept.returncode}",
     )
 
+print("the X.509 template never touches a fixed host path")
+# The template decides which SANs a provisioner may sign. A predictable host
+# path under /tmp can be pre-created or symlinked by any local user between the
+# write and the `docker cp`, so the bytes are streamed into step-ca instead.
+check(
+    "bootstrap writes nothing under the host /tmp",
+    not re.search(r'>\s*"?/tmp/', bootstrap) and ".tpl.host" not in bootstrap,
+)
+check(
+    "bootstrap does not `docker cp` the template from a host file",
+    "docker cp" not in bootstrap,
+)
+copy_tpl = shell_function(bootstrap, "copy_template_into_ca")
+check(
+    "copy_template_into_ca streams render_x509_template over docker exec stdin",
+    "render_x509_template" in copy_tpl and 'docker exec -i -u 0 "$STEP_CA" sh -c' in copy_tpl,
+)
+render_m = re.search(r"^render_x509_template\(\) \{\n.*?^  fi\n\}\n", bootstrap, re.S | re.M)
+render_tpl = render_m.group(0) if render_m else ""
+for subject, sans in (("alt-backend", 2), ("localhost", 1)):
+    rendered = run_shell_function(render_tpl, 'render_x509_template "$1"', subject)
+    out = rendered.stdout.decode("utf-8", "replace")
+    check(
+        f"render_x509_template {subject} pins CN, token sub and SAN count",
+        rendered.returncode == 0
+        and f'"commonName": "{subject}"' in out
+        and f'{{{{- if ne .Token.sub "{subject}" }}}}' in out
+        and f"{{{{- if gt (len .Token.sans) {sans} }}}}" in out
+        and "{{- $has_subject := false }}" in out,
+        f"rc={rendered.returncode}",
+    )
+with tempfile.TemporaryDirectory() as tmp:
+    target = pathlib.Path(tmp) / "pki-agent-alt-backend.tpl"
+    fake_exec = 'docker() { [ "$1 $2" = "exec -i" ] || return 9; shift 7; sh -c "$1"; }'
+    streamed = run_shell_function(
+        f"{fake_exec}\n{render_tpl}\n{copy_tpl}",
+        'STEP_CA=step-ca; copy_template_into_ca alt-backend "$1"',
+        str(target),
+    )
+    expected = run_shell_function(render_tpl, 'render_x509_template "$1"', "alt-backend").stdout
+    check(
+        "copy_template_into_ca lands exactly the rendered template in the container path",
+        streamed.returncode == 0 and target.is_file() and target.read_bytes() == expected,
+        f"rc={streamed.returncode}",
+    )
+
 boot_subjects = extract_subjects(bootstrap, "SUBJECTS")
 verify_cns = extract_subjects(verify, "EXPECTED_CNS")
 check(

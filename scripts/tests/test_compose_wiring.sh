@@ -23,6 +23,8 @@
 #     user's password file and secret
 #   - an entrypoint mounted from a file-backed config is executable on disk, because
 #     compose ignores `configs[].mode` for file sources
+#   - the two Redis instances, the inference proxies and otel-relay drop every
+#     capability and set no-new-privileges
 #
 # Usage (from anywhere): bash scripts/tests/test_compose_wiring.sh
 #   COMPOSE_ENV_FILE  env file passed to --env-file (default: <repo>/.env.template)
@@ -357,6 +359,17 @@ for name, svc in sorted(services.items()):
             check(os.access(source, os.X_OK),
                   f"{name} entrypoint {rel} is executable "
                   "(compose ignores configs.mode for file sources)")
+
+# ── 3e. Network-facing helpers run without capabilities ──────────────────────
+# Redis runs as `redis` and writes its ACL file to /tmp; the proxies bind ports
+# above 1024 and only read a 0644 secret file. None of them needs a capability,
+# so a compromise of any of them must not inherit the default set.
+for name in ("redis-streams", "redis-cache", "embedding-proxy", "generation-proxy", "otel-relay"):
+    svc = services[name]
+    check(svc.get("cap_drop") == ["ALL"] and not svc.get("cap_add"),
+          f"{name} drops every capability and adds none back")
+    check("no-new-privileges:true" in (svc.get("security_opt") or []),
+          f"{name} sets no-new-privileges:true")
 
 print(f"\n  Results: {PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
