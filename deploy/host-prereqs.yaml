@@ -1,0 +1,347 @@
+# Host prerequisites the production compose tree relies on but cannot create
+# itself. The deploy preflight provisions and checks a host from this file
+# before any container is created, so a missing path fails the deploy at its
+# first step with a recipe, not halfway through a roll.
+#
+# Kept in lockstep with compose/compose.yaml's include chain by
+# scripts/compose-file-bind-audit.py (CI: compose-audit / file-bind-invariant):
+# every host-path bind, socket group, GPU consumer, undefaulted interpolation
+# and gitignored env_file compose uses must be declared here, and every entry
+# here must still be used by compose.
+#
+# Secrets are not listed: their files come from compose/base.yaml's secrets:
+# block, and their provisioning class (random / operator-provided /
+# pki-provisioner) from altctl/internal/setup/secrets.go.
+#
+# host_paths
+#   env               .env variable that overrides the path, or null when compose hardcodes it
+#   path              compose's default (or literal) host path
+#   kind              file | dir | socket
+#   owner, mode       what the recipe sets and the container needs ("uid:gid", "0750");
+#                     null when the OS or Docker Engine owns the path. A preflight compares
+#                     both exactly, after resolving env from the host's .env.
+#   create_host_path  false: Engine refuses to create a container when the path is missing.
+#                     true: Engine silently creates a root:root 0755 directory instead, so the
+#                     preflight is the only thing that catches a missing or misowned path.
+#   mounts            every service that binds it; a preflight checks the entries whose
+#                     services it is about to start.
+#   provision         one-time, privileged operator recipe. Parent directories stay
+#                     traversable (0755) so the preflight can stat the path as the runner user.
+schema_version: 1
+source: compose/compose.yaml include chain
+
+host_paths:
+  - id: plecto-public-key
+    env: PLECTO_PUBLIC_KEY_HOST_PATH
+    path: /var/lib/alt-plecto/dev-key.pub
+    kind: file
+    owner: "0:0"
+    mode: "0644"
+    create_host_path: false
+    mounts:
+      - {service: plecto-proxy, target: /etc/plecto/.plecto/dev-key.pub, read_only: true}
+    provision: |
+      Public half of the key that signed the stale-chunk-heal filter. It is a
+      gitignored build output (plecto/.plecto/dev-key.pub) on the checkout
+      where the filter was built and signed; never stage the private key.
+        sudo install -d -o root -g root -m 0755 /var/lib/alt-plecto
+        sudo install -o root -g root -m 0644 plecto/.plecto/dev-key.pub /var/lib/alt-plecto/dev-key.pub
+
+  - id: plecto-stale-chunk-heal
+    env: PLECTO_ARTIFACTS_HOST_PATH
+    path: /var/lib/alt-plecto/artifacts/stale-chunk-heal
+    kind: dir
+    owner: "0:0"
+    mode: "0755"
+    create_host_path: false
+    mounts:
+      - {service: plecto-proxy, target: /etc/plecto/artifacts/stale-chunk-heal, read_only: true}
+    provision: |
+      Signed filter directory (gitignored build output plecto/artifacts/stale-chunk-heal).
+      Its digest must equal the [[filter]] digest in plecto/manifest.toml.
+        sudo install -d -o root -g root -m 0755 /var/lib/alt-plecto/artifacts
+        sudo rm -rf /var/lib/alt-plecto/artifacts/stale-chunk-heal
+        sudo cp -R plecto/artifacts/stale-chunk-heal /var/lib/alt-plecto/artifacts/
+        sudo chown -R root:root /var/lib/alt-plecto/artifacts/stale-chunk-heal
+        sudo chmod -R u=rwX,go=rX /var/lib/alt-plecto/artifacts/stale-chunk-heal
+
+  - id: clickhouse-backups
+    env: CLICKHOUSE_BACKUP_HOST_PATH
+    path: /var/lib/alt-clickhouse-backups
+    kind: dir
+    owner: "101:101"
+    mode: "0700"
+    create_host_path: false
+    mounts:
+      - {service: clickhouse, target: /backups/clickhouse, read_only: false}
+      - {service: restic-backup, target: /backups/clickhouse, read_only: false}
+    provision: |
+      ClickHouse's native BACKUP disk. clickhouse-server writes it as its
+      image user (uid/gid 101); restic-backup runs as root and prunes old
+      payloads, so no group access is needed. Point the env var at an existing
+      backups/clickhouse directory to keep history, then fix its owner/mode.
+        sudo install -d -o 101 -g 101 -m 0700 /var/lib/alt-clickhouse-backups
+
+  - id: restic-ssh-key
+    env: RESTIC_SSH_KEY_HOST_PATH
+    path: /var/lib/alt-restic/ssh/id_ed25519_backup
+    kind: file
+    owner: "0:0"
+    mode: "0600"
+    create_host_path: false
+    mounts:
+      - {service: restic-backup, target: /root/.ssh/id_ed25519, read_only: true}
+    provision: |
+      Private key restic-backup uses for the offsite sync (root in the
+      container; ssh rejects a key readable by group or other).
+        sudo install -d -o root -g root -m 0755 /var/lib/alt-restic/ssh
+        sudo install -o root -g root -m 0600 <offsite-key> /var/lib/alt-restic/ssh/id_ed25519_backup
+
+  - id: restic-ssh-known-hosts
+    env: RESTIC_SSH_KNOWN_HOSTS_HOST_PATH
+    path: /var/lib/alt-restic/ssh/known_hosts
+    kind: file
+    owner: "0:0"
+    mode: "0644"
+    create_host_path: false
+    mounts:
+      - {service: restic-backup, target: /root/.ssh/known_hosts, read_only: true}
+    provision: |
+      Pinned host key of the offsite target, verified out of band.
+        sudo install -o root -g root -m 0644 <known_hosts> /var/lib/alt-restic/ssh/known_hosts
+
+  - id: recap-subworker-data
+    env: RECAP_SUBWORKER_DATA_HOST_PATH
+    path: /var/lib/alt-recap-subworker-data
+    kind: dir
+    owner: "999:999"
+    mode: "0700"
+    create_host_path: false
+    mounts:
+      - {service: recap-subworker, target: /app/data, read_only: true}
+    provision: |
+      Gitignored joblib/JSON classifier artefacts, read by the image's recap
+      user (999). Full procedure: docs/runbooks/runner-setup.md §2.6.
+        sudo install -d -o 999 -g 999 -m 0700 /var/lib/alt-recap-subworker-data
+        sudo tar -xzf recap-subworker-data.tar.gz -C /var/lib/alt-recap-subworker-data --strip-components=1
+        sudo chown -R 999:999 /var/lib/alt-recap-subworker-data
+        sudo chmod -R u=rwX,go-rwx /var/lib/alt-recap-subworker-data
+
+  - id: recap-subworker-artifacts
+    env: RECAP_SUBWORKER_ARTIFACTS_HOST_PATH
+    path: /var/lib/alt-recap-subworker-artifacts
+    kind: dir
+    owner: "999:999"
+    mode: "0700"
+    create_host_path: false
+    mounts:
+      - {service: recap-subworker, target: /app/recap_subworker/learning_machine/artifacts, read_only: true}
+    provision: |
+      Gitignored Learning Machine student/teacher models, same owner rule as
+      recap-subworker-data (docs/runbooks/runner-setup.md §2.6).
+        sudo install -d -o 999 -g 999 -m 0700 /var/lib/alt-recap-subworker-artifacts
+        sudo cp -R recap-subworker/recap_subworker/learning_machine/artifacts/. /var/lib/alt-recap-subworker-artifacts/
+        sudo chown -R 999:999 /var/lib/alt-recap-subworker-artifacts
+        sudo chmod -R u=rwX,go-rwx /var/lib/alt-recap-subworker-artifacts
+
+  - id: tag-generator-onnx
+    env: TAG_GENERATOR_ONNX_HOST_PATH
+    path: /var/lib/alt-tag-generator-onnx
+    kind: dir
+    owner: "1000:1000"
+    mode: "0700"
+    create_host_path: false
+    mounts:
+      - {service: tag-generator, target: /models/onnx, read_only: true}
+    provision: |
+      Gitignored ONNX classifier models, read by the image's appuser (1000).
+      Produce them with tag-generator/scripts/convert_to_onnx.py
+      (ONNX_OUTPUT_DIR=<dir>) or copy an existing export.
+        sudo install -d -o 1000 -g 1000 -m 0700 /var/lib/alt-tag-generator-onnx
+        sudo cp -R <onnx-export>/. /var/lib/alt-tag-generator-onnx/
+        sudo chown -R 1000:1000 /var/lib/alt-tag-generator-onnx
+        sudo chmod -R u=rwX,go-rwx /var/lib/alt-tag-generator-onnx
+
+  - id: knowledge-sovereign-snapshots
+    env: KNOWLEDGE_SOVEREIGN_SNAPSHOTS_HOST_PATH
+    path: /var/lib/alt-knowledge-sovereign-snapshots
+    kind: dir
+    owner: "65532:65532"
+    mode: "0700"
+    create_host_path: false
+    mounts:
+      - {service: knowledge-sovereign, target: /tmp/snapshots, read_only: false}
+    provision: |
+      Projection snapshot sink, written by the distroless nonroot user (65532).
+      Retention trusts the snapshot rows, so never repoint this at an empty
+      directory while snapshots exist.
+        sudo install -d -o 65532 -g 65532 -m 0700 /var/lib/alt-knowledge-sovereign-snapshots
+
+  - id: irodori-models
+    env: IRODORI_MODELS_HOST_PATH
+    path: /var/lib/alt-irodori-models
+    kind: dir
+    owner: "1000:1000"
+    mode: "0700"
+    create_host_path: false
+    mounts:
+      - {service: irodori-tts, target: /models, read_only: true}
+    provision: |
+      Local-only TTS checkpoints, read by the image's appuser (1000).
+        sudo install -d -o 1000 -g 1000 -m 0700 /var/lib/alt-irodori-models
+        sudo IRODORI_MODELS_HOST_PATH=/var/lib/alt-irodori-models bash irodori-tts/scripts/fetch_checkpoints.sh
+        sudo IRODORI_MODELS_HOST_PATH=/var/lib/alt-irodori-models bash irodori-tts/scripts/quantize_mf_int8.sh
+        sudo chown -R 1000:1000 /var/lib/alt-irodori-models
+        sudo chmod -R u=rwX,go-rwx /var/lib/alt-irodori-models
+
+  - id: irodori-voices
+    env: IRODORI_VOICES_HOST_PATH
+    path: /var/lib/alt-irodori-voices
+    kind: dir
+    owner: "1000:1000"
+    mode: "0700"
+    create_host_path: false
+    mounts:
+      - {service: irodori-tts, target: /voices, read_only: true}
+    provision: |
+      Registered reference voices, read by the image's appuser (1000).
+        sudo install -d -o 1000 -g 1000 -m 0700 /var/lib/alt-irodori-voices
+        sudo IRODORI_MODELS_HOST_PATH=/var/lib/alt-irodori-models IRODORI_VOICES_HOST_PATH=/var/lib/alt-irodori-voices bash irodori-tts/scripts/register_voice.sh <args>
+        sudo chown -R 1000:1000 /var/lib/alt-irodori-voices
+        sudo chmod -R u=rwX,go-rwx /var/lib/alt-irodori-voices
+
+  - id: docker-socket
+    env: null
+    path: /var/run/docker.sock
+    kind: socket
+    owner: "0:984"
+    mode: "0660"
+    create_host_path: false
+    mounts:
+      - {service: docker-socket-proxy-ro, target: /var/run/docker.sock, read_only: true}
+    provision: |
+      Created by Docker Engine. compose/logging.yaml hardcodes the socket's
+      group id in docker-socket-proxy-ro's user:, so the host's docker group
+      must have gid 984 (getent group docker); otherwise change that user:
+      line and this owner together.
+
+  - id: docker-containers-logs
+    env: null
+    path: /var/lib/docker/containers
+    kind: dir
+    owner: null
+    mode: null
+    create_host_path: true
+    mounts:
+      - {service: alt-backend-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: alt-data-hub-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: alt-harvester-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: auth-hub-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: dashboard-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: mq-hub-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: news-creator-backend-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: news-creator-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: nginx-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: pre-processor-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: rag-orchestrator-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: recap-evaluator-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: recap-subworker-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: recap-worker-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: search-indexer-logs, target: /var/lib/docker/containers, read_only: true}
+      - {service: tag-generator-logs, target: /var/lib/docker/containers, read_only: true}
+    provision: |
+      Docker Engine's json-file log directory. The log forwarders assume the
+      default data-root (/var/lib/docker); a relocated data-root leaves them
+      tailing an empty directory Engine created for the bind.
+
+  - id: docker-data-root
+    env: null
+    path: /var/lib/docker/
+    kind: dir
+    owner: null
+    mode: null
+    create_host_path: true
+    mounts:
+      - {service: cadvisor, target: /var/lib/docker, read_only: true}
+    provision: |
+      Docker Engine's default data-root, read by cAdvisor for per-container
+      filesystem stats. Same default data-root assumption as docker-containers-logs.
+
+  - id: sysfs
+    env: null
+    path: /sys
+    kind: dir
+    owner: null
+    mode: null
+    create_host_path: true
+    mounts:
+      - {service: cadvisor, target: /sys, read_only: true}
+    provision: Provided by the kernel.
+
+  - id: dev-disk
+    env: null
+    path: /dev/disk/
+    kind: dir
+    owner: null
+    mode: null
+    create_host_path: true
+    mounts:
+      - {service: cadvisor, target: /dev/disk, read_only: true}
+    provision: Provided by udev.
+
+  - id: rustbert-cache
+    env: null
+    path: /opt/rustbert-cache
+    kind: dir
+    owner: "999:999"
+    mode: "0700"
+    create_host_path: true
+    mounts:
+      - {service: recap-worker, target: /opt/rustbert-cache, read_only: false}
+    provision: |
+      Model cache written by recap-worker's recap user (999). The bind is short
+      syntax, so a missing directory is created root:root and the cache writes
+      fail at runtime instead of at container create
+      (docs/runbooks/runner-setup.md §2.5).
+        sudo install -d -o 999 -g 999 -m 0700 /opt/rustbert-cache
+
+host_facts:
+  nvidia_container_runtime:
+    services: [dashboard, irodori-tts, knowledge-embedder-local, news-creator-backend, recap-subworker]
+    provision: |
+      NVIDIA driver plus NVIDIA Container Toolkit registered with Docker
+      (docker info lists the nvidia runtime). These services either set
+      runtime: nvidia or reserve an nvidia device.
+
+# Interpolated by compose with no default: an unset key becomes an empty
+# string and compose only warns. All are present in .env.template.
+required_env:
+  - ALT_BACKEND_BASE_URL
+  - CLICKHOUSE_DB
+  - CLICKHOUSE_USER
+  - DB_HOST
+  - DB_NAME
+  - DB_PORT
+  - DB_USER
+  - MEILISEARCH_HOST
+  - POSTGRES_DB
+  - POSTGRES_USER
+  - PRE_PROCESSOR_SIDECAR_DB_USER
+  - RECAP_DB_NAME
+  - RECAP_DB_PORT
+  - RECAP_DB_USER
+  - TAG_LABEL_GRAPH_TTL_SECONDS
+  - TAG_LABEL_GRAPH_WINDOW
+
+# Repo-relative env_files that are gitignored, so a fresh deploy checkout lacks
+# them and the deploy has to stage them next to compose/.
+env_files:
+  - path: .env
+    provision: |
+      The host's canonical .env, staged into the checkout root before compose
+      runs. Start from .env.template; it must set every required_env key.
+  - path: scripts/backup/alt-backup.env
+    provision: |
+      restic-backup's settings (backup profile only), staged into the
+      checkout like .env. Operator-maintained; keep offsite target details
+      out of the repository.
