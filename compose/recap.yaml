@@ -268,6 +268,7 @@ services:
       # Ollama bridge at :11436) rather than knowledge-embedder-local directly.
       # All embedding callers must go through the proxy auth boundary.
       - RECAP_SUBWORKER_OLLAMA_EMBED_URL=${OLLAMA_EMBED_URL:-http://embedding-proxy:11436}
+      - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
       - RECAP_SUBWORKER_OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-bge-m3}
       - RECAP_SUBWORKER_PIPELINE_MODE=inprocess
       # Single worker for CUDA compatibility (CUDA context survives fork only in single worker mode)
@@ -336,6 +337,7 @@ services:
       - pki-agent-recap-subworker-jwk
       - recap_admin_token
       - rask_ingest_token
+      - inference_service_token
     volumes:
       # joblib artefacts (genre_classifier*.joblib, tfidf_vectorizer*.joblib,
       # genre_thresholds*.json, golden_classification.json) live on the
