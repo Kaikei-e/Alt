@@ -299,3 +299,91 @@ func TestBuildOllamaGenerator_ProductionFactoryTests(t *testing.T) {
 		}
 	})
 }
+
+// The eino Ollama client has no hook for the inference bearer or the mTLS
+// leaf, so LLM_BACKEND=eino may only point at an endpoint that needs neither.
+func TestValidateEinoBackend(t *testing.T) {
+	tests := []struct {
+		name         string
+		mtlsEnforce  string
+		inference    config.InferenceAuthConfig
+		augurURL     string
+		purpose      string
+		wantErr      bool
+		wantErrMatch string
+	}{
+		{
+			name:         "inference auth enabled",
+			inference:    config.InferenceAuthConfig{Enabled: true, Token: "secret-bearer-token-value"},
+			augurURL:     "http://localhost:11434",
+			purpose:      "news_mtls",
+			wantErr:      true,
+			wantErrMatch: "INFERENCE_AUTH",
+		},
+		{
+			name:         "authenticated proxy needs the bearer",
+			augurURL:     "http://ollama-proxy:11434",
+			purpose:      "authenticated_proxy",
+			wantErr:      true,
+			wantErrMatch: "authenticated_proxy",
+		},
+		{
+			name:         "an unset purpose off news-creator resolves to the authenticated proxy",
+			augurURL:     "http://ollama-proxy:11434",
+			wantErr:      true,
+			wantErrMatch: "authenticated_proxy",
+		},
+		{
+			name:         "news-creator over enforced mTLS needs the client cert",
+			mtlsEnforce:  "true",
+			augurURL:     "https://news-creator:9443",
+			wantErr:      true,
+			wantErrMatch: "MTLS_ENFORCE",
+		},
+		{
+			name:         "unknown purpose",
+			augurURL:     "http://localhost:11434",
+			purpose:      "plaintext",
+			wantErr:      true,
+			wantErrMatch: "plaintext",
+		},
+		{
+			name:     "credential-free endpoint",
+			augurURL: "http://localhost:11434",
+			purpose:  "news_mtls",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("MTLS_ENFORCE", tt.mtlsEnforce)
+			cfg := &config.Config{
+				LLMBackend:    "eino",
+				InferenceAuth: tt.inference,
+				Augur: config.AugurConfig{
+					URL:             tt.augurURL,
+					EndpointPurpose: tt.purpose,
+					InferenceToken:  tt.inference.Token,
+				},
+			}
+
+			err := validateEinoBackend(cfg)
+
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("want no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("want a startup error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrMatch) {
+				t.Fatalf("error %q does not name %q", err, tt.wantErrMatch)
+			}
+			if strings.Contains(err.Error(), "secret-bearer-token-value") {
+				t.Fatalf("the token must never reach the error: %q", err)
+			}
+		})
+	}
+}
