@@ -347,3 +347,91 @@ env_files:
       restic-backup's settings (backup profile only), staged into the
       checkout like .env. Operator-maintained; keep offsite target details
       out of the repository.
+
+# Host .env overrides that defeat a compose default. compose resolves
+# `${VAR:-default}` from the host's .env, so a value that was right before a
+# compose change keeps beating the fixed default afterwards and compose cannot
+# tell. scripts/check-env-overrides.py --env-file <path> applies these rules to
+# a host env file and prints key names and rule ids, never values;
+# scripts/tests/test-compose-prod-env-wiring.py applies them to the repo
+# templates and keeps them in lockstep with compose.
+#
+# retired_env       keys compose no longer reads from .env, so a value is
+#                   ignored (warning). Delete them so nobody tunes a dead knob.
+# dead_env_values   values that send a caller to a listener that no longer
+#                   serves it (error). keys: ["*"] applies the rule to every
+#                   key. Each rule has exactly one matcher:
+#                     deny_hosts       URL host, or host:port, that is dead
+#                     require_hosts    the only URL hosts the key may name
+#                     require_schemes  the only URL schemes the key may use
+# env_allowlists    comma-separated mTLS peer allowlists. required is the
+#                   compose default; an override must keep every required peer
+#                   (allowlist-missing-peer, error) and should add none
+#                   (allowlist-extra-peer, warning).
+retired_env:
+  - id: rag-orchestrator-pinned-upstreams
+    keys: [AUGUR_EXTERNAL, QUERY_EXPANSION_URL, QUERY_EXPANSION_TIMEOUT, RERANK_URL]
+    reason: >-
+      compose/rag.yaml pins these for rag-orchestrator, which loads no
+      env_file, so a .env value never reaches it.
+
+dead_env_values:
+  - id: auth-hub-health-only-port
+    keys: ["*"]
+    deny_hosts: ["auth-hub:8888"]
+    reason: >-
+      auth-hub's plaintext :8888 answers /health only; session calls go to
+      https://auth-hub:8443.
+  - id: embedder-raw-network
+    keys: ["*"]
+    deny_hosts: [knowledge-embedder-local]
+    reason: >-
+      knowledge-embedder-local sits on the internal embedding-raw-network;
+      callers reach it through the token-checking embedding-proxy
+      (http://embedding-proxy:11436).
+  - id: frontend-connect-bypasses-bff
+    keys: [BACKEND_CONNECT_URL]
+    require_hosts: [alt-butterfly-facade]
+    reason: >-
+      alt-frontend-sv sends Connect calls through the BFF
+      (http://alt-butterfly-facade:9250); a direct alt-backend URL skips it.
+  - id: https-only-upstream
+    keys:
+      - ACOLYTE_LLM_URL
+      - ACOLYTE_SEARCH_URL
+      - AUTH_HUB_INTERNAL_URL
+      - RAG_ORCHESTRATOR_CONNECT_URL
+      - RAG_ORCHESTRATOR_DATAHUB_MTLS_URL
+    require_schemes: [https]
+    reason: >-
+      the upstream serves this call only over TLS/mTLS; its plaintext port is
+      health-only or gone, and the client refuses a non-https URL.
+
+env_allowlists:
+  - key: ACOLYTE_ORCHESTRATOR_MTLS_ALLOWED_PEERS
+    required: [alt-butterfly-facade]
+  - key: ALT_DATA_HUB_ALLOWED_PEERS
+    required:
+      - alt-backend
+      - alt-harvester
+      - alt-notifier
+      - pre-processor
+      - search-indexer
+      - tag-generator
+      - recap-worker
+      - rag-orchestrator
+      - acolyte-orchestrator
+  - key: AUTH_HUB_MTLS_ALLOWED_PEERS
+    required: [alt-backend, alt-data-hub, search-indexer, knowledge-sovereign]
+  - key: NEWS_CREATOR_MTLS_ALLOWED_PEERS
+    required: [recap-worker, acolyte-orchestrator, rag-orchestrator, recap-evaluator, pre-processor]
+  - key: PRE_PROCESSOR_MTLS_ALLOWED_PEERS
+    required: [alt-backend]
+  - key: RAG_ORCHESTRATOR_ALLOWED_PEERS
+    required: [alt-backend]
+  - key: RECAP_SUBWORKER_MTLS_ALLOWED_PEERS
+    required: [recap-worker]
+  - key: SEARCH_INDEXER_MTLS_ALLOWED_PEERS
+    required: [alt-backend, rag-orchestrator, acolyte-orchestrator]
+  - key: TAG_GENERATOR_MTLS_ALLOWED_PEERS
+    required: [alt-butterfly-facade, alt-backend, search-indexer, recap-worker]
