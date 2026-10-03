@@ -655,9 +655,10 @@ def main() -> int:
         for v in prereqs:
             print(f"  - {v}")
         print(
-            "\nThe deploy preflight provisions and checks the host from that "
-            "manifest. Declare each new host path (owner, mode, provisioning "
-            "recipe) there, or drop entries compose no longer uses."
+            "\nOperators provision hosts from that manifest's recipes, and "
+            "alt-deploy's host preflight is to check hosts against it. Declare "
+            "each new host path (owner, mode, provisioning recipe) there, or "
+            "drop entries compose no longer uses."
         )
         return 1
     acknowledged = acknowledged_workspace_sources()
