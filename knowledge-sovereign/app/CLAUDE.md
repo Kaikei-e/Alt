@@ -29,3 +29,4 @@ There is no separate `port/`/`gateway/` layer in this service — both `handler/
 1. **Append-first**: knowledge_events は INSERT-only
 2. **Reproject-safe**: Projector はイベントペイロードのみを使う
 3. **No shared DB access**: producer は API/event 経由でのみ接続
+4. **In-process PKI enrollment** ([[000978]]): `internal/pki` が `/certs` の唯一の writer。`pki.Start` は auth-hub mTLS client を組む `config.Load` より前に呼ぶ。`pki-agent-knowledge-sovereign` sidecar を compose に戻さない (dual writer)

@@ -14,20 +14,39 @@ import (
 	"knowledge-sovereign/config"
 	"knowledge-sovereign/driver/sovereign_db"
 	"knowledge-sovereign/handler"
+	"knowledge-sovereign/internal/pki"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// config.Load builds the auth-hub mTLS client, which needs the leaf on disk.
+	pkiHandle, err := pki.Start(ctx, logger, "knowledge-sovereign")
+	if err != nil {
+		slog.Error("pki enrollment failed", "error_type", pki.LogSafeError(err))
+		os.Exit(1)
+	}
+	defer pkiHandle.Stop()
+	opsSrv, err := pki.ListenOps(ctx, logger, "knowledge-sovereign", pkiHandle.MetricsHandler())
+	if err != nil {
+		slog.Error("pki ops listener failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		opsCtx, opsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer opsCancel()
+		_ = pki.ShutdownOps(opsCtx, opsSrv)
+	}()
+
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("config load failed", "error", err)
 		os.Exit(1)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
