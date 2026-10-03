@@ -17,12 +17,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"rag-orchestrator/internal/adapter/rag_augur"
+	rag_http "rag-orchestrator/internal/adapter/rag_http"
 	"rag-orchestrator/internal/adapter/repository"
 	"rag-orchestrator/internal/backfill"
+	"rag-orchestrator/internal/di"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/infra"
-	"rag-orchestrator/internal/infra/httpclient"
+	"rag-orchestrator/internal/infra/config"
 	"rag-orchestrator/internal/usecase"
 )
 
@@ -277,6 +278,11 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("EMBEDDER_URL or EMBEDDER_URLS environment variable is required for --direct mode")
 		}
 
+		embedderFactory, err := newEmbedderFactory(logger)
+		if err != nil {
+			return err
+		}
+
 		// Connect to rag-db with pgvector type registration
 		ragPool, err := infra.NewPostgresDB(ctx, ragDBURL)
 		if err != nil {
@@ -294,10 +300,7 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 		// Build one IndexArticleUsecase per embedder replica
 		var indexers []usecase.IndexArticleUsecase
 		for _, eURL := range embedderURLs {
-			embedder := rag_augur.NewOllamaEmbedder(
-				strings.TrimSpace(eURL), embeddingModel, 120, logger, "",
-				httpclient.NewPooledClient(120*time.Second),
-			)
+			embedder := embedderFactory(strings.TrimSpace(eURL), embeddingModel, 120)
 			indexers = append(indexers, usecase.NewIndexArticleUsecase(
 				docRepo, chunkRepo, txManager, hasher, chunker, embedder,
 			))
@@ -426,6 +429,22 @@ func resetCursor(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// newEmbedderFactory builds the CLI's embedders the way the server does. The
+// configured embedder is embedding-proxy, which rejects a request without the
+// inference bearer, so the bearer goes to EMBEDDER_EXTERNAL's origin and to no
+// other: a raw hyper-boost Ollama must never see the shared secret.
+func newEmbedderFactory(logger *slog.Logger) (rag_http.EmbedderFactory, error) {
+	auth, err := config.LoadInferenceAuth()
+	if err != nil {
+		return nil, err
+	}
+	di.LogInferenceAuth(auth, logger)
+	return di.NewEmbedderFactory(config.EmbedderConfig{
+		URL:            config.EmbedderExternalURL(),
+		InferenceToken: auth.Token,
+	}, logger), nil
+}
+
 // requireEnv reads a mandatory setting. A rebuild that infers a missing value
 // is how a corpus ends up half-written into a vector space nobody chose.
 func requireEnv(key string) (string, error) {
@@ -515,6 +534,10 @@ func newRebuildDeps(ctx context.Context, logger *slog.Logger) (*rebuildDeps, err
 	if err != nil {
 		return nil, err
 	}
+	embedderFactory, err := newEmbedderFactory(logger)
+	if err != nil {
+		return nil, err
+	}
 
 	pool, err := infra.NewPostgresDB(ctx, ragDBURL)
 	if err != nil {
@@ -530,10 +553,7 @@ func newRebuildDeps(ctx context.Context, logger *slog.Logger) (*rebuildDeps, err
 	var indexers []usecase.IndexArticleUsecase
 	var versions []string
 	for _, url := range urls {
-		embedder := rag_augur.NewOllamaEmbedder(
-			url, model, rebuildEmbedderTimeoutSeconds, logger, "",
-			httpclient.NewPooledClient(rebuildEmbedderTimeoutSeconds*time.Second),
-		)
+		embedder := embedderFactory(url, model, rebuildEmbedderTimeoutSeconds)
 		versions = append(versions, embedder.Version())
 		indexers = append(indexers, usecase.NewIndexArticleUsecase(
 			docRepo, chunkRepo, txManager, hasher, chunker, embedder,

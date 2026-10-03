@@ -4,17 +4,36 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestLoadConfig_DefaultDisabled(t *testing.T) {
-	t.Setenv("PKI_ENROLLMENT", "placeholder-for-cleanup")
-	if err := os.Unsetenv("PKI_ENROLLMENT"); err != nil {
-		t.Fatal(err)
+func unsetEnrollmentEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{"PKI_ENROLLMENT", "PKI_ENROLLMENT_FILE"} {
+		t.Setenv(key, "placeholder-for-cleanup")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.Unsetenv("PKI_ENROLLMENT_FILE"); err != nil {
-		t.Fatal(err)
+}
+
+// knowledge-sovereign presents the enrolled leaf to its mTLS peers, so an
+// unset mode is a forgotten setting, never an implicit "disabled".
+func TestLoadConfig_UnsetEnrollmentFails(t *testing.T) {
+	unsetEnrollmentEnv(t)
+	_, err := LoadConfig("knowledge-sovereign")
+	if err == nil {
+		t.Fatal("unset PKI_ENROLLMENT must be a startup error")
 	}
+	if !strings.Contains(err.Error(), "PKI_ENROLLMENT") {
+		t.Fatalf("error must name PKI_ENROLLMENT: %v", err)
+	}
+}
+
+func TestLoadConfig_ExplicitDisabled(t *testing.T) {
+	unsetEnrollmentEnv(t)
+	t.Setenv("PKI_ENROLLMENT", ModeDisabled)
 	c, err := LoadConfig("knowledge-sovereign")
 	if err != nil {
 		t.Fatal(err)
@@ -88,25 +107,6 @@ func TestLoadConfig_DistinctSubjectsDoNotShareIdentity(t *testing.T) {
 	}
 	if filepath.Base(a.PasswordFile) == filepath.Base(b.PasswordFile) {
 		t.Fatal("password file basenames collided")
-	}
-}
-
-func TestLoadConfig_UnsetEnrollmentDisabledMigrationCompat(t *testing.T) {
-	// Image-first mixed-mode: unset PKI_ENROLLMENT stays disabled until the
-	// final compose cutover sets PKI_ENROLLMENT=enabled explicitly.
-	t.Setenv("PKI_ENROLLMENT", "placeholder")
-	if err := os.Unsetenv("PKI_ENROLLMENT"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Unsetenv("PKI_ENROLLMENT_FILE"); err != nil {
-		t.Fatal(err)
-	}
-	c, err := LoadConfig("knowledge-sovereign")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.Mode != ModeDisabled {
-		t.Fatalf("unset PKI_ENROLLMENT must stay disabled for migration compatibility, got %q", c.Mode)
 	}
 }
 

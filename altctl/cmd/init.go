@@ -25,11 +25,14 @@ This command performs the following steps:
 
 After initialization, run 'altctl up' to start the platform.
 
-The command is idempotent — existing files are not overwritten unless --force is used.
+The command is idempotent: it creates only what is missing and keeps existing
+files. --force overwrites .env and regenerates the random secrets, which
+rotates database passwords and service tokens; operator-provided secrets and
+step-ca provisioner secrets are never rewritten.
 
 Examples:
-  altctl init                # Initialize environment
-  altctl init --force        # Overwrite existing .env and secrets
+  altctl init                # Initialize environment, creating missing files
+  altctl init --force        # Also overwrite .env and rotate random secrets
   altctl init --skip-secrets # Skip secret generation (external management)
   altctl init --dry-run      # Show what would be done`,
 	Args: cobra.NoArgs,
@@ -39,7 +42,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(initCmd)
 
-	initCmd.Flags().Bool("force", false, "overwrite existing .env and secret files")
+	initCmd.Flags().Bool("force", false, "overwrite .env and regenerate random secrets (operator-provided secrets are kept)")
 	initCmd.Flags().Bool("skip-secrets", false, "skip secret file generation")
 }
 
@@ -199,11 +202,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	if missing > 0 && !dryRun && !skipSecrets {
-		return &output.CLIError{
-			Summary:    fmt.Sprintf("%d required files missing", missing),
-			Suggestion: "Run 'altctl init --force' to regenerate",
-			ExitCode:   output.ExitConfigError,
-		}
+		return missingFilesError(missing)
 	}
 
 	pendingActions := 0
@@ -252,4 +251,15 @@ func reportPendingSecrets(printer *output.Printer, pending setup.PendingSecrets)
 		printer.Warning("Start step-ca (altctl up pki), then run: bash %s", setup.PKIBootstrapScript)
 	}
 	return len(pending.OperatorProvided) + len(pending.PKIProvisioner)
+}
+
+// missingFilesError points at plain `altctl init`, which creates missing files
+// and keeps existing ones; --force would also rotate every existing random
+// secret, database passwords included.
+func missingFilesError(missing int) *output.CLIError {
+	return &output.CLIError{
+		Summary:    fmt.Sprintf("%d required files missing", missing),
+		Suggestion: "Run 'altctl init' again: it creates the missing files and keeps every existing secret",
+		ExitCode:   output.ExitConfigError,
+	}
 }

@@ -1,7 +1,13 @@
 package main
 
 import (
+	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"rag-orchestrator/internal/adapter/rag_augur"
+	rag_http "rag-orchestrator/internal/adapter/rag_http"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -106,4 +112,56 @@ func TestSingleEmbedderVersion(t *testing.T) {
 		_, err := singleEmbedderVersion(nil)
 		assert.Error(t, err)
 	})
+}
+
+func writeInferenceToken(t *testing.T, token string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "inference_service_token")
+	require.NoError(t, os.WriteFile(path, []byte(token+"\n"), 0o600))
+	return path
+}
+
+func cliEmbedderToken(t *testing.T, factory rag_http.EmbedderFactory, url string) string {
+	t.Helper()
+	embedder, ok := factory(url, "bge-m3", rebuildEmbedderTimeoutSeconds).(*rag_augur.OllamaEmbedder)
+	require.True(t, ok, "the CLI embeds through the Ollama embedder")
+	return embedder.InferenceToken
+}
+
+// The only embedder a rebuild can reach is embedding-proxy, which rejects a
+// request without the inference bearer. The bearer must still never reach a
+// raw hyper-boost Ollama, so it follows EMBEDDER_EXTERNAL's origin only.
+func TestNewEmbedderFactory_ScopesTheInferenceBearerToTheConfiguredProxy(t *testing.T) {
+	const token = "cli-inference-token-0123456789"
+	t.Setenv("INFERENCE_AUTH", "")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", writeInferenceToken(t, token))
+	t.Setenv("EMBEDDER_EXTERNAL", "http://embedding-proxy:11436")
+
+	factory, err := newEmbedderFactory(slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+
+	assert.Equal(t, token, cliEmbedderToken(t, factory, "http://embedding-proxy:11436"))
+	assert.Equal(t, token, cliEmbedderToken(t, factory, "HTTP://Embedding-Proxy:11436/"))
+	assert.Empty(t, cliEmbedderToken(t, factory, "http://backfill-hyperboost:11434"), "raw Ollama must never see the bearer")
+	assert.Empty(t, cliEmbedderToken(t, factory, "http://embedding-proxy:11434"), "another port is another origin")
+}
+
+func TestNewEmbedderFactory_MissingTokenFileFailsFast(t *testing.T) {
+	t.Setenv("INFERENCE_AUTH", "")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", "")
+
+	_, err := newEmbedderFactory(slog.New(slog.DiscardHandler))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "INFERENCE_SERVICE_TOKEN_FILE")
+}
+
+func TestNewEmbedderFactory_ExplicitlyDisabledSendsNoBearer(t *testing.T) {
+	t.Setenv("INFERENCE_AUTH", "disabled")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", "")
+	t.Setenv("EMBEDDER_EXTERNAL", "http://embedding-proxy:11436")
+
+	factory, err := newEmbedderFactory(slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+
+	assert.Empty(t, cliEmbedderToken(t, factory, "http://embedding-proxy:11436"))
 }

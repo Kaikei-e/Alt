@@ -113,3 +113,53 @@ func TestInit_NoArgs(t *testing.T) {
 		t.Error("expected error when passing args to init")
 	}
 }
+
+// --force overwrites .env and regenerates the random secrets — rotating DB
+// passwords and tokens — while operator-provided and step-ca provisioner
+// secrets are never rewritten. The help must not promise more than that.
+func TestInit_HelpDescribesForceAsRandomSecretRotation(t *testing.T) {
+	setupInitTest(t)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetArgs([]string{"init", "--help"})
+	t.Cleanup(func() { _ = initCmd.Flags().Set("help", "false") })
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("init --help failed: %v", err)
+	}
+
+	out := buf.String()
+	for _, stale := range []string{
+		"Overwrite existing .env and secrets",
+		"overwrite existing .env and secret files",
+		"existing files are not overwritten unless --force is used",
+	} {
+		if strings.Contains(out, stale) {
+			t.Errorf("help still claims %q:\n%s", stale, out)
+		}
+	}
+	for _, want := range []string{"random secrets", "operator-provided"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help must mention %q:\n%s", want, out)
+		}
+	}
+}
+
+// Plain `altctl init` creates whatever is missing; --force would also rotate
+// every random secret that already exists, DB passwords included.
+func TestInit_MissingFilesSuggestsPlainInit(t *testing.T) {
+	err := missingFilesError(2)
+
+	if err.Summary != "2 required files missing" {
+		t.Errorf("summary = %q", err.Summary)
+	}
+	if strings.Contains(err.Suggestion, "--force") {
+		t.Errorf("suggestion must not steer to --force: %q", err.Suggestion)
+	}
+	if !strings.Contains(err.Suggestion, "altctl init") {
+		t.Errorf("suggestion must point at plain altctl init: %q", err.Suggestion)
+	}
+	if err.ExitCode != output.ExitConfigError {
+		t.Errorf("exit code = %d", err.ExitCode)
+	}
+}

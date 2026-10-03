@@ -95,9 +95,9 @@ func StartWithObserver(ctx context.Context, log *slog.Logger, cfg *Config, issue
 		log = slog.Default()
 	}
 	if cfg.Mode != ModeEnabled {
-		log.InfoContext(ctx, "pki_enrollment_disabled",
+		log.WarnContext(ctx, "pki_enrollment_disabled",
 			"service", cfg.Subject, "mode", cfg.Mode,
-			"reason", "migration compatibility: sidecar still owns cert files until compose cutover sets PKI_ENROLLMENT=enabled")
+			"reason", "PKI_ENROLLMENT=disabled (explicit opt-out): no certificate is minted, so outbound mTLS peers are unreachable unless cert files are mounted")
 		return nil, nil
 	}
 	log.InfoContext(ctx, "pki_enrollment_enabled",
