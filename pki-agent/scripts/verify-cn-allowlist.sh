@@ -8,6 +8,13 @@
 #   4. CA rejects non-DNS SAN types
 #   5. CA accepts an allowlisted CN (alt-backend) via its own provisioner
 #
+# Every subject-scoped provisioner carries an X.509 template (written by
+# bootstrap-pki-provisioner.sh) that rejects first, so assertions 3/4 expect
+# the template's message ("Invalid OTT claims: sub mismatch" / "Invalid OTT
+# claims: unapproved SAN") and pass only when the request failed AND no
+# certificate file was written. The authority-level policy is the backstop
+# behind the template; assertion 2 checks its contents.
+#
 # Open-source step-ca supports policy only at authority level (not per-provisioner)
 # per https://smallstep.com/docs/step-ca/policies/ — so the allowlist applies to
 # ALL provisioners, shrinking bootstrap's blast radius as well.
@@ -101,67 +108,90 @@ cleanup_smoke_password() {
   docker exec -u 0 "$STEP_CA" rm -f "$SMOKE_PW_CA" >/dev/null 2>&1 || true
 }
 
+# Requests a certificate for subject $1 with SAN $2 through the smoke
+# provisioner, inside step-ca. Prints the step output followed by one verdict
+# line: REJECTED (non-zero exit and no cert file), ISSUED, or NO_TOKEN. The
+# cert and key are removed before and after on every path, and the token and
+# password never reach stdout. `-u 0` because install_smoke_password
+# writes the password file as root with mode 400 — the image's default `step`
+# user cannot read it, and the attempt would then fail for a reason that has
+# nothing to do with the rejection under test.
+attempt_issue() {
+  local subject="$1" san="$2"
+  docker exec -u 0 "$STEP_CA" sh -c "
+    rm -f /tmp/c.pem /tmp/k.pem
+    TOKEN=\$(step ca token '$subject' \
+      --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
+      --provisioner '$SMOKE_PROVISIONER' --password-file '$SMOKE_PW_CA' \
+      --san '$san' --force 2>/dev/null | tail -1)
+    if [ -z \"\$TOKEN\" ]; then
+      echo NO_TOKEN
+      exit 0
+    fi
+    step ca certificate '$subject' /tmp/c.pem /tmp/k.pem \
+      --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
+      --token \"\$TOKEN\" --force 2>&1
+    rc=\$?
+    if [ \$rc -ne 0 ] && [ ! -e /tmp/c.pem ]; then
+      echo REJECTED
+    else
+      echo ISSUED
+    fi
+    rm -f /tmp/c.pem /tmp/k.pem
+  " 2>&1
+}
+
+# True only when attempt_issue's final line is REJECTED and its output carries
+# the expected template message. ISSUED, NO_TOKEN, a docker error, or a
+# rejection for some other reason are all false.
+rejected_with() {
+  local output="$1" expected="$2"
+  [ "$(printf '%s' "$output" | tail -n 1)" = "REJECTED" ] &&
+    printf '%s' "$output" | grep -qF -- "$expected"
+}
+
+show_attempt() {
+  printf '%s\n' "$1" |
+    sed -E 's/eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*/<token>/g; s/^/      /'
+}
+
 echo "=== Assertion 3: CA rejects cert request for attacker.local ==="
-# Mint inside step-ca with the subject-scoped JWK. Do not use the CA root
-# password, and do not print token/password bytes. `-u 0` because
-# install_smoke_password writes the password file as root with mode 400 —
-# the image's default `step` user cannot read it, and `step ca token` then
-# fails for a reason that has nothing to do with the policy under test.
+# Mint inside step-ca with the subject-scoped JWK, never the CA root password.
 if install_smoke_password; then
-  if docker exec -u 0 "$STEP_CA" sh -c "
-        TOKEN=\$(step ca token attacker.local \
-          --ca-url https://localhost:9000 \
-          --root /home/step/certs/root_ca.crt \
-          --provisioner '$SMOKE_PROVISIONER' \
-          --password-file '$SMOKE_PW_CA' \
-          --san attacker.local --force 2>/dev/null)
-        step ca certificate attacker.local /tmp/c.pem /tmp/k.pem \
-          --ca-url https://localhost:9000 \
-          --root /home/step/certs/root_ca.crt \
-          --token \"\$TOKEN\" --force 2>&1
-      " 2>&1 | grep -qiE "not allowed|forbidden|denied|policy"; then
-    echo "PASS  CA rejects attacker.local with policy error"
+  out="$(attempt_issue attacker.local attacker.local)"
+  if rejected_with "$out" "sub mismatch"; then
+    echo "PASS  CA rejects attacker.local (template: sub mismatch, no cert issued)"
     pass=$((pass + 1))
   else
-    echo "FAIL  CA did not clearly reject attacker.local via policy"
+    echo "FAIL  CA did not reject attacker.local with 'sub mismatch'"
+    show_attempt "$out"
     fail=$((fail + 1))
   fi
 fi
 
 echo "=== Assertion 4: CA rejects non-DNS SAN types (IP/URI/email) ==="
-# step-ca policy is deny-by-default for name types not listed in allow.
 for san in "10.0.0.99" "https://evil.com" "attacker@evil.com"; do
-  if docker exec -u 0 "$STEP_CA" sh -c "
-        TOKEN=\$(step ca token $SMOKE_SUBJECT \
-          --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
-          --provisioner '$SMOKE_PROVISIONER' --password-file '$SMOKE_PW_CA' \
-          --san '$san' --force 2>/dev/null | tail -1)
-        step ca certificate $SMOKE_SUBJECT /tmp/c.pem /tmp/k.pem \
-          --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
-          --token \"\$TOKEN\" --force 2>&1
-      " 2>&1 | grep -qiE "not allowed|forbidden|denied|policy"; then
-    echo "PASS  CA rejects SAN '$san'"
+  out="$(attempt_issue "$SMOKE_SUBJECT" "$san")"
+  if rejected_with "$out" "unapproved SAN"; then
+    echo "PASS  CA rejects SAN '$san' (template: unapproved SAN, no cert issued)"
     pass=$((pass + 1))
   else
-    echo "FAIL  CA did not reject SAN '$san' (potential bypass)"
+    echo "FAIL  CA did not reject SAN '$san' with 'unapproved SAN' (potential bypass)"
+    show_attempt "$out"
     fail=$((fail + 1))
   fi
 done
 
 echo "=== Assertion 5: CA accepts cert request for ${SMOKE_SUBJECT} (smoke) ==="
-if docker exec -u 0 "$STEP_CA" sh -c "
-      TOKEN=\$(step ca token $SMOKE_SUBJECT \
-        --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
-        --provisioner '$SMOKE_PROVISIONER' --password-file '$SMOKE_PW_CA' \
-        --san $SMOKE_SUBJECT --force 2>/dev/null | tail -1)
-      step ca certificate $SMOKE_SUBJECT /tmp/ok-c.pem /tmp/ok-k.pem \
-        --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
-        --token \"\$TOKEN\" --force
-    " >/dev/null 2>&1; then
+# attempt_issue deletes the signed leaf and its key again, so no usable
+# credential is left behind in the CA container.
+out="$(attempt_issue "$SMOKE_SUBJECT" "$SMOKE_SUBJECT")"
+if [ "$(printf '%s' "$out" | tail -n 1)" = "ISSUED" ]; then
   echo "PASS  CA signs ${SMOKE_SUBJECT} with its own provisioner"
   pass=$((pass + 1))
 else
   echo "FAIL  CA did not sign ${SMOKE_SUBJECT} with ${SMOKE_PROVISIONER}"
+  show_attempt "$out"
   fail=$((fail + 1))
 fi
 cleanup_smoke_password

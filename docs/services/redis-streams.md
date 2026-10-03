@@ -1,6 +1,6 @@
 # redis-streams
 
-_Last reviewed: September 5, 2026_
+_Last reviewed: October 3, 2026_
 
 Redis 8.4.5 (`--maxmemory 1gb --maxmemory-policy noeviction`)。イベントストリームの **backbone**。
 
@@ -10,7 +10,23 @@ Redis 8.4.5 (`--maxmemory 1gb --maxmemory-policy noeviction`)。イベントス�
 
 ## Health
 
-- `REDISCLI_AUTH="$(cat /run/secrets/redis_password)" redis-cli ping | grep -q PONG`
+- `REDISCLI_AUTH="$(cat /run/secrets/redis_streams_password)" redis-cli --user streams ping | grep -q PONG`
+
+## ACL
+
+`docker/redis/entrypoint.sh` が起動時に secret のハッシュから ACL ファイルを生成する。`user default off` のため、認証なしの `redis-cli` は `ping` も含めて `NOAUTH` になる。
+
+| ユーザ | キー | 用途 |
+| --- | --- | --- |
+| `streams` | `alt:events:*`, `alt:replies:tags:*` | mq-hub / 各コンシューマーのストリーム操作 (`XADD` / `XREADGROUP` / `XACK` / `XAUTOCLAIM` / `XPENDING` / `XINFO STREAM` / `XINFO GROUPS` / `XTRIM` / `SCAN` 等) |
+| `limiter` | `host_rate_limiter:v1:*` | alt-backend の host rate limiter (DB 3、`SET` / `PTTL` / `SELECT`) |
+
+`INFO` / `XLEN` / `XRANGE` / `TYPE` / `DBSIZE` / `XINFO CONSUMERS` はどのユーザでも `NOPERM`。運用調査ではストリーム長を `XINFO STREAM` の `length`、滞留を `XINFO GROUPS` の `pending` / `lag` から読む:
+
+```bash
+docker compose -f compose/compose.yaml -p alt exec -T redis-streams sh -c \
+  'REDISCLI_AUTH="$(cat /run/secrets/redis_streams_password)" redis-cli --user streams XINFO GROUPS <stream-key>'
+```
 
 ## Volume
 
@@ -18,7 +34,8 @@ Redis 8.4.5 (`--maxmemory 1gb --maxmemory-policy noeviction`)。イベントス�
 
 ## Secrets
 
-- `redis_password`
+- `redis_streams_password` (`streams` ユーザ)
+- `redis_limiter_password` (`limiter` ユーザ)
 
 ## 主要利用者
 

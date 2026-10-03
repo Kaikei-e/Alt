@@ -178,10 +178,25 @@ fi
 log ""
 
 # --- redis-streams quick depth ----------------------------------------------
+# The default user is off: read as the `streams` role, password taken from the
+# container's own secret file. INFO / XLEN / TYPE are NOPERM for every role, so
+# depth comes from XINFO STREAM (cut before the entry payloads) and XINFO GROUPS
+# (pending, lag).
 if is_running redis-streams; then
-  "${COMPOSE[@]}" exec -T redis-streams sh -c \
-    'redis-cli INFO clients; echo "--- keys ---"; redis-cli --scan --pattern "*" | head -50' \
-    > "$OUT/redis-streams.txt" 2>&1 || echo "(redis query failed)" >> "$OUT/redis-streams.txt"
+  if ! "${COMPOSE[@]}" exec -T redis-streams sh -s > "$OUT/redis-streams.txt" 2>&1 <<'EOF'
+REDISCLI_AUTH="$(cat /run/secrets/redis_streams_password)"
+export REDISCLI_AUTH
+redis-cli --user streams ping
+redis-cli --user streams --scan --pattern 'alt:events:*' | sort | head -50 | while read -r key; do
+  echo "--- $key"
+  redis-cli --user streams XINFO STREAM "$key" | sed -n '/^first-entry$/q;p' | paste - -
+  echo "groups:"
+  redis-cli --user streams XINFO GROUPS "$key" | paste - -
+done
+EOF
+  then
+    echo "(redis query failed)" >> "$OUT/redis-streams.txt"
+  fi
   log "## redis-streams: see redis-streams.txt"
 else
   log "## redis-streams: not running — skipped."
