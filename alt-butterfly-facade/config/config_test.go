@@ -17,7 +17,6 @@ func TestNewConfig_Defaults(t *testing.T) {
 
 	assert.Equal(t, "9200", cfg.Port)
 	assert.Equal(t, "http://alt-backend:9101", cfg.BackendConnectURL)
-	assert.Equal(t, "http://auth-hub:8888", cfg.AuthHubURL)
 	assert.Equal(t, "auth-hub", cfg.BackendTokenIssuer)
 	assert.Equal(t, "alt-backend", cfg.BackendTokenAudience)
 	assert.Equal(t, 30*time.Second, cfg.RequestTimeout)
@@ -28,7 +27,6 @@ func TestNewConfig_FromEnvironment(t *testing.T) {
 	// Set environment variables
 	os.Setenv("BFF_PORT", "8080")
 	os.Setenv("BACKEND_CONNECT_URL", "http://localhost:9101")
-	os.Setenv("AUTH_HUB_INTERNAL_URL", "http://localhost:8888")
 	os.Setenv("BACKEND_TOKEN_ISSUER", "custom-issuer")
 	os.Setenv("BACKEND_TOKEN_AUDIENCE", "custom-audience")
 	os.Setenv("BFF_REQUEST_TIMEOUT", "60s")
@@ -39,7 +37,6 @@ func TestNewConfig_FromEnvironment(t *testing.T) {
 
 	assert.Equal(t, "8080", cfg.Port)
 	assert.Equal(t, "http://localhost:9101", cfg.BackendConnectURL)
-	assert.Equal(t, "http://localhost:8888", cfg.AuthHubURL)
 	assert.Equal(t, "custom-issuer", cfg.BackendTokenIssuer)
 	assert.Equal(t, "custom-audience", cfg.BackendTokenAudience)
 	assert.Equal(t, 60*time.Second, cfg.RequestTimeout)

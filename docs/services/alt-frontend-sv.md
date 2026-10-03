@@ -300,7 +300,7 @@ For cases where rich HTML must be rendered via Svelte's `{@html}` directive (e.g
 |----------|---------|-------------|
 | `BACKEND_REST_URL` | http://alt-butterfly-facade:9250 | REST API endpoint. Both `compose/core.yaml` and `compose/dev.yaml` leave this unset, so it always falls back to this code default; `dev.yaml` sets `BACKEND_BASE_URL` instead, which nothing in `src/` reads, so REST calls in that BFF-less stack resolve to a host (`alt-butterfly-facade:9250`) the stack does not define |
 | `BACKEND_CONNECT_URL` | http://alt-backend:9101 (code default) | Connect-RPC endpoint. `compose/core.yaml` overrides this to `alt-butterfly-facade:9250` in production; `compose/dev.yaml` overrides it to `alt-backend:9101` |
-| `AUTH_HUB_INTERNAL_URL` | http://auth-hub:8888 | Token exchange endpoint |
+| `AUTH_HUB_INTERNAL_URL` | https://auth-hub:8443 | Token exchange endpoint (auth-hub's TLS listener; `:8888` answers `/health` only) |
 | `KRATOS_INTERNAL_URL` | http://kratos:4433 | Ory Kratos internal URL |
 | `KRATOS_PUBLIC_URL` | http://localhost/ory | Ory Kratos public URL used to build browser-facing auth links |
 | `RECAP_WORKER_BASE_URL` | http://recap-worker:9005 | recap-worker base URL for `/api/v1/generate/recaps/*`; a direct hop, bypasses the BFF |
