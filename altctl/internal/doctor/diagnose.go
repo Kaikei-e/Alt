@@ -88,7 +88,7 @@ func Diagnose(ctx context.Context, opts Options) (*Report, error) {
 			Detail:   err.Error(),
 			Prescription: []string{
 				"docker compose -f compose/compose.yaml config",
-				"check the .env / DOCKER_GROUP_ID findings above",
+				"check the .env findings above",
 			},
 		})
 	} else {
@@ -159,7 +159,7 @@ func Diagnose(ctx context.Context, opts Options) (*Report, error) {
 	}
 
 	if inScope(scopeStacks, "logging") {
-		if f, bad := dockerGroupIDFinding(); bad {
+		if f, bad := dockerSocketGroupFinding(opts.ComposeDir, DockerSocket); bad {
 			report.Preflight = append(report.Preflight, f)
 		}
 	}

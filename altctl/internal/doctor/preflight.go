@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -120,22 +121,91 @@ func formatMissingSecretsMessage(missing, total int) string {
 	return strconv.Itoa(missing) + " of " + strconv.Itoa(total) + " declared secret file(s) missing under secrets/"
 }
 
-// dockerGroupIDFinding returns a Finding when DOCKER_GROUP_ID is unset,
-// for callers that have already determined the logging stack is in scope
-// (compose/logging.yaml's rask-log-forwarder sidecars require it via a
-// `${DOCKER_GROUP_ID:?...}` hard-fail interpolation).
-func dockerGroupIDFinding() (Finding, bool) {
-	if os.Getenv("DOCKER_GROUP_ID") != "" {
+// DockerSocket is the host socket docker-socket-proxy-ro bind-mounts.
+const DockerSocket = "/var/run/docker.sock"
+
+const socketProxyService = "docker-socket-proxy-ro"
+
+type composeServiceUsersDoc struct {
+	Services map[string]struct {
+		User string `yaml:"user"`
+	} `yaml:"services"`
+}
+
+// dockerSocketGroupFinding reports when the host Docker socket's group is
+// not the gid compose/logging.yaml pins in docker-socket-proxy-ro's user:.
+// The proxy reaches the socket through that group alone, so a mismatch
+// leaves every log forwarder and cAdvisor behind it without a Docker API.
+func dockerSocketGroupFinding(composeDir, socketPath string) (Finding, bool) {
+	loggingPath := filepath.Join(composeDir, "logging.yaml")
+	data, err := os.ReadFile(loggingPath)
+	if err != nil {
+		return Finding{
+			Severity: SeverityWarning,
+			Category: "preflight",
+			Stack:    "logging",
+			Message:  "could not read compose/logging.yaml to check the Docker socket group",
+			Detail:   err.Error(),
+		}, true
+	}
+	var doc composeServiceUsersDoc
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return Finding{
+			Severity: SeverityWarning,
+			Category: "preflight",
+			Stack:    "logging",
+			Message:  "could not parse compose/logging.yaml to check the Docker socket group",
+			Detail:   err.Error(),
+		}, true
+	}
+	proxy, declared := doc.Services[socketProxyService]
+	if !declared {
+		return Finding{}, false
+	}
+	_, wantGID, hasGroup := strings.Cut(proxy.User, ":")
+	if !hasGroup || wantGID == "" {
+		return Finding{
+			Severity: SeverityError,
+			Category: "preflight",
+			Stack:    "logging",
+			Message:  socketProxyService + " user: " + strconv.Quote(proxy.User) + " names no group",
+			Detail:   "the proxy reads " + socketPath + " through its group; compose/logging.yaml must pin it as \"uid:gid\"",
+		}, true
+	}
+
+	info, err := os.Stat(socketPath)
+	if err != nil {
+		return Finding{
+			Severity: SeverityWarning,
+			Category: "preflight",
+			Stack:    "logging",
+			Message:  "could not inspect the Docker socket's group",
+			Detail:   err.Error(),
+		}, true
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return Finding{
+			Severity: SeverityWarning,
+			Category: "preflight",
+			Stack:    "logging",
+			Message:  "could not inspect the Docker socket's group",
+			Detail:   "no ownership information for " + socketPath + " on this platform",
+		}, true
+	}
+	gotGID := strconv.FormatUint(uint64(stat.Gid), 10)
+	if gotGID == wantGID {
 		return Finding{}, false
 	}
 	return Finding{
 		Severity: SeverityError,
 		Category: "preflight",
 		Stack:    "logging",
-		Message:  "DOCKER_GROUP_ID is not set",
-		Detail:   "required by the logging stack's rask-log-forwarder sidecars (compose/logging.yaml); docker compose will hard-fail to even parse the logging stack without it",
+		Message:  "Docker socket group " + gotGID + " does not match " + socketProxyService + "'s gid " + wantGID,
+		Detail:   socketPath + " is group " + gotGID + ", but compose/logging.yaml runs " + socketProxyService + " as " + strconv.Quote(proxy.User) + "; the proxy cannot open the socket and the log forwarders and cAdvisor lose the Docker API",
 		Prescription: []string{
-			"export DOCKER_GROUP_ID=$(./scripts/get-docker-gid.sh)",
+			"getent group docker",
+			"set docker-socket-proxy-ro's user: in compose/logging.yaml and the docker-socket owner in deploy/host-prereqs.yaml to the host's docker gid",
 		},
 	}, true
 }

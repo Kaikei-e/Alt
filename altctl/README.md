@@ -370,7 +370,8 @@ For each problem service it reports:
 - **Environment preflight**: docker daemon unreachable (reported loudly, never
   as "no services running"), missing `.env` at the repo root, missing
   `secrets/*.txt` files (compared against `compose/base.yaml`'s `secrets:`
-  block), `DOCKER_GROUP_ID` unset when the `logging` stack is in scope.
+  block), and — when the `logging` stack is in scope — a Docker socket whose
+  group differs from the gid `docker-socket-proxy-ro` runs as.
 - **Prescription**: a concrete next command per finding (`altctl logs <svc>
   -f`, `docker compose ... up -d --force-recreate <svc>`, `altctl init`, ...).
 
