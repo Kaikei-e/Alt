@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import pathlib
 import re
+import stat
 import subprocess
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
@@ -103,6 +105,32 @@ check(
     "localhost is allowlisted but does not get a JWK provisioner",
     "localhost" in bootstrap and "skip provisioner for allowlist-only name localhost" in bootstrap,
 )
+
+print("bootstrap host password files stay readable by the deploy runner")
+ensure_pw = shell_function(bootstrap, "ensure_host_password_file")
+with tempfile.TemporaryDirectory() as tmp:
+    new_file = pathlib.Path(tmp) / "store" / "pki-agent-example-jwk.txt"
+    # A restrictive caller umask must not leak into the canonical store mode.
+    created = run_shell_function(ensure_pw, 'umask 077; ensure_host_password_file "$1"', str(new_file))
+    check(
+        "a new host password file is created non-empty with mode 0644",
+        created.returncode == 0
+        and new_file.is_file()
+        and new_file.stat().st_size > 0
+        and stat.S_IMODE(new_file.stat().st_mode) == 0o644,
+        f"rc={created.returncode}",
+    )
+    existing = pathlib.Path(tmp) / "pki-agent-existing-jwk.txt"
+    existing.write_bytes(b"existing-placeholder\n")
+    existing.chmod(0o640)
+    kept = run_shell_function(ensure_pw, 'ensure_host_password_file "$1"', str(existing))
+    check(
+        "an existing host password file keeps its bytes and its mode",
+        kept.returncode == 0
+        and existing.read_bytes() == b"existing-placeholder\n"
+        and stat.S_IMODE(existing.stat().st_mode) == 0o640,
+        f"rc={kept.returncode}",
+    )
 
 boot_subjects = extract_subjects(bootstrap, "SUBJECTS")
 verify_cns = extract_subjects(verify, "EXPECTED_CNS")
