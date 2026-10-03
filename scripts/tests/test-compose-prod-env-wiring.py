@@ -12,6 +12,7 @@ Run:
 
 from __future__ import annotations
 
+import importlib.util
 import pathlib
 import re
 import sys
@@ -21,6 +22,15 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from compose_include import load_yaml, production_compose_files, production_services  # noqa: E402
+
+MANIFEST = ROOT / "deploy" / "host-prereqs.yaml"
+
+# The host .env checker owns the dead-value rules; the templates must pass the
+# same rules the alt-deploy host preflight applies to a production .env.
+_spec = importlib.util.spec_from_file_location("check_env_overrides", ROOT / "scripts" / "check-env-overrides.py")
+assert _spec is not None and _spec.loader is not None
+overrides = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(overrides)
 
 PASS = 0
 FAIL = 0
@@ -64,17 +74,6 @@ def effective(value: str) -> str:
 def peers(svc: dict) -> set[str]:
     raw = effective(env_map(svc).get("MTLS_ALLOWED_PEERS", ""))
     return {p.strip() for p in raw.split(",") if p.strip()}
-
-
-def dotenv(path: pathlib.Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        out[key.strip()] = value.strip().strip('"').strip("'")
-    return out
 
 
 def compose_defaults() -> dict[str, set[str]]:
@@ -147,48 +146,55 @@ for name in ("kratos", "kratos-migrate"):
     )
 
 defaults = compose_defaults()
-required_env = load_yaml(ROOT / "deploy" / "host-prereqs.yaml").get("required_env") or []
-for template in (".env.template", ".env.example"):
-    values = dotenv(ROOT / template)
+manifest = load_yaml(MANIFEST)
+required_env = manifest.get("required_env") or []
+rules = overrides.load_rules(MANIFEST)
+compose_text = "\n".join(path.read_text(encoding="utf-8") for path in production_compose_files())
+
+print("deploy/host-prereqs.yaml env rules stay in lockstep with compose")
+check(
+    "https-only-upstream covers exactly the keys compose defaults to an https URL",
+    lambda: set(rules.keys_for("https-only-upstream"))
+    == {k for k, ds in defaults.items() if any(d.startswith("https://") for d in ds)},
+)
+check(
+    "env_allowlists require exactly the peers of every non-empty compose allowlist default",
+    lambda: {k: set(v) for k, v in rules.allowlists.items()}
+    == {
+        k: {p for d in ds for p in d.split(",") if p}
+        for k, ds in defaults.items()
+        if k.endswith("ALLOWED_PEERS") and any(ds)
+    },
+)
+check(
+    "retired_env keys are not interpolated by production compose",
+    lambda: not [
+        k for k in rules.retired_keys() if re.search(r"\$\{" + re.escape(k) + r"\b", compose_text)
+    ],
+)
+check(
+    "every key a dead_env_values rule names is a compose `${VAR:-default}`",
+    lambda: not [k for k in rules.named_dead_value_keys() if k not in defaults],
+)
+check(
+    "no compose default trips a dead_env_values rule",
+    lambda: not [f for k, ds in defaults.items() for d in ds for f in overrides.evaluate({k: d}, rules)],
+)
+
+for template in (".env.template", ".env.example", "compose/.env.example"):
+    values = overrides.parse_env_file((ROOT / template).read_text(encoding="utf-8"))
     print(f"{template} does not override compose with dead values")
+    check(
+        f"{template} trips no deploy/host-prereqs.yaml env rule (scripts/check-env-overrides.py)",
+        lambda values=values: overrides.evaluate(values, rules) == [],
+    )
+    if template == "compose/.env.example":
+        continue
     check(f"{template} declares KRATOS_COOKIE_DOMAIN", lambda values=values: "KRATOS_COOKIE_DOMAIN" in values)
     check(
         f"{template} declares every deploy/host-prereqs.yaml required_env key",
         lambda values=values: not [key for key in required_env if key not in values],
     )
-    # The BFF pins its own BACKEND_CONNECT_URL; a template value only reaches
-    # the frontend's ${BACKEND_CONNECT_URL:-...} and must not skip the BFF.
-    check(
-        f"{template} does not route the frontend's Connect calls around the BFF",
-        lambda values=values: values.get("BACKEND_CONNECT_URL", "http://alt-butterfly-facade:9250")
-        .startswith("http://alt-butterfly-facade:"),
-    )
-    check(
-        f"{template} never points at knowledge-embedder-local (embedding-raw-network only)",
-        lambda values=values: not [k for k, v in values.items() if "knowledge-embedder-local" in v],
-    )
-    check(
-        f"{template} does not downgrade an https compose default to http",
-        lambda values=values: not [
-            k for k, v in values.items()
-            if v.startswith("http://")
-            and any(d.startswith("https://") for d in defaults.get(k, ()))
-        ],
-    )
-    check(
-        f"{template} does not pin an mTLS peer list that differs from compose",
-        lambda values=values: not [
-            k for k, v in values.items()
-            if k.endswith("_MTLS_ALLOWED_PEERS") and v not in defaults.get(k, set())
-        ],
-    )
-
-print("compose/.env.example does not override compose with dead values")
-compose_example = dotenv(ROOT / "compose" / ".env.example")
-check(
-    "compose/.env.example never points at knowledge-embedder-local (embedding-raw-network only)",
-    lambda: not [k for k, v in compose_example.items() if "knowledge-embedder-local" in v],
-)
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
