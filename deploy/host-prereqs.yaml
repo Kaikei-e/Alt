@@ -295,14 +295,13 @@ host_paths:
     kind: dir
     owner: "999:999"
     mode: "0700"
-    create_host_path: true
+    create_host_path: false
     mounts:
       - {service: recap-worker, target: /opt/rustbert-cache, read_only: false}
     provision: |
-      Model cache written by recap-worker's recap user (999). The bind is short
-      syntax, so a missing directory is created root:root and the cache writes
-      fail at runtime instead of at container create
-      (docs/runbooks/runner-setup.md §2.5).
+      Model cache written by recap-worker's recap user (999). Engine refuses to
+      create recap-worker while the directory is missing; populate it before
+      the first deploy (docs/runbooks/runner-setup.md §2.5).
         sudo install -d -o 999 -g 999 -m 0700 /opt/rustbert-cache
 
 host_facts:
