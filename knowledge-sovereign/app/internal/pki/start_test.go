@@ -27,8 +27,24 @@ func TestStart_DisabledLogs(t *testing.T) {
 	if h != nil {
 		t.Fatal("disabled start must not return a handle")
 	}
-	if !strings.Contains(buf.String(), "pki_enrollment_disabled") {
-		t.Fatalf("log=%s", buf.String())
+	out := buf.String()
+	if !strings.Contains(out, "pki_enrollment_disabled") || !strings.Contains(out, `"level":"WARN"`) {
+		t.Fatalf("an explicit opt-out must log a warning: %s", out)
+	}
+	if !strings.Contains(out, "PKI_ENROLLMENT=disabled") {
+		t.Fatalf("the reason must name the explicit setting: %s", out)
+	}
+	if strings.Contains(out, "sidecar") {
+		t.Fatalf("no pki-agent sidecar owns the cert files any more: %s", out)
+	}
+}
+
+func TestStart_UnsetEnrollmentFails(t *testing.T) {
+	unsetEnrollmentEnv(t)
+	h, err := Start(context.Background(), slog.New(slog.DiscardHandler), "knowledge-sovereign")
+	if err == nil {
+		h.Stop()
+		t.Fatal("unset PKI_ENROLLMENT must fail startup")
 	}
 }
 
