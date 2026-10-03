@@ -106,28 +106,13 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	// Without a declared hybrid embedder, Meilisearch never calls
+	// embedding-proxy on this service's behalf, so there is no bearer to hold.
 	var embedderToken string
-	if tokenFile := os.Getenv("INFERENCE_SERVICE_TOKEN_FILE"); tokenFile != "" {
-		content, err := os.ReadFile(tokenFile)
+	if MeiliHybridEmbedder != "" {
+		embedderToken, err = resolveInferenceToken(slog.Default())
 		if err != nil {
-			return nil, fmt.Errorf("failed to read inference token file %q: %w", tokenFile, err)
-		}
-		embedderToken = strings.TrimSpace(string(content))
-		if embedderToken == "" {
-			return nil, fmt.Errorf("inference token file %q is empty", tokenFile)
-		}
-
-		// Basic check since we don't want to import regexp if not needed, but we do need it.
-		// I will just do a simple loop check since the alphabet is known.
-		isValid := true
-		for _, c := range embedderToken {
-			if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '~' || c == '+' || c == '-' || c == '/' || c == '=') {
-				isValid = false
-				break
-			}
-		}
-		if !isValid || len(embedderToken) < 1 {
-			return nil, fmt.Errorf("invalid inference token format in %q", tokenFile)
+			return nil, err
 		}
 	}
 
@@ -172,6 +157,50 @@ func Load() (*Config, error) {
 	)
 
 	return cfg, nil
+}
+
+// resolveInferenceToken loads the bearer Meilisearch presents to
+// embedding-proxy as the hybrid embedder's apiKey. The token is required:
+// declared without it, the embedder is keyless and every embed call 401s.
+// INFERENCE_AUTH=disabled is the only opt-out, and it is logged once.
+func resolveInferenceToken(logger *slog.Logger) (string, error) {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("INFERENCE_AUTH")), "disabled") {
+		logger.Warn("inference_auth_disabled", "reason", "INFERENCE_AUTH=disabled was set explicitly; the Meilisearch embedder is declared without an apiKey")
+		return "", nil
+	}
+
+	path := strings.TrimSpace(os.Getenv("INFERENCE_SERVICE_TOKEN_FILE"))
+	if path == "" {
+		return "", fmt.Errorf("INFERENCE_SERVICE_TOKEN_FILE is required (embedding-proxy rejects the Meilisearch embedder without it); set INFERENCE_AUTH=disabled to declare the embedder without an apiKey")
+	}
+	content, err := os.ReadFile(path) // #nosec G304 G703 -- operator-configured secret path, not request input
+	if err != nil {
+		return "", fmt.Errorf("read INFERENCE_SERVICE_TOKEN_FILE %q: %w", path, err)
+	}
+	token := strings.TrimSpace(string(content))
+	if token == "" {
+		return "", fmt.Errorf("INFERENCE_SERVICE_TOKEN_FILE %q is empty", path)
+	}
+	if !isBearerToken(token) {
+		return "", fmt.Errorf("INFERENCE_SERVICE_TOKEN_FILE %q does not hold an RFC 6750 bearer token", path)
+	}
+
+	logger.Info("inference_auth_enabled", "token_source", "INFERENCE_SERVICE_TOKEN_FILE")
+	return token, nil
+}
+
+// isBearerToken reports whether token uses only the RFC 6750 b64token
+// alphabet, the characters an Authorization header can carry unescaped.
+func isBearerToken(token string) bool {
+	for _, c := range token {
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+		case strings.ContainsRune("-._~+/=", c):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // getEnvOrDefault resolves a config value, preferring a Docker-secret style

@@ -18,6 +18,9 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("RAG_API_AUTH", "disabled"); err != nil {
 		panic(err)
 	}
+	if err := os.Setenv("INFERENCE_AUTH", "disabled"); err != nil {
+		panic(err)
+	}
 	// Load() fail-fasts without these (ADR-000954 D7): alt-data-hub is the
 	// only route to alt_db and it accepts nothing but a client certificate,
 	// so there is no configuration in which they are optional.
@@ -628,52 +631,133 @@ func TestLoad_APIAuth_TokenFileTooShortPanics(t *testing.T) {
 		"RAG_API_TOKEN_FILE with token shorter than 24 chars must panic")
 }
 
-func TestLoad_RerankToken_ShortFilePanics(t *testing.T) {
-	t.Setenv("RERANK_ENABLED", "true")
-	t.Setenv("RAG_API_AUTH", "disabled")
-	tmpFile, err := os.CreateTemp(t.TempDir(), "rerank_token_*")
+// writeTokenFile writes token followed by suffix to a fresh file and returns
+// its path.
+func writeTokenFile(t *testing.T, token, suffix string) string {
+	t.Helper()
+	tmpFile, err := os.CreateTemp(t.TempDir(), "inference_token_*")
 	require.NoError(t, err)
-	// Shorter than 16 characters must panic
-	_, err = tmpFile.WriteString("short-token-15c\n")
+	_, err = tmpFile.WriteString(token + suffix)
 	require.NoError(t, err)
-	_ = tmpFile.Close()
+	require.NoError(t, tmpFile.Close())
+	return tmpFile.Name()
+}
 
-	t.Setenv("RERANK_INFERENCE_TOKEN_FILE", tmpFile.Name())
+// embedding-proxy, rerank-local and the generation proxy all reject a request
+// without the bearer, so an unset token file is a misconfiguration, never a
+// way to opt out.
+func TestLoad_InferenceAuth_UnsetTokenFilePanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
+	unsetEnv(t, "INFERENCE_AUTH")
+	unsetEnv(t, "INFERENCE_SERVICE_TOKEN_FILE")
 
 	assert.Panics(t, func() { Load() },
-		"RERANK_INFERENCE_TOKEN_FILE with token shorter than 16 chars must panic")
+		"missing INFERENCE_SERVICE_TOKEN_FILE without INFERENCE_AUTH=disabled must fail startup")
 }
 
-func TestLoad_RerankToken_MinPositive(t *testing.T) {
+func TestLoad_InferenceAuth_EmptyTokenFilePathPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
+	unsetEnv(t, "INFERENCE_AUTH")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", "")
+
+	assert.Panics(t, func() { Load() },
+		"an empty INFERENCE_SERVICE_TOKEN_FILE must fail startup, not silently drop the header")
+}
+
+func TestLoad_InferenceAuth_UnreadableTokenFilePanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
+	unsetEnv(t, "INFERENCE_AUTH")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", "/non/existent/inference_service_token")
+
+	assert.Panics(t, func() { Load() })
+}
+
+// The same secret is rerank-local's credential, and rerank-server refuses to
+// boot on one shorter than 16 characters.
+func TestLoad_InferenceAuth_ShortTokenPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
+	unsetEnv(t, "INFERENCE_AUTH")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", writeTokenFile(t, "short-token-15c", "\n"))
+
+	assert.Panics(t, func() { Load() },
+		"an inference token shorter than 16 chars must panic")
+}
+
+func TestLoad_InferenceAuth_OneTokenForEveryInferenceProxy(t *testing.T) {
 	t.Setenv("RERANK_ENABLED", "true")
-	t.Setenv("RAG_API_AUTH", "disabled")
-	tmpFile, err := os.CreateTemp(t.TempDir(), "rerank_token_*")
-	require.NoError(t, err)
-	// Exactly 16 characters valid RFC 6750 token
+	unsetEnv(t, "INFERENCE_AUTH")
 	token := "1234567890abcdef"
-	_, err = tmpFile.WriteString(token + "\n")
-	require.NoError(t, err)
-	_ = tmpFile.Close()
-
-	t.Setenv("RERANK_INFERENCE_TOKEN_FILE", tmpFile.Name())
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", writeTokenFile(t, token, "\n"))
 
 	cfg := Load()
+
+	assert.True(t, cfg.InferenceAuth.Enabled)
+	assert.Equal(t, token, cfg.InferenceAuth.Token)
+	assert.Equal(t, token, cfg.Embedder.InferenceToken, "embedding-proxy")
+	assert.Equal(t, token, cfg.Rerank.AuthToken, "rerank-local")
+	assert.Equal(t, token, cfg.Augur.InferenceToken, "generation proxy")
+}
+
+func TestLoad_InferenceAuth_TerminalPadding(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "true")
+	unsetEnv(t, "INFERENCE_AUTH")
+	token := "valid-token-with-padding=="
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", writeTokenFile(t, token, "\r\n"))
+
+	cfg := Load()
+
 	assert.Equal(t, token, cfg.Rerank.AuthToken)
 }
 
-func TestLoad_RerankToken_TerminalPadding(t *testing.T) {
+func TestLoad_InferenceAuth_DisabledIsExplicit(t *testing.T) {
 	t.Setenv("RERANK_ENABLED", "true")
-	t.Setenv("RAG_API_AUTH", "disabled")
-	tmpFile, err := os.CreateTemp(t.TempDir(), "rerank_token_*")
-	require.NoError(t, err)
-	// Valid token with terminal =* padding (RFC 6750)
-	token := "valid-token-with-padding=="
-	_, err = tmpFile.WriteString(token + "\r\n")
-	require.NoError(t, err)
-	_ = tmpFile.Close()
-
-	t.Setenv("RERANK_INFERENCE_TOKEN_FILE", tmpFile.Name())
+	t.Setenv("INFERENCE_AUTH", "disabled")
+	unsetEnv(t, "INFERENCE_SERVICE_TOKEN_FILE")
 
 	cfg := Load()
-	assert.Equal(t, token, cfg.Rerank.AuthToken)
+
+	assert.False(t, cfg.InferenceAuth.Enabled)
+	assert.Empty(t, cfg.Embedder.InferenceToken)
+	assert.Empty(t, cfg.Rerank.AuthToken)
+	assert.Empty(t, cfg.Augur.InferenceToken)
+}
+
+// An unset upstream variable has to land on the service compose actually
+// runs, not on a retired route that is unreachable or unauthenticated.
+func TestLoad_UpstreamDefaultsMatchCompose(t *testing.T) {
+	for _, key := range []string{
+		"EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL",
+		"AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL",
+		"RERANK_URL", "SEARCH_INDEXER_URL",
+	} {
+		unsetEnv(t, key)
+	}
+
+	cfg := Load()
+
+	assert.Equal(t, "http://embedding-proxy:11436", cfg.Embedder.URL)
+	assert.Equal(t, "https://news-creator:9443", cfg.Augur.URL)
+	assert.Equal(t, "http://rerank-local:8080", cfg.Rerank.URL)
+	assert.Equal(t, "https://search-indexer:9443", cfg.Search.IndexerURL)
+}
+
+// search-indexer answers /v1/search only on its mTLS listener; plaintext :9300
+// is health-only, so an http:// URL can only ever produce 404s.
+func TestLoad_Search_PlaintextURLPanics(t *testing.T) {
+	t.Setenv("SEARCH_INDEXER_URL", "http://search-indexer:9300")
+
+	assert.Panics(t, func() { Load() })
+}
+
+func TestLoad_Search_CarriesClientCertMaterial(t *testing.T) {
+	t.Setenv("SEARCH_INDEXER_URL", "https://search-indexer:9443")
+	t.Setenv("SEARCH_INDEXER_TIMEOUT", "7")
+
+	cfg := Load()
+
+	assert.Equal(t, "https://search-indexer:9443", cfg.Search.IndexerURL)
+	assert.Equal(t, 7, cfg.Search.Timeout)
+	assert.Equal(t, "/certs/svc-cert.pem", cfg.Search.CertFile)
+	assert.Equal(t, "/certs/svc-key.pem", cfg.Search.KeyFile)
+	assert.Equal(t, "/trust/ca-bundle.pem", cfg.Search.CAFile)
 }

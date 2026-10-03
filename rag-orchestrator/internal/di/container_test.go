@@ -1,14 +1,14 @@
 package di
 
 import (
+	"bytes"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
-	"time"
 
 	"rag-orchestrator/internal/adapter/rag_augur"
 	"rag-orchestrator/internal/infra/config"
-	"rag-orchestrator/internal/infra/httpclient"
 )
 
 func TestSameCanonicalOrigin(t *testing.T) {
@@ -107,32 +107,88 @@ func TestEmbedderFactory_InferenceCredentialScoping(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-
-	// Factory logic as instantiated in DI
-	embedderFactory := func(url string, model string, timeout int) *rag_augur.OllamaEmbedder {
-		token := ""
-		if sameCanonicalOrigin(url, cfg.Embedder.URL) {
-			token = cfg.Embedder.InferenceToken
+	embedderFactory := newEmbedderFactory(cfg.Embedder, logger)
+	build := func(url string) *rag_augur.OllamaEmbedder {
+		t.Helper()
+		embedder, ok := embedderFactory(url, "bge-m3", 10).(*rag_augur.OllamaEmbedder)
+		if !ok {
+			t.Fatalf("factory must build an *rag_augur.OllamaEmbedder")
 		}
-		return rag_augur.NewOllamaEmbedder(url, model, timeout, logger, token, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
+		return embedder
 	}
 
 	// 1. Target with matching origin receives token
-	sameOriginEmbedder := embedderFactory("http://proxy.internal:11434/api/embed", "bge-m3", 10)
+	sameOriginEmbedder := build("http://proxy.internal:11434/api/embed")
 	if sameOriginEmbedder.InferenceToken != "secret-bearer-token" {
 		t.Fatalf("expected matching origin to receive token, got %q", sameOriginEmbedder.InferenceToken)
 	}
 
 	// 2. Foreign target receives EMPTY token
-	foreignEmbedder := embedderFactory("http://foreign-service.internal:11434/api/embed", "bge-m3", 10)
+	foreignEmbedder := build("http://foreign-service.internal:11434/api/embed")
 	if foreignEmbedder.InferenceToken != "" {
 		t.Fatalf("expected foreign target to have empty token, got %q", foreignEmbedder.InferenceToken)
 	}
 
 	// 3. Different port receives EMPTY token
-	diffPortEmbedder := embedderFactory("http://proxy.internal:8080/api/embed", "bge-m3", 10)
+	diffPortEmbedder := build("http://proxy.internal:8080/api/embed")
 	if diffPortEmbedder.InferenceToken != "" {
 		t.Fatalf("expected different port to have empty token, got %q", diffPortEmbedder.InferenceToken)
+	}
+}
+
+// search-indexer serves /v1/search only behind RequireAndVerifyClientCert on
+// :9443, so the client has to carry the leaf whatever MTLS_ENFORCE says. The
+// pooled client it used to share only does that when MTLS_ENFORCE=true.
+func TestNewSearchIndexerClient_RequiresClientCertMaterial(t *testing.T) {
+	t.Setenv("MTLS_ENFORCE", "")
+
+	client, err := newSearchIndexerClient(config.SearchConfig{
+		IndexerURL: "https://search-indexer:9443",
+		Timeout:    5,
+	})
+
+	if err == nil {
+		t.Fatalf("missing client cert material must be a startup error, got client %+v", client)
+	}
+}
+
+func TestLogInferenceAuth(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.InferenceAuthConfig
+		wantMsg string
+		notMsg  string
+	}{
+		{
+			name:    "disabled",
+			cfg:     config.InferenceAuthConfig{Enabled: false},
+			wantMsg: "inference_auth_disabled",
+			notMsg:  "inference_auth_enabled",
+		},
+		{
+			name:    "enabled",
+			cfg:     config.InferenceAuthConfig{Enabled: true, Token: "secret-bearer-token-value"},
+			wantMsg: "inference_auth_enabled",
+			notMsg:  "inference_auth_disabled",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logInferenceAuth(tt.cfg, slog.New(slog.NewJSONHandler(&buf, nil)))
+
+			out := buf.String()
+			if got := strings.Count(out, `"msg":"`+tt.wantMsg+`"`); got != 1 {
+				t.Fatalf("want exactly one %s record, got %d in %q", tt.wantMsg, got, out)
+			}
+			if strings.Contains(out, tt.notMsg) {
+				t.Fatalf("unexpected %s record in %q", tt.notMsg, out)
+			}
+			if strings.Contains(out, "secret-bearer-token-value") {
+				t.Fatalf("the token must never reach the log: %q", out)
+			}
+		})
 	}
 }
 

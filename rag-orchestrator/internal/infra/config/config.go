@@ -133,7 +133,7 @@ type EmbedderConfig struct {
 	URL            string
 	Model          string
 	Timeout        int    // Seconds
-	InferenceToken string // loaded from INFERENCE_SERVICE_TOKEN_FILE
+	InferenceToken string // InferenceAuthConfig.Token
 
 	// AllowedOverrideOrigins is the static allowlist of origins
 	// (scheme://host[:port]) the X-Embedder-URL request header may point
@@ -149,13 +149,77 @@ type AugurConfig struct {
 	EndpointPurpose string // "news_mtls" or "authenticated_proxy". Empty defaults to "news_mtls" for URL "https://news-creator:9443", otherwise "authenticated_proxy".
 	Model           string
 	Timeout         int    // Seconds
-	InferenceToken  string // loaded from INFERENCE_SERVICE_TOKEN_FILE
+	InferenceToken  string // InferenceAuthConfig.Token
 }
 
-// SearchConfig holds search indexer settings.
+// InferenceAuthConfig is the bearer credential presented to the
+// token-protected inference proxies: embedding-proxy, rerank-local, and the
+// generation proxy when Augur is reached as an authenticated_proxy. One secret
+// serves all three. Enabled is false only for an explicit
+// INFERENCE_AUTH=disabled, never because the token file is missing.
+type InferenceAuthConfig struct {
+	Enabled bool
+	Token   string
+}
+
+// minInferenceTokenLen is rerank-server's floor for the same shared secret; a
+// shorter token would boot here and then be refused by rerank-local.
+const minInferenceTokenLen = 16
+
+func loadInferenceAuth() InferenceAuthConfig {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("INFERENCE_AUTH")), "disabled") {
+		return InferenceAuthConfig{Enabled: false}
+	}
+
+	path := strings.TrimSpace(os.Getenv("INFERENCE_SERVICE_TOKEN_FILE"))
+	if path == "" {
+		panic("config: INFERENCE_SERVICE_TOKEN_FILE is required (embedding-proxy and rerank-local reject requests without the bearer); " +
+			"set INFERENCE_AUTH=disabled to call the inference proxies without one")
+	}
+
+	data, err := os.ReadFile(path) // #nosec G304 G703 -- operator-configured secret path from INFERENCE_SERVICE_TOKEN_FILE, not request input
+	if err != nil {
+		panic(fmt.Sprintf("config: read INFERENCE_SERVICE_TOKEN_FILE %s: %v", path, err))
+	}
+	token := strings.TrimRight(string(data), "\r\n")
+	if err := validateAuthToken(token, minInferenceTokenLen); err != nil {
+		panic(fmt.Sprintf("config: token from INFERENCE_SERVICE_TOKEN_FILE %s: %v", path, err))
+	}
+	return InferenceAuthConfig{Enabled: true, Token: token}
+}
+
+// SearchConfig holds the connection settings for search-indexer's REST
+// /v1/search. It is served only on the mTLS listener (:9443); plaintext :9300
+// answers health checks and nothing else, so there is no plaintext URL to fall
+// back to. The cert material is the same in-process leaf the data-hub client
+// presents.
 type SearchConfig struct {
 	IndexerURL string
 	Timeout    int // Seconds
+	CertFile   string
+	KeyFile    string
+	CAFile     string
+}
+
+func loadSearch() SearchConfig {
+	url := getEnv("SEARCH_INDEXER_URL", "https://search-indexer:9443")
+	if !strings.HasPrefix(url, "https://") {
+		panic(fmt.Sprintf("config: SEARCH_INDEXER_URL must be an https:// URL (e.g. https://search-indexer:9443), got %q; "+
+			"search-indexer serves /v1/search only on its mTLS listener", url))
+	}
+
+	cfg := SearchConfig{
+		IndexerURL: url,
+		Timeout:    getEnvInt("SEARCH_INDEXER_TIMEOUT", 10),
+		CertFile:   os.Getenv("MTLS_CERT_FILE"),
+		KeyFile:    os.Getenv("MTLS_KEY_FILE"),
+		CAFile:     os.Getenv("MTLS_CA_FILE"),
+	}
+	if cfg.CertFile == "" || cfg.KeyFile == "" || cfg.CAFile == "" {
+		panic("config: SEARCH_INDEXER_URL requires MTLS_CERT_FILE, MTLS_KEY_FILE and MTLS_CA_FILE " +
+			"(search-indexer admits only allowlisted client certificates)")
+	}
+	return cfg
 }
 
 // QueryExpansionConfig holds query expansion settings.
@@ -199,8 +263,7 @@ type RerankConfig struct {
 	Enabled bool
 	URL     string
 	Model   string
-	// AuthToken is the bearer token for authenticating to the rerank-server.
-	// Loaded from RERANK_INFERENCE_TOKEN_FILE.
+	// AuthToken is the bearer token for rerank-local (InferenceAuthConfig.Token).
 	AuthToken string
 	// TopK is how many hits survive the stage; MaxCandidates is how many are
 	// scored. See defaultRerankMaxCandidates for the latency trade-off.
@@ -431,12 +494,13 @@ type Config struct {
 	Cache                   CacheConfig
 	PeerIdentity            PeerIdentityConfig
 	APIAuth                 APIAuthConfig
+	InferenceAuth           InferenceAuthConfig
 	SovereignEventTokenFile string
 	SovereignEventAuth      string
 }
 
 func Load() *Config {
-	inferenceToken := readInferenceToken()
+	inferenceAuth := loadInferenceAuth()
 
 	return &Config{
 		Env:        getEnv("ENV", "development"),
@@ -456,23 +520,20 @@ func Load() *Config {
 			MinConns: getEnvInt32("DB_MIN_CONNS", defaultDBMinConns),
 		},
 		Embedder: EmbedderConfig{
-			URL:                    getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedder-external:11436"),
+			URL:                    getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedding-proxy:11436"),
 			Model:                  getEnv("EMBEDDING_MODEL", "bge-m3"),
 			Timeout:                getEnvInt("EMBEDDER_TIMEOUT", 30),
-			InferenceToken:         inferenceToken,
+			InferenceToken:         inferenceAuth.Token,
 			AllowedOverrideOrigins: getEnvCSV("RAG_EMBEDDER_ALLOWED_OVERRIDE_URLS", []string{"http://backfill-hyperboost:11434"}),
 		},
 		Augur: AugurConfig{
-			URL:             getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://news-creator-backend:11435"),
+			URL:             getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "https://news-creator:9443"),
 			EndpointPurpose: getEnv("AUGUR_ENDPOINT_PURPOSE", ""),
 			Model:           getEnv("AUGUR_KNOWLEDGE_MODEL", "gemma4-e4b-12k"),
 			Timeout:         getEnvInt("OLLAMA_TIMEOUT", 300),
-			InferenceToken:  inferenceToken,
+			InferenceToken:  inferenceAuth.Token,
 		},
-		Search: SearchConfig{
-			IndexerURL: getEnv("SEARCH_INDEXER_URL", "http://search-indexer:8080"),
-			Timeout:    getEnvInt("SEARCH_INDEXER_TIMEOUT", 10),
-		},
+		Search: loadSearch(),
 		QueryExpansion: QueryExpansionConfig{
 			URL:            getEnv("QUERY_EXPANSION_URL", "https://news-creator:9443"),
 			Timeout:        getEnvInt("QUERY_EXPANSION_TIMEOUT", 3),
@@ -501,9 +562,9 @@ func Load() *Config {
 		},
 		Rerank: RerankConfig{
 			Enabled:       getEnvBool("RERANK_ENABLED", defaultRerankEnabled),
-			URL:           getEnv("RERANK_URL", "https://news-creator:9443"),
+			URL:           getEnv("RERANK_URL", "http://rerank-local:8080"),
 			Model:         getEnv("RERANK_MODEL", defaultRerankModel),
-			AuthToken:     readRerankToken(),
+			AuthToken:     inferenceAuth.Token,
 			TopK:          getEnvInt("RERANK_TOP_K", defaultRerankTopK),
 			MaxCandidates: getEnvInt("RERANK_MAX_CANDIDATES", defaultRerankMaxCandidates),
 			Timeout:       getEnvInt("RERANK_TIMEOUT", defaultRerankTimeout),
@@ -532,6 +593,7 @@ func Load() *Config {
 		},
 		PeerIdentity:            loadPeerIdentity(),
 		APIAuth:                 loadAPIAuth(),
+		InferenceAuth:           inferenceAuth,
 		SovereignEventTokenFile: getEnv("SOVEREIGN_EVENT_TOKEN_FILE", ""),
 		SovereignEventAuth:      getEnv("SOVEREIGN_EVENT_AUTH", ""),
 	}
@@ -590,52 +652,6 @@ func getEnvCSV(key string, fallback []string) []string {
 		}
 	}
 	return out
-}
-
-func readRerankToken() string {
-	enabled := getEnvBool("RERANK_ENABLED", defaultRerankEnabled)
-	filePath, ok := os.LookupEnv("RERANK_INFERENCE_TOKEN_FILE")
-	if !ok || filePath == "" {
-		if enabled {
-			panic("RERANK_INFERENCE_TOKEN_FILE is required when RERANK_ENABLED is true")
-		}
-		return ""
-	}
-
-	content, err := os.ReadFile(filePath) //nolint:gosec
-	if err != nil {
-		if enabled {
-			panic(fmt.Sprintf("failed to read RERANK_INFERENCE_TOKEN_FILE at %s: %v", filePath, err))
-		}
-		return ""
-	}
-
-	token := strings.TrimRight(string(content), "\r\n")
-	if err := validateAuthToken(token, 16); err != nil {
-		if enabled {
-			panic(fmt.Sprintf("RERANK_INFERENCE_TOKEN_FILE contains invalid token: %v", err))
-		}
-		return ""
-	}
-	return token
-}
-
-func readInferenceToken() string {
-	filePath, ok := os.LookupEnv("INFERENCE_SERVICE_TOKEN_FILE")
-	if !ok || filePath == "" {
-		return ""
-	}
-
-	content, err := os.ReadFile(filePath) //nolint:gosec
-	if err != nil {
-		panic(fmt.Sprintf("failed to read INFERENCE_SERVICE_TOKEN_FILE at %s: %v", filePath, err))
-	}
-
-	token := strings.TrimRight(string(content), "\r\n")
-	if err := validateAuthToken(token, 1); err != nil {
-		panic(fmt.Sprintf("INFERENCE_SERVICE_TOKEN_FILE contains invalid token: %v", err))
-	}
-	return token
 }
 
 func getEnvInt(key string, fallback int) int {

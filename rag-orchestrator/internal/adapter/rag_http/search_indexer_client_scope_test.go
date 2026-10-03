@@ -25,7 +25,7 @@ func TestSearchIndexerClient_Search_SendsUserID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := rag_http.NewSearchIndexerClient(srv.URL, 5, "")
+	client := rag_http.NewSearchIndexerClient(srv.URL, srv.Client())
 	hits, err := client.Search(context.Background(), "iran oil", "user-123")
 	require.NoError(t, err)
 
@@ -36,7 +36,7 @@ func TestSearchIndexerClient_Search_SendsUserID(t *testing.T) {
 }
 
 func TestSearchIndexerClient_Search_EmptyUserID_Fails(t *testing.T) {
-	client := rag_http.NewSearchIndexerClient("http://localhost:9999", 5, "")
+	client := rag_http.NewSearchIndexerClient("https://search-indexer:9443", &http.Client{})
 	_, err := client.Search(context.Background(), "iran oil", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "user_id is required")
@@ -51,7 +51,7 @@ func TestSearchIndexerClient_SearchBM25_SendsUserID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := rag_http.NewSearchIndexerClient(srv.URL, 5, "")
+	client := rag_http.NewSearchIndexerClient(srv.URL, srv.Client())
 	results, err := client.SearchBM25(context.Background(), "iran oil", 10, "user-123")
 	require.NoError(t, err)
 
@@ -62,7 +62,7 @@ func TestSearchIndexerClient_SearchBM25_SendsUserID(t *testing.T) {
 }
 
 func TestSearchIndexerClient_SearchBM25_EmptyUserID_Fails(t *testing.T) {
-	client := rag_http.NewSearchIndexerClient("http://localhost:9999", 5, "")
+	client := rag_http.NewSearchIndexerClient("https://search-indexer:9443", &http.Client{})
 	_, err := client.SearchBM25(context.Background(), "iran oil", 10, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "user_id is required")

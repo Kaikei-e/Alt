@@ -1,16 +1,19 @@
 //go:build contract
 
 // Package contract contains Consumer-Driven Contract tests for
-// rag-orchestrator → search-indexer. Authentication is established at the
-// transport layer (mTLS client cert); the consumer no longer sends
-// application-level auth headers.
+// rag-orchestrator → search-indexer. search-indexer serves /v1/search only on
+// its mTLS listener (:9443); peer authentication is the client certificate,
+// which the Pact mock cannot demand, so these interactions pin the HTTP
+// surface and leave the transport to the httpclient tests.
 package contract
 
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"rag-orchestrator/internal/adapter/rag_http"
 
@@ -67,8 +70,7 @@ func TestSearchIndexerSearchContract(t *testing.T) {
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			client := rag_http.NewSearchIndexerClient(
 				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
-				5,
-				"",
+				&http.Client{Timeout: 5 * time.Second},
 			)
 			hits, err := client.Search(context.Background(), "LLM", "00000000-0000-0000-0000-000000000001")
 			if err != nil {
@@ -117,8 +119,7 @@ func TestSearchIndexerSearchBM25Contract(t *testing.T) {
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			client := rag_http.NewSearchIndexerClient(
 				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
-				5,
-				"",
+				&http.Client{Timeout: 5 * time.Second},
 			)
 			results, err := client.SearchBM25(context.Background(), "multi agent systems", 10, "00000000-0000-0000-0000-000000000001")
 			if err != nil {

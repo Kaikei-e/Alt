@@ -31,10 +31,11 @@ var (
 	//
 	// MeiliEmbedderURL is Ollama's embed endpoint, not the instance root:
 	// Meilisearch's ollama source POSTs to exactly the URL it is given.
-	// knowledge-embedder-local is the dedicated embedding Ollama instance, and
-	// bge-m3 (1024 dimensions) is the only model it keeps resident.
+	// embedding-proxy is the token-checking bridge to knowledge-embedder-local,
+	// which sits on an internal network Meilisearch cannot reach; bge-m3 (1024
+	// dimensions) is the only model it keeps resident.
 	MeiliEmbedderModel      = stringEnv("MEILI_EMBEDDER_MODEL", "bge-m3")
-	MeiliEmbedderURL        = stringEnv("MEILI_EMBEDDER_URL", "http://knowledge-embedder-local:11434/api/embed")
+	MeiliEmbedderURL        = stringEnv("MEILI_EMBEDDER_URL", "http://embedding-proxy:11436/api/embed")
 	MeiliEmbedderDimensions = intEnv("MEILI_EMBEDDER_DIMENSIONS", 1024)
 	// MeiliSearchCutoffMs bounds Meilisearch processing time per query at the
 	// engine level. When a query exceeds this budget Meilisearch returns the
