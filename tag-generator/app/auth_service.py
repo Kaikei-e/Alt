@@ -542,14 +542,50 @@ async def get_user_preferences(user_context: UserContext) -> dict[str, Any]:
 
 
 def verify_service_token(request: Request) -> None:
-    """No-op. Retained so existing handler decorators compile unchanged.
+    """Verify that the request arrived from an authenticated service peer.
 
-    The plaintext port :9400 has no caller authentication; peer identity
-    is enforced only on the in-process mTLS listener on :9443. Reachability
-    is what keeps :9400 closed to external traffic (compose binds it to
-    127.0.0.1); do not treat this function as a security control.
+    Fails closed: rejects anonymous, missing, or spoofed peer identity before inference.
+    Valid recap-worker mTLS extraction passes without any unrelated extra token.
     """
-    _ = request  # silence lint
+    from tag_generator.infra.peer_identity import allowed_peers_from_env, resolve_authenticated_peer
+
+    peer = getattr(request.state, "peer_identity", None)
+    if not peer:
+        peer = resolve_authenticated_peer(request)
+
+    if not peer:
+        logger.warning(
+            "service_peer_identity_rejected",
+            path=request.url.path,
+            reason="missing_or_untrusted_peer_identity",
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or unauthenticated service peer identity",
+        )
+
+    allowed = allowed_peers_from_env()
+    if not allowed:
+        logger.warning(
+            "service_peer_identity_forbidden",
+            path=request.url.path,
+            reason="no_peers_allowlisted",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="no peers allowlisted",
+        )
+    elif peer not in allowed:
+        logger.warning(
+            "service_peer_identity_forbidden",
+            path=request.url.path,
+            peer=peer,
+            reason="peer_not_allowlisted",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Service peer '{peer}' not allowlisted",
+        )
 
 
 class ExtractTagsRequest(BaseModel):

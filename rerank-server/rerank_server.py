@@ -20,6 +20,7 @@ Requirements:
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import re
@@ -35,7 +36,7 @@ from pathlib import Path
 os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
 
 import torch
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sentence_transformers import CrossEncoder
 
@@ -426,14 +427,125 @@ async def _load_model(app: FastAPI) -> None:
     logger.info("rerank_model_loaded model=%s backend=%s", RERANK_MODEL, RERANK_BACKEND)
 
 
+DEFAULT_INFERENCE_TOKEN_FILE = "/run/secrets/inference_service_token"
+MIN_INFERENCE_TOKEN_LEN = 16
+
+# RFC 6750 b64token alphabet: ALPHA / DIGIT / "-" / "." / "_" / "~" / "+" / "/" with optional trailing "="
+import re as _re
+
+_RFC6750_B64TOKEN = _re.compile(r"^[A-Za-z0-9\-._~+/]+=*\Z")
+
+
+class InferenceAuthConfig:
+    """Authentication configuration for inference endpoints."""
+
+    def __init__(self, token: str | None, enabled: bool):
+        self.token = token
+        self.enabled = enabled
+
+
+def load_inference_auth_config() -> InferenceAuthConfig:
+    """Load inference authentication configuration from file or environment.
+
+    Fails fast with RuntimeError if authentication is enabled and the token
+    file is missing, unreadable, empty, too short, or not a valid RFC 6750
+    b64token (no CR/LF, no control characters, no internal whitespace).
+    """
+    auth_mode = os.environ.get("INFERENCE_SERVICE_AUTH", "").strip().lower()
+    if auth_mode == "disabled":
+        return InferenceAuthConfig(token=None, enabled=False)
+
+    token_file = os.environ.get("INFERENCE_SERVICE_TOKEN_FILE", "").strip()
+    if not token_file:
+        token_file = DEFAULT_INFERENCE_TOKEN_FILE
+
+    if not os.path.isfile(token_file):
+        raise RuntimeError(
+            f"INFERENCE_SERVICE_TOKEN_FILE '{token_file}' does not exist. "
+            "Set INFERENCE_SERVICE_AUTH=disabled to disable authentication."
+        )
+    try:
+        with open(token_file, "r", encoding="utf-8") as f:
+            raw = f.read()
+    except UnicodeDecodeError:
+        raise RuntimeError(
+            f"INFERENCE_SERVICE_TOKEN_FILE '{token_file}' contains invalid encoding"
+        ) from None
+    except OSError as exc:
+        raise RuntimeError(
+            f"Failed to read INFERENCE_SERVICE_TOKEN_FILE '{token_file}': {exc}"
+        ) from exc
+
+    token_val = raw.rstrip('\r\n')
+    if not token_val:
+        raise RuntimeError(
+            f"Inference token from '{token_file}' is empty. "
+            "A non-empty token is required when INFERENCE_SERVICE_AUTH is not disabled."
+        )
+
+    if len(token_val) < MIN_INFERENCE_TOKEN_LEN:
+        raise RuntimeError(
+            f"Inference token from '{token_file}' is too short ({len(token_val)} chars). "
+            f"Minimum required length is {MIN_INFERENCE_TOKEN_LEN} characters."
+        )
+
+    if not _RFC6750_B64TOKEN.match(token_val):
+        raise RuntimeError(
+            f"INFERENCE_SERVICE_TOKEN_FILE '{token_file}' contains characters "
+            "outside the RFC 6750 b64token alphabet "
+            "(allowed: A-Z a-z 0-9 - . _ ~ + / =)"
+        )
+
+    return InferenceAuthConfig(token=token_val, enabled=True)
+
+
+async def require_inference_token(request: Request) -> None:
+    """Enforce constant-time bearer authentication for inference endpoints."""
+    auth_config: InferenceAuthConfig | None = getattr(request.app.state, "auth_config", None)
+    if auth_config is None:
+        auth_config = load_inference_auth_config()
+
+    if not auth_config.enabled:
+        return
+
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid Authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    presented_token = auth_header[7:].strip()
+    if not auth_config.token or not hmac.compare_digest(
+        presented_token.encode("utf-8"), auth_config.token.encode("utf-8")
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid inference token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Kick off model loading in the background; readiness is gated by /health."""
+    # Fail-fast startup credential validation before background model load
+    auth_config = load_inference_auth_config()
+    app.state.auth_config = auth_config
+    app.state.auth_token = auth_config.token
+    app.state.auth_enabled = auth_config.enabled
+
     app.state.model = None
     load_task = asyncio.create_task(_load_model(app))
-    yield
-    load_task.cancel()
-    app.state.model = None
+    try:
+        yield
+    finally:
+        load_task.cancel()
+        app.state.model = None
+        app.state.auth_config = None
+        app.state.auth_token = None
+        app.state.auth_enabled = False
 
 
 app = FastAPI(
@@ -448,7 +560,7 @@ def _chunk_count(candidate_count: int) -> int:
     return -(-candidate_count // RERANK_CHUNK_SIZE)
 
 
-@app.post("/v1/rerank", response_model=RerankResponse)
+@app.post("/v1/rerank", response_model=RerankResponse, dependencies=[Depends(require_inference_token)])
 async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
     """Rerank candidates based on query relevance.
 

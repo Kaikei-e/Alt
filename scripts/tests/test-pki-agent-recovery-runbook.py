@@ -309,8 +309,9 @@ check(
     str(RUNBOOK),
 )
 check(
-    "compose declares exactly 15 cert volumes",
-    len(cert_volumes) == 15,
+    "compose declares 15 in-process cert volumes plus two dedicated writer volumes",
+    len(cert_volumes) == 17
+    and {"knowledge_sovereign_certs", "recap_evaluator_certs"} <= set(cert_volumes),
     f"got {sorted(cert_volumes)}",
 )
 check(

@@ -31,6 +31,9 @@ const (
 // (rule 8).
 func LoadOperatorAuth() (token string, enabled bool, err error) {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv(operatorAuthEnv)), operatorAuthDisabled) {
+		if IsPrivilegedSovereignOperatorEnabled() {
+			return "", false, fmt.Errorf("OPERATOR_AUTH=disabled is refused when privileged sovereign operator client is enabled")
+		}
 		return "", false, nil
 	}
 

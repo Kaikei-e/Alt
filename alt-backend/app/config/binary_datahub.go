@@ -110,12 +110,19 @@ func ValidateDataHubConfig(cfg *Config) error {
 		return err
 	}
 
+	if cfg.AppEnv == "production" && !strings.HasPrefix(cfg.AuthHub.URL, "https://") {
+		return fmt.Errorf("datahub config: AUTH_HUB_URL must use https:// in production, got %q", cfg.AuthHub.URL)
+	}
+
 	// mqhub_connect.Client no-ops every publish when disabled, so the article
 	// RPCs would answer 200 while emitting no events at all — the exact shape
 	// of ADR-000928. Development may opt out explicitly; nothing else may.
 	if !cfg.MQHub.Enabled && cfg.AppEnv != "development" {
 		return fmt.Errorf("datahub config: MQHUB_ENABLED=false in APP_ENV=%s would make every "+
 			"DataHubService article RPC succeed while publishing no events", cfg.AppEnv)
+	}
+	if cfg.MQHub.Enabled && cfg.MQHub.AuthToken == "" {
+		return fmt.Errorf("datahub config: MQHUB_AUTH_TOKEN_FILE or MQHUB_AUTH_TOKEN is required when MQHUB_ENABLED=true")
 	}
 	return nil
 }

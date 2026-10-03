@@ -147,62 +147,19 @@ test.describe("DataHubService capability wiring", () => {
 		});
 	}
 
-	test("GetSystemUser is mounted; its answer belongs to the identity stub", { tag: "@contract" }, async ({
-		dataHub,
-	}) => {
-		// The one procedure whose status this suite does not own. It reaches
-		// Kratos through AUTH_HUB_URL, which the staging slice answers from
-		// alt-backend-deps-stub, so a 500 here is a stub-fidelity question
-		// rather than a topology one — the Hurl file made the same call and
-		// asserted only `status != 404`.
-		//
-		// Two answers are correct, for reasons that are not the same:
-		//   200 — the stub returned an identity and the handler mapped it.
-		//   500 — `GetFirstIdentityID` failed against the stub. Connect maps
-		//         CodeInternal to 500 (handler.go), so this is the handler
-		//         running, not the mux missing.
-		// 404 would mean unmounted, and 501 is impossible by construction:
-		// SetupConnectHandlers panics at boot on a nil KratosClient.
+	test("GetSystemUser answers from the verified identity fixture", { tag: "@contract" }, async ({ dataHub }) => {
 		const response = await callUnary(dataHub, `${SVC}/GetSystemUser`, {});
-		expect(
-			[200, 500],
-			`GetSystemUser answered ${response.status()}; 404 = never mounted, ` +
-				`501 = the boot-time nil panic guard regressed`,
-		).toContain(response.status());
-
-		if (response.status() === 200) {
-			// When it does answer, the shape is a contract: the caller writes
-			// this straight into a uuid column as the owner of every
-			// system-created article.
-			await expectJson(response, systemUserSchema);
-		}
+		expect(response.status()).toBe(200);
+		await expectJson(response, systemUserSchema);
 	});
 
-	test("an unknown procedure on a mounted service 404s as plain text", { tag: "@contract" }, async ({
-		dataHub,
-	}) => {
-		// connect-go's generated `NewDataHubServiceHandler` routes only the
-		// procedures it knows and hands anything else to `http.NotFound`, so an
-		// unknown *procedure* on a known *service* never reaches the Connect
-		// codec. Pinning the plain-text body keeps that visible: a generated
-		// client sees a transport error here, not a `ConnectError` carrying
-		// `unimplemented`, and a spec that implied an envelope would be
-		// describing a response that does not exist.
-		//
-		// It is also the control for the 404 assertions in topology.spec.ts —
-		// both the router's 404 and the mux's 404 look identical on the wire,
-		// which is precisely why the *procedure-mounted* probes above have to
-		// carry the weight of proving registration.
+	test("an unknown procedure is denied before Connect dispatch", { tag: "@contract" }, async ({ dataHub }) => {
 		const response = await callUnary(dataHub, `${SVC}/NoSuchProcedureExists`, {});
-		expect(response.status()).toBe(404);
-		expect(await response.text()).toContain("404 page not found");
+		expect(response.status()).toBe(403);
+		expect(await response.text()).toContain("forbidden: peer not authorized for this procedure");
 	});
 
 	test("a malformed JSON body is rejected without a 500", { tag: "@contract" }, async ({ dataHub }) => {
-		// The codec's own error path. A 5xx here would mean a parse failure is
-		// reaching the handler as a zero-valued message — the shape of bug that
-		// turns "the caller sent garbage" into "the provider has a defect", and
-		// the shape that makes a Pact verification pass while production fails.
 		const response = await dataHub.post(`${SVC}/ListArticlesWithTags`, {
 			headers: { "Content-Type": "application/json" },
 			data: "{ this is not json",

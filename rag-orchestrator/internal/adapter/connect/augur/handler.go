@@ -16,6 +16,7 @@ import (
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/domain/authcontext"
 	"rag-orchestrator/internal/infra/metrics"
 	"rag-orchestrator/internal/usecase"
 
@@ -153,6 +154,10 @@ func (h *Handler) StreamChat(
 		return connect.NewError(connect.CodeUnauthenticated, err)
 	}
 	tenantID, hasTenantID := extractTenantID(req.Header())
+
+	if jwtToken := req.Header().Get("X-Alt-Backend-Token"); jwtToken != "" {
+		ctx = authcontext.WithJWT(ctx, jwtToken)
+	}
 
 	// Extract last user message as query and build conversation history
 	var query string
@@ -769,6 +774,10 @@ func (h *Handler) RetrieveContext(
 	if err != nil {
 		h.logger.Warn("retrieve context rejected", slog.String("error", err.Error()))
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	if jwtToken := req.Header().Get("X-Alt-Backend-Token"); jwtToken != "" {
+		ctx = authcontext.WithJWT(ctx, jwtToken)
 	}
 
 	query := req.Msg.Query

@@ -36,20 +36,30 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Health check endpoint for Docker
 pub async fn health_check() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Validate that the default configuration is well-formed (URLs, sizes, timeouts).
-    // Creating Config::default() alone is not a health signal — run post_process + validate.
-    let mut config = Config::default();
-    config.post_process()?;
+    // Validate that the configuration from environment is well-formed.
+    let config = Config::from_env()?;
     config.validate()?;
     Ok(())
 }
 
 #[cfg(test)]
 mod health_check_tests {
+    use serial_test::serial;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
     #[tokio::test]
+    #[serial]
     async fn health_check_validates_default_config() {
-        super::health_check()
-            .await
-            .expect("default config must pass validation");
+        let mut token_file = NamedTempFile::new().unwrap();
+        writeln!(token_file, "valid-token-123").unwrap();
+        unsafe {
+            std::env::set_var("RASK_INGEST_TOKEN_FILE", token_file.path());
+        }
+        let res = super::health_check().await;
+        unsafe {
+            std::env::remove_var("RASK_INGEST_TOKEN_FILE");
+        }
+        res.expect("config with valid token must pass health check");
     }
 }

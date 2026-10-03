@@ -1,6 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
 import { expectHeaderContains, expectJsonStatus } from "../../_shared/http.js";
-import { env } from "../src/env.js";
 import { healthSchema } from "../src/schemas.js";
 
 /**
@@ -33,20 +32,12 @@ test.describe("health", () => {
 		expectHeaderContains(response, "Content-Type", "application/json");
 	});
 
-	test("GET /health needs no credential", { tag: "@smoke" }, async ({ playwright }) => {
-		// The shared `api` fixture sends only a Content-Type, so the assertion
-		// above already runs anonymously — but it does so incidentally. This
-		// makes it the claim: a bare context, no headers of any kind. The
-		// container's own HEALTHCHECK (Dockerfile.tag-generator) and the
-		// compose healthcheck are both unauthenticated `urllib` calls, so an
-		// auth middleware growing over this route would deadlock startup, not
-		// merely break a test.
-		const bare = await playwright.request.newContext();
-		try {
-			await expectJsonStatus(await bare.get(`${env.baseURL}/health`), 200, healthSchema);
-		} finally {
-			await bare.dispose();
-		}
+	test("GET /health needs no application token", { tag: "@smoke" }, async ({ api }) => {
+		// The shared `api` fixture presents the required mTLS client certificate
+		// but sends no application credentials, tokens, or peer-identity headers.
+		// /health is exempt from the peer allowlist and requires no application-level auth.
+		const response = await api.get("/health");
+		await expectJsonStatus(response, 200, healthSchema);
 	});
 
 	test("GET /health is cheap enough to be a healthcheck", {

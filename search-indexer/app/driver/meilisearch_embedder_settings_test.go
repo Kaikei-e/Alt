@@ -110,3 +110,55 @@ func TestEmbedderSettingsDriver_ErrorsOnNon2xx(t *testing.T) {
 		t.Error("UpdateEmbedders: expected an error on 401")
 	}
 }
+
+func TestEmbedderSettingsDriver_UpdateEmbeddersCredentialOnly(t *testing.T) {
+	var rawBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		rawBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"taskUid":88,"status":"enqueued"}`)
+	}))
+	defer srv.Close()
+
+	d := NewEmbedderSettingsDriver(srv.URL, "master-key", "articles", time.Second)
+	spec := EmbedderSpec{APIKey: "rotated-token-123"}
+	taskUID, err := d.UpdateEmbedders(context.Background(), map[string]*EmbedderSpec{
+		"bge-m3": &spec,
+	})
+	if err != nil {
+		t.Fatalf("UpdateEmbedders: %v", err)
+	}
+	if taskUID != 88 {
+		t.Errorf("taskUID = %d, want 88", taskUID)
+	}
+	expected := `{"bge-m3":{"apiKey":"rotated-token-123"}}`
+	if rawBody != expected {
+		t.Fatalf("UpdateEmbedders raw body = %s, want %s", rawBody, expected)
+	}
+}
+
+func TestEmbedderSettingsDriver_RefusesRedirects(t *testing.T) {
+	destHits := 0
+	destSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		destHits++
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"taskUid":99}`)
+	}))
+	defer destSrv.Close()
+
+	originSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destSrv.URL, http.StatusTemporaryRedirect)
+	}))
+	defer originSrv.Close()
+
+	d := NewEmbedderSettingsDriver(originSrv.URL, "master-key", "articles", time.Second)
+	_, err := d.GetEmbedders(context.Background())
+	if err == nil {
+		t.Fatal("expected error on 307 redirect, got nil")
+	}
+	if destHits != 0 {
+		t.Fatalf("expected 0 destination hits, got %d", destHits)
+	}
+}

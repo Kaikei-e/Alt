@@ -2,12 +2,15 @@ package mqhub_connect
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/proto"
 
 	mqhubv1 "alt/gen/proto/services/mqhub/v1"
 	"alt/gen/proto/services/mqhub/v1/mqhubv1connect"
@@ -126,4 +129,28 @@ func TestPublishDoesNotFabricateTraceIDWithoutSpan(t *testing.T) {
 	assert.False(t, hasTrace, "producer must not fabricate a trace_id when no valid span is on the context")
 	_, hasSpan := md["span_id"]
 	assert.False(t, hasSpan, "producer must not fabricate a span_id when no valid span is on the context")
+}
+
+func TestNewClient_AttachesAuthorizationHeader(t *testing.T) {
+	var receivedAuthHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuthHeader = r.Header.Get("Authorization")
+		resp := &mqhubv1.PublishResponse{MessageId: "msg-1"}
+		b, err := proto.Marshal(resp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/proto")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(b)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, true, "test-mqhub-token-secret")
+	_, err := client.PublishArticleCreated(context.Background(), ArticleCreatedPayload{
+		ArticleID: "art-1", UserID: "user-1", FeedID: "feed-1", Title: "t", URL: "https://example.com/a",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer test-mqhub-token-secret", receivedAuthHeader)
 }

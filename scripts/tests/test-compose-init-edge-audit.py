@@ -120,7 +120,7 @@ BASELINE = json.loads(
     (SCRIPTS / "ops-surface-baseline.json").read_text(encoding="utf-8")
 )
 ALLOW = BASELINE["init_edges_allowlist"]
-EXPECTED_22 = [
+EXPECTED_24 = [
     "acolyte-orchestrator -> acolyte-db-migrator",
     "acolyte-orchestrator -> step-ca-bootstrap",
     "alt-backend -> step-ca-bootstrap",
@@ -134,6 +134,8 @@ EXPECTED_22 = [
     "knowledge-sovereign -> knowledge-sovereign-db-migrator",
     "kratos -> kratos-migrate",
     "news-creator -> step-ca-bootstrap",
+    "pki-agent-knowledge-sovereign -> step-ca-bootstrap",
+    "pki-agent-recap-evaluator -> step-ca-bootstrap",
     "pre-processor -> pre-processor-db-migrator",
     "pre-processor -> step-ca-bootstrap",
     "pre-processor-sidecar -> oauth-token-init",
@@ -145,12 +147,12 @@ EXPECTED_22 = [
     "tag-generator -> step-ca-bootstrap",
 ]
 check(
-    "production has exactly 22 one-shot SCS edges",
-    len(PROD_EDGES) == 22 and len(ALLOW) == 22,
+    "production has exactly 24 one-shot SCS edges (two new certificate writers)",
+    len(PROD_EDGES) == 24 and len(ALLOW) == 24,
 )
 check(
-    "production edges match the exact 22 allowlist pairs",
-    PROD_EDGES == EXPECTED_22 and ALLOW == EXPECTED_22,
+    "production edges match the exact 24 allowlist pairs",
+    PROD_EDGES == EXPECTED_24 and ALLOW == EXPECTED_24,
 )
 
 print(f"\n{PASS} passed, {FAIL} failed")

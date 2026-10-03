@@ -26,15 +26,25 @@ affected_services:
 ---
 # pki-agent / mTLS cert 期限切れ緊急対応
 
-[[000747]] で導入された mTLS leaf ライフサイクルの障害時 runbook。現行契約は [[000978]]（Wave 4 の 14 親に tts-speaker が加わり 15 親 in-process、workload sidecar 0）。
-Workload は 15 本すべて in-process（pki-agent sidecar fleet は 0）。本番で
+[[000747]] で導入された mTLS leaf ライフサイクルの障害時 runbook。[[000978]] の Wave 4 の 14 親と tts-speaker は引き続き 15 親 in-process。追加の Sovereign / Evaluator は専用の cert-only sidecar 2 本で enroll する。
+以下の親再作成・operator maps は元の 15 本の in-process cohort 用。本番で
 「BFF ログに `certificate has expired`」や「Knowledge Home が空」が出たときの
 手順を上から順に実行する。
 
-## Provisioner 構成 (in-process fleet, 0 workload sidecars)
+## Provisioner 構成 (15 in-process parents + 2 cert-only writers)
 
-Workload PKI は **15 本すべて in-process**。pki-agent の workload sidecar
-fleet は **0**。共有 `pki-agent` provisioner は使わない。
+元の **15 本は in-process** であり、同じ cert volume に旧 sidecar を復活させない。
+`pki-agent-knowledge-sovereign` / `pki-agent-recap-evaluator` は現行 Compose の
+正規 cert-only writer。共有 `pki-agent` provisioner は使わない。
+
+| 追加の親 | 正規 writer / 専用JWKファイル | cert volume / owner |
+|---|---|---|
+| knowledge-sovereign | `pki-agent-knowledge-sovereign` / `secrets/pki-agent-knowledge-sovereign-jwk.txt` | `alt_knowledge_sovereign_certs` / 65532 |
+| recap-evaluator | `pki-agent-recap-evaluator` / `secrets/pki-agent-recap-evaluator-jwk.txt` | `alt_recap_evaluator_certs` / 65533 |
+
+追加の親は cert volume を read-only で読む。writer の healthy を待ってから起動する。
+この 2 本の JWK / writer は退役対象ではなく、下記の 15 親向け cert wipe 対象にも含めない。
+障害時は該当 writer の health / logs と専用 JWK を確認し、必要な場合だけその writer を再作成する。
 
 | Provisioner | 用途 | 使用者 |
 |---|---|---|
@@ -212,16 +222,17 @@ declare -A CERT_UID=(
 
 ### Forward-only sidecar retirement (copy into the shell first)
 
-現行 target compose の workload sidecar は **0**。残っている
-`pki-agent-*` は dual writer。`com.docker.compose.project=alt` かつ
-compose service が `pki-agent-` で始まるコンテナだけ stop+rm する。
+元の 15 親の旧 workload sidecar は **0** が正しい。正規の
+`pki-agent-knowledge-sovereign` / `pki-agent-recap-evaluator` は保持する。
+それ以外の `com.docker.compose.project=alt` かつ compose service が
+`pki-agent-` で始まるコンテナだけ stop+rm する。
 他 project・非 pki サービスは触らない。**Forward cutover / recovery だけ。
 rollback restore の後には走らせない。**
 
 正本は `scripts/retire-alt-pki-agent-leftovers.sh`（`scripts/deploy.sh` が
 親 `up` の前に呼ぶ）。`matching pki-agent=0` は fresh install ではない:
 
-- project=`alt` のアンカー（親 / step-ca など）が見えて sidecar が 0 → steady no-op
+- project=`alt` のアンカー（親 / step-ca / 正規 writer など）が見えて旧 sidecar が 0 → steady no-op
 - project=`alt` コンテナが **1 件も見えない** → Docker context / rootless の取り違えを疑う。親 `up` を拒否する。本当に空のホストだけ `ALT_ACK_FRESH_INSTALL=1`
 - service ラベル欠落 / 不正 → fail closed。ACK では救わない
 
@@ -245,6 +256,8 @@ retire_alt_pki_agent_leftovers() {
     total=$((total + 1))
     echo "project=alt id=${cid} service=${svc}"
     case "$svc" in
+      pki-agent-knowledge-sovereign|pki-agent-recap-evaluator)
+        anchors=$((anchors + 1)) ;;
       pki-agent-*) ids+=("$cid") ;;
       *) anchors=$((anchors + 1)) ;;
     esac
@@ -265,7 +278,7 @@ retire_alt_pki_agent_leftovers() {
   leftovers=$(docker ps \
     --filter 'label=com.docker.compose.project=alt' \
     --format '{{.ID}}\t{{.Label "com.docker.compose.service"}}' \
-    | awk -F '\t' '$2 ~ /^pki-agent-/ { print }')
+    | awk -F '\t' '$2 ~ /^pki-agent-/ && $2 != "pki-agent-knowledge-sovereign" && $2 != "pki-agent-recap-evaluator" { print }')
   if [ -n "$leftovers" ]; then
     echo "pki-agent leftovers still running in project alt (dual writers). Refuse parent recreate." >&2
     printf '%s\n' "$leftovers" >&2
@@ -279,7 +292,7 @@ retire_alt_pki_agent_leftovers() {
 | 症状 | 最初に見る場所 |
 |---|---|
 | BFF 経由の任意 RPC が `tls: failed to verify certificate: x509: certificate has expired` | `docker logs alt-<subject>-1`（親の in-process enrollment） |
-| leftover pki-agent が up / `PkiAgentFleetIncomplete` | `docker ps` + `label=com.docker.compose.project=alt` かつ service `pki-agent-*` — fleet は 0 が正常。Prometheus の pki-agent scrape には頼らない（`:9510` job は無い） |
+| leftover pki-agent が up / `PkiAgentFleetIncomplete` | `docker ps` + `label=com.docker.compose.project=alt` かつ service `pki-agent-*` — 正規の Sovereign / Evaluator writer 2 本以外は 0 が正常。Prometheus の pki-agent scrape には頼らない（`:9510` job は無い） |
 | Prometheus `PkiEnrollmentCertExpirySoon` / `PkiEnrollmentWorkloadMetricsAbsent` | 15 親の ops `:9110`: `docker logs alt-<subject>-1` |
 | Prometheus `PkiEnrollmentRenewalFailing` | step-ca が健全か、subject-scoped JWK provisioner 衝突か |
 
@@ -346,7 +359,7 @@ docker run --rm --network alt_alt-network \
 発行後、consumer service は `auth-hub/tlsutil/tlsutil.go` の certReloader が mtime を
 見て自動リロードする (再起動不要)。
 
-## Step 4: 親プロセスを force-recreate（sidecar は無い）
+## Step 4: in-process 親を force-recreate（元の 15 親に sidecar は無い）
 
 ```bash
 # Operator maps + retire_alt_pki_agent_leftovers を copy 済み前提
@@ -362,7 +375,8 @@ pki-agent sidecar を再宣言して dual writer にしない。
 
 ## Step 5: 全 15 subject で健全性確認
 
-Workload sidecar fleet は 0。ops `:9110` のみ。
+この 15 親の旧 sidecar fleet は 0。in-process ops `:9110` を確認する。
+正規の Sovereign / Evaluator writer 2 本は別途 Compose health を確認する。
 
 ```bash
 # distroless 親に wget は無い。Compose DNS で :9110 を toolbox から叩く。
@@ -393,7 +407,7 @@ for v in "${CERT_VOLUME[@]}"; do
   docker run --rm -v "$v:/c" alpine rm -f /c/svc-cert.pem /c/svc-key.pem
 done
 
-# 2. 15 親を force-recreate（workload sidecar は 0。dual writer 禁止）
+# 2. 15 in-process 親を force-recreate（旧 sidecar は 0。dual writer 禁止）
 docker compose -f compose/compose.yaml -p alt up -d --force-recreate \
   "${SUBJECTS[@]}"
 
@@ -417,8 +431,8 @@ docker logs alt-alt-data-hub-1 --since 1m 2>&1 | grep -ci "tls\|certificate"
 
 ## よくある落とし穴
 
-- **`--force-recreate` a parent does not require a pki-agent cascade.** Inbound TLS now terminates in the parent. Workload sidecars must be 0. A leftover `pki-agent-*` on the same cert volume is a dual writer, not a live cert-only netns topology. `scripts/cascade-pki-sidecars.sh` is a retired tombstone — do not invoke it.
-- **`up --remove-orphans` を leftover 掃除だと思わない**: orphan 削除と親 recreate が同一コマンドだと dual-writer 窓が残る。親を enable / recreate する前に `retire_alt_pki_agent_leftovers`（project=`alt` のコンテナを service ラベル付きで列挙し、`pki-agent-*` だけ stop+rm、docker ps 0 件）を走らせる。`matching pki-agent=0` は fresh install ではない（見えるアンカーがあれば steady no-op。コンテナが 0 件なら Docker context / rootless を疑う。本当に空のホストだけ `ALT_ACK_FRESH_INSTALL=1`）。Prometheus の pki-agent scrape には頼らない。rollback restore の後に sweep しない。
+- **`--force-recreate` an in-process parent does not require a pki-agent cascade.** Inbound TLS terminates in the parent. Its old sidecar must be absent; Sovereign / Evaluator retain their own certificate-only writers on separate network namespaces. `scripts/cascade-pki-sidecars.sh` is a retired tombstone — do not invoke it.
+- **`up --remove-orphans` を leftover 掃除だと思わない**: 親を enable / recreate する前に `retire_alt_pki_agent_leftovers` を走らせる。project=`alt` の正規 writer 2 本を保持し、それ以外の `pki-agent-*` だけ stop+rm、旧 sidecar の docker ps が 0 件であることを確認する。`matching pki-agent=0` は fresh install ではない。本当に空のホストだけ `ALT_ACK_FRESH_INSTALL=1`。Prometheus scrape に頼らず、rollback restore の後に sweep しない。
 - **chown uid の取り違え**: `CERT_UID` を使う。recap-worker / recap-subworker は `999`、Python appuser 系 (tag-generator, acolyte-orchestrator, news-creator, tts-speaker) は `1000`、Go distroless 系は `65532`。blanket `65532` のままだと 0400 の key を uid 999/1000 の親が読めない（各親の `pre_start` chown）
 - **step-ca の provisioner password ファイル**: `secrets/step_ca_root_password.txt` は
   Git に追跡されていない (secrets/.gitignore で守られている)。復旧直後の host で

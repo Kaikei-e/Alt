@@ -160,6 +160,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 			const context = await playwright.request.newContext({
 				baseURL: env.internalURL,
 				extraHTTPHeaders: {
+					Authorization: `Bearer ${env.operatorToken}`,
 					"X-Alt-Backend-Token": env.jwt,
 					"X-Real-IP": clientIP,
 					"Content-Type": "application/json",

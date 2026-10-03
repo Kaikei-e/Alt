@@ -50,16 +50,22 @@ def arrived_via_sidecar(request: Request) -> bool:
 
 
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, allowed: Iterable[str] | None = None, *, strict: bool = False) -> None:
+    def __init__(self, app, allowed: Iterable[str] | None = None, *, strict: bool = False, exempt_paths: Iterable[str] | None = None) -> None:
         super().__init__(app)
         self._allowed = {c for c in (allowed or []) if c}
         self._strict = strict
+        self._exempt_paths = {p for p in (exempt_paths or []) if p}
 
     async def dispatch(
         self,
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        # Check exempt paths first
+        for path in self._exempt_paths:
+            if request.url.path.startswith(path):
+                return await call_next(request)
+
         peer = request.headers.get(PEER_IDENTITY_HEADER, "").strip()
 
         # Two conditions, and the header is honoured only under both.

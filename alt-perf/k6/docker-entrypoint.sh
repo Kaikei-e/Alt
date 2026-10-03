@@ -1,13 +1,13 @@
 #!/bin/sh
-# docker-entrypoint.sh - Read Docker secrets into environment variables, then exec k6.
+# docker-entrypoint.sh - Read API token from file if provided, then exec k6.
 #
 # Docker secrets are mounted at /run/secrets/<name> as files.
 # K6 does not natively support the _FILE pattern, so we read them here.
 
 set -e
 
-if [ -f /run/secrets/backend_token_secret ]; then
-  export K6_BACKEND_TOKEN_SECRET=$(cat /run/secrets/backend_token_secret)
+if [ -n "$K6_API_TOKEN_FILE" ] && [ -f "$K6_API_TOKEN_FILE" ]; then
+  export K6_API_TOKEN=$(cat "$K6_API_TOKEN_FILE")
 fi
 
 exec k6 "$@"

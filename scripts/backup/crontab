@@ -14,7 +14,6 @@
 30 * * * *  /scripts/backup-metrics.sh
 
 # Weekly Sunday at 06:00: Automated restore verification
-0 6 * * 0   /scripts/restore-verify.sh
 
 # Daily at 04:00: Rotate old logs
 0 4 * * *   find /backups/logs/ -name "*.log" -mtime +30 -delete

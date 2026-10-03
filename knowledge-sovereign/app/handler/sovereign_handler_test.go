@@ -234,7 +234,6 @@ func TestApplyProjectionMutation_DispatchesCorrectly(t *testing.T) {
 		{MutationUpsertHomeItem, "UpsertKnowledgeHomeItem"},
 		{MutationDismissHomeItem, "DismissKnowledgeHomeItem"},
 		{MutationClearSupersede, "ClearSupersedeState"},
-		{MutationUpsertTodayDigest, "UpsertTodayDigest"},
 		{MutationUpsertRecallCandidate, "UpsertRecallCandidate"},
 	}
 
@@ -257,6 +256,21 @@ func TestApplyProjectionMutation_DispatchesCorrectly(t *testing.T) {
 			assert.Equal(t, tc.expectedMethod, repo.lastMethod)
 		})
 	}
+}
+
+func TestApplyProjectionMutation_UpsertTodayDigestDenied(t *testing.T) {
+	repo := &mockRepo{}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	_, err := client.ApplyProjectionMutation(context.Background(),
+		connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
+			MutationType: MutationUpsertTodayDigest,
+		}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	assert.Contains(t, err.Error(), "upsert_today_digest is restricted to local projector")
 }
 
 func TestApplyProjectionMutation_UnknownType(t *testing.T) {
@@ -354,4 +368,8 @@ func TestApplyCurationMutation_UnknownTypeRejected(t *testing.T) {
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	assert.Nil(t, resp)
 	assert.Equal(t, "", repo.lastMethod)
+}
+
+func (m *mockRepo) GetLensVersion(ctx context.Context, lensVersionID uuid.UUID) (*sovereign_db.KnowledgeLensVersion, error) {
+	return nil, nil
 }

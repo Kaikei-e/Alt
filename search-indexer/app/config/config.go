@@ -59,13 +59,15 @@ type RateLimitConfig struct {
 // BackendAPIConfig holds configuration for connecting to alt-backend's internal API.
 type BackendAPIConfig struct {
 	// URL is the Connect-RPC URL for alt-backend's internal API.
-	URL string
+	URL                     string
+	UserJWTIntrospectionURL string
 }
 
 type MeilisearchConfig struct {
-	Host    string
-	APIKey  string
-	Timeout time.Duration
+	Host                   string
+	APIKey                 string
+	Timeout                time.Duration
+	EmbedderInferenceToken string
 }
 
 func Load() (*Config, error) {
@@ -77,6 +79,14 @@ func Load() (*Config, error) {
 	}
 	if backendAPIURL == "" {
 		return nil, fmt.Errorf("required environment variable BACKEND_API_URL is not set")
+	}
+
+	userJWTIntrospectionURL, err := getEnvOrDefault("USER_JWT_INTROSPECTION_URL", "")
+	if err != nil {
+		return nil, err
+	}
+	if userJWTIntrospectionURL == "" {
+		return nil, fmt.Errorf("required environment variable USER_JWT_INTROSPECTION_URL is not set")
 	}
 
 	meiliHost, err := getEnvOrDefault("MEILISEARCH_HOST", "")
@@ -96,14 +106,41 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	var embedderToken string
+	if tokenFile := os.Getenv("INFERENCE_SERVICE_TOKEN_FILE"); tokenFile != "" {
+		content, err := os.ReadFile(tokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read inference token file %q: %w", tokenFile, err)
+		}
+		embedderToken = strings.TrimSpace(string(content))
+		if embedderToken == "" {
+			return nil, fmt.Errorf("inference token file %q is empty", tokenFile)
+		}
+
+		// Basic check since we don't want to import regexp if not needed, but we do need it.
+		// I will just do a simple loop check since the alphabet is known.
+		isValid := true
+		for _, c := range embedderToken {
+			if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '~' || c == '+' || c == '-' || c == '/' || c == '=') {
+				isValid = false
+				break
+			}
+		}
+		if !isValid || len(embedderToken) < 1 {
+			return nil, fmt.Errorf("invalid inference token format in %q", tokenFile)
+		}
+	}
+
 	cfg := &Config{
 		BackendAPI: BackendAPIConfig{
-			URL: backendAPIURL,
+			URL:                     backendAPIURL,
+			UserJWTIntrospectionURL: userJWTIntrospectionURL,
 		},
 		Meilisearch: MeilisearchConfig{
-			Host:    meiliHost,
-			APIKey:  meiliAPIKey,
-			Timeout: 15 * time.Second,
+			Host:                   meiliHost,
+			APIKey:                 meiliAPIKey,
+			Timeout:                15 * time.Second,
+			EmbedderInferenceToken: embedderToken,
 		},
 		RateLimit: RateLimitConfig{
 			RequestsPerSecond: rps,

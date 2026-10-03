@@ -104,4 +104,19 @@ func TestResolveRedisPassword(t *testing.T) {
 		assert.Empty(t, pwd)
 		assert.Contains(t, err.Error(), "REDIS_PASSWORD_FILE is set but empty")
 	})
+
+	t.Run("REDIS_STREAMS_PASSWORD_FILE takes precedence over REDIS_PASSWORD_FILE", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		streamsFile := filepath.Join(tmpDir, "streams_pw.txt")
+		generalFile := filepath.Join(tmpDir, "general_pw.txt")
+		require.NoError(t, os.WriteFile(streamsFile, []byte("streams_secret"), 0600))
+		require.NoError(t, os.WriteFile(generalFile, []byte("general_secret"), 0600))
+
+		t.Setenv("REDIS_STREAMS_PASSWORD_FILE", streamsFile)
+		t.Setenv("REDIS_PASSWORD_FILE", generalFile)
+
+		pwd, err := ResolveRedisPassword(nil)
+		require.NoError(t, err)
+		assert.Equal(t, "streams_secret", pwd)
+	})
 }

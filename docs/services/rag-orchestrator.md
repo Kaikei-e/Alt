@@ -4,7 +4,7 @@ _Last reviewed: September 5, 2026_
 
 **Location:** `rag-orchestrator`
 
-The `rag-orchestrator` is a Go 1.26+ service responsible for managing the RAG (Retrieval Augmented Generation) pipeline. It handles article indexing, vector embedding, context retrieval, answer generation using an LLM, agentic tool-calling, conversation persistence, and morning-letter topic extraction. The service exposes both a REST API (Echo) and a Connect-RPC API for streaming. Generation is served by `news-creator` (its FastAPI priority-queue proxy on :11434, which fronts `news-creator-backend`'s Ollama on :11435) by default (see [[000951]] / [[000987]]); `knowledge-augur` is a separate, non-default Ollama host (see `docs/services/knowledge-augur.md`).
+The `rag-orchestrator` is a Go 1.27.1 service responsible for managing the RAG (Retrieval Augmented Generation) pipeline. It handles article indexing, vector embedding, context retrieval, answer generation using an LLM, agentic tool-calling, conversation persistence, and morning-letter topic extraction. The service exposes both a REST API (Echo) and a Connect-RPC API for streaming. Generation is served by `news-creator` (its FastAPI priority-queue proxy on :11434, which fronts `news-creator-backend`'s Ollama on :11435) by default (see [[000951]] / [[000987]]); `knowledge-augur` is a separate, non-default Ollama host (see `docs/services/knowledge-augur.md`).
 
 ### Design Principles & Invariants
 - **Local Inference Topology ([[000951]])**: RAG inference is kept local and role-segregated: `knowledge-embedder-local` (bge-m3, 1024-dim) and `rerank-local` (ruri-v3 ONNX) run in dedicated containers to prevent VRAM thrashing against the primary generation runtime.
@@ -18,7 +18,7 @@ The `rag-orchestrator` is a Go 1.26+ service responsible for managing the RAG (R
 rag-orchestrator/
 ├── Dockerfile
 ├── Makefile
-├── go.mod                          # Go 1.26+, connectrpc.com/connect, pgx, echo, cobra
+├── go.mod                          # Go 1.27.1, connectrpc.com/connect, pgx, echo, cobra
 ├── cmd
 │   ├── backfill
 │   │   └── main.go                 # Backfill / rebuild CLI (cobra) — not shipped in the server image
@@ -147,7 +147,7 @@ rag-orchestrator/
 Builds an optimized distroless image with both the server and backfill binaries. Both the builder and the runtime base image are digest-pinned. `cmd/eval` is not built into this image — it is a dev/CI-only tool.
 
 ```dockerfile
-FROM golang:1.26-alpine@sha256:70b46548e42db77e0966aaf3619fd068734dc6c77584d526b91126504fd95816 AS builder
+FROM golang:1.27.1-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 COPY internal/gen/proto/go.mod internal/gen/proto/go.sum* ./internal/gen/proto/

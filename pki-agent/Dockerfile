@@ -4,7 +4,7 @@
 # proven CLI. The Go binary owns the lifecycle state machine, retries,
 # atomic writes, metrics, and health.
 
-FROM golang:1.26-alpine@sha256:70b46548e42db77e0966aaf3619fd068734dc6c77584d526b91126504fd95816 AS build
+FROM golang:1.27.1-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

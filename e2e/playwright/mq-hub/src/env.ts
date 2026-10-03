@@ -9,7 +9,7 @@
  * of "you forgot to export BASE_URL", and a suite pointed at the *wrong* host
  * reports green. `run.sh` is the single place these are set.
  */
-import { requiredEnv, runId } from "../../_shared/env.js";
+import { optionalEnv, requiredEnv, requiredSecretFile, runId } from "../../_shared/env.js";
 
 export const env = {
 	/**
@@ -20,6 +20,7 @@ export const env = {
 	 * so this URL is the whole service.
 	 */
 	baseURL: requiredEnv("BASE_URL"),
+	authToken: requiredSecretFile("MQHUB_AUTH_TOKEN_FILE"),
 
 	/**
 	 * A port mq-hub must **not** answer on.
@@ -35,6 +36,14 @@ export const env = {
 
 	/** Unique per dispatch; embedded in stream and consumer-group names. */
 	runId: runId(),
+
+	/**
+	 * Redis connection settings for ephemeral test isolation in CI.
+	 * Explicit opt-in only; must refuse/reset nothing for default localhost/user's running stack.
+	 */
+	redisUrl: optionalEnv("REDIS_URL", ""),
+	redisPasswordFile: optionalEnv("REDIS_PASSWORD_FILE", ""),
+	allowRedisReset: optionalEnv("MQ_E2E_ALLOW_REDIS_RESET", "") === "1",
 } as const;
 
 /** The fully-qualified Connect service every procedure hangs off. */
@@ -61,6 +70,14 @@ export const CanonicalStream = {
 	summaries: "alt:events:summaries",
 	tags: "alt:events:tags",
 	index: "alt:events:index",
+	articlesDLQ: "alt:events:articles:dlq",
+} as const;
+
+export const CanonicalGroup = {
+	preProcessor: "pre-processor-group",
+	tagGenerator: "tag-generator-group",
+	tagGeneratorTags: "tag-generator-tags-group",
+	searchIndexer: "search-indexer-group",
 } as const;
 
 /**

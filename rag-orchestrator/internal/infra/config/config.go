@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -129,9 +130,10 @@ func (c DBConfig) DSN() string {
 
 // EmbedderConfig holds embedder (Ollama) settings.
 type EmbedderConfig struct {
-	URL     string
-	Model   string
-	Timeout int // Seconds
+	URL            string
+	Model          string
+	Timeout        int    // Seconds
+	InferenceToken string // loaded from INFERENCE_SERVICE_TOKEN_FILE
 
 	// AllowedOverrideOrigins is the static allowlist of origins
 	// (scheme://host[:port]) the X-Embedder-URL request header may point
@@ -143,9 +145,11 @@ type EmbedderConfig struct {
 
 // AugurConfig holds Knowledge Augur (LLM generator) settings.
 type AugurConfig struct {
-	URL     string
-	Model   string
-	Timeout int // Seconds
+	URL             string
+	EndpointPurpose string // "news_mtls" or "authenticated_proxy". Empty defaults to "news_mtls" for URL "https://news-creator:9443", otherwise "authenticated_proxy".
+	Model           string
+	Timeout         int    // Seconds
+	InferenceToken  string // loaded from INFERENCE_SERVICE_TOKEN_FILE
 }
 
 // SearchConfig holds search indexer settings.
@@ -195,6 +199,9 @@ type RerankConfig struct {
 	Enabled bool
 	URL     string
 	Model   string
+	// AuthToken is the bearer token for authenticating to the rerank-server.
+	// Loaded from RERANK_INFERENCE_TOKEN_FILE.
+	AuthToken string
 	// TopK is how many hits survive the stage; MaxCandidates is how many are
 	// scored. See defaultRerankMaxCandidates for the latency trade-off.
 	TopK          int
@@ -350,10 +357,22 @@ type APIAuthConfig struct {
 
 const minAPITokenLen = 24
 
+var rfc6750TokenRegex = regexp.MustCompile(`^[A-Za-z0-9\-._~+/]+=*$`)
+
+func validateAuthToken(token string, minLength int) error {
+	if len(token) < minLength {
+		return fmt.Errorf("must be at least %d characters, got %d", minLength, len(token))
+	}
+	if !rfc6750TokenRegex.MatchString(token) {
+		return errors.New("contains invalid characters (must be RFC 6750 b64 alphabet)")
+	}
+	return nil
+}
+
 // ResolveAPIAuth resolves the API authentication token following server config semantics.
 // It checks RAG_API_AUTH ("disabled" returns ("", false, nil)),
-// RAG_API_TOKEN_FILE (must be readable, >= 24 chars),
-// and RAG_API_TOKEN (>= 24 chars).
+// RAG_API_TOKEN_FILE (must be readable, >= 24 chars, valid RFC6750),
+// and RAG_API_TOKEN (>= 24 chars, valid RFC6750).
 func ResolveAPIAuth() (APIAuthConfig, error) {
 	authEnv := strings.TrimSpace(os.Getenv("RAG_API_AUTH"))
 	if strings.EqualFold(authEnv, "disabled") {
@@ -365,16 +384,18 @@ func ResolveAPIAuth() (APIAuthConfig, error) {
 		if err != nil {
 			return APIAuthConfig{}, fmt.Errorf("read RAG_API_TOKEN_FILE %s: %w", path, err)
 		}
-		token := strings.TrimSpace(string(data))
-		if len(token) < minAPITokenLen {
-			return APIAuthConfig{}, fmt.Errorf("token from RAG_API_TOKEN_FILE must be at least %d characters, got %d", minAPITokenLen, len(token))
+
+		token := strings.TrimRight(string(data), "\r\n")
+		if err := validateAuthToken(token, minAPITokenLen); err != nil {
+			return APIAuthConfig{}, fmt.Errorf("token from RAG_API_TOKEN_FILE: %w", err)
 		}
 		return APIAuthConfig{Token: token, Enabled: true}, nil
 	}
 
-	if token := strings.TrimSpace(os.Getenv("RAG_API_TOKEN")); token != "" {
-		if len(token) < minAPITokenLen {
-			return APIAuthConfig{}, fmt.Errorf("RAG_API_TOKEN must be at least %d characters, got %d", minAPITokenLen, len(token))
+	if rawToken := os.Getenv("RAG_API_TOKEN"); rawToken != "" {
+		token := strings.TrimRight(rawToken, "\r\n")
+		if err := validateAuthToken(token, minAPITokenLen); err != nil {
+			return APIAuthConfig{}, fmt.Errorf("RAG_API_TOKEN: %w", err)
 		}
 		return APIAuthConfig{Token: token, Enabled: true}, nil
 	}
@@ -415,6 +436,8 @@ type Config struct {
 }
 
 func Load() *Config {
+	inferenceToken := readInferenceToken()
+
 	return &Config{
 		Env:        getEnv("ENV", "development"),
 		LLMBackend: getEnv("LLM_BACKEND", "ollama"),
@@ -436,19 +459,22 @@ func Load() *Config {
 			URL:                    getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedder-external:11436"),
 			Model:                  getEnv("EMBEDDING_MODEL", "bge-m3"),
 			Timeout:                getEnvInt("EMBEDDER_TIMEOUT", 30),
+			InferenceToken:         inferenceToken,
 			AllowedOverrideOrigins: getEnvCSV("RAG_EMBEDDER_ALLOWED_OVERRIDE_URLS", []string{"http://backfill-hyperboost:11434"}),
 		},
 		Augur: AugurConfig{
-			URL:     getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://news-creator-backend:11435"),
-			Model:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gemma4-e4b-12k"),
-			Timeout: getEnvInt("OLLAMA_TIMEOUT", 300),
+			URL:             getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://news-creator-backend:11435"),
+			EndpointPurpose: getEnv("AUGUR_ENDPOINT_PURPOSE", ""),
+			Model:           getEnv("AUGUR_KNOWLEDGE_MODEL", "gemma4-e4b-12k"),
+			Timeout:         getEnvInt("OLLAMA_TIMEOUT", 300),
+			InferenceToken:  inferenceToken,
 		},
 		Search: SearchConfig{
 			IndexerURL: getEnv("SEARCH_INDEXER_URL", "http://search-indexer:8080"),
 			Timeout:    getEnvInt("SEARCH_INDEXER_TIMEOUT", 10),
 		},
 		QueryExpansion: QueryExpansionConfig{
-			URL:            getEnv("QUERY_EXPANSION_URL", "http://news-creator:11434"),
+			URL:            getEnv("QUERY_EXPANSION_URL", "https://news-creator:9443"),
 			Timeout:        getEnvInt("QUERY_EXPANSION_TIMEOUT", 3),
 			PlannerTimeout: getEnvInt("QUERY_PLANNER_TIMEOUT", 60),
 		},
@@ -475,8 +501,9 @@ func Load() *Config {
 		},
 		Rerank: RerankConfig{
 			Enabled:       getEnvBool("RERANK_ENABLED", defaultRerankEnabled),
-			URL:           getEnv("RERANK_URL", "http://news-creator:11434"),
+			URL:           getEnv("RERANK_URL", "https://news-creator:9443"),
 			Model:         getEnv("RERANK_MODEL", defaultRerankModel),
+			AuthToken:     readRerankToken(),
 			TopK:          getEnvInt("RERANK_TOP_K", defaultRerankTopK),
 			MaxCandidates: getEnvInt("RERANK_MAX_CANDIDATES", defaultRerankMaxCandidates),
 			Timeout:       getEnvInt("RERANK_TIMEOUT", defaultRerankTimeout),
@@ -563,6 +590,52 @@ func getEnvCSV(key string, fallback []string) []string {
 		}
 	}
 	return out
+}
+
+func readRerankToken() string {
+	enabled := getEnvBool("RERANK_ENABLED", defaultRerankEnabled)
+	filePath, ok := os.LookupEnv("RERANK_INFERENCE_TOKEN_FILE")
+	if !ok || filePath == "" {
+		if enabled {
+			panic("RERANK_INFERENCE_TOKEN_FILE is required when RERANK_ENABLED is true")
+		}
+		return ""
+	}
+
+	content, err := os.ReadFile(filePath) //nolint:gosec
+	if err != nil {
+		if enabled {
+			panic(fmt.Sprintf("failed to read RERANK_INFERENCE_TOKEN_FILE at %s: %v", filePath, err))
+		}
+		return ""
+	}
+
+	token := strings.TrimRight(string(content), "\r\n")
+	if err := validateAuthToken(token, 16); err != nil {
+		if enabled {
+			panic(fmt.Sprintf("RERANK_INFERENCE_TOKEN_FILE contains invalid token: %v", err))
+		}
+		return ""
+	}
+	return token
+}
+
+func readInferenceToken() string {
+	filePath, ok := os.LookupEnv("INFERENCE_SERVICE_TOKEN_FILE")
+	if !ok || filePath == "" {
+		return ""
+	}
+
+	content, err := os.ReadFile(filePath) //nolint:gosec
+	if err != nil {
+		panic(fmt.Sprintf("failed to read INFERENCE_SERVICE_TOKEN_FILE at %s: %v", filePath, err))
+	}
+
+	token := strings.TrimRight(string(content), "\r\n")
+	if err := validateAuthToken(token, 1); err != nil {
+		panic(fmt.Sprintf("INFERENCE_SERVICE_TOKEN_FILE contains invalid token: %v", err))
+	}
+	return token
 }
 
 func getEnvInt(key string, fallback int) int {

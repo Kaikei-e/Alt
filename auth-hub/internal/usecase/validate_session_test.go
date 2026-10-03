@@ -46,6 +46,10 @@ func (m *mockCache) Set(sessionID string, session domain.CachedSession) {
 	m.entries[sessionID] = session
 }
 
+func (m *mockCache) Delete(sessionID string) {
+	delete(m.entries, sessionID)
+}
+
 func TestValidateSession_CacheHit(t *testing.T) {
 	cache := newMockCache()
 	cache.Set("cookie-abc", domain.CachedSession{

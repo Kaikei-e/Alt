@@ -126,7 +126,7 @@ jobs:
         env:
           GOFLAGS: "-buildvcs=false"  # sparse-checkout + shallow clone では VCS 情報取得不可
         with:
-          version: v2.1
+          version: v2.14.0
           install-mode: goinstall
           working-directory: ${{ inputs.working-directory }}
           # PR は --new-from-rev で自前フィルタするので action 側の only-new-issues は無効化。

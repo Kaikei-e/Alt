@@ -35,6 +35,7 @@ FILE_SUFFIXES = {
     ".ini",
     ".xml",
     ".pem",
+    ".pub",
     ".crt",
     ".key",
     ".sh",
@@ -67,6 +68,8 @@ ARTEFACT_DIRECTORY_MARKERS = (
     "RECAP_SUBWORKER_DATA_HOST_PATH",
     "alt-recap-subworker-data",
     "learning_machine/artifacts",
+    "/etc/plecto/artifacts/",
+    "/backups/clickhouse",
 )
 
 SHORT_MODES = {"ro", "rw", "z", "Z", "consistent", "delegated", "cached"}

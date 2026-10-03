@@ -112,6 +112,13 @@ services:
     volumes:
       - ../clickhouse/migrations:/migrations:ro
       - clickhouse_data:/var/lib/clickhouse
+      # Same native BACKUP disk as restic-backup. Use an existing absolute
+      # directory when retaining historical backups; never silently create it.
+      - type: bind
+        source: ${CLICKHOUSE_BACKUP_HOST_PATH:-/var/lib/alt-clickhouse-backups}
+        target: /backups/clickhouse
+        bind:
+          create_host_path: false
     configs:
       - source: clickhouse_entrypoint_wrapper
         target: /entrypoint-wrapper.sh
@@ -121,6 +128,9 @@ services:
         mode: 0444
       - source: clickhouse_disable_profiler
         target: /etc/clickhouse-server/users.d/disable_profiler.xml
+        mode: 0444
+      - source: clickhouse_backup_disk
+        target: /etc/clickhouse-server/config.d/backup_disk.xml
         mode: 0444
     networks:
       - alt-network
@@ -254,3 +264,5 @@ configs:
     file: ../clickhouse/config/system_tables.xml
   clickhouse_disable_profiler:
     file: ../clickhouse/config/disable_profiler.xml
+  clickhouse_backup_disk:
+    file: ../clickhouse/config/backup_disk.xml

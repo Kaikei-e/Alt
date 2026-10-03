@@ -153,6 +153,19 @@ suite_pki() {
   # shellcheck source=../../_lib/mint-staging-pki.sh
   source "$ROOT/e2e/_lib/mint-staging-pki.sh"
   mint_staging_pki "$SUITE_PKI_DIR" "$@"
+  # Node loads additional CAs at process startup. Playwright API requests must
+  # verify the real server hostname and chain, without ignoreHTTPSErrors.
+  SUITE_ENV_ARGS+=("-e" "NODE_EXTRA_CA_CERTS=$SUITE_PKI_DIR/ca-bundle.pem")
+  case "$SUITE_NAME" in
+    alt-backend|alt-harvester|alt-data-hub)
+      # DataHub also authenticates as a client to the AuthHub test provider.
+      mint_staging_leaf "$SUITE_PKI_DIR" alt-data-hub serverAuth,clientAuth
+      cp "$SUITE_PKI_DIR/alt-data-hub.pem" "$SUITE_PKI_DIR/svc-cert.pem"
+      cp "$SUITE_PKI_DIR/alt-data-hub-key.pem" "$SUITE_PKI_DIR/svc-key.pem"
+      mint_staging_leaf "$SUITE_PKI_DIR" auth-hub serverAuth
+      chmod 0644 "$SUITE_PKI_DIR"/*.pem
+      ;;
+  esac
 }
 
 # suite_endpoint <NAME> <default>

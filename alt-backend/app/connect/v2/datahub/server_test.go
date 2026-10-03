@@ -34,7 +34,7 @@ func mounted(t *testing.T, mux *http.ServeMux, path string) bool {
 // because these tests assert routing, not behaviour.
 func components() *datahubdi.DataHubComponents {
 	return &datahubdi.DataHubComponents{
-		KratosClient:               kratos_client.NewKratosClient("", ""),
+		KratosClient:               kratos_client.NewKratosClient("https://auth-hub.internal", "", &http.Client{}),
 		FetchRecentArticlesUsecase: fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(nil),
 
 		// Required for the same reason and by the same rule: CreateArticle is
@@ -149,7 +149,7 @@ func TestSetupConnectHandlers_RefusesToMountWithoutTheAbsorbedRESTCapabilities(t
 		{
 			name: "no recent articles usecase",
 			container: &datahubdi.DataHubComponents{
-				KratosClient: kratos_client.NewKratosClient("", ""),
+				KratosClient: kratos_client.NewKratosClient("https://auth-hub.internal", "", &http.Client{}),
 			},
 		},
 		{

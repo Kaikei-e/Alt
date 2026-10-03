@@ -21,8 +21,7 @@ func Run(ctx context.Context) error {
 	otelCfg := otel.ConfigFromEnv()
 	otelShutdown, err := otel.InitProvider(ctx, otelCfg)
 	if err != nil {
-		fmt.Printf("Failed to initialize OpenTelemetry: %v\n", err)
-		otelCfg.Enabled = false
+		return fmt.Errorf("failed to initialize OpenTelemetry: %w", err)
 	}
 	otelShutdown = resolveOtelShutdown(otelShutdown)
 	defer func() {
@@ -69,7 +68,7 @@ func Run(ctx context.Context) error {
 	errCh := make(chan error, 4)
 	httpServer := NewHTTPServer(deps, otelCfg.Enabled, otelCfg.ServiceName)
 	StartHTTPServer(httpServer, log, errCh)
-	connectServers := StartConnectServer(deps, errCh)
+	connectServers := StartConnectServer(deps, errCh, httpServer)
 
 	// The metrics listener is separate from the API listener on purpose, and
 	// it is where the notification-outbox relay's gauges are exposed. A bind

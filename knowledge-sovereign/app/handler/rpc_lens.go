@@ -24,9 +24,18 @@ func (h *SovereignHandler) ListLenses(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListLenses: %w", err))
 	}
-	pb := make([]*sovereignv1.Lens, len(lenses))
-	for i, l := range lenses {
-		pb[i] = lensToProto(l)
+
+	claims, hasClaims := BackendClaimsFromContext(ctx)
+	var pb []*sovereignv1.Lens
+	for _, l := range lenses {
+		if hasClaims && l.TenantID.String() != claims.TenantID {
+			continue
+		}
+		pb = append(pb, lensToProto(l))
+	}
+
+	if pb == nil {
+		pb = []*sovereignv1.Lens{}
 	}
 	return connect.NewResponse(&sovereignv1.ListLensesResponse{Lenses: pb}), nil
 }
@@ -43,8 +52,19 @@ func (h *SovereignHandler) GetLens(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens: %w", err))
 	}
+
 	var pb *sovereignv1.Lens
 	if lens != nil {
+		// B-02 fix: Enforce trusted storage ownership if a user token is provided
+		if claims, ok := BackendClaimsFromContext(ctx); ok {
+			if lens.UserID.String() != claims.Subject {
+				return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller does not own lens"))
+			}
+			if lens.TenantID.String() != claims.TenantID {
+				return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller tenant does not own lens"))
+			}
+		}
+
 		version, err := h.readDB.GetCurrentLensVersion(ctx, lensID)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens version: %w", err))
@@ -69,11 +89,39 @@ func (h *SovereignHandler) GetCurrentLensSelection(
 	}
 	resp := &sovereignv1.GetCurrentLensSelectionResponse{Found: sel != nil}
 	if sel != nil {
-		resp.Selection = &sovereignv1.CurrentLensSelection{
-			UserId:        sel.UserID.String(),
-			LensId:        sel.LensID.String(),
-			LensVersionId: sel.LensVersionID.String(),
-			SelectedAt:    timestamppb.New(sel.SelectedAt),
+		storedLens, err := h.readDB.GetLens(ctx, sel.LensID)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens: %w", err))
+		}
+		if storedLens == nil || storedLens.UserID != userID {
+			resp.Found = false
+		} else {
+			if claims, ok := BackendClaimsFromContext(ctx); ok {
+				if storedLens.TenantID.String() != claims.TenantID {
+					resp.Found = false
+				}
+			}
+		}
+
+		if resp.Found {
+			storedVersion, err := h.readDB.GetLensVersion(ctx, sel.LensVersionID)
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLensVersion: %w", err))
+			}
+			if storedVersion == nil || storedVersion.LensID != sel.LensID {
+				resp.Found = false
+			}
+		}
+
+		if resp.Found {
+			resp.Selection = &sovereignv1.CurrentLensSelection{
+				UserId:        sel.UserID.String(),
+				LensId:        sel.LensID.String(),
+				LensVersionId: sel.LensVersionID.String(),
+				SelectedAt:    timestamppb.New(sel.SelectedAt),
+			}
+		} else {
+			resp.Selection = nil
 		}
 	}
 	return connect.NewResponse(resp), nil
@@ -90,6 +138,51 @@ func (h *SovereignHandler) ResolveLensFilter(
 	lensID, err := parseUUIDPtrField("lens_id", req.Msg.LensId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if lensID != nil {
+		storedLens, err := h.readDB.GetLens(ctx, *lensID)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens: %w", err))
+		}
+		if storedLens == nil {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("lens not found"))
+		}
+		if storedLens.UserID != userID {
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("lens does not belong to user"))
+		}
+		if claims, ok := BackendClaimsFromContext(ctx); ok {
+			if storedLens.TenantID.String() != claims.TenantID {
+				return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller tenant does not own lens"))
+			}
+		}
+	} else {
+		// When lens_id is not specified, resolve from user's current lens selection.
+		// Enforce user/tenant ownership and version association on the selected lens before returning the filter.
+		sel, err := h.readDB.GetCurrentLensSelection(ctx, userID)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetCurrentLensSelection: %w", err))
+		}
+		if sel != nil {
+			storedLens, err := h.readDB.GetLens(ctx, sel.LensID)
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens: %w", err))
+			}
+			if storedLens == nil || storedLens.UserID != userID {
+				return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("current selected lens does not belong to user"))
+			}
+			if claims, ok := BackendClaimsFromContext(ctx); ok {
+				if storedLens.TenantID.String() != claims.TenantID {
+					return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller tenant does not own lens"))
+				}
+			}
+			storedVersion, err := h.readDB.GetLensVersion(ctx, sel.LensVersionID)
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLensVersion: %w", err))
+			}
+			if storedVersion == nil || storedVersion.LensID != sel.LensID {
+				return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("current lens version does not belong to lens"))
+			}
+		}
 	}
 	filter, err := h.readDB.ResolveLensFilter(ctx, userID, lensID)
 	if err != nil {
@@ -167,6 +260,22 @@ func (h *SovereignHandler) CreateLensVersion(
 	if pv.CreatedAt == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_at is required"))
 	}
+	storedLens, err := h.readDB.GetLens(ctx, lensID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens: %w", err))
+	}
+	if storedLens == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("lens not found"))
+	}
+	if claims, ok := BackendClaimsFromContext(ctx); ok {
+		if storedLens.UserID.String() != claims.Subject {
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller does not own lens"))
+		}
+		if storedLens.TenantID.String() != claims.TenantID {
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller tenant does not own lens"))
+		}
+	}
+
 	v := sovereign_db.KnowledgeLensVersion{
 		LensVersionID: lensVersionID,
 		LensID:        lensID,
@@ -208,6 +317,35 @@ func (h *SovereignHandler) SelectCurrentLens(
 	if ps.SelectedAt == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("selected_at is required"))
 	}
+	// Check stored owner/tenant
+	storedLens, err := h.readDB.GetLens(ctx, lensID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens: %w", err))
+	}
+	if storedLens == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("lens not found"))
+	}
+	if storedLens.UserID != userID {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("lens does not belong to user"))
+	}
+	if claims, ok := BackendClaimsFromContext(ctx); ok {
+		if storedLens.TenantID.String() != claims.TenantID {
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller tenant does not own lens"))
+		}
+	}
+
+	// Check version belongs to lens
+	storedVersion, err := h.readDB.GetLensVersion(ctx, lensVersionID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLensVersion: %w", err))
+	}
+	if storedVersion == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("lens version not found"))
+	}
+	if storedVersion.LensID != lensID {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("version does not belong to lens"))
+	}
+
 	c := sovereign_db.KnowledgeCurrentLens{
 		UserID:        userID,
 		LensID:        lensID,
@@ -228,6 +366,11 @@ func (h *SovereignHandler) ClearCurrentLens(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if claims, ok := BackendClaimsFromContext(ctx); ok {
+		if userID.String() != claims.Subject {
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller does not own selection"))
+		}
+	}
 	if err := h.readDB.ClearCurrentLens(ctx, userID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ClearCurrentLens: %w", err))
 	}
@@ -241,6 +384,20 @@ func (h *SovereignHandler) ArchiveLens(
 	lensID, err := parseUUIDField("lens_id", req.Msg.LensId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	storedLens, err := h.readDB.GetLens(ctx, lensID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens: %w", err))
+	}
+	if storedLens != nil {
+		if claims, ok := BackendClaimsFromContext(ctx); ok {
+			if storedLens.UserID.String() != claims.Subject {
+				return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller does not own lens"))
+			}
+			if storedLens.TenantID.String() != claims.TenantID {
+				return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller tenant does not own lens"))
+			}
+		}
 	}
 	if err := h.readDB.ArchiveLens(ctx, lensID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ArchiveLens: %w", err))

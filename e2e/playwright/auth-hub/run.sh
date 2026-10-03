@@ -54,11 +54,12 @@ suite_init auth-hub
 # migrator and Postgres are upstream images pinned in compose.staging.yaml.
 suite_image_tags AUTH_HUB_IMAGE_TAG
 
-# No `suite_pki`: compose.staging.yaml sets MTLS_LISTEN=false, so auth-hub
-# starts no TLS listener and there is no mutual-TLS material for the slice to
-# mount. tests/topology.spec.ts asserts that absence rather than assuming it.
+suite_pki auth-hub alt-data-hub denied-peer
+suite_endpoint TLS_CLIENT_CERT_FILE "$SUITE_PKI_DIR/alt-data-hub.pem"
+suite_endpoint TLS_CLIENT_KEY_FILE "$SUITE_PKI_DIR/alt-data-hub-key.pem"
+suite_endpoint PLAINTEXT_URL "http://auth-hub:8888"
 
-suite_endpoint BASE_URL          "http://auth-hub:8888"
+suite_endpoint BASE_URL          "https://auth-hub:8443"
 suite_endpoint KRATOS_PUBLIC_URL "http://kratos:4433"
 suite_endpoint KRATOS_ADMIN_URL  "http://kratos:4434"
 suite_endpoint MTLS_URL          "https://auth-hub:9443"
@@ -89,7 +90,7 @@ suite_endpoint INTERNAL_AUTH_SECRET \
 # claims alt-backend verifies, so a drift is a cross-service outage.
 suite_endpoint JWT_ISSUER      "auth-hub"
 suite_endpoint JWT_AUDIENCE    "alt-backend"
-suite_endpoint JWT_TTL_SECONDS "1800"
+suite_endpoint JWT_TTL_SECONDS "300"
 
 # The same four services the Hurl run.sh brought up. Ordering is enforced by
 # compose itself: the migrator gates on auth-hub-db being healthy, Kratos gates

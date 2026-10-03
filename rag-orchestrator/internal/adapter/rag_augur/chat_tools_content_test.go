@@ -62,7 +62,7 @@ func TestChatWithTools_SendsEmptyContentForToolCallTurn(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	gen := NewOllamaGenerator(srv.URL, "gemma4-e4b-rag", 10, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	gen := NewOllamaGenerator(srv.URL, "gemma4-e4b-rag", 10, slog.New(slog.NewJSONHandler(io.Discard, nil)), "")
 	_, err := gen.ChatWithTools(context.Background(), []domain.Message{
 		{Role: "assistant", Content: "", ToolCalls: []domain.ToolCall{
 			{Function: domain.ToolCallFunction{Name: "tag_search"}},

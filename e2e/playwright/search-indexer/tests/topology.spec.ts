@@ -5,36 +5,60 @@ import {
 	expectStatus,
 	expectStatusIn,
 } from "../../_shared/http.js";
-import { expectConnectionRefused } from "../../_shared/net.js";
+import { expectConnectionRefused, expectTlsHandshakeRejected } from "../../_shared/net.js";
+import { clientCertificates } from "../../_shared/client-auth.js";
 import { env, Procedure, SharedCorpus } from "../src/env.js";
 import { nonEmptySearchResponseSchema } from "../src/schemas.js";
 
 /**
- * Listener topology and the access-control posture that follows from it — new
- * coverage, and the part of this service the Hurl suite could not express at
- * all.
- *
- * search-indexer binds up to three listeners, and which ones is a
- * configuration decision made in `bootstrap/app.go`:
- *
- *   :9300  REST     — always
- *   :9301  Connect  — always
- *   :9443  REST + Connect behind mutual TLS — **only** when
- *          `os.Getenv("MTLS_LISTEN") == "true"`
- *
- * The consequence is stated plainly in `bootstrap/servers.go`: *"/v1/search is
- * gated at the transport layer (mTLS peer-identity on the :9443 listener). The
- * plaintext :9300 path here serves only rate-limited handlers; auth has been
- * removed pending retirement of the listener itself."* On the plaintext ports,
- * **network reachability is the entire access control** for an endpoint that
- * can read any tenant's articles. That is a deliberate migration-window
- * posture, not an oversight — but nothing was asserting it, so nothing would
- * have noticed it changing in either direction.
- *
- * Every negative below asserts **404**, never 401 or 403. A 401 would mean the
- * route is registered on the wrong mux and only a middleware stands between a
- * caller and it; 404 is the only status that says "this surface is not here".
+ * Asserts that the request fails specifically due to the TLS handshake rejecting
+ * an unauthorized client certificate with SSL alert 42 (bad certificate).
+ * Generic connection resets, timeouts, or refused connections are never accepted.
  */
+function isTlsBadCertificate(errorMsg: string): boolean {
+	const hasBadCertAlert =
+		/ssl\/tls alert bad certificate/i.test(errorMsg) ||
+		/SSL alert number 42/i.test(errorMsg) ||
+		/alert bad certificate/i.test(errorMsg);
+	if (!hasBadCertAlert) {
+		return false;
+	}
+	const isGeneric =
+		/ECONNRESET/i.test(errorMsg) ||
+		/ECONNREFUSED/i.test(errorMsg) ||
+		/ETIMEDOUT/i.test(errorMsg) ||
+		/socket hang up/i.test(errorMsg);
+	return !isGeneric;
+}
+
+async function expectTlsBadCertificate(
+	action: Promise<unknown>,
+	what: string,
+): Promise<void> {
+	try {
+		const res = await action;
+		const status = (res && typeof res === "object" && "status" in res && typeof res.status === "function")
+			? res.status()
+			: JSON.stringify(res);
+		throw new Error(
+			`${what}\n  expected: TLS handshake rejected with bad certificate alert (alert 42)\n` +
+				`  actual:   server answered with HTTP ${status}`,
+		);
+	} catch (error) {
+		if (error instanceof Error && error.message.startsWith(what)) {
+			throw error;
+		}
+		const msg = error instanceof Error ? error.message : String(error);
+		if (!isTlsBadCertificate(msg)) {
+			throw new Error(
+				`${what}\n  expected: TLS handshake rejected with bad certificate alert (alert 42)\n` +
+					`  actual error: ${msg}`,
+			);
+		}
+	}
+}
+
+/** Plaintext :9300 serves health only; business REST/Connect routes require mTLS on :9443. */
 
 test.describe("the plaintext listeners answer only their own routes", () => {
 	test("the positive control", { tag: "@smoke" }, async ({ rest, bare }) => {
@@ -43,11 +67,11 @@ test.describe("the plaintext listeners answer only their own routes", () => {
 		// on a completely broken deployment.
 		await expectStatus(await rest.get("/health"), 200);
 		await expectStatus(await rest.get(`/v1/search?q=rust&user_id=${SharedCorpus.aliceUser}&limit=1`), 200);
-		await expectStatus(await bare.get(`${env.connectURL}/health`), 200);
+		await expectStatus(await bare.get(`${env.plaintextURL}/health`), 200);
 	});
 
-	test("REST :9300 does not serve Connect procedures", { tag: "@contract" }, async ({
-		rest,
+	test("plaintext :9300 does not serve Connect procedures", { tag: "@contract" }, async ({
+		bare,
 	}) => {
 		// The :9443 mux deliberately merges the two surfaces —
 		// `newMTLSMuxHandler` registers `/v1/search`, `/health`, the
@@ -56,7 +80,7 @@ test.describe("the plaintext listeners answer only their own routes", () => {
 		// gate that mTLS mux exists to apply would be bypassable by switching
 		// port.
 		await expectStatus(
-			await rest.post(`/${Procedure.searchArticles}`, {
+			await bare.post(`${env.plaintextURL}/${Procedure.searchArticles}`, {
 				headers: { "Content-Type": "application/json" },
 				data: {},
 			}),
@@ -64,19 +88,27 @@ test.describe("the plaintext listeners answer only their own routes", () => {
 		);
 	});
 
-	test("Connect :9301 does not serve the REST search route", { tag: "@contract" }, async ({
+	test("plaintext :9300 does not serve business search", { tag: "@contract" }, async ({
 		bare,
 	}) => {
-		// The other direction. `CreateConnectServer`'s mux registers `/health`
-		// and the service prefix and nothing else, so `/v1/search` here is an
-		// unmatched route — not a second, differently-configured copy of the
-		// search handler.
-		await expectStatus(await bare.get(`${env.connectURL}/v1/search?q=rust`), 404);
+		await expectStatus(
+			await bare.get(`${env.plaintextURL}/v1/search?q=rust&user_id=${SharedCorpus.aliceUser}&limit=1`),
+			404,
+		);
+	});
+
+	test("legacy Connect :9301 port is refused", { tag: "@contract" }, async ({
+		bare,
+	}) => {
+		await expectConnectionRefused(
+			bare,
+			`${env.retiredConnectURL}/health`,
+			"legacy :9301 listener has been retired; search-indexer listens on :9300 and mTLS :9443",
+		);
 	});
 
 	for (const [listener, url] of [
-		["REST :9300", () => env.baseURL],
-		["Connect :9301", () => env.connectURL],
+		["REST :9300", () => env.plaintextURL],
 	] as const) {
 		test(`${listener} has no catch-all root handler`, { tag: "@contract" }, async ({
 			bare,
@@ -90,76 +122,90 @@ test.describe("the plaintext listeners answer only their own routes", () => {
 		});
 	}
 
-	test("REST :9300 exposes no /metrics", { tag: "@authz" }, async ({ rest }) => {
+	test("REST :9300 exposes no /metrics", { tag: "@authz" }, async ({ bare }) => {
 		// search-indexer publishes telemetry over OTLP
 		// (`OTEL_EXPORTER_OTLP_ENDPOINT`), not by scraping — `newHTTPServer`
 		// registers exactly two routes. Asserting the absence is what stops a
 		// promhttp handler being added to the *unauthenticated* listener as a
 		// convenience: on this port that would publish per-query cardinality to
 		// anyone who can reach the container.
-		await expectStatus(await rest.get("/metrics"), 404);
+		await expectStatus(await bare.get(`${env.plaintextURL}/metrics`), 404);
 	});
 
-	test("no listener advertises a Server banner", { tag: "@contract" }, async ({ rest }) => {
+	test("no listener advertises a Server banner", { tag: "@contract" }, async ({ bare }) => {
 		// Go's net/http sets no `Server` header and nothing in
 		// `bootstrap/servers.go` adds one. Cheap to assert, and the thing it
 		// fences is a reverse proxy or middleware being introduced in front of
 		// the service without anyone deciding what it should leak.
-		const response = await rest.get("/health");
+		const response = await bare.get(`${env.plaintextURL}/health`);
 		expectNoHeader(response, "Server");
 		expectNoHeader(response, "X-Powered-By");
 	});
 });
 
-test.describe("the mutual-TLS listener is opt-in", () => {
-	test("nothing answers on :9443 when MTLS_LISTEN is false", { tag: "@authz" }, async ({
+test.describe("the mutual-TLS listener enforces peer identity", () => {
+	test("TLS business endpoints reject uncredentialed client at handshake", { tag: "@authz" }, async ({
 		bare,
 	}) => {
-		// compose.staging.yaml sets `MTLS_LISTEN=false`, and `bootstrap/app.go`
-		// binds the mTLS mux only on the exact string `"true"`. So the correct
-		// observable state is *nothing bound* — which is the CLAUDE.md rule 9
-		// shape: "disabled" is an explicit config value, and its consequence is
-		// asserted rather than inferred.
-		//
-		// This is the assertion Hurl could not make at all: it treats a
-		// connection it cannot establish as a run failure, so the split-topology
-		// Hurl suites had to invert the polarity outside the framework with a
-		// shell wrapper demanding exit code 3.
-		//
-		// If someone flips MTLS_LISTEN on in the staging slice, this fails — and
-		// it should, because the suite would then need `suite_pki` and a client
-		// certificate, and every "plaintext is the only surface" claim above
-		// would need revisiting.
-		await expectConnectionRefused(
+		await expectTlsHandshakeRejected(
 			bare,
-			`${env.mtlsAbsentURL}/health`,
-			"search-indexer binds its mutual-TLS mux only when MTLS_LISTEN=true; the " +
-				"staging slice sets it false, so :9443 must not be listening",
+			`${env.baseURL}/v1/search?q=rust&user_id=${SharedCorpus.aliceUser}&limit=1`,
+			"search-indexer mTLS listener rejects uncredentialed TLS clients during handshake",
+		);
+		await expectTlsHandshakeRejected(
+			bare,
+			`${env.connectURL}/${Procedure.searchArticles}`,
+			"search-indexer mTLS listener rejects uncredentialed TLS clients during handshake",
+		);
+	});
+
+	test("TLS business endpoints reject unauthorized peer certificate at handshake", { tag: "@authz" }, async ({
+		playwright,
+	}) => {
+		const denied = await playwright.request.newContext({
+			clientCertificates: clientCertificates(env.baseURL, env.deniedCert, env.deniedKey),
+		});
+		try {
+			await expectTlsBadCertificate(
+				denied.get(`${env.baseURL}/v1/search?q=rust&user_id=${SharedCorpus.aliceUser}&limit=1`),
+				"search-indexer mTLS listener rejects unauthorized peer certificate at handshake",
+			);
+			await expectTlsBadCertificate(
+				denied.post(`${env.connectURL}/${Procedure.searchArticles}`, {
+					headers: { "Content-Type": "application/json" },
+					data: {},
+				}),
+				"search-indexer mTLS listener rejects unauthorized peer certificate at handshake",
+			);
+		} finally {
+			await denied.dispose();
+		}
+	});
+
+	test("TLS health rejects uncredentialed client at handshake", { tag: "@contract" }, async ({
+		bare,
+	}) => {
+		await expectTlsHandshakeRejected(
+			bare,
+			`${env.baseURL}/health`,
+			"search-indexer mTLS listener requires client certificate on :9443 even for /health",
 		);
 	});
 });
 
-test.describe("access-control posture on the plaintext ports", () => {
-	test("searching requires no credential whatsoever", { tag: "@authz" }, async ({ bare }) => {
-		// Stated as a test rather than left in a README, because it is the whole
-		// reason the mTLS listener exists and the whole reason this suite needs
-		// no auth fixture. `bare` sends no cookie, no bearer token, no client
-		// certificate and no peer-identity header.
-		//
-		// When `/v1/search` does start requiring a credential on this port —
-		// which is what "pending retirement of the listener itself" in
-		// bootstrap/servers.go anticipates — this test fails. That is the
-		// intended signal, not a bug in the test.
-		//
-		// The posture claim is that the credential-free path is *served*, not
-		// merely un-rejected, so the hit is asserted rather than the status
-		// alone. `q=rust` matches exactly the two shared-corpus documents
-		// globalSetup indexed before any worker started, and `limit=1` caps the
-		// page at one — so `hits: []` under a 200, which is what a search path
-		// that stopped reaching Meilisearch returns forever, fails here.
+test.describe("access-control posture on business endpoints", () => {
+	test("searching requires an owner token", { tag: "@authz" }, async ({ rest }) => {
+		// Compare unauthenticated rejection with a real nonempty authorized result.
+		await expectStatus(
+			await rest.get(
+				`/v1/search?q=${SharedCorpus.rustQuery}&user_id=${SharedCorpus.aliceUser}&limit=1`,
+				{ headers: { Authorization: "" } },
+			),
+			401,
+		);
 		const body = await expectJsonStatus(
-			await bare.get(
-				`${env.baseURL}/v1/search?q=${SharedCorpus.rustQuery}&user_id=${SharedCorpus.aliceUser}&limit=1`,
+			await rest.get(
+				`/v1/search?q=${SharedCorpus.rustQuery}&user_id=${SharedCorpus.aliceUser}&limit=1`,
 			),
 			200,
 			nonEmptySearchResponseSchema,
@@ -168,34 +214,22 @@ test.describe("access-control posture on the plaintext ports", () => {
 	});
 
 	test("searching without user_id is rejected with 400", { tag: "@authz" }, async ({
-		bare,
+		rest,
 	}) => {
-		const response = await bare.get(
-			`${env.baseURL}/v1/search?q=${SharedCorpus.rustQuery}&limit=1`,
+		const response = await rest.get(
+			`/v1/search?q=${SharedCorpus.rustQuery}&limit=1`,
 		);
 		await expectStatus(response, 400);
 	});
 
 	test("a spoofed peer-identity header changes nothing", { tag: "@authz" }, async ({
 		rest,
-		bare,
+		playwright,
 		corpus,
 	}) => {
 		// `X-Alt-Peer-Identity` is what `PeerIdentityMiddleware` *sets* from a
 		// verified client certificate CN, after stripping whatever the client
-		// sent. That middleware is wired only into `newMTLSMuxHandler`, so on
-		// :9300 the header is untrusted input that nothing reads.
-		//
-		// This pins **current** behaviour. If a future change starts trusting
-		// the header without an mTLS listener in front to overwrite it, this
-		// test breaks — which is exactly the alarm worth having, because the
-		// header is trivially forgeable over plaintext.
-		//
-		// Both sides are parsed as non-empty and the honest side is pinned to
-		// the whole seeded corpus first: an equality between two empty lists is
-		// trivially true, so a search path that had stopped reaching
-		// Meilisearch would otherwise satisfy "the header changed nothing" while
-		// changing everything.
+		// sent.
 		const path = `/v1/search?q=${corpus.nonce}&user_id=${corpus.userId}&limit=10`;
 		const honest = await expectJsonStatus(
 			await rest.get(path),
@@ -204,16 +238,19 @@ test.describe("access-control posture on the plaintext ports", () => {
 		);
 		expect(honest.hits).toHaveLength(corpus.docs.length);
 
-		const spoofed = await expectJsonStatus(
-			await bare.get(`${env.baseURL}${path}`, {
-				headers: { "X-Alt-Peer-Identity": "alt-backend" },
-			}),
-			200,
-			nonEmptySearchResponseSchema,
-		);
-		expect(spoofed.hits.map((hit) => hit.id).sort()).toEqual(
-			honest.hits.map((hit) => hit.id).sort(),
-		);
+		const denied = await playwright.request.newContext({
+			baseURL: env.baseURL,
+			clientCertificates: clientCertificates(env.baseURL, env.deniedCert, env.deniedKey),
+			extraHTTPHeaders: { "X-Alt-Peer-Identity": "alt-backend" },
+		});
+		try {
+			await expectTlsBadCertificate(
+				denied.get(path),
+				"denied peer certificate is rejected at handshake before HTTP headers are evaluated",
+			);
+		} finally {
+			await denied.dispose();
+		}
 	});
 
 	test("Meilisearch itself is not open to the network", { tag: "@authz" }, async ({ bare }) => {

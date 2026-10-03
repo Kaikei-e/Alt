@@ -54,6 +54,13 @@ func (c *SessionCache) Set(sessionID string, session domain.CachedSession) {
 	}
 }
 
+// Delete removes session data from the cache.
+func (c *SessionCache) Delete(sessionID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, sessionID)
+}
+
 // cleanup removes expired entries.
 func (c *SessionCache) cleanup() {
 	c.mu.Lock()

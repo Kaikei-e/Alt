@@ -3,7 +3,7 @@ use std::fs;
 
 use crate::error::AggregatorError;
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct Settings {
     pub clickhouse_host: String,
     pub clickhouse_port: u16,
@@ -14,6 +14,23 @@ pub struct Settings {
     pub http_port: u16,
     /// OTLP HTTP server port (traces/logs)
     pub otlp_http_port: u16,
+    /// Ingest bearer token for authenticating forwarders/OTLP clients (D-02).
+    pub ingest_token: String,
+}
+
+impl std::fmt::Debug for Settings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Settings")
+            .field("clickhouse_host", &self.clickhouse_host)
+            .field("clickhouse_port", &self.clickhouse_port)
+            .field("clickhouse_user", &self.clickhouse_user)
+            .field("clickhouse_password", &"[REDACTED]")
+            .field("clickhouse_database", &self.clickhouse_database)
+            .field("http_port", &self.http_port)
+            .field("otlp_http_port", &self.otlp_http_port)
+            .field("ingest_token", &"[REDACTED]")
+            .finish()
+    }
 }
 
 impl Settings {
@@ -96,6 +113,11 @@ pub fn get_configuration() -> Result<Settings, AggregatorError> {
     let http_port = env_port_or("HTTP_PORT", 9600)?;
     let otlp_http_port = env_port_or("OTLP_HTTP_PORT", 4318)?;
 
+    // D-02: Load ingest bearer token from file. Fail-fast at startup.
+    let ingest_token_file = env::var("RASK_INGEST_TOKEN_FILE")
+        .unwrap_or_else(|_| "/run/secrets/rask_ingest_token".to_string());
+    let ingest_token = crate::auth::load_ingest_token(&ingest_token_file)?;
+
     let settings = Settings {
         clickhouse_host,
         clickhouse_port,
@@ -104,6 +126,7 @@ pub fn get_configuration() -> Result<Settings, AggregatorError> {
         clickhouse_database,
         http_port,
         otlp_http_port,
+        ingest_token,
     };
 
     // Validate settings before returning
@@ -333,6 +356,7 @@ mod tests {
             clickhouse_database: "default".into(),
             http_port: 9600,
             otlp_http_port: 4318,
+            ingest_token: String::new(),
         };
         assert!(settings.validate().is_ok());
     }
@@ -347,6 +371,7 @@ mod tests {
             clickhouse_database: "default".into(),
             http_port: 9600,
             otlp_http_port: 4318,
+            ingest_token: String::new(),
         };
         assert!(settings.validate().is_err());
     }
@@ -361,6 +386,7 @@ mod tests {
             clickhouse_database: "default".into(),
             http_port: 9600,
             otlp_http_port: 4318,
+            ingest_token: String::new(),
         };
         assert!(settings.validate().is_err());
     }
@@ -375,6 +401,7 @@ mod tests {
             clickhouse_database: "default".into(),
             http_port: 0,
             otlp_http_port: 4318,
+            ingest_token: String::new(),
         };
         assert!(settings.validate().is_err());
     }
@@ -389,7 +416,34 @@ mod tests {
             clickhouse_database: "default".into(),
             http_port: 9600,
             otlp_http_port: 0,
+            ingest_token: String::new(),
         };
         assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn test_settings_debug_redacts_ingest_token_and_password() {
+        let unique_token = "unique-secret-token-xyz-12345";
+        let unique_pw = "unique-ch-password-98765";
+        let settings = Settings {
+            clickhouse_host: "localhost".into(),
+            clickhouse_port: 8123,
+            clickhouse_user: "default".into(),
+            clickhouse_password: unique_pw.into(),
+            clickhouse_database: "default".into(),
+            http_port: 9600,
+            otlp_http_port: 4318,
+            ingest_token: unique_token.into(),
+        };
+        let formatted = format!("{settings:?}");
+        assert!(
+            !formatted.contains(unique_token),
+            "ingest_token must not appear in Debug format"
+        );
+        assert!(
+            !formatted.contains(unique_pw),
+            "clickhouse_password must not appear in Debug format"
+        );
+        assert!(formatted.contains("[REDACTED]"));
     }
 }

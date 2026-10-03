@@ -5,6 +5,7 @@
     "jsr:@deno-library/progress@^1.5.1": "1.5.1",
     "jsr:@deno/cache-dir@0.22.2": "0.22.2",
     "jsr:@deno/graph@0.86": "0.86.9",
+    "jsr:@std/assert@*": "1.0.18",
     "jsr:@std/assert@1": "1.0.18",
     "jsr:@std/assert@^1.0.17": "1.0.18",
     "jsr:@std/async@1": "1.0.16",

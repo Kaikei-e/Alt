@@ -20,6 +20,11 @@ import { requiredEnv, requiredIntEnv, runId } from "../../_shared/env.js";
 export const env = {
 	/** The one uvicorn listener: REST + /metrics + /openapi.json. */
 	baseURL: requiredEnv("BASE_URL"),
+	plaintextURL: requiredEnv("PLAINTEXT_URL"),
+	clientCert: requiredEnv("TLS_CLIENT_CERT_FILE"),
+	clientKey: requiredEnv("TLS_CLIENT_KEY_FILE"),
+	deniedCert: requiredEnv("TLS_DENIED_CERT_FILE"),
+	deniedKey: requiredEnv("TLS_DENIED_KEY_FILE"),
 
 	/**
 	 * A port on the news-creator host that must have nothing bound to it.

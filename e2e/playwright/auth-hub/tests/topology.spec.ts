@@ -1,32 +1,10 @@
 import { test, expect } from "../src/fixtures.js";
 import { expectJson, expectStatus } from "../../_shared/http.js";
-import { expectConnectionRefused } from "../../_shared/net.js";
+import { expectTlsHandshakeRejected } from "../../_shared/net.js";
 import { env } from "../src/env.js";
 import { echoErrorSchema } from "../src/schemas.js";
 
-/**
- * The route table and the listener boundary — new coverage.
- *
- * auth-hub's whole attack surface is five routes on one port
- * (`cmd/auth-hub/main.go:176-187`):
- *
- *     GET  /validate               nginx auth_request
- *     GET  /session                the SPA
- *     POST /csrf                   the SPA
- *     GET  /health                 operators
- *     GET  /internal/system-user   other services, shared-secret only
- *
- * plus an mTLS HTTPS listener that only exists when `MTLS_LISTEN=true`. This
- * file pins both halves: that nothing else answers, and that the flagged
- * listener really is unbound when the flag is off.
- *
- * Every negative asserts **404**, never 401 or 403. A 401 would mean the route
- * is registered and only a middleware stands between the caller and it; 404 is
- * the only status that says "this surface is not here". That distinction is
- * the same one `_shared/connect.ts`'s `expectProcedureMounted` makes for the
- * Connect services elsewhere in the fleet — auth-hub mounts no Connect mux at
- * all, so this is where the equivalent claim lives.
- */
+/** Frontend TLS serves sessions; private mTLS serves internal routes; plaintext is health-only. */
 
 /**
  * Kratos surfaces that must not be reachable through auth-hub.
@@ -93,25 +71,24 @@ test.describe("route table", () => {
 });
 
 test.describe("listener boundary", () => {
-	test("the mTLS listener is not bound when MTLS_LISTEN is false @authz", async ({ hub }) => {
-		// `main.go:205` starts the HTTPS server only under `MTLS_LISTEN=true`, and
-		// compose.staging.yaml sets it to `false`. This is the negative half of a
-		// feature flag, and it is exactly the assertion CLAUDE.md rule 8 is about:
-		// "disabled" must be observable, not inferred. A unit test cannot see it —
-		// the branch is in `main()` — and no HTTP status can express it either,
-		// because the correct answer is that no connection is established at all.
-		//
-		// It also fences the inverse mistake. `tlsutil.LoadServerConfig` defaults
-		// `ClientAuth` to `NoClientCert`, so a listener that came up without its
-		// CA wired would serve the *entire* Echo handler — including
-		// `/internal/system-user` — over TLS to any client, with no certificate
-		// required. `expectConnectionRefused` distinguishes that from a genuinely
-		// closed port; `expectTlsHandshakeRejected` is what this becomes if the
-		// staging slice ever turns the flag on.
-		await expectConnectionRefused(
+	test("the private listener rejects a client without a certificate @authz", async ({ hub }) => {
+		// The active private listener requires a verified client certificate.
+		await expectTlsHandshakeRejected(
 			hub,
 			`${env.mtlsURL}/health`,
-			"auth-hub must expose no mutual-TLS listener while MTLS_LISTEN=false",
+			"auth-hub private listener requires a verified client certificate",
 		);
+	});
+	test("plaintext exposes health only, and frontend TLS cannot expose internal identities", async ({ playwright, hub }) => {
+		const plain = await playwright.request.newContext({ baseURL: env.plaintextURL });
+		try {
+			await expectStatus(await plain.get("/health"), 200);
+			for (const path of ["/session", "/validate", "/internal/system-user"]) {
+				const response = await plain.get(path, { headers: { "X-Internal-Auth": env.internalAuthSecret } });
+				await expectStatus(response, 403);
+				expect(await response.json()).toEqual({ error: "business endpoints require HTTPS" });
+			}
+			await expectStatus(await hub.get("/internal/system-user", { headers: { "X-Internal-Auth": env.internalAuthSecret } }), 403);
+		} finally { await plain.dispose(); }
 	});
 });

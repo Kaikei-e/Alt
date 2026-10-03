@@ -114,7 +114,7 @@ test.describe("backend token", () => {
 	});
 
 	test("expires exactly BACKEND_TOKEN_TTL after issue @contract", async ({ hub, session }) => {
-		// compose.staging.yaml sets BACKEND_TOKEN_TTL=30m; `JWT_TTL_SECONDS` in
+		// compose.staging.yaml sets BACKEND_TOKEN_TTL=5m; `JWT_TTL_SECONDS` in
 		// run.sh mirrors it, so a change to one without the other fails here
 		// rather than silently widening the window a stolen token stays valid.
 		//

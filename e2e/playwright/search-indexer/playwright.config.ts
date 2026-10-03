@@ -3,15 +3,13 @@ import { defineApiSuite } from "../_shared/config.js";
 /**
  * search-indexer API E2E.
  *
- * Three listeners are in scope, and the suite talks to all three:
+ * Listeners in scope:
  *
- *   :9300  plaintext REST — `/health` + `/v1/search` (bootstrap/servers.go,
+ *   :9300  plaintext health only — `/health` + `/health/deep` (`bootstrap/servers.go`,
  *          `newHTTPServer`)
- *   :9301  plaintext Connect-RPC over h2c — `/health` + the
- *          `services.search.v2.SearchService` prefix (connect/v2/server.go)
- *   :9443  the mutual-TLS mux, which `bootstrap/app.go` only binds when
- *          `MTLS_LISTEN == "true"`. The staging slice sets it to `false`, so
- *          the suite asserts nothing answers there rather than assuming it.
+ *   :9301  retired plaintext Connect-RPC listener (asserted closed/refused)
+ *   :9443  mutual-TLS mux serving REST `/v1/search` and Connect-RPC
+ *          `services.search.v2.SearchService` with peer-identity gating
  *
  * The retired Hurl suite covered only :9300 and listed the other two under
  * "out of scope" — Connect because h2c is impractical from Hurl, mTLS because

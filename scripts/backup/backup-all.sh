@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Alt Platform Master Backup Script
-# Performs comprehensive backup of all data stores using Restic
+# Performs comprehensive backup of all data stores using Restic (Daemonless, Networked)
 #
 # Usage:
 #   ./backup-all.sh [options]
@@ -16,36 +16,26 @@
 #   -h, --help       Show this help message
 #
 # Environment Variables:
+#   IN_CONTAINER         Must be set to 1 when running inside restic-backup container
 #   RESTIC_REPOSITORY    Path to Restic repository (default: /backups/restic-repo)
 #   RESTIC_PASSWORD_FILE Path to password file (default: /run/secrets/restic_password)
 #   HEALTHCHECK_URL      Healthchecks.io ping URL (optional)
-#   BACKUP_DIR           Base backup directory (default: /backups)
+#   POSTGRES_BACKUP_DIR  Postgres dump directory (default: /backups/postgres)
 #
 
 set -euo pipefail
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-LOG_FILE="/backups/logs/backup-${TIMESTAMP}.log"
 
-# Defaults
-RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-/backups/restic-repo}"
+BACKUP_ROOT="${BACKUP_ROOT:-/backups}"
+RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-${BACKUP_ROOT}/restic-repo}"
 RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE:-/run/secrets/restic_password}"
-BACKUP_DIR="${BACKUP_DIR:-/backups}"
-POSTGRES_BACKUP_DIR="${BACKUP_DIR}/postgres"
-COMPOSE_FILE="${PROJECT_ROOT}/compose/compose.yaml"
-COMPOSE_PROJECT="alt"
-BACKUP_CONTAINER="alt-backup"
+LOG_FILE="${LOG_FILE:-${BACKUP_ROOT}/logs/backup_${TIMESTAMP}.log}"
+POSTGRES_BACKUP_DIR="${POSTGRES_BACKUP_DIR:-${BACKUP_ROOT}/postgres}"
+METRICS_DIR="${METRICS_DIR:-${BACKUP_ROOT}/metrics}"
 
-# Detect if running inside the backup container
-IN_CONTAINER="${IN_CONTAINER:-}"
-if [[ -z "$IN_CONTAINER" && -f "/.dockerenv" ]]; then
-    IN_CONTAINER=1
-fi
-
-# Flags
 INIT_REPO=false
 PG_ONLY=false
 VOLUMES_ONLY=false
@@ -53,21 +43,19 @@ PRUNE=false
 VERIFY=false
 DRY_RUN=false
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Logging functions
 log() {
     local level="$1"
     shift
     local message="$*"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo -e "${timestamp} [${level}] ${message}" | tee -a "$LOG_FILE"
+    echo -e "${timestamp} [${level}] ${message}" | tee -a "$LOG_FILE" 2>/dev/null || echo -e "${timestamp} [${level}] ${message}"
 }
 
 log_info() { log "INFO" "$*"; }
@@ -75,130 +63,67 @@ log_warn() { log "${YELLOW}WARN${NC}" "$*"; }
 log_error() { log "${RED}ERROR${NC}" "$*"; }
 log_success() { log "${GREEN}SUCCESS${NC}" "$*"; }
 
-# Helper to run restic (directly if in container, via docker exec if on host)
 run_restic() {
-    if [[ -n "$IN_CONTAINER" ]]; then
-        restic "$@"
-    else
-        docker exec "$BACKUP_CONTAINER" restic "$@"
-    fi
+    restic "$@"
 }
 
-# Healthcheck ping
 ping_healthcheck() {
     local status="$1"
     local url="${HEALTHCHECK_URL:-}"
-
     if [[ -n "$url" ]]; then
         case "$status" in
-            start)
-                curl -fsS -m 10 --retry 5 "${url}/start" >/dev/null 2>&1 || true
-                ;;
-            success)
-                curl -fsS -m 10 --retry 5 "${url}" >/dev/null 2>&1 || true
-                ;;
-            fail)
-                curl -fsS -m 10 --retry 5 "${url}/fail" >/dev/null 2>&1 || true
-                ;;
+            start)   curl -fsS -m 10 --retry 5 "${url}/start" >/dev/null 2>&1 || true ;;
+            success) curl -fsS -m 10 --retry 5 "${url}" >/dev/null 2>&1 || true ;;
+            fail)    curl -fsS -m 10 --retry 5 "${url}/fail" >/dev/null 2>&1 || true ;;
         esac
     fi
 }
 
-# Show help
 show_help() {
-    head -30 "$0" | tail -27 | sed 's/^# //' | sed 's/^#//'
+    head -25 "$0" | tail -22 | sed 's/^# //' | sed 's/^#//'
 }
 
-# Parse arguments
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --init)
-                INIT_REPO=true
-                shift
-                ;;
-            --pg-only)
-                PG_ONLY=true
-                shift
-                ;;
-            --volumes-only)
-                VOLUMES_ONLY=true
-                shift
-                ;;
-            --prune)
-                PRUNE=true
-                shift
-                ;;
-            --verify)
-                VERIFY=true
-                shift
-                ;;
-            --dry-run)
-                DRY_RUN=true
-                shift
-                ;;
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            *)
-                log_error "Unknown option: $1"
-                show_help
-                exit 1
-                ;;
+            --init) INIT_REPO=true; shift ;;
+            --pg-only) PG_ONLY=true; shift ;;
+            --volumes-only) VOLUMES_ONLY=true; shift ;;
+            --prune) PRUNE=true; shift ;;
+            --verify) VERIFY=true; shift ;;
+            --dry-run) DRY_RUN=true; shift ;;
+            -h|--help) show_help; exit 0 ;;
+            *) log_error "Unknown option: $1"; show_help; exit 1 ;;
         esac
     done
 }
 
-# Verify prerequisites
 verify_prerequisites() {
     log_info "Verifying prerequisites..."
-
-    # Check for docker (needed for pg_dump via docker exec into DB containers)
-    if ! command -v docker &>/dev/null; then
-        log_error "docker not found. Please install docker first."
-        exit 1
+    if [[ -z "${IN_CONTAINER:-}" ]]; then
+        log_error "This script must run IN the backup container (IN_CONTAINER=1)."
+        return 1
     fi
 
-    # When running on host, ensure backup container is running for restic
-    if [[ -z "$IN_CONTAINER" ]]; then
-        if ! docker ps --format '{{.Names}}' | grep -q "^${BACKUP_CONTAINER}$"; then
-            log_warn "Backup container ($BACKUP_CONTAINER) is not running. Attempting to start it..."
-
-            local compose_cmd="docker compose"
-            if ! docker compose version &>/dev/null 2>&1; then
-                if command -v docker-compose &>/dev/null; then
-                    compose_cmd="docker-compose"
-                fi
-            fi
-
-            if $compose_cmd -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" --profile backup up -d restic-backup; then
-                log_success "Started backup container."
-                sleep 5
-            else
-                log_error "Failed to start backup container. Please start it manually: docker compose --profile backup up -d restic-backup"
-                exit 1
-            fi
+    for cmd in restic pg_dump psql curl jq; do
+        if ! command -v "$cmd" &>/dev/null; then
+            log_error "Required tool '$cmd' not found in PATH"
+            return 1
         fi
-    fi
+    done
 
-    # Create directories
     mkdir -p "$POSTGRES_BACKUP_DIR"
     mkdir -p "$(dirname "$LOG_FILE")"
-
-    # Ensure repo dir exists if it's local
-    if [[ "$RESTIC_REPOSITORY" == /backups/* ]]; then
+    if [[ "$RESTIC_REPOSITORY" == "${BACKUP_ROOT}"/* || "$RESTIC_REPOSITORY" == /backups/* ]]; then
         mkdir -p "$RESTIC_REPOSITORY" || true
     fi
-
     log_success "Prerequisites verified"
+    return 0
 }
 
-# Initialize Restic repository
 init_repo() {
     if [[ "$INIT_REPO" == true ]]; then
         log_info "Initializing Restic repository at $RESTIC_REPOSITORY..."
-
         if run_restic -r "$RESTIC_REPOSITORY" cat config >/dev/null 2>&1; then
             log_warn "Repository already initialized"
         else
@@ -208,190 +133,258 @@ init_repo() {
     fi
 }
 
-# Backup PostgreSQL databases
 backup_postgres() {
     log_info "Starting PostgreSQL backups..."
 
-    # Database configurations: name:container:user:dbname
-    # Updated to match running containers and actual users/dbnames
+    local default_alt_user="${ALT_DB_USER:-alt_db_user}"
+    local default_alt_pwd="/run/secrets/postgres_password"
+    if [[ "$default_alt_user" == "alt_appuser" ]]; then
+        default_alt_pwd="/run/secrets/db_password"
+    fi
+    local alt_pwd_file="${ALT_DB_PASSWORD_FILE:-$default_alt_pwd}"
+
+    # name:host:user:dbname:password_file:is_required
     local databases=(
-        "alt-db:alt-db:alt_db_user:alt"
-        "kratos-db:alt-kratos-db-1:kratos_user:kratos"
-        "recap-db:recap-db:recap_user:recap"
-        "rag-db:rag-db:rag_user:rag_db"
-        "pact-db:alt-pact-db-1:pact:pact"
+        "alt-db:${ALT_DB_HOST:-alt-db}:${default_alt_user}:${ALT_DB_NAME:-alt}:${alt_pwd_file}:true"
+        "kratos-db:${KRATOS_DB_HOST:-kratos-db}:${KRATOS_DB_USER:-kratos_user}:${KRATOS_DB_NAME:-kratos}:${KRATOS_DB_PASSWORD_FILE:-/run/secrets/kratos_db_password}:true"
+        "recap-db:${RECAP_DB_HOST:-recap-db}:${RECAP_DB_USER:-recap_user}:${RECAP_DB_NAME:-recap}:${RECAP_DB_PASSWORD_FILE:-/run/secrets/recap_db_password}:${BACKUP_RECAP_DB:-auto}"
+        "rag-db:${RAG_DB_HOST:-rag-db}:${RAG_DB_USER:-rag_user}:${RAG_DB_NAME:-rag_db}:${RAG_DB_PASSWORD_FILE:-/run/secrets/rag_db_password}:${BACKUP_RAG_DB:-auto}"
+        "pact-db:${PACT_DB_HOST:-pact-db}:${PACT_DB_USER:-pact}:${PACT_DB_NAME:-pact}:${PACT_DB_PASSWORD_FILE:-/run/secrets/pact_db_password}:${BACKUP_PACT_DB:-auto}"
     )
 
-    for db_config in "${databases[@]}"; do
-        IFS=':' read -r name container user dbname <<< "$db_config"
-        local backup_file="${POSTGRES_BACKUP_DIR}/${name}-${TIMESTAMP}.dump"
+    local pg_verified=0
+    local pg_failed=0
 
-        log_info "Backing up $name ($dbname)..."
+    for db_config in "${databases[@]}"; do
+        IFS=':' read -r name host user dbname pwd_file required_flag <<< "$db_config"
+        local backup_file="${POSTGRES_BACKUP_DIR}/${name}-${TIMESTAMP}.dump"
 
         if [[ "$DRY_RUN" == true ]]; then
             log_info "[DRY-RUN] Would backup $name to $backup_file"
+            pg_verified=$((pg_verified + 1))
             continue
         fi
 
-        # Check if container is running
-        if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-            log_warn "Container $container not running, skipping $name"
+        # Check explicit disabled state
+        if [[ "$required_flag" == "false" || "$required_flag" == "0" ]]; then
+            log_info "Skipping optional database $name (explicitly disabled)"
             continue
         fi
 
-        # Perform pg_dump with custom format
-        # Note: writing to host filesystem
-        if docker exec "$container" pg_dump \
-            -U "$user" \
-            --format=custom \
-            --compress=6 \
-            --verbose \
-            "$dbname" > "$backup_file" 2>> "$LOG_FILE"; then
+        # Check DNS resolution
+        local resolved=true
+        if ! getent hosts "$host" >/dev/null 2>&1; then
+            if [[ "$host" == "alt-db" ]] && getent hosts "db" >/dev/null 2>&1; then
+                host="db"
+            else
+                resolved=false
+            fi
+        fi
 
+        if [[ "$resolved" != true ]]; then
+            if [[ "$required_flag" == "true" || "$required_flag" == "1" ]]; then
+                log_error "Required database service $name ($host) not found in DNS"
+                pg_failed=$((pg_failed + 1))
+            else
+                log_info "Optional database service $name ($host) not found in DNS; skipping"
+            fi
+            continue
+        fi
+
+        # Active/required database must have valid credentials file
+        if [[ ! -f "$pwd_file" ]]; then
+            log_error "Missing credentials file $pwd_file for $name"
+            pg_failed=$((pg_failed + 1))
+            continue
+        fi
+
+        export PGPASSWORD
+        PGPASSWORD="$(cat "$pwd_file")"
+        if pg_dump -h "$host" -U "$user" -d "$dbname" --format=custom --compress=6 --verbose > "$backup_file" 2>> "$LOG_FILE"; then
             local size
-            size=$(ls -lh "$backup_file" | awk '{print $5}')
+            size=$(ls -lh "$backup_file" 2>/dev/null | awk '{print $5}' || stat -c %s "$backup_file" 2>/dev/null || echo "unknown")
             log_success "Backed up $name: $backup_file ($size)"
+            pg_verified=$((pg_verified + 1))
         else
             log_error "Failed to backup $name"
+            pg_failed=$((pg_failed + 1))
         fi
+        unset PGPASSWORD
     done
 
-    # Cleanup old PostgreSQL backups (per-database retention)
-    log_info "Cleaning up old PostgreSQL backups..."
-    local default_retention="${PG_RETENTION_DAYS:-7}"
-    local recap_retention="${RECAP_DB_RETENTION_DAYS:-1}"
+    # Clean old PostgreSQL dumps
+    local retention="${PG_RETENTION_DAYS:-7}"
     for db_config in "${databases[@]}"; do
-        IFS=':' read -r name _ _ _ <<< "$db_config"
-        local retention="$default_retention"
-        if [[ "$name" == "recap-db" ]]; then
-            retention="$recap_retention"
-        fi
+        IFS=':' read -r name host user dbname pwd_file required_flag <<< "$db_config"
         find "$POSTGRES_BACKUP_DIR" -name "${name}-*.dump" -mtime +"$retention" -delete 2>/dev/null || true
     done
+
+    log_info "PostgreSQL backup summary: $pg_verified passed, $pg_failed failed"
+    if [[ $pg_failed -gt 0 ]]; then
+        return 1
+    fi
+    return 0
 }
 
-# Create Meilisearch snapshot
 backup_meilisearch() {
     log_info "Creating Meilisearch snapshot..."
-
     if [[ "$DRY_RUN" == true ]]; then
         log_info "[DRY-RUN] Would create Meilisearch snapshot"
-        return
+        return 0
     fi
 
-    # Check if Meilisearch is running
-    local meili_container="alt-meilisearch-1"
-    if ! docker ps --format '{{.Names}}' | grep -q "^${meili_container}$"; then
-        if ! docker ps --format '{{.Names}}' | grep -q "^alt-meilisearch$"; then
-             log_warn "Meilisearch not running, skipping snapshot"
-             return
+    local meili_host="${MEILI_HOST:-meilisearch}"
+    local meili_port="${MEILI_PORT:-7700}"
+    local meili_enabled="${BACKUP_MEILISEARCH:-auto}"
+
+    if [[ "$meili_enabled" == "false" || "$meili_enabled" == "0" ]]; then
+        log_info "Meilisearch backup explicitly disabled; skipping"
+        return 0
+    fi
+
+    if ! getent hosts "$meili_host" >/dev/null 2>&1; then
+        if [[ "$meili_enabled" == "true" || "$meili_enabled" == "1" ]]; then
+            log_error "Meilisearch host $meili_host not found in DNS despite being explicitly enabled"
+            return 1
         else
-             meili_container="alt-meilisearch"
+            log_info "Meilisearch DNS not found. Assuming optional service down."
+            return 0
         fi
     fi
 
-    # Get master key from secrets
-    local meili_key
-    if [[ -f "/run/secrets/meili_master_key" ]]; then
-        meili_key=$(cat /run/secrets/meili_master_key)
-    elif [[ -f "${PROJECT_ROOT}/secrets/meili_master_key.txt" ]]; then
-        meili_key=$(cat "${PROJECT_ROOT}/secrets/meili_master_key.txt")
-    else
-        log_warn "Meilisearch master key not found, skipping snapshot"
-        return
+    local meili_key_file="${MEILI_MASTER_KEY_FILE:-/run/secrets/meili_master_key}"
+    if [[ ! -f "$meili_key_file" ]]; then
+        log_error "Missing Meilisearch master key file: $meili_key_file"
+        return 1
     fi
+    local meili_key
+    meili_key=$(cat "$meili_key_file")
 
-    # Trigger snapshot via API
-    local response
-    response=$(curl -s -X POST "http://localhost:7700/snapshots" \
+    local snap_out
+    snap_out=$(mktemp 2>/dev/null || echo "/tmp/meili_snap_out")
+    local http_code
+    http_code=$(curl -s -w "%{http_code}" -o "$snap_out" -X POST \
+        "http://${meili_host}:${meili_port}/snapshots" \
         -H "Authorization: Bearer $meili_key" \
-        -H "Content-Type: application/json" 2>&1)
+        -H "Content-Type: application/json" 2>&1 || echo "curl_failed")
 
-    if ! echo "$response" | grep -q "taskUid"; then
-        log_warn "Meilisearch snapshot may have failed: $response"
-        return
+    if [[ "$http_code" != "200" && "$http_code" != "202" ]]; then
+        local err
+        err=$(cat "$snap_out" 2>/dev/null || echo "HTTP $http_code")
+        log_error "Meilisearch snapshot trigger failed (HTTP $http_code): $err"
+        rm -f "$snap_out"
+        return 1
     fi
 
     local task_uid
-    task_uid=$(echo "$response" | jq -r '.taskUid // empty')
+    task_uid=$(jq -r '.taskUid // empty' "$snap_out" 2>/dev/null || echo "")
+    rm -f "$snap_out"
     if [[ -z "$task_uid" ]]; then
-        log_warn "Could not extract taskUid from response: $response"
-        return
+        log_error "Could not extract taskUid from Meilisearch snapshot response"
+        return 1
     fi
-
     log_info "Meilisearch snapshot triggered (taskUid: $task_uid). Waiting for completion..."
 
     local elapsed=0
-    local timeout=120
-    local poll_interval=5
-
+    local timeout="${MEILI_POLL_TIMEOUT:-120}"
+    local poll_interval="${MEILI_POLL_INTERVAL:-5}"
     while [[ $elapsed -lt $timeout ]]; do
         sleep "$poll_interval"
         elapsed=$((elapsed + poll_interval))
-
-        local task_status
-        task_status=$(curl -s "http://localhost:7700/tasks/${task_uid}" \
-            -H "Authorization: Bearer $meili_key" 2>&1)
-
-        local status
-        status=$(echo "$task_status" | jq -r '.status // empty')
-
-        case "$status" in
-            succeeded)
-                log_success "Meilisearch snapshot completed successfully (${elapsed}s)"
-                return
-                ;;
-            failed)
-                local error_msg
-                error_msg=$(echo "$task_status" | jq -r '.error.message // "unknown error"')
-                log_error "Meilisearch snapshot failed: $error_msg"
-                return
-                ;;
-            *)
-                log_info "Meilisearch snapshot status: ${status:-unknown} (${elapsed}s/${timeout}s)"
-                ;;
-        esac
+        local task_out
+        task_out=$(mktemp 2>/dev/null || echo "/tmp/meili_task_out")
+        local t_code
+        t_code=$(curl -s -w "%{http_code}" -o "$task_out" \
+            "http://${meili_host}:${meili_port}/tasks/${task_uid}" \
+            -H "Authorization: Bearer $meili_key" 2>&1 || echo "curl_failed")
+        if [[ "$t_code" == "200" ]]; then
+            local status
+            status=$(jq -r '.status // empty' "$task_out" 2>/dev/null || echo "unknown")
+            case "$status" in
+                succeeded)
+                    log_success "Meilisearch snapshot completed successfully (${elapsed}s)"
+                    rm -f "$task_out"
+                    return 0
+                    ;;
+                failed)
+                    local error_msg
+                    error_msg=$(jq -r '.error.message // "unknown error"' "$task_out" 2>/dev/null || echo "task failed")
+                    log_error "Meilisearch snapshot task failed: $error_msg"
+                    rm -f "$task_out"
+                    return 1
+                    ;;
+                *)
+                    log_info "Meilisearch snapshot status: ${status} (${elapsed}s/${timeout}s)"
+                    ;;
+            esac
+        fi
+        rm -f "$task_out"
     done
-
-    log_warn "Meilisearch snapshot timed out after ${timeout}s (task may still be running)"
+    log_error "Meilisearch snapshot timed out after ${timeout}s"
+    return 1
 }
 
-# Backup ClickHouse
 backup_clickhouse() {
     log_info "Backing up ClickHouse..."
-
     if [[ "$DRY_RUN" == true ]]; then
         log_info "[DRY-RUN] Would backup ClickHouse"
-        return
+        return 0
     fi
 
-    # Check if ClickHouse is running
-    local clickhouse_container="alt-clickhouse-1"
-    if ! docker ps --format '{{.Names}}' | grep -q "^${clickhouse_container}$"; then
-        if ! docker ps --format '{{.Names}}' | grep -q "^alt-clickhouse$"; then
-             log_warn "ClickHouse not running, skipping backup"
-             return
+    local ch_host="${CLICKHOUSE_HOST:-clickhouse}"
+    local ch_port="${CLICKHOUSE_PORT:-8123}"
+    local ch_db="${CLICKHOUSE_DB:-rask_logs}"
+    local ch_enabled="${BACKUP_CLICKHOUSE:-auto}"
+
+    if [[ "$ch_enabled" == "false" || "$ch_enabled" == "0" ]]; then
+        log_info "ClickHouse backup explicitly disabled; skipping"
+        return 0
+    fi
+
+    if ! getent hosts "$ch_host" >/dev/null 2>&1; then
+        if [[ "$ch_enabled" == "true" || "$ch_enabled" == "1" ]]; then
+            log_error "ClickHouse host $ch_host not found in DNS despite being explicitly enabled"
+            return 1
         else
-             clickhouse_container="alt-clickhouse"
+            log_info "ClickHouse DNS not found. Assuming optional service down."
+            return 0
         fi
     fi
 
     local backup_name="backup_${TIMESTAMP}"
-
-    # Create backup using ClickHouse native BACKUP command
-    # Using bash -c to read password from file since --password-file might not be supported
     local ch_user="${CLICKHOUSE_USER:-rask_user}"
-    docker exec "$clickhouse_container" bash -c "clickhouse-client -u ${ch_user} --password \"\$(cat /run/secrets/clickhouse_password)\" --query \"BACKUP DATABASE default TO Disk('backups', '${backup_name}')\"" 2>> "$LOG_FILE" || {
-        log_warn "ClickHouse native backup failed, will use volume backup"
-    }
+    local ch_pwd_file="${CLICKHOUSE_PASSWORD_FILE:-/run/secrets/clickhouse_password}"
+    if [[ ! -f "$ch_pwd_file" ]]; then
+        log_error "Missing credentials file $ch_pwd_file for ClickHouse"
+        return 1
+    fi
+    local ch_pass
+    ch_pass=$(cat "$ch_pwd_file")
+
+    local query="BACKUP DATABASE ${ch_db} TO Disk('backups', '${backup_name}')"
+    local ch_out
+    ch_out=$(mktemp 2>/dev/null || echo "/tmp/ch_backup_out")
+    local resp_code
+    resp_code=$(curl -s -w "%{http_code}" -o "$ch_out" -X POST \
+        -u "${ch_user}:${ch_pass}" \
+        --data-binary "$query" \
+        "http://${ch_host}:${ch_port}/" 2>&1 || echo "curl_failed")
+
+    if [[ "$resp_code" == "200" ]]; then
+        log_success "ClickHouse native backup completed successfully to Disk('backups', '${backup_name}')"
+        rm -f "$ch_out"
+        return 0
+    else
+        local err_detail
+        err_detail=$(cat "$ch_out" 2>/dev/null || echo "unknown")
+        log_error "ClickHouse native backup failed (HTTP $resp_code): $err_detail"
+        rm -f "$ch_out"
+        return 1
+    fi
 }
 
-
-# Backup Docker volumes with Restic
 backup_volumes() {
     log_info "Starting Restic volume backup..."
-
-    # Volumes to backup (paths inside backup container)
     local volumes=(
         "/data/db_data_17"
         "/data/kratos_db_data"
@@ -403,21 +396,17 @@ backup_volumes() {
         "/data/oauth_token_data"
         "/data/prometheus_data"
         "/data/grafana_data"
+        "/data/pact_db_data"
+        "$POSTGRES_BACKUP_DIR"
+        "/backups/clickhouse"
     )
-
-    # Also backup PostgreSQL dumps
-    # This path must be valid inside the container.
-    # compose/backup.yaml mounts /backups/postgres:/backups/postgres
-    # And POSTGRES_BACKUP_DIR defaults to /backups/postgres
-    volumes+=("$POSTGRES_BACKUP_DIR")
 
     if [[ "$DRY_RUN" == true ]]; then
         log_info "[DRY-RUN] Would backup volumes:"
         printf '%s\n' "${volumes[@]}"
-        return
+        return 0
     fi
 
-    # Build exclude patterns
     local exclude_args=(
         --exclude="*.tmp"
         --exclude="*.log"
@@ -428,24 +417,12 @@ backup_volumes() {
         --exclude="**/tmp_insert_*"
     )
 
-    # Run Restic backup
-    log_info "Running Restic backup..."
-
     local paths_to_backup=()
     for vol in "${volumes[@]}"; do
-        # Check if directory exists (directly if in container, via docker exec on host)
-        if [[ -n "$IN_CONTAINER" ]]; then
-            if [[ -d "$vol" ]]; then
-                paths_to_backup+=("$vol")
-            else
-                log_warn "Volume path not found: $vol"
-            fi
+        if [[ -d "$vol" ]]; then
+            paths_to_backup+=("$vol")
         else
-            if docker exec "$BACKUP_CONTAINER" test -d "$vol"; then
-                paths_to_backup+=("$vol")
-            else
-                log_warn "Volume path not found in container: $vol"
-            fi
+            log_warn "Volume path not found: $vol"
         fi
     done
 
@@ -454,147 +431,128 @@ backup_volumes() {
         return 1
     fi
 
-    run_restic -r "$RESTIC_REPOSITORY" backup \
+    if ! run_restic -r "$RESTIC_REPOSITORY" backup \
         --tag "scheduled" \
         --tag "$(date +%Y%m%d)" \
         "${exclude_args[@]}" \
-        "${paths_to_backup[@]}" 2>&1 | tee -a "$LOG_FILE"
+        "${paths_to_backup[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+        log_error "Restic volume backup failed"
+        return 1
+    fi
 
     log_success "Restic backup completed"
+    return 0
 }
 
-# Prune old snapshots
 prune_snapshots() {
-    if [[ "$PRUNE" != true ]]; then
-        return
-    fi
-
+    if [[ "$PRUNE" != true ]]; then return 0; fi
     log_info "Pruning old snapshots..."
-
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY-RUN] Would prune with: --keep-hourly 24 --keep-daily 7 --keep-weekly 4 --keep-monthly 3"
-        run_restic -r "$RESTIC_REPOSITORY" forget --dry-run \
-            --keep-hourly 24 \
-            --keep-daily 7 \
-            --keep-weekly 4 \
-            --keep-monthly 3
-        return
+    if ! run_restic -r "$RESTIC_REPOSITORY" forget \
+        --keep-hourly 24 --keep-daily 7 --keep-weekly 4 --keep-monthly 3 \
+        --prune 2>&1 | tee -a "$LOG_FILE"; then
+        log_error "Prune failed"
+        return 1
     fi
-
-    run_restic -r "$RESTIC_REPOSITORY" forget \
-        --keep-hourly 24 \
-        --keep-daily 7 \
-        --keep-weekly 4 \
-        --keep-monthly 3 \
-        --prune 2>&1 | tee -a "$LOG_FILE"
-
     log_success "Prune completed"
+    return 0
 }
 
-# Verify backup integrity
 verify_backup() {
-    if [[ "$VERIFY" != true ]]; then
-        return
-    fi
-
+    if [[ "$VERIFY" != true ]]; then return 0; fi
     log_info "Verifying backup integrity..."
-
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY-RUN] Would run 'restic check'"
-        return
+    if ! run_restic -r "$RESTIC_REPOSITORY" check 2>&1 | tee -a "$LOG_FILE"; then
+        log_error "Backup verification failed"
+        return 1
     fi
-
-    run_restic -r "$RESTIC_REPOSITORY" check 2>&1 | tee -a "$LOG_FILE"
-
     log_success "Backup verification completed"
+    return 0
 }
 
-# Generate backup metrics for Prometheus
 generate_metrics() {
-    local metrics_file="/backups/metrics/backup_metrics.prom"
+    local metrics_file="${METRICS_DIR}/backup_metrics.prom"
     mkdir -p "$(dirname "$metrics_file")"
-
-    log_info "Generating backup metrics..."
-
-    # Get snapshot stats
     local snapshot_count
     snapshot_count=$(run_restic -r "$RESTIC_REPOSITORY" snapshots --json 2>/dev/null | jq 'length' || echo 0)
-
-    # Get repository stats
     local repo_stats
     repo_stats=$(run_restic -r "$RESTIC_REPOSITORY" stats --json 2>/dev/null || echo '{}')
     local total_size
     total_size=$(echo "$repo_stats" | jq -r '.total_size // 0')
 
-    cat > "$metrics_file" << EOF
+    cat > "$metrics_file" << MEOF
 # HELP backup_last_success_timestamp Unix timestamp of last successful backup
 # TYPE backup_last_success_timestamp gauge
 backup_last_success_timestamp{type="full"} $(date +%s)
-
 # HELP backup_restic_snapshot_count Number of Restic snapshots
 # TYPE backup_restic_snapshot_count gauge
 backup_restic_snapshot_count $snapshot_count
-
 # HELP backup_total_size_bytes Total size of backup repository in bytes
 # TYPE backup_total_size_bytes gauge
 backup_total_size_bytes $total_size
-EOF
-
-    log_success "Metrics written to $metrics_file"
+MEOF
 }
 
-# Main execution
 main() {
     parse_args "$@"
-
-    log_info "=========================================="
-    log_info "Alt Platform Backup - ${TIMESTAMP}"
-    log_info "=========================================="
-
     ping_healthcheck "start"
-
     local backup_failed=false
-
-    # Run backup steps (disable set -e to handle errors manually)
     set +e
 
-    verify_prerequisites
-    if [[ $? -ne 0 ]]; then backup_failed=true; fi
-
-    if [[ "$backup_failed" != true ]]; then
-        init_repo
-    fi
+    verify_prerequisites || backup_failed=true
+    if [[ "$backup_failed" != true ]]; then init_repo; fi
 
     if [[ "$backup_failed" != true && "$VOLUMES_ONLY" != true ]]; then
-        backup_postgres || log_warn "PostgreSQL backup had errors"
-        backup_meilisearch || log_warn "Meilisearch backup had errors"
-        backup_clickhouse || log_warn "ClickHouse backup had errors"
+        backup_postgres || backup_failed=true
+        backup_meilisearch || backup_failed=true
+        backup_clickhouse || backup_failed=true
     fi
 
     if [[ "$backup_failed" != true && "$PG_ONLY" != true ]]; then
-        # Issue CHECKPOINT to all PostgreSQL databases for consistency
-        log_info "Issuing PostgreSQL CHECKPOINTs..."
+        # Note: CHECKPOINT flushes dirty shared buffers to disk prior to raw volume copying.
+        # However, raw volume file copying excludes active pg_wal write-ahead logs and scans
+        # mutable database directories without atomic filesystem-level snapshots.
+        # Therefore, raw volume copies are strictly auxiliary/best-effort copies and do NOT
+        # provide crash-consistency, physical point-in-time recovery (PITR), or ACID recovery guarantees.
+        # Authoritative database recovery relies on logical dumps (pg_dump custom format,
+        # ClickHouse native BACKUP, and Meilisearch snapshots).
+        log_info "Issuing PostgreSQL CHECKPOINTs to flush buffers..."
+        local default_alt_user="${ALT_DB_USER:-alt_db_user}"
+        local default_alt_pwd="/run/secrets/postgres_password"
+        if [[ "$default_alt_user" == "alt_appuser" ]]; then
+            default_alt_pwd="/run/secrets/db_password"
+        fi
+        local alt_pwd_file="${ALT_DB_PASSWORD_FILE:-$default_alt_pwd}"
+
         local checkpoint_configs=(
-            "alt-db:alt_db_user"
-            "alt-kratos-db-1:kratos_user"
-            "recap-db:recap_user"
-            "rag-db:rag_user"
+            "${ALT_DB_HOST:-alt-db}:${default_alt_user}:${alt_pwd_file}"
+            "${KRATOS_DB_HOST:-kratos-db}:${KRATOS_DB_USER:-kratos_user}:${KRATOS_DB_PASSWORD_FILE:-/run/secrets/kratos_db_password}"
+            "${RECAP_DB_HOST:-recap-db}:${RECAP_DB_USER:-recap_user}:${RECAP_DB_PASSWORD_FILE:-/run/secrets/recap_db_password}"
+            "${RAG_DB_HOST:-rag-db}:${RAG_DB_USER:-rag_user}:${RAG_DB_PASSWORD_FILE:-/run/secrets/rag_db_password}"
+            "${PACT_DB_HOST:-pact-db}:${PACT_DB_USER:-pact}:${PACT_DB_PASSWORD_FILE:-/run/secrets/pact_db_password}"
         )
         for ckpt_config in "${checkpoint_configs[@]}"; do
-            IFS=':' read -r ckpt_container ckpt_user <<< "$ckpt_config"
-            docker exec "$ckpt_container" psql -U "$ckpt_user" -c "CHECKPOINT;" 2>/dev/null || true
+            IFS=':' read -r host user pwd_file <<< "$ckpt_config"
+            if ! getent hosts "$host" >/dev/null 2>&1; then
+                if [[ "$host" == "alt-db" ]] && getent hosts "db" >/dev/null 2>&1; then
+                    host="db"
+                else
+                    continue
+                fi
+            fi
+            if [[ -f "$pwd_file" ]]; then
+                export PGPASSWORD
+                PGPASSWORD="$(cat "$pwd_file")"
+                psql -h "$host" -U "$user" -d postgres -c "CHECKPOINT;" 2>/dev/null || true
+                unset PGPASSWORD
+            fi
         done
-
-        backup_volumes
-        if [[ $? -ne 0 ]]; then backup_failed=true; fi
+        backup_volumes || backup_failed=true
     fi
 
     if [[ "$backup_failed" != true ]]; then
-        prune_snapshots
-        verify_backup
+        prune_snapshots || backup_failed=true
+        verify_backup || backup_failed=true
         generate_metrics || true
     fi
-
     set -e
 
     if [[ "$backup_failed" == true ]]; then
@@ -608,14 +566,10 @@ main() {
         log_success "=========================================="
         log_success "Backup completed successfully - ${TIMESTAMP}"
         log_success "=========================================="
-
-        # Show summary
         log_info "Summary:"
         run_restic -r "$RESTIC_REPOSITORY" snapshots --latest 1 2>/dev/null || true
     fi
-
-    # Rotate old logs (keep 30 days)
-    find /backups/logs/ -name "*.log" -mtime +30 -delete 2>/dev/null || true
+    find "${BACKUP_ROOT}/logs/" -name "*.log" -mtime +30 -delete 2>/dev/null || true
 }
 
 main "$@"

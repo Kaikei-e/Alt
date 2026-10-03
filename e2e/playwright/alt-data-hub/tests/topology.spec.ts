@@ -5,161 +5,60 @@ import { expectConnectionRefused } from "../../_shared/net.js";
 import { env } from "../src/env.js";
 import { latestArticleTimestampSchema } from "../src/schemas.js";
 
-/**
- * Topology — the ports of `01-retired-connect-namespace-absent.hurl`,
- * `02-retired-internal-rest-absent.hurl`, the bottom half of
- * `03-ops-listener.hurl`, and the three `assert_transport_refused` loops that
- * lived in the Hurl `run.sh` because Hurl could not express them.
- *
- * The claim this file holds is that **alt-db's owner has exactly one door**.
- * `04`/`datahub-service.spec.ts` say the surface answers; on its own that is
- * satisfied by a service that answers everything to everyone. These negatives
- * are the other half, and the pair is the contract.
- *
- * Every assertion here is **404** or **connection refused**, never 401/403. A
- * 401 would mean the routes are still registered and only a middleware stands
- * between a caller and them; 404 is the only status that says "this surface is
- * not here". `cmd/datahub`'s router is explicit about it — anything outside
- * `/services.datahub.v1.` and `/health` goes to `http.NotFound`, and the
- * prefix is the full namespace rather than the `/services.` root *precisely*
- * so that `services.backend.v1` fails it too.
+/** The verified peer/procedure gate denies retired or unknown data-plane paths.
+ * Monitoring routes keep their separate 404 topology checks below.
  */
-
 const RETIRED_BACKEND_SVC = "/services.backend.v1.BackendInternalService";
 const LEGACY_DATAHUB_SVC = "/alt.datahub.v1.DataHubService";
 const SVC = "/services.datahub.v1.DataHubService";
 
-/**
- * `services.backend.v1.BackendInternalService` — the name this surface
- * inherited from when the code lived inside alt-backend, retired by ADR-000954
- * Wave 2-C. One procedure per shape of caller, matching the Hurl file.
- */
 const RETIRED_BACKEND_PROCEDURES = [
 	{ procedure: "GetLatestArticleTimestamp", request: {} },
 	{ procedure: "ListArticlesWithTags", request: { limit: 10 } },
-	{
-		procedure: "ListArticlesWithTagsForward",
-		request: { incrementalMark: "2020-01-01T00:00:00Z", limit: 10 },
-	},
+	{ procedure: "ListArticlesWithTagsForward", request: { incrementalMark: "2020-01-01T00:00:00Z", limit: 10 } },
 	{ procedure: "ListDeletedArticles", request: { limit: 10 } },
-	// pre-processor's write path — the one worth naming separately. A stale
-	// caller on the old namespace must fail loudly rather than write through a
-	// door nobody is auditing.
 	{ procedure: "CheckArticleExists", request: { url: "https://stub.invalid/x", feedId: "00000000-0000-0000-0000-000000000001" } },
 	{ procedure: "ListRecapArticles", request: {} },
 ] as const;
-
-/** The `/v1/internal/*` REST pair ADR-000954 D6 folded into DataHubService. */
 const RETIRED_INTERNAL_REST = [
 	"/v1/internal/articles/recent",
-	// Kept query-shaped on one entry so the request looks like the one
-	// rag-orchestrator used to send. The router does not read query strings, so
-	// this proves nothing the bare path does not — it is here so a reader can
-	// see the retired call verbatim.
 	"/v1/internal/articles/recent?within_hours=24&limit=10",
 	"/v1/internal/system-user",
-	// The whole prefix, not only the two routes that lived under it. A router
-	// that still recognised /v1/internal and merely had no handlers registered
-	// would be one DI line away from serving it again.
 	"/v1/internal",
 ] as const;
 
-test.describe("the retired Connect namespace answers nowhere", () => {
+test.describe("the procedure gate denies the retired Connect namespace", () => {
 	for (const { procedure, request } of RETIRED_BACKEND_PROCEDURES) {
-		test(`${RETIRED_BACKEND_SVC}/${procedure} → 404`, { tag: "@authz" }, async ({ dataHub }) => {
-			// 404 rather than "not 200": a 501 or a Connect `unimplemented`
-			// envelope would mean the mux still knows the service and something
-			// else declined, which is a different and much less finished state.
-			//
-			// The caller is the allowed `pre-processor` leaf — the same identity
-			// datahub-service.spec.ts uses. Probing with a peer that would be
-			// refused at the handshake would make this pass for the wrong reason.
-			const response = await callUnary(dataHub, `${RETIRED_BACKEND_SVC}/${procedure}`, request);
-			await expectStatus(response, 404);
+		test(`${RETIRED_BACKEND_SVC}/${procedure} → 403`, { tag: "@authz" }, async ({ dataHub }) => {
+			await expectStatus(await callUnary(dataHub, `${RETIRED_BACKEND_SVC}/${procedure}`, request), 403);
 		});
 	}
-
-	test("the retired namespace 404s from the router, not from a Connect handler", { tag: "@authz" }, async ({
-		dataHub,
-	}) => {
-		// Go's `http.NotFound` writes plain text. If this body were ever a
-		// Connect error envelope it would mean `cmd/datahub`'s prefix router
-		// passed the path through to a mux that recognised the service — a
-		// compatibility shim re-added, which is exactly what Wave 2-C removed.
+	test("the retired namespace is rejected before Connect dispatch", { tag: "@authz" }, async ({ dataHub }) => {
 		const response = await callUnary(dataHub, `${RETIRED_BACKEND_SVC}/CreateArticle`, {});
-		await expectStatus(response, 404);
-		expect(await response.text()).toContain("404 page not found");
+		await expectStatus(response, 403);
+		expect(await response.text()).toContain("forbidden: unknown procedure");
 	});
 });
 
 test.describe("the ADR-000955 transitional alias", () => {
-	/**
-	 * `alt.datahub.v1.DataHubService` is **not** fenced yet, deliberately.
-	 *
-	 * ADR-000955 moved every proto package under the `services.` root, and
-	 * consumers deployed before the rename still speak the old name — the pact
-	 * broker's deployed-version selector keeps their old pacts in the provider
-	 * verification matrix until each renamed consumer is recorded as deployed
-	 * (alt-deploy run 30769818431 deadlocked on exactly this). `cmd/datahub`
-	 * therefore ships `datahubapi.LegacyNamespaceAlias`, and these tests assert
-	 * the alias is alive: a silent alias regression mid-transition would strand
-	 * every deployed consumer.
-	 *
-	 * When the alias is removed, these two tests move into the describe above
-	 * and become the same 404 fence.
-	 */
+	// Deployed legacy consumers use the same exact procedure capabilities.
 	test("the legacy name answers like the current one", { tag: "@contract" }, async ({ dataHub }) => {
-		// GetLatestArticleTimestamp is the probe because
-		// datahub-service.spec.ts pins it to 200 on the canonical name, so a
-		// failure here isolates the *alias* rather than the procedure.
-		//
-		// Strengthened past the Hurl original, which asserted only `HTTP 200`:
-		// the alias is a path rewrite onto the same mux
-		// (dataplane/connect/datahubapi/legacy_alias.go), so the body must be
-		// the same envelope, not merely a success. A shim that answered 200
-		// with something else would satisfy the old assertion.
-		await expectJsonStatus(
-			await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/GetLatestArticleTimestamp`, {}),
-			200,
-			latestArticleTimestampSchema,
-		);
+		await expectJsonStatus(await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/GetLatestArticleTimestamp`, {}), 200, latestArticleTimestampSchema);
 	});
-
-	test("the alias rewrites a prefix, it does not blanket-accept", { tag: "@authz" }, async ({ dataHub }) => {
-		// New coverage. `LegacyNamespaceAlias` cuts a fixed prefix and delegates;
-		// an unknown procedure under the legacy name must therefore reach the
-		// same 404 the current name gives it. If this ever answered, the alias
-		// would have become a catch-all — a second door with no procedure list
-		// behind it, which is the shape of the pre-split listener the whole
-		// three-binary split existed to remove.
-		await expectStatus(
-			await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/NoSuchProcedureExists`, {}),
-			404,
-		);
+	test("the alias does not grant an unknown procedure", { tag: "@authz" }, async ({ dataHub }) => {
+		const response = await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/NoSuchProcedureExists`, {});
+		await expectStatus(response, 403);
+		expect(await response.text()).toContain("forbidden: peer not authorized for this procedure");
 	});
-
 	test("the alias does not extend to sibling packages under alt.*", { tag: "@authz" }, async ({ dataHub }) => {
-		// `LegacyNamespacePrefix` is `/alt.datahub.v1.DataHubService/` — the
-		// whole service path, not `/alt.`. A user-facing service reachable here
-		// would mean the data plane's socket had started answering for the
-		// browser API again.
-		await expectStatus(
-			await callUnary(dataHub, "/alt.feeds.v2.FeedService/GetAllFeeds", {}),
-			404,
-		);
+		await expectStatus(await callUnary(dataHub, "/alt.feeds.v2.FeedService/GetAllFeeds", {}), 403);
 	});
 });
 
-test.describe("the retired /v1/internal REST pair answers nowhere", () => {
+test.describe("the procedure gate denies retired internal REST", () => {
 	for (const path of RETIRED_INTERNAL_REST) {
-		test(`GET ${path} → 404`, { tag: "@authz" }, async ({ dataHub }) => {
-			// These two handlers took no tenant argument and carried no auth
-			// middleware; the listener was their entire access control. They were
-			// not withdrawn but *converted* — ADR-000954 D6 folded them into
-			// GetSystemUser and ListRecentArticles, which datahub-service.spec.ts
-			// asserts answer. This file is the other half of that claim: the
-			// capability moved rather than being duplicated.
-			await expectStatus(await dataHub.get(path), 404);
+		test(`GET ${path} → 403`, { tag: "@authz" }, async ({ dataHub }) => {
+			await expectStatus(await dataHub.get(path), 403);
 		});
 	}
 });

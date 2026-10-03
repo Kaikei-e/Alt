@@ -295,8 +295,8 @@ func (r *Repository) ResolveLensFilter(ctx context.Context, userID uuid.UUID, le
 	if err != nil {
 		return nil, fmt.Errorf("ResolveLensFilter get lens: %w", err)
 	}
-	if lens == nil {
-		// Not found: nil filter, nil error (same zero-value convention as GetLens).
+	if lens == nil || lens.UserID != userID {
+		// Not found or not owned by user: return nil filter
 		return nil, nil
 	}
 
@@ -317,4 +317,31 @@ func (r *Repository) ResolveLensFilter(ctx context.Context, userID uuid.UUID, le
 		IncludePulse: version.IncludePulse,
 		SortMode:     version.SortMode,
 	}, nil
+}
+
+func (r *Repository) GetLensVersion(ctx context.Context, lensVersionID uuid.UUID) (*KnowledgeLensVersion, error) {
+	query := `SELECT lens_version_id, lens_id, created_at, query_text,
+		tag_ids_json, source_ids_json, time_window_json,
+		include_recap, include_pulse, sort_mode, superseded_by
+		FROM knowledge_lens_versions WHERE lens_version_id = $1`
+
+	var v KnowledgeLensVersion
+	var tagIDsJSON, sourceIDsJSON, timeWindowJSON []byte
+	err := r.pool.QueryRow(ctx, query, lensVersionID).Scan(
+		&v.LensVersionID, &v.LensID, &v.CreatedAt, &v.QueryText,
+		&tagIDsJSON, &sourceIDsJSON, &timeWindowJSON,
+		&v.IncludeRecap, &v.IncludePulse, &v.SortMode, &v.SupersededBy,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetLensVersion: %w", err)
+	}
+	unmarshalJSONWarn(tagIDsJSON, &v.TagIDs, "tag_ids_json")
+	unmarshalJSONWarn(sourceIDsJSON, &v.SourceIDs, "source_ids_json")
+	if len(timeWindowJSON) > 0 {
+		unmarshalJSONWarn(timeWindowJSON, &v.TimeWindow, "time_window_json")
+	}
+	return &v, nil
 }

@@ -57,5 +57,35 @@ func resolveCoordinationRedisPassword(coordinationRedisURL string) (string, erro
 	if coordinationRedisURL == "" {
 		return "", nil
 	}
+
+	logger := slog.Default()
+
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("HOST_RATE_LIMITER_REDIS_AUTH")), "disabled") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("COORDINATION_REDIS_AUTH")), "disabled") {
+		logger.Warn("redis_auth_disabled", "reason", "coordination redis auth was disabled explicitly")
+		return "", nil
+	}
+
+	for _, envVar := range []string{"HOST_RATE_LIMITER_REDIS_PASSWORD_FILE", "COORDINATION_REDIS_PASSWORD_FILE"} {
+		if filePath, set := os.LookupEnv(envVar); set {
+			trimmedPath := strings.TrimSpace(filePath)
+			if trimmedPath == "" {
+				logger.Error("redis_password_file_empty", "env", envVar)
+				return "", fmt.Errorf("%s is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly", envVar)
+			}
+			content, err := os.ReadFile(trimmedPath)
+			if err != nil {
+				logger.Error("redis_password_file_read_failed", "file", trimmedPath, "error", err)
+				return "", fmt.Errorf("read %s %s: %w", envVar, trimmedPath, err)
+			}
+			password := strings.TrimSpace(string(content))
+			if password == "" {
+				logger.Error("redis_password_file_content_empty", "file", trimmedPath)
+				return "", fmt.Errorf("%s %s resolved to an empty password", envVar, trimmedPath)
+			}
+			return password, nil
+		}
+	}
+
 	return ResolveRedisPassword(nil)
 }

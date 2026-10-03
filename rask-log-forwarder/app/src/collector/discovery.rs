@@ -242,14 +242,26 @@ mod tests {
         assert!(container_name_matches_service("db", "db"));
         assert!(container_name_matches_service("db-1", "db"));
         assert!(container_name_matches_service("alt-backend", "alt-backend"));
-        assert!(container_name_matches_service("alt-backend-1", "alt-backend"));
+        assert!(container_name_matches_service(
+            "alt-backend-1",
+            "alt-backend"
+        ));
     }
 
     #[test]
     fn compose_project_prefix_matches_multi_segment_service() {
-        assert!(container_name_matches_service("alt-alt-backend", "alt-backend"));
-        assert!(container_name_matches_service("alt-alt-backend-1", "alt-backend"));
-        assert!(container_name_matches_service("alt-kratos-db-1", "kratos-db"));
+        assert!(container_name_matches_service(
+            "alt-alt-backend",
+            "alt-backend"
+        ));
+        assert!(container_name_matches_service(
+            "alt-alt-backend-1",
+            "alt-backend"
+        ));
+        assert!(container_name_matches_service(
+            "alt-kratos-db-1",
+            "kratos-db"
+        ));
     }
 
     #[test]

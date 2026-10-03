@@ -3,14 +3,82 @@ package search_indexer_connect
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 
 	searchv2 "alt/gen/proto/services/search/v2"
 	"alt/gen/proto/services/search/v2/searchv2connect"
+	"alt/shared/domain/authcontext"
+	"alt/tlsutil"
 	"alt/utils/safeconv"
 )
+
+type authInterceptor struct{}
+
+func (i *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+			req.Header().Set("X-Alt-Backend-Token", jwtToken)
+		}
+		return next(ctx, req)
+	}
+}
+
+func (i *authInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+			conn.RequestHeader().Set("X-Alt-Backend-Token", jwtToken)
+		}
+		return conn
+	}
+}
+
+func (i *authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
+}
+
+func defaultSearchHTTPClient(baseURL string) (connect.HTTPClient, error) {
+	if !strings.HasPrefix(baseURL, "https://") {
+		return nil, fmt.Errorf("search-indexer baseURL must use https:// scheme, got: %s", baseURL)
+	}
+	certFile := os.Getenv("MTLS_CERT_FILE")
+	keyFile := os.Getenv("MTLS_KEY_FILE")
+	caFile := os.Getenv("MTLS_CA_FILE")
+
+	if certFile == "" || keyFile == "" || caFile == "" {
+		return nil, fmt.Errorf("missing MTLS cert/key/ca environment variables")
+	}
+
+	tlsCfg, err := tlsutil.LoadClientConfig(certFile, keyFile, caFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS client config: %w", err)
+	}
+
+	serverName := os.Getenv("SEARCH_INDEXER_MTLS_SERVER_NAME")
+	if serverName == "" {
+		serverName = "search-indexer"
+	}
+	tlsCfg.ServerName = serverName
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig:     tlsCfg,
+			ForceAttemptHTTP2:   true,
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}, nil
+}
 
 // ArticleHit represents a raw search hit from search-indexer.
 type ArticleHit struct {
@@ -38,12 +106,27 @@ type Client struct {
 }
 
 // NewClient creates a new Connect-RPC client for search-indexer.
-// Auth is mTLS at the transport layer, and WithProtoJSON is used so contract tooling can read the wire format.
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL string) (*Client, error) {
+	httpClient, err := defaultSearchHTTPClient(baseURL)
+	if err != nil {
+		return nil, err
+	}
 	client := searchv2connect.NewSearchServiceClient(
-		http.DefaultClient,
+		httpClient,
 		baseURL,
 		connect.WithProtoJSON(),
+		connect.WithInterceptors(&authInterceptor{}),
+	)
+	return &Client{client: client}, nil
+}
+
+// NewClientWithHTTPClient creates a client with an injected HTTP client, for tests only.
+func NewClientWithHTTPClient(baseURL string, httpClient connect.HTTPClient) *Client {
+	client := searchv2connect.NewSearchServiceClient(
+		httpClient,
+		baseURL,
+		connect.WithProtoJSON(),
+		connect.WithInterceptors(&authInterceptor{}),
 	)
 	return &Client{client: client}
 }

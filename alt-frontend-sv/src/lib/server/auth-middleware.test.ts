@@ -154,4 +154,18 @@ describe("validateSession cache key derivation", () => {
 		expect(toSession).toHaveBeenCalledTimes(2);
 		void second;
 	});
+
+	it("notifies auth-hub to invalidate remote session cache on logout", async () => {
+		const { invalidateSessionCache } = await import("./auth-middleware");
+		const cookie = "ory_kratos_session=logout-user-token";
+		await invalidateSessionCache(cookie);
+
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://auth-hub:8888/session/invalidate",
+			expect.objectContaining({
+				method: "POST",
+				headers: expect.objectContaining({ cookie }),
+			}),
+		);
+	});
 });

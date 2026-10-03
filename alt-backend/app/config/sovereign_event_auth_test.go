@@ -14,7 +14,12 @@ var sovereignAuthEnvKeys = []string{
 	"SOVEREIGN_URL",
 	"SOVEREIGN_EVENT_TOKEN",
 	"SOVEREIGN_EVENT_TOKEN_FILE",
+	"SOVEREIGN_BACKEND_TOKEN_FILE",
+	"SOVEREIGN_HARVESTER_TOKEN_FILE",
+	"SOVEREIGN_DATAHUB_TOKEN_FILE",
 	"SOVEREIGN_EVENT_AUTH",
+	"OTEL_SERVICE_NAME",
+	"SERVICE_NAME",
 }
 
 func applySovereignAuthEnv(t *testing.T, envVars map[string]string) {
@@ -184,4 +189,62 @@ func TestNewConfig_SovereignEventAuth(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewConfig_SovereignScopedCredentials(t *testing.T) {
+	backendTokenFile := writeSovereignTokenFile(t, "backend-sovereign-token-1234567890\n")
+	harvesterTokenFile := writeSovereignTokenFile(t, "harvester-sovereign-token-123456789\n")
+	datahubTokenFile := writeSovereignTokenFile(t, "datahub-sovereign-token-1234567890\n")
+	genericTokenFile := writeSovereignTokenFile(t, "generic-sovereign-token-1234567890\n")
+
+	t.Run("backend service uses SOVEREIGN_BACKEND_TOKEN_FILE", func(t *testing.T) {
+		applySovereignAuthEnv(t, map[string]string{
+			"SOVEREIGN_URL":                "http://knowledge-sovereign:9500",
+			"OTEL_SERVICE_NAME":            "alt-backend",
+			"SOVEREIGN_BACKEND_TOKEN_FILE": backendTokenFile,
+			"SOVEREIGN_EVENT_TOKEN_FILE":   genericTokenFile,
+		})
+
+		cfg, err := NewConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Sovereign.EventToken != "backend-sovereign-token-1234567890" {
+			t.Errorf("got %q, want backend token", cfg.Sovereign.EventToken)
+		}
+	})
+
+	t.Run("harvester service uses SOVEREIGN_HARVESTER_TOKEN_FILE", func(t *testing.T) {
+		applySovereignAuthEnv(t, map[string]string{
+			"SOVEREIGN_URL":                  "http://knowledge-sovereign:9500",
+			"OTEL_SERVICE_NAME":              "alt-harvester",
+			"SOVEREIGN_HARVESTER_TOKEN_FILE": harvesterTokenFile,
+			"SOVEREIGN_EVENT_TOKEN_FILE":     genericTokenFile,
+		})
+
+		cfg, err := NewConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Sovereign.EventToken != "harvester-sovereign-token-123456789" {
+			t.Errorf("got %q, want harvester token", cfg.Sovereign.EventToken)
+		}
+	})
+
+	t.Run("datahub service uses SOVEREIGN_DATAHUB_TOKEN_FILE", func(t *testing.T) {
+		applySovereignAuthEnv(t, map[string]string{
+			"SOVEREIGN_URL":                "http://knowledge-sovereign:9500",
+			"OTEL_SERVICE_NAME":            "alt-data-hub",
+			"SOVEREIGN_DATAHUB_TOKEN_FILE": datahubTokenFile,
+			"SOVEREIGN_EVENT_TOKEN_FILE":   genericTokenFile,
+		})
+
+		cfg, err := NewConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Sovereign.EventToken != "datahub-sovereign-token-1234567890" {
+			t.Errorf("got %q, want datahub token", cfg.Sovereign.EventToken)
+		}
+	})
 }

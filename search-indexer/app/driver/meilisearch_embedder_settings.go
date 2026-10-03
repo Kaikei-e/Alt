@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -17,11 +18,24 @@ import (
 // deliberately absent: they are dropped when reading, so reconciliation never
 // fights the engine over values this service never declared.
 type EmbedderSpec struct {
-	Source           string `json:"source"`
-	Model            string `json:"model"`
-	URL              string `json:"url"`
-	Dimensions       int    `json:"dimensions"`
-	DocumentTemplate string `json:"documentTemplate"`
+	Source           string `json:"source,omitempty"`
+	Model            string `json:"model,omitempty"`
+	URL              string `json:"url,omitempty"`
+	APIKey           string `json:"apiKey,omitempty"`
+	Dimensions       int    `json:"dimensions,omitempty"`
+	DocumentTemplate string `json:"documentTemplate,omitempty"`
+}
+
+// LogValue implements slog.LogValuer to redact the APIKey.
+func (e EmbedderSpec) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("source", e.Source),
+		slog.String("model", e.Model),
+		slog.String("url", e.URL),
+		slog.String("apiKey", "***REDACTED***"),
+		slog.Int("dimensions", e.Dimensions),
+		slog.String("documentTemplate", e.DocumentTemplate),
+	)
 }
 
 // EmbedderSettingsDriver reads and writes /indexes/{uid}/settings/embedders.
@@ -43,7 +57,12 @@ func NewEmbedderSettingsDriver(baseURL, apiKey, indexName string, timeout time.D
 		baseURL:   strings.TrimSuffix(baseURL, "/"),
 		apiKey:    apiKey,
 		indexName: indexName,
-		client:    &http.Client{Timeout: timeout},
+		client: &http.Client{
+			Timeout: timeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 

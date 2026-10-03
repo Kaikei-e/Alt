@@ -3,12 +3,15 @@ package driver
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"pre-processor/config"
@@ -42,7 +45,7 @@ func TestArticleSummarizerAPIClient_Returns429(t *testing.T) {
 			Content: strings.Repeat("Test content for summarization. ", 10),
 		}
 
-		_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+		_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", http.DefaultClient)
 
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -85,7 +88,7 @@ func TestArticleSummarizerAPIClient_UpstreamBusyClassification(t *testing.T) {
 				Content: strings.Repeat("Test content for summarization. ", 10),
 			}
 
-			_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+			_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", http.DefaultClient)
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -122,7 +125,7 @@ func TestTitleFallback(t *testing.T) {
 			Content: "Short content",
 		}
 
-		result, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+		result, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", http.DefaultClient)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -151,7 +154,7 @@ func TestTitleFallback(t *testing.T) {
 			Content: "Short content",
 		}
 
-		_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+		_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", http.DefaultClient)
 		if !errors.Is(err, ErrContentTooShort) {
 			t.Errorf("expected ErrContentTooShort, got: %v", err)
 		}
@@ -197,7 +200,7 @@ func TestArticleSummarizerAPIClient_BadRequestMapping(t *testing.T) {
 				Content: strings.Repeat("Test content for summarization. ", 10),
 			}
 
-			_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+			_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", http.DefaultClient)
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -301,4 +304,101 @@ func TestContentLengthMeasurement(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStreamArticleSummarizerAPIClient_StreamingAndPolicyPreservation(t *testing.T) {
+	t.Run("streams response chunks successfully and preserves client policy", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			flusher, ok := w.(http.Flusher)
+			if ok {
+				flusher.Flush()
+			}
+			_, _ = w.Write([]byte("chunk1\n"))
+			if ok {
+				flusher.Flush()
+			}
+			_, _ = w.Write([]byte("chunk2\n"))
+		}))
+		defer server.Close()
+
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		cfg := &config.Config{
+			NewsCreator: config.NewsCreatorConfig{
+				Host:    server.URL,
+				APIPath: "/api/v1/summarize",
+				Timeout: 600 * time.Second,
+			},
+		}
+
+		article := ArticlePayload{
+			ID:      "test-streaming",
+			Content: strings.Repeat("Valid content for streaming test. ", 10),
+		}
+
+		client := &http.Client{
+			Timeout: 600 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		bodyReader, err := StreamArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "normal", client)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		defer func() { _ = bodyReader.Close() }()
+
+		data, err := io.ReadAll(bodyReader)
+		if err != nil {
+			t.Fatalf("failed reading stream: %v", err)
+		}
+		if string(data) != "chunk1\nchunk2\n" {
+			t.Errorf("expected 'chunk1\\nchunk2\\n', got %q", string(data))
+		}
+	})
+
+	t.Run("preserves CheckRedirect policy when redirect occurs", func(t *testing.T) {
+		var separateHits int64
+		separateDest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt64(&separateHits, 1)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer separateDest.Close()
+
+		redirectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, separateDest.URL+"/redirected", http.StatusFound)
+		}))
+		defer redirectServer.Close()
+
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		cfg := &config.Config{
+			NewsCreator: config.NewsCreatorConfig{
+				Host:    redirectServer.URL,
+				APIPath: "/api/v1/summarize",
+				Timeout: 600 * time.Second,
+			},
+		}
+
+		article := ArticlePayload{
+			ID:      "test-redirect",
+			Content: strings.Repeat("Valid content for streaming test. ", 10),
+		}
+
+		client := &http.Client{
+			Timeout: 600 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		bodyReader, err := StreamArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "normal", client)
+		if bodyReader != nil {
+			_ = bodyReader.Close()
+		}
+		_ = err
+		if h := atomic.LoadInt64(&separateHits); h != 0 {
+			t.Errorf("expected 0 hits on separate redirect destination, got %d", h)
+		}
+	})
 }

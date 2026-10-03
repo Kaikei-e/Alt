@@ -26,11 +26,11 @@ all interfaces and are out of scope here.
 |---------|----------|--------------|--------------|-----------------|-------|
 | plecto-proxy | Rust (PlectoProxy 0.11.1) | 80 → 8443, 8080 | core.yaml | `plecto healthz` / admin `/healthz` `/readyz` (:8080) | Edge/ingress; replaced nginx. Routes in `plecto/manifest.toml`。upstream は alt-frontend-sv / alt-backend / kratos の 3 本 |
 | alt-frontend-sv | TypeScript (SvelteKit 2.x, Bun) | 4173 | core.yaml | `/health` | メイン FE。`/home`（Knowledge Home、今日の入口）/ `/knowledge/trail`（resume surface）/ `/feeds`（フィード一覧・購読管理）/ `/admin/knowledge-home`（Knowledge Home admin） |
-| alt-backend | Go 1.26.6 (Echo) | 9000, 9101, 9102 | core.yaml | `/v1/health` (:9000), `/health` `/health/deep` (:9110) | User-facing API。Knowledge Home の admin / reproject API は持つが projector 本体は knowledge-sovereign 側。rag-orchestrator hop へ `X-Alt-Tenant-Id` を forward ([[000905]]) |
-| alt-harvester | Go 1.26.6 | なし | core.yaml | `/health` (:9110) | 7 定期ジョブ専用。業務リスナーなし |
-| alt-notifier | Go 1.26.6 | なし | core.yaml | `/health` (:9110) | `push_deliveries` を drain して Web Push を送る。VAPID 秘密鍵はこのコンテナのみ。API を持たない |
-| alt-data-hub | Go 1.26.6 | なし | core.yaml | `/health` (:9110)、`/health/deep` は mTLS `:9443` 側 | alt-db の唯一のオーナー。業務面は mTLS `:9443` のみ |
-| alt-butterfly-facade | Go 1.26.6 | 9250 | bff.yaml | `/alt-butterfly-facade healthcheck` | BFF。alt-backend と acolyte-orchestrator の両方を束ねる |
+| alt-backend | Go 1.27.1 (Echo) | 9000, 9101, 9102 | core.yaml | `/v1/health` (:9000), `/health` `/health/deep` (:9110) | User-facing API。Knowledge Home の admin / reproject API は持つが projector 本体は knowledge-sovereign 側。rag-orchestrator hop へ `X-Alt-Tenant-Id` を forward ([[000905]]) |
+| alt-harvester | Go 1.27.1 | なし | core.yaml | `/health` (:9110) | 7 定期ジョブ専用。業務リスナーなし |
+| alt-notifier | Go 1.27.1 | なし | core.yaml | `/health` (:9110) | `push_deliveries` を drain して Web Push を送る。VAPID 秘密鍵はこのコンテナのみ。API を持たない |
+| alt-data-hub | Go 1.27.1 | なし | core.yaml | `/health` (:9110)、`/health/deep` は mTLS `:9443` 側 | alt-db の唯一のオーナー。業務面は mTLS `:9443` のみ |
+| alt-butterfly-facade | Go 1.27.1 | 9250 | bff.yaml | `/alt-butterfly-facade healthcheck` | BFF。alt-backend と acolyte-orchestrator の両方を束ねる |
 
 > **alt-backend / alt-harvester / alt-notifier / alt-data-hub は 1 ディレクトリ 4 バイナリ**（[[000954]] が 3 本を切り出し、その後 `cmd/notifier` が 4 本目として加わった）。
 > `alt-backend/app` という単一 Go モジュール (`module alt`) から `cmd/backend` /
@@ -61,9 +61,9 @@ all interfaces and are out of scope here.
 ### Worker Services
 | Service | Language | Host Port(s) | Compose File | Health Endpoint |
 |---------|----------|--------------|--------------|-----------------|
-| pre-processor | Go 1.26.6 | 9200, 9202 | ai.yaml | `/pre-processor healthcheck` |
-| pre-processor-sidecar | Go 1.26.6 | なし | workers.yaml | なし（`INOREADER_SYNC` は compose 既定で無効） |
-| search-indexer | Go 1.26.6 | 9300, 9301 | workers.yaml | `/search-indexer healthcheck` |
+| pre-processor | Go 1.27.1 | 9200, 9202 | ai.yaml | `/pre-processor healthcheck` |
+| pre-processor-sidecar | Go 1.27.1 | なし | workers.yaml | なし（`INOREADER_SYNC` は compose 既定で無効） |
+| search-indexer | Go 1.27.1 | 9300, 9301 | workers.yaml | `/search-indexer healthcheck` |
 | tag-generator | Python 3.14 (FastAPI) | 9400 | workers.yaml | `/health` |
 
 `pre-processor` / `search-indexer` / `tag-generator` はいずれも業務ポートに加えて
@@ -105,7 +105,7 @@ profile を付けたときだけ起動する（既定の `up` とデプロイで
 | Service | Language | Host Port(s) | Compose File | Health Endpoint |
 |---------|----------|--------------|--------------|-----------------|
 | kratos | - (Ory Kratos v1.3.0) | 4433 | auth.yaml | `/health/ready` (:4433; admin :4434 は internal kratos-admin 経由 auth-hub からのみ到達可能) |
-| auth-hub | Go 1.26.6 (Echo) | なし | auth.yaml | `/auth-hub healthcheck` |
+| auth-hub | Go 1.27.1 (Echo) | なし | auth.yaml | `/auth-hub healthcheck` |
 | auth-token-manager | Deno 2.x | 9201 | workers.yaml | `deno run` ベースの healthcheck |
 
 `auth-hub` はホストポートを publish しない（`:8888` はコンテナ内のみ、mTLS `:9443` と
@@ -116,7 +116,7 @@ ops `:9110` も同様）。edge の認証委譲は plecto-proxy 側に **移植�
 | Service | Language | Host Port(s) | Compose File | Health Endpoint |
 |---------|----------|--------------|--------------|-----------------|
 | redis-streams | Redis 8.4.5 | 6380 → 6379 | mq.yaml | `redis-cli ping` |
-| mq-hub | Go 1.26.6 | 9500 | mq.yaml | `/health` |
+| mq-hub | Go 1.27.1 | 9500 | mq.yaml | `/health` |
 
 ### Report Generation Services (Acolyte)
 | Service | Language | Host Port(s) | Compose File | Health Endpoint |
@@ -142,7 +142,7 @@ recap-subworker は NVIDIA GPU を 1 枚予約する（`count: 1`）。dashboard
 ### RAG Services
 | Service | Language | Host Port(s) | Compose File | Health Endpoint |
 |---------|----------|--------------|--------------|-----------------|
-| rag-orchestrator | Go 1.26.6 | 9010, 9011 | rag.yaml | `/healthz` (:9010)、`/health` (:9110 ops) |
+| rag-orchestrator | Go 1.27.1 | 9010, 9011 | rag.yaml | `/healthz` (:9010)、`/health` (:9110 ops) |
 
 `rag-orchestrator` は REST `:9010` / Connect `:9011` / PKI ops `:9110` の 3 リスナーを持つ。
 推論の相方は `rerank-local` / `knowledge-embedder-local`（上の Inference Services）。
@@ -150,7 +150,7 @@ recap-subworker は NVIDIA GPU を 1 枚予約する（`count: 1`）。dashboard
 ### Knowledge Sovereign Services
 | Service | Language | Host Port(s) | Compose File | Health Endpoint |
 |---------|----------|--------------|--------------|-----------------|
-| knowledge-sovereign | Go 1.26.6 | 9510 → 9500, 9511 → 9501 | sovereign.yaml | `/health` (:9501) |
+| knowledge-sovereign | Go 1.27.1 | 9510 → 9500, 9511 → 9501 | sovereign.yaml | `/health` (:9501) |
 | knowledge-sovereign-db-migrator | Atlas（`knowledge-sovereign/migrations/`） | - | sovereign.yaml | - |
 
 `:9500` は event-log RPC（`ListKnowledgeEvents` / `AppendKnowledgeEvent`）、
@@ -239,7 +239,7 @@ forwarder は 16 本ちょうどで、これが accidental OSU cap そのもの�
 ### CLI & Tools
 | Name | Language | Description |
 |------|----------|-------------|
-| altctl | Go 1.26.6 (Cobra) | Docker Compose オーケストレーション CLI。`up` / `down` / `home reproject` / `home slo` などを持つ |
+| altctl | Go 1.27.1 (Cobra) | Docker Compose オーケストレーション CLI。`up` / `down` / `home reproject` / `home slo` などを持つ |
 | alt-perf | Deno 2.x (Astral) | E2E パフォーマンス計測（profile `perf`） |
 | k6 | grafana/k6 0.55.0 | 負荷シナリオ実行（profile `perf`） |
 | restic-backup | restic（`compose/backup.yaml`） | ボリューム / DB バックアップ（profile `backup`） |

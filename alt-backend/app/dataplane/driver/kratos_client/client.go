@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -32,9 +33,12 @@ type systemUserResponse struct {
 	UserID string `json:"user_id"`
 }
 
-// NewKratosClient creates a new auth-hub client.
+// NewKratosClient creates a new auth-hub client for production use.
 // Note: Despite the name, this now calls auth-hub instead of Kratos directly.
 // This provides abstraction so alt-backend doesn't need to know about Kratos.
+//
+// Production requires an HTTPS authHubURL and a non-nil httpClient (typically configured with mTLS via tlsutil).
+// Plaintext HTTP and nil HTTP client are rejected (fail-closed) to prevent credential leakage.
 //
 // internalAuthSecret must be config.Auth.InternalAuthSecret
 // (INTERNAL_AUTH_SECRET), never config.Auth.BackendTokenSecret. GetFirstIdentityID
@@ -42,13 +46,40 @@ type systemUserResponse struct {
 // call, so it is copied into nginx access logs and OTel span attributes; the
 // HS256 key that signs every browser token must not be reachable from there.
 // auth-hub refuses to start when the two are the same value.
-func NewKratosClient(authHubURL string, internalAuthSecret string) KratosClient {
+func NewKratosClient(authHubURL string, internalAuthSecret string, httpClient *http.Client) KratosClient {
+	if !strings.HasPrefix(authHubURL, "https://") {
+		panic(fmt.Sprintf("kratos_client: authHubURL must use HTTPS (got %q)", authHubURL))
+	}
+	if httpClient == nil {
+		panic("kratos_client: injected http.Client is nil but authHubURL is HTTPS (fail-closed)")
+	}
+
+	// Enforce timeout and prevent credential forwarding on redirects.
+	secureClient := *httpClient
+	if secureClient.Timeout == 0 {
+		secureClient.Timeout = 10 * time.Second
+	}
+	secureClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
 	return &authHubClientImpl{
 		authHubURL:         authHubURL,
 		internalAuthSecret: internalAuthSecret,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		httpClient:         &secureClient,
+	}
+}
+
+// NewKratosClientForTest creates a KratosClient instance strictly for testing purposes.
+// This is clearly named and intended ONLY for unit tests. It allows HTTP URLs and custom test clients.
+func NewKratosClientForTest(authHubURL string, internalAuthSecret string, httpClient *http.Client) KratosClient {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 10 * time.Second}
+	}
+	return &authHubClientImpl{
+		authHubURL:         authHubURL,
+		internalAuthSecret: internalAuthSecret,
+		httpClient:         httpClient,
 	}
 }
 

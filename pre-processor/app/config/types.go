@@ -85,7 +85,7 @@ type MetricsConfig struct {
 }
 
 type NewsCreatorConfig struct {
-	Host    string        `json:"host" env:"NEWS_CREATOR_HOST" default:"http://news-creator:11434"`
+	Host    string        `json:"host" env:"NEWS_CREATOR_HOST" default:"https://news-creator:9443"`
 	APIPath string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/v1/summarize"`
 	Model   string        `json:"model" env:"NEWS_CREATOR_MODEL" default:"gemma4-e4b-q4km"`
 	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"600s"`
@@ -166,7 +166,7 @@ func defaultConfig() *Config {
 			IdleTimeout:       120 * time.Second,
 		},
 		NewsCreator: NewsCreatorConfig{
-			Host:    "http://news-creator:11434",
+			Host:    "https://news-creator:9443",
 			APIPath: "/api/v1/summarize",
 			Model:   "gemma4-e4b-q4km",
 			Timeout: 600 * time.Second,

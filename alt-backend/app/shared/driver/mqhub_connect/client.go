@@ -61,19 +61,49 @@ type Client struct {
 	enabled bool
 }
 
+// authRoundTripper injects Bearer token into outgoing requests.
+type authRoundTripper struct {
+	token string
+	base  http.RoundTripper
+}
+
+func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.token != "" && req.Header.Get("Authorization") == "" {
+		req = req.Clone(req.Context())
+		req.Header.Set("Authorization", "Bearer "+t.token)
+	}
+	return t.base.RoundTrip(req)
+}
+
 // NewClient creates a new mq-hub Connect-RPC client.
-func NewClient(baseURL string, enabled bool) *Client {
+func NewClient(baseURL string, enabled bool, authToken ...string) *Client {
 	if !enabled {
 		return &Client{enabled: false}
 	}
 
+	token := ""
+	if len(authToken) > 0 {
+		token = authToken[0]
+	}
+
+	var transport http.RoundTripper = &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 50,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	if token != "" {
+		transport = &authRoundTripper{
+			token: token,
+			base:  transport,
+		}
+	}
+
 	httpClient := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 50,
-			IdleConnTimeout:     90 * time.Second,
+		Transport: transport,
+		Timeout:   30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
-		Timeout: 30 * time.Second,
 	}
 	client := mqhubv1connect.NewMQHubServiceClient(
 		httpClient,

@@ -53,4 +53,12 @@ for id in "${containers[@]}"; do
   echo
   echo "===== $name (tail=$TAIL) ====="
   docker logs --tail="$TAIL" "$id" 2>&1 | redact || true
+
+  health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$id" 2>/dev/null || true)"
+  if [[ -n "$health" ]]; then
+    echo "--- $name health logs (status=$health) ---"
+    docker inspect -f '{{if .State.Health}}{{range .State.Health.Log}}[{{.End}}] exit {{.ExitCode}}:
+{{.Output}}
+{{end}}{{end}}' "$id" 2>/dev/null | tail -n 50 | redact || true
+  fi
 done

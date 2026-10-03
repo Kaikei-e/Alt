@@ -2,7 +2,7 @@
 
 ## Overview
 
-Article summarization, Inoreader-to-articles sync, and summary quality-gating service. **Go 1.26+**, `handler` → `service` → `repository`/`driver` layering. (RSS feed *fetching* is not this service's job — see `docs/services/pre-processor.md`; the feed-processing code path here is unwired dead code.)
+Article summarization, Inoreader-to-articles sync, and summary quality-gating service. **Go 1.27.1**, `handler` → `service` → `repository`/`driver` layering. (RSS feed *fetching* is not this service's job — see `docs/services/pre-processor.md`; the feed-processing code path here is unwired dead code.)
 
 > Details: `docs/services/pre-processor.md`
 

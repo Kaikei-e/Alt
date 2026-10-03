@@ -1,7 +1,7 @@
 # auth-hub Playwright E2E suite
 
 Black-box HTTP coverage for the Identity-Aware Proxy that bridges nginx's
-`auth_request` to Ory Kratos (Go 1.26 / Echo v4, port 8888). Replaces
+`auth_request` to Ory Kratos (Go 1.27.1 / Echo v4, port 8888). Replaces
 `e2e/hurl/auth-hub/`.
 
 Every spec is HTTP-only — no spec touches `page`, `browser` or `context` — so

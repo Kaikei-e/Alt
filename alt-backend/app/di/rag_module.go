@@ -1,7 +1,14 @@
 package di
 
 import (
+	"context"
+	"log/slog"
+	"net/http"
+	"os"
+	"strings"
+
 	"alt/adapter/augur_adapter"
+	"alt/domain"
 	"alt/orchestrator/gateway/morning_gateway"
 	"alt/orchestrator/gateway/morning_letter_connect_gateway"
 	"alt/orchestrator/gateway/rag_connect_gateway"
@@ -11,11 +18,8 @@ import (
 	"alt/orchestrator/usecase/answer_chat_usecase"
 	"alt/orchestrator/usecase/morning_usecase"
 	"alt/orchestrator/usecase/retrieve_context_usecase"
+	"alt/shared/domain/authcontext"
 	"alt/tlsutil"
-	"log/slog"
-	"net/http"
-	"os"
-	"strings"
 )
 
 // RAGModule holds all RAG-domain components.
@@ -40,8 +44,10 @@ type RAGModule struct {
 // failure panics so a missing cert can never degrade to plaintext. http
 // scheme keeps the historical plaintext client. Both branches log loudly.
 func newRagConnectHTTPClient(connectURL string) *http.Client {
+	var client *http.Client
 	if strings.HasPrefix(connectURL, "https://") {
-		client, err := tlsutil.NewMTLSClient(
+		var err error
+		client, err = tlsutil.NewMTLSClient(
 			os.Getenv("MTLS_CERT_FILE"),
 			os.Getenv("MTLS_KEY_FILE"),
 			os.Getenv("MTLS_CA_FILE"),
@@ -51,21 +57,42 @@ func newRagConnectHTTPClient(connectURL string) *http.Client {
 			panic("rag-orchestrator Connect URL is https but mTLS client construction failed: " + err.Error())
 		}
 		slog.Default().Info("rag_connect_mtls_enabled", "url", connectURL)
-		return client
+	} else {
+		slog.Default().Warn("rag_connect_plaintext", "url", connectURL,
+			"reason", "RAG_ORCHESTRATOR_CONNECT_URL is http; X-Alt-User-Id hop is protected by network policy only")
+		client = &http.Client{}
 	}
-	slog.Default().Warn("rag_connect_plaintext", "url", connectURL,
-		"reason", "RAG_ORCHESTRATOR_CONNECT_URL is http; X-Alt-User-Id hop is protected by network policy only")
-	return &http.Client{}
+
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return client
 }
 
 func newRAGModule(infra *InfraModule, feed *FeedModule) *RAGModule {
 	cfg := infra.Config
 
-	// RAG Integration (REST client)
-	ragOpts := make([]rag_gateway.ClientOption, 0, 1)
+	ragOpts := make([]rag_gateway.ClientOption, 0, 2)
 	if cfg.Rag.APIToken != "" {
 		ragOpts = append(ragOpts, rag_gateway.WithBearerToken(cfg.Rag.APIToken))
 	}
+	ragOpts = append(ragOpts, rag_gateway.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
+		if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+			req.Header.Set("X-Alt-Backend-Token", jwtToken)
+		}
+		if user, err := domain.GetUserFromContext(ctx); err == nil && user != nil {
+			if user.UserID.String() != "" && user.UserID.String() != "00000000-0000-0000-0000-000000000000" {
+				req.Header.Set("X-Alt-User-Id", user.UserID.String())
+			}
+			if user.TenantID.String() != "" && user.TenantID.String() != "00000000-0000-0000-0000-000000000000" {
+				req.Header.Set("X-Alt-Tenant-Id", user.TenantID.String())
+			}
+		}
+		return nil
+	}))
+	ragRESTHTTPClient := newRagConnectHTTPClient(cfg.Rag.OrchestratorURL)
+	ragOpts = append(ragOpts, rag_gateway.WithHTTPClient(ragRESTHTTPClient))
+
 	ragClient, err := rag_gateway.NewClientWithResponses(cfg.Rag.OrchestratorURL, ragOpts...)
 	if err != nil {
 		panic("Failed to create RAG client: " + err.Error())

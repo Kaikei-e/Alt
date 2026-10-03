@@ -155,7 +155,7 @@ uid/gid 999 は `recap-subworker` Dockerfile で pin された `recap` user と 
 
 release-deploy の `build` / `pact-publish` / `gate` / `e2e` jobs が走る。以下が必要:
 
-- Go 1.26+ (`/usr/local/go/bin` に通す)
+- Go 1.27+ (`/usr/local/go/bin` に通す)
 - Rust + Cargo (`~/.cargo/bin`)
 - Python 3.14+
 - Docker + Buildx

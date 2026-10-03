@@ -244,6 +244,43 @@ func SecureHTTPClientWithConfigAndResolver(cfg *HTTPConfig, resolver IPResolver)
 	return &http.Client{
 		Transport: transport,
 		Timeout:   cfg.ClientTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			if req.URL == nil {
+				return ErrDestinationNotAllowed
+			}
+			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+				return ErrDestinationNotAllowed
+			}
+			host := req.URL.Hostname()
+			port := req.URL.Port()
+			if isBlockedPort(port) {
+				return ErrDestinationNotAllowed
+			}
+			if !security.IsFeedHostAllowed(host) {
+				if isPrivateDomainOrLiteral(host) {
+					return ErrDestinationNotAllowed
+				}
+				if ip := net.ParseIP(host); ip != nil {
+					if security.IsPrivateIPAddress(ip) || IsMetadataIP(ip) {
+						return ErrDestinationNotAllowed
+					}
+				}
+				if resolver != nil {
+					addrs, err := resolver.LookupIPAddr(req.Context(), host)
+					if err == nil {
+						for _, a := range addrs {
+							if security.IsPrivateIPAddress(a.IP) || IsMetadataIP(a.IP) {
+								return ErrDestinationNotAllowed
+							}
+						}
+					}
+				}
+			}
+			return nil
+		},
 	}
 }
 

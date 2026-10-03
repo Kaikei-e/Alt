@@ -17,13 +17,16 @@ import (
 
 // Handler contains all HTTP handlers for the search indexer.
 type Handler struct {
+	authUsecase *usecase.AuthUsecase
+
 	searchByUserUsecase *usecase.SearchByUserUsecase
 }
 
 // NewHandler creates a new Handler.
-func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase) *Handler {
+func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase, authUsecase *usecase.AuthUsecase) *Handler {
 	return &Handler{
 		searchByUserUsecase: searchByUserUsecase,
+		authUsecase:         authUsecase,
 	}
 }
 
@@ -64,6 +67,25 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 	if userID == "" {
 		logger.Logger.ErrorContext(ctx, "user_id is empty")
 		http.Error(w, "user_id parameter required", http.StatusBadRequest)
+		return
+	}
+
+	var token string
+	if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+		token = strings.TrimPrefix(authHeader, "Bearer ")
+	} else if backendToken := r.Header.Get("X-Alt-Backend-Token"); backendToken != "" {
+		token = backendToken
+	}
+
+	if token != "" {
+		if err := h.authUsecase.VerifyUserToken(ctx, token, userID); err != nil {
+			logger.Logger.ErrorContext(ctx, "auth verification failed", "err", err, "user_id", userID)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	} else {
+		logger.Logger.ErrorContext(ctx, "missing or invalid authorization header")
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 

@@ -53,8 +53,8 @@ RUN apt-get update \
         curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd -r evaluator \
-    && useradd -r -g evaluator -m -s /bin/bash evaluator \
+    && groupadd -r -g 65533 evaluator \
+    && useradd -r -u 65533 -g evaluator -m -s /bin/bash evaluator \
     && mkdir -p /app/.cache/huggingface \
     && chown -R evaluator:evaluator /app/.cache
 

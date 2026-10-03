@@ -11,11 +11,25 @@ type SessionValidator interface {
 type SessionCache interface {
 	Get(sessionID string) (*CachedSession, bool)
 	Set(sessionID string, session CachedSession)
+	Delete(sessionID string)
 }
 
 // TokenIssuer generates signed backend JWT tokens.
 type TokenIssuer interface {
 	IssueBackendToken(identity *Identity, sessionID string) (string, error)
+}
+
+// TokenVerifier parses and validates backend JWT tokens.
+type TokenVerifier interface {
+	IntrospectBackendToken(token string) (*IntrospectedToken, error)
+}
+
+// IntrospectedToken holds verified JWT claims.
+type IntrospectedToken struct {
+	Active   bool
+	Sub      string
+	TenantID string
+	Exp      int64
 }
 
 // CSRFTokenGenerator generates CSRF tokens from session identifiers.

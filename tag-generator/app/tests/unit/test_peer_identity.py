@@ -88,7 +88,7 @@ def test_header_stripped_when_mtls_off():
 def test_header_stripped_when_trust_unset():
     os.environ.pop("PEER_IDENTITY_TRUSTED", None)
     app = Starlette(routes=[Route("/echo", _echo_peer)])
-    app.add_middleware(PeerIdentityMiddleware)
+    app.add_middleware(PeerIdentityMiddleware, strict=False, allowed=["alt-backend"])
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
         assert resp.status_code == 200
@@ -189,7 +189,7 @@ def test_tls_cn_is_used_even_when_trust_env_is_off():
 def test_strict_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify strict_from_env defaults to False and parses truthy/falsy values."""
     monkeypatch.delenv("PEER_IDENTITY_STRICT", raising=False)
-    assert strict_from_env() is False
+    assert strict_from_env() is True
 
     for truthy in ("true", "1", "on", "yes", "TRUE", "On", "YES"):
         monkeypatch.setenv("PEER_IDENTITY_STRICT", truthy)

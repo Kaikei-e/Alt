@@ -35,6 +35,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestLoad_DataHub_MTLSURLUnsetPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	unsetEnv(t, "DATAHUB_MTLS_URL")
 
 	assert.Panics(t, func() { Load() },
@@ -42,6 +43,7 @@ func TestLoad_DataHub_MTLSURLUnsetPanics(t *testing.T) {
 }
 
 func TestLoad_DataHub_PlaintextURLPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("DATAHUB_MTLS_URL", "http://alt-backend:9102")
 
 	assert.Panics(t, func() { Load() },
@@ -49,6 +51,7 @@ func TestLoad_DataHub_PlaintextURLPanics(t *testing.T) {
 }
 
 func TestLoad_DataHub_MissingCertMaterialPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("DATAHUB_MTLS_URL", "https://alt-data-hub:9443")
 	unsetEnv(t, "MTLS_CERT_FILE")
 	unsetEnv(t, "MTLS_KEY_FILE")
@@ -59,6 +62,7 @@ func TestLoad_DataHub_MissingCertMaterialPanics(t *testing.T) {
 }
 
 func TestLoad_DataHub_FullyConfigured(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("DATAHUB_MTLS_URL", "https://alt-data-hub:9443")
 	t.Setenv("DATAHUB_MTLS_SERVER_NAME", "alt-data-hub")
 	t.Setenv("DATAHUB_TIMEOUT", "45")
@@ -82,6 +86,7 @@ func TestLoad_DataHub_FullyConfigured(t *testing.T) {
 // work without an extra variable. Empty must therefore NOT be a startup
 // failure — but it must also not be quietly rewritten to something else.
 func TestLoad_DataHub_ServerNameOptional(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("DATAHUB_MTLS_URL", "https://alt-data-hub:9443")
 	unsetEnv(t, "DATAHUB_MTLS_SERVER_NAME")
 
@@ -99,6 +104,7 @@ func unsetEnv(t *testing.T, key string) {
 }
 
 func TestLoad_PeerIdentityMode_UnsetPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	unsetEnv(t, "PEER_IDENTITY_MODE")
 
 	assert.Panics(t, func() { Load() },
@@ -106,12 +112,14 @@ func TestLoad_PeerIdentityMode_UnsetPanics(t *testing.T) {
 }
 
 func TestLoad_PeerIdentityMode_InvalidValuePanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("PEER_IDENTITY_MODE", "yes-please")
 
 	assert.Panics(t, func() { Load() })
 }
 
 func TestLoad_PeerIdentityMode_DisabledIsExplicit(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("PEER_IDENTITY_MODE", "disabled")
 
 	cfg := Load()
@@ -124,6 +132,7 @@ func TestLoad_PeerIdentityMode_DisabledIsExplicit(t *testing.T) {
 // startup whichever loader reaches them first. The invariant under test is
 // that the process refuses to start, not which loader reports it.
 func TestLoad_PeerIdentityMode_MTLSRequiresCerts(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("PEER_IDENTITY_MODE", "mtls")
 	unsetEnv(t, "MTLS_CERT_FILE")
 	unsetEnv(t, "MTLS_KEY_FILE")
@@ -134,6 +143,7 @@ func TestLoad_PeerIdentityMode_MTLSRequiresCerts(t *testing.T) {
 }
 
 func TestLoad_PeerIdentityMode_MTLSRequiresAllowlist(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("PEER_IDENTITY_MODE", "mtls")
 	t.Setenv("MTLS_CERT_FILE", "/certs/svc-cert.pem")
 	t.Setenv("MTLS_KEY_FILE", "/certs/svc-key.pem")
@@ -145,6 +155,7 @@ func TestLoad_PeerIdentityMode_MTLSRequiresAllowlist(t *testing.T) {
 }
 
 func TestLoad_PeerIdentityMode_MTLSFullyConfigured(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("PEER_IDENTITY_MODE", "mtls")
 	t.Setenv("MTLS_CERT_FILE", "/certs/rag-orchestrator/cert.pem")
 	t.Setenv("MTLS_KEY_FILE", "/certs/rag-orchestrator/key.pem")
@@ -161,6 +172,7 @@ func TestLoad_PeerIdentityMode_MTLSFullyConfigured(t *testing.T) {
 }
 
 func TestLoad_RAGRetrievalParameters_Defaults(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	envVars := []string{
 		"RAG_SEARCH_LIMIT",
 		"RAG_QUOTA_ORIGINAL",
@@ -180,6 +192,7 @@ func TestLoad_RAGRetrievalParameters_Defaults(t *testing.T) {
 }
 
 func TestLoad_RAGRetrievalParameters_FromEnv(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("RAG_SEARCH_LIMIT", "100")
 	t.Setenv("RAG_QUOTA_ORIGINAL", "7")
 	t.Setenv("RAG_QUOTA_EXPANDED", "3")
@@ -194,6 +207,7 @@ func TestLoad_RAGRetrievalParameters_FromEnv(t *testing.T) {
 }
 
 func TestLoad_TemporalBoostParameters_Defaults(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	envVars := []string{
 		"TEMPORAL_BOOST_6H",
 		"TEMPORAL_BOOST_12H",
@@ -211,6 +225,7 @@ func TestLoad_TemporalBoostParameters_Defaults(t *testing.T) {
 }
 
 func TestLoad_TemporalBoostParameters_FromEnv(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("TEMPORAL_BOOST_6H", "1.5")
 	t.Setenv("TEMPORAL_BOOST_12H", "1.25")
 	t.Setenv("TEMPORAL_BOOST_18H", "1.1")
@@ -223,6 +238,7 @@ func TestLoad_TemporalBoostParameters_FromEnv(t *testing.T) {
 }
 
 func TestGetEnvFloat64(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	tests := []struct {
 		name     string
 		envValue string
@@ -264,6 +280,7 @@ func TestGetEnvFloat64(t *testing.T) {
 }
 
 func TestGetEnvFloat32(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	tests := []struct {
 		name     string
 		envValue string
@@ -295,6 +312,7 @@ func TestGetEnvFloat32(t *testing.T) {
 }
 
 func TestLoad_DynamicLanguageAllocation_Default(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION")
 
 	cfg := Load()
@@ -303,6 +321,7 @@ func TestLoad_DynamicLanguageAllocation_Default(t *testing.T) {
 }
 
 func TestLoad_DynamicLanguageAllocation_Disabled(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("RAG_DYNAMIC_LANGUAGE_ALLOCATION", "false")
 
 	cfg := Load()
@@ -311,6 +330,7 @@ func TestLoad_DynamicLanguageAllocation_Disabled(t *testing.T) {
 }
 
 func TestDBConfig_DSN(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	db := DBConfig{
 		Host:     "localhost",
 		Port:     "5432",
@@ -325,6 +345,7 @@ func TestDBConfig_DSN(t *testing.T) {
 }
 
 func TestLoad_ServerConfig_Defaults(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("PORT")
 	_ = os.Unsetenv("CONNECT_PORT")
 
@@ -335,6 +356,7 @@ func TestLoad_ServerConfig_Defaults(t *testing.T) {
 }
 
 func TestLoad_DBPoolConfig_Defaults(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("DB_MAX_CONNS")
 	_ = os.Unsetenv("DB_MIN_CONNS")
 
@@ -345,6 +367,7 @@ func TestLoad_DBPoolConfig_Defaults(t *testing.T) {
 }
 
 func TestLoad_MorningLetterMaxTokens_Default(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("MORNING_LETTER_MAX_TOKENS")
 
 	cfg := Load()
@@ -353,6 +376,7 @@ func TestLoad_MorningLetterMaxTokens_Default(t *testing.T) {
 }
 
 func TestLoad_MorningLetterMaxTokens_FromEnv(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("MORNING_LETTER_MAX_TOKENS", "6144")
 
 	cfg := Load()
@@ -361,6 +385,7 @@ func TestLoad_MorningLetterMaxTokens_FromEnv(t *testing.T) {
 }
 
 func TestLoad_RAGDefaultMaxTokens_UpdatedDefault(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("RAG_DEFAULT_MAX_TOKENS")
 
 	cfg := Load()
@@ -369,6 +394,7 @@ func TestLoad_RAGDefaultMaxTokens_UpdatedDefault(t *testing.T) {
 }
 
 func TestLoad_AugurKnowledgeModel_Default(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("AUGUR_KNOWLEDGE_MODEL")
 
 	cfg := Load()
@@ -377,6 +403,7 @@ func TestLoad_AugurKnowledgeModel_Default(t *testing.T) {
 }
 
 func TestLoad_AugurKnowledgeModel_FromEnv(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("AUGUR_KNOWLEDGE_MODEL", "swallow-8b-rag")
 
 	cfg := Load()
@@ -385,6 +412,7 @@ func TestLoad_AugurKnowledgeModel_FromEnv(t *testing.T) {
 }
 
 func TestLoad_MaxPromptTokens_Default(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("RAG_MAX_PROMPT_TOKENS")
 
 	cfg := Load()
@@ -393,6 +421,7 @@ func TestLoad_MaxPromptTokens_Default(t *testing.T) {
 }
 
 func TestLoad_MaxPromptTokens_FromEnv(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("RAG_MAX_PROMPT_TOKENS", "10000")
 
 	cfg := Load()
@@ -401,6 +430,7 @@ func TestLoad_MaxPromptTokens_FromEnv(t *testing.T) {
 }
 
 func TestLoad_CacheConfig_Defaults(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("RAG_CACHE_SIZE")
 	_ = os.Unsetenv("RAG_CACHE_TTL_MINUTES")
 
@@ -411,6 +441,7 @@ func TestLoad_CacheConfig_Defaults(t *testing.T) {
 }
 
 func TestLoad_Backend_RecapWorkerURL_DefaultAndFromEnv(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	// Unset: Load() must resolve the default from config, not leave the field
 	// empty for a downstream silent fallback (CLAUDE.md rule 8/9). The default
 	// must be recap-worker's real listen port (9005) — the port every other
@@ -425,6 +456,7 @@ func TestLoad_Backend_RecapWorkerURL_DefaultAndFromEnv(t *testing.T) {
 }
 
 func TestLoad_LLMBackend_DefaultAndFromEnv(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("LLM_BACKEND")
 
 	cfg := Load()
@@ -439,6 +471,7 @@ func TestLoad_LLMBackend_DefaultAndFromEnv(t *testing.T) {
 // output of the rerank stage, MaxCandidates shapes its input. Reusing TopK for
 // both made reranking unable to promote anything it had not already ranked.
 func TestLoad_RerankWindow_Defaults(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	for _, key := range []string{"RERANK_TOP_K", "RERANK_MAX_CANDIDATES", "RERANK_TIMEOUT"} {
 		_ = os.Unsetenv(key)
 	}
@@ -454,6 +487,7 @@ func TestLoad_RerankWindow_Defaults(t *testing.T) {
 // that gives up first turns a slow-but-successful rerank into a silent fallback
 // to retrieval order, and the reason never reaches either log.
 func TestLoad_RerankTimeout_OutlastsTheServer(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	_ = os.Unsetenv("RERANK_TIMEOUT")
 
 	cfg := Load()
@@ -463,6 +497,7 @@ func TestLoad_RerankTimeout_OutlastsTheServer(t *testing.T) {
 }
 
 func TestLoad_RerankWindow_FromEnv(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("RERANK_TOP_K", "8")
 	t.Setenv("RERANK_MAX_CANDIDATES", "15")
 	t.Setenv("RERANK_TIMEOUT", "20")
@@ -475,6 +510,7 @@ func TestLoad_RerankWindow_FromEnv(t *testing.T) {
 }
 
 func TestLoad_DefaultMaxChunksMatchesRerankTopK(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	unsetEnv(t, "RAG_DEFAULT_MAX_CHUNKS")
 	unsetEnv(t, "RERANK_TOP_K")
 
@@ -485,6 +521,7 @@ func TestLoad_DefaultMaxChunksMatchesRerankTopK(t *testing.T) {
 }
 
 func TestLoad_SovereignEventAuth(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Run("defaults to empty", func(t *testing.T) {
 		unsetEnv(t, "SOVEREIGN_EVENT_TOKEN_FILE")
 		unsetEnv(t, "SOVEREIGN_EVENT_AUTH")
@@ -505,6 +542,7 @@ func TestLoad_SovereignEventAuth(t *testing.T) {
 }
 
 func TestLoad_APIAuth_UnsetPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	unsetEnv(t, "RAG_API_AUTH")
 	unsetEnv(t, "RAG_API_TOKEN_FILE")
 	unsetEnv(t, "RAG_API_TOKEN")
@@ -514,6 +552,7 @@ func TestLoad_APIAuth_UnsetPanics(t *testing.T) {
 }
 
 func TestLoad_APIAuth_Disabled(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	t.Setenv("RAG_API_AUTH", "disabled")
 	unsetEnv(t, "RAG_API_TOKEN_FILE")
 	unsetEnv(t, "RAG_API_TOKEN")
@@ -524,6 +563,7 @@ func TestLoad_APIAuth_Disabled(t *testing.T) {
 }
 
 func TestLoad_APIAuth_TokenEnv(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	unsetEnv(t, "RAG_API_AUTH")
 	unsetEnv(t, "RAG_API_TOKEN_FILE")
 	token := "this-is-a-valid-token-with-at-least-24-characters"
@@ -535,6 +575,7 @@ func TestLoad_APIAuth_TokenEnv(t *testing.T) {
 }
 
 func TestLoad_APIAuth_TokenEnvTooShortPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	unsetEnv(t, "RAG_API_AUTH")
 	unsetEnv(t, "RAG_API_TOKEN_FILE")
 	t.Setenv("RAG_API_TOKEN", "too-short")
@@ -544,6 +585,7 @@ func TestLoad_APIAuth_TokenEnvTooShortPanics(t *testing.T) {
 }
 
 func TestLoad_APIAuth_TokenFile(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	unsetEnv(t, "RAG_API_AUTH")
 	unsetEnv(t, "RAG_API_TOKEN")
 	token := "this-is-a-valid-token-from-file-at-least-24-chars"
@@ -561,6 +603,7 @@ func TestLoad_APIAuth_TokenFile(t *testing.T) {
 }
 
 func TestLoad_APIAuth_TokenFileMissingPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	unsetEnv(t, "RAG_API_AUTH")
 	unsetEnv(t, "RAG_API_TOKEN")
 	t.Setenv("RAG_API_TOKEN_FILE", "/non/existent/path/rag_api_token.txt")
@@ -570,6 +613,7 @@ func TestLoad_APIAuth_TokenFileMissingPanics(t *testing.T) {
 }
 
 func TestLoad_APIAuth_TokenFileTooShortPanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "false")
 	unsetEnv(t, "RAG_API_AUTH")
 	unsetEnv(t, "RAG_API_TOKEN")
 	tmpFile, err := os.CreateTemp(t.TempDir(), "rag_token_*")
@@ -582,4 +626,54 @@ func TestLoad_APIAuth_TokenFileTooShortPanics(t *testing.T) {
 
 	assert.Panics(t, func() { Load() },
 		"RAG_API_TOKEN_FILE with token shorter than 24 chars must panic")
+}
+
+func TestLoad_RerankToken_ShortFilePanics(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "true")
+	t.Setenv("RAG_API_AUTH", "disabled")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "rerank_token_*")
+	require.NoError(t, err)
+	// Shorter than 16 characters must panic
+	_, err = tmpFile.WriteString("short-token-15c\n")
+	require.NoError(t, err)
+	_ = tmpFile.Close()
+
+	t.Setenv("RERANK_INFERENCE_TOKEN_FILE", tmpFile.Name())
+
+	assert.Panics(t, func() { Load() },
+		"RERANK_INFERENCE_TOKEN_FILE with token shorter than 16 chars must panic")
+}
+
+func TestLoad_RerankToken_MinPositive(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "true")
+	t.Setenv("RAG_API_AUTH", "disabled")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "rerank_token_*")
+	require.NoError(t, err)
+	// Exactly 16 characters valid RFC 6750 token
+	token := "1234567890abcdef"
+	_, err = tmpFile.WriteString(token + "\n")
+	require.NoError(t, err)
+	_ = tmpFile.Close()
+
+	t.Setenv("RERANK_INFERENCE_TOKEN_FILE", tmpFile.Name())
+
+	cfg := Load()
+	assert.Equal(t, token, cfg.Rerank.AuthToken)
+}
+
+func TestLoad_RerankToken_TerminalPadding(t *testing.T) {
+	t.Setenv("RERANK_ENABLED", "true")
+	t.Setenv("RAG_API_AUTH", "disabled")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "rerank_token_*")
+	require.NoError(t, err)
+	// Valid token with terminal =* padding (RFC 6750)
+	token := "valid-token-with-padding=="
+	_, err = tmpFile.WriteString(token + "\r\n")
+	require.NoError(t, err)
+	_ = tmpFile.Close()
+
+	t.Setenv("RERANK_INFERENCE_TOKEN_FILE", tmpFile.Name())
+
+	cfg := Load()
+	assert.Equal(t, token, cfg.Rerank.AuthToken)
 }

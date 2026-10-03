@@ -27,12 +27,23 @@ if TYPE_CHECKING:
 
 PEER_IDENTITY_HEADER = "x-alt-peer-identity"
 
-# Docker healthchecks and Prometheus scrape :9443 without a caller-specific
-# client cert; a TLS-authenticated request still needs a cert to reach here
-# at all, so these paths stay reachable without also being in the allowlist.
-_TLS_ALLOWLIST_EXEMPT_PATH_PREFIXES = ("/health", "/metrics")
+# Exact health and metrics exceptions exempt from peer allowlist / auth checks
+# on both in-process TLS (:9443) and plaintext (:11434).
+_EXEMPT_PATHS = frozenset({"/health", "/health/deep", "/metrics"})
 
 logger = logging.getLogger(__name__)
+
+
+def is_exempt_path(path: str) -> bool:
+    """Report whether path matches exact health/metrics exception routes."""
+    norm = path.rstrip("/")
+    if not norm:
+        return False
+    if norm in _EXEMPT_PATHS:
+        return True
+    if norm == "/metrics" or norm.startswith("/metrics/"):
+        return True
+    return False
 
 
 def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
@@ -41,12 +52,12 @@ def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
 
 
 def strict_from_env(env_var: str = "PEER_IDENTITY_STRICT") -> bool:
-    """Plaintext-side strict switch. Unset/false keeps today's default.
+    """Plaintext-side strict switch. Defaults to True (fail closed).
 
     Only gates the header-based plaintext path — TLS-origin allowlist
     enforcement above runs unconditionally regardless of this flag.
     """
-    return os.getenv(env_var, "false").strip().lower() in {"true", "1", "on", "yes"}
+    return os.getenv(env_var, "true").strip().lower() in {"true", "1", "on", "yes"}
 
 
 def arrived_via_sidecar(request: Request) -> bool:
@@ -69,7 +80,7 @@ def arrived_via_sidecar(request: Request) -> bool:
 
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
     def __init__(
-        self, app, allowed: Iterable[str] | None = None, *, strict: bool = False
+        self, app, allowed: Iterable[str] | None = None, *, strict: bool = True
     ) -> None:
         super().__init__(app)
         self._allowed = {c for c in (allowed or []) if c}
@@ -80,16 +91,14 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        exempt = is_exempt_path(request.url.path)
         if is_tls_peer(request.client):
             # In-process mTLS: the verified leaf CN is the only identity.
             # A caller-supplied X-Alt-Peer-Identity is attacker-controlled.
             peer = verified_peer_cn(request.client)
             # The caller already proved possession of a client cert at the
             # :9443 handshake, so CN allowlist enforcement for this traffic
-            # must not depend on `strict` — a hardcoded strict=False on the
-            # plaintext side would otherwise turn MTLS_ALLOWED_PEERS into
-            # documentation for the one listener it is supposed to gate.
-            exempt = request.url.path.startswith(_TLS_ALLOWLIST_EXEMPT_PATH_PREFIXES)
+            # must not depend on `strict`.
             if not exempt:
                 if not peer:
                     logger.warning(
@@ -99,7 +108,7 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
                         request.url.path,
                     )
                     return PlainTextResponse("peer not allowlisted", status_code=403)
-                if self._allowed and peer not in self._allowed:
+                if peer not in self._allowed:
                     logger.warning(
                         "peer_identity.forbidden peer=%s path=%s",
                         peer,
@@ -118,11 +127,11 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
             mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
             if not mtls_on or not arrived_via_sidecar(request):
                 peer = ""
-            if self._strict:
+            if not exempt and self._strict:
                 if not peer:
                     logger.warning("peer_identity.missing path=%s", request.url.path)
                     return PlainTextResponse("unauthenticated peer", status_code=401)
-                if self._allowed and peer not in self._allowed:
+                if peer not in self._allowed:
                     logger.warning(
                         "peer_identity.forbidden peer=%s path=%s",
                         peer,

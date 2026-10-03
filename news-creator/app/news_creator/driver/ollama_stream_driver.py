@@ -31,7 +31,13 @@ class OllamaStreamDriver:
             connect=30,  # Connection timeout only
             sock_read=None,  # No read timeout for streaming
         )
-        self.session = aiohttp.ClientSession(timeout=timeout)
+        headers = {}
+        llm_cfg = getattr(self.config, "llm", None)
+        token = getattr(llm_cfg, "inference_service_token", None) if llm_cfg else None
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        self.session = aiohttp.ClientSession(timeout=timeout, headers=headers)
         logger.info(
             "Ollama stream driver initialized",
             extra={
@@ -119,7 +125,9 @@ class OllamaStreamDriver:
 
         if self.session is None:
             raise RuntimeError("HTTP session is not initialized")
-        async with self.session.post(url, json=chat_payload) as response:
+        async with self.session.post(
+            url, json=chat_payload, allow_redirects=False
+        ) as response:
             if response.status != 200:
                 text_body = await response.text()
                 raise RuntimeError(
@@ -191,7 +199,9 @@ class OllamaStreamDriver:
 
         if self.session is None:
             raise RuntimeError("HTTP session is not initialized")
-        async with self.session.post(url, json=chat_payload) as response:
+        async with self.session.post(
+            url, json=chat_payload, allow_redirects=False
+        ) as response:
             if response.status != 200:
                 text_body = await response.text()
                 raise RuntimeError(
@@ -241,7 +251,9 @@ class OllamaStreamDriver:
 
         if not (self.session is not None):
             raise AssertionError("Session not initialized. Call initialize() first.")
-        async with self.session.post(url, json=payload) as response:
+        async with self.session.post(
+            url, json=payload, allow_redirects=False
+        ) as response:
             if response.status != 200:
                 text_body = await response.text()
                 error_msg = (

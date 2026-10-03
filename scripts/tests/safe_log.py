@@ -1,32 +1,32 @@
 """Stdout helpers for PKI contract scripts.
 
-check() prints only PASS/FAIL and the assertion name. Caller-supplied
-detail is accepted for call-site compatibility but never written
-(CodeQL py/clear-text-logging-sensitive-data).
+check() prints PASS/FAIL with a numeric assertion ordinal.
+Caller-supplied name and detail are deleted immediately upon function
+entry to guarantee no arbitrary text or sensitive data can reach stdout.
 """
 
 from __future__ import annotations
 
 PASS = 0
 FAIL = 0
+COUNT = 0
 
 
 def reset() -> None:
-    global PASS, FAIL
+    global PASS, FAIL, COUNT
     PASS = 0
     FAIL = 0
+    COUNT = 0
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    """Print PASS/FAIL + assertion name. Never print detail."""
-    global PASS, FAIL
-    del detail
+    """Print fixed literal PASS/FAIL + assertion ordinal. Never print label/detail."""
+    global PASS, FAIL, COUNT
+    del name, detail
+    COUNT += 1
     if condition:
-        # codeql[py/clear-text-logging-sensitive-data] -- name is a literal assertion label; the
-        # only "secret"-shaped values reaching it are Docker secret ids and mount paths, never bytes
-        print(f"  PASS  {name}")
+        print(f"  PASS  [assertion #{COUNT}]")
         PASS += 1
         return
-    # codeql[py/clear-text-logging-sensitive-data] -- see the PASS branch
-    print(f"  FAIL  {name}")
+    print(f"  FAIL  [assertion #{COUNT}]")
     FAIL += 1

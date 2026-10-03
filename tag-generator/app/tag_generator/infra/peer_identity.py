@@ -52,7 +52,7 @@ def strict_from_env(env_var: str = "PEER_IDENTITY_STRICT") -> bool:
     Only gates the header-based plaintext path — TLS-origin allowlist
     enforcement runs unconditionally regardless of this flag.
     """
-    return os.getenv(env_var, "false").strip().lower() in {"true", "1", "on", "yes"}
+    return os.getenv(env_var, "true").strip().lower() in {"true", "1", "on", "yes"}
 
 
 def arrived_via_sidecar(request: Request) -> bool:
@@ -118,7 +118,7 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         app,
         allowed: Iterable[str] | None = None,
         *,
-        strict: bool = False,
+        strict: bool = True,
     ) -> None:
         super().__init__(app)
         self._allowed = {c for c in (allowed or []) if c}
@@ -140,7 +140,14 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
                         path=request.url.path,
                     )
                     return PlainTextResponse("peer not allowlisted", status_code=403)
-                if self._allowed and peer not in self._allowed:
+                if not self._allowed:
+                    logger.warning(
+                        "peer_identity.forbidden",
+                        reason="no_peers_allowlisted",
+                        path=request.url.path,
+                    )
+                    return PlainTextResponse("peer not allowlisted", status_code=403)
+                if peer not in self._allowed:
                     logger.warning(
                         "peer_identity.forbidden",
                         peer=peer,
@@ -153,7 +160,14 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
                 if not peer:
                     logger.warning("peer_identity.missing", path=request.url.path)
                     return PlainTextResponse("unauthenticated peer", status_code=401)
-                if self._allowed and peer not in self._allowed:
+                if not self._allowed:
+                    logger.warning(
+                        "peer_identity.forbidden",
+                        reason="no_peers_allowlisted",
+                        path=request.url.path,
+                    )
+                    return PlainTextResponse("peer not allowlisted", status_code=403)
+                if peer not in self._allowed:
                     logger.warning(
                         "peer_identity.forbidden",
                         peer=peer,

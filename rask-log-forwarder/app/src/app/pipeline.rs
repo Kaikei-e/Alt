@@ -355,6 +355,7 @@ mod tests {
             endpoint,
             timeout: Duration::from_millis(500),
             connection_timeout: Duration::from_millis(500),
+            ingest_token: "test-token-valid".to_string(),
             ..Default::default()
         };
         let log_sender = LogSender::new(client_config).await.unwrap();
@@ -401,6 +402,7 @@ mod tests {
         let sender = Arc::new(
             LogSender::new(ClientConfig {
                 endpoint: mock_server.uri(),
+                ingest_token: "test-token-valid".to_string(),
                 ..Default::default()
             })
             .await
@@ -508,6 +510,7 @@ mod tests {
         let sender = Arc::new(
             LogSender::new(ClientConfig {
                 endpoint: mock_server.uri(),
+                ingest_token: "test-token-valid".to_string(),
                 ..Default::default()
             })
             .await

@@ -46,9 +46,7 @@ impl OtlpSerializer {
         // Convert to OTLP format
         let resource_logs: Vec<ResourceLogs> = grouped
             .into_iter()
-            .filter_map(|(service_name, entries)| {
-                self.create_resource_logs(&service_name, entries)
-            })
+            .filter_map(|(service_name, entries)| self.create_resource_logs(&service_name, entries))
             .collect();
 
         let request = ExportLogsServiceRequest { resource_logs };

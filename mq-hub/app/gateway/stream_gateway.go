@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"mq-hub/domain"
@@ -52,11 +51,9 @@ func NewStreamGateway(driver RedisStreamDriver) *StreamGateway {
 
 // Publish publishes an event to a stream.
 func (g *StreamGateway) Publish(ctx context.Context, stream domain.StreamKey, event *domain.Event) (string, error) {
-	// Validate stream key - log warning for unknown keys but allow for flexibility
+	// Direct gateway defense: reject non-canonical stream keys before any driver call
 	if !stream.IsValid() {
-		slog.WarnContext(ctx, "publishing to unknown stream key",
-			"stream", stream.String(),
-		)
+		return "", domain.ErrInvalidStreamKey
 	}
 
 	// Validate event
@@ -83,12 +80,9 @@ func (g *StreamGateway) Publish(ctx context.Context, stream domain.StreamKey, ev
 // callers can retry only those instead of re-publishing the whole batch
 // (which would duplicate the events that already succeeded).
 func (g *StreamGateway) PublishBatch(ctx context.Context, stream domain.StreamKey, events []*domain.Event) ([]string, error) {
-	// Validate stream key - log warning for unknown keys but allow for flexibility
+	// Direct gateway defense: reject non-canonical stream keys before any driver call
 	if !stream.IsValid() {
-		slog.WarnContext(ctx, "publishing batch to unknown stream key",
-			"stream", stream.String(),
-			"batch_size", len(events),
-		)
+		return nil, domain.ErrInvalidStreamKey
 	}
 
 	// Validate all events before publishing
@@ -128,11 +122,22 @@ func (g *StreamGateway) PublishBatch(ctx context.Context, stream domain.StreamKe
 
 // CreateConsumerGroup creates a consumer group for a stream.
 func (g *StreamGateway) CreateConsumerGroup(ctx context.Context, stream domain.StreamKey, group domain.ConsumerGroup, startID string) error {
+	// Direct gateway defense: reject non-canonical stream keys before any driver call
+	if !stream.IsValid() {
+		return domain.ErrInvalidStreamKey
+	}
+	if !group.IsValid() {
+		return domain.ErrInvalidConsumerGroup
+	}
 	return g.driver.CreateConsumerGroup(ctx, stream.String(), group.String(), startID)
 }
 
 // GetStreamInfo returns information about a stream.
 func (g *StreamGateway) GetStreamInfo(ctx context.Context, stream domain.StreamKey) (*domain.StreamInfo, error) {
+	// Direct gateway defense: reject non-canonical stream keys before any driver call
+	if !stream.IsValid() {
+		return nil, domain.ErrInvalidStreamKey
+	}
 	info, err := g.driver.GetStreamInfo(ctx, stream.String())
 	if err != nil {
 		return nil, err

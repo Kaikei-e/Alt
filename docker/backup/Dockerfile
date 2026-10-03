@@ -5,13 +5,16 @@
 # Integrity Failures / CWE-494). This bakes the download into the image
 # build instead, verified with sha256sum -c (same pattern as
 # recap-worker/Dockerfile.recap-worker's libtorch fetch).
-FROM restic/restic:0.17.3
+FROM postgres:18.6-alpine
+
+# Copy restic binary from official restic image
+COPY --from=restic/restic:0.17.3 /usr/bin/restic /usr/local/bin/restic
 
 ARG SUPERCRONIC_VERSION=v0.2.33
 ARG SUPERCRONIC_AMD64_SHA256=feefa310da569c81b99e1027b86b27b51e6ee9ab647747b49099645120cfc671
 ARG SUPERCRONIC_ARM64_SHA256=f1f8585c66de020fef494dd636058f99949d108f569fef00016a1c8b9eb145b3
 
-RUN apk add --no-cache curl bash jq docker-cli && \
+RUN apk add --no-cache curl bash jq && \
   ARCH="$(uname -m)" && \
   if [ "$ARCH" = "aarch64" ]; then \
   SC_ARCH=arm64; SC_SHA256="$SUPERCRONIC_ARM64_SHA256"; \

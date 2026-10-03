@@ -75,10 +75,13 @@ func (t *failClosedTransport) RoundTrip(*http.Request) (*http.Response, error) {
 // When MTLS_ENFORCE=true it returns a client whose transport presents the
 // caller leaf cert + trusts alt-CA, while keeping connection pooling.
 func NewPooledClient(timeout time.Duration) *http.Client {
+	checkRedirect := func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	if MTLSEnforced() {
 		t, err := loadMTLSTransport()
 		if err == nil {
-			return &http.Client{Timeout: timeout, Transport: t}
+			return &http.Client{Timeout: timeout, Transport: t, CheckRedirect: checkRedirect}
 		}
 		// Fail-closed: if mTLS is requested but cert loading fails, every
 		// request through this client must error rather than silently
@@ -86,11 +89,12 @@ func NewPooledClient(timeout time.Duration) *http.Client {
 		// never call PreflightMTLS() first (e.g. cmd/backfill --direct
 		// mode) — the fail-closed guarantee must not depend on the
 		// composition root having preflighted the cert load.
-		return &http.Client{Timeout: timeout, Transport: &failClosedTransport{loadErr: err}}
+		return &http.Client{Timeout: timeout, Transport: &failClosedTransport{loadErr: err}, CheckRedirect: checkRedirect}
 	}
 	return &http.Client{
-		Timeout:   timeout,
-		Transport: sharedTransport,
+		Timeout:       timeout,
+		Transport:     sharedTransport,
+		CheckRedirect: checkRedirect,
 	}
 }
 

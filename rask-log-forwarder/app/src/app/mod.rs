@@ -40,35 +40,24 @@ impl App {
         // Use the comprehensive ApplicationInitializer for memory-safe initialization
         let initializer = ApplicationInitializer::new();
 
-        // Load config file if specified
-        let final_config = if let Some(config_file) = &config.config_file {
-            // tracing isn't initialized yet at this point (that happens
-            // inside `initializer.initialize()` below), so `eprintln!` is
-            // the correct bootstrap logger here, not a violation.
-            eprintln!("Loading configuration from file: {}", config_file.display());
-            Config::from_file(config_file)?
-        } else {
-            config
-        };
-
         // Initialize application with comprehensive validation
         let init_result = initializer
-            .initialize(&final_config)
+            .initialize(&config)
             .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
 
         info!("Starting rask-log-forwarder v{}", env!("CARGO_PKG_VERSION"));
         info!(
             "Configuration: target_service={:?}, endpoint={}, batch_size={}",
-            final_config.target_service, final_config.endpoint, final_config.batch_size
+            config.target_service, config.endpoint, config.batch_size
         );
         info!(
             "Initialization completed in {}ms (strategy: {:?})",
             init_result.initialization_time_ms,
-            initializer.determine_initialization_strategy(&final_config)
+            initializer.determine_initialization_strategy(&config)
         );
 
         // Initialize service manager
-        let service_manager = ServiceManager::new(final_config).await?;
+        let service_manager = ServiceManager::new(config).await?;
 
         Ok(Self { service_manager })
     }

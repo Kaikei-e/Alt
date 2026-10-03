@@ -62,6 +62,7 @@ on:
       # script and its filter tests are watched paths.
       - 'scripts/pact-check.sh'
       - 'scripts/tests/**'
+      - 'scripts/ci/**'
   pull_request:
     branches: [main]
     paths:
@@ -97,6 +98,7 @@ on:
       # script and its filter tests are watched paths.
       - 'scripts/pact-check.sh'
       - 'scripts/tests/**'
+      - 'scripts/ci/**'
 
 # Superseded PR runs are cancelled; main-branch runs are not, because they
 # publish pacts and a half-cancelled publish leaves the broker inconsistent.
@@ -138,10 +140,10 @@ jobs:
       # non-blocking until branch protection is re-wired.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: "1.27.1"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
           # lags patch releases, and setup-go v7 sets GOTOOLCHAIN=local, so a
-          # stale 1.26.x here fails every go.mod that already moved on.
+          # stale 1.27.x here fails every go.mod that already moved on.
           check-latest: true
           cache: true
           # Monorepo: no root go.mod, so point the cache at the tool's own sums.
@@ -261,15 +263,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: ${{ matrix.sparse-checkout }}
+          sparse-checkout: |
+            ${{ matrix.sparse-checkout }}
+            scripts
           sparse-checkout-cone-mode: true
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: "1.27.1"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
           # lags patch releases, and setup-go v7 sets GOTOOLCHAIN=local, so a
-          # stale 1.26.x here fails every go.mod that already moved on.
+          # stale 1.27.x here fails every go.mod that already moved on.
           check-latest: true
           cache: true
           # Sparse checkout leaves no go.mod at the repo root, so the default
@@ -278,9 +282,7 @@ jobs:
 
       - name: Install pact FFI library
         run: |
-          mkdir -p "$HOME/.pact/lib"
-          curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
-            | gunzip > "$HOME/.pact/lib/libpact_ffi.so"
+          python3 scripts/ci/pact-artifacts.py --type ffi
           echo "LD_LIBRARY_PATH=$HOME/.pact/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
           echo "CGO_LDFLAGS=-L$HOME/.pact/lib" >> "$GITHUB_ENV"
 
@@ -417,7 +419,7 @@ jobs:
           # is never reached from here.
           VERSION="${GITHUB_SHA}"
           BRANCH=main
-          curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-ruby-standalone/master/install.sh | PACT_CLI_VERSION=v2.4.10 bash
+          python3 scripts/ci/pact-artifacts.py --type standalone
           export PATH="${PATH}:${PWD}/pact/bin"
           pact-broker publish collected-pacts \
             --consumer-app-version "${VERSION}" \
@@ -428,10 +430,10 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: "1.27.1"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
           # lags patch releases, and setup-go v7 sets GOTOOLCHAIN=local, so a
-          # stale 1.26.x here fails every go.mod that already moved on.
+          # stale 1.27.x here fails every go.mod that already moved on.
           check-latest: true
           cache: true
           # Monorepo: no root go.mod, so point the cache at the per-service sums.
@@ -439,9 +441,7 @@ jobs:
 
       - name: Install pact FFI library
         run: |
-          mkdir -p "$HOME/.pact/lib"
-          curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
-            | gunzip > "$HOME/.pact/lib/libpact_ffi.so"
+          python3 scripts/ci/pact-artifacts.py --type ffi
           echo "LD_LIBRARY_PATH=$HOME/.pact/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
           echo "CGO_LDFLAGS=-L$HOME/.pact/lib" >> "$GITHUB_ENV"
 
@@ -597,7 +597,7 @@ jobs:
           # against a Broker that starts empty every run.
           VERSION="${GITHUB_SHA}"
           BRANCH=main
-          curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-ruby-standalone/master/install.sh | PACT_CLI_VERSION=v2.4.10 bash
+          python3 scripts/ci/pact-artifacts.py --type standalone
           export PATH="${PATH}:${PWD}/pact/bin"
           pact-broker publish collected-pacts \
             --consumer-app-version "${VERSION}" \
@@ -658,6 +658,7 @@ jobs:
           sparse-checkout: |
             recap-worker
             compose
+            scripts
           sparse-checkout-cone-mode: true
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable branch head, 2026-07-31

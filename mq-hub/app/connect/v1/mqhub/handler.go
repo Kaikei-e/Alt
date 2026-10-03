@@ -103,7 +103,8 @@ func mapPublishErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, domain.ErrInvalidEvent) || errors.Is(err, usecase.ErrBatchTooLarge) {
+	if errors.Is(err, domain.ErrInvalidEvent) || errors.Is(err, usecase.ErrBatchTooLarge) ||
+		errors.Is(err, domain.ErrInvalidStreamKey) || errors.Is(err, domain.ErrInvalidConsumerGroup) {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return connect.NewError(connect.CodeUnavailable, err)
@@ -120,6 +121,12 @@ func (h *Handler) CreateConsumerGroup(ctx context.Context, req *connect.Request[
 	if err != nil {
 		slog.ErrorContext(ctx, "create consumer group failed",
 			"stream", req.Msg.Stream, "group", req.Msg.Group, "error", err)
+		if errors.Is(err, domain.ErrInvalidStreamKey) || errors.Is(err, domain.ErrInvalidConsumerGroup) {
+			return connect.NewResponse(&mqhubv1.CreateConsumerGroupResponse{
+				Success: false,
+				Message: err.Error(),
+			}), connect.NewError(connect.CodeInvalidArgument, err)
+		}
 		return connect.NewResponse(&mqhubv1.CreateConsumerGroupResponse{
 			Success: false,
 			Message: "failed to create consumer group",
@@ -136,7 +143,7 @@ func (h *Handler) CreateConsumerGroup(ctx context.Context, req *connect.Request[
 func (h *Handler) GetStreamInfo(ctx context.Context, req *connect.Request[mqhubv1.GetStreamInfoRequest]) (*connect.Response[mqhubv1.GetStreamInfoResponse], error) {
 	info, err := h.publishUsecase.GetStreamInfo(ctx, domain.StreamKey(req.Msg.Stream))
 	if err != nil {
-		return nil, err
+		return nil, mapPublishErr(err)
 	}
 
 	groups := make([]*mqhubv1.ConsumerGroupInfo, len(info.Groups))

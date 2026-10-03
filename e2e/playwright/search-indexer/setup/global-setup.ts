@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { httpBody, waitForReady } from "../../_shared/readiness.js";
+import { clientCertificates } from "../../_shared/client-auth.js";
 import { seedDocuments } from "../src/corpus.js";
 import { env, meiliEnv, seedDocsPath, SharedCorpus } from "../src/env.js";
+import { fixtureToken, fixtureUserId } from "../src/auth.js";
 
 /**
  * Readiness gate + shared-corpus seed — the replacement for
@@ -57,21 +59,9 @@ export default async function globalSetup(): Promise<void> {
 			 * like a query bug rather than a bootstrap-ordering bug.
 			 */
 			httpBody(
-				`${env.baseURL}/health`,
+				`${env.plaintextURL}/health`,
 				(body) => isRecord(body) && body["status"] === "ok",
-				"search-indexer REST :9300 is up, so EnsureIndex has completed",
-			),
-
-			/**
-			 * The Connect listener is a *second* `http.Server` started from its
-			 * own goroutine (`bootstrap/app.go`). A :9300 that answers says
-			 * nothing about :9301, and the Hurl suite — which never touched the
-			 * port — could not have noticed it failing to bind.
-			 */
-			httpBody(
-				`${env.connectURL}/health`,
-				(body) => isRecord(body) && body["status"] === "healthy",
-				"search-indexer Connect-RPC :9301 is up",
+				"search-indexer plaintext :9300 is up, so EnsureIndex has completed",
 			),
 		],
 		READY,
@@ -88,7 +78,7 @@ export default async function globalSetup(): Promise<void> {
 	await seedDocuments({
 		meiliURL: meili.url,
 		masterKey: meili.masterKey,
-		documents: JSON.parse(readFileSync(seedDocsPath(), "utf8")) as unknown,
+		documents: (JSON.parse(readFileSync(seedDocsPath(), "utf8")) as Array<Record<string, unknown>>).map((doc) => ({ ...doc, user_id: fixtureUserId(String(doc["user_id"])) })),
 		label: "the shared fixture corpus",
 	});
 
@@ -116,7 +106,10 @@ export default async function globalSetup(): Promise<void> {
 						`${env.baseURL}/v1/search?q=${encodeURIComponent(SharedCorpus.rustQuery)}` +
 						`&user_id=${encodeURIComponent(SharedCorpus.aliceUser)}` +
 						`&limit=5`;
-					const response = await api.get(url, { timeout: 10_000 });
+					const response = await api.get(url, {
+						timeout: 10_000,
+						headers: { Authorization: `Bearer ${fixtureToken(SharedCorpus.aliceUser)}` },
+					});
 					if (!response.ok()) {
 						throw new Error(`status ${response.status()}`);
 					}
@@ -131,6 +124,11 @@ export default async function globalSetup(): Promise<void> {
 				},
 			},
 		],
-		READY,
+		{
+			...READY,
+			context: {
+				clientCertificates: clientCertificates(env.baseURL, env.clientCert, env.clientKey),
+			},
+		},
 	);
 }

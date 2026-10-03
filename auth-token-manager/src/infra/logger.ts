@@ -1,6 +1,11 @@
 import { ConsoleHandler, getLogger, setup as setupLogger } from "@std/log";
 import type { LevelName, LoggerConfig, LogRecord } from "@std/log";
-import { emitOTelLog, initOTelProvider, isOTelEnabled } from "./otel.ts";
+import {
+  emitOTelLog,
+  getOTelConfig,
+  initOTelProvider,
+  isOTelEnabled,
+} from "./otel.ts";
 
 const OAUTH_TOKEN_PATTERNS = [
   /ya29\.[A-Za-z0-9\-_]+/g,
@@ -193,11 +198,6 @@ export class StructuredLogger {
 
   constructor(component: string) {
     this.component = component;
-
-    if (!otelShutdown) {
-      otelShutdown = initOTelProvider();
-    }
-
     ensureLoggerSetup();
     this.logger = getLogger(LOGGER_NAME);
   }
@@ -278,6 +278,26 @@ export async function shutdownOTel(): Promise<void> {
   if (otelShutdown) {
     await otelShutdown();
     otelShutdown = null;
+  }
+}
+
+/**
+ * Explicitly initialise the OTel provider and store the shutdown callback.
+ * Must be called by the composition root (main.ts) for commands that export
+ * telemetry. Must NOT be called on the health fast-path.
+ *
+ * When OTEL_ENABLED is false this is a no-op: it does NOT store a shutdown
+ * callback, so a subsequent initializeOTel() call after re-enabling still works.
+ * When OTEL_ENABLED is true and RASK_INGEST_TOKEN_FILE is absent this throws
+ * immediately before any outbound traffic is attempted.
+ */
+export function initializeOTel(): void {
+  // Check enabled first so a disabled call is truly a no-op (does not clobber
+  // otelShutdown with a stale no-op that blocks future enabled initialisation).
+  const cfg = getOTelConfig();
+  if (!cfg.enabled) return;
+  if (!otelShutdown) {
+    otelShutdown = initOTelProvider(cfg);
   }
 }
 

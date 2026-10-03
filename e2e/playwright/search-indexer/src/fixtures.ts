@@ -1,16 +1,17 @@
 import { test as base } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
+import { clientCertificates } from "../../_shared/client-auth.js";
 import { buildWorkerDocs, corpusNonce, seedDocuments } from "./corpus.js";
 import type { WorkerCorpus } from "./corpus.js";
 import { env, meiliEnv } from "./env.js";
+import { fixtureUserId, withSearchFixtureAuth } from "./auth.js";
 
 /**
  * Suite-wide fixtures.
  *
- * search-indexer's plaintext listeners authenticate nobody — `newHTTPServer`
- * wraps `/v1/search` in a rate limiter and nothing else, and the Connect mux
- * carries only the rate-limit and OTel interceptors — so there is no session
- * to establish and the HTTP clients are cheap, worker-scoped context objects.
+ * Positive search clients carry valid alt-backend peer certificates and sign
+ * their own UUID with a bounded public fixture JWT.
+ * Explicit proof headers and the bare negative client are never replaced.
  *
  * What each worker does need of its own is a **corpus**, and that is the
  * fixture that replaces the Hurl suite's serial pre-step. The old runner ran
@@ -25,12 +26,12 @@ import { env, meiliEnv } from "./env.js";
  */
 
 export type WorkerFixtures = {
-	/** REST :9300 — `/health` and `/v1/search`. */
+	/** REST :9443 (mTLS) — `/health` and `/v1/search`. */
 	rest: APIRequestContext;
-	/** Connect-RPC :9301, JSON codec. */
+	/** Connect-RPC :9443 (mTLS), JSON codec. */
 	connect: APIRequestContext;
 	/**
-	 * Connect-RPC :9301 with **no** default headers.
+	 * Connect-RPC :9443 (mTLS) with **no** default headers.
 	 *
 	 * Playwright's `extraHTTPHeaders` cannot be removed per request, so proving
 	 * "connect-go rejects an unsupported Content-Type" or "the
@@ -57,8 +58,11 @@ export type WorkerFixtures = {
 export const test = base.extend<Record<never, never>, WorkerFixtures>({
 	rest: [
 		async ({ playwright }, use) => {
-			const context = await playwright.request.newContext({ baseURL: env.baseURL });
-			await use(context);
+			const context = await playwright.request.newContext({
+				baseURL: env.baseURL,
+				clientCertificates: clientCertificates(env.baseURL, env.clientCert, env.clientKey),
+			});
+			await use(withSearchFixtureAuth(context, env.baseURL));
 			await context.dispose();
 		},
 		{ scope: "worker" },
@@ -69,8 +73,9 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 			const context = await playwright.request.newContext({
 				baseURL: env.connectURL,
 				extraHTTPHeaders: { "Content-Type": "application/json" },
+				clientCertificates: clientCertificates(env.connectURL, env.clientCert, env.clientKey),
 			});
-			await use(context);
+			await use(withSearchFixtureAuth(context, env.connectURL));
 			await context.dispose();
 		},
 		{ scope: "worker" },
@@ -78,8 +83,11 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 
 	connectBare: [
 		async ({ playwright }, use) => {
-			const context = await playwright.request.newContext({ baseURL: env.connectURL });
-			await use(context);
+			const context = await playwright.request.newContext({
+				baseURL: env.connectURL,
+				clientCertificates: clientCertificates(env.connectURL, env.clientCert, env.clientKey),
+			});
+			await use(withSearchFixtureAuth(context, env.connectURL));
 			await context.dispose();
 		},
 		{ scope: "worker" },
@@ -115,8 +123,8 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 			// Two distinct derived ids so a `user_id` can never be matched as a
 			// *search term* by accident: the tenant negative below would otherwise
 			// be satisfied by full-text recall rather than by the filter.
-			const userId = `usr-${nonce}`;
-			const foreignUserId = `nul-${nonce}`;
+			const userId = fixtureUserId(`usr-${nonce}`);
+			const foreignUserId = fixtureUserId(`nul-${nonce}`);
 			const docs = buildWorkerDocs(nonce, userId);
 			const meili = meiliEnv();
 

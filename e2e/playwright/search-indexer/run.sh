@@ -30,9 +30,10 @@
 # everything new reads a corpus its own worker seeded.
 #
 # Environment overrides beyond the shared ones (see _lib/suite.sh):
-#   BASE_URL              REST :9300, as seen from the test container
-#   CONNECT_URL           Connect-RPC :9301
-#   MTLS_ABSENT_URL       :9443 — asserted CLOSED, see tests/topology.spec.ts
+#   BASE_URL              REST :9443 (mTLS)
+#   CONNECT_URL           Connect-RPC :9443 (mTLS)
+#   PLAINTEXT_URL         Plaintext health :9300
+#   RETIRED_CONNECT_URL   Retired Connect listener :9301 (asserted refused)
 #   MEILI_URL             Meilisearch, seeded by setup/global-setup.ts
 #   MEILI_MASTER_KEY_FILE path to the master key (a path, never a value)
 #   MEILI_SEED_DOCS       the shared fixture corpus
@@ -50,15 +51,21 @@ suite_init search-indexer
 # straight from Docker Hub (`getmeili/meilisearch:v1.11`, `nginx:1.27-alpine`)
 # and have no tag of ours.
 suite_image_tags SEARCH_INDEXER_IMAGE_TAG
+suite_pki auth-hub search-indexer alt-backend denied-peer
+mint_staging_leaf "$SUITE_PKI_DIR" search-indexer serverAuth,clientAuth
+chmod 0644 "$SUITE_PKI_DIR"/*.pem
+suite_endpoint STAGING_JWT_KEY_FILE "$ROOT/e2e/fixtures/staging-secrets/alt_backend_token_secret.txt"
 
-# No suite_pki, and that is asserted rather than assumed. The slice sets
-# MTLS_LISTEN=false, so bootstrap/app.go never binds :9443 and there is no
-# mutual-TLS material for anything to present — tests/topology.spec.ts proves
-# the port is closed instead of leaving it an unstated premise.
-
-suite_endpoint BASE_URL        "http://search-indexer:9300"
-suite_endpoint CONNECT_URL     "http://search-indexer:9301"
-suite_endpoint MTLS_ABSENT_URL "http://search-indexer:9443"
+# Business REST and Connect-RPC are served on mTLS :9443 with alt-backend peer identity.
+# Plaintext :9300 serves health only; legacy :9301 is retired.
+suite_endpoint BASE_URL            "https://search-indexer:9443"
+suite_endpoint CONNECT_URL         "https://search-indexer:9443"
+suite_endpoint PLAINTEXT_URL       "http://search-indexer:9300"
+suite_endpoint RETIRED_CONNECT_URL "http://search-indexer:9301"
+suite_endpoint TLS_CLIENT_CERT_FILE "$SUITE_PKI_DIR/alt-backend.pem"
+suite_endpoint TLS_CLIENT_KEY_FILE  "$SUITE_PKI_DIR/alt-backend-key.pem"
+suite_endpoint TLS_DENIED_CERT_FILE "$SUITE_PKI_DIR/denied-peer.pem"
+suite_endpoint TLS_DENIED_KEY_FILE  "$SUITE_PKI_DIR/denied-peer-key.pem"
 suite_endpoint MEILI_URL       "http://meilisearch:7700"
 # Anchored on the same fixture file compose's `secrets:` block mounts, so
 # changing one rotates both. A path, not a value: it must never land in
@@ -73,6 +80,6 @@ suite_endpoint MEILI_SEED_DOCS "$ROOT/e2e/fixtures/search-indexer/seed-docs.json
 # BACKEND_API_URL for reachability at startup and never validates the body. It
 # is also what RECAP_WORKER_URL and REDIS_STREAMS_URL point at, which is why
 # the recap index stays empty and CONSUMER_ENABLED is false in this slice.
-suite_up meilisearch stub-backend search-indexer
+suite_up meilisearch stub-backend auth-introspection search-indexer
 
 suite_test

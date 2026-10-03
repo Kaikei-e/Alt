@@ -152,3 +152,63 @@ func TestRerankerClient_ModelName(t *testing.T) {
 
 	assert.Equal(t, "bge-reranker-v2-m3", client.ModelName())
 }
+
+func TestRerankerClient_Rerank_AuthorizationHeaderDelivered(t *testing.T) {
+	// B-SUPP01: reranker_client.go must deliver Authorization: Bearer <token>
+	// to rerank-server when AuthToken is configured.
+	testToken := "test-rerank-token-" + time.Now().Format("20060102150405")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		assert.Equal(t, "Bearer "+testToken, authHeader, "Authorization header must be set")
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		resp := RerankResponse{
+			Results: []RerankResponseResult{{Index: 0, Score: 0.9}},
+			Model:   "bge-reranker-v2-m3",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	client := NewRerankerClient(server.URL, "bge-reranker-v2-m3", 30*time.Second, logger)
+	client.AuthToken = testToken
+
+	candidates := []domain.RerankCandidate{
+		{ID: "chunk-1", Content: "Content about AI", Score: 0.8},
+	}
+
+	results, err := client.Rerank(context.Background(), "test query", candidates)
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+}
+
+func TestRerankerClient_Rerank_NoAuthHeaderWhenTokenEmpty(t *testing.T) {
+	// When AuthToken is empty, no Authorization header should be sent.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		assert.Empty(t, authHeader, "Authorization header must not be set when AuthToken is empty")
+
+		resp := RerankResponse{
+			Results: []RerankResponseResult{{Index: 0, Score: 0.9}},
+			Model:   "bge-reranker-v2-m3",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	client := NewRerankerClient(server.URL, "bge-reranker-v2-m3", 30*time.Second, logger)
+	// AuthToken intentionally left empty
+
+	candidates := []domain.RerankCandidate{
+		{ID: "chunk-1", Content: "Content about AI", Score: 0.8},
+	}
+
+	results, err := client.Rerank(context.Background(), "test query", candidates)
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+}

@@ -58,6 +58,20 @@ impl Config {
             ));
         }
 
+        // D-02: Require ingest_token_file and non-empty ingest_token
+        if self.ingest_token_file.is_none() {
+            return Err(ConfigError::InvalidConfig(
+                "ingest_token_file is required: RASK_INGEST_TOKEN_FILE must be configured"
+                    .to_string(),
+            ));
+        }
+
+        if self.ingest_token.is_empty() {
+            return Err(ConfigError::InvalidConfig(
+                "ingest_token must not be empty".to_string(),
+            ));
+        }
+
         Ok(())
     }
 }

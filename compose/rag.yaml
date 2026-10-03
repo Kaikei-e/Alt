@@ -107,18 +107,20 @@ services:
       - DB_USER=${RAG_DB_USER:-rag_user}
       - DB_PASSWORD_FILE=/run/secrets/rag_db_password
       - DB_NAME=${RAG_DB_NAME:-rag_db}
-      - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL:-http://knowledge-embedder-local:11434}
+      - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL:-http://embedding-proxy:11436}
       # CPU embedder needs headroom: ~250-300ms/chunk, long articles reach
       # 50+ chunks per /api/embed call (measured 9.7s for 53 chunks).
       - EMBEDDER_TIMEOUT=60
       # RAG answer generation: routed through news-creator semaphore (ADR-565 follow-up)
       # Ask Augur chat uses HIGH PRIORITY to preempt batch summarization
       # Override AUGUR_EXTERNAL in .env to route to remote Mac if needed
-      - AUGUR_EXTERNAL=${AUGUR_EXTERNAL:-http://news-creator:11434}
+      - AUGUR_EXTERNAL=https://news-creator:9443
       - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma4-e4b-12k}
       - SEARCH_INDEXER_URL=http://search-indexer:9300
-      - QUERY_EXPANSION_URL=http://news-creator:11434
+      - QUERY_EXPANSION_URL=https://news-creator:9443
       - QUERY_EXPANSION_TIMEOUT=30
+      - MTLS_ENFORCE=true
+      - RERANK_INFERENCE_TOKEN_FILE=/run/secrets/inference_service_token
       - RERANK_ENABLED=true
       # Local ONNX int8 reranker (rerank-local service); the remote
       # rerank-external route is retired.
@@ -138,6 +140,7 @@ services:
       - HYBRID_BM25_SOURCE=${HYBRID_BM25_SOURCE:-meilisearch}
       - LLM_BACKEND=${LLM_BACKEND:-ollama}
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
       # Knowledge Loop Wave 4-A emit (ADR-000855). When true, the augur
       # handler publishes augur.conversation_linked.v1 into knowledge-
       # sovereign so Surface Planner v2's resolver can credit Loop entries
@@ -145,7 +148,7 @@ services:
       # keeps live behavior unchanged.
       - RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=${RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT:-true}
       - RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL=${RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
-      - SOVEREIGN_EVENT_TOKEN_FILE=/run/secrets/sovereign_event_token
+      - SOVEREIGN_EVENT_TOKEN_FILE=/run/secrets/sovereign_rag_token
       - SOVEREIGN_EVENT_AUTH=${SOVEREIGN_EVENT_AUTH:-}
       # Outbound to the data plane (ADR-000954 D7, Wave 2-B). ALT_BACKEND_URL
       # and ALT_BACKEND_CONNECT_URL used to sit here, both pointed at
@@ -197,9 +200,11 @@ services:
       - RAG_API_AUTH=${RAG_API_AUTH:-}
     secrets:
       - rag_db_password
-      - sovereign_event_token
+      - sovereign_rag_token
       - pki-agent-rag-orchestrator-jwk
       - rag_api_token
+      - inference_service_token
+      - rask_ingest_token
     volumes:
       - rag_orchestrator_certs:/certs
       - pki_trust_bundle:/trust:ro
@@ -219,6 +224,13 @@ services:
     networks:
       - alt-network
     restart: unless-stopped
+    healthcheck:
+      # :9012 is the public health-only port (no auth). Native CLI probe.
+      test: ["CMD", "/rag-orchestrator", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     labels:
       - rask.group=rag-orchestrator
     extra_hosts:
@@ -292,10 +304,8 @@ services:
           - sh
           - -c
           - mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama
-    ports:
-      - "127.0.0.1:11437:11434"
     networks:
-      - alt-network
+      - embedding-raw-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
@@ -310,6 +320,29 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+
+  embedding-proxy:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-inference-proxy:${IMAGE_TAG:-main}
+    build:
+      context: ../docker/inference-proxy
+      dockerfile: Dockerfile
+    environment:
+      - UPSTREAM_URL=http://knowledge-embedder-local:11434
+      - LISTEN_ADDR=:11436
+      - INFERENCE_TOKEN_FILE=/run/secrets/inference_service_token
+    secrets:
+      - inference_service_token
+    networks:
+      - alt-network
+      - embedding-raw-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/inference-proxy", "healthcheck", "-port", "11436"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    command: ["--target", "http://knowledge-embedder-local:11434", "--port", "11436", "--token-file", "/run/secrets/inference_service_token"]
 
   # Local CPU reranker (ONNX int8 dynamic quantization, avx2). Replaces the
   # remote Mac reranker for local deployments — rag-orchestrator's RERANK_URL
@@ -336,6 +369,9 @@ services:
       - RERANK_SERVER_TIMEOUT=10
       # Requests carry the model name and are rejected unless it matches this.
       - RERANK_MODEL=${RERANK_MODEL:-cl-nagoya/ruri-v3-reranker-310m}
+      - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
+    secrets:
+      - inference_service_token
     volumes:
       - rerank_local_models:/models
     # Overlay2 filled with ~221GiB of leftover `ort.quant.*` trees when first-boot
@@ -366,3 +402,7 @@ services:
 volumes:
   knowledge_embedder_local_models:
   rerank_local_models:
+
+networks:
+  embedding-raw-network:
+    internal: true

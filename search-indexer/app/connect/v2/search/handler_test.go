@@ -20,7 +20,14 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+type fakeAuthHub struct{}
+
+func (f *fakeAuthHub) IntrospectToken(ctx context.Context, token string) (*port.TokenIntrospection, error) {
+	return &port.TokenIntrospection{Active: true, Sub: token}, nil
+}
+
 // mockSearchEngine implements port.SearchEngine for testing.
+
 type mockSearchEngine struct {
 	docs           []domain.SearchDocument
 	estimatedTotal int64
@@ -86,13 +93,17 @@ func TestHandler_SearchArticles_Success(t *testing.T) {
 		estimatedTotal: 1,
 	}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc, nil)
+	handler := NewHandler(uc, nil, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
-		Query:  "test",
-		UserId: "user1",
-		Limit:  10,
-	})
+	req := func() *connect.Request[searchv2.SearchArticlesRequest] {
+		r := connect.NewRequest(&searchv2.SearchArticlesRequest{
+			Query:  "test",
+			UserId: "user1",
+			Limit:  10,
+		})
+		r.Header().Set("Authorization", "Bearer user1")
+		return r
+	}()
 
 	resp, err := handler.SearchArticles(context.Background(), req)
 	if err != nil {
@@ -116,13 +127,17 @@ func TestHandler_SearchArticles_Success(t *testing.T) {
 func TestHandler_SearchArticles_EmptyQuery(t *testing.T) {
 	se := &mockSearchEngine{}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc, nil)
+	handler := NewHandler(uc, nil, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
-		Query:  "",
-		UserId: "user1",
-		Limit:  10,
-	})
+	req := func() *connect.Request[searchv2.SearchArticlesRequest] {
+		r := connect.NewRequest(&searchv2.SearchArticlesRequest{
+			Query:  "",
+			UserId: "user1",
+			Limit:  10,
+		})
+		r.Header().Set("Authorization", "Bearer user1")
+		return r
+	}()
 
 	_, err := handler.SearchArticles(context.Background(), req)
 	if err == nil {
@@ -144,13 +159,17 @@ func TestHandler_SearchArticles_EmptyQuery(t *testing.T) {
 func TestHandler_SearchArticles_EmptyUserID(t *testing.T) {
 	se := &mockSearchEngine{}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc, nil)
+	handler := NewHandler(uc, nil, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
-		Query:  "test",
-		UserId: "",
-		Limit:  10,
-	})
+	req := func() *connect.Request[searchv2.SearchArticlesRequest] {
+		r := connect.NewRequest(&searchv2.SearchArticlesRequest{
+			Query:  "test",
+			UserId: "",
+			Limit:  10,
+		})
+		r.Header().Set("Authorization", "Bearer user1")
+		return r
+	}()
 
 	_, err := handler.SearchArticles(context.Background(), req)
 	if err == nil {
@@ -161,14 +180,18 @@ func TestHandler_SearchArticles_EmptyUserID(t *testing.T) {
 func TestHandler_SearchArticles_NegativeOffset(t *testing.T) {
 	se := &mockSearchEngine{}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc, nil)
+	handler := NewHandler(uc, nil, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
-		Query:  "test",
-		UserId: "user1",
-		Offset: -1,
-		Limit:  10,
-	})
+	req := func() *connect.Request[searchv2.SearchArticlesRequest] {
+		r := connect.NewRequest(&searchv2.SearchArticlesRequest{
+			Query:  "test",
+			UserId: "user1",
+			Offset: -1,
+			Limit:  10,
+		})
+		r.Header().Set("Authorization", "Bearer user1")
+		return r
+	}()
 
 	_, err := handler.SearchArticles(context.Background(), req)
 	if err == nil {
@@ -188,13 +211,17 @@ func TestHandler_SearchArticles_SearchError(t *testing.T) {
 		err: &domain.SearchEngineError{Op: "Search", Err: errors.New("search failed")},
 	}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc, nil)
+	handler := NewHandler(uc, nil, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
-		Query:  "test",
-		UserId: "user1",
-		Limit:  10,
-	})
+	req := func() *connect.Request[searchv2.SearchArticlesRequest] {
+		r := connect.NewRequest(&searchv2.SearchArticlesRequest{
+			Query:  "test",
+			UserId: "user1",
+			Limit:  10,
+		})
+		r.Header().Set("Authorization", "Bearer user1")
+		return r
+	}()
 
 	_, err := handler.SearchArticles(context.Background(), req)
 	if err == nil {
@@ -216,13 +243,17 @@ func TestHandler_SearchArticles_NilTags(t *testing.T) {
 		estimatedTotal: 1,
 	}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc, nil)
+	handler := NewHandler(uc, nil, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
-		Query:  "test",
-		UserId: "user1",
-		Limit:  10,
-	})
+	req := func() *connect.Request[searchv2.SearchArticlesRequest] {
+		r := connect.NewRequest(&searchv2.SearchArticlesRequest{
+			Query:  "test",
+			UserId: "user1",
+			Limit:  10,
+		})
+		r.Header().Set("Authorization", "Bearer user1")
+		return r
+	}()
 
 	resp, err := handler.SearchArticles(context.Background(), req)
 	if err != nil {
@@ -250,7 +281,7 @@ func TestHandler_SearchRecaps_WithQuery(t *testing.T) {
 		estimatedTotal: 1,
 	}
 	recapUC := usecase.NewSearchRecapsUsecase(recapEngine)
-	handler := NewHandler(nil, recapUC)
+	handler := NewHandler(nil, recapUC, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	query := "technology ai"
 	req := connect.NewRequest(&searchv2.SearchRecapsRequest{
@@ -284,7 +315,7 @@ func TestHandler_SearchRecaps_QueryTakesPrecedenceOverTagName(t *testing.T) {
 		estimatedTotal: 0,
 	}
 	recapUC := usecase.NewSearchRecapsUsecase(recapEngine)
-	handler := NewHandler(nil, recapUC)
+	handler := NewHandler(nil, recapUC, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	query := "free text search"
 	req := connect.NewRequest(&searchv2.SearchRecapsRequest{
@@ -310,7 +341,7 @@ func TestHandler_SearchRecaps_FallbackToTagName(t *testing.T) {
 		estimatedTotal: 0,
 	}
 	recapUC := usecase.NewSearchRecapsUsecase(recapEngine)
-	handler := NewHandler(nil, recapUC)
+	handler := NewHandler(nil, recapUC, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := connect.NewRequest(&searchv2.SearchRecapsRequest{
 		TagName: "golang",
@@ -331,7 +362,7 @@ func TestHandler_SearchRecaps_FallbackToTagName(t *testing.T) {
 func TestHandler_SearchRecaps_NeitherQueryNorTagName(t *testing.T) {
 	recapEngine := &mockRecapSearchEngine{}
 	recapUC := usecase.NewSearchRecapsUsecase(recapEngine)
-	handler := NewHandler(nil, recapUC)
+	handler := NewHandler(nil, recapUC, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
 	req := connect.NewRequest(&searchv2.SearchRecapsRequest{
 		Limit: 10,

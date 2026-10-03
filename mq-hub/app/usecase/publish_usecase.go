@@ -74,6 +74,14 @@ func NewPublishUsecaseWithOptions(streamPort port.StreamPort, opts *PublishUseca
 
 // Publish publishes a single event to a stream.
 func (u *PublishUsecase) Publish(ctx context.Context, stream domain.StreamKey, event *domain.Event) (*PublishResult, error) {
+	if !stream.IsValid() {
+		metrics.RecordError("publish", "invalid_stream")
+		return &PublishResult{
+			MessageID: "",
+			Success:   false,
+		}, domain.ErrInvalidStreamKey
+	}
+
 	start := time.Now()
 
 	messageID, err := u.streamPort.Publish(ctx, stream, event)
@@ -98,6 +106,15 @@ func (u *PublishUsecase) Publish(ctx context.Context, stream domain.StreamKey, e
 // PublishBatch publishes multiple events to a stream.
 func (u *PublishUsecase) PublishBatch(ctx context.Context, stream domain.StreamKey, events []*domain.Event) (*PublishBatchResult, error) {
 	batchSize := len(events)
+
+	if !stream.IsValid() {
+		metrics.RecordError("publish_batch", "invalid_stream")
+		return &PublishBatchResult{
+			MessageIDs:   nil,
+			SuccessCount: 0,
+			FailureCount: int32(batchSize),
+		}, domain.ErrInvalidStreamKey
+	}
 
 	// Check batch size limit
 	if batchSize > u.maxBatchSize {
@@ -153,11 +170,20 @@ func (u *PublishUsecase) PublishBatch(ctx context.Context, stream domain.StreamK
 
 // CreateConsumerGroup creates a consumer group for a stream.
 func (u *PublishUsecase) CreateConsumerGroup(ctx context.Context, stream domain.StreamKey, group domain.ConsumerGroup, startID string) error {
+	if !stream.IsValid() {
+		return domain.ErrInvalidStreamKey
+	}
+	if !group.IsValid() {
+		return domain.ErrInvalidConsumerGroup
+	}
 	return u.streamPort.CreateConsumerGroup(ctx, stream, group, startID)
 }
 
 // GetStreamInfo returns information about a stream.
 func (u *PublishUsecase) GetStreamInfo(ctx context.Context, stream domain.StreamKey) (*domain.StreamInfo, error) {
+	if !stream.IsValid() {
+		return nil, domain.ErrInvalidStreamKey
+	}
 	return u.streamPort.GetStreamInfo(ctx, stream)
 }
 

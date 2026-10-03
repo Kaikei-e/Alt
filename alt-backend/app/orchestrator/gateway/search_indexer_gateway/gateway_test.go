@@ -25,7 +25,7 @@ func TestSearchIndexerGateway_ArticlesMapping(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client := search_indexer_connect.NewClient(ts.URL)
+	client := search_indexer_connect.NewClientWithHTTPClient(ts.URL, ts.Client())
 	gw := NewSearchIndexerGateway(client)
 
 	hits, err := gw.SearchArticles(context.Background(), "query", "user-1")
@@ -60,7 +60,7 @@ func TestSearchIndexerGateway_RecapsMapping(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client := search_indexer_connect.NewClient(ts.URL)
+	client := search_indexer_connect.NewClientWithHTTPClient(ts.URL, ts.Client())
 	gw := NewSearchIndexerGateway(client)
 
 	results, err := gw.SearchRecapsByTag(context.Background(), "tech", 10)

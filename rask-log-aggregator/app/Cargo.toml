@@ -23,6 +23,9 @@ prost-types = "0.14"
 tonic = { version = "0.14", features = ["transport"] }
 hex = "0.4"
 
+# Constant-time token comparison (D-02 ingest auth)
+subtle = "2.6"
+
 # HTTP body handling
 bytes = "1.12"
 http-body-util = "0.1"

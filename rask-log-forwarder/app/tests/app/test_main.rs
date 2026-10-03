@@ -1,3 +1,4 @@
+use super::fixture::{EnvGuard, create_token_in_temp_dir};
 use rask_log_forwarder::app::{App, Config, LogLevel, get_version, setup_logging_safe};
 use serial_test::serial;
 use std::env;
@@ -6,8 +7,17 @@ use tempfile::TempDir;
 use tokio::time::Duration;
 
 #[tokio::test]
+#[serial]
 async fn test_app_initialization() {
-    let args = vec!["rask-log-forwarder", "--target-service", "init-test"];
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let args = vec![
+        "rask-log-forwarder",
+        "--target-service",
+        "init-test",
+        "--ingest-token-file",
+        token_path.to_str().unwrap(),
+    ];
 
     // Handle logging setup errors properly in parallel tests
     match App::from_args(args).await {
@@ -31,11 +41,16 @@ async fn test_app_initialization() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_app_with_config_file() {
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+
     let temp_dir = TempDir::new().unwrap();
     let config_file = temp_dir.path().join("test_config.toml");
 
-    let config_content = r#"
+    let config_content = format!(
+        r#"
 target_service = "file-test"
 endpoint = "http://localhost:9600/v1/aggregate"
 batch_size = 5000
@@ -52,7 +67,10 @@ max_connections = 10
 enable_compression = false
 protocol = "ndjson"
 otlp_endpoint = "http://rask-log-aggregator:4318/v1/logs"
-"#;
+ingest_token_file = "{}"
+"#,
+        token_path.to_str().unwrap()
+    );
 
     std::fs::write(&config_file, config_content).unwrap();
 
@@ -60,6 +78,8 @@ otlp_endpoint = "http://rask-log-aggregator:4318/v1/logs"
         "rask-log-forwarder",
         "--config-file",
         config_file.to_str().unwrap(),
+        "--ingest-token-file",
+        token_path.to_str().unwrap(),
     ];
 
     // Handle logging setup errors properly in parallel tests
@@ -83,12 +103,15 @@ otlp_endpoint = "http://rask-log-aggregator:4318/v1/logs"
 #[tokio::test]
 #[serial]
 async fn test_app_auto_service_detection() {
-    // Mock hostname and set TARGET_SERVICE environment variable
-    unsafe {
-        env::set_var("TARGET_SERVICE", "meilisearch");
-    }
+    let _guard = EnvGuard::new();
+    _guard.set_var("TARGET_SERVICE", "meilisearch");
 
-    let args = vec!["rask-log-forwarder"];
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let args = vec![
+        "rask-log-forwarder",
+        "--ingest-token-file",
+        token_path.to_str().unwrap(),
+    ];
 
     // Try to create app, but handle the case where logging is already set up
     match App::from_args(args).await {
@@ -105,10 +128,6 @@ async fn test_app_auto_service_detection() {
                 panic!("Unexpected error creating app: {e}");
             }
         }
-    }
-
-    unsafe {
-        env::remove_var("TARGET_SERVICE");
     }
 }
 
@@ -161,8 +180,17 @@ fn test_version_display() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_app_health_check() {
-    let args = vec!["rask-log-forwarder", "--target-service", "health-test"];
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let args = vec![
+        "rask-log-forwarder",
+        "--target-service",
+        "health-test",
+        "--ingest-token-file",
+        token_path.to_str().unwrap(),
+    ];
 
     // Handle logging setup errors properly in parallel tests
     match App::from_args(args).await {
@@ -210,6 +238,8 @@ async fn test_config_validation() {
         retry_config: Default::default(),
         disk_fallback_config: Default::default(),
         metrics_config: Default::default(),
+        ingest_token_file: None,
+        ingest_token: String::new(),
     };
 
     // Basic validation tests
@@ -248,6 +278,8 @@ async fn test_service_specific_config() {
             retry_config: Default::default(),
             disk_fallback_config: Default::default(),
             metrics_config: Default::default(),
+            ingest_token_file: None,
+            ingest_token: String::new(),
         };
 
         assert_eq!(config.target_service, Some(service.to_string()));
@@ -255,19 +287,15 @@ async fn test_service_specific_config() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_environment_override() {
-    // Test that environment variables override defaults
-    unsafe {
-        env::set_var("TARGET_SERVICE", "meilisearch");
-    }
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    _guard.set_var("TARGET_SERVICE", "meilisearch");
 
     let config = Config::from_env().unwrap();
     assert_eq!(config.target_service, Some("meilisearch".to_string()));
-
-    // Cleanup
-    unsafe {
-        env::remove_var("TARGET_SERVICE");
-    }
 }
 
 #[tokio::test]
@@ -305,6 +333,8 @@ async fn test_log_level_configuration() {
             retry_config: Default::default(),
             disk_fallback_config: Default::default(),
             metrics_config: Default::default(),
+            ingest_token_file: None,
+            ingest_token: String::new(),
         };
 
         // Verify log level is set correctly
@@ -350,6 +380,8 @@ async fn test_batch_size_limits() {
             retry_config: Default::default(),
             disk_fallback_config: Default::default(),
             metrics_config: Default::default(),
+            ingest_token_file: None,
+            ingest_token: String::new(),
         };
 
         assert_eq!(config.batch_size, size);
@@ -390,9 +422,208 @@ async fn test_endpoint_validation() {
             retry_config: Default::default(),
             disk_fallback_config: Default::default(),
             metrics_config: Default::default(),
+            ingest_token_file: None,
+            ingest_token: String::new(),
         };
 
         assert_eq!(config.endpoint, endpoint);
         assert!(config.endpoint.starts_with("http"));
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_app_constructor_toml_only_token() {
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let token_path_str = token_path.to_str().unwrap().replace('\\', "/");
+
+    let temp_dir = TempDir::new().unwrap();
+    let toml_file = temp_dir.path().join("config.toml");
+    std::fs::write(
+        &toml_file,
+        format!("ingest_token_file = \"{}\"\n", token_path_str),
+    )
+    .unwrap();
+
+    let args = vec![
+        "rask-log-forwarder",
+        "--config-file",
+        toml_file.to_str().unwrap(),
+        "--target-service",
+        "test-service",
+    ];
+
+    let result = App::from_args(args).await;
+    assert!(
+        result.is_ok(),
+        "Should construct App when config-file TOML contains token"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_app_constructor_toml_missing_token_cli_has_token() {
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let token_path_str = token_path.to_str().unwrap().replace('\\', "/");
+
+    let temp_dir = TempDir::new().unwrap();
+    let toml_file = temp_dir.path().join("config.toml");
+    std::fs::write(&toml_file, "batch_size = 5000\n").unwrap(); // missing token
+
+    let args = vec![
+        "rask-log-forwarder",
+        "--config-file",
+        toml_file.to_str().unwrap(),
+        "--target-service",
+        "test-service",
+        "--ingest-token-file",
+        &token_path_str,
+    ];
+
+    let result = App::from_args(args).await;
+    assert!(
+        result.is_ok(),
+        "Should construct App when config-file TOML is missing token but CLI overrides it"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_app_constructor_missing_all_token() {
+    let _guard = EnvGuard::new();
+    let temp_dir = TempDir::new().unwrap();
+    let toml_file = temp_dir.path().join("config.toml");
+    std::fs::write(&toml_file, "batch_size = 5000\n").unwrap(); // missing token
+
+    let args = vec![
+        "rask-log-forwarder",
+        "--config-file",
+        toml_file.to_str().unwrap(),
+        "--target-service",
+        "test-service",
+    ];
+
+    let result = App::from_args(args).await;
+    assert!(
+        result.is_err(),
+        "Should deny App construction when all token are missing after merge"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_app_constructor_inherited_bogus_rask_config_fails() {
+    let _guard = EnvGuard::new();
+    _guard.set_var("RASK_CONFIG", "bogus_invalid_toml{{{");
+
+    let args = vec!["rask-log-forwarder", "--target-service", "test-service"];
+    let result = App::from_args(args).await;
+    assert!(
+        result.is_err(),
+        "Bogus RASK_CONFIG TOML must fail App construction"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_app_constructor_inherited_rask_config_bogus_filepath_fails() {
+    let _guard = EnvGuard::new();
+    // Accidental inherited config filepath string in RASK_CONFIG (not valid TOML)
+    _guard.set_var("RASK_CONFIG", "/etc/nonexistent/rask.toml");
+
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let args = vec![
+        "rask-log-forwarder",
+        "--ingest-token-file",
+        token_path.to_str().unwrap(),
+    ];
+    let result = App::from_args(args).await;
+    assert!(
+        result.is_err(),
+        "Accidental inherited config filepath in RASK_CONFIG must fail TOML parsing"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_app_constructor_inherited_rask_config_missing_token_isolated() {
+    let _guard = EnvGuard::new();
+    _guard.set_var(
+        "RASK_CONFIG",
+        r#"
+endpoint = "http://localhost:9600/v1/aggregate"
+batch_size = 5000
+"#,
+    );
+
+    // Negative case: no CLI override, no token -> App construction fails validation
+    let args_neg = vec!["rask-log-forwarder", "--target-service", "test-service"];
+    let result_neg = App::from_args(args_neg).await;
+    assert!(
+        result_neg.is_err(),
+        "App construction must fail when RASK_CONFIG lacks bearer token"
+    );
+
+    // Positive case in same isolated scope: CLI provides --ingest-token-file -> succeeds
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let args_pos = vec![
+        "rask-log-forwarder",
+        "--target-service",
+        "test-service",
+        "--ingest-token-file",
+        token_path.to_str().unwrap(),
+    ];
+    let result_pos = App::from_args(args_pos).await;
+    match result_pos {
+        Ok(app) => assert_eq!(app.get_target_service(), "test-service"),
+        Err(e) => {
+            assert!(
+                e.to_string().contains("global default trace dispatcher"),
+                "Unexpected failure in positive case: {e}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_app_constructor_inherited_rask_config_bogus_token_path_cli_override() {
+    let _guard = EnvGuard::new();
+    _guard.set_var(
+        "RASK_CONFIG",
+        r#"
+endpoint = "http://localhost:9600/v1/aggregate"
+ingest_token_file = "/nonexistent/bogus/token/path"
+"#,
+    );
+
+    // Negative case: with bogus token path in RASK_CONFIG and no CLI override -> fails
+    let args_neg = vec!["rask-log-forwarder", "--target-service", "test-service"];
+    let result_neg = App::from_args(args_neg).await;
+    assert!(
+        result_neg.is_err(),
+        "App construction must fail when RASK_CONFIG has bogus token path"
+    );
+
+    // Positive case: CLI override with valid token in TempDir -> succeeds
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let args_pos = vec![
+        "rask-log-forwarder",
+        "--target-service",
+        "test-service",
+        "--ingest-token-file",
+        token_path.to_str().unwrap(),
+    ];
+    let result_pos = App::from_args(args_pos).await;
+    match result_pos {
+        Ok(app) => assert_eq!(app.get_target_service(), "test-service"),
+        Err(e) => {
+            assert!(
+                e.to_string().contains("global default trace dispatcher"),
+                "Unexpected failure in positive case: {e}"
+            );
+        }
     }
 }

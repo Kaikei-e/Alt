@@ -52,6 +52,7 @@ on:
       - 'scripts/tests/test-compose-ops-surface-audit.py'
       - 'scripts/tests/test-compose-feature-gate.py'
       - 'scripts/tests/test-pki-wave4-acceptance.py'
+      - 'scripts/tests/test-retire-pki-writers.py'
       - 'scripts/tests/test-pki-subject-scoped-provisioners.py'
       - 'scripts/tests/test-pki-agent-recovery-runbook.py'
       - 'scripts/tests/test-health-deep-contract.py'
@@ -101,6 +102,7 @@ on:
       - 'scripts/tests/test-compose-ops-surface-audit.py'
       - 'scripts/tests/test-compose-feature-gate.py'
       - 'scripts/tests/test-pki-wave4-acceptance.py'
+      - 'scripts/tests/test-retire-pki-writers.py'
       - 'scripts/tests/test-pki-subject-scoped-provisioners.py'
       - 'scripts/tests/test-pki-agent-recovery-runbook.py'
       - 'scripts/tests/test-health-deep-contract.py'
@@ -250,8 +252,8 @@ jobs:
         run: python3 scripts/compose-netns-cascade-audit.py
 
   pki-wave4-invariant:
-    # Final in-process PKI cutover: 14 parents own enrollment, pki-agent
-    # workload fleet is 0. Dual writers, shared root secrets, and a silent
+    # 14 parents own enrollment; two newer workloads have dedicated cert-only
+    # writers. Dual writers, shared root secrets, and a silent
     # in-process series drop all fail this job. The recovery runbook test
     # is an executed python3 step (YAML `run:`), not a comment/string pin.
     # No live stack.
@@ -273,6 +275,9 @@ jobs:
 
       - name: Pin pki-agent recovery runbook against compose
         run: python3 scripts/tests/test-pki-agent-recovery-runbook.py
+
+      - name: Preserve current certificate writers during legacy retirement
+        run: python3 scripts/tests/test-retire-pki-writers.py
 
       - name: Pin health-deep listener matrix
         run: python3 scripts/tests/test-health-deep-contract.py

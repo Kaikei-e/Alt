@@ -27,6 +27,12 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+type fakeAuthHub struct{}
+
+func (f *fakeAuthHub) IntrospectToken(ctx context.Context, token string) (*port.TokenIntrospection, error) {
+	return &port.TokenIntrospection{Active: true, Sub: token}, nil
+}
+
 type stubSearchEngine struct{}
 
 func (stubSearchEngine) IndexDocuments(context.Context, []domain.SearchDocument) error {
@@ -74,7 +80,7 @@ func TestCreateConnectServer_OtelInterceptor_RecordsSpan(t *testing.T) {
 	uc := usecase.NewSearchByUserUsecase(stubSearchEngine{})
 	rc := usecase.NewSearchRecapsUsecase(stubRecapSearchEngine{})
 
-	handler := CreateConnectServer(uc, rc, config.RateLimitConfig{
+	handler := CreateConnectServer(uc, rc, usecase.NewAuthUsecase(&fakeAuthHub{}), config.RateLimitConfig{
 		RequestsPerSecond: 100,
 		Burst:             100,
 	})
@@ -84,11 +90,13 @@ func TestCreateConnectServer_OtelInterceptor_RecordsSpan(t *testing.T) {
 
 	client := searchv2connect.NewSearchServiceClient(http.DefaultClient, srv.URL)
 
-	_, err := client.SearchArticles(context.Background(), connect.NewRequest(&searchv2.SearchArticlesRequest{
+	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
 		Query:  "probe",
 		UserId: "user-1",
 		Limit:  1,
-	}))
+	})
+	req.Header().Set("Authorization", "Bearer user-1")
+	_, err := client.SearchArticles(context.Background(), req)
 	if err != nil {
 		t.Fatalf("SearchArticles returned error: %v", err)
 	}

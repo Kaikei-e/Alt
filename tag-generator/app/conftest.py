@@ -7,10 +7,44 @@ external downloads.
 import builtins
 import inspect
 import os
+import tempfile
 import typing
+from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
+
+_rask_test_directory: tempfile.TemporaryDirectory[str] | None = None
+_original_rask_token_file: str | None = None
+_original_otel_enabled: str | None = None
+
+
+def pytest_configure() -> None:
+    """Supply a test-only ingest credential before application imports during collection."""
+    global _rask_test_directory, _original_rask_token_file, _original_otel_enabled
+    _original_rask_token_file = os.environ.get("RASK_INGEST_TOKEN_FILE")
+    _original_otel_enabled = os.environ.get("OTEL_ENABLED")
+    _rask_test_directory = tempfile.TemporaryDirectory(prefix="tag-test-rask-")
+    token_path = Path(_rask_test_directory.name) / "ingest-token"
+    token_path.write_text("TestRaskIngestToken1234567890", encoding="utf-8")
+    os.environ["RASK_INGEST_TOKEN_FILE"] = str(token_path)
+    # Ordinary unit imports must not start background exporters to a real collector.
+    # Exporter wire tests explicitly enable telemetry in their isolated child processes.
+    os.environ["OTEL_ENABLED"] = "false"
+
+
+def pytest_unconfigure() -> None:
+    """Restore the caller environment and remove the test-only credential."""
+    if _original_rask_token_file is None:
+        os.environ.pop("RASK_INGEST_TOKEN_FILE", None)
+    else:
+        os.environ["RASK_INGEST_TOKEN_FILE"] = _original_rask_token_file
+    if _original_otel_enabled is None:
+        os.environ.pop("OTEL_ENABLED", None)
+    else:
+        os.environ["OTEL_ENABLED"] = _original_otel_enabled
+    if _rask_test_directory is not None:
+        _rask_test_directory.cleanup()
 
 
 def _patch_typing_eval_type_for_pydantic_compat() -> None:

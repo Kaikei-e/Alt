@@ -4,7 +4,7 @@
 
 Translates an Ory Kratos session cookie into Alt's internal backend JWT
 (`X-Alt-Backend-Token`). Also enrolls its own east-west mTLS leaf in-process
-(one of the 14 [[000978]] parents). **Go 1.26+**.
+(one of the 14 [[000978]] parents). **Go 1.27.1**.
 
 > Details: `docs/services/auth-hub.md`
 

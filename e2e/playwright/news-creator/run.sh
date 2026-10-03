@@ -39,12 +39,14 @@ suite_init news-creator
 # from context rather than pulled, so it has no *_IMAGE_TAG of its own.
 suite_image_tags NEWS_CREATOR_IMAGE_TAG
 
-# No suite_pki: the slice runs unauthenticated (MTLS_ENFORCE=false,
-# PEER_IDENTITY_TRUSTED=off in compose.staging.yaml), matching the
-# mq-hub / tag-generator / knowledge-sovereign staging convention. The
-# `@authz` spec in tests/health.spec.ts asserts that the peer-identity header
-# is inert under exactly that configuration.
-suite_endpoint BASE_URL    "http://news-creator:11434"
+# Positive business calls carry the production peer identity.
+suite_pki news-creator alt-backend denied-peer
+suite_endpoint BASE_URL "https://news-creator:9443"
+suite_endpoint PLAINTEXT_URL "http://news-creator:11434"
+suite_endpoint TLS_CLIENT_CERT_FILE "$SUITE_PKI_DIR/alt-backend.pem"
+suite_endpoint TLS_CLIENT_KEY_FILE "$SUITE_PKI_DIR/alt-backend-key.pem"
+suite_endpoint TLS_DENIED_CERT_FILE "$SUITE_PKI_DIR/denied-peer.pem"
+suite_endpoint TLS_DENIED_KEY_FILE "$SUITE_PKI_DIR/denied-peer-key.pem"
 
 # main.py's `if __name__ == "__main__"` block would bind 8001; the shipped
 # image binds 11434. tests/topology.spec.ts asserts nothing answers here.

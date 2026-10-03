@@ -180,7 +180,8 @@ def _make_mock_session(
 ):
     """Create a mock aiohttp session that captures the POSTed URL and payload.
 
-    Returns (session, captured) where captured is a dict with 'url' and 'json'.
+    Returns (session, captured) where captured is a dict with 'url', 'json',
+    and 'kwargs' (additional keyword arguments such as allow_redirects).
     """
     captured: dict = {}
 
@@ -199,9 +200,10 @@ def _make_mock_session(
     session = MagicMock()
     session.closed = False
 
-    def _post(url, json=None):
+    def _post(url, json=None, **kwargs):
         captured["url"] = url
         captured["json"] = json
+        captured["kwargs"] = kwargs
         return ctx
 
     session.post = _post
@@ -231,6 +233,9 @@ class TestChatStreamUsesApiChat:
             f"Expected /api/chat, got {captured['url']}"
         )
         assert "/api/generate" not in captured["url"]
+        assert captured["kwargs"].get("allow_redirects") is False, (
+            "chat_stream must pass allow_redirects=False to prevent redirect leaks"
+        )
 
     @pytest.mark.asyncio
     async def test_includes_think_false(self, driver):
@@ -418,6 +423,9 @@ class TestChatGenerateUsesApiChat:
 
         assert captured["url"].endswith("/api/chat"), (
             f"Expected /api/chat, got {captured['url']}"
+        )
+        assert captured["kwargs"].get("allow_redirects") is False, (
+            "chat_generate must pass allow_redirects=False to prevent redirect leaks"
         )
 
     @pytest.mark.asyncio

@@ -53,6 +53,14 @@ var knownSecretMeta = map[string]secretMeta{
 	// parsing. generateRandomSecret always uses base64.RawURLEncoding, so
 	// this holds for every auto-generated secret below, not just DB ones.
 	"sovereign_db_password.txt":           {"Knowledge Sovereign database password", true, 32, 0},
+	"sovereign_admin_token.txt":           {"Knowledge Sovereign admin Bearer token", true, 32, 0},
+	"sovereign_event_token.txt":           {"Knowledge Sovereign event Bearer token", true, 32, 0},
+	"sovereign_backend_token.txt":         {"Knowledge Sovereign backend consumer Bearer token", true, 32, 0},
+	"sovereign_operator_token.txt":        {"Knowledge Sovereign operator consumer Bearer token", true, 32, 0},
+	"sovereign_datahub_token.txt":         {"Knowledge Sovereign datahub consumer Bearer token", true, 32, 0},
+	"sovereign_harvester_token.txt":       {"Knowledge Sovereign harvester consumer Bearer token", true, 32, 0},
+	"sovereign_rag_token.txt":             {"Knowledge Sovereign rag consumer Bearer token", true, 32, 0},
+	"sovereign_recap_token.txt":           {"Knowledge Sovereign recap consumer Bearer token", true, 32, 0},
 	"rag_db_password.txt":                 {"RAG database password", true, 32, 0},
 	"kratos_db_password.txt":              {"Kratos database password", true, 32, 0},
 	"kratos_cookie_secret.txt":            {"Kratos cookie encryption secret", true, 32, 0},
@@ -70,10 +78,16 @@ var knownSecretMeta = map[string]secretMeta{
 	"pact_broker_basic_auth_password.txt": {"Pact Broker basic-auth password", true, 32, 0},
 	"pact_db_password.txt":                {"Pact Broker database password", true, 32, 0},
 	"internal_auth_token.txt":             {"auth-token-manager internal auth token (X-Internal-Auth)", true, 32, 0},
+	"redis_streams_password.txt":          {"Redis Streams role password", true, 32, 0},
+	"redis_cache_password.txt":            {"Redis Cache role password", true, 32, 0},
+	"redis_limiter_password.txt":          {"Redis Limiter role password", true, 32, 0},
+	"rask_ingest_token.txt":               {"Rask log ingestion token", true, 32, 0},
+	"inference_service_token.txt":         {"Inference service auth token", true, 32, 0},
 	// User-provided secrets: empty placeholders, operator fills them in.
 	"hugging_face_token.txt":      {"Hugging Face API token (for AI features)", false, 0, 0},
 	"inoreader_client_id.txt":     {"Inoreader OAuth client ID", false, 0, 0},
 	"inoreader_client_secret.txt": {"Inoreader OAuth client secret", false, 0, 0},
+	"k6_api_token.txt":            {"k6 load test API token (issued AuthHub JWT)", false, 0, 0},
 }
 
 // secretMeta is the per-secret generation strategy attached to a derived

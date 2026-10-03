@@ -44,11 +44,8 @@ func Run(ctx context.Context) error {
 	otelCfg := appOtel.ConfigFromEnv()
 	otelShutdown, err := appOtel.InitProvider(ctx, otelCfg)
 	if err != nil {
-		// Logger is not initialized yet; use slog so OTel init failures still
-		// follow the structured-logging convention (DECREE §5).
 		slog.Error("Failed to initialize OpenTelemetry", "error", err)
-		otelCfg.Enabled = false
-		otelShutdown = func(context.Context) error { return nil }
+		return fmt.Errorf("failed to initialize OpenTelemetry: %w", err)
 	}
 
 	// ── Logger ──
@@ -120,6 +117,13 @@ func Run(ctx context.Context) error {
 		WithCache(config.MeiliSearchCacheSize, config.MeiliSearchCacheTTL)
 
 	// ── Gateways (anti-corruption layer) ──
+	authHubDriver, err := driver.NewAuthHubDriver(appCfg.BackendAPI.UserJWTIntrospectionURL)
+	if err != nil {
+		return fmt.Errorf("failed to create auth hub driver: %w", err)
+	}
+	authHubGateway := gateway.NewAuthHubGateway(authHubDriver)
+	authUsecase := usecase.NewAuthUsecase(authHubGateway)
+
 	articleRepo := gateway.NewArticleRepositoryGateway(articleDriver)
 	searchEngine := gateway.NewSearchEngineGateway(searchDriver)
 
@@ -138,7 +142,7 @@ func Run(ctx context.Context) error {
 			"articles",
 			config.MeiliTimeout,
 		)
-		if err := ensureEmbedderSettings(ctx, embedderSettings, config.MeiliHybridEmbedder, desiredEmbedder()); err != nil {
+		if err := ensureEmbedderSettings(ctx, embedderSettings, config.MeiliHybridEmbedder, desiredEmbedder(appCfg)); err != nil {
 			logger.Logger.Error("Failed to ensure embedder settings", "err", err)
 			return err
 		}
@@ -233,7 +237,7 @@ func Run(ctx context.Context) error {
 	// ── Servers ──
 	app := &App{
 		httpServer:    newHTTPServer(searchByUserUsecase, otelCfg, appCfg.RateLimit, searchDriver.Ping),
-		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, appCfg.RateLimit),
+		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, authUsecase, appCfg.RateLimit),
 		redisConsumer: redisConsumer,
 		eventHandler:  eventHandler,
 		otelShutdown:  otelShutdown,
@@ -246,12 +250,8 @@ func Run(ctx context.Context) error {
 		}
 	}()
 
-	go func() {
-		logger.Logger.Info("connect-rpc listen", "addr", config.ConnectAddr)
-		if err := app.connectServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Logger.Error("connect-rpc", "err", err)
-		}
-	}()
+	// Plaintext :9301 is retired per C01. Connect-RPC is served exclusively
+	// over mTLS on :9443 via newMTLSMuxHandler.
 
 	if os.Getenv("MTLS_LISTEN") == "true" {
 		mtlsPort := os.Getenv("MTLS_PORT")
@@ -290,13 +290,14 @@ func Run(ctx context.Context) error {
 		}
 		{
 			// :9443 serves REST + Connect-RPC with peer-identity
-			// enforcement. Plain :9300 / :9301 remain during the migration
-			// window for callers that have not yet switched to mTLS.
+			// enforcement. Plain :9300 is health-only; :9301 is retired.
 			mtlsHandler := newMTLSMuxHandler(
+				authUsecase,
 				searchByUserUsecase,
 				app.connectServer.Handler,
 				otelCfg,
 				appCfg.RateLimit,
+				searchDriver.Ping,
 			)
 			app.mtlsServer = tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, mtlsHandler)
 			go func() {

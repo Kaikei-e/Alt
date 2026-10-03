@@ -2,6 +2,7 @@ import { test as base } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
 import { testToken, uuid } from "../../_shared/ids.js";
 import { env } from "./env.js";
+import { clientCertificates } from "../../_shared/client-auth.js";
 
 /**
  * Suite-wide fixtures and request builders.
@@ -50,6 +51,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 		async ({ playwright }, use) => {
 			const context = await playwright.request.newContext({
 				baseURL: env.baseURL,
+				clientCertificates: clientCertificates(env.baseURL, env.clientCert, env.clientKey),
 				extraHTTPHeaders: { "Content-Type": "application/json" },
 			});
 			await use(context);

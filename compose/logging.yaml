@@ -9,6 +9,8 @@ networks:
   # Keeps the read-only Docker API off the main application network.
   logging-docker-proxy:
     internal: true
+  plecto-otlp-collector:
+    internal: true
 
 # Shared forwarder definition. TARGET_SERVICE (and optional mem_limit) are
 # overridden per service.
@@ -26,6 +28,8 @@ x-rask-forwarder: &rask-forwarder
       condition: service_healthy
     docker-socket-proxy-ro:
       condition: service_healthy
+  secrets:
+    - rask_ingest_token
   volumes:
     - /var/lib/docker/containers:/var/lib/docker/containers:ro
   restart: unless-stopped
@@ -45,45 +49,22 @@ x-rask-forwarder-env: &rask-forwarder-env
   BATCH_SIZE: "1000"
   FLUSH_INTERVAL_MS: "500"
   BUFFER_CAPACITY: "100000"
+  RASK_INGEST_TOKEN_FILE: "/run/secrets/rask_ingest_token"
 
 services:
   docker-socket-proxy-ro:
     # Read-only Docker API proxy for log forwarders and cAdvisor metrics.
-    # Disallows POST and mutating endpoints; only permits read-only discovery,
-    # metadata, and log streaming APIs.
-    image: tecnativa/docker-socket-proxy:v0.4.2
+    # Uses a custom narrow proxy that enforces a strict allowlist.
+    build:
+      context: ../docker/readonly-proxy
+      dockerfile: Dockerfile
     container_name: alt-docker-socket-proxy-ro
-    environment:
-      # Master switch: POST=0 denies all mutating operations.
-      - POST=0
-      # Endpoints required by rask-log-forwarder and cAdvisor
-      - CONTAINERS=1
-      - INFO=1
-      - VERSION=1
-      - EVENTS=1
-      - PING=1
-      # Explicitly disabled endpoints (deny by default)
-      - ALLOW_RESTARTS=0
-      - ALLOW_START=0
-      - ALLOW_STOP=0
-      - AUTH=0
-      - BUILD=0
-      - COMMIT=0
-      - CONFIGS=0
-      - DISTRIBUTION=0
-      - EXEC=0
-      - GRPC=0
-      - IMAGES=0
-      - NETWORKS=0
-      - NODES=0
-      - PLUGINS=0
-      - SECRETS=0
-      - SERVICES=0
-      - SESSION=0
-      - SWARM=0
-      - SYSTEM=0
-      - TASKS=0
-      - VOLUMES=0
+    user: "65534:984"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
     volumes:
       - type: bind
         source: /var/run/docker.sock
@@ -102,7 +83,7 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2375/version"]
+      test: ["CMD", "/readonly-proxy", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -116,6 +97,7 @@ services:
     mem_limit: 128m
     networks:
       - alt-network
+      - plecto-otlp-collector
     tty: true
     labels:
       - rask.group=rask-log-aggregator
@@ -135,8 +117,10 @@ services:
       OTLP_GRPC_PORT: 4317
       OTLP_HTTP_PORT: 4318
       HTTP_PORT: 9600
+      RASK_INGEST_TOKEN_FILE: /run/secrets/rask_ingest_token
     secrets:
       - clickhouse_password
+      - rask_ingest_token
     healthcheck:
       test: ["CMD", "/rask-log-aggregator", "healthcheck"]
       interval: 5s

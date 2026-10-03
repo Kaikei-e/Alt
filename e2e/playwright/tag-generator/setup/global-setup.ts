@@ -1,6 +1,7 @@
 import { waitForReady, httpBody, httpOk } from "../../_shared/readiness.js";
 import type { Probe } from "../../_shared/readiness.js";
 import { env } from "../src/env.js";
+import { clientCertificates } from "../../_shared/client-auth.js";
 import { KEYWORD_CONTENT, KEYWORD_TITLE } from "../src/fixtures.js";
 
 /**
@@ -97,7 +98,7 @@ const tagsConsumerJoined: Probe = {
 		const response = await api.post(
 			`${env.mqhubURL}/services.mqhub.v1.MQHubService/GenerateTagsForArticle`,
 			{
-				headers: { "Content-Type": "application/json", "Connect-Protocol-Version": "1" },
+				headers: { "Content-Type": "application/json", "Connect-Protocol-Version": "1", Authorization: `Bearer ${env.mqhubToken}` },
 				data: { title: "readiness", content: "readiness", timeoutMs: 8_000 },
 				timeout: 20_000,
 			},
@@ -129,10 +130,10 @@ export default async function globalSetup(): Promise<void> {
 			),
 			httpOk(`${env.mqhubURL}/health`, `GET ${env.mqhubURL}/health (Redis reachable)`),
 		],
-		{ timeout: CONTAINER_TIMEOUT_MS, interval: 1_000 },
+		{ timeout: CONTAINER_TIMEOUT_MS, interval: 1_000, context: { clientCertificates: clientCertificates(env.baseURL, env.clientCert, env.clientKey) } },
 	);
 
-	await waitForReady([extractorWarm], { timeout: WARMUP_TIMEOUT_MS, interval: 2_000 });
+	await waitForReady([extractorWarm], { timeout: WARMUP_TIMEOUT_MS, interval: 2_000, context: { clientCertificates: clientCertificates(env.baseURL, env.clientCert, env.clientKey) } });
 
 	await waitForReady([tagsConsumerJoined], { timeout: CONTAINER_TIMEOUT_MS, interval: 2_000 });
 }

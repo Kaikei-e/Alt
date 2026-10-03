@@ -30,6 +30,8 @@ fn create_test_config() -> Config {
         retry_config: Default::default(),
         disk_fallback_config: Default::default(),
         metrics_config: Default::default(),
+        ingest_token_file: None,
+        ingest_token: String::new(),
     }
 }
 

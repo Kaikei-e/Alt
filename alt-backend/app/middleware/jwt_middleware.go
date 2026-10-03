@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"alt/shared/driver/sovereign_client"
 	"context"
 	"errors"
 	"fmt"
@@ -100,6 +101,8 @@ func (m *JWTAuthMiddleware) RequireJWT() echo.MiddlewareFunc {
 
 			// Attach user context to request
 			ctx := context.WithValue(c.Request().Context(), userContextKey, userCtx)
+			// Propagate the raw JWT for sovereign_client
+			ctx = sovereign_client.WithJWT(ctx, c.Request().Header.Get(backendTokenHeader))
 			c.SetRequest(c.Request().WithContext(ctx))
 
 			return next(c)

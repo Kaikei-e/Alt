@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { request } from "@playwright/test";
 import { connectListening, httpBody, httpOk, waitForReady } from "../../_shared/readiness.js";
-import { SECONDARY_USER_ID, TEST_USER_ID } from "../src/auth.js";
+import { SECONDARY_USER_ID, TEST_USER_ID, mintBackendToken } from "../src/auth.js";
 import { env, seedEnv } from "../src/env.js";
 
 /**
@@ -75,7 +75,7 @@ export default async function globalSetup(): Promise<void> {
 					const url = `${seed.searchIndexerURL}/v1/search?q=${encodeURIComponent(
 						SEED_PROBE_QUERY,
 					)}&limit=5&user_id=${TEST_USER_ID}`;
-					const response = await api.get(url, { timeout: 10_000 });
+					const response = await api.get(url, { timeout: 10_000, headers: { Authorization: `Bearer ${mintBackendToken()}` } });
 					if (!response.ok()) {
 						throw new Error(`status ${response.status()}`);
 					}

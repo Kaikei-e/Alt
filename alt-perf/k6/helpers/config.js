@@ -7,7 +7,7 @@
 export function getConfig() {
   return {
     baseUrl: __ENV.K6_BASE_URL || "http://alt-backend:9000",
-    backendTokenSecret: __ENV.K6_BACKEND_TOKEN_SECRET || "",
+    apiToken: __ENV.K6_API_TOKEN || "",
     testUserId: __ENV.K6_TEST_USER_ID || "",
     testTenantId: __ENV.K6_TEST_TENANT_ID || "",
     testUserEmail: __ENV.K6_TEST_USER_EMAIL || "",

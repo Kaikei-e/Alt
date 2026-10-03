@@ -35,10 +35,13 @@ services:
           memory: 2G
           cpus: "2"
     # Security options for Chromium in Docker
-    security_opt:
-      - seccomp:unconfined
-    cap_add:
-      - SYS_ADMIN
+    # SYS_ADMIN and seccomp:unconfined removed for security.
+    # If Chrome sandbox fails without them, pass --no-sandbox to Chrome
+    # or implement a concrete custom seccomp profile.
+    # security_opt:
+    #   - seccomp:unconfined
+    # cap_add:
+    #   - SYS_ADMIN
     # Logging
     logging:
       driver: "json-file"
@@ -51,7 +54,7 @@ services:
 
   k6:
     image: grafana/k6:0.55.0
-    user: "0:0"
+    # user: "0:0" removed; k6 runs as non-root
     env_file:
       - ../.env
     environment:
@@ -59,8 +62,9 @@ services:
       - K6_TEST_USER_ID=${K6_TEST_USER_ID:-}
       - K6_TEST_TENANT_ID=${K6_TEST_TENANT_ID:-}
       - K6_TEST_USER_EMAIL=${K6_TEST_USER_EMAIL:-}
+      - K6_API_TOKEN_FILE=/run/secrets/k6_api_token
     secrets:
-      - backend_token_secret
+      - k6_api_token
     volumes:
       - ../alt-perf/k6:/scripts:ro
       - ../alt-perf/reports:/app/reports

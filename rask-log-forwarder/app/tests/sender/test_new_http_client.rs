@@ -22,6 +22,7 @@ async fn test_client_configuration() {
     let config = ClientConfig {
         endpoint: "http://example.com:9600/v1/aggregate".to_string(),
         timeout: Duration::from_secs(5),
+        ingest_token: "test_token".to_string(),
         max_connections: 20,
         keep_alive_timeout: Duration::from_secs(90),
         connection_timeout: Duration::from_secs(10),

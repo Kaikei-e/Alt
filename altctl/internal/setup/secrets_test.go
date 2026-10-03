@@ -65,6 +65,7 @@ func TestDefaultSecretSpecs_ContainsAllRequired(t *testing.T) {
 		"hugging_face_token.txt":      true,
 		"inoreader_client_id.txt":     true,
 		"inoreader_client_secret.txt": true,
+		"k6_api_token.txt":            true,
 	}
 
 	for _, name := range required {

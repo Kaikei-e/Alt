@@ -2,12 +2,18 @@
  * OpenTelemetry provider for auth-token-manager service.
  */
 
+import { trace } from "@opentelemetry/api";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 import {
   BatchLogRecordProcessor,
   LoggerProvider,
 } from "@opentelemetry/sdk-logs";
-import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import {
+  BasicTracerProvider,
+  BatchSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   ATTR_SERVICE_NAME,
@@ -24,18 +30,54 @@ export interface OTelConfig {
   enabled: boolean;
 }
 
+export function loadRaskIngestToken(): string {
+  const tokenFile = Deno.env.get("RASK_INGEST_TOKEN_FILE");
+  if (!tokenFile) {
+    throw new Error("RASK_INGEST_TOKEN_FILE must be set to export telemetry");
+  }
+
+  let content: string;
+  try {
+    content = Deno.readTextFileSync(tokenFile);
+  } catch (err) {
+    throw new Error(
+      `Failed to read RASK_INGEST_TOKEN_FILE: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
+  // Strip exactly one trailing CRLF or LF; do NOT trim whitespace broadly.
+  // content.trim() would silently accept leading/trailing spaces and Unicode
+  // whitespace – those are NOT valid in a Bearer token file.
+  const token = content.replace(/\r?\n$/, "");
+  if (!token) {
+    throw new Error("RASK_INGEST_TOKEN_FILE is empty");
+  }
+
+  // RFC 6750 §2.1 token68: [A-Za-z0-9._~+/\-]+ followed by optional = padding.
+  // '-' must be present: URL-safe base64url and many token generators include it.
+  if (!/^[A-Za-z0-9._~+/\-]+=*$/.test(token)) {
+    throw new Error("RASK_INGEST_TOKEN_FILE contains invalid characters");
+  }
+
+  return token;
+}
+
 export function getOTelConfig(): OTelConfig {
+  const env = Deno.env.get("DEPLOYMENT_ENV") || "development";
   return {
     serviceName: Deno.env.get("OTEL_SERVICE_NAME") || "auth-token-manager",
     serviceVersion: Deno.env.get("SERVICE_VERSION") || "1.0.0",
-    environment: Deno.env.get("DEPLOYMENT_ENV") || "development",
+    environment: env,
     otlpEndpoint: Deno.env.get("OTEL_EXPORTER_OTLP_ENDPOINT") ||
       "http://localhost:4318",
-    enabled: (Deno.env.get("OTEL_ENABLED") || "true").toLowerCase() === "true",
+    enabled: Deno.env.get("OTEL_ENABLED")?.toLowerCase() === "true",
   };
 }
 
 let loggerProvider: LoggerProvider | null = null;
+let tracerProvider: BasicTracerProvider | null = null;
 let otelLogger: ReturnType<typeof logs.getLogger> | null = null;
 
 export function initOTelProvider(config?: OTelConfig): () => Promise<void> {
@@ -45,6 +87,8 @@ export function initOTelProvider(config?: OTelConfig): () => Promise<void> {
     return () => Promise.resolve();
   }
 
+  const token = loadRaskIngestToken();
+
   const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: cfg.serviceName,
     [ATTR_SERVICE_VERSION]: cfg.serviceVersion,
@@ -53,6 +97,16 @@ export function initOTelProvider(config?: OTelConfig): () => Promise<void> {
 
   const logExporter = new OTLPLogExporter({
     url: `${cfg.otlpEndpoint}/v1/logs`,
+    headers: {
+      "Authorization": `Bearer ${token}`,
+    },
+  });
+
+  const traceExporter = new OTLPTraceExporter({
+    url: `${cfg.otlpEndpoint}/v1/traces`,
+    headers: {
+      "Authorization": `Bearer ${token}`,
+    },
   });
 
   loggerProvider = new LoggerProvider({
@@ -60,17 +114,29 @@ export function initOTelProvider(config?: OTelConfig): () => Promise<void> {
     processors: [new BatchLogRecordProcessor({ exporter: logExporter })],
   });
 
+  tracerProvider = new BasicTracerProvider({
+    resource,
+    spanProcessors: [new BatchSpanProcessor(traceExporter)],
+  });
+
   logs.setGlobalLoggerProvider(loggerProvider);
+  trace.setGlobalTracerProvider(tracerProvider);
   otelLogger = logs.getLogger("auth-token-manager");
 
-  return () => {
-    if (!loggerProvider) {
-      return Promise.resolve();
-    }
-    const provider = loggerProvider;
+  return async () => {
+    const lProvider = loggerProvider;
+    const tProvider = tracerProvider;
     loggerProvider = null;
+    tracerProvider = null;
     otelLogger = null;
-    return provider.shutdown();
+    const promises: Promise<unknown>[] = [];
+    if (lProvider) {
+      promises.push(lProvider.shutdown());
+    }
+    if (tProvider) {
+      promises.push(tProvider.shutdown());
+    }
+    await Promise.all(promises);
   };
 }
 

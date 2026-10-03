@@ -1,31 +1,11 @@
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 import { expect, extractTags, test } from "../src/fixtures.js";
 import { expectStatus } from "../../_shared/http.js";
-import { expectConnectionRefused } from "../../_shared/net.js";
+import { expectTlsHandshakeRejected } from "../../_shared/net.js";
+import { clientCertificates } from "../../_shared/client-auth.js";
 import { env } from "../src/env.js";
 
-/**
- * The authentication boundary — entirely new coverage.
- *
- * The Hurl suite deferred all of this ("authenticated endpoints… staging
- * currently runs a no-op auth fallback"). That description is no longer true
- * of the code, and the direction it moved is exactly the kind of thing an E2E
- * suite exists to hold in place:
- *
- *   - `alt_auth.client` is **not** a dependency of this service
- *     (tag-generator/app/pyproject.toml), so `_ALT_AUTH_AVAILABLE` is False
- *     and the fallback `require_auth` decorator refuses every call to the
- *     routes it wraps instead of fabricating an anonymous `UserContext`
- *     (auth_service.py:52-93). That is `.claude/rules/di-wiring.md` — a
- *     missing auth module must fail closed, not disable authentication.
- *
- *   - `/api/v1/extract-tags` has, by contrast, **no** authentication at all on
- *     :9400. `verify_service_token` is a documented no-op and says so in its
- *     own docstring (auth_service.py:524-533): reachability is the entire
- *     control. The tests below pin that as current behaviour, because an
- *     assertion that fails when someone adds real authentication is the
- *     correct signal — not because the state of affairs is desirable.
- */
+/** The verified peer gate precedes the endpoint's fail-closed user-auth decorator. */
 
 /**
  * The two routes wrapped by the fail-closed `require_auth` decorator, each
@@ -124,27 +104,10 @@ test.describe("authenticated routes fail closed", () => {
 		test(`${method} ${path} answers a forged peer identity exactly as it answers an anonymous caller`, {
 			tag: "@authz",
 		}, async ({ api, playwright }) => {
-			// `X-Alt-Peer-Identity` is set by the nginx mTLS sidecar and is the
-			// only caller identity this service has. `PeerIdentityMiddleware`
-			// honours it under two conditions — `PEER_IDENTITY_TRUSTED=on` *and*
-			// a loopback transport peer — and this slice satisfies neither
-			// (compose.staging.yaml:468-469 sets it to `off`, and the suite
-			// connects over the bridge network), so the header is blanked at
-			// peer_identity.py:88-94.
-			//
-			// What this slice can and cannot prove, stated plainly: the
-			// middleware runs with `strict=False` (auth_service.py:445) and no
-			// handler reads `request.state.peer_identity`, so whether the
-			// header was honoured or discarded is *not directly observable in
-			// the response*. Proving "discarded" would need a stack with
-			// `strict=True`. What is observable, and what this test asserts, is
-			// the weaker but still falsifiable claim: writing the header
-			// changes nothing about the answer. If it ever does — a middleware
-			// that starts trusting the client-written value while `strict` is
-			// on would answer the forged request differently from the plain one
-			// — this fails.
+			// A supplied header cannot replace the authenticated certificate identity.
 			const forged = await playwright.request.newContext({
 				baseURL: env.baseURL,
+				clientCertificates: clientCertificates(env.baseURL, env.clientCert, env.clientKey),
 				extraHTTPHeaders: {
 					"Content-Type": "application/json",
 					"X-Alt-Peer-Identity": "recap-worker",
@@ -176,49 +139,42 @@ test.describe("authenticated routes fail closed", () => {
 	}
 });
 
-test.describe("the plaintext listener's actual trust model", () => {
-	test("/api/v1/extract-tags authenticates nobody on :9400", {
+test.describe("verified TLS peer boundary", () => {
+	test("/api/v1/extract-tags serves the permitted certificate holder", {
 		tag: "@authz",
 	}, async ({ api }) => {
-		// Pinning current behaviour, deliberately. `verify_service_token` is a
-		// no-op whose docstring states that reachability — compose binding the
-		// port to loopback — is what keeps :9400 closed, and that the function
-		// must not be read as a second control. An E2E suite that quietly
-		// assumed the endpoint were protected would be the exact
-		// misunderstanding the docstring warns against.
-		//
-		// When this endpoint grows real authentication, this test fails. That
-		// is the intended signal, and the fix is to move the assertion to the
-		// authenticated-routes block above.
+		// This client presents an allowed leaf; transport authorization succeeds.
 		const body = await extractTags(api, {
-			title: "Anonymous callers are served",
+			title: "Permitted certificate callers are served",
 			content:
-				"This request carries no credential of any kind: no bearer token, no client " +
-				"certificate, and no peer identity header. It is served anyway.",
+				"This request carries the permitted client certificate and receives tags.",
 		});
 		expect(body.success).toBe(true);
 	});
 
-	test("nothing answers on the mTLS sidecar port in this slice", {
+	test("TLS requires a client certificate", {
 		tag: "@authz",
-	}, async ({ api }) => {
-		// The other half of the claim above. In production tag-generator sits
-		// behind an nginx sidecar on :9443 that terminates mutual TLS and is
-		// the only thing entitled to set `X-Alt-Peer-Identity`; this staging
-		// slice deliberately runs no sidecar, which is why `MTLS_ENFORCE=false`
-		// and `PEER_IDENTITY_TRUSTED=off` are correct here and why the suite
-		// speaks plaintext.
-		//
-		// Asserting the port is *closed* turns that from an unstated assumption
-		// into a fact the suite checks. If a sidecar ever appears in this slice
-		// without the trust flags moving with it, the peer-identity assertions
-		// above would start passing for a reason that has nothing to do with
-		// what they claim to test.
-		await expectConnectionRefused(
-			api,
-			env.tlsSidecarURL,
-			"this staging slice runs no nginx mTLS sidecar for tag-generator, so :9443 must " +
-				"have nothing bound to it",
-		);
+	}, async ({ api, playwright }) => {
+		// The positive control proves a live TLS listener before the rejection probe.
+		await expectStatus(await api.get("/health"), 200);
+		const anonymous = await playwright.request.newContext();
+		try {
+			await expectTlsHandshakeRejected(anonymous, `${env.baseURL}/health`, "tag TLS requires a client certificate");
+		} finally { await anonymous.dispose(); }
+	});
+	test("plaintext and forged peer headers cannot serve business requests", { tag: "@authz" }, async ({ playwright }) => {
+		const plain = await playwright.request.newContext({ baseURL: env.plaintextURL });
+		try {
+			for (const headers of [{}, { "X-Alt-Peer-Identity": "alt-backend" }]) {
+				await expectStatus(await plain.post("/api/v1/extract-tags", { headers, data: { title: "denied", content: "denied" } }), 401);
+			}
+		} finally { await plain.dispose(); }
+	});
+	test("a valid CA certificate with an unauthorized CN is rejected", { tag: "@authz" }, async ({ api, playwright }) => {
+		await expectStatus(await api.get("/health"), 200);
+		const denied = await playwright.request.newContext({ clientCertificates: clientCertificates(env.baseURL, env.deniedCert, env.deniedKey) });
+		try {
+			await expectTlsHandshakeRejected(denied, `${env.baseURL}/health`, "tag rejects an unauthorized certificate CN");
+		} finally { await denied.dispose(); }
 	});
 });

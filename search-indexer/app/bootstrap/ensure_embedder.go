@@ -29,11 +29,12 @@ type embedderSettingsManager interface {
 
 // desiredEmbedder is the embedder definition this service declares on the
 // articles index.
-func desiredEmbedder() driver.EmbedderSpec {
+func desiredEmbedder(cfg *config.Config) driver.EmbedderSpec {
 	return driver.EmbedderSpec{
 		Source:           embedderSource,
 		Model:            config.MeiliEmbedderModel,
 		URL:              config.MeiliEmbedderURL,
+		APIKey:           cfg.Meilisearch.EmbedderInferenceToken,
 		Dimensions:       config.MeiliEmbedderDimensions,
 		DocumentTemplate: embedderDocumentTemplate,
 	}
@@ -52,6 +53,13 @@ func desiredEmbedder() driver.EmbedderSpec {
 // merges by name: an embedder omitted from the payload survives and keeps
 // consuming embedder calls and vector storage per document, so removal has to
 // be requested explicitly with a JSON null.
+//
+// Credential rotation: Meilisearch masks apiKey in GET responses so this
+// service cannot compare the live key to the desired key. When the structural
+// fields already match AND a token is configured, a separate credential-only
+// PATCH is issued on every boot. Changing the apiKey never triggers a
+// re-embed, making the call safe and idempotent.
+// The apiKey is never logged in any payload or debug field.
 func ensureEmbedderSettings(ctx context.Context, m embedderSettingsManager, name string, desired driver.EmbedderSpec) error {
 	live, err := m.GetEmbedders(ctx)
 	if err != nil {
@@ -59,7 +67,15 @@ func ensureEmbedderSettings(ctx context.Context, m embedderSettingsManager, name
 	}
 
 	payload := make(map[string]*driver.EmbedderSpec, len(live)+1)
-	if current, ok := live[name]; !ok || current != desired {
+	current, ok := live[name]
+	needsStructuralUpdate := !ok ||
+		current.Source != desired.Source ||
+		current.Model != desired.Model ||
+		current.URL != desired.URL ||
+		current.Dimensions != desired.Dimensions ||
+		current.DocumentTemplate != desired.DocumentTemplate
+
+	if needsStructuralUpdate {
 		spec := desired
 		payload[name] = &spec
 	}
@@ -73,10 +89,28 @@ func ensureEmbedderSettings(ctx context.Context, m embedderSettingsManager, name
 	sort.Strings(removed)
 
 	if len(payload) == 0 {
-		logger.Logger.InfoContext(ctx, "embedder settings already match",
-			"embedder", name,
-			"model", desired.Model,
-		)
+		// Structural fields match and no unknown embedders to remove.
+		// If a credential is configured, issue a credential-only PATCH so
+		// token rotation converges on every boot. The apiKey is masked in
+		// GET responses so we cannot compare; Meilisearch re-embeds only if
+		// the value actually changed, making this safe when the token is stable.
+		if desired.APIKey != "" {
+			credSpec := driver.EmbedderSpec{APIKey: desired.APIKey}
+			credPayload := map[string]*driver.EmbedderSpec{name: &credSpec}
+			taskUID, err := m.UpdateEmbedders(ctx, credPayload)
+			if err != nil {
+				return fmt.Errorf("update embedder credential: %w", err)
+			}
+			logger.Logger.InfoContext(ctx, "embedder credential PATCH issued for token rotation convergence",
+				"embedder", name,
+				"task_uid", taskUID,
+			)
+		} else {
+			logger.Logger.InfoContext(ctx, "embedder settings already match",
+				"embedder", name,
+				"model", desired.Model,
+			)
+		}
 		return nil
 	}
 

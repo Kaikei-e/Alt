@@ -4,6 +4,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"connectrpc.com/connect"
 
@@ -15,15 +16,18 @@ import (
 
 // Handler implements the SearchService Connect-RPC handler.
 type Handler struct {
+	authUsecase *usecase.AuthUsecase
+
 	searchByUserUsecase *usecase.SearchByUserUsecase
 	searchRecapsUsecase *usecase.SearchRecapsUsecase
 }
 
 // NewHandler creates a new search handler.
-func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase) *Handler {
+func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, authUsecase *usecase.AuthUsecase) *Handler {
 	return &Handler{
 		searchByUserUsecase: searchByUserUsecase,
 		searchRecapsUsecase: searchRecapsUsecase,
+		authUsecase:         authUsecase,
 	}
 }
 
@@ -48,6 +52,22 @@ func (h *Handler) SearchArticles(
 	}
 	if offset < 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("offset must be >= 0"))
+	}
+
+	var token string
+	if authHeader := req.Header().Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+		token = strings.TrimPrefix(authHeader, "Bearer ")
+	} else if backendToken := req.Header().Get("X-Alt-Backend-Token"); backendToken != "" {
+		token = backendToken
+	}
+
+	if token != "" {
+		if err := h.authUsecase.VerifyUserToken(ctx, token, userID); err != nil {
+			logger.Logger.Error("auth verification failed", "err", err, "user_id", userID)
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("unauthorized: %v", err))
+		}
+	} else {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("missing or invalid authorization header"))
 	}
 
 	result, err := h.searchByUserUsecase.ExecuteWithPagination(ctx, query, userID, offset, limit)

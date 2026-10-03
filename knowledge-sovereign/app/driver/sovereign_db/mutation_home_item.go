@@ -94,6 +94,13 @@ func parseHomeItemMutation(payload json.RawMessage) (homeItemMutation, error) {
 			scoreOp, scoreOpMax, scoreOpSet)
 	}
 
+	if item.TenantID == uuid.Nil {
+		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: tenant_id is required and cannot be empty")
+	}
+	if item.UserID == uuid.Nil {
+		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: user_id is required and cannot be empty")
+	}
+
 	tags := item.Tags
 	if tags == nil {
 		tags = []string{}
@@ -244,7 +251,8 @@ const upsertKnowledgeHomeItemQuery = `INSERT INTO knowledge_home_items
 			 WHEN EXCLUDED.previous_ref_json IS NOT NULL THEN COALESCE(knowledge_home_items.previous_ref_json, '{}'::jsonb) || EXCLUDED.previous_ref_json
 			 ELSE knowledge_home_items.previous_ref_json
 		 END,
-		 url = COALESCE(NULLIF(EXCLUDED.url, ''), knowledge_home_items.url)`
+		 url = COALESCE(NULLIF(EXCLUDED.url, ''), knowledge_home_items.url)
+		 WHERE knowledge_home_items.tenant_id = EXCLUDED.tenant_id`
 
 // UpsertKnowledgeHomeItem inserts or updates a knowledge home item.
 func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.RawMessage) error {
@@ -252,15 +260,19 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 	if err != nil {
 		return err
 	}
-	_, err = r.pool.Exec(ctx, upsertKnowledgeHomeItemQuery, buildUpsertKnowledgeHomeItemArgs(m)...)
+	commandTag, err := r.pool.Exec(ctx, upsertKnowledgeHomeItemQuery, buildUpsertKnowledgeHomeItemArgs(m)...)
 	if err != nil {
 		return fmt.Errorf("UpsertKnowledgeHomeItem: %w", err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ErrHomeItemTenantMismatch
 	}
 	return nil
 }
 
 type dismissHomeItemMutation struct {
 	UserID            uuid.UUID
+	TenantID          *uuid.UUID
 	ItemKey           string
 	ProjectionVersion int
 	DismissedAt       time.Time
@@ -269,6 +281,7 @@ type dismissHomeItemMutation struct {
 func parseDismissHomeItemMutation(payload json.RawMessage) (dismissHomeItemMutation, error) {
 	var params struct {
 		UserID            string `json:"user_id"`
+		TenantID          string `json:"tenant_id"`
 		ItemKey           string `json:"item_key"`
 		ProjectionVersion int    `json:"projection_version"`
 		DismissedAt       string `json:"dismissed_at"`
@@ -279,6 +292,14 @@ func parseDismissHomeItemMutation(payload json.RawMessage) (dismissHomeItemMutat
 	userID, err := uuid.Parse(params.UserID)
 	if err != nil {
 		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse user_id: %w", err)
+	}
+	var tenantID *uuid.UUID
+	if params.TenantID != "" {
+		tID, err := uuid.Parse(params.TenantID)
+		if err != nil {
+			return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse tenant_id: %w", err)
+		}
+		tenantID = &tID
 	}
 	// dismissed_at is a business fact and must come from the event payload —
 	// reproject-safe means replaying the same DismissedHomeItem event twice
@@ -294,26 +315,30 @@ func parseDismissHomeItemMutation(payload json.RawMessage) (dismissHomeItemMutat
 	}
 	return dismissHomeItemMutation{
 		UserID:            userID,
+		TenantID:          tenantID,
 		ItemKey:           params.ItemKey,
 		ProjectionVersion: params.ProjectionVersion,
 		DismissedAt:       dismissedAt,
 	}, nil
 }
 
-const (
-	dismissHomeItemAllVersionsQuery = `UPDATE knowledge_home_items
-			SET dismissed_at = $1, updated_at = $1
-			WHERE user_id = $2 AND item_key = $3 AND dismissed_at IS NULL`
-	dismissHomeItemExactVersionQuery = `UPDATE knowledge_home_items
-			SET dismissed_at = $1, updated_at = $1
-			WHERE user_id = $2 AND item_key = $3 AND projection_version = $4`
-)
-
 func buildDismissHomeItemQueryAndArgs(m dismissHomeItemMutation) (string, []any) {
+	query := `UPDATE knowledge_home_items SET dismissed_at = $1, updated_at = $1 WHERE user_id = $2 AND item_key = $3`
+	args := []any{m.DismissedAt, m.UserID, m.ItemKey}
+
 	if m.ProjectionVersion == 0 {
-		return dismissHomeItemAllVersionsQuery, []any{m.DismissedAt, m.UserID, m.ItemKey}
+		query += ` AND dismissed_at IS NULL`
+	} else {
+		query += ` AND projection_version = $4`
+		args = append(args, m.ProjectionVersion)
 	}
-	return dismissHomeItemExactVersionQuery, []any{m.DismissedAt, m.UserID, m.ItemKey, m.ProjectionVersion}
+
+	if m.TenantID != nil {
+		query += fmt.Sprintf(` AND tenant_id = $%d`, len(args)+1)
+		args = append(args, *m.TenantID)
+	}
+
+	return query, args
 }
 
 // DismissKnowledgeHomeItem marks an item as dismissed.
@@ -335,6 +360,7 @@ func (r *Repository) DismissKnowledgeHomeItem(ctx context.Context, payload json.
 
 type clearSupersedeStateMutation struct {
 	UserID            uuid.UUID
+	TenantID          *uuid.UUID
 	ItemKey           string
 	ProjectionVersion int
 }
@@ -342,6 +368,7 @@ type clearSupersedeStateMutation struct {
 func parseClearSupersedeStateMutation(payload json.RawMessage) (clearSupersedeStateMutation, error) {
 	var params struct {
 		UserID            string `json:"user_id"`
+		TenantID          string `json:"tenant_id"`
 		ItemKey           string `json:"item_key"`
 		ProjectionVersion int    `json:"projection_version"`
 	}
@@ -352,8 +379,17 @@ func parseClearSupersedeStateMutation(payload json.RawMessage) (clearSupersedeSt
 	if err != nil {
 		return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: parse user_id: %w", err)
 	}
+	var tenantID *uuid.UUID
+	if params.TenantID != "" {
+		tID, err := uuid.Parse(params.TenantID)
+		if err != nil {
+			return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: parse tenant_id: %w", err)
+		}
+		tenantID = &tID
+	}
 	return clearSupersedeStateMutation{
 		UserID:            userID,
+		TenantID:          tenantID,
 		ItemKey:           params.ItemKey,
 		ProjectionVersion: params.ProjectionVersion,
 	}, nil
@@ -361,6 +397,16 @@ func parseClearSupersedeStateMutation(payload json.RawMessage) (clearSupersedeSt
 
 func buildClearSupersedeStateArgs(m clearSupersedeStateMutation) []any {
 	return []any{m.UserID, m.ItemKey, m.ProjectionVersion}
+}
+
+func buildClearSupersedeStateQueryAndArgs(m clearSupersedeStateMutation) (string, []any) {
+	query := clearSupersedeStateQuery
+	args := []any{m.UserID, m.ItemKey, m.ProjectionVersion}
+	if m.TenantID != nil {
+		query += " AND tenant_id = $4"
+		args = append(args, *m.TenantID)
+	}
+	return query, args
 }
 
 const clearSupersedeStateQuery = `UPDATE knowledge_home_items
@@ -373,7 +419,8 @@ func (r *Repository) ClearSupersedeState(ctx context.Context, payload json.RawMe
 	if err != nil {
 		return err
 	}
-	_, err = r.pool.Exec(ctx, clearSupersedeStateQuery, buildClearSupersedeStateArgs(m)...)
+	query, args := buildClearSupersedeStateQueryAndArgs(m)
+	_, err = r.pool.Exec(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("ClearSupersedeState: %w", err)
 	}

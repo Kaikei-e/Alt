@@ -135,8 +135,8 @@ check(
 
 inventory = read("scripts/ops-surface-inventory.yaml")
 check(
-    "ops-surface inventory measured_at is 2026-08-19 (sidecar-0 recount)",
-    'measured_at: "2026-08-19"' in inventory,
+    "ops-surface inventory records the 2026-10-03 security-boundary recount",
+    'measured_at: "2026-10-03"' in inventory,
 )
 
 readme = read("docs/runbooks/README.md")

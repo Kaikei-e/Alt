@@ -1,41 +1,21 @@
+use super::fixture::{EnvGuard, create_token_in_temp_dir};
 use rask_log_forwarder::app::{Config, LogLevel};
 use serial_test::serial;
 use std::{env, path::PathBuf, time::Duration};
 use tempfile::TempDir;
 
-// Helper function to clean all environment variables before and after tests
-fn clean_all_env_vars() {
-    let env_vars = [
-        "TARGET_SERVICE",
-        "RASK_ENDPOINT",
-        "BATCH_SIZE",
-        "LOG_LEVEL",
-        "ENABLE_DISK_FALLBACK",
-        "ENABLE_METRICS",
-        "ENABLE_COMPRESSION",
-        "FLUSH_INTERVAL_MS",
-        "BUFFER_CAPACITY",
-        "CONNECTION_TIMEOUT_SECS",
-        "MAX_CONNECTIONS",
-        "MAX_DISK_USAGE_MB",
-        "METRICS_PORT",
-        "DISK_FALLBACK_PATH",
-        "CONFIG_FILE",
-        "PROTOCOL",
-        "OTLP_ENDPOINT",
-    ];
-
-    unsafe {
-        for var in &env_vars {
-            env::remove_var(var);
-        }
-    }
-}
-
-// Helper function to create test config with temporary disk fallback directory
+// Helper function to create test config with temporary disk fallback directory.
+// The token file is written inside temp_dir so it persists for the lifetime of
+// the returned TempDir (callers must keep the TempDir alive).
 fn create_test_config_with_temp_dir() -> (Config, TempDir) {
     let temp_dir = TempDir::new().unwrap();
-    let config = Config::default();
+    let token_path = temp_dir.path().join("ingest_token");
+    std::fs::write(&token_path, "test-token").unwrap();
+    let config = Config {
+        ingest_token_file: Some(token_path),
+        ingest_token: "test-token".to_string(),
+        ..Default::default()
+    };
 
     (config, temp_dir)
 }
@@ -47,7 +27,11 @@ fn create_test_config_no_disk() -> Config {
 }
 
 #[test]
+#[serial]
 fn test_config_from_args() {
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+
     let args = vec![
         "rask-log-forwarder",
         "--target-service",
@@ -60,6 +44,8 @@ fn test_config_from_args() {
         "debug",
         "--metrics-port",
         "9091",
+        "--ingest-token-file",
+        token_path.to_str().unwrap(),
     ];
 
     let config = Config::from_args(args).unwrap();
@@ -77,21 +63,15 @@ fn test_config_from_args() {
 #[test]
 #[serial]
 fn test_config_from_environment() {
-    // Create temp directory for disk fallback
-    let _temp_dir = TempDir::new().unwrap();
-    std::fs::create_dir_all("/tmp/rask-log-forwarder").ok();
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
 
-    // Clean up all environment variables first using helper
-    clean_all_env_vars();
-
-    // Set test environment variables
-    unsafe {
-        env::set_var("TARGET_SERVICE", "alt-backend");
-        env::set_var("RASK_ENDPOINT", "http://test-aggregator:9600/v1/aggregate");
-        env::set_var("BATCH_SIZE", "15000");
-        env::set_var("LOG_LEVEL", "warn");
-        env::set_var("ENABLE_DISK_FALLBACK", "false");
-    }
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    _guard.set_var("TARGET_SERVICE", "alt-backend");
+    _guard.set_var("RASK_ENDPOINT", "http://test-aggregator:9600/v1/aggregate");
+    _guard.set_var("BATCH_SIZE", "15000");
+    _guard.set_var("LOG_LEVEL", "warn");
+    _guard.set_var("ENABLE_DISK_FALLBACK", "false");
 
     let config = Config::from_env().unwrap();
 
@@ -100,9 +80,6 @@ fn test_config_from_environment() {
     assert_eq!(config.batch_size, 15000);
     assert!(matches!(config.log_level, LogLevel::Warn));
     assert!(!config.enable_disk_fallback);
-
-    // Cleanup - ensure all test environment variables are removed
-    clean_all_env_vars();
 }
 
 #[test]
@@ -128,11 +105,17 @@ fn test_config_validation() {
 }
 
 #[test]
+#[serial]
 fn test_config_file_loading() {
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+    let token_path_str = token_path.to_str().unwrap().replace('\\', "/");
+
     let temp_dir = TempDir::new().unwrap();
     let config_file = temp_dir.path().join("config.toml");
 
-    let config_content = r#"
+    let config_content = format!(
+        r#"
 target_service = "meilisearch"
 endpoint = "http://aggregator:9600/v1/aggregate"
 batch_size = 8000
@@ -149,7 +132,9 @@ max_connections = 5
 enable_compression = true
 protocol = "ndjson"
 otlp_endpoint = "http://rask-log-aggregator:4318/v1/logs"
-"#;
+ingest_token_file = "{token_path_str}"
+"#
+    );
 
     std::fs::write(&config_file, config_content).unwrap();
 
@@ -161,10 +146,11 @@ otlp_endpoint = "http://rask-log-aggregator:4318/v1/logs"
 }
 
 #[test]
+#[serial]
 fn test_hostname_based_service_detection() {
-    // Create temp directory for disk fallback before detection
-    let _temp_dir = TempDir::new().unwrap();
-    std::fs::create_dir_all("/tmp/rask-log-forwarder").ok();
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
 
     // Test hostname pattern
     let config = Config::detect_service_from_hostname("nginx-logs").unwrap();
@@ -184,8 +170,8 @@ fn test_hostname_based_service_detection() {
 #[test]
 #[serial]
 fn test_config_auto_detect_service() {
-    // Clean environment first
-    clean_all_env_vars();
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
 
     // Verify environment is clean
     assert!(
@@ -193,12 +179,14 @@ fn test_config_auto_detect_service() {
         "TARGET_SERVICE should not be set before test"
     );
 
-    let mut config = Config::default();
+    let mut config = Config {
+        ingest_token_file: Some(token_path),
+        ingest_token: "test-token".to_string(),
+        ..Default::default()
+    };
 
     // Set environment variable
-    unsafe {
-        env::set_var("TARGET_SERVICE", "test-service");
-    }
+    _guard.set_var("TARGET_SERVICE", "test-service");
 
     // Verify environment variable is set
     assert_eq!(
@@ -212,7 +200,7 @@ fn test_config_auto_detect_service() {
     assert_eq!(config.target_service, Some("test-service".to_string()));
 
     // Clean up after test
-    clean_all_env_vars();
+    _guard.remove_var("TARGET_SERVICE");
 
     // Verify cleanup
     assert!(
@@ -248,7 +236,11 @@ fn test_config_auto_detect_service() {
 #[test]
 #[allow(clippy::field_reassign_with_default)]
 fn test_config_post_process() {
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
     let mut config = Config::default();
+    config.ingest_token_file = Some(token_path);
+    config.ingest_token = "test-token".to_string();
+
     config.connection_timeout_secs = 20;
     config.post_process().unwrap();
 
@@ -259,16 +251,9 @@ fn test_config_post_process() {
 #[test]
 #[serial]
 fn test_config_defaults() {
-    // Create temp directory for disk fallback
-    let _temp_dir = TempDir::new().unwrap();
-    std::fs::create_dir_all("/tmp/rask-log-forwarder").ok();
-
-    // Remove ALL possible environment variables to test defaults
-    // This ensures we don't inherit values from other tests
-    clean_all_env_vars();
-
-    // Wait a bit to ensure environment is clean
-    std::thread::sleep(std::time::Duration::from_millis(10));
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
 
     // Double check that critical variables are actually unset
     assert!(
@@ -289,42 +274,27 @@ fn test_config_defaults() {
     assert!(!config.enable_disk_fallback); // Default should be false
     assert!(!config.enable_metrics); // Default should be false
     assert!(!config.enable_compression); // Default should be false
-
-    // Clean up after test as well
-    clean_all_env_vars();
 }
 
 #[test]
 #[serial]
 fn test_invalid_log_level() {
-    // Create temp directory for disk fallback
-    let _temp_dir = TempDir::new().unwrap();
-    std::fs::create_dir_all("/tmp/rask-log-forwarder").ok();
-
-    // Clean environment first
-    clean_all_env_vars();
-
-    unsafe {
-        env::set_var("LOG_LEVEL", "invalid_level");
-    }
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    _guard.set_var("LOG_LEVEL", "invalid_level");
 
     let result = Config::from_env();
     // Invalid log level should cause parsing to fail
     assert!(result.is_err());
-
-    // Clean up after test
-    clean_all_env_vars();
 }
 
 #[test]
 #[serial]
 fn test_invalid_batch_size() {
-    // Create temp directory for disk fallback
-    let _temp_dir = TempDir::new().unwrap();
-    std::fs::create_dir_all("/tmp/rask-log-forwarder").ok();
-
-    // Clean environment first
-    clean_all_env_vars();
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
 
     // Double check that BATCH_SIZE is not set
     assert!(
@@ -332,9 +302,7 @@ fn test_invalid_batch_size() {
         "BATCH_SIZE should not be set before test"
     );
 
-    unsafe {
-        env::set_var("BATCH_SIZE", "not_a_number");
-    }
+    _guard.set_var("BATCH_SIZE", "not_a_number");
 
     // Verify the environment variable is set
     assert_eq!(env::var("BATCH_SIZE").unwrap(), "not_a_number");
@@ -342,15 +310,6 @@ fn test_invalid_batch_size() {
     let result = Config::from_env();
     // Invalid batch size should cause parsing to fail
     assert!(result.is_err());
-
-    // Clean up after test
-    clean_all_env_vars();
-
-    // Double check that BATCH_SIZE is cleaned up
-    assert!(
-        env::var("BATCH_SIZE").is_err(),
-        "BATCH_SIZE should be cleaned up after test"
-    );
 }
 
 #[test]
@@ -378,6 +337,8 @@ fn test_config_serialization() {
         retry_config: Default::default(),
         disk_fallback_config: Default::default(),
         metrics_config: Default::default(),
+        ingest_token_file: None,
+        ingest_token: String::new(),
     };
 
     // Test that config can be serialized/deserialized
@@ -392,37 +353,24 @@ fn test_config_serialization() {
 #[test]
 #[serial]
 fn test_hostname_detection() {
-    // Create temp directory for disk fallback
-    let _temp_dir = TempDir::new().unwrap();
-    std::fs::create_dir_all("/tmp/rask-log-forwarder").ok();
-
-    // Clean up ALL environment variables from previous tests
-    clean_all_env_vars();
-
-    // Set only the required TARGET_SERVICE environment variable
-    unsafe {
-        env::set_var("TARGET_SERVICE", "test-service");
-    }
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    _guard.set_var("TARGET_SERVICE", "test-service");
 
     let config = Config::from_env().unwrap();
 
     // Should detect hostname automatically if not set
     assert!(config.target_service.is_some());
     assert_eq!(config.target_service, Some("test-service".to_string()));
-
-    // Clean up
-    clean_all_env_vars();
 }
 
 #[test]
 #[serial]
 fn test_protocol_configuration() {
-    // Create temp directory for disk fallback
-    let _temp_dir = TempDir::new().unwrap();
-    std::fs::create_dir_all("/tmp/rask-log-forwarder").ok();
-
-    // Clean environment first
-    clean_all_env_vars();
+    let _guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
 
     // Test default protocol (NDJSON)
     let config = Config::from_env().unwrap();
@@ -435,9 +383,7 @@ fn test_protocol_configuration() {
     );
 
     // Test OTLP protocol via environment
-    unsafe {
-        env::set_var("PROTOCOL", "otlp");
-    }
+    _guard.set_var("PROTOCOL", "otlp");
     let config = Config::from_env().unwrap();
     assert!(
         matches!(
@@ -448,23 +394,21 @@ fn test_protocol_configuration() {
     );
 
     // Test invalid protocol
-    unsafe {
-        env::set_var("PROTOCOL", "invalid_protocol");
-    }
+    _guard.set_var("PROTOCOL", "invalid_protocol");
     let result = Config::from_env();
     assert!(result.is_err(), "Invalid protocol should cause error");
-
-    // Clean up
-    clean_all_env_vars();
 }
 
 #[test]
 fn test_otlp_endpoint_validation() {
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
     use rask_log_forwarder::app::config::Protocol;
 
     let mut config = Config {
         protocol: Protocol::Otlp,
         otlp_endpoint: "http://valid-endpoint:4318/v1/logs".to_string(),
+        ingest_token_file: Some(token_path),
+        ingest_token: "test-token".to_string(),
         ..Default::default()
     };
 

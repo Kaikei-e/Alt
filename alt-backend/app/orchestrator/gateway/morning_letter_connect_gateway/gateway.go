@@ -7,9 +7,11 @@ import (
 
 	"connectrpc.com/connect"
 
+	"alt/domain"
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/orchestrator/port/morning_letter_port"
+	"alt/shared/domain/authcontext"
 )
 
 // Verify interface compliance at compile time.
@@ -51,7 +53,20 @@ func (g *Gateway) StreamChat(
 		slog.Int("message_count", len(messages)),
 		slog.Int("within_hours", int(withinHours)))
 
-	stream, err := g.client.StreamChat(ctx, connect.NewRequest(req))
+	connectReq := connect.NewRequest(req)
+	if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+		connectReq.Header().Set("X-Alt-Backend-Token", jwtToken)
+	}
+	if user, err := domain.GetUserFromContext(ctx); err == nil && user != nil {
+		if uid := user.UserID.String(); uid != "" && uid != "00000000-0000-0000-0000-000000000000" {
+			connectReq.Header().Set("X-Alt-User-Id", uid)
+		}
+		if tid := user.TenantID.String(); tid != "" && tid != "00000000-0000-0000-0000-000000000000" {
+			connectReq.Header().Set("X-Alt-Tenant-Id", tid)
+		}
+	}
+
+	stream, err := g.client.StreamChat(ctx, connectReq)
 	if err != nil {
 		g.logger.Error("failed to call rag-orchestrator", slog.String("error", err.Error()))
 		return nil, err

@@ -70,6 +70,8 @@ mint_staging_pki() {
   mkdir -p "$dir"
   openssl req -x509 -newkey rsa:2048 -nodes -days 1 -sha256 \
     -subj "/CN=alt-e2e-ca" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
     -keyout "$dir/ca-key.pem" -out "$dir/ca.pem" >/dev/null 2>&1
 
   mint_staging_leaf "$dir" "$server" serverAuth

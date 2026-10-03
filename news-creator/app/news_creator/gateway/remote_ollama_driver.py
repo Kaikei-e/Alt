@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 class RemoteOllamaDriver:
     """HTTP client for remote Ollama instances."""
 
-    def __init__(self, timeout_seconds: int = 300):
+    def __init__(self, timeout_seconds: int = 300, inference_token: str | None = None):
         self._timeout_seconds = timeout_seconds
+        self._inference_token = inference_token
         self._session: aiohttp.ClientSession | None = None
 
     async def initialize(self) -> None:
@@ -29,7 +30,10 @@ class RemoteOllamaDriver:
             total=self._timeout_seconds,
             connect=30,
         )
-        self._session = aiohttp.ClientSession(timeout=timeout)
+        headers = {}
+        if self._inference_token:
+            headers["Authorization"] = f"Bearer {self._inference_token}"
+        self._session = aiohttp.ClientSession(timeout=timeout, headers=headers)
         logger.info(
             "Remote Ollama driver initialized",
             extra={"timeout_seconds": self._timeout_seconds},
@@ -76,7 +80,9 @@ class RemoteOllamaDriver:
                 raise AssertionError(
                     "Session not initialized. Call initialize() first."
                 )
-            async with self._session.post(url, json=payload) as response:
+            async with self._session.post(
+                url, json=payload, allow_redirects=False
+            ) as response:
                 text_body = await response.text()
 
                 if response.status != 200:

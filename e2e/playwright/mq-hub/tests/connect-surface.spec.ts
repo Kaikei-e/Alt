@@ -46,29 +46,23 @@ const MOUNTED = [
 	{
 		name: "PublishBatch",
 		procedure: Procedure.publishBatch,
-		// An absent `events` decodes to an empty slice, and
-		// redis_driver.go:126 early-returns success for a zero-length batch.
-		expected: [200],
+		// publish_usecase.go:110 rejects empty/unrecognised stream keys with
+		// CodeInvalidArgument (400), mapped via mapPublishErr.
+		expected: [400],
 	},
 	{
 		name: "CreateConsumerGroup",
 		procedure: Procedure.createConsumerGroup,
-		// The empty `startId` is not a valid stream ID, so Redis answers `ERR
-		// Invalid stream ID specified as stream command argument` and
-		// handler.go:126 maps anything that is not BUSYGROUP to CodeUnavailable
-		// (503). Exactly 503, not a band: 200 would mean `XGROUP CREATE "" ""
-		// "" MKSTREAM` had been accepted and the empty-string key created,
-		// which is the state the sibling "GetStreamInfo is mounted" asserts is
-		// impossible by expecting 500 (`no such key`) on that same key.
-		expected: [503],
+		// publish_usecase.go:173 rejects empty stream keys before calling Redis,
+		// answering CodeInvalidArgument (400).
+		expected: [400],
 	},
 	{
 		name: "GetStreamInfo",
 		procedure: Procedure.getStreamInfo,
-		// XINFO STREAM on the empty key replies `no such key`, and
-		// handler.go:139 returns that error *without* passing it through
-		// mapPublishErr — so connect-go classifies it CodeUnknown → 500.
-		expected: [500],
+		// publish_usecase.go:184 rejects empty stream keys before calling Redis,
+		// answering CodeInvalidArgument (400).
+		expected: [400],
 	},
 	{
 		name: "HealthCheck",

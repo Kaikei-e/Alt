@@ -134,8 +134,13 @@ services:
         condition: service_healthy
       stub-backend:
         condition: service_healthy
+      auth-introspection:
+        condition: service_started
     environment:
-      - MTLS_LISTEN=false
+      - MTLS_LISTEN=true
+      - MTLS_PORT=9443
+      - MTLS_CLIENT_AUTH=require_and_verify
+      - MTLS_ALLOWED_PEERS=alt-backend,rag-orchestrator,acolyte-orchestrator,search-indexer
       - MTLS_ENFORCE=false
       - BACKEND_API_URL=http://stub-backend
       - BACKEND_API_MTLS_URL=http://stub-backend
@@ -151,12 +156,22 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://stub-backend:4318
       - OTEL_SERVICE_NAME=search-indexer-staging
       - LOG_LEVEL=info
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
+      - USER_JWT_INTROSPECTION_URL=https://auth-introspection:9443/internal/token/introspect
+      - AUTH_HUB_MTLS_SERVER_NAME=auth-hub
+      - MTLS_CERT_FILE=/certs/search-indexer.pem
+      - MTLS_KEY_FILE=/certs/search-indexer-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
     ports:
       - "19300:9300"
     networks:
       - alt-staging
     secrets:
       - meili_master_key
+      - rask_ingest_token
+    volumes:
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/search-indexer/pki}:/certs:ro
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/search-indexer/pki}:/trust:ro
     healthcheck:
       test: ["CMD", "/search-indexer", "healthcheck"]
       interval: 3s
@@ -214,12 +229,16 @@ services:
       - STREAM_MAX_LEN=10000
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://redis-streams:4318
       - OTEL_SERVICE_NAME=mq-hub-staging
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
+      - MQHUB_AUTH_TOKEN_FILE=/run/secrets/mqhub_auth_token
     ports:
       - "19500:9500"
     networks:
       - alt-staging
     secrets:
       - redis_password
+      - mqhub_auth_token
+      - rask_ingest_token
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9500/health"]
       interval: 3s
@@ -263,6 +282,8 @@ services:
       - exec /scripts/migrate.sh "$$@"
       - --
     environment:
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/cache
       DATABASE_URL: postgres://sovereign:alt-staging-test-postgres-password@knowledge-sovereign-db:5432/knowledge_sovereign?sslmode=disable
       DB_HOST: knowledge-sovereign-db
       DB_PORT: "5432"
@@ -373,6 +394,8 @@ services:
     profiles: [rag-orchestrator]
     command: ["apply"]
     environment:
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/cache
       DB_HOST: rag-db
       DB_PORT: "5432"
       DB_USER: rag_user
@@ -400,6 +423,7 @@ services:
         condition: service_completed_successfully
     environment:
       - ENV=staging
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
       - PORT=9010
       - CONNECT_PORT=9011
       - DB_HOST=rag-db
@@ -441,6 +465,10 @@ services:
       - MTLS_CERT_FILE=/certs/rag-orchestrator.pem
       - MTLS_KEY_FILE=/certs/rag-orchestrator-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
+    secrets:
+      - rask_ingest_token
+      - inference_service_token
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
@@ -483,6 +511,15 @@ services:
       - CONSUMER_NAME=tag-generator-staging
       - MTLS_ENFORCE=false
       - PEER_IDENTITY_TRUSTED=off
+      - PEER_IDENTITY_STRICT=true
+      - PKI_ENROLLMENT=disabled
+      - INBOUND_TLS_ENABLED=true
+      - INBOUND_TLS_HOST=0.0.0.0
+      - INBOUND_TLS_PORT=9443
+      - MTLS_CERT_FILE=/certs/tag-generator.pem
+      - MTLS_KEY_FILE=/certs/tag-generator-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - MTLS_ALLOWED_PEERS=alt-backend
       - DEFAULT_USER_ID=hurl-e2e
       - DEFAULT_TENANT_ID=public
       - LOG_LEVEL=info
@@ -498,6 +535,9 @@ services:
       - TRANSFORMERS_OFFLINE=1
     secrets:
       - redis_password
+    volumes:
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/certs:ro
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/trust:ro
     ports:
       - "19400:9400"
     networks:
@@ -508,7 +548,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9400/health').read()",
+          "import ssl,urllib.request; c=ssl.create_default_context(cafile='/trust/ca-bundle.pem'); c.load_cert_chain('/certs/alt-backend.pem','/certs/alt-backend-key.pem'); urllib.request.urlopen('https://tag-generator:9443/health',context=c).read()",
         ]
       interval: 3s
       timeout: 3s
@@ -560,6 +600,12 @@ services:
       news-creator-ollama-stub:
         condition: service_healthy
     environment:
+      - PEER_IDENTITY_STRICT=true
+      - INBOUND_MTLS=true
+      - MTLS_CERT_FILE=/certs/news-creator.pem
+      - MTLS_KEY_FILE=/certs/news-creator-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - MTLS_ALLOWED_PEERS=alt-backend
       # NewsCreatorConfig refuses to boot without this; plain test value
       # — the staging stack runs unauthenticated and the secret is only
       # consumed by Pact publish helpers, not by request handlers.
@@ -597,6 +643,9 @@ services:
       # checks; Phase 4 will override MAX_QUEUE_DEPTH at run time.
       - MAX_QUEUE_DEPTH=10
       - SCHEDULING_RT_RESERVED_SLOTS=1
+    volumes:
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/news-creator/pki}:/certs:ro
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/news-creator/pki}:/trust:ro
     ports:
       - "11434:11434"
     networks:
@@ -665,6 +714,8 @@ services:
     profiles: [recap-worker]
     command: ["apply"]
     environment:
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/cache
       DATABASE_URL: postgres://recap:alt-staging-test-recap-password@recap-db:5432/recap?sslmode=disable&search_path=public
       ATLAS_REVISIONS_SCHEMA: "public"
     depends_on:
@@ -835,6 +886,8 @@ services:
     profiles: [acolyte-orchestrator]
     command: ["apply"]
     environment:
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/cache
       DATABASE_URL: postgres://acolyte:alt-staging-test-acolyte-password@acolyte-db:5432/acolyte?sslmode=disable&search_path=public
       ATLAS_REVISIONS_SCHEMA: "public"
     depends_on:
@@ -982,6 +1035,8 @@ services:
     profiles: [alt-backend, alt-harvester, alt-data-hub]
     command: ["apply"]
     environment:
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/cache
       DATABASE_URL: postgres://alt_db_user:alt-staging-test-postgres-password@alt-backend-db:5432/alt?sslmode=disable
       DB_HOST: alt-backend-db
       DB_PORT: "5432"
@@ -1014,7 +1069,6 @@ services:
           - rag-orchestrator
           - knowledge-sovereign
           - mq-hub
-          - auth-hub
           - stub.invalid
     healthcheck:
       test:
@@ -1059,6 +1113,7 @@ services:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
     environment:
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
       # Point alt-backend directly at the staging Postgres (no pgbouncer
       # in the staging slice) and at the deps stub for every upstream.
       - DB_HOST=alt-backend-db
@@ -1078,11 +1133,9 @@ services:
       # :9102 is what the alt-backend suite reaches as INTERNAL_URL — see
       # tests/admin-url-backfill.spec.ts and tests/topology.spec.ts.
       - OPERATOR_LISTEN_ADDR=:9102
-      # The `operator` fixture (e2e/playwright/alt-backend/src/fixtures.ts)
-      # calls :9102 with X-Alt-Backend-Token only, no Authorization header —
-      # this slice has no BFF/altctl-with-a-token in front of it, so the
-      # operator listener runs tokenless by explicit choice.
-      - OPERATOR_AUTH=disabled
+      # Bearer token the operator listener's interceptor requires on every
+      # RPC (config.LoadOperatorAuth).
+      - OPERATOR_TOKEN_FILE=/run/secrets/backend_operator_token
       - REDIS_AUTH=disabled
       - RAG_API_AUTH=disabled
       # :9110 is {{ops_url}} — /health and /metrics, asserted by
@@ -1105,16 +1158,19 @@ services:
       # rather than a parse error.
       - VAPID_PUBLIC_KEY=BA1Hxzyi1RUM1b5wjxsn7nGxAszw2u61m164i3MrAIxHF6YK5h4SDYic-dRuU_RCPCfA5aq9ojSwk5Y2EmClBPs
       # Upstream targets — every alias resolves to alt-backend-deps-stub.
-      - SEARCH_INDEXER_CONNECT_URL=http://search-indexer/
-      - PRE_PROCESSOR_URL=http://pre-processor/
-      - PRE_PROCESSOR_CONNECT_URL=http://pre-processor/
+      - SEARCH_INDEXER_CONNECT_URL=https://auth-hub:9443/
+      - SEARCH_INDEXER_MTLS_SERVER_NAME=auth-hub
+      - PRE_PROCESSOR_URL=https://auth-hub:9443/
+      - PRE_PROCESSOR_CONNECT_URL=https://auth-hub:9443/
+      - PRE_PROCESSOR_MTLS_SERVER_NAME=auth-hub
       - RECAP_WORKER_URL=http://recap-worker/
       - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
       - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
       # auth-hub is only hit by the internal /system-user handler (not
       # exercised by the E2E suite), but the alias keeps config parity
       # with prod and unblocks that handler if ever probed.
-      - AUTH_HUB_URL=http://auth-hub/
+      - AUTH_HUB_URL=https://auth-hub:9443
+      - AUTH_HUB_MTLS_SERVER_NAME=auth-hub
       - MQHUB_CONNECT_URL=http://mq-hub/
       - MQHUB_ENABLED=false
       # The image proxy is off in staging, stated explicitly because
@@ -1136,6 +1192,7 @@ services:
       # dedupe-barrier branch of the usecase.
       - SOVEREIGN_URL=http://knowledge-sovereign
       - SOVEREIGN_EVENT_AUTH=disabled
+      - SOVEREIGN_OPERATOR_TOKEN_FILE=/run/secrets/sovereign_operator_token
       # SSRF allowlist — only stub.invalid is reachable and feed
       # registration needs to bypass the private-IP guard for it.
       - FEED_ALLOWED_HOSTS=stub.invalid
@@ -1178,6 +1235,9 @@ services:
       - DB_MIN_CONNS=2
     secrets:
       - alt_backend_token_secret
+      - rask_ingest_token
+      - sovereign_operator_token
+      - backend_operator_token
     ports:
       - "19000:9000"
       - "19101:9101"
@@ -1225,6 +1285,8 @@ services:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
     environment:
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
+      - MQHUB_AUTH_TOKEN_FILE=/run/secrets/mqhub_auth_token
       - DB_HOST=alt-backend-db
       - DB_PORT=5432
       - DB_USER=alt_db_user
@@ -1252,8 +1314,9 @@ services:
       - RAG_API_AUTH=disabled
       - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
       - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
-      - PRE_PROCESSOR_URL=http://pre-processor/
-      - PRE_PROCESSOR_CONNECT_URL=http://pre-processor/
+      - PRE_PROCESSOR_URL=https://auth-hub:9443/
+      - PRE_PROCESSOR_CONNECT_URL=https://auth-hub:9443/
+      - PRE_PROCESSOR_MTLS_SERVER_NAME=auth-hub
       - SEARCH_INDEXER_CONNECT_URL=http://search-indexer/
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub/
@@ -1283,6 +1346,9 @@ services:
       - LOG_FORMAT=json
       - DB_MAX_CONNS=10
       - DB_MIN_CONNS=2
+    secrets:
+      - rask_ingest_token
+      - mqhub_auth_token
     networks:
       - alt-staging
     healthcheck:
@@ -1330,6 +1396,8 @@ services:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
     environment:
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
+      - MQHUB_AUTH_TOKEN_FILE=/run/secrets/mqhub_auth_token
       - DB_HOST=alt-backend-db
       - DB_PORT=5432
       - DB_USER=alt_db_user
@@ -1349,7 +1417,7 @@ services:
       # a leaf for it and one for DENIED_PEER, which stays off this list).
       # alt-backend and alt-harvester are appended unconditionally because the
       # same container serves their slices, where they are the callers.
-      - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-pre-processor},alt-backend,alt-harvester
+      - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-pre-processor},pre-processor,alt-backend,alt-harvester
       # --- ops listener ---------------------------------------------------
       # Plaintext, unauthenticated, /health + /metrics only — the surface
       # tests/topology.spec.ts pins. It exists so the probe and Prometheus do
@@ -1363,7 +1431,8 @@ services:
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
       - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
-      - AUTH_HUB_URL=http://auth-hub/
+      - AUTH_HUB_URL=https://auth-hub:9443
+      - AUTH_HUB_MTLS_SERVER_NAME=auth-hub
       # Must match auth-hub's INTERNAL_AUTH_SECRET below, and must differ from
       # alt_backend_token_secret — see the comment on the auth-hub service.
       - INTERNAL_AUTH_SECRET=staging-fixture-internal-auth-secret-not-a-real-key
@@ -1382,6 +1451,8 @@ services:
       - DB_MIN_CONNS=2
     secrets:
       - alt_backend_token_secret
+      - rask_ingest_token
+      - mqhub_auth_token
     networks:
       - alt-staging
     healthcheck:
@@ -1432,8 +1503,9 @@ services:
     command:
       ["kratos", "migrate", "sql", "-e", "--yes", "--config", "/etc/config/kratos/kratos.yml"]
     environment:
+      - KRATOS_TEMPLATE_FILE=/etc/config/kratos/kratos.yml
       - KRATOS_DB_USER=kratos_user
-      - KRATOS_DB_PASSWORD=alt-staging-test-kratos-password
+      - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
       - KRATOS_DB_HOST=auth-hub-db
       - KRATOS_DB_PORT=5432
       - KRATOS_DB_NAME=kratos
@@ -1447,6 +1519,7 @@ services:
     secrets:
       - kratos_cookie_secret
       - kratos_cipher_secret
+      - kratos_db_password
     volumes:
       - ../e2e/fixtures/auth-hub/kratos:/etc/config/kratos:ro
       - ../kratos/entrypoint.sh:/entrypoint.sh:ro
@@ -1468,8 +1541,9 @@ services:
     command:
       ["kratos", "serve", "all", "--dev", "--config", "/etc/config/kratos/kratos.yml"]
     environment:
+      - KRATOS_TEMPLATE_FILE=/etc/config/kratos/kratos.yml
       - KRATOS_DB_USER=kratos_user
-      - KRATOS_DB_PASSWORD=alt-staging-test-kratos-password
+      - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
       - KRATOS_DB_HOST=auth-hub-db
       - KRATOS_DB_PORT=5432
       - KRATOS_DB_NAME=kratos
@@ -1479,6 +1553,7 @@ services:
     secrets:
       - kratos_cookie_secret
       - kratos_cipher_secret
+      - kratos_db_password
     volumes:
       - ../e2e/fixtures/auth-hub/kratos:/etc/config/kratos:ro
       - ../kratos/entrypoint.sh:/entrypoint.sh:ro
@@ -1508,10 +1583,10 @@ services:
       - KRATOS_URL=http://kratos:4433
       - KRATOS_ADMIN_URL=http://kratos:4434
       - PORT=8888
-      - CACHE_TTL=5m
+      - CACHE_TTL=60s
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
-      - BACKEND_TOKEN_TTL=30m
+      - BACKEND_TOKEN_TTL=5m
       # config.getEnv() resolves *_FILE -> file content. The HS256 secret
       # is shared with alt-backend so the JWT auth-hub issues is
       # verifiable by anyone already trusting alt_backend_token_secret.
@@ -1525,12 +1600,26 @@ services:
       # also needs to send, and one literal keeps the two in step.
       - INTERNAL_AUTH_SECRET=staging-fixture-internal-auth-secret-not-a-real-key
       - CSRF_SECRET_FILE=/run/secrets/auth_hub_csrf_secret
-      - MTLS_LISTEN=false
+      - MTLS_LISTEN=true
+      - MTLS_PORT=9443
+      - MTLS_CLIENT_AUTH=require_and_verify
+      - MTLS_ALLOWED_PEERS=alt-data-hub,search-indexer,knowledge-sovereign
+      - MTLS_CERT_FILE=/certs/auth-hub.pem
+      - MTLS_KEY_FILE=/certs/auth-hub-key.pem
+      - MTLS_CA_FILE=/certs/ca-bundle.pem
+      - FRONTEND_TLS_LISTEN=true
+      - FRONTEND_TLS_PORT=8443
+      - FRONTEND_TLS_CERT_FILE=/certs/auth-hub.pem
+      - FRONTEND_TLS_KEY_FILE=/certs/auth-hub-key.pem
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     secrets:
       - alt_backend_token_secret
       - auth_hub_csrf_secret
+      - rask_ingest_token
+    volumes:
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/auth-hub/pki}:/certs:ro
     networks:
       - alt-staging
     healthcheck:
@@ -1539,6 +1628,27 @@ services:
       timeout: 3s
       retries: 20
       start_period: 5s
+
+  # Test provider for services whose suite does not run real Kratos/AuthHub.
+  # It verifies public fixture JWTs and client certificates; it never accepts
+  # arbitrary user/body identity. No production credential is mounted here.
+  auth-introspection:
+    image: python:3.14-alpine
+    profiles: [search-indexer, acolyte-orchestrator, alt-backend, alt-harvester, alt-data-hub]
+    command: ["python", "/fixtures/auth-introspection.py"]
+    environment:
+      STAGING_JWT_KEY_FILE: /run/secrets/alt_backend_token_secret
+      STAGING_INTERNAL_AUTH: staging-fixture-internal-auth-secret-not-a-real-key
+      STAGING_FORWARD_PREPROCESSOR: "true"
+    secrets:
+      - alt_backend_token_secret
+      - backend_token_secret
+    volumes:
+      - ../e2e/playwright/_fixtures/auth-introspection.py:/fixtures/auth-introspection.py:ro
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/search-indexer/pki}:/certs:ro
+    networks:
+      alt-staging:
+        aliases: [auth-hub]
 
 networks:
   alt-staging:
@@ -1550,6 +1660,12 @@ networks:
     internal: true
 
 secrets:
+  rask_ingest_token:
+    file: ../e2e/playwright/_fixtures/test-credentials/rask_ingest_token.txt
+  mqhub_auth_token:
+    file: ../e2e/playwright/_fixtures/test-credentials/mqhub_auth_token.txt
+  kratos_db_password:
+    file: ../e2e/playwright/_fixtures/test-credentials/kratos_db_password.txt
   meili_master_key:
     file: ../e2e/fixtures/staging-secrets/meili_master_key.txt
   alt_backend_token_secret:
@@ -1567,3 +1683,9 @@ secrets:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cipher_secret.txt
   redis_password:
     file: ../e2e/fixtures/staging-secrets/redis_password.txt
+  inference_service_token:
+    file: ../e2e/playwright/_fixtures/test-credentials/inference_service_token.txt
+  sovereign_operator_token:
+    file: ../e2e/playwright/_fixtures/test-credentials/sovereign_operator_token.txt
+  backend_operator_token:
+    file: ../e2e/playwright/_fixtures/test-credentials/backend_operator_token.txt

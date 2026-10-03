@@ -30,6 +30,18 @@ secrets:
     file: ../secrets/sovereign_admin_token.txt
   sovereign_event_token:
     file: ../secrets/sovereign_event_token.txt
+  sovereign_backend_token:
+    file: ../secrets/sovereign_backend_token.txt
+  sovereign_operator_token:
+    file: ../secrets/sovereign_operator_token.txt
+  sovereign_datahub_token:
+    file: ../secrets/sovereign_datahub_token.txt
+  sovereign_harvester_token:
+    file: ../secrets/sovereign_harvester_token.txt
+  sovereign_rag_token:
+    file: ../secrets/sovereign_rag_token.txt
+  sovereign_recap_token:
+    file: ../secrets/sovereign_recap_token.txt
   # Bearer token alt-backend's operator listener (:9102, KnowledgeHomeAdminService
   # / AdminMonitorService) requires on every RPC. alt-butterfly-facade and altctl
   # are the only intended callers; see config.LoadOperatorAuth in alt-backend/app.
@@ -136,6 +148,10 @@ secrets:
     file: ../secrets/pki-agent-news-creator-jwk.txt
   pki-agent-tts-speaker-jwk:
     file: ../secrets/pki-agent-tts-speaker-jwk.txt
+  pki-agent-knowledge-sovereign-jwk:
+    file: ../secrets/pki-agent-knowledge-sovereign-jwk.txt
+  pki-agent-recap-evaluator-jwk:
+    file: ../secrets/pki-agent-recap-evaluator-jwk.txt
   pact_broker_basic_auth_password:
     file: ../secrets/pact_broker_basic_auth_password.txt
   # Separate from broker basic-auth so DB credentials are not shared with
@@ -157,6 +173,22 @@ secrets:
     file: ../secrets/pushover_token.txt
   redis_password:
     file: ../secrets/redis_password.txt
+  redis_streams_password:
+    file: ../secrets/redis_streams_password.txt
+  redis_cache_password:
+    file: ../secrets/redis_cache_password.txt
+  redis_limiter_password:
+    file: ../secrets/redis_limiter_password.txt
+  rask_ingest_token:
+    file: ../secrets/rask_ingest_token.txt
+  inference_service_token:
+    file: ../secrets/inference_service_token.txt
+  # Shared by the broker and enabled RPC producers; altctl init discovers
+  # this declaration and generates one cryptographically random token file.
+  mqhub_auth_token:
+    file: ../secrets/mqhub_auth_token.txt
+  k6_api_token:
+    file: ../secrets/k6_api_token.txt
   rag_api_token:
     file: ../secrets/rag_api_token.txt
   irodori_api_key:
@@ -175,6 +207,8 @@ configs:
     file: ../docker/postgres/postgresql-rag.conf
   postgres_postgresql_recap_conf:
     file: ../docker/postgres/postgresql-recap.conf
+  redis_entrypoint:
+    file: ../docker/redis/entrypoint.sh
 
 networks:
   alt-network:
@@ -215,6 +249,8 @@ volumes:
   recap_subworker_certs:
   news_creator_certs:
   rag_orchestrator_certs:
+  knowledge_sovereign_certs:
+  recap_evaluator_certs:
 
 x-rask-env: &rask-env
   environment:

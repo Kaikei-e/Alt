@@ -50,6 +50,19 @@ func NewHealthCheckerServiceWithFactory(cfg *config.Config, newsCreatorURL strin
 	}
 }
 
+// NewHealthCheckerServiceWithClient creates a HealthCheckerService backed by
+// the caller-provided *http.Client. Use this in production wiring
+// (bootstrap/wire.go) to inject the already-configured mTLS news client so the
+// health checker performs certificate validation with the same CA as the
+// summarizer — no cert duplication, no uncertified transport.
+func NewHealthCheckerServiceWithClient(newsClient *http.Client, newsCreatorURL string, logger *slog.Logger) HealthCheckerService {
+	return &healthCheckerService{
+		logger:         logger,
+		newsCreatorURL: newsCreatorURL,
+		client:         &HTTPClientWrapper{Client: newsClient},
+	}
+}
+
 // CheckNewsCreatorHealth checks if news creator service is healthy.
 func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error {
 	s.logger.DebugContext(ctx, "checking news creator health", "url", s.newsCreatorURL)

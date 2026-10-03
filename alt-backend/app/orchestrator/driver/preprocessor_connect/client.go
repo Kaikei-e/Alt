@@ -3,13 +3,19 @@ package preprocessor_connect
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 
 	ppv2 "alt/gen/proto/services/preprocessor/v2"
 	"alt/gen/proto/services/preprocessor/v2/preprocessorv2connect"
+	"alt/shared/domain/authcontext"
+	"alt/tlsutil"
 )
 
 // SummarizeStatus represents the status of a summarization job.
@@ -26,13 +32,90 @@ type ConnectPreProcessorClient struct {
 	client preprocessorv2connect.PreProcessorServiceClient
 }
 
+type authInterceptor struct{}
+
+func (i *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+			req.Header().Set("X-Alt-Backend-Token", jwtToken)
+		}
+		return next(ctx, req)
+	}
+}
+
+func (i *authInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		if jwtToken, ok := authcontext.JWTFromContext(ctx); ok && jwtToken != "" {
+			conn.RequestHeader().Set("X-Alt-Backend-Token", jwtToken)
+		}
+		return conn
+	}
+}
+
+func (i *authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
+}
+
+func defaultPreProcessorHTTPClient(baseURL string) (connect.HTTPClient, error) {
+	if !strings.HasPrefix(baseURL, "https://") {
+		return nil, fmt.Errorf("pre-processor baseURL must use https:// scheme, got: %s", baseURL)
+	}
+	certFile := os.Getenv("MTLS_CERT_FILE")
+	keyFile := os.Getenv("MTLS_KEY_FILE")
+	caFile := os.Getenv("MTLS_CA_FILE")
+
+	if certFile == "" || keyFile == "" || caFile == "" {
+		return nil, fmt.Errorf("missing MTLS cert/key/ca environment variables")
+	}
+
+	tlsCfg, err := tlsutil.LoadClientConfig(certFile, keyFile, caFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS client config: %w", err)
+	}
+
+	serverName := os.Getenv("PRE_PROCESSOR_MTLS_SERVER_NAME")
+	if serverName == "" {
+		serverName = "pre-processor"
+	}
+	tlsCfg.ServerName = serverName
+	return &http.Client{
+		Timeout: 60 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig:     tlsCfg,
+			ForceAttemptHTTP2:   true,
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}, nil
+}
+
 // NewConnectPreProcessorClient creates a new Connect-RPC client for pre-processor.
-// Authentication is established at the TLS transport layer (mTLS); the
-// serviceSecret argument is retained for signature compatibility and ignored.
-func NewConnectPreProcessorClient(baseURL, _ string) *ConnectPreProcessorClient {
+func NewConnectPreProcessorClient(baseURL, _ string) (*ConnectPreProcessorClient, error) {
+	httpClient, err := defaultPreProcessorHTTPClient(baseURL)
+	if err != nil {
+		return nil, err
+	}
 	client := preprocessorv2connect.NewPreProcessorServiceClient(
-		http.DefaultClient,
+		httpClient,
 		baseURL,
+		connect.WithProtoJSON(),
+		connect.WithInterceptors(&authInterceptor{}),
+	)
+	return &ConnectPreProcessorClient{client: client}, nil
+}
+
+// NewConnectPreProcessorClientWithHTTPClient creates a client with an injected HTTP client, for tests only.
+func NewConnectPreProcessorClientWithHTTPClient(baseURL string, httpClient connect.HTTPClient) *ConnectPreProcessorClient {
+	client := preprocessorv2connect.NewPreProcessorServiceClient(
+		httpClient,
+		baseURL,
+		connect.WithProtoJSON(),
+		connect.WithInterceptors(&authInterceptor{}),
 	)
 	return &ConnectPreProcessorClient{client: client}
 }

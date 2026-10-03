@@ -1,6 +1,7 @@
 package di
 
 import (
+	"alt/config"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,5 +29,43 @@ func TestLogSovereignWiringState(t *testing.T) {
 		assert.Panics(t, func() {
 			LogSovereignWiringState("alt-backend", "", "production", false)
 		})
+	})
+}
+
+func TestNewKnowledgeModule_OperatorWiring(t *testing.T) {
+	t.Run("panics when SOVEREIGN_URL is set but operator token is missing", func(t *testing.T) {
+		t.Setenv("SOVEREIGN_URL", "http://knowledge-sovereign:9500")
+		t.Setenv("SOVEREIGN_OPERATOR_TOKEN_FILE", "")
+		t.Setenv("SOVEREIGN_OPERATOR_TOKEN", "")
+
+		cfg := &config.Config{
+			Sovereign: config.SovereignConfig{
+				URL: "http://knowledge-sovereign:9500",
+			},
+		}
+		infra := &InfraModule{Config: cfg}
+		article := &ArticleModule{}
+
+		assert.Panics(t, func() {
+			newKnowledgeModule(infra, article)
+		})
+	})
+
+	t.Run("wires distinct operator client when operator token is provided", func(t *testing.T) {
+		t.Setenv("SOVEREIGN_OPERATOR_TOKEN", "valid-operator-token-long-enough-12345")
+		cfg := &config.Config{
+			Sovereign: config.SovereignConfig{
+				URL:        "http://knowledge-sovereign:9500",
+				EventToken: "valid-backend-token-long-enough-123456",
+			},
+		}
+		infra := &InfraModule{Config: cfg}
+		article := &ArticleModule{}
+
+		km := newKnowledgeModule(infra, article)
+		assert.NotNil(t, km)
+		assert.True(t, km.SovereignClient.Enabled())
+		assert.True(t, km.SovereignOperatorClient.Enabled())
+		assert.NotSame(t, km.SovereignClient, km.SovereignOperatorClient)
 	})
 }

@@ -4,7 +4,11 @@ package mqhub_connect
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -24,6 +28,17 @@ const (
 	EventTypeArticleSummarized = "ArticleSummarized"
 )
 
+// authTransport wraps an http.RoundTripper to inject a Bearer token.
+type authTransport struct {
+	base  http.RoundTripper
+	token string
+}
+
+func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", "Bearer "+t.token)
+	return t.base.RoundTrip(req)
+}
+
 // Client provides Connect-RPC client for mq-hub.
 type Client struct {
 	client  mqhubv1connect.MQHubServiceClient
@@ -31,19 +46,45 @@ type Client struct {
 }
 
 // NewClient creates a new mq-hub Connect-RPC client.
-func NewClient(baseURL string, enabled bool) *Client {
+func NewClient(baseURL string, tokenPath string, enabled bool) (*Client, error) {
 	if !enabled {
-		return &Client{enabled: false}
+		return &Client{enabled: false}, nil
+	}
+
+	content, err := os.ReadFile(tokenPath) //nolint:gosec
+	if err != nil {
+		return nil, fmt.Errorf("failed to read MQHUB_AUTH_TOKEN_FILE: %w", err)
+	}
+	token := strings.TrimSpace(string(content))
+	if token == "" {
+		return nil, fmt.Errorf("token is empty")
+	}
+	for _, c := range token {
+		if c < 32 || c > 126 {
+			return nil, fmt.Errorf("token contains non-ASCII or control characters")
+		}
+	}
+
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &authTransport{
+			base:  http.DefaultTransport,
+			token: token,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Disable redirect to prevent secret leak
+			return http.ErrUseLastResponse
+		},
 	}
 
 	client := mqhubv1connect.NewMQHubServiceClient(
-		http.DefaultClient,
+		httpClient,
 		baseURL,
 	)
 	return &Client{
 		client:  client,
 		enabled: true,
-	}
+	}, nil
 }
 
 // IsEnabled returns true if the client is enabled.

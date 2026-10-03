@@ -93,7 +93,7 @@ mod tests {
     fn test_hashmap_to_vec_empty() {
         let map: HashMap<String, String> = HashMap::new();
         let result = hashmap_to_vec(map);
-        assert!(result.is_empty());
+        assert_eq!(result, [] as [(String, String); 0]);
     }
 
     #[test]

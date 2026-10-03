@@ -79,28 +79,37 @@ type chatResponse struct {
 
 // OllamaGenerator sends prompts to Ollama's chat endpoint and returns structured text.
 type OllamaGenerator struct {
-	BaseURL string
-	Model   string
-	Client  *http.Client
-	logger  *slog.Logger
+	BaseURL        string
+	Model          string
+	Client         *http.Client
+	InferenceToken string
+	logger         *slog.Logger
 }
 
 // NewOllamaGenerator constructs a generator using the provided endpoint and model name.
 // If client is nil, a default http.Client is created with the given timeout.
-func NewOllamaGenerator(baseURL, model string, timeout int, logger *slog.Logger, client ...*http.Client) *OllamaGenerator {
+func NewOllamaGenerator(baseURL, model string, timeout int, logger *slog.Logger, inferenceToken string, client ...*http.Client) *OllamaGenerator {
 	var c *http.Client
 	if len(client) > 0 && client[0] != nil {
-		c = client[0]
+		clone := *client[0]
+		clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+		c = &clone
 	} else {
 		c = &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		}
 	}
 	return &OllamaGenerator{
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		Model:   model,
-		Client:  c,
-		logger:  logger,
+		BaseURL:        strings.TrimRight(baseURL, "/"),
+		Model:          model,
+		Client:         c,
+		InferenceToken: inferenceToken,
+		logger:         logger,
 	}
 }
 
@@ -212,6 +221,9 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 		return nil, fmt.Errorf("failed to create chat request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if g.InferenceToken != "" {
+		req.Header.Set("Authorization", "Bearer "+g.InferenceToken)
+	}
 
 	g.logger.Info("ollama_request_sent",
 		slog.String("request_id", requestID),
@@ -310,6 +322,9 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 		return nil, nil, fmt.Errorf("failed to create stream request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if g.InferenceToken != "" {
+		req.Header.Set("Authorization", "Bearer "+g.InferenceToken)
+	}
 
 	resp, err := g.Client.Do(req)
 	if err != nil {
@@ -497,6 +512,9 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 		return nil, fmt.Errorf("failed to create chat request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if g.InferenceToken != "" {
+		req.Header.Set("Authorization", "Bearer "+g.InferenceToken)
+	}
 
 	g.logger.Info("ollama_request_sent",
 		slog.String("request_id", requestID),
@@ -577,6 +595,9 @@ func (g *OllamaGenerator) ChatWithTools(ctx context.Context, messages []domain.M
 		return nil, fmt.Errorf("failed to create tool chat request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if g.InferenceToken != "" {
+		req.Header.Set("Authorization", "Bearer "+g.InferenceToken)
+	}
 
 	resp, err := g.Client.Do(req)
 	if err != nil {
@@ -661,6 +682,9 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 		return nil, nil, fmt.Errorf("failed to create stream request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if g.InferenceToken != "" {
+		req.Header.Set("Authorization", "Bearer "+g.InferenceToken)
+	}
 
 	g.logger.Info("ollama_chat_stream_request_sent",
 		slog.String("request_id", requestID),

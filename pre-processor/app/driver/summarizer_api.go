@@ -191,7 +191,7 @@ func classifyBusyOrErrorStatus(resp *http.Response, body string, article Article
 	}
 }
 
-func ArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg *config.Config, logger *slog.Logger, priority string) (*SummarizedContent, error) {
+func ArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg *config.Config, logger *slog.Logger, priority string, client *http.Client) (*SummarizedContent, error) {
 	extractedContent, err := prepareSummarizeContent(ctx, article, cfg, logger, "sending to news-creator")
 	if err != nil {
 		return nil, err
@@ -221,10 +221,6 @@ func ArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg
 		logger.ErrorContext(ctx, "Failed to marshal payload", "error", err)
 		return nil, err
 	}
-
-	// Use singleton HTTP client manager for better performance
-	clientManager := utils.NewHTTPClientManager()
-	client := clientManager.GetSummaryClient()
 
 	// Create context with timeout from config
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, cfg.NewsCreator.Timeout)
@@ -318,7 +314,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg
 }
 
 // StreamArticleSummarizerAPIClient streams the summary generation from news-creator
-func StreamArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg *config.Config, logger *slog.Logger, priority string) (io.ReadCloser, error) {
+func StreamArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg *config.Config, logger *slog.Logger, priority string, client *http.Client) (io.ReadCloser, error) {
 	extractedContent, err := prepareSummarizeContent(ctx, article, cfg, logger, "streaming summary")
 	if err != nil {
 		return nil, err
@@ -345,12 +341,10 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article ArticlePayloa
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	clientManager := utils.NewHTTPClientManager()
-	// For streaming, we need a client without timeout or with a very long timeout
-	// Create a custom client for streaming that doesn't timeout
 	streamClient := &http.Client{
-		Timeout:   0, // No timeout for streaming
-		Transport: clientManager.GetSummaryClient().Transport,
+		Timeout:       0,
+		Transport:     client.Transport,
+		CheckRedirect: client.CheckRedirect,
 	}
 
 	logger.InfoContext(ctx, "Making streaming request to news-creator API",

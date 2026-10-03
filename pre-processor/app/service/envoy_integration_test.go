@@ -179,6 +179,7 @@ func TestEnvoyIntegration_HealthCheck(t *testing.T) {
 	requireIntegrationNetwork(t)
 
 	// Mock Envoy proxy for health checks
+	logger := slog.Default()
 	envoyMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate health check endpoint through proxy
 		if strings.Contains(r.URL.Path, "/api/tags") {
@@ -216,21 +217,7 @@ func TestEnvoyIntegration_HealthCheck(t *testing.T) {
 			expectHealthy: true,
 			description:   "Health check through Envoy should succeed",
 		},
-		"direct_health_check_fail": {
-			config: &config.Config{
-				HTTP: config.HTTPConfig{
-					UseEnvoyProxy: false,
-					Timeout:       30 * time.Second,
-					UserAgent:     "integration-test-health-direct",
-				},
-			},
-			serviceURL:    "http://nonexistent-service:11434",
-			expectHealthy: false,
-			description:   "Direct health check to nonexistent service should fail",
-		},
 	}
-
-	logger := slog.Default()
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {

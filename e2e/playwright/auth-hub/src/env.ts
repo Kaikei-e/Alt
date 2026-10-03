@@ -14,6 +14,9 @@ import { requiredEnv, requiredIntEnv, requiredSecretFile, runId } from "../../_s
 export const env = {
 	/** auth-hub's only listener in staging: Echo on :8888 (compose `PORT=8888`). */
 	baseURL: requiredEnv("BASE_URL"),
+	plaintextURL: requiredEnv("PLAINTEXT_URL"),
+	clientCert: requiredEnv("TLS_CLIENT_CERT_FILE"),
+	clientKey: requiredEnv("TLS_CLIENT_KEY_FILE"),
 
 	/**
 	 * Kratos FrontendAPI :4433 — where the self-service login flow lives.

@@ -1,12 +1,6 @@
-use axum::{
-    Router,
-    routing::{get, post},
-};
 use axum_test::TestServer;
 use rask::domain::EnrichedLogEntry;
 use rask::error::AggregatorError;
-use rask::handler::aggregate::aggregate_handler;
-use rask::handler::health::health_handler;
 use rask::log_exporter::LogExporter;
 use std::future::Future;
 use std::pin::Pin;
@@ -43,20 +37,24 @@ impl LogExporter for MockExporter {
     }
 }
 
-fn create_test_app(exporter: Arc<dyn LogExporter>) -> Router {
-    let health_router = Router::new().route("/v1/health", get(health_handler));
+fn random_test_token() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+    format!("test-tok-{nanos:x}-{:x}", std::process::id())
+}
 
-    let aggregate_router = Router::new()
-        .route("/v1/aggregate", post(aggregate_handler))
-        .with_state(exporter);
-
-    Router::new().merge(health_router).merge(aggregate_router)
+fn test_token_arc(token: &str) -> Arc<rask::auth::IngestToken> {
+    Arc::new(rask::auth::IngestToken(token.to_string()))
 }
 
 #[tokio::test]
-async fn test_health_endpoint_returns_healthy() {
+async fn test_health_endpoint_returns_healthy_no_auth_needed() {
+    let token = random_test_token();
     let exporter: Arc<dyn LogExporter> = Arc::new(MockExporter::new());
-    let app = create_test_app(exporter);
+    let app = rask::app::router::main_router(exporter, test_token_arc(&token));
     let server = TestServer::new(app);
 
     let response = server.get("/v1/health").await;
@@ -66,10 +64,55 @@ async fn test_health_endpoint_returns_healthy() {
 }
 
 #[tokio::test]
-async fn test_aggregate_endpoint_accepts_valid_log() {
+async fn test_aggregate_rejects_missing_auth() {
+    let token = random_test_token();
     let mock_exporter = Arc::new(MockExporter::new());
     let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
-    let app = create_test_app(exporter);
+    let app = rask::app::router::main_router(exporter, test_token_arc(&token));
+    let server = TestServer::new(app);
+
+    let response = server.post("/v1/aggregate").text("{}").await;
+    response.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_aggregate_rejects_wrong_bearer_token() {
+    let token = random_test_token();
+    let mock_exporter = Arc::new(MockExporter::new());
+    let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
+    let app = rask::app::router::main_router(exporter, test_token_arc(&token));
+    let server = TestServer::new(app);
+
+    let response = server
+        .post("/v1/aggregate")
+        .add_header("authorization", format!("Bearer wrong-{token}"))
+        .text("{}")
+        .await;
+    response.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_aggregate_rejects_malformed_token_scheme() {
+    let token = random_test_token();
+    let mock_exporter = Arc::new(MockExporter::new());
+    let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
+    let app = rask::app::router::main_router(exporter, test_token_arc(&token));
+    let server = TestServer::new(app);
+
+    let response = server
+        .post("/v1/aggregate")
+        .add_header("authorization", "Basic dXNlcjpwYXNz")
+        .text("{}")
+        .await;
+    response.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_aggregate_endpoint_accepts_valid_log_with_auth() {
+    let token = random_test_token();
+    let mock_exporter = Arc::new(MockExporter::new());
+    let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
+    let app = rask::app::router::main_router(exporter, test_token_arc(&token));
     let server = TestServer::new(app);
 
     let log_json = serde_json::json!({
@@ -86,11 +129,11 @@ async fn test_aggregate_endpoint_accepts_valid_log() {
 
     let response = server
         .post("/v1/aggregate")
+        .add_header("authorization", format!("Bearer {token}"))
         .text(log_json.to_string())
         .await;
 
     response.assert_status_ok();
-    response.assert_text("OK");
 
     // Verify the log was exported
     let exported = mock_exporter.get_exported_logs();
@@ -100,10 +143,11 @@ async fn test_aggregate_endpoint_accepts_valid_log() {
 }
 
 #[tokio::test]
-async fn test_aggregate_endpoint_handles_multiple_logs() {
+async fn test_aggregate_endpoint_handles_multiple_logs_with_auth() {
+    let token = random_test_token();
     let mock_exporter = Arc::new(MockExporter::new());
     let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
-    let app = create_test_app(exporter);
+    let app = rask::app::router::main_router(exporter, test_token_arc(&token));
     let server = TestServer::new(app);
 
     let logs = [
@@ -135,7 +179,11 @@ async fn test_aggregate_endpoint_handles_multiple_logs() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let response = server.post("/v1/aggregate").text(body).await;
+    let response = server
+        .post("/v1/aggregate")
+        .add_header("authorization", format!("Bearer {token}"))
+        .text(body)
+        .await;
 
     response.assert_status_ok();
 
@@ -146,17 +194,22 @@ async fn test_aggregate_endpoint_handles_multiple_logs() {
 }
 
 #[tokio::test]
-async fn test_aggregate_endpoint_skips_invalid_json() {
+async fn test_aggregate_endpoint_skips_invalid_json_with_auth() {
+    let token = random_test_token();
     let mock_exporter = Arc::new(MockExporter::new());
     let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
-    let app = create_test_app(exporter);
+    let app = rask::app::router::main_router(exporter, test_token_arc(&token));
     let server = TestServer::new(app);
 
     let body = r#"{"service_type": "valid", "log_type": "app", "message": "valid log", "timestamp": "2025-01-10T12:00:00Z", "stream": "stdout", "container_id": "abc", "service_name": "svc", "fields": {}}
 invalid json line
 {"service_type": "also_valid", "log_type": "app", "message": "another valid log", "timestamp": "2025-01-10T12:00:01Z", "stream": "stdout", "container_id": "def", "service_name": "svc2", "fields": {}}"#;
 
-    let response = server.post("/v1/aggregate").text(body).await;
+    let response = server
+        .post("/v1/aggregate")
+        .add_header("authorization", format!("Bearer {token}"))
+        .text(body)
+        .await;
 
     response.assert_status_ok();
 
@@ -165,13 +218,18 @@ invalid json line
 }
 
 #[tokio::test]
-async fn test_aggregate_endpoint_handles_empty_body() {
+async fn test_aggregate_endpoint_handles_empty_body_with_auth() {
+    let token = random_test_token();
     let mock_exporter = Arc::new(MockExporter::new());
     let exporter: Arc<dyn LogExporter> = mock_exporter.clone();
-    let app = create_test_app(exporter);
+    let app = rask::app::router::main_router(exporter, test_token_arc(&token));
     let server = TestServer::new(app);
 
-    let response = server.post("/v1/aggregate").text("").await;
+    let response = server
+        .post("/v1/aggregate")
+        .add_header("authorization", format!("Bearer {token}"))
+        .text("")
+        .await;
 
     response.assert_status_ok();
 

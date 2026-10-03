@@ -402,7 +402,7 @@ mod tests {
 
         assert_eq!(row.links_trace_id[1], "cccccccccccccccccccccccccccccccc");
         assert_eq!(row.links_span_id[1], "dddddddddddddddd");
-        assert!(row.links_trace_state[1].is_empty());
+        assert_eq!(row.links_trace_state[1], "");
         assert_eq!(row.links_attributes[1].len(), 0);
     }
 
@@ -411,13 +411,13 @@ mod tests {
         let trace = create_test_otel_trace();
         let row = OTelTraceRow::from(trace);
 
-        assert!(row.events_timestamp.is_empty());
-        assert!(row.events_name.is_empty());
-        assert!(row.events_attributes.is_empty());
-        assert!(row.links_trace_id.is_empty());
-        assert!(row.links_span_id.is_empty());
-        assert!(row.links_trace_state.is_empty());
-        assert!(row.links_attributes.is_empty());
+        assert_eq!(row.events_timestamp, [] as [i64; 0]);
+        assert_eq!(row.events_name, [] as [String; 0]);
+        assert_eq!(row.events_attributes, [] as [Vec<(String, String)>; 0]);
+        assert_eq!(row.links_trace_id, [] as [String; 0]);
+        assert_eq!(row.links_span_id, [] as [String; 0]);
+        assert_eq!(row.links_trace_state, [] as [String; 0]);
+        assert_eq!(row.links_attributes, [] as [Vec<(String, String)>; 0]);
     }
 
     #[test]
@@ -456,8 +456,8 @@ mod tests {
         let trace = create_test_otel_trace();
         let row = OTelTraceRow::from(trace);
 
-        assert!(!row.resource_attributes.is_empty());
-        assert!(!row.span_attributes.is_empty());
+        assert_ne!(row.resource_attributes, [] as [(String, String); 0]);
+        assert_ne!(row.span_attributes, [] as [(String, String); 0]);
     }
 
     #[test]
@@ -517,7 +517,7 @@ mod tests {
         );
         assert_eq!(row.scope_name, "my-scope");
         assert_eq!(row.scope_version, "1.2.3");
-        assert!(row.scope_attributes.is_empty());
+        assert_eq!(row.scope_attributes, [] as [(String, String); 0]);
         assert_eq!(row.resource_attributes.len(), 1);
         assert_eq!(row.log_attributes.len(), 1);
     }
@@ -582,7 +582,7 @@ mod tests {
         assert_eq!(row.service_name, "alt-backend");
         assert_eq!(row.duration, 5_000_000);
         assert_eq!(row.status_code, DomainStatusCode::Ok as i8);
-        assert!(row.status_message.is_empty());
+        assert_eq!(row.status_message, "");
 
         assert_eq!(row.events_timestamp.len(), 1);
         assert_eq!(row.events_timestamp[0], 1_718_444_400_001_000_000_i64);

@@ -20,10 +20,12 @@ Two defects that only surface when a run is resumed rather than started:
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
+import jwt
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from structlog.testing import capture_logs
@@ -118,11 +120,21 @@ class RecapOnlyEvidence:
 
 
 def _service(graph: object, repo: MemoryReportGateway, jobs: MemoryJobGateway) -> AcolyteConnectService:
-    settings = SimpleNamespace(checkpoint_enabled=True, default_model="fake-model")
+    settings = SimpleNamespace(
+        checkpoint_enabled=True, default_model="fake-model", resolve_backend_token_secret=lambda: b"test-secret"
+    )
     return AcolyteConnectService(settings, repo, job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
 
 
 # --- Finding 038: the checkpoint's stale error must not abort the re-run ---
+
+
+def _generate_test_token(user_id: UUID, secret: str) -> str:
+    return jwt.encode(
+        {"sub": str(user_id), "iss": "auth-hub", "aud": "alt-backend", "exp": datetime.now(UTC).timestamp() + 300},
+        secret,
+        algorithm="HS256",
+    )
 
 
 @pytest.mark.asyncio
@@ -141,7 +153,14 @@ async def test_resume_after_upstream_recovery_clears_the_previous_attempts_error
     service = _service(graph, repo, jobs)
 
     # Attempt 1: upstream is down — no_evidence, terminal checkpoint, no version.
-    await service.resume_pipeline(str(report.report_id), str(run.run_id), {"topic": _TOPIC})
+
+    assert report.user_id is not None
+    await service.resume_pipeline(
+        str(report.report_id),
+        str(run.run_id),
+        {"topic": _TOPIC},
+        token=_generate_test_token(report.user_id, "test-secret"),
+    )
     failed = await jobs.get_run(run.run_id)
     assert failed is not None
     assert failed.run_status == "failed"
@@ -149,7 +168,14 @@ async def test_resume_after_upstream_recovery_clears_the_previous_attempts_error
 
     # Attempt 2: operator resumes once search-indexer is back.
     evidence.recovered = True
-    await service.resume_pipeline(str(report.report_id), str(run.run_id), {"topic": _TOPIC})
+
+    assert report.user_id is not None
+    await service.resume_pipeline(
+        str(report.report_id),
+        str(run.run_id),
+        {"topic": _TOPIC},
+        token=_generate_test_token(report.user_id, "test-secret"),
+    )
 
     resumed = await jobs.get_run(run.run_id)
     assert resumed is not None
@@ -181,7 +207,13 @@ async def test_resume_with_empty_content_store_fails_with_content_store_miss() -
     )
     service = _service(graph, repo, jobs)
 
-    await service.resume_pipeline(str(report.report_id), str(run.run_id), {"topic": _TOPIC})
+    assert report.user_id is not None
+    await service.resume_pipeline(
+        str(report.report_id),
+        str(run.run_id),
+        {"topic": _TOPIC},
+        token=_generate_test_token(report.user_id, "test-secret"),
+    )
 
     failed = await jobs.get_run(run.run_id)
     assert failed is not None
@@ -277,7 +309,14 @@ async def test_resume_pipeline_accepts_a_brief_dict_from_the_repository() -> Non
 
     brief = await repo.get_brief(report.report_id)
     assert brief is not None
-    await service.resume_pipeline(str(report.report_id), str(run.run_id), brief.to_dict())
+
+    assert report.user_id is not None
+    await service.resume_pipeline(
+        str(report.report_id),
+        str(run.run_id),
+        brief.to_dict(),
+        token=_generate_test_token(report.user_id, "test-secret"),
+    )
 
     completed = await jobs.get_run(run.run_id)
     assert completed is not None

@@ -22,36 +22,19 @@ if [ ! -d "secrets" ]; then
     # Note: generate-secrets.sh writes to current directory (./secrets) which is PROJECT_ROOT now.
 fi
 
-# Regenerate kratos.yml from the template on every run. kratos.yml is a derived,
-# gitignored file, but it used to be created once and never refreshed — so a
-# template change (password policy, HIBP, session lifespan) silently never
-# reached any host that had already started the stack. The dev seds below are
-# idempotent and re-applied straight after, so regenerating costs nothing.
-if [ -f "kratos/kratos.yml" ]; then
-    cp kratos/kratos.yml kratos/kratos.yml.bak
-    echo "Regenerating kratos.yml from template (previous copy kept as kratos.yml.bak)..."
-else
-    echo "Creating kratos.yml from template..."
-fi
-cp kratos/kratos_template.yml kratos/kratos.yml
+# Kratos configuration is generated dynamically from canonical kratos_template.yml
+# by entrypoint.sh inside the container on every run, preventing duplicate authoritative drift.
 
-# Ensure kratos.yml has correct base_url for dev
-if [ -f "kratos/kratos.yml" ]; then
-    # Update base_url specifically
-    sed -i 's|base_url: https://example.com|base_url: http://localhost|g' kratos/kratos.yml
-    
-    # Remove example.com from allowed_origins to avoid duplication if localhost is already there
-    sed -i '/- https:\/\/example.com/d' kratos/kratos.yml
-
-    # Fix session cookie domain
-    sed -i 's|domain: .example.com|# domain: localhost|g' kratos/kratos.yml
-    
-    # Update other example.com references that should be localhost (e.g. return_url)
-    sed -i 's|default_browser_return_url: https://example.com|default_browser_return_url: http://localhost/sv|g' kratos/kratos.yml
-    
-    # Ensure UI URLs point to /sv/ path
-    sed -i 's|ui_url: http://localhost/auth/|ui_url: http://localhost/sv/auth/|g' kratos/kratos.yml
-fi
+# Configure local dev auth redirection and cookie parameters for canonical entrypoint
+export KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
+export KRATOS_DEFAULT_BROWSER_RETURN_URL=${KRATOS_DEFAULT_BROWSER_RETURN_URL:-http://localhost:4173/sv/}
+export KRATOS_LOGIN_UI_URL=${KRATOS_LOGIN_UI_URL:-http://localhost:4173/sv/auth/login}
+export KRATOS_REGISTRATION_UI_URL=${KRATOS_REGISTRATION_UI_URL:-http://localhost:4173/sv/register}
+export KRATOS_ERROR_UI_URL=${KRATOS_ERROR_UI_URL:-http://localhost:4173/sv/error}
+export KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:4173/sv/settings}
+export KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:4173/sv/recovery}
+export KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-http://localhost:4173/sv/verification}
+export KRATOS_COOKIE_DOMAIN=""
 
 # Export passwords for Docker Compose variable substitution
 if [ -f "secrets/postgres_password.txt" ]; then
@@ -70,10 +53,10 @@ fi
 # tag-generator no longer accesses alt-db directly.
 
 echo "Starting development environment..."
-echo "Services: alt-frontend-sv (Dev Mode), alt-backend, alt-db, nginx"
+echo "Services: alt-frontend-sv (Dev Mode), alt-backend, alt-db, plecto-proxy"
 
-docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+docker compose -f compose/compose.yaml -f compose/compose.dev.yaml up -d --build
 
 echo "Development environment started."
 echo "Frontend available at: http://localhost/sv/"
-echo "Logs: docker compose logs -f alt-frontend-sv"
+echo "Logs: docker compose -f compose/compose.yaml logs -f alt-frontend-sv"

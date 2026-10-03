@@ -22,27 +22,34 @@ func ResolveRedisPassword(logger *slog.Logger) (string, error) {
 		return "", nil
 	}
 
-	filePath, set := os.LookupEnv("REDIS_PASSWORD_FILE")
+	envKey := "REDIS_PASSWORD_FILE"
+	filePath, set := os.LookupEnv("REDIS_STREAMS_PASSWORD_FILE")
+	if set && strings.TrimSpace(filePath) != "" {
+		envKey = "REDIS_STREAMS_PASSWORD_FILE"
+	} else {
+		filePath, set = os.LookupEnv("REDIS_PASSWORD_FILE")
+		envKey = "REDIS_PASSWORD_FILE"
+	}
 	if !set {
 		return "", fmt.Errorf("redis authentication requires REDIS_PASSWORD_FILE or REDIS_AUTH=disabled")
 	}
 
 	trimmedPath := strings.TrimSpace(filePath)
 	if trimmedPath == "" {
-		logger.Error("redis_password_file_empty", "env", "REDIS_PASSWORD_FILE")
-		return "", fmt.Errorf("REDIS_PASSWORD_FILE is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly")
+		logger.Error("redis_password_file_empty", "env", envKey)
+		return "", fmt.Errorf("%s is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly", envKey)
 	}
 
 	content, err := os.ReadFile(trimmedPath)
 	if err != nil {
 		logger.Error("redis_password_file_read_failed", "file", trimmedPath, "error", err)
-		return "", fmt.Errorf("read REDIS_PASSWORD_FILE %s: %w", trimmedPath, err)
+		return "", fmt.Errorf("read %s %s: %w", envKey, trimmedPath, err)
 	}
 
 	password := strings.TrimSpace(string(content))
 	if password == "" {
 		logger.Error("redis_password_file_content_empty", "file", trimmedPath)
-		return "", fmt.Errorf("REDIS_PASSWORD_FILE %s resolved to an empty password", trimmedPath)
+		return "", fmt.Errorf("%s %s resolved to an empty password", envKey, trimmedPath)
 	}
 
 	return password, nil

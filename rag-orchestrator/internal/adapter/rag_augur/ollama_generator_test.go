@@ -13,7 +13,7 @@ import (
 
 func TestBuildOptions_GemmaModel(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-rag", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-rag", 100, testLogger, "")
 	opts := gen.buildOptions(2048)
 
 	// Gemma: sampling params delegated to news-creator proxy baseline (ADR-579).
@@ -34,7 +34,7 @@ func TestBuildOptions_GemmaModel(t *testing.T) {
 
 func TestBuildOptions_SwallowModel(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "swallow-8b-rag", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "swallow-8b-rag", 100, testLogger, "")
 	opts := gen.buildOptions(4096)
 
 	if opts["temperature"] != 0.6 {
@@ -47,7 +47,7 @@ func TestBuildOptions_SwallowModel(t *testing.T) {
 
 func TestGetThinkParam_Gemma4ReturnsTrue(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-rag", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-rag", 100, testLogger, "")
 	result := gen.getThinkParam(4096)
 
 	if result != true {
@@ -57,7 +57,7 @@ func TestGetThinkParam_Gemma4ReturnsTrue(t *testing.T) {
 
 func TestGetThinkParam_Gemma3ReturnsNil(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-4b", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-4b", 100, testLogger, "")
 	result := gen.getThinkParam(4096)
 
 	if result != nil {
@@ -67,7 +67,7 @@ func TestGetThinkParam_Gemma3ReturnsNil(t *testing.T) {
 
 func TestGetThinkParam_SwallowReturnsNil(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "swallow-8b-rag", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "swallow-8b-rag", 100, testLogger, "")
 	result := gen.getThinkParam(4096)
 
 	if result != nil {
@@ -77,7 +77,7 @@ func TestGetThinkParam_SwallowReturnsNil(t *testing.T) {
 
 func TestGetThinkParam_Qwen3ReturnsFalse(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "qwen3-8b", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "qwen3-8b", 100, testLogger, "")
 	result := gen.getThinkParam(4096)
 
 	if result != false {
@@ -112,7 +112,7 @@ func TestOllamaGeneratorGenerate_StreamAggregatesContent(t *testing.T) {
 	defer server.Close()
 
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator(server.URL, "test-model", 100, testLogger)
+	gen := NewOllamaGenerator(server.URL, "test-model", 100, testLogger, "")
 	resp, err := gen.Generate(context.Background(), "prompt", 1000)
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
@@ -133,7 +133,7 @@ func TestOllamaGeneratorGenerate_StreamAggregatesContent(t *testing.T) {
 
 func TestBuildOptions_GemmaModel_DisablesRepeatPenalty(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-12k", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-12k", 100, testLogger, "")
 	opts := gen.buildOptions(2048)
 
 	// The proxy baseline's 1.15 is tuned for summaries; on structured Japanese
@@ -141,5 +141,29 @@ func TestBuildOptions_GemmaModel_DisablesRepeatPenalty(t *testing.T) {
 	// stays unpenalized, so generation ends after the first section.
 	if opts["repeat_penalty"] != 1.0 {
 		t.Fatalf("expected repeat_penalty 1.0 for Gemma, got %v", opts["repeat_penalty"])
+	}
+}
+
+func TestOllamaGenerator_RefusesRedirect(t *testing.T) {
+	var destHit int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/destination", http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("/destination", func(w http.ResponseWriter, r *http.Request) {
+		destHit++
+		w.WriteHeader(http.StatusOK)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	gen := NewOllamaGenerator(server.URL, "test-model", 5, testLogger, "secret")
+	_, err := gen.Generate(context.Background(), "test", 100)
+	if err == nil {
+		t.Fatal("expected error on 307 redirect, got nil")
+	}
+	if destHit != 0 {
+		t.Fatalf("redirect destination was hit %d times, want 0", destHit)
 	}
 }

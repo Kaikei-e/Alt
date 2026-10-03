@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/domain/authcontext"
 	"rag-orchestrator/internal/usecase"
 	"strings"
 	"time"
@@ -133,6 +134,14 @@ func (h *Handler) isAllowedEmbedderOverride(raw string) bool {
 	return allowed
 }
 
+func wrapAuthContext(ctx echo.Context) context.Context {
+	reqCtx := ctx.Request().Context()
+	if token := ctx.Request().Header.Get("X-Alt-Backend-Token"); token != "" {
+		return authcontext.WithJWT(reqCtx, token)
+	}
+	return reqCtx
+}
+
 func NewHandler(
 	retrieveUsecase usecase.RetrieveContextUsecase,
 	answerUsecase usecase.AnswerWithRAGUsecase,
@@ -196,7 +205,7 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 	req.UserId = parsedUserID.String()
 
 	// Server-side timeout decoupled from caller's context
-	timeoutCtx, cancel := context.WithTimeout(ctx.Request().Context(), upsertTimeout)
+	timeoutCtx, cancel := context.WithTimeout(wrapAuthContext(ctx), upsertTimeout)
 	defer cancel()
 
 	// Check for embedder override (hyper-boost). X-Embedder-URL is
@@ -258,7 +267,7 @@ func (h *Handler) BackfillDocumentOwners(ctx echo.Context) error {
 		}
 	}
 
-	result, err := h.indexUsecase.BackfillOwners(ctx.Request().Context(), items)
+	result, err := h.indexUsecase.BackfillOwners(wrapAuthContext(ctx), items)
 	if err != nil {
 		h.logger.Error("failed to backfill document owners", "error", err)
 		if errors.Is(err, usecase.ErrBlankArticleID) || errors.Is(err, usecase.ErrBlankUserID) || errors.Is(err, usecase.ErrInvalidUserID) {
@@ -302,7 +311,7 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
 	}
 
-	output, err := h.answerUsecase.Execute(ctx.Request().Context(), input)
+	output, err := h.answerUsecase.Execute(wrapAuthContext(ctx), input)
 	if err != nil {
 		h.logger.Error("failed to answer with RAG", "error", err)
 		if errors.Is(err, usecase.ErrEmptyUserID) || errors.Is(err, usecase.ErrInvalidUserID) {
@@ -416,7 +425,7 @@ func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 	if _, err := uuid.Parse(strings.TrimSpace(input.UserID)); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
 	}
-	events := h.answerUsecase.Stream(ctx.Request().Context(), input)
+	events := h.answerUsecase.Stream(wrapAuthContext(ctx), input)
 
 	res := ctx.Response()
 	res.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -521,7 +530,7 @@ func (h *Handler) Backfill(ctx echo.Context) error {
 		UpdatedAt: time.Now(),
 	}
 
-	if err := h.jobRepo.Enqueue(ctx.Request().Context(), job); err != nil {
+	if err := h.jobRepo.Enqueue(wrapAuthContext(ctx), job); err != nil {
 		h.logger.Error("failed to enqueue backfill job", "error", err)
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to enqueue job"})
 	}
@@ -560,7 +569,7 @@ func (h *Handler) RetrieveContext(ctx echo.Context) error {
 		input.CandidateArticleIDs = *req.CandidateArticleIds
 	}
 
-	output, err := h.retrieveUsecase.Execute(ctx.Request().Context(), input)
+	output, err := h.retrieveUsecase.Execute(wrapAuthContext(ctx), input)
 	if err != nil {
 		h.logger.Error("failed to retrieve context", "error", err)
 		if errors.Is(err, usecase.ErrEmptyUserID) || errors.Is(err, usecase.ErrInvalidUserID) {
@@ -721,7 +730,7 @@ func (h *Handler) MorningLetter(ctx echo.Context) error {
 		input.TopicLimit = *req.TopicLimit
 	}
 
-	output, err := h.morningLetterUsecase.Execute(ctx.Request().Context(), input)
+	output, err := h.morningLetterUsecase.Execute(wrapAuthContext(ctx), input)
 	if err != nil {
 		h.logger.Error("failed to generate morning letter", "error", err)
 		if errors.Is(err, usecase.ErrEmptyUserID) || errors.Is(err, usecase.ErrInvalidUserID) {

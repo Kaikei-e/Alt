@@ -67,7 +67,7 @@ def test_header_stripped_when_trust_unset(monkeypatch: pytest.MonkeyPatch) -> No
     # this" became indistinguishable from "deliberately open".
     monkeypatch.delenv("PEER_IDENTITY_TRUSTED", raising=False)
     app = Starlette(routes=[Route("/echo", _echo_peer)])
-    app.add_middleware(PeerIdentityMiddleware)
+    app.add_middleware(PeerIdentityMiddleware, strict=False)
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
         assert resp.status_code == 200

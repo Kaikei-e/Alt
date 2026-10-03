@@ -51,6 +51,12 @@ def create_app(
         thresholds = alert_thresholds if alert_thresholds is not None else AlertThresholds()
         weights = evaluator_weights if evaluator_weights is not None else EvaluatorWeights()
 
+        from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file, EVALUATOR_AUTH_DISABLED
+        if not EVALUATOR_AUTH_DISABLED:
+            app.state.api_token = load_bearer_token_from_file()
+        else:
+            app.state.api_token = ""
+
         configure_logging(log_level=cfg.log_level, log_format=cfg.log_format)
         app.state.settings = cfg
 
@@ -189,10 +195,14 @@ def create_app(
         PeerIdentityMiddleware,
         allowed=allowed_peers_from_env(),
         strict=False,
+        exempt_paths={"/health", "/api/v1/metrics/latest"}
     )
 
+    from recap_evaluator.infra.bearer_auth import require_bearer_token
+    from fastapi import Depends
+
     application.include_router(health_router)
-    application.include_router(evaluation_router)
+    application.include_router(evaluation_router, dependencies=[Depends(require_bearer_token)])
     application.include_router(metrics_router)
 
     instrument_fastapi(application)

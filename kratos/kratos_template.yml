@@ -4,7 +4,7 @@ dsn: ${DSN}
 
 serve:
   public:
-    base_url: https://example.com/ory
+    base_url: ${KRATOS_PUBLIC_URL}
     # Trust X-Forwarded-* headers from Nginx reverse proxy
     request_log:
       disable_for_health: true
@@ -13,6 +13,7 @@ serve:
       allowed_origins:
         - http://localhost
         - http://localhost:3000
+        - http://localhost:4173
         - https://example.com
       allowed_methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
       allowed_headers: [Authorization, Content-Type, Accept, Cookie, X-Csrf-Token, X-Session-Token, X-Requested-With]
@@ -25,7 +26,7 @@ serve:
     base_url: http://kratos-admin:4434/
 
 selfservice:
-  default_browser_return_url: https://example.com/
+  default_browser_return_url: ${KRATOS_DEFAULT_BROWSER_RETURN_URL}
   allowed_return_urls:
     - https://example.com/
     - https://example.com/home
@@ -35,6 +36,9 @@ selfservice:
     - http://localhost/home
     - http://localhost/desktop/home
     - http://localhost/auth/login
+    - http://localhost:4173/sv/
+    - http://localhost:4173/sv/home
+    - http://localhost:4173/sv/auth/login
 
   methods:
     password:
@@ -81,41 +85,41 @@ selfservice:
 
   flows:
     error:
-      ui_url: https://example.com/auth/error
+      ui_url: ${KRATOS_ERROR_UI_URL}
 
     settings:
-      ui_url: https://example.com/auth/settings
+      ui_url: ${KRATOS_SETTINGS_UI_URL}
       privileged_session_max_age: 10m
       required_aal: highest_available
 
     recovery:
       enabled: true
-      ui_url: https://example.com/auth/recovery
+      ui_url: ${KRATOS_RECOVERY_UI_URL}
       use: code
 
     verification:
       enabled: true
-      ui_url: https://example.com/auth/verification
+      ui_url: ${KRATOS_VERIFICATION_UI_URL}
       use: code
       after:
-        default_browser_return_url: https://example.com/
+        default_browser_return_url: ${KRATOS_DEFAULT_BROWSER_RETURN_URL}
 
     logout:
       after:
-        default_browser_return_url: https://example.com/
+        default_browser_return_url: ${KRATOS_DEFAULT_BROWSER_RETURN_URL}
 
     login:
-      ui_url: https://example.com/auth/login
+      ui_url: ${KRATOS_LOGIN_UI_URL}
       lifespan: 30m
       after:
-        default_browser_return_url: https://example.com/
+        default_browser_return_url: ${KRATOS_DEFAULT_BROWSER_RETURN_URL}
 
     registration:
       enabled: true
       lifespan: 30m
-      ui_url: https://example.com/auth/register
+      ui_url: ${KRATOS_REGISTRATION_UI_URL}
       after:
-        default_browser_return_url: https://example.com/
+        default_browser_return_url: ${KRATOS_DEFAULT_BROWSER_RETURN_URL}
         password:
           hooks:
             - hook: show_verification_ui
@@ -129,9 +133,9 @@ log:
 
 secrets:
   cookie:
-    - 0123456789abcdef0123456789abcdef
+    - ${KRATOS_COOKIE_SECRET}
   cipher:
-    - fedcba9876543210fedcba9876543210
+    - ${KRATOS_CIPHER_SECRET}
 
 ciphers:
   algorithm: xchacha20-poly1305
@@ -156,7 +160,7 @@ courier:
 session:
   lifespan: 720h
   cookie:
-    domain: .example.com  # Dot prefix allows cookies on all subdomains
+    domain: ${KRATOS_COOKIE_DOMAIN}  # Dot prefix allows cookies on all subdomains; empty in dev for host-only cookies
     persistent: true
     same_site: Lax
     path: /
