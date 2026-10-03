@@ -3,10 +3,10 @@ name: altctl Tests
 on:
   push:
     branches: [main]
-    paths: ['altctl/**', '.github/workflows/altctl-go.yaml']
+    paths: ['altctl/**', 'compose/**', 'pki-agent/scripts/bootstrap-pki-provisioner.sh', '.github/workflows/altctl-go.yaml']
   pull_request:
     branches: [main]
-    paths: ['altctl/**', '.github/workflows/altctl-go.yaml']
+    paths: ['altctl/**', 'compose/**', 'pki-agent/scripts/bootstrap-pki-provisioner.sh', '.github/workflows/altctl-go.yaml']
   workflow_dispatch:
 
 concurrency:
@@ -30,8 +30,10 @@ jobs:
       # compose/*.yaml rather than a hardcoded table, and the tests assert
       # against those files by walking up to the repo root. A checkout of
       # altctl/ alone fails on the missing compose dir. (.altctl.yaml is also
-      # read; cone mode checks out every root-level file already.)
+      # read; cone mode checks out every root-level file already.) The secret
+      # tests also read the PKI bootstrap script's SUBJECTS list.
       sparse-checkout: |
         altctl
         compose
+        pki-agent/scripts
     secrets: inherit
