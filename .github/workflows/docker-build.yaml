@@ -82,6 +82,9 @@ jobs:
             "pki-agent"
             "dashboard"
             "tts-speaker"
+            "inference-proxy"
+            "otel-relay"
+            "docker-socket-proxy-ro"
           )
 
           # Build inputs per service. BUILD_DIR doubles as the
@@ -116,6 +119,9 @@ jobs:
             ["pki-agent"]="pki-agent"
             ["dashboard"]="dashboard"
             ["tts-speaker"]="tts-speaker"
+            ["inference-proxy"]="docker/inference-proxy"
+            ["otel-relay"]="docker/otel-relay"
+            ["docker-socket-proxy-ro"]="docker/readonly-proxy"
           )
           declare -A BUILD_DOCKERFILE=(
             ["alt-backend"]="alt-backend/Dockerfile.backend"
@@ -143,6 +149,9 @@ jobs:
             ["pki-agent"]=""
             ["dashboard"]=""
             ["tts-speaker"]=""
+            ["inference-proxy"]=""
+            ["otel-relay"]=""
+            ["docker-socket-proxy-ro"]=""
           )
           declare -A BUILD_BINARY=(
             ["alt-backend"]="backend"
@@ -170,6 +179,9 @@ jobs:
             ["pki-agent"]=""
             ["dashboard"]=""
             ["tts-speaker"]=""
+            ["inference-proxy"]=""
+            ["otel-relay"]=""
+            ["docker-socket-proxy-ro"]=""
           )
           # <<<SERVICES-REGISTRY-END>>>
 
@@ -380,9 +392,11 @@ jobs:
           # イメージで digest が一致する。dir と同名のサービス
           # (= alt-backend) の buildcache を read しておくと、その依存レイヤ
           # が確実に温まる。write は自分の ref にのみ行うので相互汚染はない。
+          # Infra images under docker/<name> are skipped: their dir is not a
+          # service name, so alt-<dir> would be a ref nothing ever writes.
           cache-from: |
             type=registry,ref=ghcr.io/${{ steps.repo.outputs.owner }}/alt-${{ matrix.service }}:buildcache
-            ${{ (matrix.dir != matrix.service) && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache', steps.repo.outputs.owner, matrix.dir) || '' }}
+            ${{ (matrix.dir != matrix.service && !contains(matrix.dir, '/')) && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache', steps.repo.outputs.owner, matrix.dir) || '' }}
             ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=gha,scope={0}', matrix.service) || '' }}
           cache-to: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', steps.repo.outputs.owner, matrix.service) || '' }}
 

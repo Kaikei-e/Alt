@@ -199,6 +199,7 @@ class TestGroup1Security(unittest.TestCase):
                 "KRATOS_CIPHER_SECRET_FILE": str(sec_dir / "cipher_sec"),
                 "KRATOS_TEMPLATE_FILE": str(template),
                 "KRATOS_CONFIG_FILE": str(tmp / "out_kratos.yml"),
+                "KRATOS_COOKIE_DOMAIN": ".example.com",
             }
 
             # 1. Test argv preservation (spaces, flags, metacharacters) and --config replacement
@@ -345,12 +346,25 @@ class TestGroup1Security(unittest.TestCase):
             out_empty_cookie_yaml = yaml.safe_load((tmp / "out_kratos.yml").read_text())
             self.assertEqual(out_empty_cookie_yaml["session"]["cookie"]["domain"], "")
 
-            # 13. Test KRATOS_COOKIE_DOMAIN unset renders production default .example.com
+            # 13. Test KRATOS_COOKIE_DOMAIN unset fails when the template renders it
             env_unset_cookie = env.copy()
             env_unset_cookie.pop("KRATOS_COOKIE_DOMAIN", None)
-            res_unset_cookie = subprocess.run(cmd, env=env_unset_cookie, capture_output=True, text=True, check=True)
-            out_unset_cookie_yaml = yaml.safe_load((tmp / "out_kratos.yml").read_text())
-            self.assertEqual(out_unset_cookie_yaml["session"]["cookie"]["domain"], ".example.com")
+            res_unset_cookie = subprocess.run(cmd, env=env_unset_cookie, capture_output=True, text=True)
+            self.assertNotEqual(res_unset_cookie.returncode, 0)
+            self.assertIn("KRATOS_COOKIE_DOMAIN", res_unset_cookie.stderr)
+            self.assertNotIn("ARG:[", res_unset_cookie.stdout)
+
+            # 14. Test a template without the placeholder needs no cookie domain
+            no_domain_template = tmp / "no_domain_template.yml"
+            no_domain_template.write_text(
+                "dsn: ${DSN}\n"
+                "secrets:\n"
+                "  cookie:\n"
+                "    - ${KRATOS_COOKIE_SECRET}\n"
+            )
+            env_no_domain = env_unset_cookie.copy()
+            env_no_domain["KRATOS_TEMPLATE_FILE"] = str(no_domain_template)
+            subprocess.run(cmd, env=env_no_domain, capture_output=True, text=True, check=True)
 
     # -------------------------------------------------------------------------
     # A04: Frontend HTTPS & AuthHub mTLS Configuration

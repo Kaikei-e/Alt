@@ -33,11 +33,13 @@
 #                     args       extra --build-arg pairs
 #                   Omit it and everything falls back to the historical
 #                   name-is-the-directory rule: dir = name, Dockerfile
-#                   discovered under that directory, no build args. Only the
-#                   alt-backend trio needs it — three images out of one
+#                   discovered under that directory, no build args. The
+#                   alt-backend binaries need it — several images out of one
 #                   directory, which is exactly the case the old rule cannot
 #                   express. Several services then share a `dir`, so a change
-#                   under alt-backend/ rebuilds all three.
+#                   under alt-backend/ rebuilds all of them. The infra images
+#                   under docker/ need it because their source does not sit at
+#                   the repo root.
 
 services:
   # --- 13 Pact pacticipants deployed locally via pull-deploy ---
@@ -153,3 +155,21 @@ services:
     kind: runtime
   - name: tts-speaker
     kind: runtime
+
+  # Infra images that compose used to build on the deploy host only, so
+  # pull-deploy could never roll them and a fresh host could not pull them.
+  # inference-proxy is one image behind two compose services
+  # (generation-proxy, embedding-proxy); scripts/compose-image-audit.py fails
+  # on any GHCR coordinate that has no entry here.
+  - name: inference-proxy
+    kind: runtime
+    build:
+      dir: docker/inference-proxy
+  - name: otel-relay
+    kind: runtime
+    build:
+      dir: docker/otel-relay
+  - name: docker-socket-proxy-ro
+    kind: runtime
+    build:
+      dir: docker/readonly-proxy
