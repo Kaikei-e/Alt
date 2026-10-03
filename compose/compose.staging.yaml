@@ -1133,11 +1133,9 @@ services:
       # :9102 is what the alt-backend suite reaches as INTERNAL_URL — see
       # tests/admin-url-backfill.spec.ts and tests/topology.spec.ts.
       - OPERATOR_LISTEN_ADDR=:9102
-      # The `operator` fixture (e2e/playwright/alt-backend/src/fixtures.ts)
-      # calls :9102 with X-Alt-Backend-Token only, no Authorization header —
-      # this slice has no BFF/altctl-with-a-token in front of it, so the
-      # operator listener runs tokenless by explicit choice.
-      - OPERATOR_AUTH=disabled
+      # Bearer token the operator listener's interceptor requires on every
+      # RPC (config.LoadOperatorAuth).
+      - OPERATOR_TOKEN_FILE=/run/secrets/backend_operator_token
       - REDIS_AUTH=disabled
       - RAG_API_AUTH=disabled
       # :9110 is {{ops_url}} — /health and /metrics, asserted by
@@ -1239,6 +1237,7 @@ services:
       - alt_backend_token_secret
       - rask_ingest_token
       - sovereign_operator_token
+      - backend_operator_token
     ports:
       - "19000:9000"
       - "19101:9101"
@@ -1688,3 +1687,5 @@ secrets:
     file: ../e2e/playwright/_fixtures/test-credentials/inference_service_token.txt
   sovereign_operator_token:
     file: ../e2e/playwright/_fixtures/test-credentials/sovereign_operator_token.txt
+  backend_operator_token:
+    file: ../e2e/playwright/_fixtures/test-credentials/backend_operator_token.txt

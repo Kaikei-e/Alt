@@ -29,6 +29,8 @@ export const env = {
 	 * inspect` output or a compose slice.
 	 */
 	jwt: requiredSecretFile("JWT_FILE"),
+	/** Bearer token for loopback operator listener (:9102). */
+	operatorToken: requiredSecretFile("OPERATOR_TOKEN_FILE"),
 	/** Unique per dispatch; only used to keep report/artifact paths apart. */
 	runId: runId(),
 } as const;

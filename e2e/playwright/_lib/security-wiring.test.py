@@ -131,6 +131,18 @@ class SecurityWiringTests(unittest.TestCase):
         token = secret_file.read_text().strip()
         self.assertGreaterEqual(len(token), 24)
 
+    def test_alt_backend_has_operator_token_wiring(self):
+        svc = self.services["alt-backend"]
+        env = environment(svc)
+        self.assertNotEqual(env.get("OPERATOR_AUTH"), "disabled", "OPERATOR_AUTH=disabled must not be set when privileged sovereign operator is enabled")
+        self.assertEqual(env.get("OPERATOR_TOKEN_FILE"), "/run/secrets/backend_operator_token")
+        self.assertIn("backend_operator_token", svc.get("secrets", []))
+        self.assertIn("backend_operator_token", self.compose.get("secrets", {}))
+        secret_file = ROOT / "compose" / self.compose["secrets"]["backend_operator_token"]["file"]
+        self.assertTrue(secret_file.exists(), f"secret file {secret_file} must exist")
+        token = secret_file.read_text().strip()
+        self.assertGreaterEqual(len(token), 24)
+
 
 if __name__ == "__main__":
     unittest.main()

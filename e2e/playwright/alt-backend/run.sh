@@ -38,6 +38,7 @@ suite_endpoint CONNECT_URL  "http://alt-backend:9101"
 suite_endpoint INTERNAL_URL "http://alt-backend:9102"
 suite_endpoint OPS_URL      "http://alt-backend:9110"
 suite_endpoint JWT_FILE     "$ROOT/e2e/fixtures/alt-backend/test-jwt.txt"
+suite_endpoint OPERATOR_TOKEN_FILE "$ROOT/e2e/playwright/_fixtures/test-credentials/backend_operator_token.txt"
 suite_endpoint ARTICLE_ID_SEED "00000000-0000-0000-0000-000000000001"
 
 # The slice runs the real data plane, not a stub: ADR-000954 Wave 3 made
