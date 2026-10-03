@@ -323,6 +323,9 @@ required_env:
   - DB_NAME
   - DB_PORT
   - DB_USER
+  # `${KRATOS_COOKIE_DOMAIN?...}`: compose refuses to render when it is unset;
+  # an empty value is valid and means host-only session cookies.
+  - KRATOS_COOKIE_DOMAIN
   - MEILISEARCH_HOST
   - POSTGRES_DB
   - POSTGRES_USER
