@@ -18,13 +18,18 @@ services:
   redis-streams:
     image: redis:8.4.5-alpine
     container_name: redis-streams
-    # The custom shell entrypoint below (needed to expand
-    # $$(cat /run/secrets/redis_password)) bypasses the official image's
-    # docker-entrypoint.sh, which normally chowns /data and drops root via
-    # gosu before exec'ing redis-server. Without this, redis-server ran as
-    # root. See the deploy note on the redis_password secret slice for the
-    # /data ownership check this requires on the existing named volume.
+    # docker/redis/entrypoint.sh (the redis_entrypoint config) hashes the
+    # redis_streams_password and redis_limiter_password secrets into an ACL
+    # file under /tmp and execs `redis-server --aclfile`: `default` is off and
+    # the `streams` and `limiter` users are each held to their own keys and
+    # commands. It replaces the official docker-entrypoint.sh, so nothing
+    # chowns /data or drops root via gosu — the user is stated here, and /data
+    # on the existing named volume must already belong to redis.
     user: redis
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     entrypoint:
       - /entrypoint.sh
       - streams

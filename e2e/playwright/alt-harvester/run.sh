@@ -2,9 +2,9 @@
 # e2e/playwright/alt-harvester/run.sh
 #
 # Brings up the alt-harvester slice of the alt-staging stack (Postgres + Atlas
-# migrator + alt-backend-deps-stub + alt-data-hub + alt-harvester), runs the
-# Playwright API suite inside the staging network so the `alt-harvester` DNS
-# name resolves, and tears the stack down.
+# migrator + alt-backend-deps-stub + alt-data-hub + redis-streams +
+# alt-harvester), runs the Playwright API suite inside the staging network so
+# the `alt-harvester` DNS name resolves, and tears the stack down.
 #
 # alt-harvester is the job-runner third of the alt-backend split (ADR-000954).
 # It owns the schedules `job.RegisterHarvesterJobs` wires up and serves no API;
@@ -55,6 +55,7 @@ suite_up \
   alt-backend-deps-stub \
   auth-introspection \
   alt-data-hub \
+  redis-streams \
   alt-harvester
 
 suite_test

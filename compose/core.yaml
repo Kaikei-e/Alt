@@ -925,6 +925,10 @@ services:
       - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     secrets:
       - rask_ingest_token
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     networks:
       - plecto-relay-network
       - plecto-otlp-collector

@@ -51,7 +51,7 @@
 #     is constructed at startup and fail-fasts without one.)
 #   alt-backend suite          → profile `alt-backend`
 #     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
-#     alt-data-hub, alt-backend
+#     alt-data-hub, redis-streams, alt-backend
 #     (Postgres + Atlas migrator + Echo REST / Connect-RPC service.
 #     The deps stub is registered under six network aliases so every
 #     upstream alt-backend talks to (search-indexer, pre-processor,
@@ -63,7 +63,7 @@
 #     binary runs and alt-backend reaches it over mutual TLS.)
 #   alt-harvester suite        → profile `alt-harvester`
 #     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
-#     alt-data-hub, alt-harvester
+#     alt-data-hub, redis-streams, alt-harvester
 #     (the scheduled-job binary of the 3-binary split. Same module and
 #     schema as the alt-backend profile — what the suite pins is the
 #     listener set: :9110 ops only, nothing on :9000 / :9101 / :9102 /
@@ -190,14 +190,16 @@ services:
   # mq-hub suite — Redis Streams + mq-hub broker
   # Redis is shared with the tag-generator suite (tag-generator's
   # consumer joins the alt:events:tags group) and mq-hub itself is
-  # reused by scenario 04 of the tag-generator suite.
+  # reused by scenario 04 of the tag-generator suite. The alt-backend and
+  # alt-harvester suites use it as the host rate limiter's arbiter, as the
+  # `limiter` user, the way compose/core.yaml wires production.
   redis-streams:
     # Same patch pin as compose/mq.yaml: 8.4.0–8.4.3 silently trim nothing when
     # `MAXLEN ~` is combined with ACKED, so staging would not reproduce the
     # production trimming behaviour it is supposed to validate.
     image: redis:8.4.5-alpine
     container_name: alt-staging-redis-streams
-    profiles: [mq-hub, tag-generator]
+    profiles: [mq-hub, tag-generator, alt-backend, alt-harvester]
     # The production entrypoint and ACL users (compose/mq.yaml): `default` is
     # off and every client is a `streams` user limited to the alt:events:* /
     # alt:replies:tags:* keys and an explicit command list. With the old
@@ -206,6 +208,10 @@ services:
     # (--save "" below), so unlike production there is no pre-existing /data
     # ownership to reconcile.
     user: redis
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     entrypoint:
       - /entrypoint.sh
       - streams
@@ -634,6 +640,10 @@ services:
     command: ["--target", "http://news-creator-ollama-stub:11435", "--port", "11436", "--token-file", "/run/secrets/inference_service_token"]
     secrets:
       - inference_service_token
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     networks:
       - alt-staging
     healthcheck:
@@ -1170,6 +1180,8 @@ services:
       # here keeps a cold-start handshake failure out of the first scenario.
       alt-data-hub:
         condition: service_healthy
+      redis-streams:
+        condition: service_healthy
     volumes:
       # The client leaf alt-backend presents to alt-data-hub. Same throwaway
       # PKI the data-hub itself mounts; the CN/SAN is `alt-backend`, which is
@@ -1200,7 +1212,11 @@ services:
       # Bearer token the operator listener's interceptor requires on every
       # RPC (config.LoadOperatorAuth).
       - OPERATOR_TOKEN_FILE=/run/secrets/backend_operator_token
-      - REDIS_AUTH=disabled
+      # The cross-binary host rate limiter's arbiter, as in compose/core.yaml.
+      # Feed registration and article fetches against stub.invalid take their
+      # per-host slot here as the `limiter` ACL user.
+      - HOST_RATE_LIMITER_REDIS_URL=redis://limiter@redis-streams:6379/3
+      - HOST_RATE_LIMITER_REDIS_PASSWORD_FILE=/run/secrets/redis_limiter_password
       - RAG_API_AUTH=disabled
       # :9110 is {{ops_url}} — /health and /metrics, asserted by
       # tests/health.spec.ts — and the address the `healthcheck` subcommand
@@ -1302,6 +1318,7 @@ services:
       - rask_ingest_token
       - sovereign_operator_token
       - backend_operator_token
+      - redis_limiter_password
     ports:
       - "19000:9000"
       - "19101:9101"
@@ -1345,6 +1362,8 @@ services:
       # one of its seven jobs reads and writes through DataHubService.
       alt-data-hub:
         condition: service_healthy
+      redis-streams:
+        condition: service_healthy
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
@@ -1374,7 +1393,9 @@ services:
       # PROCESSED, which breaks the append-first invariant silently.
       - SOVEREIGN_URL=http://knowledge-sovereign
       - SOVEREIGN_EVENT_AUTH=disabled
-      - REDIS_AUTH=disabled
+      # Same arbiter and user as alt-backend above (compose/core.yaml).
+      - HOST_RATE_LIMITER_REDIS_URL=redis://limiter@redis-streams:6379/3
+      - HOST_RATE_LIMITER_REDIS_PASSWORD_FILE=/run/secrets/redis_limiter_password
       - RAG_API_AUTH=disabled
       - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
       - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
@@ -1413,6 +1434,7 @@ services:
     secrets:
       - rask_ingest_token
       - mqhub_auth_token
+      - redis_limiter_password
     networks:
       - alt-staging
     healthcheck:
