@@ -31,6 +31,10 @@ services:
     # custom shell entrypoint bypasses docker-entrypoint.sh's chown+gosu drop,
     # so this must state the user explicitly.
     user: redis
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     entrypoint:
       - /entrypoint.sh
       - cache
@@ -183,6 +187,10 @@ services:
       - INFERENCE_TOKEN_FILE=/run/secrets/inference_service_token
     secrets:
       - inference_service_token
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     networks:
       - alt-network
       - generation-raw-network

@@ -340,6 +340,10 @@ services:
       - INFERENCE_TOKEN_FILE=/run/secrets/inference_service_token
     secrets:
       - inference_service_token
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     networks:
       - alt-network
       - embedding-raw-network

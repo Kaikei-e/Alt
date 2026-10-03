@@ -206,6 +206,10 @@ services:
     # (--save "" below), so unlike production there is no pre-existing /data
     # ownership to reconcile.
     user: redis
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     entrypoint:
       - /entrypoint.sh
       - streams
@@ -634,6 +638,10 @@ services:
     command: ["--target", "http://news-creator-ollama-stub:11435", "--port", "11436", "--token-file", "/run/secrets/inference_service_token"]
     secrets:
       - inference_service_token
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     networks:
       - alt-staging
     healthcheck:
