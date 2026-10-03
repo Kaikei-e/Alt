@@ -23,7 +23,8 @@ import (
 const (
 	// ModeEnabled runs initial enroll + the renewal loop.
 	ModeEnabled = "enabled"
-	// ModeDisabled leaves cert files to the pki-agent sidecar.
+	// ModeDisabled mints nothing. It must be set explicitly and is meant for
+	// slices with no step-ca and no outbound mTLS peer, such as staging E2E.
 	ModeDisabled = "disabled"
 
 	defaultRenewAt = 0.66
@@ -98,12 +99,11 @@ func provisionerPasswordBasename(subject string) string {
 
 // LoadConfig reads enrollment env vars.
 //
-// Unset PKI_ENROLLMENT (and unset PKI_ENROLLMENT_FILE) defaults to disabled.
-// That is temporary migration compatibility for image-first mixed-mode rollout
-// (sidecar still owns cert files). Final compose cutover MUST set
-// PKI_ENROLLMENT=enabled explicitly. An empty PKI_ENROLLMENT="" is garbage and
-// fails. If any KEY_FILE is set, a missing/unreadable/empty file is an error
-// (no silent fallback to env or defaults).
+// PKI_ENROLLMENT (or PKI_ENROLLMENT_FILE) is required: knowledge-sovereign
+// presents the enrolled leaf to its mTLS peers, so an unset or empty mode is a
+// startup error rather than an implicit "disabled". If any KEY_FILE is set, a
+// missing/unreadable/empty file is an error (no silent fallback to env or
+// defaults).
 func LoadConfig(serviceName string) (*Config, error) {
 	mode, err := loadEnrollmentMode()
 	if err != nil {
@@ -204,9 +204,8 @@ func loadEnrollmentMode() (string, error) {
 	}
 	v, ok := os.LookupEnv("PKI_ENROLLMENT")
 	if !ok {
-		// Temporary image-first compatibility: sidecar still owns cert files
-		// until compose cutover sets PKI_ENROLLMENT=enabled.
-		return ModeDisabled, nil
+		return "", fmt.Errorf("pki: PKI_ENROLLMENT is required (knowledge-sovereign presents the enrolled leaf for outbound mTLS); set %q, or %q only where no step-ca and no mTLS peer exist",
+			ModeEnabled, ModeDisabled)
 	}
 	mode := strings.ToLower(strings.TrimSpace(v))
 	if mode != ModeEnabled && mode != ModeDisabled {
