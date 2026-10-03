@@ -2,9 +2,9 @@
 # e2e/playwright/alt-backend/run.sh
 #
 # Brings up the alt-backend slice of the alt-staging stack (Postgres + Atlas
-# migrator + alt-backend-deps-stub + alt-data-hub + alt-backend), runs the
-# Playwright API suite inside the staging network so the `alt-backend` DNS name
-# resolves, and tears the stack down.
+# migrator + alt-backend-deps-stub + alt-data-hub + redis-streams +
+# alt-backend), runs the Playwright API suite inside the staging network so
+# the `alt-backend` DNS name resolves, and tears the stack down.
 #
 # ADR-000766 established the `e2e/<framework>/<svc>/run.sh` dispatch contract;
 # alt-deploy's release-deploy.yaml probes this path. Everything generic about
@@ -50,6 +50,7 @@ suite_up \
   alt-backend-deps-stub \
   auth-introspection \
   alt-data-hub \
+  redis-streams \
   alt-backend
 
 suite_test
