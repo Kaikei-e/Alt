@@ -69,7 +69,6 @@ on:
       - 'pki-agent/CLAUDE.md'
       - 'compose/pki.yaml'
       - 'scripts/observability-config-audit.py'
-      - 'scripts/tests/test-observability-config-audit.py'
       - 'observability/prometheus/**'
       - 'scripts/cascade-pki-sidecars.sh'
       - 'scripts/deploy.sh'
@@ -85,6 +84,36 @@ on:
       - 'deploy/host-prereqs.yaml'
       - 'scripts/tests/test-compose-prod-env-wiring.py'
       - 'scripts/tests/test-recap-evaluator-auth-wiring.py'
+      - 'scripts/check-env-overrides.py'
+      - 'scripts/tests/test-check-env-overrides.py'
+      - 'scripts/tests/test-group1-security.py'
+      - 'compose.augur.yaml'
+      - 'kratos/entrypoint.sh'
+      - 'kratos/kratos_template.yml'
+      - 'for-development/start-dev.sh'
+      - 'recap-evaluator/src/recap_evaluator/infra/bearer_auth.py'
+      - 'recap-evaluator/src/recap_evaluator/infra/mtls_client.py'
+      - 'knowledge-sovereign/app/main.go'
+      - 'alt-backend/app/cmd/*/main.go'
+      - 'alt-butterfly-facade/main.go'
+      - 'auth-hub/cmd/auth-hub/main.go'
+      - 'rag-orchestrator/cmd/server/main.go'
+      - 'pre-processor/app/bootstrap/lifecycle.go'
+      - 'search-indexer/app/bootstrap/app.go'
+      - 'recap-worker/recap-worker/src/pki/start.rs'
+      - 'acolyte-orchestrator/acolyte/infra/pki/start.py'
+      - 'news-creator/app/news_creator/infra/pki/start.py'
+      - 'recap-subworker/recap_subworker/app/infra/pki/start.py'
+      - 'tag-generator/app/tag_generator/infra/pki/start.py'
+      - 'altctl/CLAUDE.md'
+      - 'docs/runbooks/README.md'
+      - 'docs/runbooks/compose-bind-mount-policy.md'
+      - 'docs/runbooks/mtls-cutover.md'
+      - 'docs/runbooks/ops-surface-budget.md'
+      - 'docs/runbooks/synthetic-monitoring.md'
+      - 'docs/runbooks/user-journey-slo-gameday.md'
+      - 'docs/services/acolyte-orchestrator.md'
+      - 'docs/services/MICROSERVICES.md'
       - '.github/workflows/compose-audit.yaml'
   pull_request:
     branches: [main]
@@ -128,7 +157,6 @@ on:
       - 'pki-agent/CLAUDE.md'
       - 'compose/pki.yaml'
       - 'scripts/observability-config-audit.py'
-      - 'scripts/tests/test-observability-config-audit.py'
       - 'observability/prometheus/**'
       - 'scripts/cascade-pki-sidecars.sh'
       - 'scripts/deploy.sh'
@@ -144,6 +172,36 @@ on:
       - 'deploy/host-prereqs.yaml'
       - 'scripts/tests/test-compose-prod-env-wiring.py'
       - 'scripts/tests/test-recap-evaluator-auth-wiring.py'
+      - 'scripts/check-env-overrides.py'
+      - 'scripts/tests/test-check-env-overrides.py'
+      - 'scripts/tests/test-group1-security.py'
+      - 'compose.augur.yaml'
+      - 'kratos/entrypoint.sh'
+      - 'kratos/kratos_template.yml'
+      - 'for-development/start-dev.sh'
+      - 'recap-evaluator/src/recap_evaluator/infra/bearer_auth.py'
+      - 'recap-evaluator/src/recap_evaluator/infra/mtls_client.py'
+      - 'knowledge-sovereign/app/main.go'
+      - 'alt-backend/app/cmd/*/main.go'
+      - 'alt-butterfly-facade/main.go'
+      - 'auth-hub/cmd/auth-hub/main.go'
+      - 'rag-orchestrator/cmd/server/main.go'
+      - 'pre-processor/app/bootstrap/lifecycle.go'
+      - 'search-indexer/app/bootstrap/app.go'
+      - 'recap-worker/recap-worker/src/pki/start.rs'
+      - 'acolyte-orchestrator/acolyte/infra/pki/start.py'
+      - 'news-creator/app/news_creator/infra/pki/start.py'
+      - 'recap-subworker/recap_subworker/app/infra/pki/start.py'
+      - 'tag-generator/app/tag_generator/infra/pki/start.py'
+      - 'altctl/CLAUDE.md'
+      - 'docs/runbooks/README.md'
+      - 'docs/runbooks/compose-bind-mount-policy.md'
+      - 'docs/runbooks/mtls-cutover.md'
+      - 'docs/runbooks/ops-surface-budget.md'
+      - 'docs/runbooks/synthetic-monitoring.md'
+      - 'docs/runbooks/user-journey-slo-gameday.md'
+      - 'docs/services/acolyte-orchestrator.md'
+      - 'docs/services/MICROSERVICES.md'
       - '.github/workflows/compose-audit.yaml'
   workflow_dispatch:
 
@@ -455,6 +513,10 @@ jobs:
     # or a config-mounted entrypoint without the exec bit fails here instead of
     # at the next deploy. Renders against .env.template plus the two values
     # the dummy .env above carries; nothing is printed from the render.
+    # The same job pins scripts/check-env-overrides.py, which applies the
+    # deploy/host-prereqs.yaml env rules to a host .env, and runs the Redis
+    # ACL loader (docker/redis/entrypoint.sh) and kratos entrypoint against
+    # fixtures via test-group1-security.py.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -484,6 +546,12 @@ jobs:
 
       - name: Pin recap-evaluator bearer wiring
         run: python3 scripts/tests/test-recap-evaluator-auth-wiring.py
+
+      - name: Pin the host .env override checker
+        run: python3 scripts/tests/test-check-env-overrides.py
+
+      - name: Pin Redis roles, the ACL loader and the group-1 security wiring
+        run: python3 scripts/tests/test-group1-security.py
 
   reachability-invariant:
     # Compose DNS answers a service name only on the networks it joined. A URL
