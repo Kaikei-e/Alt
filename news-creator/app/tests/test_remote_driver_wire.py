@@ -1,9 +1,12 @@
 import json
+import logging
+
 import aiohttp
 import pytest
 import pytest_asyncio
 from aiohttp import web
 
+from news_creator.config import inference_token
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.config.llm_config import LLMConfig
 from news_creator.driver.ollama_driver import OllamaDriver
@@ -121,6 +124,7 @@ async def test_production_constructors_wire_auth_and_no_redirect(
     token_file = tmp_path / "inference.token"
     token_file.write_text(token_val, encoding="utf-8")
 
+    monkeypatch.delenv("INFERENCE_AUTH", raising=False)
     monkeypatch.setenv("INFERENCE_SERVICE_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("LLM_SERVICE_URL", wire_server["base_url"])
     monkeypatch.setenv("LLM_MODEL", "test-model")
@@ -231,7 +235,9 @@ async def test_production_constructors_wire_auth_and_no_redirect(
 
 
 def test_token_file_validation_paths(tmp_path, monkeypatch):
-    """Test token file failure modes (startup fail) vs inactive mode."""
+    """Every token file failure mode, including an unset path, fails startup."""
+    monkeypatch.delenv("INFERENCE_AUTH", raising=False)
+
     # 1. Missing file -> fails fast
     monkeypatch.setenv(
         "INFERENCE_SERVICE_TOKEN_FILE", str(tmp_path / "nonexistent.token")
@@ -253,7 +259,55 @@ def test_token_file_validation_paths(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="Invalid token format"):
         LLMConfig.from_env()
 
-    # 4. Optional inactive mode: unset -> None
+    # 4. Unset without INFERENCE_AUTH=disabled -> fails fast
     monkeypatch.delenv("INFERENCE_SERVICE_TOKEN_FILE", raising=False)
-    cfg = LLMConfig.from_env()
-    assert cfg.inference_service_token is None
+    with pytest.raises(ValueError, match="INFERENCE_AUTH"):
+        LLMConfig.from_env()
+
+
+@pytest.mark.asyncio
+async def test_explicit_auth_disabled_sends_no_authorization_header(
+    wire_server, monkeypatch, caplog, dummy_redis_password_file
+):
+    """INFERENCE_AUTH=disabled logs once and every driver omits the bearer."""
+    monkeypatch.setattr(inference_token, "_disabled_logged", False)
+    monkeypatch.setenv("INFERENCE_AUTH", "disabled")
+    monkeypatch.delenv("INFERENCE_SERVICE_TOKEN_FILE", raising=False)
+    monkeypatch.setenv("LLM_SERVICE_URL", wire_server["base_url"])
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+
+    with caplog.at_level(logging.WARNING, logger=inference_token.__name__):
+        cfg = NewsCreatorConfig()
+    assert cfg.llm.inference_service_token is None
+    assert [r for r in caplog.records if "inference_auth_disabled" in r.getMessage()], (
+        "INFERENCE_AUTH=disabled must be logged at startup"
+    )
+
+    driver = OllamaDriver(cfg)
+    await driver.initialize()
+    await driver.generate({"prompt": "hello", "model": "test-model"})
+
+    stream_driver = OllamaStreamDriver(cfg)
+    await stream_driver.initialize()
+    async for _ in stream_driver.chat_stream(
+        {"messages": [{"role": "user", "content": "hi"}], "model": "test-model"}
+    ):
+        pass
+
+    remote_driver = RemoteOllamaDriver(
+        timeout_seconds=5,
+        inference_token=cfg.llm.inference_service_token,
+    )
+    await remote_driver.initialize()
+    await remote_driver.generate(
+        wire_server["base_url"], {"model": "test-model", "prompt": "hello remote"}
+    )
+
+    paths = [req["path"] for req in wire_server["received"]]
+    assert paths == ["/api/generate", "/api/chat", "/api/generate"]
+    for req in wire_server["received"]:
+        assert "Authorization" not in req["headers"]
+
+    await driver.cleanup()
+    await stream_driver.cleanup()
+    await remote_driver.cleanup()

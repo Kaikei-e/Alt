@@ -340,6 +340,40 @@ def test_dependency_container_fails_fast_when_redis_auth_unconfigured(monkeypatc
         main_module.DependencyContainer()
 
 
+def test_dependency_container_fails_fast_when_inference_auth_unconfigured(monkeypatch):
+    """Startup must fail when the generation-proxy bearer is neither set nor disabled."""
+    import main as main_module
+
+    monkeypatch.delenv("INFERENCE_SERVICE_TOKEN_FILE", raising=False)
+    monkeypatch.delenv("INFERENCE_AUTH", raising=False)
+
+    with pytest.raises(ValueError, match="INFERENCE_SERVICE_TOKEN_FILE"):
+        main_module.DependencyContainer()
+
+
+@pytest.mark.asyncio
+async def test_dependency_container_drivers_send_resolved_inference_token(
+    monkeypatch, tmp_path
+):
+    """The container's real Ollama drivers carry the bearer read from the token file."""
+    import main as main_module
+
+    token_file = tmp_path / "inference.token"
+    token_file.write_text("container-wired-token\n", encoding="utf-8")
+    monkeypatch.setenv("INFERENCE_SERVICE_TOKEN_FILE", str(token_file))
+    monkeypatch.delenv("INFERENCE_AUTH", raising=False)
+
+    container = main_module.DependencyContainer()
+    gateway = container.ollama_gateway
+    await gateway.initialize()
+    try:
+        expected = "Bearer container-wired-token"
+        assert gateway.driver.session.headers["Authorization"] == expected
+        assert gateway.stream_driver.session.headers["Authorization"] == expected
+    finally:
+        await gateway.cleanup()
+
+
 def test_dependency_container_wires_resolved_redis_password(monkeypatch, tmp_path):
     """DependencyContainer must pass resolved Redis password to CachePort when CACHE_ENABLED=true."""
     import main as main_module

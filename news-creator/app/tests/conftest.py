@@ -18,6 +18,17 @@ from news_creator.domain.models import LLMGenerateResponse
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 
+@pytest.fixture(autouse=True)
+def _inference_auth_disabled_by_default(monkeypatch) -> None:
+    """Let tests build NewsCreatorConfig without a generation-proxy token file.
+
+    LLMConfig.from_env() fails startup unless INFERENCE_SERVICE_TOKEN_FILE is
+    set or INFERENCE_AUTH=disabled. Tests that exercise the token contract
+    delete this variable via monkeypatch.
+    """
+    monkeypatch.setenv("INFERENCE_AUTH", "disabled")
+
+
 @pytest.fixture
 def dummy_redis_password_file(tmp_path, monkeypatch) -> Path:
     """Provide a valid temporary REDIS_PASSWORD_FILE for tests that instantiate
