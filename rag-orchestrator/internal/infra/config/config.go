@@ -166,26 +166,34 @@ type InferenceAuthConfig struct {
 // shorter token would boot here and then be refused by rerank-local.
 const minInferenceTokenLen = 16
 
-func loadInferenceAuth() InferenceAuthConfig {
+// LoadInferenceAuth reads the inference bearer. It is exported for the
+// backfill CLI, which embeds through the same embedding-proxy as the server.
+func LoadInferenceAuth() (InferenceAuthConfig, error) {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("INFERENCE_AUTH")), "disabled") {
-		return InferenceAuthConfig{Enabled: false}
+		return InferenceAuthConfig{Enabled: false}, nil
 	}
 
 	path := strings.TrimSpace(os.Getenv("INFERENCE_SERVICE_TOKEN_FILE"))
 	if path == "" {
-		panic("config: INFERENCE_SERVICE_TOKEN_FILE is required (embedding-proxy and rerank-local reject requests without the bearer); " +
+		return InferenceAuthConfig{}, errors.New("config: INFERENCE_SERVICE_TOKEN_FILE is required (embedding-proxy and rerank-local reject requests without the bearer); " +
 			"set INFERENCE_AUTH=disabled to call the inference proxies without one")
 	}
 
 	data, err := os.ReadFile(path) // #nosec G304 G703 -- operator-configured secret path from INFERENCE_SERVICE_TOKEN_FILE, not request input
 	if err != nil {
-		panic(fmt.Sprintf("config: read INFERENCE_SERVICE_TOKEN_FILE %s: %v", path, err))
+		return InferenceAuthConfig{}, fmt.Errorf("config: read INFERENCE_SERVICE_TOKEN_FILE %s: %w", path, err)
 	}
 	token := strings.TrimRight(string(data), "\r\n")
 	if err := validateAuthToken(token, minInferenceTokenLen); err != nil {
-		panic(fmt.Sprintf("config: token from INFERENCE_SERVICE_TOKEN_FILE %s: %v", path, err))
+		return InferenceAuthConfig{}, fmt.Errorf("config: token from INFERENCE_SERVICE_TOKEN_FILE %s: %w", path, err)
 	}
-	return InferenceAuthConfig{Enabled: true, Token: token}
+	return InferenceAuthConfig{Enabled: true, Token: token}, nil
+}
+
+// EmbedderExternalURL is the configured embedding-proxy, the only embedder
+// origin trusted with the inference bearer.
+func EmbedderExternalURL() string {
+	return getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedding-proxy:11436")
 }
 
 // SearchConfig holds the connection settings for search-indexer's REST
@@ -500,7 +508,10 @@ type Config struct {
 }
 
 func Load() *Config {
-	inferenceAuth := loadInferenceAuth()
+	inferenceAuth, err := LoadInferenceAuth()
+	if err != nil {
+		panic(err.Error())
+	}
 
 	return &Config{
 		Env:        getEnv("ENV", "development"),
@@ -520,7 +531,7 @@ func Load() *Config {
 			MinConns: getEnvInt32("DB_MIN_CONNS", defaultDBMinConns),
 		},
 		Embedder: EmbedderConfig{
-			URL:                    getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedding-proxy:11436"),
+			URL:                    EmbedderExternalURL(),
 			Model:                  getEnv("EMBEDDING_MODEL", "bge-m3"),
 			Timeout:                getEnvInt("EMBEDDER_TIMEOUT", 30),
 			InferenceToken:         inferenceAuth.Token,

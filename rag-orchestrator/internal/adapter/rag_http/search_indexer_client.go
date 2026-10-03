@@ -27,6 +27,19 @@ func NewSearchIndexerClient(baseURL string, client *http.Client) *SearchIndexerC
 	}
 }
 
+// requireUserScope returns the caller's user JWT, refusing an unscoped or
+// unauthenticated search before it reaches search-indexer.
+func requireUserScope(ctx context.Context, userID string) (string, error) {
+	if strings.TrimSpace(userID) == "" {
+		return "", fmt.Errorf("search_indexer_client: user_id is required")
+	}
+	token, ok := authcontext.JWTFromContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("search_indexer_client: user JWT is required (search-indexer verifies it against user_id)")
+	}
+	return token, nil
+}
+
 type searchArticlesResponse struct {
 	Query string  `json:"query"`
 	Hits  []dhHit `json:"hits"`
@@ -41,11 +54,13 @@ type dhHit struct {
 
 // Search runs a user-scoped article search for tool/tag-extraction paths.
 //
-// user_id is required. search-indexer scopes hits to that user's indexed documents
-// (Meilisearch user_id = "..."). Empty user_id fails fast to avoid unscoped search.
+// user_id and the caller's user JWT are required. search-indexer scopes hits to
+// that user's indexed documents (Meilisearch user_id = "...") and refuses a JWT
+// that does not belong to user_id. Either one missing fails before sending.
 func (c *SearchIndexerClient) Search(ctx context.Context, query string, userID string) ([]domain.SearchHit, error) {
-	if strings.TrimSpace(userID) == "" {
-		return nil, fmt.Errorf("search_indexer_client: user_id is required")
+	token, err := requireUserScope(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
 
 	u, err := url.Parse(fmt.Sprintf("%s/v1/search", c.BaseURL))
@@ -63,9 +78,7 @@ func (c *SearchIndexerClient) Search(ctx context.Context, query string, userID s
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if token, ok := authcontext.JWTFromContext(ctx); ok && token != "" {
-		req.Header.Set("X-Alt-Backend-Token", token)
-	}
+	req.Header.Set("X-Alt-Backend-Token", token)
 
 	clientCopy := *c.Client
 	clientCopy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -103,10 +116,11 @@ func (c *SearchIndexerClient) Search(ctx context.Context, query string, userID s
 // SearchBM25 performs user-scoped BM25 (keyword) search for hybrid search fusion.
 // Implements domain.BM25Searcher interface.
 //
-// user_id is required; an empty user_id fails fast rather than searching unscoped.
+// user_id and the caller's user JWT are required, as for Search.
 func (c *SearchIndexerClient) SearchBM25(ctx context.Context, query string, limit int, userID string) ([]domain.BM25SearchResult, error) {
-	if strings.TrimSpace(userID) == "" {
-		return nil, fmt.Errorf("search_indexer_client: user_id is required")
+	token, err := requireUserScope(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
 
 	u, err := url.Parse(fmt.Sprintf("%s/v1/search", c.BaseURL))
@@ -125,9 +139,7 @@ func (c *SearchIndexerClient) SearchBM25(ctx context.Context, query string, limi
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if token, ok := authcontext.JWTFromContext(ctx); ok && token != "" {
-		req.Header.Set("X-Alt-Backend-Token", token)
-	}
+	req.Header.Set("X-Alt-Backend-Token", token)
 
 	clientCopy := *c.Client
 	clientCopy.CheckRedirect = func(req *http.Request, via []*http.Request) error {

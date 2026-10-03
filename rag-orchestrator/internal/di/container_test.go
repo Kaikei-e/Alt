@@ -107,7 +107,7 @@ func TestEmbedderFactory_InferenceCredentialScoping(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	embedderFactory := newEmbedderFactory(cfg.Embedder, logger)
+	embedderFactory := NewEmbedderFactory(cfg.Embedder, logger)
 	build := func(url string) *rag_augur.OllamaEmbedder {
 		t.Helper()
 		embedder, ok := embedderFactory(url, "bge-m3", 10).(*rag_augur.OllamaEmbedder)
@@ -176,7 +176,7 @@ func TestLogInferenceAuth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			logInferenceAuth(tt.cfg, slog.New(slog.NewJSONHandler(&buf, nil)))
+			LogInferenceAuth(tt.cfg, slog.New(slog.NewJSONHandler(&buf, nil)))
 
 			out := buf.String()
 			if got := strings.Count(out, `"msg":"`+tt.wantMsg+`"`); got != 1 {
