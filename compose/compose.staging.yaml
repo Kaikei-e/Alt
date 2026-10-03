@@ -17,8 +17,10 @@
 #     (round-trips through mq-hub's GenerateTagsForArticle RPC because
 #     the E2E suite speaks HTTP only and cannot XREAD Redis directly)
 #   news-creator suite         → profile `news-creator`
-#     news-creator-ollama-stub, news-creator
-#     (real Ollama needs a GPU; the stub returns a fixed `/api/tags`
+#     news-creator-ollama-stub, generation-proxy, news-creator
+#     (news-creator reaches the stub only through generation-proxy with the
+#     inference bearer, as it reaches the GPU backend in production.
+#     Real Ollama needs a GPU; the stub returns a fixed `/api/tags`
 #     response so OllamaGateway.list_models() succeeds and the FastAPI
 #     contract surface — `/health`, `/queue/status` — can be exercised
 #     without LLM inference. `WARMUP_ENABLED=false` keeps lifespan from
@@ -79,7 +81,8 @@
 # Services with NO profile are never auto-started (Compose default).
 #
 # Every secret in this stack is a test fixture committed under
-# e2e/fixtures/staging-secrets/ — never reuse these values anywhere else.
+# e2e/fixtures/staging-secrets/ or e2e/playwright/_fixtures/test-credentials/
+# — never reuse these values anywhere else.
 
 name: alt-staging
 
@@ -162,6 +165,10 @@ services:
       - MTLS_CERT_FILE=/certs/search-indexer.pem
       - MTLS_KEY_FILE=/certs/search-indexer-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      # Mounted as in production (compose/workers.yaml), where it is the
+      # embedder credential. MEILI_HYBRID_EMBEDDER is unset here, so no embedder
+      # is registered and the embedding-proxy hop is not part of this slice.
+      - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
     ports:
       - "19300:9300"
     networks:
@@ -169,6 +176,7 @@ services:
     secrets:
       - meili_master_key
       - rask_ingest_token
+      - inference_service_token
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/search-indexer/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/search-indexer/pki}:/trust:ro
@@ -190,21 +198,37 @@ services:
     image: redis:8.4.5-alpine
     container_name: alt-staging-redis-streams
     profiles: [mq-hub, tag-generator]
-    # See compose/mq.yaml's redis-streams: the custom shell entrypoint
-    # bypasses docker-entrypoint.sh's chown+gosu drop. No named volume here
+    # The production entrypoint and ACL users (compose/mq.yaml): `default` is
+    # off and every client is a `streams` user limited to the alt:events:* /
+    # alt:replies:tags:* keys and an explicit command list. With the old
+    # `--requirepass`, staging accepted single-argument AUTH and any command,
+    # so a client production rejects still passed E2E. No named volume here
     # (--save "" below), so unlike production there is no pre-existing /data
     # ownership to reconcile.
     user: redis
     entrypoint:
-      - /bin/sh
-      - -c
-      - exec redis-server --requirepass "$$(cat /run/secrets/redis_password)" --maxmemory 256mb --maxmemory-policy noeviction --appendonly no --save ""
+      - /entrypoint.sh
+      - streams
+    command:
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - noeviction
+      - --appendonly
+      - "no"
+      - --save
+      - ""
+    configs:
+      - source: redis_entrypoint
+        target: /entrypoint.sh
+        mode: 0555
     networks:
       - alt-staging
     secrets:
-      - redis_password
+      - redis_streams_password
+      - redis_limiter_password
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_streams_password)\" redis-cli --user streams ping | grep -q PONG"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -221,8 +245,8 @@ services:
       redis-streams:
         condition: service_healthy
     environment:
-      - REDIS_URL=redis://redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      - REDIS_URL=redis://streams@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
       - CONNECT_PORT=9500
       - LOG_LEVEL=info
       - REDIS_POOL_SIZE=20
@@ -236,7 +260,7 @@ services:
     networks:
       - alt-staging
     secrets:
-      - redis_password
+      - redis_streams_password
       - mqhub_auth_token
       - rask_ingest_token
     healthcheck:
@@ -438,7 +462,8 @@ services:
       - EMBEDDER_TIMEOUT=10
       - AUGUR_EXTERNAL=http://127.0.0.1:9
       - AUGUR_KNOWLEDGE_MODEL=gemma4-e4b-12k
-      - SEARCH_INDEXER_URL=http://127.0.0.1:9
+      # https even though nothing listens: config rejects a plaintext value.
+      - SEARCH_INDEXER_URL=https://127.0.0.1:9
       - QUERY_EXPANSION_URL=http://127.0.0.1:9
       - QUERY_EXPANSION_TIMEOUT=30
       - RERANK_ENABLED=false
@@ -465,6 +490,9 @@ services:
       - MTLS_CERT_FILE=/certs/rag-orchestrator.pem
       - MTLS_KEY_FILE=/certs/rag-orchestrator-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      # Loaded and validated at startup as in production. EMBEDDER_EXTERNAL is
+      # loopback above, so the embedding-proxy hop it would authenticate is not
+      # part of this slice; news-creator's slice is where the bearer is exercised.
       - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
     secrets:
       - rask_ingest_token
@@ -504,8 +532,8 @@ services:
     environment:
       - PORT=9400
       - BACKEND_API_URL=http://stub-backend
-      - REDIS_STREAMS_URL=redis://redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      - REDIS_STREAMS_URL=redis://streams@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=tag-generator-group
       - CONSUMER_NAME=tag-generator-staging
@@ -534,7 +562,7 @@ services:
       - HF_HUB_OFFLINE=1
       - TRANSFORMERS_OFFLINE=1
     secrets:
-      - redis_password
+      - redis_streams_password
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/trust:ro
@@ -589,6 +617,32 @@ services:
       retries: 20
       start_period: 2s
 
+  # The bearer-checking hop production keeps between news-creator and the GPU
+  # backend (compose/ai.yaml generation-proxy), here in front of the stub. It
+  # answers 401 to a request without the inference token, so every news-creator
+  # spec that reaches the stub also proves news-creator sends it.
+  generation-proxy:
+    build:
+      context: ../docker/inference-proxy
+      dockerfile: Dockerfile
+    image: alt-staging/inference-proxy:local
+    container_name: alt-staging-generation-proxy
+    profiles: [news-creator]
+    depends_on:
+      news-creator-ollama-stub:
+        condition: service_healthy
+    command: ["--target", "http://news-creator-ollama-stub:11435", "--port", "11436", "--token-file", "/run/secrets/inference_service_token"]
+    secrets:
+      - inference_service_token
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD", "/inference-proxy", "healthcheck", "-port", "11436"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
   news-creator:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-news-creator:${NEWS_CREATOR_IMAGE_TAG:-main}
     build:
@@ -597,7 +651,7 @@ services:
     container_name: alt-staging-news-creator
     profiles: [news-creator]
     depends_on:
-      news-creator-ollama-stub:
+      generation-proxy:
         condition: service_healthy
     environment:
       - PEER_IDENTITY_STRICT=true
@@ -610,8 +664,10 @@ services:
       # — the staging stack runs unauthenticated and the secret is only
       # consumed by Pact publish helpers, not by request handlers.
       - SERVICE_SECRET=alt-staging-test-service-secret
-      # Point the Ollama driver at the in-network stub.
-      - LLM_SERVICE_URL=http://news-creator-ollama-stub:11435
+      # The Ollama driver reaches the stub only through generation-proxy, and
+      # sends this token as its bearer — the production wiring.
+      - LLM_SERVICE_URL=http://generation-proxy:11436
+      - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
       - LLM_MODEL=gemma3:4b-it-qat
       # The RAG usecases do not read LLM_MODEL. `expand_query_usecase` and
       # `plan_query_usecase` both take `config.rag_query_model`, which
@@ -643,6 +699,8 @@ services:
       # checks; Phase 4 will override MAX_QUEUE_DEPTH at run time.
       - MAX_QUEUE_DEPTH=10
       - SCHEDULING_RT_RESERVED_SLOTS=1
+    secrets:
+      - inference_service_token
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/news-creator/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/news-creator/pki}:/trust:ro
@@ -1665,6 +1723,10 @@ networks:
     # image pulls happen outside this network so they're unaffected.
     internal: true
 
+configs:
+  redis_entrypoint:
+    file: ../docker/redis/entrypoint.sh
+
 secrets:
   rask_ingest_token:
     file: ../e2e/playwright/_fixtures/test-credentials/rask_ingest_token.txt
@@ -1687,8 +1749,10 @@ secrets:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cookie_secret.txt
   kratos_cipher_secret:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cipher_secret.txt
-  redis_password:
-    file: ../e2e/fixtures/staging-secrets/redis_password.txt
+  redis_streams_password:
+    file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_password.txt
+  redis_limiter_password:
+    file: ../e2e/playwright/_fixtures/test-credentials/redis_limiter_password.txt
   inference_service_token:
     file: ../e2e/playwright/_fixtures/test-credentials/inference_service_token.txt
   sovereign_operator_token:

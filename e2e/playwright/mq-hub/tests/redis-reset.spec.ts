@@ -162,7 +162,7 @@ test.describe("Redis reset safety guard and protocol", () => {
 			const result = await resetCanonicalStreams({
 				allowReset: true,
 				allowLocalhostForTesting: true,
-				redisUrl: `redis://127.0.0.1:${mockPort}`,
+				redisUrl: `redis://streams@127.0.0.1:${mockPort}`,
 				password: "test-staging-secret",
 				streamsToReset: CANONICAL_RESET_KEYS,
 			});
@@ -170,19 +170,19 @@ test.describe("Redis reset safety guard and protocol", () => {
 			expect(result.executed).toBe(true);
 			expect(result.deletedCount).toBe(5);
 
-			// Verify wire commands sequence
-			expect(receivedCommands).toHaveLength(3);
+			// Exactly two commands, both on the `streams` ACL user's allow-list in
+			// docker/redis/entrypoint.sh. QUIT is not on it, so the client closes
+			// the socket itself instead of asking the server to.
+			expect(receivedCommands).toHaveLength(2);
 
-			// 1. AUTH
-			expect(receivedCommands[0]).toEqual(["AUTH", "test-staging-secret"]);
+			// 1. Two-argument AUTH: production's `default` user is off, so the
+			//    single-argument form is WRONGPASS there.
+			expect(receivedCommands[0]).toEqual(["AUTH", "streams", "test-staging-secret"]);
 
 			// 2. DEL only allowed canonical keys
 			expect(receivedCommands[1]?.[0]).toBe("DEL");
 			expect(receivedCommands[1]?.slice(1)).toEqual(expect.arrayContaining([...CANONICAL_RESET_KEYS]));
 			expect(receivedCommands[1]?.length).toBe(6); // DEL + 5 keys
-
-			// 3. QUIT
-			expect(receivedCommands[2]).toEqual(["QUIT"]);
 		} finally {
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}
@@ -232,7 +232,7 @@ test.describe("Redis reset safety guard and protocol", () => {
 		).toBe(true);
 	});
 
-	test("rejects promptly on premature server EOF before QUIT", async () => {
+	test("rejects promptly on premature server EOF before the DEL reply", async () => {
 		const server = net.createServer((socket) => {
 			socket.on("data", () => {
 				// Immediately close socket on receiving first byte without sending full response
@@ -249,6 +249,9 @@ test.describe("Redis reset safety guard and protocol", () => {
 					allowReset: true,
 					allowLocalhostForTesting: true,
 					redisUrl: `redis://127.0.0.1:${port}`,
+					// Hermetic: the live suite exports REDIS_PASSWORD_FILE, which
+					// would otherwise turn this into an AUTH exchange.
+					passwordFile: "",
 				}),
 			).rejects.toThrow(/Redis connection closed prematurely|Redis reset network error/);
 		} finally {
@@ -273,8 +276,37 @@ test.describe("Redis reset safety guard and protocol", () => {
 					allowReset: true,
 					allowLocalhostForTesting: true,
 					redisUrl: `redis://127.0.0.1:${port}`,
+					// Hermetic: no AUTH, so the malformed reply is the DEL reply.
+					passwordFile: "",
 				}),
 			).rejects.toThrow(/Redis protocol error/);
+		} finally {
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	});
+
+	test("refuses a password whose REDIS_URL names no ACL user, before connecting", async () => {
+		let connections = 0;
+		const server = net.createServer((socket) => {
+			connections++;
+			socket.destroy();
+		});
+
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const port = (server.address() as net.AddressInfo).port;
+
+		try {
+			// The single-argument AUTH this would need authenticates as `default`,
+			// which docker/redis/entrypoint.sh switches off.
+			await expect(
+				resetCanonicalStreams({
+					allowReset: true,
+					allowLocalhostForTesting: true,
+					redisUrl: `redis://127.0.0.1:${port}`,
+					password: "test-staging-secret",
+				}),
+			).rejects.toThrow("REDIS_URL must name the Redis ACL user");
+			expect(connections).toBe(0);
 		} finally {
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}
@@ -319,7 +351,7 @@ test.describe("Redis reset safety guard and protocol", () => {
 		).rejects.toThrow("Configured REDIS_PASSWORD_FILE is empty");
 
 		// 3. Valid password file correctly authorizes with mock server
-		let authArg = "";
+		let authArgs: string[] = [];
 		const server = net.createServer((socket) => {
 			let buffer = Buffer.alloc(0);
 			socket.on("data", (chunk) => {
@@ -347,7 +379,7 @@ test.describe("Redis reset safety guard and protocol", () => {
 					buffer = buffer.subarray(offset);
 					const cmd = args[0]?.toUpperCase();
 					if (cmd === "AUTH") {
-						authArg = args[1] ?? "";
+						authArgs = args.slice(1);
 						socket.write("+OK\r\n");
 					} else if (cmd === "DEL") {
 						socket.write(`:${args.length - 1}\r\n`);
@@ -365,11 +397,11 @@ test.describe("Redis reset safety guard and protocol", () => {
 			const res = await resetCanonicalStreams({
 				allowReset: true,
 				allowLocalhostForTesting: true,
-				redisUrl: `redis://127.0.0.1:${port}`,
+				redisUrl: `redis://streams@127.0.0.1:${port}`,
 				passwordFile: validFile,
 			});
 			expect(res.executed).toBe(true);
-			expect(authArg).toBe("fixture-secret-token");
+			expect(authArgs).toEqual(["streams", "fixture-secret-token"]);
 		} finally {
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 			fs.rmSync(tempDir, { recursive: true, force: true });

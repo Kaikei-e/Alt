@@ -15,7 +15,7 @@
  * with an opaque diff. Reading them from the environment makes the compose
  * value and the expectation one fact.
  */
-import { requiredEnv, requiredIntEnv, runId } from "../../_shared/env.js";
+import { requiredEnv, requiredIntEnv, requiredSecretFile, runId } from "../../_shared/env.js";
 
 export const env = {
 	/** The one uvicorn listener: REST + /metrics + /openapi.json. */
@@ -52,6 +52,17 @@ export const env = {
 	 * which every handler answers 429 + `Retry-After: 30`.
 	 */
 	maxQueueDepth: requiredIntEnv("MAX_QUEUE_DEPTH"),
+
+	/**
+	 * The bearer-checking inference proxy news-creator's LLM_SERVICE_URL points
+	 * at, in front of the Ollama stub — the same hop production has in front of
+	 * the GPU backend. tests/inference-proxy.spec.ts proves it rejects a request
+	 * without the bearer, which is what makes every green generation spec
+	 * evidence that news-creator sends it.
+	 */
+	generationProxyURL: requiredEnv("GENERATION_PROXY_URL"),
+	/** The token file both news-creator and generation-proxy mount. */
+	inferenceToken: requiredSecretFile("INFERENCE_SERVICE_TOKEN_FILE"),
 
 	/** Unique per dispatch; embedded in seeded ids so reruns never collide. */
 	runId: runId(),
