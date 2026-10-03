@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { request } from "@playwright/test";
+import { clientCertificates } from "../../_shared/client-auth.js";
 import { connectListening, httpBody, httpOk, waitForReady } from "../../_shared/readiness.js";
 import { SECONDARY_USER_ID, TEST_USER_ID, mintBackendToken } from "../src/auth.js";
 import { env, seedEnv } from "../src/env.js";
@@ -34,6 +35,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export default async function globalSetup(): Promise<void> {
 	const seed = seedEnv();
+	const readyOptions = {
+		...READY,
+		context: {
+			clientCertificates: clientCertificates(
+				seed.searchIndexerURL,
+				seed.clientCert,
+				seed.clientKey,
+			),
+		},
+	};
 
 	await waitForReady(
 		[
@@ -53,7 +64,7 @@ export default async function globalSetup(): Promise<void> {
 			 */
 			httpOk(`${seed.searchIndexerURL}/health`, "search-indexer has bootstrapped its index"),
 		],
-		READY,
+		readyOptions,
 	);
 
 	await seedMeilisearch(seed);
@@ -121,7 +132,7 @@ export default async function globalSetup(): Promise<void> {
 			 */
 			connectListening(env.baseURL, "/alt.acolyte.v1.AcolyteService/HealthCheck"),
 		],
-		READY,
+		readyOptions,
 	);
 }
 
