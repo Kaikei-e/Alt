@@ -121,6 +121,14 @@ class SecurityWiringTests(unittest.TestCase):
         token = secret_file.read_text().strip()
         self.assertGreaterEqual(len(token), 16)
 
+    def test_rag_orchestrator_stub_upstreams_satisfy_its_startup_contract(self):
+        env = environment(self.services["rag-orchestrator"])
+        # rag-orchestrator refuses a plaintext SEARCH_INDEXER_URL at startup, even
+        # one this slice never dials.
+        self.assertEqual(urlparse(env.get("SEARCH_INDEXER_URL", "")).scheme, "https")
+        # One inference token covers embedder, rerank and Augur.
+        self.assertNotIn("RERANK_INFERENCE_TOKEN_FILE", env)
+
     def test_preprocessor_upstream_uses_verified_https_and_server_name(self):
         for name in ("alt-backend", "alt-harvester"):
             with self.subTest(service=name):

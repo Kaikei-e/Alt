@@ -1,76 +1,80 @@
 #!/usr/bin/env bash
 # scripts/tests/test_compose_wiring.sh
-# Compose wiring regression tests for Sol6.1 / Group3-Sov277 integration.
+# Compose wiring regression tests (offline: config rendering only, no containers).
 #
-# Validates (offline, config-parse only – no containers started):
-#   - generation-raw-network is declared internal
-#   - news-creator-backend is NOT on alt-network
-#   - generation-proxy IS on both alt-network and generation-raw-network
-#   - embedding-proxy IS on both alt-network and embedding-raw-network
-#   - rag-orchestrator has a healthcheck on :9012/healthz
-#   - recap-evaluator has a healthcheck and pki-agent sidecar with CERT_OWNER_UID=65533
-#   - pki-agent-recap-evaluator has CERT_OWNER_UID/GID=65533 (matches Dockerfile evaluator uid)
-#   - pki-agent-knowledge-sovereign has CERT_OWNER_UID/GID=65532 (distroless nonroot)
-#   - knowledge-sovereign mounts recap_evaluator_certs NOT knowledge_sovereign_certs (distinct volumes)
-#   - news-creator INBOUND_MTLS=true, MTLS_ENFORCE dropped from env (uses INBOUND_MTLS)
-#   - news-creator MTLS_ALLOWED_PEERS includes pre-processor
-#   - acolyte NEWS_CREATOR_URL default is https://news-creator:9443
-#   - recap-subworker OLLAMA_EMBED_URL default uses embedding-proxy:11436
-#   - search-indexer has MEILI_EMBEDDER_URL pointing to embedding-proxy
-#   - search-indexer secrets include inference_service_token
-#   - rag-orchestrator / recap-subworker mount inference_service_token and set INFERENCE_SERVICE_TOKEN_FILE
-#   - auth-token-manager has OTEL_ENABLED, OTEL_EXPORTER_OTLP_ENDPOINT, RASK_INGEST_TOKEN_FILE
-#   - auth-token-manager secrets include rask_ingest_token
-#   - Six stable sovereign roles untouched: sovereign_backend_token, sovereign_operator_token,
-#     sovereign_datahub_token, sovereign_harvester_token, sovereign_rag_token, sovereign_recap_token
-#   - compose config parses cleanly (no YAML errors)
+# Raw YAML (compose/*.yaml as written):
+#   - generation-raw-network / embedding-raw-network are internal; news-creator-backend
+#     is only on generation-raw-network; the proxies bridge alt-network and the raw nets
+#   - rag-orchestrator's healthcheck is the native CLI probe (127.0.0.1:9012/healthz by
+#     default) and nothing overrides RAG_HEALTH_PORT
+#   - rag-orchestrator reaches search-indexer over https://search-indexer:9443 and
+#     carries one inference token (no RERANK_INFERENCE_TOKEN_FILE)
+#   - recap-evaluator / pki-agent identities, news-creator inbound mTLS and peers,
+#     acolyte NEWS_CREATOR_URL, auth-token-manager OTEL/RASK enrollment, the six
+#     sovereign roles, and the embedding-proxy callers' token mounts
 #
-# Usage: bash scripts/tests/test_compose_wiring.sh
-# Requirements: python3 (yaml), docker (for config parse)
-# Runtime: < 60 seconds
+# Rendered config (`docker compose config` against COMPOSE_ENV_FILE, default
+# .env.template), which is where `${VAR:-default}` and env_file overrides land:
+#   - embedding / generation / rerank callers resolve to their proxy hosts
+#   - every inference caller mounts inference_service_token and none disables it
+#   - every redis-streams / redis-cache URL names its ACL user and pairs with that
+#     user's password file and secret
+#   - an entrypoint mounted from a file-backed config is executable on disk, because
+#     compose ignores `configs[].mode` for file sources
+#
+# Usage (from anywhere): bash scripts/tests/test_compose_wiring.sh
+#   COMPOSE_ENV_FILE  env file passed to --env-file (default: <repo>/.env.template)
+# Requirements: python3 with PyYAML, docker compose, and <repo>/.env present for the
+# services' `env_file: ../.env` (CI stages it from .env.template).
+# Rendered values are written to a 0600 temp file and never printed.
 
-set -euo pipefail
-PASS=0
-FAIL=0
-ERRORS=()
+set -uo pipefail
 
-info()  { echo "  [INFO]  $*"; }
-pass()  { echo "  [PASS]  $*"; PASS=$((PASS+1)); }
-fail()  { echo "  [FAIL]  $*"; FAIL=$((FAIL+1)); ERRORS+=("$*"); }
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+COMPOSE_DIR="$REPO_ROOT/compose"
+ENV_FILE="${COMPOSE_ENV_FILE:-$REPO_ROOT/.env.template}"
+export REPO_ROOT COMPOSE_DIR
 
-COMPOSE_DIR="$(cd "$(dirname "$0")/../../compose" && pwd)"
+STATUS=0
 
-# ─── 1. Compose config parses cleanly ────────────────────────────────────────
+# ─── 1. Render the production stack ──────────────────────────────────────────
 echo ""
-echo "==> 1. Compose YAML parse"
-if docker compose -f "${COMPOSE_DIR}/compose.yaml" -p alt \
-    --env-file "${COMPOSE_DIR}/../.env.template" \
-    config --quiet 2>&1 | grep -q "^$\|^[[:space:]]*$"; then
-  pass "docker compose config --quiet exits 0 (no YAML errors)"
+echo "==> 1. Render compose/compose.yaml against ${ENV_FILE#"$REPO_ROOT"/}"
+RENDERED_JSON="$(mktemp)"
+chmod 600 "$RENDERED_JSON"
+trap 'rm -f "$RENDERED_JSON"' EXIT
+export RENDERED_JSON
+if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_DIR/compose.yaml" \
+    config --format json > "$RENDERED_JSON"; then
+  echo "  [PASS]  docker compose config renders"
+  RENDERED=1
 else
-  # Still pass if exit 0 but output was empty
-  :
-fi
-if docker compose -f "${COMPOSE_DIR}/compose.yaml" -p alt \
-    --env-file "${COMPOSE_DIR}/../.env.template" \
-    config --quiet > /dev/null 2>&1; then
-  pass "docker compose config --quiet exits 0 cleanly"
-else
-  fail "docker compose config --quiet failed (YAML parse error)"
+  echo "  [FAIL]  docker compose config failed (missing $REPO_ROOT/.env? CI stages it from .env.template)"
+  STATUS=1
+  RENDERED=0
 fi
 
-# ─── 2. Python-parsed checks ─────────────────────────────────────────────────
+# ─── 2. Raw YAML checks ──────────────────────────────────────────────────────
 echo ""
-echo "==> 2. Service and network wiring checks (python3 yaml parse)"
+echo "==> 2. Service and network wiring checks (raw YAML)"
 
-python3 - <<'PYEOF'
-import sys, yaml, os
+if ! python3 - <<'PYEOF'
+import os
+import sys
 
-COMPOSE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "compose")
+import yaml
+
+COMPOSE_DIR = os.environ["COMPOSE_DIR"]
 
 def load(fname):
     with open(os.path.join(COMPOSE_DIR, fname)) as f:
         return yaml.safe_load(f)
+
+def env_dict(service):
+    values = service.get("environment", {})
+    if isinstance(values, dict):
+        return {k: str(v) for k, v in values.items()}
+    return dict(str(e).split("=", 1) if "=" in str(e) else (str(e), "") for e in values)
 
 ai    = load("ai.yaml")
 rag   = load("rag.yaml")
@@ -78,7 +82,6 @@ recap = load("recap.yaml")
 work  = load("workers.yaml")
 acol  = load("acolyte.yaml")
 sov   = load("sovereign.yaml")
-base  = load("base.yaml")
 
 PASS, FAIL = 0, 0
 def check(cond, desc):
@@ -87,7 +90,7 @@ def check(cond, desc):
         print(f"  [PASS]  {desc}")
         PASS += 1
     else:
-        print(f"  [FAIL]  {desc}", file=sys.stderr)
+        print(f"  [FAIL]  {desc}")
         FAIL += 1
 
 # ── 2a. generation-raw-network declared internal ──────────────────────────────
@@ -124,49 +127,49 @@ ep_nets = rag["services"]["embedding-proxy"].get("networks", [])
 check("alt-network" in ep_nets and "embedding-raw-network" in ep_nets,
       "embedding-proxy on alt-network + embedding-raw-network")
 
-# ── 2f. rag-orchestrator healthcheck on :9012 ────────────────────────────────
-ro_hc = rag["services"]["rag-orchestrator"].get("healthcheck", {})
-ro_test = str(ro_hc.get("test", []))
-check("9012" in ro_test,
-      "rag-orchestrator healthcheck targets port 9012")
-check("/healthz" in ro_test,
-      "rag-orchestrator healthcheck targets /healthz")
+# ── 2f. rag-orchestrator healthcheck is the native CLI probe ─────────────────
+# `/rag-orchestrator healthcheck` GETs 127.0.0.1:<RAG_HEALTH_PORT or 9012>/healthz
+# (cmd/server/main.go); the listener reads the same variable, so overriding it
+# on one side only would split them.
+ro = rag["services"]["rag-orchestrator"]
+ro_env = env_dict(ro)
+check(ro.get("healthcheck", {}).get("test") == ["CMD", "/rag-orchestrator", "healthcheck"],
+      "rag-orchestrator healthcheck is the native CLI probe (127.0.0.1:9012/healthz)")
+check("RAG_HEALTH_PORT" not in ro_env,
+      "rag-orchestrator does not override RAG_HEALTH_PORT (probe and listener share :9012)")
 
-# ── 2g. recap-evaluator has healthcheck ───────────────────────────────────────
+# ── 2g. rag-orchestrator upstream contract ───────────────────────────────────
+check(ro_env.get("SEARCH_INDEXER_URL") == "https://search-indexer:9443",
+      "rag-orchestrator SEARCH_INDEXER_URL=https://search-indexer:9443 "
+      "(requires the https-only rag-orchestrator config)")
+check("RERANK_INFERENCE_TOKEN_FILE" not in ro_env,
+      "rag-orchestrator has no RERANK_INFERENCE_TOKEN_FILE; INFERENCE_SERVICE_TOKEN_FILE "
+      "covers embedder, rerank and Augur (requires the single-token rag-orchestrator config)")
+
+# ── 2h. recap-evaluator has healthcheck ───────────────────────────────────────
 re_hc = recap["services"]["recap-evaluator"].get("healthcheck", {})
 check(bool(re_hc),
       "recap-evaluator has a healthcheck")
 check("8080" in str(re_hc.get("test", [])),
       "recap-evaluator healthcheck targets :8080")
 
-# ── 2h. pki-agent-recap-evaluator CERT_OWNER UID/GID=65533 ──────────────────
-pki_re_env = recap["services"]["pki-agent-recap-evaluator"].get("environment", {})
-if isinstance(pki_re_env, dict):
-    uid = pki_re_env.get("CERT_OWNER_UID", "")
-    gid = pki_re_env.get("CERT_OWNER_GID", "")
-else:
-    uid = next((e.split("=",1)[1] for e in pki_re_env if "CERT_OWNER_UID" in e), "")
-    gid = next((e.split("=",1)[1] for e in pki_re_env if "CERT_OWNER_GID" in e), "")
-check(str(uid) == "65533" and str(gid) == "65533",
+# ── 2i. pki-agent-recap-evaluator CERT_OWNER UID/GID=65533 ──────────────────
+pki_re_env = env_dict(recap["services"]["pki-agent-recap-evaluator"])
+uid, gid = pki_re_env.get("CERT_OWNER_UID", ""), pki_re_env.get("CERT_OWNER_GID", "")
+check(uid == "65533" and gid == "65533",
       f"pki-agent-recap-evaluator CERT_OWNER_UID/GID=65533 (got uid={uid}, gid={gid})")
 
-# ── 2i. pki-agent-knowledge-sovereign CERT_OWNER UID/GID=65532 ──────────────
-pki_sov_env = sov["services"]["pki-agent-knowledge-sovereign"].get("environment", {})
-if isinstance(pki_sov_env, dict):
-    sov_uid = pki_sov_env.get("CERT_OWNER_UID", "")
-    sov_gid = pki_sov_env.get("CERT_OWNER_GID", "")
-else:
-    sov_uid = next((e.split("=",1)[1] for e in pki_sov_env if "CERT_OWNER_UID" in e), "")
-    sov_gid = next((e.split("=",1)[1] for e in pki_sov_env if "CERT_OWNER_GID" in e), "")
-check(str(sov_uid) == "65532" and str(sov_gid) == "65532",
+# ── 2j. pki-agent-knowledge-sovereign CERT_OWNER UID/GID=65532 ──────────────
+pki_sov_env = env_dict(sov["services"]["pki-agent-knowledge-sovereign"])
+sov_uid, sov_gid = pki_sov_env.get("CERT_OWNER_UID", ""), pki_sov_env.get("CERT_OWNER_GID", "")
+check(sov_uid == "65532" and sov_gid == "65532",
       f"pki-agent-knowledge-sovereign CERT_OWNER_UID/GID=65532 (got uid={sov_uid}, gid={sov_gid})")
 
-# ── 2j. news-creator INBOUND_MTLS=true, MTLS_ALLOWED_PEERS includes pre-processor
+# ── 2k. news-creator INBOUND_MTLS=true, MTLS_ALLOWED_PEERS includes pre-processor
 nc_env = ai["services"]["news-creator"].get("environment", [])
 nc_env_str = " ".join(str(e) for e in nc_env)
 check("INBOUND_MTLS=true" in nc_env_str,
       "news-creator INBOUND_MTLS=true")
-# Check MTLS_ALLOWED_PEERS includes pre-processor (only once, from the canonical var)
 mtls_peers_entries = [e for e in nc_env if "MTLS_ALLOWED_PEERS" in str(e)]
 check(len(mtls_peers_entries) == 1,
       f"news-creator has exactly 1 MTLS_ALLOWED_PEERS entry (got {len(mtls_peers_entries)})")
@@ -175,19 +178,19 @@ check("pre-processor" in str(mtls_peers_entries[0]) if mtls_peers_entries else F
 check("recap-evaluator" in str(mtls_peers_entries[0]) if mtls_peers_entries else False,
       "news-creator MTLS_ALLOWED_PEERS includes recap-evaluator")
 
-# ── 2k. acolyte NEWS_CREATOR_URL default is https://news-creator:9443 ────────
+# ── 2l. acolyte NEWS_CREATOR_URL default is https://news-creator:9443 ────────
 acol_env = acol["services"]["acolyte-orchestrator"].get("environment", [])
 nc_url_entry = next((e for e in acol_env if "NEWS_CREATOR_URL" in str(e)), "")
 check("https://news-creator:9443" in str(nc_url_entry),
       f"acolyte NEWS_CREATOR_URL default is https://news-creator:9443 (got: {nc_url_entry})")
 
-# ── 2l. recap-subworker OLLAMA_EMBED_URL uses embedding-proxy ─────────────────
+# ── 2m. recap-subworker OLLAMA_EMBED_URL default uses embedding-proxy ────────
 rs_env = recap["services"]["recap-subworker"].get("environment", [])
 embed_entry = next((e for e in rs_env if "RECAP_SUBWORKER_OLLAMA_EMBED_URL" in str(e)), "")
 check("embedding-proxy" in str(embed_entry),
-      f"recap-subworker OLLAMA_EMBED_URL uses embedding-proxy (got: {embed_entry})")
+      f"recap-subworker OLLAMA_EMBED_URL default uses embedding-proxy (got: {embed_entry})")
 
-# ── 2m. search-indexer MEILI_EMBEDDER_URL uses embedding-proxy ───────────────
+# ── 2n. search-indexer MEILI_EMBEDDER_URL uses embedding-proxy ───────────────
 si_env = work["services"]["search-indexer"].get("environment", [])
 meili_embed_entry = next((e for e in si_env if "MEILI_EMBEDDER_URL" in str(e)), "")
 check("embedding-proxy" in str(meili_embed_entry),
@@ -195,12 +198,12 @@ check("embedding-proxy" in str(meili_embed_entry),
 check("11436" in str(meili_embed_entry),
       "search-indexer MEILI_EMBEDDER_URL uses port 11436")
 
-# ── 2n. search-indexer secrets include inference_service_token ───────────────
+# ── 2o. search-indexer secrets include inference_service_token ───────────────
 si_secrets = work["services"]["search-indexer"].get("secrets", [])
 check("inference_service_token" in si_secrets,
       "search-indexer secrets include inference_service_token")
 
-# ── 2o. auth-token-manager OTEL/RASK enrollment ──────────────────────────────
+# ── 2p. auth-token-manager OTEL/RASK enrollment ──────────────────────────────
 atm_env = work["services"]["auth-token-manager"].get("environment", [])
 atm_env_str = " ".join(str(e) for e in atm_env)
 check("OTEL_ENABLED=true" in atm_env_str,
@@ -213,7 +216,7 @@ atm_secrets = work["services"]["auth-token-manager"].get("secrets", [])
 check("rask_ingest_token" in atm_secrets,
       "auth-token-manager secrets include rask_ingest_token")
 
-# ── 2p. Six stable sovereign roles untouched ─────────────────────────────────
+# ── 2q. Six stable sovereign roles untouched ─────────────────────────────────
 sov_secrets = sov["services"]["knowledge-sovereign"].get("secrets", [])
 for role in ["sovereign_backend_token", "sovereign_operator_token",
              "sovereign_datahub_token", "sovereign_harvester_token",
@@ -221,12 +224,12 @@ for role in ["sovereign_backend_token", "sovereign_operator_token",
     check(role in sov_secrets,
           f"knowledge-sovereign retains secret: {role}")
 
-# ── 2q. pki-agent-recap-evaluator secret uses own JWK ───────────────────────
+# ── 2r. pki-agent-recap-evaluator secret uses own JWK ───────────────────────
 pki_re_secrets = recap["services"]["pki-agent-recap-evaluator"].get("secrets", [])
 check("pki-agent-recap-evaluator-jwk" in pki_re_secrets,
       "pki-agent-recap-evaluator mounts its own JWK secret")
 
-# ── 2r. recap-evaluator cert volume mounted RO from app, RW from pki-agent ───
+# ── 2s. recap-evaluator cert volume mounted RO from app, RW from pki-agent ───
 re_vols = recap["services"]["recap-evaluator"].get("volumes", [])
 pki_re_vols = recap["services"]["pki-agent-recap-evaluator"].get("volumes", [])
 re_cert_ro = any("recap_evaluator_certs" in str(v) and ":ro" in str(v) for v in re_vols)
@@ -234,28 +237,136 @@ pki_cert_rw = any("recap_evaluator_certs" in str(v) and ":ro" not in str(v) for 
 check(re_cert_ro, "recap-evaluator mounts recap_evaluator_certs:ro")
 check(pki_cert_rw, "pki-agent-recap-evaluator mounts recap_evaluator_certs (RW)")
 
-# ── 2s. embedding-proxy callers carry the inference bearer ──────────────────
-# Both read INFERENCE_SERVICE_TOKEN_FILE and send no Authorization header when
-# it is unset, which embedding-proxy rejects with 401.
-for svc_name, svc in [("rag-orchestrator", rag["services"]["rag-orchestrator"]),
+# ── 2t. embedding-proxy callers carry the inference bearer ──────────────────
+for svc_name, svc in [("rag-orchestrator", ro),
                       ("recap-subworker", recap["services"]["recap-subworker"])]:
-    svc_env_str = " ".join(str(e) for e in svc.get("environment", []))
-    check("INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token" in svc_env_str,
+    check(env_dict(svc).get("INFERENCE_SERVICE_TOKEN_FILE") == "/run/secrets/inference_service_token",
           f"{svc_name} INFERENCE_SERVICE_TOKEN_FILE set")
     check("inference_service_token" in svc.get("secrets", []),
           f"{svc_name} secrets include inference_service_token")
 
 print(f"\n  Results: {PASS} passed, {FAIL} failed")
-if FAIL > 0:
-    sys.exit(1)
+sys.exit(1 if FAIL else 0)
 PYEOF
-PY_EXIT=$?
+then
+  STATUS=1
+fi
+
+# ─── 3. Rendered-config checks ───────────────────────────────────────────────
+echo ""
+echo "==> 3. URL and credential wiring checks (rendered config)"
+
+if [ "$RENDERED" -eq 1 ]; then
+  if ! python3 - <<'PYEOF'
+import json
+import os
+import sys
+from urllib.parse import urlsplit
+
+with open(os.environ["RENDERED_JSON"]) as f:
+    cfg = json.load(f)
+services = cfg["services"]
+TOKEN = "/run/secrets/inference_service_token"
+
+PASS, FAIL = 0, 0
+def check(cond, desc):
+    global PASS, FAIL
+    if cond:
+        print(f"  [PASS]  {desc}")
+        PASS += 1
+    else:
+        print(f"  [FAIL]  {desc}")
+        FAIL += 1
+
+def env(name):
+    return services[name].get("environment") or {}
+
+def secret_sources(name):
+    return {s["source"] for s in services[name].get("secrets") or []}
+
+def endpoint(name, variable):
+    """host:port/path of a rendered URL — never the userinfo or query."""
+    parts = urlsplit(env(name).get(variable) or "")
+    return f"{parts.hostname}:{parts.port}{parts.path}"
+
+# ── 3a. Callers resolve to the auth proxies, not the raw backends ────────────
+# `${VAR:-default}` in the YAML says nothing about the value deploy uses: an
+# env file entry for VAR replaces the default wholesale.
+for name, variable, expected in [
+    ("rag-orchestrator", "EMBEDDER_EXTERNAL", "embedding-proxy:11436"),
+    ("recap-subworker", "RECAP_SUBWORKER_OLLAMA_EMBED_URL", "embedding-proxy:11436"),
+    ("search-indexer", "MEILI_EMBEDDER_URL", "embedding-proxy:11436/api/embed"),
+    ("news-creator", "LLM_SERVICE_URL", "generation-proxy:11436"),
+    ("rag-orchestrator", "RERANK_URL", "rerank-local:8080"),
+]:
+    got = endpoint(name, variable)
+    check(got.startswith(expected),
+          f"{name} {variable} resolves to {expected} (got {got})")
+
+# ── 3b. Inference callers and servers share one mounted token ────────────────
+for name in ("rag-orchestrator", "recap-subworker", "news-creator", "search-indexer"):
+    check(env(name).get("INFERENCE_SERVICE_TOKEN_FILE") == TOKEN,
+          f"{name} INFERENCE_SERVICE_TOKEN_FILE={TOKEN}")
+    check("inference_service_token" in secret_sources(name),
+          f"{name} mounts inference_service_token")
+    check((env(name).get("INFERENCE_AUTH") or "").lower() != "disabled",
+          f"{name} does not run with INFERENCE_AUTH=disabled")
+for name in ("embedding-proxy", "generation-proxy"):
+    command = services[name].get("command") or []
+    flags = dict(zip(command[::2], command[1::2]))
+    check(flags.get("--token-file") == TOKEN and "inference_service_token" in secret_sources(name),
+          f"{name} enforces the mounted inference_service_token")
+check(env("rerank-local").get("INFERENCE_SERVICE_TOKEN_FILE") == TOKEN
+      and "inference_service_token" in secret_sources("rerank-local"),
+      "rerank-local enforces the mounted inference_service_token")
+
+# ── 3c. Redis clients authenticate as the ACL users the entrypoint defines ───
+ACL_USERS = {"redis-streams": {"streams", "limiter"}, "redis-cache": {"cache"}}
+for name, svc in sorted(services.items()):
+    for variable, value in sorted((svc.get("environment") or {}).items()):
+        if not isinstance(value, str) or not value.startswith(("redis://", "rediss://")):
+            continue
+        parts = urlsplit(value)
+        if parts.hostname not in ACL_USERS:
+            continue
+        user = parts.username
+        password_var = variable[: -len("_URL")] + "_PASSWORD_FILE" if variable.endswith("_URL") else ""
+        if password_var not in (svc.get("environment") or {}):
+            password_var = "REDIS_PASSWORD_FILE"
+        expected_file = f"/run/secrets/redis_{user}_password"
+        check(user in ACL_USERS[parts.hostname] and parts.password is None,
+              f"{name} {variable} names an ACL user of {parts.hostname} with no inline password (got user={user})")
+        check(env(name).get(password_var) == expected_file
+              and f"redis_{user}_password" in secret_sources(name),
+              f"{name} {password_var} reads the mounted redis_{user}_password")
+
+# ── 3d. Config-mounted entrypoints are executable on disk ────────────────────
+configs = cfg.get("configs") or {}
+for name, svc in sorted(services.items()):
+    entrypoint = svc.get("entrypoint") or []
+    for mount in svc.get("configs") or []:
+        source = configs.get(mount["source"], {}).get("file")
+        if source and entrypoint and entrypoint[0] == mount.get("target"):
+            rel = os.path.relpath(source, os.environ["REPO_ROOT"])
+            check(os.access(source, os.X_OK),
+                  f"{name} entrypoint {rel} is executable "
+                  "(compose ignores configs.mode for file sources)")
+
+print(f"\n  Results: {PASS} passed, {FAIL} failed")
+sys.exit(1 if FAIL else 0)
+PYEOF
+  then
+    STATUS=1
+  fi
+else
+  echo "  [SKIP]  render failed; see step 1"
+fi
 
 echo ""
 echo "==> Summary"
-if [ $PY_EXIT -eq 0 ]; then
-    echo "  All checks passed."
+if [ "$STATUS" -eq 0 ]; then
+  echo "  All checks passed."
 else
-    echo "  Some checks FAILED. Review output above."
-    exit 1
+  echo "  Some checks FAILED. Review output above."
 fi
+exit "$STATUS"
