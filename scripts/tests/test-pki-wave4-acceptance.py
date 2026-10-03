@@ -19,9 +19,10 @@ from __future__ import annotations
 import importlib.util
 import pathlib
 import re
+import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT =pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -275,6 +276,18 @@ def secret_names(svc: dict) -> set[str]:
     return names
 
 
+def git_tracked_files() -> set[str]:
+    # The index, not the disk: on the operator host `secrets/` is a symlink to
+    # the live secret store, so the provisioner passwords legitimately exist
+    # there. What must never happen is that one gets committed.
+    out = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "-z"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    return {path for path in out.decode("utf-8", "surrogateescape").split("\0") if path}
+
+
 def production_secrets() -> dict[str, dict]:
     secrets: dict[str, dict] = {}
     for path in production_compose_files():
@@ -430,6 +443,12 @@ for parent in PATTERN_B_PARENTS:
 print("14 in-process parents (final compose cutover)")
 
 secrets = production_secrets()
+tracked_files = git_tracked_files()
+check(
+    "git ls-files lists the repo (tracked-secret check below is live)",
+    "scripts/tests/test-pki-wave4-acceptance.py" in tracked_files,
+    f"{len(tracked_files)} tracked paths",
+)
 seen_subjects: dict[str, str] = {}
 seen_provisioners: dict[str, str] = {}
 seen_password_files: dict[str, str] = {}
@@ -512,7 +531,7 @@ for parent, meta in INPROCESS.items():
     )
     check(
         f"repo does not contain secret bytes for {jwk_file}",
-        not (ROOT / "secrets" / f"pki-agent-{parent}-jwk.txt").is_file(),
+        f"secrets/pki-agent-{parent}-jwk.txt" not in tracked_files,
         "do not check in provisioner passwords",
     )
     check(
