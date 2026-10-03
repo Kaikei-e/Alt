@@ -592,6 +592,12 @@ check(
     and (ok_payload.get("counts") or {}).get("compose_config_default_profiles")
     == 77,
 )
+check(
+    "--write-baseline note states the computed profiled count, not a hardcoded one",
+    ok_payload is not None
+    and f"omits the {len(prod_inv['profiled'])} profiled services"
+    in (ok_payload.get("discrepancy") or {}).get("compose_config_note", ""),
+)
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
