@@ -102,7 +102,7 @@
     "false_94": "compose/backup.yaml top-level networks.backup-docker-proxy is a network, not a service. A grep of indented `name:` keys counts it and reports 94. Unique keys under services: across the include chain are the declared total.",
     "compose_config_default_profiles": 77,
     "compose_config_full_profiles": 82,
-    "compose_config_note": "docker compose -f compose/compose.yaml config without --profile omits 5 profiled services (backup, perf, and TTS); the obsolete backup Docker proxy was removed.",
+    "compose_config_note": "docker compose -f compose/compose.yaml config without --profile omits the 5 profiled services (alt-perf, irodori-tts, k6, restic-backup, tts-speaker).",
     "yaml_declared": 82,
     "profiled_excluded_from_default_up": [
       "alt-perf",
