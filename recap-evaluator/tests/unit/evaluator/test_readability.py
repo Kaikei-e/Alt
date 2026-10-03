@@ -15,7 +15,9 @@ class TestReadabilityEvaluator:
         mock_ollama.score_readability.return_value = 4.2
 
         evaluator = ReadabilityEvaluator(mock_ollama)
-        score = await evaluator.evaluate("本日の主要な変化: AI エージェント導入で業務自動化が進む。")
+        score = await evaluator.evaluate(
+            "本日の主要な変化: AI エージェント導入で業務自動化が進む。"
+        )
 
         assert 1.0 <= score <= 5.0
         assert score == pytest.approx(4.2, abs=0.01)
@@ -42,9 +44,7 @@ class TestReadabilityEvaluator:
     async def test_llm_network_failure_returns_zero(self):
         """A recoverable LLM-call failure (network/HTTP) defaults to 0.0."""
         mock_ollama = AsyncMock()
-        mock_ollama.score_readability.side_effect = httpx.ConnectError(
-            "ollama unreachable"
-        )
+        mock_ollama.score_readability.side_effect = httpx.ConnectError("ollama unreachable")
 
         evaluator = ReadabilityEvaluator(mock_ollama)
         score = await evaluator.evaluate("要約。")
@@ -71,7 +71,5 @@ class TestReadabilityEvaluator:
         )
 
         evaluator = ReadabilityEvaluator(mock_ollama)
-        with pytest.raises(
-            AttributeError, match="'OllamaGateway' object has no attribute"
-        ):
+        with pytest.raises(AttributeError, match="'OllamaGateway' object has no attribute"):
             await evaluator.evaluate("要約。")

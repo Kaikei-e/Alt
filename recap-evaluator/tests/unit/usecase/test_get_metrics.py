@@ -1,6 +1,6 @@
 """Tests for GetMetricsUsecase."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -29,18 +29,14 @@ def mock_genre_eval():
 @pytest.fixture
 def mock_cluster_eval():
     m = AsyncMock()
-    m.evaluate_batch.return_value = {
-        "technology": ClusterMetrics(silhouette_score=0.35)
-    }
+    m.evaluate_batch.return_value = {"technology": ClusterMetrics(silhouette_score=0.35)}
     return m
 
 
 @pytest.fixture
 def mock_pipeline_eval():
     m = AsyncMock()
-    m.evaluate_batch.return_value = PipelineMetrics(
-        success_rate=0.95, alert_level=AlertLevel.OK
-    )
+    m.evaluate_batch.return_value = PipelineMetrics(success_rate=0.95, alert_level=AlertLevel.OK)
     return m
 
 
@@ -56,9 +52,7 @@ def get_metrics_uc(mock_genre_eval, mock_cluster_eval, mock_pipeline_eval, mock_
 
 
 class TestGetMetricsUsecase:
-    async def test_get_latest_returns_all_dimensions(
-        self, get_metrics_uc, mock_db
-    ):
+    async def test_get_latest_returns_all_dimensions(self, get_metrics_uc, mock_db):
         mock_db.fetch_recent_jobs.return_value = [SAMPLE_JOB]
 
         result = await get_metrics_uc.get_latest()
@@ -97,15 +91,11 @@ class TestGetMetricsUsecase:
         result = await get_metrics_uc.get_evaluation_history(limit=10)
 
         assert len(result) == 1
-        mock_db.fetch_evaluation_history.assert_called_once_with(
-            evaluation_type=None, limit=10
-        )
+        mock_db.fetch_evaluation_history.assert_called_once_with(evaluation_type=None, limit=10)
 
-    async def test_get_trends_returns_metrics_from_history(
-        self, get_metrics_uc, mock_db
-    ):
-        ts1 = datetime(2025, 1, 1, tzinfo=timezone.utc)
-        ts2 = datetime(2025, 1, 2, tzinfo=timezone.utc)
+    async def test_get_trends_returns_metrics_from_history(self, get_metrics_uc, mock_db):
+        ts1 = datetime(2025, 1, 1, tzinfo=UTC)
+        ts2 = datetime(2025, 1, 2, tzinfo=UTC)
         mock_db.fetch_evaluation_history.return_value = [
             {
                 "created_at": ts2,

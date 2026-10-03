@@ -139,8 +139,9 @@ ignore = [
 quote-style = "double"
 indent-style = "space"
 # py314 formatting drops the parentheses from multi-type except clauses; the
-# shared enrollment copy stays 3.13-parseable (tests/unit/infra/pki/test_compileall.py).
-exclude = ["src/recap_evaluator/infra/pki/**"]
+# shared enrollment copy and mtls_client stay 3.13-parseable
+# (tests/unit/infra/pki/test_compileall.py).
+exclude = ["src/recap_evaluator/infra/pki/**", "src/recap_evaluator/infra/mtls_client.py"]
 
 [tool.pyrefly]
 project-includes = ["src"]

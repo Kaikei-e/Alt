@@ -3,8 +3,9 @@
 TDD RED Phase: These tests define the expected behavior for the BERTScore evaluator.
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 from recap_evaluator.evaluator.bertscore_eval import BERTScoreEvaluator, BERTScoreResult
 
@@ -52,9 +53,7 @@ class TestBERTScoreEvaluator:
         """Mock the bert_score function."""
         import torch
 
-        with patch(
-            "recap_evaluator.evaluator.bertscore_eval.bert_score"
-        ) as mock:
+        with patch("recap_evaluator.evaluator.bertscore_eval.bert_score") as mock:
             # Return tensors like the real bert_score does
             mock.return_value = (
                 torch.tensor([0.85, 0.80]),  # Precision

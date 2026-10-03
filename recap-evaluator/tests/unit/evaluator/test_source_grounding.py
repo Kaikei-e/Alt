@@ -50,13 +50,21 @@ class TestSourceGroundingEvaluator:
     def test_batch_averages_over_outputs(self):
         evaluator = SourceGroundingEvaluator()
         outputs = [
-            {"body_json": {"bullets": [
-                {"text": "a", "source_sentence_ids": [1]},
-                {"text": "b", "source_sentence_ids": [2]},
-            ]}},
-            {"body_json": {"bullets": [
-                {"text": "c", "source_sentence_ids": []},
-                {"text": "d", "source_sentence_ids": []},
-            ]}},
+            {
+                "body_json": {
+                    "bullets": [
+                        {"text": "a", "source_sentence_ids": [1]},
+                        {"text": "b", "source_sentence_ids": [2]},
+                    ]
+                }
+            },
+            {
+                "body_json": {
+                    "bullets": [
+                        {"text": "c", "source_sentence_ids": []},
+                        {"text": "d", "source_sentence_ids": []},
+                    ]
+                }
+            },
         ]
         assert evaluator.compute_batch(outputs) == pytest.approx(0.5)

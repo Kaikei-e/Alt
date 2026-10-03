@@ -130,12 +130,8 @@ class ClusterEvaluator:
                 metrics.nmi = float(
                     normalized_mutual_info_score(ground_truth_labels, cluster_labels)
                 )
-                metrics.ari = float(
-                    adjusted_rand_score(ground_truth_labels, cluster_labels)
-                )
-                h, c, v = homogeneity_completeness_v_measure(
-                    ground_truth_labels, cluster_labels
-                )
+                metrics.ari = float(adjusted_rand_score(ground_truth_labels, cluster_labels))
+                h, c, v = homogeneity_completeness_v_measure(ground_truth_labels, cluster_labels)
                 metrics.homogeneity = float(h)
                 metrics.completeness = float(c)
                 metrics.v_measure = float(v)
@@ -153,9 +149,7 @@ class ClusterEvaluator:
 
         return metrics
 
-    async def evaluate_batch(
-        self, job_ids: list[UUID]
-    ) -> dict[str, ClusterMetrics]:
+    async def evaluate_batch(self, job_ids: list[UUID]) -> dict[str, ClusterMetrics]:
         all_results: dict[str, list[ClusterMetrics]] = {}
 
         for job_id in job_ids:
@@ -177,8 +171,7 @@ class ClusterEvaluator:
             # threshold check — averaging in a phantom 0.0 would make the
             # aggregate always read as CRITICAL regardless of real quality.
             sil_values = [
-                m.silhouette_score for m in metrics_list
-                if m.silhouette_score is not None
+                m.silhouette_score for m in metrics_list if m.silhouette_score is not None
             ]
             sil = float(np.mean(sil_values)) if sil_values else None
 
@@ -203,9 +196,7 @@ class ClusterEvaluator:
 
             aggregated[genre] = ClusterMetrics(
                 num_clusters=int(np.mean([m.num_clusters for m in metrics_list])),
-                avg_cluster_size=float(
-                    np.mean([m.avg_cluster_size for m in metrics_list])
-                ),
+                avg_cluster_size=float(np.mean([m.avg_cluster_size for m in metrics_list])),
                 min_cluster_size=int(np.min([m.min_cluster_size for m in metrics_list])),
                 max_cluster_size=int(np.max([m.max_cluster_size for m in metrics_list])),
                 silhouette_score=sil,

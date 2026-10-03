@@ -3,32 +3,35 @@
 Old anonymous success tests should fail RED (they bypass auth).
 Health and metrics endpoints remain unauthed.
 """
+
+import contextlib
+import os
 import secrets
 import tempfile
-import os
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-import contextlib
 
+from recap_evaluator.domain.models import AlertLevel, EvaluationRun, EvaluationType
 from recap_evaluator.main import create_app
-from recap_evaluator.domain.models import EvaluationRun, EvaluationType, AlertLevel
-from datetime import datetime, timezone
-from uuid import uuid4
 
 VALID_TOKEN = secrets.token_urlsafe(32)
 WRONG_TOKEN = secrets.token_urlsafe(32)
 
+
 @pytest.fixture
 def auth_file():
-    with tempfile.NamedTemporaryFile(mode='w+', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
         f.write(VALID_TOKEN)
         path = f.name
 
     yield path
-    os.remove(path)
+    Path(path).unlink()
+
 
 @pytest.fixture
 def test_app(auth_file):
@@ -42,7 +45,7 @@ def test_app(auth_file):
             evaluation_id=uuid4(),
             evaluation_type=EvaluationType.FULL,
             job_ids=[uuid4()],
-            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
             window_days=7,
             overall_alert_level=AlertLevel.OK,
         )
@@ -55,7 +58,7 @@ def test_app(auth_file):
             "cluster_alert_level": "ok",
             "pipeline_success_rate": 0.99,
             "pipeline_alert_level": "ok",
-            "last_evaluation_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "last_evaluation_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
         app.state.genre_evaluator = AsyncMock()
         app.state.cluster_evaluator = AsyncMock()
@@ -67,41 +70,53 @@ def test_app(auth_file):
 
         # Load token at startup like main.py will
         from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file
-        try:
+
+        with contextlib.suppress(Exception):
             app.state.api_token = load_bearer_token_from_file()
-        except Exception:
-            pass # might fail if bearer_auth is not implemented yet
 
         yield
 
     app.router.lifespan_context = dummy_lifespan
     return app
 
+
 @pytest.fixture
 def client(test_app):
     with TestClient(test_app) as c:
         yield c
 
+
 def test_evaluations_run_rejects_no_auth(client):
     resp = client.post("/api/v1/evaluations/run", json={"window_days": 7})
     assert resp.status_code == 401
 
+
 def test_evaluations_run_rejects_wrong_token(client):
-    resp = client.post("/api/v1/evaluations/run", json={"window_days": 7}, headers={"Authorization": f"Bearer {WRONG_TOKEN}"})
+    resp = client.post(
+        "/api/v1/evaluations/run",
+        json={"window_days": 7},
+        headers={"Authorization": f"Bearer {WRONG_TOKEN}"},
+    )
     assert resp.status_code == 401
+
 
 def test_evaluations_run_rejects_bearer_cafe(client):
     """Fast mounted dependency HTTP fixture test: Bearer cafe must return 401."""
-    resp = client.post("/api/v1/evaluations/run", json={"window_days": 7}, headers={"Authorization": "Bearer cafe"})
+    resp = client.post(
+        "/api/v1/evaluations/run", json={"window_days": 7}, headers={"Authorization": "Bearer cafe"}
+    )
     assert resp.status_code == 401
     assert resp.headers.get("www-authenticate") == "Bearer"
 
+
 def test_require_bearer_token_rejects_unicode_credentials():
     """Dependency unit test: Unicode characters in credentials must raise 401."""
-    from recap_evaluator.infra.bearer_auth import require_bearer_token
-    from fastapi.security import HTTPAuthorizationCredentials
-    from fastapi import HTTPException
     from unittest.mock import MagicMock
+
+    from fastapi import HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from recap_evaluator.infra.bearer_auth import require_bearer_token
 
     mock_req = MagicMock()
     mock_req.app.state.api_token = VALID_TOKEN
@@ -113,30 +128,41 @@ def test_require_bearer_token_rejects_unicode_credentials():
 
 
 def test_evaluations_run_accepts_valid_token(client):
-    resp = client.post("/api/v1/evaluations/run", json={"window_days": 7}, headers={"Authorization": f"Bearer {VALID_TOKEN}"})
+    resp = client.post(
+        "/api/v1/evaluations/run",
+        json={"window_days": 7},
+        headers={"Authorization": f"Bearer {VALID_TOKEN}"},
+    )
     assert resp.status_code == 200
+
 
 def test_health_accessible_without_auth(client):
     resp = client.get("/health")
     assert resp.status_code == 200
 
+
 def test_metrics_latest_accessible_without_auth(client):
     resp = client.get("/api/v1/metrics/latest")
     assert resp.status_code == 200
+
 
 def test_evaluations_list_rejects_no_auth(client):
     resp = client.get("/api/v1/evaluations")
     assert resp.status_code == 401
 
-def test_startup_fails_on_missing_token_file():
+
+def test_startup_fails_on_missing_token_file(tmp_path):
     from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file
+
+    os.environ["EVALUATOR_API_TOKEN_FILE"] = str(tmp_path / "does-not-exist")
     with pytest.raises(RuntimeError):
-        os.environ["EVALUATOR_API_TOKEN_FILE"] = "/tmp/does-not-exist-12345"
         load_bearer_token_from_file()
+
 
 def test_startup_fails_on_empty_token():
     from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file
-    with tempfile.NamedTemporaryFile(mode='w+', delete=False) as f:
+
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
         path = f.name
 
     os.environ["EVALUATOR_API_TOKEN_FILE"] = path
@@ -144,11 +170,13 @@ def test_startup_fails_on_empty_token():
         with pytest.raises(RuntimeError):
             load_bearer_token_from_file()
     finally:
-        os.remove(path)
+        Path(path).unlink()
+
 
 def test_token_rfc6750_validation():
     from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file
-    with tempfile.NamedTemporaryFile(mode='w+', delete=False) as f:
+
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
         f.write("invalid char @")
         path = f.name
 
@@ -157,11 +185,14 @@ def test_token_rfc6750_validation():
         with pytest.raises(RuntimeError):
             load_bearer_token_from_file()
     finally:
-        os.remove(path)
+        Path(path).unlink()
+
 
 def test_constant_time_comparison():
     # Will just check if hmac is used in the module
-    import recap_evaluator.infra.bearer_auth as ba
     import inspect
+
+    import recap_evaluator.infra.bearer_auth as ba
+
     source = inspect.getsource(ba)
     assert "hmac.compare_digest" in source

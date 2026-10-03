@@ -1,6 +1,6 @@
 """Tests for domain models."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from recap_evaluator.domain.models import (
@@ -86,7 +86,7 @@ class TestEvaluationRun:
             evaluation_id=uuid4(),
             evaluation_type=EvaluationType.FULL,
             job_ids=[uuid4()],
-            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
             window_days=7,
         )
         assert run.genre_metrics is None
@@ -97,7 +97,7 @@ class TestEvaluationRun:
             evaluation_id=uuid4(),
             evaluation_type=EvaluationType.FULL,
             job_ids=[],
-            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
             window_days=7,
         )
         metrics = run.to_metrics_dict()
@@ -110,7 +110,7 @@ class TestEvaluationRun:
             evaluation_id=uuid4(),
             evaluation_type=EvaluationType.FULL,
             job_ids=[uuid4()],
-            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
             window_days=7,
             genre_metrics=GenreEvaluationResult(macro_f1=0.82),
             cluster_metrics={

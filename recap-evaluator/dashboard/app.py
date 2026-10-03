@@ -124,15 +124,17 @@ def main() -> None:
             # nests per-dimension metrics under "summary" rather than at
             # the top level.
             summary = (row["metrics"] or {}).get("summary", {})
-            extracted_rows.append({
-                "created_at": row["created_at"],
-                "fallback_rate": summary.get("fallback_rate"),
-                "json_repair_rate": summary.get("json_repair_rate"),
-                "redundancy_score": summary.get("redundancy_score"),
-                "readability_score": summary.get("readability_score"),
-                "source_grounding_score": summary.get("source_grounding_score"),
-                "overall_quality_score": summary.get("overall_quality_score"),
-            })
+            extracted_rows.append(
+                {
+                    "created_at": row["created_at"],
+                    "fallback_rate": summary.get("fallback_rate"),
+                    "json_repair_rate": summary.get("json_repair_rate"),
+                    "redundancy_score": summary.get("redundancy_score"),
+                    "readability_score": summary.get("readability_score"),
+                    "source_grounding_score": summary.get("source_grounding_score"),
+                    "overall_quality_score": summary.get("overall_quality_score"),
+                }
+            )
         df = pd.DataFrame(extracted_rows).set_index("created_at").sort_index()
         st.line_chart(df)
 

@@ -1,15 +1,12 @@
 """Integration tests for full evaluation flow: handler → usecase → mock gateway."""
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from recap_evaluator.config import AlertThresholds, EvaluatorWeights, Settings
-from recap_evaluator.domain.models import AlertLevel
 from recap_evaluator.evaluator.cluster_evaluator import ClusterEvaluator
 from recap_evaluator.evaluator.genre_evaluator import GenreEvaluator
 from recap_evaluator.evaluator.pipeline_evaluator import PipelineEvaluator
@@ -56,22 +53,17 @@ def integration_app():
     mock_db.fetch_stage_logs.return_value = SAMPLE_STAGE_LOGS
     mock_db.fetch_stage_logs_batch.return_value = {SAMPLE_JOB_ID: SAMPLE_STAGE_LOGS}
     mock_db.fetch_preprocess_metrics.return_value = SAMPLE_PREPROCESS_METRICS
-    mock_db.fetch_preprocess_metrics_batch.return_value = {
-        SAMPLE_JOB_ID: SAMPLE_PREPROCESS_METRICS
-    }
+    mock_db.fetch_preprocess_metrics_batch.return_value = {SAMPLE_JOB_ID: SAMPLE_PREPROCESS_METRICS}
     mock_db.fetch_subworker_runs.return_value = [SAMPLE_SUBWORKER_RUN]
     mock_db.fetch_clusters_for_run.return_value = [
-        {**SAMPLE_CLUSTER, "cluster_id": i, "size": 10}
-        for i in range(5)
+        {**SAMPLE_CLUSTER, "cluster_id": i, "size": 10} for i in range(5)
     ]
     mock_db.fetch_evaluation_history.return_value = []
     mock_db.fetch_evaluation_by_id.return_value = None
     mock_db.save_evaluation_run.return_value = None
 
     mock_recap_worker = AsyncMock()
-    mock_recap_worker.fetch_latest_genre_evaluation.return_value = (
-        SAMPLE_GENRE_API_RESPONSE
-    )
+    mock_recap_worker.fetch_latest_genre_evaluation.return_value = SAMPLE_GENRE_API_RESPONSE
 
     mock_ollama = AsyncMock()
     batch_result = AsyncMock()
@@ -90,11 +82,15 @@ def integration_app():
     # Use mocked sub-evaluators for summary to avoid model loading
     mock_rouge = MagicMock()
     mock_rouge.compute_batch.return_value = {
-        "rouge_1_f1": 0.45, "rouge_2_f1": 0.22, "rouge_l_f1": 0.38
+        "rouge_1_f1": 0.45,
+        "rouge_2_f1": 0.22,
+        "rouge_l_f1": 0.38,
     }
     mock_bertscore = MagicMock()
     mock_bertscore.evaluate_batch.return_value = {
-        "mean_precision": 0.72, "mean_recall": 0.68, "mean_f1": 0.70
+        "mean_precision": 0.72,
+        "mean_recall": 0.68,
+        "mean_f1": 0.70,
     }
     mock_faith = MagicMock()
     fr = MagicMock()
@@ -103,8 +99,14 @@ def integration_app():
     mock_faith.detect_batch.return_value = [fr]
 
     summary_eval = SummaryEvaluator(
-        mock_ollama, mock_db, settings, thresholds, weights,
-        rouge=mock_rouge, bertscore=mock_bertscore, faithfulness=mock_faith,
+        mock_ollama,
+        mock_db,
+        settings,
+        thresholds,
+        weights,
+        rouge=mock_rouge,
+        bertscore=mock_bertscore,
+        faithfulness=mock_faith,
     )
     pipeline_eval = PipelineEvaluator(mock_db, thresholds)
 
@@ -112,9 +114,7 @@ def integration_app():
     run_eval_uc = RunEvaluationUsecase(
         genre_eval, cluster_eval, summary_eval, pipeline_eval, mock_db
     )
-    get_metrics_uc = GetMetricsUsecase(
-        genre_eval, cluster_eval, pipeline_eval, mock_db, thresholds
-    )
+    get_metrics_uc = GetMetricsUsecase(genre_eval, cluster_eval, pipeline_eval, mock_db, thresholds)
 
     app = FastAPI()
     app.include_router(health_router)
@@ -185,9 +185,7 @@ class TestFullEvaluationFlow:
         missing = [k for k in expected_axes if k not in data]
         assert not missing, f"summary_metrics missing expected axes: {missing}"
 
-    def test_run_evaluation_includes_5_new_axes_in_summary_metrics(
-        self, integration_client
-    ):
+    def test_run_evaluation_includes_5_new_axes_in_summary_metrics(self, integration_client):
         resp = integration_client.post(
             "/api/v1/evaluations/run",
             json={"window_days": 7},

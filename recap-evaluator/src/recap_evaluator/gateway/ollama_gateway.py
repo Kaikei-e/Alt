@@ -109,8 +109,12 @@ JSON評価結果:"""
             json_match = re.search(r"\{[^{}]*\}", response_text, re.DOTALL)
             if not json_match:
                 return GEvalResult(
-                    coherence=0, consistency=0, fluency=0, relevance=0,
-                    raw_response=response_text, error="No JSON found in response",
+                    coherence=0,
+                    consistency=0,
+                    fluency=0,
+                    relevance=0,
+                    raw_response=response_text,
+                    error="No JSON found in response",
                 )
 
             data = json.loads(json_match.group())
@@ -124,13 +128,15 @@ JSON評価結果:"""
             )
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             return GEvalResult(
-                coherence=0, consistency=0, fluency=0, relevance=0,
-                raw_response=response_text, error=f"Failed to parse response: {e}",
+                coherence=0,
+                consistency=0,
+                fluency=0,
+                relevance=0,
+                raw_response=response_text,
+                error=f"Failed to parse response: {e}",
             )
 
-    async def evaluate_summary(
-        self, source_articles: str, summary: str
-    ) -> GEvalResult:
+    async def evaluate_summary(self, source_articles: str, summary: str) -> GEvalResult:
         prompt = self._build_geval_prompt(source_articles, summary)
         try:
             async with self._semaphore:
@@ -149,19 +155,28 @@ JSON評価結果:"""
         except httpx.HTTPStatusError as e:
             logger.error("Ollama HTTP error", status_code=e.response.status_code)
             return GEvalResult(
-                coherence=0, consistency=0, fluency=0, relevance=0,
+                coherence=0,
+                consistency=0,
+                fluency=0,
+                relevance=0,
                 error=f"HTTP error: {e.response.status_code}",
             )
         except httpx.TimeoutException:
             logger.error("Ollama request timeout")
             return GEvalResult(
-                coherence=0, consistency=0, fluency=0, relevance=0,
+                coherence=0,
+                consistency=0,
+                fluency=0,
+                relevance=0,
                 error="Request timeout",
             )
         except (httpx.RequestError, json.JSONDecodeError) as e:
             logger.exception("Ollama request failed")
             return GEvalResult(
-                coherence=0, consistency=0, fluency=0, relevance=0,
+                coherence=0,
+                consistency=0,
+                fluency=0,
+                relevance=0,
                 error=str(e),
             )
 
@@ -180,9 +195,7 @@ JSON評価結果:"""
     def _parse_readability_response(self, response_text: str) -> float:
         json_match = re.search(r"\{[^{}]*\}", response_text, re.DOTALL)
         if not json_match:
-            raise ValueError(
-                f"No JSON found in readability response: {response_text!r}"
-            )
+            raise ValueError(f"No JSON found in readability response: {response_text!r}")
         data = json.loads(json_match.group())
         return float(data["score"])
 
@@ -207,9 +220,7 @@ JSON評価結果:"""
             result_data = response.json()
         return self._parse_readability_response(result_data.get("response", ""))
 
-    async def evaluate_batch(
-        self, items: list[tuple[str, str]]
-    ) -> BatchGEvalResult:
+    async def evaluate_batch(self, items: list[tuple[str, str]]) -> BatchGEvalResult:
         async def _eval_one(item: tuple[str, str]) -> GEvalResult:
             return await self.evaluate_summary(item[0], item[1])
 
@@ -226,7 +237,10 @@ JSON評価結果:"""
                 logger.warning("G-Eval item failed", error=str(r))
                 batch.results.append(
                     GEvalResult(
-                        coherence=0, consistency=0, fluency=0, relevance=0,
+                        coherence=0,
+                        consistency=0,
+                        fluency=0,
+                        relevance=0,
                         error=str(r),
                     )
                 )
@@ -254,6 +268,6 @@ JSON評価結果:"""
                     available_models=models,
                 )
             return True
-        except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+        except httpx.HTTPError, json.JSONDecodeError, ValueError:
             logger.exception("Ollama health check failed")
             return False
