@@ -350,16 +350,25 @@ async def test_client_presents_cert_and_trusts_internal_ca_over_httpx(monkeypatc
 
 
 class _FakeHandle:
-    def __init__(self, calls: list[str]) -> None:
+    def __init__(self, calls: list[str], *, cert_path: str, key_path: str) -> None:
         self._calls = calls
+        self.cert_path = cert_path
+        self.key_path = key_path
 
     def stop(self) -> None:
         self._calls.append("pki_stop")
 
 
-def _fake_enrollment(calls: list[str], *, publish: tuple[Path, Path, Path, Path] | None = None):
+def _fake_enrollment(
+    calls: list[str],
+    *,
+    publish: tuple[Path, Path, Path, Path] | None = None,
+    enrolled: tuple[str, str] | None = None,
+):
     """Stand-in for the in-process enrollment start(). When ``publish`` is
-    given, it moves the leaf into place the way a real enroll writes it."""
+    given, it moves the leaf into place the way a real enroll writes it. The
+    handle reports ``enrolled`` as its CERT_PATH/KEY_PATH, defaulting to the
+    MTLS_* files so the wiring matches compose."""
 
     def start(service_name: str) -> _FakeHandle:
         calls.append(f"pki:{service_name}")
@@ -367,7 +376,11 @@ def _fake_enrollment(calls: list[str], *, publish: tuple[Path, Path, Path, Path]
             pending_cert, pending_key, cert_path, key_path = publish
             pending_cert.rename(cert_path)
             pending_key.rename(key_path)
-        return _FakeHandle(calls)
+        cert_path, key_path = enrolled or (
+            os.environ.get("MTLS_CERT_FILE", ""),
+            os.environ.get("MTLS_KEY_FILE", ""),
+        )
+        return _FakeHandle(calls, cert_path=cert_path, key_path=key_path)
 
     return start
 
@@ -485,3 +498,50 @@ async def test_outbound_mtls_propagates_enrollment_failure(monkeypatch, tmp_path
             "recap-evaluator", upstreams={"OLLAMA_URL": "https://news-creator:9443"}
         ):
             pass
+
+
+async def test_outbound_mtls_refuses_enforced_client_without_enrollment(monkeypatch, tmp_path):
+    pki = _internal_pki(tmp_path)
+    _set_client_env(monkeypatch, pki)
+    calls: list[str] = []
+
+    def disabled_start(service_name: str) -> None:
+        calls.append(f"pki:{service_name}")
+
+    monkeypatch.setattr(mtls_client, "start_pki_enrollment", disabled_start)
+
+    with pytest.raises(RuntimeError, match="PKI_ENROLLMENT=enabled"):
+        async with outbound_mtls(
+            "recap-evaluator", upstreams={"OLLAMA_URL": "https://news-creator:9443"}
+        ):
+            pass
+
+    assert calls == ["pki:recap-evaluator"]
+
+
+@pytest.mark.parametrize(
+    ("env_name", "stale"),
+    [("MTLS_CERT_FILE", "client_cert"), ("MTLS_KEY_FILE", "client_key")],
+)
+async def test_outbound_mtls_refuses_leaf_enrollment_does_not_renew(
+    monkeypatch, tmp_path, env_name, stale
+):
+    pki = _internal_pki(tmp_path)
+    _set_client_env(monkeypatch, pki)
+    stale_copy = tmp_path / f"stale-{pki[stale].name}"
+    stale_copy.write_bytes(pki[stale].read_bytes())
+    monkeypatch.setenv(env_name, str(stale_copy))
+    calls: list[str] = []
+    monkeypatch.setattr(
+        mtls_client,
+        "start_pki_enrollment",
+        _fake_enrollment(calls, enrolled=(str(pki["client_cert"]), str(pki["client_key"]))),
+    )
+
+    with pytest.raises(RuntimeError, match=env_name):
+        async with outbound_mtls(
+            "recap-evaluator", upstreams={"OLLAMA_URL": "https://news-creator:9443"}
+        ):
+            pass
+
+    assert calls == ["pki:recap-evaluator", "pki_stop"]
