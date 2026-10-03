@@ -175,6 +175,37 @@ class SecurityWiringTests(unittest.TestCase):
         self.assertIn("/trust", volume_targets)
 
 
+class PkiEnrollmentModeTests(unittest.TestCase):
+    """Staging runs no step-ca, so no service may enroll, and a binary that
+    refuses an unset PKI_ENROLLMENT must be given an explicit opt-out."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.services = yaml.safe_load((ROOT / "compose/compose.staging.yaml").read_text())["services"]
+
+    def test_knowledge_sovereign_opts_out_of_enrollment_explicitly(self):
+        # knowledge-sovereign exits at startup when PKI_ENROLLMENT is unset.
+        env = environment(self.services["knowledge-sovereign"])
+        self.assertEqual(env.get("PKI_ENROLLMENT"), "disabled")
+        self.assertNotIn("PKI_ENROLLMENT_FILE", env)
+
+    def test_no_service_enrolls_without_a_step_ca(self):
+        self.assertNotIn("step-ca", self.services)
+        for name, svc in self.services.items():
+            with self.subTest(service=name):
+                self.assertNotEqual(environment(svc).get("PKI_ENROLLMENT"), "enabled")
+
+    def test_recap_evaluator_does_not_enforce_mtls_without_enrollment(self):
+        # recap-evaluator refuses MTLS_ENFORCE=true unless it enrolls, and
+        # enrolling is impossible here.
+        svc = self.services.get("recap-evaluator")
+        if svc is None:
+            self.skipTest("recap-evaluator is not part of the staging stack")
+        env = environment(svc)
+        self.assertEqual(env.get("PKI_ENROLLMENT"), "disabled")
+        self.assertNotEqual(env.get("MTLS_ENFORCE", "").strip().lower(), "true")
+
+
 class RedisAclParityTests(unittest.TestCase):
     """Staging redis-streams must enforce the same ACL users production does.
 

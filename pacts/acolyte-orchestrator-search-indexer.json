@@ -12,6 +12,24 @@
         }
       ],
       "request": {
+        "headers": {
+          "X-Alt-Backend-Token": [
+            "pact-header.pact-claims.pact-signature"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
         "method": "GET",
         "path": "/v1/search",
         "query": {
@@ -72,6 +90,24 @@
         }
       ],
       "request": {
+        "headers": {
+          "X-Alt-Backend-Token": [
+            "pact-header.pact-claims.pact-signature"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
         "method": "GET",
         "path": "/v1/search",
         "query": {
@@ -137,6 +173,24 @@
         }
       ],
       "request": {
+        "headers": {
+          "X-Alt-Backend-Token": [
+            "pact-header.pact-claims.pact-signature"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
         "method": "GET",
         "path": "/v1/search",
         "query": {

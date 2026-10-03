@@ -357,6 +357,9 @@ services:
       # is a startup failure there, never an open surface.
       - ADMIN_AUTH=disabled
       - EVENT_AUTH=disabled
+      # The binary refuses an unset mode. Staging runs no step-ca and gives
+      # sovereign no outbound mTLS peer, so it mints nothing.
+      - PKI_ENROLLMENT=disabled
       # Tighten cron cadence so the E2E suite's surface-planner scenario
       # can observe a SurfacePlanRecomputed emission within its 45 s
       # retry budget (30 retries × 1.5 s). Production defaults stay at

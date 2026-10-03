@@ -322,6 +322,12 @@ func TestVerifySearchIndexerProviderContracts(t *testing.T) {
 			emptyResultState.Store(setup)
 			return nil, nil
 		},
+		// The "Iran tensions 2026" fixture in fakeContractSearchEngine carries
+		// the published_at this state promises.
+		"search-indexer has articles with published_at metadata indexed": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+			emptyResultState.Store(false)
+			return nil, nil
+		},
 		"search-indexer has indexed articles and a service token is configured": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 			emptyResultState.Store(false)
 			return nil, nil
