@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from tag_generator.domain.models import TagExtractionResult
 from tag_generator.handler.event_payload import TagGenerationRequestPayload
-from tag_generator.stream_consumer import Event, EventHandler, StreamConsumer
+from tag_generator.stream_consumer import Event, EventHandler, StreamConsumer, is_reply_stream_key
 
 if TYPE_CHECKING:
     from tag_generator.service import TagGeneratorService
@@ -171,6 +171,15 @@ class TagGeneratorEventHandler(EventHandler):
             logger.warning(
                 "missing_reply_to_in_tag_generation_request",
                 event_id=event.event_id,
+            )
+            return
+
+        if not is_reply_stream_key(reply_to):
+            logger.warning(
+                "invalid_reply_to_in_tag_generation_request",
+                event_id=event.event_id,
+                message_id=event.message_id,
+                reply_to=str(reply_to)[:128],
             )
             return
 
