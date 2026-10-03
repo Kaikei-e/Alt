@@ -372,6 +372,8 @@ PKI_INPROCESS_PARENTS = (
     "acolyte-orchestrator",
     "recap-subworker",
     "news-creator",
+    "knowledge-sovereign",
+    "recap-evaluator",
 )
 
 # job_name of the dedicated :9110 scrape. Distinct from any existing app-port job.
@@ -390,6 +392,8 @@ PKI_OPS_JOBS = {
     "acolyte-orchestrator": "acolyte-orchestrator",
     "recap-subworker": "recap-subworker-ops",
     "news-creator": "news-creator-ops",
+    "knowledge-sovereign": "knowledge-sovereign-ops",
+    "recap-evaluator": "recap-evaluator",
 }
 
 ABSENT_SUBJECT_RE = re.compile(
@@ -437,7 +441,7 @@ def _job_targets(job: dict) -> list[str]:
 
 
 def audit_pki_ops_surface(prom_cfg: object, rules_cfg: object) -> list[str]:
-    """Pin the 14 in-process PKI ops scrapes and absence/fleet/ops-down alerts.
+    """Pin the always-on in-process PKI ops scrapes and absence/fleet/ops-down alerts.
 
     Parses loaded YAML documents only. Comments in the source file cannot
     satisfy these checks.
@@ -507,13 +511,16 @@ def audit_pki_ops_surface(prom_cfg: object, rules_cfg: object) -> list[str]:
         violations.append(
             "PkiEnrollmentFleetIncomplete must use `or vector(0)` so all-absent fires"
         )
-    if "!=14" not in fleet and "==14" not in fleet:
-        violations.append("PkiEnrollmentFleetIncomplete must pin exactly 14 unique subjects")
+    want_fleet = len(PKI_INPROCESS_PARENTS)
+    if f"!={want_fleet}" not in fleet and f"=={want_fleet}" not in fleet:
+        violations.append(
+            f"PkiEnrollmentFleetIncomplete must pin exactly {want_fleet} unique subjects"
+        )
 
     ops_down = exprs.get("PkiEnrollmentOpsDown", "")
     matcher = JOB_MATCHER_RE.search(ops_down)
     if matcher is None:
-        violations.append("PkiEnrollmentOpsDown must select up{{job=~\"...\"}} for the 14 ops jobs")
+        violations.append("PkiEnrollmentOpsDown must select up{{job=~\"...\"}} for every PKI ops job")
     else:
         listed = [part for part in matcher.group(1).split("|") if part]
         if set(listed) != want_jobs:

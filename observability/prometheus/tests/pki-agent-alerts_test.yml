@@ -16,7 +16,7 @@ rule_files:
 evaluation_interval: 30s
 
 tests:
-  # In-process: absence of one of 14 parent metrics must page.
+  # In-process: absence of one of 16 parent metrics must page.
   - interval: 30s
     input_series:
       - series: 'pki_enrollment_healthy{subject="alt-backend"}'
@@ -45,6 +45,10 @@ tests:
         values: '1x30'
       - series: 'pki_enrollment_healthy{subject="news-creator"}'
         values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="knowledge-sovereign"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="recap-evaluator"}'
+        values: '1x30'
     alert_rule_test:
       - eval_time: 6m
         alertname: PkiEnrollmentWorkloadMetricsAbsent
@@ -56,7 +60,7 @@ tests:
             exp_annotations:
               summary: "an in-process PKI workload metric is absent"
               description: |
-                One of the 14 in-process parents is not exporting
+                One of the 16 in-process parents is not exporting
                 pki_enrollment_healthy. After sidecar removal that series is the
                 only cert-lifecycle signal for the subject.
                 Runbook: docs/runbooks/pki-agent-recovery.md
@@ -67,15 +71,15 @@ tests:
               severity: page
               stack: mtls
             exp_annotations:
-              summary: "in-process PKI unique-subject fleet is 13 (want exactly 14)"
+              summary: "in-process PKI unique-subject fleet is 15 (want exactly 16)"
               description: |
-                All 14 east-west parents must each export pki_enrollment_healthy
-                on :9110. Raw series count can be padded by duplicate labels; this
+                All 16 always-on east-west parents must each export
+                pki_enrollment_healthy on :9110. Raw series count can be padded by duplicate labels; this
                 pin is unique subjects, and `or vector(0)` fires when every series
                 is absent.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
-  # All 14 in-process series present: workload-absent does not fire.
+  # All 16 in-process series present: workload-absent does not fire.
   - interval: 30s
     input_series:
       - series: 'pki_enrollment_healthy{subject="alt-backend"}'
@@ -106,6 +110,10 @@ tests:
         values: '1x30'
       - series: 'pki_enrollment_healthy{subject="news-creator"}'
         values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="knowledge-sovereign"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="recap-evaluator"}'
+        values: '1x30'
       - series: 'pki_enrollment_cert_remaining_seconds{subject="alt-backend"}'
         values: '86400x30'
     alert_rule_test:
@@ -118,6 +126,72 @@ tests:
       - eval_time: 11m
         alertname: PkiEnrollmentMetricsAbsent
         exp_alerts: []
+
+  # The two newest in-process parents page on absence like the original 14.
+  - interval: 30s
+    input_series:
+      - series: 'pki_enrollment_healthy{subject="alt-backend"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-harvester"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-data-hub"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-notifier"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-butterfly-facade"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="auth-hub"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="search-indexer"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="rag-orchestrator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="pre-processor"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="tag-generator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="recap-worker"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="acolyte-orchestrator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="recap-subworker"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="news-creator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="knowledge-sovereign"}'
+        values: '1x30'
+      - series: 'up{job="knowledge-sovereign-ops"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PkiEnrollmentWorkloadMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              subject: recap-evaluator
+            exp_annotations:
+              summary: "an in-process PKI workload metric is absent"
+              description: |
+                One of the 16 in-process parents is not exporting
+                pki_enrollment_healthy. After sidecar removal that series is the
+                only cert-lifecycle signal for the subject.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 6m
+        alertname: PkiEnrollmentOpsDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: knowledge-sovereign-ops
+            exp_annotations:
+              summary: "knowledge-sovereign-ops PKI ops scrape failing"
+              description: |
+                Prometheus cannot scrape knowledge-sovereign-ops :9110. Static targets
+                report up=0 rather than vanishing, so this is the parent-ops
+                scrape-down alert. Leftover pki-agent sidecars are a Docker-label
+                gate, not this scrape.
+                Runbook: docs/runbooks/pki-agent-recovery.md
 
   # In-process expiry still pages.
   - interval: 30s
@@ -201,10 +275,10 @@ tests:
               severity: page
               stack: mtls
             exp_annotations:
-              summary: "in-process PKI unique-subject fleet is 0 (want exactly 14)"
+              summary: "in-process PKI unique-subject fleet is 0 (want exactly 16)"
               description: |
-                All 14 east-west parents must each export pki_enrollment_healthy
-                on :9110. Raw series count can be padded by duplicate labels; this
+                All 16 always-on east-west parents must each export
+                pki_enrollment_healthy on :9110. Raw series count can be padded by duplicate labels; this
                 pin is unique subjects, and `or vector(0)` fires when every series
                 is absent.
                 Runbook: docs/runbooks/pki-agent-recovery.md
@@ -221,7 +295,7 @@ tests:
                 in-process only; leftover sidecars are a Docker-label gate.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
-  # Duplicate labels cannot pad the fleet pin. 14 series, 13 unique subjects.
+  # Duplicate labels cannot pad the fleet pin. 16 series, 15 unique subjects.
   - interval: 30s
     input_series:
       - series: 'pki_enrollment_healthy{subject="alt-backend"}'
@@ -252,6 +326,10 @@ tests:
         values: '1x30'
       - series: 'pki_enrollment_healthy{subject="news-creator"}'
         values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="knowledge-sovereign"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="recap-evaluator"}'
+        values: '1x30'
     alert_rule_test:
       - eval_time: 11m
         alertname: PkiEnrollmentFleetIncomplete
@@ -260,10 +338,10 @@ tests:
               severity: page
               stack: mtls
             exp_annotations:
-              summary: "in-process PKI unique-subject fleet is 13 (want exactly 14)"
+              summary: "in-process PKI unique-subject fleet is 15 (want exactly 16)"
               description: |
-                All 14 east-west parents must each export pki_enrollment_healthy
-                on :9110. Raw series count can be padded by duplicate labels; this
+                All 16 always-on east-west parents must each export
+                pki_enrollment_healthy on :9110. Raw series count can be padded by duplicate labels; this
                 pin is unique subjects, and `or vector(0)` fires when every series
                 is absent.
                 Runbook: docs/runbooks/pki-agent-recovery.md
@@ -277,7 +355,7 @@ tests:
             exp_annotations:
               summary: "an in-process PKI workload metric is absent"
               description: |
-                One of the 14 in-process parents is not exporting
+                One of the 16 in-process parents is not exporting
                 pki_enrollment_healthy. After sidecar removal that series is the
                 only cert-lifecycle signal for the subject.
                 Runbook: docs/runbooks/pki-agent-recovery.md
