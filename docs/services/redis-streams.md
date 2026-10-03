@@ -19,7 +19,7 @@ Redis 8.4.5 (`--maxmemory 1gb --maxmemory-policy noeviction`)。イベントス�
 | ユーザ | キー | 用途 |
 | --- | --- | --- |
 | `streams` | `alt:events:*`, `alt:replies:tags:*` | mq-hub / 各コンシューマーのストリーム操作 (`XADD` / `XREADGROUP` / `XACK` / `XAUTOCLAIM` / `XPENDING` / `XINFO STREAM` / `XINFO GROUPS` / `XTRIM` / `SCAN` 等) |
-| `limiter` | `host_rate_limiter:v1:*` | alt-backend の host rate limiter (DB 3、`SET` / `PTTL` / `SELECT`) |
+| `limiter` | `host_rate_limiter:v1:*` | alt-backend と alt-harvester の host rate limiter (DB 3、`SET` / `PTTL` / `SELECT`) |
 
 `INFO` / `XLEN` / `XRANGE` / `TYPE` / `DBSIZE` / `XINFO CONSUMERS` はどのユーザでも `NOPERM`。運用調査ではストリーム長を `XINFO STREAM` の `length`、滞留を `XINFO GROUPS` の `pending` / `lag` から読む:
 
@@ -42,6 +42,7 @@ docker compose -f compose/compose.yaml -p alt exec -T redis-streams sh -c \
 - `mq-hub`: publish (`XAdd`) と consumer group 作成のみ。`XREADGROUP` は呼ばない
 - `pre-processor`, `search-indexer`, `tag-generator`: `REDIS_STREAMS_URL` で直接接続し `XREADGROUP` + `XAUTOCLAIM` で consume。業務イベントの publish は mq-hub の Connect-RPC 経由だが、DLQ への `XADD` (配信回数超過メッセージの退避) は各サービスが自分の DLQ ストリームへ直接行う
 - `alt-backend`: event の publish は mq-hub の Connect-RPC 経由。DB を分けて (`/3`) rate limiter のバックエンドとしても直接接続する ([[mq-hub]] とは独立した用途)
+- `alt-harvester`: alt-backend と同じ host rate limiter に `limiter` ユーザで `/3` へ直接接続する (`HOST_RATE_LIMITER_REDIS_URL=redis://limiter@redis-streams:6379/3`)。インターネットに出る 2 バイナリで同一ホストへの最小間隔を 1 つの arbiter に保つため
 
 ## 設計原則
 

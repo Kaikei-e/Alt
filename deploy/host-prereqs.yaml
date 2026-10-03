@@ -1,13 +1,21 @@
 # Host prerequisites the production compose tree relies on but cannot create
-# itself. The deploy preflight provisions and checks a host from this file
-# before any container is created, so a missing path fails the deploy at its
-# first step with a recipe, not halfway through a roll.
+# itself. Nothing provisions a host from this file: each provision recipe is a
+# one-time privileged step an operator runs by hand.
 #
-# Kept in lockstep with compose/compose.yaml's include chain by
-# scripts/compose-file-bind-audit.py (CI: compose-audit / file-bind-invariant):
-# every host-path bind, socket group, GPU consumer, undefaulted interpolation
-# and gitignored env_file compose uses must be declared here, and every entry
-# here must still be used by compose.
+# Read today by Alt CI only:
+#   - scripts/compose-file-bind-audit.py (compose-audit / file-bind-invariant)
+#     keeps it in lockstep with compose/compose.yaml's include chain: every
+#     host-path bind, socket group, GPU consumer, undefaulted interpolation and
+#     gitignored env_file compose uses must be declared here, and every entry
+#     here must still be used by compose.
+#   - scripts/tests/test-compose-prod-env-wiring.py (compose-audit /
+#     wiring-invariant) runs the env rules at the bottom against the repo env
+#     templates through scripts/check-env-overrides.py.
+# alt-deploy's host preflight is to read it next: check that each host path
+# exists with at least the declared permissions, and run
+# scripts/check-env-overrides.py against the host's .env, before any container
+# is created. Until then a missing path surfaces only when Engine refuses to
+# create the container (create_host_path: false), or not at all (true).
 #
 # Secrets are not listed: their files come from compose/base.yaml's secrets:
 # block, and their provisioning class (random / operator-provided /
@@ -17,16 +25,21 @@
 #   env               .env variable that overrides the path, or null when compose hardcodes it
 #   path              compose's default (or literal) host path
 #   kind              file | dir | socket
-#   owner, mode       what the recipe sets and the container needs ("uid:gid", "0750");
-#                     null when the OS or Docker Engine owns the path. A preflight compares
-#                     both exactly, after resolving env from the host's .env.
+#   owner, mode       the provision recipe's target ("uid:gid", "0700"); null when the OS or
+#                     Docker Engine owns the path. A preflight treats both as minimums, not
+#                     exact values: every bit mode grants the owner must reach owner's uid on
+#                     the host, and every bit it grants the group must reach owner's gid,
+#                     through the matching owner/group bits or through the other bits. Wider
+#                     bits pass, e.g. the 0755 that e2e-playwright's rust-bert warm-up leaves
+#                     on /opt/rustbert-cache after its mkdir -p + chown; a path owned by
+#                     another uid fails unless its other bits cover the owner bits.
 #   create_host_path  false: Engine refuses to create a container when the path is missing.
-#                     true: Engine silently creates a root:root 0755 directory instead, so the
-#                     preflight is the only thing that catches a missing or misowned path.
-#   mounts            every service that binds it; a preflight checks the entries whose
-#                     services it is about to start.
+#                     true: Engine silently creates a root:root 0755 directory instead, so a
+#                     missing or misowned path goes unnoticed until a preflight checks it.
+#   mounts            every service that binds it, so a preflight can check just the entries
+#                     whose services it is about to start.
 #   provision         one-time, privileged operator recipe. Parent directories stay
-#                     traversable (0755) so the preflight can stat the path as the runner user.
+#                     traversable (0755) so a preflight can stat the path as the runner user.
 schema_version: 1
 source: compose/compose.yaml include chain
 
@@ -138,7 +151,10 @@ host_paths:
       - {service: recap-subworker, target: /app/recap_subworker/learning_machine/artifacts, read_only: true}
     provision: |
       Gitignored Learning Machine student/teacher models, same owner rule as
-      recap-subworker-data (docs/runbooks/runner-setup.md §2.6).
+      recap-subworker-data (docs/runbooks/runner-setup.md §2.6). A copy made
+      without the chown keeps the copier's uid as owner, and recap (999) then
+      reads it only while the tree stays world-readable; rerun the chown/chmod
+      below rather than relying on that.
         sudo install -d -o 999 -g 999 -m 0700 /var/lib/alt-recap-subworker-artifacts
         sudo cp -R recap-subworker/recap_subworker/learning_machine/artifacts/. /var/lib/alt-recap-subworker-artifacts/
         sudo chown -R 999:999 /var/lib/alt-recap-subworker-artifacts
@@ -347,3 +363,91 @@ env_files:
       restic-backup's settings (backup profile only), staged into the
       checkout like .env. Operator-maintained; keep offsite target details
       out of the repository.
+
+# Host .env overrides that defeat a compose default. compose resolves
+# `${VAR:-default}` from the host's .env, so a value that was right before a
+# compose change keeps beating the fixed default afterwards and compose cannot
+# tell. scripts/check-env-overrides.py --env-file <path> applies these rules to
+# a host env file and prints key names and rule ids, never values;
+# scripts/tests/test-compose-prod-env-wiring.py applies them to the repo
+# templates and keeps them in lockstep with compose.
+#
+# retired_env       keys compose no longer reads from .env, so a value is
+#                   ignored (warning). Delete them so nobody tunes a dead knob.
+# dead_env_values   values that send a caller to a listener that no longer
+#                   serves it (error). keys: ["*"] applies the rule to every
+#                   key. Each rule has exactly one matcher:
+#                     deny_hosts       URL host, or host:port, that is dead
+#                     require_hosts    the only URL hosts the key may name
+#                     require_schemes  the only URL schemes the key may use
+# env_allowlists    comma-separated mTLS peer allowlists. required is the
+#                   compose default; an override must keep every required peer
+#                   (allowlist-missing-peer, error) and should add none
+#                   (allowlist-extra-peer, warning).
+retired_env:
+  - id: rag-orchestrator-pinned-upstreams
+    keys: [AUGUR_EXTERNAL, QUERY_EXPANSION_URL, QUERY_EXPANSION_TIMEOUT, RERANK_URL]
+    reason: >-
+      compose/rag.yaml pins these for rag-orchestrator, which loads no
+      env_file, so a .env value never reaches it.
+
+dead_env_values:
+  - id: auth-hub-health-only-port
+    keys: ["*"]
+    deny_hosts: ["auth-hub:8888"]
+    reason: >-
+      auth-hub's plaintext :8888 answers /health only; session calls go to
+      https://auth-hub:8443.
+  - id: embedder-raw-network
+    keys: ["*"]
+    deny_hosts: [knowledge-embedder-local]
+    reason: >-
+      knowledge-embedder-local sits on the internal embedding-raw-network;
+      callers reach it through the token-checking embedding-proxy
+      (http://embedding-proxy:11436).
+  - id: frontend-connect-bypasses-bff
+    keys: [BACKEND_CONNECT_URL]
+    require_hosts: [alt-butterfly-facade]
+    reason: >-
+      alt-frontend-sv sends Connect calls through the BFF
+      (http://alt-butterfly-facade:9250); a direct alt-backend URL skips it.
+  - id: https-only-upstream
+    keys:
+      - ACOLYTE_LLM_URL
+      - ACOLYTE_SEARCH_URL
+      - AUTH_HUB_INTERNAL_URL
+      - RAG_ORCHESTRATOR_CONNECT_URL
+      - RAG_ORCHESTRATOR_DATAHUB_MTLS_URL
+    require_schemes: [https]
+    reason: >-
+      the upstream serves this call only over TLS/mTLS; its plaintext port is
+      health-only or gone, and the client refuses a non-https URL.
+
+env_allowlists:
+  - key: ACOLYTE_ORCHESTRATOR_MTLS_ALLOWED_PEERS
+    required: [alt-butterfly-facade]
+  - key: ALT_DATA_HUB_ALLOWED_PEERS
+    required:
+      - alt-backend
+      - alt-harvester
+      - alt-notifier
+      - pre-processor
+      - search-indexer
+      - tag-generator
+      - recap-worker
+      - rag-orchestrator
+      - acolyte-orchestrator
+  - key: AUTH_HUB_MTLS_ALLOWED_PEERS
+    required: [alt-backend, alt-data-hub, search-indexer, knowledge-sovereign]
+  - key: NEWS_CREATOR_MTLS_ALLOWED_PEERS
+    required: [recap-worker, acolyte-orchestrator, rag-orchestrator, recap-evaluator, pre-processor]
+  - key: PRE_PROCESSOR_MTLS_ALLOWED_PEERS
+    required: [alt-backend]
+  - key: RAG_ORCHESTRATOR_ALLOWED_PEERS
+    required: [alt-backend]
+  - key: RECAP_SUBWORKER_MTLS_ALLOWED_PEERS
+    required: [recap-worker]
+  - key: SEARCH_INDEXER_MTLS_ALLOWED_PEERS
+    required: [alt-backend, rag-orchestrator, acolyte-orchestrator]
+  - key: TAG_GENERATOR_MTLS_ALLOWED_PEERS
+    required: [alt-butterfly-facade, alt-backend, search-indexer, recap-worker]

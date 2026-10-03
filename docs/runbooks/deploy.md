@@ -90,6 +90,7 @@ pipefail` により即中断、以降のステップは実行しない):
 | Pact Broker が healthy | `curl -fsS -u pact:$(cat secrets/pact_broker_basic_auth_password.txt) http://localhost:9292/diagnostic/status/heartbeat` |
 | secrets 配置 | `ls secrets/pact_broker_basic_auth_password.txt` |
 | mTLS step-ca 稼働 | `docker compose -f compose/compose.yaml ps step-ca` → healthy |
+| host `.env` に compose default を潰す古い値が無い | `python3 scripts/check-env-overrides.py --env-file .env` → exit 0（キー名と rule id だけを出し、値は出さない。rule は `deploy/host-prereqs.yaml` の `retired_env` / `dead_env_values` / `env_allowlists`） |
 | disk / loadavg 余裕 | `df -h` / `uptime` |
 | (`deploy-system/deploy-local.sh` 使用時のみ) `DOCKER_GROUP_ID` | `export DOCKER_GROUP_ID=$(scripts/get-docker-gid.sh)` — 未設定だと `compose/logging.yaml` の変数展開で `docker compose build` の手前で fail する |
 
@@ -202,6 +203,88 @@ curl -fsS http://localhost:7700/health
 # Broker matrix で本番 version が記録されたか
 curl -s -u pact:$(cat secrets/pact_broker_basic_auth_password.txt) \
   "http://localhost:9292/matrix?q[][pacticipant]=alt-backend&latestby=cvp" | jq '.matrix[0]'
+```
+
+### 4.1 Post-roll manual checks (staging がカバーしない本番経路)
+
+staging E2E は以下の経路を本番と同じ形では通らない。security remediation の
+ような bearer / mTLS / enrollment を触る roll の後は、手で 1 回ずつ確認する。
+すべて read-only（推論 1 回分の負荷は掛かる）。repo root で実行する。
+
+#### 1. embedding-proxy の bearer
+
+embedding-proxy はホストに公開していないので、同じ network にいて同じ token を mount している rerank-local から叩く。
+
+```bash
+docker compose -f compose/compose.yaml -p alt exec -T rerank-local python - <<'PY'
+import json, urllib.error, urllib.request
+token = open("/run/secrets/inference_service_token").read().strip()
+body = json.dumps({"model": "bge-m3", "input": "ping"}).encode()
+for label, extra in (("no bearer", {}), ("bearer", {"Authorization": f"Bearer {token}"})):
+    req = urllib.request.Request("http://embedding-proxy:11436/api/embed", data=body,
+                                 headers={"Content-Type": "application/json", **extra})
+    try:
+        status = urllib.request.urlopen(req, timeout=60).status
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+    print(label, status)
+PY
+# 期待値: "no bearer 401" と "bearer 200"
+```
+
+#### 2. rerank-local の bearer
+
+rerank-local は `127.0.0.1:8082` に出ている。トークンは secret ファイルから `-H @<(...)` で渡し、コマンドラインに載せない。
+
+```bash
+auth_header() { printf 'Authorization: Bearer %s\n' "$(cat secrets/inference_service_token.txt)"; }
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8082/v1/rerank \
+  -H 'Content-Type: application/json' -d '{"query":"ping","candidates":["pong"]}'
+# 期待値: 401
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8082/v1/rerank \
+  -H @<(auth_header) -H 'Content-Type: application/json' -d '{"query":"ping","candidates":["pong"]}'
+# 期待値: 200
+```
+
+#### 3. rag-orchestrator → search-indexer の mTLS
+
+rag-orchestrator は BM25 を `https://search-indexer:9443` に自分の leaf で取りに行く。article scope の無い質問を Augur で 1 回投げてから見る。
+
+```bash
+docker compose -f compose/compose.yaml -p alt logs --since 15m rag-orchestrator 2>&1 \
+  | grep -oE 'hybrid_bm25_search_(completed|failed)' | sort | uniq -c
+# 期待値: completed が 1 以上、failed が 0
+docker compose -f compose/compose.yaml -p alt logs --since 15m search-indexer 2>&1 \
+  | grep -c 'not in allowlist'
+# 期待値: 0
+```
+
+#### 4. knowledge-sovereign / recap-evaluator の in-process enrollment
+
+両者は sidecar をやめて親プロセスが enroll する。ops `:9110` の gauge と、旧 `pki-agent-*` sidecar が残っていないことを見る。
+
+```bash
+for s in knowledge-sovereign recap-evaluator; do
+  echo -n "$s: "
+  docker run --rm --network alt_alt-network busybox:1.37 \
+    wget -qO- "http://${s}:9110/metrics" | grep pki_enrollment_healthy || echo missing
+done
+# 期待値: 各 subject で pki_enrollment_healthy{...} 1
+docker ps -a --filter label=com.docker.compose.project=alt --format '{{.Names}}' \
+  | grep -E 'pki-agent-(knowledge-sovereign|recap-evaluator)' || echo "no leftover sidecar"
+# 期待値: no leftover sidecar
+```
+
+#### 5. kratos の cookie domain guard
+
+`KRATOS_COOKIE_DOMAIN` が未設定だと compose が render を拒否し、kratos の entrypoint も起動しない。空は host-only cookie として有効な値。
+
+```bash
+docker compose -f compose/compose.yaml -p alt config --quiet && echo render-ok
+# 描画済み設定は secret を含むので domain 行だけを読む
+docker compose -f compose/compose.yaml -p alt exec -T kratos grep '^    domain:' /tmp/kratos.yml
+# 期待値: render-ok と、意図した domain（複数サブドメインを跨ぐなら先頭ドット付きの
+# 親ドメイン、単一ホストなら ""）
 ```
 
 ## 5. CI との関係

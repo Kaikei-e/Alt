@@ -117,10 +117,11 @@ sudo sh -c 'mkdir -p /opt/rustbert-cache && \
 
 # 確認
 stat -c '%n uid=%u gid=%g mode=%a' /opt/rustbert-cache
-# 期待値: /opt/rustbert-cache uid=999 gid=999 mode=700
+# 期待値: uid=999 gid=999、owner (recap) が rwx を持つこと。e2e-playwright の
+# warm-up step は mkdir -p + chown で作り直すため mode が 755 になるが、最低要件は満たす
 ```
 
-deploy 側 CI は **stat + assert** でこの状態を確認するのみで、privileged mutation は行わない設計。assertion 失敗時には復旧ワンライナーが fail message に埋め込まれる。
+deploy 側は privileged mutation を行わない。owner / mode は `deploy/host-prereqs.yaml` の `rustbert-cache` が最低要件の正本で、alt-deploy の host preflight がそこから存在と最低権限を確認する予定 (未実装のあいだは、ディレクトリが無いと Engine が `create_host_path: false` で recap-worker の作成を拒否するところまでしか保証されない)。
 
 ## 2.6 recap-subworker 向け prod artefact host path
 

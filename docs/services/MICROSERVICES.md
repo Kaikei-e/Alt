@@ -115,7 +115,7 @@ ops `:9110` も同様）。edge の認証委譲は plecto-proxy 側に **移植�
 ### Message Queue Services
 | Service | Language | Host Port(s) | Compose File | Health Endpoint |
 |---------|----------|--------------|--------------|-----------------|
-| redis-streams | Redis 8.4.5 | 6380 → 6379 | mq.yaml | `redis-cli ping` |
+| redis-streams | Redis 8.4.5 | 6380 → 6379 | mq.yaml | `REDISCLI_AUTH="$(cat /run/secrets/redis_streams_password)" redis-cli --user streams ping` |
 | mq-hub | Go 1.27.1 | 9500 | mq.yaml | `/health` |
 
 ### Report Generation Services (Acolyte)
@@ -182,8 +182,8 @@ Knowledge Home / Knowledge Trail の projector はこのサービスが持つ
 | pact-db | PostgreSQL 16.15-alpine | なし | pact.yaml | `pg_isready` |
 | meilisearch | Meilisearch v1.27.0 | 7700 | db.yaml | `/health` |
 | clickhouse | ClickHouse 25.9 | 8123, 9009 → 9000 | db.yaml | `/ping` |
-| redis-streams | Redis 8.4.5-alpine | 6380 → 6379 | mq.yaml | `redis-cli ping` |
-| redis-cache | Redis 8.4.5-alpine | なし | ai.yaml | `redis-cli ping` |
+| redis-streams | Redis 8.4.5-alpine | 6380 → 6379 | mq.yaml | `REDISCLI_AUTH="$(cat /run/secrets/redis_streams_password)" redis-cli --user streams ping` |
+| redis-cache | Redis 8.4.5-alpine | なし | ai.yaml | `REDISCLI_AUTH="$(cat /run/secrets/redis_cache_password)" redis-cli --user cache ping` |
 
 DB の所有関係は 1 サービス 1 DB ではない。`db`（alt-db）だけが alt-data-hub 専有で、
 `recap-db` / `rag-db` / `acolyte-db` / `kratos-db` / `knowledge-sovereign-db` /
