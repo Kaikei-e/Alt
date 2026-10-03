@@ -6,8 +6,9 @@
 // real rest.Handler and the real connectv2.CreateConnectServer mux, backed by
 // fake port.SearchEngine / port.RecapSearchEngine implementations so no
 // Meilisearch instance is required. The real user-auth usecase consumes fixed
-// introspection fixtures. Pact replay supplies only a fixture Bearer header;
-// request payloads, validation and response mapping remain unchanged.
+// introspection fixtures. Pact replay swaps a consumer's placeholder JWT for a
+// live fixture token but never adds a missing one; request payloads,
+// validation and response mapping remain unchanged.
 package contract
 
 import (
@@ -77,28 +78,39 @@ func (*contractAuthHub) IntrospectToken(_ context.Context, token string) (*port.
 	return nil, fmt.Errorf("unknown contract token")
 }
 
-// Pact's dynamic-credential hook complements the legacy fixture requests.
-// Explicit auth headers are preserved, including negative auth interactions.
+// contractAuthFilter swaps the credential a consumer sends for a live fixture
+// token minted for the interaction's user_id. Pact files can only hold a
+// placeholder JWT, but the header's presence is the contract: a request without
+// one is passed through untouched and must fail with 401.
 func contractAuthFilter(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(r.Header.Values("Authorization")) == 0 && len(r.Header.Values("X-Alt-Backend-Token")) == 0 {
-			userID := r.URL.Query().Get("user_id")
-			if userID == "" && r.Body != nil && strings.HasSuffix(r.URL.Path, "/SearchArticles") {
-				body, err := io.ReadAll(r.Body)
-				if err != nil {
-					http.Error(w, "read contract request", http.StatusBadRequest)
-					return
-				}
-				r.Body = io.NopCloser(strings.NewReader(string(body)))
-				var payload struct {
-					UserID string `json:"userId"`
-				}
-				if err := json.Unmarshal(body, &payload); err == nil {
-					userID = payload.UserID
-				}
+		hasAuthorization := len(r.Header.Values("Authorization")) > 0
+		hasBackendToken := len(r.Header.Values("X-Alt-Backend-Token")) > 0
+		if !hasAuthorization && !hasBackendToken {
+			next.ServeHTTP(w, r)
+			return
+		}
+		userID := r.URL.Query().Get("user_id")
+		if userID == "" && r.Body != nil && strings.HasSuffix(r.URL.Path, "/SearchArticles") {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "read contract request", http.StatusBadRequest)
+				return
 			}
-			if token, ok := contractTokens[userID]; ok {
+			r.Body = io.NopCloser(strings.NewReader(string(body)))
+			var payload struct {
+				UserID string `json:"userId"`
+			}
+			if err := json.Unmarshal(body, &payload); err == nil {
+				userID = payload.UserID
+			}
+		}
+		if token, ok := contractTokens[userID]; ok {
+			if hasAuthorization {
 				r.Header.Set("Authorization", "Bearer "+token)
+			}
+			if hasBackendToken {
+				r.Header.Set("X-Alt-Backend-Token", token)
 			}
 		}
 		next.ServeHTTP(w, r)
@@ -295,6 +307,10 @@ func TestVerifySearchIndexerProviderContracts(t *testing.T) {
 			return nil, nil
 		},
 		"a service token is configured and recap jobs are indexed under a tag": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+			emptyResultState.Store(false)
+			return nil, nil
+		},
+		"search has indexed articles": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 			emptyResultState.Store(false)
 			return nil, nil
 		},
