@@ -368,6 +368,272 @@ check(
     == [],
 )
 
+print("host prerequisite manifest")
+
+# A host-path bind is something the deploy host must provide before compose
+# can start the service. 2026-10-02: several were added with nothing that
+# provisioned them, and the deploy only failed when the container was created.
+# Every such bind must be declared in deploy/host-prereqs.yaml, and every
+# declaration must still match a bind compose actually makes.
+PLECTO_KEY_BIND = {
+    "type": "bind",
+    "source": "${PLECTO_PUBLIC_KEY_HOST_PATH:-/var/lib/alt-plecto/dev-key.pub}",
+    "target": "/etc/plecto/.plecto/dev-key.pub",
+    "read_only": True,
+    "bind": {"create_host_path": False},
+}
+CH_BACKUP_BIND = {
+    "type": "bind",
+    "source": "${CLICKHOUSE_BACKUP_HOST_PATH:-/var/lib/alt-clickhouse-backups}",
+    "target": "/backups/clickhouse",
+    "bind": {"create_host_path": False},
+}
+HOST_SERVICES = {
+    "plecto-proxy": {"volumes": [PLECTO_KEY_BIND, "../plecto/manifest.toml:/etc/plecto/manifest.toml:ro"]},
+    "clickhouse": {"volumes": [CH_BACKUP_BIND, "clickhouse_data:/var/lib/clickhouse"]},
+    "restic-backup": {"volumes": [CH_BACKUP_BIND]},
+}
+
+
+def host_entry(**overrides):
+    entry = {
+        "id": "plecto-public-key",
+        "env": "PLECTO_PUBLIC_KEY_HOST_PATH",
+        "path": "/var/lib/alt-plecto/dev-key.pub",
+        "kind": "file",
+        "owner": "0:0",
+        "mode": "0644",
+        "create_host_path": False,
+        "mounts": [
+            {"service": "plecto-proxy", "target": "/etc/plecto/.plecto/dev-key.pub", "read_only": True}
+        ],
+        "provision": "install -D -m 0644 key /var/lib/alt-plecto/dev-key.pub",
+    }
+    entry.update(overrides)
+    return entry
+
+
+CH_ENTRY = {
+    "id": "clickhouse-backups",
+    "env": "CLICKHOUSE_BACKUP_HOST_PATH",
+    "path": "/var/lib/alt-clickhouse-backups",
+    "kind": "dir",
+    "owner": "101:101",
+    "mode": "0700",
+    "create_host_path": False,
+    "mounts": [
+        {"service": "clickhouse", "target": "/backups/clickhouse", "read_only": False},
+        {"service": "restic-backup", "target": "/backups/clickhouse", "read_only": False},
+    ],
+    "provision": "install -d -o 101 -g 101 -m 0700 /var/lib/alt-clickhouse-backups",
+}
+
+
+def path_violations(services, entries):
+    mounts = audit.host_path_mounts(services.items())
+    return audit.host_path_violations(mounts, {"host_paths": entries})
+
+
+check(
+    "every host-path bind declared with matching mounts is clean",
+    path_violations(HOST_SERVICES, [host_entry(), CH_ENTRY]) == [],
+)
+found = path_violations(HOST_SERVICES, [CH_ENTRY])
+check(
+    "a guarded host-path bind with no manifest entry is a violation",
+    any("PLECTO_PUBLIC_KEY_HOST_PATH" in v and "plecto-proxy" in v for v in found),
+)
+found = path_violations({"clickhouse": HOST_SERVICES["clickhouse"]}, [CH_ENTRY, host_entry()])
+check(
+    "a manifest entry no compose bind uses any more is a violation",
+    any("plecto-public-key" in v for v in found),
+)
+check(
+    "a manifest entry missing one of the services that mounts the path is a violation",
+    any(
+        "clickhouse-backups" in v and "restic-backup" in v
+        for v in path_violations(
+            HOST_SERVICES,
+            [host_entry(), dict(CH_ENTRY, mounts=CH_ENTRY["mounts"][:1])],
+        )
+    ),
+)
+check(
+    "a manifest create_host_path that disagrees with compose is a violation",
+    any(
+        "plecto-public-key" in v and "create_host_path" in v
+        for v in path_violations(HOST_SERVICES, [host_entry(create_host_path=True), CH_ENTRY])
+    ),
+)
+UNGUARDED_ABSOLUTE = {"recap-worker": {"volumes": ["/opt/rustbert-cache:/opt/rustbert-cache:rw"]}}
+check(
+    "an unguarded absolute host bind still needs a manifest entry",
+    any("/opt/rustbert-cache" in v for v in path_violations(UNGUARDED_ABSOLUTE, [])),
+)
+check(
+    "an unguarded absolute host bind is declared with create_host_path: true",
+    path_violations(
+        UNGUARDED_ABSOLUTE,
+        [
+            {
+                "id": "rustbert-cache",
+                "env": None,
+                "path": "/opt/rustbert-cache",
+                "kind": "dir",
+                "owner": "999:999",
+                "mode": "0700",
+                "create_host_path": True,
+                "mounts": [{"service": "recap-worker", "target": "/opt/rustbert-cache", "read_only": False}],
+                "provision": "install -d -o 999 -g 999 -m 0700 /opt/rustbert-cache",
+            }
+        ],
+    )
+    == [],
+)
+check(
+    "repo-relative binds and named volumes need no manifest entry",
+    path_violations(
+        {"svc": {"volumes": ["../plecto:/etc/plecto:ro", "named:/data", "/tmp"]}}, []
+    )
+    == [],
+)
+for field, bad in [("kind", "symlink"), ("owner", "root"), ("mode", "644"), ("provision", "")]:
+    check(
+        f"a manifest entry with invalid {field} is a violation",
+        any(
+            "plecto-public-key" in v and field in v
+            for v in path_violations(HOST_SERVICES, [host_entry(**{field: bad}), CH_ENTRY])
+        ),
+    )
+
+SOCKET_ENTRY = {
+    "id": "docker-socket",
+    "env": None,
+    "path": "/var/run/docker.sock",
+    "kind": "socket",
+    "owner": "0:984",
+    "mode": "0660",
+    "create_host_path": False,
+    "mounts": [{"service": "docker-socket-proxy-ro", "target": "/var/run/docker.sock", "read_only": True}],
+    "provision": "Docker Engine creates it",
+}
+
+
+def socket_services(user):
+    return {
+        "docker-socket-proxy-ro": {
+            "user": user,
+            "volumes": [
+                {
+                    "type": "bind",
+                    "source": "/var/run/docker.sock",
+                    "target": "/var/run/docker.sock",
+                    "read_only": True,
+                    "bind": {"create_host_path": False},
+                }
+            ],
+        }
+    }
+
+
+check(
+    "a socket consumer whose user: gid matches the declared socket group is clean",
+    audit.socket_group_violations(socket_services("65534:984"), {"host_paths": [SOCKET_ENTRY]}) == [],
+)
+check(
+    "a socket consumer hardcoding a different gid than the declared socket group is a violation",
+    any(
+        "docker-socket-proxy-ro" in v and "985" in v
+        for v in audit.socket_group_violations(
+            socket_services("65534:985"), {"host_paths": [SOCKET_ENTRY]}
+        )
+    ),
+)
+
+GPU_SERVICES = {
+    "news-creator-backend": {
+        "deploy": {"resources": {"reservations": {"devices": [{"driver": "nvidia", "count": "all"}]}}}
+    },
+    "irodori-tts": {"runtime": "nvidia"},
+    "alt-backend": {},
+}
+check(
+    "declared GPU services matching compose are clean",
+    audit.gpu_violations(
+        GPU_SERVICES,
+        {"host_facts": {"nvidia_container_runtime": {"services": ["irodori-tts", "news-creator-backend"]}}},
+    )
+    == [],
+)
+check(
+    "a GPU service missing from the manifest is a violation",
+    any(
+        "irodori-tts" in v
+        for v in audit.gpu_violations(
+            GPU_SERVICES,
+            {"host_facts": {"nvidia_container_runtime": {"services": ["news-creator-backend"]}}},
+        )
+    ),
+)
+
+COMPOSE_TEXT = """
+services:
+  db:
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      REQUIRED: ${MUST_SET:?set it}
+      WITH_DEFAULT: ${HAS_DEFAULT:-x}
+      ALSO_DEFAULT: ${HAS_DASH_DEFAULT-x}
+    command: sh -c 'cat $${NOT_COMPOSE}'
+    # ${COMMENTED_OUT}
+"""
+check(
+    "required env keys are the interpolations with no default",
+    audit.undefaulted_env_keys([COMPOSE_TEXT]) == {"POSTGRES_USER", "MUST_SET"},
+)
+check(
+    "required_env matching compose is clean",
+    audit.required_env_violations([COMPOSE_TEXT], {"required_env": ["MUST_SET", "POSTGRES_USER"]}) == [],
+)
+found = audit.required_env_violations([COMPOSE_TEXT], {"required_env": ["MUST_SET", "STALE_KEY"]})
+check(
+    "an undeclared required key and a stale declared key are both violations",
+    any("POSTGRES_USER" in v for v in found) and any("STALE_KEY" in v for v in found),
+)
+
+ENV_FILE_ENTRIES = [
+    (pathlib.Path("/repo/compose"), "alt-backend", {"env_file": ["../.env"]}),
+    (pathlib.Path("/repo/compose"), "restic-backup", {"env_file": ["../scripts/backup/alt-backup.env"]}),
+    (pathlib.Path("/repo/compose"), "tracked", {"env_file": "../config/tracked.env"}),
+    (pathlib.Path("/repo/compose"), "optional", {"env_file": [{"path": "../optional.env", "required": False}]}),
+]
+
+
+def ignored_env(path):
+    return path.name in {".env", "alt-backup.env", "optional.env"}
+
+
+check(
+    "gitignored env_files declared in the manifest are clean",
+    audit.env_file_violations(
+        ENV_FILE_ENTRIES,
+        {"env_files": [{"path": ".env", "provision": "x"}, {"path": "scripts/backup/alt-backup.env", "provision": "x"}]},
+        is_ignored=ignored_env,
+        repo_root=pathlib.Path("/repo"),
+    )
+    == [],
+)
+found = audit.env_file_violations(
+    ENV_FILE_ENTRIES,
+    {"env_files": [{"path": ".env", "provision": "x"}, {"path": "gone.env", "provision": "x"}]},
+    is_ignored=ignored_env,
+    repo_root=pathlib.Path("/repo"),
+)
+check(
+    "an undeclared gitignored env_file and a stale declared one are both violations",
+    any("scripts/backup/alt-backup.env" in v for v in found) and any("gone.env" in v for v in found),
+)
+
 print("production")
 prod = audit.audit_production()
 check("production compose has 0 unguarded file binds", prod == [])
@@ -411,6 +677,11 @@ check(
             and (m.get("bind") or {}).get("create_host_path") is False
             for m in shared_backup_mounts.values()),
 )
+
+prereqs = audit.audit_host_prereqs()
+check("production compose matches deploy/host-prereqs.yaml", prereqs == [])
+for v in prereqs:
+    print(f"    leftover: {v}")
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
