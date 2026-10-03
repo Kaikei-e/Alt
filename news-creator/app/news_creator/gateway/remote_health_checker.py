@@ -29,7 +29,8 @@ class RemoteHealthChecker:
         cooldown_seconds: int = 60,
         timeout_seconds: int = 10,
         model_overrides: dict[str, str] | None = None,
-        inference_token: str | None = None,
+        *,
+        inference_token: str | None,
     ):
         self._remotes = remotes
         self._required_model = required_model

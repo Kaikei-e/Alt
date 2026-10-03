@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class RemoteOllamaDriver:
     """HTTP client for remote Ollama instances."""
 
-    def __init__(self, timeout_seconds: int = 300, inference_token: str | None = None):
+    def __init__(self, timeout_seconds: int = 300, *, inference_token: str | None):
         self._timeout_seconds = timeout_seconds
         self._inference_token = inference_token
         self._session: aiohttp.ClientSession | None = None

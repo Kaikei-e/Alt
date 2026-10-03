@@ -8,7 +8,7 @@ import math
 import os
 import time
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Literal
@@ -24,6 +24,8 @@ from ..infra.embedding_identity import (
 )
 
 if TYPE_CHECKING:
+    from pydantic import SecretStr
+
     from ..infra.config import Settings
 
 logger = structlog.get_logger(__name__)
@@ -73,7 +75,7 @@ class EmbedderConfig:
     # when True, sidecar↔runtime embedder identity drift downgrades to a
     # warning instead of ConfigValidationError. See classifier.py.
     allow_embedding_drift: bool = False
-    inference_service_token: Any = None
+    inference_service_token: SecretStr | None = field(kw_only=True)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> EmbedderConfig:
@@ -479,14 +481,8 @@ class Embedder:
             def close(self):
                 self._client.close()
 
-        raw_token = getattr(self.config, "inference_service_token", None)
-        token_str = None
-        if raw_token:
-            token_str = (
-                raw_token.get_secret_value()
-                if hasattr(raw_token, "get_secret_value")
-                else str(raw_token)
-            )
+        token = self.config.inference_service_token
+        token_str = token.get_secret_value() if token is not None else None
         return OllamaRemoteAdapter(
             self.config.ollama_embed_url,
             self.config.ollama_embed_model,
