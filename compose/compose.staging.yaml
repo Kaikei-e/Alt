@@ -919,12 +919,15 @@ services:
       # acolyte-orchestrator profile activation; Phase 1's CRUD slice
       # never makes an LLM call, so the URL is unused there.
       - NEWS_CREATOR_URL=http://news-creator-ollama-stub:11435
-      - SEARCH_INDEXER_URL=http://search-indexer:9300
+      - SEARCH_INDEXER_URL=https://search-indexer:9443
       - LLM_PROVIDER=ollama
       - DEFAULT_MODEL=gemma4-e4b-12k
       - CHECKPOINT_ENABLED=false
       - LOG_LEVEL=info
-      - MTLS_ENFORCE=false
+      - MTLS_ENFORCE=true
+      - MTLS_CERT_FILE=/certs/acolyte-orchestrator.pem
+      - MTLS_KEY_FILE=/certs/acolyte-orchestrator-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
       - PEER_IDENTITY_TRUSTED=off
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
@@ -932,6 +935,9 @@ services:
       - BACKEND_TOKEN_VERIFICATION=enabled
     secrets:
       - backend_token_secret
+    volumes:
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/acolyte-orchestrator/pki}:/certs:ro
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/acolyte-orchestrator/pki}:/trust:ro
     ports:
       - "18090:8090"
     networks:
