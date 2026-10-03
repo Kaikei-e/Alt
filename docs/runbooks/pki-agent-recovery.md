@@ -79,7 +79,7 @@ Cutover **前**にホストへ 17 ファイルを作る。中身は repo に置�
 | `secrets/pki-agent-knowledge-sovereign-jwk.txt` | `/run/secrets/pki-agent-knowledge-sovereign-jwk` | knowledge-sovereign |
 | `secrets/pki-agent-recap-evaluator-jwk.txt` | `/run/secrets/pki-agent-recap-evaluator-jwk` | recap-evaluator |
 
-Mode `0400`. Bootstrap 順:
+Bootstrap が新規に作るファイルは `0644`（canonical store の他ファイルと同じ。compose は file secret をホストの mode のまま mount し、nonroot の親がそれを読む）。既存ファイルの mode は bootstrap が変えない。`0400` になるのは step-ca コンテナ内へコピーした provisioner password だけ。Bootstrap 順:
 
 1. step-ca が healthy
 2. `bash pki-agent/scripts/bootstrap-pki-provisioner.sh`（冪等。SUBJECTS ごとに subject-scoped JWK provisioner を足し、欠落している `secrets/pki-agent-<subject>-jwk.txt` を作る）
@@ -414,19 +414,27 @@ for v in "${CERT_VOLUME[@]}"; do
   docker run --rm -v "$v:/c" alpine rm -f /c/svc-cert.pem /c/svc-key.pem
 done
 
-# 2. 17 in-process 親を force-recreate（旧 sidecar は 0。dual writer 禁止）
+# 2. in-process 親を force-recreate（旧 sidecar は 0。dual writer 禁止）。
+#    名指しした service は profile が無効でも起動されるので、有効な profile に
+#    入っている親だけに絞る（profile `tts` を有効にしていないホストで
+#    tts-speaker を立ち上げない）。
+mapfile -t ENABLED < <(docker compose -f compose/compose.yaml -p alt config --services)
+ACTIVE_SUBJECTS=()
+for s in "${SUBJECTS[@]}"; do
+  printf '%s\n' "${ENABLED[@]}" | grep -qxF "$s" && ACTIVE_SUBJECTS+=("$s")
+done
 docker compose -f compose/compose.yaml -p alt up -d --force-recreate \
-  "${SUBJECTS[@]}"
+  "${ACTIVE_SUBJECTS[@]}"
 
 # 3. 消費側 restart (Go サービスは certReloader で不要だが安全側)
 #    alt-data-hub を先に立てる: alt-backend / alt-harvester / 各 worker は
 #    alt-data-hub:9443 を叩くので、逆順だと接続エラーのリトライで騒がしくなる。
 docker compose -f compose/compose.yaml -p alt restart alt-data-hub
-docker compose -f compose/compose.yaml -p alt restart \
-  alt-backend alt-harvester alt-notifier alt-butterfly-facade auth-hub \
-  pre-processor search-indexer tag-generator recap-worker recap-subworker \
-  news-creator rag-orchestrator acolyte-orchestrator tts-speaker \
-  knowledge-sovereign recap-evaluator
+CONSUMERS=()
+for s in "${ACTIVE_SUBJECTS[@]}"; do
+  [ "$s" = alt-data-hub ] || CONSUMERS+=("$s")
+done
+docker compose -f compose/compose.yaml -p alt restart "${CONSUMERS[@]}"
 
 # 4. 検証: BFF から cert expired エラーが消えたか
 docker logs alt-alt-butterfly-facade-1 --since 1m 2>&1 | grep -c "certificate has expired"

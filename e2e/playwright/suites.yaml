@@ -99,8 +99,12 @@ suites:
   news-creator:
     images: [news-creator]
     notes: >-
-      news-creator-ollama-stub is built by compose from its own context
-      (compose/news-creator-ollama-stub) and needs no entry here.
+      news-creator-ollama-stub (compose/news-creator-ollama-stub) and
+      generation-proxy (docker/inference-proxy, tagged
+      alt-staging/inference-proxy:local) are built locally by compose from
+      their own contexts and need no entry here. generation-proxy is the
+      bearer-checking hop between news-creator and the stub, so every spec
+      that reaches the stub also proves news-creator sends the inference token.
 
   acolyte-orchestrator:
     images: []
