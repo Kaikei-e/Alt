@@ -28,7 +28,7 @@ from pact import Pact, match
 
 from tag_generator.handler.event_payload import TagGenerationRequestPayload
 from tag_generator.infra import redis_auth
-from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer
+from tag_generator.stream_consumer import _REPLY_STREAM_KEY, ConsumerConfig, StreamConsumer
 from tag_generator.stream_event_handler import TagGeneratorEventHandler
 
 PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "pacts"
@@ -36,6 +36,9 @@ PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "pacts"
 MESSAGE_ID = "1742947200000-0"
 # ReplyStreamPrefix + uuid.New().String(), the only reply_to mq-hub emits.
 REPLY_TO = "alt:replies:tags:7c9e6679-7425-40de-944b-e07fc1f90ae7"
+# The key shape tag-generator answers; any other reply_to is dropped unanswered,
+# so the pact holds mq-hub to it rather than to "some string".
+REPLY_TO_PATTERN = f"^{_REPLY_STREAM_KEY.pattern}$"
 TEST_REDIS_PASSWORD = "contract-test-redis-password"
 
 
@@ -121,7 +124,7 @@ def test_consume_tag_generation_requested_event():
                     "content": match.string("An article about memory safety in Rust programming language."),
                 },
                 "metadata": {
-                    "reply_to": match.string(REPLY_TO),
+                    "reply_to": match.regex(REPLY_TO, regex=REPLY_TO_PATTERN),
                     "correlation_id": match.string("corr-001"),
                 },
             },
