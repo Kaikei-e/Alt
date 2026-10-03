@@ -478,28 +478,53 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-evaluator
       - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
+      # Bearer guarding /api/v1/evaluations/*; a missing file stops startup.
+      - EVALUATOR_API_TOKEN_FILE=/run/secrets/evaluator_api_token
+      # Outbound-only mTLS client: news-creator :9443 requires this leaf, and
+      # httpx trusts the internal CA only through the SSLContext built from
+      # MTLS_CA_FILE (it never reads REQUESTS_CA_BUNDLE).
+      - MTLS_ENFORCE=true
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      - REQUESTS_CA_BUNDLE=/trust/ca-bundle.pem
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=recap-evaluator
+      - CERT_SANS=recap-evaluator,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-recap-evaluator
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-recap-evaluator-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
     volumes:
-      - recap_evaluator_certs:/certs:ro
+      - recap_evaluator_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      # Dockerfile user evaluator is 65533:65533.
+      - image: alpine:3.21
+        user: "0:0"
+        command:
+          - sh
+          - -c
+          - mkdir -p /certs && chown -R 65533:65533 /certs && chmod 0750 /certs
     secrets:
       - recap_db_password
       - rask_ingest_token
+      - pki-agent-recap-evaluator-jwk
+      - evaluator_api_token
     depends_on:
       recap-db:
         condition: service_healthy
-      pki-agent-recap-evaluator:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     networks:
       - alt-network
     restart: unless-stopped
     healthcheck:
-      # :8080/health is the plaintext health endpoint from the FastAPI app.
-      # The evaluator's pki-agent sidecar must be healthy (depends_on) before
-      # certs are available, but the health endpoint itself doesn't require TLS.
+      # :8080/health is the plaintext health endpoint from the FastAPI app;
+      # lifespan startup (enrollment included) must finish before it answers.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=5)"]
       interval: 30s
       timeout: 10s
@@ -518,45 +543,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  pki-agent-recap-evaluator:
-    build:
-      context: ../pki-agent
-      dockerfile: Dockerfile
-    user: "root"
-    entrypoint: ["/usr/local/bin/pki-agent"]
-    environment:
-      CERT_SUBJECT: recap-evaluator
-      CERT_SANS: "recap-evaluator,localhost"
-      STEP_CA_URL: https://step-ca:9000
-      STEP_CA_ROOT_FILE: /trust/ca-bundle.pem
-      STEP_CA_PROVISIONER: pki-agent-recap-evaluator
-      STEP_CA_PROVISIONER_PASSWORD_FILE: /run/secrets/pki-agent-recap-evaluator-jwk
-      CERT_PATH: /certs/svc-cert.pem
-      KEY_PATH: /certs/svc-key.pem
-      CERT_OWNER_UID: "65533"
-      CERT_OWNER_GID: "65533"
-      RENEW_AT_FRACTION: "0.66"
-      TICK_INTERVAL: "5m"
-      METRICS_ADDR: ":9510"
-    volumes:
-      - recap_evaluator_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    secrets:
-      - pki-agent-recap-evaluator-jwk
-    depends_on:
-      step-ca:
-        condition: service_healthy
-      step-ca-bootstrap:
-        condition: service_completed_successfully
-    networks:
-      - alt-network
-    healthcheck:
-      test: ["CMD", "/usr/local/bin/pki-agent", "healthcheck"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
 
 secrets:
   dashboard_sse_token:
