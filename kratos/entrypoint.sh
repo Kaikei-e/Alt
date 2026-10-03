@@ -104,12 +104,16 @@ KRATOS_ERROR_UI_URL=${KRATOS_ERROR_UI_URL:-https://example.com/auth/error}
 KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-https://example.com/auth/settings}
 KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-https://example.com/auth/recovery}
 KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-https://example.com/auth/verification}
-KRATOS_COOKIE_DOMAIN=${KRATOS_COOKIE_DOMAIN-.example.com}
 
 TEMPLATE_FILE=${KRATOS_TEMPLATE_FILE:-/etc/config/kratos/kratos_template.yml}
 if [ ! -f "$TEMPLATE_FILE" ]; then
     echo "Error: canonical template $TEMPLATE_FILE not found." >&2
     exit 1
+fi
+
+# Empty is a deliberate host-only cookie; unset would silently render one too.
+if grep -qF "\${KRATOS_COOKIE_DOMAIN}" "$TEMPLATE_FILE"; then
+    : "${KRATOS_COOKIE_DOMAIN?must be set for this template (empty means host-only cookies)}"
 fi
 
 KRATOS_CONFIG_FILE=${KRATOS_CONFIG_FILE:-/tmp/kratos.yml}

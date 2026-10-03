@@ -342,6 +342,12 @@ services:
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - AUTH_HUB_URL=https://auth-hub:9443
+      # Stated explicitly: the config defaults still name plaintext ports
+      # (search-indexer :9301 is retired), while these clients accept https
+      # only and NewBackendComponents exits the process on anything else.
+      - SEARCH_INDEXER_CONNECT_URL=https://search-indexer:9443
+      - PRE_PROCESSOR_URL=https://pre-processor:9443
+      - PRE_PROCESSOR_CONNECT_URL=https://pre-processor:9443
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub:9500
       - MQHUB_AUTH_TOKEN_FILE=/run/secrets/mqhub_auth_token
@@ -908,6 +914,7 @@ services:
       - alt-network
 
   otel-relay:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-otel-relay:${IMAGE_TAG:-main}
     build:
       context: ../docker/otel-relay
       dockerfile: Dockerfile

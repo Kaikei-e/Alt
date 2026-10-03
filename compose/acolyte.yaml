@@ -119,7 +119,9 @@ services:
       - NEWS_CREATOR_URL=${ACOLYTE_LLM_URL:-https://news-creator:9443}
       - LLM_PROVIDER=${ACOLYTE_LLM_PROVIDER:-ollama}
       - VLLM_API_KEY=${ACOLYTE_VLLM_API_KEY:-}
-      - SEARCH_INDEXER_URL=${ACOLYTE_SEARCH_URL:-http://search-indexer:9300}
+      # search-indexer serves /v1/search on mTLS :9443 only (:9300 is
+      # health-only); acolyte-orchestrator is in its MTLS_ALLOWED_PEERS.
+      - SEARCH_INDEXER_URL=${ACOLYTE_SEARCH_URL:-https://search-indexer:9443}
       - DEFAULT_MODEL=${ACOLYTE_MODEL:-gemma4-e4b-12k}
       # Must match the shared Ollama runner's num_ctx (compose/ai.yaml LLM_NUM_CTX)
       # or the runner reloads on each alternation between acolyte and news-creator.
