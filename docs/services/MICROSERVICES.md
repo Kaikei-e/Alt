@@ -165,7 +165,7 @@ Knowledge Home / Knowledge Trail の projector はこのサービスが持つ
 | step-ca-bootstrap | oneshot (step-ca image) | - | pki.yaml | - |
 | pki-agent | Go | - | **not a compose workload** | tooling only |
 
-> **Workload sidecar は退役**（[[000978]]）。east-west 14 親（alt-backend / alt-harvester / alt-notifier / alt-data-hub / alt-butterfly-facade / auth-hub / pre-processor / search-indexer / tag-generator / recap-worker / recap-subworker / acolyte-orchestrator / news-creator / rag-orchestrator）が **in-process** で enroll / renew する（`PKI_ENROLLMENT=enabled`、subject-scoped JWK `pki-agent-<subject>`）。14 本の `pki-agent-*-jwk` secret がその親にだけマウントされているのが実装上の数え方。pki-agent イメージと `pki-agent/scripts/bootstrap-pki-provisioner.sh` は **CA 側 tooling**（provisioner + CN allowlist）として残る。compose に `pki-agent-*` を再宣言すると同一 cert volume の dual writer になる。ops `:9110` は親プロセスの private 面で、ホストへ publish しない。
+> **Workload sidecar は退役**（[[000978]]）。east-west 17 親（alt-backend / alt-harvester / alt-notifier / alt-data-hub / alt-butterfly-facade / auth-hub / pre-processor / search-indexer / tag-generator / recap-worker / recap-subworker / acolyte-orchestrator / news-creator / rag-orchestrator / knowledge-sovereign / recap-evaluator / tts-speaker（profile `tts`））が **in-process** で enroll / renew する（`PKI_ENROLLMENT=enabled`、subject-scoped JWK `pki-agent-<subject>`）。17 本の `pki-agent-*-jwk` secret がその親にだけマウントされているのが実装上の数え方。pki-agent イメージと `pki-agent/scripts/bootstrap-pki-provisioner.sh` は **CA 側 tooling**（provisioner + CN allowlist）として残る。compose に `pki-agent-*` を再宣言すると同一 cert volume の dual writer になる。ops `:9110` は親プロセスの private 面で、ホストへ publish しない。
 
 ### Data Stores
 | Service | Type | Host Port(s) | Compose File | Health Endpoint |
@@ -250,7 +250,7 @@ forwarder は 16 本ちょうどで、これが accidental OSU cap そのもの�
 |------|------|
 | nginx | plecto-proxy に置換済み。`nginx/` のコンフィグは読み込まれていない。include チェーンに `nginx` サービスは存在しない（`nginx-logs` は forwarder の名前が残っているだけ） |
 | alt-frontend | Next.js 版フロントエンド。削除済み（実体なし、歴史記録） |
-| pki-agent サイドカー | 14 本すべて退役（[[000978]]）。親プロセスの in-process enrollment に置換 |
+| pki-agent サイドカー | 14 本と、後から残っていた knowledge-sovereign / recap-evaluator の cert-only 2 本をすべて退役（[[000978]]）。親プロセスの in-process enrollment に置換 |
 | sidecar-proxy | `alt-backend/sidecar-proxy` にコードと Dockerfile はあるが、compose ワークロードとしては宣言されていない |
 | genre-classifier | ソースなし（`.venv` の残骸のみ）。compose 参照ゼロ |
 | feed-validator | 学習用プロジェクト。compose ワークロードではない |
@@ -729,7 +729,7 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 | pact_db_password | pact-broker, pact-db |
 | restic_password | restic-backup |
 | step_ca_root_password | step-ca |
-| `pki-agent-<subject>-jwk` (14 本) | 対応する親サービス 1 本ずつ |
+| `pki-agent-<subject>-jwk` (17 本) | 対応する親サービス 1 本ずつ |
 
 ---
 
