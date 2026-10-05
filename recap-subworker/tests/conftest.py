@@ -163,6 +163,20 @@ def _default_admin_auth_disabled_in_tests() -> None:
     os.environ.setdefault("ADMIN_AUTH", "disabled")
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _default_inference_auth_disabled_in_tests() -> None:
+    """Let tests build ollama-remote Settings without a proxy token file.
+
+    `Settings(model_backend="ollama-remote")` refuses to boot unless
+    `INFERENCE_SERVICE_TOKEN_FILE` is set or `INFERENCE_AUTH=disabled`.
+    `tests/unit/test_inference_auth_wiring.py` opts back in per-test via
+    `monkeypatch.delenv`.
+    """
+    import os
+
+    os.environ.setdefault("INFERENCE_AUTH", "disabled")
+
+
 @pytest.fixture
 def test_settings() -> Settings:
     """Minimal Settings instance for unit tests."""

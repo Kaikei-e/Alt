@@ -1,9 +1,15 @@
 package config
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoad(t *testing.T) {
@@ -19,6 +25,7 @@ func TestLoad(t *testing.T) {
 				"USER_JWT_INTROSPECTION_URL": "http://auth-hub:9443/internal/token/introspect",
 				"MEILISEARCH_HOST":           "http://localhost:7700",
 				"MEILISEARCH_API_KEY":        "key",
+				"INFERENCE_AUTH":             "disabled",
 			},
 			wantErr: false,
 		},
@@ -95,6 +102,7 @@ func TestLoad_SecretFileReadable(t *testing.T) {
 	t.Setenv("USER_JWT_INTROSPECTION_URL", "http://auth-hub:9443/internal/token/introspect")
 	t.Setenv("MEILISEARCH_HOST", "http://localhost:7700")
 	t.Setenv("MEILISEARCH_API_KEY_FILE", keyPath)
+	t.Setenv("INFERENCE_AUTH", "disabled")
 
 	cfg, err := Load()
 	if err != nil {
@@ -103,4 +111,174 @@ func TestLoad_SecretFileReadable(t *testing.T) {
 	if cfg.Meilisearch.APIKey != "super-secret-key" {
 		t.Errorf("APIKey = %q, want %q (trimmed file content)", cfg.Meilisearch.APIKey, "super-secret-key")
 	}
+}
+
+func setRequiredLoadEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("BACKEND_API_URL", "http://alt-backend:9101")
+	t.Setenv("USER_JWT_INTROSPECTION_URL", "http://auth-hub:9443/internal/token/introspect")
+	t.Setenv("MEILISEARCH_HOST", "http://localhost:7700")
+}
+
+// withHybridEmbedder sets MeiliHybridEmbedder, which is read from the
+// environment once at package init, for the duration of the test.
+func withHybridEmbedder(t *testing.T, name string) {
+	t.Helper()
+	prev := MeiliHybridEmbedder
+	MeiliHybridEmbedder = name
+	t.Cleanup(func() { MeiliHybridEmbedder = prev })
+}
+
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	t.Setenv(key, "")
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeInferenceToken(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "inference_service_token")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// Meilisearch presents this token to embedding-proxy as the hybrid embedder's
+// apiKey. Without it the embedder is declared keyless and every embed call
+// 401s, so a missing token file has to stop startup.
+func TestLoad_InferenceTokenFileRequired(t *testing.T) {
+	setRequiredLoadEnv(t)
+	withHybridEmbedder(t, "bge-m3")
+	unsetEnv(t, "INFERENCE_AUTH")
+	unsetEnv(t, "INFERENCE_SERVICE_TOKEN_FILE")
+
+	_, err := Load()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "INFERENCE_SERVICE_TOKEN_FILE")
+	assert.Contains(t, err.Error(), "INFERENCE_AUTH=disabled")
+}
+
+func TestLoad_InferenceTokenFileEmptyPathRequired(t *testing.T) {
+	setRequiredLoadEnv(t)
+	withHybridEmbedder(t, "bge-m3")
+	unsetEnv(t, "INFERENCE_AUTH")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", "   ")
+
+	_, err := Load()
+
+	require.Error(t, err)
+}
+
+func TestLoad_InferenceTokenFileUnreadable(t *testing.T) {
+	setRequiredLoadEnv(t)
+	withHybridEmbedder(t, "bge-m3")
+	unsetEnv(t, "INFERENCE_AUTH")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", filepath.Join(t.TempDir(), "missing"))
+
+	_, err := Load()
+
+	require.Error(t, err)
+}
+
+func TestLoad_InferenceTokenFileEmptyContent(t *testing.T) {
+	setRequiredLoadEnv(t)
+	withHybridEmbedder(t, "bge-m3")
+	unsetEnv(t, "INFERENCE_AUTH")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", writeInferenceToken(t, "\n"))
+
+	_, err := Load()
+
+	require.Error(t, err)
+}
+
+func TestLoad_InferenceTokenInvalidCharacters(t *testing.T) {
+	setRequiredLoadEnv(t)
+	withHybridEmbedder(t, "bge-m3")
+	unsetEnv(t, "INFERENCE_AUTH")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", writeInferenceToken(t, "has space\n"))
+
+	_, err := Load()
+
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "has space", "the token must never reach an error message")
+}
+
+func TestLoad_InferenceTokenLoaded(t *testing.T) {
+	setRequiredLoadEnv(t)
+	withHybridEmbedder(t, "bge-m3")
+	unsetEnv(t, "INFERENCE_AUTH")
+	t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", writeInferenceToken(t, "valid-inference-token==\n"))
+
+	cfg, err := Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "valid-inference-token==", cfg.Meilisearch.EmbedderInferenceToken)
+}
+
+func TestLoad_InferenceAuthDisabledIsExplicit(t *testing.T) {
+	setRequiredLoadEnv(t)
+	withHybridEmbedder(t, "bge-m3")
+	t.Setenv("INFERENCE_AUTH", "disabled")
+	unsetEnv(t, "INFERENCE_SERVICE_TOKEN_FILE")
+
+	cfg, err := Load()
+
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Meilisearch.EmbedderInferenceToken)
+}
+
+// With MEILI_HYBRID_EMBEDDER empty no embedder is declared, so this service
+// never reaches embedding-proxy and has no bearer to present.
+func TestLoad_InferenceTokenNotNeededWithoutHybridEmbedder(t *testing.T) {
+	setRequiredLoadEnv(t)
+	withHybridEmbedder(t, "")
+	unsetEnv(t, "INFERENCE_AUTH")
+	unsetEnv(t, "INFERENCE_SERVICE_TOKEN_FILE")
+
+	cfg, err := Load()
+
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Meilisearch.EmbedderInferenceToken)
+}
+
+func TestResolveInferenceToken_LogsWiringStateOnce(t *testing.T) {
+	t.Run("disabled", func(t *testing.T) {
+		t.Setenv("INFERENCE_AUTH", "Disabled")
+		unsetEnv(t, "INFERENCE_SERVICE_TOKEN_FILE")
+		var buf bytes.Buffer
+
+		token, err := resolveInferenceToken(slog.New(slog.NewTextHandler(&buf, nil)))
+
+		require.NoError(t, err)
+		assert.Empty(t, token)
+		assert.Equal(t, 1, strings.Count(buf.String(), "msg=inference_auth_disabled"))
+		assert.NotContains(t, buf.String(), "inference_auth_enabled")
+	})
+
+	t.Run("enabled", func(t *testing.T) {
+		unsetEnv(t, "INFERENCE_AUTH")
+		t.Setenv("INFERENCE_SERVICE_TOKEN_FILE", writeInferenceToken(t, "valid-inference-token\n"))
+		var buf bytes.Buffer
+
+		token, err := resolveInferenceToken(slog.New(slog.NewTextHandler(&buf, nil)))
+
+		require.NoError(t, err)
+		assert.Equal(t, "valid-inference-token", token)
+		assert.Equal(t, 1, strings.Count(buf.String(), "msg=inference_auth_enabled"))
+		assert.NotContains(t, buf.String(), "valid-inference-token", "the token must never reach the log")
+	})
+}
+
+// knowledge-embedder-local sits on the internal embedding-raw-network that
+// Meilisearch cannot reach; embedding-proxy is the only route to it.
+func TestMeiliEmbedderURLDefaultsToEmbeddingProxy(t *testing.T) {
+	if os.Getenv("MEILI_EMBEDDER_URL") != "" {
+		t.Skip("MEILI_EMBEDDER_URL is set in the test environment")
+	}
+
+	assert.Equal(t, "http://embedding-proxy:11436/api/embed", MeiliEmbedderURL)
 }

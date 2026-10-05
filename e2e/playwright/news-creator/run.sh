@@ -60,6 +60,14 @@ suite_endpoint UNBOUND_URL "http://news-creator:8001"
 suite_endpoint STUB_MODEL      "gemma3:4b-it-qat"
 suite_endpoint MAX_QUEUE_DEPTH "10"
 
-suite_up news-creator-ollama-stub news-creator
+# news-creator reaches the stub through generation-proxy, which checks the
+# inference bearer. tests/inference-proxy.spec.ts probes the proxy directly
+# with and without the same token file news-creator mounts.
+suite_endpoint GENERATION_PROXY_URL         "http://generation-proxy:11436"
+suite_endpoint INFERENCE_SERVICE_TOKEN_FILE "$ROOT/e2e/playwright/_fixtures/test-credentials/inference_service_token.txt"
+
+# generation-proxy, like the stub, is a local build context that compose builds
+# when its image is missing; news-creator stays on the image build-images.py made.
+suite_up news-creator-ollama-stub generation-proxy news-creator
 
 suite_test

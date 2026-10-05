@@ -1,6 +1,6 @@
 """Tests for metrics handler."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -32,7 +32,7 @@ class TestGetLatestMetrics:
             "pipeline_alert_level": "ok",
             "cluster_avg_silhouette": 0.35,
             "cluster_alert_level": "ok",
-            "last_evaluation_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "last_evaluation_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
 
         resp = client.get("/api/v1/metrics/latest")

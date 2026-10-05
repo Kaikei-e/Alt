@@ -50,9 +50,7 @@ def test_fetch_latest_genre_evaluation():
         .with_request("GET", "/v1/evaluation/genres/latest")
         .will_respond_with(200)
         .with_body(
-            json.dumps(
-                {"run_id": 42, "status": "succeeded", "accuracy": 0.85, "macro_f1": 0.82}
-            ),
+            json.dumps({"run_id": 42, "status": "succeeded", "accuracy": 0.85, "macro_f1": 0.82}),
             "application/json",
         )
     )
@@ -76,9 +74,7 @@ def test_fetch_genre_evaluation_by_id():
         .with_request("GET", "/v1/evaluation/genres/42")
         .will_respond_with(200)
         .with_body(
-            json.dumps(
-                {"run_id": 42, "status": "succeeded", "accuracy": 0.85, "macro_f1": 0.82}
-            ),
+            json.dumps({"run_id": 42, "status": "succeeded", "accuracy": 0.85, "macro_f1": 0.82}),
             "application/json",
         )
     )

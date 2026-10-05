@@ -485,7 +485,8 @@ def discrepancy_for(current: dict) -> dict:
         "compose_config_full_profiles": counts["compose_config_full_profiles"],
         "compose_config_note": (
             "docker compose -f compose/compose.yaml config without --profile "
-            "omits the 4 profiled services (backup + perf)."
+            f"omits the {len(current['profiled'])} profiled services "
+            f"({', '.join(current['profiled'])})."
         ),
         "yaml_declared": counts["declared_total"],
         "profiled_excluded_from_default_up": current["profiled"],

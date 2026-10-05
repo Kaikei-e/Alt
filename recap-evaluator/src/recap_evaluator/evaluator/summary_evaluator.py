@@ -29,9 +29,7 @@ logger = structlog.get_logger()
 # 0.0 — indistinguishable from a genuinely terrible measurement. Coverage is
 # therefore tracked by name and never inferred from a value, for the same
 # reason success_count exists for the G-Eval axis.
-_COMPOSITE_AXES: Final[frozenset[str]] = frozenset(
-    {"geval", "bertscore", "faithfulness", "rouge"}
-)
+_COMPOSITE_AXES: Final[frozenset[str]] = frozenset({"geval", "bertscore", "faithfulness", "rouge"})
 
 
 class SummaryEvaluator:
@@ -90,8 +88,7 @@ class SummaryEvaluator:
                     continue
 
                 source_text = "\n\n".join(
-                    f"Title: {a['title']}\n{a.get('fulltext_html', '')[:500]}"
-                    for a in articles[:5]
+                    f"Title: {a['title']}\n{a.get('fulltext_html', '')[:500]}" for a in articles[:5]
                 )
                 all_eval_items.append((source_text, summary))
 
@@ -154,40 +151,44 @@ class SummaryEvaluator:
         tasks.append(("geval", asyncio.ensure_future(self._run_geval(eval_items))))
 
         # ROUGE (CPU-bound, thread pool)
-        tasks.append((
-            "rouge",
-            asyncio.ensure_future(
-                loop.run_in_executor(
-                    self._executor,
-                    lambda: self._rouge.compute_batch(summaries, sources, lang=self._lang),
-                )
-            ),
-        ))
+        tasks.append(
+            (
+                "rouge",
+                asyncio.ensure_future(
+                    loop.run_in_executor(
+                        self._executor,
+                        lambda: self._rouge.compute_batch(summaries, sources, lang=self._lang),
+                    )
+                ),
+            )
+        )
 
         # BERTScore (CPU-bound, thread pool)
-        tasks.append((
-            "bertscore",
-            asyncio.ensure_future(
-                loop.run_in_executor(
-                    self._executor,
-                    lambda: self._bertscore.evaluate_batch(
-                        summaries, sources, lang=self._lang
-                    ),
-                )
-            ),
-        ))
+        tasks.append(
+            (
+                "bertscore",
+                asyncio.ensure_future(
+                    loop.run_in_executor(
+                        self._executor,
+                        lambda: self._bertscore.evaluate_batch(summaries, sources, lang=self._lang),
+                    )
+                ),
+            )
+        )
 
         # Faithfulness (CPU-bound, thread pool)
         source_sentences = [self._split_to_sentences(s) for s in sources]
-        tasks.append((
-            "faithfulness",
-            asyncio.ensure_future(
-                loop.run_in_executor(
-                    self._executor,
-                    lambda: self._run_faithfulness_sync(summaries, source_sentences),
-                )
-            ),
-        ))
+        tasks.append(
+            (
+                "faithfulness",
+                asyncio.ensure_future(
+                    loop.run_in_executor(
+                        self._executor,
+                        lambda: self._run_faithfulness_sync(summaries, source_sentences),
+                    )
+                ),
+            )
+        )
 
         results = await asyncio.gather(
             *[task[1] for task in tasks],
@@ -273,11 +274,7 @@ class SummaryEvaluator:
             else 0.0
         )
 
-        summaries = [
-            output.get("summary_ja", "")
-            for output in outputs
-            if output.get("summary_ja")
-        ]
+        summaries = [output.get("summary_ja", "") for output in outputs if output.get("summary_ja")]
         if summaries:
             # ReadabilityEvaluator.evaluate_batch already absorbs recoverable
             # per-item failures (network/HTTP/unparseable LLM response) and
@@ -307,9 +304,7 @@ class SummaryEvaluator:
         sentences = re.split(pattern, text.strip())
         return [s.strip() for s in sentences if s.strip()]
 
-    def _apply_result(
-        self, metrics: SummaryMetrics, evaluator_name: str, result: dict
-    ) -> None:
+    def _apply_result(self, metrics: SummaryMetrics, evaluator_name: str, result: dict) -> None:
         if evaluator_name == "geval":
             metrics.coherence = result.get("coherence", 0.0)
             metrics.consistency = result.get("consistency", 0.0)

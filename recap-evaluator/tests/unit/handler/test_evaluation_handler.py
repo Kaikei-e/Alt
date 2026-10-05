@@ -1,7 +1,7 @@
 """Tests for evaluation handler."""
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -12,9 +12,6 @@ from recap_evaluator.domain.models import (
     AlertLevel,
     EvaluationRun,
     EvaluationType,
-    GenreEvaluationResult,
-    PipelineMetrics,
-    SummaryMetrics,
 )
 from recap_evaluator.handler.evaluation_handler import router
 
@@ -47,7 +44,7 @@ class TestRunFullEvaluation:
             evaluation_id=eval_id,
             evaluation_type=EvaluationType.FULL,
             job_ids=[uuid4()],
-            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
             window_days=7,
             overall_alert_level=AlertLevel.OK,
         )
@@ -64,7 +61,7 @@ class TestRunFullEvaluation:
             evaluation_id=uuid4(),
             evaluation_type=EvaluationType.FULL,
             job_ids=[],
-            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
             window_days=7,
         )
 
@@ -80,7 +77,7 @@ class TestGetEvaluation:
             "evaluation_id": eval_id,
             "evaluation_type": "full",
             "job_ids": [uuid4()],
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
             "metrics": {"window_days": 7, "overall_alert_level": "ok"},
         }
 

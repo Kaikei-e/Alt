@@ -50,7 +50,14 @@ def arrived_via_sidecar(request: Request) -> bool:
 
 
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, allowed: Iterable[str] | None = None, *, strict: bool = False, exempt_paths: Iterable[str] | None = None) -> None:
+    def __init__(
+        self,
+        app,
+        allowed: Iterable[str] | None = None,
+        *,
+        strict: bool = False,
+        exempt_paths: Iterable[str] | None = None,
+    ) -> None:
         super().__init__(app)
         self._allowed = {c for c in (allowed or []) if c}
         self._strict = strict

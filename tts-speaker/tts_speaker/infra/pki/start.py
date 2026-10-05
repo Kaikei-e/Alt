@@ -114,6 +114,11 @@ def start_with_observer(
     )
     ctx = Ctx()
     mgr.enroll(ctx)
+    # Bind before the non-daemon thread exists: a bind error must exit the
+    # process, not leave the renewal thread holding it open.
+    ops: OpsHandle | None = None
+    if registry is not None:
+        ops = start_ops(cfg.subject, registry)
     thread = threading.Thread(
         target=_run_loop,
         args=(mgr, ctx),
@@ -121,9 +126,6 @@ def start_with_observer(
         daemon=False,
     )
     thread.start()
-    ops: OpsHandle | None = None
-    if registry is not None:
-        ops = start_ops(cfg.subject, registry)
     timeout = float(getattr(minted, "timeout", _DEFAULT_ISSUE_TIMEOUT) or _DEFAULT_ISSUE_TIMEOUT)
     return Handle(
         ctx,

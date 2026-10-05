@@ -110,22 +110,6 @@ func TestDoctorExitError_NoProblems(t *testing.T) {
 	}
 }
 
-// --- newDoctorExecutor: DOCKER_GROUP_ID workaround ---
-
-func TestNewDoctorExecutor_InjectsPlaceholderDockerGroupIDWhenUnset(t *testing.T) {
-	setupDoctorTest(t)
-	t.Setenv("DOCKER_GROUP_ID", "")
-
-	// newDoctorExecutor must not panic and must return a usable Executor
-	// even though the real environment has no DOCKER_GROUP_ID set -- this
-	// exercises the same construction path runDoctor uses, without
-	// actually invoking docker (RunWithOutput isn't called here).
-	exec := newDoctorExecutor()
-	if exec == nil {
-		t.Fatal("expected a non-nil Executor")
-	}
-}
-
 // Sanity: prescriptions/help text reference `altctl doctor` consistently
 // with main.go's interrupted-stack hint (see main.go), so the command name
 // itself must not silently drift.

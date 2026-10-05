@@ -226,7 +226,7 @@ func extractHeredocTemplates(t *testing.T) (subjectTpl, localhostTpl string) {
 	if locIdx == -1 {
 		t.Fatalf("failed to find localhost marker %q in script", locMarker)
 	}
-	catMarker := "cat > \"/tmp/${name}.tpl.host\" <<EOF\n"
+	catMarker := "cat <<EOF\n"
 	locCatIdx := strings.Index(content[locIdx:], catMarker)
 	if locCatIdx == -1 {
 		t.Fatalf("failed to find localhost heredoc start in script")
@@ -240,7 +240,7 @@ func extractHeredocTemplates(t *testing.T) (subjectTpl, localhostTpl string) {
 	localhostTpl = strings.ReplaceAll(rawLocalhost, `\$has_subject`, "$has_subject")
 
 	// Extract subject template
-	elseMarker := "else\n    cat > \"/tmp/${name}.tpl.host\" <<EOF\n"
+	elseMarker := "else\n    cat <<EOF\n"
 	elseIdx := strings.Index(content[locStart+locEnd:], elseMarker)
 	if elseIdx == -1 {
 		t.Fatalf("failed to find subject heredoc start in script")

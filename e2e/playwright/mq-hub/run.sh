@@ -51,8 +51,10 @@ suite_endpoint OPS_ABSENT_URL "http://mq-hub:9110"
 
 # Staging Redis endpoints for ephemeral E2E stream isolation inside the staging network.
 # Only canonical streams are reset, and only when explicitly opted in via MQ_E2E_ALLOW_REDIS_RESET=1.
-suite_endpoint REDIS_URL                "redis://redis-streams:6379"
-suite_endpoint REDIS_PASSWORD_FILE      "$ROOT/e2e/fixtures/staging-secrets/redis_password.txt"
+# redis-streams runs the production ACL (docker/redis/entrypoint.sh), so the
+# reset authenticates as the same `streams` user mq-hub does.
+suite_endpoint REDIS_URL                "redis://streams@redis-streams:6379"
+suite_endpoint REDIS_PASSWORD_FILE      "$ROOT/e2e/playwright/_fixtures/test-credentials/redis_streams_password.txt"
 suite_endpoint MQ_E2E_ALLOW_REDIS_RESET "1"
 
 # The whole slice. mq-hub `depends_on: redis-streams (service_healthy)`, so

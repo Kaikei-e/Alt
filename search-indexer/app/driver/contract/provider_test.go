@@ -6,8 +6,9 @@
 // real rest.Handler and the real connectv2.CreateConnectServer mux, backed by
 // fake port.SearchEngine / port.RecapSearchEngine implementations so no
 // Meilisearch instance is required. The real user-auth usecase consumes fixed
-// introspection fixtures. Pact replay supplies only a fixture Bearer header;
-// request payloads, validation and response mapping remain unchanged.
+// introspection fixtures. Pact replay swaps a consumer's placeholder JWT for a
+// live fixture token but never adds a missing one; request payloads,
+// validation and response mapping remain unchanged.
 package contract
 
 import (
@@ -77,28 +78,39 @@ func (*contractAuthHub) IntrospectToken(_ context.Context, token string) (*port.
 	return nil, fmt.Errorf("unknown contract token")
 }
 
-// Pact's dynamic-credential hook complements the legacy fixture requests.
-// Explicit auth headers are preserved, including negative auth interactions.
+// contractAuthFilter swaps the credential a consumer sends for a live fixture
+// token minted for the interaction's user_id. Pact files can only hold a
+// placeholder JWT, but the header's presence is the contract: a request without
+// one is passed through untouched and must fail with 401.
 func contractAuthFilter(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(r.Header.Values("Authorization")) == 0 && len(r.Header.Values("X-Alt-Backend-Token")) == 0 {
-			userID := r.URL.Query().Get("user_id")
-			if userID == "" && r.Body != nil && strings.HasSuffix(r.URL.Path, "/SearchArticles") {
-				body, err := io.ReadAll(r.Body)
-				if err != nil {
-					http.Error(w, "read contract request", http.StatusBadRequest)
-					return
-				}
-				r.Body = io.NopCloser(strings.NewReader(string(body)))
-				var payload struct {
-					UserID string `json:"userId"`
-				}
-				if err := json.Unmarshal(body, &payload); err == nil {
-					userID = payload.UserID
-				}
+		hasAuthorization := len(r.Header.Values("Authorization")) > 0
+		hasBackendToken := len(r.Header.Values("X-Alt-Backend-Token")) > 0
+		if !hasAuthorization && !hasBackendToken {
+			next.ServeHTTP(w, r)
+			return
+		}
+		userID := r.URL.Query().Get("user_id")
+		if userID == "" && r.Body != nil && strings.HasSuffix(r.URL.Path, "/SearchArticles") {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "read contract request", http.StatusBadRequest)
+				return
 			}
-			if token, ok := contractTokens[userID]; ok {
+			r.Body = io.NopCloser(strings.NewReader(string(body)))
+			var payload struct {
+				UserID string `json:"userId"`
+			}
+			if err := json.Unmarshal(body, &payload); err == nil {
+				userID = payload.UserID
+			}
+		}
+		if token, ok := contractTokens[userID]; ok {
+			if hasAuthorization {
 				r.Header.Set("Authorization", "Bearer "+token)
+			}
+			if hasBackendToken {
+				r.Header.Set("X-Alt-Backend-Token", token)
 			}
 		}
 		next.ServeHTTP(w, r)
@@ -298,12 +310,22 @@ func TestVerifySearchIndexerProviderContracts(t *testing.T) {
 			emptyResultState.Store(false)
 			return nil, nil
 		},
+		"search has indexed articles": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+			emptyResultState.Store(false)
+			return nil, nil
+		},
 		"search-indexer has indexed articles": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 			emptyResultState.Store(false)
 			return nil, nil
 		},
 		"search-indexer has no matching articles": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 			emptyResultState.Store(setup)
+			return nil, nil
+		},
+		// The "Iran tensions 2026" fixture in fakeContractSearchEngine carries
+		// the published_at this state promises.
+		"search-indexer has articles with published_at metadata indexed": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+			emptyResultState.Store(false)
 			return nil, nil
 		},
 		"search-indexer has indexed articles and a service token is configured": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
@@ -454,31 +476,48 @@ func TestProviderStub_ConnectRequiresMatchingUserAuthorization(t *testing.T) {
 	}
 }
 
-func TestContractAuthFilterPreservesExplicitCredentials(t *testing.T) {
-	for _, header := range []string{"Authorization", "X-Alt-Backend-Token"} {
-		for _, credential := range []string{"invalid-credential", ""} {
-			t.Run(header+"/"+credential, func(t *testing.T) {
-				req, err := http.NewRequest(http.MethodGet, "/v1/search?user_id="+contractUserID, nil)
-				require.NoError(t, err)
-				req.Header.Set(header, credential)
-				called := false
-				contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-					called = true
-					require.Equal(t, []string{credential}, r.Header.Values(header))
-					if header != "Authorization" {
-						require.Empty(t, r.Header.Get("Authorization"))
-					}
-				})).ServeHTTP(nil, req)
-				require.True(t, called)
-			})
-		}
+// A consumer that drops the user JWT must fail verification, so the filter
+// only swaps a credential the request already carries for a live fixture token;
+// it never supplies one that is missing.
+func TestContractAuthFilterReplacesPresentCredentials(t *testing.T) {
+	for _, tc := range []struct {
+		header string
+		want   string
+	}{
+		{"Authorization", "Bearer " + contractTokens[contractUserID]},
+		{"X-Alt-Backend-Token", contractTokens[contractUserID]},
+	} {
+		t.Run(tc.header, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "/v1/search?user_id="+contractUserID, nil)
+			require.NoError(t, err)
+			req.Header.Set(tc.header, "pact-header.pact-claims.pact-signature")
+			called := false
+			contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				called = true
+				require.Equal(t, []string{tc.want}, r.Header.Values(tc.header))
+			})).ServeHTTP(nil, req)
+			require.True(t, called)
+		})
 	}
+}
+
+func TestContractAuthFilterDoesNotAddMissingCredentials(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "/v1/search?user_id="+contractUserID, nil)
+	require.NoError(t, err)
+	called := false
+	contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		called = true
+		require.Empty(t, r.Header.Values("Authorization"))
+		require.Empty(t, r.Header.Values("X-Alt-Backend-Token"))
+	})).ServeHTTP(nil, req)
+	require.True(t, called)
 }
 
 func TestContractAuthFilterPreservesConnectPayload(t *testing.T) {
 	const payload = `{"query":"LLM","userId":"user-1","limit":20}`
 	req, err := http.NewRequest(http.MethodPost, "/services.search.v2.SearchService/SearchArticles", strings.NewReader(payload))
 	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer pact-header.pact-claims.pact-signature")
 	called := false
 	contractAuthFilter(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		called = true

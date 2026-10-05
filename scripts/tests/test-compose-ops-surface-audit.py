@@ -436,17 +436,17 @@ for name in prod_classified["long_running"]:
     cls = PROD_INV["units"][name]["class"]
     osu_class[cls] = osu_class.get(cls, 0) + 1
 check(
-    "production accidental OSU is 18 (16 logs plus two excepted cert writers)",
-    osu_class.get("accidental") == 18 and PROD_INV["accidental_osu_baseline"] == 16,
+    "production accidental OSU is 16 (log forwarders only; no cert-writer sidecars)",
+    osu_class.get("accidental") == 16 and PROD_INV["accidental_osu_baseline"] == 16,
 )
 check(
-    "production long-running OSU stays at frozen cap 63 plus six security boundaries",
-    len(prod_classified["long_running"]) == 69
+    "production long-running OSU stays at frozen cap 63 plus four security boundaries",
+    len(prod_classified["long_running"]) == 67
     and PROD_INV["long_running_osu_baseline"] == 63,
 )
 check(
-    "declared total is 84 (five new security units minus obsolete backup proxy)",
-    len(prod_services) == 84 and prod_baseline["counts"]["declared_total"] == 84,
+    "declared total is 82 (sovereign and evaluator cert writers moved in-process)",
+    len(prod_services) == 82 and prod_baseline["counts"]["declared_total"] == 82,
 )
 check(
     "Wave 1b reduced ephemeral oneshots to 10",
@@ -455,16 +455,16 @@ check(
 )
 prod_inv = audit.inventory(prod_services)
 check(
-    "production default render count is declared_total - profiled (79)",
-    prod_inv["counts"].get("compose_config_default_profiles") == 79
+    "production default render count is declared_total - profiled (77)",
+    prod_inv["counts"].get("compose_config_default_profiles") == 77
     and prod_inv["counts"]["declared_total"]
     - len(prod_inv["profiled"])
-    == 79,
+    == 77,
 )
 check(
-    "production full render count is declared_total (84)",
-    prod_inv["counts"].get("compose_config_full_profiles") == 84
-    and prod_inv["counts"]["declared_total"] == 84,
+    "production full render count is declared_total (82)",
+    prod_inv["counts"].get("compose_config_full_profiles") == 82
+    and prod_inv["counts"]["declared_total"] == 82,
 )
 check(
     "baseline discrepancy default/full match the computed render counts (not a stale 87)",
@@ -580,17 +580,23 @@ ok_payload, ok_found = audit.prepare_baseline_write(
     budget_found=[],
 )
 check(
-    "--write-baseline preserves the 24-edge allowlist and writes computed 79/84",
+    "--write-baseline preserves the 24-edge allowlist and writes computed 77/82",
     ok_found == []
     and ok_payload is not None
     and ok_payload["init_edges_allowlist"]
     == prod_baseline["init_edges_allowlist"]
     and (ok_payload.get("discrepancy") or {}).get("compose_config_default_profiles")
-    == 79
+    == 77
     and (ok_payload.get("discrepancy") or {}).get("compose_config_full_profiles")
-    == 84
+    == 82
     and (ok_payload.get("counts") or {}).get("compose_config_default_profiles")
-    == 79,
+    == 77,
+)
+check(
+    "--write-baseline note states the computed profiled count, not a hardcoded one",
+    ok_payload is not None
+    and f"omits the {len(prod_inv['profiled'])} profiled services"
+    in (ok_payload.get("discrepancy") or {}).get("compose_config_note", ""),
 )
 
 print(f"\n{PASS} passed, {FAIL} failed")

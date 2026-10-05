@@ -16,6 +16,9 @@ on:
       - 'services.yaml'
       - 'scripts/regen-service-registry.py'
       - 'scripts/compose-image-audit.py'
+      - 'scripts/tests/test-compose-image-audit.py'
+      - 'scripts/compose_include.py'
+      - 'scripts/compose-ops-surface-audit.py'
       - '.github/workflows/docker-build.yaml'
       - '.github/workflows/services-registry-lint.yaml'
       - 'c2quay.yml'
@@ -27,6 +30,9 @@ on:
       - 'services.yaml'
       - 'scripts/regen-service-registry.py'
       - 'scripts/compose-image-audit.py'
+      - 'scripts/tests/test-compose-image-audit.py'
+      - 'scripts/compose_include.py'
+      - 'scripts/compose-ops-surface-audit.py'
       - '.github/workflows/docker-build.yaml'
       - '.github/workflows/services-registry-lint.yaml'
       - 'c2quay.yml'
@@ -67,3 +73,6 @@ jobs:
         # Acolyte citation fix deployed code but container kept the pre-fix
         # `alt-acolyte-orchestrator:latest` local build.
         run: python3 scripts/compose-image-audit.py
+
+      - name: Pin the compose image audit logic
+        run: python3 scripts/tests/test-compose-image-audit.py

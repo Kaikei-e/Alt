@@ -4,8 +4,8 @@
 # Dual-writer order (same as docs/runbooks/pki-agent-recovery.md and
 # alt-deploy): list every project=alt container with its
 # com.docker.compose.service label, stop -- then rm -f -- any whose
-# service starts with pki-agent-, EXCEPT the two declared certificate-only
-# writers for Sovereign and Evaluator. Then docker ps must show zero retired
+# service starts with pki-agent-. Every parent enrolls in-process, so no
+# pki-agent-* workload is legitimate. Then docker ps must show zero
 # pki-agent matches. Never uses `compose up --remove-orphans`.
 #
 # matching pki-agent=0 is NOT a fresh install:
@@ -51,8 +51,6 @@ retire_alt_pki_agent_leftovers() {
     total=$((total + 1))
     echo "pki-agent leftover sweep: project=${COMPOSE_PROJECT} id=${cid} service=${svc}"
     case "$svc" in
-      pki-agent-knowledge-sovereign|pki-agent-recap-evaluator)
-        anchors=$((anchors + 1)) ;;
       pki-agent-*) ids+=("$cid") ;;
       *) anchors=$((anchors + 1)) ;;
     esac
@@ -80,7 +78,7 @@ retire_alt_pki_agent_leftovers() {
   leftovers=$("$DOCKER_BIN" ps \
     --filter "label=${PROJECT_LABEL}" \
     --format '{{.ID}}\t{{.Label "com.docker.compose.service"}}' \
-    | awk -F '\t' '$2 ~ /^pki-agent-/ && $2 != "pki-agent-knowledge-sovereign" && $2 != "pki-agent-recap-evaluator" { print }')
+    | awk -F '\t' '$2 ~ /^pki-agent-/ { print }')
   if [ -n "$leftovers" ]; then
     echo "pki-agent leftovers still running in project ${COMPOSE_PROJECT} (dual writers). Refuse parent recreate." >&2
     printf '%s\n' "$leftovers" >&2

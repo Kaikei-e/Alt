@@ -8,6 +8,9 @@ import pytest
 from tag_generator.stream_consumer import Event
 from tag_generator.stream_event_handler import TagGeneratorEventHandler
 
+# mq-hub names the reply stream ReplyStreamPrefix + uuid.New().String().
+REPLY_TO = "alt:replies:tags:0f8e3c1a-5b2d-4c7e-9a10-3d4f5e6a7b8c"
+
 
 @pytest.fixture
 def mock_service():
@@ -53,7 +56,7 @@ def tag_generation_request_event():
         },
         metadata={
             "correlation_id": "corr-123",
-            "reply_to": "alt:replies:tags:corr-123",
+            "reply_to": REPLY_TO,
         },
     )
 
@@ -85,7 +88,7 @@ class TestTagGeneratorEventHandler:
         mock_stream_consumer.publish_reply.assert_called_once()
         call_args = mock_stream_consumer.publish_reply.call_args
 
-        assert call_args[0][0] == "alt:replies:tags:corr-123"  # reply_to stream
+        assert call_args[0][0] == REPLY_TO
 
         event_data = call_args[0][1]
         assert event_data["event_type"] == "TagGenerationCompleted"
@@ -111,6 +114,38 @@ class TestTagGeneratorEventHandler:
 
         # Should not publish reply
         mock_stream_consumer.publish_reply.assert_not_called()
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize(
+        "reply_to",
+        [
+            "alt:events:articles",
+            "alt:replies:tags:corr-123",
+            "alt:replies:tags:0F8E3C1A-5B2D-4C7E-9A10-3D4F5E6A7B8C",
+            "alt:replies:tags:0f8e3c1a-5b2d-4c7e-9a10-3d4f5e6a7b8c\n",
+            "alt:replies:tags:0f8e3c1a-5b2d-4c7e-9a10-3d4f5e6a7b8c:x",
+            12345,
+        ],
+    )
+    async def test_handle_tag_generation_requested_rejects_forged_reply_to(
+        self, handler, mock_service, mock_stream_consumer, reply_to
+    ):
+        """A reply_to that mq-hub could not have generated is dropped: XADD with
+        MAXLEN would otherwise write into, and trim, any stream it names."""
+        event = Event(
+            message_id="msg-1",
+            event_id="evt-1",
+            event_type="TagGenerationRequested",
+            source="mq-hub",
+            created_at=datetime.now(),
+            payload={"article_id": "article-123", "title": "Title", "content": "Content"},
+            metadata={"correlation_id": "corr-123", "reply_to": reply_to},
+        )
+
+        await handler._handle_tag_generation_requested(event)
+
+        mock_stream_consumer.publish_reply.assert_not_called()
+        mock_service.tag_extractor.extract_tags_with_metrics.assert_not_called()
 
     @pytest.mark.anyio
     async def test_handle_tag_generation_requested_no_consumer(self, mock_service, tag_generation_request_event):
@@ -157,7 +192,7 @@ class TestTagGeneratorEventHandler:
             },
             metadata={
                 "correlation_id": "corr-123",
-                "reply_to": "alt:replies:tags:corr-123",
+                "reply_to": REPLY_TO,
             },
         )
 

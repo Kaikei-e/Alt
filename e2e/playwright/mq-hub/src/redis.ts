@@ -11,6 +11,10 @@
  * 3. Key restriction: ONLY allowed canonical streams can ever be deleted.
  * 4. NEVER executes FLUSHALL or FLUSHDB.
  * 5. Secret redaction: never logs or echoes credentials.
+ * 6. ACL parity: authenticates as the user REDIS_URL names and sends only
+ *    commands on that user's allow-list in docker/redis/entrypoint.sh
+ *    (AUTH, DEL). The `default` user is off there, so single-argument AUTH
+ *    is never sent.
  */
 import * as fs from "node:fs";
 import * as net from "node:net";
@@ -137,21 +141,27 @@ export function encodeRespCommand(args: readonly string[]): Buffer {
 	return Buffer.concat(parts.map((p) => (typeof p === "string" ? Buffer.from(p, "utf8") : p)));
 }
 
+interface RedisCredentials {
+	username: string;
+	password: string;
+}
+
 /**
- * Executes AUTH (if password provided), DEL for canonical stream keys, and QUIT.
+ * Executes AUTH <user> <password> (when credentials are given), then DEL for
+ * the canonical stream keys, and closes the socket itself: QUIT is not on the
+ * `streams` user's allow-list.
  */
 function executeRespReset(
 	host: string,
 	port: number,
 	targets: readonly string[],
-	password: string | undefined,
+	credentials: RedisCredentials | undefined,
 	timeoutMs: number,
 ): Promise<number> {
 	return new Promise((resolve, reject) => {
 		const socket = new net.Socket();
 		let buffer = Buffer.alloc(0);
-		let step: "auth" | "del" | "quit" = password ? "auth" : "del";
-		let deletedCount = 0;
+		let step: "auth" | "del" = credentials ? "auth" : "del";
 		let settled = false;
 
 		const timer = setTimeout(() => {
@@ -163,6 +173,9 @@ function executeRespReset(
 		function cleanup() {
 			clearTimeout(timer);
 			socket.removeAllListeners();
+			// The promise is settled; a reset arriving while the socket closes
+			// must not become an unhandled 'error' event that kills the worker.
+			socket.on("error", () => {});
 		}
 
 		socket.on("error", () => {
@@ -182,8 +195,8 @@ function executeRespReset(
 		});
 
 		socket.on("connect", () => {
-			if (password) {
-				socket.write(encodeRespCommand(["AUTH", password]));
+			if (credentials) {
+				socket.write(encodeRespCommand(["AUTH", credentials.username, credentials.password]));
 			} else {
 				socket.write(encodeRespCommand(["DEL", ...targets]));
 			}
@@ -229,19 +242,7 @@ function executeRespReset(
 						}
 						return;
 					}
-					deletedCount = Number.parseInt(line.substring(1), 10);
-					step = "quit";
-					socket.write(encodeRespCommand(["QUIT"]));
-				} else if (step === "quit") {
-					if (line !== "+OK") {
-						if (!settled) {
-							settled = true;
-							cleanup();
-							socket.destroy();
-							reject(new Error("Redis protocol error"));
-						}
-						return;
-					}
+					const deletedCount = Number.parseInt(line.substring(1), 10);
 					if (!settled) {
 						settled = true;
 						cleanup();
@@ -303,8 +304,19 @@ export async function resetCanonicalStreams(
 		}
 	}
 
+	let credentials: RedisCredentials | undefined;
+	if (password) {
+		const username = decodeURIComponent(url.username);
+		if (username === "") {
+			throw new Error(
+				"REDIS_URL must name the Redis ACL user (redis://<user>@host:port) when a password is configured",
+			);
+		}
+		credentials = { username, password };
+	}
+
 	const targets = resolved.streamsToReset ?? CANONICAL_RESET_KEYS;
-	const deletedCount = await executeRespReset(host, port, targets, password, resolved.timeoutMs!);
+	const deletedCount = await executeRespReset(host, port, targets, credentials, resolved.timeoutMs!);
 	return { executed: true, deletedCount };
 }
 

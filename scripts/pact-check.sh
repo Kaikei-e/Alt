@@ -354,6 +354,7 @@ need_tool() {
 STEPS_CONSUMER=(
   "Go: alt-backend consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./orchestrator/driver/preprocessor_connect/contract/ -v"
   "Go: alt-backend sovereign consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./shared/driver/sovereign_client/contract/ -v"
+  "Go: alt-backend search-indexer consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./orchestrator/driver/search_indexer_connect/contract/ -v"
   "Go: alt-backend rag consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./orchestrator/gateway/rag_gateway/contract/ -v"
   "Go: alt-backend recap consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./orchestrator/gateway/recap_gateway/contract/ -v"
   # One package, two labels, same command: alt-backend and alt-harvester are two

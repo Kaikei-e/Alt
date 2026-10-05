@@ -31,9 +31,7 @@ async def list_evaluations(
     limit: int = 30,
 ) -> EvaluationListResponse:
     get_metrics: Any = request.app.state.get_metrics
-    history = await get_metrics.get_evaluation_history(
-        evaluation_type=evaluation_type, limit=limit
-    )
+    history = await get_metrics.get_evaluation_history(evaluation_type=evaluation_type, limit=limit)
 
     evaluations = []
     for run in history:
@@ -52,9 +50,7 @@ async def list_evaluations(
 
 
 @router.post("/evaluations/run", response_model=EvaluationRunResponse)
-async def run_full_evaluation(
-    request: Request, body: EvaluationRequest
-) -> EvaluationRunResponse:
+async def run_full_evaluation(request: Request, body: EvaluationRequest) -> EvaluationRunResponse:
     run_evaluation: Any = request.app.state.run_evaluation
 
     run = await run_evaluation.execute(
@@ -77,9 +73,7 @@ async def run_full_evaluation(
         window_days=run.window_days,
         overall_alert_level=run.overall_alert_level.value,
         genre_metrics=(
-            GenreEvaluationResponse.from_domain(run.genre_metrics)
-            if run.genre_metrics
-            else None
+            GenreEvaluationResponse.from_domain(run.genre_metrics) if run.genre_metrics else None
         ),
         cluster_metrics=(
             {
@@ -90,9 +84,7 @@ async def run_full_evaluation(
             else None
         ),
         summary_metrics=(
-            SummaryMetricsResponse.from_domain(run.summary_metrics)
-            if run.summary_metrics
-            else None
+            SummaryMetricsResponse.from_domain(run.summary_metrics) if run.summary_metrics else None
         ),
         pipeline_metrics=(
             PipelineMetricsResponse.from_domain(run.pipeline_metrics)
@@ -134,10 +126,7 @@ async def run_cluster_evaluation(
     cluster_eval: Any = request.app.state.cluster_evaluator
     cluster_results = await cluster_eval.evaluate_batch(job_ids)
 
-    return {
-        genre: ClusterMetricsResponse.from_domain(m)
-        for genre, m in cluster_results.items()
-    }
+    return {genre: ClusterMetricsResponse.from_domain(m) for genre, m in cluster_results.items()}
 
 
 @router.post("/evaluations/summary", response_model=SummaryMetricsResponse)
@@ -152,9 +141,7 @@ async def run_summary_evaluation(
 
     job_ids = [job["job_id"] for job in jobs]
     summary_eval: Any = request.app.state.summary_evaluator
-    summary_result = await summary_eval.evaluate_batch(
-        job_ids, sample_per_job=body.sample_per_job
-    )
+    summary_result = await summary_eval.evaluate_batch(job_ids, sample_per_job=body.sample_per_job)
 
     return SummaryMetricsResponse.from_domain(summary_result)
 

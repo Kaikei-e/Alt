@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -43,12 +44,25 @@ func requiredSecretsFromBaseYAML(t *testing.T) []string {
 	return names
 }
 
+// TestKnownSecretMeta_CoversEveryComposeSecret is the drift gate between
+// compose/base.yaml and the provisioning table. A secret declared in compose
+// with no class is the 2026-10-02 failure: nothing provisioned it, and the
+// deploy only found out when the container would not start.
+func TestKnownSecretMeta_CoversEveryComposeSecret(t *testing.T) {
+	var unclassified []string
+	for _, name := range requiredSecretsFromBaseYAML(t) {
+		if _, ok := metaFor(name); !ok {
+			unclassified = append(unclassified, name)
+		}
+	}
+	if len(unclassified) > 0 {
+		t.Errorf("compose/base.yaml declares secrets with no provisioning class in knownSecretMeta: %v", unclassified)
+	}
+}
+
 // TestDefaultSecretSpecs_ContainsAllRequired is the regression test for the
 // missing-8-secrets bug: DefaultSecretSpecs must contain every secret
-// compose/base.yaml declares (sovereign_db_password, meili_search_key,
-// grafana_admin_password, restic_password, acolyte_db_password,
-// step_ca_root_password, pact_broker_basic_auth_password,
-// pact_db_password among them), each with AutoGenerate set correctly.
+// compose/base.yaml declares, each provisioned by the right class.
 func TestDefaultSecretSpecs_ContainsAllRequired(t *testing.T) {
 	required := requiredSecretsFromBaseYAML(t)
 
@@ -61,11 +75,17 @@ func TestDefaultSecretSpecs_ContainsAllRequired(t *testing.T) {
 		specMap[s.Filename] = s
 	}
 
-	userProvided := map[string]bool{
+	operatorProvided := map[string]bool{
 		"hugging_face_token.txt":      true,
 		"inoreader_client_id.txt":     true,
 		"inoreader_client_secret.txt": true,
 		"k6_api_token.txt":            true,
+		"pushover_user_key.txt":       true,
+		"pushover_token.txt":          true,
+		// A P-256 keypair whose halves must match; random bytes in either
+		// file would invalidate every browser subscription.
+		"vapid_private_key.txt": true,
+		"vapid_public_key.txt":  true,
 	}
 
 	for _, name := range required {
@@ -74,9 +94,73 @@ func TestDefaultSecretSpecs_ContainsAllRequired(t *testing.T) {
 			t.Errorf("DefaultSecretSpecs missing secret declared in compose/base.yaml: %s", name)
 			continue
 		}
-		wantAuto := !userProvided[name]
-		if spec.AutoGenerate != wantAuto {
-			t.Errorf("%s: AutoGenerate = %v, want %v", name, spec.AutoGenerate, wantAuto)
+		want := SecretClassRandom
+		switch {
+		case operatorProvided[name]:
+			want = SecretClassOperatorProvided
+		case strings.HasPrefix(name, "pki-agent-") && strings.HasSuffix(name, "-jwk.txt"):
+			want = SecretClassPKIProvisioner
+		}
+		if spec.Class != want {
+			t.Errorf("%s: Class = %q, want %q", name, spec.Class, want)
+		}
+	}
+}
+
+// TestDefaultSecretSpecs_MqhubAuthTokenIsRandom pins the secret the
+// 2026-10-02 remediation added to compose without a provisioning entry.
+func TestDefaultSecretSpecs_MqhubAuthTokenIsRandom(t *testing.T) {
+	specs, err := DefaultSecretSpecs()
+	if err != nil {
+		t.Fatalf("DefaultSecretSpecs: %v", err)
+	}
+	for _, s := range specs {
+		if s.Filename == "mqhub_auth_token.txt" {
+			if s.Class != SecretClassRandom || s.Length != 32 {
+				t.Errorf("mqhub_auth_token.txt = %+v, want random with 32 bytes", s)
+			}
+			return
+		}
+	}
+	t.Fatal("mqhub_auth_token.txt not found in DefaultSecretSpecs")
+}
+
+// TestPKIBootstrapScript_ProvisionsEveryComposeSubject guards the hand-off a
+// pki-provisioner secret relies on: altctl tells the operator to run the
+// bootstrap script, so that script must know every subject compose mounts a
+// provisioner password for, or the instruction silently does nothing.
+func TestPKIBootstrapScript_ProvisionsEveryComposeSubject(t *testing.T) {
+	repoRoot := filepath.Dir(filepath.Dir(repoBaseComposeFile(t)))
+	script, err := os.ReadFile(filepath.Join(repoRoot, PKIBootstrapScript))
+	if err != nil {
+		t.Fatalf("reading %s: %v", PKIBootstrapScript, err)
+	}
+
+	subjects := map[string]bool{}
+	inArray := false
+	for _, line := range strings.Split(string(script), "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == "SUBJECTS=(":
+			inArray = true
+		case inArray && trimmed == ")":
+			inArray = false
+		case inArray && trimmed != "" && !strings.HasPrefix(trimmed, "#"):
+			subjects[trimmed] = true
+		}
+	}
+	if len(subjects) == 0 {
+		t.Fatalf("no SUBJECTS=( ... ) array found in %s", PKIBootstrapScript)
+	}
+
+	for _, name := range requiredSecretsFromBaseYAML(t) {
+		meta, ok := metaFor(name)
+		if !ok || meta.Class != SecretClassPKIProvisioner {
+			continue
+		}
+		subject := strings.TrimSuffix(strings.TrimPrefix(name, "pki-agent-"), "-jwk.txt")
+		if !subjects[subject] {
+			t.Errorf("compose/base.yaml mounts %s, but %s has no %q subject to create it", name, PKIBootstrapScript, subject)
 		}
 	}
 }
@@ -161,7 +245,7 @@ func TestDefaultSecretSpecs_KratosCipherSecretTruncatedTo32(t *testing.T) {
 	t.Fatal("kratos_cipher_secret.txt not found in DefaultSecretSpecs")
 }
 
-func TestDefaultSecretSpecs_OptionalSecretsNotAutoGenerated(t *testing.T) {
+func TestDefaultSecretSpecs_OperatorProvidedSecretsNotGenerated(t *testing.T) {
 	specs, err := DefaultSecretSpecs()
 	if err != nil {
 		t.Fatalf("DefaultSecretSpecs: %v", err)
@@ -184,8 +268,8 @@ func TestDefaultSecretSpecs_OptionalSecretsNotAutoGenerated(t *testing.T) {
 			t.Errorf("missing optional secret spec: %s", name)
 			continue
 		}
-		if spec.AutoGenerate {
-			t.Errorf("optional secret %s should NOT be auto-generated", name)
+		if spec.Class != SecretClassOperatorProvided {
+			t.Errorf("optional secret %s should be operator-provided, got %q", name, spec.Class)
 		}
 	}
 }
@@ -207,12 +291,12 @@ func TestFindBaseComposeFile_LocatesRealFile(t *testing.T) {
 	}
 }
 
-// TestDeriveSecretSpecs_UnknownSecretGetsSafeDefault is the direct unit
-// test for the "safe default for unknown new secrets" requirement: a
-// secret declared in a base.yaml-shaped file but absent from
-// knownSecretMeta must still come back auto-generated with a sane length,
-// not silently dropped.
-func TestDeriveSecretSpecs_UnknownSecretGetsSafeDefault(t *testing.T) {
+// TestDeriveSecretSpecs_UnknownSecretFailsFast: a secret compose declares
+// that altctl cannot classify must stop `altctl init`, not get random bytes.
+// Random bytes are wrong for two of the three classes — a pki-agent
+// provisioner password nobody registered with step-ca, or half of a keypair —
+// and the service only discovers that at enrollment or signing time.
+func TestDeriveSecretSpecs_UnknownSecretFailsFast(t *testing.T) {
 	dir := t.TempDir()
 	fakeBase := filepath.Join(dir, "base.yaml")
 	content := `
@@ -227,29 +311,32 @@ secrets:
 	}
 
 	specs, err := DeriveSecretSpecs(fakeBase)
+	if err == nil {
+		t.Fatalf("expected an error for an unclassified secret, got %d specs", len(specs))
+	}
+	if !strings.Contains(err.Error(), "totally_new_secret_nobody_documented_yet.txt") {
+		t.Errorf("error should name the unclassified secret, got: %v", err)
+	}
+}
+
+func TestDeriveSecretSpecs_PKIAgentSecretIsPKIProvisioner(t *testing.T) {
+	dir := t.TempDir()
+	fakeBase := filepath.Join(dir, "base.yaml")
+	content := `
+secrets:
+  pki-agent-some-new-service-jwk:
+    file: ../secrets/pki-agent-some-new-service-jwk.txt
+`
+	if err := os.WriteFile(fakeBase, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	specs, err := DeriveSecretSpecs(fakeBase)
 	if err != nil {
 		t.Fatalf("DeriveSecretSpecs: %v", err)
 	}
-
-	specMap := make(map[string]SecretSpec, len(specs))
-	for _, s := range specs {
-		specMap[s.Filename] = s
-	}
-
-	unknown, ok := specMap["totally_new_secret_nobody_documented_yet.txt"]
-	if !ok {
-		t.Fatal("unknown secret from base.yaml was dropped, not defaulted")
-	}
-	if !unknown.AutoGenerate {
-		t.Error("unknown secret should default to AutoGenerate=true (safer than silently empty)")
-	}
-	if unknown.Length != 32 {
-		t.Errorf("unknown secret default Length = %d, want 32", unknown.Length)
-	}
-
-	known, ok := specMap["postgres_password.txt"]
-	if !ok || !known.AutoGenerate {
-		t.Error("known secret alongside the unknown one should still resolve via knownSecretMeta")
+	if len(specs) != 1 || specs[0].Class != SecretClassPKIProvisioner {
+		t.Fatalf("specs = %+v, want one pki-provisioner spec", specs)
 	}
 }
 
@@ -294,8 +381,8 @@ func TestGenerateSecrets_CreatesFiles(t *testing.T) {
 	dir := t.TempDir()
 
 	specs := []SecretSpec{
-		{Filename: "test_password.txt", AutoGenerate: true, Length: 32},
-		{Filename: "test_token.txt", AutoGenerate: false},
+		{Filename: "test_password.txt", Class: SecretClassRandom, Length: 32},
+		{Filename: "test_token.txt", Class: SecretClassOperatorProvided},
 	}
 
 	result, err := GenerateSecrets(dir, specs, false)
@@ -330,7 +417,7 @@ func TestGenerateSecrets_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 
 	specs := []SecretSpec{
-		{Filename: "test_password.txt", AutoGenerate: true, Length: 32},
+		{Filename: "test_password.txt", Class: SecretClassRandom, Length: 32},
 	}
 
 	// First run
@@ -363,7 +450,7 @@ func TestGenerateSecrets_ForceOverwrites(t *testing.T) {
 	dir := t.TempDir()
 
 	specs := []SecretSpec{
-		{Filename: "test_password.txt", AutoGenerate: true, Length: 32},
+		{Filename: "test_password.txt", Class: SecretClassRandom, Length: 32},
 	}
 
 	// First run
@@ -404,8 +491,8 @@ func TestGenerateSecrets_ModeStaysReadableUnderRestrictiveUmask(t *testing.T) {
 
 	dir := t.TempDir()
 	specs := []SecretSpec{
-		{Filename: "test_password.txt", AutoGenerate: true, Length: 32},
-		{Filename: "test_token.txt", AutoGenerate: false},
+		{Filename: "test_password.txt", Class: SecretClassRandom, Length: 32},
+		{Filename: "test_token.txt", Class: SecretClassOperatorProvided},
 	}
 
 	if _, err := GenerateSecrets(dir, specs, false); err != nil {
@@ -439,5 +526,124 @@ func TestGenerateRandomSecret_Unique(t *testing.T) {
 	s2, _ := generateRandomSecret(32)
 	if s1 == s2 {
 		t.Error("two generated secrets should differ")
+	}
+}
+
+// A pki-provisioner password is only valid once step-ca has a provisioner
+// registered with the same bytes. Writing random bytes here is how a deploy
+// gets a secret file that exists, mounts, and fails at enrollment.
+func TestGenerateSecrets_NeverWritesPKIProvisionerSecret(t *testing.T) {
+	dir := t.TempDir()
+	specs := []SecretSpec{
+		{Filename: "pki-agent-alt-backend-jwk.txt", Class: SecretClassPKIProvisioner},
+	}
+
+	for _, force := range []bool{false, true} {
+		result, err := GenerateSecrets(dir, specs, force)
+		if err != nil {
+			t.Fatalf("GenerateSecrets(force=%v): %v", force, err)
+		}
+		if len(result.Created) != 0 {
+			t.Errorf("force=%v: pki-provisioner secret reported as created: %v", force, result.Created)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "pki-agent-alt-backend-jwk.txt")); !os.IsNotExist(err) {
+			t.Fatalf("force=%v: pki-provisioner secret file must not be created, stat err = %v", force, err)
+		}
+	}
+}
+
+// --force regenerates what altctl generated. It must not truncate a value
+// issued outside Alt or rotate a provisioner password away from the one
+// registered in step-ca.
+func TestGenerateSecrets_ForceLeavesNonRandomSecretsAlone(t *testing.T) {
+	dir := t.TempDir()
+	keep := map[string]string{
+		"hugging_face_token.txt":        "hf_operator_value",
+		"pki-agent-alt-backend-jwk.txt": "registered-provisioner-password",
+	}
+	for name, value := range keep {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	specs := []SecretSpec{
+		{Filename: "hugging_face_token.txt", Class: SecretClassOperatorProvided},
+		{Filename: "pki-agent-alt-backend-jwk.txt", Class: SecretClassPKIProvisioner},
+	}
+
+	if _, err := GenerateSecrets(dir, specs, true); err != nil {
+		t.Fatalf("GenerateSecrets: %v", err)
+	}
+	for name, want := range keep {
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		if string(got) != want {
+			t.Errorf("%s was rewritten by --force: got %q, want %q", name, got, want)
+		}
+	}
+}
+
+// The canonical secrets directory is staged by a second user over a shared
+// group; an owner-only directory hides the 0644 files inside it.
+func TestGenerateSecrets_CreatesGroupReadableDirectory(t *testing.T) {
+	old := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(old) })
+
+	dir := filepath.Join(t.TempDir(), "secrets")
+	specs := []SecretSpec{{Filename: "test_password.txt", Class: SecretClassRandom, Length: 32}}
+	if _, err := GenerateSecrets(dir, specs, false); err != nil {
+		t.Fatalf("GenerateSecrets: %v", err)
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o750 {
+		t.Errorf("secrets directory mode = %#o, want 0750", got)
+	}
+}
+
+func TestFindPendingSecrets(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"filled_token.txt":           "value",
+		"empty_token.txt":            "",
+		"pki-agent-auth-hub-jwk.txt": "registered",
+		"generated_password.txt":     "random",
+	}
+	for name, value := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	specs := []SecretSpec{
+		{Filename: "filled_token.txt", Class: SecretClassOperatorProvided},
+		{Filename: "empty_token.txt", Class: SecretClassOperatorProvided},
+		{Filename: "missing_token.txt", Class: SecretClassOperatorProvided},
+		{Filename: "pki-agent-auth-hub-jwk.txt", Class: SecretClassPKIProvisioner},
+		{Filename: "pki-agent-alt-backend-jwk.txt", Class: SecretClassPKIProvisioner},
+		{Filename: "generated_password.txt", Class: SecretClassRandom},
+	}
+
+	pending, err := FindPendingSecrets(dir, specs)
+	if err != nil {
+		t.Fatalf("FindPendingSecrets: %v", err)
+	}
+
+	names := func(specs []SecretSpec) string {
+		var out []string
+		for _, s := range specs {
+			out = append(out, s.Filename)
+		}
+		return strings.Join(out, ",")
+	}
+	if got := names(pending.OperatorProvided); got != "empty_token.txt,missing_token.txt" {
+		t.Errorf("OperatorProvided = %s, want empty_token.txt,missing_token.txt", got)
+	}
+	if got := names(pending.PKIProvisioner); got != "pki-agent-alt-backend-jwk.txt" {
+		t.Errorf("PKIProvisioner = %s, want pki-agent-alt-backend-jwk.txt", got)
 	}
 }

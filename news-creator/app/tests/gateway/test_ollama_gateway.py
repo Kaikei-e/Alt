@@ -17,6 +17,7 @@ def mock_config():
     config.model_name = "test-model"
     config.llm_timeout_seconds = 60
     config.llm_keep_alive = -1
+    config.llm = Mock(inference_service_token=None)
     config.ollama_request_concurrency = 1
     config.oom_detection_enabled = False
     config.model_routing_enabled = False

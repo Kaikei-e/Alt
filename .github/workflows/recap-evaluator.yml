@@ -1,0 +1,78 @@
+name: Recap-Evaluator Quality Gates
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "recap-evaluator/**"
+      - ".github/workflows/recap-evaluator.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "recap-evaluator/**"
+      - ".github/workflows/recap-evaluator.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Scope: tests/unit + tests/integration (hermetic, mocked gateways).
+  # tests/contract is verified by proto-contract.yaml. pyproject addopts
+  # already passes --cov=src/recap_evaluator.
+  tests:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "recap-evaluator"
+      python-version: "3.14"
+      sparse-checkout: "recap-evaluator"
+      coverage-flags: "recap-evaluator"
+      upload-coverage: true
+      job-type: "test"
+      test-command: "pytest -v tests/unit tests/integration --cov-report=xml --junit-xml=tests/results.xml"
+    permissions:
+      contents: read
+    secrets: inherit
+
+  lint:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "recap-evaluator"
+      python-version: "3.14"
+      sparse-checkout: "recap-evaluator"
+      job-type: "lint"
+    permissions:
+      contents: read
+
+  typecheck:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "recap-evaluator"
+      python-version: "3.14"
+      sparse-checkout: "recap-evaluator"
+      job-type: "typecheck"
+    permissions:
+      contents: read
+
+  # NOTE: The `security` job-type is deliberately absent: bandit is not in
+  # recap-evaluator's dev dependency group. ruff's `S` ruleset is selected in
+  # pyproject.toml, so bandit rules run in the lint job.
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [tests, lint, typecheck]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.tests.result }}" != "success" ] || \
+             [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.typecheck.result }}" != "success" ]; then
+            echo "One or more quality gates failed"
+            exit 1
+          fi
+          echo "All quality gates passed"

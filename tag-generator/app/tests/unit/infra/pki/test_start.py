@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import socket
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -111,3 +113,26 @@ async def test_start_enabled_shared_secret_rejected(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("STEP_CA_PROVISIONER_PASSWORD_FILE", "/run/secrets/step_ca_root_password")
     with pytest.raises(SharedRootSecretError):
         await start_enrollment("tag-generator")
+
+
+@pytest.mark.asyncio
+async def test_ops_bind_failure_does_not_leave_renewal_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    environ = {
+        "PKI_ENROLLMENT": MODE_ENABLED,
+        "INBOUND_TLS_ENABLED": "true",
+        "CERT_SUBJECT": "tag-generator",
+        "CERT_PATH": str(tmp_path / "svc-cert.pem"),
+        "KEY_PATH": str(tmp_path / "svc-key.pem"),
+        "STEP_CA_ROOT_FILE": str(tmp_path / "root.pem"),
+    }
+    with socket.create_server(("127.0.0.1", 0)) as taken:
+        monkeypatch.setenv("OPS_LISTEN", f"127.0.0.1:{taken.getsockname()[1]}")
+        try:
+            with pytest.raises(OSError):
+                await start_enrollment("tag-generator", environ=environ, issuer=_FakeIssuer(), logger=_Log())
+            stranded = [t.get_name() for t in asyncio.all_tasks() if t.get_name() == "pki-enrollment-loop"]
+            assert stranded == []
+        finally:
+            for task in asyncio.all_tasks():
+                if task.get_name() == "pki-enrollment-loop":
+                    task.cancel()

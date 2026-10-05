@@ -38,9 +38,7 @@ class GenreEvaluator:
             return None
         return self._parse_evaluation_response(data)
 
-    async def fetch_evaluation_by_id(
-        self, run_id: str
-    ) -> GenreEvaluationResult | None:
+    async def fetch_evaluation_by_id(self, run_id: str) -> GenreEvaluationResult | None:
         data = await self._recap_worker.fetch_genre_evaluation_by_id(run_id)
         if not data:
             return None

@@ -156,6 +156,23 @@ docker compose up -d --no-deps --force-recreate <svcs>
   skips the Ready-wait; `--dry-run`/`--quiet`/`--verbose`/`--timeout` behave
   like the equivalent `up` flags.
 
+## `altctl init` secrets (provisioning classes)
+
+The secret list is derived from `compose/base.yaml`'s `secrets:` block; each
+file needs a class in `internal/setup/secrets.go`'s `knownSecretMeta`
+(`pki-agent-<subject>-jwk.txt` is matched by pattern). An unclassified secret
+fails `altctl init` and `TestKnownSecretMeta_CoversEveryComposeSecret`.
+
+| Class | `init` does | `--force` |
+|-------|-------------|-----------|
+| random | writes 32 random bytes, URL-safe base64 | regenerates |
+| operator-provided | empty placeholder, warns until filled | never touches an existing file |
+| pki-provisioner | never writes; tells the operator to start step-ca and run `pki-agent/scripts/bootstrap-pki-provisioner.sh` | never touches |
+
+Files are 0644 and a newly created `secrets/` is 0750: the canonical store is
+read by the deploy runner over a shared group, and nonroot containers read the
+bind-mounted files.
+
 ## Backup Profiles
 
 | Profile | Categories | Volumes | Use Case |
@@ -267,11 +284,10 @@ any optional stack with containers; explicit args narrow it.
 - **Config landmine check**: `depends_on: {condition: service_healthy}` with
   no `healthcheck:` on the target is flagged statically (docs/services/
   altctl.md known failure pattern, [[000809]]), independent of runtime state.
-- **DOCKER_GROUP_ID workaround**: `cmd/doctor.go`'s executor injects a
-  harmless placeholder for its own read-only calls when the real env var is
-  unset (compose/logging.yaml's `${DOCKER_GROUP_ID:?...}` would otherwise
-  hard-fail the aggregate probe for users not touching `logging` at all);
-  the real unset condition is still separately flagged as a Finding whenever
-  `logging` ends up in scope.
+- **Docker socket group**: compose/logging.yaml pins the socket's gid in
+  `docker-socket-proxy-ro`'s `user:` (no `DOCKER_GROUP_ID` interpolation).
+  When `logging` is in scope, doctor compares that gid with the group of
+  `/var/run/docker.sock` and reports a mismatch as an error
+  (`deploy/host-prereqs.yaml` `docker-socket` records the same fact).
 - Fully unit-testable against a fake `compose.Executor` (see
   `internal/doctor/doctor_test.go`) -- no live Docker daemon required.

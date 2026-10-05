@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -76,24 +77,24 @@ func writeTestPEM(t *testing.T, path, blockType string, der []byte) {
 }
 
 // The whole point of this constructor is that it cannot produce a working
-// client from a partial configuration. alt-data-hub verifies a peer cert on
-// every request, so a client built without one would fail at handshake time
-// on the first tag-cloud query rather than at startup.
-func TestNewDataHubClient_IncompleteCertMaterialFailsClosed(t *testing.T) {
+// client from a partial configuration. alt-data-hub and search-indexer's
+// :9443 verify a peer cert on every request, so a client built without one
+// would fail at handshake time on the first query rather than at startup.
+func TestNewPeerMTLSClient_IncompleteCertMaterialFailsClosed(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestPKI(t, dir, "rag-orchestrator")
 
 	tests := []struct {
 		name string
-		cfg  DataHubTransportConfig
+		cfg  PeerMTLSConfig
 	}{
-		{name: "all empty", cfg: DataHubTransportConfig{}},
-		{name: "cert missing", cfg: DataHubTransportConfig{KeyFile: keyPath, CAFile: caPath}},
-		{name: "key missing", cfg: DataHubTransportConfig{CertFile: certPath, CAFile: caPath}},
-		{name: "ca missing", cfg: DataHubTransportConfig{CertFile: certPath, KeyFile: keyPath}},
+		{name: "all empty", cfg: PeerMTLSConfig{}},
+		{name: "cert missing", cfg: PeerMTLSConfig{KeyFile: keyPath, CAFile: caPath}},
+		{name: "key missing", cfg: PeerMTLSConfig{CertFile: certPath, CAFile: caPath}},
+		{name: "ca missing", cfg: PeerMTLSConfig{CertFile: certPath, KeyFile: keyPath}},
 		{
 			name: "cert path does not exist",
-			cfg: DataHubTransportConfig{
+			cfg: PeerMTLSConfig{
 				CertFile: filepath.Join(dir, "nope.pem"),
 				KeyFile:  keyPath,
 				CAFile:   caPath,
@@ -103,7 +104,7 @@ func TestNewDataHubClient_IncompleteCertMaterialFailsClosed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewDataHubClient(tt.cfg, 5*time.Second)
+			client, err := NewPeerMTLSClient(tt.cfg, 5*time.Second)
 
 			require.Error(t, err, "an unusable cert configuration must be a startup error, never a plaintext client")
 			assert.Nil(t, client)
@@ -111,11 +112,11 @@ func TestNewDataHubClient_IncompleteCertMaterialFailsClosed(t *testing.T) {
 	}
 }
 
-func TestNewDataHubClient_PresentsLeafAndPinsServerName(t *testing.T) {
+func TestNewPeerMTLSClient_PresentsLeafAndPinsServerName(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestPKI(t, dir, "rag-orchestrator")
 
-	client, err := NewDataHubClient(DataHubTransportConfig{
+	client, err := NewPeerMTLSClient(PeerMTLSConfig{
 		CertFile:   certPath,
 		KeyFile:    keyPath,
 		CAFile:     caPath,
@@ -144,13 +145,13 @@ func TestNewDataHubClient_PresentsLeafAndPinsServerName(t *testing.T) {
 }
 
 // An empty ServerName is the compose default: crypto/tls then derives it from
-// the dial host, which matches alt-data-hub's SAN. It must stay empty rather
-// than be filled in with a guess.
-func TestNewDataHubClient_EmptyServerNameLeftToTLS(t *testing.T) {
+// the dial host, which matches the peer's SAN. It must stay empty rather than
+// be filled in with a guess.
+func TestNewPeerMTLSClient_EmptyServerNameLeftToTLS(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestPKI(t, dir, "rag-orchestrator")
 
-	client, err := NewDataHubClient(DataHubTransportConfig{
+	client, err := NewPeerMTLSClient(PeerMTLSConfig{
 		CertFile: certPath,
 		KeyFile:  keyPath,
 		CAFile:   caPath,
@@ -163,14 +164,14 @@ func TestNewDataHubClient_EmptyServerNameLeftToTLS(t *testing.T) {
 }
 
 // MTLS_ENFORCE gates the *other* mTLS clients in this package. It must not
-// gate this one: the plaintext endpoint the data-hub client replaced no
-// longer exists, so "enforce off" would mean "call a dead port".
-func TestNewDataHubClient_IgnoresMTLSEnforce(t *testing.T) {
+// gate this one: the peers it dials have no plaintext business surface left,
+// so "enforce off" would mean "call a dead port".
+func TestNewPeerMTLSClient_IgnoresMTLSEnforce(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestPKI(t, dir, "rag-orchestrator")
 	t.Setenv("MTLS_ENFORCE", "")
 
-	client, err := NewDataHubClient(DataHubTransportConfig{
+	client, err := NewPeerMTLSClient(PeerMTLSConfig{
 		CertFile: certPath,
 		KeyFile:  keyPath,
 		CAFile:   caPath,
@@ -178,6 +179,49 @@ func TestNewDataHubClient_IgnoresMTLSEnforce(t *testing.T) {
 	require.NoError(t, err)
 
 	transport, ok := client.Transport.(*http.Transport)
-	require.True(t, ok, "MTLS_ENFORCE=off must not downgrade the data-hub client to plaintext")
+	require.True(t, ok, "MTLS_ENFORCE=off must not downgrade the peer client to plaintext")
 	require.NotNil(t, transport.TLSClientConfig)
+}
+
+// A listener that demands and verifies a client certificate — the shape of
+// search-indexer's :9443 and alt-data-hub — must see the rag-orchestrator
+// leaf, with MTLS_ENFORCE left unset.
+func TestNewPeerMTLSClient_HandshakesWithMTLSOnlyListener(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath, caPath := writeTestPKI(t, dir, "rag-orchestrator")
+	t.Setenv("MTLS_ENFORCE", "")
+
+	serverCert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	require.NoError(t, err)
+	caPEM, err := os.ReadFile(caPath) // #nosec G304 -- test-controlled path under t.TempDir()
+	require.NoError(t, err)
+	clientCAs := x509.NewCertPool()
+	require.True(t, clientCAs.AppendCertsFromPEM(caPEM))
+
+	peerCN := make(chan string, 1)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		peerCN <- r.TLS.PeerCertificates[0].Subject.CommonName
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.TLS = &tls.Config{
+		Certificates: []tls.Certificate{serverCert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    clientCAs,
+		MinVersion:   tls.VersionTLS13,
+	}
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	client, err := NewPeerMTLSClient(PeerMTLSConfig{
+		CertFile: certPath,
+		KeyFile:  keyPath,
+		CAFile:   caPath,
+	}, 5*time.Second)
+	require.NoError(t, err)
+
+	resp, err := client.Get(srv.URL + "/v1/search")
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "rag-orchestrator", <-peerCN)
 }

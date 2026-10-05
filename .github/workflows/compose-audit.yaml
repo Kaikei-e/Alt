@@ -39,6 +39,7 @@ on:
       - 'scripts/compose-pre-start-audit.py'
       - 'scripts/compose-ops-surface-audit.py'
       - 'scripts/compose-feature-gate.py'
+      - 'scripts/compose-reachability-audit.py'
       - 'scripts/ci-install-compose.sh'
       - 'scripts/compose_include.py'
       - 'scripts/ops-surface-baseline.json'
@@ -51,6 +52,9 @@ on:
       - 'scripts/tests/test-compose-pre-start-audit.py'
       - 'scripts/tests/test-compose-ops-surface-audit.py'
       - 'scripts/tests/test-compose-feature-gate.py'
+      - 'scripts/tests/test-compose-reachability-audit.py'
+      - 'scripts/tests/test_compose_wiring.sh'
+      - 'docker/redis/entrypoint.sh'
       - 'scripts/tests/test-pki-wave4-acceptance.py'
       - 'scripts/tests/test-retire-pki-writers.py'
       - 'scripts/tests/test-pki-subject-scoped-provisioners.py'
@@ -65,7 +69,6 @@ on:
       - 'pki-agent/CLAUDE.md'
       - 'compose/pki.yaml'
       - 'scripts/observability-config-audit.py'
-      - 'scripts/tests/test-observability-config-audit.py'
       - 'observability/prometheus/**'
       - 'scripts/cascade-pki-sidecars.sh'
       - 'scripts/deploy.sh'
@@ -76,6 +79,41 @@ on:
       - 'tests/scripts/test_cascade_pki_sidecars.sh'
       - 'tests/scripts/lib.sh'
       - '.env.template'
+      - '.env.example'
+      - 'compose/.env.example'
+      - 'deploy/host-prereqs.yaml'
+      - 'scripts/tests/test-compose-prod-env-wiring.py'
+      - 'scripts/tests/test-recap-evaluator-auth-wiring.py'
+      - 'scripts/check-env-overrides.py'
+      - 'scripts/tests/test-check-env-overrides.py'
+      - 'scripts/tests/test-group1-security.py'
+      - 'compose.augur.yaml'
+      - 'kratos/entrypoint.sh'
+      - 'kratos/kratos_template.yml'
+      - 'for-development/start-dev.sh'
+      - 'recap-evaluator/src/recap_evaluator/infra/bearer_auth.py'
+      - 'recap-evaluator/src/recap_evaluator/infra/mtls_client.py'
+      - 'knowledge-sovereign/app/main.go'
+      - 'alt-backend/app/cmd/*/main.go'
+      - 'alt-butterfly-facade/main.go'
+      - 'auth-hub/cmd/auth-hub/main.go'
+      - 'rag-orchestrator/cmd/server/main.go'
+      - 'pre-processor/app/bootstrap/lifecycle.go'
+      - 'search-indexer/app/bootstrap/app.go'
+      - 'recap-worker/recap-worker/src/pki/start.rs'
+      - 'acolyte-orchestrator/acolyte/infra/pki/start.py'
+      - 'news-creator/app/news_creator/infra/pki/start.py'
+      - 'recap-subworker/recap_subworker/app/infra/pki/start.py'
+      - 'tag-generator/app/tag_generator/infra/pki/start.py'
+      - 'altctl/CLAUDE.md'
+      - 'docs/runbooks/README.md'
+      - 'docs/runbooks/compose-bind-mount-policy.md'
+      - 'docs/runbooks/mtls-cutover.md'
+      - 'docs/runbooks/ops-surface-budget.md'
+      - 'docs/runbooks/synthetic-monitoring.md'
+      - 'docs/runbooks/user-journey-slo-gameday.md'
+      - 'docs/services/acolyte-orchestrator.md'
+      - 'docs/services/MICROSERVICES.md'
       - '.github/workflows/compose-audit.yaml'
   pull_request:
     branches: [main]
@@ -89,6 +127,7 @@ on:
       - 'scripts/compose-pre-start-audit.py'
       - 'scripts/compose-ops-surface-audit.py'
       - 'scripts/compose-feature-gate.py'
+      - 'scripts/compose-reachability-audit.py'
       - 'scripts/ci-install-compose.sh'
       - 'scripts/compose_include.py'
       - 'scripts/ops-surface-baseline.json'
@@ -101,6 +140,9 @@ on:
       - 'scripts/tests/test-compose-pre-start-audit.py'
       - 'scripts/tests/test-compose-ops-surface-audit.py'
       - 'scripts/tests/test-compose-feature-gate.py'
+      - 'scripts/tests/test-compose-reachability-audit.py'
+      - 'scripts/tests/test_compose_wiring.sh'
+      - 'docker/redis/entrypoint.sh'
       - 'scripts/tests/test-pki-wave4-acceptance.py'
       - 'scripts/tests/test-retire-pki-writers.py'
       - 'scripts/tests/test-pki-subject-scoped-provisioners.py'
@@ -115,7 +157,6 @@ on:
       - 'pki-agent/CLAUDE.md'
       - 'compose/pki.yaml'
       - 'scripts/observability-config-audit.py'
-      - 'scripts/tests/test-observability-config-audit.py'
       - 'observability/prometheus/**'
       - 'scripts/cascade-pki-sidecars.sh'
       - 'scripts/deploy.sh'
@@ -126,6 +167,41 @@ on:
       - 'tests/scripts/test_cascade_pki_sidecars.sh'
       - 'tests/scripts/lib.sh'
       - '.env.template'
+      - '.env.example'
+      - 'compose/.env.example'
+      - 'deploy/host-prereqs.yaml'
+      - 'scripts/tests/test-compose-prod-env-wiring.py'
+      - 'scripts/tests/test-recap-evaluator-auth-wiring.py'
+      - 'scripts/check-env-overrides.py'
+      - 'scripts/tests/test-check-env-overrides.py'
+      - 'scripts/tests/test-group1-security.py'
+      - 'compose.augur.yaml'
+      - 'kratos/entrypoint.sh'
+      - 'kratos/kratos_template.yml'
+      - 'for-development/start-dev.sh'
+      - 'recap-evaluator/src/recap_evaluator/infra/bearer_auth.py'
+      - 'recap-evaluator/src/recap_evaluator/infra/mtls_client.py'
+      - 'knowledge-sovereign/app/main.go'
+      - 'alt-backend/app/cmd/*/main.go'
+      - 'alt-butterfly-facade/main.go'
+      - 'auth-hub/cmd/auth-hub/main.go'
+      - 'rag-orchestrator/cmd/server/main.go'
+      - 'pre-processor/app/bootstrap/lifecycle.go'
+      - 'search-indexer/app/bootstrap/app.go'
+      - 'recap-worker/recap-worker/src/pki/start.rs'
+      - 'acolyte-orchestrator/acolyte/infra/pki/start.py'
+      - 'news-creator/app/news_creator/infra/pki/start.py'
+      - 'recap-subworker/recap_subworker/app/infra/pki/start.py'
+      - 'tag-generator/app/tag_generator/infra/pki/start.py'
+      - 'altctl/CLAUDE.md'
+      - 'docs/runbooks/README.md'
+      - 'docs/runbooks/compose-bind-mount-policy.md'
+      - 'docs/runbooks/mtls-cutover.md'
+      - 'docs/runbooks/ops-surface-budget.md'
+      - 'docs/runbooks/synthetic-monitoring.md'
+      - 'docs/runbooks/user-journey-slo-gameday.md'
+      - 'docs/services/acolyte-orchestrator.md'
+      - 'docs/services/MICROSERVICES.md'
       - '.github/workflows/compose-audit.yaml'
   workflow_dispatch:
 
@@ -155,8 +231,11 @@ jobs:
           # reading prod secrets (the runner has none anyway).
           # DOCKER_GROUP_ID was historically required by logging.yaml before the
           # socket proxy migration; kept here as placeholder for environment compatibility.
+          # KRATOS_COOKIE_DOMAIN uses `${VAR?}`: empty is a valid value, unset
+          # fails the render.
           {
             echo 'DOCKER_GROUP_ID=0'
+            echo 'KRATOS_COOKIE_DOMAIN='
           } > .env
 
       - name: Assert every service_healthy target has a healthcheck
@@ -227,7 +306,7 @@ jobs:
         # refuses to resolve when the file is absent. On a developer host
         # .env is a symlink to the canonical config, which a public runner
         # has no equivalent of — same dummy as the job above.
-        run: echo 'DOCKER_GROUP_ID=0' > .env
+        run: printf 'DOCKER_GROUP_ID=0\nKRATOS_COOKIE_DOMAIN=\n' > .env
 
       - name: Assert every published port is loopback-bound
         run: python3 scripts/compose-port-audit.py --overlays
@@ -252,8 +331,8 @@ jobs:
         run: python3 scripts/compose-netns-cascade-audit.py
 
   pki-wave4-invariant:
-    # 14 parents own enrollment; two newer workloads have dedicated cert-only
-    # writers. Dual writers, shared root secrets, and a silent
+    # Every parent owns its enrollment in-process; compose declares zero
+    # pki-agent workloads. Dual writers, shared root secrets, and a silent
     # in-process series drop all fail this job. The recovery runbook test
     # is an executed python3 step (YAML `run:`), not a comment/string pin.
     # No live stack.
@@ -386,9 +465,9 @@ jobs:
         run: python3 scripts/compose-pre-start-audit.py
 
   ops-surface-invariant:
-    # P2-14 budget: compose is the source of long-running names (77
-    # declared after Wave 4 removed pki-agent workload sidecars; default
-    # render 73, full 77). scripts/ops-surface-inventory.yaml holds only
+    # P2-14 budget: compose is the source of long-running names (82
+    # declared with zero pki-agent workload sidecars; default render 77,
+    # full 82). scripts/ops-surface-inventory.yaml holds only
     # class/kind/exception metadata. F1–F5 freeze accidental OSU (16) and
     # require offset_of or a dated exception before a new long-running
     # unit lands.
@@ -425,3 +504,80 @@ jobs:
 
       - name: Validate the committed operator-host gate report
         run: python3 scripts/compose-feature-gate.py --gate-report
+
+  wiring-invariant:
+    # scripts/tests/test_compose_wiring.sh: the raw-YAML network and identity
+    # checks, plus the rendered config, where `${VAR:-default}` and env_file
+    # overrides decide which host a caller dials. A stale template entry that
+    # sends a caller around its auth proxy, a Redis URL without its ACL user,
+    # or a config-mounted entrypoint without the exec bit fails here instead of
+    # at the next deploy. Renders against .env.template plus the two values
+    # the dummy .env above carries; nothing is printed from the render.
+    # The same job pins scripts/check-env-overrides.py, which applies the
+    # deploy/host-prereqs.yaml env rules to a host .env, and runs the Redis
+    # ACL loader (docker/redis/entrypoint.sh) and kratos entrypoint against
+    # fixtures via test-group1-security.py.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Install the Compose build production renders with
+        run: ./scripts/ci-install-compose.sh
+
+      - name: Stage .env.template as the render input
+        # Services carry `env_file: ../.env`, so the template is staged there
+        # and the same file is the --env-file.
+        run: |
+          { cat .env.template; echo; echo 'DOCKER_GROUP_ID=0'; echo 'KRATOS_COOKIE_DOMAIN='; } > .env
+
+      - name: Assert compose wiring (raw and rendered)
+        env:
+          COMPOSE_ENV_FILE: .env
+        run: bash scripts/tests/test_compose_wiring.sh
+
+      - name: Pin production upstream wiring and env-template drift
+        run: python3 scripts/tests/test-compose-prod-env-wiring.py
+
+      - name: Pin recap-evaluator bearer wiring
+        run: python3 scripts/tests/test-recap-evaluator-auth-wiring.py
+
+      - name: Pin the host .env override checker
+        run: python3 scripts/tests/test-check-env-overrides.py
+
+      - name: Pin Redis roles, the ACL loader and the group-1 security wiring
+        run: python3 scripts/tests/test-group1-security.py
+
+  reachability-invariant:
+    # Compose DNS answers a service name only on the networks it joined. A URL
+    # a service declares for a compose host it shares no network with fails
+    # at connect time, after deploy, on whichever path dials it first.
+    # Values that only arrive through the shared env_file are listed without
+    # failing: every env_file service receives them and few read them.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Pin the reachability audit logic
+        run: python3 scripts/tests/test-compose-reachability-audit.py
+
+      - name: Install the Compose build production renders with
+        run: ./scripts/ci-install-compose.sh
+
+      - name: Stage .env.template as the render input
+        run: |
+          { cat .env.template; echo; echo 'DOCKER_GROUP_ID=0'; echo 'KRATOS_COOKIE_DOMAIN='; } > .env
+
+      - name: Assert every declared compose-host URL shares a network with its caller
+        run: python3 scripts/compose-reachability-audit.py --env-file .env

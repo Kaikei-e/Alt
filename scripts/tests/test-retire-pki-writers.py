@@ -9,7 +9,8 @@ import tempfile
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/retire-alt-pki-agent-leftovers.sh"
-WRITERS = ["pki-agent-knowledge-sovereign", "pki-agent-recap-evaluator"]
+PARENTS = ["knowledge-sovereign", "recap-evaluator"]
+FORMER_WRITERS = ["pki-agent-knowledge-sovereign", "pki-agent-recap-evaluator"]
 FAKE_DOCKER = r'''#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
@@ -50,32 +51,43 @@ class RetirementTests(unittest.TestCase):
                                     capture_output=True, text=True, timeout=10)
             return result, json.loads(state.read_text())
 
-    def test_current_certificate_writers_are_preserved(self):
-        result, state = self.run_retirement(["step-ca", *WRITERS])
+    def test_steady_state_without_sidecars_is_a_no_op(self):
+        result, state = self.run_retirement(["step-ca", *PARENTS])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(state["calls"], [])
-        self.assertEqual(set(state["containers"].values()), {"step-ca", *WRITERS})
+        self.assertEqual(set(state["containers"].values()), {"step-ca", *PARENTS})
+
+    def test_former_sovereign_and_evaluator_writers_are_retired(self):
+        # Both parents enroll in-process now; a surviving sidecar on the same
+        # cert volume is a dual writer like every other pki-agent-* leftover.
+        result, state = self.run_retirement(["step-ca", *PARENTS, *FORMER_WRITERS])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(state["calls"], [
+            ["stop", ["id3", "id4"]], ["rm", ["id3", "id4"]],
+        ])
+        self.assertEqual(set(state["containers"].values()), {"step-ca", *PARENTS})
 
     def test_legacy_and_unknown_writers_are_retired_exactly(self):
         result, state = self.run_retirement([
-            "step-ca", *WRITERS, "pki-agent-alt-backend", "pki-agent-unregistered",
+            "step-ca", *PARENTS, "pki-agent-alt-backend", "pki-agent-unregistered",
         ])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(state["calls"], [
             ["stop", ["id3", "id4"]], ["rm", ["id3", "id4"]],
         ])
-        self.assertEqual(set(state["containers"].values()), {"step-ca", *WRITERS})
+        self.assertEqual(set(state["containers"].values()), {"step-ca", *PARENTS})
 
-    def test_similar_service_names_are_not_exempt(self):
+    def test_surviving_former_writer_fails_closed(self):
         result, state = self.run_retirement([
-            "step-ca", *WRITERS, "pki-agent-recap-evaluator-old",
-        ])
-        self.assertEqual(result.returncode, 0, result.stderr)
+            "step-ca", *PARENTS, "pki-agent-recap-evaluator",
+        ], keep_leftovers=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("leftovers still running", result.stderr)
         self.assertEqual(state["calls"], [["stop", ["id3"]], ["rm", ["id3"]]])
 
     def test_surviving_legacy_writer_fails_closed(self):
         result, state = self.run_retirement([
-            "step-ca", *WRITERS, "pki-agent-alt-backend",
+            "step-ca", *PARENTS, "pki-agent-alt-backend",
         ], keep_leftovers=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("leftovers still running", result.stderr)

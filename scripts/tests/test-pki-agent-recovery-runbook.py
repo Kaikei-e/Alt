@@ -10,8 +10,8 @@ Must chown emergency leaves to the parent runtime UID, wipe every compose
 cert volume, and probe :9110 from a toolbox on the Compose network
 (parent images are distroless and have no wget).
 
-Does not start Docker. Compose is the source of truth for the 15 volumes
-and the 65532/1000/999 ownership map.
+Does not start Docker. Compose is the source of truth for the 17 volumes
+and the 65532/1000/999/65533 ownership map.
 
 Run:
     python3 scripts/tests/test-pki-agent-recovery-runbook.py
@@ -309,27 +309,27 @@ check(
     str(RUNBOOK),
 )
 check(
-    "compose declares 15 in-process cert volumes plus two dedicated writer volumes",
+    "compose declares 17 cert volumes, each written by its in-process parent",
     len(cert_volumes) == 17
-    and {"knowledge_sovereign_certs", "recap_evaluator_certs"} <= set(cert_volumes),
+    and set(cert_volumes) == {volume for volume, _ in parents.values()},
     f"got {sorted(cert_volumes)}",
 )
 check(
-    "compose has exactly 15 in-process PKI parents",
-    len(parents) == 15,
+    "compose has exactly 17 in-process PKI parents",
+    len(parents) == 17,
     f"got {sorted(parents)}",
 )
+RUNTIME_UIDS = {"65532", "1000", "999", "65533"}
 check(
-    "runtime UIDs are the 65532/1000/999 set",
-    {uid for _, uid in parents.values()} <= {"65532", "1000", "999"}
-    and {"65532", "1000", "999"} <= {uid for _, uid in parents.values()},
+    "runtime UIDs are the 65532/1000/999/65533 set",
+    {uid for _, uid in parents.values()} == RUNTIME_UIDS,
     f"uids={sorted({uid for _, uid in parents.values()})}",
 )
 
 cert_uid = assoc.get("CERT_UID", {})
 cert_volume = assoc.get("CERT_VOLUME", {})
 check(
-    "runbook CERT_UID maps all 15 parents to compose pre_start UIDs",
+    "runbook CERT_UID maps all 17 parents to compose pre_start UIDs",
     cert_uid == {name: uid for name, (_, uid) in parents.items()},
     f"runbook={dict(sorted(cert_uid.items()))} compose={ {n: u for n, (_, u) in sorted(parents.items())} }",
 )
@@ -337,7 +337,7 @@ expected_docker_vols = {
     name: f"{COMPOSE_PROJECT}_{volume}" for name, (volume, _) in parents.items()
 }
 check(
-    "runbook CERT_VOLUME maps all 15 parents to compose docker volume names",
+    "runbook CERT_VOLUME maps all 17 parents to compose docker volume names",
     cert_volume == expected_docker_vols,
     f"runbook={dict(sorted(cert_volume.items()))} compose={dict(sorted(expected_docker_vols.items()))}",
 )
@@ -501,7 +501,7 @@ for block in probe_blocks:
     if re.search(r"http://\$\{?s\}?:9110", block):
         loop_subjects.update(parents)
 check(
-    "toolbox probe hits all 15 parent :9110 endpoints via Compose DNS",
+    "toolbox probe hits all 17 parent :9110 endpoints via Compose DNS",
     toolbox_probe and set(parents) <= loop_subjects,
     f"probe_ok={toolbox_probe} missing={sorted(set(parents) - loop_subjects)}",
 )

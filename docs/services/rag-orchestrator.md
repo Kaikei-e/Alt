@@ -193,10 +193,12 @@ Loads configuration from environment variables. Secrets support both env vars an
 
 | Environment Variable | Description | Default |
 |----------------------|-------------|---------|
-| `EMBEDDER_EXTERNAL` / `EMBEDDER_EXTERNAL_URL` | Embedder (Ollama) URL | `http://embedder-external:11436` in code; compose/rag.yaml sets `http://knowledge-embedder-local:11434` (dedicated local Ollama instance, [[000951]]) |
+| `EMBEDDER_EXTERNAL` / `EMBEDDER_EXTERNAL_URL` | Embedder URL; the only embedder origin that receives the inference bearer | `http://embedding-proxy:11436` in code and in compose/rag.yaml (embedding-proxy fronts the dedicated `knowledge-embedder-local` Ollama, [[000951]]) |
+| `INFERENCE_SERVICE_TOKEN_FILE` | Bearer for embedding-proxy and rerank-local, and for an `AUGUR_EXTERNAL` other than news-creator's mTLS listener; startup fails without it | compose/rag.yaml sets `/run/secrets/inference_service_token` |
+| `INFERENCE_AUTH` | `disabled` is the only explicit opt-out from the bearer (logs `inference_auth_disabled`); `LLM_BACKEND=eino` requires it | unset (bearer required) |
 | `EMBEDDING_MODEL` | Model for embeddings | `bge-m3` (1024-dim; the pgvector column was widened from 768-dim `embeddinggemma` for this — see `docs/services/rag-db.md`) |
 | `EMBEDDER_TIMEOUT` | Embedder timeout (seconds) | `30` in code; compose sets `60` |
-| `AUGUR_EXTERNAL` / `AUGUR_EXTERNAL_URL` | LLM generation backend URL | `http://news-creator-backend:11435` in code and in `.env.template`; compose/rag.yaml falls back to `http://news-creator:11434` (news-creator's FastAPI priority-queue proxy, which fronts news-creator-backend's Ollama on :11435) when `AUGUR_EXTERNAL` is unset in `.env` — either way generation is served by news-creator, not by `knowledge-augur` (see `docs/services/knowledge-augur.md`) |
+| `AUGUR_EXTERNAL` / `AUGUR_EXTERNAL_URL` | LLM generation backend URL | `https://news-creator:9443` in code and in compose/rag.yaml, news-creator's mTLS listener in front of its priority queue. The compose value is a literal and the service loads no `env_file`, so a `.env` entry cannot override it. Generation is served by news-creator, not by `knowledge-augur` (see `docs/services/knowledge-augur.md`) |
 | `AUGUR_KNOWLEDGE_MODEL` | LLM model for generation | `gemma4-e4b-12k` |
 | `OLLAMA_TIMEOUT` | LLM timeout (seconds) | `300` |
 | `LLM_BACKEND` | Generation backend selector | `ollama` |
@@ -506,12 +508,16 @@ A standalone cobra-based CLI for bulk-indexing and full-corpus re-indexing. Buil
 **Environment (`run`):**
 - `DATABASE_URL` (required): PostgreSQL connection string for fetching articles.
 - `ORCHESTRATOR_URL` (default `http://localhost:9010`): rag-orchestrator REST endpoint.
+- `--direct` embeds in-process and reads the inference variables listed under `rebuild` below.
 
 **Environment (`rebuild`):**
 - `RAG_DB_URL` (required): rag-db connection string.
 - `DATABASE_URL` (required): source database (articles) for enqueue.
 - `EMBEDDING_MODEL` (required, no default — the model chosen by evaluation).
 - `EMBEDDER_URL` or `EMBEDDER_URLS` (comma-separated replicas of the same model).
+- `INFERENCE_SERVICE_TOKEN_FILE` (required): the bearer embedding-proxy demands. The CLI exits without it unless `INFERENCE_AUTH=disabled` is set.
+- `INFERENCE_AUTH`: `disabled` is the only explicit opt-out; the embedders then send no `Authorization` header.
+- `EMBEDDER_EXTERNAL` (default `http://embedding-proxy:11436`): the only origin the bearer is sent to. An `EMBEDDER_URL(S)` entry on any other origin, such as a raw hyper-boost Ollama, gets no bearer.
 
 Hyper-boost mode starts a temporary Ollama container for local GPU embedding and sends an `X-Embedder-URL` header to the orchestrator's upsert endpoint.
 

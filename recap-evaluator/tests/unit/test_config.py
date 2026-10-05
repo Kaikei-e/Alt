@@ -42,9 +42,7 @@ class TestSettingsRecapDbDsn:
 
         settings = Settings(_env_file=None)
 
-        assert settings.recap_db_dsn == (
-            "postgres://recap_user:s3cr3t@recap-db:5432/recap"
-        )
+        assert settings.recap_db_dsn == ("postgres://recap_user:s3cr3t@recap-db:5432/recap")
 
     def test_raises_when_no_dsn_and_no_password(self, monkeypatch):
         """Missing both RECAP_DB_DSN and a password source must fail fast at

@@ -33,7 +33,6 @@ services:
       # secret as alt-backend's OPERATOR_TOKEN_FILE in compose/core.yaml.
       - BACKEND_OPERATOR_TOKEN_FILE=/run/secrets/backend_operator_token
       - BACKEND_REST_URL=http://alt-backend:9000
-      - AUTH_HUB_INTERNAL_URL=http://auth-hub:8888
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend

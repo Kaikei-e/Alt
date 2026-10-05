@@ -69,6 +69,8 @@ services:
       - KRATOS_DB_PORT=5432
       - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
+      # entrypoint.sh renders the same template as kratos, cookie domain included.
+      - KRATOS_COOKIE_DOMAIN=${KRATOS_COOKIE_DOMAIN?set KRATOS_COOKIE_DOMAIN in .env (empty means host-only cookies)}
     secrets:
       - kratos_db_password
       - kratos_cookie_secret
@@ -113,7 +115,8 @@ services:
       - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:4173/sv/settings}
       - KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:4173/sv/recovery}
       - KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-http://localhost:4173/sv/verification}
-      - KRATOS_COOKIE_DOMAIN=${KRATOS_COOKIE_DOMAIN:-}
+      # Unset fails the render; empty is a deliberate host-only cookie (dev).
+      - KRATOS_COOKIE_DOMAIN=${KRATOS_COOKIE_DOMAIN?set KRATOS_COOKIE_DOMAIN in .env (empty means host-only cookies)}
       - KRATOS_COOKIE_SECRET_FILE=/run/secrets/kratos_cookie_secret
       - KRATOS_CIPHER_SECRET_FILE=/run/secrets/kratos_cipher_secret
       - SERVE_ADMIN_HOST=${KRATOS_ADMIN_IP:-172.16.250.2}

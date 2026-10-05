@@ -96,16 +96,28 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	rerankHTTP := httpclient.NewPooledClient(time.Duration(cfg.Rerank.Timeout) * time.Second)
 
 	// External clients
+	LogInferenceAuth(cfg.InferenceAuth, log)
 	embedder := rag_augur.NewOllamaEmbedder(cfg.Embedder.URL, cfg.Embedder.Model, cfg.Embedder.Timeout, log, cfg.Embedder.InferenceToken, embedderHTTP)
 	log.Info("embedder_configured",
 		slog.String("url", cfg.Embedder.URL),
 		slog.String("model", cfg.Embedder.Model),
 		slog.Int("expected_dimension", domain.EmbeddingDimension))
-	searchClient := rag_http.NewSearchIndexerClient(cfg.Search.IndexerURL, cfg.Search.Timeout, "")
+	searchClient, err := newSearchIndexerClient(cfg.Search)
+	if err != nil {
+		log.Error("search_indexer_mtls_client_init_failed", slog.String("error", err.Error()))
+		panic(fmt.Errorf("search-indexer mTLS client: %w", err))
+	}
+	log.Info("search_indexer_client_configured",
+		slog.String("url", cfg.Search.IndexerURL),
+		slog.Int("timeout_seconds", cfg.Search.Timeout))
 	queryExpander := rag_augur.NewQueryExpanderClient(cfg.QueryExpansion.URL, cfg.QueryExpansion.Timeout, log, queryExpanderHTTP)
 
 	var generator ragLLMClient
 	if cfg.LLMBackend == "eino" {
+		if err := validateEinoBackend(cfg); err != nil {
+			log.Error("eino_generator_refused", slog.String("error", err.Error()))
+			panic(err)
+		}
 		einoGenerator, err := eino.NewChatModelAdapter(context.Background(), cfg.Augur.URL, cfg.Augur.Model, log)
 		if err != nil {
 			log.Error("eino_generator_init_failed", slog.String("error", err.Error()))
@@ -225,7 +237,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// surface no longer exists — carrying on without a client would mean
 	// every tag-cloud and morning-letter request erroring at request time
 	// instead of the container refusing to start (CLAUDE.md rules 8/9).
-	dataHubHTTP, err := httpclient.NewDataHubClient(httpclient.DataHubTransportConfig{
+	dataHubHTTP, err := httpclient.NewPeerMTLSClient(httpclient.PeerMTLSConfig{
 		CertFile:   cfg.DataHub.CertFile,
 		KeyFile:    cfg.DataHub.KeyFile,
 		CAFile:     cfg.DataHub.CAFile,
@@ -357,13 +369,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	letterFetcher := recap_worker.NewClient(recapWorkerURL, httpclient.NewPooledClient(10*time.Second))
 
 	// Factories for hyper-boost
-	embedderFactory := func(url string, model string, timeout int) domain.VectorEncoder {
-		token := ""
-		if sameCanonicalOrigin(url, cfg.Embedder.URL) {
-			token = cfg.Embedder.InferenceToken
-		}
-		return rag_augur.NewOllamaEmbedder(url, model, timeout, log, token, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
-	}
+	embedderFactory := NewEmbedderFactory(cfg.Embedder, log)
 	indexUsecaseFactory := func(encoder domain.VectorEncoder) usecase.IndexArticleUsecase {
 		return usecase.NewIndexArticleUsecase(docRepo, chunkRepo, txManager, hasher, chunker, encoder)
 	}
@@ -451,6 +457,49 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	}
 }
 
+// LogInferenceAuth states once at startup whether calls to the inference
+// proxies carry the bearer, so an explicit opt-out is never mistaken for a
+// forgotten secret mount.
+func LogInferenceAuth(cfg config.InferenceAuthConfig, log *slog.Logger) {
+	if cfg.Enabled {
+		log.Info("inference_auth_enabled",
+			slog.String("token_source", "INFERENCE_SERVICE_TOKEN_FILE"),
+			slog.String("surfaces", "embedding-proxy,rerank-local,generation-proxy"))
+		return
+	}
+	log.Warn("inference_auth_disabled",
+		slog.String("reason", "INFERENCE_AUTH=disabled (explicit opt-out); inference proxy calls carry no Authorization header"))
+}
+
+// newSearchIndexerClient dials search-indexer's mTLS listener with the
+// in-process leaf. The search API has no plaintext listener to fall back to,
+// so missing cert material is an error rather than a plaintext client.
+func newSearchIndexerClient(cfg config.SearchConfig) (*rag_http.SearchIndexerClient, error) {
+	client, err := httpclient.NewPeerMTLSClient(httpclient.PeerMTLSConfig{
+		CertFile: cfg.CertFile,
+		KeyFile:  cfg.KeyFile,
+		CAFile:   cfg.CAFile,
+	}, time.Duration(cfg.Timeout)*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	return rag_http.NewSearchIndexerClient(cfg.IndexerURL, client), nil
+}
+
+// NewEmbedderFactory builds embedders for the X-Embedder-URL override
+// (hyper-boost backfill). The inference bearer goes only to the configured
+// embedder's origin; an override origin is a raw Ollama that must never see
+// the shared secret.
+func NewEmbedderFactory(embedderCfg config.EmbedderConfig, log *slog.Logger) rag_http.EmbedderFactory {
+	return func(url string, model string, timeout int) domain.VectorEncoder {
+		token := ""
+		if sameCanonicalOrigin(url, embedderCfg.URL) {
+			token = embedderCfg.InferenceToken
+		}
+		return rag_augur.NewOllamaEmbedder(url, model, timeout, log, token, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
+	}
+}
+
 func sameCanonicalOrigin(target, configured string) bool {
 	tURL, err1 := url.Parse(strings.TrimSpace(target))
 	cURL, err2 := url.Parse(strings.TrimSpace(configured))
@@ -478,16 +527,43 @@ func sameCanonicalOrigin(target, configured string) bool {
 	}
 	return strings.EqualFold(tURL.Hostname(), cURL.Hostname()) && tPort == cPort
 }
+
+// augurEndpointPurpose resolves AUGUR_ENDPOINT_PURPOSE, defaulting to
+// news_mtls for news-creator's mTLS listener and authenticated_proxy otherwise.
+func augurEndpointPurpose(cfg *config.AugurConfig) string {
+	if cfg.EndpointPurpose != "" {
+		return cfg.EndpointPurpose
+	}
+	if sameCanonicalOrigin(cfg.URL, "https://news-creator:9443") {
+		return "news_mtls"
+	}
+	return "authenticated_proxy"
+}
+
+// validateEinoBackend refuses LLM_BACKEND=eino for any Augur endpoint that
+// needs a credential: the eino Ollama client builds its own transport, so it
+// can carry neither the inference bearer nor the mTLS leaf and would reach
+// the generation endpoint unauthenticated.
+func validateEinoBackend(cfg *config.Config) error {
+	if cfg.InferenceAuth.Enabled {
+		return fmt.Errorf("LLM_BACKEND=eino cannot send the inference bearer; it requires INFERENCE_AUTH=disabled")
+	}
+	switch purpose := augurEndpointPurpose(&cfg.Augur); purpose {
+	case "authenticated_proxy":
+		return fmt.Errorf("LLM_BACKEND=eino cannot send the inference bearer that AUGUR_ENDPOINT_PURPOSE=authenticated_proxy requires (URL: %s)", cfg.Augur.URL)
+	case "news_mtls":
+		if httpclient.MTLSEnforced() {
+			return fmt.Errorf("LLM_BACKEND=eino cannot present the mTLS client certificate that MTLS_ENFORCE=true requires (URL: %s)", cfg.Augur.URL)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown AUGUR_ENDPOINT_PURPOSE %q; valid values are news_mtls, authenticated_proxy", purpose)
+	}
+}
+
 func BuildOllamaGenerator(cfg *config.AugurConfig, httpClient *http.Client, log *slog.Logger) *rag_augur.OllamaGenerator {
 	augurToken := cfg.InferenceToken
-	purpose := cfg.EndpointPurpose
-	if purpose == "" {
-		if sameCanonicalOrigin(cfg.URL, "https://news-creator:9443") {
-			purpose = "news_mtls"
-		} else {
-			purpose = "authenticated_proxy"
-		}
-	}
+	purpose := augurEndpointPurpose(cfg)
 
 	switch purpose {
 	case "news_mtls":

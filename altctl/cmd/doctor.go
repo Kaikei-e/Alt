@@ -91,20 +91,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 // place, and a "dry run" that fakes empty ps/config output would make every
 // service look "missing" -- exactly the misleading failure mode doctor
 // exists to prevent.
-//
-// It also works around an unrelated landmine via
-// doctor.EnsureDockerGroupIDEnv (see that function's doc for detail):
-// compose/logging.yaml requires DOCKER_GROUP_ID to even parse, which would
-// otherwise make `docker compose -f compose/compose.yaml config/ps` -- the
-// aggregate probe doctor uses for every stack, see internal/doctor/probe.go
-// -- hard-fail for users who aren't touching the logging stack at all. A
-// harmless placeholder is injected for doctor's own read-only calls only
-// (it's never used to actually start a container); the real unset condition
-// is still separately flagged as a preflight Finding whenever the logging
-// stack ends up in scope.
 func newDoctorExecutor() compose.Executor {
-	restore := doctor.EnsureDockerGroupIDEnv()
-	defer restore()
 	return compose.NewExecutor(getProjectRoot(), logger, false)
 }
 

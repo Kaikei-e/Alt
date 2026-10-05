@@ -5,7 +5,8 @@
 #   seek.sh [--since DUR] [--out DIR] [--tail N] [service ...]
 #
 #   --since DUR   time window for `docker compose logs` (default: 30m)
-#   --out DIR     output directory (default: /tmp/log-seeker-<UTC timestamp>)
+#   --out DIR     output directory (default: a fresh 0700 dir from mktemp,
+#                 ${TMPDIR:-/tmp}/log-seeker-<UTC timestamp>.XXXXXX)
 #   --tail N      max log lines per service (default: 2000 — enough to cover a
 #                 normal-traffic window without flooding the bundle)
 #   service ...   services to pull logs for; if none given, a curated core set is used
@@ -13,8 +14,10 @@
 # It never mutates anything: only `docker compose ps/logs`, `docker inspect`, and
 # SELECT/SHOW queries. Missing or stopped containers are noted and skipped, never fatal.
 # Exits 0 even on partial failure and prints a summary plus the bundle path.
+# The bundle holds raw service logs, so everything it writes is owner-only.
 
 set -u  # (no `set -e`: partial collection is expected and fine)
+umask 077
 
 COMPOSE=(docker compose -f compose/compose.yaml -p alt)
 SINCE="30m"
@@ -29,14 +32,17 @@ while [ $# -gt 0 ]; do
     --since) SINCE="${2:?--since needs a value}"; shift 2 ;;
     --out)   OUT="${2:?--out needs a value}"; shift 2 ;;
     --tail)  TAIL="${2:?--tail needs a value}"; shift 2 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     --) shift; while [ $# -gt 0 ]; do SERVICES+=("$1"); shift; done ;;
     -*) echo "seek.sh: unknown option: $1" >&2; exit 2 ;;
     *)  SERVICES+=("$1"); shift ;;
   esac
 done
 [ "${#SERVICES[@]}" -eq 0 ] && SERVICES=("${DEFAULT_SERVICES[@]}")
-[ -n "$OUT" ] || OUT="/tmp/log-seeker-$(date -u +%Y%m%dT%H%M%SZ)"
+# mktemp, not a fixed name: another local user could pre-create or symlink a
+# predictable /tmp path and read the logs written into it.
+[ -n "$OUT" ] || OUT="$(mktemp -d "${TMPDIR:-/tmp}/log-seeker-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")" || {
+  echo "seek.sh: cannot create the bundle directory" >&2; exit 2; }
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "seek.sh: docker not found on PATH" >&2; exit 2
@@ -102,8 +108,10 @@ log ""
 
 # --- ClickHouse: recent errors ----------------------------------------------
 if is_running clickhouse; then
+  # clickhouse-client reads CLICKHOUSE_PASSWORD from its environment; on argv
+  # (--password) it would be readable by every host user through ps.
   ch() { "${COMPOSE[@]}" exec -T clickhouse sh -c \
-    'clickhouse-client -u "$CLICKHOUSE_USER" --password "$(cat /run/secrets/clickhouse_password)" -d "$CLICKHOUSE_DB" --query "'"$1"'"' 2>&1; }
+    'CLICKHOUSE_PASSWORD="$(cat /run/secrets/clickhouse_password)" && export CLICKHOUSE_PASSWORD && clickhouse-client -u "$CLICKHOUSE_USER" -d "$CLICKHOUSE_DB" --query "'"$1"'"' 2>&1; }
   {
     echo "# errors by service, last hour"
     ch "SELECT ServiceName, count() AS n FROM otel_error_logs WHERE Timestamp > now() - INTERVAL 1 HOUR GROUP BY ServiceName ORDER BY n DESC FORMAT PrettyCompact"
@@ -178,10 +186,25 @@ fi
 log ""
 
 # --- redis-streams quick depth ----------------------------------------------
+# The default user is off: read as the `streams` role, password taken from the
+# container's own secret file. INFO / XLEN / TYPE are NOPERM for every role, so
+# depth comes from XINFO STREAM (cut before the entry payloads) and XINFO GROUPS
+# (pending, lag).
 if is_running redis-streams; then
-  "${COMPOSE[@]}" exec -T redis-streams sh -c \
-    'redis-cli INFO clients; echo "--- keys ---"; redis-cli --scan --pattern "*" | head -50' \
-    > "$OUT/redis-streams.txt" 2>&1 || echo "(redis query failed)" >> "$OUT/redis-streams.txt"
+  if ! "${COMPOSE[@]}" exec -T redis-streams sh -s > "$OUT/redis-streams.txt" 2>&1 <<'EOF'
+REDISCLI_AUTH="$(cat /run/secrets/redis_streams_password)"
+export REDISCLI_AUTH
+redis-cli --user streams ping
+redis-cli --user streams --scan --pattern 'alt:events:*' | sort | head -50 | while read -r key; do
+  echo "--- $key"
+  redis-cli --user streams XINFO STREAM "$key" | sed -n '/^first-entry$/q;p' | paste - -
+  echo "groups:"
+  redis-cli --user streams XINFO GROUPS "$key" | paste - -
+done
+EOF
+  then
+    echo "(redis query failed)" >> "$OUT/redis-streams.txt"
+  fi
   log "## redis-streams: see redis-streams.txt"
 else
   log "## redis-streams: not running — skipped."

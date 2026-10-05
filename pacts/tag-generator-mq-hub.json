@@ -11,7 +11,7 @@
           "event_type": "TagGenerationRequested",
           "metadata": {
             "correlation_id": "corr-001",
-            "reply_to": "alt:replies:tags:corr-001"
+            "reply_to": "alt:replies:tags:7c9e6679-7425-40de-944b-e07fc1f90ae7"
           },
           "payload": {
             "article_id": "art-002",
@@ -54,7 +54,8 @@
             "combine": "AND",
             "matchers": [
               {
-                "match": "type"
+                "match": "regex",
+                "regex": "^alt:replies:tags:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
               }
             ]
           },

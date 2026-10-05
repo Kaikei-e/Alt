@@ -8,10 +8,10 @@ import math
 import os
 import time
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import structlog
@@ -22,6 +22,11 @@ from ..infra.embedding_identity import (
     DEFAULT_SENTENCE_TRANSFORMER_MODEL_ID,
     canonicalize_embedding_id,
 )
+
+if TYPE_CHECKING:
+    from pydantic import SecretStr
+
+    from ..infra.config import Settings
 
 logger = structlog.get_logger(__name__)
 
@@ -70,7 +75,33 @@ class EmbedderConfig:
     # when True, sidecar↔runtime embedder identity drift downgrades to a
     # warning instead of ConfigValidationError. See classifier.py.
     allow_embedding_drift: bool = False
-    inference_service_token: Any = None
+    inference_service_token: SecretStr | None = field(kw_only=True)
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> EmbedderConfig:
+        """Build the config every Embedder construction site shares.
+
+        Constructing EmbedderConfig field by field at each site let the
+        process-pool workers drift from the container (no bearer token, no
+        ONNX options), so all sites derive it from Settings here.
+        """
+        return cls(
+            model_id=settings.model_id,
+            distill_model_id=settings.distill_model_id,
+            backend=settings.model_backend,
+            device=settings.device,
+            batch_size=settings.batch_size,
+            cache_size=settings.embed_cache_size,
+            onnx_model_path=settings.onnx_model_path,
+            onnx_tokenizer_name=settings.onnx_tokenizer_name,
+            onnx_pooling=settings.onnx_pooling,
+            onnx_max_length=settings.onnx_max_length,
+            ollama_embed_url=settings.ollama_embed_url,
+            ollama_embed_model=settings.ollama_embed_model,
+            ollama_embed_timeout=settings.ollama_embed_timeout,
+            allow_embedding_drift=settings.allow_embedding_drift,
+            inference_service_token=settings.inference_service_token,
+        )
 
 
 class Embedder:
@@ -450,14 +481,8 @@ class Embedder:
             def close(self):
                 self._client.close()
 
-        raw_token = getattr(self.config, "inference_service_token", None)
-        token_str = None
-        if raw_token:
-            token_str = (
-                raw_token.get_secret_value()
-                if hasattr(raw_token, "get_secret_value")
-                else str(raw_token)
-            )
+        token = self.config.inference_service_token
+        token_str = token.get_secret_value() if token is not None else None
         return OllamaRemoteAdapter(
             self.config.ollama_embed_url,
             self.config.ollama_embed_model,

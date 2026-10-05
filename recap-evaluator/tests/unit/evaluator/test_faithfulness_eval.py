@@ -4,8 +4,9 @@ TDD RED Phase: These tests define the expected behavior for the Faithfulness eva
 using NLI-based hallucination detection.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from recap_evaluator.evaluator.faithfulness_eval import (
     FaithfulnessEvaluator,
@@ -95,9 +96,7 @@ class TestFaithfulnessEvaluator:
         real transformers pipeline batch behavior) rather than a single
         fixed result regardless of batch size.
         """
-        with patch(
-            "recap_evaluator.evaluator.faithfulness_eval.pipeline"
-        ) as mock_pipeline:
+        with patch("recap_evaluator.evaluator.faithfulness_eval.pipeline") as mock_pipeline:
             # Create mock NLI that returns high entailment scores
             mock_nli = MagicMock()
 
@@ -160,11 +159,13 @@ class TestFaithfulnessEvaluator:
         # Reconfigure mock for low entailment
         mock_nli = mock_nli_pipeline.return_value
         mock_nli.side_effect = None
-        mock_nli.return_value = [[
-            {"label": "entailment", "score": 0.2},
-            {"label": "neutral", "score": 0.3},
-            {"label": "contradiction", "score": 0.5},
-        ]]
+        mock_nli.return_value = [
+            [
+                {"label": "entailment", "score": 0.2},
+                {"label": "neutral", "score": 0.3},
+                {"label": "contradiction", "score": 0.5},
+            ]
+        ]
 
         evaluator = FaithfulnessEvaluator()
 
@@ -259,8 +260,16 @@ class TestFaithfulnessEvaluator:
         mock_nli = mock_nli_pipeline.return_value
         mock_nli.side_effect = None
         mock_nli.return_value = [
-            [{"label": "entailment", "score": 0.3}, {"label": "neutral", "score": 0.4}, {"label": "contradiction", "score": 0.3}],
-            [{"label": "entailment", "score": 0.9}, {"label": "neutral", "score": 0.05}, {"label": "contradiction", "score": 0.05}],
+            [
+                {"label": "entailment", "score": 0.3},
+                {"label": "neutral", "score": 0.4},
+                {"label": "contradiction", "score": 0.3},
+            ],
+            [
+                {"label": "entailment", "score": 0.9},
+                {"label": "neutral", "score": 0.05},
+                {"label": "contradiction", "score": 0.05},
+            ],
         ]
 
         evaluator = FaithfulnessEvaluator()

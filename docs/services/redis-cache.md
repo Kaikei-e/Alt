@@ -1,6 +1,6 @@
 # redis-cache
 
-_Last reviewed: May 17, 2026_
+_Last reviewed: October 3, 2026_
 
 Redis 8.4.5-alpine (`--maxmemory 256mb --maxmemory-policy allkeys-lru`)。LLM response cache。
 
@@ -10,7 +10,11 @@ Redis 8.4.5-alpine (`--maxmemory 256mb --maxmemory-policy allkeys-lru`)。LLM re
 
 ## Health
 
-- `REDISCLI_AUTH="$(cat /run/secrets/redis_password)" redis-cli ping | grep -q PONG`
+- `REDISCLI_AUTH="$(cat /run/secrets/redis_cache_password)" redis-cli --user cache ping | grep -q PONG`
+
+## ACL
+
+`docker/redis/entrypoint.sh` が生成する ACL で `user default off`。認証なしの `redis-cli` は `ping` も含めて `NOAUTH` になる。唯一のユーザ `cache` はキー `recap_card:*` / `recap:summary:*` に対する `PING` / `GET` / `SET` / `DEL` だけを持ち、`INFO` / `SCAN` / `TTL` は `NOPERM`。運用調査で読めるのは既知キーの `GET` のみ。
 
 ## Volume
 
@@ -18,11 +22,11 @@ Redis 8.4.5-alpine (`--maxmemory 256mb --maxmemory-policy allkeys-lru`)。LLM re
 
 ## Secrets
 
-- `redis_password`
+- `redis_cache_password` (`cache` ユーザ)
 
 ## 主要利用者
 
-- `news-creator` (要約結果のキャッシュ、`CACHE_REDIS_URL=redis://redis-cache:6379/0`)
+- `news-creator` (要約結果のキャッシュ、`CACHE_REDIS_URL=redis://cache@redis-cache:6379/0` + `REDIS_PASSWORD_FILE=/run/secrets/redis_cache_password`)
 
 ## 設計原則 & 注意
 

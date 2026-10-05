@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
+from pydantic import SecretStr
 
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.embedder import Embedder, EmbedderConfig
@@ -36,8 +37,22 @@ class TestOllamaRemoteConfig:
             device="cpu",
             batch_size=8,
             cache_size=100,
+            inference_service_token=None,
         )
         assert config.ollama_embed_model == Settings().ollama_embed_model
+
+    def test_inference_service_token_is_required_keyword(self):
+        """Every construction site must state the bearer; omitting it is not 'disabled'."""
+        with pytest.raises(TypeError, match="inference_service_token"):
+            # pyrefly: ignore [missing-argument]
+            EmbedderConfig(
+                model_id="test",
+                distill_model_id="test",
+                backend="ollama-remote",
+                device="cpu",
+                batch_size=8,
+                cache_size=100,
+            )
 
     def test_ollama_embed_timeout_default(self):
         """ollama_embed_timeout のデフォルトは 120.0 (ADR-890 followup).
@@ -85,6 +100,7 @@ class TestOllamaRemoteEmbedder:
             batch_size=8,
             cache_size=100,
             ollama_embed_url=None,
+            inference_service_token=None,
         )
         embedder = Embedder(config)
 
@@ -114,6 +130,7 @@ class TestOllamaRemoteEmbedder:
                 ollama_embed_url="http://test-host:11436",
                 ollama_embed_model="test-model",
                 ollama_embed_timeout=30.0,
+                inference_service_token=None,
             )
             embedder = Embedder(config)
 
@@ -151,6 +168,7 @@ class TestOllamaRemoteEmbedder:
                 batch_size=2,  # batch_size affects outer loop batching
                 cache_size=100,
                 ollama_embed_url="http://test-host:11436",
+                inference_service_token=None,
             )
             embedder = Embedder(config)
 
@@ -182,6 +200,7 @@ class TestOllamaRemoteEmbedder:
                 batch_size=8,
                 cache_size=100,
                 ollama_embed_url="http://test-host:11436",
+                inference_service_token=None,
             )
             embedder = Embedder(config)
 
@@ -200,6 +219,7 @@ class TestOllamaRemoteEmbedder:
             batch_size=8,
             cache_size=100,
             ollama_embed_url="http://test-host:11436",
+            inference_service_token=None,
         )
         embedder = Embedder(config)
 
@@ -226,6 +246,7 @@ class TestOllamaRemoteEmbedder:
                 batch_size=8,
                 cache_size=100,
                 ollama_embed_url="http://test-host:11436",
+                inference_service_token=None,
             )
             embedder = Embedder(config)
 
@@ -271,6 +292,7 @@ class TestOllamaRemoteEmbedder:
                 batch_size=8,
                 cache_size=100,
                 ollama_embed_url="http://test-host:11436",
+                inference_service_token=None,
             )
             embedder = Embedder(config)
 
@@ -303,6 +325,7 @@ class TestOllamaRemoteEmbedder:
                 batch_size=8,
                 cache_size=100,
                 ollama_embed_url="http://test-host:11436",
+                inference_service_token=None,
             )
             embedder = Embedder(config)
 
@@ -340,6 +363,7 @@ class TestOllamaRemoteEmbedder:
                 batch_size=8,
                 cache_size=100,
                 ollama_embed_url="http://test-host:11436",
+                inference_service_token=None,
             )
             embedder = Embedder(config)
 
@@ -409,6 +433,7 @@ class TestOllamaRemoteWire:
         base_url = f"http://127.0.0.1:{port}"
         try:
             token_val = "recap-subworker-token-xyz="
+            token = SecretStr(token_val)
             config = EmbedderConfig(
                 model_id="test",
                 distill_model_id="test",
@@ -419,7 +444,7 @@ class TestOllamaRemoteWire:
                 ollama_embed_url=base_url,
                 ollama_embed_model="test-model",
                 ollama_embed_timeout=5.0,
-                inference_service_token=token_val,
+                inference_service_token=token,
             )
             embedder = Embedder(config)
             res = embedder.encode(["hello world", "test batch"])
@@ -438,7 +463,7 @@ class TestOllamaRemoteWire:
                 ollama_embed_url=f"{base_url}/redirect-307",
                 ollama_embed_model="test-model",
                 ollama_embed_timeout=5.0,
-                inference_service_token=token_val,
+                inference_service_token=token,
             )
             redirect_embedder = Embedder(redirect_config)
             with pytest.raises(RuntimeError):

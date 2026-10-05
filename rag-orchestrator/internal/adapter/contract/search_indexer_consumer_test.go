@@ -1,24 +1,42 @@
 //go:build contract
 
 // Package contract contains Consumer-Driven Contract tests for
-// rag-orchestrator → search-indexer. Authentication is established at the
-// transport layer (mTLS client cert); the consumer no longer sends
-// application-level auth headers.
+// rag-orchestrator → search-indexer. search-indexer serves /v1/search only on
+// its mTLS listener (:9443) and authenticates twice: the client certificate
+// admits the peer, and the caller's user JWT (X-Alt-Backend-Token) must belong
+// to the requested user_id or the search is refused with 401/403. The Pact
+// mock cannot demand a client certificate, so the transport stays with the
+// httpclient tests; the JWT header is part of the HTTP surface and is pinned
+// here.
 package contract
 
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"rag-orchestrator/internal/adapter/rag_http"
+	"rag-orchestrator/internal/domain/authcontext"
 
 	"github.com/pact-foundation/pact-go/v2/consumer"
 	"github.com/pact-foundation/pact-go/v2/matchers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// searchIndexerUserJWT is a placeholder with a JWT's three-segment shape. The
+// provider verification swaps it for a token minted for the interaction's
+// user_id, so only the header's presence and shape are contractual.
+const searchIndexerUserJWT = "pact-header.pact-claims.pact-signature"
+
+func searchIndexerUserJWTHeader() matchers.MapMatcher {
+	return matchers.MapMatcher{
+		"X-Alt-Backend-Token": matchers.Regex(searchIndexerUserJWT, `^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`),
+	}
+}
 
 func newSearchIndexerPact(t *testing.T) *consumer.V3HTTPMockProvider {
 	t.Helper()
@@ -34,6 +52,7 @@ func newSearchIndexerPact(t *testing.T) *consumer.V3HTTPMockProvider {
 // TestSearchIndexerSearchContract pins the `Search()` request/response:
 //   - GET /v1/search
 //   - q and user_id query params; search-indexer scopes hits to the authenticated user
+//   - the user's JWT in X-Alt-Backend-Token
 func TestSearchIndexerSearchContract(t *testing.T) {
 	mockProvider := newSearchIndexerPact(t)
 
@@ -48,6 +67,7 @@ func TestSearchIndexerSearchContract(t *testing.T) {
 				"q":       matchers.Like("LLM"),
 				"user_id": matchers.Like("00000000-0000-0000-0000-000000000001"),
 			},
+			Headers: searchIndexerUserJWTHeader(),
 		}).
 		WithCompleteResponse(consumer.Response{
 			Status: 200,
@@ -67,10 +87,10 @@ func TestSearchIndexerSearchContract(t *testing.T) {
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			client := rag_http.NewSearchIndexerClient(
 				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
-				5,
-				"",
+				&http.Client{Timeout: 5 * time.Second},
 			)
-			hits, err := client.Search(context.Background(), "LLM", "00000000-0000-0000-0000-000000000001")
+			ctx := authcontext.WithJWT(context.Background(), searchIndexerUserJWT)
+			hits, err := client.Search(ctx, "LLM", "00000000-0000-0000-0000-000000000001")
 			if err != nil {
 				return fmt.Errorf("Search failed: %w", err)
 			}
@@ -82,7 +102,8 @@ func TestSearchIndexerSearchContract(t *testing.T) {
 }
 
 // TestSearchIndexerSearchBM25Contract pins `SearchBM25()`:
-// - GET /v1/search with q, limit, and user_id for user-scoped BM25 hybrid search
+//   - GET /v1/search with q, limit, and user_id for user-scoped BM25 hybrid search
+//   - the user's JWT in X-Alt-Backend-Token
 func TestSearchIndexerSearchBM25Contract(t *testing.T) {
 	mockProvider := newSearchIndexerPact(t)
 
@@ -98,6 +119,7 @@ func TestSearchIndexerSearchBM25Contract(t *testing.T) {
 				"limit":   matchers.Like("10"),
 				"user_id": matchers.Like("00000000-0000-0000-0000-000000000001"),
 			},
+			Headers: searchIndexerUserJWTHeader(),
 		}).
 		WithCompleteResponse(consumer.Response{
 			Status: 200,
@@ -117,10 +139,10 @@ func TestSearchIndexerSearchBM25Contract(t *testing.T) {
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			client := rag_http.NewSearchIndexerClient(
 				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
-				5,
-				"",
+				&http.Client{Timeout: 5 * time.Second},
 			)
-			results, err := client.SearchBM25(context.Background(), "multi agent systems", 10, "00000000-0000-0000-0000-000000000001")
+			ctx := authcontext.WithJWT(context.Background(), searchIndexerUserJWT)
+			results, err := client.SearchBM25(ctx, "multi agent systems", 10, "00000000-0000-0000-0000-000000000001")
 			if err != nil {
 				return fmt.Errorf("SearchBM25 failed: %w", err)
 			}

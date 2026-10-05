@@ -36,6 +36,7 @@ on:
       - 'alt-butterfly-facade/internal/server/allowlist_gen.go'
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/orchestrator/driver/preprocessor_connect/contract/**'
+      - 'alt-backend/app/orchestrator/driver/search_indexer_connect/contract/**'
       - 'alt-backend/app/dataplane/driver/contract/**'
       # The alt-data-hub consumer legs. Omitting this is how a commit that
       # changes a datahub pact ships without republishing it, leaving the
@@ -72,6 +73,7 @@ on:
       - 'alt-butterfly-facade/internal/server/allowlist_gen.go'
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/orchestrator/driver/preprocessor_connect/contract/**'
+      - 'alt-backend/app/orchestrator/driver/search_indexer_connect/contract/**'
       - 'alt-backend/app/dataplane/driver/contract/**'
       # The alt-data-hub consumer legs. Omitting this is how a commit that
       # changes a datahub pact ships without republishing it, leaving the
@@ -224,6 +226,7 @@ jobs:
           - service: alt-backend/app
             test-path: >-
               ./orchestrator/driver/preprocessor_connect/contract/
+              ./orchestrator/driver/search_indexer_connect/contract/
               ./shared/gateway/datahub_gateway/contract/
             sparse-checkout: alt-backend
             pact-dir: alt-backend/pacts

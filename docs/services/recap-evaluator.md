@@ -65,6 +65,8 @@ flowchart LR
 
 All endpoints use `/api/v1` prefix (evaluation, metrics). Health check is at root.
 
+`/api/v1/evaluations/*` は Bearer 必須（`EVALUATOR_API_TOKEN_FILE` = `/run/secrets/evaluator_api_token`、ホスト側は `secrets/evaluator_api_token.txt`）。ファイルが無いと起動しない。`/health` と `/api/v1/metrics/*` は認証なし。
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/evaluations` | 評価履歴一覧 (query: `evaluation_type`, `limit`) |
@@ -249,9 +251,17 @@ curl http://localhost:8085/health
 ## Operational Runbook
 1. `docker compose -f compose/recap.yaml up recap-evaluator -d` で起動
 2. `curl http://localhost:8085/health` でヘルスチェック
-3. 全次元評価: `curl -X POST http://localhost:8085/api/v1/evaluations/run -H "Content-Type: application/json" -d '{"window_days": 14}'`
-4. 最新メトリクス: `curl http://localhost:8085/api/v1/metrics/latest`
-5. 評価履歴: `curl http://localhost:8085/api/v1/evaluations`
+3. 全次元評価・評価履歴は Bearer が要る。トークンはコマンドラインに直書きせず、secret ファイルから読んだヘッダを `-H @<file>` で渡す（`printf` は bash builtin なので値が `ps` に出ない）:
+   ```bash
+   # repo root で実行
+   auth_header() { printf 'Authorization: Bearer %s\n' "$(cat secrets/evaluator_api_token.txt)"; }
+   # 全次元評価
+   curl -X POST http://localhost:8085/api/v1/evaluations/run \
+     -H @<(auth_header) -H "Content-Type: application/json" -d '{"window_days": 14}'
+   # 評価履歴
+   curl http://localhost:8085/api/v1/evaluations -H @<(auth_header)
+   ```
+4. 最新メトリクス（認証なし）: `curl http://localhost:8085/api/v1/metrics/latest`
 
 ## Observability
 - 構造化ログ: structlog JSON フォーマット (ADR 98 準拠)

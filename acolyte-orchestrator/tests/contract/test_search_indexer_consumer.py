@@ -1,12 +1,13 @@
 """Consumer contract tests for acolyte-orchestrator → search-indexer.
 
-Pins the REST /v1/search response shape that the Gatherer pipeline relies on.
-Authentication is now established at the transport layer (mTLS client cert
-verified by the nginx sidecar); the consumer no longer sends application-
-level auth headers.
+Pins the REST /v1/search request and response shape that the Gatherer
+pipeline relies on. search-indexer admits the peer by its mTLS client
+certificate, which the Pact mock cannot demand, and then requires the acting
+user's JWT in X-Alt-Backend-Token (SearchIndexerGateway forwards it); a request
+without that header is refused with 401, so every interaction pins it.
 
 search-indexer actual API:
-  GET /v1/search?q={query}&limit={limit}
+  GET /v1/search?q={query}&limit={limit}&user_id={uuid}
   Response: {query: str, hits: [{id, title, content, tags, score, language}]}
 
   ``language`` is BCP-47 short ("ja", "en") or "und" when unknown; consumers
@@ -24,12 +25,19 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
-from pact import Pact
+from pact import Pact, match
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "pacts"
+
+# A placeholder with a JWT's three-segment shape. Provider verification swaps it
+# for a token minted for the interaction's user_id, so only the header's
+# presence and shape are contractual.
+USER_JWT = "pact-header.pact-claims.pact-signature"
+USER_JWT_MATCHER = match.regex(USER_JWT, regex=r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
+USER_JWT_HEADERS = {"x-alt-backend-token": USER_JWT}
 
 
 @pytest.fixture(scope="module")
@@ -47,6 +55,7 @@ def pact_server() -> Iterator[str]:
                 "user_id": "00000000-0000-0000-0000-000000000001",
             }
         )
+        .with_header("X-Alt-Backend-Token", USER_JWT_MATCHER)
         .will_respond_with(200)
         .with_body(
             json.dumps(
@@ -88,6 +97,7 @@ def pact_server() -> Iterator[str]:
                 "user_id": "00000000-0000-0000-0000-000000000001",
             }
         )
+        .with_header("X-Alt-Backend-Token", USER_JWT_MATCHER)
         .will_respond_with(200)
         .with_body(
             json.dumps(
@@ -120,6 +130,7 @@ def pact_server() -> Iterator[str]:
                 "user_id": "00000000-0000-0000-0000-000000000001",
             }
         )
+        .with_header("X-Alt-Backend-Token", USER_JWT_MATCHER)
         .will_respond_with(200)
         .with_body(
             json.dumps(
@@ -147,6 +158,7 @@ def test_search_articles(pact_server: str) -> None:
             "limit": "20",
             "user_id": "00000000-0000-0000-0000-000000000001",
         },
+        headers=USER_JWT_HEADERS,
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -176,6 +188,7 @@ def test_search_articles_with_date_window(pact_server: str) -> None:
             "published_before": "2026-04-20T00:00:00Z",
             "user_id": "00000000-0000-0000-0000-000000000001",
         },
+        headers=USER_JWT_HEADERS,
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -193,6 +206,7 @@ def test_search_articles_empty_results(pact_server: str) -> None:
             "limit": "20",
             "user_id": "00000000-0000-0000-0000-000000000001",
         },
+        headers=USER_JWT_HEADERS,
     )
     assert resp.status_code == 200
     data = resp.json()

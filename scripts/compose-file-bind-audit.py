@@ -8,6 +8,11 @@ Wave 1 converted production mounts to `configs:` (in-repo static files)
 or long-syntax bind + `create_host_path: false` (host-only files and
 artefact directories). This audit is the zero-violation gate.
 
+It also keeps deploy/host-prereqs.yaml in lockstep with compose: every
+host-path bind, the docker socket group, GPU runtime consumers, required
+.env keys and gitignored env_files compose relies on must be declared
+there, and nothing declared there may outlive its compose use.
+
 Usage: python3 scripts/compose-file-bind-audit.py
 Exit 0 when clean, 1 with a per-violation report otherwise.
 """
@@ -15,16 +20,26 @@ Exit 0 when clean, 1 with a per-violation report otherwise.
 from __future__ import annotations
 
 import argparse
+import os
+import re
 import subprocess
 import sys
+from collections.abc import Iterable
 from pathlib import Path
+from typing import NamedTuple
 
 _SCRIPTS = Path(__file__).resolve().parent
 REPO_ROOT = _SCRIPTS.parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from compose_include import iter_production_services  # noqa: E402
+from compose_include import (  # noqa: E402
+    iter_production_services,
+    load_yaml,
+    production_compose_files,
+)
+
+MANIFEST_PATH = REPO_ROOT / "deploy" / "host-prereqs.yaml"
 
 FILE_SUFFIXES = {
     ".conf",
@@ -295,6 +310,301 @@ def acknowledged_workspace_sources() -> list[str]:
     ]
 
 
+# --- deploy/host-prereqs.yaml ------------------------------------------------
+
+_SINGLE_INTERPOLATION = re.compile(
+    r"^\$\{(?P<env>[A-Za-z_][A-Za-z0-9_]*)(?:(?P<op>:?[-?])(?P<arg>[^}]*))?\}$"
+)
+_UNDEFAULTED_ENV = re.compile(
+    r"(?<!\$)\$(?:\{(?P<braced>[A-Za-z_][A-Za-z0-9_]*)(?::?\?[^}]*)?\}"
+    r"|(?P<bare>[A-Za-z_][A-Za-z0-9_]*))"
+)
+HOST_PATH_KINDS = {"file", "dir", "socket"}
+_OWNER = re.compile(r"^\d+:\d+$")
+_MODE = re.compile(r"^0[0-7]{3}$")
+
+
+class HostMount(NamedTuple):
+    service: str
+    target: str
+    read_only: bool
+    create_host_path: bool
+
+
+HostKey = tuple  # (env var or None, default/literal path or None)
+
+
+def host_source(source: str) -> HostKey | None:
+    """(env, path) for a bind source the host must provide, else None.
+
+    `${VAR:-/default}` and `${VAR}` are host paths chosen by the deploy
+    host's .env; an absolute path is a host path compose hardcodes.
+    Repo-relative sources come from the checkout and are not host
+    prerequisites (gitignored ones are caught by ephemeral_source_violations).
+    """
+    s = source.strip()
+    m = _SINGLE_INTERPOLATION.match(s)
+    if m:
+        has_default = (m.group("op") or "").endswith("-")
+        return m.group("env"), (m.group("arg") if has_default else None)
+    if s.startswith(("/", "$")):
+        return None, s
+    return None
+
+
+def _short_read_only(entry: str) -> bool:
+    bits = entry.split(":")
+    return len(bits) >= 3 and "ro" in bits[-1].split(",")
+
+
+def host_path_mounts(
+    services: Iterable[tuple[str, dict]],
+) -> dict[HostKey, set[HostMount]]:
+    found: dict[HostKey, set[HostMount]] = {}
+    for name, svc in services:
+        for raw in svc.get("volumes") or []:
+            if isinstance(raw, str):
+                split = split_short_volume(raw)
+                read_only = _short_read_only(raw)
+                create = True
+            elif isinstance(raw, dict):
+                split = _long_bind(raw)
+                read_only = bool(raw.get("read_only"))
+                bind = raw.get("bind") if isinstance(raw.get("bind"), dict) else {}
+                create = bind.get("create_host_path") is not False
+            else:
+                continue
+            if split is None:
+                continue
+            source, target = split
+            key = host_source(source)
+            if key is None:
+                continue
+            found.setdefault(key, set()).add(HostMount(name, target, read_only, create))
+    return found
+
+
+def _key_label(key: HostKey) -> str:
+    env, path = key
+    if env is None:
+        return str(path)
+    return f"${{{env}:-{path}}}" if path is not None else f"${{{env}}}"
+
+
+def _entry_schema_violations(entry: dict) -> list[str]:
+    label = entry.get("id") or _key_label((entry.get("env"), entry.get("path")))
+    found = []
+    if not isinstance(entry.get("id"), str) or not entry["id"]:
+        found.append(f"host_paths entry {label}: missing id")
+    if entry.get("env") is None and not entry.get("path"):
+        found.append(f"host_paths entry {label}: needs env, path, or both")
+    if entry.get("kind") not in HOST_PATH_KINDS:
+        found.append(f"host_paths entry {label}: kind must be one of {sorted(HOST_PATH_KINDS)}")
+    owner = entry.get("owner")
+    if owner is not None and not (isinstance(owner, str) and _OWNER.match(owner)):
+        found.append(f"host_paths entry {label}: owner must be \"uid:gid\" or null")
+    mode = entry.get("mode")
+    if mode is not None and not (isinstance(mode, str) and _MODE.match(mode)):
+        found.append(f"host_paths entry {label}: mode must be a quoted octal like \"0644\" or null")
+    if not isinstance(entry.get("create_host_path"), bool):
+        found.append(f"host_paths entry {label}: create_host_path must be true or false")
+    provision = entry.get("provision")
+    if not isinstance(provision, str) or not provision.strip():
+        found.append(f"host_paths entry {label}: provision recipe is empty")
+    return found
+
+
+def _declared_mounts(entry: dict) -> set[tuple[str, str, bool]]:
+    return {
+        (m.get("service"), m.get("target"), bool(m.get("read_only", False)))
+        for m in entry.get("mounts") or []
+    }
+
+
+def host_path_violations(
+    mounts_by_source: dict[HostKey, set[HostMount]], manifest: dict
+) -> list[str]:
+    found: list[str] = []
+    declared: dict[HostKey, dict] = {}
+    for entry in manifest.get("host_paths") or []:
+        found.extend(_entry_schema_violations(entry))
+        key = (entry.get("env"), entry.get("path"))
+        if key in declared:
+            found.append(f"host_paths entry {entry.get('id')}: duplicates {declared[key].get('id')}")
+        declared[key] = entry
+
+    for key in sorted(mounts_by_source, key=_key_label):
+        mounts = mounts_by_source[key]
+        users = ", ".join(sorted({m.service for m in mounts}))
+        entry = declared.get(key)
+        if entry is None:
+            found.append(
+                f"host path {_key_label(key)} is bind-mounted by {users} but has no "
+                f"deploy/host-prereqs.yaml host_paths entry"
+            )
+            continue
+        actual = {(m.service, m.target, m.read_only) for m in mounts}
+        listed = _declared_mounts(entry)
+        for service, target, read_only in sorted(actual - listed):
+            found.append(
+                f"{entry.get('id')}: compose mounts it in {service} at {target} "
+                f"(read_only={read_only}), which the manifest does not list"
+            )
+        for service, target, read_only in sorted(listed - actual):
+            found.append(
+                f"{entry.get('id')}: manifest lists {service} at {target} "
+                f"(read_only={read_only}), which compose does not mount"
+            )
+        creates = {m.create_host_path for m in mounts}
+        if creates != {entry.get("create_host_path")}:
+            found.append(
+                f"{entry.get('id')}: manifest says create_host_path: "
+                f"{entry.get('create_host_path')}, compose has {sorted(creates)}"
+            )
+
+    for key, entry in declared.items():
+        if key not in mounts_by_source:
+            found.append(
+                f"{entry.get('id')}: no production compose bind uses {_key_label(key)} "
+                f"any more; remove the entry"
+            )
+    return found
+
+
+def _user_gid(user) -> str | None:
+    parts = str(user).split(":")
+    return parts[1] if len(parts) == 2 and parts[1].isdigit() else None
+
+
+def socket_group_violations(services: dict[str, dict], manifest: dict) -> list[str]:
+    """A socket consumer's hardcoded `user: uid:gid` must use the socket's group."""
+    found: list[str] = []
+    for entry in manifest.get("host_paths") or []:
+        if entry.get("kind") != "socket" or not entry.get("owner"):
+            continue
+        socket_gid = str(entry["owner"]).split(":")[1]
+        for mount in entry.get("mounts") or []:
+            svc = services.get(mount.get("service")) or {}
+            gid = _user_gid(svc.get("user", ""))
+            if gid is not None and gid != socket_gid:
+                found.append(
+                    f"{mount.get('service')} runs as group {gid}, but {entry.get('id')} "
+                    f"declares the socket group as {socket_gid}"
+                )
+    return found
+
+
+def _uses_nvidia(svc: dict) -> bool:
+    if svc.get("runtime") == "nvidia":
+        return True
+    devices = (
+        ((svc.get("deploy") or {}).get("resources") or {}).get("reservations") or {}
+    ).get("devices") or []
+    return any(isinstance(d, dict) and d.get("driver") == "nvidia" for d in devices)
+
+
+def gpu_violations(services: dict[str, dict], manifest: dict) -> list[str]:
+    actual = {name for name, svc in services.items() if _uses_nvidia(svc)}
+    fact = (manifest.get("host_facts") or {}).get("nvidia_container_runtime") or {}
+    declared = set(fact.get("services") or [])
+    found = [
+        f"{name} reserves an NVIDIA GPU but is missing from host_facts.nvidia_container_runtime"
+        for name in sorted(actual - declared)
+    ]
+    found.extend(
+        f"host_facts.nvidia_container_runtime lists {name}, which no longer reserves a GPU"
+        for name in sorted(declared - actual)
+    )
+    return found
+
+
+def undefaulted_env_keys(texts: Iterable[str]) -> set[str]:
+    """Interpolations compose resolves from .env with no default value."""
+    keys: set[str] = set()
+    for text in texts:
+        for line in text.splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            for m in _UNDEFAULTED_ENV.finditer(line):
+                keys.add(m.group("braced") or m.group("bare"))
+    return keys
+
+
+def required_env_violations(texts: Iterable[str], manifest: dict) -> list[str]:
+    actual = undefaulted_env_keys(texts)
+    declared = set(manifest.get("required_env") or [])
+    found = [
+        f"compose interpolates ${{{key}}} with no default, but required_env does not list it"
+        for key in sorted(actual - declared)
+    ]
+    found.extend(
+        f"required_env lists {key}, which compose no longer interpolates without a default"
+        for key in sorted(declared - actual)
+    )
+    return found
+
+
+def _env_file_paths(raw) -> list[str]:
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, list) else [raw]
+    paths = []
+    for item in items:
+        if isinstance(item, str):
+            paths.append(item)
+        elif isinstance(item, dict) and item.get("required", True) is not False:
+            paths.append(str(item.get("path")))
+    return paths
+
+
+def env_file_violations(
+    entries: Iterable[tuple[Path, str, dict]],
+    manifest: dict,
+    is_ignored=_default_is_ignored,
+    repo_root: Path = REPO_ROOT,
+) -> list[str]:
+    """Required env_files a fresh checkout lacks must be declared."""
+    actual: dict[str, set[str]] = {}
+    for compose_dir, name, svc in entries:
+        for rel in _env_file_paths(svc.get("env_file")):
+            resolved = Path(os.path.normpath(compose_dir / rel))
+            if not is_ignored(resolved):
+                continue
+            actual.setdefault(resolved.relative_to(repo_root).as_posix(), set()).add(name)
+    declared = {e.get("path") for e in manifest.get("env_files") or []}
+    found = [
+        f"env_file {path} (used by {', '.join(sorted(actual[path]))}) is gitignored, "
+        f"so the host must provide it, but env_files does not list it"
+        for path in sorted(set(actual) - declared)
+    ]
+    found.extend(
+        f"env_files lists {path}, which no production service requires any more"
+        for path in sorted(declared - set(actual))
+    )
+    return found
+
+
+def audit_host_prereqs(manifest_path: Path = MANIFEST_PATH) -> list[str]:
+    if not manifest_path.is_file():
+        return [f"missing host prerequisite manifest {manifest_path}"]
+    manifest = load_yaml(manifest_path)
+    entries = iter_production_services()
+    services = {name: svc for _path, name, svc in entries}
+    texts = [p.read_text(encoding="utf-8") for p in production_compose_files()]
+    found = host_path_violations(
+        host_path_mounts((name, svc) for _path, name, svc in entries), manifest
+    )
+    found.extend(socket_group_violations(services, manifest))
+    found.extend(gpu_violations(services, manifest))
+    found.extend(required_env_violations(texts, manifest))
+    found.extend(
+        env_file_violations(
+            ((path.parent, name, svc) for path, name, svc in entries), manifest
+        )
+    )
+    return found
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -339,12 +649,27 @@ def main() -> int:
             "default, as recap-subworker /app/data already does."
         )
         return 1
+    prereqs = audit_host_prereqs()
+    if prereqs:
+        print(f"Host prerequisites out of sync with {MANIFEST_PATH.relative_to(REPO_ROOT)}:")
+        for v in prereqs:
+            print(f"  - {v}")
+        print(
+            "\nOperators provision hosts from that manifest's recipes, and "
+            "alt-deploy's host preflight is to check hosts against it. Declare "
+            "each new host path (owner, mode, provisioning recipe) there, or "
+            "drop entries compose no longer uses."
+        )
+        return 1
     acknowledged = acknowledged_workspace_sources()
     if acknowledged:
         print("Known gitignored bind sources (staged debt, not gating):")
         for entry in acknowledged:
             print(f"  - {entry}")
-    print("OK: 0 unguarded file binds, 0 unacknowledged gitignored bind sources")
+    print(
+        "OK: 0 unguarded file binds, 0 unacknowledged gitignored bind sources, "
+        "host prerequisite manifest in sync"
+    )
     return 0
 
 

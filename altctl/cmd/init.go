@@ -25,11 +25,14 @@ This command performs the following steps:
 
 After initialization, run 'altctl up' to start the platform.
 
-The command is idempotent — existing files are not overwritten unless --force is used.
+The command is idempotent: it creates only what is missing and keeps existing
+files. --force overwrites .env and regenerates the random secrets, which
+rotates database passwords and service tokens; operator-provided secrets and
+step-ca provisioner secrets are never rewritten.
 
 Examples:
-  altctl init                # Initialize environment
-  altctl init --force        # Overwrite existing .env and secrets
+  altctl init                # Initialize environment, creating missing files
+  altctl init --force        # Also overwrite .env and rotate random secrets
   altctl init --skip-secrets # Skip secret generation (external management)
   altctl init --dry-run      # Show what would be done`,
 	Args: cobra.NoArgs,
@@ -39,7 +42,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(initCmd)
 
-	initCmd.Flags().Bool("force", false, "overwrite existing .env and secret files")
+	initCmd.Flags().Bool("force", false, "overwrite .env and regenerate random secrets (operator-provided secrets are kept)")
 	initCmd.Flags().Bool("skip-secrets", false, "skip secret file generation")
 }
 
@@ -116,17 +119,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 
 		if dryRun {
-			autoCount := 0
-			optionalCount := 0
+			counts := map[setup.SecretClass]int{}
 			for _, s := range specs {
-				if s.AutoGenerate {
-					autoCount++
-				} else {
-					optionalCount++
-				}
+				counts[s.Class]++
 			}
-			printer.Info("[dry-run] Would generate %d secret files in secrets/", autoCount)
-			printer.Info("[dry-run] Would create %d optional placeholder files", optionalCount)
+			printer.Info("[dry-run] Would generate %d random secret files in secrets/", counts[setup.SecretClassRandom])
+			printer.Info("[dry-run] Would create %d operator-provided placeholder files", counts[setup.SecretClassOperatorProvided])
+			printer.Info("[dry-run] Would leave %d step-ca provisioner secrets to %s", counts[setup.SecretClassPKIProvisioner], setup.PKIBootstrapScript)
 		} else {
 			result, err := setup.GenerateSecrets(secretsDir, specs, force)
 			if err != nil {
@@ -142,14 +141,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 				printer.Success("Created %d secret files in secrets/", len(result.Created))
 			}
 			if len(result.Skipped) > 0 {
-				printer.Info("Skipped %d existing files (use --force to overwrite)", len(result.Skipped))
-			}
-
-			// Warn about optional user-provided secrets
-			for _, spec := range specs {
-				if !spec.AutoGenerate {
-					printer.Warning("Optional: secrets/%s (%s)", spec.Filename, spec.Description)
-				}
+				printer.Info("Skipped %d existing files (--force regenerates random secrets only)", len(result.Skipped))
 			}
 		}
 		fmt.Println()
@@ -194,7 +186,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	missing := 0
 	for _, spec := range specs {
-		if spec.AutoGenerate {
+		if spec.Class == setup.SecretClassRandom {
 			path := filepath.Join(secretsDir, spec.Filename)
 			if _, err := os.Stat(path); err != nil {
 				printer.Error("Missing: secrets/%s", spec.Filename)
@@ -210,22 +202,32 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	if missing > 0 && !dryRun && !skipSecrets {
-		return &output.CLIError{
-			Summary:    fmt.Sprintf("%d required files missing", missing),
-			Suggestion: "Run 'altctl init --force' to regenerate",
-			ExitCode:   output.ExitConfigError,
-		}
+		return missingFilesError(missing)
 	}
 
+	pendingActions := 0
 	if !dryRun {
-		printer.Success("All required files present")
+		printer.Success("All generated files present")
+		pending, err := setup.FindPendingSecrets(secretsDir, specs)
+		if err != nil {
+			return &output.CLIError{
+				Summary:  "failed to check operator-provisioned secrets",
+				Detail:   err.Error(),
+				ExitCode: output.ExitConfigError,
+			}
+		}
+		pendingActions = reportPendingSecrets(printer, pending)
 	} else {
 		printer.Info("[dry-run] Validation skipped")
 	}
 	fmt.Println()
 
 	// Phase 6: Next steps
-	printer.Success("Initialization complete")
+	if pendingActions > 0 {
+		printer.Warning("Initialization complete with %d secret file(s) still needing operator action (see Validation above)", pendingActions)
+	} else {
+		printer.Success("Initialization complete")
+	}
 	fmt.Println()
 	printer.Info("Next steps:")
 	printer.Info("  altctl up          # Start default stacks (db, auth, core, workers)")
@@ -233,4 +235,31 @@ func runInit(cmd *cobra.Command, args []string) error {
 	printer.Info("  altctl status      # Check service status")
 
 	return nil
+}
+
+// reportPendingSecrets prints what the operator still has to provide and
+// returns how many secret files are pending.
+func reportPendingSecrets(printer *output.Printer, pending setup.PendingSecrets) int {
+	for _, spec := range pending.OperatorProvided {
+		printer.Warning("Operator-provided: secrets/%s is empty — fill it in: %s", spec.Filename, spec.Description)
+	}
+	if len(pending.PKIProvisioner) > 0 {
+		printer.Warning("%d step-ca provisioner secret(s) missing; altctl never generates these, the password must match a registered provisioner:", len(pending.PKIProvisioner))
+		for _, spec := range pending.PKIProvisioner {
+			printer.Warning("  secrets/%s", spec.Filename)
+		}
+		printer.Warning("Start step-ca (altctl up pki), then run: bash %s", setup.PKIBootstrapScript)
+	}
+	return len(pending.OperatorProvided) + len(pending.PKIProvisioner)
+}
+
+// missingFilesError points at plain `altctl init`, which creates missing files
+// and keeps existing ones; --force would also rotate every existing random
+// secret, database passwords included.
+func missingFilesError(missing int) *output.CLIError {
+	return &output.CLIError{
+		Summary:    fmt.Sprintf("%d required files missing", missing),
+		Suggestion: "Run 'altctl init' again: it creates the missing files and keeps every existing secret",
+		ExitCode:   output.ExitConfigError,
+	}
 }

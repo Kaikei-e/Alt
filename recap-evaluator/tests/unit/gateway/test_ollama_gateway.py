@@ -1,7 +1,7 @@
 """Tests for OllamaGateway."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -41,9 +41,7 @@ class TestGEvalResult:
         assert result.average_score == 4.0
 
     def test_error_result(self):
-        result = GEvalResult(
-            coherence=0, consistency=0, fluency=0, relevance=0, error="timeout"
-        )
+        result = GEvalResult(coherence=0, consistency=0, fluency=0, relevance=0, error="timeout")
         assert result.error == "timeout"
         assert result.average_score == 0.0
 
@@ -70,9 +68,7 @@ class TestBatchGEvalResult:
         batch = BatchGEvalResult(
             results=[
                 GEvalResult(coherence=4.0, consistency=4.0, fluency=4.0, relevance=4.0),
-                GEvalResult(
-                    coherence=0, consistency=0, fluency=0, relevance=0, error="fail"
-                ),
+                GEvalResult(coherence=0, consistency=0, fluency=0, relevance=0, error="fail"),
             ]
         )
         assert batch.success_count == 1
@@ -137,9 +133,7 @@ class TestOllamaGateway:
         assert result.success_count == 3
         assert mock_client.post.call_count == 3
 
-    async def test_evaluate_batch_concurrency_is_bounded_by_semaphore(
-        self, gateway, mock_client
-    ):
+    async def test_evaluate_batch_concurrency_is_bounded_by_semaphore(self, gateway, mock_client):
         """mock_settings pins ollama_concurrency=2. With 4 items in flight,
         no more than 2 requests may be in-flight at once — a regression that
         drops or widens the semaphore would let all 4 hit Ollama at once and
@@ -167,10 +161,7 @@ class TestOllamaGateway:
             active -= 1
             response = MagicMock()
             response.json.return_value = {
-                "response": (
-                    '{"coherence": 4, "consistency": 4, '
-                    '"fluency": 4, "relevance": 4}'
-                )
+                "response": ('{"coherence": 4, "consistency": 4, "fluency": 4, "relevance": 4}')
             }
             response.raise_for_status = MagicMock()
             return response
@@ -195,9 +186,7 @@ class TestOllamaGateway:
 
     async def test_health_check_success(self, gateway, mock_client):
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "models": [{"name": "test-model:latest"}]
-        }
+        mock_response.json.return_value = {"models": [{"name": "test-model:latest"}]}
         mock_response.raise_for_status = MagicMock()
         mock_client.get.return_value = mock_response
 
@@ -227,9 +216,7 @@ class TestScoreReadability:
         assert score == pytest.approx(4.5)
         mock_client.post.assert_called_once()
 
-    async def test_score_readability_raises_on_unparseable_response(
-        self, gateway, mock_client
-    ):
+    async def test_score_readability_raises_on_unparseable_response(self, gateway, mock_client):
         mock_response = MagicMock()
         mock_response.json.return_value = {"response": "not json at all"}
         mock_response.raise_for_status = MagicMock()
@@ -238,9 +225,7 @@ class TestScoreReadability:
         with pytest.raises(ValueError, match="No JSON found"):
             await gateway.score_readability("要約")
 
-    async def test_score_readability_propagates_http_errors(
-        self, gateway, mock_client
-    ):
+    async def test_score_readability_propagates_http_errors(self, gateway, mock_client):
         mock_client.post.side_effect = httpx.TimeoutException("timeout")
 
         with pytest.raises(httpx.TimeoutException):

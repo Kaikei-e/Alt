@@ -336,8 +336,27 @@ comment_cfg = {
 }
 comment_v = audit.audit_pki_ops_surface(comment_cfg, rules)
 check(
-    "a scrape graph without :9110 jobs cannot satisfy the 14-parent pin",
+    "a scrape graph without :9110 jobs cannot satisfy the 16-parent pin",
     any("missing alt-backend:9110" in v for v in comment_v),
+)
+
+check(
+    "knowledge-sovereign and recap-evaluator are pinned in-process parents",
+    {"knowledge-sovereign", "recap-evaluator"} <= set(audit.PKI_INPROCESS_PARENTS)
+    and len(audit.PKI_INPROCESS_PARENTS) == 16,
+)
+check(
+    "knowledge-sovereign's :9110 job is distinct from its :9501 app job",
+    audit.PKI_OPS_JOBS["knowledge-sovereign"] == "knowledge-sovereign-ops",
+)
+fleet14 = copy.deepcopy(rules)
+for group in fleet14.get("groups") or []:
+    for rule in group.get("rules") or []:
+        if rule.get("alert") == "PkiEnrollmentFleetIncomplete":
+            rule["expr"] = rule["expr"].replace("!= 16", "!= 14")
+check(
+    "a fleet pin that still says 14 is detected",
+    any("exactly 16" in v for v in audit.audit_pki_ops_surface(prom, fleet14)),
 )
 
 print(f"\n{PASS} passed, {FAIL} failed")

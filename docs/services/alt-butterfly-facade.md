@@ -95,7 +95,6 @@ flowchart LR
 | `BACKEND_TOKEN_AUDIENCE` | alt-backend | 期待する JWT audience |
 | `BFF_REQUEST_TIMEOUT` | 30s | 単発リクエストタイムアウト |
 | `BFF_STREAMING_TIMEOUT` | 40m | ストリーミングタイムアウト (Compose でも明示的に `40m` を設定) |
-| `AUTH_HUB_INTERNAL_URL` | http://auth-hub:8888 | Auth Hub 内部 URL |
 | `LOG_LEVEL` | info | ログレベル (debug, info, warn, error) |
 
 ### mTLS (east-west, オプトイン)

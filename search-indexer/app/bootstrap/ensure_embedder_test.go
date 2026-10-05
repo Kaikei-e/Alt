@@ -169,13 +169,14 @@ func TestEnsureEmbedderSettings_UpdateFailurePropagates(t *testing.T) {
 }
 
 // TestDesiredEmbedder_DefaultsToBgeM3 pins the shipped defaults so the
-// declared embedder matches the model knowledge-embedder-local keeps resident.
+// declared embedder matches the model knowledge-embedder-local keeps resident,
+// reached through embedding-proxy (the raw instance is on an internal network).
 func TestDesiredEmbedder_DefaultsToBgeM3(t *testing.T) {
 	got := desiredEmbedder(&config.Config{})
 	want := driver.EmbedderSpec{
 		Source:           "ollama",
 		Model:            "bge-m3",
-		URL:              "http://knowledge-embedder-local:11434/api/embed",
+		URL:              "http://embedding-proxy:11436/api/embed",
 		Dimensions:       1024,
 		DocumentTemplate: "{{doc.title}}{% if doc.content %}\n{{doc.content | truncate: 2000}}{% endif %}",
 	}

@@ -85,9 +85,7 @@ class GetMetricsUsecase:
                     else:
                         result["cluster_alert_level"] = "ok"
 
-            pipeline_result = await self._pipeline.evaluate_batch(
-                job_ids, window_days=window_days
-            )
+            pipeline_result = await self._pipeline.evaluate_batch(job_ids, window_days=window_days)
             result["pipeline_success_rate"] = pipeline_result.success_rate
             result["pipeline_alert_level"] = pipeline_result.alert_level.value
 
@@ -103,9 +101,7 @@ class GetMetricsUsecase:
         self, evaluation_type: str | None = None, limit: int = 30
     ) -> list[dict[str, Any]]:
         """Get evaluation run history."""
-        return await self._db.fetch_evaluation_history(
-            evaluation_type=evaluation_type, limit=limit
-        )
+        return await self._db.fetch_evaluation_history(evaluation_type=evaluation_type, limit=limit)
 
     async def get_trends(self, window_days: int = 30) -> list[dict[str, Any]]:
         """Get metric trends from saved evaluation history."""
@@ -124,10 +120,12 @@ class GetMetricsUsecase:
                     continue
                 value = extractor(metrics)
                 if value is not None:
-                    data_points.append({
-                        "timestamp": record["created_at"],
-                        "value": value,
-                    })
+                    data_points.append(
+                        {
+                            "timestamp": record["created_at"],
+                            "value": value,
+                        }
+                    )
 
             if not data_points:
                 continue
@@ -136,13 +134,15 @@ class GetMetricsUsecase:
             change_7d = self._compute_change(data_points, 7, current)
             change_30d = self._compute_change(data_points, 30, current)
 
-            trends.append({
-                "metric_name": metric_name,
-                "data_points": data_points,
-                "current_value": current,
-                "change_7d": change_7d,
-                "change_30d": change_30d,
-            })
+            trends.append(
+                {
+                    "metric_name": metric_name,
+                    "data_points": data_points,
+                    "current_value": current,
+                    "change_7d": change_7d,
+                    "change_30d": change_30d,
+                }
+            )
 
         return trends
 

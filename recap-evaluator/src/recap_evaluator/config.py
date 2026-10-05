@@ -165,9 +165,7 @@ class Settings(BaseSettings):
 
         password = _read_secret_file("RECAP_DB_PASSWORD")
         if not password:
-            raise ValueError(
-                "RECAP_DB_DSN or RECAP_DB_PASSWORD/RECAP_DB_PASSWORD_FILE must be set"
-            )
+            raise ValueError("RECAP_DB_DSN or RECAP_DB_PASSWORD/RECAP_DB_PASSWORD_FILE must be set")
         self.recap_db_dsn = (
             f"postgres://{self.recap_db_user}:{password}"
             f"@{self.recap_db_host}:{self.recap_db_port}/{self.recap_db_name}"

@@ -14,7 +14,7 @@
 #
 # Usage: bash pki-agent/scripts/bootstrap-pki-provisioner.sh
 #
-# Secret files (gitignored under secrets/):
+# Secret files (gitignored under secrets/, created 0644):
 #   secrets/pki-agent-<subject>-jwk.txt
 # In-container (compose cutover):
 #   /run/secrets/pki-agent-<subject>-jwk
@@ -75,17 +75,19 @@ build_subjects_json() {
   printf ']'
 }
 
+# 0644 like every other file in the canonical store (altctl secretFileMode):
+# compose mounts file secrets with the host mode for nonroot workloads, and the
+# deploy runner stages the store over a shared group. An existing file's mode
+# is the operator's to set, so it is left alone.
 ensure_host_password_file() {
   local path="$1"
   if [ -s "$path" ]; then
-    chmod 400 "$path" 2>/dev/null || true
     return 0
   fi
-  umask 077
   mkdir -p "$(dirname "$path")"
   # Do not print the bytes. /dev/urandom keeps this off openssl's CLI args.
   head -c 32 /dev/urandom | base64 > "$path"
-  chmod 400 "$path"
+  chmod 0644 "$path"
 }
 
 copy_password_into_ca() {
@@ -95,30 +97,11 @@ copy_password_into_ca() {
   docker exec -i -u 0 "$STEP_CA" sh -c "cat > '$container_file' && chmod 400 '$container_file'" < "$host_file"
 }
 
-if ! docker ps --format '{{.Names}}' | grep -q "^${STEP_CA}$"; then
-  echo "ERROR: ${STEP_CA} is not running. Start with 'docker compose up -d step-ca' first." >&2
-  exit 1
-fi
-
-echo "==> ensuring jq is available inside ${STEP_CA}..."
-docker exec -u 0 "$STEP_CA" sh -c 'command -v jq >/dev/null || apk add --no-cache jq' >/dev/null
-
-echo "==> adding per-subject JWK provisioners (offline, --ca-config)..."
-PROVISIONER_ADDED=0
-mkdir -p "$SECRET_DIR"
-for subject in "${SUBJECTS[@]}"; do
+# Prints the X.509 template that pins one provisioner to one subject.
+render_x509_template() {
+  local subject="$1"
   if [ "$subject" = "localhost" ]; then
-    echo "==> skip provisioner for allowlist-only name localhost"
-    continue
-  fi
-  name="$(provisioner_name_for "$subject")"
-  host_pw="$(host_password_file_for "$subject")"
-  container_pw="/tmp/${name}.pw"
-  ensure_host_password_file "$host_pw"
-  container_tpl="/tmp/${name}.tpl"
-
-  if [ "$subject" = "localhost" ]; then
-    cat > "/tmp/${name}.tpl.host" <<EOF
+    cat <<EOF
 {
   "subject": {
     "commonName": "localhost"
@@ -161,7 +144,7 @@ for subject in "${SUBJECTS[@]}"; do
 {{- end }}
 EOF
   else
-    cat > "/tmp/${name}.tpl.host" <<EOF
+    cat <<EOF
 {
   "subject": {
     "commonName": "${subject}"
@@ -210,7 +193,40 @@ EOF
 {{- end }}
 EOF
   fi
-  docker cp "/tmp/${name}.tpl.host" "${STEP_CA}:${container_tpl}"
+}
+
+# Streams the template into step-ca like the password: the template decides
+# which SANs the provisioner may sign, and a fixed host path under /tmp could
+# be pre-created or symlinked by another local user before it is copied in.
+copy_template_into_ca() {
+  local subject="$1"
+  local container_file="$2"
+  render_x509_template "$subject" | docker exec -i -u 0 "$STEP_CA" sh -c "umask 077 && cat > '$container_file'"
+}
+
+if ! docker ps --format '{{.Names}}' | grep -q "^${STEP_CA}$"; then
+  echo "ERROR: ${STEP_CA} is not running. Start with 'docker compose up -d step-ca' first." >&2
+  exit 1
+fi
+
+echo "==> ensuring jq is available inside ${STEP_CA}..."
+docker exec -u 0 "$STEP_CA" sh -c 'command -v jq >/dev/null || apk add --no-cache jq' >/dev/null
+
+echo "==> adding per-subject JWK provisioners (offline, --ca-config)..."
+PROVISIONER_ADDED=0
+mkdir -p "$SECRET_DIR"
+for subject in "${SUBJECTS[@]}"; do
+  if [ "$subject" = "localhost" ]; then
+    echo "==> skip provisioner for allowlist-only name localhost"
+    continue
+  fi
+  name="$(provisioner_name_for "$subject")"
+  host_pw="$(host_password_file_for "$subject")"
+  container_pw="/tmp/${name}.pw"
+  ensure_host_password_file "$host_pw"
+  container_tpl="/tmp/${name}.tpl"
+
+  copy_template_into_ca "$subject" "$container_tpl"
 
   if docker exec -u 0 "$STEP_CA" jq -e --arg n "$name" --rawfile desired "$container_tpl" '
     ([.authority.provisioners[]? | select(.name==$n and .type=="JWK")] as $p |
@@ -238,7 +254,6 @@ EOF
     PROVISIONER_ADDED=1
   fi
   docker exec -u 0 "$STEP_CA" rm -f "$container_tpl"
-  rm -f "/tmp/${name}.tpl.host"
 done
 
 echo "==> checking authority.policy state..."

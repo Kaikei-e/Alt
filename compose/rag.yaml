@@ -108,20 +108,26 @@ services:
       - DB_PASSWORD_FILE=/run/secrets/rag_db_password
       - DB_NAME=${RAG_DB_NAME:-rag_db}
       - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL:-http://embedding-proxy:11436}
+      # One bearer for embedding-proxy and rerank-local. config.Load fails
+      # startup without it; only an explicit INFERENCE_AUTH=disabled opts out.
       - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
       # CPU embedder needs headroom: ~250-300ms/chunk, long articles reach
       # 50+ chunks per /api/embed call (measured 9.7s for 53 chunks).
       - EMBEDDER_TIMEOUT=60
       # RAG answer generation: routed through news-creator semaphore (ADR-565 follow-up)
       # Ask Augur chat uses HIGH PRIORITY to preempt batch summarization
-      # Override AUGUR_EXTERNAL in .env to route to remote Mac if needed
+      # A literal, and this service loads no env_file, so a .env entry cannot
+      # reroute generation; change it here (scripts/check-env-overrides.py).
       - AUGUR_EXTERNAL=https://news-creator:9443
       - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma4-e4b-12k}
-      - SEARCH_INDEXER_URL=http://search-indexer:9300
+      # search-indexer serves /v1/search only on its mTLS listener; plaintext
+      # :9300 is health-only. The client presents the in-process leaf (CN
+      # rag-orchestrator, in search-indexer's MTLS_ALLOWED_PEERS) whatever
+      # MTLS_ENFORCE says, and config.Load rejects a non-https URL.
+      - SEARCH_INDEXER_URL=https://search-indexer:9443
       - QUERY_EXPANSION_URL=https://news-creator:9443
       - QUERY_EXPANSION_TIMEOUT=30
       - MTLS_ENFORCE=true
-      - RERANK_INFERENCE_TOKEN_FILE=/run/secrets/inference_service_token
       - RERANK_ENABLED=true
       # Local ONNX int8 reranker (rerank-local service); the remote
       # rerank-external route is retired.
@@ -177,11 +183,12 @@ services:
       - PEER_IDENTITY_MODE=${RAG_ORCHESTRATOR_PEER_IDENTITY_MODE:-mtls}
       # One in-process leaf serves both directions: presented to
       # inbound callers by the listener above, and presented AS a client
-      # certificate to alt-data-hub. Its CN/SAN is `rag-orchestrator`, which is
-      # in alt-data-hub's DATAHUB_ALLOWED_PEERS (compose/core.yaml). These
-      # three paths are required by the data-hub client regardless of
-      # PEER_IDENTITY_MODE — there is no plaintext route to alt_db to fall
-      # back to.
+      # certificate to alt-data-hub and search-indexer. Its CN/SAN is
+      # `rag-orchestrator`, which is in alt-data-hub's DATAHUB_ALLOWED_PEERS
+      # (compose/core.yaml) and search-indexer's MTLS_ALLOWED_PEERS
+      # (compose/workers.yaml). These three paths are required by both clients
+      # regardless of PEER_IDENTITY_MODE — neither peer has a plaintext route
+      # to fall back to.
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
@@ -334,6 +341,10 @@ services:
       - INFERENCE_TOKEN_FILE=/run/secrets/inference_service_token
     secrets:
       - inference_service_token
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     networks:
       - alt-network
       - embedding-raw-network

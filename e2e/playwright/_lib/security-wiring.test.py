@@ -3,13 +3,17 @@
 import unittest
 import json
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
+TEST_CREDENTIALS = ROOT / "e2e/playwright/_fixtures/test-credentials"
+INFERENCE_TOKEN_PATH = "/run/secrets/inference_service_token"
 
 
 def environment(service):
@@ -17,6 +21,12 @@ def environment(service):
     if isinstance(values, dict):
         return values
     return dict(value.split("=", 1) for value in values if "=" in value)
+
+
+def suite_endpoints(suite):
+    """The `suite_endpoint NAME "default"` pairs a run.sh declares."""
+    text = (ROOT / "e2e/playwright" / suite / "run.sh").read_text()
+    return dict(re.findall(r'^suite_endpoint\s+(\w+)\s+"([^"]*)"', text, re.MULTILINE))
 
 
 class SecurityWiringTests(unittest.TestCase):
@@ -111,6 +121,14 @@ class SecurityWiringTests(unittest.TestCase):
         token = secret_file.read_text().strip()
         self.assertGreaterEqual(len(token), 16)
 
+    def test_rag_orchestrator_stub_upstreams_satisfy_its_startup_contract(self):
+        env = environment(self.services["rag-orchestrator"])
+        # rag-orchestrator refuses a plaintext SEARCH_INDEXER_URL at startup, even
+        # one this slice never dials.
+        self.assertEqual(urlparse(env.get("SEARCH_INDEXER_URL", "")).scheme, "https")
+        # One inference token covers embedder, rerank and Augur.
+        self.assertNotIn("RERANK_INFERENCE_TOKEN_FILE", env)
+
     def test_preprocessor_upstream_uses_verified_https_and_server_name(self):
         for name in ("alt-backend", "alt-harvester"):
             with self.subTest(service=name):
@@ -155,6 +173,224 @@ class SecurityWiringTests(unittest.TestCase):
         volume_targets = [v.split(":")[-2] for v in volumes if ":" in v]
         self.assertIn("/certs", volume_targets)
         self.assertIn("/trust", volume_targets)
+
+
+class PkiEnrollmentModeTests(unittest.TestCase):
+    """Staging runs no step-ca, so no service may enroll, and a binary that
+    refuses an unset PKI_ENROLLMENT must be given an explicit opt-out."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.services = yaml.safe_load((ROOT / "compose/compose.staging.yaml").read_text())["services"]
+
+    def test_knowledge_sovereign_opts_out_of_enrollment_explicitly(self):
+        # knowledge-sovereign exits at startup when PKI_ENROLLMENT is unset.
+        env = environment(self.services["knowledge-sovereign"])
+        self.assertEqual(env.get("PKI_ENROLLMENT"), "disabled")
+        self.assertNotIn("PKI_ENROLLMENT_FILE", env)
+
+    def test_no_service_enrolls_without_a_step_ca(self):
+        self.assertNotIn("step-ca", self.services)
+        for name, svc in self.services.items():
+            with self.subTest(service=name):
+                self.assertNotEqual(environment(svc).get("PKI_ENROLLMENT"), "enabled")
+
+    def test_recap_evaluator_does_not_enforce_mtls_without_enrollment(self):
+        # recap-evaluator refuses MTLS_ENFORCE=true unless it enrolls, and
+        # enrolling is impossible here.
+        svc = self.services.get("recap-evaluator")
+        if svc is None:
+            self.skipTest("recap-evaluator is not part of the staging stack")
+        env = environment(svc)
+        self.assertEqual(env.get("PKI_ENROLLMENT"), "disabled")
+        self.assertNotEqual(env.get("MTLS_ENFORCE", "").strip().lower(), "true")
+
+
+class RedisAclParityTests(unittest.TestCase):
+    """Staging redis-streams must enforce the same ACL users production does.
+
+    With `--requirepass` and the default user, staging accepted the legacy
+    single-argument AUTH and every command on every key, so a client that
+    production's ACL rejects still passed E2E.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.compose = yaml.safe_load((ROOT / "compose/compose.staging.yaml").read_text())
+        cls.services = cls.compose["services"]
+        cls.production = yaml.safe_load((ROOT / "compose/mq.yaml").read_text())["services"]["redis-streams"]
+
+    def test_redis_streams_runs_the_production_acl_entrypoint(self):
+        svc = self.services["redis-streams"]
+        self.assertEqual(svc.get("entrypoint"), self.production["entrypoint"])
+        self.assertEqual(svc.get("user"), "redis")
+        mounts = {c["target"]: c for c in svc.get("configs", []) if isinstance(c, dict)}
+        self.assertEqual(mounts.get("/entrypoint.sh", {}).get("source"), "redis_entrypoint")
+        source = ROOT / "compose" / self.compose["configs"]["redis_entrypoint"]["file"]
+        self.assertEqual(source.resolve(), (ROOT / "docker/redis/entrypoint.sh").resolve())
+        self.assertNotIn("--requirepass", json.dumps(svc))
+
+    def test_entrypoint_source_is_executable(self):
+        # Compose ignores `configs[].mode` for file-backed configs and bind-mounts
+        # the file as it is on disk, so exec needs the bit in git itself.
+        source = (ROOT / "compose" / self.compose["configs"]["redis_entrypoint"]["file"]).resolve()
+        self.assertTrue(
+            os.access(source, os.X_OK),
+            f"{source.relative_to(ROOT)} is not executable; `git update-index --chmod=+x` it "
+            "or redis-streams fails with exec permission denied in staging and production",
+        )
+
+    def test_redis_streams_mounts_both_acl_passwords(self):
+        svc = self.services["redis-streams"]
+        for secret in ("redis_streams_password", "redis_limiter_password"):
+            with self.subTest(secret=secret):
+                self.assertIn(secret, svc.get("secrets", []))
+
+    def test_redis_streams_healthcheck_authenticates_as_the_streams_user(self):
+        probe = " ".join(self.services["redis-streams"]["healthcheck"]["test"])
+        self.assertIn("--user streams", probe)
+        self.assertIn("/run/secrets/redis_streams_password", probe)
+
+    def test_redis_clients_authenticate_as_the_streams_acl_user(self):
+        for name, variable in (("mq-hub", "REDIS_URL"), ("tag-generator", "REDIS_STREAMS_URL")):
+            with self.subTest(service=name):
+                svc = self.services[name]
+                env = environment(svc)
+                url = urlparse(env.get(variable, ""))
+                self.assertEqual((url.scheme, url.username, url.hostname, url.port), ("redis", "streams", "redis-streams", 6379))
+                self.assertIsNone(url.password, "the password belongs in REDIS_PASSWORD_FILE, not the URL")
+                self.assertEqual(env.get("REDIS_PASSWORD_FILE"), "/run/secrets/redis_streams_password")
+                self.assertIn("redis_streams_password", svc.get("secrets", []))
+                self.assertNotIn("redis_password", svc.get("secrets", []))
+
+    def test_acl_passwords_are_synthetic_fixtures_the_entrypoint_accepts(self):
+        self.assertNotIn("redis_password", self.compose["secrets"])
+        for secret in ("redis_streams_password", "redis_limiter_password"):
+            with self.subTest(secret=secret):
+                path = (ROOT / "compose" / self.compose["secrets"][secret]["file"]).resolve()
+                self.assertEqual(path.parent, TEST_CREDENTIALS.resolve())
+                value = path.read_bytes().rstrip(b"\r\n")
+                self.assertTrue(value.startswith(b"staging-only-"))
+                self.assertGreaterEqual(len(value), 24)
+                # docker/redis/entrypoint.sh rejects whitespace and control bytes.
+                self.assertTrue(all(32 < byte < 127 for byte in value))
+
+    def test_host_rate_limiters_authenticate_as_the_limiter_acl_user(self):
+        # Production (compose/core.yaml) points both internet-facing binaries at
+        # the `limiter` user on DB 3. With REDIS_AUTH=disabled and no URL, staging
+        # ran them in local mode and never sent that user a command.
+        core = yaml.safe_load((ROOT / "compose/core.yaml").read_text())["services"]
+        for name in ("alt-backend", "alt-harvester"):
+            with self.subTest(service=name):
+                svc = self.services[name]
+                env = environment(svc)
+                url = urlparse(env.get("HOST_RATE_LIMITER_REDIS_URL", ""))
+                self.assertEqual(
+                    (url.scheme, url.username, url.hostname, url.port, url.path),
+                    ("redis", "limiter", "redis-streams", 6379, "/3"),
+                )
+                self.assertIsNone(url.password, "the password belongs in the _PASSWORD_FILE, not the URL")
+                self.assertEqual(
+                    env.get("HOST_RATE_LIMITER_REDIS_URL"),
+                    environment(core[name]).get("HOST_RATE_LIMITER_REDIS_URL"),
+                )
+                self.assertEqual(env.get("HOST_RATE_LIMITER_REDIS_PASSWORD_FILE"), "/run/secrets/redis_limiter_password")
+                self.assertIn("redis_limiter_password", svc.get("secrets", []))
+                self.assertNotIn("REDIS_AUTH", env, "no Redis client in this binary reads REDIS_AUTH once the limiter has its own file")
+
+    def test_host_rate_limiter_suites_bring_up_redis_streams(self):
+        for name in ("alt-backend", "alt-harvester"):
+            with self.subTest(suite=name):
+                self.assertIn(name, self.services["redis-streams"].get("profiles", []))
+                depends = self.services[name].get("depends_on", {})
+                self.assertEqual(depends.get("redis-streams", {}).get("condition"), "service_healthy")
+                text = (ROOT / "e2e/playwright" / name / "run.sh").read_text()
+                block = re.search(r"^suite_up((?:[^\n]*\\\n)*[^\n]*)$", text, re.MULTILINE)
+                self.assertIsNotNone(block, "run.sh has no suite_up call")
+                self.assertIn("redis-streams", block.group(1).replace("\\", " ").split())
+
+    def test_mq_hub_suite_resets_streams_as_the_acl_user(self):
+        endpoints = suite_endpoints("mq-hub")
+        url = urlparse(endpoints.get("REDIS_URL", ""))
+        self.assertEqual((url.username, url.hostname, url.port), ("streams", "redis-streams", 6379))
+        self.assertEqual(
+            endpoints.get("REDIS_PASSWORD_FILE"),
+            "$ROOT/e2e/playwright/_fixtures/test-credentials/redis_streams_password.txt",
+        )
+
+
+class ContainerHardeningParityTests(unittest.TestCase):
+    """Staging runs the production capability set, so a helper that suddenly
+    needs a capability fails E2E instead of the first production restart."""
+
+    PRODUCTION = (("redis-streams", "compose/mq.yaml"), ("generation-proxy", "compose/ai.yaml"))
+
+    @classmethod
+    def setUpClass(cls):
+        cls.services = yaml.safe_load((ROOT / "compose/compose.staging.yaml").read_text())["services"]
+
+    def test_staging_drops_capabilities_like_production(self):
+        for name, source in self.PRODUCTION:
+            with self.subTest(service=name):
+                production = yaml.safe_load((ROOT / source).read_text())["services"][name]
+                svc = self.services[name]
+                self.assertEqual(svc.get("cap_drop"), ["ALL"])
+                self.assertNotIn("cap_add", svc)
+                self.assertIn("no-new-privileges:true", svc.get("security_opt", []))
+                self.assertEqual(svc.get("cap_drop"), production.get("cap_drop"))
+                self.assertEqual(svc.get("security_opt"), production.get("security_opt"))
+
+
+class InferenceTokenWiringTests(unittest.TestCase):
+    """Every staging caller of an inference proxy carries the service bearer."""
+
+    CALLERS = ("rag-orchestrator", "news-creator", "search-indexer")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.compose = yaml.safe_load((ROOT / "compose/compose.staging.yaml").read_text())
+        cls.services = cls.compose["services"]
+
+    def test_callers_mount_the_inference_token(self):
+        for name in self.CALLERS:
+            with self.subTest(service=name):
+                svc = self.services[name]
+                env = environment(svc)
+                self.assertEqual(env.get("INFERENCE_SERVICE_TOKEN_FILE"), INFERENCE_TOKEN_PATH)
+                self.assertNotIn("INFERENCE_AUTH", env)
+                self.assertIn("inference_service_token", svc.get("secrets", []))
+
+    def test_inference_token_is_a_synthetic_fixture(self):
+        path = (ROOT / "compose" / self.compose["secrets"]["inference_service_token"]["file"]).resolve()
+        self.assertEqual(path.parent, TEST_CREDENTIALS.resolve())
+        self.assertTrue(path.read_text().startswith("staging-only-"))
+
+    def test_news_creator_reaches_its_llm_through_the_generation_proxy(self):
+        env = environment(self.services["news-creator"])
+        url = urlparse(env.get("LLM_SERVICE_URL", ""))
+        self.assertEqual((url.hostname, url.port), ("generation-proxy", 11436))
+        depends = self.services["news-creator"].get("depends_on", {})
+        self.assertEqual(depends.get("generation-proxy", {}).get("condition"), "service_healthy")
+
+    def test_generation_proxy_fronts_the_ollama_stub_with_the_token(self):
+        proxy = self.services["generation-proxy"]
+        self.assertIn("news-creator", proxy.get("profiles", []))
+        self.assertEqual(Path(proxy["build"]["context"]), Path("../docker/inference-proxy"))
+        command = proxy.get("command", [])
+        args = dict(zip(command[::2], command[1::2]))
+        self.assertEqual(args.get("--target"), "http://news-creator-ollama-stub:11435")
+        self.assertEqual(args.get("--port"), "11436")
+        self.assertEqual(args.get("--token-file"), INFERENCE_TOKEN_PATH)
+        self.assertIn("inference_service_token", proxy.get("secrets", []))
+        self.assertEqual(proxy["healthcheck"]["test"], ["CMD", "/inference-proxy", "healthcheck", "-port", "11436"])
+
+    def test_news_creator_suite_probes_the_proxy_with_the_mounted_token(self):
+        endpoints = suite_endpoints("news-creator")
+        self.assertEqual(endpoints.get("GENERATION_PROXY_URL"), "http://generation-proxy:11436")
+        self.assertEqual(
+            endpoints.get("INFERENCE_SERVICE_TOKEN_FILE"),
+            "$ROOT/e2e/playwright/_fixtures/test-credentials/inference_service_token.txt",
+        )
 
 
 if __name__ == "__main__":

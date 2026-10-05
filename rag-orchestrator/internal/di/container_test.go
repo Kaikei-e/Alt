@@ -1,14 +1,14 @@
 package di
 
 import (
+	"bytes"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
-	"time"
 
 	"rag-orchestrator/internal/adapter/rag_augur"
 	"rag-orchestrator/internal/infra/config"
-	"rag-orchestrator/internal/infra/httpclient"
 )
 
 func TestSameCanonicalOrigin(t *testing.T) {
@@ -107,32 +107,88 @@ func TestEmbedderFactory_InferenceCredentialScoping(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-
-	// Factory logic as instantiated in DI
-	embedderFactory := func(url string, model string, timeout int) *rag_augur.OllamaEmbedder {
-		token := ""
-		if sameCanonicalOrigin(url, cfg.Embedder.URL) {
-			token = cfg.Embedder.InferenceToken
+	embedderFactory := NewEmbedderFactory(cfg.Embedder, logger)
+	build := func(url string) *rag_augur.OllamaEmbedder {
+		t.Helper()
+		embedder, ok := embedderFactory(url, "bge-m3", 10).(*rag_augur.OllamaEmbedder)
+		if !ok {
+			t.Fatalf("factory must build an *rag_augur.OllamaEmbedder")
 		}
-		return rag_augur.NewOllamaEmbedder(url, model, timeout, logger, token, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
+		return embedder
 	}
 
 	// 1. Target with matching origin receives token
-	sameOriginEmbedder := embedderFactory("http://proxy.internal:11434/api/embed", "bge-m3", 10)
+	sameOriginEmbedder := build("http://proxy.internal:11434/api/embed")
 	if sameOriginEmbedder.InferenceToken != "secret-bearer-token" {
 		t.Fatalf("expected matching origin to receive token, got %q", sameOriginEmbedder.InferenceToken)
 	}
 
 	// 2. Foreign target receives EMPTY token
-	foreignEmbedder := embedderFactory("http://foreign-service.internal:11434/api/embed", "bge-m3", 10)
+	foreignEmbedder := build("http://foreign-service.internal:11434/api/embed")
 	if foreignEmbedder.InferenceToken != "" {
 		t.Fatalf("expected foreign target to have empty token, got %q", foreignEmbedder.InferenceToken)
 	}
 
 	// 3. Different port receives EMPTY token
-	diffPortEmbedder := embedderFactory("http://proxy.internal:8080/api/embed", "bge-m3", 10)
+	diffPortEmbedder := build("http://proxy.internal:8080/api/embed")
 	if diffPortEmbedder.InferenceToken != "" {
 		t.Fatalf("expected different port to have empty token, got %q", diffPortEmbedder.InferenceToken)
+	}
+}
+
+// search-indexer serves /v1/search only behind RequireAndVerifyClientCert on
+// :9443, so the client has to carry the leaf whatever MTLS_ENFORCE says. The
+// pooled client it used to share only does that when MTLS_ENFORCE=true.
+func TestNewSearchIndexerClient_RequiresClientCertMaterial(t *testing.T) {
+	t.Setenv("MTLS_ENFORCE", "")
+
+	client, err := newSearchIndexerClient(config.SearchConfig{
+		IndexerURL: "https://search-indexer:9443",
+		Timeout:    5,
+	})
+
+	if err == nil {
+		t.Fatalf("missing client cert material must be a startup error, got client %+v", client)
+	}
+}
+
+func TestLogInferenceAuth(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.InferenceAuthConfig
+		wantMsg string
+		notMsg  string
+	}{
+		{
+			name:    "disabled",
+			cfg:     config.InferenceAuthConfig{Enabled: false},
+			wantMsg: "inference_auth_disabled",
+			notMsg:  "inference_auth_enabled",
+		},
+		{
+			name:    "enabled",
+			cfg:     config.InferenceAuthConfig{Enabled: true, Token: "secret-bearer-token-value"},
+			wantMsg: "inference_auth_enabled",
+			notMsg:  "inference_auth_disabled",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			LogInferenceAuth(tt.cfg, slog.New(slog.NewJSONHandler(&buf, nil)))
+
+			out := buf.String()
+			if got := strings.Count(out, `"msg":"`+tt.wantMsg+`"`); got != 1 {
+				t.Fatalf("want exactly one %s record, got %d in %q", tt.wantMsg, got, out)
+			}
+			if strings.Contains(out, tt.notMsg) {
+				t.Fatalf("unexpected %s record in %q", tt.notMsg, out)
+			}
+			if strings.Contains(out, "secret-bearer-token-value") {
+				t.Fatalf("the token must never reach the log: %q", out)
+			}
+		})
 	}
 }
 
@@ -242,4 +298,92 @@ func TestBuildOllamaGenerator_ProductionFactoryTests(t *testing.T) {
 			t.Errorf("expected token for news-proxy, got %q", gen.InferenceToken)
 		}
 	})
+}
+
+// The eino Ollama client has no hook for the inference bearer or the mTLS
+// leaf, so LLM_BACKEND=eino may only point at an endpoint that needs neither.
+func TestValidateEinoBackend(t *testing.T) {
+	tests := []struct {
+		name         string
+		mtlsEnforce  string
+		inference    config.InferenceAuthConfig
+		augurURL     string
+		purpose      string
+		wantErr      bool
+		wantErrMatch string
+	}{
+		{
+			name:         "inference auth enabled",
+			inference:    config.InferenceAuthConfig{Enabled: true, Token: "secret-bearer-token-value"},
+			augurURL:     "http://localhost:11434",
+			purpose:      "news_mtls",
+			wantErr:      true,
+			wantErrMatch: "INFERENCE_AUTH",
+		},
+		{
+			name:         "authenticated proxy needs the bearer",
+			augurURL:     "http://ollama-proxy:11434",
+			purpose:      "authenticated_proxy",
+			wantErr:      true,
+			wantErrMatch: "authenticated_proxy",
+		},
+		{
+			name:         "an unset purpose off news-creator resolves to the authenticated proxy",
+			augurURL:     "http://ollama-proxy:11434",
+			wantErr:      true,
+			wantErrMatch: "authenticated_proxy",
+		},
+		{
+			name:         "news-creator over enforced mTLS needs the client cert",
+			mtlsEnforce:  "true",
+			augurURL:     "https://news-creator:9443",
+			wantErr:      true,
+			wantErrMatch: "MTLS_ENFORCE",
+		},
+		{
+			name:         "unknown purpose",
+			augurURL:     "http://localhost:11434",
+			purpose:      "plaintext",
+			wantErr:      true,
+			wantErrMatch: "plaintext",
+		},
+		{
+			name:     "credential-free endpoint",
+			augurURL: "http://localhost:11434",
+			purpose:  "news_mtls",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("MTLS_ENFORCE", tt.mtlsEnforce)
+			cfg := &config.Config{
+				LLMBackend:    "eino",
+				InferenceAuth: tt.inference,
+				Augur: config.AugurConfig{
+					URL:             tt.augurURL,
+					EndpointPurpose: tt.purpose,
+					InferenceToken:  tt.inference.Token,
+				},
+			}
+
+			err := validateEinoBackend(cfg)
+
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("want no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("want a startup error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrMatch) {
+				t.Fatalf("error %q does not name %q", err, tt.wantErrMatch)
+			}
+			if strings.Contains(err.Error(), "secret-bearer-token-value") {
+				t.Fatalf("the token must never reach the error: %q", err)
+			}
+		})
+	}
 }

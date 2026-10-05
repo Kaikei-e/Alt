@@ -33,8 +33,7 @@ class OllamaDriver:
             sock_read=self.config.llm_timeout_seconds,  # Bound per-attempt read stalls
         )
         headers = {}
-        llm_cfg = getattr(self.config, "llm", None)
-        token = getattr(llm_cfg, "inference_service_token", None) if llm_cfg else None
+        token = self.config.llm.inference_service_token
         if token:
             headers["Authorization"] = f"Bearer {token}"
 

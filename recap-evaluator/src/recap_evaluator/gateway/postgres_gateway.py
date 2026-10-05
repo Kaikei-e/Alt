@@ -18,12 +18,8 @@ async def register_jsonb_codec(conn: asyncpg.Connection) -> None:
     Python dict (e.g. `save_evaluation_run`'s `metrics` column) raises
     `DataError: expected str, got dict` on every INSERT/UPDATE.
     """
-    await conn.set_type_codec(
-        "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
-    )
-    await conn.set_type_codec(
-        "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
-    )
+    await conn.set_type_codec("jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
+    await conn.set_type_codec("json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
 
 
 class PostgresGateway:
@@ -32,9 +28,7 @@ class PostgresGateway:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
-    async def fetch_recent_jobs(
-        self, days: int, status: str = "completed"
-    ) -> list[dict[str, Any]]:
+    async def fetch_recent_jobs(self, days: int, status: str = "completed") -> list[dict[str, Any]]:
         query = """
             SELECT job_id, kicked_at, status, last_stage, note, updated_at
             FROM recap_jobs
@@ -80,9 +74,7 @@ class PostgresGateway:
             rows = await conn.fetch(query, job_id)
             return [dict(row) for row in rows]
 
-    async def fetch_stage_logs_batch(
-        self, job_ids: list[UUID]
-    ) -> dict[UUID, list[dict[str, Any]]]:
+    async def fetch_stage_logs_batch(self, job_ids: list[UUID]) -> dict[UUID, list[dict[str, Any]]]:
         query = """
             SELECT job_id, stage, status, started_at, finished_at, message
             FROM recap_job_stage_logs
@@ -149,9 +141,7 @@ class PostgresGateway:
             rows = await conn.fetch(query, run_id)
             return [dict(row) for row in rows]
 
-    async def fetch_genre_learning_results(
-        self, job_id: UUID
-    ) -> list[dict[str, Any]]:
+    async def fetch_genre_learning_results(self, job_id: UUID) -> list[dict[str, Any]]:
         query = """
             SELECT article_id, coarse_candidates, refine_decision,
                    tag_profile, graph_context
@@ -162,9 +152,7 @@ class PostgresGateway:
             rows = await conn.fetch(query, job_id)
             return [dict(row) for row in rows]
 
-    async def fetch_evaluation_by_id(
-        self, evaluation_id: UUID
-    ) -> dict[str, Any] | None:
+    async def fetch_evaluation_by_id(self, evaluation_id: UUID) -> dict[str, Any] | None:
         query = """
             SELECT evaluation_id, evaluation_type, job_ids, metrics, created_at
             FROM recap_evaluation_runs
@@ -213,9 +201,7 @@ class PostgresGateway:
             VALUES ($1, $2, $3, $4, $5)
         """
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                query, evaluation_id, evaluation_type, job_ids, metrics, created_at
-            )
+            await conn.execute(query, evaluation_id, evaluation_type, job_ids, metrics, created_at)
 
     async def health_check(self) -> bool:
         """Verify the pool can reach the database."""
