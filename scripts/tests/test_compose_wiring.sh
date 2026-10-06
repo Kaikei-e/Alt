@@ -187,6 +187,12 @@ check("pre-processor" in str(mtls_peers_entries[0]) if mtls_peers_entries else F
 check("recap-evaluator" in str(mtls_peers_entries[0]) if mtls_peers_entries else False,
       "news-creator MTLS_ALLOWED_PEERS includes recap-evaluator")
 
+# ── 2k2. pre-processor NEWS_CREATOR_TIMEOUT parses as a Go duration ──────────
+# The loader uses time.ParseDuration and exits at startup on a bare number.
+pp_timeout = str(env_dict(ai["services"]["pre-processor"]).get("NEWS_CREATOR_TIMEOUT", ""))
+check(pp_timeout.rstrip("hms").isdigit() and pp_timeout[-1:] in ("h", "m", "s"),
+      f"pre-processor NEWS_CREATOR_TIMEOUT is a Go duration with a unit (got: {pp_timeout!r})")
+
 # ── 2l. acolyte NEWS_CREATOR_URL default is https://news-creator:9443 ────────
 acol_env = acol["services"]["acolyte-orchestrator"].get("environment", [])
 nc_url_entry = next((e for e in acol_env if "NEWS_CREATOR_URL" in str(e)), "")
