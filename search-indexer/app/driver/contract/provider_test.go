@@ -359,13 +359,16 @@ func TestVerifySearchIndexerProviderContracts(t *testing.T) {
 		verifyRequest.BrokerURL = brokerURL
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
-		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "rag-orchestrator", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "rag-orchestrator", DeployedOrReleased: true},
-			&provider.ConsumerVersionSelector{Consumer: "alt-backend", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "alt-backend", DeployedOrReleased: true},
-			&provider.ConsumerVersionSelector{Consumer: "acolyte-orchestrator", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "acolyte-orchestrator", DeployedOrReleased: true},
+		lockstep := lockstepConsumers(os.Getenv("PACT_LOCKSTEP_CONSUMERS"))
+		for _, s := range consumerSelectors(searchIndexerConsumers, lockstep) {
+			verifyRequest.ConsumerVersionSelectors = append(verifyRequest.ConsumerVersionSelectors, &provider.ConsumerVersionSelector{
+				Consumer:           s.Consumer,
+				MainBranch:         s.MainBranch,
+				DeployedOrReleased: s.DeployedOrReleased,
+			})
+			if s.MainBranch && lockstep[s.Consumer] {
+				t.Logf("lockstep: not verifying the production-deployed pact of %s (PACT_LOCKSTEP_CONSUMERS)", s.Consumer)
+			}
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
