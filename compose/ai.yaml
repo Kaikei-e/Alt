@@ -393,7 +393,7 @@ services:
       - CONSUMER_GROUP=pre-processor-group
       - CONSUMER_NAME=pre-processor-1
       - NEWS_CREATOR_HOST=https://news-creator:9443
-      - NEWS_CREATOR_TIMEOUT=600
+      - NEWS_CREATOR_TIMEOUT=600s
       - NEWS_CREATOR_CLIENT_CERT_FILE=/certs/svc-cert.pem
       - NEWS_CREATOR_CLIENT_KEY_FILE=/certs/svc-key.pem
       - NEWS_CREATOR_CA_FILE=/trust/ca-bundle.pem
