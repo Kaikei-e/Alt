@@ -573,6 +573,14 @@ A08 Integrity Failure そのものになる。
   デプロイ窓の非互換は消えていないので、gate を通した意味が無くなる。
 - **selector から `DeployedOrReleased` を外さない。** これはデプロイ窓の非互換を
   検出する唯一の仕掛けで、外すと本節の症状が「静かな本番障害」に変わる。
+  例外は、デプロイパイプラインが provider と同じリリースで roll する consumer
+  だけ。パイプラインの明示的な lockstep 承認でその consumer 名が
+  `PACT_LOCKSTEP_CONSUMERS` に入ると、provider 検証はその consumer の本番版
+  pact を選ばず、リリースゲートはその consumer の新しい version を固定して判定
+  する。新しい consumer が同じリリースの infra 変更を前提にしていて先に出せない
+  ときに限る。provider の roll から consumer の roll までの窓の非互換は消えない
+  ので、計画的な劣化として受け入れる場合だけ使う。現在この変数を読むのは
+  search-indexer の provider 検証だけ。
 - **force-override (section 9 Secondary) で gate を通しても、デプロイ窓の非互換は
   消えない。** override が動かすのは CI の判定だけで、実際の 401 / 400 を防ぐのは
   ロール順序だけである。override したからといって順序を飛ばすと本番で落ちる。
