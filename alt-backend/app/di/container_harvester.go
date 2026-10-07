@@ -165,13 +165,13 @@ func NewHarvesterComponents(cfg *config.Config) *HarvesterComponents {
 	fetchTagCloudUC := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(
 		datahub_gateway.NewTagGateway(dataHubClient), TagCloudCacheTTL)
 
-	// outbox-worker targets: rag-orchestrator (REST only — the harvester never
-	// speaks Connect-RPC, so it needs no mTLS leaf certificate) and
-	// knowledge-sovereign.
-	ragOpts := make([]rag_gateway.ClientOption, 0, 1)
+	// outbox-worker targets: rag-orchestrator (REST over https presenting the
+	// same MTLS_* leaf and CA) and knowledge-sovereign.
+	ragOpts := make([]rag_gateway.ClientOption, 0, 2)
 	if cfg.Rag.APIToken != "" {
 		ragOpts = append(ragOpts, rag_gateway.WithBearerToken(cfg.Rag.APIToken))
 	}
+	ragOpts = append(ragOpts, rag_gateway.WithHTTPClient(newRagConnectHTTPClient(cfg.Rag.OrchestratorURL)))
 	ragClient, err := rag_gateway.NewClientWithResponses(cfg.Rag.OrchestratorURL, ragOpts...)
 	if err != nil {
 		panic("harvester: failed to create RAG client: " + err.Error())
