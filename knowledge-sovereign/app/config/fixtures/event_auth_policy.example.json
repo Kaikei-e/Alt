@@ -62,6 +62,7 @@
         "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
       ],
       "allowed_events": [
+        "ArticleCreated",
         "SummaryVersionCreated",
         "SummarySuperseded",
         "TagSetVersionCreated",

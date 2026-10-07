@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"knowledge-sovereign/gateway/authgw"
 	"math/big"
@@ -211,6 +212,29 @@ func TestLoadPolicy_ExampleFixtureValid(t *testing.T) {
 	pol, err := LoadPolicyFile(testPolicyFile)
 	require.NoError(t, err)
 	assert.Len(t, pol.Services, 6)
+}
+
+// alt-data-hub's article ingestion appends ArticleCreated and refuses to
+// acknowledge the write when sovereign denies it.
+func TestProductionPolicy_DataHubMayAppendArticleCreated(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "config", "event-auth-policy.json"))
+	require.NoError(t, err)
+
+	var pol struct {
+		Services []struct {
+			Name          string   `json:"name"`
+			AllowedEvents []string `json:"allowed_events"`
+		} `json:"services"`
+	}
+	require.NoError(t, json.Unmarshal(data, &pol))
+
+	var events []string
+	for _, svc := range pol.Services {
+		if svc.Name == "alt-data-hub" {
+			events = svc.AllowedEvents
+		}
+	}
+	assert.Contains(t, events, "ArticleCreated")
 }
 
 func replaceSecretPath(content, oldPath, newPath string) string {
