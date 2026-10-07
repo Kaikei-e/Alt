@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	SpeechChunk,
 	SynthesizeSpeechStreamOptions,
-} from "$lib/connect/tts";
-import type { SeamlessAudioPlayer } from "$lib/utils/seamlessAudioPlayer";
+} from "#lib/connect/tts.js";
+import type { SeamlessAudioPlayer } from "#lib/utils/seamlessAudioPlayer.js";
 import {
 	createSummarySpeech,
 	resetSummarySpeechSharedState,

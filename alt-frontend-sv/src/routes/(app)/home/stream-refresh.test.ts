@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import type { RecallCandidateData } from "#lib/connect/knowledge_home.js";
 import { refreshHomeWithRecallSync } from "./stream-refresh";
 
 describe("refreshHomeWithRecallSync", () => {

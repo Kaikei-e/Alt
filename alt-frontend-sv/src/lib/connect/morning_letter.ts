@@ -14,7 +14,7 @@ import {
 	type MorningLetterSourceProto,
 	type Citation as ProtoCitation,
 	type StreamChatResponse,
-} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+} from "#lib/gen/alt/morning_letter/v2/morning_letter_pb.js";
 
 /** Type-safe MorningLetterService client */
 type MorningLetterClient = Client<typeof MorningLetterService>;

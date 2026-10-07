@@ -1,5 +1,5 @@
 import { redirect } from "@sveltejs/kit";
-import { buildLegacySvRedirect } from "$lib/server/legacy-sv";
+import { buildLegacySvRedirect } from "#lib/server/legacy-sv.js";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ url }) => {

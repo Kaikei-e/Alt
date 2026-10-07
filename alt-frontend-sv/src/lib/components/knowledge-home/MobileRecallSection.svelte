@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Brain } from "@lucide/svelte";
-import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import type { RecallCandidateData } from "#lib/connect/knowledge_home.js";
 import RecallCandidateCard from "./recall-rail/RecallCandidateCard.svelte";
 
 interface Props {

@@ -1,4 +1,8 @@
-import type { RecapCard, RecapCardsJob, RecapCardsRun } from "$lib/connect";
+import type {
+	RecapCard,
+	RecapCardsJob,
+	RecapCardsRun,
+} from "#lib/connect/index.js";
 
 export type CardsPageState =
 	| "loading"

@@ -7,11 +7,11 @@ const { createSovereignSnapshot, runSovereignRetention } = vi.hoisted(() => ({
 
 // Real verifyCsrfToken runs so this is an end-to-end test of the route's
 // double-submit-cookie guard, not just a mocked comparison.
-vi.mock("$lib/api", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("$lib/api")>();
+vi.mock("#lib/api.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#lib/api.js")>();
 	return { ...actual };
 });
-vi.mock("$lib/server/sovereign-admin", () => ({
+vi.mock("#lib/server/sovereign-admin.js", () => ({
 	fetchSovereignAdminSnapshot: vi.fn(),
 	createSovereignSnapshot,
 	runSovereignRetention,

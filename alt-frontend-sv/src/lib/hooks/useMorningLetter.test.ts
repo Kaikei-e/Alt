@@ -11,7 +11,7 @@ const mockRegenerateLatestLetter = vi.fn();
 
 const mockGetLetterEnrichment = vi.fn().mockResolvedValue([]);
 
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	getLatestLetter: (...args: unknown[]) => mockGetLatestLetter(...args),
 	getLetterByDate: (...args: unknown[]) => mockGetLetterByDate(...args),

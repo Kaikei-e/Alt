@@ -1,7 +1,7 @@
 <script lang="ts">
-import SwipeFeedScreen from "$lib/components/mobile/feeds/swipe/SwipeFeedScreen.svelte";
-import type { RenderFeed } from "$lib/schema/feed";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+import SwipeFeedScreen from "#lib/components/mobile/feeds/swipe/SwipeFeedScreen.svelte";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
 
 interface PageData {
 	initialFeeds: RenderFeed[];

@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamSummarizeWithAbortAdapter: vi.fn(),
 }));
 
-vi.mock("$lib/utils/errorClassification", () => ({
+vi.mock("#lib/utils/errorClassification.js", () => ({
 	isTransientError: vi.fn(() => false),
 }));
 
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
-} from "$lib/connect";
-import { isTransientError } from "$lib/utils/errorClassification";
+} from "#lib/connect/index.js";
+import { isTransientError } from "#lib/utils/errorClassification.js";
 import { useSummarize } from "./useSummarize.svelte";
 
 /** Helper: capture the callbacks passed to streamSummarizeWithAbortAdapter */

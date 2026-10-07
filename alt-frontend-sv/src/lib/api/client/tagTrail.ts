@@ -7,12 +7,12 @@
  * are no longer consumed from this file.
  */
 
-import { createClientTransport } from "$lib/connect/transport-client";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 import type {
 	RandomFeedResponse,
 	TagTrailArticle,
 	TagTrailTag,
-} from "$lib/schema/tagTrail";
+} from "#lib/schema/tagTrail.js";
 
 /**
  * Get a random subscription feed for Tag Trail.
@@ -20,7 +20,7 @@ import type {
  */
 export async function getRandomSubscriptionClient(): Promise<RandomFeedResponse> {
 	const transport = createClientTransport();
-	const { randomSubscription } = await import("$lib/connect/rss");
+	const { randomSubscription } = await import("#lib/connect/rss.js");
 	const feed = await randomSubscription(transport);
 	if (!feed.id) {
 		return { feed: null };
@@ -54,7 +54,7 @@ export async function getArticlesByTagClient(
 	hasMore: boolean;
 }> {
 	const transport = createClientTransport();
-	const { fetchArticlesByTag } = await import("$lib/connect/articles");
+	const { fetchArticlesByTag } = await import("#lib/connect/articles.js");
 	const result = await fetchArticlesByTag(
 		transport,
 		tagName || undefined,
@@ -77,7 +77,7 @@ export async function getArticleTagsClient(
 	articleId: string,
 ): Promise<TagTrailTag[]> {
 	const transport = createClientTransport();
-	const { fetchArticleTags } = await import("$lib/connect/articles");
+	const { fetchArticleTags } = await import("#lib/connect/articles.js");
 	const tags = await fetchArticleTags(transport, articleId);
 	return tags.map((tag) => ({ id: tag.id, name: tag.name }));
 }
@@ -92,6 +92,6 @@ export async function getFeedTagsByIdClient(
 	limit = 20,
 ): Promise<TagTrailTag[]> {
 	const transport = createClientTransport();
-	const { getFeedTags } = await import("$lib/connect/feeds/tags");
+	const { getFeedTags } = await import("#lib/connect/feeds/tags.js");
 	return getFeedTags(transport, feedId, limit);
 }

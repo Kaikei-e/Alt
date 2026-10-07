@@ -8,18 +8,18 @@ import {
 import { onDestroy, onMount, tick } from "svelte";
 import { Spring } from "svelte/motion";
 import { fade } from "svelte/transition";
-import { type SwipeDirection, swipe } from "$lib/actions/swipe";
+import { type SwipeDirection, swipe } from "#lib/actions/swipe.js";
 import {
 	getFeedContentOnTheFlyClient,
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
-} from "$lib/api/client";
+} from "#lib/api/client/index.js";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
-} from "$lib/connect";
-import { createSummarySpeech } from "$lib/hooks/useSummarySpeech.svelte";
-import type { RenderFeed } from "$lib/schema/feed";
+} from "#lib/connect/index.js";
+import { createSummarySpeech } from "#lib/hooks/useSummarySpeech.svelte.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import {
 	type ArticleContentPhase,
 	CONTENT_PENDING_LABEL,
@@ -28,12 +28,12 @@ import {
 	foregroundRetryDelayMs,
 	READ_ORIGINAL_LABEL,
 	TRY_AGAIN_LABEL,
-} from "$lib/utils/articleContentState";
-import { articleContentErrorMessage } from "$lib/utils/errorClassification";
-import { ogImageResolver } from "$lib/utils/ogImageResolver";
-import { createProxyImage } from "$lib/utils/proxyImage.svelte";
-import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
-import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
+} from "#lib/utils/articleContentState.js";
+import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
+import { ogImageResolver } from "#lib/utils/ogImageResolver.js";
+import { createProxyImage } from "#lib/utils/proxyImage.svelte.js";
+import { sanitizeHtml } from "#lib/utils/sanitizeHtml.js";
+import { simulateTypewriterEffect } from "#lib/utils/streamingRenderer.js";
 
 interface Props {
 	feed: RenderFeed;

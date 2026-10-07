@@ -9,4 +9,4 @@ export type {
 	RepresentativeArticle,
 	TopicRole,
 	WeeklyHighlight,
-} from "$lib/domain/pulse/types";
+} from "#lib/domain/pulse/types.js";

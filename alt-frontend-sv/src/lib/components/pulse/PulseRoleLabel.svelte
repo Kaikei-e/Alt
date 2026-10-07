@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { TopicRole } from "$lib/schema/evening_pulse";
+import type { TopicRole } from "#lib/schema/evening_pulse.js";
 
 interface Props {
 	role: TopicRole;

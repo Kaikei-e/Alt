@@ -39,7 +39,7 @@ export {
 } from "./feeds";
 // OPML Import/Export
 export { exportOPMLClient, importOPMLClient } from "./opml";
-// NOTE: Recap API migrated to Connect-RPC (see $lib/connect/recap.ts)
+// NOTE: Recap API migrated to Connect-RPC (see src/lib/connect/recap.ts)
 // Tag Trail関連のAPI
 export {
 	getArticlesByTagClient,

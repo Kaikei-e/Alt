@@ -1,6 +1,6 @@
 <script lang="ts">
-import { getJobs } from "$lib/api/client/dashboard";
-import type { AdminJob } from "$lib/schema/dashboard";
+import { getJobs } from "#lib/api/client/dashboard.js";
+import type { AdminJob } from "#lib/schema/dashboard.js";
 
 interface Props {
 	windowSeconds: number;

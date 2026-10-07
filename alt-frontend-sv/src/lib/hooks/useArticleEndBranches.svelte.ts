@@ -1,12 +1,12 @@
-import { goto } from "$app/navigation";
 import {
 	type BranchData,
 	type BranchResolution,
 	getItemBranches,
 	resolveBranch,
-} from "$lib/connect/knowledge_trail";
-import { createClientTransport } from "$lib/connect/transport-client";
-import { uuidv7 } from "$lib/utils/uuidv7";
+} from "#lib/connect/knowledge_trail.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
+import { uuidv7 } from "#lib/utils/uuidv7.js";
+import { goto } from "$app/navigation";
 
 /**
  * useArticleEndBranches drives the article page's patch-exit branch surface

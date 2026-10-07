@@ -1,58 +1,58 @@
 <script lang="ts">
 import { onDestroy, onMount } from "svelte";
-import { browser } from "$app/environment";
-import { getClientCSRFToken } from "$lib/api/client/core";
-import AdminTabNavigation from "$lib/components/knowledge-home-admin/AdminTabNavigation.svelte";
-import AlertStatusPanel from "$lib/components/knowledge-home-admin/AlertStatusPanel.svelte";
-import AuditActions from "$lib/components/knowledge-home-admin/AuditActions.svelte";
-import AuditResultPanel from "$lib/components/knowledge-home-admin/AuditResultPanel.svelte";
-import BackfillJobsTable from "$lib/components/knowledge-home-admin/BackfillJobsTable.svelte";
-import DiffSummaryPanel from "$lib/components/knowledge-home-admin/DiffSummaryPanel.svelte";
-import ErrorBudgetBurnRatePanel from "$lib/components/knowledge-home-admin/ErrorBudgetBurnRatePanel.svelte";
-import FeatureFlagPanel from "$lib/components/knowledge-home-admin/FeatureFlagPanel.svelte";
-import InteractionFunnelPanel from "$lib/components/knowledge-home-admin/InteractionFunnelPanel.svelte";
-import ObservabilityPanel from "$lib/components/knowledge-home-admin/observability/ObservabilityPanel.svelte";
-import ProjectionStatusPanel from "$lib/components/knowledge-home-admin/ProjectionStatusPanel.svelte";
-import ProjectorPipelinePanel from "$lib/components/knowledge-home-admin/ProjectorPipelinePanel.svelte";
-import ReasonDistributionChart from "$lib/components/knowledge-home-admin/ReasonDistributionChart.svelte";
-import RecallPipelinePanel from "$lib/components/knowledge-home-admin/RecallPipelinePanel.svelte";
-import ReprojectActions from "$lib/components/knowledge-home-admin/ReprojectActions.svelte";
-import ReprojectRunsTable from "$lib/components/knowledge-home-admin/ReprojectRunsTable.svelte";
-import RetentionRunResultPanel from "$lib/components/knowledge-home-admin/RetentionRunResultPanel.svelte";
-import RetentionStatusPanel from "$lib/components/knowledge-home-admin/RetentionStatusPanel.svelte";
-import ServiceHealthGrid from "$lib/components/knowledge-home-admin/ServiceHealthGrid.svelte";
-import SLOSummaryPanel from "$lib/components/knowledge-home-admin/SLOSummaryPanel.svelte";
-import SnapshotListPanel from "$lib/components/knowledge-home-admin/SnapshotListPanel.svelte";
-import SovereignMutationPanel from "$lib/components/knowledge-home-admin/SovereignMutationPanel.svelte";
-import StorageStatsPanel from "$lib/components/knowledge-home-admin/StorageStatsPanel.svelte";
-import StreamHealthPanel from "$lib/components/knowledge-home-admin/StreamHealthPanel.svelte";
-import SystemAtAGlancePanel from "$lib/components/knowledge-home-admin/SystemAtAGlancePanel.svelte";
+import { getClientCSRFToken } from "#lib/api/client/core.js";
+import AdminTabNavigation from "#lib/components/knowledge-home-admin/AdminTabNavigation.svelte";
+import AlertStatusPanel from "#lib/components/knowledge-home-admin/AlertStatusPanel.svelte";
+import AuditActions from "#lib/components/knowledge-home-admin/AuditActions.svelte";
+import AuditResultPanel from "#lib/components/knowledge-home-admin/AuditResultPanel.svelte";
+import BackfillJobsTable from "#lib/components/knowledge-home-admin/BackfillJobsTable.svelte";
+import DiffSummaryPanel from "#lib/components/knowledge-home-admin/DiffSummaryPanel.svelte";
+import ErrorBudgetBurnRatePanel from "#lib/components/knowledge-home-admin/ErrorBudgetBurnRatePanel.svelte";
+import FeatureFlagPanel from "#lib/components/knowledge-home-admin/FeatureFlagPanel.svelte";
+import InteractionFunnelPanel from "#lib/components/knowledge-home-admin/InteractionFunnelPanel.svelte";
+import ObservabilityPanel from "#lib/components/knowledge-home-admin/observability/ObservabilityPanel.svelte";
+import ProjectionStatusPanel from "#lib/components/knowledge-home-admin/ProjectionStatusPanel.svelte";
+import ProjectorPipelinePanel from "#lib/components/knowledge-home-admin/ProjectorPipelinePanel.svelte";
+import ReasonDistributionChart from "#lib/components/knowledge-home-admin/ReasonDistributionChart.svelte";
+import RecallPipelinePanel from "#lib/components/knowledge-home-admin/RecallPipelinePanel.svelte";
+import ReprojectActions from "#lib/components/knowledge-home-admin/ReprojectActions.svelte";
+import ReprojectRunsTable from "#lib/components/knowledge-home-admin/ReprojectRunsTable.svelte";
+import RetentionRunResultPanel from "#lib/components/knowledge-home-admin/RetentionRunResultPanel.svelte";
+import RetentionStatusPanel from "#lib/components/knowledge-home-admin/RetentionStatusPanel.svelte";
+import ServiceHealthGrid from "#lib/components/knowledge-home-admin/ServiceHealthGrid.svelte";
+import SLOSummaryPanel from "#lib/components/knowledge-home-admin/SLOSummaryPanel.svelte";
+import SnapshotListPanel from "#lib/components/knowledge-home-admin/SnapshotListPanel.svelte";
+import SovereignMutationPanel from "#lib/components/knowledge-home-admin/SovereignMutationPanel.svelte";
+import StorageStatsPanel from "#lib/components/knowledge-home-admin/StorageStatsPanel.svelte";
+import StreamHealthPanel from "#lib/components/knowledge-home-admin/StreamHealthPanel.svelte";
+import SystemAtAGlancePanel from "#lib/components/knowledge-home-admin/SystemAtAGlancePanel.svelte";
 import type {
 	BackfillJobData,
 	ReprojectRunData,
 	SLOStatusData,
-} from "$lib/connect/knowledge_home_admin";
+} from "#lib/connect/knowledge_home_admin.js";
 import {
 	type KnowledgeHomeAdminActionRequest,
 	useKnowledgeHomeAdmin,
-} from "$lib/hooks/useKnowledgeHomeAdmin.svelte";
-import { useSovereignAdmin } from "$lib/hooks/useSovereignAdmin.svelte";
+} from "#lib/hooks/useKnowledgeHomeAdmin.svelte.js";
+import { useSovereignAdmin } from "#lib/hooks/useSovereignAdmin.svelte.js";
+import { browser } from "$app/env";
 
 let { data } = $props<{
 	data: {
 		adminData: {
 			health:
-				| import("$lib/connect/knowledge_home_admin").ProjectionHealthData
+				| import("#lib/connect/knowledge_home_admin.js").ProjectionHealthData
 				| null;
 			flags:
-				| import("$lib/connect/knowledge_home_admin").FeatureFlagsConfigData
+				| import("#lib/connect/knowledge_home_admin.js").FeatureFlagsConfigData
 				| null;
 			sloStatus:
-				| import("$lib/connect/knowledge_home_admin").SLOStatusData
+				| import("#lib/connect/knowledge_home_admin.js").SLOStatusData
 				| null;
-			reprojectRuns: import("$lib/connect/knowledge_home_admin").ReprojectRunData[];
+			reprojectRuns: import("#lib/connect/knowledge_home_admin.js").ReprojectRunData[];
 			systemMetrics:
-				| import("$lib/connect/knowledge_home_admin").SystemMetricsData
+				| import("#lib/connect/knowledge_home_admin.js").SystemMetricsData
 				| null;
 		};
 		error: string | null;
@@ -202,7 +202,10 @@ onDestroy(() => {
 	{/if}
 
 	<div class="ops-tab-section">
-		<AdminTabNavigation {activeTab} onTabChange={(tab: string) => (activeTab = tab)} />
+		<AdminTabNavigation
+			activeTab={activeTab}
+			onTabChange={(tab: string) => activeTab = tab}
+		/>
 	</div>
 
 	<div class="ops-content" style="--stagger: 0">
@@ -211,7 +214,7 @@ onDestroy(() => {
 				<SystemAtAGlancePanel
 					overallHealth={admin.sloStatus?.overallHealth ?? null}
 					lagSeconds={admin.systemMetrics?.projector?.lagSeconds ?? null}
-					healthyCount={admin.systemMetrics?.serviceHealth?.filter(s => s.status === "healthy").length ?? 0}
+					healthyCount={admin.systemMetrics?.serviceHealth?.filter((s) => s.status === "healthy").length ?? 0}
 					totalServiceCount={admin.systemMetrics?.serviceHealth?.length ?? 0}
 					activeAlertCount={admin.sloStatus?.activeAlerts?.length ?? 0}
 				/>
@@ -241,26 +244,26 @@ onDestroy(() => {
 			</div>
 			<div class="grid gap-6 lg:grid-cols-2 ops-section" style="--stagger: 4">
 				<InteractionFunnelPanel funnel={admin.systemMetrics?.tracking
-					? [
+						? [
 						{ label: "Exposed", value: admin.systemMetrics.tracking.itemsExposed },
 						{ label: "Opened", value: admin.systemMetrics.tracking.itemsOpened },
 						{ label: "Dismissed", value: admin.systemMetrics.tracking.itemsDismissed },
-					]
+						]
 					: []} />
 				<ReasonDistributionChart distribution={(() => {
-					try {
-						if (!admin.auditResult?.detailsJson) return [];
-						const details = JSON.parse(admin.auditResult.detailsJson);
-						if (details.why_distribution && typeof details.why_distribution === "object") {
+						try {
+							if (!admin.auditResult?.detailsJson) return [];
+							const details = JSON.parse(admin.auditResult.detailsJson);
+							if (details.why_distribution && typeof details.why_distribution === "object") {
 							return Object.entries(details.why_distribution).map(([code, count]) => ({
 								code,
 								count: count as number,
 							}));
+							}
+							return [];
+						} catch {
+							return [];
 						}
-						return [];
-					} catch {
-						return [];
-					}
 				})()} />
 			</div>
 		{:else if activeTab === "system"}

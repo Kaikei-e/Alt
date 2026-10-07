@@ -7,8 +7,8 @@
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
-} from "$lib/connect";
-import { isTransientError } from "$lib/utils/errorClassification";
+} from "#lib/connect/index.js";
+import { isTransientError } from "#lib/utils/errorClassification.js";
 
 export type SummarizeButtonState = "idle" | "loading" | "error" | "success";
 

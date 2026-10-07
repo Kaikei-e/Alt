@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 import {
 	GetArticleSourceURLRequestSchema,
 	GetArticleSourceURLResponseSchema,
-} from "$lib/gen/alt/articles/v2/articles_pb";
+} from "#lib/gen/alt/articles/v2/articles_pb.js";
 
 describe("ArticleService.GetArticleSourceURL contract", () => {
 	it("request carries article_id only — no tenant or user fields", () => {

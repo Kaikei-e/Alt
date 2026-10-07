@@ -7,7 +7,7 @@
 
 import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
-import { KnowledgeHomeAdminService } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_admin_pb";
+import { KnowledgeHomeAdminService } from "#lib/gen/alt/knowledge_home/v1/knowledge_home_admin_pb.js";
 
 type KnowledgeHomeAdminClient = Client<typeof KnowledgeHomeAdminService>;
 

@@ -1,5 +1,5 @@
-import { json, type RequestHandler } from "@sveltejs/kit";
-import { getFeedsWithCursor } from "$lib/api";
+import type { RequestHandler } from "@sveltejs/kit";
+import { getFeedsWithCursor } from "#lib/api.js";
 
 export const GET: RequestHandler = async ({ request, url }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
@@ -14,7 +14,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			limit ? parseInt(limit, 10) : 20,
 		);
 
-		return json(response);
+		return Response.json(response);
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		const errorStack = error instanceof Error ? error.stack : undefined;
@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		});
 
 		// Always return JSON response, never HTML
-		return json(
+		return Response.json(
 			{
 				error: errorMessage,
 				data: [],

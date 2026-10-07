@@ -8,7 +8,7 @@ import {
 	createConnectionRecoveryStore,
 } from "./connection-recovery.svelte";
 
-vi.mock("$lib/hooks/safari-connection-recovery", () => {
+vi.mock("#lib/hooks/safari-connection-recovery.js", () => {
 	let onRecoveryCallback: ((info: { reason: string }) => void) | null = null;
 	return {
 		createSafariConnectionRecovery: vi.fn((opts) => {
@@ -56,7 +56,7 @@ describe("createConnectionRecoveryStore", () => {
 
 	it("notifies subscribers on recovery", async () => {
 		const mod = await import("./connection-recovery.svelte");
-		const mockMod = await import("$lib/hooks/safari-connection-recovery");
+		const mockMod = await import("#lib/hooks/safari-connection-recovery.js");
 		store = mod.createConnectionRecoveryStore();
 
 		const callback = vi.fn();
@@ -76,7 +76,7 @@ describe("createConnectionRecoveryStore", () => {
 
 	it("increments recoveryCount on each recovery", async () => {
 		const mod = await import("./connection-recovery.svelte");
-		const mockMod = await import("$lib/hooks/safari-connection-recovery");
+		const mockMod = await import("#lib/hooks/safari-connection-recovery.js");
 		store = mod.createConnectionRecoveryStore();
 
 		expect(store.recoveryCount).toBe(0);
@@ -104,7 +104,7 @@ describe("createConnectionRecoveryStore", () => {
 
 	it("updates lastRecoveryInfo", async () => {
 		const mod = await import("./connection-recovery.svelte");
-		const mockMod = await import("$lib/hooks/safari-connection-recovery");
+		const mockMod = await import("#lib/hooks/safari-connection-recovery.js");
 		store = mod.createConnectionRecoveryStore();
 
 		expect(store.lastRecoveryInfo).toBeNull();
@@ -130,7 +130,7 @@ describe("createConnectionRecoveryStore", () => {
 	it("handles callback errors gracefully", async () => {
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		const mod = await import("./connection-recovery.svelte");
-		const mockMod = await import("$lib/hooks/safari-connection-recovery");
+		const mockMod = await import("#lib/hooks/safari-connection-recovery.js");
 		store = mod.createConnectionRecoveryStore();
 
 		const errorCallback = vi.fn(() => {

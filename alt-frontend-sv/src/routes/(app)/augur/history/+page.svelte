@@ -1,8 +1,8 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import ConversationList from "#lib/components/desktop/augur/ConversationList.svelte";
+import { useAugurHistory } from "#lib/hooks/useAugurHistory.svelte.js";
 import { goto } from "$app/navigation";
-import ConversationList from "$lib/components/desktop/augur/ConversationList.svelte";
-import { useAugurHistory } from "$lib/hooks/useAugurHistory.svelte";
 
 const history = useAugurHistory({ pageSize: 20 });
 

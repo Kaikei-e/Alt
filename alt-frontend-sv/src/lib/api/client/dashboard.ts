@@ -6,7 +6,7 @@ import type {
 	RecapJob,
 	RecentActivity,
 	SystemMetric,
-} from "$lib/schema/dashboard";
+} from "#lib/schema/dashboard.js";
 import { callClientAPI, getClientCSRFToken } from "./core";
 
 export async function getMetrics(
@@ -93,7 +93,7 @@ export async function getJobs(
 	return callClientAPI<AdminJob[]>(endpoint);
 }
 
-import { base } from "$app/paths";
+import { resolve } from "$app/paths";
 
 export async function getRecapJobs(
 	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
@@ -105,8 +105,9 @@ export async function getRecapJobs(
 	if (limit) params.set("limit", limit.toString());
 
 	const res = await fetch(
-		`${base}/api/v1/dashboard/recap_jobs?${params.toString()}`,
+		resolve(`api/v1/dashboard/recap_jobs?${params.toString()}`),
 	);
+
 	if (!res.ok) {
 		throw new Error("Failed to fetch recap jobs");
 	}
@@ -137,8 +138,8 @@ export async function getJobProgress(
 
 	const queryString = params.toString();
 	const url = queryString
-		? `${base}/api/v1/dashboard/job-progress?${queryString}`
-		: `${base}/api/v1/dashboard/job-progress`;
+		? resolve(`api/v1/dashboard/job-progress?${queryString}`)
+		: resolve(`api/v1/dashboard/job-progress`);
 
 	const res = await fetch(url);
 	if (!res.ok) {
@@ -154,7 +155,7 @@ export async function getJobProgress(
 export async function getJobStats(
 	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 ): Promise<JobStats> {
-	const res = await fetch(`${base}/api/v1/dashboard/job-stats`);
+	const res = await fetch(resolve(`api/v1/dashboard/job-stats`));
 	if (!res.ok) {
 		throw new Error("Failed to fetch job stats");
 	}
@@ -182,8 +183,9 @@ export async function triggerRecapJob(
 ): Promise<TriggerJobResponse> {
 	const endpoint =
 		windowDays === 3
-			? `${base}/api/v1/generate/recaps/3days`
-			: `${base}/api/v1/generate/recaps/7days`;
+			? resolve(`api/v1/generate/recaps/3days`)
+			: resolve(`api/v1/generate/recaps/7days`);
+
 	const csrfToken = await getClientCSRFToken();
 	const res = await fetch(endpoint, {
 		method: "POST",
@@ -203,7 +205,7 @@ export async function triggerRecapJob(
 export async function triggerTopicCardsJob(
 	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 ): Promise<TriggerJobResponse> {
-	const endpoint = `${base}/api/v1/generate/topic-cards`;
+	const endpoint = resolve(`api/v1/generate/topic-cards`);
 	const csrfToken = await getClientCSRFToken();
 	const res = await fetch(endpoint, {
 		method: "POST",

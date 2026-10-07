@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { RenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "#lib/schema/feed.js";
 
 interface Props {
 	feeds: RenderFeed[];

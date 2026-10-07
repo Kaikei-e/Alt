@@ -1,12 +1,12 @@
 <script lang="ts">
 import { ArrowLeft, Loader2, Tag } from "@lucide/svelte";
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
 import {
 	createClientTransport,
 	fetchArticlesByTag,
 	type TagTrailArticle,
-} from "$lib/connect";
+} from "#lib/connect/index.js";
+import { browser } from "$app/env";
 import ArticleCard from "./ArticleCard.svelte";
 import ArticleDetailPanel from "./ArticleDetailPanel.svelte";
 
@@ -101,7 +101,7 @@ onMount(async () => {
 			>
 				{#each articles as article (article.id)}
 					<ArticleCard
-						{article}
+						article={article}
 						selected={selectedArticle?.id === article.id}
 						onclick={() => { selectedArticle = article; }}
 					/>

@@ -19,8 +19,8 @@ import {
 	type ConnectArticleItem,
 	fetchArticleContent,
 	fetchArticlesCursor,
-} from "$lib/connect/articles";
-import { createClientTransport } from "$lib/connect/transport-client";
+} from "#lib/connect/articles.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 import { articleKeys } from "./keys";
 
 // =============================================================================

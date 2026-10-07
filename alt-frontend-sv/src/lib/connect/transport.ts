@@ -2,11 +2,11 @@
  * DEPRECATED: This file is kept for backwards compatibility.
  *
  * For new code:
- * - Browser code: import { createClientTransport } from "$lib/connect" (or transport-client.ts)
- * - Server code: import { createServerTransport } from "$lib/connect/transport-server"
+ * - Browser code: import { createClientTransport } from "#lib/connect/index.js" (or transport-client.ts)
+ * - Server code: import { createServerTransport } from "#lib/connect/transport-server.js"
  *
  * DO NOT import this file in browser code - it will cause build errors
- * due to $env/dynamic/private imports.
+ * due to $app/env/private imports.
  */
 
 // Re-export from new locations

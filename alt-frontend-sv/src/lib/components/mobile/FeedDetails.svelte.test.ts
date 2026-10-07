@@ -5,11 +5,11 @@ import type {
 	FeedContentOnTheFlyResponse,
 	FetchArticleSummaryResponse,
 	SummarizeArticleResponse,
-} from "$lib/api/client";
+} from "#lib/api/client/index.js";
 import FeedDetails from "./FeedDetails.svelte";
 
 // Mock API client functions
-vi.mock("$lib/api/client", () => ({
+vi.mock("#lib/api/client/index.js", () => ({
 	getFeedContentOnTheFlyClient: vi.fn(() =>
 		Promise.resolve({
 			content: "<p>Full article content here.</p>",
@@ -32,7 +32,7 @@ vi.mock("$lib/api/client", () => ({
 }));
 
 // Mock Connect RPC functions
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamSummarizeWithAbortAdapter: vi.fn(
 		(
@@ -51,8 +51,8 @@ vi.mock("$lib/connect", () => ({
 	),
 }));
 
-// Mock $app/environment
-vi.mock("$app/environment", () => ({
+// Mock $app/env
+vi.mock("$app/env", () => ({
 	browser: true,
 }));
 
@@ -99,16 +99,18 @@ async function restoreHappyPathMocks() {
 		getFeedContentOnTheFlyClient,
 		getArticleSummaryClient,
 		summarizeArticleClient,
-	} = await import("$lib/api/client");
+	} = await import("#lib/api/client/index.js");
 	vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue(okContent);
 	vi.mocked(getArticleSummaryClient).mockResolvedValue(okSummary);
 	vi.mocked(summarizeArticleClient).mockResolvedValue(okSummarize);
 
-	// $lib/connect leaks the same way: the mockImplementation the summary tests
+	// #lib/connect leaks the same way: the mockImplementation the summary tests
 	// install survives vi.clearAllMocks(), so restore the factory's default
 	// (complete immediately, no chunks, no error) here too. Parameters are left
 	// to contextual typing so this stays pinned to the real adapter signature.
-	const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+	const { streamSummarizeWithAbortAdapter } = await import(
+		"#lib/connect/index.js"
+	);
 	vi.mocked(streamSummarizeWithAbortAdapter).mockImplementation(
 		(_transport, _options, _updateState, _rendererOptions, onComplete) => {
 			onComplete?.({
@@ -260,7 +262,7 @@ describe("FeedDetails retry", () => {
 	describe("content fetch retry", () => {
 		it("shows error with role='alert' when content fetch fails", async () => {
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				new Error("Server error"),
 			);
@@ -290,12 +292,12 @@ describe("FeedDetails retry", () => {
 			await expect.element(page.getByRole("alert")).toBeInTheDocument();
 		});
 
-		// "Server error" is not transient per $lib/utils/errorClassification, so
+		// "Server error" is not transient per #lib/utils/errorClassification, so
 		// it must not buy a retry at all. Pins the classification, and rules out
 		// a "bound" implemented as a fixed sleep that still hammers the API.
 		it("does not retry a permanent content failure", async () => {
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				new Error("Server error"),
 			);
@@ -341,7 +343,7 @@ describe("FeedDetails retry", () => {
 		// the same budget SwipeFeedCard applies to the same endpoints.
 		it("stops retrying a transient content failure after a bounded number of attempts", async () => {
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			// "network" is classified transient by isTransientError.
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				new Error("network error"),
@@ -383,7 +385,7 @@ describe("FeedDetails retry", () => {
 		// and must still describe itself truthfully.
 		it("reports one attempt and stops when the client throws synchronously", async () => {
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			vi.mocked(getArticleSummaryClient).mockImplementation(() => {
 				throw new Error("synchronous boom");
 			});
@@ -415,7 +417,7 @@ describe("FeedDetails retry", () => {
 		// requests nobody is waiting for, and writes state on a dead instance.
 		it("abandons a pending retry when the component is destroyed", async () => {
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				new Error("network error"),
 			);
@@ -448,7 +450,7 @@ describe("FeedDetails retry", () => {
 
 		it("offers a user-initiated reload once the automatic retries are exhausted", async () => {
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				new Error("Server error"),
 			);
@@ -490,7 +492,7 @@ describe("FeedDetails retry", () => {
 		// fetch that never settles — the strongest form of "slow".
 		it("opens the sheet immediately instead of waiting for the content fetch", async () => {
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			const neverSettles = <T>() => new Promise<T>(() => {});
 			vi.mocked(getFeedContentOnTheFlyClient).mockImplementation(() =>
 				neverSettles<FeedContentOnTheFlyResponse>(),
@@ -523,7 +525,7 @@ describe("FeedDetails retry", () => {
 	describe("honest content states", () => {
 		it("says what it is doing while the body is in flight", async () => {
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			const neverSettles = <T>() => new Promise<T>(() => {});
 			vi.mocked(getFeedContentOnTheFlyClient).mockImplementation(() =>
 				neverSettles<FeedContentOnTheFlyResponse>(),
@@ -552,7 +554,7 @@ describe("FeedDetails retry", () => {
 			// A reload the reader can press and a way out to the publisher are
 			// what make it a remedy rather than a verdict.
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				new Error("Server error"),
 			);
@@ -579,7 +581,7 @@ describe("FeedDetails retry", () => {
 			// A successful response carrying `content: ""` is a state, not a
 			// falsy no-op (ADR-000581), and it reads the same here as anywhere.
 			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
 				content: "",
 				article_id: "",
@@ -606,8 +608,12 @@ describe("FeedDetails retry", () => {
 
 	describe("summary retry", () => {
 		it("shows summary error with role='alert' when summarization fails", async () => {
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
-			const { summarizeArticleClient } = await import("$lib/api/client");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
+			const { summarizeArticleClient } = await import(
+				"#lib/api/client/index.js"
+			);
 
 			// Summarization only fails once BOTH paths fail. A stream error with
 			// no partial data deliberately falls back to the legacy REST endpoint
@@ -665,8 +671,12 @@ describe("FeedDetails retry", () => {
 		});
 
 		it("summary button shows 'Try again' after error", async () => {
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
-			const { summarizeArticleClient } = await import("$lib/api/client");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
+			const { summarizeArticleClient } = await import(
+				"#lib/api/client/index.js"
+			);
 
 			// See the note above: the legacy fallback has to fail too.
 			vi.mocked(summarizeArticleClient).mockRejectedValue(
@@ -717,8 +727,12 @@ describe("FeedDetails retry", () => {
 		// failed summarization, because the legacy endpoint is meant to cover
 		// it. Pinned so the fallback is not mistaken for dead code later.
 		it("falls back to the legacy endpoint when the stream errors, without surfacing an error", async () => {
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
-			const { summarizeArticleClient } = await import("$lib/api/client");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
+			const { summarizeArticleClient } = await import(
+				"#lib/api/client/index.js"
+			);
 
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementation(
 				(

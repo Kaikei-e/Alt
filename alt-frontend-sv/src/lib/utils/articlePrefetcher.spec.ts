@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the API client
-vi.mock("$lib/api/client", () => ({
+vi.mock("#lib/api/client/index.js", () => ({
 	getFeedContentOnTheFlyClient: vi.fn(),
 }));
-vi.mock("$lib/api/client/articles", () => ({
+vi.mock("#lib/api/client/articles.js", () => ({
 	batchPrefetchArticleContentClient: vi.fn(),
 }));
 
-import { getFeedContentOnTheFlyClient } from "$lib/api/client";
-import { batchPrefetchArticleContentClient } from "$lib/api/client/articles";
+import { batchPrefetchArticleContentClient } from "#lib/api/client/articles.js";
+import { getFeedContentOnTheFlyClient } from "#lib/api/client/index.js";
 import { ArticlePrefetcher } from "./articlePrefetcher";
 
 const mockGetFeedContentOnTheFlyClient = vi.mocked(

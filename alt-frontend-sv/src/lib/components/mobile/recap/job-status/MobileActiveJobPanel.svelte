@@ -1,6 +1,6 @@
 <script lang="ts">
-import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
-import type { ActiveJobInfo } from "$lib/schema/dashboard";
+import StatusGlyph from "#lib/components/recap/job-status/StatusGlyph.svelte";
+import type { ActiveJobInfo } from "#lib/schema/dashboard.js";
 import MobileGenreProgressGrid from "./MobileGenreProgressGrid.svelte";
 import MobilePipelineProgress from "./MobilePipelineProgress.svelte";
 

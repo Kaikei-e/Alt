@@ -20,12 +20,12 @@ import {
 	getFeedsWithCursorClient,
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
-} from "$lib/api/client/feeds";
-import type { RenderFeed } from "$lib/schema/feed";
+} from "#lib/api/client/feeds.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import { createRenderFeed } from "../../../../tests/fixtures/feeds";
 
-vi.mock("$lib/api/client/feeds", { spy: true });
-vi.mock("$lib/api/client/articles", { spy: true });
+vi.mock("#lib/api/client/feeds.js", { spy: true });
+vi.mock("#lib/api/client/articles.js", { spy: true });
 
 import Page from "./+page.svelte";
 

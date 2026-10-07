@@ -3,7 +3,7 @@ import { T, useTask } from "@threlte/core";
 import { HTML } from "@threlte/extras";
 import { onDestroy } from "svelte";
 import * as THREE from "three";
-import type { TagCloudItem } from "$lib/connect";
+import type { TagCloudItem } from "#lib/connect/index.js";
 import type { CameraFrameData } from "./SceneContent.svelte";
 
 interface Props {

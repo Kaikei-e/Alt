@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { StatusTransition } from "$lib/schema/dashboard";
+import type { StatusTransition } from "#lib/schema/dashboard.js";
 import {
 	calculateBarWidth,
 	calculateDurationSecs,

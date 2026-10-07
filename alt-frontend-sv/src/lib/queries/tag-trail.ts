@@ -4,8 +4,8 @@ import {
 	fetchArticleTags,
 	fetchRandomFeed,
 	type TagTrailArticlesResponse,
-} from "$lib/connect/articles";
-import { createClientTransport } from "$lib/connect/transport-client";
+} from "#lib/connect/articles.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 import { tagTrailKeys } from "./keys";
 
 export function createArticlesByTagQuery(

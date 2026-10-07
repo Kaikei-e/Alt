@@ -80,7 +80,7 @@ describe("batchPrefetchArticleContent", () => {
 	// The warm is nobody's foreground request, so the call site has to be able
 	// to say so. This module stays free of `transport-client` (and therefore of
 	// `$app/paths`) because the BFF imports it server-side; the header value
-	// itself is chosen one layer up, in `$lib/api/client/articles`.
+	// itself is chosen one layer up, in `#lib/api/client/articles.js`.
 	it("forwards caller-supplied headers", async () => {
 		const calls: RecordedCall[] = [];
 

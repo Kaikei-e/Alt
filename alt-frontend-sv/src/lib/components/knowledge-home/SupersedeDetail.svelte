@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { SupersedeInfoData } from "$lib/connect/knowledge_home";
+import type { SupersedeInfoData } from "#lib/connect/knowledge_home.js";
 import { resolveSupersede } from "./supersede-display-map";
 
 interface Props {

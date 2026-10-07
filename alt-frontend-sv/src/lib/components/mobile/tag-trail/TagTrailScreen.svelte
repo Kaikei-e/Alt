@@ -9,8 +9,8 @@ import {
 	streamArticleTags,
 	type TagTrailArticle,
 	type TagTrailTag,
-} from "$lib/connect";
-import type { TagTrailHop } from "$lib/schema/tagTrail";
+} from "#lib/connect/index.js";
+import type { TagTrailHop } from "#lib/schema/tagTrail.js";
 import RandomFeedCard from "./RandomFeedCard.svelte";
 import TagArticleList from "./TagArticleList.svelte";
 import TagTrailBreadcrumb from "./TagTrailBreadcrumb.svelte";

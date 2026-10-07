@@ -26,8 +26,8 @@ import {
 	Star,
 	Tag,
 } from "@lucide/svelte";
+import { cn } from "#lib/utils.js";
 import { page } from "$app/state";
-import { cn } from "$lib/utils";
 
 const svBasePath = "";
 

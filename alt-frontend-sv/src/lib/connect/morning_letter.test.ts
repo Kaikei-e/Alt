@@ -17,7 +17,7 @@ vi.mock("@connectrpc/connect", () => {
 	};
 });
 
-vi.mock("$lib/gen/alt/morning_letter/v2/morning_letter_pb", () => ({
+vi.mock("#lib/gen/alt/morning_letter/v2/morning_letter_pb.js", () => ({
 	MorningLetterService: {},
 	MorningLetterReadService: {},
 }));

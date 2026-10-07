@@ -11,10 +11,10 @@
  */
 
 import type { RequestHandler } from "@sveltejs/kit";
-import { env } from "$env/dynamic/private";
-import { isConnectMethodName } from "$lib/server/connect-path";
+import { isConnectMethodName } from "#lib/server/connect-path.js";
+import { BFF_CONNECT_URL } from "$app/env/private";
 
-const BFF_URL = env.BFF_CONNECT_URL || "http://alt-butterfly-facade:9250";
+const BFF_URL = BFF_CONNECT_URL || "http://alt-butterfly-facade:9250";
 
 const SERVICE_PREFIX = "/alt.admin_monitor.v1.AdminMonitorService/";
 

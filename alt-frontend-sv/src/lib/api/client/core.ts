@@ -1,7 +1,10 @@
-import { browser } from "$app/environment";
-import { base } from "$app/paths";
-import { assertOkResponse, parseJsonBody } from "$lib/api/handle-api-response";
-import { parseCsrfToken } from "$lib/schema/csrf";
+import {
+	assertOkResponse,
+	parseJsonBody,
+} from "#lib/api/handle-api-response.js";
+import { parseCsrfToken } from "#lib/schema/csrf.js";
+import { browser } from "$app/env";
+import { resolve } from "$app/paths";
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -31,9 +34,10 @@ function fetchCSRFToken(): Promise<string | null> {
 
 async function issueCSRFToken(): Promise<string | null> {
 	try {
-		const response = await fetch(`${base}/api/auth/csrf`, {
+		const response = await fetch(resolve(`api/auth/csrf`), {
 			credentials: "include",
 		});
+
 		if (!response.ok) return null;
 		const data: unknown = await response.json();
 		return parseCsrfToken(data);
@@ -52,7 +56,7 @@ export async function callClientAPI<T>(
 		throw new Error("This function can only be called from the client");
 	}
 
-	const url = `${base}/api${endpoint}`;
+	const url = resolve(`api${endpoint}`);
 
 	// V-004: Include CSRF token for state-changing methods
 	const method = options?.method?.toUpperCase() || "GET";

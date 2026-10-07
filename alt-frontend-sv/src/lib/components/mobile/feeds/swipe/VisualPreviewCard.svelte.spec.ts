@@ -24,8 +24,8 @@ import { page } from "@vitest/browser/context";
 import { flushSync, tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { getFeedContentOnTheFlyClient } from "$lib/api/client";
-import type { RenderFeed } from "$lib/schema/feed";
+import { getFeedContentOnTheFlyClient } from "#lib/api/client/index.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
 
 const {
@@ -42,7 +42,7 @@ const {
 	speechState: { value: "idle" },
 }));
 
-vi.mock("$lib/hooks/useSummarySpeech.svelte", () => ({
+vi.mock("#lib/hooks/useSummarySpeech.svelte.js", () => ({
 	createSummarySpeech: vi.fn(() => ({
 		get state() {
 			return speechState.value;
@@ -52,12 +52,12 @@ vi.mock("$lib/hooks/useSummarySpeech.svelte", () => ({
 	})),
 }));
 
-vi.mock("$lib/utils/loadProxyImage", () => ({ loadProxyImageDefault }));
+vi.mock("#lib/utils/loadProxyImage.js", () => ({ loadProxyImageDefault }));
 
 // Stubbed rather than left to the real shared resolver: without this the card
 // fires a Connect-RPC at the dev server and the outcome of every image test
 // depends on what that happens to answer.
-vi.mock("$lib/utils/ogImageResolver", () => ({
+vi.mock("#lib/utils/ogImageResolver.js", () => ({
 	ogImageResolver: () => ({ resolve: resolveOgImage }),
 }));
 
@@ -101,7 +101,7 @@ const mockFeed: RenderFeed = {
 };
 
 // Mock API client functions
-vi.mock("$lib/api/client", () => ({
+vi.mock("#lib/api/client/index.js", () => ({
 	getFeedContentOnTheFlyClient: vi.fn(() =>
 		Promise.resolve({
 			content: "<p>Full article content here.</p>",
@@ -118,7 +118,7 @@ vi.mock("$lib/api/client", () => ({
 }));
 
 // Mock Connect RPC functions
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamSummarizeWithAbortAdapter: vi.fn(
 		(
@@ -233,7 +233,9 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("marks the feed as favorite when stamped", async () => {
-			const { registerFavoriteFeedClient } = await import("$lib/api/client");
+			const { registerFavoriteFeedClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
@@ -788,7 +790,9 @@ describe("VisualPreviewCard", () => {
 
 	describe("AI summary speech button", () => {
 		it("does not render the speech button while chunks are still typing before completion even though text is visible", async () => {
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
 				(
 					_transport: unknown,
@@ -845,7 +849,9 @@ describe("VisualPreviewCard", () => {
 		it("speaks the full received summary text even when displayed text is still typing (cached single-chunk)", async () => {
 			const fullCachedText =
 				"This is the full comprehensive cached summary that arrived in a single chunk.";
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
 				(_transport, _options, updateState, _rendererOptions, onComplete) => {
 					// Simulate typewriter has only received or typed first character
@@ -879,8 +885,12 @@ describe("VisualPreviewCard", () => {
 		it("speaks the full fallback text when stream fails and REST fallback succeeds", async () => {
 			const fallbackSummary =
 				"This is the complete fallback summary generated via REST client.";
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
-			const { summarizeArticleClient } = await import("$lib/api/client");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
+			const { summarizeArticleClient } = await import(
+				"#lib/api/client/index.js"
+			);
 
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
 				(

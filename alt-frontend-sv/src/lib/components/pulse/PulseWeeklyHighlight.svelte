@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { WeeklyHighlight } from "$lib/schema/evening_pulse";
+import type { WeeklyHighlight } from "#lib/schema/evening_pulse.js";
 
 interface Props {
 	highlight: WeeklyHighlight;

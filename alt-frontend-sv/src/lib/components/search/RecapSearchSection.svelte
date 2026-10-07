@@ -1,14 +1,14 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
 import {
 	fromGlobalRecapHit,
 	type RecapModalData,
 	RecapPreviewModal,
-} from "$lib/components/recap";
+} from "#lib/components/recap/index.js";
 import type {
 	GlobalRecapHitData,
 	RecapSectionData,
-} from "$lib/connect/global_search";
+} from "#lib/connect/global_search.js";
+import { goto } from "$app/navigation";
 
 interface Props {
 	section: RecapSectionData;

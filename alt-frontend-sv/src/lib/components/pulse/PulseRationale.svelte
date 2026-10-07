@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { PulseRationale as PulseRationaleType } from "$lib/schema/evening_pulse";
+import type { PulseRationale as PulseRationaleType } from "#lib/schema/evening_pulse.js";
 import PulseConfidenceIndicator from "./PulseConfidenceIndicator.svelte";
 
 interface Props {

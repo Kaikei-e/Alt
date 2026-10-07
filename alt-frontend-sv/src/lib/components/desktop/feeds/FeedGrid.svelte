@@ -4,13 +4,13 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { getFeedsWithCursorClient, getAllFeedsWithCursorClient } from "$lib/api/client/feeds";
-	import { appendUniqueFeeds } from "$lib/domain/feed/dedupe";
-	import type { RenderFeed } from "$lib/schema/feed";
+	import { getFeedsWithCursorClient, getAllFeedsWithCursorClient } from "#lib/api/client/feeds.js";
+	import { appendUniqueFeeds } from "#lib/domain/feed/dedupe.js";
+	import type { RenderFeed } from "#lib/schema/feed.js";
 	import type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 	import DesktopFeedCard from "./DesktopFeedCard.svelte";
 	import { onDestroy, onMount } from "svelte";
-	import { infiniteScroll } from "$lib/actions/infinite-scroll";
+	import { infiniteScroll } from "#lib/actions/infinite-scroll.js";
 
 	interface Props {
 		onSelectFeed: (feed: RenderFeed, index: number, totalCount: number) => void;
@@ -18,7 +18,7 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 		sortBy?: string;
 		excludedFeedLinkIds?: string[];
 		onReady?: (api: FeedGridApi) => void;
-		fetchFn?: (cursor?: string, limit?: number) => Promise<import("$lib/api").CursorResponse<RenderFeed>>;
+		fetchFn?: (cursor?: string, limit?: number) => Promise<import("#lib/api.js").CursorResponse<RenderFeed>>;
 		cardRenderer?: Snippet<[{ feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void }]>;
 		gridClass?: string;
 		/** data-testid for the grid element itself, so a caller can assert its layout. */

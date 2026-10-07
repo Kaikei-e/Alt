@@ -8,8 +8,8 @@ import {
 	streamArticleTags,
 	type TagTrailArticle,
 	type TagTrailTag,
-} from "$lib/connect";
-import type { TagTrailHop } from "$lib/schema/tagTrail";
+} from "#lib/connect/index.js";
+import type { TagTrailHop } from "#lib/schema/tagTrail.js";
 
 // Create transport for connect-rpc calls
 const transport = createClientTransport();

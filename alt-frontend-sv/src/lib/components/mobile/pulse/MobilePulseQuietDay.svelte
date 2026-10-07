@@ -1,6 +1,6 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button";
-import type { QuietDayInfo } from "$lib/schema/evening_pulse";
+import { Button } from "#lib/components/ui/button/index.js";
+import type { QuietDayInfo } from "#lib/schema/evening_pulse.js";
 
 interface Props {
 	date: string;

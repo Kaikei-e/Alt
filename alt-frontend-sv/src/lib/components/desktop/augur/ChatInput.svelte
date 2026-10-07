@@ -1,7 +1,7 @@
 <script lang="ts">
 import { Send } from "@lucide/svelte";
-import { Button } from "$lib/components/ui/button";
-import { Textarea } from "$lib/components/ui/textarea";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
 
 type Props = {
 	onSend: (message: string) => void;

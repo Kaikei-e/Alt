@@ -1,7 +1,7 @@
 <script lang="ts">
-import type { JobStatus, StatusTransition } from "$lib/schema/dashboard";
-import { getStageLabel } from "$lib/schema/dashboard";
-import { calculateStageDurations } from "$lib/utils/stageMetrics";
+import type { JobStatus, StatusTransition } from "#lib/schema/dashboard.js";
+import { getStageLabel } from "#lib/schema/dashboard.js";
+import { calculateStageDurations } from "#lib/utils/stageMetrics.js";
 
 interface Props {
 	statusHistory: StatusTransition[];

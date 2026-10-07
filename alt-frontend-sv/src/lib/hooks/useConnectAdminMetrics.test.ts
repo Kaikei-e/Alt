@@ -3,16 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	RangeWindow,
 	Step,
-} from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+} from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 
 const watchSpy = vi.fn();
 const catalogSpy = vi.fn();
 
-vi.mock("$lib/connect/transport-client", () => ({
+vi.mock("#lib/connect/transport-client.js", () => ({
 	createClientTransport: () => ({}),
 }));
 
-vi.mock("$lib/connect/admin_monitor", () => ({
+vi.mock("#lib/connect/admin_monitor.js", () => ({
 	createAdminMonitorClient: () => ({
 		catalog: catalogSpy.mockResolvedValue({ entries: [] }),
 		watch: (req: unknown) => {

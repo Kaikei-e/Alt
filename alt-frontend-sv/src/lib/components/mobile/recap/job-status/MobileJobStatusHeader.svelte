@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { TimeWindow } from "$lib/schema/dashboard";
+import type { TimeWindow } from "#lib/schema/dashboard.js";
 
 interface Props {
 	currentWindow: TimeWindow;

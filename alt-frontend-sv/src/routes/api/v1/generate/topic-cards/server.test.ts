@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$env/dynamic/private", () => ({
-	env: { RECAP_WORKER_BASE_URL: "http://recap-worker.test" },
+vi.mock("$app/env/private", () => ({
+	RECAP_WORKER_BASE_URL: "http://recap-worker.test",
+	AUTH_HUB_INTERNAL_URL: "http://auth-hub:8888",
+	BACKEND_REST_URL: "http://backend.test",
+	BACKEND_CONNECT_URL: "http://backend.test",
 }));
 
 const { getBackendToken } = vi.hoisted(() => ({
 	getBackendToken: vi.fn(),
 }));
 
-vi.mock("$lib/api", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("$lib/api")>();
+vi.mock("#lib/api.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#lib/api.js")>();
 	return { ...actual, getBackendToken };
 });
 

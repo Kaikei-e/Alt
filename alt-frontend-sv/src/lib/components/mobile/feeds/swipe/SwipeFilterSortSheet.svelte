@@ -1,14 +1,14 @@
 <script lang="ts">
 import { ArrowUpDown, Ban, Check, Search, X } from "@lucide/svelte";
 import { onDestroy } from "svelte";
-import * as Sheet from "$lib/components/ui/sheet";
-import type { ConnectFeedSource } from "$lib/connect/feeds";
-import { useKeyboardOffset } from "$lib/hooks/useKeyboardOffset.svelte";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import type { ConnectFeedSource } from "#lib/connect/feeds.js";
+import { useKeyboardOffset } from "#lib/hooks/useKeyboardOffset.svelte.js";
 import {
 	collectFeedLinkIdsByDomain,
 	getEffectiveDomain,
 	groupSourcesByDomain,
-} from "$lib/utils/feed-source-filter";
+} from "#lib/utils/feed-source-filter.js";
 
 interface Props {
 	open?: boolean;

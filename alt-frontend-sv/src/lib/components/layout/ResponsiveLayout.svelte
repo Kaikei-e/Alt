@@ -1,12 +1,12 @@
 <script lang="ts">
 import type { Snippet } from "svelte";
+import Sidebar from "#lib/components/desktop/layout/Sidebar.svelte";
+import { isImmersiveRoute } from "#lib/components/mobile/bottom-nav.js";
+import MobileBottomNav from "#lib/components/mobile/MobileBottomNav.svelte";
+import { isDesktop, isMobile } from "#lib/stores/viewport.svelte.js";
+import { cn } from "#lib/utils.js";
 import { afterNavigate } from "$app/navigation";
 import { page } from "$app/state";
-import Sidebar from "$lib/components/desktop/layout/Sidebar.svelte";
-import { isImmersiveRoute } from "$lib/components/mobile/bottom-nav";
-import MobileBottomNav from "$lib/components/mobile/MobileBottomNav.svelte";
-import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
-import { cn } from "$lib/utils";
 
 let { children, class: className = "" }: { children: Snippet; class?: string } =
 	$props();
@@ -18,7 +18,9 @@ const isImmersive = $derived(isImmersiveRoute(page.url.pathname));
 
 let mainEl = $state<HTMLElement | undefined>(undefined);
 
-afterNavigate(() => {
+afterNavigate(({ shallow }) => {
+	if (shallow) return;
+
 	mainEl?.focus({ preventScroll: false });
 });
 </script>

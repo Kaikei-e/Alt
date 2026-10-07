@@ -1,7 +1,7 @@
 <script lang="ts">
-import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
-import type { RecentJobSummary } from "$lib/schema/dashboard";
-import { formatDuration, PIPELINE_STAGES } from "$lib/schema/dashboard";
+import StatusGlyph from "#lib/components/recap/job-status/StatusGlyph.svelte";
+import type { RecentJobSummary } from "#lib/schema/dashboard.js";
+import { formatDuration, PIPELINE_STAGES } from "#lib/schema/dashboard.js";
 
 interface Props {
 	job: RecentJobSummary;

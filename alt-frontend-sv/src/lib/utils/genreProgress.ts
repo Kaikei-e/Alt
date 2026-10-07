@@ -1,4 +1,4 @@
-import type { GenreProgressInfo } from "$lib/schema/dashboard";
+import type { GenreProgressInfo } from "#lib/schema/dashboard.js";
 
 /**
  * Filters genre progress entries to exclude "classification" when other genres are present.

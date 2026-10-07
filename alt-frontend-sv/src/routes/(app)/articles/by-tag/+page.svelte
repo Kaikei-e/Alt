@@ -1,8 +1,8 @@
 <script lang="ts">
+import DesktopTagArticlesScreen from "#lib/components/desktop/articles/DesktopTagArticlesScreen.svelte";
+import MobileTagArticlesScreen from "#lib/components/mobile/articles/MobileTagArticlesScreen.svelte";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
 import { page } from "$app/state";
-import DesktopTagArticlesScreen from "$lib/components/desktop/articles/DesktopTagArticlesScreen.svelte";
-import MobileTagArticlesScreen from "$lib/components/mobile/articles/MobileTagArticlesScreen.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
 
 const tagName = $derived(page.url.searchParams.get("tag") ?? "");
 </script>

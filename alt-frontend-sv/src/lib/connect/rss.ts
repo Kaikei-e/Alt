@@ -15,7 +15,7 @@ import {
 	type RegisterRSSFeedResponse,
 	type RemoveFavoriteFeedResponse,
 	RSSService,
-} from "$lib/gen/alt/rss/v2/rss_pb";
+} from "#lib/gen/alt/rss/v2/rss_pb.js";
 
 /** Type-safe RSSService client */
 type RSSClient = Client<typeof RSSService>;

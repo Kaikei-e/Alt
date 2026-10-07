@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$env/dynamic/private", () => ({
-	env: { AUTH_HUB_INTERNAL_URL: "http://auth-hub:8888" },
+vi.mock("$app/env/private", () => ({
+	AUTH_HUB_INTERNAL_URL: "http://auth-hub:8888",
 }));
 
 const toSession = vi.fn();
-vi.mock("$lib/server/ory", () => ({
+vi.mock("#lib/server/ory.js", () => ({
 	ory: { toSession },
 }));
 

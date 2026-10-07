@@ -1,6 +1,6 @@
 <script lang="ts">
 import { ChevronRight } from "@lucide/svelte";
-import type { TagTrailHop } from "$lib/schema/tagTrail";
+import type { TagTrailHop } from "#lib/schema/tagTrail.js";
 
 interface Props {
 	hops: TagTrailHop[];

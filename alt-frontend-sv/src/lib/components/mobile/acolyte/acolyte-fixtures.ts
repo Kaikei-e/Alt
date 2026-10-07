@@ -3,7 +3,7 @@ import type {
 	AcolyteReportSummary,
 	AcolyteSection,
 	AcolyteVersionSummary,
-} from "$lib/connect/acolyte";
+} from "#lib/connect/acolyte.js";
 
 export const MOCK_REPORT_SUMMARIES: AcolyteReportSummary[] = [
 	{

@@ -1,14 +1,14 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
+import ArticleSearchSection from "#lib/components/search/ArticleSearchSection.svelte";
+import RecapSearchSection from "#lib/components/search/RecapSearchSection.svelte";
+import SearchSectionSkeleton from "#lib/components/search/SearchSectionSkeleton.svelte";
+import TagSearchSection from "#lib/components/search/TagSearchSection.svelte";
+import { useGlobalSearch } from "#lib/hooks/useGlobalSearch.svelte.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { browser } from "$app/env";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import ArticleSearchSection from "$lib/components/search/ArticleSearchSection.svelte";
-import RecapSearchSection from "$lib/components/search/RecapSearchSection.svelte";
-import SearchSectionSkeleton from "$lib/components/search/SearchSectionSkeleton.svelte";
-import TagSearchSection from "$lib/components/search/TagSearchSection.svelte";
-import { useGlobalSearch } from "$lib/hooks/useGlobalSearch.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
 
 const gs = useGlobalSearch();
 
@@ -47,9 +47,8 @@ function handleSearch() {
 	const trimmed = inputQuery.trim();
 	if (!trimmed) return;
 	goto(`/search?q=${encodeURIComponent(trimmed)}`, {
-		replaceState: true,
-		noScroll: true,
-		keepFocus: true,
+		replace: true,
+		reset: false,
 	});
 	gs.search(trimmed);
 }
@@ -57,7 +56,7 @@ function handleSearch() {
 function clearSearch() {
 	inputQuery = "";
 	gs.clear();
-	goto("/search", { replaceState: true, noScroll: true, keepFocus: true });
+	goto("/search", { replace: true, reset: false });
 }
 </script>
 

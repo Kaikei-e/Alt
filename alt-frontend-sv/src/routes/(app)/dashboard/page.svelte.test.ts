@@ -1,18 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { getFeedsWithCursorClient } from "#lib/api/client/feeds.js";
+import { createClientTransport, getThreeDayRecap } from "#lib/connect/index.js";
+import { useFeedStats } from "#lib/hooks/useFeedStats.svelte.js";
 import { goto } from "$app/navigation";
-import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
-import { createClientTransport, getThreeDayRecap } from "$lib/connect";
-import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
 
 // Spy-mode automocks keep every export bound (a factory that enumerates a
 // subset turns anything it omits into an import-time SyntaxError) and let each
 // test override only what must not really run: navigation and the network.
-vi.mock("$app/navigation", { spy: true });
-vi.mock("$lib/api/client/feeds", { spy: true });
-vi.mock("$lib/connect", { spy: true });
-vi.mock("$lib/hooks/useFeedStats.svelte", { spy: true });
+vi.mock("$app/navigation", () => ({
+	goto: vi.fn(),
+}));
+vi.mock("#lib/api/client/feeds.js", { spy: true });
+vi.mock("#lib/connect/index.js", { spy: true });
+vi.mock("#lib/hooks/useFeedStats.svelte.js", { spy: true });
 
 import Page from "./+page.svelte";
 
@@ -53,7 +55,7 @@ describe("Dashboard page", () => {
 		render(Page);
 		await settle();
 
-		expect(goto).toHaveBeenCalledWith("/home", { replaceState: true });
+		expect(goto).toHaveBeenCalledWith("/home", { replace: true });
 	});
 
 	it("renders the brief when the app opens at a desktop width", async () => {

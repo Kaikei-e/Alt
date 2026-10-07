@@ -1,9 +1,9 @@
 <script lang="ts">
 import { Download, FileUp, Upload } from "@lucide/svelte";
-import { exportOPMLClient, importOPMLClient } from "$lib/api/client";
-import { Button } from "$lib/components/ui/button";
-import * as Dialog from "$lib/components/ui/dialog";
-import type { OPMLImportResult } from "$lib/schema/opml";
+import { exportOPMLClient, importOPMLClient } from "#lib/api/client/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
+import type { OPMLImportResult } from "#lib/schema/opml.js";
 
 interface Props {
 	feedCount: number;

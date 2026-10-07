@@ -2,7 +2,7 @@
  * Sovereign Admin REST API Contract Tests
  *
  * Pins the wire shape of knowledge-sovereign's /admin/* endpoints (metrics
- * port :9501) against the real translation in $lib/server/sovereign-admin-wire.
+ * port :9501) against the real translation in #lib/server/sovereign-admin-wire.
  *
  * Fixtures are transcribed from the Go source, handler -> response struct ->
  * json tags:
@@ -20,7 +20,7 @@
  *
  * The request side (bearer token, dry_run body, error statuses) is pinned in
  * src/lib/server/sovereign-admin.test.ts, which vitest runs: that module reads
- * $env/dynamic/private, which the bun runner used for this directory cannot
+ * $app/env/private, which the bun runner used for this directory cannot
  * resolve.
  */
 import { describe, expect, it } from "vitest";
@@ -29,7 +29,7 @@ import {
 	normalizeSnapshotMetadata,
 	normalizeSovereignAdminSnapshot,
 	type SovereignAdminWire,
-} from "$lib/server/sovereign-admin-wire";
+} from "#lib/server/sovereign-admin-wire.js";
 
 // driver/sovereign_db/snapshot.go SnapshotMetadata — all 16 fields, no omitempty.
 const WIRE_SNAPSHOT = {

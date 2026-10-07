@@ -1,15 +1,15 @@
 <script lang="ts">
-import { replaceState } from "$app/navigation";
-import { page } from "$app/stores";
-import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
-import { resolveAugurEntry } from "$lib/utils/augur-entry";
+import AugurChat from "#lib/components/desktop/augur/AugurChat.svelte";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { resolveAugurEntry } from "#lib/utils/augur-entry.js";
+import { goto } from "$app/navigation";
+import { page } from "$app/state";
 
 const augurEntry = $derived(
 	resolveAugurEntry({
-		q: $page.url.searchParams.get("q"),
-		context: $page.url.searchParams.get("context"),
-		articleId: $page.url.searchParams.get("articleId"),
+		q: page.url.searchParams.get("q"),
+		context: page.url.searchParams.get("context"),
+		articleId: page.url.searchParams.get("articleId"),
 	}),
 );
 
@@ -47,10 +47,8 @@ $effect(() => {
 		onConversationIdChange={(id) => {
 			// Reflect the persisted id in the address bar without navigating, so a
 			// reload resumes the same conversation and the streaming component is
-			// left alone. `replaceState` from `$app/navigation` rather than
-			// `history.replaceState`, which SvelteKit's router asks callers not to
-			// touch (it owns the history state it stores there).
-			replaceState(`/augur/${id}`, {});
+			// left alone. `goto` with shallow routing rather than `history.replaceState`.
+			void goto(`/augur/${id}`, { shallow: true, replace: true, state: {} });
 		}}
 	/>
 </div>

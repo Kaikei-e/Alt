@@ -1,16 +1,16 @@
 <script lang="ts">
 import { Code, ConnectError } from "@connectrpc/connect";
 import { onMount } from "svelte";
+import { getFeedsWithCursorClient } from "#lib/api/client/feeds.js";
+import RecapSummaryWidget from "#lib/components/desktop/dashboard/RecapSummaryWidget.svelte";
+import StatsBarWidget from "#lib/components/desktop/dashboard/StatsBarWidget.svelte";
+import UnreadFeedsWidget from "#lib/components/desktop/dashboard/UnreadFeedsWidget.svelte";
+import { createClientTransport, getThreeDayRecap } from "#lib/connect/index.js";
+import { useFeedStats } from "#lib/hooks/useFeedStats.svelte.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import type { RecapSummary } from "#lib/schema/recap.js";
+import { isDesktop, isMobile } from "#lib/stores/viewport.svelte.js";
 import { goto } from "$app/navigation";
-import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
-import RecapSummaryWidget from "$lib/components/desktop/dashboard/RecapSummaryWidget.svelte";
-import StatsBarWidget from "$lib/components/desktop/dashboard/StatsBarWidget.svelte";
-import UnreadFeedsWidget from "$lib/components/desktop/dashboard/UnreadFeedsWidget.svelte";
-import { createClientTransport, getThreeDayRecap } from "$lib/connect";
-import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
-import type { RenderFeed } from "$lib/schema/feed";
-import type { RecapSummary } from "$lib/schema/recap";
-import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
 
 const stats = useFeedStats();
 
@@ -48,7 +48,7 @@ const dateStr = new Date().toLocaleDateString("en-US", {
 // permanent lie with nothing to act on.
 onMount(() => {
 	if (isMobile()) {
-		goto("/home", { replaceState: true });
+		goto("/home", { replace: true });
 		return;
 	}
 

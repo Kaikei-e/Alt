@@ -1,36 +1,15 @@
 import { redirect } from "@sveltejs/kit";
-import { dev } from "$app/environment";
-import { env } from "$env/dynamic/private";
-import { ory } from "$lib/ory";
-import { isAbsoluteUrl, sanitizeReturnTo } from "$lib/server/return-to";
+import { ory } from "#lib/ory.js";
+import { sanitizeReturnTo } from "#lib/server/return-to.js";
+import { KRATOS_PUBLIC_URL } from "$app/env/private";
 import type { PageServerLoad } from "./$types";
-
-function requireEnv(name: string, fallbackDev: string): string {
-	const value = env[name];
-	if (value) return value;
-	if (dev) return fallbackDev;
-	throw new Error(`${name} must be set in production`);
-}
-
-// Resolve at request time — not module load. Vite's postbuild analyse imports
-// this module under NODE_ENV=production without Docker/runtime env, and a
-// top-level throw aborts `bun run build` / image builds.
-function kratosPublicUrl(): string {
-	return requireEnv("KRATOS_PUBLIC_URL", "http://localhost/ory");
-}
 
 // /login や /auth/login、bare "/" への差し戻しループを防ぐための共通オプション
 const LOGIN_RETURN_TO_OPTIONS = { loopPaths: ["/login", "/auth/login", "/"] };
 
 // KratosへのリダイレクトURLを生成するヘルパー関数
 function buildKratosRedirectUrl(returnTo: string): string {
-	const base = kratosPublicUrl();
-	// kratosPublicUrlが絶対URLであることを確認
-	if (!isAbsoluteUrl(base)) {
-		throw new Error(`KRATOS_PUBLIC_URL must be an absolute URL, got: ${base}`);
-	}
-
-	const initUrl = new URL(`${base}/self-service/login/browser`);
+	const initUrl = new URL(`${KRATOS_PUBLIC_URL}/self-service/login/browser`);
 	initUrl.searchParams.set("return_to", returnTo);
 	return initUrl.toString();
 }
@@ -44,7 +23,7 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 			url.origin,
 			LOGIN_RETURN_TO_OPTIONS,
 		);
-		throw redirect(303, sanitizedReturnTo);
+		throw redirect(303, sanitizedReturnTo, { external: [url.origin] });
 	}
 
 	const flow = url.searchParams.get("flow");
@@ -59,7 +38,7 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 			LOGIN_RETURN_TO_OPTIONS,
 		);
 		const redirectUrl = buildKratosRedirectUrl(cleanUrl);
-		throw redirect(303, redirectUrl);
+		throw redirect(303, redirectUrl, { external: true });
 	}
 
 	// If flow exists, fetch and return flow data

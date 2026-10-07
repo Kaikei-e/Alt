@@ -1,6 +1,6 @@
 <script lang="ts">
-import type { FeedHealthStatus } from "$lib/schema/feedLink";
-import { getHealthColor, getHealthLabel } from "$lib/utils/feedHealth";
+import type { FeedHealthStatus } from "#lib/schema/feedLink.js";
+import { getHealthColor, getHealthLabel } from "#lib/utils/feedHealth.js";
 
 interface Props {
 	status: FeedHealthStatus;

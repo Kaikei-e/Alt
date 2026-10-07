@@ -2,14 +2,14 @@
 import { ChevronLeft, ChevronRight, X } from "@lucide/svelte";
 import { Dialog as DialogPrimitive } from "bits-ui";
 import { onDestroy, tick } from "svelte";
-import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
-import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
+import { getFeedContentOnTheFlyClient } from "#lib/api/client/articles.js";
+import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
-} from "$lib/connect";
-import { createSummarySpeech } from "$lib/hooks/useSummarySpeech.svelte";
-import type { RenderFeed } from "$lib/schema/feed";
+} from "#lib/connect/index.js";
+import { createSummarySpeech } from "#lib/hooks/useSummarySpeech.svelte.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import {
 	type ArticleContentPhase,
 	CONTENT_PENDING_LABEL,
@@ -18,12 +18,12 @@ import {
 	foregroundRetryDelayMs,
 	READ_ORIGINAL_LABEL,
 	TRY_AGAIN_LABEL,
-} from "$lib/utils/articleContentState";
-import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
+} from "#lib/utils/articleContentState.js";
+import { articlePrefetcher } from "#lib/utils/articlePrefetcher.js";
 import {
 	articleContentErrorMessage,
 	isTransientError,
-} from "$lib/utils/errorClassification";
+} from "#lib/utils/errorClassification.js";
 import {
 	buildSummaryRendererOptions,
 	processArticleFetchResponse,

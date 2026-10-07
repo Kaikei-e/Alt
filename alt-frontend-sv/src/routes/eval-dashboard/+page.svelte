@@ -1,16 +1,16 @@
 <script lang="ts">
-import AdminJobsTab from "$lib/components/dashboard/AdminJobsTab.svelte";
-import ClassificationTab from "$lib/components/dashboard/ClassificationTab.svelte";
-import ClusteringTab from "$lib/components/dashboard/ClusteringTab.svelte";
-import LogAnalysisTab from "$lib/components/dashboard/LogAnalysisTab.svelte";
-import OverviewTab from "$lib/components/dashboard/OverviewTab.svelte";
-import RecapJobsTab from "$lib/components/dashboard/RecapJobsTab.svelte";
-import SummarizationTab from "$lib/components/dashboard/SummarizationTab.svelte";
-import SystemMonitorTab from "$lib/components/dashboard/SystemMonitorTab.svelte";
-import { buttonVariants } from "$lib/components/ui/button";
-import type { TimeWindow } from "$lib/schema/dashboard";
-import { TIME_WINDOWS } from "$lib/schema/dashboard";
-import { cn } from "$lib/utils.js";
+import AdminJobsTab from "#lib/components/dashboard/AdminJobsTab.svelte";
+import ClassificationTab from "#lib/components/dashboard/ClassificationTab.svelte";
+import ClusteringTab from "#lib/components/dashboard/ClusteringTab.svelte";
+import LogAnalysisTab from "#lib/components/dashboard/LogAnalysisTab.svelte";
+import OverviewTab from "#lib/components/dashboard/OverviewTab.svelte";
+import RecapJobsTab from "#lib/components/dashboard/RecapJobsTab.svelte";
+import SummarizationTab from "#lib/components/dashboard/SummarizationTab.svelte";
+import SystemMonitorTab from "#lib/components/dashboard/SystemMonitorTab.svelte";
+import { buttonVariants } from "#lib/components/ui/button/index.js";
+import type { TimeWindow } from "#lib/schema/dashboard.js";
+import { TIME_WINDOWS } from "#lib/schema/dashboard.js";
+import { cn } from "#lib/utils.js";
 
 let selectedTab = $state(0);
 let timeWindow = $state<TimeWindow>("4h");

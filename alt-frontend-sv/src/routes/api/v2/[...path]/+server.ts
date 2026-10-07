@@ -6,12 +6,12 @@
  */
 
 import type { RequestHandler } from "@sveltejs/kit";
-import { env } from "$env/dynamic/private";
-import { PUBLIC_SERVICES } from "$lib/gen/allowlist";
-import { parseConnectPath } from "$lib/server/connect-path";
+import { PUBLIC_SERVICES } from "#lib/gen/allowlist.js";
+import { parseConnectPath } from "#lib/server/connect-path.js";
+import { BACKEND_CONNECT_URL as BACKEND_CONNECT_URL_ENV } from "$app/env/private";
 
 const BACKEND_CONNECT_URL =
-	env.BACKEND_CONNECT_URL || "http://alt-backend:9101";
+	BACKEND_CONNECT_URL_ENV || "http://alt-backend:9101";
 
 /**
  * Connect-RPC services the browser may reach through this proxy.

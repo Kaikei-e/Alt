@@ -19,7 +19,7 @@ import {
 	TodayDigestSchema,
 	TrackHomeActionRequestSchema,
 	WhyReasonSchema,
-} from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
+} from "#lib/gen/alt/knowledge_home/v1/knowledge_home_pb.js";
 
 describe("Knowledge Home API Contract", () => {
 	describe("GetKnowledgeHomeResponse", () => {

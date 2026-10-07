@@ -4,15 +4,15 @@ import { render } from "vitest-browser-svelte";
 import {
 	getDetailedFeedStatsClient,
 	getUnreadCountClient,
-} from "$lib/api/client/feeds";
-import { getTrendStats } from "$lib/api/client/stats";
-import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+} from "#lib/api/client/feeds.js";
+import { getTrendStats } from "#lib/api/client/stats.js";
+import { useFeedStats } from "#lib/hooks/useFeedStats.svelte.js";
 
 // Spy-mode automocks keep every export bound and let each test override only
 // the network calls.
-vi.mock("$lib/api/client/feeds", { spy: true });
-vi.mock("$lib/api/client/stats", { spy: true });
-vi.mock("$lib/hooks/useFeedStats.svelte", { spy: true });
+vi.mock("#lib/api/client/feeds.js", { spy: true });
+vi.mock("#lib/api/client/stats.js", { spy: true });
+vi.mock("#lib/hooks/useFeedStats.svelte.js", { spy: true });
 
 import Page from "./+page.svelte";
 

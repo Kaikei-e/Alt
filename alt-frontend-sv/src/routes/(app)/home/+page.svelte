@@ -1,37 +1,37 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
-import AskSheet from "$lib/components/knowledge-home/AskSheet.svelte";
-import DegradedModeBanner from "$lib/components/knowledge-home/DegradedModeBanner.svelte";
-import GlobalSearchEntry from "$lib/components/knowledge-home/GlobalSearchEntry.svelte";
-import KnowledgeStream from "$lib/components/knowledge-home/KnowledgeStream.svelte";
-import LensModal from "$lib/components/knowledge-home/lens/LensModal.svelte";
-import LensSelector from "$lib/components/knowledge-home/lens/LensSelector.svelte";
-import type { TagSuggestion } from "$lib/components/knowledge-home/lens/TagCombobox.svelte";
-import MobileKnowledgeHomeHeader from "$lib/components/knowledge-home/MobileKnowledgeHomeHeader.svelte";
-import MobileRecallSection from "$lib/components/knowledge-home/MobileRecallSection.svelte";
-import RecallRail from "$lib/components/knowledge-home/recall-rail/RecallRail.svelte";
-import StreamUpdateBar from "$lib/components/knowledge-home/StreamUpdateBar.svelte";
-import Toast from "$lib/components/knowledge-home/Toast.svelte";
-import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
-import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
+import AskSheet from "#lib/components/knowledge-home/AskSheet.svelte";
+import DegradedModeBanner from "#lib/components/knowledge-home/DegradedModeBanner.svelte";
+import GlobalSearchEntry from "#lib/components/knowledge-home/GlobalSearchEntry.svelte";
+import KnowledgeStream from "#lib/components/knowledge-home/KnowledgeStream.svelte";
+import LensModal from "#lib/components/knowledge-home/lens/LensModal.svelte";
+import LensSelector from "#lib/components/knowledge-home/lens/LensSelector.svelte";
+import type { TagSuggestion } from "#lib/components/knowledge-home/lens/TagCombobox.svelte";
+import MobileKnowledgeHomeHeader from "#lib/components/knowledge-home/MobileKnowledgeHomeHeader.svelte";
+import MobileRecallSection from "#lib/components/knowledge-home/MobileRecallSection.svelte";
+import RecallRail from "#lib/components/knowledge-home/recall-rail/RecallRail.svelte";
+import StreamUpdateBar from "#lib/components/knowledge-home/StreamUpdateBar.svelte";
+import Toast from "#lib/components/knowledge-home/Toast.svelte";
+import TodayBar from "#lib/components/knowledge-home/TodayBar.svelte";
+import UnifiedIntentBox from "#lib/components/knowledge-home/UnifiedIntentBox.svelte";
 import {
 	type ConnectFeedSource,
 	createClientTransport,
 	listSubscriptions,
-} from "$lib/connect";
+} from "#lib/connect/index.js";
 import type {
 	KnowledgeHomeItemData,
 	LensVersionData,
-} from "$lib/connect/knowledge_home";
-import { useKnowledgeHome } from "$lib/hooks/useKnowledgeHome.svelte";
-import { useLens } from "$lib/hooks/useLens.svelte";
-import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
-import { useStreamUpdates } from "$lib/hooks/useStreamUpdates.svelte";
-import { useToastStore } from "$lib/stores/toast.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+} from "#lib/connect/knowledge_home.js";
+import { useKnowledgeHome } from "#lib/hooks/useKnowledgeHome.svelte.js";
+import { useLens } from "#lib/hooks/useLens.svelte.js";
+import { useRecallRail } from "#lib/hooks/useRecallRail.svelte.js";
+import { useStreamUpdates } from "#lib/hooks/useStreamUpdates.svelte.js";
+import { useToastStore } from "#lib/stores/toast.svelte.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { browser } from "$app/env";
+import { goto } from "$app/navigation";
+import { page } from "$app/state";
 import { buildHomeActionMetadata } from "./home-actions";
 import { refreshHomeWithRecallSync } from "./stream-refresh";
 
@@ -69,6 +69,7 @@ const activeLensName = $derived(
 				null)
 		: null,
 );
+
 const lensMatchCount = $derived(lens.activeLensId ? home.items.length : null);
 const showBanner = $derived(
 	!bannerDismissed &&
@@ -115,16 +116,15 @@ const stream = useStreamUpdates({
 });
 
 async function syncLensQuery(lensId: string | null) {
-	const url = new URL(page.url);
+	const url = new URL(page.url.href);
 	if (lensId) {
 		url.searchParams.set("lens", lensId);
 	} else {
 		url.searchParams.delete("lens");
 	}
 	await goto(`${url.pathname}${url.search}`, {
-		replaceState: true,
-		noScroll: true,
-		keepFocus: true,
+		replace: true,
+		reset: false,
 	});
 }
 
@@ -385,7 +385,7 @@ onMount(async () => {
 					items={visibleItems}
 					loading={home.loading}
 					hasMore={home.hasMore}
-					{activeLensName}
+					activeLensName={activeLensName}
 					emptyReason={emptyReason}
 					streamMode={streamMode}
 					searchQuery={searchQuery}
@@ -472,7 +472,7 @@ onMount(async () => {
 				items={visibleItems}
 				loading={home.loading}
 				hasMore={home.hasMore}
-				{activeLensName}
+				activeLensName={activeLensName}
 				emptyReason={emptyReason}
 				streamMode={streamMode}
 				searchQuery={searchQuery}

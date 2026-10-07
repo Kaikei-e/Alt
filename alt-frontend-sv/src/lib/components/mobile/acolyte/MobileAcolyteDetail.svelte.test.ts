@@ -1,7 +1,7 @@
 import { page } from "@vitest/browser/context";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import type { AcolyteSection } from "$lib/connect/acolyte";
+import type { AcolyteSection } from "#lib/connect/acolyte.js";
 import { MOCK_REPORT, MOCK_SECTIONS, MOCK_VERSIONS } from "./acolyte-fixtures";
 import MobileAcolyteDetail from "./MobileAcolyteDetail.svelte";
 

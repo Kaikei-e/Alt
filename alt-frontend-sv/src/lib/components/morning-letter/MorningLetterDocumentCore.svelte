@@ -4,7 +4,7 @@ import type {
 	MorningLetterBulletEnrichment,
 	MorningLetterDocument,
 	MorningLetterSourceProto,
-} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+} from "#lib/gen/alt/morning_letter/v2/morning_letter_pb.js";
 import ArticleDeck from "./ArticleDeck.svelte";
 import MorningLetterSectionCore from "./MorningLetterSectionCore.svelte";
 import { isLetterStale, orderSections } from "./morning-letter-document";

@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { TimeWindow } from "$lib/schema/stats";
+import type { TimeWindow } from "#lib/schema/stats.js";
 
 interface Props {
 	selected: TimeWindow;

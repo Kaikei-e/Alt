@@ -4,18 +4,18 @@
  * This module provides transport configuration for server-side Connect-RPC calls.
  * It's used in server routes (+server.ts) to call the backend directly.
  *
- * WARNING: This module imports $env/dynamic/private and MUST NOT be imported
+ * WARNING: This module imports $app/env/private and MUST NOT be imported
  * in browser code. Use transport-client.ts for browser-side code instead.
  */
 
 import type { Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { env } from "$env/dynamic/private";
-import { getBackendToken } from "$lib/server/auth";
+import { getBackendToken } from "#lib/server/auth.js";
+import { BACKEND_CONNECT_URL as BACKEND_CONNECT_URL_ENV } from "$app/env/private";
 
 // Connect-RPC server URL (server-side internal URL)
 const BACKEND_CONNECT_URL =
-	env.BACKEND_CONNECT_URL || "http://alt-backend:9101";
+	BACKEND_CONNECT_URL_ENV || "http://alt-backend:9101";
 
 type FetchFn = typeof globalThis.fetch;
 

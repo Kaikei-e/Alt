@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Info } from "@lucide/svelte";
-import type { WhyReasonData } from "$lib/connect/knowledge_home";
+import type { WhyReasonData } from "#lib/connect/knowledge_home.js";
 import { resolveWhyReason } from "./why-reason-map";
 
 interface Props {

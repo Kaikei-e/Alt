@@ -3,8 +3,8 @@ import {
 	generateExcerptFromDescription,
 	mergeTagsLabel,
 	normalizeUrl,
-} from "$lib/utils/feed";
-import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
+} from "#lib/utils/feed.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import type { BackendFeedItem, RenderFeed, SanitizedFeed } from "./types";
 
 function sanitizeUrl(url: string): string {

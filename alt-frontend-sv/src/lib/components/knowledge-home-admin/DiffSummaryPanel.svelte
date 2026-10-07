@@ -1,6 +1,6 @@
 <script lang="ts">
 import { ArrowRight } from "@lucide/svelte";
-import type { ReprojectDiffSummaryData } from "$lib/connect/knowledge_home_admin";
+import type { ReprojectDiffSummaryData } from "#lib/connect/knowledge_home_admin.js";
 
 let { diff }: { diff: ReprojectDiffSummaryData | null } = $props();
 

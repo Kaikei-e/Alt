@@ -13,7 +13,7 @@
  */
 import { onMount } from "svelte";
 
-import { Switch } from "$lib/components/ui/switch";
+import { Switch } from "#lib/components/ui/switch/index.js";
 import {
 	createBrowserSubscription,
 	currentBrowserSubscription,
@@ -24,8 +24,8 @@ import {
 	pushSupported,
 	registerSubscription,
 	updatePreferences,
-} from "$lib/push/client";
-import { isInstalled } from "$lib/push/install-state";
+} from "#lib/push/client.js";
+import { isInstalled } from "#lib/push/install-state.js";
 import {
 	decideAction,
 	KIND_DESCRIPTIONS,
@@ -34,7 +34,7 @@ import {
 	type NotificationKind,
 	noPreferences,
 	type Preferences,
-} from "$lib/push/preferences";
+} from "#lib/push/preferences.js";
 
 let preferences = $state<Preferences>(noPreferences());
 let hasSubscription = $state(false);

@@ -13,7 +13,7 @@ import {
 	PulseStatus as ProtoPulseStatus,
 	TopicRole as ProtoTopicRole,
 	RecapService,
-} from "$lib/gen/alt/recap/v2/recap_pb";
+} from "#lib/gen/alt/recap/v2/recap_pb.js";
 import type {
 	Confidence,
 	EveningPulse,
@@ -22,7 +22,7 @@ import type {
 	QuietDayInfo,
 	TopicRole,
 	WeeklyHighlight,
-} from "$lib/schema/evening_pulse";
+} from "#lib/schema/evening_pulse.js";
 
 /**
  * Gets Evening Pulse data via Connect-RPC.

@@ -1,6 +1,6 @@
 <script lang="ts">
-import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
-import type { StreamState } from "$lib/hooks/useConnectAdminMetrics.svelte";
+import type { MetricResult } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
+import type { StreamState } from "#lib/hooks/useConnectAdminMetrics.svelte.js";
 
 let {
 	metrics,

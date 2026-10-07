@@ -1,6 +1,6 @@
 <script lang="ts">
 import { RefreshCw } from "@lucide/svelte";
-import type { TagTrailTag } from "$lib/schema/tagTrail";
+import type { TagTrailTag } from "#lib/schema/tagTrail.js";
 import TagChipList from "./TagChipList.svelte";
 
 interface FeedData {

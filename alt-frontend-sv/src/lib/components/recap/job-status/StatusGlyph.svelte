@@ -4,7 +4,7 @@ import {
 	statusToGlyph,
 	statusToInk,
 	statusToLabel,
-} from "$lib/utils/jobStatusInk";
+} from "#lib/utils/jobStatusInk.js";
 
 interface Props {
 	status: StatusInput;

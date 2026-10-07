@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$app/environment", () => ({ browser: true }));
-vi.mock("$app/paths", () => ({ base: "" }));
+vi.mock("$app/env", () => ({ browser: true }));
+vi.mock("$app/paths", () => ({
+	resolve: (path: string) => `/${path.replace(/^\//, "")}`,
+}));
 
 const IMPORT_RESULT = {
 	total: 2,

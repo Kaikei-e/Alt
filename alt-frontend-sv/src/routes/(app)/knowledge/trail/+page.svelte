@@ -1,10 +1,10 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
-import TrailSearch from "$lib/components/knowledge-trail/TrailSearch.svelte";
-import TrailSpine from "$lib/components/knowledge-trail/TrailSpine.svelte";
-import type { BranchData } from "$lib/connect/knowledge_trail";
-import { useKnowledgeTrail } from "$lib/hooks/useKnowledgeTrail.svelte";
+import TrailSearch from "#lib/components/knowledge-trail/TrailSearch.svelte";
+import TrailSpine from "#lib/components/knowledge-trail/TrailSpine.svelte";
+import type { BranchData } from "#lib/connect/knowledge_trail.js";
+import { useKnowledgeTrail } from "#lib/hooks/useKnowledgeTrail.svelte.js";
+import { browser } from "$app/env";
 
 const trail = useKnowledgeTrail();
 
@@ -94,7 +94,7 @@ const branchByEpisodeKey = $derived.by(() => {
 		matchedItemKeys={trail.searchActive ? trail.matchedItemKeys : []}
 		searchActive={trail.searchActive}
 		onLoadMore={() => trail.loadMore()}
-		{branchByEpisodeKey}
+		branchByEpisodeKey={branchByEpisodeKey}
 		onResolveBranch={trail.resolveBranch}
 	/>
 </div>

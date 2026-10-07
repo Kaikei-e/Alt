@@ -10,7 +10,7 @@ import {
 	createClientTransport,
 	deleteAugurConversation,
 	listAugurConversations,
-} from "$lib/connect";
+} from "#lib/connect/index.js";
 
 export interface UseAugurHistoryOptions {
 	/** Page size for listConversations (default 20). */

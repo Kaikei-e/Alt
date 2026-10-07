@@ -1,6 +1,5 @@
 <script lang="ts">
-import { resolve } from "$app/paths";
-import { Button } from "$lib/components/ui/button";
+import { Button } from "#lib/components/ui/button/index.js";
 import {
 	Card,
 	CardContent,
@@ -8,12 +7,13 @@ import {
 	CardFooter,
 	CardHeader,
 	CardTitle,
-} from "$lib/components/ui/card";
+} from "#lib/components/ui/card/index.js";
+import { resolve } from "$app/paths";
 import type { PageData } from "./$types";
 
 const { data }: { data: PageData } = $props();
 const errorId = $derived(data.errorId);
-const loginPath = resolve("/login");
+const loginPath = resolve("login");
 const homePath = resolve("/");
 </script>
 

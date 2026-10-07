@@ -1,6 +1,6 @@
 <script lang="ts">
 import { AlarmClockOff, Clock, X } from "@lucide/svelte";
-import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import type { RecallCandidateData } from "#lib/connect/knowledge_home.js";
 import RecallReasonBadge from "./RecallReasonBadge.svelte";
 import RecallWhyPanel from "./RecallWhyPanel.svelte";
 import { resolveRecallReason } from "./recall-reason-map";

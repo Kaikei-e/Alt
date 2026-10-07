@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { FeatureFlagsConfigData } from "$lib/connect/knowledge_home_admin";
+import type { FeatureFlagsConfigData } from "#lib/connect/knowledge_home_admin.js";
 
 let { flags }: { flags: FeatureFlagsConfigData | null } = $props();
 

@@ -15,7 +15,7 @@ import {
 	type RecallCandidate as ProtoRecallCandidate,
 	type TodayDigest as ProtoTodayDigest,
 	type WhyReason as ProtoWhyReason,
-} from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
+} from "#lib/gen/alt/knowledge_home/v1/knowledge_home_pb.js";
 
 /** Type-safe KnowledgeHomeService client */
 type KnowledgeHomeClient = Client<typeof KnowledgeHomeService>;

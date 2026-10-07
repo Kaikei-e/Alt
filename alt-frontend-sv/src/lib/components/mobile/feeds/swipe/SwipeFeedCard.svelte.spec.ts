@@ -9,7 +9,7 @@ import { page } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 
-import type { RenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import SwipeFeedCard from "./SwipeFeedCard.svelte";
 
 // Mock fixture for testing
@@ -28,7 +28,7 @@ const mockFeed: RenderFeed = {
 };
 
 // Mock API client functions
-vi.mock("$lib/api/client", () => ({
+vi.mock("#lib/api/client/index.js", () => ({
 	getFeedContentOnTheFlyClient: vi.fn(() =>
 		Promise.resolve({
 			content: "<p>Full article content here.</p>",
@@ -45,7 +45,7 @@ vi.mock("$lib/api/client", () => ({
 }));
 
 // Mock Connect RPC functions
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamSummarizeWithAbortAdapter: vi.fn(
 		(
@@ -290,7 +290,9 @@ describe("SwipeFeedCard", () => {
 
 	describe("summary abort on destroy", () => {
 		it("aborts summary stream when component is destroyed", async () => {
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
 			const mockAbortController = new AbortController();
 			const abortSpy = vi.spyOn(mockAbortController, "abort");
 
@@ -338,7 +340,9 @@ describe("SwipeFeedCard", () => {
 
 	describe("article retry", () => {
 		it("shows error state on Article button when content fetch fails", async () => {
-			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			const { getFeedContentOnTheFlyClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				new Error("Server error"),
 			);
@@ -365,7 +369,9 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("retries content fetch when error button is clicked", async () => {
-			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			const { getFeedContentOnTheFlyClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			// Persistent reject/resolve rather than a queue of `Once` mocks: the
 			// component also fires a background fetch from onMount, so the click
 			// is not the first call and a queue is consumed in an order this test
@@ -414,7 +420,9 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("shows content error with role='alert'", async () => {
-			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			const { getFeedContentOnTheFlyClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				new Error("Server error"),
 			);
@@ -442,7 +450,9 @@ describe("SwipeFeedCard", () => {
 		// surface the component was never asked to show. The fallback-succeeds
 		// path is covered separately in "summary fallback" below.
 		const failStream = async () => {
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementation(
 				(
 					_transport: unknown,
@@ -461,7 +471,9 @@ describe("SwipeFeedCard", () => {
 		};
 
 		const failLegacyFallback = async () => {
-			const { summarizeArticleClient } = await import("$lib/api/client");
+			const { summarizeArticleClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(summarizeArticleClient).mockRejectedValue(
 				new Error("500 Internal Server Error"),
 			);
@@ -528,7 +540,9 @@ describe("SwipeFeedCard", () => {
 		// That behaviour had no coverage, which is why the two tests above could
 		// silently assert against a rendered summary instead of an error.
 		it("renders the legacy summary when the stream fails but the fallback succeeds", async () => {
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementation(
 				(
 					_transport: unknown,
@@ -550,7 +564,7 @@ describe("SwipeFeedCard", () => {
 			// this test. Declaring the behaviour it depends on keeps it
 			// independent of the order the tests happen to run in.
 			const { summarizeArticleClient, getFeedContentOnTheFlyClient } =
-				await import("$lib/api/client");
+				await import("#lib/api/client/index.js");
 			vi.mocked(summarizeArticleClient).mockResolvedValue({
 				success: true,
 				summary: "This is a test summary.",
@@ -607,7 +621,9 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("Favorite button calls registerFavoriteFeedClient on click", async () => {
-			const { registerFavoriteFeedClient } = await import("$lib/api/client");
+			const { registerFavoriteFeedClient } = await import(
+				"#lib/api/client/index.js"
+			);
 
 			render(SwipeFeedCard, {
 				props: defaultProps,
@@ -639,7 +655,9 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("Favorite button is retryable after API error", async () => {
-			const { registerFavoriteFeedClient } = await import("$lib/api/client");
+			const { registerFavoriteFeedClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(registerFavoriteFeedClient).mockRejectedValueOnce(
 				new Error("network error"),
 			);
@@ -665,7 +683,9 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("Favorite button recovers from error on retry", async () => {
-			const { registerFavoriteFeedClient } = await import("$lib/api/client");
+			const { registerFavoriteFeedClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(registerFavoriteFeedClient)
 				.mockRejectedValueOnce(new Error("network error"))
 				.mockResolvedValueOnce({ message: "ok" });
@@ -698,7 +718,9 @@ describe("SwipeFeedCard", () => {
 			// The onMount fetch used to console.error and stop. The reader was
 			// then shown the RSS description with no sign that anything had been
 			// attempted, let alone that it had failed.
-			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			const { getFeedContentOnTheFlyClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				connectError(Code.Unavailable),
 			);
@@ -724,7 +746,9 @@ describe("SwipeFeedCard", () => {
 		it("treats an empty body from the background fetch as a state, not a no-op", async () => {
 			// `content: ""` is the ADR-000581 trap. It has to land somewhere
 			// explicit or it reads as "still loading" forever.
-			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			const { getFeedContentOnTheFlyClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
 				content: "",
 				article_id: "",
@@ -743,7 +767,9 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("shows the pending state, not an error, while the fetch is in flight", async () => {
-			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			const { getFeedContentOnTheFlyClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(getFeedContentOnTheFlyClient).mockImplementation(
 				() => new Promise(() => {}),
 			);
@@ -767,7 +793,9 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("states the shared wording and both remedies when it is genuinely terminal", async () => {
-			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			const { getFeedContentOnTheFlyClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				connectError(Code.Unavailable),
 			);
@@ -795,7 +823,9 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("does not auto-retry Code.Unavailable (ADR-000959) but does retry an unstamped 429", async () => {
-			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			const { getFeedContentOnTheFlyClient } = await import(
+				"#lib/api/client/index.js"
+			);
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				connectError(Code.Unavailable, { "Retry-After": "0" }),
 			);

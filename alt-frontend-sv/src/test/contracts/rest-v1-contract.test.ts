@@ -15,7 +15,7 @@ import {
 	SearchResponseSchema,
 	StatsResponseSchema,
 	UnreadCountResponseSchema,
-} from "$lib/schema/api-responses";
+} from "#lib/schema/api-responses.js";
 import {
 	ARTICLE_CONTENT_RESPONSE,
 	FEEDS_RESPONSE,

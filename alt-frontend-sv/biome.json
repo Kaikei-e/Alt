@@ -77,13 +77,13 @@
 								"patterns": [
 									{
 										"group": [
-											"$lib/hooks/*",
-											"$lib/stores/*",
-											"$lib/api/*",
-											"$lib/connect/*",
-											"$lib/queries/*",
-											"$lib/components/*",
-											"$lib/server/*"
+											"#lib/hooks/*",
+											"#lib/stores/*",
+											"#lib/api/*",
+											"#lib/connect/*",
+											"#lib/queries/*",
+											"#lib/components/*",
+											"#lib/server/*"
 										]
 									}
 								]

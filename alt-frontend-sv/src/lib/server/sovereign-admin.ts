@@ -2,42 +2,48 @@
  * Server-side client for knowledge-sovereign admin REST endpoints.
  *
  * Calls knowledge-sovereign metrics port (:9501) directly from SvelteKit server,
- * authenticates the call, and hands the bodies to $lib/server/sovereign-admin-wire
+ * authenticates the call, and hands the bodies to #lib/server/sovereign-admin-wire
  * for the envelope unwrapping and the snake_case → camelCase rename.
  */
 
 import { readFileSync } from "node:fs";
-import { env } from "$env/dynamic/private";
 import type {
 	RawRetentionRun,
 	SovereignAdminWire,
-} from "$lib/server/sovereign-admin-wire";
+} from "#lib/server/sovereign-admin-wire.js";
 import {
 	normalizeRetentionRun,
 	normalizeSnapshotMetadata,
 	normalizeSovereignAdminSnapshot,
-} from "$lib/server/sovereign-admin-wire";
+} from "#lib/server/sovereign-admin-wire.js";
 import type {
 	RetentionRunResponse,
 	SnapshotMetadata,
 	SovereignAdminSnapshot,
-} from "$lib/types/sovereign-admin";
+} from "#lib/types/sovereign-admin.js";
+import {
+	SOVEREIGN_ADMIN_AUTH,
+	SOVEREIGN_ADMIN_TOKEN,
+	SOVEREIGN_ADMIN_TOKEN_FILE,
+	SOVEREIGN_METRICS_URL as SOVEREIGN_METRICS_URL_ENV,
+} from "$app/env/private";
 
 const SOVEREIGN_METRICS_URL =
-	env.SOVEREIGN_METRICS_URL || "http://knowledge-sovereign:9501";
+	SOVEREIGN_METRICS_URL_ENV || "http://knowledge-sovereign:9501";
 
 // knowledge-sovereign Bearer-gates every /admin/* route on its metrics port and
 // opens it only for an explicit ADMIN_AUTH=disabled, so this caller mirrors that
 // switch rather than reading an absent token as "no token needed".
 function loadAdminToken(): string | null {
-	if (env.SOVEREIGN_ADMIN_AUTH === "disabled") {
+	if (SOVEREIGN_ADMIN_AUTH === "disabled") {
 		console.warn(
 			"sovereign_admin_auth_disabled: SOVEREIGN_ADMIN_AUTH=disabled was set explicitly; /admin/* calls carry no Bearer token",
 		);
+
 		return null;
 	}
 
-	const tokenFile = env.SOVEREIGN_ADMIN_TOKEN_FILE;
+	const tokenFile = SOVEREIGN_ADMIN_TOKEN_FILE;
 	if (tokenFile) {
 		let contents: string;
 		try {
@@ -61,7 +67,7 @@ function loadAdminToken(): string | null {
 		return token;
 	}
 
-	const token = env.SOVEREIGN_ADMIN_TOKEN?.trim();
+	const token = SOVEREIGN_ADMIN_TOKEN?.trim();
 	if (token) {
 		console.info("sovereign_admin_auth_enabled");
 		return token;

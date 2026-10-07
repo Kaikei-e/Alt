@@ -1,7 +1,7 @@
-import { browser } from "$app/environment";
-import { base } from "$app/paths";
-import { getClientCSRFToken } from "$lib/api/client/core";
-import type { OPMLImportResult } from "$lib/schema/opml";
+import { getClientCSRFToken } from "#lib/api/client/core.js";
+import type { OPMLImportResult } from "#lib/schema/opml.js";
+import { browser } from "$app/env";
+import { resolve } from "$app/paths";
 
 /**
  * Export all feeds as OPML 2.0 XML.
@@ -12,10 +12,8 @@ export async function exportOPMLClient(): Promise<Blob> {
 		throw new Error("This function can only be called from the client");
 	}
 
-	const url = `${base}/api/v1/rss-feed-link/export/opml`;
-	const response = await fetch(url, {
-		credentials: "include",
-	});
+	const url = resolve(`api/v1/rss-feed-link/export/opml`);
+	const response = await fetch(url, { credentials: "include" });
 
 	if (!response.ok) {
 		throw new Error(`Export failed: ${response.status} ${response.statusText}`);
@@ -40,7 +38,8 @@ export async function importOPMLClient(file: File): Promise<OPMLImportResult> {
 	const formData = new FormData();
 	formData.append("file", file);
 
-	const url = `${base}/api/v1/rss-feed-link/import/opml`;
+	const url = resolve(`api/v1/rss-feed-link/import/opml`);
+
 	const sendRequest = (token: string | null): Promise<Response> =>
 		fetch(url, {
 			method: "POST",

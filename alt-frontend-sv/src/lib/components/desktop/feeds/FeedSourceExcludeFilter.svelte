@@ -1,12 +1,12 @@
 <script lang="ts">
 import { Ban, X } from "@lucide/svelte";
-import type { ConnectFeedSource } from "$lib/connect/feeds";
+import type { ConnectFeedSource } from "#lib/connect/feeds.js";
 import {
 	collectFeedLinkIdsByDomain,
 	extractDomain,
 	getEffectiveDomain,
 	groupSourcesByDomain,
-} from "$lib/utils/feed-source-filter";
+} from "#lib/utils/feed-source-filter.js";
 
 interface Props {
 	sources: ConnectFeedSource[];

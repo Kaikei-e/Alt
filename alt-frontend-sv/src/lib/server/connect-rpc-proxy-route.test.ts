@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$env/dynamic/private", () => ({
-	env: {
-		BACKEND_CONNECT_URL: "http://backend.test",
-	},
+vi.mock("$app/env/private", () => ({
+	BACKEND_CONNECT_URL: "http://backend.test",
 }));
 
 describe("Connect-RPC proxy route", () => {

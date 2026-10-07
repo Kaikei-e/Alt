@@ -10,9 +10,9 @@
  */
 
 import { onDestroy, untrack } from "svelte";
-import { browser } from "$app/environment";
-import { streamFeedStats } from "$lib/connect/feeds";
-import { createClientTransport } from "$lib/connect/transport-client";
+import { streamFeedStats } from "#lib/connect/feeds.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
+import { browser } from "$app/env";
 
 interface StreamingFeedStatsState {
 	feedAmount: number;

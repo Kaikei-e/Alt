@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock $env/dynamic/private
-vi.mock("$env/dynamic/private", () => ({
-	env: { BACKEND_CONNECT_URL: "http://test-backend:9101" },
+// Mock $app/env/private
+vi.mock("$app/env/private", () => ({
+	BACKEND_CONNECT_URL: "http://test-backend:9101",
+	AUTH_HUB_INTERNAL_URL: "http://auth-hub:8888",
 }));
 
-// Mock $lib/api (getBackendToken)
-vi.mock("$lib/api", () => ({
+// Mock #lib/api (getBackendToken)
+vi.mock("#lib/api.js", () => ({
 	getBackendToken: vi.fn(),
 }));
 

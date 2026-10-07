@@ -5,7 +5,7 @@ import {
 	createClientTransport,
 	fetchArticlesByTag,
 	type TagTrailArticle,
-} from "$lib/connect";
+} from "#lib/connect/index.js";
 
 interface Props {
 	tagName: string;

@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { RetentionRunResponse } from "$lib/types/sovereign-admin";
+import type { RetentionRunResponse } from "#lib/types/sovereign-admin.js";
 
 interface Props {
 	result: RetentionRunResponse | null;

@@ -3,7 +3,7 @@ import {
 	MOBILE_MENU_SECTIONS,
 	type MobileMenuItem,
 	type MobileMenuSection,
-} from "$lib/config/navigation";
+} from "#lib/config/navigation.js";
 
 export const MENU_SECTIONS = MOBILE_MENU_SECTIONS;
 export const getVisibleSections = getVisibleMobileMenuSections;

@@ -1,7 +1,7 @@
 <script lang="ts">
 import { FileText } from "@lucide/svelte";
-import { articleThumbnailResolver } from "$lib/utils/articleThumbnail";
-import { createProxyImage } from "$lib/utils/proxyImage.svelte";
+import { articleThumbnailResolver } from "#lib/utils/articleThumbnail.js";
+import { createProxyImage } from "#lib/utils/proxyImage.svelte.js";
 
 interface Props {
 	/** The article's own title, never the message envelope it arrived in. */

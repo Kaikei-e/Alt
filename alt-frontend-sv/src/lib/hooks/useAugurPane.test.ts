@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock $lib/connect
+// Mock #lib/connect
 const mockStreamAugurChat = vi.fn();
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamAugurChat: (...args: unknown[]) => mockStreamAugurChat(...args),
 }));
@@ -11,7 +11,7 @@ vi.mock("$lib/connect", () => ({
 // typewriter reveal to its immediate (reduced-motion) mode so deltas land
 // synchronously. The paced path is covered by typewriterReveal.test.ts with an
 // injected scheduler and by the AugurChat client specs in a real browser.
-vi.mock("$lib/stores/motion.svelte", () => ({
+vi.mock("#lib/stores/motion.svelte.js", () => ({
 	prefersReducedMotion: () => true,
 }));
 

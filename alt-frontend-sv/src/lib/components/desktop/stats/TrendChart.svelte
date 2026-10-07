@@ -12,7 +12,7 @@ import {
 	Tooltip,
 } from "chart.js";
 import { onDestroy } from "svelte";
-import type { TrendDataPoint } from "$lib/schema/stats";
+import type { TrendDataPoint } from "#lib/schema/stats.js";
 
 // Register Chart.js components
 Chart.register(

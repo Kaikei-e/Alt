@@ -2,18 +2,18 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { AlertTriangle, ArrowLeft, Calendar, RefreshCw } from "@lucide/svelte";
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
-import { goto } from "$app/navigation";
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import { RecapTopicCard } from "$lib/components/recap";
-import { Button } from "$lib/components/ui/button";
+import PageHeader from "#lib/components/desktop/layout/PageHeader.svelte";
+import { RecapTopicCard } from "#lib/components/recap/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
 import {
 	createClientTransport,
 	getTopicCards,
 	type TopicCardsResponse,
-} from "$lib/connect";
-import { getLoadingStore } from "$lib/stores/loading.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+} from "#lib/connect/index.js";
+import { getLoadingStore } from "#lib/stores/loading.svelte.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { browser } from "$app/env";
+import { goto } from "$app/navigation";
 import {
 	computeWindowLabel,
 	determineCardsPageState,
@@ -29,13 +29,8 @@ let recapCardsData = $state<TopicCardsResponse | null>(null);
 let isLoading = $state(true);
 let error = $state<Error | null>(null);
 let isRetrying = $state(false);
-
 const pageState = $derived(
-	determineCardsPageState({
-		isLoading,
-		error,
-		data: recapCardsData,
-	}),
+	determineCardsPageState({ isLoading, error, data: recapCardsData }),
 );
 
 const sortedCards = $derived(
@@ -256,10 +251,10 @@ onMount(() => {
 						<span class="inline-block w-2 h-2 rounded-full bg-[var(--interactive-text)]"></span>
 						{#if windowLabel}
 							<span>{windowLabel}</span>
-							<span class="text-[var(--text-muted)]">&middot;</span>
+							<span class="text-[var(--text-muted)]">·</span>
 						{/if}
 						<span>{formatJobWindow(recapCardsData.job.from, recapCardsData.job.to)}</span>
-						<span class="text-[var(--text-muted)]">&middot;</span>
+						<span class="text-[var(--text-muted)]">·</span>
 						<span>{sortedCards.length} topic{sortedCards.length !== 1 ? 's' : ''}</span>
 					</div>
 					<div
@@ -291,7 +286,7 @@ onMount(() => {
 			<!-- Cards list -->
 			<div data-testid="recap-cards-list" class="space-y-4">
 				{#each sortedCards as card (card.id)}
-					<RecapTopicCard {card} />
+					<RecapTopicCard card={card} />
 				{/each}
 			</div>
 		</div>

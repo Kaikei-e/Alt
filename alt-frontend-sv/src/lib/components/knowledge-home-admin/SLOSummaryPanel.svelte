@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { SLOStatusData } from "$lib/connect/knowledge_home_admin";
+import type { SLOStatusData } from "#lib/connect/knowledge_home_admin.js";
 import AdminMetricCard from "./AdminMetricCard.svelte";
 import ErrorBudgetGauge from "./ErrorBudgetGauge.svelte";
 

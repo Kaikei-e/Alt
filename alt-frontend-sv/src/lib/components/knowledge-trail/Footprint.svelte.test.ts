@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { FootprintData } from "$lib/connect/knowledge_trail";
+import type { FootprintData } from "#lib/connect/knowledge_trail.js";
 import Footprint from "./Footprint.svelte";
 
 function makeFootprint(overrides: Partial<FootprintData> = {}): FootprintData {

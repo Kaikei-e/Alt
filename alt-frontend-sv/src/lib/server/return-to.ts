@@ -49,7 +49,10 @@ export function sanitizeReturnTo(
 	try {
 		resolved = isAbsoluteUrl(returnTo)
 			? new URL(returnTo)
-			: new URL(returnTo.startsWith("/") ? returnTo : `/${returnTo}`, originUrl);
+			: new URL(
+					returnTo.startsWith("/") ? returnTo : `/${returnTo}`,
+					originUrl,
+				);
 	} catch {
 		return fallback;
 	}

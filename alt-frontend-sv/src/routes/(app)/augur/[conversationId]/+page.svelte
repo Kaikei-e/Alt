@@ -1,12 +1,12 @@
 <script lang="ts">
-import { page } from "$app/stores";
-import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
+import AugurChat from "#lib/components/desktop/augur/AugurChat.svelte";
 import {
 	type AugurStoredConversation,
 	createClientTransport,
 	getAugurConversation,
-} from "$lib/connect";
-import { formatAugurConversationLabel } from "$lib/utils/augur-entry";
+} from "#lib/connect/index.js";
+import { formatAugurConversationLabel } from "#lib/utils/augur-entry.js";
+import { page } from "$app/state";
 
 type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
 
@@ -31,7 +31,7 @@ let conversation = $state<AugurStoredConversation | null>(null);
 let errorMessage = $state<string>("");
 let isLoading = $state(true);
 
-const conversationId = $derived($page.params.conversationId ?? "");
+const conversationId = $derived(page.params.conversationId ?? "");
 // The stored title is the first user turn verbatim, marker and all.
 const conversationLabel = $derived(
 	formatAugurConversationLabel(conversation?.title ?? ""),
@@ -135,20 +135,20 @@ async function load(id: string) {
 	color: #b91c1c;
 }
 
-.augur-frame {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));
-	overflow: hidden;
-}
-
-/* The same 48rem the `md:` utilities and `isDesktop()` use. */
-@media (min-width: 48rem) {
 	.augur-frame {
-		position: static;
-		overflow: visible;
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));
+		overflow: hidden;
 	}
-}
+
+	/* The same 48rem the `md:` utilities and `isDesktop()` use. */
+	@media (min-width: 48rem) {
+		.augur-frame {
+			position: static;
+			overflow: visible;
+		}
+	}
 </style>

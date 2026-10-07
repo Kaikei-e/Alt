@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeedSearchResult, SearchFeedItem } from "$lib/schema/search";
+import type { FeedSearchResult, SearchFeedItem } from "#lib/schema/search.js";
 import { transformFeedSearchResult } from "./transformFeedSearchResult";
 
 /**

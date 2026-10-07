@@ -4,7 +4,7 @@
  * Group A endpoints: plain REST on knowledge-sovereign metrics port (:9501).
  * These are not the wire types. knowledge-sovereign tags every field
  * snake_case and wraps each list in a named envelope ("tables", "snapshots",
- * "logs", "partitions"); $lib/server/sovereign-admin.ts unwraps the envelope
+ * "logs", "partitions"); src/lib/server/sovereign-admin.ts unwraps the envelope
  * and maps the rows onto the shapes below, renaming and dropping fields the
  * panel has no use for. Read the wire shape from the Go json tags — pinned in
  * src/test/contracts/sovereign-admin-contract.test.ts — never from these names.

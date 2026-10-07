@@ -8,7 +8,7 @@ import {
 } from "../../../../../tests/fixtures/search";
 import SearchResultItem from "./SearchResultItem.svelte";
 
-vi.mock("$lib/api/client", () => ({
+vi.mock("#lib/api/client/index.js", () => ({
 	getArticleSummaryClient: vi.fn(() =>
 		Promise.resolve({
 			matched_articles: [
@@ -193,7 +193,9 @@ describe("SearchResultItem long-URL wrapping", () => {
 	});
 
 	it("breaks long URLs inside an expanded summary", async () => {
-		const { getArticleSummaryClient } = await import("$lib/api/client");
+		const { getArticleSummaryClient } = await import(
+			"#lib/api/client/index.js"
+		);
 		vi.mocked(getArticleSummaryClient).mockResolvedValueOnce({
 			matched_articles: [
 				{
@@ -229,7 +231,9 @@ describe("SearchResultItem article body on demand", () => {
 	});
 
 	async function contentClient() {
-		const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+		const { getFeedContentOnTheFlyClient } = await import(
+			"#lib/api/client/index.js"
+		);
 		return vi.mocked(getFeedContentOnTheFlyClient);
 	}
 

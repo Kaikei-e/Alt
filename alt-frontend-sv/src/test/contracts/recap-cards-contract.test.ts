@@ -20,7 +20,7 @@ import {
 	RecapCardSourceSchema,
 	RecapCardsJobSchema,
 	RecapCardsRunSchema,
-} from "$lib/gen/alt/recap/v2/recap_pb";
+} from "#lib/gen/alt/recap/v2/recap_pb.js";
 import {
 	buildMockDegradedRecapCardsResponse,
 	buildMockRecapCardsResponse,

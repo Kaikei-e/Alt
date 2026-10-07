@@ -1,10 +1,10 @@
 <script lang="ts">
-import type { JobStats, RecentJobSummary } from "$lib/schema/dashboard";
+import type { JobStats, RecentJobSummary } from "#lib/schema/dashboard.js";
 import {
 	calculateJobMetrics,
 	formatDurationWithUnits,
 	getPerformanceLabel,
-} from "$lib/utils/stageMetrics";
+} from "#lib/utils/stageMetrics.js";
 import StageDurationBar from "./StageDurationBar.svelte";
 import StatusTransitionTimeline from "./StatusTransitionTimeline.svelte";
 

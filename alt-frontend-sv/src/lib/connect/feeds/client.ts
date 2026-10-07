@@ -4,7 +4,7 @@
 
 import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
-import { FeedService } from "$lib/gen/alt/feeds/v2/feeds_pb";
+import { FeedService } from "#lib/gen/alt/feeds/v2/feeds_pb.js";
 
 /** Type-safe FeedService client */
 type FeedClient = Client<typeof FeedService>;

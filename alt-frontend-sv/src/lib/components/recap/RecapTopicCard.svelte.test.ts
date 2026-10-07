@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { RecapCard } from "$lib/connect/recap";
+import type { RecapCard } from "#lib/connect/recap.js";
 import RecapTopicCard from "./RecapTopicCard.svelte";
 
 function makeCard(overrides: Partial<RecapCard> = {}): RecapCard {

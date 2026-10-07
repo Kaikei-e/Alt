@@ -1,23 +1,23 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { batchPrefetchImagesClient } from "$lib/api/client/articles";
+import { batchPrefetchImagesClient } from "#lib/api/client/articles.js";
 import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
-} from "$lib/api/client/feeds";
-import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
-import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
-import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
-import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
-import VisualFeedCard from "$lib/components/desktop/feeds/VisualFeedCard.svelte";
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import MobileGalleryTile from "$lib/components/mobile/feeds/gallery/MobileGalleryTile.svelte";
-import type { ConnectFeedSource } from "$lib/connect/feeds";
-import type { RenderFeed } from "$lib/schema/feed";
-import { ogImageOverlay } from "$lib/stores/ogImageOverlay.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
-import { selectOgImagePrefetchIds } from "$lib/utils/ogImagePrefetch";
-import { createRequestQueue } from "$lib/utils/requestQueue";
+} from "#lib/api/client/feeds.js";
+import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
+import FeedFilters from "#lib/components/desktop/feeds/FeedFilters.svelte";
+import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
+import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
+import VisualFeedCard from "#lib/components/desktop/feeds/VisualFeedCard.svelte";
+import PageHeader from "#lib/components/desktop/layout/PageHeader.svelte";
+import MobileGalleryTile from "#lib/components/mobile/feeds/gallery/MobileGalleryTile.svelte";
+import type { ConnectFeedSource } from "#lib/connect/feeds.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import { ogImageOverlay } from "#lib/stores/ogImageOverlay.svelte.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { selectOgImagePrefetchIds } from "#lib/utils/ogImagePrefetch.js";
+import { createRequestQueue } from "#lib/utils/requestQueue.js";
 
 interface PageData {
 	initialFeeds?: RenderFeed[];

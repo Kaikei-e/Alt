@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { UiNode } from "@ory/client";
-import { Button } from "$lib/components/ui/button";
+import { Button } from "#lib/components/ui/button/index.js";
 import {
 	Card,
 	CardContent,
@@ -8,9 +8,9 @@ import {
 	CardFooter,
 	CardHeader,
 	CardTitle,
-} from "$lib/components/ui/card";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
+} from "#lib/components/ui/card/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
 import type { PageData } from "./$types";
 
 const { data }: { data: PageData } = $props();

@@ -7,7 +7,7 @@
  * (snapshots/latest, snapshots/create) answer with a bare snake_case object.
  *
  * Kept apart from the client that fetches them because that client reads
- * $env/dynamic/private, which only vite can resolve: contract tests run under
+ * $app/env/private, which only vite can resolve: contract tests run under
  * the bun test runner and can import this module but not that one.
  */
 
@@ -20,7 +20,7 @@ import type {
 	SnapshotMetadata,
 	SovereignAdminSnapshot,
 	TableStorageInfo,
-} from "$lib/types/sovereign-admin";
+} from "#lib/types/sovereign-admin.js";
 
 export type RawRow = Record<string, unknown>;
 

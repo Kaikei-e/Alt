@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { RecentJobSummary } from "$lib/schema/dashboard";
+import type { RecentJobSummary } from "#lib/schema/dashboard.js";
 import MobileJobCard from "./MobileJobCard.svelte";
 
 interface Props {

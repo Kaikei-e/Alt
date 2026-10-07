@@ -57,7 +57,7 @@ const { streamCalls, streamAugurChat } = vi.hoisted(() => {
 	};
 });
 
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamAugurChat,
 }));

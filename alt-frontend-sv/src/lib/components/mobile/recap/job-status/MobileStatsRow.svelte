@@ -1,5 +1,5 @@
 <script lang="ts">
-import LedgerFigure from "$lib/components/recap/job-status/LedgerFigure.svelte";
+import LedgerFigure from "#lib/components/recap/job-status/LedgerFigure.svelte";
 
 interface Props {
 	successRate: string;

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockGetLatestLetter = vi.fn();
 const mockGetLetterByDate = vi.fn();
 
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	getLatestLetter: (...args: unknown[]) => mockGetLatestLetter(...args),
 	getLetterByDate: (...args: unknown[]) => mockGetLetterByDate(...args),

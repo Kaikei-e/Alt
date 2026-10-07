@@ -3,7 +3,7 @@ import type {
 	HTMLButtonAttributes,
 } from "svelte/elements";
 import { tv, type VariantProps } from "tailwind-variants";
-import type { WithElementRef } from "$lib/utils.js";
+import type { WithElementRef } from "#lib/utils.js";
 
 export const buttonVariants = tv({
 	base: "focus-visible:outline-none inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-none text-base font-bold outline-none transition-all disabled:pointer-events-none disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-60 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",

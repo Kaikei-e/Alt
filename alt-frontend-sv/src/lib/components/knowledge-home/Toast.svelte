@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { ToastItem } from "$lib/stores/toast.svelte";
+import type { ToastItem } from "#lib/stores/toast.svelte.js";
 
 interface Props {
 	items: ToastItem[];

@@ -1,14 +1,14 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { getReadFeedsWithCursorClient } from "$lib/api/client/feeds";
-import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
-import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
-import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
-import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
-import EmptyViewedFeedsState from "$lib/components/mobile/EmptyViewedFeedsState.svelte";
-import MorgueClipping from "$lib/components/mobile/MorgueClipping.svelte";
-import type { RenderFeed } from "$lib/schema/feed";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+import { getReadFeedsWithCursorClient } from "#lib/api/client/feeds.js";
+import DesktopFeedCard from "#lib/components/desktop/feeds/DesktopFeedCard.svelte";
+import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
+import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
+import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
+import EmptyViewedFeedsState from "#lib/components/mobile/EmptyViewedFeedsState.svelte";
+import MorgueClipping from "#lib/components/mobile/MorgueClipping.svelte";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
 
 const dateStr = new Date().toLocaleDateString("en-US", {
 	weekday: "long",

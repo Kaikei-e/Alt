@@ -15,7 +15,7 @@ import {
 	type ConversationSummary as ProtoConversationSummary,
 	type RetrieveContextResponse,
 	type StreamChatResponse,
-} from "$lib/gen/alt/augur/v2/augur_pb";
+} from "#lib/gen/alt/augur/v2/augur_pb.js";
 
 /** Names mirror the proto CitationKind enum so the FE never has to deal
  * with raw enum integers. UNSPECIFIED is the wire default and means the

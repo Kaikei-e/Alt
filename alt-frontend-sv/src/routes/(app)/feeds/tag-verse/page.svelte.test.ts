@@ -3,14 +3,15 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { goto } from "$app/navigation";
 
-// Spy-mode automock: only `goto` must not really run.
-vi.mock("$app/navigation", { spy: true });
+vi.mock("$app/navigation", () => ({
+	goto: vi.fn(),
+}));
 
 // The desktop branch mounts a WebGL scene through Threlte, whose dev tooling
 // pulls a build of tweakpane this bundler cannot resolve — the import error
 // takes the whole file down before a test runs. Nothing here asserts on the
 // scene; a no-op component is exactly what a Svelte 5 client component is.
-vi.mock("$lib/components/desktop/tag-verse/TagVerseScreen.svelte", () => ({
+vi.mock("#lib/components/desktop/tag-verse/TagVerseScreen.svelte", () => ({
 	default: () => {},
 }));
 
@@ -35,7 +36,7 @@ describe("Tag Verse page", () => {
 		render(Page);
 		await settle();
 
-		expect(goto).toHaveBeenCalledWith("/home", { replaceState: true });
+		expect(goto).toHaveBeenCalledWith("/home", { replace: true });
 	});
 
 	it("gives the phone notice a way onward", async () => {

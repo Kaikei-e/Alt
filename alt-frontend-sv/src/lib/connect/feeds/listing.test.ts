@@ -6,7 +6,7 @@ vi.mock("@connectrpc/connect", () => {
 	};
 });
 
-vi.mock("$lib/gen/alt/feeds/v2/feeds_pb", () => ({
+vi.mock("#lib/gen/alt/feeds/v2/feeds_pb.js", () => ({
 	FeedService: {},
 }));
 

@@ -1,4 +1,4 @@
-import type { SearchFeedItem } from "$lib/schema/search";
+import type { SearchFeedItem } from "#lib/schema/search.js";
 
 /**
  * Everything a phone search is made of, held by the route rather than by the

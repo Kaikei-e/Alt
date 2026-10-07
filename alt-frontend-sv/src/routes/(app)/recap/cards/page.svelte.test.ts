@@ -12,8 +12,8 @@ const { mockGetTopicCards } = vi.hoisted(() => ({
 	mockGetTopicCards: vi.fn(),
 }));
 
-vi.mock("$lib/connect", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("$lib/connect")>();
+vi.mock("#lib/connect/index.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#lib/connect/index.js")>();
 	return {
 		...actual,
 		createClientTransport: vi.fn(() => ({})),

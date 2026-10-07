@@ -1,13 +1,13 @@
 <script lang="ts">
 import { AlertCircle, Loader2, MonitorX } from "@lucide/svelte";
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
 import {
 	createClientTransport,
 	fetchTagCloud,
 	type TagCloudItem,
-} from "$lib/connect";
-import { detectGPUBackend } from "$lib/utils/gpuCapability";
+} from "#lib/connect/index.js";
+import { detectGPUBackend } from "#lib/utils/gpuCapability.js";
+import { browser } from "$app/env";
 import TagVerseHUD from "./TagVerseHUD.svelte";
 import TagVerseScene from "./TagVerseScene.svelte";
 
@@ -93,7 +93,11 @@ onMount(() => {
 		</div>
 	{:else}
 		<!-- 3D Scene -->
-		<TagVerseScene {tags} onTagSelect={(name) => (selectedTag = name)} />
+
+		<TagVerseScene
+			tags={tags}
+			onTagSelect={(name) => selectedTag = name}
+		/>
 
 		<!-- Instructions overlay -->
 		<div class="absolute bottom-6 left-6 text-white/30 text-xs select-none pointer-events-none">
@@ -105,7 +109,7 @@ onMount(() => {
 			<TagVerseHUD
 				tagName={selectedTag}
 				articleCount={selectedTagData.articleCount}
-				onClose={() => (selectedTag = null)}
+				onClose={() => selectedTag = null}
 			/>
 		{/if}
 	{/if}

@@ -8,7 +8,7 @@ import type {
 	ConnectFeedItem,
 	FeedCursorResponse,
 	FeedSearchResponse,
-} from "$lib/connect/feeds";
+} from "#lib/connect/feeds.js";
 import { flattenFeedPages, flattenSearchPages } from "./feeds";
 
 // Mock feed item

@@ -4,13 +4,13 @@
  */
 import { createHash } from "node:crypto";
 import type { Identity, Session } from "@ory/client";
-import { env } from "$env/dynamic/private";
-import { ory } from "$lib/server/ory";
+import { ory } from "#lib/server/ory.js";
+import { AUTH_HUB_INTERNAL_URL } from "$app/env/private";
 
 // A04: Default to HTTPS. auth-hub's frontend listener (:8443) uses
 // server-authenticated TLS. NODE_EXTRA_CA_CERTS provides the CA file for
 // hostname verification (CN/SAN = "auth-hub").
-const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "https://auth-hub:8443";
+const AUTH_HUB_URL = AUTH_HUB_INTERNAL_URL || "https://auth-hub:8443";
 const AUTH_HUB_TIMEOUT_MS = 3000;
 
 // Name of the Kratos session cookie (see kratos/kratos.yml `session.cookie`).
@@ -60,7 +60,9 @@ function getCacheKey(cookieHeader: string): string | null {
 // attacker who captured it earlier) cannot keep authenticating against the
 // stale cache for up to SESSION_CACHE_TTL_MS after Kratos has invalidated it.
 // Also notifies auth-hub to immediately invalidate its in-memory session cache.
-export async function invalidateSessionCache(cookieHeader: string): Promise<void> {
+export async function invalidateSessionCache(
+	cookieHeader: string,
+): Promise<void> {
 	const cacheKey = getCacheKey(cookieHeader);
 	if (cacheKey) {
 		sessionCache.delete(cacheKey);
@@ -79,7 +81,10 @@ export async function invalidateSessionCache(cookieHeader: string): Promise<void
 			throw new Error(msg);
 		}
 	} catch (error) {
-		console.error("[auth-middleware] auth-hub session invalidation failed:", error);
+		console.error(
+			"[auth-middleware] auth-hub session invalidation failed:",
+			error,
+		);
 		throw error;
 	}
 }

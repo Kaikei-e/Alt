@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { AcolyteSection } from "$lib/connect/acolyte";
+import type { AcolyteSection } from "#lib/connect/acolyte.js";
 
 interface Props {
 	sections: AcolyteSection[];

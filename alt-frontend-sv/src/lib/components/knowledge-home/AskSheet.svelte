@@ -1,13 +1,13 @@
 <script lang="ts">
 import { RotateCcw, Shuffle } from "@lucide/svelte";
 import { tick } from "svelte";
-import ArticleScopeCard from "$lib/components/desktop/augur/ArticleScopeCard.svelte";
-import QuestionInput from "$lib/components/desktop/augur/QuestionInput.svelte";
-import ThreadEntry from "$lib/components/desktop/augur/ThreadEntry.svelte";
-import * as Sheet from "$lib/components/ui/sheet";
-import { useAugurPane } from "$lib/hooks/useAugurPane.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
-import { buildAugurInitialMessage } from "$lib/utils/augur-entry";
+import ArticleScopeCard from "#lib/components/desktop/augur/ArticleScopeCard.svelte";
+import QuestionInput from "#lib/components/desktop/augur/QuestionInput.svelte";
+import ThreadEntry from "#lib/components/desktop/augur/ThreadEntry.svelte";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import { useAugurPane } from "#lib/hooks/useAugurPane.svelte.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { buildAugurInitialMessage } from "#lib/utils/augur-entry.js";
 import { pickSuggestions } from "./ask-suggestions";
 
 interface Props {

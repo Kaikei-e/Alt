@@ -1,9 +1,8 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { env } from "$env/dynamic/private";
-import { getBackendToken } from "$lib/server/auth";
+import { getBackendToken } from "#lib/server/auth.js";
+import { BACKEND_CONNECT_URL } from "$app/env/private";
 
-const BACKEND_URL =
-	env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
+const BACKEND_URL = BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
 
 export const GET: RequestHandler = async ({ request }) => {
 	const cookieHeader = request.headers.get("cookie") || "";

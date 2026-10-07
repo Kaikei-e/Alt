@@ -8,4 +8,4 @@ export type {
 	TrendDataPoint,
 	TrendDataResponse,
 	UnreadCountResponse,
-} from "$lib/domain/stats/types";
+} from "#lib/domain/stats/types.js";

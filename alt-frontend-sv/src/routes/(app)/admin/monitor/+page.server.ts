@@ -1,5 +1,5 @@
 import { redirect } from "@sveltejs/kit";
-import { getUserRole } from "$lib/server/user-role";
+import { getUserRole } from "#lib/server/user-role.js";
 
 export const load = async ({ locals }) => {
 	if (getUserRole(locals.user) !== "admin") {

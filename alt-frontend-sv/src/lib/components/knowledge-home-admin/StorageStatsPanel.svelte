@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { TableStorageInfo } from "$lib/types/sovereign-admin";
+import type { TableStorageInfo } from "#lib/types/sovereign-admin.js";
 import AdminMetricCard from "./AdminMetricCard.svelte";
 
 interface Props {

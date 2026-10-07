@@ -12,18 +12,18 @@
  * in width, so it is settled in CSS below and never by mounting a second chat.
  */
 import { onDestroy, onMount, tick, untrack } from "svelte";
-import augurAvatar from "$lib/assets/augur-chat.webp";
+import augurAvatar from "#lib/assets/augur-chat.webp";
 import {
 	type AugurCitation,
 	createClientTransport,
 	streamAugurChat,
-} from "$lib/connect";
-import { prefersReducedMotion } from "$lib/stores/motion.svelte";
-import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
+} from "#lib/connect/index.js";
+import { prefersReducedMotion } from "#lib/stores/motion.svelte.js";
+import { formatAugurFallbackMessage } from "#lib/utils/augurFallback.js";
 import {
 	createTypewriterReveal,
 	type TypewriterReveal,
-} from "$lib/utils/typewriterReveal";
+} from "#lib/utils/typewriterReveal.js";
 import CitationRail from "./CitationRail.svelte";
 import ThreadEntry from "./ThreadEntry.svelte";
 

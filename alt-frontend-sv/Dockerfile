@@ -22,20 +22,13 @@ RUN --mount=type=cache,id=bun-alt-frontend-sv,target=/root/.bun/install/cache \
 
 # ---------- Build ----------
 FROM base AS builder
-# Stable SvelteKit app version (see svelte.config.js). CI passes the commit SHA;
+# Stable SvelteKit app version (see vite.config.ts). CI passes the commit SHA;
 # .git is dockerignored, so without this the build falls back to a timestamp.
 ARG GIT_COMMIT_SHA=""
 ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 COPY --link --from=install /temp/dev/node_modules ./node_modules
 COPY --link . .
 ENV NODE_ENV=production
-# Build-time placeholders for private env referenced by +page.server modules.
-# Runtime compose/K8s overrides these; Vite analyse still imports those modules
-# under production, so unset vars abort the image build (requireEnv).
-ARG KRATOS_PUBLIC_URL=http://localhost/ory
-ARG ORIGIN=http://localhost:4173
-ENV KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL} \
-    ORIGIN=${ORIGIN}
 RUN --mount=type=cache,id=vite-alt-frontend-sv,target=/app/node_modules/.vite \
     --mount=type=cache,id=sveltekit-alt-frontend-sv,target=/app/.svelte-kit \
     bun run prepare && bun run build

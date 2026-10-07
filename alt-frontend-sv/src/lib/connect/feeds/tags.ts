@@ -4,7 +4,7 @@
  */
 
 import type { Transport } from "@connectrpc/connect";
-import type { GetFeedTagsResponse } from "$lib/gen/alt/feeds/v2/feeds_pb";
+import type { GetFeedTagsResponse } from "#lib/gen/alt/feeds/v2/feeds_pb.js";
 import { createFeedClient } from "./client";
 
 export interface FeedTag {

@@ -4,9 +4,9 @@
  */
 
 import { Code, ConnectError } from "@connectrpc/connect";
+import { createClientTransport, getEveningPulse } from "#lib/connect/index.js";
+import type { EveningPulse, PulseTopic } from "#lib/schema/evening_pulse.js";
 import { goto } from "$app/navigation";
-import { createClientTransport, getEveningPulse } from "$lib/connect";
-import type { EveningPulse, PulseTopic } from "$lib/schema/evening_pulse";
 
 export function usePulse() {
 	let data = $state<EveningPulse | null>(null);

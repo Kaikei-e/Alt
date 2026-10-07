@@ -1,9 +1,8 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { env } from "$env/dynamic/private";
-import { proxyDashboardGet } from "$lib/server/dashboard-proxy";
+import { proxyDashboardGet } from "#lib/server/dashboard-proxy.js";
+import { RECAP_WORKER_BASE_URL } from "$app/env/private";
 
-const RECAP_WORKER_URL =
-	env.RECAP_WORKER_BASE_URL || "http://recap-worker:9005";
+const RECAP_WORKER_URL = RECAP_WORKER_BASE_URL || "http://recap-worker:9005";
 
 export const GET: RequestHandler = (event) =>
 	proxyDashboardGet(RECAP_WORKER_URL, "/v1/dashboard/job-progress", event, {

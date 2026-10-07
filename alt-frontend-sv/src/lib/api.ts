@@ -9,10 +9,10 @@ export {
 	getCSRFToken,
 	issueCsrfCookie,
 	verifyCsrfToken,
-} from "$lib/server/auth";
+} from "#lib/server/auth.js";
 
 // REST client
-export { callBackendAPIWithBody } from "$lib/server/backend-rest-client";
+export { callBackendAPIWithBody } from "#lib/server/backend-rest-client.js";
 
 // Feed API
 export {
@@ -27,7 +27,7 @@ export {
 	registerRssFeed,
 	type UnreadCount,
 	updateFeedReadStatus,
-} from "$lib/server/feed-api";
+} from "#lib/server/feed-api.js";
 
 // Tag Trail API
 export {
@@ -39,4 +39,4 @@ export {
 	getFeedTagsById,
 	getRandomSubscription,
 	type RandomFeedResponse,
-} from "$lib/server/tag-trail-api";
+} from "#lib/server/tag-trail-api.js";

@@ -1,13 +1,11 @@
 <script lang="ts">
 import { onDestroy, onMount } from "svelte";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
-import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
+import RunStatusPill from "#lib/components/acolyte/RunStatusPill.svelte";
 import {
 	type RunStatus as BackendRunStatus,
 	deriveRunStatusKind,
-} from "$lib/components/acolyte/runStatusPill";
-import MobileAcolyteDetail from "$lib/components/mobile/acolyte/MobileAcolyteDetail.svelte";
+} from "#lib/components/acolyte/runStatusPill.js";
+import MobileAcolyteDetail from "#lib/components/mobile/acolyte/MobileAcolyteDetail.svelte";
 import {
 	type AcolyteCitation,
 	type AcolyteReport,
@@ -22,10 +20,12 @@ import {
 	listReportVersions,
 	rerunSection,
 	startReportRun,
-} from "$lib/connect/acolyte";
-import { resolveResumeIntent } from "$lib/connect/acolyteAutostartParams";
-import { isMobile } from "$lib/stores/viewport.svelte";
-import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+} from "#lib/connect/acolyte.js";
+import { resolveResumeIntent } from "#lib/connect/acolyteAutostartParams.js";
+import { isMobile } from "#lib/stores/viewport.svelte.js";
+import { parseMarkdown } from "#lib/utils/simpleMarkdown.js";
+import { goto } from "$app/navigation";
+import { page } from "$app/state";
 
 type RunStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
 type TerminalStatus = Extract<RunStatus, "succeeded" | "failed" | "cancelled">;
@@ -250,15 +250,17 @@ function stripAutostartParamsFromUrl() {
 	if (!search) return;
 	if (!/(?:^|[?&])(?:run|autostart_failed)=/.test(search)) return;
 	void goto(`/acolyte/reports/${id}`, {
-		replaceState: true,
-		noScroll: true,
-		keepFocus: true,
+		replace: true,
+		reset: false,
 	});
 }
 
 onMount(async () => {
 	await loadReport();
-	const intent = resolveResumeIntent(page.url.searchParams, lastActiveRun);
+	const intent = resolveResumeIntent(
+		new URLSearchParams(page.url.search),
+		lastActiveRun,
+	);
 	if (intent.kind === "resume") {
 		startPolling(intent.runId);
 	} else if (intent.kind === "autostart-failed") {

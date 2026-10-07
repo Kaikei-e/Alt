@@ -1,25 +1,8 @@
 import { redirect } from "@sveltejs/kit";
-import { dev } from "$app/environment";
-import { env } from "$env/dynamic/private";
-import { ory } from "$lib/ory";
-import { sanitizeReturnTo } from "$lib/server/return-to";
+import { ory } from "#lib/ory.js";
+import { sanitizeReturnTo } from "#lib/server/return-to.js";
+import { KRATOS_PUBLIC_URL, ORIGIN } from "$app/env/private";
 import type { PageServerLoad } from "./$types";
-
-function requireEnv(name: string, fallbackDev: string): string {
-	const value = env[name];
-	if (value) return value;
-	if (dev) return fallbackDev;
-	throw new Error(`${name} must be set in production`);
-}
-
-// Resolve at request time — not module load. See auth/login/+page.server.ts.
-function kratosPublicUrl(): string {
-	return requireEnv("KRATOS_PUBLIC_URL", "http://localhost/ory");
-}
-
-function appOrigin(): string {
-	return requireEnv("ORIGIN", "http://localhost:4173");
-}
 
 const basePath = "";
 
@@ -27,7 +10,7 @@ const basePath = "";
 const REGISTER_RETURN_TO_OPTIONS = { loopPaths: ["/register"] };
 
 export const load: PageServerLoad = async ({ url, locals, request }) => {
-	const origin = appOrigin();
+	const origin = ORIGIN;
 
 	// If already logged in, redirect to home or return_to
 	if (locals.session) {
@@ -37,7 +20,7 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 			origin,
 			REGISTER_RETURN_TO_OPTIONS,
 		);
-		throw redirect(303, sanitizedReturnTo);
+		throw redirect(303, sanitizedReturnTo, { external: [origin] });
 	}
 
 	const flow = url.searchParams.get("flow");
@@ -52,10 +35,10 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 			REGISTER_RETURN_TO_OPTIONS,
 		);
 		const initUrl = new URL(
-			`${kratosPublicUrl()}/self-service/registration/browser`,
+			`${KRATOS_PUBLIC_URL}/self-service/registration/browser`,
 		);
 		initUrl.searchParams.set("return_to", returnUrl);
-		throw redirect(303, initUrl.toString());
+		throw redirect(303, initUrl.toString(), { external: true });
 	}
 
 	// Fetch flow data

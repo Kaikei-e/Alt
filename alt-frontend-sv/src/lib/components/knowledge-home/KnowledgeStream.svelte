@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
-import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
+import type { KnowledgeHomeItemData } from "#lib/connect/knowledge_home.js";
+import { browser } from "$app/env";
 import KnowledgeCard from "./KnowledgeCard.svelte";
 import KnowledgeHomeEmpty, {
 	type EmptyReason,
@@ -162,7 +162,11 @@ onMount(() => {
 {#if loading && items.length === 0}
 	<KnowledgeHomeSkeleton />
 {:else if !loading && items.length === 0}
-	<KnowledgeHomeEmpty reason={emptyReason} {activeLensName} {onClearLens} />
+	<KnowledgeHomeEmpty
+		reason={emptyReason}
+		activeLensName={activeLensName}
+		onClearLens={onClearLens}
+	/>
 {:else}
 	<div class="stream-items" bind:this={streamRef}>
 		{#if degradedNote}
@@ -172,7 +176,11 @@ onMount(() => {
 		{/if}
 		{#each items as item, i (item.itemKey)}
 			<div class="stream-entry" style="--entry-delay: {i};">
-				<KnowledgeCard {item} {onAction} {onTagClick} />
+				<KnowledgeCard
+					item={item}
+					onAction={onAction}
+					onTagClick={onTagClick}
+				/>
 			</div>
 		{/each}
 

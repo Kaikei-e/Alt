@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { BackfillJobData } from "$lib/connect/knowledge_home_admin";
+import type { BackfillJobData } from "#lib/connect/knowledge_home_admin.js";
 
 let {
 	jobs,

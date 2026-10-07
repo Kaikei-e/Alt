@@ -11,10 +11,10 @@ import { onDestroy } from "svelte";
 import {
 	type FeedContentOnTheFlyResponse,
 	getFeedContentOnTheFlyClient,
-} from "$lib/api/client/articles";
-import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
-import type { TagTrailArticle } from "$lib/connect";
-import { useSummarize } from "$lib/hooks/useSummarize.svelte";
+} from "#lib/api/client/articles.js";
+import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
+import type { TagTrailArticle } from "#lib/connect/index.js";
+import { useSummarize } from "#lib/hooks/useSummarize.svelte.js";
 import {
 	type ArticleContentPhase,
 	CONTENT_PENDING_LABEL,
@@ -23,8 +23,8 @@ import {
 	foregroundRetryDelayMs,
 	READ_ORIGINAL_LABEL,
 	TRY_AGAIN_LABEL,
-} from "$lib/utils/articleContentState";
-import { articleContentErrorMessage } from "$lib/utils/errorClassification";
+} from "#lib/utils/articleContentState.js";
+import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
 
 interface Props {
 	article: TagTrailArticle;

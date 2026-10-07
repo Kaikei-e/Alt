@@ -3,7 +3,7 @@
  * These functions generate render-ready values on the server to reduce client-side processing
  */
 
-import { decodeHtmlEntities } from "$lib/domain/feed/sanitize";
+import { decodeHtmlEntities } from "#lib/domain/feed/sanitize.js";
 
 /**
  * Formats a date string to a human-readable format with time

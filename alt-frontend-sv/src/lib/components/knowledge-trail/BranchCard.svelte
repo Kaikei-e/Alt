@@ -2,7 +2,7 @@
 import type {
 	BranchData,
 	ResolveBranchHandler,
-} from "$lib/connect/knowledge_trail";
+} from "#lib/connect/knowledge_trail.js";
 
 interface Props {
 	branch: BranchData;

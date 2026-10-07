@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { TagTrailArticle, TagTrailTag } from "$lib/schema/tagTrail";
+import type { TagTrailArticle, TagTrailTag } from "#lib/schema/tagTrail.js";
 import TagChipList from "./TagChipList.svelte";
 
 interface Props {

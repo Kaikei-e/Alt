@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$app/paths", () => ({ base: "/sv" }));
+vi.mock("$app/paths", () => ({
+	resolve: (path: string) => `/sv/${path.replace(/^\//, "")}`,
+}));
 
 let lastTransportConfig: Record<string, unknown> | null = null;
 vi.mock("@connectrpc/connect-web", () => ({
@@ -10,7 +12,7 @@ vi.mock("@connectrpc/connect-web", () => ({
 	}),
 }));
 
-describe("createClientTransport (consolidated $lib/connect/transport-client)", () => {
+describe("createClientTransport (consolidated #lib/connect/transport-client)", () => {
 	beforeEach(() => {
 		vi.resetModules();
 		vi.clearAllMocks();

@@ -1,5 +1,5 @@
-import type { RenderFeed } from "$lib/schema/feed";
-import type { RecapSummary } from "$lib/schema/recap";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import type { RecapSummary } from "#lib/schema/recap.js";
 
 export const MOCK_FEEDS: RenderFeed[] = [
 	{

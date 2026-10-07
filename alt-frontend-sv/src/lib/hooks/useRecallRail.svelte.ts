@@ -6,8 +6,8 @@
  * dismiss dispatch through the unified TrackHomeAction RPC so the legacy
  * GetRecallRail / TrackRecallAction endpoints can retire.
  */
-import { createClientTransport, trackHomeAction } from "$lib/connect";
-import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import { createClientTransport, trackHomeAction } from "#lib/connect/index.js";
+import type { RecallCandidateData } from "#lib/connect/knowledge_home.js";
 
 export function useRecallRail() {
 	let candidates = $state<RecallCandidateData[]>([]);

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { SummaryState } from "$lib/connect/knowledge_home";
+import type { SummaryState } from "#lib/connect/knowledge_home.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const componentSource = readFileSync(

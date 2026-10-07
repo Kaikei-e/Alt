@@ -5,7 +5,7 @@ vi.mock("@connectrpc/connect", () => ({
 	createClient: vi.fn(),
 }));
 
-vi.mock("$lib/gen/alt/knowledge_home/v1/knowledge_home_pb", () => ({
+vi.mock("#lib/gen/alt/knowledge_home/v1/knowledge_home_pb.js", () => ({
 	KnowledgeHomeService: {},
 }));
 

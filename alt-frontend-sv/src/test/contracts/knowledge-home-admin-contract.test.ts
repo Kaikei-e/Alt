@@ -17,7 +17,7 @@ import {
 	RunProjectionAuditResponseSchema,
 	SLIStatusSchema,
 	StartReprojectRequestSchema,
-} from "$lib/gen/alt/knowledge_home/v1/knowledge_home_admin_pb";
+} from "#lib/gen/alt/knowledge_home/v1/knowledge_home_admin_pb.js";
 
 describe("Knowledge Home Admin API Contract - Phase 5", () => {
 	describe("Reproject", () => {

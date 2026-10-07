@@ -2,8 +2,8 @@
 import {
 	RangeWindow,
 	Step,
-} from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
-import type { StreamState } from "$lib/hooks/useConnectAdminMetrics.svelte";
+} from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
+import type { StreamState } from "#lib/hooks/useConnectAdminMetrics.svelte.js";
 import TimeRangePicker from "./TimeRangePicker.svelte";
 
 let {

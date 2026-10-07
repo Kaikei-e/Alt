@@ -1,4 +1,4 @@
-import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 export type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
 

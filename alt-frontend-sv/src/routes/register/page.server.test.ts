@@ -1,15 +1,13 @@
 import { isRedirect } from "@sveltejs/kit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$env/dynamic/private", () => ({
-	env: {
-		KRATOS_PUBLIC_URL: "http://localhost/ory",
-		ORIGIN: "http://localhost:4173",
-	},
+vi.mock("$app/env/private", () => ({
+	KRATOS_PUBLIC_URL: "http://localhost/ory",
+	ORIGIN: "http://localhost:4173",
 }));
 
 const getRegistrationFlow = vi.fn();
-vi.mock("$lib/ory", () => ({
+vi.mock("#lib/ory.js", () => ({
 	ory: { getRegistrationFlow },
 }));
 

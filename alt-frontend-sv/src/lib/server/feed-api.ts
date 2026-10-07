@@ -2,12 +2,12 @@ import {
 	type ConnectFeedItem,
 	getReadFeeds as getReadFeedsConnect,
 	getUnreadFeeds as getUnreadFeedsConnect,
-} from "$lib/connect/feeds";
+} from "#lib/connect/feeds.js";
 import {
 	createServerTransport,
 	createServerTransportWithToken,
-} from "$lib/connect/transport-server";
-import type { BackendFeedItem } from "$lib/domain/feed/types";
+} from "#lib/connect/transport-server.js";
+import type { BackendFeedItem } from "#lib/domain/feed/types.js";
 import { callBackendAPI, callBackendAPIWithBody } from "./backend-rest-client";
 
 export interface DetailedFeedStats {
@@ -132,7 +132,7 @@ export async function updateFeedReadStatus(
 export async function getFeedLinks(
 	cookie: string | null,
 	fetchFn?: typeof fetch,
-): Promise<import("$lib/schema/feedLink").FeedLink[]> {
+): Promise<import("#lib/schema/feedLink.js").FeedLink[]> {
 	interface RawFeedLink {
 		id: string;
 		url: string;
@@ -150,7 +150,7 @@ export async function getFeedLinks(
 		id: r.id,
 		url: r.url,
 		healthStatus: (r.health_status ??
-			"unknown") as import("$lib/schema/feedLink").FeedHealthStatus,
+			"unknown") as import("#lib/schema/feedLink.js").FeedHealthStatus,
 		consecutiveFailures: r.consecutive_failures ?? 0,
 		isActive: r.is_active ?? true,
 		lastFailureReason: r.last_failure_reason ?? "",

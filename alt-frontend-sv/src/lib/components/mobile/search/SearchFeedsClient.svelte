@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
-import type { SearchQuery } from "$lib/schema/search";
+import type { SearchQuery } from "#lib/schema/search.js";
+import { browser } from "$app/env";
 import SearchResults from "./SearchResults.svelte";
 import SearchWindow from "./SearchWindow.svelte";
 import type { MobileSearchSession } from "./search-session";
@@ -49,7 +49,7 @@ onMount(() => {
 
 		<div class="archive-search-container">
 			<SearchWindow
-				{searchQuery}
+				searchQuery={searchQuery}
 				autoSearch={firstVisit && !!initialQuery.trim()}
 				setSearchQuery={(next) => {
 					setQuery(next.query ?? "");

@@ -1,11 +1,11 @@
 import type { Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { onDestroy } from "svelte";
-import { browser } from "$app/environment";
+import { emitTrailOutcome } from "#lib/connect/knowledge_trail.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
+import { browser } from "$app/env";
 import { beforeNavigate } from "$app/navigation";
-import { base } from "$app/paths";
-import { emitTrailOutcome } from "$lib/connect/knowledge_trail";
-import { createClientTransport } from "$lib/connect/transport-client";
+import { resolve } from "$app/paths";
 
 /**
  * createDwellTracker accumulates visible time and guarantees a single flush.
@@ -43,7 +43,7 @@ let keepaliveTransport: Transport | null = null;
 function createKeepaliveTransport(): Transport {
 	if (keepaliveTransport) return keepaliveTransport;
 	keepaliveTransport = createConnectTransport({
-		baseUrl: `${base}/api/v2`,
+		baseUrl: resolve(`api/v2`),
 		fetch: (input, init) =>
 			fetch(input, { ...init, credentials: "include", keepalive: true }),
 	});
@@ -90,7 +90,12 @@ export function useTrailOutcome(
 	const onPageHide = () => flush(true);
 	window.addEventListener("pagehide", onPageHide);
 
-	beforeNavigate(() => flush(false));
+	beforeNavigate(({ shallow }) => {
+		if (shallow) return;
+
+		flush(false);
+	});
+
 	onDestroy(() => {
 		flush(false);
 		document.removeEventListener("visibilitychange", onVisibility);

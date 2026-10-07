@@ -9,17 +9,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock modules
-vi.mock("$app/paths", () => ({ base: "" }));
+vi.mock("$app/paths", () => ({
+	resolve: (path: string) => `/${path.replace(/^\//, "")}`,
+}));
 vi.mock("@connectrpc/connect-web", () => ({
 	createConnectTransport: vi.fn(() => ({})),
 }));
-vi.mock("$lib/connect/transport-client", () => ({
+vi.mock("#lib/connect/transport-client.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 }));
 vi.mock("@connectrpc/connect", () => ({
 	createClient: vi.fn(),
 }));
-vi.mock("$lib/gen/alt/knowledge_home/v1/knowledge_home_pb", () => ({
+vi.mock("#lib/gen/alt/knowledge_home/v1/knowledge_home_pb.js", () => ({
 	KnowledgeHomeService: {},
 }));
 
@@ -91,6 +93,7 @@ describe("useStreamUpdates leader election", () => {
 		try {
 			tabA = mountStreamTab(lensId);
 			tabB = mountStreamTab(lensId);
+			await Promise.resolve();
 			// Both claim timers were armed in the same tick. Draining them in one
 			// batch is the race: neither tab can observe the other's announce
 			// before deciding it is leader itself.

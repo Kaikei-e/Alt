@@ -17,8 +17,8 @@ import { page } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 
-import type { RenderFeed } from "$lib/schema/feed";
-import { MAX_RESOLVE_ATTEMPTS } from "$lib/utils/ogImageRetry";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import { MAX_RESOLVE_ATTEMPTS } from "#lib/utils/ogImageRetry.js";
 import { renderFeedFixture } from "../../../../../tests/fixtures/feeds";
 import VisualFeedCard from "./VisualFeedCard.svelte";
 
@@ -27,12 +27,12 @@ const { loadProxyImageDefault, resolveOgImage } = vi.hoisted(() => ({
 	resolveOgImage: vi.fn(),
 }));
 
-vi.mock("$lib/utils/loadProxyImage", () => ({ loadProxyImageDefault }));
+vi.mock("#lib/utils/loadProxyImage.js", () => ({ loadProxyImageDefault }));
 
 // Stubbed rather than left to the real shared resolver: without this the card
 // fires a Connect-RPC at the dev server and the outcome of every image test
 // depends on what that happens to answer.
-vi.mock("$lib/utils/ogImageResolver", () => ({
+vi.mock("#lib/utils/ogImageResolver.js", () => ({
 	ogImageResolver: () => ({ resolve: resolveOgImage }),
 }));
 

@@ -1,14 +1,14 @@
 <script lang="ts">
 import { onMount, tick } from "svelte";
-import augurAvatar from "$lib/assets/augur-chat.webp";
+import augurAvatar from "#lib/assets/augur-chat.webp";
 import {
 	createClientTransport,
 	type MorningLetterCitation,
 	type MorningLetterMeta,
 	streamMorningLetterChat,
-} from "$lib/connect";
-import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
+} from "#lib/connect/index.js";
+import { parseMarkdown } from "#lib/utils/simpleMarkdown.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 type Citation = {
 	URL: string;

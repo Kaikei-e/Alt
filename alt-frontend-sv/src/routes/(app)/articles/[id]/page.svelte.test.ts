@@ -37,14 +37,16 @@ vi.mock("$app/state", () => ({
 // the mock a manually resolved module: the browser provider has to round-trip
 // to this worker before it can answer the page's request for it, and when the
 // round trip loses the race the run dies with "route.fulfill: The object has
-// been collected" before a single test reports.
-vi.mock("$app/navigation", { spy: true });
+vi.mock("$app/navigation", () => ({
+	goto: vi.fn(),
+	beforeNavigate: vi.fn(),
+}));
 
 const mockGetFeedContent = vi.fn();
 const mockGetArticleSourceURL = vi
 	.fn()
 	.mockResolvedValue({ url: "", title: "" });
-vi.mock("$lib/api/client/articles", () => ({
+vi.mock("#lib/api/client/articles.js", () => ({
 	getFeedContentOnTheFlyClient: (...args: unknown[]) =>
 		mockGetFeedContent(...args),
 	getArticleSourceURLClient: (...args: unknown[]) =>
@@ -58,7 +60,7 @@ let summarizerOverride: Partial<{
 	summaryError: string | null;
 	buttonState: "idle" | "loading" | "error" | "success";
 }> = {};
-vi.mock("$lib/hooks/useSummarize.svelte", () => ({
+vi.mock("#lib/hooks/useSummarize.svelte.js", () => ({
 	useSummarize: () => ({
 		summary: null,
 		isSummarizing: false,

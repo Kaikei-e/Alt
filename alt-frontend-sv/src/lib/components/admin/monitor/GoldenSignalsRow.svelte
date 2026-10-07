@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+import type { MetricResult } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 import MetricCard from "./MetricCard.svelte";
 
 let {

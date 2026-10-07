@@ -7,4 +7,4 @@ export type {
 	TagTrailArticle,
 	TagTrailHop,
 	TagTrailTag,
-} from "$lib/domain/tag-trail/types";
+} from "#lib/domain/tag-trail/types.js";

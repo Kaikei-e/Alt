@@ -1,5 +1,4 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import { goto } from "$app/navigation";
 import {
 	createClientTransport,
 	getLatestLetter,
@@ -7,12 +6,13 @@ import {
 	getLetterEnrichment,
 	getLetterSources,
 	regenerateLatestLetter,
-} from "$lib/connect";
+} from "#lib/connect/index.js";
 import type {
 	MorningLetterBulletEnrichment,
 	MorningLetterDocument,
 	MorningLetterSourceProto,
-} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+} from "#lib/gen/alt/morning_letter/v2/morning_letter_pb.js";
+import { goto } from "$app/navigation";
 
 /** Type guard for ConnectError Unauthenticated (handles both real and mocked instances). */
 function isUnauthenticatedError(err: unknown): boolean {

@@ -1,4 +1,4 @@
-import type { FeedHealthStatus, FeedLink } from "$lib/schema/feedLink";
+import type { FeedHealthStatus, FeedLink } from "#lib/schema/feedLink.js";
 
 export function classifyFeedHealth(feed: FeedLink): FeedHealthStatus {
 	return feed.healthStatus;

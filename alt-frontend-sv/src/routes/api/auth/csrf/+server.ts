@@ -1,5 +1,5 @@
-import { json, type RequestHandler } from "@sveltejs/kit";
-import { getCSRFToken, issueCsrfCookie } from "$lib/api";
+import type { RequestHandler } from "@sveltejs/kit";
+import { getCSRFToken, issueCsrfCookie } from "#lib/api.js";
 
 /**
  * GET /api/auth/csrf
@@ -14,10 +14,10 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 	const csrfToken = await getCSRFToken(cookieHeader);
 
 	if (!csrfToken) {
-		return json({ error: "Not authenticated" }, { status: 401 });
+		return Response.json({ error: "Not authenticated" }, { status: 401 });
 	}
 
 	issueCsrfCookie(cookies, csrfToken);
 
-	return json({ csrf_token: csrfToken });
+	return Response.json({ csrf_token: csrfToken });
 };

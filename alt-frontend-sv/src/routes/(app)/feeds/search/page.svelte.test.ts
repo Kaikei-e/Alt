@@ -14,12 +14,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { searchFeedsClient } from "$lib/api/client/feeds";
+import { searchFeedsClient } from "#lib/api/client/feeds.js";
 
-// Only the leaf module is mocked: `$lib/api/client` re-exports from it, so
+// Only the leaf module is mocked: `#lib/api/client/index.js` re-exports from it, so
 // mocking both would give the two import paths two different spies and the
 // component under test would call the one the assertions do not watch.
-vi.mock("$lib/api/client/feeds", { spy: true });
+vi.mock("#lib/api/client/feeds.js", { spy: true });
 vi.mock("$app/state", () => ({
 	page: { url: new URL("http://localhost/feeds/search") },
 }));

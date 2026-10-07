@@ -1,10 +1,10 @@
 <script lang="ts">
 import { onMount } from "svelte";
 // Desktop components
-import DesktopTagTrailScreen from "$lib/components/desktop/tag-trail/DesktopTagTrailScreen.svelte";
+import DesktopTagTrailScreen from "#lib/components/desktop/tag-trail/DesktopTagTrailScreen.svelte";
 // Mobile components
-import TagTrailScreen from "$lib/components/mobile/tag-trail/TagTrailScreen.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+import TagTrailScreen from "#lib/components/mobile/tag-trail/TagTrailScreen.svelte";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
 
 interface PageData {
 	initialFeed?: {

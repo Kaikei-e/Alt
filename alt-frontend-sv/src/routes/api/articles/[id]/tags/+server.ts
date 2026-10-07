@@ -1,17 +1,17 @@
-import { json, type RequestHandler } from "@sveltejs/kit";
-import { getArticleTags } from "$lib/api";
+import type { RequestHandler } from "@sveltejs/kit";
+import { getArticleTags } from "#lib/api.js";
 
 export const GET: RequestHandler = async ({ request, params }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 	const articleId = params.id;
 
 	if (!articleId) {
-		return json({ error: "article id is required" }, { status: 400 });
+		return Response.json({ error: "article id is required" }, { status: 400 });
 	}
 
 	try {
 		const response = await getArticleTags(cookieHeader, articleId);
-		return json(response);
+		return Response.json(response);
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error("Error in /api/articles/[id]/tags:", {
@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			cookiePresent: !!cookieHeader,
 		});
 
-		return json(
+		return Response.json(
 			{
 				error: "Failed to fetch article tags",
 				article_id: articleId,

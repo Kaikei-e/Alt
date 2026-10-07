@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
-import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
-import { useConnectAdminMetrics } from "$lib/hooks/useConnectAdminMetrics.svelte";
+import type { MetricResult } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
+import { useConnectAdminMetrics } from "#lib/hooks/useConnectAdminMetrics.svelte.js";
 import DegradedBanner from "./DegradedBanner.svelte";
 import MetricRow from "./MetricRow.svelte";
 import ServiceHealthTable from "./ServiceHealthTable.svelte";

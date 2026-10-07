@@ -1,7 +1,7 @@
 <script lang="ts">
 import { X } from "@lucide/svelte";
-import * as Sheet from "$lib/components/ui/sheet";
-import type { AcolyteVersionSummary } from "$lib/connect/acolyte";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import type { AcolyteVersionSummary } from "#lib/connect/acolyte.js";
 
 interface Props {
 	open: boolean;

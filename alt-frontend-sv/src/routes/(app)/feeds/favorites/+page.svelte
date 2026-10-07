@@ -1,14 +1,14 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { removeFavoriteFeedClient } from "$lib/api/client";
-import { getFavoriteFeedsWithCursorClient } from "$lib/api/client/feeds";
-import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
-import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
-import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
-import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
-import ClippingsEntry from "$lib/components/mobile/ClippingsEntry.svelte";
-import type { RenderFeed } from "$lib/schema/feed";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+import { getFavoriteFeedsWithCursorClient } from "#lib/api/client/feeds.js";
+import { removeFavoriteFeedClient } from "#lib/api/client/index.js";
+import DesktopFeedCard from "#lib/components/desktop/feeds/DesktopFeedCard.svelte";
+import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
+import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
+import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
+import ClippingsEntry from "#lib/components/mobile/ClippingsEntry.svelte";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
 
 const dateStr = new Date().toLocaleDateString("en-US", {
 	weekday: "long",

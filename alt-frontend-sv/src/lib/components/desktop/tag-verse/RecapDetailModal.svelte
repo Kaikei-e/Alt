@@ -1,6 +1,6 @@
 <script lang="ts">
-import * as Dialog from "$lib/components/ui/dialog";
-import type { RecapSearchResultItem } from "$lib/connect";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
+import type { RecapSearchResultItem } from "#lib/connect/index.js";
 
 interface Props {
 	recap: RecapSearchResultItem | null;

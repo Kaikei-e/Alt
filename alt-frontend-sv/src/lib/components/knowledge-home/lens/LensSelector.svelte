@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Filter, Plus } from "@lucide/svelte";
-import type { LensData } from "$lib/connect/knowledge_home";
+import type { LensData } from "#lib/connect/knowledge_home.js";
 
 interface Props {
 	lenses: LensData[];

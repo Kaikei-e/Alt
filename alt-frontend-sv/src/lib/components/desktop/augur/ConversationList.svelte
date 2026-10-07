@@ -1,7 +1,7 @@
 <script lang="ts">
 import { MessagesSquare, Trash2 } from "@lucide/svelte";
-import type { AugurConversationSummary } from "$lib/connect";
-import { formatAugurConversationLabel } from "$lib/utils/augur-entry";
+import type { AugurConversationSummary } from "#lib/connect/index.js";
+import { formatAugurConversationLabel } from "#lib/utils/augur-entry.js";
 
 type Props = {
 	conversations: AugurConversationSummary[];

@@ -1,7 +1,7 @@
 <script lang="ts">
-import * as Dialog from "$lib/components/ui/dialog";
-import type { ConnectFeedSource } from "$lib/connect";
-import type { LensVersionData } from "$lib/connect/knowledge_home";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
+import type { ConnectFeedSource } from "#lib/connect/index.js";
+import type { LensVersionData } from "#lib/connect/knowledge_home.js";
 import type { TagSuggestion } from "./TagCombobox.svelte";
 import TagCombobox from "./TagCombobox.svelte";
 

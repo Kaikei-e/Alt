@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { LensData } from "$lib/connect/knowledge_home";
+import type { LensData } from "#lib/connect/knowledge_home.js";
 import LensSelector from "./LensSelector.svelte";
 
 function makeLens(overrides: Partial<LensData> = {}): LensData {

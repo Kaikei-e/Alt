@@ -1,16 +1,19 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import { infiniteScroll } from "#lib/actions/infinite-scroll.js";
+import { searchFeedsClient } from "#lib/api/client/feeds.js";
+import DesktopFeedCard from "#lib/components/desktop/feeds/DesktopFeedCard.svelte";
+import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
+import SearchFeedsClient from "#lib/components/mobile/search/SearchFeedsClient.svelte";
+import { createMobileSearchSession } from "#lib/components/mobile/search/search-session.js";
+import { appendUniqueById } from "#lib/domain/feed/dedupe.js";
+import {
+	type RenderFeed,
+	sanitizeFeed,
+	toRenderFeed,
+} from "#lib/schema/feed.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
 import { page } from "$app/state";
-import { infiniteScroll } from "$lib/actions/infinite-scroll";
-
-import { searchFeedsClient } from "$lib/api/client/feeds";
-import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
-import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
-import SearchFeedsClient from "$lib/components/mobile/search/SearchFeedsClient.svelte";
-import { createMobileSearchSession } from "$lib/components/mobile/search/search-session";
-import { appendUniqueById } from "$lib/domain/feed/dedupe";
-import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
-import { isDesktop } from "$lib/stores/viewport.svelte";
 
 const initialQuery = page.url.searchParams.get("q")?.trim() ?? "";
 

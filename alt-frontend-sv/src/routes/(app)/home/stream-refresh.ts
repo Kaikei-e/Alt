@@ -1,4 +1,4 @@
-import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import type { RecallCandidateData } from "#lib/connect/knowledge_home.js";
 
 interface HomeRefreshSource {
 	fetchData(reset?: boolean, lensId?: string | null): Promise<void>;

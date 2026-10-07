@@ -1,7 +1,7 @@
 <script lang="ts">
-import { getRecapJobs } from "$lib/api/client/dashboard";
-import { Button } from "$lib/components/ui/button";
-import type { RecapJob } from "$lib/schema/dashboard";
+import { getRecapJobs } from "#lib/api/client/dashboard.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import type { RecapJob } from "#lib/schema/dashboard.js";
 
 interface Props {
 	windowSeconds: number;

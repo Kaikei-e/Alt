@@ -1,6 +1,6 @@
 import type { ServerLoad } from "@sveltejs/kit";
-import { fetchRandomFeed } from "$lib/connect/articles";
-import { createServerTransport } from "$lib/connect/transport-server";
+import { fetchRandomFeed } from "#lib/connect/articles.js";
+import { createServerTransport } from "#lib/connect/transport-server.js";
 
 export const load: ServerLoad = async ({ request, fetch }) => {
 	const cookieHeader = request.headers.get("cookie") || "";

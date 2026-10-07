@@ -2,7 +2,6 @@
 import { ArrowLeft, Home, Plus, RefreshCw, Trash2 } from "@lucide/svelte";
 import { onMount, untrack } from "svelte";
 import * as v from "valibot";
-import { goto } from "$app/navigation";
 import {
 	deleteFeedLinkClient,
 	listFeedLinksClient,
@@ -10,18 +9,19 @@ import {
 	registerRssFeedClient,
 	subscribeClient,
 	unsubscribeClient,
-} from "$lib/api/client";
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import FeedHealthBadge from "$lib/components/feeds/FeedHealthBadge.svelte";
-import HealthSummaryBar from "$lib/components/feeds/HealthSummaryBar.svelte";
-import OpmlSection from "$lib/components/feeds/OpmlSection.svelte";
-import { Button } from "$lib/components/ui/button";
-import * as Dialog from "$lib/components/ui/dialog";
-import { Input } from "$lib/components/ui/input";
-import type { ConnectFeedSource } from "$lib/connect/feeds";
-import type { FeedLink } from "$lib/schema/feedLink";
-import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+} from "#lib/api/client/index.js";
+import PageHeader from "#lib/components/desktop/layout/PageHeader.svelte";
+import FeedHealthBadge from "#lib/components/feeds/FeedHealthBadge.svelte";
+import HealthSummaryBar from "#lib/components/feeds/HealthSummaryBar.svelte";
+import OpmlSection from "#lib/components/feeds/OpmlSection.svelte";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import type { ConnectFeedSource } from "#lib/connect/feeds.js";
+import type { FeedLink } from "#lib/schema/feedLink.js";
+import { feedUrlSchema } from "#lib/schema/validation/feedUrlSchema.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { goto } from "$app/navigation";
 
 interface PageData {
 	feedLinks: FeedLink[];

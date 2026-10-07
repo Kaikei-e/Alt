@@ -1,12 +1,12 @@
 import type {
 	ArticleSource,
 	BatchPrefetchArticleContentResult,
-} from "$lib/connect/articles";
+} from "#lib/connect/articles.js";
 import {
 	type AltFetchPriority,
 	createClientTransport,
 	fetchPriorityHeaders,
-} from "$lib/connect/transport-client";
+} from "#lib/connect/transport-client.js";
 
 /**
  * Safe HTML string type (server-sanitized)
@@ -71,7 +71,7 @@ export async function getArticleSummaryClient(
 	feedUrl: string,
 ): Promise<FetchArticleSummaryResponse> {
 	const transport = createClientTransport();
-	const { fetchArticleSummary } = await import("$lib/connect/articles");
+	const { fetchArticleSummary } = await import("#lib/connect/articles.js");
 	const response = await fetchArticleSummary(transport, [feedUrl]);
 
 	// Convert camelCase to snake_case for API compatibility
@@ -109,7 +109,7 @@ export async function getFeedContentOnTheFlyClient(
 	},
 ): Promise<FeedContentOnTheFlyResponse> {
 	const transport = createClientTransport();
-	const { fetchArticleContent } = await import("$lib/connect/articles");
+	const { fetchArticleContent } = await import("#lib/connect/articles.js");
 	const response = await fetchArticleContent(
 		transport,
 		feedUrl,
@@ -136,7 +136,7 @@ export async function getArticleSourceURLClient(
 	articleId: string,
 ): Promise<ArticleSource> {
 	const transport = createClientTransport();
-	const { getArticleSourceURL } = await import("$lib/connect/articles");
+	const { getArticleSourceURL } = await import("#lib/connect/articles.js");
 	return getArticleSourceURL(transport, articleId);
 }
 
@@ -149,7 +149,7 @@ export async function archiveContentClient(
 	title?: string,
 ): Promise<MessageResponse> {
 	const transport = createClientTransport();
-	const { archiveArticle } = await import("$lib/connect/articles");
+	const { archiveArticle } = await import("#lib/connect/articles.js");
 	const response = await archiveArticle(transport, feedUrl, title?.trim());
 
 	return {
@@ -165,7 +165,7 @@ export async function batchPrefetchImagesClient(
 	articleIds: string[],
 ): Promise<{ articleId: string; proxyUrl: string; isCached: boolean }[]> {
 	const transport = createClientTransport();
-	const { batchPrefetchImages } = await import("$lib/connect/articles");
+	const { batchPrefetchImages } = await import("#lib/connect/articles.js");
 	return batchPrefetchImages(transport, articleIds);
 }
 
@@ -182,7 +182,9 @@ export async function batchPrefetchArticleContentClient(
 	urls: string[],
 ): Promise<BatchPrefetchArticleContentResult> {
 	const transport = createClientTransport();
-	const { batchPrefetchArticleContent } = await import("$lib/connect/articles");
+	const { batchPrefetchArticleContent } = await import(
+		"#lib/connect/articles.js"
+	);
 	return batchPrefetchArticleContent(
 		transport,
 		urls,
@@ -198,7 +200,7 @@ export async function summarizeArticleClient(
 	feedUrl: string,
 ): Promise<SummarizeArticleResponse> {
 	const transport = createClientTransport();
-	const { streamSummarize } = await import("$lib/connect/feeds");
+	const { streamSummarize } = await import("#lib/connect/feeds.js");
 
 	const result = await streamSummarize(transport, { feedUrl });
 
@@ -218,7 +220,7 @@ export async function registerFavoriteFeedClient(
 	url: string,
 ): Promise<MessageResponse> {
 	const transport = createClientTransport();
-	const { registerFavoriteFeed } = await import("$lib/connect/rss");
+	const { registerFavoriteFeed } = await import("#lib/connect/rss.js");
 	const response = await registerFavoriteFeed(transport, url);
 
 	return {
@@ -234,7 +236,7 @@ export async function removeFavoriteFeedClient(
 	url: string,
 ): Promise<MessageResponse> {
 	const transport = createClientTransport();
-	const { removeFavoriteFeed } = await import("$lib/connect/rss");
+	const { removeFavoriteFeed } = await import("#lib/connect/rss.js");
 	const response = await removeFavoriteFeed(transport, url);
 
 	return {

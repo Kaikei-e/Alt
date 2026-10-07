@@ -1,6 +1,6 @@
 <script lang="ts">
 import { ExternalLink } from "@lucide/svelte";
-import type { EvidenceLink } from "$lib/schema/recap";
+import type { EvidenceLink } from "#lib/schema/recap.js";
 
 interface Props {
 	evidenceLinks: EvidenceLink[];

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { ConnectFeedSource } from "$lib/connect";
+import type { ConnectFeedSource } from "#lib/connect/index.js";
 import LensModal from "./LensModal.svelte";
 
 const sources: ConnectFeedSource[] = [
