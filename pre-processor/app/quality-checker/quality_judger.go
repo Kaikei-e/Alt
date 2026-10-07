@@ -39,6 +39,8 @@ var (
 	maxQualityCheckContentLength = 20_000
 	qualityCheckerHTTPTimeout    = 300 * time.Second
 
+	httpClient = &http.Client{Timeout: qualityCheckerHTTPTimeout}
+
 	// rateLimitHost/rateLimitInterval feed utils.DefaultHostRateLimiter, the
 	// same process-wide limiter the summarizer driver uses — sharing it
 	// ensures scoreSummary's calls to news-creator also honour the
@@ -57,10 +59,18 @@ var (
 )
 
 // Configure overrides the quality checker's news-creator endpoint, model,
-// threshold, content-length cap, and rate limit from application config.
+// threshold, content-length cap and rate limit from application config, and
+// sends through client's transport (the news-creator mTLS client).
 // Call once at startup (bootstrap/wire.go); the hardcoded package defaults
 // above stay in effect for callers (and tests) that never call it.
-func Configure(cfg *config.Config) {
+func Configure(cfg *config.Config, client *http.Client) {
+	if client == nil {
+		panic("qualitychecker: Configure needs the news-creator HTTP client")
+	}
+	scoped := *client
+	scoped.Timeout = qualityCheckerHTTPTimeout
+	httpClient = &scoped
+
 	if cfg == nil {
 		return
 	}
@@ -231,10 +241,6 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 		return nil, fmt.Errorf("rate limiter: %w", err)
 	}
 
-	client := &http.Client{
-		Timeout: qualityCheckerHTTPTimeout, // セマフォ待ち(160s) + 生成(60s) + マージン
-	}
-
 	req, err := http.NewRequestWithContext(ctx, "POST", qualityCheckerAPIURL, strings.NewReader(string(jsonPayload)))
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to create HTTP request", "error", err)
@@ -243,7 +249,7 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	response, err := client.Do(req)
+	response, err := httpClient.Do(req)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to send HTTP request", "error", err)
 		return nil, err

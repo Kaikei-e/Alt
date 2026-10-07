@@ -285,8 +285,6 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	log.Info("Using dedicated pre-processor-db for job queue and inoreader tables")
 	ppDBPoolCleanup := func() { ppDBPool.Close() }
 
-	qualitychecker.Configure(cfg)
-
 	// Initialize repositories — API mode via Connect-RPC to alt-backend.
 	// Authentication is established at the TLS transport layer (mTLS).
 	backendHTTPClient, err := buildBackendHTTPClient(log)
@@ -320,6 +318,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		ppDBPoolCleanup()
 		return nil, nil, err
 	}
+	qualitychecker.Configure(cfg, newsHTTPClient)
 	apiRepo := repository.NewExternalAPIRepository(cfg, log, backendHTTPClient, backendAPIURL, newsHTTPClient)
 	jobRepo := repository.NewSummarizeJobRepository(ppDBPool, log)
 
