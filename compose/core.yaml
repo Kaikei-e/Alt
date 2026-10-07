@@ -530,10 +530,11 @@ services:
       DATA_HUB_MTLS_URL: https://alt-data-hub:9443
       DATA_HUB_SERVER_NAME: alt-data-hub
       # Shared by two outbound mTLS hops: the data-hub client above and the
-      # outbox worker's rag-orchestrator client, which di/rag_module.go builds
-      # from these whenever RAG_ORCHESTRATOR_CONNECT_URL is https and which
-      # panics rather than falling back to plaintext if the leaf cannot be
-      # loaded. One leaf per container is what pki-agent mints, and every peer
+      # outbox worker's rag-orchestrator client, which NewHarvesterComponents
+      # builds via newRagConnectHTTPClient whenever RAG_ORCHESTRATOR_URL
+      # (default https://rag-orchestrator:9010) is https and which panics
+      # rather than falling back to plaintext if the leaf cannot be loaded.
+      # One leaf per container is what pki-agent mints, and every peer
       # verifies it against the same CA, so a second DATA_HUB_-prefixed copy of
       # these three paths would be three more things to keep in step with the
       # sidecar's mount for no extra expressiveness. There is no MTLS_ENFORCE
