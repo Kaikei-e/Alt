@@ -27,6 +27,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type testIntrospectedToken struct {
+	Active   bool   `json:"active"`
+	Sub      string `json:"sub"`
+	TenantID string `json:"tenant_id"`
+	Exp      int64  `json:"exp"`
+}
+
 func TestHandleIntrospectToken(t *testing.T) {
 	jwtCfg := token.JWTConfig{
 		Secret:   "test-secret",
@@ -86,7 +93,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 		rec := setupRequest("search-indexer", validToken, true)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var res domain.IntrospectedToken
+		var res testIntrospectedToken
 		err = json.Unmarshal(rec.Body.Bytes(), &res)
 		require.NoError(t, err)
 		assert.True(t, res.Active)
@@ -138,7 +145,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 			e.ServeHTTP(rec, req)
 
 			assert.Equal(t, http.StatusOK, rec.Code, "request %d should succeed without 429", i+1)
-			var res domain.IntrospectedToken
+			var res testIntrospectedToken
 			err := json.Unmarshal(rec.Body.Bytes(), &res)
 			require.NoError(t, err)
 			assert.True(t, res.Active)
