@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +26,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 )
+
+type testIntrospectedToken struct {
+	Active   bool   `json:"active"`
+	Sub      string `json:"sub"`
+	TenantID string `json:"tenant_id"`
+	Exp      int64  `json:"exp"`
+}
 
 func TestHandleIntrospectToken(t *testing.T) {
 	jwtCfg := token.JWTConfig{
@@ -83,7 +93,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 		rec := setupRequest("search-indexer", validToken, true)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var res domain.IntrospectedToken
+		var res testIntrospectedToken
 		err = json.Unmarshal(rec.Body.Bytes(), &res)
 		require.NoError(t, err)
 		assert.True(t, res.Active)
@@ -135,7 +145,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 			e.ServeHTTP(rec, req)
 
 			assert.Equal(t, http.StatusOK, rec.Code, "request %d should succeed without 429", i+1)
-			var res domain.IntrospectedToken
+			var res testIntrospectedToken
 			err := json.Unmarshal(rec.Body.Bytes(), &res)
 			require.NoError(t, err)
 			assert.True(t, res.Active)
@@ -204,5 +214,96 @@ func TestHandleIntrospectToken(t *testing.T) {
 		rec4 := httptest.NewRecorder()
 		e.ServeHTTP(rec4, req4)
 		assert.Equal(t, http.StatusTooManyRequests, rec4.Code, "4th invalidation request must be rate limited (burst 3 exhausted)")
+	})
+}
+
+type fakeTokenVerifier struct {
+	result *domain.IntrospectedToken
+	err    error
+}
+
+func (f *fakeTokenVerifier) IntrospectBackendToken(_ string) (*domain.IntrospectedToken, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.result, nil
+}
+
+func TestInternalHandler_HandleIntrospectToken(t *testing.T) {
+	e := echo.New()
+
+	t.Run("active token returns snake_case claims", func(t *testing.T) {
+		subUUID := uuid.New().String()
+		tenantUUID := uuid.New().String()
+		exp := int64(1800000000)
+
+		fakeVerifier := &fakeTokenVerifier{
+			result: &domain.IntrospectedToken{
+				Active:   true,
+				Sub:      subUUID,
+				TenantID: tenantUUID,
+				Exp:      exp,
+			},
+		}
+		introspectUC := usecase.NewIntrospectToken(fakeVerifier)
+		h := NewInternalHandler(nil, nil, introspectUC)
+
+		body := `{"token":"active-token"}`
+		req := httptest.NewRequest(http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := h.HandleIntrospectToken(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var resp map[string]any
+		dec := json.NewDecoder(bytes.NewReader(rec.Body.Bytes()))
+		dec.UseNumber()
+		err = dec.Decode(&resp)
+		require.NoError(t, err)
+
+		keys := make([]string, 0, len(resp))
+		for k := range resp {
+			keys = append(keys, k)
+		}
+		assert.ElementsMatch(t, []string{"active", "sub", "tenant_id", "exp"}, keys)
+		assert.Equal(t, true, resp["active"])
+		assert.Equal(t, subUUID, resp["sub"])
+		assert.Equal(t, tenantUUID, resp["tenant_id"])
+		assert.Equal(t, json.Number(strconv.FormatInt(exp, 10)), resp["exp"])
+	})
+
+	t.Run("inactive token returns active false only", func(t *testing.T) {
+		fakeVerifier := &fakeTokenVerifier{
+			err: errors.New("token verification failed"),
+		}
+		introspectUC := usecase.NewIntrospectToken(fakeVerifier)
+		h := NewInternalHandler(nil, nil, introspectUC)
+
+		body := `{"token":"invalid-token"}`
+		req := httptest.NewRequest(http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := h.HandleIntrospectToken(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var resp map[string]any
+		dec := json.NewDecoder(bytes.NewReader(rec.Body.Bytes()))
+		dec.UseNumber()
+		err = dec.Decode(&resp)
+		require.NoError(t, err)
+
+		keys := make([]string, 0, len(resp))
+		for k := range resp {
+			keys = append(keys, k)
+		}
+		assert.ElementsMatch(t, []string{"active"}, keys)
+		assert.Equal(t, false, resp["active"])
+		assert.Equal(t, map[string]any{"active": false}, resp)
 	})
 }

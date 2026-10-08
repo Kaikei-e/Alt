@@ -73,6 +73,13 @@ type IntrospectTokenRequest struct {
 	Token string `json:"token"`
 }
 
+type introspectTokenResponse struct {
+	Active   bool   `json:"active"`
+	Sub      string `json:"sub,omitempty"`
+	TenantID string `json:"tenant_id,omitempty"`
+	Exp      int64  `json:"exp,omitempty"`
+}
+
 // HandleIntrospectToken validates a JWT token and returns its key claims.
 // This endpoint is only accessible to verified mTLS peers on the internal listener.
 func (h *InternalHandler) HandleIntrospectToken(c echo.Context) error {
@@ -96,5 +103,14 @@ func (h *InternalHandler) HandleIntrospectToken(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]interface{}{"active": false})
 	}
 
-	return c.JSON(http.StatusOK, res)
+	if res == nil || !res.Active {
+		return c.JSON(http.StatusOK, introspectTokenResponse{Active: false})
+	}
+
+	return c.JSON(http.StatusOK, introspectTokenResponse{
+		Active:   res.Active,
+		Sub:      res.Sub,
+		TenantID: res.TenantID,
+		Exp:      res.Exp,
+	})
 }
