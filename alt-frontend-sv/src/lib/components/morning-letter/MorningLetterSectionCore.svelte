@@ -1,11 +1,11 @@
 <script lang="ts">
-import WhySurfacedBadge from "$lib/components/knowledge-home/WhySurfacedBadge.svelte";
-import type { WhyReasonData } from "$lib/connect/knowledge_home";
+import WhySurfacedBadge from "#lib/components/knowledge-home/WhySurfacedBadge.svelte";
+import type { WhyReasonData } from "#lib/connect/knowledge_home.js";
 import type {
 	MorningLetterSection,
 	MorningLetterSourceProto,
-} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
-import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+} from "#lib/gen/alt/morning_letter/v2/morning_letter_pb.js";
+import { parseMarkdown } from "#lib/utils/simpleMarkdown.js";
 import {
 	getSectionDisplayTitle,
 	getSourcesForSection,

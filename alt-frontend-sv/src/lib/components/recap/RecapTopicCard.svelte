@@ -1,6 +1,6 @@
 <script lang="ts">
-import type { RecapCard } from "$lib/connect/recap";
-import { safeArticleHref } from "$lib/utils/safeHref";
+import type { RecapCard } from "#lib/connect/recap.js";
+import { safeArticleHref } from "#lib/utils/safeHref.js";
 
 interface Props {
 	card: RecapCard;

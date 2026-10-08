@@ -1,4 +1,4 @@
-import type { RenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "#lib/schema/feed.js";
 
 export const renderFeedFixture: RenderFeed = {
 	id: "feed-1",

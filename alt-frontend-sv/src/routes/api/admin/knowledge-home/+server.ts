@@ -1,5 +1,5 @@
-import { json, type RequestHandler } from "@sveltejs/kit";
-import { verifyCsrfToken } from "$lib/api";
+import type { RequestHandler } from "@sveltejs/kit";
+import { verifyCsrfToken } from "#lib/api.js";
 import {
 	compareKnowledgeHomeReproject,
 	emitKnowledgeHomeArticleUrlBackfill,
@@ -11,51 +11,62 @@ import {
 	startKnowledgeHomeReproject,
 	swapKnowledgeHomeReproject,
 	triggerKnowledgeHomeBackfill,
-} from "$lib/server/knowledge-home-admin";
-import { getUserRole } from "$lib/server/user-role";
+} from "#lib/server/knowledge-home-admin.js";
+import { getUserRole } from "#lib/server/user-role.js";
 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (getUserRole(locals.user) !== "admin") {
-		return json({ error: "Admin access required." }, { status: 403 });
+		return Response.json({ error: "Admin access required." }, { status: 403 });
 	}
 
 	if (!locals.backendToken) {
-		return json({ error: "Failed to load admin data." }, { status: 401 });
+		return Response.json(
+			{ error: "Failed to load admin data." },
+			{ status: 401 },
+		);
 	}
 
 	try {
 		const snapshot = await fetchKnowledgeHomeAdminSnapshot(locals.backendToken);
-		return json(snapshot, { headers: { "Cache-Control": "no-store" } });
+		return Response.json(snapshot, {
+			headers: { "Cache-Control": "no-store" },
+		});
 	} catch (error) {
 		console.error(
 			"[api/admin/knowledge-home] Failed to refresh snapshot:",
 			error,
 		);
-		return json({ error: "Failed to load admin data." }, { status: 502 });
+		return Response.json(
+			{ error: "Failed to load admin data." },
+			{ status: 502 },
+		);
 	}
 };
 
 export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 	if (getUserRole(locals.user) !== "admin") {
-		return json({ error: "Admin access required." }, { status: 403 });
+		return Response.json({ error: "Admin access required." }, { status: 403 });
 	}
 
 	if (!locals.backendToken) {
-		return json({ error: "Failed to run admin action." }, { status: 401 });
+		return Response.json(
+			{ error: "Failed to run admin action." },
+			{ status: 401 },
+		);
 	}
 
 	// V-004: CSRF validation for state-changing operations (reproject
 	// start/compare/swap/rollback, backfill pause/resume/trigger, audit).
 	const providedCSRF = request.headers.get("X-CSRF-Token");
 	if (!verifyCsrfToken(cookies, providedCSRF)) {
-		return json({ error: "CSRF validation failed" }, { status: 403 });
+		return Response.json({ error: "CSRF validation failed" }, { status: 403 });
 	}
 
 	let body: unknown;
 	try {
 		body = await request.json();
 	} catch {
-		return json({ error: "Invalid request body." }, { status: 400 });
+		return Response.json({ error: "Invalid request body." }, { status: 400 });
 	}
 
 	try {
@@ -71,7 +82,7 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 				locals.backendToken,
 				body.projectionVersion,
 			);
-			return json(
+			return Response.json(
 				{ ok: true, job },
 				{ headers: { "Cache-Control": "no-store" } },
 			);
@@ -89,7 +100,7 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 					: 0;
 			const dryRun = "dryRun" in body && body.dryRun === true;
 			if (maxArticles < 0) {
-				return json(
+				return Response.json(
 					{ error: "maxArticles must be non-negative." },
 					{ status: 400 },
 				);
@@ -99,7 +110,7 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 				maxArticles,
 				dryRun,
 			);
-			return json(
+			return Response.json(
 				{ ok: true, result },
 				{ headers: { "Cache-Control": "no-store" } },
 			);
@@ -114,7 +125,10 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 			typeof body.jobId === "string"
 		) {
 			await pauseKnowledgeHomeBackfill(locals.backendToken, body.jobId);
-			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+			return Response.json(
+				{ ok: true },
+				{ headers: { "Cache-Control": "no-store" } },
+			);
 		}
 
 		if (
@@ -126,7 +140,10 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 			typeof body.jobId === "string"
 		) {
 			await resumeKnowledgeHomeBackfill(locals.backendToken, body.jobId);
-			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+			return Response.json(
+				{ ok: true },
+				{ headers: { "Cache-Control": "no-store" } },
+			);
 		}
 
 		if (
@@ -157,7 +174,7 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 				rangeStart,
 				rangeEnd,
 			);
-			return json(
+			return Response.json(
 				{ ok: true, run },
 				{ headers: { "Cache-Control": "no-store" } },
 			);
@@ -175,7 +192,7 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 				locals.backendToken,
 				body.reprojectRunId,
 			);
-			return json(
+			return Response.json(
 				{ ok: true, diff },
 				{ headers: { "Cache-Control": "no-store" } },
 			);
@@ -193,7 +210,10 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 				locals.backendToken,
 				body.reprojectRunId,
 			);
-			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+			return Response.json(
+				{ ok: true },
+				{ headers: { "Cache-Control": "no-store" } },
+			);
 		}
 
 		if (
@@ -208,7 +228,10 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 				locals.backendToken,
 				body.reprojectRunId,
 			);
-			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+			return Response.json(
+				{ ok: true },
+				{ headers: { "Cache-Control": "no-store" } },
+			);
 		}
 
 		if (
@@ -229,18 +252,21 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 				body.projectionVersion,
 				body.sampleSize,
 			);
-			return json(
+			return Response.json(
 				{ ok: true, audit },
 				{ headers: { "Cache-Control": "no-store" } },
 			);
 		}
 
-		return json({ error: "Invalid admin action." }, { status: 400 });
+		return Response.json({ error: "Invalid admin action." }, { status: 400 });
 	} catch (error) {
 		console.error(
 			"[api/admin/knowledge-home] Failed to run admin action:",
 			error,
 		);
-		return json({ error: "Failed to run admin action." }, { status: 502 });
+		return Response.json(
+			{ error: "Failed to run admin action." },
+			{ status: 502 },
+		);
 	}
 };

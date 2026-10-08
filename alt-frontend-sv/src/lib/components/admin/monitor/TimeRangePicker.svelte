@@ -2,7 +2,7 @@
 import {
 	RangeWindow,
 	Step,
-} from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+} from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 
 let {
 	window = $bindable(RangeWindow.RANGE_WINDOW_1H),

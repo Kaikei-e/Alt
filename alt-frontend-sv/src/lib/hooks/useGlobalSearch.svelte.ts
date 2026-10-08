@@ -4,13 +4,13 @@
  */
 
 import { Code, ConnectError } from "@connectrpc/connect";
-import { goto } from "$app/navigation";
-import { createClientTransport } from "$lib/connect";
 import {
 	type GlobalSearchOptions,
 	type GlobalSearchResult,
 	searchEverything,
-} from "$lib/connect/global_search";
+} from "#lib/connect/global_search.js";
+import { createClientTransport } from "#lib/connect/index.js";
+import { goto } from "$app/navigation";
 
 export function useGlobalSearch() {
 	let query = $state("");

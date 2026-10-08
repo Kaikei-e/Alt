@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+import type { MetricResult } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 import { type SimpleSeries, serviceHealthRows } from "./util";
 
 // notInstrumented is still a list because it is the one thing the series

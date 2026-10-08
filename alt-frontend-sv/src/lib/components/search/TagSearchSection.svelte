@@ -1,6 +1,6 @@
 <script lang="ts">
+import type { TagSectionData } from "#lib/connect/global_search.js";
 import { goto } from "$app/navigation";
-import type { TagSectionData } from "$lib/connect/global_search";
 
 interface Props {
 	section: TagSectionData;

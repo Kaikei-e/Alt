@@ -1,11 +1,14 @@
-import { env } from "$env/dynamic/private";
-import { assertOkResponse, parseJsonBody } from "$lib/api/handle-api-response";
+import {
+	assertOkResponse,
+	parseJsonBody,
+} from "#lib/api/handle-api-response.js";
+import { BACKEND_REST_URL } from "$app/env/private";
 import { getBackendToken } from "./auth";
 
-// Independent from $lib/connect/transport-server.ts's BACKEND_CONNECT_URL
+// Independent from src/lib/connect/transport-server.ts's BACKEND_CONNECT_URL
 // (Connect-RPC endpoint) so the REST facade and the Connect-RPC backend can
 // be configured separately instead of racing over one shared env var.
-const BACKEND_URL = env.BACKEND_REST_URL || "http://alt-butterfly-facade:9250";
+const BACKEND_URL = BACKEND_REST_URL || "http://alt-butterfly-facade:9250";
 const FETCH_TIMEOUT_MS = 10_000;
 
 type FetchFn = typeof fetch;

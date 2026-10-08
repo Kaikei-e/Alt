@@ -7,16 +7,16 @@
 
 import type { Transport } from "@connectrpc/connect";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { createClientTransport } from "$lib/connect";
+import { createClientTransport } from "#lib/connect/index.js";
 import {
 	type SpeechChunk,
 	type SynthesizeSpeechStreamOptions,
 	synthesizeSpeechStream,
-} from "$lib/connect/tts";
+} from "#lib/connect/tts.js";
 import {
 	createSeamlessAudioPlayer,
 	type SeamlessAudioPlayer,
-} from "$lib/utils/seamlessAudioPlayer";
+} from "#lib/utils/seamlessAudioPlayer.js";
 
 export type SummarySpeechState =
 	| "idle"

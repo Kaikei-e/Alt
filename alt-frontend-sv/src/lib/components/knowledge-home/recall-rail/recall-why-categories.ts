@@ -3,7 +3,7 @@
  * Categories: Revisit (re-engagement), Connection (cross-reference), Completion (unfinished).
  */
 
-import type { RecallReasonData } from "$lib/connect/knowledge_home";
+import type { RecallReasonData } from "#lib/connect/knowledge_home.js";
 import { resolveRecallReason } from "./recall-reason-map";
 
 export interface RecallWhyGroup {

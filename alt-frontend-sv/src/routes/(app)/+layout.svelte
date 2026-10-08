@@ -1,9 +1,9 @@
 <script lang="ts">
 import type { Snippet } from "svelte";
+import ResponsiveLayout from "#lib/components/layout/ResponsiveLayout.svelte";
+import { SystemLoader } from "#lib/components/ui/system-loader/index.js";
+import { getLoadingStore } from "#lib/stores/loading.svelte.js";
 import { navigating } from "$app/state";
-import ResponsiveLayout from "$lib/components/layout/ResponsiveLayout.svelte";
-import { SystemLoader } from "$lib/components/ui/system-loader";
-import { getLoadingStore } from "$lib/stores/loading.svelte";
 
 let { children }: { children: Snippet } = $props();
 
@@ -15,7 +15,7 @@ let navigationTimedOut = $state(false);
 let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
 $effect(() => {
-	const isNavigating = navigating.type !== null;
+	const isNavigating = navigating.type !== null && !navigating.shallow;
 	if (isNavigating) {
 		navigationTimedOut = false;
 		timeoutId = setTimeout(() => {
@@ -38,7 +38,7 @@ $effect(() => {
 
 // Show loader during navigation OR when page is fetching data
 let showLoader = $derived(
-	(navigating.type !== null && !navigationTimedOut) ||
+	(navigating.type !== null && !navigating.shallow && !navigationTimedOut) ||
 		loadingStore.isDesktopLoading,
 );
 </script>

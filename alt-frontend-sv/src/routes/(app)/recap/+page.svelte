@@ -2,32 +2,32 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { ArrowLeft, BookOpen, Search } from "@lucide/svelte";
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
 // Desktop components
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
-import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
+import PageHeader from "#lib/components/desktop/layout/PageHeader.svelte";
+import RecapDetail from "#lib/components/desktop/recap/RecapDetail.svelte";
+import RecapGenreList from "#lib/components/desktop/recap/RecapGenreList.svelte";
 // Mobile components
-import RecapEmptyState from "$lib/components/mobile/recap/RecapEmptyState.svelte";
-import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
+import RecapEmptyState from "#lib/components/mobile/recap/RecapEmptyState.svelte";
+import SwipeRecapScreen from "#lib/components/mobile/recap/SwipeRecapScreen.svelte";
 import {
 	fromRecapSearchResult,
 	type RecapModalData,
 	RecapPreviewModal,
-} from "$lib/components/recap";
-import { Button } from "$lib/components/ui/button";
+} from "#lib/components/recap/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
 import {
 	createClientTransport,
 	getSevenDayRecap,
 	getThreeDayRecap,
 	type RecapSearchResultItem,
 	searchRecaps,
-} from "$lib/connect";
-import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
-import { getLoadingStore } from "$lib/stores/loading.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+} from "#lib/connect/index.js";
+import type { RecapGenre, RecapSummary } from "#lib/schema/recap.js";
+import { getLoadingStore } from "#lib/stores/loading.svelte.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { browser } from "$app/env";
+import { goto } from "$app/navigation";
+import { page } from "$app/state";
 
 const loadingStore = getLoadingStore();
 
@@ -83,9 +83,9 @@ function handleSearchSubmit(e: Event) {
 	e.preventDefault();
 	const trimmed = searchQuery.trim();
 	if (!trimmed) return;
-	const url = new URL(page.url);
+	const url = new URL(page.url.href);
 	url.searchParams.set("q", trimmed);
-	goto(url.toString(), { replaceState: true });
+	goto(url.toString(), { replace: true });
 	void executeSearch(trimmed);
 }
 
@@ -101,9 +101,9 @@ function clearSearch() {
 	searchQuery = "";
 	searchResults = [];
 	searchError = null;
-	const url = new URL(page.url);
+	const url = new URL(page.url.href);
 	url.searchParams.delete("q");
-	goto(url.toString(), { replaceState: true });
+	goto(url.toString(), { replace: true });
 	selectedWindow = getWindowFromUrl();
 	void fetchRecap(selectedWindow);
 }
@@ -322,10 +322,11 @@ onMount(() => {
 				<a
 					href="/recap/cards"
 					class="px-3 py-1.5 text-sm font-medium rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] border border-[var(--border-color)] transition-colors mr-2"
+				>Topic cards</a>
+
+				<div
+					class="flex items-center gap-1 bg-[var(--surface-bg)] rounded-lg p-1 border border-[var(--border-color)]"
 				>
-					Topic cards
-				</a>
-				<div class="flex items-center gap-1 bg-[var(--surface-bg)] rounded-lg p-1 border border-[var(--border-color)]">
 					<button
 						class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors {selectedWindow === 3
 							? 'bg-gray-800 text-white shadow-sm'
@@ -351,9 +352,9 @@ onMount(() => {
 		{#if recapData}
 			<div class="flex items-center gap-2 text-sm text-[var(--text-secondary)] mb-4 -mt-2">
 				<span class="font-medium">{selectedWindow}-day window</span>
-				<span class="text-[var(--text-muted)]">&middot;</span>
+				<span class="text-[var(--text-muted)]">·</span>
 				<span>Generated: {formatExecutedAt(recapData.executedAt)}</span>
-				<span class="text-[var(--text-muted)]">&middot;</span>
+				<span class="text-[var(--text-muted)]">·</span>
 				<span>{formatArticleCount(recapData.totalArticles)} articles</span>
 			</div>
 		{/if}
@@ -378,7 +379,11 @@ onMount(() => {
 		{:else}
 			<div class="grid grid-cols-3 gap-6 h-[calc(100dvh-12rem)]">
 				<div class="col-span-1 h-full overflow-y-auto">
-					<RecapGenreList {genres} {selectedGenre} onSelectGenre={handleSelectGenre} />
+					<RecapGenreList
+						genres={genres}
+						selectedGenre={selectedGenre}
+						onSelectGenre={handleSelectGenre}
+					/>
 				</div>
 				<div class="col-span-2 h-full overflow-y-auto">
 					<RecapDetail genre={selectedGenre} />

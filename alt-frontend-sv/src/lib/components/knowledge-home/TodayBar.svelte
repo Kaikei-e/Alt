@@ -11,7 +11,7 @@ import {
 import type {
 	ServiceQuality,
 	TodayDigestData,
-} from "$lib/connect/knowledge_home";
+} from "#lib/connect/knowledge_home.js";
 
 interface Props {
 	digest: TodayDigestData | null;

@@ -3,11 +3,11 @@ import { onDestroy, onMount } from "svelte";
 import {
 	triggerRecapJob,
 	triggerTopicCardsJob,
-} from "$lib/api/client/dashboard";
+} from "#lib/api/client/dashboard.js";
 import {
 	ActiveJobCard,
 	JobHistoryTable,
-} from "$lib/components/desktop/recap/job-status";
+} from "#lib/components/desktop/recap/job-status/index.js";
 import {
 	MobileActiveJobPanel,
 	MobileControlBar,
@@ -15,12 +15,15 @@ import {
 	MobileJobHistoryList,
 	MobileJobStatusHeader,
 	MobileStatsRow,
-} from "$lib/components/mobile/recap/job-status";
-import { LedgerFigure, PageKicker } from "$lib/components/recap/job-status";
-import { useJobProgress } from "$lib/hooks/useJobProgress.svelte";
-import type { RecentJobSummary, TimeWindow } from "$lib/schema/dashboard";
-import { getLoadingStore } from "$lib/stores/loading.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+} from "#lib/components/mobile/recap/job-status/index.js";
+import {
+	LedgerFigure,
+	PageKicker,
+} from "#lib/components/recap/job-status/index.js";
+import { useJobProgress } from "#lib/hooks/useJobProgress.svelte.js";
+import type { RecentJobSummary, TimeWindow } from "#lib/schema/dashboard.js";
+import { getLoadingStore } from "#lib/stores/loading.svelte.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
 
 const loadingStore = getLoadingStore();
 

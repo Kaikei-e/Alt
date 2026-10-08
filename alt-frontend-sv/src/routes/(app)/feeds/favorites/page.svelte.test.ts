@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { removeFavoriteFeedClient } from "$lib/api/client";
-import { getFavoriteFeedsWithCursorClient } from "$lib/api/client/feeds";
-import type { RenderFeed } from "$lib/schema/feed";
+import { getFavoriteFeedsWithCursorClient } from "#lib/api/client/feeds.js";
+import { removeFavoriteFeedClient } from "#lib/api/client/index.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
 
 // Spy-mode automocks keep every export bound and let each test override only
 // the network calls.
-vi.mock("$lib/api/client/feeds", { spy: true });
-vi.mock("$lib/api/client", { spy: true });
-vi.mock("$lib/api/client/articles", { spy: true });
+vi.mock("#lib/api/client/feeds.js", { spy: true });
+vi.mock("#lib/api/client/index.js", { spy: true });
+vi.mock("#lib/api/client/articles.js", { spy: true });
 
 import Page from "./+page.svelte";
 

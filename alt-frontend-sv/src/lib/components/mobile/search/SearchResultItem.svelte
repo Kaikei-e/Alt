@@ -2,19 +2,19 @@
 import type {
 	FeedContentOnTheFlyResponse,
 	FetchArticleSummaryResponse,
-} from "$lib/api/client";
+} from "#lib/api/client/index.js";
 import {
 	getArticleSummaryClient,
 	getFeedContentOnTheFlyClient,
-} from "$lib/api/client";
-import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
-import type { SearchFeedItem } from "$lib/schema/search";
+} from "#lib/api/client/index.js";
+import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
+import type { SearchFeedItem } from "#lib/schema/search.js";
 import {
 	CONTENT_PENDING_LABEL,
 	EMPTY_CONTENT_ERROR,
 	TRY_AGAIN_LABEL,
-} from "$lib/utils/articleContentState";
-import { articleContentErrorMessage } from "$lib/utils/errorClassification";
+} from "#lib/utils/articleContentState.js";
+import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
 
 interface Props {
 	result: SearchFeedItem;

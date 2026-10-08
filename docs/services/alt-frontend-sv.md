@@ -3,7 +3,7 @@
 _Last reviewed: September 5, 2026_
 
 **Location:** `alt-frontend-sv`
-**Base Path:** `/` (root). `svelte.config.js` sets `kit.paths.base = ""`. The app previously ran under `/sv`; that prefix now survives only as a small set of server-side redirect stubs (`/sv`, `/sv/home` → `/feeds`; `/sv/error`, `/sv/register`, `/sv/auth/login` → the equivalent root path) kept for old bookmarks and Kratos return URLs.
+**Base Path:** `/` (root). `vite.config.ts` sets `kit.paths.base = ""` via `sveltekit({ paths: { base: "" } })`. The app previously ran under `/sv`; that prefix now survives only as a small set of server-side redirect stubs (`/sv`, `/sv/home` → `/feeds`; `/sv/error`, `/sv/register`, `/sv/auth/login` → the equivalent root path) kept for old bookmarks and Kratos return URLs.
 
 ## Role
 - **Next-Gen Frontend**: A SvelteKit (Svelte 5 Runes) + Vite application serving as the modern, high-performance interface for the platform.
@@ -14,7 +14,7 @@ _Last reviewed: September 5, 2026_
 
 | Layer | Details |
 | --- | --- |
-| **Routing** | File-system based routing in `src/routes`. Served at the **root (`/`)** base path (configured in `svelte.config.js`). |
+| **Routing** | File-system based routing in `src/routes`. Served at the **root (`/`)** base path (configured in `vite.config.ts`). |
 | **State Management** | **Svelte 5 Runes** (`$state`, `$derived`, `$effect`) for reactive state. `src/lib/stores` contains global stores (e.g., `auth.svelte.ts`). |
 | **Data Fetching** | `src/lib/api.ts` wraps `fetch` for REST. `src/lib/connect/` handles Connect-RPC. Server-side calls (`transport-server.ts`, `backend-rest-client.ts`) target `BACKEND_CONNECT_URL` / `BACKEND_REST_URL`, which in the Compose deployment (`compose/core.yaml`) default to `alt-butterfly-facade:9250` — i.e. through the BFF, not straight to alt-backend. TanStack Svelte Query (`src/lib/queries/`) for caching. Token exchange with `auth-hub` provides `X-Alt-Backend-Token` (JWT). |
 | **Real-time** | Connect-RPC server streaming via `src/lib/connect/streamingAdapter.ts` is now the typed stream path and has replaced the REST SSE fallback for feed stats (`useFeedStats.svelte.ts` delegates to `useStreamingFeedStats.svelte.ts`). Raw SSE parsing helpers remain at `src/lib/utils/sse-parser.ts` / `sse-processors.ts`; the only remaining `EventSource` consumer is the dashboard's `SystemMonitorTab.svelte`. |
@@ -292,8 +292,8 @@ For cases where rich HTML must be rendered via Svelte's `{@html}` directive (e.g
 - Client-side failures invisible to ops → during the fetch storm the server answered healthily in 5-11ms, so no latency/5xx alert fired; browser console errors never reach server logs. FE error tracking and a fetch-rate SLI are required. → PM-2026-039 PM-2026-044
 
 ## Configuration
-- **Svelte Config** (`svelte.config.js`): Sets `kit.paths.base = ""` (root) and uses `adapter-node`. `version.name` is pinned to `PUBLIC_BUILD_ID` / `GIT_COMMIT_SHA` / `GITHUB_SHA` (falling back to the git SHA, then a timestamp) rather than SvelteKit's default per-build timestamp, so a no-op rebuild does not look like a new deploy; `version.pollInterval` is 5 minutes.
-- **Vite Config** (`vite.config.ts`): Configures proxying and aliases. Uses TailwindCSS v4 Vite plugin, oxc minifier, experimental native plugin v1.
+- **SvelteKit Config** (`vite.config.ts`): Configured in `vite.config.ts` via `sveltekit({ ... })`. Sets `paths.base = ""` (root), optional build-time `paths.origin`, and uses `adapter-node`. `version.name` is pinned to `PUBLIC_BUILD_ID` / `GIT_COMMIT_SHA` / `GITHUB_SHA` (falling back to the git SHA, then a timestamp) rather than SvelteKit's default per-build timestamp, so a no-op rebuild does not look like a new deploy; `version.pollInterval` is 5 minutes.
+- **Vite Config** (`vite.config.ts`): Configures proxying and aliases. Uses TailwindCSS v4 Vite plugin and oxc minifier.
 - **Environment** (defaults below are the values in code; `compose/core.yaml` overrides some of them for the production stack — see the Data Path Overview above):
 
 | Variable | Default (in code) | Description |

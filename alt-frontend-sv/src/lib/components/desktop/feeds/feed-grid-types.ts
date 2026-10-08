@@ -1,4 +1,4 @@
-import type { RenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "#lib/schema/feed.js";
 
 export type RemoveFeedResult = {
 	nextFeedUrl: string | null;

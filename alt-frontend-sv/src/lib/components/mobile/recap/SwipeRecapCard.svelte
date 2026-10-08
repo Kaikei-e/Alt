@@ -1,8 +1,8 @@
 <script lang="ts">
 import { ChevronDown, ChevronUp, Link as LinkIcon } from "@lucide/svelte";
 import { Spring } from "svelte/motion";
-import { type SwipeDirection, swipe } from "$lib/actions/swipe";
-import type { RecapGenre } from "$lib/schema/recap";
+import { type SwipeDirection, swipe } from "#lib/actions/swipe.js";
+import type { RecapGenre } from "#lib/schema/recap.js";
 
 interface Props {
 	genre: RecapGenre;

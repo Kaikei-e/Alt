@@ -1,9 +1,9 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import SwipeFeedScreen from "$lib/components/mobile/feeds/swipe/SwipeFeedScreen.svelte";
-import type { RenderFeed } from "$lib/schema/feed";
-import { isDesktop } from "$lib/stores/viewport.svelte";
-import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
+import SwipeFeedScreen from "#lib/components/mobile/feeds/swipe/SwipeFeedScreen.svelte";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { articlePrefetcher } from "#lib/utils/articlePrefetcher.js";
 
 interface ArticleData {
 	firstArticleImageUrl: string | null;

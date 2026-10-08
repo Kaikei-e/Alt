@@ -2,7 +2,7 @@
  * Connect-RPC client exports for alt-frontend-sv
  *
  * NOTE: Server-side transport (createServerTransport) must be imported directly
- * from "$lib/connect/transport-server" to avoid bundling $env/dynamic/private
+ * from "#lib/connect/transport-server.js" to avoid bundling $app/env/private
  * in browser code.
  */
 
@@ -13,7 +13,7 @@ export type {
 	MorningLetterSection,
 	MorningLetterSourceProto,
 	MorningLetterSourceType,
-} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+} from "#lib/gen/alt/morning_letter/v2/morning_letter_pb.js";
 // ArticleService client (Phase 4)
 export {
 	type ArchiveArticleResult,
@@ -210,12 +210,11 @@ export {
 	streamSummarizeWithAbortAdapter,
 	streamSummarizeWithRenderer,
 } from "./streamingAdapter";
+// Client-side transport (safe for browser)
+export { createClientTransport } from "./transport-client";
 // TTSService client
 export {
 	type SpeechChunk,
 	type SynthesizeSpeechStreamOptions,
 	synthesizeSpeechStream,
 } from "./tts";
-// Client-side transport (safe for browser)
-export { createClientTransport } from "./transport-client";
-

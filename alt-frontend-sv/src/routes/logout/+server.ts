@@ -1,6 +1,6 @@
-import { type RequestHandler, redirect } from "@sveltejs/kit";
-import { ory } from "$lib/ory";
-import { invalidateSessionCache } from "$lib/server/auth-middleware";
+import { isRedirect, type RequestHandler, redirect } from "@sveltejs/kit";
+import { ory } from "#lib/ory.js";
+import { invalidateSessionCache } from "#lib/server/auth-middleware.js";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!locals.session) {
@@ -17,7 +17,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			// A01 revised: Even if auth-hub cache invalidation fails, we must
 			// continue to revoke the Kratos session. The cache bounds are 60s/5m.
 			// Returning 500 here would trap the user with a permanent Kratos session.
-			console.error("auth-hub session cache invalidation failed during logout", { error: error instanceof Error ? error.message : "Unknown error" });
+			console.error(
+				"auth-hub session cache invalidation failed during logout",
+				{ error: error instanceof Error ? error.message : "Unknown error" },
+			);
 		}
 	}
 
@@ -28,19 +31,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		});
 
 		// Redirect to logout URL
-		throw redirect(303, data.logout_url);
+		throw redirect(303, data.logout_url, { external: true });
 	} catch (error) {
 		// If redirect was thrown, rethrow it
-		if (
-			error &&
-			typeof error === "object" &&
-			"status" in error &&
-			"location" in error
-		) {
+		if (isRedirect(error)) {
 			throw error;
 		}
 
-		console.error("kratos browser logout flow creation failed", { error: error instanceof Error ? error.message : "Unknown error" });
-		return new Response("Internal Server Error: Failed to create logout flow", { status: 500 });
+		console.error("kratos browser logout flow creation failed", {
+			error: error instanceof Error ? error.message : "Unknown error",
+		});
+		return new Response("Internal Server Error: Failed to create logout flow", {
+			status: 500,
+		});
 	}
 };

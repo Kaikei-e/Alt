@@ -1,8 +1,8 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import TagVerseScreen from "#lib/components/desktop/tag-verse/TagVerseScreen.svelte";
+import { isDesktop, isMobile } from "#lib/stores/viewport.svelte.js";
 import { goto } from "$app/navigation";
-import TagVerseScreen from "$lib/components/desktop/tag-verse/TagVerseScreen.svelte";
-import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
 
 // Deliberately `onMount` and deliberately not an `$effect`: this is an arrival
 // check, not a viewport binding. Tag Verse is a WebGL tag cloud built for a
@@ -16,7 +16,7 @@ import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
 // redirect would have taken.
 onMount(() => {
 	if (isMobile()) {
-		goto("/home", { replaceState: true });
+		goto("/home", { replace: true });
 	}
 });
 </script>

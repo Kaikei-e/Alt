@@ -1,6 +1,6 @@
 <script lang="ts">
-import PulseRoleLabel from "$lib/components/pulse/PulseRoleLabel.svelte";
-import type { PulseTopic } from "$lib/schema/evening_pulse";
+import PulseRoleLabel from "#lib/components/pulse/PulseRoleLabel.svelte";
+import type { PulseTopic } from "#lib/schema/evening_pulse.js";
 
 interface Props {
 	topic: PulseTopic;

@@ -6,7 +6,7 @@
 
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
-import { GetSevenDayRecapResponseSchema } from "$lib/gen/alt/recap/v2/recap_pb";
+import { GetSevenDayRecapResponseSchema } from "#lib/gen/alt/recap/v2/recap_pb.js";
 import {
 	buildConnectRecapResponse,
 	buildRecapGenre,

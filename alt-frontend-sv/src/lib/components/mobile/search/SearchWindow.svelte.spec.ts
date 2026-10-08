@@ -2,14 +2,14 @@ import { page } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 
-import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
+import type { SearchFeedItem, SearchQuery } from "#lib/schema/search.js";
 import SearchWindow from "./SearchWindow.svelte";
 
 const { mockSearchFeedsClient } = vi.hoisted(() => {
 	return { mockSearchFeedsClient: vi.fn() };
 });
 
-vi.mock("$lib/api/client", () => ({
+vi.mock("#lib/api/client/index.js", () => ({
 	searchFeedsClient: mockSearchFeedsClient,
 }));
 

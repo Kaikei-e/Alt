@@ -1,4 +1,4 @@
-import { NAV_TABS, type NavTab } from "$lib/config/navigation";
+import { NAV_TABS, type NavTab } from "#lib/config/navigation.js";
 
 export type { NavTab };
 export { NAV_TABS };

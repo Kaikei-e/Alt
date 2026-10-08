@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { MorningLetterBulletEnrichment } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+import type { MorningLetterBulletEnrichment } from "#lib/gen/alt/morning_letter/v2/morning_letter_pb.js";
 import ArticleDeckCard from "./ArticleDeckCard.svelte";
 
 type Props = {

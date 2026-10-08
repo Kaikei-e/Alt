@@ -1,6 +1,6 @@
 <script lang="ts">
 import { FileStack, FileText, Tag } from "@lucide/svelte";
-import type { RecapGenre } from "$lib/schema/recap";
+import type { RecapGenre } from "#lib/schema/recap.js";
 import EvidenceArticles from "./EvidenceArticles.svelte";
 
 interface Props {

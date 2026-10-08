@@ -8,8 +8,8 @@ import {
 	deleteLens,
 	listLenses,
 	selectLens,
-} from "$lib/connect";
-import type { LensData, LensVersionData } from "$lib/connect/knowledge_home";
+} from "#lib/connect/index.js";
+import type { LensData, LensVersionData } from "#lib/connect/knowledge_home.js";
 
 export function useLens() {
 	let lenses = $state<LensData[]>([]);

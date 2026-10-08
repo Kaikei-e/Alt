@@ -81,7 +81,7 @@ flowchart TB
     end
 
     subgraph PresentationLayer["2. Product Surface"]
-        alt-frontend-sv["alt-frontend-sv<br/>(SvelteKit 2 + Tailwind v4)"]
+        alt-frontend-sv["alt-frontend-sv<br/>(SvelteKit 3 + Tailwind v4)"]
         alt-butterfly-facade["alt-butterfly-facade<br/>(BFF / Go 1.26+)"]
     end
 
@@ -184,7 +184,7 @@ publish nothing at all. For the host-side mapping see
 | Directory | Technology | Port (in-container) | Primary Responsibility |
 | :--- | :--- | :--- | :--- |
 | [`plecto/`](./plecto) | Rust / WASM Component (PlectoProxy manifest + filter) | `8443` / `8080` (admin) | Edge/ingress config: routing manifest and the `stale-chunk-heal` WASM filter run by the `plecto-proxy` container. |
-| [`alt-frontend-sv/`](./alt-frontend-sv) | TypeScript / SvelteKit 2 + Svelte 5 Runes + Tailwind v4 + Threlte | `4173` | Core UI dashboard. Implements type-safe API queries and Threlte WebGPU tag visualization served at `/`. |
+| [`alt-frontend-sv/`](./alt-frontend-sv) | TypeScript / SvelteKit 3 + Svelte 5 Runes + Tailwind v4 + Threlte | `4173` | Core UI dashboard. Implements type-safe API queries and Threlte WebGPU tag visualization served at `/`. |
 | [`alt-butterfly-facade/`](./alt-butterfly-facade) | Go 1.26+ / Connect-RPC | `9250` | Aggregation API gateway and Connect-RPC reverse proxy mapping requests. |
 | [`auth-hub/`](./auth-hub) | Go 1.26+ / Echo | `8888` (no host port) | Identity session validation bridge. Validates Ory Kratos public cookies and exchanges keys. |
 | [`auth-token-manager/`](./auth-token-manager) | Deno 2.x | `9201` | Safe OAuth2 client refreshing and serializing external Inoreader platform credentials. |

@@ -1,6 +1,6 @@
 <script lang="ts">
 import { fly } from "svelte/transition";
-import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
+import type { RecapGenre, RecapSummary } from "#lib/schema/recap.js";
 import SwipeRecapCard from "./SwipeRecapCard.svelte";
 
 interface Props {

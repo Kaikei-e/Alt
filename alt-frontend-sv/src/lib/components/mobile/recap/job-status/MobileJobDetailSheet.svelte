@@ -1,10 +1,10 @@
 <script lang="ts">
 import { X } from "@lucide/svelte";
-import { StatusTransitionTimeline } from "$lib/components/desktop/recap/job-status";
-import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
-import * as Sheet from "$lib/components/ui/sheet";
-import type { RecentJobSummary } from "$lib/schema/dashboard";
-import { formatDuration } from "$lib/schema/dashboard";
+import { StatusTransitionTimeline } from "#lib/components/desktop/recap/job-status/index.js";
+import StatusGlyph from "#lib/components/recap/job-status/StatusGlyph.svelte";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import type { RecentJobSummary } from "#lib/schema/dashboard.js";
+import { formatDuration } from "#lib/schema/dashboard.js";
 import MobileStageDurationList from "./MobileStageDurationList.svelte";
 
 interface Props {

@@ -24,7 +24,7 @@
  * to a Home Screen web app, and only through a service worker.
  */
 
-import { parsePushPayload } from "$lib/push/payload";
+import { parsePushPayload } from "#lib/push/payload.js";
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 

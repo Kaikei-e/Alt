@@ -1,4 +1,4 @@
-import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
+import type { KnowledgeHomeItemData } from "#lib/connect/knowledge_home.js";
 
 // Never embed article title / excerpt / id in TrackHomeAction's body:
 // the server reads only meta.query and meta.tag (see

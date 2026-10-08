@@ -1,7 +1,7 @@
 import { onDestroy } from "svelte";
-import { getJobProgress } from "$lib/api/client/dashboard";
-import type { JobProgressEvent, TimeWindow } from "$lib/schema/dashboard";
-import { TIME_WINDOWS } from "$lib/schema/dashboard";
+import { getJobProgress } from "#lib/api/client/dashboard.js";
+import type { JobProgressEvent, TimeWindow } from "#lib/schema/dashboard.js";
+import { TIME_WINDOWS } from "#lib/schema/dashboard.js";
 
 interface UseJobProgressOptions {
 	/** User ID for filtering user-specific jobs */

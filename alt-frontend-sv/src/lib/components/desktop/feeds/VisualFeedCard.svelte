@@ -1,10 +1,10 @@
 <script lang="ts">
 import { Eye } from "@lucide/svelte";
-import type { RenderFeed } from "$lib/schema/feed";
-import { ogImageOverlay } from "$lib/stores/ogImageOverlay.svelte";
-import { cn } from "$lib/utils";
-import { ogImageResolver } from "$lib/utils/ogImageResolver";
-import { createProxyImage } from "$lib/utils/proxyImage.svelte";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import { ogImageOverlay } from "#lib/stores/ogImageOverlay.svelte.js";
+import { ogImageResolver } from "#lib/utils/ogImageResolver.js";
+import { createProxyImage } from "#lib/utils/proxyImage.svelte.js";
+import { cn } from "#lib/utils.js";
 
 interface Props {
 	feed: RenderFeed;

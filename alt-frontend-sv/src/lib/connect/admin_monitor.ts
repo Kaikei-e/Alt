@@ -8,7 +8,7 @@
 import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 
-import { AdminMonitorService } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+import { AdminMonitorService } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 
 export type AdminMonitorClient = Client<typeof AdminMonitorService>;
 

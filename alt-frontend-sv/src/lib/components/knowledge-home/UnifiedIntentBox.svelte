@@ -1,6 +1,6 @@
 <script lang="ts">
 import { BirdIcon, Search } from "@lucide/svelte";
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { goto } from "$app/navigation";
 
 interface Props {

@@ -1,6 +1,6 @@
 import { createQuery } from "@tanstack/svelte-query";
-import { getSevenDayRecap, getThreeDayRecap } from "$lib/connect/recap";
-import { createClientTransport } from "$lib/connect/transport-client";
+import { getSevenDayRecap, getThreeDayRecap } from "#lib/connect/recap.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 import { recapKeys } from "./keys";
 
 export function createThreeDayRecapQuery(genreDraftId?: string) {

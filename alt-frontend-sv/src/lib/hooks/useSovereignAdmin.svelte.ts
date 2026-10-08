@@ -1,4 +1,4 @@
-import { getClientCSRFToken } from "$lib/api/client/core";
+import { getClientCSRFToken } from "#lib/api/client/core.js";
 import type {
 	EligiblePartitionsResult,
 	RetentionLogEntry,
@@ -6,7 +6,7 @@ import type {
 	SnapshotMetadata,
 	SovereignAdminSnapshot,
 	TableStorageInfo,
-} from "$lib/types/sovereign-admin";
+} from "#lib/types/sovereign-admin.js";
 
 export type SovereignAdminActionRequest =
 	| { action: "create_snapshot" }

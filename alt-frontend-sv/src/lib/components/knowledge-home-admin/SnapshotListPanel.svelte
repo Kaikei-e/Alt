@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { SnapshotMetadata } from "$lib/types/sovereign-admin";
+import type { SnapshotMetadata } from "#lib/types/sovereign-admin.js";
 import AdminMetricCard from "./AdminMetricCard.svelte";
 import ConfirmActionDialog from "./ConfirmActionDialog.svelte";
 

@@ -21,19 +21,14 @@ export async function assertOkResponse(
 
 	const contentType = response.headers.get("content-type") || "";
 	const errorText = await response.text().catch(() => "");
-	console.error(
-		`API call failed: ${response.status} ${response.statusText}`,
-		{
-			url,
-			status: response.status,
-			statusText: response.statusText,
-			contentType,
-			errorBody: errorText.substring(0, 200),
-		},
-	);
-	throw new Error(
-		`API call failed: ${response.status} ${response.statusText}`,
-	);
+	console.error(`API call failed: ${response.status} ${response.statusText}`, {
+		url,
+		status: response.status,
+		statusText: response.statusText,
+		contentType,
+		errorBody: errorText.substring(0, 200),
+	});
+	throw new Error(`API call failed: ${response.status} ${response.statusText}`);
 }
 
 export async function parseJsonBody<T>(

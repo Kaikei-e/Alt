@@ -9,7 +9,7 @@ import {
 	GetTrailRequestSchema,
 	GetTrailResponseSchema,
 	ResolveBranchRequestSchema,
-} from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
+} from "#lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb.js";
 
 describe("Knowledge Trail API Contract", () => {
 	describe("GetTrailResponse", () => {

@@ -2,7 +2,7 @@
 import type {
 	EligiblePartitionsResult,
 	RetentionLogEntry,
-} from "$lib/types/sovereign-admin";
+} from "#lib/types/sovereign-admin.js";
 import ConfirmActionDialog from "./ConfirmActionDialog.svelte";
 
 interface Props {

@@ -2,8 +2,8 @@ import type {
 	JobStatus,
 	PipelineStage,
 	StatusTransition,
-} from "$lib/schema/dashboard";
-import { PIPELINE_STAGES } from "$lib/schema/dashboard";
+} from "#lib/schema/dashboard.js";
+import { PIPELINE_STAGES } from "#lib/schema/dashboard.js";
 
 /**
  * Represents the duration metrics for a single pipeline stage

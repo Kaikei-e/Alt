@@ -3,11 +3,9 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { goto } from "$app/navigation";
 
-// Spy-mode automock rather than a factory: a factory replaces the whole module
-// and any export it forgets becomes an import-time SyntaxError. Only `goto`
-// must not really run — real navigation would steer the browser-mode page away
-// mid-test.
-vi.mock("$app/navigation", { spy: true });
+vi.mock("$app/navigation", () => ({
+	goto: vi.fn(),
+}));
 
 import Page from "./+page.svelte";
 
@@ -33,7 +31,7 @@ describe("Menu page", () => {
 		render(Page);
 		await settle();
 
-		expect(goto).toHaveBeenCalledWith("/feeds", { replaceState: true });
+		expect(goto).toHaveBeenCalledWith("/feeds", { replace: true });
 	});
 
 	it("keeps the menu readable when the phone is rotated into landscape", async () => {

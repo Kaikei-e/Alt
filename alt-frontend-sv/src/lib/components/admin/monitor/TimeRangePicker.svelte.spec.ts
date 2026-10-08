@@ -4,7 +4,7 @@ import { render } from "vitest-browser-svelte";
 import {
 	RangeWindow,
 	Step,
-} from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+} from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 import TimeRangePicker from "./TimeRangePicker.svelte";
 
 describe("TimeRangePicker", () => {

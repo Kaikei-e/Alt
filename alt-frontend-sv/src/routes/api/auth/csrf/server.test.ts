@@ -5,7 +5,7 @@ const { getCSRFToken, issueCsrfCookie } = vi.hoisted(() => ({
 	issueCsrfCookie: vi.fn(),
 }));
 
-vi.mock("$lib/api", () => ({ getCSRFToken, issueCsrfCookie }));
+vi.mock("#lib/api.js", () => ({ getCSRFToken, issueCsrfCookie }));
 
 import { GET } from "./+server";
 

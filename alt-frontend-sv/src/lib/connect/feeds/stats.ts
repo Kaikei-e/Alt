@@ -7,7 +7,7 @@ import type {
 	GetDetailedFeedStatsResponse,
 	GetFeedStatsResponse,
 	GetUnreadCountResponse,
-} from "$lib/gen/alt/feeds/v2/feeds_pb";
+} from "#lib/gen/alt/feeds/v2/feeds_pb.js";
 import { createFeedClient } from "./client";
 
 /**

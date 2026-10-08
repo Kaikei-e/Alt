@@ -25,11 +25,11 @@ import { describe, expect, it } from "vitest";
  */
 
 const configSource = readFileSync(
-	fileURLToPath(new URL("../../svelte.config.js", import.meta.url)),
+	fileURLToPath(new URL("../../vite.config.ts", import.meta.url)),
 	"utf-8",
 );
 
-describe("svelte.config.js — preload warning regression gate", () => {
+describe("vite.config.ts — preload warning regression gate", () => {
 	it("declares kit.inlineStyleThreshold", () => {
 		expect(configSource).toMatch(/inlineStyleThreshold\s*:\s*\d+/);
 	});

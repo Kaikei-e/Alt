@@ -69,14 +69,22 @@ test.describe("route guard — rejected session cookie", () => {
 		);
 	});
 
-	test("sends the root path to the feeds landing target", async ({ page }) => {
+	test("sends the root path to the feeds landing target", async ({
+		page,
+		baseURL,
+	}) => {
 		// `/` has no path worth returning to, so the guard substitutes /feeds —
 		// as an absolute URL, unlike every other route.
 		const response = await page.request.get("/", { maxRedirects: 0 });
 
+		const targetOrigin = baseURL
+			? new URL(baseURL).origin
+			: `http://127.0.0.1:${process.env.ALT_E2E_PORT || "4174"}`;
+		const expectedReturnTo = encodeURIComponent(`${targetOrigin}/feeds`);
+
 		expect(response.status()).toBe(303);
 		expect(response.headers().location).toBe(
-			"/login?return_to=http%3A%2F%2F127.0.0.1%3A4174%2Ffeeds",
+			`/login?return_to=${expectedReturnTo}`,
 		);
 	});
 

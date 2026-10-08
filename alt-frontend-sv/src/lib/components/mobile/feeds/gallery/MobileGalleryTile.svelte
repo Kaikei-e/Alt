@@ -9,11 +9,11 @@
  * prose under it. No excerpt, no author line, no tag row: each of those costs
  * image height, and the image is what the reader is scanning here.
  */
-import type { RenderFeed } from "$lib/schema/feed";
-import { ogImageOverlay } from "$lib/stores/ogImageOverlay.svelte";
-import { formatCompactDate } from "$lib/utils/feed";
-import { ogImageResolver } from "$lib/utils/ogImageResolver";
-import { createProxyImage } from "$lib/utils/proxyImage.svelte";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import { ogImageOverlay } from "#lib/stores/ogImageOverlay.svelte.js";
+import { formatCompactDate } from "#lib/utils/feed.js";
+import { ogImageResolver } from "#lib/utils/ogImageResolver.js";
+import { createProxyImage } from "#lib/utils/proxyImage.svelte.js";
 
 interface Props {
 	feed: RenderFeed;

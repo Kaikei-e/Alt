@@ -1,7 +1,7 @@
 <script lang="ts">
 import { ChevronDown, ChevronUp, Link as LinkIcon } from "@lucide/svelte";
-import { Button } from "$lib/components/ui/button";
-import type { RecapGenre } from "$lib/schema/recap";
+import { Button } from "#lib/components/ui/button/index.js";
+import type { RecapGenre } from "#lib/schema/recap.js";
 
 interface Props {
 	genre: RecapGenre;

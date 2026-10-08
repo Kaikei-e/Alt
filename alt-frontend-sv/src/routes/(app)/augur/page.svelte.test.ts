@@ -2,37 +2,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 
-// The page reads the query string off `$page`, and there is no router in
-// browser mode to supply one. A hand-rolled writable store (the mock factory is
-// hoisted above every import, `svelte/store` included) lets each test arrive at
-// the page with the URL that test is about.
-type PageValue = { url: URL };
-
-const { pageStore } = vi.hoisted(() => {
-	let value: { url: URL } = { url: new URL("http://localhost/augur") };
-	const subscribers = new Set<(next: { url: URL }) => void>();
+// The page reads the query string off `page` in `$app/state`, and there is no
+// router in browser mode to supply one. A hoisted state object with a getter/setter
+// lets each test arrive at the page with the URL that test is about.
+const { pageState } = vi.hoisted(() => {
+	const value: { url: URL } = { url: new URL("http://localhost/augur") };
 	return {
-		pageStore: {
-			subscribe(run: (next: { url: URL }) => void) {
-				subscribers.add(run);
-				run(value);
-				return () => {
-					subscribers.delete(run);
-				};
+		pageState: {
+			get url() {
+				return value.url;
 			},
-			set(next: { url: URL }) {
-				value = next;
-				for (const run of subscribers) run(value);
+			set url(next: URL) {
+				value.url = next;
 			},
 		},
 	};
 });
 
-vi.mock("$app/stores", () => ({ page: pageStore }));
+vi.mock("$app/state", () => ({ page: pageState }));
 
 // Shallow routing needs a live router; in browser mode there is none.
-const { replaceState } = vi.hoisted(() => ({ replaceState: vi.fn() }));
-vi.mock("$app/navigation", () => ({ replaceState }));
+const { goto } = vi.hoisted(() => ({ goto: vi.fn() }));
+vi.mock("$app/navigation", () => ({ goto }));
 
 /** One recorded call to the model, with the handles the stream was given. */
 type StreamCall = {
@@ -74,7 +65,7 @@ const { streamCalls, streamAugurChat } = vi.hoisted(() => {
 	};
 });
 
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamAugurChat,
 }));
@@ -94,8 +85,7 @@ async function settle() {
 }
 
 function arriveWith(search = "") {
-	const next: PageValue = { url: new URL(`http://localhost/augur${search}`) };
-	pageStore.set(next);
+	pageState.url = new URL(`http://localhost/augur${search}`);
 }
 
 const hasAugurClass = () =>
@@ -256,9 +246,10 @@ describe("Augur page, question arriving in the URL", () => {
 
 		calls()[0]?.onConversationId?.("conv-42");
 
-		// Raw `history.replaceState` is the one call SvelteKit's router asks
-		// callers not to make; and on a phone the id used to be dropped on the
-		// floor entirely, so a reload lost the conversation.
-		expect(replaceState).toHaveBeenCalledWith("/augur/conv-42", {});
+		expect(goto).toHaveBeenCalledWith("/augur/conv-42", {
+			shallow: true,
+			replace: true,
+			state: {},
+		});
 	});
 });

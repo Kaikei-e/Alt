@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SubStageProgress } from "$lib/schema/dashboard";
+import type { SubStageProgress } from "#lib/schema/dashboard.js";
 import {
 	formatSubStageProgress,
 	inferStageCompletion,

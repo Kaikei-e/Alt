@@ -14,15 +14,15 @@
 import {
 	type AdminMonitorClient,
 	createAdminMonitorClient,
-} from "$lib/connect/admin_monitor";
-import { createClientTransport } from "$lib/connect/transport-client";
+} from "#lib/connect/admin_monitor.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 import {
 	type CatalogEntry,
 	type MetricResult,
 	RangeWindow,
 	Step,
 	type WatchResponse,
-} from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+} from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 
 export type StreamState =
 	| "idle"

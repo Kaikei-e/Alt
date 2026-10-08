@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$app/paths", () => ({ base: "" }));
+vi.mock("$app/paths", () => ({
+	resolve: (path: string) => `/${path.replace(/^\//, "")}`,
+}));
 
 const getClientCSRFToken = vi.fn();
 vi.mock("./core", () => ({

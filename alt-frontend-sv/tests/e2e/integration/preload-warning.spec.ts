@@ -8,7 +8,7 @@ import { expect, test } from "../fixtures/pomFixtures";
  * `rel="stylesheet"`). For chunks that overlap, Chrome flags the preload as
  * "preloaded using link preload but not used within a few seconds from the
  * window's load event." `kit.inlineStyleThreshold` was raised in
- * svelte.config.js to inline route-specific small CSS chunks and erase the
+ * vite.config.ts to inline route-specific small CSS chunks and erase the
  * duplicate, so most routes should land at zero warnings post-fix. One stray
  * warning (root layout's large CSS) is tolerated until upstream SvelteKit
  * Issue #8549 lands the `modulepreload: 'tag' | 'header'` switch — when that

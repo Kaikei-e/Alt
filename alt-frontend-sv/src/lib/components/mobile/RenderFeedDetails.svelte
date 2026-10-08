@@ -2,13 +2,13 @@
 import type {
 	FeedContentOnTheFlyResponse,
 	FetchArticleSummaryResponse,
-} from "$lib/api/client";
+} from "#lib/api/client/index.js";
 import {
 	CONTENT_PENDING_LABEL,
 	EMPTY_CONTENT_ERROR,
-} from "$lib/utils/articleContentState";
-import { articleContentErrorMessage } from "$lib/utils/errorClassification";
-import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
+} from "#lib/utils/articleContentState.js";
+import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
+import { sanitizeHtml } from "#lib/utils/sanitizeHtml.js";
 
 interface Props {
 	feedDetails?:

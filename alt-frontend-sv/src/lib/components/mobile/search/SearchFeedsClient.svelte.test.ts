@@ -4,7 +4,7 @@ import { render } from "vitest-browser-svelte";
 import SearchFeedsClient from "./SearchFeedsClient.svelte";
 import { createMobileSearchSession } from "./search-session";
 
-vi.mock("$lib/api/client", () => ({
+vi.mock("#lib/api/client/index.js", () => ({
 	searchFeedsClient: vi.fn(() =>
 		Promise.resolve({
 			results: [],
@@ -26,11 +26,11 @@ vi.mock("$lib/api/client", () => ({
 	),
 }));
 
-vi.mock("$lib/utils/transformFeedSearchResult", () => ({
+vi.mock("#lib/utils/transformFeedSearchResult.js", () => ({
 	transformFeedSearchResult: vi.fn(() => []),
 }));
 
-vi.mock("$app/environment", () => ({
+vi.mock("$app/env", () => ({
 	browser: true,
 }));
 

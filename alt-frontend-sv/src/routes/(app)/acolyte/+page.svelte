@@ -1,10 +1,13 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import MobileAcolyteList from "#lib/components/mobile/acolyte/MobileAcolyteList.svelte";
+import {
+	type AcolyteReportSummary,
+	listReports,
+} from "#lib/connect/acolyte.js";
+import { isMobile } from "#lib/stores/viewport.svelte.js";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import MobileAcolyteList from "$lib/components/mobile/acolyte/MobileAcolyteList.svelte";
-import { type AcolyteReportSummary, listReports } from "$lib/connect/acolyte";
-import { isMobile } from "$lib/stores/viewport.svelte";
 
 let reports = $state<AcolyteReportSummary[]>([]);
 let loading = $state(true);
@@ -45,7 +48,7 @@ onMount(() => {
 	const deleted = page.url.searchParams.get("deleted");
 	if (deleted) {
 		deletedNotice = deleted;
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		url.searchParams.delete("deleted");
 		history.replaceState(history.state, "", url.toString());
 	}

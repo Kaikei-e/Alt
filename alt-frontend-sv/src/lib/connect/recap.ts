@@ -14,8 +14,12 @@ import {
 	type RecapSearchResultItem as ProtoRecapSearchResultItem,
 	RecapService,
 	type SearchRecapsByTagResponse,
-} from "$lib/gen/alt/recap/v2/recap_pb";
-import type { EvidenceLink, RecapGenre, RecapSummary } from "$lib/schema/recap";
+} from "#lib/gen/alt/recap/v2/recap_pb.js";
+import type {
+	EvidenceLink,
+	RecapGenre,
+	RecapSummary,
+} from "#lib/schema/recap.js";
 
 /** Type-safe RecapService client */
 type RecapClient = Client<typeof RecapService>;

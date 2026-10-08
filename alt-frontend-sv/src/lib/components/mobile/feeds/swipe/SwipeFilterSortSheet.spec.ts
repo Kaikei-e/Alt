@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractDomain, filterSources } from "$lib/utils/feed-source-filter";
+import { extractDomain, filterSources } from "#lib/utils/feed-source-filter.js";
 
 /**
  * Tests for SwipeFilterSortSheet logic.

@@ -6,7 +6,20 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 const { env } = vi.hoisted(() => ({
 	env: {} as Record<string, string | undefined>,
 }));
-vi.mock("$env/dynamic/private", () => ({ env }));
+vi.mock("$app/env/private", () => ({
+	get SOVEREIGN_METRICS_URL() {
+		return env.SOVEREIGN_METRICS_URL ?? "";
+	},
+	get SOVEREIGN_ADMIN_AUTH() {
+		return env.SOVEREIGN_ADMIN_AUTH ?? "";
+	},
+	get SOVEREIGN_ADMIN_TOKEN_FILE() {
+		return env.SOVEREIGN_ADMIN_TOKEN_FILE ?? "";
+	},
+	get SOVEREIGN_ADMIN_TOKEN() {
+		return env.SOVEREIGN_ADMIN_TOKEN ?? "";
+	},
+}));
 
 const secretDir = mkdtempSync(join(tmpdir(), "sovereign-admin-"));
 const tokenPath = join(secretDir, "sovereign_admin_token");

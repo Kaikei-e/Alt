@@ -3,4 +3,4 @@ export type {
 	EvidenceLink,
 	RecapGenre,
 	RecapSummary,
-} from "$lib/domain/recap/types";
+} from "#lib/domain/recap/types.js";

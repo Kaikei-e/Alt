@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildClientErrorPayload,
 	createChunkReloadScheduler,
+	handleError,
 	isChunkLoadError,
 } from "./hooks.client";
 
@@ -155,5 +156,67 @@ describe("buildClientErrorPayload", () => {
 			userAgent: undefined,
 		});
 		expect(p.safariBucket).toBe("other");
+	});
+});
+
+describe("client handleError", () => {
+	const makeNavEvent = () =>
+		({
+			url: new URL("http://localhost:4173/test"),
+			from: null,
+			to: null,
+			type: "link",
+			willUnload: false,
+		}) as unknown as Parameters<typeof handleError>[0]["event"];
+
+	it("does not log or report crashes for expected framework errors", () => {
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const res = handleError({
+			error: { status: 404, message: "Not Found" },
+			event: makeNavEvent(),
+			kind: "framework",
+		});
+
+		expect(consoleSpy).not.toHaveBeenCalled();
+		expect(res).toBeUndefined();
+		consoleSpy.mockRestore();
+	});
+
+	it("does not log or report crashes for expected app errors", () => {
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const res = handleError({
+			error: { status: 400, message: "App error" },
+			event: makeNavEvent(),
+			kind: "app",
+		});
+
+		expect(consoleSpy).not.toHaveBeenCalled();
+		expect(res).toBeUndefined();
+		consoleSpy.mockRestore();
+	});
+
+	it("logs unexpected unknown errors and returns internal error message", () => {
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const res = handleError({
+			error: new Error("client crash"),
+			event: makeNavEvent(),
+			kind: "unknown",
+		});
+
+		expect(consoleSpy).toHaveBeenCalledTimes(1);
+		const logged = JSON.parse(consoleSpy.mock.calls[0]![0] as string);
+		expect(logged).toMatchObject({
+			level: "error",
+			source: "sveltekit-handleClientError",
+			status: 500,
+			message: "Internal Error",
+			path: "/test",
+		});
+		expect(logged.error.message).toBe("client crash");
+		expect(res).toEqual({ message: "Internal error (client)" });
+		consoleSpy.mockRestore();
 	});
 });

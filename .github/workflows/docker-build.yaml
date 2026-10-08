@@ -373,7 +373,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Stable build identifier. alt-frontend-sv pins SvelteKit's app
-          # version to it (svelte.config.js); other Dockerfiles ignore it.
+          # version to it (vite.config.ts); other Dockerfiles ignore it.
           # BINARY selects ./cmd/<BINARY> for the alt-backend trio. Emitted
           # only when services.yaml declares one — passing an empty
           # BINARY= to the 21 Dockerfiles that never declare the ARG would

@@ -1,5 +1,5 @@
-import { stripHtmlToText } from "$lib/domain/feed/sanitize";
-import type { FeedSearchResult, SearchFeedItem } from "$lib/schema/search";
+import { stripHtmlToText } from "#lib/domain/feed/sanitize.js";
+import type { FeedSearchResult, SearchFeedItem } from "#lib/schema/search.js";
 
 /**
  * Meilisearch stores whatever the feed published, which for a great many

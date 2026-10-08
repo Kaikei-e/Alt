@@ -6,7 +6,7 @@
 
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
-import { FetchArticleContentResponseSchema } from "$lib/gen/alt/articles/v2/articles_pb";
+import { FetchArticleContentResponseSchema } from "#lib/gen/alt/articles/v2/articles_pb.js";
 import { buildConnectArticleContent } from "../../../tests/e2e/fixtures/factories";
 
 describe("Article API Contract", () => {

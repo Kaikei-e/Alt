@@ -6,8 +6,8 @@
  * JSON error response. Centralizing it keeps the timeout/error-shape fix in
  * one place instead of N near-identical copies.
  */
-import { json, type RequestEvent } from "@sveltejs/kit";
-import { getBackendToken } from "$lib/api";
+import type { RequestEvent } from "@sveltejs/kit";
+import { getBackendToken } from "#lib/api.js";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -67,7 +67,7 @@ export async function proxyDashboardGet(
 				statusText: response.statusText,
 				errorBody: errorText.substring(0, 200),
 			});
-			return json(
+			return Response.json(
 				{ error: `${errorLabel}: ${response.status}` },
 				{ status: response.status },
 			);
@@ -76,14 +76,14 @@ export async function proxyDashboardGet(
 		const data = await response.json();
 		if (options.validateData && !options.validateData(data)) {
 			console.error(`${errorLabel}: unexpected response shape`, { path });
-			return json(
+			return Response.json(
 				{ error: `${errorLabel}: unexpected response shape` },
 				{ status: 502 },
 			);
 		}
-		return json(data);
+		return Response.json(data);
 	} catch (error) {
 		console.error(`Error in dashboard proxy for ${path}:`, error);
-		return json({ error: "Internal server error" }, { status: 500 });
+		return Response.json({ error: "Internal server error" }, { status: 500 });
 	}
 }

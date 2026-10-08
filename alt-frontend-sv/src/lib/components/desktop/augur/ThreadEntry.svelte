@@ -1,9 +1,9 @@
 <script lang="ts">
-import augurAvatar from "$lib/assets/augur-chat.webp";
-import { parseAugurUserMessage } from "$lib/utils/augur-entry";
-import { splitSettledBlocks } from "$lib/utils/markdownStream";
-import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
+import augurAvatar from "#lib/assets/augur-chat.webp";
+import { parseAugurUserMessage } from "#lib/utils/augur-entry.js";
+import { splitSettledBlocks } from "#lib/utils/markdownStream.js";
+import { parseMarkdown } from "#lib/utils/simpleMarkdown.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import ArticleScopeCard from "./ArticleScopeCard.svelte";
 import { type CitationKindName, citationHref } from "./citation-href";
 

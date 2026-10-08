@@ -9,7 +9,7 @@ import type { Transport } from "@connectrpc/connect";
 import {
 	createStreamingRenderer,
 	type StreamingRendererOptions,
-} from "$lib/utils/streamingRenderer";
+} from "#lib/utils/streamingRenderer.js";
 import {
 	type StreamSummarizeChunk,
 	type StreamSummarizeResult,

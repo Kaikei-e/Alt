@@ -1,6 +1,5 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
 import {
 	batchPrefetchImagesClient,
 	getFeedContentOnTheFlyClient,
@@ -8,12 +7,13 @@ import {
 	getReadFeedsWithCursorClient,
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
-} from "$lib/api/client";
-import type { ConnectFeedSource } from "$lib/connect/feeds";
-import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
-import { toRenderFeed } from "$lib/schema/feed";
-import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
-import { canonicalize } from "$lib/utils/feed";
+} from "#lib/api/client/index.js";
+import type { ConnectFeedSource } from "#lib/connect/feeds.js";
+import type { RenderFeed, SanitizedFeed } from "#lib/schema/feed.js";
+import { toRenderFeed } from "#lib/schema/feed.js";
+import { articlePrefetcher } from "#lib/utils/articlePrefetcher.js";
+import { canonicalize } from "#lib/utils/feed.js";
+import { browser } from "$app/env";
 import DispatchHeader from "./DispatchHeader.svelte";
 import { createDispatchSession } from "./dispatch-session.svelte";
 import SwipeFeedCard from "./SwipeFeedCard.svelte";
@@ -428,111 +428,111 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 </script>
 
 <div class="swipe-screen">
-  <!-- Live Region -->
-  <div
-    aria-live="polite"
-    aria-atomic="true"
-    class="sr-only"
+	<!-- Live Region -->
+	<div
+		aria-live="polite"
+		aria-atomic="true"
+		class="sr-only"
   >
     {liveRegionMessage}
   </div>
 
-  <DispatchHeader
-    {mode}
-    readCount={session.readCount}
-    canUndo={session.canUndo}
-    onUndo={handleUndo}
-    onOpenFilter={() => {
-      isFilterSheetOpen = true;
-    }}
-    filterActive={excludedFeedLinkIds.length > 0}
-  />
+	<DispatchHeader
+		mode={mode}
+		readCount={session.readCount}
+		canUndo={session.canUndo}
+		onUndo={handleUndo}
+		onOpenFilter={() => {
+			isFilterSheetOpen = true;
+		}}
+		filterActive={excludedFeedLinkIds.length > 0}
+	/>
 
-  {#if isInitialLoading}
-    <div class="initial-loading">
-      <div class="loading-dot" aria-hidden="true"></div>
-      <p class="loading-text">Loading feeds...</p>
-    </div>
-  {:else if error && feeds.length === 0}
-    <div class="empty-state">
-      <p class="error-title">Error loading feeds</p>
-      <p class="error-message">{error}</p>
-      <button
-        type="button"
-        class="action-btn"
-        onclick={() => void loadMore()}
+	{#if isInitialLoading}
+		<div class="initial-loading">
+			<div class="loading-dot" aria-hidden="true"></div>
+			<p class="loading-text">Loading feeds...</p>
+		</div>
+	{:else if error && feeds.length === 0}
+		<div class="empty-state">
+			<p class="error-title">Error loading feeds</p>
+			<p class="error-message">{error}</p>
+			<button
+				type="button"
+				class="action-btn"
+				onclick={() => void loadMore()}
       >
         Retry
       </button>
-    </div>
-  {:else if activeFeed}
-    <div class="card-container">
-      <!-- Next card (background) -->
-      {#if nextFeed}
+		</div>
+	{:else if activeFeed}
+		<div class="card-container">
+			<!-- Next card (background) -->
+			{#if nextFeed}
         <div
           class="background-card"
           aria-hidden="true"
         ></div>
-      {/if}
+			{/if}
 
-      <!-- Active card -->
-      {#key activeFeed.id}
-        {#if isVisualPreview}
-          <VisualPreviewCard
-            feed={activeFeed}
-            statusMessage={liveRegionMessage}
-            onDismiss={handleDismiss}
-            thumbnailProxyUrl={currentOgImage}
-            {getCachedContent}
-            {getCachedArticleId}
-            {requestContent}
-            isBusy={isLoading}
+			<!-- Active card -->
+			{#key activeFeed.id}
+				{#if isVisualPreview}
+					<VisualPreviewCard
+						feed={activeFeed}
+						statusMessage={liveRegionMessage}
+						onDismiss={handleDismiss}
+						thumbnailProxyUrl={currentOgImage}
+						getCachedContent={getCachedContent}
+						getCachedArticleId={getCachedArticleId}
+						requestContent={requestContent}
+						isBusy={isLoading}
             initialArticleContent={activeIndex === 0
               ? initialArticleContent
               : undefined}
-            onArticleIdResolved={handleArticleIdResolved}
-            isLcp={activeIndex === 0}
-          />
-        {:else}
-          <SwipeFeedCard
-            feed={activeFeed}
-            statusMessage={liveRegionMessage}
-            onDismiss={handleDismiss}
-            {getCachedContent}
-            {getCachedArticleId}
-            {requestContent}
-            isBusy={isLoading}
+						onArticleIdResolved={handleArticleIdResolved}
+						isLcp={activeIndex === 0}
+					/>
+				{:else}
+					<SwipeFeedCard
+						feed={activeFeed}
+						statusMessage={liveRegionMessage}
+						onDismiss={handleDismiss}
+						getCachedContent={getCachedContent}
+						getCachedArticleId={getCachedArticleId}
+						requestContent={requestContent}
+						isBusy={isLoading}
             initialArticleContent={activeIndex === 0
               ? initialArticleContent
               : undefined}
-            onArticleIdResolved={handleArticleIdResolved}
-          />
-        {/if}
-      {/key}
-    </div>
-  {:else}
-    <div class="empty-state">
-      <p class="empty-text">No more feeds</p>
-      <button
-        type="button"
-        class="action-btn"
-        onclick={() => resetAndReload()}
+						onArticleIdResolved={handleArticleIdResolved}
+					/>
+				{/if}
+			{/key}
+		</div>
+	{:else}
+		<div class="empty-state">
+			<p class="empty-text">No more feeds</p>
+			<button
+				type="button"
+				class="action-btn"
+				onclick={() => resetAndReload()}
       >
         Refresh
       </button>
-    </div>
-  {/if}
+		</div>
+	{/if}
 
-  <SwipeLoadingOverlay isVisible={isLoading} />
-  <SwipeFilterSortSheet
-    bind:open={isFilterSheetOpen}
-    sources={feedSources}
-    {excludedFeedLinkIds}
-    {sortOrder}
-    onExclude={handleExclude}
-    onClearExclusion={handleClearExclusion}
+	<SwipeLoadingOverlay isVisible={isLoading} />
+	<SwipeFilterSortSheet
+		bind:open={isFilterSheetOpen}
+		sources={feedSources}
+		excludedFeedLinkIds={excludedFeedLinkIds}
+		sortOrder={sortOrder}
+		onExclude={handleExclude}
+		onClearExclusion={handleClearExclusion}
     onSortChange={(order) => { sortOrder = order; }}
-  />
+	/>
 </div>
 
 <style>
@@ -575,95 +575,100 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
     pointer-events: none;
   }
 
-  /* ── Loading ── */
-  .initial-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    margin: auto 0;
-  }
+	/* ── Loading ── */
+	.initial-loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		margin: auto 0;
+	}
 
-  .loading-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--alt-ash);
-    animation: pulse 1.2s ease-in-out infinite;
-  }
+	.loading-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-ash);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
 
-  .loading-text {
-    font-family: var(--font-body);
-    font-size: 0.85rem;
-    font-style: italic;
-    color: var(--alt-slate);
-    margin: 0;
-  }
+	.loading-text {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--alt-slate);
+		margin: 0;
+	}
 
-  /* ── Empty / Error ── */
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 1.5rem;
-    text-align: center;
-    gap: 0.5rem;
-    margin: auto 0;
-  }
+	/* ── Empty / Error ── */
+	.empty-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 1.5rem;
+		text-align: center;
+		gap: 0.5rem;
+		margin: auto 0;
+	}
 
-  .empty-text {
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    color: var(--alt-slate);
-    margin: 0 0 0.75rem;
-  }
+	.empty-text {
+		font-family: var(--font-body);
+		font-size: 0.9rem;
+		color: var(--alt-slate);
+		margin: 0 0 0.75rem;
+	}
 
-  .error-title {
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--alt-terracotta);
-    margin: 0;
-  }
+	.error-title {
+		font-family: var(--font-body);
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: var(--alt-terracotta);
+		margin: 0;
+	}
 
-  .error-message {
-    font-family: var(--font-body);
-    font-size: 0.82rem;
-    color: var(--alt-slate);
-    margin: 0 0 0.75rem;
-  }
+	.error-message {
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		color: var(--alt-slate);
+		margin: 0 0 0.75rem;
+	}
 
-  .action-btn {
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--alt-charcoal);
-    background: transparent;
-    border: 1.5px solid var(--alt-charcoal);
-    padding: 0.5rem 1.5rem;
-    min-height: 44px;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-  }
+	.action-btn {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		padding: 0.5rem 1.5rem;
+		min-height: 44px;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
 
-  .action-btn:active {
-    background: var(--alt-charcoal);
-    color: var(--surface-bg);
-  }
+	.action-btn:active {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
 
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 1; }
-  }
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.3;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
 
-  @media (prefers-reduced-motion: reduce) {
-    .loading-dot {
-      animation: none;
-      opacity: 0.6;
-    }
-  }
+	@media (prefers-reduced-motion: reduce) {
+		.loading-dot {
+			animation: none;
+			opacity: 0.6;
+		}
+	}
 </style>

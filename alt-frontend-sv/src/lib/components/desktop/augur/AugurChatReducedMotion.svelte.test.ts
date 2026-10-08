@@ -31,12 +31,12 @@ const { streamCalls, streamAugurChat } = vi.hoisted(() => {
 	};
 });
 
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamAugurChat,
 }));
 
-vi.mock("$lib/stores/motion.svelte", () => ({
+vi.mock("#lib/stores/motion.svelte.js", () => ({
 	prefersReducedMotion: () => true,
 }));
 

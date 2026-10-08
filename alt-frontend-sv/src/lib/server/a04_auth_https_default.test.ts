@@ -1,9 +1,9 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import https from "node:https";
+import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import https from "node:https";
 import os from "node:os";
 import path from "node:path";
-import { execSync, spawn } from "node:child_process";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 describe("A04 — durable Bun default fetch with startup NODE_EXTRA_CA_CERTS", () => {
 	let server: https.Server;
@@ -17,7 +17,9 @@ describe("A04 — durable Bun default fetch with startup NODE_EXTRA_CA_CERTS", (
 
 	beforeAll(async () => {
 		try {
-			installedBunVersion = execSync("bun --version", { encoding: "utf-8" }).trim();
+			installedBunVersion = execSync("bun --version", {
+				encoding: "utf-8",
+			}).trim();
 		} catch (err) {
 			installedBunVersion = "unknown";
 		}
@@ -65,7 +67,9 @@ describe("A04 — durable Bun default fetch with startup NODE_EXTRA_CA_CERTS", (
 			(req, res) => {
 				if (req.url === "/csrf") {
 					res.writeHead(200, { "Content-Type": "application/json" });
-					res.end(JSON.stringify({ data: { csrf_token: "test-csrf-token-xyz" } }));
+					res.end(
+						JSON.stringify({ data: { csrf_token: "test-csrf-token-xyz" } }),
+					);
 				} else {
 					res.writeHead(404);
 					res.end();
@@ -93,7 +97,10 @@ describe("A04 — durable Bun default fetch with startup NODE_EXTRA_CA_CERTS", (
 		}
 	});
 
-	function runBunFetch(script: string, extraCA: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+	function runBunFetch(
+		script: string,
+		extraCA: string,
+	): Promise<{ code: number | null; stdout: string; stderr: string }> {
 		return new Promise((resolve) => {
 			const env = {
 				...process.env,
@@ -102,8 +109,12 @@ describe("A04 — durable Bun default fetch with startup NODE_EXTRA_CA_CERTS", (
 			const cp = spawn("bun", ["-e", script], { env });
 			let stdout = "";
 			let stderr = "";
-			cp.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-			cp.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+			cp.stdout.on("data", (chunk) => {
+				stdout += chunk.toString();
+			});
+			cp.stderr.on("data", (chunk) => {
+				stderr += chunk.toString();
+			});
 			cp.on("close", (code) => {
 				resolve({ code, stdout, stderr });
 			});

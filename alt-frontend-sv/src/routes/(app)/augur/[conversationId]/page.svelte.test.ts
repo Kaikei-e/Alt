@@ -10,23 +10,15 @@ import { render } from "vitest-browser-svelte";
 
 const CONVERSATION_ID = "conv-77";
 
-const { pageStore } = vi.hoisted(() => {
-	const value = {
+const { pageState } = vi.hoisted(() => ({
+	pageState: {
 		url: new URL("http://localhost/augur/conv-77"),
 		params: { conversationId: "conv-77" },
-	};
-	return {
-		pageStore: {
-			subscribe(run: (next: typeof value) => void) {
-				run(value);
-				return () => {};
-			},
-		},
-	};
-});
+	},
+}));
 
-vi.mock("$app/stores", () => ({ page: pageStore }));
-vi.mock("$app/navigation", () => ({ replaceState: vi.fn() }));
+vi.mock("$app/state", () => ({ page: pageState }));
+vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 
 type StreamCall = {
 	options: { conversationId?: string };
@@ -60,7 +52,7 @@ const { getAugurConversation, streamCalls, streamAugurChat } = vi.hoisted(
 	},
 );
 
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	getAugurConversation,
 	streamAugurChat,

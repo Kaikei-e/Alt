@@ -1,9 +1,9 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
-import { infiniteScroll } from "$lib/actions/infinite-scroll";
-import { searchFeedsClient } from "$lib/api/client";
-import type { SearchFeedItem } from "$lib/schema/search";
-import { transformFeedSearchResult } from "$lib/utils/transformFeedSearchResult";
+import { infiniteScroll } from "#lib/actions/infinite-scroll.js";
+import { searchFeedsClient } from "#lib/api/client/index.js";
+import type { SearchFeedItem } from "#lib/schema/search.js";
+import { transformFeedSearchResult } from "#lib/utils/transformFeedSearchResult.js";
 import SearchResultItem from "./SearchResultItem.svelte";
 
 interface Props {

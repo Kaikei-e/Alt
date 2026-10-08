@@ -5,7 +5,7 @@ import { render } from "vitest-browser-svelte";
 import {
 	MetricResultSchema,
 	SeriesKind,
-} from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+} from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 import MonitorErrorBanner from "./MonitorErrorBanner.svelte";
 
 function makeMetric(degraded: boolean, reason = "") {

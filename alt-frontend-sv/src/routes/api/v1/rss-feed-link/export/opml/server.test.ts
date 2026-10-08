@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$env/dynamic/private", () => ({
-	env: { BACKEND_CONNECT_URL: "http://backend.test" },
+vi.mock("$app/env/private", () => ({
+	BACKEND_CONNECT_URL: "http://backend.test",
 }));
 
-vi.mock("$lib/server/auth", () => ({
+vi.mock("#lib/server/auth.js", () => ({
 	getBackendToken: vi.fn(),
 }));
 
-import { getBackendToken } from "$lib/server/auth";
+import { getBackendToken } from "#lib/server/auth.js";
 import { GET } from "./+server";
 
 const makeRequestEvent = () =>

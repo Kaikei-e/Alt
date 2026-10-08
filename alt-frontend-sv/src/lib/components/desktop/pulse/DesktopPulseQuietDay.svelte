@@ -1,7 +1,7 @@
 <script lang="ts">
-import PulseWeeklyHighlight from "$lib/components/pulse/PulseWeeklyHighlight.svelte";
-import { Button } from "$lib/components/ui/button";
-import type { QuietDayInfo } from "$lib/schema/evening_pulse";
+import PulseWeeklyHighlight from "#lib/components/pulse/PulseWeeklyHighlight.svelte";
+import { Button } from "#lib/components/ui/button/index.js";
+import type { QuietDayInfo } from "#lib/schema/evening_pulse.js";
 
 interface Props {
 	date: string;

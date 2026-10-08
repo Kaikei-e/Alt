@@ -1,7 +1,16 @@
 import { createRawSnippet } from "svelte";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+
+const { afterNavigateMock } = vi.hoisted(() => ({
+	afterNavigateMock: vi.fn(),
+}));
+
+vi.mock("$app/navigation", () => ({
+	afterNavigate: afterNavigateMock,
+}));
+
 import ResponsiveLayout from "./ResponsiveLayout.svelte";
 
 // 393 x 851 is a Pixel 5 held upright; rotating it makes the viewport 851 wide,
@@ -152,5 +161,28 @@ describe("ResponsiveLayout page continuity across a rotation", () => {
 		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
 		await settle();
 		assertSingleMain();
+	});
+});
+
+describe("ResponsiveLayout afterNavigate focus management", () => {
+	it("does not focus <main> on shallow navigation, but focuses on non-shallow navigation", async () => {
+		const { container } = render(ResponsiveLayout, {
+			props: { children: body },
+		});
+		const main = container.querySelector("main");
+		expect(main).not.toBeNull();
+
+		const callback = afterNavigateMock.mock.lastCall?.[0];
+		expect(callback).toBeTypeOf("function");
+
+		const focusSpy = vi.spyOn(main as HTMLElement, "focus");
+
+		callback({ shallow: true });
+		expect(focusSpy).not.toHaveBeenCalled();
+		expect(document.activeElement).not.toBe(main);
+
+		callback({ shallow: false });
+		expect(focusSpy).toHaveBeenCalledWith({ preventScroll: false });
+		expect(document.activeElement).toBe(main);
 	});
 });

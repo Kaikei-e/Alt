@@ -28,7 +28,7 @@ import { describe, expect, it } from "vitest";
  */
 
 const workerSource = readFileSync(
-	fileURLToPath(new URL("./service-worker.ts", import.meta.url)),
+	fileURLToPath(new URL("../../service-worker/index.ts", import.meta.url)),
 	"utf-8",
 );
 
@@ -57,7 +57,9 @@ describe("service worker stays push-only", () => {
 		// `$service-worker` exposes `build`, `files` and `prerendered` — the
 		// ingredients of an app-shell precache. Importing them has no purpose in
 		// a worker that never answers a request.
-		expect(workerCode).not.toMatch(/from\s+["'`]\$service-worker["'`]/);
+		expect(workerCode).not.toMatch(
+			/from\s+["'`](\$service-worker|\$app\/manifest)["'`]/,
+		);
 	});
 
 	it("still handles the two events it exists for", () => {

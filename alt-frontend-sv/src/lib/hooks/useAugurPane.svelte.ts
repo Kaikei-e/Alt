@@ -2,20 +2,20 @@
  * Chat state hook for the Ask Augur inline pane.
  *
  * Encapsulates message state, streaming lifecycle, and abort logic.
- * Reuses streamAugurChat() from $lib/connect.
+ * Reuses streamAugurChat() from #lib/connect.
  */
 
 import {
 	type AugurCitation,
 	createClientTransport,
 	streamAugurChat,
-} from "$lib/connect";
-import { prefersReducedMotion } from "$lib/stores/motion.svelte";
-import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
+} from "#lib/connect/index.js";
+import { prefersReducedMotion } from "#lib/stores/motion.svelte.js";
+import { formatAugurFallbackMessage } from "#lib/utils/augurFallback.js";
 import {
 	createTypewriterReveal,
 	type TypewriterReveal,
-} from "$lib/utils/typewriterReveal";
+} from "#lib/utils/typewriterReveal.js";
 
 type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
 

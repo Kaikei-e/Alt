@@ -16,7 +16,7 @@ import { page } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 
-import type { RenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import { renderFeedFixture } from "../../../../../../tests/fixtures/feeds";
 import MobileGalleryTile from "./MobileGalleryTile.svelte";
 
@@ -24,7 +24,7 @@ const { loadProxyImageDefault } = vi.hoisted(() => ({
 	loadProxyImageDefault: vi.fn(),
 }));
 
-vi.mock("$lib/utils/loadProxyImage", () => ({ loadProxyImageDefault }));
+vi.mock("#lib/utils/loadProxyImage.js", () => ({ loadProxyImageDefault }));
 
 const PROXY_URL = "/api/og-image?u=https%3A%2F%2Falt.ai%2Fog.png";
 

@@ -22,7 +22,7 @@ export function mountStreamTab(lensId: string): {
 				return lensId;
 			},
 		});
-		flushSync();
 	});
+	flushSync();
 	return { stream, cleanup };
 }

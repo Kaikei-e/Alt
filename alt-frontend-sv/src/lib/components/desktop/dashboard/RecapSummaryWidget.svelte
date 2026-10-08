@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { RecapSummary } from "$lib/schema/recap";
+import type { RecapSummary } from "#lib/schema/recap.js";
 
 interface Props {
 	recapData: RecapSummary | null;

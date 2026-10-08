@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { ConnectFeedSource } from "$lib/connect/feeds";
+import type { ConnectFeedSource } from "#lib/connect/feeds.js";
 import FeedSourceExcludeFilter from "./FeedSourceExcludeFilter.svelte";
 
 interface Props {

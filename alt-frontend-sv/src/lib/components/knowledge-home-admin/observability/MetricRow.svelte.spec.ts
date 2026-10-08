@@ -8,7 +8,7 @@ import {
 	PointSchema,
 	SeriesKind,
 	SeriesSchema,
-} from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+} from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 import MetricRow from "./MetricRow.svelte";
 
 function makeMetric(opts: {

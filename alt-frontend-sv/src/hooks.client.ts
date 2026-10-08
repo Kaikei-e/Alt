@@ -1,10 +1,10 @@
-import type { HandleClientError } from "@sveltejs/kit";
+import type { HandleClientError } from "@sveltejs/kit/hooks";
 import {
 	classifySafari,
 	extractChunkHash,
 	isChunkLoadError,
 	type SafariBucket,
-} from "$lib/safari-error-utils";
+} from "#lib/safari-error-utils.js";
 
 const RELOAD_ATTEMPT_KEY = "alt:chunk-reload-attempts";
 const RELOAD_ATTEMPT_LIMIT = 3;
@@ -12,7 +12,6 @@ const RELOAD_ATTEMPT_LIMIT = 3;
 export { isChunkLoadError };
 
 export type ReloadReason = "chunk-404" | "updated";
-
 export interface ChunkReloadScheduler {
 	schedule(reason: ReloadReason): void;
 }
@@ -100,17 +99,15 @@ const scheduler = createChunkReloadScheduler({
 			: undefined,
 });
 
-export const handleError: HandleClientError = ({
-	error,
-	event,
-	status,
-	message,
-}) => {
+export const handleError: HandleClientError = (input) => {
+	if (input.kind !== "unknown") return;
+
+	const { error, event } = input;
 	const payload = buildClientErrorPayload({
 		error,
 		path: event.url.pathname,
-		status,
-		message,
+		status: 500,
+		message: "Internal Error",
 		userAgent:
 			typeof navigator !== "undefined" ? navigator.userAgent : undefined,
 	});

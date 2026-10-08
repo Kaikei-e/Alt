@@ -1,17 +1,17 @@
-import { json, type RequestHandler } from "@sveltejs/kit";
-import { getFeedTagsById } from "$lib/api";
+import type { RequestHandler } from "@sveltejs/kit";
+import { getFeedTagsById } from "#lib/api.js";
 
 export const GET: RequestHandler = async ({ request, params }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 	const feedId = params.id;
 
 	if (!feedId) {
-		return json({ error: "feed id is required" }, { status: 400 });
+		return Response.json({ error: "feed id is required" }, { status: 400 });
 	}
 
 	try {
 		const response = await getFeedTagsById(cookieHeader, feedId);
-		return json(response);
+		return Response.json(response);
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error("Error in /api/feeds/[id]/tags:", {
@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			cookiePresent: !!cookieHeader,
 		});
 
-		return json(
+		return Response.json(
 			{
 				error: errorMessage,
 				feed_id: feedId,

@@ -107,9 +107,11 @@ export function articleThumbnailResolver(): ArticleThumbnailResolver {
 		shared = createArticleThumbnailResolver({
 			fetchCachedProxyUrl: async (articleId) => {
 				const { createClientTransport } = await import(
-					"$lib/connect/transport-client"
+					"#lib/connect/transport-client.js"
 				);
-				const { batchPrefetchImages } = await import("$lib/connect/articles");
+				const { batchPrefetchImages } = await import(
+					"#lib/connect/articles.js"
+				);
 				const images = await batchPrefetchImages(createClientTransport(), [
 					articleId,
 				]);
@@ -117,9 +119,11 @@ export function articleThumbnailResolver(): ArticleThumbnailResolver {
 			},
 			fetchSourceUrl: async (articleId) => {
 				const { createClientTransport } = await import(
-					"$lib/connect/transport-client"
+					"#lib/connect/transport-client.js"
 				);
-				const { getArticleSourceURL } = await import("$lib/connect/articles");
+				const { getArticleSourceURL } = await import(
+					"#lib/connect/articles.js"
+				);
 				const source = await getArticleSourceURL(
 					createClientTransport(),
 					articleId,
@@ -128,9 +132,11 @@ export function articleThumbnailResolver(): ArticleThumbnailResolver {
 			},
 			fetchOriginProxyUrl: async (sourceUrl) => {
 				const { createClientTransport } = await import(
-					"$lib/connect/transport-client"
+					"#lib/connect/transport-client.js"
 				);
-				const { fetchArticleContent } = await import("$lib/connect/articles");
+				const { fetchArticleContent } = await import(
+					"#lib/connect/articles.js"
+				);
 				const article = await fetchArticleContent(
 					createClientTransport(),
 					sourceUrl,

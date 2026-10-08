@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button";
+import { Button } from "#lib/components/ui/button/index.js";
 import {
 	Dialog,
 	DialogContent,
@@ -7,7 +7,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "$lib/components/ui/dialog";
+} from "#lib/components/ui/dialog/index.js";
 
 interface Props {
 	open: boolean;

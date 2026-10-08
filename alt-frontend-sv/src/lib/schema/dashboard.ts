@@ -6,7 +6,7 @@ export {
 	getStageLabel,
 	getStatusBgColor,
 	getStatusColor,
-} from "$lib/domain/dashboard/format";
+} from "#lib/domain/dashboard/format.js";
 export type {
 	ActiveJobInfo,
 	AdminJob,
@@ -28,5 +28,5 @@ export type {
 	TimeWindow,
 	TriggerSource,
 	UserJobContext,
-} from "$lib/domain/dashboard/types";
-export { PIPELINE_STAGES, TIME_WINDOWS } from "$lib/domain/dashboard/types";
+} from "#lib/domain/dashboard/types.js";
+export { PIPELINE_STAGES, TIME_WINDOWS } from "#lib/domain/dashboard/types.js";

@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { HTMLTextareaAttributes } from "svelte/elements";
-import type { WithElementRef } from "$lib/utils.js";
-import { cn } from "$lib/utils.js";
+import type { WithElementRef } from "#lib/utils.js";
+import { cn } from "#lib/utils.js";
 
 type TextareaProps = WithElementRef<HTMLTextareaAttributes>;
 

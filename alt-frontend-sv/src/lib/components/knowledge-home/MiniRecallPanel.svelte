@@ -1,6 +1,6 @@
 <script lang="ts">
 import { BirdIcon, Newspaper, Orbit, Shuffle } from "@lucide/svelte";
-import type { TodayDigestData } from "$lib/connect/knowledge_home";
+import type { TodayDigestData } from "#lib/connect/knowledge_home.js";
 
 interface Props {
 	digest: TodayDigestData | null;

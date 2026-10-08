@@ -4,7 +4,7 @@ import { render } from "vitest-browser-svelte";
 import { searchResultsFixture } from "../../../../../tests/fixtures/search";
 import SearchResults from "./SearchResults.svelte";
 
-vi.mock("$lib/api/client", () => ({
+vi.mock("#lib/api/client/index.js", () => ({
 	searchFeedsClient: vi.fn(),
 	getArticleSummaryClient: vi.fn(() =>
 		Promise.resolve({ matched_articles: [] }),
@@ -19,7 +19,7 @@ vi.mock("$lib/api/client", () => ({
 	),
 }));
 
-vi.mock("$lib/utils/transformFeedSearchResult", () => ({
+vi.mock("#lib/utils/transformFeedSearchResult.js", () => ({
 	transformFeedSearchResult: vi.fn(() => []),
 }));
 

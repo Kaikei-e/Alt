@@ -1,5 +1,4 @@
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { env } from "$env/dynamic/private";
 import type {
 	FeatureFlagsConfigData,
 	ProjectionHealthData,
@@ -7,7 +6,7 @@ import type {
 	ReprojectRunData,
 	SLOStatusData,
 	SystemMetricsData,
-} from "$lib/connect/knowledge_home_admin";
+} from "#lib/connect/knowledge_home_admin.js";
 import {
 	type ArticleUrlBackfillResultData,
 	compareReproject,
@@ -25,10 +24,11 @@ import {
 	startReproject,
 	swapReproject,
 	triggerBackfill,
-} from "$lib/connect/knowledge_home_admin";
+} from "#lib/connect/knowledge_home_admin.js";
+import { BFF_CONNECT_URL as BFF_CONNECT_URL_ENV } from "$app/env/private";
 
 const BFF_CONNECT_URL =
-	env.BFF_CONNECT_URL || "http://alt-butterfly-facade:9250";
+	BFF_CONNECT_URL_ENV || "http://alt-butterfly-facade:9250";
 
 export interface KnowledgeHomeAdminSnapshot {
 	health: ProjectionHealthData | null;

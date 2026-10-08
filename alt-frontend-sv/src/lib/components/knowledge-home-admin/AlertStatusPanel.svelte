@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { AlertSummaryData } from "$lib/connect/knowledge_home_admin";
+import type { AlertSummaryData } from "#lib/connect/knowledge_home_admin.js";
 
 let { alerts }: { alerts: AlertSummaryData[] } = $props();
 

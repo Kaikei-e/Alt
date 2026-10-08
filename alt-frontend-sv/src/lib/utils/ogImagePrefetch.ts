@@ -1,4 +1,4 @@
-import type { RenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "#lib/schema/feed.js";
 
 /**
  * Select the article IDs that still need an OG-image proxy URL fetched.

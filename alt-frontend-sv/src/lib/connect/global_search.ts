@@ -16,7 +16,7 @@ import {
 	type RecapSection as ProtoRecapSection,
 	type TagSection as ProtoTagSection,
 	type SearchEverythingResponse,
-} from "$lib/gen/alt/search/v2/global_search_pb";
+} from "#lib/gen/alt/search/v2/global_search_pb.js";
 
 /** Type-safe GlobalSearchService client */
 type GlobalSearchClient = Client<typeof GlobalSearchService>;

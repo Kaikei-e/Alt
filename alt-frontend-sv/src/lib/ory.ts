@@ -1,2 +1,2 @@
 // Re-export from canonical server location
-export { ory } from "$lib/server/ory";
+export { ory } from "#lib/server/ory.js";

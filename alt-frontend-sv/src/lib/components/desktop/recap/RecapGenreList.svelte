@@ -9,8 +9,8 @@ import {
 	Sparkles,
 	TrendingUp,
 } from "@lucide/svelte";
-import type { RecapGenre } from "$lib/schema/recap";
-import { cn } from "$lib/utils";
+import type { RecapGenre } from "#lib/schema/recap.js";
+import { cn } from "#lib/utils.js";
 
 interface Props {
 	genres: RecapGenre[];

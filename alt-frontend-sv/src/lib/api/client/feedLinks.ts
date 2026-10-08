@@ -1,5 +1,5 @@
-import { createClientTransport } from "$lib/connect/transport-client";
-import type { FeedLink } from "$lib/schema/feedLink";
+import { createClientTransport } from "#lib/connect/transport-client.js";
+import type { FeedLink } from "#lib/schema/feedLink.js";
 
 /**
  * RSSフィードリンク一覧を取得（クライアントサイド）
@@ -7,14 +7,14 @@ import type { FeedLink } from "$lib/schema/feedLink";
  */
 export async function listFeedLinksClient(): Promise<FeedLink[]> {
 	const transport = createClientTransport();
-	const { listRSSFeedLinks } = await import("$lib/connect/rss");
+	const { listRSSFeedLinks } = await import("#lib/connect/rss.js");
 	const response = await listRSSFeedLinks(transport);
 
 	return response.links.map((link) => ({
 		id: link.id,
 		url: link.url,
 		healthStatus:
-			(link.healthStatus as import("$lib/schema/feedLink").FeedHealthStatus) ??
+			(link.healthStatus as import("#lib/schema/feedLink.js").FeedHealthStatus) ??
 			"unknown",
 		consecutiveFailures: link.consecutiveFailures ?? 0,
 		lastFailureReason: link.lastFailureReason ?? "",
@@ -28,7 +28,7 @@ export async function listFeedLinksClient(): Promise<FeedLink[]> {
  */
 export async function registerRssFeedClient(url: string): Promise<void> {
 	const transport = createClientTransport();
-	const { registerRSSFeed } = await import("$lib/connect/rss");
+	const { registerRSSFeed } = await import("#lib/connect/rss.js");
 	await registerRSSFeed(transport, url);
 }
 
@@ -38,6 +38,6 @@ export async function registerRssFeedClient(url: string): Promise<void> {
  */
 export async function deleteFeedLinkClient(id: string): Promise<void> {
 	const transport = createClientTransport();
-	const { deleteRSSFeedLink } = await import("$lib/connect/rss");
+	const { deleteRSSFeedLink } = await import("#lib/connect/rss.js");
 	await deleteRSSFeedLink(transport, id);
 }

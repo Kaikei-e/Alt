@@ -1,20 +1,24 @@
-import type { Handle, HandleServerError, ServerInit } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
-import { building } from "$app/environment";
-import { classifySafari, extractChunkHash } from "$lib/safari-error-utils";
-import { validateSession } from "$lib/server/auth-middleware";
-import { classifyOryError } from "$lib/server/error-classifier";
-import { resolveResponsiveRedirect } from "$lib/server/redirect-resolver";
+import type {
+	Handle,
+	HandleServerError,
+	ServerInit,
+} from "@sveltejs/kit/hooks";
+import { classifySafari, extractChunkHash } from "#lib/safari-error-utils.js";
+import { validateSession } from "#lib/server/auth-middleware.js";
+import { classifyOryError } from "#lib/server/error-classifier.js";
+import { resolveResponsiveRedirect } from "#lib/server/redirect-resolver.js";
 import {
 	buildApiErrorResponse,
 	buildRedirectUrl,
-} from "$lib/server/response-builder";
+} from "#lib/server/response-builder.js";
 import {
 	isApiRoute,
 	isPublicRoute,
 	isStreamEndpoint,
-} from "$lib/server/route-guard";
-import { verifySovereignAdminAuth } from "$lib/server/sovereign-admin";
+} from "#lib/server/route-guard.js";
+import { verifySovereignAdminAuth } from "#lib/server/sovereign-admin.js";
+import { building } from "$app/env";
 import {
 	applyApiCacheControl,
 	applyHtmlCacheControl,
@@ -109,12 +113,12 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 // tailed and grepped. The production frontend container runs node adapter with
 // production NODE_ENV which otherwise swallows raw console.error from load
 // functions; this handler restores that visibility.
-export const handleError: HandleServerError = ({
-	error,
-	event,
-	status,
-	message,
-}) => {
+export const handleError: HandleServerError = (input) => {
+	if (input.kind !== "unknown") return;
+
+	const { error, event } = input;
+	const status = 500;
+	const message = "Internal Error";
 	const errInfo =
 		error instanceof Error
 			? {

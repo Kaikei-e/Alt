@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { SupersedeInfoData } from "$lib/connect/knowledge_home";
+import type { SupersedeInfoData } from "#lib/connect/knowledge_home.js";
 import SupersedeDetail from "./SupersedeDetail.svelte";
 
 function makeInfo(

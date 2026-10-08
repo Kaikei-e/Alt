@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { BranchData } from "$lib/connect/knowledge_trail";
+import type { BranchData } from "#lib/connect/knowledge_trail.js";
 import ArticleEndBranches from "./ArticleEndBranches.svelte";
 
 function makeBranch(overrides: Partial<BranchData> = {}): BranchData {

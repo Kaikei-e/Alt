@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { Confidence } from "$lib/schema/evening_pulse";
+import type { Confidence } from "#lib/schema/evening_pulse.js";
 
 interface Props {
 	confidence: Confidence;

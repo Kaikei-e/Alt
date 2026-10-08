@@ -3,7 +3,7 @@ import type {
 	BranchData,
 	EpisodeData,
 	ResolveBranchHandler,
-} from "$lib/connect/knowledge_trail";
+} from "#lib/connect/knowledge_trail.js";
 import EpisodeCard from "./EpisodeCard.svelte";
 
 interface Props {

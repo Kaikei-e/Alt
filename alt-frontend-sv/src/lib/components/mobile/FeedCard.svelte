@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { RenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import FeedDetails from "./FeedDetails.svelte";
 
 interface Props {

@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Loader } from "@lucide/svelte";
-import type { SummaryState } from "$lib/connect/knowledge_home";
+import type { SummaryState } from "#lib/connect/knowledge_home.js";
 
 interface Props {
 	state: SummaryState;

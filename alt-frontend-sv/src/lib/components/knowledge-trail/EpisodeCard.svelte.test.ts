@@ -5,7 +5,7 @@ import type {
 	BranchData,
 	EpisodeData,
 	FootprintData,
-} from "$lib/connect/knowledge_trail";
+} from "#lib/connect/knowledge_trail.js";
 import EpisodeCard from "./EpisodeCard.svelte";
 
 function makeFootprint(overrides: Partial<FootprintData> = {}): FootprintData {

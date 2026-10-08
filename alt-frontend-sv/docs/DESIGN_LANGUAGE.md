@@ -353,7 +353,7 @@ src/lib/components/
 ```
 
 Breakpoint: **768px** (`md:`). Detection via `isDesktop()` / `isMobile()` from
-`$lib/stores/viewport.svelte`. Call them where the branch is written —
+`#lib/stores/viewport.svelte.js`. Call them where the branch is written —
 `{#if isDesktop()}`, `$derived(isDesktop() ? … : …)`. Assigning the result to a
 plain `const` snapshots it and the layout stops following the viewport, which is
 how a phone in landscape (851 CSS px) used to get stuck on the desktop layout.

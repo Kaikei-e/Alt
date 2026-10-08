@@ -1,6 +1,6 @@
 import { redirect } from "@sveltejs/kit";
-import { fetchKnowledgeHomeAdminSnapshot } from "$lib/server/knowledge-home-admin";
-import { getUserRole } from "$lib/server/user-role";
+import { fetchKnowledgeHomeAdminSnapshot } from "#lib/server/knowledge-home-admin.js";
+import { getUserRole } from "#lib/server/user-role.js";
 
 export const load = async ({ locals }) => {
 	if (getUserRole(locals.user) !== "admin") {

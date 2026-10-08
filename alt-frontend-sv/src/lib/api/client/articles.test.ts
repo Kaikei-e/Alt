@@ -1,19 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$app/paths", () => ({ base: "/sv" }));
+vi.mock("$app/paths", () => ({
+	resolve: (path: string) => `/sv/${path.replace(/^\//, "")}`,
+}));
 vi.mock("@connectrpc/connect-web", () => ({
 	createConnectTransport: vi.fn(() => ({ __transport: true })),
 }));
 
 const fetchArticleContent = vi.fn();
 const batchPrefetchArticleContent = vi.fn();
-vi.mock("$lib/connect/articles", () => ({
+vi.mock("#lib/connect/articles.js", () => ({
 	fetchArticleContent: (...args: unknown[]) => fetchArticleContent(...args),
 	batchPrefetchArticleContent: (...args: unknown[]) =>
 		batchPrefetchArticleContent(...args),
 }));
 
-import { FETCH_PRIORITY_HEADER } from "$lib/connect/transport-client";
+import { FETCH_PRIORITY_HEADER } from "#lib/connect/transport-client.js";
 import {
 	batchPrefetchArticleContentClient,
 	getFeedContentOnTheFlyClient,

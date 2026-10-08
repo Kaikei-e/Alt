@@ -1,9 +1,8 @@
-import { json, type RequestHandler } from "@sveltejs/kit";
-import { env } from "$env/dynamic/private";
-import { getBackendToken } from "$lib/api";
+import type { RequestHandler } from "@sveltejs/kit";
+import { getBackendToken } from "#lib/api.js";
+import { BACKEND_CONNECT_URL } from "$app/env/private";
 
-const BACKEND_URL =
-	env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
+const BACKEND_URL = BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
 const FETCH_TIMEOUT_MS = 10_000;
 
 export const GET: RequestHandler = async ({ request, url }) => {
@@ -15,7 +14,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	// Validate window parameter
 	const validWindows = ["4h", "24h", "3d", "7d"];
 	if (!validWindows.includes(window)) {
-		return json(
+		return Response.json(
 			{ error: "Invalid window parameter. Valid values: 4h, 24h, 3d, 7d" },
 			{ status: 400 },
 		);
@@ -45,16 +44,16 @@ export const GET: RequestHandler = async ({ request, url }) => {
 				statusText: response.statusText,
 				errorBody: errorText.substring(0, 200),
 			});
-			return json(
+			return Response.json(
 				{ error: `Backend API error: ${response.status}` },
 				{ status: response.status },
 			);
 		}
 
 		const data = await response.json();
-		return json(data);
+		return Response.json(data);
 	} catch (error) {
 		console.error("Error in /api/v1/feeds/stats/trends:", error);
-		return json({ error: "Internal server error" }, { status: 500 });
+		return Response.json({ error: "Internal server error" }, { status: 500 });
 	}
 };

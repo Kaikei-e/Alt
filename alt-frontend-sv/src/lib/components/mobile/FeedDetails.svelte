@@ -1,7 +1,6 @@
 <script lang="ts">
 import { tick, untrack } from "svelte";
 import { fade } from "svelte/transition";
-import { browser } from "$app/environment";
 import {
 	type FeedContentOnTheFlyResponse,
 	type FetchArticleSummaryResponse,
@@ -9,20 +8,21 @@ import {
 	getFeedContentOnTheFlyClient,
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
-} from "$lib/api/client";
-import * as Sheet from "$lib/components/ui/sheet";
+} from "#lib/api/client/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
-} from "$lib/connect";
+} from "#lib/connect/index.js";
 import {
 	EMPTY_CONTENT_ERROR,
 	READ_ORIGINAL_LABEL,
-} from "$lib/utils/articleContentState";
+} from "#lib/utils/articleContentState.js";
 import {
 	articleContentErrorMessage,
 	isTransientError,
-} from "$lib/utils/errorClassification";
+} from "#lib/utils/errorClassification.js";
+import { browser } from "$app/env";
 import RenderFeedDetails from "./RenderFeedDetails.svelte";
 
 interface Props {
@@ -72,13 +72,13 @@ let feedDetails = $state<FeedContentOnTheFlyResponse | null>(
 // Bounded auto-retry policy for the on-open content fetch.
 //
 // Transient-only with a hard attempt ceiling. The shape follows
-// $lib/utils/loadProxyImage — a permanent failure is terminal on the first
+// #lib/utils/loadProxyImage — a permanent failure is terminal on the first
 // attempt, a transient one buys a finite number of retries from a backoff
 // table.
 //
 // This sheet fires TWO endpoints per attempt (summary + content) and reports
 // the attempts it spent, so it keeps its own budget rather than the
-// single-request policy in $lib/utils/articleContentState that the swipe
+// single-request policy in #lib/utils/articleContentState that the swipe
 // cards, the desktop modal and the article route share. What it does share is
 // the wording: the terminal message below comes from
 // articleContentErrorMessage like everywhere else.
@@ -574,8 +574,8 @@ async function handleSummarize(forceRefresh = false) {
 			{:else}
 				<RenderFeedDetails
 					feedDetails={articleSummary || feedDetails}
-					{isLoading}
-					{error}
+					isLoading={isLoading}
+					error={error}
 				/>
 			{/if}
 

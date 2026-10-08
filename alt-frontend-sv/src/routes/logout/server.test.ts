@@ -5,11 +5,11 @@ const { invalidateSessionCache, createBrowserLogoutFlow } = vi.hoisted(() => ({
 	createBrowserLogoutFlow: vi.fn(),
 }));
 
-vi.mock("$lib/server/auth-middleware", () => ({
+vi.mock("#lib/server/auth-middleware.js", () => ({
 	invalidateSessionCache,
 }));
 
-vi.mock("$lib/ory", () => ({
+vi.mock("#lib/ory.js", () => ({
 	ory: { createBrowserLogoutFlow },
 }));
 
@@ -56,7 +56,9 @@ describe("POST /logout", () => {
 
 	it("still revokes flow if auth-hub invalidateSessionCache throws 500", async () => {
 		const cookieHeader = "ory_kratos_session=to-be-logged-out";
-		invalidateSessionCache.mockRejectedValueOnce(new Error("auth-hub 500 error"));
+		invalidateSessionCache.mockRejectedValueOnce(
+			new Error("auth-hub 500 error"),
+		);
 
 		await expect(POST(makeRequestEvent(cookieHeader))).rejects.toMatchObject({
 			status: 303,
@@ -68,7 +70,9 @@ describe("POST /logout", () => {
 
 	it("returns 500 if flow creation fails (no false OK)", async () => {
 		const cookieHeader = "ory_kratos_session=to-be-logged-out";
-		createBrowserLogoutFlow.mockRejectedValueOnce(new Error("kratos 500 error"));
+		createBrowserLogoutFlow.mockRejectedValueOnce(
+			new Error("kratos 500 error"),
+		);
 
 		const response = await POST(makeRequestEvent(cookieHeader));
 

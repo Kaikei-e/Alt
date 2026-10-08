@@ -25,7 +25,7 @@ import {
 	type TagTrailArticleItem as ProtoTagTrailArticleItem,
 	type StreamArticleTagsResponse,
 	StreamArticleTagsResponse_EventType,
-} from "$lib/gen/alt/articles/v2/articles_pb";
+} from "#lib/gen/alt/articles/v2/articles_pb.js";
 
 /** Type-safe ArticleService client */
 type ArticleClient = Client<typeof ArticleService>;
@@ -179,7 +179,7 @@ const PREFETCH_WARM_TIMEOUT_MS = 5_000;
  * @param forceRefresh - Skip the server-side store and re-fetch from the origin
  * @param headers - Extra call headers. The only one Alt sets here is the
  *   in-process fetch-priority sentinel, chosen by the browser-side caller in
- *   `$lib/api/client/articles`; this module stays free of `transport-client`
+ *   `#lib/api/client/articles`; this module stays free of `transport-client`
  *   (and so of `$app/paths`) because the BFF imports it server-side.
  * @returns The fetched article content
  */

@@ -2,7 +2,7 @@ import {
 	createClientTransport,
 	getLatestLetter,
 	getLetterByDate,
-} from "$lib/connect";
+} from "#lib/connect/index.js";
 import type { PageLoad } from "./$types";
 
 // Connect-RPC transport requires browser context

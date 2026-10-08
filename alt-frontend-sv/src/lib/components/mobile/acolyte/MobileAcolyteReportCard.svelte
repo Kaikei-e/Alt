@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { AcolyteReportSummary } from "$lib/connect/acolyte";
+import type { AcolyteReportSummary } from "#lib/connect/acolyte.js";
 
 interface Props {
 	report: AcolyteReportSummary;

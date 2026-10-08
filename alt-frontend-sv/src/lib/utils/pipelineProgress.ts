@@ -2,7 +2,7 @@ import {
 	PIPELINE_STAGES,
 	type PipelineStage,
 	type SubStageProgress,
-} from "$lib/schema/dashboard";
+} from "#lib/schema/dashboard.js";
 
 /**
  * Determines if a pipeline stage should show sub-stage progress (n/m format).

@@ -1,8 +1,8 @@
 <script lang="ts">
 import { User } from "@lucide/svelte";
-import augurAvatar from "$lib/assets/augur-chat.webp";
-import { cn } from "$lib/utils";
-import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import augurAvatar from "#lib/assets/augur-chat.webp";
+import { parseMarkdown } from "#lib/utils/simpleMarkdown.js";
+import { cn } from "#lib/utils.js";
 
 type Citation = {
 	URL: string;

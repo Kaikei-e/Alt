@@ -1,6 +1,6 @@
 import type { ServerLoad } from "@sveltejs/kit";
-import { getFeedLinks } from "$lib/api";
-import type { FeedLink } from "$lib/schema/feedLink";
+import { getFeedLinks } from "#lib/api.js";
+import type { FeedLink } from "#lib/schema/feedLink.js";
 
 interface PageData {
 	feedLinks: FeedLink[];

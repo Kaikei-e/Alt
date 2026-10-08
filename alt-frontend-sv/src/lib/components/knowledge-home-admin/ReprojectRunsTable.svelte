@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { ReprojectRunData } from "$lib/connect/knowledge_home_admin";
+import type { ReprojectRunData } from "#lib/connect/knowledge_home_admin.js";
 
 let {
 	runs,

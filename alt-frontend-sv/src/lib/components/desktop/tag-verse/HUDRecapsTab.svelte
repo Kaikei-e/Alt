@@ -5,7 +5,7 @@ import {
 	createClientTransport,
 	type RecapSearchResultItem,
 	searchRecapsByTag,
-} from "$lib/connect";
+} from "#lib/connect/index.js";
 import RecapDetailModal from "./RecapDetailModal.svelte";
 
 interface Props {

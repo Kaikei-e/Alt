@@ -1,6 +1,6 @@
 <script lang="ts">
+import type { AcolyteReportSummary } from "#lib/connect/acolyte.js";
 import { goto } from "$app/navigation";
-import type { AcolyteReportSummary } from "$lib/connect/acolyte";
 import MobileAcolyteReportCard from "./MobileAcolyteReportCard.svelte";
 
 interface Props {

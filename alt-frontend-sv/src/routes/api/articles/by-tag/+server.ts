@@ -1,5 +1,5 @@
-import { json, type RequestHandler } from "@sveltejs/kit";
-import { getArticlesByTag } from "$lib/api";
+import type { RequestHandler } from "@sveltejs/kit";
+import { getArticlesByTag } from "#lib/api.js";
 
 export const GET: RequestHandler = async ({ request, url }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
@@ -10,7 +10,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	const limit = limitStr ? Number.parseInt(limitStr, 10) : 20;
 
 	if (!tagId) {
-		return json({ error: "tag_id is required" }, { status: 400 });
+		return Response.json({ error: "tag_id is required" }, { status: 400 });
 	}
 
 	try {
@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			cursor || undefined,
 			limit,
 		);
-		return json(response);
+		return Response.json(response);
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error("Error in /api/articles/by-tag:", {
@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			cookiePresent: !!cookieHeader,
 		});
 
-		return json(
+		return Response.json(
 			{
 				error: "Failed to fetch articles by tag",
 				articles: [],

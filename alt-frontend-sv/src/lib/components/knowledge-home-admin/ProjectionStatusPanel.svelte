@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { ProjectionHealthData } from "$lib/connect/knowledge_home_admin";
+import type { ProjectionHealthData } from "#lib/connect/knowledge_home_admin.js";
 import AdminMetricCard from "./AdminMetricCard.svelte";
 
 let { health }: { health: ProjectionHealthData | null } = $props();

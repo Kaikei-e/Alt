@@ -1,7 +1,7 @@
 <script lang="ts">
-import logo from "$lib/assets/favicon.svg";
-import { Button } from "$lib/components/ui/button";
-import { getAuthStore } from "$lib/stores/auth.svelte";
+import logo from "#lib/assets/favicon.svg";
+import { Button } from "#lib/components/ui/button/index.js";
+import { getAuthStore } from "#lib/stores/auth.svelte.js";
 
 const auth = getAuthStore();
 </script>

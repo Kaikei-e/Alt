@@ -11,9 +11,9 @@
  * - Exponential backoff reconnection
  */
 import { createClient } from "@connectrpc/connect";
-import type { StreamHomeUpdate } from "$lib/connect/knowledge_home";
-import { createClientTransport } from "$lib/connect/transport-client";
-import { KnowledgeHomeService } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
+import type { StreamHomeUpdate } from "#lib/connect/knowledge_home.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
+import { KnowledgeHomeService } from "#lib/gen/alt/knowledge_home/v1/knowledge_home_pb.js";
 
 const MAX_RETRIES = 10;
 const BASE_RETRY_DELAY = 1000;

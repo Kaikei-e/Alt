@@ -6,7 +6,7 @@
 
 import type { Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
-import { TTSService } from "$lib/gen/alt/tts/v1/tts_pb";
+import { TTSService } from "#lib/gen/alt/tts/v1/tts_pb.js";
 
 export interface SynthesizeSpeechStreamOptions {
 	text: string;

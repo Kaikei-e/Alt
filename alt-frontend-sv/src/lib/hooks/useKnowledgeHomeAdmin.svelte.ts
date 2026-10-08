@@ -1,4 +1,4 @@
-import { getClientCSRFToken } from "$lib/api/client/core";
+import { getClientCSRFToken } from "#lib/api/client/core.js";
 import type {
 	ArticleUrlBackfillResultData,
 	FeatureFlagsConfigData,
@@ -8,7 +8,7 @@ import type {
 	ReprojectRunData,
 	SLOStatusData,
 	SystemMetricsData,
-} from "$lib/connect/knowledge_home_admin";
+} from "#lib/connect/knowledge_home_admin.js";
 
 interface Snapshot {
 	health: ProjectionHealthData | null;

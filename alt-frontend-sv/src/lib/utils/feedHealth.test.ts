@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeedHealthStatus, FeedLink } from "$lib/schema/feedLink";
+import type { FeedHealthStatus, FeedLink } from "#lib/schema/feedLink.js";
 import {
 	classifyFeedHealth,
 	getHealthColor,

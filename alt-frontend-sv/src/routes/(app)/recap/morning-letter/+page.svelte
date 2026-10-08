@@ -1,21 +1,21 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
 // Desktop
-import DesktopChat from "$lib/components/desktop/morning-letter/MorningLetterChat.svelte";
+import DesktopChat from "#lib/components/desktop/morning-letter/MorningLetterChat.svelte";
 // Mobile
-import MobileChat from "$lib/components/mobile/morning-letter/MorningLetterChat.svelte";
+import MobileChat from "#lib/components/mobile/morning-letter/MorningLetterChat.svelte";
 // Shared components
-import MorningLetterDocumentCore from "$lib/components/morning-letter/MorningLetterDocumentCore.svelte";
-import MorningLetterEmpty from "$lib/components/morning-letter/MorningLetterEmpty.svelte";
-import MorningLetterSkeleton from "$lib/components/morning-letter/MorningLetterSkeleton.svelte";
+import MorningLetterDocumentCore from "#lib/components/morning-letter/MorningLetterDocumentCore.svelte";
+import MorningLetterEmpty from "#lib/components/morning-letter/MorningLetterEmpty.svelte";
+import MorningLetterSkeleton from "#lib/components/morning-letter/MorningLetterSkeleton.svelte";
 import {
 	deriveWithinHours,
 	formatLetterDate,
-} from "$lib/components/morning-letter/morning-letter-document";
-import { useMorningLetter } from "$lib/hooks/useMorningLetter.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+} from "#lib/components/morning-letter/morning-letter-document.js";
+import { useMorningLetter } from "#lib/hooks/useMorningLetter.svelte.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { goto } from "$app/navigation";
+import { page } from "$app/state";
 
 const ml = useMorningLetter(page.data.letter ?? null);
 
@@ -45,14 +45,14 @@ async function handleRegenerate() {
 	if (result.regenerated && ml.letter?.targetDate) {
 		await goto(
 			`/recap/morning-letter?date=${encodeURIComponent(ml.letter.targetDate)}`,
-			{ replaceState: true, noScroll: true, invalidateAll: false },
+			{ replace: true, reset: false, refreshAll: false },
 		);
 	}
 }
 
 function handlePreviousLetterSelected(targetDate: string) {
 	void goto(`/recap/morning-letter?date=${encodeURIComponent(targetDate)}`, {
-		noScroll: false,
+		reset: true,
 	});
 }
 </script>

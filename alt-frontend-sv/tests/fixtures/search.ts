@@ -1,4 +1,4 @@
-import type { SearchFeedItem } from "$lib/schema/search";
+import type { SearchFeedItem } from "#lib/schema/search.js";
 
 export const searchResultFixture: SearchFeedItem = {
 	title: "Svelte 5 Runes Deep Dive",

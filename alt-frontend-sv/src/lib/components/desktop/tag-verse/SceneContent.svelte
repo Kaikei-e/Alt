@@ -3,7 +3,7 @@ import { T, useTask, useThrelte } from "@threlte/core";
 import { interactivity, OrbitControls } from "@threlte/extras";
 import { onDestroy } from "svelte";
 import * as THREE from "three";
-import type { TagCloudItem } from "$lib/connect";
+import type { TagCloudItem } from "#lib/connect/index.js";
 import PostProcessing from "./PostProcessing.svelte";
 import StarBackground from "./StarBackground.svelte";
 import TagAsteroid from "./TagAsteroid.svelte";

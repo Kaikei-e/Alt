@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { TagTrailTag } from "$lib/schema/tagTrail";
+import type { TagTrailTag } from "#lib/schema/tagTrail.js";
 
 interface Props {
 	tag: TagTrailTag;

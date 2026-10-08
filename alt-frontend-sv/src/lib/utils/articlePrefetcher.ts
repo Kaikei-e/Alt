@@ -1,8 +1,8 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import { getFeedContentOnTheFlyClient } from "$lib/api/client";
-import { batchPrefetchArticleContentClient } from "$lib/api/client/articles";
-import type { AltFetchPriority } from "$lib/connect/transport-client";
-import type { RenderFeed } from "$lib/schema/feed";
+import { batchPrefetchArticleContentClient } from "#lib/api/client/articles.js";
+import { getFeedContentOnTheFlyClient } from "#lib/api/client/index.js";
+import type { AltFetchPriority } from "#lib/connect/transport-client.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import {
 	isGlobalFailureScope,
 	isRetryableContentError,

@@ -19,7 +19,7 @@ import {
 	PushSubscriptionKeysSchema,
 	RegisterSubscriptionRequestSchema,
 	UpdatePreferencesRequestSchema,
-} from "$lib/gen/alt/push/v1/push_pb";
+} from "#lib/gen/alt/push/v1/push_pb.js";
 
 describe("Push API Contract", () => {
 	describe("NotificationPreferences", () => {

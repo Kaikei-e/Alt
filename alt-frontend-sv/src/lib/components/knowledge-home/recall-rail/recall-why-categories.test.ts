@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RecallReasonData } from "$lib/connect/knowledge_home";
+import type { RecallReasonData } from "#lib/connect/knowledge_home.js";
 import { categorizeRecallReasons } from "./recall-why-categories";
 
 describe("categorizeRecallReasons", () => {

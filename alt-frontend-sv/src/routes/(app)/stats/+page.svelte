@@ -4,16 +4,19 @@ import { onMount } from "svelte";
 import {
 	getDetailedFeedStatsClient,
 	getUnreadCountClient,
-} from "$lib/api/client/feeds";
-import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
-import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
-import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
-import type { DetailedFeedStatsSummary, TimeWindow } from "$lib/schema/stats";
-import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
+} from "#lib/api/client/feeds.js";
+import TimeWindowSelector from "#lib/components/desktop/stats/TimeWindowSelector.svelte";
+import { useFeedStats } from "#lib/hooks/useFeedStats.svelte.js";
+import { useTrendStats } from "#lib/hooks/useTrendStats.svelte.js";
+import type {
+	DetailedFeedStatsSummary,
+	TimeWindow,
+} from "#lib/schema/stats.js";
+import { isDesktop, isMobile } from "#lib/stores/viewport.svelte.js";
 
 // Lazy load chart.js (heavy dependency) - only loaded when stats page is visited on desktop
 const TrendChartPromise = import(
-	"$lib/components/desktop/stats/TrendChart.svelte"
+	"#lib/components/desktop/stats/TrendChart.svelte"
 );
 
 // Shared hook

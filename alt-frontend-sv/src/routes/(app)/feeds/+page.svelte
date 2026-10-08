@@ -3,25 +3,25 @@ import { getContext, onMount } from "svelte";
 import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
-} from "$lib/api/client/feeds";
-import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
-import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
-import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
-import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
-import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
-import Toast from "$lib/components/knowledge-home/Toast.svelte";
-import EmptyFeedState from "$lib/components/mobile/EmptyFeedState.svelte";
-import FeedCard from "$lib/components/mobile/FeedCard.svelte";
-import MobileFeedExcludeFilter from "$lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
-import type { ConnectFeedSource } from "$lib/connect/feeds";
-import { MARK_AS_READ_FAILED_MESSAGE } from "$lib/feeds/mark-as-read-feedback";
-import type { RenderFeed } from "$lib/schema/feed";
+} from "#lib/api/client/feeds.js";
+import DesktopFeedCard from "#lib/components/desktop/feeds/DesktopFeedCard.svelte";
+import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
+import FeedFilters from "#lib/components/desktop/feeds/FeedFilters.svelte";
+import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
+import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
+import Toast from "#lib/components/knowledge-home/Toast.svelte";
+import EmptyFeedState from "#lib/components/mobile/EmptyFeedState.svelte";
+import FeedCard from "#lib/components/mobile/FeedCard.svelte";
+import MobileFeedExcludeFilter from "#lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
+import type { ConnectFeedSource } from "#lib/connect/feeds.js";
+import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import {
 	CONNECTION_RECOVERY_KEY,
 	type ConnectionRecoveryStore,
-} from "$lib/stores/connection-recovery.svelte";
-import { useToastStore } from "$lib/stores/toast.svelte";
-import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
+} from "#lib/stores/connection-recovery.svelte.js";
+import { useToastStore } from "#lib/stores/toast.svelte.js";
+import { isDesktop, isMobile } from "#lib/stores/viewport.svelte.js";
 
 interface PageData {
 	initialFeeds?: RenderFeed[];

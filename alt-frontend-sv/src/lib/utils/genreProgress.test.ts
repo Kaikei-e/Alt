@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { GenreProgressInfo } from "$lib/schema/dashboard";
+import type { GenreProgressInfo } from "#lib/schema/dashboard.js";
 import { filterGenreProgress } from "./genreProgress";
 
 describe("filterGenreProgress", () => {

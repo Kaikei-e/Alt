@@ -9,7 +9,7 @@
 
 import type { Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { base } from "$app/paths";
+import { resolve } from "$app/paths";
 
 /**
  * Fetch priority a call site is asking the browser for.
@@ -139,7 +139,7 @@ export function createClientTransport(): Transport {
 	}
 
 	cachedTransport = createConnectTransport({
-		baseUrl: `${base}/api/v2`,
+		baseUrl: resolve(`api/v2`),
 		// Credentials are handled by the proxy
 		fetch: (input, init) => fetch(input, withTransportInit(init)),
 	});

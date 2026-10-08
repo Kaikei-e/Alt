@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
+import type { KnowledgeHomeItemData } from "#lib/connect/knowledge_home.js";
 import { buildHomeActionMetadata } from "./home-actions";
 
 function makeItem(

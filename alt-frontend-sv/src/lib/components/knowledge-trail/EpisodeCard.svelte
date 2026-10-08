@@ -4,7 +4,7 @@ import type {
 	EpisodeData,
 	FootprintData,
 	ResolveBranchHandler,
-} from "$lib/connect/knowledge_trail";
+} from "#lib/connect/knowledge_trail.js";
 import BranchCard from "./BranchCard.svelte";
 import Footprint from "./Footprint.svelte";
 

@@ -1,9 +1,9 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
+import MobileMenuPage from "#lib/components/mobile/MobileMenuPage.svelte";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { browser } from "$app/env";
 import { goto } from "$app/navigation";
-import MobileMenuPage from "$lib/components/mobile/MobileMenuPage.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
 
 // Deliberately `onMount` and deliberately not an `$effect`: this is an
 // arrival check, not a viewport binding. Landing on /menu with a sidebar
@@ -21,7 +21,7 @@ import { isDesktop } from "$lib/stores/viewport.svelte";
 // so there is no second branch to get stuck in.
 onMount(() => {
 	if (browser && isDesktop()) {
-		goto("/feeds", { replaceState: true });
+		goto("/feeds", { replace: true });
 	}
 });
 </script>

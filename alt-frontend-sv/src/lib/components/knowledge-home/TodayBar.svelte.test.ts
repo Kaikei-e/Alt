@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { TodayDigestData } from "$lib/connect/knowledge_home";
+import type { TodayDigestData } from "#lib/connect/knowledge_home.js";
 import TodayBar from "./TodayBar.svelte";
 
 function makeDigest(overrides: Partial<TodayDigestData> = {}): TodayDigestData {

@@ -15,7 +15,7 @@ import {
 	type Episode as ProtoEpisode,
 	type Footprint as ProtoFootprint,
 	type SearchTrailResponse,
-} from "$lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb";
+} from "#lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb.js";
 
 type KnowledgeTrailClient = Client<typeof KnowledgeTrailService>;
 

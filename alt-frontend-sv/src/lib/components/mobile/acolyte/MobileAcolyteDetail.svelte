@@ -1,16 +1,16 @@
 <script lang="ts">
-import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
+import RunStatusPill from "#lib/components/acolyte/RunStatusPill.svelte";
 import {
 	type RunStatus as BackendRunStatus,
 	deriveRunStatusKind,
-} from "$lib/components/acolyte/runStatusPill";
+} from "#lib/components/acolyte/runStatusPill.js";
 import type {
 	AcolyteCitation,
 	AcolyteReport,
 	AcolyteSection,
 	AcolyteVersionSummary,
-} from "$lib/connect/acolyte";
-import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+} from "#lib/connect/acolyte.js";
+import { parseMarkdown } from "#lib/utils/simpleMarkdown.js";
 import MobileAcolyteHistorySheet from "./MobileAcolyteHistorySheet.svelte";
 import MobileAcolyteSectionTabs from "./MobileAcolyteSectionTabs.svelte";
 

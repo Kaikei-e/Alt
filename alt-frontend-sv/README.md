@@ -8,7 +8,7 @@ Reference architecture, state management, and configuration are documented in [d
 
 | Component | Technology |
 |-----------|------------|
-| Framework | SvelteKit 2.70 + Svelte 5.56 |
+| Framework | SvelteKit 3.0 + Svelte 5.57 |
 | Runtime | Bun 1.x |
 | Styling | TailwindCSS v4 + bits-ui |
 | API | Connect-RPC + REST |

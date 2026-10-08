@@ -9,7 +9,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { page as testPage } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
-import type { RenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "#lib/schema/feed.js";
 
 const { mockSpeechPlay, mockSpeechStop, speechState } = vi.hoisted(() => ({
 	mockSpeechPlay: vi.fn(),
@@ -17,7 +17,7 @@ const { mockSpeechPlay, mockSpeechStop, speechState } = vi.hoisted(() => ({
 	speechState: { value: "idle" },
 }));
 
-vi.mock("$lib/hooks/useSummarySpeech.svelte", () => ({
+vi.mock("#lib/hooks/useSummarySpeech.svelte.js", () => ({
 	createSummarySpeech: vi.fn(() => ({
 		get state() {
 			return speechState.value;
@@ -28,14 +28,14 @@ vi.mock("$lib/hooks/useSummarySpeech.svelte", () => ({
 }));
 
 const mockGetFeedContent = vi.fn();
-vi.mock("$lib/api/client/articles", () => ({
+vi.mock("#lib/api/client/articles.js", () => ({
 	getFeedContentOnTheFlyClient: (...args: unknown[]) =>
 		mockGetFeedContent(...args),
 }));
 
 // Stubbed rather than exercised: the prefetcher is a module singleton whose
 // cache would leak between cases, and its own behaviour has its own tests.
-vi.mock("$lib/utils/articlePrefetcher", () => ({
+vi.mock("#lib/utils/articlePrefetcher.js", () => ({
 	articlePrefetcher: {
 		getCachedContent: () => null,
 		getCachedArticleId: () => null,
@@ -43,7 +43,7 @@ vi.mock("$lib/utils/articlePrefetcher", () => ({
 	},
 }));
 
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamSummarizeWithAbortAdapter: vi.fn(
 		(
@@ -221,7 +221,9 @@ describe("FeedDetailModal content states", () => {
 				content: "<p>Article body</p>",
 				article_id: "a1",
 			});
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
 				(
 					_transport: unknown,
@@ -301,7 +303,9 @@ describe("FeedDetailModal content states", () => {
 			});
 			const fullCachedText =
 				"This is the full comprehensive cached summary that arrived in a single chunk.";
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"#lib/connect/index.js"
+			);
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
 				(_transport, _options, updateState, _rendererOptions, onComplete) => {
 					updateState?.("T");

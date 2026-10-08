@@ -7,21 +7,21 @@ import {
 	getUnreadFeeds,
 	listSubscriptions,
 	searchFeeds as searchFeedsConnect,
-} from "$lib/connect/feeds";
-import { createClientTransport } from "$lib/connect/transport-client";
-import type { RenderFeed } from "$lib/schema/feed";
-import type { FeedSearchResult, SearchFeedItem } from "$lib/schema/search";
+} from "#lib/connect/feeds.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import type { FeedSearchResult, SearchFeedItem } from "#lib/schema/search.js";
 import type {
 	DetailedFeedStatsSummary,
 	FeedStatsSummary,
 	UnreadCountResponse,
-} from "$lib/schema/stats";
-import type { CursorResponse } from "$lib/server/feed-api";
+} from "#lib/schema/stats.js";
+import type { CursorResponse } from "#lib/server/feed-api.js";
 import {
 	formatPublishedDate,
 	generateExcerptFromDescription,
 	normalizeUrl,
-} from "$lib/utils/feed";
+} from "#lib/utils/feed.js";
 
 /**
  * ConnectFeedItem を RenderFeed に変換
@@ -125,7 +125,7 @@ export async function updateFeedReadStatusClient(
 	feedUrl: string,
 ): Promise<void> {
 	const transport = createClientTransport();
-	const { markAsRead } = await import("$lib/connect/feeds");
+	const { markAsRead } = await import("#lib/connect/feeds.js");
 	await markAsRead(transport, feedUrl);
 }
 
@@ -227,7 +227,7 @@ export async function searchFeedsDesktopClient(
  */
 export async function getFeedStatsClient(): Promise<FeedStatsSummary> {
 	const transport = createClientTransport();
-	const { getFeedStats } = await import("$lib/connect/feeds");
+	const { getFeedStats } = await import("#lib/connect/feeds.js");
 	const response = await getFeedStats(transport);
 
 	return {
@@ -242,7 +242,7 @@ export async function getFeedStatsClient(): Promise<FeedStatsSummary> {
  */
 export async function getDetailedFeedStatsClient(): Promise<DetailedFeedStatsSummary> {
 	const transport = createClientTransport();
-	const { getDetailedFeedStats } = await import("$lib/connect/feeds");
+	const { getDetailedFeedStats } = await import("#lib/connect/feeds.js");
 	const response = await getDetailedFeedStats(transport);
 
 	return {
@@ -258,7 +258,7 @@ export async function getDetailedFeedStatsClient(): Promise<DetailedFeedStatsSum
  */
 export async function getUnreadCountClient(): Promise<UnreadCountResponse> {
 	const transport = createClientTransport();
-	const { getUnreadCount } = await import("$lib/connect/feeds");
+	const { getUnreadCount } = await import("#lib/connect/feeds.js");
 	const response = await getUnreadCount(transport);
 
 	return {
@@ -285,7 +285,7 @@ export async function listSubscriptionsClient(): Promise<ConnectFeedSource[]> {
  */
 export async function subscribeClient(feedLinkId: string): Promise<string> {
 	const transport = createClientTransport();
-	const { subscribe } = await import("$lib/connect/feeds");
+	const { subscribe } = await import("#lib/connect/feeds.js");
 	return subscribe(transport, feedLinkId);
 }
 
@@ -295,6 +295,6 @@ export async function subscribeClient(feedLinkId: string): Promise<string> {
  */
 export async function unsubscribeClient(feedLinkId: string): Promise<string> {
 	const transport = createClientTransport();
-	const { unsubscribe } = await import("$lib/connect/feeds");
+	const { unsubscribe } = await import("#lib/connect/feeds.js");
 	return unsubscribe(transport, feedLinkId);
 }

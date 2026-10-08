@@ -1,6 +1,6 @@
 <script lang="ts">
-import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
-import type { StatusTransition } from "$lib/schema/dashboard";
+import StatusGlyph from "#lib/components/recap/job-status/StatusGlyph.svelte";
+import type { StatusTransition } from "#lib/schema/dashboard.js";
 
 interface Props {
 	transitions: StatusTransition[];

@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { FootprintData } from "$lib/connect/knowledge_trail";
+import type { FootprintData } from "#lib/connect/knowledge_trail.js";
 
 interface Props {
 	footprint: FootprintData;

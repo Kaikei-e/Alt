@@ -1,10 +1,10 @@
 /**
  * Tests for the push payload parser.
  *
- * This lives in `src/lib/` rather than in the service worker because
- * `.svelte-kit/tsconfig.json` excludes `src/service-worker.ts` from
- * `svelte-check` — anything written there is invisible to the type checker and
- * uncollectable by vitest. The worker stays a shell; the decisions live here.
+ * This lives in `src/lib/` rather than in the service worker because the root
+ * `tsconfig.json` excludes the service worker project (`src/service-worker`) —
+ * it has its own worker-scoped tsconfig and is uncollectable by server vitest.
+ * The worker stays a shell; the decisions live here.
  *
  * The parser has one hard obligation: **it must always yield something
  * displayable.** Safari revokes a site's notification permission outright if a

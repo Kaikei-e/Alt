@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 
 const mockGetFeedContent = vi.fn();
-vi.mock("$lib/api/client/articles", () => ({
+vi.mock("#lib/api/client/articles.js", () => ({
 	getFeedContentOnTheFlyClient: (...args: unknown[]) =>
 		mockGetFeedContent(...args),
 }));
@@ -15,7 +15,7 @@ let summarizerOverride: Partial<{
 	summaryError: string | null;
 	buttonState: "idle" | "loading" | "error" | "success";
 }> = {};
-vi.mock("$lib/hooks/useSummarize.svelte", () => ({
+vi.mock("#lib/hooks/useSummarize.svelte.js", () => ({
 	useSummarize: () => ({
 		summary: null,
 		isSummarizing: false,

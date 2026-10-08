@@ -34,7 +34,10 @@ export function applyHtmlCacheControl(response: Response): void {
  * protection) — sensitive responses must be marked non-cacheable at the
  * application layer, not left to infra defaults.
  */
-export function applyApiCacheControl(response: Response, pathname: string): void {
+export function applyApiCacheControl(
+	response: Response,
+	pathname: string,
+): void {
 	if (!pathname.startsWith("/api/")) return;
 	const contentType = response.headers.get("content-type") ?? "";
 	if (!contentType.startsWith("application/json")) return;

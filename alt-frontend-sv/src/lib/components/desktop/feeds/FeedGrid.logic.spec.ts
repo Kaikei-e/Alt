@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RenderFeed } from "$lib/schema/feed";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import {
 	createRenderFeed,
 	renderFeedsFixture,

@@ -1,6 +1,6 @@
 <script lang="ts">
-import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
-import { safeArticleHref } from "$lib/utils/safeHref";
+import type { KnowledgeHomeItemData } from "#lib/connect/knowledge_home.js";
+import { safeArticleHref } from "#lib/utils/safeHref.js";
 import QuickActionRow from "./QuickActionRow.svelte";
 import SummaryStateChip from "./SummaryStateChip.svelte";
 import SupersedeBadge from "./SupersedeBadge.svelte";

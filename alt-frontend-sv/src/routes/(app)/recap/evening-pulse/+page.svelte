@@ -1,22 +1,22 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { browser } from "$app/environment";
-import { goto } from "$app/navigation";
 // Desktop components
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import DesktopPulseDetailPanel from "$lib/components/desktop/pulse/DesktopPulseDetailPanel.svelte";
-import DesktopPulseError from "$lib/components/desktop/pulse/DesktopPulseError.svelte";
-import DesktopPulseQuietDay from "$lib/components/desktop/pulse/DesktopPulseQuietDay.svelte";
-import DesktopPulseSkeleton from "$lib/components/desktop/pulse/DesktopPulseSkeleton.svelte";
-import DesktopPulseView from "$lib/components/desktop/pulse/DesktopPulseView.svelte";
-import MobilePulseError from "$lib/components/mobile/pulse/MobilePulseError.svelte";
-import MobilePulseQuietDay from "$lib/components/mobile/pulse/MobilePulseQuietDay.svelte";
-import MobilePulseSkeleton from "$lib/components/mobile/pulse/MobilePulseSkeleton.svelte";
-import MobilePulseTopicSheet from "$lib/components/mobile/pulse/MobilePulseTopicSheet.svelte";
+import PageHeader from "#lib/components/desktop/layout/PageHeader.svelte";
+import DesktopPulseDetailPanel from "#lib/components/desktop/pulse/DesktopPulseDetailPanel.svelte";
+import DesktopPulseError from "#lib/components/desktop/pulse/DesktopPulseError.svelte";
+import DesktopPulseQuietDay from "#lib/components/desktop/pulse/DesktopPulseQuietDay.svelte";
+import DesktopPulseSkeleton from "#lib/components/desktop/pulse/DesktopPulseSkeleton.svelte";
+import DesktopPulseView from "#lib/components/desktop/pulse/DesktopPulseView.svelte";
+import MobilePulseError from "#lib/components/mobile/pulse/MobilePulseError.svelte";
+import MobilePulseQuietDay from "#lib/components/mobile/pulse/MobilePulseQuietDay.svelte";
+import MobilePulseSkeleton from "#lib/components/mobile/pulse/MobilePulseSkeleton.svelte";
+import MobilePulseTopicSheet from "#lib/components/mobile/pulse/MobilePulseTopicSheet.svelte";
 // Mobile components
-import MobilePulseView from "$lib/components/mobile/pulse/MobilePulseView.svelte";
-import { usePulse } from "$lib/hooks/usePulse.svelte";
-import { isDesktop } from "$lib/stores/viewport.svelte";
+import MobilePulseView from "#lib/components/mobile/pulse/MobilePulseView.svelte";
+import { usePulse } from "#lib/hooks/usePulse.svelte.js";
+import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { browser } from "$app/env";
+import { goto } from "$app/navigation";
 
 const pulse = usePulse();
 
@@ -51,11 +51,11 @@ const handleNavigateToRecap = (clusterId: number, genre?: string) => {
 	if (genre) {
 		params.set("genre", genre);
 	}
-	goto(`/sv/recap?${params.toString()}`);
+	goto(`/recap?${params.toString()}`);
 };
 
 const handleHighlightClick = (id: string) => {
-	goto(`/sv/recap?highlight=${id}`);
+	goto(`/recap?highlight=${id}`);
 };
 
 // Mobile handlers
@@ -66,7 +66,7 @@ const handleCloseSheet = () => {
 
 const handleMobileNavigateToRecap = (clusterId: number) => {
 	isSheetOpen = false;
-	goto(`/sv/recap?cluster=${clusterId}`);
+	goto(`/recap?cluster=${clusterId}`);
 };
 
 onMount(() => {

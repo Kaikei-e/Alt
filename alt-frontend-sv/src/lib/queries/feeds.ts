@@ -25,8 +25,8 @@ import {
 	getUnreadFeeds,
 	markAsRead,
 	searchFeeds,
-} from "$lib/connect/feeds";
-import { createClientTransport } from "$lib/connect/transport-client";
+} from "#lib/connect/feeds.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 import { feedKeys } from "./keys";
 
 // =============================================================================

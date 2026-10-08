@@ -19,8 +19,8 @@ import {
 	type RSSFeedLink,
 	registerFavoriteFeed,
 	registerRSSFeed,
-} from "$lib/connect/rss";
-import { createClientTransport } from "$lib/connect/transport-client";
+} from "#lib/connect/rss.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 import { feedKeys, rssKeys } from "./keys";
 
 // =============================================================================

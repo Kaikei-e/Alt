@@ -10,7 +10,7 @@ import { page } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 
-import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import { parseMarkdown } from "#lib/utils/simpleMarkdown.js";
 import ThreadEntry from "./ThreadEntry.svelte";
 
 const { loadProxyImageDefault, resolveThumbnail } = vi.hoisted(() => ({
@@ -18,8 +18,8 @@ const { loadProxyImageDefault, resolveThumbnail } = vi.hoisted(() => ({
 	resolveThumbnail: vi.fn(),
 }));
 
-vi.mock("$lib/utils/loadProxyImage", () => ({ loadProxyImageDefault }));
-vi.mock("$lib/utils/articleThumbnail", () => ({
+vi.mock("#lib/utils/loadProxyImage.js", () => ({ loadProxyImageDefault }));
+vi.mock("#lib/utils/articleThumbnail.js", () => ({
 	articleThumbnailResolver: () => ({ resolve: resolveThumbnail }),
 }));
 

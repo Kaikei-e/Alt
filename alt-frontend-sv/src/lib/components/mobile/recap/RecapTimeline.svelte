@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { RecapGenre } from "$lib/schema/recap";
+import type { RecapGenre } from "#lib/schema/recap.js";
 import RecapCard from "./RecapCard.svelte";
 
 interface Props {

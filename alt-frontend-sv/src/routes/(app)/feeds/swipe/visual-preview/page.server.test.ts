@@ -22,12 +22,12 @@ const { getFeedsWithCursor, fetchArticleContent, batchPrefetchImages } =
 		batchPrefetchImages: vi.fn(),
 	}));
 
-vi.mock("$lib/server/feed-api", () => ({ getFeedsWithCursor }));
-vi.mock("$lib/connect/articles", () => ({
+vi.mock("#lib/server/feed-api.js", () => ({ getFeedsWithCursor }));
+vi.mock("#lib/connect/articles.js", () => ({
 	fetchArticleContent,
 	batchPrefetchImages,
 }));
-vi.mock("$lib/connect/transport-server", () => ({
+vi.mock("#lib/connect/transport-server.js", () => ({
 	createServerTransport: vi.fn(async () => ({})),
 	createServerTransportWithToken: vi.fn(() => ({})),
 }));

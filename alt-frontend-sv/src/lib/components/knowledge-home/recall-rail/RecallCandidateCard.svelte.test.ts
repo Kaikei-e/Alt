@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import type { RecallCandidateData } from "#lib/connect/knowledge_home.js";
 import RecallCandidateCard from "./RecallCandidateCard.svelte";
 
 function makeCandidate(

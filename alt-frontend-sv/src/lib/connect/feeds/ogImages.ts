@@ -6,7 +6,7 @@
  */
 
 import type { Transport } from "@connectrpc/connect";
-import type { ResolveOgImagesResponse } from "$lib/gen/alt/feeds/v2/feeds_pb";
+import type { ResolveOgImagesResponse } from "#lib/gen/alt/feeds/v2/feeds_pb.js";
 import { createFeedClient } from "./client";
 
 /**

@@ -1,6 +1,6 @@
 <script lang="ts">
-import { getLogs } from "$lib/api/client/dashboard";
-import type { LogError } from "$lib/schema/dashboard";
+import { getLogs } from "#lib/api/client/dashboard.js";
+import type { LogError } from "#lib/schema/dashboard.js";
 
 interface Props {
 	windowSeconds: number;

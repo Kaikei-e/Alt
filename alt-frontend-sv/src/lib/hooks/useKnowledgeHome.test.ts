@@ -4,7 +4,7 @@ vi.mock("$app/navigation", () => ({
 	goto: vi.fn(),
 }));
 
-vi.mock("$lib/connect", () => ({
+vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({ transport: true })),
 	getKnowledgeHome: vi.fn(),
 	trackHomeItemsSeen: vi.fn(),
@@ -12,8 +12,8 @@ vi.mock("$lib/connect", () => ({
 }));
 
 import { Code, ConnectError } from "@connectrpc/connect";
+import { getKnowledgeHome, trackHomeAction } from "#lib/connect/index.js";
 import { goto } from "$app/navigation";
-import { getKnowledgeHome, trackHomeAction } from "$lib/connect";
 import { useKnowledgeHome } from "./useKnowledgeHome.svelte";
 
 describe("useKnowledgeHome", () => {

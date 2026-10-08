@@ -23,9 +23,9 @@ const isCI = !!process.env.CI;
  * behave exactly as before; override with ALT_E2E_PORT when 4174 is already
  * claimed on a developer machine by something unrelated to this repo. The
  * value has to reach four places at once — Playwright's baseURL, the
- * readiness probe, and the server's own PORT/ORIGIN — because adapter-node
- * checks ORIGIN on every form POST, so a mismatch fails as a CSRF rejection
- * rather than as a connection error.
+ * readiness probe, and the build-time paths.origin / server PORT — because
+ * SvelteKit checks url.origin against request origin on form POSTs, so a
+ * mismatch fails as a CSRF rejection rather than as a connection error.
  */
 const previewPort = process.env.ALT_E2E_PORT || "4174";
 const previewOrigin = `http://127.0.0.1:${previewPort}`;

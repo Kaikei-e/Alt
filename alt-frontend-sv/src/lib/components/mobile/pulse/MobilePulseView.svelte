@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { EveningPulse } from "$lib/schema/evening_pulse";
+import type { EveningPulse } from "#lib/schema/evening_pulse.js";
 import MobilePulseCard from "./MobilePulseCard.svelte";
 
 interface Props {

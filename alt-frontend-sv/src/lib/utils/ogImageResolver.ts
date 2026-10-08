@@ -25,7 +25,7 @@
  */
 
 import { Code, ConnectError } from "@connectrpc/connect";
-import type { OgImageResolution } from "$lib/connect/feeds/ogImages";
+import type { OgImageResolution } from "#lib/connect/feeds/ogImages.js";
 import { FAILURE_SCOPE_HEADER } from "./errorClassification";
 import { OG_RETRY_CEILING_MS } from "./ogImageRetry";
 import { createRequestQueue } from "./requestQueue";
@@ -259,9 +259,11 @@ export function ogImageResolver(): OgImageResolver {
 		shared = createOgImageResolver({
 			send: async (feedIds) => {
 				const { createClientTransport } = await import(
-					"$lib/connect/transport-client"
+					"#lib/connect/transport-client.js"
 				);
-				const { resolveOgImages } = await import("$lib/connect/feeds/ogImages");
+				const { resolveOgImages } = await import(
+					"#lib/connect/feeds/ogImages.js"
+				);
 				return resolveOgImages(createClientTransport(), feedIds);
 			},
 		});

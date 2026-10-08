@@ -1,10 +1,10 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import MobileAcolyteNew from "#lib/components/mobile/acolyte/MobileAcolyteNew.svelte";
+import { createReport, startReportRun } from "#lib/connect/acolyte.js";
+import { createAndAutostart } from "#lib/connect/acolyteAutostart.js";
+import { isMobile } from "#lib/stores/viewport.svelte.js";
 import { goto } from "$app/navigation";
-import MobileAcolyteNew from "$lib/components/mobile/acolyte/MobileAcolyteNew.svelte";
-import { createReport, startReportRun } from "$lib/connect/acolyte";
-import { createAndAutostart } from "$lib/connect/acolyteAutostart";
-import { isMobile } from "$lib/stores/viewport.svelte";
 
 let title = $state("");
 let reportType = $state("weekly_briefing");

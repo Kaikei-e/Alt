@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "vitest-browser-svelte";
-import type { WhyReasonData } from "$lib/connect/knowledge_home";
+import type { WhyReasonData } from "#lib/connect/knowledge_home.js";
 import WhyPanel from "./WhyPanel.svelte";
 
 describe("WhyPanel", () => {

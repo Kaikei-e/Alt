@@ -10,12 +10,12 @@
 import { create } from "@bufbuild/protobuf";
 import { createClient } from "@connectrpc/connect";
 
-import { createClientTransport } from "$lib/connect";
+import { createClientTransport } from "#lib/connect/index.js";
 import {
 	NotificationPreferencesSchema,
 	PushService,
 	PushSubscriptionKeysSchema,
-} from "$lib/gen/alt/push/v1/push_pb";
+} from "#lib/gen/alt/push/v1/push_pb.js";
 
 import { noPreferences, type Preferences } from "./preferences";
 import { decodeVapidPublicKey } from "./vapid-key";

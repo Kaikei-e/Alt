@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TodayDigestData } from "$lib/connect/knowledge_home";
+import type { TodayDigestData } from "#lib/connect/knowledge_home.js";
 
 /**
  * Tests for TodayBar data logic.

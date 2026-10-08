@@ -16,7 +16,7 @@ import {
 	createSafariConnectionRecovery,
 	type RecoveryInfo,
 	type SafariConnectionRecoveryHandle,
-} from "$lib/hooks/safari-connection-recovery";
+} from "#lib/hooks/safari-connection-recovery.js";
 
 export const CONNECTION_RECOVERY_KEY = Symbol("connection-recovery");
 

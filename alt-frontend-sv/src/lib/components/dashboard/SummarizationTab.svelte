@@ -1,6 +1,6 @@
 <script lang="ts">
-import { getMetrics } from "$lib/api/client/dashboard";
-import type { SystemMetric } from "$lib/schema/dashboard";
+import { getMetrics } from "#lib/api/client/dashboard.js";
+import type { SystemMetric } from "#lib/schema/dashboard.js";
 
 interface Props {
 	windowSeconds: number;

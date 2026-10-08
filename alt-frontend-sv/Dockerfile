@@ -21,24 +21,21 @@ RUN --mount=type=cache,id=bun-alt-frontend-sv,target=/root/.bun/install/cache \
     cd /temp/prod && bun install --frozen-lockfile --production
 
 # ---------- Build ----------
-FROM base AS builder
-# Stable SvelteKit app version (see svelte.config.js). CI passes the commit SHA;
+# Build runs on Node rather than Bun: SvelteKit 3 ends its analyse/prerender worker
+# threads with process.exit(), which under Bun exits the whole vite build with
+# status 0 before the adapter writes /app/build.
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS builder
+WORKDIR /app
+# Stable SvelteKit app version (see vite.config.ts). CI passes the commit SHA;
 # .git is dockerignored, so without this the build falls back to a timestamp.
 ARG GIT_COMMIT_SHA=""
 ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 COPY --link --from=install /temp/dev/node_modules ./node_modules
 COPY --link . .
 ENV NODE_ENV=production
-# Build-time placeholders for private env referenced by +page.server modules.
-# Runtime compose/K8s overrides these; Vite analyse still imports those modules
-# under production, so unset vars abort the image build (requireEnv).
-ARG KRATOS_PUBLIC_URL=http://localhost/ory
-ARG ORIGIN=http://localhost:4173
-ENV KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL} \
-    ORIGIN=${ORIGIN}
 RUN --mount=type=cache,id=vite-alt-frontend-sv,target=/app/node_modules/.vite \
     --mount=type=cache,id=sveltekit-alt-frontend-sv,target=/app/.svelte-kit \
-    bun run prepare && bun run build
+    npm run prepare && npm run build
 
 # ---------- Runtime ----------
 FROM oven/bun:1.3.12-alpine AS runner

@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Info } from "@lucide/svelte";
-import type { RecallReasonData } from "$lib/connect/knowledge_home";
+import type { RecallReasonData } from "#lib/connect/knowledge_home.js";
 import { categorizeRecallReasons } from "./recall-why-categories";
 
 interface Props {

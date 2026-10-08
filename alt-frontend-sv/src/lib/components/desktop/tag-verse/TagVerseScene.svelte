@@ -1,7 +1,7 @@
 <script lang="ts">
 import { Canvas } from "@threlte/core";
 import WebGPURenderer from "three/src/renderers/webgpu/WebGPURenderer.js";
-import type { TagCloudItem } from "$lib/connect";
+import type { TagCloudItem } from "#lib/connect/index.js";
 import SceneContent from "./SceneContent.svelte";
 
 interface Props {

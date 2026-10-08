@@ -4,20 +4,20 @@
  */
 
 import { Code, ConnectError } from "@connectrpc/connect";
-import { goto } from "$app/navigation";
 import {
 	createClientTransport,
 	getKnowledgeHome,
 	trackHomeAction,
 	trackHomeItemsSeen,
-} from "$lib/connect";
+} from "#lib/connect/index.js";
 import type {
 	FeatureFlagData,
 	KnowledgeHomeItemData,
 	RecallCandidateData,
 	ServiceQuality,
 	TodayDigestData,
-} from "$lib/connect/knowledge_home";
+} from "#lib/connect/knowledge_home.js";
+import { goto } from "$app/navigation";
 
 type EmptyReason =
 	| "no_data"

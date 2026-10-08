@@ -10,7 +10,7 @@ import type {
 	MarkAsReadResponse,
 	SubscribeResponse,
 	UnsubscribeResponse,
-} from "$lib/gen/alt/feeds/v2/feeds_pb";
+} from "#lib/gen/alt/feeds/v2/feeds_pb.js";
 import { createFeedClient, normalizeUrl } from "./client";
 
 // Cap unary feed actions at 5s. The BFF derives its backend deadline from the

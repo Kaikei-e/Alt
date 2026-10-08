@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAugurInitialMessage } from "$lib/utils/augur-entry";
+import { buildAugurInitialMessage } from "#lib/utils/augur-entry.js";
 
 /**
  * Tests for AskSheet data flow logic.

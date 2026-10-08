@@ -18,21 +18,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { batchPrefetchImagesClient } from "$lib/api/client/articles";
+import { batchPrefetchImagesClient } from "#lib/api/client/articles.js";
 import {
 	getAllFeedsWithCursorClient,
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
-} from "$lib/api/client/feeds";
-import type { RenderFeed } from "$lib/schema/feed";
+} from "#lib/api/client/feeds.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
 
-vi.mock("$lib/api/client/feeds", { spy: true });
-vi.mock("$lib/api/client/articles", { spy: true });
+vi.mock("#lib/api/client/feeds.js", { spy: true });
+vi.mock("#lib/api/client/articles.js", { spy: true });
 
 // The tiles resolve OG images through a shared resolver that would otherwise
 // fire a Connect-RPC at whatever is listening on the dev server.
-vi.mock("$lib/utils/ogImageResolver", () => ({
+vi.mock("#lib/utils/ogImageResolver.js", () => ({
 	ogImageResolver: () => ({ resolve: () => Promise.resolve(null) }),
 }));
 

@@ -1,9 +1,9 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import * as v from "valibot";
-import { searchFeedsClient } from "$lib/api/client";
-import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
-import { transformFeedSearchResult } from "$lib/utils/transformFeedSearchResult";
+import { searchFeedsClient } from "#lib/api/client/index.js";
+import type { SearchFeedItem, SearchQuery } from "#lib/schema/search.js";
+import { transformFeedSearchResult } from "#lib/utils/transformFeedSearchResult.js";
 
 interface Props {
 	searchQuery: SearchQuery;

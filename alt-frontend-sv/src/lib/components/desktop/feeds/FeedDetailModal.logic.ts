@@ -1,5 +1,5 @@
-import type { FeedContentOnTheFlyResponse } from "$lib/api/client/articles";
-import type { StreamingRendererOptions } from "$lib/utils/streamingRenderer";
+import type { FeedContentOnTheFlyResponse } from "#lib/api/client/articles.js";
+import type { StreamingRendererOptions } from "#lib/utils/streamingRenderer.js";
 
 /**
  * Process article fetch response, treating empty content as an error.
