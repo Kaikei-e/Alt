@@ -10,11 +10,7 @@ serve:
       disable_for_health: true
     cors:
       enabled: true
-      allowed_origins:
-        - http://localhost
-        - http://localhost:3000
-        - http://localhost:4173
-        - https://example.com
+      allowed_origins: ${KRATOS_CORS_ALLOWED_ORIGINS}
       allowed_methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
       allowed_headers: [Authorization, Content-Type, Accept, Cookie, X-Csrf-Token, X-Session-Token, X-Requested-With]
       allow_credentials: true
@@ -27,18 +23,7 @@ serve:
 
 selfservice:
   default_browser_return_url: ${KRATOS_DEFAULT_BROWSER_RETURN_URL}
-  allowed_return_urls:
-    - https://example.com/
-    - https://example.com/home
-    - https://example.com/desktop/home
-    - https://example.com/auth/login
-    - http://localhost/
-    - http://localhost/home
-    - http://localhost/desktop/home
-    - http://localhost/auth/login
-    - http://localhost:4173/sv/
-    - http://localhost:4173/sv/home
-    - http://localhost:4173/sv/auth/login
+  allowed_return_urls: ${KRATOS_ALLOWED_RETURN_URLS}
 
   methods:
     password:
