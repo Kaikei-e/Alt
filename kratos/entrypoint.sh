@@ -68,6 +68,41 @@ escape_sed() {
     printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'
 }
 
+render_url_flow_sequence() {
+    prefix=$1
+    required=$2
+    items=""
+    i=1
+    while :; do
+        var_name="${prefix}_${i}"
+        val=""
+        eval "val=\${${var_name}:-}"
+        if [ -z "$val" ]; then
+            if [ "$i" -eq 1 ] && [ "$required" -eq 1 ]; then
+                echo "Error: ${var_name} must be set and not empty" >&2
+                exit 1
+            fi
+            break
+        fi
+        case "$val" in
+            http://*|https://*)
+                ;;
+            *)
+                echo "Error: ${var_name} must be an absolute http:// or https:// URL" >&2
+                exit 1
+                ;;
+        esac
+        json_val=$(to_json_scalar "$val")
+        if [ -z "$items" ]; then
+            items="$json_val"
+        else
+            items="${items}, ${json_val}"
+        fi
+        i=$((i + 1))
+    done
+    RENDERED_FLOW_SEQ="[${items}]"
+}
+
 KRATOS_DB_PASSWORD_FILE=${KRATOS_DB_PASSWORD_FILE:-/run/secrets/kratos_db_password}
 KRATOS_COOKIE_SECRET_FILE=${KRATOS_COOKIE_SECRET_FILE:-/run/secrets/kratos_cookie_secret}
 KRATOS_CIPHER_SECRET_FILE=${KRATOS_CIPHER_SECRET_FILE:-/run/secrets/kratos_cipher_secret}
@@ -116,6 +151,18 @@ if grep -qF "\${KRATOS_COOKIE_DOMAIN}" "$TEMPLATE_FILE"; then
     : "${KRATOS_COOKIE_DOMAIN?must be set for this template (empty means host-only cookies)}"
 fi
 
+KRATOS_ALLOWED_RETURN_URLS="[]"
+if grep -qF "\${KRATOS_ALLOWED_RETURN_URLS}" "$TEMPLATE_FILE"; then
+    render_url_flow_sequence "KRATOS_ALLOWED_RETURN_URL" 1
+    KRATOS_ALLOWED_RETURN_URLS="$RENDERED_FLOW_SEQ"
+fi
+
+KRATOS_CORS_ALLOWED_ORIGINS="[]"
+if grep -qF "\${KRATOS_CORS_ALLOWED_ORIGINS}" "$TEMPLATE_FILE"; then
+    render_url_flow_sequence "KRATOS_CORS_ALLOWED_ORIGIN" 0
+    KRATOS_CORS_ALLOWED_ORIGINS="$RENDERED_FLOW_SEQ"
+fi
+
 KRATOS_CONFIG_FILE=${KRATOS_CONFIG_FILE:-/tmp/kratos.yml}
 export KRATOS_CONFIG_FILE
 
@@ -126,6 +173,8 @@ ESC_DSN=$(escape_sed "$(to_json_scalar "$DSN")")
 
 ESC_PUBLIC_URL=$(escape_sed "$(to_json_scalar "$KRATOS_PUBLIC_URL")")
 ESC_RETURN_URL=$(escape_sed "$(to_json_scalar "$KRATOS_DEFAULT_BROWSER_RETURN_URL")")
+ESC_ALLOWED_RETURN_URLS=$(escape_sed "$KRATOS_ALLOWED_RETURN_URLS")
+ESC_CORS_ALLOWED_ORIGINS=$(escape_sed "$KRATOS_CORS_ALLOWED_ORIGINS")
 ESC_LOGIN_URL=$(escape_sed "$(to_json_scalar "$KRATOS_LOGIN_UI_URL")")
 ESC_REG_URL=$(escape_sed "$(to_json_scalar "$KRATOS_REGISTRATION_UI_URL")")
 ESC_ERR_URL=$(escape_sed "$(to_json_scalar "$KRATOS_ERROR_UI_URL")")
@@ -143,6 +192,8 @@ sed -e "s|\${KRATOS_COOKIE_SECRET}|${ESC_COOKIE}|g" \
     -e "s|\${DSN}|${ESC_DSN}|g" \
     -e "s|\${KRATOS_PUBLIC_URL}|${ESC_PUBLIC_URL}|g" \
     -e "s|\${KRATOS_DEFAULT_BROWSER_RETURN_URL}|${ESC_RETURN_URL}|g" \
+    -e "s|\${KRATOS_ALLOWED_RETURN_URLS}|${ESC_ALLOWED_RETURN_URLS}|g" \
+    -e "s|\${KRATOS_CORS_ALLOWED_ORIGINS}|${ESC_CORS_ALLOWED_ORIGINS}|g" \
     -e "s|\${KRATOS_LOGIN_UI_URL}|${ESC_LOGIN_URL}|g" \
     -e "s|\${KRATOS_REGISTRATION_UI_URL}|${ESC_REG_URL}|g" \
     -e "s|\${KRATOS_ERROR_UI_URL}|${ESC_ERR_URL}|g" \
