@@ -366,6 +366,165 @@ class TestGroup1Security(unittest.TestCase):
             env_no_domain["KRATOS_TEMPLATE_FILE"] = str(no_domain_template)
             subprocess.run(cmd, env=env_no_domain, capture_output=True, text=True, check=True)
 
+    def test_a03_kratos_allowed_return_urls_and_cors(self):
+        """kratos/entrypoint.sh renders allowed_return_urls and CORS origins from env and validates URLs."""
+        entrypoint_path = REPO_ROOT / "kratos" / "entrypoint.sh"
+        canonical_template = REPO_ROOT / "kratos" / "kratos_template.yml"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sec_dir = tmp / "secrets"
+            sec_dir.mkdir()
+            (sec_dir / "db_pass").write_text("db_secret_pass\n")
+            (sec_dir / "cookie_sec").write_text("cookie_secret_123\n")
+            (sec_dir / "cipher_sec").write_text("cipher_secret_456\n")
+
+            fake_kratos = tmp / "fake_kratos"
+            fake_kratos.write_text(
+                "#!/bin/sh\n"
+                "for arg in \"$@\"; do\n"
+                "  printf 'ARG:[%s]\\n' \"$arg\"\n"
+                "done\n"
+            )
+            fake_kratos.chmod(0o755)
+
+            base_env = {
+                "PATH": f"{tmp}:" + os.environ.get("PATH", ""),
+                "KRATOS_DB_PASSWORD_FILE": str(sec_dir / "db_pass"),
+                "KRATOS_COOKIE_SECRET_FILE": str(sec_dir / "cookie_sec"),
+                "KRATOS_CIPHER_SECRET_FILE": str(sec_dir / "cipher_sec"),
+                "KRATOS_TEMPLATE_FILE": str(canonical_template),
+                "KRATOS_CONFIG_FILE": str(tmp / "out_kratos.yml"),
+                "KRATOS_COOKIE_DOMAIN": ".example.com",
+            }
+            cmd = [
+                "/bin/sh",
+                str(entrypoint_path),
+                str(fake_kratos),
+                "serve",
+            ]
+
+            # (a) allowed_return_urls equals ordered list from KRATOS_ALLOWED_RETURN_URL_1..3
+            # and contains no unpassed example.com/localhost entries
+            with self.subTest("(a) allowed_return_urls ordered from env without unpassed entries"):
+                env_a = base_env.copy()
+                env_a["KRATOS_ALLOWED_RETURN_URL_1"] = "https://example.com/custom/return1"
+                env_a["KRATOS_ALLOWED_RETURN_URL_2"] = "http://localhost:4173/custom/return2"
+                env_a["KRATOS_ALLOWED_RETURN_URL_3"] = "https://example.com/custom/return3"
+                env_a["KRATOS_CORS_ALLOWED_ORIGIN_1"] = "http://localhost:4173"
+                res_a = subprocess.run(cmd, env=env_a, capture_output=True, text=True, check=True)
+                out_yaml_a = yaml.safe_load((tmp / "out_kratos.yml").read_text())
+                expected_urls = [
+                    "https://example.com/custom/return1",
+                    "http://localhost:4173/custom/return2",
+                    "https://example.com/custom/return3",
+                ]
+                self.assertEqual(out_yaml_a["selfservice"]["allowed_return_urls"], expected_urls)
+                for unpassed in [
+                    "https://example.com/",
+                    "https://example.com/home",
+                    "https://example.com/desktop/home",
+                    "https://example.com/auth/login",
+                    "http://localhost/",
+                    "http://localhost/home",
+                    "http://localhost/desktop/home",
+                    "http://localhost/auth/login",
+                    "http://localhost:4173/sv/",
+                    "http://localhost:4173/sv/home",
+                    "http://localhost:4173/sv/auth/login",
+                ]:
+                    self.assertNotIn(unpassed, out_yaml_a["selfservice"]["allowed_return_urls"])
+
+            # (b) cors.allowed_origins rendered from KRATOS_CORS_ALLOWED_ORIGIN_1..2, and [] when none passed
+            with self.subTest("(b) cors.allowed_origins from env and [] when none passed"):
+                env_b1 = base_env.copy()
+                env_b1["KRATOS_ALLOWED_RETURN_URL_1"] = "https://example.com/custom/return1"
+                env_b1["KRATOS_CORS_ALLOWED_ORIGIN_1"] = "http://localhost:4173"
+                env_b1["KRATOS_CORS_ALLOWED_ORIGIN_2"] = "https://example.com"
+                res_b1 = subprocess.run(cmd, env=env_b1, capture_output=True, text=True, check=True)
+                out_yaml_b1 = yaml.safe_load((tmp / "out_kratos.yml").read_text())
+                self.assertEqual(
+                    out_yaml_b1["serve"]["public"]["cors"]["allowed_origins"],
+                    ["http://localhost:4173", "https://example.com"],
+                )
+
+                # Unset CORS origins renders []
+                env_b2 = base_env.copy()
+                env_b2["KRATOS_ALLOWED_RETURN_URL_1"] = "https://example.com/custom/return1"
+                res_b2 = subprocess.run(cmd, env=env_b2, capture_output=True, text=True, check=True)
+                out_yaml_b2 = yaml.safe_load((tmp / "out_kratos.yml").read_text())
+                self.assertEqual(out_yaml_b2["serve"]["public"]["cors"]["allowed_origins"], [])
+
+                # Empty string CORS origin renders []
+                env_b3 = base_env.copy()
+                env_b3["KRATOS_ALLOWED_RETURN_URL_1"] = "https://example.com/custom/return1"
+                env_b3["KRATOS_CORS_ALLOWED_ORIGIN_1"] = ""
+                res_b3 = subprocess.run(cmd, env=env_b3, capture_output=True, text=True, check=True)
+                out_yaml_b3 = yaml.safe_load((tmp / "out_kratos.yml").read_text())
+                self.assertEqual(out_yaml_b3["serve"]["public"]["cors"]["allowed_origins"], [])
+
+            # (c) missing KRATOS_ALLOWED_RETURN_URL_1 exits non-zero with variable name on stderr
+            with self.subTest("(c) missing KRATOS_ALLOWED_RETURN_URL_1 exits non-zero with var name on stderr"):
+                env_c1 = base_env.copy()
+                env_c1.pop("KRATOS_ALLOWED_RETURN_URL_1", None)
+                res_c1 = subprocess.run(cmd, env=env_c1, capture_output=True, text=True)
+                self.assertNotEqual(res_c1.returncode, 0)
+                self.assertIn("KRATOS_ALLOWED_RETURN_URL_1", res_c1.stderr)
+
+                env_c2 = base_env.copy()
+                env_c2["KRATOS_ALLOWED_RETURN_URL_1"] = ""
+                res_c2 = subprocess.run(cmd, env=env_c2, capture_output=True, text=True)
+                self.assertNotEqual(res_c2.returncode, 0)
+                self.assertIn("KRATOS_ALLOWED_RETURN_URL_1", res_c2.stderr)
+
+            # (d) non-absolute value such as example.com/ exits non-zero
+            with self.subTest("(d) non-absolute value exits non-zero"):
+                env_d1 = base_env.copy()
+                env_d1["KRATOS_ALLOWED_RETURN_URL_1"] = "example.com/"
+                res_d1 = subprocess.run(cmd, env=env_d1, capture_output=True, text=True)
+                self.assertNotEqual(res_d1.returncode, 0)
+                self.assertIn("KRATOS_ALLOWED_RETURN_URL_1", res_d1.stderr)
+
+                env_d2 = base_env.copy()
+                env_d2["KRATOS_ALLOWED_RETURN_URL_1"] = "https://example.com/valid"
+                env_d2["KRATOS_ALLOWED_RETURN_URL_2"] = "localhost:4173"
+                res_d2 = subprocess.run(cmd, env=env_d2, capture_output=True, text=True)
+                self.assertNotEqual(res_d2.returncode, 0)
+                self.assertIn("KRATOS_ALLOWED_RETURN_URL_2", res_d2.stderr)
+
+                env_d3 = base_env.copy()
+                env_d3["KRATOS_ALLOWED_RETURN_URL_1"] = "https://example.com/valid"
+                env_d3["KRATOS_CORS_ALLOWED_ORIGIN_1"] = "example.com"
+                res_d3 = subprocess.run(cmd, env=env_d3, capture_output=True, text=True)
+                self.assertNotEqual(res_d3.returncode, 0)
+                self.assertIn("KRATOS_CORS_ALLOWED_ORIGIN_1", res_d3.stderr)
+
+            # (e) value containing a double quote or backslash is rendered as valid YAML string
+            with self.subTest("(e) double quote or backslash is rendered as valid YAML string"):
+                env_e = base_env.copy()
+                complex_return = r'https://example.com/path"with\special&chars|test'
+                complex_cors = r'https://example.com/origin"with\backslash'
+                env_e["KRATOS_ALLOWED_RETURN_URL_1"] = complex_return
+                env_e["KRATOS_CORS_ALLOWED_ORIGIN_1"] = complex_cors
+                res_e = subprocess.run(cmd, env=env_e, capture_output=True, text=True, check=True)
+                out_yaml_e = yaml.safe_load((tmp / "out_kratos.yml").read_text())
+                self.assertEqual(out_yaml_e["selfservice"]["allowed_return_urls"][0], complex_return)
+                self.assertEqual(out_yaml_e["serve"]["public"]["cors"]["allowed_origins"][0], complex_cors)
+
+            # Contiguous collection stops at first unset/empty
+            with self.subTest("contiguous collection stops at first unset/empty"):
+                env_cont = base_env.copy()
+                env_cont["KRATOS_ALLOWED_RETURN_URL_1"] = "https://example.com/1"
+                env_cont["KRATOS_ALLOWED_RETURN_URL_2"] = "https://example.com/2"
+                env_cont["KRATOS_ALLOWED_RETURN_URL_3"] = ""
+                env_cont["KRATOS_ALLOWED_RETURN_URL_4"] = "https://example.com/4"
+                res_cont = subprocess.run(cmd, env=env_cont, capture_output=True, text=True, check=True)
+                out_yaml_cont = yaml.safe_load((tmp / "out_kratos.yml").read_text())
+                self.assertEqual(
+                    out_yaml_cont["selfservice"]["allowed_return_urls"],
+                    ["https://example.com/1", "https://example.com/2"],
+                )
+
     # -------------------------------------------------------------------------
     # A04: Frontend HTTPS & AuthHub mTLS Configuration
     # -------------------------------------------------------------------------
