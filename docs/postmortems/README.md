@@ -73,3 +73,4 @@ Alt のポストモーテム（事後検証記録）リポジトリです。各�
 | [PM-2026-056](PM-2026-056-pre-processor-health-gate-contract-break-summarization-outage.md) | 2026-08-18 | SEV-2 | pre-processor, news-creator | news-creator の /health 契約変更により models 配列が空となり pre-processor の health gate が開かず自動要約ジョブが未登録 |
 | [PM-2026-057](PM-2026-057-rag-embedding-wipe-silent-bm25-degradation.md) | 2026-08-02 | SEV-2 | rag-db, rag-orchestrator | embedding モデル移行の migration で全 embedding を NULL 化したが対応する backfill が実行されず約1ヶ月間 BM25 単独に縮退 |
 | [PM-2026-058](PM-2026-058-lockstep-auth-hardening-contract-gate-deadlock.md) | 2026-09-21 | SEV-3 | acolyte-orchestrator, release-pipeline | 4 サービス同時の認証強化が契約ゲートの先行検証に阻まれ鶏卵構造のデッドロックが発生 |
+| [PM-2026-059](PM-2026-059-gemma4-turn-header-newline-empty-summary-dead-letter.md) | 2026-04-03 | SEV-3 | news-creator, pre-processor | raw プロンプトでモデルターンのヘッダの改行が落ちて空の要約が確率的に発生し、「処理不能な記事」として即 dead_letter・恒久スキップされた |
