@@ -110,6 +110,10 @@ func (m *stubSummaryRepoForWorker) Create(_ context.Context, _ *domain.ArticleSu
 	return nil
 }
 
+func (m *stubSummaryRepoForWorker) Exists(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
 // stubAPIRepoOverloaded returns ErrServiceOverloaded for SummarizeArticle.
 type stubAPIRepoOverloaded struct {
 	repository.ExternalAPIRepository
@@ -130,6 +134,17 @@ type stubAPIRepoContentTooShort struct {
 func (m *stubAPIRepoContentTooShort) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
 	m.summarizeCalls++
 	return nil, domain.ErrContentTooShort
+}
+
+// stubAPIRepoContentNotProcessable returns ErrContentNotProcessable for SummarizeArticle.
+type stubAPIRepoContentNotProcessable struct {
+	repository.ExternalAPIRepository
+	summarizeCalls int
+}
+
+func (m *stubAPIRepoContentNotProcessable) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
+	m.summarizeCalls++
+	return nil, domain.ErrContentNotProcessable
 }
 
 // stubJobRepoTracking tracks UpdateJobStatus calls with their arguments. A
@@ -1162,5 +1177,101 @@ func TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency(t *testing.
 		assert.Equal(t, int32(3), atomic.LoadInt32(&apiRepo.calls))
 		assert.Equal(t, int32(3), atomic.LoadInt32(&apiRepo.maxInFlight),
 			"expected worker to utilize configured concurrency")
+	})
+}
+
+func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
+	t.Run("job with RetryCount 0 retries via generic error transition instead of immediate dead_letter", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		// Initial attempt: retry_count=0, max_retries=3 -> should be retried via generic failure transition
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-1", RetryCount: 0, MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoContentNotProcessable{}
+		summaryRepo := &stubSummaryRepoForWorker{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		_ = worker.ProcessQueue(ctx)
+
+		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Equal(t, domain.SummarizeJobStatusFailed, jobRepo.updateCalls[0].status,
+			"should update status using retry transition (Failed), NOT dead_letter")
+	})
+
+	t.Run("job with exhausted retries moves to dead_letter", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		// Final attempt: retry_count=2, max_retries=3 -> exhausted retries should dead_letter
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-1", RetryCount: 2, MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoContentNotProcessable{}
+		summaryRepo := &stubSummaryRepoForWorker{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		_ = worker.ProcessQueue(ctx)
+
+		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Equal(t, domain.SummarizeJobStatusDeadLetter, jobRepo.updateCalls[0].status,
+			"should mark job as dead_letter when retries are exhausted")
+	})
+
+	t.Run("exhausted retries with summary already persisted marks Completed instead of dead_letter", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		// Exhausted retries, but summary already exists upstream (e.g. concurrent attempt)
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-persisted", RetryCount: 2, MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoContentNotProcessable{}
+		summaryRepo := &stubSummaryRepoExists{existsMap: map[string]bool{"article-persisted": true}}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		_ = worker.ProcessQueue(ctx)
+
+		assert.GreaterOrEqual(t, summaryRepo.existsCalls, 1, "should recheck summaryRepo.Exists before dead_letter")
+		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
+			"should mark as Completed when upstream summary is already persisted")
+	})
+
+	t.Run("regression guard: ErrContentTooShort still saves placeholder and completes", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-short", RetryCount: 0, MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoContentTooShort{}
+		summaryRepo := &stubSummaryRepoTracking{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		err := worker.ProcessQueue(ctx)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 1, summaryRepo.createCalls, "should save placeholder summary")
+		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update job status")
+		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
+			"should mark as completed")
 	})
 }
