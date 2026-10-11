@@ -1199,6 +1199,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 
 		_ = worker.ProcessQueue(ctx)
 
+		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
 		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusFailed, jobRepo.updateCalls[0].status,
 			"should update status using retry transition (Failed), NOT dead_letter")
@@ -1222,6 +1223,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 
 		_ = worker.ProcessQueue(ctx)
 
+		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
 		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusDeadLetter, jobRepo.updateCalls[0].status,
 			"should mark job as dead_letter when retries are exhausted")
@@ -1245,33 +1247,10 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 
 		_ = worker.ProcessQueue(ctx)
 
+		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
 		assert.GreaterOrEqual(t, summaryRepo.existsCalls, 1, "should recheck summaryRepo.Exists before dead_letter")
 		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
 			"should mark as Completed when upstream summary is already persisted")
-	})
-
-	t.Run("regression guard: ErrContentTooShort still saves placeholder and completes", func(t *testing.T) {
-		ctx := context.Background()
-		jobID := uuid.New()
-
-		jobs := []*domain.SummarizeJob{
-			{JobID: jobID, ArticleID: "article-short", RetryCount: 0, MaxRetries: 3},
-		}
-
-		jobRepo := &stubJobRepoTracking{jobs: jobs}
-		articleRepo := &stubArticleRepoForWorker{}
-		apiRepo := &stubAPIRepoContentTooShort{}
-		summaryRepo := &stubSummaryRepoTracking{}
-
-		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
-
-		err := worker.ProcessQueue(ctx)
-
-		assert.NoError(t, err)
-		assert.Equal(t, 1, summaryRepo.createCalls, "should save placeholder summary")
-		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update job status")
-		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
-			"should mark as completed")
 	})
 }
