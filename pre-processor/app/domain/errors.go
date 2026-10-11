@@ -20,7 +20,8 @@ var (
 	ErrContentTooLong = errors.New("content too long for summarization")
 
 	// ErrContentNotProcessable indicates the content cannot be summarized by the model
-	// (e.g., model degeneration producing empty/whitespace output). Non-retryable.
+	// (e.g., model degeneration producing empty/whitespace output). Retried through
+	// the bounded retry path and dead-lettered once retries are exhausted.
 	ErrContentNotProcessable = errors.New("content not processable by model")
 
 	// ErrFetchDisabled indicates outbound article body fetching is intentionally disabled.

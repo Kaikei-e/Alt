@@ -200,10 +200,11 @@ func (r *summarizeJobRepository) HasInFlightJob(ctx context.Context, articleID s
 }
 
 // HasDeadLetterJob reports whether the article's most recent job row is in
-// the terminal dead_letter status. dead_letter is written only for the
-// explicit domain.ErrContentNotProcessable classification (see
-// UpdateJobStatus's SummarizeJobStatusDeadLetter case) — content the model
-// has declared it can never summarize — so this has no time cutoff.
+// the terminal dead_letter status. dead_letter is written only when retries
+// are exhausted for the explicit domain.ErrContentNotProcessable classification
+// (see UpdateJobStatus's SummarizeJobStatusDeadLetter case) — content the model
+// has declared it can never summarize after repeated attempts — so this has
+// no time cutoff.
 //
 // The check looks at the LATEST row for the article, not "any row ever":
 // article_id is not unique, and a stale dead_letter row from an earlier
@@ -383,8 +384,9 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 		//   terminal state — HasRecentFailedJob applies a bounded cooldown, not
 		//   a permanent block, because this branch fires for any error
 		//   including transient ones). dead_letter is reserved for the
-		//   explicit domain.ErrContentNotProcessable classification, set
-		//   directly via the SummarizeJobStatusDeadLetter case below.
+		//   explicit domain.ErrContentNotProcessable classification once
+		//   retries are exhausted, set directly via the
+		//   SummarizeJobStatusDeadLetter case below.
 		// - Otherwise: set status to pending (will be retried)
 		query = `
 			UPDATE summarize_job_queue
