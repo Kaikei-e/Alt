@@ -61,9 +61,10 @@ type SummarizeJobRepository interface {
 	// crashed worker cannot block re-enqueue indefinitely.
 	HasInFlightJob(ctx context.Context, articleID string, since time.Time) (bool, error)
 	// HasDeadLetterJob reports whether the article's most recent job row is in
-	// the terminal dead_letter status — written only for the explicit
-	// domain.ErrContentNotProcessable classification, a genuinely permanent
-	// failure. There is no time cutoff, but the check is scoped to the
+	// the terminal dead_letter status — written only when retries are
+	// exhausted for the explicit domain.ErrContentNotProcessable classification
+	// (content the model has declared it can never summarize after repeated
+	// attempts). There is no time cutoff, but the check is scoped to the
 	// latest row per article_id so a stale dead_letter row cannot out-vote a
 	// later, more current row (e.g. after InvalidateCompletedJobSummary).
 	HasDeadLetterJob(ctx context.Context, articleID string) (bool, error)

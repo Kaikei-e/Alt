@@ -19,11 +19,11 @@ const (
 	// error once retries are exhausted, including transient infrastructure
 	// failures (DB errors, network timeouts, upstream 5xxs) — unlike
 	// dead_letter, which is reserved for the explicit
-	// domain.ErrContentNotProcessable classification. A bounded cooldown
-	// stops the EnqueueUnsummarizedBatch sweep from re-creating a job every
-	// tick against a still-broken dependency, while still giving the article
-	// a path back to retry once the outage clears — a permanent block would
-	// not.
+	// domain.ErrContentNotProcessable classification once retries are
+	// exhausted. A bounded cooldown stops the EnqueueUnsummarizedBatch sweep
+	// from re-creating a job every tick against a still-broken dependency,
+	// while still giving the article a path back to retry once the outage
+	// clears — a permanent block would not.
 	failedJobCooldownWindow = 1 * time.Hour
 )
 
@@ -83,10 +83,10 @@ func ShouldQueueSummarizeJob(
 	}
 
 	// A dead_letter job means the content is permanently unprocessable
-	// (the explicit domain.ErrContentNotProcessable classification). Without
-	// this check an article the model can never summarize satisfies none of
-	// the checks above and gets re-enqueued every sweep, burning a
-	// news-creator call each time.
+	// (the explicit domain.ErrContentNotProcessable classification once
+	// retries are exhausted). Without this check an article the model can
+	// never summarize satisfies none of the checks above and gets
+	// re-enqueued every sweep, burning a news-creator call each time.
 	hasDeadLetter, err := jobRepo.HasDeadLetterJob(ctx, articleID)
 	if err != nil {
 		return false, "", err

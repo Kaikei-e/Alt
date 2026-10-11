@@ -9,6 +9,13 @@ from __future__ import annotations
 
 import pytest
 
+from news_creator.domain.prompts import (
+    CHUNK_SUMMARY_PROMPT_TEMPLATE,
+    RECAP_CLUSTER_SUMMARY_PROMPT,
+    SUMMARY_PROMPT_TEMPLATE,
+    wrap_gemma_prompt,
+)
+
 
 class TestPayloadBuilder:
     """Tests for PayloadBuilder class."""
@@ -132,6 +139,40 @@ class TestPayloadBuilder:
 
         assert payload.raw is False
 
+    @pytest.mark.parametrize(
+        "input_prompt,expected_prompt",
+        [
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "  hello  ",
+                "hello",
+            ),
+        ],
+    )
+    def test_payload_builder_raw_prompt_handling(self, input_prompt, expected_prompt):
+        """PayloadBuilder should preserve model-turn trailing newline or strip plain prompt."""
+        from news_creator.gateway.payload_builder import PayloadBuilder
+
+        builder = PayloadBuilder()
+        payload = builder.build(
+            prompt=input_prompt,
+            model="test-model",
+            options={},
+            keep_alive="24h",
+        )
+        assert payload.prompt == expected_prompt
+
 
 class TestGeneratePayload:
     """Tests for GeneratePayload dataclass."""
@@ -218,3 +259,83 @@ class TestPayloadBuilderProtocol:
             keep_alive="24h",
         )
         assert payload is not None
+
+
+class TestPrepareRawPrompt:
+    """Tests for prepare_raw_prompt helper function."""
+
+    @pytest.mark.parametrize(
+        "input_prompt,expected_prompt",
+        [
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "  hello  ",
+                "hello",
+            ),
+        ],
+    )
+    def test_prepare_raw_prompt(self, input_prompt, expected_prompt):
+        """prepare_raw_prompt should preserve model-turn trailing newline or strip plain prompt."""
+        from news_creator.gateway.payload_builder import prepare_raw_prompt
+
+        assert prepare_raw_prompt(input_prompt) == expected_prompt
+
+    @pytest.mark.parametrize(
+        "rendered_prompt",
+        [
+            pytest.param(
+                SUMMARY_PROMPT_TEMPLATE.format(
+                    current_date="2026-10-11", content="Sample article"
+                ),
+                id="summary_prompt_template",
+            ),
+            pytest.param(
+                CHUNK_SUMMARY_PROMPT_TEMPLATE.format(content="Sample chunk"),
+                id="chunk_summary_prompt_template",
+            ),
+            pytest.param(
+                RECAP_CLUSTER_SUMMARY_PROMPT.format(
+                    job_id="job-1",
+                    genre="tech",
+                    cluster_section="Sample cluster",
+                    max_bullets=3,
+                ),
+                id="recap_cluster_summary_prompt",
+            ),
+            pytest.param(
+                wrap_gemma_prompt("Sample user prompt"),
+                id="wrap_gemma_prompt_user_only",
+            ),
+            pytest.param(
+                wrap_gemma_prompt(
+                    "Sample user prompt", system_prompt="Sample system prompt"
+                ),
+                id="wrap_gemma_prompt_with_system",
+            ),
+        ],
+    )
+    def test_prepare_raw_prompt_real_templates(self, rendered_prompt: str) -> None:
+        """Rendered prompt templates ending with model-turn header must end with '<|turn>model\\n' and not '\\n\\n'."""
+        from news_creator.gateway.payload_builder import prepare_raw_prompt
+
+        prepared = prepare_raw_prompt(rendered_prompt)
+        assert prepared.endswith("<|turn>model\n")
+        assert not prepared.endswith("\n\n")
+
+    def test_prepare_raw_prompt_prefill_unchanged(self) -> None:
+        """A prompt with prefill after the model-turn header must be returned unchanged."""
+        from news_creator.gateway.payload_builder import prepare_raw_prompt
+
+        prefill = "<|turn>user\nHello<turn|>\n<|turn>model\n{"
+        assert prepare_raw_prompt(prefill) == prefill

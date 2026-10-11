@@ -286,18 +286,6 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 			}
 			return nil
 		}
-		if errors.Is(err, domain.ErrContentNotProcessable) {
-			w.logger.WarnContext(ctx, "non-retryable summarization error, moving to dead_letter immediately",
-				"job_id", job.JobID,
-				"article_id", job.ArticleID,
-				"error", err,
-				"duration_ms", summarizeDuration.Milliseconds())
-			if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusDeadLetter, "", errorMsg); updateErr != nil {
-				w.logger.ErrorContext(ctx, "failed to update job status to dead_letter", "error", updateErr, "job_id", job.JobID)
-			}
-			return nil // Non-retryable, don't propagate error to skip remaining jobs
-		}
-
 		w.logger.ErrorContext(ctx, "failed to summarize article",
 			"error", err,
 			"article_id", job.ArticleID,
@@ -305,57 +293,52 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 			"retry_count", job.RetryCount,
 			"max_retries", job.MaxRetries)
 
-		// Log whether this will be retried or moved to the retry-exhausted
-		// 'failed' terminal status.
-		// Note: The repository handles the status transition:
-		// - If retry_count + 1 >= max_retries -> failed (bounded cooldown via
-		//   HasRecentFailedJob, NOT dead_letter — this path covers any error,
-		//   including transient ones, so it must not block re-enqueue forever)
-		// - Otherwise -> pending (will be retried)
+		// UpdateJobStatus(failed) lets the repository move the job back to
+		// pending until retry_count reaches max_retries, then to terminal
+		// failed (bounded cooldown via HasRecentFailedJob); only an
+		// ErrContentNotProcessable job that exhausts its retries is dead-lettered
+		// here, because dead_letter blocks re-enqueue permanently.
 		nextRetryCount := job.RetryCount + 1
+		targetStatus := domain.SummarizeJobStatusFailed
+
 		if nextRetryCount >= job.MaxRetries {
 			// When the upstream is busy, an earlier concurrent request for the
 			// same article may have succeeded while the client timed out.
 			// Before exhausting retries, re-check whether a summary was
 			// actually persisted; if so, close the job as Completed.
-			if w.summaryRepo != nil {
-				if exists, existsErr := w.summaryRepo.Exists(ctx, job.ArticleID); existsErr == nil && exists {
-					// No summary_ready notification here: the request that
-					// actually produced this summary owns that notification,
-					// and enqueuing a second one under this job's dedupe key
-					// would ping the user twice for one article.
-					w.logger.WarnContext(ctx, "upstream already persisted summary; closing job as completed instead of failed",
-						"job_id", job.JobID,
-						"article_id", job.ArticleID,
-						"upstream_error", err)
-					if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "upstream completed concurrently"); updateErr != nil {
-						w.logger.ErrorContext(ctx, "failed to update job status to completed after recheck", "error", updateErr, "job_id", job.JobID)
-					}
-					if errors.Is(err, domain.ErrUpstreamBusy) {
-						return domain.ErrUpstreamBusy
-					}
-					return nil
-				} else if existsErr != nil {
-					w.logger.WarnContext(ctx, "failed to recheck summary existence before exhausting retries",
-						"error", existsErr, "article_id", job.ArticleID)
-				}
+			if persisted, recheckErr := w.recheckSummaryExistsBeforeExhausting(ctx, job, err); persisted {
+				return recheckErr
 			}
 
-			w.logger.WarnContext(ctx, "job exceeded max retries, moving to failed",
-				"job_id", job.JobID,
-				"article_id", job.ArticleID,
-				"retry_count", nextRetryCount,
-				"max_retries", job.MaxRetries)
+			if errors.Is(err, domain.ErrContentNotProcessable) {
+				targetStatus = domain.SummarizeJobStatusDeadLetter
+				w.logger.WarnContext(ctx, "job exhausted retries on unprocessable content, moving to dead_letter",
+					"job_id", job.JobID,
+					"article_id", job.ArticleID,
+					"error", err,
+					"retry_count", nextRetryCount,
+					"max_retries", job.MaxRetries)
+			} else {
+				w.logger.WarnContext(ctx, "job exceeded max retries, moving to failed",
+					"job_id", job.JobID,
+					"article_id", job.ArticleID,
+					"retry_count", nextRetryCount,
+					"max_retries", job.MaxRetries)
+			}
 		} else {
 			w.logger.InfoContext(ctx, "job will be retried",
 				"job_id", job.JobID,
 				"article_id", job.ArticleID,
+				"error", err,
 				"retry_count", nextRetryCount,
 				"max_retries", job.MaxRetries)
 		}
 
-		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
-			w.logger.ErrorContext(ctx, "failed to update job status to failed", "error", updateErr, "job_id", job.JobID)
+		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), targetStatus, "", errorMsg); updateErr != nil {
+			w.logger.ErrorContext(ctx, "failed to update job status", "error", updateErr, "job_id", job.JobID, "target_status", targetStatus)
+		}
+		if targetStatus == domain.SummarizeJobStatusDeadLetter {
+			return nil
 		}
 		return fmt.Errorf("failed to summarize article: %w", err)
 	}
@@ -438,6 +421,39 @@ func (w *SummarizeQueueWorker) savePlaceholderSummary(ctx context.Context, artic
 			"article_id", articleID,
 			"placeholder", placeholder)
 	}
+}
+
+// recheckSummaryExistsBeforeExhausting closes the job as Completed if upstream
+// already persisted a summary before retries are exhausted.
+func (w *SummarizeQueueWorker) recheckSummaryExistsBeforeExhausting(ctx context.Context, job *domain.SummarizeJob, upstreamErr error) (bool, error) {
+	if w.summaryRepo == nil {
+		return false, nil
+	}
+	exists, existsErr := w.summaryRepo.Exists(ctx, job.ArticleID)
+	if existsErr != nil {
+		w.logger.WarnContext(ctx, "failed to recheck summary existence before exhausting retries",
+			"error", existsErr, "article_id", job.ArticleID)
+		return false, nil
+	}
+	if !exists {
+		return false, nil
+	}
+
+	// No summary_ready notification here: the request that
+	// actually produced this summary owns that notification,
+	// and enqueuing a second one under this job's dedupe key
+	// would ping the user twice for one article.
+	w.logger.WarnContext(ctx, "upstream already persisted summary; closing job as completed",
+		"job_id", job.JobID,
+		"article_id", job.ArticleID,
+		"upstream_error", upstreamErr)
+	if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "upstream completed concurrently"); updateErr != nil {
+		w.logger.ErrorContext(ctx, "failed to update job status to completed after recheck", "error", updateErr, "job_id", job.JobID)
+	}
+	if errors.Is(upstreamErr, domain.ErrUpstreamBusy) {
+		return true, domain.ErrUpstreamBusy
+	}
+	return true, nil
 }
 
 // EnqueueUnsummarizedBatch fetches unsummarized articles from the backend and

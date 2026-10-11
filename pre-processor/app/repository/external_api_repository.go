@@ -103,7 +103,7 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *d
 			r.logger.WarnContext(ctx, "downstream service overloaded", "article_id", article.ID)
 			return nil, domain.ErrServiceOverloaded
 		}
-		// Handle 422 (content not processable) - non-retryable, immediate dead_letter
+		// Handle 422 (content not processable) - retried through bounded path, dead-lettered once retries are exhausted
 		if errors.Is(err, driver.ErrContentNotProcessable) {
 			r.logger.WarnContext(ctx, "content not processable by model", "article_id", article.ID)
 			return nil, domain.ErrContentNotProcessable

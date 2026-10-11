@@ -425,3 +425,228 @@ class TestStreamingOutputGuardIsWired:
         ]
 
         assert emitted == chunks
+
+
+class TestRetryParameterAdjustment:
+    """Tests for retry behavior distinguishing empty output vs repetition."""
+
+    @pytest.mark.asyncio
+    async def test_retry_after_empty_output_uses_base_parameters(self):
+        """(a) first call returns an empty response, second returns a valid summary ->
+        assert the SECOND call's options have repeat_penalty == base and temperature == base.
+        """
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            side_effect=[
+                _make_llm_response(""),
+                _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
+            ]
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        summary, metadata = await usecase.generate_summary("test-article", "A" * 200)
+
+        assert summary
+        assert llm_provider.generate_raw.call_count == 2
+        first_options = llm_provider.generate_raw.call_args_list[0].kwargs["options"]
+        second_options = llm_provider.generate_raw.call_args_list[1].kwargs["options"]
+
+        assert first_options["repeat_penalty"] == config.llm_repeat_penalty
+        assert first_options["temperature"] == config.summary_temperature
+        assert second_options["repeat_penalty"] == config.llm_repeat_penalty
+        assert second_options["temperature"] == config.summary_temperature
+
+    @pytest.mark.asyncio
+    async def test_retry_after_repetition_keeps_progressive_adjustment(self):
+        """(b) first call returns a repetitive summary (one that detect_repetition flags
+        with the configured threshold), second returns a valid one ->
+        assert the second call's repeat_penalty is higher than base and temperature lower.
+        """
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        repetitive_text = "apple apple apple banana banana banana cherry cherry cherry"
+        llm_provider.generate_raw = AsyncMock(
+            side_effect=[
+                _make_llm_response(repetitive_text),
+                _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
+            ]
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        summary, metadata = await usecase.generate_summary("test-article", "A" * 200)
+
+        assert summary
+        assert llm_provider.generate_raw.call_count == 2
+        second_options = llm_provider.generate_raw.call_args_list[1].kwargs["options"]
+
+        assert second_options["repeat_penalty"] > config.llm_repeat_penalty
+        assert second_options["temperature"] < config.summary_temperature
+        assert second_options["repeat_penalty"] == min(
+            1.2, config.llm_repeat_penalty + 0.05
+        )
+        assert second_options["temperature"] == max(
+            0.05, config.summary_temperature - 0.05
+        )
+
+    @pytest.mark.asyncio
+    async def test_two_consecutive_empty_responses_raise_runtime_error(self):
+        """(c) two empty responses still raise RuntimeError containing 'empty/whitespace summary'."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            side_effect=[
+                _make_llm_response(""),
+                _make_llm_response("   "),
+            ]
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        with pytest.raises(RuntimeError, match="empty/whitespace summary"):
+            await usecase.generate_summary("test-article", "A" * 200)
+
+        assert llm_provider.generate_raw.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_retry_warning_log_states_reason(self, caplog):
+        """(Requirement 3) Retry warning log states real reason (e.g. reason='empty_output')."""
+        import logging
+
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            side_effect=[
+                _make_llm_response(""),
+                _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
+            ]
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        with caplog.at_level(logging.WARNING):
+            await usecase.generate_summary("test-article", "A" * 200)
+
+        retry_records = [
+            r for r in caplog.records if "Retrying summary generation" in r.message
+        ]
+        assert len(retry_records) == 1
+        record = retry_records[0]
+        assert (
+            "empty_output" in record.message
+            or getattr(record, "reason", None) == "empty_output"
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_empty_then_repetition(self):
+        """First call empty (retry 1 has base params), second call repetitive
+        (retry 2 has progressive adjustment based on 1 repetition).
+        """
+        config = _make_config()
+        config.max_repetition_retries = 3
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        repetitive_text = "apple apple apple banana banana banana cherry cherry cherry"
+        llm_provider.generate_raw = AsyncMock(
+            side_effect=[
+                _make_llm_response(""),
+                _make_llm_response(repetitive_text),
+                _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
+            ]
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        summary, metadata = await usecase.generate_summary("test-article", "A" * 200)
+
+        assert summary
+        assert llm_provider.generate_raw.call_count == 3
+        calls = llm_provider.generate_raw.call_args_list
+
+        # Call 1 (initial): base params
+        assert calls[0].kwargs["options"]["repeat_penalty"] == config.llm_repeat_penalty
+        assert calls[0].kwargs["options"]["temperature"] == config.summary_temperature
+
+        # Call 2 (retry after empty): base params
+        assert calls[1].kwargs["options"]["repeat_penalty"] == config.llm_repeat_penalty
+        assert calls[1].kwargs["options"]["temperature"] == config.summary_temperature
+
+        # Call 3 (retry after repetition): progressive adjustment for 1st repetition
+        assert calls[2].kwargs["options"]["repeat_penalty"] == min(
+            1.2, config.llm_repeat_penalty + 0.05
+        )
+        assert calls[2].kwargs["options"]["temperature"] == max(
+            0.05, config.summary_temperature - 0.05
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_repetition_then_empty(self):
+        """First call repetitive (retry 1 has progressive adjustment),
+        second call empty (retry 2 resets to base params).
+        """
+        config = _make_config()
+        config.max_repetition_retries = 3
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        repetitive_text = "apple apple apple banana banana banana cherry cherry cherry"
+        llm_provider.generate_raw = AsyncMock(
+            side_effect=[
+                _make_llm_response(repetitive_text),
+                _make_llm_response(""),
+                _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
+            ]
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        summary, metadata = await usecase.generate_summary("test-article", "A" * 200)
+
+        assert summary
+        assert llm_provider.generate_raw.call_count == 3
+        calls = llm_provider.generate_raw.call_args_list
+
+        # Call 1 (initial): base params
+        assert calls[0].kwargs["options"]["repeat_penalty"] == config.llm_repeat_penalty
+        assert calls[0].kwargs["options"]["temperature"] == config.summary_temperature
+
+        # Call 2 (retry after repetition): adjusted
+        assert calls[1].kwargs["options"]["repeat_penalty"] == min(
+            1.2, config.llm_repeat_penalty + 0.05
+        )
+        assert calls[1].kwargs["options"]["temperature"] == max(
+            0.05, config.summary_temperature - 0.05
+        )
+
+        # Call 3 (retry after empty): base params
+        assert calls[2].kwargs["options"]["repeat_penalty"] == config.llm_repeat_penalty
+        assert calls[2].kwargs["options"]["temperature"] == config.summary_temperature

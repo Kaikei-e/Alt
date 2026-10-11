@@ -289,6 +289,8 @@ class SummarizeUsecase:
         raw_summary = ""
         llm_response = None
         consecutive_empty_count = 0
+        retry_reason: str | None = None
+        repetition_retry_count = 0
 
         is_high_priority = priority == "high"
 
@@ -303,20 +305,28 @@ class SummarizeUsecase:
                 current_repeat_penalty = self.config.llm_repeat_penalty
 
                 if attempt > 0:
-                    # Progressively lower temperature and increase repetition penalty
-                    current_temp = max(0.05, current_temp - (0.05 * attempt))
-                    current_repeat_penalty = min(
-                        1.2, current_repeat_penalty + (0.05 * attempt)
-                    )
+                    if retry_reason == "repetition":
+                        # Progressively lower temperature and increase repetition penalty
+                        current_temp = max(
+                            0.05,
+                            self.config.summary_temperature
+                            - (0.05 * repetition_retry_count),
+                        )
+                        current_repeat_penalty = min(
+                            1.2,
+                            self.config.llm_repeat_penalty
+                            + (0.05 * repetition_retry_count),
+                        )
 
                     logger.warning(
-                        "Retrying summary generation due to repetition",
+                        f"Retrying summary generation due to {retry_reason}",
                         extra={
                             "article_id": article_id,
                             "attempt": attempt + 1,
                             "max_retries": max_retries + 1,
                             "temperature": current_temp,
                             "repeat_penalty": current_repeat_penalty,
+                            "reason": retry_reason,
                         },
                     )
 
@@ -380,6 +390,7 @@ class SummarizeUsecase:
                             f"Model may be in a bad state."
                         )
                     if attempt < max_retries:
+                        retry_reason = "empty_output"
                         last_metadata = SummaryMetadata(
                             model=llm_response.model,
                             prompt_tokens=llm_response.prompt_eval_count,
@@ -388,7 +399,7 @@ class SummarizeUsecase:
                                 llm_response.total_duration
                             ),
                         )
-                        continue  # Retry with adjusted temperature
+                        continue  # Retry with base parameters
                 else:
                     consecutive_empty_count = 0  # Reset on non-empty response
 
@@ -398,6 +409,8 @@ class SummarizeUsecase:
                 )
 
                 if has_repetition and attempt < max_retries:
+                    retry_reason = "repetition"
+                    repetition_retry_count += 1
                     logger.warning(
                         "Repetition detected in generated summary, will retry",
                         extra={

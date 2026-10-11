@@ -18,6 +18,7 @@ from news_creator.domain.errors import PreemptedException
 from news_creator.gateway.hybrid_priority_semaphore import HybridPrioritySemaphore
 from news_creator.gateway.model_router import ModelRouter
 from news_creator.gateway.oom_detector import OOMDetector
+from news_creator.gateway.payload_builder import prepare_raw_prompt
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
@@ -201,7 +202,7 @@ class OllamaGateway(LLMProviderPort):
         # This bypasses Ollama's built-in RENDERER/PARSER which enables Gemma4 thinking by default.
         payload: dict[str, Any] = {
             "model": model,
-            "prompt": prompt.strip(),
+            "prompt": prepare_raw_prompt(prompt),
             "stream": stream,
             "raw": True,
             "keep_alive": final_keep_alive,
@@ -764,7 +765,7 @@ class OllamaGateway(LLMProviderPort):
 
         payload: dict[str, Any] = {
             "model": model,
-            "prompt": prompt.strip(),
+            "prompt": prepare_raw_prompt(prompt),
             "stream": False,
             "raw": True,
             "keep_alive": final_keep_alive,

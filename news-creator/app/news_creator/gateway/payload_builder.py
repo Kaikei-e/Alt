@@ -17,6 +17,19 @@ from typing import Any, Protocol
 logger = logging.getLogger(__name__)
 
 
+GEMMA_MODEL_TURN_HEADER: str = "<|turn>model"
+
+
+def prepare_raw_prompt(prompt: str) -> str:
+    """Strip surrounding whitespace, keeping the newline that ends a Gemma 4 model-turn header."""
+    stripped = prompt.strip()
+    # Without this newline the model must emit "\n" first; repeat_penalty suppresses it,
+    # so <turn|> gets sampled as the first token and the response comes back empty.
+    if stripped.endswith(GEMMA_MODEL_TURN_HEADER):
+        return f"{stripped}\n"
+    return stripped
+
+
 @dataclass(frozen=True)
 class GeneratePayload:
     """Immutable representation of Ollama generate API payload.
@@ -112,7 +125,7 @@ class PayloadBuilder:
         """
         return GeneratePayload(
             model=model,
-            prompt=prompt.strip(),
+            prompt=prepare_raw_prompt(prompt),
             options=options,
             keep_alive=keep_alive,
             stream=stream,
