@@ -1151,3 +1151,89 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
         )
 
         await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_prompt,expected_prompt",
+    [
+        (
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+        ),
+        (
+            "<|turn>user\nHello world<turn|>\n<|turn>model",
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+        ),
+        (
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+        ),
+        (
+            "  hello  ",
+            "hello",
+        ),
+    ],
+)
+async def test_generate_streaming_prompt_handling(
+    mock_config, input_prompt, expected_prompt
+):
+    """Test that streaming generate payload preserves model-turn newline or strips plain prompts."""
+    captured_payloads = []
+
+    async def mock_stream(payload):
+        captured_payloads.append(payload)
+        yield {"response": "test", "done": True, "model": "test-model"}
+
+    gateway = OllamaGateway(mock_config)
+    await gateway.initialize()
+    gateway.stream_driver.generate_stream = mock_stream
+
+    result = await gateway.generate(input_prompt, stream=True)
+    async for _ in result:
+        pass
+
+    assert len(captured_payloads) == 1
+    assert captured_payloads[0]["prompt"] == expected_prompt
+    await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_prompt,expected_prompt",
+    [
+        (
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+        ),
+        (
+            "<|turn>user\nHello world<turn|>\n<|turn>model",
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+        ),
+        (
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+        ),
+        (
+            "  hello  ",
+            "hello",
+        ),
+    ],
+)
+async def test_generate_raw_prompt_handling(mock_config, input_prompt, expected_prompt):
+    """Test that generate_raw payload preserves model-turn newline or strips plain prompts."""
+    captured_payloads = []
+
+    async def mock_generate(payload, *args, **kwargs):
+        captured_payloads.append(payload)
+        return {"response": "test", "done": True, "model": "test-model"}
+
+    gateway = OllamaGateway(mock_config)
+    await gateway.initialize()
+    gateway.driver.generate = mock_generate
+
+    await gateway.generate_raw(input_prompt)
+
+    assert len(captured_payloads) == 1
+    assert captured_payloads[0]["prompt"] == expected_prompt
+    await gateway.cleanup()

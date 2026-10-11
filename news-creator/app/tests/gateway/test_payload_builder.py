@@ -132,6 +132,40 @@ class TestPayloadBuilder:
 
         assert payload.raw is False
 
+    @pytest.mark.parametrize(
+        "input_prompt,expected_prompt",
+        [
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "  hello  ",
+                "hello",
+            ),
+        ],
+    )
+    def test_payload_builder_raw_prompt_handling(self, input_prompt, expected_prompt):
+        """PayloadBuilder should preserve model-turn trailing newline or strip plain prompt."""
+        from news_creator.gateway.payload_builder import PayloadBuilder
+
+        builder = PayloadBuilder()
+        payload = builder.build(
+            prompt=input_prompt,
+            model="test-model",
+            options={},
+            keep_alive="24h",
+        )
+        assert payload.prompt == expected_prompt
+
 
 class TestGeneratePayload:
     """Tests for GeneratePayload dataclass."""
@@ -218,3 +252,34 @@ class TestPayloadBuilderProtocol:
             keep_alive="24h",
         )
         assert payload is not None
+
+
+class TestPrepareRawPrompt:
+    """Tests for prepare_raw_prompt helper function."""
+
+    @pytest.mark.parametrize(
+        "input_prompt,expected_prompt",
+        [
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
+                "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            ),
+            (
+                "  hello  ",
+                "hello",
+            ),
+        ],
+    )
+    def test_prepare_raw_prompt(self, input_prompt, expected_prompt):
+        """prepare_raw_prompt should preserve model-turn trailing newline or strip plain prompt."""
+        from news_creator.gateway.payload_builder import prepare_raw_prompt
+
+        assert prepare_raw_prompt(input_prompt) == expected_prompt

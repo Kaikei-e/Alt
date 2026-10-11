@@ -609,3 +609,38 @@ async def test_all_remotes_fail_falls_back_to_local(metrics_reader):
         reason="exhausted",
     )
     assert fallbacks[0].value == 1
+
+
+@pytest.mark.parametrize(
+    "input_prompt,expected_prompt",
+    [
+        (
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+        ),
+        (
+            "<|turn>user\nHello world<turn|>\n<|turn>model",
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+        ),
+        (
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
+            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
+        ),
+        (
+            "  hello  ",
+            "hello",
+        ),
+    ],
+)
+def test_build_payload_raw_prompt_handling(input_prompt, expected_prompt):
+    """DistributingGateway._build_payload should preserve model-turn trailing newline or strip plain prompt."""
+    local = MagicMock()
+    local.config = None
+    gw = DistributingGateway(
+        local_gateway=local,
+        health_checker=_make_health_checker(),
+        remote_driver=_make_remote_driver(),
+        enabled=False,
+    )
+    payload = gw._build_payload(input_prompt)
+    assert payload["prompt"] == expected_prompt

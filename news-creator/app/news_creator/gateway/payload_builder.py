@@ -17,6 +17,10 @@ from typing import Any, Protocol
 logger = logging.getLogger(__name__)
 
 
+def prepare_raw_prompt(prompt: str) -> str:
+    raise NotImplementedError
+
+
 @dataclass(frozen=True)
 class GeneratePayload:
     """Immutable representation of Ollama generate API payload.
