@@ -15,6 +15,7 @@ from typing import Any, AsyncIterator
 
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.gateway import dispatch_metrics
+from news_creator.gateway.payload_builder import prepare_raw_prompt
 from news_creator.gateway.remote_health_checker import RemoteHealthChecker
 from news_creator.gateway.remote_ollama_driver import RemoteOllamaDriver
 from news_creator.port.llm_provider_port import LLMProviderPort
@@ -331,7 +332,7 @@ class DistributingGateway(LLMProviderPort):
 
         payload: dict[str, Any] = {
             "model": effective_model,
-            "prompt": prompt.strip(),
+            "prompt": prepare_raw_prompt(prompt),
             "stream": False,
             "raw": True,
             "keep_alive": final_keep_alive,
