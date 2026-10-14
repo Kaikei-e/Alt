@@ -360,25 +360,6 @@ function handleAction(type: string) {
 		cursor: pointer;
 	}
 
-	.why-toggle {
-		margin-left: auto;
-		border: 1px solid var(--surface-border);
-		padding: 0.125rem 0.625rem;
-		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		color: var(--alt-ash);
-		background: transparent;
-		cursor: pointer;
-		transition: border-color 0.15s, color 0.15s;
-	}
-
-	.why-toggle:hover {
-		border-color: var(--interactive-text);
-		color: var(--interactive-text);
-	}
-
 	.skeleton-line {
 		height: 0.75rem;
 		width: 100%;

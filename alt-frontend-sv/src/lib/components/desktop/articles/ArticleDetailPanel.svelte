@@ -11,8 +11,8 @@ import { onDestroy } from "svelte";
 import {
 	type FeedContentOnTheFlyResponse,
 	getFeedContentOnTheFlyClient,
-	trackHomeActionClient,
 } from "#lib/api/client/articles.js";
+import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
 import type { TagTrailArticle } from "#lib/connect/index.js";
 import { useSummarize } from "#lib/hooks/useSummarize.svelte.js";

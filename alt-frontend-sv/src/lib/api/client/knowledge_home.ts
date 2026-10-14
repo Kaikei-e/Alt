@@ -1,4 +1,3 @@
-import { trackHomeAction } from "#lib/connect/knowledge_home.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
 
 /**
@@ -10,9 +9,10 @@ export async function trackHomeActionClient(
 	itemKey: string,
 	metadataJson?: string,
 ): Promise<void> {
-	if (!itemKey) return;
+	if (!itemKey || import.meta.env?.MODE === "test") return;
 	try {
 		const transport = createClientTransport();
+		const { trackHomeAction } = await import("#lib/connect/knowledge_home.js");
 		await trackHomeAction(transport, actionType, itemKey, metadataJson);
 	} catch {
 		// Fire-and-forget: never block reading UX on tracking errors

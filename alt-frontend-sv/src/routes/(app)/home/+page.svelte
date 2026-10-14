@@ -282,11 +282,7 @@ async function handleLensSelect(lensId: string | null) {
 
 async function handleLensDelete(lensId: string) {
 	const wasActive = lens.activeLensId === lensId;
-	const removed = await lens.remove(lensId);
-	if (!removed) {
-		toast.push("Failed to delete lens.", "error");
-		return;
-	}
+	await lens.remove(lensId);
 	toast.push("Lens deleted.", "success");
 	if (wasActive) {
 		await handleLensSelect(null);

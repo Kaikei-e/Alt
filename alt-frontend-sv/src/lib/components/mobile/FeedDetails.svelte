@@ -8,8 +8,8 @@ import {
 	getFeedContentOnTheFlyClient,
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
-	trackHomeActionClient,
 } from "#lib/api/client/index.js";
+import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import * as Sheet from "#lib/components/ui/sheet/index.js";
 import {
 	createClientTransport,

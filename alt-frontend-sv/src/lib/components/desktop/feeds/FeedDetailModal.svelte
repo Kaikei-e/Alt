@@ -2,10 +2,8 @@
 import { ChevronLeft, ChevronRight, X } from "@lucide/svelte";
 import { Dialog as DialogPrimitive } from "bits-ui";
 import { onDestroy, tick } from "svelte";
-import {
-	getFeedContentOnTheFlyClient,
-	trackHomeActionClient,
-} from "#lib/api/client/articles.js";
+import { getFeedContentOnTheFlyClient } from "#lib/api/client/articles.js";
+import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
 import {
 	createClientTransport,

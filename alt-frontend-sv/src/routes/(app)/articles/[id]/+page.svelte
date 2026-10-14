@@ -12,8 +12,8 @@ import { MediaQuery } from "svelte/reactivity";
 import {
 	getArticleSourceURLClient,
 	getFeedContentOnTheFlyClient,
-	trackHomeActionClient,
 } from "#lib/api/client/articles.js";
+import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import ArticleEndBranches from "#lib/components/knowledge-trail/ArticleEndBranches.svelte";
 import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
 import PageKicker from "#lib/components/recap/job-status/PageKicker.svelte";

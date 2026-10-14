@@ -14,8 +14,8 @@ import {
 	getFeedContentOnTheFlyClient,
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
-	trackHomeActionClient,
 } from "#lib/api/client/index.js";
+import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
@@ -76,7 +76,8 @@ let isSummarizing = $state(false);
 
 let isContentExpanded = $state(false);
 let fullContent = $state<string | null>(null);
-let resolvedArticleId = $state<string | null>(feed.articleId ?? null);
+let fetchedArticleId = $state<string | null>(null);
+const resolvedArticleId = $derived(fetchedArticleId ?? feed.articleId ?? null);
 let lastTrackedOpenArticleId: string | null = null;
 // Three honest states, not two booleans. `pending` / `retrying` are explicitly
 // not `failed`: the background fetch used to swallow its rejection entirely
@@ -203,7 +204,7 @@ onMount(() => {
 		// Also check for cached articleId and notify parent
 		const cachedArticleId = getCachedArticleId?.(feed.normalizedUrl);
 		if (cachedArticleId) {
-			resolvedArticleId = cachedArticleId;
+			fetchedArticleId = cachedArticleId;
 			if (onArticleIdResolved) {
 				onArticleIdResolved(feed.link, cachedArticleId);
 			}
@@ -346,7 +347,7 @@ function applyBody(
 	contentPhase = "ready";
 	contentError = null;
 	if (body.articleId) {
-		resolvedArticleId = body.articleId;
+		fetchedArticleId = body.articleId;
 		if (onArticleIdResolved) {
 			onArticleIdResolved(feed.link, body.articleId);
 		}
