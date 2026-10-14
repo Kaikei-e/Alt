@@ -54,6 +54,36 @@ func TestUpsertRecallCandidate_PreservesReasonTypeAndDescription(t *testing.T) {
 	assert.Contains(t, reasons[1].Description, "rust async")
 }
 
+func TestUpsertRecallCandidate_DeduplicatesIdenticalReasons(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	payload := json.RawMessage(`{
+		"user_id": "11111111-1111-1111-1111-111111111111",
+		"item_key": "article:test-recall-dup",
+		"recall_score": 0.5,
+		"reasons": [
+			{"type": "opened_before_but_not_revisited", "description": "Opened 6 days ago, not revisited since"},
+			{"type": "opened_before_but_not_revisited", "description": "Opened 6 days ago, not revisited since"},
+			{"type": "opened_before_but_not_revisited", "description": "Opened 6 days ago, not revisited since"}
+		],
+		"next_suggest_at": "2026-03-26T00:00:00Z",
+		"first_eligible_at": "2026-03-26T00:00:00Z",
+		"updated_at": "2026-03-26T00:00:00Z",
+		"projection_version": 1
+	}`)
+
+	require.NoError(t, repo.UpsertRecallCandidate(context.Background(), payload))
+	require.Len(t, mock.execCalls, 1)
+
+	reasonJSONStr, ok := mock.execCalls[0].Args[3].(string)
+	require.True(t, ok)
+
+	var reasons []RecallReason
+	require.NoError(t, json.Unmarshal([]byte(reasonJSONStr), &reasons))
+	assert.Len(t, reasons, 1, "identical reasons must be deduplicated")
+}
+
 func TestSnoozeRecallCandidate_RequiresOccurredAtInPayload(t *testing.T) {
 	mock := &mockPgx{}
 	repo := &Repository{pool: mock}

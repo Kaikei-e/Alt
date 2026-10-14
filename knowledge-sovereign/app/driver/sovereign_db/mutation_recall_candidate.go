@@ -37,6 +37,20 @@ func parseUpsertRecallCandidateMutation(payload json.RawMessage) (upsertRecallCa
 		return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: unmarshal: %w", err)
 	}
 
+	if len(candidate.Reasons) > 1 {
+		seen := make(map[string]struct{}, len(candidate.Reasons))
+		deduped := make([]RecallReason, 0, len(candidate.Reasons))
+		for _, r := range candidate.Reasons {
+			key := r.Type + "\x00" + r.Description + "\x00" + r.SourceItemKey
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			deduped = append(deduped, r)
+		}
+		candidate.Reasons = deduped
+	}
+
 	reasonJSON, err := json.Marshal(candidate.Reasons)
 	if err != nil {
 		return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: marshal reasons: %w", err)

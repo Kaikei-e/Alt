@@ -36,7 +36,7 @@ func buildHomeItemOpenedWrites(evt sovereign_db.KnowledgeEvent, version int) (ho
 		TenantID:          evt.TenantID,
 		ItemKey:           payload.ItemKey,
 		ItemType:          itemTypeArticle,
-		WhyReasons:        []whyReasonWire{{Code: whyNewUnread}},
+		WhyReasons:        []whyReasonWire{},
 		Score:             0.1,        // suppressed: opening an item lowers its resurfacing score
 		ScoreOp:           scoreOpSet, // must be authoritative — a floor merge could never lower the score
 		LastInteractedAt:  &occurredAt,

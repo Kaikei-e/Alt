@@ -30,6 +30,7 @@ func TestBuildHomeItemOpenedWrites(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 0.1, item.Score)
 		assert.Equal(t, scoreOpSet, item.ScoreOp)
+		assert.Empty(t, item.WhyReasons, "opening an item must not re-assert new_unread")
 		assert.Equal(t, itemKey, item.ItemKey)
 		assert.Equal(t, 2, item.ProjectionVersion)
 		require.NotNil(t, item.LastInteractedAt)

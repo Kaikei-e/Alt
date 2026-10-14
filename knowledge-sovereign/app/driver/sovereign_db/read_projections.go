@@ -152,7 +152,8 @@ func buildKnowledgeHomeQuery(userID uuid.UUID, cursor *homeItemCursor, filter *L
 		FROM knowledge_home_items khi
 		WHERE khi.user_id = $1
 		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
-		  AND khi.dismissed_at IS NULL`)
+		  AND khi.dismissed_at IS NULL
+		  AND COALESCE(khi.title, '') <> ''`)
 
 	filterSQL, filterArgs, nextArgPos := buildKnowledgeHomeFilterClauses(filter, cutoff, argPos)
 	if filterSQL != "" {
@@ -261,9 +262,11 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 	return trimmedItems, nextCursor, hasMore, nil
 }
 
-// ListDistinctUserIDs returns all distinct user IDs from knowledge_home_items.
+// ListDistinctUserIDs returns distinct non-nil user IDs from the active projection version of knowledge_home_items.
 func (r *Repository) ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error) {
-	query := `SELECT DISTINCT user_id FROM knowledge_home_items`
+	query := `SELECT DISTINCT user_id FROM knowledge_home_items
+		WHERE projection_version = ` + activeProjectionVersionSQL + `
+		  AND user_id <> '00000000-0000-0000-0000-000000000000'`
 	rows, err := r.pool.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("ListDistinctUserIDs: %w", err)

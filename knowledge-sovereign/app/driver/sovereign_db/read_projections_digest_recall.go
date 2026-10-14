@@ -210,9 +210,18 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 	return candidates, nil
 }
 
-// GetProjectionFreshness returns the updated_at timestamp from the projection checkpoint.
+// GetProjectionFreshness returns the effective freshness timestamp from the
+// projection checkpoint. When the checkpoint's last_event_seq is caught up
+// with knowledge_events (no unprojected events waiting), the projection is
+// fresh as of now() even during quiet periods between hourly feed ingestions.
 func (r *Repository) GetProjectionFreshness(ctx context.Context, projectorName string) (*time.Time, error) {
-	query := `SELECT updated_at FROM knowledge_projection_checkpoints WHERE projector_name = $1`
+	query := `SELECT CASE
+		WHEN NOT EXISTS (SELECT 1 FROM knowledge_events e WHERE e.event_seq > c.last_event_seq)
+		THEN now()
+		ELSE c.updated_at
+	END
+	FROM knowledge_projection_checkpoints c
+	WHERE c.projector_name = $1`
 	var updatedAt time.Time
 	err := r.pool.QueryRow(ctx, query, projectorName).Scan(&updatedAt)
 	if err != nil {

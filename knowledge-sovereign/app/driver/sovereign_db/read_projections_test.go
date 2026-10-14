@@ -165,4 +165,19 @@ func TestGetKnowledgeHomeItems_FirstPageAnchorsOnDBNow(t *testing.T) {
 
 	assert.Contains(t, sql, "now() AS rank_as_of",
 		"the first page must capture the exact now() Postgres used, so it can be replayed unchanged on later pages")
+	assert.Contains(t, sql, "COALESCE(khi.title, '') <> ''",
+		"title-less orphan rows must be excluded from Knowledge Home")
+}
+
+func TestListDistinctUserIDs_FiltersActiveVersionAndExcludesNilUUID(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	_, err := repo.ListDistinctUserIDs(context.Background())
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1)
+	sql := mock.queryCalls[0].SQL
+
+	assert.Contains(t, sql, "projection_version =")
+	assert.Contains(t, sql, "user_id <> '00000000-0000-0000-0000-000000000000'")
 }
