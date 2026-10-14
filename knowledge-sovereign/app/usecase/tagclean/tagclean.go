@@ -6,7 +6,6 @@
 package tagclean
 
 import (
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -25,11 +24,6 @@ func buildJunkWordsSet(words []string) map[string]struct{} {
 		set[w] = struct{}{}
 	}
 	return set
-}
-
-// JunkWords returns a copy of the canonical lowercase junk-tag vocabulary.
-func JunkWords() []string {
-	return slices.Clone(sovereign_db.JunkTagWords)
 }
 
 // Normalize returns the canonical form of one tag, or "" when the tag is

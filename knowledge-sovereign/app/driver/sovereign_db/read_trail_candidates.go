@@ -118,7 +118,15 @@ recent_anchors AS (
    AND akhi.projection_version = (SELECT v FROM active_version)
   WHERE f.user_id = $1
     AND f.verb = ANY($2::text[])
-    AND coalesce(akhi.title, '') <> ''
+    AND regexp_replace(coalesce(akhi.title, ''), '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g') <> ''
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(akhi.tags_json) AS rat(tag),
+           LATERAL (SELECT lower(regexp_replace(rat.tag, '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g')) AS clean_tag) ct
+      WHERE char_length(ct.clean_tag) >= 2
+        AND ct.clean_tag ~ '[[:alpha:]]'
+        AND NOT (ct.clean_tag = ANY($3::text[]))
+    )
   GROUP BY f.item_key, akhi.title, akhi.tags_json
   ORDER BY max(f.occurred_at) DESC
   LIMIT 30
@@ -133,21 +141,25 @@ matched_pairs AS (
          ra.title AS anchor_title,
          ra.verb AS anchor_verb,
          ra.last_occurred_at,
-         array_agg(DISTINCT lower(btrim(it.tag))) AS shared_tags,
-         count(DISTINCT lower(btrim(it.tag))) AS tag_overlap
+         array_agg(DISTINCT norm.it_clean) AS shared_tags,
+         count(DISTINCT norm.it_clean) AS tag_overlap
   FROM knowledge_home_items khi
   JOIN recent_anchors ra ON ra.item_key <> khi.item_key
   CROSS JOIN LATERAL jsonb_array_elements_text(khi.tags_json) AS it(tag)
   CROSS JOIN LATERAL jsonb_array_elements_text(ra.tags_json) AS at(tag)
+  CROSS JOIN LATERAL (
+    SELECT lower(regexp_replace(it.tag, '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g')) AS it_clean,
+           lower(regexp_replace(at.tag, '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g')) AS at_clean
+  ) norm
   WHERE khi.user_id = $1
     AND khi.item_type = 'article'
     AND khi.dismissed_at IS NULL
     AND khi.projection_version = (SELECT v FROM active_version)
-    AND coalesce(khi.title, '') <> ''
-    AND lower(btrim(it.tag)) = lower(btrim(at.tag))
-    AND char_length(lower(btrim(it.tag))) >= 2
-    AND lower(btrim(it.tag)) ~ '[[:alpha:]]'
-    AND NOT (lower(btrim(it.tag)) = ANY($3::text[]))
+    AND regexp_replace(coalesce(khi.title, ''), '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g') <> ''
+    AND norm.it_clean = norm.at_clean
+    AND char_length(norm.it_clean) >= 2
+    AND norm.it_clean ~ '[[:alpha:]]'
+    AND NOT (norm.it_clean = ANY($3::text[]))
     AND khi.item_key NOT IN (SELECT item_key FROM footprinted)
     AND NOT EXISTS (
       SELECT 1 FROM knowledge_trail_branches btb
