@@ -10,11 +10,14 @@ const DEFAULT_PAGE_URL =
 // Read through a getter rather than captured at mock time: the masthead cases
 // below vary the query string, and a frozen URL would make every one of them
 // exercise the same handoff.
-let currentPageURL = new URL(DEFAULT_PAGE_URL);
+let currentArticleId = $state("test-123");
+let currentPageURL = $state(new URL(DEFAULT_PAGE_URL));
 
 vi.mock("$app/state", () => ({
 	page: {
-		params: { id: "test-123" },
+		get params() {
+			return { id: currentArticleId };
+		},
 		get url() {
 			return currentPageURL;
 		},
@@ -51,6 +54,25 @@ vi.mock("#lib/api/client/articles.js", () => ({
 		mockGetFeedContent(...args),
 	getArticleSourceURLClient: (...args: unknown[]) =>
 		mockGetArticleSourceURL(...args),
+}));
+
+const mockTrackHomeActionClient = vi.fn(() => Promise.resolve());
+vi.mock("#lib/api/client/knowledge_home.js", () => ({
+	trackHomeActionClient: (...args: unknown[]) =>
+		mockTrackHomeActionClient(...args),
+}));
+
+const mockGetItemBranches = vi.fn(() => Promise.resolve([]));
+const mockResolveBranch = vi.fn(() => Promise.resolve());
+const mockEmitTrailOutcome = vi.fn(() => Promise.resolve());
+vi.mock("#lib/connect/knowledge_trail.js", () => ({
+	getItemBranches: (...args: unknown[]) => mockGetItemBranches(...args),
+	resolveBranch: (...args: unknown[]) => mockResolveBranch(...args),
+	emitTrailOutcome: (...args: unknown[]) => mockEmitTrailOutcome(...args),
+}));
+
+vi.mock("#lib/connect/transport-client.js", () => ({
+	createClientTransport: vi.fn(() => ({})),
 }));
 
 const mockSummarizerReset = vi.fn();
@@ -94,6 +116,7 @@ describe("Article page fetch button", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentArticleId = "test-123";
 		currentPageURL = new URL(DEFAULT_PAGE_URL);
 	});
 
@@ -179,6 +202,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentArticleId = "test-123";
 		currentPageURL = new URL(DEFAULT_PAGE_URL);
 	});
 
@@ -322,6 +346,7 @@ describe("Article page masthead", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentArticleId = "test-123";
 		currentPageURL = new URL(DEFAULT_PAGE_URL);
 		mockGetFeedContent.mockReturnValue(new Promise(() => {}));
 	});
@@ -395,6 +420,7 @@ describe("Article page content states", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentArticleId = "test-123";
 		currentPageURL = new URL(DEFAULT_PAGE_URL);
 	});
 
@@ -499,5 +525,116 @@ describe("Article page content states", () => {
 			.toBeInTheDocument();
 		await new Promise((r) => setTimeout(r, 900));
 		expect(mockGetFeedContent).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("Article page branch walk and open tracking", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(goto).mockImplementation(async () => {});
+		summarizerOverride = {};
+		currentArticleId = "art-a";
+		currentPageURL = new URL(
+			"http://localhost/articles/art-a?url=https%3A%2F%2Fexample.com%2Fa&title=Article+A&trail_proposal=prop-a",
+		);
+	});
+
+	it("reloads content and end branches, records open once per article visit, and emits dwell outcomes for both branch walks", async () => {
+		mockGetFeedContent.mockImplementation((url: string) =>
+			Promise.resolve({
+				content:
+					url === "https://example.com/b"
+						? "<p>Second walked article body.</p>"
+						: "<p>First walked article body.</p>",
+				article_id: url === "https://example.com/b" ? "art-b" : "art-a",
+			}),
+		);
+		mockGetArticleSourceURL.mockResolvedValue({
+			url: "https://example.com/b",
+			title: "Article B",
+		});
+		mockGetItemBranches.mockImplementation(
+			(_transport: unknown, itemKey: string) =>
+				Promise.resolve([
+					{
+						branchKey: `cluster:u:${itemKey}`,
+						anchorItemKey: itemKey,
+						relationKind: "cluster",
+						why: `Branch from ${itemKey}`,
+						evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+						confidence: "plausible",
+						targetItemKey: "article:art-b",
+						targetTitle: `Target from ${itemKey}`,
+					},
+				]),
+		);
+
+		const { unmount } = renderPage();
+
+		await expect
+			.element(testPage.getByText("First walked article body."))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByText("Branch from article:art-a"))
+			.toBeInTheDocument();
+
+		expect(mockTrackHomeActionClient).toHaveBeenCalledTimes(1);
+		expect(mockTrackHomeActionClient).toHaveBeenCalledWith(
+			"open",
+			"article:art-a",
+			JSON.stringify({ source: "article_page" }),
+		);
+		expect(mockGetItemBranches).toHaveBeenCalledTimes(1);
+		expect(mockGetItemBranches).toHaveBeenCalledWith(
+			expect.anything(),
+			"article:art-a",
+			2,
+		);
+
+		// Walk a branch to /articles/art-b?trail_proposal=prop-b
+		currentArticleId = "art-b";
+		currentPageURL = new URL(
+			"http://localhost/articles/art-b?trail_proposal=prop-b",
+		);
+
+		await expect
+			.element(testPage.getByText("Second walked article body."))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByText("Branch from article:art-b"))
+			.toBeInTheDocument();
+
+		expect(mockTrackHomeActionClient).toHaveBeenCalledTimes(2);
+		expect(mockTrackHomeActionClient).toHaveBeenLastCalledWith(
+			"open",
+			"article:art-b",
+			JSON.stringify({ source: "article_page" }),
+		);
+		expect(mockGetItemBranches).toHaveBeenCalledTimes(2);
+		expect(mockGetItemBranches).toHaveBeenLastCalledWith(
+			expect.anything(),
+			"article:art-b",
+			2,
+		);
+
+		// Leaving the first article flushed its dwell outcome; unmounting the
+		// second article flushes the second branch walk's dwell outcome too.
+		expect(mockEmitTrailOutcome).toHaveBeenCalledTimes(1);
+		expect(mockEmitTrailOutcome).toHaveBeenCalledWith(
+			expect.anything(),
+			"prop-a",
+			"article:art-a",
+			expect.any(BigInt),
+		);
+
+		unmount();
+
+		expect(mockEmitTrailOutcome).toHaveBeenCalledTimes(2);
+		expect(mockEmitTrailOutcome).toHaveBeenLastCalledWith(
+			expect.anything(),
+			"prop-b",
+			"article:art-b",
+			expect.any(BigInt),
+		);
 	});
 });

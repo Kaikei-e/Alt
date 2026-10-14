@@ -31,6 +31,12 @@ vi.mock("#lib/api/client/index.js", () => ({
 	archiveContentClient: vi.fn(() => Promise.resolve({})),
 }));
 
+const mockTrackHomeActionClient = vi.fn(() => Promise.resolve());
+vi.mock("#lib/api/client/knowledge_home.js", () => ({
+	trackHomeActionClient: (...args: unknown[]) =>
+		mockTrackHomeActionClient(...args),
+}));
+
 // Mock Connect RPC functions
 vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
@@ -770,6 +776,73 @@ describe("FeedDetails retry", () => {
 
 			expect(summarizeArticleClient).toHaveBeenCalledTimes(1);
 			await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("open tracking", () => {
+		it("records open when feedDetails carries a real article_id", async () => {
+			render(FeedDetails, {
+				props: {
+					feedURL: testFeedURL,
+					feedTitle: testFeedTitle,
+					open: true,
+					onOpenChange: vi.fn(),
+					showButton: false,
+				},
+			});
+
+			await expect
+				.element(page.getByText("Full article content here."))
+				.toBeInTheDocument();
+
+			expect(mockTrackHomeActionClient).toHaveBeenCalledTimes(1);
+			expect(mockTrackHomeActionClient).toHaveBeenCalledWith(
+				"open",
+				"article:article-123",
+				JSON.stringify({ source: "mobile_feed_details" }),
+			);
+		});
+
+		it("does NOT send articleSummary.matched_articles[0].source_id as an article id", async () => {
+			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
+				await import("#lib/api/client/index.js");
+			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
+				content: "",
+				article_id: "",
+				og_image_url: "",
+				og_image_proxy_url: "",
+			});
+			vi.mocked(getArticleSummaryClient).mockResolvedValue({
+				matched_articles: [
+					{
+						article_url: testFeedURL,
+						title: testFeedTitle,
+						content: "<p>Summary matched article body.</p>",
+						content_type: "text/html",
+						published_at: "",
+						fetched_at: "",
+						source_id: "tag:google.com,2005:reader/item/000000001234abcd",
+					},
+				],
+				total_matched: 1,
+				requested_count: 1,
+			});
+
+			render(FeedDetails, {
+				props: {
+					feedURL: testFeedURL,
+					feedTitle: testFeedTitle,
+					open: true,
+					onOpenChange: vi.fn(),
+					showButton: false,
+				},
+			});
+
+			await expect
+				.element(page.getByText("Summary matched article body."))
+				.toBeInTheDocument();
+
+			expect(mockTrackHomeActionClient).not.toHaveBeenCalled();
 		});
 	});
 });

@@ -112,4 +112,77 @@ describe("LensSelector", () => {
 			.element(page.getByText('Search: "agents"'))
 			.toBeInTheDocument();
 	});
+
+	it("requires two-step inline confirm on per-pill delete and cancels cleanly", async () => {
+		const onDelete = vi.fn();
+		const confirmSpy = vi.spyOn(window, "confirm");
+		render(LensSelector, {
+			props: {
+				lenses: [makeLens()],
+				activeLensId: null,
+				onSelect: vi.fn(),
+				onCreateClick: vi.fn(),
+				onDelete,
+			},
+		});
+
+		const deletePillBtn = page.getByRole("button", {
+			name: "Delete lens AI News",
+		});
+		await deletePillBtn.click();
+
+		expect(onDelete).not.toHaveBeenCalled();
+		expect(confirmSpy).not.toHaveBeenCalled();
+		await expect.element(page.getByText("Delete?")).toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: "Confirm" }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: "Cancel" }))
+			.toBeInTheDocument();
+
+		await page.getByRole("button", { name: "Cancel" }).click();
+		expect(onDelete).not.toHaveBeenCalled();
+		await expect.element(page.getByText("Delete?")).not.toBeInTheDocument();
+
+		await deletePillBtn.click();
+		await page.getByRole("button", { name: "Confirm" }).click();
+		expect(onDelete).toHaveBeenCalledTimes(1);
+		expect(onDelete).toHaveBeenCalledWith("lens-1");
+		confirmSpy.mockRestore();
+	});
+
+	it("requires two-step inline confirm on active-lens summary Delete and cancels cleanly", async () => {
+		const onDelete = vi.fn();
+		const confirmSpy = vi.spyOn(window, "confirm");
+		render(LensSelector, {
+			props: {
+				lenses: [makeLens()],
+				activeLensId: "lens-1",
+				onSelect: vi.fn(),
+				onCreateClick: vi.fn(),
+				onDelete,
+			},
+		});
+
+		const summaryDeleteBtn = page.getByRole("button", {
+			name: "Delete",
+			exact: true,
+		});
+		await summaryDeleteBtn.click();
+
+		expect(onDelete).not.toHaveBeenCalled();
+		expect(confirmSpy).not.toHaveBeenCalled();
+		await expect.element(page.getByText("Delete?")).toBeInTheDocument();
+
+		await page.getByRole("button", { name: "Cancel" }).click();
+		expect(onDelete).not.toHaveBeenCalled();
+		await expect.element(page.getByText("Delete?")).not.toBeInTheDocument();
+
+		await summaryDeleteBtn.click();
+		await page.getByRole("button", { name: "Confirm" }).click();
+		expect(onDelete).toHaveBeenCalledTimes(1);
+		expect(onDelete).toHaveBeenCalledWith("lens-1");
+		confirmSpy.mockRestore();
+	});
 });
