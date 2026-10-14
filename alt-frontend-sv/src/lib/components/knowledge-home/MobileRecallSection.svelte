@@ -19,7 +19,10 @@ const {
 	onOpen,
 }: Props = $props();
 
-const displayCandidates = $derived(candidates.slice(0, 2));
+let showAll = $state(false);
+const displayCandidates = $derived(
+	showAll ? candidates : candidates.slice(0, 2),
+);
 const hasMore = $derived(candidates.length > 2);
 </script>
 
@@ -37,7 +40,7 @@ const hasMore = $derived(candidates.length > 2);
 			</span>
 		</div>
 
-		<!-- Recall items (max 2) -->
+		<!-- Recall items -->
 		<div class="px-3 pb-3 flex flex-col gap-2">
 			{#each displayCandidates as candidate (candidate.itemKey)}
 				<RecallCandidateCard
@@ -55,9 +58,9 @@ const hasMore = $derived(candidates.length > 2);
 				<button
 					type="button"
 					class="text-xs font-medium text-[var(--interactive-text)] hover:underline"
-					onclick={() => {/* TODO: open full recall sheet */}}
+					onclick={() => { showAll = !showAll; }}
 				>
-					See all recalls ({candidates.length})
+					{showAll ? "Show fewer" : `See all recalls (${candidates.length})`}
 				</button>
 			</div>
 		{/if}

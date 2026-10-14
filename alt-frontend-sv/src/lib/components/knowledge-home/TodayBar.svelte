@@ -23,6 +23,13 @@ const { digest, serviceQuality = "full" }: Props = $props();
 const isFallback = $derived(
 	serviceQuality === "fallback" && digest?.digestFreshness === "unknown",
 );
+const distinctTopTags = $derived.by(() => {
+	if (!digest?.topTags) return [];
+	const themeLower = digest.primaryTheme?.trim().toLowerCase();
+	return digest.topTags.filter(
+		(t) => !themeLower || t.trim().toLowerCase() !== themeLower,
+	);
+});
 </script>
 
 {#if !digest}
@@ -44,34 +51,20 @@ const isFallback = $derived(
 				Morning Letter
 			</a>
 
-			{#if digest.eveningPulseAvailable}
-				<a href="/recap/evening-pulse" class="action-link">
-					<Activity class="h-4 w-4" />
-					Pulse
-					{#if digest.needToKnowCount > 0}
-						<span class="pulse-count" title="{digest.needToKnowCount} need-to-know">
-							{digest.needToKnowCount}
-						</span>
-					{/if}
-				</a>
-			{:else}
-				<span class="action-link action-link--disabled" title="No pulse content available today">
-					<Activity class="h-4 w-4" />
-					Pulse
-				</span>
-			{/if}
+			<a href="/recap/evening-pulse" class="action-link">
+				<Activity class="h-4 w-4" />
+				Pulse
+				{#if digest.needToKnowCount > 0}
+					<span class="pulse-count" title="{digest.needToKnowCount} need-to-know">
+						{digest.needToKnowCount}
+					</span>
+				{/if}
+			</a>
 
-			{#if digest.weeklyRecapAvailable}
-				<a href="/recap" class="action-link">
-					<CalendarRange class="h-4 w-4" />
-					Recap
-				</a>
-			{:else}
-				<span class="action-link action-link--disabled" title="No recap available today">
-					<CalendarRange class="h-4 w-4" />
-					Recap
-				</span>
-			{/if}
+			<a href="/recap" class="action-link">
+				<CalendarRange class="h-4 w-4" />
+				Recap
+			</a>
 
 			{#if digest.digestFreshness === "stale"}
 				<span class="stale-indicator" title="Data may be outdated">
@@ -103,15 +96,15 @@ const isFallback = $derived(
 				{/if}
 			</div>
 
-			{#if digest.primaryTheme || digest.topTags.length > 0}
+			{#if digest.primaryTheme}
 				<p class="bar-theme">
-					{digest.primaryTheme ?? digest.topTags.slice(0, 3).join(", ")}
+					{digest.primaryTheme}
 				</p>
 			{/if}
 
-			{#if digest.topTags.length > 0}
+			{#if distinctTopTags.length > 0}
 				<div class="flex items-center gap-1 ml-auto">
-					{#each digest.topTags.slice(0, 5) as tag}
+					{#each distinctTopTags.slice(0, 5) as tag}
 						<span class="bar-tag">{tag}</span>
 					{/each}
 				</div>

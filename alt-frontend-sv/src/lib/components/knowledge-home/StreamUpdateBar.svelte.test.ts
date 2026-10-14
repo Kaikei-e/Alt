@@ -30,14 +30,29 @@ describe("StreamUpdateBar", () => {
 		await expect.element(page.getByText("1 item updated")).toBeInTheDocument();
 	});
 
-	it("shows disconnected status when not connected and no pending", async () => {
-		render(StreamUpdateBar, {
+	it("does not flash Reconnecting before first connection, then shows Reconnecting after losing connection", async () => {
+		const { container, rerender } = render(StreamUpdateBar, {
 			props: {
 				pendingCount: 0,
 				isConnected: false,
 				isFallback: false,
 				onApply: vi.fn(),
 			},
+		});
+
+		expect(container.textContent?.trim()).toBe("");
+
+		await rerender({
+			pendingCount: 0,
+			isConnected: true,
+			isFallback: false,
+			onApply: vi.fn(),
+		});
+		await rerender({
+			pendingCount: 0,
+			isConnected: false,
+			isFallback: false,
+			onApply: vi.fn(),
 		});
 
 		await expect.element(page.getByText("Reconnecting...")).toBeInTheDocument();

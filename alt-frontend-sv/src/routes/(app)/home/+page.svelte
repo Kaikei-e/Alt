@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
 import AskSheet from "#lib/components/knowledge-home/AskSheet.svelte";
 import DegradedModeBanner from "#lib/components/knowledge-home/DegradedModeBanner.svelte";
 import GlobalSearchEntry from "#lib/components/knowledge-home/GlobalSearchEntry.svelte";
@@ -27,6 +28,7 @@ import { useKnowledgeHome } from "#lib/hooks/useKnowledgeHome.svelte.js";
 import { useLens } from "#lib/hooks/useLens.svelte.js";
 import { useRecallRail } from "#lib/hooks/useRecallRail.svelte.js";
 import { useStreamUpdates } from "#lib/hooks/useStreamUpdates.svelte.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
 import { useToastStore } from "#lib/stores/toast.svelte.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
 import { browser } from "$app/env";
@@ -53,6 +55,9 @@ let askScopeTags = $state<string[]>([]);
 let searchQuery = $state("");
 let lensSources = $state<ConnectFeedSource[]>([]);
 let lensSourcesLoading = $state(false);
+let readerModalOpen = $state(false);
+let readerItemKey = $state<string | null>(null);
+let readerCustomFeed = $state<RenderFeed | null>(null);
 let lensDraft = $state<Omit<LensVersionData, "versionId">>({
 	queryText: "",
 	tagIds: [],
@@ -62,6 +67,27 @@ let lensDraft = $state<Omit<LensVersionData, "versionId">>({
 	includePulse: false,
 	sortMode: "relevance",
 });
+
+function toHomeRenderFeed(item: KnowledgeHomeItemData): RenderFeed {
+	const articleId = item.itemKey.startsWith("article:")
+		? item.itemKey.slice(8)
+		: item.articleId;
+	const url = item.url ?? "";
+	return {
+		id: articleId || item.itemKey,
+		title: item.title,
+		description: item.summaryExcerpt ?? "",
+		link: url,
+		published: item.publishedAt,
+		articleId: articleId || undefined,
+		publishedAtFormatted: item.publishedAt
+			? new Date(item.publishedAt).toLocaleDateString()
+			: "",
+		mergedTagsLabel: (item.tags ?? []).join(" · "),
+		normalizedUrl: url,
+		excerpt: item.summaryExcerpt ?? "",
+	};
+}
 
 const activeLensName = $derived(
 	lens.activeLensId
@@ -77,6 +103,17 @@ const showBanner = $derived(
 );
 const streamMode = $derived(lens.activeLensId ? "lens" : "default");
 const visibleItems = $derived(home.items);
+const readerIndex = $derived(
+	readerItemKey
+		? visibleItems.findIndex((i) => i.itemKey === readerItemKey)
+		: -1,
+);
+const readerFeed = $derived.by((): RenderFeed | null => {
+	if (readerIndex >= 0 && visibleItems[readerIndex]) {
+		return toHomeRenderFeed(visibleItems[readerIndex]);
+	}
+	return readerCustomFeed;
+});
 const emptyReason = $derived.by(() => {
 	if (home.pageState === "degraded" && visibleItems.length === 0) {
 		return "degraded";
@@ -145,11 +182,11 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 
 	if (type === "open" && articleId) {
 		if (item.url) {
-			const params = new URLSearchParams({ url: item.url });
-			if (item.title) params.set("title", item.title);
-			goto(`/articles/${articleId}?${params.toString()}`);
+			readerItemKey = itemKey;
+			readerCustomFeed = toHomeRenderFeed(item);
+			readerModalOpen = true;
 		} else {
-			toast.push("Article link is not available yet.", "error", 3000);
+			goto(`/articles/${articleId}`);
 		}
 		return;
 	}
@@ -173,11 +210,12 @@ function handleRecallOpen(itemKey: string) {
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
 	if (!articleId) return;
 	const candidate = recall.candidates.find((c) => c.itemKey === itemKey);
-	const url = candidate?.item?.url;
-	if (url) {
-		const params = new URLSearchParams({ url });
-		if (candidate?.item?.title) params.set("title", candidate.item.title);
-		goto(`/articles/${articleId}?${params.toString()}`);
+	if (candidate?.item?.url) {
+		readerItemKey = itemKey;
+		readerCustomFeed = toHomeRenderFeed(candidate.item);
+		readerModalOpen = true;
+	} else {
+		goto(`/articles/${articleId}`);
 	}
 }
 
@@ -242,6 +280,19 @@ async function handleLensSelect(lensId: string | null) {
 	syncRecallState();
 }
 
+async function handleLensDelete(lensId: string) {
+	const wasActive = lens.activeLensId === lensId;
+	const removed = await lens.remove(lensId);
+	if (!removed) {
+		toast.push("Failed to delete lens.", "error");
+		return;
+	}
+	toast.push("Lens deleted.", "success");
+	if (wasActive) {
+		await handleLensSelect(null);
+	}
+}
+
 async function handleCreateLens(payload: {
 	name: string;
 	description: string;
@@ -277,9 +328,7 @@ onMount(async () => {
 		});
 		exposureSessionId = crypto.randomUUID();
 
-		await home.fetchData(true);
-
-		await loadLensSources();
+		void loadLensSources();
 		await lens.fetchLenses();
 		const urlLensId = page.url.searchParams.get("lens");
 		const initialLensId = urlLensId ?? lens.activeLensId;
@@ -304,10 +353,7 @@ onMount(async () => {
 			}
 		}
 		await syncLensQuery(initialLensId);
-		if (initialLensId) {
-			await home.fetchData(true, initialLensId);
-		}
-
+		await home.fetchData(true, initialLensId);
 		syncRecallState();
 	}
 });
@@ -364,6 +410,7 @@ onMount(async () => {
 				activeLensId={lens.activeLensId}
 				matchCount={lensMatchCount}
 				onSelect={handleLensSelect}
+				onDelete={handleLensDelete}
 				onCreateClick={() => {
 					lensModalOpen = true;
 				}}
@@ -444,6 +491,7 @@ onMount(async () => {
 				activeLensId={lens.activeLensId}
 				matchCount={lensMatchCount}
 				onSelect={handleLensSelect}
+				onDelete={handleLensDelete}
 				onCreateClick={() => {
 					lensModalOpen = true;
 				}}
@@ -486,6 +534,36 @@ onMount(async () => {
 	</div>
 
 {/if}
+
+<FeedDetailModal
+	bind:open={readerModalOpen}
+	feed={readerFeed}
+	onOpenChange={(open) => {
+		readerModalOpen = open;
+	}}
+	hasPrevious={readerIndex > 0}
+	hasNext={readerIndex >= 0 && readerIndex < visibleItems.length - 1}
+	onPrevious={() => {
+		if (readerIndex > 0) {
+			const prev = visibleItems[readerIndex - 1];
+			if (prev) {
+				home.trackAction("open", prev.itemKey, buildHomeActionMetadata("open", prev));
+				readerItemKey = prev.itemKey;
+				readerCustomFeed = toHomeRenderFeed(prev);
+			}
+		}
+	}}
+	onNext={() => {
+		if (readerIndex >= 0 && readerIndex < visibleItems.length - 1) {
+			const next = visibleItems[readerIndex + 1];
+			if (next) {
+				home.trackAction("open", next.itemKey, buildHomeActionMetadata("open", next));
+				readerItemKey = next.itemKey;
+				readerCustomFeed = toHomeRenderFeed(next);
+			}
+		}
+	}}
+/>
 
 <AskSheet
 	open={askSheetOpen}

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Filter, Plus } from "@lucide/svelte";
+import { Filter, Plus, X } from "@lucide/svelte";
 import type { LensData } from "#lib/connect/knowledge_home.js";
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
 	matchCount?: number | null;
 	onSelect: (lensId: string | null) => void;
 	onCreateClick: () => void;
+	onDelete?: (lensId: string) => void;
 }
 
 const {
@@ -16,6 +17,7 @@ const {
 	matchCount = null,
 	onSelect,
 	onCreateClick,
+	onDelete,
 }: Props = $props();
 
 const activeLens = $derived(
@@ -58,12 +60,28 @@ const activeSummary = $derived.by(() => {
 		</button>
 
 		{#each lenses as lens (lens.lensId)}
-			<button
-				class="lens-pill {activeLensId === lens.lensId ? 'lens-pill--active' : ''}"
-				onclick={() => onSelect(lens.lensId)}
-			>
-				{lens.name}
-			</button>
+			<div class="lens-pill-group {activeLensId === lens.lensId ? 'lens-pill-group--active' : ''}">
+				<button
+					class="lens-pill {activeLensId === lens.lensId ? 'lens-pill--active' : ''}"
+					onclick={() => onSelect(lens.lensId)}
+				>
+					{lens.name}
+				</button>
+				{#if onDelete}
+					<button
+						type="button"
+						class="lens-pill-delete"
+						aria-label="Delete lens {lens.name}"
+						title="Delete lens {lens.name}"
+						onclick={(e) => {
+							e.stopPropagation();
+							onDelete(lens.lensId);
+						}}
+					>
+						<X class="h-3 w-3" />
+					</button>
+				{/if}
+			</div>
 		{/each}
 
 		<button class="lens-pill lens-pill--create" onclick={onCreateClick}>
@@ -78,9 +96,20 @@ const activeSummary = $derived.by(() => {
 				<p class="lens-summary-name">Active lens: {activeLens.name}</p>
 				<p class="lens-summary-detail">{activeSummary.join(" · ")}</p>
 			</div>
-			<button class="lens-clear" onclick={() => onSelect(null)}>
-				Clear
-			</button>
+			<div class="flex items-center gap-2 flex-shrink-0">
+				{#if onDelete}
+					<button
+						type="button"
+						class="lens-delete"
+						onclick={() => onDelete(activeLens.lensId)}
+					>
+						Delete
+					</button>
+				{/if}
+				<button class="lens-clear" onclick={() => onSelect(null)}>
+					Clear
+				</button>
+			</div>
 		</div>
 	{/if}
 </div>
@@ -97,6 +126,11 @@ const activeSummary = $derived.by(() => {
 		align-items: center;
 		gap: 0.5rem;
 		flex-wrap: wrap;
+	}
+
+	.lens-pill-group {
+		display: inline-flex;
+		align-items: stretch;
 	}
 
 	.lens-pill {
@@ -122,6 +156,28 @@ const activeSummary = $derived.by(() => {
 		border-color: var(--alt-primary);
 		color: var(--alt-primary);
 		background: color-mix(in srgb, var(--alt-primary) 15%, transparent);
+	}
+
+	.lens-pill-delete {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 0.4rem;
+		border: 1px solid var(--surface-border);
+		border-left: none;
+		background: transparent;
+		color: var(--alt-ash);
+		cursor: pointer;
+		transition: color 0.15s, border-color 0.15s;
+	}
+
+	.lens-pill-group--active .lens-pill-delete {
+		border-color: var(--alt-primary);
+		background: color-mix(in srgb, var(--alt-primary) 15%, transparent);
+	}
+
+	.lens-pill-delete:hover {
+		color: var(--alt-error, #b91c1c);
 	}
 
 	.lens-pill--create {
@@ -157,7 +213,8 @@ const activeSummary = $derived.by(() => {
 		color: var(--alt-slate);
 	}
 
-	.lens-clear {
+	.lens-clear,
+	.lens-delete {
 		flex-shrink: 0;
 		border: 1px solid var(--surface-border);
 		padding: 0.25rem 0.75rem;
@@ -172,5 +229,10 @@ const activeSummary = $derived.by(() => {
 	.lens-clear:hover {
 		border-color: var(--alt-primary);
 		color: var(--alt-primary);
+	}
+
+	.lens-delete:hover {
+		border-color: var(--alt-error, #b91c1c);
+		color: var(--alt-error, #b91c1c);
 	}
 </style>

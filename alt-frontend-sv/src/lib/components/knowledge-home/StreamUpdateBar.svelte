@@ -10,6 +10,13 @@ interface Props {
 
 const { pendingCount, isConnected, isFallback, onApply }: Props = $props();
 
+let hasConnectedOnce = $state(false);
+$effect(() => {
+	if (isConnected) {
+		hasConnectedOnce = true;
+	}
+});
+
 const indicatorColor = $derived(
 	isFallback
 		? "var(--alt-error)"
@@ -37,7 +44,7 @@ const indicatorPulse = $derived(isConnected && !isFallback);
 		<AlertCircle class="h-3.5 w-3.5" style="color: var(--alt-error);" />
 		<span class="update-text">Live updates unavailable</span>
 	</div>
-{:else if !isConnected}
+{:else if hasConnectedOnce && !isConnected}
 	<div class="update-bar update-bar--disconnected">
 		<WifiOff class="h-3.5 w-3.5" style="color: var(--alt-ash);" />
 		<span class="update-text update-text--muted">Reconnecting...</span>

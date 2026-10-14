@@ -5,7 +5,6 @@ import QuickActionRow from "./QuickActionRow.svelte";
 import SummaryStateChip from "./SummaryStateChip.svelte";
 import SupersedeBadge from "./SupersedeBadge.svelte";
 import SupersedeDetail from "./SupersedeDetail.svelte";
-import WhyPanel from "./WhyPanel.svelte";
 import WhySurfacedBadge from "./WhySurfacedBadge.svelte";
 
 interface Props {
@@ -37,6 +36,15 @@ const linkUnavailableReason = $derived(
 			: "scheme-blocked",
 );
 
+const sourceHost = $derived.by(() => {
+	if (!safeHref) return "";
+	try {
+		return new URL(safeHref).hostname.replace(/^www\./, "");
+	} catch {
+		return "";
+	}
+});
+
 const warnedItemKeys = new Set<string>();
 $effect(() => {
 	if (linkAvailable) return;
@@ -58,13 +66,14 @@ const remainingTagCount = $derived(
 let tagsExpanded = $state(false);
 const visibleTags = $derived(tagsExpanded ? nonEmptyTags : displayTags);
 const displayReasons = $derived(
-	item.why.length > 0 ? item.why.slice(0, 2) : [{ code: "new_unread" }],
+	item.why
+		.filter((r) => r.code !== "new_unread" && r.code !== "summary_completed")
+		.slice(0, 2),
 );
 const isNeedToKnow = $derived(
 	item.why.some((r) => r.code === "pulse_need_to_know"),
 );
 let supersedeExpanded = $state(false);
-let whyExpanded = $state(false);
 
 function formatRelativeTime(isoString: string): string {
 	if (!isoString) return "recent";
@@ -105,11 +114,21 @@ function handleAction(type: string) {
 		</div>
 	{/if}
 
-	<!-- Header: Title + Supersede Badge + Relative Time -->
+	<!-- Header: Title + Supersede Badge + Source & Relative Time -->
 	<div class="flex items-start justify-between gap-2 mb-2">
 		<div class="flex-1 min-w-0">
 			<h3 class="card-title">
-				{item.title}
+				{#if linkAvailable}
+					<button
+						type="button"
+						class="card-title-btn"
+						onclick={() => handleAction("open")}
+					>
+						{item.title}
+					</button>
+				{:else}
+					{item.title}
+				{/if}
 			</h3>
 			{#if item.supersedeInfo}
 				<div class="mt-1">
@@ -122,38 +141,30 @@ function handleAction(type: string) {
 				{#if supersedeExpanded}
 					<SupersedeDetail info={item.supersedeInfo} />
 				{/if}
-		{/if}
-	</div>
-
-	{#if whyExpanded}
-		<div class="mb-3">
-			<WhyPanel reasons={item.why.length > 0 ? item.why : displayReasons} />
+			{/if}
 		</div>
-	{/if}
-		<time
-			class="card-time"
-			datetime={item.publishedAt}
-		>
-			{formatRelativeTime(item.publishedAt)}
-		</time>
+
+		<div class="card-meta">
+			{#if sourceHost}
+				<span class="card-source" data-testid="card-source">{sourceHost}</span>
+				<span class="card-meta-sep" aria-hidden="true">·</span>
+			{/if}
+			<time
+				class="card-time"
+				datetime={item.publishedAt}
+			>
+				{formatRelativeTime(item.publishedAt)}
+			</time>
+		</div>
 	</div>
 
-	<!-- Why Badges + SummaryStateChip + Explain why -->
+	<!-- High-Signal Why Badges + SummaryStateChip -->
 	{#if displayReasons.length > 0 || item.summaryState === "pending"}
 		<div class="flex flex-wrap items-center gap-1 mb-2">
 			{#each displayReasons as reason}
 				<WhySurfacedBadge {reason} />
 			{/each}
 			<SummaryStateChip state={item.summaryState} />
-			<button
-				type="button"
-				class="why-toggle"
-				onclick={() => {
-					whyExpanded = !whyExpanded;
-				}}
-			>
-				{whyExpanded ? "HIDE WHY" : "EXPLAIN WHY"}
-			</button>
 		</div>
 	{/if}
 
@@ -255,6 +266,45 @@ function handleAction(type: string) {
 		line-clamp: 2;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
+	}
+
+	.card-title-btn {
+		all: unset;
+		cursor: pointer;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		display: inline;
+	}
+
+	.card-title-btn:hover {
+		color: var(--interactive-text);
+		text-decoration: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 2px;
+	}
+
+	.card-meta {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		flex-shrink: 0;
+	}
+
+	.card-source {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-slate);
+		max-width: 11rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.card-meta-sep {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
 	}
 
 	.card-time {

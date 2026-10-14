@@ -33,11 +33,14 @@ const {
 // overriding a manual toggle: `manualExpanded` is null until the user clicks,
 // after which it wins over the search-driven default.
 let manualExpanded = $state<boolean | null>(null);
+const hasMultipleFootprints = $derived(episode.footprints.length > 1);
 const isSearchHit = $derived(
 	matchedItemKeys.length > 0 &&
 		episode.footprints.some((fp) => matchedItemKeys.includes(fp.itemKey)),
 );
-const expanded = $derived(manualExpanded ?? isSearchHit);
+const expanded = $derived(
+	manualExpanded ?? (hasMultipleFootprints || isSearchHit),
+);
 
 const VERB_LABEL: Record<string, string> = {
 	read: "Read",
@@ -167,17 +170,17 @@ function toggle() {
 						{representative.title || representative.itemKey}
 					</h3>
 				{/if}
-				<button
-					class="episode-expand"
-					data-testid="episode-toggle"
-					aria-expanded={expanded}
-					onclick={toggle}
-				>
-					{expanded ? "▾" : "▸"}
-					{episode.footprints.length} footprint{episode.footprints.length === 1
-						? ""
-						: "s"}
-				</button>
+				{#if hasMultipleFootprints}
+					<button
+						class="episode-expand"
+						data-testid="episode-toggle"
+						aria-expanded={expanded}
+						onclick={toggle}
+					>
+						{expanded ? "▾" : "▸"}
+						{episode.footprints.length} footprints
+					</button>
+				{/if}
 			</div>
 			<div class="episode-meta-row">
 				<span class="episode-dates" data-testid="episode-dates">{dateRange}</span>

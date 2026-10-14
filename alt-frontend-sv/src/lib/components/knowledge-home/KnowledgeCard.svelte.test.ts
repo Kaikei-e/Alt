@@ -118,17 +118,42 @@ describe("KnowledgeCard", () => {
 		await expect.element(page.getByText("Summary updated")).toBeInTheDocument();
 	});
 
-	it("renders why badges", async () => {
-		render(KnowledgeCard, {
+	it("renders high-signal why badges and suppresses zero-entropy new_unread / summary_completed", async () => {
+		const { container } = render(KnowledgeCard, {
 			props: {
 				item: makeItem({
-					why: [{ code: "new_unread" }],
+					why: [
+						{ code: "new_unread" },
+						{ code: "summary_completed" },
+						{ code: "tag_hotspot", tag: "Rust" },
+					],
 				}),
 				onAction: vi.fn(),
 			},
 		});
 
-		await expect.element(page.getByText("New")).toBeInTheDocument();
+		await expect.element(page.getByText("Trending: Rust")).toBeInTheDocument();
+		expect(container.textContent).not.toContain("New");
+	});
+
+	it("calls onAction('open', item) when clicking the title and renders source hostname", async () => {
+		const onAction = vi.fn();
+		const item = makeItem({
+			title: "Clickable Headline",
+			url: "https://www.example.com/posts/123",
+		});
+		render(KnowledgeCard, {
+			props: {
+				item,
+				onAction,
+			},
+		});
+
+		await expect
+			.element(page.getByTestId("card-source"))
+			.toHaveTextContent("example.com");
+		await page.getByRole("button", { name: "Clickable Headline" }).click();
+		expect(onAction).toHaveBeenCalledWith("open", item);
 	});
 
 	it("marks the card link-unavailable when item.url is empty", async () => {

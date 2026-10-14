@@ -36,7 +36,7 @@ function makeEpisode(overrides: Partial<EpisodeData> = {}): EpisodeData {
 }
 
 describe("EpisodeCard", () => {
-	it("is collapsed by default: no member footprint rows are rendered", async () => {
+	it("auto-expands multi-footprint episodes by default and hides toggle on 1-footprint episodes", async () => {
 		render(EpisodeCard, {
 			props: {
 				episode: makeEpisode({
@@ -53,13 +53,13 @@ describe("EpisodeCard", () => {
 			},
 		});
 		await expect.element(page.getByTestId("trail-episode")).toBeInTheDocument();
-		expect(page.getByTestId("trail-footprint").elements()).toHaveLength(0);
+		expect(page.getByTestId("trail-footprint").elements()).toHaveLength(2);
 		await expect
 			.element(page.getByTestId("episode-toggle"))
-			.toHaveAttribute("aria-expanded", "false");
+			.toHaveAttribute("aria-expanded", "true");
 	});
 
-	it("expanding the toggle reveals the member footprint rows", async () => {
+	it("clicking the toggle on a multi-footprint episode collapses the member footprint rows", async () => {
 		render(EpisodeCard, {
 			props: {
 				episode: makeEpisode({
@@ -77,8 +77,8 @@ describe("EpisodeCard", () => {
 		});
 		const toggle = page.getByTestId("episode-toggle");
 		await toggle.click();
-		await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
-		expect(page.getByTestId("trail-footprint").elements()).toHaveLength(2);
+		await expect.element(toggle).toHaveAttribute("aria-expanded", "false");
+		expect(page.getByTestId("trail-footprint").elements()).toHaveLength(0);
 	});
 
 	it("renders a date range spanning the earliest and latest collapsed contact", async () => {
@@ -205,11 +205,9 @@ describe("EpisodeCard", () => {
 				matchedItemKeys: ["article:submarines"],
 			},
 		});
-		await expect
-			.element(page.getByTestId("episode-toggle"))
-			.toHaveAttribute("aria-expanded", "true");
 		// The sole member is itself the hit, so it renders under the hit
-		// testid rather than the plain footprint one.
+		// testid rather than the plain footprint one, while hiding the 1-footprint toggle.
+		expect(page.getByTestId("episode-toggle").elements()).toHaveLength(0);
 		expect(page.getByTestId("footprint-hit").elements()).toHaveLength(1);
 	});
 
@@ -223,24 +221,22 @@ describe("EpisodeCard", () => {
 		await expect.element(page.getByTestId("footprint-hit")).toBeInTheDocument();
 	});
 
-	it("does not auto-expand or mark hits when matchedItemKeys is empty (default)", async () => {
+	it("does not auto-expand or mark hits on a 1-footprint episode when matchedItemKeys is empty (default)", async () => {
 		render(EpisodeCard, { props: { episode: makeEpisode() } });
-		await expect
-			.element(page.getByTestId("episode-toggle"))
-			.toHaveAttribute("aria-expanded", "false");
+		expect(page.getByTestId("episode-toggle").elements()).toHaveLength(0);
+		expect(page.getByTestId("trail-footprint").elements()).toHaveLength(0);
 		expect(page.getByTestId("footprint-hit").elements()).toHaveLength(0);
 	});
 
-	it("does not auto-expand when matchedItemKeys names an item outside this episode", async () => {
+	it("does not auto-expand a 1-footprint episode when matchedItemKeys names an item outside this episode", async () => {
 		render(EpisodeCard, {
 			props: {
 				episode: makeEpisode(),
 				matchedItemKeys: ["article:something-else"],
 			},
 		});
-		await expect
-			.element(page.getByTestId("episode-toggle"))
-			.toHaveAttribute("aria-expanded", "false");
+		expect(page.getByTestId("episode-toggle").elements()).toHaveLength(0);
+		expect(page.getByTestId("trail-footprint").elements()).toHaveLength(0);
 	});
 });
 
