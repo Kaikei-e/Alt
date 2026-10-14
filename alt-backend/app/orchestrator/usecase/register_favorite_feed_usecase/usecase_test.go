@@ -82,3 +82,37 @@ func TestRegisterFavoriteFeedUsecase_Execute(t *testing.T) {
 		})
 	}
 }
+
+type stubArticleLookup struct {
+	article *domain.ArticleContent
+	err     error
+}
+
+func (s *stubArticleLookup) FetchArticleByURL(_ context.Context, _ string) (*domain.ArticleContent, error) {
+	return s.article, s.err
+}
+
+func TestRegisterFavoriteFeedUsecase_WithHomeOpen(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockGateway := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
+	userID := uuid.New()
+	mockGateway.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/post-1", userID).Return(nil)
+
+	var openedItemKey string
+	var openedUser uuid.UUID
+	u := NewRegisterFavoriteFeedUsecase(mockGateway).
+		WithHomeOpen(&stubArticleLookup{article: &domain.ArticleContent{ID: "art-fav-1"}}, func(_ context.Context, uID, _ uuid.UUID, itemKey string) error {
+			openedUser = uID
+			openedItemKey = itemKey
+			return nil
+		})
+
+	if err := u.Execute(authedContext(userID), "https://example.com/post-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if openedUser != userID || openedItemKey != "article:art-fav-1" {
+		t.Fatalf("expected open of article:art-fav-1 for %s, got %s for %s", userID, openedItemKey, openedUser)
+	}
+}

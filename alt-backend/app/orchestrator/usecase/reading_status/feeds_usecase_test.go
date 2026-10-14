@@ -89,3 +89,49 @@ func TestFeedsReadingStatusUsecase_Execute_NoUserContext(t *testing.T) {
 		t.Fatal("expected error when user context is missing, got nil")
 	}
 }
+
+type stubArticleLookup struct {
+	article *domain.ArticleContent
+	err     error
+}
+
+func (s *stubArticleLookup) FetchArticleByURL(_ context.Context, _ string) (*domain.ArticleContent, error) {
+	return s.article, s.err
+}
+
+type stubUpdateArticleStatus struct {
+	err error
+}
+
+func (s *stubUpdateArticleStatus) MarkArticleAsRead(_ context.Context, _ url.URL, _ uuid.UUID) error {
+	return s.err
+}
+
+func TestArticlesReadingStatusUsecase_WithHomeDismiss(t *testing.T) {
+	userID := uuid.New()
+	tenantID := uuid.New()
+	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    userID,
+		TenantID:  tenantID,
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+
+	var dismissedItemKey string
+	var dismissedUser uuid.UUID
+	u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{}).
+		WithHomeDismiss(&stubArticleLookup{article: &domain.ArticleContent{ID: "art-123"}}, func(_ context.Context, uID, _ uuid.UUID, itemKey string) error {
+			dismissedUser = uID
+			dismissedItemKey = itemKey
+			return nil
+		})
+
+	targetURL := url.URL{Scheme: "https", Host: "example.com", Path: "/post-123"}
+	if err := u.Execute(ctx, targetURL); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dismissedUser != userID || dismissedItemKey != "article:art-123" {
+		t.Fatalf("expected dismiss of article:art-123 for %s, got %s for %s", userID, dismissedItemKey, dismissedUser)
+	}
+}

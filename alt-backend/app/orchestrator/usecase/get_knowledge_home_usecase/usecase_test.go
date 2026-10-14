@@ -436,7 +436,15 @@ func TestGetKnowledgeHomeUsecase_TagHotspotEnrichment(t *testing.T) {
 	t.Run("adds tag_hotspot only to items with trending tags", func(t *testing.T) {
 		homeItems := &mockHomeItemsPort{
 			items: []domain.KnowledgeHomeItem{
-				{ItemKey: "article:1", Title: "AI Article", Tags: []string{"AI", "ML"}, WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}}},
+				{
+					ItemKey: "article:1",
+					Title:   "AI Article",
+					Tags:    []string{"AI", "ML"},
+					WhyReasons: []domain.WhyReason{
+						{Code: domain.WhyNewUnread},
+						{Code: domain.WhySummaryCompleted},
+					},
+				},
 				{ItemKey: "article:2", Title: "Go Article", Tags: []string{"Go", "Backend"}, WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}}},
 				{ItemKey: "article:3", Title: "No Tags", Tags: nil, WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}}},
 			},
@@ -454,16 +462,11 @@ func TestGetKnowledgeHomeUsecase_TagHotspotEnrichment(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, result.Items, 3)
 
-		// AI Article should have tag_hotspot
+		// AI Article should have tag_hotspot prepended at index 0 so a 2-badge UI cap never drops it
 		aiReasons := result.Items[0].WhyReasons
-		hasHotspot := false
-		for _, r := range aiReasons {
-			if r.Code == domain.WhyTagHotspot {
-				hasHotspot = true
-				assert.Equal(t, "AI", r.Tag)
-			}
-		}
-		assert.True(t, hasHotspot, "AI article should have tag_hotspot")
+		require.NotEmpty(t, aiReasons)
+		assert.Equal(t, domain.WhyTagHotspot, aiReasons[0].Code, "tag_hotspot should be prepended at index 0")
+		assert.Equal(t, "AI", aiReasons[0].Tag)
 
 		// Go Article should NOT have tag_hotspot
 		for _, r := range result.Items[1].WhyReasons {

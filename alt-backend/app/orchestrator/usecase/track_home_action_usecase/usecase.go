@@ -2,6 +2,7 @@ package track_home_action_usecase
 
 import (
 	"alt/domain"
+	"alt/orchestrator/port/article_status_port"
 	"alt/orchestrator/port/article_url_lookup_port"
 	"alt/orchestrator/port/feature_flag_port"
 	"alt/orchestrator/port/knowledge_home_port"
@@ -17,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -71,6 +73,7 @@ type TrackHomeActionUsecase struct {
 	dismissPort          knowledge_home_port.DismissKnowledgeHomeItemPort
 	activeVersionPort    knowledge_projection_version_port.GetActiveVersionPort
 	articleURLLookupPort article_url_lookup_port.ArticleURLLookupPort
+	articleStatusPort    article_status_port.UpdateArticleStatusPort
 }
 
 // NewTrackHomeActionUsecase creates a new TrackHomeActionUsecase.
@@ -98,6 +101,13 @@ func NewTrackHomeActionUsecase(
 		activeVersionPort:    activeVersionPort,
 		articleURLLookupPort: articleURLLookupPort,
 	}
+}
+
+// WithArticleStatusPort attaches an optional port to synchronize Knowledge Home
+// "open" and "dismiss" actions with the user's feed read status in alt-db.
+func (u *TrackHomeActionUsecase) WithArticleStatusPort(port article_status_port.UpdateArticleStatusPort) *TrackHomeActionUsecase {
+	u.articleStatusPort = port
+	return u
 }
 
 // buildDedupeKey derives the at-least-once key that both appends of one action
@@ -244,6 +254,10 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		u.dismissReadModel(ctx, userID, itemKey, now)
 	}
 
+	if (actionType == "open" || actionType == "dismiss") && u.articleStatusPort != nil && foundURL != "" && !isFromFeedsMarkRead(metadataJSON) {
+		u.syncFeedReadStatus(ctx, userID, itemKey, foundURL)
+	}
+
 	// Append recall signal for eligible action types (non-fatal)
 	if signalType, ok := actionToSignalType[actionType]; ok && u.recallSignalPort != nil {
 		signal := domain.RecallSignal{
@@ -367,6 +381,31 @@ func (u *TrackHomeActionUsecase) dismissReadModel(ctx context.Context, userID uu
 		} else {
 			logger.Logger.ErrorContext(ctx, "failed to dismiss read model synchronously",
 				"error", err, "item_key", itemKey, "projection_version", projectionVersion)
+		}
+	}
+}
+
+func isFromFeedsMarkRead(metadataJSON string) bool {
+	if metadataJSON == "" {
+		return false
+	}
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(metadataJSON), &meta); err != nil {
+		return false
+	}
+	src, _ := meta["source"].(string)
+	return src == "feeds_mark_read"
+}
+
+func (u *TrackHomeActionUsecase) syncFeedReadStatus(ctx context.Context, userID uuid.UUID, itemKey string, rawURL string) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Scheme == "" {
+		return
+	}
+	if err := u.articleStatusPort.MarkArticleAsRead(ctx, *parsedURL, userID); err != nil {
+		if !errors.Is(err, domain.ErrFeedNotFound) {
+			logger.Logger.WarnContext(ctx, "failed to sync feed read status from home action",
+				"error", err, "item_key", itemKey)
 		}
 	}
 }

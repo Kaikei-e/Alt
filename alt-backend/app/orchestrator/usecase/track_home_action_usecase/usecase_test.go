@@ -6,6 +6,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"net/url"
 	"testing"
 	"time"
 
@@ -551,5 +552,48 @@ func TestTrackHomeActionUsecase_UserEventCarriesDedupeKey(t *testing.T) {
 		require.Len(t, userPort.appendedEvents, 2)
 		assert.NotEqual(t, userPort.appendedEvents[0].DedupeKey, userPort.appendedEvents[1].DedupeKey,
 			"dismissing two items must produce two events, not one deduped away")
+	})
+}
+
+type mockArticleStatusPort struct {
+	markedURLs []string
+	err        error
+}
+
+func (m *mockArticleStatusPort) MarkArticleAsRead(_ context.Context, articleURL url.URL, _ uuid.UUID) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.markedURLs = append(m.markedURLs, articleURL.String())
+	return nil
+}
+
+func TestTrackHomeActionUsecase_SyncsFeedReadStatus(t *testing.T) {
+	logger.InitLogger()
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	itemKey := "article:" + articleID.String()
+
+	t.Run("open and dismiss mark feed read when article URL is resolved", func(t *testing.T) {
+		for _, action := range []string{"open", "dismiss"} {
+			statusPort := &mockArticleStatusPort{}
+			urlPort := &flakyArticleURLLookupPort{succeedURL: "https://example.com/post-1"}
+			uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort).
+				WithArticleStatusPort(statusPort)
+
+			require.NoError(t, uc.Execute(context.Background(), userID, tenantID, action, itemKey, ""))
+			assert.Equal(t, []string{"https://example.com/post-1"}, statusPort.markedURLs)
+		}
+	})
+
+	t.Run("skips feed read sync when metadata source is feeds_mark_read to prevent loop", func(t *testing.T) {
+		statusPort := &mockArticleStatusPort{}
+		urlPort := &flakyArticleURLLookupPort{succeedURL: "https://example.com/post-1"}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort).
+			WithArticleStatusPort(statusPort)
+
+		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, `{"source":"feeds_mark_read"}`))
+		assert.Empty(t, statusPort.markedURLs)
 	})
 }

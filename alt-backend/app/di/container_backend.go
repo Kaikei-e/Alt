@@ -1,11 +1,14 @@
 package di
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
 	"alt/config"
 	"alt/orchestrator/driver/preprocessor_connect"
+
+	"github.com/google/uuid"
 )
 
 // NewBackendComponents is cmd/backend's composition root: the browser-facing
@@ -59,6 +62,16 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 
 	// 6. Knowledge module (depends on article module)
 	knowledge := newKnowledgeModule(infra, article)
+
+	// Wire two-way read/dismiss/open synchronization between Feeds and Knowledge Home
+	dismissFromFeedFn := func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error {
+		return knowledge.TrackHomeActionUsecase.Execute(ctx, userID, tenantID, "dismiss", itemKey, `{"source":"feeds_mark_read"}`)
+	}
+	feed.ArticlesReadingStatusUsecase.WithHomeDismiss(infra.ArticleStoreGateway, dismissFromFeedFn)
+	feed.FeedsReadingStatusUsecase.WithHomeDismiss(infra.ArticleStoreGateway, dismissFromFeedFn)
+	feed.RegisterFavoriteFeedUsecase.WithHomeOpen(infra.ArticleStoreGateway, func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error {
+		return knowledge.TrackHomeActionUsecase.Execute(ctx, userID, tenantID, "open", itemKey, `{"source":"favorite_feed"}`)
+	})
 
 	// 7. Image module
 	image := newImageModule(infra)

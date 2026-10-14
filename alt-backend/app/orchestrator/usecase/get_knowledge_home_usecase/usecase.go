@@ -162,10 +162,10 @@ func enrichItemsWithTagHotspots(items []domain.KnowledgeHomeItem, trendingTags [
 		}
 		for _, tag := range items[i].Tags {
 			if trendingSet[tag] {
-				items[i].WhyReasons = append(items[i].WhyReasons, domain.WhyReason{
+				items[i].WhyReasons = append([]domain.WhyReason{{
 					Code: domain.WhyTagHotspot,
 					Tag:  tag,
-				})
+				}}, items[i].WhyReasons...)
 				break
 			}
 		}

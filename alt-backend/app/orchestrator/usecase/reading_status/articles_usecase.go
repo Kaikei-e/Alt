@@ -3,17 +3,36 @@ package reading_status
 import (
 	"alt/domain"
 	"alt/orchestrator/port/article_status_port"
+	"alt/utils/logger"
 	"context"
 	"fmt"
 	"net/url"
+
+	"github.com/google/uuid"
 )
+
+// ArticleByURLLookupPort looks up an archived article by URL.
+type ArticleByURLLookupPort interface {
+	FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error)
+}
+
+// HomeDismissFunc dismisses an item in Knowledge Home when its feed is marked read.
+type HomeDismissFunc func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error
 
 type ArticlesReadingStatusUsecase struct {
 	updateArticleStatusGateway article_status_port.UpdateArticleStatusPort
+	articleLookup              ArticleByURLLookupPort
+	dismissFn                  HomeDismissFunc
 }
 
 func NewArticlesReadingStatusUsecase(updateArticleStatusGateway article_status_port.UpdateArticleStatusPort) *ArticlesReadingStatusUsecase {
 	return &ArticlesReadingStatusUsecase{updateArticleStatusGateway: updateArticleStatusGateway}
+}
+
+func (u *ArticlesReadingStatusUsecase) WithHomeDismiss(articleLookup ArticleByURLLookupPort, dismissFn HomeDismissFunc) *ArticlesReadingStatusUsecase {
+	u.articleLookup = articleLookup
+	u.dismissFn = dismissFn
+	return u
 }
 
 // Execute resolves the authenticated reader and marks the article's feed read.
@@ -26,5 +45,23 @@ func (u *ArticlesReadingStatusUsecase) Execute(ctx context.Context, articleURL u
 	if err != nil {
 		return fmt.Errorf("authentication required: %w", err)
 	}
-	return u.updateArticleStatusGateway.MarkArticleAsRead(ctx, articleURL, user.UserID)
+	if err := u.updateArticleStatusGateway.MarkArticleAsRead(ctx, articleURL, user.UserID); err != nil {
+		return err
+	}
+	syncHomeDismiss(ctx, u.articleLookup, u.dismissFn, user, articleURL.String())
+	return nil
+}
+
+func syncHomeDismiss(ctx context.Context, lookup ArticleByURLLookupPort, dismissFn HomeDismissFunc, user *domain.UserContext, rawURL string) {
+	if lookup == nil || dismissFn == nil || rawURL == "" {
+		return
+	}
+	article, err := lookup.FetchArticleByURL(ctx, rawURL)
+	if err != nil || article == nil || article.ID == "" {
+		return
+	}
+	if err := dismissFn(ctx, user.UserID, user.TenantID, "article:"+article.ID); err != nil {
+		logger.Logger.WarnContext(ctx, "failed to sync home dismiss from reading status",
+			"error", err, "article_id", article.ID)
+	}
 }
