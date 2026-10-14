@@ -128,8 +128,12 @@ func TestDeriveTrailClusterCandidates_FiltersByEngagementVerbsAndExcludesExistin
 		"already-proposed cluster branches must be excluded via NOT EXISTS")
 	assert.Contains(t, call.SQL, "$3::text[]",
 		"junk vocabulary from tagclean must be bound as a text[] parameter, not inlined")
-	assert.Contains(t, call.SQL, "lower(btrim(",
-		"tags must be lowercased and whitespace-trimmed in SQL before matching")
+	assert.Contains(t, call.SQL, `regexp_replace(`,
+		"tags and titles must be trimmed of Unicode whitespace via regexp_replace")
+	assert.Contains(t, call.SQL, `\u00A0\u3000`,
+		"SQL whitespace trim must include NBSP (U+00A0) and ideographic space (U+3000)")
+	assert.NotContains(t, call.SQL, "btrim(",
+		"btrim strips only ASCII space and misses Unicode whitespace")
 	assert.Contains(t, call.SQL, "[[:alpha:]]",
 		"tags must contain a letter in SQL")
 	assert.Contains(t, call.SQL, "ORDER BY target_item_key, tag_overlap DESC, last_occurred_at DESC",

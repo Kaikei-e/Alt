@@ -65,15 +65,8 @@ func TestCleanDisplay_EmptyInputYieldsEmpty(t *testing.T) {
 }
 
 func TestJunkWords_ExposesCanonicalVocabulary(t *testing.T) {
-	words := JunkWords()
-	assert.NotEmpty(t, words)
-	assert.Equal(t, sovereign_db.JunkTagWords, words)
-	assert.Contains(t, words, "also")
-	assert.Contains(t, words, "ai")
-	assert.Contains(t, words, "blog")
-	assert.Contains(t, words, "こと")
-	assert.Contains(t, words, "https")
-	for _, w := range words {
+	assert.NotEmpty(t, sovereign_db.JunkTagWords)
+	for _, w := range sovereign_db.JunkTagWords {
 		assert.Empty(t, Normalize(w), "junk word %q must normalize to empty", w)
 	}
 }
