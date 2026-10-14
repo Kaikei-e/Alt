@@ -359,3 +359,42 @@ func TestPlanner_ContinuationDedupeKeyIsDeterministicBranchKey(t *testing.T) {
 	require.NoError(t, json.Unmarshal(continuationEvents[0].Payload, &payload))
 	assert.Equal(t, wantKey, payload.BranchKey)
 }
+
+func TestPlanner_UsesCandidateMatchedAnchorAndFiltersJunkSharedTags(t *testing.T) {
+	userID := uuid.New()
+	repo := &fakePlannerRepo{
+		users:         []uuid.UUID{userID},
+		anchor:        "article:scalp-detox",
+		anchorOK:      true,
+		anchorTitle:   "Is it true that you need to detox your scalp?",
+		anchorTitleOK: true,
+		candidates: []sovereign_db.TrailClusterCandidate{
+			{
+				TargetItemKey: "article:junk-only",
+				TargetTitle:   "Only Junk Shared Tags",
+				SharedTags:    []string{"AI", "[1]", "技術"},
+				AnchorItemKey: "article:scalp-detox",
+				AnchorTitle:   "Is it true that you need to detox your scalp?",
+				AnchorVerb:    "read",
+			},
+			{
+				TargetItemKey: "article:rust-target",
+				TargetTitle:   "Zero-Cost Abstractions in Rust",
+				SharedTags:    []string{"Rust", "AI", "io_uring"},
+				AnchorItemKey: "article:rust-anchor",
+				AnchorTitle:   "Async I/O with io_uring",
+				AnchorVerb:    "asked",
+			},
+		},
+	}
+
+	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	require.Len(t, repo.emitted, 1, "junk-only candidate must be skipped")
+	var payload BranchProposedPayload
+	require.NoError(t, json.Unmarshal(repo.emitted[0].Payload, &payload))
+	assert.Equal(t, "article:rust-anchor", payload.AnchorItemKey)
+	assert.Equal(t, "article:rust-target", payload.TargetItemKey)
+	assert.Equal(t, `Because you asked about "Async I/O with io_uring" — joins rust, io_uring`, payload.Why)
+}

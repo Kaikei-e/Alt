@@ -19,20 +19,30 @@ var junkWords = map[string]struct{}{
 	"also": {}, "could": {}, "might": {}, "would": {}, "said": {}, "says": {},
 	"wrote": {}, "becomes": {}, "without": {}, "even": {}, "great": {},
 	"three": {}, "week": {}, "types": {}, "example": {},
-	// Japanese function words.
+	// High-document-frequency generic tech/news meta-tags that cause Union-Find
+	// megaclusters across unrelated articles.
+	"ai": {}, "llm": {}, "api": {}, "code": {}, "data": {}, "user": {}, "users": {},
+	"model": {}, "models": {}, "system": {}, "systems": {}, "tool": {}, "tools": {},
+	"app": {}, "apps": {}, "web": {}, "blog": {}, "news": {}, "tech": {}, "software": {},
+	// Japanese function words & generic meta-tags.
 	"こと": {}, "もの": {}, "ため": {}, "よう": {}, "それ": {}, "これ": {},
+	"情報": {}, "技術": {}, "開発": {}, "設計": {}, "実装": {}, "処理": {}, "構造": {},
+	"利用": {}, "機能": {}, "記事": {}, "解説": {}, "紹介": {}, "方法": {}, "対応": {},
+	"更新": {}, "問題": {}, "結果": {}, "サービス": {}, "システム": {}, "データ": {},
+	"ユーザー": {}, "ツール": {}, "モデル": {}, "コード": {}, "アプリ": {},
+	"エンジニア": {}, "プログラマー": {},
 	// URL / HTML debris.
 	"https": {}, "http": {}, "www": {}, "com": {}, "gt": {}, "lt": {}, "amp": {},
 }
 
 // Normalize returns the canonical form of one tag, or "" when the tag is
-// junk: a stopword, digit-only, shorter than two runes, or URL/HTML debris.
+// junk: a stopword, contains no letters, shorter than two runes, or URL/HTML debris.
 func Normalize(tag string) string {
 	t := strings.ToLower(strings.TrimSpace(tag))
 	if utf8.RuneCountInString(t) < 2 {
 		return ""
 	}
-	if digitOnly(t) {
+	if !hasLetter(t) {
 		return ""
 	}
 	if _, junk := junkWords[t]; junk {
@@ -72,11 +82,11 @@ func CleanDisplay(tags []string) []string {
 	return out
 }
 
-func digitOnly(s string) bool {
+func hasLetter(s string) bool {
 	for _, r := range s {
-		if !unicode.IsDigit(r) {
-			return false
+		if unicode.IsLetter(r) {
+			return true
 		}
 	}
-	return true
+	return false
 }

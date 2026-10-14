@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"knowledge-sovereign/driver/sovereign_db"
+	"knowledge-sovereign/usecase/tagclean"
 )
 
 // Repository is the narrow surface the planner needs.
@@ -150,7 +151,27 @@ func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
 		if strings.TrimSpace(c.TargetTitle) == "" {
 			continue
 		}
-		payload := buildClusterBranch(userID, ref, c)
+		c.SharedTags = tagclean.CleanDisplay(c.SharedTags)
+		if len(c.SharedTags) == 0 {
+			continue
+		}
+		candRef := ref
+		if strings.TrimSpace(c.AnchorItemKey) != "" && strings.TrimSpace(c.AnchorTitle) != "" {
+			candPhrase := ref.whyPhrase
+			if c.AnchorVerb != "" {
+				if p, ok := whyPhraseForVerb(c.AnchorVerb); ok {
+					candPhrase = p
+				} else {
+					continue
+				}
+			}
+			candRef = anchorRef{
+				itemKey:   c.AnchorItemKey,
+				title:     c.AnchorTitle,
+				whyPhrase: candPhrase,
+			}
+		}
+		payload := buildClusterBranch(userID, candRef, c)
 		if err := p.emitBranch(ctx, userID, anchor.TenantID, payload); err != nil {
 			return err
 		}

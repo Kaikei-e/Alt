@@ -124,16 +124,18 @@ func scanTrailFootprintRow(scanner rowScanner, userID uuid.UUID) (TrailFootprint
 // pages. filterTags applies the theme lens (item must carry one of the tags).
 func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]TrailFootprint, string, bool, error) {
 	fetchLimit := limit + 1
-	whereClause, filterArgs, argPos, err := buildTrailFootprintsFilter(cursor, filterTags, 3)
+	whereClause, filterArgs, argPos, err := buildTrailFootprintsFilter(cursor, filterTags, 4)
 	if err != nil {
 		return nil, "", false, fmt.Errorf("GetTrailFootprints: %w", err)
 	}
-	args := make([]any, 0, 2+len(filterArgs)+1)
-	args = append(args, userID, EngagedDwellMs)
+	args := make([]any, 0, 3+len(filterArgs)+1)
+	args = append(args, userID, EngagedDwellMs, EngagementVerbs)
 	args = append(args, filterArgs...)
 
 	// item_wear aggregates over the whole spine so the wear band does not change
 	// as the user pages. has_ask or a deep revisit count reads as "deep".
+	// Only EngagementVerbs count as footprints or wear — dismissals are refusals,
+	// not footsteps on the trail.
 	// item_engagement folds the act-outcome side table: a raw dwell at or above
 	// the engaged threshold ($2, a Go constant — D20) or a Loop-era engaged
 	// label marks the item as substantively walked. An engaged walk lifts the
@@ -147,6 +149,7 @@ WITH item_wear AS (
   SELECT item_key, count(*) AS cnt, bool_or(verb = 'asked') AS has_ask
   FROM knowledge_trail_footprints
   WHERE user_id = $1
+    AND verb = ANY($3::text[])
   GROUP BY item_key
 ),
 item_engagement AS (
@@ -167,6 +170,7 @@ collapsed AS (
          (array_agg(source_event_type ORDER BY occurred_at DESC, footprint_key DESC))[1] AS source_event_type
   FROM knowledge_trail_footprints
   WHERE user_id = $1
+    AND verb = ANY($3::text[])
   GROUP BY tenant_id, item_key, verb
 )
 SELECT f.tenant_id, f.footprint_key, f.verb, f.item_key,

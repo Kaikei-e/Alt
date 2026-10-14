@@ -35,6 +35,9 @@ func TestGetTrailFootprints_CollapsesRepeatedContacts(t *testing.T) {
 		"the collapse key is (item_key, verb) within the user's spine")
 	assert.Contains(t, sql, "GROUP BY item_key",
 		"path wear must still fold over raw footprint rows")
+	assert.Contains(t, sql, "verb = ANY($3::text[])",
+		"only EngagementVerbs should appear on the trail spine or count toward path wear")
+	assert.Equal(t, EngagementVerbs, mock.queryCalls[0].Args[2])
 }
 
 func TestBuildTrailFootprintsFilter(t *testing.T) {

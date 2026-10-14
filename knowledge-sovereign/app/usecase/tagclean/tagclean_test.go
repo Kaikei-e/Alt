@@ -18,7 +18,7 @@ func TestNormalize_DropsEnglishStopwords(t *testing.T) {
 }
 
 func TestNormalize_DropsDigitOnlyAndShortTags(t *testing.T) {
-	for _, junk := range []string{"5", "2025", "12", "a", "ー"} {
+	for _, junk := range []string{"5", "2025", "12", "a", "ー", "[1]", "100%"} {
 		assert.Empty(t, Normalize(junk), "%q must normalize to empty", junk)
 	}
 }
@@ -29,9 +29,9 @@ func TestNormalize_DropsURLDebris(t *testing.T) {
 	}
 }
 
-func TestNormalize_DropsJapaneseFunctionWords(t *testing.T) {
-	for _, junk := range []string{"こと", "もの", "ため", "よう"} {
-		assert.Empty(t, Normalize(junk), "JA function word %q must normalize to empty", junk)
+func TestNormalize_DropsJapaneseFunctionWordsAndHighDFMetaTags(t *testing.T) {
+	for _, junk := range []string{"こと", "もの", "ため", "よう", "ai", "llm", "技術", "開発", "記事", "エンジニア"} {
+		assert.Empty(t, Normalize(junk), "stopword/meta-tag %q must normalize to empty", junk)
 	}
 }
 

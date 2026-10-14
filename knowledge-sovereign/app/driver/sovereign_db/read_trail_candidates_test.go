@@ -110,25 +110,56 @@ func TestCalcTrailContinuationCutoffs(t *testing.T) {
 	}
 }
 
+func TestDeriveTrailClusterCandidates_FiltersByEngagementVerbsAndExcludesExistingBranches(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	userID := uuid.New()
+	_, err := repo.DeriveTrailClusterCandidates(context.Background(), userID, 5)
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1)
+
+	call := mock.queryCalls[0]
+	assert.Contains(t, call.SQL, "f.verb = ANY($2::text[])",
+		"cluster anchor tags must only be derived from EngagementVerbs, not dismissals")
+	assert.Contains(t, call.SQL, "relation_kind = 'cluster'",
+		"already-proposed cluster branches must be excluded so the top-N query does not lock out")
+	assert.Contains(t, call.SQL, "NOT EXISTS",
+		"already-proposed cluster branches must be excluded via NOT EXISTS")
+	require.Len(t, call.Args, 3)
+	assert.Equal(t, userID, call.Args[0])
+	assert.Equal(t, EngagementVerbs, call.Args[1])
+	assert.Equal(t, 5, call.Args[2])
+}
+
 func TestScanTrailClusterCandidateRow(t *testing.T) {
 	tests := []struct {
-		name     string
-		itemKey  string
-		title    string
-		tags     []string
-		scanErr  error
-		wantErr  bool
-		wantCand TrailClusterCandidate
+		name        string
+		itemKey     string
+		title       string
+		tags        []string
+		anchorKey   string
+		anchorTitle string
+		anchorVerb  string
+		scanErr     error
+		wantErr     bool
+		wantCand    TrailClusterCandidate
 	}{
 		{
-			name:    "valid candidate",
-			itemKey: "item-10",
-			title:   "Title 10",
-			tags:    []string{"go", "clean-architecture"},
+			name:        "valid candidate",
+			itemKey:     "item-10",
+			title:       "Title 10",
+			tags:        []string{"go", "clean-architecture"},
+			anchorKey:   "item-1",
+			anchorTitle: "Anchor 1",
+			anchorVerb:  "read",
 			wantCand: TrailClusterCandidate{
 				TargetItemKey: "item-10",
 				TargetTitle:   "Title 10",
 				SharedTags:    []string{"go", "clean-architecture"},
+				AnchorItemKey: "item-1",
+				AnchorTitle:   "Anchor 1",
+				AnchorVerb:    "read",
 			},
 		},
 		{
@@ -148,6 +179,9 @@ func TestScanTrailClusterCandidateRow(t *testing.T) {
 					*dest[0].(*string) = tc.itemKey
 					*dest[1].(*string) = tc.title
 					*dest[2].(*[]string) = tc.tags
+					*dest[3].(*string) = tc.anchorKey
+					*dest[4].(*string) = tc.anchorTitle
+					*dest[5].(*string) = tc.anchorVerb
 					return nil
 				},
 			}

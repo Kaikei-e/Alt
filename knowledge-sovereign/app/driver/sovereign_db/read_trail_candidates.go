@@ -24,6 +24,14 @@ type TrailClusterCandidate struct {
 	TargetItemKey string
 	TargetTitle   string
 	SharedTags    []string
+	// AnchorItemKey, AnchorTitle, and AnchorVerb identify the specific engaged
+	// footprint item whose tags actually overlap with TargetItemKey so the Why
+	// claim ("Because you read <AnchorTitle> — joins <SharedTags>") is always
+	// grounded in the article that shares those tags. When empty, callers fall
+	// back to the user's latest footprint anchor.
+	AnchorItemKey string
+	AnchorTitle   string
+	AnchorVerb    string
 }
 
 // TrailContinuationCandidate is a thread the user already engaged (self-
@@ -45,7 +53,10 @@ func calcTrailContinuationCutoffs(reference time.Time) (time.Time, time.Time) {
 
 func scanTrailClusterCandidateRow(scanner rowScanner) (TrailClusterCandidate, error) {
 	var c TrailClusterCandidate
-	if err := scanner.Scan(&c.TargetItemKey, &c.TargetTitle, &c.SharedTags); err != nil {
+	if err := scanner.Scan(
+		&c.TargetItemKey, &c.TargetTitle, &c.SharedTags,
+		&c.AnchorItemKey, &c.AnchorTitle, &c.AnchorVerb,
+	); err != nil {
 		return TrailClusterCandidate{}, err
 	}
 	return c, nil
@@ -61,41 +72,76 @@ func scanTrailContinuationCandidateRow(scanner rowScanner) (TrailContinuationCan
 
 // DeriveTrailClusterCandidates finds articles that share a tag with the user's
 // engaged items but that the user has not footprinted — Cluster branch material.
-// Ranked by tag-overlap. Producer-side derivation (the planner reads current
-// state to decide what to emit); the projector that folds the resulting event
-// stays payload-only.
+// Each candidate is paired with the specific recent engaged footprint item that
+// shares its tags, and items already proposed as a cluster branch are excluded
+// so the top-N window is never locked out by dedupe rejections.
 func (r *Repository) DeriveTrailClusterCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]TrailClusterCandidate, error) {
 	q := `
 WITH active_version AS (
   SELECT ` + activeProjectionVersionSQL + ` AS v
 ),
-user_tags AS (
-  SELECT DISTINCT lower(t.tag) AS tag
+recent_anchors AS (
+  SELECT f.item_key,
+         (array_agg(f.verb ORDER BY f.occurred_at DESC, f.footprint_key DESC))[1] AS verb,
+         max(f.occurred_at) AS last_occurred_at,
+         akhi.title,
+         akhi.tags_json
   FROM knowledge_trail_footprints f
-  JOIN knowledge_home_items khi
-    ON khi.user_id = f.user_id AND khi.item_key = f.item_key
-   AND khi.projection_version = (SELECT v FROM active_version)
-  CROSS JOIN LATERAL jsonb_array_elements_text(khi.tags_json) AS t(tag)
+  JOIN knowledge_home_items akhi
+    ON akhi.user_id = f.user_id AND akhi.item_key = f.item_key
+   AND akhi.projection_version = (SELECT v FROM active_version)
   WHERE f.user_id = $1
+    AND f.verb = ANY($2::text[])
+    AND coalesce(akhi.title, '') <> ''
+  GROUP BY f.item_key, akhi.title, akhi.tags_json
+  ORDER BY max(f.occurred_at) DESC
+  LIMIT 30
 ),
 footprinted AS (
   SELECT DISTINCT item_key FROM knowledge_trail_footprints WHERE user_id = $1
+),
+matched_pairs AS (
+  SELECT khi.item_key AS target_item_key,
+         khi.title AS target_title,
+         ra.item_key AS anchor_item_key,
+         ra.title AS anchor_title,
+         ra.verb AS anchor_verb,
+         ra.last_occurred_at,
+         array_agg(DISTINCT it.tag) AS shared_tags,
+         count(DISTINCT lower(it.tag)) AS tag_overlap
+  FROM knowledge_home_items khi
+  JOIN recent_anchors ra ON ra.item_key <> khi.item_key
+  CROSS JOIN LATERAL jsonb_array_elements_text(khi.tags_json) AS it(tag)
+  CROSS JOIN LATERAL jsonb_array_elements_text(ra.tags_json) AS at(tag)
+  WHERE khi.user_id = $1
+    AND khi.item_type = 'article'
+    AND khi.dismissed_at IS NULL
+    AND khi.projection_version = (SELECT v FROM active_version)
+    AND coalesce(khi.title, '') <> ''
+    AND lower(it.tag) = lower(at.tag)
+    AND khi.item_key NOT IN (SELECT item_key FROM footprinted)
+    AND NOT EXISTS (
+      SELECT 1 FROM knowledge_trail_branches btb
+      WHERE btb.user_id = $1
+        AND btb.relation_kind = 'cluster'
+        AND btb.target_item_key = khi.item_key
+    )
+  GROUP BY khi.item_key, khi.title, ra.item_key, ra.title, ra.verb, ra.last_occurred_at
+),
+best_per_target AS (
+  SELECT DISTINCT ON (target_item_key)
+         target_item_key, target_title, shared_tags,
+         anchor_item_key, anchor_title, anchor_verb,
+         tag_overlap, last_occurred_at
+  FROM matched_pairs
+  ORDER BY target_item_key, last_occurred_at DESC, tag_overlap DESC
 )
-SELECT khi.item_key, khi.title,
-       array_agg(DISTINCT it.tag) AS shared_tags
-FROM knowledge_home_items khi
-CROSS JOIN LATERAL jsonb_array_elements_text(khi.tags_json) AS it(tag)
-WHERE khi.user_id = $1
-  AND khi.item_type = 'article'
-  AND khi.dismissed_at IS NULL
-  AND khi.projection_version = (SELECT v FROM active_version)
-  AND coalesce(khi.title, '') <> ''
-  AND khi.item_key NOT IN (SELECT item_key FROM footprinted)
-  AND lower(it.tag) IN (SELECT tag FROM user_tags)
-GROUP BY khi.item_key, khi.title
-ORDER BY count(DISTINCT lower(it.tag)) DESC, khi.item_key
-LIMIT $2`
-	rows, err := r.pool.Query(ctx, q, userID, limit)
+SELECT target_item_key, target_title, shared_tags,
+       anchor_item_key, anchor_title, anchor_verb
+FROM best_per_target
+ORDER BY last_occurred_at DESC, tag_overlap DESC, target_item_key
+LIMIT $3`
+	rows, err := r.pool.Query(ctx, q, userID, EngagementVerbs, limit)
 	if err != nil {
 		return nil, fmt.Errorf("DeriveTrailClusterCandidates: %w", err)
 	}
