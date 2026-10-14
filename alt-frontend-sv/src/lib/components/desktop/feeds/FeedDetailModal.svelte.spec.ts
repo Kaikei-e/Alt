@@ -490,14 +490,15 @@ describe("FeedDetailModal content states", () => {
 
 			mockGetFeedContent.mockResolvedValue({
 				content: "<p>Second article body</p>",
-				article_id: "art-home-2",
+				article_id: "art/home 2?x=1",
 			});
+			mockGetItemBranches.mockResolvedValue([]);
 			await rerender({
 				open: true,
 				feed: {
 					...FEED,
 					id: "feed-2",
-					articleId: "art-home-2",
+					articleId: "art/home 2?x=1",
 					link: "https://example.com/test-article-2",
 					normalizedUrl: "https://example.com/test-article-2",
 				},
@@ -508,11 +509,11 @@ describe("FeedDetailModal content states", () => {
 
 			await expect
 				.element(testPage.getByRole("link", { name: "Open article page" }))
-				.toHaveAttribute("href", "/articles/art-home-2");
+				.toHaveAttribute("href", "/articles/art%2Fhome%202%3Fx%3D1");
 			expect(mockGetItemBranches).toHaveBeenCalledTimes(2);
 			expect(mockGetItemBranches).toHaveBeenLastCalledWith(
 				expect.anything(),
-				"article:art-home-2",
+				"article:art/home 2?x=1",
 				2,
 			);
 		});

@@ -24,23 +24,12 @@ vi.mock("$app/state", () => ({
 	},
 }));
 
-// The route reaches $app/navigation by two independent paths: +page.svelte
-// imports `goto`, and useTrailOutcome — the trail dwell measurement — imports
-// `beforeNavigate` to flush on leave. A factory that enumerates a subset
-// replaces the *whole* module, so any binding it omits becomes an import-time
-// "does not provide an export named ..." SyntaxError and the file collects
-// zero tests. Spy-mode automocking wraps the real module instead: every
-// current and future export stays bound, and only what must not really run is
-// overridden below. `goto` is the one such binding — real navigation would
-// steer the browser-mode page away mid-test. `beforeNavigate` is safe to keep
-// real; it is a thin `onMount(() => callbacks.add(cb))` whose callbacks only
-// fire on an actual client-router navigation, which never happens here.
-//
-// Spy mode rather than an `importOriginal` spread because that spread makes
-// the mock a manually resolved module: the browser provider has to round-trip
-// to this worker before it can answer the page's request for it, and when the
-// round trip loses the race the run dies with "route.fulfill: The object has
-// been collected to prevent unbounded heap growth."
+// +page.svelte imports `goto` and useTrailOutcome imports `beforeNavigate`
+// from `$app/navigation`. `$app/navigation` re-exports via `export *`, which
+// Vitest `{ spy: true }` automocking cannot wrap, so we provide an explicit
+// factory mock with both bindings (`goto` stubbed to prevent real browser
+// navigation mid-test, and `beforeNavigate` stubbed). The client and connect
+// modules below have concrete named exports and use `{ spy: true }`.
 vi.mock("$app/navigation", () => ({
 	goto: vi.fn(),
 	beforeNavigate: vi.fn(),
@@ -644,5 +633,89 @@ describe("Article page branch walk and open tracking", () => {
 			"article:art-b",
 			expect.any(BigInt),
 		);
+	});
+
+	it("ignores a late endBranches response whose anchor no longer matches the current article", async () => {
+		let resolveBranchesA!: (
+			value: Awaited<ReturnType<typeof getItemBranches>>,
+		) => void;
+		const slowBranchesAPromise = new Promise<
+			Awaited<ReturnType<typeof getItemBranches>>
+		>((resolve) => {
+			resolveBranchesA = resolve;
+		});
+
+		mockGetFeedContent.mockImplementation((url: string) =>
+			Promise.resolve({
+				content:
+					url === "https://example.com/b"
+						? "<p>Second walked article body.</p>"
+						: "<p>First walked article body.</p>",
+				article_id: url === "https://example.com/b" ? "art-b" : "art-a",
+			}),
+		);
+		mockGetArticleSourceURL.mockResolvedValue({
+			url: "https://example.com/b",
+			title: "Article B",
+		});
+		mockGetItemBranches.mockImplementation(
+			(_transport: unknown, itemKey: string) => {
+				if (itemKey === "article:art-a") {
+					return slowBranchesAPromise;
+				}
+				return Promise.resolve([
+					{
+						branchKey: `cluster:u:${itemKey}`,
+						anchorItemKey: itemKey,
+						relationKind: "cluster",
+						why: `Branch from ${itemKey}`,
+						evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+						confidence: "plausible",
+						targetItemKey: "article:art-c",
+						targetTitle: `Target from ${itemKey}`,
+					},
+				]);
+			},
+		);
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByText("First walked article body."))
+			.toBeInTheDocument();
+
+		// Navigate to article B while article A's getItemBranches is still in flight
+		currentArticleId = "art-b";
+		currentPageURL = new URL("http://localhost/articles/art-b");
+
+		await expect
+			.element(testPage.getByText("Second walked article body."))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByText("Branch from article:art-b"))
+			.toBeInTheDocument();
+
+		// Late arrival of article A's branches must be ignored
+		resolveBranchesA([
+			{
+				branchKey: "cluster:u:article:art-a",
+				anchorItemKey: "article:art-a",
+				relationKind: "cluster",
+				why: "Stale branch from article:art-a",
+				evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+				confidence: "plausible",
+				targetItemKey: "article:art-b",
+				targetTitle: "Stale target from article:art-a",
+			},
+		]);
+		await slowBranchesAPromise;
+		await new Promise((r) => setTimeout(r, 50));
+
+		await expect
+			.element(testPage.getByText("Branch from article:art-b"))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByText("Stale branch from article:art-a"))
+			.not.toBeInTheDocument();
 	});
 });

@@ -134,19 +134,29 @@ describe("LensSelector", () => {
 		expect(onDelete).not.toHaveBeenCalled();
 		expect(confirmSpy).not.toHaveBeenCalled();
 		await expect.element(page.getByText("Delete?")).toBeInTheDocument();
-		await expect
-			.element(page.getByRole("button", { name: "Confirm" }))
-			.toBeInTheDocument();
-		await expect
-			.element(page.getByRole("button", { name: "Cancel" }))
-			.toBeInTheDocument();
+		const confirmBtn = page.getByRole("button", {
+			name: "Confirm delete lens AI News",
+			exact: true,
+		});
+		const cancelBtn = page.getByRole("button", {
+			name: "Cancel delete lens AI News",
+			exact: true,
+		});
+		await expect.element(confirmBtn).toBeInTheDocument();
+		await expect.element(cancelBtn).toBeInTheDocument();
+		await expect.element(confirmBtn).toHaveFocus();
 
-		await page.getByRole("button", { name: "Cancel" }).click();
+		await cancelBtn.click();
 		expect(onDelete).not.toHaveBeenCalled();
 		await expect.element(page.getByText("Delete?")).not.toBeInTheDocument();
 
 		await deletePillBtn.click();
-		await page.getByRole("button", { name: "Confirm" }).click();
+		await page
+			.getByRole("button", {
+				name: "Confirm delete lens AI News",
+				exact: true,
+			})
+			.click();
 		expect(onDelete).toHaveBeenCalledTimes(1);
 		expect(onDelete).toHaveBeenCalledWith("lens-1");
 		confirmSpy.mockRestore();
@@ -174,15 +184,130 @@ describe("LensSelector", () => {
 		expect(onDelete).not.toHaveBeenCalled();
 		expect(confirmSpy).not.toHaveBeenCalled();
 		await expect.element(page.getByText("Delete?")).toBeInTheDocument();
+		const confirmBtn = page.getByRole("button", {
+			name: "Confirm delete lens AI News",
+			exact: true,
+		});
+		const cancelBtn = page.getByRole("button", {
+			name: "Cancel delete lens AI News",
+			exact: true,
+		});
+		await expect.element(confirmBtn).toBeInTheDocument();
+		await expect.element(cancelBtn).toBeInTheDocument();
+		await expect.element(confirmBtn).toHaveFocus();
 
-		await page.getByRole("button", { name: "Cancel" }).click();
+		await cancelBtn.click();
 		expect(onDelete).not.toHaveBeenCalled();
 		await expect.element(page.getByText("Delete?")).not.toBeInTheDocument();
 
 		await summaryDeleteBtn.click();
-		await page.getByRole("button", { name: "Confirm" }).click();
+		await page
+			.getByRole("button", {
+				name: "Confirm delete lens AI News",
+				exact: true,
+			})
+			.click();
 		expect(onDelete).toHaveBeenCalledTimes(1);
 		expect(onDelete).toHaveBeenCalledWith("lens-1");
 		confirmSpy.mockRestore();
+	});
+
+	it("disarms summary delete confirm when switching to another lens", async () => {
+		const lenses = [
+			makeLens({ lensId: "lens-rust", name: "Rust" }),
+			makeLens({ lensId: "lens-ai", name: "AI" }),
+		];
+		const onSelect = vi.fn();
+		const onDelete = vi.fn();
+
+		const { rerender } = render(LensSelector, {
+			props: {
+				lenses,
+				activeLensId: "lens-rust",
+				onSelect,
+				onCreateClick: vi.fn(),
+				onDelete,
+			},
+		});
+
+		await page.getByRole("button", { name: "Delete", exact: true }).click();
+		await expect
+			.element(
+				page.getByRole("button", {
+					name: "Confirm delete lens Rust",
+					exact: true,
+				}),
+			)
+			.toBeInTheDocument();
+
+		await page.getByRole("button", { name: "AI", exact: true }).click();
+		expect(onSelect).toHaveBeenCalledWith("lens-ai");
+
+		await rerender({
+			lenses,
+			activeLensId: "lens-ai",
+			onSelect,
+			onCreateClick: vi.fn(),
+			onDelete,
+		});
+
+		await expect
+			.element(page.getByText("Active lens: AI"))
+			.toBeInTheDocument();
+		await expect.element(page.getByText("Delete?")).not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: /Confirm/ }))
+			.not.toBeInTheDocument();
+		expect(onDelete).not.toHaveBeenCalled();
+	});
+
+	it("disarms summary delete confirm when clicking All and then picking a lens", async () => {
+		const lenses = [
+			makeLens({ lensId: "lens-rust", name: "Rust" }),
+			makeLens({ lensId: "lens-ai", name: "AI" }),
+		];
+		const onSelect = vi.fn();
+		const onDelete = vi.fn();
+
+		const { rerender } = render(LensSelector, {
+			props: {
+				lenses,
+				activeLensId: "lens-rust",
+				onSelect,
+				onCreateClick: vi.fn(),
+				onDelete,
+			},
+		});
+
+		await page.getByRole("button", { name: "Delete", exact: true }).click();
+		await expect.element(page.getByText("Delete?")).toBeInTheDocument();
+
+		await page.getByRole("button", { name: "All" }).click();
+		expect(onSelect).toHaveBeenCalledWith(null);
+		await rerender({
+			lenses,
+			activeLensId: null,
+			onSelect,
+			onCreateClick: vi.fn(),
+			onDelete,
+		});
+
+		await page.getByRole("button", { name: "Rust", exact: true }).click();
+		expect(onSelect).toHaveBeenCalledWith("lens-rust");
+		await rerender({
+			lenses,
+			activeLensId: "lens-rust",
+			onSelect,
+			onCreateClick: vi.fn(),
+			onDelete,
+		});
+
+		await expect
+			.element(page.getByText("Active lens: Rust"))
+			.toBeInTheDocument();
+		await expect.element(page.getByText("Delete?")).not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: /Confirm/ }))
+			.not.toBeInTheDocument();
 	});
 });
