@@ -243,6 +243,12 @@ Rule 8 に従い、**未配線の依存を握り潰さない**。producer / proj
 | Circular dependency | Extract to new Port |
 | `cmd/backend` / `cmd/harvester` から DB | DataHubService の capability を足す |
 
+## Knowledge Home & Feed Read-State Synchronization
+
+- `UpdateFeedStatusUsecase` (`orchestrator/usecase/reading_status/`) emits `item_dismissed` to `knowledge-sovereign` whenever an article is marked as read in `/feeds` so `/home` reflects read triage immediately.
+- `TrackHomeActionUsecase` (`orchestrator/usecase/track_home_action_usecase/`) syncs `dismiss` and `open` actions back to `read_status` in `alt-db` (via `alt-data-hub`) so `/feeds` and `/home` stay consistent.
+- `GetKnowledgeHomeUsecase` prioritizes `tag_hotspot` over generic reasons (`new_unread` / `in_weekly_recap`) when truncating `why_json` to the 2-badge display cap.
+
 ## References
 
 - [Three Dots Labs - Clean Architecture](https://threedots.tech/post/introducing-clean-architecture/)
