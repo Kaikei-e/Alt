@@ -83,17 +83,17 @@ const config = $derived.by(() => {
 
 <div class="flex flex-col items-center justify-center py-20 text-center">
 	<config.icon
-		class="h-12 w-12 text-[var(--text-secondary)] mb-4 {reason === 'ingest_pending' ? 'animate-spin' : ''}"
+		class="h-10 w-10 text-[var(--alt-ash)] mb-4 {reason === 'ingest_pending' ? 'animate-spin' : ''}"
 	/>
-	<h3 class="text-base font-medium text-[var(--text-primary)] mb-1">
+	<h3 class="font-[var(--font-display)] text-lg font-bold text-[var(--alt-charcoal)] mb-1">
 		{config.title}
 	</h3>
-	<p class="text-sm text-[var(--text-secondary)] max-w-md">
+	<p class="text-sm italic text-[var(--alt-slate)] max-w-md">
 		{config.description}
 	</p>
 	{#if config.showClearLens && onClearLens}
 		<button
-			class="mt-4 inline-flex items-center border border-[var(--surface-border)] px-4 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+			class="mt-4 inline-flex items-center border border-[var(--chip-border)] bg-[var(--action-surface)] px-4 py-2 text-sm font-medium text-[var(--interactive-text)] transition-colors hover:bg-[var(--action-surface-hover)]"
 			onclick={onClearLens}
 		>
 			Clear lens

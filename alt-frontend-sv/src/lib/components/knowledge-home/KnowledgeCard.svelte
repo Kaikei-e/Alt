@@ -115,7 +115,7 @@ function handleAction(type: string) {
 	{/if}
 
 	<!-- Header: Title + Supersede Badge + Source & Relative Time -->
-	<div class="flex items-start justify-between gap-2 mb-2">
+	<div class="card-head flex items-start justify-between gap-4 mb-2">
 		<div class="flex-1 min-w-0">
 			<h3 class="card-title">
 				{#if linkAvailable}
@@ -160,7 +160,7 @@ function handleAction(type: string) {
 
 	<!-- High-Signal Why Badges + SummaryStateChip -->
 	{#if displayReasons.length > 0 || item.summaryState === "pending"}
-		<div class="flex flex-wrap items-center gap-1 mb-2">
+		<div class="flex flex-wrap items-center gap-1.5 mb-2.5">
 			{#each displayReasons as reason}
 				<WhySurfacedBadge {reason} />
 			{/each}
@@ -187,7 +187,7 @@ function handleAction(type: string) {
 	<!-- Bottom Row: Tags (left) + Actions (right) -->
 	<div class="card-footer">
 		{#if nonEmptyTags.length > 0}
-			<div class="flex flex-wrap gap-1 min-w-0">
+			<div class="flex flex-wrap gap-1.5 min-w-0">
 				{#each visibleTags as tag}
 					<a
 						href="/articles/by-tag?tag={encodeURIComponent(tag)}"
@@ -224,7 +224,7 @@ function handleAction(type: string) {
 <style>
 	.card {
 		border: 1px solid var(--surface-border);
-		padding: 1.25rem 1.25rem;
+		padding: 1.1rem 1.25rem 0.85rem;
 		background: var(--surface-bg);
 		transition: border-color 0.15s;
 	}
@@ -238,26 +238,26 @@ function handleAction(type: string) {
 	}
 
 	.card--no-source {
-		border-color: color-mix(in srgb, var(--surface-border) 60%, transparent);
-		background: color-mix(in srgb, var(--surface-bg) 90%, transparent);
+		border-style: dashed;
+		background: transparent;
 	}
 
 	.card-no-source {
 		display: inline-block;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.62rem;
 		font-weight: 600;
-		letter-spacing: 0.12em;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: var(--accent-emphasis-text);
-		padding: 0.125rem 0.5rem;
-		border: 1px solid var(--accent-emphasis-text);
-		margin-bottom: 0.5rem;
+		color: var(--alt-slate);
+		padding: 0.14rem 0.5rem;
+		border: 1px solid var(--surface-border);
+		margin-bottom: 0.6rem;
 	}
 
 	.card-title {
 		font-family: var(--font-display);
-		font-size: 1rem;
+		font-size: 1.1rem;
 		font-weight: 700;
 		line-height: 1.3;
 		color: var(--alt-charcoal);
@@ -278,22 +278,28 @@ function handleAction(type: string) {
 	}
 
 	.card-title-btn:hover {
-		color: var(--interactive-text);
+		color: var(--interactive-text-hover);
 		text-decoration: underline;
 		text-decoration-thickness: 1px;
-		text-underline-offset: 2px;
+		text-underline-offset: 3px;
+	}
+
+	.card-title-btn:focus-visible {
+		outline: 2px solid var(--alt-primary);
+		outline-offset: 2px;
 	}
 
 	.card-meta {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.35rem;
 		flex-shrink: 0;
+		padding-top: 0.3rem;
 	}
 
 	.card-source {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.68rem;
 		color: var(--alt-slate);
 		max-width: 11rem;
 		overflow: hidden;
@@ -303,24 +309,36 @@ function handleAction(type: string) {
 
 	.card-meta-sep {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.68rem;
 		color: var(--alt-ash);
 	}
 
 	.card-time {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.68rem;
 		color: var(--alt-ash);
 		white-space: nowrap;
 		flex-shrink: 0;
 	}
 
+	/* Narrow screens: the source/time line moves above the headline like a
+	   dateline so the title keeps the full width. */
+	@media (max-width: 640px) {
+		.card-head {
+			flex-direction: column-reverse;
+			gap: 0.25rem;
+		}
+		.card-meta {
+			padding-top: 0;
+		}
+	}
+
 	.card-summary {
 		font-family: var(--font-body);
-		font-size: 0.875rem;
+		font-size: 0.9rem;
 		line-height: 1.6;
-		color: var(--alt-slate);
-		margin-bottom: 0.5rem;
+		color: var(--text-secondary);
+		margin-bottom: 0.25rem;
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
 		line-clamp: 2;
@@ -332,9 +350,9 @@ function handleAction(type: string) {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.5rem;
-		border-top: 1px solid color-mix(in srgb, var(--surface-border) 40%, transparent);
-		padding-top: 0.75rem;
+		gap: 0.75rem;
+		border-top: 1px dashed var(--surface-border);
+		padding-top: 0.6rem;
 		margin-top: 0.75rem;
 	}
 
@@ -342,9 +360,9 @@ function handleAction(type: string) {
 		display: inline-flex;
 		align-items: center;
 		border: 1px solid var(--chip-border);
-		padding: 0.125rem 0.5rem;
-		font-size: 0.75rem;
-		font-weight: 500;
+		padding: 0.08rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
 		background: var(--chip-bg);
 		color: var(--chip-text);
 		transition: border-color 0.15s, color 0.15s;
@@ -358,6 +376,9 @@ function handleAction(type: string) {
 
 	.card-tag--expand {
 		cursor: pointer;
+		background: transparent;
+		border-style: dashed;
+		color: var(--alt-slate);
 	}
 
 	.skeleton-line {

@@ -35,15 +35,15 @@ $effect(() => {
 	<div class="flex items-center justify-between">
 		<div>
 			<h1
-				class="font-[var(--font-display)] font-bold text-[var(--text-primary)] transition-all duration-200"
-				class:text-[22px]={!isCompact}
+				class="font-[var(--font-display)] font-extrabold tracking-[-0.01em] text-[var(--text-primary)] transition-all duration-200"
+				class:text-[24px]={!isCompact}
 				class:leading-tight={!isCompact}
 				class:text-[17px]={isCompact}
 			>
 				Knowledge Home
 			</h1>
 			{#if !isCompact}
-				<p class="mt-0.5 font-[var(--font-body)] text-[13px] text-[var(--text-secondary)]">
+				<p class="mt-0.5 font-[var(--font-body)] text-[13px] italic text-[var(--alt-ash)]">
 					Today's knowledge starting point
 				</p>
 			{/if}

@@ -73,7 +73,7 @@ const age = $derived(formatRelativeTime(dateSource));
 
 	<!-- Reason badges + Why recalled? toggle -->
 	{#if candidate.reasons.length > 0}
-		<div class="flex flex-wrap items-center gap-1 mb-2">
+		<div class="flex flex-wrap items-center gap-1.5 mb-2">
 			{#each candidate.reasons.slice(0, 2) as reason}
 				<RecallReasonBadge reasonType={reason.type} description={reason.description} />
 			{/each}
@@ -107,7 +107,7 @@ const age = $derived(formatRelativeTime(dateSource));
 		</div>
 	{/if}
 
-	<div class="flex items-center gap-1 mt-2">
+	<div class="flex items-center gap-1 -ml-1.5">
 		<button
 			class="recall-action"
 			title="Snooze for 24 hours"
@@ -127,25 +127,32 @@ const age = $derived(formatRelativeTime(dateSource));
 
 <style>
 	.recall-card {
-		border: 1px solid var(--surface-border);
-		padding: 0.75rem;
-		background: var(--surface-bg);
+		padding: 0.85rem 0;
+		border-bottom: 1px solid var(--surface-border);
 		cursor: pointer;
-		transition: border-color 0.15s;
 	}
 
-	.recall-card:hover {
-		border-color: var(--alt-charcoal);
+	.recall-card:hover .recall-title {
+		color: var(--interactive-text-hover);
+		text-decoration: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 3px;
+	}
+
+	.recall-card:focus-visible {
+		outline: 2px solid var(--alt-primary);
+		outline-offset: 2px;
 	}
 
 	.recall-card--urgent {
 		border-left: 3px solid var(--accent-emphasis-text);
+		padding-left: 0.75rem;
 	}
 
 	.recall-title {
 		font-family: var(--font-display);
-		font-size: 0.875rem;
-		font-weight: 600;
+		font-size: 0.95rem;
+		font-weight: 700;
 		line-height: 1.3;
 		color: var(--alt-charcoal);
 		display: -webkit-box;
@@ -160,16 +167,17 @@ const age = $derived(formatRelativeTime(dateSource));
 		display: flex;
 		align-items: center;
 		gap: 0.25rem;
+		padding-top: 0.15rem;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.66rem;
 		color: var(--alt-ash);
 		white-space: nowrap;
 	}
 
 	.recall-summary {
 		font-family: var(--font-body);
-		font-size: 0.75rem;
-		line-height: 1.4;
+		font-size: 0.8rem;
+		line-height: 1.5;
 		color: var(--alt-slate);
 		margin-bottom: 0.5rem;
 		display: -webkit-box;
@@ -183,43 +191,44 @@ const age = $derived(formatRelativeTime(dateSource));
 		display: inline-flex;
 		align-items: center;
 		border: 1px solid var(--chip-border);
-		padding: 0.125rem 0.5rem;
-		font-size: 0.75rem;
-		font-weight: 500;
+		padding: 0.08rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
 		background: var(--chip-bg);
 		color: var(--chip-text);
 	}
 
 	.recall-why-toggle {
 		margin-left: auto;
-		border: 1px solid var(--surface-border);
-		padding: 0.125rem 0.625rem;
+		border: none;
+		padding: 0.1rem 0;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.62rem;
 		font-weight: 600;
-		letter-spacing: 0.08em;
-		color: var(--alt-ash);
+		letter-spacing: 0.1em;
+		color: var(--interactive-text);
 		background: transparent;
 		cursor: pointer;
-		transition: border-color 0.15s, color 0.15s;
 	}
 
 	.recall-why-toggle:hover {
-		border-color: var(--interactive-text);
-		color: var(--interactive-text);
+		color: var(--interactive-text-hover);
+		text-decoration: underline;
+		text-underline-offset: 3px;
 	}
 
 	.recall-action {
-		padding: 0.375rem;
+		padding: 0.3rem;
 		color: var(--alt-ash);
 		background: transparent;
-		border: none;
+		border: 1px solid transparent;
 		cursor: pointer;
-		transition: color 0.15s, background 0.15s;
+		transition: color 0.15s, background 0.15s, border-color 0.15s;
 	}
 
 	.recall-action:hover {
-		color: var(--alt-slate);
+		color: var(--alt-charcoal);
 		background: var(--surface-hover);
+		border-color: var(--surface-border);
 	}
 </style>

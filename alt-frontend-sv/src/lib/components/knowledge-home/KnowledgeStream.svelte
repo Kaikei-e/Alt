@@ -198,9 +198,9 @@ onMount(() => {
 
 <style>
 	.stream-header {
-		padding-bottom: 0.75rem;
-		margin-bottom: 1.25rem;
-		border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 30%, transparent);
+		padding-bottom: 0.6rem;
+		margin-bottom: 1rem;
+		border-bottom: 1px solid var(--surface-border);
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -209,7 +209,7 @@ onMount(() => {
 
 	.stream-heading {
 		font-family: var(--font-display);
-		font-size: 1.15rem;
+		font-size: 1.3rem;
 		font-weight: 700;
 		line-height: 1.3;
 		color: var(--alt-charcoal);
@@ -218,7 +218,7 @@ onMount(() => {
 
 	.stream-subtitle {
 		font-family: var(--font-body);
-		font-size: 0.8rem;
+		font-size: 0.85rem;
 		color: var(--alt-ash);
 		margin-top: 0.15rem;
 		font-style: italic;
@@ -227,7 +227,7 @@ onMount(() => {
 	.stream-items {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 0.85rem;
 	}
 
 	.stream-entry {

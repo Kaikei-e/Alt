@@ -45,40 +45,38 @@ const primaryActions = $derived([
 		display: flex;
 		flex-shrink: 0;
 		align-items: center;
-		gap: 0.125rem;
-		border: 1px solid var(--chip-border);
-		background: var(--action-surface);
-		padding: 0.125rem 0.25rem;
+		gap: 0.15rem;
 	}
 
 	.action-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
-		padding: 0.375rem 0.5rem;
-		font-size: 0.75rem;
+		gap: 0.35rem;
+		padding: 0.35rem 0.55rem;
+		font-family: var(--font-body);
+		font-size: 0.8rem;
 		font-weight: 500;
 		color: var(--interactive-text);
 		background: transparent;
-		border: none;
+		border: 1px solid transparent;
 		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
+		transition: background 0.15s, border-color 0.15s, color 0.15s;
 	}
 
 	.action-btn:hover {
-		background: var(--action-surface-hover);
+		background: var(--action-surface);
+		border-color: var(--chip-border);
 		color: var(--interactive-text-hover);
 	}
 
 	.action-btn--dismiss {
-		margin-left: 0.5rem;
-		border-left: 1px solid color-mix(in srgb, var(--surface-border) 50%, transparent);
-		padding-left: 0.5rem;
-		color: color-mix(in srgb, var(--alt-slate) 70%, transparent);
+		margin-left: 0.35rem;
+		color: var(--alt-ash);
 	}
 
 	.action-btn--dismiss:hover {
-		background: var(--action-surface-hover);
+		background: var(--surface-hover);
+		border-color: var(--surface-border);
 		color: var(--alt-charcoal);
 	}
 </style>
