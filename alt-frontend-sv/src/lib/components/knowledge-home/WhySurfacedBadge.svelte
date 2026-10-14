@@ -34,8 +34,26 @@ const IconComponent = $derived(ICON_MAP[display.iconName] ?? Info);
 </script>
 
 <span
-	class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border {display.colorClass}"
+	class="badge {display.colorClass}"
 >
 	<IconComponent class="h-3 w-3" />
 	{display.label}
 </span>
+
+<style>
+	.badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.14rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		line-height: 1.4;
+		text-transform: uppercase;
+		border-width: 1px;
+		border-style: solid;
+		white-space: nowrap;
+	}
+</style>

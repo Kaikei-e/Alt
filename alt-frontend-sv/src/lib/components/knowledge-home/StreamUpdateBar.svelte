@@ -57,23 +57,19 @@ const indicatorPulse = $derived(isConnected && !isFallback);
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		padding: 0.5rem 1rem;
-		font-size: 0.875rem;
-		border: 1px solid var(--surface-border);
+		font-family: var(--font-body);
+		font-size: 0.8rem;
 	}
 
 	.update-bar--pending {
-		border-color: color-mix(in srgb, var(--alt-primary) 30%, transparent);
-		background: color-mix(in srgb, var(--alt-primary) 5%, transparent);
+		padding: 0.5rem 0.9rem;
+		border: 1px solid color-mix(in srgb, var(--alt-primary) 35%, transparent);
+		background: var(--action-surface);
 	}
 
-	.update-bar--fallback {
-		border-color: color-mix(in srgb, var(--alt-error) 30%, transparent);
-		background: color-mix(in srgb, var(--alt-error) 6%, var(--surface-bg));
-	}
-
+	.update-bar--fallback,
 	.update-bar--disconnected {
-		background: var(--surface-bg);
+		padding: 0.15rem 0;
 	}
 
 	.indicator {
@@ -93,7 +89,10 @@ const indicatorPulse = $derived(isConnected && !isFallback);
 		align-items: center;
 		justify-content: center;
 		gap: 0.5rem;
-		color: var(--alt-primary);
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--interactive-text);
 		background: transparent;
 		border: none;
 		cursor: pointer;
@@ -105,7 +104,7 @@ const indicatorPulse = $derived(isConnected && !isFallback);
 	}
 
 	.update-text {
-		font-family: var(--font-body);
+		font-style: italic;
 		color: var(--alt-slate);
 	}
 

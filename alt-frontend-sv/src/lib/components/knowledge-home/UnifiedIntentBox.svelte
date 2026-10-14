@@ -135,9 +135,8 @@ function handleKeydown(e: KeyboardEvent) {
 	.intent-box {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
-		background: var(--surface-bg);
-		padding: 0.75rem 1rem;
+		gap: 0.6rem;
+		padding: 0.25rem 0 0;
 	}
 
 	.intent-row {
@@ -156,43 +155,55 @@ function handleKeydown(e: KeyboardEvent) {
 		width: 100%;
 		border: 1px solid var(--surface-border);
 		background: var(--surface-bg);
-		padding: 0.625rem 1rem 0.625rem 2.25rem;
+		padding: 0.65rem 0.9rem 0.65rem 2.5rem;
 		font-family: var(--font-body);
-		font-size: 0.875rem;
+		font-size: 0.9rem;
 		color: var(--alt-charcoal);
 		transition: border-color 0.15s;
 	}
 
 	.intent-input::placeholder {
-		color: var(--alt-slate);
+		color: var(--alt-ash);
 	}
 
 	.intent-input:focus {
-		border-color: var(--alt-charcoal);
+		border-color: var(--alt-primary);
 		outline: none;
 	}
 
 	.intent-icon {
 		position: absolute;
-		left: 0.75rem;
+		left: 0.85rem;
 		top: 50%;
 		transform: translateY(-50%);
 		display: flex;
-		color: var(--alt-slate);
+		color: var(--alt-ash);
 	}
 
 	.intent-btn {
-		padding: 0.5rem 0.75rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		align-self: stretch;
+		padding: 0 0.95rem;
 		font-family: var(--font-body);
-		font-size: 0.875rem;
+		font-size: 0.85rem;
 		font-weight: 500;
-		border: 1px solid var(--surface-border);
-		background: transparent;
+		border: 1px solid var(--chip-border);
+		background: var(--action-surface);
+		color: var(--interactive-text);
 		cursor: pointer;
 		transition: background 0.15s, color 0.15s;
 	}
 
+	.intent-btn:hover {
+		background: var(--action-surface-hover);
+		color: var(--interactive-text-hover);
+	}
+
 	.intent-btn--clear {
+		background: transparent;
+		border-color: var(--surface-border);
 		color: var(--alt-slate);
 	}
 
@@ -201,46 +212,36 @@ function handleKeydown(e: KeyboardEvent) {
 		color: var(--alt-charcoal);
 	}
 
-	.intent-btn--ask {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		color: var(--interactive-text);
-	}
-
-	.intent-btn--ask:hover {
-		background: var(--surface-hover);
-		color: var(--interactive-text-hover);
-	}
-
 	/* ── Recent queries ── */
 	.recent-row {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.35rem;
 	}
 
 	.recent-label {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.64rem;
 		font-weight: 600;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.12em;
 		color: var(--alt-ash);
+		margin-right: 0.25rem;
 	}
 
 	.recent-chip {
-		border: 1px solid transparent;
-		background: var(--surface-hover);
-		padding: 0.25rem 0.75rem;
-		font-size: 0.75rem;
+		border: 1px solid var(--surface-border);
+		background: transparent;
+		padding: 0.15rem 0.6rem;
+		font-family: var(--font-body);
+		font-size: 0.78rem;
 		color: var(--alt-slate);
 		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
+		transition: border-color 0.15s, color 0.15s;
 	}
 
 	.recent-chip:hover {
-		background: var(--action-surface);
-		color: var(--alt-charcoal);
+		border-color: var(--interactive-text);
+		color: var(--interactive-text);
 	}
 </style>

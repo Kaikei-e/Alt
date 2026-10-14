@@ -37,7 +37,7 @@ function handleKeydown(e: KeyboardEvent) {
 }
 </script>
 
-<div class="px-4 py-3">
+<div class="px-4 pt-2 pb-3">
 	<div class="relative flex items-center gap-2">
 		<div class="relative flex-1">
 			<input
@@ -45,17 +45,17 @@ function handleKeydown(e: KeyboardEvent) {
 				bind:value={query}
 				onkeydown={handleKeydown}
 				placeholder="Search across articles, recaps, and tags"
-				class="w-full border border-[var(--surface-border)] bg-[var(--surface-2)] px-4 py-2.5 pl-9 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--alt-charcoal)] focus:outline-none transition-colors"
+				class="w-full border border-[var(--surface-border)] bg-[var(--surface-bg)] px-4 py-2.5 pl-9 font-[var(--font-body)] text-[0.9rem] text-[var(--alt-charcoal)] placeholder:text-[var(--alt-ash)] focus:border-[var(--alt-primary)] focus:outline-none transition-colors"
 				style="min-height: 44px;"
 			/>
 			<Search
-				class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-tertiary)]"
+				class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--alt-ash)]"
 			/>
 		</div>
 		<button
 			type="button"
 			onclick={handleAsk}
-			class="inline-flex items-center gap-1.5 border border-[var(--surface-border)] px-2.5 py-1.5 text-sm font-medium text-[var(--interactive-text)] transition-colors active:bg-[var(--surface-hover)]"
+			class="inline-flex items-center justify-center gap-1.5 border border-[var(--chip-border)] bg-[var(--action-surface)] px-3 font-[var(--font-body)] text-sm font-medium text-[var(--interactive-text)] transition-colors active:bg-[var(--action-surface-hover)]"
 			style="min-height: 44px;"
 			title="Ask Augur"
 			aria-label="Ask Augur"

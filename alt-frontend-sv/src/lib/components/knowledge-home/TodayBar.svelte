@@ -4,9 +4,7 @@ import {
 	AlertCircle,
 	CalendarRange,
 	Clock,
-	FileText,
 	Newspaper,
-	Sparkles,
 } from "@lucide/svelte";
 import type {
 	ServiceQuality,
@@ -92,19 +90,16 @@ const distinctTopTags = $derived.by(() => {
 		<div class="bar-figures">
 			<div class="figures-row">
 				<span class="figure">
-					<Sparkles class="h-3.5 w-3.5 figure-icon" />
 					<span class="figure-value">{digest.newArticles}</span>
 					<span class="figure-label">NEW</span>
 				</span>
 				<span class="figure">
-					<FileText class="h-3.5 w-3.5 figure-icon" />
 					<span class="figure-value">{digest.summarizedArticles}</span>
 					<span class="figure-label">SUMMARIZED</span>
 				</span>
 				{#if digest.unsummarizedArticles > 0}
 					<span class="figure">
-						<AlertCircle class="h-3.5 w-3.5 figure-icon" />
-						<span class="figure-value">{digest.unsummarizedArticles}</span>
+							<span class="figure-value">{digest.unsummarizedArticles}</span>
 						<span class="figure-label">PENDING</span>
 					</span>
 				{/if}
@@ -127,45 +122,46 @@ const distinctTopTags = $derived.by(() => {
 	</div>
 {/if}
 
+
 <style>
 	.bar {
 		display: flex;
 		flex-direction: column;
 		border-bottom: 1px solid var(--surface-border);
-		background: var(--surface-bg);
 	}
 
 	.bar--muted {
 		flex-direction: row;
 		align-items: center;
 		gap: 0.5rem;
-		padding: 0.75rem 1rem;
+		padding: 0.75rem 0;
 	}
 
 	.bar-message {
 		font-family: var(--font-body);
-		font-size: 0.875rem;
+		font-size: 0.85rem;
+		font-style: italic;
 		color: var(--alt-slate);
 	}
 
 	/* ── Row 1: Action shortcuts ── */
 	.bar-actions {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.5rem;
-		padding: 0.5rem 1rem;
-		border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 30%, transparent);
+		padding: 1rem 0 0.75rem;
 	}
 
 	.action-link {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.375rem;
+		gap: 0.45rem;
 		border: 1px solid var(--chip-border);
 		background: var(--action-surface);
-		padding: 0.5rem 0.75rem;
+		padding: 0.45rem 0.85rem;
 		font-family: var(--font-body);
-		font-size: 0.875rem;
+		font-size: 0.85rem;
 		font-weight: 500;
 		color: var(--interactive-text);
 		text-decoration: none;
@@ -178,8 +174,9 @@ const distinctTopTags = $derived.by(() => {
 	}
 
 	.action-link--disabled {
+		background: transparent;
 		border-color: var(--surface-border);
-		color: color-mix(in srgb, var(--alt-slate) 55%, transparent);
+		color: var(--alt-ash);
 		cursor: default;
 		pointer-events: none;
 	}
@@ -188,10 +185,11 @@ const distinctTopTags = $derived.by(() => {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-width: 1.25rem;
-		height: 1.25rem;
-		padding: 0 0.25rem;
-		font-size: 0.75rem;
+		min-width: 1.15rem;
+		height: 1.15rem;
+		padding: 0 0.3rem;
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
 		font-weight: 600;
 		background: var(--accent-emphasis-bg);
 		color: var(--accent-emphasis-text);
@@ -201,44 +199,46 @@ const distinctTopTags = $derived.by(() => {
 	.stale-indicator {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: 0.3rem;
 		margin-left: auto;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.64rem;
 		font-weight: 600;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.12em;
 		color: var(--alt-warning);
 	}
 
-	:global(.figure-icon) {
-		color: var(--alt-ash);
-	}
-
-	/* ── Row 2: Figures bar ── */
+	/* ── Row 2: Figures strip ── */
 	.bar-figures {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 1rem;
+		gap: 0.5rem 1rem;
+		padding: 0 0 0.85rem;
 	}
 
 	.figures-row {
 		display: flex;
-		align-items: center;
-		gap: 0.75rem;
+		align-items: baseline;
 		flex-wrap: wrap;
 	}
 
 	.figure {
 		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
+		align-items: baseline;
+		gap: 0.4rem;
+		padding: 0 1rem;
+		border-left: 1px solid var(--surface-border);
+	}
+
+	.figure:first-child {
+		padding-left: 0;
+		border-left: none;
 	}
 
 	.figure-value {
 		font-family: var(--font-mono);
-		font-size: 1.1rem;
+		font-size: 1rem;
 		font-weight: 600;
 		font-variant-numeric: tabular-nums;
 		color: var(--alt-charcoal);
@@ -246,24 +246,25 @@ const distinctTopTags = $derived.by(() => {
 
 	.figure-label {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.64rem;
 		font-weight: 600;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.12em;
 		color: var(--alt-ash);
 	}
 
 	.bar-theme {
 		font-family: var(--font-body);
-		font-size: 0.75rem;
+		font-size: 0.85rem;
+		font-style: italic;
 		color: var(--alt-slate);
 	}
 
 	.bar-tag {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		color: var(--chip-text);
 		border: 1px solid var(--chip-border);
 		background: var(--chip-bg);
-		padding: 0.125rem 0.5rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--chip-text);
+		padding: 0.08rem 0.5rem;
 	}
 </style>

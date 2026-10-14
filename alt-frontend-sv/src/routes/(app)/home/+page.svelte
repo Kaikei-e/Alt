@@ -457,7 +457,7 @@ onMount(async () => {
 		/>
 
 		{#if showBanner}
-			<div class="px-3 pt-2">
+			<div class="px-4 pt-2">
 				<DegradedModeBanner
 					serviceQuality={home.serviceQuality}
 					onDismiss={() => {
@@ -467,9 +467,11 @@ onMount(async () => {
 			</div>
 		{/if}
 
-		<TodayBar digest={home.digest} serviceQuality={home.serviceQuality} />
+		<div class="px-4">
+			<TodayBar digest={home.digest} serviceQuality={home.serviceQuality} />
+		</div>
 
-		<div class="px-3 pt-2">
+		<div class="px-4 pt-1">
 			<a
 				class="mobile-trail-link"
 				href="/knowledge/trail"
@@ -481,7 +483,7 @@ onMount(async () => {
 
 		<GlobalSearchEntry onAsk={handleAskFromHome} />
 
-		<div class="px-3 pt-2">
+		<div class="px-4 pt-1">
 			<LensSelector
 				lenses={lens.lenses}
 				activeLensId={lens.activeLensId}
@@ -502,7 +504,7 @@ onMount(async () => {
 			onOpen={handleRecallOpen}
 		/>
 
-		<div class="px-3 pt-2">
+		<div class="px-4 pt-3">
 			<StreamUpdateBar
 				pendingCount={stream.pendingCount}
 				isConnected={stream.isConnected}
@@ -511,7 +513,7 @@ onMount(async () => {
 			/>
 		</div>
 
-		<div class="p-3">
+		<div class="px-4 pt-3 pb-6">
 			<KnowledgeStream
 				items={visibleItems}
 				loading={home.loading}
@@ -612,7 +614,7 @@ onMount(async () => {
 
 	/* ── Editorial header ── */
 	.desk-header {
-		padding: 1.5rem 0 0;
+		padding: 1.75rem 0 0;
 	}
 
 	.desk-date {
@@ -620,55 +622,60 @@ onMount(async () => {
 		font-size: 0.7rem;
 		color: var(--alt-ash);
 		letter-spacing: 0.06em;
+		text-transform: uppercase;
 	}
 
 	.desk-title {
 		font-family: var(--font-display);
-		font-size: 1.6rem;
+		font-size: 1.85rem;
 		font-weight: 800;
 		color: var(--alt-charcoal);
 		letter-spacing: -0.01em;
-		margin: 0.15rem 0 0;
-		line-height: 1.2;
+		margin: 0.2rem 0 0;
+		line-height: 1.15;
 	}
 
 	.desk-subtitle {
 		font-family: var(--font-body);
-		font-size: 0.8rem;
+		font-size: 0.85rem;
+		font-style: italic;
 		color: var(--alt-ash);
-		margin-top: 0.2rem;
+		margin-top: 0.25rem;
 	}
 
 	.desk-trail-link,
 	.mobile-trail-link {
 		display: inline-block;
-		margin-top: 0.45rem;
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		letter-spacing: 0.04em;
-		color: var(--interactive-text, #2f4f4f);
+		margin-top: 0.5rem;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-weight: 500;
+		color: var(--interactive-text);
 		text-decoration: none;
 	}
 	.desk-trail-link:hover,
 	.mobile-trail-link:hover {
+		color: var(--interactive-text-hover);
 		text-decoration: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 3px;
 	}
 
 	.desk-rule {
 		height: 1px;
 		background: var(--surface-border);
-		margin-top: 0.75rem;
+		margin-top: 0.9rem;
 	}
 
 	/* ── Two-column layout ── */
 	.desk-columns {
 		display: flex;
-		gap: 2rem;
-		margin-top: 1.5rem;
+		gap: 2.5rem;
+		margin-top: 1.75rem;
 	}
 
 	.desk-rail {
-		width: 20rem;
+		width: 19rem;
 		flex-shrink: 0;
 	}
 

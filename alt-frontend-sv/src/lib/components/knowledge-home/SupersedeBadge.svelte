@@ -32,7 +32,7 @@ const Chevron = $derived(expanded ? ChevronUp : ChevronDown);
 
 <button
 	type="button"
-	class={`inline-flex items-center gap-1 px-1.5 py-0.5 text-xs border cursor-pointer transition-colors ${display.colorClass}`}
+	class={`badge badge--toggle ${display.colorClass}`}
 	title={`Updated at ${info.supersededAt}`}
 	onclick={onToggle}
 >
@@ -42,3 +42,30 @@ const Chevron = $derived(expanded ? ChevronUp : ChevronDown);
 		<Chevron class="h-3 w-3 opacity-60" />
 	{/if}
 </button>
+
+<style>
+	.badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.14rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		line-height: 1.4;
+		text-transform: uppercase;
+		border-width: 1px;
+		border-style: solid;
+		white-space: nowrap;
+	}
+
+	.badge--toggle {
+		cursor: pointer;
+		transition: border-color 0.15s;
+	}
+
+	.badge--toggle:hover {
+		border-color: currentColor;
+	}
+</style>

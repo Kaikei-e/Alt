@@ -27,21 +27,21 @@ const hasMore = $derived(candidates.length > 2);
 </script>
 
 {#if unavailable}
-	<div class="mx-4 mt-3 border border-[var(--recall-border)] bg-[var(--recall-bg)] px-4 py-3">
-		<p class="text-sm text-[var(--text-tertiary)]">Recall is temporarily unavailable.</p>
+	<div class="mx-4 mt-4 border-t-2 border-t-[var(--alt-charcoal)] pt-3">
+		<p class="text-sm italic text-[var(--alt-ash)]">Recall is temporarily unavailable.</p>
 	</div>
 {:else if candidates.length > 0}
-	<div class="mx-4 mt-3 border border-[var(--recall-border)] border-t-2 border-t-[var(--text-primary)] bg-[var(--recall-bg)]">
+	<div class="mx-4 mt-4 border-t-2 border-t-[var(--alt-charcoal)]">
 		<!-- Section header -->
-		<div class="flex items-center gap-1.5 px-4 pt-3 pb-2">
-			<Brain class="h-3.5 w-3.5 text-[var(--text-secondary)]" />
-			<span class="font-[var(--font-display)] text-sm italic text-[var(--text-secondary)]">
+		<div class="recall-label">
+			<Brain class="h-3.5 w-3.5" />
+			<span>
 				Resume where you left off
 			</span>
 		</div>
 
 		<!-- Recall items -->
-		<div class="px-3 pb-3 flex flex-col gap-2">
+		<div class="flex flex-col">
 			{#each displayCandidates as candidate (candidate.itemKey)}
 				<RecallCandidateCard
 					{candidate}
@@ -54,10 +54,10 @@ const hasMore = $derived(candidates.length > 2);
 
 		<!-- See all link -->
 		{#if hasMore}
-			<div class="border-t border-[var(--divider-rule)] px-4 py-2.5">
+			<div class="py-2.5">
 				<button
 					type="button"
-					class="text-xs font-medium text-[var(--interactive-text)] hover:underline"
+					class="recall-more"
 					onclick={() => { showAll = !showAll; }}
 				>
 					{showAll ? "Show fewer" : `See all recalls (${candidates.length})`}
@@ -66,3 +66,31 @@ const hasMore = $derived(candidates.length > 2);
 		{/if}
 	</div>
 {/if}
+
+<style>
+	.recall-label {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.6rem 0;
+		border-bottom: 1px solid var(--surface-border);
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--alt-slate);
+	}
+
+	.recall-more {
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		font-weight: 500;
+		color: var(--interactive-text);
+	}
+
+	.recall-more:hover {
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+</style>

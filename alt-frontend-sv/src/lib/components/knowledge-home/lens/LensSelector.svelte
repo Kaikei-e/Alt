@@ -118,66 +118,85 @@ const activeSummary = $derived.by(() => {
 	.lens-bar {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.6rem;
 	}
 
 	.lens-pills {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.4rem;
 		flex-wrap: wrap;
-	}
-
-	.lens-pill-group {
-		display: inline-flex;
-		align-items: stretch;
 	}
 
 	.lens-pill {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.375rem;
-		padding: 0.375rem 0.75rem;
+		gap: 0.35rem;
+		padding: 0.35rem 0.75rem;
 		font-family: var(--font-body);
-		font-size: 0.875rem;
+		font-size: 0.82rem;
 		font-weight: 500;
 		border: 1px solid var(--surface-border);
 		background: transparent;
 		color: var(--alt-slate);
 		cursor: pointer;
-		transition: border-color 0.15s, color 0.15s;
+		transition: border-color 0.15s, color 0.15s, background 0.15s;
 	}
 
 	.lens-pill:hover {
-		border-color: var(--alt-slate);
+		border-color: var(--alt-charcoal);
+		color: var(--alt-charcoal);
 	}
 
-	.lens-pill--active {
+	.lens-pill--active,
+	.lens-pill--active:hover {
 		border-color: var(--alt-primary);
+		background: var(--action-surface);
 		color: var(--alt-primary);
-		background: color-mix(in srgb, var(--alt-primary) 15%, transparent);
+		font-weight: 600;
+	}
+
+	/* A saved lens and its delete control read as one segmented chip. */
+	.lens-pill-group {
+		display: inline-flex;
+		align-items: stretch;
+		border: 1px solid var(--surface-border);
+		transition: border-color 0.15s;
+	}
+
+	.lens-pill-group:hover {
+		border-color: var(--alt-charcoal);
+	}
+
+	.lens-pill-group .lens-pill {
+		border: none;
+	}
+
+	.lens-pill-group--active,
+	.lens-pill-group--active:hover {
+		border-color: var(--alt-primary);
+		background: var(--action-surface);
 	}
 
 	.lens-pill-delete {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		padding: 0 0.4rem;
-		border: 1px solid var(--surface-border);
-		border-left: none;
+		padding: 0 0.45rem;
+		border: none;
+		border-left: 1px solid var(--surface-border);
 		background: transparent;
 		color: var(--alt-ash);
 		cursor: pointer;
-		transition: color 0.15s, border-color 0.15s;
+		transition: color 0.15s;
 	}
 
 	.lens-pill-group--active .lens-pill-delete {
-		border-color: var(--alt-primary);
-		background: color-mix(in srgb, var(--alt-primary) 15%, transparent);
+		border-left-color: color-mix(in srgb, var(--alt-primary) 35%, transparent);
 	}
 
 	.lens-pill-delete:hover {
-		color: var(--alt-error, #b91c1c);
+		color: var(--alt-error);
 	}
 
 	.lens-pill--create {
@@ -186,8 +205,8 @@ const activeSummary = $derived.by(() => {
 	}
 
 	.lens-pill--create:hover {
-		color: var(--alt-slate);
-		border-color: var(--alt-slate);
+		color: var(--interactive-text);
+		border-color: var(--interactive-text);
 	}
 
 	.lens-summary {
@@ -195,21 +214,21 @@ const activeSummary = $derived.by(() => {
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
-		border: 1px solid var(--surface-border);
+		border-left: 3px solid var(--alt-primary);
 		background: var(--surface-2);
-		padding: 0.75rem 1rem;
+		padding: 0.6rem 0.9rem;
 	}
 
 	.lens-summary-name {
 		font-family: var(--font-body);
-		font-size: 0.875rem;
-		font-weight: 500;
+		font-size: 0.85rem;
+		font-weight: 600;
 		color: var(--alt-charcoal);
 	}
 
 	.lens-summary-detail {
 		font-family: var(--font-body);
-		font-size: 0.75rem;
+		font-size: 0.78rem;
 		color: var(--alt-slate);
 	}
 
@@ -217,22 +236,22 @@ const activeSummary = $derived.by(() => {
 	.lens-delete {
 		flex-shrink: 0;
 		border: 1px solid var(--surface-border);
-		padding: 0.25rem 0.75rem;
+		padding: 0.25rem 0.7rem;
 		font-family: var(--font-body);
-		font-size: 0.75rem;
-		color: var(--alt-charcoal);
+		font-size: 0.78rem;
+		color: var(--alt-slate);
 		background: transparent;
 		cursor: pointer;
 		transition: border-color 0.15s, color 0.15s;
 	}
 
 	.lens-clear:hover {
-		border-color: var(--alt-primary);
-		color: var(--alt-primary);
+		border-color: var(--alt-charcoal);
+		color: var(--alt-charcoal);
 	}
 
 	.lens-delete:hover {
-		border-color: var(--alt-error, #b91c1c);
-		color: var(--alt-error, #b91c1c);
+		border-color: var(--alt-error);
+		color: var(--alt-error);
 	}
 </style>
