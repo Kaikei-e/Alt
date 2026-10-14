@@ -6,7 +6,7 @@ import (
 	"alt/utils/logger"
 	"bytes"
 	"context"
-	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -130,12 +130,13 @@ func TestRegisterFavoriteFeedUsecase_PanicsWhenHomeOpenUnwired(t *testing.T) {
 
 	userID := uuid.New()
 	noopOpen := func(_ context.Context, _, _ uuid.UUID, _ string) error { return nil }
+	wantPanic := "register_favorite_feed_usecase: home-open hook is not wired (use WithHomeOpen)"
 
 	t.Run("panics when WithHomeOpen was not called", func(t *testing.T) {
 		mockGateway := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
 		mockGateway.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/post-1", userID).Return(nil)
 		u := NewRegisterFavoriteFeedUsecase(mockGateway)
-		assert.Panics(t, func() {
+		assert.PanicsWithValue(t, wantPanic, func() {
 			_ = u.Execute(authedContext(userID), "https://example.com/post-1")
 		})
 	})
@@ -144,7 +145,7 @@ func TestRegisterFavoriteFeedUsecase_PanicsWhenHomeOpenUnwired(t *testing.T) {
 		mockGateway := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
 		mockGateway.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/post-1", userID).Return(nil)
 		u := NewRegisterFavoriteFeedUsecase(mockGateway).WithHomeOpen(nil, noopOpen)
-		assert.Panics(t, func() {
+		assert.PanicsWithValue(t, wantPanic, func() {
 			_ = u.Execute(authedContext(userID), "https://example.com/post-1")
 		})
 	})
@@ -153,7 +154,7 @@ func TestRegisterFavoriteFeedUsecase_PanicsWhenHomeOpenUnwired(t *testing.T) {
 		mockGateway := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
 		mockGateway.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/post-1", userID).Return(nil)
 		u := NewRegisterFavoriteFeedUsecase(mockGateway).WithHomeOpen(&stubArticleLookup{}, nil)
-		assert.Panics(t, func() {
+		assert.PanicsWithValue(t, wantPanic, func() {
 			_ = u.Execute(authedContext(userID), "https://example.com/post-1")
 		})
 	})
@@ -165,22 +166,46 @@ func TestRegisterFavoriteFeedUsecase_HomeOpenLookupErrorLogging(t *testing.T) {
 
 	userID := uuid.New()
 	noopOpen := func(_ context.Context, _, _ uuid.UUID, _ string) error { return nil }
+	targetURL := "https://example.com/post-1"
 
-	t.Run("logs warn when FetchArticleByURL returns an error and still succeeds", func(t *testing.T) {
+	t.Run("logs warn without URL when FetchArticleByURL returns an error and still succeeds", func(t *testing.T) {
 		var buf bytes.Buffer
 		origLogger := logger.Logger
 		logger.Logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		t.Cleanup(func() { logger.Logger = origLogger })
 
 		mockGateway := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
-		mockGateway.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/post-1", userID).Return(nil)
+		mockGateway.EXPECT().RegisterFavoriteFeed(gomock.Any(), targetURL, userID).Return(nil)
 		u := NewRegisterFavoriteFeedUsecase(mockGateway).
-			WithHomeOpen(&stubArticleLookup{err: errors.New("datahub lookup failed")}, noopOpen)
+			WithHomeOpen(&stubArticleLookup{err: fmt.Errorf("get article by url %s: datahub lookup failed", targetURL)}, noopOpen)
 
-		err := u.Execute(authedContext(userID), "https://example.com/post-1")
+		err := u.Execute(authedContext(userID), targetURL)
 		require.NoError(t, err, "sync failure must stay best-effort")
 		assert.Contains(t, buf.String(), `"level":"WARN"`)
-		assert.Contains(t, buf.String(), "datahub lookup failed")
+		assert.Contains(t, buf.String(), `"error_kind":"article_lookup_failed"`)
+		assert.NotContains(t, buf.String(), targetURL)
+		assert.NotContains(t, buf.String(), "/post-1")
+	})
+
+	t.Run("logs warn without URL when openFn returns an error", func(t *testing.T) {
+		var buf bytes.Buffer
+		origLogger := logger.Logger
+		logger.Logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		t.Cleanup(func() { logger.Logger = origLogger })
+
+		mockGateway := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
+		mockGateway.EXPECT().RegisterFavoriteFeed(gomock.Any(), targetURL, userID).Return(nil)
+		u := NewRegisterFavoriteFeedUsecase(mockGateway).
+			WithHomeOpen(&stubArticleLookup{article: &domain.ArticleContent{ID: "art-fav-1"}}, func(_ context.Context, _, _ uuid.UUID, _ string) error {
+				return fmt.Errorf("open %s: rpc failed", targetURL)
+			})
+
+		err := u.Execute(authedContext(userID), targetURL)
+		require.NoError(t, err, "sync failure must stay best-effort")
+		assert.Contains(t, buf.String(), `"level":"WARN"`)
+		assert.Contains(t, buf.String(), `"article_id":"art-fav-1"`)
+		assert.NotContains(t, buf.String(), targetURL)
+		assert.NotContains(t, buf.String(), "/post-1")
 	})
 
 	t.Run("does not log warn when FetchArticleByURL finds no archived article", func(t *testing.T) {
@@ -190,11 +215,11 @@ func TestRegisterFavoriteFeedUsecase_HomeOpenLookupErrorLogging(t *testing.T) {
 		t.Cleanup(func() { logger.Logger = origLogger })
 
 		mockGateway := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
-		mockGateway.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/post-1", userID).Return(nil)
+		mockGateway.EXPECT().RegisterFavoriteFeed(gomock.Any(), targetURL, userID).Return(nil)
 		u := NewRegisterFavoriteFeedUsecase(mockGateway).
 			WithHomeOpen(&stubArticleLookup{article: nil, err: nil}, noopOpen)
 
-		err := u.Execute(authedContext(userID), "https://example.com/post-1")
+		err := u.Execute(authedContext(userID), targetURL)
 		require.NoError(t, err)
 		assert.Empty(t, buf.String())
 	})

@@ -4,8 +4,11 @@ import (
 	"alt/domain"
 	"alt/orchestrator/port/knowledge_home_port"
 	"alt/utils/logger"
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/url"
 	"testing"
 	"time"
@@ -602,7 +605,7 @@ func TestTrackHomeActionUsecase_PanicsWhenArticleStatusPortUnwired(t *testing.T)
 			urlPort := &flakyArticleURLLookupPort{succeedURL: "https://example.com/post-1"}
 			uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort)
 
-			assert.Panics(t, func() {
+			assert.PanicsWithValue(t, "TrackHomeActionUsecase: articleStatusPort is not wired (use WithArticleStatusPort)", func() {
 				_ = uc.Execute(context.Background(), userID, tenantID, action, itemKey, "")
 			})
 		})
@@ -689,6 +692,18 @@ func TestTrackHomeActionUsecase_SyncsFeedReadStatus(t *testing.T) {
 			wantMarked:   false,
 		},
 		{
+			name:         "open with malformed metadata JSON does not mark read",
+			action:       "open",
+			metadataJSON: `{malformed`,
+			wantMarked:   false,
+		},
+		{
+			name:         "open with non-string source does not mark read",
+			action:       "open",
+			metadataJSON: `{"source":123}`,
+			wantMarked:   false,
+		},
+		{
 			name:         "dismiss with empty metadata marks read",
 			action:       "dismiss",
 			metadataJSON: "",
@@ -723,4 +738,30 @@ func TestTrackHomeActionUsecase_SyncsFeedReadStatus(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTrackHomeActionUsecase_SyncErrorLogExcludesURL(t *testing.T) {
+	var buf bytes.Buffer
+	prev := logger.Logger
+	logger.Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	t.Cleanup(func() { logger.Logger = prev })
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	itemKey := "article:" + articleID.String()
+	rawURL := "https://example.com/secret-post?token=abc"
+
+	statusPort := &mockArticleStatusPort{
+		err: fmt.Errorf("mark article as read %s: rpc failed", rawURL),
+	}
+	urlPort := &flakyArticleURLLookupPort{succeedURL: rawURL}
+	uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort).
+		WithArticleStatusPort(statusPort)
+
+	require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "open", itemKey, ""))
+	assert.Contains(t, buf.String(), "WARN")
+	assert.Contains(t, buf.String(), itemKey)
+	assert.NotContains(t, buf.String(), rawURL)
+	assert.NotContains(t, buf.String(), "secret-post")
 }

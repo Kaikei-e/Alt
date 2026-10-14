@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"testing"
@@ -152,24 +153,25 @@ func TestArticlesReadingStatusUsecase_PanicsWhenHomeDismissUnwired(t *testing.T)
 	})
 	targetURL := url.URL{Scheme: "https", Host: "example.com", Path: "/post-123"}
 	noopDismiss := func(_ context.Context, _, _ uuid.UUID, _ string) error { return nil }
+	wantPanic := "reading_status: home-dismiss hook is not wired (use WithHomeDismiss)"
 
 	t.Run("panics when WithHomeDismiss was not called", func(t *testing.T) {
 		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{})
-		assert.Panics(t, func() {
+		assert.PanicsWithValue(t, wantPanic, func() {
 			_ = u.Execute(ctx, targetURL)
 		})
 	})
 
 	t.Run("panics when articleLookup is nil", func(t *testing.T) {
 		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{}).WithHomeDismiss(nil, noopDismiss)
-		assert.Panics(t, func() {
+		assert.PanicsWithValue(t, wantPanic, func() {
 			_ = u.Execute(ctx, targetURL)
 		})
 	})
 
 	t.Run("panics when dismissFn is nil", func(t *testing.T) {
 		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{}).WithHomeDismiss(&stubArticleLookup{}, nil)
-		assert.Panics(t, func() {
+		assert.PanicsWithValue(t, wantPanic, func() {
 			_ = u.Execute(ctx, targetURL)
 		})
 	})
@@ -193,7 +195,7 @@ func TestFeedsReadingStatusUsecase_PanicsWhenHomeDismissUnwired(t *testing.T) {
 		mockGw := mocks.NewMockUpdateFeedStatusPort(ctrl)
 		mockGw.EXPECT().UpdateFeedStatus(ctx, targetURL, userID).Return(nil)
 		u := NewFeedsReadingStatusUsecase(mockGw)
-		assert.Panics(t, func() {
+		assert.PanicsWithValue(t, "reading_status: home-dismiss hook is not wired (use WithHomeDismiss)", func() {
 			_ = u.Execute(ctx, targetURL)
 		})
 	})
@@ -210,19 +212,40 @@ func TestReadingStatus_HomeDismissLookupErrorLogging(t *testing.T) {
 	targetURL := url.URL{Scheme: "https", Host: "example.com", Path: "/post-123"}
 	noopDismiss := func(_ context.Context, _, _ uuid.UUID, _ string) error { return nil }
 
-	t.Run("logs warn when FetchArticleByURL returns an error and still succeeds", func(t *testing.T) {
+	t.Run("logs warn without URL when FetchArticleByURL returns an error and still succeeds", func(t *testing.T) {
 		var buf bytes.Buffer
 		origLogger := logger.Logger
 		logger.Logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		t.Cleanup(func() { logger.Logger = origLogger })
 
 		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{}).
-			WithHomeDismiss(&stubArticleLookup{err: errors.New("datahub connection refused")}, noopDismiss)
+			WithHomeDismiss(&stubArticleLookup{err: fmt.Errorf("get article by url %s: datahub connection refused", targetURL.String())}, noopDismiss)
 
 		err := u.Execute(ctx, targetURL)
 		require.NoError(t, err, "sync failure must stay best-effort")
 		assert.Contains(t, buf.String(), `"level":"WARN"`)
-		assert.Contains(t, buf.String(), "datahub connection refused")
+		assert.Contains(t, buf.String(), `"error_kind":"article_lookup_failed"`)
+		assert.NotContains(t, buf.String(), targetURL.String())
+		assert.NotContains(t, buf.String(), "/post-123")
+	})
+
+	t.Run("logs warn without URL when dismissFn returns an error", func(t *testing.T) {
+		var buf bytes.Buffer
+		origLogger := logger.Logger
+		logger.Logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		t.Cleanup(func() { logger.Logger = origLogger })
+
+		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{}).
+			WithHomeDismiss(&stubArticleLookup{article: &domain.ArticleContent{ID: "art-123"}}, func(_ context.Context, _, _ uuid.UUID, _ string) error {
+				return fmt.Errorf("dismiss %s: rpc failed", targetURL.String())
+			})
+
+		err := u.Execute(ctx, targetURL)
+		require.NoError(t, err, "sync failure must stay best-effort")
+		assert.Contains(t, buf.String(), `"level":"WARN"`)
+		assert.Contains(t, buf.String(), `"article_id":"art-123"`)
+		assert.NotContains(t, buf.String(), targetURL.String())
+		assert.NotContains(t, buf.String(), "/post-123")
 	})
 
 	t.Run("does not log warn when FetchArticleByURL finds no archived article", func(t *testing.T) {
