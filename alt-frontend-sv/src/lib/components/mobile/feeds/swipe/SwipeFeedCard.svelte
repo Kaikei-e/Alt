@@ -14,6 +14,7 @@ import {
 	getFeedContentOnTheFlyClient,
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
+	trackHomeActionClient,
 } from "#lib/api/client/index.js";
 import {
 	createClientTransport,
@@ -75,6 +76,8 @@ let isSummarizing = $state(false);
 
 let isContentExpanded = $state(false);
 let fullContent = $state<string | null>(null);
+let resolvedArticleId = $state<string | null>(feed.articleId ?? null);
+let lastTrackedOpenArticleId: string | null = null;
 // Three honest states, not two booleans. `pending` / `retrying` are explicitly
 // not `failed`: the background fetch used to swallow its rejection entirely
 // (console.error and nothing else), so a reader looking at the RSS description
@@ -199,8 +202,11 @@ onMount(() => {
 		contentPhase = "ready";
 		// Also check for cached articleId and notify parent
 		const cachedArticleId = getCachedArticleId?.(feed.normalizedUrl);
-		if (cachedArticleId && onArticleIdResolved) {
-			onArticleIdResolved(feed.link, cachedArticleId);
+		if (cachedArticleId) {
+			resolvedArticleId = cachedArticleId;
+			if (onArticleIdResolved) {
+				onArticleIdResolved(feed.link, cachedArticleId);
+			}
 		}
 	} else if (!fullContent) {
 		// Background fetch. It goes through the same loader as every tap, so a
@@ -218,6 +224,23 @@ onMount(() => {
 		if (summaryRetryTimer) clearTimeout(summaryRetryTimer);
 		summaryAbortController?.abort();
 	};
+});
+
+// Record Knowledge Trail "open" footprint ONLY when the reader explicitly
+// expands the article panel on a swipe card (never on background prefetch).
+$effect(() => {
+	if (
+		isContentExpanded &&
+		resolvedArticleId &&
+		resolvedArticleId !== lastTrackedOpenArticleId
+	) {
+		lastTrackedOpenArticleId = resolvedArticleId;
+		void trackHomeActionClient(
+			"open",
+			`article:${resolvedArticleId}`,
+			JSON.stringify({ source: "swipe_card_expand" }),
+		);
+	}
 });
 
 // Set up swipe event listeners reactively
@@ -322,8 +345,11 @@ function applyBody(
 	fullContent = body.content;
 	contentPhase = "ready";
 	contentError = null;
-	if (body.articleId && onArticleIdResolved) {
-		onArticleIdResolved(feed.link, body.articleId);
+	if (body.articleId) {
+		resolvedArticleId = body.articleId;
+		if (onArticleIdResolved) {
+			onArticleIdResolved(feed.link, body.articleId);
+		}
 	}
 	return true;
 }

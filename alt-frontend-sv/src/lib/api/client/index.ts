@@ -17,6 +17,7 @@ export {
 	removeFavoriteFeedClient,
 	type SummarizeArticleResponse,
 	summarizeArticleClient,
+	trackHomeActionClient,
 } from "./articles";
 // 共通のAPI呼び出しロジック
 export { callClientAPI } from "./core";

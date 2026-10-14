@@ -243,3 +243,5 @@ export async function removeFavoriteFeedClient(
 		message: response.message,
 	};
 }
+
+export { trackHomeActionClient } from "./knowledge_home";

@@ -12,6 +12,7 @@ import { MediaQuery } from "svelte/reactivity";
 import {
 	getArticleSourceURLClient,
 	getFeedContentOnTheFlyClient,
+	trackHomeActionClient,
 } from "#lib/api/client/articles.js";
 import ArticleEndBranches from "#lib/components/knowledge-trail/ArticleEndBranches.svelte";
 import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
@@ -67,20 +68,30 @@ useTrailOutcome(
 );
 
 // Patch-exit branches (D26/D28): the article read-end's main branch stage —
-// at most two proposals anchored on this article. Pull-only via onMount
-// (never an $effect re-fetch, the PM-2026-039/PM-2026-045 lesson), following
-// the trail page's own onMount + browser-guard pattern.
+// at most two proposals anchored on this article. Reloaded whenever `articleId`
+// changes (e.g., when walking a branch from one `/articles/[id]` to another),
+// guarded by a plain latch so it never loops.
 const endBranches = useArticleEndBranches();
 
-onMount(() => {
-	if (browser && articleId) {
-		void endBranches.load(`article:${articleId}`);
-	}
-});
-
-// A plain latch rather than $state: it is read inside the effect that writes
-// it, and a reactive one would re-run the effect on its own write.
+// Plain latches rather than $state: read inside the effects that write them,
+// so a reactive latch would re-run the effect on its own write.
 let resolveRequestedFor: string | null = null;
+let lastLoadedBranchArticleId: string | null = null;
+
+$effect(() => {
+	if (!browser || !articleId) return;
+	if (lastLoadedBranchArticleId === articleId) return;
+	lastLoadedBranchArticleId = articleId;
+	resolvedUrl = null;
+	resolvedTitle = null;
+	resolveRequestedFor = null;
+	void endBranches.load(`article:${articleId}`);
+	void trackHomeActionClient(
+		"open",
+		`article:${articleId}`,
+		JSON.stringify({ source: "article_page" }),
+	);
+});
 
 $effect(() => {
 	// Either half being absent is reason enough to resolve — a Home card with a

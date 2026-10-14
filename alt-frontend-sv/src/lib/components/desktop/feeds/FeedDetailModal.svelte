@@ -2,7 +2,10 @@
 import { ChevronLeft, ChevronRight, X } from "@lucide/svelte";
 import { Dialog as DialogPrimitive } from "bits-ui";
 import { onDestroy, tick } from "svelte";
-import { getFeedContentOnTheFlyClient } from "#lib/api/client/articles.js";
+import {
+	getFeedContentOnTheFlyClient,
+	trackHomeActionClient,
+} from "#lib/api/client/articles.js";
 import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
 import {
 	createClientTransport,
@@ -77,6 +80,7 @@ let contentError = $state<string | null>(null);
 // The one automatic re-attempt allowed per failure.
 let foregroundRetrySpent = false;
 let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let lastTrackedOpenArticleId: string | null = null;
 
 // AI summary state
 let isSummarizing = $state(false);
@@ -358,6 +362,14 @@ function applyResult(
 	articleID = result.articleID;
 	contentError = null;
 	contentPhase = "ready";
+	if (result.articleID && result.articleID !== lastTrackedOpenArticleId) {
+		lastTrackedOpenArticleId = result.articleID;
+		void trackHomeActionClient(
+			"open",
+			`article:${result.articleID}`,
+			JSON.stringify({ source: "feed_detail_modal" }),
+		);
+	}
 }
 
 function isAbortReason(err: unknown): boolean {

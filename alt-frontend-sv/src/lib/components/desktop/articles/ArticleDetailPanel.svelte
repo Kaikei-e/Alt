@@ -11,6 +11,7 @@ import { onDestroy } from "svelte";
 import {
 	type FeedContentOnTheFlyResponse,
 	getFeedContentOnTheFlyClient,
+	trackHomeActionClient,
 } from "#lib/api/client/articles.js";
 import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
 import type { TagTrailArticle } from "#lib/connect/index.js";
@@ -43,6 +44,7 @@ let fetchAbortController: AbortController | null = null;
 // The one automatic re-attempt allowed per failure.
 let foregroundRetrySpent = false;
 let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let lastTrackedOpenArticleId: string | null = null;
 
 const summarizer = useSummarize();
 
@@ -78,6 +80,14 @@ $effect(() => {
 		foregroundRetrySpent = false;
 		if (contentRetryTimer) clearTimeout(contentRetryTimer);
 		summarizer.reset();
+		if (article.id && article.id !== lastTrackedOpenArticleId) {
+			lastTrackedOpenArticleId = article.id;
+			void trackHomeActionClient(
+				"open",
+				`article:${article.id}`,
+				JSON.stringify({ source: "article_detail_panel" }),
+			);
+		}
 		void fetchContent();
 	}
 });
@@ -108,6 +118,15 @@ function applyResponse(
 	fetchedResponse = response;
 	contentError = null;
 	contentPhase = "ready";
+	const resolvedId = response.article_id || article.id;
+	if (resolvedId && resolvedId !== lastTrackedOpenArticleId) {
+		lastTrackedOpenArticleId = resolvedId;
+		void trackHomeActionClient(
+			"open",
+			`article:${resolvedId}`,
+			JSON.stringify({ source: "article_detail_panel" }),
+		);
+	}
 }
 
 /** One request. Kept separate so the re-attempt reuses it verbatim. */

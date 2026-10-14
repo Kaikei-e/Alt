@@ -8,6 +8,7 @@ import {
 	getFeedContentOnTheFlyClient,
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
+	trackHomeActionClient,
 } from "#lib/api/client/index.js";
 import * as Sheet from "#lib/components/ui/sheet/index.js";
 import {
@@ -184,6 +185,23 @@ $effect(() => {
 // change came from the parent (via bind:open) or from internal handlers.
 $effect(() => {
 	onOpenChange?.(open);
+});
+
+let lastTrackedOpenArticleId: string | null = null;
+$effect(() => {
+	if (!browser || !open) return;
+	const resolvedId =
+		feedDetails?.article_id ||
+		articleSummary?.matched_articles?.[0]?.source_id ||
+		null;
+	if (resolvedId && resolvedId !== lastTrackedOpenArticleId) {
+		lastTrackedOpenArticleId = resolvedId;
+		void trackHomeActionClient(
+			"open",
+			`article:${resolvedId}`,
+			JSON.stringify({ source: "mobile_feed_details" }),
+		);
+	}
 });
 
 // Handle escape key to close modal
