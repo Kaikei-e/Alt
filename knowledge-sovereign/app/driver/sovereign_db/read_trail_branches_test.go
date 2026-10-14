@@ -4,12 +4,55 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUpsertTrailBranch_FirstWriteWins(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	createdAt := time.Date(2026, time.October, 10, 12, 0, 0, 0, time.UTC)
+	branch := TrailBranch{
+		BranchKey:     "cluster:" + userID.String() + ":article:target",
+		AnchorItemKey: "article:anchor-1",
+		RelationKind:  "cluster",
+		Why:           "Because you read Anchor 1 — joins rust",
+		EvidenceRefs:  []TrailEvidenceRef{{RefID: "rust", Label: "rust", Kind: "tag"}},
+		Confidence:    "plausible",
+		TargetItemKey: "article:target",
+		TargetTitle:   "Target Title",
+	}
+
+	err := repo.UpsertTrailBranch(context.Background(), userID, tenantID, branch, createdAt, 2)
+	require.NoError(t, err)
+	require.Len(t, mock.execCalls, 1)
+
+	call := mock.execCalls[0]
+	assert.Contains(t, call.SQL, "INSERT INTO knowledge_trail_branches")
+	assert.Contains(t, call.SQL, "ON CONFLICT (user_id, branch_key) DO NOTHING",
+		"branch_proposed fold must be first-write-wins so duplicate proposals do not overwrite anchor, why, or created_at")
+	assert.NotContains(t, call.SQL, "DO UPDATE",
+		"duplicate proposals must never overwrite existing proposal-owned columns")
+	require.Len(t, call.Args, 12)
+	assert.Equal(t, userID, call.Args[0])
+	assert.Equal(t, tenantID, call.Args[1])
+	assert.Equal(t, branch.BranchKey, call.Args[2])
+	assert.Equal(t, branch.AnchorItemKey, call.Args[3])
+	assert.Equal(t, branch.RelationKind, call.Args[4])
+	assert.Equal(t, branch.Why, call.Args[5])
+	assert.Equal(t, branch.Confidence, call.Args[7])
+	assert.Equal(t, branch.TargetItemKey, call.Args[8])
+	assert.Equal(t, branch.TargetTitle, call.Args[9])
+	assert.Equal(t, createdAt, call.Args[10])
+	assert.Equal(t, 2, call.Args[11])
+}
 
 // TestGetOpenTrailBranchesForAnchor_FiltersByAnchorAndLimits pins the Wave 10
 // (D26) patch-exit read shape: branches narrow to one anchor item and are
