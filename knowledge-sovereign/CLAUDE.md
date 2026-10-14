@@ -14,6 +14,7 @@ Durable knowledge state owner (event log, Knowledge Home projector, and Knowledg
   - `EngagementVerbs` are `read`, `asked`, and `listened` (`driver/sovereign_db/read_trail.go`). Only these verbs appear on the trail spine, count toward path wear, or anchor branches (`dismissed` footprints are excluded).
   - `DeriveTrailClusterCandidates` (`driver/sovereign_db/read_trail_candidates.go`) normalizes tags and excludes junk tags (`JunkTagWords` in `driver/sovereign_db/read_trail_candidates.go`) in SQL before ranking, selecting the anchor with the largest clean tag overlap (ties broken by most recent engagement).
   - `usecase/trail_planner` requires at least 1 clean shared tag (`len(c.SharedTags) >= 1` after `tagclean.CleanDisplay`) to propose a `cluster` branch (`confidence: "plausible"` for 1 clean shared tag, `"corroborated"` for 2 or more).
+  - Branch proposals (`trail.branch_proposed.v1`) fold first-write-wins via `UpsertTrailBranch` (`ON CONFLICT (user_id, branch_key) DO NOTHING` in `driver/sovereign_db/read_trail_branches.go`), keeping the earliest proposal's fields and preserving resolved `state` across reprojects.
 
 ## Commands
 

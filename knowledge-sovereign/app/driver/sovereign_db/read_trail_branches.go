@@ -50,9 +50,11 @@ func scanTrailBranchRow(scanner rowScanner) (TrailBranch, error) {
 	return b, nil
 }
 
-// UpsertTrailBranch folds a branch_proposed event into the read model. It never
-// downgrades a resolved branch back to open (Wave 5 sets state separately), and
-// re-projection of the same event reproduces the same row.
+// UpsertTrailBranch folds a branch_proposed event into the read model
+// first-write-wins: if a row already exists for (user_id, branch_key), the
+// earliest proposal's fields (anchor, why, created_at, etc.) and any resolved
+// state are preserved unchanged so re-projection over duplicate proposals is
+// deterministic and idempotent.
 func (r *Repository) UpsertTrailBranch(ctx context.Context, userID, tenantID uuid.UUID, b TrailBranch, createdAt time.Time, projectionVersion int) error {
 	refs, err := json.Marshal(b.EvidenceRefs)
 	if err != nil {
@@ -64,16 +66,7 @@ INSERT INTO knowledge_trail_branches
    evidence_refs_json, confidence, target_item_key, target_title, state,
    created_at, projection_version)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11, $12)
-ON CONFLICT (user_id, branch_key) DO UPDATE SET
-  anchor_item_key = EXCLUDED.anchor_item_key,
-  relation_kind = EXCLUDED.relation_kind,
-  why = EXCLUDED.why,
-  evidence_refs_json = EXCLUDED.evidence_refs_json,
-  confidence = EXCLUDED.confidence,
-  target_item_key = EXCLUDED.target_item_key,
-  target_title = EXCLUDED.target_title,
-  created_at = EXCLUDED.created_at,
-  projection_version = EXCLUDED.projection_version`
+ON CONFLICT (user_id, branch_key) DO NOTHING`
 	if _, err := r.pool.Exec(ctx, q,
 		userID, tenantID, b.BranchKey, b.AnchorItemKey, b.RelationKind, b.Why,
 		refs, b.Confidence, b.TargetItemKey, b.TargetTitle, createdAt, projectionVersion,
