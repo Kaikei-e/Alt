@@ -394,6 +394,25 @@ var openMarkReadAllowedSources = map[string]struct{}{
 	"mobile_feed_details": {},
 }
 
+func parseOpenSource(metadataJSON string) (string, bool) {
+	if metadataJSON == "" {
+		return "", true
+	}
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(metadataJSON), &meta); err != nil || meta == nil {
+		return "", false
+	}
+	raw, exists := meta["source"]
+	if !exists {
+		return "", true
+	}
+	src, ok := raw.(string)
+	if !ok {
+		return "", false
+	}
+	return src, true
+}
+
 func metadataSource(metadataJSON string) string {
 	if metadataJSON == "" {
 		return ""
@@ -407,13 +426,16 @@ func metadataSource(metadataJSON string) string {
 }
 
 func shouldSyncFeedReadStatus(actionType, metadataJSON string) bool {
-	source := metadataSource(metadataJSON)
 	switch actionType {
 	case "open":
+		source, valid := parseOpenSource(metadataJSON)
+		if !valid {
+			return false
+		}
 		_, ok := openMarkReadAllowedSources[source]
 		return ok
 	case "dismiss":
-		return source != "feeds_mark_read"
+		return metadataSource(metadataJSON) != "feeds_mark_read"
 	default:
 		return false
 	}
@@ -430,7 +452,7 @@ func (u *TrackHomeActionUsecase) syncFeedReadStatus(ctx context.Context, userID 
 	if err := u.articleStatusPort.MarkArticleAsRead(ctx, *parsedURL, userID); err != nil {
 		if !errors.Is(err, domain.ErrFeedNotFound) {
 			logger.Logger.WarnContext(ctx, "failed to sync feed read status from home action",
-				"error", err, "item_key", itemKey)
+				"error_kind", "mark_read_failed", "item_key", itemKey)
 		}
 	}
 }

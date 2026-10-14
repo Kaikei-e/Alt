@@ -5,7 +5,6 @@ import (
 	"alt/orchestrator/port/article_status_port"
 	"alt/utils/logger"
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 
@@ -62,10 +61,8 @@ func syncHomeDismiss(ctx context.Context, lookup ArticleByURLLookupPort, dismiss
 	}
 	article, err := lookup.FetchArticleByURL(ctx, rawURL)
 	if err != nil {
-		if !errors.Is(err, domain.ErrArticleNotFound) {
-			logger.Logger.WarnContext(ctx, "failed to look up article by URL for home dismiss sync",
-				"error", err)
-		}
+		logger.Logger.WarnContext(ctx, "failed to look up article by URL for home dismiss sync",
+			"error_kind", "article_lookup_failed")
 		return
 	}
 	if article == nil || article.ID == "" {
@@ -73,6 +70,6 @@ func syncHomeDismiss(ctx context.Context, lookup ArticleByURLLookupPort, dismiss
 	}
 	if err := dismissFn(ctx, user.UserID, user.TenantID, "article:"+article.ID); err != nil {
 		logger.Logger.WarnContext(ctx, "failed to sync home dismiss from reading status",
-			"error", err, "article_id", article.ID)
+			"error_kind", "dismiss_sync_failed", "article_id", article.ID)
 	}
 }

@@ -54,16 +54,14 @@ func (u *RegisterFavoriteFeedUsecase) Execute(ctx context.Context, url string) e
 	}
 	article, lookupErr := u.articleLookup.FetchArticleByURL(ctx, url)
 	if lookupErr != nil {
-		if !errors.Is(lookupErr, domain.ErrArticleNotFound) {
-			logger.Logger.WarnContext(ctx, "failed to look up article by URL for favorite feed home open sync",
-				"error", lookupErr)
-		}
+		logger.Logger.WarnContext(ctx, "failed to look up article by URL for favorite feed home open sync",
+			"error_kind", "article_lookup_failed")
 		return nil
 	}
 	if article != nil && article.ID != "" {
 		if openErr := u.openFn(ctx, user.UserID, user.TenantID, "article:"+article.ID); openErr != nil {
 			logger.Logger.WarnContext(ctx, "failed to sync home open from favorite feed",
-				"error", openErr, "article_id", article.ID)
+				"error_kind", "open_sync_failed", "article_id", article.ID)
 		}
 	}
 	return nil
