@@ -7,20 +7,18 @@ import {
 	RefreshCw,
 	Sparkles,
 } from "@lucide/svelte";
-import { onDestroy, onMount } from "svelte";
+import { onDestroy } from "svelte";
 import { MediaQuery } from "svelte/reactivity";
 import {
 	getArticleSourceURLClient,
 	getFeedContentOnTheFlyClient,
 } from "#lib/api/client/articles.js";
-import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import ArticleEndBranches from "#lib/components/knowledge-trail/ArticleEndBranches.svelte";
 import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
 import PageKicker from "#lib/components/recap/job-status/PageKicker.svelte";
 import { Button } from "#lib/components/ui/button/index.js";
 import { useArticleEndBranches } from "#lib/hooks/useArticleEndBranches.svelte.js";
 import { useSummarize } from "#lib/hooks/useSummarize.svelte.js";
-import { useTrailOutcome } from "#lib/hooks/useTrailOutcome.svelte.js";
 import {
 	type ArticleContentPhase,
 	CONTENT_PENDING_LABEL,
@@ -32,9 +30,9 @@ import {
 } from "#lib/utils/articleContentState.js";
 import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
 import { safeArticleHref } from "#lib/utils/safeHref.js";
-import { browser } from "$app/env";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
+import ArticleVisit from "./ArticleVisit.svelte";
 
 const articleId = $derived(page.params.id);
 // Sanitize the `?url=` handoff before any consumer (fetch / <a href>) sees
@@ -58,46 +56,28 @@ const articleUrl = $derived(paramUrl ?? resolvedUrl);
 const paramTitle = $derived(page.url.searchParams.get("title"));
 const articleTitle = $derived(paramTitle ?? resolvedTitle);
 
-// Dwell measurement for a walked trail branch. The ?trail_proposal= handoff is
-// the sole gate (D19): captured once at init, deliberately non-reactive — one
-// visit, one measurement, emitted by the hook exactly once on leave. Organic
-// visits (no param) run no measurement code at all.
-useTrailOutcome(
-	page.url.searchParams.get("trail_proposal"),
-	page.params.id ? `article:${page.params.id}` : null,
-);
-
 // Patch-exit branches (D26/D28): the article read-end's main branch stage —
-// at most two proposals anchored on this article. Reloaded whenever `articleId`
-// changes (e.g., when walking a branch from one `/articles/[id]` to another),
-// guarded by a plain latch so it never loops.
+// at most two proposals anchored on this article. Reloaded on each keyed
+// article visit via ArticleVisit's onMount.
 const endBranches = useArticleEndBranches();
 
-// Plain latches rather than $state: read inside the effects that write them,
+// Plain latch rather than $state: read inside the effect that writes it,
 // so a reactive latch would re-run the effect on its own write.
 let resolveRequestedFor: string | null = null;
-let lastLoadedBranchArticleId: string | null = null;
-
-$effect(() => {
-	if (!browser || !articleId) return;
-	if (lastLoadedBranchArticleId === articleId) return;
-	lastLoadedBranchArticleId = articleId;
-	resolvedUrl = null;
-	resolvedTitle = null;
-	resolveRequestedFor = null;
-	void endBranches.load(`article:${articleId}`);
-	void trackHomeActionClient(
-		"open",
-		`article:${articleId}`,
-		JSON.stringify({ source: "article_page" }),
-	);
-});
 
 $effect(() => {
 	// Either half being absent is reason enough to resolve — a Home card with a
 	// blank projection title passes `?url=` and no `?title=`, and gating on the
 	// URL alone left that case rendering the URL host as its headline.
-	if (!articleId || (paramUrl && paramTitle)) return;
+	if (!articleId) return;
+	if (resolveRequestedFor !== articleId) {
+		resolvedUrl = null;
+		resolvedTitle = null;
+	}
+	if (paramUrl && paramTitle) {
+		resolveRequestedFor = articleId;
+		return;
+	}
 	if (resolveRequestedFor === articleId) return;
 	resolveRequestedFor = articleId;
 	let cancelled = false;
@@ -465,113 +445,123 @@ $effect(() => {
 		{/if}
 	</header>
 
-	<div class="article-layout">
-		<article class="article-body">
-			<PageKicker
-				testId="article-masthead"
-				kicker={mastheadKicker}
-				title={mastheadTitle}
+	{#key articleId}
+		{#if articleId}
+			<ArticleVisit
+				{articleId}
+				onVisit={(id) => {
+					void endBranches.load(`article:${id}`);
+				}}
 			/>
-
-			{#if !hasRail}
-				{@render aiSummaryBlock()}
-			{/if}
-
-			{#if !articleUrl}
-				<div class="placeholder">
-					<p>No article URL provided. Unable to load content.</p>
-					<Button variant="outline" onclick={() => goto("/home")} class="placeholder-cta mt-1">
-						Return to Home
-					</Button>
-				</div>
-			{:else if isFetching}
-				<!-- A request in flight is not a failure, and it says which one
-				     it is: the first attempt, or the single re-attempt waiting
-				     out the Retry-After the server named. -->
-				<div
-					class="placeholder placeholder--center"
-					data-testid="article-content-pending"
-				>
-					<Loader2 class="h-5 w-5 animate-spin" />
-					<span>{pendingLabel}</span>
-				</div>
-			{:else if contentPhase === "failed"}
-				<div class="placeholder" data-testid="article-content-failed" role="alert">
-					<p class="placeholder__error">{contentError}</p>
-					<!-- Stating the problem without offering a way out is the
-					     defect (NN/g heuristic 9). This route carries no RSS
-					     description to fall back to, so the remedies are all
-					     the reader has: ask again, or go to the publisher. -->
-					<div class="placeholder-remedies">
-						<Button
-							variant="outline"
-							onclick={handleFetch}
-							data-testid="retry-content"
-							class="placeholder-cta mt-1"
-						>
-							{TRY_AGAIN_LABEL}
-						</Button>
-						<a
-							href={articleUrl}
-							target="_blank"
-							rel="noopener noreferrer"
-							class="placeholder-link"
-							data-testid="read-original-link"
-						>
-							{READ_ORIGINAL_LABEL}
-						</a>
-					</div>
-				</div>
-			{:else if articleContent}
-				<div class="article-surface" data-testid="article-content-surface">
-					<RenderFeedDetails
-						feedDetails={{
-							content: articleContent,
-							article_id: fetchedArticleId ?? "",
-							og_image_url: "",
-							og_image_proxy_url: "",
-						}}
-						error={null}
-					/>
-				</div>
-				<ArticleEndBranches
-					branches={endBranches.branches}
-					onResolve={endBranches.resolve}
-				/>
-			{:else}
-				<div class="placeholder">
-					<p>No content available.</p>
-				</div>
-			{/if}
-		</article>
-
-		{#if hasRail}
-			<aside
-				class="article-rail"
-				data-testid="article-rail"
-				aria-label="Article details"
-			>
-				<section class="rail-section">
-					<h2 class="rail-kicker">Source</h2>
-					<p class="rail-value">{sourceHost || "—"}</p>
-				</section>
-
-				<section class="rail-section">
-					<h2 class="rail-kicker">Reading time</h2>
-					<p class="rail-value">
-						{readingTimeMinutes ? `${readingTimeMinutes} min` : "—"}
-					</p>
-				</section>
-
-				<section class="rail-section rail-section--actions">
-					<h2 class="rail-kicker">Actions</h2>
-					{@render actionControls()}
-				</section>
-
-				{@render aiSummaryBlock()}
-			</aside>
 		{/if}
-	</div>
+		<div class="article-layout">
+			<article class="article-body">
+				<PageKicker
+					testId="article-masthead"
+					kicker={mastheadKicker}
+					title={mastheadTitle}
+				/>
+
+				{#if !hasRail}
+					{@render aiSummaryBlock()}
+				{/if}
+
+				{#if !articleUrl}
+					<div class="placeholder">
+						<p>No article URL provided. Unable to load content.</p>
+						<Button variant="outline" onclick={() => goto("/home")} class="placeholder-cta mt-1">
+							Return to Home
+						</Button>
+					</div>
+				{:else if isFetching}
+					<!-- A request in flight is not a failure, and it says which one
+					     it is: the first attempt, or the single re-attempt waiting
+					     out the Retry-After the server named. -->
+					<div
+						class="placeholder placeholder--center"
+						data-testid="article-content-pending"
+					>
+						<Loader2 class="h-5 w-5 animate-spin" />
+						<span>{pendingLabel}</span>
+					</div>
+				{:else if contentPhase === "failed"}
+					<div class="placeholder" data-testid="article-content-failed" role="alert">
+						<p class="placeholder__error">{contentError}</p>
+						<!-- Stating the problem without offering a way out is the
+						     defect (NN/g heuristic 9). This route carries no RSS
+						     description to fall back to, so the remedies are all
+						     the reader has: ask again, or go to the publisher. -->
+						<div class="placeholder-remedies">
+							<Button
+								variant="outline"
+								onclick={handleFetch}
+								data-testid="retry-content"
+								class="placeholder-cta mt-1"
+							>
+								{TRY_AGAIN_LABEL}
+							</Button>
+							<a
+								href={articleUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="placeholder-link"
+								data-testid="read-original-link"
+							>
+								{READ_ORIGINAL_LABEL}
+							</a>
+						</div>
+					</div>
+				{:else if articleContent}
+					<div class="article-surface" data-testid="article-content-surface">
+						<RenderFeedDetails
+							feedDetails={{
+								content: articleContent,
+								article_id: fetchedArticleId ?? "",
+								og_image_url: "",
+								og_image_proxy_url: "",
+							}}
+							error={null}
+						/>
+					</div>
+					<ArticleEndBranches
+						branches={endBranches.branches}
+						onResolve={endBranches.resolve}
+					/>
+				{:else}
+					<div class="placeholder">
+						<p>No content available.</p>
+					</div>
+				{/if}
+			</article>
+
+			{#if hasRail}
+				<aside
+					class="article-rail"
+					data-testid="article-rail"
+					aria-label="Article details"
+				>
+					<section class="rail-section">
+						<h2 class="rail-kicker">Source</h2>
+						<p class="rail-value">{sourceHost || "—"}</p>
+					</section>
+
+					<section class="rail-section">
+						<h2 class="rail-kicker">Reading time</h2>
+						<p class="rail-value">
+							{readingTimeMinutes ? `${readingTimeMinutes} min` : "—"}
+						</p>
+					</section>
+
+					<section class="rail-section rail-section--actions">
+						<h2 class="rail-kicker">Actions</h2>
+						{@render actionControls()}
+					</section>
+
+					{@render aiSummaryBlock()}
+				</aside>
+			{/if}
+		</div>
+	{/key}
 </div>
 
 <style>

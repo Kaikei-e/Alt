@@ -176,12 +176,11 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 		return;
 	}
 
-	home.trackAction(type, itemKey, metadata);
-
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
 
 	if (type === "open" && articleId) {
 		if (item.url) {
+			home.trackAction(type, itemKey, metadata);
 			readerItemKey = itemKey;
 			readerCustomFeed = toHomeRenderFeed(item);
 			readerModalOpen = true;
@@ -190,6 +189,8 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 		}
 		return;
 	}
+
+	home.trackAction(type, itemKey, metadata);
 
 	if (type === "ask") {
 		askScopeTitle = item.title;
@@ -206,11 +207,14 @@ function handleTagClick(tag: string, item: KnowledgeHomeItemData) {
 }
 
 function handleRecallOpen(itemKey: string) {
-	home.trackAction("open", itemKey);
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
-	if (!articleId) return;
+	if (!articleId) {
+		home.trackAction("open", itemKey);
+		return;
+	}
 	const candidate = recall.candidates.find((c) => c.itemKey === itemKey);
 	if (candidate?.item?.url) {
+		home.trackAction("open", itemKey);
 		readerItemKey = itemKey;
 		readerCustomFeed = toHomeRenderFeed(candidate.item);
 		readerModalOpen = true;
@@ -282,7 +286,11 @@ async function handleLensSelect(lensId: string | null) {
 
 async function handleLensDelete(lensId: string) {
 	const wasActive = lens.activeLensId === lensId;
-	await lens.remove(lensId);
+	const removed = await lens.remove(lensId);
+	if (!removed) {
+		toast.push("Failed to delete lens.", "error");
+		return;
+	}
 	toast.push("Lens deleted.", "success");
 	if (wasActive) {
 		await handleLensSelect(null);
@@ -366,13 +374,6 @@ onMount(async () => {
 			<span class="desk-date">{dateStr}</span>
 			<h1 class="desk-title">Knowledge Home</h1>
 			<p class="desk-subtitle">Today's knowledge starting point</p>
-			<a
-				class="desk-trail-link"
-				href="/knowledge/trail"
-				data-testid="home-trail-link"
-			>
-				Your Trail — pick up where you left off →
-			</a>
 			<div class="desk-rule" aria-hidden="true"></div>
 		</header>
 
@@ -471,16 +472,6 @@ onMount(async () => {
 			<TodayBar digest={home.digest} serviceQuality={home.serviceQuality} />
 		</div>
 
-		<div class="px-4 pt-1">
-			<a
-				class="mobile-trail-link"
-				href="/knowledge/trail"
-				data-testid="home-trail-link"
-			>
-				Your Trail — pick up where you left off →
-			</a>
-		</div>
-
 		<GlobalSearchEntry onAsk={handleAskFromHome} />
 
 		<div class="px-4 pt-1">
@@ -536,6 +527,8 @@ onMount(async () => {
 <FeedDetailModal
 	bind:open={readerModalOpen}
 	feed={readerFeed}
+	trackOpen={false}
+	showHomeReaderLinks={true}
 	onOpenChange={(open) => {
 		readerModalOpen = open;
 	}}
@@ -641,24 +634,6 @@ onMount(async () => {
 		font-style: italic;
 		color: var(--alt-ash);
 		margin-top: 0.25rem;
-	}
-
-	.desk-trail-link,
-	.mobile-trail-link {
-		display: inline-block;
-		margin-top: 0.5rem;
-		font-family: var(--font-body);
-		font-size: 0.85rem;
-		font-weight: 500;
-		color: var(--interactive-text);
-		text-decoration: none;
-	}
-	.desk-trail-link:hover,
-	.mobile-trail-link:hover {
-		color: var(--interactive-text-hover);
-		text-decoration: underline;
-		text-decoration-thickness: 1px;
-		text-underline-offset: 3px;
 	}
 
 	.desk-rule {

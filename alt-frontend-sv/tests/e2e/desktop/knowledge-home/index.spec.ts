@@ -31,24 +31,61 @@ const KH_STREAM =
 	"**/api/v2/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates";
 const LIST_SUBS = "**/api/v2/alt.feeds.v2.FeedService/ListSubscriptions";
 
+const FETCH_ARTICLE_CONTENT =
+	"**/api/v2/alt.articles.v2.ArticleService/FetchArticleContent";
+const GET_ITEM_BRANCHES =
+	"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/GetItemBranches";
+
+function withItemUrl(item: unknown): Record<string, unknown> {
+	const obj = (item ?? {}) as Record<string, unknown>;
+	return {
+		...obj,
+		url: obj.url ?? obj.link,
+	};
+}
+
 function mockAllKnowledgeHomeRoutes(
 	page: import("@playwright/test").Page,
 	responseOverrides?: Parameters<typeof buildGetKnowledgeHomeResponse>[0],
 ) {
-	const response = buildGetKnowledgeHomeResponse(responseOverrides);
+	const rawResponse = buildGetKnowledgeHomeResponse(responseOverrides);
+	const response = {
+		...rawResponse,
+		items: rawResponse.items.map(withItemUrl),
+		recallCandidates: rawResponse.recallCandidates.map((c) => {
+			const candidate = (c ?? {}) as Record<string, unknown>;
+			return {
+				...candidate,
+				item: withItemUrl(candidate.item),
+			};
+		}),
+	};
+	const recallCandidate = {
+		...RECALL_CANDIDATE_WITH_REASONS,
+		item: withItemUrl(RECALL_CANDIDATE_WITH_REASONS.item),
+	};
 	return Promise.all([
 		page.route(KH_GET, (route) => fulfillJson(route, response)),
 		page.route(KH_TRACK_SEEN, (route) => fulfillJson(route, {})),
 		page.route(KH_TRACK_ACTION, (route) => fulfillJson(route, {})),
 		page.route(KH_RECALL, (route) =>
 			fulfillJson(route, {
-				candidates: [RECALL_CANDIDATE_WITH_REASONS],
+				candidates: [recallCandidate],
 			}),
 		),
 		page.route(KH_LIST_LENSES, (route) =>
 			fulfillJson(route, { lenses: [], activeLensId: "" }),
 		),
 		page.route(LIST_SUBS, (route) => fulfillJson(route, { sources: [] })),
+		page.route(FETCH_ARTICLE_CONTENT, (route) =>
+			fulfillJson(route, {
+				content: "<p>Mock article content</p>",
+				articleId: "art-1",
+			}),
+		),
+		page.route(GET_ITEM_BRANCHES, (route) =>
+			fulfillJson(route, { branches: [] }),
+		),
 		page.route(KH_STREAM, (route) => route.abort()),
 	]);
 }

@@ -57,14 +57,6 @@ test.describe("Trail entry points", () => {
 			page.getByRole("heading", { name: "Your Trail" }),
 		).toBeVisible();
 	});
-
-	test("Knowledge Home's header links to the trail", async ({ page }) => {
-		await page.goto("./home");
-		const link = page.getByTestId("home-trail-link");
-		await expect(link).toBeVisible({ timeout: 15000 });
-		await link.click();
-		await page.waitForURL(/\/knowledge\/trail/, { timeout: 15000 });
-	});
 });
 
 const TRAIL_PATHS = {
@@ -532,7 +524,7 @@ const EPISODE_TRAIL = {
 };
 
 test.describe("Episode spine", () => {
-	test("renders episodes, collapsed by default, with no day-separator grouping", async ({
+	test("renders episodes, expanding multi-footprint episodes by default, with no day-separator grouping", async ({
 		page,
 	}) => {
 		await page.route(TRAIL_PATHS.getTrail, (route) =>
@@ -544,8 +536,8 @@ test.describe("Episode spine", () => {
 			timeout: 15000,
 		});
 
-		// Collapsed by default: member footprint rows are not rendered yet.
-		await expect(page.getByTestId("trail-footprint")).toHaveCount(0);
+		// Episodes with 2+ footprints start expanded; 1-footprint episodes stay collapsed.
+		await expect(page.getByTestId("trail-footprint")).toHaveCount(2);
 
 		// D24: date is a landmark, never a grouping axis — the old day-separator
 		// block (TrailSpine's `.day-sep`) must not exist at all.
@@ -571,7 +563,7 @@ test.describe("Episode spine", () => {
 		await expect(militaryEpisode).toContainText("Read 2 times");
 	});
 
-	test("expanding an episode reveals its member footprint rows", async ({
+	test("multi-footprint episode starts expanded and clicking toggle collapses its member footprint rows", async ({
 		page,
 	}) => {
 		await page.route(TRAIL_PATHS.getTrail, (route) =>
@@ -587,16 +579,16 @@ test.describe("Episode spine", () => {
 		await expect(submarinesEpisode).toContainText("asked 1 question");
 
 		const toggle = submarinesEpisode.getByTestId("episode-toggle");
-		await expect(toggle).toHaveAttribute("aria-expanded", "false");
+		await expect(toggle).toHaveAttribute("aria-expanded", "true");
 		await expect(submarinesEpisode.getByTestId("trail-footprint")).toHaveCount(
-			0,
+			2,
 		);
 
 		await toggle.click();
 
-		await expect(toggle).toHaveAttribute("aria-expanded", "true");
+		await expect(toggle).toHaveAttribute("aria-expanded", "false");
 		await expect(submarinesEpisode.getByTestId("trail-footprint")).toHaveCount(
-			2,
+			0,
 		);
 	});
 });

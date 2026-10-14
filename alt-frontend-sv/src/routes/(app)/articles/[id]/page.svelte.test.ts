@@ -40,10 +40,22 @@ vi.mock("$app/state", () => ({
 // the mock a manually resolved module: the browser provider has to round-trip
 // to this worker before it can answer the page's request for it, and when the
 // round trip loses the race the run dies with "route.fulfill: The object has
+// been collected to prevent unbounded heap growth."
 vi.mock("$app/navigation", () => ({
 	goto: vi.fn(),
 	beforeNavigate: vi.fn(),
 }));
+vi.mock("#lib/api/client/knowledge_home.js", { spy: true });
+vi.mock("#lib/connect/knowledge_trail.js", { spy: true });
+vi.mock("#lib/connect/transport-client.js", { spy: true });
+
+import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
+import {
+	emitTrailOutcome,
+	getItemBranches,
+	resolveBranch,
+} from "#lib/connect/knowledge_trail.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 
 const mockGetFeedContent = vi.fn();
 const mockGetArticleSourceURL = vi
@@ -56,24 +68,20 @@ vi.mock("#lib/api/client/articles.js", () => ({
 		mockGetArticleSourceURL(...args),
 }));
 
-const mockTrackHomeActionClient = vi.fn(() => Promise.resolve());
-vi.mock("#lib/api/client/knowledge_home.js", () => ({
-	trackHomeActionClient: (...args: unknown[]) =>
-		mockTrackHomeActionClient(...args),
-}));
+const mockTrackHomeActionClient = vi.mocked(trackHomeActionClient);
+const mockGetItemBranches = vi.mocked(getItemBranches);
+const mockResolveBranch = vi.mocked(resolveBranch);
+const mockEmitTrailOutcome = vi.mocked(emitTrailOutcome);
 
-const mockGetItemBranches = vi.fn(() => Promise.resolve([]));
-const mockResolveBranch = vi.fn(() => Promise.resolve());
-const mockEmitTrailOutcome = vi.fn(() => Promise.resolve());
-vi.mock("#lib/connect/knowledge_trail.js", () => ({
-	getItemBranches: (...args: unknown[]) => mockGetItemBranches(...args),
-	resolveBranch: (...args: unknown[]) => mockResolveBranch(...args),
-	emitTrailOutcome: (...args: unknown[]) => mockEmitTrailOutcome(...args),
-}));
-
-vi.mock("#lib/connect/transport-client.js", () => ({
-	createClientTransport: vi.fn(() => ({})),
-}));
+beforeEach(() => {
+	mockTrackHomeActionClient.mockResolvedValue(undefined);
+	mockGetItemBranches.mockResolvedValue([]);
+	mockResolveBranch.mockResolvedValue(undefined);
+	mockEmitTrailOutcome.mockResolvedValue(undefined);
+	vi.mocked(createClientTransport).mockReturnValue(
+		{} as ReturnType<typeof createClientTransport>,
+	);
+});
 
 const mockSummarizerReset = vi.fn();
 let summarizerOverride: Partial<{

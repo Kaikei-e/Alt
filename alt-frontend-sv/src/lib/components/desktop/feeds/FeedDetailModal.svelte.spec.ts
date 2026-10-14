@@ -409,7 +409,7 @@ describe("FeedDetailModal content states", () => {
 					feed: { ...FEED, articleId: "art-home-open" },
 					onOpenChange: () => {},
 					trackOpen: false,
-				} as unknown as Record<string, unknown>,
+				},
 			});
 
 			await expect
@@ -463,7 +463,7 @@ describe("FeedDetailModal content states", () => {
 					onOpenChange: () => {},
 					trackOpen: false,
 					showHomeReaderLinks: true,
-				} as unknown as Record<string, unknown>,
+				},
 			});
 
 			await expect
@@ -504,7 +504,7 @@ describe("FeedDetailModal content states", () => {
 				onOpenChange: () => {},
 				trackOpen: false,
 				showHomeReaderLinks: true,
-			} as unknown as Record<string, unknown>);
+			});
 
 			await expect
 				.element(testPage.getByRole("link", { name: "Open article page" }))

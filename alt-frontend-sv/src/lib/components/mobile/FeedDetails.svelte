@@ -190,10 +190,7 @@ $effect(() => {
 let lastTrackedOpenArticleId: string | null = null;
 $effect(() => {
 	if (!browser || !open) return;
-	const resolvedId =
-		feedDetails?.article_id ||
-		articleSummary?.matched_articles?.[0]?.source_id ||
-		null;
+	const resolvedId = feedDetails?.article_id || null;
 	if (resolvedId && resolvedId !== lastTrackedOpenArticleId) {
 		lastTrackedOpenArticleId = resolvedId;
 		void trackHomeActionClient(
@@ -438,7 +435,7 @@ async function handleSummarize(forceRefresh = false) {
 			transport,
 			{
 				feedUrl: feedURL,
-				articleId: articleSummary?.matched_articles?.[0]?.source_id,
+				articleId: feedDetails?.article_id || undefined,
 				title: feedTitle,
 				forceRefresh,
 			},

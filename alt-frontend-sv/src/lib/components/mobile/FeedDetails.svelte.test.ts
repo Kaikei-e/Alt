@@ -31,7 +31,7 @@ vi.mock("#lib/api/client/index.js", () => ({
 	archiveContentClient: vi.fn(() => Promise.resolve({})),
 }));
 
-const mockTrackHomeActionClient = vi.fn(() => Promise.resolve());
+const mockTrackHomeActionClient = vi.fn().mockResolvedValue(undefined);
 vi.mock("#lib/api/client/knowledge_home.js", () => ({
 	trackHomeActionClient: (...args: unknown[]) =>
 		mockTrackHomeActionClient(...args),

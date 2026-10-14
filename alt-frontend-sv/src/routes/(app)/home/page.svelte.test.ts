@@ -31,23 +31,23 @@ const {
 } = vi.hoisted(() => ({
 	mockHomeTrackAction: vi.fn(),
 	mockHomeDismissItem: vi.fn(),
-	mockHomeFetchData: vi.fn(() => Promise.resolve()),
+	mockHomeFetchData: vi.fn().mockResolvedValue(undefined),
 	mockHomeLoadMore: vi.fn(),
 	mockHomeTrackSeen: vi.fn(),
 	mockRecallSetCandidates: vi.fn(),
 	mockRecallSnooze: vi.fn(),
 	mockRecallDismiss: vi.fn(),
-	mockLensFetchLenses: vi.fn(() => Promise.resolve()),
+	mockLensFetchLenses: vi.fn().mockResolvedValue(undefined),
 	mockLensCreate: vi.fn(),
 	mockLensRemove: vi.fn(),
-	mockLensSelect: vi.fn(() => Promise.resolve()),
+	mockLensSelect: vi.fn().mockResolvedValue(undefined),
 	mockLensReset: vi.fn(),
 	mockToastPush: vi.fn(),
 	mockToastRemove: vi.fn(),
 	mockGetFeedContent: vi.fn(),
-	mockTrackHomeActionClient: vi.fn(),
-	mockGetItemBranches: vi.fn(() => Promise.resolve([])),
-	mockListSubscriptions: vi.fn(() => Promise.resolve([])),
+	mockTrackHomeActionClient: vi.fn().mockResolvedValue(undefined),
+	mockGetItemBranches: vi.fn().mockResolvedValue([]),
+	mockListSubscriptions: vi.fn().mockResolvedValue([]),
 }));
 
 let mockItems: KnowledgeHomeItemData[] = [];
@@ -66,7 +66,7 @@ vi.mock("$app/state", () => ({
 }));
 
 vi.mock("$app/navigation", () => ({
-	goto: vi.fn(() => Promise.resolve()),
+	goto: vi.fn().mockResolvedValue(undefined),
 	beforeNavigate: vi.fn(),
 }));
 
@@ -154,7 +154,7 @@ vi.mock("#lib/api/client/knowledge_home.js", () => ({
 
 vi.mock("#lib/connect/knowledge_trail.js", () => ({
 	getItemBranches: (...args: unknown[]) => mockGetItemBranches(...args),
-	resolveBranch: vi.fn(() => Promise.resolve()),
+	resolveBranch: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("#lib/connect/transport-client.js", () => ({
@@ -216,8 +216,9 @@ function countAllRecordedOpens(): number {
 }
 
 describe("Knowledge Home open tracking and lens deletion", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
+		await testPage.viewport(1024, 768);
 		mockItems = [
 			makeHomeItem({
 				itemKey: "article:art-1",
