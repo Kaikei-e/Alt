@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"alt/domain"
@@ -246,38 +247,15 @@ func TestBuildResolveBranchPayload(t *testing.T) {
 	}
 }
 
-func TestExecute_WithOpenTracker(t *testing.T) {
-	userID := uuid.New()
-	tenantID := uuid.New()
+func TestExecute_TakenDoesNotTrackOpen(t *testing.T) {
+	port := &fakeAppendPort{}
+	uc := NewResolveTrailBranchUsecase(port)
 
-	t.Run("invokes open tracker with target article key when resolution is taken", func(t *testing.T) {
-		port := &fakeAppendPort{}
-		var trackedUser, trackedTenant uuid.UUID
-		var trackedItemKey string
-		uc := NewResolveTrailBranchUsecase(port).WithOpenTracker(func(_ context.Context, uID, tID uuid.UUID, itemKey string) error {
-			trackedUser = uID
-			trackedTenant = tID
-			trackedItemKey = itemKey
-			return nil
-		})
+	_, hasOpenTracker := reflect.TypeOf(uc).MethodByName("WithOpenTracker")
+	assert.False(t, hasOpenTracker, "ResolveTrailBranchUsecase must not expose WithOpenTracker; frontend /articles/[id] records open on arrival")
 
-		err := uc.Execute(context.Background(), userID, tenantID, "cluster:u:article:art-99", "taken", goodUUIDv7, "")
-		require.NoError(t, err)
-		assert.Equal(t, userID, trackedUser)
-		assert.Equal(t, tenantID, trackedTenant)
-		assert.Equal(t, "article:art-99", trackedItemKey)
-	})
-
-	t.Run("does not invoke open tracker when resolution is dismissed", func(t *testing.T) {
-		port := &fakeAppendPort{}
-		called := false
-		uc := NewResolveTrailBranchUsecase(port).WithOpenTracker(func(_ context.Context, _, _ uuid.UUID, _ string) error {
-			called = true
-			return nil
-		})
-
-		err := uc.Execute(context.Background(), userID, tenantID, "cluster:u:article:art-99", "dismissed", goodUUIDv7, "")
-		require.NoError(t, err)
-		assert.False(t, called)
-	})
+	err := uc.Execute(context.Background(), uuid.New(), uuid.New(), "cluster:u:article:art-99", "taken", goodUUIDv7, "")
+	require.NoError(t, err)
+	require.Len(t, port.events, 1, "taking a branch must emit only trail.branch_resolved.v1")
+	assert.Equal(t, EventTrailBranchResolved, port.events[0].EventType)
 }

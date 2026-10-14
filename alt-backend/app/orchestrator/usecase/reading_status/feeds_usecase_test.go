@@ -3,13 +3,18 @@ package reading_status
 import (
 	"alt/domain"
 	"alt/mocks"
+	"alt/utils/logger"
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/url"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -31,6 +36,7 @@ func TestFeedsReadingStatusUsecase_Execute(t *testing.T) {
 		ExpiresAt: time.Now().Add(1 * time.Hour),
 	})
 	mockUpdateFeedStatusGateway := mocks.NewMockUpdateFeedStatusPort(ctrl)
+	noopDismiss := func(_ context.Context, _, _ uuid.UUID, _ string) error { return nil }
 
 	type args struct {
 		ctx     context.Context
@@ -44,7 +50,7 @@ func TestFeedsReadingStatusUsecase_Execute(t *testing.T) {
 	}{
 		{
 			name: "success",
-			u:    &FeedsReadingStatusUsecase{updateFeedStatusGateway: mockUpdateFeedStatusGateway},
+			u:    NewFeedsReadingStatusUsecase(mockUpdateFeedStatusGateway).WithHomeDismiss(&stubArticleLookup{}, noopDismiss),
 			args: args{
 				ctx:     mockCtx,
 				feedURL: mockFeedURL,
@@ -53,7 +59,7 @@ func TestFeedsReadingStatusUsecase_Execute(t *testing.T) {
 		},
 		{
 			name: "error",
-			u:    &FeedsReadingStatusUsecase{updateFeedStatusGateway: mockUpdateFeedStatusGateway},
+			u:    NewFeedsReadingStatusUsecase(mockUpdateFeedStatusGateway).WithHomeDismiss(&stubArticleLookup{}, noopDismiss),
 			args: args{
 				ctx:     mockCtx,
 				feedURL: mockFeedURLError,
@@ -134,4 +140,102 @@ func TestArticlesReadingStatusUsecase_WithHomeDismiss(t *testing.T) {
 	if dismissedUser != userID || dismissedItemKey != "article:art-123" {
 		t.Fatalf("expected dismiss of article:art-123 for %s, got %s for %s", userID, dismissedItemKey, dismissedUser)
 	}
+}
+
+func TestArticlesReadingStatusUsecase_PanicsWhenHomeDismissUnwired(t *testing.T) {
+	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    uuid.New(),
+		TenantID:  uuid.New(),
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	targetURL := url.URL{Scheme: "https", Host: "example.com", Path: "/post-123"}
+	noopDismiss := func(_ context.Context, _, _ uuid.UUID, _ string) error { return nil }
+
+	t.Run("panics when WithHomeDismiss was not called", func(t *testing.T) {
+		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{})
+		assert.Panics(t, func() {
+			_ = u.Execute(ctx, targetURL)
+		})
+	})
+
+	t.Run("panics when articleLookup is nil", func(t *testing.T) {
+		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{}).WithHomeDismiss(nil, noopDismiss)
+		assert.Panics(t, func() {
+			_ = u.Execute(ctx, targetURL)
+		})
+	})
+
+	t.Run("panics when dismissFn is nil", func(t *testing.T) {
+		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{}).WithHomeDismiss(&stubArticleLookup{}, nil)
+		assert.Panics(t, func() {
+			_ = u.Execute(ctx, targetURL)
+		})
+	})
+}
+
+func TestFeedsReadingStatusUsecase_PanicsWhenHomeDismissUnwired(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	userID := uuid.New()
+	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    userID,
+		TenantID:  uuid.New(),
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	targetURL := url.URL{Scheme: "https", Host: "example.com", Path: "/feed"}
+
+	t.Run("panics when WithHomeDismiss was not called", func(t *testing.T) {
+		mockGw := mocks.NewMockUpdateFeedStatusPort(ctrl)
+		mockGw.EXPECT().UpdateFeedStatus(ctx, targetURL, userID).Return(nil)
+		u := NewFeedsReadingStatusUsecase(mockGw)
+		assert.Panics(t, func() {
+			_ = u.Execute(ctx, targetURL)
+		})
+	})
+}
+
+func TestReadingStatus_HomeDismissLookupErrorLogging(t *testing.T) {
+	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    uuid.New(),
+		TenantID:  uuid.New(),
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	targetURL := url.URL{Scheme: "https", Host: "example.com", Path: "/post-123"}
+	noopDismiss := func(_ context.Context, _, _ uuid.UUID, _ string) error { return nil }
+
+	t.Run("logs warn when FetchArticleByURL returns an error and still succeeds", func(t *testing.T) {
+		var buf bytes.Buffer
+		origLogger := logger.Logger
+		logger.Logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		t.Cleanup(func() { logger.Logger = origLogger })
+
+		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{}).
+			WithHomeDismiss(&stubArticleLookup{err: errors.New("datahub connection refused")}, noopDismiss)
+
+		err := u.Execute(ctx, targetURL)
+		require.NoError(t, err, "sync failure must stay best-effort")
+		assert.Contains(t, buf.String(), `"level":"WARN"`)
+		assert.Contains(t, buf.String(), "datahub connection refused")
+	})
+
+	t.Run("does not log warn when FetchArticleByURL finds no archived article", func(t *testing.T) {
+		var buf bytes.Buffer
+		origLogger := logger.Logger
+		logger.Logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		t.Cleanup(func() { logger.Logger = origLogger })
+
+		u := NewArticlesReadingStatusUsecase(&stubUpdateArticleStatus{}).
+			WithHomeDismiss(&stubArticleLookup{article: nil, err: nil}, noopDismiss)
+
+		err := u.Execute(ctx, targetURL)
+		require.NoError(t, err)
+		assert.Empty(t, buf.String())
+	})
 }
