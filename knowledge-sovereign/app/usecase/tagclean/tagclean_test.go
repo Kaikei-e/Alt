@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"knowledge-sovereign/driver/sovereign_db"
 )
 
 func TestNormalize_LowercasesAndTrims(t *testing.T) {
@@ -60,4 +62,18 @@ func TestCleanDisplay_PreservesFirstSeenOrder(t *testing.T) {
 func TestCleanDisplay_EmptyInputYieldsEmpty(t *testing.T) {
 	assert.Empty(t, CleanDisplay(nil))
 	assert.Empty(t, CleanDisplay([]string{"also", "5"}))
+}
+
+func TestJunkWords_ExposesCanonicalVocabulary(t *testing.T) {
+	words := JunkWords()
+	assert.NotEmpty(t, words)
+	assert.Equal(t, sovereign_db.JunkTagWords, words)
+	assert.Contains(t, words, "also")
+	assert.Contains(t, words, "ai")
+	assert.Contains(t, words, "blog")
+	assert.Contains(t, words, "こと")
+	assert.Contains(t, words, "https")
+	for _, w := range words {
+		assert.Empty(t, Normalize(w), "junk word %q must normalize to empty", w)
+	}
 }

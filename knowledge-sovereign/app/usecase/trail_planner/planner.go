@@ -159,8 +159,8 @@ func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
 		if strings.TrimSpace(c.AnchorItemKey) != "" && strings.TrimSpace(c.AnchorTitle) != "" {
 			candPhrase := ref.whyPhrase
 			if c.AnchorVerb != "" {
-				if p, ok := whyPhraseForVerb(c.AnchorVerb); ok {
-					candPhrase = p
+				if phrase, ok := whyPhraseForVerb(c.AnchorVerb); ok {
+					candPhrase = phrase
 				} else {
 					continue
 				}

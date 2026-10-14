@@ -9,8 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"knowledge-sovereign/usecase/tagclean"
 )
 
 // TestDeriveTrailContinuationCandidates_DismissalsAreNotContact pins the two
@@ -145,14 +143,12 @@ func TestDeriveTrailClusterCandidates_FiltersByEngagementVerbsAndExcludesExistin
 	assert.Equal(t, EngagementVerbs, call.Args[1])
 	junkWordsArg, ok := call.Args[2].([]string)
 	require.True(t, ok, "arg[2] must be the junk tag vocabulary slice")
+	assert.Equal(t, JunkTagWords, junkWordsArg)
 	require.NotEmpty(t, junkWordsArg)
 	assert.Contains(t, junkWordsArg, "https")
 	assert.Contains(t, junkWordsArg, "ai")
 	assert.Contains(t, junkWordsArg, "blog")
 	assert.Contains(t, junkWordsArg, "こと")
-	for _, w := range junkWordsArg {
-		assert.Empty(t, tagclean.Normalize(w), "junk word %q must normalize to empty in tagclean", w)
-	}
 	assert.Equal(t, 5, call.Args[3])
 }
 

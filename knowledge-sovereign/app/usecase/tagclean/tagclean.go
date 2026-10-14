@@ -6,33 +6,30 @@
 package tagclean
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"knowledge-sovereign/driver/sovereign_db"
 )
 
-// junkWords holds exact-match tags that carry no filtering power: English
-// function words that leak out of keyword extraction, Japanese function
-// words, and URL/HTML debris. Lowercase only — Normalize lowercases first.
-var junkWords = map[string]struct{}{
-	// English function/filler words seen verbatim in production tag sets.
-	"also": {}, "could": {}, "might": {}, "would": {}, "said": {}, "says": {},
-	"wrote": {}, "becomes": {}, "without": {}, "even": {}, "great": {},
-	"three": {}, "week": {}, "types": {}, "example": {},
-	// High-document-frequency generic tech/news meta-tags that cause Union-Find
-	// megaclusters across unrelated articles.
-	"ai": {}, "llm": {}, "api": {}, "code": {}, "data": {}, "user": {}, "users": {},
-	"model": {}, "models": {}, "system": {}, "systems": {}, "tool": {}, "tools": {},
-	"app": {}, "apps": {}, "web": {}, "blog": {}, "news": {}, "tech": {}, "software": {},
-	// Japanese function words & generic meta-tags.
-	"こと": {}, "もの": {}, "ため": {}, "よう": {}, "それ": {}, "これ": {},
-	"情報": {}, "技術": {}, "開発": {}, "設計": {}, "実装": {}, "処理": {}, "構造": {},
-	"利用": {}, "機能": {}, "記事": {}, "解説": {}, "紹介": {}, "方法": {}, "対応": {},
-	"更新": {}, "問題": {}, "結果": {}, "サービス": {}, "システム": {}, "データ": {},
-	"ユーザー": {}, "ツール": {}, "モデル": {}, "コード": {}, "アプリ": {},
-	"エンジニア": {}, "プログラマー": {},
-	// URL / HTML debris.
-	"https": {}, "http": {}, "www": {}, "com": {}, "gt": {}, "lt": {}, "amp": {},
+// junkWords holds exact-match tags that carry no filtering power, indexed from
+// sovereign_db.JunkTagWords so SQL candidate ranking and Go tag normalization
+// share a single source of truth.
+var junkWords = buildJunkWordsSet(sovereign_db.JunkTagWords)
+
+func buildJunkWordsSet(words []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(words))
+	for _, w := range words {
+		set[w] = struct{}{}
+	}
+	return set
+}
+
+// JunkWords returns a copy of the canonical lowercase junk-tag vocabulary.
+func JunkWords() []string {
+	return slices.Clone(sovereign_db.JunkTagWords)
 }
 
 // Normalize returns the canonical form of one tag, or "" when the tag is
