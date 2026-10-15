@@ -1,15 +1,20 @@
 # knowledge-sovereign
 
-Durable knowledge state owner (event log, Knowledge Home projector, Recall projector, and Knowledge Trail projector/planner).
+Durable knowledge state owner (event log, Knowledge Home projector, and Knowledge Trail projector/planner).
 
 ## Core Responsibilities
 
 - **Event Log**: Append-only `knowledge_events` and `knowledge_user_events` with idempotency via `knowledge_event_dedupes`.
-- **Knowledge Home Projector**: Projects `knowledge_home_items` and `today_digest_view` for the active `projection_version`, skipping empty-title items and computing time-decayed base scores with tag/summary boosts.
-- **Recall Projector**: Projects `recall_candidate_view` with deduplicated `reason_json` codes per `(user_id, item_key)` and clears dismissed items (`ClearNextReviewAt`).
+- **Knowledge Home Projector & Read Path**:
+  - `usecase/knowledge_home_projector` folds events into `knowledge_home_items`, `today_digest_view`, and `recall_candidate_view` for the active `projection_version`.
+  - Stores a flat, time-invariant `baseQualityScore` (`0.5`) with summary (`0.8`) and tag (`0.7`) floor boosts (`score_op: "max"`) and open suppression (`0.1`, `score_op: "set"`).
+  - Time-decay ranking (`homeItemRankScoreSQL`) and empty-title filtering (`COALESCE(khi.title, '') <> ''`) happen at read time in `GetKnowledgeHomeItems` (`driver/sovereign_db/read_projections.go`), not in the projector.
+- **Recall Candidates**: `UpsertRecallCandidate` (`driver/sovereign_db/mutation_recall_candidate.go`) deduplicates `reason_json` entries by `(type, description, source_item_key)` per `(user_id, item_key)` and `DismissRecallCandidate` soft-deletes dismissed items by setting `dismissed_at`.
 - **Knowledge Trail Projector & Planner**:
-  - Records `knowledge_trail_footprints` only for explicit engagement verbs (`opened`, `saved`, `asked`, `noted`, `revisited`).
-  - Proposes `cluster` branches only when recent engagement anchors share at least 2 normalized tags with candidate articles.
+  - `EngagementVerbs` are `read`, `asked`, and `listened` (`driver/sovereign_db/read_trail.go`). Only these verbs appear on the trail spine, count toward path wear, or anchor branches (`dismissed` footprints are excluded).
+  - `DeriveTrailClusterCandidates` (`driver/sovereign_db/read_trail_candidates.go`) normalizes tags and excludes junk tags (`JunkTagWords` in `driver/sovereign_db/read_trail_candidates.go`) in SQL before ranking, selecting the anchor with the largest clean tag overlap (ties broken by most recent engagement).
+  - `usecase/trail_planner` requires at least 1 clean shared tag (`len(c.SharedTags) >= 1` after `tagclean.CleanDisplay`) to propose a `cluster` branch (`confidence: "plausible"` for 1 clean shared tag, `"corroborated"` for 2 or more).
+  - Branch proposals (`trail.branch_proposed.v1`) fold first-write-wins via `UpsertTrailBranch` (`ON CONFLICT (user_id, branch_key) DO NOTHING` in `driver/sovereign_db/read_trail_branches.go`), keeping the earliest proposal's fields and preserving resolved `state` across reprojects.
 
 ## Commands
 

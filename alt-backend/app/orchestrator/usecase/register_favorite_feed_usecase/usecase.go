@@ -49,13 +49,19 @@ func (u *RegisterFavoriteFeedUsecase) Execute(ctx context.Context, url string) e
 	if err := u.gateway.RegisterFavoriteFeed(ctx, url, user.UserID); err != nil {
 		return err
 	}
-	if u.articleLookup != nil && u.openFn != nil {
-		article, lookupErr := u.articleLookup.FetchArticleByURL(ctx, url)
-		if lookupErr == nil && article != nil && article.ID != "" {
-			if openErr := u.openFn(ctx, user.UserID, user.TenantID, "article:"+article.ID); openErr != nil {
-				logger.Logger.WarnContext(ctx, "failed to sync home open from favorite feed",
-					"error", openErr, "article_id", article.ID)
-			}
+	if u.articleLookup == nil || u.openFn == nil {
+		panic("register_favorite_feed_usecase: home-open hook is not wired (use WithHomeOpen)")
+	}
+	article, lookupErr := u.articleLookup.FetchArticleByURL(ctx, url)
+	if lookupErr != nil {
+		logger.Logger.WarnContext(ctx, "failed to look up article by URL for favorite feed home open sync",
+			"error_kind", "article_lookup_failed")
+		return nil
+	}
+	if article != nil && article.ID != "" {
+		if openErr := u.openFn(ctx, user.UserID, user.TenantID, "article:"+article.ID); openErr != nil {
+			logger.Logger.WarnContext(ctx, "failed to sync home open from favorite feed",
+				"error_kind", "open_sync_failed", "article_id", article.ID)
 		}
 	}
 	return nil

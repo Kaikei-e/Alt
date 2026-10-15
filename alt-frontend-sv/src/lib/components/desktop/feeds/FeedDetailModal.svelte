@@ -4,6 +4,7 @@ import { Dialog as DialogPrimitive } from "bits-ui";
 import { onDestroy, tick } from "svelte";
 import { getFeedContentOnTheFlyClient } from "#lib/api/client/articles.js";
 import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
+import ArticleEndBranches from "#lib/components/knowledge-trail/ArticleEndBranches.svelte";
 import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
 import {
 	createClientTransport,
@@ -49,6 +50,8 @@ interface Props {
 	 */
 	onMarkAsRead?: () => void;
 	isMarkingAsRead?: boolean;
+	trackOpen?: boolean;
+	showHomeReaderLinks?: boolean;
 }
 
 let {
@@ -63,6 +66,8 @@ let {
 	currentIndex,
 	onMarkAsRead,
 	isMarkingAsRead = false,
+	trackOpen = true,
+	showHomeReaderLinks = false,
 }: Props = $props();
 
 // Content fetching state.
@@ -75,6 +80,7 @@ let contentPhase = $state<ArticleContentPhase>("idle");
 let articleContent = $state<string | null>(null);
 let articleID = $state<string | null>(null);
 let contentError = $state<string | null>(null);
+const readerArticleId = $derived(feed?.articleId || articleID);
 // The one automatic re-attempt allowed per failure.
 let foregroundRetrySpent = false;
 let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -360,7 +366,11 @@ function applyResult(
 	articleID = result.articleID;
 	contentError = null;
 	contentPhase = "ready";
-	if (result.articleID && result.articleID !== lastTrackedOpenArticleId) {
+	if (
+		trackOpen &&
+		result.articleID &&
+		result.articleID !== lastTrackedOpenArticleId
+	) {
 		lastTrackedOpenArticleId = result.articleID;
 		void trackHomeActionClient(
 			"open",
@@ -710,6 +720,23 @@ async function handleSummarize(forceRefresh = false) {
 										>{feed.description}</p>
 									{/if}
 								</section>
+							{/if}
+
+							{#if showHomeReaderLinks && readerArticleId}
+								{#key readerArticleId}
+									<div class="home-reader-links" data-testid="home-reader-links">
+										<ArticleEndBranches anchorItemKey={`article:${readerArticleId}`} />
+										<div class="home-reader-page-link-row">
+											<a
+												href={`/articles/${encodeURIComponent(readerArticleId)}`}
+												class="home-reader-page-link"
+												data-testid="open-article-page-link"
+											>
+												Open article page
+											</a>
+										</div>
+									</div>
+								{/key}
 							{/if}
 						</article>
 
@@ -1361,5 +1388,31 @@ async function handleSummarize(forceRefresh = false) {
 		font-family: var(--font-body);
 		font-size: 0.75rem;
 		color: var(--alt-ash);
+	}
+
+	.home-reader-links {
+		margin-top: 1.5rem;
+		padding: 1rem 1.5rem;
+		background: var(--surface-bg);
+		border: 1px solid var(--surface-border);
+	}
+
+	.home-reader-page-link-row {
+		margin-top: 1rem;
+	}
+
+	.home-reader-page-link {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-weight: 500;
+		color: var(--interactive-text);
+		text-decoration: none;
+	}
+
+	.home-reader-page-link:hover {
+		color: var(--interactive-text-hover);
+		text-decoration: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 3px;
 	}
 </style>

@@ -23,6 +23,13 @@ const {
 const activeLens = $derived(
 	activeLensId ? lenses.find((l) => l.lensId === activeLensId) : null,
 );
+let confirmingPillLensId = $state<string | null>(null);
+let confirmingSummaryLensId = $state<string | null>(null);
+
+function focusOnMount(node: HTMLElement) {
+	node.focus();
+}
+
 const activeSummary = $derived.by(() => {
 	if (!activeLens?.currentVersion) return [];
 	const parts: string[] = [];
@@ -53,7 +60,11 @@ const activeSummary = $derived.by(() => {
 	<div class="lens-pills">
 		<button
 			class="lens-pill {activeLensId === null ? 'lens-pill--active' : ''}"
-			onclick={() => onSelect(null)}
+			onclick={() => {
+				confirmingPillLensId = null;
+				confirmingSummaryLensId = null;
+				onSelect(null);
+			}}
 		>
 			<Filter class="h-3.5 w-3.5" />
 			All
@@ -63,23 +74,58 @@ const activeSummary = $derived.by(() => {
 			<div class="lens-pill-group {activeLensId === lens.lensId ? 'lens-pill-group--active' : ''}">
 				<button
 					class="lens-pill {activeLensId === lens.lensId ? 'lens-pill--active' : ''}"
-					onclick={() => onSelect(lens.lensId)}
+					onclick={() => {
+						confirmingPillLensId = null;
+						confirmingSummaryLensId = null;
+						onSelect(lens.lensId);
+					}}
 				>
 					{lens.name}
 				</button>
 				{#if onDelete}
-					<button
-						type="button"
-						class="lens-pill-delete"
-						aria-label="Delete lens {lens.name}"
-						title="Delete lens {lens.name}"
-						onclick={(e) => {
-							e.stopPropagation();
-							onDelete(lens.lensId);
-						}}
-					>
-						<X class="h-3 w-3" />
-					</button>
+					{#if confirmingPillLensId === lens.lensId}
+						<span class="lens-confirm-group">
+							<span class="lens-confirm-label">Delete?</span>
+							<button
+								use:focusOnMount
+								type="button"
+								class="lens-confirm-btn"
+								aria-label="Confirm delete lens {lens.name}"
+								onclick={(e) => {
+									e.stopPropagation();
+									confirmingPillLensId = null;
+									onDelete(lens.lensId);
+								}}
+							>
+								Confirm
+							</button>
+							<button
+								type="button"
+								class="lens-confirm-btn"
+								aria-label="Cancel delete lens {lens.name}"
+								onclick={(e) => {
+									e.stopPropagation();
+									confirmingPillLensId = null;
+								}}
+							>
+								Cancel
+							</button>
+						</span>
+					{:else}
+						<button
+							type="button"
+							class="lens-pill-delete"
+							aria-label="Delete lens {lens.name}"
+							title="Delete lens {lens.name}"
+							onclick={(e) => {
+								e.stopPropagation();
+								confirmingSummaryLensId = null;
+								confirmingPillLensId = lens.lensId;
+							}}
+						>
+							<X class="h-3 w-3" />
+						</button>
+					{/if}
 				{/if}
 			</div>
 		{/each}
@@ -98,15 +144,54 @@ const activeSummary = $derived.by(() => {
 			</div>
 			<div class="flex items-center gap-2 flex-shrink-0">
 				{#if onDelete}
-					<button
-						type="button"
-						class="lens-delete"
-						onclick={() => onDelete(activeLens.lensId)}
-					>
-						Delete
-					</button>
+					{#if confirmingSummaryLensId === activeLens.lensId}
+						<span class="lens-confirm-group">
+							<span class="lens-confirm-label">Delete?</span>
+							<button
+								use:focusOnMount
+								type="button"
+								class="lens-confirm-btn"
+								aria-label="Confirm delete lens {activeLens.name}"
+								onclick={() => {
+									const targetId = confirmingSummaryLensId;
+									confirmingSummaryLensId = null;
+									if (targetId) onDelete(targetId);
+								}}
+							>
+								Confirm
+							</button>
+							<button
+								type="button"
+								class="lens-confirm-btn"
+								aria-label="Cancel delete lens {activeLens.name}"
+								onclick={() => {
+									confirmingSummaryLensId = null;
+								}}
+							>
+								Cancel
+							</button>
+						</span>
+					{:else}
+						<button
+							type="button"
+							class="lens-delete"
+							onclick={() => {
+								confirmingPillLensId = null;
+								confirmingSummaryLensId = activeLens.lensId;
+							}}
+						>
+							Delete
+						</button>
+					{/if}
 				{/if}
-				<button class="lens-clear" onclick={() => onSelect(null)}>
+				<button
+					class="lens-clear"
+					onclick={() => {
+						confirmingPillLensId = null;
+						confirmingSummaryLensId = null;
+						onSelect(null);
+					}}
+				>
 					Clear
 				</button>
 			</div>
@@ -253,5 +338,44 @@ const activeSummary = $derived.by(() => {
 	.lens-delete:hover {
 		border-color: var(--alt-error);
 		color: var(--alt-error);
+	}
+
+	.lens-confirm-group {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0 0.45rem;
+		border-left: 1px solid var(--surface-border);
+	}
+
+	.lens-summary .lens-confirm-group {
+		padding: 0;
+		border-left: none;
+	}
+
+	.lens-confirm-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.lens-confirm-btn {
+		border: 1px solid var(--chip-border);
+		background: var(--action-surface);
+		color: var(--interactive-text);
+		padding: 0.2rem 0.55rem;
+		font-family: var(--font-body);
+		font-size: 0.78rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.lens-confirm-btn:hover {
+		background: var(--action-surface-hover);
+		color: var(--interactive-text-hover);
 	}
 </style>

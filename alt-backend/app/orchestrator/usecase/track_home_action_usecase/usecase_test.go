@@ -4,8 +4,11 @@ import (
 	"alt/domain"
 	"alt/orchestrator/port/knowledge_home_port"
 	"alt/utils/logger"
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/url"
 	"testing"
 	"time"
@@ -217,7 +220,8 @@ func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewTrackHomeActionUsecase(tt.userEventPort, tt.knowledgePort, tt.flagPort, nil, nil, nil, nil)
+			uc := NewTrackHomeActionUsecase(tt.userEventPort, tt.knowledgePort, tt.flagPort, nil, nil, nil, nil).
+				WithArticleStatusPort(&mockArticleStatusPort{})
 			err := uc.Execute(context.Background(), userID, tenantID, tt.actionType, tt.itemKey, tt.metadataJSON)
 
 			if tt.wantErr {
@@ -242,7 +246,8 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("open action appends SignalOpened", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -254,7 +259,8 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("ask action appends SignalAugurReferenced", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "ask", itemKey, "")
 		require.NoError(t, err)
@@ -264,7 +270,8 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("listen action appends SignalTagInterest", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "listen", itemKey, "")
 		require.NoError(t, err)
@@ -274,7 +281,8 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("open_search action appends SignalSearchRelated", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		metadata := `{"search_query":"RAG pipeline"}`
 		err := uc.Execute(context.Background(), userID, tenantID, "open_search", itemKey, metadata)
@@ -286,7 +294,8 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("open_search action includes search_query in signal payload", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		metadata := `{"query":"rust async"}`
 		err := uc.Execute(context.Background(), userID, tenantID, "open_search", itemKey, metadata)
@@ -297,7 +306,8 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("dismiss action does not append signal", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
@@ -306,14 +316,16 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("recall signal failure is non-fatal", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{err: errors.New("db error")}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
 	})
 
 	t.Run("nil recall signal port does not panic", func(t *testing.T) {
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -321,7 +333,8 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("tracking disabled skips signal generation", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, &mockFeatureFlagPort{enabled: false}, recallPort, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, &mockFeatureFlagPort{enabled: false}, recallPort, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -330,7 +343,8 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 
 	t.Run("tag_click action appends SignalTagClicked with tag in payload", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		metadata := `{"tag":"rust"}`
 		err := uc.Execute(context.Background(), userID, tenantID, "tag_click", itemKey, metadata)
@@ -353,7 +367,8 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 		versionPort := &mockActiveProjectionVersionPort{
 			version: &domain.KnowledgeProjectionVersion{Version: 7},
 		}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, versionPort, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, versionPort, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
@@ -366,7 +381,8 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 
 	t.Run("dismiss read model failure is non fatal", func(t *testing.T) {
 		dismissPort := &mockDismissPort{err: errors.New("db failed")}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
@@ -375,7 +391,8 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 
 	t.Run("dismiss target not found is non fatal", func(t *testing.T) {
 		dismissPort := &mockDismissPort{err: knowledge_home_port.ErrDismissTargetNotFound}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
@@ -384,7 +401,8 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 
 	t.Run("non dismiss actions skip read model update", func(t *testing.T) {
 		dismissPort := &mockDismissPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -394,7 +412,8 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 	t.Run("dismiss falls back to default projection version when lookup fails", func(t *testing.T) {
 		dismissPort := &mockDismissPort{}
 		versionPort := &mockActiveProjectionVersionPort{err: errors.New("lookup failed")}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, versionPort, nil)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, dismissPort, versionPort, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		require.NoError(t, err)
@@ -418,7 +437,8 @@ func TestTrackHomeActionUsecase_ArticleURLRetry(t *testing.T) {
 	t.Run("succeeds on attempt 1: URL is injected, no extra retries", func(t *testing.T) {
 		flaky := &flakyArticleURLLookupPort{failUntil: 0, succeedURL: "https://example.com/a"}
 		knPort := &mockKnowledgeEventPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, flaky)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, flaky).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -430,7 +450,8 @@ func TestTrackHomeActionUsecase_ArticleURLRetry(t *testing.T) {
 	t.Run("succeeds on retry 2 of 3: URL is injected", func(t *testing.T) {
 		flaky := &flakyArticleURLLookupPort{failUntil: 1, succeedURL: "https://example.com/b"}
 		knPort := &mockKnowledgeEventPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, flaky)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, flaky).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
@@ -446,7 +467,8 @@ func TestTrackHomeActionUsecase_ArticleURLRetry(t *testing.T) {
 		// long-term self-heal path.
 		flaky := &flakyArticleURLLookupPort{failUntil: 3, succeedURL: "https://example.com/c"}
 		knPort := &mockKnowledgeEventPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, flaky)
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, flaky).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err, "lookup failure must not cascade")
@@ -517,7 +539,8 @@ func TestTrackHomeActionUsecase_UserEventCarriesDedupeKey(t *testing.T) {
 	for _, actionType := range []string{"dismiss", "open", "ask", "tag_click"} {
 		t.Run(actionType, func(t *testing.T) {
 			userPort := &mockUserEventPort{}
-			uc := NewTrackHomeActionUsecase(userPort, &mockKnowledgeEventPort{}, nil, nil, nil, nil, nil)
+			uc := NewTrackHomeActionUsecase(userPort, &mockKnowledgeEventPort{}, nil, nil, nil, nil, nil).
+				WithArticleStatusPort(&mockArticleStatusPort{})
 
 			err := uc.Execute(context.Background(), userID, tenantID, actionType, "item-1", "")
 			require.NoError(t, err)
@@ -531,7 +554,8 @@ func TestTrackHomeActionUsecase_UserEventCarriesDedupeKey(t *testing.T) {
 	t.Run("both appends of one action share the key", func(t *testing.T) {
 		userPort := &mockUserEventPort{}
 		knPort := &mockKnowledgeEventPort{}
-		uc := NewTrackHomeActionUsecase(userPort, knPort, nil, nil, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(userPort, knPort, nil, nil, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", "item-1", ""))
 
@@ -544,7 +568,8 @@ func TestTrackHomeActionUsecase_UserEventCarriesDedupeKey(t *testing.T) {
 
 	t.Run("distinct items do not collide", func(t *testing.T) {
 		userPort := &mockUserEventPort{}
-		uc := NewTrackHomeActionUsecase(userPort, &mockKnowledgeEventPort{}, nil, nil, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(userPort, &mockKnowledgeEventPort{}, nil, nil, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", "item-1", ""))
 		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", "item-2", ""))
@@ -568,6 +593,25 @@ func (m *mockArticleStatusPort) MarkArticleAsRead(_ context.Context, articleURL 
 	return nil
 }
 
+func TestTrackHomeActionUsecase_PanicsWhenArticleStatusPortUnwired(t *testing.T) {
+	logger.InitLogger()
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	itemKey := "article:" + articleID.String()
+
+	for _, action := range []string{"open", "dismiss"} {
+		t.Run("panics on "+action+" when articleStatusPort is not wired", func(t *testing.T) {
+			urlPort := &flakyArticleURLLookupPort{succeedURL: "https://example.com/post-1"}
+			uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort)
+
+			assert.PanicsWithValue(t, "TrackHomeActionUsecase: articleStatusPort is not wired (use WithArticleStatusPort)", func() {
+				_ = uc.Execute(context.Background(), userID, tenantID, action, itemKey, "")
+			})
+		})
+	}
+}
+
 func TestTrackHomeActionUsecase_SyncsFeedReadStatus(t *testing.T) {
 	logger.InitLogger()
 	userID := uuid.New()
@@ -575,25 +619,149 @@ func TestTrackHomeActionUsecase_SyncsFeedReadStatus(t *testing.T) {
 	articleID := uuid.New()
 	itemKey := "article:" + articleID.String()
 
-	t.Run("open and dismiss mark feed read when article URL is resolved", func(t *testing.T) {
-		for _, action := range []string{"open", "dismiss"} {
+	tests := []struct {
+		name         string
+		action       string
+		metadataJSON string
+		wantMarked   bool
+	}{
+		{
+			name:         "open with empty metadata (Knowledge Home)",
+			action:       "open",
+			metadataJSON: "",
+			wantMarked:   true,
+		},
+		{
+			name:         "open with metadata missing source key",
+			action:       "open",
+			metadataJSON: `{"idempotency_key":"k1"}`,
+			wantMarked:   true,
+		},
+		{
+			name:         "open with empty source string",
+			action:       "open",
+			metadataJSON: `{"source":""}`,
+			wantMarked:   true,
+		},
+		{
+			name:         "open from feed_detail_modal",
+			action:       "open",
+			metadataJSON: `{"source":"feed_detail_modal"}`,
+			wantMarked:   true,
+		},
+		{
+			name:         "open from mobile_feed_details",
+			action:       "open",
+			metadataJSON: `{"source":"mobile_feed_details"}`,
+			wantMarked:   true,
+		},
+		{
+			name:         "open from swipe_card_expand does not mark read",
+			action:       "open",
+			metadataJSON: `{"source":"swipe_card_expand"}`,
+			wantMarked:   false,
+		},
+		{
+			name:         "open from article_detail_panel does not mark read",
+			action:       "open",
+			metadataJSON: `{"source":"article_detail_panel"}`,
+			wantMarked:   false,
+		},
+		{
+			name:         "open from article_page does not mark read",
+			action:       "open",
+			metadataJSON: `{"source":"article_page"}`,
+			wantMarked:   false,
+		},
+		{
+			name:         "open from favorite_feed does not mark read",
+			action:       "open",
+			metadataJSON: `{"source":"favorite_feed"}`,
+			wantMarked:   false,
+		},
+		{
+			name:         "open from feeds_mark_read does not mark read",
+			action:       "open",
+			metadataJSON: `{"source":"feeds_mark_read"}`,
+			wantMarked:   false,
+		},
+		{
+			name:         "open from unknown source does not mark read",
+			action:       "open",
+			metadataJSON: `{"source":"unknown_surface"}`,
+			wantMarked:   false,
+		},
+		{
+			name:         "open with malformed metadata JSON does not mark read",
+			action:       "open",
+			metadataJSON: `{malformed`,
+			wantMarked:   false,
+		},
+		{
+			name:         "open with non-string source does not mark read",
+			action:       "open",
+			metadataJSON: `{"source":123}`,
+			wantMarked:   false,
+		},
+		{
+			name:         "dismiss with empty metadata marks read",
+			action:       "dismiss",
+			metadataJSON: "",
+			wantMarked:   true,
+		},
+		{
+			name:         "dismiss from non-feeds_mark_read source marks read",
+			action:       "dismiss",
+			metadataJSON: `{"source":"knowledge_home"}`,
+			wantMarked:   true,
+		},
+		{
+			name:         "dismiss from feeds_mark_read skips read sync to prevent loop",
+			action:       "dismiss",
+			metadataJSON: `{"source":"feeds_mark_read"}`,
+			wantMarked:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			statusPort := &mockArticleStatusPort{}
 			urlPort := &flakyArticleURLLookupPort{succeedURL: "https://example.com/post-1"}
 			uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort).
 				WithArticleStatusPort(statusPort)
 
-			require.NoError(t, uc.Execute(context.Background(), userID, tenantID, action, itemKey, ""))
-			assert.Equal(t, []string{"https://example.com/post-1"}, statusPort.markedURLs)
-		}
-	})
+			require.NoError(t, uc.Execute(context.Background(), userID, tenantID, tt.action, itemKey, tt.metadataJSON))
+			if tt.wantMarked {
+				assert.Equal(t, []string{"https://example.com/post-1"}, statusPort.markedURLs)
+			} else {
+				assert.Empty(t, statusPort.markedURLs)
+			}
+		})
+	}
+}
 
-	t.Run("skips feed read sync when metadata source is feeds_mark_read to prevent loop", func(t *testing.T) {
-		statusPort := &mockArticleStatusPort{}
-		urlPort := &flakyArticleURLLookupPort{succeedURL: "https://example.com/post-1"}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort).
-			WithArticleStatusPort(statusPort)
+func TestTrackHomeActionUsecase_SyncErrorLogExcludesURL(t *testing.T) {
+	var buf bytes.Buffer
+	prev := logger.Logger
+	logger.Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	t.Cleanup(func() { logger.Logger = prev })
 
-		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, `{"source":"feeds_mark_read"}`))
-		assert.Empty(t, statusPort.markedURLs)
-	})
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	itemKey := "article:" + articleID.String()
+	rawURL := "https://example.com/secret-post?token=abc"
+
+	statusPort := &mockArticleStatusPort{
+		err: fmt.Errorf("mark article as read %s: rpc failed", rawURL),
+	}
+	urlPort := &flakyArticleURLLookupPort{succeedURL: rawURL}
+	uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort).
+		WithArticleStatusPort(statusPort)
+
+	require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "open", itemKey, ""))
+	assert.Contains(t, buf.String(), "WARN")
+	assert.Contains(t, buf.String(), itemKey)
+	assert.NotContains(t, buf.String(), rawURL)
+	assert.NotContains(t, buf.String(), "secret-post")
 }

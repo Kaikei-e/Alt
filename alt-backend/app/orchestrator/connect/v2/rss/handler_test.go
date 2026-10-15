@@ -433,6 +433,12 @@ func TestRegisterFavoriteFeed_Unauthenticated(t *testing.T) {
 	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
 }
 
+type mockArticleByURLLookupPort struct{}
+
+func (m *mockArticleByURLLookupPort) FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error) {
+	return nil, nil
+}
+
 func TestRegisterFavoriteFeed_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -440,7 +446,10 @@ func TestRegisterFavoriteFeed_Success(t *testing.T) {
 	mockPort := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
 	mockPort.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/feed", gomock.Any()).Return(nil)
 
-	usecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(mockPort)
+	usecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(mockPort).
+		WithHomeOpen(&mockArticleByURLLookupPort{}, func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error {
+			return nil
+		})
 	container := &di.ApplicationComponents{
 		RegisterFavoriteFeedUsecase: usecase,
 	}
@@ -463,7 +472,10 @@ func TestRegisterFavoriteFeed_UsecaseError(t *testing.T) {
 	mockPort := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
 	mockPort.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/feed", gomock.Any()).Return(errors.New("db error"))
 
-	usecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(mockPort)
+	usecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(mockPort).
+		WithHomeOpen(&mockArticleByURLLookupPort{}, func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error {
+			return nil
+		})
 	container := &di.ApplicationComponents{
 		RegisterFavoriteFeedUsecase: usecase,
 	}

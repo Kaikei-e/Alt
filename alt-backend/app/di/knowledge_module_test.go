@@ -2,9 +2,12 @@ package di
 
 import (
 	"alt/config"
+	"bytes"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestLogSovereignWiringState pins CLAUDE.md rule 8 / di-wiring.md: a missing
@@ -68,4 +71,35 @@ func TestNewKnowledgeModule_OperatorWiring(t *testing.T) {
 		assert.True(t, km.SovereignOperatorClient.Enabled())
 		assert.NotSame(t, km.SovereignClient, km.SovereignOperatorClient)
 	})
+}
+
+func TestNewBackendComponents_EmitsHomeFeedSyncStartupLogs(t *testing.T) {
+	setDataHubClientEnv(t)
+	cfg := splitTestConfig()
+	cfg.RateLimit.PrefetchSlotWait = "250ms"
+	cfg.ImageProxy.Enabled = false
+	cfg.SearchIndexer.ConnectURL = "https://search-indexer:9301"
+	cfg.PreProcessor.URL = "https://pre-processor:9200"
+	cfg.PreProcessor.ConnectURL = "https://pre-processor:9202"
+	cfg.Rag.OrchestratorURL = "http://rag-orchestrator:9010"
+	cfg.Rag.OrchestratorConnectURL = "http://rag-orchestrator:9011"
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	components, err := NewBackendComponents(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, components)
+
+	logs := buf.String()
+	for _, wantMsg := range []string{
+		"track_home_action_article_status_sync_enabled",
+		"articles_reading_status_home_dismiss_enabled",
+		"feeds_reading_status_home_dismiss_enabled",
+		"register_favorite_feed_home_open_enabled",
+	} {
+		assert.Contains(t, logs, `"msg":"`+wantMsg+`"`, "missing startup log %s", wantMsg)
+	}
 }

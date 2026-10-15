@@ -9,7 +9,7 @@ export async function trackHomeActionClient(
 	itemKey: string,
 	metadataJson?: string,
 ): Promise<void> {
-	if (!itemKey || import.meta.env?.MODE === "test") return;
+	if (!itemKey) return;
 	try {
 		const transport = createClientTransport();
 		const { trackHomeAction } = await import("#lib/connect/knowledge_home.js");

@@ -10,37 +10,41 @@ const DEFAULT_PAGE_URL =
 // Read through a getter rather than captured at mock time: the masthead cases
 // below vary the query string, and a frozen URL would make every one of them
 // exercise the same handoff.
-let currentPageURL = new URL(DEFAULT_PAGE_URL);
+let currentArticleId = $state("test-123");
+let currentPageURL = $state(new URL(DEFAULT_PAGE_URL));
 
 vi.mock("$app/state", () => ({
 	page: {
-		params: { id: "test-123" },
+		get params() {
+			return { id: currentArticleId };
+		},
 		get url() {
 			return currentPageURL;
 		},
 	},
 }));
 
-// The route reaches $app/navigation by two independent paths: +page.svelte
-// imports `goto`, and useTrailOutcome — the trail dwell measurement — imports
-// `beforeNavigate` to flush on leave. A factory that enumerates a subset
-// replaces the *whole* module, so any binding it omits becomes an import-time
-// "does not provide an export named ..." SyntaxError and the file collects
-// zero tests. Spy-mode automocking wraps the real module instead: every
-// current and future export stays bound, and only what must not really run is
-// overridden below. `goto` is the one such binding — real navigation would
-// steer the browser-mode page away mid-test. `beforeNavigate` is safe to keep
-// real; it is a thin `onMount(() => callbacks.add(cb))` whose callbacks only
-// fire on an actual client-router navigation, which never happens here.
-//
-// Spy mode rather than an `importOriginal` spread because that spread makes
-// the mock a manually resolved module: the browser provider has to round-trip
-// to this worker before it can answer the page's request for it, and when the
-// round trip loses the race the run dies with "route.fulfill: The object has
+// +page.svelte imports `goto` and useTrailOutcome imports `beforeNavigate`
+// from `$app/navigation`. `$app/navigation` re-exports via `export *`, which
+// Vitest `{ spy: true }` automocking cannot wrap, so we provide an explicit
+// factory mock with both bindings (`goto` stubbed to prevent real browser
+// navigation mid-test, and `beforeNavigate` stubbed). The client and connect
+// modules below have concrete named exports and use `{ spy: true }`.
 vi.mock("$app/navigation", () => ({
 	goto: vi.fn(),
 	beforeNavigate: vi.fn(),
 }));
+vi.mock("#lib/api/client/knowledge_home.js", { spy: true });
+vi.mock("#lib/connect/knowledge_trail.js", { spy: true });
+vi.mock("#lib/connect/transport-client.js", { spy: true });
+
+import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
+import {
+	emitTrailOutcome,
+	getItemBranches,
+	resolveBranch,
+} from "#lib/connect/knowledge_trail.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 
 const mockGetFeedContent = vi.fn();
 const mockGetArticleSourceURL = vi
@@ -52,6 +56,21 @@ vi.mock("#lib/api/client/articles.js", () => ({
 	getArticleSourceURLClient: (...args: unknown[]) =>
 		mockGetArticleSourceURL(...args),
 }));
+
+const mockTrackHomeActionClient = vi.mocked(trackHomeActionClient);
+const mockGetItemBranches = vi.mocked(getItemBranches);
+const mockResolveBranch = vi.mocked(resolveBranch);
+const mockEmitTrailOutcome = vi.mocked(emitTrailOutcome);
+
+beforeEach(() => {
+	mockTrackHomeActionClient.mockResolvedValue(undefined);
+	mockGetItemBranches.mockResolvedValue([]);
+	mockResolveBranch.mockResolvedValue(undefined);
+	mockEmitTrailOutcome.mockResolvedValue(undefined);
+	vi.mocked(createClientTransport).mockReturnValue(
+		{} as ReturnType<typeof createClientTransport>,
+	);
+});
 
 const mockSummarizerReset = vi.fn();
 let summarizerOverride: Partial<{
@@ -94,6 +113,7 @@ describe("Article page fetch button", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentArticleId = "test-123";
 		currentPageURL = new URL(DEFAULT_PAGE_URL);
 	});
 
@@ -179,6 +199,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentArticleId = "test-123";
 		currentPageURL = new URL(DEFAULT_PAGE_URL);
 	});
 
@@ -322,6 +343,7 @@ describe("Article page masthead", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentArticleId = "test-123";
 		currentPageURL = new URL(DEFAULT_PAGE_URL);
 		mockGetFeedContent.mockReturnValue(new Promise(() => {}));
 	});
@@ -395,6 +417,7 @@ describe("Article page content states", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentArticleId = "test-123";
 		currentPageURL = new URL(DEFAULT_PAGE_URL);
 	});
 
@@ -499,5 +522,200 @@ describe("Article page content states", () => {
 			.toBeInTheDocument();
 		await new Promise((r) => setTimeout(r, 900));
 		expect(mockGetFeedContent).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("Article page branch walk and open tracking", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(goto).mockImplementation(async () => {});
+		summarizerOverride = {};
+		currentArticleId = "art-a";
+		currentPageURL = new URL(
+			"http://localhost/articles/art-a?url=https%3A%2F%2Fexample.com%2Fa&title=Article+A&trail_proposal=prop-a",
+		);
+	});
+
+	it("reloads content and end branches, records open once per article visit, and emits dwell outcomes for both branch walks", async () => {
+		mockGetFeedContent.mockImplementation((url: string) =>
+			Promise.resolve({
+				content:
+					url === "https://example.com/b"
+						? "<p>Second walked article body.</p>"
+						: "<p>First walked article body.</p>",
+				article_id: url === "https://example.com/b" ? "art-b" : "art-a",
+			}),
+		);
+		mockGetArticleSourceURL.mockResolvedValue({
+			url: "https://example.com/b",
+			title: "Article B",
+		});
+		mockGetItemBranches.mockImplementation(
+			(_transport: unknown, itemKey: string) =>
+				Promise.resolve([
+					{
+						branchKey: `cluster:u:${itemKey}`,
+						anchorItemKey: itemKey,
+						relationKind: "cluster",
+						why: `Branch from ${itemKey}`,
+						evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+						confidence: "plausible",
+						targetItemKey: "article:art-b",
+						targetTitle: `Target from ${itemKey}`,
+					},
+				]),
+		);
+
+		const { unmount } = renderPage();
+
+		await expect
+			.element(testPage.getByText("First walked article body."))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByText("Branch from article:art-a"))
+			.toBeInTheDocument();
+
+		expect(mockTrackHomeActionClient).toHaveBeenCalledTimes(1);
+		expect(mockTrackHomeActionClient).toHaveBeenCalledWith(
+			"open",
+			"article:art-a",
+			JSON.stringify({ source: "article_page" }),
+		);
+		expect(mockGetItemBranches).toHaveBeenCalledTimes(1);
+		expect(mockGetItemBranches).toHaveBeenCalledWith(
+			expect.anything(),
+			"article:art-a",
+			2,
+		);
+
+		// Walk a branch to /articles/art-b?trail_proposal=prop-b
+		currentArticleId = "art-b";
+		currentPageURL = new URL(
+			"http://localhost/articles/art-b?trail_proposal=prop-b",
+		);
+
+		await expect
+			.element(testPage.getByText("Second walked article body."))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByText("Branch from article:art-b"))
+			.toBeInTheDocument();
+
+		expect(mockTrackHomeActionClient).toHaveBeenCalledTimes(2);
+		expect(mockTrackHomeActionClient).toHaveBeenLastCalledWith(
+			"open",
+			"article:art-b",
+			JSON.stringify({ source: "article_page" }),
+		);
+		expect(mockGetItemBranches).toHaveBeenCalledTimes(2);
+		expect(mockGetItemBranches).toHaveBeenLastCalledWith(
+			expect.anything(),
+			"article:art-b",
+			2,
+		);
+
+		// Leaving the first article flushed its dwell outcome; unmounting the
+		// second article flushes the second branch walk's dwell outcome too.
+		expect(mockEmitTrailOutcome).toHaveBeenCalledTimes(1);
+		expect(mockEmitTrailOutcome).toHaveBeenCalledWith(
+			expect.anything(),
+			"prop-a",
+			"article:art-a",
+			expect.any(BigInt),
+		);
+
+		unmount();
+
+		expect(mockEmitTrailOutcome).toHaveBeenCalledTimes(2);
+		expect(mockEmitTrailOutcome).toHaveBeenLastCalledWith(
+			expect.anything(),
+			"prop-b",
+			"article:art-b",
+			expect.any(BigInt),
+		);
+	});
+
+	it("ignores a late endBranches response whose anchor no longer matches the current article", async () => {
+		let resolveBranchesA!: (
+			value: Awaited<ReturnType<typeof getItemBranches>>,
+		) => void;
+		const slowBranchesAPromise = new Promise<
+			Awaited<ReturnType<typeof getItemBranches>>
+		>((resolve) => {
+			resolveBranchesA = resolve;
+		});
+
+		mockGetFeedContent.mockImplementation((url: string) =>
+			Promise.resolve({
+				content:
+					url === "https://example.com/b"
+						? "<p>Second walked article body.</p>"
+						: "<p>First walked article body.</p>",
+				article_id: url === "https://example.com/b" ? "art-b" : "art-a",
+			}),
+		);
+		mockGetArticleSourceURL.mockResolvedValue({
+			url: "https://example.com/b",
+			title: "Article B",
+		});
+		mockGetItemBranches.mockImplementation(
+			(_transport: unknown, itemKey: string) => {
+				if (itemKey === "article:art-a") {
+					return slowBranchesAPromise;
+				}
+				return Promise.resolve([
+					{
+						branchKey: `cluster:u:${itemKey}`,
+						anchorItemKey: itemKey,
+						relationKind: "cluster",
+						why: `Branch from ${itemKey}`,
+						evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+						confidence: "plausible",
+						targetItemKey: "article:art-c",
+						targetTitle: `Target from ${itemKey}`,
+					},
+				]);
+			},
+		);
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByText("First walked article body."))
+			.toBeInTheDocument();
+
+		// Navigate to article B while article A's getItemBranches is still in flight
+		currentArticleId = "art-b";
+		currentPageURL = new URL("http://localhost/articles/art-b");
+
+		await expect
+			.element(testPage.getByText("Second walked article body."))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByText("Branch from article:art-b"))
+			.toBeInTheDocument();
+
+		// Late arrival of article A's branches must be ignored
+		resolveBranchesA([
+			{
+				branchKey: "cluster:u:article:art-a",
+				anchorItemKey: "article:art-a",
+				relationKind: "cluster",
+				why: "Stale branch from article:art-a",
+				evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+				confidence: "plausible",
+				targetItemKey: "article:art-b",
+				targetTitle: "Stale target from article:art-a",
+			},
+		]);
+		await slowBranchesAPromise;
+		await new Promise((r) => setTimeout(r, 50));
+
+		await expect
+			.element(testPage.getByText("Branch from article:art-b"))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByText("Stale branch from article:art-a"))
+			.not.toBeInTheDocument();
 	});
 });

@@ -239,6 +239,37 @@ func TestProjector_FoldsValidBranch(t *testing.T) {
 	assert.Equal(t, "plausible", b.Confidence)
 }
 
+func TestProjector_DuplicateBranchProposalIsFirstWriteWins(t *testing.T) {
+	user := userPtr()
+	first := validBranchPayload()
+	firstAt := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+
+	second := first
+	second.AnchorItemKey = "article:later-anchor"
+	second.Why = "Because you read Later Anchor — joins go."
+	second.Confidence = "corroborated"
+	secondAt := firstAt.Add(10 * time.Minute)
+
+	firstEvt := branchEvent(1, first, user)
+	firstEvt.OccurredAt = firstAt
+	secondEvt := branchEvent(2, second, user)
+	secondEvt.OccurredAt = secondAt
+	resolveEvt := resolvedEvent(3, trail_planner.BranchResolvedPayload{
+		BranchKey:  first.BranchKey,
+		Resolution: "dismissed",
+	}, user)
+
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{firstEvt, secondEvt, resolveEvt})
+	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
+
+	got, ok := repo.branches[first.BranchKey]
+	require.True(t, ok)
+	assert.Equal(t, first.AnchorItemKey, got.AnchorItemKey, "first proposal anchor must survive duplicate proposal")
+	assert.Equal(t, first.Why, got.Why, "first proposal why must survive duplicate proposal")
+	assert.Equal(t, first.Confidence, got.Confidence, "first proposal confidence must survive duplicate proposal")
+	assert.Equal(t, "dismissed", repo.states[first.BranchKey], "branch resolution state must become dismissed")
+}
+
 func TestProjector_FoldsBranchResolution(t *testing.T) {
 	user := userPtr()
 	proposed := validBranchPayload()

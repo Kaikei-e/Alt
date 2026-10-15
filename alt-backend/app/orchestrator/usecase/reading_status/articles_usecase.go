@@ -53,15 +53,23 @@ func (u *ArticlesReadingStatusUsecase) Execute(ctx context.Context, articleURL u
 }
 
 func syncHomeDismiss(ctx context.Context, lookup ArticleByURLLookupPort, dismissFn HomeDismissFunc, user *domain.UserContext, rawURL string) {
-	if lookup == nil || dismissFn == nil || rawURL == "" {
+	if lookup == nil || dismissFn == nil {
+		panic("reading_status: home-dismiss hook is not wired (use WithHomeDismiss)")
+	}
+	if rawURL == "" {
 		return
 	}
 	article, err := lookup.FetchArticleByURL(ctx, rawURL)
-	if err != nil || article == nil || article.ID == "" {
+	if err != nil {
+		logger.Logger.WarnContext(ctx, "failed to look up article by URL for home dismiss sync",
+			"error_kind", "article_lookup_failed")
+		return
+	}
+	if article == nil || article.ID == "" {
 		return
 	}
 	if err := dismissFn(ctx, user.UserID, user.TenantID, "article:"+article.ID); err != nil {
 		logger.Logger.WarnContext(ctx, "failed to sync home dismiss from reading status",
-			"error", err, "article_id", article.ID)
+			"error_kind", "dismiss_sync_failed", "article_id", article.ID)
 	}
 }

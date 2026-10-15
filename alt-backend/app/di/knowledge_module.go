@@ -36,11 +36,8 @@ import (
 	"alt/shared/driver/sovereign_client"
 	"alt/shared/usecase/create_summary_version_usecase"
 	altotel "alt/utils/otel"
-	"context"
 	"log/slog"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // KnowledgeModule holds all Knowledge Home domain components.
@@ -137,13 +134,9 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	// trail read.
 	getItemBranchesUC := get_item_branches_usecase.NewGetItemBranchesUsecase(sovereignCli)
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
-	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw)
-	if infra.ReadStateGateway != nil {
-		trackHomeActionUC.WithArticleStatusPort(infra.ReadStateGateway)
-	}
-	resolveTrailBranchUC.WithOpenTracker(func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error {
-		return trackHomeActionUC.Execute(ctx, userID, tenantID, "open", itemKey, `{"source":"trail_branch_taken"}`)
-	})
+	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw).
+		WithArticleStatusPort(infra.ReadStateGateway)
+	slog.Info("track_home_action_article_status_sync_enabled")
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
 	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(versionGw, sovereignCli, versionGw)
 	createTagSetVersionUC := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(versionGw, sovereignCli, versionGw)

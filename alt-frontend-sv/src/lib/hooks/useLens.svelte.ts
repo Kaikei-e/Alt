@@ -54,7 +54,9 @@ export function useLens() {
 		}
 	};
 
-	const remove = async (lensId: string) => {
+	const remove = async (lensId: string): Promise<boolean> => {
+		const previousLenses = lenses;
+		const previousActiveLensId = activeLensId;
 		// Optimistic removal
 		lenses = lenses.filter((l) => l.lensId !== lensId);
 		if (activeLensId === lensId) {
@@ -63,8 +65,12 @@ export function useLens() {
 		try {
 			const transport = createClientTransport();
 			await deleteLens(transport, lensId);
-		} catch {
-			// Fire-and-forget
+			return true;
+		} catch (err) {
+			lenses = previousLenses;
+			activeLensId = previousActiveLensId;
+			error = err instanceof Error ? err : new Error("Unknown error");
+			return false;
 		}
 	};
 

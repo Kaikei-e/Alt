@@ -85,7 +85,9 @@ func (f *fakeRepo) InsertTrailActOutcome(_ context.Context, o sovereign_db.Trail
 }
 
 func (f *fakeRepo) UpsertTrailBranch(_ context.Context, _, _ uuid.UUID, b sovereign_db.TrailBranch, _ time.Time, _ int) error {
-	f.branches[b.BranchKey], f.states[b.BranchKey] = b, "open"
+	if _, ok := f.branches[b.BranchKey]; !ok {
+		f.branches[b.BranchKey], f.states[b.BranchKey] = b, "open"
+	}
 	return nil
 }
 

@@ -126,10 +126,34 @@ func TestDeriveTrailClusterCandidates_FiltersByEngagementVerbsAndExcludesExistin
 		"already-proposed cluster branches must be excluded so the top-N query does not lock out")
 	assert.Contains(t, call.SQL, "NOT EXISTS",
 		"already-proposed cluster branches must be excluded via NOT EXISTS")
-	require.Len(t, call.Args, 3)
+	assert.Contains(t, call.SQL, "$3::text[]",
+		"junk vocabulary from tagclean must be bound as a text[] parameter, not inlined")
+	assert.Contains(t, call.SQL, `regexp_replace(`,
+		"tags and titles must be trimmed of Unicode whitespace via regexp_replace")
+	assert.Contains(t, call.SQL, `\u00A0\u3000`,
+		"SQL whitespace trim must include NBSP (U+00A0) and ideographic space (U+3000)")
+	assert.NotContains(t, call.SQL, "btrim(",
+		"btrim strips only ASCII space and misses Unicode whitespace")
+	assert.Contains(t, call.SQL, "[[:alpha:]]",
+		"tags must contain a letter in SQL")
+	assert.Contains(t, call.SQL, "ORDER BY target_item_key, tag_overlap DESC, last_occurred_at DESC",
+		"best_per_target must pick the anchor with the largest clean overlap, breaking ties by most recent engagement")
+	assert.Contains(t, call.SQL, "ORDER BY tag_overlap DESC, last_occurred_at DESC, target_item_key",
+		"candidates must rank by largest clean overlap first before LIMIT")
+	assert.Contains(t, call.SQL, "LIMIT $4")
+
+	require.Len(t, call.Args, 4)
 	assert.Equal(t, userID, call.Args[0])
 	assert.Equal(t, EngagementVerbs, call.Args[1])
-	assert.Equal(t, 5, call.Args[2])
+	junkWordsArg, ok := call.Args[2].([]string)
+	require.True(t, ok, "arg[2] must be the junk tag vocabulary slice")
+	assert.Equal(t, JunkTagWords, junkWordsArg)
+	require.NotEmpty(t, junkWordsArg)
+	assert.Contains(t, junkWordsArg, "https")
+	assert.Contains(t, junkWordsArg, "ai")
+	assert.Contains(t, junkWordsArg, "blog")
+	assert.Contains(t, junkWordsArg, "こと")
+	assert.Equal(t, 5, call.Args[3])
 }
 
 func TestScanTrailClusterCandidateRow(t *testing.T) {

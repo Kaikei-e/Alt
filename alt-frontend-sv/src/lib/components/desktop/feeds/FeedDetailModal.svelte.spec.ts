@@ -33,6 +33,23 @@ vi.mock("#lib/api/client/articles.js", () => ({
 		mockGetFeedContent(...args),
 }));
 
+const mockTrackHomeActionClient = vi.fn();
+vi.mock("#lib/api/client/knowledge_home.js", () => ({
+	trackHomeActionClient: (...args: unknown[]) =>
+		mockTrackHomeActionClient(...args),
+}));
+
+const mockGetItemBranches = vi.fn();
+const mockResolveBranch = vi.fn();
+vi.mock("#lib/connect/knowledge_trail.js", () => ({
+	getItemBranches: (...args: unknown[]) => mockGetItemBranches(...args),
+	resolveBranch: (...args: unknown[]) => mockResolveBranch(...args),
+}));
+
+vi.mock("#lib/connect/transport-client.js", () => ({
+	createClientTransport: vi.fn(() => ({})),
+}));
+
 // Stubbed rather than exercised: the prefetcher is a module singleton whose
 // cache would leak between cases, and its own behaviour has its own tests.
 vi.mock("#lib/utils/articlePrefetcher.js", () => ({
@@ -356,6 +373,149 @@ describe("FeedDetailModal content states", () => {
 			unmount();
 
 			expect(mockSpeechStop).toHaveBeenCalled();
+		});
+	});
+
+	describe("open tracking and Home reader links", () => {
+		it("records open once by default when article content loads", async () => {
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Article body</p>",
+				article_id: "art-default-open",
+			});
+
+			renderModal();
+
+			await expect
+				.element(testPage.getByText("Article body"))
+				.toBeInTheDocument();
+
+			expect(mockTrackHomeActionClient).toHaveBeenCalledTimes(1);
+			expect(mockTrackHomeActionClient).toHaveBeenCalledWith(
+				"open",
+				"article:art-default-open",
+				JSON.stringify({ source: "feed_detail_modal" }),
+			);
+		});
+
+		it("does NOT record open when trackOpen is false", async () => {
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Article body</p>",
+				article_id: "art-home-open",
+			});
+
+			render(FeedDetailModal, {
+				props: {
+					open: true,
+					feed: { ...FEED, articleId: "art-home-open" },
+					onOpenChange: () => {},
+					trackOpen: false,
+				},
+			});
+
+			await expect
+				.element(testPage.getByText("Article body"))
+				.toBeInTheDocument();
+
+			expect(mockTrackHomeActionClient).not.toHaveBeenCalled();
+		});
+
+		it("does NOT render Home reader links by default", async () => {
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Article body</p>",
+				article_id: "art-default-links",
+			});
+			mockGetItemBranches.mockResolvedValue([]);
+
+			renderModal();
+
+			await expect
+				.element(testPage.getByText("Article body"))
+				.toBeInTheDocument();
+
+			await expect
+				.element(testPage.getByRole("link", { name: "Open article page" }))
+				.not.toBeInTheDocument();
+			expect(mockGetItemBranches).not.toHaveBeenCalled();
+		});
+
+		it("renders ArticleEndBranches and Open article page link when showHomeReaderLinks is true, and remounts on article change", async () => {
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Article body</p>",
+				article_id: "art-home-1",
+			});
+			mockGetItemBranches.mockResolvedValue([
+				{
+					branchKey: "cluster:u:article:next-1",
+					anchorItemKey: "article:art-home-1",
+					relationKind: "cluster",
+					why: "Joins a topic you follow.",
+					evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+					confidence: "plausible",
+					targetItemKey: "article:next-1",
+					targetTitle: "Next Branch Article",
+				},
+			]);
+
+			const { rerender } = render(FeedDetailModal, {
+				props: {
+					open: true,
+					feed: { ...FEED, articleId: "art-home-1" },
+					onOpenChange: () => {},
+					trackOpen: false,
+					showHomeReaderLinks: true,
+				},
+			});
+
+			await expect
+				.element(testPage.getByText("Article body"))
+				.toBeInTheDocument();
+
+			const openArticleLink = testPage.getByRole("link", {
+				name: "Open article page",
+			});
+			await expect.element(openArticleLink).toBeInTheDocument();
+			await expect
+				.element(openArticleLink)
+				.toHaveAttribute("href", "/articles/art-home-1");
+
+			await expect
+				.element(testPage.getByTestId("article-end-branch"))
+				.toBeInTheDocument();
+			expect(mockGetItemBranches).toHaveBeenCalledTimes(1);
+			expect(mockGetItemBranches).toHaveBeenCalledWith(
+				expect.anything(),
+				"article:art-home-1",
+				2,
+			);
+
+			mockGetFeedContent.mockResolvedValue({
+				content: "<p>Second article body</p>",
+				article_id: "art/home 2?x=1",
+			});
+			mockGetItemBranches.mockResolvedValue([]);
+			await rerender({
+				open: true,
+				feed: {
+					...FEED,
+					id: "feed-2",
+					articleId: "art/home 2?x=1",
+					link: "https://example.com/test-article-2",
+					normalizedUrl: "https://example.com/test-article-2",
+				},
+				onOpenChange: () => {},
+				trackOpen: false,
+				showHomeReaderLinks: true,
+			});
+
+			await expect
+				.element(testPage.getByRole("link", { name: "Open article page" }))
+				.toHaveAttribute("href", "/articles/art%2Fhome%202%3Fx%3D1");
+			expect(mockGetItemBranches).toHaveBeenCalledTimes(2);
+			expect(mockGetItemBranches).toHaveBeenLastCalledWith(
+				expect.anything(),
+				"article:art/home 2?x=1",
+				2,
+			);
 		});
 	});
 });

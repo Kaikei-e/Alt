@@ -75,7 +75,8 @@ func TestTrackHomeActionUsecase_RetryAfterFatalAppendDoesNotDuplicate(t *testing
 	// on top of the first and the guarantee is gone.
 	userPort := &dedupingUserEventPort{}
 	knPort := &dedupingKnowledgeEventPort{err: errors.New("sovereign unavailable")}
-	uc := NewTrackHomeActionUsecase(userPort, knPort, nil, nil, nil, nil, nil)
+	uc := NewTrackHomeActionUsecase(userPort, knPort, nil, nil, nil, nil, nil).
+		WithArticleStatusPort(&mockArticleStatusPort{})
 
 	require.Error(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, ""))
 	require.Len(t, userPort.rows, 1, "the user event lands before the append that fails")
@@ -105,7 +106,8 @@ func TestTrackHomeActionUsecase_DedupeKeySurvivesRetryWithClientKey(t *testing.T
 	// dedupe key outright.
 	t.Run("same idempotency_key collapses the retry", func(t *testing.T) {
 		userPort := &dedupingUserEventPort{}
-		uc := NewTrackHomeActionUsecase(userPort, &dedupingKnowledgeEventPort{}, nil, nil, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(userPort, &dedupingKnowledgeEventPort{}, nil, nil, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 		const metadata = `{"idempotency_key":"action-42"}`
 
 		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "open", itemKey, metadata))
@@ -117,7 +119,8 @@ func TestTrackHomeActionUsecase_DedupeKeySurvivesRetryWithClientKey(t *testing.T
 
 	t.Run("distinct idempotency_keys keep two deliberate opens apart", func(t *testing.T) {
 		userPort := &dedupingUserEventPort{}
-		uc := NewTrackHomeActionUsecase(userPort, &dedupingKnowledgeEventPort{}, nil, nil, nil, nil, nil)
+		uc := NewTrackHomeActionUsecase(userPort, &dedupingKnowledgeEventPort{}, nil, nil, nil, nil, nil).
+			WithArticleStatusPort(&mockArticleStatusPort{})
 
 		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "open", itemKey, `{"idempotency_key":"a"}`))
 		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "open", itemKey, `{"idempotency_key":"b"}`))
@@ -137,7 +140,8 @@ func TestTrackHomeActionUsecase_DistinctActionsInOneBucketStayDistinct(t *testin
 	// a retry. Quantising the clock coarsely enough to recognise a retry must
 	// not swallow them, so the metadata has to reach the key too.
 	userPort := &dedupingUserEventPort{}
-	uc := NewTrackHomeActionUsecase(userPort, &dedupingKnowledgeEventPort{}, nil, nil, nil, nil, nil)
+	uc := NewTrackHomeActionUsecase(userPort, &dedupingKnowledgeEventPort{}, nil, nil, nil, nil, nil).
+		WithArticleStatusPort(&mockArticleStatusPort{})
 
 	require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "tag_click", itemKey, `{"tag":"rust"}`))
 	require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "tag_click", itemKey, `{"tag":"go"}`))

@@ -17,6 +17,31 @@ const continuationStaleAfter = 3 * 24 * time.Hour
 // as gone cold rather than merely quiet, and Continuation stops proposing it.
 const continuationExpireAfter = 21 * 24 * time.Hour
 
+// JunkTagWords is the canonical lowercase junk-tag vocabulary: English filler
+// words, high-document-frequency generic tech/news meta-tags, Japanese function
+// words and generic meta-tags, and URL/HTML debris. Exported so usecase/tagclean
+// shares the exact same single source of truth without a driver->usecase import.
+var JunkTagWords = []string{
+	// English function/filler words seen verbatim in production tag sets.
+	"also", "could", "might", "would", "said", "says",
+	"wrote", "becomes", "without", "even", "great",
+	"three", "week", "types", "example",
+	// High-document-frequency generic tech/news meta-tags that cause Union-Find
+	// megaclusters across unrelated articles.
+	"ai", "llm", "api", "code", "data", "user", "users",
+	"model", "models", "system", "systems", "tool", "tools",
+	"app", "apps", "web", "blog", "news", "tech", "software",
+	// Japanese function words & generic meta-tags.
+	"こと", "もの", "ため", "よう", "それ", "これ",
+	"情報", "技術", "開発", "設計", "実装", "処理", "構造",
+	"利用", "機能", "記事", "解説", "紹介", "方法", "対応",
+	"更新", "問題", "結果", "サービス", "システム", "データ",
+	"ユーザー", "ツール", "モデル", "コード", "アプリ",
+	"エンジニア", "プログラマー",
+	// URL / HTML debris.
+	"https", "http", "www", "com", "gt", "lt", "amp",
+}
+
 // TrailClusterCandidate is a new item that shares tags with the user's followed
 // topics and that the user has not yet engaged — the raw material for a Cluster
 // branch.
@@ -70,11 +95,12 @@ func scanTrailContinuationCandidateRow(scanner rowScanner) (TrailContinuationCan
 	return c, nil
 }
 
-// DeriveTrailClusterCandidates finds articles that share a tag with the user's
-// engaged items but that the user has not footprinted — Cluster branch material.
-// Each candidate is paired with the specific recent engaged footprint item that
-// shares its tags, and items already proposed as a cluster branch are excluded
-// so the top-N window is never locked out by dedupe rejections.
+// DeriveTrailClusterCandidates finds articles that share a clean tag with the
+// user's engaged items but that the user has not footprinted — Cluster branch
+// material. Junk tags are excluded in SQL using the same normalization rules
+// and vocabulary as tagclean before computing per-candidate overlap, choosing
+// the highest-overlap anchor (ties broken by most recent engagement), ordering
+// candidates, and applying LIMIT.
 func (r *Repository) DeriveTrailClusterCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]TrailClusterCandidate, error) {
 	q := `
 WITH active_version AS (
@@ -92,7 +118,15 @@ recent_anchors AS (
    AND akhi.projection_version = (SELECT v FROM active_version)
   WHERE f.user_id = $1
     AND f.verb = ANY($2::text[])
-    AND coalesce(akhi.title, '') <> ''
+    AND regexp_replace(coalesce(akhi.title, ''), '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g') <> ''
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(akhi.tags_json) AS rat(tag),
+           LATERAL (SELECT lower(regexp_replace(rat.tag, '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g')) AS clean_tag) ct
+      WHERE char_length(ct.clean_tag) >= 2
+        AND ct.clean_tag ~ '[[:alpha:]]'
+        AND NOT (ct.clean_tag = ANY($3::text[]))
+    )
   GROUP BY f.item_key, akhi.title, akhi.tags_json
   ORDER BY max(f.occurred_at) DESC
   LIMIT 30
@@ -107,18 +141,25 @@ matched_pairs AS (
          ra.title AS anchor_title,
          ra.verb AS anchor_verb,
          ra.last_occurred_at,
-         array_agg(DISTINCT it.tag) AS shared_tags,
-         count(DISTINCT lower(it.tag)) AS tag_overlap
+         array_agg(DISTINCT norm.it_clean) AS shared_tags,
+         count(DISTINCT norm.it_clean) AS tag_overlap
   FROM knowledge_home_items khi
   JOIN recent_anchors ra ON ra.item_key <> khi.item_key
   CROSS JOIN LATERAL jsonb_array_elements_text(khi.tags_json) AS it(tag)
   CROSS JOIN LATERAL jsonb_array_elements_text(ra.tags_json) AS at(tag)
+  CROSS JOIN LATERAL (
+    SELECT lower(regexp_replace(it.tag, '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g')) AS it_clean,
+           lower(regexp_replace(at.tag, '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g')) AS at_clean
+  ) norm
   WHERE khi.user_id = $1
     AND khi.item_type = 'article'
     AND khi.dismissed_at IS NULL
     AND khi.projection_version = (SELECT v FROM active_version)
-    AND coalesce(khi.title, '') <> ''
-    AND lower(it.tag) = lower(at.tag)
+    AND regexp_replace(coalesce(khi.title, ''), '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g') <> ''
+    AND norm.it_clean = norm.at_clean
+    AND char_length(norm.it_clean) >= 2
+    AND norm.it_clean ~ '[[:alpha:]]'
+    AND NOT (norm.it_clean = ANY($3::text[]))
     AND khi.item_key NOT IN (SELECT item_key FROM footprinted)
     AND NOT EXISTS (
       SELECT 1 FROM knowledge_trail_branches btb
@@ -134,14 +175,14 @@ best_per_target AS (
          anchor_item_key, anchor_title, anchor_verb,
          tag_overlap, last_occurred_at
   FROM matched_pairs
-  ORDER BY target_item_key, last_occurred_at DESC, tag_overlap DESC
+  ORDER BY target_item_key, tag_overlap DESC, last_occurred_at DESC, anchor_item_key
 )
 SELECT target_item_key, target_title, shared_tags,
        anchor_item_key, anchor_title, anchor_verb
 FROM best_per_target
-ORDER BY last_occurred_at DESC, tag_overlap DESC, target_item_key
-LIMIT $3`
-	rows, err := r.pool.Query(ctx, q, userID, EngagementVerbs, limit)
+ORDER BY tag_overlap DESC, last_occurred_at DESC, target_item_key
+LIMIT $4`
+	rows, err := r.pool.Query(ctx, q, userID, EngagementVerbs, JunkTagWords, limit)
 	if err != nil {
 		return nil, fmt.Errorf("DeriveTrailClusterCandidates: %w", err)
 	}

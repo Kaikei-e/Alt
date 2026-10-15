@@ -103,7 +103,7 @@ func NewTrackHomeActionUsecase(
 	}
 }
 
-// WithArticleStatusPort attaches an optional port to synchronize Knowledge Home
+// WithArticleStatusPort wires the port used to synchronize Knowledge Home
 // "open" and "dismiss" actions with the user's feed read status in alt-db.
 func (u *TrackHomeActionUsecase) WithArticleStatusPort(port article_status_port.UpdateArticleStatusPort) *TrackHomeActionUsecase {
 	u.articleStatusPort = port
@@ -254,7 +254,7 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		u.dismissReadModel(ctx, userID, itemKey, now)
 	}
 
-	if (actionType == "open" || actionType == "dismiss") && u.articleStatusPort != nil && foundURL != "" && !isFromFeedsMarkRead(metadataJSON) {
+	if shouldSyncFeedReadStatus(actionType, metadataJSON) && foundURL != "" {
 		u.syncFeedReadStatus(ctx, userID, itemKey, foundURL)
 	}
 
@@ -385,19 +385,66 @@ func (u *TrackHomeActionUsecase) dismissReadModel(ctx context.Context, userID uu
 	}
 }
 
-func isFromFeedsMarkRead(metadataJSON string) bool {
+// openMarkReadAllowedSources lists the reading surfaces whose "open" action is
+// allowed to mark the underlying feed read. The swipe surface is excluded so
+// deferred mark-as-read / UNDO continues to work (ADR-000948 decision 5).
+var openMarkReadAllowedSources = map[string]struct{}{
+	"":                    {},
+	"feed_detail_modal":   {},
+	"mobile_feed_details": {},
+}
+
+func parseOpenSource(metadataJSON string) (string, bool) {
 	if metadataJSON == "" {
-		return false
+		return "", true
+	}
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(metadataJSON), &meta); err != nil || meta == nil {
+		return "", false
+	}
+	raw, exists := meta["source"]
+	if !exists {
+		return "", true
+	}
+	src, ok := raw.(string)
+	if !ok {
+		return "", false
+	}
+	return src, true
+}
+
+func metadataSource(metadataJSON string) string {
+	if metadataJSON == "" {
+		return ""
 	}
 	var meta map[string]any
 	if err := json.Unmarshal([]byte(metadataJSON), &meta); err != nil {
-		return false
+		return ""
 	}
 	src, _ := meta["source"].(string)
-	return src == "feeds_mark_read"
+	return src
+}
+
+func shouldSyncFeedReadStatus(actionType, metadataJSON string) bool {
+	switch actionType {
+	case "open":
+		source, valid := parseOpenSource(metadataJSON)
+		if !valid {
+			return false
+		}
+		_, ok := openMarkReadAllowedSources[source]
+		return ok
+	case "dismiss":
+		return metadataSource(metadataJSON) != "feeds_mark_read"
+	default:
+		return false
+	}
 }
 
 func (u *TrackHomeActionUsecase) syncFeedReadStatus(ctx context.Context, userID uuid.UUID, itemKey string, rawURL string) {
+	if u.articleStatusPort == nil {
+		panic("TrackHomeActionUsecase: articleStatusPort is not wired (use WithArticleStatusPort)")
+	}
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil || parsedURL.Scheme == "" {
 		return
@@ -405,7 +452,7 @@ func (u *TrackHomeActionUsecase) syncFeedReadStatus(ctx context.Context, userID 
 	if err := u.articleStatusPort.MarkArticleAsRead(ctx, *parsedURL, userID); err != nil {
 		if !errors.Is(err, domain.ErrFeedNotFound) {
 			logger.Logger.WarnContext(ctx, "failed to sync feed read status from home action",
-				"error", err, "item_key", itemKey)
+				"error_kind", "mark_read_failed", "item_key", itemKey)
 		}
 	}
 }

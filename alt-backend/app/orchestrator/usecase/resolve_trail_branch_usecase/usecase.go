@@ -15,7 +15,6 @@ import (
 
 	"alt/domain"
 	"alt/shared/port/knowledge_event_port"
-	"alt/utils/logger"
 
 	"github.com/google/uuid"
 )
@@ -41,24 +40,13 @@ var validDismissReasons = map[string]bool{
 	"wrong_relation":      true,
 }
 
-// OpenTrackerFunc records a Knowledge Home open action when a trail branch is taken.
-type OpenTrackerFunc func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error
-
 // ResolveTrailBranchUsecase appends branch_resolved events.
 type ResolveTrailBranchUsecase struct {
 	appendPort knowledge_event_port.AppendKnowledgeEventPort
-	openFn     OpenTrackerFunc
 }
 
 func NewResolveTrailBranchUsecase(appendPort knowledge_event_port.AppendKnowledgeEventPort) *ResolveTrailBranchUsecase {
 	return &ResolveTrailBranchUsecase{appendPort: appendPort}
-}
-
-// WithOpenTracker attaches an optional callback to record a Knowledge Home open
-// action when a user takes a proposed trail branch.
-func (u *ResolveTrailBranchUsecase) WithOpenTracker(openFn OpenTrackerFunc) *ResolveTrailBranchUsecase {
-	u.openFn = openFn
-	return u
 }
 
 // Execute validates and appends a branch resolution. Idempotent via
@@ -90,15 +78,6 @@ func (u *ResolveTrailBranchUsecase) Execute(ctx context.Context, userID, tenantI
 	}
 	if _, err := u.appendPort.AppendKnowledgeEvent(ctx, evt); err != nil {
 		return fmt.Errorf("resolve trail branch: %w", err)
-	}
-	if resolution == "taken" && u.openFn != nil {
-		if idx := strings.Index(branchKey, "article:"); idx >= 0 {
-			targetItemKey := branchKey[idx:]
-			if err := u.openFn(ctx, userID, tenantID, targetItemKey); err != nil {
-				logger.Logger.WarnContext(ctx, "failed to record open action for taken trail branch",
-					"error", err, "branch_key", branchKey, "target_item_key", targetItemKey)
-			}
-		}
 	}
 	return nil
 }
