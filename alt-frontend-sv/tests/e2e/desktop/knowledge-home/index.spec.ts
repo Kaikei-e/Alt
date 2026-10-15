@@ -215,6 +215,16 @@ test.describe("Knowledge Home - Tag Click Tracking", () => {
 		// Intercept article navigation to prevent leaving the page
 		await page.route("**/articles/**", (route) => route.abort());
 
+		const openRequests: unknown[] = [];
+		page.on("request", (req) => {
+			if (
+				req.url().includes("TrackHomeAction") &&
+				req.postDataJSON()?.actionType === "open"
+			) {
+				openRequests.push(req.postDataJSON());
+			}
+		});
+
 		await homePage.goto();
 		await homePage.waitForHomeLoaded();
 
@@ -232,10 +242,12 @@ test.describe("Knowledge Home - Tag Click Tracking", () => {
 
 		await openButton.click();
 		const trackRequest = await trackRequestPromise;
+		await expect(page.getByText("Mock article content")).toBeVisible();
 
 		expect(trackRequest.postDataJSON().itemKey).toBe(
 			KNOWLEDGE_HOME_ITEM_READY.itemKey,
 		);
+		expect(openRequests).toHaveLength(1);
 	});
 });
 
@@ -289,6 +301,16 @@ test.describe("Knowledge Home - Recall Why Display", () => {
 		// Intercept article navigation
 		await page.route("**/articles/**", (route) => route.abort());
 
+		const openRequests: unknown[] = [];
+		page.on("request", (req) => {
+			if (
+				req.url().includes("TrackHomeAction") &&
+				req.postDataJSON()?.actionType === "open"
+			) {
+				openRequests.push(req.postDataJSON());
+			}
+		});
+
 		await homePage.goto();
 		await homePage.waitForHomeLoaded();
 
@@ -305,8 +327,10 @@ test.describe("Knowledge Home - Recall Why Display", () => {
 
 		await recallCard.click();
 		const trackRequest = await trackRequestPromise;
+		await expect(page.getByText("Mock article content")).toBeVisible();
 
 		expect(trackRequest.postDataJSON().actionType).toBe("open");
+		expect(openRequests).toHaveLength(1);
 	});
 });
 

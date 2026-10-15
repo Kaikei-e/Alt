@@ -19,18 +19,26 @@ export function useArticleEndBranches() {
 	let branches = $state<BranchData[]>([]);
 	let loading = $state(false);
 	let error = $state<Error | null>(null);
+	let currentLoadToken = 0;
 
 	async function load(itemKey: string, limit = 2): Promise<void> {
+		const token = ++currentLoadToken;
 		loading = true;
 		error = null;
+		branches = [];
 		try {
 			const transport = createClientTransport();
-			branches = await getItemBranches(transport, itemKey, limit);
+			const result = await getItemBranches(transport, itemKey, limit);
+			if (token !== currentLoadToken) return;
+			branches = result;
 		} catch (err) {
+			if (token !== currentLoadToken) return;
 			error = err instanceof Error ? err : new Error(String(err));
 			branches = [];
 		} finally {
-			loading = false;
+			if (token === currentLoadToken) {
+				loading = false;
+			}
 		}
 	}
 

@@ -24,7 +24,12 @@ const activeLens = $derived(
 	activeLensId ? lenses.find((l) => l.lensId === activeLensId) : null,
 );
 let confirmingPillLensId = $state<string | null>(null);
-let confirmingSummary = $state(false);
+let confirmingSummaryLensId = $state<string | null>(null);
+
+function focusOnMount(node: HTMLElement) {
+	node.focus();
+}
+
 const activeSummary = $derived.by(() => {
 	if (!activeLens?.currentVersion) return [];
 	const parts: string[] = [];
@@ -55,7 +60,11 @@ const activeSummary = $derived.by(() => {
 	<div class="lens-pills">
 		<button
 			class="lens-pill {activeLensId === null ? 'lens-pill--active' : ''}"
-			onclick={() => onSelect(null)}
+			onclick={() => {
+				confirmingPillLensId = null;
+				confirmingSummaryLensId = null;
+				onSelect(null);
+			}}
 		>
 			<Filter class="h-3.5 w-3.5" />
 			All
@@ -65,7 +74,11 @@ const activeSummary = $derived.by(() => {
 			<div class="lens-pill-group {activeLensId === lens.lensId ? 'lens-pill-group--active' : ''}">
 				<button
 					class="lens-pill {activeLensId === lens.lensId ? 'lens-pill--active' : ''}"
-					onclick={() => onSelect(lens.lensId)}
+					onclick={() => {
+						confirmingPillLensId = null;
+						confirmingSummaryLensId = null;
+						onSelect(lens.lensId);
+					}}
 				>
 					{lens.name}
 				</button>
@@ -74,8 +87,10 @@ const activeSummary = $derived.by(() => {
 						<span class="lens-confirm-group">
 							<span class="lens-confirm-label">Delete?</span>
 							<button
+								use:focusOnMount
 								type="button"
 								class="lens-confirm-btn"
+								aria-label="Confirm delete lens {lens.name}"
 								onclick={(e) => {
 									e.stopPropagation();
 									confirmingPillLensId = null;
@@ -87,6 +102,7 @@ const activeSummary = $derived.by(() => {
 							<button
 								type="button"
 								class="lens-confirm-btn"
+								aria-label="Cancel delete lens {lens.name}"
 								onclick={(e) => {
 									e.stopPropagation();
 									confirmingPillLensId = null;
@@ -103,7 +119,7 @@ const activeSummary = $derived.by(() => {
 							title="Delete lens {lens.name}"
 							onclick={(e) => {
 								e.stopPropagation();
-								confirmingSummary = false;
+								confirmingSummaryLensId = null;
 								confirmingPillLensId = lens.lensId;
 							}}
 						>
@@ -128,15 +144,18 @@ const activeSummary = $derived.by(() => {
 			</div>
 			<div class="flex items-center gap-2 flex-shrink-0">
 				{#if onDelete}
-					{#if confirmingSummary}
+					{#if confirmingSummaryLensId === activeLens.lensId}
 						<span class="lens-confirm-group">
 							<span class="lens-confirm-label">Delete?</span>
 							<button
+								use:focusOnMount
 								type="button"
 								class="lens-confirm-btn"
+								aria-label="Confirm delete lens {activeLens.name}"
 								onclick={() => {
-									confirmingSummary = false;
-									onDelete(activeLens.lensId);
+									const targetId = confirmingSummaryLensId;
+									confirmingSummaryLensId = null;
+									if (targetId) onDelete(targetId);
 								}}
 							>
 								Confirm
@@ -144,8 +163,9 @@ const activeSummary = $derived.by(() => {
 							<button
 								type="button"
 								class="lens-confirm-btn"
+								aria-label="Cancel delete lens {activeLens.name}"
 								onclick={() => {
-									confirmingSummary = false;
+									confirmingSummaryLensId = null;
 								}}
 							>
 								Cancel
@@ -157,14 +177,21 @@ const activeSummary = $derived.by(() => {
 							class="lens-delete"
 							onclick={() => {
 								confirmingPillLensId = null;
-								confirmingSummary = true;
+								confirmingSummaryLensId = activeLens.lensId;
 							}}
 						>
 							Delete
 						</button>
 					{/if}
 				{/if}
-				<button class="lens-clear" onclick={() => onSelect(null)}>
+				<button
+					class="lens-clear"
+					onclick={() => {
+						confirmingPillLensId = null;
+						confirmingSummaryLensId = null;
+						onSelect(null);
+					}}
+				>
 					Clear
 				</button>
 			</div>

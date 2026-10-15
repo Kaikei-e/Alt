@@ -1,8 +1,7 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { onMount, untrack } from "svelte";
 import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import { useTrailOutcome } from "#lib/hooks/useTrailOutcome.svelte.js";
-import { browser } from "$app/env";
 import { page } from "$app/state";
 
 interface Props {
@@ -17,11 +16,10 @@ const { articleId, onVisit }: Props = $props();
 // emitted by the hook on leave/destroy.
 useTrailOutcome(
 	page.url.searchParams.get("trail_proposal"),
-	page.params.id ? `article:${page.params.id}` : null,
+	`article:${untrack(() => articleId)}`,
 );
 
 onMount(() => {
-	if (!browser || !articleId) return;
 	onVisit?.(articleId);
 	void trackHomeActionClient(
 		"open",

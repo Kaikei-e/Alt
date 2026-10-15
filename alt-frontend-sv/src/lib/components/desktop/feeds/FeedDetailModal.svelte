@@ -728,7 +728,7 @@ async function handleSummarize(forceRefresh = false) {
 										<ArticleEndBranches anchorItemKey={`article:${readerArticleId}`} />
 										<div class="home-reader-page-link-row">
 											<a
-												href={`/articles/${readerArticleId}`}
+												href={`/articles/${encodeURIComponent(readerArticleId)}`}
 												class="home-reader-page-link"
 												data-testid="open-article-page-link"
 											>
