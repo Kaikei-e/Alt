@@ -245,9 +245,10 @@ Rule 8 に従い、**未配線の依存を握り潰さない**。producer / proj
 
 ## Knowledge Home & Feed Read-State Synchronization
 
-- `UpdateFeedStatusUsecase` (`orchestrator/usecase/reading_status/`) emits `item_dismissed` to `knowledge-sovereign` whenever an article is marked as read in `/feeds` so `/home` reflects read triage immediately.
-- `TrackHomeActionUsecase` (`orchestrator/usecase/track_home_action_usecase/`) syncs `dismiss` and `open` actions back to `read_status` in `alt-db` (via `alt-data-hub`) so `/feeds` and `/home` stay consistent.
-- `GetKnowledgeHomeUsecase` prioritizes `tag_hotspot` over generic reasons (`new_unread` / `in_weekly_recap`) when truncating `why_json` to the 2-badge display cap.
+- `ArticlesReadingStatusUsecase` and `FeedsReadingStatusUsecase` (`orchestrator/usecase/reading_status/`) resolve the archived article by URL and invoke `TrackHomeActionUsecase` (`dismiss`, `{"source":"feeds_mark_read"}`), which appends `HomeItemDismissed` to `knowledge-sovereign` and updates the Knowledge Home read model.
+- `RegisterFavoriteFeedUsecase` (`orchestrator/usecase/register_favorite_feed_usecase/`) resolves the archived article by URL and invokes `TrackHomeActionUsecase` (`open`, `{"source":"favorite_feed"}`).
+- `TrackHomeActionUsecase` (`orchestrator/usecase/track_home_action_usecase/`) calls `MarkArticleAsRead` via `alt-data-hub` for `dismiss` (except when `metadata_json.source` is `"feeds_mark_read"`) and for `open` only when `metadata_json.source` is in the allowlist `{"", "feed_detail_modal", "mobile_feed_details"}`. Other `open` sources (`swipe_card_expand`, `article_detail_panel`, `article_page`, `favorite_feed`, `feeds_mark_read`, or unknown values) do not mark the feed read.
+- `GetKnowledgeHomeUsecase` (`orchestrator/usecase/get_knowledge_home_usecase/`) prepends `tag_hotspot` (`domain.WhyTagHotspot`) to the front of `WhyReasons` when an item's tags match a trending tag and `tag_hotspot` is not already present; it does not truncate `WhyReasons`.
 
 ## References
 

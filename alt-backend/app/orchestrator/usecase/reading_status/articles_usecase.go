@@ -5,6 +5,7 @@ import (
 	"alt/orchestrator/port/article_status_port"
 	"alt/utils/logger"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -53,11 +54,21 @@ func (u *ArticlesReadingStatusUsecase) Execute(ctx context.Context, articleURL u
 }
 
 func syncHomeDismiss(ctx context.Context, lookup ArticleByURLLookupPort, dismissFn HomeDismissFunc, user *domain.UserContext, rawURL string) {
-	if lookup == nil || dismissFn == nil || rawURL == "" {
+	if lookup == nil || dismissFn == nil {
+		panic("reading_status: home-dismiss hook is not wired (use WithHomeDismiss)")
+	}
+	if rawURL == "" {
 		return
 	}
 	article, err := lookup.FetchArticleByURL(ctx, rawURL)
-	if err != nil || article == nil || article.ID == "" {
+	if err != nil {
+		if !errors.Is(err, domain.ErrArticleNotFound) {
+			logger.Logger.WarnContext(ctx, "failed to look up article by URL for home dismiss sync",
+				"error", err)
+		}
+		return
+	}
+	if article == nil || article.ID == "" {
 		return
 	}
 	if err := dismissFn(ctx, user.UserID, user.TenantID, "article:"+article.ID); err != nil {

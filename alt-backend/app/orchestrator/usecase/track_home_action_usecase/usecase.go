@@ -103,7 +103,7 @@ func NewTrackHomeActionUsecase(
 	}
 }
 
-// WithArticleStatusPort attaches an optional port to synchronize Knowledge Home
+// WithArticleStatusPort wires the port used to synchronize Knowledge Home
 // "open" and "dismiss" actions with the user's feed read status in alt-db.
 func (u *TrackHomeActionUsecase) WithArticleStatusPort(port article_status_port.UpdateArticleStatusPort) *TrackHomeActionUsecase {
 	u.articleStatusPort = port
@@ -254,7 +254,7 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		u.dismissReadModel(ctx, userID, itemKey, now)
 	}
 
-	if (actionType == "open" || actionType == "dismiss") && u.articleStatusPort != nil && foundURL != "" && !isFromFeedsMarkRead(metadataJSON) {
+	if shouldSyncFeedReadStatus(actionType, metadataJSON) && foundURL != "" {
 		u.syncFeedReadStatus(ctx, userID, itemKey, foundURL)
 	}
 
@@ -385,19 +385,44 @@ func (u *TrackHomeActionUsecase) dismissReadModel(ctx context.Context, userID uu
 	}
 }
 
-func isFromFeedsMarkRead(metadataJSON string) bool {
+// openMarkReadAllowedSources lists the reading surfaces whose "open" action is
+// allowed to mark the underlying feed read. The swipe surface is excluded so
+// deferred mark-as-read / UNDO continues to work (ADR-000948 decision 5).
+var openMarkReadAllowedSources = map[string]struct{}{
+	"":                    {},
+	"feed_detail_modal":   {},
+	"mobile_feed_details": {},
+}
+
+func metadataSource(metadataJSON string) string {
 	if metadataJSON == "" {
-		return false
+		return ""
 	}
 	var meta map[string]any
 	if err := json.Unmarshal([]byte(metadataJSON), &meta); err != nil {
-		return false
+		return ""
 	}
 	src, _ := meta["source"].(string)
-	return src == "feeds_mark_read"
+	return src
+}
+
+func shouldSyncFeedReadStatus(actionType, metadataJSON string) bool {
+	source := metadataSource(metadataJSON)
+	switch actionType {
+	case "open":
+		_, ok := openMarkReadAllowedSources[source]
+		return ok
+	case "dismiss":
+		return source != "feeds_mark_read"
+	default:
+		return false
+	}
 }
 
 func (u *TrackHomeActionUsecase) syncFeedReadStatus(ctx context.Context, userID uuid.UUID, itemKey string, rawURL string) {
+	if u.articleStatusPort == nil {
+		panic("TrackHomeActionUsecase: articleStatusPort is not wired (use WithArticleStatusPort)")
+	}
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil || parsedURL.Scheme == "" {
 		return

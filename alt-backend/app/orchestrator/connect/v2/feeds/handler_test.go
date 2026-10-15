@@ -51,6 +51,12 @@ func (m *mockUpdateArticleStatusPort) MarkArticleAsRead(ctx context.Context, art
 	return nil
 }
 
+type mockArticleByURLLookupPort struct{}
+
+func (m *mockArticleByURLLookupPort) FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error) {
+	return nil, nil
+}
+
 func createTestHandler() *Handler {
 	logger.InitLogger()
 
@@ -58,7 +64,10 @@ func createTestHandler() *Handler {
 	summarizedUsecase := fetch_feed_stats_usecase.NewSummarizedArticlesCountUsecase(&mockSummarizedArticlesCountPort{})
 	totalArticlesUsecase := fetch_feed_stats_usecase.NewTotalArticlesCountUsecase(&mockTotalArticlesCountPort{})
 	unsummarizedUsecase := fetch_feed_stats_usecase.NewUnsummarizedArticlesCountUsecase(&mockUnsummarizedArticlesCountPort{})
-	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(&mockUpdateArticleStatusPort{})
+	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(&mockUpdateArticleStatusPort{}).
+		WithHomeDismiss(&mockArticleByURLLookupPort{}, func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error {
+			return nil
+		})
 
 	deps := FeedHandlerDeps{
 		FeedAmount:            feedAmountUsecase,

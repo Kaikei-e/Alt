@@ -68,10 +68,13 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 		return knowledge.TrackHomeActionUsecase.Execute(ctx, userID, tenantID, "dismiss", itemKey, `{"source":"feeds_mark_read"}`)
 	}
 	feed.ArticlesReadingStatusUsecase.WithHomeDismiss(infra.ArticleStoreGateway, dismissFromFeedFn)
+	slog.Info("articles_reading_status_home_dismiss_enabled")
 	feed.FeedsReadingStatusUsecase.WithHomeDismiss(infra.ArticleStoreGateway, dismissFromFeedFn)
+	slog.Info("feeds_reading_status_home_dismiss_enabled")
 	feed.RegisterFavoriteFeedUsecase.WithHomeOpen(infra.ArticleStoreGateway, func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error {
 		return knowledge.TrackHomeActionUsecase.Execute(ctx, userID, tenantID, "open", itemKey, `{"source":"favorite_feed"}`)
 	})
+	slog.Info("register_favorite_feed_home_open_enabled")
 
 	// 7. Image module
 	image := newImageModule(infra)
