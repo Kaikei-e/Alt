@@ -1,6 +1,88 @@
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { playwright } from "@vitest/browser-playwright";
+import type { Plugin } from "vite";
 import { defineConfig, mergeConfig } from "vitest/config";
 import viteConfig from "./vite.config.ts";
+
+// Browser-mode component tests run native ES modules in Chromium without
+// bundling. A barrel `import { X } from "@lucide/svelte"` evaluates
+// `dist/lucide-svelte.js`, which statically re-exports all 1,745 `.svelte`
+// icons plus 1,745 `.js` alias wrappers (~3,500 HTTP requests per tab). When
+// `vi.mock()` is active in a tab, Playwright intercepts `**/*` on that context
+// and allocates a `RequestDispatcher` + `RouteDispatcher` per request in a
+// shared 10,000-entry bucket (`maxDispatchersForBucket`), causing parallel
+// tabs to evict in-flight mock `RouteDispatcher`s with:
+// `Error: route.fulfill: The object has been collected to prevent unbounded heap growth`.
+// Rewriting barrel value imports to `@lucide/svelte/icons/<name>` keeps real
+// icon components while loading only the icons a component actually uses.
+function lucideSvelteDirectImports(): Plugin {
+	const require = createRequire(import.meta.url);
+	const pkgDir = dirname(dirname(require.resolve("@lucide/svelte")));
+	const iconMap = new Map<string, string>();
+	const exportRe =
+		/default\s+as\s+(\w+)\s*\}\s*from\s*['"](?:\.\/|\.\.\/icons\/)([^.'"]+)\.(?:svelte|js)['"]/g;
+	for (const rel of [
+		"dist/icons/index.js",
+		"dist/aliases/aliases.js",
+		"dist/aliases/prefixed.js",
+		"dist/aliases/suffixed.js",
+	]) {
+		const content = readFileSync(join(pkgDir, rel), "utf8");
+		for (const match of content.matchAll(exportRe)) {
+			const exported = match[1];
+			const kebab = match[2];
+			if (exported && kebab) {
+				iconMap.set(exported, kebab);
+			}
+		}
+	}
+
+	const importRe =
+		/import\s+(?!type\b)\{([^}]+)\}\s*from\s*["']@lucide\/svelte["']\s*;?/g;
+
+	return {
+		name: "vitest-lucide-svelte-direct-imports",
+		enforce: "pre",
+		transform(code, id) {
+			if (id.includes("node_modules") || !code.includes("@lucide/svelte")) {
+				return null;
+			}
+			let changed = false;
+			const next = code.replace(importRe, (full, specifiers: string) => {
+				const lines: string[] = [];
+				const remaining: string[] = [];
+				for (const raw of specifiers.split(",")) {
+					const spec = raw.trim();
+					if (!spec) continue;
+					if (spec.startsWith("type ")) {
+						remaining.push(spec);
+						continue;
+					}
+					const parts = spec.split(/\s+as\s+/);
+					const imported = parts[0]?.trim() ?? "";
+					const local = (parts[1] ?? parts[0] ?? "").trim();
+					const kebab = iconMap.get(imported);
+					if (kebab) {
+						lines.push(`import ${local} from "@lucide/svelte/icons/${kebab}";`);
+					} else {
+						remaining.push(spec);
+					}
+				}
+				if (lines.length === 0) return full;
+				changed = true;
+				if (remaining.length > 0) {
+					lines.push(
+						`import { ${remaining.join(", ")} } from "@lucide/svelte";`,
+					);
+				}
+				return lines.join("\n");
+			});
+			return changed ? { code: next, map: null } : null;
+		},
+	};
+}
 
 // Browser-mode component tests stay opt-in because they need a real Chromium
 // that `bun install` does not fetch. Opting out is announced instead of being
@@ -29,6 +111,7 @@ const cachedChromiumExecutable = process.env.VITEST_CHROMIUM_EXECUTABLE_PATH;
 export default mergeConfig(
 	viteConfig,
 	defineConfig({
+		plugins: [lucideSvelteDirectImports()],
 		cacheDir: "node_modules/.vite",
 		server: {
 			// Vite mirrors every browser console call back to the terminal and
