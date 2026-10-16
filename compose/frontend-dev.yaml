@@ -36,9 +36,9 @@ services:
     volumes:
       - dev_secrets:/secrets:ro
     ports:
-      - "4001:4001"  # Mock Kratos
-      - "4002:4002"  # Mock AuthHub
-      - "4003:4003"  # Mock Backend (REST + Connect-RPC)
+      - "127.0.0.1:4001:4001"  # Mock Kratos
+      - "127.0.0.1:4002:4002"  # Mock AuthHub
+      - "127.0.0.1:4003:4003"  # Mock Backend (REST + Connect-RPC)
     depends_on:
       dev-secret-init:
         condition: service_completed_successfully
@@ -61,8 +61,8 @@ services:
       # Separate node_modules to avoid cross-platform issues
       - /app/node_modules
     ports:
-      - "5173:5173"    # Vite dev server (default port)
-      - "24678:24678"  # Vite HMR websocket
+      - "127.0.0.1:5173:5173"    # Vite dev server (default port)
+      - "127.0.0.1:24678:24678"  # Vite HMR websocket
     environment:
       - NODE_ENV=development
       - PORT=5173

@@ -223,6 +223,7 @@ services:
       # client cert on :9443; never from a caller-supplied header.
       - INBOUND_TLS_ENABLED=true
       - MTLS_ALLOWED_PEERS=${TAG_GENERATOR_MTLS_ALLOWED_PEERS:-alt-butterfly-facade,alt-backend,search-indexer,recap-worker}
+      - PEER_IDENTITY_STRICT=${TAG_GENERATOR_PEER_IDENTITY_STRICT:-true}
       - PEER_IDENTITY_TRUSTED=off
       - PKI_ENROLLMENT=enabled
       - CERT_SUBJECT=tag-generator
