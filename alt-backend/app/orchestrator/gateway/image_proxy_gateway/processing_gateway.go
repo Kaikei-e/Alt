@@ -77,6 +77,22 @@ func (g *ProcessingGateway) ProcessImage(ctx context.Context, data []byte, conte
 		return nil, fmt.Errorf("empty image data")
 	}
 
+	// Inspect dimensions before full decode to block decompression bombs.
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf(
+			"decode image (upstream_content_type=%q detected_format=%s magic=%s size=%d): %w",
+			contentType,
+			detectFormatFromMagic(data),
+			magicPrefix(data, 16),
+			len(data),
+			err,
+		)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > maxDecodeDimension || cfg.Height > maxDecodeDimension || int64(cfg.Width)*int64(cfg.Height) > maxDecodePixels {
+		return nil, fmt.Errorf("image dimensions %dx%d exceed maximum allowed (%dx%d, %d pixels)", cfg.Width, cfg.Height, maxDecodeDimension, maxDecodeDimension, maxDecodePixels)
+	}
+
 	// Decode the image
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -119,12 +135,33 @@ func (g *ProcessingGateway) ProcessImage(ctx context.Context, data []byte, conte
 	return buildImageProxyResult(encoded, newWidth, newHeight, time.Now().Add(domain.ImageProxyCacheTTL)), nil
 }
 
-// calculateTargetDimensions computes width and height constrained to maxWidth while preserving aspect ratio.
+const (
+	maxDecodeDimension = 8192
+	maxDecodePixels    = 25_000_000
+)
+
+// calculateTargetDimensions computes width and height constrained to maxWidth and maxDecodeDimension
+// while preserving aspect ratio and clamping dimensions to >= 1.
 func calculateTargetDimensions(origWidth, origHeight, maxWidth int) (int, int) {
-	if origWidth > maxWidth {
-		return maxWidth, origHeight * maxWidth / origWidth
+	if origWidth <= 0 || origHeight <= 0 {
+		return 1, 1
 	}
-	return origWidth, origHeight
+	targetW, targetH := origWidth, origHeight
+	if maxWidth > 0 && targetW > maxWidth {
+		targetW = maxWidth
+		targetH = int(int64(origHeight) * int64(maxWidth) / int64(origWidth))
+	}
+	if targetH > maxDecodeDimension {
+		targetW = int(int64(targetW) * int64(maxDecodeDimension) / int64(targetH))
+		targetH = maxDecodeDimension
+	}
+	if targetW < 1 {
+		targetW = 1
+	}
+	if targetH < 1 {
+		targetH = 1
+	}
+	return targetW, targetH
 }
 
 // generateETag derives an ETag from a SHA-256 hash prefix of the image data.

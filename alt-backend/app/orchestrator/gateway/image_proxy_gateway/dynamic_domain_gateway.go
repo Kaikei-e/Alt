@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 // DomainLister is the interface for listing feed link domains.
@@ -148,26 +150,31 @@ func matchesSubscriptionDomain(hostname string, subscriptionDomains map[string]b
 	return false
 }
 
-// buildDomainSet indexes feed link domains and their multi-label parents into an allowlist set.
+// buildDomainSet indexes feed link domains and their registrable parent domains (up to eTLD+1) into an allowlist set.
 func buildDomainSet(feedDomains []domain.FeedLinkDomain) map[string]bool {
 	domainSet := make(map[string]bool, len(feedDomains)*2)
 	for _, d := range feedDomains {
-		domain := strings.ToLower(d.Domain)
+		domain := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(d.Domain), "."))
+		if domain == "" {
+			continue
+		}
+		etldPlusOne, err := publicsuffix.EffectiveTLDPlusOne(domain)
+		if err != nil {
+			domainSet[domain] = true
+			continue
+		}
 		domainSet[domain] = true
+		domainSet[etldPlusOne] = true
 
-		// Also index parent domains so that subdomain matching works
-		// across sibling subdomains (e.g. www.wired.com → wired.com
-		// allows media.wired.com). Stop at 2-label domains to avoid
-		// over-permissive entries like "co.uk" or "com".
-		for h := domain; ; {
+		for h := domain; h != etldPlusOne; {
 			dot := strings.Index(h, ".")
 			if dot < 0 {
 				break
 			}
 			parent := h[dot+1:]
-			// Only add parents with 2+ labels (e.g. wired.com, bbci.co.uk)
-			if strings.Contains(parent, ".") {
-				domainSet[parent] = true
+			domainSet[parent] = true
+			if parent == etldPlusOne {
+				break
 			}
 			h = parent
 		}

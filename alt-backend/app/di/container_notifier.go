@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"alt/orchestrator/usecase/push_dispatch_usecase"
 	"alt/shared/driver/webpush"
 	"alt/shared/gateway/datahub_gateway"
+	"alt/utils/security"
 )
 
 const (
@@ -55,7 +55,7 @@ func NewNotifierComponents(ctx context.Context, cfg *config.Config) *NotifierCom
 		panic("alt-notifier: VAPID signer could not be built — refusing to start with a dispatcher that would 401 on every send: " + err.Error())
 	}
 
-	pushClient, err := webpush.NewClient(signer, &http.Client{Timeout: pushClientTimeout})
+	pushClient, err := webpush.NewClient(signer, security.NewSSRFValidator().CreateSafeHTTPClient(pushClientTimeout))
 	if err != nil {
 		panic("alt-notifier: web push client could not be built: " + err.Error())
 	}

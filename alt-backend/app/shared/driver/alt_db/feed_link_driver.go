@@ -101,14 +101,27 @@ func (r *FeedRepository) FetchFeedLinksWithAvailability(ctx context.Context) ([]
 }
 
 func (r *FeedRepository) DeleteFeedLink(ctx context.Context, id uuid.UUID) error {
-	result, err := r.pool.Exec(ctx, "DELETE FROM feed_links WHERE id = $1", id)
+	if user, err := domain.GetUserFromContext(ctx); err == nil && user != nil && user.UserID != uuid.Nil {
+		if _, err := r.pool.Exec(ctx, deleteSubscriptionQuery, user.UserID, id); err != nil {
+			logger.SafeErrorContext(ctx, "Error deleting user feed subscription", "error", err, "id", id, "user_id", user.UserID)
+			return errors.New("error deleting feed link")
+		}
+		if _, err := r.pool.Exec(ctx, deleteOrphanFeedLinkQuery, id); err != nil {
+			logger.SafeErrorContext(ctx, "Error deleting orphan feed link", "error", err, "id", id)
+			return errors.New("error deleting feed link")
+		}
+		logger.SafeInfoContext(ctx, "Feed link unsubscribed for user", "id", id, "user_id", user.UserID)
+		return nil
+	}
+
+	result, err := r.pool.Exec(ctx, deleteOrphanFeedLinkQuery, id)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error deleting feed link", "error", err, "id", id)
 		return errors.New("error deleting feed link")
 	}
 
 	if result.RowsAffected() == 0 {
-		logger.SafeWarnContext(ctx, "Feed link not found", "id", id)
+		logger.SafeWarnContext(ctx, "Feed link not found or still has subscribers", "id", id)
 		return errors.New("feed link not found")
 	}
 

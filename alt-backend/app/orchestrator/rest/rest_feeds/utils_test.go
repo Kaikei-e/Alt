@@ -1,10 +1,22 @@
 package rest_feeds
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"alt/di"
 	"alt/domain"
+	"alt/orchestrator/usecase/cached_feed_list_usecase"
+	"alt/orchestrator/usecase/fetch_feed_usecase"
+	"alt/utils/logger"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestDeriveNextCursorFromFeeds_KeepsSubSecondPrecision pins the pagination
@@ -90,4 +102,67 @@ func TestDeriveNextCursorFromFeeds(t *testing.T) {
 			t.Fatalf("expected derive failure, got %v (ok=%v)", cursor, ok)
 		}
 	})
+}
+
+type stubFeedCursorPort struct{}
+
+func (stubFeedCursorPort) FetchUnreadFeedsListCursor(_ context.Context, _ *time.Time, _ int, _ []uuid.UUID) ([]*domain.FeedItem, error) {
+	return nil, nil
+}
+func (stubFeedCursorPort) FetchReadFeedsListCursor(_ context.Context, _ *time.Time, _ int) ([]*domain.FeedItem, error) {
+	return nil, nil
+}
+func (stubFeedCursorPort) FetchFavoriteFeedsListCursor(_ context.Context, _ *time.Time, _ int) ([]*domain.FeedItem, error) {
+	return nil, nil
+}
+
+func TestCursorFeedHandlers_SetPrivateNoCacheHeader(t *testing.T) {
+	logger.InitLogger()
+	stub := stubFeedCursorPort{}
+	container := &di.ApplicationComponents{
+		CachedFeedListUsecase:               cached_feed_list_usecase.NewCachedFeedListUsecase(stub, stub, nil),
+		FetchReadFeedsListCursorUsecase:     fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(stub),
+		FetchFavoriteFeedsListCursorUsecase: fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(stub),
+	}
+
+	e := echo.New()
+	tests := []struct {
+		name    string
+		target  string
+		handler echo.HandlerFunc
+	}{
+		{
+			name:    "unread feeds first page",
+			target:  "/v1/feeds/fetch/cursor",
+			handler: RestHandleFetchUnreadFeedsCursor(container),
+		},
+		{
+			name:    "unread feeds subsequent page",
+			target:  "/v1/feeds/fetch/cursor?cursor=2026-03-02T10:00:00Z",
+			handler: RestHandleFetchUnreadFeedsCursor(container),
+		},
+		{
+			name:    "read feeds cursor",
+			target:  "/v1/feeds/fetch/viewed/cursor",
+			handler: RestHandleFetchReadFeedsCursor(container),
+		},
+		{
+			name:    "favorite feeds cursor",
+			target:  "/v1/feeds/fetch/favorites/cursor",
+			handler: RestHandleFetchFavoriteFeedsCursor(container),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			err := tt.handler(c)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, "private, no-cache", rec.Header().Get("Cache-Control"))
+		})
+	}
 }

@@ -110,6 +110,9 @@ func (h *Handler) GetPushConfig(ctx context.Context, req *connect.Request[pushv1
 	if req.Msg.GetEndpoint() == "" {
 		return connect.NewResponse(resp), nil
 	}
+	if err := domain.ValidatePushEndpoint(req.Msg.GetEndpoint()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 
 	sub, err := h.subscriptions.Get(ctx, user.UserID.String(), req.Msg.GetEndpoint())
 	if err != nil {
@@ -141,6 +144,9 @@ func (h *Handler) RegisterSubscription(ctx context.Context, req *connect.Request
 	case keys == nil || keys.GetP256Dh() == "" || keys.GetAuth() == "":
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("keys.p256dh and keys.auth are required: a subscription without them cannot be encrypted to"))
+	}
+	if err := domain.ValidatePushEndpoint(req.Msg.GetEndpoint()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	created, err := h.subscriptions.Upsert(ctx, domain.PushSubscription{
@@ -174,6 +180,9 @@ func (h *Handler) UpdatePreferences(ctx context.Context, req *connect.Request[pu
 	if req.Msg.GetEndpoint() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("endpoint is required"))
 	}
+	if err := domain.ValidatePushEndpoint(req.Msg.GetEndpoint()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 
 	updated, err := h.subscriptions.UpdatePreferences(ctx,
 		user.UserID.String(), req.Msg.GetEndpoint(), preferencesFromProto(req.Msg.GetPreferences()))
@@ -202,6 +211,9 @@ func (h *Handler) DeleteSubscription(ctx context.Context, req *connect.Request[p
 	}
 	if req.Msg.GetEndpoint() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("endpoint is required"))
+	}
+	if err := domain.ValidatePushEndpoint(req.Msg.GetEndpoint()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	deleted, err := h.subscriptions.Delete(ctx, user.UserID.String(), req.Msg.GetEndpoint())

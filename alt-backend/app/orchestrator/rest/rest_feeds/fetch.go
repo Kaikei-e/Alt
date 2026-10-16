@@ -149,15 +149,9 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 			cursor = &parsedCursor
 		}
 
-		// Add caching headers for cursor-based pagination
-		// Use private cache for swipe view (user-specific), public for others
-		if view == "swipe" {
-			c.Response().Header().Set("Cache-Control", "private, max-age=30") // 30s for swipe view
-		} else if cursor == nil {
-			c.Response().Header().Set("Cache-Control", "public, max-age=300") // 5 minutes for first page
-		} else {
-			c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15 minutes for other pages
-		}
+		// Authenticated user-scoped feed responses must never be stored in shared caches.
+		_ = view
+		c.Response().Header().Set("Cache-Control", "private, no-cache")
 
 		logger.Logger.InfoContext(ctx, "Fetching unread feeds with cursor", "cursor", cursor, "cursor_str", cursorStr, "limit", limit)
 		feeds, hasMore, err := container.CachedFeedListUsecase.FetchUnreadFeedsListCursor(ctx, cursor, limit, nil)
@@ -238,12 +232,8 @@ func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.Ha
 			cursor = &parsedCursor
 		}
 
-		// キャッシング戦略 - 既読記事の特性を考慮
-		if cursor == nil {
-			c.Response().Header().Set("Cache-Control", "public, max-age=900") // 15分（初回）
-		} else {
-			c.Response().Header().Set("Cache-Control", "public, max-age=3600") // 60分（他ページ）
-		}
+		// Authenticated user-scoped feed responses must never be stored in shared caches.
+		c.Response().Header().Set("Cache-Control", "private, no-cache")
 
 		logger.Logger.InfoContext(ctx, "Fetching read feeds with cursor", "cursor", cursor, "limit", limit)
 		feeds, err := container.FetchReadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
@@ -303,11 +293,7 @@ func RestHandleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) ech
 			cursor = &parsedCursor
 		}
 
-		if cursor == nil {
-			c.Response().Header().Set("Cache-Control", "public, max-age=900")
-		} else {
-			c.Response().Header().Set("Cache-Control", "public, max-age=3600")
-		}
+		c.Response().Header().Set("Cache-Control", "private, no-cache")
 
 		logger.Logger.InfoContext(ctx, "Fetching favorite feeds with cursor", "cursor", cursor, "limit", limit)
 		feeds, err := container.FetchFavoriteFeedsListCursorUsecase.Execute(ctx, cursor, limit)

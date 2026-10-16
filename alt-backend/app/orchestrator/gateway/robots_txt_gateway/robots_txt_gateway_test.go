@@ -205,3 +205,23 @@ func TestEvaluateRobotsAccess(t *testing.T) {
 	assert.True(t, evaluateRobotsAccess(200, content, "/public/", "Alt-Agent"))
 	assert.True(t, evaluateRobotsAccess(200, "invalid robots content", "/admin/", "Alt-Agent"))
 }
+
+func TestRobotsTxtGateway_FetchRobotsTxt_CapsResponseSizeAt512KB(t *testing.T) {
+	oversized := "User-agent: *\nDisallow: /private/\n#" + strings.Repeat("A", 1024*1024)
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(oversized)),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	httpClient := &http.Client{Timeout: 5 * time.Second, Transport: rt}
+	gateway := NewRobotsTxtGatewayWithDeps(httpClient, security.NewSSRFValidator())
+
+	result, err := gateway.FetchRobotsTxt(context.Background(), "93.184.216.34", "https")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, maxRobotsTxtBytes, len(result.Content))
+	assert.Contains(t, result.DisallowPaths, "/private/")
+}

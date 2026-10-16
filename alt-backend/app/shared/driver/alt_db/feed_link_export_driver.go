@@ -27,6 +27,22 @@ const feedLinksForExportQuery = `
 		ORDER BY fl.url ASC
 	`
 
+const feedLinksForExportByUserQuery = `
+		SELECT fl.url,
+		       COALESCE(sub.title, '') AS title
+		FROM feed_links fl
+		INNER JOIN user_feed_subscriptions ufs
+			ON ufs.feed_link_id = fl.id
+		LEFT JOIN LATERAL (
+			SELECT DISTINCT ON (feed_link_id) title
+			FROM feeds
+			WHERE feed_link_id = fl.id
+			ORDER BY feed_link_id, created_at DESC
+		) sub ON true
+		WHERE ufs.user_id = $1
+		ORDER BY fl.url ASC
+	`
+
 // FetchFeedLinksForExport returns each subscription with its newest feed title.
 //
 // This SQL used to live in opml_gateway, issued through
@@ -39,7 +55,7 @@ const feedLinksForExportQuery = `
 // empty here: substituting the hostname is what the OPML renderer wants, and a
 // different caller might want something else.
 func (r *FeedRepository) FetchFeedLinksForExport(ctx context.Context) ([]*domain.FeedLinkForExport, error) {
-	rows, err := r.pool.Query(ctx, feedLinksForExportQuery)
+	rows, err := r.queryFeedLinksForExport(ctx)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching feed links for export", "error", err)
 		return nil, errors.New("error fetching feed links for export")
@@ -62,4 +78,16 @@ func (r *FeedRepository) FetchFeedLinksForExport(ctx context.Context) ([]*domain
 	}
 
 	return links, nil
+}
+
+func (r *FeedRepository) queryFeedLinksForExport(ctx context.Context) (interface {
+	Close()
+	Err() error
+	Next() bool
+	Scan(dest ...any) error
+}, error) {
+	if user, err := domain.GetUserFromContext(ctx); err == nil && user != nil {
+		return r.pool.Query(ctx, feedLinksForExportByUserQuery, user.UserID)
+	}
+	return r.pool.Query(ctx, feedLinksForExportQuery)
 }

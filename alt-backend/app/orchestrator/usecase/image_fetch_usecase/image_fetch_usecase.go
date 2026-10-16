@@ -5,7 +5,38 @@ import (
 	"alt/orchestrator/port/image_fetch_port"
 	"alt/utils/errors"
 	"context"
+	"time"
 )
+
+const (
+	defaultImageMaxSize = 5 * 1024 * 1024
+	maxImageMaxSize     = 10 * 1024 * 1024
+	minImageTimeout     = 1 * time.Second
+	defaultImageTimeout = 30 * time.Second
+	maxImageTimeout     = 30 * time.Second
+)
+
+func clampImageFetchOptions(options *domain.ImageFetchOptions) *domain.ImageFetchOptions {
+	if options == nil {
+		return domain.NewImageFetchOptions()
+	}
+	clamped := *options
+	switch {
+	case clamped.MaxSize <= 0:
+		clamped.MaxSize = defaultImageMaxSize
+	case clamped.MaxSize > maxImageMaxSize:
+		clamped.MaxSize = maxImageMaxSize
+	}
+	switch {
+	case clamped.Timeout <= 0:
+		clamped.Timeout = defaultImageTimeout
+	case clamped.Timeout < minImageTimeout:
+		clamped.Timeout = minImageTimeout
+	case clamped.Timeout > maxImageTimeout:
+		clamped.Timeout = maxImageTimeout
+	}
+	return &clamped
+}
 
 // ImageFetchUsecaseInterface defines the interface for image fetching usecase
 type ImageFetchUsecaseInterface interface {
@@ -73,10 +104,8 @@ func (u *ImageFetchUsecase) Execute(ctx context.Context, rawURL string, options 
 		)
 	}
 
-	// Use default options if not provided
-	if options == nil {
-		options = domain.NewImageFetchOptions()
-	}
+	// Sanitize and clamp options to enforce resource bounds
+	options = clampImageFetchOptions(options)
 
 	// Call the port to fetch the image
 	result, err := u.imageFetchPort.FetchImage(ctx, imageURL, options)

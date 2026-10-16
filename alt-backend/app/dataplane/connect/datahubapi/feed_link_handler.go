@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/utils/safeconv"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------
@@ -100,11 +103,28 @@ func (h *Handler) ListFeedLinksWithHealth(ctx context.Context, _ *connect.Reques
 	return connect.NewResponse(&datahubv1.ListFeedLinksWithHealthResponse{FeedLinks: out}), nil
 }
 
+func attachHeaderUserContext(ctx context.Context, rawUserID string) context.Context {
+	if rawUserID == "" {
+		return ctx
+	}
+	uid, err := uuid.Parse(rawUserID)
+	if err != nil || uid == uuid.Nil {
+		return ctx
+	}
+	return domain.SetUserContext(ctx, &domain.UserContext{
+		UserID:    uid,
+		Email:     "internal@alt.local",
+		TenantID:  uid,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+}
+
 func (h *Handler) DeleteFeedLink(ctx context.Context, req *connect.Request[datahubv1.DeleteFeedLinkRequest]) (*connect.Response[datahubv1.DeleteFeedLinkResponse], error) {
 	id, err := requiredUUID(req.Msg.GetId(), "id")
 	if err != nil {
 		return nil, err
 	}
+	ctx = attachHeaderUserContext(ctx, req.Header().Get("X-Alt-User-Id"))
 
 	if err := h.feedLink.Delete(ctx, id); err != nil {
 		h.logger.ErrorContext(ctx, "DeleteFeedLink failed", "error", err, "id", req.Msg.GetId())
@@ -155,7 +175,10 @@ func (h *Handler) ListRSSFeedURLs(ctx context.Context, _ *connect.Request[datahu
 	return connect.NewResponse(&datahubv1.ListRSSFeedURLsResponse{FeedLinks: out}), nil
 }
 
-func (h *Handler) ListFeedLinksForExport(ctx context.Context, _ *connect.Request[datahubv1.ListFeedLinksForExportRequest]) (*connect.Response[datahubv1.ListFeedLinksForExportResponse], error) {
+func (h *Handler) ListFeedLinksForExport(ctx context.Context, req *connect.Request[datahubv1.ListFeedLinksForExportRequest]) (*connect.Response[datahubv1.ListFeedLinksForExportResponse], error) {
+	if req != nil {
+		ctx = attachHeaderUserContext(ctx, req.Header().Get("X-Alt-User-Id"))
+	}
 	entries, err := h.feedLink.ListForExport(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "ListFeedLinksForExport failed", "error", err)

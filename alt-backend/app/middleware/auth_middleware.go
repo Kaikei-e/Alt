@@ -9,6 +9,7 @@ import (
 
 	"alt/config"
 	"alt/domain"
+	"alt/shared/domain/authcontext"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -209,6 +210,9 @@ func (m *AuthMiddleware) RequireAdmin() echo.MiddlewareFunc {
 
 func (m *AuthMiddleware) attachContext(c echo.Context, user *domain.UserContext) {
 	ctx := domain.SetUserContext(c.Request().Context(), user)
+	if token := c.Request().Header.Get(backendTokenHeader); token != "" {
+		ctx = authcontext.WithJWT(ctx, token)
+	}
 	c.SetRequest(c.Request().WithContext(ctx))
 	c.Set("user", user)
 	c.Set("auth.valid", true)

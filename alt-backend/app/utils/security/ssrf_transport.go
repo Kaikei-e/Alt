@@ -13,6 +13,11 @@ import (
 
 // CreateSecureHTTPClient creates an HTTP client with SSRF protection using connection-time validation
 // This follows the Safeurl approach of validating IPs at actual connection time to prevent DNS rebinding
+// CreateSafeHTTPClient returns an HTTP client hardened against SSRF and DNS rebinding.
+func (v *SSRFValidator) CreateSafeHTTPClient(timeout time.Duration) *http.Client {
+	return v.CreateSecureHTTPClient(timeout)
+}
+
 func (v *SSRFValidator) CreateSecureHTTPClient(timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{
 		Timeout:   timeout,

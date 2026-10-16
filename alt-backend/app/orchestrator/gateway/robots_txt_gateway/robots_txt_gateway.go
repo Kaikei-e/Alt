@@ -17,6 +17,8 @@ import (
 
 // RobotsTxtGateway handles fetching and parsing robots.txt files
 // Implements robots_txt_port.RobotsTxtFetcherPort and robots_txt_port.RobotsTxtPolicyPort
+const maxRobotsTxtBytes = 512 * 1024
+
 type RobotsTxtGateway struct {
 	httpClient    *http.Client
 	ssrfValidator *security.SSRFValidator
@@ -94,7 +96,7 @@ func (g *RobotsTxtGateway) FetchRobotsTxt(ctx context.Context, domainName, schem
 		}
 	}()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxRobotsTxtBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read robots.txt body: %w", err)
 	}

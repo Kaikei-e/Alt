@@ -3,6 +3,7 @@ package middleware_test
 import (
 	"alt/config"
 	"alt/middleware"
+	"alt/shared/domain/authcontext"
 	"io"
 	"log/slog"
 	"net/http"
@@ -92,4 +93,44 @@ func TestAuthMiddleware_Bypass(t *testing.T) {
 		e.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code, "Valid JWT allowed access")
 	})
+}
+
+func TestAuthMiddleware_PropagatesJWTToAuthContext(t *testing.T) {
+	e := echo.New()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := config.AuthConfig{
+		BackendTokenSecret:   reproTestSecret,
+		BackendTokenIssuer:   "auth-hub",
+		BackendTokenAudience: "alt-backend",
+	}
+	authMiddleware := middleware.NewAuthMiddleware(logger, cfg)
+
+	var gotRequireToken, gotOptionalToken string
+	e.GET("/require", func(c echo.Context) error {
+		tok, _ := authcontext.JWTFromContext(c.Request().Context())
+		gotRequireToken = tok
+		return c.NoContent(http.StatusOK)
+	}, authMiddleware.RequireAuth())
+
+	e.GET("/optional", func(c echo.Context) error {
+		tok, _ := authcontext.JWTFromContext(c.Request().Context())
+		gotOptionalToken = tok
+		return c.NoContent(http.StatusOK)
+	}, authMiddleware.OptionalAuth())
+
+	jwtToken := issueReproTestJWT(t, "123e4567-e89b-12d3-a456-426614174000", "user@example.com")
+
+	req1 := httptest.NewRequest(http.MethodGet, "/require", nil)
+	req1.Header.Set("X-Alt-Backend-Token", jwtToken)
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+	require.Equal(t, http.StatusOK, rec1.Code)
+	assert.Equal(t, jwtToken, gotRequireToken)
+
+	req2 := httptest.NewRequest(http.MethodGet, "/optional", nil)
+	req2.Header.Set("X-Alt-Backend-Token", jwtToken)
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+	require.Equal(t, http.StatusOK, rec2.Code)
+	assert.Equal(t, jwtToken, gotOptionalToken)
 }

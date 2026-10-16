@@ -97,9 +97,13 @@ func TestVAPIDSigner_Audience(t *testing.T) {
 		{name: "fcm path is dropped", endpoint: "https://fcm.googleapis.com/fcm/send/dGhpcy1pcy1hLXRlc3Q", want: "https://fcm.googleapis.com"},
 		{name: "mozilla path is dropped", endpoint: "https://updates.push.services.mozilla.com/wpush/v2/gAAAAAB", want: "https://updates.push.services.mozilla.com"},
 		{name: "apple path is dropped", endpoint: "https://web.push.apple.com/QAtR7DUxQ", want: "https://web.push.apple.com"},
-		{name: "query and fragment are dropped", endpoint: "https://push.example.net/push/abc?token=1#frag", want: "https://push.example.net"},
-		{name: "explicit port is kept", endpoint: "https://push.example.net:8443/push/abc", want: "https://push.example.net:8443"},
-		{name: "root path", endpoint: "https://push.example.net/", want: "https://push.example.net"},
+		{name: "query and fragment are dropped", endpoint: "https://fcm.googleapis.com/push/abc?token=1#frag", want: "https://fcm.googleapis.com"},
+		{name: "explicit port 443 is normalized", endpoint: "https://fcm.googleapis.com:443/push/abc", want: "https://fcm.googleapis.com"},
+		{name: "windows push root path", endpoint: "https://wns2-par02p.notify.windows.com/", want: "https://wns2-par02p.notify.windows.com"},
+		{name: "non-443 port rejected", endpoint: "https://fcm.googleapis.com:8443/push/abc", wantErr: true},
+		{name: "http scheme rejected", endpoint: "http://fcm.googleapis.com/push/abc", wantErr: true},
+		{name: "userinfo rejected", endpoint: "https://user:pass@fcm.googleapis.com/push/abc", wantErr: true},
+		{name: "unlisted host rejected", endpoint: "https://push.example.net/push/abc", wantErr: true},
 		{name: "empty endpoint rejected", endpoint: "", wantErr: true},
 		{name: "relative endpoint rejected", endpoint: "/push/abc", wantErr: true},
 		{name: "missing host rejected", endpoint: "https:///push/abc", wantErr: true},
@@ -227,7 +231,7 @@ func TestVAPIDSigner_SignatureFixedWidth(t *testing.T) {
 	signer := newTestSigner(t, "you@example.com")
 	for i := range 200 {
 		// A distinct audience per iteration forces a fresh signature past the cache.
-		header, err := signer.AuthorizationHeader(fmt.Sprintf("https://push%d.example.net/push/abc", i))
+		header, err := signer.AuthorizationHeader(fmt.Sprintf("https://wns%d.notify.windows.com/push/abc", i))
 		if err != nil {
 			t.Fatalf("AuthorizationHeader %d: %v", i, err)
 		}

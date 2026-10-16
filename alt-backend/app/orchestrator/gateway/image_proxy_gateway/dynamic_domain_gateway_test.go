@@ -242,8 +242,45 @@ func TestBuildDomainSet(t *testing.T) {
 	if !set["blog.bbc.co.uk"] || !set["bbc.co.uk"] {
 		t.Errorf("expected bbc.co.uk and blog.bbc.co.uk in set: %+v", set)
 	}
-	// "com" or "co.uk" (single label or TLD without 2+ dots/labels)
-	if set["com"] {
-		t.Error("set must not contain single label TLD 'com'")
+	// Neither single-label TLDs nor multi-label public suffixes (eTLD) may be added.
+	for _, forbidden := range []string{"com", "uk", "co.uk", "co.jp", "com.au"} {
+		if set[forbidden] {
+			t.Errorf("set must not contain public suffix %q", forbidden)
+		}
+	}
+}
+
+func TestDynamicDomainGateway_PublicSuffixIsolation(t *testing.T) {
+	gw := NewDynamicDomainGateway(&mockDomainLister{
+		domains: []domain.FeedLinkDomain{
+			{Domain: "feeds.bbci.co.uk", Scheme: "https"},
+			{Domain: "news.yahoo.co.jp", Scheme: "https"},
+			{Domain: "abc.net.au", Scheme: "https"},
+		},
+	})
+
+	tests := []struct {
+		hostname string
+		allowed  bool
+	}{
+		{"ichef.bbci.co.uk", true},
+		{"s.yimg.yahoo.co.jp", true},
+		{"cdn.abc.net.au", true},
+		{"evil.co.uk", false},
+		{"attacker.co.jp", false},
+		{"malicious.net.au", false},
+		{"co.uk", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.hostname, func(t *testing.T) {
+			allowed, err := gw.IsAllowedImageDomain(context.Background(), tt.hostname)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if allowed != tt.allowed {
+				t.Errorf("IsAllowedImageDomain(%q) = %v, want %v", tt.hostname, allowed, tt.allowed)
+			}
+		})
 	}
 }

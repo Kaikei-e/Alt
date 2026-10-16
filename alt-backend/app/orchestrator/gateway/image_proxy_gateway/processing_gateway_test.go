@@ -3,6 +3,8 @@ package image_proxy_gateway
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -227,5 +229,50 @@ func TestBuildImageProxyResult(t *testing.T) {
 	}
 	if res.ETag != generateETag(data) {
 		t.Errorf("etag mismatch in result: %s vs %s", res.ETag, generateETag(data))
+	}
+}
+
+func TestProcessingGateway_ProcessImage_DecompressionBombRejected(t *testing.T) {
+	gw := NewProcessingGateway()
+
+	// Build a minimal PNG header (signature + IHDR chunk) claiming 10000x10000 pixels.
+	var buf bytes.Buffer
+	buf.Write([]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a})
+	var ihdr [13]byte
+	binary.BigEndian.PutUint32(ihdr[0:4], 10000)
+	binary.BigEndian.PutUint32(ihdr[4:8], 10000)
+	ihdr[8] = 8  // bit depth
+	ihdr[9] = 6  // color type RGBA
+	ihdr[10] = 0 // compression
+	ihdr[11] = 0 // filter
+	ihdr[12] = 0 // interlace
+	_ = binary.Write(&buf, binary.BigEndian, uint32(len(ihdr)))
+	buf.WriteString("IHDR")
+	buf.Write(ihdr[:])
+	crc := crc32.NewIEEE()
+	crc.Write([]byte("IHDR"))
+	crc.Write(ihdr[:])
+	_ = binary.Write(&buf, binary.BigEndian, crc.Sum32())
+
+	_, err := gw.ProcessImage(context.Background(), buf.Bytes(), "image/png", 600, 80)
+	if err == nil {
+		t.Fatal("expected decompression bomb dimensions to be rejected")
+	}
+	if !strings.Contains(err.Error(), "exceed maximum allowed") {
+		t.Errorf("expected dimension limit error, got: %v", err)
+	}
+}
+
+func TestCalculateTargetDimensions_EdgeCases(t *testing.T) {
+	// Extreme wide aspect ratio clamps height to >= 1 instead of 0
+	w, h := calculateTargetDimensions(8000, 1, 600)
+	if w != 600 || h != 1 {
+		t.Errorf("expected 600x1, got %dx%d", w, h)
+	}
+
+	// Extreme tall aspect ratio clamps width to >= 1 and height <= maxDecodeDimension
+	w, h = calculateTargetDimensions(10, 20000, 600)
+	if w < 1 || h != maxDecodeDimension {
+		t.Errorf("expected w>=1 and h=%d, got %dx%d", maxDecodeDimension, w, h)
 	}
 }
