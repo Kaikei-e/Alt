@@ -100,14 +100,20 @@ func TestFetchFeedLinksForExport_ScopedByUserContext(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestDeleteSubscription_DeletesSubscriptionAndOrphanFeedLinkOnly(t *testing.T) {
+func TestDeleteFeedLink_ScopedByUserDeletesSubscriptionAndOrphanFeedLinkOnly(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &SubscriptionRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 	userID := uuid.MustParse("3f2504e0-4f89-11d3-9a0c-0305e82c3301")
 	feedLinkID := uuid.MustParse("a1b2c3d4-1111-4111-8111-111111111111")
+	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    userID,
+		Email:     "alice@example.com",
+		TenantID:  userID,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
 
 	mock.ExpectExec(regexp.QuoteMeta(deleteSubscriptionQuery)).
 		WithArgs(userID, feedLinkID).
@@ -116,7 +122,7 @@ func TestDeleteSubscription_DeletesSubscriptionAndOrphanFeedLinkOnly(t *testing.
 		WithArgs(feedLinkID).
 		WillReturnResult(pgxmock.NewResult("DELETE", 0)) // Another subscriber still exists
 
-	err = repo.DeleteSubscription(context.Background(), userID, feedLinkID)
+	err = repo.DeleteFeedLink(ctx, feedLinkID)
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

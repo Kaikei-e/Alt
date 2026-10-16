@@ -78,25 +78,20 @@ class EvaluationService:
         embedder: Embedder | None = None,
     ) -> None:
         self.settings = get_settings()
-        # Validate any caller-supplied model/vectorizer/threshold paths against
-        # ALLOWED_BASE_DIRS so arbitrary filesystem paths are rejected (CWE-22).
-        raw_weights_path = weights_path or self.settings.genre_classifier_model_path
-        self.weights_path = str(validate_path(str(raw_weights_path))) if raw_weights_path else None
+        # Validate caller-supplied weights_path override against ALLOWED_BASE_DIRS
+        # so arbitrary filesystem paths are rejected (CWE-22), while preserving
+        # Settings-derived paths for container initialization.
+        if weights_path is not None:
+            self.weights_path = str(validate_path(str(weights_path)))
+        else:
+            self.weights_path = self.settings.genre_classifier_model_path
 
-        self.weights_ja = str(validate_path(str(weights_ja_path))) if weights_ja_path else None
-        self.weights_en = str(validate_path(str(weights_en_path))) if weights_en_path else None
-        self.vectorizer_ja = (
-            str(validate_path(str(vectorizer_ja_path))) if vectorizer_ja_path else None
-        )
-        self.vectorizer_en = (
-            str(validate_path(str(vectorizer_en_path))) if vectorizer_en_path else None
-        )
-        self.thresholds_ja = (
-            str(validate_path(str(thresholds_ja_path))) if thresholds_ja_path else None
-        )
-        self.thresholds_en = (
-            str(validate_path(str(thresholds_en_path))) if thresholds_en_path else None
-        )
+        self.weights_ja = weights_ja_path
+        self.weights_en = weights_en_path
+        self.vectorizer_ja = vectorizer_ja_path
+        self.vectorizer_en = vectorizer_en_path
+        self.thresholds_ja = thresholds_ja_path
+        self.thresholds_en = thresholds_en_path
 
         self.use_bootstrap = use_bootstrap
         self.n_bootstrap = n_bootstrap

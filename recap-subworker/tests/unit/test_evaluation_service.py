@@ -86,4 +86,4 @@ class TestEvaluatePathValidation:
             EvaluationService(weights_path="../../../etc/passwd")
 
         with pytest.raises(ValueError, match="not within allowed directories"):
-            EvaluationService(weights_ja_path="/etc/passwd")
+            EvaluationService(weights_path="/etc/passwd")

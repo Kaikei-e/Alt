@@ -112,18 +112,18 @@ func TestRateLimiter_IgnoresSpoofedXForwardedFor(t *testing.T) {
 		return c.String(http.StatusOK, "ok")
 	})
 
-	// First request from peer 172.18.0.5 with spoofed XFF: allowed
+	// First request through proxy 172.18.0.5 where client 198.51.100.42 spoofs leftmost XFF: allowed
 	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
 	req1.RemoteAddr = "172.18.0.5:43210"
-	req1.Header.Set("X-Forwarded-For", "203.0.113.1")
+	req1.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.42")
 	rec1 := httptest.NewRecorder()
 	e.ServeHTTP(rec1, req1)
 	assert.Equal(t, http.StatusOK, rec1.Code)
 
-	// Second request from same peer 172.18.0.5 rotating XFF: must be rate-limited (429)
+	// Second request from same client 198.51.100.42 rotating leftmost spoofed XFF: must be rate-limited (429)
 	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
 	req2.RemoteAddr = "172.18.0.5:43210"
-	req2.Header.Set("X-Forwarded-For", "203.0.113.2")
+	req2.Header.Set("X-Forwarded-For", "203.0.113.2, 198.51.100.42")
 	rec2 := httptest.NewRecorder()
 	e.ServeHTTP(rec2, req2)
 	assert.Equal(t, http.StatusTooManyRequests, rec2.Code)

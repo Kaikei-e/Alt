@@ -140,23 +140,24 @@ describe("server handle — missing session cookie enforcement", () => {
 		warnSpy.mockRestore();
 	});
 
-	it("throws 303 redirect to /login on non-public page routes when Cookie header is absent", async () => {
+	it("serves the SPA shell on page routes when Cookie header is absent while leaving locals unauthenticated", async () => {
 		const { handle } = await import("./hooks.server");
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const resolve = vi.fn();
+		const resolve = vi
+			.fn()
+			.mockResolvedValue(new Response("<html></html>", { status: 200 }));
 
 		const event = {
-			url: new URL("http://localhost:4173/dashboard"),
-			request: new Request("http://localhost:4173/dashboard"),
+			url: new URL("http://localhost:4173/feeds"),
+			request: new Request("http://localhost:4173/feeds"),
 			locals: {},
 		} as unknown as Parameters<typeof handle>[0]["event"];
 
-		await expect(handle({ event, resolve })).rejects.toMatchObject({
-			status: 303,
-			location: "/login?return_to=%2Fdashboard",
-		});
-		expect(resolve).not.toHaveBeenCalled();
-		warnSpy.mockRestore();
+		const res = await handle({ event, resolve });
+
+		expect(res.status).toBe(200);
+		expect(event.locals.session).toBeNull();
+		expect(event.locals.user).toBeNull();
+		expect(resolve).toHaveBeenCalledTimes(1);
 	});
 
 	it("allows public routes without a Cookie header", async () => {

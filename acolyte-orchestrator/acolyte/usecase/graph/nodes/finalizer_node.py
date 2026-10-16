@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import UUID
 
 import structlog
@@ -98,8 +98,17 @@ def resolve_notification_user_id(
     return None
 
 
+class NotificationPublisherPort(Protocol):
+    async def publish(self, *, user_id: str, report_id: str, version_no: int) -> object: ...
+
+
 class FinalizerNode:
-    def __init__(self, report_repo: ReportRepositoryPort, *, notification_publisher: object | None = None) -> None:
+    def __init__(
+        self,
+        report_repo: ReportRepositoryPort,
+        *,
+        notification_publisher: NotificationPublisherPort | None = None,
+    ) -> None:
         self._report_repo = report_repo
         self._notification_publisher = notification_publisher
 
@@ -157,9 +166,9 @@ class FinalizerNode:
         if self._notification_publisher is not None:
             valid_user_id = resolve_notification_user_id(state, report)
             if valid_user_id:
-                publish = getattr(self._notification_publisher, "publish", None)
-                if callable(publish):
-                    await publish(user_id=valid_user_id, report_id=str(report_id), version_no=new_version)
+                await self._notification_publisher.publish(
+                    user_id=valid_user_id, report_id=str(report_id), version_no=new_version
+                )
             else:
                 logger.warning(
                     "Skipping report notification: valid user_id is missing",

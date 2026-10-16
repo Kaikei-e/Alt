@@ -71,15 +71,11 @@ const deleteOrphanFeedLinkQuery = `
 		  )
 	`
 
-// DeleteSubscription deletes a user feed subscription and garbage-collects the
-// master feed_links row only when no other user remains subscribed.
+// DeleteSubscription deletes a user feed subscription.
 func (r *SubscriptionRepository) DeleteSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, deleteSubscriptionQuery, userID, feedLinkID)
 	if err != nil {
 		return fmt.Errorf("delete subscription: %w", err)
-	}
-	if _, err := r.pool.Exec(ctx, deleteOrphanFeedLinkQuery, feedLinkID); err != nil {
-		return fmt.Errorf("delete orphan feed link: %w", err)
 	}
 	return nil
 }

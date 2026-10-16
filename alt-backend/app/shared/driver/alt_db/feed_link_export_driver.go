@@ -31,15 +31,20 @@ const feedLinksForExportByUserQuery = `
 		SELECT fl.url,
 		       COALESCE(sub.title, '') AS title
 		FROM feed_links fl
-		INNER JOIN user_feed_subscriptions ufs
-			ON ufs.feed_link_id = fl.id
 		LEFT JOIN LATERAL (
 			SELECT DISTINCT ON (feed_link_id) title
 			FROM feeds
 			WHERE feed_link_id = fl.id
 			ORDER BY feed_link_id, created_at DESC
 		) sub ON true
-		WHERE ufs.user_id = $1
+		WHERE EXISTS (
+			SELECT 1 FROM user_feed_subscriptions ufs
+			WHERE ufs.feed_link_id = fl.id AND ufs.user_id = $1
+		)
+		OR NOT EXISTS (
+			SELECT 1 FROM user_feed_subscriptions ufs_any
+			WHERE ufs_any.user_id = $1
+		)
 		ORDER BY fl.url ASC
 	`
 

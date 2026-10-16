@@ -101,7 +101,7 @@ func (rl *RateLimiter) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			if c.Echo() != nil && c.Echo().IPExtractor == nil {
-				c.Echo().IPExtractor = echo.ExtractIPDirect()
+				c.Echo().IPExtractor = echo.ExtractIPFromXFFHeader()
 			}
 			ip := c.RealIP()
 			limiter := rl.getLimiter(ip)

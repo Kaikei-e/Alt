@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"auth-hub/internal/domain"
 	"auth-hub/internal/usecase"
 
 	"github.com/labstack/echo/v4"
@@ -31,12 +32,18 @@ type csrfResponse struct {
 func (h *CSRFHandler) Handle(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	cookie, err := c.Cookie("ory_kratos_session")
-	if err != nil || cookie == nil || strings.TrimSpace(cookie.Value) == "" {
+	rawCookie := c.Request().Header.Get("Cookie")
+	if rawCookie == "" {
 		slog.WarnContext(ctx, "csrf token request without session cookie")
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"error": "session cookie required",
 		})
+	}
+
+	cookie, err := c.Cookie("ory_kratos_session")
+	if err != nil || cookie == nil || strings.TrimSpace(cookie.Value) == "" {
+		slog.WarnContext(ctx, "csrf token request without ory_kratos_session cookie")
+		return mapDomainError(domain.ErrSessionNotFound)
 	}
 
 	sessionID := strings.TrimSpace(cookie.Value)

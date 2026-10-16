@@ -1042,11 +1042,21 @@ pub(crate) async fn evaluate_genres(
     let path = match resolve_and_validate_dataset_path(&request) {
         Ok(p) => p,
         Err(e) => {
-            error!(error = %e, "Invalid dataset path in evaluate_genres request");
+            let requested_path = request
+                .data_path
+                .clone()
+                .unwrap_or_else(|| default_dataset_path().display().to_string());
+            error!(
+                error = %e,
+                path = %requested_path,
+                "Invalid dataset path in evaluate_genres request"
+            );
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
-                    "error": format!("Invalid dataset path: {}", e),
+                    "error": format!("Failed to load golden dataset: {}", e),
+                    "path": requested_path,
+                    "hint": "Check if the file exists and contains valid JSON array of items with 'id', 'content', and 'expected_genres' fields"
                 })),
             )
                 .into_response();
