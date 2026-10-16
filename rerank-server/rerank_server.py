@@ -40,7 +40,9 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sentence_transformers import CrossEncoder
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
+)
 logger = logging.getLogger("rerank_server")
 
 # Detect device: prefer MPS (Apple Silicon), fallback to CPU
@@ -74,7 +76,9 @@ SUPPORTED_MODELS: dict[str, str] = {
 
 # The character class keeps a repo id from escaping RERANK_MODEL_CACHE_ROOT
 # when the cache dir is derived from it below.
-_HF_REPO_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
+_HF_REPO_ID_PATTERN = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"
+)
 
 
 def _resolve_model() -> str:
@@ -147,7 +151,9 @@ def _default_max_candidates() -> int:
 # rejected up front rather than timing out halfway through. Derived rather than
 # hard-coded so that raising RERANK_SERVER_TIMEOUT cannot silently leave the two
 # knobs contradicting each other.
-MAX_CANDIDATES = int(os.environ.get("RERANK_MAX_CANDIDATES", str(_default_max_candidates())))
+MAX_CANDIDATES = int(
+    os.environ.get("RERANK_MAX_CANDIDATES", str(_default_max_candidates()))
+)
 MAX_CANDIDATE_LENGTH = int(os.environ.get("RERANK_MAX_CANDIDATE_LENGTH", "4000"))
 MAX_TOP_K = MAX_CANDIDATES
 
@@ -166,7 +172,9 @@ _inference_semaphore = asyncio.Semaphore(1)
 # Routing every inference job through this single-worker executor instead
 # guarantees at most one predict() call runs at a time regardless: an
 # orphaned job just keeps the next one queued behind it.
-_inference_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rerank-inference")
+_inference_executor = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="rerank-inference"
+)
 
 
 class InferenceDeadlineExceeded(RuntimeError):
@@ -212,7 +220,9 @@ class RerankRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, frozen=True)
 
-    query: str = Field(..., description="The query to rank candidates against")
+    query: str = Field(
+        ..., max_length=4096, description="The query to rank candidates against"
+    )
     candidates: list[str] = Field(..., description="List of candidate texts to rank")
     model: str | None = Field(
         None, description="Model name; must match the server's RERANK_MODEL when given"
@@ -267,7 +277,9 @@ class RerankResponse(BaseModel):
 
     results: list[RerankResult] = Field(..., description="Ranked results")
     model: str = Field(..., description="Model used for reranking")
-    processing_time_ms: float | None = Field(None, description="Processing time in milliseconds")
+    processing_time_ms: float | None = Field(
+        None, description="Processing time in milliseconds"
+    )
 
 
 class HealthResponse(BaseModel):
@@ -391,7 +403,10 @@ def _load_onnx_model() -> CrossEncoder:
         RERANK_MODEL_DIR,
         device=DEVICE,
         backend="onnx",
-        model_kwargs={"file_name": ONNX_QUANTIZED_FILE_NAME, "provider": "CPUExecutionProvider"},
+        model_kwargs={
+            "file_name": ONNX_QUANTIZED_FILE_NAME,
+            "provider": "CPUExecutionProvider",
+        },
         max_length=RERANK_MAX_LENGTH,
     )
 
@@ -431,7 +446,7 @@ DEFAULT_INFERENCE_TOKEN_FILE = "/run/secrets/inference_service_token"
 MIN_INFERENCE_TOKEN_LEN = 16
 
 # RFC 6750 b64token alphabet: ALPHA / DIGIT / "-" / "." / "_" / "~" / "+" / "/" with optional trailing "="
-import re as _re
+import re as _re  # noqa: E402
 
 _RFC6750_B64TOKEN = _re.compile(r"^[A-Za-z0-9\-._~+/]+=*\Z")
 
@@ -476,7 +491,7 @@ def load_inference_auth_config() -> InferenceAuthConfig:
             f"Failed to read INFERENCE_SERVICE_TOKEN_FILE '{token_file}': {exc}"
         ) from exc
 
-    token_val = raw.rstrip('\r\n')
+    token_val = raw.rstrip("\r\n")
     if not token_val:
         raise RuntimeError(
             f"Inference token from '{token_file}' is empty. "
@@ -501,7 +516,9 @@ def load_inference_auth_config() -> InferenceAuthConfig:
 
 async def require_inference_token(request: Request) -> None:
     """Enforce constant-time bearer authentication for inference endpoints."""
-    auth_config: InferenceAuthConfig | None = getattr(request.app.state, "auth_config", None)
+    auth_config: InferenceAuthConfig | None = getattr(
+        request.app.state, "auth_config", None
+    )
     if auth_config is None:
         auth_config = load_inference_auth_config()
 
@@ -560,7 +577,11 @@ def _chunk_count(candidate_count: int) -> int:
     return -(-candidate_count // RERANK_CHUNK_SIZE)
 
 
-@app.post("/v1/rerank", response_model=RerankResponse, dependencies=[Depends(require_inference_token)])
+@app.post(
+    "/v1/rerank",
+    response_model=RerankResponse,
+    dependencies=[Depends(require_inference_token)],
+)
 async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
     """Rerank candidates based on query relevance.
 
@@ -600,7 +621,9 @@ async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
             (time.perf_counter() - start) * 1000,
             SERVER_TIMEOUT_SECONDS * 1000,
         )
-        raise HTTPException(status_code=504, detail="Rerank inference timed out") from exc
+        raise HTTPException(
+            status_code=504, detail="Rerank inference timed out"
+        ) from exc
 
     results = _rank(scores, req.top_k)
     elapsed_ms = (time.perf_counter() - start) * 1000
@@ -617,7 +640,9 @@ async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
         SERVER_TIMEOUT_SECONDS * 1000,
     )
 
-    return RerankResponse(results=results, model=RERANK_MODEL, processing_time_ms=elapsed_ms)
+    return RerankResponse(
+        results=results, model=RERANK_MODEL, processing_time_ms=elapsed_ms
+    )
 
 
 def _rank(scores: Sequence[float], top_k: int | None) -> list[RerankResult]:
@@ -625,7 +650,9 @@ def _rank(scores: Sequence[float], top_k: int | None) -> list[RerankResult]:
     indexed_scores = sorted(enumerate(scores), key=lambda pair: pair[1], reverse=True)
     if top_k is not None and top_k > 0:
         indexed_scores = indexed_scores[:top_k]
-    return [RerankResult(index=idx, score=float(score)) for idx, score in indexed_scores]
+    return [
+        RerankResult(index=idx, score=float(score)) for idx, score in indexed_scores
+    ]
 
 
 @app.get("/health", response_model=HealthResponse)

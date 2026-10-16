@@ -1,4 +1,3 @@
-
 import logging
 
 import streamlit as st
@@ -29,27 +28,29 @@ def _fetch_log_errors(window_seconds: int, limit: int = 2000) -> pd.DataFrame:
         """
     )
     with engine.connect() as conn:
-        return pd.read_sql(query, conn, params={**_interval_params(window_seconds), "limit": limit})
+        return pd.read_sql(
+            query, conn, params={**_interval_params(window_seconds), "limit": limit}
+        )
 
 
 def render_log_analysis(window_seconds: int) -> None:
     st.header("Log Analysis")
 
     # Ensure table exists before querying to avoid hard failures
-    engine = get_engine()
-    inspector = inspect(engine)
-    if not inspector.has_table("log_errors"):
-        st.warning("log_errors テーブルが見つかりません。")
-        st.caption("recap-db に log_errors (timestamp, error_type, error_message/raw_line) を作成し、ログを書き込んでください。")
-        return
-
     try:
+        engine = get_engine()
+        inspector = inspect(engine)
+        if not inspector.has_table("log_errors"):
+            st.warning("log_errors テーブルが見つかりません。")
+            st.caption(
+                "recap-db に log_errors (timestamp, error_type, error_message/raw_line) を作成し、ログを書き込んでください。"
+            )
+            return
+
         df_log = _fetch_log_errors(window_seconds)
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Failed to fetch log_errors")
         st.warning("log_errors 取得中にエラーが発生しました。")
-        with st.expander("詳細"):
-            st.error(str(e))
         return
 
     # Fallback filter for unexpected timestamp formats
@@ -60,7 +61,9 @@ def render_log_analysis(window_seconds: int) -> None:
         st.caption(
             "recap-db の log_errors テーブルにログを書き込むか、期間を広げて再表示してください。"
         )
-        st.caption("テーブルが存在しない場合は、log_errors (timestamp, error_type, error_message/raw_line) を作成してください。")
+        st.caption(
+            "テーブルが存在しない場合は、log_errors (timestamp, error_type, error_message/raw_line) を作成してください。"
+        )
         return
 
     # Basic Stats
@@ -85,7 +88,9 @@ def render_log_analysis(window_seconds: int) -> None:
     col_name = "error_message" if "error_message" in df_log.columns else "raw_line"
     for label, pattern in critical_patterns.items():
         if col_name in df_log.columns:
-            count = df_log[df_log[col_name].str.contains(pattern, case=False, na=False)].shape[0]
+            count = df_log[
+                df_log[col_name].str.contains(pattern, case=False, na=False)
+            ].shape[0]
         else:
             count = 0
         watchlist_data.append({"Error Type": label, "Count": count})

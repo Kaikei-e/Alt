@@ -494,7 +494,7 @@ func (d *MeilisearchDriver) getInt64(m meilisearch.Hit, key string) int64 {
 }
 
 func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]SearchDocumentDriver, error) {
-	if strings.TrimSpace(userID) == "" {
+	if strings.TrimSpace(sanitizeFilterValue(userID)) == "" {
 		return nil, &DriverError{Op: "SearchByUserID", Err: errors.New("user_id is required")}
 	}
 	filter := BuildUserFilter(userID)
@@ -536,7 +536,7 @@ func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, us
 }
 
 func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]SearchDocumentDriver, int64, error) {
-	if strings.TrimSpace(userID) == "" {
+	if strings.TrimSpace(sanitizeFilterValue(userID)) == "" {
 		return nil, 0, &DriverError{Op: "SearchByUserIDWithPagination", Err: errors.New("user_id is required")}
 	}
 	if limit <= 0 {
@@ -591,7 +591,7 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 }
 
 func (d *MeilisearchDriver) SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]SearchDocumentDriver, error) {
-	if strings.TrimSpace(userID) == "" {
+	if strings.TrimSpace(sanitizeFilterValue(userID)) == "" {
 		return nil, &DriverError{Op: "SearchByUserIDWithDateFilter", Err: errors.New("user_id is required")}
 	}
 	filter := BuildUserDateFilter(userID, publishedAfter, publishedBefore)

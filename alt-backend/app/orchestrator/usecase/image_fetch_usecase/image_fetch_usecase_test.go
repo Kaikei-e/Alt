@@ -204,3 +204,63 @@ func TestImageFetchUsecase_Execute_ContextCancellation(t *testing.T) {
 	assert.Nil(t, got)
 	assert.Contains(t, err.Error(), "context canceled")
 }
+
+func TestImageFetchUsecase_Execute_ClampsOptions(t *testing.T) {
+	tests := []struct {
+		name        string
+		in          *domain.ImageFetchOptions
+		wantMaxSize int
+		wantTimeout time.Duration
+	}{
+		{
+			name:        "zero values default to 5MB and 30s",
+			in:          &domain.ImageFetchOptions{MaxSize: 0, Timeout: 0},
+			wantMaxSize: 5 * 1024 * 1024,
+			wantTimeout: 30 * time.Second,
+		},
+		{
+			name:        "negative values default to 5MB and 30s",
+			in:          &domain.ImageFetchOptions{MaxSize: -100, Timeout: -5 * time.Second},
+			wantMaxSize: 5 * 1024 * 1024,
+			wantTimeout: 30 * time.Second,
+		},
+		{
+			name:        "oversized MaxSize and Timeout clamped to 10MB and 30s",
+			in:          &domain.ImageFetchOptions{MaxSize: 100 * 1024 * 1024, Timeout: 5 * time.Minute},
+			wantMaxSize: 10 * 1024 * 1024,
+			wantTimeout: 30 * time.Second,
+		},
+		{
+			name:        "sub-second positive Timeout clamped to 1s",
+			in:          &domain.ImageFetchOptions{MaxSize: 1024 * 1024, Timeout: 50 * time.Millisecond},
+			wantMaxSize: 1024 * 1024,
+			wantTimeout: 1 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockPort := mocks.NewMockImageFetchPort(ctrl)
+			mockPort.EXPECT().
+				FetchImage(gomock.Any(), gomock.Any(), gomock.AssignableToTypeOf(&domain.ImageFetchOptions{})).
+				DoAndReturn(func(_ context.Context, _ *url.URL, opts *domain.ImageFetchOptions) (*domain.ImageFetchResult, error) {
+					assert.Equal(t, tt.wantMaxSize, opts.MaxSize)
+					assert.Equal(t, tt.wantTimeout, opts.Timeout)
+					return &domain.ImageFetchResult{
+						URL:         "https://9to5mac.com/image.jpg",
+						ContentType: "image/jpeg",
+						Data:        []byte("ok"),
+						Size:        2,
+						FetchedAt:   time.Now(),
+					}, nil
+				})
+
+			uc := NewImageFetchUsecase(mockPort)
+			_, err := uc.Execute(context.Background(), "https://9to5mac.com/image.jpg", tt.in)
+			require.NoError(t, err)
+		})
+	}
+}

@@ -1,7 +1,7 @@
 """Tests for rerank handler."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
@@ -138,22 +138,47 @@ class TestRerankHandler:
         assert response.status_code == 500
         assert "Internal server error" in response.json()["detail"]
 
-    def test_rerank_with_custom_model(self, client, mock_usecase):
-        """Test rerank request with custom model creates new usecase."""
-        # When custom model is specified, a new usecase is created
-        with patch("news_creator.handler.rerank_handler.RerankUsecase") as MockUsecase:
-            mock_instance = AsyncMock()
-            mock_instance.rerank.return_value = ([(0, 0.9)], "custom-model", 50.0)
-            MockUsecase.return_value = mock_instance
+    def test_rerank_with_allowed_default_model(self, client, mock_usecase):
+        """G7-02: Rerank request with the allowlisted default model succeeds."""
+        response = client.post(
+            "/v1/rerank",
+            json={
+                "query": "test query",
+                "candidates": ["candidate 1", "candidate 2", "candidate 3"],
+                "model": "BAAI/bge-reranker-v2-m3",
+            },
+        )
 
-            response = client.post(
-                "/v1/rerank",
-                json={
-                    "query": "test query",
-                    "candidates": ["candidate 1"],
-                    "model": "custom-model",
-                },
-            )
+        assert response.status_code == 200
+        mock_usecase.rerank.assert_called_once_with(
+            query="test query",
+            candidates=["candidate 1", "candidate 2", "candidate 3"],
+            top_k=None,
+        )
 
-            assert response.status_code == 200
-            MockUsecase.assert_called_once_with(model_name="custom-model")
+    def test_rerank_rejects_unallowlisted_custom_model(self, client, mock_usecase):
+        """G7-02: Arbitrary model names must be rejected with 422 to prevent Hub SSRF / singleton clobbering."""
+        response = client.post(
+            "/v1/rerank",
+            json={
+                "query": "test query",
+                "candidates": ["candidate 1"],
+                "model": "custom-model",
+            },
+        )
+
+        assert response.status_code == 422
+        mock_usecase.rerank.assert_not_called()
+
+    def test_rerank_rejects_oversized_query(self, client, mock_usecase):
+        """G7-02: Query exceeding 4096 chars must be rejected with 422."""
+        response = client.post(
+            "/v1/rerank",
+            json={
+                "query": "q" * 4097,
+                "candidates": ["candidate 1"],
+            },
+        )
+
+        assert response.status_code == 422
+        mock_usecase.rerank.assert_not_called()

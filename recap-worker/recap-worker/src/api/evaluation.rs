@@ -489,9 +489,8 @@ fn load_golden_dataset(path: &PathBuf) -> anyhow::Result<Vec<GoldenItem>> {
             // レガシー形式：直接配列としてパース
             serde_json::from_str(&content).with_context(|| {
                 format!(
-                    "Failed to parse golden dataset JSON from {}. Content preview: {}",
+                    "Failed to parse golden dataset JSON from {}",
                     path.display(),
-                    content.chars().take(200).collect::<String>()
                 )
             })?
         };
@@ -503,13 +502,81 @@ fn load_golden_dataset(path: &PathBuf) -> anyhow::Result<Vec<GoldenItem>> {
     Ok(items)
 }
 
-#[allow(dead_code)]
-fn determine_dataset_path(request: &EvaluateRequest) -> PathBuf {
-    let data_path = request.data_path.clone().unwrap_or_else(|| {
+fn default_dataset_path() -> PathBuf {
+    PathBuf::from(
         std::env::var("RECAP_GOLDEN_DATASET_PATH")
-            .unwrap_or_else(|_| "/app/data/golden_classification.json".to_string())
-    });
-    PathBuf::from(data_path)
+            .unwrap_or_else(|_| "/app/data/golden_classification.json".to_string()),
+    )
+}
+
+fn allowed_dataset_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![PathBuf::from("/app/data")];
+    if let Some(parent) = default_dataset_path().parent() {
+        if !parent.as_os_str().is_empty() {
+            let parent_buf = parent.to_path_buf();
+            if !dirs.contains(&parent_buf) {
+                dirs.push(parent_buf);
+            }
+        }
+    }
+    dirs
+}
+
+fn validate_custom_dataset_path(
+    user_path: &str,
+    allowed_dirs: &[PathBuf],
+) -> anyhow::Result<PathBuf> {
+    let trimmed = user_path.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("Dataset path must not be empty");
+    }
+
+    let raw_path = std::path::Path::new(trimmed);
+    if raw_path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        anyhow::bail!("Path traversal ('..') is not allowed in data_path");
+    }
+
+    if raw_path.extension().and_then(|e| e.to_str()) != Some("json") {
+        anyhow::bail!("Dataset path must have a .json extension");
+    }
+
+    let Some(first_base) = allowed_dirs.first() else {
+        anyhow::bail!("No allowed dataset directories configured");
+    };
+
+    let candidate = if raw_path.is_absolute() {
+        raw_path.to_path_buf()
+    } else {
+        first_base.join(raw_path)
+    };
+
+    let canonical = fs::canonicalize(&candidate)
+        .map_err(|_| anyhow::anyhow!("Dataset path does not exist or cannot be resolved"))?;
+
+    if canonical.extension().and_then(|e| e.to_str()) != Some("json") {
+        anyhow::bail!("Resolved dataset path must have a .json extension");
+    }
+
+    let is_within_allowed = allowed_dirs
+        .iter()
+        .filter_map(|d| fs::canonicalize(d).ok())
+        .any(|base| canonical.starts_with(&base));
+
+    if !is_within_allowed {
+        anyhow::bail!("Dataset path is outside allowed directories");
+    }
+
+    Ok(canonical)
+}
+
+fn resolve_and_validate_dataset_path(request: &EvaluateRequest) -> anyhow::Result<PathBuf> {
+    match request.data_path.as_deref() {
+        Some(custom) => validate_custom_dataset_path(custom, &allowed_dataset_dirs()),
+        None => Ok(default_dataset_path()),
+    }
 }
 
 /// 言語別評価結果
@@ -972,7 +1039,29 @@ pub(crate) async fn evaluate_genres(
     State(state): State<AppState>,
     Json(request): Json<EvaluateRequest>,
 ) -> impl IntoResponse {
-    let path = determine_dataset_path(&request);
+    let path = match resolve_and_validate_dataset_path(&request) {
+        Ok(p) => p,
+        Err(e) => {
+            let requested_path = request
+                .data_path
+                .clone()
+                .unwrap_or_else(|| default_dataset_path().display().to_string());
+            error!(
+                error = %e,
+                path = %requested_path,
+                "Invalid dataset path in evaluate_genres request"
+            );
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Failed to load golden dataset: {}", e),
+                    "path": requested_path,
+                    "hint": "Check if the file exists and contains valid JSON array of items with 'id', 'content', and 'expected_genres' fields"
+                })),
+            )
+                .into_response();
+        }
+    };
 
     let golden_data = match load_and_validate_dataset(&path) {
         Ok(data) => data,
@@ -986,7 +1075,7 @@ pub(crate) async fn evaluate_genres(
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({
-                    "error": format!("Failed to run evaluation: {}", e),
+                    "error": "Failed to run evaluation",
                 })),
             )
                 .into_response();
@@ -1134,5 +1223,61 @@ pub(crate) async fn get_latest_evaluation_result(
             )
                 .into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn validate_custom_dataset_path_rejects_traversal_and_non_json() {
+        let allowed_dir = TempDir::new().unwrap();
+        let allowed = vec![allowed_dir.path().to_path_buf()];
+
+        assert!(validate_custom_dataset_path("../secret.json", &allowed).is_err());
+        assert!(validate_custom_dataset_path("/run/secrets/recap_admin_token", &allowed).is_err());
+        assert!(validate_custom_dataset_path("secret.txt", &allowed).is_err());
+    }
+
+    #[test]
+    fn validate_custom_dataset_path_rejects_outside_allowed_directory() {
+        let allowed_dir = TempDir::new().unwrap();
+        let outside_dir = TempDir::new().unwrap();
+        let outside_file = outside_dir.path().join("outside.json");
+        fs::write(&outside_file, "[]").unwrap();
+
+        let allowed = vec![allowed_dir.path().to_path_buf()];
+        let err = validate_custom_dataset_path(outside_file.to_str().unwrap(), &allowed)
+            .expect_err("path outside allowed directory must be rejected");
+        assert!(format!("{err:#}").contains("outside allowed directories"));
+    }
+
+    #[test]
+    fn validate_custom_dataset_path_accepts_valid_json_inside_allowed_dir() {
+        let allowed_dir = TempDir::new().unwrap();
+        let dataset_file = allowed_dir.path().join("golden.json");
+        fs::write(&dataset_file, "[]").unwrap();
+
+        let allowed = vec![allowed_dir.path().to_path_buf()];
+        let resolved = validate_custom_dataset_path("golden.json", &allowed).unwrap();
+        assert_eq!(resolved, fs::canonicalize(&dataset_file).unwrap());
+    }
+
+    #[test]
+    fn load_golden_dataset_parse_error_never_leaks_file_contents() {
+        let dir = TempDir::new().unwrap();
+        let bad_file = dir.path().join("bad.json");
+        let secret_marker = "SUPER_SECRET_TOKEN_VALUE_DO_NOT_LEAK_12345";
+        fs::write(&bad_file, secret_marker).unwrap();
+
+        let err = load_golden_dataset(&bad_file).expect_err("invalid JSON should fail");
+        let rendered = format!("{err:#}");
+        assert!(
+            !rendered.contains(secret_marker),
+            "parse error must not include file content preview: {rendered}"
+        );
+        assert!(!rendered.contains("Content preview"));
     }
 }

@@ -169,7 +169,11 @@ services:
       - MTLS_ALLOWED_PEERS=${ACOLYTE_ORCHESTRATOR_MTLS_ALLOWED_PEERS:-alt-butterfly-facade}
       # PeerIdentityMiddleware strict mode (settings.peer_identity_strict).
       # The :9443 TLS boundary already rejects unlisted CNs at handshake
-      # regardless of this flag; strict only adds a 401 for a missing peer.
+      # regardless of this flag; strict only adds a 401 for a missing peer on
+      # plaintext :8090. Must stay false while alt-butterfly-facade runs with
+      # MTLS_ENFORCE=false (compose/bff.yaml, ADR-000954) and dials
+      # http://acolyte-orchestrator:8090 with signed X-Alt-Backend-Token
+      # instead of :9443 (PM-2026-033, PM-2026-058).
       - PEER_IDENTITY_STRICT=${ACOLYTE_ORCHESTRATOR_PEER_IDENTITY_STRICT:-false}
       - PEER_IDENTITY_TRUSTED=off
       - PKI_ENROLLMENT=enabled

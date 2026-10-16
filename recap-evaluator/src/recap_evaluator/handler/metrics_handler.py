@@ -1,6 +1,6 @@
 """Metrics HTTP handlers."""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from recap_evaluator.handler.schemas import (
     LatestMetricsResponse,
@@ -27,7 +27,7 @@ async def get_latest_metrics(request: Request):
 
 
 @router.get("/metrics/trends", response_model=TrendsResponse)
-async def get_metrics_trends(request: Request, window_days: int = 30):
+async def get_metrics_trends(request: Request, window_days: int = Query(default=30, ge=1, le=90)):
     get_metrics = request.app.state.get_metrics
     raw_trends = await get_metrics.get_trends(window_days=window_days)
 

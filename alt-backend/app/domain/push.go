@@ -1,6 +1,11 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"net/url"
+	"strings"
+	"time"
+)
 
 // NotificationPreferences is one subscription's per-kind on/off state.
 //
@@ -36,6 +41,63 @@ type PushSubscription struct {
 	// Zero until the dispatcher has succeeded / failed against this endpoint.
 	LastSuccessAt time.Time
 	LastFailureAt time.Time
+}
+
+// ValidatePushEndpoint verifies that a Web Push subscription endpoint is a
+// canonical HTTPS URL pointing at a known browser push service.
+//
+// Returned errors deliberately never echo the endpoint string because the
+// path is a bearer capability token.
+func ValidatePushEndpoint(endpoint string) error {
+	if strings.TrimSpace(endpoint) == "" {
+		return errors.New("push endpoint is required")
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return errors.New("invalid push endpoint URL")
+	}
+	if u.Scheme != "https" {
+		return errors.New("push endpoint must use https scheme")
+	}
+	if u.User != nil {
+		return errors.New("push endpoint must not contain userinfo")
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return errors.New("push endpoint host is required")
+	}
+	if port := u.Port(); port != "" && port != "443" {
+		return errors.New("push endpoint port must be 443")
+	}
+	if !isAllowedPushHost(host) {
+		return errors.New("push endpoint host is not a supported Web Push provider")
+	}
+	return nil
+}
+
+func isAllowedPushHost(host string) bool {
+	if host == "fcm.googleapis.com" {
+		return true
+	}
+	for _, suffix := range []string{
+		".fcm.googleapis.com",
+		".push.services.mozilla.com",
+		".notify.windows.com",
+		".push.apple.com",
+	} {
+		if hasValidSubdomainPrefix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasValidSubdomainPrefix(host, suffix string) bool {
+	if !strings.HasSuffix(host, suffix) {
+		return false
+	}
+	prefix := strings.TrimSuffix(host, suffix)
+	return prefix != "" && !strings.HasPrefix(prefix, ".") && !strings.HasSuffix(prefix, ".")
 }
 
 // NotificationKind names the notification_outbox kinds the product sends.

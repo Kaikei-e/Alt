@@ -32,6 +32,7 @@ func buildSnoozeRecallCandidateWrite(evt sovereign_db.KnowledgeEvent) (snoozeRec
 
 	write := snoozeRecallCandidateWrite{
 		UserID:     resolveUserID(evt).String(),
+		TenantID:   evt.TenantID.String(),
 		ItemKey:    payload.ItemKey,
 		Until:      payload.SnoozedUntil,
 		OccurredAt: evt.OccurredAt.Format(time.RFC3339Nano),
@@ -66,6 +67,7 @@ func buildDismissRecallCandidateWrite(evt sovereign_db.KnowledgeEvent) (dismissR
 
 	write := dismissRecallCandidateWrite{
 		UserID:     resolveUserID(evt).String(),
+		TenantID:   evt.TenantID.String(),
 		ItemKey:    payload.ItemKey,
 		OccurredAt: evt.OccurredAt.Format(time.RFC3339Nano),
 	}

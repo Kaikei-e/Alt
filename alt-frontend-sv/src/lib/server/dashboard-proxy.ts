@@ -36,6 +36,10 @@ export async function proxyDashboardGet(
 			return null;
 		});
 
+		if (!token) {
+			return Response.json({ error: "Unauthorized" }, { status: 401 });
+		}
+
 		const params = new URLSearchParams();
 		for (const key of allowedParams) {
 			const value = url.searchParams.get(key);
@@ -49,10 +53,8 @@ export async function proxyDashboardGet(
 
 		const headers: HeadersInit = {
 			"Content-Type": "application/json",
+			"X-Alt-Backend-Token": token,
 		};
-		if (token) {
-			headers["X-Alt-Backend-Token"] = token;
-		}
 
 		const response = await fetch(backendEndpoint, {
 			headers,

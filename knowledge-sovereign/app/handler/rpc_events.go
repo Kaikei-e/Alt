@@ -39,9 +39,9 @@ func (h *SovereignHandler) ListKnowledgeEvents(
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid tenant_id: %w", parseErr))
 		}
-		events, err = h.readDB.ListKnowledgeEventsSinceForUser(ctx, tenantID, userID, msg.AfterSeq, int(msg.Limit))
+		events, err = h.readDB.ListKnowledgeEventsSinceForUser(ctx, tenantID, userID, msg.AfterSeq, clampReadLimit(int(msg.Limit), defaultReadLimit))
 	} else {
-		events, err = h.readDB.ListKnowledgeEventsSince(ctx, msg.AfterSeq, int(msg.Limit))
+		events, err = h.readDB.ListKnowledgeEventsSince(ctx, msg.AfterSeq, clampReadLimit(int(msg.Limit), defaultReadLimit))
 	}
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListKnowledgeEvents: %w", err))

@@ -167,6 +167,10 @@ func (r *Repository) GetTodayDigest(ctx context.Context, userID uuid.UUID, date 
 // GetRecallCandidates returns recall candidates for a user.
 // No articles JOIN — returns candidates with embedded home items from sovereign DB only.
 func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]RecallCandidate, error) {
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("GetRecallCandidates: user_id cannot be nil")
+	}
+	limit = clampReadLimit(limit, defaultReadLimit)
 	query := `SELECT rcv.user_id, rcv.item_key, rcv.recall_score, rcv.reason_json,
 		rcv.next_suggest_at, rcv.first_eligible_at, rcv.snoozed_until, rcv.updated_at, rcv.projection_version,
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,

@@ -282,3 +282,37 @@ class TestChatEndpointValidation:
             },
         )
         assert resp.status_code == 429
+
+    def test_invalid_keep_alive_string_returns_422(self):
+        """G7-05: Arbitrary keep_alive strings must be rejected with 422."""
+        gateway = AsyncMock()
+        client = TestClient(make_app(gateway))
+        resp = client.post(
+            "/api/chat",
+            json={
+                "model": "gemma4-e4b-12k",
+                "messages": [{"role": "user", "content": "hi"}],
+                "keep_alive": "invalid-duration",
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_valid_keep_alive_string_accepted(self):
+        """G7-05: Valid Ollama duration strings (5m, 30s, 1h, 0, -1) are accepted."""
+        gateway = AsyncMock()
+        gateway.chat_generate.return_value = {
+            "model": "gemma4-e4b-12k",
+            "message": {"role": "assistant", "content": "ok"},
+            "done": True,
+        }
+        client = TestClient(make_app(gateway))
+        resp = client.post(
+            "/api/chat",
+            json={
+                "model": "gemma4-e4b-12k",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+                "keep_alive": "5m",
+            },
+        )
+        assert resp.status_code == 200

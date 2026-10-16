@@ -8,7 +8,7 @@ import { getCSRFToken, issueCsrfCookie } from "#lib/api.js";
  * comparison instead of re-fetching a fresh token from auth-hub.
  * V-004: CSRF protection support
  */
-export const GET: RequestHandler = async ({ request, cookies }) => {
+export const GET: RequestHandler = async ({ request, cookies, url }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	const csrfToken = await getCSRFToken(cookieHeader);
@@ -17,7 +17,10 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 		return Response.json({ error: "Not authenticated" }, { status: 401 });
 	}
 
-	issueCsrfCookie(cookies, csrfToken);
+	const requestUrl = url ?? new URL(request.url);
+	issueCsrfCookie(cookies, csrfToken, {
+		secure: requestUrl.protocol === "https:",
+	});
 
 	return Response.json({ csrf_token: csrfToken });
 };

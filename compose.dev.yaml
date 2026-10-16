@@ -7,8 +7,8 @@ services:
       - ./alt-frontend-sv:/app
       - /app/node_modules
     ports:
-      - "4173:4173"
-      - "24678:24678" # Vite HMR port (default)
+      - "127.0.0.1:4173:4173"
+      - "127.0.0.1:24678:24678" # Vite HMR port (default)
     environment:
       - NODE_ENV=development
       - PORT=4173

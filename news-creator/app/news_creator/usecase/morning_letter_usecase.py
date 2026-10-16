@@ -18,7 +18,7 @@ except ImportError:
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.output_guard import sanitize_output_markdown
-from news_creator.domain.prompt_boundary import wrap_untrusted_content
+from news_creator.domain.prompt_boundary import wrap_untrusted_content_with_report
 from news_creator.domain.models import (
     LLMGenerateResponse,
     MorningLetterContent,
@@ -220,9 +220,28 @@ class MorningLetterUsecase:
 
     def _build_prompt(self, request: MorningLetterRequest, is_degraded: bool) -> str:
         """Build the prompt for Morning Letter generation."""
-        input_data = wrap_untrusted_content(
-            self._format_input_data(request, is_degraded)
-        )
+        raw_input = self._format_input_data(request, is_degraded)
+        report = wrap_untrusted_content_with_report(raw_input)
+        if report.control_tokens_removed:
+            logger.warning(
+                "Removed control token sequences from untrusted prompt input",
+                extra={
+                    "source": "morning_letter",
+                    "tokens_removed": report.control_tokens_removed,
+                    "original_length": len(raw_input),
+                },
+            )
+        if report.hidden_characters_removed or report.delimiters_removed:
+            logger.warning(
+                "Removed hidden characters or forged delimiters from untrusted prompt input",
+                extra={
+                    "source": "morning_letter",
+                    "hidden_characters_removed": report.hidden_characters_removed,
+                    "delimiters_removed": report.delimiters_removed,
+                    "original_length": len(raw_input),
+                },
+            )
+        input_data = report.text
         if self.template is None:
             return self._build_inline_prompt(request, is_degraded, input_data)
 

@@ -375,14 +375,10 @@ func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult
 	return result, nil
 }
 
-// ensureSecretsDir creates dir with secretDirMode when it is missing. An
-// existing directory keeps whatever mode the operator gave it.
+// ensureSecretsDir creates dir with secretDirMode when it is missing and
+// enforces secretDirMode (0750) even when dir already exists, so a
+// pre-existing 0755 directory does not expose 0644 secret files to world-read.
 func ensureSecretsDir(dir string) error {
-	if _, err := os.Stat(dir); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("checking secrets directory: %w", err)
-	}
 	if err := os.MkdirAll(dir, secretDirMode); err != nil {
 		return fmt.Errorf("creating secrets directory: %w", err)
 	}

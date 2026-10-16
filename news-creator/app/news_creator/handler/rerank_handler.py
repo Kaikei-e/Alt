@@ -69,11 +69,12 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
                     "top_k": request.top_k,
                 },
             )
-            # Use request model if specified, otherwise usecase default
-            if request.model:
-                usecase = RerankUsecase(model_name=request.model)
-            else:
-                usecase = rerank_usecase
+            if (
+                request.model is not None
+                and request.model not in RerankUsecase.ALLOWED_MODELS
+            ):
+                raise ValueError(f"Unsupported rerank model: {request.model}")
+            usecase = rerank_usecase
 
             results, model, processing_time_ms = await usecase.rerank(
                 query=request.query,

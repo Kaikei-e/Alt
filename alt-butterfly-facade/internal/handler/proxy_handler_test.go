@@ -399,3 +399,91 @@ func createValidToken(t *testing.T, secret []byte) string {
 	}
 	return tokenStr
 }
+
+func TestProxyHandler_ServeHTTP_RejectsOversizedUnaryRequestBody(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	backendClient := client.NewBackendClientWithTransport(
+		backend.URL,
+		30*time.Second,
+		5*time.Minute,
+		http.DefaultTransport,
+	)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	token := createValidToken(t, []byte("test-secret"))
+
+	t.Run("known Content-Length exceeding maxRequestBodyBytes", func(t *testing.T) {
+		oversized := bytes.NewReader(make([]byte, maxRequestBodyBytes+1))
+		req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", oversized)
+		req.Header.Set("Content-Type", "application/proto")
+		req.Header.Set("X-Alt-Backend-Token", token)
+
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+
+		assert.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
+	})
+
+	t.Run("unknown Content-Length stream exceeding maxRequestBodyBytes", func(t *testing.T) {
+		oversizedStream := io.NopCloser(bytes.NewReader(make([]byte, maxRequestBodyBytes+1)))
+		req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", nil)
+		req.Body = oversizedStream
+		req.ContentLength = -1
+		req.Header.Set("Content-Type", "application/proto")
+		req.Header.Set("X-Alt-Backend-Token", token)
+
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+
+		assert.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
+	})
+}
+
+type zeroReader struct {
+	remaining int64
+}
+
+func (z *zeroReader) Read(p []byte) (int, error) {
+	if z.remaining <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(p)) > z.remaining {
+		p = p[:z.remaining]
+	}
+	for i := range p {
+		p[i] = 'a'
+	}
+	z.remaining -= int64(len(p))
+	return len(p), nil
+}
+
+func TestProxyHandler_ServeHTTP_BoundsUnaryResponseBody(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/proto")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.Copy(w, &zeroReader{remaining: maxResponseBodyBytes + 1024})
+	}))
+	defer backend.Close()
+
+	backendClient := client.NewBackendClientWithTransport(
+		backend.URL,
+		30*time.Second,
+		5*time.Minute,
+		http.DefaultTransport,
+	)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+
+	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader("req"))
+	req.Header.Set("Content-Type", "application/proto")
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, int(maxResponseBodyBytes), recorder.Body.Len())
+}

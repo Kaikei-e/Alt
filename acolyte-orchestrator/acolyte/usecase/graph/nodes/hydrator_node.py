@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from acolyte.domain.prompt_safety import escape_xml_delimiters
+
 if TYPE_CHECKING:
     from acolyte.port.content_store import ContentStorePort
     from acolyte.usecase.graph.state import ReportGenerationState
@@ -42,7 +44,8 @@ class HydratorNode:
         if not article_ids:
             return {"hydrated_evidence": {}}
 
-        hydrated = await self._content_store.fetch_many(list(article_ids))
+        raw_hydrated = await self._content_store.fetch_many(list(article_ids))
+        hydrated = {aid: escape_xml_delimiters(body) for aid, body in raw_hydrated.items()}
 
         logger.info(
             "Hydrator completed",

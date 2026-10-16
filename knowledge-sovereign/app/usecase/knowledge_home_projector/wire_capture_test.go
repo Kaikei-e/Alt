@@ -52,6 +52,7 @@ type capturedHomeItem struct {
 
 type capturedDismiss struct {
 	UserID            string `json:"user_id"`
+	TenantID          string `json:"tenant_id"`
 	ItemKey           string `json:"item_key"`
 	ProjectionVersion int    `json:"projection_version"`
 	DismissedAt       string `json:"dismissed_at"`
@@ -59,6 +60,7 @@ type capturedDismiss struct {
 
 type capturedClearSupersede struct {
 	UserID            string `json:"user_id"`
+	TenantID          string `json:"tenant_id"`
 	ItemKey           string `json:"item_key"`
 	ProjectionVersion int    `json:"projection_version"`
 }
@@ -79,9 +81,10 @@ type capturedDigest struct {
 }
 
 type capturedRecallCandidate struct {
-	UserID  uuid.UUID `json:"user_id"`
-	ItemKey string    `json:"item_key"`
-	Reasons []struct {
+	UserID   uuid.UUID `json:"user_id"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	ItemKey  string    `json:"item_key"`
+	Reasons  []struct {
 		Type        string `json:"type"`
 		Description string `json:"description"`
 	} `json:"reasons"`
@@ -94,6 +97,7 @@ type capturedRecallCandidate struct {
 
 type capturedURLPatch struct {
 	UserID            string `json:"user_id"`
+	TenantID          string `json:"tenant_id"`
 	ItemKey           string `json:"item_key"`
 	ProjectionVersion int    `json:"projection_version"`
 	URL               string `json:"url"`
@@ -101,6 +105,7 @@ type capturedURLPatch struct {
 
 type capturedSnooze struct {
 	UserID     string `json:"user_id"`
+	TenantID   string `json:"tenant_id"`
 	ItemKey    string `json:"item_key"`
 	Until      string `json:"until"`
 	OccurredAt string `json:"occurred_at"`
@@ -108,6 +113,7 @@ type capturedSnooze struct {
 
 type capturedRecallDismiss struct {
 	UserID     string `json:"user_id"`
+	TenantID   string `json:"tenant_id"`
 	ItemKey    string `json:"item_key"`
 	OccurredAt string `json:"occurred_at"`
 }

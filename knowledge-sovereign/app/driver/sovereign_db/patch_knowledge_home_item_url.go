@@ -85,10 +85,16 @@ func (r *Repository) PatchKnowledgeHomeItemURL(ctx context.Context, payload json
 	if err != nil {
 		return fmt.Errorf("PatchKnowledgeHomeItemURL: parse user_id: %w", err)
 	}
+	if userID == uuid.Nil {
+		return errors.New("PatchKnowledgeHomeItemURL: user_id cannot be nil")
+	}
 	if p.TenantID != "" {
 		tenantID, err := uuid.Parse(p.TenantID)
 		if err != nil {
 			return fmt.Errorf("PatchKnowledgeHomeItemURL: parse tenant_id: %w", err)
+		}
+		if tenantID == uuid.Nil {
+			return errors.New("PatchKnowledgeHomeItemURL: tenant_id cannot be nil")
 		}
 		if _, err := r.pool.Exec(ctx, patchKnowledgeHomeItemURLWithTenantQuery,
 			p.URL, userID, p.ItemKey, p.ProjectionVersion, tenantID,

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.compressed_evidence import CompressedSpan, select_top_sentences
+from acolyte.domain.prompt_safety import escape_xml_delimiters, neutralize_evidence_line
 from acolyte.domain.query_facet import render_query_string
 from acolyte.domain.quote_selection import QuoteSelectorOutput, SelectedQuote
 from acolyte.port.llm_provider import LLMMode
@@ -287,10 +288,10 @@ class QuoteSelectorNode:
             prompt_body = _resolve_prompt_body(source_id, compressed, hydrated)
             query_context_str = ", ".join(section_queries)
             prompt = _QUOTE_PROMPT.format(
-                section_queries=query_context_str,
-                source_id=source_id,
-                source_title=source_title,
-                body=prompt_body,
+                section_queries=neutralize_evidence_line(query_context_str),
+                source_id=neutralize_evidence_line(source_id),
+                source_title=neutralize_evidence_line(source_title),
+                body=escape_xml_delimiters(prompt_body),
             )
 
             fallback = QuoteSelectorOutput(reasoning="fallback", quotes=[])

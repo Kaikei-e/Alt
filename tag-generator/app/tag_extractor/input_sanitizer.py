@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 # Code block pattern for stripping before readability
 _CODE_BLOCK_PATTERN = re.compile(
-    r"<(pre|code|script|style)\b[^>]*>.*?</\1\s*>",
+    r"<(pre|code)\b[^>]*>.*?(?:</\1\s*>|$)",
     re.IGNORECASE | re.DOTALL,
 )
 

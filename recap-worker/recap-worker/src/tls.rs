@@ -22,8 +22,121 @@ use std::io;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use rustls::pki_types::CertificateDer;
-use rustls::{RootCertStore, ServerConfig};
+use rustls::client::danger::HandshakeSignatureValid;
+use rustls::pki_types::{CertificateDer, UnixTime};
+use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
+use rustls::{
+    DigitallySignedStruct, DistinguishedName, RootCertStore, ServerConfig, SignatureScheme,
+};
+use x509_parser::prelude::{FromDer, GeneralName, X509Certificate};
+
+/// Client-certificate verifier that delegates cryptographic chain validation to
+/// an inner [`ClientCertVerifier`] (typically `WebPkiClientVerifier`) and then
+/// enforces that the leaf certificate's Common Name or DNS SAN matches one of
+/// the configured `allowed_peers`.
+#[derive(Debug)]
+pub struct AllowedNamesVerifier {
+    inner: Arc<dyn ClientCertVerifier>,
+    allowed_peers: Vec<String>,
+}
+
+impl AllowedNamesVerifier {
+    pub fn new(inner: Arc<dyn ClientCertVerifier>, allowed_peers: Vec<String>) -> Self {
+        Self {
+            inner,
+            allowed_peers,
+        }
+    }
+
+    pub fn verify_peer_identity(
+        &self,
+        end_entity: &CertificateDer<'_>,
+    ) -> std::result::Result<(), rustls::Error> {
+        if self.allowed_peers.is_empty() {
+            return Ok(());
+        }
+
+        let (_, cert) = X509Certificate::from_der(end_entity.as_ref()).map_err(|_| {
+            rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding)
+        })?;
+
+        let cn_matches = cert
+            .subject()
+            .iter_common_name()
+            .filter_map(|cn| cn.as_str().ok())
+            .any(|cn| self.allowed_peers.iter().any(|allowed| allowed == cn));
+
+        let san_matches = cert
+            .subject_alternative_name()
+            .ok()
+            .flatten()
+            .is_some_and(|ext| {
+                ext.value.general_names.iter().any(|name| match name {
+                    GeneralName::DNSName(dns) => {
+                        self.allowed_peers.iter().any(|allowed| allowed == dns)
+                    }
+                    _ => false,
+                })
+            });
+
+        if cn_matches || san_matches {
+            Ok(())
+        } else {
+            Err(rustls::Error::General(
+                "client certificate peer identity not in MTLS_ALLOWED_PEERS".into(),
+            ))
+        }
+    }
+}
+
+impl ClientCertVerifier for AllowedNamesVerifier {
+    fn offer_client_auth(&self) -> bool {
+        self.inner.offer_client_auth()
+    }
+
+    fn client_auth_mandatory(&self) -> bool {
+        self.inner.client_auth_mandatory()
+    }
+
+    fn root_hint_subjects(&self) -> &[DistinguishedName] {
+        self.inner.root_hint_subjects()
+    }
+
+    fn verify_client_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        now: UnixTime,
+    ) -> std::result::Result<ClientCertVerified, rustls::Error> {
+        let verified = self
+            .inner
+            .verify_client_cert(end_entity, intermediates, now)?;
+        self.verify_peer_identity(end_entity)?;
+        Ok(verified)
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> std::result::Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> std::result::Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.inner.supported_verify_schemes()
+    }
+}
 
 /// Returns true when `MTLS_ENFORCE=true`. Any other value (including unset)
 /// keeps the service in plaintext mode — the shared-secret layer continues
@@ -65,8 +178,14 @@ pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
         trust_store.add(cert).context("add CA to trust store")?;
     }
 
-    let client_verifier =
+    let webpki_verifier =
         rustls::server::WebPkiClientVerifier::builder(Arc::new(trust_store)).build()?;
+    let allowed_peers = allowed_peers_from_env();
+    let client_verifier: Arc<dyn ClientCertVerifier> = if allowed_peers.is_empty() {
+        webpki_verifier
+    } else {
+        Arc::new(AllowedNamesVerifier::new(webpki_verifier, allowed_peers))
+    };
 
     let resolver = crate::clients::mtls::server_cert_resolver(&cert_file, &key_file)?;
 
@@ -153,5 +272,34 @@ mod tests {
                 assert!(load_server_tls_config().is_err());
             },
         );
+    }
+
+    #[test]
+    fn allowed_names_verifier_accepts_permitted_peer_and_rejects_unlisted_peer() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+        let ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).unwrap();
+        let ca_key = rcgen::KeyPair::generate().unwrap();
+        let ca_cert = ca_params.self_signed(&ca_key).unwrap();
+
+        let mut store = RootCertStore::empty();
+        store.add(ca_cert.der().clone()).unwrap();
+        let inner = rustls::server::WebPkiClientVerifier::builder(Arc::new(store))
+            .build()
+            .unwrap();
+
+        let verifier = AllowedNamesVerifier::new(inner, vec!["alt-backend".to_string()]);
+
+        let allowed_params =
+            rcgen::CertificateParams::new(vec!["alt-backend".to_string()]).unwrap();
+        let allowed_key = rcgen::KeyPair::generate().unwrap();
+        let allowed_cert = allowed_params.self_signed(&allowed_key).unwrap();
+        assert!(verifier.verify_peer_identity(allowed_cert.der()).is_ok());
+
+        let denied_params =
+            rcgen::CertificateParams::new(vec!["untrusted-peer".to_string()]).unwrap();
+        let denied_key = rcgen::KeyPair::generate().unwrap();
+        let denied_cert = denied_params.self_signed(&denied_key).unwrap();
+        assert!(verifier.verify_peer_identity(denied_cert.der()).is_err());
     }
 }

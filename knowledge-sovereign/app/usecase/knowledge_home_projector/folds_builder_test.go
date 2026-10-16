@@ -134,12 +134,40 @@ func TestIsHTTPURL(t *testing.T) {
 		{"empty string", "", false},
 		{"whitespace string", "   ", false},
 		{"no host", "https://", false},
+		{"hostless http path", "http:///foo", false},
+		{"hostless https path", "https:///bar", false},
+		{"empty hostname with port", "http://:80/foo", false},
+		{"leading whitespace", " http://example.com/item", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, isHTTPURL(tt.url))
 		})
+	}
+}
+
+func TestBuildArticleCreatedWrites_RejectsInvalidURL(t *testing.T) {
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+	occurredAt := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+
+	for _, badURL := range []string{"javascript:alert(1)", "http:///foo", "data:text/html,<script>"} {
+		evt := sovereign_db.KnowledgeEvent{
+			TenantID:   tenantID,
+			UserID:     &userID,
+			OccurredAt: occurredAt,
+			EventSeq:   10,
+			Payload: mustJSON(t, map[string]any{
+				"article_id": articleID.String(),
+				"title":      "Bad URL Article",
+				"url":        badURL,
+			}),
+		}
+		item, _, err := buildArticleCreatedWrites(evt, 1)
+		require.NoError(t, err)
+		assert.Empty(t, item.URL, "non-http(s) or hostless URL %q must be stripped to empty string on ArticleCreated", badURL)
 	}
 }
 
@@ -213,6 +241,7 @@ func TestBuildURLPatch(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantUserID, patch.UserID)
+			assert.Equal(t, tenantID.String(), patch.TenantID)
 			assert.Equal(t, tt.wantItem, patch.ItemKey)
 			assert.Equal(t, tt.version, patch.ProjectionVersion)
 			assert.Equal(t, tt.wantURL, patch.URL)

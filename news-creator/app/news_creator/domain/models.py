@@ -1,10 +1,14 @@
 """Domain models for News Creator service."""
 
 from dataclasses import dataclass
+import re
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+
+_KEEP_ALIVE_RE = re.compile(r"^(?:\d+[smh]|-1|0)$")
+_ALLOWED_RERANK_MODELS = frozenset({"BAAI/bge-reranker-v2-m3"})
 
 
 def _parse_uuid(value: Any) -> UUID:
@@ -67,6 +71,13 @@ class GenerateRequest(StrictFrozenModel):
     stream: bool = False
     keep_alive: int | str | None = None
     options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("keep_alive")
+    @classmethod
+    def _validate_keep_alive(cls, v: int | str | None) -> int | str | None:
+        if isinstance(v, str) and not _KEEP_ALIVE_RE.fullmatch(v):
+            raise ValueError(r"keep_alive string must match ^(?:\d+[smh]|-1|0)$")
+        return v
 
 
 @dataclass
@@ -316,7 +327,9 @@ class RerankRequest(StrictFrozenModel):
     - Recommended: Rerank 50 candidates down to 10
     """
 
-    query: str = Field(min_length=1, description="Query to score candidates against")
+    query: str = Field(
+        min_length=1, max_length=4096, description="Query to score candidates against"
+    )
     candidates: list[str] = Field(
         min_length=1, max_length=100, description="List of candidate texts to re-rank"
     )
@@ -330,6 +343,13 @@ class RerankRequest(StrictFrozenModel):
         le=100,
         description="Return only top-k results (default: return all)",
     )
+
+    @field_validator("model")
+    @classmethod
+    def _validate_model(cls, v: str | None) -> str | None:
+        if v is not None and v not in _ALLOWED_RERANK_MODELS:
+            raise ValueError(f"Unsupported rerank model: {v}")
+        return v
 
 
 class RerankResultItem(StrictFrozenModel):

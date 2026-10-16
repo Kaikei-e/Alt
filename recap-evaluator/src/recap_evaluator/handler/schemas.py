@@ -24,6 +24,9 @@ class EvaluationRequest(BaseModel):
     sample_per_job: int = Field(default=3, ge=1, le=20)
 
 
+EvaluateRequest = EvaluationRequest
+
+
 class GenreEvaluationRequest(BaseModel):
     trigger_new: bool = Field(default=False)
 

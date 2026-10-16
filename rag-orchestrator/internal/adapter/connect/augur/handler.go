@@ -172,6 +172,9 @@ func (h *Handler) StreamChat(
 		h.logger.Warn("no user message found in request")
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("no user message found"))
 	}
+	if runes := []rune(query); len(runes) > 4000 {
+		query = string(runes[:4000])
+	}
 
 	// Build conversation history (all messages except the last user message)
 	// Limit to last 6 messages (3 turns) for efficiency
@@ -783,6 +786,9 @@ func (h *Handler) RetrieveContext(
 	query := req.Msg.Query
 	if query == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("query is required"))
+	}
+	if runes := []rune(query); len(runes) > 4000 {
+		query = string(runes[:4000])
 	}
 
 	h.logger.Info("retrieving context",

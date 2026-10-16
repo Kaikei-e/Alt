@@ -71,6 +71,12 @@ impl DiskFallback {
     pub async fn new(config: DiskConfig) -> Result<Self, DiskError> {
         // Create storage directory if it doesn't exist
         fs::create_dir_all(&config.storage_path).await?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&config.storage_path, std::fs::Permissions::from_mode(0o700))
+                .await?;
+        }
 
         // Calculate current disk usage
         let current_usage = Self::calculate_disk_usage(&config.storage_path).await?;
@@ -118,9 +124,21 @@ impl DiskFallback {
             return Err(DiskError::DiskSpaceExceeded);
         }
 
-        // Write to file
+        // Write to file with restrictive 0600 permissions on Unix
         let file_path = self.get_batch_file_path(&batch_id);
-        let mut file = fs::File::create(&file_path).await?;
+        let mut open_opts = fs::OpenOptions::new();
+        open_opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            open_opts.mode(0o600);
+        }
+        let mut file = open_opts.open(&file_path).await?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))
+                .await?;
+        }
         file.write_all(&data).await?;
         file.sync_all().await?;
 

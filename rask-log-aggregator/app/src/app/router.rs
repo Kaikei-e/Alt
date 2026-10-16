@@ -14,9 +14,9 @@ use tower_http::decompression::RequestDecompressionLayer;
 
 /// The forwarder's default `batch_size` is 10,000 entries at an estimated
 /// ~500 bytes/entry (see rask-log-forwarder `ESTIMATED_ENTRY_SIZE`), i.e.
-/// ~5 MB uncompressed per batch. Set the limit well above that so legitimate
-/// batches are never rejected with 413, regardless of compression.
-const MAX_REQUEST_BODY_BYTES: usize = 20 * 1024 * 1024; // 20 MB
+/// ~5 MB uncompressed per batch. Set the limit well above that (64 MiB) so
+/// legitimate batches are never rejected with 413 while preventing unbounded OOM.
+const MAX_REQUEST_BODY_BYTES: usize = 64 * 1024 * 1024; // 64 MiB
 
 /// Build the main HTTP router (health + legacy aggregate).
 ///
@@ -471,14 +471,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn main_router_rejects_decompressed_body_exceeding_20mib() {
+    async fn main_router_rejects_decompressed_body_exceeding_64mib() {
         let token = random_test_token();
         let exporter = Arc::new(MockLogExporter::new());
         let app = main_router(exporter, test_token_arc(&token));
         let server = TestServer::new(app);
 
-        // 21 MiB decompresses to > 20 MiB limit
-        let large_data = vec![0u8; 21 * 1024 * 1024];
+        // 65 MiB decompresses to > 64 MiB limit
+        let large_data = vec![0u8; 65 * 1024 * 1024];
         let compressed = gzip(&large_data);
 
         let response = server
@@ -492,13 +492,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn otlp_router_rejects_decompressed_body_exceeding_20mib() {
+    async fn otlp_router_rejects_decompressed_body_exceeding_64mib() {
         let token = random_test_token();
         let exporter: Arc<dyn OTelExporter> = Arc::new(RecordingOTelExporter::new());
         let app = otlp_router(exporter, test_token_arc(&token));
         let server = TestServer::new(app);
 
-        let large_data = vec![0u8; 21 * 1024 * 1024];
+        let large_data = vec![0u8; 65 * 1024 * 1024];
         let compressed = gzip(&large_data);
 
         let response = server
@@ -510,6 +510,11 @@ mod tests {
             .await;
 
         response.assert_status(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[test]
+    fn max_request_body_bytes_is_64_mib() {
+        assert_eq!(MAX_REQUEST_BODY_BYTES, 64 * 1024 * 1024);
     }
 
     // =========================================================================

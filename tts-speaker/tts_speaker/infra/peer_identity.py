@@ -78,6 +78,7 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        exempt = request.url.path.startswith(_TLS_ALLOWLIST_EXEMPT_PATH_PREFIXES)
         if is_tls_peer(request.client):
             # In-process mTLS: the verified leaf CN is the only identity.
             # A caller-supplied X-Alt-Peer-Identity is attacker-controlled.
@@ -87,7 +88,6 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
             # must not depend on `strict` — a hardcoded strict=False on the
             # plaintext side would otherwise turn MTLS_ALLOWED_PEERS into
             # documentation for the one listener it is supposed to gate.
-            exempt = request.url.path.startswith(_TLS_ALLOWLIST_EXEMPT_PATH_PREFIXES)
             if not exempt:
                 if not peer:
                     logger.warning(
@@ -115,7 +115,7 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
             mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
             if not mtls_on or not arrived_via_sidecar(request):
                 peer = ""
-            if self._strict:
+            if self._strict and not exempt:
                 if not peer:
                     logger.warning("peer_identity.missing path=%s", request.url.path)
                     return PlainTextResponse("unauthenticated peer", status_code=401)

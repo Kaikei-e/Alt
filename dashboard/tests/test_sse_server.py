@@ -80,7 +80,9 @@ class TestExtractTokenParam:
 
 
 class TestLoadAuthTokenStartup:
-    def test_startup_failure_without_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_startup_failure_without_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When neither SSE_AUTH_TOKEN_FILE nor SSE_AUTH=disabled is set, startup exits non-zero."""
         monkeypatch.delenv("SSE_AUTH_TOKEN_FILE", raising=False)
         monkeypatch.delenv("SSE_AUTH_TOKEN", raising=False)
@@ -127,7 +129,10 @@ class TestLoadAuthTokenStartup:
         assert "sse_auth_disabled" in caplog.text
 
     def test_token_file_mode(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path, caplog: pytest.LogCaptureFixture
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         token_file = tmp_path / "valid_token.txt"
         token_file.write_text("valid-secret-token\n", encoding="utf-8")
@@ -309,7 +314,7 @@ class TestSseServerHttpEndpoints:
 
 
 class TestSystemMonitorTabTokenWiring:
-    def test_resolves_token_from_file(
+    def test_does_not_auto_load_token_from_file_without_explicit_input(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path
     ) -> None:
         token_file = tmp_path / "tab_token.txt"
@@ -319,7 +324,8 @@ class TestSystemMonitorTabTokenWiring:
 
         from tabs.system_monitor_tab import _resolve_sse_token
 
-        assert _resolve_sse_token() == "tab-secret-value"
+        assert _resolve_sse_token() is None
+        assert _resolve_sse_token("tab-secret-value") == "tab-secret-value"
 
     def test_disabled_mode_returns_empty_token(
         self, monkeypatch: pytest.MonkeyPatch

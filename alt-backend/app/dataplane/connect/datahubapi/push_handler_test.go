@@ -154,3 +154,78 @@ func TestGetNotificationBacklogAge_ErrorIsNotZero(t *testing.T) {
 	// The internal reason does not travel to the caller.
 	require.NotContains(t, err.Error(), "pool exhausted")
 }
+
+func TestUpsertPushSubscription_EndpointValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		wantCode connect.Code
+	}{
+		{
+			name:     "valid FCM endpoint accepted",
+			endpoint: "https://fcm.googleapis.com/fcm/send/dGhpcy1pcy1hLXRlc3Q",
+			wantCode: 0,
+		},
+		{
+			name:     "valid Mozilla endpoint accepted",
+			endpoint: "https://updates.push.services.mozilla.com/wpush/v2/gAAAAAB",
+			wantCode: 0,
+		},
+		{
+			name:     "valid Apple endpoint accepted",
+			endpoint: "https://web.push.apple.com/QAtR7DUxQ",
+			wantCode: 0,
+		},
+		{
+			name:     "valid Windows endpoint accepted",
+			endpoint: "https://wns2-par02p.notify.windows.com/w/?token=abc",
+			wantCode: 0,
+		},
+		{
+			name:     "http scheme rejected",
+			endpoint: "http://fcm.googleapis.com/fcm/send/abc",
+			wantCode: connect.CodeInvalidArgument,
+		},
+		{
+			name:     "non-443 port rejected",
+			endpoint: "https://fcm.googleapis.com:8443/fcm/send/abc",
+			wantCode: connect.CodeInvalidArgument,
+		},
+		{
+			name:     "userinfo rejected",
+			endpoint: "https://user:pass@fcm.googleapis.com/fcm/send/abc",
+			wantCode: connect.CodeInvalidArgument,
+		},
+		{
+			name:     "internal service SSRF rejected",
+			endpoint: "http://search-indexer:9300/v1/search",
+			wantCode: connect.CodeInvalidArgument,
+		},
+		{
+			name:     "untrusted host rejected",
+			endpoint: "https://evil.example.com/push/abc",
+			wantCode: connect.CodeInvalidArgument,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newPushTestHandler(t, &fakePushDeliveryPort{})
+			_, err := h.UpsertPushSubscription(context.Background(), connect.NewRequest(&datahubv1.UpsertPushSubscriptionRequest{
+				Subscription: &datahubv1.PushSubscription{
+					UserId:              "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+					Endpoint:            tt.endpoint,
+					P256Dh:              "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTtF71JbFw",
+					Auth:                "tBHItJI5svbpez7KI4CCXg",
+					VapidKeyFingerprint: "b0a1c2d3e4f5",
+				},
+			}))
+			if tt.wantCode != 0 {
+				require.Error(t, err)
+				require.Equal(t, tt.wantCode, connect.CodeOf(err))
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}

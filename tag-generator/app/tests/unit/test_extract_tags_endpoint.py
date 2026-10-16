@@ -157,3 +157,33 @@ class TestExtractTagsEndpoint:
             )
 
         assert resp.status_code == 500
+
+    def test_rejects_oversized_title_with_422(self, client):
+        """G7-07: Title exceeding 1000 chars is rejected at Pydantic boundary with 422."""
+        resp = client.post(
+            "/api/v1/extract-tags",
+            json={"title": "t" * 1001, "content": "Valid content"},
+        )
+        assert resp.status_code == 422
+
+    def test_rejects_oversized_content_with_422(self, client):
+        """G7-07: Content exceeding 100,000 chars is rejected at Pydantic boundary with 422."""
+        resp = client.post(
+            "/api/v1/extract-tags",
+            json={"title": "Valid title", "content": "c" * 100_001},
+        )
+        assert resp.status_code == 422
+
+    def test_code_block_pattern_unclosed_tag_no_redos(self):
+        """G7-07: Unclosed <pre>/<code> tags must be stripped in linear time without backtracking."""
+        import time
+
+        from tag_extractor.input_sanitizer import _CODE_BLOCK_PATTERN
+
+        payload = "<pre>" + ("a" * 50_000) + "<pre>" + ("b" * 50_000)
+        start = time.perf_counter()
+        result = _CODE_BLOCK_PATTERN.sub(" ", payload)
+        elapsed = time.perf_counter() - start
+        assert result == " "
+        assert elapsed < 0.2
+        assert _CODE_BLOCK_PATTERN.pattern == r"<(pre|code)\b[^>]*>.*?(?:</\1\s*>|$)"

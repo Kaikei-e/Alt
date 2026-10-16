@@ -38,10 +38,12 @@ func TestBuildHomeItemOpenedWrites(t *testing.T) {
 
 		assert.Equal(t, itemKey, clear.ItemKey)
 		assert.Equal(t, userID.String(), clear.UserID)
+		assert.Equal(t, tenantID.String(), clear.TenantID)
 		assert.Equal(t, 2, clear.ProjectionVersion)
 
 		assert.Equal(t, itemKey, candidate.ItemKey)
 		assert.Equal(t, userID, candidate.UserID)
+		assert.Equal(t, tenantID, candidate.TenantID)
 		assert.Equal(t, 0.5, candidate.RecallScore)
 		require.NotNil(t, candidate.FirstEligibleAt)
 		assert.True(t, occurredAt.Add(1*time.Hour).Equal(*candidate.FirstEligibleAt))
@@ -118,6 +120,7 @@ func TestBuildDismissWrite(t *testing.T) {
 			assert.Equal(t, tt.wantKey, dismiss.ItemKey)
 			assert.Equal(t, 5, dismiss.ProjectionVersion)
 			assert.Equal(t, userID.String(), dismiss.UserID)
+			assert.Equal(t, tenantID.String(), dismiss.TenantID)
 		})
 	}
 }

@@ -8,6 +8,8 @@ Multi-check evaluator:
 Parse failure → revise (never silent accept).
 """
 
+from __future__ import annotations
+
 import re
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
@@ -16,6 +18,7 @@ import structlog
 
 from acolyte.domain.critic_taxonomy import FailureMode, FailureModeDetection
 from acolyte.domain.meta_patterns import META_PATTERNS
+from acolyte.domain.prompt_safety import escape_xml_delimiters, neutralize_evidence_line
 from acolyte.port.llm_provider import LLMMode
 from acolyte.usecase.graph.state import (
     PlannedClaimDict,
@@ -685,8 +688,13 @@ class CriticNode:
             }
         else:
             # FM1 + FM7: LLM-based relevancy and grounding check
-            sections_text = "\n\n".join(f"## {k}\n{v}" for k, v in sections.items())
-            prompt = CRITIC_PROMPT.format(topic=topic, sections=sections_text)
+            sections_text = "\n\n".join(
+                f"## {neutralize_evidence_line(str(k))}\n{escape_xml_delimiters(str(v))}" for k, v in sections.items()
+            )
+            prompt = CRITIC_PROMPT.format(
+                topic=neutralize_evidence_line(str(topic)),
+                sections=sections_text,
+            )
 
             response = await self._llm.generate(
                 prompt,

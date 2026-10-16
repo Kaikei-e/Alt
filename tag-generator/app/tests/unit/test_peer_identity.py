@@ -294,6 +294,17 @@ def test_plaintext_origin_rejected_when_strict_true() -> None:
         assert resp.text == "unauthenticated peer"
 
 
+@pytest.mark.parametrize("path", ["/health", "/metrics"])
+@pytest.mark.parametrize("client_addr", [DIRECT, SIDECAR])
+def test_probes_on_plaintext_port_exempt_when_strict_true(path: str, client_addr: tuple[str, int]) -> None:
+    """G7-06 / PM-2026-056: Plaintext /health and /metrics probes must remain reachable when strict=True."""
+    app = _build_app(allowed=["recap-worker"], strict=True, verify_client="off")
+    with TestClient(app, client=client_addr) as http:
+        resp = http.get(path)
+        assert resp.status_code == 200
+        assert resp.json() == {"peer": None}
+
+
 @pytest.mark.asyncio
 async def test_raw_asgi_tls_missing_cn_rejected_even_with_forged_loopback_header() -> None:
     """Direct ASGI scope test: empty TLS client_cn + loopback forged header must return 403."""

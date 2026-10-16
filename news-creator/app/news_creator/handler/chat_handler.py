@@ -8,11 +8,12 @@ by batch summarization jobs.
 
 import json
 import logging
+import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.errors import QueueFullError
@@ -24,6 +25,8 @@ from news_creator.utils.context_logger import (
 )
 
 logger = logging.getLogger(__name__)
+
+_KEEP_ALIVE_RE = re.compile(r"^(?:\d+[smh]|-1|0)$")
 
 
 class ChatMessage(BaseModel):
@@ -47,6 +50,15 @@ class ChatRequest(BaseModel):
     # models that support graded thinking effort.
     think: bool | str | None = None
     options: dict[str, Any] | None = None
+
+    @field_validator("keep_alive")
+    @classmethod
+    def _validate_keep_alive(
+        cls, v: int | str | bool | None
+    ) -> int | str | bool | None:
+        if isinstance(v, str) and not _KEEP_ALIVE_RE.fullmatch(v):
+            raise ValueError(r"keep_alive string must match ^(?:\d+[smh]|-1|0)$")
+        return v
 
 
 def create_chat_router(

@@ -102,6 +102,7 @@ type homeItemWrite struct {
 
 type dismissWrite struct {
 	UserID            string `json:"user_id"`
+	TenantID          string `json:"tenant_id"`
 	ItemKey           string `json:"item_key"`
 	ProjectionVersion int    `json:"projection_version"`
 	DismissedAt       string `json:"dismissed_at"`
@@ -109,6 +110,7 @@ type dismissWrite struct {
 
 type clearSupersedeWrite struct {
 	UserID            string `json:"user_id"`
+	TenantID          string `json:"tenant_id"`
 	ItemKey           string `json:"item_key"`
 	ProjectionVersion int    `json:"projection_version"`
 }
@@ -139,6 +141,7 @@ type recallReasonWire struct {
 
 type recallCandidateWrite struct {
 	UserID            uuid.UUID          `json:"user_id"`
+	TenantID          uuid.UUID          `json:"tenant_id"`
 	ItemKey           string             `json:"item_key"`
 	Reasons           []recallReasonWire `json:"reasons"`
 	RecallScore       float64            `json:"recall_score"`
@@ -157,6 +160,7 @@ type recallCandidateWrite struct {
 // reaches the identical UPDATE.
 type snoozeRecallCandidateWrite struct {
 	UserID     string `json:"user_id"`
+	TenantID   string `json:"tenant_id"`
 	ItemKey    string `json:"item_key"`
 	Until      string `json:"until"`
 	OccurredAt string `json:"occurred_at"`
@@ -164,6 +168,7 @@ type snoozeRecallCandidateWrite struct {
 
 type dismissRecallCandidateWrite struct {
 	UserID     string `json:"user_id"`
+	TenantID   string `json:"tenant_id"`
 	ItemKey    string `json:"item_key"`
 	OccurredAt string `json:"occurred_at"`
 }

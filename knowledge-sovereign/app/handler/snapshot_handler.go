@@ -78,7 +78,7 @@ type snapshotListResponse struct {
 
 func (h *SnapshotHandler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	snapshots, err := h.repo.ListSnapshots(ctx, 20)
+	snapshots, err := h.repo.ListSnapshots(ctx, clampReadLimit(20, 20))
 	if err != nil {
 		slog.ErrorContext(ctx, "snapshot list failed", "error", err)
 		http.Error(w, `{"error":"snapshot list failed"}`, http.StatusInternalServerError)

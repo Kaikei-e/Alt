@@ -269,9 +269,10 @@ services:
       # Python requests library uses REQUESTS_CA_BUNDLE for outbound TLS verification
       - REQUESTS_CA_BUNDLE=/trust/ca-bundle.pem
       - MTLS_ALLOWED_PEERS=${NEWS_CREATOR_MTLS_ALLOWED_PEERS:-recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator,pre-processor}
-      # Plaintext-side switch only; the :9443 allowlist above is enforced
-      # unconditionally regardless of this flag.
-      - PEER_IDENTITY_STRICT=${NEWS_CREATOR_PEER_IDENTITY_STRICT:-false}
+      # All business callers (recap-worker, acolyte-orchestrator, rag-orchestrator,
+      # recap-evaluator, pre-processor) dial https://news-creator:9443 with client
+      # certs; /health and /metrics remain exempt on plaintext :11434.
+      - PEER_IDENTITY_STRICT=${NEWS_CREATOR_PEER_IDENTITY_STRICT:-true}
       - PEER_IDENTITY_TRUSTED=off
       - PKI_ENROLLMENT=enabled
       - CERT_SUBJECT=news-creator

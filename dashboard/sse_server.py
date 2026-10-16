@@ -63,7 +63,9 @@ def load_auth_token(*, fail_fast: bool = True) -> str | None:
             logger.info("sse_auth_enabled: loaded token from %s", token_file)
             return token
         except OSError as e:
-            logger.error("SSE_AUTH_TOKEN_FILE (%s) could not be read: %s", token_file, e)
+            logger.error(
+                "SSE_AUTH_TOKEN_FILE (%s) could not be read: %s", token_file, e
+            )
             if fail_fast:
                 sys.exit(1)
             return None
@@ -171,7 +173,11 @@ class SSEHandler(BaseHTTPRequestHandler):
                 logger.info("SSE connection attempt from %s", self.client_address)
                 logger.debug(
                     "Request headers: %s",
-                    {k: v for k, v in self.headers.items() if k.lower() != "authorization"},
+                    {
+                        k: v
+                        for k, v in self.headers.items()
+                        if k.lower() != "authorization"
+                    },
                 )
 
                 self.send_response(200)
@@ -290,7 +296,7 @@ class SSEHandler(BaseHTTPRequestHandler):
                 health_status = {
                     "status": "error",
                     "service": "sse-server",
-                    "error": str(e),
+                    "error": "internal server error",
                 }
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")

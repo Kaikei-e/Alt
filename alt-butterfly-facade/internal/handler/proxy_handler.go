@@ -3,6 +3,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,6 +22,12 @@ const maxConnectTimeout = 5 * time.Minute
 // Set higher than the backend's stale timer (30 min) so BFF never kills
 // a stream that the backend would still serve.
 const maxStreamingTimeout = 40 * time.Minute
+
+// maxRequestBodyBytes caps unary request bodies (10 MiB) to prevent memory exhaustion.
+const maxRequestBodyBytes = 10 << 20
+
+// maxResponseBodyBytes caps unary response bodies (50 MiB) to prevent memory exhaustion.
+const maxResponseBodyBytes = 50 << 20
 
 // streamingProcedures lists Connect-RPC procedures that use server streaming
 var streamingProcedures = map[string]bool{
@@ -124,10 +131,24 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if isStreaming {
 		resp, err = h.backendClient.ForwardStreamingRequest(r, token)
 	} else {
+		if r.Body != nil {
+			if r.ContentLength > maxRequestBodyBytes {
+				h.logError("request body too large", &http.MaxBytesError{Limit: maxRequestBodyBytes})
+				http.Error(w, "Request Entity Too Large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		}
 		resp, err = h.backendClient.ForwardRequest(r, token)
 	}
 
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			h.logError("request body too large", err)
+			http.Error(w, "Request Entity Too Large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		h.logError("backend request failed", err)
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
@@ -147,7 +168,7 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Copy response body
 	if isStreaming {
 		h.streamResponse(w, resp)
-	} else if _, copyErr := io.Copy(w, resp.Body); copyErr != nil {
+	} else if _, copyErr := io.Copy(w, io.LimitReader(resp.Body, maxResponseBodyBytes)); copyErr != nil {
 		h.logError("response body copy failed", copyErr)
 	}
 

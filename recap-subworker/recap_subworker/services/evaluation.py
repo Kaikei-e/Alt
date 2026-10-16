@@ -78,9 +78,13 @@ class EvaluationService:
         embedder: Embedder | None = None,
     ) -> None:
         self.settings = get_settings()
-        # Fallback to default from settings if generic pointer is used,
-        # but favor explicit JA/EN paths if provided
-        self.weights_path = weights_path or self.settings.genre_classifier_model_path
+        # Validate caller-supplied weights_path override against ALLOWED_BASE_DIRS
+        # so arbitrary filesystem paths are rejected (CWE-22), while preserving
+        # Settings-derived paths for container initialization.
+        if weights_path is not None:
+            self.weights_path = str(validate_path(str(weights_path)))
+        else:
+            self.weights_path = self.settings.genre_classifier_model_path
 
         self.weights_ja = weights_ja_path
         self.weights_en = weights_en_path

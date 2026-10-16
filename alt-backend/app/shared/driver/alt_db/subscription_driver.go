@@ -58,13 +58,22 @@ func (r *SubscriptionRepository) InsertSubscription(ctx context.Context, userID 
 	return nil
 }
 
-// DeleteSubscription deletes a user feed subscription.
-func (r *SubscriptionRepository) DeleteSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error {
-	query := `
+const deleteSubscriptionQuery = `
 		DELETE FROM user_feed_subscriptions
 		WHERE user_id = $1 AND feed_link_id = $2
 	`
-	_, err := r.pool.Exec(ctx, query, userID, feedLinkID)
+
+const deleteOrphanFeedLinkQuery = `
+		DELETE FROM feed_links
+		WHERE id = $1
+		  AND NOT EXISTS (
+			SELECT 1 FROM user_feed_subscriptions WHERE feed_link_id = $1
+		  )
+	`
+
+// DeleteSubscription deletes a user feed subscription.
+func (r *SubscriptionRepository) DeleteSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, deleteSubscriptionQuery, userID, feedLinkID)
 	if err != nil {
 		return fmt.Errorf("delete subscription: %w", err)
 	}

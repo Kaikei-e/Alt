@@ -129,9 +129,9 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        is_probe = request.url.path in _TLS_ALLOWLIST_EXEMPT_PATHS
         if is_tls_request(request):
             peer = tls_authenticated_cn(request)
-            is_probe = request.url.path in _TLS_ALLOWLIST_EXEMPT_PATHS
             if not is_probe:
                 if not peer:
                     logger.warning(
@@ -156,7 +156,7 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
                     return PlainTextResponse("peer not allowlisted", status_code=403)
         else:
             peer = resolve_authenticated_peer(request)
-            if self._strict:
+            if self._strict and not is_probe:
                 if not peer:
                     logger.warning("peer_identity.missing", path=request.url.path)
                     return PlainTextResponse("unauthenticated peer", status_code=401)

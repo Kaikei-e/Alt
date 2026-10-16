@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import ConversationMessage, LLMGenerateResponse
+from news_creator.domain.prompt_boundary import sanitize_untrusted_content
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,12 @@ class ExpandQueryUsecase:
         jst = timezone(timedelta(hours=9))
         current_date = datetime.now(jst).strftime("%Y-%m-%d")
 
+        sanitized_query = _re.sub(
+            r"</?\s*(?:input|conversation|rules|task|example)\s*>",
+            " ",
+            sanitize_untrusted_content(query.strip()),
+            flags=_re.IGNORECASE,
+        ).strip()
         if conversation_history:
             # Multi-turn: include conversation context for coreference resolution
             history_lines = "\n".join(
@@ -129,14 +136,14 @@ class ExpandQueryUsecase:
                 conversation_history=history_lines,
                 japanese_count=japanese_count,
                 english_count=english_count,
-                query=query.strip(),
+                query=sanitized_query,
             )
         else:
             prompt = EXPAND_QUERY_PROMPT_TEMPLATE.format(
                 current_date=current_date,
                 japanese_count=japanese_count,
                 english_count=english_count,
-                query=query.strip(),
+                query=sanitized_query,
             )
 
         total_queries = japanese_count + english_count

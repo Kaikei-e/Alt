@@ -148,17 +148,52 @@ func (v *VAPIDSigner) sign(audience string, now time.Time) (string, error) {
 	return "vapid t=" + jwt + ", k=" + v.publicKey, nil
 }
 
-// audienceOf reduces an endpoint to its scheme and host. Leaving the path in the
-// aud claim is a common and badly reported cause of 403 from push services.
+var allowedPushHostSuffixes = []string{
+	".fcm.googleapis.com",
+	".push.services.mozilla.com",
+	".notify.windows.com",
+	".push.apple.com",
+}
+
+func isAllowedPushHost(host string) bool {
+	if host == "fcm.googleapis.com" {
+		return true
+	}
+	for _, suffix := range allowedPushHostSuffixes {
+		if strings.HasSuffix(host, suffix) && len(host) > len(suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// audienceOf validates a Web Push endpoint and reduces it to its scheme and host.
+// The endpoint path is a bearer capability and must never be echoed in errors.
 func audienceOf(endpoint string) (string, error) {
+	if strings.TrimSpace(endpoint) == "" {
+		return "", fmt.Errorf("webpush endpoint is required")
+	}
 	parsed, err := url.Parse(endpoint)
 	if err != nil {
-		return "", fmt.Errorf("webpush parse endpoint %q: %w", endpoint, err)
+		return "", fmt.Errorf("webpush endpoint is malformed")
 	}
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("webpush endpoint %q must be an absolute URL with a host", endpoint)
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return "", fmt.Errorf("webpush endpoint must use https scheme")
 	}
-	return parsed.Scheme + "://" + parsed.Host, nil
+	if parsed.User != nil {
+		return "", fmt.Errorf("webpush endpoint must not contain userinfo")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return "", fmt.Errorf("webpush endpoint must be an absolute URL with a host")
+	}
+	if port := parsed.Port(); port != "" && port != "443" {
+		return "", fmt.Errorf("webpush endpoint must use default port 443")
+	}
+	if !isAllowedPushHost(host) {
+		return "", fmt.Errorf("webpush endpoint host %q is not an allowed push service", host)
+	}
+	return "https://" + host, nil
 }
 
 // normaliseSubject accepts a bare email or an already-schemed mailto:/https:

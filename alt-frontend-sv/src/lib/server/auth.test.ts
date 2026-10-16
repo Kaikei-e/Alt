@@ -130,7 +130,7 @@ describe("verifyCsrfToken", () => {
 });
 
 describe("issueCsrfCookie", () => {
-	it("sets an httpOnly, strict, root-scoped cookie mirroring the token", () => {
+	it("sets an httpOnly, strict, root-scoped cookie mirroring the token with secure=false by default", () => {
 		const cookies = makeCookies();
 
 		issueCsrfCookie(cookies, "issued-token");
@@ -140,6 +140,24 @@ describe("issueCsrfCookie", () => {
 			"issued-token",
 			expect.objectContaining({
 				httpOnly: true,
+				secure: false,
+				sameSite: "strict",
+				path: "/",
+			}),
+		);
+	});
+
+	it("sets secure=true when requested for HTTPS origins", () => {
+		const cookies = makeCookies();
+
+		issueCsrfCookie(cookies, "issued-token", { secure: true });
+
+		expect(cookies.set).toHaveBeenCalledWith(
+			expect.any(String),
+			"issued-token",
+			expect.objectContaining({
+				httpOnly: true,
+				secure: true,
 				sameSite: "strict",
 				path: "/",
 			}),

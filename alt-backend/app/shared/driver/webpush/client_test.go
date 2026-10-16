@@ -26,8 +26,42 @@ func newTestClient(t *testing.T, httpClient *http.Client) *Client {
 	return client
 }
 
+type rewriteTransport struct {
+	target *url.URL
+	base   http.RoundTripper
+}
+
+func (rt *rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	u, err := url.Parse(req.URL.String())
+	if err != nil {
+		return nil, err
+	}
+	u.Scheme = rt.target.Scheme
+	u.Host = rt.target.Host
+	clone := req.Clone(req.Context())
+	clone.URL = u
+	clone.Host = rt.target.Host
+	base := rt.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(clone)
+}
+
 func testHTTPClient() *http.Client {
 	return &http.Client{Timeout: 5 * time.Second}
+}
+
+func testHTTPClientForServer(t *testing.T, rawServerURL string) *http.Client {
+	t.Helper()
+	parsed, err := url.Parse(rawServerURL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	return &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: &rewriteTransport{target: parsed},
+	}
 }
 
 func TestNewClient_Validation(t *testing.T) {
@@ -82,9 +116,9 @@ func TestClient_Send_RequestShape(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, testHTTPClient())
+	client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 	sub := rfcSubscription()
-	sub.Endpoint = server.URL + "/push/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
+	sub.Endpoint = "https://fcm.googleapis.com/push/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
 
 	payload := []byte(`{"title":"Alt","body":"3 new articles"}`)
 	result, err := client.Send(context.Background(), sub, Message{Payload: payload, TTL: 60 * time.Second})
@@ -163,8 +197,8 @@ func TestClient_Send_TTLHeaderAlwaysPresent(t *testing.T) {
 			defer server.Close()
 
 			sub := rfcSubscription()
-			sub.Endpoint = server.URL + "/push/abc"
-			client := newTestClient(t, testHTTPClient())
+			sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+			client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 			if _, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: tt.ttl}); err != nil {
 				t.Fatalf("Send: %v", err)
@@ -208,8 +242,8 @@ func TestClient_Send_UrgencyAndTopic(t *testing.T) {
 			defer server.Close()
 
 			sub := rfcSubscription()
-			sub.Endpoint = server.URL + "/push/abc"
-			client := newTestClient(t, testHTTPClient())
+			sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+			client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 			msg := Message{Payload: []byte("x"), TTL: time.Minute, Urgency: tt.urgency, Topic: tt.topic}
 			if _, err := client.Send(context.Background(), sub, msg); err != nil {
@@ -247,8 +281,8 @@ func TestClient_Send_InvalidMessage(t *testing.T) {
 	defer server.Close()
 
 	sub := rfcSubscription()
-	sub.Endpoint = server.URL + "/push/abc"
-	client := newTestClient(t, testHTTPClient())
+	sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+	client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -301,8 +335,8 @@ func TestClient_Send_StatusClassification(t *testing.T) {
 			defer server.Close()
 
 			sub := rfcSubscription()
-			sub.Endpoint = server.URL + "/push/abc"
-			client := newTestClient(t, testHTTPClient())
+			sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+			client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 			result, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
 			if tt.wantErr != (err != nil) {
@@ -354,8 +388,8 @@ func TestClient_Send_RetryAfter(t *testing.T) {
 			defer server.Close()
 
 			sub := rfcSubscription()
-			sub.Endpoint = server.URL + "/push/abc"
-			client := newTestClient(t, testHTTPClient())
+			sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+			client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 			client.nowFn = func() time.Time { return now }
 
 			result, _ := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
@@ -368,12 +402,12 @@ func TestClient_Send_RetryAfter(t *testing.T) {
 
 func TestClient_Send_TransportFailureIsRetryable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	endpoint := server.URL + "/push/abc"
+	serverURL := server.URL
 	server.Close() // nothing is listening now
 
 	sub := rfcSubscription()
-	sub.Endpoint = endpoint
-	client := newTestClient(t, testHTTPClient())
+	sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+	client := newTestClient(t, testHTTPClientForServer(t, serverURL))
 
 	result, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
 	if err == nil {
@@ -400,8 +434,8 @@ func TestClient_Send_ContextCancellation(t *testing.T) {
 	defer close(release)
 
 	sub := rfcSubscription()
-	sub.Endpoint = server.URL + "/push/abc"
-	client := newTestClient(t, testHTTPClient())
+	sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+	client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -450,7 +484,7 @@ func TestClient_Send_ClosesResponseBody(t *testing.T) {
 		})
 
 		sub := rfcSubscription()
-		sub.Endpoint = "https://push.example.net/push/abc"
+		sub.Endpoint = "https://fcm.googleapis.com/push/abc"
 
 		if _, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute}); err != nil && status < 300 {
 			t.Fatalf("Send: %v", err)
@@ -471,8 +505,8 @@ func TestClient_Send_DoesNotMutateCallerPayload(t *testing.T) {
 	defer server.Close()
 
 	sub := rfcSubscription()
-	sub.Endpoint = server.URL + "/push/abc"
-	client := newTestClient(t, testHTTPClient())
+	sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+	client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 	payload := []byte(`{"title":"Alt","body":"shared across sends"}`)
 	original := string(payload)
@@ -505,13 +539,9 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-func hostOfTestServer(t *testing.T, rawURL string) string {
+func hostOfTestServer(t *testing.T, _ string) string {
 	t.Helper()
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		t.Fatalf("parse test server URL: %v", err)
-	}
-	return parsed.Host
+	return "fcm.googleapis.com"
 }
 
 // TestClient_Send_RejectionCarriesBodyExcerpt is the diagnosability contract.
@@ -530,8 +560,8 @@ func TestClient_Send_RejectionCarriesBodyExcerpt(t *testing.T) {
 	defer server.Close()
 
 	sub := rfcSubscription()
-	sub.Endpoint = server.URL + "/push/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
-	client := newTestClient(t, testHTTPClient())
+	sub.Endpoint = "https://fcm.googleapis.com/push/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
+	client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 	result, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
 	if err == nil {
@@ -584,8 +614,8 @@ func TestClient_Send_BodyExcerptIsSingleLineAndBounded(t *testing.T) {
 			defer server.Close()
 
 			sub := rfcSubscription()
-			sub.Endpoint = server.URL + "/push/abc"
-			client := newTestClient(t, testHTTPClient())
+			sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+			client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 			result, _ := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
 			if result.BodyExcerpt != tt.want {
@@ -605,8 +635,8 @@ func TestClient_Send_BodyExcerptIsTruncated(t *testing.T) {
 	defer server.Close()
 
 	sub := rfcSubscription()
-	sub.Endpoint = server.URL + "/push/abc"
-	client := newTestClient(t, testHTTPClient())
+	sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+	client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 	result, _ := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
 	if len(result.BodyExcerpt) > maxBodyExcerptLength {
@@ -637,8 +667,8 @@ func TestClient_Send_RejectionNeverLeaksTheCapabilityURL(t *testing.T) {
 	logs := captureLogs(t)
 
 	sub := rfcSubscription()
-	sub.Endpoint = server.URL + "/push/" + capabilityToken
-	client := newTestClient(t, testHTTPClient())
+	sub.Endpoint = "https://fcm.googleapis.com/push/" + capabilityToken
+	client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 	result, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
 	if err == nil {
@@ -688,13 +718,13 @@ func TestClient_Send_TransportErrorNamesHostOnly(t *testing.T) {
 	const capabilityToken = "JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	endpoint := server.URL + "/push/" + capabilityToken
-	host := hostOfTestServer(t, server.URL)
+	serverURL := server.URL
+	host := hostOfTestServer(t, serverURL)
 	server.Close() // nothing is listening now
 
 	sub := rfcSubscription()
-	sub.Endpoint = endpoint
-	client := newTestClient(t, testHTTPClient())
+	sub.Endpoint = "https://fcm.googleapis.com/push/" + capabilityToken
+	client := newTestClient(t, testHTTPClientForServer(t, serverURL))
 
 	_, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
 	if err == nil {
@@ -716,8 +746,8 @@ func TestClient_Send_SuccessCarriesNoBodyExcerpt(t *testing.T) {
 	defer server.Close()
 
 	sub := rfcSubscription()
-	sub.Endpoint = server.URL + "/push/abc"
-	client := newTestClient(t, testHTTPClient())
+	sub.Endpoint = "https://fcm.googleapis.com/push/abc"
+	client := newTestClient(t, testHTTPClientForServer(t, server.URL))
 
 	result, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
 	if err != nil {

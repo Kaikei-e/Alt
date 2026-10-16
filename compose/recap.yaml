@@ -314,6 +314,7 @@ services:
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_ALLOWED_PEERS=${RECAP_SUBWORKER_MTLS_ALLOWED_PEERS:-recap-worker}
+      - PEER_IDENTITY_STRICT=${RECAP_SUBWORKER_PEER_IDENTITY_STRICT:-true}
       - PEER_IDENTITY_TRUSTED=off
       - PKI_ENROLLMENT=enabled
       - CERT_SUBJECT=recap-subworker

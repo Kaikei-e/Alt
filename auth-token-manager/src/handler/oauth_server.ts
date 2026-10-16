@@ -16,19 +16,27 @@ interface PendingAuthState {
 
 const STATE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-/** Constant-time string comparison to avoid timing leaks on auth tokens. */
-function timingSafeEqualString(a: string, b: string): boolean {
+/**
+ * Constant-time string comparison via fixed-length SHA-256 digests so neither
+ * byte contents nor secret byte length is leaked via timing side channels.
+ */
+export async function timingSafeEqualString(
+  a: string,
+  b: string,
+): Promise<boolean> {
   const encoder = new TextEncoder();
-  const aBytes = encoder.encode(a);
-  const bBytes = encoder.encode(b);
-  if (aBytes.byteLength !== bBytes.byteLength) {
-    return false;
-  }
+  const [aDigest, bDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(a)),
+    crypto.subtle.digest("SHA-256", encoder.encode(b)),
+  ]);
+  const aBytes = new Uint8Array(aDigest);
+  const bBytes = new Uint8Array(bDigest);
   let diff = 0;
   for (let i = 0; i < aBytes.byteLength; i++) {
     diff |= aBytes[i]! ^ bBytes[i]!;
   }
-  return diff === 0;
+  const nonEmpty = a.length > 0 && b.length > 0;
+  return diff === 0 && nonEmpty;
 }
 
 function extractBearerToken(authorizationHeader: string | null): string {
@@ -225,6 +233,12 @@ export class OAuthServer {
     // public port can complete the OAuth flow with their own account and
     // overwrite the stored tokens.
     if (reqUrl.pathname === "/" || reqUrl.pathname === "/auth") {
+      if (req.method !== "GET" && req.method !== "POST") {
+        return new Response("Method Not Allowed", {
+          status: 405,
+          headers: { Allow: "GET, POST" },
+        });
+      }
       return await this.handleAuthRedirect(req);
     }
 
@@ -238,6 +252,15 @@ export class OAuthServer {
 
     // Token API - protected
     if (reqUrl.pathname === "/api/token") {
+      if (req.method !== "GET") {
+        return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
+          status: 405,
+          headers: {
+            "Content-Type": "application/json",
+            Allow: "GET",
+          },
+        });
+      }
       return await this.handleTokenApi(req);
     }
 
@@ -267,7 +290,7 @@ export class OAuthServer {
     if (providedToken === "" && req.method === "POST") {
       providedToken = await extractFormToken(req);
     }
-    if (!(timingSafeEqualString(providedToken, expectedToken))) {
+    if (!(await timingSafeEqualString(providedToken, expectedToken))) {
       return authTokenPromptResponse();
     }
 
@@ -368,7 +391,7 @@ export class OAuthServer {
     }
 
     const authHeader = req.headers.get("X-Internal-Auth") ?? "";
-    if (!(timingSafeEqualString(authHeader, expectedToken))) {
+    if (!(await timingSafeEqualString(authHeader, expectedToken))) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },

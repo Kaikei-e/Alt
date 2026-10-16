@@ -69,6 +69,9 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	try {
 		const cookie = event.request.headers.get("cookie");
 		const result = await validateSession(cookie);
+		if (!result.session && !isPublic && isApiRoute(pathname)) {
+			throw new Error("No active session");
+		}
 		event.locals.session = result.session;
 		event.locals.user = result.user;
 		event.locals.backendToken = result.backendToken;

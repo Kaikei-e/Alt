@@ -1,6 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertThrows } from "@std/testing/asserts";
-import { OAuthServer } from "../../../src/handler/oauth_server.ts";
+import {
+  OAuthServer,
+  timingSafeEqualString,
+} from "../../../src/handler/oauth_server.ts";
 import { AuthorizeUsecase } from "../../../src/usecase/authorize.ts";
 import { GetTokenUsecase } from "../../../src/usecase/get_token.ts";
 import type {
@@ -286,6 +289,53 @@ describe("OAuthServer /api/token", {
       Deno.env.delete("INTERNAL_AUTH_TOKEN_FILE");
       await Deno.remove(tmpFile);
     }
+  });
+
+  it("should return 405 Method Not Allowed when /api/token is called with non-GET methods", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+      const res = await fetch(`http://localhost:${TEST_PORT}/api/token`, {
+        method,
+        headers: { "X-Internal-Auth": "correct-token" },
+      });
+      assertEquals(res.status, 405, `expected 405 for ${method}`);
+      assertEquals(res.headers.get("Allow"), "GET");
+      await res.body?.cancel();
+    }
+  });
+
+  it("should return 405 Method Not Allowed when /auth is called with methods other than GET or POST", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    for (const method of ["PUT", "DELETE", "PATCH"]) {
+      const res = await fetch(`http://localhost:${TEST_PORT}/auth`, {
+        method,
+        headers: { Authorization: "Bearer correct-token" },
+      });
+      assertEquals(res.status, 405, `expected 405 for ${method}`);
+      assertEquals(res.headers.get("Allow"), "GET, POST");
+      await res.body?.cancel();
+    }
+  });
+
+  describe("timingSafeEqualString (ATM-001)", () => {
+    it("should compare strings via fixed-length SHA-256 digests without leaking length", async () => {
+      assertEquals(
+        await timingSafeEqualString("correct-token", "correct-token"),
+        true,
+      );
+      assertEquals(
+        await timingSafeEqualString("short", "much-longer-secret-token"),
+        false,
+      );
+      assertEquals(
+        await timingSafeEqualString("same-length-1", "same-length-2"),
+        false,
+      );
+      assertEquals(await timingSafeEqualString("", "correct-token"), false);
+      assertEquals(await timingSafeEqualString("", ""), false);
+    });
   });
 
   describe("constructor validation", () => {

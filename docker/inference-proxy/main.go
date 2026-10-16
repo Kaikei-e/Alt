@@ -99,6 +99,11 @@ func NewProxyHandler(targetURL *url.URL, expectedToken string, responseHeaderTim
 			return
 		}
 
+		if !isAllowedRoute(r.Method, r.URL.Path) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
 		// Enforce bounded request body size and read integrity BEFORE forwarding to upstream.
 		// Using io.ReadAll on io.LimitReader(r.Body, maxBodyBytes+1) bounds memory allocation
 		// to at most max+1 bytes. Read errors (premature EOF, malformed/truncated chunked bodies)
@@ -120,6 +125,25 @@ func NewProxyHandler(targetURL *url.URL, expectedToken string, responseHeaderTim
 	})
 
 	return mux
+}
+
+// isAllowedRoute returns true only for the explicit Ollama inference and read
+// endpoints required by internal callers. Administrative/mutation endpoints
+// (/api/pull, /api/create, /api/delete, /api/push, /api/copy, etc.) are denied.
+func isAllowedRoute(method, path string) bool {
+	switch method {
+	case http.MethodPost:
+		switch path {
+		case "/api/generate", "/api/chat", "/api/embed", "/api/embeddings":
+			return true
+		}
+	case http.MethodGet:
+		switch path {
+		case "/api/tags", "/api/ps":
+			return true
+		}
+	}
+	return false
 }
 
 // NewServer constructs the http.Server for the proxy.

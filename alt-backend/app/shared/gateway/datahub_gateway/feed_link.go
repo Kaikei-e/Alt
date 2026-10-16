@@ -161,9 +161,13 @@ func (g *FeedLinkGateway) FetchFeedLinksWithAvailability(ctx context.Context) ([
 }
 
 func (g *FeedLinkGateway) DeleteFeedLink(ctx context.Context, id uuid.UUID) error {
-	_, err := g.client.DeleteFeedLink(ctx, connect.NewRequest(&datahubv1.DeleteFeedLinkRequest{
+	req := connect.NewRequest(&datahubv1.DeleteFeedLinkRequest{
 		Id: id.String(),
-	}))
+	})
+	if user, err := domain.GetUserFromContext(ctx); err == nil && user != nil {
+		req.Header().Set("X-Alt-User-Id", user.UserID.String())
+	}
+	_, err := g.client.DeleteFeedLink(ctx, req)
 	if err != nil {
 		return fmt.Errorf("delete feed link %s: %w", id, err)
 	}
@@ -202,7 +206,11 @@ func (g *FeedLinkGateway) FetchRSSFeedURLs(ctx context.Context) ([]domain.FeedLi
 }
 
 func (g *FeedLinkGateway) FetchFeedLinksForExport(ctx context.Context) ([]*domain.FeedLinkForExport, error) {
-	resp, err := g.client.ListFeedLinksForExport(ctx, connect.NewRequest(&datahubv1.ListFeedLinksForExportRequest{}))
+	req := connect.NewRequest(&datahubv1.ListFeedLinksForExportRequest{})
+	if user, err := domain.GetUserFromContext(ctx); err == nil && user != nil {
+		req.Header().Set("X-Alt-User-Id", user.UserID.String())
+	}
+	resp, err := g.client.ListFeedLinksForExport(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("list feed links for export: %w", err)
 	}

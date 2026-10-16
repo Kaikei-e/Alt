@@ -223,6 +223,9 @@ func (f *fakeRepo) DismissKnowledgeHomeItem(_ context.Context, payload json.RawM
 	if err := json.Unmarshal(payload, &w); err != nil {
 		return fmt.Errorf("fakeRepo.DismissKnowledgeHomeItem: %w", err)
 	}
+	if w.TenantID == "" {
+		return fmt.Errorf("fakeRepo.DismissKnowledgeHomeItem: tenant_id is required")
+	}
 	if f.dismissMissingKeys[w.ItemKey] {
 		return sovereign_db.ErrDismissTargetNotFound
 	}
@@ -237,6 +240,9 @@ func (f *fakeRepo) ClearSupersedeState(_ context.Context, payload json.RawMessag
 	var w capturedClearSupersede
 	if err := json.Unmarshal(payload, &w); err != nil {
 		return fmt.Errorf("fakeRepo.ClearSupersedeState: %w", err)
+	}
+	if w.TenantID == "" {
+		return fmt.Errorf("fakeRepo.ClearSupersedeState: tenant_id is required")
 	}
 	f.clearedSupersede[w.ItemKey]++
 	return nil
@@ -275,6 +281,9 @@ func (f *fakeRepo) UpsertRecallCandidate(_ context.Context, payload json.RawMess
 	if err := json.Unmarshal(payload, &w); err != nil {
 		return fmt.Errorf("fakeRepo.UpsertRecallCandidate: %w", err)
 	}
+	if w.TenantID == uuid.Nil {
+		return fmt.Errorf("fakeRepo.UpsertRecallCandidate: tenant_id is required")
+	}
 	f.recallCandidates[w.ItemKey] = w
 	return nil
 }
@@ -283,6 +292,9 @@ func (f *fakeRepo) PatchKnowledgeHomeItemURL(_ context.Context, payload json.Raw
 	var w capturedURLPatch
 	if err := json.Unmarshal(payload, &w); err != nil {
 		return fmt.Errorf("fakeRepo.PatchKnowledgeHomeItemURL: %w", err)
+	}
+	if w.TenantID == "" {
+		return fmt.Errorf("fakeRepo.PatchKnowledgeHomeItemURL: tenant_id is required")
 	}
 	f.urlPatches[w.ItemKey] = w
 	return nil
@@ -296,6 +308,9 @@ func (f *fakeRepo) SnoozeRecallCandidate(_ context.Context, payload json.RawMess
 	if err := json.Unmarshal(payload, &w); err != nil {
 		return fmt.Errorf("fakeRepo.SnoozeRecallCandidate: %w", err)
 	}
+	if w.TenantID == "" {
+		return fmt.Errorf("fakeRepo.SnoozeRecallCandidate: tenant_id is required")
+	}
 	f.snoozed[w.ItemKey] = w
 	return nil
 }
@@ -307,6 +322,9 @@ func (f *fakeRepo) DismissRecallCandidate(_ context.Context, payload json.RawMes
 	var w capturedRecallDismiss
 	if err := json.Unmarshal(payload, &w); err != nil {
 		return fmt.Errorf("fakeRepo.DismissRecallCandidate: %w", err)
+	}
+	if w.TenantID == "" {
+		return fmt.Errorf("fakeRepo.DismissRecallCandidate: tenant_id is required")
 	}
 	f.recallDismissed[w.ItemKey] = w
 	return nil

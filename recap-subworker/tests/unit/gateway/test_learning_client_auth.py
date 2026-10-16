@@ -37,3 +37,22 @@ def test_create_omits_bearer_token_when_admin_auth_disabled(monkeypatch) -> None
     )
 
     assert "authorization" not in client._client.headers
+
+
+def test_validate_weights_path_rejects_traversal(tmp_path: Path) -> None:
+    import pytest
+    from recap_subworker.services.learning_client import validate_weights_path
+
+    with pytest.raises(ValueError, match="not within allowed directories"):
+        validate_weights_path("../../../etc/passwd", base_dirs=[tmp_path])
+
+    with pytest.raises(ValueError, match="not within allowed directories"):
+        validate_weights_path("/etc/passwd", base_dirs=[tmp_path])
+
+
+def test_validate_weights_path_accepts_contained_path(tmp_path: Path) -> None:
+    from recap_subworker.services.learning_client import validate_weights_path
+
+    resolved = validate_weights_path("weights/model.joblib", base_dirs=[tmp_path])
+    assert resolved == (tmp_path / "weights" / "model.joblib").resolve()
+    assert validate_weights_path(None, base_dirs=[tmp_path]) is None

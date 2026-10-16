@@ -319,3 +319,57 @@ func TestCopyHeaders_ForwardsRequiredHeaders(t *testing.T) {
 	assert.Equal(t, "30000", dst.Get("Connect-Timeout-Ms"))
 	assert.Equal(t, "30S", dst.Get("Grpc-Timeout"))
 }
+
+func TestCopyRESTHeaders_StripsCallerXAltAndAuthorizationHeaders(t *testing.T) {
+	src := http.Header{}
+	src.Set("Accept", "application/json")
+	src.Set("Content-Type", "application/json")
+	src.Set("X-Request-Id", "req-1")
+	src.Set("Authorization", "Bearer spoofed-bearer")
+	src.Set("X-Alt-User-Id", "spoofed-user")
+	src.Set("X-Alt-Tenant-Id", "spoofed-tenant")
+	src.Set("X-Alt-Shared-Secret", "spoofed-secret")
+	src.Add("x-alt-role", "admin")
+	src.Set("Cookie", "ory_kratos_session=secret")
+
+	dst := http.Header{}
+	copyRESTHeaders(src, dst)
+
+	assert.Equal(t, "application/json", dst.Get("Accept"))
+	assert.Equal(t, "application/json", dst.Get("Content-Type"))
+	assert.Equal(t, "req-1", dst.Get("X-Request-Id"))
+	assert.Empty(t, dst.Get("Authorization"))
+	assert.Empty(t, dst.Get("X-Alt-User-Id"))
+	assert.Empty(t, dst.Get("X-Alt-Tenant-Id"))
+	assert.Empty(t, dst.Get("X-Alt-Shared-Secret"))
+	assert.Empty(t, dst.Get("x-alt-role"))
+	assert.Empty(t, dst.Get("Cookie"))
+}
+
+func TestBackendClient_ForwardRESTRequest_StripsSpoofedHeadersAndSetsVerifiedToken(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, []string{"verified-backend-token"}, r.Header.Values("X-Alt-Backend-Token"))
+		assert.Empty(t, r.Header.Get("X-Alt-User-Id"))
+		assert.Empty(t, r.Header.Get("X-Alt-Tenant-Id"))
+		assert.Empty(t, r.Header.Get("X-Alt-Shared-Secret"))
+		assert.Empty(t, r.Header.Get("Authorization"))
+		assert.Equal(t, "application/json", r.Header.Get("Accept"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	client := newTestClient(backend.URL)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, backend.URL+"/v1/feeds", nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Add("X-Alt-Backend-Token", "spoofed-token")
+	req.Header.Set("X-Alt-User-Id", "attacker-user")
+	req.Header.Set("X-Alt-Tenant-Id", "attacker-tenant")
+	req.Header.Set("X-Alt-Shared-Secret", "attacker-secret")
+	req.Header.Set("Authorization", "Bearer attacker-jwt")
+
+	resp, err := client.ForwardRESTRequest(req, "verified-backend-token")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}

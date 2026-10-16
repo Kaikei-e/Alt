@@ -606,6 +606,37 @@ func TestGenerateSecrets_CreatesGroupReadableDirectory(t *testing.T) {
 	}
 }
 
+func TestGenerateSecrets_TightensExistingDirectoryTo0750(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "secrets")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	specs := []SecretSpec{{Filename: "test_password.txt", Class: SecretClassRandom, Length: 32}}
+	if _, err := GenerateSecrets(dir, specs, false); err != nil {
+		t.Fatalf("GenerateSecrets: %v", err)
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o750 {
+		t.Errorf("existing secrets directory mode = %#o, want 0750", got)
+	}
+
+	fileInfo, err := os.Stat(filepath.Join(dir, "test_password.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fileInfo.Mode().Perm(); got != 0o644 {
+		t.Errorf("secret file mode = %#o, want 0644", got)
+	}
+}
+
 func TestFindPendingSecrets(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{

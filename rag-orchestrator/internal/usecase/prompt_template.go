@@ -142,7 +142,7 @@ func buildUserMessage(input PromptInput) string {
 	var sb strings.Builder
 
 	if input.ArticleContext != nil {
-		sb.WriteString(fmt.Sprintf("## 記事: %s\n\n", input.ArticleContext.Title))
+		fmt.Fprintf(&sb, "## 記事: %s\n\n", escapeContextTags(runeTruncate(input.ArticleContext.Title, retrievedTitleRuneLimit)))
 	}
 
 	// Supplementary info carries tool results — and, on the agentic path, the
@@ -151,7 +151,7 @@ func buildUserMessage(input PromptInput) string {
 	if len(input.SupplementaryInfo) > 0 {
 		sb.WriteString("### 補足情報\n")
 		for i, info := range input.SupplementaryInfo {
-			sb.WriteString(fmt.Sprintf("<supplementary index=\"%d\">\n", i+1))
+			fmt.Fprintf(&sb, "<supplementary index=\"%d\">\n", i+1)
 			sb.WriteString(escapeContextTags(info))
 			sb.WriteString("\n</supplementary>\n")
 		}
@@ -165,10 +165,10 @@ func buildUserMessage(input PromptInput) string {
 		// %q escapes quotes and newlines but not angle brackets, so without
 		// escapeContextTags a title can emit its own "</context>" and drop the
 		// rest of itself outside the wrapper.
-		sb.WriteString(fmt.Sprintf("<context index=\"%d\" title=%q", index,
-			escapeContextTags(runeTruncate(ctx.Title, retrievedTitleRuneLimit))))
+		fmt.Fprintf(&sb, "<context index=\"%d\" title=%q", index,
+			escapeContextTags(runeTruncate(ctx.Title, retrievedTitleRuneLimit)))
 		if ctx.PublishedAt != "" {
-			sb.WriteString(fmt.Sprintf(" published=%q", escapeContextTags(ctx.PublishedAt)))
+			fmt.Fprintf(&sb, " published=%q", escapeContextTags(ctx.PublishedAt))
 		}
 		sb.WriteString(">\n")
 		sb.WriteString(escapeContextTags(ctx.ChunkText))
@@ -178,7 +178,7 @@ func buildUserMessage(input PromptInput) string {
 	sb.WriteString("### Query\n")
 	sb.WriteString(input.Query)
 	if input.Locale != "" {
-		sb.WriteString(fmt.Sprintf("\n(Language: %s)", input.Locale))
+		fmt.Fprintf(&sb, "\n(Language: %s)", input.Locale)
 	}
 	return sb.String()
 }

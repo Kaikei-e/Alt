@@ -1,19 +1,25 @@
+import os
 from urllib.parse import quote
 
 import streamlit as st
 import streamlit.components.v1 as components
-from sse_server import load_auth_token
 
 from .system_monitor_sse_client import generate_sse_client_js
 
 
-def _resolve_sse_token() -> str | None:
-    """Resolve the SSE auth token from query params or sse_server configuration."""
-    token = st.query_params.get("token") or st.query_params.get("sse_token")
-    if token:
-        return token
+def _resolve_sse_token(provided_token: str | None = None) -> str | None:
+    """Resolve the SSE auth token from explicit operator input or disabled mode.
 
-    return load_auth_token(fail_fast=False)
+    Server secret files (SSE_AUTH_TOKEN_FILE) and URL query parameters are
+    intentionally never auto-embedded into rendered client HTML.
+    """
+    if os.getenv("SSE_AUTH", "").strip().lower() == "disabled":
+        return ""
+    if provided_token:
+        stripped = provided_token.strip()
+        if stripped:
+            return stripped
+    return None
 
 
 def render_system_monitor(window_seconds: int | None = None) -> None:
@@ -25,25 +31,24 @@ def render_system_monitor(window_seconds: int | None = None) -> None:
     del window_seconds  # API parity only; SSE is live.
     st.header("System Monitor (Real-time)")
 
-    token = _resolve_sse_token()
+    provided_token = st.text_input("SSE Authentication Token", type="password")
+    token = _resolve_sse_token(provided_token)
     if token is None:
         st.error(
-            "SSE authentication token is not configured. "
-            "Provide ?token= in URL, configure SSE_AUTH_TOKEN_FILE, or set SSE_AUTH=disabled."
+            "SSE authentication token is required. "
+            "Enter the SSE authentication token above, or set SSE_AUTH=disabled in local development."
         )
         return
 
-    # Direct loopback connection to dashboard SSE port (8502); edge route removed.
-    sse_host = st.query_params.get("sse_host", "localhost")
-    sse_port = st.query_params.get("sse_port", "8502")
-    sse_protocol = st.query_params.get("sse_protocol", "http")
-    sse_path = st.query_params.get("sse_path", "/stream")
+    # Fixed loopback connection parameters; query-parameter overrides are disallowed.
+    sse_host = "localhost"
+    sse_port = "8502"
+    sse_protocol = "http"
+    sse_path = "/stream"
 
-    if token and "token=" not in sse_path:
-        delimiter = "&" if "?" in sse_path else "?"
-        sse_path = f"{sse_path}{delimiter}token={quote(token)}"
+    if token:
+        sse_path = f"{sse_path}?token={quote(token)}"
 
-    # Generate SSE client JavaScript code
     sse_client_js = generate_sse_client_js(
         sse_host=sse_host,
         sse_port=sse_port,
@@ -53,7 +58,8 @@ def render_system_monitor(window_seconds: int | None = None) -> None:
         max_reconnect_attempts=5,
     )
 
-    html_code = """
+    html_code = (
+        """
     <div id="monitor-container" style="font-family: sans-serif;">
         <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
             <div style="flex: 1; min-width: 250px; background: #262730; padding: 15px; border-radius: 5px; color: white;">
@@ -106,9 +112,11 @@ def render_system_monitor(window_seconds: int | None = None) -> None:
     </div>
 
     <script>
-""" + sse_client_js + """
+"""
+        + sse_client_js
+        + """
     </script>
     """
+    )
 
-    # Height argument allows scrolling if content gets long
     components.html(html_code, height=800, scrolling=True)

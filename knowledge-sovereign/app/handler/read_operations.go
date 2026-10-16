@@ -120,3 +120,21 @@ func parseDateField(field, s string) (time.Time, error) {
 	}
 	return date, nil
 }
+
+const (
+	defaultReadLimit = 100
+	maxReadLimit     = 1000
+)
+
+func clampReadLimit(limit, defaultLimit int) int {
+	if limit <= 0 {
+		if defaultLimit > 0 {
+			return defaultLimit
+		}
+		return defaultReadLimit
+	}
+	if limit > maxReadLimit {
+		return maxReadLimit
+	}
+	return limit
+}

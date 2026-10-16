@@ -114,3 +114,67 @@ describe("server handleError", () => {
 		consoleSpy.mockRestore();
 	});
 });
+
+describe("server handle — missing session cookie enforcement", () => {
+	it("returns 401 Authentication required on non-public API routes when Cookie header is absent", async () => {
+		const { handle } = await import("./hooks.server");
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const resolve = vi.fn();
+
+		const event = {
+			url: new URL("http://localhost:4173/api/v1/dashboard/job-progress"),
+			request: new Request(
+				"http://localhost:4173/api/v1/dashboard/job-progress",
+			),
+			locals: {},
+		} as unknown as Parameters<typeof handle>[0]["event"];
+
+		const res = await handle({ event, resolve });
+
+		expect(res.status).toBe(401);
+		expect(await res.json()).toEqual({
+			error: "Authentication required",
+			message: "Session validation failed",
+		});
+		expect(resolve).not.toHaveBeenCalled();
+		warnSpy.mockRestore();
+	});
+
+	it("serves the SPA shell on page routes when Cookie header is absent while leaving locals unauthenticated", async () => {
+		const { handle } = await import("./hooks.server");
+		const resolve = vi
+			.fn()
+			.mockResolvedValue(new Response("<html></html>", { status: 200 }));
+
+		const event = {
+			url: new URL("http://localhost:4173/feeds"),
+			request: new Request("http://localhost:4173/feeds"),
+			locals: {},
+		} as unknown as Parameters<typeof handle>[0]["event"];
+
+		const res = await handle({ event, resolve });
+
+		expect(res.status).toBe(200);
+		expect(event.locals.session).toBeNull();
+		expect(event.locals.user).toBeNull();
+		expect(resolve).toHaveBeenCalledTimes(1);
+	});
+
+	it("allows public routes without a Cookie header", async () => {
+		const { handle } = await import("./hooks.server");
+		const resolve = vi
+			.fn()
+			.mockResolvedValue(new Response("ok", { status: 200 }));
+
+		const event = {
+			url: new URL("http://localhost:4173/health"),
+			request: new Request("http://localhost:4173/health"),
+			locals: {},
+		} as unknown as Parameters<typeof handle>[0]["event"];
+
+		const res = await handle({ event, resolve });
+
+		expect(res.status).toBe(200);
+		expect(resolve).toHaveBeenCalledTimes(1);
+	});
+});

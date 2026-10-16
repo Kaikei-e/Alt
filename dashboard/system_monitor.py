@@ -51,16 +51,12 @@ def get_memory_info() -> MemoryInfo:
     try:
         # Use -b for bytes
         result = subprocess.run(
-            ["free", "-b"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=2
+            ["free", "-b"], capture_output=True, text=True, check=True, timeout=2
         )
         lines = result.stdout.strip().split("\n")
         # Header:              total        used        free      shared  buff/cache   available
         # Mem:           67252326400  18317783040 12053950464    23134208 36880592896 48067821568
-        mem_line = [l for l in lines if l.startswith("Mem:")][0]
+        mem_line = [line for line in lines if line.startswith("Mem:")][0]
         parts = mem_line.split()
         total = int(parts[1])
         used = int(parts[2])
@@ -70,16 +66,21 @@ def get_memory_info() -> MemoryInfo:
         # Calculate percent
         percent = (used / total * 100) if total > 0 else 0.0
 
-        return MemoryInfo(total=total, used=used, available=available, percent=round(percent, 1))
+        return MemoryInfo(
+            total=total, used=used, available=available, percent=round(percent, 1)
+        )
     except (subprocess.SubprocessError, OSError, IndexError, ValueError) as e:
         logger.error("Error getting memory info", exc_info=e)
-        return MemoryInfo(total=0, used=0, available=0, percent=0.0, error=str(e))
+        return MemoryInfo(
+            total=0, used=0, available=0, percent=0.0, error="memory_unavailable"
+        )
+
 
 def _read_proc_stat_cpu_fields() -> list[int]:
     """Read the aggregate 'cpu' line from /proc/stat as a list of counters."""
     with open("/proc/stat", "r") as f:
         lines = f.readlines()
-    cpu_line = [l for l in lines if l.startswith("cpu ")][0]
+    cpu_line = [line for line in lines if line.startswith("cpu ")][0]
     return [int(f) for f in cpu_line.split()[1:]]
 
 
@@ -91,7 +92,9 @@ def get_cpu_info() -> dict[str, float]:
             percent = _psutil.cpu_percent(interval=None)
             return {"percent": round(percent, 1)}
         except (OSError, RuntimeError, ValueError) as e:
-            logger.debug("psutil.cpu_percent failed, falling back to /proc/stat", exc_info=e)
+            logger.debug(
+                "psutil.cpu_percent failed, falling back to /proc/stat", exc_info=e
+            )
 
     # 2. Try /proc/stat.
     # A single read gives the cumulative average since boot, not current
@@ -125,7 +128,7 @@ def get_cpu_info() -> dict[str, float]:
             check=True,
             timeout=3,
         )
-        cpu_lines = [l for l in result.stdout.split("\n") if "Cpu(s)" in l]
+        cpu_lines = [line for line in result.stdout.split("\n") if "Cpu(s)" in line]
         if cpu_lines:
             cpu_line = cpu_lines[-1]
             match = re.search(r"(\d+\.\d+)\s*id", cpu_line)
@@ -139,12 +142,17 @@ def get_cpu_info() -> dict[str, float]:
     logger.warning("All CPU usage detection methods failed, reporting 0.0%%")
     return {"percent": 0.0}
 
+
 def get_gpu_info() -> dict[str, Any]:
     """Get GPU info using nvidia-smi"""
     try:
         # Added 'index' to query to match previous system_monitor.py interface
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=index,utilization.gpu,memory.used,memory.total,temperature.gpu,name", "--format=csv,noheader,nounits"],
+            [
+                "nvidia-smi",
+                "--query-gpu=index,utilization.gpu,memory.used,memory.total,temperature.gpu,name",
+                "--format=csv,noheader,nounits",
+            ],
             capture_output=True,
             text=True,
             check=True,
@@ -164,17 +172,21 @@ def get_gpu_info() -> dict[str, Any]:
                 try:
                     mem_used = int(parts[2])
                     mem_total = int(parts[3])
-                    mem_percent = round((mem_used / mem_total * 100) if mem_total > 0 else 0, 1)
+                    mem_percent = round(
+                        (mem_used / mem_total * 100) if mem_total > 0 else 0, 1
+                    )
 
-                    gpus.append({
-                        "index": parts[0],
-                        "utilization": float(parts[1]),
-                        "memory_used": float(mem_used),
-                        "memory_total": float(mem_total),
-                        "temperature": int(parts[4]),
-                        "name": parts[5],
-                        "memory_percent": mem_percent,
-                    })
+                    gpus.append(
+                        {
+                            "index": parts[0],
+                            "utilization": float(parts[1]),
+                            "memory_used": float(mem_used),
+                            "memory_total": float(mem_total),
+                            "temperature": int(parts[4]),
+                            "name": parts[5],
+                            "memory_percent": mem_percent,
+                        }
+                    )
                 except (ValueError, IndexError):
                     continue
 
@@ -184,13 +196,36 @@ def get_gpu_info() -> dict[str, Any]:
             # 'total_gpus': len(gpus) # optional
         }
     except FileNotFoundError:
-        return {"available": False, "gpus": [], "error": "nvidia-smi not found", "message": "nvidia-smi command not found. GPU may not be available or NVIDIA drivers not installed."}
+        return {
+            "available": False,
+            "gpus": [],
+            "error": "nvidia-smi not found",
+            "message": "nvidia-smi command not found. GPU may not be available or NVIDIA drivers not installed.",
+        }
     except subprocess.TimeoutExpired:
-        return {"available": False, "gpus": [], "error": "timeout", "message": "nvidia-smi command timed out."}
+        return {
+            "available": False,
+            "gpus": [],
+            "error": "timeout",
+            "message": "nvidia-smi command timed out.",
+        }
     except subprocess.CalledProcessError as e:
-        return {"available": False, "gpus": [], "error": f"nvidia-smi failed: {e}", "message": f"nvidia-smi command failed (exit code {e.returncode}). GPU may not be accessible."}
+        logger.error("nvidia-smi failed with exit code %s", e.returncode, exc_info=e)
+        return {
+            "available": False,
+            "gpus": [],
+            "error": "nvidia_smi_failed",
+            "message": "nvidia-smi command failed. GPU may not be accessible.",
+        }
     except OSError as e:
-        return {"available": False, "gpus": [], "error": str(e), "message": f"Error getting GPU info: {str(e)}"}
+        logger.error("Error getting GPU info", exc_info=e)
+        return {
+            "available": False,
+            "gpus": [],
+            "error": "gpu_info_unavailable",
+            "message": "Error getting GPU info.",
+        }
+
 
 def count_hanging_processes() -> int:
     """Count potential hanging processes"""
@@ -199,8 +234,8 @@ def count_hanging_processes() -> int:
             ["ps", "aux"], capture_output=True, text=True, check=True, timeout=5
         )
         count = 0
-        for l in result.stdout.split("\n"):
-            if "spawn_main" in l or ("multiprocessing" in l and "fork" in l):
+        for line in result.stdout.split("\n"):
+            if "spawn_main" in line or ("multiprocessing" in line and "fork" in line):
                 count += 1
 
         # Subtract grep itself if it appears (though we scan lines, grep is usually not in output of ps aux unless piped)
@@ -210,6 +245,7 @@ def count_hanging_processes() -> int:
     except (subprocess.SubprocessError, OSError) as e:
         logger.error("Error counting hanging processes", exc_info=e)
         return 0
+
 
 def get_top_processes(limit: int = 15) -> list[dict[str, Any]]:
     """Get top N processes by CPU usage"""
@@ -239,20 +275,27 @@ def get_top_processes(limit: int = 15) -> list[dict[str, Any]]:
                     # 'pid', 'name', 'memory_mb', 'cpu_percent'
                     cmd = parts[10] if len(parts) > 10 else "unknown"
 
-                    processes.append({
-                        "pid": parts[1], # string is fine, app.py uses st.dataframe
-                        "name": cmd,     # Use full command or first part? app.py just displays it.
-                        "cpu_percent": float(parts[2]),
-                        "memory_mb": int(parts[5]) / 1024, # RSS in KB -> MB
-                    })
+                    processes.append(
+                        {
+                            "pid": parts[1],  # string is fine, app.py uses st.dataframe
+                            "name": cmd,  # Use full command or first part? app.py just displays it.
+                            "cpu_percent": float(parts[2]),
+                            "memory_mb": int(parts[5]) / 1024,  # RSS in KB -> MB
+                        }
+                    )
                 except (ValueError, IndexError):
                     continue
         return processes
     except subprocess.TimeoutExpired:
-        logger.error("Error getting top processes: ps command timed out after 5 seconds")
+        logger.error(
+            "Error getting top processes: ps command timed out after 5 seconds"
+        )
         return []
     except subprocess.CalledProcessError as e:
-        logger.error("Error getting top processes: ps command failed with exit code %s", e.returncode)
+        logger.error(
+            "Error getting top processes: ps command failed with exit code %s",
+            e.returncode,
+        )
         return []
     except OSError as e:
         logger.error("Error getting top processes", exc_info=e)

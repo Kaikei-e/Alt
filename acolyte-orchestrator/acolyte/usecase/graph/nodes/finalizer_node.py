@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import UUID
 
 import structlog
@@ -72,9 +72,45 @@ def render_sources_footer(body: str, source_map: SourceMap) -> str:
     return body + _SOURCES_FOOTER_HEADER + "\n".join(footer_lines)
 
 
+def resolve_notification_user_id(
+    state: ReportGenerationState,
+    report: object | None = None,
+) -> str | None:
+    """Resolve a validated non-empty user_id for notification publishing.
+
+    Never falls back to placeholder identities such as \"system\"; returns
+    None when no valid user_id is available so callers skip notification
+    publishing safely.
+    """
+    brief = state.get("brief") or state.get("scope") or {}
+    candidates = (
+        state.get("user_id"),
+        brief.get("user_id") if isinstance(brief, dict) else None,
+        getattr(report, "user_id", None) if report is not None else None,
+    )
+    for raw in candidates:
+        if raw is None:
+            continue
+        val = str(raw).strip()
+        if not val or val.lower() == "system":
+            continue
+        return val
+    return None
+
+
+class NotificationPublisherPort(Protocol):
+    async def publish(self, *, user_id: str, report_id: str, version_no: int) -> object: ...
+
+
 class FinalizerNode:
-    def __init__(self, report_repo: ReportRepositoryPort) -> None:
+    def __init__(
+        self,
+        report_repo: ReportRepositoryPort,
+        *,
+        notification_publisher: NotificationPublisherPort | None = None,
+    ) -> None:
         self._report_repo = report_repo
+        self._notification_publisher = notification_publisher
 
     async def __call__(self, state: ReportGenerationState) -> dict:
         report_id = UUID(state["report_id"])
@@ -126,6 +162,18 @@ class FinalizerNode:
             scope_snapshot=brief,
             outline_snapshot=outline,
         )
+
+        if self._notification_publisher is not None:
+            valid_user_id = resolve_notification_user_id(state, report)
+            if valid_user_id:
+                await self._notification_publisher.publish(
+                    user_id=valid_user_id, report_id=str(report_id), version_no=new_version
+                )
+            else:
+                logger.warning(
+                    "Skipping report notification: valid user_id is missing",
+                    report_id=str(report_id),
+                )
 
         logger.info("Finalizer completed", report_id=str(report_id), new_version=new_version)
         return {"final_version_no": new_version}

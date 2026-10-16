@@ -68,6 +68,9 @@ func (h *Handler) UpsertPushSubscription(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("subscription.vapid_key_fingerprint is required: a row that does not record which keypair it was created under cannot be invalidated by a rotation"))
 	}
+	if err := domain.ValidatePushEndpoint(msg.GetEndpoint()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 
 	created, err := h.pushSubscriptions.Upsert(ctx, domain.PushSubscription{
 		UserID:              msg.GetUserId(),
@@ -173,6 +176,9 @@ func (h *Handler) ListPushSubscriptionsForUser(ctx context.Context, req *connect
 func requireUserAndEndpoint(userID, endpoint string) error {
 	if userID == "" || endpoint == "" {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("user_id and endpoint are required"))
+	}
+	if err := domain.ValidatePushEndpoint(endpoint); err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return nil
 }

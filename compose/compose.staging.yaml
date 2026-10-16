@@ -96,7 +96,7 @@ services:
       MEILI_ENV: development
       MEILI_NO_ANALYTICS: "true"
     ports:
-      - "17700:7700"
+      - "127.0.0.1:17700:7700"
     networks:
       - alt-staging
     healthcheck:
@@ -170,7 +170,7 @@ services:
       # is registered and the embedding-proxy hop is not part of this slice.
       - INFERENCE_SERVICE_TOKEN_FILE=/run/secrets/inference_service_token
     ports:
-      - "19300:9300"
+      - "127.0.0.1:19300:9300"
     networks:
       - alt-staging
     secrets:
@@ -262,7 +262,7 @@ services:
       - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
       - MQHUB_AUTH_TOKEN_FILE=/run/secrets/mqhub_auth_token
     ports:
-      - "19500:9500"
+      - "127.0.0.1:19500:9500"
     networks:
       - alt-staging
     secrets:
@@ -375,8 +375,8 @@ services:
       - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE=200
       - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK=2
     ports:
-      - "19510:9500"
-      - "19511:9501"
+      - "127.0.0.1:19510:9500"
+      - "127.0.0.1:19511:9501"
     tmpfs:
       # Override the Dockerfile's root-owned /tmp/snapshots with a tmpfs
       # mount whose default mode (1777) lets the distroless nonroot user
@@ -576,7 +576,7 @@ services:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/trust:ro
     ports:
-      - "19400:9400"
+      - "127.0.0.1:19400:9400"
     networks:
       - alt-staging
     healthcheck:
@@ -718,7 +718,7 @@ services:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/news-creator/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/news-creator/pki}:/trust:ro
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     networks:
       - alt-staging
     healthcheck:
@@ -912,7 +912,7 @@ services:
       # rust-bert の model DL 試行を完全にスキップするため必須。
       - /opt/rustbert-cache:/opt/rustbert-cache:ro
     ports:
-      - "19005:9005"
+      - "127.0.0.1:19005:9005"
     networks:
       - alt-staging
     healthcheck:
@@ -1010,7 +1010,7 @@ services:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/acolyte-orchestrator/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/acolyte-orchestrator/pki}:/trust:ro
     ports:
-      - "18090:8090"
+      - "127.0.0.1:18090:8090"
     networks:
       - alt-staging
     healthcheck:
@@ -1065,7 +1065,7 @@ services:
     secrets:
       - backend_token_secret # Reused as dummy key for the stub
     ports:
-      - "19700:9700"
+      - "127.0.0.1:19700:9700"
     networks:
       - alt-staging
     healthcheck:
@@ -1323,8 +1323,8 @@ services:
       - backend_operator_token
       - redis_limiter_password
     ports:
-      - "19000:9000"
-      - "19101:9101"
+      - "127.0.0.1:19000:9000"
+      - "127.0.0.1:19101:9101"
     networks:
       - alt-staging
     healthcheck:
