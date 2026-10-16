@@ -79,3 +79,11 @@ class TestEvaluatePathValidation:
         assert "not within allowed directories" in results["ja"]["error"]
         assert "error" in results["en"]
         assert "not within allowed directories" in results["en"]["error"]
+
+    def test_init_rejects_weights_path_traversal(self):
+        """EvaluationService.__init__ must reject weights_path outside allowed dirs."""
+        with pytest.raises(ValueError, match="not within allowed directories"):
+            EvaluationService(weights_path="../../../etc/passwd")
+
+        with pytest.raises(ValueError, match="not within allowed directories"):
+            EvaluationService(weights_ja_path="/etc/passwd")

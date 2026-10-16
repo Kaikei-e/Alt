@@ -290,7 +290,7 @@ class SSEHandler(BaseHTTPRequestHandler):
                 health_status = {
                     "status": "error",
                     "service": "sse-server",
-                    "error": str(e),
+                    "error": "internal server error",
                 }
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")

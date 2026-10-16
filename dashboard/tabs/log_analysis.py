@@ -36,20 +36,18 @@ def render_log_analysis(window_seconds: int) -> None:
     st.header("Log Analysis")
 
     # Ensure table exists before querying to avoid hard failures
-    engine = get_engine()
-    inspector = inspect(engine)
-    if not inspector.has_table("log_errors"):
-        st.warning("log_errors テーブルが見つかりません。")
-        st.caption("recap-db に log_errors (timestamp, error_type, error_message/raw_line) を作成し、ログを書き込んでください。")
-        return
-
     try:
+        engine = get_engine()
+        inspector = inspect(engine)
+        if not inspector.has_table("log_errors"):
+            st.warning("log_errors テーブルが見つかりません。")
+            st.caption("recap-db に log_errors (timestamp, error_type, error_message/raw_line) を作成し、ログを書き込んでください。")
+            return
+
         df_log = _fetch_log_errors(window_seconds)
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Failed to fetch log_errors")
         st.warning("log_errors 取得中にエラーが発生しました。")
-        with st.expander("詳細"):
-            st.error(str(e))
         return
 
     # Fallback filter for unexpected timestamp formats

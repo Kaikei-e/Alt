@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
-from acolyte.usecase.graph.nodes.finalizer_node import FinalizerNode
+from acolyte.usecase.graph.nodes.finalizer_node import FinalizerNode, resolve_notification_user_id
 
 if TYPE_CHECKING:
     from acolyte.domain.brief import ReportBrief
@@ -167,3 +167,36 @@ async def test_change_items_only_claim_sections_that_were_written() -> None:
     assert len(repo.bump_version_calls) == 1
     claimed = {item.field_name for item in repo.bump_version_calls[0]}
     assert claimed == {"section:intro"}
+
+
+@pytest.mark.asyncio
+async def test_finalizer_skips_notification_when_user_id_missing_or_system() -> None:
+    published: list[dict[str, object]] = []
+
+    class FakePublisher:
+        async def publish(self, **kwargs: object) -> None:
+            published.append(kwargs)
+
+    repo = FakeRepo(["intro"])
+    node = FinalizerNode(repo, notification_publisher=FakePublisher())
+
+    for bad_state in (
+        {"report_id": str(repo.report_id), "outline": [{"key": "intro"}], "brief": {"topic": "AI"}, "sections": {"intro": "Body."}},
+        {"report_id": str(repo.report_id), "outline": [{"key": "intro"}], "brief": {"topic": "AI", "user_id": "system"}, "sections": {"intro": "Body."}},
+        {"report_id": str(repo.report_id), "outline": [{"key": "intro"}], "brief": {"topic": "AI", "user_id": "   "}, "sections": {"intro": "Body."}},
+    ):
+        assert resolve_notification_user_id(bad_state) is None
+        await node(bad_state)
+
+    assert published == []
+
+    valid_state = {
+        "report_id": str(repo.report_id),
+        "outline": [{"key": "intro"}],
+        "brief": {"topic": "AI", "user_id": "user-123"},
+        "sections": {"intro": "Body."},
+    }
+    assert resolve_notification_user_id(valid_state) == "user-123"
+    await node(valid_state)
+    assert len(published) == 1
+    assert published[0]["user_id"] == "user-123"

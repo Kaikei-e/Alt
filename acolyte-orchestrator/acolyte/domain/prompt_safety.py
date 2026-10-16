@@ -40,6 +40,19 @@ _STRUCTURAL_TAGS = (
     "prior_analysis",
     "prior_sections",
     "target_length",
+    "document",
+    "article",
+    "critic",
+    "facts",
+    "fact",
+    "section_plan",
+    "data",
+    "analysis_findings",
+    "reasoning",
+    "verdict",
+    "revise_section",
+    "feedback",
+    "message",
 )
 
 _STRUCTURAL_TAG_RE = re.compile(
@@ -132,3 +145,16 @@ def sanitize_evidence_excerpt(text: str, *, max_chars: int = 600) -> str:
     if len(cleaned) > max_chars:
         cleaned = cleaned[:max_chars] + "…"
     return cleaned
+
+_XML_DELIMITER_TAG_RE = re.compile(
+    r"<\s*/?\s*(?:document|evidence|article|" + "|".join(_STRUCTURAL_TAGS) + r")\s*/?\s*>",
+    re.IGNORECASE,
+)
+
+
+def escape_xml_delimiters(text: str) -> str:
+    """Escape prompt XML delimiter tags (e.g. </document>, </evidence>, </article>) and scaffold headers."""
+    if not text:
+        return text
+    escaped = _XML_DELIMITER_TAG_RE.sub(_escape_angle_brackets, text)
+    return neutralize_evidence_text(escaped)

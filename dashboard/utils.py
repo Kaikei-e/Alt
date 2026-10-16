@@ -107,20 +107,18 @@ def fetch_table_or_warn(
     Returns None when the table is missing or the query fails (after showing
     a Streamlit warning). Returns an (possibly empty) DataFrame on success.
     """
-    engine = get_engine()
-    inspector = inspect(engine)
-    if not inspector.has_table(table_name):
-        st.warning(f"{table_name} テーブルが見つかりません。")
-        return None
-
     try:
+        engine = get_engine()
+        inspector = inspect(engine)
+        if not inspector.has_table(table_name):
+            st.warning(f"{table_name} テーブルが見つかりません。")
+            return None
+
         with engine.connect() as conn:
             return pd.read_sql(text(query), conn, params=params)
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Failed to fetch %s", table_name)
         st.warning(f"{table_name} 取得中にエラーが発生しました。")
-        with st.expander("詳細"):
-            st.error(str(e))
         return None
 
 
@@ -138,12 +136,17 @@ def fetch_metrics(metric_type: str, window_seconds: int, limit: int = 500) -> pd
         LIMIT :limit
         """
     )
-    with engine.connect() as conn:
-        df = pd.read_sql(
-            query,
-            conn,
-            params={"metric_type": metric_type, "limit": limit, **_interval_params(window_seconds)},
-        )
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(
+                query,
+                conn,
+                params={"metric_type": metric_type, "limit": limit, **_interval_params(window_seconds)},
+            )
+    except SQLAlchemyError:
+        logger.exception("Failed to fetch metrics for %s", metric_type)
+        st.warning("メトリクス取得中にエラーが発生しました。")
+        return pd.DataFrame()
 
     if not df.empty:
         if "job_id" in df.columns:
@@ -167,12 +170,17 @@ def fetch_recent_activity(window_seconds: int, limit: int = 200) -> pd.DataFrame
         LIMIT :limit
         """
     )
-    with engine.connect() as conn:
-        df = pd.read_sql(
-            query,
-            conn,
-            params={"limit": limit, **_interval_params(window_seconds)},
-        )
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(
+                query,
+                conn,
+                params={"limit": limit, **_interval_params(window_seconds)},
+            )
+    except SQLAlchemyError:
+        logger.exception("Failed to fetch recent activity")
+        st.warning("最近のアクティビティ取得中にエラーが発生しました。")
+        return pd.DataFrame()
     if not df.empty:
         if "job_id" in df.columns:
             df["job_id"] = df["job_id"].astype(str)

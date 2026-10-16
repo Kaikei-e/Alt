@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from recap_evaluator.handler.schemas import (
     ClusterEvaluationRequest,
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/v1")
 async def list_evaluations(
     request: Request,
     evaluation_type: str | None = None,
-    limit: int = 30,
+    limit: int = Query(default=30, ge=1, le=100),
 ) -> EvaluationListResponse:
     get_metrics: Any = request.app.state.get_metrics
     history = await get_metrics.get_evaluation_history(evaluation_type=evaluation_type, limit=limit)

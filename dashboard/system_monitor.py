@@ -73,7 +73,7 @@ def get_memory_info() -> MemoryInfo:
         return MemoryInfo(total=total, used=used, available=available, percent=round(percent, 1))
     except (subprocess.SubprocessError, OSError, IndexError, ValueError) as e:
         logger.error("Error getting memory info", exc_info=e)
-        return MemoryInfo(total=0, used=0, available=0, percent=0.0, error=str(e))
+        return MemoryInfo(total=0, used=0, available=0, percent=0.0, error="memory_unavailable")
 
 def _read_proc_stat_cpu_fields() -> list[int]:
     """Read the aggregate 'cpu' line from /proc/stat as a list of counters."""
@@ -188,9 +188,11 @@ def get_gpu_info() -> dict[str, Any]:
     except subprocess.TimeoutExpired:
         return {"available": False, "gpus": [], "error": "timeout", "message": "nvidia-smi command timed out."}
     except subprocess.CalledProcessError as e:
-        return {"available": False, "gpus": [], "error": f"nvidia-smi failed: {e}", "message": f"nvidia-smi command failed (exit code {e.returncode}). GPU may not be accessible."}
+        logger.error("nvidia-smi failed with exit code %s", e.returncode, exc_info=e)
+        return {"available": False, "gpus": [], "error": "nvidia_smi_failed", "message": "nvidia-smi command failed. GPU may not be accessible."}
     except OSError as e:
-        return {"available": False, "gpus": [], "error": str(e), "message": f"Error getting GPU info: {str(e)}"}
+        logger.error("Error getting GPU info", exc_info=e)
+        return {"available": False, "gpus": [], "error": "gpu_info_unavailable", "message": "Error getting GPU info."}
 
 def count_hanging_processes() -> int:
     """Count potential hanging processes"""

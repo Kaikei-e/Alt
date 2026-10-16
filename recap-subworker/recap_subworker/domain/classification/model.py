@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ...infra.path_validation import validate_path
 from .features import (
     EMBEDDING_DIM,
     FALLBACK_AVG_DOC_LEN,
@@ -55,12 +56,11 @@ class GenreClassifier:
                 if default_weights_path.exists():
                     weights_path = str(default_weights_path)
             if weights_path:
-                # Only validate if not the hardcoded default
-                # Allow absolute and relative, but only under root
-                safe_dir = Path(SAFE_WEIGHTS_DIR)
-                resolved_path = (safe_dir / Path(weights_path).relative_to("/")).resolve()
-                if not str(resolved_path).startswith(str(safe_dir.resolve())):
-                    raise ValueError(f"weights_path '{weights_path}' is not allowed.")
+                safe_dirs = [Path(SAFE_WEIGHTS_DIR), Path("/app/data")]
+                try:
+                    resolved_path = validate_path(str(weights_path), base_dirs=safe_dirs)
+                except ValueError as exc:
+                    raise ValueError(f"weights_path '{weights_path}' is not allowed.") from exc
                 if not resolved_path.exists():
                     raise ValueError(f"Weights file does not exist: {weights_path}")
                 with resolved_path.open(encoding="utf-8") as f:

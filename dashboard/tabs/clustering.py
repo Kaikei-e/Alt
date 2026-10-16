@@ -61,8 +61,8 @@ def render_clustering(window_seconds: int) -> None:
             st.bar_chart(hist_df)
 
             st.caption(f"Min Size: {min(sizes)}, Max Size: {max(sizes)}, Median: {np.median(sizes)}")
-        except (ValueError, TypeError) as e:
-            st.error(f"Error plotting cluster sizes: {e}")
+        except (ValueError, TypeError):
+            st.error("Error plotting cluster sizes.")
             st.write(sizes)
     elif "cluster_sizes" not in latest:
         st.warning("Cluster size data ('cluster_sizes') is missing from logs. Update backend to log this list.")

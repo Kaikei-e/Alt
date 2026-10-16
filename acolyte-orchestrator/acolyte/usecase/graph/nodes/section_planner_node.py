@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.claim import ClaimPlannerOutput
+from acolyte.domain.prompt_safety import escape_xml_delimiters
 from acolyte.port.llm_provider import LLMMode
 from acolyte.usecase.graph.xml_parse import (
     confidence_to_score,
@@ -129,10 +130,10 @@ def _format_facts_block(facts: list[dict]) -> str:
         return "No facts available."
     lines = []
     for i, fact in enumerate(facts, 1):
-        line = f"{i}. [{fact.get('data_type', 'quote')}] {fact.get('claim', '')}"
+        line = f"{i}. [{fact.get('data_type', 'quote')}] {escape_xml_delimiters(str(fact.get('claim', '')))}"
         quote = fact.get("quote", fact.get("verbatim_quote", ""))
         if quote:
-            line += f'\n   Quote: "{quote}"'
+            line += f'\n   Quote: "{escape_xml_delimiters(str(quote))}"'
         line += f"\n   Source: {fact.get('source_id', '')}"
         conf = fact.get("confidence", 0)
         line += f"\n   Confidence: {conf}"
@@ -154,9 +155,9 @@ def _format_analysis_claims(claims: list[dict]) -> str:
         return "No analysis claims available."
     lines = []
     for i, claim in enumerate(claims, 1):
-        line = f"{i}. [{claim.get('claim_type', 'factual')}] {claim.get('claim', '')}"
+        line = f"{i}. [{claim.get('claim_type', 'factual')}] {escape_xml_delimiters(str(claim.get('claim', '')))}"
         for q in claim.get("supporting_quotes", []):
-            line += f'\n   Quote: "{q}"'
+            line += f'\n   Quote: "{escape_xml_delimiters(str(q))}"'
         eids = claim.get("evidence_ids", [])
         if eids:
             line += f"\n   Evidence: {', '.join(eids)}"

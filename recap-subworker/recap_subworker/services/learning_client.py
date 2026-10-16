@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from ..domain.errors import LearningClientTimeoutError
+from ..infra.path_validation import ALLOWED_BASE_DIRS, validate_path
 
 # Per-stage httpx timeout budget. connect is kept short so an unreachable
 # recap-worker surfaces quickly; read absorbs slow downstream Bayesian
@@ -18,6 +20,19 @@ from ..domain.errors import LearningClientTimeoutError
 _CONNECT_TIMEOUT_SECONDS = 2.0
 _WRITE_TIMEOUT_SECONDS = 10.0
 _POOL_TIMEOUT_SECONDS = 5.0
+
+
+def validate_weights_path(
+    weights_path: str | Path | None,
+    base_dirs: list[Path] | None = None,
+) -> Path | None:
+    """Validate an optional weights_path against allowed base directories (CWE-22)."""
+    if weights_path is None:
+        return None
+    raw = str(weights_path).strip()
+    if not raw:
+        return None
+    return validate_path(raw, base_dirs=base_dirs or ALLOWED_BASE_DIRS)
 
 
 def _build_timeout(read_timeout_seconds: float) -> httpx.Timeout:

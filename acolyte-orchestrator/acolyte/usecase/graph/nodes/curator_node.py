@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.language_quota import rebalance_by_language
+from acolyte.domain.prompt_safety import escape_xml_delimiters, neutralize_evidence_line
 from acolyte.domain.source_map import SourceMap
 from acolyte.port.llm_provider import LLMMode
 
@@ -128,9 +129,9 @@ class CuratorNode:
         """
         prompt = CURATOR_PROMPT.format(
             limit=self._max_evidence,
-            topic=topic,
-            section_title=section_title,
-            evidence=json.dumps(section_evidence[:30]),
+            topic=neutralize_evidence_line(topic),
+            section_title=neutralize_evidence_line(section_title),
+            evidence=escape_xml_delimiters(json.dumps(section_evidence[:30])),
         )
         response = await self._llm.generate(prompt, mode=LLMMode.STRUCTURED)
 

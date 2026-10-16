@@ -86,3 +86,8 @@ class TestGetMetricsTrends:
         assert data["trends"][0]["current_value"] == 0.82
         assert len(data["trends"][0]["data_points"]) == 2
         assert data["window_days"] == 7
+
+    @pytest.mark.parametrize("invalid_days", [0, -1, 91, 1000])
+    def test_rejects_out_of_range_window_days(self, client, invalid_days):
+        resp = client.get(f"/api/v1/metrics/trends?window_days={invalid_days}")
+        assert resp.status_code == 422

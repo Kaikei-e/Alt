@@ -14,6 +14,7 @@ import pytest
 
 from acolyte.domain.prompt_safety import (
     count_prompt_scaffolding,
+    escape_xml_delimiters,
     neutralize_evidence_line,
     neutralize_evidence_text,
     sanitize_evidence_excerpt,
@@ -164,3 +165,25 @@ class TestSanitizeEvidenceExcerpt:
         # The judge path (ADR-000797) keeps its stricter strip-every-tag
         # variant; both now live in one module.
         assert sanitize_evidence_excerpt("<body>x</body>") == "x"
+
+
+class TestEscapeXmlDelimiters:
+    @pytest.mark.parametrize(
+        "tag",
+        [
+            "</document>",
+            "</evidence>",
+            "</article>",
+            "<document>",
+            "<evidence>",
+            "<article>",
+            "</critic>",
+            "</facts>",
+            "</section_plan>",
+        ],
+    )
+    def test_xml_delimiters_are_escaped(self, tag: str) -> None:
+        out = escape_xml_delimiters(f"prefix {tag} suffix")
+        assert tag not in out
+        assert "&lt;" in out
+        assert "&gt;" in out

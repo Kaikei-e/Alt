@@ -68,13 +68,20 @@ pub(crate) struct WindowQuery {
     limit: Option<i64>,
 }
 
+const MAX_DASHBOARD_LIMIT: i64 = 200;
+
+#[inline]
+pub(crate) fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
+    limit.unwrap_or(default).clamp(1, MAX_DASHBOARD_LIMIT)
+}
+
 /// システムメトリクスを取得する
 pub(crate) async fn get_metrics(
     State(state): State<AppState>,
     Query(params): Query<MetricsQuery>,
 ) -> Result<Json<Vec<SystemMetric>>, (StatusCode, String)> {
     let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
-    let limit = params.limit.unwrap_or(500);
+    let limit = clamp_limit(params.limit, 200);
 
     let metrics = state
         .dao()
@@ -82,7 +89,10 @@ pub(crate) async fn get_metrics(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "failed to fetch system metrics");
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to fetch system metrics".to_string(),
+            )
         })?;
 
     let result: Vec<SystemMetric> = metrics
@@ -103,7 +113,7 @@ pub(crate) async fn get_overview(
     Query(params): Query<WindowQuery>,
 ) -> Result<Json<Vec<RecentActivity>>, (StatusCode, String)> {
     let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
-    let limit = params.limit.unwrap_or(200);
+    let limit = clamp_limit(params.limit, 200);
 
     let activities = state
         .dao()
@@ -111,7 +121,10 @@ pub(crate) async fn get_overview(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "failed to fetch recent activity");
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to fetch recent activity".to_string(),
+            )
         })?;
 
     let result: Vec<RecentActivity> = activities
@@ -132,7 +145,7 @@ pub(crate) async fn get_logs(
     Query(params): Query<WindowQuery>,
 ) -> Result<Json<Vec<LogError>>, (StatusCode, String)> {
     let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
-    let limit = params.limit.unwrap_or(2000);
+    let limit = clamp_limit(params.limit, 200);
 
     let logs = state
         .dao()
@@ -140,7 +153,10 @@ pub(crate) async fn get_logs(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "failed to fetch log errors");
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to fetch log errors".to_string(),
+            )
         })?;
 
     let result: Vec<LogError> = logs
@@ -165,7 +181,7 @@ pub(crate) async fn get_jobs(
     Query(params): Query<WindowQuery>,
 ) -> Result<Json<Vec<AdminJob>>, (StatusCode, String)> {
     let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
-    let limit = params.limit.unwrap_or(200);
+    let limit = clamp_limit(params.limit, 200);
 
     let jobs = state
         .dao()
@@ -173,7 +189,10 @@ pub(crate) async fn get_jobs(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "failed to fetch admin jobs");
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to fetch admin jobs".to_string(),
+            )
         })?;
 
     let result: Vec<AdminJob> = jobs
@@ -201,7 +220,7 @@ pub(crate) async fn get_recap_jobs(
     Query(params): Query<WindowQuery>,
 ) -> Result<Json<Vec<RecapJob>>, (StatusCode, String)> {
     let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
-    let limit = params.limit.unwrap_or(200);
+    let limit = clamp_limit(params.limit, 200);
 
     let jobs = state
         .dao()
@@ -209,7 +228,10 @@ pub(crate) async fn get_recap_jobs(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "failed to fetch recap jobs");
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to fetch recap jobs".to_string(),
+            )
         })?;
 
     let result: Vec<RecapJob> = jobs
@@ -382,13 +404,16 @@ pub(crate) async fn get_job_progress(
     Query(params): Query<JobProgressQuery>,
 ) -> Result<Json<JobProgressEvent>, (StatusCode, String)> {
     let window_seconds = params.window.unwrap_or(86400); // デフォルト24時間
-    let limit = params.limit.unwrap_or(50);
+    let limit = clamp_limit(params.limit, 50);
     let dao = state.dao();
 
     // Get running job (if any)
     let running_job = dao.get_running_job().await.map_err(|e| {
         tracing::error!(error = %e, "failed to fetch running job");
-        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to fetch running job".to_string(),
+        )
     })?;
 
     // Build active job info if there's a running job
@@ -406,7 +431,10 @@ pub(crate) async fn get_job_progress(
     }
     .map_err(|e| {
         tracing::error!(error = %e, "failed to fetch recent jobs");
-        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to fetch recent jobs".to_string(),
+        )
     })?;
 
     let mut recent_jobs: Vec<RecentJobSummary> = recent_jobs_data
@@ -420,7 +448,10 @@ pub(crate) async fn get_job_progress(
     // Get job stats
     let job_stats = dao.get_job_stats().await.map_err(|e| {
         tracing::error!(error = %e, "failed to fetch job stats");
-        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to fetch job stats".to_string(),
+        )
     })?;
 
     // Build user context if user_id provided
@@ -453,7 +484,10 @@ pub(crate) async fn get_job_stats(
 ) -> Result<Json<JobStats>, (StatusCode, String)> {
     let job_stats = state.dao().get_job_stats().await.map_err(|e| {
         tracing::error!(error = %e, "failed to fetch job stats");
-        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to fetch job stats".to_string(),
+        )
     })?;
 
     Ok(Json(job_stats))
@@ -614,4 +648,14 @@ mod tests {
         // fall back to config count
         assert_eq!(calculate_total_genres(0, 30), 30);
     }
+
+    #[test]
+    fn test_clamp_limit_enforces_bounds() {
+        assert_eq!(clamp_limit(None, 50), 50);
+        assert_eq!(clamp_limit(Some(0), 50), 1);
+        assert_eq!(clamp_limit(Some(-100), 50), 1);
+        assert_eq!(clamp_limit(Some(100), 50), 100);
+        assert_eq!(clamp_limit(Some(10_000), 50), 200);
+    }
 }
+

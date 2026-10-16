@@ -309,7 +309,7 @@ class TestSseServerHttpEndpoints:
 
 
 class TestSystemMonitorTabTokenWiring:
-    def test_resolves_token_from_file(
+    def test_does_not_auto_load_token_from_file_without_explicit_input(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path
     ) -> None:
         token_file = tmp_path / "tab_token.txt"
@@ -319,7 +319,8 @@ class TestSystemMonitorTabTokenWiring:
 
         from tabs.system_monitor_tab import _resolve_sse_token
 
-        assert _resolve_sse_token() == "tab-secret-value"
+        assert _resolve_sse_token() is None
+        assert _resolve_sse_token("tab-secret-value") == "tab-secret-value"
 
     def test_disabled_mode_returns_empty_token(
         self, monkeypatch: pytest.MonkeyPatch

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import structlog
 
+from acolyte.domain.prompt_safety import escape_xml_delimiters, neutralize_evidence_line
 from acolyte.domain.quote_selection import FactNormalizerOutput
 from acolyte.port.llm_provider import LLMMode
 from acolyte.usecase.graph.state import ReportGenerationState
@@ -185,8 +186,8 @@ class FactNormalizerNode:
         """
         try:
             prompt = _NORMALIZE_PROMPT.format(
-                text=quote.get("text", ""),
-                source_title=quote.get("source_title", ""),
+                text=escape_xml_delimiters(quote.get("text", "")),
+                source_title=neutralize_evidence_line(quote.get("source_title", "")),
             )
 
             fallback_obj = FactNormalizerOutput(claim=quote.get("text", "")[:200], confidence="low", data_type="quote")

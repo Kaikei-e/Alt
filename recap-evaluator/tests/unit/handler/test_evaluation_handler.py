@@ -69,6 +69,16 @@ class TestRunFullEvaluation:
 
         assert resp.status_code == 404
 
+    @pytest.mark.parametrize("invalid_days", [0, -5, 91, 365])
+    def test_rejects_out_of_range_window_days(self, client, invalid_days):
+        for endpoint in (
+            "/api/v1/evaluations/run",
+            "/api/v1/evaluations/cluster",
+            "/api/v1/evaluations/summary",
+        ):
+            resp = client.post(endpoint, json={"window_days": invalid_days})
+            assert resp.status_code == 422
+
 
 class TestGetEvaluation:
     def test_returns_evaluation_by_id(self, client, app):
