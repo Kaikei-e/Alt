@@ -181,3 +181,71 @@ func TestListDistinctUserIDs_FiltersActiveVersionAndExcludesNilUUID(t *testing.T
 	assert.Contains(t, sql, "projection_version =")
 	assert.Contains(t, sql, "user_id <> '00000000-0000-0000-0000-000000000000'")
 }
+
+func TestRepository_PaginationBoundsClamping(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	tenantID := uuid.New()
+
+	t.Run("GetKnowledgeHomeItems clamps excessive limit and defaults zero limit", func(t *testing.T) {
+		mock := &mockPgx{}
+		repo := &Repository{pool: mock}
+		_, _, _, err := repo.GetKnowledgeHomeItems(ctx, userID, "", 999999, nil)
+		require.NoError(t, err)
+		require.Len(t, mock.queryCalls, 1)
+		// fetchLimit is clampedLimit + 1 = 1001
+		assert.Equal(t, 1001, mock.queryCalls[0].Args[len(mock.queryCalls[0].Args)-1])
+
+		_, _, _, err = repo.GetKnowledgeHomeItems(ctx, userID, "", 0, nil)
+		require.NoError(t, err)
+		require.Len(t, mock.queryCalls, 2)
+		assert.Equal(t, 101, mock.queryCalls[1].Args[len(mock.queryCalls[1].Args)-1])
+	})
+
+	t.Run("GetRecallCandidates clamps excessive limit and defaults zero limit", func(t *testing.T) {
+		mock := &mockPgx{}
+		repo := &Repository{pool: mock}
+		_, err := repo.GetRecallCandidates(ctx, userID, 500000)
+		require.NoError(t, err)
+		require.Len(t, mock.queryCalls, 1)
+		assert.Equal(t, 1000, mock.queryCalls[0].Args[1])
+
+		_, err = repo.GetRecallCandidates(ctx, userID, -5)
+		require.NoError(t, err)
+		require.Len(t, mock.queryCalls, 2)
+		assert.Equal(t, 100, mock.queryCalls[1].Args[1])
+	})
+
+	t.Run("ListKnowledgeEventsSince and ForUser clamp limit", func(t *testing.T) {
+		mock := &mockPgx{}
+		repo := &Repository{pool: mock}
+		_, err := repo.ListKnowledgeEventsSince(ctx, 0, 500000)
+		require.NoError(t, err)
+		require.Len(t, mock.queryCalls, 1)
+		assert.Equal(t, 1000, mock.queryCalls[0].Args[1])
+
+		_, err = repo.ListKnowledgeEventsSinceForUser(ctx, tenantID, userID, 0, 0)
+		require.NoError(t, err)
+		require.Len(t, mock.queryCalls, 2)
+		assert.Equal(t, 100, mock.queryCalls[1].Args[3])
+	})
+
+	t.Run("ListReprojectRuns, ListProjectionAudits, ListSnapshots clamp limit", func(t *testing.T) {
+		mock := &mockPgx{}
+		repo := &Repository{pool: mock}
+		_, err := repo.ListReprojectRuns(ctx, "", 500000)
+		require.NoError(t, err)
+		require.Len(t, mock.queryCalls, 1)
+		assert.Equal(t, 1000, mock.queryCalls[0].Args[0])
+
+		_, err = repo.ListProjectionAudits(ctx, "knowledge_home", 0)
+		require.NoError(t, err)
+		require.Len(t, mock.queryCalls, 2)
+		assert.Equal(t, 100, mock.queryCalls[1].Args[1])
+
+		_, err = repo.ListSnapshots(ctx, 500000)
+		require.NoError(t, err)
+		require.Len(t, mock.queryCalls, 3)
+		assert.Equal(t, 1000, mock.queryCalls[2].Args[0])
+	})
+}

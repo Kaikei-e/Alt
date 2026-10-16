@@ -754,3 +754,79 @@ func TestBackfill_RequiresUserID_AndEnqueuesOwner(t *testing.T) {
 	require.Len(t, jobRepo.enqueued, 2)
 	assert.Equal(t, validUserID, jobRepo.enqueued[1].Payload["user_id"])
 }
+
+type captureAnswerUsecase struct {
+	capturedInput usecase.AnswerWithRAGInput
+}
+
+func (c *captureAnswerUsecase) Execute(_ context.Context, input usecase.AnswerWithRAGInput) (*usecase.AnswerWithRAGOutput, error) {
+	c.capturedInput = input
+	return &usecase.AnswerWithRAGOutput{
+		Answer: "ok",
+	}, nil
+}
+
+func (c *captureAnswerUsecase) Stream(_ context.Context, input usecase.AnswerWithRAGInput) <-chan usecase.StreamEvent {
+	c.capturedInput = input
+	ch := make(chan usecase.StreamEvent)
+	close(ch)
+	return ch
+}
+
+func TestAnswerWithRAG_BoundsBodyMaxChunksAndQueryLength(t *testing.T) {
+	e := echo.New()
+	capUC := &captureAnswerUsecase{}
+	handler := rag_http.NewHandler(nil, capUC, nil, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	validUserID := uuid.NewString()
+
+	t.Run("clamps excessive max_chunks to 50 and query to 4000 runes", func(t *testing.T) {
+		longQuery := bytes.Repeat([]byte("あ"), 4500)
+		payload := map[string]any{
+			"query":      string(longQuery),
+			"user_id":    validUserID,
+			"max_chunks": 9999,
+		}
+		raw, err := json.Marshal(payload)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", bytes.NewReader(raw))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		require.NoError(t, handler.AnswerWithRAG(c))
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, 50, capUC.capturedInput.MaxChunks)
+		assert.Equal(t, 4000, len([]rune(capUC.capturedInput.Query)))
+	})
+
+	t.Run("clamps non-positive max_chunks to 1", func(t *testing.T) {
+		payload := map[string]any{
+			"query":      "hello",
+			"user_id":    validUserID,
+			"max_chunks": -10,
+		}
+		raw, err := json.Marshal(payload)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", bytes.NewReader(raw))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		require.NoError(t, handler.AnswerWithRAG(c))
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, 1, capUC.capturedInput.MaxChunks)
+	})
+
+	t.Run("rejects request body exceeding 1 MiB", func(t *testing.T) {
+		oversized := `{"query":"` + string(bytes.Repeat([]byte("x"), (1<<20)+1024)) + `","user_id":"` + validUserID + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", bytes.NewBufferString(oversized))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		require.NoError(t, handler.AnswerWithRAG(c))
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+}

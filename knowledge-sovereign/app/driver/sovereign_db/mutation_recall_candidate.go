@@ -36,6 +36,9 @@ func parseUpsertRecallCandidateMutation(payload json.RawMessage) (upsertRecallCa
 	if err := json.Unmarshal(payload, &candidate); err != nil {
 		return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: unmarshal: %w", err)
 	}
+	if candidate.UserID == uuid.Nil {
+		return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: user_id cannot be nil")
+	}
 
 	if len(candidate.Reasons) > 1 {
 		seen := make(map[string]struct{}, len(candidate.Reasons))
@@ -61,6 +64,9 @@ func parseUpsertRecallCandidateMutation(payload json.RawMessage) (upsertRecallCa
 		tID, err := uuid.Parse(candidate.TenantID)
 		if err != nil {
 			return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: parse tenant_id: %w", err)
+		}
+		if tID == uuid.Nil {
+			return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: tenant_id cannot be nil")
 		}
 		tenantID = &tID
 	}
@@ -166,11 +172,17 @@ func parseSnoozeRecallCandidateMutation(payload json.RawMessage) (snoozeRecallCa
 	if err != nil {
 		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse user_id: %w", err)
 	}
+	if userID == uuid.Nil {
+		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: user_id cannot be nil")
+	}
 	var tenantID *uuid.UUID
 	if params.TenantID != "" {
 		tID, err := uuid.Parse(params.TenantID)
 		if err != nil {
 			return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse tenant_id: %w", err)
+		}
+		if tID == uuid.Nil {
+			return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: tenant_id cannot be nil")
 		}
 		tenantID = &tID
 	}
@@ -260,11 +272,17 @@ func parseDismissRecallCandidateMutation(payload json.RawMessage) (dismissRecall
 	if err != nil {
 		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: parse user_id: %w", err)
 	}
+	if userID == uuid.Nil {
+		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: user_id cannot be nil")
+	}
 	var tenantID *uuid.UUID
 	if params.TenantID != "" {
 		tID, err := uuid.Parse(params.TenantID)
 		if err != nil {
 			return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: parse tenant_id: %w", err)
+		}
+		if tID == uuid.Nil {
+			return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: tenant_id cannot be nil")
 		}
 		tenantID = &tID
 	}

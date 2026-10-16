@@ -121,6 +121,7 @@ func TestBuildRecallCandidateSnoozeAndDismiss(t *testing.T) {
 		assert.Equal(t, "article:123", w.ItemKey)
 		assert.Equal(t, "2026-08-02T19:00:00Z", w.Until)
 		assert.Equal(t, userID.String(), w.UserID)
+		assert.Equal(t, tenantID.String(), w.TenantID)
 	})
 
 	t.Run("buildSnoozeRecallCandidateWrite missing item_key", func(t *testing.T) {
@@ -143,6 +144,7 @@ func TestBuildRecallCandidateSnoozeAndDismiss(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "article:456", w.ItemKey)
 		assert.Equal(t, userID.String(), w.UserID)
+		assert.Equal(t, tenantID.String(), w.TenantID)
 	})
 
 	t.Run("buildDismissRecallCandidateWrite missing item_key", func(t *testing.T) {

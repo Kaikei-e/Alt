@@ -37,7 +37,7 @@ func (h *SovereignHandler) ListReprojectRuns(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ListReprojectRunsRequest],
 ) (*connect.Response[sovereignv1.ListReprojectRunsResponse], error) {
-	runs, err := h.readDB.ListReprojectRuns(ctx, req.Msg.StatusFilter, int(req.Msg.Limit))
+	runs, err := h.readDB.ListReprojectRuns(ctx, req.Msg.StatusFilter, clampReadLimit(int(req.Msg.Limit), defaultReadLimit))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListReprojectRuns: %w", err))
 	}
@@ -102,7 +102,7 @@ func (h *SovereignHandler) ListProjectionAudits(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ListProjectionAuditsRequest],
 ) (*connect.Response[sovereignv1.ListProjectionAuditsResponse], error) {
-	audits, err := h.readDB.ListProjectionAudits(ctx, req.Msg.ProjectionName, int(req.Msg.Limit))
+	audits, err := h.readDB.ListProjectionAudits(ctx, req.Msg.ProjectionName, clampReadLimit(int(req.Msg.Limit), defaultReadLimit))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListProjectionAudits: %w", err))
 	}

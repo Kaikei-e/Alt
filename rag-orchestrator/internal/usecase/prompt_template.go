@@ -142,7 +142,7 @@ func buildUserMessage(input PromptInput) string {
 	var sb strings.Builder
 
 	if input.ArticleContext != nil {
-		sb.WriteString(fmt.Sprintf("## 記事: %s\n\n", input.ArticleContext.Title))
+		sb.WriteString(fmt.Sprintf("## 記事: %s\n\n", escapeContextTags(runeTruncate(input.ArticleContext.Title, retrievedTitleRuneLimit))))
 	}
 
 	// Supplementary info carries tool results — and, on the agentic path, the

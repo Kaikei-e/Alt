@@ -293,11 +293,17 @@ func parseDismissHomeItemMutation(payload json.RawMessage) (dismissHomeItemMutat
 	if err != nil {
 		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse user_id: %w", err)
 	}
+	if userID == uuid.Nil {
+		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: user_id cannot be nil")
+	}
 	var tenantID *uuid.UUID
 	if params.TenantID != "" {
 		tID, err := uuid.Parse(params.TenantID)
 		if err != nil {
 			return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse tenant_id: %w", err)
+		}
+		if tID == uuid.Nil {
+			return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: tenant_id cannot be nil")
 		}
 		tenantID = &tID
 	}
@@ -379,11 +385,17 @@ func parseClearSupersedeStateMutation(payload json.RawMessage) (clearSupersedeSt
 	if err != nil {
 		return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: parse user_id: %w", err)
 	}
+	if userID == uuid.Nil {
+		return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: user_id cannot be nil")
+	}
 	var tenantID *uuid.UUID
 	if params.TenantID != "" {
 		tID, err := uuid.Parse(params.TenantID)
 		if err != nil {
 			return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: parse tenant_id: %w", err)
+		}
+		if tID == uuid.Nil {
+			return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: tenant_id cannot be nil")
 		}
 		tenantID = &tID
 	}

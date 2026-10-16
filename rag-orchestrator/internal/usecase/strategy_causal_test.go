@@ -36,13 +36,13 @@ func TestCausalStrategy_Retrieve_UsesPlannerSearchQueries(t *testing.T) {
 	plannerQuery2 := "global logistics crisis root cause"
 	stub := &causalStubRetrieve{
 		outputs: map[string]*RetrieveContextOutput{
-			baseQuery: &RetrieveContextOutput{
+			baseQuery: {
 				Contexts: []ContextItem{{ChunkText: "base", Title: "Base", Score: 0.20, RerankScore: 0.20}},
 			},
-			plannerQuery1: &RetrieveContextOutput{
+			plannerQuery1: {
 				Contexts: []ContextItem{{ChunkText: "supply", Title: "Supply", Score: 0.25, RerankScore: 0.25}},
 			},
-			plannerQuery2: &RetrieveContextOutput{
+			plannerQuery2: {
 				Contexts: []ContextItem{{ChunkText: "geo", Title: "Geo", Score: 0.85, RerankScore: 0.85}},
 			},
 		},
@@ -68,7 +68,7 @@ func TestCausalStrategy_Retrieve_FallbackWithoutPlannerQueries(t *testing.T) {
 	baseQuery := "物流危機の原因"
 	stub := &causalStubRetrieve{
 		outputs: map[string]*RetrieveContextOutput{
-			baseQuery: &RetrieveContextOutput{
+			baseQuery: {
 				Contexts: []ContextItem{{ChunkText: "base", Title: "Base", Score: 0.85, RerankScore: 0.85}},
 			},
 		},
@@ -91,7 +91,7 @@ func TestCausalStrategy_Retrieve_EarlyExitOnGoodBaseResult(t *testing.T) {
 	baseQuery := "物流危機の原因"
 	stub := &causalStubRetrieve{
 		outputs: map[string]*RetrieveContextOutput{
-			baseQuery: &RetrieveContextOutput{
+			baseQuery: {
 				Contexts: []ContextItem{{ChunkText: "base", Title: "Base", Score: 0.9, RerankScore: 0.9}},
 			},
 		},

@@ -108,6 +108,7 @@ func (r *Repository) ReadSequenceGapFrontier(ctx context.Context, firstSeq, last
 // and move a cursor past it must advance only across the contiguous prefix —
 // see usecase/projection_gap.
 func (r *Repository) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]KnowledgeEvent, error) {
+	limit = clampReadLimit(limit, defaultReadLimit)
 	query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
 		actor_type, actor_id, event_type, aggregate_type, aggregate_id,
 		correlation_id, causation_id, dedupe_key, payload
@@ -122,6 +123,7 @@ func (r *Repository) ListKnowledgeEventsSince(ctx context.Context, afterSeq int6
 // authorization gate; user_id IS NULL admits tenant-wide system events
 // (e.g., ArticleCreated) that all users in the tenant should observe.
 func (r *Repository) ListKnowledgeEventsSinceForUser(ctx context.Context, tenantID, userID uuid.UUID, afterSeq int64, limit int) ([]KnowledgeEvent, error) {
+	limit = clampReadLimit(limit, defaultReadLimit)
 	query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
 		actor_type, actor_id, event_type, aggregate_type, aggregate_id,
 		correlation_id, causation_id, dedupe_key, payload

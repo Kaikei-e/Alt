@@ -332,3 +332,59 @@ func TestUpsertRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
 	err = repoOwnExisting.UpsertRecallCandidate(context.Background(), payload)
 	require.NoError(t, err, "own existing candidate with matching home association MUST succeed")
 }
+
+func TestMutationsAndRecallRead_RejectNilUUIDs(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+	ctx := context.Background()
+	validID := uuid.New().String()
+	nilID := uuid.Nil.String()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	t.Run("DismissKnowledgeHomeItem rejects nil user_id and nil tenant_id", func(t *testing.T) {
+		err := repo.DismissKnowledgeHomeItem(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","dismissed_at":"`+now+`"}`))
+		require.Error(t, err)
+		err = repo.DismissKnowledgeHomeItem(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","dismissed_at":"`+now+`"}`))
+		require.Error(t, err)
+	})
+
+	t.Run("ClearSupersedeState rejects nil user_id and nil tenant_id", func(t *testing.T) {
+		err := repo.ClearSupersedeState(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","projection_version":1}`))
+		require.Error(t, err)
+		err = repo.ClearSupersedeState(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","projection_version":1}`))
+		require.Error(t, err)
+	})
+
+	t.Run("PatchKnowledgeHomeItemURL rejects nil user_id and nil tenant_id", func(t *testing.T) {
+		err := repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","projection_version":1,"url":"https://example.com"}`))
+		require.Error(t, err)
+		err = repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","projection_version":1,"url":"https://example.com"}`))
+		require.Error(t, err)
+	})
+
+	t.Run("UpsertRecallCandidate rejects nil user_id and nil tenant_id", func(t *testing.T) {
+		err := repo.UpsertRecallCandidate(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","recall_score":0.5,"projection_version":1}`))
+		require.Error(t, err)
+		err = repo.UpsertRecallCandidate(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","recall_score":0.5,"projection_version":1}`))
+		require.Error(t, err)
+	})
+
+	t.Run("SnoozeRecallCandidate rejects nil user_id and nil tenant_id", func(t *testing.T) {
+		err := repo.SnoozeRecallCandidate(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","until":"`+now+`","occurred_at":"`+now+`"}`))
+		require.Error(t, err)
+		err = repo.SnoozeRecallCandidate(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","until":"`+now+`","occurred_at":"`+now+`"}`))
+		require.Error(t, err)
+	})
+
+	t.Run("DismissRecallCandidate rejects nil user_id and nil tenant_id", func(t *testing.T) {
+		err := repo.DismissRecallCandidate(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","occurred_at":"`+now+`"}`))
+		require.Error(t, err)
+		err = repo.DismissRecallCandidate(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","occurred_at":"`+now+`"}`))
+		require.Error(t, err)
+	})
+
+	t.Run("GetRecallCandidates rejects nil user_id", func(t *testing.T) {
+		_, err := repo.GetRecallCandidates(ctx, uuid.Nil, 10)
+		require.Error(t, err)
+	})
+}

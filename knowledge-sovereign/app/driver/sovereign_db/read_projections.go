@@ -205,7 +205,26 @@ func paginateHomeItems(items []KnowledgeHomeItem, rankScores []float64, rankAsOf
 // (transaction start time, stable for the whole query) act as the anchor
 // and reports it back via rankAsOf/nextCursor; every later page rebinds
 // that exact instant as a query parameter instead of calling `now()` again.
+const (
+	defaultReadLimit = 100
+	maxReadLimit     = 1000
+)
+
+func clampReadLimit(limit, defaultLimit int) int {
+	if limit <= 0 {
+		if defaultLimit > 0 {
+			return defaultLimit
+		}
+		return defaultReadLimit
+	}
+	if limit > maxReadLimit {
+		return maxReadLimit
+	}
+	return limit
+}
+
 func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int, filter *LensFilter) ([]KnowledgeHomeItem, string, bool, error) {
+	limit = clampReadLimit(limit, defaultReadLimit)
 	var cursorPayload *homeItemCursor
 	if cursor != "" {
 		var err error

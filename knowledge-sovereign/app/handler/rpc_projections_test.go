@@ -58,3 +58,11 @@ func TestListDistinctUserIDs_ReturnsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, resp.Msg.UserIds)
 }
+
+func TestClampReadLimit(t *testing.T) {
+	assert.Equal(t, 100, clampReadLimit(0, 100))
+	assert.Equal(t, 100, clampReadLimit(-10, 100))
+	assert.Equal(t, 5, clampReadLimit(0, 5))
+	assert.Equal(t, 50, clampReadLimit(50, 100))
+	assert.Equal(t, 1000, clampReadLimit(500000, 100))
+}

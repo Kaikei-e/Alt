@@ -76,6 +76,7 @@ func (r *Repository) GetReprojectRun(ctx context.Context, runID uuid.UUID) (*Rep
 
 // ListReprojectRuns returns reproject runs with optional status filter.
 func (r *Repository) ListReprojectRuns(ctx context.Context, statusFilter string, limit int) ([]ReprojectRun, error) {
+	limit = clampReadLimit(limit, defaultReadLimit)
 	var query string
 	var args []any
 	if statusFilter != "" {
@@ -174,6 +175,7 @@ func (r *Repository) queryVersionStats(ctx context.Context, version string) (ver
 
 // ListProjectionAudits returns audit records.
 func (r *Repository) ListProjectionAudits(ctx context.Context, projectionName string, limit int) ([]ProjectionAudit, error) {
+	limit = clampReadLimit(limit, defaultReadLimit)
 	query := `SELECT audit_id, projection_name, projection_version, checked_at,
 		sample_size, mismatch_count, details_json
 		FROM knowledge_projection_audits WHERE projection_name = $1

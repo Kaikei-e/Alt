@@ -47,9 +47,42 @@ type Handler struct {
 	allowedEmbedderOverrideOrigins map[string]struct{}
 }
 
+const (
+	maxRequestBodyBytes = 1 << 20 // 1 MiB
+	maxQueryRunes       = 4000
+	minMaxChunks        = 1
+	maxMaxChunks        = 50
+)
+
+func bindBoundedJSON(ctx echo.Context, dst any) error {
+	req := ctx.Request()
+	if req != nil && req.Body != nil {
+		req.Body = http.MaxBytesReader(ctx.Response(), req.Body, maxRequestBodyBytes)
+	}
+	return ctx.Bind(dst)
+}
+
+func clampQueryRunes(q string) string {
+	runes := []rune(q)
+	if len(runes) > maxQueryRunes {
+		return string(runes[:maxQueryRunes])
+	}
+	return q
+}
+
+func clampMaxChunks(n int) int {
+	if n < minMaxChunks {
+		return minMaxChunks
+	}
+	if n > maxMaxChunks {
+		return maxMaxChunks
+	}
+	return n
+}
+
 func mapAnswerRequestToInput(req openapi.AnswerRequest) usecase.AnswerWithRAGInput {
 	input := usecase.AnswerWithRAGInput{
-		Query: req.Query,
+		Query: clampQueryRunes(req.Query),
 	}
 	if req.CandidateArticleIds != nil {
 		input.CandidateArticleIDs = *req.CandidateArticleIds
@@ -61,7 +94,7 @@ func mapAnswerRequestToInput(req openapi.AnswerRequest) usecase.AnswerWithRAGInp
 		input.UserID = *req.UserId
 	}
 	if req.MaxChunks != nil {
-		input.MaxChunks = int(*req.MaxChunks)
+		input.MaxChunks = clampMaxChunks(int(*req.MaxChunks))
 	}
 	if req.MaxTokens != nil {
 		input.MaxTokens = int(*req.MaxTokens)
@@ -183,7 +216,7 @@ const upsertTimeout = 90 * time.Second
 // (POST /internal/rag/index/upsert)
 func (h *Handler) UpsertIndex(ctx echo.Context) error {
 	var req openapi.UpsertIndexRequest
-	if err := ctx.Bind(&req); err != nil {
+	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
@@ -255,7 +288,7 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 // (POST /v1/documents/owners)
 func (h *Handler) BackfillDocumentOwners(ctx echo.Context) error {
 	var req openapi.OwnerBackfillRequest
-	if err := ctx.Bind(&req); err != nil {
+	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
@@ -292,7 +325,7 @@ func isDuplicateKeyError(err error) bool {
 // (POST /v1/rag/answer)
 func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 	var req openapi.AnswerRequest
-	if err := ctx.Bind(&req); err != nil {
+	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
@@ -407,7 +440,7 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 // (POST /v1/rag/answer/stream)
 func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 	var req openapi.AnswerRequest
-	if err := ctx.Bind(&req); err != nil {
+	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
@@ -481,7 +514,7 @@ type backfillRequest struct {
 // (POST /internal/rag/backfill)
 func (h *Handler) Backfill(ctx echo.Context) error {
 	var req backfillRequest
-	if err := ctx.Bind(&req); err != nil {
+	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
@@ -542,7 +575,7 @@ func (h *Handler) Backfill(ctx echo.Context) error {
 // (POST /v1/rag/retrieve)
 func (h *Handler) RetrieveContext(ctx echo.Context) error {
 	var req openapi.RetrieveRequest
-	if err := ctx.Bind(&req); err != nil {
+	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
@@ -562,7 +595,7 @@ func (h *Handler) RetrieveContext(ctx echo.Context) error {
 	}
 
 	input := usecase.RetrieveContextInput{
-		Query:  req.Query,
+		Query:  clampQueryRunes(req.Query),
 		UserID: userID,
 	}
 	if req.CandidateArticleIds != nil {
@@ -699,7 +732,7 @@ type GenerationInfo struct {
 // (POST /v1/rag/morning-letter)
 func (h *Handler) MorningLetter(ctx echo.Context) error {
 	var req MorningLetterRequest
-	if err := ctx.Bind(&req); err != nil {
+	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
@@ -719,7 +752,7 @@ func (h *Handler) MorningLetter(ctx echo.Context) error {
 	}
 
 	input := usecase.MorningLetterInput{
-		Query:  req.Query,
+		Query:  clampQueryRunes(req.Query),
 		UserID: userID,
 		Locale: req.Locale,
 	}

@@ -47,6 +47,7 @@ func buildHomeItemOpenedWrites(evt sovereign_db.KnowledgeEvent, version int) (ho
 
 	clear := clearSupersedeWrite{
 		UserID:            userID.String(),
+		TenantID:          evt.TenantID.String(),
 		ItemKey:           payload.ItemKey,
 		ProjectionVersion: version,
 	}
@@ -55,6 +56,7 @@ func buildHomeItemOpenedWrites(evt sovereign_db.KnowledgeEvent, version int) (ho
 	eligibleAt := occurredAt.Add(1 * time.Hour)
 	candidate := recallCandidateWrite{
 		UserID:            userID,
+		TenantID:          evt.TenantID,
 		ItemKey:           payload.ItemKey,
 		RecallScore:       0.5,
 		Reasons:           []recallReasonWire{{Type: recallReasonOpenedNotRevisited, Description: "Opened but not revisited"}},
@@ -107,6 +109,7 @@ func buildDismissWrite(evt sovereign_db.KnowledgeEvent, version int) (dismissWri
 
 	dismiss := dismissWrite{
 		UserID:            resolveUserID(evt).String(),
+		TenantID:          evt.TenantID.String(),
 		ItemKey:           itemKey,
 		ProjectionVersion: version,
 		// Business fact from the event only — knowledge_events.occurred_at is

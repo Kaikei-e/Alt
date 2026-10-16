@@ -35,7 +35,7 @@ func (h *SovereignHandler) GetKnowledgeHomeItems(
 		}
 	}
 
-	items, nextCursor, hasMore, err := h.readDB.GetKnowledgeHomeItems(ctx, userID, msg.Cursor, int(msg.Limit), filter)
+	items, nextCursor, hasMore, err := h.readDB.GetKnowledgeHomeItems(ctx, userID, msg.Cursor, clampReadLimit(int(msg.Limit), defaultReadLimit), filter)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetKnowledgeHomeItems: %w", err))
 	}
@@ -99,7 +99,7 @@ func (h *SovereignHandler) GetRecallCandidates(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	candidates, err := h.readDB.GetRecallCandidates(ctx, userID, int(req.Msg.Limit))
+	candidates, err := h.readDB.GetRecallCandidates(ctx, userID, clampReadLimit(int(req.Msg.Limit), defaultReadLimit))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetRecallCandidates: %w", err))
 	}

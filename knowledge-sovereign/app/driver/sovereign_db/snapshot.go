@@ -148,6 +148,7 @@ func (r *Repository) GetLatestValidSnapshot(ctx context.Context) (*SnapshotMetad
 
 // ListSnapshots returns all snapshots ordered by creation time.
 func (r *Repository) ListSnapshots(ctx context.Context, limit int) ([]SnapshotMetadata, error) {
+	limit = clampReadLimit(limit, defaultReadLimit)
 	query := `SELECT snapshot_id, snapshot_type, projection_version, projector_build_ref,
 		schema_version, snapshot_at, event_seq_boundary, snapshot_data_path,
 		items_row_count, items_checksum, digest_row_count, digest_checksum,

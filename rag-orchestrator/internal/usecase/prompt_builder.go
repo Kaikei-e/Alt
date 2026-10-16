@@ -433,10 +433,11 @@ func (b *XMLPromptBuilder) writeFewShotExample(sb *strings.Builder, input Prompt
 
 func (b *XMLPromptBuilder) writeArticleContext(sb *strings.Builder, input PromptInput) {
 	if input.ArticleContext != nil {
+		safeTitle := escapeContextTags(runeTruncate(input.ArticleContext.Title, retrievedTitleRuneLimit))
 		if input.ArticleContext.Truncated {
-			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の主要な部分です。この記事に基づいて質問に回答してください。\n\n", input.ArticleContext.Title))
+			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の主要な部分です。この記事に基づいて質問に回答してください。\n\n", safeTitle))
 		} else {
-			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の全内容です。この記事に基づいて質問に回答してください。\n\n", input.ArticleContext.Title))
+			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の全内容です。この記事に基づいて質問に回答してください。\n\n", safeTitle))
 		}
 	}
 }

@@ -42,6 +42,10 @@ func buildArticleCreatedWrites(evt sovereign_db.KnowledgeEvent, version int) (ho
 		}
 	}
 
+	itemURL := payload.URL
+	if !isHTTPURL(itemURL) {
+		itemURL = ""
+	}
 	userID := resolveUserID(evt)
 	item := homeItemWrite{
 		UserID:       userID,
@@ -50,7 +54,7 @@ func buildArticleCreatedWrites(evt sovereign_db.KnowledgeEvent, version int) (ho
 		ItemType:     itemTypeArticle,
 		PrimaryRefID: &articleID,
 		Title:        payload.Title,
-		URL:          payload.URL,
+		URL:          itemURL,
 		WhyReasons:   []whyReasonWire{{Code: whyNewUnread}},
 		// baseQualityScore is time-invariant by design: how stale
 		// published_at already was at ingest is not a fact worth freezing
@@ -97,8 +101,7 @@ func (p *Projector) foldArticleCreated(ctx context.Context, evt sovereign_db.Kno
 // guard so a dangerous scheme rejected on the FE never sneaks back via the
 // corrective event.
 func isHTTPURL(raw string) bool {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
+	if raw == "" || raw != strings.TrimSpace(raw) {
 		return false
 	}
 	parsed, err := neturl.Parse(raw)
@@ -107,7 +110,7 @@ func isHTTPURL(raw string) bool {
 	}
 	switch strings.ToLower(parsed.Scheme) {
 	case "http", "https":
-		return parsed.Host != ""
+		return parsed.Host != "" && parsed.Hostname() != ""
 	default:
 		return false
 	}
@@ -122,6 +125,7 @@ func buildURLPatch(evt sovereign_db.KnowledgeEvent, payload articleUrlBackfilled
 
 	patch := sovereign_db.PatchKnowledgeHomeItemURLPayload{
 		UserID:            resolveUserID(evt).String(),
+		TenantID:          evt.TenantID.String(),
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ProjectionVersion: version,
 		URL:               payload.URL,
