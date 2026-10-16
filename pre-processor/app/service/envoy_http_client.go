@@ -271,6 +271,16 @@ func (c *EnvoyHTTPClient) ResolveDomain(hostname string) (string, error) {
 		return "", fmt.Errorf("no IP addresses found for %s", hostname)
 	}
 
+	// Reject if any resolved IP is in a private or blocked range (DNS rebinding guard)
+	for _, ip := range ips {
+		if isPrivateOrBlocked(ip) {
+			c.logger.Error("EnvoyHTTPClient: resolved IP is private or blocked",
+				"hostname", hostname,
+				"resolved_ip", ip.String())
+			return "", fmt.Errorf("resolved IP %s for %s is private or blocked", ip.String(), hostname)
+		}
+	}
+
 	// Return first IPv4 address
 	for _, ip := range ips {
 		if ip.To4() != nil {

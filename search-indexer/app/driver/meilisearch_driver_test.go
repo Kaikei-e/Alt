@@ -194,3 +194,74 @@ func TestMeilisearchDriver_SearchByUserIDWithDateFilter_RejectsEmptyUserID(t *te
 		t.Error("SearchByUserIDWithDateFilter with whitespace userID should return error")
 	}
 }
+
+func TestSanitizeFilterValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "plain value",
+			input:    "user-123",
+			expected: "user-123",
+		},
+		{
+			name:     "escapes backslash, double quote, and single quote",
+			input:    "a\\b\"c\x27d",
+			expected: "a\\\\b\\\"c\\\x27d",
+		},
+		{
+			name:     "strips ASCII control chars and DEL",
+			input:    "u\x00s\ne\rr\t\x1f1\x7f2",
+			expected: "user12",
+		},
+		{
+			name:     "filter injection attempt is neutralized",
+			input:    `u1" OR user_id != "u2`,
+			expected: `u1\" OR user_id != \"u2`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeFilterValue(tt.input)
+			if got != tt.expected {
+				t.Errorf("sanitizeFilterValue(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMakeSecureSearchFilter(t *testing.T) {
+	tests := []struct {
+		name     string
+		tags     []string
+		expected string
+	}{
+		{
+			name:     "empty tags",
+			tags:     nil,
+			expected: "",
+		},
+		{
+			name:     "single tag is quoted",
+			tags:     []string{"golang"},
+			expected: `tags = "golang"`,
+		},
+		{
+			name:     "multiple tags with injection characters are quoted and escaped",
+			tags:     []string{`go" OR 1=1`, "sec\\ops\x27test\x00"},
+			expected: "tags = \"go\\\" OR 1=1\" AND tags = \"sec\\\\ops\\\x27test\"",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := makeSecureSearchFilter(tt.tags)
+			if got != tt.expected {
+				t.Errorf("makeSecureSearchFilter(%v) = %q, want %q", tt.tags, got, tt.expected)
+			}
+		})
+	}
+}

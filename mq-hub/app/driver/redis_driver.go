@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -58,6 +59,18 @@ func (e *PartialPublishError) Error() string {
 
 // ErrReplyTimeout is returned when waiting for a reply message times out.
 var ErrReplyTimeout = errors.New("timeout waiting for reply message")
+
+// ErrInvalidStreamKey is returned when a Redis stream key fails format validation.
+var ErrInvalidStreamKey = errors.New("invalid stream key")
+
+var validStreamKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9:_-]{1,128}$`)
+
+func validateStreamKey(stream string) error {
+	if !validStreamKeyPattern.MatchString(stream) {
+		return fmt.Errorf("%w: %q", ErrInvalidStreamKey, stream)
+	}
+	return nil
+}
 
 // RedisDriver handles Redis Streams I/O.
 type RedisDriver struct {
@@ -140,6 +153,9 @@ func (d *RedisDriver) Close() error {
 
 // Publish publishes a message to a stream and returns the message ID.
 func (d *RedisDriver) Publish(ctx context.Context, stream string, msg *StreamMessage) (string, error) {
+	if err := validateStreamKey(stream); err != nil {
+		return "", err
+	}
 	if msg == nil {
 		return "", errors.New("message is nil")
 	}
@@ -176,6 +192,9 @@ func (d *RedisDriver) Publish(ctx context.Context, stream string, msg *StreamMes
 // callers can retry only those instead of re-publishing the whole batch
 // (which would duplicate the messages that already succeeded).
 func (d *RedisDriver) PublishBatch(ctx context.Context, stream string, msgs []*StreamMessage) ([]string, error) {
+	if err := validateStreamKey(stream); err != nil {
+		return nil, err
+	}
 	if len(msgs) == 0 {
 		return []string{}, nil
 	}
@@ -232,6 +251,12 @@ func (d *RedisDriver) PublishBatch(ctx context.Context, stream string, msgs []*S
 
 // CreateConsumerGroup creates a consumer group for a stream.
 func (d *RedisDriver) CreateConsumerGroup(ctx context.Context, stream string, group string, startID string) error {
+	if err := validateStreamKey(stream); err != nil {
+		return err
+	}
+	if err := validateStreamKey(group); err != nil {
+		return fmt.Errorf("invalid consumer group %q: %w", group, err)
+	}
 	err := d.client.XGroupCreateMkStream(ctx, stream, group, startID).Err()
 	if err != nil {
 		if isBusyGroupErr(err) {
@@ -244,6 +269,9 @@ func (d *RedisDriver) CreateConsumerGroup(ctx context.Context, stream string, gr
 
 // GetStreamInfo returns information about a stream.
 func (d *RedisDriver) GetStreamInfo(ctx context.Context, stream string) (*StreamInfo, error) {
+	if err := validateStreamKey(stream); err != nil {
+		return nil, err
+	}
 	info, err := d.client.XInfoStream(ctx, stream).Result()
 	if err != nil {
 		return nil, fmt.Errorf("xinfo stream %s: %w", stream, err)
@@ -335,6 +363,9 @@ func isNoSuchKeyErr(err error) bool {
 // SubscribeWithTimeout waits for a message on a reply stream with timeout.
 // Uses XREAD with blocking to wait for messages.
 func (d *RedisDriver) SubscribeWithTimeout(ctx context.Context, stream string, timeout time.Duration) (*StreamMessage, error) {
+	if err := validateStreamKey(stream); err != nil {
+		return nil, err
+	}
 	streams, err := d.client.XRead(ctx, &redis.XReadArgs{
 		Streams: []string{stream, "0"},
 		Count:   1,
@@ -358,12 +389,18 @@ func (d *RedisDriver) SubscribeWithTimeout(ctx context.Context, stream string, t
 
 // DeleteStream removes a stream (used for cleanup of temporary reply streams).
 func (d *RedisDriver) DeleteStream(ctx context.Context, stream string) error {
+	if err := validateStreamKey(stream); err != nil {
+		return err
+	}
 	return d.client.Del(ctx, stream).Err()
 }
 
 // Expire sets a TTL on a stream key. It is a no-op (no error) if the key
 // does not exist yet.
 func (d *RedisDriver) Expire(ctx context.Context, stream string, ttl time.Duration) error {
+	if err := validateStreamKey(stream); err != nil {
+		return err
+	}
 	return d.client.Expire(ctx, stream, ttl).Err()
 }
 
@@ -382,6 +419,9 @@ const replyStreamScanCount = 100
 // touches (that pass only covers the fixed AllStreamKeys()). This scan finds
 // exactly those keys so the sweep can re-apply a bounded TTL.
 func (d *RedisDriver) ScanReplyStreamsWithoutTTL(ctx context.Context, prefix string) ([]string, error) {
+	if err := validateStreamKey(prefix); err != nil {
+		return nil, err
+	}
 	match := prefix + "*"
 	var (
 		leaked []string
@@ -436,6 +476,9 @@ func (d *RedisDriver) parseMessage(msg redis.XMessage) *StreamMessage {
 // this on a timer, so converging over a few bounded passes is preferable to one
 // unbounded pass blocking a single-threaded server.
 func (d *RedisDriver) TrimMaxLenApprox(ctx context.Context, stream string, maxLen int64) (int64, error) {
+	if err := validateStreamKey(stream); err != nil {
+		return 0, err
+	}
 	deleted, err := d.client.XTrimMaxLenApprox(ctx, stream, maxLen, 0).Result()
 	if err != nil {
 		return 0, fmt.Errorf("xtrim %s maxlen ~ %d: %w", stream, maxLen, err)

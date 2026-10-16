@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -550,4 +551,60 @@ func TestNewRedisDriverWithURLAndOptions_Password(t *testing.T) {
 	defer driver.Close()
 
 	assert.Equal(t, "test-secret-password-url", driver.client.Options().Password)
+}
+
+func TestRedisDriver_StreamKeyValidation(t *testing.T) {
+	driver, cleanup := setupTestDriver(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	msg := &StreamMessage{
+		EventID:   "evt-1",
+		EventType: "ArticleCreated",
+		Source:    "test",
+		CreatedAt: time.Now().Format(time.RFC3339),
+	}
+
+	invalidStreams := []struct {
+		name   string
+		stream string
+	}{
+		{name: "empty", stream: ""},
+		{name: "contains spaces", stream: "alt:events:articles evil"},
+		{name: "contains newline/CRLF", stream: "alt:events:articles\r\nFLUSHALL"},
+		{name: "contains wildcard", stream: "alt:events:*"},
+		{name: "contains slash", stream: "alt/events/articles"},
+		{name: "exceeds 128 chars", stream: strings.Repeat("a", 129)},
+	}
+
+	for _, tc := range invalidStreams {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := driver.Publish(ctx, tc.stream, msg)
+			require.ErrorIs(t, err, ErrInvalidStreamKey)
+
+			_, err = driver.PublishBatch(ctx, tc.stream, []*StreamMessage{msg})
+			require.ErrorIs(t, err, ErrInvalidStreamKey)
+
+			err = driver.CreateConsumerGroup(ctx, tc.stream, "pre-processor", "0")
+			require.ErrorIs(t, err, ErrInvalidStreamKey)
+
+			_, err = driver.GetStreamInfo(ctx, tc.stream)
+			require.ErrorIs(t, err, ErrInvalidStreamKey)
+
+			_, err = driver.SubscribeWithTimeout(ctx, tc.stream, 10*time.Millisecond)
+			require.ErrorIs(t, err, ErrInvalidStreamKey)
+
+			err = driver.DeleteStream(ctx, tc.stream)
+			require.ErrorIs(t, err, ErrInvalidStreamKey)
+
+			err = driver.Expire(ctx, tc.stream, time.Minute)
+			require.ErrorIs(t, err, ErrInvalidStreamKey)
+
+			_, err = driver.ScanReplyStreamsWithoutTTL(ctx, tc.stream)
+			require.ErrorIs(t, err, ErrInvalidStreamKey)
+
+			_, err = driver.TrimMaxLenApprox(ctx, tc.stream, 10)
+			require.ErrorIs(t, err, ErrInvalidStreamKey)
+		})
+	}
 }
