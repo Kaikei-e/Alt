@@ -141,6 +141,43 @@ async fn test_delete_batch() {
     assert!(!disk_fallback.has_batch(&batch_id).await);
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn test_disk_fallback_unix_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = TempDir::new().unwrap();
+    let fallback_dir = temp_dir.path().join("fallback_secure");
+    let config = DiskConfig {
+        storage_path: fallback_dir.clone(),
+        max_disk_usage: 100 * 1024 * 1024,
+        retention_period: Duration::from_secs(3600),
+        compression: true,
+        enabled: true,
+    };
+
+    let mut disk_fallback = DiskFallback::new(config).await.unwrap();
+
+    let dir_meta = tokio::fs::metadata(&fallback_dir).await.unwrap();
+    assert_eq!(
+        dir_meta.permissions().mode() & 0o777,
+        0o700,
+        "fallback directory must have 0700 permissions"
+    );
+
+    let batch = create_test_batch_with_entries(10);
+    let batch_id = batch.id().to_string();
+    disk_fallback.store_batch(batch).await.unwrap();
+
+    let file_path = fallback_dir.join(format!("{batch_id}.batch"));
+    let file_meta = tokio::fs::metadata(&file_path).await.unwrap();
+    assert_eq!(
+        file_meta.permissions().mode() & 0o777,
+        0o600,
+        "fallback batch file must have 0600 permissions"
+    );
+}
+
 fn create_test_batch_with_entries(count: usize) -> Batch {
     let entries = (0..count)
         .map(|i| create_test_entry(&format!("Disk fallback test entry {i}")))
@@ -171,3 +208,4 @@ fn create_test_entry(message: &str) -> EnrichedLogEntry {
         fields: std::collections::HashMap::new(),
     }
 }
+

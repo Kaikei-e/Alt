@@ -135,6 +135,20 @@ impl ApplicationInitializer {
                         reason: format!("Cannot create disk fallback directory: {e}"),
                     });
                 }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Err(e) = std::fs::set_permissions(
+                        &config.disk_fallback_path,
+                        std::fs::Permissions::from_mode(0o700),
+                    ) {
+                        return Err(InitializationError::ConfigValidationFailed {
+                            reason: format!(
+                                "Cannot set permissions on disk fallback directory: {e}"
+                            ),
+                        });
+                    }
+                }
             }
         }
 
