@@ -258,4 +258,3 @@ def test_health_and_metrics_on_plaintext_port_exempt_when_strict_true(
         resp = http.get(path)
         assert resp.status_code == 200
         assert resp.json() == {"peer": None}
-

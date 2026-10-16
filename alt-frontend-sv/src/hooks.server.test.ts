@@ -177,4 +177,3 @@ describe("server handle — missing session cookie enforcement", () => {
 		expect(resolve).toHaveBeenCalledTimes(1);
 	});
 });
-

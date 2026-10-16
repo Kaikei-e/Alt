@@ -30,7 +30,12 @@ if TYPE_CHECKING:
 from acolyte.config.settings import Settings
 from acolyte.domain.citation_format import validate_citation_format, validate_citation_grounding
 from acolyte.domain.executive_summary import ExecutiveSummaryRenderer
-from acolyte.domain.prompt_safety import count_prompt_scaffolding, escape_xml_delimiters, neutralize_evidence_line, neutralize_evidence_text
+from acolyte.domain.prompt_safety import (
+    count_prompt_scaffolding,
+    escape_xml_delimiters,
+    neutralize_evidence_line,
+    neutralize_evidence_text,
+)
 from acolyte.domain.source_map import SourceMap
 from acolyte.domain.writer_prompt import WRITER_PROMPT, format_evidence
 
@@ -449,7 +454,9 @@ def _build_prior_sections_context(
         for s in non_es_sections:
             body = sections.get(s.get("key", ""), "")
             if body:
-                prior_bodies.append(f"[{neutralize_evidence_line(str(s.get('title', '')))}] {escape_xml_delimiters(body[:_PRIOR_ES_CONTEXT_MAX_CHARS])}")
+                prior_bodies.append(
+                    f"[{neutralize_evidence_line(str(s.get('title', '')))}] {escape_xml_delimiters(body[:_PRIOR_ES_CONTEXT_MAX_CHARS])}"
+                )
         if prior_bodies:
             return (
                 "<prior_sections>\n" + "\n".join(prior_bodies) + "\n</prior_sections>\n"

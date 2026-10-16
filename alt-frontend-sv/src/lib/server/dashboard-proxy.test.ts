@@ -24,9 +24,7 @@ describe("proxyDashboardGet", () => {
 			"http://recap-worker:9005",
 			"/v1/dashboard/job-progress",
 			{
-				request: new Request(
-					"http://localhost/api/v1/dashboard/job-progress",
-				),
+				request: new Request("http://localhost/api/v1/dashboard/job-progress"),
 				url: new URL("http://localhost/api/v1/dashboard/job-progress"),
 			},
 		);
@@ -63,7 +61,7 @@ describe("proxyDashboardGet", () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true });
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		const [calledUrl, init] = fetchMock.mock.calls[0]!;
+		const [calledUrl, init] = fetchMock.mock.calls[0] ?? [];
 		expect(calledUrl).toBe(
 			"http://recap-worker:9005/v1/dashboard/job-stats?window=3600",
 		);

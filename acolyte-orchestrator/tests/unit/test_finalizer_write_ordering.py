@@ -181,9 +181,24 @@ async def test_finalizer_skips_notification_when_user_id_missing_or_system() -> 
     node = FinalizerNode(repo, notification_publisher=FakePublisher())
 
     for bad_state in (
-        {"report_id": str(repo.report_id), "outline": [{"key": "intro"}], "brief": {"topic": "AI"}, "sections": {"intro": "Body."}},
-        {"report_id": str(repo.report_id), "outline": [{"key": "intro"}], "brief": {"topic": "AI", "user_id": "system"}, "sections": {"intro": "Body."}},
-        {"report_id": str(repo.report_id), "outline": [{"key": "intro"}], "brief": {"topic": "AI", "user_id": "   "}, "sections": {"intro": "Body."}},
+        {
+            "report_id": str(repo.report_id),
+            "outline": [{"key": "intro"}],
+            "brief": {"topic": "AI"},
+            "sections": {"intro": "Body."},
+        },
+        {
+            "report_id": str(repo.report_id),
+            "outline": [{"key": "intro"}],
+            "brief": {"topic": "AI", "user_id": "system"},
+            "sections": {"intro": "Body."},
+        },
+        {
+            "report_id": str(repo.report_id),
+            "outline": [{"key": "intro"}],
+            "brief": {"topic": "AI", "user_id": "   "},
+            "sections": {"intro": "Body."},
+        },
     ):
         assert resolve_notification_user_id(bad_state) is None
         await node(bad_state)

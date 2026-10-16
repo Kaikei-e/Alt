@@ -25,7 +25,9 @@ use anyhow::{Context, Result};
 use rustls::client::danger::HandshakeSignatureValid;
 use rustls::pki_types::{CertificateDer, UnixTime};
 use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
-use rustls::{DigitallySignedStruct, DistinguishedName, RootCertStore, ServerConfig, SignatureScheme};
+use rustls::{
+    DigitallySignedStruct, DistinguishedName, RootCertStore, ServerConfig, SignatureScheme,
+};
 use x509_parser::prelude::{FromDer, GeneralName, X509Certificate};
 
 /// Client-certificate verifier that delegates cryptographic chain validation to
@@ -46,13 +48,17 @@ impl AllowedNamesVerifier {
         }
     }
 
-    pub fn verify_peer_identity(&self, end_entity: &CertificateDer<'_>) -> std::result::Result<(), rustls::Error> {
+    pub fn verify_peer_identity(
+        &self,
+        end_entity: &CertificateDer<'_>,
+    ) -> std::result::Result<(), rustls::Error> {
         if self.allowed_peers.is_empty() {
             return Ok(());
         }
 
-        let (_, cert) = X509Certificate::from_der(end_entity.as_ref())
-            .map_err(|_| rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding))?;
+        let (_, cert) = X509Certificate::from_der(end_entity.as_ref()).map_err(|_| {
+            rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding)
+        })?;
 
         let cn_matches = cert
             .subject()
@@ -297,4 +303,3 @@ mod tests {
         assert!(verifier.verify_peer_identity(denied_cert.der()).is_err());
     }
 }
-

@@ -36,7 +36,9 @@ def render_clustering(window_seconds: int) -> None:
         f"{safe_float(latest.get('dbcv_score', 0.0)):.3f}",
         help="Density-Based Clustering Validation. Higher is better.",
     )
-    col2.metric("Silhouette Score", f"{safe_float(latest.get('silhouette_score', 0.0)):.3f}")
+    col2.metric(
+        "Silhouette Score", f"{safe_float(latest.get('silhouette_score', 0.0)):.3f}"
+    )
     col3.metric("Num Clusters", safe_int(latest.get("num_clusters", 0)))
     col4.metric(
         "Noise Ratio",
@@ -46,7 +48,11 @@ def render_clustering(window_seconds: int) -> None:
 
     # Cluster Size Distribution
     # Check if 'cluster_sizes' exists and is a list
-    if "cluster_sizes" in latest and isinstance(latest["cluster_sizes"], list) and latest["cluster_sizes"]:
+    if (
+        "cluster_sizes" in latest
+        and isinstance(latest["cluster_sizes"], list)
+        and latest["cluster_sizes"]
+    ):
         st.subheader("Cluster Size Distribution (Latest)")
         sizes = latest["cluster_sizes"]
 
@@ -56,16 +62,23 @@ def render_clustering(window_seconds: int) -> None:
             counts, bin_edges = np.histogram(sizes, bins="auto")
             # Create a dataframe for the bar chart
             # We want labels like "4-6", "6-8"
-            bin_labels = [f"{int(bin_edges[i])}-{int(bin_edges[i+1])}" for i in range(len(bin_edges) - 1)]
+            bin_labels = [
+                f"{int(bin_edges[i])}-{int(bin_edges[i + 1])}"
+                for i in range(len(bin_edges) - 1)
+            ]
             hist_df = pd.DataFrame({"Count": counts}, index=bin_labels)
             st.bar_chart(hist_df)
 
-            st.caption(f"Min Size: {min(sizes)}, Max Size: {max(sizes)}, Median: {np.median(sizes)}")
+            st.caption(
+                f"Min Size: {min(sizes)}, Max Size: {max(sizes)}, Median: {np.median(sizes)}"
+            )
         except (ValueError, TypeError):
             st.error("Error plotting cluster sizes.")
             st.write(sizes)
     elif "cluster_sizes" not in latest:
-        st.warning("Cluster size data ('cluster_sizes') is missing from logs. Update backend to log this list.")
+        st.warning(
+            "Cluster size data ('cluster_sizes') is missing from logs. Update backend to log this list."
+        )
 
     # Outlier Analysis over time
     st.subheader("Noise Ratio Trend")

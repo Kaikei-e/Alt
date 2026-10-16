@@ -579,7 +579,6 @@ fn resolve_and_validate_dataset_path(request: &EvaluateRequest) -> anyhow::Resul
     }
 }
 
-
 /// 言語別評価結果
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct LanguageSpecificMetrics {
@@ -1272,4 +1271,3 @@ mod tests {
         assert!(!rendered.contains("Content preview"));
     }
 }
-

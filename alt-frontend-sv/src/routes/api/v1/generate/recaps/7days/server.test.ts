@@ -125,4 +125,3 @@ describe("POST /api/v1/generate/recaps/7days — Auth & CSRF", () => {
 		expect(fetch).toHaveBeenCalledTimes(1);
 	});
 });
-

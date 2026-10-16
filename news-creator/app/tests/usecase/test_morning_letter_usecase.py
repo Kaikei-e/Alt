@@ -466,4 +466,7 @@ def test_prompt_logs_warning_when_injection_tokens_or_delimiters_stripped(caplog
     usecase._build_prompt(_forged_request(), is_degraded=False)
 
     messages = [r.getMessage() for r in caplog.records if r.levelno == _logging.WARNING]
-    assert any("control token" in m.lower() or "forged delimiter" in m.lower() for m in messages)
+    assert any(
+        "control token" in m.lower() or "forged delimiter" in m.lower()
+        for m in messages
+    )

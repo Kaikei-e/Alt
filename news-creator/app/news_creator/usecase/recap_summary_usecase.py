@@ -1569,7 +1569,11 @@ class RecapSummaryUsecase:
             sanitized_highlights = []
             for highlight in request.genre_highlights:
                 hl_report = wrap_untrusted_content_with_report(highlight.text)
-                if hl_report.control_tokens_removed or hl_report.hidden_characters_removed or hl_report.delimiters_removed:
+                if (
+                    hl_report.control_tokens_removed
+                    or hl_report.hidden_characters_removed
+                    or hl_report.delimiters_removed
+                ):
                     logger.warning(
                         "Removed prompt injection artifacts from recap highlight input",
                         extra={
@@ -1593,7 +1597,11 @@ class RecapSummaryUsecase:
             render_kwargs["cluster_section"] = None  # Force use of highlights path
         else:
             cs_report = wrap_untrusted_content_with_report(cluster_section)
-            if cs_report.control_tokens_removed or cs_report.hidden_characters_removed or cs_report.delimiters_removed:
+            if (
+                cs_report.control_tokens_removed
+                or cs_report.hidden_characters_removed
+                or cs_report.delimiters_removed
+            ):
                 logger.warning(
                     "Removed prompt injection artifacts from recap cluster_section",
                     extra={

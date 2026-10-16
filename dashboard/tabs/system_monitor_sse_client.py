@@ -15,9 +15,7 @@ def _json_for_inline_script(value: str) -> str:
     """Serialize a string as JSON safe for embedding inside an HTML <script> block."""
     encoded = json.dumps(value)
     return (
-        encoded.replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-        .replace("&", "\\u0026")
+        encoded.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     )
 
 

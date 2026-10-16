@@ -208,4 +208,3 @@ fn create_test_entry(message: &str) -> EnrichedLogEntry {
         fields: std::collections::HashMap::new(),
     }
 }
-

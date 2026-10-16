@@ -81,16 +81,10 @@ class EvaluationService:
         # Validate any caller-supplied model/vectorizer/threshold paths against
         # ALLOWED_BASE_DIRS so arbitrary filesystem paths are rejected (CWE-22).
         raw_weights_path = weights_path or self.settings.genre_classifier_model_path
-        self.weights_path = (
-            str(validate_path(str(raw_weights_path))) if raw_weights_path else None
-        )
+        self.weights_path = str(validate_path(str(raw_weights_path))) if raw_weights_path else None
 
-        self.weights_ja = (
-            str(validate_path(str(weights_ja_path))) if weights_ja_path else None
-        )
-        self.weights_en = (
-            str(validate_path(str(weights_en_path))) if weights_en_path else None
-        )
+        self.weights_ja = str(validate_path(str(weights_ja_path))) if weights_ja_path else None
+        self.weights_en = str(validate_path(str(weights_en_path))) if weights_en_path else None
         self.vectorizer_ja = (
             str(validate_path(str(vectorizer_ja_path))) if vectorizer_ja_path else None
         )

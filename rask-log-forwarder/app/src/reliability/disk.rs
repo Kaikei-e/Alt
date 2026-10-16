@@ -74,11 +74,8 @@ impl DiskFallback {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(
-                &config.storage_path,
-                std::fs::Permissions::from_mode(0o700),
-            )
-            .await?;
+            fs::set_permissions(&config.storage_path, std::fs::Permissions::from_mode(0o700))
+                .await?;
         }
 
         // Calculate current disk usage

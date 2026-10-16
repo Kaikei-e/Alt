@@ -57,7 +57,9 @@ def client() -> TestClient:
 
 @pytest.fixture
 def fake_model() -> MagicMock:
-    return scoring_model({"a": 1.0, "b": 2.0, "c": 3.0, "low": 0.1, "mid": 0.5, "high": 0.9})
+    return scoring_model(
+        {"a": 1.0, "b": 2.0, "c": 3.0, "low": 0.1, "mid": 0.5, "high": 0.9}
+    )
 
 
 # --------------------------------------------------------------------------
@@ -77,7 +79,9 @@ def test_resolve_model_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rerank_server._resolve_model() == JAPANESE_MODEL
 
 
-@pytest.mark.parametrize("value", ["", "no-slash", "../../etc/passwd", "org/na me", "a/b/c"])
+@pytest.mark.parametrize(
+    "value", ["", "no-slash", "../../etc/passwd", "org/na me", "a/b/c"]
+)
 def test_resolve_model_rejects_malformed_repo_id(
     monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
@@ -113,7 +117,10 @@ def test_ruri_model_is_selectable_and_cached_separately(
     monkeypatch.delenv("RERANK_MODEL_DIR", raising=False)
     monkeypatch.delenv("RERANK_MODEL_CACHE_ROOT", raising=False)
 
-    assert rerank_server._resolve_model_dir(RURI_MODEL) == "/models/ruri-v3-reranker-310m-onnx"
+    assert (
+        rerank_server._resolve_model_dir(RURI_MODEL)
+        == "/models/ruri-v3-reranker-310m-onnx"
+    )
 
 
 def test_ruri_model_is_accepted_end_to_end(
@@ -137,19 +144,24 @@ def test_resolve_model_dir_derives_the_default_cache_path(
     monkeypatch.delenv("RERANK_MODEL_DIR", raising=False)
     monkeypatch.delenv("RERANK_MODEL_CACHE_ROOT", raising=False)
 
-    assert rerank_server._resolve_model_dir(DEFAULT_MODEL) == "/models/ruri-v3-reranker-310m-onnx"
+    assert (
+        rerank_server._resolve_model_dir(DEFAULT_MODEL)
+        == "/models/ruri-v3-reranker-310m-onnx"
+    )
 
 
 def test_resolve_model_dir_differs_per_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RERANK_MODEL_DIR", raising=False)
     monkeypatch.delenv("RERANK_MODEL_CACHE_ROOT", raising=False)
 
-    assert rerank_server._resolve_model_dir(JAPANESE_MODEL) != rerank_server._resolve_model_dir(
-        DEFAULT_MODEL
-    )
+    assert rerank_server._resolve_model_dir(
+        JAPANESE_MODEL
+    ) != rerank_server._resolve_model_dir(DEFAULT_MODEL)
 
 
-def test_resolve_model_dir_honours_explicit_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_model_dir_honours_explicit_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("RERANK_MODEL_DIR", "/elsewhere/model")
 
     assert rerank_server._resolve_model_dir(JAPANESE_MODEL) == "/elsewhere/model"
@@ -226,7 +238,9 @@ def test_rerank_returns_results_sorted_by_score_desc(
 ) -> None:
     app.state.model = fake_model
 
-    resp = client.post("/v1/rerank", json={"query": "q", "candidates": ["low", "mid", "high"]})
+    resp = client.post(
+        "/v1/rerank", json={"query": "q", "candidates": ["low", "mid", "high"]}
+    )
 
     assert resp.status_code == 200
     body = resp.json()
@@ -260,7 +274,9 @@ def test_rerank_empty_candidates_returns_empty_results(
     fake_model.predict.assert_not_called()
 
 
-def test_rerank_rejects_too_many_candidates(client: TestClient, fake_model: MagicMock) -> None:
+def test_rerank_rejects_too_many_candidates(
+    client: TestClient, fake_model: MagicMock
+) -> None:
     app.state.model = fake_model
 
     resp = client.post(
@@ -323,7 +339,9 @@ def test_health_returns_503_while_model_not_loaded(client: TestClient) -> None:
     assert resp.json()["status"] == "loading"
 
 
-def test_health_returns_200_when_model_loaded(client: TestClient, fake_model: MagicMock) -> None:
+def test_health_returns_200_when_model_loaded(
+    client: TestClient, fake_model: MagicMock
+) -> None:
     app.state.model = fake_model
 
     resp = client.get("/health")
@@ -356,7 +374,13 @@ def test_predict_sync_maps_scores_back_to_original_indices(
     monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "torch")
     monkeypatch.setattr(rerank_server, "RERANK_CHUNK_SIZE", 2)
     # Deliberately unsorted lengths so the internal reordering is non-trivial.
-    candidates = ["short", "the longest candidate here", "mid length", "x", "medium size!"]
+    candidates = [
+        "short",
+        "the longest candidate here",
+        "mid length",
+        "x",
+        "medium size!",
+    ]
     expected = {c: float(i) for i, c in enumerate(candidates)}
     model = scoring_model(expected)
     pairs = [("q", c) for c in candidates]
@@ -382,7 +406,9 @@ def test_predict_sync_scores_the_longest_candidates_first(
     assert [c for _, c in first_chunk] == ["xxxxxx", "xxxx"]
 
 
-def test_predict_sync_passes_batch_size_on_onnx_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_predict_sync_passes_batch_size_on_onnx_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "onnx")
     monkeypatch.setattr(rerank_server, "RERANK_BATCH_SIZE", 4)
     monkeypatch.setattr(rerank_server, "RERANK_CHUNK_SIZE", 4)
@@ -394,7 +420,9 @@ def test_predict_sync_passes_batch_size_on_onnx_backend(monkeypatch: pytest.Monk
     model.predict.assert_called_once_with(pairs, batch_size=4)
 
 
-def test_predict_sync_omits_batch_size_on_torch_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_predict_sync_omits_batch_size_on_torch_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "torch")
     monkeypatch.setattr(rerank_server, "RERANK_CHUNK_SIZE", 4)
     model = scoring_model({"a": 1.0, "b": 2.0})
@@ -503,7 +531,10 @@ def test_default_max_candidates_admits_the_client_side_cap() -> None:
     ],
 )
 def test_default_max_candidates_is_derived_from_timeout_and_budget(
-    monkeypatch: pytest.MonkeyPatch, timeout_seconds: float, budget_ms: float, expected: int
+    monkeypatch: pytest.MonkeyPatch,
+    timeout_seconds: float,
+    budget_ms: float,
+    expected: int,
 ) -> None:
     monkeypatch.setattr(rerank_server, "SERVER_TIMEOUT_SECONDS", timeout_seconds)
     monkeypatch.setattr(rerank_server, "CANDIDATE_BUDGET_MS", budget_ms)
@@ -511,7 +542,9 @@ def test_default_max_candidates_is_derived_from_timeout_and_budget(
     assert rerank_server._default_max_candidates() == expected
 
 
-def test_rerank_timeout_returns_504(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rerank_timeout_returns_504(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def slow_predict(pairs: list[tuple[str, str]]) -> list[float]:
         time.sleep(0.3)
         return [0.0] * len(pairs)
@@ -621,7 +654,10 @@ def test_load_onnx_model_skips_export_when_quantized_file_present(
     cross_encoder_mock.assert_called_once()
     _, call_kwargs = cross_encoder_mock.call_args
     assert call_kwargs["backend"] == "onnx"
-    assert call_kwargs["model_kwargs"]["file_name"] == rerank_server.ONNX_QUANTIZED_FILE_NAME
+    assert (
+        call_kwargs["model_kwargs"]["file_name"]
+        == rerank_server.ONNX_QUANTIZED_FILE_NAME
+    )
 
 
 def test_load_onnx_model_exports_when_quantized_file_missing(
@@ -736,7 +772,9 @@ def test_load_model_sets_app_state_on_success(monkeypatch: pytest.MonkeyPatch) -
     assert fake_app.state.model is model
 
 
-def test_load_model_leaves_state_none_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_model_leaves_state_none_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "torch")
 
     def _boom() -> MagicMock:

@@ -187,4 +187,3 @@ class TestExtractTagsEndpoint:
         assert result == " "
         assert elapsed < 0.2
         assert _CODE_BLOCK_PATTERN.pattern == r"<(pre|code)\b[^>]*>.*?(?:</\1\s*>|$)"
-

@@ -146,6 +146,7 @@ def sanitize_evidence_excerpt(text: str, *, max_chars: int = 600) -> str:
         cleaned = cleaned[:max_chars] + "…"
     return cleaned
 
+
 _XML_DELIMITER_TAG_RE = re.compile(
     r"<\s*/?\s*(?:document|evidence|article|" + "|".join(_STRUCTURAL_TAGS) + r")\s*/?\s*>",
     re.IGNORECASE,

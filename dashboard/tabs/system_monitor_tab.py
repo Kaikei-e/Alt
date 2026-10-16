@@ -58,7 +58,8 @@ def render_system_monitor(window_seconds: int | None = None) -> None:
         max_reconnect_attempts=5,
     )
 
-    html_code = """
+    html_code = (
+        """
     <div id="monitor-container" style="font-family: sans-serif;">
         <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
             <div style="flex: 1; min-width: 250px; background: #262730; padding: 15px; border-radius: 5px; color: white;">
@@ -111,8 +112,11 @@ def render_system_monitor(window_seconds: int | None = None) -> None:
     </div>
 
     <script>
-""" + sse_client_js + """
+"""
+        + sse_client_js
+        + """
     </script>
     """
+    )
 
     components.html(html_code, height=800, scrolling=True)

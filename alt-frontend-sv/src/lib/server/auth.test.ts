@@ -172,4 +172,3 @@ describe("issueCsrfCookie", () => {
 		expect(verifyCsrfToken(cookies, "round-trip-token")).toBe(true);
 	});
 });
-

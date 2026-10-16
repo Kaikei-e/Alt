@@ -66,4 +66,3 @@ describe("GET /api/auth/csrf", () => {
 		});
 	});
 });
-

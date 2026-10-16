@@ -18,7 +18,6 @@ use tower_http::decompression::RequestDecompressionLayer;
 /// legitimate batches are never rejected with 413 while preventing unbounded OOM.
 const MAX_REQUEST_BODY_BYTES: usize = 64 * 1024 * 1024; // 64 MiB
 
-
 /// Build the main HTTP router (health + legacy aggregate).
 ///
 /// Health endpoint is intentionally exempt from auth (D-02).
@@ -517,7 +516,6 @@ mod tests {
     fn max_request_body_bytes_is_64_mib() {
         assert_eq!(MAX_REQUEST_BODY_BYTES, 64 * 1024 * 1024);
     }
-
 
     // =========================================================================
     // Pre-existing functional tests — updated to pass auth

@@ -80,7 +80,9 @@ class TestExtractTokenParam:
 
 
 class TestLoadAuthTokenStartup:
-    def test_startup_failure_without_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_startup_failure_without_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When neither SSE_AUTH_TOKEN_FILE nor SSE_AUTH=disabled is set, startup exits non-zero."""
         monkeypatch.delenv("SSE_AUTH_TOKEN_FILE", raising=False)
         monkeypatch.delenv("SSE_AUTH_TOKEN", raising=False)
@@ -127,7 +129,10 @@ class TestLoadAuthTokenStartup:
         assert "sse_auth_disabled" in caplog.text
 
     def test_token_file_mode(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path, caplog: pytest.LogCaptureFixture
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         token_file = tmp_path / "valid_token.txt"
         token_file.write_text("valid-secret-token\n", encoding="utf-8")

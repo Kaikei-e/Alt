@@ -116,7 +116,6 @@ describe("POST /api/v1/generate/topic-cards", () => {
 		expect(fetch).not.toHaveBeenCalled();
 	});
 
-
 	it("forwards to recap-worker /v1/generate/topic-cards on happy path", async () => {
 		const res = await POST(makeEvent({}, { csrfHeader: "expected-token" }));
 

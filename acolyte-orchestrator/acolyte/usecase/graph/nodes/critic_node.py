@@ -689,8 +689,7 @@ class CriticNode:
         else:
             # FM1 + FM7: LLM-based relevancy and grounding check
             sections_text = "\n\n".join(
-                f"## {neutralize_evidence_line(str(k))}\n{escape_xml_delimiters(str(v))}"
-                for k, v in sections.items()
+                f"## {neutralize_evidence_line(str(k))}\n{escape_xml_delimiters(str(v))}" for k, v in sections.items()
             )
             prompt = CRITIC_PROMPT.format(
                 topic=neutralize_evidence_line(str(topic)),

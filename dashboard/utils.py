@@ -123,7 +123,9 @@ def fetch_table_or_warn(
 
 
 # --- Data Fetching ---
-def fetch_metrics(metric_type: str, window_seconds: int, limit: int = 500) -> pd.DataFrame:
+def fetch_metrics(
+    metric_type: str, window_seconds: int, limit: int = 500
+) -> pd.DataFrame:
     """Fetch metrics filtered by a time window."""
     engine = get_engine()
     query = text(
@@ -141,7 +143,11 @@ def fetch_metrics(metric_type: str, window_seconds: int, limit: int = 500) -> pd
             df = pd.read_sql(
                 query,
                 conn,
-                params={"metric_type": metric_type, "limit": limit, **_interval_params(window_seconds)},
+                params={
+                    "metric_type": metric_type,
+                    "limit": limit,
+                    **_interval_params(window_seconds),
+                },
             )
     except SQLAlchemyError:
         logger.exception("Failed to fetch metrics for %s", metric_type)
@@ -189,7 +195,9 @@ def fetch_recent_activity(window_seconds: int, limit: int = 200) -> pd.DataFrame
     return df
 
 
-def filter_frame_by_window(df: pd.DataFrame, column: str, window_seconds: int) -> pd.DataFrame:
+def filter_frame_by_window(
+    df: pd.DataFrame, column: str, window_seconds: int
+) -> pd.DataFrame:
     """Fallback filter for data sources without SQL time filtering (e.g., sqlite logs)."""
     if df.empty or column not in df.columns:
         return df
