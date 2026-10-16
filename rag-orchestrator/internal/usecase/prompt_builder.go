@@ -247,7 +247,7 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 	if len(b.additionalInstructions) > 0 {
 		sb.WriteString("## 追加ルール\n")
 		for _, inst := range b.additionalInstructions {
-			sb.WriteString(fmt.Sprintf("- %s\n", inst))
+			fmt.Fprintf(sb, "- %s\n", inst)
 		}
 		sb.WriteString("\n")
 	}
@@ -435,9 +435,9 @@ func (b *XMLPromptBuilder) writeArticleContext(sb *strings.Builder, input Prompt
 	if input.ArticleContext != nil {
 		safeTitle := escapeContextTags(runeTruncate(input.ArticleContext.Title, retrievedTitleRuneLimit))
 		if input.ArticleContext.Truncated {
-			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の主要な部分です。この記事に基づいて質問に回答してください。\n\n", safeTitle))
+			fmt.Fprintf(sb, "## 記事コンテキスト\n以下は記事「%s」の主要な部分です。この記事に基づいて質問に回答してください。\n\n", safeTitle)
 		} else {
-			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の全内容です。この記事に基づいて質問に回答してください。\n\n", safeTitle))
+			fmt.Fprintf(sb, "## 記事コンテキスト\n以下は記事「%s」の全内容です。この記事に基づいて質問に回答してください。\n\n", safeTitle)
 		}
 	}
 }
@@ -477,6 +477,6 @@ func (b *XMLPromptBuilder) writeQuery(sb *strings.Builder, input PromptInput) {
 	sb.WriteString("### Query\n")
 	sb.WriteString(input.Query)
 	if input.Locale != "" {
-		sb.WriteString(fmt.Sprintf("\n(Language: %s)", input.Locale))
+		fmt.Fprintf(sb, "\n(Language: %s)", input.Locale)
 	}
 }

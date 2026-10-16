@@ -15,6 +15,7 @@ import pytest
 
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.usecase.graph.nodes.finalizer_node import FinalizerNode, resolve_notification_user_id
+from acolyte.usecase.graph.state import ReportGenerationState
 
 if TYPE_CHECKING:
     from acolyte.domain.brief import ReportBrief
@@ -180,7 +181,7 @@ async def test_finalizer_skips_notification_when_user_id_missing_or_system() -> 
     repo = FakeRepo(["intro"])
     node = FinalizerNode(repo, notification_publisher=FakePublisher())
 
-    for bad_state in (
+    bad_states: list[ReportGenerationState] = [
         {
             "report_id": str(repo.report_id),
             "outline": [{"key": "intro"}],
@@ -199,13 +200,14 @@ async def test_finalizer_skips_notification_when_user_id_missing_or_system() -> 
             "brief": {"topic": "AI", "user_id": "   "},
             "sections": {"intro": "Body."},
         },
-    ):
+    ]
+    for bad_state in bad_states:
         assert resolve_notification_user_id(bad_state) is None
         await node(bad_state)
 
     assert published == []
 
-    valid_state = {
+    valid_state: ReportGenerationState = {
         "report_id": str(repo.report_id),
         "outline": [{"key": "intro"}],
         "brief": {"topic": "AI", "user_id": "user-123"},
