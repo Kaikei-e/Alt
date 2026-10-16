@@ -43,6 +43,8 @@ func NewRateLimiter(r rate.Limit, burst int) *RateLimiter {
 	return rl
 }
 
+const maxTrackedIPs = 10000
+
 // getLimiter returns the rate limiter for the given IP, creating one if needed.
 func (rl *RateLimiter) getLimiter(ip string) *rate.Limiter {
 	rl.mu.Lock()
@@ -51,6 +53,26 @@ func (rl *RateLimiter) getLimiter(ip string) *rate.Limiter {
 	if l, exists := rl.limiters[ip]; exists {
 		l.lastSeen = time.Now()
 		return l.limiter
+	}
+
+	// Evict stale entries or oldest entry if map reaches capacity to prevent memory exhaustion.
+	if len(rl.limiters) >= maxTrackedIPs {
+		var oldestIP string
+		var oldestTime time.Time
+		now := time.Now()
+		for k, v := range rl.limiters {
+			if now.Sub(v.lastSeen) > 5*time.Minute {
+				delete(rl.limiters, k)
+				continue
+			}
+			if oldestIP == "" || v.lastSeen.Before(oldestTime) {
+				oldestIP = k
+				oldestTime = v.lastSeen
+			}
+		}
+		if len(rl.limiters) >= maxTrackedIPs && oldestIP != "" {
+			delete(rl.limiters, oldestIP)
+		}
 	}
 
 	limiter := rate.NewLimiter(rl.rate, rl.burst)
@@ -78,6 +100,9 @@ func (rl *RateLimiter) cleanupLoop() {
 func (rl *RateLimiter) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			if c.Echo() != nil && c.Echo().IPExtractor == nil {
+				c.Echo().IPExtractor = echo.ExtractIPDirect()
+			}
 			ip := c.RealIP()
 			limiter := rl.getLimiter(ip)
 

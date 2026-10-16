@@ -102,3 +102,29 @@ func TestRateLimiter_DifferentIPsGetSeparateLimits(t *testing.T) {
 	e.ServeHTTP(rec3, req3)
 	assert.Equal(t, http.StatusTooManyRequests, rec3.Code)
 }
+
+func TestRateLimiter_IgnoresSpoofedXForwardedFor(t *testing.T) {
+	rl := NewRateLimiter(rate.Limit(1), 1)
+
+	e := echo.New()
+	e.Use(rl.Middleware())
+	e.GET("/test", func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})
+
+	// First request from peer 172.18.0.5 with spoofed XFF: allowed
+	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req1.RemoteAddr = "172.18.0.5:43210"
+	req1.Header.Set("X-Forwarded-For", "203.0.113.1")
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+	assert.Equal(t, http.StatusOK, rec1.Code)
+
+	// Second request from same peer 172.18.0.5 rotating XFF: must be rate-limited (429)
+	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req2.RemoteAddr = "172.18.0.5:43210"
+	req2.Header.Set("X-Forwarded-For", "203.0.113.2")
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+	assert.Equal(t, http.StatusTooManyRequests, rec2.Code)
+}

@@ -155,10 +155,10 @@ func main() {
 	e.HideBanner = true
 	e.HidePort = true
 
-	// Only trust X-Forwarded-For from the internal nginx reverse proxy (private/
-	// link-local ranges); RateLimiter keys on c.RealIP(), so an untrusted XFF
-	// would let a client spoof its own rate-limit bucket.
-	e.IPExtractor = echo.ExtractIPFromXFFHeader()
+	// Extract client IP directly from the TCP peer (RemoteAddr); callers connect
+	// directly over internal TLS/mTLS on the Docker network, and trusting
+	// X-Forwarded-For from RFC 1918 ranges would let callers spoof rate-limit buckets.
+	e.IPExtractor = echo.ExtractIPDirect()
 
 	// Security middleware
 	e.Use(appmiddleware.SecurityHeaders())

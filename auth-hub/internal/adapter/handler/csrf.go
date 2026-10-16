@@ -31,41 +31,26 @@ type csrfResponse struct {
 func (h *CSRFHandler) Handle(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	rawCookie := c.Request().Header.Get("Cookie")
-	if rawCookie == "" {
+	cookie, err := c.Cookie("ory_kratos_session")
+	if err != nil || cookie == nil || strings.TrimSpace(cookie.Value) == "" {
 		slog.WarnContext(ctx, "csrf token request without session cookie")
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"error": "session cookie required",
 		})
 	}
 
-	sessionID := extractSessionID(rawCookie)
+	sessionID := strings.TrimSpace(cookie.Value)
+	canonicalCookie := "ory_kratos_session=" + sessionID
 
-	token, err := h.uc.Execute(ctx, rawCookie, sessionID)
+	token, err := h.uc.Execute(ctx, canonicalCookie, sessionID)
 	if err != nil {
 		return mapDomainError(err)
 	}
 
 	// Do not log Cookie-derived session material (even truncated) — clear-text logging.
-	slog.InfoContext(ctx, "csrf token generated", "session_present", sessionID != "")
+	slog.InfoContext(ctx, "csrf token generated", "session_present", true)
 
 	resp := csrfResponse{}
 	resp.Data.CSRFToken = token
 	return c.JSON(http.StatusOK, resp)
-}
-
-// extractSessionID extracts session ID from cookie string.
-func extractSessionID(cookie string) string {
-	prefix := "ory_kratos_session="
-	start := strings.Index(cookie, prefix)
-	if start == -1 {
-		return ""
-	}
-
-	start += len(prefix)
-	end := strings.Index(cookie[start:], ";")
-	if end == -1 {
-		return cookie[start:]
-	}
-	return cookie[start : start+end]
 }
