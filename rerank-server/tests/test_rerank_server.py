@@ -301,6 +301,19 @@ def test_rerank_rejects_candidate_exceeding_max_length(
     assert resp.status_code == 422
 
 
+def test_rerank_rejects_query_exceeding_max_length(
+    client: TestClient, fake_model: MagicMock
+) -> None:
+    app.state.model = fake_model
+
+    resp = client.post(
+        "/v1/rerank",
+        json={"query": "q" * 4097, "candidates": ["c1"]},
+    )
+
+    assert resp.status_code == 422
+
+
 def test_health_returns_503_while_model_not_loaded(client: TestClient) -> None:
     app.state.model = None
 

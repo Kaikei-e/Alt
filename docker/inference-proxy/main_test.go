@@ -56,7 +56,7 @@ func TestProxy_StripAuth_And_Forwarding(t *testing.T) {
 	}
 
 	// 2. Missing auth — upstream must not be hit.
-	resp, err = http.Get(proxyServer.URL + "/")
+	resp, err = http.Get(proxyServer.URL + "/api/tags")
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestProxy_StripAuth_And_Forwarding(t *testing.T) {
 	}
 
 	// 3. Bad auth — upstream must not be hit.
-	req, _ := http.NewRequest("GET", proxyServer.URL+"/", nil)
+	req, _ := http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer wrong-token")
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestProxy_StripAuth_And_Forwarding(t *testing.T) {
 	}
 
 	// 4. Valid auth — must hit upstream exactly once and strip Authorization header.
-	req, _ = http.NewRequest("GET", proxyServer.URL+"/", nil)
+	req, _ = http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -100,6 +100,87 @@ func TestProxy_StripAuth_And_Forwarding(t *testing.T) {
 	}
 	if h := atomic.LoadInt64(&upstreamHits); h != 1 {
 		t.Errorf("Valid-auth request must hit upstream exactly once, got %d hit(s)", h)
+	}
+}
+
+// TestProxy_AllowedAndDisallowedRoutes verifies that only explicit Ollama
+// inference/read endpoints are forwarded and administrative/mutation endpoints
+// (/api/pull, /api/create, /api/delete, /api/push, /api/copy, etc.) are rejected
+// with 403 Forbidden before hitting upstream.
+func TestProxy_AllowedAndDisallowedRoutes(t *testing.T) {
+	expectedToken := "test-secret-token"
+	var upstreamHits int64
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&upstreamHits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	targetURL, _ := url.Parse(upstream.URL)
+	handler := NewProxyHandler(targetURL, expectedToken, 5*time.Second, DefaultMaxRequestBodyBytes)
+	proxyServer := httptest.NewServer(handler)
+	defer proxyServer.Close()
+
+	allowed := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/api/generate"},
+		{http.MethodPost, "/api/chat"},
+		{http.MethodPost, "/api/embed"},
+		{http.MethodPost, "/api/embeddings"},
+		{http.MethodGet, "/api/tags"},
+		{http.MethodGet, "/api/ps"},
+	}
+
+	for _, tc := range allowed {
+		atomic.StoreInt64(&upstreamHits, 0)
+		req, _ := http.NewRequest(tc.method, proxyServer.URL+tc.path, bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("Authorization", "Bearer "+expectedToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s request failed: %v", tc.method, tc.path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Allowed route %s %s expected 200, got %d", tc.method, tc.path, resp.StatusCode)
+		}
+		if h := atomic.LoadInt64(&upstreamHits); h != 1 {
+			t.Errorf("Allowed route %s %s expected 1 upstream hit, got %d", tc.method, tc.path, h)
+		}
+	}
+
+	disallowed := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/api/pull"},
+		{http.MethodPost, "/api/create"},
+		{http.MethodDelete, "/api/delete"},
+		{http.MethodPost, "/api/delete"},
+		{http.MethodPost, "/api/push"},
+		{http.MethodPost, "/api/copy"},
+		{http.MethodGet, "/api/generate"},
+		{http.MethodPost, "/api/tags"},
+		{http.MethodGet, "/"},
+	}
+
+	for _, tc := range disallowed {
+		atomic.StoreInt64(&upstreamHits, 0)
+		req, _ := http.NewRequest(tc.method, proxyServer.URL+tc.path, bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("Authorization", "Bearer "+expectedToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s request failed: %v", tc.method, tc.path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("Disallowed route %s %s expected 403 Forbidden, got %d", tc.method, tc.path, resp.StatusCode)
+		}
+		if h := atomic.LoadInt64(&upstreamHits); h != 0 {
+			t.Errorf("Disallowed route %s %s must not hit upstream, got %d hit(s)", tc.method, tc.path, h)
+		}
 	}
 }
 
@@ -126,7 +207,7 @@ func TestProxy_BodyBound(t *testing.T) {
 
 	// Under limit — upstream must be reached exactly once.
 	smallBody := bytes.Repeat([]byte("a"), int(limit))
-	req, _ := http.NewRequest("POST", proxyServer.URL+"/", bytes.NewReader(smallBody))
+	req, _ := http.NewRequest("POST", proxyServer.URL+"/api/generate", bytes.NewReader(smallBody))
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -143,7 +224,7 @@ func TestProxy_BodyBound(t *testing.T) {
 	// Over limit — upstream must receive zero bytes and zero hits.
 	atomic.StoreInt64(&upstreamHits, 0)
 	bigBody := bytes.Repeat([]byte("b"), int(limit)+1)
-	req, _ = http.NewRequest("POST", proxyServer.URL+"/", bytes.NewReader(bigBody))
+	req, _ = http.NewRequest("POST", proxyServer.URL+"/api/generate", bytes.NewReader(bigBody))
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -176,7 +257,7 @@ func TestProxy_UpstreamResponseHeaderTimeout_Over(t *testing.T) {
 	proxyServer := httptest.NewServer(handler)
 	defer proxyServer.Close()
 
-	req, _ := http.NewRequest("GET", proxyServer.URL+"/", nil)
+	req, _ := http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -205,7 +286,7 @@ func TestProxy_UpstreamResponseHeaderTimeout_Within(t *testing.T) {
 	proxyServer := httptest.NewServer(handler)
 	defer proxyServer.Close()
 
-	req, _ := http.NewRequest("GET", proxyServer.URL+"/", nil)
+	req, _ := http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -260,7 +341,7 @@ func TestProxy_SlowStream_NotKilledByWriteTimeout(t *testing.T) {
 	proxyServer := httptest.NewServer(handler)
 	defer proxyServer.Close()
 
-	req, _ := http.NewRequest("GET", proxyServer.URL+"/", nil)
+	req, _ := http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -305,7 +386,7 @@ func TestProxy_StreamCancel(t *testing.T) {
 	defer proxyServer.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	req, _ := http.NewRequestWithContext(ctx, "GET", proxyServer.URL+"/", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -369,7 +450,7 @@ func TestProxy_SlowUpload_ReadTimeout_ExpiresBeforeUpstream(t *testing.T) {
 	defer conn.Close()
 
 	// Send valid HTTP headers specifying a 1000-byte body
-	header := fmt.Sprintf("POST / HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Length: 1000\r\n\r\n",
+	header := fmt.Sprintf("POST /api/generate HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Length: 1000\r\n\r\n",
 		ln.Addr().String(), expectedToken)
 	if _, err := conn.Write([]byte(header)); err != nil {
 		t.Fatalf("Write header failed: %v", err)
@@ -446,7 +527,7 @@ func TestProxy_BodyReadError_Mocked(t *testing.T) {
 	handler := NewProxyHandler(targetURL, expectedToken, 5*time.Second, DefaultMaxRequestBodyBytes)
 
 	// Send request with an io.Reader that fails mid-read
-	req := httptest.NewRequest("POST", "/", &mockErrorReader{
+	req := httptest.NewRequest("POST", "/api/generate", &mockErrorReader{
 		data: []byte("partial data"),
 		err:  errors.New("simulated read failure"),
 	})
@@ -498,7 +579,7 @@ func TestProxy_TruncatedChunk_Rejection(t *testing.T) {
 	defer conn.Close()
 
 	// Send HTTP request with chunked transfer encoding, but truncate the chunk before finishing
-	header := fmt.Sprintf("POST / HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nTransfer-Encoding: chunked\r\n\r\n",
+	header := fmt.Sprintf("POST /api/generate HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nTransfer-Encoding: chunked\r\n\r\n",
 		ln.Addr().String(), expectedToken)
 	if _, err := conn.Write([]byte(header)); err != nil {
 		t.Fatalf("Write header failed: %v", err)

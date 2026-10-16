@@ -174,7 +174,7 @@ class PlanQueryUsecase:
         return PLAN_QUERY_PROMPT.format(
             current_date=current_date,
             context_section=context_section,
-            query=request.query,
+            query=sanitize_untrusted_content(request.query),
         )
 
     @staticmethod

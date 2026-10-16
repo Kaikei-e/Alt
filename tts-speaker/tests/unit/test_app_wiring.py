@@ -128,8 +128,8 @@ def test_peer_identity_strict_plaintext_health_behavior(
     mock_usecase: AsyncMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Plaintext GET /health on strict listener returns 401 because PeerIdentityMiddleware
-    does not exempt /health on plaintext callers (only on TLS callers via _TLS_ALLOWLIST_EXEMPT_PATH_PREFIXES).
+    """Plaintext GET /health on strict listener returns 200 because PeerIdentityMiddleware
+    exempts /health and /metrics on both TLS and plaintext listeners (PM-2026-056 / G7-06).
     """
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "off")
     app = create_app(usecase=mock_usecase)
@@ -141,8 +141,7 @@ def test_peer_identity_strict_plaintext_health_behavior(
 
     client = TestClient(app, raise_server_exceptions=False)
     resp = client.get("/health")
-    assert resp.status_code == 401
-    assert resp.text == "unauthenticated peer"
+    assert resp.status_code == 200
 
 
 def test_peer_identity_strict_with_allowed_peer_from_sidecar(

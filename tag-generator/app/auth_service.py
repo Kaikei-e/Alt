@@ -93,7 +93,7 @@ except ModuleNotFoundError:
         return decorator
 
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = structlog.get_logger(__name__)
 
@@ -591,8 +591,8 @@ def verify_service_token(request: Request) -> None:
 class ExtractTagsRequest(BaseModel):
     """Request model for text-based tag extraction."""
 
-    title: str
-    content: str
+    title: str = Field(..., max_length=1000)
+    content: str = Field(..., max_length=100_000)
 
 
 @app.post("/api/v1/extract-tags")

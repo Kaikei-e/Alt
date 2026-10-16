@@ -194,3 +194,44 @@ def test_llm_generate_response_with_optional_fields():
     assert response.prompt_eval_count is None
     assert response.eval_count is None
     assert response.total_duration is None
+
+
+def test_generate_request_keep_alive_string_validation():
+    """G7-05: GenerateRequest validates keep_alive duration strings."""
+    from news_creator.domain.models import GenerateRequest
+
+    for valid in ("5m", "30s", "1h", "0", "-1", 300, None):
+        req = GenerateRequest(prompt="hello", keep_alive=valid)
+        assert req.keep_alive == valid
+
+    for invalid in ("999999h; rm -rf /", "forever", "10d", "abc", "-5m"):
+        with pytest.raises(ValueError):
+            GenerateRequest(prompt="hello", keep_alive=invalid)
+
+
+def test_rerank_request_model_and_query_bounds():
+    """G7-02: RerankRequest bounds query length and restricts model to allowlist."""
+    from news_creator.domain.models import RerankRequest
+
+    req_default = RerankRequest(query="valid query", candidates=["c1"])
+    assert req_default.model is None
+
+    req_explicit = RerankRequest(
+        query="valid query",
+        candidates=["c1"],
+        model="BAAI/bge-reranker-v2-m3",
+    )
+    assert req_explicit.model == "BAAI/bge-reranker-v2-m3"
+
+    with pytest.raises(ValueError):
+        RerankRequest(
+            query="valid query",
+            candidates=["c1"],
+            model="attacker/malicious-hub-model",
+        )
+
+    with pytest.raises(ValueError):
+        RerankRequest(
+            query="q" * 4097,
+            candidates=["c1"],
+        )

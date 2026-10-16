@@ -65,6 +65,7 @@ class RerankUsecase:
 
     # Default model - multilingual, good balance of accuracy and speed
     DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
+    ALLOWED_MODELS = frozenset({DEFAULT_MODEL})
 
     def __init__(self, model_name: str | None = None):
         """Initialize rerank usecase.

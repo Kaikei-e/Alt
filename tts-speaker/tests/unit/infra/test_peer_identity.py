@@ -241,3 +241,21 @@ def test_remember_tls_peer_records_empty_cn() -> None:
     finally:
         forget_tls_peer(client)
         assert is_tls_peer(client) is False
+
+
+@pytest.mark.parametrize("path", ["/health", "/metrics"])
+@pytest.mark.parametrize("client_addr", [DIRECT, SIDECAR])
+def test_health_and_metrics_on_plaintext_port_exempt_when_strict_true(
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    client_addr: tuple[str, int],
+) -> None:
+    """G7-06 / PM-2026-056: Plaintext /health and /metrics probes must remain reachable when strict=True."""
+    monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "off")
+    app = Starlette(routes=[Route("/health", _echo_peer), Route("/metrics", _echo_peer)])
+    app.add_middleware(PeerIdentityMiddleware, allowed=["recap-worker"], strict=True)
+    with TestClient(app, client=client_addr) as http:
+        resp = http.get(path)
+        assert resp.status_code == 200
+        assert resp.json() == {"peer": None}
+

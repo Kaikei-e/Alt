@@ -212,7 +212,7 @@ class RerankRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, frozen=True)
 
-    query: str = Field(..., description="The query to rank candidates against")
+    query: str = Field(..., max_length=4096, description="The query to rank candidates against")
     candidates: list[str] = Field(..., description="List of candidate texts to rank")
     model: str | None = Field(
         None, description="Model name; must match the server's RERANK_MODEL when given"

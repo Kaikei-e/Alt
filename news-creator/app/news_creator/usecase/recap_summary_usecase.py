@@ -23,7 +23,7 @@ from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.output_guard import sanitize_output_markdown
 from news_creator.domain.prompt_boundary import (
     sanitize_untrusted_content,
-    wrap_untrusted_content,
+    wrap_untrusted_content_with_report,
 )
 from news_creator.domain.prompts import wrap_gemma_prompt
 from news_creator.domain.models import (
@@ -1566,15 +1566,45 @@ class RecapSummaryUsecase:
         }
 
         if request.genre_highlights:
-            render_kwargs["highlights"] = [
-                highlight.model_copy(
-                    update={"text": sanitize_untrusted_content(highlight.text)}
+            sanitized_highlights = []
+            for highlight in request.genre_highlights:
+                hl_report = wrap_untrusted_content_with_report(highlight.text)
+                if hl_report.control_tokens_removed or hl_report.hidden_characters_removed or hl_report.delimiters_removed:
+                    logger.warning(
+                        "Removed prompt injection artifacts from recap highlight input",
+                        extra={
+                            "job_id": str(request.job_id),
+                            "genre": request.genre,
+                            "tokens_removed": hl_report.control_tokens_removed,
+                            "hidden_characters_removed": hl_report.hidden_characters_removed,
+                            "delimiters_removed": hl_report.delimiters_removed,
+                        },
+                    )
+                cleaned_hl = re.sub(
+                    r"</?\s*article_content\s*>",
+                    "",
+                    sanitize_untrusted_content(highlight.text),
+                    flags=re.IGNORECASE,
+                ).strip()
+                sanitized_highlights.append(
+                    highlight.model_copy(update={"text": cleaned_hl})
                 )
-                for highlight in request.genre_highlights
-            ]
+            render_kwargs["highlights"] = sanitized_highlights
             render_kwargs["cluster_section"] = None  # Force use of highlights path
         else:
-            render_kwargs["cluster_section"] = wrap_untrusted_content(cluster_section)
+            cs_report = wrap_untrusted_content_with_report(cluster_section)
+            if cs_report.control_tokens_removed or cs_report.hidden_characters_removed or cs_report.delimiters_removed:
+                logger.warning(
+                    "Removed prompt injection artifacts from recap cluster_section",
+                    extra={
+                        "job_id": str(request.job_id),
+                        "genre": request.genre,
+                        "tokens_removed": cs_report.control_tokens_removed,
+                        "hidden_characters_removed": cs_report.hidden_characters_removed,
+                        "delimiters_removed": cs_report.delimiters_removed,
+                    },
+                )
+            render_kwargs["cluster_section"] = cs_report.text
             render_kwargs["highlights"] = None
 
         # Select template: 3days change-focused vs 7days deep-dive

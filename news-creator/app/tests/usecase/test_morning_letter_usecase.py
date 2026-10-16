@@ -453,3 +453,17 @@ def test_parse_content_guards_every_user_visible_field():
     assert section.title == "見出し"
     assert section.bullets == ["買収を発表 "]
     assert section.narrative == "背景は ここ"
+
+
+def test_prompt_logs_warning_when_injection_tokens_or_delimiters_stripped(caplog):
+    """G7-04: MorningLetterUsecase logs warning when control tokens or forged delimiters are stripped."""
+    import logging as _logging
+
+    usecase = MorningLetterUsecase(config=_make_config(), llm_provider=AsyncMock())
+    caplog.set_level(
+        _logging.WARNING, logger="news_creator.usecase.morning_letter_usecase"
+    )
+    usecase._build_prompt(_forged_request(), is_degraded=False)
+
+    messages = [r.getMessage() for r in caplog.records if r.levelno == _logging.WARNING]
+    assert any("control token" in m.lower() or "forged delimiter" in m.lower() for m in messages)
