@@ -155,7 +155,7 @@ func (c *BackendClient) ForwardRESTRequest(req *http.Request, token string) (*ht
 	return c.httpClient.Do(backendReq)
 }
 
-// copyRESTHeaders copies all headers except hop-by-hop headers.
+// copyRESTHeaders copies all headers except hop-by-hop and caller-spoofable auth/identity headers.
 func copyRESTHeaders(src, dst http.Header) {
 	hopByHop := map[string]bool{
 		"Connection":          true,
@@ -168,10 +168,14 @@ func copyRESTHeaders(src, dst http.Header) {
 		"Upgrade":             true,
 		"Host":                true,
 		"Cookie":              true,
+		"Authorization":       true,
 	}
 
 	for key, values := range src {
 		if hopByHop[http.CanonicalHeaderKey(key)] {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(key), "x-alt-") {
 			continue
 		}
 		for _, v := range values {

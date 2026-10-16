@@ -9,11 +9,15 @@ vi.mock("#lib/api.js", () => ({ getCSRFToken, issueCsrfCookie }));
 
 import { GET } from "./+server";
 
-function makeEvent(cookieHeader?: string) {
+function makeEvent(
+	cookieHeader?: string,
+	urlStr = "http://localhost/api/auth/csrf",
+) {
 	const headers = new Headers();
 	if (cookieHeader !== undefined) headers.set("cookie", cookieHeader);
 	return {
-		request: new Request("http://localhost/api/auth/csrf", { headers }),
+		request: new Request(urlStr, { headers }),
+		url: new URL(urlStr),
 		cookies: { get: vi.fn(), set: vi.fn(), delete: vi.fn() },
 	} as unknown as Parameters<typeof GET>[0];
 }
@@ -42,6 +46,24 @@ describe("GET /api/auth/csrf", () => {
 
 		expect(res.status).toBe(200);
 		expect(body).toEqual({ csrf_token: "tok-789" });
-		expect(issueCsrfCookie).toHaveBeenCalledWith(event.cookies, "tok-789");
+		expect(issueCsrfCookie).toHaveBeenCalledWith(event.cookies, "tok-789", {
+			secure: false,
+		});
+	});
+
+	it("sets secure: true when request URL uses https:", async () => {
+		getCSRFToken.mockResolvedValue("tok-https");
+
+		const event = makeEvent(
+			"ory_kratos_session=abc",
+			"https://alt.example.com/api/auth/csrf",
+		);
+		const res = await GET(event);
+
+		expect(res.status).toBe(200);
+		expect(issueCsrfCookie).toHaveBeenCalledWith(event.cookies, "tok-https", {
+			secure: true,
+		});
 	});
 });
+

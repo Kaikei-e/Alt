@@ -20,7 +20,11 @@ import { POST } from "./+server";
 
 function makeEvent(
 	body: unknown,
-	opts: { csrfHeader?: string; cookieCsrf?: string } = {},
+	opts: {
+		csrfHeader?: string;
+		cookieCsrf?: string;
+		locals?: Partial<App.Locals>;
+	} = {},
 ) {
 	const csrfHeader = opts.csrfHeader;
 	const cookieCsrf = "cookieCsrf" in opts ? opts.cookieCsrf : "expected-token";
@@ -35,6 +39,12 @@ function makeEvent(
 		}),
 		cookies: {
 			get: (name: string) => (name === "csrf_token" ? cookieCsrf : undefined),
+		},
+		locals: {
+			session: { id: "sess-1" } as unknown as App.Locals["session"],
+			user: { id: "user-1" } as unknown as App.Locals["user"],
+			backendToken: "backend-token",
+			...opts.locals,
 		},
 	} as unknown as Parameters<typeof POST>[0];
 }
@@ -51,6 +61,36 @@ describe("POST /api/v1/generate/topic-cards", () => {
 					new Response(JSON.stringify({ job_id: "cards-1" }), { status: 202 }),
 				),
 		);
+	});
+
+	it("rejects the request with 401 when locals.session is null", async () => {
+		const res = await POST(
+			makeEvent(
+				{},
+				{
+					csrfHeader: "expected-token",
+					locals: { session: null, backendToken: "backend-token" },
+				},
+			),
+		);
+
+		expect(res.status).toBe(401);
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it("rejects the request with 401 when locals.backendToken is null", async () => {
+		const res = await POST(
+			makeEvent(
+				{},
+				{
+					csrfHeader: "expected-token",
+					locals: { backendToken: null },
+				},
+			),
+		);
+
+		expect(res.status).toBe(401);
+		expect(fetch).not.toHaveBeenCalled();
 	});
 
 	it("rejects the request with 403 when no X-CSRF-Token header is present", async () => {
@@ -75,6 +115,7 @@ describe("POST /api/v1/generate/topic-cards", () => {
 		expect(res.status).toBe(403);
 		expect(fetch).not.toHaveBeenCalled();
 	});
+
 
 	it("forwards to recap-worker /v1/generate/topic-cards on happy path", async () => {
 		const res = await POST(makeEvent({}, { csrfHeader: "expected-token" }));

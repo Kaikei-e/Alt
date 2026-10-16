@@ -5,7 +5,11 @@ import { RECAP_WORKER_BASE_URL } from "$app/env/private";
 const RECAP_WORKER_URL = RECAP_WORKER_BASE_URL || "http://recap-worker:9005";
 const FETCH_TIMEOUT_MS = 10_000;
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, locals }) => {
+	if (!locals?.session || !locals?.backendToken) {
+		return Response.json({ error: "Unauthorized" }, { status: 401 });
+	}
+
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	// V-004: CSRF validation for state-changing operations
@@ -15,20 +19,22 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	}
 
 	try {
-		const token = await getBackendToken(cookieHeader).catch((e) => {
-			console.error("Error getting backend token:", e);
-			return null;
-		});
+		const token =
+			locals.backendToken ||
+			(await getBackendToken(cookieHeader).catch((e) => {
+				console.error("Error getting backend token:", e);
+				return null;
+			}));
+		if (!token) {
+			return Response.json({ error: "Unauthorized" }, { status: 401 });
+		}
 
 		const body = await request.json().catch(() => ({}));
 
 		const headers: HeadersInit = {
 			"Content-Type": "application/json",
+			"X-Alt-Backend-Token": token,
 		};
-
-		if (token) {
-			headers["X-Alt-Backend-Token"] = token;
-		}
 
 		const response = await fetch(
 			`${RECAP_WORKER_URL}/v1/generate/recaps/7days`,

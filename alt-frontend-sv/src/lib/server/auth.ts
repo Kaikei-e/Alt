@@ -49,9 +49,14 @@ export async function getCSRFToken(
  * token the client obtained earlier — validation must compare against the
  * value captured here instead of calling auth-hub a second time.
  */
-export function issueCsrfCookie(cookies: Cookies, token: string): void {
+export function issueCsrfCookie(
+	cookies: Cookies,
+	token: string,
+	options?: { secure?: boolean },
+): void {
 	cookies.set(CSRF_COOKIE_NAME, token, {
 		httpOnly: true,
+		secure: options?.secure ?? false,
 		sameSite: "strict",
 		path: "/",
 		maxAge: CSRF_COOKIE_MAX_AGE_S,
