@@ -12,23 +12,38 @@ import (
 )
 
 const feedsInWindowQuery = `
+WITH windowed AS (
+    SELECT
+        COUNT(*) OVER() AS total_count,
+        f.id,
+        f.title,
+        f.description,
+        f.website_url,
+        f.pub_date,
+        f.created_at,
+        f.updated_at,
+        f.feed_link_id,
+        f.og_image_url
+    FROM feeds f
+    WHERE f.created_at >= $1 AND f.created_at < $2
+    ORDER BY f.created_at DESC, f.id DESC
+    OFFSET $3
+    LIMIT $4
+)
 SELECT
-    COUNT(*) OVER() AS total_count,
-    f.id,
-    f.title,
-    f.description,
-    f.website_url,
-    f.pub_date,
-    f.created_at,
-    f.updated_at,
-    (SELECT a.id::text FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
-    f.feed_link_id,
-    f.og_image_url
-FROM feeds f
-WHERE f.created_at >= $1 AND f.created_at < $2
-ORDER BY f.created_at DESC, f.id DESC
-OFFSET $3
-LIMIT $4`
+    w.total_count,
+    w.id,
+    w.title,
+    w.description,
+    w.website_url,
+    w.pub_date,
+    w.created_at,
+    w.updated_at,
+    (SELECT a.id::text FROM articles a WHERE a.feed_id = w.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+    w.feed_link_id,
+    w.og_image_url
+FROM windowed w
+ORDER BY w.created_at DESC, w.id DESC`
 
 // FetchFeedsInWindow retrieves RSS feeds created within a time window with deterministic ordering.
 func (r *FeedRepository) FetchFeedsInWindow(ctx context.Context, query domain.FeedsInWindowQuery) (*domain.FeedsInWindowPage, error) {

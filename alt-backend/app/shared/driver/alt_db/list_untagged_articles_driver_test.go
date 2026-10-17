@@ -90,15 +90,12 @@ func TestListUntaggedArticles_KeysetPagination_NextPage(t *testing.T) {
 
 	repo := &InternalRepository{pool: mock}
 
-	mock.ExpectQuery("SELECT COUNT").
-		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(3)))
-
 	feedID := "feed-1"
 	t3 := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
 	rows := pgxmock.NewRows([]string{"id", "title", "content", "user_id", "feed_id", "created_at"}).
 		AddRow("art-3", "Title 3", "Content 3", "user-1", &feedID, t3)
 
-	// Next page: cursor args (lastCreatedAt, lastID, limit)
+	// Next page: skips SELECT COUNT(*) and uses cursor args (lastCreatedAt, lastID, limit)
 	cursorTime := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
 	mock.ExpectQuery("SELECT a.id").
 		WithArgs(cursorTime, "art-2", 2).
@@ -106,7 +103,7 @@ func TestListUntaggedArticles_KeysetPagination_NextPage(t *testing.T) {
 
 	articles, nextCreatedAt, nextID, count, err := repo.ListUntaggedArticles(context.Background(), &cursorTime, "art-2", 2)
 	require.NoError(t, err)
-	assert.Equal(t, int32(3), count)
+	assert.Equal(t, int32(0), count)
 	require.Len(t, articles, 1)
 	assert.Equal(t, "art-3", articles[0].ID)
 	assert.NotNil(t, nextCreatedAt)

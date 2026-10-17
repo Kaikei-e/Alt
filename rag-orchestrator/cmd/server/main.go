@@ -310,7 +310,9 @@ type HealthPinger interface {
 }
 
 // newHealthMux builds the ServeMux for the dedicated public health check port.
-// It exposes ONLY /healthz and /readyz, never business RPC routes.
+// It exposes ONLY /healthz, /readyz, and /metrics (DefaultGatherer), never
+// business RPC routes. :9010 terminates TLS when PEER_IDENTITY_MODE=mtls, so
+// Prometheus scrapes DefaultGatherer over this plaintext listener (:9012).
 func newHealthMux(pinger HealthPinger, log *slog.Logger) *http.ServeMux {
 	healthMux := http.NewServeMux()
 	healthMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -333,6 +335,7 @@ func newHealthMux(pinger HealthPinger, log *slog.Logger) *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ready"}`))
 	})
+	healthMux.Handle("/metrics", promhttp.Handler())
 	return healthMux
 }
 

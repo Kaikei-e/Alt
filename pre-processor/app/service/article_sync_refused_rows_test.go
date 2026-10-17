@@ -135,6 +135,16 @@ func TestSyncArticles_WatermarkStopsBelowTheOldestRefusedRow(t *testing.T) {
 
 		assert.Len(t, articleRepo.sinceValues, 1)
 
+		// Run 2 while feed is still unregistered: known2 (already accepted on
+		// run 1) must NOT be re-sent while the watermark is held below unknown.
+		assert.NoError(t, svc.SyncArticles(context.Background()))
+		assert.Equal(t, []string{
+			"https://example.com/known1",
+			"https://example.com/known2",
+		}, articleRepo.written, "already-accepted articles above the held watermark must not be re-upserted")
+
+		// Run 3 after the feed is registered: unknown is now written, without
+		// re-sending known2.
 		articleRepo.knownFeeds["https://example.com/unregistered-feed"] = true
 		assert.NoError(t, svc.SyncArticles(context.Background()))
 
@@ -144,8 +154,7 @@ func TestSyncArticles_WatermarkStopsBelowTheOldestRefusedRow(t *testing.T) {
 			"https://example.com/known1",
 			"https://example.com/known2",
 			"https://example.com/unknown",
-			"https://example.com/known2",
-		}, articleRepo.written, "run 2 must re-offer the refused row and everything scanned after it")
+		}, articleRepo.written, "once the refused feed is registered, only the previously refused row is written")
 	})
 }
 

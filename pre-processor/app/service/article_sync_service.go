@@ -50,14 +50,15 @@ type articleSyncService struct {
 	sanitizer       *utils.Sanitizer
 	logger          *slog.Logger
 
-	// mu guards userID, lastSyncedFetchedAt and lastBackfillFetchedAt, which
-	// are read and written by SyncArticles and BackfillEmptyFeeds — two
-	// independent JobRunner goroutines (article-sync, article-backfill)
-	// sharing this instance.
+	// mu guards userID, lastSyncedFetchedAt, acceptedWhileHeld and
+	// lastBackfillFetchedAt, which are read and written by SyncArticles and
+	// BackfillEmptyFeeds — two independent JobRunner goroutines (article-sync,
+	// article-backfill) sharing this instance.
 	mu                    sync.Mutex
-	userID                string    // Cached system UserID
-	lastSyncedFetchedAt   time.Time // Watermark for sync progress (advances once a batch is upserted)
-	lastBackfillFetchedAt time.Time // Cursor for backfill progress (advances with each batch)
+	userID                string               // Cached system UserID
+	lastSyncedFetchedAt   time.Time            // Watermark for sync progress (advances once a batch is upserted)
+	acceptedWhileHeld     map[string]time.Time // URL -> CreatedAt of articles already accepted above a held watermark
+	lastBackfillFetchedAt time.Time            // Cursor for backfill progress (advances with each batch)
 }
 
 // systemUserID returns the cached system UserID, fetching and caching it via
@@ -92,12 +93,46 @@ func (s *articleSyncService) syncCursor() time.Time {
 	return s.lastSyncedFetchedAt
 }
 
-// advanceSyncCursor moves the sync watermark forward, never backward.
+// advanceSyncCursor moves the sync watermark forward, never backward, and
+// evicts any acceptedWhileHeld entries that the watermark has now passed.
 func (s *articleSyncService) advanceSyncCursor(t time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if t.After(s.lastSyncedFetchedAt) {
 		s.lastSyncedFetchedAt = t
+	}
+	for url, createdAt := range s.acceptedWhileHeld {
+		if !createdAt.After(s.lastSyncedFetchedAt) {
+			delete(s.acceptedWhileHeld, url)
+		}
+	}
+}
+
+func (s *articleSyncService) isAcceptedWhileHeld(url string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.acceptedWhileHeld[url]
+	return ok
+}
+
+func (s *articleSyncService) recordAcceptedWhileHeld(valid, refused []*domain.Article, heldWatermark time.Time) {
+	refusedURLs := make(map[string]struct{}, len(refused))
+	for _, r := range refused {
+		refusedURLs[r.URL] = struct{}{}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.acceptedWhileHeld == nil {
+		s.acceptedWhileHeld = make(map[string]time.Time)
+	}
+	for _, a := range valid {
+		if _, wasRefused := refusedURLs[a.URL]; wasRefused {
+			continue
+		}
+		if a.CreatedAt.After(heldWatermark) {
+			s.acceptedWhileHeld[a.URL] = a.CreatedAt
+		}
 	}
 }
 
@@ -206,6 +241,12 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 			scannedThrough = article.CreatedAt
 		}
 
+		// Skip articles that were already accepted during an earlier run while
+		// the watermark was pinned below an older refused row.
+		if s.isAcceptedWhileHeld(article.URL) {
+			continue
+		}
+
 		// 1. Sanitize content (Zero-Trust)
 		sanitizedContent := s.sanitizer.SanitizeHTMLAndTrim(article.Content)
 
@@ -240,6 +281,11 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 			"refused", len(refused))
 
 		scannedThrough = s.holdWatermarkBelow(ctx, articles, refused, scannedThrough)
+		effectiveWatermark := scannedThrough
+		if cursor := s.syncCursor(); cursor.After(effectiveWatermark) {
+			effectiveWatermark = cursor
+		}
+		s.recordAcceptedWhileHeld(validArticles, refused, effectiveWatermark)
 	} else {
 		s.logger.InfoContext(ctx, "no valid articles to upsert after validation")
 	}

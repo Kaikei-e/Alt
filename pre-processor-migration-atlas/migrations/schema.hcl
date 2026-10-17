@@ -365,11 +365,24 @@ table "summarize_job_queue" {
     columns = [column.status]
     where   = "((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('running'::character varying)::text]))"
   }
-  index "idx_summarize_job_queue_job_id" {
-    columns = [column.job_id]
-  }
   index "idx_summarize_job_queue_article_id" {
     columns = [column.article_id]
+  }
+  index "idx_summarize_job_queue_article_status_time" {
+    on {
+      column = column.article_id
+    }
+    on {
+      column = column.status
+    }
+    on {
+      desc   = true
+      column = column.completed_at
+    }
+    on {
+      desc   = true
+      column = column.created_at
+    }
   }
   unique "summarize_job_queue_job_id_key" {
     columns = [column.job_id]

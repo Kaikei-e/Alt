@@ -24,21 +24,35 @@ func (r *InternalRepository) ListUnsummarizedArticles(ctx context.Context, lastC
 
 	if lastCreatedAt == nil || lastCreatedAt.IsZero() {
 		query = `
+			WITH page_ids AS (
+				SELECT a.id, a.created_at
+				FROM articles a
+				WHERE NOT EXISTS (SELECT 1 FROM article_summaries s WHERE s.article_id = a.id)
+				  AND a.deleted_at IS NULL
+				ORDER BY a.created_at DESC, a.id DESC
+				LIMIT $1
+			)
 			SELECT a.id, a.title, a.content, a.url, a.created_at, a.user_id
-			FROM articles a
-			WHERE NOT EXISTS (SELECT 1 FROM article_summaries s WHERE s.article_id = a.id)
-			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $1
+			FROM page_ids p
+			JOIN articles a ON a.id = p.id
+			ORDER BY p.created_at DESC, p.id DESC
 		`
 		args = []any{limit}
 	} else {
 		query = `
+			WITH page_ids AS (
+				SELECT a.id, a.created_at
+				FROM articles a
+				WHERE NOT EXISTS (SELECT 1 FROM article_summaries s WHERE s.article_id = a.id)
+				  AND a.deleted_at IS NULL
+				  AND (a.created_at, a.id) < ($1, $2)
+				ORDER BY a.created_at DESC, a.id DESC
+				LIMIT $3
+			)
 			SELECT a.id, a.title, a.content, a.url, a.created_at, a.user_id
-			FROM articles a
-			WHERE NOT EXISTS (SELECT 1 FROM article_summaries s WHERE s.article_id = a.id)
-			  AND (a.created_at, a.id) < ($1, $2)
-			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $3
+			FROM page_ids p
+			JOIN articles a ON a.id = p.id
+			ORDER BY p.created_at DESC, p.id DESC
 		`
 		args = []any{*lastCreatedAt, lastID, limit}
 	}
@@ -77,6 +91,7 @@ func (r *InternalRepository) HasUnsummarizedArticles(ctx context.Context) (bool,
 			SELECT 1
 			FROM articles a
 			WHERE NOT EXISTS (SELECT 1 FROM article_summaries s WHERE s.article_id = a.id)
+			  AND a.deleted_at IS NULL
 		)
 	`
 	var exists bool
