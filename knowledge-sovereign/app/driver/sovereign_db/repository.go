@@ -3,8 +3,6 @@ package sovereign_db
 import (
 	"context"
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -34,11 +32,6 @@ type rowScanner interface {
 // Repository provides database operations for Knowledge Sovereign.
 type Repository struct {
 	pool PgxIface
-
-	seqTimeMu   sync.RWMutex
-	seqTimes    map[int64]time.Time
-	maxKnownSeq int64
-	maxKnownAt  time.Time
 }
 
 // NewRepository creates a new sovereign DB repository.

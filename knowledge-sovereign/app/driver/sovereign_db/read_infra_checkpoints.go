@@ -88,7 +88,6 @@ func (r *Repository) ReadProjectionCheckpointForAdvance(ctx context.Context, pro
 		}
 		return ProjectionCheckpoint{}, fmt.Errorf("ReadProjectionCheckpointForAdvance %q: %w", projectorName, err)
 	}
-	r.recordCheckpointSeqTimeIfCold(cp.LastEventSeq, cp.UpdatedAt)
 	return cp, nil
 }
 
@@ -174,16 +173,14 @@ func (r *Repository) AdvanceProjectionCheckpointIfUnchanged(
 // shared_buffers pages on every sample.
 const projectionLagQuery = `
 WITH frontier AS (
-	SELECT COALESCE(MIN(COALESCE(c.last_event_seq, 0)), 0) AS seq,
-	       MIN(c.updated_at) AS min_updated_at
+	SELECT COALESCE(MIN(COALESCE(c.last_event_seq, 0)), 0) AS seq
 	FROM unnest($1::text[]) AS p(projector_name)
 	LEFT JOIN knowledge_projection_checkpoints c USING (projector_name)
 )
 SELECT COALESCE((
 	SELECT GREATEST(EXTRACT(EPOCH FROM (now() - ke.occurred_at)), 0)
-	FROM knowledge_events ke, frontier f
-	WHERE ke.event_seq > f.seq
-	  AND (f.seq = 0 OR f.min_updated_at IS NULL OR ke.occurred_at >= f.min_updated_at - INTERVAL '7 days')
+	FROM knowledge_events ke
+	WHERE ke.event_seq > (SELECT seq FROM frontier)
 	ORDER BY ke.event_seq
 	LIMIT 1
 ), 0)::float8`

@@ -109,6 +109,6 @@ func TestGetProjectionLag_CaughtUpProjectionIsZeroNotNull(t *testing.T) {
 		"the no-unprojected-event case must resolve to 0, not NULL, or a healthy projection breaks the scan")
 	assert.Contains(t, sql, "GREATEST",
 		"a future-dated event must not report negative lag; alt-backend reads negatives as its unavailable sentinel")
-	assert.Contains(t, sql, "ke.occurred_at >= f.min_updated_at - INTERVAL '7 days'",
-		"GetProjectionLag must bound ke.occurred_at relative to checkpoint updated_at so PostgreSQL prunes old partitions")
+	assert.NotContains(t, sql, "INTERVAL '7 days'",
+		"GetProjectionLag must count backfilled/replayed unprojected events regardless of occurred_at age")
 }

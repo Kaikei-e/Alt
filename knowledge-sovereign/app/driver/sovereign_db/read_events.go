@@ -100,73 +100,6 @@ func (r *Repository) ReadSequenceGapFrontier(ctx context.Context, firstSeq, last
 	return f, nil
 }
 
-// eventSeqPartitionMargin is subtracted from a known event's occurred_at when
-// deriving the lower bound for subsequent `event_seq > afterSeq` queries. A
-// 24-hour margin absorbs out-of-order transaction commits and producer clock
-// skew while allowing PostgreSQL to prune historical monthly partitions.
-const eventSeqPartitionMargin = 24 * time.Hour
-
-const maxCachedEventSeqTimes = 4096
-
-func (r *Repository) recordEventSeqTime(seq int64, occurredAt time.Time) {
-	if seq <= 0 || occurredAt.IsZero() {
-		return
-	}
-	r.seqTimeMu.Lock()
-	defer r.seqTimeMu.Unlock()
-	if r.seqTimes == nil {
-		r.seqTimes = make(map[int64]time.Time, 256)
-	}
-	if len(r.seqTimes) >= maxCachedEventSeqTimes {
-		cutoffSeq := seq - int64(maxCachedEventSeqTimes/2)
-		for k := range r.seqTimes {
-			if k < cutoffSeq {
-				delete(r.seqTimes, k)
-			}
-		}
-		if len(r.seqTimes) >= maxCachedEventSeqTimes {
-			clear(r.seqTimes)
-		}
-	}
-	r.seqTimes[seq] = occurredAt
-	if seq >= r.maxKnownSeq {
-		r.maxKnownSeq = seq
-		r.maxKnownAt = occurredAt
-	}
-}
-
-func (r *Repository) recordCheckpointSeqTimeIfCold(seq int64, updatedAt time.Time) {
-	if seq <= 0 || updatedAt.IsZero() {
-		return
-	}
-	r.seqTimeMu.Lock()
-	defer r.seqTimeMu.Unlock()
-	if r.maxKnownSeq > 0 {
-		return
-	}
-	if r.seqTimes == nil {
-		r.seqTimes = make(map[int64]time.Time, 16)
-	}
-	if _, exists := r.seqTimes[seq]; !exists {
-		r.seqTimes[seq] = updatedAt
-	}
-}
-
-func (r *Repository) lookupOccurredAtFloor(afterSeq int64) (time.Time, bool) {
-	if afterSeq <= 0 {
-		return time.Time{}, false
-	}
-	r.seqTimeMu.RLock()
-	defer r.seqTimeMu.RUnlock()
-	if t, ok := r.seqTimes[afterSeq]; ok {
-		return t.Add(-eventSeqPartitionMargin), true
-	}
-	if r.maxKnownSeq > 0 && afterSeq >= r.maxKnownSeq {
-		return r.maxKnownAt.Add(-eventSeqPartitionMargin), true
-	}
-	return time.Time{}, false
-}
-
 // ListKnowledgeEventsSince returns events after the given sequence number.
 //
 // event_seq is BIGSERIAL: the value is taken when a transaction inserts, not
@@ -176,32 +109,13 @@ func (r *Repository) lookupOccurredAtFloor(afterSeq int64) (time.Time, bool) {
 // see usecase/projection_gap.
 func (r *Repository) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]KnowledgeEvent, error) {
 	limit = clampReadLimit(limit, defaultReadLimit)
-	var (
-		events []KnowledgeEvent
-		err    error
-	)
-	if floor, ok := r.lookupOccurredAtFloor(afterSeq); ok {
-		query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
-			actor_type, actor_id, event_type, aggregate_type, aggregate_id,
-			correlation_id, causation_id, dedupe_key, payload
-			FROM knowledge_events WHERE event_seq > $1 AND occurred_at >= $2
-			ORDER BY event_seq ASC LIMIT $3`
-		events, err = r.scanEvents(ctx, query, afterSeq, floor, limit)
-	} else {
-		query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
-			actor_type, actor_id, event_type, aggregate_type, aggregate_id,
-			correlation_id, causation_id, dedupe_key, payload
-			FROM knowledge_events WHERE event_seq > $1
-			ORDER BY event_seq ASC LIMIT $2`
-		events, err = r.scanEvents(ctx, query, afterSeq, limit)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if afterSeq > 0 && len(events) > 0 {
-		r.recordEventSeqTime(afterSeq, events[0].OccurredAt)
-	}
-	return events, nil
+	query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
+		actor_type, actor_id, event_type, aggregate_type, aggregate_id,
+		correlation_id, causation_id, dedupe_key, payload
+		FROM knowledge_events WHERE event_seq > $1
+		ORDER BY event_seq ASC LIMIT $2`
+
+	return r.scanEvents(ctx, query, afterSeq, limit)
 }
 
 // ListKnowledgeEventsSinceForUser returns events scoped to a tenant and user
@@ -210,35 +124,14 @@ func (r *Repository) ListKnowledgeEventsSince(ctx context.Context, afterSeq int6
 // (e.g., ArticleCreated) that all users in the tenant should observe.
 func (r *Repository) ListKnowledgeEventsSinceForUser(ctx context.Context, tenantID, userID uuid.UUID, afterSeq int64, limit int) ([]KnowledgeEvent, error) {
 	limit = clampReadLimit(limit, defaultReadLimit)
-	var (
-		events []KnowledgeEvent
-		err    error
-	)
-	if floor, ok := r.lookupOccurredAtFloor(afterSeq); ok {
-		query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
-			actor_type, actor_id, event_type, aggregate_type, aggregate_id,
-			correlation_id, causation_id, dedupe_key, payload
-			FROM knowledge_events
-			WHERE event_seq > $1 AND tenant_id = $2 AND (user_id = $3 OR user_id IS NULL)
-			  AND occurred_at >= $4
-			ORDER BY event_seq ASC LIMIT $5`
-		events, err = r.scanEvents(ctx, query, afterSeq, tenantID, userID, floor, limit)
-	} else {
-		query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
-			actor_type, actor_id, event_type, aggregate_type, aggregate_id,
-			correlation_id, causation_id, dedupe_key, payload
-			FROM knowledge_events
-			WHERE event_seq > $1 AND tenant_id = $2 AND (user_id = $3 OR user_id IS NULL)
-			ORDER BY event_seq ASC LIMIT $4`
-		events, err = r.scanEvents(ctx, query, afterSeq, tenantID, userID, limit)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if afterSeq > 0 && len(events) > 0 {
-		r.recordEventSeqTime(afterSeq, events[0].OccurredAt)
-	}
-	return events, nil
+	query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
+		actor_type, actor_id, event_type, aggregate_type, aggregate_id,
+		correlation_id, causation_id, dedupe_key, payload
+		FROM knowledge_events
+		WHERE event_seq > $1 AND tenant_id = $2 AND (user_id = $3 OR user_id IS NULL)
+		ORDER BY event_seq ASC LIMIT $4`
+
+	return r.scanEvents(ctx, query, afterSeq, tenantID, userID, limit)
 }
 
 // GetLatestKnowledgeEventSeqForUser returns the latest event sequence number
@@ -338,7 +231,6 @@ func (r *Repository) AppendKnowledgeEventIfNew(ctx context.Context, event Knowle
 	if err := tx.Commit(ctx); err != nil {
 		return 0, false, fmt.Errorf("AppendKnowledgeEvent commit: %w", err)
 	}
-	r.recordEventSeqTime(eventSeq, event.OccurredAt)
 	return eventSeq, true, nil
 }
 
@@ -428,7 +320,6 @@ func (r *Repository) scanEvents(ctx context.Context, query string, args ...inter
 			return nil, fmt.Errorf("scanEvents scan: %w", err)
 		}
 		events = append(events, e)
-		r.recordEventSeqTime(e.EventSeq, e.OccurredAt)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("scanEvents rows: %w", err)

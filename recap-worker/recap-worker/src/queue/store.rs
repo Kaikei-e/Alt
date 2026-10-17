@@ -74,6 +74,8 @@ impl QueueStore {
     /// 'running' row whose `started_at` lease has elapsed is picked exactly
     /// like a pending one, and the pick re-stamps `started_at` so the reclaim
     /// takes its own lease rather than staying due for every other worker.
+    /// Candidates are ordered purely by `created_at ASC` so retrying and
+    /// expired running rows are not starved behind newly arriving pending rows.
     /// There is no separate reclaim sweeper, and therefore none to forget to
     /// schedule at boot.
     /// Returns None if no job is available.
@@ -94,7 +96,7 @@ impl QueueStore {
                         status = 'running'
                         AND started_at < NOW() - make_interval(secs => $1::double precision)
                       )
-                ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at ASC
+                ORDER BY created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
@@ -590,6 +592,93 @@ mod tests {
             store.pick_next_job().await?.is_none(),
             "the fresh lease taken by the reclaim must hold like any other claim"
         );
+
+        cleanup(&pool, recap_job_id).await;
+        Ok(())
+    }
+
+    /// Older `retrying` and expired `running` rows must not be starved behind
+    /// newly arriving `pending` rows; `pick_next_job` orders strictly by
+    /// `created_at ASC`.
+    #[tokio::test]
+    async fn pick_next_job_does_not_starve_older_retrying_or_reclaimed_rows_behind_newer_pending_rows()
+    -> anyhow::Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&database_url)
+            .await?;
+        setup_classification_queue_table(&pool).await?;
+
+        let recap_job_id = Uuid::new_v4();
+        let store = QueueStore::new(pool.clone());
+
+        let expired_running_id = store
+            .enqueue(NewQueuedJob {
+                recap_job_id,
+                chunk_idx: 0,
+                texts: vec!["chunk-0".to_string()],
+                max_retries: 3,
+            })
+            .await?;
+        let retrying_id = store
+            .enqueue(NewQueuedJob {
+                recap_job_id,
+                chunk_idx: 1,
+                texts: vec!["chunk-1".to_string()],
+                max_retries: 3,
+            })
+            .await?;
+        let newer_pending_id = store
+            .enqueue(NewQueuedJob {
+                recap_job_id,
+                chunk_idx: 2,
+                texts: vec!["chunk-2".to_string()],
+                max_retries: 3,
+            })
+            .await?;
+
+        sqlx::query(
+            "UPDATE classification_job_queue
+             SET status = 'running',
+                 created_at = NOW() - INTERVAL '30 minutes',
+                 started_at = NOW() - INTERVAL '25 minutes'
+             WHERE id = $1",
+        )
+        .bind(expired_running_id)
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "UPDATE classification_job_queue
+             SET status = 'retrying',
+                 created_at = NOW() - INTERVAL '20 minutes',
+                 next_retry_at = NOW() - INTERVAL '1 minute'
+             WHERE id = $1",
+        )
+        .bind(retrying_id)
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "UPDATE classification_job_queue
+             SET status = 'pending',
+                 created_at = NOW() - INTERVAL '1 minute'
+             WHERE id = $1",
+        )
+        .bind(newer_pending_id)
+        .execute(&pool)
+        .await?;
+
+        let first = store.pick_next_job().await?.expect("first pick");
+        let second = store.pick_next_job().await?.expect("second pick");
+        let third = store.pick_next_job().await?.expect("third pick");
+
+        assert_eq!(first.id, expired_running_id);
+        assert_eq!(second.id, retrying_id);
+        assert_eq!(third.id, newer_pending_id);
 
         cleanup(&pool, recap_job_id).await;
         Ok(())

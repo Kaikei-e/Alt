@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS sli_metrics (
     Value Float64 CODEC(ZSTD(1)),
     Tags Map(LowCardinality(String), String) CODEC(ZSTD(1))
 )
-ENGINE = ReplacingMergeTree()
+ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
 ORDER BY (ServiceName, Metric, Timestamp)
 TTL Timestamp + INTERVAL 90 DAY DELETE

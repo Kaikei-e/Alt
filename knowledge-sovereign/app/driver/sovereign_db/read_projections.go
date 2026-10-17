@@ -129,14 +129,6 @@ func buildKnowledgeHomeKeysetClause(rankScoreSQL string, cursor *homeItemCursor,
 	return clause, args, startArgPos + 3
 }
 
-// homeCandidatePoolLimit bounds each index-ordered candidate branch (top by
-// stored score and top by published_at recency) before evaluating the dynamic
-// time-decayed rank_score sort. Because rank_score = score / (1 + age_days) is
-// monotonically increasing in score and decreasing in age, the true top-N by
-// rank_score is contained within the union of the highest-scored and most
-// recently published items, avoiding a full ~100k-tuple scan per request.
-const homeCandidatePoolLimit = 2000
-
 // buildKnowledgeHomeQuery builds the SELECT query and arguments for Knowledge Home items.
 func buildKnowledgeHomeQuery(userID uuid.UUID, cursor *homeItemCursor, filter *LensFilter, cutoff time.Time, fetchLimit int) (string, []interface{}) {
 	var query strings.Builder
@@ -151,36 +143,27 @@ func buildKnowledgeHomeQuery(userID uuid.UUID, cursor *homeItemCursor, filter *L
 	}
 	rankScoreSQL := homeItemRankScoreSQL(rankAsOfExpr)
 
-	filterSQL, filterArgs, nextArgPos := buildKnowledgeHomeFilterClauses(filter, cutoff, argPos)
-	if filterSQL != "" {
-		args = append(args, filterArgs...)
-		argPos = nextArgPos
-	}
-
-	baseWhere := `WHERE khi.user_id = $1
-		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
-		  AND khi.dismissed_at IS NULL
-		  AND COALESCE(khi.title, '') <> ''` + filterSQL
-
 	query.WriteString(`SELECT khi.user_id, khi.tenant_id, khi.item_key, khi.item_type, khi.primary_ref_id,
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
 		` + rankScoreSQL + ` AS rank_score, ` + rankAsOfExpr + ` AS rank_as_of,
 		khi.freshness_at, khi.published_at, khi.last_interacted_at, khi.generated_at, khi.updated_at,
 		khi.dismissed_at, khi.summary_state, COALESCE(khi.url, '') AS url,
 		khi.supersede_state, khi.superseded_at, khi.previous_ref_json, khi.projection_version
-		FROM (
-			(SELECT * FROM knowledge_home_items khi
-			 ` + baseWhere + fmt.Sprintf(`
-			 ORDER BY score DESC, published_at DESC LIMIT %d)
-			UNION
-			(SELECT * FROM knowledge_home_items khi
-			 `+baseWhere+`
-			 ORDER BY published_at DESC LIMIT %d)
-		) khi`, homeCandidatePoolLimit, homeCandidatePoolLimit))
+		FROM knowledge_home_items khi
+		WHERE khi.user_id = $1
+		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
+		  AND khi.dismissed_at IS NULL
+		  AND COALESCE(khi.title, '') <> ''`)
+
+	filterSQL, filterArgs, nextArgPos := buildKnowledgeHomeFilterClauses(filter, cutoff, argPos)
+	if filterSQL != "" {
+		query.WriteString(filterSQL)
+		args = append(args, filterArgs...)
+		argPos = nextArgPos
+	}
 
 	keysetSQL, keysetArgs, nextArgPos := buildKnowledgeHomeKeysetClause(rankScoreSQL, cursor, argPos)
 	if keysetSQL != "" {
-		query.WriteString(` WHERE TRUE`)
 		query.WriteString(keysetSQL)
 		args = append(args, keysetArgs...)
 		argPos = nextArgPos

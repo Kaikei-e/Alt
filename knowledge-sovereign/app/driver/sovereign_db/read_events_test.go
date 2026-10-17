@@ -148,7 +148,7 @@ func TestAppendKnowledgeEvent_DuplicateReturnsZero(t *testing.T) {
 	assert.Equal(t, int64(0), seq)
 }
 
-func TestListKnowledgeEventsSince_AppliesOccurredAtPartitionPruningWhenSeqKnown(t *testing.T) {
+func TestListKnowledgeEventsSince_DoesNotPruneByOccurredAt(t *testing.T) {
 	mock := &mockPgx{}
 	eventTime := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	mock.queryRowFunc = func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
@@ -173,12 +173,11 @@ func TestListKnowledgeEventsSince_AppliesOccurredAtPartitionPruningWhenSeqKnown(
 	require.Len(t, mock.queryCalls, 1)
 
 	call := mock.queryCalls[0]
-	assert.Contains(t, call.SQL, "occurred_at >= $2",
-		"known afterSeq must bind an occurred_at floor so PostgreSQL prunes old monthly partitions")
-	require.Len(t, call.Args, 3)
+	assert.NotContains(t, call.SQL, "occurred_at >=",
+		"event-sequence reads must not prune by occurred_at because business timestamps are not monotonic with event_seq")
+	require.Len(t, call.Args, 2)
 	assert.Equal(t, int64(42), call.Args[0])
-	assert.Equal(t, eventTime.Add(-eventSeqPartitionMargin), call.Args[1])
-	assert.Equal(t, 100, call.Args[2])
+	assert.Equal(t, 100, call.Args[1])
 
 	tenantID := uuid.New()
 	userID := uuid.New()
@@ -187,12 +186,11 @@ func TestListKnowledgeEventsSince_AppliesOccurredAtPartitionPruningWhenSeqKnown(
 	require.Len(t, mock.queryCalls, 2)
 
 	userCall := mock.queryCalls[1]
-	assert.Contains(t, userCall.SQL, "occurred_at >= $4",
-		"user-scoped poll with known afterSeq must also bind an occurred_at floor for partition pruning")
-	require.Len(t, userCall.Args, 5)
+	assert.NotContains(t, userCall.SQL, "occurred_at >=",
+		"user-scoped event-sequence reads must not prune by occurred_at")
+	require.Len(t, userCall.Args, 4)
 	assert.Equal(t, int64(42), userCall.Args[0])
 	assert.Equal(t, tenantID, userCall.Args[1])
 	assert.Equal(t, userID, userCall.Args[2])
-	assert.Equal(t, eventTime.Add(-eventSeqPartitionMargin), userCall.Args[3])
-	assert.Equal(t, 50, userCall.Args[4])
+	assert.Equal(t, 50, userCall.Args[3])
 }
