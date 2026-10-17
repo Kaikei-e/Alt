@@ -102,9 +102,6 @@ table "article_tags" {
   index "idx_article_tags_created_at" {
     columns = [column.created_at]
   }
-  index "idx_article_tags_feed_tag_id" {
-    columns = [column.feed_tag_id]
-  }
 }
 table "articles" {
   schema = schema.public
@@ -183,13 +180,6 @@ table "articles" {
   index "idx_articles_url" {
     unique  = true
     columns = [column.url]
-  }
-  index "idx_articles_url_gin_trgm" {
-    type = GIN
-    on {
-      column = column.url
-      ops    = gin_trgm_ops
-    }
   }
   unique "articles_url_key" {
     columns = [column.url]
@@ -359,14 +349,6 @@ table "feeds" {
   index "idx_feeds_created_at_link" {
     columns = [column.created_at, column.link]
   }
-  index "idx_feeds_created_desc_not_mp3_covering" {
-    where   = "(link !~ '\\.mp3$'::text)"
-    include = [column.id, column.title, column.description, column.link]
-    on {
-      desc   = true
-      column = column.created_at
-    }
-  }
   index "idx_feeds_id_link" {
     columns = [column.id, column.link]
   }
@@ -377,13 +359,6 @@ table "feeds" {
     on {
       desc   = true
       column = column.created_at
-    }
-  }
-  index "idx_feeds_link_gin_trgm" {
-    type = GIN
-    on {
-      column = column.link
-      ops    = gin_trgm_ops
     }
   }
   unique "unique_feeds_link" {

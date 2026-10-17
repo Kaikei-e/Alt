@@ -147,3 +147,50 @@ func TestAppendKnowledgeEvent_DuplicateReturnsZero(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), seq)
 }
+
+func TestListKnowledgeEventsSince_DoesNotPruneByOccurredAt(t *testing.T) {
+	mock := &mockPgx{}
+	eventTime := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	mock.queryRowFunc = func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		return &mockRow{scanFunc: func(dest ...interface{}) error {
+			if p, ok := dest[0].(*int64); ok {
+				*p = 42
+			}
+			return nil
+		}}
+	}
+
+	repo := NewRepository(mock)
+	ev := newTestEvent()
+	ev.OccurredAt = eventTime
+	seq, appended, err := repo.AppendKnowledgeEventIfNew(context.Background(), ev)
+	require.NoError(t, err)
+	require.True(t, appended)
+	require.Equal(t, int64(42), seq)
+
+	_, err = repo.ListKnowledgeEventsSince(context.Background(), 42, 100)
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1)
+
+	call := mock.queryCalls[0]
+	assert.NotContains(t, call.SQL, "occurred_at >=",
+		"event-sequence reads must not prune by occurred_at because business timestamps are not monotonic with event_seq")
+	require.Len(t, call.Args, 2)
+	assert.Equal(t, int64(42), call.Args[0])
+	assert.Equal(t, 100, call.Args[1])
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	_, err = repo.ListKnowledgeEventsSinceForUser(context.Background(), tenantID, userID, 42, 50)
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 2)
+
+	userCall := mock.queryCalls[1]
+	assert.NotContains(t, userCall.SQL, "occurred_at >=",
+		"user-scoped event-sequence reads must not prune by occurred_at")
+	require.Len(t, userCall.Args, 4)
+	assert.Equal(t, int64(42), userCall.Args[0])
+	assert.Equal(t, tenantID, userCall.Args[1])
+	assert.Equal(t, userID, userCall.Args[2])
+	assert.Equal(t, 50, userCall.Args[3])
+}

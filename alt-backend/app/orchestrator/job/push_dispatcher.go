@@ -15,15 +15,57 @@ import (
 )
 
 const (
-	// dispatchInterval is how often the dispatcher looks for work. Someone who
-	// just watched a job finish is still looking at the screen, so seconds
-	// matter here in a way they do not for the hourly jobs.
-	dispatchInterval = 2 * time.Second
-	dispatchTimeout  = 30 * time.Second
+	// dispatchInterval is how often the dispatcher looks for work when active.
+	// Someone who just watched a job finish is still looking at the screen, so
+	// seconds matter here in a way they do not for the hourly jobs.
+	dispatchInterval    = 2 * time.Second
+	maxDispatchInterval = 10 * time.Second
+	dispatchTimeout     = 30 * time.Second
 	// dispatchBatchSize bounds one pass. Sends run sequentially inside the
 	// pass, so this also bounds how long the claim lease has to cover.
 	dispatchBatchSize = 50
 )
+
+type dispatchBackoff struct {
+	mu      sync.Mutex
+	min     time.Duration
+	max     time.Duration
+	current time.Duration
+}
+
+func newDispatchBackoff(min, max time.Duration) *dispatchBackoff {
+	return &dispatchBackoff{
+		min:     min,
+		max:     max,
+		current: min,
+	}
+}
+
+func (b *dispatchBackoff) Observe(claimed int) time.Duration {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if claimed > 0 {
+		b.current = b.min
+		return b.current
+	}
+
+	next := b.current * 2
+	if next > b.max {
+		next = b.max
+	}
+	if next < b.min {
+		next = b.min
+	}
+	b.current = next
+	return b.current
+}
+
+func (b *dispatchBackoff) Current() time.Duration {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.current
+}
 
 // These instruments exist because the failure this feature has to survive is
 // silence, not errors. Web Push has no delivery receipt — a 201 means a push
@@ -77,10 +119,13 @@ func RegisterNotifierJobs(scheduler *JobScheduler, container *di.NotifierCompone
 
 	initDispatchMetrics()
 
+	backoff := newDispatchBackoff(dispatchInterval, maxDispatchInterval)
+
 	scheduler.Add(Job{
-		Name:     "push-dispatcher",
-		Interval: dispatchInterval,
-		Timeout:  dispatchTimeout,
+		Name:         "push-dispatcher",
+		Interval:     dispatchInterval,
+		Timeout:      dispatchTimeout,
+		NextInterval: backoff.Current,
 		Fn: func(ctx context.Context) error {
 			// Published before the batch, and regardless of what the batch does.
 			// The queue-age gauge has to be written on a pass that claims
@@ -91,6 +136,7 @@ func RegisterNotifierJobs(scheduler *JobScheduler, container *di.NotifierCompone
 
 			stats, err := container.Dispatch.DispatchBatch(ctx, dispatchBatchSize)
 			recordDispatchPass(ctx, stats, err)
+			backoff.Observe(stats.Claimed)
 			return err
 		},
 	})

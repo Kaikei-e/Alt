@@ -510,9 +510,16 @@ func TestIndexEventHandler_Flush_PartialFailureAcksOnlyIndexedMessages(t *testin
 
 	acked := acker.ackedIDs()
 	slices.Sort(acked)
-	want := []string{"0-0", "1-0", "2-0", "3-0", "5-0", "6-0", "7-0", "8-0", "9-0"}
+	want := make([]string, 0, batchFlushSize-1)
+	for i := range batchFlushSize {
+		if i == 4 {
+			continue
+		}
+		want = append(want, fmt.Sprintf("%d-0", i))
+	}
+	slices.Sort(want)
 	if !slices.Equal(acked, want) {
-		t.Fatalf("acked IDs = %v, want %v (the 9 healthy messages ACKed, only the failing article's message left pending)", acked, want)
+		t.Fatalf("acked IDs = %v, want %v (the healthy messages ACKed, only the failing article's message left pending)", acked, want)
 	}
 	if len(se.indexedDocs) != batchFlushSize-1 {
 		t.Fatalf("indexed docs = %d, want %d (healthy articles must not be dropped alongside the failing one)", len(se.indexedDocs), batchFlushSize-1)

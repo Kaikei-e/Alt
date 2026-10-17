@@ -15,25 +15,28 @@ logger = logging.getLogger(__name__)
 
 # Prompt template for query expansion (single-turn)
 # Uses XML-style structured contract to prevent small models from echoing meta-instructions.
-EXPAND_QUERY_PROMPT_TEMPLATE = """<task>Generate search query variations for a knowledge retrieval system.</task>
+EXPAND_QUERY_PROMPT_TEMPLATE = """<|turn>user
+<task>Generate search query variations for a knowledge retrieval system.</task>
 <rules>
-- Current Date: {current_date}
 - Generate {japanese_count} Japanese and {english_count} English search queries for the input below
 - Translate the input between Japanese and English as needed
 - Interpret relative dates based on Current Date
 - Cover different aspects: keywords, synonyms, related concepts, specific events
 </rules>
+Current Date: {current_date}
 <input>{query}</input>
 Japanese({japanese_count}):
 1.
 English({english_count}):
 1.
+<turn|>
+<|turn>model
 """
 
 # Prompt template for multi-turn expansion with coreference resolution
-EXPAND_QUERY_WITH_HISTORY_TEMPLATE = """<task>Generate search query variations for a knowledge retrieval system. Resolve coreferences using the conversation history.</task>
+EXPAND_QUERY_WITH_HISTORY_TEMPLATE = """<|turn>user
+<task>Generate search query variations for a knowledge retrieval system. Resolve coreferences using the conversation history.</task>
 <rules>
-- Current Date: {current_date}
 - Generate {japanese_count} Japanese and {english_count} English search queries for the input below
 - Resolve pronouns and references ("that", "it", "tell me more") from conversation context
 - Translate between Japanese and English as needed
@@ -62,6 +65,7 @@ assistant: [TOPIC_B] には複数の選択肢があります。
 [TOPIC_B] benchmark
 </example>
 ---
+Current Date: {current_date}
 <conversation>
 {conversation_history}
 </conversation>
@@ -70,6 +74,8 @@ Japanese({japanese_count}):
 1.
 English({english_count}):
 1.
+<turn|>
+<|turn>model
 """
 
 

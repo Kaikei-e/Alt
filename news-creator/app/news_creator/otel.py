@@ -243,5 +243,9 @@ def instrument_fastapi(app):
     """
     config = OTelConfig()
     if config.enabled:
-        FastAPIInstrumentor.instrument_app(app)
+        FastAPIInstrumentor.instrument_app(
+            app,
+            excluded_urls="health,metrics,api/tags",
+            exclude_spans=["receive", "send"],
+        )
         logger.info("FastAPI instrumented with OpenTelemetry")

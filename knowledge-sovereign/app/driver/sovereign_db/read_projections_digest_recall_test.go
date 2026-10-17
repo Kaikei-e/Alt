@@ -188,3 +188,18 @@ func TestMapRecallCandidateRow_Pure(t *testing.T) {
 		})
 	}
 }
+
+func TestGetProjectionFreshness_DoesNotFilterByOccurredAt(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	_, err := repo.GetProjectionFreshness(context.Background(), "knowledge-home-projector")
+	require.NoError(t, err)
+	require.Len(t, mock.queryRowCalls, 1)
+
+	sql := mock.queryRowCalls[0].SQL
+	assert.Contains(t, sql, "e.event_seq > c.last_event_seq",
+		"GetProjectionFreshness must check whether any event_seq exceeds last_event_seq")
+	assert.NotContains(t, sql, "occurred_at",
+		"GetProjectionFreshness must not filter out backfilled/replayed unprojected events with old occurred_at timestamps")
+}

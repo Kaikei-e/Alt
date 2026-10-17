@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	batchFlushSize     = 10
-	batchFlushInterval = 2 * time.Second
+	batchFlushSize     = 200
+	batchFlushInterval = 10 * time.Second
 
 	// shutdownFlushTimeout bounds the final flush issued from Stop() so a
 	// stuck Meilisearch call cannot hang shutdown forever.

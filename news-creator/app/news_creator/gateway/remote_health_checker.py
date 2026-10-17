@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 class RemoteHealthChecker:
     """Periodic health checker for remote Ollama instances."""
 
+    MAX_COOLDOWN_SECONDS = 900
+
     def __init__(
         self,
         remotes: list[str],
@@ -31,12 +33,14 @@ class RemoteHealthChecker:
         model_overrides: dict[str, str] | None = None,
         *,
         inference_token: str | None,
+        max_cooldown_seconds: int = MAX_COOLDOWN_SECONDS,
     ):
         self._remotes = remotes
         self._required_model = required_model
         self._model_overrides = model_overrides or {}
         self._interval_seconds = interval_seconds
         self._cooldown_seconds = cooldown_seconds
+        self._max_cooldown_seconds = max(cooldown_seconds, max_cooldown_seconds)
         self._timeout_seconds = timeout_seconds
         self._inference_token = inference_token
         self._session: aiohttp.ClientSession | None = None
@@ -54,6 +58,7 @@ class RemoteHealthChecker:
                 "last_completed": 0.0,
                 "in_flight_count": 0,
                 "consecutive_failures": 0,
+                "logged_unhealthy": False,
             }
 
     def acquire_idle_remote(self) -> str | None:
@@ -141,6 +146,12 @@ class RemoteHealthChecker:
             )
         return result
 
+    def _effective_cooldown(self, url: str) -> float:
+        """Calculate exponential backoff cooldown for an unhealthy remote."""
+        failures = max(1, int(self._states[url].get("consecutive_failures", 0)))
+        backoff = self._cooldown_seconds * (2 ** (failures - 1))
+        return float(min(backoff, self._max_cooldown_seconds))
+
     def _should_probe(self, url: str) -> bool:
         """Determine if a remote should be probed now."""
         state = self._states[url]
@@ -150,7 +161,7 @@ class RemoteHealthChecker:
         if state["healthy"]:
             return elapsed >= self._interval_seconds
         else:
-            return elapsed >= self._cooldown_seconds
+            return elapsed >= self._effective_cooldown(url)
 
     async def _probe(self, url: str) -> None:
         """Probe a single remote and update its state."""
@@ -165,7 +176,13 @@ class RemoteHealthChecker:
                 if response.status != 200:
                     state["healthy"] = False
                     state["consecutive_failures"] += 1
-                    logger.warning(
+                    log_fn = (
+                        logger.debug
+                        if state.get("logged_unhealthy")
+                        else logger.warning
+                    )
+                    state["logged_unhealthy"] = True
+                    log_fn(
                         "Remote health check failed: HTTP %d from %s",
                         response.status,
                         url,
@@ -184,18 +201,35 @@ class RemoteHealthChecker:
                     name == required or name.startswith(f"{required}:")
                     for name in model_names
                 ):
+                    had_failures = state.get(
+                        "consecutive_failures", 0
+                    ) > 0 or state.get("logged_unhealthy", False)
                     state["healthy"] = True
                     state["last_healthy"] = time.monotonic()
                     state["consecutive_failures"] = 0
-                    logger.debug(
-                        "Remote %s healthy (model %s present)",
-                        url,
-                        required,
-                    )
+                    state["logged_unhealthy"] = False
+                    if had_failures:
+                        logger.info(
+                            "Remote %s recovered and is healthy (model %s present)",
+                            url,
+                            required,
+                        )
+                    else:
+                        logger.debug(
+                            "Remote %s healthy (model %s present)",
+                            url,
+                            required,
+                        )
                 else:
                     state["healthy"] = False
                     state["consecutive_failures"] += 1
-                    logger.warning(
+                    log_fn = (
+                        logger.debug
+                        if state.get("logged_unhealthy")
+                        else logger.warning
+                    )
+                    state["logged_unhealthy"] = True
+                    log_fn(
                         "Remote %s missing required model %s (has: %s)",
                         url,
                         required,
@@ -206,7 +240,9 @@ class RemoteHealthChecker:
         except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as err:
             state["healthy"] = False
             state["consecutive_failures"] += 1
-            logger.warning(
+            log_fn = logger.debug if state.get("logged_unhealthy") else logger.warning
+            state["logged_unhealthy"] = True
+            log_fn(
                 "Remote health check error for %s: %s",
                 url,
                 err,

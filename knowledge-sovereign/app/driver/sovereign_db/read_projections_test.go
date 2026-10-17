@@ -169,6 +169,26 @@ func TestGetKnowledgeHomeItems_FirstPageAnchorsOnDBNow(t *testing.T) {
 		"title-less orphan rows must be excluded from Knowledge Home")
 }
 
+// TestGetKnowledgeHomeItems_PreservesAllRowsForRankedPagination pins that
+// GetKnowledgeHomeItems evaluates rank_score over all eligible rows rather than
+// pre-truncating to a fixed UNION of top-by-score and top-by-recency pools,
+// which would drop moderately recent, moderately scored items whose product
+// rank_score beats marginal items and cap cursor pagination.
+func TestGetKnowledgeHomeItems_PreservesAllRowsForRankedPagination(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	_, _, _, err := repo.GetKnowledgeHomeItems(context.Background(), uuid.New(), "", 10, nil)
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1)
+	sql := mock.queryCalls[0].SQL
+
+	assert.NotContains(t, sql, "UNION",
+		"GetKnowledgeHomeItems must not pre-truncate candidate pools via UNION")
+	assert.NotContains(t, sql, "LIMIT 2000",
+		"GetKnowledgeHomeItems must not cap candidate branches before ranking and keyset pagination")
+}
+
 func TestListDistinctUserIDs_FiltersActiveVersionAndExcludesNilUUID(t *testing.T) {
 	mock := &mockPgx{}
 	repo := &Repository{pool: mock}

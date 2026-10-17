@@ -40,6 +40,27 @@ func (u *FetchTagCloudUsecase) Refresh(ctx context.Context, limit int) ([]*domai
 	return u.execute(ctx, limit, true)
 }
 
+// ExecuteCountsOnly fetches raw tag cloud counts from the database without
+// fetching tag cooccurrences or computing the 3D force-directed layout.
+// Used by the data-plane RPC handler where only tag names and counts are returned.
+func (u *FetchTagCloudUsecase) ExecuteCountsOnly(ctx context.Context, limit int) ([]*domain.TagCloudItem, error) {
+	if limit <= 0 {
+		limit = 300
+	}
+	if limit > 500 {
+		logger.Logger.ErrorContext(ctx, "invalid limit: cannot exceed 500", "limit", limit)
+		return nil, errors.New("limit cannot exceed 500")
+	}
+
+	items, err := u.fetchTagCloudPort.FetchTagCloud(ctx, limit)
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "failed to fetch tag cloud", "error", err)
+		return nil, err
+	}
+
+	return items, nil
+}
+
 func (u *FetchTagCloudUsecase) execute(ctx context.Context, limit int, forceRefresh bool) ([]*domain.TagCloudItem, error) {
 	if limit <= 0 {
 		limit = 300

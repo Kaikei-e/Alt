@@ -9,6 +9,13 @@ use super::store::QueueStore;
 use super::types::QueuedJob;
 use crate::clients::subworker::SubworkerClient;
 
+const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const MAX_POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+fn next_idle_backoff(current: Duration) -> Duration {
+    current.saturating_mul(2).min(MAX_POLL_INTERVAL)
+}
+
 /// Background worker that processes queued classification jobs sequentially.
 ///
 /// Concurrency is controlled by spawning one worker task per slot in
@@ -42,6 +49,8 @@ impl QueueWorker {
             "starting classification queue worker"
         );
 
+        let mut poll_interval = DEFAULT_POLL_INTERVAL;
+
         loop {
             if cancel.is_cancelled() {
                 info!("shutdown requested, stopping classification queue worker");
@@ -50,11 +59,16 @@ impl QueueWorker {
 
             // Pick next job from queue (SELECT FOR UPDATE SKIP LOCKED)
             let job = match self.store.pick_next_job().await {
-                Ok(Some(j)) => j,
+                Ok(Some(j)) => {
+                    poll_interval = DEFAULT_POLL_INTERVAL;
+                    j
+                }
                 Ok(None) => {
-                    // No jobs available, wait a bit before retrying
+                    // No jobs available, wait with exponential backoff before retrying
+                    let sleep_duration = poll_interval;
+                    poll_interval = next_idle_backoff(poll_interval);
                     tokio::select! {
-                        () = sleep(Duration::from_millis(100)) => {}
+                        () = sleep(sleep_duration) => {}
                         () = cancel.cancelled() => {
                             info!("shutdown requested, stopping classification queue worker");
                             break;
@@ -205,5 +219,36 @@ impl QueueWorker {
                 Err(e)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn next_idle_backoff_doubles_and_caps_at_max() {
+        let mut backoff = DEFAULT_POLL_INTERVAL;
+        assert_eq!(backoff, Duration::from_millis(100));
+
+        backoff = next_idle_backoff(backoff);
+        assert_eq!(backoff, Duration::from_millis(200));
+
+        backoff = next_idle_backoff(backoff);
+        assert_eq!(backoff, Duration::from_millis(400));
+
+        backoff = next_idle_backoff(backoff);
+        assert_eq!(backoff, Duration::from_millis(800));
+
+        backoff = next_idle_backoff(backoff);
+        assert_eq!(backoff, Duration::from_millis(1600));
+
+        backoff = next_idle_backoff(backoff);
+        assert_eq!(backoff, MAX_POLL_INTERVAL);
+        assert_eq!(backoff, Duration::from_secs(2));
+
+        // Stays capped at MAX_POLL_INTERVAL
+        backoff = next_idle_backoff(backoff);
+        assert_eq!(backoff, MAX_POLL_INTERVAL);
     }
 }

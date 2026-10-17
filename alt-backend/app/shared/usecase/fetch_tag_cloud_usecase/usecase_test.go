@@ -269,3 +269,36 @@ func TestFetchTagCloudUsecase_Refresh(t *testing.T) {
 		}
 	})
 }
+
+func TestFetchTagCloudUsecase_ExecuteCountsOnly(t *testing.T) {
+	logger.InitLogger()
+	ctx := context.Background()
+
+	port := &mockFetchTagCloudPort{
+		items: []*domain.TagCloudItem{
+			{TagName: "AI", ArticleCount: 100},
+			{TagName: "Go", ArticleCount: 50},
+		},
+		cooccErr: errors.New("FetchTagCooccurrences must not be called by ExecuteCountsOnly"),
+	}
+
+	usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+
+	got, err := usecase.ExecuteCountsOnly(ctx, 0)
+	if err != nil {
+		t.Fatalf("ExecuteCountsOnly: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("ExecuteCountsOnly: want 2 items, got %d", len(got))
+	}
+	for _, item := range got {
+		if item.PositionX != 0 || item.PositionY != 0 || item.PositionZ != 0 {
+			t.Errorf("ExecuteCountsOnly should not compute 3D layout positions, got (%f, %f, %f)",
+				item.PositionX, item.PositionY, item.PositionZ)
+		}
+	}
+
+	if _, err := usecase.ExecuteCountsOnly(ctx, 501); err == nil {
+		t.Error("ExecuteCountsOnly: expected error for limit > 500")
+	}
+}

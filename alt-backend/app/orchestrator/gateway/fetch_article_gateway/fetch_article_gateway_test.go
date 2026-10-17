@@ -333,9 +333,9 @@ func TestFetchArticleGateway_Semaphore_LimitsConcurrency(t *testing.T) {
 	validator := security.NewSSRFValidator()
 	gw := NewFetchArticleGatewayWithDeps(rl, httpClient, validator)
 
-	// Launch 6 concurrent fetches (semaphore limit = 3)
+	// Launch 18 concurrent fetches (semaphore limit = 12)
 	var wg sync.WaitGroup
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 18; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -345,8 +345,8 @@ func TestFetchArticleGateway_Semaphore_LimitsConcurrency(t *testing.T) {
 	wg.Wait()
 
 	observed := atomic.LoadInt32(&maxInflight)
-	if observed > 3 {
-		t.Errorf("expected max 3 concurrent fetches, observed %d", observed)
+	if observed > defaultFetchConcurrency {
+		t.Errorf("expected max %d concurrent fetches, observed %d", defaultFetchConcurrency, observed)
 	}
 }
 
@@ -367,8 +367,8 @@ func TestFetchArticleGateway_Semaphore_ContextCancellation(t *testing.T) {
 	validator := security.NewSSRFValidator()
 	gw := NewFetchArticleGatewayWithDeps(rl, httpClient, validator)
 
-	// Fill all 3 semaphore slots
-	for i := 0; i < 3; i++ {
+	// Fill all semaphore slots
+	for i := 0; i < defaultFetchConcurrency; i++ {
 		go func(idx int) {
 			_, _ = gw.FetchArticleContents(context.Background(), fmt.Sprintf("https://93.184.216.%d/article", idx+1))
 		}(i)

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -92,8 +93,54 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 		}
 	}
 
-	// Fetch items
-	items, nextCursor, hasMore, itemsErr := u.homeItemsPort.GetKnowledgeHomeItems(ctx, userID, cursor, limit, lensFilter)
+	var (
+		items           []domain.KnowledgeHomeItem
+		nextCursor      string
+		hasMore         bool
+		itemsErr        error
+		digest          domain.TodayDigest
+		digestErr       error
+		trendingTags    []knowledge_home_port.TrendingTag
+		trendingErr     error
+		needToKnowCount int
+		needToKnowErr   error
+		updatedAt       *time.Time
+		freshnessErr    error
+		wg              sync.WaitGroup
+	)
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		items, nextCursor, hasMore, itemsErr = u.homeItemsPort.GetKnowledgeHomeItems(ctx, userID, cursor, limit, lensFilter)
+	}()
+	go func() {
+		defer wg.Done()
+		digest, digestErr = u.todayDigestPort.GetTodayDigest(ctx, userID, date)
+	}()
+	if u.tagHotspotPort != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			trendingTags, trendingErr = u.tagHotspotPort.GetTrendingTags(ctx, userID)
+		}()
+	}
+	if u.needToKnowCountPort != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			needToKnowCount, needToKnowErr = u.needToKnowCountPort.CountNeedToKnowItems(ctx, userID, date)
+		}()
+	}
+	if u.freshnessPort != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			updatedAt, freshnessErr = u.freshnessPort.GetProjectionFreshness(ctx, projectorName)
+		}()
+	}
+	wg.Wait()
+
 	if itemsErr != nil {
 		logger.Logger.ErrorContext(ctx, "failed to fetch knowledge home items", "error", itemsErr)
 		result.Degraded = true
@@ -103,8 +150,6 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 		result.HasMore = hasMore
 	}
 
-	// Fetch today digest
-	digest, digestErr := u.todayDigestPort.GetTodayDigest(ctx, userID, date)
 	if digestErr != nil {
 		logger.Logger.ErrorContext(ctx, "failed to fetch today digest", "error", digestErr)
 		result.Degraded = true
@@ -120,29 +165,38 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 	}
 
 	// Enrich items with trending tag hotspots
-	u.enrichTagHotspots(ctx, result, userID)
+	if u.tagHotspotPort != nil && len(result.Items) > 0 {
+		if trendingErr != nil {
+			logger.Logger.WarnContext(ctx, "failed to get trending tags for enrichment", "error", trendingErr)
+		} else {
+			result.Items = enrichItemsWithTagHotspots(result.Items, trendingTags)
+		}
+	}
 
 	// Enrich digest with backend-authoritative values
-	u.enrichDigest(ctx, result, userID, date)
+	if u.needToKnowCountPort != nil {
+		if needToKnowErr != nil {
+			logger.Logger.ErrorContext(ctx, "failed to count need-to-know items", "error", needToKnowErr)
+			result.Digest.NeedToKnowCount = 0
+		} else {
+			result.Digest.NeedToKnowCount = needToKnowCount
+		}
+	}
+
+	if u.freshnessPort != nil {
+		if freshnessErr != nil {
+			logger.Logger.ErrorContext(ctx, "failed to get projection freshness", "error", freshnessErr)
+			result.Digest.DigestFreshness = domain.FreshnessUnknown
+		} else {
+			result.Digest.LastProjectedAt = updatedAt
+			result.Digest.DigestFreshness = result.Digest.ComputeFreshness(time.Now())
+		}
+	}
 
 	// Compute 3-tier service quality
 	result.ServiceQuality = computeServiceQuality(itemsErr, result, time.Now())
 
 	return result, nil
-}
-
-// enrichTagHotspots adds tag_hotspot WhyReasons to items whose tags match currently trending tags.
-func (u *GetKnowledgeHomeUsecase) enrichTagHotspots(ctx context.Context, result *Result, userID uuid.UUID) {
-	if u.tagHotspotPort == nil || len(result.Items) == 0 {
-		return
-	}
-
-	trendingTags, err := u.tagHotspotPort.GetTrendingTags(ctx, userID)
-	if err != nil {
-		logger.Logger.WarnContext(ctx, "failed to get trending tags for enrichment", "error", err)
-		return
-	}
-	result.Items = enrichItemsWithTagHotspots(result.Items, trendingTags)
 }
 
 // enrichItemsWithTagHotspots adds tag_hotspot WhyReasons to items matching trending tags.
@@ -213,32 +267,4 @@ func requestContextError(errs ...error) error {
 		}
 	}
 	return nil
-}
-
-// enrichDigest populates freshness and accurate count on the digest.
-// Failures are logged but do not hard-fail the request.
-func (u *GetKnowledgeHomeUsecase) enrichDigest(ctx context.Context, result *Result, userID uuid.UUID, date time.Time) {
-	// Enrich needToKnowCount from backend query
-	if u.needToKnowCountPort != nil {
-		count, err := u.needToKnowCountPort.CountNeedToKnowItems(ctx, userID, date)
-		if err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to count need-to-know items", "error", err)
-			// Keep original value (which may be 0 from the digest)
-			result.Digest.NeedToKnowCount = 0
-		} else {
-			result.Digest.NeedToKnowCount = count
-		}
-	}
-
-	// Enrich freshness from projector checkpoint
-	if u.freshnessPort != nil {
-		updatedAt, err := u.freshnessPort.GetProjectionFreshness(ctx, projectorName)
-		if err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to get projection freshness", "error", err)
-			result.Digest.DigestFreshness = domain.FreshnessUnknown
-		} else {
-			result.Digest.LastProjectedAt = updatedAt
-			result.Digest.DigestFreshness = result.Digest.ComputeFreshness(time.Now())
-		}
-	}
 }

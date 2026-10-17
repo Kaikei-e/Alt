@@ -295,6 +295,22 @@ class TestProperNounMaxLengthFilter:
         # Long proper noun should be filtered
         assert long_surface not in result
 
+    def test_chained_compound_nouns_respect_max_tag_length(self, extractor):
+        """Chained noun sequences exceeding max_tag_length (15) must be rejected."""
+        from unittest.mock import MagicMock
+
+        # 4 consecutive 5-char nouns = 20 chars (> max_tag_length 15, <= old 30 limit)
+        tokens = [
+            self._make_token("大規模言語", "名詞"),
+            self._make_token("モデル推論", "名詞"),
+            self._make_token("キャッシュ", "名詞"),
+            self._make_token("最適化手法", "名詞"),
+        ]
+        extractor._ja_tagger = MagicMock(return_value=tokens)
+
+        result = extractor._extract_compound_japanese_words("test")
+        assert "大規模言語モデル推論キャッシュ最適化手法" not in result
+
 
 class TestCandidateFilteringIntegration:
     """Tests for candidate filtering at line 597 in _extract_keywords_japanese."""

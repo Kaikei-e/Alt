@@ -56,13 +56,6 @@ table "recap_subworker_runs" {
       ops    = jsonb_path_ops
     }
   }
-  index "idx_recap_subworker_runs_response_payload_gin" {
-    type = GIN
-    on {
-      column = column.response_payload
-      ops    = jsonb_path_ops
-    }
-  }
 }
 
 table "recap_subworker_clusters" {

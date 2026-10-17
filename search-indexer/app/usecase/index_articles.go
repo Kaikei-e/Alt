@@ -256,6 +256,24 @@ func (e *BatchIndexError) Unwrap() []error {
 	return errs
 }
 
+const (
+	// BatchFetchConcurrency bounds how many GetArticleByID RPCs ExecuteBatchArticles
+	// issues in parallel so a 200-article consumer batch completes quickly
+	// without overwhelming alt-data-hub's connection pool.
+	BatchFetchConcurrency = 8
+	// MaxSynonymsEntries caps the total number of keys in the process-wide
+	// synonyms dictionary so the Meilisearch settingsUpdate payload stays
+	// bounded and cannot bloat the task database.
+	MaxSynonymsEntries = 2000
+	// MaxSynonymsPerTerm caps the number of synonym terms stored per key.
+	MaxSynonymsPerTerm = 10
+)
+
+type articleFetchOutcome struct {
+	article *domain.Article
+	err     error
+}
+
 // ExecuteBatchArticles indexes multiple articles by their IDs in a single
 // batch, partitioning them by outcome instead of collapsing the batch on the
 // first problem. Each article ID reaches this call from its own Redis Stream
@@ -275,12 +293,28 @@ func (u *IndexArticlesUsecase) ExecuteBatchArticles(ctx context.Context, article
 		return result, nil
 	}
 
+	outcomes := make([]articleFetchOutcome, len(articleIDs))
+	workers := min(len(articleIDs), BatchFetchConcurrency)
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for i, id := range articleIDs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(idx int, articleID string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			article, err := u.articleRepo.GetArticleByID(ctx, articleID)
+			outcomes[idx] = articleFetchOutcome{article: article, err: err}
+		}(i, id)
+	}
+	wg.Wait()
+
 	docs := make([]domain.SearchDocument, 0, len(articleIDs))
 	fetched := make([]string, 0, len(articleIDs))
 	var failures []BatchArticleFailure
 
-	for _, id := range articleIDs {
-		article, err := u.articleRepo.GetArticleByID(ctx, id)
+	for i, id := range articleIDs {
+		article, err := outcomes[i].article, outcomes[i].err
 		if errors.Is(err, domain.ErrArticleNotFound) {
 			// The article was deleted (or the ID was never valid) between
 			// the event being published and this batch running. Terminal:
@@ -345,21 +379,50 @@ func (u *IndexArticlesUsecase) registerBatchSynonyms(ctx context.Context, docs [
 	u.synonymsMu.Lock()
 	defer u.synonymsMu.Unlock()
 	if u.synonyms == nil {
-		u.synonyms = make(map[string][]string, len(batch))
+		u.synonyms = make(map[string][]string, min(len(batch), MaxSynonymsEntries))
 	}
 	changed := false
 	for k, v := range batch {
-		if existing, ok := u.synonyms[k]; !ok || !slices.Equal(existing, v) {
-			changed = true
-			break
+		if len(v) == 0 {
+			continue
 		}
+		if len(v) > MaxSynonymsPerTerm {
+			v = v[:MaxSynonymsPerTerm]
+		}
+		if existing, ok := u.synonyms[k]; ok {
+			if !slices.Equal(existing, v) {
+				u.synonyms[k] = v
+				changed = true
+			}
+			continue
+		}
+		if len(u.synonyms) >= MaxSynonymsEntries {
+			continue
+		}
+		u.synonyms[k] = v
+		changed = true
 	}
 	if !changed {
 		slog.DebugContext(ctx, "batch introduces no new or changed synonym entries", "batch_size", len(batch))
 		return
 	}
-	maps.Copy(u.synonyms, batch)
 	u.synonymsDirty = true
+}
+
+// ResetSynonyms clears the in-memory synonyms map and PUTs an empty dictionary
+// to Meilisearch so any previously persisted polluted dictionary is wiped clean
+// on startup.
+func (u *IndexArticlesUsecase) ResetSynonyms(ctx context.Context) error {
+	u.synonymsMu.Lock()
+	u.synonyms = make(map[string][]string)
+	u.synonymsDirty = false
+	u.synonymsMu.Unlock()
+
+	if err := u.searchEngine.RegisterSynonyms(ctx, map[string][]string{}); err != nil {
+		slog.WarnContext(ctx, "failed to reset synonyms", "error", err)
+		return err
+	}
+	return nil
 }
 
 // FlushSynonyms PUTs the accumulated synonyms union to Meilisearch if
