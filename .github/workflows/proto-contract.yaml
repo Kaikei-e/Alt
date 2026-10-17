@@ -512,14 +512,14 @@ jobs:
       matrix:
         include:
           - service: news-creator/app
-            python: "3.13"
+            python: "3.14"
             lock: news-creator/app/uv.lock
           - service: recap-subworker
-            python: "3.13"
+            python: "3.14"
             lock: recap-subworker/uv.lock
             extra-env: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
           - service: tag-generator/app
-            python: "3.13"
+            python: "3.14"
             lock: tag-generator/app/uv.lock
     services:
       pact-db:
@@ -627,7 +627,7 @@ jobs:
           if [[ -n "${{ matrix.extra-env }}" ]]; then
             export ${{ matrix.extra-env }}
           fi
-          uv sync --dev
+          uv sync --python "${{ matrix.python }}" --dev
 
       - name: Run ${{ matrix.service }} provider verification
         working-directory: ${{ matrix.service }}
@@ -637,7 +637,7 @@ jobs:
           PACT_BROKER_PASSWORD: pact
           PACT_PROVIDER_VERSION: ${{ github.sha }}
           PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: uv run pytest tests/contract/ -v
+        run: uv run --python "${{ matrix.python }}" pytest tests/contract/ -v
 
   pact-publish-and-verify:
     # Aggregator that preserves the existing required-status-check name.
@@ -701,7 +701,7 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
       - name: Install Python
-        run: uv python install 3.13
+        run: uv python install 3.14
 
       - name: Install recap-evaluator dependencies
         working-directory: recap-evaluator
