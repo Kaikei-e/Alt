@@ -81,6 +81,9 @@ type RagDocumentRepository interface {
 
 	// CreateVersion creates a new document version.
 	CreateVersion(ctx context.Context, version *RagDocumentVersion) error
+
+	// DeleteObsoleteVersions deletes all versions of a document except keepVersionID.
+	DeleteObsoleteVersions(ctx context.Context, docID uuid.UUID, keepVersionID uuid.UUID) error
 }
 
 // RagChunkRepository defines the operations for managing chunks and events.

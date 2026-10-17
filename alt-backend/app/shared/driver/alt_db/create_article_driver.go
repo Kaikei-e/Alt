@@ -43,9 +43,9 @@ func (r *ArticleRepository) CreateArticleInternal(ctx context.Context, params Cr
 		language = "und"
 	}
 
-	// 2. Choose query: skip content update if existing is longer
+	// 2. Choose query: skip content update if existing is equal or longer
 	var query string
-	if err == nil && existingLen > len(params.Content) {
+	if err == nil && existingLen > 0 && existingLen >= len(params.Content) {
 		query = `
 		INSERT INTO articles (title, content, url, feed_id, user_id, published_at, language)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)

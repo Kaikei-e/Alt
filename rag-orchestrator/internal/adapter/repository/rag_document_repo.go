@@ -178,3 +178,15 @@ func (r *ragDocumentRepository) CreateVersion(ctx context.Context, version *doma
 	}
 	return nil
 }
+
+func (r *ragDocumentRepository) DeleteObsoleteVersions(ctx context.Context, docID uuid.UUID, keepVersionID uuid.UUID) error {
+	query := `
+		DELETE FROM rag_document_versions
+		WHERE document_id = $1 AND id <> $2
+	`
+	_, err := r.getExecutor(ctx).Exec(ctx, query, docID, keepVersionID)
+	if err != nil {
+		return fmt.Errorf("failed to delete obsolete versions: %w", err)
+	}
+	return nil
+}

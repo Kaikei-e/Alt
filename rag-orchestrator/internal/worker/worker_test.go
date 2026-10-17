@@ -210,3 +210,12 @@ func TestJobWorker_FailsOnNilUUID(t *testing.T) {
 	defer uc.mu.Unlock()
 	assert.Nil(t, uc.capturedCtx, "Upsert should not have been called with nil UUID user_id")
 }
+
+func TestProcessNextJob_ReturnsTrueWhenJobProcessedAndFalseWhenIdle(t *testing.T) {
+	repo := &stubJobRepo{jobs: []*domain.RagJob{makeJob()}}
+	uc := &stubIndexUsecase{}
+
+	w := NewJobWorker(repo, uc, testLogger())
+	assert.True(t, w.processNextJob(), "processNextJob must return true when a job is processed")
+	assert.False(t, w.processNextJob(), "processNextJob must return false when queue is empty")
+}

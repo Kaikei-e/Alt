@@ -201,7 +201,16 @@ services:
   pre-processor-db:
     image: postgres:17.11-alpine
     container_name: pre-processor-db
-    mem_limit: 192m
+    mem_limit: 512m
+    shm_size: "128m"
+    command: >
+      postgres
+      -c shared_buffers=128MB
+      -c effective_cache_size=256MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
+      -c autovacuum_vacuum_scale_factor=0.05
+      -c autovacuum_analyze_scale_factor=0.02
     ports:
       - "127.0.0.1:5437:5432"
     environment:

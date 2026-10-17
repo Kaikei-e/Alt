@@ -67,8 +67,8 @@ func (r *RagJobRepository) AcquireNextJob(ctx context.Context) (*domain.RagJob, 
 		WITH next_job AS (
 			SELECT id
 			FROM rag_jobs
-			WHERE status = 'new'
-				OR (status = 'processing' AND updated_at < $2)
+			WHERE status IN ('new', 'processing')
+				AND (status = 'new' OR updated_at < $2)
 			ORDER BY created_at ASC
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED

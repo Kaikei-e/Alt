@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
 
@@ -20,9 +23,10 @@ import (
 // reuse the cached counts. With ~22 concurrent streams in production this
 // reduces COUNT(*) load on the 100k-row feeds table by ~100x.
 //
-// Cache scope is per-process (single struct guarded by sync.Mutex). The cached
-// values are derived from resource tables (feeds, articles), not from event
-// projections, so a TTL cache is reproject-safe by construction.
+// Cache scope is per-process and keyed by userID (guarded by sync.Mutex +
+// singleflight.Group). The cached values are derived from resource tables
+// (feeds, articles), not from event projections, so a TTL cache is
+// reproject-safe by construction.
 const statsCacheTTL = 30 * time.Second
 
 type cachedFeedStats struct {
@@ -34,8 +38,16 @@ type cachedFeedStats struct {
 
 var (
 	feedStatsCacheMu sync.Mutex
-	feedStatsCache   cachedFeedStats
+	feedStatsCache   = make(map[uuid.UUID]cachedFeedStats)
+	feedStatsFlight  singleflight.Group
 )
+
+func statsCacheKey(ctx context.Context) uuid.UUID {
+	if user, err := middleware.GetUserContext(ctx); err == nil && user != nil {
+		return user.UserID
+	}
+	return uuid.Nil
+}
 
 // GetFeedStats returns basic feed statistics (feed count, summarized count).
 func (h *Handler) GetFeedStats(
@@ -73,19 +85,38 @@ func (h *Handler) GetDetailedFeedStats(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	feedCount, err := h.deps.FeedAmount.Execute(ctx)
-	if err != nil {
-		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetDetailedFeedStats.FeedAmount")
-	}
+	var (
+		feedCount         int
+		articleCount      int
+		unsummarizedCount int
+		feedErr           error
+		articleErr        error
+		unsummarizedErr   error
+	)
 
-	articleCount, err := h.deps.TotalCount.Execute(ctx)
-	if err != nil {
-		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetDetailedFeedStats.ArticleCount")
-	}
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		feedCount, feedErr = h.deps.FeedAmount.Execute(gctx)
+		return feedErr
+	})
+	g.Go(func() error {
+		articleCount, articleErr = h.deps.TotalCount.Execute(gctx)
+		return articleErr
+	})
+	g.Go(func() error {
+		unsummarizedCount, unsummarizedErr = h.deps.UnsummarizedCount.Execute(gctx)
+		return unsummarizedErr
+	})
 
-	unsummarizedCount, err := h.deps.UnsummarizedCount.Execute(ctx)
-	if err != nil {
-		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetDetailedFeedStats.UnsummarizedCount")
+	if err := g.Wait(); err != nil {
+		switch {
+		case feedErr != nil:
+			return nil, errorhandler.HandleUpstreamError(ctx, h.logger, feedErr, "GetDetailedFeedStats.FeedAmount")
+		case articleErr != nil:
+			return nil, errorhandler.HandleUpstreamError(ctx, h.logger, articleErr, "GetDetailedFeedStats.ArticleCount")
+		default:
+			return nil, errorhandler.HandleUpstreamError(ctx, h.logger, unsummarizedErr, "GetDetailedFeedStats.UnsummarizedCount")
+		}
 	}
 
 	return connect.NewResponse(&feedsv2.GetDetailedFeedStatsResponse{
@@ -205,38 +236,73 @@ func (h *Handler) sendStatsUpdate(
 }
 
 // fetchStatsCached returns recently-fetched stats when available (cache age <
-// statsCacheTTL), otherwise queries the underlying usecases and updates the
-// cache. The cache is per-process and shared across all concurrent streams.
+// statsCacheTTL), otherwise queries the underlying usecases concurrently and
+// updates the per-user cache, deduplicating in-flight refreshes via singleflight.
 func (h *Handler) fetchStatsCached(ctx context.Context) (cachedFeedStats, error) {
+	key := statsCacheKey(ctx)
+
 	feedStatsCacheMu.Lock()
-	if !feedStatsCache.fetchedAt.IsZero() && time.Since(feedStatsCache.fetchedAt) < statsCacheTTL {
-		fresh := feedStatsCache
+	if cached, ok := feedStatsCache[key]; ok && !cached.fetchedAt.IsZero() && time.Since(cached.fetchedAt) < statsCacheTTL {
 		feedStatsCacheMu.Unlock()
-		return fresh, nil
+		return cached, nil
 	}
 	feedStatsCacheMu.Unlock()
 
-	feedCount, err := h.deps.FeedAmount.Execute(ctx)
-	if err != nil {
-		return cachedFeedStats{}, fmt.Errorf("get feed count: %w", err)
-	}
-	unsummarized, err := h.deps.UnsummarizedCount.Execute(ctx)
-	if err != nil {
-		return cachedFeedStats{}, fmt.Errorf("get unsummarized count: %w", err)
-	}
-	totalArticles, err := h.deps.TotalCount.Execute(ctx)
-	if err != nil {
-		return cachedFeedStats{}, fmt.Errorf("get total articles: %w", err)
-	}
+	val, err, _ := feedStatsFlight.Do(key.String(), func() (any, error) {
+		feedStatsCacheMu.Lock()
+		if cached, ok := feedStatsCache[key]; ok && !cached.fetchedAt.IsZero() && time.Since(cached.fetchedAt) < statsCacheTTL {
+			feedStatsCacheMu.Unlock()
+			return cached, nil
+		}
+		feedStatsCacheMu.Unlock()
 
-	stats := cachedFeedStats{
-		feedCount:         feedCount,
-		unsummarizedCount: unsummarized,
-		totalArticles:     totalArticles,
-		fetchedAt:         time.Now(),
+		var (
+			feedCount     int
+			unsummarized  int
+			totalArticles int
+		)
+		g, gctx := errgroup.WithContext(ctx)
+		g.Go(func() error {
+			var err error
+			feedCount, err = h.deps.FeedAmount.Execute(gctx)
+			if err != nil {
+				return fmt.Errorf("get feed count: %w", err)
+			}
+			return nil
+		})
+		g.Go(func() error {
+			var err error
+			unsummarized, err = h.deps.UnsummarizedCount.Execute(gctx)
+			if err != nil {
+				return fmt.Errorf("get unsummarized count: %w", err)
+			}
+			return nil
+		})
+		g.Go(func() error {
+			var err error
+			totalArticles, err = h.deps.TotalCount.Execute(gctx)
+			if err != nil {
+				return fmt.Errorf("get total articles: %w", err)
+			}
+			return nil
+		})
+		if err := g.Wait(); err != nil {
+			return cachedFeedStats{}, err
+		}
+
+		stats := cachedFeedStats{
+			feedCount:         feedCount,
+			unsummarizedCount: unsummarized,
+			totalArticles:     totalArticles,
+			fetchedAt:         time.Now(),
+		}
+		feedStatsCacheMu.Lock()
+		feedStatsCache[key] = stats
+		feedStatsCacheMu.Unlock()
+		return stats, nil
+	})
+	if err != nil {
+		return cachedFeedStats{}, err
 	}
-	feedStatsCacheMu.Lock()
-	feedStatsCache = stats
-	feedStatsCacheMu.Unlock()
-	return stats, nil
+	return val.(cachedFeedStats), nil
 }

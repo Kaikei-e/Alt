@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"alt/config"
 	"alt/orchestrator/usecase/fetch_feed_stats_usecase"
 	"alt/utils/logger"
@@ -47,7 +49,7 @@ func (c *countingUnsummarizedArticlesCountPort) Execute(ctx context.Context) (in
 func resetFeedStatsCache(t *testing.T) {
 	t.Helper()
 	feedStatsCacheMu.Lock()
-	feedStatsCache = cachedFeedStats{}
+	feedStatsCache = make(map[uuid.UUID]cachedFeedStats)
 	feedStatsCacheMu.Unlock()
 }
 
@@ -117,7 +119,9 @@ func TestFetchStatsCached_RefetchAfterTTL(t *testing.T) {
 
 	// Simulate cache expiry by rewinding fetchedAt past the TTL.
 	feedStatsCacheMu.Lock()
-	feedStatsCache.fetchedAt = time.Now().Add(-2 * statsCacheTTL)
+	entry := feedStatsCache[uuid.Nil]
+	entry.fetchedAt = time.Now().Add(-2 * statsCacheTTL)
+	feedStatsCache[uuid.Nil] = entry
 	feedStatsCacheMu.Unlock()
 
 	if _, err := h.fetchStatsCached(context.Background()); err != nil {

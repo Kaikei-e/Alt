@@ -16,6 +16,7 @@ import (
 
 const (
 	defaultPollInterval = 100 * time.Millisecond
+	idlePollInterval    = 2 * time.Second
 	jobTimeout          = 60 * time.Second
 	initialBackoff      = 1 * time.Second
 	maxBackoff          = 5 * time.Minute
@@ -67,27 +68,29 @@ func (w *JobWorker) run() {
 		case <-w.stopChan:
 			return
 		case <-ticker.C:
-			w.processNextJob()
+			processed := w.processNextJob()
 			if w.backoff > 0 {
 				ticker.Reset(w.backoff)
-			} else {
+			} else if processed {
 				ticker.Reset(defaultPollInterval)
+			} else {
+				ticker.Reset(idlePollInterval)
 			}
 		}
 	}
 }
 
-func (w *JobWorker) processNextJob() {
+func (w *JobWorker) processNextJob() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), jobTimeout)
 	defer cancel()
 
 	job, err := w.jobRepo.AcquireNextJob(ctx)
 	if err != nil {
 		w.logger.Error("Failed to acquire next job", "error", err)
-		return
+		return false
 	}
 	if job == nil {
-		return // No jobs
+		return false // No jobs
 	}
 
 	w.logger.Info("Processing job", "job_id", job.ID, "type", job.JobType)
@@ -124,6 +127,7 @@ func (w *JobWorker) processNextJob() {
 	if err := w.jobRepo.UpdateStatus(updateCtx, job.ID, status, errMsg); err != nil {
 		w.logger.Error("Failed to update job status", "job_id", job.ID, "error", err)
 	}
+	return true
 }
 
 func (w *JobWorker) nextBackoff(current time.Duration) time.Duration {

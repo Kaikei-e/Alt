@@ -80,3 +80,9 @@ func TestCoverageSampler_AdvancesScrapeTimestamp(t *testing.T) {
 
 	assert.Greater(t, testutil.ToFloat64(coverageScrapeTimestamp), 0.0)
 }
+
+func TestCoverageSampler_ChunkEmbeddingsQueryUsesCurrentVersionAndNullFilter(t *testing.T) {
+	assert.Contains(t, chunkEmbeddingsQuery, "JOIN rag_documents d ON d.current_version_id = c.version_id")
+	assert.Contains(t, chunkEmbeddingsQuery, "COUNT(*) - COUNT(*) FILTER (WHERE c.embedding IS NULL)")
+	assert.NotContains(t, chunkEmbeddingsQuery, "count(embedding)")
+}

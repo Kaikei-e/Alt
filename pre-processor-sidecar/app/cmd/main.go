@@ -299,9 +299,9 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	if err != nil {
 		return fmt.Errorf("failed to parse database connection string: %w", err)
 	}
-	// Configure connection pool to prevent exhaustion
-	poolCfg.MaxConns = 25
-	poolCfg.MinConns = 5
+	// Configure connection pool to prevent exhaustion on memory-constrained pre-processor-db
+	poolCfg.MaxConns = 5
+	poolCfg.MinConns = 1
 	poolCfg.MaxConnLifetime = 5 * time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
@@ -310,15 +310,23 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	}
 	defer pool.Close()
 
-	// Test database connection with retry
-	maxRetries := 3
+	// Test database connection with bounded exponential backoff respecting ctx cancellation
+	maxRetries := 6
 	for i := 0; i < maxRetries; i++ {
 		if err := pool.Ping(ctx); err != nil {
-			logger.Warn("Database ping failed, retrying...", "attempt", i+1, "error", err)
+			logger.Warn("Database ping failed, retrying...", "attempt", i+1, "max_retries", maxRetries, "error", err)
 			if i == maxRetries-1 {
 				return fmt.Errorf("failed to ping database after %d attempts: %w", maxRetries, err)
 			}
-			time.Sleep(time.Duration(i+1) * 5 * time.Second)
+			backoff := time.Duration(1<<uint(i)) * 2 * time.Second
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 			continue
 		}
 		break
