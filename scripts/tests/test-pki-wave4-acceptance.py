@@ -215,7 +215,7 @@ PRESERVED_NON_PKI_SCRAPES = (
     "recap-worker:9005",
     "recap-subworker:8002",
     "news-creator:11434",
-    "rag-orchestrator:9010",
+    "rag-orchestrator:9012",
 )
 
 CUTOVER_SIDECARS = tuple(f"pki-agent-{name}" for name in INPROCESS_PARENTS)

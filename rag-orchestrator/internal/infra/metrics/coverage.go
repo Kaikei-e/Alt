@@ -175,12 +175,20 @@ func (s *CoverageSampler) publishChunkEmbeddings(total, embedded int64) {
 		slog.Int64("chunks_embedded", embedded))
 }
 
-// queryChunkEmbeddings counts chunks with and without a vector. count(embedding)
-// has to touch the heap, so this is paced by the sampler interval rather than
-// scraped on demand.
+const chunkEmbeddingsQuery = `
+	SELECT
+		COUNT(*),
+		COUNT(*) - COUNT(*) FILTER (WHERE c.embedding IS NULL)
+	FROM rag_chunks c
+	JOIN rag_documents d ON d.current_version_id = c.version_id
+`
+
+// queryChunkEmbeddings counts current-version chunks with and without a vector.
+// Joining rag_documents on current_version_id scopes the count to active corpus
+// chunks, and subtracting the NULL filter count from COUNT(*) avoids reading
+// non-null 4KB vector payloads from the heap.
 func (s *CoverageSampler) queryChunkEmbeddings(ctx context.Context) (total, embedded int64, err error) {
-	const q = `SELECT count(*), count(embedding) FROM rag_chunks`
-	err = s.pool.QueryRow(ctx, q).Scan(&total, &embedded)
+	err = s.pool.QueryRow(ctx, chunkEmbeddingsQuery).Scan(&total, &embedded)
 	return total, embedded, err
 }
 

@@ -69,6 +69,11 @@ func (m *MockRagDocumentRepository) BackfillOwnerIfNull(ctx context.Context, art
 	return args.Bool(0), args.Bool(1), args.Error(2)
 }
 
+func (m *MockRagDocumentRepository) DeleteObsoleteVersions(ctx context.Context, docID uuid.UUID, keepVersionID uuid.UUID) error {
+	args := m.Called(ctx, docID, keepVersionID)
+	return args.Error(0)
+}
+
 type MockRagChunkRepository struct {
 	mock.Mock
 }
@@ -277,6 +282,7 @@ func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
 	mockChunkRepo.On("BulkInsertChunks", ctx, mock.Anything).Return(nil)
 	mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil)
 	mockDocRepo.On("UpdateCurrentVersion", ctx, docID, mock.Anything).Return(nil)
+	mockDocRepo.On("DeleteObsoleteVersions", ctx, docID, mock.Anything).Return(nil)
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 	assert.NoError(t, err)
@@ -284,6 +290,7 @@ func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
 	// Verify that CreateVersion was called (i.e., not skipped by idempotency)
 	mockDocRepo.AssertCalled(t, "CreateVersion", ctx, mock.Anything)
 	mockChunkRepo.AssertCalled(t, "BulkInsertChunks", ctx, mock.Anything)
+	mockDocRepo.AssertCalled(t, "DeleteObsoleteVersions", ctx, docID, mock.Anything)
 }
 
 func TestIndexArticle_Upsert_HTMLBodyProducesCleanChunks(t *testing.T) {
@@ -399,6 +406,7 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 
 	// 7. Update Current Version
 	mockDocRepo.On("UpdateCurrentVersion", ctx, docID, mock.Anything).Return(nil)
+	mockDocRepo.On("DeleteObsoleteVersions", ctx, docID, mock.Anything).Return(nil)
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 	assert.NoError(t, err)
@@ -517,6 +525,7 @@ func TestIndexArticle_Upsert_EmbedderVersionChangeForcesReindex(t *testing.T) {
 			mockChunkRepo.On("BulkInsertChunks", ctx, mock.Anything).Return(nil).Maybe()
 			mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil).Maybe()
 			mockDocRepo.On("UpdateCurrentVersion", ctx, docID, mock.Anything).Return(nil).Maybe()
+			mockDocRepo.On("DeleteObsoleteVersions", ctx, docID, mock.Anything).Return(nil).Maybe()
 
 			err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 			assert.NoError(t, err)
@@ -527,10 +536,12 @@ func TestIndexArticle_Upsert_EmbedderVersionChangeForcesReindex(t *testing.T) {
 					return v.EmbedderVersion == "mock-v1"
 				}))
 				mockChunkRepo.AssertCalled(t, "BulkInsertChunks", ctx, mock.Anything)
+				mockDocRepo.AssertCalled(t, "DeleteObsoleteVersions", ctx, docID, mock.Anything)
 			} else {
 				mockEncoder.AssertNotCalled(t, "Encode", mock.Anything, mock.Anything)
 				mockDocRepo.AssertNotCalled(t, "CreateVersion", mock.Anything, mock.Anything)
 				mockChunkRepo.AssertNotCalled(t, "BulkInsertChunks", mock.Anything, mock.Anything)
+				mockDocRepo.AssertNotCalled(t, "DeleteObsoleteVersions", mock.Anything, mock.Anything, mock.Anything)
 			}
 		})
 	}

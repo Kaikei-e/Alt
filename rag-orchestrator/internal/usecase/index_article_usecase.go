@@ -328,6 +328,12 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, userID, tit
 			return fmt.Errorf("failed to update current version: %w", err)
 		}
 
+		if latestVer != nil {
+			if err := u.docRepo.DeleteObsoleteVersions(ctx, doc.ID, newVersionID); err != nil {
+				return fmt.Errorf("failed to delete obsolete versions: %w", err)
+			}
+		}
+
 		return nil
 	})
 }
@@ -393,6 +399,10 @@ func (u *indexArticleUsecase) Delete(ctx context.Context, articleID string) erro
 		// Update current version
 		if err := u.docRepo.UpdateCurrentVersion(ctx, doc.ID, newVersionID); err != nil {
 			return fmt.Errorf("failed to update current version: %w", err)
+		}
+
+		if err := u.docRepo.DeleteObsoleteVersions(ctx, doc.ID, newVersionID); err != nil {
+			return fmt.Errorf("failed to delete obsolete versions: %w", err)
 		}
 
 		return nil
