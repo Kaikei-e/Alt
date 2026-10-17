@@ -165,7 +165,7 @@ func main() {
 
 	// OpenTelemetry tracing
 	if otelCfg.Enabled {
-		e.Use(otelecho.Middleware(otelCfg.ServiceName))
+		e.Use(otelecho.Middleware(otelCfg.ServiceName, otelecho.WithSkipper(appmiddleware.OTelSkipper)))
 		e.Use(appmiddleware.OTelStatusMiddleware())
 	}
 

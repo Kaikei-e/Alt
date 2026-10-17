@@ -27,7 +27,7 @@ func PeerIdentityHTTPMiddleware(h http.Handler) http.Handler {
 			peer := r.TLS.PeerCertificates[0].Subject.CommonName
 			r.Header.Set(PeerIdentityHeader, peer)
 			ctx := r.Context()
-			logger.Logger.LogAttrs(ctx, slog.LevelInfo, "mtls peer",
+			logger.Logger.LogAttrs(ctx, slog.LevelDebug, "mtls peer",
 				slog.String("peer", peer),
 				slog.String("path", r.URL.Path),
 			)

@@ -188,3 +188,16 @@ func TestMapRecallCandidateRow_Pure(t *testing.T) {
 		})
 	}
 }
+
+func TestGetProjectionFreshness_BoundsOccurredAtForPartitionPruning(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	_, err := repo.GetProjectionFreshness(context.Background(), "knowledge-home-projector")
+	require.NoError(t, err)
+	require.Len(t, mock.queryRowCalls, 1)
+
+	sql := mock.queryRowCalls[0].SQL
+	assert.Contains(t, sql, "e.occurred_at >= c.updated_at - INTERVAL '7 days'",
+		"GetProjectionFreshness must bound e.occurred_at relative to checkpoint updated_at so PostgreSQL prunes old partitions")
+}

@@ -155,6 +155,7 @@ matched_pairs AS (
     AND khi.item_type = 'article'
     AND khi.dismissed_at IS NULL
     AND khi.projection_version = (SELECT v FROM active_version)
+    AND COALESCE(khi.published_at, khi.updated_at) >= NOW() - INTERVAL '30 days'
     AND regexp_replace(coalesce(khi.title, ''), '^[[:space:]\u00A0\u3000]+|[[:space:]\u00A0\u3000]+$', '', 'g') <> ''
     AND norm.it_clean = norm.at_clean
     AND char_length(norm.it_clean) >= 2

@@ -365,9 +365,6 @@ table "summarize_job_queue" {
     columns = [column.status]
     where   = "((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('running'::character varying)::text]))"
   }
-  index "idx_summarize_job_queue_job_id" {
-    columns = [column.job_id]
-  }
   index "idx_summarize_job_queue_article_id" {
     columns = [column.article_id]
   }

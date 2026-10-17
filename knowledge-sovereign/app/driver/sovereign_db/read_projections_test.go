@@ -169,6 +169,30 @@ func TestGetKnowledgeHomeItems_FirstPageAnchorsOnDBNow(t *testing.T) {
 		"title-less orphan rows must be excluded from Knowledge Home")
 }
 
+// TestGetKnowledgeHomeItems_BoundsCandidatePoolBeforeDynamicRankSort pins the
+// P1-5 two-stage candidate pool optimization: because rank_score decays
+// dynamically at read time, an unbounded scan over knowledge_home_items forces
+// Postgres to fetch ~100k tuples per request and sort all of them in memory.
+// Selecting the union of top-by-score and top-by-published_at candidates first
+// lets Postgres satisfy each branch via a bounded index scan before computing
+// rank_score over the unioned pool.
+func TestGetKnowledgeHomeItems_BoundsCandidatePoolBeforeDynamicRankSort(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	_, _, _, err := repo.GetKnowledgeHomeItems(context.Background(), uuid.New(), "", 10, nil)
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1)
+	sql := mock.queryCalls[0].SQL
+
+	assert.Contains(t, sql, "UNION",
+		"GetKnowledgeHomeItems must union bounded top-by-score and top-by-recency candidate pools")
+	assert.Contains(t, sql, "ORDER BY score DESC, published_at DESC LIMIT 2000",
+		"top-by-score branch must be bounded to use idx_kh_items_user_version_visible_score")
+	assert.Contains(t, sql, "ORDER BY published_at DESC LIMIT 2000",
+		"top-by-recency branch must be bounded to use idx_khi_user_dismissed_published")
+}
+
 func TestListDistinctUserIDs_FiltersActiveVersionAndExcludesNilUUID(t *testing.T) {
 	mock := &mockPgx{}
 	repo := &Repository{pool: mock}

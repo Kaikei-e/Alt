@@ -105,3 +105,45 @@ func TestRunSynonymsFlushLoop_RespectsCancellation(t *testing.T) {
 		t.Fatal("runSynonymsFlushLoop did not honor a pre-cancelled context")
 	}
 }
+
+type fakeSynonymsResetFlusher struct {
+	fakeSynonymsFlusher
+	resetCalls atomic.Int32
+}
+
+func (f *fakeSynonymsResetFlusher) ResetSynonyms(ctx context.Context) error {
+	f.resetCalls.Add(1)
+	return nil
+}
+
+// TestRunSynonymsFlushLoop_ResetsOnStartup verifies that when the flusher
+// implements ResetSynonyms, runSynonymsFlushLoop wipes any persisted polluted
+// synonyms dictionary in Meilisearch once at startup before entering the
+// periodic flush loop.
+func TestRunSynonymsFlushLoop_ResetsOnStartup(t *testing.T) {
+	logger.Init()
+	f := &fakeSynonymsResetFlusher{}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runSynonymsFlushLoop(ctx, f, 20*time.Millisecond)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+
+	deadline := time.After(2 * time.Second)
+	for f.calls.Load() < 2 {
+		select {
+		case <-deadline:
+			t.Fatalf("flush call count = %d after timeout, want >= 2", f.calls.Load())
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	if got := f.resetCalls.Load(); got != 1 {
+		t.Fatalf("resetCalls = %d, want 1", got)
+	}
+}

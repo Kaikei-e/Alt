@@ -40,7 +40,7 @@ func buildBackendHTTPClient() (*http.Client, error) {
 		Transport: &http.Transport{
 			TLSClientConfig:     tlsCfg,
 			IdleConnTimeout:     30 * time.Second,
-			MaxIdleConnsPerHost: 4,
+			MaxIdleConnsPerHost: 10,
 		},
 	}, nil
 }

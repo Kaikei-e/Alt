@@ -132,35 +132,29 @@ func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, c
 	args = append(args, userID, EngagedDwellMs, EngagementVerbs)
 	args = append(args, filterArgs...)
 
-	// item_wear aggregates over the whole spine so the wear band does not change
-	// as the user pages. has_ask or a deep revisit count reads as "deep".
-	// Only EngagementVerbs count as footprints or wear — dismissals are refusals,
-	// not footsteps on the trail.
-	// item_engagement folds the act-outcome side table: a raw dwell at or above
-	// the engaged threshold ($2, a Go constant — D20) or a Loop-era engaged
-	// label marks the item as substantively walked. An engaged walk lifts the
-	// band at least to worn; engaged plus a revisit reads as deep.
+	pagedJoinSQL := ""
+	if len(filterTags) > 0 {
+		pagedJoinSQL = `
+  LEFT JOIN knowledge_home_items khi
+    ON khi.user_id = $1
+    AND khi.item_key = f.item_key
+    AND khi.projection_version = ` + activeProjectionVersionSQL
+	}
+
 	// collapsed folds repeated contacts with one (item, verb) into a single
 	// spine row (D24): the row sorts by its latest contact, remembers its
-	// first, and carries the contact count. Wear still folds over raw rows —
-	// a revisit no longer adds a row, but it still deepens the path.
+	// first, and carries the contact count.
+	// paged applies cursor/tag filtering, ORDER BY, and LIMIT before joining
+	// child tables or enriching from knowledge_home_items.
+	// item_wear aggregates over the whole spine for the paged item_keys so the
+	// wear band does not change as the user pages. has_ask or a deep revisit
+	// count reads as "deep". Only EngagementVerbs count as footprints or wear —
+	// dismissals are refusals, not footsteps on the trail.
+	// item_engagement folds the act-outcome side table for the paged item_keys:
+	// a raw dwell at or above the engaged threshold ($2, a Go constant — D20)
+	// or a Loop-era engaged label marks the item as substantively walked.
 	query := fmt.Sprintf(`
-WITH item_wear AS (
-  SELECT item_key, count(*) AS cnt, bool_or(verb = 'asked') AS has_ask
-  FROM knowledge_trail_footprints
-  WHERE user_id = $1
-    AND verb = ANY($3::text[])
-  GROUP BY item_key
-),
-item_engagement AS (
-  SELECT item_key, TRUE AS engaged
-  FROM knowledge_trail_act_outcomes
-  WHERE user_id = $1
-    AND ((dwell_ms IS NOT NULL AND dwell_ms >= $2)
-         OR legacy_outcome IN ('engaged', 'deep_engagement'))
-  GROUP BY item_key
-),
-collapsed AS (
+WITH collapsed AS (
   SELECT tenant_id, item_key, verb,
          count(*) AS contact_count,
          min(occurred_at) AS first_occurred_at,
@@ -172,6 +166,32 @@ collapsed AS (
   WHERE user_id = $1
     AND verb = ANY($3::text[])
   GROUP BY tenant_id, item_key, verb
+),
+paged AS (
+  SELECT f.tenant_id, f.footprint_key, f.verb, f.item_key,
+         f.note, f.source_event_type, f.occurred_at,
+         f.first_occurred_at, f.contact_count
+  FROM collapsed f%s
+  %s
+  ORDER BY f.occurred_at DESC, f.footprint_key DESC
+  LIMIT $%d
+),
+item_wear AS (
+  SELECT item_key, count(*) AS cnt, bool_or(verb = 'asked') AS has_ask
+  FROM knowledge_trail_footprints
+  WHERE user_id = $1
+    AND verb = ANY($3::text[])
+    AND item_key IN (SELECT item_key FROM paged)
+  GROUP BY item_key
+),
+item_engagement AS (
+  SELECT item_key, TRUE AS engaged
+  FROM knowledge_trail_act_outcomes
+  WHERE user_id = $1
+    AND item_key IN (SELECT item_key FROM paged)
+    AND ((dwell_ms IS NOT NULL AND dwell_ms >= $2)
+         OR legacy_outcome IN ('engaged', 'deep_engagement'))
+  GROUP BY item_key
 )
 SELECT f.tenant_id, f.footprint_key, f.verb, f.item_key,
        COALESCE(f.note, ''), f.source_event_type, f.occurred_at,
@@ -187,16 +207,14 @@ SELECT f.tenant_id, f.footprint_key, f.verb, f.item_key,
                  OR (COALESCE(ie.engaged, FALSE) AND iw.cnt >= 2) THEN 'deep'
             WHEN iw.cnt >= 2 OR COALESCE(ie.engaged, FALSE) THEN 'worn'
             ELSE 'thin' END AS wear
-FROM collapsed f
+FROM paged f
 JOIN item_wear iw ON iw.item_key = f.item_key
 LEFT JOIN item_engagement ie ON ie.item_key = f.item_key
 LEFT JOIN knowledge_home_items khi
   ON khi.user_id = $1
   AND khi.item_key = f.item_key
   AND khi.projection_version = `+activeProjectionVersionSQL+`
-%s
-ORDER BY f.occurred_at DESC, f.footprint_key DESC
-LIMIT $%d`, whereClause, argPos)
+ORDER BY f.occurred_at DESC, f.footprint_key DESC`, pagedJoinSQL, whereClause, argPos)
 	args = append(args, fetchLimit)
 
 	rows, err := r.pool.Query(ctx, query, args...)

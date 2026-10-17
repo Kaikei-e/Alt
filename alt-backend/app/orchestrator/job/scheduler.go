@@ -9,10 +9,11 @@ import (
 
 // Job defines a periodic background job.
 type Job struct {
-	Name     string
-	Interval time.Duration
-	Timeout  time.Duration
-	Fn       func(ctx context.Context) error
+	Name         string
+	Interval     time.Duration
+	Timeout      time.Duration
+	Fn           func(ctx context.Context) error
+	NextInterval func() time.Duration
 }
 
 // JobScheduler manages periodic background jobs with context-aware shutdown.
@@ -58,6 +59,21 @@ func (s *JobScheduler) runJob(ctx context.Context, j Job) {
 
 	// Run immediately on start
 	s.executeJob(ctx, j)
+
+	if j.NextInterval != nil {
+		timer := time.NewTimer(j.NextInterval())
+		defer timer.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				slog.InfoContext(ctx, "job stopping", "job", j.Name)
+				return
+			case <-timer.C:
+				s.executeJob(ctx, j)
+				timer.Reset(j.NextInterval())
+			}
+		}
+	}
 
 	ticker := time.NewTicker(j.Interval)
 	defer ticker.Stop()

@@ -14,6 +14,12 @@ type synonymsFlusher interface {
 	FlushSynonyms(ctx context.Context) error
 }
 
+// synonymsResetter optionally wipes any polluted persisted synonyms dictionary
+// in Meilisearch once at startup before the periodic flush loop begins.
+type synonymsResetter interface {
+	ResetSynonyms(ctx context.Context) error
+}
+
 // runSynonymsFlushLoop periodically turns an accumulated, dirty synonyms
 // union into a single Meilisearch PUT. This is the durable fix for PM-2026-047
 // action item #2: Meilisearch's synonyms setting has no incremental/patch
@@ -31,6 +37,12 @@ type synonymsFlusher interface {
 // non-fatal: a transient Meilisearch outage must not crash the indexer, and
 // the next tick retries with whatever is dirty by then.
 func runSynonymsFlushLoop(ctx context.Context, flusher synonymsFlusher, interval time.Duration) {
+	if resetter, ok := flusher.(synonymsResetter); ok {
+		if err := resetter.ResetSynonyms(ctx); err != nil {
+			logger.Logger.WarnContext(ctx, "synonyms startup reset failed", "err", err)
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():

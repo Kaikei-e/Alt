@@ -1,4 +1,5 @@
-h1:8RcvUGZm8SWUhozYigj0Dbp+av/pTewnqXYDF/JWM9o=
+h1:LcuZcJWYSxQTyq3prIE8gwXo64dK0h9jCzga7U4S+yo=
 20260215000001_initial.sql h1:9gCL24L8nxjHNhHcM2fbElFZ3wZNU8mTIkDRUeurHVQ=
 20260314000001_add_dead_letter_status.sql h1:TiN1BlHRO8ggXVsrA3jYAwSCN0CRb3wOLSlo3GpMR2I=
 20260808000100_create_notification_outbox.sql h1:ZZQsoK7XYJm2wv7KFZ6l/RwKh2BrWtZWl4cdevg+aV8=
+20261017000000_drop_duplicate_job_id_index.sql h1:Gm6losVKOY/7CRptppb54XXDpxX264d4XoZX3E46E4Y=

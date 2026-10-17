@@ -61,7 +61,7 @@ var (
 	TaskPruneInterval = durationEnv("MEILI_TASK_PRUNE_INTERVAL", 6*time.Hour)
 	// TaskRetention is how long a finished task's history is kept before
 	// it becomes eligible for pruning.
-	TaskRetention = durationEnv("MEILI_TASK_RETENTION", 72*time.Hour)
+	TaskRetention = durationEnv("MEILI_TASK_RETENTION", 12*time.Hour)
 	// WarmupInterval controls how often the startup warmup probe re-fires.
 	// See bootstrap.runWarmupLoop: gemma4 (chat/RAG) and the embedding model
 	// (hybrid search) were observed to exclusively swap GPU residency, so
@@ -77,7 +77,7 @@ var (
 	// indexed batch generated one such task per batch with an ever-growing
 	// payload; flushing on a fixed interval instead bounds task creation
 	// regardless of indexing throughput.
-	SynonymsFlushInterval = durationEnv("MEILI_SYNONYMS_FLUSH_INTERVAL", 1*time.Minute)
+	SynonymsFlushInterval = durationEnv("MEILI_SYNONYMS_FLUSH_INTERVAL", 15*time.Minute)
 )
 
 func floatEnv(key string, defaultVal float64) float64 {

@@ -94,7 +94,7 @@ impl QueueStore {
                         status = 'running'
                         AND started_at < NOW() - make_interval(secs => $1::double precision)
                       )
-                ORDER BY created_at ASC
+                ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )

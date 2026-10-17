@@ -411,3 +411,38 @@ def test_dependency_container_accepts_explicit_redis_auth_disabled(monkeypatch):
 
     assert container.config.cache_redis_password is None
     assert isinstance(container.cache_gateway, NullCacheGateway)
+
+
+def test_metrics_endpoint_returns_200_without_redirect():
+    """GET /metrics (without trailing slash) must return 200 directly without a 307 redirect."""
+    from fastapi.testclient import TestClient
+    import main as main_module
+
+    client = TestClient(main_module.app)
+    response = client.get("/metrics", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "text/plain" in response.headers.get("content-type", "")
+
+
+def test_instrument_fastapi_excludes_health_metrics_and_asgi_send_receive_spans(
+    monkeypatch,
+):
+    """instrument_fastapi must exclude health/metrics/api/tags URLs and ASGI receive/send spans."""
+    from unittest.mock import MagicMock
+    from news_creator import otel as otel_module
+
+    monkeypatch.setenv("OTEL_ENABLED", "true")
+    mock_instrument = MagicMock()
+    monkeypatch.setattr(
+        otel_module.FastAPIInstrumentor, "instrument_app", mock_instrument
+    )
+
+    dummy_app = object()
+    otel_module.instrument_fastapi(dummy_app)
+
+    mock_instrument.assert_called_once_with(
+        dummy_app,
+        excluded_urls="health,metrics,api/tags",
+        exclude_spans=["receive", "send"],
+    )

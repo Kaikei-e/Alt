@@ -57,14 +57,30 @@ func (g *TrendingTagsGateway) GetTrendingTags(ctx context.Context, userID uuid.U
 func (g *TrendingTagsGateway) compute(ctx context.Context, userID uuid.UUID) ([]knowledge_home_port.TrendingTag, error) {
 	recentSince, baselineSince := calculateTrendingWindows(time.Now())
 
-	recentCounts, err := g.fetchPort.FetchTagArticleCounts(ctx, userID, recentSince)
-	if err != nil {
-		return nil, err
-	}
+	var (
+		recentCounts   []knowledge_home_port.TagArticleCount
+		baselineCounts []knowledge_home_port.TagArticleCount
+		recentErr      error
+		baselineErr    error
+		wg             sync.WaitGroup
+	)
 
-	baselineCounts, err := g.fetchPort.FetchTagArticleCounts(ctx, userID, baselineSince)
-	if err != nil {
-		return nil, err
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		recentCounts, recentErr = g.fetchPort.FetchTagArticleCounts(ctx, userID, recentSince)
+	}()
+	go func() {
+		defer wg.Done()
+		baselineCounts, baselineErr = g.fetchPort.FetchTagArticleCounts(ctx, userID, baselineSince)
+	}()
+	wg.Wait()
+
+	if recentErr != nil {
+		return nil, recentErr
+	}
+	if baselineErr != nil {
+		return nil, baselineErr
 	}
 
 	return filterAndSortTrendingTags(recentCounts, baselineCounts), nil

@@ -32,7 +32,7 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 
 	// Add OpenTelemetry tracing middleware
 	if otelEnabled {
-		e.Use(otelecho.Middleware(otelServiceName))
+		e.Use(otelecho.Middleware(otelServiceName, otelecho.WithSkipper(appmiddleware.OTelSkipper)))
 		e.Use(appmiddleware.OTelStatusMiddleware())
 	}
 

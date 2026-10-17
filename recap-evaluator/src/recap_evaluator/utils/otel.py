@@ -187,6 +187,10 @@ def instrument_fastapi(app) -> None:
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-        FastAPIInstrumentor.instrument_app(app)
+        FastAPIInstrumentor.instrument_app(
+            app,
+            excluded_urls="health,metrics",
+            exclude_spans=["receive", "send"],
+        )
     except Exception:
         logger.warning("FastAPI OpenTelemetry instrumentation failed", exc_info=True)

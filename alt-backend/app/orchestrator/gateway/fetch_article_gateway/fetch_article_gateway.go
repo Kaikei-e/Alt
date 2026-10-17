@@ -85,6 +85,10 @@ func validateArticleResponseHeaders(statusCode int, contentLength int64, rawURL 
 	return nil
 }
 
+// defaultFetchConcurrency bounds concurrent article fetches across all hosts.
+// Per-host politeness is enforced independently by HostRateLimiter.
+const defaultFetchConcurrency = 12
+
 // prefetchFetchConcurrency sizes the prefetch gateway's own concurrency
 // semaphore to match the handler's warm pool (maxConcurrentContentWarms), so a
 // warm never queues here.
@@ -133,7 +137,7 @@ func NewFetchArticleGateway(rateLimiter *rate_limiter.HostRateLimiter, httpClien
 		rateLimiter:   rateLimiter,
 		httpClient:    secureClient,
 		ssrfValidator: validator,
-		fetchSem:      make(chan struct{}, 3),
+		fetchSem:      make(chan struct{}, defaultFetchConcurrency),
 	}
 }
 
@@ -194,7 +198,7 @@ func NewFetchArticleGatewayWithDeps(rateLimiter *rate_limiter.HostRateLimiter, h
 		rateLimiter:   rateLimiter,
 		httpClient:    client,
 		ssrfValidator: validator,
-		fetchSem:      make(chan struct{}, 3),
+		fetchSem:      make(chan struct{}, defaultFetchConcurrency),
 	}
 }
 

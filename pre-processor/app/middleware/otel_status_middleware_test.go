@@ -216,3 +216,25 @@ func TestOTelStatusMiddleware_NoSpanInContext(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+func TestOTelSkipper_ExcludesHealthAndMetrics(t *testing.T) {
+	e := echo.New()
+
+	tests := []struct {
+		path string
+		skip bool
+	}{
+		{path: "/health", skip: true},
+		{path: "/api/v1/health", skip: true},
+		{path: "/metrics", skip: true},
+		{path: "/metrics/", skip: true},
+		{path: "/api/v1/summarize", skip: false},
+	}
+
+	for _, tc := range tests {
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		assert.Equal(t, tc.skip, OTelSkipper(c), "unexpected skip result for path %s", tc.path)
+	}
+}

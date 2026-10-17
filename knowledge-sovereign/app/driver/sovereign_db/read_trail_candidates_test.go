@@ -136,6 +136,8 @@ func TestDeriveTrailClusterCandidates_FiltersByEngagementVerbsAndExcludesExistin
 		"btrim strips only ASCII space and misses Unicode whitespace")
 	assert.Contains(t, call.SQL, "[[:alpha:]]",
 		"tags must contain a letter in SQL")
+	assert.Contains(t, call.SQL, "COALESCE(khi.published_at, khi.updated_at) >= NOW() - INTERVAL '30 days'",
+		"cluster candidates must be bounded to recent items so JSONB tags are not unnested across all history")
 	assert.Contains(t, call.SQL, "ORDER BY target_item_key, tag_overlap DESC, last_occurred_at DESC",
 		"best_per_target must pick the anchor with the largest clean overlap, breaking ties by most recent engagement")
 	assert.Contains(t, call.SQL, "ORDER BY tag_overlap DESC, last_occurred_at DESC, target_item_key",

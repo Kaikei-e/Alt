@@ -220,7 +220,11 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 // fresh as of now() even during quiet periods between hourly feed ingestions.
 func (r *Repository) GetProjectionFreshness(ctx context.Context, projectorName string) (*time.Time, error) {
 	query := `SELECT CASE
-		WHEN NOT EXISTS (SELECT 1 FROM knowledge_events e WHERE e.event_seq > c.last_event_seq)
+		WHEN NOT EXISTS (
+			SELECT 1 FROM knowledge_events e
+			WHERE e.event_seq > c.last_event_seq
+			  AND e.occurred_at >= c.updated_at - INTERVAL '7 days'
+		)
 		THEN now()
 		ELSE c.updated_at
 	END
