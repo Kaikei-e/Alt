@@ -60,6 +60,20 @@ class TestSummaryPromptBuilder:
 
         assert custom_date in prompt
 
+    def test_places_current_date_after_static_instructions_for_kv_cache(self):
+        """Different dates must share the entire static instruction prefix up to ARTICLE TO SUMMARIZE."""
+        from news_creator.usecase.prompt_builder import SummaryPromptBuilder
+
+        builder = SummaryPromptBuilder()
+        prompt_day1 = builder.build(content="Article A", current_date="2026年10月16日")
+        prompt_day2 = builder.build(content="Article B", current_date="2026年10月17日")
+
+        marker = "ARTICLE TO SUMMARIZE:"
+        prefix1 = prompt_day1[: prompt_day1.index(marker) + len(marker)]
+        prefix2 = prompt_day2[: prompt_day2.index(marker) + len(marker)]
+        assert prefix1 == prefix2
+        assert prompt_day1.index("Current Date:") > prompt_day1.index(marker)
+
 
 class TestChunkPromptBuilder:
     """Tests for ChunkPromptBuilder."""

@@ -17,8 +17,8 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from prometheus_client import make_asgi_app
+from fastapi import FastAPI, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest, make_asgi_app
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
@@ -249,8 +249,15 @@ app.add_middleware(
     strict=strict_from_env(),
 )
 
+
 # Prometheus scrape endpoint — serves OTel instruments registered via
 # PrometheusMetricReader along with any native prometheus_client metrics.
+@app.get("/metrics", include_in_schema=False)
+async def metrics_endpoint() -> Response:
+    """Serve Prometheus metrics directly at /metrics without 307 redirect."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 app.mount("/metrics", make_asgi_app())
 
 # Register routers with dependency injection

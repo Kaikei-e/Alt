@@ -514,3 +514,34 @@ func TestGetArticleTitleAndLinkPortFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
 }
+
+type fakeFetchTagCloudPort struct {
+	items    []*domain.TagCloudItem
+	err      error
+	sawLimit int
+}
+
+func (f *fakeFetchTagCloudPort) ExecuteCountsOnly(_ context.Context, limit int) ([]*domain.TagCloudItem, error) {
+	f.sawLimit = limit
+	return f.items, f.err
+}
+
+func TestFetchTagCloud_UsesExecuteCountsOnly(t *testing.T) {
+	fake := &fakeFetchTagCloudPort{
+		items: []*domain.TagCloudItem{
+			{TagName: "golang", ArticleCount: 42},
+			{TagName: "rust", ArticleCount: 21},
+		},
+	}
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, slog.Default(),
+		WithRAGToolPorts(fake, nil))
+
+	resp, err := h.FetchTagCloud(context.Background(), connect.NewRequest(&datahubv1.FetchTagCloudRequest{
+		Limit: 150,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, 150, fake.sawLimit)
+	require.Len(t, resp.Msg.GetTags(), 2)
+	assert.Equal(t, "golang", resp.Msg.GetTags()[0].GetTagName())
+	assert.Equal(t, int32(42), resp.Msg.GetTags()[0].GetArticleCount())
+}

@@ -371,12 +371,12 @@ func TestIndexArticlesUsecase_ExecuteWithPagination(t *testing.T) {
 // first and emit a single PUT covering the union.
 func TestExecuteBackfill_CoalescesSynonymsToSingleCall(t *testing.T) {
 	now := time.Now()
-	// Distinct Japanese tags across articles so each contributes at least one
-	// synonym entry. The pre-coalescing code calls RegisterSynonyms per doc
+	// Distinct Japanese compound noun tags across articles so each contributes
+	// a synonym entry. The pre-coalescing code calls RegisterSynonyms per doc
 	// and ends up with 3 PUTs; the coalesced code should emit exactly 1.
-	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"テスト1"}, now, "u")
-	a2, _ := domain.NewArticle("2", "T2", "C2", []string{"テスト2"}, now.Add(time.Second), "u")
-	a3, _ := domain.NewArticle("3", "T3", "C3", []string{"テスト3"}, now.Add(2*time.Second), "u")
+	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"機械学習"}, now, "u")
+	a2, _ := domain.NewArticle("2", "T2", "C2", []string{"深層学習"}, now.Add(time.Second), "u")
+	a3, _ := domain.NewArticle("3", "T3", "C3", []string{"自然言語処理"}, now.Add(2*time.Second), "u")
 
 	tok, err := tokenize.InitTokenizer()
 	if err != nil {
@@ -399,7 +399,7 @@ func TestExecuteBackfill_CoalescesSynonymsToSingleCall(t *testing.T) {
 	}
 
 	// The single call must carry the union of all docs' synonyms.
-	for _, want := range []string{"テスト1", "テスト2", "テスト3"} {
+	for _, want := range []string{"機械学習", "深層学習", "自然言語処理"} {
 		if _, ok := engine.lastSynonymsArg[want]; !ok {
 			t.Errorf("coalesced synonyms missing key %q; got map=%v", want, engine.lastSynonymsArg)
 		}
@@ -422,9 +422,9 @@ func TestIndexDocumentsDirectly_CoalescesSynonymsToSingleCall(t *testing.T) {
 		return domain.NewSearchDocument(a)
 	}
 	docs := []domain.SearchDocument{
-		build("1", "日本語タグA"),
-		build("2", "日本語タグB"),
-		build("3", "日本語タグC"),
+		build("1", "機械学習"),
+		build("2", "深層学習"),
+		build("3", "自然言語処理"),
 	}
 
 	engine := &mockSearchEngineForIndexing{}
@@ -440,7 +440,7 @@ func TestIndexDocumentsDirectly_CoalescesSynonymsToSingleCall(t *testing.T) {
 	if engine.synonymsCallCount != 1 {
 		t.Fatalf("RegisterSynonyms call count = %d, want 1", engine.synonymsCallCount)
 	}
-	for _, want := range []string{"日本語タグA", "日本語タグB", "日本語タグC"} {
+	for _, want := range []string{"機械学習", "深層学習", "自然言語処理"} {
 		if _, ok := engine.lastSynonymsArg[want]; !ok {
 			t.Errorf("coalesced synonyms missing key %q", want)
 		}
@@ -547,7 +547,7 @@ func TestRegisterBatchSynonyms_AccumulatesAcrossBatches(t *testing.T) {
 
 	engine := &mockSearchEngineForIndexing{}
 
-	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"テスト1"}, now, "u")
+	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"機械学習"}, now, "u")
 	repo1 := &mockArticleRepo{articles: []*domain.Article{a1}}
 	u := NewIndexArticlesUsecase(repo1, engine, tok)
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
@@ -556,14 +556,14 @@ func TestRegisterBatchSynonyms_AccumulatesAcrossBatches(t *testing.T) {
 	if err := u.FlushSynonyms(context.Background()); err != nil {
 		t.Fatalf("FlushSynonyms (batch 1): %v", err)
 	}
-	if _, ok := engine.lastSynonymsArg["テスト1"]; !ok {
-		t.Fatalf("batch 1 synonyms missing テスト1: %v", engine.lastSynonymsArg)
+	if _, ok := engine.lastSynonymsArg["機械学習"]; !ok {
+		t.Fatalf("batch 1 synonyms missing 機械学習: %v", engine.lastSynonymsArg)
 	}
 
 	// Second batch on the SAME usecase instance — mirrors production, where
 	// one long-lived IndexArticlesUsecase is shared across the polling loop
 	// and the event-driven consumer flush — with a different Japanese tag.
-	a2, _ := domain.NewArticle("2", "T2", "C2", []string{"テスト2"}, now.Add(time.Second), "u")
+	a2, _ := domain.NewArticle("2", "T2", "C2", []string{"深層学習"}, now.Add(time.Second), "u")
 	u.articleRepo = &mockArticleRepo{articles: []*domain.Article{a2}}
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill (batch 2): %v", err)
@@ -572,11 +572,11 @@ func TestRegisterBatchSynonyms_AccumulatesAcrossBatches(t *testing.T) {
 		t.Fatalf("FlushSynonyms (batch 2): %v", err)
 	}
 
-	if _, ok := engine.lastSynonymsArg["テスト2"]; !ok {
-		t.Fatalf("batch 2 synonyms missing テスト2: %v", engine.lastSynonymsArg)
+	if _, ok := engine.lastSynonymsArg["深層学習"]; !ok {
+		t.Fatalf("batch 2 synonyms missing 深層学習: %v", engine.lastSynonymsArg)
 	}
-	if _, ok := engine.lastSynonymsArg["テスト1"]; !ok {
-		t.Fatalf("batch 2 PUT dropped テスト1 from an earlier batch (full-replace overwrite bug): %v", engine.lastSynonymsArg)
+	if _, ok := engine.lastSynonymsArg["機械学習"]; !ok {
+		t.Fatalf("batch 2 PUT dropped 機械学習 from an earlier batch (full-replace overwrite bug): %v", engine.lastSynonymsArg)
 	}
 }
 
@@ -599,7 +599,7 @@ func TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms(t *testing.T) {
 
 	engine := &mockSearchEngineForIndexing{}
 
-	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"テスト1"}, now, "u")
+	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"機械学習"}, now, "u")
 	repo1 := &mockArticleRepo{articles: []*domain.Article{a1}}
 	u := NewIndexArticlesUsecase(repo1, engine, tok)
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
@@ -615,7 +615,7 @@ func TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms(t *testing.T) {
 	// Second batch carries the SAME Japanese tag as batch 1, so
 	// ProcessTagToSynonyms produces the identical {tag: tokens} entry
 	// already present in the accumulated union — nothing new to PUT.
-	a2, _ := domain.NewArticle("2", "T2", "C2", []string{"テスト1"}, now.Add(time.Second), "u")
+	a2, _ := domain.NewArticle("2", "T2", "C2", []string{"機械学習"}, now.Add(time.Second), "u")
 	u.articleRepo = &mockArticleRepo{articles: []*domain.Article{a2}}
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill (batch 2): %v", err)
@@ -630,7 +630,7 @@ func TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms(t *testing.T) {
 
 	// A third batch that DOES introduce a new tag must still PUT — the skip
 	// guard must not become permanently stuck once tripped.
-	a3, _ := domain.NewArticle("3", "T3", "C3", []string{"テスト2"}, now.Add(2*time.Second), "u")
+	a3, _ := domain.NewArticle("3", "T3", "C3", []string{"深層学習"}, now.Add(2*time.Second), "u")
 	u.articleRepo = &mockArticleRepo{articles: []*domain.Article{a3}}
 	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
 		t.Fatalf("ExecuteBackfill (batch 3): %v", err)
@@ -641,11 +641,11 @@ func TestRegisterBatchSynonyms_SkipsPUTWhenNoNewSynonyms(t *testing.T) {
 	if engine.synonymsCallCount != 2 {
 		t.Fatalf("after batch 3 with a genuinely new synonym, RegisterSynonyms call count = %d, want 2", engine.synonymsCallCount)
 	}
-	if _, ok := engine.lastSynonymsArg["テスト1"]; !ok {
-		t.Fatalf("batch 3 PUT dropped テスト1 from an earlier batch: %v", engine.lastSynonymsArg)
+	if _, ok := engine.lastSynonymsArg["機械学習"]; !ok {
+		t.Fatalf("batch 3 PUT dropped 機械学習 from an earlier batch: %v", engine.lastSynonymsArg)
 	}
-	if _, ok := engine.lastSynonymsArg["テスト2"]; !ok {
-		t.Fatalf("batch 3 PUT missing new key テスト2: %v", engine.lastSynonymsArg)
+	if _, ok := engine.lastSynonymsArg["深層学習"]; !ok {
+		t.Fatalf("batch 3 PUT missing new key 深層学習: %v", engine.lastSynonymsArg)
 	}
 }
 
@@ -680,7 +680,7 @@ func TestFlushSynonyms_IndexingAloneDoesNotPUT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitTokenizer: %v", err)
 	}
-	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"テスト1"}, now, "u")
+	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"機械学習"}, now, "u")
 	repo := &mockArticleRepo{articles: []*domain.Article{a1}}
 	engine := &mockSearchEngineForIndexing{}
 	u := NewIndexArticlesUsecase(repo, engine, tok)
@@ -707,6 +707,66 @@ func TestFlushSynonyms_IndexingAloneDoesNotPUT(t *testing.T) {
 	}
 	if engine.synonymsCallCount != 1 {
 		t.Fatalf("RegisterSynonyms call count = %d after 2nd flush with nothing new, want 1", engine.synonymsCallCount)
+	}
+}
+
+// TestResetSynonyms_ClearsAndRegistersEmptyMap verifies that ResetSynonyms
+// clears the in-memory synonyms dictionary and PUTs an empty map to
+// Meilisearch so a previously persisted polluted dictionary is wiped clean.
+func TestResetSynonyms_ClearsAndRegistersEmptyMap(t *testing.T) {
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(&mockArticleRepo{}, engine, nil)
+	u.synonyms = map[string][]string{"機械学習": {"機械", "学習"}}
+	u.synonymsDirty = true
+
+	if err := u.ResetSynonyms(context.Background()); err != nil {
+		t.Fatalf("ResetSynonyms() error = %v", err)
+	}
+	if engine.synonymsCallCount != 1 {
+		t.Fatalf("RegisterSynonyms call count = %d, want 1", engine.synonymsCallCount)
+	}
+	if len(engine.lastSynonymsArg) != 0 {
+		t.Fatalf("lastSynonymsArg = %v, want empty map", engine.lastSynonymsArg)
+	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms() error = %v", err)
+	}
+	if engine.synonymsCallCount != 1 {
+		t.Fatalf("FlushSynonyms after ResetSynonyms emitted extra PUT: count = %d, want 1", engine.synonymsCallCount)
+	}
+}
+
+// TestRegisterBatchSynonyms_CapsEntries verifies that u.synonyms never grows
+// beyond MaxSynonymsEntries and does not mark dirty once full.
+func TestRegisterBatchSynonyms_CapsEntries(t *testing.T) {
+	now := time.Now()
+	tok, err := tokenize.InitTokenizer()
+	if err != nil {
+		t.Fatalf("InitTokenizer: %v", err)
+	}
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(&mockArticleRepo{}, engine, tok)
+
+	// Pre-fill u.synonyms to MaxSynonymsEntries
+	u.synonyms = make(map[string][]string, MaxSynonymsEntries)
+	for i := range MaxSynonymsEntries {
+		u.synonyms[fmt.Sprintf("既存複合語%d", i)] = []string{"既存", "複合語"}
+	}
+
+	// Indexing a new article with a new compound noun tag must not exceed MaxSynonymsEntries
+	a, _ := domain.NewArticle("1", "T1", "C1", []string{"機械学習"}, now, "u")
+	doc := domain.NewSearchDocument(a)
+	if _, err := u.IndexDocumentsDirectly(context.Background(), []domain.SearchDocument{doc}); err != nil {
+		t.Fatalf("IndexDocumentsDirectly: %v", err)
+	}
+	if len(u.synonyms) != MaxSynonymsEntries {
+		t.Fatalf("len(u.synonyms) = %d, want capped at %d", len(u.synonyms), MaxSynonymsEntries)
+	}
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms: %v", err)
+	}
+	if engine.synonymsCallCount != 0 {
+		t.Fatalf("RegisterSynonyms call count = %d, want 0 when cap is already reached", engine.synonymsCallCount)
 	}
 }
 

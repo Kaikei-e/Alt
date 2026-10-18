@@ -17,11 +17,16 @@ import (
 	"alt/domain"
 )
 
-// MaxBatch bounds how many feeds one call may resolve.
-//
-// It is not a pagination knob. It bounds how many publishers a single viewport
-// change can cause us to contact, which is the number that matters to them.
-const MaxBatch = 10
+const (
+	// MaxBatch bounds how many feeds one call may resolve.
+	//
+	// It is not a pagination knob. It bounds how many publishers a single viewport
+	// change can cause us to contact, which is the number that matters to them.
+	MaxBatch = 10
+
+	maxConcurrentWarms = 4
+	warmCacheTimeout   = 15 * time.Second
+)
 
 // FeedOgImageStore is what alt-data-hub knows about a feed's image: whether one
 // is already held, and whether the origin has already refused.
@@ -50,6 +55,7 @@ type Usecase struct {
 	store   FeedOgImageStore
 	fetcher OgImageFetcher
 	minter  ProxyURLMinter
+	warmSem chan struct{}
 }
 
 func NewUsecase(store FeedOgImageStore, fetcher OgImageFetcher, minter ProxyURLMinter) *Usecase {
@@ -61,7 +67,12 @@ func NewUsecase(store FeedOgImageStore, fetcher OgImageFetcher, minter ProxyURLM
 	case minter == nil:
 		panic("og_image_resolve_usecase: a proxy URL minter is required — a resolved image with no signed URL is unreachable by the browser")
 	}
-	return &Usecase{store: store, fetcher: fetcher, minter: minter}
+	return &Usecase{
+		store:   store,
+		fetcher: fetcher,
+		minter:  minter,
+		warmSem: make(chan struct{}, maxConcurrentWarms),
+	}
 }
 
 // Execute resolves what it can and returns two disjoint answers: feed id →
@@ -182,9 +193,24 @@ func (u *Usecase) Execute(ctx context.Context, feedIDs []string) (map[string]str
 				"feed_id", target.FeedID, "error", err)
 		}
 
-		// The browser is about to ask the proxy for exactly this URL.
-		u.minter.WarmCache(ctx, image)
 		resolved[target.FeedID] = u.minter.GenerateProxyURL(image)
+
+		// The browser is about to ask the proxy for exactly this URL.
+		// Warm the proxy cache asynchronously in a bounded background goroutine
+		// so the RPC returns the signed proxy URL immediately after OGP extraction.
+		if u.warmSem != nil {
+			select {
+			case u.warmSem <- struct{}{}:
+				imageURL := image
+				go func() {
+					defer func() { <-u.warmSem }()
+					warmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), warmCacheTimeout)
+					defer cancel()
+					u.minter.WarmCache(warmCtx, imageURL)
+				}()
+			default:
+			}
+		}
 	}
 
 	return resolved, unresolved, nil

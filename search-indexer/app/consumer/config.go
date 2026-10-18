@@ -74,7 +74,7 @@ func DefaultConfig() Config {
 		GroupName:      "search-indexer-group",
 		ConsumerName:   "search-indexer-1",
 		StreamKey:      "alt:events:articles",
-		BatchSize:      10,
+		BatchSize:      200,
 		BlockTimeout:   5 * time.Second,
 		ClaimIdleTime:  30 * time.Second,
 		Enabled:        false,

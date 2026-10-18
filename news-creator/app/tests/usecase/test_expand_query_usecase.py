@@ -440,3 +440,21 @@ class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
         assert "SAME TOPIC as the input" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
             "Template must contain anti-contamination instruction 'SAME TOPIC as the input'"
         )
+
+
+class TestExpandQueryPromptGemma4AndKVCachePrefix:
+    """Templates must use Gemma 4 turn markers for raw=True and keep Current Date after static rules."""
+
+    def test_single_turn_template_uses_gemma4_turn_markers(self):
+        assert EXPAND_QUERY_PROMPT_TEMPLATE.startswith("<|turn>user\n")
+        assert "<turn|>\n<|turn>model" in EXPAND_QUERY_PROMPT_TEMPLATE
+        assert EXPAND_QUERY_PROMPT_TEMPLATE.index(
+            "Current Date:"
+        ) > EXPAND_QUERY_PROMPT_TEMPLATE.index("</rules>")
+
+    def test_multi_turn_template_uses_gemma4_turn_markers(self):
+        assert EXPAND_QUERY_WITH_HISTORY_TEMPLATE.startswith("<|turn>user\n")
+        assert "<turn|>\n<|turn>model" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE
+        assert EXPAND_QUERY_WITH_HISTORY_TEMPLATE.index(
+            "Current Date:"
+        ) > EXPAND_QUERY_WITH_HISTORY_TEMPLATE.index("</rules>")

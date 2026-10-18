@@ -381,7 +381,7 @@ class TagExtractor:
     def _extract_compound_nouns_fugashi(self, text: str) -> list[str]:
         """Extract compound nouns by chaining consecutive noun tokens."""
         self._lazy_load_models()
-        return extract_compound_nouns_fugashi(text, self._ja_tagger)
+        return extract_compound_nouns_fugashi(text, self._ja_tagger, max_length=self.config.max_tag_length)
 
     def _extract_compound_japanese_words(self, text: str) -> list[str]:
         """Extract compound words and important phrases from Japanese text."""

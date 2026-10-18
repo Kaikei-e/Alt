@@ -23,14 +23,40 @@ func TestProcessTagToSynonyms_AllJapaneseTags(t *testing.T) {
 	tok, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
 	require.NoError(t, err)
 
-	// Test with only Japanese tags
-	tags := []string{"日本語", "テスト"}
+	// Valid compound noun tags decompose into 2..4 meaningful noun tokens
+	tags := []string{"機械学習", "自然言語処理"}
 	result := ProcessTagToSynonyms(tok, tags)
 	assert.NotNil(t, result)
-	assert.NotEmpty(t, result, "should return synonyms for Japanese tags")
-	// Check that both Japanese tags have synonyms
-	assert.Contains(t, result, "日本語")
-	assert.Contains(t, result, "テスト")
+	assert.Equal(t, []string{"機械", "学習"}, result["機械学習"])
+	assert.Equal(t, []string{"自然", "言語", "処理"}, result["自然言語処理"])
+}
+
+func TestProcessTagToSynonyms_SkipsSingleTokenSelfSynonyms(t *testing.T) {
+	tok, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
+	require.NoError(t, err)
+
+	// Single-morpheme tags and noun+suffix tags with <2 meaningful noun tokens
+	// must NOT register self-synonyms or 1-token entries.
+	tags := []string{"テスト", "ひらがな", "カタカナ", "漢字", "日本語"}
+	result := ProcessTagToSynonyms(tok, tags)
+	assert.NotNil(t, result)
+	assert.Empty(t, result, "single-token tags must not register self-synonyms")
+}
+
+func TestProcessTagToSynonyms_SkipsLongAndPollutedTags(t *testing.T) {
+	tok, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
+	require.NoError(t, err)
+
+	tags := []string{
+		"000mAh搭載の12インチAndroidタブレット", // >15 runes and contains particle/numbers
+		"あいうえおかきくけこさしすせそたち",          // >15 runes
+		"日本の経済動向",                    // contains particle の
+		"機械学習、深層学習",                  // contains punctuation
+		"2026年10月",                   // numbers and counter suffixes only
+	}
+	result := ProcessTagToSynonyms(tok, tags)
+	assert.NotNil(t, result)
+	assert.Empty(t, result, "long sentence fragments, particles, punctuation, and numeric tags must be skipped")
 }
 
 func TestProcessTagToSynonyms_AllEnglishTags(t *testing.T) {
@@ -48,27 +74,14 @@ func TestProcessTagToSynonyms_MixedTags(t *testing.T) {
 	tok, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
 	require.NoError(t, err)
 
-	// Test with mixed Japanese and English tags
-	tags := []string{"test", "日本語", "english"}
+	// Test with mixed Japanese compound noun and English tags
+	tags := []string{"test", "機械学習", "english"}
 	result := ProcessTagToSynonyms(tok, tags)
 	assert.NotNil(t, result)
-	// Only Japanese tags should have synonyms
-	assert.Contains(t, result, "日本語")
+	// Only valid Japanese compound noun tags should have synonyms
+	assert.Contains(t, result, "機械学習")
 	assert.NotContains(t, result, "test", "English tags should not be in synonyms")
 	assert.NotContains(t, result, "english", "English tags should not be in synonyms")
-}
-
-func TestProcessTagToSynonyms_OnlyJapaneseCharacters(t *testing.T) {
-	tok, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
-	require.NoError(t, err)
-
-	// Test with tags containing only Japanese characters
-	tags := []string{"ひらがな", "カタカナ", "漢字"}
-	result := ProcessTagToSynonyms(tok, tags)
-	assert.NotNil(t, result)
-	// Japanese tags should generate synonyms
-	assert.NotEmpty(t, result)
-	assert.Len(t, result, 3, "should have synonyms for all 3 Japanese tags")
 }
 
 func TestIsJapaneseTag(t *testing.T) {

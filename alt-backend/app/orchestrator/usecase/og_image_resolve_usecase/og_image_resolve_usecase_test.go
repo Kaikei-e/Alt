@@ -3,6 +3,7 @@ package og_image_resolve_usecase
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -57,11 +58,31 @@ func (f *fakeFetcher) FetchOgImage(_ context.Context, pageURL string) (string, d
 	return f.byURL[pageURL], "", nil
 }
 
-type fakeMinter struct{ warmed []string }
+type fakeMinter struct {
+	mu     sync.Mutex
+	warmed []string
+	block  <-chan struct{}
+}
 
 func (m *fakeMinter) GenerateProxyURL(imageURL string) string { return "/proxy/" + imageURL }
-func (m *fakeMinter) WarmCache(_ context.Context, imageURL string) {
+func (m *fakeMinter) WarmCache(ctx context.Context, imageURL string) {
+	if m.block != nil {
+		select {
+		case <-m.block:
+		case <-ctx.Done():
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.warmed = append(m.warmed, imageURL)
+}
+
+func (m *fakeMinter) warmedURLs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, len(m.warmed))
+	copy(out, m.warmed)
+	return out
 }
 
 func newUsecase(store *fakeStore, fetcher *fakeFetcher, minter *fakeMinter) *Usecase {
@@ -85,8 +106,27 @@ func TestExecute_ResolvesAndRecords(t *testing.T) {
 	require.Len(t, store.saved, 1)
 	assert.Equal(t, savedCall{"f1", "https://cdn.example.com/a.png", "", 0}, store.saved[0])
 	assert.Equal(t, []string{"https://example.com/a"}, fetcher.calls)
-	assert.Equal(t, []string{"https://cdn.example.com/a.png"}, minter.warmed,
-		"the image the reader is about to request should be warmed while we are already here")
+	require.Eventually(t, func() bool {
+		return len(minter.warmedURLs()) == 1 && minter.warmedURLs()[0] == "https://cdn.example.com/a.png"
+	}, time.Second, 5*time.Millisecond,
+		"the image the reader is about to request should be warmed asynchronously in the background")
+}
+
+func TestExecute_DoesNotBlockOnSlowWarmCache(t *testing.T) {
+	store := &fakeStore{targets: []domain.FeedOgImageTarget{
+		{FeedID: "f1", PageURL: "https://example.com/a"},
+	}}
+	fetcher := &fakeFetcher{byURL: map[string]string{"https://example.com/a": "https://cdn.example.com/a.png"}}
+	release := make(chan struct{})
+	defer close(release)
+	minter := &fakeMinter{block: release}
+
+	start := time.Now()
+	got, _, err := newUsecase(store, fetcher, minter).Execute(context.Background(), []string{"f1"})
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"f1": "/proxy/https://cdn.example.com/a.png"}, got)
+	assert.Less(t, elapsed, 200*time.Millisecond, "Execute must return without waiting for WarmCache")
 }
 
 // A feed we already hold an image for must not cost the origin a request. This

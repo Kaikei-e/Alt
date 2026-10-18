@@ -23,10 +23,11 @@ func TestDeriveTrailClusterCandidates_RanksOnCleanTagsAgainstPostgres(t *testing
 	userID := uuid.New()
 	tenantID := uuid.New()
 
-	t0 := pgSeedAt.Add(-10 * time.Minute)
-	t1 := pgSeedAt
-	t2 := pgSeedAt.Add(10 * time.Minute)
-	t3 := pgSeedAt.Add(20 * time.Minute)
+	baseAt := time.Now().UTC().Add(-1 * time.Hour)
+	t0 := baseAt.Add(-10 * time.Minute)
+	t1 := baseAt
+	t2 := baseAt.Add(10 * time.Minute)
+	t3 := baseAt.Add(20 * time.Minute)
 
 	seedHomeItem := func(itemKey, title, tagsJSON string, at time.Time) {
 		pgExec(ctx, t, db, `INSERT INTO knowledge_home_items

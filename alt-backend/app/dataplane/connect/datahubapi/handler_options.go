@@ -346,7 +346,7 @@ func WithTagTrailCapabilities(
 
 // fetchTagCloudPort is the port interface for fetching tag cloud data.
 type fetchTagCloudPort interface {
-	Execute(ctx context.Context, limit int) ([]*domain.TagCloudItem, error)
+	ExecuteCountsOnly(ctx context.Context, limit int) ([]*domain.TagCloudItem, error)
 }
 
 // fetchArticlesByTagPort is the port interface for fetching articles by tag name.

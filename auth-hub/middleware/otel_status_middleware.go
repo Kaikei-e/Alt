@@ -9,6 +9,19 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// OTelSkipper excludes health check and metrics endpoints from generating OTel trace spans.
+func OTelSkipper(c echo.Context) bool {
+	if c == nil || c.Request() == nil || c.Request().URL == nil {
+		return false
+	}
+	switch c.Request().URL.Path {
+	case "/health", "/api/v1/health", "/metrics", "/metrics/":
+		return true
+	default:
+		return false
+	}
+}
+
 // OTelStatusMiddleware sets span status and HTTP attributes based on response.
 // It follows the OpenTelemetry HTTP semantic conventions:
 // - 1xx, 2xx, 3xx, 4xx: StatusCode = Unset (normal operation or client error)

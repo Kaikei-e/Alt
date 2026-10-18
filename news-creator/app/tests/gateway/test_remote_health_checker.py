@@ -322,3 +322,78 @@ async def test_start_performs_initial_probe_before_returning(checker, remotes):
 
     checker._check_all.assert_awaited_once()
     await checker.stop()
+
+
+def test_exponential_backoff_for_unhealthy_remote_capped_at_900s(checker, remotes):
+    """Unhealthy peers must back off exponentially (60s -> 120s -> 240s -> 480s -> 900s cap)."""
+    url = remotes[0]
+    checker._states[url]["healthy"] = False
+
+    expected_cooldowns = [
+        (1, 60.0),
+        (2, 120.0),
+        (3, 240.0),
+        (4, 480.0),
+        (5, 900.0),
+        (8, 900.0),
+    ]
+    for failures, expected in expected_cooldowns:
+        checker._states[url]["consecutive_failures"] = failures
+        assert checker._effective_cooldown(url) == expected
+
+        checker._states[url]["last_checked"] = time.monotonic() - (expected - 5)
+        assert checker._should_probe(url) is False
+
+        checker._states[url]["last_checked"] = time.monotonic() - (expected + 1)
+        assert checker._should_probe(url) is True
+
+
+@pytest.mark.asyncio
+async def test_unhealthy_peer_logs_warning_once_then_debug_until_recovery(
+    checker, remotes, caplog
+):
+    """Repeated probe failures must emit WARNING only on the first transition to unhealthy."""
+    import logging
+
+    url = remotes[0]
+    mock_session = MagicMock(spec=aiohttp.ClientSession)
+    mock_session.closed = False
+    mock_session.get = MagicMock(
+        side_effect=aiohttp.ClientConnectorError(
+            connection_key=MagicMock(), os_error=OSError("Offline peer")
+        )
+    )
+    checker._session = mock_session
+
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await checker._probe(url)
+        await checker._probe(url)
+        await checker._probe(url)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    debugs = [r for r in caplog.records if r.levelno == logging.DEBUG]
+    assert len(warnings) == 1
+    assert len(debugs) == 2
+    assert checker._states[url]["consecutive_failures"] == 3
+    assert checker._states[url]["logged_unhealthy"] is True
+
+    # Recovery resets consecutive_failures and logged_unhealthy and logs at INFO
+    caplog.clear()
+    tags_response = {"models": [{"name": "gemma4-e4b-q4km"}]}
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
+    checker._session = _build_mock_session(mock_response)
+
+    with caplog.at_level(
+        logging.INFO, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await checker._probe(url)
+
+    assert checker._states[url]["healthy"] is True
+    assert checker._states[url]["consecutive_failures"] == 0
+    assert checker._states[url]["logged_unhealthy"] is False
+    infos = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert len(infos) == 1

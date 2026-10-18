@@ -278,7 +278,7 @@ func (h *Handler) FetchTagCloud(ctx context.Context, req *connect.Request[datahu
 		limit = maxLimit
 	}
 
-	items, err := h.fetchTagCloudPort.Execute(ctx, limit)
+	items, err := h.fetchTagCloudPort.ExecuteCountsOnly(ctx, limit)
 	if err != nil {
 		h.logger.Error("FetchTagCloud failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("fetch tag cloud: %w", err))

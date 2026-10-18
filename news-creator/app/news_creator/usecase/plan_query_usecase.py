@@ -33,8 +33,6 @@ logger = logging.getLogger(__name__)
 
 PLAN_QUERY_PROMPT = """You are a query planner for a news retrieval system. Produce a JSON retrieval plan.
 
-Current Date: {current_date}
-
 Output JSON with these fields IN ORDER:
 1. reasoning: Your step-by-step thinking about the query
 2. resolved_query: A self-contained search query (no pronouns, must contain the topic)
@@ -71,6 +69,7 @@ Query: それについてもっと詳しく教えて
 {{"reasoning": "Follow-up query. 'それ' refers to NVIDIA Blackwell from the previous answer. Resolve coreference: the user wants more detail about NVIDIA Blackwell architecture. This is NOT ambiguous because conversation history provides clear referent.", "resolved_query": "NVIDIA Blackwellアーキテクチャの技術的詳細と推論性能", "search_queries": ["NVIDIA Blackwell architecture details", "Blackwell 推論性能 仕様", "NVIDIA B200 GPU specs"], "intent": "topic_deep_dive", "retrieval_policy": "global_only", "answer_format": "detail", "should_clarify": false, "topic_entities": ["NVIDIA", "Blackwell"]}}
 </example>
 
+Current Date: {current_date}
 {context_section}Query: {query}
 """
 

@@ -49,7 +49,7 @@ COMPOUND_PATTERNS = [
 ]
 
 
-def extract_compound_nouns_fugashi(text: str, ja_tagger: Any) -> list[str]:
+def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 15) -> list[str]:
     """
     Extract compound nouns by chaining consecutive noun tokens.
 
@@ -60,6 +60,7 @@ def extract_compound_nouns_fugashi(text: str, ja_tagger: Any) -> list[str]:
     Args:
         text: Input Japanese text
         ja_tagger: Fugashi tagger instance
+        max_length: Maximum allowed character length for compound nouns
 
     Returns:
         List of compound nouns (2+ consecutive nouns joined)
@@ -94,21 +95,21 @@ def extract_compound_nouns_fugashi(text: str, ja_tagger: Any) -> list[str]:
             # Not followed by noun, finalize current compound
             if len(current_compound) >= 2:
                 compound = "".join(current_compound)
-                if 3 <= len(compound) <= 30:
+                if 3 <= len(compound) <= max_length:
                     compounds.append(compound)
             current_compound = []
         else:
             # Non-noun token, finalize current compound
             if len(current_compound) >= 2:
                 compound = "".join(current_compound)
-                if 3 <= len(compound) <= 30:
+                if 3 <= len(compound) <= max_length:
                     compounds.append(compound)
             current_compound = []
 
     # Handle remaining compound at end of text
     if len(current_compound) >= 2:
         compound = "".join(current_compound)
-        if 3 <= len(compound) <= 30:
+        if 3 <= len(compound) <= max_length:
             compounds.append(compound)
 
     return compounds
@@ -128,7 +129,7 @@ def extract_compound_japanese_words(text: str, ja_tagger: Any, config: TagExtrac
     compound_words: list[str] = []
 
     # Phase 1: Extract compounds using consecutive noun chaining
-    chained_compounds = extract_compound_nouns_fugashi(text, ja_tagger)
+    chained_compounds = extract_compound_nouns_fugashi(text, ja_tagger, max_length=config.max_tag_length)
     compound_words.extend(chained_compounds)
 
     # Phase 2: Regex patterns for mixed-script and special compounds
@@ -185,7 +186,7 @@ def extract_compound_japanese_words(text: str, ja_tagger: Any, config: TagExtrac
     unique_compounds: list[str] = []
     for word in compound_words:
         word_normalized = word.strip()
-        if word_normalized not in seen and 2 <= len(word_normalized) <= 30:
+        if word_normalized not in seen and 2 <= len(word_normalized) <= config.max_tag_length:
             seen.add(word_normalized)
             unique_compounds.append(word_normalized)
 
