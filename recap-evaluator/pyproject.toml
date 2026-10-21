@@ -79,6 +79,7 @@ constraint-dependencies = [
     "Pygments>=2.20.0",
     "nltk>=3.10.3",
     "urllib3>=2.8.0",
+    "multidict>=6.9.1",
 ]
 
 [[tool.uv.index]]

@@ -61,6 +61,8 @@ constraint-dependencies = [
     "httpx>=0.28.0,<0.29",
     "langgraph-checkpoint-postgres>=3.1.1,<3.2",
     "urllib3>=2.8.0",
+    "langgraph-sdk>=0.4.4",
+    "multidict>=6.9.1",
 ]
 
 [tool.pytest.ini_options]
