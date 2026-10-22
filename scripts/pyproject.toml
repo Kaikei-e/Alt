@@ -21,4 +21,4 @@ packages = ["."]
 include = ["*.py"]
 
 [tool.uv]
-constraint-dependencies = ["urllib3>=2.8.0"]
+constraint-dependencies = ["certifi>=2026.10.19", "urllib3>=2.8.0"]

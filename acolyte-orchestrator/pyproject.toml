@@ -54,6 +54,7 @@ dev = [
 
 [tool.uv]
 constraint-dependencies = [
+    "certifi>=2026.10.19",
     "protobuf>=6.33.5,<7.0",
     "cryptography>=50.0.0,<51",
     "jwcrypto>=1.5.8,<2",

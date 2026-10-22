@@ -27,6 +27,9 @@ dev = [
     "bandit>=1.8.0",
 ]
 
+[tool.uv]
+constraint-dependencies = ["certifi>=2026.10.19"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

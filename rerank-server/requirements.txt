@@ -15,14 +15,20 @@ uvicorn>=0.41.0
 #                          (use-after-free), GHSA-rrmf-rvhw-rf47 (fixed 2.13.0)
 #                          — the previous `torch>=2.0.0` floor carried 23 known
 #                          advisories including two CVSS 9.8.
-#   transformers >=5.5.0   CVE-2026-1839 (arbitrary code exec in Trainer,
+#   transformers >=5.8.2   CVE-2026-1839 (arbitrary code exec in Trainer,
 #                          fixed 5.0.0), CVE-2026-4372 (RCE, fixed 5.3.0),
 #                          CVE-2026-5241 (arbitrary code exec in LightGlue
-#                          model loading, CVSS 9.6, fixed 5.5.0)
+#                          model loading, CVSS 9.6, fixed 5.5.0),
+#                          CVE-2026-80047 / GHSA-x9r9-c232-4q39 (unconditional
+#                          remote custom_generate file write before trust
+#                          consent, fixed >5.8.1)
 #   setuptools   >=83.0.0  GHSA-h35f-9h28-mq5c
 #   urllib3      >=2.8.0   CVE-2026-97687 (TLS proxy bypass), CVE-2026-97689
 #                          (unbounded chunk buffer), CVE-2026-97688 (deflate loop)
+#   certifi      >=2026.10.19 GHSA-6q48-6c7w-9gw2 (removes emSign root CAs with
+#                          compromised eMudhra intermediate CA keys)
 torch>=2.13.0
-transformers>=5.5.0
+transformers>=5.8.2
 setuptools>=83.0.0
 urllib3>=2.8.0
+certifi>=2026.10.19

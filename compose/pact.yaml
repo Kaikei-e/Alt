@@ -39,6 +39,7 @@ services:
       retries: 5
     labels:
       rask.group: pact
+    restart: unless-stopped
     logging:
       driver: "json-file"
       options:
@@ -125,6 +126,7 @@ services:
       start_period: 20s
     labels:
       rask.group: pact
+    restart: unless-stopped
     logging:
       driver: "json-file"
       options:
