@@ -6,12 +6,23 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	"alt/config"
+	"alt/connect/v2/middleware"
 	"alt/di"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/shared/gateway/datahub_gateway"
+)
+
+const (
+	testBackendTokenSecret   = "test-backend-token-secret-32bytes!"
+	testBackendTokenIssuer   = "auth-hub"
+	testBackendTokenAudience = "alt-backend"
 )
 
 // dataHubServicePaths are the service-to-service surfaces. They carry no
@@ -31,9 +42,15 @@ var operatorServicePaths = []string{
 // interceptor.
 var publicServicePaths = []string{
 	"/alt.feeds.v2.FeedService/GetFeedStats",
-	"/alt.articles.v2.ArticleService/GetArticle",
+	"/alt.articles.v2.ArticleService/FetchArticleContent",
+	"/alt.rss.v2.RSSService/ListRSSFeedLinks",
+	"/alt.augur.v2.AugurService/RetrieveContext",
+	"/alt.morning_letter.v2.MorningLetterReadService/GetLatestLetter",
+	"/alt.recap.v2.RecapService/GetSevenDayRecap",
 	"/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome",
+	"/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail",
 	"/alt.push.v1.PushService/GetPushConfig",
+	"/alt.search.v2.GlobalSearchService/SearchEverything",
 }
 
 // testDeps returns the smallest container SetupConnectHandlers accepts.
@@ -54,10 +71,14 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 
 	cfg := &config.Config{}
 	cfg.WebPush.PublicKey = "a-vapid-public-key-value"
+	cfg.Auth.BackendTokenSecret = testBackendTokenSecret
+	cfg.Auth.BackendTokenIssuer = testBackendTokenIssuer
+	cfg.Auth.BackendTokenAudience = testBackendTokenAudience
 
 	return &di.ApplicationComponents{
 			Infra:                 &di.InfraModule{PushSubscriptionGateway: pushGateway},
 			ResolveArticleUsecase: resolve_article_usecase.New(nil, nil), // satisfies the feeds handler fail-loud wiring check
+			Search:                &di.SearchModule{},
 		},
 		cfg,
 		slog.New(slog.NewTextHandler(io_Discard{}, nil))
@@ -217,5 +238,67 @@ func TestSetupOperatorConnectHandlers_Disabled_SkipsAuthCheck(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code == http.StatusUnauthorized {
 		t.Errorf("status = %d, want anything but 401 when OPERATOR_AUTH=disabled", rec.Code)
+	}
+}
+
+func issueTestBackendToken(t *testing.T) string {
+	t.Helper()
+	uid := uuid.MustParse("3f2504e0-4f89-11d3-9a0c-0305e82c3301")
+	claims := &middleware.BackendClaims{
+		Email:    "user@example.com",
+		Role:     "user",
+		Sid:      "session-1",
+		TenantID: uid.String(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   uid.String(),
+			Issuer:    testBackendTokenIssuer,
+			Audience:  jwt.ClaimStrings{testBackendTokenAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString([]byte(testBackendTokenSecret))
+	if err != nil {
+		t.Fatalf("failed to sign test JWT: %v", err)
+	}
+	return signed
+}
+
+func TestSetupConnectHandlers_RequiresUserJWTOnAllPublicServices(t *testing.T) {
+	container, cfg, logger := testDeps()
+	mux := http.NewServeMux()
+	SetupConnectHandlers(mux, container, cfg, logger)
+	validToken := issueTestBackendToken(t)
+
+	for _, path := range publicServicePaths {
+		t.Run(path+"/unauthenticated", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("%s unauthenticated: status = %d, want %d", path, rec.Code, http.StatusUnauthorized)
+			}
+		})
+
+		t.Run(path+"/authenticated_passes_auth_interceptor", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", validToken)
+			rec := httptest.NewRecorder()
+
+			defer func() {
+				// Reaching a nil usecase in testDeps means the JWT auth
+				// interceptor accepted the token and invoked the handler.
+				if r := recover(); r != nil {
+					return
+				}
+			}()
+			mux.ServeHTTP(rec, req)
+			if rec.Code == http.StatusUnauthorized {
+				t.Errorf("%s authenticated: status = %d, want non-401 (auth interceptor should pass)", path, rec.Code)
+			}
+		})
 	}
 }
