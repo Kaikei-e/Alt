@@ -314,6 +314,14 @@ func TestIsPrivateHost(t *testing.T) {
 			assert.Equal(t, tt.expected, got)
 		})
 	}
+
+	t.Run("FEED_ALLOWED_HOSTS bypasses private IP and resolution checks", func(t *testing.T) {
+		t.Setenv("FEED_ALLOWED_HOSTS", "stub.invalid")
+		got := isPrivateHost("stub.invalid", func(host string) ([]net.IP, error) {
+			return []net.IP{net.ParseIP("172.18.0.5")}, nil
+		})
+		assert.False(t, got)
+	})
 }
 
 func TestFetchInoreaderSummaryUsecase_PinnedURLValidation(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/orchestrator/port/fetch_inoreader_summary_port"
 	"alt/utils/logger"
+	"alt/utils/security"
 	"context"
 	stderrors "errors"
 	"fmt"
@@ -130,6 +131,10 @@ func (u *fetchInoreaderSummaryUsecase) isPrivateIP(hostname string) bool {
 
 // isPrivateHost checks if hostname resolves to private IP addresses
 func isPrivateHost(hostname string, lookup func(host string) ([]net.IP, error)) bool {
+	if security.IsFeedHostAllowed(hostname) {
+		return false
+	}
+
 	// Try to parse as IP first
 	ip := net.ParseIP(hostname)
 	if ip != nil {

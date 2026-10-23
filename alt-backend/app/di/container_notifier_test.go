@@ -3,8 +3,7 @@ package di
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
+	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -20,11 +19,9 @@ import (
 
 func generateTestVAPIDPrivateKey(t *testing.T) string {
 	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdh.P256().GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	raw := make([]byte, 32)
-	key.D.FillBytes(raw)
-	return base64.RawURLEncoding.EncodeToString(raw)
+	return base64.RawURLEncoding.EncodeToString(key.Bytes())
 }
 
 func TestFingerprintVAPIDKey(t *testing.T) {
