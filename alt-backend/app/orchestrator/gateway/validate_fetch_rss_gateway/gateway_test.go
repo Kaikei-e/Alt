@@ -101,6 +101,7 @@ func (m *mockFetcher) setError(url string, err error) {
 }
 
 func TestValidateAndFetchRSSGateway_ValidateAndFetch_Success(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	fetcher := newMockFetcher()
 	now := time.Now()
 
@@ -139,6 +140,7 @@ func TestValidateAndFetchRSSGateway_ValidateAndFetch_Success(t *testing.T) {
 }
 
 func TestValidateAndFetchRSSGateway_EmptyFeedLink_UsesInputURL(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	fetcher := newMockFetcher()
 	fetcher.setFeed("https://example.com/rss", &gofeed.Feed{
 		Title:    "Test",
@@ -185,6 +187,7 @@ func TestValidateAndFetchRSSGateway_SecurityValidation(t *testing.T) {
 }
 
 func TestValidateAndFetchRSSGateway_FetchErrors(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	tests := []struct {
 		name          string
 		fetchErr      error
@@ -238,6 +241,7 @@ func TestValidateAndFetchRSSGateway_Semaphore_ContextCancellation(t *testing.T) 
 }
 
 func TestValidateAndFetchRSSGateway_Metrics(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com,fail.com")
 	fetcher := newMockFetcher()
 	gw := NewValidateAndFetchRSSGatewayWithFetcher(fetcher)
 
@@ -286,6 +290,7 @@ func (m *countingFetcher) FetchRSSFeed(ctx context.Context, link string) (*gofee
 }
 
 func TestValidateAndFetchRSSGateway_Singleflight_DeduplicatesConcurrentFetches(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	fetcher := &countingFetcher{delay: 50 * time.Millisecond}
 	gw := NewValidateAndFetchRSSGatewayWithFetcher(fetcher)
 

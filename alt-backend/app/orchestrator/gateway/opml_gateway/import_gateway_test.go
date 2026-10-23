@@ -47,6 +47,7 @@ func TestImportGateway_RejectsEmptyURLBeforeTheDataPlane(t *testing.T) {
 // side rather than being pushed into the batch procedure.
 func TestImportGateway_DedupesAfterStrippingTrackingParams(t *testing.T) {
 	logger.InitLogger()
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	store := &bulkStoreStub{}
 	gateway := NewImportGateway(store)
 
@@ -66,6 +67,7 @@ func TestImportGateway_DedupesAfterStrippingTrackingParams(t *testing.T) {
 // its response knows nothing about them.
 func TestImportGateway_MergesProviderCountsWithLocalRejections(t *testing.T) {
 	logger.InitLogger()
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	store := &bulkStoreStub{result: &domain.OPMLImportResult{
 		Imported:   1,
 		Skipped:    1,
@@ -124,6 +126,7 @@ func TestImportGateway_RejectsDisallowedURLsAndContinues(t *testing.T) {
 }
 
 func TestFilterAndSanitizeImportURLs(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	urls := []string{
 		"  ",
 		"https://example.com/feed?utm_source=test",

@@ -52,6 +52,7 @@ func (m *mockArticleUsecase) FetchCompliantArticleWithRefresh(ctx context.Contex
 }
 
 func TestFetchArticleContent_UpstreamFetchError_ReturnsUnavailableAndLogsWarn(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "www3.nhk.or.jp")
 	tests := []struct {
 		name  string
 		cause error
@@ -90,6 +91,7 @@ func TestFetchArticleContent_UpstreamFetchError_ReturnsUnavailableAndLogsWarn(t 
 }
 
 func TestFetchArticleContent_HostSlotBusy_ReturnsResourceExhaustedWithRetryAfter(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "www3.nhk.or.jp")
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.RateLimitedError{
 			Message:    "This site is busy with another request. Please try again shortly.",
@@ -110,6 +112,7 @@ func TestFetchArticleContent_HostSlotBusy_ReturnsResourceExhaustedWithRetryAfter
 }
 
 func TestFetchArticleContent_UnclassifiedError_StaysInternal(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "zenn.dev")
 	mockUsecase := &mockArticleUsecase{
 		err: errors.New(`fetch failed: rate limit wait failed for "https://zenn.dev/article": boom`),
 	}
@@ -125,6 +128,7 @@ func TestFetchArticleContent_UnclassifiedError_StaysInternal(t *testing.T) {
 }
 
 func TestFetchArticleContent_ExternalHTTPError_404_ReturnsNotFound(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 404, URL: "https://example.com/deleted"}),
 	}
@@ -146,6 +150,7 @@ func TestFetchArticleContent_ExternalHTTPError_404_ReturnsNotFound(t *testing.T)
 }
 
 func TestFetchArticleContent_ExternalHTTPError_410_ReturnsNotFound(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 410, URL: "https://example.com/gone"}),
 	}
@@ -167,6 +172,7 @@ func TestFetchArticleContent_ExternalHTTPError_410_ReturnsNotFound(t *testing.T)
 }
 
 func TestFetchArticleContent_ExternalHTTPError_403_ReturnsPermissionDenied(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 403, URL: "https://example.com/forbidden"}),
 	}
@@ -188,6 +194,7 @@ func TestFetchArticleContent_ExternalHTTPError_403_ReturnsPermissionDenied(t *te
 }
 
 func TestFetchArticleContent_ExternalHTTPError_429_ReturnsResourceExhausted(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 429, URL: "https://example.com/ratelimited"}),
 	}
@@ -209,6 +216,7 @@ func TestFetchArticleContent_ExternalHTTPError_429_ReturnsResourceExhausted(t *t
 }
 
 func TestFetchArticleContent_ExternalHTTPError_500_ReturnsUnavailable(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 500, URL: "https://example.com/broken"}),
 	}
@@ -230,6 +238,7 @@ func TestFetchArticleContent_ExternalHTTPError_500_ReturnsUnavailable(t *testing
 }
 
 func TestFetchArticleContent_PublisherAttributableErrors_CarryHostFailureScope(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	const articleURL = "https://example.com/article"
 
 	tests := []struct {
@@ -261,6 +270,7 @@ func TestFetchArticleContent_PublisherAttributableErrors_CarryHostFailureScope(t
 }
 
 func TestFetchArticleContent_OurOwnFailures_CarryNoFailureScope(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	tests := []struct {
 		name string
 		err  error

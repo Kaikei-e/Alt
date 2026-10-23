@@ -133,6 +133,10 @@ func isAllZeros(b []byte) bool {
 	return true
 }
 
+// lookupIP resolves a hostname to IP addresses. Overridable in tests within
+// this package so unit tests stay hermetic in offline sandboxes.
+var lookupIP = net.LookupIP
+
 // IsPrivateHost checks if a hostname resolves to private IP addresses.
 // This function is exported for use by other packages.
 //
@@ -148,7 +152,7 @@ func IsPrivateHost(hostname string) bool {
 	}
 
 	// If it's a hostname, resolve it to IPs
-	ips, err := net.LookupIP(hostname)
+	ips, err := lookupIP(hostname)
 	if err != nil {
 		// Block on resolution failure as a security measure
 		return true

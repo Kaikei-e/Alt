@@ -1,11 +1,38 @@
 package security
 
 import (
+	"context"
+	"net"
 	"net/url"
+	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestMain(m *testing.M) {
+	stubResolve := func(hostname string) ([]net.IP, error) {
+		h := strings.ToLower(strings.TrimSpace(hostname))
+		if ip := net.ParseIP(h); ip != nil {
+			return []net.IP{ip}, nil
+		}
+		switch h {
+		case "localhost":
+			return []net.IP{net.ParseIP("127.0.0.1")}, nil
+		case "example.com", "medium.com":
+			return []net.IP{net.ParseIP("93.184.216.34")}, nil
+		default:
+			return nil, &net.DNSError{Err: "no such host", Name: hostname, IsNotFound: true}
+		}
+	}
+	lookupIP = stubResolve
+	resolveHostIPs = func(_ context.Context, hostname string, _ time.Duration) ([]net.IP, error) {
+		return stubResolve(hostname)
+	}
+	os.Exit(m.Run())
+}
 
 func TestURLSecurityValidator_ValidateRSSURL(t *testing.T) {
 	tests := []struct {

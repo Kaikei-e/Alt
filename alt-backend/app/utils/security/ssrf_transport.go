@@ -175,6 +175,9 @@ func (v *SSRFValidator) validateConnectionIP(ip net.IP, host, port string) error
 // validateDNSRebinding performs DNS rebinding attack prevention
 func (v *SSRFValidator) validateDNSRebinding(ctx context.Context, u *url.URL) error {
 	hostname := u.Hostname()
+	if IsFeedHostAllowed(hostname) {
+		return nil
+	}
 
 	ips, err := v.resolveWithTimeout(ctx, hostname, 5*time.Second)
 	if err != nil {
@@ -216,8 +219,9 @@ func (v *SSRFValidator) validateDNSRebinding(ctx context.Context, u *url.URL) er
 	return nil
 }
 
-// resolveWithTimeout queries IP addresses for a hostname with an explicit timeout.
-func (v *SSRFValidator) resolveWithTimeout(ctx context.Context, hostname string, timeout time.Duration) ([]net.IP, error) {
+// resolveHostIPs resolves a hostname with a timeout. Overridable in tests
+// within this package so unit tests do not depend on external DNS availability.
+var resolveHostIPs = func(ctx context.Context, hostname string, timeout time.Duration) ([]net.IP, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -242,6 +246,11 @@ func (v *SSRFValidator) resolveWithTimeout(ctx context.Context, hostname string,
 	}
 
 	return ips, nil
+}
+
+// resolveWithTimeout queries IP addresses for a hostname with an explicit timeout.
+func (v *SSRFValidator) resolveWithTimeout(ctx context.Context, hostname string, timeout time.Duration) ([]net.IP, error) {
+	return resolveHostIPs(ctx, hostname, timeout)
 }
 
 // validateResolvedIP ensures the resolved IP address is not private or dangerous.

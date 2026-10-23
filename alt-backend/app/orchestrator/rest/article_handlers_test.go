@@ -98,6 +98,7 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 	logger.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// 1. Setup
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	mockTransport := &MockRoundTripper{}
 	mockHttpClient := &http.Client{Transport: mockTransport}
 	// We skip strict SSRF validation for tests or ensure we use allowed domains
