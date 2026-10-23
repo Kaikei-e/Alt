@@ -7,30 +7,38 @@ import (
 	"fmt"
 )
 
-// FetchInoreaderSummariesByURLs retrieves inoreader article summaries for the given URLs
+// FetchInoreaderSummariesByURLs retrieves persisted article summaries/content
+// for the given URLs from the articles table (where pre-processor syncs
+// Inoreader articles after ADR-000246 / ADR-000397 dropped inoreader_articles
+// from alt-db).
 func (r *FeedRepository) FetchInoreaderSummariesByURLs(ctx context.Context, urls []string) ([]*models.InoreaderSummary, error) {
 	if len(urls) == 0 {
 		logger.Logger.InfoContext(ctx, "No URLs provided for inoreader summaries fetch")
 		return []*models.InoreaderSummary{}, nil
 	}
 
+	if r.pool == nil {
+		return nil, fmt.Errorf("database connection not available")
+	}
+
 	logger.Logger.InfoContext(ctx, "Fetching inoreader summaries", "url_count", len(urls), "urls", urls)
 
 	query := `
 		SELECT
-			ia.article_url,
-			ia.title,
-			ia.author,
-			ia.content,
-			ia.content_type,
-			ia.published_at,
-			ia.fetched_at,
-			ia.inoreader_id
-		FROM inoreader_articles ia
-		WHERE ia.article_url = ANY($1)
-		AND ia.content IS NOT NULL
-		AND ia.content_length > 0
-		ORDER BY ia.published_at DESC
+			a.url AS article_url,
+			a.title,
+			NULL::text AS author,
+			a.content,
+			'html'::text AS content_type,
+			COALESCE(a.published_at, a.created_at) AS published_at,
+			a.created_at AS fetched_at,
+			a.id::text AS inoreader_id
+		FROM articles a
+		WHERE a.url = ANY($1)
+		AND a.deleted_at IS NULL
+		AND a.content IS NOT NULL
+		AND length(a.content) > 0
+		ORDER BY COALESCE(a.published_at, a.created_at) DESC
 	`
 
 	rows, err := r.pool.Query(ctx, query, urls)
@@ -40,7 +48,7 @@ func (r *FeedRepository) FetchInoreaderSummariesByURLs(ctx context.Context, urls
 	}
 	defer rows.Close()
 
-	var summaries []*models.InoreaderSummary
+	summaries := make([]*models.InoreaderSummary, 0)
 	for rows.Next() {
 		var summary models.InoreaderSummary
 		err := rows.Scan(
