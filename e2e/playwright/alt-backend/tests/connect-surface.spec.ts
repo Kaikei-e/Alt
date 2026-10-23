@@ -33,7 +33,7 @@ const MOUNTED_SERVICES = [
 	{ service: "RecapService", procedure: "alt.recap.v2.RecapService/GetThreeDayRecap" },
 	{ service: "KnowledgeHomeService", procedure: "alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome" },
 	{ service: "KnowledgeTrailService", procedure: "alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail" },
-	{ service: "PushService", procedure: "alt.push.v2.PushService/GetPushConfig" },
+	{ service: "PushService", procedure: "alt.push.v1.PushService/GetPushConfig" },
 	{ service: "GlobalSearchService", procedure: "alt.search.v2.GlobalSearchService/SearchEverything" },
 ] as const;
 
