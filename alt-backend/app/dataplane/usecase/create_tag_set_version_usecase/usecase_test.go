@@ -202,3 +202,54 @@ func TestCreateTagSetVersionUsecase_SecondVersion_EmitsSupersedeEvent(t *testing
 	assert.Equal(t, domain.EventTagSetSuperseded, eventPort.appended[1].EventType)
 	assert.Contains(t, string(eventPort.appended[1].Payload), "previous_tags")
 }
+
+type failingOnEventTypePort struct {
+	failType string
+	appended []domain.KnowledgeEvent
+}
+
+func (f *failingOnEventTypePort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
+	if event.EventType == f.failType {
+		return 0, assert.AnError
+	}
+	f.appended = append(f.appended, event)
+	return int64(len(f.appended)), nil
+}
+
+func TestCreateTagSetVersionUsecase_SupersedeEventAppendFailure_IsFatal(t *testing.T) {
+	logger.InitLogger()
+
+	articleID := uuid.New()
+	userID := uuid.New()
+	eventPort := &failingOnEventTypePort{failType: domain.EventTagSetSuperseded}
+	markPort := &mockMarkTagSupersededPort{
+		prev: &domain.TagSetVersion{
+			TagSetVersionID: uuid.New(),
+			ArticleID:       articleID,
+			UserID:          userID,
+			TagsJSON:        json.RawMessage(`[{"name":"old-tag","confidence":0.8}]`),
+		},
+	}
+
+	uc := NewCreateTagSetVersionUsecase(&mockTagSetPort{}, eventPort, markPort)
+	err := uc.Execute(context.Background(), domain.TagSetVersion{
+		ArticleID: articleID,
+		UserID:    userID,
+		TagsJSON:  json.RawMessage(`[{"name":"new-tag","confidence":0.9}]`),
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "append tag set superseded event")
+}
+
+func TestNewCreateTagSetVersionUsecase_PanicsOnNilPort(t *testing.T) {
+	assert.Panics(t, func() {
+		NewCreateTagSetVersionUsecase(nil, &mockEventPort{}, &mockMarkTagSupersededPort{})
+	})
+	assert.Panics(t, func() {
+		NewCreateTagSetVersionUsecase(&mockTagSetPort{}, nil, &mockMarkTagSupersededPort{})
+	})
+	assert.Panics(t, func() {
+		NewCreateTagSetVersionUsecase(&mockTagSetPort{}, &mockEventPort{}, nil)
+	})
+}

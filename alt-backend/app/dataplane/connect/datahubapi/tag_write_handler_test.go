@@ -60,3 +60,39 @@ func TestBatchUpsertArticleTags_Unimplemented(t *testing.T) {
 		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
 	}
 }
+
+func TestUpsertArticleTags_ValidationAndSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockUpsert := mocks.NewMockUpsertArticleTagsPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+		WithTagCatalogPorts(mockUpsert, nil, nil))
+
+	t.Run("missing article_id returns CodeInvalidArgument", func(t *testing.T) {
+		_, err := h.UpsertArticleTags(context.Background(), connect.NewRequest(&datahubv1.UpsertArticleTagsRequest{}))
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+		}
+	})
+
+	t.Run("valid request upserts tags and returns count", func(t *testing.T) {
+		mockUpsert.EXPECT().
+			UpsertArticleTags(gomock.Any(), "art-1", "feed-1", gomock.Any()).
+			Return(int32(2), nil)
+
+		resp, err := h.UpsertArticleTags(context.Background(), connect.NewRequest(&datahubv1.UpsertArticleTagsRequest{
+			ArticleId: "art-1",
+			FeedId:    "feed-1",
+			Tags: []*datahubv1.TagItem{
+				{Name: "golang", Confidence: 0.95},
+				{Name: "connectrpc", Confidence: 0.85},
+			},
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !resp.Msg.GetSuccess() || resp.Msg.GetUpsertedCount() != 2 {
+			t.Fatalf("unexpected response: %+v", resp.Msg)
+		}
+	})
+}

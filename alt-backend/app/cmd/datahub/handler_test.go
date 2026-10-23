@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -120,4 +123,57 @@ func TestDataHubHandler_LegacyNamespaceAliasServesRetiredDataHubName(t *testing.
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("retired backend namespace: status = %d, want %d through the alias", rec.Code, http.StatusNotFound)
 	}
+}
+
+func TestDataHubHandler_DeepHealthProbe(t *testing.T) {
+	connectMux := http.NewServeMux()
+
+	t.Run("nil deep handler answers 404 on /health/deep", func(t *testing.T) {
+		h := dataHubHandler(connectMux, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("healthy database ping answers 200 pass", func(t *testing.T) {
+		deep := newDeepHealthHandler(func(context.Context) error { return nil })
+		h := dataHubHandler(connectMux, deep)
+
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var body struct {
+			Status  string `json:"status"`
+			Service string `json:"service"`
+			Checks  []struct {
+				Name   string `json:"name"`
+				Status string `json:"status"`
+			} `json:"checks"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode /health/deep response: %v", err)
+		}
+		if body.Status != "pass" || body.Service != "alt-data-hub" {
+			t.Fatalf("unexpected body: %+v", body)
+		}
+		if len(body.Checks) != 1 || body.Checks[0].Name != "database" || body.Checks[0].Status != "pass" {
+			t.Fatalf("unexpected checks: %+v", body.Checks)
+		}
+	})
+
+	t.Run("failing database ping answers 503 fail", func(t *testing.T) {
+		deep := newDeepHealthHandler(func(context.Context) error { return errors.New("connection refused") })
+		h := dataHubHandler(connectMux, deep)
+
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+		}
+	})
 }

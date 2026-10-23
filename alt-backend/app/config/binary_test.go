@@ -31,7 +31,7 @@ func baseConfig() *Config {
 			InternalAuthSecret: "a-distinct-internal-auth-secret-value",
 		},
 		Sovereign: SovereignConfig{URL: "http://knowledge-sovereign:9500"},
-		WebPush:   WebPushConfig{PublicKey: "a-vapid-public-key-value"},
+		WebPush:   WebPushConfig{PublicKey: "a-vapid-public-key-value", PrivateKey: "a-vapid-private-key-value", Subject: "mailto:ops@alt.example"},
 	}
 }
 
@@ -432,6 +432,18 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.Sovereign.URL = "" }, wantErr: "SOVEREIGN_URL"},
 		{name: "datahub needs mq-hub", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.MQHub.ConnectURL = "" }, wantErr: "MQHUB_CONNECT_URL"},
+
+		{name: "notifier accepts a complete mailto config", validate: ValidateNotifierConfig, mutate: func(*Config) {}},
+		{name: "notifier accepts an https subject", validate: ValidateNotifierConfig,
+			mutate: func(c *Config) { c.WebPush.Subject = "https://alt.example/contact" }, wantErr: ""},
+		{name: "notifier needs the vapid private key", validate: ValidateNotifierConfig,
+			mutate: func(c *Config) { c.WebPush.PrivateKey = "" }, wantErr: "VAPID_PRIVATE_KEY"},
+		{name: "notifier needs the vapid subject", validate: ValidateNotifierConfig,
+			mutate: func(c *Config) { c.WebPush.Subject = "" }, wantErr: "VAPID_SUBJECT"},
+		{name: "notifier rejects http subject per RFC 8292", validate: ValidateNotifierConfig,
+			mutate: func(c *Config) { c.WebPush.Subject = "http://alt.example/contact" }, wantErr: "VAPID_SUBJECT"},
+		{name: "notifier rejects bare email without scheme", validate: ValidateNotifierConfig,
+			mutate: func(c *Config) { c.WebPush.Subject = "ops@alt.example" }, wantErr: "VAPID_SUBJECT"},
 	}
 
 	for _, tt := range tests {

@@ -59,6 +59,14 @@ func TestBinaryDependencyGraphs_DatabaseIsDataHubOnly(t *testing.T) {
 			forbidden: []string{altDBPkg, pgxPkg, poolPkg},
 		},
 		{
+			// The Web Push dispatcher. Claims and settles deliveries exclusively
+			// through services.datahub.v1.DataHubService over mTLS; it must never
+			// link a database driver or pool of its own.
+			name:      "cmd/notifier",
+			pkg:       "alt/cmd/notifier",
+			forbidden: []string{altDBPkg, pgxPkg, poolPkg},
+		},
+		{
 			// The data plane, and the whole point of the split: alt_db has
 			// exactly one owner (ADR-000954 D3).
 			name:     "cmd/datahub",

@@ -98,6 +98,19 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				"FetchTagCloudUsecase",
 			},
 		},
+		{
+			name:  "notifier",
+			value: NotifierComponents{},
+			absent: []string{
+				"AltDBRepository", "SovereignClient", "RagIntegration",
+				"SearchIndexerDriver", "MQHubClient", "EventPublisher",
+				"KratosClient", "CSRFTokenUsecase", "AdminMonitor",
+				"ArticleCatalogGateway", "FeedCatalogGateway", "TagCatalogGateway",
+			},
+			present: []string{
+				"Dispatch",
+			},
+		},
 	}
 
 	for _, tt := range tests {
