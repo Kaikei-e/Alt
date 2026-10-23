@@ -92,6 +92,7 @@ const CAPABILITY_GROUPS = [
 
 	// WithRecapArticlesUsecase — recap-worker's window read.
 	{ group: "WithRecapArticlesUsecase", procedure: "ListRecapArticles" },
+	{ group: "WithFeedsInWindowUsecase", procedure: "ListFeedsInWindow" },
 
 	// ADR-000954 D6: the two absorbed /v1/internal REST routes. Required
 	// constructor arguments — SetupConnectHandlers panics on a nil one — so a
@@ -136,6 +137,10 @@ const CAPABILITY_GROUPS = [
 	// Wave 3 batch 6 — the Tag Trail's paged reads and the recall fallback.
 	{ group: "WithWave3Batch6Capabilities(tagTrail)", procedure: "ListArticlesByTagID" },
 	{ group: "WithWave3Batch6Capabilities(articleRef)", procedure: "GetArticleTitleAndLink" },
+
+	// WithPushCapabilities — Web Push subscriptions and delivery queue.
+	{ group: "WithPushCapabilities(pushDeliveries)", procedure: "GetNotificationBacklogAge" },
+	{ group: "WithPushCapabilities(pushSubscriptions)", procedure: "ListPushSubscriptionsForUser" },
 ] as const;
 
 test.describe("DataHubService capability wiring", () => {

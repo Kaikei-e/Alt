@@ -63,6 +63,24 @@ export const opsHealthSchema = z
 	})
 	.passthrough();
 
+export const deepHealthSchema = z
+	.object({
+		status: z.literal("pass"),
+		service: z.literal("alt-data-hub"),
+		checks: z
+			.array(
+				z
+					.object({
+						name: z.string(),
+						status: z.literal("pass"),
+						critical: z.boolean().optional(),
+					})
+					.passthrough(),
+			)
+			.nonempty(),
+	})
+	.passthrough();
+
 /**
  * `GetLatestArticleTimestampResponse`.
  *

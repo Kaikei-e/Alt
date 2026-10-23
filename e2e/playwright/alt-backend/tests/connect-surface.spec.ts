@@ -23,7 +23,7 @@ import { connectErrorSchema } from "../src/schemas.js";
  * A test that merely asserted "not 2xx" would accept both and prove nothing.
  */
 
-/** One procedure per service registered by SetupConnectHandlers. */
+/** One unary procedure per unary service registered by SetupConnectHandlers. */
 const MOUNTED_SERVICES = [
 	{ service: "FeedService", procedure: "alt.feeds.v2.FeedService/GetAllFeeds" },
 	{ service: "ArticleService", procedure: "alt.articles.v2.ArticleService/FetchArticlesCursor" },
@@ -33,6 +33,8 @@ const MOUNTED_SERVICES = [
 	{ service: "RecapService", procedure: "alt.recap.v2.RecapService/GetThreeDayRecap" },
 	{ service: "KnowledgeHomeService", procedure: "alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome" },
 	{ service: "KnowledgeTrailService", procedure: "alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail" },
+	{ service: "PushService", procedure: "alt.push.v2.PushService/GetPushConfig" },
+	{ service: "GlobalSearchService", procedure: "alt.search.v2.GlobalSearchService/SearchEverything" },
 ] as const;
 
 test.describe("Connect-RPC service registration", () => {
@@ -56,6 +58,18 @@ test.describe("Connect-RPC service registration", () => {
 			expect([404, 401]).not.toContain(response.status());
 		});
 	}
+
+	test("MorningLetterService (server-streaming) is mounted on :9101", async ({ connectAnon }) => {
+		// StreamChat is a server-streaming RPC. An unmounted service answers 404
+		// from Go's http.ServeMux; a mounted streaming handler answers non-404
+		// (415 for unary JSON Content-Type or 200 with a Connect end-of-stream
+		// error frame for application/connect+json).
+		const response = await connectAnon.post(
+			"/alt.morning_letter.v2.MorningLetterService/StreamChat",
+			{ data: {} },
+		);
+		expect(response.status(), "MorningLetterService/StreamChat must be mounted").not.toBe(404);
+	});
 });
 
 test.describe("Connect-RPC error envelope", () => {

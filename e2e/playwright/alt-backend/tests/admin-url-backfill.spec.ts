@@ -117,4 +117,15 @@ test.describe("operator listener projection health", () => {
 		);
 		expect(response.status()).toBe(404);
 	});
+
+	test("a request without a valid operator Bearer token is rejected with 401", async ({ operator }) => {
+		const response = await operator.post(
+			"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
+			{
+				headers: { Authorization: "Bearer invalid-operator-token-value" },
+				data: {},
+			},
+		);
+		expect(response.status()).toBe(401);
+	});
 });

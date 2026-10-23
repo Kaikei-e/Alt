@@ -5,7 +5,7 @@ import {
 	expectPrometheusText,
 	expectStatus,
 } from "../../_shared/http.js";
-import { connectHealthSchema, opsHealthSchema } from "../src/schemas.js";
+import { connectHealthSchema, deepHealthSchema, opsHealthSchema } from "../src/schemas.js";
 
 /**
  * The two health surfaces — the port of `00-setup.hurl`'s assertions and the
@@ -33,6 +33,11 @@ test.describe("health", () => {
 		const response = await dataHub.get("/health");
 		await expectJsonStatus(response, 200, connectHealthSchema);
 		expectHeaderContains(response, "Content-Type", "application/json");
+	});
+
+	test("mTLS /health/deep probes database ownership", { tag: "@smoke" }, async ({ dataHub }) => {
+		const body = await expectJsonStatus(await dataHub.get("/health/deep"), 200, deepHealthSchema);
+		expect(body.checks.some((c) => c.name === "database" && c.status === "pass")).toBe(true);
 	});
 
 	test("ops /health names this binary", { tag: "@smoke" }, async ({ ops }) => {

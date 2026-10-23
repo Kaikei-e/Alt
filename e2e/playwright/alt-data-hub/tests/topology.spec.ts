@@ -3,7 +3,7 @@ import { callUnary } from "../../_shared/connect.js";
 import { expectJsonStatus, expectStatus } from "../../_shared/http.js";
 import { expectConnectionRefused } from "../../_shared/net.js";
 import { env } from "../src/env.js";
-import { latestArticleTimestampSchema } from "../src/schemas.js";
+import { latestArticleTimestampSchema, systemUserSchema } from "../src/schemas.js";
 
 /** The verified peer/procedure gate denies retired or unknown data-plane paths.
  * Monitoring routes keep their separate 404 topology checks below.
@@ -44,6 +44,7 @@ test.describe("the ADR-000955 transitional alias", () => {
 	// Deployed legacy consumers use the same exact procedure capabilities.
 	test("the legacy name answers like the current one", { tag: "@contract" }, async ({ dataHub }) => {
 		await expectJsonStatus(await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/GetLatestArticleTimestamp`, {}), 200, latestArticleTimestampSchema);
+		await expectJsonStatus(await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/GetSystemUser`, {}), 200, systemUserSchema);
 	});
 	test("the alias does not grant an unknown procedure", { tag: "@authz" }, async ({ dataHub }) => {
 		const response = await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/NoSuchProcedureExists`, {});
@@ -94,6 +95,10 @@ test.describe("the operator listener carries nothing but /health and /metrics", 
 		// `/v1/health` is alt-backend's browser-facing route. Its presence here
 		// would mean the ops handler had been swapped for an Echo router.
 		await expectStatus(await ops.get("/v1/health"), 404);
+	});
+
+	test("ops :9110 does not serve /health/deep (mTLS-only on data-hub)", { tag: "@authz" }, async ({ ops }) => {
+		await expectStatus(await ops.get("/health/deep"), 404);
 	});
 
 	test("ops :9110 does not serve the retired internal REST pair", { tag: "@authz" }, async ({ ops }) => {

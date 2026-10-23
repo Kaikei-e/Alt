@@ -1,6 +1,6 @@
 import { test, expect } from "../src/fixtures.js";
 import { expectHeaderContains, expectJsonStatus, expectStatus } from "../../_shared/http.js";
-import { csrfTokenSchema, healthSchema } from "../src/schemas.js";
+import { csrfTokenSchema, deepHealthSchema, healthSchema } from "../src/schemas.js";
 
 /**
  * Public surface smoke — the port of `01-health-csrf.hurl`.
@@ -61,5 +61,10 @@ test.describe("public surface", () => {
 		// a different route from the public /v1/health and must not be confused
 		// with it — tests/topology.spec.ts pins that neither leaks onto :9000.
 		await expectStatus(await ops.get("/health"), 200);
+	});
+
+	test("GET /health/deep on the ops listener verifies the mTLS datahub probe", async ({ ops }) => {
+		const body = await expectJsonStatus(await ops.get("/health/deep"), 200, deepHealthSchema);
+		expect(body.checks.some((c) => c.name === "datahub" && c.status === "pass")).toBe(true);
 	});
 });

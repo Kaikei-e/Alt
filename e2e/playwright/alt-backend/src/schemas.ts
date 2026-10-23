@@ -35,6 +35,24 @@ export const healthSchema = z
 	})
 	.passthrough();
 
+export const deepHealthSchema = z
+	.object({
+		status: z.literal("pass"),
+		service: z.literal("alt-backend"),
+		checks: z
+			.array(
+				z
+					.object({
+						name: z.string(),
+						status: z.literal("pass"),
+						critical: z.boolean().optional(),
+					})
+					.passthrough(),
+			)
+			.nonempty(),
+	})
+	.passthrough();
+
 export const csrfTokenSchema = z
 	.object({
 		// base64url alphabet — the driver encodes 32 random bytes.

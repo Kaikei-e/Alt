@@ -31,7 +31,7 @@ test.describe("summary reads", () => {
 
 			const response = await rest.post(endpoint.path, {
 				headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
-				data: { feed_url: feed?.url ?? stubURL("feed-summary-fallback.xml") },
+				data: { feed_urls: [feed?.url ?? stubURL("feed-summary-fallback.xml")] },
 			});
 
 			expect(response.status()).toBeGreaterThanOrEqual(200);
@@ -44,13 +44,29 @@ test.describe("summary reads", () => {
 			expect(() => JSON.parse(text), `body was not JSON: ${text.slice(0, 500)}`).not.toThrow();
 		});
 
-		test(`${endpoint.name}: an empty feed_url is rejected`, async ({ rest, csrf }) => {
+		test(`${endpoint.name}: an empty feed_urls array is rejected with 400`, async ({ rest, csrf }) => {
 			const response = await rest.post(endpoint.path, {
 				headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
-				data: { feed_url: "" },
+				data: { feed_urls: [] },
 			});
-			expect(response.status()).toBeGreaterThanOrEqual(400);
-			expect(response.status()).toBeLessThan(500);
+			expect(response.status()).toBe(400);
+		});
+
+		test(`${endpoint.name}: more than 50 feed_urls is rejected with 400`, async ({ rest, csrf }) => {
+			const urls = Array.from({ length: 51 }, (_, i) => stubURL(`batch-limit-${i}.xml`));
+			const response = await rest.post(endpoint.path, {
+				headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+				data: { feed_urls: urls },
+			});
+			expect(response.status()).toBe(400);
+		});
+
+		test(`${endpoint.name}: a private/loopback feed_url is rejected by SSRF validation`, async ({ rest, csrf }) => {
+			const response = await rest.post(endpoint.path, {
+				headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+				data: { feed_urls: ["http://127.0.0.1:9000/internal-feed.xml"] },
+			});
+			expect(response.status()).toBe(400);
 		});
 	}
 });
