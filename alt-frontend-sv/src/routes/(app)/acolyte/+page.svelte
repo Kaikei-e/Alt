@@ -50,7 +50,11 @@ onMount(() => {
 		deletedNotice = deleted;
 		const url = new URL(page.url.href);
 		url.searchParams.delete("deleted");
-		history.replaceState(history.state, "", url.toString());
+		history.replaceState(
+			history.state,
+			"",
+			`${url.pathname}${url.search}${url.hash}`,
+		);
 	}
 	loadReports();
 });

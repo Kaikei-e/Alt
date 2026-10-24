@@ -114,7 +114,11 @@ describe("MorningLetterSectionCore", () => {
 			"Editorial synthesis of the morning wire.",
 		);
 
-		await expect.element(page.getByText("recap")).toBeInTheDocument();
-		await expect.element(page.getByText("overnight")).toBeInTheDocument();
+		await expect
+			.element(page.getByText("recap", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("overnight", { exact: true }))
+			.toBeInTheDocument();
 	});
 });

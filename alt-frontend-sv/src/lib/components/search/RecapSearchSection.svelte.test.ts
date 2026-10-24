@@ -56,7 +56,9 @@ describe("RecapSearchSection", () => {
 				),
 			)
 			.toBeInTheDocument();
-		await expect.element(page.getByText("quantization")).toBeInTheDocument();
+		await expect
+			.element(page.getByText("quantization", { exact: true }))
+			.toBeInTheDocument();
 	});
 
 	it("navigates to /recap?q=... when See all > is clicked", async () => {

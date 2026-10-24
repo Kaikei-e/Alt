@@ -84,7 +84,7 @@ describe("Desktop /acolyte/+page.svelte", () => {
 		const banner = container.querySelector(".deleted-banner");
 		expect(banner).not.toBeNull();
 		await expect
-			.element(page.getByText("Q2 Market Outlook"))
+			.element(page.getByRole("status").getByText("Q2 Market Outlook"))
 			.toBeInTheDocument();
 
 		await page.getByRole("button", { name: "Dismiss" }).click();

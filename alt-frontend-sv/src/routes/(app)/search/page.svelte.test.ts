@@ -119,12 +119,12 @@ describe("/search/+page.svelte", () => {
 		render(Page);
 		await settle(250);
 
+		const banner = page.getByRole("status");
+		await expect.element(banner).toBeInTheDocument();
 		await expect
-			.element(
-				page.getByText(
-					/Some sections are unavailable: recaps, tags\. Results may be incomplete\./,
-				),
-			)
-			.toBeInTheDocument();
+			.element(banner)
+			.toHaveTextContent(
+				/Some sections are unavailable: recaps, tags\.\s*Results may be incomplete\./,
+			);
 	});
 });

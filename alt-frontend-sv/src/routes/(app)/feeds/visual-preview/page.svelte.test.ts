@@ -189,11 +189,12 @@ describe("Visual Preview page continuity across a rotation", () => {
 		await page.getByRole("button", { name: "Mark as Read" }).click();
 		await settle(250);
 
-		const live = document.querySelector('[aria-live="assertive"]');
+		const live = document.querySelector('.sr-only[aria-live="assertive"]');
 		expect(live?.textContent?.trim()).toBe(MARK_AS_READ_FAILED_MESSAGE);
-		await expect
-			.element(page.getByText(MARK_AS_READ_FAILED_MESSAGE))
-			.toBeInTheDocument();
+		const toastMessage = document.querySelector(
+			".toast-kind-error .toast-message",
+		);
+		expect(toastMessage?.textContent?.trim()).toBe(MARK_AS_READ_FAILED_MESSAGE);
 		expect(cardLabels()).toContain(openLabel(FIRST));
 	});
 });

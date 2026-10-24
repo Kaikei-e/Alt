@@ -153,7 +153,7 @@ describe("SwipeFeedScreen", () => {
 	});
 
 	it("guards handleArticleIdResolved against redundant feeds reassignment when articleId is unchanged", async () => {
-		articlePrefetcherMock.getCachedContent.mockReturnValue("<p>Cached</p>");
+		articlePrefetcherMock.getCachedContent.mockReturnValue(null);
 		articlePrefetcherMock.getCachedArticleId.mockReturnValue("art-1");
 
 		const { unmount } = render(SwipeFeedScreen, {
@@ -165,7 +165,7 @@ describe("SwipeFeedScreen", () => {
 		await settle(200);
 
 		// Because feed.articleId is already "art-1", handleArticleIdResolved must not
-		// rebuild `feeds` or re-trigger the prefetch effect.
+		// rebuild `feeds` or re-trigger the prefetch effect after ensureContent resolves.
 		expect(articlePrefetcherMock.triggerPrefetch).toHaveBeenCalledTimes(1);
 		unmount();
 
@@ -180,8 +180,8 @@ describe("SwipeFeedScreen", () => {
 		});
 		await settle(200);
 
-		// When articleId changes from undefined -> "art-new-99", `feeds` is updated
-		// and the prefetch effect runs a second time with the resolved articleId.
+		// When articleId changes from undefined -> "art-new-99" after ensureContent resolves,
+		// `feeds` is updated and the prefetch effect runs a second time with the resolved articleId.
 		expect(articlePrefetcherMock.triggerPrefetch).toHaveBeenCalledTimes(2);
 		const secondCallFeeds = articlePrefetcherMock.triggerPrefetch.mock
 			.calls[1]?.[0] as RenderFeed[];
