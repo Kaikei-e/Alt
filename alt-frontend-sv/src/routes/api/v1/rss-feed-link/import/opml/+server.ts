@@ -1,10 +1,11 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { getBackendToken, verifyCsrfToken } from "#lib/server/auth.js";
-import { BACKEND_CONNECT_URL } from "$app/env/private";
+import { BACKEND_CONNECT_URL, BACKEND_REST_URL } from "$app/env/private";
 
-const BACKEND_URL = BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
+const BACKEND_URL =
+	BACKEND_REST_URL || BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, locals }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	// V-004: CSRF validation for state-changing operations
@@ -15,7 +16,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	}
 
 	try {
-		const token = await getBackendToken(cookieHeader);
+		const token = locals?.backendToken ?? (await getBackendToken(cookieHeader));
 
 		// Read the multipart form data from the client request
 		const formData = await request.formData();

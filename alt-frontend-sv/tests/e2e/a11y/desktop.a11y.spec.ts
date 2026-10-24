@@ -266,10 +266,7 @@ test.describe("Desktop Pages Accessibility", () => {
 				(v) => v.id.includes("image") || v.id.includes("alt"),
 			);
 
-			// Log any image violations
-			if (imageViolations.length > 0) {
-				console.log("Image/Chart a11y violations:", imageViolations);
-			}
+			expect(imageViolations).toEqual([]);
 		});
 	});
 
@@ -383,30 +380,25 @@ test.describe("Desktop Layout Accessibility", () => {
 		await page.waitForLoadState("domcontentloaded");
 		await expect(page.getByText("Desktop Test Article")).toBeVisible();
 
-		// Tab through the page
-		await page.keyboard.press("Tab");
-
-		// Should be able to reach navigation items
-		const focusedCount = await page.evaluate(() => {
-			let count = 0;
-			const walk = (times: number) => {
-				for (let i = 0; i < times; i++) {
-					const focused = document.activeElement;
-					if (
-						focused &&
-						(focused.matches("a, button") ||
-							focused.getAttribute("tabindex") === "0")
-					) {
-						count++;
-					}
-				}
-			};
-			walk(10);
-			return count;
-		});
+		// Tab through the page and count focusable interactive elements reached
+		let focusedCount = 0;
+		for (let i = 0; i < 10; i++) {
+			await page.keyboard.press("Tab");
+			const isInteractive = await page.evaluate(() => {
+				const focused = document.activeElement;
+				return Boolean(
+					focused &&
+						(focused.matches("a, button, input, select, textarea") ||
+							focused.getAttribute("tabindex") === "0"),
+				);
+			});
+			if (isInteractive) {
+				focusedCount++;
+			}
+		}
 
 		// Should have found some focusable elements
-		expect(focusedCount).toBeGreaterThanOrEqual(0);
+		expect(focusedCount).toBeGreaterThan(0);
 	});
 
 	test("skip link is available for keyboard users", async ({ page }) => {

@@ -9,12 +9,11 @@
  * invalidation on tab return to refetch stale data.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createSafariConnectionRecovery,
 	isNetworkFailureError,
 	performGuardedReload,
-	type SafariConnectionRecoveryOptions,
 } from "./safari-connection-recovery";
 
 function makeFakeStorage(initial: Record<string, string> = {}) {
@@ -35,6 +34,11 @@ interface FakeDoc {
 	addEventListener: (type: string, listener: EventListener) => void;
 	removeEventListener: (type: string, listener: EventListener) => void;
 	visibilityState: "visible" | "hidden";
+}
+
+interface FakeWin {
+	addEventListener: (type: string, listener: EventListener) => void;
+	removeEventListener: (type: string, listener: EventListener) => void;
 }
 
 function makeFakeDoc() {
@@ -62,13 +66,39 @@ function makeFakeDoc() {
 	return { doc, fire, listenerCount };
 }
 
+function makeFakeWin() {
+	const listeners = new Map<string, Set<EventListener>>();
+	const win: FakeWin = {
+		addEventListener(type: string, listener: EventListener) {
+			let set = listeners.get(type);
+			if (!set) {
+				set = new Set();
+				listeners.set(type, set);
+			}
+			set.add(listener);
+		},
+		removeEventListener(type: string, listener: EventListener) {
+			listeners.get(type)?.delete(listener);
+		},
+	};
+	const fire = (type: string, evt?: unknown) => {
+		const set = listeners.get(type);
+		if (!set) return;
+		for (const l of set) l(evt as Event);
+	};
+	const listenerCount = (type: string) => listeners.get(type)?.size ?? 0;
+	return { win, fire, listenerCount };
+}
+
 describe("createSafariConnectionRecovery", () => {
 	let now: number;
 	let fakeDoc: ReturnType<typeof makeFakeDoc>;
+	let fakeWin: ReturnType<typeof makeFakeWin>;
 
 	beforeEach(() => {
 		now = 1_000_000;
 		fakeDoc = makeFakeDoc();
+		fakeWin = makeFakeWin();
 	});
 
 	it("calls onRecoveryNeeded when hidden duration exceeds threshold", () => {
@@ -78,6 +108,7 @@ describe("createSafariConnectionRecovery", () => {
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 		});
 
 		fakeDoc.doc.visibilityState = "hidden";
@@ -104,6 +135,7 @@ describe("createSafariConnectionRecovery", () => {
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 		});
 
 		fakeDoc.doc.visibilityState = "hidden";
@@ -119,16 +151,17 @@ describe("createSafariConnectionRecovery", () => {
 		handle.dispose();
 	});
 
-	it("calls onRecoveryNeeded on bfcache restore (pageshow with persisted=true)", () => {
+	it("calls onRecoveryNeeded on bfcache restore (pageshow with persisted=true on window)", () => {
 		const onRecoveryNeeded = vi.fn();
 		const handle = createSafariConnectionRecovery({
 			thresholdMs: 30_000,
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 		});
 
-		fakeDoc.fire("pageshow", { persisted: true });
+		fakeWin.fire("pageshow", { persisted: true });
 
 		expect(onRecoveryNeeded).toHaveBeenCalledTimes(1);
 		expect(onRecoveryNeeded).toHaveBeenCalledWith({
@@ -139,16 +172,61 @@ describe("createSafariConnectionRecovery", () => {
 		handle.dispose();
 	});
 
-	it("ignores pageshow with persisted=false", () => {
+	it("regression: pageshow on document does nothing while pageshow on window triggers bfcache and discarded-tab recovery", () => {
+		const onRecoveryNeeded = vi.fn();
+		const storage = makeFakeStorage({
+			"alt:safari-recovery:hidden-at": String(now),
+		});
+		now += 120_000;
+
+		const handle = createSafariConnectionRecovery({
+			thresholdMs: 30_000,
+			onRecoveryNeeded,
+			getNow: () => now,
+			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
+			storage,
+		});
+
+		// pageshow is a non-bubbling Window event — firing on document must not be listened to
+		expect(fakeDoc.listenerCount("pageshow")).toBe(0);
+		expect(fakeWin.listenerCount("pageshow")).toBe(1);
+
+		fakeDoc.fire("pageshow", { persisted: true });
+		fakeDoc.fire("pageshow", { persisted: false });
+		expect(onRecoveryNeeded).not.toHaveBeenCalled();
+
+		// Discarded-tab reload recovery via window pageshow (persisted: false) + sessionStorage
+		fakeWin.fire("pageshow", { persisted: false });
+		expect(onRecoveryNeeded).toHaveBeenCalledTimes(1);
+		expect(onRecoveryNeeded).toHaveBeenCalledWith({
+			reason: "resume",
+			hiddenDurationMs: 120_000,
+		});
+
+		// bfcache restore via window pageshow (persisted: true)
+		fakeWin.fire("pageshow", { persisted: true });
+		expect(onRecoveryNeeded).toHaveBeenCalledTimes(2);
+		expect(onRecoveryNeeded).toHaveBeenLastCalledWith({
+			reason: "bfcache",
+			hiddenDurationMs: undefined,
+		});
+
+		handle.dispose();
+	});
+
+	it("ignores pageshow with persisted=false when no hidden marker exists", () => {
 		const onRecoveryNeeded = vi.fn();
 		const handle = createSafariConnectionRecovery({
 			thresholdMs: 30_000,
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
+			storage: makeFakeStorage(),
 		});
 
-		fakeDoc.fire("pageshow", { persisted: false });
+		fakeWin.fire("pageshow", { persisted: false });
 
 		expect(onRecoveryNeeded).not.toHaveBeenCalled();
 
@@ -193,21 +271,25 @@ describe("createSafariConnectionRecovery", () => {
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 		});
 
 		expect(fakeDoc.listenerCount("visibilitychange")).toBe(1);
-		expect(fakeDoc.listenerCount("pageshow")).toBe(1);
+		expect(fakeWin.listenerCount("pageshow")).toBe(1);
+		expect(fakeWin.listenerCount("online")).toBe(1);
 
 		handle.dispose();
 
 		expect(fakeDoc.listenerCount("visibilitychange")).toBe(0);
-		expect(fakeDoc.listenerCount("pageshow")).toBe(0);
+		expect(fakeWin.listenerCount("pageshow")).toBe(0);
+		expect(fakeWin.listenerCount("online")).toBe(0);
 
 		fakeDoc.doc.visibilityState = "hidden";
 		fakeDoc.fire("visibilitychange");
 		now += 60_000;
 		fakeDoc.doc.visibilityState = "visible";
 		fakeDoc.fire("visibilitychange");
+		fakeWin.fire("pageshow", { persisted: true });
 
 		expect(onRecoveryNeeded).not.toHaveBeenCalled();
 	});
@@ -219,6 +301,7 @@ describe("createSafariConnectionRecovery", () => {
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 		});
 
 		fakeDoc.doc.visibilityState = "hidden";
@@ -252,6 +335,7 @@ describe("createSafariConnectionRecovery", () => {
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 			storage: makeFakeStorage(),
 		});
 
@@ -275,6 +359,7 @@ describe("createSafariConnectionRecovery", () => {
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 			storage: makeFakeStorage(),
 		});
 
@@ -299,10 +384,11 @@ describe("createSafariConnectionRecovery", () => {
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 			storage,
 		});
 
-		fakeDoc.fire("pageshow", { persisted: false });
+		fakeWin.fire("pageshow", { persisted: false });
 
 		expect(onRecoveryNeeded).toHaveBeenCalledTimes(1);
 		expect(onRecoveryNeeded).toHaveBeenCalledWith({
@@ -310,7 +396,7 @@ describe("createSafariConnectionRecovery", () => {
 			hiddenDurationMs: 300_000,
 		});
 		// Marker is consumed so a later pageshow does not re-trigger.
-		fakeDoc.fire("pageshow", { persisted: false });
+		fakeWin.fire("pageshow", { persisted: false });
 		expect(onRecoveryNeeded).toHaveBeenCalledTimes(1);
 
 		handle.dispose();
@@ -323,10 +409,11 @@ describe("createSafariConnectionRecovery", () => {
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 			storage: makeFakeStorage(),
 		});
 
-		fakeDoc.fire("pageshow", { persisted: false });
+		fakeWin.fire("pageshow", { persisted: false });
 
 		expect(onRecoveryNeeded).not.toHaveBeenCalled();
 
@@ -340,6 +427,7 @@ describe("createSafariConnectionRecovery", () => {
 			onRecoveryNeeded,
 			getNow: () => now,
 			document: fakeDoc.doc as unknown as Document,
+			window: fakeWin.win as unknown as Window,
 			storage: makeFakeStorage(),
 		});
 

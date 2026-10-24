@@ -35,7 +35,9 @@ export class RegisterPage extends BasePage {
 		this.passwordInput = page.getByLabel(/password/i);
 		this.submitButton = page.getByRole("button", { name: /register/i });
 
-		this.errorMessage = page.locator('[style*="color: #dc2626"]');
+		this.errorMessage = page.locator(
+			'[style*="#dc2626"], [style*="220, 38, 38"]',
+		);
 
 		this.loginLink = page.getByRole("link", { name: /login/i });
 
@@ -70,20 +72,10 @@ export class RegisterPage extends BasePage {
 	}
 
 	/**
-	 * Wait for form to be ready. Returns false if external auth is detected.
+	 * Wait for form to be ready.
 	 */
 	async waitForFormReady(): Promise<boolean> {
-		try {
-			await expect(
-				this.emailInput.or(this.redirectingText).or(this.externalAuth).first(),
-			).toBeVisible({ timeout: 10000 });
-
-			if (await this.externalAuth.isVisible()) {
-				return false;
-			}
-			return true;
-		} catch {
-			return false;
-		}
+		await expect(this.emailInput).toBeVisible({ timeout: 10000 });
+		return true;
 	}
 }

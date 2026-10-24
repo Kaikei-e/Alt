@@ -103,48 +103,180 @@ export const AUGUR_SSE_CHUNKS = [
 ];
 
 /**
- * Connect-RPC format for v2 AugurService/StreamChat endpoint
+ * Connect-RPC format for v2 AugurService/StreamChat endpoint.
+ * Uses protobuf JSON wire format where oneof fields use their field name directly.
  */
 export const AUGUR_CONNECT_MESSAGES = [
+	{ kind: "delta", delta: "Based on your recent feeds, " },
+	{ kind: "delta", delta: "here are the key trends: " },
+	{ kind: "delta", delta: "AI development is accelerating." },
 	{
-		result: {
-			kind: "delta",
-			payload: { case: "delta", value: "Based on your recent feeds, " },
-		},
-	},
-	{
-		result: {
-			kind: "delta",
-			payload: { case: "delta", value: "here are the key trends: " },
-		},
-	},
-	{
-		result: {
-			kind: "delta",
-			payload: { case: "delta", value: "AI development is accelerating." },
-		},
-	},
-	{
-		result: {
-			kind: "done",
-			payload: {
-				case: "done",
-				value: {
-					answer:
-						"Based on your recent feeds, here are the key trends: AI development is accelerating.",
-					citations: [
-						{
-							url: "https://example.com/ai",
-							title: "AI News",
-							publishedAt: "2025-12-20T10:00:00Z",
-						},
-					],
+		kind: "done",
+		done: {
+			answer:
+				"Based on your recent feeds, here are the key trends: AI development is accelerating.",
+			citations: [
+				{
+					url: "https://example.com/ai",
+					title: "AI News",
+					publishedAt: "2025-12-20T10:00:00Z",
 				},
-			},
+			],
 		},
 	},
-	{ result: {} },
 ];
+
+// =============================================================================
+// Morning Letter Mock Data
+// =============================================================================
+
+export const CONNECT_MORNING_LETTER_DOCUMENT = {
+	id: "letter-001",
+	targetDate: "2026-04-07",
+	editionTimezone: "Asia/Tokyo",
+	isDegraded: false,
+	schemaVersion: 1,
+	generationRevision: 1,
+	model: "gemma4-e4b",
+	createdAt: "2026-04-07T06:00:00Z",
+	etag: '"rev-1"',
+	body: {
+		lead: "Today's key developments across AI and web engineering.",
+		generatedAt: "2026-04-07T06:00:00Z",
+		sourceRecapWindowDays: 3,
+		throughLine: "Inference efficiency and browser standards converge.",
+		sections: [
+			{
+				key: "top3",
+				title: "Top Stories",
+				bullets: [
+					"New reasoning models cut latency by 40%.",
+					"WebGPU ships across major desktop browsers.",
+				],
+				genre: "technology",
+				narrative: "Key breakthroughs in model serving and client runtimes.",
+				whyReasons: [
+					{ code: "subscription_update", tag: "AI" },
+					{ code: "subscription_update", tag: "Web" },
+				],
+			},
+		],
+	},
+};
+
+export const CONNECT_MORNING_LETTER_STREAM_MESSAGES = [
+	{
+		kind: "meta",
+		meta: {
+			citations: [],
+			timeWindow: {
+				since: "2025-12-30T00:00:00Z",
+				until: "2025-12-31T00:00:00Z",
+			},
+			articlesScanned: 42,
+		},
+	},
+	{ kind: "delta", delta: "Based on the past 24 hours of news, " },
+	{ kind: "delta", delta: "here are the key developments: " },
+	{ kind: "delta", delta: "AI research has made significant progress." },
+	{
+		kind: "done",
+		done: {
+			answer:
+				"Based on the past 24 hours of news, here are the key developments: AI research has made significant progress.",
+			citations: [
+				{
+					url: "https://example.com/ai-news",
+					title: "AI Research Update",
+					publishedAt: "2025-12-31T08:00:00Z",
+				},
+				{
+					url: "https://example.com/tech-weekly",
+					title: "Tech Weekly",
+					publishedAt: "2025-12-31T06:00:00Z",
+				},
+			],
+		},
+	},
+];
+
+// =============================================================================
+// Job Progress Dashboard Data (inlined for Dockerfile.mock-auth isolation)
+// =============================================================================
+
+export const JOB_PROGRESS_RESPONSE = {
+	active_job: null,
+	recent_jobs: [
+		{
+			job_id: "job-001-test-abc123",
+			status: "completed",
+			last_stage: "persist",
+			kicked_at: "2025-12-20T10:00:00Z",
+			updated_at: "2025-12-20T10:05:30Z",
+			duration_secs: 330,
+			trigger_source: "system",
+			user_id: null,
+			status_history: [
+				{
+					id: 1,
+					status: "running",
+					stage: "fetch",
+					transitioned_at: "2025-12-20T10:00:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 2,
+					status: "completed",
+					stage: "fetch",
+					transitioned_at: "2025-12-20T10:00:45Z",
+					reason: null,
+					actor: "system",
+				},
+			],
+		},
+		{
+			job_id: "job-002-test-def456",
+			status: "failed",
+			last_stage: "genre",
+			kicked_at: "2025-12-20T08:00:00Z",
+			updated_at: "2025-12-20T08:02:15Z",
+			duration_secs: 135,
+			trigger_source: "user",
+			user_id: "user-123",
+			status_history: [
+				{
+					id: 1,
+					status: "running",
+					stage: "fetch",
+					transitioned_at: "2025-12-20T08:00:00Z",
+					reason: null,
+					actor: "system",
+				},
+				{
+					id: 2,
+					status: "failed",
+					stage: "genre",
+					transitioned_at: "2025-12-20T08:02:15Z",
+					reason: "Genre classification timeout",
+					actor: "system",
+				},
+			],
+		},
+	],
+	stats: {
+		success_rate_24h: 0.85,
+		avg_duration_secs: 280,
+		total_jobs_24h: 12,
+		running_jobs: 0,
+		failed_jobs_24h: 2,
+	},
+	user_context: {
+		user_article_count: 12,
+		user_jobs_count: 5,
+		user_feed_ids: ["feed-1", "feed-2", "feed-3"],
+	},
+};
 
 export const CONNECT_RECAP_CARDS_RESPONSE = {
 	job: {

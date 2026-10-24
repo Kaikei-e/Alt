@@ -12,12 +12,16 @@ import { LoginPage } from "../pages/auth/LoginPage";
 import { RegisterPage } from "../pages/auth/RegisterPage";
 // Component POMs
 import { SidebarComponent } from "../pages/components/SidebarComponent";
+import { DesktopAcolyteNewPage } from "../pages/desktop/DesktopAcolyteNewPage";
+import { DesktopAcolyteReportPage } from "../pages/desktop/DesktopAcolyteReportPage";
 import { DesktopAugurPage } from "../pages/desktop/DesktopAugurPage";
 import { DesktopEveningPulsePage } from "../pages/desktop/DesktopEveningPulsePage";
 import { DesktopFavoritesPage } from "../pages/desktop/DesktopFavoritesPage";
 // Desktop POMs
 import { DesktopFeedsPage } from "../pages/desktop/DesktopFeedsPage";
 import { DesktopJobStatusPage } from "../pages/desktop/DesktopJobStatusPage";
+import { DesktopKnowledgeHomeAdminPage } from "../pages/desktop/DesktopKnowledgeHomeAdminPage";
+import { DesktopKnowledgeHomePage } from "../pages/desktop/DesktopKnowledgeHomePage";
 import { DesktopMorningLetterPage } from "../pages/desktop/DesktopMorningLetterPage";
 import { DesktopRecapCardsPage } from "../pages/desktop/DesktopRecapCardsPage";
 import { DesktopRecapPage } from "../pages/desktop/DesktopRecapPage";
@@ -34,6 +38,7 @@ import { MobileFavoritesPage } from "../pages/mobile/MobileFavoritesPage";
 // Mobile POMs
 import { MobileFeedsPage } from "../pages/mobile/MobileFeedsPage";
 import { MobileJobStatusPage } from "../pages/mobile/MobileJobStatusPage";
+import { MobileKnowledgeHomePage } from "../pages/mobile/MobileKnowledgeHomePage";
 import { MobileManagePage } from "../pages/mobile/MobileManagePage";
 import { MobileMorningLetterPage } from "../pages/mobile/MobileMorningLetterPage";
 import { MobileRecapCardsPage } from "../pages/mobile/MobileRecapCardsPage";
@@ -51,7 +56,11 @@ type PomFixtures = {
 	loginPage: LoginPage;
 	registerPage: RegisterPage;
 	// Desktop
+	desktopAcolyteNewPage: DesktopAcolyteNewPage;
+	desktopAcolyteReportPage: DesktopAcolyteReportPage;
 	desktopFeedsPage: DesktopFeedsPage;
+	desktopKnowledgeHomeAdminPage: DesktopKnowledgeHomeAdminPage;
+	desktopKnowledgeHomePage: DesktopKnowledgeHomePage;
 	desktopRecapPage: DesktopRecapPage;
 	desktopRecapCardsPage: DesktopRecapCardsPage;
 	desktopSearchPage: DesktopSearchPage;
@@ -68,6 +77,7 @@ type PomFixtures = {
 	desktopTagArticlesPage: DesktopTagArticlesPage;
 	// Mobile
 	mobileFeedsPage: MobileFeedsPage;
+	mobileKnowledgeHomePage: MobileKnowledgeHomePage;
 	mobileSwipePage: MobileSwipePage;
 	mobileRecapPage: MobileRecapPage;
 	mobileRecapCardsPage: MobileRecapCardsPage;
@@ -95,8 +105,20 @@ export const test = base.extend<PomFixtures>({
 		await use(new RegisterPage(page));
 	},
 	// Desktop
+	desktopAcolyteNewPage: async ({ page }, use) => {
+		await use(new DesktopAcolyteNewPage(page));
+	},
+	desktopAcolyteReportPage: async ({ page }, use) => {
+		await use(new DesktopAcolyteReportPage(page));
+	},
 	desktopFeedsPage: async ({ page }, use) => {
 		await use(new DesktopFeedsPage(page));
+	},
+	desktopKnowledgeHomeAdminPage: async ({ page }, use) => {
+		await use(new DesktopKnowledgeHomeAdminPage(page));
+	},
+	desktopKnowledgeHomePage: async ({ page }, use) => {
+		await use(new DesktopKnowledgeHomePage(page));
 	},
 	desktopRecapPage: async ({ page }, use) => {
 		await use(new DesktopRecapPage(page));
@@ -143,6 +165,9 @@ export const test = base.extend<PomFixtures>({
 	// Mobile
 	mobileFeedsPage: async ({ page }, use) => {
 		await use(new MobileFeedsPage(page));
+	},
+	mobileKnowledgeHomePage: async ({ page }, use) => {
+		await use(new MobileKnowledgeHomePage(page));
 	},
 	mobileSwipePage: async ({ page }, use) => {
 		await use(new MobileSwipePage(page));

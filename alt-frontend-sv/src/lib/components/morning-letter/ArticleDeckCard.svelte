@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { MorningLetterBulletEnrichment } from "#lib/gen/alt/morning_letter/v2/morning_letter_pb.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 type Props = {
 	enrichment: MorningLetterBulletEnrichment;
@@ -13,6 +14,7 @@ const hasExcerpt = $derived(Boolean(enrichment.summaryExcerpt));
 const hasTags = $derived(enrichment.tags.length > 0);
 const hasRelated = $derived(enrichment.relatedArticles.length > 0);
 const hasChat = $derived(Boolean(enrichment.chatHref));
+const safeArticleUrl = $derived(sanitizeHrefUrl(enrichment.articleUrl));
 </script>
 
 <article class="deck-card" data-role="article-deck-card">
@@ -67,10 +69,10 @@ const hasChat = $derived(Boolean(enrichment.chatHref));
 				Chat with Augur →
 			</a>
 		{/if}
-		{#if enrichment.articleUrl}
+		{#if safeArticleUrl}
 			<a
 				class="deck-cta deck-cta--ghost"
-				href={enrichment.articleUrl}
+				href={safeArticleUrl}
 				target="_blank"
 				rel="noopener"
 			>

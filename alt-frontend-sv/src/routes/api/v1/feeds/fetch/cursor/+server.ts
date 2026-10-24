@@ -1,7 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { getFeedsWithCursor } from "#lib/api.js";
 
-export const GET: RequestHandler = async ({ request, url }) => {
+export const GET: RequestHandler = async ({ request, url, locals }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	const limit = url.searchParams.get("limit");
@@ -12,6 +12,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			cookieHeader,
 			cursor || undefined,
 			limit ? parseInt(limit, 10) : 20,
+			locals?.backendToken,
 		);
 
 		return Response.json(response);

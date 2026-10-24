@@ -106,6 +106,7 @@ The app uses SvelteKit file-system routing at the root base path. The `(app)` ro
 | `/acolyte/reports/[id]` | Acolyte report detail | `(app)` |
 | `/knowledge/trail` | Your Trail (Knowledge Trail) | `(app)` |
 | `/recap` | 3-day recap viewer | `(app)` |
+| `/recap/cards` | Topic Cards recap viewer (ranked Japanese story cards with sources) | `(app)` |
 | `/recap/morning-letter` | Morning letter recap | `(app)` |
 | `/recap/evening-pulse` | Evening pulse recap | `(app)` |
 | `/recap/job-status` | Recap generation job status | `(app)` |
@@ -115,7 +116,7 @@ The app uses SvelteKit file-system routing at the root base path. The `(app)` ro
 | `/admin/knowledge-home` | Knowledge Home admin dashboard (SLO, Reproject, Backfill, Projection Health) | `(app)` |
 | `/admin/monitor` | System monitor (Prometheus-backed, via `AdminMonitorService`) | `(app)` |
 | `/eval-dashboard` | Evaluation metrics dashboard (classification, clustering, summarization) | root |
-| `/[...path]` | Catch-all: redirects unknown paths to `/home` | root |
+| `/[...path]` | Catch-all: throws HTTP 404 (`error(404, "Not Found")`) for unknown paths | root |
 
 > **Legacy `/sv/*` redirects**: `/sv`, `/sv/home` (→ `/feeds`) and `/sv/error`, `/sv/register`, `/sv/auth/login` (→ the equivalent root path) are pure server-side redirect stubs (`+page.server.ts`, no UI) kept for old bookmarks and Kratos return URLs from when the app was served under `/sv`. There is no `/sv/desktop/*` or `/sv/mobile/*` — those legacy device-specific route trees have been removed; only the responsive `(app)` layout remains.
 
@@ -130,6 +131,7 @@ The app uses SvelteKit file-system routing at the root base path. The `(app)` ro
 | `/api/v1/rss-feed-link/*` | Various | Backend proxy: RSS feed link CRUD (add/remove, OPML import/export) |
 | `/api/v1/dashboard/*` | Various | Backend proxy: admin dashboard data (overview, metrics, logs, jobs) |
 | `/api/v1/generate/recaps/*` | POST | Backend proxy: trigger recap generation |
+| `/api/v1/generate/topic-cards` | POST | Backend proxy: trigger topic-cards generation (`RECAP_WORKER_BASE_URL`) |
 | `/api/feeds/random` | GET | Random feed selection |
 | `/api/feeds/[id]/tags` | Various | Per-feed tag operations |
 | `/api/articles/*` | Various | Backend proxy: article tags |
@@ -137,7 +139,7 @@ The app uses SvelteKit file-system routing at the root base path. The `(app)` ro
 | `/api/v2/alt.admin_monitor.v1.AdminMonitorService/[...path]` | Various | Connect-RPC proxy for the admin monitor service |
 | `/api/v2/[...path]` | Various | Connect-RPC proxy (passthrough to `BACKEND_CONNECT_URL`, the BFF in production — see allowlist below) |
 
-Most of these server routes call out to `BACKEND_CONNECT_URL` / `BACKEND_REST_URL`, which point at `alt-butterfly-facade:9250` in the Compose deployment (`compose/core.yaml`). Two families bypass the BFF and go direct: `/api/v1/generate/recaps/*` calls `RECAP_WORKER_BASE_URL` (default `http://recap-worker:9005`), and `/api/admin/knowledge-home*` calls `SOVEREIGN_METRICS_URL` (`http://knowledge-sovereign:9501`). `/api/v2/[...path]` additionally enforces a positive allowlist (`$lib/gen/allowlist`, generated from the `(alt.api.v1.visibility)` proto option) so only public Connect-RPC services are reachable through it.
+Most of these server routes call out to `BACKEND_CONNECT_URL` / `BACKEND_REST_URL`, which point at `alt-butterfly-facade:9250` in the Compose deployment (`compose/core.yaml`). `/api/admin/knowledge-home` and `/api/v2/alt.admin_monitor.v1.AdminMonitorService/[...path]` use `BFF_CONNECT_URL` (default `http://alt-butterfly-facade:9250`). Two families bypass the BFF and go direct: `/api/v1/generate/recaps/*` and `/api/v1/generate/topic-cards` call `RECAP_WORKER_BASE_URL` (default `http://recap-worker:9005`), and `/api/admin/knowledge-home/sovereign` calls `SOVEREIGN_METRICS_URL` (default `http://knowledge-sovereign:9501`). `/api/v2/[...path]` additionally enforces a positive allowlist (`$lib/gen/allowlist`, generated from the `(alt.api.v1.visibility)` proto option) so only public Connect-RPC services are reachable through it.
 
 ## Key Directories
 
@@ -300,11 +302,12 @@ For cases where rich HTML must be rendered via Svelte's `{@html}` directive (e.g
 |----------|---------|-------------|
 | `BACKEND_REST_URL` | http://alt-butterfly-facade:9250 | REST API endpoint. Both `compose/core.yaml` and `compose/dev.yaml` leave this unset, so it always falls back to this code default; `dev.yaml` sets `BACKEND_BASE_URL` instead, which nothing in `src/` reads, so REST calls in that BFF-less stack resolve to a host (`alt-butterfly-facade:9250`) the stack does not define |
 | `BACKEND_CONNECT_URL` | http://alt-backend:9101 (code default) | Connect-RPC endpoint. `compose/core.yaml` overrides this to `alt-butterfly-facade:9250` in production; `compose/dev.yaml` overrides it to `alt-backend:9101` |
+| `BFF_CONNECT_URL` | http://alt-butterfly-facade:9250 | Connect-RPC endpoint used by `/api/admin/knowledge-home` (`KnowledgeHomeAdminService`) and `/api/v2/alt.admin_monitor.v1.AdminMonitorService/[...path]` |
 | `AUTH_HUB_INTERNAL_URL` | https://auth-hub:8443 | Token exchange endpoint (auth-hub's TLS listener; `:8888` answers `/health` only) |
 | `KRATOS_INTERNAL_URL` | http://kratos:4433 | Ory Kratos internal URL |
 | `KRATOS_PUBLIC_URL` | http://localhost/ory | Ory Kratos public URL used to build browser-facing auth links |
-| `RECAP_WORKER_BASE_URL` | http://recap-worker:9005 | recap-worker base URL for `/api/v1/generate/recaps/*`; a direct hop, bypasses the BFF |
-| `SOVEREIGN_METRICS_URL` | http://knowledge-sovereign:9501 | knowledge-sovereign admin API base |
+| `RECAP_WORKER_BASE_URL` | http://recap-worker:9005 | recap-worker base URL for `/api/v1/generate/recaps/*` and `/api/v1/generate/topic-cards`; a direct hop, bypasses the BFF |
+| `SOVEREIGN_METRICS_URL` | http://knowledge-sovereign:9501 | knowledge-sovereign admin API base for `/api/admin/knowledge-home/sovereign` (`/admin/storage/stats`, `/admin/snapshots/*`, `/admin/retention/*`) |
 | `SOVEREIGN_ADMIN_TOKEN_FILE` / `SOVEREIGN_ADMIN_TOKEN` | - | Bearer token for knowledge-sovereign `/admin/*`; startup fails if neither is set unless `SOVEREIGN_ADMIN_AUTH=disabled` |
 
 `BACKEND_BASE_URL` and the `PUBLIC_USE_CONNECT_*` feature flags (`PUBLIC_USE_CONNECT_FEEDS` / `_ARTICLES` / `_RSS` / `_STREAMING`) from earlier revisions of this document are no longer read by any source file — the REST→Connect-RPC migration they gated is complete. `compose/dev.yaml` and `compose/frontend-dev.yaml` still set `BACKEND_BASE_URL`, but nothing in `src/` consumes it.

@@ -84,19 +84,50 @@ test.describe("Knowledge Home Admin - Storage Tab", () => {
 	test("Run Retention dry-run executes without confirmation", async ({
 		page,
 	}) => {
-		await page.route(SOVEREIGN_API, (route) => {
+		let retentionRequestBody: Record<string, unknown> | null = null;
+		await page.route(SOVEREIGN_API, async (route) => {
 			if (route.request().method() === "POST") {
+				retentionRequestBody = route.request().postDataJSON();
 				return fulfillJson(route, RETENTION_RUN_RESULT);
 			}
-			return fulfillJson(route, SOVEREIGN_ADMIN_SNAPSHOT);
+			const snapshot = retentionRequestBody
+				? {
+						...SOVEREIGN_ADMIN_SNAPSHOT,
+						retentionLogs: [
+							{
+								logId: "660e8400-e29b-41d4-a716-446655440002",
+								runAt: "2026-03-25T14:00:00Z",
+								action: "export",
+								targetTable: "knowledge_events",
+								targetPartition: "knowledge_events_y2025m11",
+								rowsAffected: 0,
+								archivePath: "",
+								checksum: "",
+								dryRun: true,
+								status: "dry_run",
+								errorMessage: "",
+							},
+							...SOVEREIGN_ADMIN_SNAPSHOT.retentionLogs,
+						],
+					}
+				: SOVEREIGN_ADMIN_SNAPSHOT;
+			return fulfillJson(route, snapshot);
 		});
 
 		await adminPage.goto();
 		await adminPage.waitForAdminLoaded();
 		await adminPage.switchToStorageTab();
 
-		// Dry-run button should be available
 		await expect(adminPage.runRetentionButton).toBeVisible();
+		await adminPage.runRetentionButton.click();
+
+		await expect(adminPage.confirmDialog).not.toBeVisible();
+		await expect
+			.poll(() => retentionRequestBody, { timeout: 10000 })
+			.toEqual({ action: "run_retention", dry_run: true });
+		await expect(
+			adminPage.retentionStatusPanel.getByText("dry_run"),
+		).toBeVisible({ timeout: 10000 });
 	});
 });
 

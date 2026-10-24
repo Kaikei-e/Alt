@@ -12,17 +12,47 @@ import ArticleDetailPanel from "./ArticleDetailPanel.svelte";
 
 interface Props {
 	tagName: string;
+	articles?: TagTrailArticle[];
+	isLoading?: boolean;
+	error?: string | null;
+	hasMore?: boolean;
+	isLoadingMore?: boolean;
+	selectedArticle?: TagTrailArticle | null;
+	onLoadMore?: () => Promise<void> | void;
 }
 
-const { tagName }: Props = $props();
+let {
+	tagName,
+	articles: externalArticles,
+	isLoading: externalIsLoading,
+	error: externalError,
+	hasMore: externalHasMore,
+	isLoadingMore: externalIsLoadingMore,
+	selectedArticle = $bindable<TagTrailArticle | null>(null),
+	onLoadMore,
+}: Props = $props();
 
-let articles = $state<TagTrailArticle[]>([]);
-let isLoading = $state(true);
-let error = $state<string | null>(null);
+let internalArticles = $state<TagTrailArticle[]>([]);
+let internalIsLoading = $state(true);
+let internalError = $state<string | null>(null);
 let nextCursor = $state<string | null>(null);
-let hasMore = $state(false);
-let isLoadingMore = $state(false);
-let selectedArticle = $state<TagTrailArticle | null>(null);
+let internalHasMore = $state(false);
+let internalIsLoadingMore = $state(false);
+
+const isControlled = $derived(onLoadMore !== undefined);
+const articles = $derived(
+	isControlled ? (externalArticles ?? []) : internalArticles,
+);
+const isLoading = $derived(
+	isControlled ? (externalIsLoading ?? false) : internalIsLoading,
+);
+const error = $derived(isControlled ? (externalError ?? null) : internalError);
+const hasMore = $derived(
+	isControlled ? (externalHasMore ?? false) : internalHasMore,
+);
+const isLoadingMore = $derived(
+	isControlled ? (externalIsLoadingMore ?? false) : internalIsLoadingMore,
+);
 
 async function loadArticles(cursor?: string) {
 	if (!browser) return;
@@ -36,27 +66,32 @@ async function loadArticles(cursor?: string) {
 			20,
 		);
 		if (cursor) {
-			articles = [...articles, ...result.articles];
+			internalArticles = [...internalArticles, ...result.articles];
 		} else {
-			articles = result.articles;
+			internalArticles = result.articles;
 		}
 		nextCursor = result.nextCursor;
-		hasMore = result.hasMore;
+		internalHasMore = result.hasMore;
 	} catch (e) {
-		error = e instanceof Error ? e.message : "Failed to load articles";
+		internalError = e instanceof Error ? e.message : "Failed to load articles";
 	}
 }
 
 async function loadMore() {
-	if (!nextCursor || isLoadingMore) return;
-	isLoadingMore = true;
+	if (onLoadMore) {
+		await onLoadMore();
+		return;
+	}
+	if (!nextCursor || internalIsLoadingMore) return;
+	internalIsLoadingMore = true;
 	await loadArticles(nextCursor);
-	isLoadingMore = false;
+	internalIsLoadingMore = false;
 }
 
 onMount(async () => {
+	if (isControlled) return;
 	await loadArticles();
-	isLoading = false;
+	internalIsLoading = false;
 });
 </script>
 

@@ -51,8 +51,11 @@ function connectFeedToBackendFormat(item: ConnectFeedItem): BackendFeedItem {
  */
 export async function getFeedStats(
 	cookie: string | null,
+	backendToken?: string | null,
 ): Promise<DetailedFeedStats> {
-	return callBackendAPI<DetailedFeedStats>("/v1/feeds/stats/detailed", cookie);
+	return callBackendAPI<DetailedFeedStats>("/v1/feeds/stats/detailed", cookie, {
+		backendToken,
+	});
 }
 
 /**
@@ -61,10 +64,12 @@ export async function getFeedStats(
 export async function getTodayUnreadCount(
 	cookie: string | null,
 	since: string,
+	backendToken?: string | null,
 ): Promise<UnreadCount> {
 	return callBackendAPI<UnreadCount>(
 		`/v1/feeds/count/unreads?since=${encodeURIComponent(since)}`,
 		cookie,
+		{ backendToken },
 	);
 }
 
@@ -103,8 +108,12 @@ export async function getReadFeedsWithCursor(
 	cookie: string | null,
 	cursor?: string,
 	limit: number = 32,
+	backendToken?: string | null,
+	fetchFn?: typeof fetch,
 ): Promise<CursorResponse<BackendFeedItem>> {
-	const transport = await createServerTransport(cookie);
+	const transport = backendToken
+		? createServerTransportWithToken(backendToken, fetchFn)
+		: await createServerTransport(cookie, fetchFn);
 	const response = await getReadFeedsConnect(transport, cursor, limit);
 
 	return {
@@ -120,10 +129,17 @@ export async function getReadFeedsWithCursor(
 export async function updateFeedReadStatus(
 	cookie: string | null,
 	feedUrl: string,
+	backendToken?: string | null,
 ): Promise<void> {
-	return callBackendAPIWithBody("/v1/feeds/read", cookie, "POST", {
-		feed_url: feedUrl,
-	});
+	return callBackendAPIWithBody(
+		"/v1/feeds/read",
+		cookie,
+		"POST",
+		{
+			feed_url: feedUrl,
+		},
+		{ backendToken },
+	);
 }
 
 /**
@@ -132,6 +148,7 @@ export async function updateFeedReadStatus(
 export async function getFeedLinks(
 	cookie: string | null,
 	fetchFn?: typeof fetch,
+	backendToken?: string | null,
 ): Promise<import("#lib/schema/feedLink.js").FeedLink[]> {
 	interface RawFeedLink {
 		id: string;
@@ -144,7 +161,7 @@ export async function getFeedLinks(
 	const raw = await callBackendAPI<RawFeedLink[]>(
 		"/v1/rss-feed-link/list",
 		cookie,
-		{ fetch: fetchFn },
+		{ fetch: fetchFn, backendToken },
 	);
 	return raw.map((r) => ({
 		id: r.id,
@@ -163,10 +180,17 @@ export async function getFeedLinks(
 export async function registerRssFeed(
 	cookie: string | null,
 	url: string,
+	backendToken?: string | null,
 ): Promise<void> {
-	return callBackendAPIWithBody("/v1/rss-feed-link/register", cookie, "POST", {
-		url,
-	});
+	return callBackendAPIWithBody(
+		"/v1/rss-feed-link/register",
+		cookie,
+		"POST",
+		{
+			url,
+		},
+		{ backendToken },
+	);
 }
 
 /**
@@ -175,10 +199,13 @@ export async function registerRssFeed(
 export async function deleteFeedLink(
 	cookie: string | null,
 	id: string,
+	backendToken?: string | null,
 ): Promise<void> {
 	return callBackendAPIWithBody(
 		`/v1/rss-feed-link/${encodeURIComponent(id)}`,
 		cookie,
 		"DELETE",
+		undefined,
+		{ backendToken },
 	);
 }

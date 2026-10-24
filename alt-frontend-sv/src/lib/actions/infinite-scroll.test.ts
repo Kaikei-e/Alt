@@ -50,6 +50,10 @@ class MockIntersectionObserver implements IntersectionObserver {
 		return [];
 	}
 
+	isObserving(target: Element): boolean {
+		return this.elements.has(target);
+	}
+
 	// Test helper: simulate intersection
 	simulateIntersection(isIntersecting: boolean): void {
 		const entries: IntersectionObserverEntry[] = Array.from(this.elements).map(
@@ -70,22 +74,25 @@ class MockIntersectionObserver implements IntersectionObserver {
 
 describe("infiniteScroll action", () => {
 	let originalIntersectionObserver: typeof IntersectionObserver | undefined;
+	let element: HTMLDivElement;
 
 	beforeEach(() => {
 		mockObserverInstances = [];
 		originalIntersectionObserver = globalThis.IntersectionObserver;
 		globalThis.IntersectionObserver =
 			MockIntersectionObserver as unknown as typeof IntersectionObserver;
+		element = document.createElement("div");
+		document.body.appendChild(element);
 	});
 
 	afterEach(() => {
+		element.remove();
 		if (originalIntersectionObserver) {
 			globalThis.IntersectionObserver = originalIntersectionObserver;
 		}
 	});
 
 	it("should create an IntersectionObserver when initialized", () => {
-		const element = document.createElement("div");
 		const callback = vi.fn();
 
 		infiniteScroll(element, { callback });
@@ -94,7 +101,6 @@ describe("infiniteScroll action", () => {
 	});
 
 	it("should call callback when element intersects", async () => {
-		const element = document.createElement("div");
 		const callback = vi.fn();
 
 		infiniteScroll(element, { callback });
@@ -108,8 +114,58 @@ describe("infiniteScroll action", () => {
 		});
 	});
 
+	it("should unobserve element before callback resolves and re-observe inside requestAnimationFrame after callback resolves", async () => {
+		let resolveCallback!: () => void;
+		const callback = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					resolveCallback = resolve;
+				}),
+		);
+
+		let rafCallback = null as FrameRequestCallback | null;
+		const rafSpy = vi
+			.spyOn(globalThis, "requestAnimationFrame")
+			.mockImplementation((cb: FrameRequestCallback) => {
+				rafCallback = cb;
+				return 1;
+			});
+
+		infiniteScroll(element, { callback });
+
+		const observer = mockObserverInstances[0];
+		if (!observer) throw new Error("Observer should exist");
+		const unobserveSpy = vi.spyOn(observer, "unobserve");
+		const observeSpy = vi.spyOn(observer, "observe");
+
+		// Trigger intersection
+		observer.simulateIntersection(true);
+
+		// Before callback resolves, element must be unobserved
+		expect(unobserveSpy).toHaveBeenCalledWith(element);
+		expect(observer.isObserving(element)).toBe(false);
+		expect(observeSpy).not.toHaveBeenCalled();
+
+		// Resolve async callback
+		resolveCallback();
+		await vi.waitFor(() => {
+			expect(rafCallback).not.toBeNull();
+		});
+
+		// Still not re-observed until requestAnimationFrame fires
+		expect(observeSpy).not.toHaveBeenCalled();
+
+		// Fire requestAnimationFrame
+		rafCallback?.(performance.now());
+		await vi.waitFor(() => {
+			expect(observeSpy).toHaveBeenCalledWith(element);
+		});
+		expect(observer.isObserving(element)).toBe(true);
+
+		rafSpy.mockRestore();
+	});
+
 	it("should not call callback when element does not intersect", () => {
-		const element = document.createElement("div");
 		const callback = vi.fn();
 
 		infiniteScroll(element, { callback });
@@ -121,7 +177,6 @@ describe("infiniteScroll action", () => {
 	});
 
 	it("should not create observer when disabled is true", () => {
-		const element = document.createElement("div");
 		const callback = vi.fn();
 
 		infiniteScroll(element, { callback, disabled: true });
@@ -131,7 +186,6 @@ describe("infiniteScroll action", () => {
 	});
 
 	it("should pass correct rootMargin and threshold to IntersectionObserver", () => {
-		const element = document.createElement("div");
 		const rootElement = document.createElement("div");
 		const callback = vi.fn();
 
@@ -149,7 +203,6 @@ describe("infiniteScroll action", () => {
 	});
 
 	it("should disconnect observer on destroy", () => {
-		const element = document.createElement("div");
 		const callback = vi.fn();
 
 		const action = infiniteScroll(element, { callback });
@@ -163,7 +216,6 @@ describe("infiniteScroll action", () => {
 	});
 
 	it("should recreate observer when options change via update", () => {
-		const element = document.createElement("div");
 		const callback = vi.fn();
 
 		const action = infiniteScroll(element, { callback, disabled: true });

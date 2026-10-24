@@ -24,6 +24,7 @@ import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "#lib/api/client/feeds.js";
+import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
 
@@ -171,5 +172,28 @@ describe("Visual Preview page continuity across a rotation", () => {
 
 		expect(cardLabels()).toHaveLength(cardsBefore);
 		expect(feedFetches()).toBe(fetchesBefore);
+	});
+
+	it("surfaces an error toast, announces to aria-live, and keeps the card when modal mark-as-read fails", async () => {
+		vi.mocked(updateFeedReadStatusClient).mockRejectedValueOnce(
+			new Error("Network error"),
+		);
+
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		render(Page);
+		await settle(400);
+
+		expect(cardLabels()).toContain(openLabel(FIRST));
+
+		await page.getByRole("button", { name: openLabel(FIRST) }).click();
+		await page.getByRole("button", { name: "Mark as Read" }).click();
+		await settle(250);
+
+		const live = document.querySelector('[aria-live="assertive"]');
+		expect(live?.textContent?.trim()).toBe(MARK_AS_READ_FAILED_MESSAGE);
+		await expect
+			.element(page.getByText(MARK_AS_READ_FAILED_MESSAGE))
+			.toBeInTheDocument();
+		expect(cardLabels()).toContain(openLabel(FIRST));
 	});
 });

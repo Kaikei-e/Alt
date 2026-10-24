@@ -7,12 +7,16 @@ vi.mock("$app/navigation", () => ({
 vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({ transport: true })),
 	getKnowledgeHome: vi.fn(),
-	trackHomeItemsSeen: vi.fn(),
-	trackHomeAction: vi.fn(),
+	trackHomeItemsSeen: vi.fn(() => Promise.resolve()),
+	trackHomeAction: vi.fn(() => Promise.resolve()),
 }));
 
 import { Code, ConnectError } from "@connectrpc/connect";
-import { getKnowledgeHome, trackHomeAction } from "#lib/connect/index.js";
+import {
+	getKnowledgeHome,
+	trackHomeAction,
+	trackHomeItemsSeen,
+} from "#lib/connect/index.js";
 import { goto } from "$app/navigation";
 import { useKnowledgeHome } from "./useKnowledgeHome.svelte";
 
@@ -178,9 +182,9 @@ describe("useKnowledgeHome", () => {
 		expect(home.pageState).toBe("ready");
 	});
 
-	it("exposes emptyReason based on state", async () => {
+	it("exposes emptyReason based on state (no_data, lens_strict, ingest_pending)", async () => {
 		const mockGetKnowledgeHome = vi.mocked(getKnowledgeHome);
-		mockGetKnowledgeHome.mockResolvedValue({
+		mockGetKnowledgeHome.mockResolvedValueOnce({
 			items: [],
 			digest: null,
 			hasMore: false,
@@ -194,7 +198,129 @@ describe("useKnowledgeHome", () => {
 
 		const home = useKnowledgeHome();
 		await home.fetchData(true);
-
 		expect(home.emptyReason).toBe("no_data");
+
+		// When a lens filter is active and returns 0 items, emptyReason is lens_strict
+		mockGetKnowledgeHome.mockResolvedValueOnce({
+			items: [],
+			digest: null,
+			hasMore: false,
+			degraded: false,
+			nextCursor: "",
+			serviceQuality: "full",
+			featureFlags: [],
+			recallCandidates: [],
+			generatedAt: "2026-03-17T00:00:00Z",
+		});
+		await home.fetchData(true, "lens-ai");
+		expect(home.emptyReason).toBe("lens_strict");
+
+		// When no lens is active and digest reports unsummarizedArticles > 0, emptyReason is ingest_pending
+		mockGetKnowledgeHome.mockResolvedValueOnce({
+			items: [],
+			digest: {
+				date: "2026-03-17",
+				newArticles: 4,
+				summarizedArticles: 1,
+				unsummarizedArticles: 3,
+				topTags: [],
+				weeklyRecapAvailable: false,
+				eveningPulseAvailable: false,
+				needToKnowCount: 0,
+				digestFreshness: "fresh",
+				lastProjectedAt: null,
+			},
+			hasMore: false,
+			degraded: false,
+			nextCursor: "",
+			serviceQuality: "full",
+			featureFlags: [],
+			recallCandidates: [],
+			generatedAt: "2026-03-17T00:00:00Z",
+		});
+		await home.fetchData(true, null);
+		expect(home.emptyReason).toBe("ingest_pending");
+	});
+
+	it("flushes non-empty itemKeys batches via trackSeen and ignores empty batches", () => {
+		const home = useKnowledgeHome();
+
+		home.trackSeen([], "session-1");
+		expect(trackHomeItemsSeen).not.toHaveBeenCalled();
+
+		home.trackSeen(["article:1", "article:2"], "session-1");
+		expect(trackHomeItemsSeen).toHaveBeenCalledWith(
+			expect.anything(),
+			["article:1", "article:2"],
+			"session-1",
+		);
+	});
+
+	it("appends next page items on loadMore and updates pagination state", async () => {
+		const mockGetKnowledgeHome = vi.mocked(getKnowledgeHome);
+		mockGetKnowledgeHome
+			.mockResolvedValueOnce({
+				items: [
+					{
+						itemKey: "article:1",
+						itemType: "article",
+						title: "First",
+						publishedAt: "2026-03-17T00:00:00Z",
+						summaryState: "ready" as const,
+						tags: [],
+						why: [],
+						score: 0.9,
+					},
+				],
+				digest: null,
+				hasMore: true,
+				degraded: false,
+				nextCursor: "cursor-page-2",
+				serviceQuality: "full",
+				featureFlags: [],
+				recallCandidates: [],
+				generatedAt: "2026-03-17T00:00:00Z",
+			})
+			.mockResolvedValueOnce({
+				items: [
+					{
+						itemKey: "article:2",
+						itemType: "article",
+						title: "Second",
+						publishedAt: "2026-03-17T00:00:00Z",
+						summaryState: "ready" as const,
+						tags: [],
+						why: [],
+						score: 0.8,
+					},
+				],
+				digest: null,
+				hasMore: false,
+				degraded: false,
+				nextCursor: "",
+				serviceQuality: "full",
+				featureFlags: [],
+				recallCandidates: [],
+				generatedAt: "2026-03-17T00:00:00Z",
+			});
+
+		const home = useKnowledgeHome();
+		await home.fetchData(true);
+		expect(home.items.map((i) => i.itemKey)).toEqual(["article:1"]);
+		expect(home.hasMore).toBe(true);
+
+		await home.loadMore("lens-1");
+		expect(mockGetKnowledgeHome).toHaveBeenNthCalledWith(
+			2,
+			expect.anything(),
+			"cursor-page-2",
+			20,
+			"lens-1",
+		);
+		expect(home.items.map((i) => i.itemKey)).toEqual([
+			"article:1",
+			"article:2",
+		]);
+		expect(home.hasMore).toBe(false);
 	});
 });

@@ -63,7 +63,7 @@ describe("MOBILE_MENU_SECTIONS", () => {
 		expect(hrefs).toContain("/augur/history");
 		expect(hrefs).toContain("/stats");
 		expect(hrefs).toContain("/settings/feeds");
-		expect(hrefs).toContain("/admin/scraping-domains");
+		expect(hrefs).toContain("/admin/monitor");
 	});
 
 	it("reaches the visual-preview gallery", () => {

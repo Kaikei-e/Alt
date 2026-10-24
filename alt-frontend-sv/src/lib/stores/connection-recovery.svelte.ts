@@ -11,7 +11,6 @@
  * - fetch requests failing after bfcache restore
  */
 
-import { onMount } from "svelte";
 import {
 	createSafariConnectionRecovery,
 	type RecoveryInfo,
@@ -40,7 +39,7 @@ export function createConnectionRecoveryStore(): ConnectionRecoveryStore {
 	let lastRecoveryInfo = $state<RecoveryInfo | null>(null);
 	let lastRecoveryAt = $state<number | null>(null);
 	const callbacks = new Set<RecoveryCallback>();
-	let handle: SafariConnectionRecoveryHandle | null = null;
+	let _handle: SafariConnectionRecoveryHandle | null = null;
 
 	function notifySubscribers(info: RecoveryInfo) {
 		recoveryCount++;
@@ -56,7 +55,7 @@ export function createConnectionRecoveryStore(): ConnectionRecoveryStore {
 	}
 
 	if (typeof window !== "undefined") {
-		handle = createSafariConnectionRecovery({
+		_handle = createSafariConnectionRecovery({
 			thresholdMs: RECOVERY_THRESHOLD_MS,
 			onRecoveryNeeded: notifySubscribers,
 		});

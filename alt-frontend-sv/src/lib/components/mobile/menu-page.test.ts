@@ -46,6 +46,13 @@ describe("MENU_SECTIONS (re-export of MOBILE_MENU_SECTIONS)", () => {
 		expect(hist).toBeDefined();
 	});
 
+	it("Admin includes System Monitor pointing to /admin/monitor", () => {
+		const admin = MENU_SECTIONS.find((s) => s.title === "Admin");
+		const monitor = admin?.items.find((i) => i.href === "/admin/monitor");
+		expect(monitor).toBeDefined();
+		expect(monitor?.label).toBe("System Monitor");
+	});
+
 	it("Admin section items require admin", () => {
 		const admin = MENU_SECTIONS.find((s) => s.title === "Admin");
 		for (const item of admin?.items ?? []) {

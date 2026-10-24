@@ -4,6 +4,9 @@ import MobileMenuPage from "#lib/components/mobile/MobileMenuPage.svelte";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
 import { browser } from "$app/env";
 import { goto } from "$app/navigation";
+import { page } from "$app/state";
+
+const isAdmin = $derived(page.data?.userRole === "admin");
 
 // Deliberately `onMount` and deliberately not an `$effect`: this is an
 // arrival check, not a viewport binding. Landing on /menu with a sidebar
@@ -30,4 +33,4 @@ onMount(() => {
 	<title>Menu - Alt</title>
 </svelte:head>
 
-<MobileMenuPage />
+<MobileMenuPage {isAdmin} />

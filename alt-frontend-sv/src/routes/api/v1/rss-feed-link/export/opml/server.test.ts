@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$app/env/private", () => ({
+	BACKEND_REST_URL: "http://backend.test",
 	BACKEND_CONNECT_URL: "http://backend.test",
 }));
 

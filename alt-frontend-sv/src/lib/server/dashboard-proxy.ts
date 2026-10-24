@@ -8,6 +8,7 @@
  */
 import type { RequestEvent } from "@sveltejs/kit";
 import { getBackendToken } from "#lib/api.js";
+import { BACKEND_CONNECT_URL, BACKEND_REST_URL } from "$app/env/private";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -23,18 +24,28 @@ export interface ProxyDashboardGetOptions {
 export async function proxyDashboardGet(
 	baseUrl: string,
 	path: string,
-	{ request, url }: Pick<RequestEvent, "request" | "url">,
+	event: Pick<RequestEvent, "request" | "url"> & {
+		locals?: Partial<App.Locals>;
+	},
 	options: ProxyDashboardGetOptions = {},
 ): Promise<Response> {
 	const allowedParams = options.allowedParams ?? [];
 	const errorLabel = options.errorLabel ?? "Backend API error";
+	const { request, url, locals } = event;
+	const effectiveBaseUrl =
+		baseUrl ||
+		BACKEND_REST_URL ||
+		BACKEND_CONNECT_URL ||
+		"http://alt-butterfly-facade:9250";
 
 	try {
 		const cookieHeader = request.headers.get("cookie") || "";
-		const token = await getBackendToken(cookieHeader).catch((e) => {
-			console.error("Error getting backend token:", e);
-			return null;
-		});
+		const token =
+			locals?.backendToken ??
+			(await getBackendToken(cookieHeader).catch((e) => {
+				console.error("Error getting backend token:", e);
+				return null;
+			}));
 
 		if (!token) {
 			return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -49,7 +60,7 @@ export async function proxyDashboardGet(
 		}
 
 		const queryString = params.toString();
-		const backendEndpoint = `${baseUrl}${path}${queryString ? `?${queryString}` : ""}`;
+		const backendEndpoint = `${effectiveBaseUrl}${path}${queryString ? `?${queryString}` : ""}`;
 
 		const headers: HeadersInit = {
 			"Content-Type": "application/json",

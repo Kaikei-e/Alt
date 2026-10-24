@@ -123,8 +123,11 @@ function buildCommonFlowNodes(includePassword = true): KratosFlowNode[] {
 /**
  * Build a login flow response
  */
-export function buildLoginFlow(kratosBaseUrl: string): KratosFlow {
-	const flowId = "flow-e2e-mock";
+export function buildLoginFlow(
+	kratosBaseUrl: string,
+	flowId = "flow-e2e-mock",
+): KratosFlow {
+	const isErrorFlow = flowId === "error-flow-id";
 	return {
 		id: flowId,
 		type: "browser",
@@ -148,7 +151,15 @@ export function buildLoginFlow(kratosBaseUrl: string): KratosFlow {
 					meta: { label: { id: 3, text: "Login", type: "info" } },
 				},
 			],
-			messages: [],
+			messages: isErrorFlow
+				? [
+						{
+							id: 4000006,
+							text: "Invalid credentials",
+							type: "error",
+						},
+					]
+				: [],
 		},
 	};
 }
@@ -156,8 +167,11 @@ export function buildLoginFlow(kratosBaseUrl: string): KratosFlow {
 /**
  * Build a registration flow response
  */
-export function buildRegistrationFlow(kratosBaseUrl: string): KratosFlow {
-	const flowId = "flow-e2e-mock-reg";
+export function buildRegistrationFlow(
+	kratosBaseUrl: string,
+	flowId = "flow-e2e-mock-reg",
+): KratosFlow {
+	const isErrorFlow = flowId === "error-flow-id";
 	return {
 		id: flowId,
 		type: "browser",
@@ -189,7 +203,15 @@ export function buildRegistrationFlow(kratosBaseUrl: string): KratosFlow {
 						value: "",
 						required: true,
 					},
-					messages: [],
+					messages: isErrorFlow
+						? [
+								{
+									id: 4000007,
+									text: "Email already exists",
+									type: "error",
+								},
+							]
+						: [],
 					meta: { label: { id: 1, text: "Email", type: "info" } },
 				},
 				{
@@ -215,7 +237,15 @@ export function buildRegistrationFlow(kratosBaseUrl: string): KratosFlow {
 					meta: { label: { id: 3, text: "Register", type: "info" } },
 				},
 			],
-			messages: [],
+			messages: isErrorFlow
+				? [
+						{
+							id: 4000007,
+							text: "Email already exists",
+							type: "error",
+						},
+					]
+				: [],
 		},
 	};
 }

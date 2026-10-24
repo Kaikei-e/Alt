@@ -1,5 +1,5 @@
-import { expect, test } from "../fixtures/pomFixtures";
-import { fulfillJson } from "../utils/mockHelpers";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 // E2E for the Knowledge Trail spine (Wave 2, read-only). Pull-only: the page
 // loads on navigation and refreshes only on explicit action — there is no live

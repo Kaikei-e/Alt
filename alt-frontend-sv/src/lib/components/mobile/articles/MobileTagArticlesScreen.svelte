@@ -6,20 +6,50 @@ import {
 	fetchArticlesByTag,
 	type TagTrailArticle,
 } from "#lib/connect/index.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import { browser } from "$app/env";
 
 interface Props {
 	tagName: string;
+	articles?: TagTrailArticle[];
+	isLoading?: boolean;
+	error?: string | null;
+	hasMore?: boolean;
+	isLoadingMore?: boolean;
+	onLoadMore?: () => Promise<void> | void;
 }
 
-const { tagName }: Props = $props();
+const {
+	tagName,
+	articles: externalArticles,
+	isLoading: externalIsLoading,
+	error: externalError,
+	hasMore: externalHasMore,
+	isLoadingMore: externalIsLoadingMore,
+	onLoadMore,
+}: Props = $props();
 
-let articles = $state<TagTrailArticle[]>([]);
-let isLoading = $state(true);
-let error = $state<string | null>(null);
+let internalArticles = $state<TagTrailArticle[]>([]);
+let internalIsLoading = $state(true);
+let internalError = $state<string | null>(null);
 let nextCursor = $state<string | null>(null);
-let hasMore = $state(false);
-let isLoadingMore = $state(false);
+let internalHasMore = $state(false);
+let internalIsLoadingMore = $state(false);
+
+const isControlled = $derived(onLoadMore !== undefined);
+const articles = $derived(
+	isControlled ? (externalArticles ?? []) : internalArticles,
+);
+const isLoading = $derived(
+	isControlled ? (externalIsLoading ?? false) : internalIsLoading,
+);
+const error = $derived(isControlled ? (externalError ?? null) : internalError);
+const hasMore = $derived(
+	isControlled ? (externalHasMore ?? false) : internalHasMore,
+);
+const isLoadingMore = $derived(
+	isControlled ? (externalIsLoadingMore ?? false) : internalIsLoadingMore,
+);
 
 async function loadArticles(cursor?: string) {
 	if (!browser) return;
@@ -33,27 +63,32 @@ async function loadArticles(cursor?: string) {
 			20,
 		);
 		if (cursor) {
-			articles = [...articles, ...result.articles];
+			internalArticles = [...internalArticles, ...result.articles];
 		} else {
-			articles = result.articles;
+			internalArticles = result.articles;
 		}
 		nextCursor = result.nextCursor;
-		hasMore = result.hasMore;
+		internalHasMore = result.hasMore;
 	} catch (e) {
-		error = e instanceof Error ? e.message : "Failed to load articles";
+		internalError = e instanceof Error ? e.message : "Failed to load articles";
 	}
 }
 
 async function loadMore() {
-	if (!nextCursor || isLoadingMore) return;
-	isLoadingMore = true;
+	if (onLoadMore) {
+		await onLoadMore();
+		return;
+	}
+	if (!nextCursor || internalIsLoadingMore) return;
+	internalIsLoadingMore = true;
 	await loadArticles(nextCursor);
-	isLoadingMore = false;
+	internalIsLoadingMore = false;
 }
 
 onMount(async () => {
+	if (isControlled) return;
 	await loadArticles();
-	isLoading = false;
+	internalIsLoading = false;
 });
 
 function formatDate(dateStr: string): string {
@@ -100,7 +135,7 @@ function formatDate(dateStr: string): string {
 							<SquareArrowOutUpRight size={14} class="mt-0.5 flex-shrink-0" style="color: var(--alt-primary);" />
 							<div class="flex-1 min-w-0">
 								<a
-									href={article.link}
+									href={sanitizeHrefUrl(article.link)}
 									target="_blank"
 									rel="noopener noreferrer"
 									class="text-base font-semibold hover:underline leading-snug line-clamp-2"

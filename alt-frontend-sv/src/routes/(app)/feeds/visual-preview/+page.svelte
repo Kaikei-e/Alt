@@ -11,10 +11,13 @@ import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
 import VisualFeedCard from "#lib/components/desktop/feeds/VisualFeedCard.svelte";
 import PageHeader from "#lib/components/desktop/layout/PageHeader.svelte";
+import Toast from "#lib/components/knowledge-home/Toast.svelte";
 import MobileGalleryTile from "#lib/components/mobile/feeds/gallery/MobileGalleryTile.svelte";
 import type { ConnectFeedSource } from "#lib/connect/feeds.js";
+import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { ogImageOverlay } from "#lib/stores/ogImageOverlay.svelte.js";
+import { useToastStore } from "#lib/stores/toast.svelte.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
 import { selectOgImagePrefetchIds } from "#lib/utils/ogImagePrefetch.js";
 import { createRequestQueue } from "#lib/utils/requestQueue.js";
@@ -25,6 +28,7 @@ interface PageData {
 }
 
 const { data }: { data: PageData } = $props();
+const toast = useToastStore();
 
 // --- Desktop state ---
 let selectedFeedUrl = $state<string | null>(null);
@@ -38,6 +42,17 @@ let feedGridApi = $state<FeedGridApi | null>(null);
 let feedSources = $state<ConnectFeedSource[]>([]);
 let isProcessingMarkAsRead = $state(false);
 let isMarkingAsRead = $state(false);
+let liveRegionMessage = $state("");
+let liveRegionTimer: ReturnType<typeof setTimeout> | null = null;
+
+function announce(message: string, holdMs: number) {
+	if (liveRegionTimer) clearTimeout(liveRegionTimer);
+	liveRegionMessage = message;
+	liveRegionTimer = setTimeout(() => {
+		liveRegionMessage = "";
+		liveRegionTimer = null;
+	}, holdMs);
+}
 
 // --- OG Image prefetch tracking ---
 // Non-reactive set of articleIds already requested (or in-flight). Content-based,
@@ -152,8 +167,11 @@ async function handleMarkAsReadInModal() {
 		isMarkingAsRead = true;
 		await updateFeedReadStatusClient(feed.normalizedUrl);
 		handleMarkAsRead(feed.normalizedUrl);
+		announce("Feed marked as read", 1000);
 	} catch (error) {
 		console.error("Failed to mark feed as read:", error);
+		announce(MARK_AS_READ_FAILED_MESSAGE, 4000);
+		toast.push(MARK_AS_READ_FAILED_MESSAGE, "error", 4000);
 	} finally {
 		isMarkingAsRead = false;
 	}
@@ -207,6 +225,16 @@ function handleFeedGridReady(api: FeedGridApi) {
 <svelte:head>
 	<title>Visual Preview - Alt</title>
 </svelte:head>
+
+<Toast items={toast.items} onDismiss={toast.remove} />
+
+<div
+	aria-live="assertive"
+	aria-atomic="true"
+	class="sr-only"
+>
+	{liveRegionMessage}
+</div>
 
 <!--
 	The header is the only thing the two viewports genuinely disagree about, so
@@ -298,6 +326,13 @@ function handleFeedGridReady(api: FeedGridApi) {
 />
 
 <style>
+	.sr-only {
+		position: absolute;
+		left: -10000px;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+	}
 	.gallery-header {
 		padding: 0.75rem 0 1rem;
 	}

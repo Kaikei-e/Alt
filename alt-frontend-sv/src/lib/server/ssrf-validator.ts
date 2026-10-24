@@ -15,6 +15,59 @@ export class SSRFValidationError extends Error {
 	}
 }
 
+const METADATA_ENDPOINTS = [
+	"169.254.169.254", // AWS/Azure/GCP metadata
+	"metadata.google.internal", // GCP metadata
+	"100.100.100.200", // Alibaba Cloud
+	"192.0.0.192", // Oracle Cloud
+];
+
+const INTERNAL_DOMAIN_SUFFIXES = [
+	".local",
+	".localdomain",
+	".internal",
+	".corp",
+	".lan",
+	".intranet",
+	".test",
+	".localhost",
+	".cluster.local",
+];
+
+/**
+ * Strips trailing DNS root dots, lowercases, and unwraps IPv6 brackets.
+ * If the address is an IPv4-mapped IPv6 literal (e.g. `::ffff:127.0.0.1` or
+ * WHATWG-normalized `::ffff:7f00:1`), extracts the embedded IPv4 address so
+ * all IPv4 checks apply uniformly.
+ */
+function normalizeHost(rawHostname: string): string {
+	let host = rawHostname.trim().toLowerCase().replace(/\.+$/, "");
+	if (host.startsWith("[") && host.endsWith("]")) {
+		host = host.slice(1, -1);
+	}
+	const mappedIpv4 = extractMappedIPv4(host);
+	if (mappedIpv4) {
+		return mappedIpv4;
+	}
+	return host;
+}
+
+function extractMappedIPv4(host: string): string | null {
+	const match = /^(?:::ffff:|(?:0+:){5}ffff:)(.+)$/i.exec(host);
+	if (!match?.[1]) return null;
+	const rest = match[1];
+	if (/^\d+\.\d+\.\d+\.\d+$/.test(rest)) {
+		return rest;
+	}
+	const hexMatch = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(rest);
+	if (hexMatch?.[1] && hexMatch[2]) {
+		const hi = Number.parseInt(hexMatch[1], 16);
+		const lo = Number.parseInt(hexMatch[2], 16);
+		return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+	}
+	return null;
+}
+
 /**
  * Validates URL for SSRF attacks
  * Blocks private IPs, metadata endpoints, and internal domains
@@ -42,18 +95,16 @@ export function validateUrlForSSRF(url: string): void {
 		);
 	}
 
-	// Validate hostname
-	const hostname = parsedUrl.hostname.toLowerCase();
+	// Normalize hostname (strips trailing dots, brackets, and unwraps IPv4-mapped IPv6)
+	const hostname = normalizeHost(parsedUrl.hostname);
+	if (!hostname) {
+		throw new SSRFValidationError("Invalid URL format", "INVALID_URL_FORMAT", {
+			hostname: parsedUrl.hostname,
+		});
+	}
 
 	// Check metadata endpoints (highest priority)
-	const metadataEndpoints = [
-		"169.254.169.254", // AWS/Azure/GCP metadata
-		"metadata.google.internal", // GCP metadata
-		"100.100.100.200", // Alibaba Cloud
-		"192.0.0.192", // Oracle Cloud
-	];
-
-	for (const endpoint of metadataEndpoints) {
+	for (const endpoint of METADATA_ENDPOINTS) {
 		if (hostname === endpoint || hostname.startsWith(`${endpoint}:`)) {
 			throw new SSRFValidationError(
 				"Access to metadata endpoint not allowed",
@@ -64,18 +115,7 @@ export function validateUrlForSSRF(url: string): void {
 	}
 
 	// Check internal domains
-	const internalDomainSuffixes = [
-		".local",
-		".internal",
-		".corp",
-		".lan",
-		".intranet",
-		".test",
-		".localhost",
-		".cluster.local",
-	];
-
-	for (const suffix of internalDomainSuffixes) {
+	for (const suffix of INTERNAL_DOMAIN_SUFFIXES) {
 		if (hostname.endsWith(suffix)) {
 			throw new SSRFValidationError(
 				"Internal domain not allowed",
@@ -102,7 +142,7 @@ export function validateUrlForSSRF(url: string): void {
 		);
 	}
 
-	// Validate loopback addresses
+	// Validate loopback addresses (including 0.0.0.0 / :: unspecified)
 	if (isLoopback(hostname)) {
 		throw new SSRFValidationError(
 			"Loopback address not allowed",
@@ -121,10 +161,34 @@ export function validateUrlForSSRF(url: string): void {
 	}
 }
 
+export const validateUrlForAnalysis = validateUrlForSSRF;
+
 /**
- * Checks if hostname is a private IP address (RFC1918)
+ * Returns true if the given hostname is private, loopback, link-local,
+ * unspecified, metadata, or internal.
+ */
+export function isPrivateHost(rawHostname: string): boolean {
+	const hostname = normalizeHost(rawHostname);
+	if (!hostname) return true;
+	for (const endpoint of METADATA_ENDPOINTS) {
+		if (hostname === endpoint || hostname.startsWith(`${endpoint}:`)) {
+			return true;
+		}
+	}
+	for (const suffix of INTERNAL_DOMAIN_SUFFIXES) {
+		if (hostname.endsWith(suffix)) {
+			return true;
+		}
+	}
+	return isPrivateIP(hostname) || isLoopback(hostname) || isLinkLocal(hostname);
+}
+
+/**
+ * Checks if hostname is a private IP address (RFC1918 / RFC4193)
  */
 function isPrivateIP(hostname: string): boolean {
+	const host = normalizeHost(hostname);
+
 	// IPv4 private ranges
 	const privateIPv4Patterns = [
 		/^10\./, // 10.0.0.0/8
@@ -133,13 +197,13 @@ function isPrivateIP(hostname: string): boolean {
 	];
 
 	for (const pattern of privateIPv4Patterns) {
-		if (pattern.test(hostname)) {
+		if (pattern.test(host)) {
 			return true;
 		}
 	}
 
-	// IPv6 private ranges (simplified check)
-	if (hostname.startsWith("fc00:") || hostname.startsWith("fd00:")) {
+	// IPv6 unique-local range fc00::/7 (fc00:: through fdff::)
+	if (/^f[cd][0-9a-f]{0,2}:/i.test(host)) {
 		return true;
 	}
 
@@ -147,17 +211,21 @@ function isPrivateIP(hostname: string): boolean {
 }
 
 /**
- * Checks if hostname is a loopback address
+ * Checks if hostname is a loopback or unspecified address
  */
 function isLoopback(hostname: string): boolean {
+	const host = normalizeHost(hostname);
 	const loopbackPatterns = [
 		/^127\./, // 127.0.0.0/8
+		/^0\./, // 0.0.0.0/8 unspecified (routes to loopback on Linux)
 		/^::1$/, // IPv6 loopback
+		/^::$/, // IPv6 unspecified
+		/^(?:0+:){7}0*[01]$/i, // Full-form IPv6 :: or ::1
 		/^localhost$/,
 	];
 
 	for (const pattern of loopbackPatterns) {
-		if (pattern.test(hostname)) {
+		if (pattern.test(host)) {
 			return true;
 		}
 	}
@@ -169,13 +237,14 @@ function isLoopback(hostname: string): boolean {
  * Checks if hostname is a link-local address
  */
 function isLinkLocal(hostname: string): boolean {
+	const host = normalizeHost(hostname);
 	// IPv4 link-local: 169.254.0.0/16
-	if (/^169\.254\./.test(hostname)) {
+	if (/^169\.254\./.test(host)) {
 		return true;
 	}
 
 	// IPv6 link-local: fe80::/10
-	if (/^fe80:/i.test(hostname)) {
+	if (/^fe[89ab][0-9a-f]{0,1}:/i.test(host)) {
 		return true;
 	}
 

@@ -59,7 +59,7 @@ describe("getActiveTabIndex", () => {
 		expect(getActiveTabIndex("/acolyte")).toBe(4);
 		expect(getActiveTabIndex("/settings/feeds")).toBe(4);
 		expect(getActiveTabIndex("/stats")).toBe(4);
-		expect(getActiveTabIndex("/admin/scraping-domains")).toBe(4);
+		expect(getActiveTabIndex("/admin/monitor")).toBe(4);
 	});
 });
 

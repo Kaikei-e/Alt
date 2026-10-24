@@ -119,6 +119,7 @@ export function streamMorningLetterChat(
 	// Track accumulated text for complete result
 	let accumulatedText = "";
 	let latestCitations: MorningLetterCitation[] = [];
+	let completeCalled = false;
 
 	// Start streaming in background
 	(async () => {
@@ -174,7 +175,8 @@ export function streamMorningLetterChat(
 						break;
 
 					case "done":
-						if (payload.value) {
+						if (payload.value && !completeCalled) {
+							completeCalled = true;
 							const citations = payload.value.citations.map(
 								(c: ProtoCitation) => ({
 									url: c.url,
@@ -193,21 +195,25 @@ export function streamMorningLetterChat(
 						break;
 
 					case "fallbackCode":
-						if (onFallback && payload.value) {
-							onFallback(payload.value);
-						}
+						completeCalled = true;
+						onFallback?.(payload.value || "UNKNOWN");
 						break;
 
 					case "errorMessage":
-						if (onError && payload.value) {
-							onError(new Error(payload.value));
-						}
+						completeCalled = true;
+						onError?.(new Error(payload.value || "Unknown stream error"));
 						break;
 				}
 			}
 
 			// If stream completes without done event, call onComplete with accumulated data
-			if (!abortController.signal.aborted && onComplete && accumulatedText) {
+			if (
+				!abortController.signal.aborted &&
+				!completeCalled &&
+				onComplete &&
+				accumulatedText
+			) {
+				completeCalled = true;
 				onComplete({
 					answer: accumulatedText,
 					citations: latestCitations,

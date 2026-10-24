@@ -26,7 +26,7 @@ const PRELOAD_WARNING_FRAGMENT = "preloaded using link preload but not used";
 // warning may legitimately persist per route until upstream #8549 lands.
 const MAX_WARNINGS_PER_ROUTE = 1;
 
-const ROUTES = ["/", "/loop", "/home"] as const;
+const ROUTES = ["/", "/feeds", "/home"] as const;
 
 test.describe("Preload warning regression gate", () => {
 	for (const route of ROUTES) {

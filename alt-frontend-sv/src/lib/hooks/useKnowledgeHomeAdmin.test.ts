@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("#lib/api/client/core.js", () => ({
+	getClientCSRFToken: vi.fn().mockResolvedValue("test-csrf-token"),
+}));
+
 import {
 	type KnowledgeHomeAdminActionRequest,
 	type KnowledgeHomeAdminSnapshot,
@@ -243,5 +248,119 @@ describe("useKnowledgeHomeAdmin", () => {
 		expect(admin.error?.message).toBe("trigger failed");
 		expect(admin.acting).toBe(false);
 		expect(admin.activeJobId).toBe(null);
+	});
+
+	it("executes startReproject, swapReproject, and rollbackReproject via actionRunner and refreshes", async () => {
+		const fetcher = vi.fn().mockResolvedValue(initialSnapshot);
+		const actionRunner = vi
+			.fn<(action: KnowledgeHomeAdminActionRequest) => Promise<void>>()
+			.mockResolvedValue(undefined);
+
+		const admin = useKnowledgeHomeAdmin(fetcher, actionRunner);
+		admin.seed(initialSnapshot);
+
+		await admin.startReproject(
+			"range",
+			"v1",
+			"v2",
+			"2026-03-01T00:00:00Z",
+			"2026-03-18T00:00:00Z",
+		);
+		expect(actionRunner).toHaveBeenCalledWith({
+			action: "start_reproject",
+			mode: "range",
+			fromVersion: "v1",
+			toVersion: "v2",
+			rangeStart: "2026-03-01T00:00:00Z",
+			rangeEnd: "2026-03-18T00:00:00Z",
+		});
+
+		await admin.swapReproject("run-123");
+		expect(actionRunner).toHaveBeenCalledWith({
+			action: "swap_reproject",
+			reprojectRunId: "run-123",
+		});
+
+		await admin.rollbackReproject("run-123");
+		expect(actionRunner).toHaveBeenCalledWith({
+			action: "rollback_reproject",
+			reprojectRunId: "run-123",
+		});
+
+		expect(fetcher).toHaveBeenCalledTimes(3);
+	});
+
+	it("populates reprojectDiff via compareReproject and auditResult via runAudit", async () => {
+		const fetcher = vi.fn().mockResolvedValue(initialSnapshot);
+		const actionRunner = vi
+			.fn<(action: KnowledgeHomeAdminActionRequest) => Promise<void>>()
+			.mockResolvedValue(undefined);
+
+		const sampleDiff = {
+			fromItemCount: 100,
+			toItemCount: 102,
+			fromEmptyCount: 2,
+			toEmptyCount: 1,
+			fromAvgScore: 0.65,
+			toAvgScore: 0.72,
+			fromWhyDistribution: { new_unread: 80 },
+			toWhyDistribution: { new_unread: 82 },
+		};
+		const sampleAudit = {
+			auditId: "audit-1",
+			projectionName: "knowledge_home",
+			projectionVersion: "2",
+			checkedAt: "2026-03-20T00:00:00Z",
+			sampleSize: 50,
+			mismatchCount: 0,
+			detailsJson: "{}",
+		};
+
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({ diff: sampleDiff }),
+			})
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({ audit: sampleAudit }),
+			});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const admin = useKnowledgeHomeAdmin(fetcher, actionRunner);
+		admin.seed(initialSnapshot);
+
+		await admin.compareReproject("run-99");
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			1,
+			"/api/admin/knowledge-home",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "compare_reproject",
+					reprojectRunId: "run-99",
+				}),
+			}),
+		);
+		expect(admin.reprojectDiff).toEqual(sampleDiff);
+
+		await admin.runAudit("knowledge_home", "2", 50);
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			2,
+			"/api/admin/knowledge-home",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "run_audit",
+					projectionName: "knowledge_home",
+					projectionVersion: "2",
+					sampleSize: 50,
+				}),
+			}),
+		);
+		expect(admin.auditResult).toEqual(sampleAudit);
+
+		vi.unstubAllGlobals();
 	});
 });

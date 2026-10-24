@@ -1,7 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { updateFeedReadStatus, verifyCsrfToken } from "#lib/api.js";
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, locals }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	// V-004: CSRF validation for state-changing operations
@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			return Response.json({ error: "feed_url is required" }, { status: 400 });
 		}
 
-		await updateFeedReadStatus(cookieHeader, feedUrl);
+		await updateFeedReadStatus(cookieHeader, feedUrl, locals?.backendToken);
 
 		return Response.json({ success: true });
 	} catch (error) {

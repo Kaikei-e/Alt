@@ -10,6 +10,7 @@ import {
 	type TagTrailTag,
 } from "#lib/connect/index.js";
 import type { TagTrailHop } from "#lib/schema/tagTrail.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 // Create transport for connect-rpc calls
 const transport = createClientTransport();
@@ -25,13 +26,43 @@ interface FeedData {
 
 interface Props {
 	initialFeed?: FeedData | null;
+	currentFeed?: FeedData | null;
+	feedTags?: TagTrailTag[];
+	isLoadingFeedTags?: boolean;
+	isLoadingFeed?: boolean;
+	refreshError?: string | null;
+	feedTagsError?: string | null;
+	selectedTag?: TagTrailTag | null;
+	articles?: TagTrailArticle[];
+	isLoadingArticles?: boolean;
+	hasMoreArticles?: boolean;
+	nextCursor?: string | undefined;
+	hops?: TagTrailHop[];
+	articleTagsCache?: Map<string, TagTrailTag[]>;
+	loadingArticleTags?: Set<string>;
+	lastProcessedFeedId?: string | null;
 }
 
-const { initialFeed }: Props = $props();
+let {
+	initialFeed = null,
+	currentFeed = $bindable<FeedData | null>(untrack(() => initialFeed ?? null)),
+	feedTags = $bindable<TagTrailTag[]>(untrack(() => initialFeed?.tags ?? [])),
+	isLoadingFeedTags = $bindable(false),
+	isLoadingFeed = $bindable(false),
+	refreshError = $bindable<string | null>(null),
+	feedTagsError = $bindable<string | null>(null),
+	selectedTag = $bindable<TagTrailTag | null>(null),
+	articles = $bindable<TagTrailArticle[]>([]),
+	isLoadingArticles = $bindable(false),
+	hasMoreArticles = $bindable(false),
+	nextCursor = $bindable<string | undefined>(undefined),
+	hops = $bindable<TagTrailHop[]>([]),
+	articleTagsCache = $bindable<Map<string, TagTrailTag[]>>(new Map()),
+	loadingArticleTags = $bindable<Set<string>>(new Set()),
+	lastProcessedFeedId = $bindable<string | null>(null),
+}: Props = $props();
 
-// State
 const initialFeedValue = $derived(initialFeed);
-let currentFeed = $state<FeedData | null>(null);
 
 $effect(() => {
 	if (currentFeed === null && initialFeedValue) {
@@ -39,24 +70,7 @@ $effect(() => {
 	}
 });
 
-let feedTags = $state<TagTrailTag[]>([]);
-let isLoadingFeedTags = $state(false);
-let isLoadingFeed = $state(false);
-let refreshError = $state<string | null>(null);
-let feedTagsError = $state<string | null>(null);
 let feedTagsTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-let selectedTag = $state<TagTrailTag | null>(null);
-let articles = $state<TagTrailArticle[]>([]);
-let isLoadingArticles = $state(false);
-let hasMoreArticles = $state(false);
-let nextCursor = $state<string | undefined>(undefined);
-
-let hops = $state<TagTrailHop[]>([]);
-
-// Cache for article tags
-let articleTagsCache = $state<Map<string, TagTrailTag[]>>(new Map());
-let loadingArticleTags = $state<Set<string>>(new Set());
 
 // Track active streaming abort controllers for cleanup
 let activeStreamControllers: Map<string, AbortController> = new Map();
@@ -75,6 +89,10 @@ onDestroy(() => {
 // Set tags from currentFeed when it changes
 $effect(() => {
 	if (currentFeed) {
+		if (currentFeed.id === untrack(() => lastProcessedFeedId)) {
+			return;
+		}
+		lastProcessedFeedId = currentFeed.id;
 		if (currentFeed.tags && currentFeed.tags.length > 0) {
 			feedTags = currentFeed.tags;
 			isLoadingFeedTags = false;
@@ -226,6 +244,7 @@ async function handleRefresh() {
 	try {
 		const feed = await fetchRandomFeed(transport);
 		refreshError = null;
+		lastProcessedFeedId = null;
 		currentFeed = feed;
 		feedTags = feed.tags ?? [];
 		selectedTag = null;
@@ -300,7 +319,8 @@ function handleHopClick(index: number) {
 		articleTagsCache = new Map();
 		loadingArticleTags = new Set();
 	} else if (index < hops.length - 1) {
-		const targetHop = hops[index]!;
+		const targetHop = hops[index];
+		if (!targetHop) return;
 		hops = hops.slice(0, index + 1);
 
 		if (targetHop.type === "feed") {
@@ -392,7 +412,7 @@ const formatDate = (dateStr: string) => {
 					<div class="flex flex-col gap-1 mb-4">
 						<span class="section-label">Featured Section</span>
 						<a
-							href={currentFeed.url}
+							href={sanitizeHrefUrl(currentFeed.url)}
 							target="_blank"
 							rel="noopener noreferrer"
 							class="feed-title"
@@ -523,7 +543,7 @@ const formatDate = (dateStr: string) => {
 									style="--stagger: {i};"
 								>
 									<a
-										href={article.link}
+										href={sanitizeHrefUrl(article.link)}
 										target="_blank"
 										rel="noopener noreferrer"
 										class="block"

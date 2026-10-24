@@ -161,7 +161,7 @@ export function createSafariConnectionRecovery(
 	};
 
 	doc.addEventListener("visibilitychange", onVisibilityChange);
-	doc.addEventListener("pageshow", onPageShow);
+	win?.addEventListener("pageshow", onPageShow as EventListener);
 	doc.addEventListener("freeze", onFreeze);
 	doc.addEventListener("resume", onResume);
 	win?.addEventListener("online", onOnline);
@@ -169,7 +169,7 @@ export function createSafariConnectionRecovery(
 	return {
 		dispose() {
 			doc.removeEventListener("visibilitychange", onVisibilityChange);
-			doc.removeEventListener("pageshow", onPageShow);
+			win?.removeEventListener("pageshow", onPageShow as EventListener);
 			doc.removeEventListener("freeze", onFreeze);
 			doc.removeEventListener("resume", onResume);
 			win?.removeEventListener("online", onOnline);

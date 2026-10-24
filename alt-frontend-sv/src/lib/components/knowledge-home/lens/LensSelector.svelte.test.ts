@@ -251,9 +251,7 @@ describe("LensSelector", () => {
 			onDelete,
 		});
 
-		await expect
-			.element(page.getByText("Active lens: AI"))
-			.toBeInTheDocument();
+		await expect.element(page.getByText("Active lens: AI")).toBeInTheDocument();
 		await expect.element(page.getByText("Delete?")).not.toBeInTheDocument();
 		await expect
 			.element(page.getByRole("button", { name: /Confirm/ }))

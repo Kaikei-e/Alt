@@ -1,9 +1,18 @@
 import { isRedirect } from "@sveltejs/kit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("$app/env/private", () => ({
+const envMock = vi.hoisted(() => ({
 	KRATOS_PUBLIC_URL: "http://localhost/ory",
 	ORIGIN: "http://localhost:4173",
+}));
+
+vi.mock("$app/env/private", () => ({
+	get KRATOS_PUBLIC_URL() {
+		return envMock.KRATOS_PUBLIC_URL;
+	},
+	get ORIGIN() {
+		return envMock.ORIGIN;
+	},
 }));
 
 const getRegistrationFlow = vi.fn();
@@ -47,6 +56,7 @@ async function expectRedirectLocation(params: {
 describe("register +page.server load", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		envMock.ORIGIN = "http://localhost:4173";
 	});
 
 	describe("already logged in", () => {
@@ -94,6 +104,16 @@ describe("register +page.server load", () => {
 			});
 			expect(location).toBe("http://localhost:4173/feeds");
 		});
+
+		it("falls back to url.origin when ORIGIN env is empty string", async () => {
+			envMock.ORIGIN = "";
+			const location = await expectRedirectLocation({
+				url: makeUrl("/register?return_to=/settings"),
+				locals: { session: {} },
+				request: makeRequest(),
+			});
+			expect(location).toBe("http://localhost:4173/settings");
+		});
 	});
 
 	describe("not logged in, no flow", () => {
@@ -120,6 +140,17 @@ describe("register +page.server load", () => {
 			});
 			const params = new URL(location).searchParams;
 			expect(params.get("return_to")).toBe("http://localhost:4173/feeds");
+		});
+
+		it("uses url.origin when ORIGIN env is empty string", async () => {
+			envMock.ORIGIN = "";
+			const location = await expectRedirectLocation({
+				url: makeUrl("/register?return_to=/settings"),
+				locals: { session: null },
+				request: makeRequest(),
+			});
+			const params = new URL(location).searchParams;
+			expect(params.get("return_to")).toBe("http://localhost:4173/settings");
 		});
 	});
 

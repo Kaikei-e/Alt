@@ -3,6 +3,24 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { goto } from "$app/navigation";
 
+const { pageState } = vi.hoisted(() => {
+	const value: { data: { userRole?: string } } = {
+		data: { userRole: "user" },
+	};
+	return {
+		pageState: {
+			get data() {
+				return value.data;
+			},
+			set data(next: { userRole?: string }) {
+				value.data = next;
+			},
+		},
+	};
+});
+
+vi.mock("$app/state", () => ({ page: pageState }));
+
 vi.mock("$app/navigation", () => ({
 	goto: vi.fn(),
 }));
@@ -22,6 +40,7 @@ async function settle() {
 
 describe("Menu page", () => {
 	beforeEach(() => {
+		pageState.data = { userRole: "user" };
 		vi.mocked(goto).mockReset();
 		vi.mocked(goto).mockImplementation(async () => {});
 	});
@@ -65,5 +84,40 @@ describe("Menu page", () => {
 		// here, and would also yank a desktop reader away every time a window
 		// was dragged across 768px.
 		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it("hides the Admin section when userRole is not admin", async () => {
+		pageState.data = { userRole: "user" };
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+
+		await expect
+			.element(page.getByRole("heading", { name: "Menu" }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("heading", { name: "Admin" }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("link", { name: "Knowledge Home Admin" }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("link", { name: "System Monitor" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("renders the Admin section when userRole is admin", async () => {
+		pageState.data = { userRole: "admin" };
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+
+		await expect
+			.element(page.getByRole("heading", { name: "Admin" }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("link", { name: "Knowledge Home Admin" }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("link", { name: "System Monitor" }))
+			.toBeInTheDocument();
 	});
 });

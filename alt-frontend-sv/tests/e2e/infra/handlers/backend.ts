@@ -4,7 +4,6 @@
  */
 
 import http from "node:http";
-import { JOB_PROGRESS_RESPONSE } from "../../fixtures/mockData";
 import {
 	CONNECT_ARTICLE_CONTENT,
 	CONNECT_DETAILED_STATS,
@@ -36,8 +35,11 @@ import {
 import {
 	AUGUR_CONNECT_MESSAGES,
 	AUGUR_SSE_CHUNKS,
+	CONNECT_MORNING_LETTER_DOCUMENT,
+	CONNECT_MORNING_LETTER_STREAM_MESSAGES,
 	CONNECT_RECAP_CARDS_RESPONSE,
 	CONNECT_RECAP_RESPONSE,
+	JOB_PROGRESS_RESPONSE,
 	RECAP_RESPONSE,
 } from "../data/recap";
 
@@ -236,13 +238,6 @@ export function createBackendServer(): http.Server {
 		// =============================================================================
 
 		// GetAllFeeds / GetUnreadFeeds — cursor-paginated.
-		//
-		// These MUST honour the incoming cursor. Serving the same page with
-		// `hasMore: true` on every call regardless of cursor made the feed grid's
-		// infinite scroll never terminate: it appended the same two feeds
-		// hundreds of times per test, which Svelte reported as a stream of
-		// `each_key_duplicate` runtime errors and which burned real CPU in every
-		// spec that rendered a feed list without stubbing the endpoint itself.
 		if (
 			path === "/alt.feeds.v2.FeedService/GetAllFeeds" ||
 			path === "/alt.feeds.v2.FeedService/GetUnreadFeeds"
@@ -261,14 +256,6 @@ export function createBackendServer(): http.Server {
 		}
 
 		// ResolveOgImages — on-demand og:image resolution.
-		//
-		// Answers every feed asked about as "asked, and settled": a retry bar of
-		// zero, which the client remembers and never re-asks. The mock has no
-		// publisher to fetch from, and the alternative — an unhandled path — is
-		// read as "the server never reached this feed", which licences the
-		// client's full re-ask ladder and leaves every card shimmering for
-		// several seconds in specs that are not about images at all. A spec that
-		// IS about images overrides this with its own page.route.
 		if (path === "/alt.feeds.v2.FeedService/ResolveOgImages") {
 			readJsonBody(req).then((body) => {
 				const feedIds = Array.isArray(body.feedIds)
@@ -281,8 +268,6 @@ export function createBackendServer(): http.Server {
 						images: [],
 						unresolved: feedIds.map((feedId) => ({
 							feedId,
-							// int64 on the wire is a JSON string, as protobuf's
-							// JSON mapping requires.
 							retryAfterSeconds: "0",
 						})),
 					}),
@@ -323,6 +308,29 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
+		// StreamFeedStats (Connect-RPC streaming)
+		if (path === "/alt.feeds.v2.FeedService/StreamFeedStats") {
+			res.setHeader("Content-Type", "application/connect+json");
+			res.setHeader("Connect-Content-Encoding", "identity");
+			res.setHeader("Connect-Accept-Encoding", "identity");
+			res.setHeader("Cache-Control", "no-cache, no-transform");
+			res.writeHead(200);
+			const msg = {
+				feedAmount: String(CONNECT_DETAILED_STATS.feedAmount),
+				unsummarizedFeedAmount: String(
+					CONNECT_DETAILED_STATS.unsummarizedFeedAmount,
+				),
+				totalArticles: String(CONNECT_DETAILED_STATS.articleAmount),
+				metadata: {
+					timestamp: String(Math.floor(Date.now() / 1000)),
+					isHeartbeat: false,
+				},
+			};
+			res.write(encodeConnectEnvelope(msg));
+			res.end(encodeConnectEnvelope({}, 0x02));
+			return;
+		}
+
 		// FetchRandomFeed (ArticleService, not FeedService)
 		if (path === "/alt.articles.v2.ArticleService/FetchRandomFeed") {
 			res.setHeader("Content-Type", "application/json");
@@ -344,6 +352,7 @@ export function createBackendServer(): http.Server {
 			res.setHeader("Content-Type", "application/connect+json");
 			res.setHeader("Connect-Content-Encoding", "identity");
 			res.setHeader("Connect-Accept-Encoding", "identity");
+			res.setHeader("Cache-Control", "no-cache, no-transform");
 			res.writeHead(200);
 			const msg = {
 				articleId: "article-123",
@@ -362,7 +371,8 @@ export function createBackendServer(): http.Server {
 				],
 				eventType: "EVENT_TYPE_COMPLETED",
 			};
-			res.end(`${JSON.stringify(msg)}\n`);
+			res.write(encodeConnectEnvelope(msg));
+			res.end(encodeConnectEnvelope({}, 0x02));
 			return;
 		}
 
@@ -391,16 +401,100 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
+		// ListConversations (Augur)
+		if (path === "/alt.augur.v2.AugurService/ListConversations") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					conversations: [],
+					nextPageToken: "",
+				}),
+			);
+			return;
+		}
+
+		// DeleteConversation (Augur)
+		if (path === "/alt.augur.v2.AugurService/DeleteConversation") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify({}));
+			return;
+		}
+
 		// StreamChat (Augur) - Connect-RPC streaming
 		if (path === "/alt.augur.v2.AugurService/StreamChat") {
 			res.setHeader("Content-Type", "application/connect+json");
 			res.setHeader("Connect-Content-Encoding", "identity");
 			res.setHeader("Connect-Accept-Encoding", "identity");
+			res.setHeader("Cache-Control", "no-cache, no-transform");
 			res.writeHead(200);
-			// Connect-RPC streaming format: newline-delimited JSON
+			for (const msg of AUGUR_CONNECT_MESSAGES) {
+				res.write(encodeConnectEnvelope(msg));
+			}
+			res.end(encodeConnectEnvelope({}, 0x02));
+			return;
+		}
+
+		// MorningLetterReadService endpoints
+		if (
+			path ===
+				"/alt.morning_letter.v2.MorningLetterReadService/GetLatestLetter" ||
+			path === "/alt.morning_letter.v2.MorningLetterReadService/GetLetterByDate"
+		) {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify({ letter: CONNECT_MORNING_LETTER_DOCUMENT }));
+			return;
+		}
+
+		if (
+			path ===
+			"/alt.morning_letter.v2.MorningLetterReadService/GetLetterSources"
+		) {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify({ sources: [] }));
+			return;
+		}
+
+		if (
+			path ===
+			"/alt.morning_letter.v2.MorningLetterReadService/GetLetterEnrichment"
+		) {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify({ enrichments: [] }));
+			return;
+		}
+
+		if (
+			path ===
+			"/alt.morning_letter.v2.MorningLetterReadService/RegenerateLatest"
+		) {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
 			res.end(
-				`${AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n")}\n`,
+				JSON.stringify({
+					letter: CONNECT_MORNING_LETTER_DOCUMENT,
+					regenerated: true,
+					retryAfterSeconds: 3600,
+				}),
 			);
+			return;
+		}
+
+		// MorningLetterService/StreamChat (Connect-RPC streaming)
+		if (path === "/alt.morning_letter.v2.MorningLetterService/StreamChat") {
+			res.setHeader("Content-Type", "application/connect+json");
+			res.setHeader("Connect-Content-Encoding", "identity");
+			res.setHeader("Connect-Accept-Encoding", "identity");
+			res.setHeader("Cache-Control", "no-cache, no-transform");
+			res.writeHead(200);
+			for (const msg of CONNECT_MORNING_LETTER_STREAM_MESSAGES) {
+				res.write(encodeConnectEnvelope(msg));
+			}
+			res.end(encodeConnectEnvelope({}, 0x02));
 			return;
 		}
 
@@ -485,12 +579,7 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
-		// GetKnowledgeLoop (Connect-RPC) — body-aware switch:
-		// - lensModeId === "e2e-act"        → ACT-stage scenario fixture
-		// - lensModeId === "e2e-no-source"  → ACT entry with sourceUrl absent
-		// - lensModeId === "e2e-decide"     → DECIDE-stage decision-option list
-		// - lensModeId === "e2e-recap"      → entry with a recap actTarget
-		// - otherwise                       → default fixture
+		// GetKnowledgeLoop (Connect-RPC) — body-aware switch
 		if (
 			path === "/alt.knowledge.loop.v1.KnowledgeLoopService/GetKnowledgeLoop"
 		) {

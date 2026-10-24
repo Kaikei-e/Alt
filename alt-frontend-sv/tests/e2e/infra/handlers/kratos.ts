@@ -147,7 +147,7 @@ export function createKratosServer(): http.Server {
 			log("POST login - setting session cookie");
 			const returnTo = validateRedirectUrl(
 				url.searchParams.get("return_to"),
-				"http://127.0.0.1:5173/home",
+				"http://127.0.0.1:4174/home",
 			);
 
 			res.writeHead(303, {
@@ -166,7 +166,7 @@ export function createKratosServer(): http.Server {
 			log("POST registration - setting session cookie");
 			const returnTo = validateRedirectUrl(
 				url.searchParams.get("return_to"),
-				"http://127.0.0.1:5173/home",
+				"http://127.0.0.1:4174/home",
 			);
 
 			res.writeHead(303, {
@@ -181,7 +181,9 @@ export function createKratosServer(): http.Server {
 		if (path.startsWith("/self-service/login")) {
 			const host = req.headers.host || `127.0.0.1:${KRATOS_PORT}`;
 			const kratosBaseUrl = `http://${host}`;
-			const loginFlow = buildLoginFlow(kratosBaseUrl);
+			const requestedFlowId =
+				url.searchParams.get("id") || url.searchParams.get("flow") || undefined;
+			const loginFlow = buildLoginFlow(kratosBaseUrl, requestedFlowId);
 
 			// /self-service/login/browser - redirects to the app with flow parameter
 			if (path === "/self-service/login/browser") {
@@ -214,7 +216,12 @@ export function createKratosServer(): http.Server {
 		if (path.startsWith("/self-service/registration")) {
 			const host = req.headers.host || `127.0.0.1:${KRATOS_PORT}`;
 			const kratosBaseUrl = `http://${host}`;
-			const registrationFlow = buildRegistrationFlow(kratosBaseUrl);
+			const requestedFlowId =
+				url.searchParams.get("id") || url.searchParams.get("flow") || undefined;
+			const registrationFlow = buildRegistrationFlow(
+				kratosBaseUrl,
+				requestedFlowId,
+			);
 
 			// /self-service/registration/browser - redirects to the app with flow parameter
 			if (path === "/self-service/registration/browser") {

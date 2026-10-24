@@ -82,6 +82,14 @@ const branchByEpisodeKey = $derived.by(() => {
 		onClear={() => trail.clearSearch()}
 	/>
 
+	{#if trail.searchError}
+		<div class="trail-error" role="alert" data-testid="trail-search-error">
+			{trail.searchError instanceof Error
+				? trail.searchError.message
+				: trail.searchError}
+		</div>
+	{/if}
+
 	<!-- The spine (the path the user has worn) is the hero. There is no
 	     top-of-trail branch inbox (D26/D28): at most one branch surfaces per
 	     episode, subordinate to its header. While a search is active, the

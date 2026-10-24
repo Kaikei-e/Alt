@@ -2,13 +2,14 @@ import {
 	assertOkResponse,
 	parseJsonBody,
 } from "#lib/api/handle-api-response.js";
-import { BACKEND_REST_URL } from "$app/env/private";
+import { BACKEND_CONNECT_URL, BACKEND_REST_URL } from "$app/env/private";
 import { getBackendToken } from "./auth";
 
 // Independent from src/lib/connect/transport-server.ts's BACKEND_CONNECT_URL
 // (Connect-RPC endpoint) so the REST facade and the Connect-RPC backend can
 // be configured separately instead of racing over one shared env var.
-const BACKEND_URL = BACKEND_REST_URL || "http://alt-butterfly-facade:9250";
+const BACKEND_URL =
+	BACKEND_REST_URL || BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
 const FETCH_TIMEOUT_MS = 10_000;
 
 type FetchFn = typeof fetch;
@@ -22,9 +23,13 @@ export async function callBackendAPI<T>(
 	options?: {
 		fetch?: FetchFn;
 		guard?: (data: unknown) => data is T;
+		backendToken?: string | null;
 	},
 ): Promise<T> {
-	const token = await getBackendToken(cookie);
+	const token =
+		options?.backendToken !== undefined
+			? options.backendToken
+			: await getBackendToken(cookie);
 	const fetchFn = options?.fetch ?? fetch;
 
 	const headers: HeadersInit = {
@@ -79,9 +84,15 @@ export async function callBackendAPIWithBody(
 	cookie: string | null,
 	method: string,
 	body?: unknown,
-	options?: { fetch?: FetchFn },
+	options?: {
+		fetch?: FetchFn;
+		backendToken?: string | null;
+	},
 ): Promise<void> {
-	const token = await getBackendToken(cookie);
+	const token =
+		options?.backendToken !== undefined
+			? options.backendToken
+			: await getBackendToken(cookie);
 	const fetchFn = options?.fetch ?? fetch;
 
 	const headers: HeadersInit = {

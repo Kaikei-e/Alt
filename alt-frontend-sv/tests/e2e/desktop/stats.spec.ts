@@ -4,7 +4,11 @@ import {
 	CONNECT_TREND_STATS_RESPONSE,
 } from "../fixtures/mockData";
 import { expect, test } from "../fixtures/pomFixtures";
-import { createMockEventSourceScript, fulfillJson } from "../utils/mockHelpers";
+import {
+	fulfillConnectStream,
+	fulfillConnectStreamError,
+	fulfillJson,
+} from "../utils/mockHelpers";
 
 const MOCK_STATS = {
 	feedAmount: 25,
@@ -12,11 +16,23 @@ const MOCK_STATS = {
 	articleAmount: 500,
 };
 
+const MOCK_STREAM_STATS_MESSAGES = [
+	{
+		feedAmount: "25",
+		unsummarizedFeedAmount: "10",
+		totalArticles: "500",
+		metadata: {
+			timestamp: "1700000000",
+			isHeartbeat: false,
+		},
+	},
+];
+
 test.describe("Desktop Statistics", () => {
 	test.beforeEach(async ({ page }) => {
-		// Mock EventSource
-		await page.addInitScript(createMockEventSourceScript());
-
+		await page.route(CONNECT_RPC_PATHS.streamFeedStats, (route) =>
+			fulfillConnectStream(route, MOCK_STREAM_STATS_MESSAGES),
+		);
 		await page.route(CONNECT_RPC_PATHS.getDetailedFeedStats, (route) =>
 			fulfillJson(route, MOCK_STATS),
 		);
@@ -49,49 +65,12 @@ test.describe("Desktop Statistics", () => {
 		page,
 		desktopStatsPage,
 	}) => {
-		// Override EventSource to simulate disconnect
-		await page.addInitScript(() => {
-			class DisconnectedEventSource {
-				url: string;
-				readyState = 2;
-				static CONNECTING = 0;
-				static OPEN = 1;
-				static CLOSED = 2;
-				CONNECTING = 0;
-				OPEN = 1;
-				CLOSED = 2;
-				onopen = null;
-				onmessage = null;
-				onerror = null;
-				constructor(url: string) {
-					this.url = url;
-					setTimeout(() => {
-						(this as unknown as { onerror?: (e: Event) => void }).onerror?.(
-							new Event("error"),
-						);
-					}, 0);
-				}
-				close() {
-					this.readyState = 2;
-				}
-				addEventListener() {}
-				removeEventListener() {}
-				dispatchEvent() {
-					return false;
-				}
-			}
-			(window as unknown as Record<string, unknown>).EventSource =
-				DisconnectedEventSource;
-		});
+		await page.route(CONNECT_RPC_PATHS.streamFeedStats, (route) =>
+			fulfillConnectStreamError(route, "unavailable", "Stream disconnected"),
+		);
 
 		await desktopStatsPage.goto();
 		await expect(desktopStatsPage.pageTitle).toBeVisible();
-
-		// Reconnect button may be visible if SSE fails
-		// This is a soft check since the component may handle errors gracefully
-		const reconnect = desktopStatsPage.reconnectButton;
-		if (await reconnect.isVisible().catch(() => false)) {
-			await expect(reconnect).toBeVisible();
-		}
+		await expect(desktopStatsPage.reconnectButton).toBeVisible();
 	});
 });

@@ -1,14 +1,19 @@
 import type { ServerLoad } from "@sveltejs/kit";
 import { fetchRandomFeed } from "#lib/connect/articles.js";
-import { createServerTransport } from "#lib/connect/transport-server.js";
+import {
+	createServerTransport,
+	createServerTransportWithToken,
+} from "#lib/connect/transport-server.js";
 
-export const load: ServerLoad = async ({ request, fetch }) => {
+export const load: ServerLoad = async ({ request, fetch, locals }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	try {
 		// Use Connect-RPC for server-side fetch (ADR-174)
 		// This includes tags in the response (generated on-the-fly if not in DB)
-		const transport = await createServerTransport(cookieHeader, fetch);
+		const transport = locals?.backendToken
+			? createServerTransportWithToken(locals.backendToken, fetch)
+			: await createServerTransport(cookieHeader, fetch);
 		const feed = await fetchRandomFeed(transport);
 		return {
 			initialFeed: feed,

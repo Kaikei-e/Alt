@@ -10,7 +10,7 @@ const basePath = "";
 const REGISTER_RETURN_TO_OPTIONS = { loopPaths: ["/register"] };
 
 export const load: PageServerLoad = async ({ url, locals, request }) => {
-	const origin = ORIGIN;
+	const origin = ORIGIN || url.origin;
 
 	// If already logged in, redirect to home or return_to
 	if (locals.session) {

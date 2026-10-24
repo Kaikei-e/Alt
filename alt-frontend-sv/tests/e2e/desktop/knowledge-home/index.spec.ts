@@ -14,7 +14,7 @@ import {
 } from "../../fixtures/factories/knowledgeHomeFactory";
 import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopKnowledgeHomePage } from "../../pages/desktop/DesktopKnowledgeHomePage";
-import { fulfillJson } from "../../utils/mockHelpers";
+import { fulfillConnectStream, fulfillJson } from "../../utils/mockHelpers";
 
 // Connect-RPC paths via SvelteKit proxy (/api/v2)
 const KH_GET =
@@ -505,16 +505,26 @@ test.describe("Knowledge Home - Stream Updates", () => {
 				fulfillJson(route, { lenses: [], activeLensId: "" }),
 			),
 			page.route(LIST_SUBS, (route) => fulfillJson(route, { sources: [] })),
-			// Don't abort stream — let it hang (no update) so we can test the bar presence
-			page.route(KH_STREAM, (route) => route.abort()),
+			page.route(KH_STREAM, (route) =>
+				fulfillConnectStream(route, [
+					{
+						eventType: "item_added",
+						occurredAt: "2026-03-18T12:00:00Z",
+						item: { itemKey: "article:new-1" },
+					},
+					{
+						eventType: "item_added",
+						occurredAt: "2026-03-18T12:00:01Z",
+						item: { itemKey: "article:new-2" },
+					},
+				]),
+			),
 		]);
 
 		await homePage.goto();
 		await homePage.waitForHomeLoaded();
 
-		// The stream update bar is only visible when there are pending updates
-		// Since we're not sending stream messages, the bar won't appear
-		// This test verifies the stream is properly connected
 		await expect(homePage.cards.first()).toBeVisible();
+		await expect(homePage.streamUpdateBar).toBeVisible({ timeout: 10000 });
 	});
 });

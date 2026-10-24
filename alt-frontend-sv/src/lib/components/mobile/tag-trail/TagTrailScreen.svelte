@@ -5,12 +5,12 @@ import {
 	createClientTransport,
 	fetchArticlesByTag,
 	fetchRandomFeed,
-	type RandomFeed,
 	streamArticleTags,
 	type TagTrailArticle,
 	type TagTrailTag,
 } from "#lib/connect/index.js";
 import type { TagTrailHop } from "#lib/schema/tagTrail.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import RandomFeedCard from "./RandomFeedCard.svelte";
 import TagArticleList from "./TagArticleList.svelte";
 import TagTrailBreadcrumb from "./TagTrailBreadcrumb.svelte";
@@ -29,27 +29,51 @@ interface FeedData {
 
 interface Props {
 	initialFeed?: FeedData | null;
+	currentFeed?: FeedData | null;
+	feedTags?: TagTrailTag[];
+	isLoadingFeedTags?: boolean;
+	isLoadingFeed?: boolean;
+	refreshError?: string | null;
+	feedTagsError?: string | null;
+	selectedTag?: TagTrailTag | null;
+	articles?: TagTrailArticle[];
+	isLoadingArticles?: boolean;
+	hasMoreArticles?: boolean;
+	nextCursor?: string | undefined;
+	hops?: TagTrailHop[];
+	articleTagsCache?: Map<string, TagTrailTag[]>;
+	loadingArticleTags?: Set<string>;
+	lastProcessedFeedId?: string | null;
 }
 
-const { initialFeed }: Props = $props();
+let {
+	initialFeed = null,
+	currentFeed = $bindable<FeedData | null>(untrack(() => initialFeed ?? null)),
+	feedTags = $bindable<TagTrailTag[]>(untrack(() => initialFeed?.tags ?? [])),
+	isLoadingFeedTags = $bindable(false),
+	isLoadingFeed = $bindable(false),
+	refreshError = $bindable<string | null>(null),
+	feedTagsError = $bindable<string | null>(null),
+	selectedTag = $bindable<TagTrailTag | null>(null),
+	articles = $bindable<TagTrailArticle[]>([]),
+	isLoadingArticles = $bindable(false),
+	hasMoreArticles = $bindable(false),
+	nextCursor = $bindable<string | undefined>(undefined),
+	hops = $bindable<TagTrailHop[]>([]),
+	articleTagsCache = $bindable<Map<string, TagTrailTag[]>>(new Map()),
+	loadingArticleTags = $bindable<Set<string>>(new Set()),
+	lastProcessedFeedId = $bindable<string | null>(null),
+}: Props = $props();
 
-// Props are read once at creation; the component owns currentFeed afterward.
-let currentFeed = $state<FeedData | null>(untrack(() => initialFeed ?? null));
-let feedTags = $state<TagTrailTag[]>([]);
-let isLoadingFeedTags = $state(false);
-let isLoadingFeed = $state(false);
+const initialFeedValue = $derived(initialFeed);
 
-let selectedTag = $state<TagTrailTag | null>(null);
-let articles = $state<TagTrailArticle[]>([]);
-let isLoadingArticles = $state(false);
-let hasMoreArticles = $state(false);
-let nextCursor = $state<string | undefined>(undefined);
+$effect(() => {
+	if (currentFeed === null && initialFeedValue) {
+		currentFeed = initialFeedValue;
+	}
+});
 
-let hops = $state<TagTrailHop[]>([]);
-
-// Cache for article tags (articleId -> tags)
-let articleTagsCache = $state<Map<string, TagTrailTag[]>>(new Map());
-let loadingArticleTags = $state<Set<string>>(new Set());
+let feedTagsTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 // Track active streaming abort controllers for cleanup
 let activeStreamControllers: Map<string, AbortController> = new Map();
@@ -60,14 +84,28 @@ onDestroy(() => {
 		controller.abort();
 	}
 	activeStreamControllers = new Map();
+	if (feedTagsTimeoutId) {
+		clearTimeout(feedTagsTimeoutId);
+		feedTagsTimeoutId = null;
+	}
 });
 
 // Derived state
 const isShowingArticles = $derived(selectedTag !== null);
+const sanitizedArticles = $derived(
+	articles.map((article) => ({
+		...article,
+		link: sanitizeHrefUrl(article.link) as string,
+	})),
+);
 
 // Set tags from currentFeed when it changes (ADR-173: tags come from fetchRandomFeed response)
 $effect(() => {
 	if (currentFeed) {
+		if (currentFeed.id === untrack(() => lastProcessedFeedId)) {
+			return;
+		}
+		lastProcessedFeedId = currentFeed.id;
 		if (currentFeed.tags && currentFeed.tags.length > 0) {
 			// Tags available from backend (existing article had tags)
 			feedTags = currentFeed.tags;
@@ -90,6 +128,26 @@ $effect(() => {
  * Avoids the FetchArticleContent roundtrip that returned unnecessary HTML.
  */
 function streamFeedTags(articleId: string) {
+	feedTagsError = null;
+
+	if (feedTagsTimeoutId) {
+		clearTimeout(feedTagsTimeoutId);
+		feedTagsTimeoutId = null;
+	}
+
+	feedTagsTimeoutId = setTimeout(() => {
+		if (isLoadingFeedTags) {
+			feedTagsError = "Tag generation timed out. Please refresh.";
+			isLoadingFeedTags = false;
+			const ctrl = activeStreamControllers.get(articleId);
+			if (ctrl) {
+				ctrl.abort();
+				activeStreamControllers.delete(articleId);
+				activeStreamControllers = new Map(activeStreamControllers);
+			}
+		}
+	}, 45000);
+
 	const controller = streamArticleTags(
 		transport,
 		articleId,
@@ -97,11 +155,28 @@ function streamFeedTags(articleId: string) {
 			if (event.eventType === "cached" || event.eventType === "completed") {
 				feedTags = event.tags;
 				isLoadingFeedTags = false;
+				feedTagsError = null;
+				if (feedTagsTimeoutId) {
+					clearTimeout(feedTagsTimeoutId);
+					feedTagsTimeoutId = null;
+				}
+			} else if (event.eventType === "error") {
+				feedTagsError = event.message || "Failed to generate tags.";
+				isLoadingFeedTags = false;
+				if (feedTagsTimeoutId) {
+					clearTimeout(feedTagsTimeoutId);
+					feedTagsTimeoutId = null;
+				}
 			}
 		},
 		(error) => {
 			console.error("Failed to stream feed tags:", error);
+			feedTagsError = "Failed to load tags. Please refresh.";
 			isLoadingFeedTags = false;
+			if (feedTagsTimeoutId) {
+				clearTimeout(feedTagsTimeoutId);
+				feedTagsTimeoutId = null;
+			}
 		},
 	);
 	activeStreamControllers = new Map([
@@ -123,8 +198,6 @@ $effect(() => {
 		}
 	}
 });
-
-// Note: loadFeedTags is no longer needed - tags come from fetchRandomFeed (ADR-173)
 
 /**
  * Loads article tags using Connect-RPC Server Streaming.
@@ -196,8 +269,15 @@ function getArticleTags(articleId: string): TagTrailTag[] {
 
 async function handleRefresh() {
 	isLoadingFeed = true;
+	feedTagsError = null;
+	if (feedTagsTimeoutId) {
+		clearTimeout(feedTagsTimeoutId);
+		feedTagsTimeoutId = null;
+	}
 	try {
 		const feed = await fetchRandomFeed(transport);
+		refreshError = null;
+		lastProcessedFeedId = null;
 		// ADR-173: tags are now included in the fetchRandomFeed response
 		currentFeed = feed;
 		feedTags = feed.tags ?? [];
@@ -213,6 +293,7 @@ async function handleRefresh() {
 		loadingArticleTags = new Set();
 	} catch (error) {
 		console.error("Failed to get random feed:", error);
+		refreshError = "Failed to load feed. Please try again.";
 	} finally {
 		isLoadingFeed = false;
 	}
@@ -279,7 +360,8 @@ function handleHopClick(index: number) {
 		loadingArticleTags = new Set();
 	} else if (index < hops.length - 1) {
 		// Go back to a previous hop
-		const targetHop = hops[index]!;
+		const targetHop = hops[index];
+		if (!targetHop) return;
 		hops = hops.slice(0, index + 1);
 
 		if (targetHop.type === "feed") {
@@ -345,15 +427,43 @@ function handleBack() {
 		{:else if !isShowingArticles}
 			<!-- Random feed view -->
 			<div class="flex-1 overflow-y-auto py-4">
+				{#if refreshError}
+					<div class="error-stripe mx-4 mb-3">
+						<p class="error-text">{refreshError}</p>
+						<button
+							type="button"
+							onclick={handleRefresh}
+							class="error-link"
+						>
+							Try again
+						</button>
+					</div>
+				{/if}
 				{#if currentFeed}
 					<RandomFeedCard
-						feed={currentFeed}
+						feed={{
+							...currentFeed,
+							title: currentFeed.title || currentFeed.url,
+							url: sanitizeHrefUrl(currentFeed.url) as string,
+						}}
 						tags={feedTags}
 						isLoadingTags={isLoadingFeedTags}
 						onTagClick={handleTagClick}
 						onRefresh={handleRefresh}
 					/>
-				{:else}
+					{#if feedTagsError}
+						<div class="error-stripe mx-4 mt-3">
+							<p class="error-text">{feedTagsError}</p>
+							<button
+								type="button"
+								onclick={handleRefresh}
+								class="error-link"
+							>
+								Refresh
+							</button>
+						</div>
+					{/if}
+				{:else if !refreshError}
 					<div class="flex flex-col items-center justify-center h-full px-4">
 						<div class="empty-ornament">&#9670;</div>
 						<p class="empty-text">
@@ -368,7 +478,7 @@ function handleBack() {
 		{:else if selectedTag}
 			<!-- Articles by tag view -->
 			<TagArticleList
-				{articles}
+				articles={sanitizedArticles}
 				isLoading={isLoadingArticles}
 				hasMore={hasMoreArticles}
 				selectedTagName={selectedTag.name}
@@ -490,6 +600,32 @@ function handleBack() {
 	.editorial-btn:hover {
 		background: var(--alt-charcoal, #1a1a1a);
 		color: var(--surface-bg, #faf9f7);
+	}
+
+	.error-stripe {
+		padding: 0.5rem 0.75rem;
+		border-left: 3px solid var(--alt-terracotta, #b85450);
+		background: #fef2f2;
+	}
+
+	.error-text {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.8rem;
+		color: var(--alt-terracotta, #b85450);
+		margin: 0;
+	}
+
+	.error-link {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem;
+		color: var(--alt-primary, #2f4f4f);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		padding: 0;
+		margin-top: 0.25rem;
 	}
 
 	@media (prefers-reduced-motion: reduce) {

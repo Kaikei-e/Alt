@@ -14,6 +14,31 @@ test.describe("Desktop Morgue Desk (Viewed Feeds)", () => {
 		);
 	});
 
+	test("renders populated read feeds when getReadFeeds returns items", async ({
+		page,
+		desktopViewedPage,
+	}) => {
+		const readFeedsResponse = {
+			data: [
+				buildConnectFeedItem({ title: "Populated Read Article 1" }),
+				buildConnectFeedItem({ title: "Populated Read Article 2" }),
+			],
+			nextCursor: "",
+			hasMore: false,
+		};
+
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, readFeedsResponse),
+		);
+
+		await desktopViewedPage.goto();
+		await desktopViewedPage.waitForFeedsLoaded();
+
+		await expect(desktopViewedPage.getFeedCards()).toHaveCount(2);
+		await expect(page.getByText("Populated Read Article 1")).toBeVisible();
+		await expect(page.getByText("Populated Read Article 2")).toBeVisible();
+	});
+
 	test("shows loading indicator then feeds", async ({
 		page,
 		desktopViewedPage,
@@ -34,16 +59,10 @@ test.describe("Desktop Morgue Desk (Viewed Feeds)", () => {
 
 		await desktopViewedPage.goto();
 
-		// The test name promises a loading indicator followed by feeds, so
-		// assert the indicator is actually shown before it disappears —
-		// previously nothing checked this, letting the delayed-response
-		// mock render with no indicator at all and still "pass".
 		await expect(desktopViewedPage.loadingIndicator).toBeVisible();
 
 		await desktopViewedPage.waitForFeedsLoaded();
 
-		// The loaded feed titles from the mock response must actually be
-		// rendered, not just an empty grid.
 		await expect(page.getByText("Read Article 1")).toBeVisible();
 		await expect(page.getByText("Read Article 2")).toBeVisible();
 	});

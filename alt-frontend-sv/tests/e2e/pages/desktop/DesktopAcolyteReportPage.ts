@@ -17,7 +17,7 @@ export class DesktopAcolyteReportPage extends BasePage {
 	readonly errorBanner: Locator;
 	readonly emptyHint: Locator;
 
-	constructor(page: Page, reportId: string) {
+	constructor(page: Page, reportId = "rep-001") {
 		super(page);
 		this.reportId = reportId;
 		this.title = page.locator(".detail-title");

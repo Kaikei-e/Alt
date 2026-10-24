@@ -39,7 +39,9 @@ export class LoginPage extends BasePage {
 		this.submitButton = page.getByRole("button", { name: /login/i });
 
 		// Error messages
-		this.errorMessage = page.locator('[style*="color: #dc2626"]');
+		this.errorMessage = page.locator(
+			'[style*="#dc2626"], [style*="220, 38, 38"]',
+		);
 		this.emailError = page.locator("#identifier + p, #identifier ~ p").first();
 		this.passwordError = page.locator("#password + p, #password ~ p").first();
 
@@ -100,25 +102,11 @@ export class LoginPage extends BasePage {
 	}
 
 	/**
-	 * Wait for the form to be ready (not redirecting)
-	 * Returns false if external auth (Cloudflare Access) is detected
+	 * Wait for the form to be ready
 	 */
 	async waitForFormReady(): Promise<boolean> {
-		// Wait for either form to appear, redirecting text, or external auth (Cloudflare)
-		const externalAuth = this.page.getByText(/send me a code|cloudflare/i);
-		try {
-			await expect(
-				this.emailInput.or(this.redirectingText).or(externalAuth).first(),
-			).toBeVisible({ timeout: 10000 });
-
-			// Check if external auth is detected
-			if (await externalAuth.isVisible()) {
-				return false;
-			}
-			return true;
-		} catch {
-			return false;
-		}
+		await expect(this.emailInput).toBeVisible({ timeout: 10000 });
+		return true;
 	}
 
 	/**

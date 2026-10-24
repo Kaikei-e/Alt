@@ -1,5 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const envMock = vi.hoisted(() => ({
+	BACKEND_REST_URL: "http://backend-rest.test",
+	BACKEND_CONNECT_URL: "http://backend-connect.test",
+}));
+
+vi.mock("$app/env/private", () => ({
+	get BACKEND_REST_URL() {
+		return envMock.BACKEND_REST_URL;
+	},
+	get BACKEND_CONNECT_URL() {
+		return envMock.BACKEND_CONNECT_URL;
+	},
+}));
+
 const { getBackendToken } = vi.hoisted(() => ({
 	getBackendToken: vi.fn(),
 }));
@@ -13,6 +27,8 @@ import { proxyDashboardGet } from "./dashboard-proxy";
 describe("proxyDashboardGet", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		envMock.BACKEND_REST_URL = "http://backend-rest.test";
+		envMock.BACKEND_CONNECT_URL = "http://backend-connect.test";
 	});
 
 	it("returns 401 Unauthorized without calling fetch when backend token is missing", async () => {
@@ -34,7 +50,31 @@ describe("proxyDashboardGet", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("forwards request with X-Alt-Backend-Token when token is present", async () => {
+	it("reuses event.locals.backendToken without calling getBackendToken", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const res = await proxyDashboardGet("", "/v1/dashboard/overview", {
+			request: new Request("http://localhost/api/v1/dashboard/overview"),
+			url: new URL("http://localhost/api/v1/dashboard/overview"),
+			locals: { backendToken: "locals-jwt" },
+		});
+
+		expect(res.status).toBe(200);
+		expect(getBackendToken).not.toHaveBeenCalled();
+		const [calledUrl, init] = fetchMock.mock.calls[0] ?? [];
+		expect(calledUrl).toBe("http://backend-rest.test/v1/dashboard/overview");
+		expect(
+			(init?.headers as Record<string, string>)["X-Alt-Backend-Token"],
+		).toBe("locals-jwt");
+	});
+
+	it("forwards request with X-Alt-Backend-Token when token is fetched via getBackendToken", async () => {
 		getBackendToken.mockResolvedValue("valid-jwt");
 		const fetchMock = vi.fn().mockResolvedValue(
 			new Response(JSON.stringify({ ok: true }), {

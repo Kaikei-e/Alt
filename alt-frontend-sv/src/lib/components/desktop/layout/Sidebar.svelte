@@ -1,6 +1,7 @@
 <script lang="ts">
 import {
 	Activity,
+	Bell,
 	BirdIcon,
 	CalendarRange,
 	ChartBar,
@@ -16,7 +17,6 @@ import {
 	MessagesSquare,
 	Newspaper,
 	Orbit,
-	Plus,
 	Rss,
 	ScrollText,
 	Search,
@@ -29,24 +29,34 @@ import {
 import { cn } from "#lib/utils.js";
 import { page } from "$app/state";
 
-const svBasePath = "";
+let {
+	isAdmin,
+}: {
+	isAdmin?: boolean;
+} = $props();
 
 const baseMenuItems = [
 	{
 		label: "Knowledge Home",
-		href: `${svBasePath}/home`,
+		href: "/home",
 		icon: Lightbulb,
 		category: "main",
 	},
 	{
 		label: "Your Trail",
-		href: `${svBasePath}/knowledge/trail`,
+		href: "/knowledge/trail",
 		icon: Footprints,
 		category: "main",
 	},
 	{
+		label: "Search",
+		href: "/search",
+		icon: Search,
+		category: "main",
+	},
+	{
 		label: "Dashboard",
-		href: `${svBasePath}/dashboard`,
+		href: "/dashboard",
 		icon: Home,
 		category: "main",
 	},
@@ -57,27 +67,27 @@ const baseMenuItems = [
 		children: [
 			{
 				label: "Unread Feeds",
-				href: `${svBasePath}/feeds`,
+				href: "/feeds",
 				icon: Rss,
 			},
 			{
 				label: "Visual Preview",
-				href: `${svBasePath}/feeds/visual-preview`,
+				href: "/feeds/visual-preview",
 				icon: GalleryVerticalEnd,
 			},
 			{
 				label: "Read History",
-				href: `${svBasePath}/feeds/viewed`,
+				href: "/feeds/viewed",
 				icon: Eye,
 			},
 			{
 				label: "Favorites",
-				href: `${svBasePath}/feeds/favorites`,
+				href: "/feeds/favorites",
 				icon: Star,
 			},
 			{
 				label: "Search",
-				href: `${svBasePath}/feeds/search`,
+				href: "/feeds/search",
 				icon: Search,
 			},
 		],
@@ -89,22 +99,22 @@ const baseMenuItems = [
 		children: [
 			{
 				label: "3-Day Summary",
-				href: `${svBasePath}/recap`,
+				href: "/recap",
 				icon: CalendarRange,
 			},
 			{
 				label: "Morning Letter",
-				href: `${svBasePath}/recap/morning-letter`,
+				href: "/recap/morning-letter",
 				icon: Newspaper,
 			},
 			{
 				label: "Evening Pulse",
-				href: `${svBasePath}/recap/evening-pulse`,
+				href: "/recap/evening-pulse",
 				icon: Sparkles,
 			},
 			{
 				label: "Job Status",
-				href: `${svBasePath}/recap/job-status`,
+				href: "/recap/job-status",
 				icon: Activity,
 			},
 		],
@@ -116,17 +126,17 @@ const baseMenuItems = [
 		children: [
 			{
 				label: "Tag Trail",
-				href: `${svBasePath}/feeds/tag-trail`,
+				href: "/feeds/tag-trail",
 				icon: Shuffle,
 			},
 			{
 				label: "Tag Verse",
-				href: `${svBasePath}/feeds/tag-verse`,
+				href: "/feeds/tag-verse",
 				icon: Orbit,
 			},
 			{
 				label: "Tag Articles",
-				href: `${svBasePath}/articles/by-tag`,
+				href: "/articles/by-tag",
 				icon: Tag,
 			},
 		],
@@ -138,19 +148,19 @@ const baseMenuItems = [
 		children: [
 			{
 				label: "Ask Augur",
-				href: `${svBasePath}/augur`,
+				href: "/augur",
 				icon: BirdIcon,
 			},
 			{
 				label: "History",
-				href: `${svBasePath}/augur/history`,
+				href: "/augur/history",
 				icon: MessagesSquare,
 			},
 		],
 	},
 	{
 		label: "Acolyte Reports",
-		href: `${svBasePath}/acolyte`,
+		href: "/acolyte",
 		icon: ScrollText,
 		category: "main",
 	},
@@ -161,8 +171,13 @@ const baseMenuItems = [
 		children: [
 			{
 				label: "Manage Feed Links",
-				href: `${svBasePath}/settings/feeds`,
+				href: "/settings/feeds",
 				icon: LinkIcon,
+			},
+			{
+				label: "Notifications",
+				href: "/settings/notifications",
+				icon: Bell,
 			},
 		],
 	},
@@ -173,26 +188,28 @@ const baseMenuItems = [
 		children: [
 			{
 				label: "Knowledge Home Ops",
-				href: `${svBasePath}/admin/knowledge-home`,
+				href: "/admin/knowledge-home",
 				icon: Activity,
 			},
 			{
 				label: "System Monitor",
-				href: `${svBasePath}/admin/monitor`,
+				href: "/admin/monitor",
 				icon: Gauge,
 			},
 		],
 	},
 	{
 		label: "Statistics",
-		href: `${svBasePath}/stats`,
+		href: "/stats",
 		icon: ChartBar,
 		category: "main",
 	},
 ];
 
+const showAdmin = $derived(isAdmin ?? page.data?.userRole === "admin");
+
 const menuItems = $derived(
-	page.data.userRole === "admin"
+	showAdmin
 		? baseMenuItems
 		: baseMenuItems.filter((item) => item.category !== "admin"),
 );

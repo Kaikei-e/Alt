@@ -194,7 +194,9 @@ export default defineConfig({
 					KRATOS_PUBLIC_URL: "http://127.0.0.1:4001",
 					AUTH_HUB_INTERNAL_URL: "http://127.0.0.1:4002",
 					BACKEND_BASE_URL: "http://127.0.0.1:4003",
+					BACKEND_REST_URL: "http://127.0.0.1:4003",
 					BACKEND_CONNECT_URL: "http://127.0.0.1:4003",
+					BFF_CONNECT_URL: "http://127.0.0.1:4003",
 					RECAP_WORKER_BASE_URL: "http://127.0.0.1:4003",
 					// No knowledge-sovereign runs here and the admin panel is out of
 					// scope for this suite, so opt out of its Bearer explicitly.

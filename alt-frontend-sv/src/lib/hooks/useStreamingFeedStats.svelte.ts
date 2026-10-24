@@ -42,6 +42,8 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let subscriberCount = 0;
 let visibilityListenersAttached = false;
 let suspendedForHidden = false;
+let connectInFlight = false;
+let connectionGeneration = 0;
 
 function connect(): void {
 	// This module holds shared, request-independent singleton state (see file
@@ -50,20 +52,24 @@ function connect(): void {
 	// stream data here would leak one user's feed stats into another user's
 	// response.
 	if (!browser) return;
-	// Only connect when at least one subscriber is active.
-	if (subscriberCount === 0) return;
-	if (abortController) return;
+	// Only connect when at least one subscriber is active and tab is not suspended.
+	if (subscriberCount === 0 || suspendedForHidden) return;
+	if (abortController || connectInFlight) return;
 	if (untrack(() => retryCount) >= MAX_RETRIES) {
 		console.error("[useStreamingFeedStats] Max retry attempts reached");
 		return;
 	}
 
+	const generation = ++connectionGeneration;
+	connectInFlight = true;
+
 	void (async () => {
 		try {
 			const transport = createClientTransport();
-			abortController = await streamFeedStats(
+			const controller = await streamFeedStats(
 				transport,
 				(stats) => {
+					if (generation !== connectionGeneration) return;
 					if (!stats.isHeartbeat) {
 						feedAmount = stats.feedAmount;
 						unsummarizedArticlesAmount = stats.unsummarizedFeedAmount;
@@ -73,6 +79,7 @@ function connect(): void {
 					retryCount = 0;
 				},
 				(error) => {
+					if (generation !== connectionGeneration) return;
 					console.error("[useStreamingFeedStats] Stream error:", error);
 					isConnected = false;
 					abortController = null;
@@ -81,8 +88,20 @@ function connect(): void {
 					}
 				},
 			);
+			connectInFlight = false;
+			if (
+				generation !== connectionGeneration ||
+				subscriberCount === 0 ||
+				suspendedForHidden
+			) {
+				controller.abort();
+				return;
+			}
+			abortController = controller;
 			isConnected = true;
 		} catch (error) {
+			connectInFlight = false;
+			if (generation !== connectionGeneration) return;
 			console.error("[useStreamingFeedStats] Connection failed:", error);
 			isConnected = false;
 			abortController = null;
@@ -105,6 +124,8 @@ function scheduleReconnect(): void {
 }
 
 function disconnect(): void {
+	connectionGeneration += 1;
+	connectInFlight = false;
 	if (abortController) {
 		abortController.abort();
 		abortController = null;
@@ -192,6 +213,7 @@ export function useStreamingFeedStats(): StreamingFeedStatsState {
 	onDestroy(() => {
 		subscriberCount = Math.max(0, subscriberCount - 1);
 		if (subscriberCount === 0) {
+			suspendedForHidden = false;
 			disconnect();
 			detachVisibilityListeners();
 		}
