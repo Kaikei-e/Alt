@@ -147,3 +147,27 @@ func (r *fakeEmptyRows) Scan(dest ...any) error                       { return n
 func (r *fakeEmptyRows) Values() ([]any, error)                       { return nil, nil }
 func (r *fakeEmptyRows) RawValues() [][]byte                          { return nil }
 func (r *fakeEmptyRows) Conn() *pgx.Conn                              { return nil }
+
+type mockRows struct {
+	idx       int
+	scanFuncs []func(dest ...any) error
+	err       error
+}
+
+func (r *mockRows) Close()                                       {}
+func (r *mockRows) Err() error                                   { return r.err }
+func (r *mockRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
+func (r *mockRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *mockRows) Next() bool {
+	if r.idx < len(r.scanFuncs) {
+		r.idx++
+		return true
+	}
+	return false
+}
+func (r *mockRows) Scan(dest ...any) error {
+	return r.scanFuncs[r.idx-1](dest...)
+}
+func (r *mockRows) Values() ([]any, error) { return nil, nil }
+func (r *mockRows) RawValues() [][]byte    { return nil }
+func (r *mockRows) Conn() *pgx.Conn        { return nil }

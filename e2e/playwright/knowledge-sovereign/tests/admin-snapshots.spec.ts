@@ -56,14 +56,7 @@ test.describe("snapshot creation", () => {
 			expect(metadata.digest_checksum).toMatch(/^sha256:[0-9a-f]{64}$/);
 			expect(metadata.recall_checksum).toMatch(/^sha256:[0-9a-f]{64}$/);
 
-			// `schema_version` is a hardcoded constant in config.Load, not a
-			// reading of the applied migrations — it currently says "00009"
-			// while knowledge-sovereign/migrations/ has reached 00030. The
-			// assertion is deliberately "a non-empty string" rather than the
-			// literal: pinning "00009" would make this test guard a value that
-			// is already wrong, and a restore tool reading it would mis-detect
-			// the schema either way. Recorded here so the drift is visible.
-			expect(metadata.schema_version.length).toBeGreaterThan(0);
+			expect(metadata.schema_version).toBe("00032");
 		},
 	);
 
@@ -91,15 +84,9 @@ test.describe("snapshot creation", () => {
 			expect(stored?.event_seq_boundary).toBe(metadata.event_seq_boundary);
 			expect(stored?.snapshot_data_path).toBe(metadata.snapshot_data_path);
 
-			// `created_at` is the one field that does NOT agree, and this pins
-			// current behaviour rather than desired behaviour: CreateSnapshot
-			// never sets `meta.CreatedAt`, so the response carries Go's zero
-			// time while the stored row carries the column's `DEFAULT now()`.
-			// A client that trusted the create response's `created_at` would
-			// date every snapshot to the year 1. When the handler starts
-			// setting it, this assertion fails — which is the intended signal.
-			expect(metadata.created_at).toBe("0001-01-01T00:00:00Z");
+			expect(metadata.created_at).not.toBe("0001-01-01T00:00:00Z");
 			expect(stored?.created_at).not.toBe("0001-01-01T00:00:00Z");
+			expect(metadata.created_at).toBe(stored?.created_at);
 		},
 	);
 });

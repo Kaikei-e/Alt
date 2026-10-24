@@ -59,6 +59,8 @@ export const ADMIN_ROUTES = [
 	{ method: "GET", path: "/admin/retention/status" },
 	{ method: "GET", path: "/admin/retention/eligible" },
 	{ method: "GET", path: "/admin/storage/stats" },
+	{ method: "GET", path: "/admin/projections/rebuild/targets" },
+	{ method: "POST", path: "/admin/projections/rebuild" },
 ] as const;
 
 export { ZERO_UUID } from "../../_shared/env.js";

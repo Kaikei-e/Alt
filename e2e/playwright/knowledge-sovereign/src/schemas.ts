@@ -348,6 +348,7 @@ export const todayDigestFoundSchema = z.object({ digest: todayDigestSchema }).pa
 export const embeddedRecallItemSchema = z
 	.object({
 		userId: uuidSchema,
+		tenantId: uuidSchema.optional(),
 		itemKey: z.string().min(1),
 		itemType: z.string().optional(),
 		title: z.string().optional(),
@@ -357,6 +358,7 @@ export const embeddedRecallItemSchema = z
 		tags: z.array(z.string()).optional(),
 		whyReasons: z.array(whyReasonSchema).optional(),
 		score: z.number().optional(),
+		projectionVersion: z.number().int().nonnegative().optional(),
 	})
 	.passthrough();
 

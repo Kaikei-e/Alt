@@ -75,25 +75,27 @@ func mapTodayDigestRow(raw rawTodayDigestRow) TodayDigest {
 
 // rawRecallCandidateRow represents scanned columns for a recall candidate joined with knowledge_home_items.
 type rawRecallCandidateRow struct {
-	UserID            uuid.UUID
-	ItemKey           string
-	RecallScore       float64
-	ReasonJSON        []byte
-	NextSuggestAt     *time.Time
-	FirstEligibleAt   *time.Time
-	SnoozedUntil      *time.Time
-	UpdatedAt         time.Time
-	ProjectionVersion int
-	ItemTitle         *string
-	ItemSummary       *string
-	ItemTagsJSON      []byte
-	ItemWhyJSON       []byte
-	ItemScore         *float64
-	ItemPublishedAt   *time.Time
-	ItemSummaryState  *string
-	ItemURL           *string
-	ItemType          *string
-	ItemPrimaryRefID  *uuid.UUID
+	UserID                uuid.UUID
+	ItemKey               string
+	RecallScore           float64
+	ReasonJSON            []byte
+	NextSuggestAt         *time.Time
+	FirstEligibleAt       *time.Time
+	SnoozedUntil          *time.Time
+	UpdatedAt             time.Time
+	ProjectionVersion     int
+	ItemTenantID          uuid.UUID
+	ItemProjectionVersion int
+	ItemTitle             *string
+	ItemSummary           *string
+	ItemTagsJSON          []byte
+	ItemWhyJSON           []byte
+	ItemScore             *float64
+	ItemPublishedAt       *time.Time
+	ItemSummaryState      *string
+	ItemURL               *string
+	ItemType              *string
+	ItemPrimaryRefID      *uuid.UUID
 }
 
 // mapRecallCandidateRow converts scanned candidate and home item columns into RecallCandidate.
@@ -112,10 +114,12 @@ func mapRecallCandidateRow(raw rawRecallCandidateRow) RecallCandidate {
 
 	if raw.ItemTitle != nil {
 		item := &KnowledgeHomeItem{
-			UserID:       c.UserID,
-			ItemKey:      c.ItemKey,
-			Title:        *raw.ItemTitle,
-			PrimaryRefID: raw.ItemPrimaryRefID,
+			UserID:            c.UserID,
+			TenantID:          raw.ItemTenantID,
+			ItemKey:           c.ItemKey,
+			Title:             *raw.ItemTitle,
+			PrimaryRefID:      raw.ItemPrimaryRefID,
+			ProjectionVersion: raw.ItemProjectionVersion,
 		}
 		if raw.ItemSummary != nil {
 			item.SummaryExcerpt = *raw.ItemSummary
@@ -173,6 +177,8 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 	limit = clampReadLimit(limit, defaultReadLimit)
 	query := `SELECT rcv.user_id, rcv.item_key, rcv.recall_score, rcv.reason_json,
 		rcv.next_suggest_at, rcv.first_eligible_at, rcv.snoozed_until, rcv.updated_at, rcv.projection_version,
+		COALESCE(khi.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid) AS item_tenant_id,
+		COALESCE(khi.projection_version, 0) AS item_projection_version,
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
 		khi.published_at, khi.summary_state, COALESCE(khi.url, '') AS url,
 		khi.item_type, khi.primary_ref_id
@@ -199,6 +205,7 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 		if err := rows.Scan(
 			&raw.UserID, &raw.ItemKey, &raw.RecallScore, &raw.ReasonJSON,
 			&raw.NextSuggestAt, &raw.FirstEligibleAt, &raw.SnoozedUntil, &raw.UpdatedAt, &raw.ProjectionVersion,
+			&raw.ItemTenantID, &raw.ItemProjectionVersion,
 			&raw.ItemTitle, &raw.ItemSummary, &raw.ItemTagsJSON, &raw.ItemWhyJSON, &raw.ItemScore,
 			&raw.ItemPublishedAt, &raw.ItemSummaryState, &raw.ItemURL,
 			&raw.ItemType, &raw.ItemPrimaryRefID,

@@ -95,14 +95,15 @@ func (r *Repository) InsertSnapshot(ctx context.Context, s *SnapshotMetadata) er
 		 schema_version, snapshot_at, event_seq_boundary, snapshot_data_path,
 		 items_row_count, items_checksum, digest_row_count, digest_checksum,
 		 recall_row_count, recall_checksum, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		RETURNING snapshot_id, created_at`
 
-	_, err := r.pool.Exec(ctx, query,
+	err := r.pool.QueryRow(ctx, query,
 		s.SnapshotID, s.SnapshotType, s.ProjectionVersion, s.ProjectorBuildRef,
 		s.SchemaVersion, s.SnapshotAt, s.EventSeqBoundary, s.SnapshotDataPath,
 		s.ItemsRowCount, s.ItemsChecksum, s.DigestRowCount, s.DigestChecksum,
 		s.RecallRowCount, s.RecallChecksum, s.Status,
-	)
+	).Scan(&s.SnapshotID, &s.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("InsertSnapshot: %w", err)
 	}

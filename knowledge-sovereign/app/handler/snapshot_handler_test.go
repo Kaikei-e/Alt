@@ -120,3 +120,25 @@ func TestGetLatestSnapshot_DoesNotLeakInternalError(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), `"error":"snapshot latest failed"`)
 	assertNoInternalLeak(t, rec.Body.String())
 }
+
+func TestSnapshotHandler_HappyPaths(t *testing.T) {
+	repo := &fakeSnapshotRepo{}
+	mux := snapshotMux(t, repo)
+
+	reqCreate := httptest.NewRequest(http.MethodPost, "/admin/snapshots/create", nil)
+	recCreate := httptest.NewRecorder()
+	mux.ServeHTTP(recCreate, reqCreate)
+	require.Equal(t, http.StatusOK, recCreate.Code, "body: %s", recCreate.Body.String())
+	assert.Contains(t, recCreate.Body.String(), `"status":"valid"`)
+
+	reqList := httptest.NewRequest(http.MethodGet, "/admin/snapshots/list", nil)
+	recList := httptest.NewRecorder()
+	mux.ServeHTTP(recList, reqList)
+	require.Equal(t, http.StatusOK, recList.Code)
+	assert.Contains(t, recList.Body.String(), `"snapshots":[]`)
+
+	reqLatest := httptest.NewRequest(http.MethodGet, "/admin/snapshots/latest", nil)
+	recLatest := httptest.NewRecorder()
+	mux.ServeHTTP(recLatest, reqLatest)
+	require.Equal(t, http.StatusOK, recLatest.Code)
+}

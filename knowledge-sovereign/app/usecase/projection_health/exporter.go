@@ -25,6 +25,7 @@ const neverSeenAgeSeconds = 10 * 365 * 24 * 3600.0
 // joins against.
 var WatchedEventTypes = []string{
 	"recap.topic_snapshotted.v1",
+	"augur.conversation_linked.v1",
 	"SummarySuperseded",
 	"TagSetVersionCreated",
 	"SummaryVersionCreated",

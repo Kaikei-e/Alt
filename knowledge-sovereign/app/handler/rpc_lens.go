@@ -389,14 +389,15 @@ func (h *SovereignHandler) ArchiveLens(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens: %w", err))
 	}
-	if storedLens != nil {
-		if claims, ok := BackendClaimsFromContext(ctx); ok {
-			if storedLens.UserID.String() != claims.Subject {
-				return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller does not own lens"))
-			}
-			if storedLens.TenantID.String() != claims.TenantID {
-				return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller tenant does not own lens"))
-			}
+	if storedLens == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("lens not found"))
+	}
+	if claims, ok := BackendClaimsFromContext(ctx); ok {
+		if storedLens.UserID.String() != claims.Subject {
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller does not own lens"))
+		}
+		if storedLens.TenantID.String() != claims.TenantID {
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller tenant does not own lens"))
 		}
 	}
 	if err := h.readDB.ArchiveLens(ctx, lensID); err != nil {

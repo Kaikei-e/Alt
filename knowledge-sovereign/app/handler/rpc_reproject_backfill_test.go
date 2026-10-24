@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -188,4 +190,93 @@ func TestProtoToBackfillJob_InvalidJobID(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid job_id")
+}
+
+func TestReprojectAndBackfillRPCHandlers(t *testing.T) {
+	repo := &mockRepo{}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	ctx := context.Background()
+	runID := uuid.New().String()
+	jobID := uuid.New().String()
+	auditID := uuid.New().String()
+
+	_, err := client.CreateReprojectRun(ctx, connect.NewRequest(&sovereignv1.CreateReprojectRunRequest{
+		Run: &sovereignv1.ReprojectRun{
+			ReprojectRunId: runID,
+			ProjectionName: "knowledge_home",
+			FromVersion:    "1",
+			ToVersion:      "2",
+			Mode:           "shadow",
+			Status:         "running",
+		},
+	}))
+	require.NoError(t, err)
+
+	_, err = client.GetReprojectRun(ctx, connect.NewRequest(&sovereignv1.GetReprojectRunRequest{
+		RunId: runID,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.ListReprojectRuns(ctx, connect.NewRequest(&sovereignv1.ListReprojectRunsRequest{
+		StatusFilter: "running",
+		Limit:        10,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.UpdateReprojectRun(ctx, connect.NewRequest(&sovereignv1.UpdateReprojectRunRequest{
+		Run: &sovereignv1.ReprojectRun{
+			ReprojectRunId: runID,
+			Status:         "completed",
+		},
+	}))
+	require.NoError(t, err)
+
+	_, err = client.CompareProjections(ctx, connect.NewRequest(&sovereignv1.CompareProjectionsRequest{
+		FromVersion: "1",
+		ToVersion:   "2",
+	}))
+	require.NoError(t, err)
+
+	_, err = client.CreateProjectionAudit(ctx, connect.NewRequest(&sovereignv1.CreateProjectionAuditRequest{
+		Audit: &sovereignv1.ProjectionAudit{
+			AuditId:           auditID,
+			ProjectionName:    "knowledge_home",
+			ProjectionVersion: "2",
+			SampleSize:        10,
+		},
+	}))
+	require.NoError(t, err)
+
+	_, err = client.ListProjectionAudits(ctx, connect.NewRequest(&sovereignv1.ListProjectionAuditsRequest{
+		ProjectionName: "knowledge_home",
+		Limit:          10,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.CreateBackfillJob(ctx, connect.NewRequest(&sovereignv1.CreateBackfillJobRequest{
+		Job: &sovereignv1.BackfillJob{
+			JobId:             jobID,
+			Status:            "pending",
+			ProjectionVersion: 2,
+		},
+	}))
+	require.NoError(t, err)
+
+	_, err = client.GetBackfillJob(ctx, connect.NewRequest(&sovereignv1.GetBackfillJobRequest{
+		JobId: jobID,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.ListBackfillJobs(ctx, connect.NewRequest(&sovereignv1.ListBackfillJobsRequest{}))
+	require.NoError(t, err)
+
+	_, err = client.UpdateBackfillJob(ctx, connect.NewRequest(&sovereignv1.UpdateBackfillJobRequest{
+		Job: &sovereignv1.BackfillJob{
+			JobId:  jobID,
+			Status: "completed",
+		},
+	}))
+	require.NoError(t, err)
 }

@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -86,4 +88,32 @@ func TestValidateAndBuildRecallSignal(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRecallSignalsRPCHandlers(t *testing.T) {
+	repo := &mockRepo{}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	ctx := context.Background()
+	userID := uuid.New().String()
+
+	_, err := client.AppendRecallSignal(ctx, connect.NewRequest(&sovereignv1.AppendRecallSignalRequest{
+		Signal: &sovereignv1.RecallSignal{
+			SignalId:       uuid.New().String(),
+			UserId:         userID,
+			ItemKey:        "article:1",
+			SignalType:     "open",
+			SignalStrength: 1.0,
+			OccurredAt:     timestamppb.Now(),
+		},
+	}))
+	require.NoError(t, err)
+
+	listResp, err := client.ListRecallSignals(ctx, connect.NewRequest(&sovereignv1.ListRecallSignalsRequest{
+		UserId:    userID,
+		SinceDays: 7,
+	}))
+	require.NoError(t, err)
+	assert.Empty(t, listResp.Msg.Signals)
 }

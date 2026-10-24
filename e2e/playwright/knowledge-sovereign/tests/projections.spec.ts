@@ -11,6 +11,7 @@ import {
 	projectionCheckpointSchema,
 	recallCandidatesPopulatedSchema,
 	todayDigestFoundSchema,
+	trailBranchesForAnchorSchema,
 	trailFootprintsSchema,
 } from "../src/schemas.js";
 
@@ -378,12 +379,277 @@ test.describe("the in-process projectors fold the event log", () => {
 						"opened_before_but_not_revisited",
 					);
 					expect(candidate?.projectionVersion).toBe(1);
+					expect(candidate?.item?.tenantId).toBe(principal.tenantId);
+					expect(candidate?.item?.projectionVersion).toBeGreaterThanOrEqual(1);
 				},
 				{
 					timeout: 60_000,
 					message:
 						"knowledge_home_projector folds HomeItemOpened into an eligible recall_candidate_view row",
 				},
+			);
+		},
+	);
+
+	test(
+		"SummaryVersionCreated, TagSetVersionCreated, ArticleUrlBackfilled, SummarySuperseded, and HomeItemDismissed converge end-to-end",
+		{ tag: "@slow" },
+		async ({ rpc, principal }) => {
+			test.setTimeout(90_000);
+			const articleId = uuid();
+			const itemKey = `article:${articleId}`;
+			const { occurredAt, date } = instant();
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "ArticleCreated",
+				aggregateType: "article",
+				aggregateId: itemKey,
+				dedupeKey: `${principal.token}-lifecycle-create`,
+				occurredAt,
+				payload: {
+					article_id: articleId,
+					title: "E2E Lifecycle Article",
+					published_at: occurredAt,
+					tenant_id: principal.tenantId,
+				},
+			});
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "ArticleUrlBackfilled",
+				aggregateType: "article",
+				aggregateId: itemKey,
+				dedupeKey: `${principal.token}-lifecycle-url`,
+				occurredAt,
+				payload: {
+					article_id: articleId,
+					user_id: principal.userId,
+					tenant_id: principal.tenantId,
+					url: "https://example.com/backfilled",
+				},
+			});
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "SummaryVersionCreated",
+				aggregateType: "article",
+				aggregateId: itemKey,
+				dedupeKey: `${principal.token}-lifecycle-summary`,
+				occurredAt,
+				payload: {
+					article_id: articleId,
+					summary_version_id: uuid(),
+					summary_text: "Concise summary from projector fold.",
+				},
+			});
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "TagSetVersionCreated",
+				aggregateType: "article",
+				aggregateId: itemKey,
+				dedupeKey: `${principal.token}-lifecycle-tags`,
+				occurredAt,
+				payload: {
+					article_id: articleId,
+					tag_set_version_id: uuid(),
+					tags: ["distributed-systems", "event-sourcing"],
+				},
+			});
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "SummarySuperseded",
+				aggregateType: "article",
+				aggregateId: itemKey,
+				dedupeKey: `${principal.token}-lifecycle-supersede`,
+				occurredAt,
+				payload: {
+					item_key: itemKey,
+					previous_summary_excerpt: "Old excerpt",
+				},
+			});
+
+			await eventually(
+				async () => {
+					const home = await expectJsonStatus(
+						await rpc.post(procedure("GetKnowledgeHomeItems"), {
+							data: { userId: principal.userId, limit: 10 },
+						}),
+						200,
+						homeItemsPopulatedSchema,
+					);
+					const item = home.items.find((i) => i.itemKey === itemKey);
+					expect(item).toBeDefined();
+					expect(item?.url).toBe("https://example.com/backfilled");
+					expect(item?.summaryState).toBe("ready");
+					expect(item?.summaryExcerpt).toBe("Concise summary from projector fold.");
+					expect(item?.tags).toEqual(
+						expect.arrayContaining(["distributed-systems", "event-sourcing"]),
+					);
+					expect(item?.supersedeState).toBe("summary_updated");
+
+					const digest = await expectJsonStatus(
+						await rpc.post(procedure("GetTodayDigest"), {
+							data: { userId: principal.userId, date },
+						}),
+						200,
+						todayDigestFoundSchema,
+					);
+					expect(digest.digest.summarizedArticles).toBeGreaterThanOrEqual(1);
+				},
+				{ timeout: 60_000, message: "summary, tags, url backfill, and supersede fold into home item" },
+			);
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "HomeItemDismissed",
+				aggregateType: "article",
+				aggregateId: itemKey,
+				dedupeKey: `${principal.token}-lifecycle-dismiss`,
+				occurredAt,
+				payload: { item_key: itemKey },
+			});
+
+			await eventually(
+				async () => {
+					const home = await expectJsonStatus(
+						await rpc.post(procedure("GetKnowledgeHomeItems"), {
+							data: { userId: principal.userId, limit: 10 },
+						}),
+						200,
+						homeItemsSchema,
+					);
+					const item = (home.items ?? []).find((i) => i.itemKey === itemKey);
+					expect(item).toBeUndefined();
+				},
+				{ timeout: 60_000, message: "dismissed home item is filtered out of GetKnowledgeHomeItems" },
+			);
+		},
+	);
+
+	test(
+		"Trail branch proposal, resolution, and act outcome fold into trail spine and anchor queries",
+		{ tag: "@slow" },
+		async ({ rpc, principal }) => {
+			test.setTimeout(90_000);
+			const anchorKey = `article:${uuid()}`;
+			const targetKey = `article:${uuid()}`;
+			const branchKey = `cluster:${principal.userId}:${targetKey}`;
+			const { occurredAt } = instant();
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "HomeItemOpened",
+				aggregateType: "article",
+				aggregateId: anchorKey,
+				dedupeKey: `${principal.token}-trail-open`,
+				occurredAt,
+				payload: { item_key: anchorKey, title: "Anchor Article" },
+			});
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "trail.branch_proposed.v1",
+				aggregateType: "trail_branch",
+				aggregateId: branchKey,
+				dedupeKey: `${principal.token}-trail-branch-prop`,
+				occurredAt,
+				payload: {
+					branch_key: branchKey,
+					anchor_item_key: anchorKey,
+					target_item_key: targetKey,
+					relation_kind: "cluster",
+					why: 'Because you read "Anchor Article" — joins rust,raft',
+					evidence_refs: [
+						{ ref_id: "rust", label: "rust", kind: "tag" },
+						{ ref_id: targetKey, label: "Target Article", kind: "article" },
+					],
+					confidence: "corroborated",
+				},
+			});
+
+			await eventually(
+				async () => {
+					const anchored = await expectJsonStatus(
+						await rpc.post(procedure("GetTrailBranchesForAnchor"), {
+							data: { userId: principal.userId, anchorItemKey: anchorKey, limit: 5 },
+						}),
+						200,
+						trailBranchesForAnchorSchema,
+					);
+					const branch = (anchored.branches ?? []).find((b) => b.branchKey === branchKey);
+					expect(branch).toBeDefined();
+					expect(branch?.relationKind).toBe("cluster");
+					expect(branch?.confidence).toBe("corroborated");
+				},
+				{ timeout: 60_000, message: "trail.branch_proposed.v1 appears in GetTrailBranchesForAnchor" },
+			);
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "trail.branch_resolved.v1",
+				aggregateType: "trail_branch",
+				aggregateId: branchKey,
+				dedupeKey: `${principal.token}-trail-branch-resolve`,
+				occurredAt,
+				payload: {
+					branch_key: branchKey,
+					state: "taken",
+				},
+			});
+
+			await appendEvent(rpc, {
+				tenantId: principal.tenantId,
+				userId: principal.userId,
+				eventType: "trail.act_outcome.v1",
+				aggregateType: "article",
+				aggregateId: anchorKey,
+				dedupeKey: `${principal.token}-trail-outcome`,
+				occurredAt,
+				payload: {
+					item_key: anchorKey,
+					branch_key: branchKey,
+					dwell_ms: 45_000,
+				},
+			});
+
+			await eventually(
+				async () => {
+					const anchored = await expectJsonStatus(
+						await rpc.post(procedure("GetTrailBranchesForAnchor"), {
+							data: { userId: principal.userId, anchorItemKey: anchorKey, limit: 5 },
+						}),
+						200,
+						trailBranchesForAnchorSchema,
+					);
+					expect(
+						(anchored.branches ?? []).find((b) => b.branchKey === branchKey),
+					).toBeUndefined();
+
+					const trail = await expectJsonStatus(
+						await rpc.post(procedure("GetTrailFootprints"), {
+							data: { userId: principal.userId, limit: 20 },
+						}),
+						200,
+						trailFootprintsSchema,
+					);
+					const fp = (trail.episodes ?? [])
+						.flatMap((e) => e.footprints)
+						.find((f) => f.itemKey === anchorKey);
+					expect(fp?.wear).toBe("worn");
+				},
+				{ timeout: 60_000, message: "resolved branch disappears from open list and 45s dwell upgrades wear to worn" },
 			);
 		},
 	);

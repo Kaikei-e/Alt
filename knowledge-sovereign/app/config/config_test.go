@@ -26,6 +26,7 @@ func TestLoad_DefaultAddresses(t *testing.T) {
 	t.Setenv("SNAPSHOT_DIR", "")
 	t.Setenv("ARCHIVE_DIR", "")
 	t.Setenv("BUILD_REF", "")
+	t.Setenv("SCHEMA_VERSION", "")
 	t.Setenv("ADMIN_TOKEN", "")
 	t.Setenv("ADMIN_TOKEN_FILE", "")
 	t.Setenv("ADMIN_AUTH", "disabled")
@@ -40,6 +41,7 @@ func TestLoad_DefaultAddresses(t *testing.T) {
 	assert.Equal(t, "/data/snapshots", cfg.SnapshotDir)
 	assert.Equal(t, "/tmp/archives", cfg.ArchiveDir)
 	assert.Equal(t, "dev", cfg.BuildRef)
+	assert.Equal(t, "00032", cfg.SchemaVersion)
 	assert.Equal(t, 5*time.Second, cfg.ProjectorTickInterval)
 }
 

@@ -66,3 +66,33 @@ func TestClampReadLimit(t *testing.T) {
 	assert.Equal(t, 50, clampReadLimit(50, 100))
 	assert.Equal(t, 1000, clampReadLimit(500000, 100))
 }
+
+func TestGetTodayDigestAndRecallCandidates_DefaultsAndMapping(t *testing.T) {
+	repo := &mockRepo{}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	ctx := context.Background()
+	userID := uuid.New().String()
+
+	digestResp, err := client.GetTodayDigest(ctx, connect.NewRequest(&sovereignv1.GetTodayDigestRequest{
+		UserId: userID,
+		Date:   "2026-10-24",
+	}))
+	require.NoError(t, err)
+	assert.Nil(t, digestResp.Msg.Digest)
+
+	recallResp, err := client.GetRecallCandidates(ctx, connect.NewRequest(&sovereignv1.GetRecallCandidatesRequest{
+		UserId: userID,
+		Limit:  5,
+	}))
+	require.NoError(t, err)
+	assert.Empty(t, recallResp.Msg.Candidates)
+
+	countResp, err := client.CountNeedToKnowItems(ctx, connect.NewRequest(&sovereignv1.CountNeedToKnowItemsRequest{
+		UserId: userID,
+		Date:   "2026-10-24",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, int32(0), countResp.Msg.Count)
+}

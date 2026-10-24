@@ -86,6 +86,10 @@ func Load() (*Config, error) {
 	if buildRef == "" {
 		buildRef = "dev"
 	}
+	schemaVersion := os.Getenv("SCHEMA_VERSION")
+	if schemaVersion == "" {
+		schemaVersion = "00032"
+	}
 
 	adminToken, adminAuthEnabled, err := loadAdminAuth()
 	if err != nil {
@@ -145,7 +149,7 @@ func Load() (*Config, error) {
 		SnapshotDir:                  snapshotDir,
 		ArchiveDir:                   archiveDir,
 		BuildRef:                     buildRef,
-		SchemaVersion:                "00009",
+		SchemaVersion:                schemaVersion,
 		ProjectorTickInterval:        parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL", 5*time.Second),
 		BranchPlannerTickInterval:    parseDurationEnv("KNOWLEDGE_SOVEREIGN_BRANCH_PLANNER_TICK_INTERVAL", 30*time.Second),
 		ProjectionHealthTickInterval: parseDurationEnv("KNOWLEDGE_SOVEREIGN_PROJECTION_HEALTH_TICK_INTERVAL", 60*time.Second),

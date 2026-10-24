@@ -314,18 +314,33 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 			}
 		}
 
-	// --- B-02 fix: Allow projection state reading for delegated claims ---
-	case *sovereignv1.GetActiveProjectionVersionRequest:
+	// --- B-02 fix: Allow projection infrastructure, reproject, and backfill RPCs ---
+	case *sovereignv1.GetActiveProjectionVersionRequest,
+		*sovereignv1.GetProjectionFreshnessRequest,
+		*sovereignv1.ListProjectionVersionsRequest,
+		*sovereignv1.CreateProjectionVersionRequest,
+		*sovereignv1.ActivateProjectionVersionRequest,
+		*sovereignv1.GetProjectionCheckpointRequest,
+		*sovereignv1.UpdateProjectionCheckpointRequest,
+		*sovereignv1.GetProjectionLagRequest,
+		*sovereignv1.GetReprojectRunRequest,
+		*sovereignv1.ListReprojectRunsRequest,
+		*sovereignv1.CreateReprojectRunRequest,
+		*sovereignv1.UpdateReprojectRunRequest,
+		*sovereignv1.CompareProjectionsRequest,
+		*sovereignv1.ListProjectionAuditsRequest,
+		*sovereignv1.CreateProjectionAuditRequest,
+		*sovereignv1.GetBackfillJobRequest,
+		*sovereignv1.ListBackfillJobsRequest,
+		*sovereignv1.CreateBackfillJobRequest,
+		*sovereignv1.UpdateBackfillJobRequest:
 		if principal.RequireUserToken {
-			if _, ok := BackendClaimsFromContext(ctx); !ok {
+			claims, ok := BackendClaimsFromContext(ctx)
+			if !ok || claims == nil {
 				return connect.NewError(connect.CodeUnauthenticated, errors.New("invalid or missing user delegation token context"))
 			}
-		}
-
-	case *sovereignv1.GetProjectionFreshnessRequest:
-		if principal.RequireUserToken {
-			if _, ok := BackendClaimsFromContext(ctx); !ok {
-				return connect.NewError(connect.CodeUnauthenticated, errors.New("invalid or missing user delegation token context"))
+			if claims.Subject == "" || claims.TenantID == "" {
+				return connect.NewError(connect.CodePermissionDenied, errors.New("delegation token missing subject or tenant_id"))
 			}
 		}
 

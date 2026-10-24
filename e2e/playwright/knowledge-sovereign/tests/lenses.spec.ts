@@ -447,4 +447,17 @@ test.describe("archive", () => {
 			expect(fetched.lens.archivedAt).toBeDefined();
 		},
 	);
+
+	test(
+		"ArchiveLens returns not_found when lensId does not exist",
+		{ tag: "@contract" },
+		async ({ rpc }) => {
+			await expectUnaryError(
+				rpc,
+				procedure("ArchiveLens"),
+				{ lensId: uuid() },
+				"not_found",
+			);
+		},
+	);
 });

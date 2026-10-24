@@ -407,3 +407,343 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 		assert.Equal(t, int64(100), resp.Msg.EventSeq)
 	})
 }
+
+func TestPolicyAuth_InfraReprojectBackfillAndProjectionState(t *testing.T) {
+	const (
+		backendToken  = "backend-secret-token-long-enough-1234"
+		operatorToken = "operator-secret-token-long-enough-5678"
+		jwtSecretKey  = "super-secret-jwt-verification-key-32"
+		jwtIssuer     = "auth-hub"
+		jwtAudience   = "alt-backend"
+	)
+
+	allInfraMethods := map[string]bool{
+		"/services.sovereign.v1.KnowledgeSovereignService/GetActiveProjectionVersion": true,
+		"/services.sovereign.v1.KnowledgeSovereignService/GetProjectionFreshness":     true,
+		"/services.sovereign.v1.KnowledgeSovereignService/ListProjectionVersions":     true,
+		"/services.sovereign.v1.KnowledgeSovereignService/CreateProjectionVersion":    true,
+		"/services.sovereign.v1.KnowledgeSovereignService/ActivateProjectionVersion":  true,
+		"/services.sovereign.v1.KnowledgeSovereignService/GetProjectionCheckpoint":    true,
+		"/services.sovereign.v1.KnowledgeSovereignService/UpdateProjectionCheckpoint": true,
+		"/services.sovereign.v1.KnowledgeSovereignService/GetProjectionLag":           true,
+		"/services.sovereign.v1.KnowledgeSovereignService/GetReprojectRun":            true,
+		"/services.sovereign.v1.KnowledgeSovereignService/ListReprojectRuns":          true,
+		"/services.sovereign.v1.KnowledgeSovereignService/CreateReprojectRun":         true,
+		"/services.sovereign.v1.KnowledgeSovereignService/UpdateReprojectRun":         true,
+		"/services.sovereign.v1.KnowledgeSovereignService/CompareProjections":         true,
+		"/services.sovereign.v1.KnowledgeSovereignService/ListProjectionAudits":       true,
+		"/services.sovereign.v1.KnowledgeSovereignService/CreateProjectionAudit":      true,
+		"/services.sovereign.v1.KnowledgeSovereignService/GetBackfillJob":             true,
+		"/services.sovereign.v1.KnowledgeSovereignService/ListBackfillJobs":           true,
+		"/services.sovereign.v1.KnowledgeSovereignService/CreateBackfillJob":          true,
+		"/services.sovereign.v1.KnowledgeSovereignService/UpdateBackfillJob":          true,
+	}
+
+	pol := &config.AuthPolicy{
+		Services: []config.ServicePolicy{
+			{
+				Name:             "alt-backend",
+				Token:            backendToken,
+				AllowedMethods:   allInfraMethods,
+				RequireUserToken: true,
+				AllowSystemScope: false,
+			},
+			{
+				Name:             "operator",
+				Token:            operatorToken,
+				AllowedMethods:   allInfraMethods,
+				RequireUserToken: false,
+				AllowSystemScope: false,
+			},
+		},
+	}
+
+	verifier := &config.LocalUserJWTVerifier{
+		Secret:   jwtSecretKey,
+		Issuer:   jwtIssuer,
+		Audience: jwtAudience,
+	}
+
+	client, cleanup := setupPolicyTestServer(t, pol, verifier)
+	defer cleanup()
+
+	userID := uuid.New().String()
+	tenantID := uuid.New().String()
+	userJWT := createTestBackendToken(t, []byte(jwtSecretKey), userID, tenantID, jwtIssuer, jwtAudience, time.Hour)
+
+	runID := uuid.New().String()
+	auditID := uuid.New().String()
+	jobID := uuid.New().String()
+
+	callAll := func(t *testing.T, svcToken, delegationJWT string, expectSuccess bool, expectedErrCode connect.Code) {
+		t.Helper()
+		setHeaders := func(h http.Header) {
+			h.Set("Authorization", "Bearer "+svcToken)
+			if delegationJWT != "" {
+				h.Set("X-Alt-Backend-Token", delegationJWT)
+			}
+		}
+		check := func(name string, err error) {
+			t.Helper()
+			if expectSuccess {
+				require.NoError(t, err, "expected %s to succeed", name)
+			} else {
+				require.Error(t, err, "expected %s to fail", name)
+				assert.Equal(t, expectedErrCode, connect.CodeOf(err), "unexpected code for %s", name)
+			}
+		}
+
+		req1 := connect.NewRequest(&sovereignv1.GetActiveProjectionVersionRequest{})
+		setHeaders(req1.Header())
+		_, err := client.GetActiveProjectionVersion(context.Background(), req1)
+		check("GetActiveProjectionVersion", err)
+
+		req2 := connect.NewRequest(&sovereignv1.GetProjectionFreshnessRequest{ProjectorName: "home"})
+		setHeaders(req2.Header())
+		_, err = client.GetProjectionFreshness(context.Background(), req2)
+		check("GetProjectionFreshness", err)
+
+		req3 := connect.NewRequest(&sovereignv1.ListProjectionVersionsRequest{})
+		setHeaders(req3.Header())
+		_, err = client.ListProjectionVersions(context.Background(), req3)
+		check("ListProjectionVersions", err)
+
+		req4 := connect.NewRequest(&sovereignv1.CreateProjectionVersionRequest{
+			Version: &sovereignv1.ProjectionVersion{Version: 2, Description: "v2", Status: "pending"},
+		})
+		setHeaders(req4.Header())
+		_, err = client.CreateProjectionVersion(context.Background(), req4)
+		check("CreateProjectionVersion", err)
+
+		req5 := connect.NewRequest(&sovereignv1.ActivateProjectionVersionRequest{Version: 2})
+		setHeaders(req5.Header())
+		_, err = client.ActivateProjectionVersion(context.Background(), req5)
+		check("ActivateProjectionVersion", err)
+
+		req6 := connect.NewRequest(&sovereignv1.GetProjectionCheckpointRequest{ProjectorName: "home"})
+		setHeaders(req6.Header())
+		_, err = client.GetProjectionCheckpoint(context.Background(), req6)
+		check("GetProjectionCheckpoint", err)
+
+		req7 := connect.NewRequest(&sovereignv1.UpdateProjectionCheckpointRequest{ProjectorName: "home", LastEventSeq: 42})
+		setHeaders(req7.Header())
+		_, err = client.UpdateProjectionCheckpoint(context.Background(), req7)
+		check("UpdateProjectionCheckpoint", err)
+
+		req8 := connect.NewRequest(&sovereignv1.GetProjectionLagRequest{})
+		setHeaders(req8.Header())
+		_, err = client.GetProjectionLag(context.Background(), req8)
+		check("GetProjectionLag", err)
+
+		req9 := connect.NewRequest(&sovereignv1.GetReprojectRunRequest{RunId: runID})
+		setHeaders(req9.Header())
+		_, err = client.GetReprojectRun(context.Background(), req9)
+		check("GetReprojectRun", err)
+
+		req10 := connect.NewRequest(&sovereignv1.ListReprojectRunsRequest{Limit: 10})
+		setHeaders(req10.Header())
+		_, err = client.ListReprojectRuns(context.Background(), req10)
+		check("ListReprojectRuns", err)
+
+		req11 := connect.NewRequest(&sovereignv1.CreateReprojectRunRequest{
+			Run: &sovereignv1.ReprojectRun{ReprojectRunId: runID, ProjectionName: "home"},
+		})
+		setHeaders(req11.Header())
+		_, err = client.CreateReprojectRun(context.Background(), req11)
+		check("CreateReprojectRun", err)
+
+		req12 := connect.NewRequest(&sovereignv1.UpdateReprojectRunRequest{
+			Run: &sovereignv1.ReprojectRun{ReprojectRunId: runID, ProjectionName: "home"},
+		})
+		setHeaders(req12.Header())
+		_, err = client.UpdateReprojectRun(context.Background(), req12)
+		check("UpdateReprojectRun", err)
+
+		req13 := connect.NewRequest(&sovereignv1.CompareProjectionsRequest{FromVersion: "1", ToVersion: "2"})
+		setHeaders(req13.Header())
+		_, err = client.CompareProjections(context.Background(), req13)
+		check("CompareProjections", err)
+
+		req14 := connect.NewRequest(&sovereignv1.ListProjectionAuditsRequest{ProjectionName: "home", Limit: 10})
+		setHeaders(req14.Header())
+		_, err = client.ListProjectionAudits(context.Background(), req14)
+		check("ListProjectionAudits", err)
+
+		req15 := connect.NewRequest(&sovereignv1.CreateProjectionAuditRequest{
+			Audit: &sovereignv1.ProjectionAudit{AuditId: auditID, ProjectionName: "home"},
+		})
+		setHeaders(req15.Header())
+		_, err = client.CreateProjectionAudit(context.Background(), req15)
+		check("CreateProjectionAudit", err)
+
+		req16 := connect.NewRequest(&sovereignv1.GetBackfillJobRequest{JobId: jobID})
+		setHeaders(req16.Header())
+		_, err = client.GetBackfillJob(context.Background(), req16)
+		check("GetBackfillJob", err)
+
+		req17 := connect.NewRequest(&sovereignv1.ListBackfillJobsRequest{})
+		setHeaders(req17.Header())
+		_, err = client.ListBackfillJobs(context.Background(), req17)
+		check("ListBackfillJobs", err)
+
+		req18 := connect.NewRequest(&sovereignv1.CreateBackfillJobRequest{
+			Job: &sovereignv1.BackfillJob{JobId: jobID, Status: "pending"},
+		})
+		setHeaders(req18.Header())
+		_, err = client.CreateBackfillJob(context.Background(), req18)
+		check("CreateBackfillJob", err)
+
+		req19 := connect.NewRequest(&sovereignv1.UpdateBackfillJobRequest{
+			Job: &sovereignv1.BackfillJob{JobId: jobID, Status: "running"},
+		})
+		setHeaders(req19.Header())
+		_, err = client.UpdateBackfillJob(context.Background(), req19)
+		check("UpdateBackfillJob", err)
+	}
+
+	t.Run("alt-backend with valid user token can call all allowed infra/reproject/backfill methods", func(t *testing.T) {
+		callAll(t, backendToken, userJWT, true, 0)
+	})
+
+	t.Run("alt-backend without user token is rejected with Unauthenticated", func(t *testing.T) {
+		callAll(t, backendToken, "", false, connect.CodeUnauthenticated)
+	})
+
+	t.Run("operator without user token can call all allowed infra/reproject/backfill methods", func(t *testing.T) {
+		callAll(t, operatorToken, "", true, 0)
+	})
+
+	t.Run("operator cannot call methods outside AllowedMethods", func(t *testing.T) {
+		req := connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{UserId: userID})
+		req.Header().Set("Authorization", "Bearer "+operatorToken)
+		_, err := client.GetTrailFootprints(context.Background(), req)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	})
+
+	t.Run("RequireUserToken with empty Subject or TenantID in claims returns CodePermissionDenied", func(t *testing.T) {
+		p := &policyAuthInterceptor{policy: pol, enabled: true}
+		principal := &Principal{
+			Name:             "alt-backend",
+			AllowedMethods:   allInfraMethods,
+			RequireUserToken: true,
+		}
+		ctxEmptySub := ContextWithBackendClaims(context.Background(), &config.BackendClaims{
+			Subject:  "",
+			TenantID: tenantID,
+		})
+		err := p.authorize(ctxEmptySub, principal, "/services.sovereign.v1.KnowledgeSovereignService/GetActiveProjectionVersion", http.Header{}, &sovereignv1.GetActiveProjectionVersionRequest{})
+		require.Error(t, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+		ctxEmptyTenant := ContextWithBackendClaims(context.Background(), &config.BackendClaims{
+			Subject:  userID,
+			TenantID: "",
+		})
+		err = p.authorize(ctxEmptyTenant, principal, "/services.sovereign.v1.KnowledgeSovereignService/GetProjectionFreshness", http.Header{}, &sovereignv1.GetProjectionFreshnessRequest{})
+		require.Error(t, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	})
+}
+
+func TestPolicyAuth_WrapStreamingHandler_WatchProjectorEvents(t *testing.T) {
+	const (
+		systemToken    = "system-watcher-secret-token-long-1234"
+		nonSystemToken = "non-system-watcher-token-long-567890"
+	)
+
+	pol := &config.AuthPolicy{
+		Services: []config.ServicePolicy{
+			{
+				Name:  "system-watcher",
+				Token: systemToken,
+				AllowedMethods: map[string]bool{
+					"/services.sovereign.v1.KnowledgeSovereignService/WatchProjectorEvents": true,
+				},
+				RequireUserToken: false,
+				AllowSystemScope: true,
+			},
+			{
+				Name:  "non-system-watcher",
+				Token: nonSystemToken,
+				AllowedMethods: map[string]bool{
+					"/services.sovereign.v1.KnowledgeSovereignService/WatchProjectorEvents": true,
+				},
+				RequireUserToken: false,
+				AllowSystemScope: false,
+			},
+		},
+	}
+
+	watcher := &mockProjectorWatcher{
+		notifications: []mockNotification{
+			{payload: "200", isTimeout: false},
+		},
+	}
+
+	repo := &mockAuthRepo{}
+	h := NewSovereignHandler(
+		repo,
+		WithDatabaseURL("postgres://mock"),
+		WithProjectorWatcherOpener(func(ctx context.Context, databaseURL string) (ProjectorWatcher, error) {
+			return watcher, nil
+		}),
+	)
+
+	mux := http.NewServeMux()
+	interceptor := NewPolicyAuthInterceptor(pol, nil, true)
+	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(h, connect.WithInterceptors(interceptor))
+	mux.Handle(path, rpcHandler)
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := sovereignv1connect.NewKnowledgeSovereignServiceClient(srv.Client(), srv.URL)
+
+	t.Run("missing token returns CodeUnauthenticated", func(t *testing.T) {
+		stream, err := client.WatchProjectorEvents(context.Background(), connect.NewRequest(&sovereignv1.WatchProjectorEventsRequest{
+			ProjectorName: "test_projector",
+		}))
+		if err != nil {
+			assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+			return
+		}
+		defer func() { _ = stream.Close() }()
+		assert.False(t, stream.Receive())
+		require.Error(t, stream.Err())
+		assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(stream.Err()))
+	})
+
+	t.Run("AllowSystemScope=false returns CodePermissionDenied", func(t *testing.T) {
+		req := connect.NewRequest(&sovereignv1.WatchProjectorEventsRequest{
+			ProjectorName: "test_projector",
+		})
+		req.Header().Set("Authorization", "Bearer "+nonSystemToken)
+		stream, err := client.WatchProjectorEvents(context.Background(), req)
+		if err != nil {
+			assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+			return
+		}
+		defer func() { _ = stream.Close() }()
+		assert.False(t, stream.Receive())
+		require.Error(t, stream.Err())
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(stream.Err()))
+	})
+
+	t.Run("AllowSystemScope=true streams events", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		req := connect.NewRequest(&sovereignv1.WatchProjectorEventsRequest{
+			ProjectorName: "test_projector",
+		})
+		req.Header().Set("Authorization", "Bearer "+systemToken)
+		stream, err := client.WatchProjectorEvents(ctx, req)
+		require.NoError(t, err)
+		defer func() { _ = stream.Close() }()
+
+		require.True(t, stream.Receive())
+		assert.Equal(t, int64(200), stream.Msg().LatestEventSeq)
+		cancel()
+	})
+}

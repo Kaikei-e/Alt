@@ -19,7 +19,7 @@
 //
 // Run them with:
 //
-//	cd knowledge-sovereign/app && go test -tags integration ./driver/... ./test_utils/...
+//	cd knowledge-sovereign/app && go test -tags integration ./driver/... ./usecase/... ./test_utils/...
 //
 // (knowledge-sovereign has no Makefile; alt-backend's sibling harness is driven
 // by `make -f Makefile.local test-integration`.)
