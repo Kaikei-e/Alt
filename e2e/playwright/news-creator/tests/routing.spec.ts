@@ -33,6 +33,7 @@ const EXPECTED_ROUTES = [
 	{ path: "/api/generate", method: "post", owner: "create_generate_router" },
 	{ path: "/v1/summary/generate", method: "post", owner: "create_recap_summary_router" },
 	{ path: "/v1/summary/generate/batch", method: "post", owner: "create_recap_summary_router" },
+	{ path: "/v1/cards/generate", method: "post", owner: "create_recap_card_router" },
 	{ path: "/api/v1/expand-query", method: "post", owner: "create_expand_query_router" },
 	{ path: "/api/v1/plan-query", method: "post", owner: "create_plan_query_router" },
 	{ path: "/v1/rerank", method: "post", owner: "create_rerank_router" },

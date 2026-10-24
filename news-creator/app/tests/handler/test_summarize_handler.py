@@ -190,3 +190,50 @@ def test_summarize_stream_reaches_eof_right_after_last_chunk():
     assert elapsed < 1.0, f"stream stayed open for {elapsed:.2f}s"
     # SSE wire format is contractual - keep it byte-identical.
     assert body == "".join(f'data: "{chunk}"\n\n' for chunk in chunks)
+
+
+def test_summarize_short_content_fast_path_returns_400():
+    """Content shorter than 100 chars is rejected with 400 before invoking usecase."""
+    mock_usecase = _make_mock_usecase()
+    client = _make_client(mock_usecase)
+
+    response = client.post(
+        "/api/v1/summarize",
+        json={"article_id": "short-1", "content": "Too short", "stream": False},
+    )
+
+    assert response.status_code == 400
+    assert "Minimum required: 100 characters" in response.json()["detail"]
+    mock_usecase.generate_summary.assert_not_called()
+
+
+def test_summarize_empty_whitespace_runtime_error_returns_422():
+    """RuntimeError with 'empty/whitespace summary' maps to 422 Unprocessable Entity."""
+    mock_usecase = _make_mock_usecase()
+    mock_usecase.generate_summary.side_effect = RuntimeError(
+        "LLM repeatedly returned empty/whitespace summary"
+    )
+    client = _make_client(mock_usecase)
+
+    response = client.post(
+        "/api/v1/summarize",
+        json={"article_id": "empty-1", "content": "A" * 200, "stream": False},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Content not processable"
+
+
+def test_summarize_unexpected_exception_returns_500():
+    """Unexpected generic Exception maps to 500 Internal Server Error."""
+    mock_usecase = _make_mock_usecase()
+    mock_usecase.generate_summary.side_effect = KeyError("unexpected internal key")
+    client = _make_client(mock_usecase)
+
+    response = client.post(
+        "/api/v1/summarize",
+        json={"article_id": "err-500", "content": "A" * 200, "stream": False},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"

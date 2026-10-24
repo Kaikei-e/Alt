@@ -179,6 +179,23 @@ test.describe("rerank", () => {
 		await expectJsonStatus(response, 422, fastapiErrorSchema);
 	});
 
+	test("rejects an unsupported rerank model before loading CrossEncoder @contract", async ({
+		api,
+		seed,
+	}) => {
+		// `RerankRequest._validate_model` enforces `_ALLOWED_RERANK_MODELS`
+		// (`{"BAAI/bge-reranker-v2-m3"}`) at the Pydantic boundary so arbitrary
+		// HuggingFace repo names cannot trigger a download or load.
+		const response = await api.post("/v1/rerank", {
+			data: {
+				query: `model allowlist probe ${seed.token}`,
+				candidates: ["candidate text"],
+				model: "unauthorized/model",
+			},
+		});
+		await expectJsonStatus(response, 422, fastapiErrorSchema);
+	});
+
 	test("GET is not allowed on rerank @contract", async ({ api }) => {
 		await expectStatus(await api.get("/v1/rerank"), 405);
 	});

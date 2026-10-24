@@ -149,115 +149,143 @@ def _create_provider_app() -> FastAPI:
     chat_router = chat_mod.create_chat_router(mock_ollama_gateway, mock_config)
     app.include_router(chat_router)
 
-    # --- Mock recap summary handler ---
-    # Lightweight stub endpoints matching the production RecapSummaryResponse /
-    # BatchRecapSummaryResponse pydantic shapes. recap-worker pacts expect:
-    # - POST /v1/summary/generate         → { job_id, genre, summary: {title, bullets, language}, metadata: {model} }
-    # - POST /v1/summary/generate/batch   → { responses: [<RecapSummaryResponse>], errors: [] }
-    # The "the LLM queue is full" state makes /v1/summary/generate return a
-    # 503 with a queue-full error body.
-    @app.post("/v1/summary/generate")
-    async def _stub_recap_summary(payload: dict[str, Any]) -> Any:
-        from fastapi.responses import JSONResponse
+    # --- Mock recap summary handler (real router + Pydantic validation) ---
+    import news_creator.handler.recap_summary_handler as recap_summary_mod
+
+    importlib.reload(recap_summary_mod)
+
+    mock_recap_summary_usecase = Mock()
+
+    async def _mock_generate_recap_summary(request: Any) -> Any:
+        from news_creator.domain.errors import QueueFullError
+        from news_creator.domain.models import (
+            RecapSummary,
+            RecapSummaryMetadata,
+            RecapSummaryResponse,
+            Reference,
+        )
 
         if provider_state["mode"] == "queue_full":
-            # Mirror production: 429 + Retry-After on QueueFullError.
-            return JSONResponse(
-                status_code=429,
-                content={"error": "queue full"},
-                headers={"Retry-After": "30"},
-            )
-        # ADR-890 followup: references[] uses full http(s):// URL and UUID
-        # article_id. Bullets carry [n] citation markers tied to references.id.
-        return {
-            "job_id": payload.get("job_id", "00000000-0000-0000-0000-000000000001"),
-            "genre": payload.get("genre", "tech"),
-            "summary": {
-                "title": "テクノロジー週間要約",
-                "bullets": ["AI関連の進展が報告された。 [1]"],
-                "language": "ja",
-                "references": [
-                    {
-                        "id": 1,
-                        "url": "https://example.com/article-1",
-                        "domain": "example.com",
-                        "article_id": "1dce453b-e23d-4a32-9030-7e4529fad645",
-                    }
-                ],
-            },
-            "metadata": {"model": "gemma4-e4b-q4km"},
-        }
+            raise QueueFullError("Queue depth 20 >= max 20")
 
-    @app.post("/v1/summary/generate/batch")
-    async def _stub_recap_summary_batch(payload: dict[str, Any]) -> Any:
-        requests = payload.get("requests", [])
+        return RecapSummaryResponse(
+            job_id=request.job_id,
+            genre=request.genre,
+            summary=RecapSummary(
+                title="テクノロジー週間要約",
+                bullets=["AI関連の進展が報告された。 [1]"],
+                language="ja",
+                references=[
+                    Reference(
+                        id=1,
+                        url="https://example.com/article-1",
+                        domain="example.com",
+                        article_id="1dce453b-e23d-4a32-9030-7e4529fad645",
+                    )
+                ],
+            ),
+            metadata=RecapSummaryMetadata(model="gemma4-e4b-q4km"),
+        )
+
+    async def _mock_generate_batch_recap_summary(batch_request: Any) -> Any:
+        from news_creator.domain.models import (
+            BatchRecapSummaryResponse,
+            RecapSummary,
+            RecapSummaryMetadata,
+            RecapSummaryResponse,
+        )
+
         responses = [
-            {
-                "job_id": req.get("job_id", "00000000-0000-0000-0000-000000000001"),
-                "genre": req.get("genre", "tech"),
-                "summary": {
-                    "title": "Summary Title",
-                    "bullets": ["Bullet 1"],
-                    "language": "ja",
-                },
-                "metadata": {"model": "gemma4-e4b-q4km"},
-            }
-            for req in requests
+            RecapSummaryResponse(
+                job_id=req.job_id,
+                genre=req.genre,
+                summary=RecapSummary(
+                    title="Summary Title",
+                    bullets=["Bullet 1"],
+                    language="ja",
+                ),
+                metadata=RecapSummaryMetadata(model="gemma4-e4b-q4km"),
+            )
+            for req in batch_request.requests
         ]
-        return {"responses": responses, "errors": []}
+        return BatchRecapSummaryResponse(responses=responses, errors=[])
 
-    # --- Mock recap card handler ---
-    @app.post("/v1/cards/generate")
-    async def _stub_card_generate(payload: dict[str, Any]) -> Any:
-        from fastapi.responses import JSONResponse
+    mock_recap_summary_usecase.generate_summary = AsyncMock(
+        side_effect=_mock_generate_recap_summary
+    )
+    mock_recap_summary_usecase.generate_batch_summary = AsyncMock(
+        side_effect=_mock_generate_batch_recap_summary
+    )
+    recap_summary_router = recap_summary_mod.create_recap_summary_router(
+        mock_recap_summary_usecase
+    )
+    app.include_router(recap_summary_router)
+
+    # --- Mock recap card handler (real router + Pydantic validation) ---
+    import news_creator.handler.recap_card_handler as recap_card_mod
+
+    importlib.reload(recap_card_mod)
+
+    mock_recap_card_usecase = Mock()
+
+    async def _mock_generate_card(request: Any) -> Any:
+        from news_creator.domain.errors import QueueFullError
+        from news_creator.domain.models import (
+            CardContent,
+            CardGenerateResponse,
+            CardGenerationMetadata,
+            CardGenerationRejectedError,
+            CardSentence,
+        )
 
         if provider_state["mode"] == "queue_full":
-            return JSONResponse(
-                status_code=429,
-                content={"error": "queue full"},
-                headers={"Retry-After": "30"},
-            )
+            raise QueueFullError("Queue depth 20 >= max 20")
         if provider_state["mode"] == "card_generation_rejected":
-            return JSONResponse(
-                status_code=422,
-                content={
-                    "reason": "parse_failed",
-                    "attempts": 2,
-                    "raw_text": "【見出し】不正なフォーマット",
-                    "detail": "missing_tag",
-                },
-                headers={"X-Card-Rejection": "1"},
+            raise CardGenerationRejectedError(
+                reason="parse_failed",
+                attempts=2,
+                raw_text="【見出し】不正なフォーマット",
+                detail="missing_tag",
             )
-        return {
-            "card": {
-                "headline_ja": "テストヘッドライン",
-                "what_ja": [
-                    {
-                        "text": "テストの出来事が発生した。[1]",
-                        "refs": [1],
-                    },
-                    {
-                        "text": "追加の出来事が発生した。[1]",
-                        "refs": [1],
-                    },
+        return CardGenerateResponse(
+            card=CardContent(
+                headline_ja="テストヘッドライン",
+                what_ja=[
+                    CardSentence(
+                        text="テストの出来事が発生した。[1]",
+                        refs=[1],
+                    ),
+                    CardSentence(
+                        text="追加の出来事が発生した。[1]",
+                        refs=[1],
+                    ),
                 ],
-                "why_ja": {
-                    "text": "テストの影響が生じる。[1]",
-                    "refs": [1],
-                },
-                "used_refs": [1],
-            },
-            "generation": {
-                "model": "gemma4-e4b-12k",
-                "prompt_version": payload.get("prompt_version", "recap_card.v1"),
-                "cache_hit": False,
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "ms": 200,
-                "raw_text": "【見出し】\nテストヘッドライン\n【何が起きた】\nテストの出来事が発生した。[1]\n追加の出来事が発生した。[1]\n【なぜ重要】\nテストの影響が生じる。[1]\n【出典】\n[1]",
-            },
-            "ja_ratio": 0.85,
-        }
+                why_ja=CardSentence(
+                    text="テストの影響が生じる。[1]",
+                    refs=[1],
+                ),
+                used_refs=[1],
+            ),
+            generation=CardGenerationMetadata(
+                model="gemma4-e4b-12k",
+                prompt_version=request.prompt_version,
+                cache_hit=False,
+                prompt_tokens=100,
+                completion_tokens=50,
+                ms=200,
+                raw_text=(
+                    "【見出し】\nテストヘッドライン\n"
+                    "【何が起きた】\nテストの出来事が発生した。[1]\n追加の出来事が発生した。[1]\n"
+                    "【なぜ重要】\nテストの影響が生じる。[1]\n"
+                    "【出典】\n[1]"
+                ),
+            ),
+            ja_ratio=0.85,
+        )
+
+    mock_recap_card_usecase.generate_card = AsyncMock(side_effect=_mock_generate_card)
+    recap_card_router = recap_card_mod.create_recap_card_router(mock_recap_card_usecase)
+    app.include_router(recap_card_router)
 
     # --- Mock plan-query handler ---
     import news_creator.handler.plan_query_handler as plan_query_mod

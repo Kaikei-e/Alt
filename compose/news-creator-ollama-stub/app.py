@@ -53,6 +53,18 @@ PLAIN_GENERATE_RESPONSE = (
     "stub expansion gamma keyword"
 )
 
+RECAP_CARD_RESPONSE = (
+    "【見出し】\n"
+    "分散ログ基盤の次期バージョンが公開されメモリ効率が向上\n"
+    "【何が起きた】\n"
+    "ソラリス社は新しい分散ログ収集エンジンを正式に公開しました。[1]\n"
+    "従来比でメモリ使用量が大幅に削減され処理性能が改善しています。[1]\n"
+    "【なぜ重要】\n"
+    "大規模クラスタの運用コストとサーバ費用が継続的に削減されます。[1]\n"
+    "【出典】\n"
+    "[1]"
+)
+
 RECAP_PAYLOAD = {
     "title": "stub recap summary title",
     "bullets": [
@@ -137,6 +149,9 @@ def _resolve_generate_content(payload: dict) -> str:
         return json.dumps(
             _structured_payload_for(payload.get("format")), ensure_ascii=False
         )
+    prompt = payload.get("prompt")
+    if isinstance(prompt, str) and "【見出し】" in prompt:
+        return RECAP_CARD_RESPONSE
     return PLAIN_GENERATE_RESPONSE
 
 

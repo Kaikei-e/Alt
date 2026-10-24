@@ -13,7 +13,7 @@ from news_creator.domain.models import (
     CardGenerationRejectedError,
     CardSentence,
 )
-from news_creator.domain.errors import QueueFullError
+from news_creator.domain.errors import PreemptedException, QueueFullError
 from news_creator.handler.recap_card_handler import create_recap_card_router
 
 
@@ -266,3 +266,48 @@ def test_recap_card_handler_structured_logging_on_rejection(caplog):
         # Never log raw_text itself in extra
         assert not hasattr(record, "raw_text")
         assert "SECRET_RAW_TEXT_LANGUAGE" not in record.getMessage()
+
+
+def test_recap_card_handler_value_error_400():
+    """ValueError from usecase returns 400 Invalid request."""
+    usecase = AsyncMock()
+    usecase.generate_card.side_effect = ValueError("invalid item count")
+
+    app = FastAPI()
+    app.include_router(create_recap_card_router(usecase))
+    client = TestClient(app)
+
+    resp = client.post("/v1/cards/generate", json=_build_card_request_payload())
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid request"
+
+
+def test_recap_card_handler_preempted_502():
+    """PreemptedException from usecase returns 502 Upstream service error."""
+    usecase = AsyncMock()
+    usecase.generate_card.side_effect = PreemptedException("preempted by RT request")
+
+    app = FastAPI()
+    app.include_router(create_recap_card_router(usecase))
+    client = TestClient(app)
+
+    resp = client.post("/v1/cards/generate", json=_build_card_request_payload())
+
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "Upstream service error"
+
+
+def test_recap_card_handler_runtime_error_500():
+    """RuntimeError from usecase returns 500 Internal server error."""
+    usecase = AsyncMock()
+    usecase.generate_card.side_effect = RuntimeError("unexpected LLM response type")
+
+    app = FastAPI()
+    app.include_router(create_recap_card_router(usecase))
+    client = TestClient(app)
+
+    resp = client.post("/v1/cards/generate", json=_build_card_request_payload())
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"

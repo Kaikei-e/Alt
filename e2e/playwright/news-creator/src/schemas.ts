@@ -333,6 +333,46 @@ export const morningLetterResponseSchema = z
 	.passthrough();
 
 // ---------------------------------------------------------------------------
+// POST /v1/cards/generate  — handler/recap_card_handler.py
+// ---------------------------------------------------------------------------
+
+export const cardSentenceSchema = z
+	.object({
+		text: z.string().min(1).max(300),
+		refs: z.array(z.number().int().min(1)).min(1),
+	})
+	.passthrough();
+
+export const cardContentSchema = z
+	.object({
+		headline_ja: z.string().min(1).max(60),
+		what_ja: z.array(cardSentenceSchema).min(2).max(3),
+		why_ja: cardSentenceSchema.nullable().optional(),
+		used_refs: z.array(z.number().int().min(1)).min(1),
+	})
+	.passthrough();
+
+export const cardGenerationMetadataSchema = z
+	.object({
+		model: z.string().min(1),
+		prompt_version: z.string().min(1),
+		cache_hit: z.boolean(),
+		prompt_tokens: z.number().int().min(0),
+		completion_tokens: z.number().int().min(0),
+		ms: z.number().int().min(0),
+		raw_text: z.string(),
+	})
+	.passthrough();
+
+export const cardGenerateResponseSchema = z
+	.object({
+		card: cardContentSchema,
+		generation: cardGenerationMetadataSchema,
+		ja_ratio: z.number().min(0).max(1),
+	})
+	.passthrough();
+
+// ---------------------------------------------------------------------------
 // OpenAPI — used as the route-registration probe (see tests/routing.spec.ts)
 // ---------------------------------------------------------------------------
 
