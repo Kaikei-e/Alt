@@ -132,6 +132,7 @@ test.describe("desktop sidebar navigation", () => {
 		sidebar,
 	}) => {
 		await page.goto("./feeds");
+		await expect(sidebar.brandTitle).toBeVisible();
 
 		const hrefs = await sidebar
 			.getAllLinks()
