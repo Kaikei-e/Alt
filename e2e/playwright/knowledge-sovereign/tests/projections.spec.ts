@@ -471,6 +471,7 @@ test.describe("the in-process projectors fold the event log", () => {
 				dedupeKey: `${principal.token}-lifecycle-supersede`,
 				occurredAt,
 				payload: {
+					article_id: articleId,
 					item_key: itemKey,
 					previous_summary_excerpt: "Old excerpt",
 				},
@@ -605,7 +606,7 @@ test.describe("the in-process projectors fold the event log", () => {
 				occurredAt,
 				payload: {
 					branch_key: branchKey,
-					state: "taken",
+					resolution: "taken",
 				},
 			});
 
