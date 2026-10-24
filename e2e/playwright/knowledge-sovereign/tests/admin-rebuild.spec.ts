@@ -19,9 +19,10 @@ const rebuildTargetsSchema = z
 const rebuildResultSchema = z
 	.object({
 		target: z.string().min(1),
-		tables_truncated: z.array(z.string().min(1)).min(1),
+		tables: z.array(z.string().min(1)).min(1),
+		tables_truncated: z.number().int().positive(),
 		projector_name: z.string().min(1),
-		previous_checkpoint_seq: z.number().int().nonnegative(),
+		checkpoint_before: z.number().int().nonnegative(),
 	})
 	.passthrough();
 
@@ -69,13 +70,14 @@ test.describe("projection rebuild admin endpoints", () => {
 			);
 			expect(body.target).toBe("knowledge-trail");
 			expect(body.projector_name).toBe("knowledge-trail-projector");
-			expect(body.tables_truncated).toEqual(
+			expect(body.tables).toEqual(
 				expect.arrayContaining([
 					"knowledge_trail_footprints",
 					"knowledge_trail_branches",
 					"knowledge_trail_act_outcomes",
 				]),
 			);
+			expect(body.tables_truncated).toBe(body.tables.length);
 		},
 	);
 });
