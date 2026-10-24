@@ -28,10 +28,14 @@ const { fetchArticlesByTagMock, createClientTransportMock } = vi.hoisted(
 	}),
 );
 
-vi.mock("#lib/connect/index.js", () => ({
-	createClientTransport: createClientTransportMock,
-	fetchArticlesByTag: fetchArticlesByTagMock,
-}));
+vi.mock("#lib/connect/index.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#lib/connect/index.js")>();
+	return {
+		...actual,
+		createClientTransport: createClientTransportMock,
+		fetchArticlesByTag: fetchArticlesByTagMock,
+	};
+});
 
 import Page from "./+page.svelte";
 
