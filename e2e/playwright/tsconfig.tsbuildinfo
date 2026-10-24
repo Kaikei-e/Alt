@@ -1,0 +1,16 @@
+{
+  "root": [
+    "./_shared/client-auth.ts",
+    "./_shared/config.ts",
+    "./_shared/connect.ts",
+    "./_shared/env.ts",
+    "./_shared/eventual.ts",
+    "./_shared/http.ts",
+    "./_shared/ids.ts",
+    "./_shared/net.ts",
+    "./_shared/readiness.ts",
+    "./_shared/schemas.ts",
+    "./merge.config.ts"
+  ],
+  "version": "5.7.2"
+}
