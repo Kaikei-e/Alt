@@ -9,10 +9,13 @@ from unittest.mock import patch
 
 import pytest
 
+from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
 from tag_generator.driver.connect_client_factory import (
     _ReloadingBackendClient,
+    create_article_fetcher_and_inserter,
     create_backend_client,
 )
+from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
 
 
 def _write_test_pki(dir_path: Path, cn: str) -> tuple[Path, Path, Path]:
@@ -95,6 +98,55 @@ class TestCreateBackendClient:
         _, headers = result
         assert "X-Service-Token" not in headers
 
+    @pytest.mark.parametrize(
+        "env",
+        [
+            {"MTLS_ENFORCE": "true"},
+            {"MTLS_ENFORCE": "true", "BACKEND_API_MTLS_URL": ""},
+        ],
+    )
+    def test_raises_when_mtls_enforce_true_and_mtls_url_unset_or_empty(self, env: dict[str, str]) -> None:
+        """Fails closed with RuntimeError when MTLS_ENFORCE=true and BACKEND_API_MTLS_URL is unset or empty."""
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(RuntimeError, match="BACKEND_API_MTLS_URL is unset"):
+                create_backend_client()
+
+    @pytest.mark.parametrize(
+        "missing_var",
+        ["MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"],
+    )
+    def test_raises_when_mtls_enforce_true_and_cert_files_missing(self, missing_var: str) -> None:
+        """Fails closed with RuntimeError when any of MTLS_CERT_FILE/KEY_FILE/CA_FILE is unset."""
+        env = {
+            "MTLS_ENFORCE": "true",
+            "BACKEND_API_MTLS_URL": "https://alt-backend:9443",
+            "MTLS_CERT_FILE": "/certs/cert.pem",
+            "MTLS_KEY_FILE": "/certs/key.pem",
+            "MTLS_CA_FILE": "/certs/ca.pem",
+        }
+        del env[missing_var]
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(RuntimeError, match="MTLS_CERT_FILE/KEY_FILE/CA_FILE not fully set"):
+                create_backend_client()
+
+    def test_returns_reloading_client_when_mtls_enforce_and_all_env_set(self, tmp_path: Path) -> None:
+        """Returns (_ReloadingBackendClient, headers) when MTLS_ENFORCE=true and all env vars are configured."""
+        cert, key, ca = _write_test_pki(tmp_path, "tag-generator")
+        env = {
+            "MTLS_ENFORCE": "true",
+            "BACKEND_API_MTLS_URL": "https://alt-backend:9443",
+            "MTLS_CERT_FILE": str(cert),
+            "MTLS_KEY_FILE": str(key),
+            "MTLS_CA_FILE": str(ca),
+        }
+        with patch.dict(os.environ, env, clear=True):
+            result = create_backend_client()
+
+        assert result is not None
+        client, headers = result
+        assert isinstance(client, _ReloadingBackendClient)
+        assert headers == {}
+
 
 class TestReloadingBackendClient:
     """Tests for the mTLS cert hot-reload behaviour of _ReloadingBackendClient."""
@@ -171,3 +223,22 @@ class TestReloadingBackendClient:
         # merely failing closed on unknown names.
         bound_close = rc.close  # noqa: SLF001 — real RPC-client method, forwarded via __getattr__
         assert bound_close.__self__ is rc._inner  # noqa: SLF001
+
+
+class TestCreateArticleFetcherAndInserter:
+    """Tests for create_article_fetcher_and_inserter composition-root helper."""
+
+    def test_raises_runtime_error_when_client_is_none(self) -> None:
+        """Raises RuntimeError when create_backend_client returns None."""
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(RuntimeError, match="Backend API client could not be created"):
+                create_article_fetcher_and_inserter()
+
+    def test_returns_fetcher_and_inserter_when_client_created(self) -> None:
+        """Returns (ConnectArticleFetcher, ConnectTagInserter) tuple when client is available."""
+        env = {"BACKEND_API_URL": "http://alt-backend:9000"}
+        with patch.dict(os.environ, env, clear=True):
+            fetcher, inserter = create_article_fetcher_and_inserter()
+
+        assert isinstance(fetcher, ConnectArticleFetcher)
+        assert isinstance(inserter, ConnectTagInserter)
