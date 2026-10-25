@@ -146,7 +146,7 @@ func validateAndBuildProjectionVersion(pv *sovereignv1.ProjectionVersion, refTim
 
 func projectionVersionToProto(v sovereign_db.ProjectionVersion) *sovereignv1.ProjectionVersion {
 	pb := &sovereignv1.ProjectionVersion{
-		Version:     int32(v.Version),
+		Version:     safeIntToInt32(v.Version),
 		Description: v.Description,
 		Status:      v.Status,
 		CreatedAt:   timestamppb.New(v.CreatedAt),

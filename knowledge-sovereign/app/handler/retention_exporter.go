@@ -54,14 +54,25 @@ func buildRetentionLogEntry(action retentionAction, dryRun bool, err error, refT
 
 // exportPartition exports a partition table to a gzipped JSONL file with SHA-256 verification.
 func (h *RetentionHandler) exportPartition(ctx context.Context, partitionName string, refTime time.Time) (string, int64, string, error) {
-	if err := os.MkdirAll(h.archiveDir, 0o755); err != nil {
+	if err := os.MkdirAll(h.archiveDir, 0o750); err != nil {
 		return "", 0, "", fmt.Errorf("create archive dir: %w", err)
 	}
 
-	filePath := filepath.Join(h.archiveDir, fmt.Sprintf("%s_%s.jsonl.gz",
-		partitionName, refTime.Format("20060102")))
+	fileName := fmt.Sprintf("%s_%s.jsonl.gz",
+		partitionName, refTime.Format("20060102"))
+	filePath := filepath.Join(h.archiveDir, fileName)
 
-	f, err := os.Create(filePath)
+	root, err := os.OpenRoot(h.archiveDir)
+	if err != nil {
+		return "", 0, "", fmt.Errorf("open archive root: %w", err)
+	}
+	defer func() {
+		if closeErr := root.Close(); closeErr != nil {
+			slog.WarnContext(ctx, "failed to close archive root", "error", closeErr)
+		}
+	}()
+
+	f, err := root.Create(fileName)
 	if err != nil {
 		return "", 0, "", fmt.Errorf("create file: %w", err)
 	}
@@ -79,7 +90,7 @@ func (h *RetentionHandler) exportPartition(ctx context.Context, partitionName st
 		if closeErr := gzWriter.Close(); closeErr != nil {
 			slog.WarnContext(ctx, "failed to close gzip writer", "error", closeErr)
 		}
-		if rmErr := os.Remove(filePath); rmErr != nil {
+		if rmErr := root.Remove(fileName); rmErr != nil {
 			slog.WarnContext(ctx, "failed to remove partial file", "error", rmErr)
 		}
 		return "", 0, "", fmt.Errorf("export: %w", err)

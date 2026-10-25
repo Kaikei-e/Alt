@@ -78,9 +78,9 @@ func (h *SovereignHandler) GetTodayDigest(
 		pb = &sovereignv1.TodayDigest{
 			UserId:                digest.UserID.String(),
 			DigestDate:            digest.DigestDate.Format("2006-01-02"),
-			NewArticles:           int32(digest.NewArticles),
-			SummarizedArticles:    int32(digest.SummarizedArticles),
-			UnsummarizedArticles:  int32(digest.UnsummarizedArticles),
+			NewArticles:           safeIntToInt32(digest.NewArticles),
+			SummarizedArticles:    safeIntToInt32(digest.SummarizedArticles),
+			UnsummarizedArticles:  safeIntToInt32(digest.UnsummarizedArticles),
 			TopTags:               digest.TopTags,
 			UpdatedAt:             timestamppb.New(digest.UpdatedAt),
 			WeeklyRecapAvailable:  digest.WeeklyRecapAvailable,
@@ -111,7 +111,7 @@ func (h *SovereignHandler) GetRecallCandidates(
 			ItemKey:           c.ItemKey,
 			RecallScore:       c.RecallScore,
 			UpdatedAt:         timestamppb.New(c.UpdatedAt),
-			ProjectionVersion: int32(c.ProjectionVersion),
+			ProjectionVersion: safeIntToInt32(c.ProjectionVersion),
 		}
 		if c.NextSuggestAt != nil {
 			pb.NextSuggestAt = timestamppb.New(*c.NextSuggestAt)
@@ -167,7 +167,7 @@ func (h *SovereignHandler) CountNeedToKnowItems(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CountNeedToKnowItems: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.CountNeedToKnowItemsResponse{Count: int32(count)}), nil
+	return connect.NewResponse(&sovereignv1.CountNeedToKnowItemsResponse{Count: safeIntToInt32(count)}), nil
 }
 
 // --- helper: convert domain home item to proto ---
@@ -184,7 +184,7 @@ func homeItemToProto(item sovereign_db.KnowledgeHomeItem) *sovereignv1.Knowledge
 		Score:             item.Score,
 		GeneratedAt:       timestamppb.New(item.GeneratedAt),
 		UpdatedAt:         timestamppb.New(item.UpdatedAt),
-		ProjectionVersion: int32(item.ProjectionVersion),
+		ProjectionVersion: safeIntToInt32(item.ProjectionVersion),
 		SummaryState:      item.SummaryState,
 		SupersedeState:    item.SupersedeState,
 		PreviousRefJson:   item.PreviousRefJSON,

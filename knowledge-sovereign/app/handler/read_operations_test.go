@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"math"
 	"testing"
 
 	"github.com/google/uuid"
@@ -44,4 +45,12 @@ func TestParseUUIDPtrField_ParsesValidUUID(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, id, *got)
+}
+
+func TestSafeIntToInt32_ClampsToInt32Bounds(t *testing.T) {
+	assert.Equal(t, int32(42), safeIntToInt32(42))
+	assert.Equal(t, int32(0), safeIntToInt32(0))
+	assert.Equal(t, int32(-42), safeIntToInt32(-42))
+	assert.Equal(t, int32(math.MaxInt32), safeIntToInt32(math.MaxInt32+100))
+	assert.Equal(t, int32(math.MinInt32), safeIntToInt32(math.MinInt32-100))
 }

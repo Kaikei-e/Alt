@@ -88,12 +88,12 @@ func (h *SovereignHandler) CompareProjections(
 	}
 	return connect.NewResponse(&sovereignv1.CompareProjectionsResponse{
 		Summary: &sovereignv1.ReprojectDiffSummary{
-			FromCount:        int32(summary.FromCount),
-			ToCount:          int32(summary.ToCount),
+			FromCount:        safeIntToInt32(summary.FromCount),
+			ToCount:          safeIntToInt32(summary.ToCount),
 			FromAvgScore:     summary.FromAvgScore,
 			ToAvgScore:       summary.ToAvgScore,
-			FromEmptySummary: int32(summary.FromEmptySummary),
-			ToEmptySummary:   int32(summary.ToEmptySummary),
+			FromEmptySummary: safeIntToInt32(summary.FromEmptySummary),
+			ToEmptySummary:   safeIntToInt32(summary.ToEmptySummary),
 		},
 	}), nil
 }
@@ -113,8 +113,8 @@ func (h *SovereignHandler) ListProjectionAudits(
 			ProjectionName:    a.ProjectionName,
 			ProjectionVersion: a.ProjectionVersion,
 			CheckedAt:         timestamppb.New(a.CheckedAt),
-			SampleSize:        int32(a.SampleSize),
-			MismatchCount:     int32(a.MismatchCount),
+			SampleSize:        safeIntToInt32(a.SampleSize),
+			MismatchCount:     safeIntToInt32(a.MismatchCount),
 			DetailsJson:       a.DetailsJSON,
 		}
 	}
@@ -305,9 +305,9 @@ func backfillJobToProto(j sovereign_db.BackfillJob) *sovereignv1.BackfillJob {
 		JobId:             j.JobID.String(),
 		Status:            j.Status,
 		Kind:              j.Kind,
-		ProjectionVersion: int32(j.ProjectionVersion),
-		TotalEvents:       int32(j.TotalEvents),
-		ProcessedEvents:   int32(j.ProcessedEvents),
+		ProjectionVersion: safeIntToInt32(j.ProjectionVersion),
+		TotalEvents:       safeIntToInt32(j.TotalEvents),
+		ProcessedEvents:   safeIntToInt32(j.ProcessedEvents),
 		ErrorMessage:      j.ErrorMessage,
 		CreatedAt:         timestamppb.New(j.CreatedAt),
 		UpdatedAt:         timestamppb.New(j.UpdatedAt),

@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -45,7 +44,7 @@ func (p *AuthPolicy) FindServiceByName(name string) *ServicePolicy {
 // It detects duplicate tokens, empty tokens, and tokens with insufficient entropy (< 24 chars),
 // returning sanitized errors that never leak secret token material.
 func LoadPolicyFile(path string) (*AuthPolicy, error) {
-	data, err := os.ReadFile(path)
+	data, err := readSecretFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read policy file %s: %w", path, err)
 	}
@@ -74,7 +73,7 @@ func LoadPolicyFile(path string) (*AuthPolicy, error) {
 		seenServices[name] = true
 
 		if svc.TokenFile != "" {
-			tokData, err := os.ReadFile(svc.TokenFile)
+			tokData, err := readSecretFile(svc.TokenFile)
 			if err != nil {
 				return nil, fmt.Errorf("read token_file for service %q (%s): %w", name, svc.TokenFile, err)
 			}

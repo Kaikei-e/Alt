@@ -194,3 +194,10 @@ func TestLoad_EventAuthDisabledTakesPrecedenceOverTokenFile(t *testing.T) {
 	assert.False(t, cfg.EventAuthEnabled)
 	assert.Empty(t, cfg.EventToken)
 }
+
+func TestReadSecretFile_RejectsEmptyAndRootPaths(t *testing.T) {
+	for _, invalid := range []string{"", ".", "/"} {
+		_, err := readSecretFile(invalid)
+		require.Error(t, err, "path %q should be rejected", invalid)
+	}
+}

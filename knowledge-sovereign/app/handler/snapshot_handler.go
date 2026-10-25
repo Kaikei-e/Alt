@@ -123,7 +123,7 @@ func (h *SnapshotHandler) CreateSnapshot(ctx context.Context) (*sovereign_db.Sna
 	dateStr := now.Format("20060102_150405")
 	baseDir := filepath.Join(h.snapshotDir, fmt.Sprintf("snapshot_%s", dateStr))
 
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+	if err := os.MkdirAll(baseDir, 0o750); err != nil {
 		return nil, fmt.Errorf("create snapshot dir: %w", err)
 	}
 
@@ -142,7 +142,7 @@ func (h *SnapshotHandler) CreateSnapshot(ctx context.Context) (*sovereign_db.Sna
 
 	for i, t := range tables {
 		filePath := filepath.Join(baseDir, t.filename)
-		count, checksum, err := h.exportTable(ctx, t.name, filePath)
+		count, checksum, err := h.exportTable(ctx, t.name, baseDir, t.filename)
 		if err != nil {
 			return nil, fmt.Errorf("export %s: %w", t.name, err)
 		}
@@ -201,8 +201,18 @@ func (h *SnapshotHandler) CreateSnapshot(ctx context.Context) (*sovereign_db.Sna
 }
 
 // exportTable exports a table to a gzipped JSONL file and returns row count + SHA-256 checksum.
-func (h *SnapshotHandler) exportTable(ctx context.Context, tableName, filePath string) (rowCount int, checksum string, err error) {
-	f, err := os.Create(filePath)
+func (h *SnapshotHandler) exportTable(ctx context.Context, tableName, baseDir, fileName string) (rowCount int, checksum string, err error) {
+	root, err := os.OpenRoot(baseDir)
+	if err != nil {
+		return 0, "", fmt.Errorf("open snapshot root: %w", err)
+	}
+	defer func() {
+		if cerr := root.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close snapshot root: %w", cerr)
+		}
+	}()
+
+	f, err := root.Create(fileName)
 	if err != nil {
 		return 0, "", fmt.Errorf("create file: %w", err)
 	}

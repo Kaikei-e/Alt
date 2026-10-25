@@ -190,7 +190,7 @@ func mapTrailFootprints(footprints []sovereign_db.TrailFootprint) []*sovereignv1
 			SourceEventType: fp.SourceEventType,
 			OccurredAt:      timestamppb.New(fp.OccurredAt),
 			Wear:            fp.Wear,
-			ContactCount:    int32(contactCount), //nolint:gosec // >= 1, bounded by row count
+			ContactCount:    safeIntToInt32(contactCount),
 			FirstOccurredAt: timestamppb.New(firstOccurredAt),
 		}
 	}

@@ -40,13 +40,13 @@ type LocalUserJWTVerifier struct {
 func LoadLocalUserJWTVerifier() (*LocalUserJWTVerifier, error) {
 	secret := ""
 	if path := os.Getenv("USER_JWT_SECRET_FILE"); path != "" {
-		data, err := os.ReadFile(path)
+		data, err := readSecretFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("read USER_JWT_SECRET_FILE: %w", err)
 		}
 		secret = strings.TrimSpace(string(data))
 	} else if path := os.Getenv("BACKEND_TOKEN_SECRET_FILE"); path != "" {
-		data, err := os.ReadFile(path)
+		data, err := readSecretFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("read BACKEND_TOKEN_SECRET_FILE: %w", err)
 		}

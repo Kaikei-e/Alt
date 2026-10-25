@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -178,7 +180,7 @@ func loadAdminAuth() (string, bool, error) {
 	}
 
 	if path := os.Getenv("ADMIN_TOKEN_FILE"); path != "" {
-		data, err := os.ReadFile(path)
+		data, err := readSecretFile(path)
 		if err != nil {
 			return "", false, fmt.Errorf("read ADMIN_TOKEN_FILE: %w", err)
 		}
@@ -209,7 +211,7 @@ func loadEventAuth() (string, bool, error) {
 	}
 
 	if path := os.Getenv("EVENT_TOKEN_FILE"); path != "" {
-		data, err := os.ReadFile(path)
+		data, err := readSecretFile(path)
 		if err != nil {
 			return "", false, fmt.Errorf("read EVENT_TOKEN_FILE: %w", err)
 		}
@@ -273,4 +275,24 @@ func mTLSCertsConfigured() bool {
 	}
 	_, err := os.Stat("/certs/svc-cert.pem")
 	return err == nil
+}
+
+func readSecretFile(filePath string) ([]byte, error) {
+	cleaned := filepath.Clean(filePath)
+	if cleaned == "" || cleaned == "." || cleaned == "/" {
+		return nil, fmt.Errorf("invalid file path: %q", filePath)
+	}
+	root, err := os.OpenRoot(filepath.Dir(cleaned))
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	f, err := root.Open(filepath.Base(cleaned))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return io.ReadAll(f)
 }
