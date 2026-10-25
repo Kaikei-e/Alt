@@ -277,7 +277,7 @@ func mTLSCertsConfigured() bool {
 	return err == nil
 }
 
-func readSecretFile(filePath string) ([]byte, error) {
+func readSecretFile(filePath string) (data []byte, err error) {
 	cleaned := filepath.Clean(filePath)
 	if cleaned == "" || cleaned == "." || cleaned == "/" {
 		return nil, fmt.Errorf("invalid file path: %q", filePath)
@@ -286,13 +286,21 @@ func readSecretFile(filePath string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
+	defer func() {
+		if cerr := root.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	f, err := root.Open(filepath.Base(cleaned))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	return io.ReadAll(f)
 }
