@@ -111,8 +111,9 @@ func Run(ctx context.Context) error {
 	}
 	searchDriver := driver.NewMeilisearchDriverWithClients(msClient, searchOnlyClient, "articles").
 		WithHybrid(&driver.HybridConfig{
-			Embedder:      config.MeiliHybridEmbedder,
-			SemanticRatio: config.MeiliHybridSemanticRatio,
+			Embedder:         config.MeiliHybridEmbedder,
+			SemanticRatio:    config.MeiliHybridSemanticRatio,
+			MinSemanticScore: config.MeiliHybridMinSemanticScore,
 		}).
 		WithCache(config.MeiliSearchCacheSize, config.MeiliSearchCacheTTL)
 

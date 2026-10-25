@@ -24,8 +24,9 @@ var (
 	// attaches the embedder name + semantic ratio to every SearchRequest, and
 	// bootstrap declares an embedder under exactly this name -- one name for
 	// both so the declared embedder and the queried one cannot drift apart.
-	MeiliHybridEmbedder      = stringEnv("MEILI_HYBRID_EMBEDDER", "")
-	MeiliHybridSemanticRatio = floatEnv("MEILI_HYBRID_SEMANTIC_RATIO", 0.5)
+	MeiliHybridEmbedder         = stringEnv("MEILI_HYBRID_EMBEDDER", "")
+	MeiliHybridSemanticRatio    = floatEnv("MEILI_HYBRID_SEMANTIC_RATIO", 0.3)
+	MeiliHybridMinSemanticScore = floatEnv("MEILI_HYBRID_MIN_SEMANTIC_SCORE", 0.75)
 	// MeiliEmbedder* describe the embedder definition search-indexer declares
 	// on the articles index at startup.
 	//

@@ -1,8 +1,12 @@
 package driver
 
 import (
+	"context"
+	"reflect"
 	"testing"
 	"time"
+
+	"github.com/meilisearch/meilisearch-go"
 )
 
 func TestContainsCJK_Japanese(t *testing.T) {
@@ -263,5 +267,188 @@ func TestMakeSecureSearchFilter(t *testing.T) {
 				t.Errorf("makeSecureSearchFilter(%v) = %q, want %q", tt.tags, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestMeilisearchDriver_EnsureIndex_CombinesJpnAndEngLocalizedAttributes(t *testing.T) {
+	fake := newFakeIndexManager()
+	sm := &fakeServiceManager{idx: fake}
+	d := NewMeilisearchDriverWithClients(sm, nil, "articles")
+
+	if err := d.EnsureIndex(context.Background()); err != nil {
+		t.Fatalf("EnsureIndex() error = %v", err)
+	}
+
+	if len(fake.localizedAttrs) != 1 {
+		t.Fatalf("localizedAttrs rules = %d, want 1 combined rule (got %+v)", len(fake.localizedAttrs), fake.localizedAttrs)
+	}
+	wantLocales := []string{"jpn", "eng"}
+	if !reflect.DeepEqual(fake.localizedAttrs[0].Locales, wantLocales) {
+		t.Errorf("Locales = %v, want %v", fake.localizedAttrs[0].Locales, wantLocales)
+	}
+	wantPatterns := []string{"title", "content", "tags"}
+	if !reflect.DeepEqual(fake.localizedAttrs[0].AttributePatterns, wantPatterns) {
+		t.Errorf("AttributePatterns = %v, want %v", fake.localizedAttrs[0].AttributePatterns, wantPatterns)
+	}
+}
+
+func TestMeilisearchDriver_SearchMethods_DoNotOverrideLocalesOnCJKQuery(t *testing.T) {
+	cjkQuery := "GPT-4o と Claude ゼレンスキー"
+
+	t.Run("SearchByUserID", func(t *testing.T) {
+		fake := newFakeIndexManager()
+		sm := &fakeServiceManager{idx: fake}
+		d := NewMeilisearchDriverWithClients(sm, nil, "articles")
+
+		if _, err := d.SearchByUserID(context.Background(), cjkQuery, "u1", 10); err != nil {
+			t.Fatalf("SearchByUserID() error = %v", err)
+		}
+		if len(fake.lastSearchReq.Locales) != 0 {
+			t.Errorf("SearchByUserID Locales = %v, want empty so Meilisearch uses all configured index locales", fake.lastSearchReq.Locales)
+		}
+	})
+
+	t.Run("SearchByUserIDWithPagination", func(t *testing.T) {
+		fake := newFakeIndexManager()
+		sm := &fakeServiceManager{idx: fake}
+		d := NewMeilisearchDriverWithClients(sm, nil, "articles")
+
+		if _, _, err := d.SearchByUserIDWithPagination(context.Background(), cjkQuery, "u1", 0, 20); err != nil {
+			t.Fatalf("SearchByUserIDWithPagination() error = %v", err)
+		}
+		if len(fake.lastSearchReq.Locales) != 0 {
+			t.Errorf("SearchByUserIDWithPagination Locales = %v, want empty so Meilisearch uses all configured index locales", fake.lastSearchReq.Locales)
+		}
+	})
+
+	t.Run("SearchByUserIDWithDateFilter", func(t *testing.T) {
+		fake := newFakeIndexManager()
+		sm := &fakeServiceManager{idx: fake}
+		d := NewMeilisearchDriverWithClients(sm, nil, "articles")
+		after := time.Unix(1700000000, 0)
+
+		if _, err := d.SearchByUserIDWithDateFilter(context.Background(), cjkQuery, "u1", &after, nil, 10); err != nil {
+			t.Fatalf("SearchByUserIDWithDateFilter() error = %v", err)
+		}
+		if len(fake.lastSearchReq.Locales) != 0 {
+			t.Errorf("SearchByUserIDWithDateFilter Locales = %v, want empty so Meilisearch uses all configured index locales", fake.lastSearchReq.Locales)
+		}
+	})
+}
+
+func TestMeilisearchDriver_FiltersLowScorePureVectorHits_PreservesBM25Hits_AndClampsEstimatedTotal(t *testing.T) {
+	fake := newFakeIndexManager()
+	// Simulate hybrid search response for a query like "小浜" or "ゼレンスキー":
+	// - hit 1: BM25 content-only hit with _rankingScore = 0.7020 (< 0.75, MUST be kept because "words" is present)
+	// - hit 2: BM25 content-only hit with _rankingScore = 0.6869 (< 0.75, MUST be kept because "words" is present)
+	// - hit 3: Pure vector hit with _rankingScore = 0.8100 (>= 0.75, MUST be kept)
+	// - hit 4: Pure vector noise hit with _rankingScore = 0.7100 (< 0.75, MUST be dropped)
+	// - hit 5: Pure vector noise hit with _rankingScore = 0.6850 (< 0.75, MUST be dropped)
+	fake.searchResp = &meilisearch.SearchResponse{
+		Hits: meilisearch.Hits{
+			makeHit(t, map[string]any{
+				"id":            "bm25-1",
+				"title":         "Article 1",
+				"_rankingScore": 0.7020,
+				"_rankingScoreDetails": map[string]any{
+					"words": map[string]any{"order": 0, "matchingWords": 1, "maxMatchingWords": 1, "score": 1.0},
+				},
+			}),
+			makeHit(t, map[string]any{
+				"id":            "bm25-2",
+				"title":         "Article 2",
+				"_rankingScore": 0.6869,
+				"_rankingScoreDetails": map[string]any{
+					"words":      map[string]any{"order": 0, "matchingWords": 1, "maxMatchingWords": 1, "score": 1.0},
+					"vectorSort": map[string]any{"order": 1, "similarity": 0.6869},
+				},
+			}),
+			makeHit(t, map[string]any{
+				"id":            "vec-high",
+				"title":         "Semantic Match",
+				"_rankingScore": 0.8100,
+				"_rankingScoreDetails": map[string]any{
+					"vectorSort": map[string]any{"order": 0, "similarity": 0.8100},
+				},
+			}),
+			makeHit(t, map[string]any{
+				"id":            "vec-noise-1",
+				"title":         "Unrelated 1",
+				"_rankingScore": 0.7100,
+				"_rankingScoreDetails": map[string]any{
+					"vectorSort": map[string]any{"order": 0, "similarity": 0.7100},
+				},
+			}),
+			makeHit(t, map[string]any{
+				"id":            "vec-noise-2",
+				"title":         "Unrelated 2",
+				"_rankingScore": 0.6850,
+				"_rankingScoreDetails": map[string]any{
+					"vectorSort": map[string]any{"order": 0, "similarity": 0.6850},
+				},
+			}),
+		},
+		EstimatedTotalHits: 1000,
+		ProcessingTimeMs:   12,
+	}
+
+	sm := &fakeServiceManager{idx: fake}
+	d := NewMeilisearchDriverWithClients(sm, nil, "articles").WithHybrid(&HybridConfig{
+		Embedder:         "bge-m3",
+		SemanticRatio:    0.3,
+		MinSemanticScore: 0.75,
+	})
+
+	docs, total, err := d.SearchByUserIDWithPagination(context.Background(), "小浜", "u1", 0, 20)
+	if err != nil {
+		t.Fatalf("SearchByUserIDWithPagination() error = %v", err)
+	}
+
+	if len(docs) != 3 {
+		t.Fatalf("len(docs) = %d, want 3 (2 BM25 + 1 high-score vector); got %+v", len(docs), docs)
+	}
+	wantIDs := []string{"bm25-1", "bm25-2", "vec-high"}
+	for i, wantID := range wantIDs {
+		if docs[i].ID != wantID {
+			t.Errorf("docs[%d].ID = %q, want %q", i, docs[i].ID, wantID)
+		}
+	}
+	if total != 3 {
+		t.Errorf("estimatedTotal = %d, want 3 (clamped from 1000 because pure vector tail was filtered)", total)
+	}
+}
+
+func TestMeilisearchDriver_AllPureVectorNoiseFiltered_ClampsEstimatedTotalToZero(t *testing.T) {
+	fake := newFakeIndexManager()
+	fake.searchResp = &meilisearch.SearchResponse{
+		Hits: meilisearch.Hits{
+			makeHit(t, map[string]any{
+				"id":            "vec-noise-1",
+				"title":         "Unrelated 1",
+				"_rankingScore": 0.695,
+				"_rankingScoreDetails": map[string]any{
+					"vectorSort": map[string]any{"order": 0, "similarity": 0.695},
+				},
+			}),
+		},
+		EstimatedTotalHits: 1000,
+	}
+
+	sm := &fakeServiceManager{idx: fake}
+	d := NewMeilisearchDriverWithClients(sm, nil, "articles").WithHybrid(&HybridConfig{
+		Embedder:         "bge-m3",
+		SemanticRatio:    0.3,
+		MinSemanticScore: 0.75,
+	})
+
+	docs, total, err := d.SearchByUserIDWithPagination(context.Background(), "nonexistent", "u1", 0, 20)
+	if err != nil {
+		t.Fatalf("SearchByUserIDWithPagination() error = %v", err)
+	}
+	if len(docs) != 0 {
+		t.Errorf("len(docs) = %d, want 0", len(docs))
+	}
+	if total != 0 {
+		t.Errorf("estimatedTotal = %d, want 0", total)
 	}
 }

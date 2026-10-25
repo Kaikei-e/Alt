@@ -5,6 +5,7 @@ import (
 	"alt/orchestrator/port/feed_url_link_port"
 	"alt/orchestrator/port/search_indexer_port"
 	"context"
+	"html"
 	"log/slog"
 	"strings"
 	"unicode/utf8"
@@ -67,18 +68,62 @@ func (g *ArticleSearchGateway) SearchArticlesForGlobal(ctx context.Context, quer
 	}, nil
 }
 
+// stripHTMLTags removes HTML tags, decodes HTML entities, and collapses whitespace.
+func stripHTMLTags(s string) string {
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	inTag := false
+	for _, r := range s {
+		switch {
+		case r == '<':
+			inTag = true
+		case r == '>':
+			if inTag {
+				inTag = false
+				continue
+			}
+			b.WriteRune(r)
+		case !inTag:
+			b.WriteRune(r)
+		}
+	}
+	unescaped := html.UnescapeString(b.String())
+	return strings.Join(strings.Fields(unescaped), " ")
+}
+
+func containsAnyToken(textLower string, tokens []string) bool {
+	for _, token := range tokens {
+		if token != "" && strings.Contains(textLower, token) {
+			return true
+		}
+	}
+	return false
+}
+
 // detectMatchedFields determines which fields matched the query.
 func detectMatchedFields(hit domain.SearchIndexerArticleHit, queryLower string) []string {
+	tokens := strings.Fields(queryLower)
+	if len(tokens) == 0 {
+		if queryLower == "" {
+			return nil
+		}
+		tokens = []string{queryLower}
+	}
+
 	var matched []string
 
-	if strings.Contains(strings.ToLower(hit.Title), queryLower) {
+	if containsAnyToken(strings.ToLower(hit.Title), tokens) {
 		matched = append(matched, "title")
 	}
-	if strings.Contains(strings.ToLower(hit.Content), queryLower) {
+	cleanContent := stripHTMLTags(hit.Content)
+	if containsAnyToken(strings.ToLower(cleanContent), tokens) {
 		matched = append(matched, "content")
 	}
 	for _, tag := range hit.Tags {
-		if strings.Contains(strings.ToLower(tag), queryLower) {
+		if containsAnyToken(strings.ToLower(tag), tokens) {
 			matched = append(matched, "tags")
 			break
 		}
@@ -136,12 +181,13 @@ func mapHitsToGlobalArticleHits(hits []domain.SearchIndexerArticleHit, urlMap ma
 	queryLower := strings.ToLower(query)
 	articleHits := make([]domain.GlobalArticleHit, len(hits))
 	for i, hit := range hits {
+		cleanContent := stripHTMLTags(hit.Content)
 		matchedFields := detectMatchedFields(hit, queryLower)
 
 		articleHits[i] = domain.GlobalArticleHit{
 			ID:            hit.ID,
 			Title:         sanitizeUTF8(hit.Title),
-			Snippet:       truncateSnippet(hit.Content, 200),
+			Snippet:       truncateSnippet(cleanContent, 200),
 			Link:          urlMap[hit.ID],
 			Tags:          hit.Tags,
 			MatchedFields: matchedFields,

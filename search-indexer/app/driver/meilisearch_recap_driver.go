@@ -128,6 +128,21 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to wait for sortable attributes update: %w", err)}
 	}
 
+	// Localized attributes for Japanese and English recap fields in a single rule
+	localizedAttrs := []*meilisearch.LocalizedAttributes{
+		{
+			Locales:           []string{"jpn", "eng"},
+			AttributePatterns: []string{"tags", "top_terms", "summary", "genre"},
+		},
+	}
+	localizedTask, err := d.index.UpdateLocalizedAttributesWithContext(ctx, localizedAttrs)
+	if err != nil {
+		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to set localized attributes: %w", err)}
+	}
+	if _, err := d.waitForTask(ctx, localizedTask.TaskUID); err != nil {
+		return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to wait for localized attributes update: %w", err)}
+	}
+
 	return nil
 }
 
@@ -153,8 +168,9 @@ func (d *MeilisearchRecapDriver) IndexDocuments(ctx context.Context, docs []Reca
 // Search searches the recaps index.
 func (d *MeilisearchRecapDriver) Search(ctx context.Context, query string, limit int) ([]RecapDocumentDriver, int64, error) {
 	result, err := d.index.SearchWithContext(ctx, query, &meilisearch.SearchRequest{
-		Limit: int64(limit),
-		Sort:  []string{"executed_at:desc"},
+		Limit:            int64(limit),
+		Sort:             []string{"executed_at:desc"},
+		MatchingStrategy: meilisearch.Frequency,
 	})
 	if err != nil {
 		return nil, 0, &DriverError{Op: "SearchRecaps", Err: err}

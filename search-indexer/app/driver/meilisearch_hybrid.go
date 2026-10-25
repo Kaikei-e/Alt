@@ -12,16 +12,22 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 )
 
-// HybridConfig captures the two Meilisearch hybrid-search fields.
+// HybridConfig captures the Meilisearch hybrid-search fields plus the
+// pure-vector noise cutoff applied by the driver.
 //
 // Embedder is the name of an embedder registered on the index (e.g.
 // "bge-m3"). An empty string disables hybrid mode.
 //
 // SemanticRatio is clamped to [0.0, 1.0]. 0.0 ≈ BM25-only, 1.0 ≈ vector-only,
-// 0.5 is the balanced default we ship with ADR-000778.
+// 0.3 keeps BM25 dominant while allowing semantic recall.
+//
+// MinSemanticScore drops pure-vector hits (no "words" match in
+// _rankingScoreDetails) whose _rankingScore falls below this threshold while
+// preserving all BM25 lexical matches regardless of score.
 type HybridConfig struct {
-	Embedder      string
-	SemanticRatio float64
+	Embedder         string
+	SemanticRatio    float64
+	MinSemanticScore float64
 }
 
 // Enabled reports whether the driver should attach hybrid params.

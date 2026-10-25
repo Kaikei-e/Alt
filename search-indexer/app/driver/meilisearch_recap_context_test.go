@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +19,9 @@ type fakeRecapIndexManager struct {
 
 	mu    sync.Mutex
 	calls map[string]context.Context
+
+	localizedAttrs []*meilisearch.LocalizedAttributes
+	lastSearchReq  *meilisearch.SearchRequest
 
 	// fetchInfoErr makes EnsureIndex take the index-creation branch, which is
 	// the one that runs at startup before the HTTP listeners open.
@@ -179,13 +183,27 @@ func (f *fakeRecapIndexManager) UpdateSortableAttributesWithContext(ctx context.
 	return &meilisearch.TaskInfo{TaskUID: 5}, nil
 }
 
+func (f *fakeRecapIndexManager) UpdateLocalizedAttributesWithContext(ctx context.Context, attrs []*meilisearch.LocalizedAttributes) (*meilisearch.TaskInfo, error) {
+	f.mu.Lock()
+	f.localizedAttrs = attrs
+	f.mu.Unlock()
+	f.record("UpdateLocalizedAttributes", ctx)
+	if err := f.stallCtx(ctx); err != nil {
+		return nil, err
+	}
+	return &meilisearch.TaskInfo{TaskUID: 6}, nil
+}
+
 func (f *fakeRecapIndexManager) Search(_ string, _ *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
 	f.record("SearchNoContext", context.Background())
 	f.stallNoCtx()
 	return &meilisearch.SearchResponse{}, nil
 }
 
-func (f *fakeRecapIndexManager) SearchWithContext(ctx context.Context, _ string, _ *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
+func (f *fakeRecapIndexManager) SearchWithContext(ctx context.Context, _ string, req *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
+	f.mu.Lock()
+	f.lastSearchReq = req
+	f.mu.Unlock()
 	f.record("Search", ctx)
 	if err := f.stallCtx(ctx); err != nil {
 		return nil, err
@@ -345,10 +363,23 @@ func TestMeilisearchRecapDriver_EnsureIndex_PropagatesCallerContext(t *testing.T
 		"UpdateSearchableAttributes",
 		"UpdateFilterableAttributes",
 		"UpdateSortableAttributes",
+		"UpdateLocalizedAttributes",
 	} {
 		if got := markerOf(fake.ctxFor(call)); got != "caller-marker" {
 			t.Fatalf("%s ctx marker = %q, want the caller's context to propagate", call, got)
 		}
+	}
+
+	if len(fake.localizedAttrs) != 1 {
+		t.Fatalf("recap localizedAttrs rules = %d, want 1", len(fake.localizedAttrs))
+	}
+	wantLocales := []string{"jpn", "eng"}
+	if !reflect.DeepEqual(fake.localizedAttrs[0].Locales, wantLocales) {
+		t.Errorf("recap Locales = %v, want %v", fake.localizedAttrs[0].Locales, wantLocales)
+	}
+	wantPatterns := []string{"tags", "top_terms", "summary", "genre"}
+	if !reflect.DeepEqual(fake.localizedAttrs[0].AttributePatterns, wantPatterns) {
+		t.Errorf("recap AttributePatterns = %v, want %v", fake.localizedAttrs[0].AttributePatterns, wantPatterns)
 	}
 }
 
@@ -383,6 +414,12 @@ func TestMeilisearchRecapDriver_Search_PropagatesCallerContext(t *testing.T) {
 
 	if got := markerOf(fake.ctxFor("Search")); got != "caller-marker" {
 		t.Fatalf("SearchWithContext ctx marker = %q, want the caller's context to propagate", got)
+	}
+	if fake.lastSearchReq == nil {
+		t.Fatal("expected SearchWithContext to receive a SearchRequest")
+	}
+	if fake.lastSearchReq.MatchingStrategy != meilisearch.Frequency {
+		t.Errorf("recap Search MatchingStrategy = %q, want %q", fake.lastSearchReq.MatchingStrategy, meilisearch.Frequency)
 	}
 }
 

@@ -31,6 +31,10 @@ type fakeIndexManager struct {
 	mu    sync.Mutex
 	calls map[string]context.Context
 
+	localizedAttrs []*meilisearch.LocalizedAttributes
+	lastSearchReq  *meilisearch.SearchRequest
+	searchResp     *meilisearch.SearchResponse
+
 	// waitBlock simulates a Meilisearch task that never completes -- the
 	// exact scenario the old WaitForTask(taskUID, 15*time.Second) misuse
 	// could not bound, since its second argument is a poll interval, not a
@@ -91,7 +95,10 @@ func (f *fakeIndexManager) UpdateRankingRulesWithContext(ctx context.Context, _ 
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) UpdateLocalizedAttributesWithContext(ctx context.Context, _ []*meilisearch.LocalizedAttributes) (*meilisearch.TaskInfo, error) {
+func (f *fakeIndexManager) UpdateLocalizedAttributesWithContext(ctx context.Context, attrs []*meilisearch.LocalizedAttributes) (*meilisearch.TaskInfo, error) {
+	f.mu.Lock()
+	f.localizedAttrs = attrs
+	f.mu.Unlock()
 	f.record("UpdateLocalizedAttributes", ctx)
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
@@ -106,8 +113,15 @@ func (f *fakeIndexManager) UpdateSynonymsWithContext(ctx context.Context, _ *map
 	return &meilisearch.TaskInfo{TaskUID: 1}, nil
 }
 
-func (f *fakeIndexManager) SearchWithContext(ctx context.Context, _ string, _ *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
+func (f *fakeIndexManager) SearchWithContext(ctx context.Context, _ string, req *meilisearch.SearchRequest) (*meilisearch.SearchResponse, error) {
+	f.mu.Lock()
+	f.lastSearchReq = req
+	resp := f.searchResp
+	f.mu.Unlock()
 	f.record("Search", ctx)
+	if resp != nil {
+		return resp, nil
+	}
 	return &meilisearch.SearchResponse{}, nil
 }
 

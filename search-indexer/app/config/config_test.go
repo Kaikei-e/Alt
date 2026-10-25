@@ -282,3 +282,12 @@ func TestMeiliEmbedderURLDefaultsToEmbeddingProxy(t *testing.T) {
 
 	assert.Equal(t, "http://embedding-proxy:11436/api/embed", MeiliEmbedderURL)
 }
+
+func TestMeiliHybridDefaults(t *testing.T) {
+	if os.Getenv("MEILI_HYBRID_SEMANTIC_RATIO") == "" {
+		assert.InDelta(t, 0.3, MeiliHybridSemanticRatio, 1e-9)
+	}
+	if os.Getenv("MEILI_HYBRID_MIN_SEMANTIC_SCORE") == "" {
+		assert.InDelta(t, 0.75, MeiliHybridMinSemanticScore, 1e-9)
+	}
+}

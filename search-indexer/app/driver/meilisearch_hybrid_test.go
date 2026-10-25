@@ -2,6 +2,8 @@ package driver
 
 import (
 	"testing"
+
+	"github.com/meilisearch/meilisearch-go"
 )
 
 func TestHybridConfig_Enabled(t *testing.T) {
@@ -62,7 +64,7 @@ func TestHybridConfig_ToSDK_ClampsSemanticRatio(t *testing.T) {
 }
 
 func TestMeilisearchDriver_AppliesHybridToSearchRequest(t *testing.T) {
-	d := &MeilisearchDriver{hybrid: &HybridConfig{Embedder: "qwen3", SemanticRatio: 0.5}}
+	d := &MeilisearchDriver{hybrid: &HybridConfig{Embedder: "qwen3", SemanticRatio: 0.3, MinSemanticScore: 0.75}}
 	req := d.newBaseSearchRequest("", 10)
 	if req.Hybrid == nil {
 		t.Fatal("expected Hybrid to be attached when hybrid config is present")
@@ -70,8 +72,14 @@ func TestMeilisearchDriver_AppliesHybridToSearchRequest(t *testing.T) {
 	if req.Hybrid.Embedder != "qwen3" {
 		t.Errorf("Embedder=%q want qwen3", req.Hybrid.Embedder)
 	}
-	if req.Hybrid.SemanticRatio != 0.5 {
-		t.Errorf("SemanticRatio=%v want 0.5", req.Hybrid.SemanticRatio)
+	if req.Hybrid.SemanticRatio != 0.3 {
+		t.Errorf("SemanticRatio=%v want 0.3", req.Hybrid.SemanticRatio)
+	}
+	if !req.ShowRankingScoreDetails {
+		t.Error("expected ShowRankingScoreDetails=true when hybrid is enabled")
+	}
+	if req.MatchingStrategy != meilisearch.Frequency {
+		t.Errorf("MatchingStrategy=%q want %q", req.MatchingStrategy, meilisearch.Frequency)
 	}
 }
 
@@ -80,5 +88,11 @@ func TestMeilisearchDriver_NoHybridWhenUnconfigured(t *testing.T) {
 	req := d.newBaseSearchRequest("", 10)
 	if req.Hybrid != nil {
 		t.Errorf("Hybrid should be nil when no config, got %+v", req.Hybrid)
+	}
+	if req.ShowRankingScoreDetails {
+		t.Error("expected ShowRankingScoreDetails=false when hybrid is disabled")
+	}
+	if req.MatchingStrategy != meilisearch.Frequency {
+		t.Errorf("MatchingStrategy=%q want %q", req.MatchingStrategy, meilisearch.Frequency)
 	}
 }

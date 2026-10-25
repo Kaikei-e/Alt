@@ -174,13 +174,15 @@ func (d *MeilisearchDriver) hybridSnapshot() (string, float64) {
 // wire and in the LRU cache.
 func (d *MeilisearchDriver) newBaseSearchRequest(query string, limit int) *meilisearch.SearchRequest {
 	return &meilisearch.SearchRequest{
-		Query:                query,
-		Limit:                int64(limit),
-		ShowRankingScore:     true,
-		Hybrid:               d.hybrid.toSDK(),
-		AttributesToRetrieve: []string{"id", "title", "tags", "user_id", "language", "published_at"},
-		AttributesToCrop:     []string{"content"},
-		CropLength:           120,
+		Query:                   query,
+		Limit:                   int64(limit),
+		ShowRankingScore:        true,
+		ShowRankingScoreDetails: d.hybrid.Enabled(),
+		MatchingStrategy:        meilisearch.Frequency,
+		Hybrid:                  d.hybrid.toSDK(),
+		AttributesToRetrieve:    []string{"id", "title", "tags", "user_id", "language", "published_at"},
+		AttributesToCrop:        []string{"content"},
+		CropLength:              120,
 	}
 }
 
@@ -250,14 +252,39 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 	return nil
 }
 
-// hitsToDocs flattens a Meilisearch result slice into SearchDocumentDriver
-// values, preserving the language and published_at attributes that used to
-// be dropped silently at this boundary. Content is sourced from the cropped
-// variant (Meilisearch _formatted.content) so the driver never carries the
-// full body.
-func (d *MeilisearchDriver) hitsToDocs(hits []meilisearch.Hit) []SearchDocumentDriver {
+// isPureVectorHit reports whether a Meilisearch hit matched exclusively via
+// vector similarity (i.e. _rankingScoreDetails contains "vectorSort" and
+// has no lexical "words" rule entry).
+func isPureVectorHit(hit meilisearch.Hit) bool {
+	raw, ok := hit["_rankingScoreDetails"]
+	if !ok {
+		return false
+	}
+	var details map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &details); err != nil {
+		return false
+	}
+	if _, hasWords := details["words"]; hasWords {
+		return false
+	}
+	_, hasVector := details["vectorSort"]
+	return hasVector
+}
+
+// filterHitsToDocs flattens a Meilisearch result slice into
+// SearchDocumentDriver values while dropping pure-vector noise hits whose
+// _rankingScore falls below HybridConfig.MinSemanticScore. BM25 lexical hits
+// (where _rankingScoreDetails includes "words") are always preserved.
+func (d *MeilisearchDriver) filterHitsToDocs(hits []meilisearch.Hit) ([]SearchDocumentDriver, bool) {
 	docs := make([]SearchDocumentDriver, 0, len(hits))
+	filteredVectorTail := false
+	filterEnabled := d.hybrid.Enabled() && d.hybrid.MinSemanticScore > 0
 	for _, hit := range hits {
+		score := d.getFloat64(hit, "_rankingScore")
+		if filterEnabled && isPureVectorHit(hit) && score < d.hybrid.MinSemanticScore {
+			filteredVectorTail = true
+			continue
+		}
 		docs = append(docs, SearchDocumentDriver{
 			ID:          d.getString(hit, "id"),
 			Title:       d.getString(hit, "title"),
@@ -265,10 +292,20 @@ func (d *MeilisearchDriver) hitsToDocs(hits []meilisearch.Hit) []SearchDocumentD
 			Tags:        d.getStringSlice(hit, "tags"),
 			UserID:      d.getString(hit, "user_id"),
 			Language:    d.getString(hit, "language"),
-			Score:       d.getFloat64(hit, "_rankingScore"),
+			Score:       score,
 			PublishedAt: d.getInt64(hit, "published_at"),
 		})
 	}
+	return docs, filteredVectorTail
+}
+
+// hitsToDocs flattens a Meilisearch result slice into SearchDocumentDriver
+// values, preserving the language and published_at attributes that used to
+// be dropped silently at this boundary. Content is sourced from the cropped
+// variant (Meilisearch _formatted.content) so the driver never carries the
+// full body.
+func (d *MeilisearchDriver) hitsToDocs(hits []meilisearch.Hit) []SearchDocumentDriver {
+	docs, _ := d.filterHitsToDocs(hits)
 	return docs
 }
 
@@ -359,18 +396,12 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		}
 	}
 
-	// Set localized attributes for Japanese content.
-	// Without this, Meilisearch uses its default tokenizer which splits CJK text
-	// incorrectly, causing 0 results for Japanese BM25 queries.
-	// Multiple locale rules allow Meilisearch to auto-detect the content language
-	// and apply the correct tokenizer. Articles contain both Japanese and English text.
+	// Set localized attributes for Japanese and English content in a single
+	// rule (Meilisearch evaluates attributePatterns with first-match-wins, so
+	// separate rules with identical patterns leave the second rule unreachable).
 	localizedAttrs := []*meilisearch.LocalizedAttributes{
 		{
-			Locales:           []string{"jpn"},
-			AttributePatterns: []string{"title", "content", "tags"},
-		},
-		{
-			Locales:           []string{"eng"},
+			Locales:           []string{"jpn", "eng"},
 			AttributePatterns: []string{"title", "content", "tags"},
 		},
 	}
@@ -516,9 +547,6 @@ func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, us
 	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
 		req := d.newBaseSearchRequest(query, limit)
 		req.Filter = filter
-		if containsCJK(query) {
-			req.Locales = []string{"jpn"}
-		}
 		result, err := d.searchIndex.SearchWithContext(ctx, query, req)
 		if err != nil {
 			return cacheEntry{}, err
@@ -567,18 +595,19 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 		paginReq := d.newBaseSearchRequest(query, int(limit))
 		paginReq.Offset = offset
 		paginReq.Filter = filter
-		if containsCJK(query) {
-			paginReq.Locales = []string{"jpn"}
-		}
 		result, err := d.searchIndex.SearchWithContext(ctx, query, paginReq)
 		if err != nil {
 			return cacheEntry{}, err
 		}
 		d.recordProcessing(ctx, "SearchByUserIDWithPagination", result)
-		docs := d.hitsToDocs(result.Hits)
+		docs, filteredVectorTail := d.filterHitsToDocs(result.Hits)
+		estimatedTotal := result.EstimatedTotalHits
+		if filteredVectorTail {
+			estimatedTotal = offset + int64(len(docs))
+		}
 		e := cacheEntry{
 			Docs:           docs,
-			EstimatedTotal: result.EstimatedTotalHits,
+			EstimatedTotal: estimatedTotal,
 			ProcessingMs:   result.ProcessingTimeMs,
 		}
 		d.cache.put(key, e)
@@ -613,9 +642,6 @@ func (d *MeilisearchDriver) SearchByUserIDWithDateFilter(ctx context.Context, qu
 	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
 		req := d.newBaseSearchRequest(query, limit)
 		req.Filter = filter
-		if containsCJK(query) {
-			req.Locales = []string{"jpn"}
-		}
 		result, err := d.searchIndex.SearchWithContext(ctx, query, req)
 		if err != nil {
 			return cacheEntry{}, err

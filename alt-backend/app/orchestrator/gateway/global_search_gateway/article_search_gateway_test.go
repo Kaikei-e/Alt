@@ -184,3 +184,62 @@ func TestArticleSearchGatewayPureHelpers(t *testing.T) {
 		t.Errorf("expected title to match")
 	}
 }
+
+func TestArticleSearchGateway_StripsHTMLAndUnescapesSnippet(t *testing.T) {
+	hits := []domain.SearchIndexerArticleHit{
+		{
+			ID:      "art-html",
+			Title:   "イラン情勢の最新動向",
+			Content: "<p><img src=\"https://example.com/iran.jpg\" alt=\"banner\"></p>\n<p>イラン情勢が緊迫化する中、 &amp; 中東地域の外交交渉が続いています。</p>",
+			Tags:    []string{"中東", "外交"},
+		},
+	}
+	urlMap := map[string]string{"art-html": "https://example.com/art-html"}
+
+	globalHits := mapHitsToGlobalArticleHits(hits, urlMap, "イラン情勢 中東")
+	if len(globalHits) != 1 {
+		t.Fatalf("expected 1 hit, got %d", len(globalHits))
+	}
+
+	gotSnippet := globalHits[0].Snippet
+	wantSnippet := "イラン情勢が緊迫化する中、 & 中東地域の外交交渉が続いています。"
+	if gotSnippet != wantSnippet {
+		t.Errorf("Snippet = %q, want %q", gotSnippet, wantSnippet)
+	}
+}
+
+func TestDetectMatchedFields_MultiTermAndStrippedHTML(t *testing.T) {
+	t.Run("multi-term query matches individual tokens across title, content, and tags", func(t *testing.T) {
+		hit := domain.SearchIndexerArticleHit{
+			ID:      "art-1",
+			Title:   "イラン情勢の解説",
+			Content: "<p>この記事では中東におけるエネルギー安全保障を扱います。</p>",
+			Tags:    []string{"中東情勢"},
+		}
+
+		matched := detectMatchedFields(hit, "イラン情勢 中東")
+		if !containsStr(matched, "title") {
+			t.Errorf("expected 'title' in matched fields, got %v", matched)
+		}
+		if !containsStr(matched, "content") {
+			t.Errorf("expected 'content' in matched fields, got %v", matched)
+		}
+		if !containsStr(matched, "tags") {
+			t.Errorf("expected 'tags' in matched fields, got %v", matched)
+		}
+	})
+
+	t.Run("does not match query terms inside HTML tag attributes", func(t *testing.T) {
+		hit := domain.SearchIndexerArticleHit{
+			ID:      "art-2",
+			Title:   "別のトピック",
+			Content: `<p><img src="https://example.com/zelenskyy.jpg"></p><p>本文には該当語なし</p>`,
+			Tags:    []string{"general"},
+		}
+
+		matched := detectMatchedFields(hit, "zelenskyy")
+		if containsStr(matched, "content") {
+			t.Errorf("expected 'content' NOT to match HTML attribute URL, got %v", matched)
+		}
+	})
+}
