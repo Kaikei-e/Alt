@@ -24,7 +24,7 @@ all interfaces and are out of scope here.
 
 | Service | Language | Host Port(s) | Compose File | Health Endpoint | Notes |
 |---------|----------|--------------|--------------|-----------------|-------|
-| plecto-proxy | Rust (PlectoProxy 0.11.1) | 80 → 8443, 8080 | core.yaml | `plecto healthz` / admin `/healthz` `/readyz` (:8080) | Edge/ingress; replaced nginx. Routes in `plecto/manifest.toml`。upstream は alt-frontend-sv / alt-backend / kratos の 3 本 |
+| plecto-proxy | Rust (PlectoProxy 0.15.4) | 80 → 8443, 8080 | core.yaml | `plecto healthz` / admin `/healthz` `/readyz` (:8080) | Edge/ingress; replaced nginx. Routes in `plecto/manifest.toml`。upstream は alt-frontend-sv / alt-backend / kratos の 3 本 |
 | alt-frontend-sv | TypeScript (SvelteKit 2.x, Bun) | 4173 | core.yaml | `/health` | メイン FE。`/home`（Knowledge Home、今日の入口）/ `/knowledge/trail`（resume surface）/ `/feeds`（フィード一覧・購読管理）/ `/admin/knowledge-home`（Knowledge Home admin） |
 | alt-backend | Go 1.27.1 (Echo) | 9000, 9101, 9102 | core.yaml | `/v1/health` (:9000), `/health` `/health/deep` (:9110) | User-facing API。Knowledge Home の admin / reproject API は持つが projector 本体は knowledge-sovereign 側。rag-orchestrator hop へ `X-Alt-Tenant-Id` を forward ([[000905]]) |
 | alt-harvester | Go 1.27.1 | なし | core.yaml | `/health` (:9110) | 7 定期ジョブ専用。業務リスナーなし |

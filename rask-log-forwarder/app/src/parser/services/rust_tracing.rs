@@ -266,10 +266,10 @@ mod tests {
     fn test_can_parse_flattened_tracing_json() {
         let parser = RustTracingParser::new();
 
-        // plecto 0.7.0 renders every event's fields at the line root instead of
-        // nesting them under "fields". "target" is what still marks the line as
-        // tracing output once the nesting is gone.
-        let flat = r#"{"timestamp":"2026-08-11T14:31:32.082058Z","level":"INFO","message":"access","client":"172.18.0.1","scheme":"http","method":"GET","authority":"example.com","path":"/","status":200,"duration_ms":26,"trace_id":"18cac6b721dfff4f0000000000000001","span_id":"0000000000000002","target":"plecto::access"}"#;
+        // plecto 0.7.0+ renders every event's fields at the line root instead of
+        // nesting them under "fields" (0.12.0+ adds the top-level "route" field).
+        // "target" is what still marks the line as tracing output once the nesting is gone.
+        let flat = r#"{"timestamp":"2026-08-11T14:31:32.082058Z","level":"INFO","message":"access","client":"172.18.0.1","scheme":"http","method":"GET","authority":"example.com","path":"/","route":"/","status":200,"duration_ms":26,"trace_id":"18cac6b721dfff4f0000000000000001","span_id":"0000000000000002","target":"plecto::access"}"#;
 
         assert!(
             parser.can_parse(flat),
@@ -281,7 +281,7 @@ mod tests {
     fn test_parse_flattened_access_log_keeps_bare_http_keys() {
         let parser = RustTracingParser::new();
 
-        let flat = r#"{"timestamp":"2026-08-11T14:31:32.082058Z","level":"INFO","message":"access","client":"172.18.0.1","scheme":"http","method":"GET","authority":"example.com","path":"/","status":200,"duration_ms":26,"trace_id":"18cac6b721dfff4f0000000000000001","span_id":"0000000000000002","target":"plecto::access"}"#;
+        let flat = r#"{"timestamp":"2026-08-11T14:31:32.082058Z","level":"INFO","message":"access","client":"172.18.0.1","scheme":"http","method":"GET","authority":"example.com","path":"/","route":"/","status":200,"duration_ms":26,"trace_id":"18cac6b721dfff4f0000000000000001","span_id":"0000000000000002","target":"plecto::access"}"#;
 
         let entry = parser.parse_log(flat).unwrap();
 
@@ -295,6 +295,7 @@ mod tests {
         // columns (which the aggregator would rename to http_method/http_path/...).
         assert_eq!(entry.fields.get("method"), Some(&"GET".to_string()));
         assert_eq!(entry.fields.get("path"), Some(&"/".to_string()));
+        assert_eq!(entry.fields.get("route"), Some(&"/".to_string()));
         assert_eq!(entry.fields.get("status"), Some(&"200".to_string()));
         assert_eq!(entry.fields.get("client"), Some(&"172.18.0.1".to_string()));
         assert_eq!(entry.fields.get("duration_ms"), Some(&"26".to_string()));

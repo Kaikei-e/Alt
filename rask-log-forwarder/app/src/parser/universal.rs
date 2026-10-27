@@ -726,9 +726,9 @@ mod tests {
         };
         let parser = UniversalParser::new();
 
-        // plecto 0.7.0 writes the access log flat, with the trace context on every
-        // transaction rather than only sampled ones.
-        let docker_log = r#"{"log":"{\"timestamp\":\"2026-08-11T14:31:32.082058Z\",\"level\":\"INFO\",\"message\":\"access\",\"client\":\"172.18.0.1\",\"scheme\":\"http\",\"method\":\"GET\",\"authority\":\"example.com\",\"path\":\"/\",\"status\":200,\"duration_ms\":26,\"trace_id\":\"18cac6b721dfff4f0000000000000001\",\"span_id\":\"0000000000000002\",\"target\":\"plecto::access\"}\n","stream":"stdout","time":"2026-08-11T14:31:32Z"}"#;
+        // plecto 0.7.0+ writes the access log flat, with the trace context on every
+        // transaction rather than only sampled ones (0.12.0+ adds "route").
+        let docker_log = r#"{"log":"{\"timestamp\":\"2026-08-11T14:31:32.082058Z\",\"level\":\"INFO\",\"message\":\"access\",\"client\":\"172.18.0.1\",\"scheme\":\"http\",\"method\":\"GET\",\"authority\":\"example.com\",\"path\":\"/\",\"route\":\"/\",\"status\":200,\"duration_ms\":26,\"trace_id\":\"18cac6b721dfff4f0000000000000001\",\"span_id\":\"0000000000000002\",\"target\":\"plecto::access\"}\n","stream":"stdout","time":"2026-08-11T14:31:32Z"}"#;
 
         let entry = parser
             .parse_docker_log(docker_log.as_bytes(), &container_info)
@@ -742,6 +742,7 @@ mod tests {
         // losing them stops the edge SLO view ingesting without any error anywhere.
         assert_eq!(entry.fields.get("method"), Some(&"GET".to_string()));
         assert_eq!(entry.fields.get("path"), Some(&"/".to_string()));
+        assert_eq!(entry.fields.get("route"), Some(&"/".to_string()));
         assert_eq!(entry.fields.get("status"), Some(&"200".to_string()));
         assert_eq!(entry.fields.get("client"), Some(&"172.18.0.1".to_string()));
         assert_eq!(entry.fields.get("duration_ms"), Some(&"26".to_string()));
