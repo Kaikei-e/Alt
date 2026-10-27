@@ -142,9 +142,7 @@ impl ClientCertVerifier for AllowedNamesVerifier {
 /// keeps the service in plaintext mode — the shared-secret layer continues
 /// to gate outbound calls until the hard-cutover lands.
 pub fn enforced() -> bool {
-    std::env::var("MTLS_ENFORCE")
-        .ok()
-        .is_some_and(|v| v.eq_ignore_ascii_case("true"))
+    std::env::var("MTLS_ENFORCE").is_ok_and(|v| v.eq_ignore_ascii_case("true"))
 }
 
 fn load_pem_certs(path: &str) -> Result<Vec<CertificateDer<'static>>> {

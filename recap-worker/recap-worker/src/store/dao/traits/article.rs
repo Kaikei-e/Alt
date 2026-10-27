@@ -12,7 +12,7 @@ use crate::store::models::RawArticle;
 
 /// ArticleDao - 記事管理のためのデータアクセス層
 #[allow(dead_code, clippy::type_complexity)]
-pub trait ArticleDao: Send + Sync {
+pub(crate) trait ArticleDao: Send + Sync {
     /// 生の記事データをバックアップする
     fn backup_raw_articles(
         &self,

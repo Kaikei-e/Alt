@@ -14,7 +14,7 @@ use crate::store::models::{
 
 /// OutputDao - リキャップ出力のためのデータアクセス層
 #[allow(dead_code)]
-pub trait OutputDao: Send + Sync {
+pub(crate) trait OutputDao: Send + Sync {
     /// 最終セクションを保存する
     fn save_final_section(
         &self,

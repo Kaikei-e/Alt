@@ -18,7 +18,7 @@ For a detailed visual walkthrough of pipeline stages and data flow, see [PIPELIN
 
 ### Prerequisites
 
-- Rust 1.94+ (`rustup`)
+- Rust 1.99.1+ (`rustup`)
 - `cargo`
 - PostgreSQL 18 (`recap-db` running via Docker Compose)
 - Access to `alt-data-hub`, `recap-subworker`, and `news-creator`

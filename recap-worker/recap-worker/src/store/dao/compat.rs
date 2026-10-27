@@ -42,7 +42,7 @@ use crate::store::models::{
 /// ```
 #[allow(dead_code)]
 #[async_trait]
-pub trait RecapDao: Send + Sync {
+pub(crate) trait RecapDao: Send + Sync {
     /// Get the underlying connection pool (if available).
     ///
     /// # Returns

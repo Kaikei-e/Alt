@@ -32,20 +32,20 @@ pub use cards::{
     CardsJobSummary, RecapCard, RecapCardCandidate, RecapCardJobStats, RecapCardRating,
     RecapCardSnapshot, RecapEvalWindow, RecapEvalWindowSummary, RecapStoryJudgment,
 };
-pub use impls::UnifiedDao;
+pub(crate) use impls::UnifiedDao;
 pub use types::{GenreStatus, JobStatus, PipelineStage, TriggerSource};
 
 // Backward compatibility re-exports
 // RecapDao now comes from the compat module (blanket impl over focused traits)
-pub use compat::RecapDao;
+pub(crate) use compat::RecapDao;
 
 // RecapDaoImpl is now an alias to UnifiedDao for backward compatibility
-pub type RecapDaoImpl = UnifiedDao;
+pub(crate) type RecapDaoImpl = UnifiedDao;
 
 // Re-export focused traits for new code
 // Note: These traits are for new code patterns. Existing code can continue using RecapDao.
 #[allow(unused_imports)]
-pub use traits::{
+pub(crate) use traits::{
     ArticleDao, ConfigDao, EvaluationDao, GenreLearningDao, JobDao,
     JobStatusDao as JobStatusDaoTrait, MetricsDao, MorningDao, OutputDao, PulseDao, StageDao,
     SubworkerDao,

@@ -929,6 +929,15 @@ let cve_ids: Vec<String> = rows.into_iter().map(|r| r.0).collect();
 ```
 
 ```toml
+# ✅ Dev profile for fast builds and smaller target/ while keeping panic line numbers
+# 1. 自作コードのデバッグ情報をバックトレースに必要な行番号のみに絞る場合
+[profile.dev]
+debug = "line-tables-only"
+
+# 2. 外部の依存クレート（デバッグ対象外）のデバッグ情報を無効化する場合
+[profile.dev.package."*"]
+debug = false
+
 # ✅ Release profile for maximum performance — be explicit, don't rely on defaults
 [profile.release]
 lto = "fat"
@@ -977,7 +986,7 @@ for chunk in cve_ids.chunks(CHUNK_SIZE) {
 ```dockerfile
 # ✅ 3-stage cargo-chef build
 # Stage 1: Chef + planner
-FROM rust:1.94.0-bookworm AS chef
+FROM rust:1.99.1-bookworm AS chef
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 

@@ -2,6 +2,7 @@
 name = "rask-log-forwarder"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.99.1"
 
 [lib]
 name = "rask_log_forwarder"
@@ -127,6 +128,14 @@ name = "otlp_benchmarks"
 path = "benches/otlp_benchmarks.rs"
 harness = false
 required-features = ["otlp"]
+
+# 1. 自作コードのデバッグ情報をバックトレースに必要な行番号のみに絞る場合
+[profile.dev]
+debug = "line-tables-only"
+
+# 2. 外部の依存クレート（デバッグ対象外）のデバッグ情報を無効化する場合
+[profile.dev.package."*"]
+debug = false
 
 [profile.release]
 lto = "fat"

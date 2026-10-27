@@ -10,7 +10,7 @@ use crate::store::dao::types::{JobStatus, JobStatusTransition, StatusTransitionA
 
 /// JobDao - ジョブ管理のためのデータアクセス層
 #[allow(dead_code, clippy::type_complexity)]
-pub trait JobDao: Send + Sync {
+pub(crate) trait JobDao: Send + Sync {
     /// アドバイザリロックを取得し、新しいジョブを作成する（デフォルト7日間）
     fn create_job_with_lock(
         &self,

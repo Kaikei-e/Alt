@@ -390,6 +390,8 @@ observability-reload-status:
 # Rust build artifact cleanup
 rust-clean:
 	@echo "Cleaning Rust target/ directories across all services..."
+	@echo "  plecto..."
+	@cd plecto && cargo clean 2>/dev/null && echo "    cleaned." || echo "    skipped (no target/)."
 	@echo "  rask-log-aggregator..."
 	@cd rask-log-aggregator/app && cargo clean 2>/dev/null && echo "    cleaned." || echo "    skipped (no target/)."
 	@echo "  rask-log-forwarder..."

@@ -26,7 +26,7 @@ use crate::store::models::{
 
 /// Unified DAO implementation that combines all DAO traits
 #[derive(Debug, Clone)]
-pub struct UnifiedDao {
+pub(crate) struct UnifiedDao {
     pool: PgPool,
 }
 

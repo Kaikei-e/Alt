@@ -2,6 +2,7 @@
 name = "alt-stale-chunk-heal-filter"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.99.1"
 license = "Apache-2.0"
 
 # A WASM Component Model guest implementing the plecto:filter contract. Built for
@@ -16,3 +17,11 @@ crate-type = ["cdylib"]
 wit-bindgen = "0.60"
 
 [workspace]
+
+# 1. 自作コードのデバッグ情報をバックトレースに必要な行番号のみに絞る場合
+[profile.dev]
+debug = "line-tables-only"
+
+# 2. 外部の依存クレート（デバッグ対象外）のデバッグ情報を無効化する場合
+[profile.dev.package."*"]
+debug = false

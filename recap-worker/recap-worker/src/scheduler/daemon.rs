@@ -813,7 +813,7 @@ mod tests {
             self.runs.lock().unwrap().push((job_id, from, to));
             let prev = self
                 .fail_count
-                .fetch_update(
+                .try_update(
                     std::sync::atomic::Ordering::SeqCst,
                     std::sync::atomic::Ordering::SeqCst,
                     |x| if x > 0 { Some(x - 1) } else { Some(0) },

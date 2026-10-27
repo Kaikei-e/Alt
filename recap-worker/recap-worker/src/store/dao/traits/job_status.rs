@@ -9,7 +9,7 @@ use crate::store::models::{ExtendedRecapJob, JobStats};
 
 /// JobStatusDao - ジョブステータスダッシュボードのためのデータアクセス層
 #[allow(dead_code)]
-pub trait JobStatusDao: Send + Sync {
+pub(crate) trait JobStatusDao: Send + Sync {
     /// 拡張ジョブ一覧を取得する
     fn get_extended_jobs(
         &self,

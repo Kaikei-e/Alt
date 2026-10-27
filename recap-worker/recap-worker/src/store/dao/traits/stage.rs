@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 /// StageDao - ステージ管理のためのデータアクセス層
 #[allow(dead_code)]
-pub trait StageDao: Send + Sync {
+pub(crate) trait StageDao: Send + Sync {
     /// ステージの実行ログを記録する
     fn insert_stage_log(
         &self,

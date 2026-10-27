@@ -10,7 +10,7 @@ use crate::store::models::{
 
 /// SubworkerDao - サブワーカー実行・クラスタのためのデータアクセス層
 #[allow(dead_code)]
-pub trait SubworkerDao: Send + Sync {
+pub(crate) trait SubworkerDao: Send + Sync {
     /// サブワーカー実行を挿入する
     fn insert_subworker_run(
         &self,

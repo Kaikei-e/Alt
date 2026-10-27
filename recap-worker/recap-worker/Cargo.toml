@@ -2,6 +2,7 @@
 name = "recap-worker"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.99.1"
 description = "Alt 7days Recap batch worker (CPU-centric) with Axum control plane and Prometheus/OTLP telemetry."
 repository = "https://github.com/Kaikei-e/Alt"
 
@@ -146,6 +147,14 @@ harness = false
 name = "replay_genre_pipeline"
 path = "../scripts/replay_genre_pipeline.rs"
 
+# 1. 自作コードのデバッグ情報をバックトレースに必要な行番号のみに絞る場合
+[profile.dev]
+debug = "line-tables-only"
+
+# 2. 外部の依存クレート（デバッグ対象外）のデバッグ情報を無効化する場合
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "fat"
 codegen-units = 1
@@ -197,3 +206,7 @@ must_use_candidate = "allow"
 collapsible_if = "allow"
 # for x in iter.iter() is clearer than for x in &iter for consistency
 explicit_iter_loop = "allow"
+# `#[async_trait]` emits `#[must_use]` on `Pin<Box<dyn Future>>` which Rust 1.99 already considers `#[must_use]`
+double_must_use = "allow"
+# `assert!(x.is_empty())` / `assert!(!x.is_empty())` is clearer than `assert_eq!(x, [] as [T; 0])`
+assert_is_empty = "allow"

@@ -11,7 +11,7 @@ use crate::store::models::PreprocessMetrics;
 
 /// MetricsDao - メトリクス・テレメトリのためのデータアクセス層
 #[allow(dead_code, clippy::type_complexity)]
-pub trait MetricsDao: Send + Sync {
+pub(crate) trait MetricsDao: Send + Sync {
     /// 前処理メトリクスを保存する
     fn save_preprocess_metrics(
         &self,

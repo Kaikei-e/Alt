@@ -9,7 +9,7 @@ use crate::store::models::{GenreEvaluationMetric, GenreEvaluationRun};
 
 /// EvaluationDao - ジャンル評価のためのデータアクセス層
 #[allow(dead_code)]
-pub trait EvaluationDao: Send + Sync {
+pub(crate) trait EvaluationDao: Send + Sync {
     /// ジャンル評価を保存する
     fn save_genre_evaluation(
         &self,

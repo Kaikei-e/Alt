@@ -186,7 +186,7 @@ impl LogBufferReceiver {
                     let skipped = usize::try_from(n).unwrap_or(usize::MAX);
                     self.metrics
                         .queue_depth
-                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                        .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                             Some(current.saturating_sub(skipped))
                         })
                         .ok();

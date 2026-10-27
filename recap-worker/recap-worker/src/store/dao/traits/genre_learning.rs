@@ -8,7 +8,7 @@ use crate::store::models::{GenreLearningRecord, GraphEdgeRecord};
 
 /// GenreLearningDao - ジャンル学習のためのデータアクセス層
 #[allow(dead_code)]
-pub trait GenreLearningDao: Send + Sync {
+pub(crate) trait GenreLearningDao: Send + Sync {
     /// タグラベルグラフを読み込む
     fn load_tag_label_graph(
         &self,

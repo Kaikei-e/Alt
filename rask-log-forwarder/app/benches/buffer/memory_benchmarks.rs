@@ -59,11 +59,7 @@ fn bench_memory_efficiency(c: &mut Criterion) {
                         let metrics = buffer.metrics().snapshot();
 
                         // Memory should be proportional to actual content, not capacity
-                        let memory_per_item = if metrics.queue_depth > 0 {
-                            50 / metrics.queue_depth // Simplified calculation
-                        } else {
-                            0
-                        };
+                        let memory_per_item = 50usize.checked_div(metrics.queue_depth).unwrap_or(0); // Simplified calculation
 
                         // Each enriched log entry should not exceed reasonable bounds
                         if metrics.queue_depth > 0 {

@@ -57,7 +57,7 @@ impl MemoryManager {
         // `current_pressure()` at `Critical`. Saturate at zero instead.
         let _ = self
             .current_usage
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                 Some(current.saturating_sub(size))
             });
     }

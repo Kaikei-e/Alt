@@ -215,11 +215,9 @@ impl HttpClient {
         let failed_requests = self.stats.failed_requests.load(Ordering::Relaxed);
         let total_response_time = self.stats.total_response_time.load(Ordering::Relaxed);
 
-        let average_response_time = if total_requests > 0 {
-            Duration::from_millis(total_response_time / total_requests)
-        } else {
-            Duration::ZERO
-        };
+        let average_response_time = total_response_time
+            .checked_div(total_requests)
+            .map_or(Duration::ZERO, Duration::from_millis);
 
         ConnectionStats {
             max_connections: self.config.max_connections,

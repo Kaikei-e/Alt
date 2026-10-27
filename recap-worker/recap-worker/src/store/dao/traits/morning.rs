@@ -10,7 +10,7 @@ use crate::store::models::{MorningLetter, MorningLetterSource};
 
 /// MorningDao - モーニング記事グループ・Morning Letter のためのデータアクセス層
 #[allow(dead_code, clippy::type_complexity)]
-pub trait MorningDao: Send + Sync {
+pub(crate) trait MorningDao: Send + Sync {
     /// モーニング記事グループを保存する
     fn save_morning_article_groups(
         &self,

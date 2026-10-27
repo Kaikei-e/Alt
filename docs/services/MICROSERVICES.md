@@ -131,7 +131,7 @@ acolyte-orchestrator は uvicorn の HTTP/1.1 で serve しているため `grpc
 ### Recap Pipeline Services
 | Service | Language | Host Port(s) | Compose File | Health Endpoint |
 |---------|----------|--------------|--------------|-----------------|
-| recap-worker | Rust（toolchain 1.95.0 / production image は rust:1.94-bookworm） | 9005 | recap.yaml | `/recap-worker healthcheck` |
+| recap-worker | Rust（toolchain 1.99.1 / production image は rust:1.99.1-bookworm） | 9005 | recap.yaml | `/recap-worker healthcheck` |
 | recap-subworker | Python 3.14 (FastAPI) | 8002 | recap.yaml | `/health` |
 | dashboard | Python (Streamlit) | 8501, 8502 → 8000 | recap.yaml | compose healthcheck なし |
 | recap-evaluator | Python 3.14 (FastAPI) | 8085 → 8080 | recap.yaml | `/health`（compose healthcheck は未定義） |

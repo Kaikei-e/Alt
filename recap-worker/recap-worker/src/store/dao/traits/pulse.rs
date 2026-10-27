@@ -14,7 +14,7 @@ use crate::store::models::PulseGenerationRow;
 ///
 /// Provides methods to retrieve pulse generation results,
 /// enabling the `/v1/pulse/latest` API endpoint.
-pub trait PulseDao: Send + Sync {
+pub(crate) trait PulseDao: Send + Sync {
     /// Get the pulse generation for a specific date.
     ///
     /// Returns the most recent successful pulse generation for the given date.

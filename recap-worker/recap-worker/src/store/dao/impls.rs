@@ -4,4 +4,4 @@
 
 mod unified;
 
-pub use unified::UnifiedDao;
+pub(crate) use unified::UnifiedDao;

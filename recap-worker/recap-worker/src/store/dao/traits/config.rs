@@ -7,7 +7,7 @@ use serde_json::Value;
 
 /// ConfigDao - ワーカー設定のためのデータアクセス層
 #[allow(dead_code)]
-pub trait ConfigDao: Send + Sync {
+pub(crate) trait ConfigDao: Send + Sync {
     /// 最新のワーカー設定を取得する
     fn get_latest_worker_config(
         &self,
