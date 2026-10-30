@@ -45,3 +45,19 @@ func TestLoad_ProxyResponseHeaderTimeoutRejectsGarbage(t *testing.T) {
 		t.Fatal("expected an unparseable PROXY_RESPONSE_HEADER_TIMEOUT to fail startup, got nil error")
 	}
 }
+
+func TestLoad_RejectsFlagPrefixInSubjectOrSANs(t *testing.T) {
+	t.Run("subject_starts_with_dash", func(t *testing.T) {
+		t.Setenv("CERT_SUBJECT", "--bad-flag")
+		if _, err := Load(); err == nil {
+			t.Fatal("expected CERT_SUBJECT starting with '-' to fail validation")
+		}
+	})
+	t.Run("san_starts_with_dash", func(t *testing.T) {
+		t.Setenv("CERT_SUBJECT", "alt-backend")
+		t.Setenv("CERT_SANS", "alt-backend,--bad-san")
+		if _, err := Load(); err == nil {
+			t.Fatal("expected CERT_SANS entry starting with '-' to fail validation")
+		}
+	})
+}

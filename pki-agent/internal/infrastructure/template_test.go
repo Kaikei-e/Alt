@@ -1,16 +1,22 @@
 package infrastructure_test
 
 import (
-	"bufio"
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
+	"net"
+	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
+	"text/template"
 )
 
 type templateTestCase struct {
@@ -26,70 +32,10 @@ type templateTestCase struct {
 	WantErr   bool     `json:"-"`
 }
 
-type templateResult struct {
-	Name  string `json:"name"`
-	Error string `json:"error"`
-}
-
-var (
-	runnerBinPath  string
-	runnerBuildErr error
-	runnerOnce     sync.Once
-)
-
-func buildTemplateRunner(t *testing.T) string {
-	runnerOnce.Do(func() {
-		repoRoot, err := findRepoRoot()
-		if err != nil {
-			runnerBuildErr = err
-			return
-		}
-		authHubDir := filepath.Join(repoRoot, "auth-hub")
-
-		tmpDir, err := os.MkdirTemp("", "stepca-template-runner-*")
-		if err != nil {
-			runnerBuildErr = err
-			return
-		}
-		binPath := filepath.Join(tmpDir, "runner")
-
-		runnerSrc := `package main
-
-import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/json"
-	"net"
-	"net/url"
-	"os"
-
-	"go.step.sm/crypto/x509util"
-)
-
-type TestCase struct {
-	Name      string   ` + "`json:\"name\"`" + `
-	Template  string   ` + "`json:\"template\"`" + `
-	TokenSub  string   ` + "`json:\"token_sub\"`" + `
-	TokenSANs []string ` + "`json:\"token_sans\"`" + `
-	CSRCN     string   ` + "`json:\"csr_cn\"`" + `
-	CSRDNS    []string ` + "`json:\"csr_dns\"`" + `
-	CSRIPs    []string ` + "`json:\"csr_ips\"`" + `
-	CSRURIs   []string ` + "`json:\"csr_uris\"`" + `
-	CSREmails []string ` + "`json:\"csr_emails\"`" + `
-}
-
-type Result struct {
-	Name  string ` + "`json:\"name\"`" + `
-	Error string ` + "`json:\"error\"`" + `
-}
-
-func runCase(tc TestCase) Result {
+func evaluateTemplateCase(tc templateTestCase) error {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return Result{Name: tc.Name, Error: err.Error()}
+		return err
 	}
 	var ips []net.IP
 	for _, ipStr := range tc.CSRIPs {
@@ -112,58 +58,42 @@ func runCase(tc TestCase) Result {
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, priv)
 	if err != nil {
-		return Result{Name: tc.Name, Error: err.Error()}
+		return err
 	}
 	cr, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {
-		return Result{Name: tc.Name, Error: err.Error()}
+		return err
 	}
-	data := x509util.CreateTemplateData(tc.CSRCN, tc.CSRDNS)
-	data.SetToken(map[string]any{
-		"sub":  tc.TokenSub,
-		"sans": tc.TokenSANs,
-	})
-	_, err = x509util.NewCertificate(cr, x509util.WithTemplate(tc.Template, data))
+
+	tmpl, err := template.New("x509").Funcs(template.FuncMap{
+		"fail": func(msg string) (string, error) {
+			return "", errors.New(msg)
+		},
+	}).Parse(tc.Template)
 	if err != nil {
-		return Result{Name: tc.Name, Error: err.Error()}
+		return err
 	}
-	return Result{Name: tc.Name, Error: ""}
-}
 
-func main() {
-	dec := json.NewDecoder(os.Stdin)
-	enc := json.NewEncoder(os.Stdout)
-	for {
-		var tc TestCase
-		if err := dec.Decode(&tc); err != nil {
-			break
-		}
-		res := runCase(tc)
-		enc.Encode(res)
+	data := map[string]any{
+		"Token": map[string]any{
+			"sub":  tc.TokenSub,
+			"sans": tc.TokenSANs,
+		},
+		"Insecure": map[string]any{
+			"CR": cr,
+		},
 	}
-}
-`
-		srcPath := filepath.Join(tmpDir, "main.go")
-		if err := os.WriteFile(srcPath, []byte(runnerSrc), 0600); err != nil {
-			runnerBuildErr = err
-			return
-		}
 
-		buildCmd := exec.Command("go", "build", "-o", binPath, srcPath)
-		buildCmd.Dir = authHubDir
-		out, err := buildCmd.CombinedOutput()
-		if err != nil {
-			runnerBuildErr = err
-			t.Logf("runner build output: %s", string(out))
-			return
-		}
-		runnerBinPath = binPath
-	})
-
-	if runnerBuildErr != nil {
-		t.Fatalf("failed to build template runner: %v", runnerBuildErr)
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return err
 	}
-	return runnerBinPath
+
+	var rendered map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rendered); err != nil {
+		return fmt.Errorf("rendered template is not valid JSON: %w", err)
+	}
+	return nil
 }
 
 func findRepoRoot() (string, error) {
@@ -257,57 +187,18 @@ func extractHeredocTemplates(t *testing.T) (subjectTpl, localhostTpl string) {
 	return subjectTpl, localhostTpl
 }
 
-func executeTemplateCases(t *testing.T, runnerBin string, cases []templateTestCase) {
-	cmd := exec.Command(runnerBin)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		t.Fatalf("failed to create stdin pipe: %v", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatalf("failed to create stdout pipe: %v", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("failed to start runner: %v", err)
-	}
-
-	enc := json.NewEncoder(stdin)
-	dec := json.NewDecoder(bufio.NewReader(stdout))
-
-	go func() {
-		defer func() {
-			if err := stdin.Close(); err != nil {
-				t.Errorf("close template runner input: %v", err)
-			}
-		}()
-		for _, tc := range cases {
-			if err := enc.Encode(tc); err != nil {
-				return
-			}
-		}
-	}()
-
+func executeTemplateCases(t *testing.T, cases []templateTestCase) {
+	t.Helper()
 	for _, tc := range cases {
-		var res templateResult
-		if err := dec.Decode(&res); err != nil {
-			if err == io.EOF {
-				t.Fatalf("[%s] runner process terminated unexpectedly", tc.Name)
-			}
-			t.Fatalf("[%s] failed to decode runner result: %v", tc.Name, err)
-		}
-
-		hasErr := res.Error != ""
+		err := evaluateTemplateCase(tc)
+		hasErr := err != nil
 		if hasErr != tc.WantErr {
-			t.Errorf("[%s] error mismatch: got error=%q (hasErr=%v), wantErr=%v", tc.Name, res.Error, hasErr, tc.WantErr)
+			t.Errorf("[%s] error mismatch: got error=%v (hasErr=%v), wantErr=%v", tc.Name, err, hasErr, tc.WantErr)
 		}
 	}
-
-	_ = cmd.Wait()
 }
 
 func TestX509TemplateConstraints(t *testing.T) {
-	runnerBin := buildTemplateRunner(t)
 	subjectTpl, _ := extractHeredocTemplates(t)
 
 	tests := []templateTestCase{
@@ -442,11 +333,10 @@ func TestX509TemplateConstraints(t *testing.T) {
 		},
 	}
 
-	executeTemplateCases(t, runnerBin, tests)
+	executeTemplateCases(t, tests)
 }
 
 func TestX509TemplateConstraintsLocalhost(t *testing.T) {
-	runnerBin := buildTemplateRunner(t)
 	_, localhostTpl := extractHeredocTemplates(t)
 
 	tests := []templateTestCase{
@@ -545,5 +435,24 @@ func TestX509TemplateConstraintsLocalhost(t *testing.T) {
 		},
 	}
 
-	executeTemplateCases(t, runnerBin, tests)
+	executeTemplateCases(t, tests)
+}
+
+func TestBootstrapScript_UsesRestrictivePasswordPermissions(t *testing.T) {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		t.Fatalf("cannot find repo root: %v", err)
+	}
+	scriptPath := filepath.Join(repoRoot, "pki-agent", "scripts", "bootstrap-pki-provisioner.sh")
+	data, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("cannot read bootstrap script %s: %v", scriptPath, err)
+	}
+	content := string(data)
+	if strings.Contains(content, "chmod 0644") {
+		t.Fatal("bootstrap-pki-provisioner.sh must not use chmod 0644 for provisioner password files")
+	}
+	if !strings.Contains(content, "umask 0077") || !strings.Contains(content, "chmod 0600") {
+		t.Fatal("bootstrap-pki-provisioner.sh must use umask 0077 and chmod 0600 for provisioner password files")
+	}
 }
