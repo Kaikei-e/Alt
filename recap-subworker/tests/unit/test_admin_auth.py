@@ -162,3 +162,23 @@ def test_create_app_auth_required_for_v1_cards_endpoints(monkeypatch, tmp_path: 
         )
         assert res_verify.status_code == 401
         assert res_verify.headers["www-authenticate"] == "Bearer"
+
+        # 4. /v1/evaluation/genres without bearer -> 401
+        res_eval = client.post("/v1/evaluation/genres", json={})
+        assert res_eval.status_code == 401
+        assert res_eval.headers["www-authenticate"] == "Bearer"
+
+        # 5. /v1/classify without bearer -> 401
+        res_classify = client.post("/v1/classify", json={"texts": ["hello"]})
+        assert res_classify.status_code == 401
+        assert res_classify.headers["www-authenticate"] == "Bearer"
+
+        # 6. /v1/extract without bearer -> 401
+        res_extract = client.post("/v1/extract", json={"html": "<p>test</p>"})
+        assert res_extract.status_code == 401
+        assert res_extract.headers["www-authenticate"] == "Bearer"
+
+        # 7. /v1/classify-runs without bearer -> 401
+        res_classify_runs = client.post("/v1/classify-runs", json={"texts": ["hello"]})
+        assert res_classify_runs.status_code == 401
+        assert res_classify_runs.headers["www-authenticate"] == "Bearer"

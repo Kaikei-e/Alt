@@ -129,6 +129,8 @@ async def evaluate_genres(
     golden_raw = request.golden_data_path or "/app/data/golden_classification.json"
     try:
         golden_data_path = require_existing_path(golden_raw, ALLOWED_BASE_DIRS)
+        if golden_data_path.suffix.lower() not in {".json", ".jsonl"}:
+            raise ValueError("Golden dataset path must have a .json or .jsonl extension")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except FileNotFoundError:
@@ -140,6 +142,8 @@ async def evaluate_genres(
     if request.weights_path:
         try:
             weights_path = require_existing_path(request.weights_path, ALLOWED_BASE_DIRS)
+            if weights_path.suffix.lower() != ".joblib":
+                raise ValueError("Weights path must have a .joblib extension")
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except FileNotFoundError:
@@ -153,8 +157,7 @@ async def evaluate_genres(
     try:
         if weights_path is not None:
             # リクエストでカスタム重みパスが指定された場合のみ、専用インスタンスを
-            # その場で構築する（コンテナのシングルトンは設定由来のデフォルト重み
-            # 専用のため使い回せない）。
+            # その場で構築する（Embedder はコンテナのシングルトンを共有する）。
             service = EvaluationService(
                 weights_path=str(weights_path),
                 weights_ja_path=settings.genre_classifier_model_path_ja,
@@ -163,6 +166,7 @@ async def evaluate_genres(
                 vectorizer_en_path=settings.tfidf_vectorizer_path_en,
                 thresholds_ja_path=settings.genre_thresholds_path_ja,
                 thresholds_en_path=settings.genre_thresholds_path_en,
+                embedder=container.embedder,
             )
         else:
             # デフォルト重み構成では、コンテナが所有するシングルトンを再利用する。

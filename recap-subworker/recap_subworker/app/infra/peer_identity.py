@@ -45,6 +45,11 @@ def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
+def strict_from_env(env_var: str = "PEER_IDENTITY_STRICT") -> bool:
+    """Return True when PEER_IDENTITY_STRICT is set to a truthy string."""
+    return os.getenv(env_var, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def arrived_via_sidecar(request: Request) -> bool:
     """Report whether the request could have come from the mTLS sidecar.
 
@@ -117,7 +122,8 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
             if not mtls_on or not arrived_via_sidecar(request):
                 peer = ""
 
-            if self._strict:
+            exempt = request.url.path.startswith(_TLS_ALLOWLIST_EXEMPT_PATH_PREFIXES)
+            if self._strict and not exempt:
                 if not peer:
                     logger.warning("peer_identity.missing", path=request.url.path)
                     return PlainTextResponse("unauthenticated peer", status_code=401)

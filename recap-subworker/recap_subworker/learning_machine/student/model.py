@@ -10,12 +10,12 @@ class StudentDistilBERT(nn.Module):
         self.num_labels = num_labels
 
         # 'line-corporation/line-distilbert-base-japanese' is DistilBERT
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=False)
         self.bert = AutoModelForSequenceClassification.from_pretrained(
             model_name,
             num_labels=num_labels,
             problem_type="single_label_classification",
-            trust_remote_code=True,
+            trust_remote_code=False,
         )
 
     def forward(self, input_ids, attention_mask, labels=None):

@@ -285,12 +285,12 @@ class GenreClassifierService:
                         raise FileNotFoundError(f"Model not found at {self.model_path}")
 
                     logger.info("Loading classification artifacts", model_path=str(self.model_path))
-                    self.model = joblib.load(self.model_path)
-
                     metadata = _load_sidecar_metadata(self.model_path)
                     if metadata is not None:
                         _guard_metadata_against_runtime(metadata, self.embedder)
                     self.model_metadata = metadata
+
+                    self.model = joblib.load(self.model_path)
 
                     if self.tfidf_path.exists():
                         self.tfidf = joblib.load(self.tfidf_path)

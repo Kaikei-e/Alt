@@ -253,29 +253,44 @@ class Settings(BaseSettings):
                 # cases; missing files are caught at load time by
                 # GenreClassifierService._ensure_model.
                 continue
-            import pickle
 
-            try:
-                import joblib
+            classes = None
+            meta_path = path.with_suffix(".meta.json")
+            if meta_path.is_file():
+                try:
+                    meta_payload = json.loads(meta_path.read_text())
+                    if isinstance(meta_payload, dict) and isinstance(
+                        meta_payload.get("classes"), list
+                    ):
+                        classes = meta_payload["classes"]
+                except OSError, json.JSONDecodeError:
+                    classes = None
 
-                model = joblib.load(path)
-            except (
-                OSError,
-                ValueError,
-                EOFError,
-                ImportError,
-                KeyError,
-                TypeError,
-                AttributeError,
-                pickle.UnpicklingError,
-            ):
-                # Corrupt / non-joblib payloads are not this validator's
-                # concern: the peer ``_validate_joblib_artifacts`` catches
-                # directory-shaped bind-mounts, and runtime ``_ensure_model``
-                # surfaces real load errors. Cardinality check only applies
-                # to loadable models — skip otherwise.
-                continue
-            classes = getattr(model, "classes_", None)
+            if classes is None:
+                import pickle
+
+                try:
+                    import joblib
+
+                    model = joblib.load(path)
+                except (
+                    OSError,
+                    ValueError,
+                    EOFError,
+                    ImportError,
+                    KeyError,
+                    TypeError,
+                    AttributeError,
+                    pickle.UnpicklingError,
+                ):
+                    # Corrupt / non-joblib payloads are not this validator's
+                    # concern: the peer ``_validate_joblib_artifacts`` catches
+                    # directory-shaped bind-mounts, and runtime ``_ensure_model``
+                    # surfaces real load errors. Cardinality check only applies
+                    # to loadable models — skip otherwise.
+                    continue
+                classes = getattr(model, "classes_", None)
+
             if classes is None:
                 continue
             cardinality = len(classes)
@@ -319,25 +334,37 @@ class Settings(BaseSettings):
             # compare against — skip silently rather than double-firing.
             return self
 
-        import pickle
+        classes = None
+        meta_file = model_file.with_suffix(".meta.json")
+        if meta_file.is_file():
+            try:
+                meta_payload = json.loads(meta_file.read_text())
+                if isinstance(meta_payload, dict) and isinstance(meta_payload.get("classes"), list):
+                    classes = meta_payload["classes"]
+            except OSError, json.JSONDecodeError:
+                classes = None
 
-        try:
-            import joblib
+        if classes is None:
+            import pickle
 
-            model = joblib.load(model_file)
-        except (
-            OSError,
-            ValueError,
-            EOFError,
-            ImportError,
-            KeyError,
-            TypeError,
-            AttributeError,
-            pickle.UnpicklingError,
-        ):
-            return self
+            try:
+                import joblib
 
-        classes = getattr(model, "classes_", None)
+                model = joblib.load(model_file)
+            except (
+                OSError,
+                ValueError,
+                EOFError,
+                ImportError,
+                KeyError,
+                TypeError,
+                AttributeError,
+                pickle.UnpicklingError,
+            ):
+                return self
+
+            classes = getattr(model, "classes_", None)
+
         if classes is None:
             return self
 

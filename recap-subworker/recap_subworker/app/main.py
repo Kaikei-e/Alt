@@ -239,12 +239,13 @@ def create_app() -> FastAPI:
     from recap_subworker.app.infra.peer_identity import (
         PeerIdentityMiddleware,
         allowed_peers_from_env,
+        strict_from_env,
     )
 
     app.add_middleware(
         PeerIdentityMiddleware,
         allowed=allowed_peers_from_env(),
-        strict=False,
+        strict=strict_from_env(),
     )
 
     setup_metrics(app, settings)
@@ -252,10 +253,14 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(admin.router, prefix="/admin", dependencies=[Depends(require_admin_token)])
     app.include_router(runs.router, dependencies=[Depends(require_admin_token)])
-    app.include_router(evaluation.router)
-    app.include_router(classification.router, prefix="/v1")
-    app.include_router(preprocessing.router, prefix="/v1")
-    app.include_router(classification_runs.router)
+    app.include_router(evaluation.router, dependencies=[Depends(require_admin_token)])
+    app.include_router(
+        classification.router, prefix="/v1", dependencies=[Depends(require_admin_token)]
+    )
+    app.include_router(
+        preprocessing.router, prefix="/v1", dependencies=[Depends(require_admin_token)]
+    )
+    app.include_router(classification_runs.router, dependencies=[Depends(require_admin_token)])
     app.include_router(embed.router, prefix="/v1", dependencies=[Depends(require_admin_token)])
     app.include_router(
         story_clustering.router, prefix="/v1", dependencies=[Depends(require_admin_token)]

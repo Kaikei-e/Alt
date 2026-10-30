@@ -17,6 +17,7 @@ from recap_subworker.app.infra.peer_identity import (
     PEER_IDENTITY_HEADER,
     PeerIdentityMiddleware,
     allowed_peers_from_env,
+    strict_from_env,
 )
 
 # pki-agent shares this container's network namespace and proxies to
@@ -245,3 +246,16 @@ def test_remember_tls_peer_records_empty_cn() -> None:
     finally:
         forget_tls_peer(client)
         assert is_tls_peer(client) is False
+
+
+def test_strict_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PEER_IDENTITY_STRICT", raising=False)
+    assert strict_from_env() is False
+
+    for truthy in ("1", "true", "TRUE", "yes", "YES", "on", "ON"):
+        monkeypatch.setenv("PEER_IDENTITY_STRICT", truthy)
+        assert strict_from_env() is True
+
+    for falsy in ("0", "false", "FALSE", "no", "off", ""):
+        monkeypatch.setenv("PEER_IDENTITY_STRICT", falsy)
+        assert strict_from_env() is False
