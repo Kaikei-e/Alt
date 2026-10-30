@@ -36,7 +36,7 @@ class TestSanitizeUntrustedContent:
 
     def test_strips_bidi_override_characters(self):
         # BiDi overrides and isolates used for visual reordering / prompt spoofing
-        raw = "Normal ‮Reversed‬ ⁦Isolate⁩"
+        raw = "Normal \u202eReversed\u202c \u2066Isolate\u2069"
         cleaned = sanitize_untrusted_content(raw)
         assert cleaned == "Normal Reversed Isolate"
 

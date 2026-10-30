@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 _PROMPT_CONTROL_TOKEN_RE = re.compile(
     r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
-    r"|</?think>",
+    r"|</?think>"
+    r"|</?\s*article_content\s*>",
     re.IGNORECASE,
 )
 
@@ -23,7 +24,7 @@ def sanitize_for_prompt(text: str) -> str:
     """Sanitize untrusted text before interpolating it into an LLM prompt."""
     if not text:
         return ""
-    cleaned, _ = sanitize_untrusted_content(text)
+    cleaned = sanitize_untrusted_content(text)
     return _PROMPT_CONTROL_TOKEN_RE.sub("", cleaned)
 
 

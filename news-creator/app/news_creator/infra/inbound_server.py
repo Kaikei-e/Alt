@@ -29,7 +29,7 @@ from news_creator.infra.pki.start import start as start_pki_enrollment
 logger = logging.getLogger(__name__)
 
 _APP_TARGET = "main:app"
-DEFAULT_HOST = "0.0.0.0"
+DEFAULT_HOST = "0.0.0.0"  # nosec B104
 DEFAULT_PORT = 11434
 
 

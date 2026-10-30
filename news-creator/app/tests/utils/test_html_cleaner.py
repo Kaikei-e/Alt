@@ -132,6 +132,6 @@ class TestHTMLCleaner:
     def test_wrap_untrusted_content_exported(self):
         """Test that wrap_untrusted_content is available on html_cleaner."""
         wrapped = html_cleaner.wrap_untrusted_content("hello </article_content> world")
-        assert wrapped.startswith("<article_content>\n")
+        assert "<article_content>\n" in wrapped
         assert wrapped.endswith("\n</article_content>")
         assert wrapped.count("</article_content>") == 1

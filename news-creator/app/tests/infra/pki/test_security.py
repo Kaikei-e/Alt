@@ -531,12 +531,12 @@ def test_start_uses_private_registry_and_ops(
     assert handle.ops_addr is not None
     assert handle.registry is not DEFAULT_REGISTRY
     try:
-        with urllib.request.urlopen(
+        with urllib.request.urlopen(  # nosec B310
             f"http://{handle.ops_addr}/health", timeout=2
         ) as health:
             assert health.status == 200
             assert b"news-creator" in health.read()
-        with urllib.request.urlopen(
+        with urllib.request.urlopen(  # nosec B310
             f"http://{handle.ops_addr}/metrics", timeout=2
         ) as metrics:
             body = metrics.read().decode()

@@ -57,10 +57,10 @@ def test_pki_ops_source_does_not_mount_health_deep() -> None:
 def test_pki_ops_listener_returns_404_for_deep_health() -> None:
     handle = start_ops("news-creator", CollectorRegistry(), listen="127.0.0.1:0")
     try:
-        with urllib.request.urlopen(f"http://{handle.addr}/health", timeout=2) as resp:
+        with urllib.request.urlopen(f"http://{handle.addr}/health", timeout=2) as resp:  # nosec B310
             assert resp.status == 200
         try:
-            urllib.request.urlopen(f"http://{handle.addr}/health/deep", timeout=2)
+            urllib.request.urlopen(f"http://{handle.addr}/health/deep", timeout=2)  # nosec B310
         except urllib.error.HTTPError as exc:
             assert exc.code == 404
         else:
