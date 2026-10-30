@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"strconv"
@@ -62,6 +63,10 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("invalid CACHE_TTL format: %w", err)
 		}
 		if duration > MaxCacheTTL {
+			slog.Warn("clamping cache_ttl to jwt_issuer_ttl to prevent expired token serving",
+				"configured_cache_ttl", duration,
+				"clamped_cache_ttl", MaxCacheTTL,
+			)
 			duration = MaxCacheTTL
 		}
 		config.CacheTTL = duration
@@ -112,8 +117,12 @@ func Load() (*Config, error) {
 		config.IntrospectBurst = b
 	}
 
-	// Parse BACKEND_TOKEN_TTL if provided (capped to MaxBackendTokenTTL)
-	if ttlStr := os.Getenv("BACKEND_TOKEN_TTL"); ttlStr != "" {
+	// Parse BACKEND_TOKEN_TTL (or JWT_ISSUER_TTL fallback) if provided (capped to MaxBackendTokenTTL)
+	ttlStr := os.Getenv("BACKEND_TOKEN_TTL")
+	if ttlStr == "" {
+		ttlStr = os.Getenv("JWT_ISSUER_TTL")
+	}
+	if ttlStr != "" {
 		duration, err := time.ParseDuration(ttlStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid BACKEND_TOKEN_TTL format: %w", err)
@@ -122,6 +131,15 @@ func Load() (*Config, error) {
 			duration = MaxBackendTokenTTL
 		}
 		config.BackendTokenTTL = duration
+	}
+
+	// Ensure CacheTTL never exceeds BackendTokenTTL (jwtIssuerTTL)
+	if config.BackendTokenTTL > 0 && config.BackendTokenTTL < config.CacheTTL {
+		slog.Warn("clamping cache_ttl to jwt_issuer_ttl to prevent expired token serving",
+			"cache_ttl", config.CacheTTL,
+			"jwt_issuer_ttl", config.BackendTokenTTL,
+		)
+		config.CacheTTL = config.BackendTokenTTL
 	}
 
 	// Validate configuration

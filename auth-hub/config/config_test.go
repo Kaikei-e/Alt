@@ -556,6 +556,7 @@ func TestConfig_BoundedSessionCacheAndJWT(t *testing.T) {
 		os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
 		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 		os.Unsetenv("BACKEND_TOKEN_TTL")
+		os.Unsetenv("JWT_ISSUER_TTL")
 		defer func() {
 			os.Unsetenv("CSRF_SECRET")
 			os.Unsetenv("BACKEND_TOKEN_SECRET")
@@ -565,6 +566,28 @@ func TestConfig_BoundedSessionCacheAndJWT(t *testing.T) {
 		cfg, err := Load()
 		assert.NoError(t, err)
 		assert.Equal(t, 5*time.Minute, cfg.BackendTokenTTL, "Default BackendTokenTTL must be 5m")
+	})
+
+	// Test Load() clamps CacheTTL to BackendTokenTTL / JWT_ISSUER_TTL when jwtIssuerTTL < cacheTTL
+	t.Run("Load clamps CacheTTL when JWT_ISSUER_TTL is smaller than CACHE_TTL", func(t *testing.T) {
+		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		os.Setenv("CACHE_TTL", "60s")
+		os.Unsetenv("BACKEND_TOKEN_TTL")
+		os.Setenv("JWT_ISSUER_TTL", "15s")
+		defer func() {
+			os.Unsetenv("CSRF_SECRET")
+			os.Unsetenv("BACKEND_TOKEN_SECRET")
+			os.Unsetenv("INTERNAL_AUTH_SECRET")
+			os.Unsetenv("CACHE_TTL")
+			os.Unsetenv("JWT_ISSUER_TTL")
+		}()
+
+		cfg, err := Load()
+		assert.NoError(t, err)
+		assert.Equal(t, 15*time.Second, cfg.BackendTokenTTL)
+		assert.Equal(t, 15*time.Second, cfg.CacheTTL, "CacheTTL must be clamped to jwt_issuer_ttl when jwt_issuer_ttl < cache_ttl")
 	})
 
 	// Test Validate() bounds

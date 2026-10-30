@@ -111,12 +111,16 @@ func loadRootCAs(caPath string) (*x509.CertPool, error) {
 type ServerOption func(*serverOpts)
 
 type serverOpts struct {
-	clientAuth   tls.ClientAuthType
-	allowedPeers map[string]struct{}
+	clientAuth    tls.ClientAuthType
+	clientAuthSet bool
+	allowedPeers  map[string]struct{}
 }
 
 func WithClientAuth(c tls.ClientAuthType) ServerOption {
-	return func(o *serverOpts) { o.clientAuth = c }
+	return func(o *serverOpts) {
+		o.clientAuth = c
+		o.clientAuthSet = true
+	}
 }
 
 func WithAllowedPeers(names ...string) ServerOption {
@@ -175,6 +179,14 @@ func LoadServerConfig(certPath, keyPath, caPath string, opts ...ServerOption) (*
 	o := &serverOpts{}
 	for _, opt := range opts {
 		opt(o)
+	}
+	if len(o.allowedPeers) > 0 {
+		if !o.clientAuthSet && o.clientAuth == tls.NoClientCert {
+			o.clientAuth = tls.RequireAndVerifyClientCert
+		}
+		if o.clientAuth != tls.RequireAndVerifyClientCert {
+			return nil, fmt.Errorf("tlsutil: WithAllowedPeers requires RequireAndVerifyClientCert")
+		}
 	}
 	cfg := &tls.Config{
 		MinVersion: tls.VersionTLS13,
