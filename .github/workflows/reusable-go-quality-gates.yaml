@@ -74,7 +74,7 @@ jobs:
           sparse-checkout: |
             ${{ inputs.working-directory }}
           sparse-checkout-cone-mode: true
-          fetch-depth: 1 # 変更差分だけで十分
+          fetch-depth: 2 # 変更差分だけで十分 (workflow_dispatch での HEAD~1 参照にも対応)
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
@@ -129,9 +129,9 @@ jobs:
           version: v2.14.0
           install-mode: goinstall
           working-directory: ${{ inputs.working-directory }}
-          # PR は --new-from-rev で自前フィルタするので action 側の only-new-issues は無効化。
-          only-new-issues: ${{ github.event_name != 'pull_request' && inputs.lint-only-new }}
-          args: ${{ (github.event_name == 'pull_request' && inputs.lint-only-new) && format('--new-from-rev=origin/{0}', github.base_ref) || '' }}
+          # PR と workflow_dispatch は --new-from-rev で自前フィルタするので action 側の only-new-issues は push のみ有効化。
+          only-new-issues: ${{ github.event_name == 'push' && inputs.lint-only-new }}
+          args: ${{ (github.event_name == 'pull_request' && inputs.lint-only-new && format('--new-from-rev=origin/{0}', github.base_ref)) || (github.event_name == 'workflow_dispatch' && inputs.lint-only-new && '--new-from-rev=HEAD~1') || '' }}
 
       # --- Security: gosec → SARIF で Code Scanning に載せる ---
       # Pinned tool versions cached in ~/go/bin to skip recompilation on repeat runs.
