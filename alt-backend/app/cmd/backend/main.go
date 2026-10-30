@@ -203,6 +203,9 @@ func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEn
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = false
+	// CVE-2026-118653 / CVE-2026-118651: do not fall back to Echo v4's legacy
+	// XFF/X-Real-IP extractor on c.RealIP(); extract the direct peer address.
+	e.IPExtractor = echo.ExtractIPDirect()
 
 	if otelEnabled {
 		e.Use(otelecho.Middleware(serviceName))

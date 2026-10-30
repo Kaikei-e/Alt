@@ -4,25 +4,24 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/smallstep/cli-utils/token"
-	"github.com/smallstep/cli-utils/token/provision"
-	"go.step.sm/crypto/jose"
-	"go.step.sm/crypto/keyutil"
-	"go.step.sm/crypto/randutil"
-	"go.step.sm/crypto/x509util"
 )
 
 type signRequestJSON struct {
@@ -51,44 +50,99 @@ type provisionersJSON struct {
 
 // mintOTT creates a signed one-time token using provisioner credentials for CSR submission.
 func mintOTT(cred *provisionerCred, subject string, sans []string) (string, error) {
-	jwtID, err := randutil.Hex(64)
+	jwtID, err := randomHex(64)
 	if err != nil {
 		return "", fmt.Errorf("pki: ott jti: %w", err)
 	}
-	notBefore := time.Now()
-	opts := []token.Options{
-		token.WithJWTID(jwtID),
-		token.WithKid(cred.jwk.KeyID),
-		token.WithIssuer(cred.name),
-		token.WithAudience(cred.audience),
-		token.WithValidity(notBefore, notBefore.Add(ottLifetime)),
-		token.WithSANS(sans),
+	now := time.Now()
+	claims := map[string]any{
+		"aud":  []string{cred.audience},
+		"exp":  now.Add(ottLifetime).Unix(),
+		"iat":  now.Unix(),
+		"iss":  cred.name,
+		"jti":  jwtID,
+		"nbf":  now.Unix(),
+		"sans": sans,
+		"sub":  subject,
 	}
 	if cred.fingerprint != "" {
-		opts = append(opts, token.WithSHA(cred.fingerprint))
+		claims["sha"] = cred.fingerprint
 	}
-	tok, err := provision.New(subject, opts...)
-	if err != nil {
-		return "", fmt.Errorf("pki: mint ott: %w", err)
-	}
-	alg := string(cred.jwk.Algorithm)
-	if alg == "" {
-		alg = string(jose.ES256)
-	}
-	ott, err := tok.SignedString(alg, cred.jwk.Key)
+	ott, err := signES256JWT(cred.jwk.Key, cred.jwk.KeyID, claims)
 	if err != nil {
 		return "", fmt.Errorf("pki: sign ott: %w", err)
 	}
 	return ott, nil
 }
 
+func signES256JWT(key *ecdsa.PrivateKey, kid string, claims any) (string, error) {
+	if key == nil {
+		return "", fmt.Errorf("nil signing key")
+	}
+	hdr := map[string]string{
+		"alg": "ES256",
+		"kid": kid,
+		"typ": "JWT",
+	}
+	hdrJSON, err := json.Marshal(hdr)
+	if err != nil {
+		return "", err
+	}
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+	signingInput := base64.RawURLEncoding.EncodeToString(hdrJSON) + "." + base64.RawURLEncoding.EncodeToString(claimsJSON)
+	digest := sha256.Sum256([]byte(signingInput))
+	r, s, err := ecdsa.Sign(rand.Reader, key, digest[:])
+	if err != nil {
+		return "", err
+	}
+	var sig [64]byte
+	r.FillBytes(sig[:32])
+	s.FillBytes(sig[32:])
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig[:]), nil
+}
+
+func randomHex(n int) (string, error) {
+	buf := make([]byte, (n+1)/2)
+	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf)[:n], nil
+}
+
+func splitSANs(sans []string) (dnsNames []string, ips []net.IP, emails []string, uris []*url.URL) {
+	for _, san := range sans {
+		if san == "" {
+			continue
+		}
+		if ip := net.ParseIP(san); ip != nil {
+			ips = append(ips, ip)
+			continue
+		}
+		if strings.Contains(san, "@") && !strings.Contains(san, "://") {
+			emails = append(emails, san)
+			continue
+		}
+		if strings.Contains(san, "://") {
+			if u, err := url.Parse(san); err == nil && u.Scheme != "" {
+				uris = append(uris, u)
+				continue
+			}
+		}
+		dnsNames = append(dnsNames, san)
+	}
+	return dnsNames, ips, emails, uris
+}
+
 // createCSR generates a new private key and corresponding PEM-encoded certificate signing request.
 func createCSR(subject string, sans []string) (string, crypto.PrivateKey, error) {
-	key, err := keyutil.GenerateDefaultKey()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return "", nil, fmt.Errorf("pki: generate key: %w", err)
 	}
-	dnsNames, ips, emails, uris := x509util.SplitSANs(sans)
+	dnsNames, ips, emails, uris := splitSANs(sans)
 	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		Subject:        pkix.Name{CommonName: subject},
 		DNSNames:       dnsNames,
@@ -123,11 +177,12 @@ func rootFingerprint(ctx context.Context, client *http.Client, caURL string) (st
 	if len(chain) == 0 {
 		return "", fmt.Errorf("pki: health: empty verified TLS chain")
 	}
-	return x509util.Fingerprint(chain[len(chain)-1]), nil
+	sum := sha256.Sum256(chain[len(chain)-1].Raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // loadProvisionerJWK fetches and decrypts the provisioner private key from step-ca.
-func loadProvisionerJWK(ctx context.Context, client *http.Client, caURL, name string, password []byte) (*jose.JSONWebKey, error) {
+func loadProvisionerJWK(ctx context.Context, client *http.Client, caURL, name string, password []byte) (*provisionerJWK, error) {
 	var cursor string
 	for page := 0; page < maxProvisionerPages; page++ {
 		u, err := url.Parse(joinURL(caURL, "/provisioners"))

@@ -14,8 +14,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"go.step.sm/crypto/jose"
 )
 
 func TestNativeStepCAIssuer_Issue_Success(t *testing.T) {
@@ -138,14 +136,8 @@ func TestNativeStepCAIssuer_ReusedOTTRejectedByCA(t *testing.T) {
 func TestNativeStepCAIssuer_ExpiredOTTRejectedByCA(t *testing.T) {
 	ca := newFakeStepCA(t, "pki-agent-alt-backend", []byte("pw-exp"))
 	iss := newNativeIssuer(t, ca)
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: ca.jwk.Key}, &jose.SignerOptions{
-		ExtraHeaders: map[jose.HeaderKey]interface{}{"kid": ca.jwk.KeyID},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	now := time.Now().Add(-time.Hour)
-	raw, err := jose.Signed(signer).Claims(map[string]any{
+	raw, err := signES256JWT(ca.jwk.Key, ca.jwk.KeyID, map[string]any{
 		"iss":  ca.provisioner,
 		"sub":  "alt-backend",
 		"aud":  iss.CAURL + "/1.0/sign",
@@ -154,7 +146,7 @@ func TestNativeStepCAIssuer_ExpiredOTTRejectedByCA(t *testing.T) {
 		"nbf":  now.Unix(),
 		"iat":  now.Unix(),
 		"exp":  now.Add(time.Minute).Unix(),
-	}).CompactSerialize()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

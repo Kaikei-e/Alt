@@ -11,9 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"go.step.sm/crypto/jose"
-	"go.step.sm/crypto/x509util"
 )
 
 const (
@@ -47,7 +44,7 @@ type NativeStepCAIssuer struct {
 
 type provisionerCred struct {
 	name        string
-	jwk         *jose.JSONWebKey
+	jwk         *provisionerJWK
 	fingerprint string
 	audience    string
 }
@@ -320,7 +317,7 @@ func (s *NativeStepCAIssuer) validateAndEncode(subject string, sans []string, re
 		Intermediates: intermediates,
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
-	if wantDNS, _, _, _ := x509util.SplitSANs(sans); len(wantDNS) > 0 {
+	if wantDNS, _, _, _ := splitSANs(sans); len(wantDNS) > 0 {
 		opts.DNSName = wantDNS[0]
 	}
 	if _, err := leaf.Verify(opts); err != nil {

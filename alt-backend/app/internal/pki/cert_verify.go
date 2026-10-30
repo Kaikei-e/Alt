@@ -3,6 +3,7 @@ package pki
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -10,9 +11,6 @@ import (
 	"net"
 	"net/url"
 	"strings"
-
-	"go.step.sm/crypto/pemutil"
-	"go.step.sm/crypto/x509util"
 )
 
 // classifyCAStatus maps HTTP error status codes into CA error categories.
@@ -34,7 +32,7 @@ func parseCertPEM(s string) (*x509.Certificate, error) {
 
 // certMatchesSANs asserts the certificate contains exactly the requested Subject Alternative Names.
 func certMatchesSANs(cert *x509.Certificate, sans []string) error {
-	wantDNS, wantIP, wantEmail, wantURI := x509util.SplitSANs(sans)
+	wantDNS, wantIP, wantEmail, wantURI := splitSANs(sans)
 	if !sameFoldedSet(cert.DNSNames, wantDNS) {
 		return fmt.Errorf("pki: issued DNS SAN set mismatch: got %q want %q", cert.DNSNames, wantDNS)
 	}
@@ -168,7 +166,7 @@ func encodeIssued(leaf *x509.Certificate, chain []*x509.Certificate, key crypto.
 			return nil, nil, fmt.Errorf("pki: encode chain: %w", err)
 		}
 	}
-	block, err := pemutil.Serialize(key)
+	block, err := serializePrivateKeyPEM(key)
 	if err != nil {
 		return nil, nil, fmt.Errorf("pki: serialize key: %w", err)
 	}
@@ -178,4 +176,19 @@ func encodeIssued(leaf *x509.Certificate, chain []*x509.Certificate, key crypto.
 		return nil, nil, fmt.Errorf("pki: issued cert/key pair is not usable: %w", err)
 	}
 	return certPEM, keyPEM, nil
+}
+
+func serializePrivateKeyPEM(key crypto.PrivateKey) (*pem.Block, error) {
+	if ecKey, ok := key.(*ecdsa.PrivateKey); ok {
+		der, err := x509.MarshalECPrivateKey(ecKey)
+		if err != nil {
+			return nil, err
+		}
+		return &pem.Block{Type: "EC PRIVATE KEY", Bytes: der}, nil
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	return &pem.Block{Type: "PRIVATE KEY", Bytes: der}, nil
 }
