@@ -183,11 +183,11 @@ def _format_claims(claims: list[dict], *, header: str = "計画済み分析ポ�
     """Format planned claims into a readable block for the writer."""
     lines = [header]
     for i, claim in enumerate(claims, 1):
-        lines.append(f"{i}. [{claim.get('claim_type', 'factual')}] {claim['claim']}")
+        lines.append(f"{i}. [{claim.get('claim_type', 'factual')}] {neutralize_evidence_text(str(claim['claim']))}")
         for q in claim.get("supporting_quotes", []):
-            lines.append(f'   根拠: "{q}"')
+            lines.append(f'   根拠: "{neutralize_evidence_text(str(q))}"')
         for n in claim.get("numeric_facts", []):
-            lines.append(f"   数値: {n}")
+            lines.append(f"   数値: {neutralize_evidence_line(str(n))}")
         eids = claim.get("evidence_ids", [])
         if eids:
             lines.append(f"   出典: {', '.join(eids)}")
@@ -535,8 +535,8 @@ class WriterNode:
             )
 
         prompt = prompt_template.format(
-            topic=topic,
-            section_title=section_title,
+            topic=neutralize_evidence_line(topic),
+            section_title=neutralize_evidence_line(section_title),
             claim=neutralize_evidence_text(claim.get("claim", "")),
             supporting_quotes=quotes_str,
             evidence_ids=", ".join(eids),
@@ -548,7 +548,8 @@ class WriterNode:
         prompt += f"\n<target_length>{target}</target_length>"
 
         if numeric_facts:
-            prompt += f"\n数値データ: {', '.join(numeric_facts)}"
+            safe_numeric_facts = [neutralize_evidence_line(str(nf)) for nf in numeric_facts]
+            prompt += f"\n数値データ: {', '.join(safe_numeric_facts)}"
 
         if prior_sections_context:
             prompt += f"\n\n{prior_sections_context}"
@@ -907,10 +908,10 @@ class WriterNode:
 
                 evidence_block = format_evidence(section_evidence, hydrated)
                 prompt = WRITER_PROMPT.format(
-                    title=title,
-                    topic=topic,
+                    title=neutralize_evidence_line(str(title)),
+                    topic=neutralize_evidence_line(str(topic)),
                     evidence_block=evidence_block,
-                    revision_note=revision_note,
+                    revision_note=neutralize_evidence_text(revision_note),
                 )
 
                 response = await self._llm.generate(prompt, num_predict=2000, mode=LLMMode.LONGFORM)

@@ -472,3 +472,15 @@ class TestGenerateXmlValidated:
             fallback=fallback,
         )
         assert result.reasoning == "ok"
+
+
+class TestXmlSecurityGuards:
+    def test_rejects_doctype_and_entity_declarations(self) -> None:
+        billion_laughs = '<!DOCTYPE plan [\n  <!ENTITY lol "lol">\n]>\n<plan><reasoning>&lol;</reasoning></plan>'
+        with pytest.raises(XmlParseError, match="DOCTYPE and ENTITY"):
+            parse_xmlish_block(billion_laughs, "plan")
+
+    def test_rejects_oversized_xml_input(self) -> None:
+        huge = "<plan><reasoning>" + ("x" * 100_005) + "</reasoning></plan>"
+        with pytest.raises(XmlParseError, match="exceeds maximum allowed"):
+            parse_xmlish_block(huge, "plan")

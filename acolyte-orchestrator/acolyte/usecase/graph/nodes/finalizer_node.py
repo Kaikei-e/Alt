@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING, Protocol, cast
+from urllib.parse import urlparse
 from uuid import UUID
 
 import structlog
@@ -20,6 +21,24 @@ logger = structlog.get_logger(__name__)
 
 _SHORT_ID_RE = re.compile(r"\[S(\d+)\]")
 _SOURCES_FOOTER_HEADER = "\n\n---\nSources:\n"
+_MARKDOWN_LINK_CHARS_RE = re.compile(r"([\[\]()])")
+
+
+def _escape_markdown_chars(text: str) -> str:
+    """Escape Markdown link metacharacters ([ ] ( )) in untrusted source fields."""
+    if not text:
+        return ""
+    return _MARKDOWN_LINK_CHARS_RE.sub(r"\\\1", text)
+
+
+def _is_safe_http_url(url: str) -> bool:
+    """Return True only when url has an explicit http or https scheme."""
+    if not url:
+        return False
+    try:
+        return urlparse(url.strip()).scheme.lower() in ("http", "https")
+    except ValueError:
+        return False
 
 
 def _extract_referenced_short_ids(body: str) -> list[str]:
@@ -36,9 +55,11 @@ def _extract_referenced_short_ids(body: str) -> list[str]:
 
 def _format_source_entry(short_id: str, entry: SourceEntry) -> str:
     """Render one footer line: '- [S1] Title — Publisher (URL)'."""
-    line = f"- [{short_id}] {entry.title}"
-    publisher = (entry.publisher or "").strip()
-    url = (entry.url or "").strip()
+    safe_title = _escape_markdown_chars(entry.title or "")
+    line = f"- [{short_id}] {safe_title}"
+    publisher = _escape_markdown_chars((entry.publisher or "").strip())
+    raw_url = (entry.url or "").strip()
+    url = _escape_markdown_chars(raw_url) if _is_safe_http_url(raw_url) else ""
     if publisher and url:
         line += f" — {publisher} ({url})"
     elif publisher:
@@ -70,6 +91,9 @@ def render_sources_footer(body: str, source_map: SourceMap) -> str:
         return body
 
     return body + _SOURCES_FOOTER_HEADER + "\n".join(footer_lines)
+
+
+_render_sources_footer = render_sources_footer
 
 
 def resolve_notification_user_id(

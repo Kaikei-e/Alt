@@ -93,6 +93,18 @@ _XML_TAG_RE = re.compile(r"<[^>]+>")
 
 _NEWLINE_RUN_RE = re.compile(r"[\r\n]+")
 
+# Chat-turn and reasoning control tokens across ChatML, Gemma, and Qwen templates.
+_CONTROL_TOKEN_RE = re.compile(
+    r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
+    r"|</?think>"
+    r"|<\|turn>|<turn\|>"
+    r"|<start_of_turn>|<end_of_turn>",
+    re.IGNORECASE,
+)
+
+# Zero-width spaces/joiners and Unicode BiDi override/isolate control characters.
+_ZERO_WIDTH_BIDI_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]")
+
 
 def _escape_angle_brackets(match: re.Match[str]) -> str:
     return match.group(0).replace("<", "&lt;").replace(">", "&gt;")
@@ -109,7 +121,8 @@ def neutralize_evidence_text(text: str) -> str:
     """
     if not text:
         return text
-    escaped = _STRUCTURAL_TAG_RE.sub(_escape_angle_brackets, text)
+    stripped = _ZERO_WIDTH_BIDI_RE.sub("", _CONTROL_TOKEN_RE.sub("", text))
+    escaped = _STRUCTURAL_TAG_RE.sub(_escape_angle_brackets, stripped)
     return _SCAFFOLD_HEADER_RE.sub(r"\1：", escaped)
 
 
@@ -124,6 +137,17 @@ def neutralize_evidence_line(text: str) -> str:
     return _NEWLINE_RUN_RE.sub(" ", neutralize_evidence_text(text))
 
 
+def sanitize_for_prompt(text: str) -> str:
+    """Sanitize untrusted text before interpolating it into a prompt."""
+    return neutralize_evidence_text(text)
+
+
+def wrap_untrusted_content(text: str, tag: str = "untrusted") -> str:
+    """Sanitize untrusted text and wrap it in an explicit XML tag."""
+    sanitized = neutralize_evidence_text(text)
+    return f"<{tag}>{sanitized}</{tag}>"
+
+
 def count_prompt_scaffolding(text: str) -> int:
     """Count the tokens :func:`neutralize_evidence_text` would rewrite.
 
@@ -134,14 +158,20 @@ def count_prompt_scaffolding(text: str) -> int:
     """
     if not text:
         return 0
-    return len(_STRUCTURAL_TAG_RE.findall(text)) + len(_SCAFFOLD_HEADER_RE.findall(text))
+    return (
+        len(_STRUCTURAL_TAG_RE.findall(text))
+        + len(_SCAFFOLD_HEADER_RE.findall(text))
+        + len(_CONTROL_TOKEN_RE.findall(text))
+        + len(_ZERO_WIDTH_BIDI_RE.findall(text))
+    )
 
 
 def sanitize_evidence_excerpt(text: str, *, max_chars: int = 600) -> str:
     """Remove XML/HTML tags and cap length before insertion into the prompt."""
     if not text:
         return ""
-    cleaned = _XML_TAG_RE.sub("", text).strip()
+    cleaned = _ZERO_WIDTH_BIDI_RE.sub("", _CONTROL_TOKEN_RE.sub("", text))
+    cleaned = _XML_TAG_RE.sub("", cleaned).strip()
     if len(cleaned) > max_chars:
         cleaned = cleaned[:max_chars] + "…"
     return cleaned

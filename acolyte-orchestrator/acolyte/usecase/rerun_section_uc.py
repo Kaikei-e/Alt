@@ -7,6 +7,7 @@ from uuid import UUID
 
 import structlog
 
+from acolyte.domain.prompt_safety import neutralize_evidence_line
 from acolyte.domain.report import ChangeItem
 from acolyte.domain.writer_prompt import WRITER_PROMPT, format_evidence
 from acolyte.port.llm_provider import LLMMode
@@ -68,8 +69,8 @@ class RerunSectionUsecase:
 
         # Generate new section body (writer-only, no evidence re-retrieval)
         prompt = WRITER_PROMPT.format(
-            title=section_title,
-            topic=topic,
+            title=neutralize_evidence_line(str(section_title)),
+            topic=neutralize_evidence_line(str(topic)),
             evidence_block=format_evidence(evidence_items),
             revision_note="",
         )

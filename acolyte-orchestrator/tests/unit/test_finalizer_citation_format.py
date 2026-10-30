@@ -101,3 +101,27 @@ class TestRenderSourcesFooter:
         footer = rendered.split("\n\n---\nSources:\n", 1)[1]
         assert "Known Article" in footer
         assert "[S99]" not in footer
+
+    def test_footer_omits_javascript_and_data_urls_and_escapes_markdown_chars(self) -> None:
+        sm = SourceMap()
+        sm.register(
+            "abc-1",
+            "Title [Click](javascript:alert(1))",
+            publisher="Pub (Inc)",
+            url="javascript:alert(1)",
+        )
+        sm.register(
+            "abc-2",
+            "Safe Article",
+            publisher="Pub",
+            url="data:text/html,<script>alert(1)</script>",
+        )
+
+        body = "Refs [S1] and [S2]."
+        rendered = render_sources_footer(body, sm)
+        footer = rendered.split("\n\n---\nSources:\n", 1)[1]
+
+        assert "javascript:alert" not in footer.split(" — ")[-1]
+        assert "data:text/html" not in footer
+        assert r"\[Click\]\(javascript:alert\(1\)\)" in footer
+        assert r"Pub \(Inc\)" in footer

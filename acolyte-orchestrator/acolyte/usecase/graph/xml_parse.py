@@ -31,6 +31,8 @@ logger = structlog.get_logger(__name__)
 
 _TRUNCATION_RATIO = 0.95
 _BUDGET_INCREASE = 1.25
+_MAX_XML_INPUT_CHARS = 100_000
+_FORBIDDEN_XML_DECL_RE = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
 
 # Gemma4 thought block patterns
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
@@ -46,6 +48,14 @@ class XmlParseError(ValueError):
     @classmethod
     def no_block_found(cls, root_tag: str) -> XmlParseError:
         return cls(f"No <{root_tag}>...</{root_tag}> block found in output")
+
+    @classmethod
+    def input_too_large(cls, length: int) -> XmlParseError:
+        return cls(f"XML input length {length} exceeds maximum allowed ({_MAX_XML_INPUT_CHARS})")
+
+    @classmethod
+    def forbidden_declaration(cls) -> XmlParseError:
+        return cls("XML DOCTYPE and ENTITY declarations are forbidden")
 
     @classmethod
     def parse_failed_after_repair(cls, exc: Exception) -> XmlParseError:
@@ -114,10 +124,17 @@ def parse_xmlish_block(text: str, root_tag: str) -> ET.Element:
 
     Raises XmlParseError if parsing fails after repair attempts.
     """
+    if len(text) > _MAX_XML_INPUT_CHARS:
+        raise XmlParseError.input_too_large(len(text))
+    if _FORBIDDEN_XML_DECL_RE.search(text):
+        raise XmlParseError.forbidden_declaration()
+
     cleaned = strip_gemma_thought_block(text)
     block = extract_tag_block(cleaned, root_tag)
     if block is None:
         raise XmlParseError.no_block_found(root_tag)
+    if _FORBIDDEN_XML_DECL_RE.search(block):
+        raise XmlParseError.forbidden_declaration()
 
     # Try strict parse first
     try:

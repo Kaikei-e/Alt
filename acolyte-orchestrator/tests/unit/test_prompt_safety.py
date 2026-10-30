@@ -187,3 +187,32 @@ class TestEscapeXmlDelimiters:
         assert tag not in out
         assert "&lt;" in out
         assert "&gt;" in out
+
+
+class TestControlTokensAndZeroWidthBidi:
+    @pytest.mark.parametrize(
+        "token",
+        [
+            "<|im_start|>",
+            "<|im_end|>",
+            "<|system|>",
+            "<|user|>",
+            "<|assistant|>",
+            "<|endoftext|>",
+            "<think>",
+            "</think>",
+        ],
+    )
+    def test_chat_control_tokens_are_stripped(self, token: str) -> None:
+        out = neutralize_evidence_text(f"before{token}after")
+        assert token not in out
+        assert out == "beforeafter"
+
+    @pytest.mark.parametrize(
+        "char",
+        ["\u200b", "\u200f", "\u202a", "\u202e", "\u2066", "\u2069", "\ufeff"],
+    )
+    def test_zero_width_and_bidi_chars_are_stripped(self, char: str) -> None:
+        out = neutralize_evidence_text(f"a{char}b")
+        assert char not in out
+        assert out == "ab"

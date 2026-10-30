@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.claim import ClaimPlannerOutput
-from acolyte.domain.prompt_safety import escape_xml_delimiters
+from acolyte.domain.prompt_safety import escape_xml_delimiters, neutralize_evidence_line
 from acolyte.port.llm_provider import LLMMode
 from acolyte.usecase.graph.xml_parse import (
     confidence_to_score,
@@ -381,6 +381,8 @@ class SectionPlannerNode:
             key = section.get("key", "")
             title = section.get("title", key)
             section_role = section.get("section_role", "general")
+            safe_title = neutralize_evidence_line(str(title))
+            safe_topic = neutralize_evidence_line(str(topic))
 
             if section_role == "executive_summary":
                 # ES uses accepted claims from ALL other sections
@@ -398,8 +400,8 @@ class SectionPlannerNode:
 
                 claims_block = _format_analysis_claims(all_claims)
                 prompt = ES_PLANNER_PROMPT.format(
-                    title=title,
-                    topic=topic,
+                    title=safe_title,
+                    topic=safe_topic,
                     claims_block=claims_block,
                 )
             elif section_role == "conclusion":
@@ -418,8 +420,8 @@ class SectionPlannerNode:
 
                 claims_block = _format_analysis_claims(analysis_claims)
                 prompt = CONCLUSION_PLANNER_PROMPT.format(
-                    title=title,
-                    topic=topic,
+                    title=safe_title,
+                    topic=safe_topic,
                     claims_block=claims_block,
                 )
             else:
@@ -438,8 +440,8 @@ class SectionPlannerNode:
 
                 facts_block = _format_facts_block(section_facts)
                 prompt = SECTION_PLANNER_PROMPT.format(
-                    title=title,
-                    topic=topic,
+                    title=safe_title,
+                    topic=safe_topic,
                     facts_block=facts_block,
                     max_claims=max_claims,
                     contract_instructions=contract_instructions,

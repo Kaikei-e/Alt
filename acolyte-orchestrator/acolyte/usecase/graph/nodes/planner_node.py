@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from acolyte.domain.prompt_safety import neutralize_evidence_line
 from acolyte.domain.query_facet import decompose_queries
 from acolyte.domain.section_contract import ROLE_CONTRACT_DEFAULTS, QueryExpansionOutput
 from acolyte.port.llm_provider import LLMMode
@@ -155,7 +156,8 @@ def _format_skeleton_block(skeleton: list[dict]) -> str:
     """Format skeleton sections for the prompt."""
     lines = []
     for s in skeleton:
-        lines.append(f"- {s['key']} ({s.get('section_role', 'general')}): {s.get('title', s['key'])}")
+        safe_title = neutralize_evidence_line(str(s.get("title", s["key"])))
+        lines.append(f"- {s['key']} ({s.get('section_role', 'general')}): {safe_title}")
     return "\n".join(lines)
 
 
@@ -169,7 +171,7 @@ class PlannerNode:
         skeleton = _get_skeleton(brief)
 
         prompt = PLANNER_PROMPT.format(
-            scope=topic,
+            scope=neutralize_evidence_line(str(topic)),
             skeleton_block=_format_skeleton_block(skeleton),
         )
 
