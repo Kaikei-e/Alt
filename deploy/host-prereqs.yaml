@@ -241,35 +241,6 @@ host_paths:
       must have gid 984 (getent group docker); otherwise change that user:
       line and this owner together.
 
-  - id: docker-containers-logs
-    env: null
-    path: /var/lib/docker/containers
-    kind: dir
-    owner: null
-    mode: null
-    create_host_path: true
-    mounts:
-      - {service: alt-backend-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: alt-data-hub-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: alt-harvester-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: auth-hub-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: dashboard-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: mq-hub-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: news-creator-backend-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: news-creator-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: nginx-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: pre-processor-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: rag-orchestrator-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: recap-evaluator-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: recap-subworker-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: recap-worker-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: search-indexer-logs, target: /var/lib/docker/containers, read_only: true}
-      - {service: tag-generator-logs, target: /var/lib/docker/containers, read_only: true}
-    provision: |
-      Docker Engine's json-file log directory. The log forwarders assume the
-      default data-root (/var/lib/docker); a relocated data-root leaves them
-      tailing an empty directory Engine created for the bind.
-
   - id: docker-data-root
     env: null
     path: /var/lib/docker/
@@ -281,7 +252,7 @@ host_paths:
       - {service: cadvisor, target: /var/lib/docker, read_only: true}
     provision: |
       Docker Engine's default data-root, read by cAdvisor for per-container
-      filesystem stats. Same default data-root assumption as docker-containers-logs.
+      filesystem stats.
 
   - id: sysfs
     env: null
