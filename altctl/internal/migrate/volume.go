@@ -46,9 +46,9 @@ func (v *VolumeBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPath
 		return nil
 	}
 
-	// Ensure output directory exists
+	// Ensure output directory exists with restricted permissions
 	outputDir := filepath.Dir(outputPath)
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0700); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 
@@ -83,6 +83,10 @@ func (v *VolumeBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPath
 		// Clean up failed backup file
 		os.Remove(outputPath)
 		return fmt.Errorf("tar backup failed: %w", err)
+	}
+
+	if err := os.Chmod(outputPath, 0600); err != nil {
+		return fmt.Errorf("setting backup file permissions: %w", err)
 	}
 
 	// Verify file was created

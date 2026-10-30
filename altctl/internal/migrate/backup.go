@@ -120,7 +120,7 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResul
 	// Create backup directory with timestamp
 	backupDir := BackupDir(opts.OutputDir)
 	if !m.dryRun {
-		if err := os.MkdirAll(backupDir, 0755); err != nil {
+		if err := os.MkdirAll(backupDir, 0700); err != nil {
 			return nil, fmt.Errorf("creating backup directory: %w", err)
 		}
 	}
@@ -137,7 +137,7 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResul
 	// Create volumes subdirectory
 	volumesDir := filepath.Join(backupDir, "volumes")
 	if !m.dryRun {
-		if err := os.MkdirAll(volumesDir, 0755); err != nil {
+		if err := os.MkdirAll(volumesDir, 0700); err != nil {
 			return nil, fmt.Errorf("creating volumes directory: %w", err)
 		}
 	}
@@ -530,6 +530,11 @@ func CompressBackupDir(ctx context.Context, backupDir string) (string, error) {
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("tar compression failed: %w\n%s", err, string(output))
+	}
+
+	if err := os.Chmod(archivePath, 0600); err != nil {
+		os.Remove(archivePath)
+		return "", fmt.Errorf("setting archive permissions: %w", err)
 	}
 
 	// Verify archive was created

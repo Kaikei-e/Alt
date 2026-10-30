@@ -2,6 +2,7 @@ package setup
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -676,5 +677,117 @@ func TestFindPendingSecrets(t *testing.T) {
 	}
 	if got := names(pending.PKIProvisioner); got != "pki-agent-alt-backend-jwk.txt" {
 		t.Errorf("PKIProvisioner = %s, want pki-agent-alt-backend-jwk.txt", got)
+	}
+}
+
+func TestEnvTemplate_NoInsecureKratosLiteralSecrets(t *testing.T) {
+	repoRoot := filepath.Dir(filepath.Dir(repoBaseComposeFile(t)))
+	envTemplatePath := filepath.Join(repoRoot, ".env.template")
+	data, err := os.ReadFile(envTemplatePath)
+	if err != nil {
+		t.Fatalf("reading .env.template: %v", err)
+	}
+	content := string(data)
+	for _, insecure := range []string{
+		"0123456789abcdef0123456789abcdef",
+		"fedcba9876543210fedcba9876543210",
+	} {
+		if strings.Contains(content, insecure) {
+			t.Errorf(".env.template still contains insecure Kratos secret literal %q", insecure)
+		}
+	}
+}
+
+func TestKratosEntrypoint_RejectsInsecureOrShortSecrets(t *testing.T) {
+	repoRoot := filepath.Dir(filepath.Dir(repoBaseComposeFile(t)))
+	entrypoint := filepath.Join(repoRoot, "kratos", "entrypoint.sh")
+	templateFile := filepath.Join(repoRoot, "kratos", "kratos_template.yml")
+
+	cases := []struct {
+		name         string
+		cookieSecret string
+		cipherSecret string
+		wantErr      bool
+	}{
+		{
+			name:         "short_cookie_secret",
+			cookieSecret: "too-short-secret",
+			cipherSecret: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+			wantErr:      true,
+		},
+		{
+			name:         "short_cipher_secret",
+			cookieSecret: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+			cipherSecret: "too-short-secret",
+			wantErr:      true,
+		},
+		{
+			name:         "template_hex_cookie_placeholder",
+			cookieSecret: "0123456789abcdef0123456789abcdef",
+			cipherSecret: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+			wantErr:      true,
+		},
+		{
+			name:         "template_hex_cipher_placeholder",
+			cookieSecret: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+			cipherSecret: "fedcba9876543210fedcba9876543210",
+			wantErr:      true,
+		},
+		{
+			name:         "change_me_cookie_placeholder",
+			cookieSecret: "CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_16",
+			cipherSecret: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+			wantErr:      true,
+		},
+		{
+			name:         "change_me_cipher_placeholder",
+			cookieSecret: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+			cipherSecret: "CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_16",
+			wantErr:      true,
+		},
+		{
+			name:         "valid_secrets",
+			cookieSecret: "v1a2l3i4d5c6o7o8k9i0e1s2e3c4r5e6t7x8y9z0",
+			cipherSecret: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+			wantErr:      false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			dbPassFile := filepath.Join(dir, "db_pass")
+			cookieFile := filepath.Join(dir, "cookie_secret")
+			cipherFile := filepath.Join(dir, "cipher_secret")
+			outConfig := filepath.Join(dir, "kratos.yml")
+
+			if err := os.WriteFile(dbPassFile, []byte("db-password-for-test\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(cookieFile, []byte(tc.cookieSecret+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(cipherFile, []byte(tc.cipherSecret+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			cmd := exec.Command("/bin/sh", entrypoint, "true")
+			cmd.Env = append(os.Environ(),
+				"KRATOS_DB_PASSWORD_FILE="+dbPassFile,
+				"KRATOS_COOKIE_SECRET_FILE="+cookieFile,
+				"KRATOS_CIPHER_SECRET_FILE="+cipherFile,
+				"KRATOS_TEMPLATE_FILE="+templateFile,
+				"KRATOS_CONFIG_FILE="+outConfig,
+				"KRATOS_COOKIE_DOMAIN=",
+				"KRATOS_ALLOWED_RETURN_URL_1=http://localhost:4173/sv/",
+			)
+			out, err := cmd.CombinedOutput()
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected entrypoint to fail for %s, but it succeeded (output: %s)", tc.name, string(out))
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("expected entrypoint to succeed for %s, got err=%v (output: %s)", tc.name, err, string(out))
+			}
+		})
 	}
 }

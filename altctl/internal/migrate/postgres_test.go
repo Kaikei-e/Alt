@@ -234,3 +234,102 @@ func TestRegistryTarVolumesAfterPGChange(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresBackuper_Backup_Permissions0700And0600(t *testing.T) {
+	binDir := t.TempDir()
+	fakeDocker := filepath.Join(binDir, "docker")
+	script := "#!/usr/bin/env sh\nprintf 'PGDMP-fake-content'\n"
+	if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+	pg := NewPostgresBackuper("alt", "", slog.Default(), false)
+	spec := VolumeSpec{
+		Name:       "db_data_17",
+		Service:    "db",
+		BackupType: BackupTypePostgreSQL,
+		DBName:     "alt",
+		DBUser:     "alt_db_user",
+		DBPort:     5432,
+	}
+
+	outDir := filepath.Join(t.TempDir(), "pg_out")
+	outputPath := filepath.Join(outDir, "db_data_17.dump")
+	if err := pg.Backup(context.Background(), spec, outputPath); err != nil {
+		t.Fatalf("Backup failed: %v", err)
+	}
+
+	dirInfo, err := os.Stat(outDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Errorf("output directory mode = %#o, want 0700", got)
+	}
+
+	fileInfo, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fileInfo.Mode().Perm(); got != 0o600 {
+		t.Errorf("output dump file mode = %#o, want 0600", got)
+	}
+}
+
+func TestVolumeBackuper_Backup_Permissions0700And0600(t *testing.T) {
+	binDir := t.TempDir()
+	fakeDocker := filepath.Join(binDir, "docker")
+	// Fake docker script:
+	// - "volume inspect ..." -> exit 0
+	// - "run --rm -v <vol>:/data:ro -v <hostdir>:/backup busybox tar czvf /backup/<file> ..." -> creates <hostdir>/<file> with 0644
+	script := `#!/usr/bin/env sh
+set -e
+if [ "$1" = "volume" ]; then
+  exit 0
+fi
+if [ "$1" = "run" ]; then
+  # arg 6 is "<hostdir>:/backup", arg 10 is "/backup/<file>"
+  hostdir="${6%:/backup}"
+  file="${10#/backup/}"
+  umask 0022
+  printf 'fake-tar-gz' > "${hostdir}/${file}"
+  chmod 0644 "${hostdir}/${file}"
+  exit 0
+fi
+exit 1
+`
+	if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+	vb := NewVolumeBackuper("alt", slog.Default(), false)
+	spec := VolumeSpec{
+		Name:       "meili_data",
+		Service:    "meilisearch",
+		BackupType: BackupTypeTar,
+	}
+
+	outDir := filepath.Join(t.TempDir(), "vol_out")
+	outputPath := filepath.Join(outDir, "meili_data.tar.gz")
+	if err := vb.Backup(context.Background(), spec, outputPath); err != nil {
+		t.Fatalf("VolumeBackuper.Backup failed: %v", err)
+	}
+
+	dirInfo, err := os.Stat(outDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Errorf("volume output directory mode = %#o, want 0700", got)
+	}
+
+	fileInfo, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fileInfo.Mode().Perm(); got != 0o600 {
+		t.Errorf("volume archive file mode = %#o, want 0600", got)
+	}
+}

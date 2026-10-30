@@ -54,8 +54,8 @@ func (p *PostgresBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPa
 		return nil
 	}
 
-	// Ensure output directory exists
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+	// Ensure output directory exists with restricted permissions
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0700); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 
@@ -72,7 +72,7 @@ func (p *PostgresBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPa
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 
-	outFile, err := os.Create(outputPath)
+	outFile, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("creating output file: %w", err)
 	}

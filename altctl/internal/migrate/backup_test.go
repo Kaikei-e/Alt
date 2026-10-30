@@ -229,6 +229,9 @@ func TestCompressBackupDir(t *testing.T) {
 	if info.Size() == 0 {
 		t.Error("Archive file is empty")
 	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("Archive file mode = %#o, want 0600", got)
+	}
 
 	// Verify original directory was removed
 	if _, err := os.Stat(backupDir); !os.IsNotExist(err) {
