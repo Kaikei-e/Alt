@@ -180,11 +180,18 @@ async fn enrich_log_entry(
         Ok(enriched_entry) => enriched_entry,
         Err(e) => {
             error!("Failed to parse log entry: {}", e);
-            // Fallback: create a plain text EnrichedLogEntry directly
+            // Fallback: create a plain text EnrichedLogEntry with bounded length and no NUL bytes
+            const MAX_FALLBACK_MESSAGE_BYTES: usize = 64 * 1024;
+            let raw_slice = if log_entry.raw_bytes.len() > MAX_FALLBACK_MESSAGE_BYTES {
+                &log_entry.raw_bytes[..MAX_FALLBACK_MESSAGE_BYTES]
+            } else {
+                log_entry.raw_bytes.as_ref()
+            };
+            let sanitized_message = String::from_utf8_lossy(raw_slice).replace('\0', "");
             EnrichedLogEntry {
                 service_type: container.service_name.clone(),
                 log_type: "plain".to_string(),
-                message: String::from_utf8_lossy(&log_entry.raw_bytes).to_string(),
+                message: sanitized_message,
                 level: Some(crate::domain::LogLevel::Info),
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 stream: log_entry.stream.as_str().to_string(),

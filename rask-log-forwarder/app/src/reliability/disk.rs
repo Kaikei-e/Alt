@@ -167,9 +167,11 @@ impl DiskFallback {
             data // Assume uncompressed
         };
 
-        // Deserialize
+        // Deserialize with an explicit allocation limit (64 MiB)
+        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
+        let bincode_cfg = bincode::config::standard().with_limit::<MAX_DECOMPRESSED_BATCH_BYTES>();
         let (stored_batch, _): (StoredBatch, usize) =
-            bincode::serde::decode_from_slice(&deserialized_data, bincode::config::standard())?;
+            bincode::serde::decode_from_slice(&deserialized_data, bincode_cfg)?;
 
         tracing::debug!("Retrieved batch {batch_id} from disk");
 
@@ -262,7 +264,11 @@ impl DiskFallback {
     }
 
     fn get_batch_file_path(&self, batch_id: &str) -> PathBuf {
-        self.config.storage_path.join(format!("{batch_id}.batch"))
+        let safe_id: String = batch_id
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .collect();
+        self.config.storage_path.join(format!("{safe_id}.batch"))
     }
 
     async fn load_stored_batch(&self, batch_id: &str) -> Result<StoredBatch, DiskError> {
@@ -277,16 +283,26 @@ impl DiskFallback {
             data
         };
 
+        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
+        let bincode_cfg = bincode::config::standard().with_limit::<MAX_DECOMPRESSED_BATCH_BYTES>();
         let (stored_batch, _): (StoredBatch, usize) =
-            bincode::serde::decode_from_slice(&deserialized_data, bincode::config::standard())
+            bincode::serde::decode_from_slice(&deserialized_data, bincode_cfg)
                 .map_err(DiskError::DeserializationError)?;
         Ok(stored_batch)
     }
 
     fn decompress_data(&self, data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
-        let mut decoder = GzDecoder::new(data);
+        const MAX_DECOMPRESSED_BATCH_BYTES: u64 = 64 * 1024 * 1024;
+        let decoder = GzDecoder::new(data);
+        let mut limited = decoder.take(MAX_DECOMPRESSED_BATCH_BYTES + 1);
         let mut decompressed = Vec::new();
-        decoder.read_to_end(&mut decompressed)?;
+        limited.read_to_end(&mut decompressed)?;
+        if decompressed.len() as u64 > MAX_DECOMPRESSED_BATCH_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "decompressed batch exceeds maximum allowed size",
+            ));
+        }
         Ok(decompressed)
     }
 
