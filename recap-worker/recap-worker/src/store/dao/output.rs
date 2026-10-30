@@ -336,6 +336,9 @@ impl RecapDao {
         term: &str,
         limit: i32,
     ) -> Result<Vec<RecapSearchHit>> {
+        const MAX_SEARCH_SCAN_ROWS: i64 = 1000;
+        let pattern = escape_ilike_pattern(term);
+        let clamped_limit = limit.clamp(1, 200);
         let rows = sqlx::query(
             r"
             SELECT DISTINCT ON (rj.job_id, ro.genre)
@@ -354,12 +357,14 @@ impl RecapDao {
             WHERE rj.status = 'completed'
               AND EXISTS (
                 SELECT 1 FROM jsonb_array_elements_text(c.top_terms) AS t
-                WHERE t ILIKE '%' || $1 || '%'
+                WHERE t ILIKE $1 ESCAPE '\'
               )
             ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+            LIMIT $2
             ",
         )
-        .bind(term)
+        .bind(&pattern)
+        .bind(MAX_SEARCH_SCAN_ROWS)
         .fetch_all(pool)
         .await
         .map_err(|e| RecapError::Db(format!("failed to search recaps by term: {e}")))?;
@@ -388,7 +393,7 @@ impl RecapDao {
 
         // Sort by date descending and apply limit
         hits.sort_by_key(|b| std::cmp::Reverse(b.executed_at));
-        hits.truncate(usize::try_from(limit).unwrap_or(0));
+        hits.truncate(usize::try_from(clamped_limit).unwrap_or(0));
 
         Ok(hits)
     }
@@ -400,6 +405,7 @@ impl RecapDao {
         since: Option<DateTime<Utc>>,
         limit: i32,
     ) -> Result<Vec<RecapSearchHit>> {
+        let limit = limit.clamp(1, 1000);
         let rows = if let Some(since_ts) = since {
             sqlx::query(
                 r"
@@ -672,4 +678,39 @@ async fn fetch_evidence_from_sentences(
     }
 
     Ok(grouped)
+}
+
+/// Escape SQL `ILIKE` metacharacters (`\`, `%`, `_`) and wrap in `%...%`.
+pub(crate) fn escape_ilike_pattern(term: &str) -> String {
+    let mut escaped = String::with_capacity(term.len() + 2);
+    escaped.push('%');
+    for ch in term.chars() {
+        match ch {
+            '\\' | '%' | '_' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push('%');
+    escaped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::escape_ilike_pattern;
+
+    #[test]
+    fn escape_ilike_pattern_wraps_plain_term() {
+        assert_eq!(escape_ilike_pattern("rust"), "%rust%");
+    }
+
+    #[test]
+    fn escape_ilike_pattern_escapes_wildcards_and_backslash() {
+        assert_eq!(
+            escape_ilike_pattern(r"100%_match\test"),
+            r"%100\%\_match\\test%"
+        );
+    }
 }

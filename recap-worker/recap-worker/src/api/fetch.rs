@@ -218,6 +218,22 @@ struct ErrorResponse {
 pub(crate) struct SearchRecapsQuery {
     term: String,
     limit: Option<i32>,
+    #[serde(default)]
+    max_results: Option<i32>,
+    #[serde(default)]
+    offset: Option<i32>,
+}
+
+pub(crate) fn clamp_search_limit(limit: Option<i32>) -> i32 {
+    limit.unwrap_or(50).clamp(1, 200)
+}
+
+pub(crate) fn clamp_indexable_limit(limit: Option<i32>) -> i32 {
+    limit.unwrap_or(200).clamp(1, 1000)
+}
+
+pub(crate) fn clamp_offset(offset: Option<i32>) -> i32 {
+    offset.unwrap_or(0).clamp(0, 10_000)
 }
 
 #[derive(Debug, Serialize)]
@@ -254,7 +270,8 @@ pub(crate) async fn search_recaps(
             .into_response();
     }
 
-    let limit = query.limit.unwrap_or(50).min(200);
+    let limit = clamp_search_limit(query.limit.or(query.max_results));
+    let _offset = clamp_offset(query.offset);
     let dao = state.dao();
 
     match dao.search_recaps_by_term(term, limit).await {
@@ -321,7 +338,7 @@ pub(crate) async fn get_indexable_genres(
     State(state): State<AppState>,
     axum::extract::Query(query): axum::extract::Query<IndexableGenresQuery>,
 ) -> impl IntoResponse {
-    let limit = query.limit.unwrap_or(200).min(1000);
+    let limit = clamp_indexable_limit(query.limit);
     let since = query.since.as_deref().and_then(|s| {
         chrono::DateTime::parse_from_rfc3339(s)
             .ok()
@@ -638,6 +655,23 @@ mod tests {
     fn normalize_summary_text_falls_back_on_invalid_json() {
         let input = "{ invalid json";
         assert_eq!(normalize_summary_text(input), input);
+    }
+
+    #[test]
+    fn clamp_helpers_enforce_bounds() {
+        assert_eq!(clamp_search_limit(None), 50);
+        assert_eq!(clamp_search_limit(Some(0)), 1);
+        assert_eq!(clamp_search_limit(Some(-50)), 1);
+        assert_eq!(clamp_search_limit(Some(500)), 200);
+
+        assert_eq!(clamp_indexable_limit(None), 200);
+        assert_eq!(clamp_indexable_limit(Some(0)), 1);
+        assert_eq!(clamp_indexable_limit(Some(-10)), 1);
+        assert_eq!(clamp_indexable_limit(Some(5000)), 1000);
+
+        assert_eq!(clamp_offset(None), 0);
+        assert_eq!(clamp_offset(Some(-10)), 0);
+        assert_eq!(clamp_offset(Some(25_000)), 10_000);
     }
 }
 
