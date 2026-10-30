@@ -71,14 +71,14 @@ dev = [
 ]
 
 [tool.uv]
-# nltk arrives through rouge-score; >=3.10.3 clears CVE-2026-79675 and the
-# 3.10.x path-traversal / DoS batch.
+# nltk arrives through rouge-score; >=3.10.4 clears CVE-2026-109956,
+# CVE-2026-79675, and the 3.10.x path-traversal / DoS batch.
 constraint-dependencies = [
     "certifi>=2026.10.19",
     "protobuf>=6.33.5",
     "Pillow>=13.0.0",
     "Pygments>=2.20.0",
-    "nltk>=3.10.3",
+    "nltk>=3.10.4",
     "urllib3>=2.8.0",
     "multidict>=6.9.1",
 ]
