@@ -33,8 +33,12 @@ def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
 
 
 def strict_from_env(env_var: str = "PEER_IDENTITY_STRICT") -> bool:
-    """Return True when PEER_IDENTITY_STRICT is set to a truthy string."""
-    return os.getenv(env_var, "false").strip().lower() in {"1", "true", "yes", "on"}
+    """Return True when PEER_IDENTITY_STRICT (or fallback MTLS_ENFORCE / PEER_IDENTITY_TRUSTED) is truthy."""
+    for var in (env_var, "MTLS_ENFORCE", "PEER_IDENTITY_TRUSTED"):
+        raw = os.getenv(var)
+        if raw is not None:
+            return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return False
 
 
 def arrived_via_sidecar(request: Request) -> bool:
