@@ -4,15 +4,25 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/pbkdf2"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,14 +30,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/smallstep/cli-utils/token"
-	"github.com/smallstep/cli-utils/token/provision"
-	"go.step.sm/crypto/jose"
-	"go.step.sm/crypto/keyutil"
-	"go.step.sm/crypto/pemutil"
-	"go.step.sm/crypto/randutil"
-	"go.step.sm/crypto/x509util"
 )
 
 const (
@@ -64,9 +66,33 @@ type NativeStepCAIssuer struct {
 	extraTransport []*http.Transport
 }
 
+type provisionerJWK struct {
+	Kty   string            `json:"kty"`
+	Crv   string            `json:"crv"`
+	Alg   string            `json:"alg,omitempty"`
+	Use   string            `json:"use,omitempty"`
+	KeyID string            `json:"kid,omitempty"`
+	X     string            `json:"x"`
+	Y     string            `json:"y"`
+	D     string            `json:"d,omitempty"`
+	Key   *ecdsa.PrivateKey `json:"-"`
+}
+
+func (j *provisionerJWK) Public() provisionerJWK {
+	return provisionerJWK{
+		Kty:   j.Kty,
+		Crv:   j.Crv,
+		Alg:   j.Alg,
+		Use:   j.Use,
+		KeyID: j.KeyID,
+		X:     j.X,
+		Y:     j.Y,
+	}
+}
+
 type provisionerCred struct {
 	name        string
-	jwk         *jose.JSONWebKey
+	jwk         *provisionerJWK
 	fingerprint string
 	audience    string
 }
@@ -400,43 +426,98 @@ type provisionersJSON struct {
 }
 
 func mintOTT(cred *provisionerCred, subject string, sans []string) (string, error) {
-	jwtID, err := randutil.Hex(64)
+	jwtID, err := randomHex(64)
 	if err != nil {
 		return "", fmt.Errorf("pki: ott jti: %w", err)
 	}
-	notBefore := time.Now()
-	opts := []token.Options{
-		token.WithJWTID(jwtID),
-		token.WithKid(cred.jwk.KeyID),
-		token.WithIssuer(cred.name),
-		token.WithAudience(cred.audience),
-		token.WithValidity(notBefore, notBefore.Add(ottLifetime)),
-		token.WithSANS(sans),
+	now := time.Now()
+	claims := map[string]any{
+		"aud":  []string{cred.audience},
+		"exp":  now.Add(ottLifetime).Unix(),
+		"iat":  now.Unix(),
+		"iss":  cred.name,
+		"jti":  jwtID,
+		"nbf":  now.Unix(),
+		"sans": sans,
+		"sub":  subject,
 	}
 	if cred.fingerprint != "" {
-		opts = append(opts, token.WithSHA(cred.fingerprint))
+		claims["sha"] = cred.fingerprint
 	}
-	tok, err := provision.New(subject, opts...)
-	if err != nil {
-		return "", fmt.Errorf("pki: mint ott: %w", err)
-	}
-	alg := string(cred.jwk.Algorithm)
-	if alg == "" {
-		alg = string(jose.ES256)
-	}
-	ott, err := tok.SignedString(alg, cred.jwk.Key)
+	ott, err := signES256JWT(cred.jwk.Key, cred.jwk.KeyID, claims)
 	if err != nil {
 		return "", fmt.Errorf("pki: sign ott: %w", err)
 	}
 	return ott, nil
 }
 
+func signES256JWT(key *ecdsa.PrivateKey, kid string, claims any) (string, error) {
+	if key == nil {
+		return "", fmt.Errorf("nil signing key")
+	}
+	hdr := map[string]string{
+		"alg": "ES256",
+		"kid": kid,
+		"typ": "JWT",
+	}
+	hdrJSON, err := json.Marshal(hdr)
+	if err != nil {
+		return "", err
+	}
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+	signingInput := base64.RawURLEncoding.EncodeToString(hdrJSON) + "." + base64.RawURLEncoding.EncodeToString(claimsJSON)
+	digest := sha256.Sum256([]byte(signingInput))
+	r, s, err := ecdsa.Sign(rand.Reader, key, digest[:])
+	if err != nil {
+		return "", err
+	}
+	var sig [64]byte
+	r.FillBytes(sig[:32])
+	s.FillBytes(sig[32:])
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig[:]), nil
+}
+
+func randomHex(n int) (string, error) {
+	buf := make([]byte, (n+1)/2)
+	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf)[:n], nil
+}
+
+func splitSANs(sans []string) (dnsNames []string, ips []net.IP, emails []string, uris []*url.URL) {
+	for _, san := range sans {
+		if san == "" {
+			continue
+		}
+		if ip := net.ParseIP(san); ip != nil {
+			ips = append(ips, ip)
+			continue
+		}
+		if strings.Contains(san, "@") && !strings.Contains(san, "://") {
+			emails = append(emails, san)
+			continue
+		}
+		if strings.Contains(san, "://") {
+			if u, err := url.Parse(san); err == nil && u.Scheme != "" {
+				uris = append(uris, u)
+				continue
+			}
+		}
+		dnsNames = append(dnsNames, san)
+	}
+	return dnsNames, ips, emails, uris
+}
+
 func createCSR(subject string, sans []string) (string, crypto.PrivateKey, error) {
-	key, err := keyutil.GenerateDefaultKey()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return "", nil, fmt.Errorf("pki: generate key: %w", err)
 	}
-	dnsNames, ips, emails, uris := x509util.SplitSANs(sans)
+	dnsNames, ips, emails, uris := splitSANs(sans)
 	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		Subject:        pkix.Name{CommonName: subject},
 		DNSNames:       dnsNames,
@@ -470,10 +551,11 @@ func rootFingerprint(ctx context.Context, client *http.Client, caURL string) (st
 	if len(chain) == 0 {
 		return "", fmt.Errorf("pki: health: empty verified TLS chain")
 	}
-	return x509util.Fingerprint(chain[len(chain)-1]), nil
+	sum := sha256.Sum256(chain[len(chain)-1].Raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
-func loadProvisionerJWK(ctx context.Context, client *http.Client, caURL, name string, password []byte) (*jose.JSONWebKey, error) {
+func loadProvisionerJWK(ctx context.Context, client *http.Client, caURL, name string, password []byte) (*provisionerJWK, error) {
 	var cursor string
 	for page := 0; page < maxProvisionerPages; page++ {
 		u, err := url.Parse(joinURL(caURL, "/provisioners"))
@@ -523,26 +605,181 @@ func loadProvisionerJWK(ctx context.Context, client *http.Client, caURL, name st
 	return nil, ErrProvisionerPageLimit
 }
 
-func decryptProvisionerJWK(encryptedKey string, password []byte) (*jose.JSONWebKey, error) {
+func decryptProvisionerJWK(encryptedKey string, password []byte) (*provisionerJWK, error) {
 	if err := inspectJWEHeader(encryptedKey); err != nil {
 		return nil, err
 	}
-	enc, err := jose.ParseEncrypted(encryptedKey)
-	if err != nil {
-		return nil, fmt.Errorf("pki: parse provisioner jwe: %w", err)
-	}
-	data, err := enc.Decrypt(password)
+	data, err := decryptPBES2A256GCM(encryptedKey, password)
 	if err != nil {
 		return nil, fmt.Errorf("pki: decrypt provisioner jwk: %w", err)
 	}
 	if len(data) > maxDecryptedJWKBytes {
 		return nil, fmt.Errorf("pki: decrypted provisioner JWK exceeded size cap")
 	}
-	jwk := new(jose.JSONWebKey)
-	if err := json.Unmarshal(data, jwk); err != nil {
+	jwk, err := parseProvisionerECJWK(data)
+	if err != nil {
 		return nil, fmt.Errorf("pki: unmarshal provisioner jwk: %w", err)
 	}
 	return jwk, nil
+}
+
+func decryptPBES2A256GCM(compact string, password []byte) ([]byte, error) {
+	parts := strings.Split(compact, ".")
+	if len(parts) != 5 {
+		return nil, fmt.Errorf("malformed compact JWE")
+	}
+	hdrBytes, err := decodeBase64URL(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("decode header: %w", err)
+	}
+	var hdr struct {
+		Alg string `json:"alg"`
+		P2C int    `json:"p2c"`
+		P2S string `json:"p2s"`
+	}
+	if err := json.Unmarshal(hdrBytes, &hdr); err != nil {
+		return nil, fmt.Errorf("unmarshal header: %w", err)
+	}
+	saltInput, err := decodeBase64URL(hdr.P2S)
+	if err != nil || len(saltInput) < 8 {
+		return nil, fmt.Errorf("invalid p2s salt")
+	}
+	formattedSalt := make([]byte, 0, len(hdr.Alg)+1+len(saltInput))
+	formattedSalt = append(formattedSalt, hdr.Alg...)
+	formattedSalt = append(formattedSalt, 0x00)
+	formattedSalt = append(formattedSalt, saltInput...)
+
+	kek, err := pbkdf2.Key(sha256.New, string(password), formattedSalt, hdr.P2C, 16)
+	if err != nil {
+		return nil, fmt.Errorf("pbkdf2: %w", err)
+	}
+	defer zeroBytes(kek)
+
+	encryptedKey, err := decodeBase64URL(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("decode encrypted key: %w", err)
+	}
+	cek, err := aesKeyUnwrap(kek, encryptedKey)
+	if err != nil {
+		return nil, fmt.Errorf("unwrap cek: %w", err)
+	}
+	defer zeroBytes(cek)
+
+	iv, err := decodeBase64URL(parts[2])
+	if err != nil {
+		return nil, fmt.Errorf("decode iv: %w", err)
+	}
+	ciphertext, err := decodeBase64URL(parts[3])
+	if err != nil {
+		return nil, fmt.Errorf("decode ciphertext: %w", err)
+	}
+	tag, err := decodeBase64URL(parts[4])
+	if err != nil {
+		return nil, fmt.Errorf("decode tag: %w", err)
+	}
+
+	block, err := aes.NewCipher(cek)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	if len(iv) != gcm.NonceSize() || len(tag) != gcm.Overhead() {
+		return nil, fmt.Errorf("invalid gcm iv/tag size")
+	}
+	sealed := make([]byte, 0, len(ciphertext)+len(tag))
+	sealed = append(sealed, ciphertext...)
+	sealed = append(sealed, tag...)
+	return gcm.Open(nil, iv, sealed, []byte(parts[0]))
+}
+
+var rfc3394DefaultIV = [8]byte{0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6}
+
+func aesKeyUnwrap(kek, wrapped []byte) ([]byte, error) {
+	if len(wrapped) != 40 {
+		return nil, fmt.Errorf("unexpected wrapped key length %d", len(wrapped))
+	}
+	block, err := aes.NewCipher(kek)
+	if err != nil {
+		return nil, err
+	}
+	const n = 4
+	var a [8]byte
+	copy(a[:], wrapped[:8])
+	var r [n][8]byte
+	for i := 0; i < n; i++ {
+		copy(r[i][:], wrapped[(i+1)*8:(i+2)*8])
+	}
+	var buf [16]byte
+	for j := 5; j >= 0; j-- {
+		for i := n - 1; i >= 0; i-- {
+			t := uint64(n*j + (i + 1))
+			binary.BigEndian.PutUint64(buf[:8], binary.BigEndian.Uint64(a[:])^t)
+			copy(buf[8:], r[i][:])
+			block.Decrypt(buf[:], buf[:])
+			copy(a[:], buf[:8])
+			copy(r[i][:], buf[8:])
+		}
+	}
+	if subtle.ConstantTimeCompare(a[:], rfc3394DefaultIV[:]) != 1 {
+		return nil, fmt.Errorf("key unwrap integrity check failed")
+	}
+	out := make([]byte, 32)
+	for i := 0; i < n; i++ {
+		copy(out[i*8:(i+1)*8], r[i][:])
+	}
+	return out, nil
+}
+
+func decodeBase64URL(s string) ([]byte, error) {
+	if raw, err := base64.RawURLEncoding.DecodeString(s); err == nil {
+		return raw, nil
+	}
+	padded := s + strings.Repeat("=", (4-len(s)%4)%4)
+	return base64.URLEncoding.DecodeString(padded)
+}
+
+func parseProvisionerECJWK(data []byte) (*provisionerJWK, error) {
+	var jwk provisionerJWK
+	if err := json.Unmarshal(data, &jwk); err != nil {
+		return nil, err
+	}
+	if jwk.Kty != "EC" || jwk.Crv != "P-256" {
+		return nil, fmt.Errorf("unsupported JWK kty=%q crv=%q", jwk.Kty, jwk.Crv)
+	}
+	xBytes, err := base64.RawURLEncoding.DecodeString(jwk.X)
+	if err != nil || len(xBytes) == 0 || len(xBytes) > 32 {
+		return nil, fmt.Errorf("invalid JWK x coordinate")
+	}
+	yBytes, err := base64.RawURLEncoding.DecodeString(jwk.Y)
+	if err != nil || len(yBytes) == 0 || len(yBytes) > 32 {
+		return nil, fmt.Errorf("invalid JWK y coordinate")
+	}
+	dBytes, err := base64.RawURLEncoding.DecodeString(jwk.D)
+	if err != nil || len(dBytes) == 0 || len(dBytes) > 32 {
+		return nil, fmt.Errorf("invalid JWK d parameter")
+	}
+	curve := elliptic.P256()
+	x := new(big.Int).SetBytes(xBytes)
+	y := new(big.Int).SetBytes(yBytes)
+	d := new(big.Int).SetBytes(dBytes)
+	if d.Sign() <= 0 || d.Cmp(curve.Params().N) >= 0 {
+		return nil, fmt.Errorf("JWK d out of range")
+	}
+	if !curve.IsOnCurve(x, y) {
+		return nil, fmt.Errorf("JWK point not on P-256 curve")
+	}
+	jwk.Key = &ecdsa.PrivateKey{
+		PublicKey: ecdsa.PublicKey{
+			Curve: curve,
+			X:     x,
+			Y:     y,
+		},
+		D: d,
+	}
+	return &jwk, nil
 }
 
 func inspectJWEHeader(compact string) error {
@@ -691,7 +928,7 @@ func parseCertPEM(s string) (*x509.Certificate, error) {
 }
 
 func certHasExactSANs(cert *x509.Certificate, sans []string) error {
-	wantDNS, wantIPs, wantEmails, wantURIs := x509util.SplitSANs(sans)
+	wantDNS, wantIPs, wantEmails, wantURIs := splitSANs(sans)
 	if err := equalFoldSet("DNS SAN", cert.DNSNames, wantDNS); err != nil {
 		return err
 	}
@@ -790,7 +1027,7 @@ func encodeIssued(leaf *x509.Certificate, chain []*x509.Certificate, key crypto.
 			return nil, nil, fmt.Errorf("pki: encode chain: %w", err)
 		}
 	}
-	block, err := pemutil.Serialize(key)
+	block, err := serializePrivateKeyPEM(key)
 	if err != nil {
 		return nil, nil, fmt.Errorf("pki: serialize key: %w", err)
 	}
@@ -800,6 +1037,21 @@ func encodeIssued(leaf *x509.Certificate, chain []*x509.Certificate, key crypto.
 		return nil, nil, fmt.Errorf("pki: issued cert/key pair is not usable: %w", err)
 	}
 	return certPEM, keyPEM, nil
+}
+
+func serializePrivateKeyPEM(key crypto.PrivateKey) (*pem.Block, error) {
+	if ecKey, ok := key.(*ecdsa.PrivateKey); ok {
+		der, err := x509.MarshalECPrivateKey(ecKey)
+		if err != nil {
+			return nil, err
+		}
+		return &pem.Block{Type: "EC PRIVATE KEY", Bytes: der}, nil
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	return &pem.Block{Type: "PRIVATE KEY", Bytes: der}, nil
 }
 
 func readProvisionerPassword(path string) ([]byte, error) {

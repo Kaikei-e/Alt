@@ -26,6 +26,9 @@ const (
 func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
+	// CVE-2026-118653 / CVE-2026-118651: pre-processor is service-to-service
+	// only; never trust client-supplied X-Forwarded-For or X-Real-IP headers.
+	e.IPExtractor = echo.ExtractIPDirect()
 
 	// Custom error handler for consistent error responses
 	e.HTTPErrorHandler = appmiddleware.CustomHTTPErrorHandler(deps.Logger)

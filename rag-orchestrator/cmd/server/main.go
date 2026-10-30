@@ -150,6 +150,9 @@ func main() {
 
 	// 7. Initialize Echo
 	e := echo.New()
+	// CVE-2026-118653 / CVE-2026-118651: rag-orchestrator is service-to-service
+	// only; never trust client-supplied X-Forwarded-For or X-Real-IP headers.
+	e.IPExtractor = echo.ExtractIPDirect()
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
 	apiAuthMW := peermw.NewAPIAuthMiddleware(cfg.APIAuth.Token, cfg.APIAuth.Enabled, log)

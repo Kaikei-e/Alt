@@ -1,14 +1,11 @@
 package pki
 
 import (
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
-
-	"go.step.sm/crypto/jose"
 )
 
 func compactJWEWithHeader(header map[string]any) string {
@@ -19,45 +16,21 @@ func compactJWEWithHeader(header map[string]any) string {
 	return base64.RawURLEncoding.EncodeToString(raw) + ".aaaa.bbbb.cccc.dddd"
 }
 
-func encryptJWKWithCount(t *testing.T, jwk *jose.JSONWebKey, password []byte, p2c int) string {
+func encryptJWKWithCount(t *testing.T, jwk *provisionerJWK, password []byte, p2c int) string {
 	t.Helper()
 	raw, err := json.Marshal(jwk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	salt := make([]byte, jose.PBKDF2SaltSize)
-	if _, err := rand.Read(salt); err != nil {
-		t.Fatal(err)
-	}
-	encrypter, err := jose.NewEncrypter(jose.DefaultEncAlgorithm, jose.Recipient{
-		Algorithm:  jose.PBES2_HS256_A128KW,
-		Key:        password,
-		PBES2Count: p2c,
-		PBES2Salt:  salt,
-	}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	jwe, err := encrypter.Encrypt(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, err := jwe.CompactSerialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
+	return encryptBytesPBES2(t, raw, password, p2c)
 }
 
 func TestDecryptProvisionerJWK_RejectsNonStepCAP2CBeforeDecrypt(t *testing.T) {
-	jwk, err := jose.GenerateJWK("EC", "P-256", "ES256", "sig", "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	jwk := generateTestECJWK(t)
 	password := []byte("allowlist-p2c")
 	compact := encryptJWKWithCount(t, jwk, password, 1000)
 	start := time.Now()
-	_, err = decryptProvisionerJWK(compact, password)
+	_, err := decryptProvisionerJWK(compact, password)
 	if err == nil || !strings.Contains(err.Error(), "p2c") {
 		t.Fatalf("want p2c reject, got %v", err)
 	}
@@ -152,10 +125,7 @@ func TestDecryptProvisionerJWK_RejectsOversizedCompact(t *testing.T) {
 }
 
 func TestDecryptProvisionerJWK_AcceptsExactStepCAHeader(t *testing.T) {
-	jwk, err := jose.GenerateJWK("EC", "P-256", "ES256", "sig", "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	jwk := generateTestECJWK(t)
 	password := []byte("step-ca-p2c")
 	compact := encryptJWKWithCount(t, jwk, password, 600000)
 	got, err := decryptProvisionerJWK(compact, password)
@@ -169,28 +139,8 @@ func TestDecryptProvisionerJWK_AcceptsExactStepCAHeader(t *testing.T) {
 
 func TestDecryptProvisionerJWK_RejectsOversizedPlaintext(t *testing.T) {
 	password := []byte("big-jwk")
-	salt := make([]byte, jose.PBKDF2SaltSize)
-	if _, err := rand.Read(salt); err != nil {
-		t.Fatal(err)
-	}
-	encrypter, err := jose.NewEncrypter(jose.DefaultEncAlgorithm, jose.Recipient{
-		Algorithm:  jose.PBES2_HS256_A128KW,
-		Key:        password,
-		PBES2Count: 600000,
-		PBES2Salt:  salt,
-	}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	jwe, err := encrypter.Encrypt([]byte(strings.Repeat("A", (8<<10)+1)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	compact, err := jwe.CompactSerialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = decryptProvisionerJWK(compact, password)
+	compact := encryptBytesPBES2(t, []byte(strings.Repeat("A", (8<<10)+1)), password, 600000)
+	_, err := decryptProvisionerJWK(compact, password)
 	if err == nil || !strings.Contains(err.Error(), "size cap") {
 		t.Fatalf("want plaintext size cap, got %v", err)
 	}

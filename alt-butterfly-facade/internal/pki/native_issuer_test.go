@@ -3,12 +3,18 @@ package pki
 import (
 	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/pbkdf2"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -24,14 +30,34 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"go.step.sm/crypto/jose"
 )
 
+type jwtAudience []string
+
+func (a *jwtAudience) UnmarshalJSON(b []byte) error {
+	var single string
+	if err := json.Unmarshal(b, &single); err == nil {
+		*a = []string{single}
+		return nil
+	}
+	var multi []string
+	if err := json.Unmarshal(b, &multi); err != nil {
+		return err
+	}
+	*a = multi
+	return nil
+}
+
 type ottClaims struct {
-	jose.Claims
-	SANs []string `json:"sans"`
-	SHA  string   `json:"sha"`
+	Issuer    string      `json:"iss"`
+	Subject   string      `json:"sub"`
+	Audience  jwtAudience `json:"aud"`
+	Expiry    int64       `json:"exp"`
+	NotBefore int64       `json:"nbf"`
+	IssuedAt  int64       `json:"iat"`
+	ID        string      `json:"jti"`
+	SANs      []string    `json:"sans"`
+	SHA       string      `json:"sha"`
 }
 
 type recordedReq struct {
@@ -44,7 +70,7 @@ type fakeStepCA struct {
 	t                   *testing.T
 	password            []byte
 	provisioner         string
-	jwk                 *jose.JSONWebKey
+	jwk                 *provisionerJWK
 	encKey              string
 	caCert              *x509.Certificate
 	caKey               *ecdsa.PrivateKey
@@ -65,34 +91,131 @@ type fakeStepCA struct {
 	redirect            bool
 }
 
-func encryptJWKFast(t *testing.T, jwk *jose.JSONWebKey, password []byte) string {
+func generateTestECJWK(t *testing.T) *provisionerJWK {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var xBuf, yBuf, dBuf [32]byte
+	key.PublicKey.X.FillBytes(xBuf[:])
+	key.PublicKey.Y.FillBytes(yBuf[:])
+	key.D.FillBytes(dBuf[:])
+	return &provisionerJWK{
+		Kty:   "EC",
+		Crv:   "P-256",
+		Alg:   "ES256",
+		Use:   "sig",
+		KeyID: "test-kid-1",
+		X:     base64.RawURLEncoding.EncodeToString(xBuf[:]),
+		Y:     base64.RawURLEncoding.EncodeToString(yBuf[:]),
+		D:     base64.RawURLEncoding.EncodeToString(dBuf[:]),
+		Key:   key,
+	}
+}
+
+func encryptJWKFast(t *testing.T, jwk *provisionerJWK, password []byte) string {
+	t.Helper()
+	return encryptJWKWithCount(t, jwk, password, stepCAPBES2P2C)
+}
+
+func encryptJWKWithCount(t *testing.T, jwk *provisionerJWK, password []byte, p2c int) string {
 	t.Helper()
 	raw, err := json.Marshal(jwk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	salt := make([]byte, jose.PBKDF2SaltSize)
+	return encryptBytesPBES2(t, raw, password, p2c)
+}
+
+func encryptBytesPBES2(t *testing.T, plaintext, password []byte, p2c int) string {
+	t.Helper()
+	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		t.Fatal(err)
 	}
-	encrypter, err := jose.NewEncrypter(jose.DefaultEncAlgorithm, jose.Recipient{
-		Algorithm:  jose.PBES2_HS256_A128KW,
-		Key:        password,
-		PBES2Count: stepCAPBES2P2C,
-		PBES2Salt:  salt,
-	}, nil)
+	hdr := map[string]any{
+		"alg": stepCAPBES2Alg,
+		"enc": stepCAPBES2Enc,
+		"p2c": p2c,
+		"p2s": base64.RawURLEncoding.EncodeToString(salt),
+	}
+	hdrJSON, err := json.Marshal(hdr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	jwe, err := encrypter.Encrypt(raw)
+	hdrB64 := base64.RawURLEncoding.EncodeToString(hdrJSON)
+
+	formattedSalt := make([]byte, 0, len(stepCAPBES2Alg)+1+len(salt))
+	formattedSalt = append(formattedSalt, stepCAPBES2Alg...)
+	formattedSalt = append(formattedSalt, 0x00)
+	formattedSalt = append(formattedSalt, salt...)
+
+	kek, err := pbkdf2.Key(sha256.New, string(password), formattedSalt, p2c, 16)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := jwe.CompactSerialize()
+	cek := make([]byte, 32)
+	if _, err := rand.Read(cek); err != nil {
+		t.Fatal(err)
+	}
+	wrappedKey, err := aesKeyWrap(kek, cek)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return out
+	block, err := aes.NewCipher(cek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iv := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(iv); err != nil {
+		t.Fatal(err)
+	}
+	sealed := gcm.Seal(nil, iv, plaintext, []byte(hdrB64))
+	tagStart := len(sealed) - gcm.Overhead()
+	ciphertext := sealed[:tagStart]
+	tag := sealed[tagStart:]
+	return strings.Join([]string{
+		hdrB64,
+		base64.RawURLEncoding.EncodeToString(wrappedKey),
+		base64.RawURLEncoding.EncodeToString(iv),
+		base64.RawURLEncoding.EncodeToString(ciphertext),
+		base64.RawURLEncoding.EncodeToString(tag),
+	}, ".")
+}
+
+func aesKeyWrap(kek, cek []byte) ([]byte, error) {
+	block, err := aes.NewCipher(kek)
+	if err != nil {
+		return nil, err
+	}
+	const n = 4
+	a := rfc3394DefaultIV
+	var r [n][8]byte
+	for i := 0; i < n; i++ {
+		copy(r[i][:], cek[i*8:(i+1)*8])
+	}
+	var buf [16]byte
+	for j := 0; j <= 5; j++ {
+		for i := 0; i < n; i++ {
+			copy(buf[:8], a[:])
+			copy(buf[8:], r[i][:])
+			block.Encrypt(buf[:], buf[:])
+			t := uint64(n*j + (i + 1))
+			binary.BigEndian.PutUint64(a[:], binary.BigEndian.Uint64(buf[:8])^t)
+			copy(r[i][:], buf[8:])
+		}
+	}
+	out := make([]byte, 40)
+	copy(out[:8], a[:])
+	for i := 0; i < n; i++ {
+		copy(out[(i+1)*8:(i+2)*8], r[i][:])
+	}
+	return out, nil
 }
 
 func generateTestCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
@@ -126,10 +249,7 @@ func generateTestCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 
 func newFakeStepCA(t *testing.T, provisioner string, password []byte) *fakeStepCA {
 	t.Helper()
-	jwk, err := jose.GenerateJWK("EC", "P-256", "ES256", "sig", "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	jwk := generateTestECJWK(t)
 	caCert, caKey := generateTestCA(t)
 	return &fakeStepCA{
 		t:             t,
@@ -350,14 +470,44 @@ func (f *fakeStepCA) handleRekey(w http.ResponseWriter, r *http.Request) {
 	f.writeSignResponse(w, leaf)
 }
 
+func parseAndVerifyES256JWT(ott string, pub *ecdsa.PublicKey, claims *ottClaims) error {
+	parts := strings.Split(ott, ".")
+	if len(parts) != 3 {
+		return errors.New("malformed jwt")
+	}
+	hdrBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return err
+	}
+	var hdr struct {
+		Alg string `json:"alg"`
+	}
+	if err := json.Unmarshal(hdrBytes, &hdr); err != nil {
+		return err
+	}
+	if hdr.Alg != "ES256" {
+		return fmt.Errorf("unexpected alg %q", hdr.Alg)
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil || len(sig) != 64 {
+		return errors.New("invalid signature encoding")
+	}
+	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	r := new(big.Int).SetBytes(sig[:32])
+	s := new(big.Int).SetBytes(sig[32:])
+	if !ecdsa.Verify(pub, digest[:], r, s) {
+		return errors.New("invalid signature")
+	}
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(payloadBytes, claims)
+}
+
 func (f *fakeStepCA) verifyOTT(ott string) (ottClaims, error) {
 	var claims ottClaims
-	tok, err := jose.ParseSigned(ott)
-	if err != nil {
-		return claims, err
-	}
-	pub := f.jwk.Public()
-	if err := tok.Claims(pub.Key, &claims); err != nil {
+	if err := parseAndVerifyES256JWT(ott, &f.jwk.Key.PublicKey, &claims); err != nil {
 		return claims, err
 	}
 	if claims.Issuer != f.provisioner {
@@ -366,7 +516,7 @@ func (f *fakeStepCA) verifyOTT(ott string) (ottClaims, error) {
 	if !audienceHasSign(claims.Audience) {
 		return claims, errors.New("wrong audience")
 	}
-	if f.rejectExpired && claims.Expiry != nil && time.Now().After(claims.Expiry.Time()) {
+	if f.rejectExpired && claims.Expiry != 0 && time.Now().Unix() > claims.Expiry {
 		return claims, errors.New("expired ott")
 	}
 	if claims.ID == "" {
@@ -383,7 +533,7 @@ func (f *fakeStepCA) verifyOTT(ott string) (ottClaims, error) {
 	return claims, nil
 }
 
-func audienceHasSign(aud jose.Audience) bool {
+func audienceHasSign(aud jwtAudience) bool {
 	for _, a := range aud {
 		if strings.Contains(a, "/1.0/sign") {
 			return true
@@ -555,13 +705,8 @@ func TestNativeStepCAIssuer_Issue_Success(t *testing.T) {
 }
 
 func (f *fakeStepCA) verifyOTTForTest(ott string) (ottClaims, error) {
-	tok, err := jose.ParseSigned(ott)
-	if err != nil {
-		return ottClaims{}, err
-	}
 	var claims ottClaims
-	pub := f.jwk.Public()
-	if err := tok.Claims(pub.Key, &claims); err != nil {
+	if err := parseAndVerifyES256JWT(ott, &f.jwk.Key.PublicKey, &claims); err != nil {
 		return ottClaims{}, err
 	}
 	return claims, nil
@@ -624,14 +769,8 @@ func TestNativeStepCAIssuer_ReusedOTTRejectedByCA(t *testing.T) {
 func TestNativeStepCAIssuer_ExpiredOTTRejectedByCA(t *testing.T) {
 	ca := newFakeStepCA(t, "pki-agent-alt-butterfly-facade", []byte("pw-exp"))
 	iss := newNativeIssuer(t, ca)
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: ca.jwk.Key}, &jose.SignerOptions{
-		ExtraHeaders: map[jose.HeaderKey]interface{}{"kid": ca.jwk.KeyID},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	now := time.Now().Add(-time.Hour)
-	raw, err := jose.Signed(signer).Claims(map[string]any{
+	raw, err := signES256JWT(ca.jwk.Key, ca.jwk.KeyID, map[string]any{
 		"iss":  ca.provisioner,
 		"sub":  "alt-butterfly-facade",
 		"aud":  iss.CAURL + "/1.0/sign",
@@ -640,7 +779,7 @@ func TestNativeStepCAIssuer_ExpiredOTTRejectedByCA(t *testing.T) {
 		"nbf":  now.Unix(),
 		"iat":  now.Unix(),
 		"exp":  now.Add(time.Minute).Unix(),
-	}).CompactSerialize()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"auth-hub/tlsutil"
-	"go.step.sm/crypto/jose"
 )
 
 func TestLoadConfig_EmptyEnrollmentFails(t *testing.T) {
@@ -103,26 +102,7 @@ func TestInspectJWEHeader_RejectsWrongP2CZipUnknown(t *testing.T) {
 func TestNativeStepCAIssuer_RejectsWrongP2CBeforeDecrypt(t *testing.T) {
 	ca := newFakeStepCA(t, "pki-agent-auth-hub", []byte("pw-p2c"))
 	iss := newNativeIssuer(t, ca)
-	bad, err := jose.NewEncrypter(jose.DefaultEncAlgorithm, jose.Recipient{
-		Algorithm:  jose.PBES2_HS256_A128KW,
-		Key:        ca.password,
-		PBES2Count: 1000,
-	}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := json.Marshal(ca.jwk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	jwe, err := bad.Encrypt(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	compact, err := jwe.CompactSerialize()
-	if err != nil {
-		t.Fatal(err)
-	}
+	compact := encryptJWKWithCount(t, ca.jwk, ca.password, 1000)
 	if _, err := decryptProvisionerJWK(compact, ca.password); err == nil {
 		t.Fatal("p2c=1000 must fail before PBKDF2")
 	}
