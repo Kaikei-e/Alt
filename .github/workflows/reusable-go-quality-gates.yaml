@@ -213,6 +213,10 @@ jobs:
           if [ ! -f ./_reports/govulncheck.sarif ] || [ ! -s ./_reports/govulncheck.sarif ]; then
             echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"govulncheck","version":"latest"}},"results":[]}]}' > ./_reports/govulncheck.sarif
           fi
+          # Deduplicate stacks in SARIF results (govulncheck can emit duplicate stack objects,
+          # violating SARIF 2.1.0 uniqueItems on runs[].results[].stacks during upload-sarif validation)
+          jq '(.runs[]?.results[]?.stacks | select(type == "array")) |= unique' ./_reports/govulncheck.sarif > ./_reports/govulncheck.sarif.tmp && \
+            mv ./_reports/govulncheck.sarif.tmp ./_reports/govulncheck.sarif
           # Clean up stderr file
           rm -f ./_reports/govulncheck.stderr
 
