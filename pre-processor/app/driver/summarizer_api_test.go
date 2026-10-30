@@ -159,6 +159,28 @@ func TestTitleFallback(t *testing.T) {
 			t.Errorf("expected ErrContentTooShort, got: %v", err)
 		}
 	})
+
+	t.Run("script-only HTML content does not fall back to raw HTML", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		cfg := &config.Config{
+			NewsCreator: config.NewsCreatorConfig{
+				Host:    "http://unused",
+				APIPath: "/api/v1/summarize",
+				Timeout: 5 * 1_000_000_000,
+			},
+		}
+
+		article := ArticlePayload{
+			ID:      "test-script-only",
+			Title:   "Short title",
+			Content: "<script>" + strings.Repeat("alert('xss');", 20) + "</script>",
+		}
+
+		_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", http.DefaultClient)
+		if !errors.Is(err, ErrContentTooShort) {
+			t.Errorf("expected ErrContentTooShort when HTML extraction yields empty text, got: %v", err)
+		}
+	})
 }
 
 func TestArticleSummarizerAPIClient_BadRequestMapping(t *testing.T) {

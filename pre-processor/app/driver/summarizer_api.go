@@ -103,10 +103,9 @@ func prepareSummarizeContent(ctx context.Context, article ArticlePayload, cfg *c
 	extractedContent := html_parser.ExtractArticleText(article.Content)
 
 	if extractedContent == "" {
-		logger.WarnContext(ctx, "text extraction returned empty, using original content",
+		logger.WarnContext(ctx, "text extraction returned empty; refusing to forward raw HTML content (Zero Trust)",
 			"article_id", article.ID,
 			"original_length", originalLength)
-		extractedContent = article.Content
 	} else {
 		extractedLength := len(extractedContent)
 		reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
