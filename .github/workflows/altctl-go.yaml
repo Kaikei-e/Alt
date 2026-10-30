@@ -3,10 +3,10 @@ name: altctl Tests
 on:
   push:
     branches: [main]
-    paths: ['altctl/**', 'compose/**', 'pki-agent/scripts/bootstrap-pki-provisioner.sh', '.github/workflows/altctl-go.yaml']
+    paths: ['altctl/**', 'compose/**', 'kratos/**', 'pki-agent/scripts/bootstrap-pki-provisioner.sh', '.github/workflows/altctl-go.yaml']
   pull_request:
     branches: [main]
-    paths: ['altctl/**', 'compose/**', 'pki-agent/scripts/bootstrap-pki-provisioner.sh', '.github/workflows/altctl-go.yaml']
+    paths: ['altctl/**', 'compose/**', 'kratos/**', 'pki-agent/scripts/bootstrap-pki-provisioner.sh', '.github/workflows/altctl-go.yaml']
   workflow_dispatch:
 
 concurrency:
@@ -35,5 +35,6 @@ jobs:
       sparse-checkout: |
         altctl
         compose
+        kratos
         pki-agent/scripts
     secrets: inherit
