@@ -101,6 +101,7 @@ func run() error {
 
 	// Register Connect-RPC handler
 	path, h := mqhubv1connect.NewMQHubServiceHandler(handler,
+		connect.WithReadMaxBytes(4*1024*1024),
 		connect.WithInterceptors(loggingInterceptor(), mqhub.NewAuthInterceptor(cfg.AuthToken)),
 	)
 	mux.Handle(path, h)
