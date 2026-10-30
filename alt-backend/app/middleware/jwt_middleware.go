@@ -146,7 +146,7 @@ func (m *JWTAuthMiddleware) validateJWT(c echo.Context) (*UserContext, error) {
 		return nil, errInvalidClaims
 	}
 
-	if claims.ExpiresAt == nil || claims.ExpiresAt.Time.IsZero() {
+	if claims.ExpiresAt == nil || claims.ExpiresAt.IsZero() {
 		return nil, errInvalidClaims
 	}
 

@@ -174,7 +174,7 @@ func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, e
 	}
 
 	// Get expiration and issued-at times from standard JWT claims
-	if claims.ExpiresAt == nil || claims.ExpiresAt.Time.IsZero() {
+	if claims.ExpiresAt == nil || claims.ExpiresAt.IsZero() {
 		return nil, errInvalidClaims
 	}
 	expiresAt := claims.ExpiresAt.Time
