@@ -491,10 +491,10 @@ def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: pytest
     assert handle.ops_addr is not None
     assert handle.registry is not DEFAULT_REGISTRY
     try:
-        with urllib.request.urlopen(f"http://{handle.ops_addr}/health", timeout=2) as health:
+        with urllib.request.urlopen(f"http://{handle.ops_addr}/health", timeout=2) as health:  # nosec B310
             assert health.status == 200
             assert b"tts-speaker" in health.read()
-        with urllib.request.urlopen(f"http://{handle.ops_addr}/metrics", timeout=2) as metrics:
+        with urllib.request.urlopen(f"http://{handle.ops_addr}/metrics", timeout=2) as metrics:  # nosec B310
             body = metrics.read().decode()
         assert "pki_enrollment_healthy" in body
         leaked = generate_latest(DEFAULT_REGISTRY).decode()

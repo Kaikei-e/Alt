@@ -28,7 +28,7 @@ from tts_speaker.infra.pki.start import start as start_pki_enrollment
 logger = logging.getLogger(__name__)
 
 _APP_TARGET = "tts_speaker.main:app"
-DEFAULT_HOST = "0.0.0.0"  # noqa: S104
+DEFAULT_HOST = "0.0.0.0"  # noqa: S104  # nosec B104
 DEFAULT_PORT = 9700
 
 
