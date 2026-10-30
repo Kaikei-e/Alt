@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -22,7 +23,7 @@ func LoadSovereignOperatorToken(sovereignURL string) (token string, enabled bool
 	}
 
 	if path := strings.TrimSpace(os.Getenv(sovereignOperatorTokenFileEnv)); path != "" {
-		data, readErr := os.ReadFile(path)
+		data, readErr := os.ReadFile(filepath.Clean(path)) //#nosec G304,G703 -- path is operator-supplied via SOVEREIGN_OPERATOR_TOKEN_FILE env var
 		if readErr != nil {
 			return "", false, fmt.Errorf("read %s: %w", sovereignOperatorTokenFileEnv, readErr)
 		}

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -38,7 +39,7 @@ func LoadOperatorAuth() (token string, enabled bool, err error) {
 	}
 
 	if path := strings.TrimSpace(os.Getenv(operatorTokenFileEnv)); path != "" {
-		data, readErr := os.ReadFile(path)
+		data, readErr := os.ReadFile(filepath.Clean(path)) //#nosec G304,G703 -- path is operator-supplied via OPERATOR_TOKEN_FILE env var
 		if readErr != nil {
 			return "", false, fmt.Errorf("read %s: %w", operatorTokenFileEnv, readErr)
 		}

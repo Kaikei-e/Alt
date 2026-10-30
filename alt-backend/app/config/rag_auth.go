@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -22,7 +23,7 @@ func LoadRAGAuth() (token string, enabled bool, err error) {
 	}
 
 	if path := strings.TrimSpace(os.Getenv(ragAPITokenFileEnv)); path != "" {
-		data, readErr := os.ReadFile(path)
+		data, readErr := os.ReadFile(filepath.Clean(path)) //#nosec G304,G703 -- path is operator-supplied via RAG_API_TOKEN_FILE env var
 		if readErr != nil {
 			return "", false, fmt.Errorf("read %s: %w", ragAPITokenFileEnv, readErr)
 		}
@@ -62,7 +63,7 @@ func ValidateRAGAuthConfig(cfg *RAGConfig, appEnv string) error {
 
 	if cfg.APITokenFile != "" {
 		if cfg.APIToken == "" {
-			data, err := os.ReadFile(cfg.APITokenFile)
+			data, err := os.ReadFile(filepath.Clean(cfg.APITokenFile)) //#nosec G304,G703 -- path is operator-supplied via RAG_API_TOKEN_FILE env var
 			if err != nil {
 				return fmt.Errorf("read %s: %w", ragAPITokenFileEnv, err)
 			}
