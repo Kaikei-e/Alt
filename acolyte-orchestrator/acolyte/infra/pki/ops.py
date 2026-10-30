@@ -92,7 +92,7 @@ def start_ops(service_name: str, registry: CollectorRegistry | None, *, listen: 
     addr = listen if listen is not None else ops_listen_addr()
     if addr.startswith(":"):
         # OPS_LISTEN=:9110 binds all interfaces for later compose scrape.
-        host, port_s = "0.0.0.0", addr[1:]
+        host, port_s = "0.0.0.0", addr[1:]  # nosec B104
     elif ":" in addr:
         host, port_s = addr.rsplit(":", 1)
     else:

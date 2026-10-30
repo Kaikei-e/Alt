@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     """Acolyte orchestrator configuration."""
 
     # Service
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # nosec B104
     port: int = 8090
     log_level: str = "info"
 
@@ -106,7 +106,7 @@ class Settings(BaseSettings):
     # host:port plaintext listener stays for in-container health and is
     # published on loopback only — it is not an external mTLS fallback.
     inbound_tls_enabled: bool = False
-    inbound_tls_host: str = "0.0.0.0"
+    inbound_tls_host: str = "0.0.0.0"  # nosec B104
     inbound_tls_port: int = 9443
     inbound_tls_cert_file: str = ""
     inbound_tls_key_file: str = ""

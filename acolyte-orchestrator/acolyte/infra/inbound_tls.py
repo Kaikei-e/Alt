@@ -143,7 +143,7 @@ def resolve_inbound_tls_bind(
     allowed = tuple(p.strip() for p in env.get("MTLS_ALLOWED_PEERS", "").split(",") if p.strip())
     return InboundTLSBind(
         enabled=enabled,
-        tls_host=env.get("INBOUND_TLS_HOST", "0.0.0.0"),
+        tls_host=env.get("INBOUND_TLS_HOST", "0.0.0.0"),  # nosec B104
         tls_port=int(env.get("INBOUND_TLS_PORT", "9443")),
         plaintext_host=plaintext_host,
         plaintext_port=plaintext_port,

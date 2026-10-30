@@ -319,7 +319,7 @@ def test_inbound_uvicorn_config_reuses_sslcontext(tmp_path: Path) -> None:
 
 def test_resolve_inbound_tls_bind_disabled_when_unset() -> None:
     bind = resolve_inbound_tls_bind(
-        plaintext_host="0.0.0.0",
+        plaintext_host="0.0.0.0",  # nosec B104
         plaintext_port=8090,
         environ={},
     )
@@ -332,7 +332,7 @@ def test_resolve_inbound_tls_bind_disabled_when_unset() -> None:
 def test_resolve_inbound_tls_bind_fails_when_enrollment_enabled_and_inbound_unset() -> None:
     with pytest.raises(RuntimeError, match="INBOUND_TLS_ENABLED"):
         resolve_inbound_tls_bind(
-            plaintext_host="0.0.0.0",
+            plaintext_host="0.0.0.0",  # nosec B104
             plaintext_port=8090,
             environ={"PKI_ENROLLMENT": "enabled"},
         )
@@ -341,7 +341,7 @@ def test_resolve_inbound_tls_bind_fails_when_enrollment_enabled_and_inbound_unse
 def test_resolve_inbound_tls_bind_fails_when_enrollment_enabled_and_inbound_false() -> None:
     with pytest.raises(RuntimeError, match="INBOUND_TLS_ENABLED"):
         resolve_inbound_tls_bind(
-            plaintext_host="0.0.0.0",
+            plaintext_host="0.0.0.0",  # nosec B104
             plaintext_port=8090,
             environ={"PKI_ENROLLMENT": "enabled", "INBOUND_TLS_ENABLED": "false"},
         )

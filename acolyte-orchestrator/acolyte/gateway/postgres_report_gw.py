@@ -376,7 +376,7 @@ class PostgresReportGateway:
 
         for table in _CHECKPOINT_TABLES:
             await conn.execute(  # type: ignore[attr-defined]
-                f"DELETE FROM {table} WHERE thread_id = ANY(%s)",  # noqa: S608 — table names are the module constant, never input
+                f"DELETE FROM {table} WHERE thread_id = ANY(%s)",  # noqa: S608 — table names are the module constant, never input  # nosec B608
                 [thread_ids],
             )
         logger.info("checkpoint_purged", thread_count=len(thread_ids))

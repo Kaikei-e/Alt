@@ -138,14 +138,14 @@ def parse_xmlish_block(text: str, root_tag: str) -> ET.Element:
 
     # Try strict parse first
     try:
-        return ET.fromstring(block)  # noqa: S314
+        return ET.fromstring(block)  # noqa: S314  # nosec B314
     except ET.ParseError:
         pass
 
     # Apply repairs and retry
     repaired = _repair_xml(block)
     try:
-        element = ET.fromstring(repaired)  # noqa: S314
+        element = ET.fromstring(repaired)  # noqa: S314  # nosec B314
     except ET.ParseError as exc:
         raise XmlParseError.parse_failed_after_repair(exc) from exc
     else:

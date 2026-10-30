@@ -145,7 +145,7 @@ class TestNormalizePlanOutput:
             <query>future outlook</query>
           </section>
         </plan>"""
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_plan_output(elem)
         assert result["reasoning"] == "good strategy"
         assert result["queries"]["analysis"] == ["AI chip trends 2026", "NVIDIA vs AMD market share"]
@@ -153,13 +153,13 @@ class TestNormalizePlanOutput:
 
     def test_empty_queries_skipped(self) -> None:
         xml = "<plan><reasoning>ok</reasoning><section><key>analysis</key><query></query></section></plan>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_plan_output(elem)
         assert result["queries"]["analysis"] == []
 
     def test_missing_reasoning(self) -> None:
         xml = "<plan><section><key>analysis</key><query>q1</query></section></plan>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_plan_output(elem)
         assert result["reasoning"] == ""
 
@@ -170,7 +170,7 @@ class TestNormalizeCriticOutput:
           <reasoning>all good</reasoning>
           <verdict>accept</verdict>
         </critic>"""
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_critic_output(elem)
         assert result["verdict"] == "accept"
         assert result["revise_sections"] == []
@@ -186,7 +186,7 @@ class TestNormalizeCriticOutput:
             <message>add more citations</message>
           </feedback>
         </critic>"""
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_critic_output(elem)
         assert result["verdict"] == "revise"
         assert result["revise_sections"] == ["analysis", "conclusion"]
@@ -194,7 +194,7 @@ class TestNormalizeCriticOutput:
 
     def test_unknown_verdict_defaults_to_revise(self) -> None:
         xml = "<critic><reasoning>hmm</reasoning><verdict>maybe</verdict></critic>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_critic_output(elem)
         assert result["verdict"] == "revise"
 
@@ -213,7 +213,7 @@ class TestNormalizeSectionPlanOutput:
             <must_cite>true</must_cite>
           </claim>
         </section_plan>"""
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_section_plan_output(elem)
         assert result["reasoning"] == "plan"
         assert len(result["claims"]) == 1
@@ -229,7 +229,7 @@ class TestNormalizeSectionPlanOutput:
         xml = """<section_plan><reasoning>r</reasoning>
           <claim><text>opinion</text><claim_type>synthesis</claim_type><must_cite>false</must_cite></claim>
         </section_plan>"""
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_section_plan_output(elem)
         assert result["claims"][0]["must_cite"] is False
 
@@ -237,7 +237,7 @@ class TestNormalizeSectionPlanOutput:
         xml = """<section_plan><reasoning>r</reasoning>
           <claim><text>claim</text><claim_type>unknown_type</claim_type></claim>
         </section_plan>"""
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_section_plan_output(elem)
         assert result["claims"][0]["claim_type"] == "factual"
 
@@ -246,14 +246,14 @@ class TestNormalizeSectionPlanOutput:
           <claim><claim_type>factual</claim_type></claim>
           <claim><text>valid claim</text><claim_type>factual</claim_type></claim>
         </section_plan>"""
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_section_plan_output(elem)
         assert len(result["claims"]) == 1
         assert result["claims"][0]["claim"] == "valid claim"
 
     def test_empty_claims(self) -> None:
         xml = "<section_plan><reasoning>r</reasoning></section_plan>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_section_plan_output(elem)
         assert result["claims"] == []
 
@@ -262,7 +262,7 @@ class TestNormalizeSectionPlanOutput:
           <claim><text>c1</text><claim_type>factual</claim_type><must_cite>true</must_cite></claim>
           <claim><text>c2</text><claim_type>comparative</claim_type><must_cite>false</must_cite></claim>
         </section_plan>"""
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_section_plan_output(elem)
         assert len(result["claims"]) == 2
 
@@ -270,7 +270,7 @@ class TestNormalizeSectionPlanOutput:
 class TestNormalizeFactOutput:
     def test_basic_fact_with_confidence_band(self) -> None:
         xml = "<facts><fact><claim>GDP grew 3%</claim><confidence>high</confidence><data_type>statistic</data_type></fact></facts>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_fact_output(elem)
         assert result["claim"] == "GDP grew 3%"
         assert result["confidence"] == "high"
@@ -280,19 +280,19 @@ class TestNormalizeFactOutput:
         xml = (
             "<facts><fact><claim>a claim</claim><confidence>low</confidence><data_type>quote</data_type></fact></facts>"
         )
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_fact_output(elem)
         assert result["confidence"] == "low"
 
     def test_confidence_band_medium(self) -> None:
         xml = "<facts><fact><claim>a claim</claim><confidence>medium</confidence><data_type>quote</data_type></fact></facts>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_fact_output(elem)
         assert result["confidence"] == "medium"
 
     def test_confidence_invalid_band_defaults_low(self) -> None:
         xml = "<facts><fact><claim>a claim</claim><confidence>unknown</confidence><data_type>quote</data_type></fact></facts>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_fact_output(elem)
         assert result["confidence"] == "low"
 
@@ -301,25 +301,25 @@ class TestNormalizeFactOutput:
         xml = (
             "<facts><fact><claim>a claim</claim><confidence>0.9</confidence><data_type>quote</data_type></fact></facts>"
         )
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_fact_output(elem)
         assert result["confidence"] == "low"
 
     def test_data_type_invalid_defaults_quote(self) -> None:
         xml = "<facts><fact><claim>a claim</claim><confidence>high</confidence><data_type>unknown_type</data_type></fact></facts>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_fact_output(elem)
         assert result["data_type"] == "quote"
 
     def test_missing_claim_raises(self) -> None:
         xml = "<facts><fact><confidence>high</confidence><data_type>statistic</data_type></fact></facts>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         with pytest.raises(XmlParseError, match=re.escape("Empty <claim> in <fact>")):
             normalize_fact_output(elem)
 
     def test_empty_claim_raises(self) -> None:
         xml = "<facts><fact><claim></claim><confidence>high</confidence><data_type>statistic</data_type></fact></facts>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         with pytest.raises(XmlParseError, match=re.escape("Empty <claim> in <fact>")):
             normalize_fact_output(elem)
 
@@ -328,26 +328,26 @@ class TestNormalizeFactOutput:
           <fact><claim>first</claim><confidence>high</confidence><data_type>statistic</data_type></fact>
           <fact><claim>second</claim><confidence>medium</confidence><data_type>quote</data_type></fact>
         </facts>"""
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_fact_output(elem)
         assert result["claim"] == "first"
         assert result["confidence"] == "high"
 
     def test_no_fact_element_raises(self) -> None:
         xml = "<facts></facts>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         with pytest.raises(XmlParseError, match=re.escape("No <fact> element in <facts> block")):
             normalize_fact_output(elem)
 
     def test_missing_confidence_defaults_medium(self) -> None:
         xml = "<facts><fact><claim>a claim</claim><data_type>quote</data_type></fact></facts>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_fact_output(elem)
         assert result["confidence"] == "medium"
 
     def test_missing_data_type_defaults_quote(self) -> None:
         xml = "<facts><fact><claim>a claim</claim><confidence>high</confidence></fact></facts>"
-        elem = ET.fromstring(xml)
+        elem = ET.fromstring(xml)  # nosec B314
         result = normalize_fact_output(elem)
         assert result["data_type"] == "quote"
 
