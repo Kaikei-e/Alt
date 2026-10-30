@@ -10,12 +10,31 @@ import {
 import type { SecretManager } from "../port/secret_manager.ts";
 import { logger } from "../infra/logger.ts";
 
+const UNSAFE_ENV_VALUE_RE = /[\r\n\0]/;
+
+function assertSafeEnvValue(fieldName: string, value: string): void {
+  if (UNSAFE_ENV_VALUE_RE.test(value)) {
+    throw new Error(
+      `Invalid ${fieldName}: contains forbidden control characters (\\r, \\n, or \\0)`,
+    );
+  }
+}
+
 export class EnvFileSecretManager implements SecretManager {
   constructor(private filePath: string) {}
 
   async updateTokenSecret(tokens: TokenResponse): Promise<void> {
     try {
       logger.info("Updating token file");
+
+      assertSafeEnvValue("access_token", tokens.access_token);
+      assertSafeEnvValue("refresh_token", tokens.refresh_token);
+      if (tokens.token_type !== undefined) {
+        assertSafeEnvValue("token_type", tokens.token_type);
+      }
+      if (tokens.scope !== undefined) {
+        assertSafeEnvValue("scope", tokens.scope);
+      }
 
       let content = "";
       try {

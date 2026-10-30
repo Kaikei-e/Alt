@@ -59,8 +59,12 @@ describe("OAuthServer /api/token", {
   let secretManager: StubSecretManager;
 
   beforeAll(() => {
-    // Ensure INTERNAL_AUTH_TOKEN is unset for these tests
+    // Ensure INTERNAL_AUTH_TOKEN is unset for these tests and bypass ambient HTTP proxy for localhost
     Deno.env.delete("INTERNAL_AUTH_TOKEN");
+    Deno.env.delete("HTTP_PROXY");
+    Deno.env.delete("http_proxy");
+    Deno.env.set("NO_PROXY", "localhost,127.0.0.1");
+    Deno.env.set("no_proxy", "localhost,127.0.0.1");
 
     secretManager = new StubSecretManager();
     const tokenClient = new StubTokenClient();
@@ -261,6 +265,47 @@ describe("OAuthServer /api/token", {
     });
     assertEquals(res.status, 401);
     await res.body?.cancel();
+  });
+
+  it("should return 403 Forbidden on POST /auth when Origin header has an untrusted hostname (OAUTH-01)", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    for (
+      const origin of [
+        "https://evil.example.com",
+        "http://attacker.local:8080",
+        "null",
+      ]
+    ) {
+      const res = await fetch(`http://localhost:${TEST_PORT}/auth`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { Origin: origin },
+        body: new URLSearchParams({ token: "correct-token" }),
+      });
+      assertEquals(res.status, 403, `expected 403 for Origin=${origin}`);
+      await res.body?.cancel();
+    }
+  });
+
+  it("should allow POST /auth when Origin header hostname is localhost or 127.0.0.1 (OAUTH-01)", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    for (
+      const origin of [
+        `http://localhost:${TEST_PORT}`,
+        `http://127.0.0.1:${TEST_PORT}`,
+      ]
+    ) {
+      const res = await fetch(`http://localhost:${TEST_PORT}/auth`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { Origin: origin },
+        body: new URLSearchParams({ token: "correct-token" }),
+      });
+      assertEquals(res.status, 302, `expected 302 for Origin=${origin}`);
+      await res.body?.cancel();
+    }
   });
 
   it("should accept the token when only INTERNAL_AUTH_TOKEN_FILE is set (compose secrets)", async () => {

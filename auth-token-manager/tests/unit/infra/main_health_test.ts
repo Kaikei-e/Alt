@@ -165,7 +165,7 @@ describe("main.ts child-process boot behavior", {
     "DEPLOYMENT_ENV,SERVICE_VERSION,LOG_LEVEL,TOKEN_STORAGE_PATH," +
     "DENO_ENV,NODE_ENV,RETRY_MAX_ATTEMPTS,RETRY_BASE_DELAY,RETRY_MAX_DELAY," +
     "RETRY_BACKOFF_FACTOR,HTTP_TIMEOUT,CONNECTIVITY_CHECK,CONNECTIVITY_TIMEOUT," +
-    "LOG_INCLUDE_TIMESTAMP,LOG_INCLUDE_STACK_TRACE," +
+    "LOG_INCLUDE_TIMESTAMP,LOG_INCLUDE_STACK_TRACE,OAUTH_BIND_HOST," +
     // Health usecase reads these for environment_ready check (legitimate deps):
     "INOREADER_CLIENT_ID,INOREADER_CLIENT_SECRET,INOREADER_REDIRECT_URI," +
     "INOREADER_CLIENT_ID_FILE,INOREADER_CLIENT_SECRET_FILE,INTERNAL_AUTH_TOKEN,INTERNAL_AUTH_TOKEN_FILE";
@@ -231,7 +231,7 @@ describe("main.ts child-process boot behavior", {
     const port = captureServer.addr.port;
 
     try {
-      const { code, stderr } = await childRun(
+      const { code, stderr: _stderr } = await childRun(
         [
           `--allow-env=${ALL_CONFIG_ENVS},INOREADER_CLIENT_ID,INOREADER_CLIENT_SECRET,INOREADER_REDIRECT_URI`,
           `--allow-read=${dir}`,

@@ -93,6 +93,19 @@ function authTokenPromptResponse(): Response {
   });
 }
 
+function resolveBindHost(): string {
+  return Deno.env.get("OAUTH_BIND_HOST") || "127.0.0.1";
+}
+
+function isTrustedLocalOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 export class OAuthServer {
   private pendingStates = new Map<string, PendingAuthState>();
 
@@ -110,6 +123,7 @@ export class OAuthServer {
 
   start(signal?: AbortSignal): void {
     const redirectUrl = new URL(this.credentials.redirect_uri);
+    const bindHost = resolveBindHost();
 
     if (!config.getEnvOrFile("INTERNAL_AUTH_TOKEN")) {
       logger.error(
@@ -118,7 +132,7 @@ export class OAuthServer {
     }
 
     logger.info(
-      `Starting persistent OAuth callback listener at 0.0.0.0:${
+      `Starting persistent OAuth callback listener at ${bindHost}:${
         redirectUrl.port || 80
       }`,
     );
@@ -126,7 +140,7 @@ export class OAuthServer {
     Deno.serve(
       {
         port: Number(redirectUrl.port || 80),
-        hostname: "0.0.0.0",
+        hostname: bindHost,
         signal,
         onListen() {
           logger.info("OAuth server listening");
@@ -148,6 +162,7 @@ export class OAuthServer {
     });
 
     const redirectUrl = new URL(this.credentials.redirect_uri);
+    const bindHost = resolveBindHost();
     const ac = new AbortController();
 
     type Outcome = { ok: true } | { ok: false; error: string };
@@ -163,7 +178,7 @@ export class OAuthServer {
     const server = Deno.serve(
       {
         port: Number(redirectUrl.port || 80),
-        hostname: "0.0.0.0",
+        hostname: bindHost,
         signal: ac.signal,
         onListen() {
           logger.info("One-shot OAuth callback listener ready");
@@ -268,6 +283,14 @@ export class OAuthServer {
   }
 
   private async handleAuthRedirect(req: Request): Promise<Response> {
+    if (req.method === "POST") {
+      const origin = req.headers.get("Origin");
+      if (origin !== null && !isTrustedLocalOrigin(origin)) {
+        logger.warn("Rejected POST /auth with untrusted Origin", { origin });
+        return new Response("Forbidden", { status: 403 });
+      }
+    }
+
     const expectedToken = config.getEnvOrFile("INTERNAL_AUTH_TOKEN");
 
     // Fail closed: without a configured secret there is no way to

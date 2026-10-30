@@ -1,12 +1,7 @@
-import {
-  assertEquals,
-  assertRejects,
-  assertThrows,
-} from "@std/testing/asserts";
+import { assertEquals, assertThrows } from "@std/testing/asserts";
 import { describe, it } from "@std/testing/bdd";
 import {
   emitOTelLog,
-  getOTelConfig,
   initOTelProvider,
   loadRaskIngestToken,
 } from "../../../src/infra/otel.ts";

@@ -1,5 +1,5 @@
 import { afterEach, describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/testing/asserts";
+import { assertEquals, assertRejects } from "@std/testing/asserts";
 import { EnvFileSecretManager } from "../../../src/gateway/env_file_secret_manager.ts";
 import type { TokenResponse } from "../../../src/domain/types.ts";
 
@@ -230,5 +230,38 @@ describe("EnvFileSecretManager", {
     const stat = await Deno.stat(filePath);
     // 0o640 = owner rw, group r, others none; mask off file type bits
     assertEquals(stat.mode! & 0o777, 0o640);
+  });
+
+  it("should reject token values containing \\n, \\r, or \\0 to prevent .env newline injection (OAUTH-01)", async () => {
+    await Deno.mkdir(TEST_DIR, { recursive: true });
+    const filePath = `${TEST_DIR}/tokens.env`;
+    const manager = new EnvFileSecretManager(filePath);
+
+    const badTokens: TokenResponse[] = [
+      {
+        access_token: "good\nINJECTED_KEY=evil",
+        refresh_token: "valid-refresh-token",
+        expires_at: new Date(Date.now() + 3600 * 1000),
+      },
+      {
+        access_token: "valid-access-token",
+        refresh_token: "bad\r\nINJECTED_KEY=evil",
+        expires_at: new Date(Date.now() + 3600 * 1000),
+      },
+      {
+        access_token: "null\0byte-token",
+        refresh_token: "valid-refresh-token",
+        expires_at: new Date(Date.now() + 3600 * 1000),
+      },
+    ];
+
+    for (const bad of badTokens) {
+      await assertRejects(
+        () => manager.updateTokenSecret(bad),
+        Error,
+      );
+    }
+
+    assertEquals(await manager.checkSecretExists(), false);
   });
 });
