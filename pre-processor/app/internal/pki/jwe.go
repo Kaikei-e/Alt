@@ -13,7 +13,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"strconv"
 	"strings"
 )
@@ -287,22 +286,23 @@ func parseProvisionerECJWK(data []byte) (*provisionerJWK, error) {
 		return nil, fmt.Errorf("invalid JWK d parameter")
 	}
 	curve := elliptic.P256()
-	x := new(big.Int).SetBytes(xBytes)
-	y := new(big.Int).SetBytes(yBytes)
-	d := new(big.Int).SetBytes(dBytes)
-	if d.Sign() <= 0 || d.Cmp(curve.Params().N) >= 0 {
-		return nil, fmt.Errorf("JWK d out of range")
+	var uncompressed [65]byte
+	uncompressed[0] = 0x04
+	copy(uncompressed[1+32-len(xBytes):33], xBytes)
+	copy(uncompressed[33+32-len(yBytes):65], yBytes)
+	pubKey, err := ecdsa.ParseUncompressedPublicKey(curve, uncompressed[:])
+	if err != nil {
+		return nil, fmt.Errorf("JWK point not on P-256 curve: %w", err)
 	}
-	if !curve.IsOnCurve(x, y) {
-		return nil, fmt.Errorf("JWK point not on P-256 curve")
+	var dPadded [32]byte
+	copy(dPadded[32-len(dBytes):], dBytes)
+	privKey, err := ecdsa.ParseRawPrivateKey(curve, dPadded[:])
+	if err != nil {
+		return nil, fmt.Errorf("JWK d out of range: %w", err)
 	}
-	jwk.Key = &ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{
-			Curve: curve,
-			X:     x,
-			Y:     y,
-		},
-		D: d,
+	if !privKey.PublicKey.Equal(pubKey) {
+		return nil, fmt.Errorf("JWK public key does not match private key")
 	}
+	jwk.Key = privKey
 	return &jwk, nil
 }

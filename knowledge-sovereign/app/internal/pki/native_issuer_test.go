@@ -97,19 +97,23 @@ func generateTestECJWK(t *testing.T) *provisionerJWK {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var xBuf, yBuf, dBuf [32]byte
-	key.PublicKey.X.FillBytes(xBuf[:])
-	key.PublicKey.Y.FillBytes(yBuf[:])
-	key.D.FillBytes(dBuf[:])
+	pubBytes, err := key.PublicKey.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dBytes, err := key.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
 	return &provisionerJWK{
 		Kty:   "EC",
 		Crv:   "P-256",
 		Alg:   "ES256",
 		Use:   "sig",
 		KeyID: "test-kid-1",
-		X:     base64.RawURLEncoding.EncodeToString(xBuf[:]),
-		Y:     base64.RawURLEncoding.EncodeToString(yBuf[:]),
-		D:     base64.RawURLEncoding.EncodeToString(dBuf[:]),
+		X:     base64.RawURLEncoding.EncodeToString(pubBytes[1:33]),
+		Y:     base64.RawURLEncoding.EncodeToString(pubBytes[33:65]),
+		D:     base64.RawURLEncoding.EncodeToString(dBytes),
 		Key:   key,
 	}
 }
