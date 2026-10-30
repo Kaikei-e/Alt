@@ -148,18 +148,31 @@ func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVe
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetSummaryVersionByID")
 	defer span.End()
 
-	query := `SELECT summary_version_id, article_id, user_id, generated_at,
-		model, prompt_version, input_hash, quality_score,
-		summary_text, superseded_by
-		FROM summary_versions
-		WHERE summary_version_id = $1`
-
 	var sv domain.SummaryVersion
-	err := r.pool.QueryRow(ctx, query, summaryVersionID).Scan(
-		&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
-		&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
-		&sv.SummaryText, &sv.SupersededBy,
-	)
+	var err error
+	if user, userErr := domain.GetUserFromContext(ctx); userErr == nil && user != nil && user.UserID != uuid.Nil {
+		query := `SELECT summary_version_id, article_id, user_id, generated_at,
+			model, prompt_version, input_hash, quality_score,
+			summary_text, superseded_by
+			FROM summary_versions
+			WHERE summary_version_id = $1 AND user_id = $2`
+		err = r.pool.QueryRow(ctx, query, summaryVersionID, user.UserID).Scan(
+			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
+			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
+			&sv.SummaryText, &sv.SupersededBy,
+		)
+	} else {
+		query := `SELECT summary_version_id, article_id, user_id, generated_at,
+			model, prompt_version, input_hash, quality_score,
+			summary_text, superseded_by
+			FROM summary_versions
+			WHERE summary_version_id = $1`
+		err = r.pool.QueryRow(ctx, query, summaryVersionID).Scan(
+			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
+			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
+			&sv.SummaryText, &sv.SupersededBy,
+		)
+	}
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return domain.SummaryVersion{}, fmt.Errorf("no summary version found for id %s", summaryVersionID)
@@ -175,20 +188,35 @@ func (r *SummaryRepository) GetLatestSummaryVersion(ctx context.Context, article
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetLatestSummaryVersion")
 	defer span.End()
 
-	query := `SELECT summary_version_id, article_id, user_id, generated_at,
-		model, prompt_version, input_hash, quality_score,
-		summary_text, superseded_by
-		FROM summary_versions
-		WHERE article_id = $1 AND superseded_by IS NULL
-		ORDER BY generated_at DESC
-		LIMIT 1`
-
 	var sv domain.SummaryVersion
-	err := r.pool.QueryRow(ctx, query, articleID).Scan(
-		&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
-		&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
-		&sv.SummaryText, &sv.SupersededBy,
-	)
+	var err error
+	if user, userErr := domain.GetUserFromContext(ctx); userErr == nil && user != nil && user.UserID != uuid.Nil {
+		query := `SELECT summary_version_id, article_id, user_id, generated_at,
+			model, prompt_version, input_hash, quality_score,
+			summary_text, superseded_by
+			FROM summary_versions
+			WHERE article_id = $1 AND user_id = $2 AND superseded_by IS NULL
+			ORDER BY generated_at DESC
+			LIMIT 1`
+		err = r.pool.QueryRow(ctx, query, articleID, user.UserID).Scan(
+			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
+			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
+			&sv.SummaryText, &sv.SupersededBy,
+		)
+	} else {
+		query := `SELECT summary_version_id, article_id, user_id, generated_at,
+			model, prompt_version, input_hash, quality_score,
+			summary_text, superseded_by
+			FROM summary_versions
+			WHERE article_id = $1 AND superseded_by IS NULL
+			ORDER BY generated_at DESC
+			LIMIT 1`
+		err = r.pool.QueryRow(ctx, query, articleID).Scan(
+			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
+			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
+			&sv.SummaryText, &sv.SupersededBy,
+		)
+	}
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return domain.SummaryVersion{}, fmt.Errorf("no summary version found for article %s", articleID)

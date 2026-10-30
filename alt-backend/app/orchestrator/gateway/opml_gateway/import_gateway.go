@@ -54,15 +54,31 @@ func (g *ImportGateway) RegisterFeedLinkBulk(ctx context.Context, urls []string)
 	return mergeImportResults(result, registered), nil
 }
 
+const maxOPMLImportURLs = 500
+
 func filterAndSanitizeImportURLs(ctx context.Context, urls []string) ([]string, *domain.OPMLImportResult) {
 	result := &domain.OPMLImportResult{
 		Total: len(urls),
 	}
 
+	if len(urls) > maxOPMLImportURLs {
+		for _, excess := range urls[maxOPMLImportURLs:] {
+			result.Failed++
+			result.FailedURLs = append(result.FailedURLs, excess)
+		}
+		urls = urls[:maxOPMLImportURLs]
+	}
+
 	seen := make(map[string]struct{})
 	accepted := make([]string, 0, len(urls))
+	urlValidator := security.NewURLSecurityValidator()
 
 	for _, rawURL := range urls {
+		if ctx.Err() != nil {
+			result.Failed++
+			result.FailedURLs = append(result.FailedURLs, rawURL)
+			continue
+		}
 		trimmed := strings.TrimSpace(rawURL)
 		if trimmed == "" {
 			result.Failed++
@@ -77,7 +93,7 @@ func filterAndSanitizeImportURLs(ctx context.Context, urls []string) ([]string, 
 			result.FailedURLs = append(result.FailedURLs, trimmed)
 			continue
 		}
-		if err := security.NewURLSecurityValidator().ValidateParsedRSSURL(parsedURL); err != nil {
+		if err := urlValidator.ValidateParsedRSSURL(parsedURL); err != nil {
 			logger.Logger.WarnContext(ctx, "OPML import: URL not allowed", "url", trimmed, "reason", err.Error())
 			result.Failed++
 			result.FailedURLs = append(result.FailedURLs, trimmed)

@@ -548,3 +548,79 @@ func TestOptionalAuth_NonUUIDSubjectTreatedAsAnonymous(t *testing.T) {
 	require.NoError(t, err, "request should continue as anonymous, not fail")
 	require.True(t, called)
 }
+
+func TestRequireAuth_MissingExpClaimRejectedWith401(t *testing.T) {
+	e := echo.New()
+	userID := uuid.New().String()
+	claims := BackendClaims{
+		Email:    "user@example.com",
+		Role:     "user",
+		Sid:      "session-1",
+		TenantID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:   "auth-hub",
+			Audience: jwt.ClaimStrings{"alt-backend"},
+			Subject:  userID,
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString([]byte(testBackendTokenSecret))
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req.Header.Set(backendTokenHeader, signed)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	mw := NewAuthMiddleware(nil, testAuthConfig())
+	called := false
+	h := mw.RequireAuth()(func(c echo.Context) error {
+		called = true
+		return c.NoContent(http.StatusOK)
+	})
+
+	err = h(c)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
+	require.False(t, called)
+}
+
+func TestRequireAuth_UsesTokenExpClaimNot24HourFallback(t *testing.T) {
+	e := echo.New()
+	userID := uuid.New().String()
+	exp := time.Now().Add(5 * time.Minute).Truncate(time.Second)
+	claims := BackendClaims{
+		Email:    "user@example.com",
+		Role:     "user",
+		Sid:      "session-1",
+		TenantID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "auth-hub",
+			Audience:  jwt.ClaimStrings{"alt-backend"},
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(exp),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString([]byte(testBackendTokenSecret))
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req.Header.Set(backendTokenHeader, signed)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	mw := NewAuthMiddleware(nil, testAuthConfig())
+	h := mw.RequireAuth()(func(c echo.Context) error {
+		user, err := domain.GetUserFromContext(c.Request().Context())
+		require.NoError(t, err)
+		require.True(t, user.ExpiresAt.Equal(exp), "ExpiresAt must match JWT exp claim, got %v want %v", user.ExpiresAt, exp)
+		return c.NoContent(http.StatusOK)
+	})
+
+	require.NoError(t, h(c))
+}

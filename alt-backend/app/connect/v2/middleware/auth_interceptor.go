@@ -135,7 +135,7 @@ func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, e
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return a.secret, nil
-	})
+	}, jwt.WithExpirationRequired(), jwt.WithValidMethods([]string{"HS256"}))
 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errInvalidToken, err)
@@ -174,10 +174,11 @@ func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, e
 	}
 
 	// Get expiration and issued-at times from standard JWT claims
-	var expiresAt, loginAt time.Time
-	if claims.ExpiresAt != nil {
-		expiresAt = claims.ExpiresAt.Time
+	if claims.ExpiresAt == nil || claims.ExpiresAt.Time.IsZero() {
+		return nil, errInvalidClaims
 	}
+	expiresAt := claims.ExpiresAt.Time
+	var loginAt time.Time
 	if claims.IssuedAt != nil {
 		loginAt = claims.IssuedAt.Time
 	}

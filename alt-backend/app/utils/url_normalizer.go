@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 )
@@ -21,6 +22,13 @@ func NormalizeURL(rawURL string) (string, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return "", err
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return "", fmt.Errorf("unsupported URL scheme: %q", parsedURL.Scheme)
+	}
+	if parsedURL.Host == "" {
+		return "", fmt.Errorf("URL host cannot be empty")
 	}
 
 	// Remove ALL query parameters (they are noise for feed URLs)

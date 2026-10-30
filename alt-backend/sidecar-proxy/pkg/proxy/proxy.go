@@ -92,10 +92,13 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 		},
 	}
 
-	// Create HTTP client with timeouts
+	// Create HTTP client with timeouts and redirect following disabled
 	httpClient := &http.Client{
 		Transport: transport,
 		Timeout:   cfg.RequestTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 
 	// Long-lived client for CONNECT/persistent-tunnel forwarding, built once
@@ -103,6 +106,9 @@ func NewLightweightProxy(cfg *config.ProxyConfig) (*LightweightProxy, error) {
 	// alive instead of being discarded per-request.
 	connectHTTPClient := &http.Client{
 		Timeout: 10 * time.Minute, // Extended timeout for model downloads
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 		Transport: &http.Transport{
 			DisableKeepAlives:     false,
 			MaxIdleConns:          10,

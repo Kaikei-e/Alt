@@ -9,15 +9,19 @@ import (
 	"time"
 )
 
+const maxCSRFTokens = 10000
+
 // InMemoryCSRFTokenDriver implements CSRF token storage using in-memory storage
 type InMemoryCSRFTokenDriver struct {
-	tokens sync.Map // map[string]time.Time
+	tokens map[string]time.Time
 	mu     sync.RWMutex
 }
 
 // NewInMemoryCSRFTokenDriver creates a new in-memory CSRF token driver
 func NewInMemoryCSRFTokenDriver() *InMemoryCSRFTokenDriver {
-	driver := &InMemoryCSRFTokenDriver{}
+	driver := &InMemoryCSRFTokenDriver{
+		tokens: make(map[string]time.Time),
+	}
 
 	// Start cleanup goroutine to remove expired tokens
 	go driver.cleanupExpiredTokens()
@@ -31,7 +35,38 @@ func (d *InMemoryCSRFTokenDriver) StoreToken(ctx context.Context, token string, 
 		return fmt.Errorf("token cannot be empty")
 	}
 
-	d.tokens.Store(token, expiration)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.tokens == nil {
+		d.tokens = make(map[string]time.Time)
+	}
+
+	if _, exists := d.tokens[token]; !exists && len(d.tokens) >= maxCSRFTokens {
+		now := time.Now()
+		for k, exp := range d.tokens {
+			if now.After(exp) {
+				delete(d.tokens, k)
+			}
+		}
+		if len(d.tokens) >= maxCSRFTokens {
+			var oldestKey string
+			var oldestExp time.Time
+			first := true
+			for k, exp := range d.tokens {
+				if first || exp.Before(oldestExp) {
+					oldestKey = k
+					oldestExp = exp
+					first = false
+				}
+			}
+			if !first {
+				delete(d.tokens, oldestKey)
+			}
+		}
+	}
+
+	d.tokens[token] = expiration
 	return nil
 }
 
@@ -41,12 +76,14 @@ func (d *InMemoryCSRFTokenDriver) GetToken(ctx context.Context, token string) (t
 		return time.Time{}, fmt.Errorf("token cannot be empty")
 	}
 
-	expiration, exists := d.tokens.Load(token)
+	d.mu.RLock()
+	expiration, exists := d.tokens[token]
+	d.mu.RUnlock()
 	if !exists {
 		return time.Time{}, fmt.Errorf("token not found")
 	}
 
-	return expiration.(time.Time), nil
+	return expiration, nil
 }
 
 // DeleteToken removes a CSRF token from storage
@@ -55,7 +92,9 @@ func (d *InMemoryCSRFTokenDriver) DeleteToken(ctx context.Context, token string)
 		return fmt.Errorf("token cannot be empty")
 	}
 
-	d.tokens.Delete(token)
+	d.mu.Lock()
+	delete(d.tokens, token)
+	d.mu.Unlock()
 	return nil
 }
 
@@ -78,20 +117,14 @@ func (d *InMemoryCSRFTokenDriver) cleanupExpiredTokens() {
 	ticker := time.NewTicker(10 * time.Minute) // Cleanup every 10 minutes
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			now := time.Now()
-			d.tokens.Range(func(key, value interface{}) bool {
-				token := key.(string)
-				expiration := value.(time.Time)
-
-				if now.After(expiration) {
-					d.tokens.Delete(token)
-				}
-
-				return true // Continue iteration
-			})
+	for range ticker.C {
+		now := time.Now()
+		d.mu.Lock()
+		for token, expiration := range d.tokens {
+			if now.After(expiration) {
+				delete(d.tokens, token)
+			}
 		}
+		d.mu.Unlock()
 	}
 }

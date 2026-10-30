@@ -73,7 +73,7 @@ func TestFeedRepository_RegisterMultipleFeedsWithState_ReturnsFeedIDs(t *testing
 			batch := mock.ExpectBatch()
 			for i, row := range tt.returned {
 				feed := tt.feeds[i]
-				batch.ExpectQuery("INSERT INTO feeds").
+				batch.ExpectQuery(`INSERT INTO feeds[\s\S]*WHERE feeds\.feed_link_id IS NULL OR feeds\.feed_link_id = EXCLUDED\.feed_link_id`).
 					WithArgs(feed.Title, feed.Description, feed.WebsiteURL, feed.PubDate,
 						feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID, feed.OgImageURL).
 					WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow(row.feedID, row.created))
@@ -88,4 +88,29 @@ func TestFeedRepository_RegisterMultipleFeedsWithState_ReturnsFeedIDs(t *testing
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+func TestFeedRepository_RegisterSingleFeed_GuardsFeedLinkID(t *testing.T) {
+	pubDate := time.Date(2026, 7, 30, 9, 0, 0, 0, time.UTC)
+	feed := &models.Feed{
+		Title:       "Example Item",
+		Description: "Example description",
+		WebsiteURL:  "https://example.com/a",
+		PubDate:     pubDate,
+		CreatedAt:   pubDate,
+		UpdatedAt:   pubDate,
+	}
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	mock.ExpectExec(`INSERT INTO feeds[\s\S]*WHERE feeds\.feed_link_id IS NULL OR feeds\.feed_link_id = EXCLUDED\.feed_link_id`).
+		WithArgs(feed.Title, feed.Description, feed.WebsiteURL, feed.PubDate,
+			feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID, feed.OgImageURL).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	repo := &FeedRepository{pool: mock}
+	require.NoError(t, repo.RegisterSingleFeed(t.Context(), feed))
+	require.NoError(t, mock.ExpectationsWereMet())
 }

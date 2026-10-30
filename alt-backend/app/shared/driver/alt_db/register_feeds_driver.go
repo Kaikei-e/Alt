@@ -32,6 +32,7 @@ func (r *FeedRepository) RegisterSingleFeed(ctx context.Context, feed *models.Fe
 			updated_at = EXCLUDED.updated_at,
 			feed_link_id = COALESCE(feeds.feed_link_id, EXCLUDED.feed_link_id),
 			og_image_url = COALESCE(EXCLUDED.og_image_url, feeds.og_image_url)
+		WHERE feeds.feed_link_id IS NULL OR feeds.feed_link_id = EXCLUDED.feed_link_id
 	`
 
 	if _, err := r.pool.Exec(ctx, upsertQuery,
@@ -87,6 +88,7 @@ func (r *FeedRepository) RegisterMultipleFeedsWithState(ctx context.Context, fee
 			updated_at = EXCLUDED.updated_at,
 			feed_link_id = COALESCE(feeds.feed_link_id, EXCLUDED.feed_link_id),
 			og_image_url = COALESCE(EXCLUDED.og_image_url, feeds.og_image_url)
+		WHERE feeds.feed_link_id IS NULL OR feeds.feed_link_id = EXCLUDED.feed_link_id
 		RETURNING id, (xmax = 0) AS created
 	`
 

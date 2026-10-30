@@ -88,14 +88,27 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 				}
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid tenant_id claim")
 			}
+			if jwtUserCtx.ExpiresAt.IsZero() {
+				if m.logger != nil {
+					m.logger.Warn("JWT exp claim is missing",
+						"path", c.Request().URL.Path,
+						"remote_addr", c.RealIP(),
+					)
+				}
+				return echo.NewHTTPError(http.StatusUnauthorized, "invalid expiration claim")
+			}
+			loginAt := jwtUserCtx.LoginAt
+			if loginAt.IsZero() {
+				loginAt = time.Now().UTC()
+			}
 			domainCtx := &domain.UserContext{
 				UserID:    userID,
 				Email:     jwtUserCtx.Email,
 				Role:      parseRole(jwtUserCtx.Role),
 				TenantID:  tenantID,
 				SessionID: jwtUserCtx.Sid,
-				LoginAt:   time.Now().UTC(),
-				ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+				LoginAt:   loginAt,
+				ExpiresAt: jwtUserCtx.ExpiresAt,
 			}
 			m.attachContext(c, domainCtx)
 			if m.logger != nil {
@@ -143,14 +156,27 @@ func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 						}
 						return next(c)
 					}
+					if jwtUserCtx.ExpiresAt.IsZero() {
+						if m.logger != nil {
+							m.logger.Warn("JWT exp claim is missing, continuing as anonymous",
+								"path", c.Request().URL.Path,
+								"remote_addr", c.RealIP(),
+							)
+						}
+						return next(c)
+					}
+					loginAt := jwtUserCtx.LoginAt
+					if loginAt.IsZero() {
+						loginAt = time.Now().UTC()
+					}
 					domainCtx := &domain.UserContext{
 						UserID:    userID,
 						Email:     jwtUserCtx.Email,
 						Role:      parseRole(jwtUserCtx.Role),
 						TenantID:  tenantID,
 						SessionID: jwtUserCtx.Sid,
-						LoginAt:   time.Now().UTC(),
-						ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+						LoginAt:   loginAt,
+						ExpiresAt: jwtUserCtx.ExpiresAt,
 					}
 					m.attachContext(c, domainCtx)
 					return next(c)

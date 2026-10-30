@@ -42,9 +42,10 @@ func (m *mockEventPort) AppendKnowledgeEvent(_ context.Context, event domain.Kno
 	return m.eventSeq, nil
 }
 
-// snoozed_until is rebuilt from the event log on reproject, so a snooze that
-// only reached recall_candidate_view reverts to NULL and the item resurfaces.
-func TestRecallSnoozeUsecase_Execute_AppendsBeforeReadModelWrite(t *testing.T) {
+// SnoozeRecallCandidate must succeed before AppendKnowledgeEvent so a bogus or
+// unassociated itemKey is rejected at the read-model gate without appending a
+// poison-pill event to knowledge_events.
+func TestRecallSnoozeUsecase_Execute_WritesReadModelBeforeAppendingEvent(t *testing.T) {
 	rec := &recorder{}
 	candidatePort := &mockCandidatePort{rec: rec}
 	eventPort := &mockEventPort{rec: rec, eventSeq: 42}
@@ -53,9 +54,23 @@ func TestRecallSnoozeUsecase_Execute_AppendsBeforeReadModelWrite(t *testing.T) {
 		Execute(context.Background(), uuid.New(), uuid.New(), "article:1", 12)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"append", "snooze"}, rec.calls)
+	assert.Equal(t, []string{"snooze", "append"}, rec.calls)
 	require.Len(t, eventPort.events, 1)
 	assert.Equal(t, domain.EventRecallSnoozed, eventPort.events[0].EventType)
+}
+
+func TestRecallSnoozeUsecase_Execute_DoesNotAppendEventWhenCandidateSnoozeFails(t *testing.T) {
+	rec := &recorder{}
+	candidatePort := &mockCandidatePort{rec: rec, err: errors.New("recall home association denied or missing")}
+	eventPort := &mockEventPort{rec: rec, eventSeq: 42}
+
+	err := NewRecallSnoozeUsecase(candidatePort, eventPort).
+		Execute(context.Background(), uuid.New(), uuid.New(), "article:bogus", 12)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "recall home association denied or missing")
+	assert.Equal(t, []string{"snooze"}, rec.calls)
+	assert.Empty(t, eventPort.events, "must not append an event when candidate snooze fails")
 }
 
 func TestRecallSnoozeUsecase_Execute_FailsWhenAppendFails(t *testing.T) {
@@ -68,5 +83,5 @@ func TestRecallSnoozeUsecase_Execute_FailsWhenAppendFails(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "sovereign unavailable")
-	assert.Equal(t, []string{"append"}, rec.calls)
+	assert.Equal(t, []string{"snooze", "append"}, rec.calls)
 }

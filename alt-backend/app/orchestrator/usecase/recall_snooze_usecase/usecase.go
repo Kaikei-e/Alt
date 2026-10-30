@@ -58,17 +58,14 @@ func (u *RecallSnoozeUsecase) Execute(ctx context.Context, userID uuid.UUID, ten
 		Payload:       payload,
 	}
 
-	// The event is the durable write: snoozed_until is refolded from the event
-	// log on reproject, so a snooze that only reached recall_candidate_view
-	// reverts to NULL and the item resurfaces. Append first and fail the
-	// command if it does not land — the dedupe key makes a client retry
-	// idempotent.
-	if _, err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
-		return fmt.Errorf("append recall snoozed event: %w", err)
-	}
-
+	// Mutate recall_candidate_view first so an invalid or unassociated itemKey
+	// fails before appending an event to knowledge_events.
 	if err := u.candidatePort.SnoozeRecallCandidate(ctx, userID, itemKey, until, occurredAt); err != nil {
 		return fmt.Errorf("snooze recall candidate: %w", err)
+	}
+
+	if _, err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
+		return fmt.Errorf("append recall snoozed event: %w", err)
 	}
 
 	return nil

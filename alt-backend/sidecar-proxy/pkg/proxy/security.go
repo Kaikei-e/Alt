@@ -205,9 +205,9 @@ func (p *LightweightProxy) validateHostSecurity(host string) error {
 		}
 	}
 
-	// Check for private network ranges (RFC 1918)
+	// Check for private/loopback/reserved network ranges
 	if ip := net.ParseIP(hostname); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() {
+		if isBlockedInternalIP(ip) {
 			return fmt.Errorf("access to private/loopback IP denied: %s", hostname)
 		}
 	}
@@ -227,6 +227,23 @@ func (p *LightweightProxy) validateHostSecurity(host string) error {
 	return nil
 }
 
+func isBlockedInternalIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		// CGNAT 100.64.0.0/10
+		if ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+			return true
+		}
+		// IETF Protocol Assignments 192.0.0.0/24
+		if ip4[0] == 192 && ip4[1] == 0 && ip4[2] == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // validateResolvedIPs rejects DNS answers that point at loopback/private/
 // link-local addresses. validateHostSecurity only inspects the hostname
 // literal in the request URL — an attacker-controlled domain can still pass
@@ -235,7 +252,7 @@ func (p *LightweightProxy) validateHostSecurity(host string) error {
 // checked too, not just the string the client sent.
 func (p *LightweightProxy) validateResolvedIPs(hostname string, ips []net.IP) error {
 	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		if isBlockedInternalIP(ip) {
 			return fmt.Errorf("DNS rebinding protection: %s resolved to disallowed address %s", hostname, ip.String())
 		}
 	}

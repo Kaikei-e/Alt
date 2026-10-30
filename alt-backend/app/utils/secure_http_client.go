@@ -296,10 +296,25 @@ func isBlockedPort(port string) bool {
 		"993":   true, // IMAPS
 		"995":   true, // POP3S
 		"1433":  true, // MSSQL
+		"2375":  true, // Docker daemon
+		"2376":  true, // Docker TLS
 		"3306":  true, // MySQL
+		"4433":  true, // Kratos public
+		"4434":  true, // Kratos admin
 		"5432":  true, // PostgreSQL
 		"6379":  true, // Redis
+		"6432":  true, // PgBouncer
+		"7700":  true, // Meilisearch
+		"8123":  true, // ClickHouse
+		"8888":  true, // auth-hub
+		"9000":  true, // alt-backend / ClickHouse native
+		"9010":  true, // rag-orchestrator REST
+		"9011":  true, // rag-orchestrator Connect
+		"9101":  true, // search-indexer
+		"9250":  true, // alt-butterfly-facade
+		"9500":  true, // mq-hub
 		"11211": true, // Memcached
+		"11434": true, // Ollama
 	}
 	return blockedPorts[port]
 }

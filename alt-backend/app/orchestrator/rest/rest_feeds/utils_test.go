@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"alt/config"
 	"alt/di"
 	"alt/domain"
 	"alt/orchestrator/usecase/cached_feed_list_usecase"
@@ -158,6 +159,80 @@ func TestCursorFeedHandlers_SetPrivateNoCacheHeader(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
+
+			err := tt.handler(c)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, "private, no-cache", rec.Header().Get("Cache-Control"))
+		})
+	}
+}
+
+func (stubFeedCursorPort) FetchSingleFeed(_ context.Context) (*domain.RSSFeed, error) {
+	return &domain.RSSFeed{Title: "stub"}, nil
+}
+func (stubFeedCursorPort) FetchFeedsList(_ context.Context) ([]*domain.FeedItem, error) {
+	return nil, nil
+}
+func (stubFeedCursorPort) FetchFeedsListLimit(_ context.Context, _ int) ([]*domain.FeedItem, error) {
+	return nil, nil
+}
+func (stubFeedCursorPort) FetchFeedsListPage(_ context.Context, _ int) ([]*domain.FeedItem, error) {
+	return nil, nil
+}
+
+func TestFeedFetchHandlers_SetPrivateNoCacheHeader(t *testing.T) {
+	logger.InitLogger()
+	stub := stubFeedCursorPort{}
+	cfg := &config.Config{}
+	container := &di.ApplicationComponents{
+		FetchSingleFeedUsecase: fetch_feed_usecase.NewFetchSingleFeedUsecase(stub),
+		FetchFeedsListUsecase:  fetch_feed_usecase.NewFetchFeedsListUsecase(stub),
+	}
+
+	e := echo.New()
+	tests := []struct {
+		name       string
+		target     string
+		paramKey   string
+		paramValue string
+		handler    echo.HandlerFunc
+	}{
+		{
+			name:    "single feed",
+			target:  "/v1/feeds/fetch/single",
+			handler: RestHandleFetchSingleFeed(container, cfg),
+		},
+		{
+			name:    "feeds list",
+			target:  "/v1/feeds/fetch/list",
+			handler: RestHandleFetchFeedsList(container, cfg),
+		},
+		{
+			name:       "feeds limit",
+			target:     "/v1/feeds/fetch/limit/10",
+			paramKey:   "limit",
+			paramValue: "10",
+			handler:    RestHandleFetchFeedsLimit(container, cfg),
+		},
+		{
+			name:       "feeds page",
+			target:     "/v1/feeds/fetch/page/1",
+			paramKey:   "page",
+			paramValue: "1",
+			handler:    RestHandleFetchFeedsPage(container),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			if tt.paramKey != "" {
+				c.SetParamNames(tt.paramKey)
+				c.SetParamValues(tt.paramValue)
+			}
 
 			err := tt.handler(c)
 			require.NoError(t, err)

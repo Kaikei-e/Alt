@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"alt/config"
 
@@ -44,11 +45,13 @@ type BackendClaims struct {
 
 // UserContext holds user information extracted from JWT
 type UserContext struct {
-	ID       string
-	Email    string
-	Role     string
-	Sid      string
-	TenantID string
+	ID        string
+	Email     string
+	Role      string
+	Sid       string
+	TenantID  string
+	LoginAt   time.Time
+	ExpiresAt time.Time
 }
 
 // JWTAuthMiddleware validates JWT tokens for backend authentication
@@ -128,7 +131,7 @@ func (m *JWTAuthMiddleware) validateJWT(c echo.Context) (*UserContext, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return m.secret, nil
-	})
+	}, jwt.WithExpirationRequired(), jwt.WithValidMethods([]string{"HS256"}))
 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errInvalidToken, err)
@@ -141,6 +144,15 @@ func (m *JWTAuthMiddleware) validateJWT(c echo.Context) (*UserContext, error) {
 	claims, ok := parsed.Claims.(*BackendClaims)
 	if !ok {
 		return nil, errInvalidClaims
+	}
+
+	if claims.ExpiresAt == nil || claims.ExpiresAt.Time.IsZero() {
+		return nil, errInvalidClaims
+	}
+
+	var loginAt time.Time
+	if claims.IssuedAt != nil {
+		loginAt = claims.IssuedAt.Time
 	}
 
 	// Verify issuer
@@ -173,11 +185,13 @@ func (m *JWTAuthMiddleware) validateJWT(c echo.Context) (*UserContext, error) {
 	}
 
 	return &UserContext{
-		ID:       claims.Subject,
-		Email:    claims.Email,
-		Role:     claims.Role,
-		Sid:      claims.Sid,
-		TenantID: claims.TenantID,
+		ID:        claims.Subject,
+		Email:     claims.Email,
+		Role:      claims.Role,
+		Sid:       claims.Sid,
+		TenantID:  claims.TenantID,
+		LoginAt:   loginAt,
+		ExpiresAt: claims.ExpiresAt.Time,
 	}, nil
 }
 

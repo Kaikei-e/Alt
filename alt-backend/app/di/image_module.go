@@ -12,7 +12,6 @@ import (
 	"alt/utils/rate_limiter"
 	"alt/utils/security"
 	"log/slog"
-	"net/http"
 	"time"
 )
 
@@ -32,9 +31,8 @@ func newImageModule(infra *InfraModule) *ImageModule {
 	cfg := infra.Config
 
 	// Image fetch components
-	imageHTTPClient := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	ssrfValidator := security.NewSSRFValidator()
+	imageHTTPClient := ssrfValidator.CreateSafeHTTPClient(30 * time.Second)
 	imageFetchGw := image_fetch_gateway.NewImageFetchGateway(imageHTTPClient)
 	imageFetchUC := image_fetch_usecase.NewImageFetchUsecase(imageFetchGw)
 
@@ -80,12 +78,13 @@ func newImageModule(infra *InfraModule) *ImageModule {
 	// limiter namespaces would double the rate they actually see.
 	var resolveOgImagesUC *og_image_resolve_usecase.Usecase
 	if imageProxyWired {
+		ogResolveValidator := security.NewSSRFValidator()
 		resolveOgImagesUC = og_image_resolve_usecase.NewUsecase(
 			infra.OgImageGateway,
 			og_resolve_gateway.NewGateway(
 				imageProxyRateLimiter,
-				&http.Client{Timeout: 15 * time.Second},
-				security.NewSSRFValidator(),
+				ogResolveValidator.CreateSafeHTTPClient(15*time.Second),
+				ogResolveValidator,
 			),
 			imageProxyUsecaseInstance,
 		)

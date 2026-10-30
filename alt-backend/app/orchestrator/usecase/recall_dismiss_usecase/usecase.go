@@ -52,16 +52,14 @@ func (u *RecallDismissUsecase) Execute(ctx context.Context, userID uuid.UUID, te
 		Payload:       payload,
 	}
 
-	// The event is the durable write: recall_candidate_view is TRUNCATEd and
-	// refolded from the event log on reproject, so a dismiss that only reached
-	// the read model resurfaces. Append first and fail the command if it does
-	// not land — the dedupe key makes a client retry idempotent.
-	if _, err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
-		return fmt.Errorf("append recall dismissed event: %w", err)
-	}
-
+	// Mutate recall_candidate_view first so an invalid or unassociated itemKey
+	// fails before appending an event to knowledge_events.
 	if err := u.candidatePort.DismissRecallCandidate(ctx, userID, itemKey, occurredAt); err != nil {
 		return fmt.Errorf("dismiss recall candidate: %w", err)
+	}
+
+	if _, err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
+		return fmt.Errorf("append recall dismissed event: %w", err)
 	}
 
 	return nil

@@ -115,3 +115,38 @@ func TestValidateToken_InvalidTenantIDFormat_Fails(t *testing.T) {
 	assert.True(t, errors.Is(err, errInvalidClaims),
 		"malformed tenant_id claim must be rejected; got %v", err)
 }
+
+func TestValidateToken_MissingExpClaim_Fails(t *testing.T) {
+	userID := uuid.MustParse("77777777-7777-7777-7777-777777777777")
+	tenantID := uuid.MustParse("88888888-8888-8888-8888-888888888888")
+
+	claims := baseClaims(userID)
+	claims.TenantID = tenantID.String()
+	claims.ExpiresAt = nil
+	tokenStr := signTestToken(t, claims)
+
+	a := newTestInterceptor()
+	_, err := a.validateToken(tokenStr)
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, errInvalidToken) || errors.Is(err, errInvalidClaims),
+		"missing exp claim must be rejected; got %v", err)
+}
+
+func TestValidateToken_UnexpectedAlgorithm_Fails(t *testing.T) {
+	userID := uuid.MustParse("77777777-7777-7777-7777-777777777777")
+	tenantID := uuid.MustParse("88888888-8888-8888-8888-888888888888")
+
+	claims := baseClaims(userID)
+	claims.TenantID = tenantID.String()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS384, claims)
+	tokenStr, err := token.SignedString([]byte(testSecret))
+	require.NoError(t, err)
+
+	a := newTestInterceptor()
+	_, err = a.validateToken(tokenStr)
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, errInvalidToken),
+		"HS384 token must be rejected when only HS256 is permitted; got %v", err)
+}

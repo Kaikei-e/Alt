@@ -73,10 +73,10 @@ func ExtractPTags(ctx context.Context, htmlR io.Reader, ctype string) ([]string,
 		}
 	}()
 
-	// ④ Sanitize
+	// ④ Sanitize (bound decompressed output to 1 MiB to prevent gzip bombs)
 	policy := bluemonday.NewPolicy()
 	policy.AllowElements("p", "a", "strong", "em")
-	cleaned := policy.SanitizeReader(gzr)
+	cleaned := policy.SanitizeReader(io.LimitReader(gzr, 1<<20))
 
 	// ⑤ goquery 本体
 	doc, err := goquery.NewDocumentFromReader(cleaned)

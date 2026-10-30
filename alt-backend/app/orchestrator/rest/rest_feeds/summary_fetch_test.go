@@ -178,6 +178,7 @@ func TestRestHandleFetchInoreaderSummary(t *testing.T) {
 		err = handler(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "private, no-cache", rec.Header().Get("Cache-Control"))
 
 		var got FeedSummaryProvidedResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
@@ -310,6 +311,7 @@ func TestRestHandleFetchArticleSummary(t *testing.T) {
 		err = handler(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "private, no-cache", rec.Header().Get("Cache-Control"))
 
 		var got FeedSummaryProvidedResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))

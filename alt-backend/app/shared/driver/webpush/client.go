@@ -94,9 +94,20 @@ func NewClient(signer *VAPIDSigner, httpClient *http.Client) (*Client, error) {
 		return nil, fmt.Errorf("webpush client requires a VAPID signer")
 	}
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultTimeout}
+		httpClient = &http.Client{
+			Timeout: defaultTimeout,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	} else if httpClient.Timeout <= 0 {
 		return nil, fmt.Errorf("webpush client requires an http.Client with an explicit timeout")
+	} else if httpClient.CheckRedirect == nil {
+		cloned := *httpClient
+		cloned.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+		httpClient = &cloned
 	}
 
 	return &Client{

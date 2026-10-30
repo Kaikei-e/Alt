@@ -4,7 +4,6 @@ import (
 	"alt/config"
 	"alt/di"
 	"alt/utils/logger"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -14,8 +13,8 @@ import (
 
 func RestHandleFetchSingleFeed(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// Add caching headers
-		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
+		// Authenticated user-scoped feed responses must never be stored in shared caches.
+		c.Response().Header().Set("Cache-Control", "private, no-cache")
 		c.Response().Header().Set("ETag", `"single-feed"`)
 
 		feed, err := container.FetchSingleFeedUsecase.Execute(c.Request().Context())
@@ -28,8 +27,8 @@ func RestHandleFetchSingleFeed(container *di.ApplicationComponents, cfg *config.
 
 func RestHandleFetchFeedsList(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// Add caching headers for feed list
-		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.SearchCacheExpiry.Seconds())))
+		// Authenticated user-scoped feed responses must never be stored in shared caches.
+		c.Response().Header().Set("Cache-Control", "private, no-cache")
 		c.Response().Header().Set("ETag", `"feeds-list"`)
 
 		feeds, err := container.FetchFeedsListUsecase.Execute(c.Request().Context())
@@ -55,9 +54,8 @@ func RestHandleFetchFeedsLimit(container *di.ApplicationComponents, cfg *config.
 			limit = 1000
 		}
 
-		// Add caching headers based on limit
-		cacheAge := GetCacheAgeForLimit(limit)
-		c.Response().Header().Set("Cache-Control", "public, max-age="+strconv.Itoa(cacheAge))
+		// Authenticated user-scoped feed responses must never be stored in shared caches.
+		c.Response().Header().Set("Cache-Control", "private, no-cache")
 		c.Response().Header().Set("ETag", `"feeds-limit-`+strconv.Itoa(limit)+`"`)
 
 		feeds, err := container.FetchFeedsListUsecase.ExecuteLimit(c.Request().Context(), limit)
@@ -85,8 +83,8 @@ func RestHandleFetchFeedsPage(container *di.ApplicationComponents) echo.HandlerF
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Page parameter must be non-negative"})
 		}
 
-		// Add caching headers for paginated results
-		c.Response().Header().Set("Cache-Control", "public, max-age=600") // 10 minutes
+		// Authenticated user-scoped feed responses must never be stored in shared caches.
+		c.Response().Header().Set("Cache-Control", "private, no-cache")
 		c.Response().Header().Set("ETag", `"feeds-page-`+strconv.Itoa(page)+`"`)
 
 		feeds, err := container.FetchFeedsListUsecase.ExecutePage(ctx, page)

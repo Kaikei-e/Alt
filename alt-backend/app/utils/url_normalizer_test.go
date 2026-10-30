@@ -125,6 +125,36 @@ func TestNormalizeURL(t *testing.T) {
 			expected: "https://tech.example.com/article%E3%81%82",
 			wantErr:  false,
 		},
+		{
+			name:     "javascript scheme rejected",
+			input:    "javascript:alert(1)",
+			expected: "",
+			wantErr:  true,
+		},
+		{
+			name:     "file scheme rejected",
+			input:    "file:///etc/passwd",
+			expected: "",
+			wantErr:  true,
+		},
+		{
+			name:     "data scheme rejected",
+			input:    "data:text/html,<script>alert(1)</script>",
+			expected: "",
+			wantErr:  true,
+		},
+		{
+			name:     "schemeless URL rejected",
+			input:    "example.com/article",
+			expected: "",
+			wantErr:  true,
+		},
+		{
+			name:     "empty host URL rejected",
+			input:    "https:///article",
+			expected: "",
+			wantErr:  true,
+		},
 	}
 
 	for _, tt := range tests {

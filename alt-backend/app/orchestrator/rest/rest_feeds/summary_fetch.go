@@ -94,8 +94,8 @@ func RestHandleFetchInoreaderSummary(container *di.ApplicationComponents) echo.H
 			RequestedCount:  len(req.FeedURLs),
 		}
 
-		// Set caching headers (15 minutes as per XPLAN11.md)
-		c.Response().Header().Set("Cache-Control", "public, max-age=900")
+		// Authenticated user-scoped summary responses must never be stored in shared caches.
+		c.Response().Header().Set("Cache-Control", "private, no-cache")
 		c.Response().Header().Set("Content-Type", "application/json")
 
 		return c.JSON(http.StatusOK, finalResponse)
@@ -181,7 +181,7 @@ func RestHandleFetchArticleSummary(container *di.ApplicationComponents, cfg *con
 		}
 
 		// Set caching headers
-		c.Response().Header().Set("Cache-Control", "private, max-age=300") // 5 minutes for generated summaries
+		c.Response().Header().Set("Cache-Control", "private, no-cache")
 		c.Response().Header().Set("Content-Type", "application/json")
 
 		logger.Logger.InfoContext(ctx, "Article summaries fetched successfully",

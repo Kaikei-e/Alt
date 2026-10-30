@@ -142,16 +142,27 @@ func (r *TagRepository) GetTagSetVersionByID(ctx context.Context, tagSetVersionI
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetTagSetVersionByID")
 	defer span.End()
 
-	query := `SELECT tag_set_version_id, article_id, user_id, generated_at,
-	                 generator, input_hash, tags_json, superseded_by
-	          FROM tag_set_versions
-	          WHERE tag_set_version_id = $1`
-
 	var tsv domain.TagSetVersion
-	err := r.pool.QueryRow(ctx, query, tagSetVersionID).Scan(
-		&tsv.TagSetVersionID, &tsv.ArticleID, &tsv.UserID, &tsv.GeneratedAt,
-		&tsv.Generator, &tsv.InputHash, &tsv.TagsJSON, &tsv.SupersededBy,
-	)
+	var err error
+	if user, userErr := domain.GetUserFromContext(ctx); userErr == nil && user != nil && user.UserID != uuid.Nil {
+		query := `SELECT tag_set_version_id, article_id, user_id, generated_at,
+		                 generator, input_hash, tags_json, superseded_by
+		          FROM tag_set_versions
+		          WHERE tag_set_version_id = $1 AND user_id = $2`
+		err = r.pool.QueryRow(ctx, query, tagSetVersionID, user.UserID).Scan(
+			&tsv.TagSetVersionID, &tsv.ArticleID, &tsv.UserID, &tsv.GeneratedAt,
+			&tsv.Generator, &tsv.InputHash, &tsv.TagsJSON, &tsv.SupersededBy,
+		)
+	} else {
+		query := `SELECT tag_set_version_id, article_id, user_id, generated_at,
+		                 generator, input_hash, tags_json, superseded_by
+		          FROM tag_set_versions
+		          WHERE tag_set_version_id = $1`
+		err = r.pool.QueryRow(ctx, query, tagSetVersionID).Scan(
+			&tsv.TagSetVersionID, &tsv.ArticleID, &tsv.UserID, &tsv.GeneratedAt,
+			&tsv.Generator, &tsv.InputHash, &tsv.TagsJSON, &tsv.SupersededBy,
+		)
+	}
 	if err != nil {
 		return domain.TagSetVersion{}, fmt.Errorf("GetTagSetVersionByID: %w", err)
 	}

@@ -131,6 +131,21 @@ func (p *LightweightProxy) HandlePersistentTunnelRequest(w http.ResponseWriter, 
 		return
 	}
 
+	// 4.5. Resolve DNS and validate resolved IPs against loopback/private/link-local ranges
+	if p.dnsResolver != nil {
+		ips, err := p.dnsResolver.ResolveExternal(r.Context(), targetHost)
+		if err != nil || len(ips) == 0 {
+			p.logger.Printf("[%s] DNS resolution failed for %s: %v", traceID, targetHost, err)
+			http.Error(w, "Bad Gateway", http.StatusBadGateway)
+			return
+		}
+		if err := p.validateResolvedIPs(targetHost, ips); err != nil {
+			p.logger.Printf("[%s] %v", traceID, err)
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+	}
+
 	// 5. Forward to Envoy using unified /connect/ path
 	err = p.forwardToEnvoyConnect(w, r, targetHost, remainingPath, traceID, startTime)
 	if err != nil {
