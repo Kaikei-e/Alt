@@ -19,7 +19,7 @@ test.describe("GET /v1/feeds/fetch/list", () => {
 		const feeds = await expectJsonStatus(response, 200, feedListSchema);
 		expect(feeds.length).toBeGreaterThan(0);
 
-		expectHeaderContains(response, "Cache-Control", "max-age=");
+		expectHeaderContains(response, "Cache-Control", "private, no-cache");
 		expectHeaderContains(response, "ETag", "feeds-list");
 	});
 

@@ -62,23 +62,18 @@ test.describe("indexable genres (the search-indexer contract)", () => {
 		expect(body.results.length).toBeLessThanOrEqual(1);
 		expect(body.has_more).toBe(body.results.length === 1);
 
-		// `limit=0` states the same rule at a population every run has: `LIMIT
-		// 0` selects nothing, and nothing *is* a full page, so `hits.len() ==
-		// limit` holds and has_more must be true. That is a quirk being pinned
-		// rather than endorsed — but it is the one form of this assertion that
-		// fails on an empty database when someone rewrites the comparison as
-		// `>`, which is the variant that costs search-indexer every page after
-		// the first.
+		// `limit=0` is clamped to `1` by `clamp_indexable_limit`, so it obeys
+		// the same `has_more === (results.length === 1)` contract as `limit=1`.
 		const emptyPage = await expectJsonStatus(
 			await api.get("/v1/recaps/genres/indexable?limit=0"),
 			200,
 			indexableGenresSchema,
 		);
-		expect(emptyPage.results).toEqual([]);
+		expect(emptyPage.results.length).toBeLessThanOrEqual(1);
 		expect(
 			emptyPage.has_more,
-			"a page requested with limit=0 is full at zero rows: hits.len() == limit",
-		).toBe(true);
+			"a page requested with limit=0 is clamped to limit=1: hits.len() == limit",
+		).toBe(emptyPage.results.length === 1);
 	});
 
 	test("a future `since` returns nothing @contract", async ({ api }) => {
