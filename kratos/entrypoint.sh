@@ -114,6 +114,24 @@ export KRATOS_COOKIE_SECRET
 KRATOS_CIPHER_SECRET=$(read_secret "$KRATOS_CIPHER_SECRET_FILE")
 export KRATOS_CIPHER_SECRET
 
+validate_kratos_secret() {
+    name=$1
+    val=$2
+    if [ -z "$val" ] || [ "${#val}" -lt 32 ]; then
+        echo "Error: ${name} must be at least 32 characters long" >&2
+        exit 1
+    fi
+    case "$val" in
+        0123456789abcdef0123456789abcdef|fedcba9876543210fedcba9876543210|CHANGE_ME*|*DO_NOT_USE_THIS*)
+            echo "Error: ${name} contains an insecure placeholder value" >&2
+            exit 1
+            ;;
+    esac
+}
+
+validate_kratos_secret "KRATOS_COOKIE_SECRET" "$KRATOS_COOKIE_SECRET"
+validate_kratos_secret "KRATOS_CIPHER_SECRET" "$KRATOS_CIPHER_SECRET"
+
 # Construct DSN with RFC 3986 percent-encoded credentials
 DB_USER=${KRATOS_DB_USER:-kratos_user}
 DB_HOST=${KRATOS_DB_HOST:-kratos-db}
