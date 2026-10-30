@@ -2,6 +2,7 @@
 import { ChevronDown, ChevronUp, Link as LinkIcon } from "@lucide/svelte";
 import { Button } from "#lib/components/ui/button/index.js";
 import type { RecapGenre } from "#lib/schema/recap.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 interface Props {
 	genre: RecapGenre;
@@ -121,7 +122,7 @@ const visibleItems = $derived(
 						<div class="flex flex-col gap-2">
 							{#each genre.evidenceLinks as evidence}
 								<a
-									href={evidence.sourceUrl}
+									href={sanitizeHrefUrl(evidence.sourceUrl) ?? "#"}
 									target="_blank"
 									rel="noopener noreferrer"
 									class="flex items-start gap-2 p-3 rounded-xl border transition-all duration-200 hover:-translate-y-[1px]"

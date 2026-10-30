@@ -8,6 +8,7 @@
  */
 import type { RequestEvent } from "@sveltejs/kit";
 import { getBackendToken } from "#lib/api.js";
+import { getUserRole } from "#lib/server/user-role.js";
 import { BACKEND_CONNECT_URL, BACKEND_REST_URL } from "$app/env/private";
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -32,6 +33,9 @@ export async function proxyDashboardGet(
 	const allowedParams = options.allowedParams ?? [];
 	const errorLabel = options.errorLabel ?? "Backend API error";
 	const { request, url, locals } = event;
+	if (locals?.user?.traits && getUserRole(locals.user) !== "admin") {
+		return Response.json({ error: "Forbidden" }, { status: 403 });
+	}
 	const effectiveBaseUrl =
 		baseUrl ||
 		BACKEND_REST_URL ||

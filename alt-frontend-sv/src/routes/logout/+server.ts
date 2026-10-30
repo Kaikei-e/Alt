@@ -2,10 +2,12 @@ import { isRedirect, type RequestHandler, redirect } from "@sveltejs/kit";
 import { ory } from "#lib/ory.js";
 import { invalidateSessionCache } from "#lib/server/auth-middleware.js";
 
-export const POST: RequestHandler = async ({ request, locals }) => {
+export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	if (!locals.session) {
 		throw redirect(303, "/login");
 	}
+
+	cookies?.delete("csrf_token", { path: "/" });
 
 	const cookieHeader = request.headers.get("cookie");
 	// Bust the short-term session cache first so the cookie can no longer

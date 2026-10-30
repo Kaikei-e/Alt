@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Link as LinkIcon } from "@lucide/svelte";
 import { Spring } from "svelte/motion";
 import { type SwipeDirection, swipe } from "#lib/actions/swipe.js";
 import type { RecapGenre } from "#lib/schema/recap.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 interface Props {
 	genre: RecapGenre;
@@ -166,7 +167,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 						<div class="flex flex-col gap-2">
 							{#each genre.evidenceLinks as evidence}
 								<a
-									href={evidence.sourceUrl}
+									href={sanitizeHrefUrl(evidence.sourceUrl) ?? "#"}
 									target="_blank"
 									rel="noopener noreferrer"
 									class="evidence-link"

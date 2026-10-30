@@ -23,6 +23,7 @@ import {
 	articleContentErrorMessage,
 	isTransientError,
 } from "#lib/utils/errorClassification.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import { browser } from "$app/env";
 import RenderFeedDetails from "./RenderFeedDetails.svelte";
 
@@ -611,7 +612,7 @@ async function handleSummarize(forceRefresh = false) {
 					{#if feedURL}
 						<a
 							class="remedy-link"
-							href={feedURL}
+							href={sanitizeHrefUrl(feedURL) ?? "#"}
 							target="_blank"
 							rel="noopener noreferrer"
 							data-testid="read-original-link"

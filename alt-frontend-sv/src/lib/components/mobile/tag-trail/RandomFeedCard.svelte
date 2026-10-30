@@ -1,6 +1,7 @@
 <script lang="ts">
 import { RefreshCw } from "@lucide/svelte";
 import type { TagTrailTag } from "#lib/schema/tagTrail.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import TagChipList from "./TagChipList.svelte";
 
 interface FeedData {
@@ -28,7 +29,7 @@ const { feed, tags, isLoadingTags, onTagClick, onRefresh }: Props = $props();
 			<div class="flex-1 min-w-0">
 				<span class="section-label">Today's Featured Section</span>
 				<a
-					href={feed.url}
+					href={sanitizeHrefUrl(feed.url) ?? "#"}
 					target="_blank"
 					rel="noopener noreferrer"
 					class="feed-title"

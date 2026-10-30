@@ -26,6 +26,7 @@ import {
 	TRY_AGAIN_LABEL,
 } from "#lib/utils/articleContentState.js";
 import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 interface Props {
 	article: TagTrailArticle;
@@ -246,7 +247,7 @@ function handleKeydown(e: KeyboardEvent) {
 		<div class="flex items-center gap-1 flex-shrink-0">
 			{#if article.link}
 				<a
-					href={article.link}
+					href={sanitizeHrefUrl(article.link) ?? "#"}
 					target="_blank"
 					rel="noopener noreferrer"
 					class="p-2 rounded-md transition-colors"
@@ -363,7 +364,7 @@ function handleKeydown(e: KeyboardEvent) {
 					</button>
 					{#if article.link}
 						<a
-							href={article.link}
+							href={sanitizeHrefUrl(article.link) ?? "#"}
 							target="_blank"
 							rel="noopener noreferrer"
 							class="text-xs font-medium underline underline-offset-2"

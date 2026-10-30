@@ -6,6 +6,7 @@ import {
 	fetchArticlesByTag,
 	type TagTrailArticle,
 } from "#lib/connect/index.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 interface Props {
 	tagName: string;
@@ -78,7 +79,7 @@ function formatDate(dateStr: string): string {
 
 	{#each articles as article (article.id)}
 		<a
-			href={article.link}
+			href={sanitizeHrefUrl(article.link) ?? "#"}
 			target="_blank"
 			rel="noopener noreferrer"
 			class="group flex flex-col gap-1 rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-500/30 hover:bg-white/10"

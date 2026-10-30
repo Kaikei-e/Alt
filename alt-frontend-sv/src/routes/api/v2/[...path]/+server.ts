@@ -87,21 +87,64 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 		);
 	}
 
+	// Validate Origin when present to prevent cross-site Connect-RPC calls
+	const origin = request.headers.get("origin");
+	if (origin) {
+		try {
+			const reqOrigin = new URL(request.url).origin;
+			if (origin !== reqOrigin) {
+				return new Response(
+					JSON.stringify({
+						code: "permission_denied",
+						message: "Origin mismatch",
+					}),
+					{ status: 403, headers: { "Content-Type": "application/json" } },
+				);
+			}
+		} catch {
+			return new Response(
+				JSON.stringify({
+					code: "permission_denied",
+					message: "Invalid origin",
+				}),
+				{ status: 403, headers: { "Content-Type": "application/json" } },
+			);
+		}
+	}
+
+	const contentLength = Number(request.headers.get("content-length") || "0");
+	if (contentLength > 2 * 1024 * 1024) {
+		return new Response(
+			JSON.stringify({
+				code: "resource_exhausted",
+				message: "Request body too large",
+			}),
+			{ status: 413, headers: { "Content-Type": "application/json" } },
+		);
+	}
+
 	// Construct the backend URL
 	const backendUrl = `${BACKEND_CONNECT_URL}/${path}`;
 
-	// Clone headers and add authentication
-	const headers = new Headers(request.headers);
+	// Forward only allowlisted headers and add authentication
+	const ALLOWED_FORWARD_HEADERS = [
+		"content-type",
+		"connect-protocol-version",
+		"connect-timeout-ms",
+		"connect-accept-encoding",
+		"connect-content-encoding",
+		"accept",
+		"user-agent",
+		"x-request-id",
+	];
+	const headers = new Headers();
+	for (const name of ALLOWED_FORWARD_HEADERS) {
+		const value = request.headers.get(name);
+		if (value !== null) {
+			headers.set(name, value);
+		}
+	}
 	headers.set("X-Alt-Backend-Token", token);
-	// Remove cookie header as it's not needed for backend
-	headers.delete("cookie");
-	// Remove host header to avoid issues
-	headers.delete("host");
-	// Remove Accept-Encoding to prevent backend compression
-	// Node.js fetch auto-decompresses but forwards Content-Encoding header,
-	// causing browser to attempt double decompression
-	// See: https://github.com/sveltejs/kit/issues/12197
-	headers.delete("accept-encoding");
 
 	try {
 		// Forward the request to the backend

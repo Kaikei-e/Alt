@@ -15,6 +15,7 @@ import {
 	TRY_AGAIN_LABEL,
 } from "#lib/utils/articleContentState.js";
 import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 interface Props {
 	result: SearchFeedItem;
@@ -129,7 +130,7 @@ const publishedDate = $derived(
 
 <article class="archive-result" data-role="archive-result-item" data-testid="search-result-item">
 	<a
-		href={result.link || "#"}
+		href={sanitizeHrefUrl(result.link) ?? "#"}
 		target="_blank"
 		rel="noopener noreferrer"
 		class="result-title"

@@ -114,7 +114,18 @@ export function validateUrlForSSRF(url: string): void {
 		}
 	}
 
-	// Check internal domains
+	// Check internal domains and single-label Docker service hostnames (excluding localhost which is classified as LOOPBACK_BLOCKED below)
+	if (
+		hostname !== "localhost" &&
+		!hostname.includes(".") &&
+		!hostname.includes(":")
+	) {
+		throw new SSRFValidationError(
+			"Internal single-label hostname not allowed",
+			"INTERNAL_DOMAIN_BLOCKED",
+			{ hostname },
+		);
+	}
 	for (const suffix of INTERNAL_DOMAIN_SUFFIXES) {
 		if (hostname.endsWith(suffix)) {
 			throw new SSRFValidationError(
@@ -175,6 +186,9 @@ export function isPrivateHost(rawHostname: string): boolean {
 			return true;
 		}
 	}
+	if (!hostname.includes(".") && !hostname.includes(":")) {
+		return true;
+	}
 	for (const suffix of INTERNAL_DOMAIN_SUFFIXES) {
 		if (hostname.endsWith(suffix)) {
 			return true;
@@ -184,16 +198,18 @@ export function isPrivateHost(rawHostname: string): boolean {
 }
 
 /**
- * Checks if hostname is a private IP address (RFC1918 / RFC4193)
+ * Checks if hostname is a private IP address (RFC1918 / RFC4193 / CGNAT)
  */
 function isPrivateIP(hostname: string): boolean {
 	const host = normalizeHost(hostname);
 
-	// IPv4 private ranges
+	// IPv4 private and reserved ranges
 	const privateIPv4Patterns = [
 		/^10\./, // 10.0.0.0/8
 		/^172\.(1[6-9]|2[0-9]|3[0-1])\./, // 172.16.0.0/12
 		/^192\.168\./, // 192.168.0.0/16
+		/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // 100.64.0.0/10 (CGNAT)
+		/^192\.0\.0\./, // 192.0.0.0/24 (IETF Protocol Assignments)
 	];
 
 	for (const pattern of privateIPv4Patterns) {

@@ -65,14 +65,13 @@ export function extractConnectCode(err: unknown): ConnectCode | undefined {
 	if (!err || typeof err !== "object" || !("code" in err)) return undefined;
 	const c = (err as { code: unknown }).code;
 	if (typeof c === "number") {
-		return CODE_TO_STRING[c];
+		return Object.hasOwn(CODE_TO_STRING, c) ? CODE_TO_STRING[c] : undefined;
 	}
 	if (typeof c === "string") {
 		const lower = c.toLowerCase();
-		return (
-			(CODE_TO_STRING as unknown as Record<string, ConnectCode>)[lower] ??
-			(lower in reverseIndex ? (lower as ConnectCode) : undefined)
-		);
+		return Object.hasOwn(reverseIndex, lower)
+			? (lower as ConnectCode)
+			: undefined;
 	}
 	return undefined;
 }

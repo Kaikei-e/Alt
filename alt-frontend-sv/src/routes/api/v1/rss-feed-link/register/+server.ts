@@ -1,5 +1,9 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { registerRssFeed, verifyCsrfToken } from "#lib/api.js";
+import {
+	SSRFValidationError,
+	validateUrlForSSRF,
+} from "#lib/server/ssrf-validator.js";
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
@@ -17,6 +21,15 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 		if (!url || typeof url !== "string") {
 			return Response.json({ error: "url is required" }, { status: 400 });
+		}
+
+		try {
+			validateUrlForSSRF(url);
+		} catch (err) {
+			if (err instanceof SSRFValidationError) {
+				return Response.json({ error: err.message }, { status: 400 });
+			}
+			throw err;
 		}
 
 		await registerRssFeed(cookieHeader, url);

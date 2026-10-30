@@ -1,6 +1,7 @@
 <script lang="ts">
 import { ExternalLink } from "@lucide/svelte";
 import type { EvidenceLink } from "#lib/schema/recap.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
 interface Props {
 	evidenceLinks: EvidenceLink[];
@@ -31,7 +32,7 @@ function formatDate(isoDate: string): string {
 			{#each evidenceLinks as link}
 				<li class="border border-[var(--surface-border)] p-3 hover:bg-[var(--surface-hover)] transition-colors">
 					<a
-						href={link.sourceUrl}
+						href={sanitizeHrefUrl(link.sourceUrl) ?? "#"}
 						target="_blank"
 						rel="noopener noreferrer"
 						class="block group"

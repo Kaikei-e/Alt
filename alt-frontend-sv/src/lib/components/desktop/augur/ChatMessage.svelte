@@ -2,6 +2,7 @@
 import { User } from "@lucide/svelte";
 import augurAvatar from "#lib/assets/augur-chat.webp";
 import { parseMarkdown } from "#lib/utils/simpleMarkdown.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import { cn } from "#lib/utils.js";
 
 type Citation = {
@@ -69,7 +70,7 @@ let isUser = $derived(role === "user");
 					{#each citations as cite, i}
 						<li>
 							<a
-								href={cite.URL}
+								href={sanitizeHrefUrl(cite.URL) ?? "#"}
 								target="_blank"
 								rel="noopener noreferrer"
 								class="hover:text-foreground flex gap-2 group items-start"

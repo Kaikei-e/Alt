@@ -54,14 +54,61 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 		);
 	}
 
+	const origin = request.headers.get("origin");
+	if (origin) {
+		try {
+			const reqOrigin = new URL(request.url).origin;
+			if (origin !== reqOrigin) {
+				return new Response(
+					JSON.stringify({
+						code: "permission_denied",
+						message: "Origin mismatch",
+					}),
+					{ status: 403, headers: { "Content-Type": "application/json" } },
+				);
+			}
+		} catch {
+			return new Response(
+				JSON.stringify({
+					code: "permission_denied",
+					message: "Invalid origin",
+				}),
+				{ status: 403, headers: { "Content-Type": "application/json" } },
+			);
+		}
+	}
+
+	const contentLength = Number(request.headers.get("content-length") || "0");
+	if (contentLength > 2 * 1024 * 1024) {
+		return new Response(
+			JSON.stringify({
+				code: "resource_exhausted",
+				message: "Request body too large",
+			}),
+			{ status: 413, headers: { "Content-Type": "application/json" } },
+		);
+	}
+
 	const target = `${BFF_URL}${SERVICE_PREFIX}${method}`;
 
-	const headers = new Headers(request.headers);
+	const ALLOWED_FORWARD_HEADERS = [
+		"content-type",
+		"connect-protocol-version",
+		"connect-timeout-ms",
+		"connect-accept-encoding",
+		"connect-content-encoding",
+		"accept",
+		"user-agent",
+		"x-request-id",
+	];
+	const headers = new Headers();
+	for (const name of ALLOWED_FORWARD_HEADERS) {
+		const value = request.headers.get(name);
+		if (value !== null) {
+			headers.set(name, value);
+		}
+	}
 	headers.set("X-Alt-Backend-Token", token);
-	headers.delete("cookie");
-	headers.delete("host");
-	// Node fetch handles decompression transparently.
-	headers.delete("accept-encoding");
 
 	try {
 		const upstream = await fetch(target, {

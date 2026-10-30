@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { Cookies } from "@sveltejs/kit";
 import { parseAuthHubCsrfToken } from "#lib/schema/csrf.js";
 import { AUTH_HUB_INTERNAL_URL } from "$app/env/private";
@@ -72,7 +73,15 @@ export function verifyCsrfToken(
 	providedToken: string | null,
 ): boolean {
 	const expected = cookies.get(CSRF_COOKIE_NAME);
-	return !!expected && !!providedToken && expected === providedToken;
+	if (!expected || !providedToken) {
+		return false;
+	}
+	const expectedBuf = Buffer.from(expected, "utf8");
+	const providedBuf = Buffer.from(providedToken, "utf8");
+	if (expectedBuf.length !== providedBuf.length) {
+		return false;
+	}
+	return timingSafeEqual(expectedBuf, providedBuf);
 }
 
 /**

@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { TagTrailArticle, TagTrailTag } from "#lib/schema/tagTrail.js";
+import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import TagChipList from "./TagChipList.svelte";
 
 interface Props {
@@ -47,7 +48,7 @@ const formatDate = (dateStr: string) => {
 				data-testid="tag-article-{article.id}"
 			>
 				<a
-					href={article.link}
+					href={sanitizeHrefUrl(article.link) ?? "#"}
 					target="_blank"
 					rel="noopener noreferrer"
 					class="article-title"
