@@ -5,7 +5,33 @@ import re
 
 import nh3
 
+from news_creator.domain.prompt_boundary import (
+    sanitize_untrusted_content,
+    wrap_untrusted_content,
+)
+
 logger = logging.getLogger(__name__)
+
+_PROMPT_CONTROL_TOKEN_RE = re.compile(
+    r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
+    r"|</?think>",
+    re.IGNORECASE,
+)
+
+
+def sanitize_for_prompt(text: str) -> str:
+    """Sanitize untrusted text before interpolating it into an LLM prompt."""
+    if not text:
+        return ""
+    cleaned, _ = sanitize_untrusted_content(text)
+    return _PROMPT_CONTROL_TOKEN_RE.sub("", cleaned)
+
+
+__all__ = [
+    "clean_html_content",
+    "sanitize_for_prompt",
+    "wrap_untrusted_content",
+]
 
 
 def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:

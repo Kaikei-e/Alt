@@ -76,6 +76,17 @@ PLACEHOLDER_BULLET_RE = re.compile(r"^\s*(?:\.\.\.|…)(?:\s*\[\d+\])?\s*$")
 JAPANESE_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")
 LATIN_CHAR_RE = re.compile(r"[A-Za-z]")
 
+
+def _is_safe_url_scheme(url: str) -> bool:
+    """Verify that a URL uses an explicit http or https scheme."""
+    if not isinstance(url, str) or not url.strip():
+        return False
+    try:
+        return urlparse(url.strip()).scheme.lower() in ("http", "https")
+    except Exception:
+        return False
+
+
 GEMMA_RECAP_SYSTEM_PROMPT = PromptBuilderFactory.system().build(
     "You are an expert Japanese news editor. "
     "Follow the JSON contract exactly and respond with only the requested JSON object."
@@ -1372,7 +1383,7 @@ class RecapSummaryUsecase:
                 candidate.get("topic_label") or request.genre.replace("_", " ")
             ).strip()
             reference_id: int | None = None
-            if source_url:
+            if isinstance(source_url, str) and _is_safe_url_scheme(source_url):
                 reference_id = ref_id
                 references.append(
                     Reference(
@@ -2028,6 +2039,8 @@ class RecapSummaryUsecase:
                     # recap-worker reconciler, so drop the entire reference.
                     if "://" not in url and "/" not in url:
                         continue
+                    if not _is_safe_url_scheme(url):
+                        continue
                     # ADR-890 followup: production article_id is always a UUID.
                     # LLM hallucinations ("article_id": "dev.to") must be nulled out
                     # so the reconciler falls back to URL resolution.
@@ -2038,15 +2051,20 @@ class RecapSummaryUsecase:
                         and UUID_SHAPE_RE.match(raw_article_id)
                         else None
                     )
+                    ref_entry: dict[str, Any] = {
+                        "id": ref_id,
+                        "url": url,
+                        "domain": domain,
+                        "article_id": article_id,
+                    }
+                    if "source_url" in ref:
+                        raw_source_url = ref.get("source_url")
+                        if isinstance(raw_source_url, str) and _is_safe_url_scheme(
+                            raw_source_url
+                        ):
+                            ref_entry["source_url"] = raw_source_url
                     seen_ids.add(ref_id)
-                    validated_refs.append(
-                        {
-                            "id": ref_id,
-                            "url": url,
-                            "domain": domain,
-                            "article_id": article_id,
-                        }
-                    )
+                    validated_refs.append(ref_entry)
                 references = validated_refs if validated_refs else None
 
         # Auto-inject [n] reference markers into bullets that lack them
@@ -2064,6 +2082,12 @@ class RecapSummaryUsecase:
             "bullets": final_bullets,
             "language": language,
         }
+        if "source_url" in payload:
+            raw_payload_source_url = payload.get("source_url")
+            if isinstance(raw_payload_source_url, str) and _is_safe_url_scheme(
+                raw_payload_source_url
+            ):
+                sanitized["source_url"] = raw_payload_source_url
         if references:
             sanitized["references"] = references
 

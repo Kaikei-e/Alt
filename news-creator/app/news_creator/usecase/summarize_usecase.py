@@ -19,7 +19,7 @@ from news_creator.domain.prompts import (
 )
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
-from news_creator.utils.html_cleaner import clean_html_content
+from news_creator.utils.html_cleaner import clean_html_content, sanitize_for_prompt
 from news_creator.usecase.control_token_filter import ControlTokenFilter
 
 logger = logging.getLogger(__name__)
@@ -171,8 +171,9 @@ class SummarizeUsecase:
         # Build prompt from template
         jst = timezone(timedelta(hours=9))
         current_date_str = datetime.now(jst).strftime("%Y-%m-%d")
+        sanitized_content = sanitize_for_prompt(truncated_content)
         prompt = SUMMARY_PROMPT_TEMPLATE.format(
-            content=truncated_content, current_date=current_date_str
+            content=sanitized_content, current_date=current_date_str
         )
         prompt_length = len(prompt)
         template_length = prompt_length - len(truncated_content)
@@ -624,7 +625,9 @@ class SummarizeUsecase:
                 extra={"article_id": article_id, "chunk_index": i},
             )
 
-            prompt = CHUNK_SUMMARY_PROMPT_TEMPLATE.format(content=chunk)
+            prompt = CHUNK_SUMMARY_PROMPT_TEMPLATE.format(
+                content=sanitize_for_prompt(chunk)
+            )
 
             # Use somewhat higher temperature for extraction to avoid rigid repetition
             llm_options = {
@@ -686,7 +689,7 @@ class SummarizeUsecase:
         )
 
         prompt = SUMMARY_PROMPT_TEMPLATE.format(
-            content=combined_text,
+            content=sanitize_for_prompt(combined_text),
             current_date=datetime.now(timezone(timedelta(hours=9))).strftime(
                 "%Y-%m-%d"
             ),
@@ -813,7 +816,7 @@ class SummarizeUsecase:
             )
 
         # Build prompt: Ensure we use truncated_content and enforce limit again just in case
-        safe_content = truncated_content[:MAX_CONTENT_LENGTH]
+        safe_content = sanitize_for_prompt(truncated_content[:MAX_CONTENT_LENGTH])
         jst = timezone(timedelta(hours=9))
         current_date_str = datetime.now(jst).strftime("%Y-%m-%d")
         prompt = SUMMARY_PROMPT_TEMPLATE.format(

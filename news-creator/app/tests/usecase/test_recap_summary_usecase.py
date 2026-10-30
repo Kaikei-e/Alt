@@ -3268,3 +3268,52 @@ def test_degraded_response_bullets_are_guarded():
     )
 
     assert response.summary.bullets == ["買収を発表した 詳細"]
+
+
+def test_sanitize_summary_payload_strips_javascript_and_data_source_urls():
+    """Verify javascript: and data: URLs in references and source_url are stripped."""
+    from news_creator.usecase.recap_summary_usecase import _is_safe_url_scheme
+
+    assert _is_safe_url_scheme("https://example.com/news") is True
+    assert _is_safe_url_scheme("http://example.com/news") is True
+    assert _is_safe_url_scheme("javascript:alert(1)") is False
+    assert _is_safe_url_scheme("data:text/html,<script>alert(1)</script>") is False
+
+    usecase = RecapSummaryUsecase(
+        config=_create_mock_config(), llm_provider=AsyncMock()
+    )
+    sanitized = usecase._sanitize_summary_payload(
+        {
+            "title": "セキュリティ更新",
+            "bullets": ["脆弱性が修正された。"],
+            "language": "ja",
+            "source_url": "javascript:alert(1)",
+            "references": [
+                {
+                    "id": 1,
+                    "url": "javascript:alert(1)",
+                    "domain": "evil.example",
+                    "source_url": "javascript:alert(1)",
+                },
+                {
+                    "id": 2,
+                    "url": "data:text/html,<script>alert(1)</script>",
+                    "domain": "evil.example",
+                    "source_url": "data:text/html,<script>alert(1)</script>",
+                },
+                {
+                    "id": 3,
+                    "url": "https://example.com/valid",
+                    "domain": "example.com",
+                    "source_url": "javascript:alert(1)",
+                },
+            ],
+        },
+        max_bullets=5,
+    )
+    assert "source_url" not in sanitized
+    refs = sanitized.get("references")
+    assert refs is not None and len(refs) == 1
+    assert refs[0]["id"] == 3
+    assert refs[0]["url"] == "https://example.com/valid"
+    assert "source_url" not in refs[0]
