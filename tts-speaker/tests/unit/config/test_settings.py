@@ -125,6 +125,27 @@ def test_disallowed_voice_ids(dummy_api_key_file: Path, disallowed_voice: str) -
         )
 
 
+@pytest.mark.parametrize(
+    "unsafe_voice",
+    [
+        "../etc/passwd",
+        r"..\..\windows\system32",
+        "C:voice",
+        "voice\x00id",
+        "voice/preset",
+        "a" * 65,
+    ],
+)
+def test_unsafe_voice_id_characters_rejected(dummy_api_key_file: Path, unsafe_voice: str) -> None:
+    with pytest.raises(ValidationError, match="(?i)reference voice"):
+        Settings(
+            irodori_base_url="http://localhost:8000",
+            irodori_api_key_file=dummy_api_key_file,
+            tts_voice_id=unsafe_voice,
+            peer_identity_strict=False,
+        )
+
+
 @pytest.mark.parametrize("chunk_chars", [19, 201])
 def test_invalid_max_chunk_chars(dummy_api_key_file: Path, chunk_chars: int) -> None:
     with pytest.raises(ValidationError):

@@ -1,5 +1,6 @@
 """Configuration settings for tts-speaker service."""
 
+import re
 from pathlib import Path
 from typing import Literal, Self
 
@@ -7,6 +8,8 @@ from pydantic import Field, HttpUrl, PrivateAttr, SecretStr, field_validator, mo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tts_speaker.domain.speed import MAX_SPEED, MIN_SPEED
+
+_VOICE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 class Settings(BaseSettings):
@@ -47,8 +50,10 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_voice(cls, v: str) -> str:
         stripped = v.strip()
-        if stripped.lower() in ("", "none", "no-ref", "text-only"):
-            raise ValueError(f"Reference voice ID is required and cannot be empty or disallowed; got '{v}'")
+        if stripped.lower() in ("", "none", "no-ref", "text-only") or not _VOICE_ID_RE.fullmatch(stripped):
+            raise ValueError(
+                f"Reference voice ID is required, must match [A-Za-z0-9_-]{{1,64}}, and cannot be disallowed; got '{v}'"
+            )
         return stripped
 
     @model_validator(mode="after")
