@@ -59,7 +59,10 @@ FORBIDDEN_TRIGGERS = {"pull_request_target", "workflow_run"}
 GITHUB_HOSTED_LABEL_RE = re.compile(r"^(ubuntu|windows|macos)-[a-z0-9.-]+$")
 SHA_PIN_RE = re.compile(r"@[0-9a-f]{40}$")
 DOCKER_DIGEST_RE = re.compile(r"@sha256:[0-9a-f]{64}$")
-UNTRUSTED_CONTEXT_RE = re.compile(r"github\.event\.|github\.head_ref")
+UNTRUSTED_CONTEXT_RE = re.compile(
+    r"github\.(?:event\.(?:issue|pull_request|comment|review|review_comment|discussion|pages|commits|head_commit|workflow_run|inputs)?|head_ref|ref_name)"
+)
+_DANGEROUS_CONTEXT_RE = UNTRUSTED_CONTEXT_RE
 TEMPLATE_EXPR_RE = re.compile(re.escape(GHA_EXPR_OPEN) + r"(.*?)}}", re.S)
 
 # --- Check 3 constants -------------------------------------------------

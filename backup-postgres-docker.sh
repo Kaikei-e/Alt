@@ -14,6 +14,7 @@
 #
 
 set -euo pipefail
+umask 077
 
 # Docker Compose設定ファイルのパス
 export COMPOSE_FILE="compose/compose.yaml"

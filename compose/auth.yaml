@@ -161,7 +161,8 @@ services:
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
-      - BACKEND_TOKEN_TTL=30m
+      - BACKEND_TOKEN_TTL=5m
+      - JWT_ISSUER_TTL=5m
       # The /internal group's shared bearer. Required, no default, and rejected
       # at startup when it equals BACKEND_TOKEN_SECRET: alt-data-hub sends this
       # value in a plaintext X-Internal-Auth header on every GetSystemUser call,

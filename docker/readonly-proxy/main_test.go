@@ -22,18 +22,13 @@ func TestIsAllowed(t *testing.T) {
 		{"GET", "/v1.44/_ping", true},
 
 		// Allowed routes (versionless)
-		{"GET", "/info", true},
-		{"GET", "/version", true},
-		{"GET", "/events", true},
 		{"GET", "/containers/json", true},
-		{"GET", "/containers/123abc_/json", true},
-		{"GET", "/containers/test-container.name/stats", true},
 		{"GET", "/containers/id123/logs", true},
 
 		// Allowed routes (versioned)
-		{"GET", "/v1.41/info", true},
 		{"GET", "/v1.44/containers/json", true},
-		{"GET", "/v1.44/containers/abc/stats", true},
+		{"GET", "/v1.45/containers/json", true},
+		{"GET", "/v1.45/containers/abc/logs", true},
 
 		// Disallowed HTTP methods
 		{"POST", "/containers/json", false},
@@ -42,10 +37,20 @@ func TestIsAllowed(t *testing.T) {
 		{"PATCH", "/containers/abc/json", false},
 		{"POST", "/v1.44/containers/abc/start", false},
 
-		// Disallowed routes
+		// Disallowed routes (including secret-exposing container inspect and events)
+		{"GET", "/info", false},
+		{"GET", "/version", false},
+		{"GET", "/events", false},
+		{"GET", "/v1.45/events", false},
+		{"GET", "/containers/123abc_/json", false},
+		{"GET", "/v1.45/containers/abc/json", false},
+		{"GET", "/containers/test-container.name/stats", false},
+		{"GET", "/v1.41/info", false},
+		{"GET", "/v1.44/containers/abc/stats", false},
 		{"GET", "/containers/abc/export", false},
 		{"GET", "/containers/abc/archive", false},
 		{"GET", "/containers/abc/exec", false},
+		{"GET", "/v1.45/containers/abc/exec", false},
 		{"GET", "/images/json", false},
 		{"GET", "/networks", false},
 		{"GET", "/", false},
@@ -107,12 +112,20 @@ func TestWireProxyForwardHits(t *testing.T) {
 		{"AllowedHeadPing", "HEAD", "/_ping", http.StatusOK, true},
 		{"AllowedVersionedPing", "GET", "/v1.44/_ping", http.StatusOK, true},
 		{"AllowedHeadVersionedPing", "HEAD", "/v1.44/_ping", http.StatusOK, true},
-		{"AllowedInfo", "GET", "/info", http.StatusOK, true},
-		{"AllowedVersion", "GET", "/v1.44/version", http.StatusOK, true},
-		{"AllowedEvents", "GET", "/events", http.StatusOK, true},
 		{"AllowedContainersList", "GET", "/containers/json", http.StatusOK, true},
-		{"AllowedContainerStats", "GET", "/v1.44/containers/test-container/stats", http.StatusOK, true},
+		{"AllowedVersionedContainersList", "GET", "/v1.45/containers/json", http.StatusOK, true},
 		{"AllowedContainerLogs", "GET", "/containers/test-container/logs", http.StatusOK, true},
+		{"AllowedVersionedContainerLogs", "GET", "/v1.45/containers/abc/logs", http.StatusOK, true},
+
+		// Denied secret-exposing inspect/events endpoints (must NOT forward, status 403)
+		{"DenyContainerInspect", "GET", "/v1.45/containers/abc/json", http.StatusForbidden, false},
+		{"DenyVersionlessContainerInspect", "GET", "/containers/abc/json", http.StatusForbidden, false},
+		{"DenyEvents", "GET", "/events", http.StatusForbidden, false},
+		{"DenyVersionedEvents", "GET", "/v1.45/events", http.StatusForbidden, false},
+		{"DenyVersionedContainerExec", "GET", "/v1.45/containers/abc/exec", http.StatusForbidden, false},
+		{"DenyInfo", "GET", "/info", http.StatusForbidden, false},
+		{"DenyVersion", "GET", "/v1.44/version", http.StatusForbidden, false},
+		{"DenyContainerStats", "GET", "/v1.44/containers/test-container/stats", http.StatusForbidden, false},
 
 		// Denied mutating operations (must NOT forward, status 403)
 		{"DenyPostStart", "POST", "/v1.44/containers/c123/start", http.StatusForbidden, false},

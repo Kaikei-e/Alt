@@ -290,8 +290,8 @@ if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
   echo "Waiting for Pact Broker at ${PACT_BROKER_BASE_URL} to be healthy (up to ${broker_wait}s)..."
   broker_wait_start=$SECONDS
   until curl -fsS --connect-timeout 3 --max-time 5 \
-      -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
-      "${PACT_BROKER_BASE_URL}/diagnostic/status/heartbeat" &>/dev/null; do
+      -K - \
+      "${PACT_BROKER_BASE_URL}/diagnostic/status/heartbeat" <<< "user = \"${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}\"" &>/dev/null; do
     if (( SECONDS - broker_wait_start >= broker_wait )); then
       echo "ERROR: Pact Broker at ${PACT_BROKER_BASE_URL} not healthy within ${broker_wait}s" >&2
       exit 1

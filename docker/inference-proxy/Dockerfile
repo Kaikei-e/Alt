@@ -3,6 +3,7 @@ WORKDIR /app
 COPY main.go .
 RUN CGO_ENABLED=0 GOOS=linux go build -o inference-proxy main.go
 
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian12:nonroot
+USER nonroot:nonroot
 COPY --from=builder /app/inference-proxy /inference-proxy
 ENTRYPOINT ["/inference-proxy"]

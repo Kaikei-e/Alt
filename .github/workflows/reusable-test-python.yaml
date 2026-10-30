@@ -141,7 +141,7 @@ jobs:
       - name: Run security scan (bandit)
         if: ${{ inputs.job-type == 'security' }}
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
-        run: uv run bandit -r . -f json -o bandit-report.json --exit-zero -x ./.venv,./node_modules,./.mypy_cache,./.pytest_cache,./.ruff_cache,./build,./dist
+        run: uv run bandit -r . -ll -ii -f json -o bandit-report.json -x ./.venv,./node_modules,./.mypy_cache,./.pytest_cache,./.ruff_cache,./build,./dist
 
       - name: Run type checking
         if: ${{ inputs.job-type == 'typecheck' }}

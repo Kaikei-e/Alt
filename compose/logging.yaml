@@ -30,8 +30,6 @@ x-rask-forwarder: &rask-forwarder
       condition: service_healthy
   secrets:
     - rask_ingest_token
-  volumes:
-    - /var/lib/docker/containers:/var/lib/docker/containers:ro
   restart: unless-stopped
   stop_grace_period: 12s
   healthcheck:

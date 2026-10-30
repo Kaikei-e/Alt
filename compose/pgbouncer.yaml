@@ -22,7 +22,7 @@ services:
       - DB_USER=${DB_USER}
       - POSTGRES_DB=${POSTGRES_DB}
       - LISTEN_PORT=6432
-      - AUTH_TYPE=plain
+      - AUTH_TYPE=scram-sha-256
       - POOL_MODE=transaction
       - DEFAULT_POOL_SIZE=30
       - MIN_POOL_SIZE=5
@@ -68,7 +68,7 @@ services:
       - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
       - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
       - LISTEN_PORT=6432
-      - AUTH_TYPE=plain
+      - AUTH_TYPE=scram-sha-256
       - POOL_MODE=transaction
       - DEFAULT_POOL_SIZE=20
       - MIN_POOL_SIZE=5

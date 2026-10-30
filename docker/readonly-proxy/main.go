@@ -14,11 +14,7 @@ import (
 	"time"
 )
 
-var (
-	// Allow paths starting with an optional version (e.g. /v1.41) followed by allowed endpoints.
-	// Includes /_ping for Docker engine client compatibility and daemon healthcheck.
-	allowedPathRegex = regexp.MustCompile(`^(?:/v\d+\.\d+)?(/(?:_ping|info|version|events|containers/json|containers/[a-zA-Z0-9_.-]+/json|containers/[a-zA-Z0-9_.-]+/stats|containers/[a-zA-Z0-9_.-]+/logs))$`)
-)
+var allowedPathRegex = regexp.MustCompile("^/(v[0-9]+\\.[0-9]+/)?(containers/json|containers/[a-zA-Z0-9_.-]+/logs|_ping)$")
 
 func isAllowed(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
