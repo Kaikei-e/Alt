@@ -386,11 +386,11 @@ func TestSanitizeString(t *testing.T) {
 		},
 		"with_html_entities": {
 			input:    "test<script>alert('xss')</script>",
-			expected: "test&amp;lt;script&amp;gt;alert(&amp;#39;xss&amp;#39;)&amp;lt;/script&amp;gt;", // & escaped first
+			expected: "test&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;", // & escaped first without double-escaping
 		},
 		"complex_input": {
 			input:    " \n\t test  <>&\"'  \r\n ",
-			expected: "test &amp;lt;&amp;gt;&amp;&amp;quot;&amp;#39;", // & escaped first in implementation
+			expected: "test &lt;&gt;&amp;&quot;&#39;", // & escaped first in implementation
 		},
 	}
 
@@ -459,7 +459,7 @@ func TestValidateAndSanitizeInput(t *testing.T) {
 			input:       "<script>alert('xss')</script>",
 			fieldName:   "test_field",
 			expectError: false, // Sanitizer escapes HTML, doesn't detect as malicious
-			expectedLen: 73,    // Length of escaped HTML: "&amp;lt;script&amp;gt;alert(&amp;#39;xss&amp;#39;)&amp;lt;/script&amp;gt;"
+			expectedLen: 49,    // Length of escaped HTML: "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
 		},
 	}
 

@@ -63,6 +63,41 @@ func NewMemoryRateLimiter(maxRequestsPerHour int, logger *slog.Logger) *MemoryRa
 	return limiter
 }
 
+const maxTrackedClients = 10000
+
+// ensureClientCapacityLocked bounds len(rl.clients) below maxTrackedClients
+// by sweeping expired entries first and evicting the oldest client if still full.
+func (rl *MemoryRateLimiter) ensureClientCapacityLocked(now time.Time) {
+	if len(rl.clients) < maxTrackedClients {
+		return
+	}
+
+	oneHourAgo := now.Add(-time.Hour)
+	for ip, c := range rl.clients {
+		c.requests = rl.filterValidRequests(c.requests, oneHourAgo)
+		if len(c.requests) == 0 {
+			delete(rl.clients, ip)
+		}
+	}
+
+	for len(rl.clients) >= maxTrackedClients {
+		var oldestIP string
+		var oldestTime time.Time
+		first := true
+		for ip, c := range rl.clients {
+			if first || c.lastCleanup.Before(oldestTime) {
+				oldestIP = ip
+				oldestTime = c.lastCleanup
+				first = false
+			}
+		}
+		if first {
+			break
+		}
+		delete(rl.clients, oldestIP)
+	}
+}
+
 // IsAllowed はリクエストが許可されているか確認
 func (rl *MemoryRateLimiter) IsAllowed(clientIP string, endpoint string) bool {
 	rl.mutex.Lock()
@@ -74,6 +109,7 @@ func (rl *MemoryRateLimiter) IsAllowed(clientIP string, endpoint string) bool {
 	// クライアントのレート制限情報取得または作成
 	client, exists := rl.clients[clientIP]
 	if !exists {
+		rl.ensureClientCapacityLocked(now)
 		client = &ClientRateLimit{
 			requests:    make([]RequestRecord, 0),
 			lastCleanup: now,
@@ -110,6 +146,7 @@ func (rl *MemoryRateLimiter) RecordRequest(clientIP string, endpoint string) {
 	// クライアントのレート制限情報取得または作成
 	client, exists := rl.clients[clientIP]
 	if !exists {
+		rl.ensureClientCapacityLocked(now)
 		client = &ClientRateLimit{
 			requests:    make([]RequestRecord, 0),
 			lastCleanup: now,

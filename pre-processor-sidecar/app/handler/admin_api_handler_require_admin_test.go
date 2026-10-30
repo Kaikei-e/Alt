@@ -51,6 +51,7 @@ func newTestAdminAPIHandler(auth AdminAuthenticator, rateLimiter RateLimiter) *A
 }
 
 func TestRequireAdmin_MissingAuthorization_Returns401(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
 	h := newTestAdminAPIHandler(&MockAdminAuthenticator{}, &MockRateLimiter{})
 
 	called := false
@@ -70,6 +71,7 @@ func TestRequireAdmin_MissingAuthorization_Returns401(t *testing.T) {
 }
 
 func TestRequireAdmin_InvalidToken_Returns401(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
 	h := newTestAdminAPIHandler(denyingAuthenticator{}, &MockRateLimiter{})
 
 	called := false
@@ -89,6 +91,7 @@ func TestRequireAdmin_InvalidToken_Returns401(t *testing.T) {
 }
 
 func TestRequireAdmin_InsufficientPermissions_Returns403(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
 	h := newTestAdminAPIHandler(noAdminPermissionAuthenticator{}, &MockRateLimiter{})
 
 	called := false
@@ -108,6 +111,7 @@ func TestRequireAdmin_InsufficientPermissions_Returns403(t *testing.T) {
 }
 
 func TestRequireAdmin_RateLimited_Returns429(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
 	h := newTestAdminAPIHandler(&MockAdminAuthenticator{}, denyingRateLimiter{})
 
 	called := false
@@ -127,6 +131,7 @@ func TestRequireAdmin_RateLimited_Returns429(t *testing.T) {
 }
 
 func TestRequireAdmin_ValidRequest_CallsNext(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
 	h := newTestAdminAPIHandler(&MockAdminAuthenticator{}, &MockRateLimiter{})
 
 	called := false
@@ -144,6 +149,30 @@ func TestRequireAdmin_ValidRequest_CallsNext(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.True(t, called, "downstream handler must run once authorized")
+}
+
+func TestRequireAdmin_UntrustedProxyHeaders_IgnoresXForwardedProtoAndIP(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "false")
+	h := newTestAdminAPIHandler(&MockAdminAuthenticator{}, &MockRateLimiter{})
+
+	called := false
+	wrapped := h.RequireAdmin("/admin/trigger/article-fetch", func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/trigger/article-fetch", nil)
+	req.RemoteAddr = "198.51.100.7:12345"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-For", "203.0.113.99")
+	req.Header.Set("X-Real-IP", "203.0.113.100")
+	req.Header.Set("Authorization", "Bearer good-token")
+	recorder := httptest.NewRecorder()
+
+	wrapped(recorder, req)
+
+	assert.Equal(t, http.StatusBadRequest, recorder.Code, "X-Forwarded-Proto must not be trusted when TRUST_PROXY_HEADERS != true")
+	assert.False(t, called)
+	assert.Equal(t, "198.51.100.7:12345", getClientIP(req), "getClientIP must ignore proxy headers when TRUST_PROXY_HEADERS != true")
 }
 
 func TestRequireAdmin_HTTPRequired_Returns400(t *testing.T) {

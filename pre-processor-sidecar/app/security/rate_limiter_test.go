@@ -4,11 +4,28 @@
 package security
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestMemoryRateLimiter_CapsClientMapAt10000(t *testing.T) {
+	limiter := NewMemoryRateLimiter(5, nil)
+	defer limiter.Stop()
+
+	for i := 0; i < 10500; i++ {
+		ip := fmt.Sprintf("10.0.%d.%d", i/256, i%256)
+		limiter.IsAllowed(ip, "/admin/oauth2/refresh-token")
+	}
+
+	limiter.mutex.RLock()
+	clientCount := len(limiter.clients)
+	limiter.mutex.RUnlock()
+
+	assert.LessOrEqual(t, clientCount, 10000, "client map must be capped at 10000 entries to prevent OOM from spoofed IPs")
+}
 
 func TestNewMemoryRateLimiter(t *testing.T) {
 	limiter := NewMemoryRateLimiter(100, nil)

@@ -341,11 +341,11 @@ func (v *OWASPInputValidator) SanitizeString(input string) string {
 	input = spaceRegex.ReplaceAllString(input, " ")
 
 	// HTMLエンティティエスケープ（念のため）
+	input = strings.ReplaceAll(input, "&", "&amp;")
 	input = strings.ReplaceAll(input, "<", "&lt;")
 	input = strings.ReplaceAll(input, ">", "&gt;")
 	input = strings.ReplaceAll(input, "\"", "&quot;")
 	input = strings.ReplaceAll(input, "'", "&#39;")
-	input = strings.ReplaceAll(input, "&", "&amp;")
 
 	return input
 }

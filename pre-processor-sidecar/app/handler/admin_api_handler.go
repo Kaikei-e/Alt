@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -129,7 +130,7 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 	}
 
 	// HTTPS強制確認
-	if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+	if r.TLS == nil && (!trustProxyHeaders() || r.Header.Get("X-Forwarded-Proto") != "https") {
 		h.respondWithError(w, "HTTPS_REQUIRED", "HTTPS is required for this endpoint", http.StatusBadRequest)
 		h.metricsCollector.IncrementAdminAPIRequest("POST", "/admin/oauth2/refresh-token", "https_required")
 		return
@@ -343,7 +344,7 @@ func (h *AdminAPIHandler) RequireAdmin(endpoint string, next http.HandlerFunc) h
 		h.setSecurityHeaders(w)
 
 		// HTTPS強制確認
-		if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+		if r.TLS == nil && (!trustProxyHeaders() || r.Header.Get("X-Forwarded-Proto") != "https") {
 			h.respondWithError(w, "HTTPS_REQUIRED", "HTTPS is required for this endpoint", http.StatusBadRequest)
 			h.metricsCollector.IncrementAdminAPIRequest(r.Method, endpoint, "https_required")
 			return
@@ -444,19 +445,25 @@ func extractBearerToken(r *http.Request) string {
 	return parts[1]
 }
 
+func trustProxyHeaders() bool {
+	return os.Getenv("TRUST_PROXY_HEADERS") == "true"
+}
+
 // getClientIP はクライアントIPアドレスを取得
 func getClientIP(r *http.Request) string {
-	// プロキシ経由の場合のヘッダーをチェック
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		// 最初のIPアドレスを使用（プロキシチェーンの場合）
-		parts := strings.Split(ip, ",")
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
+	// プロキシ経由の場合のヘッダーをチェック（信頼済みプロキシ設定時のみ）
+	if trustProxyHeaders() {
+		if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
+			// 最初のIPアドレスを使用（プロキシチェーンの場合）
+			parts := strings.Split(ip, ",")
+			if len(parts) > 0 {
+				return strings.TrimSpace(parts[0])
+			}
 		}
-	}
 
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
+		if ip := r.Header.Get("X-Real-IP"); ip != "" {
+			return ip
+		}
 	}
 
 	return r.RemoteAddr
