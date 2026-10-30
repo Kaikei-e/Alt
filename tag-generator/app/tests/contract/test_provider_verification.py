@@ -126,7 +126,7 @@ def provider_url():
     base_url = f"http://127.0.0.1:{port}"
     for _ in range(100):
         try:
-            urllib.request.urlopen(f"{base_url}/openapi.json")  # noqa: S310
+            urllib.request.urlopen(f"{base_url}/openapi.json")  # noqa: S310  # nosec B310
             break
         except Exception:
             time.sleep(0.05)

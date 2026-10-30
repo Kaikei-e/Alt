@@ -91,7 +91,7 @@ class OpsHandle:
 def start_ops(service_name: str, registry: CollectorRegistry | None, *, listen: str | None = None) -> OpsHandle:
     addr = listen if listen is not None else ops_listen_addr()
     if addr.startswith(":"):
-        host, port_s = "0.0.0.0", addr[1:]  # noqa: S104 — OPS_LISTEN=:9110 is the compose scrape bind
+        host, port_s = "0.0.0.0", addr[1:]  # noqa: S104 — OPS_LISTEN=:9110 is the compose scrape bind  # nosec B104
     elif ":" in addr:
         host, port_s = addr.rsplit(":", 1)
     else:

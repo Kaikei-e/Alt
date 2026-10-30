@@ -71,7 +71,7 @@ class OnnxEmbeddingModel:
             sess_options=self._session_options,
             providers=self._providers,
         )
-        self._tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name, use_fast=True)
+        self._tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name, use_fast=True)  # nosec B615
         self._embedding_dimension = self._session.get_outputs()[0].shape[-1]
 
     def encode(

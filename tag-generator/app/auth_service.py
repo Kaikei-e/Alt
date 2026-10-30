@@ -421,7 +421,7 @@ async def lifespan(app: FastAPI):
     inbound_tls_runtime = await start_inbound_tls_listener(
         app,
         resolve_inbound_tls_bind(
-            plaintext_host="0.0.0.0",
+            plaintext_host="0.0.0.0",  # nosec B104
             plaintext_port=int(os.getenv("PORT", "9400")),
         ),
     )
@@ -635,4 +635,4 @@ if __name__ == "__main__":
     # only. East-west mTLS is INBOUND_TLS_HOST:INBOUND_TLS_PORT (:9443) when
     # INBOUND_TLS_ENABLED=true — that port has no plaintext fallback.
     port = int(os.getenv("PORT", "9400"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # nosec B104
