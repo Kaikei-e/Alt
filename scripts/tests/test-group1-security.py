@@ -161,8 +161,8 @@ class TestGroup1Security(unittest.TestCase):
             sec_dir = tmp / "secrets"
             sec_dir.mkdir()
             (sec_dir / "db_pass").write_text("db_secret_pass\n")
-            (sec_dir / "cookie_sec").write_text("cookie_secret_123\n")
-            (sec_dir / "cipher_sec").write_text("cipher_secret_456\n")
+            (sec_dir / "cookie_sec").write_text("cookie_secret_1234567890_abcdefghij\n")
+            (sec_dir / "cipher_sec").write_text("cipher_secret_4567890123_abcdefghij\n")
 
             template = tmp / "kratos_template.yml"
             template.write_text(
@@ -228,10 +228,10 @@ class TestGroup1Security(unittest.TestCase):
             parsed_yaml = yaml.safe_load(out_yaml)
             self.assertIsInstance(parsed_yaml["secrets"]["cookie"], list)
             self.assertIsInstance(parsed_yaml["secrets"]["cookie"][0], str)
-            self.assertEqual(parsed_yaml["secrets"]["cookie"][0], "cookie_secret_123")
+            self.assertEqual(parsed_yaml["secrets"]["cookie"][0], "cookie_secret_1234567890_abcdefghij")
             self.assertIsInstance(parsed_yaml["secrets"]["cipher"], list)
             self.assertIsInstance(parsed_yaml["secrets"]["cipher"][0], str)
-            self.assertEqual(parsed_yaml["secrets"]["cipher"][0], "cipher_secret_456")
+            self.assertEqual(parsed_yaml["secrets"]["cipher"][0], "cipher_secret_4567890123_abcdefghij")
             self.assertEqual(parsed_yaml["session"]["cookie"]["domain"], ".example.com")
 
             # Check parsed DSN
@@ -285,14 +285,15 @@ class TestGroup1Security(unittest.TestCase):
             self.assertNotEqual(res_newline.returncode, 0)
             self.assertIn("is empty", res_newline.stderr)
 
-            # 7. Test cookie fixture 'a: b' is parsed as STR, not mapping/dict
-            (sec_dir / "mapping_cookie").write_text("a: b\n")
+            # 7. Test cookie fixture 'a: b...' is parsed as STR, not mapping/dict
+            mapping_cookie_val = "a: b_padding_to_32_characters_long_secret"
+            (sec_dir / "mapping_cookie").write_text(mapping_cookie_val + "\n")
             env_map = env.copy()
             env_map["KRATOS_COOKIE_SECRET_FILE"] = str(sec_dir / "mapping_cookie")
             res_map = subprocess.run(cmd, env=env_map, capture_output=True, text=True, check=True)
             out_map_yaml = yaml.safe_load((tmp / "out_kratos.yml").read_text())
             self.assertIsInstance(out_map_yaml["secrets"]["cookie"][0], str)
-            self.assertEqual(out_map_yaml["secrets"]["cookie"][0], "a: b")
+            self.assertEqual(out_map_yaml["secrets"]["cookie"][0], mapping_cookie_val)
 
             # 8. Test DB password fixture with special URI characters 'a@b/c?#d' & user with special chars
             (sec_dir / "special_db_pass").write_text("a@b/c?#d\n")
@@ -376,8 +377,8 @@ class TestGroup1Security(unittest.TestCase):
             sec_dir = tmp / "secrets"
             sec_dir.mkdir()
             (sec_dir / "db_pass").write_text("db_secret_pass\n")
-            (sec_dir / "cookie_sec").write_text("cookie_secret_123\n")
-            (sec_dir / "cipher_sec").write_text("cipher_secret_456\n")
+            (sec_dir / "cookie_sec").write_text("cookie_secret_1234567890_abcdefghij\n")
+            (sec_dir / "cipher_sec").write_text("cipher_secret_4567890123_abcdefghij\n")
 
             fake_kratos = tmp / "fake_kratos"
             fake_kratos.write_text(

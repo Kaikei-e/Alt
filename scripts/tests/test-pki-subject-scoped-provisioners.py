@@ -113,11 +113,11 @@ with tempfile.TemporaryDirectory() as tmp:
     # A restrictive caller umask must not leak into the canonical store mode.
     created = run_shell_function(ensure_pw, 'umask 077; ensure_host_password_file "$1"', str(new_file))
     check(
-        "a new host password file is created non-empty with mode 0644",
+        "a new host password file is created non-empty with mode 0600",
         created.returncode == 0
         and new_file.is_file()
         and new_file.stat().st_size > 0
-        and stat.S_IMODE(new_file.stat().st_mode) == 0o644,
+        and stat.S_IMODE(new_file.stat().st_mode) == 0o600,
         f"rc={created.returncode}",
     )
     existing = pathlib.Path(tmp) / "pki-agent-existing-jwk.txt"
