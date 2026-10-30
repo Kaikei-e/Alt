@@ -34,6 +34,16 @@ func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUs
 // Compile-time check that Handler implements SearchServiceHandler.
 var _ searchv2connect.SearchServiceHandler = (*Handler)(nil)
 
+const maxSearchQueryBytes = 1000
+
+// ValidateSearchQuery validates that a search query or tag is non-empty and within length bounds.
+func ValidateSearchQuery(q string) error {
+	if len(q) > maxSearchQueryBytes {
+		return fmt.Errorf("search query exceeds maximum length of %d bytes", maxSearchQueryBytes)
+	}
+	return nil
+}
+
 // SearchArticles searches for articles matching the query.
 func (h *Handler) SearchArticles(
 	ctx context.Context,
@@ -46,6 +56,9 @@ func (h *Handler) SearchArticles(
 
 	if query == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("query is required"))
+	}
+	if err := ValidateSearchQuery(query); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if userID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("user_id is required"))
@@ -117,8 +130,14 @@ func (h *Handler) SearchRecaps(
 
 	switch {
 	case query != "":
+		if err := ValidateSearchQuery(query); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
 		result, err = h.searchRecapsUsecase.ExecuteByQuery(ctx, query, limit)
 	case tagName != "":
+		if err := ValidateSearchQuery(tagName); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
 		result, err = h.searchRecapsUsecase.Execute(ctx, tagName, limit)
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("query or tag_name is required"))
