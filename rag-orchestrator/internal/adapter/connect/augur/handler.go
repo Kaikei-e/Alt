@@ -186,6 +186,9 @@ func (h *Handler) StreamChat(
 			start = len(historyMsgs) - 6
 		}
 		for _, msg := range historyMsgs[start:] {
+			if msg.Role != "user" && msg.Role != "assistant" {
+				continue
+			}
 			conversationHistory = append(conversationHistory, domain.Message{
 				Role:    msg.Role,
 				Content: msg.Content,

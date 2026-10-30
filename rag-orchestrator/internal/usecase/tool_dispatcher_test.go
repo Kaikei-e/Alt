@@ -14,9 +14,10 @@ import (
 )
 
 type mockTool struct {
-	name   string
-	result *domain.ToolResult
-	err    error
+	name       string
+	result     *domain.ToolResult
+	err        error
+	lastParams map[string]string
 	// onExecute, when set, runs synchronously before Execute returns — used to
 	// observe execution order/timing (e.g. verifying dependency scheduling)
 	// without affecting tests that leave it nil.
@@ -25,11 +26,36 @@ type mockTool struct {
 
 func (t *mockTool) Name() string        { return t.name }
 func (t *mockTool) Description() string { return "mock tool" }
-func (t *mockTool) Execute(_ context.Context, _ map[string]string) (*domain.ToolResult, error) {
+func (t *mockTool) Execute(_ context.Context, params map[string]string) (*domain.ToolResult, error) {
+	t.lastParams = params
 	if t.onExecute != nil {
 		t.onExecute()
 	}
 	return t.result, t.err
+}
+
+func TestExecutePlan_OverwritesUserIDFromContext(t *testing.T) {
+	toolA := &mockTool{name: "tool_a", result: &domain.ToolResult{Data: "result_a", Success: true}}
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	dispatcher := NewToolDispatcher(map[string]domain.Tool{"tool_a": toolA}, logger)
+
+	plan := &domain.ToolPlan{
+		Steps: []domain.ToolStep{
+			{
+				ToolName: "tool_a",
+				Params: map[string]string{
+					"query":   "test",
+					"user_id": "forged-victim-user",
+				},
+			},
+		},
+	}
+
+	ctx := domain.WithUserID(context.Background(), "authenticated-user")
+	results := dispatcher.ExecutePlan(ctx, plan)
+	assert.Len(t, results, 1)
+	assert.True(t, results[0].Success)
+	assert.Equal(t, "authenticated-user", toolA.lastParams["user_id"])
 }
 
 func TestDispatch_TemporalIntent_SelectsDateRangeTool(t *testing.T) {

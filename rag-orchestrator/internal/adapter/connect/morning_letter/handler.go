@@ -352,10 +352,12 @@ func formatLetterAsContext(doc *domain.MorningLetterDoc) string {
 	return sb.String()
 }
 
-// escapeMorningLetterDelim neutralizes the closing delimiter so letter body
-// text cannot terminate the <morning_letter> wrapper early (prompt injection).
+// escapeMorningLetterDelim neutralizes XML/HTML delimiters so letter body
+// text cannot terminate the <morning_letter> wrapper early or inject tags (prompt injection).
 func escapeMorningLetterDelim(s string) string {
-	return strings.ReplaceAll(s, "</morning_letter>", "<\\/morning_letter>")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
 }
 
 // sendFallbackEvent sends a fallback event to the stream

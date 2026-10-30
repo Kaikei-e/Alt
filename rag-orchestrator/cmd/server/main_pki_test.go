@@ -37,6 +37,9 @@ func TestMainWiresPKIBeforeTLSConsumers(t *testing.T) {
 	if connectListen < 0 || enroll > connectListen {
 		t.Fatal("enrollment must start before the Connect-RPC TLS listener")
 	}
+	if !strings.Contains(src, "echo.WrapMiddleware(peerMW.Require)") {
+		t.Fatal("cmd/server must attach echo.WrapMiddleware(peerMW.Require) to the Echo server when mTLS is enabled")
+	}
 }
 
 func readMainSource(t *testing.T) string {

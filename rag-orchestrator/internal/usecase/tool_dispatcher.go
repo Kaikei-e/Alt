@@ -275,9 +275,7 @@ func (d *ToolDispatcher) executeStep(ctx context.Context, step domain.ToolStep) 
 			}
 			params = cp
 		}
-		if _, ok := params["user_id"]; !ok {
-			params["user_id"] = uid
-		}
+		params["user_id"] = uid
 	}
 
 	result, err := tool.Execute(toolCtx, params)

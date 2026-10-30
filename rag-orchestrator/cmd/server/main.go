@@ -155,6 +155,9 @@ func main() {
 	e.IPExtractor = echo.ExtractIPDirect()
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
+	if peerMW != nil {
+		e.Use(echo.WrapMiddleware(peerMW.Require))
+	}
 	apiAuthMW := peermw.NewAPIAuthMiddleware(cfg.APIAuth.Token, cfg.APIAuth.Enabled, log)
 	e.Use(apiAuthMW.EchoMiddleware())
 
