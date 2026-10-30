@@ -3,6 +3,7 @@ package knowledge_home_projector
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -99,6 +100,101 @@ func TestProjector_RecallSnoozed_RepositoryFailureStopsBatch(t *testing.T) {
 	err := p.RunBatch(context.Background())
 	require.Error(t, err, "unlike the digest/recall-candidate side effects on other events, the snooze write IS the event's entire purpose — a failure must not advance past it")
 	assert.Equal(t, int64(0), repo.checkpoint, "checkpoint must not advance past a failed RecallSnoozed fold")
+}
+
+func TestProjector_RecallSnoozed_AssociationDeniedIsBenignAndBatchContinues(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	orphanKey := "article:" + uuid.New().String()
+	articleID := uuid.New()
+	occurredAt := time.Date(2026, 7, 14, 19, 10, 0, 0, time.UTC)
+
+	snoozePayload := mustJSON(t, map[string]any{
+		"item_key":      orphanKey,
+		"snooze_hours":  24,
+		"snoozed_until": occurredAt.Add(24 * time.Hour).Format(time.RFC3339),
+	})
+	articlePayload := mustJSON(t, map[string]any{
+		"article_id": articleID.String(),
+		"title":      "Still projected after the unassociated recall snooze",
+		"url":        "https://example.com/after-snooze",
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "RecallSnoozed", orphanKey, occurredAt, tenant, user, snoozePayload),
+		homeEvent(2, "ArticleCreated", articleID.String(), occurredAt.Add(time.Minute), tenant, user, articlePayload),
+	}
+	repo := newFakeRepo(events)
+	repo.snoozeRecallErr = fmt.Errorf("wrap: %w", sovereign_db.ErrRecallHomeAssociationDenied)
+	logs := &recordingHandler{}
+	p := NewProjector(repo, slog.New(logs), Config{})
+
+	require.NoError(t, p.RunBatch(context.Background()), "a recall snooze whose target is not found or not associated must not fail the batch")
+	assert.Equal(t, int64(2), repo.checkpoint, "checkpoint must advance past the unassociated recall snooze instead of wedging all tenants")
+
+	_, ok := repo.homeItems[fmt.Sprintf("article:%s", articleID)]
+	assert.True(t, ok, "events after the unassociated recall snooze must still project")
+
+	rec, logged := logs.find("recall snooze target not found or not associated; skipping")
+	require.True(t, logged, "skipping an unassociated recall snooze must log a structured warning")
+	assert.Equal(t, slog.LevelWarn, rec.Level)
+	assert.Equal(t, orphanKey, rec.Attrs["item_key"])
+}
+
+func TestProjector_RecallDismissed_AssociationDeniedIsBenignAndBatchContinues(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	orphanKey := "article:" + uuid.New().String()
+	articleID := uuid.New()
+	occurredAt := time.Date(2026, 7, 14, 19, 20, 0, 0, time.UTC)
+
+	dismissPayload := mustJSON(t, map[string]any{
+		"item_key": orphanKey,
+	})
+	articlePayload := mustJSON(t, map[string]any{
+		"article_id": articleID.String(),
+		"title":      "Still projected after the unassociated recall dismiss",
+		"url":        "https://example.com/after-dismiss",
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "RecallDismissed", orphanKey, occurredAt, tenant, user, dismissPayload),
+		homeEvent(2, "ArticleCreated", articleID.String(), occurredAt.Add(time.Minute), tenant, user, articlePayload),
+	}
+	repo := newFakeRepo(events)
+	repo.dismissRecallErr = fmt.Errorf("wrap: %w", sovereign_db.ErrRecallHomeAssociationDenied)
+	logs := &recordingHandler{}
+	p := NewProjector(repo, slog.New(logs), Config{})
+
+	require.NoError(t, p.RunBatch(context.Background()), "a recall dismiss whose target is not found or not associated must not fail the batch")
+	assert.Equal(t, int64(2), repo.checkpoint, "checkpoint must advance past the unassociated recall dismiss instead of wedging all tenants")
+
+	_, ok := repo.homeItems[fmt.Sprintf("article:%s", articleID)]
+	assert.True(t, ok, "events after the unassociated recall dismiss must still project")
+
+	rec, logged := logs.find("recall dismiss target not found or not associated; skipping")
+	require.True(t, logged, "skipping an unassociated recall dismiss must log a structured warning")
+	assert.Equal(t, slog.LevelWarn, rec.Level)
+	assert.Equal(t, orphanKey, rec.Attrs["item_key"])
+}
+
+func TestProjector_RecallDismissed_RepositoryFailureStopsBatch(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	itemKey := "article:" + uuid.New().String()
+	occurredAt := time.Date(2026, 7, 14, 19, 25, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{
+		"item_key": itemKey,
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "RecallDismissed", itemKey, occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	repo.dismissRecallErr = fmt.Errorf("recall_candidate_view unavailable")
+	p := NewProjector(repo, nil, Config{})
+
+	err := p.RunBatch(context.Background())
+	require.Error(t, err, "a genuine repository failure on RecallDismissed must stop the batch")
+	assert.Equal(t, int64(0), repo.checkpoint, "checkpoint must not advance past a failed RecallDismissed fold")
 }
 
 func TestBuildRecallCandidateSnoozeAndDismiss(t *testing.T) {
