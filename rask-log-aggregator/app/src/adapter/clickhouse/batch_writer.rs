@@ -438,6 +438,17 @@ async fn flush_with_retry<T>(
                 tokio::time::sleep(retry_backoff(attempt)).await;
             }
             Err(e) => {
+                const MAX_RETAINED_BUFFER_ROWS: usize = 50_000;
+                if buf.len() > MAX_RETAINED_BUFFER_ROWS {
+                    let drop_count = buf.len() - MAX_RETAINED_BUFFER_ROWS;
+                    buf.drain(..drop_count);
+                    warn!(
+                        table,
+                        drop_count,
+                        max_retained = MAX_RETAINED_BUFFER_ROWS,
+                        "Dropped oldest buffered rows after retry exhaustion to bound memory"
+                    );
+                }
                 error!(
                     table, count, attempts = attempt, error = %e,
                     "Flush retry budget exhausted; retaining batch and applying backpressure"
