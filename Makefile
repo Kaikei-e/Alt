@@ -446,4 +446,24 @@ install-c2quay:
 	  rm -rf "$$tmp"
 	@c2quay version
 
-.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean eval-rag check-compose-variables install-c2quay
+# kisage — deterministic leaf-path LKAL reconciler & MCP server.
+KISAGE_VERSION ?= v0.1.1
+KISAGE_OS ?= linux
+KISAGE_ARCH ?= amd64
+KISAGE_INSTALL_DIR ?= $(HOME)/.local/bin
+
+install-kisage:
+	@echo "Installing kisage $(KISAGE_VERSION) ($(KISAGE_OS)/$(KISAGE_ARCH)) to $(KISAGE_INSTALL_DIR)..."
+	@tmp="$$(mktemp -d)"; \
+	  tarball="kisage-$(KISAGE_VERSION)-$(KISAGE_OS)-$(KISAGE_ARCH).tar.gz"; \
+	  base="https://github.com/Kaikei-e/kisage/releases/download/$(KISAGE_VERSION)"; \
+	  curl --proto '=https' --tlsv1.2 -fsSL -o "$$tmp/$$tarball"    "$$base/$$tarball"; \
+	  curl --proto '=https' --tlsv1.2 -fsSL -o "$$tmp/checksums.txt" "$$base/checksums.txt"; \
+	  ( cd "$$tmp" && grep " $$tarball$$" checksums.txt | sha256sum --check --strict - ); \
+	  tar -xzf "$$tmp/$$tarball" -C "$$tmp" "kisage-$(KISAGE_VERSION)-$(KISAGE_OS)-$(KISAGE_ARCH)/kisage"; \
+	  install -d -m 0755 "$(KISAGE_INSTALL_DIR)"; \
+	  install -m 0755 "$$tmp/kisage-$(KISAGE_VERSION)-$(KISAGE_OS)-$(KISAGE_ARCH)/kisage" "$(KISAGE_INSTALL_DIR)/kisage"; \
+	  rm -rf "$$tmp"
+	@"$(KISAGE_INSTALL_DIR)/kisage" --version
+
+.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean eval-rag check-compose-variables install-c2quay install-kisage

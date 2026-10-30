@@ -1,0 +1,78 @@
+@lkal "0.1"
+
+### Alt repository-owned host environment declaration (managed by kisage).
+### Host-local settings under /local/* are preserved as undeclared sibling leaves.
+
+upstreams {
+  ACOLYTE_LLM_URL = "https://news-creator:9443"
+  ACOLYTE_SEARCH_URL = "https://search-indexer:9443"
+  AUTH_HUB_INTERNAL_URL = "https://auth-hub:8443"
+  BACKEND_CONNECT_URL = "http://alt-butterfly-facade:9250"
+  EMBEDDER_EXTERNAL = "http://embedding-proxy:11436"
+  OLLAMA_EMBED_URL = "http://embedding-proxy:11436"
+  PRE_PROCESSOR_CONNECT_URL = "https://pre-processor:9443"
+  PRE_PROCESSOR_URL = "https://pre-processor:9443"
+  RAG_ORCHESTRATOR_CONNECT_URL = "https://rag-orchestrator:9443"
+  RAG_ORCHESTRATOR_DATAHUB_MTLS_URL = "https://alt-data-hub:9443"
+  SEARCH_INDEXER_CONNECT_URL = "https://search-indexer:9443"
+}
+
+mtls_allowlists {
+  ACOLYTE_ORCHESTRATOR_MTLS_ALLOWED_PEERS = ["alt-butterfly-facade"]
+  ALT_DATA_HUB_ALLOWED_PEERS = [
+    "alt-backend",
+    "alt-harvester",
+    "alt-notifier",
+    "pre-processor",
+    "search-indexer",
+    "tag-generator",
+    "recap-worker",
+    "rag-orchestrator",
+    "acolyte-orchestrator"
+  ]
+  AUTH_HUB_MTLS_ALLOWED_PEERS = [
+    "alt-backend",
+    "alt-data-hub",
+    "search-indexer",
+    "knowledge-sovereign"
+  ]
+  NEWS_CREATOR_MTLS_ALLOWED_PEERS = [
+    "recap-worker",
+    "acolyte-orchestrator",
+    "rag-orchestrator",
+    "recap-evaluator",
+    "pre-processor"
+  ]
+  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend"]
+  RAG_ORCHESTRATOR_ALLOWED_PEERS = ["alt-backend"]
+  RECAP_SUBWORKER_MTLS_ALLOWED_PEERS = ["recap-worker"]
+  SEARCH_INDEXER_MTLS_ALLOWED_PEERS = [
+    "alt-backend",
+    "rag-orchestrator",
+    "acolyte-orchestrator"
+  ]
+  TAG_GENERATOR_MTLS_ALLOWED_PEERS = [
+    "alt-butterfly-facade",
+    "alt-backend",
+    "search-indexer",
+    "recap-worker"
+  ]
+}
+
+rate_limits {
+  ### ADR-000982: 7.5s default, strictly >= 5s repo floor (Critical Rule 2).
+  RATE_LIMIT_EXTERNAL_API_INTERVAL = "7.5s"
+  RATE_LIMIT_EXTERNAL_API_BURST = 3
+  RATE_LIMIT_PREFETCH_SLOT_WAIT = "250ms"
+}
+
+feature_flags {
+  KNOWLEDGE_HOME_ENABLE_PAGE = true
+  KNOWLEDGE_HOME_ENABLE_TRACKING = true
+  KNOWLEDGE_HOME_ENABLE_PROJECTION_V2 = true
+  KNOWLEDGE_HOME_ROLLOUT_PERCENTAGE = 100
+  KNOWLEDGE_HOME_ENABLE_RECALL_RAIL = true
+  KNOWLEDGE_HOME_ENABLE_LENS = true
+  KNOWLEDGE_HOME_ENABLE_STREAM_UPDATES = true
+  KNOWLEDGE_HOME_ENABLE_SUPERSEDE_UX = true
+}
