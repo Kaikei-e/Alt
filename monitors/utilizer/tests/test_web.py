@@ -114,3 +114,19 @@ async def test_collect_snapshot_offloads_blocking_calls_to_worker_threads(
     # ticker couldn't advance at all until the blocking call returned and
     # total elapsed time would be roughly additive (~0.5s).
     assert elapsed < blocking_seconds + 0.15
+
+
+async def test_websocket_endpoint_uses_hmac_compare_digest_for_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    monkeypatch.setattr(web, "WEB_TOKEN", "secret-token-123")
+    ws = MagicMock()
+    ws.query_params = {"token": "wrong-token"}
+    ws.close = AsyncMock()
+    ws.accept = AsyncMock()
+
+    await web.websocket_endpoint(ws)
+    ws.close.assert_awaited_once_with(code=4401)
+    ws.accept.assert_not_awaited()

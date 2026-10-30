@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import sys
@@ -95,7 +96,13 @@ async def collect_snapshot() -> SnapshotPayload:
     psutil / subprocess のブロッキング呼び出しは別スレッドへ逃がし、
     収集中もイベントループが他の接続をブロックしないようにする。
     """
-    memory_info, cpu_info, gpu_info, hanging_count, top_processes = await asyncio.gather(
+    (
+        memory_info,
+        cpu_info,
+        gpu_info,
+        hanging_count,
+        top_processes,
+    ) = await asyncio.gather(
         asyncio.to_thread(get_memory_info),
         asyncio.to_thread(get_cpu_info),
         asyncio.to_thread(get_gpu_info),
@@ -715,7 +722,10 @@ async def index() -> HTMLResponse:
 
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """WebSocketエンドポイントでリアルタイムデータを送信"""
-    if WEB_TOKEN and websocket.query_params.get("token") != WEB_TOKEN:
+    token = websocket.query_params.get("token") or ""
+    if WEB_TOKEN and not hmac.compare_digest(
+        token.encode("utf-8"), WEB_TOKEN.encode("utf-8")
+    ):
         await websocket.close(code=4401)
         return
     await websocket.accept()
