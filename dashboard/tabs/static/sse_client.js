@@ -150,15 +150,16 @@ function getSSEUrl() {
 
   // Construct URL
   const url = `${protocol}://${hostname}:${port}${normalizedPath}`;
+  const redactedUrl = url.split('?')[0];
   logDiagnostic('info', 'Final SSE URL constructed', {
-    url,
+    url: redactedUrl,
     hostname,
     port,
     protocol,
     sseHost: SSE_HOST,
     ssePort: SSE_PORT,
     sseProtocol: SSE_PROTOCOL,
-    windowLocation: window.location.href,
+    windowLocation: window.location.href.split('?')[0],
     parentWindow: window.parent !== window ? 'different' : 'same'
   });
   return url;
@@ -302,8 +303,8 @@ async function testServerAvailability(url) {
     const healthUrl = `${urlObj.protocol}//${urlObj.host}${healthPath}`;
 
     logDiagnostic('info', 'Testing server availability', {
-      healthUrl,
-      originalUrl: url,
+      healthUrl: healthUrl.split('?')[0],
+      originalUrl: url.split('?')[0],
       hostname: urlObj.hostname,
       port: urlObj.port,
       protocol: urlObj.protocol
@@ -408,11 +409,12 @@ async function connectSSE() {
   clearTimeouts();
 
   const sseUrl = getSSEUrl();
+  const redactedSseUrl = sseUrl.split('?')[0];
   connectionStartTime = Date.now();
   reconnectAttempts++;
 
   logDiagnostic('info', `Connecting to SSE (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, {
-    url: sseUrl,
+    url: redactedSseUrl,
     attempt: reconnectAttempts,
     maxAttempts: MAX_RECONNECT_ATTEMPTS
   });
@@ -438,7 +440,7 @@ async function connectSSE() {
     logDiagnostic('warn', 'Health check failed, attempting direct SSE connection anyway', {
       error: serverTest?.error,
       type: serverTest?.type,
-      url: sseUrl
+      url: redactedSseUrl
     });
     // Continue to SSE connection attempt - don't return early
   }
@@ -455,7 +457,7 @@ async function connectSSE() {
             evtSource.readyState === EventSource.CLOSED ? 'CLOSED' : 'UNKNOWN';
 
         logDiagnostic('error', 'Connection timeout', {
-          url: sseUrl,
+          url: redactedSseUrl,
           readyState: evtSource.readyState,
           readyStateName: readyStateName,
           elapsed: elapsed,
@@ -474,7 +476,7 @@ async function connectSSE() {
         const error = {
           type: 'timeout',
           message: errorMessage,
-          url: sseUrl,
+          url: redactedSseUrl,
           readyState: evtSource.readyState
         };
 
@@ -509,7 +511,7 @@ async function connectSSE() {
       clearTimeouts();
       const elapsed = Date.now() - connectionStartTime;
       logDiagnostic('info', 'SSE connection opened successfully', {
-        url: sseUrl,
+        url: redactedSseUrl,
         elapsed: elapsed,
         readyState: evtSource.readyState,
         attempt: reconnectAttempts,
@@ -610,7 +612,7 @@ async function connectSSE() {
               readyState === EventSource.CLOSED ? 'CLOSED' : 'UNKNOWN',
           elapsed: elapsed,
           event: event,
-          url: sseUrl
+          url: redactedSseUrl
         });
       }
     };
@@ -659,7 +661,7 @@ async function connectSSE() {
       errorName: error.name,
       errorType: errorType,
       stack: error.stack,
-      url: sseUrl,
+      url: redactedSseUrl,
       helpfulMessage: helpfulMessage
     });
 
@@ -667,7 +669,7 @@ async function connectSSE() {
       type: errorType,
       message: helpfulMessage,
       originalError: errorMessage,
-      url: sseUrl
+      url: redactedSseUrl
     });
 
     // Attempt to reconnect

@@ -86,3 +86,9 @@ class TestSseClientDoesNotInterpolateUntrustedHtml:
             src = (base / rel).read_text(encoding="utf-8")
             assert "st.error(str(e))" not in src, f"{rel} still exposes raw str(e)"
             assert '"error": str(e)' not in src, f"{rel} still exposes raw str(e)"
+
+    def test_sse_client_redacts_query_string_before_logging_urls(self) -> None:
+        text = SSE_CLIENT_JS.read_text(encoding="utf-8")
+        assert "sseUrl.split('?')[0]" in text
+        assert "url.split('?')[0]" in text
+        assert "url: sseUrl" not in text
