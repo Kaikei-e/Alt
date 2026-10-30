@@ -173,13 +173,14 @@ def create_app(
     from recap_evaluator.infra.peer_identity import (  # noqa: E402
         PeerIdentityMiddleware,
         allowed_peers_from_env,
+        strict_from_env,
     )
 
     application.add_middleware(
         PeerIdentityMiddleware,
         allowed=allowed_peers_from_env(),
-        strict=False,
-        exempt_paths={"/health", "/api/v1/metrics/latest"},
+        strict=strict_from_env(),
+        exempt_paths={"/health"},
     )
 
     from fastapi import Depends
@@ -188,7 +189,7 @@ def create_app(
 
     application.include_router(health_router)
     application.include_router(evaluation_router, dependencies=[Depends(require_bearer_token)])
-    application.include_router(metrics_router)
+    application.include_router(metrics_router, dependencies=[Depends(require_bearer_token)])
 
     instrument_fastapi(application)
     return application

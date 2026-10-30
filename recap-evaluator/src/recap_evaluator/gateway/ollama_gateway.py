@@ -12,6 +12,22 @@ from recap_evaluator.config import Settings
 
 logger = structlog.get_logger()
 
+_CONTROL_TOKEN_RE = re.compile(
+    r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
+    r"|</?think>"
+    r"|<\|turn>|<turn\|>"
+    r"|<start_of_turn>|<end_of_turn>",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_prompt_input(text: str) -> str:
+    """Strip chat-turn control tokens and escape angle brackets in untrusted input."""
+    if not text:
+        return ""
+    stripped = _CONTROL_TOKEN_RE.sub("", text)
+    return stripped.replace("<", "&lt;").replace(">", "&gt;")
+
 
 @dataclass(frozen=True)
 class GEvalResult:
@@ -83,6 +99,8 @@ class OllamaGateway:
         max_source_chars = 4000
         if len(source_articles) > max_source_chars:
             source_articles = source_articles[:max_source_chars] + "..."
+        safe_source = _sanitize_prompt_input(source_articles)
+        safe_summary = _sanitize_prompt_input(summary)
 
         return f"""以下の要約を4つの観点で1-5点で評価してください。
 必ずJSON形式のみで回答してください。説明文は不要です。
@@ -97,10 +115,10 @@ class OllamaGateway:
 4. Relevance (関連性, 1-5): 最も重要な情報をカバーしているか？
 
 元記事:
-{source_articles}
+{safe_source}
 
 要約:
-{summary}
+{safe_summary}
 
 JSON評価結果:"""
 
@@ -181,6 +199,7 @@ JSON評価結果:"""
             )
 
     def _build_readability_prompt(self, summary: str) -> str:
+        safe_summary = _sanitize_prompt_input(summary)
         return f"""以下の要約を「朝刊として読みやすいか」という観点で1-5点で評価してください。
 必ずJSON形式のみで回答してください。説明文は不要です。
 
@@ -188,7 +207,7 @@ JSON評価結果:"""
 {{"score": X}}
 
 要約:
-{summary}
+{safe_summary}
 
 JSON評価結果:"""
 

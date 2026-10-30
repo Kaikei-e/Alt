@@ -32,6 +32,11 @@ def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
+def strict_from_env(env_var: str = "PEER_IDENTITY_STRICT") -> bool:
+    """Return True when PEER_IDENTITY_STRICT is set to a truthy string."""
+    return os.getenv(env_var, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def arrived_via_sidecar(request: Request) -> bool:
     """Report whether the request could have come from the mTLS sidecar.
 

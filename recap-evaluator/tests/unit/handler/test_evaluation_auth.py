@@ -141,8 +141,16 @@ def test_health_accessible_without_auth(client):
     assert resp.status_code == 200
 
 
-def test_metrics_latest_accessible_without_auth(client):
+def test_metrics_latest_rejects_no_auth(client):
     resp = client.get("/api/v1/metrics/latest")
+    assert resp.status_code == 401
+
+
+def test_metrics_latest_accepts_valid_token(client):
+    resp = client.get(
+        "/api/v1/metrics/latest",
+        headers={"Authorization": f"Bearer {VALID_TOKEN}"},
+    )
     assert resp.status_code == 200
 
 
