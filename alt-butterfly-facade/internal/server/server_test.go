@@ -320,7 +320,11 @@ func TestServer_RESTRoute_AllowlistedPathsAreForwarded(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			seen = ""
 			req := httptest.NewRequest(http.MethodGet, path, nil)
-			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+			if strings.HasPrefix(path, "/v1/dashboard/") || strings.HasPrefix(path, "/v1/admin/") {
+				req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, []byte("test-secret")))
+			} else {
+				req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+			}
 
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req)

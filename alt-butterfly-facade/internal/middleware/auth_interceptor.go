@@ -31,9 +31,10 @@ var (
 
 // BackendClaims represents the JWT claims for backend authentication.
 type BackendClaims struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
-	Sid   string `json:"sid"`
+	Email    string `json:"email"`
+	Role     string `json:"role"`
+	Sid      string `json:"sid"`
+	TenantID string `json:"tenant_id,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -79,12 +80,18 @@ func (a *AuthInterceptor) ValidateToken(tokenStr string) (*domain.UserContext, e
 	}
 
 	// Parse and validate token
-	parsed, err := jwt.ParseWithClaims(tokenStr, &BackendClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return a.secret, nil
-	})
+	parsed, err := jwt.ParseWithClaims(
+		tokenStr,
+		&BackendClaims{},
+		func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return a.secret, nil
+		},
+		jwt.WithExpirationRequired(),
+		jwt.WithValidMethods([]string{"HS256"}),
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errInvalidToken, err)
@@ -118,8 +125,17 @@ func (a *AuthInterceptor) ValidateToken(tokenStr string) (*domain.UserContext, e
 
 	// Parse user ID
 	userID, err := uuid.Parse(claims.Subject)
-	if err != nil {
+	if err != nil || userID == uuid.Nil {
 		return nil, fmt.Errorf("invalid user ID in token: %w", err)
+	}
+
+	tenantID := userID
+	if claims.TenantID != "" {
+		parsedTenantID, err := uuid.Parse(claims.TenantID)
+		if err != nil || parsedTenantID == uuid.Nil {
+			return nil, fmt.Errorf("invalid tenant ID in token: %w", err)
+		}
+		tenantID = parsedTenantID
 	}
 
 	// Get expiration and issued-at times
@@ -135,7 +151,7 @@ func (a *AuthInterceptor) ValidateToken(tokenStr string) (*domain.UserContext, e
 		UserID:    userID,
 		Email:     claims.Email,
 		Role:      claims.Role,
-		TenantID:  userID, // Single-tenant model
+		TenantID:  tenantID,
 		SessionID: claims.Sid,
 		LoginAt:   loginAt,
 		ExpiresAt: expiresAt,

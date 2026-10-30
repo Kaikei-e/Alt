@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"alt-butterfly-facade/internal/client"
@@ -50,12 +51,20 @@ func (h *RESTProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Extract and validate JWT token
 	token := r.Header.Get(middleware.BackendTokenHeader)
-	_, err := h.authInterceptor.ValidateToken(token)
+	userCtx, err := h.authInterceptor.ValidateToken(token)
 	if err != nil {
 		if h.logger != nil {
 			h.logger.Error("REST proxy auth failed", "error", err, "path", r.URL.Path)
 		}
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if (strings.HasPrefix(r.URL.Path, "/v1/dashboard/") || strings.HasPrefix(r.URL.Path, "/v1/admin/")) && userCtx.Role != "admin" {
+		if h.logger != nil {
+			h.logger.Warn("REST proxy admin authorization denied", "path", r.URL.Path, "user_id", userCtx.UserID)
+		}
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 

@@ -75,23 +75,34 @@ type BFFHandler struct {
 // included (adversarial review). Per-endpoint isolation fixes that by
 // construction: no enumeration of "which endpoints are related" is needed,
 // because none of them share anything.
+const maxNonCriticalBreakers = 256
+
 type nonCriticalBreakers struct {
 	mu         sync.Mutex
 	cfg        resilience.CircuitBreakerConfig
 	byEndpoint map[string]*resilience.CircuitBreaker
+	fallback   *resilience.CircuitBreaker
 }
 
 func newNonCriticalBreakers(cfg resilience.CircuitBreakerConfig) *nonCriticalBreakers {
-	return &nonCriticalBreakers{cfg: cfg, byEndpoint: make(map[string]*resilience.CircuitBreaker)}
+	return &nonCriticalBreakers{
+		cfg:        cfg,
+		byEndpoint: make(map[string]*resilience.CircuitBreaker),
+		fallback:   resilience.NewCircuitBreaker(cfg),
+	}
 }
 
-// forEndpoint returns endpoint's breaker, creating it on first use.
+// forEndpoint returns endpoint's breaker, creating it on first use up to
+// maxNonCriticalBreakers to prevent unbounded map growth from arbitrary paths.
 func (n *nonCriticalBreakers) forEndpoint(endpoint string) *resilience.CircuitBreaker {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	if cb, ok := n.byEndpoint[endpoint]; ok {
 		return cb
+	}
+	if len(n.byEndpoint) >= maxNonCriticalBreakers {
+		return n.fallback
 	}
 	cb := resilience.NewCircuitBreaker(n.cfg)
 	n.byEndpoint[endpoint] = cb

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -225,11 +226,12 @@ func main() {
 		if mtlsPort == "" {
 			mtlsPort = "9443"
 		}
+		tlsOpts := append([]tlsutil.ServerOption{tlsutil.WithClientAuth(tls.RequireAndVerifyClientCert)}, tlsutil.OptionsFromEnv()...)
 		tlsCfg, err := tlsutil.LoadServerConfig(
 			os.Getenv("MTLS_CERT_FILE"),
 			os.Getenv("MTLS_KEY_FILE"),
 			os.Getenv("MTLS_CA_FILE"),
-			tlsutil.OptionsFromEnv()...,
+			tlsOpts...,
 		)
 		if err != nil {
 			slog.ErrorContext(ctx, "mTLS listener config failed, aborting startup (fail-closed)", "error", err)

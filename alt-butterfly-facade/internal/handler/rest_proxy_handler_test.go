@@ -23,6 +23,11 @@ const testRESTAudience = "alt-backend"
 
 func createTestJWT(t *testing.T) string {
 	t.Helper()
+	return createTestJWTWithRole(t, "user")
+}
+
+func createTestJWTWithRole(t *testing.T, role string) string {
+	t.Helper()
 	claims := jwt.MapClaims{
 		"sub":   "00000000-0000-0000-0000-000000000001",
 		"iss":   testRESTIssuer,
@@ -30,7 +35,7 @@ func createTestJWT(t *testing.T) string {
 		"exp":   time.Now().Add(time.Hour).Unix(),
 		"iat":   time.Now().Unix(),
 		"email": "test@example.com",
-		"role":  "user",
+		"role":  role,
 		"sid":   "test-session",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -244,7 +249,7 @@ func TestRESTProxyHandler_QueryParams(t *testing.T) {
 	defer backend.Close()
 
 	handler := newTestRESTProxyHandler(t, backend.URL)
-	token := createTestJWT(t)
+	token := createTestJWTWithRole(t, "admin")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/overview?window=24h&limit=10", nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
@@ -253,6 +258,22 @@ func TestRESTProxyHandler_QueryParams(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestRESTProxyHandler_AdminRoute_RequiresAdminRole(t *testing.T) {
+	handler := newTestRESTProxyHandler(t, "http://localhost:1")
+	userToken := createTestJWTWithRole(t, "user")
+
+	for _, path := range []string{"/v1/dashboard/overview", "/v1/admin/scraping-domains"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("X-Alt-Backend-Token", userToken)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected 403 for %s with non-admin role, got %d", path, rec.Code)
+		}
 	}
 }
 

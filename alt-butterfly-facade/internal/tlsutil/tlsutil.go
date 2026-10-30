@@ -149,6 +149,7 @@ func LoadServerConfig(certPath, keyPath, caPath string, opts ...ServerOption) (*
 		},
 	}
 	if len(o.allowedPeers) > 0 {
+		cfg.ClientAuth = tls.RequireAndVerifyClientCert
 		allowed := o.allowedPeers
 		cfg.VerifyConnection = func(cs tls.ConnectionState) error {
 			if len(cs.PeerCertificates) == 0 {
