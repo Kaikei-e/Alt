@@ -1,9 +1,12 @@
 package feeds
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractSSEData(t *testing.T) {
@@ -52,6 +55,16 @@ func TestExtractSSEData(t *testing.T) {
 			input:    "",
 			expected: "",
 		},
+		{
+			name:     "ignores SSE error event payload",
+			input:    "event: error\ndata: {\"error\": \"summary generation failed\"}\n",
+			expected: "",
+		},
+		{
+			name:     "ignores standalone JSON error object in data line",
+			input:    "data: {\"error\": \"summary generation failed\"}\n",
+			expected: "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -60,4 +73,20 @@ func TestExtractSSEData(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestExtractSSEEvent_ErrorEvent(t *testing.T) {
+	data, err := extractSSEEvent("event: error\ndata: {\"error\": \"summary generation failed\"}\n")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "summary generation failed")
+	assert.Empty(t, data)
+}
+
+func TestStreamAndCapture_ReturnsErrorOnSSEErrorEvent(t *testing.T) {
+	h := createTestHandler()
+	reader := strings.NewReader(": heartbeat\n\nevent: error\ndata: {\"error\": \"summary generation failed\"}\n\n")
+	summary, err := h.streamAndCapture(context.Background(), nil, reader, "article-123")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "summary generation failed")
+	assert.Empty(t, summary)
 }

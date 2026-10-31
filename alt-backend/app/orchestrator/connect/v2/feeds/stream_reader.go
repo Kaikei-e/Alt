@@ -100,7 +100,11 @@ func (h *Handler) streamAndCapture(
 				sseBuf.Reset()
 				sseBuf.WriteString(sseData[splitIdx+2:])
 
-				dataContent := extractSSEData(eventStr)
+				dataContent, sseErr := extractSSEEvent(eventStr)
+				if sseErr != nil {
+					h.logger.ErrorContext(ctx, "upstream SSE error event received", "error", sseErr, "article_id", articleID)
+					return "", sseErr
+				}
 				if dataContent != "" {
 					summaryBuf.WriteString(dataContent)
 
@@ -120,7 +124,11 @@ func (h *Handler) streamAndCapture(
 		if err != nil {
 			if err == io.EOF {
 				if sseBuf.Len() > 0 {
-					dataContent := extractSSEData(sseBuf.String())
+					dataContent, sseErr := extractSSEEvent(sseBuf.String())
+					if sseErr != nil {
+						h.logger.ErrorContext(ctx, "upstream SSE error event received at EOF", "error", sseErr, "article_id", articleID)
+						return "", sseErr
+					}
 					if dataContent != "" {
 						summaryBuf.WriteString(dataContent)
 						_ = stream.Send(&feedsv2.StreamSummarizeResponse{

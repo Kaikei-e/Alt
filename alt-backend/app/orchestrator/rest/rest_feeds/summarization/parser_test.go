@@ -42,6 +42,16 @@ func TestParseSSESummary(t *testing.T) {
 			sseData: ": comment\n\ndata: \"first \"\n\ndata: \"second\"\n",
 			want:    "first second",
 		},
+		{
+			name:    "SSE error event returns empty string instead of error JSON",
+			sseData: "event: error\ndata: {\"error\": \"summary generation failed\"}\n\n",
+			want:    "",
+		},
+		{
+			name:    "SSE heartbeat followed by error event returns empty string",
+			sseData: ": heartbeat\n\nevent: error\ndata: {\"error\": \"summary generation failed\"}\n\n",
+			want:    "",
+		},
 	}
 
 	for _, tt := range tests {

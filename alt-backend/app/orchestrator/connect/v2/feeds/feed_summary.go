@@ -64,7 +64,7 @@ func (h *Handler) StreamSummarize(
 	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
 	if !forceRefresh {
 		existingSummary, err := h.deps.SummaryStore.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
-		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
+		if err == nil && existingSummary != nil && existingSummary.Summary != "" && !isErrorPayloadSummary(existingSummary.Summary) {
 			h.logger.InfoContext(ctx, "returning cached summary", "article_id", resolvedArticleID)
 			return stream.Send(&feedsv2.StreamSummarizeResponse{
 				Chunk:       "",
