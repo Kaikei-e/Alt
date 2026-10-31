@@ -28,7 +28,7 @@ if [ "$(id -u)" = "0" ]; then
   fi
 
   echo "Dropping privileges to ollama-user..."
-  exec gosu ollama-user "$0" "$@"
+  exec setpriv --reuid=ollama-user --regid=ollama-user --init-groups "$0" "$@"
 fi
 
 # Ensure embedding models exist (overridable per deployment)

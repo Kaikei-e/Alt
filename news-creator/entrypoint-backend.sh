@@ -20,7 +20,7 @@ if [ "$(id -u)" -eq 0 ] && [ "${OLLAMA_ENTRYPOINT_RERUN:-0}" != "1" ]; then
   export LD_LIBRARY_PATH="/usr/lib/ollama:/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH:-}"
 
   export OLLAMA_ENTRYPOINT_RERUN=1
-  exec gosu "$TARGET_USER" /usr/local/bin/entrypoint-backend.sh
+  exec setpriv --reuid="$TARGET_USER" --regid="$TARGET_USER" --init-groups /usr/local/bin/entrypoint-backend.sh
 fi
 
 # --- Ollama server configuration --------------------------------------------
