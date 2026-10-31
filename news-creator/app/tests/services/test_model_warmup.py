@@ -17,6 +17,7 @@ def _make_config(
     model_routing_enabled: bool = True,
     model_name: str = "gemma4-e4b-q4km",
     model_8k_name: str = "gemma4-e4b-12k",
+    llm_options: dict | None = None,
 ) -> Mock:
     config = Mock(spec=NewsCreatorConfig)
     config.warmup_enabled = warmup_enabled
@@ -24,6 +25,22 @@ def _make_config(
     config.model_routing_enabled = model_routing_enabled
     config.model_name = model_name
     config.model_8k_name = model_8k_name
+    config.get_llm_options.return_value = (
+        dict(llm_options)
+        if llm_options is not None
+        else {
+            "num_ctx": 12288,
+            "num_predict": 1200,
+            "num_batch": 1024,
+            "num_gpu": 99,
+            "num_keep": 0,
+            "temperature": 0.7,
+            "top_p": 0.85,
+            "top_k": 40,
+            "repeat_penalty": 1.15,
+            "stop": ["<turn|>"],
+        }
+    )
     return config
 
 
@@ -65,13 +82,19 @@ class TestModelWarmupService:
                 "prompt": "ping",
                 "stream": False,
                 "keep_alive": "1440m",
-                "options": {"num_predict": 1},
+                "options": {
+                    "num_ctx": 12288,
+                    "num_batch": 1024,
+                    "num_gpu": 99,
+                    "num_keep": 0,
+                    "num_predict": 1,
+                },
             }
         )
 
     @pytest.mark.asyncio
     async def test_model_routing_disabled_warms_default_model_name(self):
-        """When model_routing_enabled=False, warms config.model_name."""
+        """When model_routing_enabled=False, warms config.model_name with runner startup params."""
         config = _make_config(
             warmup_enabled=True,
             warmup_keep_alive_minutes=2880,
@@ -90,7 +113,13 @@ class TestModelWarmupService:
                 "prompt": "ping",
                 "stream": False,
                 "keep_alive": "2880m",
-                "options": {"num_predict": 1},
+                "options": {
+                    "num_ctx": 12288,
+                    "num_batch": 1024,
+                    "num_gpu": 99,
+                    "num_keep": 0,
+                    "num_predict": 1,
+                },
             }
         )
 

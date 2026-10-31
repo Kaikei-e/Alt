@@ -93,15 +93,24 @@ class ModelWarmupService:
             keep_alive: Keep-alive duration string (e.g., "30m")
         """
         try:
+            # Include runner startup parameters (num_ctx, num_batch, num_gpu,
+            # num_keep) from config so warmup does not start a runner with
+            # Ollama defaults that immediately reloads on the first real call.
+            base_options = self.config.get_llm_options()
+            warmup_options = {
+                k: base_options[k]
+                for k in ("num_ctx", "num_batch", "num_gpu", "num_keep")
+                if k in base_options
+            }
+            warmup_options["num_predict"] = 1
+
             # Use a simple ping message to warm up the model
             payload = {
                 "model": model_name,
                 "prompt": "ping",
                 "stream": False,
                 "keep_alive": keep_alive,
-                "options": {
-                    "num_predict": 1,  # Minimal generation
-                },
+                "options": warmup_options,
             }
 
             logger.debug(f"Warming up model {model_name}...")

@@ -1,5 +1,5 @@
 # ---- Base image -----------------------------------------------------------
-FROM ollama/ollama:0.32.14
+FROM ollama/ollama:0.40.12
 
 USER root
 

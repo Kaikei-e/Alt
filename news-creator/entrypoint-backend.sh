@@ -17,7 +17,7 @@ if [ "$(id -u)" -eq 0 ] && [ "${OLLAMA_ENTRYPOINT_RERUN:-0}" != "1" ]; then
   # GPU関連の環境変数を確実に設定
   export NVIDIA_VISIBLE_DEVICES="${NVIDIA_VISIBLE_DEVICES:-all}"
   export NVIDIA_DRIVER_CAPABILITIES="${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}"
-  export LD_LIBRARY_PATH="/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH:-}"
+  export LD_LIBRARY_PATH="/usr/lib/ollama:/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH:-}"
 
   export OLLAMA_ENTRYPOINT_RERUN=1
   exec gosu "$TARGET_USER" /usr/local/bin/entrypoint-backend.sh
@@ -26,7 +26,7 @@ fi
 # --- Ollama server configuration --------------------------------------------
 export NVIDIA_VISIBLE_DEVICES="${NVIDIA_VISIBLE_DEVICES:-all}"
 export NVIDIA_DRIVER_CAPABILITIES="${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}"
-export LD_LIBRARY_PATH="/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="/usr/lib/ollama:/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH:-}"
 export OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0:11435}"
 export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-8192}"
 export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"
@@ -247,19 +247,20 @@ for model_name in "$BASE_MODEL" "${VARIANT_MODELS[@]}"; do
 done
 
 # --- preload default RAG model only ------------------------
-# num_gpu pins the offload split for the runner this preload starts: Ollama
-# forwards --n-gpu-layers only when the option is in the request, and a partial
-# CPU/GPU split aborts gemma4 at load.
+# Match all runner startup parameters (num_ctx, num_batch, num_gpu, num_keep)
+# with news-creator's LLMConfig so the first consumer request reuses this
+# preloaded runner instead of spawning a second llama-server and exhausting VRAM.
 echo "Preloading 12K model only (8K remains available on-demand)..."
+PRELOAD_PAYLOAD='{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_ctx":12288,"num_batch":1024,"num_gpu":99,"num_keep":0,"num_predict":1}}'
 echo "  Loading 12K model (attempt 1/3)..."
 if curl -fs -X POST http://localhost:11435/api/generate \
-  -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1,"num_gpu":99}}' \
+  -d "$PRELOAD_PAYLOAD" \
   >/dev/null 2>&1; then
   echo "  12K model preloaded successfully (will be kept in GPU memory)"
   sleep 2
   echo "  Verifying 12K model is loaded (attempt 2/3)..."
   if curl -fs -X POST http://localhost:11435/api/generate \
-    -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1,"num_gpu":99}}' \
+    -d "$PRELOAD_PAYLOAD" \
     >/dev/null 2>&1; then
     echo "  12K model confirmed to be loaded in GPU memory (keep_alive: 24h)"
   else

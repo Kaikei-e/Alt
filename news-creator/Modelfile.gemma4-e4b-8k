@@ -1,2 +1,5 @@
 FROM gemma4-e4b-q4km
 PARAMETER num_ctx 8192
+PARAMETER num_batch 1024
+PARAMETER num_gpu 99
+PARAMETER num_keep 0
