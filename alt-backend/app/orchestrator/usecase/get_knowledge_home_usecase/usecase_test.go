@@ -696,3 +696,67 @@ func TestEnrichItemsWithTagHotspots(t *testing.T) {
 		})
 	}
 }
+
+type blockingTagHotspotPort struct{}
+
+func (b *blockingTagHotspotPort) GetTrendingTags(ctx context.Context, _ uuid.UUID) ([]knowledge_home_port.TrendingTag, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+type blockingNeedToKnowPort struct{}
+
+func (b *blockingNeedToKnowPort) CountNeedToKnowItems(ctx context.Context, _ uuid.UUID, _ time.Time) (int, error) {
+	<-ctx.Done()
+	return 0, ctx.Err()
+}
+
+type blockingFreshnessPort struct{}
+
+func (b *blockingFreshnessPort) GetProjectionFreshness(ctx context.Context, _ string) (*time.Time, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestGetKnowledgeHomeUsecase_OptionalEnrichmentsRespectBoundedTimeout(t *testing.T) {
+	logger.InitLogger()
+	userID := uuid.New()
+	now := time.Now()
+
+	homeItems := &mockHomeItemsPort{
+		items: []domain.KnowledgeHomeItem{
+			{ItemKey: "article:1", Title: "Primary Item", Tags: []string{"AI"}},
+		},
+	}
+	digestPort := &mockTodayDigestPort{
+		digest: domain.TodayDigest{UserID: userID, NewArticles: 3},
+	}
+
+	uc := NewGetKnowledgeHomeUsecase(
+		homeItems,
+		digestPort,
+		nil,
+		&blockingFreshnessPort{},
+		&blockingNeedToKnowPort{},
+		&blockingTagHotspotPort{},
+	)
+	uc.enrichmentTimeout = 40 * time.Millisecond
+
+	// Outer context has a 10s deadline; optional enrichments must time out at enrichmentTimeout
+	// rather than blocking the primary response for 10s.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	result, err := uc.Execute(ctx, userID, "", 20, now, nil)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Len(t, result.Items, 1)
+	assert.Equal(t, 3, result.Digest.NewArticles)
+	assert.Equal(t, 0, result.Digest.NeedToKnowCount)
+	assert.Equal(t, domain.FreshnessUnknown, result.Digest.DigestFreshness)
+	assert.Less(t, elapsed, 500*time.Millisecond,
+		"stalled optional enrichments must time out via bounded sub-context instead of blocking for the full request deadline")
+}

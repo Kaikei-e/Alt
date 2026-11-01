@@ -3,6 +3,7 @@ package knowledge_home
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -14,6 +15,7 @@ import (
 	"alt/connect/v2/middleware"
 	"alt/domain"
 	knowledgehomev1 "alt/gen/proto/alt/knowledge_home/v1"
+	"alt/orchestrator/usecase/get_knowledge_home_usecase"
 	"alt/utils/safeconv"
 )
 
@@ -84,9 +86,33 @@ func (h *Handler) GetKnowledgeHome(
 		lensID = &parsedLensID
 	}
 
-	result, err := h.getHomeUsecase.Execute(ctx, user.UserID, cursor, limit, date, lensID)
-	if err != nil {
-		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetKnowledgeHome")
+	var (
+		result     *get_knowledge_home_usecase.Result
+		homeErr    error
+		candidates []domain.RecallCandidate
+		railErr    error
+		wg         sync.WaitGroup
+	)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		result, homeErr = h.getHomeUsecase.Execute(ctx, user.UserID, cursor, limit, date, lensID)
+	}()
+
+	if h.recallRailUsecase != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			railCtx, cancelRail := context.WithTimeout(ctx, 2*time.Second)
+			defer cancelRail()
+			candidates, railErr = h.recallRailUsecase.Execute(railCtx, user.UserID, 5)
+		}()
+	}
+	wg.Wait()
+
+	if homeErr != nil {
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, homeErr, "GetKnowledgeHome")
 	}
 
 	// Convert items to proto
@@ -170,12 +196,9 @@ func (h *Handler) GetKnowledgeHome(
 	// GetKnowledgeHome payload. The legacy FlagRecallRail gate was retired
 	// with PR 13; the rail surfaces unconditionally when the projector has
 	// candidates for the user.
-	if h.recallRailUsecase != nil {
-		candidates, railErr := h.recallRailUsecase.Execute(ctx, user.UserID, 5)
-		if railErr == nil {
-			for _, c := range candidates {
-				respPayload.RecallCandidates = append(respPayload.RecallCandidates, convertRecallCandidateToProto(c))
-			}
+	if h.recallRailUsecase != nil && railErr == nil {
+		for _, c := range candidates {
+			respPayload.RecallCandidates = append(respPayload.RecallCandidates, convertRecallCandidateToProto(c))
 		}
 	}
 

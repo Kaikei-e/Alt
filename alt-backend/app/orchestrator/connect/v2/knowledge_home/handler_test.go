@@ -15,6 +15,7 @@ import (
 	knowledgehomev1 "alt/gen/proto/alt/knowledge_home/v1"
 	"alt/orchestrator/port/recall_candidate_port"
 	"alt/orchestrator/usecase/get_knowledge_home_usecase"
+	"alt/orchestrator/usecase/recall_rail_usecase"
 	"alt/orchestrator/usecase/track_home_action_usecase"
 	"alt/orchestrator/usecase/track_home_seen_usecase"
 	"alt/utils/logger"
@@ -23,11 +24,15 @@ import (
 type mockRecallCandidatesPort struct {
 	candidates []domain.RecallCandidate
 	err        error
+	delay      time.Duration
 }
 
 var _ recall_candidate_port.GetRecallCandidatesPort = (*mockRecallCandidatesPort)(nil)
 
 func (m *mockRecallCandidatesPort) GetRecallCandidates(_ context.Context, _ uuid.UUID, _ int) ([]domain.RecallCandidate, error) {
+	if m.delay > 0 {
+		time.Sleep(m.delay)
+	}
 	return m.candidates, m.err
 }
 
@@ -37,9 +42,13 @@ type mockHomeItemsPort struct {
 	nextCursor string
 	hasMore    bool
 	err        error
+	delay      time.Duration
 }
 
 func (m *mockHomeItemsPort) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ string, _ int, _ *domain.KnowledgeHomeLensFilter) ([]domain.KnowledgeHomeItem, string, bool, error) {
+	if m.delay > 0 {
+		time.Sleep(m.delay)
+	}
 	return m.items, m.nextCursor, m.hasMore, m.err
 }
 
@@ -316,4 +325,46 @@ func TestHandler_TrackHomeAction_Validation(t *testing.T) {
 			assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 		})
 	}
+}
+
+func TestHandler_GetKnowledgeHome_RunsRecallRailConcurrently(t *testing.T) {
+	logger.InitLogger()
+
+	homePort := &mockHomeItemsPort{
+		items: []domain.KnowledgeHomeItem{
+			{ItemKey: "article:1", ItemType: "article", Title: "Primary Item", Score: 1.0},
+		},
+		delay: 50 * time.Millisecond,
+	}
+	digestPort := &mockTodayDigestPort{
+		digest: domain.TodayDigest{NewArticles: 2},
+	}
+	recallPort := &mockRecallCandidatesPort{
+		candidates: []domain.RecallCandidate{
+			{ItemKey: "article:recall-1", RecallScore: 0.9},
+		},
+		delay: 50 * time.Millisecond,
+	}
+
+	getHomeUC := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil, nil, nil, nil)
+	recallRailUC := recall_rail_usecase.NewRecallRailUsecase(recallPort, nil)
+
+	handler := NewHandler(
+		getHomeUC, nil, nil,
+		recallRailUC, nil, nil,
+		nil, nil, nil, nil, nil,
+		nil, nil, nil, nil,
+		nil, nil, slog.Default(),
+	)
+
+	start := time.Now()
+	resp, err := handler.GetKnowledgeHome(testUserContext(), connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{}))
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Len(t, resp.Msg.Items, 1)
+	assert.Len(t, resp.Msg.RecallCandidates, 1)
+	assert.Less(t, elapsed, 85*time.Millisecond,
+		"recallRailUsecase must run concurrently with getHomeUsecase rather than sequentially after it")
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -23,8 +24,9 @@ type TrendingTagsGateway struct {
 	fetchPort knowledge_home_port.FetchTagArticleCountsPort
 	cacheTTL  time.Duration
 
-	mu    sync.RWMutex
-	cache map[uuid.UUID]cacheEntry
+	mu      sync.RWMutex
+	cache   map[uuid.UUID]cacheEntry
+	sfGroup singleflight.Group
 }
 
 type cacheEntry struct {
@@ -41,46 +43,46 @@ func NewTrendingTagsGateway(fetchPort knowledge_home_port.FetchTagArticleCountsP
 }
 
 func (g *TrendingTagsGateway) GetTrendingTags(ctx context.Context, userID uuid.UUID) ([]knowledge_home_port.TrendingTag, error) {
-	if cached := g.getCached(userID); cached != nil {
+	if cached, ok := g.getCached(userID); ok {
 		return cached, nil
 	}
 
-	tags, err := g.compute(ctx, userID)
+	val, err, _ := g.sfGroup.Do(userID.String(), func() (interface{}, error) {
+		if cached, ok := g.getCached(userID); ok {
+			return cached, nil
+		}
+		tags, err := g.compute(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		g.setCache(userID, tags)
+		return tags, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	g.setCache(userID, tags)
-	return tags, nil
+	tags, _ := val.([]knowledge_home_port.TrendingTag)
+	result := make([]knowledge_home_port.TrendingTag, len(tags))
+	copy(result, tags)
+	return result, nil
 }
 
 func (g *TrendingTagsGateway) compute(ctx context.Context, userID uuid.UUID) ([]knowledge_home_port.TrendingTag, error) {
 	recentSince, baselineSince := calculateTrendingWindows(time.Now())
 
-	var (
-		recentCounts   []knowledge_home_port.TagArticleCount
-		baselineCounts []knowledge_home_port.TagArticleCount
-		recentErr      error
-		baselineErr    error
-		wg             sync.WaitGroup
-	)
-
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		recentCounts, recentErr = g.fetchPort.FetchTagArticleCounts(ctx, userID, recentSince)
-	}()
-	go func() {
-		defer wg.Done()
-		baselineCounts, baselineErr = g.fetchPort.FetchTagArticleCounts(ctx, userID, baselineSince)
-	}()
-	wg.Wait()
-
-	if recentErr != nil {
-		return nil, recentErr
+	// Fetch the 30d baseline window first and the 7d recent window second
+	// sequentially. Both queries scan the same articles/article_tags/feed_tags
+	// index and heap pages for userID; running 30d first warms shared_buffers
+	// for the 7d subset and avoids self-contending concurrent BufferIO reads.
+	baselineCounts, err := g.fetchPort.FetchTagArticleCounts(ctx, userID, baselineSince)
+	if err != nil {
+		return nil, err
 	}
-	if baselineErr != nil {
-		return nil, baselineErr
+
+	recentCounts, err := g.fetchPort.FetchTagArticleCounts(ctx, userID, recentSince)
+	if err != nil {
+		return nil, err
 	}
 
 	return filterAndSortTrendingTags(recentCounts, baselineCounts), nil
@@ -131,17 +133,17 @@ func filterAndSortTrendingTags(recentCounts, baselineCounts []knowledge_home_por
 	return trending
 }
 
-func (g *TrendingTagsGateway) getCached(userID uuid.UUID) []knowledge_home_port.TrendingTag {
+func (g *TrendingTagsGateway) getCached(userID uuid.UUID) ([]knowledge_home_port.TrendingTag, bool) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
 	entry, ok := g.cache[userID]
 	if !ok || time.Since(entry.fetchedAt) > g.cacheTTL {
-		return nil
+		return nil, false
 	}
 	result := make([]knowledge_home_port.TrendingTag, len(entry.tags))
 	copy(result, entry.tags)
-	return result
+	return result, true
 }
 
 func (g *TrendingTagsGateway) setCache(userID uuid.UUID, tags []knowledge_home_port.TrendingTag) {

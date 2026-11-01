@@ -18,6 +18,12 @@ import (
 // projectorName is the canonical projector name used for freshness checks.
 const projectorName = "knowledge-home-projector"
 
+// defaultEnrichmentTimeout bounds optional enrichments (trending tag hotspots,
+// need-to-know count, projection freshness) so a slow downstream query degrades
+// gracefully instead of blocking the entire Knowledge Home response until the
+// reverse-proxy gateway timeout.
+const defaultEnrichmentTimeout = 2 * time.Second
+
 // GetKnowledgeHomeUsecase orchestrates fetching the Knowledge Home data.
 type GetKnowledgeHomeUsecase struct {
 	homeItemsPort       knowledge_home_port.GetKnowledgeHomeItemsPort
@@ -26,6 +32,7 @@ type GetKnowledgeHomeUsecase struct {
 	freshnessPort       today_digest_port.GetProjectionFreshnessPort
 	needToKnowCountPort today_digest_port.CountNeedToKnowItemsPort
 	tagHotspotPort      knowledge_home_port.TagHotspotPort
+	enrichmentTimeout   time.Duration
 }
 
 // NewGetKnowledgeHomeUsecase creates a new GetKnowledgeHomeUsecase.
@@ -44,6 +51,7 @@ func NewGetKnowledgeHomeUsecase(
 		freshnessPort:       freshnessPort,
 		needToKnowCountPort: needToKnowCountPort,
 		tagHotspotPort:      tagHotspotPort,
+		enrichmentTimeout:   defaultEnrichmentTimeout,
 	}
 }
 
@@ -109,6 +117,13 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 		wg              sync.WaitGroup
 	)
 
+	enrichmentTimeout := u.enrichmentTimeout
+	if enrichmentTimeout <= 0 {
+		enrichmentTimeout = defaultEnrichmentTimeout
+	}
+	enrichmentCtx, cancelEnrichment := context.WithTimeout(ctx, enrichmentTimeout)
+	defer cancelEnrichment()
+
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
@@ -122,21 +137,21 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			trendingTags, trendingErr = u.tagHotspotPort.GetTrendingTags(ctx, userID)
+			trendingTags, trendingErr = u.tagHotspotPort.GetTrendingTags(enrichmentCtx, userID)
 		}()
 	}
 	if u.needToKnowCountPort != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			needToKnowCount, needToKnowErr = u.needToKnowCountPort.CountNeedToKnowItems(ctx, userID, date)
+			needToKnowCount, needToKnowErr = u.needToKnowCountPort.CountNeedToKnowItems(enrichmentCtx, userID, date)
 		}()
 	}
 	if u.freshnessPort != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			updatedAt, freshnessErr = u.freshnessPort.GetProjectionFreshness(ctx, projectorName)
+			updatedAt, freshnessErr = u.freshnessPort.GetProjectionFreshness(enrichmentCtx, projectorName)
 		}()
 	}
 	wg.Wait()

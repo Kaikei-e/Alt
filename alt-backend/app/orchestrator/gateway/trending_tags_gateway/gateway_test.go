@@ -3,11 +3,14 @@ package trending_tags_gateway
 import (
 	"alt/orchestrator/port/knowledge_home_port"
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockFetchTagCounts struct {
@@ -169,4 +172,49 @@ func TestFilterAndSortTrendingTags(t *testing.T) {
 	assert.Len(t, result, 2)
 	assert.Equal(t, "high_surge", result[0].TagName)
 	assert.Equal(t, "medium_surge", result[1].TagName)
+}
+
+type concurrencyTrackingFetchPort struct {
+	inFlight    atomic.Int32
+	maxInFlight atomic.Int32
+	totalCalls  atomic.Int32
+}
+
+func (p *concurrencyTrackingFetchPort) FetchTagArticleCounts(_ context.Context, _ uuid.UUID, _ time.Time) ([]knowledge_home_port.TagArticleCount, error) {
+	cur := p.inFlight.Add(1)
+	defer p.inFlight.Add(-1)
+	for {
+		prev := p.maxInFlight.Load()
+		if cur <= prev || p.maxInFlight.CompareAndSwap(prev, cur) {
+			break
+		}
+	}
+	p.totalCalls.Add(1)
+	time.Sleep(15 * time.Millisecond)
+	return []knowledge_home_port.TagArticleCount{
+		{TagName: "AI", ArticleCount: 10},
+	}, nil
+}
+
+func TestGetTrendingTags_NoConcurrentSelfContentionAndSingleflightDedup(t *testing.T) {
+	tracker := &concurrencyTrackingFetchPort{}
+	gw := NewTrendingTagsGateway(tracker, 30*time.Minute)
+	userID := uuid.New()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tags, err := gw.GetTrendingTags(context.Background(), userID)
+			require.NoError(t, err)
+			assert.NotEmpty(t, tags)
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, int32(1), tracker.maxInFlight.Load(),
+		"FetchTagArticleCounts must run sequentially per user to avoid concurrent buffer I/O contention on identical tag/article pages")
+	assert.Equal(t, int32(2), tracker.totalCalls.Load(),
+		"concurrent cold-cache GetTrendingTags calls for the same user must be deduplicated via singleflight into 1 baseline + 1 recent query")
 }
