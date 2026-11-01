@@ -433,4 +433,26 @@ describe("Knowledge Home open tracking and lens deletion", () => {
 
 		expect(mockToastPush).toHaveBeenCalledWith("Lens deleted.", "success");
 	});
+
+	it("starts home.fetchData in parallel with lens.fetchLenses on mount without redundant goto", async () => {
+		let resolveLenses!: () => void;
+		mockLensFetchLenses.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					resolveLenses = resolve;
+				}),
+		);
+
+		render(HomePage);
+
+		// home.fetchData must be invoked immediately without waiting for lens.fetchLenses to resolve
+		expect(mockHomeFetchData).toHaveBeenCalledWith(true, null);
+
+		resolveLenses();
+		await expect
+			.element(testPage.getByText("First Home Article"))
+			.toBeInTheDocument();
+
+		expect(goto).not.toHaveBeenCalled();
+	});
 });

@@ -159,7 +159,11 @@ async function syncLensQuery(lensId: string | null) {
 	} else {
 		url.searchParams.delete("lens");
 	}
-	await goto(`${url.pathname}${url.search}`, {
+	const nextPath = `${url.pathname}${url.search}`;
+	if (nextPath === `${page.url.pathname}${page.url.search}`) {
+		return;
+	}
+	await goto(nextPath, {
 		replace: true,
 		reset: false,
 	});
@@ -332,9 +336,12 @@ onMount(async () => {
 		});
 		exposureSessionId = crypto.randomUUID();
 
+		const urlLensId = page.url.searchParams.get("lens");
+		const homePromise = home.fetchData(true, urlLensId).then(() => {
+			syncRecallState();
+		});
 		void loadLensSources();
 		await lens.fetchLenses();
-		const urlLensId = page.url.searchParams.get("lens");
 		const initialLensId = urlLensId ?? lens.activeLensId;
 		if (urlLensId && urlLensId !== lens.activeLensId) {
 			await lens.select(urlLensId);
@@ -357,8 +364,7 @@ onMount(async () => {
 			}
 		}
 		await syncLensQuery(initialLensId);
-		await home.fetchData(true, initialLensId);
-		syncRecallState();
+		await homePromise;
 	}
 });
 </script>
