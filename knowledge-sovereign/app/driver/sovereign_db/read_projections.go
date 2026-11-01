@@ -145,15 +145,18 @@ func buildKnowledgeHomeQuery(userID uuid.UUID, cursor *homeItemCursor, filter *L
 
 	query.WriteString(`SELECT khi.user_id, khi.tenant_id, khi.item_key, khi.item_type, khi.primary_ref_id,
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
-		` + rankScoreSQL + ` AS rank_score, ` + rankAsOfExpr + ` AS rank_as_of,
+		ranked.rank_score, ranked.rank_as_of,
 		khi.freshness_at, khi.published_at, khi.last_interacted_at, khi.generated_at, khi.updated_at,
 		khi.dismissed_at, khi.summary_state, COALESCE(khi.url, '') AS url,
 		khi.supersede_state, khi.superseded_at, khi.previous_ref_json, khi.projection_version
-		FROM knowledge_home_items khi
-		WHERE khi.user_id = $1
-		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
-		  AND khi.dismissed_at IS NULL
-		  AND COALESCE(khi.title, '') <> ''`)
+		FROM (
+			SELECT khi.user_id, khi.item_key, khi.projection_version, khi.published_at,
+				` + rankScoreSQL + ` AS rank_score, ` + rankAsOfExpr + ` AS rank_as_of
+			FROM knowledge_home_items khi
+			WHERE khi.user_id = $1
+			  AND khi.projection_version = ` + activeProjectionVersionSQL + `
+			  AND khi.dismissed_at IS NULL
+			  AND COALESCE(khi.title, '') <> ''`)
 
 	filterSQL, filterArgs, nextArgPos := buildKnowledgeHomeFilterClauses(filter, cutoff, argPos)
 	if filterSQL != "" {
@@ -170,7 +173,13 @@ func buildKnowledgeHomeQuery(userID uuid.UUID, cursor *homeItemCursor, filter *L
 	}
 
 	fmt.Fprintf(&query,
-		` ORDER BY rank_score DESC, COALESCE(khi.published_at, '-infinity') DESC, khi.item_key DESC LIMIT $%d`, argPos)
+		` ORDER BY rank_score DESC, COALESCE(khi.published_at, '-infinity') DESC, khi.item_key DESC LIMIT $%d
+		) ranked
+		JOIN knowledge_home_items khi
+		  ON khi.user_id = ranked.user_id
+		 AND khi.item_key = ranked.item_key
+		 AND khi.projection_version = ranked.projection_version
+		ORDER BY ranked.rank_score DESC, COALESCE(khi.published_at, '-infinity') DESC, khi.item_key DESC LIMIT $%d`, argPos, argPos)
 	args = append(args, fetchLimit)
 
 	return query.String(), args

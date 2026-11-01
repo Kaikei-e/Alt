@@ -189,6 +189,40 @@ func TestGetKnowledgeHomeItems_PreservesAllRowsForRankedPagination(t *testing.T)
 		"GetKnowledgeHomeItems must not cap candidate branches before ranking and keyset pagination")
 }
 
+// TestGetKnowledgeHomeItems_UsesLateMaterializationForIndexOnlyRanking pins
+// that GetKnowledgeHomeItems ranks and limits over narrow covering-index
+// columns in an inner derived table (`ranked`) before joining back to
+// knowledge_home_items by primary key to materialize wide payload columns
+// (summary_excerpt, why_json, tags_json, previous_ref_json) for only the page
+// winners. Without late materialization, Postgres must fetch all 22 columns
+// (width ~1470B, 379MB heap) for every eligible row before the top-N Sort,
+// preventing Index-Only Scan and triggering BAS_BULKREAD disk reads.
+func TestGetKnowledgeHomeItems_UsesLateMaterializationForIndexOnlyRanking(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	_, _, _, err := repo.GetKnowledgeHomeItems(context.Background(), uuid.New(), "", 10, nil)
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1)
+	sql := mock.queryCalls[0].SQL
+
+	innerStart := strings.Index(sql, "FROM (")
+	require.NotEqual(t, -1, innerStart, "expected inner derived table for late materialization")
+	innerEnd := strings.Index(sql[innerStart:], ") ranked")
+	require.NotEqual(t, -1, innerEnd, "expected `) ranked` alias on inner ranking subquery")
+
+	innerSQL := sql[innerStart : innerStart+innerEnd]
+	innerSelect, _, found := strings.Cut(innerSQL, "FROM knowledge_home_items khi")
+	require.True(t, found, "inner subquery must read FROM knowledge_home_items khi")
+
+	assert.NotContains(t, innerSelect, "summary_excerpt",
+		"inner ranking SELECT must not project wide heap columns that defeat Index-Only Scan")
+	assert.NotContains(t, innerSelect, "why_json",
+		"inner ranking SELECT must not project why_json")
+	assert.Contains(t, sql[innerStart+innerEnd:], "JOIN knowledge_home_items khi",
+		"outer query must join knowledge_home_items by primary key to materialize winning rows")
+}
+
 func TestListDistinctUserIDs_FiltersActiveVersionAndExcludesNilUUID(t *testing.T) {
 	mock := &mockPgx{}
 	repo := &Repository{pool: mock}
