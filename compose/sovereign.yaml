@@ -17,8 +17,24 @@ x-pki-cert-volume-chown: &pki-cert-volume-chown
 services:
   knowledge-sovereign-db:
     image: postgres:16.15-alpine
+    user: postgres
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 1g
+    shm_size: "512m"
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "effective_cache_size=768MB"
+      - "-c"
+      - "max_parallel_workers_per_gather=0"
+      - "-c"
+      - "max_parallel_workers=0"
+      - "-c"
+      - "jit=off"
     environment:
       - POSTGRES_DB=knowledge_sovereign
       - POSTGRES_USER=sovereign

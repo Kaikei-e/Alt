@@ -8,6 +8,7 @@ services:
   db:
     image: postgres:17.11-alpine
     container_name: alt-db
+    user: postgres
     restart: always
     mem_limit: 768m
     shm_size: "256m"
