@@ -73,7 +73,7 @@ func TestFeedRepository_RegisterMultipleFeedsWithState_ReturnsFeedIDs(t *testing
 			batch := mock.ExpectBatch()
 			for i, row := range tt.returned {
 				feed := tt.feeds[i]
-				batch.ExpectQuery(`INSERT INTO feeds[\s\S]*WHERE feeds\.feed_link_id IS NULL OR feeds\.feed_link_id = EXCLUDED\.feed_link_id`).
+				batch.ExpectQuery(`INSERT INTO feeds[\s\S]*CASE[\s\S]*WHEN feeds\.feed_link_id IS NULL OR feeds\.feed_link_id = EXCLUDED\.feed_link_id[\s\S]*ELSE feeds\.og_image_url\s*END\s*RETURNING id, \(xmax = 0\) AS created`).
 					WithArgs(feed.Title, feed.Description, feed.WebsiteURL, feed.PubDate,
 						feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID, feed.OgImageURL).
 					WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow(row.feedID, row.created))

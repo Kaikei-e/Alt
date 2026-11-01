@@ -77,18 +77,34 @@ func (r *FeedRepository) RegisterMultipleFeedsWithState(ctx context.Context, fee
 
 	// Batch UPSERT: eliminates N+1 SELECT→INSERT/UPDATE pattern
 	// COALESCE preserves existing og_image_url/feed_link_id if already set
-	// RETURNING id: returns the id for both INSERT and ON CONFLICT UPDATE cases
+	// CASE WHEN guards existing rows from being overwritten when the same
+	// website_url appears under a different feed_link_id, while keeping
+	// RETURNING id non-empty for every item in the batch.
 	const upsertQuery = `
 		INSERT INTO feeds (title, description, website_url, pub_date, created_at, updated_at, feed_link_id, og_image_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (website_url) DO UPDATE SET
-			title = EXCLUDED.title,
-			description = EXCLUDED.description,
-			pub_date = EXCLUDED.pub_date,
-			updated_at = EXCLUDED.updated_at,
+			title = CASE
+				WHEN feeds.feed_link_id IS NULL OR feeds.feed_link_id = EXCLUDED.feed_link_id THEN EXCLUDED.title
+				ELSE feeds.title
+			END,
+			description = CASE
+				WHEN feeds.feed_link_id IS NULL OR feeds.feed_link_id = EXCLUDED.feed_link_id THEN EXCLUDED.description
+				ELSE feeds.description
+			END,
+			pub_date = CASE
+				WHEN feeds.feed_link_id IS NULL OR feeds.feed_link_id = EXCLUDED.feed_link_id THEN EXCLUDED.pub_date
+				ELSE feeds.pub_date
+			END,
+			updated_at = CASE
+				WHEN feeds.feed_link_id IS NULL OR feeds.feed_link_id = EXCLUDED.feed_link_id THEN EXCLUDED.updated_at
+				ELSE feeds.updated_at
+			END,
 			feed_link_id = COALESCE(feeds.feed_link_id, EXCLUDED.feed_link_id),
-			og_image_url = COALESCE(EXCLUDED.og_image_url, feeds.og_image_url)
-		WHERE feeds.feed_link_id IS NULL OR feeds.feed_link_id = EXCLUDED.feed_link_id
+			og_image_url = CASE
+				WHEN feeds.feed_link_id IS NULL OR feeds.feed_link_id = EXCLUDED.feed_link_id THEN COALESCE(EXCLUDED.og_image_url, feeds.og_image_url)
+				ELSE feeds.og_image_url
+			END
 		RETURNING id, (xmax = 0) AS created
 	`
 
