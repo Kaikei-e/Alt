@@ -30,6 +30,10 @@ Baseline health audit of a 28-service microservice platform combining Prometheus
 
 Latency breakdown and phase analysis of streaming RAG responses (TTFB, retrieval, query expansion, LLM generation) based on log reconciliation.
 
+### 7. [Knowledge Home Performance Tuning](knowledge-home-performance-tuning-20261101.md)
+
+End-to-end performance tuning of the Knowledge Home screen (`/home`) driven by ClickHouse OpenTelemetry traces, structured logs, `pg_stat_activity`, and PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)`. Covers late materialization with covering indexes, table bloat compaction, singleflight/sequential cache warming for trending tags, bounded optional-enrichment timeouts, and parallel RPC/frontend waterfall elimination — reducing cold-cache latency from 30.0s to 60.3ms and warm-cache latency from ~0.8–1.1s to 51.6ms.
+
 ## Tech Stack
 
 - **Load Testing**: k6
