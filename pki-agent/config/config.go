@@ -156,7 +156,7 @@ func (c *Config) validate() error {
 // used. Otherwise the env value or fallback.
 func getEnv(key, fallback string) string {
 	if fileRef := os.Getenv(key + "_FILE"); fileRef != "" {
-		if b, err := os.ReadFile(fileRef); err == nil {
+		if b, err := os.ReadFile(fileRef); err == nil { // #nosec G304 G703 -- fileRef comes from trusted *_FILE env var for Docker Secrets
 			return strings.TrimSpace(string(b))
 		}
 	}

@@ -40,7 +40,7 @@ func probeMetrics(addr string) error {
 	}
 	url := "http://" + addr + "/healthz"
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := client.Get(url) // #nosec G107 G704 -- healthcheck probes local metrics listener configured via METRICS_ADDR
 	if err != nil {
 		return fmt.Errorf("metrics /healthz: %w", err)
 	}
@@ -56,7 +56,7 @@ func probeProxy(listen string) error {
 	if addr[0] == ':' {
 		addr = "127.0.0.1" + addr
 	}
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second) // #nosec G704 -- healthcheck dials local proxy listener configured via PROXY_LISTEN
 	if err != nil {
 		return fmt.Errorf("proxy listener %s: %w", addr, err)
 	}
