@@ -132,8 +132,10 @@ testcontainers = "0.27"
 temp-env = { version = "0.3", features = ["async_closure"] }
 tempfile = "3.27"
 time = { version = "0.3", features = ["std"] }
-pact_consumer = "1.4"
-pact_models = "1.3"
+# default-features pulls in `plugins` -> `pact-plugin-driver` (`mlua`, `tonic`,
+# `zip`). Contract tests here are HTTP/JSON V4 and only need `datetime`.
+pact_consumer = { version = "1.4.11", default-features = false, features = ["datetime"] }
+pact_models = "1.3.17"
 unicode-width = "0.2"
 prost = "0.14"
 opentelemetry-proto = { version = "0.32", features = ["gen-tonic-messages"] }
@@ -210,3 +212,9 @@ explicit_iter_loop = "allow"
 double_must_use = "allow"
 # `assert!(x.is_empty())` / `assert!(!x.is_empty())` is clearer than `assert_eq!(x, [] as [T; 0])`
 assert_is_empty = "allow"
+
+# Upstream pact-plugin-driver 1.2.7 (unreleased on crates.io; 1.2.6 still pins
+# yanked zip 8.6.0) bumps zip to 9.x, eliminating zip 8.6.0 from Cargo.lock
+# (CVE-2026-115907 / CVE-2026-115908 / CVE-2026-115909).
+[patch.crates-io]
+pact-plugin-driver = { git = "https://github.com/pact-foundation/pact-plugins", rev = "7a290b6b165b839abf897f77fad9cce31db728c0" }

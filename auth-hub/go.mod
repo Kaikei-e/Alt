@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/labstack/echo/v4 v4.16.1
+	github.com/labstack/echo/v4 v4.16.3
 	github.com/ory/kratos-client-go v1.3.8
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.12.1

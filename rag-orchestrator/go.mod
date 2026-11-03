@@ -11,7 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/labstack/echo/v4 v4.16.1
+	github.com/labstack/echo/v4 v4.16.3
 	github.com/pact-foundation/pact-go/v2 v2.5.1
 	github.com/pgvector/pgvector-go v0.4.0
 	github.com/pgvector/pgvector-go/pgx v0.4.0

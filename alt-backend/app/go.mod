@@ -11,7 +11,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/labstack/echo/v4 v4.16.1
+	github.com/labstack/echo/v4 v4.16.3
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mmcdole/gofeed v1.4.0
 	github.com/moby/moby/api v1.55.0
