@@ -451,7 +451,7 @@ func ResolveAPIAuth() (APIAuthConfig, error) {
 	}
 
 	if path := strings.TrimSpace(os.Getenv("RAG_API_TOKEN_FILE")); path != "" {
-		data, err := os.ReadFile(path) // #nosec G304 -- path is operator-configured secret path from RAG_API_TOKEN_FILE
+		data, err := os.ReadFile(path) // #nosec G304 G703 -- path is operator-configured secret path from RAG_API_TOKEN_FILE
 		if err != nil {
 			return APIAuthConfig{}, fmt.Errorf("read RAG_API_TOKEN_FILE %s: %w", path, err)
 		}

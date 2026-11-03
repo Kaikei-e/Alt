@@ -31,7 +31,7 @@ func performHealthCheck() {
 		Timeout: 5 * time.Second,
 	}
 
-	resp, err := client.Get(urlParsed.String())
+	resp, err := client.Get(urlParsed.String()) // #nosec G107 G704 -- health check targets fixed localhost endpoint
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "health check failed: %v\n", err)
 		os.Exit(1)
