@@ -103,10 +103,13 @@ smallvec = "1.15"
 regex = "1.12"
 aho-corasick = "1.1"
 fst = "0.4"
-# default-features (remote + default-tls) pull cached-path → reqwest 0.11 →
-# h2 0.3.27 (RUSTSEC-2026-0258) and native-tls. Runtime load is
-# SentenceEmbeddingsBuilder::local only; keep those features off.
-rust-bert = { version = "0.23.0", default-features = false }
+# Pure-Rust BERT sentence-embeddings runtime (all-MiniLM-L12-v2) via Hugging Face
+# candle + tokenizers. Replaces unmaintained rust-bert 0.23 / tch 0.17 /
+# rust_tokenizers 8.1 (eliminating libtorch C++, zip 0.6.6 CVE-2026-115905 /
+# CVE-2026-115906, and protobuf 2.28.0 CVE-2025-53605).
+candle-core = "0.11.1"
+candle-nn = "0.11.1"
+candle-transformers = "0.11.1"
 console = "0.16"
 ndarray = { version = "0.17", features = ["serde", "rayon"] }
 petgraph = "0.8"

@@ -474,8 +474,8 @@ jobs:
           print('smoke OK', torch.__version__, sentence_transformers.__version__)
           "
           elif [ "$SERVICE" = "recap-worker" ]; then
-            # Rust binary: Python インタプリタは同梱しないので ldd で動的リンク解決を確認。
-            # libtorch_cpu / libc10 / libgomp が必須 (libtorch prune で欠落していないこと)。
+            # Rust binary (pure-Rust candle + tokenizers): ldd で未解決共有ライブラリが
+            # 無いことを確認し、ネットワーク隔離下で baked モデルの warmup 検証を実行する。
             docker run $RUN_OPTS --entrypoint=/bin/sh "$IMAGE_TAG" -c '
               set -e
               LDD_OUT=$(ldd /usr/local/bin/recap-worker)
@@ -484,9 +484,7 @@ jobs:
                 echo "::error::recap-worker has unresolved shared libraries"
                 exit 1
               fi
-              echo "$LDD_OUT" | grep -q libtorch_cpu.so || { echo "::error::libtorch_cpu.so missing"; exit 1; }
-              echo "$LDD_OUT" | grep -q libc10.so       || { echo "::error::libc10.so missing"; exit 1; }
-              echo "$LDD_OUT" | grep -q libgomp         || { echo "::error::libgomp missing"; exit 1; }
+              /usr/local/bin/recap-worker warmup
               echo "smoke OK recap-worker"
             '
           elif [ "$SERVICE" = "tts-speaker" ]; then

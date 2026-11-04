@@ -3,24 +3,28 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use candle_core::{Device, Tensor};
+use candle_nn::VarBuilder;
+use candle_transformers::models::bert::{BertModel, Config as BertConfig, DTYPE};
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use rust_bert::RustBertError;
-use rust_bert::pipelines::sentence_embeddings::{
-    SentenceEmbeddingsBuilder, SentenceEmbeddingsModel,
+use serde::Deserialize;
+use tokenizers::models::wordpiece::WordPiece;
+use tokenizers::normalizers::bert::BertNormalizer;
+use tokenizers::pre_tokenizers::bert::BertPreTokenizer;
+use tokenizers::processors::bert::BertProcessing;
+use tokenizers::{
+    Model, PaddingParams, PaddingStrategy, Tokenizer, TruncationParams, TruncationStrategy,
 };
-use tokio::sync::Mutex;
 use tracing::warn;
 
 /// Where the image bakes the sentence-transformers model directory.
 const DEFAULT_MODEL_DIR: &str = "/opt/rustbert-models/all-MiniLM-L12-v2";
 
-/// The files `SentenceEmbeddingsBuilder::local` reads for a BERT
+/// The files `EmbeddingService::from_dir` reads for a BERT
 /// sentence-transformers model.
 ///
-/// rust-bert opens the JSON configs through `Config::from_file`, which
-/// `expect`s the open to succeed — a missing file is a panic, and with
-/// `panic = "abort"` that is process death with no named cause. Listing the
-/// files lets a mis-built image fail with a message that says which one.
+/// Listing the files lets a mis-built image fail at startup with an explicit
+/// error naming every missing artifact (`1_Pooling/config.json`, etc.).
 pub(crate) const REQUIRED_MODEL_FILES: &[&str] = &[
     "modules.json",
     "config.json",
@@ -50,13 +54,13 @@ pub trait Embedder: Send + Sync + std::fmt::Debug {
     async fn encode(&self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
 }
 
-/// Whether the rust-bert embedding service is a hard requirement at startup.
+/// Whether the sentence-embedding service is a hard requirement at startup.
 ///
 /// `Required` mirrors the Settings-validator fail-closed pattern established in
 /// ADR-000825 (recap-subworker joblib artefacts): the runtime must refuse to
 /// start when the embedding model cannot initialize. The alternative — `Optional`
 /// — keeps the pre-existing degraded keyword-only behaviour for dev/test stacks
-/// that do not have a rust-bert cache populated.
+/// that do not have a local model directory populated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingAvailability {
     Required,
@@ -83,17 +87,301 @@ pub fn require_or_degrade<T, E>(
     }
 }
 
-/// Embedding generation service using rust-bert.
+const fn default_max_seq_length() -> usize {
+    128
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+fn default_unk_token() -> String {
+    "[UNK]".to_string()
+}
+
+fn default_sep_token() -> String {
+    "[SEP]".to_string()
+}
+
+fn default_pad_token() -> String {
+    "[PAD]".to_string()
+}
+
+fn default_cls_token() -> String {
+    "[CLS]".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+struct SentenceBertConfig {
+    #[serde(default = "default_max_seq_length")]
+    max_seq_length: usize,
+    #[serde(default)]
+    do_lower_case: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenizerConfigFile {
+    do_lower_case: Option<bool>,
+    strip_accents: Option<bool>,
+    #[serde(default = "default_true")]
+    tokenize_chinese_chars: bool,
+    #[serde(default = "default_unk_token")]
+    unk_token: String,
+    #[serde(default = "default_sep_token")]
+    sep_token: String,
+    #[serde(default = "default_pad_token")]
+    pad_token: String,
+    #[serde(default = "default_cls_token")]
+    cls_token: String,
+}
+
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Deserialize)]
+struct PoolingConfig {
+    #[serde(default)]
+    pooling_mode_cls_token: bool,
+    #[serde(default = "default_true")]
+    pooling_mode_mean_tokens: bool,
+    #[serde(default)]
+    pooling_mode_max_tokens: bool,
+    #[serde(default)]
+    pooling_mode_mean_sqrt_len_tokens: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModuleConfigEntry {
+    #[serde(rename = "type")]
+    module_type: String,
+}
+
+struct SentenceEmbeddingsRunner {
+    bert: BertModel,
+    tokenizer: Tokenizer,
+    pooling: PoolingConfig,
+    normalize_embeddings: bool,
+    device: Device,
+}
+
+impl SentenceEmbeddingsRunner {
+    fn from_dir(dir: &Path) -> Result<Self> {
+        let config_bytes = std::fs::read(dir.join("config.json"))
+            .with_context(|| format!("failed to read {}/config.json", dir.display()))?;
+        let bert_config: BertConfig = serde_json::from_slice(&config_bytes)
+            .with_context(|| format!("failed to parse {}/config.json", dir.display()))?;
+
+        let sbert_bytes =
+            std::fs::read(dir.join("sentence_bert_config.json")).with_context(|| {
+                format!("failed to read {}/sentence_bert_config.json", dir.display())
+            })?;
+        let sbert_config: SentenceBertConfig =
+            serde_json::from_slice(&sbert_bytes).with_context(|| {
+                format!(
+                    "failed to parse {}/sentence_bert_config.json",
+                    dir.display()
+                )
+            })?;
+
+        let tok_cfg_bytes = std::fs::read(dir.join("tokenizer_config.json"))
+            .with_context(|| format!("failed to read {}/tokenizer_config.json", dir.display()))?;
+        let tok_config: TokenizerConfigFile = serde_json::from_slice(&tok_cfg_bytes)
+            .with_context(|| format!("failed to parse {}/tokenizer_config.json", dir.display()))?;
+
+        let pooling_bytes = std::fs::read(dir.join("1_Pooling/config.json"))
+            .with_context(|| format!("failed to read {}/1_Pooling/config.json", dir.display()))?;
+        let pooling: PoolingConfig = serde_json::from_slice(&pooling_bytes)
+            .with_context(|| format!("failed to parse {}/1_Pooling/config.json", dir.display()))?;
+
+        let modules_bytes = std::fs::read(dir.join("modules.json"))
+            .with_context(|| format!("failed to read {}/modules.json", dir.display()))?;
+        let modules: Vec<ModuleConfigEntry> = serde_json::from_slice(&modules_bytes)
+            .with_context(|| format!("failed to parse {}/modules.json", dir.display()))?;
+        let normalize_embeddings = modules
+            .iter()
+            .any(|m| m.module_type == "sentence_transformers.models.Normalize");
+
+        let vocab_path = dir.join("vocab.txt");
+        let vocab_path_str = vocab_path
+            .to_str()
+            .with_context(|| format!("non-UTF-8 vocab path: {}", vocab_path.display()))?;
+        let wordpiece = WordPiece::from_file(vocab_path_str)
+            .unk_token(tok_config.unk_token.clone())
+            .build()
+            .map_err(|e| anyhow::anyhow!("failed to load {}: {e}", vocab_path.display()))?;
+
+        let cls_id = wordpiece
+            .token_to_id(&tok_config.cls_token)
+            .with_context(|| format!("missing cls_token {} in vocab.txt", tok_config.cls_token))?;
+        let sep_id = wordpiece
+            .token_to_id(&tok_config.sep_token)
+            .with_context(|| format!("missing sep_token {} in vocab.txt", tok_config.sep_token))?;
+        let pad_id = wordpiece
+            .token_to_id(&tok_config.pad_token)
+            .with_context(|| format!("missing pad_token {} in vocab.txt", tok_config.pad_token))?;
+
+        let do_lower_case = tok_config
+            .do_lower_case
+            .unwrap_or(sbert_config.do_lower_case);
+        let normalizer = BertNormalizer::new(
+            true,
+            tok_config.tokenize_chinese_chars,
+            tok_config.strip_accents,
+            do_lower_case,
+        );
+        let post_processor = BertProcessing::new(
+            (tok_config.sep_token, sep_id),
+            (tok_config.cls_token, cls_id),
+        );
+
+        let mut tokenizer = Tokenizer::new(wordpiece);
+        tokenizer
+            .with_normalizer(Some(normalizer))
+            .map_err(|e| anyhow::anyhow!("failed to configure BERT normalizer: {e}"))?;
+        tokenizer.with_pre_tokenizer(Some(BertPreTokenizer));
+        tokenizer.with_post_processor(Some(post_processor));
+        tokenizer
+            .with_truncation(Some(TruncationParams {
+                max_length: sbert_config.max_seq_length,
+                strategy: TruncationStrategy::LongestFirst,
+                ..Default::default()
+            }))
+            .map_err(|e| anyhow::anyhow!("failed to configure BERT truncation: {e}"))?;
+        tokenizer.with_padding(Some(PaddingParams {
+            strategy: PaddingStrategy::BatchLongest,
+            pad_id,
+            pad_token: tok_config.pad_token,
+            ..Default::default()
+        }));
+
+        let device = Device::Cpu;
+        let safetensors_path = dir.join("model.safetensors");
+        let ot_path = dir.join("rust_model.ot");
+        let vb = if safetensors_path.is_file() {
+            let data = std::fs::read(&safetensors_path)
+                .with_context(|| format!("failed to read {}", safetensors_path.display()))?;
+            VarBuilder::from_buffered_safetensors(data, DTYPE, &device)?
+        } else {
+            // `rust_model.ot` stores TorchScript module parameter keys delimited by `|`
+            // (e.g., `embeddings|word_embeddings|weight`).
+            VarBuilder::from_pth(&ot_path, DTYPE, &device)
+                .with_context(|| format!("failed to load {}", ot_path.display()))?
+                .rename_f(|name: &str| name.replace('.', "|"))
+        };
+
+        let bert = BertModel::load(vb, &bert_config)
+            .with_context(|| format!("failed to build BertModel from {}", dir.display()))?;
+
+        Ok(Self {
+            bert,
+            tokenizer,
+            pooling,
+            normalize_embeddings,
+            device,
+        })
+    }
+
+    fn encode(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            anyhow::bail!("cannot encode an empty text batch");
+        }
+
+        let encodings = self
+            .tokenizer
+            .encode_batch(texts.to_vec(), true)
+            .map_err(|e| anyhow::anyhow!("tokenizer encode_batch failed: {e}"))?;
+
+        let batch_size = encodings.len();
+        let seq_len = encodings.first().map_or(0, |e| e.get_ids().len());
+        if seq_len == 0 {
+            anyhow::bail!("tokenized sequence length is zero");
+        }
+
+        let mut token_ids = Vec::with_capacity(batch_size * seq_len);
+        let mut token_type_ids = Vec::with_capacity(batch_size * seq_len);
+        let mut attention_mask = Vec::with_capacity(batch_size * seq_len);
+        for encoding in &encodings {
+            token_ids.extend_from_slice(encoding.get_ids());
+            token_type_ids.extend_from_slice(encoding.get_type_ids());
+            attention_mask.extend_from_slice(encoding.get_attention_mask());
+        }
+
+        let input_ids = Tensor::from_vec(token_ids, (batch_size, seq_len), &self.device)?;
+        let token_type_ids = Tensor::from_vec(token_type_ids, (batch_size, seq_len), &self.device)?;
+        let attention_mask_u32 =
+            Tensor::from_vec(attention_mask, (batch_size, seq_len), &self.device)?;
+
+        let token_embeddings =
+            self.bert
+                .forward(&input_ids, &token_type_ids, Some(&attention_mask_u32))?;
+
+        let pooled = self.pool(&token_embeddings, &attention_mask_u32)?;
+        let output = if self.normalize_embeddings {
+            let norm = pooled
+                .sqr()?
+                .sum_keepdim(1)?
+                .sqrt()?
+                .clamp(1e-12, f64::INFINITY)?;
+            pooled.broadcast_div(&norm)?
+        } else {
+            pooled
+        };
+
+        Ok(output.to_vec2::<f32>()?)
+    }
+
+    fn pool(&self, token_embeddings: &Tensor, attention_mask_u32: &Tensor) -> Result<Tensor> {
+        let mut output_vectors = Vec::new();
+
+        if self.pooling.pooling_mode_cls_token {
+            let cls_token = token_embeddings.narrow(1, 0, 1)?.squeeze(1)?;
+            output_vectors.push(cls_token);
+        }
+
+        if self.pooling.pooling_mode_max_tokens {
+            let mask_f32 = attention_mask_u32
+                .to_dtype(DTYPE)?
+                .unsqueeze(2)?
+                .broadcast_as(token_embeddings.shape())?;
+            let inv_mask = (mask_f32.ones_like()? - &mask_f32)?;
+            let penalty = (&inv_mask * (-1e9_f64))?;
+            let masked = ((token_embeddings * &mask_f32)? + penalty)?;
+            output_vectors.push(masked.max(1)?);
+        }
+
+        if self.pooling.pooling_mode_mean_tokens || self.pooling.pooling_mode_mean_sqrt_len_tokens {
+            let mask_f32 = attention_mask_u32
+                .to_dtype(DTYPE)?
+                .unsqueeze(2)?
+                .broadcast_as(token_embeddings.shape())?;
+            let sum_embeddings = (token_embeddings * &mask_f32)?.sum(1)?;
+            let sum_mask = mask_f32.sum(1)?.clamp(1e-8, f64::INFINITY)?;
+
+            if self.pooling.pooling_mode_mean_tokens {
+                output_vectors.push(sum_embeddings.broadcast_div(&sum_mask)?);
+            }
+            if self.pooling.pooling_mode_mean_sqrt_len_tokens {
+                output_vectors.push(sum_embeddings.broadcast_div(&sum_mask.sqrt()?)?);
+            }
+        }
+
+        match output_vectors.len() {
+            0 => anyhow::bail!("no pooling mode enabled in 1_Pooling/config.json"),
+            1 => Ok(output_vectors.remove(0)),
+            _ => Ok(Tensor::cat(&output_vectors, 1)?),
+        }
+    }
+}
+
+/// Embedding generation service using pure-Rust `candle` + `tokenizers`.
 /// This runs on CPU.
 #[derive(Clone)]
 pub struct EmbeddingService {
-    model: Arc<Mutex<SentenceEmbeddingsModel>>,
+    model: Arc<SentenceEmbeddingsRunner>,
 }
 
 impl std::fmt::Debug for EmbeddingService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EmbeddingService")
-            .field("model", &"<SentenceEmbeddingsModel>")
+            .field("model", &"<SentenceEmbeddingsRunner>")
             .finish()
     }
 }
@@ -104,20 +392,13 @@ impl EmbeddingService {
     /// Blocking and CPU-heavy (~130 MB of weights) — call it from
     /// `spawn_blocking`, never directly on an async worker.
     ///
-    /// Loads through `SentenceEmbeddingsBuilder::local` rather than `::remote`.
-    /// The remote builder resolves each file through `cached_path`, which
-    /// records no expiry for cached entries and therefore treats every entry as
-    /// stale: it issues an HTTP HEAD to huggingface.co on *every* start, warm
-    /// cache or not, using a client built with no read timeout. One HEAD that
-    /// connected and then went silent left this process wedged for 16 hours
-    /// before it ever bound its listener. `local` reads straight from disk and
-    /// cannot reach the network.
+    /// Reads straight from local disk and cannot reach the network.
     pub fn new() -> Result<Self> {
         Self::from_dir(&configured_model_dir())
     }
 
     /// Load the model from an explicit directory. Fails with the names of any
-    /// missing files rather than letting rust-bert panic on the first one.
+    /// missing files rather than panicking on the first missing artifact.
     pub(crate) fn from_dir(dir: &Path) -> Result<Self> {
         let missing = missing_model_files(dir);
         if !missing.is_empty() {
@@ -128,17 +409,15 @@ impl EmbeddingService {
             );
         }
 
-        let model = SentenceEmbeddingsBuilder::local(dir)
-            .create_model()
-            .with_context(|| {
-                format!(
-                    "failed to load sentence-embeddings model from {}",
-                    dir.display()
-                )
-            })?;
+        let runner = SentenceEmbeddingsRunner::from_dir(dir).with_context(|| {
+            format!(
+                "failed to load sentence-embeddings model from {}",
+                dir.display()
+            )
+        })?;
 
         Ok(Self {
-            model: Arc::new(Mutex::new(model)),
+            model: Arc::new(runner),
         })
     }
 
@@ -185,12 +464,9 @@ impl EmbeddingService {
         let texts_clone = texts.to_vec();
 
         // Offload to blocking thread
-        let batch_result = tokio::task::spawn_blocking(move || {
-            let model = model.blocking_lock();
-            model.encode(&texts_clone)
-        })
-        .await
-        .context("embedding task panicked or was cancelled")?;
+        let batch_result = tokio::task::spawn_blocking(move || model.encode(&texts_clone))
+            .await
+            .context("embedding task panicked or was cancelled")?;
 
         Self::resolve_batch_result(batch_result, texts)
     }
@@ -198,16 +474,21 @@ impl EmbeddingService {
     /// Turn a raw model-encode outcome into the batch's embeddings.
     ///
     /// Extracted from `encode` so the failure-propagation behaviour is
-    /// testable without spinning up the real rust-bert model. A per-text
+    /// testable without spinning up the real model. A per-text
     /// zero-norm output still gets an individual deterministic repair (a
     /// narrow numerical-stability guard on an otherwise-successful batch,
     /// not a blanket "pretend the model worked" fallback for the whole
     /// request).
-    fn resolve_batch_result(
-        batch_result: std::result::Result<Vec<Vec<f32>>, RustBertError>,
+    fn resolve_batch_result<E>(
+        batch_result: std::result::Result<Vec<Vec<f32>>, E>,
         texts: &[String],
-    ) -> Result<Vec<Vec<f32>>> {
-        let embeddings = batch_result.context("embedding model failed to encode batch")?;
+    ) -> Result<Vec<Vec<f32>>>
+    where
+        E: Into<anyhow::Error>,
+    {
+        let embeddings = batch_result
+            .map_err(Into::into)
+            .context("embedding model failed to encode batch")?;
 
         let mut valid_embeddings = Vec::with_capacity(embeddings.len());
         let mut fallback_count = 0;
@@ -261,8 +542,6 @@ mod tests {
         EmbeddingAvailability, EmbeddingService, REQUIRED_MODEL_FILES, missing_model_files,
         require_or_degrade,
     };
-    use rust_bert::RustBertError;
-    use rust_bert::pipelines::sentence_embeddings::SentenceEmbeddingsBuilder;
 
     fn populate(dir: &std::path::Path, files: &[&str]) {
         for rel in files {
@@ -288,9 +567,8 @@ mod tests {
     }
 
     /// `1_Pooling/config.json` sits in a subdirectory, so a flat wildcard copy
-    /// in the image build misses it while every other file lands. rust-bert
-    /// would then panic inside `Config::from_file` instead of returning an
-    /// error, so the pre-flight check has to name it.
+    /// in the image build misses it while every other file lands. The
+    /// pre-flight check has to name it explicitly.
     #[test]
     fn missing_model_files_names_the_nested_pooling_config() {
         let dir = tempfile::tempdir().unwrap();
@@ -318,15 +596,7 @@ mod tests {
         assert!(message.contains("1_Pooling/config.json"), "got: {message}");
     }
 
-    /// rust-bert `default-features = false` drops `remote`/`cached-path`.
-    /// `SentenceEmbeddingsBuilder::local` must remain on the link line.
-    #[test]
-    fn sentence_embeddings_builder_local_is_linked() {
-        let dir = tempfile::tempdir().unwrap();
-        let _builder = SentenceEmbeddingsBuilder::local(dir.path());
-    }
-
-    /// Real AllMiniLM load + 384-d encode when a baked `::local` directory is
+    /// Real AllMiniLM load + 384-d encode when a baked local directory is
     /// supplied. Skips when the dir is absent so `cargo test` stays hermetic.
     #[test]
     fn local_all_minilm_encodes_384_when_model_dir_present() {
@@ -335,7 +605,7 @@ mod tests {
             _ => {
                 eprintln!(
                     "skipping: set RECAP_WORKER_EMBEDDING_MODEL_DIR to a complete \
-                     SentenceEmbeddingsBuilder::local AllMiniLM directory"
+                     AllMiniLM directory"
                 );
                 return;
             }
@@ -357,7 +627,10 @@ mod tests {
         assert_eq!(vectors.len(), 1);
         assert_eq!(vectors[0].len(), 384, "AllMiniLmL12V2 must be 384-d");
         let norm: f32 = vectors[0].iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!(norm > 1e-3, "embedding must be non-zero, norm={norm}");
+        assert!(
+            (norm - 1.0).abs() < 1e-3,
+            "normalized embedding must have unit norm, got norm={norm}"
+        );
     }
 
     /// PM-2026-038 regression: a model failure must surface as `Err`, never
@@ -367,8 +640,8 @@ mod tests {
     #[test]
     fn resolve_batch_result_propagates_model_failure_as_err() {
         let texts = vec!["a".to_string(), "b".to_string()];
-        let outcome: std::result::Result<Vec<Vec<f32>>, RustBertError> =
-            Err(RustBertError::ValueError("model unavailable".to_string()));
+        let outcome: std::result::Result<Vec<Vec<f32>>, anyhow::Error> =
+            Err(anyhow::anyhow!("model unavailable"));
 
         let result = EmbeddingService::resolve_batch_result(outcome, &texts);
 
@@ -381,7 +654,7 @@ mod tests {
     #[test]
     fn resolve_batch_result_passes_through_healthy_embeddings() {
         let texts = vec!["a".to_string()];
-        let outcome: std::result::Result<Vec<Vec<f32>>, RustBertError> = Ok(vec![vec![1.0, 0.0]]);
+        let outcome: std::result::Result<Vec<Vec<f32>>, anyhow::Error> = Ok(vec![vec![1.0, 0.0]]);
 
         let result = EmbeddingService::resolve_batch_result(outcome, &texts).unwrap();
 
@@ -394,7 +667,7 @@ mod tests {
         // First row is a legitimate embedding; second is the zero vector a
         // model can emit for degenerate input. Only the zero row should be
         // replaced — the healthy row must survive untouched.
-        let outcome: std::result::Result<Vec<Vec<f32>>, RustBertError> =
+        let outcome: std::result::Result<Vec<Vec<f32>>, anyhow::Error> =
             Ok(vec![vec![0.6, 0.8], vec![0.0, 0.0]]);
 
         let result = EmbeddingService::resolve_batch_result(outcome, &texts).unwrap();
