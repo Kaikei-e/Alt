@@ -41,6 +41,7 @@ on:
       - 'scripts/compose-feature-gate.py'
       - 'scripts/compose-reachability-audit.py'
       - 'scripts/ci-install-compose.sh'
+      - 'tests/scripts/test_ci_install_compose.py'
       - 'scripts/compose_include.py'
       - 'scripts/ops-surface-baseline.json'
       - 'scripts/ops-surface-inventory.yaml'
@@ -129,6 +130,7 @@ on:
       - 'scripts/compose-feature-gate.py'
       - 'scripts/compose-reachability-audit.py'
       - 'scripts/ci-install-compose.sh'
+      - 'tests/scripts/test_ci_install_compose.py'
       - 'scripts/compose_include.py'
       - 'scripts/ops-surface-baseline.json'
       - 'scripts/ops-surface-inventory.yaml'
@@ -220,6 +222,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Test Compose installer offline
+        run: python3 -m unittest discover -s tests/scripts -p test_ci_install_compose.py
 
       - name: Install the Compose build production renders with
         run: ./scripts/ci-install-compose.sh

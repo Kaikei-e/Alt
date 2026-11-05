@@ -23,7 +23,13 @@ if [ "$arch" != "x86_64" ]; then
 fi
 
 mkdir -p "$PLUGIN_DIR"
-curl -fsSL -o "$PLUGIN_DIR/docker-compose" \
+curl -fsSL \
+  --retry 5 \
+  --retry-delay 2 \
+  --connect-timeout 10 \
+  --max-time 120 \
+  --retry-max-time 300 \
+  -o "$PLUGIN_DIR/docker-compose" \
   "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64"
 echo "${COMPOSE_SHA256}  ${PLUGIN_DIR}/docker-compose" | sha256sum --check --status
 chmod +x "$PLUGIN_DIR/docker-compose"
