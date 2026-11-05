@@ -12,8 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	image_fetch_port "alt/orchestrator/port/image_fetch_port"
 )
+
+const singleflightTimeout = 30 * time.Second
 
 // ImageProxyUsecase orchestrates image proxy operations.
 type ImageProxyUsecase struct {
@@ -26,6 +30,7 @@ type ImageProxyUsecase struct {
 	maxWidth       int
 	webpQuality    int
 	cacheTTL       time.Duration
+	sfGroup        singleflight.Group
 }
 
 // NewImageProxyUsecase creates a new ImageProxyUsecase.
@@ -58,6 +63,10 @@ func NewImageProxyUsecase(
 }
 
 // ProxyImage serves a proxied image: verify signature, check cache, fetch+process if needed.
+// Concurrent misses for the same urlHash (e.g. background WarmCache racing the
+// browser's immediate GET /v1/images/proxy/... request) are coalesced into a
+// single fetch/encode/cache-save flight so they do not double-consume the
+// per-host rate limiter or race on INSERT INTO image_proxy_cache ON CONFLICT.
 func (u *ImageProxyUsecase) ProxyImage(ctx context.Context, sig, encodedURL string) (*domain.ImageProxyResult, error) {
 	// 1. Verify HMAC signature + decode URL
 	originalURL, err := u.signer.VerifyAndDecode(sig, encodedURL)
@@ -65,8 +74,26 @@ func (u *ImageProxyUsecase) ProxyImage(ctx context.Context, sig, encodedURL stri
 		return nil, fmt.Errorf("signature verification failed: %w", err)
 	}
 
-	// 2. Check cache
 	urlHash := image_proxy.URLHash(originalURL)
+	ch := u.sfGroup.DoChan(urlHash, func() (any, error) {
+		sfCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), singleflightTimeout)
+		defer cancel()
+		return u.proxyImageByHash(sfCtx, originalURL, urlHash)
+	})
+
+	select {
+	case res := <-ch:
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		return res.Val.(*domain.ImageProxyResult), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (u *ImageProxyUsecase) proxyImageByHash(ctx context.Context, originalURL, urlHash string) (*domain.ImageProxyResult, error) {
+	// 2. Check cache
 	cached, err := u.cache.GetCachedImage(ctx, urlHash)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "cache lookup failed", "error", err)

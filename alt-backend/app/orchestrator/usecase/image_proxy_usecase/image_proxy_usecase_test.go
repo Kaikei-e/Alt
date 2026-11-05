@@ -5,9 +5,13 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func atomicAddInt32(addr *int32, delta int32) int32 { return atomic.AddInt32(addr, delta) }
+func atomicLoadInt32(addr *int32) int32             { return atomic.LoadInt32(addr) }
 
 // --- Mock implementations ---
 
@@ -359,5 +363,204 @@ func TestParseProxyURLPath(t *testing.T) {
 				t.Errorf("parseProxyURLPath(%q) encoded = %q, want %q", tt.proxyURL, gotEncoded, tt.wantEncoded)
 			}
 		})
+	}
+}
+
+type countingFetchPort struct {
+	calls   int32
+	started chan struct{}
+	release chan struct{}
+	result  *domain.ImageFetchResult
+}
+
+func (f *countingFetchPort) FetchImage(ctx context.Context, _ *url.URL, _ *domain.ImageFetchOptions) (*domain.ImageFetchResult, error) {
+	if atomicAddInt32(&f.calls, 1) == 1 && f.started != nil {
+		close(f.started)
+	}
+	if f.release != nil {
+		select {
+		case <-f.release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return f.result, nil
+}
+
+type countingCachePort struct {
+	getCalls  int32
+	saveCalls int32
+}
+
+func (c *countingCachePort) GetCachedImage(_ context.Context, _ string) (*domain.ImageProxyCacheEntry, error) {
+	atomicAddInt32(&c.getCalls, 1)
+	return nil, nil
+}
+
+func (c *countingCachePort) SaveCachedImage(_ context.Context, _ *domain.ImageProxyCacheEntry) error {
+	atomicAddInt32(&c.saveCalls, 1)
+	return nil
+}
+
+func (c *countingCachePort) CleanupExpiredImages(_ context.Context) (int64, error) {
+	return 0, nil
+}
+
+type countingRateLimiterPort struct {
+	calls int32
+}
+
+func (r *countingRateLimiterPort) WaitForHost(_ context.Context, _ string) error { return nil }
+func (r *countingRateLimiterPort) WaitForURL(_ context.Context, _ string) error {
+	atomicAddInt32(&r.calls, 1)
+	return nil
+}
+func (r *countingRateLimiterPort) GetRemainingRequests(_ string) int       { return 1 }
+func (r *countingRateLimiterPort) GetNextAvailableTime(_ string) time.Time { return time.Now() }
+
+func TestProxyImage_SingleflightDeduplicatesConcurrentMisses(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	fetchPort := &countingFetchPort{
+		started: started,
+		release: release,
+		result: &domain.ImageFetchResult{
+			Data:        []byte("raw-jpeg-data"),
+			ContentType: "image/jpeg",
+			Size:        13,
+		},
+	}
+	cachePort := &countingCachePort{}
+	rlPort := &countingRateLimiterPort{}
+	processedResult := &domain.ImageProxyResult{
+		Data:        []byte("processed-webp"),
+		ContentType: "image/webp",
+		Width:       600,
+		Height:      300,
+		SizeBytes:   14,
+		ETag:        "new-etag",
+		ExpiresAt:   time.Now().Add(12 * time.Hour),
+	}
+
+	uc := NewImageProxyUsecase(
+		fetchPort,
+		&mockImageProcessingPort{result: processedResult},
+		cachePort,
+		&mockSignerPort{decodedURL: "https://example.com/shared-og.jpg"},
+		&mockDynamicDomainPort{allowed: true},
+		rlPort, 600, 80, 720,
+	)
+
+	const callers = 4
+	results := make(chan *domain.ImageProxyResult, callers)
+	errs := make(chan error, callers)
+
+	// Start first caller (e.g. WarmCache) and wait until it enters FetchImage.
+	go func() {
+		res, err := uc.ProxyImage(context.Background(), "valid-sig", "encoded-url")
+		results <- res
+		errs <- err
+	}()
+	<-started
+
+	// Start remaining concurrent callers (e.g. browser <img src> requests for the same URL).
+	for i := 1; i < callers; i++ {
+		go func() {
+			res, err := uc.ProxyImage(context.Background(), "valid-sig", "encoded-url")
+			results <- res
+			errs <- err
+		}()
+	}
+	// Give concurrent callers a moment to join the in-flight singleflight group.
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+
+	for i := 0; i < callers; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("caller %d unexpected error: %v", i, err)
+		}
+		res := <-results
+		if res == nil || string(res.Data) != "processed-webp" {
+			t.Fatalf("caller %d unexpected result: %+v", i, res)
+		}
+	}
+
+	if got := atomicLoadInt32(&fetchPort.calls); got != 1 {
+		t.Errorf("FetchImage calls = %d, want 1 (concurrent misses for same URL must be coalesced)", got)
+	}
+	if got := atomicLoadInt32(&rlPort.calls); got != 1 {
+		t.Errorf("WaitForURL calls = %d, want 1 (WarmCache and browser request must not double-consume host rate limiter)", got)
+	}
+	if got := atomicLoadInt32(&cachePort.saveCalls); got != 1 {
+		t.Errorf("SaveCachedImage calls = %d, want 1 (concurrent misses must not race on INSERT ON CONFLICT DO UPDATE)", got)
+	}
+}
+
+func TestProxyImage_SingleflightCallerCancelDoesNotAbortPeer(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	fetchPort := &countingFetchPort{
+		started: started,
+		release: release,
+		result: &domain.ImageFetchResult{
+			Data:        []byte("raw-jpeg-data"),
+			ContentType: "image/jpeg",
+			Size:        13,
+		},
+	}
+	cachePort := &countingCachePort{}
+	processedResult := &domain.ImageProxyResult{
+		Data:        []byte("processed-webp"),
+		ContentType: "image/webp",
+		Width:       600,
+		Height:      300,
+		SizeBytes:   14,
+		ETag:        "new-etag",
+		ExpiresAt:   time.Now().Add(12 * time.Hour),
+	}
+
+	uc := NewImageProxyUsecase(
+		fetchPort,
+		&mockImageProcessingPort{result: processedResult},
+		cachePort,
+		&mockSignerPort{decodedURL: "https://example.com/shared-og-cancel.jpg"},
+		&mockDynamicDomainPort{allowed: true},
+		nil, 600, 80, 720,
+	)
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	err1Ch := make(chan error, 1)
+	go func() {
+		_, err := uc.ProxyImage(ctx1, "valid-sig", "encoded-url")
+		err1Ch <- err
+	}()
+	<-started
+
+	// Second caller joins with an active context.
+	res2Ch := make(chan *domain.ImageProxyResult, 1)
+	err2Ch := make(chan error, 1)
+	go func() {
+		res, err := uc.ProxyImage(context.Background(), "valid-sig", "encoded-url")
+		res2Ch <- res
+		err2Ch <- err
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	// Cancel the first caller while FetchImage is still in flight.
+	cancel1()
+	if err1 := <-err1Ch; err1 == nil {
+		t.Fatal("expected cancelled caller to return context error")
+	}
+
+	// Release FetchImage; the second caller must still succeed.
+	close(release)
+	if err2 := <-err2Ch; err2 != nil {
+		t.Fatalf("second caller failed after first caller cancelled: %v", err2)
+	}
+	if res2 := <-res2Ch; res2 == nil || string(res2.Data) != "processed-webp" {
+		t.Fatalf("unexpected second caller result: %+v", res2)
+	}
+	if got := atomicLoadInt32(&fetchPort.calls); got != 1 {
+		t.Errorf("FetchImage calls = %d, want 1", got)
 	}
 }
