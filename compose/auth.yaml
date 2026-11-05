@@ -71,6 +71,20 @@ services:
       - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
       # entrypoint.sh renders the same template as kratos, cookie domain included.
+      - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
+      - KRATOS_ADMIN_URL=${KRATOS_ADMIN_URL:-http://kratos-admin:4434/}
+      - KRATOS_CORS_ALLOWED_ORIGIN_1=${KRATOS_CORS_ALLOWED_ORIGIN_1:-http://localhost:4173}
+      - KRATOS_CORS_ALLOWED_ORIGIN_2=${KRATOS_CORS_ALLOWED_ORIGIN_2:-http://localhost}
+      - KRATOS_DEFAULT_BROWSER_RETURN_URL=${KRATOS_DEFAULT_BROWSER_RETURN_URL:-http://localhost:4173/sv/}
+      - KRATOS_ALLOWED_RETURN_URL_1=${KRATOS_ALLOWED_RETURN_URL_1:-http://localhost:4173/sv/}
+      - KRATOS_ALLOWED_RETURN_URL_2=${KRATOS_ALLOWED_RETURN_URL_2:-http://localhost:4173/sv/home}
+      - KRATOS_ALLOWED_RETURN_URL_3=${KRATOS_ALLOWED_RETURN_URL_3:-http://localhost:4173/sv/auth/login}
+      - KRATOS_LOGIN_UI_URL=${KRATOS_LOGIN_UI_URL:-http://localhost:4173/sv/auth/login}
+      - KRATOS_REGISTRATION_UI_URL=${KRATOS_REGISTRATION_UI_URL:-http://localhost:4173/sv/register}
+      - KRATOS_ERROR_UI_URL=${KRATOS_ERROR_UI_URL:-http://localhost:4173/sv/error}
+      - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:4173/sv/settings}
+      - KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:4173/sv/recovery}
+      - KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-http://localhost:4173/sv/verification}
       - KRATOS_COOKIE_DOMAIN=${KRATOS_COOKIE_DOMAIN?set KRATOS_COOKIE_DOMAIN in .env (empty means host-only cookies)}
     secrets:
       - kratos_db_password
