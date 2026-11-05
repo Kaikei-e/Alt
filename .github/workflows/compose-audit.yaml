@@ -115,6 +115,11 @@ on:
       - 'docs/runbooks/user-journey-slo-gameday.md'
       - 'docs/services/acolyte-orchestrator.md'
       - 'docs/services/MICROSERVICES.md'
+      - 'deploy/desired-env.lkal'
+      - 'scripts/kisage-env.py'
+      - 'scripts/tests/test-kisage-env.py'
+      - 'docs/runbooks/kisage-env.md'
+      - 'Makefile'
       - '.github/workflows/compose-audit.yaml'
   pull_request:
     branches: [main]
@@ -204,6 +209,11 @@ on:
       - 'docs/runbooks/user-journey-slo-gameday.md'
       - 'docs/services/acolyte-orchestrator.md'
       - 'docs/services/MICROSERVICES.md'
+      - 'deploy/desired-env.lkal'
+      - 'scripts/kisage-env.py'
+      - 'scripts/tests/test-kisage-env.py'
+      - 'docs/runbooks/kisage-env.md'
+      - 'Makefile'
       - '.github/workflows/compose-audit.yaml'
   workflow_dispatch:
 
@@ -586,3 +596,33 @@ jobs:
 
       - name: Assert every declared compose-host URL shares a network with its caller
         run: python3 scripts/compose-reachability-audit.py --env-file .env
+
+  kisage-env-invariant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"
+          check-latest: true
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Provision pinned official lkal and kisage v0.1.2 binaries
+        run: |
+          make install-lkal install-kisage
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          test -x "$HOME/.local/bin/lkal"
+          test -x "$HOME/.local/bin/kisage"
+
+      - name: Verify deploy/desired-env.lkal lockstep and ADR-000982 floor
+        run: python3 scripts/kisage-env.py verify
+
+      - name: Run kisage & LKAL acceptance and isolation suite
+        run: python3 scripts/tests/test-kisage-env.py
