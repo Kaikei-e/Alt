@@ -1,0 +1,53 @@
+# Compatibility Docker Compose override for Alt production PostgreSQL services.
+#
+# Base compose files (`db.yaml`, `auth.yaml`, `acolyte.yaml`, `pact.yaml`,
+# `rag.yaml`, `recap.yaml`, `sovereign.yaml`) already select
+# `apparmor:alt-docker-postgres` by default. This file is retained as a
+# compatibility override for callers that still pass `-f compose/compose.apparmor.yaml`
+# (it is not included in `compose/compose.yaml` because the base files already
+# set the confined profile).
+#
+# Host prerequisite validation (required on Linux AppArmor hosts before first start):
+#   sudo ./scripts/install-apparmor-profile.sh
+#   ./scripts/check-apparmor-profile.sh --probe
+#
+# Compatibility usage:
+#   docker compose -f compose/compose.yaml -f compose/compose.apparmor.yaml -p alt up -d
+#
+# Note on Compose `include:` merging:
+#   `!override` replaces the per-service `security_opt` sequence defined in the
+#   included stack files (`db.yaml`, `auth.yaml`, `acolyte.yaml`, `pact.yaml`,
+#   `rag.yaml`, `recap.yaml`, `sovereign.yaml`) rather than appending to it.
+
+services:
+  db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  pre-processor-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  kratos-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  acolyte-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  pact-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  rag-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  recap-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  knowledge-sovereign-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres

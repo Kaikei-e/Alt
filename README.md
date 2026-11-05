@@ -220,6 +220,11 @@ publish nothing at all. For the host-side mapping see
 
 **Prerequisites:** Docker + Compose v2, Go 1.26+. Optional: Ollama + NVIDIA GPU for AI workflows.
 
+PostgreSQL services select the `alt-docker-postgres` AppArmor profile. Before
+starting them on an AppArmor-enabled Docker host, follow the
+[profile installation and verification instructions](docs/runbooks/postgres-apparmor.md).
+The profile must be loaded on each Docker host; Compose does not install it or disable AppArmor.
+
 ```bash
 cp .env.template .env                          # 1. Configure environment
 cd altctl && go build -o altctl . && cd ..      # 2. Build the CLI

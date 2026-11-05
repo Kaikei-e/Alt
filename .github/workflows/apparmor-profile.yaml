@@ -1,0 +1,58 @@
+name: apparmor-profile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/apparmor/**'
+      - 'deploy/host-prereqs.yaml'
+      - 'scripts/*apparmor*.sh'
+      - 'scripts/deploy.sh'
+      - 'tests/scripts/test_deploy.sh'
+      - 'tests/scripts/lib.sh'
+      - 'compose/*.yaml'
+      - 'docs/runbooks/postgres-apparmor.md'
+      - 'tests/scripts/test_apparmor_profile.py'
+      - 'tests/scripts/test_kratos_migrate_env.py'
+      - '.github/workflows/apparmor-profile.yaml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'deploy/apparmor/**'
+      - 'deploy/host-prereqs.yaml'
+      - 'scripts/*apparmor*.sh'
+      - 'scripts/deploy.sh'
+      - 'tests/scripts/test_deploy.sh'
+      - 'tests/scripts/lib.sh'
+      - 'compose/*.yaml'
+      - 'docs/runbooks/postgres-apparmor.md'
+      - 'tests/scripts/test_apparmor_profile.py'
+      - 'tests/scripts/test_kratos_migrate_env.py'
+      - '.github/workflows/apparmor-profile.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  apparmor-profile-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check shell script syntax
+        run: |
+          bash -n scripts/probe-apparmor-postgres.sh
+          bash -n scripts/check-apparmor-profile.sh
+          bash -n scripts/install-apparmor-profile.sh
+
+      - name: Run offline AppArmor profile unit tests
+        run: python3 -m unittest discover -s tests/scripts -p 'test_apparmor_profile.py' -v
+
+      - name: Check Kratos migration template environment
+        run: python3 -m unittest discover -s tests/scripts -p 'test_kratos_migrate_env.py' -v
+
+      - name: Check deployment preflight ordering and failures
+        run: bash tests/scripts/test_deploy.sh

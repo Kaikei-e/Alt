@@ -298,6 +298,24 @@ host_facts:
       NVIDIA driver plus NVIDIA Container Toolkit registered with Docker
       (docker info lists the nvidia runtime). These services either set
       runtime: nvidia or reserve an nvidia device.
+  apparmor_postgres_profile:
+    profile: alt-docker-postgres
+    path: /etc/apparmor.d/alt-docker-postgres
+    services: [acolyte-db, db, knowledge-sovereign-db, kratos-db, pact-db, pre-processor-db, rag-db, recap-db]
+    provision: |
+      Linux AppArmor host prerequisite required by all 8 production PostgreSQL
+      services (`security_opt: [apparmor:alt-docker-postgres]`). There is no
+      automatic privileged installation during `docker compose up` and no
+      unconfined fallback; Docker Engine fails closed if the profile is not
+      loaded in the kernel before first container start. Provision and verify
+      once per host (and whenever deploy/apparmor/alt-docker-postgres changes):
+        apparmor_parser --preprocess -K deploy/apparmor/alt-docker-postgres >/dev/null
+        apparmor_parser -Q -K deploy/apparmor/alt-docker-postgres >/dev/null
+        sudo /usr/bin/install -o root -g root -m 0644 deploy/apparmor/alt-docker-postgres /etc/apparmor.d/alt-docker-postgres
+        sudo /usr/sbin/apparmor_parser -r -W -T /etc/apparmor.d/alt-docker-postgres
+        ./scripts/check-apparmor-profile.sh --probe
+      (or run the wrapper `sudo ./scripts/install-apparmor-profile.sh`).
+      See docs/runbooks/postgres-apparmor.md.
 
 # Interpolated by compose with no default: an unset key becomes an empty
 # string and compose only warns. All are present in .env.template.

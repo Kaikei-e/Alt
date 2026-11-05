@@ -1,0 +1,38 @@
+# Compatibility Docker Compose override for Alt staging E2E PostgreSQL services
+# (matches service names in compose/compose.staging.yaml).
+#
+# `compose/compose.staging.yaml` already selects `apparmor:alt-docker-postgres`
+# by default. This file is retained as a compatibility override for callers
+# that still pass `-f compose/compose.staging.apparmor.yaml`.
+#
+# Host prerequisite validation on alt-builder / staging host:
+#   sudo ./scripts/install-apparmor-profile.sh
+#   ./scripts/check-apparmor-profile.sh --probe
+#
+# Compatibility usage:
+#   docker compose -f compose/compose.staging.yaml -f compose/compose.staging.apparmor.yaml -p alt-staging up -d
+
+services:
+  knowledge-sovereign-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  rag-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  recap-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  acolyte-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  alt-backend-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres
+
+  auth-hub-db:
+    security_opt: !override
+      - apparmor:alt-docker-postgres

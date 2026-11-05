@@ -281,6 +281,8 @@ services:
     image: postgres:16.15-alpine
     container_name: alt-staging-knowledge-sovereign-db
     profiles: [knowledge-sovereign]
+    security_opt:
+      - apparmor:alt-docker-postgres
     # Plain env — staging password is a committed test fixture with no
     # meaning outside the ephemeral alt-staging network (see
     # e2e/fixtures/staging-secrets/README.md). Using env + DATABASE_URL
@@ -406,6 +408,8 @@ services:
       dockerfile: Dockerfile
     container_name: alt-staging-rag-db
     profiles: [rag-orchestrator]
+    security_opt:
+      - apparmor:alt-docker-postgres
     environment:
       POSTGRES_DB: rag_db
       POSTGRES_USER: rag_user
@@ -752,6 +756,8 @@ services:
     image: alt-staging/recap-db:local
     container_name: alt-staging-recap-db
     profiles: [recap-worker]
+    security_opt:
+      - apparmor:alt-docker-postgres
     # Plain env credentials — staging password is a committed test
     # fixture with no meaning outside the alt-staging network. Mirrors
     # the knowledge-sovereign-db pattern above.
@@ -936,6 +942,8 @@ services:
     image: postgres:16.15-alpine
     container_name: alt-staging-acolyte-db
     profiles: [acolyte-orchestrator]
+    security_opt:
+      - apparmor:alt-docker-postgres
     environment:
       POSTGRES_DB: acolyte
       POSTGRES_USER: acolyte
@@ -1080,6 +1088,8 @@ services:
     image: postgres:17.11-alpine
     container_name: alt-staging-alt-backend-db
     profiles: [alt-backend, alt-harvester, alt-data-hub]
+    security_opt:
+      - apparmor:alt-docker-postgres
     # Plain env — staging password is a committed test fixture with no
     # meaning outside the ephemeral alt-staging network. Uses the
     # DB_USER/DB_NAME pair that alt-backend defaults to so the runtime
@@ -1561,6 +1571,8 @@ services:
     image: postgres:16.15-alpine
     container_name: alt-staging-auth-hub-db
     profiles: [auth-hub]
+    security_opt:
+      - apparmor:alt-docker-postgres
     environment:
       POSTGRES_DB: kratos
       POSTGRES_USER: kratos_user

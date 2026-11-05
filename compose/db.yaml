@@ -10,6 +10,8 @@ services:
     container_name: alt-db
     user: postgres
     restart: always
+    security_opt:
+      - apparmor:alt-docker-postgres
     mem_limit: 768m
     shm_size: "256m"
     command: >
@@ -202,6 +204,8 @@ services:
   pre-processor-db:
     image: postgres:17.11-alpine
     container_name: pre-processor-db
+    security_opt:
+      - apparmor:alt-docker-postgres
     mem_limit: 512m
     shm_size: "128m"
     command: >

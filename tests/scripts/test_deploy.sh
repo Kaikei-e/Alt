@@ -23,6 +23,7 @@ SWEEP="$REPO_ROOT/scripts/retire-alt-pki-agent-leftovers.sh"
 
 export_sut_env() {
   export COMPOSE_VARS_SCRIPT="$STUB_BIN/check-compose-variables.sh"
+  export APPARMOR_CHECK_SCRIPT="$STUB_BIN/check-apparmor-profile.sh"
   export PACT_CHECK_SCRIPT="$STUB_BIN/pact-check.sh"
   export C2QUAY_BIN="$STUB_BIN/c2quay"
   export CASCADE_SCRIPT="$STUB_BIN/cascade-pki-sidecars.sh"
@@ -32,6 +33,7 @@ export_sut_env() {
   export PACT_BROKER_USERNAME="pact"
   export PACT_BROKER_PASSWORD="test-pw"
   make_stub "check-compose-variables.sh" 0 ""
+  make_stub "check-apparmor-profile.sh" 0 ""
   unset ALT_ACK_FRESH_INSTALL
 }
 
@@ -96,6 +98,7 @@ tc_runs_pact_then_sweep_then_c2quay_on_success() {
 
   run_output=$("$SUT" production 2>&1); rc=$?
   assert_eq "$rc" "0" "happy path must exit 0" || { echo "$run_output"; return 1; }
+  assert_order_in_log "check-compose-variables.sh" "check-apparmor-profile.sh --probe" "pact-check.sh --broker" || return 1
   assert_order_in_log "pact-check.sh --broker" "retire-alt-pki-agent-leftovers.sh" "c2quay deploy" || return 1
   if grep -q "cascade-pki-sidecars" "$STUB_LOG"; then
     echo "  FAIL: Wave 4 retired cascade-pki-sidecars; deploy must not invoke it"
@@ -105,6 +108,20 @@ tc_runs_pact_then_sweep_then_c2quay_on_success() {
   if grep -q "remove-orphans" "$STUB_LOG"; then
     echo "  FAIL: leftover cleanup must not use --remove-orphans"
     cat "$STUB_LOG"
+    return 1
+  fi
+}
+
+tc_aborts_when_apparmor_check_fails() {
+  export_sut_env
+  make_stub "check-apparmor-profile.sh" 1 "profile missing or signal denied"
+  make_stub "pact-check.sh" 0 ""
+  make_stub "retire-alt-pki-agent-leftovers.sh" 0 ""
+  make_stub c2quay 0 ""
+  run_output=$("$SUT" production 2>&1); rc=$?
+  assert_ne "$rc" "0" "missing or broken AppArmor profile must refuse deployment" || return 1
+  if grep -qE 'pact-check|retire-alt-pki|c2quay' "$STUB_LOG"; then
+    echo "  FAIL: deployment continued after AppArmor preflight failure"
     return 1
   fi
 }
@@ -362,6 +379,7 @@ tc_deploy_source_has_no_remove_orphans() {
 main() {
   echo "deploy tests (c2quay wrapper + leftover sweep)"
   run_case "chains pact-check → leftover sweep → c2quay and does not cascade" tc_runs_pact_then_sweep_then_c2quay_on_success
+  run_case "AppArmor failure aborts before publishing or changing containers" tc_aborts_when_apparmor_check_fails
   run_case "aborts without leftover sweep or c2quay when pact-check fails" tc_aborts_when_pact_check_fails
   run_case "aborts without parent up when leftover sweep fails" tc_aborts_when_leftover_sweep_fails
   run_case "aborts without running cascade when c2quay fails" tc_aborts_when_c2quay_fails

@@ -21,7 +21,7 @@ Pact gate・E2E・本番反映を行う (ADR [[000763]]、runner の詳細は [[
 [[000763]] が "ひとまず現状のまま残す" と明記した既存経路)。緊急デプロイ・
 CI 経路が使えないときの代替・ローカル検証に使う。
 
-関連: [[pact-broker-ops]], [[mtls-cutover]], [[runner-setup]], ADR [[000740]], [[000741]], [[000763]]
+関連: [[pact-broker-ops]], [[mtls-cutover]], [[runner-setup]], [[postgres-apparmor]], ADR [[000740]], [[000741]], [[000763]]
 
 ## デプロイ経路
 
@@ -69,10 +69,11 @@ pipefail` により即中断、以降のステップは実行しない):
 1. **`scripts/check-compose-variables.sh`** — `.env` の未設定変数を
    `docker compose config` の警告ではなく非ゼロ exit にして deploy 前に検知する
    (PM-2026-048: 空文字設定のまま 24h 稼働した事故の再発防止)
-2. **`scripts/pact-check.sh --broker`** — pact を Broker に publish
-3. **`scripts/retire-alt-pki-agent-leftovers.sh`** — project=`alt` の
+2. **`scripts/check-apparmor-profile.sh --probe`** — DB 用プロファイルの導入状態とシグナル到達を確認。失敗時は配備を中断する。
+3. **`scripts/pact-check.sh --broker`** — pact を Broker に publish
+4. **`scripts/retire-alt-pki-agent-leftovers.sh`** — project=`alt` の
    leftover `pki-agent-*` を stop/rm してゼロを確認 ([[pki-agent-recovery]])
-4. **`c2quay deploy --env production --config c2quay.yml`** — `c2quay.yml`
+5. **`c2quay deploy --env production --config c2quay.yml`** — `c2quay.yml`
    に登録された 14 pacticipant ぶんの can-i-deploy gate → `docker compose up -d
    --wait --remove-orphans` → `scripts/smoke.sh` → record-deployment
    (`scripts/deploy.sh` 冒頭コメントは「13 pacticipants」のままだが、
@@ -91,6 +92,7 @@ pipefail` により即中断、以降のステップは実行しない):
 | secrets 配置 | `ls secrets/pact_broker_basic_auth_password.txt` |
 | mTLS step-ca 稼働 | `docker compose -f compose/compose.yaml ps step-ca` → healthy |
 | host `.env` に compose default を潰す古い値が無い | `python3 scripts/check-env-overrides.py --env-file .env` → exit 0（キー名と rule id だけを出し、値は出さない。rule は `deploy/host-prereqs.yaml` の `retired_env` / `dead_env_values` / `env_allowlists`） |
+| PostgreSQL AppArmor profile が host に導入済 (Linux AppArmor host) | `./scripts/check-apparmor-profile.sh --probe` → exit 0（8 つの本番 PostgreSQL サービスすべてが既定で `apparmor:alt-docker-postgres` を要求し、未導入時は fail-closed で起動拒否する。自動特権インストールは行われないため、初回起動前に [[postgres-apparmor]] / `deploy/host-prereqs.yaml` の `host_facts.apparmor_postgres_profile` の手順で導入すること） |
 | disk / loadavg 余裕 | `df -h` / `uptime` |
 | (`deploy-system/deploy-local.sh` 使用時のみ) `DOCKER_GROUP_ID` | `export DOCKER_GROUP_ID=$(scripts/get-docker-gid.sh)` — 未設定だと `compose/logging.yaml` の変数展開で `docker compose build` の手前で fail する |
 
