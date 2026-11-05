@@ -1,15 +1,17 @@
-# Compatibility Docker Compose override for Alt staging E2E PostgreSQL services
+# Opt-in Docker Compose override for Alt staging E2E PostgreSQL services
 # (matches service names in compose/compose.staging.yaml).
 #
-# `compose/compose.staging.yaml` already selects `apparmor:alt-docker-postgres`
-# by default. This file is retained as a compatibility override for callers
-# that still pass `-f compose/compose.staging.apparmor.yaml`.
+# `compose/compose.staging.yaml` uses Docker's built-in default AppArmor
+# confinement (`docker-default`) so GitHub-hosted `ubuntu-latest` CI runners
+# and standard developer machines work without a custom host kernel profile.
+# Pass `-f compose/compose.staging.apparmor.yaml` on Ubuntu 26.04+ hosts where
+# `/etc/apparmor.d/alt-docker-postgres` is installed and loaded.
 #
 # Host prerequisite validation on alt-builder / staging host:
 #   sudo ./scripts/install-apparmor-profile.sh
 #   ./scripts/check-apparmor-profile.sh --probe
 #
-# Compatibility usage:
+# Opt-in usage:
 #   docker compose -f compose/compose.staging.yaml -f compose/compose.staging.apparmor.yaml -p alt-staging up -d
 
 services:

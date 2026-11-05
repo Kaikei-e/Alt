@@ -41,9 +41,9 @@ Upstream references:
 
 > [!IMPORTANT]
 > **Linux AppArmor-Specific Host Prerequisite (Fail-Closed by Default)**
-> All 8 production PostgreSQL services (`compose/db.yaml`, `compose/auth.yaml`, `compose/acolyte.yaml`, `compose/pact.yaml`, `compose/rag.yaml`, `compose/recap.yaml`, `compose/sovereign.yaml`) and all 6 staging E2E PostgreSQL services (`compose/compose.staging.yaml`) now set `security_opt: [apparmor:alt-docker-postgres]` by default, with no `apparmor:unconfined` fallback and no automatic privileged installation.
+> All 8 production PostgreSQL services (`compose/db.yaml`, `compose/auth.yaml`, `compose/acolyte.yaml`, `compose/pact.yaml`, `compose/rag.yaml`, `compose/recap.yaml`, `compose/sovereign.yaml`) set `security_opt: [apparmor:alt-docker-postgres]` by default, with no `apparmor:unconfined` fallback and no automatic privileged installation. `compose/compose.staging.yaml` leaves `security_opt` unset on its 6 staging PostgreSQL services so portable CI runners (`ubuntu-latest`) run under Docker's built-in `docker-default` AppArmor profile, while `compose/compose.staging.apparmor.yaml` provides the explicit `apparmor:alt-docker-postgres` override for Ubuntu 26.04 hosts.
 >
-> On Linux hosts with AppArmor enabled, `/etc/apparmor.d/alt-docker-postgres` **must** be installed and loaded into the kernel before the first `docker compose up`. If the profile is absent or unloaded, Docker Engine fails closed at container start rather than running PostgreSQL unconfined. This prerequisite is specific to Linux hosts running AppArmor (validated on Ubuntu 26.04); cross-platform or non-AppArmor host behavior is not claimed as tested here.
+> When using the production stack or the staging AppArmor override on Linux hosts with AppArmor enabled, `/etc/apparmor.d/alt-docker-postgres` **must** be installed and loaded into the kernel before the first `docker compose up`. If the selected profile is absent or unloaded, Docker Engine fails closed at container start. This prerequisite is specific to Linux hosts running AppArmor (validated on Ubuntu 26.04); cross-platform or non-AppArmor host behavior is not claimed as tested here.
 
 ### Step 1: Validate, Install, and Load the Profile (Minimal-Privilege Sequence)
 
@@ -84,21 +84,25 @@ What `scripts/check-apparmor-profile.sh` and `scripts/probe-apparmor-postgres.sh
 ## 4. Default Compose Enforcement, Rollout Verification & Compatibility Overrides
 
 ### Default Compose Usage
-Because base Compose files now select `apparmor:alt-docker-postgres` directly:
+Production Compose files select `apparmor:alt-docker-postgres` directly:
 
 - **Production stack** (8 PostgreSQL services: `db`, `pre-processor-db`, `kratos-db`, `acolyte-db`, `pact-db`, `rag-db`, `recap-db`, `knowledge-sovereign-db`, declared in `deploy/host-prereqs.yaml` under `host_facts.apparmor_postgres_profile`):
   ```bash
   ./scripts/check-apparmor-profile.sh --probe
   docker compose -f compose/compose.yaml -p alt up -d
   ```
-- **Staging E2E stack** (6 PostgreSQL services: `knowledge-sovereign-db`, `rag-db`, `recap-db`, `acolyte-db`, `alt-backend-db`, `auth-hub-db`):
+- **Staging E2E stack** (6 PostgreSQL services: `knowledge-sovereign-db`, `rag-db`, `recap-db`, `acolyte-db`, `alt-backend-db`, `auth-hub-db` use Docker's built-in `docker-default` confinement on AppArmor-enabled CI hosts):
   ```bash
-  ./scripts/check-apparmor-profile.sh --probe
   docker compose -f compose/compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
   ```
+- **Staging on Ubuntu 26.04 hosts requiring the custom profile**, after provisioning it:
+  ```bash
+  ./scripts/check-apparmor-profile.sh --probe
+  docker compose -f compose/compose.staging.yaml -f compose/compose.staging.apparmor.yaml --profile <suite> -p alt-staging up -d --wait
+  ```
 
-### Compatibility Override Files (`compose/compose.apparmor.yaml` & `compose/compose.staging.apparmor.yaml`)
-`compose/compose.apparmor.yaml` and `compose/compose.staging.apparmor.yaml` are retained as compatibility overrides (`security_opt: !override`) for existing scripts or operator invocations that still pass `-f compose/compose.apparmor.yaml` or `-f compose/compose.staging.apparmor.yaml`. Base Compose files already select `apparmor:alt-docker-postgres` without these flags.
+### Override Files (`compose/compose.apparmor.yaml` & `compose/compose.staging.apparmor.yaml`)
+`compose/compose.apparmor.yaml` is retained as a compatibility override (`security_opt: !override`) for production callers that pass `-f compose/compose.apparmor.yaml`, and `compose/compose.staging.apparmor.yaml` applies `apparmor:alt-docker-postgres` (`security_opt: !override`) to the 6 staging PostgreSQL services on Ubuntu 26.04 hosts while keeping `compose/compose.staging.yaml` portable on standard CI runners.
 
 ### Validation Status & Host Rollout Verification Checklist
 

@@ -86,10 +86,16 @@ Expected Target Artifacts & Interfaces
          reporting success.
 
 5. Base `compose/*.yaml` files & compatibility overrides (`compose/compose.apparmor.yaml`, `compose/compose.staging.apparmor.yaml`)
-   - Base Compose files (`db.yaml`, `auth.yaml`, `acolyte.yaml`, `pact.yaml`,
-     `rag.yaml`, `recap.yaml`, `sovereign.yaml`, `compose.staging.yaml`) select
+   - Production Compose files (`db.yaml`, `auth.yaml`, `acolyte.yaml`, `pact.yaml`,
+     `rag.yaml`, `recap.yaml`, `sovereign.yaml`) select
      `apparmor:alt-docker-postgres` by default with no `apparmor:unconfined`
      fallback.
+   - `compose/compose.staging.yaml` omits the host-specific `apparmor:alt-docker-postgres`
+     profile (and forbids `apparmor:unconfined`) so portable CI runners without
+     `/etc/apparmor.d/alt-docker-postgres` use Docker's built-in `docker-default`
+     confinement without failing container init, while
+     `compose/compose.staging.apparmor.yaml` provides the explicit `!override`
+     for Ubuntu 26.04 hosts.
    - Compatibility Compose override files using `!override` on `security_opt`
      select `apparmor:alt-docker-postgres` for the 8 production PostgreSQL
      services and 6 staging PostgreSQL services respectively.
@@ -822,7 +828,6 @@ class TestOptInComposeOverridesAndRunbook(unittest.TestCase):
             "rag.yaml": {"rag-db"},
             "recap.yaml": {"recap-db"},
             "sovereign.yaml": {"knowledge-sovereign-db"},
-            "compose.staging.yaml": EXPECTED_STAGING_DB_SERVICES,
         }
         for filename, expected in targets.items():
             content = (REPO_ROOT / "compose" / filename).read_text(encoding="utf-8")
@@ -833,6 +838,24 @@ class TestOptInComposeOverridesAndRunbook(unittest.TestCase):
                         services.get(service), ["apparmor:alt-docker-postgres"]
                     )
             self.assertNotIn("apparmor:unconfined", content)
+
+    def test_staging_base_postgres_services_stay_portable_without_unconfined_fallback(
+        self,
+    ) -> None:
+        content = (REPO_ROOT / "compose" / "compose.staging.yaml").read_text(
+            encoding="utf-8"
+        )
+        services, _ = _parse_override_services(content)
+        for service in EXPECTED_STAGING_DB_SERVICES:
+            with self.subTest(service=service):
+                self.assertIn(service, services)
+                self.assertEqual(
+                    services.get(service),
+                    [],
+                    f"{service} in compose.staging.yaml must not hardcode host-specific apparmor:alt-docker-postgres",
+                )
+        self.assertNotIn("apparmor:alt-docker-postgres", content)
+        self.assertNotIn("apparmor:unconfined", content)
 
     def test_production_opt_in_override_covers_exact_8_postgres_services(self) -> None:
         self.assertTrue(

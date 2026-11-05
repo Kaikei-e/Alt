@@ -324,6 +324,23 @@ class ContainerHardeningParityTests(unittest.TestCase):
     needs a capability fails E2E instead of the first production restart."""
 
     PRODUCTION = (("redis-streams", "compose/mq.yaml"), ("generation-proxy", "compose/ai.yaml"))
+    STAGING_POSTGRES_SERVICES = (
+        "knowledge-sovereign-db",
+        "rag-db",
+        "recap-db",
+        "acolyte-db",
+        "alt-backend-db",
+        "auth-hub-db",
+    )
+    PRODUCTION_POSTGRES_TARGETS = (
+        ("compose/db.yaml", ("db", "pre-processor-db")),
+        ("compose/auth.yaml", ("kratos-db",)),
+        ("compose/acolyte.yaml", ("acolyte-db",)),
+        ("compose/pact.yaml", ("pact-db",)),
+        ("compose/rag.yaml", ("rag-db",)),
+        ("compose/recap.yaml", ("recap-db",)),
+        ("compose/sovereign.yaml", ("knowledge-sovereign-db",)),
+    )
 
     @classmethod
     def setUpClass(cls):
@@ -339,6 +356,36 @@ class ContainerHardeningParityTests(unittest.TestCase):
                 self.assertIn("no-new-privileges:true", svc.get("security_opt", []))
                 self.assertEqual(svc.get("cap_drop"), production.get("cap_drop"))
                 self.assertEqual(svc.get("security_opt"), production.get("security_opt"))
+
+    def test_staging_postgres_uses_default_apparmor_while_production_stays_confined(self):
+        # GitHub-hosted E2E runners (ubuntu-latest) do not have the custom host
+        # profile /etc/apparmor.d/alt-docker-postgres loaded, so hardcoding
+        # apparmor:alt-docker-postgres in compose.staging.yaml causes runc init
+        # to fail with ENOENT on proc/thread-self/attr/apparmor/exec.
+        # Staging DBs must rely on Docker's built-in docker-default confinement
+        # (never apparmor:unconfined), while compose.staging.apparmor.yaml
+        # provides the opt-in override for Ubuntu 26.04 hosts and production
+        # compose files keep apparmor:alt-docker-postgres enforced.
+        for name in self.STAGING_POSTGRES_SERVICES:
+            with self.subTest(staging_service=name):
+                sec_opts = self.services[name].get("security_opt", [])
+                self.assertNotIn("apparmor:alt-docker-postgres", sec_opts)
+                self.assertNotIn("apparmor:unconfined", sec_opts)
+
+        staging_override_text = (ROOT / "compose/compose.staging.apparmor.yaml").read_text()
+        for name in self.STAGING_POSTGRES_SERVICES:
+            with self.subTest(staging_override=name):
+                self.assertIn(f"  {name}:", staging_override_text)
+        self.assertIn("apparmor:alt-docker-postgres", staging_override_text)
+
+        for rel_path, db_names in self.PRODUCTION_POSTGRES_TARGETS:
+            prod_services = yaml.safe_load((ROOT / rel_path).read_text())["services"]
+            for db_name in db_names:
+                with self.subTest(production_file=rel_path, service=db_name):
+                    self.assertEqual(
+                        prod_services[db_name].get("security_opt"),
+                        ["apparmor:alt-docker-postgres"],
+                    )
 
 
 class InferenceTokenWiringTests(unittest.TestCase):

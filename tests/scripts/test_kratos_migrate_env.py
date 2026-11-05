@@ -19,8 +19,13 @@ class TestKratosMigrationEnvironment(unittest.TestCase):
 
         server = environment("kratos")
         migration = environment("kratos-migrate")
-        urls = {key: value for key, value in server.items() if "URL" in key or "CORS" in key}
+        urls = {
+            key: value
+            for key, value in server.items()
+            if ("URL" in key or "CORS" in key) and key != "KRATOS_ADMIN_URL"
+        }
         self.assertIn("KRATOS_ALLOWED_RETURN_URL_1", urls)
+        self.assertNotIn("KRATOS_ADMIN_URL", migration)
         for key, value in urls.items():
             with self.subTest(variable=key):
                 self.assertEqual(migration.get(key), value)

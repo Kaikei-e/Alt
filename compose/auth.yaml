@@ -74,7 +74,6 @@ services:
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
       # entrypoint.sh renders the same template as kratos, cookie domain included.
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
-      - KRATOS_ADMIN_URL=${KRATOS_ADMIN_URL:-http://kratos-admin:4434/}
       - KRATOS_CORS_ALLOWED_ORIGIN_1=${KRATOS_CORS_ALLOWED_ORIGIN_1:-http://localhost:4173}
       - KRATOS_CORS_ALLOWED_ORIGIN_2=${KRATOS_CORS_ALLOWED_ORIGIN_2:-http://localhost}
       - KRATOS_DEFAULT_BROWSER_RETURN_URL=${KRATOS_DEFAULT_BROWSER_RETURN_URL:-http://localhost:4173/sv/}
