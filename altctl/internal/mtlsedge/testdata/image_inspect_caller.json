@@ -1,0 +1,11 @@
+[
+  {
+    "Id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "RepoDigests": [
+      "ghcr.io/example/pre-processor@sha256:1010101010101010101010101010101010101010101010101010101010101010"
+    ],
+    "RepoTags": [
+      "ghcr.io/example/pre-processor:main"
+    ]
+  }
+]

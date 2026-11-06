@@ -27,6 +27,8 @@ altctl restart recap   # Restart specific stack, wait until every service is Rea
 altctl rebuild alt-backend        # Rebuild image + force-recreate one service, wait for Ready
 altctl rebuild core --no-cache    # Rebuild every service in a stack, no Docker build cache
 altctl doctor          # Read-only diagnosis: state, root cause, next steps (see below)
+altctl mtls validate --env-file <candidate.env> # Read-only candidate .env mTLS edge check
+altctl mtls observe                             # Read-only live container and mTLS probe check
 altctl status          # View status
 altctl exec db -- psql -U postgres  # Execute in container
 altctl logs recap      # Tail all recap stack logs

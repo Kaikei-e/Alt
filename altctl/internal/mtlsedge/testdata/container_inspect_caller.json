@@ -1,0 +1,54 @@
+[
+  {
+    "Id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "Image": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "State": {
+      "Status": "running",
+      "Running": true,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 1234,
+      "ExitCode": 0
+    },
+    "Config": {
+      "Env": [
+        "CERT_SUBJECT=pre-processor",
+        "MTLS_CA_FILE=/trust/ca-bundle.pem",
+        "MTLS_CERT_FILE=/certs/svc-cert.pem",
+        "MTLS_ENFORCE=true",
+        "MTLS_KEY_FILE=/certs/svc-key.pem",
+        "NEWS_CREATOR_HOST=https://news-creator:9443",
+        "NEWS_CREATOR_MTLS_SERVER_NAME=news-creator",
+        "DB_PASSWORD=SENTINEL_SECRET_DB_PASS_995"
+      ],
+      "Labels": {
+        "com.docker.compose.project": "alt",
+        "com.docker.compose.service": "pre-processor"
+      }
+    },
+    "Mounts": [
+      {
+        "Type": "volume",
+        "Name": "alt_pre_processor_certs",
+        "Source": "/var/lib/docker/volumes/alt_pre_processor_certs/_data",
+        "Destination": "/certs",
+        "Driver": "local",
+        "Mode": "rw",
+        "RW": true,
+        "Propagation": ""
+      },
+      {
+        "Type": "volume",
+        "Name": "alt_pki_trust_bundle",
+        "Source": "/var/lib/docker/volumes/alt_pki_trust_bundle/_data",
+        "Destination": "/trust",
+        "Driver": "local",
+        "Mode": "ro",
+        "RW": false,
+        "Propagation": ""
+      }
+    ]
+  }
+]

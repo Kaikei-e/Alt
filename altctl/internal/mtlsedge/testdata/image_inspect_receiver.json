@@ -1,0 +1,11 @@
+[
+  {
+    "Id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "RepoDigests": [
+      "ghcr.io/example/news-creator@sha256:2020202020202020202020202020202020202020202020202020202020202020"
+    ],
+    "RepoTags": [
+      "ghcr.io/example/news-creator:main"
+    ]
+  }
+]
