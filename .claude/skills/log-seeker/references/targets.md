@@ -26,10 +26,10 @@ container stdout/stderr
 ```
 
 Forwarder services (all `ghcr.io/<owner>/alt-rask-log-forwarder`, in `compose/logging.yaml`):
-`nginx-logs`, `alt-backend-logs`, `alt-harvester-logs`, `alt-data-hub-logs`, `auth-hub-logs`,
+`alt-backend-logs`, `alt-harvester-logs`, `alt-data-hub-logs`, `auth-hub-logs`,
 `tag-generator-logs`, `pre-processor-logs`, `search-indexer-logs`, `news-creator-logs`,
 `news-creator-backend-logs`, `recap-worker-logs`, `recap-subworker-logs`, `recap-evaluator-logs`,
-`dashboard-logs`, `rag-orchestrator-logs`, `mq-hub-logs`. The aggregator (`rask-log-aggregator`)
+`dashboard-logs`, `rag-orchestrator-logs`, `mq-hub-logs`. (For edge proxy logs, inspect `plecto-proxy` via `docker compose logs`.) The aggregator (`rask-log-aggregator`)
 only exposes `/v1/health`, `/v1/aggregate`, and OTLP `/v1/logs` + `/v1/traces` — there is
 **no log query API**; go to ClickHouse.
 
@@ -61,7 +61,7 @@ docker inspect --format '{{.RestartCount}} OOM={{.State.OOMKilled}} exit={{.Stat
 | Service / container | Port (host) | DB name var (default) | User var (default) | Password secret | Migrations dir | Owns |
 |---|---|---|---|---|---|---|
 | `db` / `alt-db` | 5432 | `$POSTGRES_DB` | `$POSTGRES_USER` (`alt_db_user`) | `postgres_password` | `migrations-atlas/migrations/` | RSS working set + summaries + reports + outbox |
-| `knowledge-sovereign-db` | 5438 | `$POSTGRES_DB` (`knowledge_sovereign`) | `$POSTGRES_USER` (`sovereign`) | `sovereign_db_password` | `knowledge-sovereign/migrations/` | **the immutable knowledge model** (events, projections, OODA loop) |
+| `knowledge-sovereign-db` | 5438 | `$POSTGRES_DB` (`knowledge_sovereign`) | `$POSTGRES_USER` (`sovereign`) | `sovereign_db_password` | `knowledge-sovereign/migrations/` | **the immutable knowledge model** (events, Home projections, Knowledge Trail) |
 | `pre-processor-db` | 5437 | `$POSTGRES_DB` (`pre_processor`) | `$POSTGRES_USER` (`pp_user`) | `pp_db_password` | `pre-processor-migration-atlas/migrations/` | pre-processor working set |
 | `recap-db` | 5435 | `$POSTGRES_DB` (`recap`) | `$POSTGRES_USER` (`recap_user`) | `recap_db_password` | `recap-migration-atlas/migrations/` | 3-day recap artefacts |
 | `rag-db` | 5436 | `$POSTGRES_DB` (`rag_db`) | `$POSTGRES_USER` (`rag_user`) | `rag_db_password` | `rag-migration-atlas/migrations/` | RAG / embeddings |
@@ -110,7 +110,7 @@ read models are disposable projections, rebuildable from the event log):
 - `knowledge_lenses`, `knowledge_lens_versions`, `knowledge_current_lens`
 - `knowledge_projection_checkpoints` (projector position + `updated_at` → lag), `knowledge_projection_audits`, `knowledge_projection_snapshots`, `knowledge_projection_versions`, `knowledge_reproject_runs`, `knowledge_retention_log`
 - `knowledge_backfill_jobs`
-- OODA loop: `knowledge_loop_entries`, `knowledge_loop_surfaces`, `knowledge_loop_session_state`, `knowledge_loop_entry_session_state`, `knowledge_loop_transition_dedupes`
+- Knowledge Trail: `knowledge_trail_footprints`, `knowledge_trail_branches`, `knowledge_trail_act_outcomes`
 - `knowledge_user_event_aggregates`
 
 (`recap-db`, `rag-db`, `acolyte-db`, `pre-processor-db`, `kratos-db` own their own domains —

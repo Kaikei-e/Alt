@@ -40,11 +40,11 @@ report. It never mutates anything.
 
 `$ARGUMENTS` may be a **service name** (`alt-backend`, `pre-processor`, `recap-worker`, …) → focus
 there; a **symptom phrase** (`"knowledge home is empty"`, `"500s on /v1/feeds"`, `"OOM"`) → match it
-to a recipe in [reference/recipes.md](reference/recipes.md); or **empty** → run a stack-wide health
+to a recipe in [references/recipes.md](references/recipes.md); or **empty** → run a stack-wide health
 pass, asking the user one focused question first if the symptom is unclear.
 
 Flags: `--since=<dur>` (default `30m`; passed to `seek.sh` and `docker compose logs`),
-`--deep` (widen the window, pull traces, run the reuse scripts listed in `reference/recipes.md`).
+`--deep` (widen the window, pull traces, run the reuse scripts listed in `references/recipes.md`).
 
 ## Workflow
 
@@ -81,14 +81,14 @@ log-seeker progress
    `docker inspect --format '{{.RestartCount}} {{.State.OOMKilled}} {{.State.ExitCode}}' <container>`.
 4. **Aggregated logs / traces (ClickHouse).** `rask-log-aggregator` is ingest-only and exposes no
    query API — query ClickHouse directly (connect recipe in
-   [reference/targets.md](reference/targets.md)): error counts by service from `otel_error_logs`,
+   [references/targets.md](references/targets.md)): error counts by service from `otel_error_logs`,
    recent error rows, request latency p50/p95/p99 from `otel_http_requests`, and trace lookups by
    `trace_id` across `otel_traces` + `otel_logs`. Pick the matching query from
-   [reference/recipes.md](reference/recipes.md).
-5. **Database state.** Identify the owning database from [reference/targets.md](reference/targets.md)
+   [references/recipes.md](references/recipes.md).
+5. **Database state.** Identify the owning database from [references/targets.md](references/targets.md)
    — the two that matter most are **alt-db** (RSS working set, summaries, reports, `outbox_events`)
-   and **knowledge-sovereign-db** (the immutable knowledge model: `knowledge_events`, projections,
-   OODA-loop tables). Then check, **SELECT-only**: projector lag, Home freshness, event-log size,
+   and **knowledge-sovereign-db** (the immutable knowledge model: `knowledge_events`, Home projections,
+   Knowledge Trail tables `knowledge_trail_footprints` and `knowledge_trail_branches`). Then check, **SELECT-only**: projector lag, Home freshness, event-log size,
    `outbox_events` backlog, suspect-table row counts / newest rows, and `pg_stat_activity` for stuck
    queries and locks. For pool pressure use the `pgbouncer` container logs plus `pg_stat_activity` on
    the backing DB — the pgbouncer admin console (`SHOW POOLS`) is not provisioned in this stack.
@@ -124,16 +124,16 @@ log-seeker progress
 
 - `scripts/seek.sh` — **run** it at step 2 to collect the read-only bundle (ps, per-service logs,
   ClickHouse errors, alt-db + knowledge-sovereign-db health, pgbouncer, redis-streams).
-- [reference/recipes.md](reference/recipes.md) — **read** the section matching the symptom for exact
+- [references/recipes.md](references/recipes.md) — **read** the section matching the symptom for exact
   log/SQL/grep commands and the `scripts/analyze_*` diagnostics worth reusing.
-- [reference/targets.md](reference/targets.md) — **read** when you need the topology: every DB and
+- [references/targets.md](references/targets.md) — **read** when you need the topology: every DB and
   store, container/service names, host ports, env var names, key tables, and connect recipes.
 
 ## Runbooks (escalate to the canonical procedure)
 
 - `docs/runbooks/knowledge-home-empty-spike.md` — Home returns empty
 - `docs/runbooks/knowledge-home-malformed-why-spike.md` — corrupted `why` payloads
-- `docs/runbooks/knowledge-home-reproject-operations.md` / `knowledge-loop-reproject.md` — projection rebuild
+- `docs/runbooks/knowledge-home-reproject-operations.md` / `knowledge-trail-reproject.md` — projection rebuild
 - `docs/runbooks/acolyte-checkpoint-resume.md` — Acolyte pipeline recovery
 - `docs/runbooks/admin-observability.md` — metrics & admin UI
 - `docs/runbooks/backup-restore.md` — DB backup/restore

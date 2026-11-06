@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 # log-seeker bundler — collect a READ-ONLY diagnostic bundle from the Alt stack.
 #
 # Usage:
@@ -23,7 +24,7 @@ COMPOSE=(docker compose -f compose/compose.yaml -p alt)
 SINCE="30m"
 TAIL=2000
 OUT=""
-DEFAULT_SERVICES=(nginx alt-backend alt-frontend-sv auth-hub pre-processor search-indexer mq-hub)
+DEFAULT_SERVICES=(plecto-proxy alt-backend alt-frontend-sv auth-hub pre-processor search-indexer mq-hub)
 SERVICES=()
 ERR_RE='ERROR|FATAL|panic|traceback|Traceback|OOMKilled|exit code [1-9]|exception|Exception'
 

@@ -9,7 +9,7 @@ connect recipes (env + secrets) are in [targets.md](targets.md).
 - [Slow / high latency](#slow--high-latency)
 - [Container restarting / crash-looping / OOM](#container-restarting--crash-looping--oom)
 - [Knowledge Home empty or malformed why](#knowledge-home-empty-or-malformed-why)
-- [Projector lag / stuck OODA loop](#projector-lag--stuck-ooda-loop)
+- [Projector lag / Knowledge Trail projections](#projector-lag--knowledge-trail-projections)
 - [DB connection exhaustion / pool saturation](#db-connection-exhaustion--pool-saturation)
 - [Queue stuck (mq-hub / Redis Streams)](#queue-stuck-mq-hub--redis-streams)
 - [Trace one request end-to-end](#trace-one-request-end-to-end)
@@ -54,7 +54,6 @@ FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 15;
 ```
 Reuse:
 ```bash
-bash scripts/analyze-nginx-logs.sh                       # nginx latency / status breakdown
 uv run python scripts/analyze_clickhouse_performance.py --hours 6   # platform health snapshot
 ```
 
@@ -84,7 +83,7 @@ Then escalate to the runbook: `docs/runbooks/knowledge-home-empty-spike.md` (emp
 `docs/runbooks/knowledge-home-reproject-operations.md` (rebuild). Do **not** run a reproject
 yourself — propose it and point at the runbook.
 
-## Projector lag / stuck OODA loop
+## Projector lag / Knowledge Trail projections
 
 Against **knowledge-sovereign-db**:
 
@@ -93,10 +92,11 @@ SELECT projector_name, last_event_seq, updated_at,
        EXTRACT(EPOCH FROM now() - updated_at)::int AS lag_seconds
 FROM knowledge_projection_checkpoints ORDER BY lag_seconds DESC;
 
-SELECT status, count(*) FROM knowledge_loop_entries GROUP BY status;   -- run `\d knowledge_loop_entries` for the lease/state columns
+SELECT verb, count(*) FROM knowledge_trail_footprints GROUP BY verb;
+SELECT state, relation_kind, count(*) FROM knowledge_trail_branches GROUP BY state, relation_kind;
 SELECT * FROM knowledge_reproject_runs ORDER BY started_at DESC LIMIT 10;
 ```
-Runbook: `docs/runbooks/knowledge-loop-reproject.md`, `docs/runbooks/knowledge-home-reproject-operations.md`.
+Runbook: `docs/runbooks/knowledge-trail-reproject.md`, `docs/runbooks/knowledge-home-reproject-operations.md`.
 
 ## DB connection exhaustion / pool saturation
 
@@ -168,7 +168,6 @@ Runbooks: `docs/runbooks/acolyte-checkpoint-resume.md`, `docs/runbooks/3days-rec
 |---|---|
 | `scripts/analyze_docker_logs.py` | Parse `docker compose logs` output, extract error/warning patterns (esp. recap services) |
 | `scripts/analyze_clickhouse_performance.py` | Platform health snapshot from ClickHouse logs/traces (`--hours N`, `--output-dir`) |
-| `scripts/analyze-nginx-logs.sh` | nginx latency / status-code breakdown |
 | `scripts/pgbouncer_stats.sh` | pgbouncer pool/stats dump |
 | `scripts/investigate_recap_degradation.py` | Recap-worker degradation diagnostics |
 
