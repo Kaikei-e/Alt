@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -14,6 +15,13 @@ import (
 )
 
 var callerForbiddenFileKeys = []string{
+	"CERT_SUBJECT_FILE",
+	"CERT_PATH_FILE",
+	"KEY_PATH_FILE",
+}
+
+var receiverForbiddenFileKeys = []string{
+	"CERT_SANS_FILE",
 	"CERT_SUBJECT_FILE",
 	"CERT_PATH_FILE",
 	"KEY_PATH_FILE",
@@ -34,19 +42,29 @@ var CallerEdgeKeys = []string{
 	"KEY_PATH_FILE",
 }
 
-// ReceiverEdgeKeys lists the environment keys on news-creator that inbound TLS and peer-identity middleware enforce.
+// ReceiverEdgeKeys lists the environment keys on news-creator that inbound TLS,
+// peer-identity middleware, and PKI enrollment read for the mTLS edge, including
+// PKI _FILE overrides that must be absent.
 var ReceiverEdgeKeys = []string{
 	"INBOUND_MTLS",
 	"PEER_IDENTITY_STRICT",
 	"CERT_SANS",
 	"MTLS_ALLOWED_PEERS",
+	"CERT_SANS_FILE",
+	"CERT_SUBJECT_FILE",
+	"CERT_PATH_FILE",
+	"KEY_PATH_FILE",
 }
 
 // CheckedKeys returns a copy of all effective environment keys inspected by the semantic edge check.
 func CheckedKeys() []string {
 	keys := make([]string, 0, len(CallerEdgeKeys)+len(ReceiverEdgeKeys))
 	keys = append(keys, CallerEdgeKeys...)
-	keys = append(keys, ReceiverEdgeKeys...)
+	for _, k := range ReceiverEdgeKeys {
+		if !slices.Contains(keys, k) {
+			keys = append(keys, k)
+		}
+	}
 	return keys
 }
 
@@ -92,15 +110,21 @@ func CheckSemanticEdge(callerEnv, receiverEnv map[string]string) []string {
 	if callerSubject != CallerService {
 		reasons = append(reasons, "caller_env_invalid:CERT_SUBJECT")
 	}
-	for _, k := range callerForbiddenFileKeys {
-		if _, ok := callerEnv[k]; ok {
-			reasons = append(reasons, "caller_env_invalid:"+k)
-		}
-	}
+	reasons = appendForbiddenKeyReasons(reasons, callerEnv, callerForbiddenFileKeys, "caller_env_invalid:")
+	reasons = appendForbiddenKeyReasons(reasons, receiverEnv, receiverForbiddenFileKeys, "receiver_env_invalid:")
 	if !commaListContainsExact(receiverEnv["MTLS_ALLOWED_PEERS"], callerSubject) {
 		reasons = append(reasons, "caller_not_in_allowed_peers:CERT_SUBJECT,MTLS_ALLOWED_PEERS")
 	}
 
+	return reasons
+}
+
+func appendForbiddenKeyReasons(reasons []string, env map[string]string, keys []string, prefix string) []string {
+	for _, k := range keys {
+		if _, ok := env[k]; ok {
+			reasons = append(reasons, prefix+k)
+		}
+	}
 	return reasons
 }
 
@@ -174,12 +198,12 @@ func ParseComposeServiceEnvs(rawJSON []byte) (callerEnv, receiverEnv map[string]
 	return callerSvc.Environment, receiverSvc.Environment, nil
 }
 
-func renderComposeServiceEnvs(ctx context.Context, runner compose.Executor, composeFile string) (callerEnv, receiverEnv map[string]string, reasons []string) {
+func renderComposeServiceEnvs(ctx context.Context, runner compose.Executor, composeFile, envFile string) (callerEnv, receiverEnv map[string]string, reasons []string) {
 	var stdoutBuf, stderrBuf bytes.Buffer
 	runErr := runner.RunWithPipes(
 		ctx,
 		"docker",
-		[]string{"compose", "-f", composeFile, "-p", ComposeProjectName, "config", "--format", "json"},
+		[]string{"compose", "-f", composeFile, "--env-file", envFile, "-p", ComposeProjectName, "config", "--format", "json"},
 		&stdoutBuf,
 		&stderrBuf,
 	)

@@ -76,9 +76,10 @@ func Validate(ctx context.Context, opts ValidateOptions) (*Result, error) {
 	}()
 
 	stageComposeFile := filepath.Join(stageDir, AggregateComposeRelPath)
+	stageEnvFile := filepath.Join(stageDir, ".env")
 	stageExec := opts.NewExecutor(stageDir, frozenEnv)
 
-	callerEnv, receiverEnv, reasons := renderComposeServiceEnvs(ctx, stageExec, stageComposeFile)
+	callerEnv, receiverEnv, reasons := renderComposeServiceEnvs(ctx, stageExec, stageComposeFile, stageEnvFile)
 	if len(reasons) == 0 {
 		reasons = CheckSemanticEdge(callerEnv, receiverEnv)
 	}

@@ -383,15 +383,19 @@ func TestValidate_BaselineStagingAndFrozenEnv(t *testing.T) {
 			t.Errorf("stageDir perm = %o, want 0700", info.Mode().Perm())
 		}
 
-		// Pin exact compose config argv and verify -f is staged and NOT under projectDir
+		// Pin exact compose config argv and verify -f and --env-file are staged and NOT under projectDir
 		wantStagedCompose := filepath.Join(capturedStageDir, "compose", "compose.yaml")
-		wantArgs := []string{"compose", "-f", wantStagedCompose, "-p", "alt", "config", "--format", "json"}
+		wantStagedEnv := filepath.Join(capturedStageDir, ".env")
+		wantArgs := []string{"compose", "-f", wantStagedCompose, "--env-file", wantStagedEnv, "-p", "alt", "config", "--format", "json"}
 		if !reflect.DeepEqual(call.Args, wantArgs) {
 			t.Fatalf("compose config argv = %v, want %v", call.Args, wantArgs)
 		}
 		cleanProject := filepath.Clean(projectDir) + string(filepath.Separator)
 		if strings.HasPrefix(filepath.Clean(call.Args[2]), cleanProject) {
 			t.Fatalf("compose -f path %q points inside live projectDir %q", call.Args[2], projectDir)
+		}
+		if strings.HasPrefix(filepath.Clean(call.Args[4]), cleanProject) {
+			t.Fatalf("compose --env-file path %q points inside live projectDir %q", call.Args[4], projectDir)
 		}
 
 		// 1. <stage>/compose itself is a real directory, NOT a symlink
@@ -745,6 +749,12 @@ func TestValidate_ComposeConfigFailures(t *testing.T) {
 	t.Run("variable not set stderr fails with variable name", func(t *testing.T) {
 		runner := newBaselineFakeRunner(t)
 		runner.composeConfigStderr = "time=\"2026-11-06T00:00:00Z\" level=warning msg=\"The \\\"POSTGRES_PASSWORD\\\" variable is not set. Defaulting to a blank string. " + sentinelSecretStderr + "\"\n"
+		runner.onComposeConfig = func(call recordedCall) {
+			wantArgs := []string{"compose", "-f", filepath.Join(call.WorkDir, "compose", "compose.yaml"), "--env-file", filepath.Join(call.WorkDir, ".env"), "-p", "alt", "config", "--format", "json"}
+			if !reflect.DeepEqual(call.Args, wantArgs) {
+				t.Errorf("compose config argv = %v, want %v", call.Args, wantArgs)
+			}
+		}
 
 		res, err := Validate(context.Background(), ValidateOptions{
 			ProjectDir:       projectDir,
@@ -769,6 +779,12 @@ func TestValidate_ComposeConfigFailures(t *testing.T) {
 		runner := newBaselineFakeRunner(t)
 		runner.composeConfigStderr = "yaml: line 10: syntax error " + sentinelSecretStderr + "\n"
 		runner.composeConfigErr = &fakeExitError{code: 15}
+		runner.onComposeConfig = func(call recordedCall) {
+			wantArgs := []string{"compose", "-f", filepath.Join(call.WorkDir, "compose", "compose.yaml"), "--env-file", filepath.Join(call.WorkDir, ".env"), "-p", "alt", "config", "--format", "json"}
+			if !reflect.DeepEqual(call.Args, wantArgs) {
+				t.Errorf("compose config argv = %v, want %v", call.Args, wantArgs)
+			}
+		}
 
 		res, err := Validate(context.Background(), ValidateOptions{
 			ProjectDir:       projectDir,
@@ -815,9 +831,14 @@ func TestCheckSemanticEdge_Table(t *testing.T) {
 	if got := CheckSemanticEdge(validCallerEnv(), validReceiverEnv()); len(got) != 0 {
 		t.Fatalf("expected valid baseline envs to pass, got %v", got)
 	}
-	for _, wantKey := range []string{"CERT_SUBJECT_FILE", "CERT_PATH_FILE", "KEY_PATH_FILE"} {
+	for _, wantKey := range []string{"CERT_SUBJECT_FILE", "CERT_PATH_FILE", "KEY_PATH_FILE", "CERT_SANS_FILE"} {
 		if !containsString(CheckedKeys(), wantKey) {
 			t.Errorf("CheckedKeys() = %v, missing %q", CheckedKeys(), wantKey)
+		}
+	}
+	for _, wantKey := range []string{"CERT_SANS_FILE", "CERT_SUBJECT_FILE", "CERT_PATH_FILE", "KEY_PATH_FILE"} {
+		if !containsString(ReceiverEdgeKeys, wantKey) {
+			t.Errorf("ReceiverEdgeKeys = %v, missing %q", ReceiverEdgeKeys, wantKey)
 		}
 	}
 
@@ -974,6 +995,46 @@ func TestCheckSemanticEdge_Table(t *testing.T) {
 			name:        "KEY_PATH_FILE present with empty value fails",
 			mutate:      func(c, _ map[string]string) { c["KEY_PATH_FILE"] = "" },
 			wantReasons: []string{"caller_env_invalid:KEY_PATH_FILE"},
+		},
+		{
+			name:        "receiver CERT_SANS_FILE present with path fails",
+			mutate:      func(_, r map[string]string) { r["CERT_SANS_FILE"] = "/run/secrets/sans" },
+			wantReasons: []string{"receiver_env_invalid:CERT_SANS_FILE"},
+		},
+		{
+			name:        "receiver CERT_SANS_FILE present with empty value fails",
+			mutate:      func(_, r map[string]string) { r["CERT_SANS_FILE"] = "" },
+			wantReasons: []string{"receiver_env_invalid:CERT_SANS_FILE"},
+		},
+		{
+			name:        "receiver CERT_SUBJECT_FILE present with path fails",
+			mutate:      func(_, r map[string]string) { r["CERT_SUBJECT_FILE"] = "/run/secrets/subject" },
+			wantReasons: []string{"receiver_env_invalid:CERT_SUBJECT_FILE"},
+		},
+		{
+			name:        "receiver CERT_SUBJECT_FILE present with empty value fails",
+			mutate:      func(_, r map[string]string) { r["CERT_SUBJECT_FILE"] = "" },
+			wantReasons: []string{"receiver_env_invalid:CERT_SUBJECT_FILE"},
+		},
+		{
+			name:        "receiver CERT_PATH_FILE present with path fails",
+			mutate:      func(_, r map[string]string) { r["CERT_PATH_FILE"] = "/tmp/other-cert.pem" },
+			wantReasons: []string{"receiver_env_invalid:CERT_PATH_FILE"},
+		},
+		{
+			name:        "receiver CERT_PATH_FILE present with empty value fails",
+			mutate:      func(_, r map[string]string) { r["CERT_PATH_FILE"] = "" },
+			wantReasons: []string{"receiver_env_invalid:CERT_PATH_FILE"},
+		},
+		{
+			name:        "receiver KEY_PATH_FILE present with path fails",
+			mutate:      func(_, r map[string]string) { r["KEY_PATH_FILE"] = "/tmp/other-key.pem" },
+			wantReasons: []string{"receiver_env_invalid:KEY_PATH_FILE"},
+		},
+		{
+			name:        "receiver KEY_PATH_FILE present with empty value fails",
+			mutate:      func(_, r map[string]string) { r["KEY_PATH_FILE"] = "" },
+			wantReasons: []string{"receiver_env_invalid:KEY_PATH_FILE"},
 		},
 		{
 			name:        "MTLS_ALLOWED_PEERS negative exact match pre-processor-x",
@@ -1171,6 +1232,7 @@ func TestObserve_BaselinePassesAndPinsExactArgvAndFrozenEnv(t *testing.T) {
 	}
 
 	wantComposeFile := filepath.Join(projectDir, "compose", "compose.yaml")
+	wantEnvFile := filepath.Join(projectDir, ".env")
 	wantCalls := [][]string{
 		{"info", "--format", "{{json .ServerVersion}}"},
 		{"context", "show"},
@@ -1181,7 +1243,7 @@ func TestObserve_BaselinePassesAndPinsExactArgvAndFrozenEnv(t *testing.T) {
 		{"container", "inspect", "2222222222222222222222222222222222222222222222222222222222222222"},
 		{"image", "inspect", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 		{"image", "inspect", "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
-		{"compose", "-f", wantComposeFile, "-p", "alt", "config", "--format", "json"},
+		{"compose", "-f", wantComposeFile, "--env-file", wantEnvFile, "-p", "alt", "config", "--format", "json"},
 		{
 			"run",
 			"--rm",
@@ -1332,10 +1394,16 @@ func TestObserve_SemanticCheckFailsWhenRenderedAndContainerAgreeOnInvalidValue(t
 
 func TestObserve_ComposeConfigFailures(t *testing.T) {
 	projectDir, _, _, _, _ := setupFakeProject(t)
+	wantComposeArgs := []string{"compose", "-f", filepath.Join(projectDir, "compose", "compose.yaml"), "--env-file", filepath.Join(projectDir, ".env"), "-p", "alt", "config", "--format", "json"}
 
 	t.Run("variable not set stderr fails with variable name", func(t *testing.T) {
 		runner := newBaselineFakeRunner(t)
 		runner.composeConfigStderr = "level=warning msg=\"The \\\"POSTGRES_PASSWORD\\\" variable is not set.\" " + sentinelSecretStderr + "\n"
+		runner.onComposeConfig = func(call recordedCall) {
+			if !reflect.DeepEqual(call.Args, wantComposeArgs) {
+				t.Errorf("compose config argv = %v, want %v", call.Args, wantComposeArgs)
+			}
+		}
 
 		res, err := Observe(context.Background(), ObserveOptions{
 			ProjectDir:  projectDir,
@@ -1359,6 +1427,11 @@ func TestObserve_ComposeConfigFailures(t *testing.T) {
 		runner := newBaselineFakeRunner(t)
 		runner.composeConfigStderr = "compose failed " + sentinelSecretStderr + "\n"
 		runner.composeConfigErr = &fakeExitError{code: 1}
+		runner.onComposeConfig = func(call recordedCall) {
+			if !reflect.DeepEqual(call.Args, wantComposeArgs) {
+				t.Errorf("compose config argv = %v, want %v", call.Args, wantComposeArgs)
+			}
+		}
 
 		res, err := Observe(context.Background(), ObserveOptions{
 			ProjectDir:  projectDir,
@@ -1909,6 +1982,12 @@ func TestValidateAndObserve_RelativeProjectDir(t *testing.T) {
 	}
 
 	valRunner := newBaselineFakeRunner(t)
+	var valComposeArgs []string
+	var valStageDir string
+	valRunner.onComposeConfig = func(call recordedCall) {
+		valStageDir = call.WorkDir
+		valComposeArgs = append([]string(nil), call.Args...)
+	}
 	valRes, err := Validate(context.Background(), ValidateOptions{
 		ProjectDir:       relProjectDir,
 		CandidateEnvFile: candidateEnvPath,
@@ -1924,6 +2003,10 @@ func TestValidateAndObserve_RelativeProjectDir(t *testing.T) {
 	if len(valRunner.calls) == 0 || valRunner.calls[0].WorkDir != projectDir {
 		t.Errorf("Validate root executor WorkDir = %q, want absolute %q", valRunner.calls[0].WorkDir, projectDir)
 	}
+	wantValComposeArgs := []string{"compose", "-f", filepath.Join(valStageDir, "compose", "compose.yaml"), "--env-file", filepath.Join(valStageDir, ".env"), "-p", "alt", "config", "--format", "json"}
+	if !reflect.DeepEqual(valComposeArgs, wantValComposeArgs) {
+		t.Errorf("Validate compose argv = %v, want %v", valComposeArgs, wantValComposeArgs)
+	}
 
 	obsRunner := newBaselineFakeRunner(t)
 	obsRes, err := Observe(context.Background(), ObserveOptions{
@@ -1937,7 +2020,7 @@ func TestValidateAndObserve_RelativeProjectDir(t *testing.T) {
 	if !obsRes.Passed() {
 		t.Fatalf("expected Observe with relative ProjectDir to pass, got %+v", obsRes.Evidence)
 	}
-	wantComposeFile := filepath.Join(projectDir, "compose", "compose.yaml")
+	wantObsComposeArgs := []string{"compose", "-f", filepath.Join(projectDir, "compose", "compose.yaml"), "--env-file", filepath.Join(projectDir, ".env"), "-p", "alt", "config", "--format", "json"}
 	foundCompose := false
 	for _, call := range obsRunner.calls {
 		if call.WorkDir != projectDir {
@@ -1945,13 +2028,51 @@ func TestValidateAndObserve_RelativeProjectDir(t *testing.T) {
 		}
 		if len(call.Args) >= 3 && call.Args[0] == "compose" && call.Args[1] == "-f" {
 			foundCompose = true
-			if call.Args[2] != wantComposeFile {
-				t.Errorf("Observe compose -f = %q, want absolute %q", call.Args[2], wantComposeFile)
+			if !reflect.DeepEqual(call.Args, wantObsComposeArgs) {
+				t.Errorf("Observe compose argv = %v, want %v", call.Args, wantObsComposeArgs)
 			}
 		}
 	}
 	if !foundCompose {
 		t.Fatal("expected Observe compose config call")
+	}
+}
+
+func TestObserve_RootEnvWithoutComposeEnvSymlink(t *testing.T) {
+	projectDir, _, _, _, _ := setupFakeProject(t)
+	if err := os.Remove(filepath.Join(projectDir, "compose", ".env")); err != nil {
+		t.Fatalf("remove compose/.env symlink: %v", err)
+	}
+
+	runner := newBaselineFakeRunner(t)
+	runner.onComposeConfig = func(call recordedCall) {
+		wantArgs := []string{"compose", "-f", filepath.Join(projectDir, "compose", "compose.yaml"), "--env-file", filepath.Join(projectDir, ".env"), "-p", "alt", "config", "--format", "json"}
+		if !reflect.DeepEqual(call.Args, wantArgs) {
+			t.Errorf("compose config argv = %v, want %v", call.Args, wantArgs)
+		}
+		if _, err := os.Lstat(filepath.Join(projectDir, "compose", ".env")); !os.IsNotExist(err) {
+			t.Errorf("expected compose/.env to not exist in root .env-only layout, got err=%v", err)
+		}
+		if len(call.Args) < 5 {
+			runner.composeConfigErr = &fakeExitError{code: 1}
+			return
+		}
+		if _, err := os.Stat(call.Args[4]); err != nil {
+			t.Errorf("expected --env-file %q to exist on disk: %v", call.Args[4], err)
+			runner.composeConfigErr = &fakeExitError{code: 1}
+		}
+	}
+
+	res, err := Observe(context.Background(), ObserveOptions{
+		ProjectDir:  projectDir,
+		Environ:     baselineInputEnviron,
+		NewExecutor: runner.factory(),
+	})
+	if err != nil {
+		t.Fatalf("Observe error: %v", err)
+	}
+	if !res.Passed() || !res.Evidence.RolloutSucceeded {
+		t.Fatalf("expected Observe to pass in root .env-only layout with root .env and no compose/.env, got %+v", res.Evidence)
 	}
 }
 

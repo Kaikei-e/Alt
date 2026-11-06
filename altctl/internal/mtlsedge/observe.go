@@ -136,7 +136,7 @@ func Observe(ctx context.Context, opts ObserveOptions) (*Result, error) {
 	callerCtrEnv := parseEnvSlice(callerCtr.Config.Env)
 	receiverCtrEnv := parseEnvSlice(receiverCtr.Config.Env)
 
-	renderedCallerEnv, renderedReceiverEnv, renderReasons := renderComposeServiceEnvs(ctx, runner, composeRoot)
+	renderedCallerEnv, renderedReceiverEnv, renderReasons := renderComposeServiceEnvs(ctx, runner, composeRoot, filepath.Join(projectDir, ".env"))
 	if len(renderReasons) > 0 {
 		reasons = append(reasons, renderReasons...)
 	} else {

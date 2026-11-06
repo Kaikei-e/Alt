@@ -287,12 +287,15 @@ func TestMTLSCmd_ValidateAndObserveEndToEnd(t *testing.T) {
 		var stageDirSeen string
 		runner.onComposeConfig = func(workDir string, args []string, env []string) {
 			stageDirSeen = workDir
-			wantArgs := []string{"compose", "-f", filepath.Join(workDir, "compose", "compose.yaml"), "-p", "alt", "config", "--format", "json"}
+			wantArgs := []string{"compose", "-f", filepath.Join(workDir, "compose", "compose.yaml"), "--env-file", filepath.Join(workDir, ".env"), "-p", "alt", "config", "--format", "json"}
 			if !reflect.DeepEqual(args, wantArgs) {
 				t.Errorf("compose config argv = %v, want %v", args, wantArgs)
 			}
 			if strings.HasPrefix(filepath.Clean(args[2]), filepath.Clean(root)+string(filepath.Separator)) {
 				t.Errorf("-f path %q is inside project root %q", args[2], root)
+			}
+			if strings.HasPrefix(filepath.Clean(args[4]), filepath.Clean(root)+string(filepath.Separator)) {
+				t.Errorf("--env-file path %q is inside project root %q", args[4], root)
 			}
 			compDirInfo, err := os.Lstat(filepath.Join(workDir, "compose"))
 			if err != nil || !compDirInfo.IsDir() || compDirInfo.Mode()&os.ModeSymlink != 0 {
@@ -473,7 +476,7 @@ func TestMTLSCmd_ValidateAndObserveEndToEnd(t *testing.T) {
 		}
 
 		foundComposeConfig := false
-		wantComposeArgs := []string{"compose", "-f", filepath.Join(root, "compose", "compose.yaml"), "-p", "alt", "config", "--format", "json"}
+		wantComposeArgs := []string{"compose", "-f", filepath.Join(root, "compose", "compose.yaml"), "--env-file", filepath.Join(root, ".env"), "-p", "alt", "config", "--format", "json"}
 		for _, c := range runner.calls {
 			if !reflect.DeepEqual(c.Env, cmdExpectedFrozenEnv) {
 				t.Errorf("call %v env = %v, want %v", c.Args, c.Env, cmdExpectedFrozenEnv)
