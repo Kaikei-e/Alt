@@ -33,7 +33,7 @@
 # no-op: the slice was already rendered from the old values.
 #
 # Environment (read by every suite):
-#   NODE_IMAGE           container image for install + run (default: node:22-bookworm-slim)
+#   NODE_IMAGE           container image for install + run (default: node:26-bookworm-slim)
 #   IMAGE_TAG            Docker tag for the service images (default: ci)
 #   GHCR_OWNER           GHCR namespace (default: kaikei-e)
 #   RUN_ID               unique run identifier (default: $(date +%s))
@@ -90,7 +90,7 @@ redact_secrets() {
 suite_init() {
   SUITE_NAME="$1"
 
-  : "${NODE_IMAGE:=node:22-bookworm-slim}"
+  : "${NODE_IMAGE:=node:26-bookworm-slim}"
   : "${IMAGE_TAG:=ci}"
   : "${GHCR_OWNER:=kaikei-e}"
   : "${RUN_ID:=$(date +%s)}"
