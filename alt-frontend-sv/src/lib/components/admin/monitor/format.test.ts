@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { burnSeverity, formatValue, stateBadge } from "./format";
+import { formatLocalTime, formatValue, localTimeZone } from "./format";
 
 describe("formatValue", () => {
 	it("returns em dash for null and non-finite values", () => {
@@ -15,6 +15,7 @@ describe("formatValue", () => {
 	});
 
 	it("renders ratio as percent with two decimals", () => {
+		expect(formatValue(0, "ratio")).toBe("0.00%");
 		expect(formatValue(0.0142, "ratio")).toBe("1.42%");
 	});
 
@@ -29,38 +30,29 @@ describe("formatValue", () => {
 	});
 });
 
-describe("stateBadge", () => {
-	it("returns warn glyph for missing values (data is not 'ok' just because we can't see it)", () => {
-		expect(stateBadge(null, "seconds")).toEqual({ glyph: "○", text: "warn" });
+describe("formatLocalTime and localTimeZone", () => {
+	it("returns a non-empty IANA time zone string", () => {
+		expect(localTimeZone().length).toBeGreaterThan(0);
 	});
 
-	it("maps bool to up/down arrows so color is never the sole channel", () => {
-		expect(stateBadge(1, "bool")).toEqual({ glyph: "▲", text: "up" });
-		expect(stateBadge(0, "bool")).toEqual({ glyph: "▼", text: "down" });
-	});
+	it("formats ISO strings, Date instances, and millisecond timestamps in local HH:MM:SS without seconds-guessing", () => {
+		const iso = "2026-11-06T12:34:56Z";
+		const d = new Date(iso);
+		const expected = [
+			String(d.getHours()).padStart(2, "0"),
+			String(d.getMinutes()).padStart(2, "0"),
+			String(d.getSeconds()).padStart(2, "0"),
+		].join(":");
 
-	it("uses the warn predicate to flip the glyph to a solid dot", () => {
-		const warn = (v: number) => v > 1.0;
-		expect(stateBadge(0.5, "seconds", warn)).toEqual({
-			glyph: "▲",
-			text: "ok",
-		});
-		expect(stateBadge(1.5, "seconds", warn)).toEqual({
-			glyph: "●",
-			text: "warn",
-		});
-	});
-});
-
-describe("burnSeverity (99.9% SLO baseline)", () => {
-	it("buckets by SRE workbook thresholds", () => {
-		expect(burnSeverity(null)).toBe("ok");
-		expect(burnSeverity(0.5)).toBe("ok");
-		expect(burnSeverity(1)).toBe("ticket");
-		expect(burnSeverity(5.99)).toBe("ticket");
-		expect(burnSeverity(6)).toBe("page2");
-		expect(burnSeverity(14)).toBe("page2");
-		expect(burnSeverity(14.4)).toBe("page1");
-		expect(burnSeverity(100)).toBe("page1");
+		expect(formatLocalTime(iso)).toBe(expected);
+		expect(formatLocalTime(d.getTime())).toBe(expected);
+		expect(formatLocalTime(d)).toBe(expected);
+		expect(formatLocalTime(1_000)).toBe(
+			[
+				String(new Date(1_000).getHours()).padStart(2, "0"),
+				String(new Date(1_000).getMinutes()).padStart(2, "0"),
+				String(new Date(1_000).getSeconds()).padStart(2, "0"),
+			].join(":"),
+		);
 	});
 });

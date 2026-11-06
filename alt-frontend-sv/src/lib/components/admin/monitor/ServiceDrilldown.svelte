@@ -1,136 +1,252 @@
 <script lang="ts">
-import SLISparkline from "#lib/components/knowledge-home-admin/SLISparkline.svelte";
-import type { MetricResult } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 import { formatValue } from "./format";
+import MonitorSparkline from "./MonitorSparkline.svelte";
+import {
+	type MetricMap,
+	type ServiceRow,
+	seriesPoints,
+	THRESHOLDS,
+} from "./model";
 
 let {
-	job,
+	row,
 	metrics,
 }: {
-	job: string;
-	metrics: MetricResult[];
+	row: ServiceRow;
+	metrics: MetricMap;
 } = $props();
 
-function find(key: string): MetricResult | undefined {
-	return metrics.find((m) => m.key === key);
-}
-
-function seriesForJob(key: string): number[] {
-	const m = find(key);
+function pointsForService(key: string): { t: number; v: number }[] {
+	const m = metrics.get(key);
 	if (!m) return [];
-	for (const s of m.series ?? []) {
-		if (s.labels?.job === job) {
-			return s.points.map((p) => p.value);
-		}
+	for (const job of row.jobs) {
+		const pts = seriesPoints(m, { job });
+		if (pts.length > 0) return pts;
 	}
 	return [];
 }
 
-function seriesForName(key: string): { container: string; values: number[] }[] {
-	const m = find(key);
-	if (!m) return [];
-	const out: { container: string; values: number[] }[] = [];
-	for (const s of m.series ?? []) {
-		const name = s.labels?.name ?? "";
-		// Match cAdvisor container name to the prometheus job heuristically.
-		if (name && (name === job || name.startsWith(job))) {
-			out.push({ container: name, values: s.points.map((p) => p.value) });
-		}
-	}
-	return out;
-}
-
-const p50 = $derived(seriesForJob("http_latency_p50"));
-const p95 = $derived(seriesForJob("http_latency_p95"));
-const p99 = $derived(seriesForJob("http_latency_p99"));
-const rps = $derived(seriesForJob("http_rps"));
-const err = $derived(seriesForJob("http_error_ratio"));
-const cpu = $derived(seriesForName("cpu_saturation"));
-const mem = $derived(seriesForName("memory_rss"));
+const p50Points = $derived(pointsForService("http_latency_p50"));
+const p95Points = $derived(pointsForService("http_latency_p95"));
+const p99Points = $derived(pointsForService("http_latency_p99"));
+const rpsPoints = $derived(pointsForService("http_rps"));
+const errPoints = $derived(pointsForService("http_error_ratio"));
 </script>
 
-<div class="drill">
-	<div class="grid">
-		<div class="panel">
-			<h3>Latency band</h3>
-			<dl>
-				<dt>p99 latest</dt>
-				<dd>{formatValue(p99.at(-1) ?? null, "seconds")}</dd>
-				<dt>p95 latest</dt>
-				<dd>{formatValue(p95.at(-1) ?? null, "seconds")}</dd>
-				<dt>p50 latest</dt>
-				<dd>{formatValue(p50.at(-1) ?? null, "seconds")}</dd>
-			</dl>
-			<div class="overlay" aria-hidden="true">
-				{#if p99.length >= 2}
-					<SLISparkline values={p99} width={260} height={32} threshold={1.0} />
-				{/if}
-				{#if p95.length >= 2}
-					<SLISparkline values={p95} width={260} height={32} />
-				{/if}
-				{#if p50.length >= 2}
-					<SLISparkline values={p50} width={260} height={32} />
-				{/if}
-			</div>
-		</div>
-
-		<div class="panel">
-			<h3>Traffic + errors</h3>
-			<dl>
-				<dt>rps latest</dt>
-				<dd>{formatValue(rps.at(-1) ?? null, "req/s")}</dd>
-				<dt>err latest</dt>
-				<dd>{formatValue(err.at(-1) ?? null, "ratio")}</dd>
-			</dl>
-			<div class="overlay" aria-hidden="true">
-				{#if rps.length >= 2}
-					<SLISparkline values={rps} width={260} height={32} />
-				{/if}
-				{#if err.length >= 2}
-					<SLISparkline values={err} width={260} height={32} threshold={0.01} />
-				{/if}
-			</div>
-		</div>
-
-		<div class="panel">
-			<h3>Container resource</h3>
-			{#if cpu.length === 0 && mem.length === 0}
-				<p class="dim">No cAdvisor series match this service.</p>
-			{:else}
-				<dl>
-					<dt>cpu (cores)</dt>
-					<dd>
-						{cpu
-							.map(
-								(c) =>
-									`${c.container} · ${formatValue(c.values.at(-1) ?? null, "cores")}`,
-							)
-							.join("  ·  ") || "—"}
-					</dd>
-					<dt>mem</dt>
-					<dd>
-						{mem
-							.map(
-								(c) =>
-									`${c.container} · ${formatValue(c.values.at(-1) ?? null, "bytes")}`,
-							)
-							.join("  ·  ") || "—"}
-					</dd>
-				</dl>
+<div class="drill" data-testid="service-drilldown">
+	<div class="meta-bar">
+		<div class="meta-group">
+			<span class="meta-key">Jobs:</span>
+			{#each row.jobScrapes as js (js.job)}
+				<span class="meta-val">
+					{js.job} (age {js.scrapeAgeSeconds !== null ? `${Math.round(js.scrapeAgeSeconds)}s` : "no data"} · scrape {js.scrapeDurationSeconds !== null ? formatValue(js.scrapeDurationSeconds, "seconds") : "no data"})
+				</span>
+			{/each}
+			{#if row.signal}
+				<span class="meta-key">Signal:</span>
+				<span class="meta-val">{row.signal}</span>
 			{/if}
 		</div>
+		{#if row.reasons.length > 0}
+			<ul
+				class="reasons"
+				data-severity={row.severity}
+				data-testid="drilldown-reasons"
+			>
+				{#each row.reasons as reason (reason)}
+					<li>{reason}</li>
+				{/each}
+			</ul>
+		{:else if row.severity === "ok" && row.redMetricsAvailable}
+			<span class="meta-ok">All thresholds passing</span>
+		{:else if row.severity === "ok"}
+			<span class="dim">Targets up · RED unknown</span>
+		{:else}
+			<span class="dim">NO DATA — target availability unknown</span>
+		{/if}
 	</div>
+
+	{#if !row.instrumented}
+		<p class="dim">
+			{row.redMetricsAvailable
+				? "This service has no request instrumentation (no request metrics)."
+				: "NO DATA — request metrics unavailable."}
+		</p>
+	{:else}
+		<div class="grid">
+			<div class="panel">
+				<h3>Latency p50 / p95 / p99</h3>
+				<div class="spark-list">
+					<div class="spark-item">
+						<div class="spark-head">
+							<span>p50</span>
+							<span class:dim={row.p50 === null}>
+								{row.p50 !== null ? formatValue(row.p50, "seconds") : "no data"}
+							</span>
+						</div>
+						<MonitorSparkline
+							points={p50Points}
+							label="{row.service} p50 latency"
+							unit="seconds"
+							width={240}
+							height={30}
+							showAxisLabels={true}
+						/>
+					</div>
+
+					<div class="spark-item">
+						<div class="spark-head">
+							<span>p95</span>
+							<span class:dim={row.p95 === null}>
+								{row.p95 !== null ? formatValue(row.p95, "seconds") : "no data"}
+							</span>
+						</div>
+						<MonitorSparkline
+							points={p95Points}
+							label="{row.service} p95 latency"
+							unit="seconds"
+							threshold={THRESHOLDS.serviceLatencyP95.warn}
+							width={240}
+							height={30}
+							showAxisLabels={true}
+						/>
+					</div>
+
+					<div class="spark-item">
+						<div class="spark-head">
+							<span>p99</span>
+							<span class:dim={row.p99 === null}>
+								{row.p99 !== null ? formatValue(row.p99, "seconds") : "no data"}
+							</span>
+						</div>
+						<MonitorSparkline
+							points={p99Points}
+							label="{row.service} p99 latency"
+							unit="seconds"
+							width={240}
+							height={30}
+							showAxisLabels={true}
+						/>
+					</div>
+				</div>
+			</div>
+
+			<div class="panel">
+				<h3>Request rate (req/s)</h3>
+				<div class="spark-item">
+					<div class="spark-head">
+						<span>req/s</span>
+						<span class:dim={row.rps === null}>
+							{row.rps !== null ? `${formatValue(row.rps, "req/s")} req/s` : "no data"}
+						</span>
+					</div>
+					<MonitorSparkline
+						points={rpsPoints}
+						label="{row.service} request rate"
+						unit="req/s"
+						width={240}
+						height={36}
+						showAxisLabels={true}
+					/>
+				</div>
+			</div>
+
+			<div class="panel">
+				<h3>Error ratio (5xx)</h3>
+				<div class="spark-item">
+					<div class="spark-head">
+						<span>5xx ratio</span>
+						<span class:dim={row.errorRatio === null}>
+							{row.errorRatio !== null
+								? formatValue(row.errorRatio, "ratio")
+								: "no data"}
+						</span>
+					</div>
+					<MonitorSparkline
+						points={errPoints}
+						label="{row.service} 5xx ratio"
+						unit="ratio"
+						threshold={THRESHOLDS.serviceErrorRatio.warn}
+						width={240}
+						height={36}
+						showAxisLabels={true}
+					/>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
 	.drill {
+		display: grid;
+		gap: 0.6rem;
 		font-size: 0.82rem;
+		min-width: 0;
+	}
+
+	.meta-bar {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		padding-bottom: 0.4rem;
+		border-bottom: 0.5px solid var(--obs-rule, var(--surface-border));
+	}
+
+	.meta-group {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 0.45rem;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+	}
+
+	.meta-key {
+		color: var(--alt-slate);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		font-size: 0.66rem;
+	}
+
+	.meta-val {
+		color: var(--alt-charcoal);
+	}
+
+	.meta-ok {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: var(--obs-good, var(--alt-success));
+	}
+
+	.reasons {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		font-family: var(--font-mono);
+		font-size: 0.74rem;
+		font-weight: 600;
+		color: var(--obs-warn, var(--alt-warning));
+	}
+
+	.reasons[data-severity="crit"] {
+		color: var(--obs-critical, var(--alt-error));
+	}
+
+	.reasons[data-severity="warn"] {
+		color: var(--obs-warn, var(--alt-warning));
 	}
 
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 0.7rem;
+		min-width: 0;
 	}
 
 	@media (max-width: 1100px) {
@@ -141,10 +257,11 @@ const mem = $derived(seriesForName("memory_rss"));
 
 	.panel {
 		display: grid;
-		gap: 0.35rem;
-		padding: 0.55rem 0.7rem;
+		gap: 0.45rem;
+		padding: 0.6rem 0.75rem;
 		border: 0.5px solid var(--obs-rule, var(--surface-border));
-		background: var(--surface);
+		background: var(--surface-bg);
+		min-width: 0;
 	}
 
 	.panel h3 {
@@ -156,33 +273,30 @@ const mem = $derived(seriesForName("memory_rss"));
 		margin: 0;
 	}
 
-	dl {
+	.spark-list {
 		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 0.15rem 0.6rem;
-		margin: 0;
+		gap: 0.45rem;
+	}
+
+	.spark-item {
+		display: grid;
+		gap: 0.2rem;
+		min-width: 0;
+	}
+
+	.spark-head {
+		display: flex;
+		justify-content: space-between;
 		font-family: var(--font-mono);
-		font-size: 0.78rem;
-	}
-
-	dt {
-		color: var(--alt-ash);
-	}
-
-	dd {
-		margin: 0;
+		font-size: 0.74rem;
 		color: var(--alt-charcoal);
 		font-variant-numeric: tabular-nums;
 	}
 
-	.overlay {
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
-	}
-
 	.dim {
-		color: var(--alt-ash);
-		font-style: italic;
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 0.74rem;
+		color: var(--obs-muted, var(--alt-ash));
 	}
 </style>

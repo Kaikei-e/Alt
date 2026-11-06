@@ -43,7 +43,7 @@ describe("MonitorErrorBanner", () => {
 		expect(banner?.textContent).toContain("prometheus timeout");
 	});
 
-	it("appears while the stream is connecting (no first frame yet)", () => {
+	it("appears while the stream is connecting (no first frame yet) with state text 'connecting' + glyph ▲", () => {
 		const screen = render(MonitorErrorBanner, {
 			props: { metrics: [], streamState: "connecting" },
 		});
@@ -51,9 +51,13 @@ describe("MonitorErrorBanner", () => {
 			'[data-testid="monitor-error-banner"]',
 		);
 		expect(banner?.textContent).toContain("Connecting");
+		const head = screen.container.querySelector(".head");
+		expect(head?.textContent).toContain("▲");
+		expect(head?.textContent?.toLowerCase()).toContain("connecting");
+		expect(head?.textContent?.toLowerCase()).not.toContain("degraded");
 	});
 
-	it("encodes the state with text 'degraded' + glyph ●, not color alone", () => {
+	it("encodes the state with text 'degraded' + glyph ▲, not color alone", () => {
 		const screen = render(MonitorErrorBanner, {
 			props: {
 				metrics: [makeMetric(true, "prometheus unreachable")],
@@ -61,7 +65,7 @@ describe("MonitorErrorBanner", () => {
 			},
 		});
 		const head = screen.container.querySelector(".head");
-		expect(head?.textContent).toContain("●");
+		expect(head?.textContent).toContain("▲");
 		expect(head?.textContent?.toLowerCase()).toContain("degraded");
 	});
 });
