@@ -1,163 +1,197 @@
 <script lang="ts">
-import type { MetricResult } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
-import { formatValue, stateBadge } from "./format";
+import { formatValue } from "./format";
+import {
+	badge,
+	type MetricMap,
+	type ServiceGroup,
+	type ServiceRow,
+	THRESHOLDS,
+} from "./model";
 import ServiceDrilldown from "./ServiceDrilldown.svelte";
 
 let {
 	metrics,
+	rows,
 }: {
-	metrics: MetricResult[];
+	metrics: MetricMap;
+	rows: ServiceRow[];
 } = $props();
 
+let onlyIssues = $state(false);
 let expanded = $state<string | null>(null);
 
-function find(key: string): MetricResult | undefined {
-	return metrics.find((m) => m.key === key);
-}
+const visibleRows = $derived(
+	onlyIssues ? rows.filter((r) => r.severity !== "ok") : rows,
+);
 
-interface Row {
-	job: string;
-	p50: number | null;
-	p95: number | null;
-	p99: number | null;
-	rps: number | null;
-	err: number | null;
-	up: number | null;
-}
-
-const rows = $derived.by(() => {
-	const byJob: Record<string, Row> = {};
-	const ensure = (job: string): Row => {
-		if (!byJob[job]) {
-			byJob[job] = {
-				job,
-				p50: null,
-				p95: null,
-				p99: null,
-				rps: null,
-				err: null,
-				up: null,
-			};
+const groupedRows = $derived.by(() => {
+	const groups: Array<{ group: ServiceGroup; items: ServiceRow[] }> = [];
+	const byGroup = new Map<ServiceGroup, ServiceRow[]>();
+	for (const r of visibleRows) {
+		let list = byGroup.get(r.group);
+		if (!list) {
+			list = [];
+			byGroup.set(r.group, list);
+			groups.push({ group: r.group, items: list });
 		}
-		return byJob[job];
-	};
-
-	function latestByJob(
-		metric: MetricResult | undefined,
-	): Record<string, number> {
-		const out: Record<string, number> = {};
-		for (const s of metric?.series ?? []) {
-			const job = s.labels?.job ?? "(unknown)";
-			const last = s.points.at(-1)?.value;
-			if (last != null && Number.isFinite(last)) out[job] = last;
-		}
-		return out;
+		list.push(r);
 	}
-
-	const p50 = latestByJob(find("http_latency_p50"));
-	const p95 = latestByJob(find("http_latency_p95"));
-	const p99 = latestByJob(find("http_latency_p99"));
-	const rps = latestByJob(find("http_rps"));
-	const err = latestByJob(find("http_error_ratio"));
-	const up = latestByJob(find("availability_services"));
-
-	for (const [job, v] of Object.entries(p50)) ensure(job).p50 = v;
-	for (const [job, v] of Object.entries(p95)) ensure(job).p95 = v;
-	for (const [job, v] of Object.entries(p99)) ensure(job).p99 = v;
-	for (const [job, v] of Object.entries(rps)) ensure(job).rps = v;
-	for (const [job, v] of Object.entries(err)) ensure(job).err = v;
-	for (const [job, v] of Object.entries(up)) ensure(job).up = v;
-
-	return Object.values(byJob).sort((a, b) => a.job.localeCompare(b.job));
+	return groups;
 });
 
-function rowState(r: Row): "ok" | "warn" | "down" | "missing" {
-	if (r.up === 0) return "down";
-	if (r.up == null && r.rps == null) return "missing";
-	if (r.err != null && r.err > 0.01) return "warn";
-	if (r.p95 != null && r.p95 > 1.0) return "warn";
-	return "ok";
+function toggle(service: string) {
+	expanded = expanded === service ? null : service;
 }
 
-function rowGlyph(state: "ok" | "warn" | "down" | "missing"): string {
-	switch (state) {
-		case "ok":
-			return "▲";
-		case "warn":
-			return "●";
-		case "down":
-			return "▼";
-		case "missing":
-			return "○";
-	}
+function stateAriaLabel(r: ServiceRow): string {
+	const b = badge(r.severity);
+	if (r.reasons.length === 0) return b.label;
+	return `${b.label}: ${r.reasons.join("; ")}`;
 }
 
-function toggle(job: string) {
-	expanded = expanded === job ? null : job;
+function formatScrapeAge(sec: number | null): string {
+	if (sec === null || !Number.isFinite(sec)) return "no data";
+	return `${Math.round(sec)}s`;
 }
 </script>
 
-<section class="red" aria-label="Service RED">
-	<h2 class="section-head">Service RED — rate / errors / duration</h2>
-	{#if rows.length === 0}
-		<p class="empty">No scraped services yet. Waiting for first stream tick.</p>
-	{:else}
-		<table>
-			<thead>
-				<tr>
-					<th scope="col" class="status-col">State</th>
-					<th scope="col" class="job-col">Service</th>
-					<th scope="col" class="num-col">p50</th>
-					<th scope="col" class="num-col">p95</th>
-					<th scope="col" class="num-col">p99</th>
-					<th scope="col" class="num-col">req/s</th>
-					<th scope="col" class="num-col">err %</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each rows as r (r.job)}
-					{@const state = rowState(r)}
-					<tr
-						class="row"
-						data-state={state}
-						class:expanded={expanded === r.job}
-					>
-						<td>
-							<button
-								type="button"
-								class="status-btn"
-								aria-expanded={expanded === r.job}
-								aria-controls="drill-{r.job}"
-								onclick={() => toggle(r.job)}
-							>
-								<span class="glyph" aria-hidden="true">{rowGlyph(state)}</span>
-								<span class="state-text">{state}</span>
-							</button>
-						</td>
-						<td class="job">{r.job}</td>
-						<td class="num">{formatValue(r.p50, "seconds")}</td>
-						<td class="num">{formatValue(r.p95, "seconds")}</td>
-						<td class="num">{formatValue(r.p99, "seconds")}</td>
-						<td class="num">{formatValue(r.rps, "req/s")}</td>
-						<td class="num">{formatValue(r.err, "ratio")}</td>
+<section id="services" class="red" aria-label="Services">
+	<header class="section-bar">
+		<div class="title-wrap">
+			<h2 class="section-head">Services — Targets &amp; RED</h2>
+			<span class="thresholds-meta">
+				5xx {THRESHOLDS.serviceErrorRatio.display} · p95 {THRESHOLDS.serviceLatencyP95.display} · scrape age {THRESHOLDS.scrapeAge.display}
+			</span>
+		</div>
+
+		<label class="issue-toggle">
+			<input type="checkbox" bind:checked={onlyIssues} />
+			<span>Show only issues</span>
+		</label>
+	</header>
+
+	<div class="table-wrap">
+		{#if visibleRows.length === 0}
+			<p class="empty">
+				{onlyIssues
+					? "No services with active issues."
+					: metrics.size === 0
+						? "No scraped services yet. Waiting for first stream tick."
+						: "NO DATA — target availability unavailable"}
+			</p>
+		{:else}
+			<table>
+				<thead>
+					<tr>
+						<th scope="col" class="status-col">State</th>
+						<th scope="col" class="job-col">Service</th>
+						<th scope="col" class="num-col">Targets</th>
+						<th scope="col" class="num-col">Scrape age</th>
+						<th scope="col" class="num-col">req/s</th>
+						<th scope="col" class="num-col">5xx</th>
+						<th scope="col" class="num-col">p95</th>
 					</tr>
-					{#if expanded === r.job}
-						<tr class="drill-row">
-							<td colspan="7" id="drill-{r.job}">
-								<ServiceDrilldown job={r.job} {metrics} />
-							</td>
+				</thead>
+				<tbody>
+					{#each groupedRows as g (g.group)}
+						<tr class="group-row">
+							<th colspan="7" scope="colgroup">{g.group}</th>
 						</tr>
-					{/if}
-				{/each}
-			</tbody>
-		</table>
-	{/if}
+						{#each g.items as r (r.service)}
+							{@const b = badge(r.severity)}
+							{@const isExpanded = expanded === r.service}
+							<tr
+								class="row"
+								data-service={r.service}
+								data-state={b.severity}
+								class:expanded={isExpanded}
+								onclick={() => toggle(r.service)}
+							>
+								<td class="state-cell" aria-label={stateAriaLabel(r)}>
+									<span class="state-badge" data-severity={b.severity}>
+										<span class="glyph" aria-hidden="true">{b.glyph}</span>
+										<span class="state-text">{b.label}</span>
+									</span>
+								</td>
+								<td class="job">
+									<button
+										type="button"
+										class="svc-toggle"
+										aria-expanded={isExpanded}
+										aria-controls="drill-{r.service}"
+										onclick={(e) => {
+											e.stopPropagation();
+											toggle(r.service);
+										}}
+									>
+										<span class="svc-name">{r.service}</span>
+									</button>
+									{#if r.reasons.length > 0}
+										<span class="inline-reason">{r.reasons.join(" · ")}</span>
+									{/if}
+								</td>
+								<td class="num">{r.targetsUp}/{r.targetsTotal}</td>
+								<td class="num">{formatScrapeAge(r.scrapeAgeSeconds)}</td>
+								{#if r.instrumented}
+									<td class="num" class:no-metrics={r.rps === null}>
+										{r.rps !== null ? formatValue(r.rps, "req/s") : "no data"}
+									</td>
+									<td class="num" class:no-metrics={r.errorRatio === null}>
+										{r.errorRatio !== null
+											? formatValue(r.errorRatio, "ratio")
+											: "no data"}
+									</td>
+									<td class="num" class:no-metrics={r.p95 === null}>
+										{r.p95 !== null
+											? formatValue(r.p95, "seconds")
+											: "no data"}
+									</td>
+								{:else}
+									{@const uninstrumentedText = r.redMetricsAvailable
+										? "no request metrics"
+										: "no data"}
+									<td class="num no-metrics">{uninstrumentedText}</td>
+									<td class="num no-metrics">{uninstrumentedText}</td>
+									<td class="num no-metrics">{uninstrumentedText}</td>
+								{/if}
+							</tr>
+							<tr class="drill-row" hidden={!isExpanded}>
+								<td colspan="7" id="drill-{r.service}">
+									{#if isExpanded}
+										<ServiceDrilldown row={r} {metrics} />
+									{/if}
+								</td>
+							</tr>
+						{/each}
+					{/each}
+				</tbody>
+			</table>
+		{/if}
+	</div>
 </section>
 
 <style>
 	.red {
 		display: grid;
-		gap: 0.5rem;
+		gap: 0.55rem;
+		min-width: 0;
+	}
+
+	.section-bar {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		border-top: 1px solid var(--obs-rule-strong, var(--surface-border));
+		padding-top: 0.55rem;
+	}
+
+	.title-wrap {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 0.6rem;
 	}
 
 	.section-head {
@@ -167,6 +201,29 @@ function toggle(job: string) {
 		text-transform: uppercase;
 		margin: 0;
 		color: var(--alt-charcoal);
+	}
+
+	.thresholds-meta {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		color: var(--alt-slate);
+	}
+
+	.issue-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: var(--alt-charcoal);
+		cursor: pointer;
+	}
+
+	.table-wrap {
+		width: 100%;
+		max-width: 100%;
+		overflow-x: auto;
+		min-width: 0;
 	}
 
 	table {
@@ -184,22 +241,51 @@ function toggle(job: string) {
 		text-align: left;
 		padding: 0.4rem 0.6rem 0.4rem 0;
 		border-bottom: 1px solid var(--alt-charcoal);
+		white-space: nowrap;
 	}
 
 	.num-col {
 		text-align: right;
 	}
 
+	.group-row th {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--alt-slate);
+		text-align: left;
+		padding: 0.55rem 0.6rem 0.25rem 0;
+		border-bottom: 0.5px solid var(--obs-rule-strong, var(--surface-border));
+		background: color-mix(in oklch, var(--surface-bg) 96%, var(--alt-charcoal) 4%);
+	}
+
+	.row {
+		cursor: pointer;
+	}
+
+	.row:hover {
+		background: var(--surface-hover, rgba(0, 0, 0, 0.03));
+	}
+
 	tbody td {
-		padding: 0.55rem 0.6rem 0.55rem 0;
-		font-size: 0.84rem;
+		padding: 0.5rem 0.6rem 0.5rem 0;
+		font-size: 0.82rem;
 		color: var(--alt-charcoal);
 		border-bottom: 0.5px solid var(--obs-rule, var(--surface-border));
+		vertical-align: baseline;
 	}
 
 	.num {
 		text-align: right;
 		font-family: var(--font-mono);
+		white-space: nowrap;
+	}
+
+	.no-metrics {
+		color: var(--obs-muted, var(--alt-ash));
+		font-size: 0.72rem;
 	}
 
 	.job {
@@ -207,49 +293,67 @@ function toggle(job: string) {
 		font-weight: 500;
 	}
 
-	.status-btn {
-		background: none;
-		border: none;
-		padding: 0;
-		display: inline-flex;
-		gap: 0.35rem;
-		align-items: baseline;
+	.svc-toggle {
+		all: unset;
 		cursor: pointer;
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: inherit;
+		display: inline-flex;
+		align-items: baseline;
 	}
 
-	.row[data-state="warn"] .glyph,
-	.row[data-state="warn"] .state-text {
+	.svc-toggle:focus-visible {
+		outline: 1.5px solid var(--alt-charcoal);
+		outline-offset: 2px;
+	}
+
+	.svc-name {
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+	}
+
+	.inline-reason {
+		display: block;
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		font-weight: 400;
+		color: var(--alt-slate);
+	}
+
+	.state-badge {
+		display: inline-flex;
+		gap: 0.3rem;
+		align-items: baseline;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		white-space: nowrap;
+	}
+
+	.state-badge[data-severity="ok"] {
+		color: var(--obs-good, var(--alt-success));
+	}
+
+	.state-badge[data-severity="warn"] {
 		color: var(--obs-warn, var(--alt-warning));
 	}
 
-	.row[data-state="down"] .glyph,
-	.row[data-state="down"] .state-text {
+	.state-badge[data-severity="crit"] {
 		color: var(--obs-critical, var(--alt-error));
 	}
 
-	.row[data-state="missing"] {
+	.state-badge[data-severity="nodata"],
+	.state-badge[data-severity="stale"] {
 		color: var(--obs-muted, var(--alt-ash));
 	}
 
 	.drill-row td {
-		background: color-mix(in oklch, var(--surface) 96%, var(--alt-charcoal) 4%);
-		padding: 0.6rem 0.6rem 0.9rem;
+		background: color-mix(in oklch, var(--surface-bg) 96%, var(--alt-charcoal) 4%);
+		padding: 0.65rem 0.75rem 0.9rem;
 	}
 
 	.empty {
 		color: var(--alt-ash);
 		font-style: italic;
-	}
-
-	@media (max-width: 900px) {
-		table {
-			display: block;
-			overflow-x: auto;
-		}
+		margin: 0.4rem 0;
 	}
 </style>

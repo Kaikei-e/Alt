@@ -1,0 +1,234 @@
+# Prometheus recording rules for the /admin/monitor observability surface.
+#
+# Normalizes heterogeneous service metrics into a canonical schema consumed by
+# alt-backend's AdminMonitorModule:
+#   - Per-job RED (label `signal`: http_server | user_journey | publish):
+#       alt-backend          : http_server_request_duration_seconds_{count,bucket} (5xx = http_response_status_code=~"5..")
+#       news-creator         : http_server_duration_milliseconds_{count,bucket} (/1000 -> s; 5xx = http_status_code=~"5..")
+#       recap-subworker      : http_requests_total / http_request_duration_seconds_bucket (5xx = status="5xx")
+#       prometheus           : prometheus_http_requests_total / prometheus_http_request_duration_seconds_bucket (5xx = code=~"5..")
+#       alertmanager         : alertmanager_http_request_duration_seconds_{count,bucket} (no status dimension; error series omitted)
+#       plecto-proxy         : plecto_requests_total / plecto_request_duration_seconds_bucket (5xx = status_class="5xx")
+#       alt-butterfly-facade : alt_user_journey_requests_total (signal="user_journey", error = status="error", no latency histogram)
+#       mq-hub               : mqhub_publish_total / mqhub_publish_duration_seconds_bucket (signal="publish", error = status!="success")
+#   - Pre-processor is intentionally unmapped: metrics.Collector.RecordRequest
+#     has no production caller (only _aggregate=0 exists), so it surfaces as
+#     "no request metrics" rather than misleading zeros or double-counted sums.
+#   - Probe and scrape routes (/v1/health, /health, /metrics, /-/healthy,
+#     /-/ready) are excluded from both counters and histogram buckets so high
+#     frequency health checks do not dilute error ratios or latency quantiles.
+#   - Edge SLOs (plecto-proxy): 99.9% availability target (error budget = 0.001,
+#     so burn rate = error_ratio / 0.001 across 5m, 30m, 1h, and 6h windows).
+#   - Histogram quantiles apply `>= 0` to drop IEEE 754 NaN emitted when bucket
+#     rates are zero, and error ratios guard denominators with `> 0`.
+
+groups:
+  - name: admin_monitor_recordings
+    interval: 15s
+    rules:
+      - record: job:alt_requests:rate5m
+        expr: |
+          label_replace(
+            sum by (job) (rate(http_server_request_duration_seconds_count{job="alt-backend",http_route!~"/v1/health|/health|/metrics"}[5m]))
+            or sum by (job) (rate(http_server_duration_milliseconds_count{job="news-creator",http_target!~"/health|/metrics"}[5m]))
+            or sum by (job) (rate(http_requests_total{job="recap-subworker",handler!~"/health|/metrics"}[5m]))
+            or sum by (job) (rate(prometheus_http_requests_total{job="prometheus",handler!~"/metrics|/-/healthy|/-/ready"}[5m]))
+            or sum by (job) (rate(alertmanager_http_request_duration_seconds_count{job="alertmanager",handler!~"/metrics|/-/healthy|/-/ready"}[5m]))
+            or sum by (job) (rate(plecto_requests_total{job="plecto-proxy"}[5m])),
+            "signal", "http_server", "", ""
+          )
+          or label_replace(
+            sum by (job) (rate(alt_user_journey_requests_total{job="alt-butterfly-facade"}[5m])),
+            "signal", "user_journey", "", ""
+          )
+          or label_replace(
+            sum by (job) (rate(mqhub_publish_total{job="mq-hub"}[5m])),
+            "signal", "publish", "", ""
+          )
+
+      # Fall back to 0 * total when an error label combination has never been incremented.
+      - record: job:alt_request_errors:rate5m
+        expr: |
+          label_replace(
+            (sum by (job) (rate(http_server_request_duration_seconds_count{job="alt-backend",http_route!~"/v1/health|/health|/metrics",http_response_status_code=~"5.."}[5m])) or 0 * sum by (job) (rate(http_server_request_duration_seconds_count{job="alt-backend",http_route!~"/v1/health|/health|/metrics"}[5m])))
+            or (sum by (job) (rate(http_server_duration_milliseconds_count{job="news-creator",http_target!~"/health|/metrics",http_status_code=~"5.."}[5m])) or 0 * sum by (job) (rate(http_server_duration_milliseconds_count{job="news-creator",http_target!~"/health|/metrics"}[5m])))
+            or (sum by (job) (rate(http_requests_total{job="recap-subworker",handler!~"/health|/metrics",status="5xx"}[5m])) or 0 * sum by (job) (rate(http_requests_total{job="recap-subworker",handler!~"/health|/metrics"}[5m])))
+            or (sum by (job) (rate(prometheus_http_requests_total{job="prometheus",handler!~"/metrics|/-/healthy|/-/ready",code=~"5.."}[5m])) or 0 * sum by (job) (rate(prometheus_http_requests_total{job="prometheus",handler!~"/metrics|/-/healthy|/-/ready"}[5m])))
+            or (sum by (job) (rate(plecto_requests_total{job="plecto-proxy",status_class="5xx"}[5m])) or 0 * sum by (job) (rate(plecto_requests_total{job="plecto-proxy"}[5m]))),
+            "signal", "http_server", "", ""
+          )
+          or label_replace(
+            sum by (job) (rate(alt_user_journey_requests_total{job="alt-butterfly-facade",status="error"}[5m])) or 0 * sum by (job) (rate(alt_user_journey_requests_total{job="alt-butterfly-facade"}[5m])),
+            "signal", "user_journey", "", ""
+          )
+          or label_replace(
+            sum by (job) (rate(mqhub_publish_total{job="mq-hub",status!="success"}[5m])) or 0 * sum by (job) (rate(mqhub_publish_total{job="mq-hub"}[5m])),
+            "signal", "publish", "", ""
+          )
+
+      - record: job:alt_request_error_ratio:ratio_rate5m
+        expr: |
+          (
+            label_replace(
+              (sum by (job) (rate(http_server_request_duration_seconds_count{job="alt-backend",http_route!~"/v1/health|/health|/metrics",http_response_status_code=~"5.."}[5m])) or 0 * sum by (job) (rate(http_server_request_duration_seconds_count{job="alt-backend",http_route!~"/v1/health|/health|/metrics"}[5m])))
+              or (sum by (job) (rate(http_server_duration_milliseconds_count{job="news-creator",http_target!~"/health|/metrics",http_status_code=~"5.."}[5m])) or 0 * sum by (job) (rate(http_server_duration_milliseconds_count{job="news-creator",http_target!~"/health|/metrics"}[5m])))
+              or (sum by (job) (rate(http_requests_total{job="recap-subworker",handler!~"/health|/metrics",status="5xx"}[5m])) or 0 * sum by (job) (rate(http_requests_total{job="recap-subworker",handler!~"/health|/metrics"}[5m])))
+              or (sum by (job) (rate(prometheus_http_requests_total{job="prometheus",handler!~"/metrics|/-/healthy|/-/ready",code=~"5.."}[5m])) or 0 * sum by (job) (rate(prometheus_http_requests_total{job="prometheus",handler!~"/metrics|/-/healthy|/-/ready"}[5m])))
+              or (sum by (job) (rate(plecto_requests_total{job="plecto-proxy",status_class="5xx"}[5m])) or 0 * sum by (job) (rate(plecto_requests_total{job="plecto-proxy"}[5m]))),
+              "signal", "http_server", "", ""
+            )
+            or label_replace(
+              sum by (job) (rate(alt_user_journey_requests_total{job="alt-butterfly-facade",status="error"}[5m])) or 0 * sum by (job) (rate(alt_user_journey_requests_total{job="alt-butterfly-facade"}[5m])),
+              "signal", "user_journey", "", ""
+            )
+            or label_replace(
+              sum by (job) (rate(mqhub_publish_total{job="mq-hub",status!="success"}[5m])) or 0 * sum by (job) (rate(mqhub_publish_total{job="mq-hub"}[5m])),
+              "signal", "publish", "", ""
+            )
+          )
+          /
+          (
+            (
+              label_replace(
+                sum by (job) (rate(http_server_request_duration_seconds_count{job="alt-backend",http_route!~"/v1/health|/health|/metrics"}[5m]))
+                or sum by (job) (rate(http_server_duration_milliseconds_count{job="news-creator",http_target!~"/health|/metrics"}[5m]))
+                or sum by (job) (rate(http_requests_total{job="recap-subworker",handler!~"/health|/metrics"}[5m]))
+                or sum by (job) (rate(prometheus_http_requests_total{job="prometheus",handler!~"/metrics|/-/healthy|/-/ready"}[5m]))
+                or sum by (job) (rate(plecto_requests_total{job="plecto-proxy"}[5m])),
+                "signal", "http_server", "", ""
+              )
+              or label_replace(
+                sum by (job) (rate(alt_user_journey_requests_total{job="alt-butterfly-facade"}[5m])),
+                "signal", "user_journey", "", ""
+              )
+              or label_replace(
+                sum by (job) (rate(mqhub_publish_total{job="mq-hub"}[5m])),
+                "signal", "publish", "", ""
+              )
+            ) > 0
+          )
+
+      - record: job:alt_request_duration_seconds:p50_rate5m
+        expr: |
+          (
+            label_replace(
+              histogram_quantile(0.50, sum by (job, le) (rate(http_server_request_duration_seconds_bucket{job="alt-backend",http_route!~"/v1/health|/health|/metrics"}[5m])))
+              or histogram_quantile(0.50, sum by (job, le) (rate(http_server_duration_milliseconds_bucket{job="news-creator",http_target!~"/health|/metrics"}[5m]))) / 1000
+              or histogram_quantile(0.50, sum by (job, le) (rate(http_request_duration_seconds_bucket{job="recap-subworker",handler!~"/health|/metrics"}[5m])))
+              or histogram_quantile(0.50, sum by (job, le) (rate(prometheus_http_request_duration_seconds_bucket{job="prometheus",handler!~"/metrics|/-/healthy|/-/ready"}[5m])))
+              or histogram_quantile(0.50, sum by (job, le) (rate(alertmanager_http_request_duration_seconds_bucket{job="alertmanager",handler!~"/metrics|/-/healthy|/-/ready"}[5m])))
+              or histogram_quantile(0.50, sum by (job, le) (rate(plecto_request_duration_seconds_bucket{job="plecto-proxy"}[5m]))),
+              "signal", "http_server", "", ""
+            )
+            or label_replace(
+              histogram_quantile(0.50, sum by (job, le) (rate(mqhub_publish_duration_seconds_bucket{job="mq-hub"}[5m]))),
+              "signal", "publish", "", ""
+            )
+          ) >= 0
+
+      - record: job:alt_request_duration_seconds:p95_rate5m
+        expr: |
+          (
+            label_replace(
+              histogram_quantile(0.95, sum by (job, le) (rate(http_server_request_duration_seconds_bucket{job="alt-backend",http_route!~"/v1/health|/health|/metrics"}[5m])))
+              or histogram_quantile(0.95, sum by (job, le) (rate(http_server_duration_milliseconds_bucket{job="news-creator",http_target!~"/health|/metrics"}[5m]))) / 1000
+              or histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket{job="recap-subworker",handler!~"/health|/metrics"}[5m])))
+              or histogram_quantile(0.95, sum by (job, le) (rate(prometheus_http_request_duration_seconds_bucket{job="prometheus",handler!~"/metrics|/-/healthy|/-/ready"}[5m])))
+              or histogram_quantile(0.95, sum by (job, le) (rate(alertmanager_http_request_duration_seconds_bucket{job="alertmanager",handler!~"/metrics|/-/healthy|/-/ready"}[5m])))
+              or histogram_quantile(0.95, sum by (job, le) (rate(plecto_request_duration_seconds_bucket{job="plecto-proxy"}[5m]))),
+              "signal", "http_server", "", ""
+            )
+            or label_replace(
+              histogram_quantile(0.95, sum by (job, le) (rate(mqhub_publish_duration_seconds_bucket{job="mq-hub"}[5m]))),
+              "signal", "publish", "", ""
+            )
+          ) >= 0
+
+      - record: job:alt_request_duration_seconds:p99_rate5m
+        expr: |
+          (
+            label_replace(
+              histogram_quantile(0.99, sum by (job, le) (rate(http_server_request_duration_seconds_bucket{job="alt-backend",http_route!~"/v1/health|/health|/metrics"}[5m])))
+              or histogram_quantile(0.99, sum by (job, le) (rate(http_server_duration_milliseconds_bucket{job="news-creator",http_target!~"/health|/metrics"}[5m]))) / 1000
+              or histogram_quantile(0.99, sum by (job, le) (rate(http_request_duration_seconds_bucket{job="recap-subworker",handler!~"/health|/metrics"}[5m])))
+              or histogram_quantile(0.99, sum by (job, le) (rate(prometheus_http_request_duration_seconds_bucket{job="prometheus",handler!~"/metrics|/-/healthy|/-/ready"}[5m])))
+              or histogram_quantile(0.99, sum by (job, le) (rate(alertmanager_http_request_duration_seconds_bucket{job="alertmanager",handler!~"/metrics|/-/healthy|/-/ready"}[5m])))
+              or histogram_quantile(0.99, sum by (job, le) (rate(plecto_request_duration_seconds_bucket{job="plecto-proxy"}[5m]))),
+              "signal", "http_server", "", ""
+            )
+            or label_replace(
+              histogram_quantile(0.99, sum by (job, le) (rate(mqhub_publish_duration_seconds_bucket{job="mq-hub"}[5m]))),
+              "signal", "publish", "", ""
+            )
+          ) >= 0
+
+      - record: alt_edge:requests:rate5m
+        expr: sum(rate(plecto_requests_total{job="plecto-proxy"}[5m]))
+
+      - record: alt_edge:request_error_ratio:ratio_rate5m
+        expr: |
+          (
+            sum(rate(plecto_requests_total{job="plecto-proxy",status_class="5xx"}[5m]))
+            or 0 * sum(rate(plecto_requests_total{job="plecto-proxy"}[5m]))
+          )
+          /
+          (sum(rate(plecto_requests_total{job="plecto-proxy"}[5m])) > 0)
+
+      - record: alt_edge:request_duration_seconds:p95_rate5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(plecto_request_duration_seconds_bucket{job="plecto-proxy"}[5m]))) >= 0
+
+      - record: alt_edge:error_budget_burn:ratio_rate5m
+        expr: |
+          (
+            (
+              sum(rate(plecto_requests_total{job="plecto-proxy",status_class="5xx"}[5m]))
+              or 0 * sum(rate(plecto_requests_total{job="plecto-proxy"}[5m]))
+            )
+            /
+            (sum(rate(plecto_requests_total{job="plecto-proxy"}[5m])) > 0)
+          ) / 0.001
+
+      - record: alt_edge:error_budget_burn:ratio_rate30m
+        expr: |
+          (
+            (
+              sum(rate(plecto_requests_total{job="plecto-proxy",status_class="5xx"}[30m]))
+              or 0 * sum(rate(plecto_requests_total{job="plecto-proxy"}[30m]))
+            )
+            /
+            (sum(rate(plecto_requests_total{job="plecto-proxy"}[30m])) > 0)
+          ) / 0.001
+
+      - record: alt_edge:error_budget_burn:ratio_rate1h
+        expr: |
+          (
+            (
+              sum(rate(plecto_requests_total{job="plecto-proxy",status_class="5xx"}[1h]))
+              or 0 * sum(rate(plecto_requests_total{job="plecto-proxy"}[1h]))
+            )
+            /
+            (sum(rate(plecto_requests_total{job="plecto-proxy"}[1h])) > 0)
+          ) / 0.001
+
+      - record: alt_edge:error_budget_burn:ratio_rate6h
+        expr: |
+          (
+            (
+              sum(rate(plecto_requests_total{job="plecto-proxy",status_class="5xx"}[6h]))
+              or 0 * sum(rate(plecto_requests_total{job="plecto-proxy"}[6h]))
+            )
+            /
+            (sum(rate(plecto_requests_total{job="plecto-proxy"}[6h])) > 0)
+          ) / 0.001
+
+      - record: alt_host:cpu_utilization:ratio_rate2m
+        expr: sum(rate(container_cpu_usage_seconds_total{job="cadvisor",id="/"}[2m])) / max(machine_cpu_cores{job="cadvisor"})
+
+      - record: alt_host:memory_utilization:ratio
+        expr: max(container_memory_working_set_bytes{job="cadvisor",id="/"}) / max(machine_memory_bytes{job="cadvisor"})
+
+      - record: alt_host:filesystem_utilization:ratio
+        expr: |
+          max by (device) (container_fs_usage_bytes{job="cadvisor",id="/",device=~"/dev/(nvme|sd|vd|xvd|mapper/).+"})
+          /
+          (max by (device) (container_fs_limit_bytes{job="cadvisor",id="/",device=~"/dev/(nvme|sd|vd|xvd|mapper/).+"}) > 0)

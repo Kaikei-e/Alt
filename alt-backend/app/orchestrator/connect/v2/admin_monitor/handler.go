@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -182,8 +181,7 @@ func connectError(err error) error {
 		return nil
 	}
 	msg := err.Error()
-	low := strings.ToLower(msg)
-	if strings.Contains(low, "unknown metric") || strings.Contains(low, "invalid window") || strings.Contains(low, "invalid step") || strings.Contains(low, "keys required") || strings.Contains(low, "window/step ratio") {
+	if errors.Is(err, domain.ErrUnknownMetricKey) || errors.Is(err, domain.ErrInvalidRange) || errors.Is(err, domain.ErrNoKeys) {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New(msg))
 	}
 	return connect.NewError(connect.CodeInternal, errors.New(msg))

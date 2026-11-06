@@ -1,85 +1,94 @@
 <script lang="ts">
-import SLISparkline from "#lib/components/knowledge-home-admin/SLISparkline.svelte";
 import type { MetricResult } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
-import { formatValue, stateBadge } from "./format";
+import { formatValue } from "./format";
+import MonitorSparkline from "./MonitorSparkline.svelte";
+import {
+	badge,
+	classify,
+	type LatestValueOptions,
+	latestValue,
+	type Severity,
+	seriesPoints,
+	type Threshold,
+} from "./model";
 
 let {
 	label,
 	metric,
-	warn,
-	thresholdValue,
-	aggregate = "last",
+	threshold,
+	thresholdText,
+	emptyText,
+	evalOpts,
 }: {
 	label: string;
 	metric: MetricResult | undefined;
-	warn?: (v: number) => boolean;
-	thresholdValue?: number;
-	aggregate?: "last" | "sum" | "max";
+	threshold?: Threshold;
+	thresholdText?: string;
+	emptyText?: string;
+	evalOpts?: LatestValueOptions;
 } = $props();
 
-const primaryPoints = $derived.by(() => {
-	const pts: number[] = [];
-	for (const s of metric?.series ?? []) {
-		for (const p of s.points ?? []) pts.push(p.value);
-	}
-	return pts;
+const points = $derived(seriesPoints(metric));
+const leadValue = $derived(latestValue(metric, undefined, evalOpts));
+
+const resolvedSeverity = $derived.by((): Severity => {
+	if (threshold) return classify(leadValue, threshold);
+	if (leadValue === null || !Number.isFinite(leadValue)) return "nodata";
+	return "ok";
 });
 
-const leadValue = $derived.by(() => {
-	const series = metric?.series ?? [];
-	if (series.length === 0) return null;
-	if (aggregate === "sum") {
-		let total = 0;
-		let any = false;
-		for (const s of series) {
-			const last = s.points.at(-1)?.value;
-			if (last != null && Number.isFinite(last)) {
-				total += last;
-				any = true;
-			}
-		}
-		return any ? total : null;
+const stateBadge = $derived(badge(resolvedSeverity));
+
+const valueText = $derived.by(() => {
+	if (leadValue === null || !Number.isFinite(leadValue)) {
+		return emptyText ?? "no data";
 	}
-	if (aggregate === "max") {
-		let max: number | null = null;
-		for (const s of series) {
-			const last = s.points.at(-1)?.value;
-			if (last != null && Number.isFinite(last)) {
-				max = max == null ? last : Math.max(max, last);
-			}
-		}
-		return max;
-	}
-	return series[0]?.points.at(-1)?.value ?? null;
+	return formatValue(leadValue, metric?.unit);
 });
 
-const valueText = $derived(formatValue(leadValue, metric?.unit));
-const badge = $derived(stateBadge(leadValue, metric?.unit, warn));
+const sparkThreshold = $derived(threshold?.warn);
+const displayThresholdText = $derived(threshold?.display ?? thresholdText);
 const degraded = $derived(metric?.degraded ?? false);
 </script>
 
-<article class="card" class:degraded={degraded} data-state={badge.text} data-testid="metric-card">
+<article
+	class="card"
+	class:degraded={degraded}
+	data-state={stateBadge.severity}
+	data-testid="metric-card"
+>
 	<header>
 		<span class="label">{label}</span>
-		<span class="badge" aria-label="state {badge.text}">
-			<span class="glyph" aria-hidden="true">{badge.glyph}</span>
-			<span class="state-text">{badge.text}</span>
+		<span
+			class="badge"
+			data-severity={stateBadge.severity}
+			aria-label="state {stateBadge.label}"
+		>
+			<span class="glyph" aria-hidden="true">{stateBadge.glyph}</span>
+			<span class="state-text">{stateBadge.label}</span>
 		</span>
 	</header>
 
 	<div class="value">
-		<span class="num">{valueText}</span>
-		{#if metric?.unit && metric.unit !== "bool" && metric.unit !== "ratio"}
+		<span class="num" class:muted={leadValue === null}>{valueText}</span>
+		{#if leadValue !== null && metric?.unit && metric.unit !== "bool" && metric.unit !== "ratio" && metric.unit !== "seconds"}
 			<span class="unit">{metric.unit}</span>
 		{/if}
 	</div>
 
-	<div class="spark" aria-hidden="true">
-		{#if primaryPoints.length >= 2}
-			<SLISparkline values={primaryPoints} threshold={thresholdValue} width={220} height={36} />
-		{:else}
-			<span class="dim">no series</span>
-		{/if}
+	{#if displayThresholdText}
+		<div class="threshold-text">{displayThresholdText}</div>
+	{/if}
+
+	<div class="spark">
+		<MonitorSparkline
+			{points}
+			{label}
+			unit={metric?.unit}
+			threshold={sparkThreshold}
+			width={220}
+			height={36}
+		/>
 	</div>
 
 	{#if degraded}
@@ -90,13 +99,21 @@ const degraded = $derived(metric?.degraded ?? false);
 <style>
 	.card {
 		display: grid;
-		grid-template-rows: auto auto auto;
+		grid-template-rows: auto auto auto 1fr;
 		gap: 0.35rem;
 		padding: 0.85rem 0.95rem;
 		border: 0.5px solid var(--obs-rule, var(--surface-border));
 		border-top: 2px solid var(--alt-charcoal);
-		background: var(--surface);
+		background: var(--surface-bg);
 		min-width: 0;
+	}
+
+	.card[data-state="crit"] {
+		border-top-color: var(--obs-critical, var(--alt-error));
+	}
+
+	.card[data-state="warn"] {
+		border-top-color: var(--obs-warn, var(--alt-warning));
 	}
 
 	.card.degraded {
@@ -122,17 +139,21 @@ const degraded = $derived(metric?.degraded ?? false);
 		display: inline-flex;
 		gap: 0.25rem;
 		align-items: baseline;
+		font-family: var(--font-mono);
 		font-size: 0.7rem;
+		font-weight: 600;
 		color: var(--alt-slate);
 	}
 
-	.card[data-state="warn"] .glyph,
-	.card[data-state="warn"] .state-text {
+	.badge[data-severity="ok"] {
+		color: var(--obs-good, var(--alt-success));
+	}
+
+	.badge[data-severity="warn"] {
 		color: var(--obs-warn, var(--alt-warning));
 	}
 
-	.card[data-state="down"] .glyph,
-	.card[data-state="down"] .state-text {
+	.badge[data-severity="crit"] {
 		color: var(--obs-critical, var(--alt-error));
 	}
 
@@ -145,10 +166,16 @@ const degraded = $derived(metric?.degraded ?? false);
 	}
 
 	.num {
-		font-size: 2.1rem;
+		font-size: 1.95rem;
 		font-weight: 500;
 		color: var(--alt-charcoal);
 		font-variant-numeric: tabular-nums;
+	}
+
+	.num.muted {
+		font-family: var(--font-mono);
+		font-size: 1.05rem;
+		color: var(--alt-ash);
 	}
 
 	.unit {
@@ -157,16 +184,17 @@ const degraded = $derived(metric?.degraded ?? false);
 		color: var(--alt-ash);
 	}
 
+	.threshold-text {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		color: var(--alt-slate);
+	}
+
 	.spark {
 		min-height: 36px;
 		display: flex;
 		align-items: center;
-	}
-
-	.dim {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: var(--alt-ash);
+		min-width: 0;
 	}
 
 	.reason {

@@ -1,0 +1,613 @@
+# promtool unit tests for /admin/monitor Prometheus recording rules.
+#
+#   ./scripts/observability-validate.sh
+#   # or:
+#   promtool test rules observability/prometheus/tests/admin-monitor-recordings_test.yml
+#
+# Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
+# test file parsed as a rule group is a fatal config error, not a skip.
+
+rule_files:
+  - ../rules/admin-monitor-recordings.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Per-job RED across all 8 mapped jobs:
+  # - Probe/scrape traffic (/v1/health, /health, /metrics, /-/healthy, /-/ready)
+  #   is present alongside real traffic and must be excluded from requests,
+  #   errors, error ratio, and latency histograms.
+  # - pre-processor is unmapped and must emit no RED series even if scraped.
+  # - news-creator converts millisecond buckets to seconds and gives ratio 0
+  #   when no 5xx series exists.
+  # - mq-hub gives ratio 0 when error series exists at 0.
+  # - alertmanager emits requests and latency quantiles, but no errors or ratio.
+  - interval: 1m
+    input_series:
+      # alt-backend: real /v1/feeds (1 req/s total, 0.1 err/s, p50=0.6s/p95=1.05s/p99=1.09s)
+      # plus noisy probe traffic on /v1/health, /health, /metrics that must be excluded.
+      - series: 'http_server_request_duration_seconds_count{job="alt-backend",http_route="/v1/feeds",http_response_status_code="200"}'
+        values: '0+54x10'
+      - series: 'http_server_request_duration_seconds_count{job="alt-backend",http_route="/v1/feeds",http_response_status_code="500"}'
+        values: '0+6x10'
+      - series: 'http_server_request_duration_seconds_count{job="alt-backend",http_route="/v1/health",http_response_status_code="200"}'
+        values: '0+600x10'
+      - series: 'http_server_request_duration_seconds_count{job="alt-backend",http_route="/health",http_response_status_code="500"}'
+        values: '0+60x10'
+      - series: 'http_server_request_duration_seconds_count{job="alt-backend",http_route="/metrics",http_response_status_code="200"}'
+        values: '0+120x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="alt-backend",http_route="/v1/feeds",le="0.1"}'
+        values: '0x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="alt-backend",http_route="/v1/feeds",le="1.1"}'
+        values: '0+60x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="alt-backend",http_route="/v1/feeds",le="+Inf"}'
+        values: '0+60x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="alt-backend",http_route="/v1/health",le="0.1"}'
+        values: '0+600x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="alt-backend",http_route="/v1/health",le="1.1"}'
+        values: '0+600x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="alt-backend",http_route="/v1/health",le="+Inf"}'
+        values: '0+600x10'
+
+      # news-creator: real /api/generate (2 req/s, zero 5xx, ms buckets -> s)
+      # plus probe traffic on /health and /metrics that must be excluded.
+      - series: 'http_server_duration_milliseconds_count{job="news-creator",http_target="/api/generate",http_status_code="200"}'
+        values: '0+120x10'
+      - series: 'http_server_duration_milliseconds_count{job="news-creator",http_target="/health",http_status_code="200"}'
+        values: '0+300x10'
+      - series: 'http_server_duration_milliseconds_count{job="news-creator",http_target="/metrics",http_status_code="500"}'
+        values: '0+60x10'
+      - series: 'http_server_duration_milliseconds_bucket{job="news-creator",http_target="/api/generate",le="100"}'
+        values: '0x10'
+      - series: 'http_server_duration_milliseconds_bucket{job="news-creator",http_target="/api/generate",le="1100"}'
+        values: '0+120x10'
+      - series: 'http_server_duration_milliseconds_bucket{job="news-creator",http_target="/api/generate",le="+Inf"}'
+        values: '0+120x10'
+      - series: 'http_server_duration_milliseconds_bucket{job="news-creator",http_target="/health",le="100"}'
+        values: '0+300x10'
+      - series: 'http_server_duration_milliseconds_bucket{job="news-creator",http_target="/health",le="1100"}'
+        values: '0+300x10'
+      - series: 'http_server_duration_milliseconds_bucket{job="news-creator",http_target="/health",le="+Inf"}'
+        values: '0+300x10'
+
+      # recap-subworker: real /v1/extract (1 req/s total, 0.25 err/s via status="5xx")
+      # plus probe traffic on /health and /metrics that must be excluded.
+      - series: 'http_requests_total{job="recap-subworker",handler="/v1/extract",status="2xx"}'
+        values: '0+45x10'
+      - series: 'http_requests_total{job="recap-subworker",handler="/v1/extract",status="5xx"}'
+        values: '0+15x10'
+      - series: 'http_requests_total{job="recap-subworker",handler="/health",status="2xx"}'
+        values: '0+600x10'
+      - series: 'http_requests_total{job="recap-subworker",handler="/metrics",status="5xx"}'
+        values: '0+60x10'
+      - series: 'http_request_duration_seconds_bucket{job="recap-subworker",handler="/v1/extract",le="0.1"}'
+        values: '0x10'
+      - series: 'http_request_duration_seconds_bucket{job="recap-subworker",handler="/v1/extract",le="1.1"}'
+        values: '0+60x10'
+      - series: 'http_request_duration_seconds_bucket{job="recap-subworker",handler="/v1/extract",le="+Inf"}'
+        values: '0+60x10'
+      - series: 'http_request_duration_seconds_bucket{job="recap-subworker",handler="/health",le="0.1"}'
+        values: '0+600x10'
+      - series: 'http_request_duration_seconds_bucket{job="recap-subworker",handler="/health",le="1.1"}'
+        values: '0+600x10'
+      - series: 'http_request_duration_seconds_bucket{job="recap-subworker",handler="/health",le="+Inf"}'
+        values: '0+600x10'
+
+      # prometheus: real /api/v1/query (2 req/s total, 0.1 err/s via code="503")
+      # plus probe traffic on /metrics, /-/healthy, /-/ready that must be excluded.
+      - series: 'prometheus_http_requests_total{job="prometheus",handler="/api/v1/query",code="200"}'
+        values: '0+114x10'
+      - series: 'prometheus_http_requests_total{job="prometheus",handler="/api/v1/query",code="503"}'
+        values: '0+6x10'
+      - series: 'prometheus_http_requests_total{job="prometheus",handler="/metrics",code="200"}'
+        values: '0+240x10'
+      - series: 'prometheus_http_requests_total{job="prometheus",handler="/-/healthy",code="200"}'
+        values: '0+360x10'
+      - series: 'prometheus_http_requests_total{job="prometheus",handler="/-/ready",code="500"}'
+        values: '0+60x10'
+      - series: 'prometheus_http_request_duration_seconds_bucket{job="prometheus",handler="/api/v1/query",le="0.1"}'
+        values: '0x10'
+      - series: 'prometheus_http_request_duration_seconds_bucket{job="prometheus",handler="/api/v1/query",le="1.1"}'
+        values: '0+120x10'
+      - series: 'prometheus_http_request_duration_seconds_bucket{job="prometheus",handler="/api/v1/query",le="+Inf"}'
+        values: '0+120x10'
+      - series: 'prometheus_http_request_duration_seconds_bucket{job="prometheus",handler="/-/healthy",le="0.1"}'
+        values: '0+360x10'
+      - series: 'prometheus_http_request_duration_seconds_bucket{job="prometheus",handler="/-/healthy",le="1.1"}'
+        values: '0+360x10'
+      - series: 'prometheus_http_request_duration_seconds_bucket{job="prometheus",handler="/-/healthy",le="+Inf"}'
+        values: '0+360x10'
+
+      # alertmanager: real /api/v2/alerts (1 req/s, seconds histogram, no error dimension)
+      # plus probe traffic on /metrics, /-/healthy, /-/ready that must be excluded.
+      - series: 'alertmanager_http_request_duration_seconds_count{job="alertmanager",handler="/api/v2/alerts"}'
+        values: '0+60x10'
+      - series: 'alertmanager_http_request_duration_seconds_count{job="alertmanager",handler="/metrics"}'
+        values: '0+240x10'
+      - series: 'alertmanager_http_request_duration_seconds_count{job="alertmanager",handler="/-/healthy"}'
+        values: '0+360x10'
+      - series: 'alertmanager_http_request_duration_seconds_count{job="alertmanager",handler="/-/ready"}'
+        values: '0+60x10'
+      - series: 'alertmanager_http_request_duration_seconds_bucket{job="alertmanager",handler="/api/v2/alerts",le="0.1"}'
+        values: '0x10'
+      - series: 'alertmanager_http_request_duration_seconds_bucket{job="alertmanager",handler="/api/v2/alerts",le="1.1"}'
+        values: '0+60x10'
+      - series: 'alertmanager_http_request_duration_seconds_bucket{job="alertmanager",handler="/api/v2/alerts",le="+Inf"}'
+        values: '0+60x10'
+      - series: 'alertmanager_http_request_duration_seconds_bucket{job="alertmanager",handler="/-/healthy",le="0.1"}'
+        values: '0+360x10'
+      - series: 'alertmanager_http_request_duration_seconds_bucket{job="alertmanager",handler="/-/healthy",le="1.1"}'
+        values: '0+360x10'
+      - series: 'alertmanager_http_request_duration_seconds_bucket{job="alertmanager",handler="/-/healthy",le="+Inf"}'
+        values: '0+360x10'
+
+      # plecto-proxy: 4 req/s total, 0.2 err/s via status_class="5xx" (ratio 0.05)
+      - series: 'plecto_requests_total{job="plecto-proxy",status_class="2xx"}'
+        values: '0+228x10'
+      - series: 'plecto_requests_total{job="plecto-proxy",status_class="5xx"}'
+        values: '0+12x10'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="0.1"}'
+        values: '0x10'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="1.1"}'
+        values: '0+240x10'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="+Inf"}'
+        values: '0+240x10'
+
+      # alt-butterfly-facade: 1 req/s total, 0.2 err/s via status="error" (signal="user_journey", no histogram)
+      - series: 'alt_user_journey_requests_total{job="alt-butterfly-facade",journey="feeds",status="ok"}'
+        values: '0+48x10'
+      - series: 'alt_user_journey_requests_total{job="alt-butterfly-facade",journey="feeds",status="error"}'
+        values: '0+12x10'
+
+      # mq-hub: 1 req/s total, 0 errors (error series present at 0 -> ratio 0, signal="publish")
+      - series: 'mqhub_publish_total{job="mq-hub",status="success"}'
+        values: '0+60x10'
+      - series: 'mqhub_publish_total{job="mq-hub",status="error"}'
+        values: '0x10'
+      - series: 'mqhub_publish_duration_seconds_bucket{job="mq-hub",le="0.1"}'
+        values: '0x10'
+      - series: 'mqhub_publish_duration_seconds_bucket{job="mq-hub",le="1.1"}'
+        values: '0+60x10'
+      - series: 'mqhub_publish_duration_seconds_bucket{job="mq-hub",le="+Inf"}'
+        values: '0+60x10'
+
+      # pre-processor: intentionally unmapped; must emit no series even when present
+      - series: 'preprocessor_requests_total{job="pre-processor",domain="_aggregate"}'
+        values: '0+30x10'
+      - series: 'preprocessor_requests_failure_total{job="pre-processor",domain="_aggregate"}'
+        values: '0+3x10'
+    promql_expr_test:
+      # Requests across all 8 mapped jobs (and pre-processor absent)
+      - expr: job:alt_requests:rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_requests:rate5m{job="alt-backend",signal="http_server"}'
+            value: 1
+      - expr: job:alt_requests:rate5m{job="news-creator"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_requests:rate5m{job="news-creator",signal="http_server"}'
+            value: 2
+      - expr: job:alt_requests:rate5m{job="recap-subworker"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_requests:rate5m{job="recap-subworker",signal="http_server"}'
+            value: 1
+      - expr: job:alt_requests:rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_requests:rate5m{job="prometheus",signal="http_server"}'
+            value: 2
+      - expr: job:alt_requests:rate5m{job="alertmanager"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_requests:rate5m{job="alertmanager",signal="http_server"}'
+            value: 1
+      - expr: job:alt_requests:rate5m{job="plecto-proxy"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_requests:rate5m{job="plecto-proxy",signal="http_server"}'
+            value: 4
+      - expr: job:alt_requests:rate5m{job="alt-butterfly-facade"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_requests:rate5m{job="alt-butterfly-facade",signal="user_journey"}'
+            value: 1
+      - expr: job:alt_requests:rate5m{job="mq-hub"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_requests:rate5m{job="mq-hub",signal="publish"}'
+            value: 1
+      - expr: job:alt_requests:rate5m{job="pre-processor"}
+        eval_time: 5m
+        exp_samples: []
+
+      # Errors across all 7 error-capable jobs (and alertmanager + pre-processor absent)
+      - expr: job:alt_request_errors:rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_errors:rate5m{job="alt-backend",signal="http_server"}'
+            value: 0.1
+      - expr: job:alt_request_errors:rate5m{job="news-creator"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_errors:rate5m{job="news-creator",signal="http_server"}'
+            value: 0
+      - expr: job:alt_request_errors:rate5m{job="recap-subworker"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_errors:rate5m{job="recap-subworker",signal="http_server"}'
+            value: 0.25
+      - expr: job:alt_request_errors:rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_errors:rate5m{job="prometheus",signal="http_server"}'
+            value: 0.1
+      - expr: job:alt_request_errors:rate5m{job="plecto-proxy"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_errors:rate5m{job="plecto-proxy",signal="http_server"}'
+            value: 0.2
+      - expr: job:alt_request_errors:rate5m{job="alt-butterfly-facade"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_errors:rate5m{job="alt-butterfly-facade",signal="user_journey"}'
+            value: 0.2
+      - expr: job:alt_request_errors:rate5m{job="mq-hub"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_errors:rate5m{job="mq-hub",signal="publish"}'
+            value: 0
+      - expr: job:alt_request_errors:rate5m{job="alertmanager"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: job:alt_request_errors:rate5m{job="pre-processor"}
+        eval_time: 5m
+        exp_samples: []
+
+      # Error ratio across all 7 error-capable jobs (and alertmanager + pre-processor absent)
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_error_ratio:ratio_rate5m{job="alt-backend",signal="http_server"}'
+            value: 0.1
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="news-creator"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_error_ratio:ratio_rate5m{job="news-creator",signal="http_server"}'
+            value: 0
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="recap-subworker"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_error_ratio:ratio_rate5m{job="recap-subworker",signal="http_server"}'
+            value: 0.25
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_error_ratio:ratio_rate5m{job="prometheus",signal="http_server"}'
+            value: 0.05
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="plecto-proxy"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_error_ratio:ratio_rate5m{job="plecto-proxy",signal="http_server"}'
+            value: 0.05
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="alt-butterfly-facade"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_error_ratio:ratio_rate5m{job="alt-butterfly-facade",signal="user_journey"}'
+            value: 0.2
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="mq-hub"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_error_ratio:ratio_rate5m{job="mq-hub",signal="publish"}'
+            value: 0
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="alertmanager"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="pre-processor"}
+        eval_time: 5m
+        exp_samples: []
+
+      # Latency quantiles (seconds buckets + ms->s conversion, probe buckets excluded)
+      - expr: job:alt_request_duration_seconds:p50_rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p50_rate5m{job="alt-backend",signal="http_server"}'
+            value: 0.6
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p95_rate5m{job="alt-backend",signal="http_server"}'
+            value: 1.05
+      - expr: job:alt_request_duration_seconds:p99_rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p99_rate5m{job="alt-backend",signal="http_server"}'
+            value: 1.09
+      - expr: job:alt_request_duration_seconds:p50_rate5m{job="news-creator"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p50_rate5m{job="news-creator",signal="http_server"}'
+            value: 0.6
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="news-creator"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p95_rate5m{job="news-creator",signal="http_server"}'
+            value: 1.05
+      - expr: job:alt_request_duration_seconds:p99_rate5m{job="news-creator"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p99_rate5m{job="news-creator",signal="http_server"}'
+            value: 1.09
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="recap-subworker"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p95_rate5m{job="recap-subworker",signal="http_server"}'
+            value: 1.05
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p95_rate5m{job="prometheus",signal="http_server"}'
+            value: 1.05
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="alertmanager"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p95_rate5m{job="alertmanager",signal="http_server"}'
+            value: 1.05
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="plecto-proxy"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p95_rate5m{job="plecto-proxy",signal="http_server"}'
+            value: 1.05
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="mq-hub"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_duration_seconds:p95_rate5m{job="mq-hub",signal="publish"}'
+            value: 1.05
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="alt-butterfly-facade"}
+        eval_time: 5m
+        exp_samples: []
+
+  # Zero non-probe traffic and probe-only traffic:
+  # - prometheus has non-probe series with 0 increments -> requests = 0, errors = 0, no ratio, no quantiles.
+  # - alt-backend has ONLY /v1/health probe traffic -> emits no series at all.
+  - interval: 1m
+    input_series:
+      - series: 'prometheus_http_requests_total{job="prometheus",handler="/api/v1/query",code="200"}'
+        values: '0x10'
+      - series: 'prometheus_http_requests_total{job="prometheus",handler="/api/v1/query",code="500"}'
+        values: '0x10'
+      - series: 'prometheus_http_request_duration_seconds_bucket{job="prometheus",handler="/api/v1/query",le="0.1"}'
+        values: '0x10'
+      - series: 'prometheus_http_request_duration_seconds_bucket{job="prometheus",handler="/api/v1/query",le="1.1"}'
+        values: '0x10'
+      - series: 'prometheus_http_request_duration_seconds_bucket{job="prometheus",handler="/api/v1/query",le="+Inf"}'
+        values: '0x10'
+      - series: 'http_server_request_duration_seconds_count{job="alt-backend",http_route="/v1/health",http_response_status_code="200"}'
+        values: '0+60x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="alt-backend",http_route="/v1/health",le="0.1"}'
+        values: '0+60x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="alt-backend",http_route="/v1/health",le="+Inf"}'
+        values: '0+60x10'
+    promql_expr_test:
+      - expr: job:alt_requests:rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_requests:rate5m{job="prometheus",signal="http_server"}'
+            value: 0
+      - expr: job:alt_request_errors:rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'job:alt_request_errors:rate5m{job="prometheus",signal="http_server"}'
+            value: 0
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: job:alt_request_duration_seconds:p50_rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: job:alt_request_duration_seconds:p99_rate5m{job="prometheus"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: job:alt_requests:rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: job:alt_request_errors:rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: job:alt_request_error_ratio:ratio_rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: job:alt_request_duration_seconds:p95_rate5m{job="alt-backend"}
+        eval_time: 5m
+        exp_samples: []
+
+  # Edge golden signals and multi-window error-budget burn (99.9% SLO -> / 0.001).
+  # At 1m step and eval_time 6h (t=360m), Prometheus left-open range windows
+  # (t-W, t] span 4, 29, 59, and 359 intervals for 5m, 30m, 1h, and 6h.
+  # 5xx starts at 100 (so firstSample > 0 in every window) and rises by 9/min
+  # over the final 24 intervals (t=336m..360m); 2xx rises by 60/min before t=336m,
+  # includes a +60 step at t=337m (20160 -> 20271, compensating for the 1m
+  # left-open boundary in the 30m/1h/6h windows), and then rises by 51/min:
+  #   5m  (t=356m..360m, 4 intervals)   : 36 / (204 + 36)     = 36 / 240     = 0.15 -> burn 150
+  #   30m (t=331m..360m, 29 intervals)  : 216 / (1584 + 216)  = 216 / 1800   = 0.12 -> burn 120
+  #   1h  (t=301m..360m, 59 intervals)  : 216 / (3384 + 216)  = 216 / 3600   = 0.06 -> burn 60
+  #   6h  (t=1m..360m,   359 intervals) : 216 / (21384 + 216) = 216 / 21600  = 0.01 -> burn 10
+  - interval: 1m
+    input_series:
+      - series: 'plecto_requests_total{job="plecto-proxy",status_class="2xx"}'
+        values: '0+60x336 20271+51x23'
+      - series: 'plecto_requests_total{job="plecto-proxy",status_class="5xx"}'
+        values: '100+0x336 109+9x23'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="0.1"}'
+        values: '0x360'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="1.1"}'
+        values: '0+60x360'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="+Inf"}'
+        values: '0+60x360'
+    promql_expr_test:
+      - expr: alt_edge:requests:rate5m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:requests:rate5m'
+            value: 1
+      - expr: alt_edge:request_error_ratio:ratio_rate5m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:request_error_ratio:ratio_rate5m'
+            value: 0.15
+      - expr: alt_edge:request_duration_seconds:p95_rate5m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:request_duration_seconds:p95_rate5m'
+            value: 1.05
+      - expr: alt_edge:error_budget_burn:ratio_rate5m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:error_budget_burn:ratio_rate5m'
+            value: 150
+      - expr: alt_edge:error_budget_burn:ratio_rate30m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:error_budget_burn:ratio_rate30m'
+            value: 120
+      - expr: alt_edge:error_budget_burn:ratio_rate1h
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:error_budget_burn:ratio_rate1h'
+            value: 60
+      - expr: alt_edge:error_budget_burn:ratio_rate6h
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:error_budget_burn:ratio_rate6h'
+            value: 10
+
+  # Edge with traffic and no 5xx: ratio and all four burn windows must be 0.
+  - interval: 1m
+    input_series:
+      - series: 'plecto_requests_total{job="plecto-proxy",status_class="2xx"}'
+        values: '0+60x360'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="0.1"}'
+        values: '0x360'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="1.1"}'
+        values: '0+60x360'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="+Inf"}'
+        values: '0+60x360'
+    promql_expr_test:
+      - expr: alt_edge:requests:rate5m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:requests:rate5m'
+            value: 1
+      - expr: alt_edge:request_error_ratio:ratio_rate5m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:request_error_ratio:ratio_rate5m'
+            value: 0
+      - expr: alt_edge:error_budget_burn:ratio_rate5m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:error_budget_burn:ratio_rate5m'
+            value: 0
+      - expr: alt_edge:error_budget_burn:ratio_rate30m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:error_budget_burn:ratio_rate30m'
+            value: 0
+      - expr: alt_edge:error_budget_burn:ratio_rate1h
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:error_budget_burn:ratio_rate1h'
+            value: 0
+      - expr: alt_edge:error_budget_burn:ratio_rate6h
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:error_budget_burn:ratio_rate6h'
+            value: 0
+
+  # Edge with zero traffic: requests is 0; error ratio, latency p95, and all four burns are absent.
+  - interval: 1m
+    input_series:
+      - series: 'plecto_requests_total{job="plecto-proxy",status_class="2xx"}'
+        values: '0x360'
+      - series: 'plecto_requests_total{job="plecto-proxy",status_class="5xx"}'
+        values: '0x360'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="0.1"}'
+        values: '0x360'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="1.1"}'
+        values: '0x360'
+      - series: 'plecto_request_duration_seconds_bucket{job="plecto-proxy",le="+Inf"}'
+        values: '0x360'
+    promql_expr_test:
+      - expr: alt_edge:requests:rate5m
+        eval_time: 6h
+        exp_samples:
+          - labels: 'alt_edge:requests:rate5m'
+            value: 0
+      - expr: alt_edge:request_error_ratio:ratio_rate5m
+        eval_time: 6h
+        exp_samples: []
+      - expr: alt_edge:request_duration_seconds:p95_rate5m
+        eval_time: 6h
+        exp_samples: []
+      - expr: alt_edge:error_budget_burn:ratio_rate5m
+        eval_time: 6h
+        exp_samples: []
+      - expr: alt_edge:error_budget_burn:ratio_rate30m
+        eval_time: 6h
+        exp_samples: []
+      - expr: alt_edge:error_budget_burn:ratio_rate1h
+        eval_time: 6h
+        exp_samples: []
+      - expr: alt_edge:error_budget_burn:ratio_rate6h
+        eval_time: 6h
+        exp_samples: []
+
+  # Host CPU, memory, and block-device-only filesystem utilization (job="cadvisor").
+  - interval: 1m
+    input_series:
+      - series: 'container_cpu_usage_seconds_total{job="cadvisor",id="/",cpu="total"}'
+        values: '0+120x10'
+      - series: 'machine_cpu_cores{job="cadvisor"}'
+        values: '8x10'
+      - series: 'container_memory_working_set_bytes{job="cadvisor",id="/"}'
+        values: '4000x10'
+      - series: 'machine_memory_bytes{job="cadvisor"}'
+        values: '16000x10'
+      - series: 'container_fs_usage_bytes{job="cadvisor",id="/",device="/dev/nvme0n1p2"}'
+        values: '750x10'
+      - series: 'container_fs_limit_bytes{job="cadvisor",id="/",device="/dev/nvme0n1p2"}'
+        values: '1000x10'
+      - series: 'container_fs_usage_bytes{job="cadvisor",id="/",device="/dev/mapper/vg0-root"}'
+        values: '200x10'
+      - series: 'container_fs_limit_bytes{job="cadvisor",id="/",device="/dev/mapper/vg0-root"}'
+        values: '1000x10'
+      - series: 'container_fs_usage_bytes{job="cadvisor",id="/",device="overlay_0-99"}'
+        values: '500x10'
+      - series: 'container_fs_limit_bytes{job="cadvisor",id="/",device="overlay_0-99"}'
+        values: '1000x10'
+      - series: 'container_fs_usage_bytes{job="cadvisor",id="/",device="/dev/shm"}'
+        values: '100x10'
+      - series: 'container_fs_limit_bytes{job="cadvisor",id="/",device="/dev/shm"}'
+        values: '1000x10'
+    promql_expr_test:
+      - expr: alt_host:cpu_utilization:ratio_rate2m
+        eval_time: 5m
+        exp_samples:
+          - labels: 'alt_host:cpu_utilization:ratio_rate2m'
+            value: 0.25
+      - expr: alt_host:memory_utilization:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'alt_host:memory_utilization:ratio'
+            value: 0.25
+      - expr: alt_host:filesystem_utilization:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'alt_host:filesystem_utilization:ratio{device="/dev/nvme0n1p2"}'
+            value: 0.75
+          - labels: 'alt_host:filesystem_utilization:ratio{device="/dev/mapper/vg0-root"}'
+            value: 0.2

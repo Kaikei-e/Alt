@@ -1,79 +1,80 @@
 <script lang="ts">
-import type { MetricResult } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
 import MetricCard from "./MetricCard.svelte";
+import {
+	edgeEmptyText,
+	type LatestValueOptions,
+	type MetricMap,
+	THRESHOLDS,
+} from "./model";
 
 let {
 	metrics,
+	evalOpts,
 }: {
-	metrics: MetricResult[];
+	metrics: MetricMap;
+	evalOpts?: LatestValueOptions;
 } = $props();
 
-function find(key: string): MetricResult | undefined {
-	return metrics.find((m) => m.key === key);
-}
-
-const latency = $derived(find("http_latency_p95"));
-const traffic = $derived(find("http_rps"));
-const errorRatio = $derived(find("http_error_ratio"));
-const cpu = $derived(find("cpu_saturation"));
-
-// Thresholds — conservative first pass aligned with the existing ObservabilityPanel.
-const latencyWarn = (v: number) => v > 1.0; // p95 > 1s
-const errorWarn = (v: number) => v > 0.01; // > 1%
-const cpuWarn = (v: number) => v > 1.5; // > 1.5 cores summed across containers
+const latency = $derived(metrics.get("edge_latency_p95"));
+const traffic = $derived(metrics.get("edge_rps"));
+const errorRatio = $derived(metrics.get("edge_error_ratio"));
+const hostCpu = $derived(metrics.get("host_cpu_utilization"));
 </script>
 
-<section class="golden" aria-label="Golden signals">
-	<h2 class="section-head">Golden signals</h2>
+<div class="golden" role="group" aria-label="Golden signals">
+	<h3 class="sub-head">Golden signals</h3>
 	<div class="grid">
 		<MetricCard
-			label="HTTP latency p95"
+			label="Edge p95 latency"
 			metric={latency}
-			warn={latencyWarn}
-			thresholdValue={1.0}
-			aggregate="max"
+			threshold={THRESHOLDS.edgeLatencyP95}
+			emptyText={edgeEmptyText(metrics, "edge_latency_p95", evalOpts)}
+			{evalOpts}
 		/>
 		<MetricCard
-			label="HTTP traffic"
+			label="Edge traffic"
 			metric={traffic}
-			aggregate="sum"
+			thresholdText="5m request rate · informational"
+			emptyText={edgeEmptyText(metrics, "edge_rps", evalOpts)}
+			{evalOpts}
 		/>
 		<MetricCard
-			label="HTTP 5xx ratio"
+			label="Edge 5xx ratio"
 			metric={errorRatio}
-			warn={errorWarn}
-			thresholdValue={0.01}
-			aggregate="max"
+			threshold={THRESHOLDS.edgeErrorRatio}
+			emptyText={edgeEmptyText(metrics, "edge_error_ratio", evalOpts)}
+			{evalOpts}
 		/>
 		<MetricCard
-			label="CPU saturation"
-			metric={cpu}
-			warn={cpuWarn}
-			thresholdValue={1.5}
-			aggregate="sum"
+			label="Host CPU"
+			metric={hostCpu}
+			threshold={THRESHOLDS.hostCpu}
+			{evalOpts}
 		/>
 	</div>
-</section>
+</div>
 
 <style>
 	.golden {
 		display: grid;
-		gap: 0.6rem;
+		gap: 0.5rem;
+		min-width: 0;
 	}
 
-	.section-head {
-		font-family: var(--font-display, var(--font-serif));
-		font-size: 0.92rem;
-		letter-spacing: 0.08em;
+	.sub-head {
+		font-family: var(--font-body);
+		font-size: 0.72rem;
+		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		margin: 0;
-		color: var(--alt-charcoal);
+		color: var(--alt-slate);
 	}
 
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(4, minmax(0, 1fr));
 		gap: 0.7rem;
+		min-width: 0;
 	}
 
 	@media (max-width: 1100px) {

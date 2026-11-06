@@ -1,6 +1,15 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var (
+	ErrNoKeys           = errors.New("admin_metrics: keys required")
+	ErrUnknownMetricKey = errors.New("admin_metrics: unknown metric key")
+	ErrInvalidRange     = errors.New("admin_metrics: invalid window/step")
+)
 
 // MetricKey is the allowlisted identifier a client uses to request a metric.
 // The server resolves it to a PromQL template.
@@ -24,6 +33,23 @@ const (
 	MetricPrometheusScrapeLag        MetricKey = "prometheus_scrape_lag"
 	MetricAvailabilityBurn1h         MetricKey = "availability_burn_1h"
 	MetricAvailabilityBurn6h         MetricKey = "availability_burn_6h"
+	MetricEdgeRPS                    MetricKey = "edge_rps"
+	MetricEdgeErrorRatio             MetricKey = "edge_error_ratio"
+	MetricEdgeLatencyP95             MetricKey = "edge_latency_p95"
+	MetricEdgeBurn5m                 MetricKey = "edge_burn_5m"
+	MetricEdgeBurn30m                MetricKey = "edge_burn_30m"
+	MetricHostCPUUtilization         MetricKey = "host_cpu_utilization"
+	MetricHostMemoryUtilization      MetricKey = "host_memory_utilization"
+	MetricHostFilesystemUtilization  MetricKey = "host_filesystem_utilization"
+	MetricAlertsFiring               MetricKey = "alerts_firing"
+	MetricAlertsPending              MetricKey = "alerts_pending"
+	MetricAlertsActiveSince          MetricKey = "alerts_active_since"
+	MetricCertRemaining              MetricKey = "cert_remaining"
+	MetricCertHealthy                MetricKey = "cert_healthy"
+	MetricScrapeDuration             MetricKey = "scrape_duration"
+	MetricBacklogOldestAge           MetricKey = "backlog_oldest_age"
+	MetricPushPendingCount           MetricKey = "push_pending_count"
+	MetricOutboxFailed24h            MetricKey = "outbox_failed_24h"
 )
 
 // SeriesKind distinguishes instant samples from range matrices.

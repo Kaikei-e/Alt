@@ -1,162 +1,188 @@
 <script lang="ts">
-import SLISparkline from "#lib/components/knowledge-home-admin/SLISparkline.svelte";
-import type { MetricResult } from "#lib/gen/alt/admin_monitor/v1/admin_monitor_pb.js";
-import { burnSeverity } from "./format";
+import MonitorSparkline from "./MonitorSparkline.svelte";
+import {
+	BURN,
+	badge,
+	buildEdgeSignals,
+	edgeEmptyText,
+	type LatestValueOptions,
+	type MetricMap,
+	type Severity,
+	seriesPoints,
+} from "./model";
 
 let {
 	metrics,
+	evalOpts,
 }: {
-	metrics: MetricResult[];
+	metrics: MetricMap;
+	evalOpts?: LatestValueOptions;
 } = $props();
 
-function find(key: string): MetricResult | undefined {
-	return metrics.find((m) => m.key === key);
-}
+const edge = $derived(buildEdgeSignals(metrics, evalOpts));
 
-const burn1h = $derived(find("availability_burn_1h"));
-const burn6h = $derived(find("availability_burn_6h"));
-const errorRatio = $derived(find("http_error_ratio"));
-
-function latest(m: MetricResult | undefined): number | null {
-	const last = m?.series[0]?.points.at(-1)?.value;
-	return last != null && Number.isFinite(last) ? last : null;
-}
-
-function pointsOf(m: MetricResult | undefined): number[] {
-	const pts: number[] = [];
-	for (const s of m?.series ?? []) {
-		for (const p of s.points ?? []) pts.push(p.value);
-	}
-	return pts;
-}
-
-// 30-day SLO compliance — approximate as 1 - (max recent error ratio over the
-// visible window). Operators can read the full SLO from Grafana when the
-// number looks ambiguous; this is the "is this getting worse" view.
-const sloEstimate = $derived.by(() => {
-	const v = latest(errorRatio);
-	if (v == null) return null;
-	return Math.max(0, 1 - v);
+const pageSeverity = $derived.by((): Severity => {
+	if (edge.burn.h1 === null || edge.burn.m5 === null) return "nodata";
+	return edge.pageBurn ? "crit" : "ok";
 });
 
-const tiers = [
-	{ value: 14.4, label: "page-1" },
-	{ value: 6, label: "page-2" },
-	{ value: 1, label: "ticket" },
-];
+const ticketSeverity = $derived.by((): Severity => {
+	if (edge.burn.h6 === null || edge.burn.m30 === null) return "nodata";
+	return edge.ticketBurn ? "warn" : "ok";
+});
 
-function tierLabel(value: number | null): string {
-	const s = burnSeverity(value);
-	if (s === "page1") return "page-1 burn";
-	if (s === "page2") return "page-2 burn";
-	if (s === "ticket") return "ticket burn";
-	return "within budget";
+const pageBadge = $derived(badge(pageSeverity));
+const ticketBadge = $derived(badge(ticketSeverity));
+
+const pts1h = $derived(seriesPoints(metrics.get("availability_burn_1h")));
+const pts5m = $derived(seriesPoints(metrics.get("edge_burn_5m")));
+const pts6h = $derived(seriesPoints(metrics.get("availability_burn_6h")));
+const pts30m = $derived(seriesPoints(metrics.get("edge_burn_30m")));
+
+function formatBurn(val: number | null, key: string): string {
+	if (val === null || !Number.isFinite(val)) {
+		return edgeEmptyText(metrics, key, evalOpts);
+	}
+	return `${val.toFixed(1)}×`;
 }
 </script>
 
-<section class="slo" aria-label="SLO burn rate">
-	<h2 class="section-head">SLO burn rate — 99.9% availability</h2>
+<div class="slo" role="group" aria-label="SLO burn rate">
+	<header class="slo-head">
+		<h3 class="sub-head">SLO 99.9% availability at the edge</h3>
+		<span class="rule-note">
+			Multi-window burn-rate alerts (page: 1h &amp; 5m &gt; {BURN.pageThreshold}× ·
+			ticket: 6h &amp; 30m &gt; {BURN.ticketThreshold}×)
+		</span>
+	</header>
 
 	<div class="grid">
-		<article class="cell" data-tier={burnSeverity(latest(burn1h))}>
+		<article class="cell" data-severity={pageBadge.severity}>
 			<header>
-				<span class="label">Burn rate · 1h</span>
-				<span class="tier">{tierLabel(latest(burn1h))}</span>
-			</header>
-			<div class="value">
-				<span class="num">
-					{latest(burn1h) != null ? latest(burn1h)!.toFixed(2) + "×" : "—"}
+				<span class="label">Page burn pair (1h &amp; 5m vs {BURN.pageThreshold}×)</span>
+				<span class="badge" data-severity={pageBadge.severity}>
+					<span class="glyph" aria-hidden="true">{pageBadge.glyph}</span>
+					<span>{pageBadge.label}</span>
 				</span>
-			</div>
-			<div class="spark" aria-hidden="true">
-				{#if pointsOf(burn1h).length >= 2}
-					<SLISparkline
-						values={pointsOf(burn1h)}
-						threshold={14.4}
-						width={240}
-						height={36}
+			</header>
+
+			<div class="pair-values">
+				<div class="win">
+					<span class="win-label">1h window</span>
+					<span class="num" class:no-traffic={edge.burn.h1 === null}>
+						{formatBurn(edge.burn.h1, "availability_burn_1h")}
+					</span>
+					<MonitorSparkline
+						points={pts1h}
+						label="1h burn rate"
+						threshold={BURN.pageThreshold}
+						width={200}
+						height={32}
 					/>
-				{:else}
-					<span class="dim">no series</span>
-				{/if}
+				</div>
+				<div class="win">
+					<span class="win-label">5m window</span>
+					<span class="num" class:no-traffic={edge.burn.m5 === null}>
+						{formatBurn(edge.burn.m5, "edge_burn_5m")}
+					</span>
+					<MonitorSparkline
+						points={pts5m}
+						label="5m burn rate"
+						threshold={BURN.pageThreshold}
+						width={200}
+						height={32}
+					/>
+				</div>
 			</div>
-			<ul class="tiers">
-				{#each tiers as t (t.value)}
-					<li>{t.label} ≥ {t.value}×</li>
-				{/each}
-			</ul>
+
+			<p class="threshold-line">
+				crit when both 1h &gt; {BURN.pageThreshold}× and 5m &gt; {BURN.pageThreshold}×
+			</p>
 		</article>
 
-		<article class="cell" data-tier={burnSeverity(latest(burn6h))}>
+		<article class="cell" data-severity={ticketBadge.severity}>
 			<header>
-				<span class="label">Burn rate · 6h</span>
-				<span class="tier">{tierLabel(latest(burn6h))}</span>
-			</header>
-			<div class="value">
-				<span class="num">
-					{latest(burn6h) != null ? latest(burn6h)!.toFixed(2) + "×" : "—"}
+				<span class="label">Ticket burn pair (6h &amp; 30m vs {BURN.ticketThreshold}×)</span>
+				<span class="badge" data-severity={ticketBadge.severity}>
+					<span class="glyph" aria-hidden="true">{ticketBadge.glyph}</span>
+					<span>{ticketBadge.label}</span>
 				</span>
-			</div>
-			<div class="spark" aria-hidden="true">
-				{#if pointsOf(burn6h).length >= 2}
-					<SLISparkline
-						values={pointsOf(burn6h)}
-						threshold={6}
-						width={240}
-						height={36}
-					/>
-				{:else}
-					<span class="dim">no series</span>
-				{/if}
-			</div>
-			<ul class="tiers">
-				<li>page-2 ≥ 6×</li>
-				<li>ticket ≥ 1×</li>
-			</ul>
-		</article>
+			</header>
 
-		<article class="cell" data-tier="ok">
-			<header>
-				<span class="label">SLO estimate (visible window)</span>
-				<span class="tier"></span>
-			</header>
-			<div class="value">
-				<span class="num">
-					{sloEstimate != null
-						? `${(sloEstimate! * 100).toFixed(3)}%`
-						: "—"}
-				</span>
+			<div class="pair-values">
+				<div class="win">
+					<span class="win-label">6h window</span>
+					<span class="num" class:no-traffic={edge.burn.h6 === null}>
+						{formatBurn(edge.burn.h6, "availability_burn_6h")}
+					</span>
+					<MonitorSparkline
+						points={pts6h}
+						label="6h burn rate"
+						threshold={BURN.ticketThreshold}
+						width={200}
+						height={32}
+					/>
+				</div>
+				<div class="win">
+					<span class="win-label">30m window</span>
+					<span class="num" class:no-traffic={edge.burn.m30 === null}>
+						{formatBurn(edge.burn.m30, "edge_burn_30m")}
+					</span>
+					<MonitorSparkline
+						points={pts30m}
+						label="30m burn rate"
+						threshold={BURN.ticketThreshold}
+						width={200}
+						height={32}
+					/>
+				</div>
 			</div>
-			<p class="note">
-				Approximate from the displayed window's error ratio. For the full 30-day SLO, check the
-				Prometheus recording rule directly.
+
+			<p class="threshold-line">
+				warn when both 6h &gt; {BURN.ticketThreshold}× and 30m &gt; {BURN.ticketThreshold}×
 			</p>
 		</article>
 	</div>
-</section>
+</div>
 
 <style>
 	.slo {
 		display: grid;
-		gap: 0.6rem;
+		gap: 0.55rem;
+		min-width: 0;
 	}
 
-	.section-head {
-		font-family: var(--font-display, var(--font-serif));
-		font-size: 0.92rem;
-		letter-spacing: 0.08em;
+	.slo-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.sub-head {
+		font-family: var(--font-body);
+		font-size: 0.72rem;
+		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		margin: 0;
-		color: var(--alt-charcoal);
+		color: var(--alt-slate);
+	}
+
+	.rule-note {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		color: var(--alt-slate);
 	}
 
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 0.7rem;
+		min-width: 0;
 	}
 
-	@media (max-width: 1100px) {
+	@media (max-width: 900px) {
 		.grid {
 			grid-template-columns: 1fr;
 		}
@@ -164,19 +190,19 @@ function tierLabel(value: number | null): string {
 
 	.cell {
 		display: grid;
-		grid-template-rows: auto auto auto auto;
-		gap: 0.35rem;
+		gap: 0.5rem;
 		padding: 0.85rem 0.95rem;
 		border: 0.5px solid var(--obs-rule, var(--surface-border));
 		border-top: 2px solid var(--alt-charcoal);
-		background: var(--surface);
+		background: var(--surface-bg);
+		min-width: 0;
 	}
 
-	.cell[data-tier="page1"] {
+	.cell[data-severity="crit"] {
 		border-top-color: var(--obs-critical, var(--alt-error));
 	}
 
-	.cell[data-tier="page2"] {
+	.cell[data-severity="warn"] {
 		border-top-color: var(--obs-warn, var(--alt-warning));
 	}
 
@@ -184,6 +210,7 @@ function tierLabel(value: number | null): string {
 		display: flex;
 		justify-content: space-between;
 		align-items: baseline;
+		gap: 0.5rem;
 	}
 
 	.label {
@@ -194,51 +221,71 @@ function tierLabel(value: number | null): string {
 		color: var(--alt-slate);
 	}
 
-	.tier {
+	.badge {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.25rem;
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
+		font-weight: 600;
 		color: var(--alt-slate);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
 	}
 
-	.cell[data-tier="page1"] .tier {
-		color: var(--obs-critical, var(--alt-error));
+	.badge[data-severity="ok"] {
+		color: var(--obs-good, var(--alt-success));
 	}
 
-	.cell[data-tier="page2"] .tier {
+	.badge[data-severity="warn"] {
 		color: var(--obs-warn, var(--alt-warning));
 	}
 
-	.value .num {
+	.badge[data-severity="crit"] {
+		color: var(--obs-critical, var(--alt-error));
+	}
+
+	.pair-values {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.75rem;
+		min-width: 0;
+	}
+
+	@media (max-width: 480px) {
+		.pair-values {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	.win {
+		display: grid;
+		gap: 0.2rem;
+		min-width: 0;
+	}
+
+	.win-label {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		color: var(--alt-slate);
+	}
+
+	.num {
 		font-family: var(--font-display, var(--font-serif));
-		font-size: 1.9rem;
+		font-size: 1.65rem;
 		font-weight: 500;
 		font-variant-numeric: tabular-nums;
 		color: var(--alt-charcoal);
 	}
 
-	.note {
-		font-size: 0.72rem;
-		color: var(--alt-slate);
-		margin: 0;
+	.num.no-traffic {
+		font-family: var(--font-mono);
+		font-size: 0.95rem;
+		color: var(--alt-ash);
 	}
 
-	.tiers {
-		list-style: none;
-		padding: 0;
+	.threshold-line {
 		margin: 0;
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
-		color: var(--alt-ash);
-		display: flex;
-		gap: 0.85rem;
-		flex-wrap: wrap;
-	}
-
-	.dim {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: var(--alt-ash);
+		color: var(--alt-slate);
 	}
 </style>
