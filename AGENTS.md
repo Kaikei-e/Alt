@@ -66,6 +66,9 @@
   - BFF: `curl http://localhost:9250/health`
   - Meilisearch: `curl http://localhost:7700/health`
   - Auth Hub (in-container, port 8888 not published to host): `docker compose -f compose/compose.yaml -p alt exec auth-hub /auth-hub healthcheck`
+- **Repo toolchain (`LKAL`, `kisage`, `DocDag`)**
+  - Canonical rules, commands, and role boundaries live in root `CLAUDE.md` under `## Toolchain` (do not duplicate here).
+  - Verify `deploy/desired-env.lkal` / `kisage` changes with `python3 scripts/kisage-env.py verify && python3 scripts/tests/test-kisage-env.py` (never edit `.env` or `.kisage/*` directly), and verify `docs/ADR/` or `docdag.yaml` changes with `docdag validate && docdag lint --strict`.
 
 ## Language Playbooks
 - **Go 1.27.1** – Enforce Clean Architecture boundaries, use `log/slog`, wrap errors with context, propagate `context.Context`, throttle external calls (≥5 s between repeat host hits), prefer table-driven tests and GoMock fakes.

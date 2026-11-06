@@ -45,6 +45,31 @@ curl http://localhost:9250/health       # BFF
 curl http://localhost:7700/health       # Meilisearch
 ```
 
+## Toolchain
+
+### LKAL (`lkal`)
+- **What**: Declarative configuration format (`@lkal "0.1"`) and official CLI parser/normalizer (`~/.local/bin/lkal`, installed via `make install-lkal`) backing `deploy/desired-env.lkal`.
+- **Use when / Commands**:
+  - Editing repository-managed host environment settings (`/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`) in `deploy/desired-env.lkal` to stay in lockstep with `deploy/host-prereqs.yaml` and ADR-000982 (`RATE_LIMIT_EXTERNAL_API_INTERVAL >= 5s`); never declare `/local/*` in `deploy/desired-env.lkal`.
+  - Check or format syntax with `~/.local/bin/lkal check deploy/desired-env.lkal` and `~/.local/bin/lkal fmt -w deploy/desired-env.lkal` (`scripts/kisage-env.py` normalizes via `lkal json -plain` with no regex fallback).
+- **Verify**: `python3 scripts/kisage-env.py verify` (or `make kisage-verify`).
+
+### kisage (`kisage` + `scripts/kisage-env.py`)
+- **What**: Deterministic leaf-path LKAL reconciler and MCP server (`~/.local/bin/kisage` `v0.1.2`, installed via `make install-kisage`), paired with `scripts/kisage-env.py` and `docs/runbooks/kisage-env.md`.
+- **Use when / Commands**:
+  - Modifying `deploy/desired-env.lkal`, `deploy/host-prereqs.yaml`, or `scripts/kisage-env.py`: run `python3 scripts/kisage-env.py verify` and `python3 scripts/tests/test-kisage-env.py`.
+  - Auditing an actual `.env` file against managed keys without printing secret values: run read-only `python3 scripts/kisage-env.py preflight --env-file .env` (`make kisage-preflight ENV_FILE=.env`).
+  - Never edit `.env` or `.kisage/*` directly (blocked by `.claude/settings.json` `PreToolUse` hook) and never automate `kisage adopt` or `kisage prune`; stateful host reconciliation (`kisage plan|apply|prune|explain|adopt|release` or `kisage_*` MCP tools under `KISAGE_HOST_CONFIG="$PWD/.kisage/host.json"`) is host-operator scope per `docs/runbooks/kisage-env.md`.
+- **Verify**: `python3 scripts/kisage-env.py verify && python3 scripts/tests/test-kisage-env.py` (plus `python3 scripts/kisage-env.py preflight --env-file .env` when inspecting a host `.env`).
+
+### DocDag (`docdag`)
+- **What**: Typed directed graph validator, rule linter, and query CLI (`docdag`, configured in `docdag.yaml`) enforcing DAG invariants and section structure across `docs/ADR/`.
+- **Use when / Commands**:
+  - Exploring ADR context, prerequisites, or blast radius before planning or reviewing (query the graph instead of grepping `docs/ADR/`): `docdag context <id> --depth 2 --budget 1500`, `docdag query --binding --fields id,title,status,path`, `docdag query <id>`, `docdag query <id> --ancestors`, `docdag resolve <id>`.
+  - Creating an ADR: allocate the next 6-digit ID via `docdag new "<title>" --dry-run --format json`, write `docs/ADR/NNNNNN.md` with `docs/ADR/template.md` headings (`## Status` → `## Context` → `## Decision` → `## Consequences`), and check incrementally with `docdag validate --touching docs/ADR/NNNNNN.md`.
+  - Modifying `docs/ADR/**` or `docdag.yaml`: settled ADRs are append-only (`--immutable-since origin/main`); only frontmatter `status: superseded` may be updated on a superseded ADR.
+- **Verify**: `docdag validate && docdag lint --strict` (and `docdag validate --immutable-since origin/main` before finishing any `docs/ADR/` or `docdag.yaml` change).
+
 ## Antigravity MCP delegation
 
 Use `antigravity_run` for a separate, bounded investigation or plan. Default to
