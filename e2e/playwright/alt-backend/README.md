@@ -191,7 +191,7 @@ own description of the API turned out to disagree with the API.
 four-shard matrix and merges the blobs:
 
 - **No browser download.** API-only specs never launch one;
-  `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` into `node:22-bookworm-slim` saves the
+  `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` into `node:26-bookworm-slim` saves the
   ~1.7GB Playwright image and its pull time.
 - **Images built once**, exported as an artifact, loaded by each shard —
   instead of four shards each running the same buildx.

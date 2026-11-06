@@ -3,7 +3,7 @@
 Every Alt microservice's end-to-end suite lives here, one directory per
 service. All of them are **HTTP-only**: no spec touches `page`, `browser` or
 `context`, so Playwright never launches a browser and the runner needs no
-browser binaries. That is what lets CI use a `node:22-bookworm-slim` image
+browser binaries. That is what lets CI use a `node:26-bookworm-slim` image
 (~150MB) with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` instead of the ~1.7GB
 Playwright image.
 
