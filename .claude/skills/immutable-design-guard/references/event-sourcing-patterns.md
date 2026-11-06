@@ -78,7 +78,7 @@ assertEqual(projection1, projection2)
 新しい read 要求には、既存 projection を mutate せず新 projection を作って reproject する。
 
 Alt の実例（互いに正本を主張しない独立投影）: `knowledge_home_items` (Home foreground) /
-`today_digest_view` (TodayBar) / `recall_candidate_view` (Recall) / `knowledge_loop_*` (Loop UI)。
+`today_digest_view` (TodayBar) / `recall_candidate_view` (Recall) / `knowledge_trail_footprints`・`knowledge_trail_branches` (Knowledge Trail)。
 
 ## 6. Idempotency key と exactly-once illusion
 

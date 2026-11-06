@@ -7,7 +7,7 @@ description: |
   "look up", "find docs for", when evaluating a library / framework / approach, when investigating an
   error, migration guide or breaking change, or when the answer needs information newer than training
   data. Prefer plan-context-loader when the material lives in this repo's Obsidian vault rather than
-  on the web, and the claude-api skill for Claude/Anthropic model, pricing and SDK questions.
+  on the web, and the claude-api skill when available for Claude/Anthropic model, pricing and SDK questions.
 allowed-tools: WebSearch, WebFetch, Read, Agent
 argument-hint: <research topic or question> [--depth=shallow|deep] [--lang=en|ja]
 ---

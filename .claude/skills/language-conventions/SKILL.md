@@ -17,9 +17,9 @@ paths:
 
 | 言語 | 読むファイル | 適用対象 |
 |---|---|---|
-| Go | [references/go.md](references/go.md) | `*.go` — alt-backend (backend / harvester / notifier / datahub), sidecar-proxy, alt-butterfly-facade, auth-hub, knowledge-sovereign, mq-hub, pre-processor, pre-processor-sidecar, rag-orchestrator, search-indexer, altctl, pki-agent |
+| Go | [references/go.md](references/go.md) | `*.go` — alt-backend (backend / harvester / notifier / datahub), alt-backend/sidecar-proxy (historical), alt-butterfly-facade, auth-hub, knowledge-sovereign, mq-hub, pre-processor, pre-processor-sidecar, rag-orchestrator, search-indexer, altctl, pki-agent |
 | Python | [references/python.md](references/python.md) | `*.py` — news-creator, tag-generator, metrics, recap-subworker, recap-evaluator, acolyte-orchestrator |
-| Rust | [references/rust.md](references/rust.md) | `*.rs` — rask-log-aggregator, rask-log-forwarder, recap-worker |
+| Rust | [references/rust.md](references/rust.md) | `*.rs` — plecto (plecto-proxy), rask-log-aggregator, rask-log-forwarder, recap-worker |
 | Svelte | [references/svelte.md](references/svelte.md) | `*.svelte` と `alt-frontend-sv/src/routes/**/*.ts` |
 | TypeScript | [references/typescript.md](references/typescript.md) | `*.ts` — alt-frontend-sv, auth-token-manager, alt-perf |
 

@@ -1,6 +1,6 @@
 ---
 name: reload
-description: Re-reads Alt's authoritative project context — CLAUDE.md, the path-scoped rules in .claude/rules/, and the wiki entry point — and restates which of those rules bear on the work in progress. Invoke manually after a long session, after context compaction, or when the working assumptions have drifted from what the repo actually says (「コンテキスト再読み込み」). Prefer plan-context-loader when the goal is to pull ADRs and canonical contracts out of the vault for a design task, rather than to re-anchor on the standing rules.
+description: Re-reads Alt's authoritative project context — CLAUDE.md, the path-scoped rules in .claude/rules/, and the wiki entry point — and restates which of those rules bear on the work in progress. Use when invoked manually after a long session, after context compaction, or when the working assumptions have drifted from what the repo actually says (「コンテキスト再読み込み」). Prefer plan-context-loader when the goal is to pull ADRs and canonical contracts out of the vault for a design task, rather than to re-anchor on the standing rules.
 allowed-tools: Read, Glob
 disable-model-invocation: true
 ---

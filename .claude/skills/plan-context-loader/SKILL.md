@@ -30,8 +30,8 @@ vault は `docs/` 配下の通常のファイル群なので、Read / Grep / Glo
 | 計画対象 | 参照先 |
 |---|---|
 | Knowledge Trail | `docs/plan/knowledge-trail-core-concept.md`, `docs/plan/knowledge-trail-implementation-plan.md`, `docs/wiki/architecture/knowledge-trail.md` |
-| Knowledge Home（価値・入口） | `docs/plan/knowledge-home-value-position-plan.md`, `docs/wiki/architecture/immutable-data-model.md` |
-| イミュータブルデータモデル | `docs/wiki/architecture/immutable-data-model.md`, Trail core-concept §C |
+| Knowledge Home（価値・入口） | `docs/plan/knowledge-home-value-position-plan.md`, `docs/plan/knowledge-trail-core-concept.md` (§C), `docs/wiki/architecture/immutable-data-model.md` |
+| イミュータブルデータモデル | `docs/wiki/architecture/immutable-data-model.md`, `docs/plan/knowledge-trail-core-concept.md` §C |
 | Projector / Reproject | `docs/services/knowledge-sovereign.md`, `docs/runbooks/` の reproject 系 |
 | 是正・未達事項（historical audit） | `docs/review/` 配下（`docs/review/README.md`） |
 | Acolyte 全般・パイプライン | `docs/services/acolyte-orchestrator.md`, `docs/case-studies/acolyte-design-evolution.md`, Acolyte 関連 ADR は `docdag query` またはタイトル検索で特定 |
