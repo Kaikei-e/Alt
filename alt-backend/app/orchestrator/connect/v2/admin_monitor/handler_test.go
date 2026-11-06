@@ -6,6 +6,7 @@ import (
 	"alt/gen/proto/alt/admin_monitor/v1/adminmonitorv1connect"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -30,6 +31,9 @@ func (f *fakeUC) GetSnapshot(ctx context.Context, keys []domain.MetricKey, w dom
 	return f.snapshot, nil
 }
 func (f *fakeUC) StreamSnapshots(ctx context.Context, keys []domain.MetricKey, w domain.RangeWindow, s domain.Step) (<-chan *domain.MetricsSnapshot, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	ch := make(chan *domain.MetricsSnapshot, 2)
 	ch <- f.snapshot
 	go func() {
@@ -105,7 +109,7 @@ func TestSnapshot_ReturnsMetrics(t *testing.T) {
 }
 
 func TestSnapshot_PropagatesError(t *testing.T) {
-	uc := &fakeUC{err: errors.New("unknown metric key \"bogus\"")}
+	uc := &fakeUC{err: fmt.Errorf("%w: \"bogus\"", domain.ErrUnknownMetricKey)}
 	_, client := newServer(t, uc)
 	_, err := client.Snapshot(context.Background(), connect.NewRequest(&adminmonitorv1.SnapshotRequest{Keys: []string{"bogus"}}))
 	if err == nil {
@@ -148,5 +152,28 @@ func TestWatch_StreamsAndStopsOnCancel(t *testing.T) {
 			return
 		}
 		t.Fatalf("unexpected stream err: %v", err)
+	}
+}
+
+func TestWatch_UnknownKey_ReturnsInvalidArgument(t *testing.T) {
+	uc := &fakeUC{err: fmt.Errorf("%w: %q", domain.ErrUnknownMetricKey, "bogus")}
+	_, client := newServer(t, uc)
+
+	stream, err := client.Watch(context.Background(), connect.NewRequest(&adminmonitorv1.WatchRequest{Keys: []string{"bogus"}}))
+	if err == nil {
+		if stream.Receive() {
+			t.Fatalf("expected Watch error, received message: %+v", stream.Msg())
+		}
+		err = stream.Err()
+	}
+	if err == nil {
+		t.Fatalf("expected error for unknown key on Watch")
+	}
+	var ce *connect.Error
+	if !errors.As(err, &ce) {
+		t.Fatalf("want *connect.Error, got %T: %v", err, err)
+	}
+	if ce.Code() != connect.CodeInvalidArgument {
+		t.Fatalf("code = %v, want InvalidArgument", ce.Code())
 	}
 }

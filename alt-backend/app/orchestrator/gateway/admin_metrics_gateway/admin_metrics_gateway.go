@@ -69,27 +69,27 @@ func (g *Gateway) Healthy(ctx context.Context) error {
 // result on timeout/unavailable rather than failing the whole snapshot.
 func (g *Gateway) Snapshot(ctx context.Context, keys []domain.MetricKey, window domain.RangeWindow, step domain.Step) (*domain.MetricsSnapshot, error) {
 	if len(keys) == 0 {
-		return nil, errors.New("admin_metrics_gateway: keys required")
+		return nil, fmt.Errorf("admin_metrics_gateway: %w", domain.ErrNoKeys)
 	}
 	// Validate allowlist & window/step up front to fail closed before any upstream call.
 	entries := make([]allowEntry, 0, len(keys))
 	for _, k := range keys {
 		e, ok := lookup(k)
 		if !ok {
-			return nil, fmt.Errorf("admin_metrics_gateway: unknown metric key %q", k)
+			return nil, fmt.Errorf("admin_metrics_gateway: %w %q", domain.ErrUnknownMetricKey, k)
 		}
 		entries = append(entries, e)
 	}
 	if window != "" && window.Duration() == 0 {
-		return nil, fmt.Errorf("admin_metrics_gateway: invalid window %q", window)
+		return nil, fmt.Errorf("admin_metrics_gateway: %w: invalid window %q", domain.ErrInvalidRange, window)
 	}
 	if step != "" && step.Duration() == 0 {
-		return nil, fmt.Errorf("admin_metrics_gateway: invalid step %q", step)
+		return nil, fmt.Errorf("admin_metrics_gateway: %w: invalid step %q", domain.ErrInvalidRange, step)
 	}
 	// Enforce window/step floor to prevent point-count explosions.
 	if window != "" && step != "" {
 		if int64(window.Duration()/step.Duration()) > 720 {
-			return nil, fmt.Errorf("admin_metrics_gateway: window/step ratio exceeds 720")
+			return nil, fmt.Errorf("admin_metrics_gateway: %w: window/step ratio exceeds 720", domain.ErrInvalidRange)
 		}
 	}
 
@@ -102,10 +102,10 @@ func (g *Gateway) Snapshot(ctx context.Context, keys []domain.MetricKey, window 
 
 func (g *Gateway) resolve(ctx context.Context, e allowEntry, window domain.RangeWindow, step domain.Step) *domain.MetricResult {
 	kind := e.kind
-	if window != "" && step != "" {
-		kind = domain.SeriesKindRange
-	}
-	if kind == domain.SeriesKindRange && (window == "" || step == "") {
+	if kind == domain.SeriesKindInstant {
+		window = ""
+		step = ""
+	} else if kind == domain.SeriesKindRange && (window == "" || step == "") {
 		// Fall back to a safe default window/step for range metrics.
 		window = domain.RangeWindow15m
 		step = domain.Step30s
@@ -118,7 +118,7 @@ func (g *Gateway) resolve(ctx context.Context, e allowEntry, window domain.Range
 
 	v, _, _ := g.sf.Do(cacheKey, func() (any, error) {
 		if err := g.limit.Wait(ctx); err != nil {
-			return g.degraded(e, kind, "rate_limited: "+err.Error()), nil
+			return g.degraded(e, kind, "rate limited"), nil
 		}
 		res := g.fetch(ctx, e, kind, window, step)
 		g.cache.put(cacheKey, res)
@@ -136,7 +136,7 @@ func (g *Gateway) fetch(ctx context.Context, e allowEntry, kind domain.SeriesKin
 	case domain.SeriesKindInstant:
 		res, err := g.client.QueryInstant(ctx, e.promql, g.now())
 		if err != nil {
-			return g.degraded(e, kind, err.Error())
+			return g.degraded(e, kind, degradedReason(err))
 		}
 		return convertInstant(e, res)
 	case domain.SeriesKindRange:
@@ -144,11 +144,31 @@ func (g *Gateway) fetch(ctx context.Context, e allowEntry, kind domain.SeriesKin
 		start := end.Add(-window.Duration())
 		res, err := g.client.QueryRange(ctx, e.promql, start, end, step.Duration())
 		if err != nil {
-			return g.degraded(e, kind, err.Error())
+			return g.degraded(e, kind, degradedReason(err))
 		}
 		return convertRange(e, res)
 	}
 	return g.degraded(e, kind, "unsupported_kind")
+}
+
+func degradedReason(err error) string {
+	var qe *prometheus_client.QueryError
+	if errors.As(err, &qe) {
+		switch qe.Kind {
+		case prometheus_client.ErrKindTimeout:
+			return "prometheus timeout"
+		case prometheus_client.ErrKindBadData:
+			return "invalid query parameter"
+		case prometheus_client.ErrKindExecution:
+			return "prometheus query execution failed"
+		case prometheus_client.ErrKindUnavailable:
+			return "prometheus unavailable"
+		}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "prometheus timeout"
+	}
+	return "prometheus unavailable"
 }
 
 func (g *Gateway) degraded(e allowEntry, kind domain.SeriesKind, reason string) *domain.MetricResult {

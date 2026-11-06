@@ -308,3 +308,189 @@ func TestAllowlist_AvailabilityAggregatesMultiTargetJobs(t *testing.T) {
 			"multi-target jobs %v collapse to one row keyed by job, so without `min by (job)` a single down target is masked by its healthy siblings", entry.promql, multi)
 	}
 }
+
+func TestAllowlist_ContractSection2Keys(t *testing.T) {
+	tests := []struct {
+		key    domain.MetricKey
+		kind   domain.SeriesKind
+		unit   string
+		promql string
+	}{
+		// Repointed existing keys
+		{
+			key:    domain.MetricHTTPRPS,
+			kind:   domain.SeriesKindRange,
+			unit:   "req/s",
+			promql: `job:alt_requests:rate5m`,
+		},
+		{
+			key:    domain.MetricHTTPErrorRatio,
+			kind:   domain.SeriesKindRange,
+			unit:   "ratio",
+			promql: `job:alt_request_error_ratio:ratio_rate5m`,
+		},
+		{
+			key:    domain.MetricHTTPLatencyP50,
+			kind:   domain.SeriesKindRange,
+			unit:   "seconds",
+			promql: `job:alt_request_duration_seconds:p50_rate5m`,
+		},
+		{
+			key:    domain.MetricHTTPLatencyP95,
+			kind:   domain.SeriesKindRange,
+			unit:   "seconds",
+			promql: `job:alt_request_duration_seconds:p95_rate5m`,
+		},
+		{
+			key:    domain.MetricHTTPLatencyP99,
+			kind:   domain.SeriesKindRange,
+			unit:   "seconds",
+			promql: `job:alt_request_duration_seconds:p99_rate5m`,
+		},
+		{
+			key:    domain.MetricAvailabilityBurn1h,
+			kind:   domain.SeriesKindRange,
+			unit:   "ratio",
+			promql: `alt_edge:error_budget_burn:ratio_rate1h`,
+		},
+		{
+			key:    domain.MetricAvailabilityBurn6h,
+			kind:   domain.SeriesKindRange,
+			unit:   "ratio",
+			promql: `alt_edge:error_budget_burn:ratio_rate6h`,
+		},
+		{
+			key:    domain.MetricMQHubPublishRate,
+			kind:   domain.SeriesKindRange,
+			unit:   "msg/s",
+			promql: `sum by (topic) (label_replace(rate(mqhub_publish_total[1m]), "topic", "$1", "stream", "(.*)"))`,
+		},
+		// New keys
+		{
+			key:    domain.MetricEdgeRPS,
+			kind:   domain.SeriesKindRange,
+			unit:   "req/s",
+			promql: `alt_edge:requests:rate5m`,
+		},
+		{
+			key:    domain.MetricEdgeErrorRatio,
+			kind:   domain.SeriesKindRange,
+			unit:   "ratio",
+			promql: `alt_edge:request_error_ratio:ratio_rate5m`,
+		},
+		{
+			key:    domain.MetricEdgeLatencyP95,
+			kind:   domain.SeriesKindRange,
+			unit:   "seconds",
+			promql: `alt_edge:request_duration_seconds:p95_rate5m`,
+		},
+		{
+			key:    domain.MetricEdgeBurn5m,
+			kind:   domain.SeriesKindRange,
+			unit:   "ratio",
+			promql: `alt_edge:error_budget_burn:ratio_rate5m`,
+		},
+		{
+			key:    domain.MetricEdgeBurn30m,
+			kind:   domain.SeriesKindRange,
+			unit:   "ratio",
+			promql: `alt_edge:error_budget_burn:ratio_rate30m`,
+		},
+		{
+			key:    domain.MetricHostCPUUtilization,
+			kind:   domain.SeriesKindRange,
+			unit:   "ratio",
+			promql: `alt_host:cpu_utilization:ratio_rate2m`,
+		},
+		{
+			key:    domain.MetricHostMemoryUtilization,
+			kind:   domain.SeriesKindRange,
+			unit:   "ratio",
+			promql: `alt_host:memory_utilization:ratio`,
+		},
+		{
+			key:    domain.MetricHostFilesystemUtilization,
+			kind:   domain.SeriesKindInstant,
+			unit:   "ratio",
+			promql: `alt_host:filesystem_utilization:ratio`,
+		},
+		{
+			key:    domain.MetricAlertsFiring,
+			kind:   domain.SeriesKindInstant,
+			unit:   "bool",
+			promql: `ALERTS{alertstate="firing"}`,
+		},
+		{
+			key:    domain.MetricAlertsPending,
+			kind:   domain.SeriesKindInstant,
+			unit:   "bool",
+			promql: `ALERTS{alertstate="pending"}`,
+		},
+		{
+			key:    domain.MetricAlertsActiveSince,
+			kind:   domain.SeriesKindInstant,
+			unit:   "unix_seconds",
+			promql: `ALERTS_FOR_STATE`,
+		},
+		{
+			key:    domain.MetricCertRemaining,
+			kind:   domain.SeriesKindInstant,
+			unit:   "seconds",
+			promql: `min by (job) (pki_enrollment_cert_remaining_seconds)`,
+		},
+		{
+			key:    domain.MetricCertHealthy,
+			kind:   domain.SeriesKindInstant,
+			unit:   "bool",
+			promql: `min by (job) (pki_enrollment_healthy)`,
+		},
+		{
+			key:    domain.MetricScrapeDuration,
+			kind:   domain.SeriesKindInstant,
+			unit:   "seconds",
+			promql: `max by (job) (scrape_duration_seconds)`,
+		},
+		{
+			key:    domain.MetricBacklogOldestAge,
+			kind:   domain.SeriesKindInstant,
+			unit:   "seconds",
+			promql: `max by (job, queue) (label_replace(notification_outbox_oldest_pending_age_seconds, "queue", "notification_outbox", "", "") or label_replace(push_delivery_oldest_pending_age_seconds, "queue", "push_delivery", "", ""))`,
+		},
+		{
+			key:    domain.MetricPushPendingCount,
+			kind:   domain.SeriesKindInstant,
+			unit:   "count",
+			promql: `sum by (job) (push_delivery_pending_count)`,
+		},
+		{
+			key:    domain.MetricOutboxFailed24h,
+			kind:   domain.SeriesKindInstant,
+			unit:   "count",
+			promql: `sum by (job) (increase(alt_harvester_outbox_events_failed_total[24h]))`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.key), func(t *testing.T) {
+			entry, ok := lookup(tt.key)
+			if !ok {
+				t.Fatalf("allowlist missing key %q", tt.key)
+			}
+			if entry.kind != tt.kind {
+				t.Errorf("%q kind = %q, want %q", tt.key, entry.kind, tt.kind)
+			}
+			if entry.unit != tt.unit {
+				t.Errorf("%q unit = %q, want %q", tt.key, entry.unit, tt.unit)
+			}
+			if entry.promql != tt.promql {
+				t.Errorf("%q promql = %q, want %q", tt.key, entry.promql, tt.promql)
+			}
+			if entry.title == "" {
+				t.Errorf("%q missing title", tt.key)
+			}
+			if entry.description == "" {
+				t.Errorf("%q missing description", tt.key)
+			}
+		})
+	}
+}

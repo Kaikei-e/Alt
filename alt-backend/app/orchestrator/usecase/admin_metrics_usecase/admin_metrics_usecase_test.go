@@ -4,6 +4,8 @@ import (
 	"alt/domain"
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,7 +19,10 @@ type stubPort struct {
 }
 
 func (s *stubPort) Catalog() []domain.MetricCatalogEntry {
-	return []domain.MetricCatalogEntry{{Key: domain.MetricAvailability, Title: "Availability", Unit: "bool"}}
+	return []domain.MetricCatalogEntry{
+		{Key: domain.MetricAvailability, Title: "Availability", Unit: "bool", Kind: domain.SeriesKindInstant},
+		{Key: domain.MetricHTTPRPS, Title: "HTTP RPS", Unit: "req/s", Kind: domain.SeriesKindRange},
+	}
 }
 func (s *stubPort) Snapshot(ctx context.Context, keys []domain.MetricKey, w domain.RangeWindow, st domain.Step) (*domain.MetricsSnapshot, error) {
 	s.calls.Add(1)
@@ -124,8 +129,8 @@ func TestCatalog_Delegates(t *testing.T) {
 	p := &stubPort{}
 	uc := NewCatalogUsecase(p)
 	cat := uc.Execute()
-	if len(cat) != 1 {
-		t.Fatalf("want 1 catalog entry, got %d", len(cat))
+	if len(cat) != 2 {
+		t.Fatalf("want 2 catalog entries, got %d", len(cat))
 	}
 }
 
@@ -162,16 +167,104 @@ func TestResolveKeys(t *testing.T) {
 	}
 }
 
-func TestFallbackSnapshot(t *testing.T) {
-	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
-	snap := fallbackSnapshot(now)
-	if snap == nil {
-		t.Fatal("expected non-nil snapshot")
+func TestStreamSnapshots_RejectsUnknownKeyBeforeStarting(t *testing.T) {
+	p := &stubPort{}
+	uc := NewStreamSnapshotsUsecase(p, WithInterval(time.Hour))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ch, err := uc.Execute(ctx, []domain.MetricKey{domain.MetricAvailability, "unlisted_key"}, domain.RangeWindow15m, domain.Step30s)
+	if err == nil {
+		t.Fatalf("expected error for unlisted key, got nil")
 	}
-	if !snap.Time.Equal(now) {
-		t.Errorf("expected time %v, got %v", now, snap.Time)
+	if !errors.Is(err, domain.ErrUnknownMetricKey) {
+		t.Fatalf("expected errors.Is(err, domain.ErrUnknownMetricKey), got: %v", err)
 	}
-	if snap.Metrics == nil || len(snap.Metrics) != 0 {
-		t.Errorf("expected empty non-nil metrics map, got %v", snap.Metrics)
+	if ch != nil {
+		t.Fatalf("expected nil channel on error, got %v", ch)
+	}
+	if got := p.calls.Load(); got != 0 {
+		t.Fatalf("expected 0 Snapshot calls when key validation fails, got %d", got)
+	}
+}
+
+func TestStreamSnapshots_PortError_EmitsDegradedPerRequestedKey(t *testing.T) {
+	keys := []domain.MetricKey{
+		domain.MetricAvailability,
+		domain.MetricHTTPRPS,
+	}
+	wantMeta := map[domain.MetricKey]struct {
+		kind domain.SeriesKind
+		unit string
+	}{
+		domain.MetricAvailability: {kind: domain.SeriesKindInstant, unit: "bool"},
+		domain.MetricHTTPRPS:      {kind: domain.SeriesKindRange, unit: "req/s"},
+	}
+
+	cases := []struct {
+		name       string
+		err        error
+		wantReason string
+	}{
+		{
+			name:       "upstream unavailable",
+			err:        errors.New(`Get "http://prometheus:9090/api/v1/query": dial tcp 10.0.0.1:9090: connect: connection refused`),
+			wantReason: "prometheus unavailable",
+		},
+		{
+			name:       "invalid range sentinel",
+			err:        fmt.Errorf("admin_metrics_gateway: %w: window/step ratio exceeds 720", domain.ErrInvalidRange),
+			wantReason: "invalid window/step combination",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &stubPort{snapshotErr: tc.err}
+			uc := NewStreamSnapshotsUsecase(p, WithInterval(time.Hour))
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			ch, err := uc.Execute(ctx, keys, domain.RangeWindow15m, domain.Step30s)
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			select {
+			case snap := <-ch:
+				if snap == nil {
+					t.Fatalf("expected non-nil snapshot")
+				}
+				if len(snap.Metrics) != len(keys) {
+					t.Fatalf("expected %d degraded metrics, got %d: %+v", len(keys), len(snap.Metrics), snap.Metrics)
+				}
+				for _, k := range keys {
+					mr, ok := snap.Metrics[k]
+					if !ok || mr == nil {
+						t.Fatalf("missing metric result for %q", k)
+					}
+					if mr.Key != k {
+						t.Errorf("mr.Key = %q, want %q", mr.Key, k)
+					}
+					if !mr.Degraded {
+						t.Errorf("mr %q expected Degraded=true", k)
+					}
+					if mr.Reason != tc.wantReason {
+						t.Errorf("mr %q Reason = %q, want %q", k, mr.Reason, tc.wantReason)
+					}
+					if strings.Contains(mr.Reason, "http://") || strings.Contains(mr.Reason, "10.0.0.1") {
+						t.Errorf("mr %q Reason leaked internal URL/host: %q", k, mr.Reason)
+					}
+					meta := wantMeta[k]
+					if mr.Kind != meta.kind {
+						t.Errorf("mr %q Kind = %q, want %q", k, mr.Kind, meta.kind)
+					}
+					if mr.Unit != meta.unit {
+						t.Errorf("mr %q Unit = %q, want %q", k, mr.Unit, meta.unit)
+					}
+				}
+			case <-time.After(200 * time.Millisecond):
+				t.Fatalf("did not receive snapshot")
+			}
+		})
 	}
 }

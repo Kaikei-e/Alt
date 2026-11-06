@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/orchestrator/driver/prometheus_client"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -59,8 +60,8 @@ func TestGateway_Snapshot_RejectsUnknownKey(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for unknown key")
 	}
-	if !strings.Contains(err.Error(), "unknown") {
-		t.Fatalf("error should mention unknown: %v", err)
+	if !errors.Is(err, domain.ErrUnknownMetricKey) {
+		t.Fatalf("expected errors.Is(err, domain.ErrUnknownMetricKey), got: %v", err)
 	}
 }
 
@@ -103,9 +104,55 @@ func TestGateway_Snapshot_PromTimeout_ReturnsDegraded(t *testing.T) {
 	if mr == nil || !mr.Degraded {
 		t.Fatalf("expected degraded=true: %+v", mr)
 	}
-	if mr.Reason == "" {
-		t.Fatalf("expected degraded reason")
+	if mr.Reason != "prometheus timeout" {
+		t.Fatalf("reason = %q, want %q", mr.Reason, "prometheus timeout")
 	}
+	if strings.Contains(mr.Reason, srv.URL) || strings.Contains(mr.Reason, "127.0.0.1") {
+		t.Fatalf("reason leaked upstream URL/host: %q", mr.Reason)
+	}
+}
+
+func TestGateway_Snapshot_UpstreamUnavailable_ReturnsSanitizedReason(t *testing.T) {
+	t.Run("http 503", func(t *testing.T) {
+		srv := newProm(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		}))
+		defer srv.Close()
+
+		g := New(Config{Client: newClient(t, srv.URL), CacheTTL: time.Second, RateLimit: 100})
+		snap, err := g.Snapshot(context.Background(), []domain.MetricKey{domain.MetricAvailability}, "", "")
+		if err != nil {
+			t.Fatalf("Snapshot returned error; want degraded result: %v", err)
+		}
+		mr := snap.Metrics[domain.MetricAvailability]
+		if mr == nil || !mr.Degraded {
+			t.Fatalf("expected degraded=true: %+v", mr)
+		}
+		if mr.Reason != "prometheus unavailable" {
+			t.Fatalf("reason = %q, want %q", mr.Reason, "prometheus unavailable")
+		}
+		if strings.Contains(mr.Reason, srv.URL) || strings.Contains(mr.Reason, "127.0.0.1") {
+			t.Fatalf("reason leaked upstream URL/host: %q", mr.Reason)
+		}
+	})
+
+	t.Run("connection refused", func(t *testing.T) {
+		g := New(Config{Client: newClient(t, "http://127.0.0.1:1"), CacheTTL: time.Second, RateLimit: 100})
+		snap, err := g.Snapshot(context.Background(), []domain.MetricKey{domain.MetricAvailability}, "", "")
+		if err != nil {
+			t.Fatalf("Snapshot returned error; want degraded result: %v", err)
+		}
+		mr := snap.Metrics[domain.MetricAvailability]
+		if mr == nil || !mr.Degraded {
+			t.Fatalf("expected degraded=true: %+v", mr)
+		}
+		if mr.Reason != "prometheus unavailable" {
+			t.Fatalf("reason = %q, want %q", mr.Reason, "prometheus unavailable")
+		}
+		if strings.Contains(mr.Reason, "http://") || strings.Contains(mr.Reason, "127.0.0.1") {
+			t.Fatalf("reason leaked upstream URL/host: %q", mr.Reason)
+		}
+	})
 }
 
 func TestGateway_Snapshot_RejectsUnknownWindowStep(t *testing.T) {
@@ -116,11 +163,14 @@ func TestGateway_Snapshot_RejectsUnknownWindowStep(t *testing.T) {
 	defer srv.Close()
 	g := New(Config{Client: newClient(t, srv.URL), CacheTTL: time.Second, RateLimit: 10})
 
-	if _, err := g.Snapshot(context.Background(), []domain.MetricKey{domain.MetricHTTPLatencyP95}, "99d", "15s"); err == nil {
-		t.Fatalf("expected error for bogus window")
+	if _, err := g.Snapshot(context.Background(), []domain.MetricKey{domain.MetricHTTPLatencyP95}, "99d", "15s"); !errors.Is(err, domain.ErrInvalidRange) {
+		t.Fatalf("expected ErrInvalidRange for bogus window, got: %v", err)
 	}
-	if _, err := g.Snapshot(context.Background(), []domain.MetricKey{domain.MetricHTTPLatencyP95}, "5m", "7s"); err == nil {
-		t.Fatalf("expected error for bogus step")
+	if _, err := g.Snapshot(context.Background(), []domain.MetricKey{domain.MetricHTTPLatencyP95}, "5m", "7s"); !errors.Is(err, domain.ErrInvalidRange) {
+		t.Fatalf("expected ErrInvalidRange for bogus step, got: %v", err)
+	}
+	if _, err := g.Snapshot(context.Background(), []domain.MetricKey{domain.MetricHTTPLatencyP95}, domain.RangeWindow24h, domain.Step15s); !errors.Is(err, domain.ErrInvalidRange) {
+		t.Fatalf("expected ErrInvalidRange for window/step ratio > 720, got: %v", err)
 	}
 }
 
@@ -201,57 +251,96 @@ func TestGateway_Catalog_AdminMonitorDashboardKeys(t *testing.T) {
 		byKey[e.Key] = e
 	}
 
-	// Percentile band — must all be range kind for the latency overlay.
-	for _, k := range []domain.MetricKey{
-		domain.MetricHTTPLatencyP50,
-		domain.MetricHTTPLatencyP95,
-		domain.MetricHTTPLatencyP99,
-	} {
-		e, ok := byKey[k]
+	want := []struct {
+		key  domain.MetricKey
+		kind domain.SeriesKind
+		unit string
+	}{
+		{domain.MetricAvailability, domain.SeriesKindInstant, "bool"},
+		{domain.MetricPrometheusScrapeLag, domain.SeriesKindInstant, "seconds"},
+		{domain.MetricScrapeDuration, domain.SeriesKindInstant, "seconds"},
+		{domain.MetricHTTPRPS, domain.SeriesKindRange, "req/s"},
+		{domain.MetricHTTPErrorRatio, domain.SeriesKindRange, "ratio"},
+		{domain.MetricHTTPLatencyP50, domain.SeriesKindRange, "seconds"},
+		{domain.MetricHTTPLatencyP95, domain.SeriesKindRange, "seconds"},
+		{domain.MetricHTTPLatencyP99, domain.SeriesKindRange, "seconds"},
+		{domain.MetricAvailabilityBurn1h, domain.SeriesKindRange, "ratio"},
+		{domain.MetricAvailabilityBurn6h, domain.SeriesKindRange, "ratio"},
+		{domain.MetricEdgeRPS, domain.SeriesKindRange, "req/s"},
+		{domain.MetricEdgeErrorRatio, domain.SeriesKindRange, "ratio"},
+		{domain.MetricEdgeLatencyP95, domain.SeriesKindRange, "seconds"},
+		{domain.MetricEdgeBurn5m, domain.SeriesKindRange, "ratio"},
+		{domain.MetricEdgeBurn30m, domain.SeriesKindRange, "ratio"},
+		{domain.MetricHostCPUUtilization, domain.SeriesKindRange, "ratio"},
+		{domain.MetricHostMemoryUtilization, domain.SeriesKindRange, "ratio"},
+		{domain.MetricHostFilesystemUtilization, domain.SeriesKindInstant, "ratio"},
+		{domain.MetricAlertsFiring, domain.SeriesKindInstant, "bool"},
+		{domain.MetricAlertsPending, domain.SeriesKindInstant, "bool"},
+		{domain.MetricAlertsActiveSince, domain.SeriesKindInstant, "unix_seconds"},
+		{domain.MetricCertRemaining, domain.SeriesKindInstant, "seconds"},
+		{domain.MetricCertHealthy, domain.SeriesKindInstant, "bool"},
+		{domain.MetricMQHubRedis, domain.SeriesKindInstant, "bool"},
+		{domain.MetricMQHubPublishRate, domain.SeriesKindRange, "msg/s"},
+		{domain.MetricBacklogOldestAge, domain.SeriesKindInstant, "seconds"},
+		{domain.MetricPushPendingCount, domain.SeriesKindInstant, "count"},
+		{domain.MetricOutboxFailed24h, domain.SeriesKindInstant, "count"},
+	}
+
+	for _, w := range want {
+		e, ok := byKey[w.key]
 		if !ok {
-			t.Fatalf("latency band missing %q", k)
+			t.Fatalf("dashboard catalog missing %q", w.key)
 		}
-		if e.Kind != domain.SeriesKindRange {
-			t.Fatalf("%q kind=%q, want range", k, e.Kind)
+		if e.Kind != w.kind {
+			t.Fatalf("%q kind=%q, want %q", w.key, e.Kind, w.kind)
 		}
-		if e.Unit != "seconds" {
-			t.Fatalf("%q unit=%q, want seconds", k, e.Unit)
+		if e.Unit != w.unit {
+			t.Fatalf("%q unit=%q, want %q", w.key, e.Unit, w.unit)
+		}
+		if e.Title == "" {
+			t.Fatalf("%q missing title", w.key)
+		}
+		if e.Description == "" {
+			t.Fatalf("%q missing description", w.key)
 		}
 	}
+}
 
-	// Burn rates must be range kind so the SLOBurnPanel can plot trajectories.
-	for _, k := range []domain.MetricKey{
-		domain.MetricAvailabilityBurn1h,
-		domain.MetricAvailabilityBurn6h,
-	} {
-		e, ok := byKey[k]
-		if !ok {
-			t.Fatalf("burn-rate missing %q", k)
+func TestGateway_Snapshot_InstantKeyStaysInstantWithWindowAndStep(t *testing.T) {
+	body := `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"job":"alt-backend"},"value":[1700000000,"1"]}]}}`
+	var paths []string
+	srv := newProm(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path != "/api/v1/query" {
+			http.Error(w, "expected instant query endpoint /api/v1/query", http.StatusBadRequest)
+			return
 		}
-		if e.Kind != domain.SeriesKindRange {
-			t.Fatalf("%q kind=%q, want range", k, e.Kind)
-		}
-		if e.Unit != "ratio" {
-			t.Fatalf("%q unit=%q, want ratio", k, e.Unit)
-		}
-	}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
 
-	// Scrape lag is an instant gauge.
-	if e, ok := byKey[domain.MetricPrometheusScrapeLag]; !ok {
-		t.Fatalf("scrape-lag missing")
-	} else if e.Kind != domain.SeriesKindInstant {
-		t.Fatalf("scrape-lag kind=%q, want instant", e.Kind)
-	} else if e.Unit != "seconds" {
-		t.Fatalf("scrape-lag unit=%q, want seconds", e.Unit)
+	g := New(Config{Client: newClient(t, srv.URL), CacheTTL: time.Second, RateLimit: 10})
+	snap, err := g.Snapshot(context.Background(), []domain.MetricKey{domain.MetricAvailability}, domain.RangeWindow15m, domain.Step30s)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
 	}
-
-	// Availability regex must include the newly instrumented services so the
-	// /admin/monitor service table is not blind to them.
-	avail, ok := byKey[domain.MetricAvailability]
-	if !ok {
-		t.Fatalf("availability missing")
+	if len(paths) != 1 || paths[0] != "/api/v1/query" {
+		t.Fatalf("expected [/api/v1/query], got %v", paths)
 	}
-	_ = avail // Description not currently introspected; promql is server-side.
+	mr := snap.Metrics[domain.MetricAvailability]
+	if mr == nil {
+		t.Fatalf("missing metric result for %q", domain.MetricAvailability)
+	}
+	if mr.Degraded {
+		t.Fatalf("unexpected degraded=true (reason=%q)", mr.Reason)
+	}
+	if mr.Kind != domain.SeriesKindInstant {
+		t.Fatalf("kind=%q, want %q", mr.Kind, domain.SeriesKindInstant)
+	}
+	if len(mr.Series) != 1 || len(mr.Series[0].Points) != 1 {
+		t.Fatalf("unexpected series points: %+v", mr.Series)
+	}
 }
 
 func TestGateway_Healthy_DelegatesToClient(t *testing.T) {
