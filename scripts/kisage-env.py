@@ -20,6 +20,15 @@ and host-local settings (`/local/*` in `.kisage/host-env.lkal`) with the officia
     `deploy/desired-env.lkal` against an explicitly supplied actual `.env`
     file (subset check; preserves local/unmanaged keys, emits KEY names only,
     never secret/actual values, and does not inspect running containers).
+  * `audit-host-config`: Explicit read-only structural audit of gitignored
+    host-local agent configuration indicators (`.claude/settings.json`
+    `PreToolUse` entry matching `Edit` and `Write` with a command hook
+    referencing `.kisage/*`, and `.mcp.json` `kisage` MCP server entry with
+    non-empty `command`, `args == ["mcp"]`, and `env.KISAGE_HOST_CONFIG`).
+    Fails closed when invoked if either file is missing, malformed, or lacks
+    the expected structural indicators, without executing hook/MCP commands or
+    echoing raw file contents/secrets. Checks structural configuration presence
+    only; does not prove runtime hook blocking or OS-level isolation.
 """
 
 from __future__ import annotations
@@ -39,6 +48,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_SANDBOX = ROOT / ".kisage"
 DEFAULT_DECLARATION = ROOT / "deploy" / "desired-env.lkal"
 DEFAULT_MANIFEST = ROOT / "deploy" / "host-prereqs.yaml"
+DEFAULT_CLAUDE_SETTINGS = ROOT / ".claude" / "settings.json"
+DEFAULT_MCP_CONFIG = ROOT / ".mcp.json"
 CHECK_OVERRIDES_PATH = ROOT / "scripts" / "check-env-overrides.py"
 
 EXPECTED_KISAGE_VERSION = "0.1.2"
@@ -717,6 +728,171 @@ def preflight_dotenv(
     return errors
 
 
+def _validate_claude_pre_tool_use_structure(
+    filename: str, claude_doc: dict[str, Any]
+) -> list[str]:
+    hooks = claude_doc.get("hooks")
+    pre_tool_use = hooks.get("PreToolUse") if isinstance(hooks, dict) else None
+    if not isinstance(pre_tool_use, list) or not pre_tool_use:
+        return [
+            f"{filename} hooks.PreToolUse must be a non-empty list of hook entries"
+        ]
+
+    entry_errors: list[str] = []
+    has_kisage_guard_indicator = False
+
+    for idx, entry in enumerate(pre_tool_use):
+        if not isinstance(entry, dict):
+            entry_errors.append(
+                f"{filename} hooks.PreToolUse[{idx}] must be a JSON object"
+            )
+            continue
+        matcher = entry.get("matcher")
+        if not isinstance(matcher, str) or not matcher.strip():
+            entry_errors.append(
+                f"{filename} hooks.PreToolUse[{idx}].matcher must be a non-empty regex string"
+            )
+            continue
+        try:
+            pattern = re.compile(matcher)
+        except re.error:
+            entry_errors.append(
+                f"{filename} hooks.PreToolUse[{idx}].matcher is not a valid regular expression"
+            )
+            continue
+
+        hook_nodes = entry.get("hooks")
+        if not isinstance(hook_nodes, list) or not hook_nodes:
+            entry_errors.append(
+                f"{filename} hooks.PreToolUse[{idx}].hooks must be a non-empty list"
+            )
+            continue
+
+        matches_edit_and_write = bool(pattern.search("Edit")) and bool(
+            pattern.search("Write")
+        )
+        for h_idx, hook in enumerate(hook_nodes):
+            if not isinstance(hook, dict):
+                entry_errors.append(
+                    f"{filename} hooks.PreToolUse[{idx}].hooks[{h_idx}] must be a JSON object"
+                )
+                continue
+            cmd = hook.get("command")
+            if (
+                matches_edit_and_write
+                and hook.get("type") == "command"
+                and isinstance(cmd, str)
+                and bool(cmd.strip())
+                and ".kisage/*" in cmd
+            ):
+                has_kisage_guard_indicator = True
+
+    if not has_kisage_guard_indicator:
+        entry_errors.append(
+            f"{filename} hooks.PreToolUse lacks a command-type hook entry matching Edit and Write with '.kisage/*' guard indicator in command"
+        )
+    return entry_errors
+
+
+def audit_host_config(
+    claude_settings_path: pathlib.Path = DEFAULT_CLAUDE_SETTINGS,
+    mcp_config_path: pathlib.Path = DEFAULT_MCP_CONFIG,
+) -> list[str]:
+    """Explicit read-only structural indicator audit of gitignored host-local agent files.
+
+    Fails closed when either `.claude/settings.json` or `.mcp.json` is missing,
+    unreadable, malformed JSON, non-object JSON root (including `null`), or lacks
+    the expected structural indicators (`PreToolUse` entry matching `Edit` and
+    `Write` with a non-empty `type == "command"` hook command referencing
+    `.kisage/*`; `mcpServers.kisage` with non-empty `command`, `args == ["mcp"]`,
+    and non-empty `env.KISAGE_HOST_CONFIG`). Never executes hook or MCP commands
+    and never echoes raw file contents or secret values. Checks configuration
+    presence only and does not verify runtime hook execution or OS isolation.
+    """
+    errors: list[str] = []
+
+    try:
+        claude_raw = claude_settings_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            f"cannot read host Claude settings {claude_settings_path.name}: {exc.strerror}"
+        )
+    except UnicodeDecodeError:
+        errors.append(
+            f"host Claude settings {claude_settings_path.name} is not valid UTF-8 text"
+        )
+    else:
+        try:
+            claude_doc = json.loads(claude_raw)
+        except json.JSONDecodeError as exc:
+            errors.append(
+                f"malformed JSON in {claude_settings_path.name} (line {exc.lineno} col {exc.colno})"
+            )
+        else:
+            if not isinstance(claude_doc, dict):
+                errors.append(
+                    f"{claude_settings_path.name} root must be a JSON object"
+                )
+            else:
+                errors.extend(
+                    _validate_claude_pre_tool_use_structure(
+                        claude_settings_path.name, claude_doc
+                    )
+                )
+
+    try:
+        mcp_raw = mcp_config_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            f"cannot read host MCP config {mcp_config_path.name}: {exc.strerror}"
+        )
+    except UnicodeDecodeError:
+        errors.append(
+            f"host MCP config {mcp_config_path.name} is not valid UTF-8 text"
+        )
+    else:
+        try:
+            mcp_doc = json.loads(mcp_raw)
+        except json.JSONDecodeError as exc:
+            errors.append(
+                f"malformed JSON in {mcp_config_path.name} (line {exc.lineno} col {exc.colno})"
+            )
+        else:
+            if not isinstance(mcp_doc, dict):
+                errors.append(f"{mcp_config_path.name} root must be a JSON object")
+            else:
+                servers = mcp_doc.get("mcpServers")
+                kisage_srv = (
+                    servers.get("kisage") if isinstance(servers, dict) else None
+                )
+                if not isinstance(kisage_srv, dict):
+                    errors.append(
+                        f"{mcp_config_path.name} mcpServers.kisage registration is missing"
+                    )
+                else:
+                    cmd_val = kisage_srv.get("command")
+                    if not isinstance(cmd_val, str) or not cmd_val.strip():
+                        errors.append(
+                            f"{mcp_config_path.name} mcpServers.kisage command must be a non-empty string"
+                        )
+                    if kisage_srv.get("args") != ["mcp"]:
+                        errors.append(
+                            f"{mcp_config_path.name} mcpServers.kisage args must be ['mcp']"
+                        )
+                    env_map = kisage_srv.get("env")
+                    host_cfg = (
+                        env_map.get("KISAGE_HOST_CONFIG")
+                        if isinstance(env_map, dict)
+                        else None
+                    )
+                    if not isinstance(host_cfg, str) or not host_cfg.strip():
+                        errors.append(
+                            f"{mcp_config_path.name} mcpServers.kisage env.KISAGE_HOST_CONFIG is missing or empty"
+                        )
+
+    return errors
+
+
 def init_sandbox(
     sandbox_dir: pathlib.Path,
     decl_path: pathlib.Path,
@@ -841,6 +1017,23 @@ def main(argv: list[str] | None = None) -> int:
     p_preflight.add_argument("--manifest", type=pathlib.Path, default=DEFAULT_MANIFEST)
     p_preflight.add_argument("--lkal-bin", type=str, default=None)
 
+    p_audit_host = sub.add_parser(
+        "audit-host-config",
+        help="Explicit read-only audit of gitignored host-local .claude/settings.json and .mcp.json",
+    )
+    p_audit_host.add_argument(
+        "--claude-settings",
+        type=pathlib.Path,
+        default=DEFAULT_CLAUDE_SETTINGS,
+        help="Host Claude settings file to inspect (read-only)",
+    )
+    p_audit_host.add_argument(
+        "--mcp-config",
+        type=pathlib.Path,
+        default=DEFAULT_MCP_CONFIG,
+        help="Host MCP config file to inspect (read-only)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.cmd == "verify":
@@ -880,6 +1073,18 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"OK: {args.env_file} matches managed keys from {args.declaration} "
             "(read-only preflight; unmanaged/local keys preserved, running containers not inspected)"
+        )
+        return 0
+
+    if args.cmd == "audit-host-config":
+        errs = audit_host_config(args.claude_settings, args.mcp_config)
+        if errs:
+            for err in errs:
+                sys.stderr.write(f"HOST CONFIG AUDIT ERROR: {err}\n")
+            return 1
+        print(
+            "OK: expected host-local configuration entries present in .claude/settings.json and .mcp.json "
+            "(structural configuration indicator check only; hook execution and OS isolation not verified)"
         )
         return 0
 

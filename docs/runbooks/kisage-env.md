@@ -50,8 +50,12 @@ make kisage-preflight ENV_FILE=.env
 # or directly:
 python3 scripts/kisage-env.py preflight --env-file .env
 
-# 5. Run the isolated acceptance & regression suite (zero writes to repo .kisage/)
+# 5. Run the portable isolated acceptance & regression suite (zero writes to repo .kisage/; does not require gitignored .claude/settings.json or .mcp.json)
 python3 scripts/tests/test-kisage-env.py
+
+# 6. Explicit read-only structural indicator audit of gitignored host-local agent config (.claude/settings.json & .mcp.json; fails closed if missing; does not verify hook execution or OS isolation)
+python3 scripts/kisage-env.py audit-host-config
+python3 scripts/tests/test-kisage-env.py --audit-host-config
 ```
 
 ---
@@ -60,8 +64,12 @@ python3 scripts/tests/test-kisage-env.py
 
 | Actor | Permitted Scope | Prohibited Actions |
 | :--- | :--- | :--- |
-| **`agy` Worker** (AI coding agent / CI) | Edit repository-owned declarations (`deploy/desired-env.lkal`), helper (`scripts/kisage-env.py`), tests (`scripts/tests/test-kisage-env.py`), and docs. Run read-only `verify`, `preflight`, and isolated temp-dir tests. | **Never** edit `.env` or `.kisage/*` directly (enforced by `.claude/settings.json` `PreToolUse` guard). Never run automatic `kisage adopt` or `kisage prune`. Never log or print secret values. |
-| **Host Operator** | Owns `.kisage/host.json`, `.kisage/host-env.lkal` (including `/local/*`), `.kisage/state/ownership.json`, and live `.env`. Executes stateful `kisage plan`, `kisage apply`, `kisage prune`, and explicit `kisage explain` + `kisage adopt` when resolving drift. | Never bypass `K203` (`ModifiedExternally`) or `K206` (`UnownedConflict`) with blind script automation; always inspect `kisage explain` first. |
+| **`agy` Worker** (AI coding agent / CI) | Edit repository-owned declarations (`deploy/desired-env.lkal`), helper (`scripts/kisage-env.py`), tests (`scripts/tests/test-kisage-env.py`, `tests/scripts/test_kisage_clean_checkout.py`), and docs. Run read-only `verify`, `preflight`, and isolated temp-dir tests. | **Never** edit `.env` or `.kisage/*` directly (guarded on configured operator hosts by `.claude/settings.json` `PreToolUse` hook). Never run automatic `kisage adopt` or `kisage prune`. Never log or print secret values. |
+| **Host Operator** | Owns `.kisage/host.json`, `.kisage/host-env.lkal` (including `/local/*`), `.kisage/state/ownership.json`, live `.env`, and gitignored host-local agent config (`.claude/settings.json`, `.mcp.json`). Executes stateful `kisage plan`, `kisage apply`, `kisage prune`, explicit `kisage explain` + `kisage adopt`, and explicit `audit-host-config`. | Never bypass `K203` (`ModifiedExternally`) or `K206` (`UnownedConflict`) with blind script automation; always inspect `kisage explain` first. |
+
+> **Portable CI vs. Host-Local Structural Audit Scope**:
+> - **Portable CI (`python3 scripts/tests/test-kisage-env.py`)** runs in clean Git checkouts without `.claude/settings.json`, `.mcp.json`, `.kisage/`, or `.env`. It exercises real `lkal` and `kisage` CLI/MCP boundaries plus synthetic `audit-host-config` fixtures, and explicitly notes that host-local `.claude/settings.json` and `.mcp.json` were not inspected.
+> - **Explicit Host Structural Audit (`python3 scripts/kisage-env.py audit-host-config` or `python3 scripts/tests/test-kisage-env.py --audit-host-config`)** is a read-only structural configuration indicator check on the live workspace's `.claude/settings.json` and `.mcp.json`. It fails closed if either file is missing, malformed, non-object JSON (including `null`), or lacks the expected structural entries (`hooks.PreToolUse` entry matching `Edit` and `Write` with a non-empty `type: "command"` hook command referencing `.kisage/*`; `mcpServers.kisage` with non-empty `command`, `args: ["mcp"]`, and non-empty `env.KISAGE_HOST_CONFIG`). Because `audit-host-config` never executes hook or MCP commands, it checks configuration indicator presence only and **cannot prove runtime hook blocking or OS-level isolation**.
 
 ---
 

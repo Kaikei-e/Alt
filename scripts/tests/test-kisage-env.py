@@ -19,10 +19,12 @@ Verifies the 7 acceptance cases:
 
 Run:
     python3 scripts/tests/test-kisage-env.py
+    python3 scripts/tests/test-kisage-env.py --audit-host-config
 """
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import importlib.util
 import io
@@ -129,7 +131,17 @@ def mcp_call(
     return responses
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Portable kisage/LKAL acceptance suite (pass --audit-host-config to inspect live host .claude/settings.json and .mcp.json)"
+    )
+    parser.add_argument(
+        "--audit-host-config",
+        action="store_true",
+        help="Explicitly audit gitignored host-local .claude/settings.json and .mcp.json in ROOT (fails closed if missing or invalid)",
+    )
+    args = parser.parse_args(argv)
+
     kisage_before = snapshot_tree_state(REPO_KISAGE_DIR)
 
     print("1. Binary & files presence")
@@ -973,20 +985,200 @@ def main() -> int:
             repr(scope_doc["summary"]),
         )
 
-    print("7. Layer 3 Execution Boundary (.claude/settings.json, .mcp.json & repo .kisage isolation)")
-    settings_text = CLAUDE_SETTINGS.read_text(encoding="utf-8")
-    check(
-        ".claude/settings.json PreToolUse blocks direct Edit/Write to .kisage/*",
-        ".kisage/*" in settings_text,
+    print(
+        "7. Layer 3 Execution Boundary (audit-host-config structural indicator contract & repo .kisage isolation; portable mode uses synthetic fixtures, hook execution/OS isolation not verified)"
     )
-    if MCP_CONFIG.is_file():
-        mcp_cfg = json.loads(MCP_CONFIG.read_text(encoding="utf-8"))
-        kisage_srv = (mcp_cfg.get("mcpServers") or {}).get("kisage") or {}
+    with tempfile.TemporaryDirectory() as tmp_audit_dir:
+        os.chmod(tmp_audit_dir, 0o700)
+        tmp_audit_path = pathlib.Path(tmp_audit_dir)
+        missing_claude = tmp_audit_path / "missing-settings.json"
+        missing_mcp = tmp_audit_path / "missing-.mcp.json"
+
+        rc_miss_cfg, out_miss_cfg, err_miss_cfg = run_cli_capture(
+            kisage_env,
+            [
+                "audit-host-config",
+                "--claude-settings",
+                str(missing_claude),
+                "--mcp-config",
+                str(missing_mcp),
+            ],
+        )
         check(
-            ".mcp.json registers kisage MCP server with KISAGE_HOST_CONFIG",
-            kisage_srv.get("args") == ["mcp"]
-            and "KISAGE_HOST_CONFIG" in (kisage_srv.get("env") or {}),
-            repr(kisage_srv),
+            "audit-host-config fails closed when host .claude/settings.json or .mcp.json is missing (no silent skip)",
+            rc_miss_cfg == 1
+            and "missing-settings.json" in err_miss_cfg
+            and "missing-.mcp.json" in err_miss_cfg,
+            repr(err_miss_cfg),
+        )
+
+        fx_claude = tmp_audit_path / "settings.json"
+        fx_mcp = tmp_audit_path / ".mcp.json"
+        audit_secret_sentinel_1 = "AUDIT_JSON_SECRET_SENTINEL_776655"
+        audit_secret_sentinel_2 = "AUDIT_ENV_SECRET_SENTINEL_443322"
+
+        fx_claude.write_text("null\n", encoding="utf-8")
+        fx_mcp.write_text("null\n", encoding="utf-8")
+        errs_null_root = kisage_env.audit_host_config(fx_claude, fx_mcp)
+
+        fx_claude.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {
+                                "matcher": "Edit|Write",
+                                "description": ".kisage/*",
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "echo noop",
+                                        "comment": ".kisage/*",
+                                    }
+                                ],
+                            },
+                            {
+                                "matcher": "Read",
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": 'case "$FILE" in .kisage/*) exit 1 ;; esac',
+                                    }
+                                ],
+                            },
+                        ]
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        fx_mcp.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "kisage": {
+                            "command": "",
+                            "args": ["mcp"],
+                            "env": {"KISAGE_HOST_CONFIG": "/tmp/host.json"},
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        errs_metadata_or_empty_cmd = kisage_env.audit_host_config(fx_claude, fx_mcp)
+
+        fx_claude.write_text(
+            f'{{"broken": "{audit_secret_sentinel_1}"\n', encoding="utf-8"
+        )
+        fx_mcp.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "other": {
+                            "command": "other",
+                            "env": {"SECRET_TOKEN": audit_secret_sentinel_2},
+                        },
+                        "kisage": {"command": "kisage", "args": ["mcp"], "env": {}},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc_bad_cfg, out_bad_cfg, err_bad_cfg = run_cli_capture(
+            kisage_env,
+            [
+                "audit-host-config",
+                "--claude-settings",
+                str(fx_claude),
+                "--mcp-config",
+                str(fx_mcp),
+            ],
+        )
+        combined_bad_cfg = out_bad_cfg + err_bad_cfg
+
+        fx_claude.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {
+                                "matcher": "Edit|Write|MultiEdit",
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": 'case "$FILE" in .env|.kisage/*) exit 1 ;; esac',
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        fx_mcp.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "kisage": {
+                            "command": "kisage",
+                            "args": ["mcp"],
+                            "env": {
+                                "KISAGE_HOST_CONFIG": str(
+                                    tmp_audit_path / ".kisage" / "host.json"
+                                )
+                            },
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc_valid_fx, out_valid_fx, err_valid_fx = run_cli_capture(
+            kisage_env,
+            [
+                "audit-host-config",
+                "--claude-settings",
+                str(fx_claude),
+                "--mcp-config",
+                str(fx_mcp),
+            ],
+        )
+        check(
+            "audit-host-config rejects null/non-object roots, metadata-only/Read-only PreToolUse, missing MCP command, and malformed config without leaking secrets; accepts valid synthetic fixture (structural indicator check only; hook execution and OS isolation not verified)",
+            len(errs_null_root) == 2
+            and len(errs_metadata_or_empty_cmd) == 2
+            and rc_bad_cfg == 1
+            and "KISAGE_HOST_CONFIG" in combined_bad_cfg
+            and audit_secret_sentinel_1 not in combined_bad_cfg
+            and audit_secret_sentinel_2 not in combined_bad_cfg
+            and rc_valid_fx == 0
+            and "hook execution and OS isolation not verified" in out_valid_fx
+            and err_valid_fx == "",
+            f"errs_null={errs_null_root!r} errs_meta={errs_metadata_or_empty_cmd!r} rc_bad={rc_bad_cfg} rc_valid={rc_valid_fx}",
+        )
+
+    if args.audit_host_config:
+        rc_host_cfg, out_host_cfg, err_host_cfg = run_cli_capture(
+            kisage_env,
+            [
+                "audit-host-config",
+                "--claude-settings",
+                str(CLAUDE_SETTINGS),
+                "--mcp-config",
+                str(MCP_CONFIG),
+            ],
+        )
+        check(
+            "explicit --audit-host-config checks expected structural entries in live host .claude/settings.json and .mcp.json (hook execution and OS isolation not verified)",
+            rc_host_cfg == 0,
+            err_host_cfg.strip(),
+        )
+    else:
+        print(
+            "  NOTE  portable mode did not inspect host-local .claude/settings.json or .mcp.json "
+            "(run 'python3 scripts/kisage-env.py audit-host-config' or pass '--audit-host-config' on an operator host; structural indicator check only, hook execution and OS isolation not verified)"
         )
 
     kisage_after = snapshot_tree_state(REPO_KISAGE_DIR)
@@ -1061,6 +1253,7 @@ def main() -> int:
         "deploy/desired-env.lkal",
         "scripts/kisage-env.py",
         "scripts/tests/test-kisage-env.py",
+        "tests/scripts/test_kisage_clean_checkout.py",
         "docs/runbooks/kisage-env.md",
         "Makefile",
     )
@@ -1072,11 +1265,12 @@ def main() -> int:
         repr({p: wf_text.count(p) for p in required_wf_paths}),
     )
     check(
-        "compose-audit.yaml defines kisage-env-invariant job running verify and test-kisage-env.py with setup-go",
+        "compose-audit.yaml defines kisage-env-invariant job running verify, test-kisage-env.py, and clean-checkout regression with setup-go",
         "kisage-env-invariant:" in wf_text
         and "actions/setup-go@" in wf_text
         and "python3 scripts/kisage-env.py verify" in wf_text
-        and "python3 scripts/tests/test-kisage-env.py" in wf_text,
+        and "python3 scripts/tests/test-kisage-env.py" in wf_text
+        and "test_kisage_clean_checkout.py" in wf_text,
     )
 
     print(f"\n{PASS} passed, {FAIL} failed")
