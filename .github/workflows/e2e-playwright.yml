@@ -50,7 +50,7 @@ env:
   # Playwright never launches a browser. A node image is ~150MB against the
   # Playwright image's ~1.7GB, and skipping the browser download removes the
   # largest single item from cold start.
-  NODE_IMAGE: node:22-bookworm-slim
+  NODE_IMAGE: node:26-bookworm-slim
 
 jobs:
   # A typo should cost one minute of CI, not twenty. This needs no Docker
@@ -72,7 +72,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
           cache-dependency-path: e2e/playwright/package-lock.json
 
