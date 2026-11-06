@@ -12,8 +12,18 @@ ENV_TEMPLATE := ./.env.template
 # Do NOT `export` the whole file — that leaks every secret into every make
 # recipe child process. Recipes that need a value pass it explicitly
 # (e.g. HF_TOKEN=$(HF_TOKEN) on the prepare-tag-onnx line).
+# Pure kisage/LKAL tooling goals skip Make-level .env inclusion so Make never
+# parses raw dotenv syntax or exposes secret parse diagnostics.
+KISAGE_PURE_GOALS := install-lkal install-kisage kisage-verify kisage-preflight
+ifneq (,$(MAKECMDGOALS))
+  ifeq (,$(filter-out $(KISAGE_PURE_GOALS),$(MAKECMDGOALS)))
+    SKIP_DOTENV_INCLUDE := 1
+  endif
+endif
+ifeq (,$(SKIP_DOTENV_INCLUDE))
 ifneq (,$(wildcard $(ENV_FILE)))
     include $(ENV_FILE)
+endif
 endif
 
 # デフォルトのデータベース設定
@@ -446,24 +456,82 @@ install-c2quay:
 	  rm -rf "$$tmp"
 	@c2quay version
 
+# lkal — official LKAL v0.1 CLI parser/normalizer (`lkal json -plain`).
+# Upstream has no tagged GitHub release binary yet; pinned to verified source commit.
+LKAL_REPO ?= https://github.com/Kaikei-e/LKAL.git
+LKAL_COMMIT ?= 21824528403a46738b8c26b9707179cdab1d3340
+LKAL_INSTALL_DIR ?= $(HOME)/.local/bin
+LKAL_SRC_DIR ?=
+
+install-lkal:
+	@echo "Installing lkal ($(LKAL_COMMIT)) to $(LKAL_INSTALL_DIR)..."
+	@set -eu; \
+	tmp="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	if [ -n "$(LKAL_SRC_DIR)" ]; then \
+	  cp -R "$(LKAL_SRC_DIR)" "$$tmp/LKAL"; \
+	  git -C "$$tmp/LKAL" checkout --quiet "$(LKAL_COMMIT)"; \
+	  test "$$(git -C "$$tmp/LKAL" rev-parse HEAD)" = "$(LKAL_COMMIT)"; \
+	  GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off CGO_ENABLED=0 \
+	    go -C "$$tmp/LKAL" build -trimpath -buildvcs=false -o "$$tmp/lkal" ./cmd/lkal; \
+	else \
+	  git clone --quiet "$(LKAL_REPO)" "$$tmp/LKAL"; \
+	  git -C "$$tmp/LKAL" checkout --quiet "$(LKAL_COMMIT)"; \
+	  test "$$(git -C "$$tmp/LKAL" rev-parse HEAD)" = "$(LKAL_COMMIT)"; \
+	  CGO_ENABLED=0 go -C "$$tmp/LKAL" build -trimpath -buildvcs=false -o "$$tmp/lkal" ./cmd/lkal; \
+	fi; \
+	printf '@lkal "0.1"\n' | "$$tmp/lkal" json - >/dev/null; \
+	install -d -m 0755 "$(LKAL_INSTALL_DIR)"; \
+	install -m 0755 "$$tmp/lkal" "$(LKAL_INSTALL_DIR)/lkal"
+
 # kisage — deterministic leaf-path LKAL reconciler & MCP server.
-KISAGE_VERSION ?= v0.1.1
-KISAGE_OS ?= linux
-KISAGE_ARCH ?= amd64
+# Pinned to v0.1.2 (annotated tag commit 82b0731f022a5028a2d43dd0a24703608b962c55).
+# Builds reproducibly from pinned official source with local LKAL module replace.
+KISAGE_VERSION ?= v0.1.2
+KISAGE_REPO ?= https://github.com/Kaikei-e/kisage.git
+KISAGE_COMMIT ?= 82b0731f022a5028a2d43dd0a24703608b962c55
 KISAGE_INSTALL_DIR ?= $(HOME)/.local/bin
+KISAGE_SRC_DIR ?=
 
 install-kisage:
-	@echo "Installing kisage $(KISAGE_VERSION) ($(KISAGE_OS)/$(KISAGE_ARCH)) to $(KISAGE_INSTALL_DIR)..."
-	@tmp="$$(mktemp -d)"; \
-	  tarball="kisage-$(KISAGE_VERSION)-$(KISAGE_OS)-$(KISAGE_ARCH).tar.gz"; \
-	  base="https://github.com/Kaikei-e/kisage/releases/download/$(KISAGE_VERSION)"; \
-	  curl --proto '=https' --tlsv1.2 -fsSL -o "$$tmp/$$tarball"    "$$base/$$tarball"; \
-	  curl --proto '=https' --tlsv1.2 -fsSL -o "$$tmp/checksums.txt" "$$base/checksums.txt"; \
-	  ( cd "$$tmp" && grep " $$tarball$$" checksums.txt | sha256sum --check --strict - ); \
-	  tar -xzf "$$tmp/$$tarball" -C "$$tmp" "kisage-$(KISAGE_VERSION)-$(KISAGE_OS)-$(KISAGE_ARCH)/kisage"; \
-	  install -d -m 0755 "$(KISAGE_INSTALL_DIR)"; \
-	  install -m 0755 "$$tmp/kisage-$(KISAGE_VERSION)-$(KISAGE_OS)-$(KISAGE_ARCH)/kisage" "$(KISAGE_INSTALL_DIR)/kisage"; \
-	  rm -rf "$$tmp"
-	@"$(KISAGE_INSTALL_DIR)/kisage" --version
+	@echo "Installing kisage $(KISAGE_VERSION) ($(KISAGE_COMMIT)) to $(KISAGE_INSTALL_DIR)..."
+	@set -eu; \
+	tmp="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	if [ -n "$(KISAGE_SRC_DIR)" ]; then \
+	  test -n "$(LKAL_SRC_DIR)"; \
+	  cp -R "$(LKAL_SRC_DIR)" "$$tmp/LKAL"; \
+	  git -C "$$tmp/LKAL" checkout --quiet "$(LKAL_COMMIT)"; \
+	  test "$$(git -C "$$tmp/LKAL" rev-parse HEAD)" = "$(LKAL_COMMIT)"; \
+	  cp -R "$(KISAGE_SRC_DIR)" "$$tmp/kisage-src"; \
+	  git -C "$$tmp/kisage-src" checkout --quiet "$(KISAGE_COMMIT)"; \
+	  test "$$(git -C "$$tmp/kisage-src" rev-parse HEAD)" = "$(KISAGE_COMMIT)"; \
+	  go -C "$$tmp/kisage-src" mod edit -replace "github.com/Kaikei-e/LKAL=$$tmp/LKAL"; \
+	  GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off CGO_ENABLED=0 \
+	    go -C "$$tmp/kisage-src" build -trimpath -buildvcs=false \
+	    -ldflags="-s -w -X main.version=$(patsubst v%,%,$(KISAGE_VERSION))" \
+	    -o "$$tmp/kisage" ./cmd/kisage; \
+	else \
+	  git clone --quiet "$(LKAL_REPO)" "$$tmp/LKAL"; \
+	  git -C "$$tmp/LKAL" checkout --quiet "$(LKAL_COMMIT)"; \
+	  test "$$(git -C "$$tmp/LKAL" rev-parse HEAD)" = "$(LKAL_COMMIT)"; \
+	  git clone --quiet "$(KISAGE_REPO)" "$$tmp/kisage-src"; \
+	  git -C "$$tmp/kisage-src" checkout --quiet "$(KISAGE_COMMIT)"; \
+	  test "$$(git -C "$$tmp/kisage-src" rev-parse HEAD)" = "$(KISAGE_COMMIT)"; \
+	  go -C "$$tmp/kisage-src" mod edit -replace "github.com/Kaikei-e/LKAL=$$tmp/LKAL"; \
+	  CGO_ENABLED=0 go -C "$$tmp/kisage-src" build -trimpath -buildvcs=false \
+	    -ldflags="-s -w -X main.version=$(patsubst v%,%,$(KISAGE_VERSION))" \
+	    -o "$$tmp/kisage" ./cmd/kisage; \
+	fi; \
+	test "$$("$$tmp/kisage" --version)" = "kisage version $(patsubst v%,%,$(KISAGE_VERSION))"; \
+	install -d -m 0755 "$(KISAGE_INSTALL_DIR)"; \
+	install -m 0755 "$$tmp/kisage" "$(KISAGE_INSTALL_DIR)/kisage"; \
+	"$(KISAGE_INSTALL_DIR)/kisage" --version
 
-.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean eval-rag check-compose-variables install-c2quay install-kisage
+kisage-verify:
+	@python3 scripts/kisage-env.py verify
+
+kisage-preflight:
+	@python3 scripts/kisage-env.py preflight --env-file "$(ENV_FILE)"
+
+.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean eval-rag check-compose-variables install-c2quay install-lkal install-kisage kisage-verify kisage-preflight

@@ -61,9 +61,9 @@ mtls_allowlists {
 
 rate_limits {
   ### ADR-000982: 7.5s default, strictly >= 5s repo floor (Critical Rule 2).
-  RATE_LIMIT_EXTERNAL_API_INTERVAL = "7.5s"
+  RATE_LIMIT_EXTERNAL_API_INTERVAL = 7.5s
   RATE_LIMIT_EXTERNAL_API_BURST = 3
-  RATE_LIMIT_PREFETCH_SLOT_WAIT = "250ms"
+  RATE_LIMIT_PREFETCH_SLOT_WAIT = 250ms
 }
 
 feature_flags {

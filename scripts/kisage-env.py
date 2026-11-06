@@ -266,7 +266,7 @@ def parse_lkal_sections(
 
     sections: dict[str, dict[str, Any]] = {}
     for sec_name, sec_val in raw_doc.items():
-        if not isinstance(sec_name, str) or not _IDENT_RE.match(sec_name):
+        if not isinstance(sec_name, str) or not _IDENT_RE.fullmatch(sec_name):
             raise ValueError("invalid top-level section identifier")
         if not isinstance(sec_val, dict):
             raise ValueError(
@@ -274,7 +274,7 @@ def parse_lkal_sections(
             )
         sec_map: dict[str, Any] = {}
         for key, val in sec_val.items():
-            if not isinstance(key, str) or not _ENV_KEY_RE.match(key):
+            if not isinstance(key, str) or not _ENV_KEY_RE.fullmatch(key):
                 raise ValueError(
                     f"invalid environment key identifier in section {sec_name!r}"
                 )
@@ -304,7 +304,7 @@ def _contains_control_chars(s: str) -> bool:
 
 
 def _format_dotenv_value(key: str, val: Any, *, quote_for_file: bool) -> str:
-    if not _ENV_KEY_RE.match(key):
+    if not _ENV_KEY_RE.fullmatch(key):
         raise ValueError(f"invalid dotenv key identifier: {key!r}")
     if isinstance(val, bool):
         return "true" if val else "false"
@@ -500,37 +500,68 @@ _DOUBLE_QUOTE_ESCAPES = {
     "\\": "\\",
     "$": "$",
 }
+_VALID_VAR_REF_RE = re.compile(
+    r"\$(?:\$|[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\?|\?|:\+|\+)[^}\"'\r\n]*)?\})"
+)
+
+
+def _has_valid_var_refs(val: str) -> bool:
+    pos = 0
+    while True:
+        dollar = val.find("$", pos)
+        if dollar < 0:
+            return True
+        m = _VALID_VAR_REF_RE.match(val, dollar)
+        if m is None:
+            return False
+        pos = m.end()
 
 
 def _parse_double_quoted_dotenv_rhs(
-    rhs: str, lineno: int, key: str
+    rhs: str, lineno: int, key: str, *, allow_var_refs: bool = False
 ) -> tuple[str | None, str | None]:
     """Parse a double-quoted dotenv RHS supporting backslash escapes (`\\"`, `\\\\`, `\\$`, `\\n`, `\\r`, `\\t`).
 
-    Rejects unescaped `$` interpolation or unclosed/trailing syntax with key-only diagnostics.
+    Rejects unescaped `$` interpolation on repository-managed keys (when `allow_var_refs=False`),
+    permits valid Compose `$VAR` / `${VAR}` references on unmanaged keys (when `allow_var_refs=True`)
+    without evaluating them, and rejects unclosed/trailing/malformed syntax with key-only diagnostics.
     """
     buf: list[str] = []
     escaped = False
     close_idx = -1
+    idx = 1
 
-    for idx in range(1, len(rhs)):
+    while idx < len(rhs):
         ch = rhs[idx]
         if escaped:
             buf.append(_DOUBLE_QUOTE_ESCAPES.get(ch, ch))
             escaped = False
+            idx += 1
             continue
         if ch == "\\":
             escaped = True
+            idx += 1
             continue
         if ch == '"':
             close_idx = idx
             break
         if ch == "$":
-            return (
-                None,
-                f"line {lineno}: unsupported unescaped '$' interpolation in value for key {key}",
-            )
+            if not allow_var_refs:
+                return (
+                    None,
+                    f"line {lineno}: unsupported unescaped '$' interpolation in value for key {key}",
+                )
+            m = _VALID_VAR_REF_RE.match(rhs, idx)
+            if m is None:
+                return (
+                    None,
+                    f"line {lineno}: malformed '$' variable reference in value for key {key}",
+                )
+            buf.append(m.group(0))
+            idx = m.end()
+            continue
         buf.append(ch)
+        idx += 1
 
     if close_idx < 0 or escaped:
         return (
@@ -547,21 +578,30 @@ def _parse_double_quoted_dotenv_rhs(
     return "".join(buf), None
 
 
-def _parse_actual_dotenv_strict(text: str) -> tuple[dict[str, str], list[str]]:
+def _parse_actual_dotenv_strict(
+    text: str, *, managed_keys: set[str] | frozenset[str] | None = None
+) -> tuple[dict[str, str], list[str]]:
     """Strictly parse a raw Compose-compatible dotenv file for preflight comparison.
 
     Supports:
       - Unquoted values (including apostrophes `'`) with inline ` #...` comment stripping
       - Single-quoted literal values (`'...'`)
       - Double-quoted values (`"..."`) with backslash escapes (`\\"`, `\\\\`, `\\$`, `\\n`, `\\r`, `\\t`)
-    Explicitly rejects unescaped `$` variable interpolation, unclosed quotes,
-    trailing garbage, duplicate keys, or malformed lines.
+    Explicitly rejects unescaped `$` variable interpolation on repository-managed keys
+    (when `managed_keys` is None or `key in managed_keys`), while permitting valid
+    Compose variable reference syntax (`$VAR`, `${VAR}`, `${VAR:-default}`, `$$`) on
+    unmanaged keys without evaluating them. Rejects malformed `$` references, unclosed
+    quotes, control characters, trailing garbage, duplicate keys, or malformed lines.
     Never includes raw lines or values in diagnostics so credentials cannot leak.
     """
     out: dict[str, str] = {}
+    seen_keys: set[str] = set()
     errors: list[str] = []
 
     for lineno, raw in enumerate(text.splitlines(), start=1):
+        if any((ord(ch) < 0x20 and ch != "\t") or ord(ch) == 0x7F for ch in raw):
+            errors.append(f"line {lineno}: malformed control character in dotenv entry")
+            continue
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -575,10 +615,12 @@ def _parse_actual_dotenv_strict(text: str) -> tuple[dict[str, str], list[str]]:
         if not _ENV_KEY_RE.fullmatch(key):
             errors.append(f"line {lineno}: malformed dotenv key name")
             continue
-        if key in out:
+        if key in seen_keys:
             errors.append(f"line {lineno}: duplicate key {key} in dotenv file")
             continue
+        seen_keys.add(key)
 
+        is_managed = managed_keys is None or key in managed_keys
         rhs = rhs.strip()
         if rhs.startswith("'"):
             end = rhs.find("'", 1)
@@ -595,7 +637,9 @@ def _parse_actual_dotenv_strict(text: str) -> tuple[dict[str, str], list[str]]:
                 continue
             val = rhs[1:end]
         elif rhs.startswith('"'):
-            parsed_val, err = _parse_double_quoted_dotenv_rhs(rhs, lineno, key)
+            parsed_val, err = _parse_double_quoted_dotenv_rhs(
+                rhs, lineno, key, allow_var_refs=not is_managed
+            )
             if err is not None or parsed_val is None:
                 errors.append(
                     err or f"line {lineno}: malformed quoted value for key {key}"
@@ -610,10 +654,16 @@ def _parse_actual_dotenv_strict(text: str) -> tuple[dict[str, str], list[str]]:
                 )
                 continue
             if "$" in val:
-                errors.append(
-                    f"line {lineno}: unsupported unquoted '$' interpolation in value for key {key}"
-                )
-                continue
+                if is_managed:
+                    errors.append(
+                        f"line {lineno}: unsupported unquoted '$' interpolation in value for key {key}"
+                    )
+                    continue
+                if not _has_valid_var_refs(val):
+                    errors.append(
+                        f"line {lineno}: malformed '$' variable reference in value for key {key}"
+                    )
+                    continue
 
         out[key] = val
 
@@ -653,7 +703,9 @@ def preflight_dotenv(
     except UnicodeDecodeError:
         return [f"dotenv file {env_file} is not valid UTF-8 text"]
 
-    actual_env, parse_errors = _parse_actual_dotenv_strict(raw_env_text)
+    actual_env, parse_errors = _parse_actual_dotenv_strict(
+        raw_env_text, managed_keys=set(expected_managed)
+    )
     errors = list(parse_errors)
 
     for key in sorted(expected_managed):
@@ -671,7 +723,7 @@ def init_sandbox(
     kisage_bin: str,
     actor: str = "alt-operator",
 ) -> int:
-    if not _IDENT_RE.match(actor):
+    if not _IDENT_RE.fullmatch(actor):
         raise ValueError(f"invalid actor identifier: {actor!r}")
 
     decl_resolved = decl_path.resolve(strict=True)
