@@ -162,6 +162,34 @@ def main() -> int:
                 f"{name}: `unpinnedImages` lists '{svc_name}', which is not in the {name} profile"
             )
 
+    # (5) alt-frontend-sv runs outside compose.staging.yaml, but its run.sh
+    #     must still boot the pre-built alt-alt-frontend-sv image with
+    #     PW_NO_WEBSERVER=1 and avoid per-run apt/Bun/full-app installs.
+    frontend_run_sh = PW_ROOT / "alt-frontend-sv" / "run.sh"
+    if not frontend_run_sh.is_file():
+        problems.append("alt-frontend-sv: no run.sh")
+    else:
+        fe_code = "\n".join(
+            line
+            for line in frontend_run_sh.read_text().splitlines()
+            if not line.strip().startswith("#")
+        )
+        if "alt-alt-frontend-sv" not in fe_code or "IMAGE_TAG" not in fe_code:
+            problems.append(
+                "alt-frontend-sv: run.sh does not reference pre-built "
+                "alt-alt-frontend-sv:${IMAGE_TAG} image"
+            )
+        if "PW_NO_WEBSERVER" not in fe_code:
+            problems.append(
+                "alt-frontend-sv: run.sh does not set PW_NO_WEBSERVER=1 — "
+                "playwright.config.ts will rebuild the SvelteKit app from source"
+            )
+        for forbidden in ("apt-get", "bun.sh/install", "bun install"):
+            if forbidden in fe_code:
+                problems.append(
+                    f"alt-frontend-sv: run.sh still invokes '{forbidden}' per run"
+                )
+
     if problems:
         print(f"suite wiring audit found {len(problems)} problem(s):\n", file=sys.stderr)
         for problem in problems:
