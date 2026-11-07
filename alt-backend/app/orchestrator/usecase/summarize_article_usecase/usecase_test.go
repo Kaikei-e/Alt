@@ -171,6 +171,46 @@ func TestGetCachedSummary_And_EnsureSummary_RejectsErrorPayload(t *testing.T) {
 	}
 }
 
+func TestIsErrorPayloadSummary(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{
+			name: "JSON error object",
+			raw:  `{"error": "summary generation failed"}`,
+			want: true,
+		},
+		{
+			name: "SSE event error and data line",
+			raw:  "event: error\ndata: {\"error\": \"summary generation failed\"}\n\n",
+			want: true,
+		},
+		{
+			name: "normal summary mentioning error",
+			raw:  "This article discusses error handling in Go.",
+			want: false,
+		},
+		{
+			name: "empty string",
+			raw:  "",
+			want: false,
+		},
+		{
+			name: "whitespace only",
+			raw:  "   \n\t  ",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsErrorPayloadSummary(tt.raw))
+		})
+	}
+}
+
 func TestEnsureSummary_GeneratesAndSavesWhenNotCached(t *testing.T) {
 	repo := &fakeArticleRepository{}
 	pre := &fakePreProcessor{summary: "fresh summary"}
