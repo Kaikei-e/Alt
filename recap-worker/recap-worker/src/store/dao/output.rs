@@ -702,7 +702,10 @@ pub(crate) fn escape_ilike_pattern(term: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{RecapDao, escape_ilike_pattern};
-    use sqlx::{Executor, postgres::PgPoolOptions};
+    use sqlx::postgres::PgPoolOptions;
+    use std::sync::{Arc, Mutex};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
     use uuid::Uuid;
 
     #[test]
@@ -718,39 +721,208 @@ mod tests {
         );
     }
 
-    #[test]
-    fn legacy_fallback_sql_joins_recap_jobs_and_filters_null_window_and_completed() {
-        let source = include_str!("output.rs");
-        let prod_source = source
-            .split("#[cfg(test)]")
-            .next()
-            .expect("production source before tests");
-        let after_arm = prod_source
-            .split("None if window_days == 7 =>")
-            .nth(1)
-            .expect("7-day legacy fallback arm exists");
-        let fallback_block = after_arm
-            .split("failed to fetch latest completed job (legacy fallback)")
-            .next()
-            .expect("legacy fallback error marker exists");
+    fn write_pg_msg(buf: &mut Vec<u8>, tag: u8, body: &[u8]) {
+        buf.push(tag);
+        let len = u32::try_from(body.len() + 4).expect("msg len fits u32");
+        buf.extend_from_slice(&len.to_be_bytes());
+        buf.extend_from_slice(body);
+    }
 
-        assert!(
-            fallback_block.contains("JOIN recap_jobs"),
-            "legacy fallback SQL must join recap_jobs, got:\n{fallback_block}"
-        );
-        assert!(
-            fallback_block.contains("window_days IS NULL"),
-            "legacy fallback SQL must filter window_days IS NULL, got:\n{fallback_block}"
-        );
-        assert!(
-            fallback_block.contains("status = 'completed'"),
-            "legacy fallback SQL must filter status = 'completed', got:\n{fallback_block}"
-        );
+    fn write_param_status(buf: &mut Vec<u8>, key: &[u8], val: &[u8]) {
+        let mut body = Vec::with_capacity(key.len() + val.len() + 2);
+        body.extend_from_slice(key);
+        body.push(0);
+        body.extend_from_slice(val);
+        body.push(0);
+        write_pg_msg(buf, b'S', &body);
+    }
+
+    fn write_row_description(buf: &mut Vec<u8>, cols: &[(&[u8], u32, i16)]) {
+        let mut body = Vec::new();
+        body.extend_from_slice(&i16::try_from(cols.len()).unwrap().to_be_bytes());
+        for (name, oid, typlen) in cols {
+            body.extend_from_slice(name);
+            body.push(0);
+            body.extend_from_slice(&0_i32.to_be_bytes()); // table oid
+            body.extend_from_slice(&0_i16.to_be_bytes()); // column attr
+            body.extend_from_slice(&oid.to_be_bytes()); // type oid
+            body.extend_from_slice(&typlen.to_be_bytes()); // type size
+            body.extend_from_slice(&(-1_i32).to_be_bytes()); // type modifier
+            body.extend_from_slice(&1_i16.to_be_bytes()); // binary format
+        }
+        write_pg_msg(buf, b'T', &body);
     }
 
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
-    async fn get_latest_completed_job_legacy_fallback_requires_null_window_and_completed_status()
+    async fn get_latest_completed_job_returns_none_without_fallback_when_no_7day_job_matches() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local_addr");
+        let parsed_queries: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let queries_for_server = Arc::clone(&parsed_queries);
+        let fallback_job_id = Uuid::new_v4();
+
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.expect("accept");
+
+            // Startup or SSLRequest
+            let mut len_buf = [0_u8; 4];
+            sock.read_exact(&mut len_buf)
+                .await
+                .expect("read startup len");
+            let first_len = u32::from_be_bytes(len_buf) as usize;
+            let mut startup_body = vec![0_u8; first_len - 4];
+            sock.read_exact(&mut startup_body)
+                .await
+                .expect("read startup body");
+            if startup_body.len() == 4
+                && u32::from_be_bytes(startup_body[..4].try_into().unwrap()) == 80_877_103
+            {
+                sock.write_all(b"N").await.expect("reject ssl");
+                sock.read_exact(&mut len_buf)
+                    .await
+                    .expect("read startup len");
+                let real_len = u32::from_be_bytes(len_buf) as usize;
+                let mut real_body = vec![0_u8; real_len - 4];
+                sock.read_exact(&mut real_body)
+                    .await
+                    .expect("read real startup");
+            }
+
+            let mut out = Vec::new();
+            write_pg_msg(&mut out, b'R', &0_i32.to_be_bytes());
+            write_param_status(&mut out, b"server_version", b"16.0");
+            write_param_status(&mut out, b"client_encoding", b"UTF8");
+            write_param_status(&mut out, b"DateStyle", b"ISO, MDY");
+            write_param_status(&mut out, b"TimeZone", b"UTC");
+            write_param_status(&mut out, b"integer_datetimes", b"on");
+            write_pg_msg(&mut out, b'K', &[0, 0, 0, 1, 0, 0, 0, 2]);
+            write_pg_msg(&mut out, b'Z', b"I");
+            sock.write_all(&out).await.expect("write auth");
+
+            let mut last_sql = String::new();
+            let mut execute_count = 0_usize;
+
+            loop {
+                let mut tag_buf = [0_u8; 1];
+                if sock.read_exact(&mut tag_buf).await.is_err() {
+                    break;
+                }
+                let tag = tag_buf[0];
+                sock.read_exact(&mut len_buf).await.expect("read msg len");
+                let msg_len = u32::from_be_bytes(len_buf) as usize;
+                let mut body = vec![0_u8; msg_len - 4];
+                sock.read_exact(&mut body).await.expect("read msg body");
+
+                let mut reply = Vec::new();
+                match tag {
+                    b'Q' => {
+                        write_pg_msg(&mut reply, b'C', b"SET\0");
+                        write_pg_msg(&mut reply, b'Z', b"I");
+                    }
+                    b'P' => {
+                        let stmt_end = body.iter().position(|&b| b == 0).unwrap_or(0);
+                        let rest = &body[stmt_end + 1..];
+                        let sql_end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
+                        last_sql = String::from_utf8_lossy(&rest[..sql_end]).into_owned();
+                        if last_sql.contains("FROM recap_outputs") {
+                            queries_for_server
+                                .lock()
+                                .expect("mutex")
+                                .push(last_sql.clone());
+                        }
+                        write_pg_msg(&mut reply, b'1', &[]);
+                    }
+                    b'D' => {
+                        if body.first() == Some(&b'S') {
+                            if last_sql.contains("$1") {
+                                let mut pdesc = Vec::new();
+                                pdesc.extend_from_slice(&1_i16.to_be_bytes());
+                                pdesc.extend_from_slice(&23_u32.to_be_bytes()); // INT4
+                                write_pg_msg(&mut reply, b't', &pdesc);
+                            } else {
+                                write_pg_msg(&mut reply, b't', &0_i16.to_be_bytes());
+                            }
+                        }
+                        if last_sql.contains("COUNT(*)") {
+                            write_row_description(&mut reply, &[(b"article_count", 20, 8)]);
+                        } else {
+                            write_row_description(
+                                &mut reply,
+                                &[(b"job_id", 2950, 16), (b"created_at", 1184, 8)],
+                            );
+                        }
+                    }
+                    b'B' => {
+                        write_pg_msg(&mut reply, b'2', &[]);
+                    }
+                    b'E' => {
+                        execute_count += 1;
+                        if execute_count == 1 {
+                            // First query (window_days = $1): 0 rows
+                            write_pg_msg(&mut reply, b'C', b"SELECT 0\0");
+                        } else if last_sql.contains("COUNT(*)") {
+                            let mut row = Vec::new();
+                            row.extend_from_slice(&1_i16.to_be_bytes());
+                            row.extend_from_slice(&8_i32.to_be_bytes());
+                            row.extend_from_slice(&0_i64.to_be_bytes());
+                            write_pg_msg(&mut reply, b'D', &row);
+                            write_pg_msg(&mut reply, b'C', b"SELECT 1\0");
+                        } else {
+                            // Any second query on recap_outputs (legacy fallback): return a row
+                            let mut row = Vec::new();
+                            row.extend_from_slice(&2_i16.to_be_bytes());
+                            row.extend_from_slice(&16_i32.to_be_bytes());
+                            row.extend_from_slice(fallback_job_id.as_bytes());
+                            row.extend_from_slice(&8_i32.to_be_bytes());
+                            row.extend_from_slice(&0_i64.to_be_bytes());
+                            write_pg_msg(&mut reply, b'D', &row);
+                            write_pg_msg(&mut reply, b'C', b"SELECT 1\0");
+                        }
+                    }
+                    b'C' => {
+                        write_pg_msg(&mut reply, b'3', &[]);
+                    }
+                    b'S' => {
+                        write_pg_msg(&mut reply, b'Z', b"I");
+                    }
+                    b'X' => break,
+                    _ => {}
+                }
+                if !reply.is_empty() && sock.write_all(&reply).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let dsn = format!("postgres://recap:recap@{addr}/recap?sslmode=disable");
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&dsn)
+            .await
+            .expect("connect mock pg");
+
+        let result = RecapDao::get_latest_completed_job(&pool, 7)
+            .await
+            .expect("get_latest_completed_job succeeds");
+
+        pool.close().await;
+        let _ = server.await;
+
+        let queries = parsed_queries.lock().expect("mutex").clone();
+        assert!(
+            result.is_none(),
+            "get_latest_completed_job(7) must return None when no completed 7-day job exists, got {result:?}"
+        );
+        assert_eq!(
+            queries.len(),
+            1,
+            "get_latest_completed_job(7) must execute only the window-filtered query without a fallback"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_latest_completed_job_returns_none_when_only_3day_completed_and_7day_failed_exist()
     -> anyhow::Result<()> {
         let Ok(database_url) = std::env::var("DATABASE_URL") else {
             return Ok(());
@@ -760,67 +932,29 @@ mod tests {
             .connect(&database_url)
             .await?;
 
-        pool.execute(
-            r"
-            CREATE TABLE IF NOT EXISTS recap_jobs (
-                job_id UUID PRIMARY KEY,
-                status TEXT NOT NULL DEFAULT 'pending',
-                last_stage TEXT,
-                kicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                note TEXT,
-                window_days INTEGER
-            );
-            ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS window_days INTEGER;
-            ALTER TABLE recap_jobs ALTER COLUMN window_days DROP NOT NULL;
-
-            CREATE TABLE IF NOT EXISTS recap_outputs (
-                job_id UUID NOT NULL,
-                genre TEXT NOT NULL,
-                response_id TEXT NOT NULL,
-                title_ja TEXT NOT NULL,
-                summary_ja TEXT NOT NULL,
-                bullets_ja JSONB NOT NULL,
-                body_json JSONB NOT NULL,
-                tags JSONB NOT NULL DEFAULT '[]'::jsonb,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                PRIMARY KEY (job_id, genre)
-            );
-
-            CREATE TABLE IF NOT EXISTS recap_job_articles (
-                job_id UUID NOT NULL,
-                article_id TEXT NOT NULL,
-                PRIMARY KEY (job_id, article_id)
-            );
-            ",
-        )
-        .await?;
-
         let completed_3day_job = Uuid::new_v4();
-        let failed_legacy_job = Uuid::new_v4();
-        let completed_legacy_job = Uuid::new_v4();
+        let failed_7day_job = Uuid::new_v4();
 
         sqlx::query(
             r"
             INSERT INTO recap_jobs (job_id, status, window_days, kicked_at, updated_at)
             VALUES
                 ($1, 'completed', 3, NOW(), NOW()),
-                ($2, 'failed', NULL, NOW(), NOW())
+                ($2, 'failed', 7, NOW(), NOW())
             ",
         )
         .bind(completed_3day_job)
-        .bind(failed_legacy_job)
+        .bind(failed_7day_job)
         .execute(&pool)
         .await?;
 
-        for job_id in [completed_3day_job, failed_legacy_job] {
+        for job_id in [completed_3day_job, failed_7day_job] {
             sqlx::query(
                 r"
                 INSERT INTO recap_outputs (
                     job_id, genre, response_id, title_ja, summary_ja, bullets_ja, body_json, created_at
                 )
-                VALUES ($1, 'ai', 'resp-1', 't', 's', '[]'::jsonb, '{}'::jsonb, NOW() + INTERVAL '1 hour')
+                VALUES ($1, 'ai', 'resp-1', 't', 's', '[]'::jsonb, '{}'::jsonb, NOW())
                 ",
             )
             .bind(job_id)
@@ -828,45 +962,9 @@ mod tests {
             .await?;
         }
 
-        let before_legacy = RecapDao::get_latest_completed_job(&pool, 7).await?;
-        assert!(
-            before_legacy.as_ref().map(|j| j.job_id) != Some(completed_3day_job),
-            "3-day job must not be returned by 7-day legacy fallback"
-        );
-        assert!(
-            before_legacy.as_ref().map(|j| j.job_id) != Some(failed_legacy_job),
-            "failed legacy job must not be returned by 7-day legacy fallback"
-        );
+        let found = RecapDao::get_latest_completed_job(&pool, 7).await;
 
-        sqlx::query(
-            r"
-            INSERT INTO recap_jobs (job_id, status, window_days, kicked_at, updated_at)
-            VALUES ($1, 'completed', NULL, NOW(), NOW())
-            ",
-        )
-        .bind(completed_legacy_job)
-        .execute(&pool)
-        .await?;
-
-        sqlx::query(
-            r"
-            INSERT INTO recap_outputs (
-                job_id, genre, response_id, title_ja, summary_ja, bullets_ja, body_json, created_at
-            )
-            VALUES ($1, 'ai', 'resp-2', 't', 's', '[]'::jsonb, '{}'::jsonb, NOW() + INTERVAL '2 hours')
-            ",
-        )
-        .bind(completed_legacy_job)
-        .execute(&pool)
-        .await?;
-
-        let found = RecapDao::get_latest_completed_job(&pool, 7).await?;
-        if let Some(job) = found {
-            assert_ne!(job.job_id, completed_3day_job);
-            assert_ne!(job.job_id, failed_legacy_job);
-        }
-
-        for job_id in [completed_3day_job, failed_legacy_job, completed_legacy_job] {
+        for job_id in [completed_3day_job, failed_7day_job] {
             let _ = sqlx::query("DELETE FROM recap_outputs WHERE job_id = $1")
                 .bind(job_id)
                 .execute(&pool)
@@ -876,6 +974,12 @@ mod tests {
                 .execute(&pool)
                 .await;
         }
+
+        let found = found?;
+        assert!(
+            found.is_none(),
+            "must return None for window 7 when only a completed 3-day job and a failed 7-day job exist, got {found:?}"
+        );
 
         Ok(())
     }
