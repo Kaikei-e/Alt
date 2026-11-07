@@ -165,6 +165,7 @@ func TestProjector_FoldsArticleUrlBackfilled(t *testing.T) {
 	patch, ok := repo.urlPatches[itemKey]
 	require.True(t, ok, "ArticleUrlBackfilled must patch the url column")
 	assert.Equal(t, "https://example.com/corrected", patch.URL)
+	assert.True(t, occurredAt.Equal(patch.OccurredAt), "ArticleUrlBackfilled patch must carry event.OccurredAt")
 	assert.Empty(t, repo.homeItems, "ArticleUrlBackfilled is a single-column patch — it must not go through the full UpsertKnowledgeHomeItem path")
 }
 

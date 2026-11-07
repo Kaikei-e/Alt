@@ -74,6 +74,7 @@ func TestPatchKnowledgeHomeItemURL_TenantGuardSQL(t *testing.T) {
 
 	userID := uuid.New()
 	tenantID := uuid.New()
+	occurredAt := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 
 	payload, err := json.Marshal(map[string]any{
 		"user_id":            userID.String(),
@@ -81,6 +82,7 @@ func TestPatchKnowledgeHomeItemURL_TenantGuardSQL(t *testing.T) {
 		"item_key":           "article:patch-url-1",
 		"projection_version": 3,
 		"url":                "https://example.com/item1",
+		"occurred_at":        occurredAt.Format(time.RFC3339Nano),
 	})
 	require.NoError(t, err)
 
@@ -91,9 +93,10 @@ func TestPatchKnowledgeHomeItemURL_TenantGuardSQL(t *testing.T) {
 	sql := mock.execCalls[0].SQL
 	args := mock.execCalls[0].Args
 
-	assert.Contains(t, sql, "AND tenant_id = $5", "PatchKnowledgeHomeItemURL must enforce tenant_id in SQL WHERE clause")
-	require.Len(t, args, 5)
-	assert.Equal(t, tenantID, args[4])
+	assert.Contains(t, sql, "AND tenant_id = $6", "PatchKnowledgeHomeItemURL must enforce tenant_id in SQL WHERE clause")
+	require.Len(t, args, 6)
+	assert.Equal(t, occurredAt, args[4])
+	assert.Equal(t, tenantID, args[5])
 }
 
 func TestSnoozeRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
