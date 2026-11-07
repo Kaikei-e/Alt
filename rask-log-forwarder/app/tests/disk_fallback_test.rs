@@ -206,7 +206,7 @@ async fn test_non_batch_tmp_file_survives_construction_while_batch_tmp_is_remove
 }
 
 #[tokio::test]
-async fn test_store_batch_write_failure_removes_temp_file() {
+async fn test_store_batch_rename_failure_removes_temp_file() {
     let temp_dir = TempDir::new().unwrap();
     let config = DiskConfig {
         storage_path: temp_dir.path().to_path_buf(),

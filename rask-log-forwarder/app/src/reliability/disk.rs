@@ -256,8 +256,8 @@ impl DiskFallback {
         let mut deleted_count = 0;
 
         for batch_id in batch_ids {
-            let (stored_at, is_corrupt) = match self.load_stored_batch(&batch_id).await {
-                Ok(stored_batch) => (stored_batch.stored_at, false),
+            let (stored_at, corrupt_err) = match self.load_stored_batch(&batch_id).await {
+                Ok(stored_batch) => (stored_batch.stored_at, None),
                 Err(load_err) => {
                     let file_path = self.get_batch_file_path(&batch_id);
                     match fs::metadata(&file_path).await.and_then(|m| m.modified()) {
@@ -266,7 +266,7 @@ impl DiskFallback {
                                 .duration_since(UNIX_EPOCH)
                                 .unwrap_or(Duration::ZERO)
                                 .as_secs();
-                            (mtime_secs, true)
+                            (mtime_secs, Some(load_err))
                         }
                         Err(meta_err) => {
                             tracing::warn!(
@@ -284,9 +284,10 @@ impl DiskFallback {
             if now.saturating_sub(stored_at) >= retention_secs {
                 match self.delete_batch(&batch_id).await {
                     Ok(()) => {
-                        if is_corrupt {
+                        if let Some(load_err) = corrupt_err {
                             tracing::warn!(
                                 batch_id = %batch_id,
+                                error = %load_err,
                                 "Deleted expired undecodable batch from disk"
                             );
                         }
@@ -368,7 +369,10 @@ impl DiskFallback {
         while let Some(entry) = entries.next_entry().await? {
             if entry.file_type().await?.is_file() {
                 let file_name = entry.file_name();
-                if file_name.to_str().is_some_and(|n| n.ends_with(".tmp")) {
+                if file_name
+                    .to_str()
+                    .is_some_and(|n| n.ends_with(".batch.tmp"))
+                {
                     let path = entry.path();
                     if let Err(e) = fs::remove_file(&path).await {
                         tracing::warn!(
