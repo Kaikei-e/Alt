@@ -10,12 +10,15 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
+import jwt
 import pytest
 
+from acolyte.domain.report import Report
 from acolyte.domain.run import ReportJob, ReportRun
 from acolyte.handler.connect_service import AcolyteConnectService
 from tests.conftest import TEST_USER_ID
@@ -176,4 +179,63 @@ async def test_run_pipeline_fails_run_when_mark_running_raises() -> None:
     assert failed_run_id == UUID(run_id)
     assert failure_code == "pipeline_crashed"
     assert "psycopg pool timeout" in failure_message
+    graph.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resume_pipeline_mark_running_failure_does_not_fail_already_succeeded_run() -> None:
+    """When resume_pipeline is called for a run that already succeeded and
+    mark_running raises, the crash handler must not overwrite the succeeded
+    run with fail_run."""
+    report_id = uuid4()
+    run_id = uuid4()
+    settings = SimpleNamespace(
+        checkpoint_enabled=True,
+        default_model="gemma4-e4b-12k",
+        resolve_backend_token_secret=lambda: "test-secret",
+    )
+    repo = MagicMock()
+    repo.get_report = AsyncMock(
+        return_value=Report(
+            report_id=report_id,
+            title="Test",
+            report_type="weekly_briefing",
+            current_version=1,
+            latest_successful_run_id=run_id,
+            created_at=datetime.now(UTC),
+            user_id=TEST_USER_ID,
+        )
+    )
+    graph = MagicMock()
+    graph.ainvoke = AsyncMock(return_value={"final_version_no": 1})
+
+    class SucceededRunFailingMarkJobQueue(FakeJobQueue):
+        async def mark_running(self, run_id: UUID, planner_model: str, writer_model: str, critic_model: str) -> None:
+            msg = "psycopg pool timeout"
+            raise RuntimeError(msg)
+
+        async def get_run(self, queried_run_id: UUID) -> ReportRun | None:
+            return ReportRun(
+                run_id=queried_run_id,
+                report_id=report_id,
+                target_version_no=1,
+                run_status="succeeded",
+            )
+
+    jobs = SucceededRunFailingMarkJobQueue()
+    service = AcolyteConnectService(settings, repo, job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
+    token = jwt.encode(
+        {
+            "sub": str(TEST_USER_ID),
+            "iss": "auth-hub",
+            "aud": "alt-backend",
+            "exp": datetime.now(UTC).timestamp() + 300,
+        },
+        "test-secret",
+        algorithm="HS256",
+    )
+
+    await service.resume_pipeline(str(report_id), str(run_id), {"topic": "AI"}, token=token)
+
+    assert jobs.fail_run_calls == []
     graph.ainvoke.assert_not_awaited()

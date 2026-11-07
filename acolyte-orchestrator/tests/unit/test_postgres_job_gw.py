@@ -19,6 +19,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from structlog.testing import capture_logs
 
 from acolyte.gateway.postgres_job_gw import PostgresJobGateway
 
@@ -265,3 +266,31 @@ async def test_list_running_runs_returns_empty_list_when_none_running() -> None:
     result = await gw.list_running_runs()
 
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_run_transitions_guard_against_terminal_statuses_and_log_noop() -> None:
+    """mark_running, complete_run, and fail_run must never overwrite a terminal
+    run ('succeeded', 'failed', 'cancelled') and must log a no-op update
+    without raising."""
+    run_id = uuid4()
+    conn = _FakeConnection(rows=[None, None, None])
+    gw = _gw(conn)
+
+    with capture_logs() as logs:
+        await gw.mark_running(run_id, "gemma4-e4b-12k", "gemma4-e4b-12k", "gemma4-e4b-12k")
+        await gw.complete_run(run_id)
+        await gw.fail_run(run_id, "pipeline_crashed", "boom")
+
+    assert len(conn.executed) == 3
+    for query, _params in conn.executed:
+        assert "run_status NOT IN ('succeeded', 'failed', 'cancelled')" in query
+
+    fail_query, fail_params = conn.executed[2]
+    assert "run_status = 'failed'" in fail_query
+    assert fail_params == ["pipeline_crashed", "boom", run_id]
+
+    warnings = [e for e in logs if e.get("log_level") == "warning"]
+    assert len(warnings) == 3
+    assert all(e.get("run_id") == str(run_id) for e in warnings)
+    assert "Not called from any production code path yet" not in (PostgresJobGateway.mark_running.__doc__ or "")
