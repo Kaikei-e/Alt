@@ -228,6 +228,76 @@ func TestAppendTurns_RejectsEmptyContent(t *testing.T) {
 	uc := NewAugurConversationUsecase(newFakeAugurRepo(), nil)
 	err := uc.AppendUserTurn(context.Background(), uuid.New(), "   \n\t ")
 	assert.Error(t, err)
+	err = uc.AppendAssistantTurn(context.Background(), uuid.New(), "   \n\t ", nil, nil)
+	assert.Error(t, err)
+}
+
+func TestAppendFallbackAssistantTurn_EmptyContent_SynthesizesFallbackMessage(t *testing.T) {
+	repo := newFakeAugurRepo()
+	clock, _ := fixedClock(time.Date(2026, 4, 13, 12, 0, 0, 0, time.UTC))
+	uc := NewAugurConversationUsecase(repo, clock)
+
+	userID := uuid.New()
+	conv, err := uc.EnsureConversation(context.Background(), userID, uuid.Nil, "Example Phone X について教えて")
+	require.NoError(t, err)
+	require.NoError(t, uc.AppendUserTurn(context.Background(), conv.ID, "Example Phone X について教えて"))
+
+	err = uc.AppendFallbackAssistantTurn(
+		context.Background(),
+		conv.ID,
+		"",
+		nil,
+		nil,
+		FallbackCodeRelevanceLow,
+		"retrieval quality insufficient: context relevance too low",
+	)
+	require.NoError(t, err)
+
+	_, msgs, err := uc.GetConversation(context.Background(), userID, conv.ID)
+	require.NoError(t, err)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, "assistant", msgs[1].Role)
+	assert.Equal(t, "Not enough indexed evidence was available yet. Please try a more specific question.", msgs[1].Content)
+	require.NotNil(t, msgs[1].Fallback)
+	assert.Equal(t, FallbackCodeRelevanceLow, msgs[1].Fallback.Code)
+	assert.Equal(t, "retrieval quality insufficient: context relevance too low", msgs[1].Fallback.Reason)
+}
+
+func TestFallbackMessage_MatchesFrontendProse(t *testing.T) {
+	const (
+		genericMsg             = "I couldn't find enough information to answer that properly. Please try a more specific question."
+		insufficientContextMsg = "Not enough indexed evidence was available yet. Please try a more specific question."
+		articleNotIndexedMsg   = "This article hasn't been indexed yet, so there's nothing to answer from. It should become available once indexing catches up."
+		causalMsg              = "I couldn't establish a consistent enough evidence trail to explain the cause confidently. Please try a more specific question."
+		serviceFailureMsg      = "Something went wrong on our side while answering. Nothing is wrong with your question — please try again."
+	)
+
+	cases := []struct {
+		code string
+		want string
+	}{
+		{code: FallbackCodeArticleNotIndexed, want: articleNotIndexedMsg},
+		{code: FallbackCodeLLMUnavailable, want: serviceFailureMsg},
+		{code: FallbackCodeLLMStreamFailed, want: serviceFailureMsg},
+		{code: FallbackCodeLLMNoOutput, want: serviceFailureMsg},
+		{code: FallbackCodeValidationFailed, want: serviceFailureMsg},
+		{code: FallbackCodeGenerationFailed, want: serviceFailureMsg},
+		{code: FallbackCodeRetrievalFailed, want: serviceFailureMsg},
+		{code: FallbackCodeCausalTrailWeak, want: causalMsg},
+		{code: FallbackCodeRetrievalEmpty, want: insufficientContextMsg},
+		{code: FallbackCodeRelevanceLow, want: insufficientContextMsg},
+		{code: FallbackCodeAnswerDeclined, want: insufficientContextMsg},
+		{code: FallbackCodeAnswerRejected, want: insufficientContextMsg},
+		{code: "", want: genericMsg},
+		{code: "unspecified", want: genericMsg},
+		{code: "UNKNOWN_FUTURE_CODE", want: genericMsg},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.code, func(t *testing.T) {
+			assert.Equal(t, tc.want, FallbackMessage(tc.code))
+		})
+	}
 }
 
 func TestListConversations_SortsByLastActivity(t *testing.T) {
@@ -268,4 +338,27 @@ func TestDeleteConversation_IsIdempotentAndScoped(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got)
 	assert.Nil(t, msgs)
+}
+
+func TestListMessages_ReturnsStoredMessagesForConversation(t *testing.T) {
+	repo := newFakeAugurRepo()
+	clock, _ := fixedClock(time.Date(2026, 4, 13, 12, 0, 0, 0, time.UTC))
+	uc := NewAugurConversationUsecase(repo, clock)
+
+	userID := uuid.New()
+	conv, err := uc.EnsureConversation(context.Background(), userID, uuid.Nil, "hello")
+	require.NoError(t, err)
+	require.NoError(t, uc.AppendUserTurn(context.Background(), conv.ID, "hello"))
+	require.NoError(t, uc.AppendFallbackAssistantTurn(context.Background(), conv.ID, "", nil, nil, FallbackCodeRelevanceLow, "low relevance"))
+
+	msgs, err := uc.ListMessages(context.Background(), conv.ID)
+	require.NoError(t, err)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, "user", msgs[0].Role)
+	assert.Equal(t, "assistant", msgs[1].Role)
+	require.NotNil(t, msgs[1].Fallback)
+	assert.Equal(t, FallbackCodeRelevanceLow, msgs[1].Fallback.Code)
+
+	_, err = uc.ListMessages(context.Background(), uuid.Nil)
+	require.Error(t, err)
 }

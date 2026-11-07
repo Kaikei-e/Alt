@@ -22,9 +22,9 @@ const doneSendTimeout = 5 * time.Second
 // event with a non-nil *AnswerWithRAGOutput payload as the LAST event before
 // the channel is closed. The Done is fired by a deferred closure so that all
 // return paths (success, fallback, error, clarification) honour the contract
-// without each call site having to remember to emit it. Persistence on the
-// handler side keys off Done.Answer != "" — empty answers signal "nothing
-// worth keeping" (clarification, hard-fail before any LLM output).
+// without each call site having to remember to emit it. The handler persists
+// non-empty answers and all fallback turns; non-fallback empty Done events
+// (clarification, pre-generation hard errors) are skipped.
 func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGInput) <-chan StreamEvent {
 	events := make(chan StreamEvent, 4)
 	go func() {
@@ -137,12 +137,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				return
 			case result := <-buildCh:
 				if result.err != nil {
-					u.sendStreamEvent(ctx, events, StreamEvent{
-						Kind:    StreamEventKindFallback,
-						Payload: classifyRetrievalFallback(result.err),
-					})
-					finalOutput.Fallback = true
-					finalOutput.Reason = result.err.Error()
+					u.emitFallback(ctx, events, finalOutput, classifyRetrievalFallback(result.err), result.err.Error(), "")
 					return
 				}
 				promptData = result.data
@@ -255,12 +250,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			case result := <-chatStreamCh:
 				if result.err != nil {
 					reason := fmt.Sprintf("llm chat stream setup failed: %v", result.err)
-					u.sendStreamEvent(ctx, events, StreamEvent{
-						Kind:    StreamEventKindFallback,
-						Payload: FallbackCodeLLMUnavailable,
-					})
-					finalOutput.Fallback = true
-					finalOutput.Reason = reason
+					u.emitFallback(ctx, events, finalOutput, FallbackCodeLLMUnavailable, reason, "")
 					return
 				}
 				chunkCh = result.chunkCh
@@ -325,13 +315,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					continue
 				}
 				reason := fmt.Sprintf("llm stream failed: %v", streamErr)
-				u.sendStreamEvent(ctx, events, StreamEvent{
-					Kind:    StreamEventKindFallback,
-					Payload: FallbackCodeLLMStreamFailed,
-				})
-				finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
-				finalOutput.Fallback = true
-				finalOutput.Reason = reason
+				u.emitFallback(ctx, events, finalOutput, FallbackCodeLLMStreamFailed, reason, strings.TrimSpace(answerBuilder.String()))
 				return
 			case <-heartbeat.C:
 				u.sendStreamEvent(ctx, events, StreamEvent{
@@ -355,13 +339,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		if !hasData {
 			u.logger.Warn("stream_no_data_fallback",
 				slog.String("retrieval_set_id", promptData.retrievalSetID))
-			const reason = "llm stream produced no data"
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: FallbackCodeLLMNoOutput,
-			})
-			finalOutput.Fallback = true
-			finalOutput.Reason = reason
+			u.emitFallback(ctx, events, finalOutput, FallbackCodeLLMNoOutput, "llm stream produced no data", "")
 			return
 		}
 
@@ -387,13 +365,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				slog.String("error", err.Error()),
 				slog.String("raw_response", truncate(rawResponse, 1000)))
 			reason := fmt.Sprintf("validation failed: %v", err)
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: FallbackCodeValidationFailed,
-			})
-			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
-			finalOutput.Fallback = true
-			finalOutput.Reason = reason
+			u.emitFallback(ctx, events, finalOutput, FallbackCodeValidationFailed, reason, strings.TrimSpace(answerBuilder.String()))
 			return
 		}
 
@@ -424,13 +396,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				slog.String("reason", parsedAnswer.Reason),
 				slog.Int("contexts_available", len(promptData.contexts)),
 				slog.String("llm_raw_response", truncate(builder.String(), 500)))
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: FallbackCodeAnswerDeclined,
-			})
-			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
-			finalOutput.Fallback = true
-			finalOutput.Reason = parsedAnswer.Reason
+			u.emitFallback(ctx, events, finalOutput, FallbackCodeAnswerDeclined, parsedAnswer.Reason, strings.TrimSpace(answerBuilder.String()))
 			return
 		}
 
@@ -439,13 +405,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		)
 		if err != nil {
 			reason := fmt.Sprintf("generation failed: %v", err)
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: FallbackCodeGenerationFailed,
-			})
-			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
-			finalOutput.Fallback = true
-			finalOutput.Reason = reason
+			u.emitFallback(ctx, events, finalOutput, FallbackCodeGenerationFailed, reason, strings.TrimSpace(answerBuilder.String()))
 			return
 		}
 		if !accepted {
@@ -453,17 +413,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			if finalAnswer != nil && finalAnswer.Fallback {
 				fallbackReason = finalAnswer.Reason
 			}
-			fallbackCode := FallbackCodeAnswerRejected
-			if finalPromptData != nil && finalPromptData.intentType == IntentCausalExplanation {
-				fallbackCode = FallbackCodeCausalTrailWeak
-			}
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: fallbackCode,
-			})
-			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
-			finalOutput.Fallback = true
-			finalOutput.Reason = fallbackReason
+			u.emitFallback(ctx, events, finalOutput, rejectedFallbackCode(finalPromptData), fallbackReason, strings.TrimSpace(answerBuilder.String()))
 			return
 		}
 		promptData = finalPromptData

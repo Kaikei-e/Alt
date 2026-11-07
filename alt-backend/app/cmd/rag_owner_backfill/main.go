@@ -5,24 +5,158 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"alt/config"
 	"alt/orchestrator/gateway/rag_gateway"
+	"alt/tlsutil"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const defaultBatchSize = 500
+const (
+	defaultBatchSize          = 500
+	defaultBatchTimeout       = 60 * time.Second
+	defaultRAGOrchestratorURL = "https://rag-orchestrator:9010"
+)
 
 func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
 	}
 	return fallback
+}
+
+func requiredEnv(key string) (string, error) {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value, nil
+	}
+	return "", fmt.Errorf("%s is required", key)
+}
+
+func resolveRAGOrchestratorURL() string {
+	return getEnv("RAG_ORCHESTRATOR_URL", defaultRAGOrchestratorURL)
+}
+
+func newRAGHTTPClient(ragURL string, log *slog.Logger) (*http.Client, error) {
+	var client *http.Client
+	switch {
+	case strings.HasPrefix(ragURL, "https://"):
+		certFile := strings.TrimSpace(os.Getenv("MTLS_CERT_FILE"))
+		keyFile := strings.TrimSpace(os.Getenv("MTLS_KEY_FILE"))
+		caFile := strings.TrimSpace(os.Getenv("MTLS_CA_FILE"))
+		if certFile == "" || keyFile == "" || caFile == "" {
+			return nil, fmt.Errorf("https RAG_ORCHESTRATOR_URL (%s) requires MTLS_CERT_FILE, MTLS_KEY_FILE, and MTLS_CA_FILE", ragURL)
+		}
+		var err error
+		client, err = tlsutil.NewMTLSClient(certFile, keyFile, caFile)
+		if err != nil {
+			return nil, fmt.Errorf("build mTLS client for %s: %w", ragURL, err)
+		}
+		log.Info("rag_mtls_enabled", "binary", "rag_owner_backfill", "url", ragURL)
+	case strings.HasPrefix(ragURL, "http://"):
+		log.Warn("rag_mtls_disabled", "binary", "rag_owner_backfill", "url", ragURL,
+			"reason", "RAG_ORCHESTRATOR_URL is http (explicit opt-out)")
+		client = &http.Client{}
+	default:
+		return nil, fmt.Errorf("RAG_ORCHESTRATOR_URL=%q must use https:// or http:// scheme", ragURL)
+	}
+
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return client, nil
+}
+
+func newRAGClient(ragURL string, log *slog.Logger) (*rag_gateway.ClientWithResponses, error) {
+	ragToken, ragAuthEnabled, err := config.LoadRAGAuth()
+	if err != nil {
+		return nil, fmt.Errorf("load RAG API authentication config: %w", err)
+	}
+	if ragAuthEnabled {
+		log.Info("rag_api_auth_enabled", "binary", "rag_owner_backfill")
+	} else {
+		log.Warn("rag_api_auth_disabled", "binary", "rag_owner_backfill", "reason", "RAG_API_AUTH=disabled (explicit opt-out)")
+	}
+
+	httpClient, err := newRAGHTTPClient(ragURL, log)
+	if err != nil {
+		return nil, err
+	}
+
+	ragOpts := make([]rag_gateway.ClientOption, 0, 2)
+	ragOpts = append(ragOpts, rag_gateway.WithHTTPClient(httpClient))
+	if ragAuthEnabled {
+		ragOpts = append(ragOpts, rag_gateway.WithBearerToken(ragToken))
+	}
+
+	ragClient, err := rag_gateway.NewClientWithResponses(ragURL, ragOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("initialize rag-orchestrator client: %w", err)
+	}
+	return ragClient, nil
+}
+
+func loadDBPassword() (string, error) {
+	if passwordFile := strings.TrimSpace(os.Getenv("DB_PASSWORD_FILE")); passwordFile != "" {
+		data, err := os.ReadFile(filepath.Clean(passwordFile)) //#nosec G304,G703 -- path is operator-supplied via DB_PASSWORD_FILE env var
+		if err != nil {
+			return "", fmt.Errorf("read DB_PASSWORD_FILE %s: %w", passwordFile, err)
+		}
+		password := strings.TrimSpace(string(data))
+		if password == "" {
+			return "", fmt.Errorf("DB_PASSWORD_FILE %s resolved to an empty password", passwordFile)
+		}
+		return password, nil
+	}
+	if password := os.Getenv("DB_PASSWORD"); strings.TrimSpace(password) != "" {
+		return password, nil
+	}
+	return "", fmt.Errorf("DB_PASSWORD_FILE or DB_PASSWORD is required")
+}
+
+func buildPGXPoolConfig() (*pgxpool.Config, error) {
+	dbHost, err := requiredEnv("DB_HOST")
+	if err != nil {
+		return nil, err
+	}
+	dbUser, err := requiredEnv("DB_USER")
+	if err != nil {
+		return nil, err
+	}
+	dbName, err := requiredEnv("DB_NAME")
+	if err != nil {
+		return nil, err
+	}
+	dbPassword, err := loadDBPassword()
+	if err != nil {
+		return nil, err
+	}
+
+	dbPort := getEnv("DB_PORT", "5432")
+
+	dsnURL := &url.URL{
+		Scheme:   "postgres",
+		User:     url.User(dbUser),
+		Host:     net.JoinHostPort(dbHost, dbPort),
+		Path:     "/" + dbName,
+		RawQuery: "sslmode=prefer",
+	}
+
+	poolCfg, err := pgxpool.ParseConfig(dsnURL.String())
+	if err != nil {
+		return nil, fmt.Errorf("parse database config: %w", err)
+	}
+	// Assign password directly on ConnConfig so special characters never break URL parsing.
+	poolCfg.ConnConfig.Password = dbPassword
+	return poolCfg, nil
 }
 
 // ArticleOwnerPair represents an article ID and its owner user_id from alt-db.
@@ -70,7 +204,10 @@ func ProcessBatch(
 		return nil
 	}
 
-	resp, err := client.BackfillDocumentOwnersWithResponse(ctx, rag_gateway.BackfillDocumentOwnersJSONRequestBody{
+	batchCtx, cancel := context.WithTimeout(ctx, defaultBatchTimeout)
+	defer cancel()
+
+	resp, err := client.BackfillDocumentOwnersWithResponse(batchCtx, rag_gateway.BackfillDocumentOwnersJSONRequestBody{
 		Items: items,
 	})
 	if err != nil {
@@ -253,47 +390,27 @@ func main() {
 		}
 	}
 
-	dbHost := getEnv("DB_HOST", "localhost")
-	dbPort := getEnv("DB_PORT", "5432")
-	dbUser := getEnv("DB_USER", "alt_db_user")
-	dbPassword := getEnv("DB_PASSWORD", "")
-	dbName := getEnv("DB_NAME", "alt")
+	poolCfg, err := buildPGXPoolConfig()
+	if err != nil {
+		log.Error("Invalid database configuration", "error", err)
+		os.Exit(1)
+	}
 
-	connString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=prefer",
-		dbUser, dbPassword, dbHost, dbPort, dbName)
-
-	ragURL := getEnv("RAG_ORCHESTRATOR_URL", "http://rag-orchestrator:9010")
+	ragURL := resolveRAGOrchestratorURL()
+	ragClient, err := newRAGClient(ragURL, log)
+	if err != nil {
+		log.Error("Unable to initialize rag-orchestrator client", "error", err, "url", ragURL)
+		os.Exit(1)
+	}
 
 	ctx := context.Background()
 
-	pool, err := pgxpool.New(ctx, connString)
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		log.Error("Unable to connect to database", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
-
-	ragToken, ragAuthEnabled, err := config.LoadRAGAuth()
-	if err != nil {
-		log.Error("Failed to load RAG API authentication config", "error", err)
-		os.Exit(1)
-	}
-	if ragAuthEnabled {
-		log.Info("rag_api_auth_enabled", "binary", "rag_owner_backfill")
-	} else {
-		log.Warn("rag_api_auth_disabled", "binary", "rag_owner_backfill", "reason", "RAG_API_AUTH=disabled (explicit opt-out)")
-	}
-
-	ragOpts := make([]rag_gateway.ClientOption, 0, 1)
-	if ragAuthEnabled {
-		ragOpts = append(ragOpts, rag_gateway.WithBearerToken(ragToken))
-	}
-
-	ragClient, err := rag_gateway.NewClientWithResponses(ragURL, ragOpts...)
-	if err != nil {
-		log.Error("Unable to initialize rag-orchestrator client", "error", err, "url", ragURL)
-		os.Exit(1)
-	}
 
 	log.Info("Starting RAG document owners backfill",
 		"dry_run", dryRun,

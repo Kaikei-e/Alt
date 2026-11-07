@@ -174,6 +174,52 @@ tests:
         alertname: AugurChunkEmbeddingCoverageLow
         exp_alerts: []
 
+  # 950 of 1,000 target-pair documents have user_id IS NULL and are invisible to tenant-scoped retrieval.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned",target="true"}'
+        values: '50+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned",target="true"}'
+        values: '950+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned",target="false"}'
+        values: '10+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned",target="false"}'
+        values: '100+0x200'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: AugurDocumentOwnerCoverageLow
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              service: rag-orchestrator
+              stack: rag
+            exp_annotations:
+              summary: "95% of target-version RAG documents have no owner and are invisible to retrieval"
+              description: |
+                Retrieval filters rag_documents by d.user_id = $owner, so documents
+                with a NULL user_id never return from vector or lexical search even
+                when their chunker and embedder versions are on target.
+                Remedy: run alt-backend cmd/rag_owner_backfill. Unowned documents
+                whose source article is gone cannot be backfilled and belong to
+                orphan cleanup, not this alert.
+                Check: docker exec rag-db psql -U rag_user -d rag_db -c "SELECT v.chunker_version, v.embedder_version, COUNT(*), COUNT(*) FILTER (WHERE d.user_id IS NULL) AS unowned FROM rag_documents d JOIN rag_document_versions v ON d.current_version_id = v.id GROUP BY v.chunker_version, v.embedder_version;"
+
+  # Post-backfill state: target pair is 100% owned while 100 orphan docs on a retired pair have no source article to backfill from.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned",target="true"}'
+        values: '1000+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned",target="true"}'
+        values: '0+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned",target="false"}'
+        values: '10+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned",target="false"}'
+        values: '100+0x200'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: AugurDocumentOwnerCoverageLow
+        exp_alerts: []
+
   # No census series at all — the sampler never started, or the service is
   # gone. absent() is what makes this visible; a bare comparison over an empty
   # vector is silent for exactly the outage the rule exists to catch.

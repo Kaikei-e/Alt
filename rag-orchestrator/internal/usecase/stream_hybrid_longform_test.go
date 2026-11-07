@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 const testHybridUserID = "11111111-1111-4111-8111-111111111111"
@@ -37,6 +38,7 @@ func setupHybridLongFormTest(t *testing.T) (*mockRetrieveContextUsecase, *mockLL
 		"alpha-v1", "ja",
 		testLogger,
 		usecase.WithHeartbeatInterval(10*time.Millisecond),
+		usecase.WithQueryClassifier(usecase.NewQueryClassifier(nil, 0)),
 	)
 
 	firstChunkID := uuid.New()
@@ -65,12 +67,15 @@ func TestStreamHybridLongForm_LLMStreamSetupError_EmitsFallback(t *testing.T) {
 	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery, UserID: testHybridUserID}))
 
 	fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
-	assert.NotNil(t, fallbackEvt, "ChatStream setup failure should produce a fallback event")
+	if assert.NotNil(t, fallbackEvt, "ChatStream setup failure should produce a fallback event") {
+		assert.Equal(t, usecase.FallbackCodeLLMUnavailable, fallbackEvt.Payload)
+	}
 
 	doneEvt := findEvent(events, usecase.StreamEventKindDone)
 	if assert.NotNil(t, doneEvt, "Done must always be emitted") {
 		out := doneEvt.Payload.(*usecase.AnswerWithRAGOutput)
 		assert.True(t, out.Fallback)
+		assert.Equal(t, usecase.FallbackCategory(usecase.FallbackCodeLLMUnavailable), out.FallbackCategory)
 	}
 }
 
@@ -89,11 +94,15 @@ func TestStreamHybridLongForm_NoData_EmitsFallback(t *testing.T) {
 
 	fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
 	if assert.NotNil(t, fallbackEvt, "a stream with no response data should fall back") {
-		assert.Equal(t, "llm stream produced no data", fallbackEvt.Payload)
+		assert.Equal(t, usecase.FallbackCodeLLMNoOutput, fallbackEvt.Payload)
 	}
 
 	doneEvt := findEvent(events, usecase.StreamEventKindDone)
-	assert.NotNil(t, doneEvt, "Done must always be emitted even on no-data fallback")
+	if assert.NotNil(t, doneEvt, "Done must always be emitted even on no-data fallback") {
+		out := doneEvt.Payload.(*usecase.AnswerWithRAGOutput)
+		assert.True(t, out.Fallback)
+		assert.Equal(t, usecase.FallbackCategory(usecase.FallbackCodeLLMNoOutput), out.FallbackCategory)
+	}
 }
 
 func TestStreamHybridLongForm_LLMStreamError_EmitsFallback(t *testing.T) {
@@ -110,7 +119,105 @@ func TestStreamHybridLongForm_LLMStreamError_EmitsFallback(t *testing.T) {
 	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery, UserID: testHybridUserID}))
 
 	fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
-	assert.NotNil(t, fallbackEvt, "an errored LLM stream should fall back")
+	if assert.NotNil(t, fallbackEvt, "an errored LLM stream should fall back") {
+		assert.Equal(t, usecase.FallbackCodeLLMStreamFailed, fallbackEvt.Payload)
+	}
+
+	doneEvt := findEvent(events, usecase.StreamEventKindDone)
+	if assert.NotNil(t, doneEvt, "Done must always be emitted") {
+		out := doneEvt.Payload.(*usecase.AnswerWithRAGOutput)
+		assert.True(t, out.Fallback)
+		assert.Equal(t, usecase.FallbackCategory(usecase.FallbackCodeLLMStreamFailed), out.FallbackCategory)
+	}
+}
+
+func TestStreamHybridLongForm_OtherFallbackTerminals_SetMatchingFallbackCategory(t *testing.T) {
+	cases := []struct {
+		name         string
+		query        string
+		rawStream    string
+		retryResp    *domain.LLMResponse
+		retryErr     error
+		expectedCode string
+	}{
+		{
+			name:         "validation failed",
+			query:        detailedQuery,
+			rawStream:    "not valid json",
+			expectedCode: usecase.FallbackCodeValidationFailed,
+		},
+		{
+			name:         "model declined answer with empty answer",
+			query:        detailedQuery,
+			rawStream:    `{"answer":"","citations":[],"fallback":true,"reason":"insufficient context"}`,
+			expectedCode: usecase.FallbackCodeAnswerDeclined,
+		},
+		{
+			name:      "answer rejected after retry",
+			query:     "Please explain fully the difference between port A and port B",
+			rawStream: `{"answer":"Too short.","citations":[],"fallback":false,"reason":""}`,
+			retryResp: &domain.LLMResponse{
+				Text: `{"answer":"Still too short.","citations":[],"fallback":false,"reason":""}`,
+				Done: true,
+			},
+			expectedCode: usecase.FallbackCodeAnswerRejected,
+		},
+		{
+			name:      "causal trail weak after retry",
+			query:     "なぜ物流混乱が起きたのか詳しく教えてください",
+			rawStream: `{"answer":"短すぎる回答。","citations":[],"fallback":false,"reason":""}`,
+			retryResp: &domain.LLMResponse{
+				Text: `{"answer":"まだ短すぎる回答。","citations":[],"fallback":false,"reason":""}`,
+				Done: true,
+			},
+			expectedCode: usecase.FallbackCodeCausalTrailWeak,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, mockLLM, uc, _, _ := setupHybridLongFormTest(t)
+
+			chunkCh, errCh := makeLLMStream([]domain.LLMStreamChunk{
+				{Response: tc.rawStream},
+				{Done: true},
+			})
+			mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+				Return(chunkCh, errCh, nil)
+			if tc.retryResp != nil || tc.retryErr != nil {
+				mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+					Return(tc.retryResp, tc.retryErr)
+			}
+
+			events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{
+				Query:  tc.query,
+				UserID: testHybridUserID,
+			}))
+
+			progressEvents := findEvents(events, usecase.StreamEventKindProgress)
+			var progressPayloads []string
+			for _, pe := range progressEvents {
+				if s, ok := pe.Payload.(string); ok {
+					progressPayloads = append(progressPayloads, s)
+				}
+			}
+			assert.Contains(t, progressPayloads, "drafting", "hybrid path must emit drafting progress event")
+			if tc.retryResp != nil {
+				assert.Contains(t, progressPayloads, "refining", "hybrid retry path must emit refining progress event")
+			}
+
+			fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
+			require.NotNil(t, fallbackEvt, "expected StreamEventKindFallback")
+			assert.Equal(t, tc.expectedCode, fallbackEvt.Payload, "fallback event payload must match expected code")
+
+			doneEvt := findEvent(events, usecase.StreamEventKindDone)
+			require.NotNil(t, doneEvt, "expected StreamEventKindDone")
+			out := doneEvt.Payload.(*usecase.AnswerWithRAGOutput)
+			assert.True(t, out.Fallback, "Done.Fallback must be true")
+			assert.Equal(t, usecase.FallbackCategory(tc.expectedCode), out.FallbackCategory,
+				"Done.FallbackCategory must match the fallback code sent to the client")
+		})
+	}
 }
 
 func TestStreamHybridLongForm_AcceptedAnswer_EmitsDeltasAndDone(t *testing.T) {

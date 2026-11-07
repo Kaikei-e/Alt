@@ -245,6 +245,14 @@ func (m *MockAugurConversationUsecase) GetConversation(ctx context.Context, user
 	return conv, msgs, args.Error(2)
 }
 
+func (m *MockAugurConversationUsecase) ListMessages(ctx context.Context, conversationID uuid.UUID) ([]domain.AugurMessage, error) {
+	args := m.Called(ctx, conversationID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.AugurMessage), args.Error(1)
+}
+
 func (m *MockAugurConversationUsecase) DeleteConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) error {
 	return m.Called(ctx, userID, conversationID).Error(0)
 }
@@ -671,4 +679,358 @@ func TestStreamChat_LogsFullEventFieldsForReplay_OnEmitError(t *testing.T) {
 	assert.Equal(t, "article:"+articleID.String(), replayRecord["entry_key"], "entry_key must be replayable")
 	assert.Equal(t, "default", replayRecord["lens_mode_id"], "lens_mode_id must be replayable")
 	assert.EqualValues(t, conv.CreatedAt.UnixMilli(), replayRecord["linked_at"], "linked_at must be replayable")
+}
+
+func TestStreamChat_ExcludesPersistedFallbackTurnsFromConversationHistory(t *testing.T) {
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	mockConv := new(MockAugurConversationUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	userID := uuid.New()
+	convID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        convID,
+		UserID:    userID,
+		Title:     "Example Phone X について教えて",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	fallbackProse := usecase.FallbackMessage(usecase.FallbackCodeRelevanceLow)
+	storedMsgs := []domain.AugurMessage{
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "user",
+			Content:        "Example Phone X について教えて",
+		},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "assistant",
+			Content:        fallbackProse,
+			Fallback: &domain.AugurFallback{
+				Code:   usecase.FallbackCodeRelevanceLow,
+				Reason: "retrieval quality insufficient: context relevance too low",
+			},
+		},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "user",
+			Content:        "半導体サプライチェーンの動向は？",
+		},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "assistant",
+			Content:        "半導体サプライチェーンは回復基調にあります。",
+		},
+	}
+
+	events := make(chan usecase.StreamEvent, 2)
+	var capturedInput usecase.AnswerWithRAGInput
+	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("ListMessages", mock.Anything, convID).Return(storedMsgs, nil)
+	mockConv.On("AppendUserTurn", mock.Anything, convID, "さらに詳しく教えて").Return(nil)
+	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything, mock.Anything).Return(nil)
+	mockAnswer.On("Stream", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		capturedInput = args.Get(1).(usecase.AnswerWithRAGInput)
+	}).Return((<-chan usecase.StreamEvent)(events))
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, nil, logger)
+	mux := http.NewServeMux()
+	path, connectHandler := augurv2connect.NewAugurServiceHandler(handler)
+	mux.Handle(path, connectHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := augurv2connect.NewAugurServiceClient(server.Client(), server.URL)
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
+		ConversationId: convID.String(),
+		Messages: []*augurv2.ChatMessage{
+			{Role: "user", Content: "Example Phone X について教えて"},
+			{Role: "assistant", Content: fallbackProse},
+			{Role: "user", Content: "半導体サプライチェーンの動向は？"},
+			{Role: "assistant", Content: "半導体サプライチェーンは回復基調にあります。"},
+			{Role: "user", Content: "さらに詳しく教えて"},
+		},
+	})
+	req.Header().Set("X-Alt-User-Id", userID.String())
+
+	stream, err := client.StreamChat(context.Background(), req)
+	require.NoError(t, err)
+
+	events <- usecase.StreamEvent{
+		Kind: usecase.StreamEventKindDone,
+		Payload: &usecase.AnswerWithRAGOutput{
+			Answer: "詳細な回答です。",
+		},
+	}
+	close(events)
+
+	for stream.Receive() {
+	}
+	require.NoError(t, stream.Err())
+
+	assert.Equal(t, []domain.Message{
+		{Role: "user", Content: "Example Phone X について教えて"},
+		{Role: "user", Content: "半導体サプライチェーンの動向は？"},
+		{Role: "assistant", Content: "半導体サプライチェーンは回復基調にあります。"},
+	}, capturedInput.ConversationHistory, "persisted fallback assistant turns must be excluded from LLM conversation history")
+	mockConv.AssertNotCalled(t, "GetConversation", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestStreamChat_FallbackHistoryLookupError_FailsWithInternalAndSkipsAnswerUsecase(t *testing.T) {
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	mockConv := new(MockAugurConversationUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	userID := uuid.New()
+	convID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        convID,
+		UserID:    userID,
+		Title:     "Example Phone X について教えて",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	lookupErr := errors.New("db connection lost")
+	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("ListMessages", mock.Anything, convID).
+		Return(([]domain.AugurMessage)(nil), lookupErr)
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, nil, logger)
+	mux := http.NewServeMux()
+	path, connectHandler := augurv2connect.NewAugurServiceHandler(handler)
+	mux.Handle(path, connectHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := augurv2connect.NewAugurServiceClient(server.Client(), server.URL)
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
+		ConversationId: convID.String(),
+		Messages: []*augurv2.ChatMessage{
+			{Role: "user", Content: "Example Phone X について教えて"},
+			{Role: "assistant", Content: usecase.FallbackMessage(usecase.FallbackCodeRelevanceLow)},
+			{Role: "user", Content: "半導体サプライチェーンの動向は？"},
+		},
+	})
+	req.Header().Set("X-Alt-User-Id", userID.String())
+
+	stream, err := client.StreamChat(context.Background(), req)
+	if err == nil {
+		for stream.Receive() {
+		}
+		err = stream.Err()
+	}
+
+	require.Error(t, err, "lookup error during fallback history filtering must fail the stream")
+	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+	mockConv.AssertNotCalled(t, "GetConversation", mock.Anything, mock.Anything, mock.Anything)
+	mockConv.AssertNotCalled(t, "AppendUserTurn", mock.Anything, mock.Anything, mock.Anything)
+	mockAnswer.AssertNotCalled(t, "Stream", mock.Anything, mock.Anything)
+}
+
+func TestStreamChat_ExcludesPersistedPartialFallbackTurnFromConversationHistory(t *testing.T) {
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	mockConv := new(MockAugurConversationUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	userID := uuid.New()
+	convID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        convID,
+		UserID:    userID,
+		Title:     "なぜ物流が滞っているのか",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	partialFallbackText := "途中まで生成された不完全な回答テキスト"
+	storedMsgs := []domain.AugurMessage{
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "user",
+			Content:        "なぜ物流が滞っているのか",
+		},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "assistant",
+			Content:        partialFallbackText,
+			Fallback: &domain.AugurFallback{
+				Code:   string(usecase.FallbackShortUnderGrounded),
+				Reason: "answer quality insufficient: low keyword coverage",
+			},
+		},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "user",
+			Content:        "港湾の混雑状況はどうなっている？",
+		},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "assistant",
+			Content:        "主要港での滞留日数は減少傾向にあります。",
+		},
+	}
+
+	events := make(chan usecase.StreamEvent, 2)
+	var capturedInput usecase.AnswerWithRAGInput
+	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("ListMessages", mock.Anything, convID).Return(storedMsgs, nil)
+	mockConv.On("AppendUserTurn", mock.Anything, convID, "内陸輸送への影響は？").Return(nil)
+	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything, mock.Anything).Return(nil)
+	mockAnswer.On("Stream", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		capturedInput = args.Get(1).(usecase.AnswerWithRAGInput)
+	}).Return((<-chan usecase.StreamEvent)(events))
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, nil, logger)
+	mux := http.NewServeMux()
+	path, connectHandler := augurv2connect.NewAugurServiceHandler(handler)
+	mux.Handle(path, connectHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := augurv2connect.NewAugurServiceClient(server.Client(), server.URL)
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
+		ConversationId: convID.String(),
+		Messages: []*augurv2.ChatMessage{
+			{Role: "user", Content: "なぜ物流が滞っているのか"},
+			{Role: "assistant", Content: partialFallbackText},
+			{Role: "user", Content: "港湾の混雑状況はどうなっている？"},
+			{Role: "assistant", Content: "主要港での滞留日数は減少傾向にあります。"},
+			{Role: "user", Content: "内陸輸送への影響は？"},
+		},
+	})
+	req.Header().Set("X-Alt-User-Id", userID.String())
+
+	stream, err := client.StreamChat(context.Background(), req)
+	require.NoError(t, err)
+
+	events <- usecase.StreamEvent{
+		Kind: usecase.StreamEventKindDone,
+		Payload: &usecase.AnswerWithRAGOutput{
+			Answer: "内陸輸送はトラック不足が続いています。",
+		},
+	}
+	close(events)
+
+	for stream.Receive() {
+	}
+	require.NoError(t, stream.Err())
+
+	assert.Equal(t, []domain.Message{
+		{Role: "user", Content: "なぜ物流が滞っているのか"},
+		{Role: "user", Content: "港湾の混雑状況はどうなっている？"},
+		{Role: "assistant", Content: "主要港での滞留日数は減少傾向にあります。"},
+	}, capturedInput.ConversationHistory, "persisted non-canned partial fallback turns must be excluded from LLM conversation history")
+	mockConv.AssertNotCalled(t, "GetConversation", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestStreamChat_WindowsLastSixNormalTurnsAfterExcludingFallbacks(t *testing.T) {
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	mockConv := new(MockAugurConversationUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	userID := uuid.New()
+	convID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        convID,
+		UserID:    userID,
+		Title:     "turn 1 user",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	storedMsgs := []domain.AugurMessage{
+		{ID: uuid.New(), ConversationID: convID, Role: "user", Content: "turn 1 user"},
+		{ID: uuid.New(), ConversationID: convID, Role: "assistant", Content: "turn 1 assistant"},
+		{ID: uuid.New(), ConversationID: convID, Role: "user", Content: "turn 2 user"},
+		{ID: uuid.New(), ConversationID: convID, Role: "assistant", Content: "turn 2 assistant"},
+		{ID: uuid.New(), ConversationID: convID, Role: "user", Content: "turn 3 user"},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "assistant",
+			Content:        usecase.FallbackMessage(usecase.FallbackCodeRelevanceLow),
+			Fallback:       &domain.AugurFallback{Code: usecase.FallbackCodeRelevanceLow, Reason: "low relevance"},
+		},
+		{ID: uuid.New(), ConversationID: convID, Role: "assistant", Content: "turn 3 assistant"},
+		{ID: uuid.New(), ConversationID: convID, Role: "user", Content: "turn 4 user"},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "assistant",
+			Content:        "partial fallback turn 4",
+			Fallback:       &domain.AugurFallback{Code: string(usecase.FallbackShortUnderGrounded), Reason: "short"},
+		},
+		{ID: uuid.New(), ConversationID: convID, Role: "assistant", Content: "turn 4 assistant"},
+	}
+
+	events := make(chan usecase.StreamEvent, 2)
+	var capturedInput usecase.AnswerWithRAGInput
+	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("ListMessages", mock.Anything, convID).Return(storedMsgs, nil)
+	mockConv.On("AppendUserTurn", mock.Anything, convID, "turn 5 user").Return(nil)
+	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything, mock.Anything).Return(nil)
+	mockAnswer.On("Stream", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		capturedInput = args.Get(1).(usecase.AnswerWithRAGInput)
+	}).Return((<-chan usecase.StreamEvent)(events))
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, nil, logger)
+	mux := http.NewServeMux()
+	path, connectHandler := augurv2connect.NewAugurServiceHandler(handler)
+	mux.Handle(path, connectHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := augurv2connect.NewAugurServiceClient(server.Client(), server.URL)
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
+		ConversationId: convID.String(),
+		Messages: []*augurv2.ChatMessage{
+			{Role: "user", Content: "turn 1 user"},
+			{Role: "assistant", Content: "turn 1 assistant"},
+			{Role: "user", Content: "turn 2 user"},
+			{Role: "assistant", Content: "turn 2 assistant"},
+			{Role: "user", Content: "turn 3 user"},
+			{Role: "assistant", Content: usecase.FallbackMessage(usecase.FallbackCodeRelevanceLow)},
+			{Role: "assistant", Content: "turn 3 assistant"},
+			{Role: "user", Content: "turn 4 user"},
+			{Role: "assistant", Content: "partial fallback turn 4"},
+			{Role: "assistant", Content: "turn 4 assistant"},
+			{Role: "user", Content: "turn 5 user"},
+		},
+	})
+	req.Header().Set("X-Alt-User-Id", userID.String())
+
+	stream, err := client.StreamChat(context.Background(), req)
+	require.NoError(t, err)
+
+	events <- usecase.StreamEvent{
+		Kind: usecase.StreamEventKindDone,
+		Payload: &usecase.AnswerWithRAGOutput{
+			Answer: "turn 5 assistant",
+		},
+	}
+	close(events)
+
+	for stream.Receive() {
+	}
+	require.NoError(t, stream.Err())
+
+	assert.Equal(t, []domain.Message{
+		{Role: "user", Content: "turn 2 user"},
+		{Role: "assistant", Content: "turn 2 assistant"},
+		{Role: "user", Content: "turn 3 user"},
+		{Role: "assistant", Content: "turn 3 assistant"},
+		{Role: "user", Content: "turn 4 user"},
+		{Role: "assistant", Content: "turn 4 assistant"},
+	}, capturedInput.ConversationHistory, "history window must keep the last 6 normal turns after excluding fallback turns")
+	mockConv.AssertNotCalled(t, "GetConversation", mock.Anything, mock.Anything, mock.Anything)
 }

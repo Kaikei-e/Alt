@@ -21,6 +21,7 @@
 #   rag_orchestrator_augur_empty_fallback_total{fallback_code}
 #     same file
 #   rag_orchestrator_rag_document_coverage{chunker_version,embedder_version,target}
+#   rag_orchestrator_rag_document_owner_coverage{state,target}
 #   rag_orchestrator_rag_document_coverage_scrape_timestamp_seconds
 #     rag-orchestrator/internal/infra/metrics/coverage.go, sampled every
 #     RAG_COVERAGE_SAMPLE_INTERVAL_MINUTES (default 15)
@@ -167,9 +168,8 @@ groups:
             and grep rag-orchestrator for rerank_fallback_original_scores, which
             carries the specific reason (timeout, unmatched ids, empty response).
 
-      # WARN: degraded turns with no text at all. These are deliberately not
-      # written to augur_messages — a blank assistant bubble is worse than the
-      # gap — so this counter is the only trace they leave.
+      # WARN: degraded turns where the pipeline produced no LLM answer text and
+      # persisted canned fallback prose instead.
       - alert: AugurEmptyFallbacksRising
         expr: sum(increase(rag_orchestrator_augur_empty_fallback_total[1h])) > 10
         for: 15m
@@ -180,8 +180,8 @@ groups:
         annotations:
           summary: "Ask Augur produced {{ $value }} answerless fallbacks in an hour"
           description: |
-            Fallbacks that produced no text are absent from chat history by
-            design, so history alone cannot show this.
+            Fallbacks that produced no LLM answer text were persisted with
+            canned fallback prose instead of a grounded answer.
             Break down by cause:
             sum by (fallback_code) (increase(rag_orchestrator_augur_empty_fallback_total[1h]))
 
@@ -251,6 +251,33 @@ groups:
             arm — and the related-citation neighbor lookup, which is
             vector-first, returns nothing.
             Check: docker exec rag-db psql -U rag_user -d rag_db -c "SELECT count(*), count(embedding) FROM rag_chunks;"
+
+      # WARN: retrieval filters by d.user_id = $owner, so NULL-owner rows on the target pair are invisible and skipped by rebuild.
+      # 5% tolerates brief ingestion-to-owner lag while catching an unbackfilled target corpus.
+      - alert: AugurDocumentOwnerCoverageLow
+        expr: |
+          (
+            sum(rag_orchestrator_rag_document_owner_coverage{state="unowned",target="true"})
+            /
+            sum(rag_orchestrator_rag_document_owner_coverage{target="true"})
+          ) > 0.05
+          and
+          sum(rag_orchestrator_rag_document_owner_coverage{target="true"}) > 0
+        for: 2h
+        labels:
+          severity: warn
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of target-version RAG documents have no owner and are invisible to retrieval"
+          description: |
+            Retrieval filters rag_documents by d.user_id = $owner, so documents
+            with a NULL user_id never return from vector or lexical search even
+            when their chunker and embedder versions are on target.
+            Remedy: run alt-backend cmd/rag_owner_backfill. Unowned documents
+            whose source article is gone cannot be backfilled and belong to
+            orphan cleanup, not this alert.
+            Check: docker exec rag-db psql -U rag_user -d rag_db -c "SELECT v.chunker_version, v.embedder_version, COUNT(*), COUNT(*) FILTER (WHERE d.user_id IS NULL) AS unowned FROM rag_documents d JOIN rag_document_versions v ON d.current_version_id = v.id GROUP BY v.chunker_version, v.embedder_version;"
 
       # PAGE: the census itself stopped. A gauge nobody updates keeps reporting
       # its last value, so a dead sampler looks exactly like a healthy corpus —

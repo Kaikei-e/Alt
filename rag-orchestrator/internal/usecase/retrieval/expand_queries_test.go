@@ -1,10 +1,16 @@
 package retrieval
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
+	"rag-orchestrator/internal/domain"
+
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsRomanizedJapanese(t *testing.T) {
@@ -429,4 +435,110 @@ func TestFilterExpandedQueries_WellFormedPlainList_PassesThroughUnchanged(t *tes
 	}
 	result := filterExpandedQueries(queries)
 	assert.Equal(t, queries, result)
+}
+
+type stubTagSearchClient struct {
+	hits []domain.SearchHit
+}
+
+func (s stubTagSearchClient) Search(_ context.Context, _ string, _ string) ([]domain.SearchHit, error) {
+	return s.hits, nil
+}
+
+type stubOriginalEncoder struct{}
+
+func (stubOriginalEncoder) Encode(_ context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	for i := range texts {
+		out[i] = []float32{0.1, 0.2}
+	}
+	return out, nil
+}
+
+func (stubOriginalEncoder) Version() string { return "stub-v1" }
+
+func TestExpandQueries_TagQueriesFilteredAndBounded(t *testing.T) {
+	plannerQueries := []string{
+		"Example Model 15 specifications",
+		"Example Model 15 review",
+	}
+	sc := &StageContext{
+		RetrievalID:    "test-tag-filter",
+		Query:          "Example Model 15 overview",
+		PlannerQueries: plannerQueries,
+		UserID:         "00000000-0000-0000-0000-000000000001",
+	}
+	searchClient := stubTagSearchClient{
+		hits: []domain.SearchHit{
+			{
+				ID:    "hit-1",
+				Title: "Example Model 15 Launch",
+				Tags: []string{
+					"GB",
+					"Pro",
+					"Hz",
+					"17",
+					"2026",
+					"2026-04-07",
+					"OS",
+					"SIM",
+					"大容量モデルは来月から店頭で販売を開始する予定",
+					"Example Model 15 overview",
+					"ExampleOS",
+					"ExampleTech",
+				},
+			},
+			{
+				ID:    "hit-2",
+				Title: "Example Model 15 Display",
+				Tags: []string{
+					"ExampleOS",
+					"有機ELディスプレイ",
+					"フラッグシップスマホ",
+					"カメラセンサー",
+				},
+			},
+			{
+				ID:    "hit-3",
+				Title: "Example Model 15 Battery",
+				Tags: []string{
+					"急速充電システム",
+					"半導体プロセス",
+					"ワイヤレス通信",
+				},
+			},
+		},
+	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	err := ExpandQueries(context.Background(), sc, nil, nil, searchClient, stubOriginalEncoder{}, logger)
+	require.NoError(t, err)
+
+	assert.Equal(t, plannerQueries, sc.ExpandedQueries, "planner queries must remain intact")
+	assert.Equal(t, []string{
+		"ExampleOS",
+		"ExampleTech",
+		"有機ELディスプレイ",
+		"フラッグシップスマホ",
+		"カメラセンサー",
+	}, sc.TagQueries, "generic short ASCII tokens, pure numbers/dates, and long sentence tags must be dropped and remaining tags bounded")
+}
+
+func TestFilterTagQueries_ASCIILengthUpTo40_NonASCIICappedAt20(t *testing.T) {
+	tags := []string{
+		"Large Language Models",                          // 21 ASCII runes -> keep
+		"Retrieval-Augmented Generation",                 // 30 ASCII runes -> keep
+		"Distributed Consensus Protocol Benchmark",       // 40 ASCII runes -> keep
+		"Distributed Consensus Protocol Benchmark Suite", // 46 ASCII runes -> drop (> 40)
+		"次世代フラッグシップスマートフォンの技術",                           // 20 non-ASCII runes -> keep
+		"大容量モデルは来月から店頭で販売を開始する予定",                        // 23 non-ASCII runes -> drop (> 20)
+	}
+
+	got := filterTagQueries(tags, "Example query")
+	assert.Equal(t, []string{
+		"Large Language Models",
+		"Retrieval-Augmented Generation",
+		"Distributed Consensus Protocol Benchmark",
+		"次世代フラッグシップスマートフォンの技術",
+	}, got, "pure-ASCII tags up to 40 runes must be allowed while non-ASCII tags stay capped at 20 runes")
 }

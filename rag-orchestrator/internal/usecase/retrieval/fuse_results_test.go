@@ -301,3 +301,45 @@ func TestFuseResults_DeduplicatesExpandedHits(t *testing.T) {
 	// Should be deduplicated to 1 entry with boosted RRF score
 	assert.Len(t, sc.HitsExpanded, 1, "duplicate chunks should be merged")
 }
+
+func TestFuseResults_ExpandedHits_DeterministicTieBreakByHitIdentity(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	mockRepo := new(MockRagChunkRepository)
+
+	chunkA := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	chunkB := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	chunkC := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	testUUID := uuid.New()
+
+	mockRepo.On("Search", mock.Anything, []float32{0.3, 0.4}, 50, testUUID).Return([]domain.SearchResult{
+		{Chunk: domain.RagChunk{ID: chunkC, Content: "c", CreatedAt: time.Now()}, Score: 0.9, ArticleID: "art-c", Title: "Example C"},
+	}, nil)
+	mockRepo.On("Search", mock.Anything, []float32{0.5, 0.6}, 50, testUUID).Return([]domain.SearchResult{
+		{Chunk: domain.RagChunk{ID: chunkA, Content: "a", CreatedAt: time.Now()}, Score: 0.9, ArticleID: "art-a", Title: "Example A"},
+	}, nil)
+	mockRepo.On("Search", mock.Anything, []float32{0.7, 0.8}, 50, testUUID).Return([]domain.SearchResult{
+		{Chunk: domain.RagChunk{ID: chunkB, Content: "b", CreatedAt: time.Now()}, Score: 0.9, ArticleID: "art-b", Title: "Example B"},
+	}, nil)
+
+	for range 20 {
+		sc := &retrieval.StageContext{
+			RetrievalID:          "test-fuse-tie-break",
+			Query:                "test query",
+			OriginalEmbedding:    []float32{0.1, 0.2},
+			AdditionalEmbeddings: [][]float32{{0.3, 0.4}, {0.5, 0.6}, {0.7, 0.8}},
+			AdditionalQueries:    []string{"expanded 1", "expanded 2", "expanded 3"},
+			SearchLimit:          50,
+			RRFK:                 60.0,
+			UserID:               testUUID.String(),
+			UserUUID:             testUUID,
+		}
+
+		require.NoError(t, retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger))
+		require.Len(t, sc.HitsExpanded, 3)
+		assert.Equal(t, []uuid.UUID{chunkA, chunkB, chunkC}, []uuid.UUID{
+			sc.HitsExpanded[0].ChunkID,
+			sc.HitsExpanded[1].ChunkID,
+			sc.HitsExpanded[2].ChunkID,
+		}, "equal RRF scores in HitsExpanded must tie-break deterministically by hitIdentity")
+	}
+}

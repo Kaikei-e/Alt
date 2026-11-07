@@ -24,11 +24,9 @@ import (
 //
 // streamHybridLongForm runs the long-form ChatStream path. It returns a
 // non-nil *AnswerWithRAGOutput so the caller (Stream) can forward it to its
-// deferred Done emit. Empty Answer means "nothing worth persisting"
-// (clarification, hard-fail before any LLM output, ctx cancellation).
-//
-// Invariant: every return path leaves a non-nil pointer. Fallback returns set
-// Fallback=true and Reason; success returns the full output.
+// deferred Done emit. Non-fallback empty Answer means nothing to persist
+// (e.g. ctx cancellation); fallback returns set Fallback=true, FallbackCategory,
+// and Reason so the handler can persist the fallback turn.
 func (u *answerWithRAGUsecase) streamHybridLongForm(
 	ctx context.Context,
 	events chan<- StreamEvent,
@@ -70,12 +68,7 @@ waitHybridChatStream:
 		case result := <-chatStreamCh:
 			if result.err != nil {
 				reason := fmt.Sprintf("llm chat stream setup failed: %v", result.err)
-				u.sendStreamEvent(ctx, events, StreamEvent{
-					Kind:    StreamEventKindFallback,
-					Payload: reason,
-				})
-				out.Fallback = true
-				out.Reason = reason
+				u.emitFallback(ctx, events, out, FallbackCodeLLMUnavailable, reason, "")
 				return out
 			}
 			chunkCh = result.chunkCh
@@ -145,13 +138,7 @@ waitHybridChatStream:
 				continue
 			}
 			reason := fmt.Sprintf("llm stream failed: %v", streamErr)
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: reason,
-			})
-			out.Answer = strings.TrimSpace(answerBuilder.String())
-			out.Fallback = true
-			out.Reason = reason
+			u.emitFallback(ctx, events, out, FallbackCodeLLMStreamFailed, reason, strings.TrimSpace(answerBuilder.String()))
 			return out
 		case <-flushTicker.C:
 			// Time-based flush for pending content
@@ -181,13 +168,7 @@ waitHybridChatStream:
 	}
 
 	if !hasData {
-		const reason = "llm stream produced no data"
-		u.sendStreamEvent(ctx, events, StreamEvent{
-			Kind:    StreamEventKindFallback,
-			Payload: reason,
-		})
-		out.Fallback = true
-		out.Reason = reason
+		u.emitFallback(ctx, events, out, FallbackCodeLLMNoOutput, "llm stream produced no data", "")
 		return out
 	}
 
@@ -206,24 +187,12 @@ waitHybridChatStream:
 	parsedAnswer, err := u.validator.Validate(rawResponse, promptData.contexts)
 	if err != nil {
 		reason := fmt.Sprintf("validation failed: %v", err)
-		u.sendStreamEvent(ctx, events, StreamEvent{
-			Kind:    StreamEventKindFallback,
-			Payload: reason,
-		})
-		out.Answer = strings.TrimSpace(answerBuilder.String())
-		out.Fallback = true
-		out.Reason = reason
+		u.emitFallback(ctx, events, out, FallbackCodeValidationFailed, reason, strings.TrimSpace(answerBuilder.String()))
 		return out
 	}
 
 	if parsedAnswer.Fallback {
-		u.sendStreamEvent(ctx, events, StreamEvent{
-			Kind:    StreamEventKindFallback,
-			Payload: parsedAnswer.Reason,
-		})
-		out.Answer = strings.TrimSpace(answerBuilder.String())
-		out.Fallback = true
-		out.Reason = parsedAnswer.Reason
+		u.emitFallback(ctx, events, out, FallbackCodeAnswerDeclined, parsedAnswer.Reason, strings.TrimSpace(answerBuilder.String()))
 		return out
 	}
 
@@ -256,13 +225,7 @@ waitHybridChatStream:
 	)
 	if retryErr != nil {
 		reason := fmt.Sprintf("generation failed: %v", retryErr)
-		u.sendStreamEvent(ctx, events, StreamEvent{
-			Kind:    StreamEventKindFallback,
-			Payload: reason,
-		})
-		out.Answer = strings.TrimSpace(answerBuilder.String())
-		out.Fallback = true
-		out.Reason = reason
+		u.emitFallback(ctx, events, out, FallbackCodeGenerationFailed, reason, strings.TrimSpace(answerBuilder.String()))
 		return out
 	}
 
@@ -271,13 +234,7 @@ waitHybridChatStream:
 		if finalAnswer != nil && finalAnswer.Fallback {
 			fallbackReason = finalAnswer.Reason
 		}
-		u.sendStreamEvent(ctx, events, StreamEvent{
-			Kind:    StreamEventKindFallback,
-			Payload: fallbackReason,
-		})
-		out.Answer = strings.TrimSpace(answerBuilder.String())
-		out.Fallback = true
-		out.Reason = fallbackReason
+		u.emitFallback(ctx, events, out, rejectedFallbackCode(finalPromptData), fallbackReason, strings.TrimSpace(answerBuilder.String()))
 		return out
 	}
 

@@ -146,7 +146,11 @@ func selectUserTurns(ctx context.Context, pool *pgxpool.Pool, since time.Time, l
 			WINDOW w AS (PARTITION BY m.conversation_id ORDER BY m.created_at, m.id)
 		)
 		SELECT id, conversation_id, content, created_at,
-		       CASE WHEN next_role = 'assistant' THEN next_citations ELSE '[]'::jsonb END
+		       CASE
+		           WHEN next_role != 'assistant' OR next_citations IS NULL THEN '[]'::jsonb
+		           WHEN jsonb_typeof(next_citations) = 'object' THEN coalesce(next_citations->'items', '[]'::jsonb)
+		           ELSE next_citations
+		       END
 		FROM ordered
 		WHERE role = 'user'
 		ORDER BY created_at DESC
@@ -195,7 +199,9 @@ func selectHistory(ctx context.Context, pool *pgxpool.Pool, conversationID strin
 	const query = `
 		SELECT role, content
 		FROM augur_messages
-		WHERE conversation_id = $1 AND created_at < $2
+		WHERE conversation_id = $1
+		  AND created_at < $2
+		  AND jsonb_typeof(citations) != 'object'
 		ORDER BY created_at DESC
 		LIMIT 2`
 

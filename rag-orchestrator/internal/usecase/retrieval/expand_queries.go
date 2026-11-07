@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"rag-orchestrator/internal/domain"
 
@@ -99,19 +101,11 @@ func ExpandQueries(
 		if len(hits) < limit {
 			limit = len(hits)
 		}
-		tagSet := make(map[string]bool)
+		var rawTags []string
 		for i := 0; i < limit; i++ {
-			for _, tag := range hits[i].Tags {
-				if tag != "" {
-					tagSet[tag] = true
-				}
-			}
+			rawTags = append(rawTags, hits[i].Tags...)
 		}
-		for tag := range tagSet {
-			if tag != sc.Query {
-				sc.TagQueries = append(sc.TagQueries, tag)
-			}
-		}
+		sc.TagQueries = filterTagQueries(rawTags, sc.Query)
 
 		logger.Info("tag_search_completed",
 			slog.String("retrieval_id", sc.RetrievalID),
@@ -183,6 +177,73 @@ const minQueryRuneLen = 3
 
 // maxQueryRuneLen is the maximum rune length before a query is considered prompt leakage.
 const maxQueryRuneLen = 200
+
+const (
+	maxTagQueries       = 5
+	minTagRuneLen       = 2
+	maxShortASCIITagLen = 3
+	maxTagRuneLen       = 20
+	maxASCIITagRuneLen  = 40
+)
+
+// filterTagQueries drops generic/noisy tag tokens and caps low-confidence tag expansions.
+func filterTagQueries(tags []string, originalQuery string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	trimmedOriginal := strings.TrimSpace(originalQuery)
+	seen := make(map[string]struct{}, len(tags))
+	filtered := make([]string, 0, min(len(tags), maxTagQueries))
+	for _, raw := range tags {
+		q := strings.TrimSpace(raw)
+		if q == "" || strings.EqualFold(q, trimmedOriginal) {
+			continue
+		}
+		ascii := isASCII(q)
+		maxLen := maxTagRuneLen
+		if ascii {
+			maxLen = maxASCIITagRuneLen
+		}
+		runeLen := utf8.RuneCountInString(q)
+		if runeLen < minTagRuneLen || runeLen > maxLen {
+			continue
+		}
+		if isPureDigits(q) || isDateOnly(q) {
+			continue
+		}
+		if ascii && len(q) <= maxShortASCIITagLen {
+			continue
+		}
+		key := strings.ToLower(q)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		filtered = append(filtered, q)
+		if len(filtered) >= maxTagQueries {
+			break
+		}
+	}
+	return filtered
+}
+
+func isPureDigits(s string) bool {
+	for _, r := range s {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return s != ""
+}
+
+func isASCII(s string) bool {
+	for _, r := range s {
+		if r >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
 
 // filterExpandedQueries removes useless queries and caps the result count.
 // Filters applied in order: markdown scaffolding, romanized Japanese, instruction

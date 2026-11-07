@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -84,8 +85,8 @@ func EmbedAndSearch(
 		g.Go(func() error {
 			bm25Start := time.Now()
 
-			// Build deduplicated query list: original + expanded (for cross-language BM25)
-			queries := bm25Queries(sc.Query, sc.AdditionalQueries)
+			// BM25 results are fused into HitsOriginal, so tag queries must stay out to avoid polluting the original-query ranking.
+			queries := bm25Queries(sc.Query, sc.ExpandedQueries)
 
 			// One HTTP round-trip per query, run together rather than in
 			// sequence: a nine-query expansion used to serialise nine
@@ -179,11 +180,11 @@ func EmbedAndSearch(
 
 // bm25Queries builds a deduplicated list of queries for BM25 search.
 // Includes the original query plus expanded/translated queries for cross-language matching.
-func bm25Queries(original string, additionalQueries []string) []string {
-	queries := make([]string, 0, 1+len(additionalQueries))
+func bm25Queries(original string, expandedQueries []string) []string {
+	queries := make([]string, 0, 1+len(expandedQueries))
 	queries = append(queries, original)
 	seen := map[string]struct{}{original: {}}
-	for _, q := range additionalQueries {
+	for _, q := range expandedQueries {
 		if _, exists := seen[q]; !exists {
 			seen[q] = struct{}{}
 			queries = append(queries, q)
@@ -198,7 +199,7 @@ func buildAdditionalQueries(expandedQueries, tagQueries []string) []string {
 	for _, tq := range tagQueries {
 		exists := false
 		for _, eq := range expandedQueries {
-			if eq == tq {
+			if strings.EqualFold(eq, tq) {
 				exists = true
 				break
 			}

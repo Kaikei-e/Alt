@@ -95,15 +95,14 @@ var (
 		Help:      "Answers for which cross-encoder reranking was configured.",
 	})
 
-	// emptyFallbackTotal counts degraded turns with no answer text. They are
-	// deliberately not written to augur_messages (a blank assistant bubble is
-	// worse than none), so this counter is the only trace they leave.
+	// emptyFallbackTotal counts fallback turns that produced no model text;
+	// those turns are persisted with canned fallback prose.
 	emptyFallbackTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "augur",
 		Name:      "empty_fallback_total",
-		Help: "Fallback turns that produced no answer text and were therefore " +
-			"not persisted as an assistant message.",
+		Help: "Fallback turns that produced no LLM answer text and were " +
+			"persisted with canned fallback prose.",
 	}, []string{"fallback_code"})
 )
 
@@ -177,7 +176,7 @@ func ObserveRerank(applied bool) {
 	}
 }
 
-// IncEmptyFallback records a degraded turn that had no text to persist.
+// IncEmptyFallback records a fallback turn that produced no model text (persisted with canned fallback prose).
 func IncEmptyFallback(fallbackCode string) {
 	if fallbackCode == "" {
 		fallbackCode = "unspecified"

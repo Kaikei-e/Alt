@@ -43,8 +43,8 @@ type AugurMessage struct {
 // history is what stops every quality figure from being computed over the
 // subset of answers that happened to succeed.
 type AugurFallback struct {
-	// Code is the usecase-level FallbackCategory ("retrieval_empty",
-	// "short_under_grounded", …); stable enough to group by.
+	// Code is the usecase-level FallbackCategory ("RETRIEVAL_EMPTY",
+	// "RELEVANCE_INSUFFICIENT", "ANSWER_REJECTED", …); stable enough to group by.
 	Code string `json:"code"`
 	// Reason is the human-readable explanation attached to the turn.
 	Reason string `json:"reason,omitempty"`

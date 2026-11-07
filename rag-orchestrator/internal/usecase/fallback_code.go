@@ -1,6 +1,9 @@
 package usecase
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 // Fallback codes name, in stable machine-readable form, why a turn produced no
 // answer. They travel as the payload of a StreamEventKindFallback event and
@@ -73,5 +76,55 @@ func classifyRetrievalFallback(err error) string {
 		return FallbackCodeRetrievalEmpty
 	default:
 		return FallbackCodeRetrievalFailed
+	}
+}
+
+func rejectedFallbackCode(promptData *promptBuildResult) string {
+	if promptData != nil && promptData.intentType == IntentCausalExplanation {
+		return FallbackCodeCausalTrailWeak
+	}
+	return FallbackCodeAnswerRejected
+}
+
+// Single source of truth so the client fallback frame and Done.FallbackCategory cannot diverge.
+func (u *answerWithRAGUsecase) emitFallback(
+	ctx context.Context,
+	events chan<- StreamEvent,
+	out *AnswerWithRAGOutput,
+	code string,
+	reason string,
+	answer string,
+) {
+	u.sendStreamEvent(ctx, events, StreamEvent{
+		Kind:    StreamEventKindFallback,
+		Payload: code,
+	})
+	out.Answer = answer
+	out.Fallback = true
+	out.FallbackCategory = FallbackCategory(code)
+	out.Reason = reason
+}
+
+// Strings and code grouping mirror alt-frontend-sv/src/lib/utils/augurFallback.ts verbatim.
+func FallbackMessage(code string) string {
+	switch code {
+	case FallbackCodeArticleNotIndexed:
+		return "This article hasn't been indexed yet, so there's nothing to answer from. It should become available once indexing catches up."
+	case FallbackCodeLLMUnavailable,
+		FallbackCodeLLMStreamFailed,
+		FallbackCodeLLMNoOutput,
+		FallbackCodeValidationFailed,
+		FallbackCodeGenerationFailed,
+		FallbackCodeRetrievalFailed:
+		return "Something went wrong on our side while answering. Nothing is wrong with your question — please try again."
+	case FallbackCodeCausalTrailWeak:
+		return "I couldn't establish a consistent enough evidence trail to explain the cause confidently. Please try a more specific question."
+	case FallbackCodeRetrievalEmpty,
+		FallbackCodeRelevanceLow,
+		FallbackCodeAnswerDeclined,
+		FallbackCodeAnswerRejected:
+		return "Not enough indexed evidence was available yet. Please try a more specific question."
+	default:
+		return "I couldn't find enough information to answer that properly. Please try a more specific question."
 	}
 }

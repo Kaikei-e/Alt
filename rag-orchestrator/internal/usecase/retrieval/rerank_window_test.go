@@ -141,6 +141,59 @@ func TestRerank_CapsCandidatesAtMaxCandidates(t *testing.T) {
 		"the window must keep the best-scoring candidates, in retrieval order")
 }
 
+func TestRerank_OriginalHitsSurviveWhenExpandedHitsHaveHigherSummedRRF(t *testing.T) {
+	origHits := make([]domain.SearchResult, 10)
+	for i := range origHits {
+		origHits[i] = domain.SearchResult{
+			Chunk:     domain.RagChunk{ID: uuid.New(), Content: fmt.Sprintf("Example Model 15 overview chunk %d", i)},
+			ArticleID: fmt.Sprintf("art-orig-%d", i),
+			Title:     fmt.Sprintf("Example Model 15 Article %d", i),
+			Score:     float32(2.0 / (60.0 + float64(i+1))),
+			ScoreKind: domain.ScoreKindRRF,
+		}
+	}
+
+	expHits := make([]retrieval.ContextItem, 45)
+	for i := range expHits {
+		expHits[i] = retrieval.ContextItem{
+			ChunkID:   uuid.New(),
+			ChunkText: fmt.Sprintf("Unrelated synthetic chunk %d", i),
+			ArticleID: fmt.Sprintf("art-exp-%d", i),
+			Title:     fmt.Sprintf("Unrelated Article %d", i),
+			Score:     0.145 - float32(i)*0.001,
+			ScoreKind: domain.ScoreKindRRF,
+		}
+	}
+
+	sc := &retrieval.StageContext{
+		RetrievalID:  "rerank-starvation",
+		Query:        "Example Model 15 overview",
+		HitsOriginal: origHits,
+		HitsExpanded: expHits,
+	}
+	reranker := &capturingReranker{}
+
+	retrieval.Rerank(context.Background(), sc, reranker, retrieval.RerankConfig{
+		Enabled:       true,
+		TopK:          10,
+		MaxCandidates: 40,
+		Timeout:       time.Second,
+	}, discardLogger())
+
+	require.Len(t, reranker.got, 40)
+	assert.Equal(t, "Example Model 15 overview chunk 0", reranker.got[0].Content,
+		"top original-query hit must lead the rerank candidate pool")
+
+	gotContents := make(map[string]bool, len(reranker.got))
+	for _, c := range reranker.got {
+		gotContents[c.Content] = true
+	}
+	for i, orig := range origHits {
+		assert.True(t, gotContents[orig.Chunk.Content],
+			"original hit %d must be present in the 40-candidate rerank pool despite smaller single-list RRF score", i)
+	}
+}
+
 // TestRerank_MixedHits_KeepsDedupIdentity preserves the behaviour rerank_test.go
 // pins: BM25 hits carry no chunk id, so identity falls back to the article id.
 func TestRerank_MixedHits_KeepsDedupIdentity(t *testing.T) {
