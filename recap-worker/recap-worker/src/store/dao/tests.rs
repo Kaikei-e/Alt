@@ -1335,3 +1335,184 @@ async fn test_delete_old_jobs_preserves_card_snapshots() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_delete_old_jobs_preserves_card_rejections_without_snapshot() -> anyhow::Result<()> {
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await?;
+
+    pool.execute(
+        r"
+        CREATE TABLE IF NOT EXISTS recap_jobs (
+            job_id UUID PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'pending',
+            last_stage TEXT,
+            kicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            note TEXT,
+            trigger_source TEXT NOT NULL DEFAULT 'system',
+            window_days INTEGER NOT NULL DEFAULT 7,
+            user_id UUID
+        );
+        ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS trigger_source TEXT NOT NULL DEFAULT 'system';
+        ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS window_days INTEGER NOT NULL DEFAULT 7;
+        ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS user_id UUID;
+        CREATE TABLE IF NOT EXISTS recap_card_snapshots (
+            job_id UUID PRIMARY KEY REFERENCES recap_jobs(job_id),
+            from_ts TIMESTAMPTZ NOT NULL,
+            to_ts TIMESTAMPTZ NOT NULL,
+            feed_ids UUID[] NOT NULL DEFAULT '{}',
+            read_feed_ids UUID[] NOT NULL DEFAULT '{}',
+            previous_job_id UUID,
+            previous_cards JSONB NOT NULL DEFAULT '[]',
+            params_version TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS recap_card_candidates (
+            id UUID PRIMARY KEY,
+            job_id UUID NOT NULL REFERENCES recap_jobs(job_id),
+            rank INT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS recap_cards (
+            id UUID PRIMARY KEY,
+            job_id UUID NOT NULL REFERENCES recap_jobs(job_id),
+            rank INT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS recap_card_job_stats (
+            job_id UUID PRIMARY KEY REFERENCES recap_jobs(job_id)
+        );
+        CREATE TABLE IF NOT EXISTS recap_eval_windows (
+            id UUID PRIMARY KEY,
+            snapshot_job_id UUID NOT NULL REFERENCES recap_jobs(job_id)
+        );
+        CREATE TABLE IF NOT EXISTS recap_card_rejections (
+            id UUID PRIMARY KEY,
+            job_id UUID NOT NULL REFERENCES recap_jobs(job_id),
+            candidate_id UUID NOT NULL,
+            stage TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            attempt INT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        ",
+    )
+    .await?;
+
+    let old_job_id = Uuid::new_v4();
+    let rejected_job_id = Uuid::new_v4();
+    let rejection_id = Uuid::new_v4();
+
+    sqlx::query(
+        r"
+        INSERT INTO recap_jobs (
+            job_id, status, last_stage, kicked_at, updated_at, note, trigger_source, window_days
+        )
+        VALUES
+            ($1, 'completed', NULL, NOW() - INTERVAL '30 days', NOW() - INTERVAL '30 days', NULL, 'system', 3),
+            ($2, 'failed', 'generate', NOW() - INTERVAL '30 days', NOW() - INTERVAL '30 days', NULL, 'cards', 3)
+        ON CONFLICT (job_id) DO NOTHING
+        ",
+    )
+    .bind(old_job_id)
+    .bind(rejected_job_id)
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r"
+        INSERT INTO recap_card_rejections (id, job_id, candidate_id, stage, reason, attempt)
+        VALUES ($1, $2, $3, 'generate', 'invalid_json', 1)
+        ON CONFLICT (id) DO NOTHING
+        ",
+    )
+    .bind(rejection_id)
+    .bind(rejected_job_id)
+    .bind(Uuid::new_v4())
+    .execute(&pool)
+    .await?;
+
+    let dao = UnifiedDao::new(pool.clone());
+    let deleted = dao.delete_old_jobs(14).await?;
+    assert_eq!(deleted, 1, "delete_old_jobs must delete only the unreferenced old job");
+
+    let old_exists: bool =
+        sqlx::query_scalar(r"SELECT EXISTS (SELECT 1 FROM recap_jobs WHERE job_id = $1)")
+            .bind(old_job_id)
+            .fetch_one(&pool)
+            .await?;
+    assert!(!old_exists, "old unreferenced job must be deleted");
+
+    let rejected_exists: bool =
+        sqlx::query_scalar(r"SELECT EXISTS (SELECT 1 FROM recap_jobs WHERE job_id = $1)")
+            .bind(rejected_job_id)
+            .fetch_one(&pool)
+            .await?;
+    assert!(
+        rejected_exists,
+        "job referenced in recap_card_rejections without snapshot must be preserved"
+    );
+
+    let _ = sqlx::query("DELETE FROM recap_card_rejections WHERE id = $1")
+        .bind(rejection_id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .bind(rejected_job_id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .bind(old_job_id)
+        .execute(&pool)
+        .await;
+
+    Ok(())
+}
+
+#[test]
+fn test_delete_old_jobs_sql_excludes_all_non_cascading_references() {
+    let normalized = super::job::RecapDao::DELETE_OLD_JOBS_SQL
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let expected_guards = [
+        (
+            "recap_card_snapshots",
+            "SELECT 1 FROM recap_card_snapshots s WHERE s.job_id = recap_jobs.job_id",
+        ),
+        (
+            "recap_card_candidates",
+            "SELECT 1 FROM recap_card_candidates c WHERE c.job_id = recap_jobs.job_id",
+        ),
+        (
+            "recap_cards",
+            "SELECT 1 FROM recap_cards rc WHERE rc.job_id = recap_jobs.job_id",
+        ),
+        (
+            "recap_card_job_stats",
+            "SELECT 1 FROM recap_card_job_stats js WHERE js.job_id = recap_jobs.job_id",
+        ),
+        (
+            "recap_eval_windows",
+            "SELECT 1 FROM recap_eval_windows ew WHERE ew.snapshot_job_id = recap_jobs.job_id",
+        ),
+        (
+            "recap_card_rejections",
+            "SELECT 1 FROM recap_card_rejections cr WHERE cr.job_id = recap_jobs.job_id",
+        ),
+    ];
+
+    for (table, subquery) in expected_guards {
+        let compact = format!("NOT EXISTS ({subquery})");
+        let spaced = format!("NOT EXISTS ( {subquery} )");
+        assert!(
+            normalized.contains(&compact) || normalized.contains(&spaced),
+            "DELETE_OLD_JOBS_SQL must exclude jobs referenced by {table}: missing `{subquery}` in `{normalized}`"
+        );
+    }
+}
