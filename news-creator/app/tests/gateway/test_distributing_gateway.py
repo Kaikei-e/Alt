@@ -69,13 +69,20 @@ def _make_local_gateway():
     gw.chat_generate = AsyncMock(return_value={"message": {"content": "local chat"}})
 
     gw.hold_slot_calls = []
+    gw.active_slot_count = 0
+    gw.slot_exit_count = 0
     gw.local_cancel_event = asyncio.Event()
     gw.local_task_id = "local-slot-task-id"
 
     @asynccontextmanager
     async def _hold_slot(is_high_priority=False):
         gw.hold_slot_calls.append(is_high_priority)
-        yield 0.1, gw.local_cancel_event, gw.local_task_id
+        gw.active_slot_count += 1
+        try:
+            yield 0.1, gw.local_cancel_event, gw.local_task_id
+        finally:
+            gw.active_slot_count -= 1
+            gw.slot_exit_count += 1
 
     gw.hold_slot = _hold_slot
 
@@ -531,3 +538,193 @@ async def test_passthrough_methods_and_queue_status():
         {"url": target_a.base_url, "model": target_a.model, "healthy": True}
     ]
     driver.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_local_fallback_reuses_single_local_slot_across_retries_and_exits_on_outer_exit():
+    """F1: No usable targets + 3 generate_raw calls in one deferred slot acquires local.hold_slot(False) once and releases on outer exit."""
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[])
+    prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
+
+    async with gw.hold_slot(is_high_priority=False):
+        r1 = await gw.generate_raw(prompt)
+        r2 = await gw.generate_raw(prompt)
+        r3 = await gw.generate_raw(prompt)
+        assert local.hold_slot_calls == [False]
+        assert local.active_slot_count == 1
+        assert local.slot_exit_count == 0
+
+    assert local.active_slot_count == 0
+    assert local.slot_exit_count == 1
+    assert [r1.response, r2.response, r3.response] == [
+        "local raw response",
+        "local raw response",
+        "local raw response",
+    ]
+    assert local.generate_raw.await_count == 3
+    for call in local.generate_raw.await_args_list:
+        assert call.kwargs["cancel_event"] is local.local_cancel_event
+        assert call.kwargs["task_id"] == local.local_task_id
+    # Once local fallback is entered on call 1, subsequent calls in the same slot stay local
+    assert hc.acquire_idle_target.call_count == 1
+    driver.chat.assert_not_awaited()
+
+
+@pytest.mark.parametrize("exc_cls", [RuntimeError, asyncio.CancelledError])
+@pytest.mark.asyncio
+async def test_local_fallback_slot_released_on_exception_or_cancellation(exc_cls):
+    """F1: The reused local slot inside a deferred BE slot is released when the outer hold_slot exits on exception or cancellation."""
+    gw, local, _hc, _driver = _make_gateway(enabled=True, targets=[])
+    prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
+
+    with pytest.raises(exc_cls):
+        async with gw.hold_slot(is_high_priority=False):
+            await gw.generate_raw(prompt)
+            assert local.active_slot_count == 1
+            raise exc_cls("abort inside deferred slot")
+
+    assert local.hold_slot_calls == [False]
+    assert local.active_slot_count == 0
+    assert local.slot_exit_count == 1
+
+
+@pytest.mark.asyncio
+async def test_nested_rt_hold_slot_inside_deferred_be_slot_clears_and_restores_deferred_flag():
+    """F5: hold_slot(True) inside hold_slot(False) clears the deferred flag for its duration and restores it after."""
+    target_a = _target_a()
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    rt_prompt = "<|turn>user\nInteractive RT prompt.<turn|>\n<|turn>model\n"
+    be_prompt = "<|turn>user\nBatch BE prompt.<turn|>\n<|turn>model\n"
+
+    async with gw.hold_slot(is_high_priority=False):
+        async with gw.hold_slot(is_high_priority=True) as (
+            _wait_time,
+            rt_cancel_event,
+            rt_task_id,
+        ):
+            rt_result = await gw.generate_raw(
+                rt_prompt,
+                cancel_event=rt_cancel_event,
+                task_id=rt_task_id,
+            )
+
+        assert rt_result.response == "local raw response"
+        assert local.hold_slot_calls == [True]
+        local.generate_raw.assert_awaited_once()
+        assert (
+            local.generate_raw.await_args.kwargs["cancel_event"]
+            is local.local_cancel_event
+        )
+        assert local.generate_raw.await_args.kwargs["task_id"] == local.local_task_id
+        driver.chat.assert_not_awaited()
+
+        # After nested RT hold_slot exits, outer deferred BE slot is restored
+        be_result = await gw.generate_raw(be_prompt)
+
+    assert be_result.response == "remote chat response"
+    driver.chat.assert_awaited_once()
+    assert local.hold_slot_calls == [True]
+
+
+@pytest.mark.asyncio
+async def test_nested_disabled_passthrough_hold_slot_clears_and_restores_deferred_flag():
+    """F5: A disabled gateway's hold_slot clears the deferred flag for its duration and restores it after."""
+    target_a = _target_a()
+    outer_gw, _outer_local, _outer_hc, outer_driver = _make_gateway(
+        enabled=True, targets=[target_a]
+    )
+    disabled_gw, disabled_local, disabled_hc, disabled_driver = _make_gateway(
+        enabled=False, targets=[target_a]
+    )
+    prompt = "<|turn>user\nSummarize.<turn|>\n<|turn>model\n"
+
+    async with outer_gw.hold_slot(is_high_priority=False):
+        async with disabled_gw.hold_slot(is_high_priority=False) as (
+            _w,
+            cancel_event,
+            task_id,
+        ):
+            inner_res = await disabled_gw.generate_raw(
+                prompt, cancel_event=cancel_event, task_id=task_id
+            )
+        assert inner_res.response == "local raw response"
+        disabled_local.generate_raw.assert_awaited_once()
+        disabled_hc.acquire_idle_target.assert_not_called()
+        disabled_driver.chat.assert_not_awaited()
+
+        outer_res = await outer_gw.generate_raw(prompt)
+
+    assert outer_res.response == "remote chat response"
+    outer_driver.chat.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_request_rejected_error_skips_mark_failure_records_rejected_and_tries_next_then_local(
+    metrics_reader,
+):
+    """F6: On RemoteRequestRejectedError, release target without mark_failure, record reason='rejected', try next target, then local."""
+    from news_creator.gateway.remote_chat_driver import RemoteRequestRejectedError
+
+    target_a = _target_a()
+    target_b = _target_b()
+    gw, local, hc, driver = _make_gateway(
+        enabled=True,
+        targets=[target_a, target_b],
+    )
+    driver.chat = AsyncMock(
+        side_effect=[
+            RemoteRequestRejectedError("HTTP 400 from target A"),
+            RuntimeError("HTTP 500 from target B"),
+        ]
+    )
+    prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
+
+    async with gw.hold_slot(is_high_priority=False):
+        result = await gw.generate_raw(prompt)
+
+    assert result.response == "local raw response"
+    assert driver.chat.await_count == 2
+    hc.release_target.assert_any_call(target_a)
+    # mark_failure must NOT be called for target_a (rejected), only for target_b (plain RuntimeError)
+    hc.mark_failure.assert_called_once_with(target_b)
+    local.generate_raw.assert_awaited_once()
+
+    rejected_fallbacks = _match(
+        _metric_points(metrics_reader, "newscreator.distributed_be.fallbacks"),
+        from_remote_url=target_a.base_url,
+        to="next_remote",
+        reason="rejected",
+    )
+    assert len(rejected_fallbacks) == 1
+    assert rejected_fallbacks[0].value == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_error_during_remote_chat_releases_target_and_propagates():
+    """T2: CancelledError during remote chat releases the target (busy=False, in_flight_count=0) and propagates."""
+    from news_creator.gateway.remote_health_checker import RemoteHealthChecker
+
+    target_a = _target_a()
+    local = _make_local_gateway()
+    hc = RemoteHealthChecker(targets=[target_a])
+    hc._states[target_a]["healthy"] = True
+    driver = _make_remote_driver()
+    driver.chat = AsyncMock(side_effect=asyncio.CancelledError())
+
+    gw = DistributingGateway(
+        local_gateway=local,
+        health_checker=hc,
+        remote_driver=driver,
+        enabled=True,
+    )
+    prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
+
+    with pytest.raises(asyncio.CancelledError):
+        async with gw.hold_slot(is_high_priority=False):
+            await gw.generate_raw(prompt)
+
+    state = hc.status()[0]
+    assert state["busy"] is False
+    assert state["in_flight_count"] == 0
+    assert state["healthy"] is True
+    local.generate_raw.assert_not_awaited()

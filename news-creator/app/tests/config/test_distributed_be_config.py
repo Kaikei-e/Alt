@@ -122,6 +122,21 @@ def test_parse_distributed_be_targets_rejects_duplicate_base_url_and_model():
             "1",
             "1024",
         ),
+        ("http://u:p@gw.example:8080|m|8192", "0", ""),
+        ("http://user@gw.example:8080|m|8192", "0", ""),
+        ("http://gw.example:8080/v1|m|8192", "0", ""),
+        ("http://gw.example:8080/api/v1/|m|8192", "0", ""),
+        ("http://gw.example:8080?foo=bar|m|8192", "0", ""),
+        ("http://gw.example:8080#frag|m|8192", "0", ""),
+        ("http://gw.example:8080/;param=1|m|8192", "0", ""),
+        ("http://gw.example :8080|m|8192", "0", ""),
+        ("http://gw.example:8080\x00|m|8192", "0", ""),
+        ("http://gw.example:8080\x1f|m|8192", "0", ""),
+        (
+            "http://gw.example:8080|m-a|8192,http://u:p@gw.example:8080|m-b|8192",
+            "1",
+            "",
+        ),
     ],
 )
 def test_parse_distributed_be_targets_invalid_entry_names_index_and_problem(
@@ -262,3 +277,36 @@ def test_distributed_be_reasoning_effort_invalid_raises_value_error_when_enabled
 
     with pytest.raises(ValueError, match="DISTRIBUTED_BE_REASONING_EFFORT"):
         NewsCreatorConfig()
+
+
+def test_distributed_be_disabled_ignores_malformed_targets_and_reasoning_effort(
+    monkeypatch,
+):
+    """When DISTRIBUTED_BE_ENABLED=false, neither DISTRIBUTED_BE_TARGETS nor DISTRIBUTED_BE_REASONING_EFFORT is parsed even if malformed."""
+    monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "false")
+    monkeypatch.setenv("DISTRIBUTED_BE_TARGETS", "malformed-not-a-valid-target")
+    monkeypatch.setenv("DISTRIBUTED_BE_REASONING_EFFORT", "turbo-invalid")
+
+    config = NewsCreatorConfig()
+
+    assert config.distributed_be_enabled is False
+    assert config.distributed_be_targets == []
+    assert config.distributed_be_reasoning_effort is None
+
+
+def test_distributed_be_disabled_ignores_populated_targets_and_reasoning_effort(
+    monkeypatch,
+):
+    """When DISTRIBUTED_BE_ENABLED=false, populated targets and effort resolve to [] and None."""
+    monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "false")
+    monkeypatch.setenv(
+        "DISTRIBUTED_BE_TARGETS",
+        "http://router.example:8080|provider-a/model-a:latest|32768",
+    )
+    monkeypatch.setenv("DISTRIBUTED_BE_REASONING_EFFORT", "high")
+
+    config = NewsCreatorConfig()
+
+    assert config.distributed_be_enabled is False
+    assert config.distributed_be_targets == []
+    assert config.distributed_be_reasoning_effort is None

@@ -1,5 +1,6 @@
 """Tests for RemoteHealthChecker rewritten around RemoteTarget and /v1/models."""
 
+import asyncio
 import json
 import logging
 from unittest.mock import AsyncMock, MagicMock
@@ -17,16 +18,62 @@ class _StubGetContext:
         self._response = response
 
     async def __aenter__(self):
+        reset_stream = getattr(self._response, "_reset_stream", None)
+        if callable(reset_stream):
+            reset_stream()
         return self._response
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
 
 
-def _make_response(status: int = 200, body: str = ""):
+def _make_response(
+    status: int = 200,
+    body: str | bytes = "",
+    *,
+    headers: dict[str, str] | None = None,
+):
+    raw_bytes = body.encode("utf-8") if isinstance(body, str) else bytes(body)
     resp = MagicMock()
     resp.status = status
-    resp.text = AsyncMock(return_value=body)
+    effective_headers = (
+        dict(headers)
+        if headers is not None
+        else {"Content-Length": str(len(raw_bytes))}
+    )
+    resp.headers = effective_headers
+    cl = effective_headers.get("Content-Length")
+    resp.content_length = int(cl) if cl is not None else None
+
+    async def _text(encoding: str | None = "utf-8", errors: str = "strict") -> str:
+        return raw_bytes.decode(encoding or "utf-8", errors=errors)
+
+    offset = 0
+
+    def _reset_stream() -> None:
+        nonlocal offset
+        offset = 0
+
+    async def _content_read(n: int = -1) -> bytes:
+        nonlocal offset
+        if n is None or n < 0:
+            chunk = raw_bytes[offset:]
+            offset = len(raw_bytes)
+            return chunk
+        chunk = raw_bytes[offset : offset + n]
+        offset += len(chunk)
+        return chunk
+
+    async def _iter_chunked(n: int):
+        for i in range(0, len(raw_bytes), n):
+            yield raw_bytes[i : i + n]
+
+    resp._reset_stream = _reset_stream
+    resp.text = AsyncMock(side_effect=_text)
+    resp.read = AsyncMock(return_value=raw_bytes)
+    resp.content = MagicMock()
+    resp.content.read = AsyncMock(side_effect=_content_read)
+    resp.content.iter_chunked = _iter_chunked
     return resp
 
 
@@ -362,3 +409,289 @@ async def test_start_creates_session_without_authorization_header():
         checker._check_all.assert_awaited_once()
     finally:
         await checker.stop()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_failure_cooldown_escalates_across_4_failures_up_to_cap_and_resets_on_mark_success(
+    monkeypatch,
+):
+    """4 consecutive mark_failure calls escalate cooldown up to the cap; probes do not clear it; mark_success resets it."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+        max_cooldown_seconds=360,
+    )
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target.model}]}),
+            ),
+        }
+    )
+
+    clock = 1000.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+
+    expected_cooldowns = [60.0, 120.0, 240.0, 360.0]
+    observed_cooldowns: list[float] = []
+
+    for expected_cd in expected_cooldowns:
+        acquired = hc.acquire_idle_target(lambda _: True)
+        assert acquired == target
+        t_fail = clock
+        hc.mark_failure(target)
+
+        # 1 second before cooldown_until: still in cooldown, not probed or acquirable
+        clock = t_fail + expected_cd - 1.0
+        await hc._check_all()
+        assert hc.acquire_idle_target(lambda _: True) is None
+
+        # After cooldown_until: probe succeeds and target becomes acquirable again
+        clock = t_fail + expected_cd + 1.0
+        await hc._check_all()
+        observed_cooldowns.append(expected_cd)
+
+    assert (
+        observed_cooldowns[0]
+        < observed_cooldowns[1]
+        < observed_cooldowns[2]
+        < observed_cooldowns[3]
+    )
+    assert observed_cooldowns[-1] == 360.0
+
+    # mark_success resets the dispatch failure counter and cooldown back to base (60s)
+    recovered = hc.acquire_idle_target(lambda _: True)
+    assert recovered == target
+    hc.mark_success(target)
+
+    again = hc.acquire_idle_target(lambda _: True)
+    assert again == target
+    t_fail_after_success = clock
+    hc.mark_failure(target)
+
+    clock = t_fail_after_success + 59.0
+    await hc._check_all()
+    assert hc.acquire_idle_target(lambda _: True) is None
+
+    clock = t_fail_after_success + 61.0
+    await hc._check_all()
+    assert hc.acquire_idle_target(lambda _: True) == target
+
+
+@pytest.mark.asyncio
+async def test_probe_success_during_cooldown_keeps_target_unacquirable(monkeypatch):
+    """A /v1/models probe that lists the model during an active dispatch cooldown must not clear the cooldown."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+    )
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target.model}]}),
+            ),
+        }
+    )
+
+    clock = 1000.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    await hc._check_all()
+    acquired = hc.acquire_idle_target(lambda _: True)
+    assert acquired == target
+
+    # Dispatch failure at t=1000 sets cooldown_until = 1060
+    hc.mark_failure(target)
+
+    # Probe succeeds at t=1020 during active cooldown -> target must remain unacquirable
+    clock = 1020.0
+    await hc._probe_base_url(target.base_url, [target])
+    assert hc.acquire_idle_target(lambda _: True) is None
+
+    clock = 1059.0
+    assert hc.acquire_idle_target(lambda _: True) is None
+
+
+@pytest.mark.asyncio
+async def test_sibling_probe_on_same_base_url_does_not_revive_cooled_down_target(
+    monkeypatch,
+):
+    """A /v1/models probe triggered by a sibling target on the same base_url must not revive a cooled-down target."""
+    checker, targets = _make_checker()
+    clock = 1000.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    await _make_all_healthy(checker, targets)
+
+    # Acquire targets[0] and mark it failed at t=1010 (cooldown 60s -> until 1070)
+    clock = 1010.0
+    acquired = checker.acquire_idle_target(lambda t: t == targets[0])
+    assert acquired == targets[0]
+    checker.mark_failure(targets[0])
+    assert checker.acquire_idle_target(lambda t: t == targets[0]) is None
+
+    # At t=1035, sibling targets[1] on the same base_url is due for its 30s health probe
+    clock = 1035.0
+    await checker._check_all()
+
+    # Cooled-down targets[0] must remain unacquirable and unhealthy; sibling targets[1] stays acquirable
+    assert checker.acquire_idle_target(lambda t: t == targets[0]) is None
+    assert checker.status()[0]["healthy"] is False
+    assert checker.acquire_idle_target(lambda t: t == targets[1]) == targets[1]
+
+
+@pytest.mark.asyncio
+async def test_probe_non_utf8_200_body_marks_targets_unhealthy_without_raising():
+    """A 200 /v1/models body with invalid UTF-8 bytes marks targets unhealthy without leaking UnicodeDecodeError."""
+    checker, targets = _make_checker()
+    await _make_all_healthy(checker, targets)
+
+    checker._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200, b"\xff\xfe\xfdnot-valid-utf8"
+            ),
+            "http://router-b.example:8080/v1/models": _make_response(
+                200, b"\x80\x81\x82"
+            ),
+        }
+    )
+
+    await checker._probe_base_url("http://router-a.example:8080", targets[:2])
+    await checker._probe_base_url("http://router-b.example:8080", targets[2:])
+
+    status = checker.status()
+    assert all(s["healthy"] is False for s in status)
+
+
+@pytest.mark.asyncio
+async def test_background_loop_logs_and_continues_on_unexpected_exception(caplog):
+    """The background loop catches and logs any Exception from a probe cycle and continues until CancelledError."""
+    checker, _targets = _make_checker()
+    checker._interval_seconds = 0.01
+    second_cycle_reached = asyncio.Event()
+    calls = 0
+
+    async def _flaky_check_all():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("unexpected probe cycle failure")
+        second_cycle_reached.set()
+
+    checker._check_all = _flaky_check_all  # type: ignore[method-assign]
+
+    with caplog.at_level(
+        logging.ERROR, logger="news_creator.gateway.remote_health_checker"
+    ):
+        task = asyncio.create_task(checker._loop())
+        try:
+            await asyncio.wait_for(second_cycle_reached.wait(), timeout=1.0)
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    assert calls >= 2
+
+
+@pytest.mark.asyncio
+async def test_start_leaves_targets_unhealthy_when_initial_probe_raises_unexpected_exception(
+    monkeypatch,
+):
+    """A failing probe during start() leaves targets unhealthy instead of failing startup."""
+    checker, _targets = _make_checker()
+
+    def _get_raising(url: str, **kwargs):
+        raise RuntimeError("unexpected error during initial probe")
+
+    fake_session = MagicMock()
+    fake_session.closed = False
+    fake_session.headers = {}
+    fake_session.get = MagicMock(side_effect=_get_raising)
+    fake_session.close = AsyncMock()
+
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.aiohttp.ClientSession",
+        lambda *args, **kwargs: fake_session,
+    )
+
+    await checker.start()
+    try:
+        status = checker.status()
+        assert all(s["healthy"] is False for s in status)
+        assert checker._task is not None
+    finally:
+        await checker.stop()
+
+
+@pytest.mark.parametrize("with_content_length", [True, False])
+@pytest.mark.asyncio
+async def test_probe_response_body_over_1_mib_marks_targets_unhealthy(
+    with_content_length: bool,
+):
+    """A 200 /v1/models body larger than 1 MiB marks targets unhealthy."""
+    checker, targets = _make_checker()
+    await _make_all_healthy(checker, targets)
+
+    one_mib = 1 * 1024 * 1024
+    padding = "p" * (one_mib + 64)
+    oversized_body = json.dumps(
+        {
+            "object": "list",
+            "data": [
+                {"id": targets[0].model},
+                {"id": targets[1].model},
+                {"id": padding},
+            ],
+        }
+    ).encode("utf-8")
+    assert len(oversized_body) > one_mib
+    headers = (
+        {"Content-Length": str(len(oversized_body))} if with_content_length else {}
+    )
+
+    checker._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200, oversized_body, headers=headers
+            ),
+        }
+    )
+
+    await checker._probe_base_url("http://router-a.example:8080", targets[:2])
+
+    status = checker.status()
+    assert status[0]["healthy"] is False
+    assert status[1]["healthy"] is False

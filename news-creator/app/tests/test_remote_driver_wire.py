@@ -379,3 +379,64 @@ async def test_explicit_auth_disabled_sends_no_authorization_header(
     await driver.cleanup()
     await stream_driver.cleanup()
     await remote_driver.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_remote_chat_driver_wire_rejects_response_body_just_over_4_mib():
+    """S1: Wire server returning a /v1/chat/completions body just over 4 MiB raises RuntimeError."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+
+    four_mib = 4 * 1024 * 1024
+    oversized_content = "x" * (four_mib + 64)
+    oversized_payload = json.dumps(
+        {
+            "id": "chatcmpl-wire-oversized",
+            "object": "chat.completion",
+            "model": "provider-a/model-a:latest",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": oversized_content},
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+    ).encode("utf-8")
+    assert len(oversized_payload) > four_mib
+
+    async def handle_v1_chat(_request):
+        return web.Response(
+            status=200,
+            body=oversized_payload,
+            content_type="application/json",
+        )
+
+    app = web.Application()
+    app.router.add_post("/v1/chat/completions", handle_v1_chat)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        target = RemoteTarget(
+            base_url=f"http://127.0.0.1:{port}",
+            model="provider-a/model-a:latest",
+            num_ctx=32768,
+        )
+        remote_driver = RemoteChatDriver(timeout_seconds=5, reasoning_effort=None)
+        await remote_driver.initialize()
+        try:
+            with pytest.raises(RuntimeError):
+                await remote_driver.chat(
+                    target,
+                    [{"role": "user", "content": "hello"}],
+                    max_tokens=128,
+                    temperature=0.5,
+                    top_p=0.85,
+                )
+        finally:
+            await remote_driver.cleanup()
+    finally:
+        await runner.cleanup()

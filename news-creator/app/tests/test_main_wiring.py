@@ -375,6 +375,63 @@ async def test_dependency_container_initializes_and_cleans_up_local_gateway_exac
     assert container.ollama_gateway.cleanup_count == 1
 
 
+@pytest.mark.asyncio
+async def test_dependency_container_real_distributing_gateway_lifecycle_initializes_and_cleans_up_local_once(
+    monkeypatch,
+):
+    """T1: With DISTRIBUTED_BE_ENABLED=true and the real DistributingGateway, local gateway initialize/cleanup each run once."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    import main as main_module
+    from news_creator.gateway.distributing_gateway import DistributingGateway
+    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+    from news_creator.gateway.remote_health_checker import RemoteHealthChecker
+
+    monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
+    monkeypatch.setenv(
+        "DISTRIBUTED_BE_TARGETS",
+        "http://router.example:8080|provider-a/model-a:latest|32768",
+    )
+    monkeypatch.setenv("INFERENCE_AUTH", "disabled")
+    monkeypatch.setenv("CACHE_ENABLED", "false")
+
+    monkeypatch.setattr(main_module, "OllamaGateway", _DummyGateway)
+    monkeypatch.setattr(main_module, "ModelWarmupService", _DummyWarmupService)
+    monkeypatch.setattr(main_module, "RerankUsecase", _DummyRerankUsecase)
+
+    def _fake_session(*_args, **_kwargs):
+        sess = MagicMock()
+        sess.closed = False
+        sess.headers = {}
+        sess.close = AsyncMock()
+        return sess
+
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_chat_driver.aiohttp.ClientSession",
+        _fake_session,
+    )
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.aiohttp.ClientSession",
+        _fake_session,
+    )
+    monkeypatch.setattr(
+        RemoteHealthChecker,
+        "_check_all",
+        AsyncMock(),
+    )
+
+    container = main_module.DependencyContainer()
+    assert isinstance(container.llm_provider, DistributingGateway)
+    assert isinstance(container.llm_provider._remote_driver, RemoteChatDriver)
+    assert isinstance(container.llm_provider._health_checker, RemoteHealthChecker)
+
+    await container.initialize()
+    assert container.ollama_gateway.initialize_count == 1
+
+    await container.cleanup()
+    assert container.ollama_gateway.cleanup_count == 1
+
+
 def test_dependency_container_fails_fast_when_distributed_be_enabled_with_empty_targets(
     monkeypatch,
 ):

@@ -31,6 +31,9 @@ class _StubPostContext:
         self._response = response
 
     async def __aenter__(self):
+        reset_stream = getattr(self._response, "_reset_stream", None)
+        if callable(reset_stream):
+            reset_stream()
         return self._response
 
     async def __aexit__(self, exc_type, exc, tb):
@@ -48,10 +51,53 @@ def _make_mock_session(response=None, side_effect=None):
     return session
 
 
-def _make_mock_response(status: int = 200, body: str = ""):
+def _make_mock_response(
+    status: int = 200,
+    body: str | bytes = "",
+    *,
+    headers: dict[str, str] | None = None,
+):
+    raw_bytes = body.encode("utf-8") if isinstance(body, str) else bytes(body)
     resp = MagicMock()
     resp.status = status
-    resp.text = AsyncMock(return_value=body)
+    effective_headers = (
+        dict(headers)
+        if headers is not None
+        else {"Content-Length": str(len(raw_bytes))}
+    )
+    resp.headers = effective_headers
+    cl = effective_headers.get("Content-Length")
+    resp.content_length = int(cl) if cl is not None else None
+
+    async def _text(encoding: str | None = "utf-8", errors: str = "strict") -> str:
+        return raw_bytes.decode(encoding or "utf-8", errors=errors)
+
+    offset = 0
+
+    def _reset_stream() -> None:
+        nonlocal offset
+        offset = 0
+
+    async def _content_read(n: int = -1) -> bytes:
+        nonlocal offset
+        if n is None or n < 0:
+            chunk = raw_bytes[offset:]
+            offset = len(raw_bytes)
+            return chunk
+        chunk = raw_bytes[offset : offset + n]
+        offset += len(chunk)
+        return chunk
+
+    async def _iter_chunked(n: int):
+        for i in range(0, len(raw_bytes), n):
+            yield raw_bytes[i : i + n]
+
+    resp._reset_stream = _reset_stream
+    resp.text = AsyncMock(side_effect=_text)
+    resp.read = AsyncMock(return_value=raw_bytes)
+    resp.content = MagicMock()
+    resp.content.read = AsyncMock(side_effect=_content_read)
+    resp.content.iter_chunked = _iter_chunked
     return resp
 
 
@@ -336,6 +382,148 @@ async def test_chat_client_error_and_timeout_raise_runtime_error(exc: BaseExcept
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
     driver._session = _make_mock_session(side_effect=exc)
+
+    with pytest.raises(RuntimeError):
+        await driver.chat(
+            target,
+            [{"role": "user", "content": "Article"}],
+            max_tokens=500,
+            temperature=0.3,
+            top_p=0.85,
+        )
+
+
+@pytest.mark.parametrize("status", [400, 404, 422])
+@pytest.mark.asyncio
+async def test_chat_4xx_rejection_raises_remote_request_rejected_error(status: int):
+    """HTTP 4xx other than 408/429 raises RemoteRequestRejectedError(RuntimeError)."""
+    from news_creator.gateway.remote_chat_driver import RemoteRequestRejectedError
+
+    assert issubclass(RemoteRequestRejectedError, RuntimeError)
+    driver = _make_driver(reasoning_effort=None)
+    target = _make_target()
+    driver._session = _make_mock_session(
+        _make_mock_response(status, '{"error": "bad request"}')
+    )
+
+    with pytest.raises(RemoteRequestRejectedError):
+        await driver.chat(
+            target,
+            [{"role": "user", "content": "Article"}],
+            max_tokens=500,
+            temperature=0.3,
+            top_p=0.85,
+        )
+
+
+@pytest.mark.parametrize("empty_content", ["", "   \n\t  "])
+@pytest.mark.asyncio
+async def test_chat_empty_content_raises_remote_request_rejected_error(
+    empty_content: str,
+):
+    """Empty or whitespace-only assistant content raises RemoteRequestRejectedError."""
+    from news_creator.gateway.remote_chat_driver import RemoteRequestRejectedError
+
+    driver = _make_driver(reasoning_effort=None)
+    target = _make_target()
+    body = json.dumps(
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": empty_content},
+                    "finish_reason": "length",
+                }
+            ]
+        }
+    )
+    driver._session = _make_mock_session(_make_mock_response(200, body))
+
+    with pytest.raises(RemoteRequestRejectedError):
+        await driver.chat(
+            target,
+            [{"role": "user", "content": "Article"}],
+            max_tokens=500,
+            temperature=0.3,
+            top_p=0.85,
+        )
+
+
+@pytest.mark.parametrize("status", [408, 429, 500])
+@pytest.mark.asyncio
+async def test_chat_408_429_500_raise_plain_runtime_error_not_rejected_subclass(
+    status: int,
+):
+    """HTTP 408, 429, and 500 raise plain RuntimeError, not RemoteRequestRejectedError."""
+    from news_creator.gateway.remote_chat_driver import RemoteRequestRejectedError
+
+    driver = _make_driver(reasoning_effort=None)
+    target = _make_target()
+    driver._session = _make_mock_session(
+        _make_mock_response(status, '{"error": "transient or server failure"}')
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await driver.chat(
+            target,
+            [{"role": "user", "content": "Article"}],
+            max_tokens=500,
+            temperature=0.3,
+            top_p=0.85,
+        )
+
+    assert not isinstance(exc_info.value, RemoteRequestRejectedError)
+
+
+@pytest.mark.asyncio
+async def test_chat_non_utf8_200_body_never_leaks_unicode_decode_error():
+    """A 200 body with invalid UTF-8 bytes is decoded with replacement or converted to RuntimeError."""
+    driver = _make_driver(reasoning_effort=None)
+    target = _make_target()
+    driver._session = _make_mock_session(
+        _make_mock_response(200, b"\xff\xfe\xfdnot-json")
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await driver.chat(
+            target,
+            [{"role": "user", "content": "Article"}],
+            max_tokens=500,
+            temperature=0.3,
+            top_p=0.85,
+        )
+
+    assert not isinstance(exc_info.value, UnicodeDecodeError)
+
+
+@pytest.mark.parametrize("with_content_length", [True, False])
+@pytest.mark.asyncio
+async def test_chat_response_body_over_4_mib_raises_runtime_error(
+    with_content_length: bool,
+):
+    """A 200 chat response body larger than 4 MiB raises RuntimeError."""
+    driver = _make_driver(reasoning_effort=None)
+    target = _make_target()
+    four_mib = 4 * 1024 * 1024
+    oversized_content = "x" * (four_mib + 64)
+    body = json.dumps(
+        {
+            "id": "chatcmpl-oversized",
+            "model": target.model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": oversized_content},
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+    ).encode("utf-8")
+    assert len(body) > four_mib
+    headers = {"Content-Length": str(len(body))} if with_content_length else {}
+    driver._session = _make_mock_session(
+        _make_mock_response(200, body, headers=headers)
+    )
 
     with pytest.raises(RuntimeError):
         await driver.chat(
