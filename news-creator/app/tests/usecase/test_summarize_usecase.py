@@ -474,6 +474,56 @@ class TestGemma4TokenCleanup:
         assert "実際の出力" in cleaned
         assert "続きの出力" in cleaned
 
+    @pytest.mark.asyncio
+    async def test_thinking_only_output_raises_runtime_error_not_leaked_via_fallback(
+        self,
+    ):
+        """An output that is entirely a thinking block must be treated as empty and
+        raise RuntimeError instead of promoting chain-of-thought text via fallback."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response(
+                "<|channel>thought\nInternal reasoning about the article that exceeds ten chars.\n<channel|>"
+            )
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        with pytest.raises(RuntimeError):
+            await usecase.generate_summary("art-thought-only", "A" * 200)
+
+    @pytest.mark.asyncio
+    async def test_fallback_strips_thinking_block_and_sanitizes_markdown(self):
+        """When _clean_summary_text returns empty (e.g. bold-only line) alongside a
+        thinking block, fallback must strip the thinking block body and sanitize markdown."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response(
+                "<|channel>thought\nInternal reasoning that must never leak.\n<channel|>\n**要約 [リンク](javascript:alert(1))**"
+            )
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        summary, _ = await usecase.generate_summary("art-fallback", "A" * 200)
+
+        assert "Internal reasoning" not in summary
+        assert "javascript:" not in summary
+        assert "要約" in summary
+
 
 class TestStreamingOutputGuardIsWired:
     """Streamed tokens reach the reader without passing _clean_summary_text."""
