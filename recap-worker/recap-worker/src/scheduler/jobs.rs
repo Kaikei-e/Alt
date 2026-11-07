@@ -41,8 +41,13 @@ pub(crate) enum RetryOutcome {
     AlreadyRunning,
 }
 
-pub(crate) fn is_batch_retry_trigger_source(_trigger_source: &str) -> bool {
-    true
+/// `recap_jobs.trigger_source` values created by the multi-genre batch recap
+/// pipeline (`JobContext::new` / `new_with_window` -> `"system"`,
+/// `JobContext::new_manual` -> `"user"`).
+pub(crate) const BATCH_RETRY_TRIGGER_SOURCES: &[&str] = &["system", "user"];
+
+pub(crate) fn is_batch_retry_trigger_source(trigger_source: &str) -> bool {
+    BATCH_RETRY_TRIGGER_SOURCES.contains(&trigger_source)
 }
 
 /// Looks up the most recent `failed` job and reports what a retry should
