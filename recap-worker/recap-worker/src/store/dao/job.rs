@@ -160,7 +160,7 @@ impl RecapDao {
     }
 
     pub(crate) const FIND_MOST_RECENT_FAILED_JOB_SQL: &'static str = r"
-            SELECT job_id, status, last_stage, window_days
+            SELECT job_id, status, last_stage, window_days, trigger_source
             FROM recap_jobs
             WHERE status = 'failed'
               AND trigger_source IN ('system', 'user')
@@ -192,9 +192,13 @@ impl RecapDao {
             let status_str: String = row.try_get("status")?;
             let last_stage: Option<String> = row.try_get("last_stage")?;
             let window_days: Option<i32> = row.try_get("window_days")?;
+            let trigger_source: String = row.try_get("trigger_source")?;
             let window_days = window_days.unwrap_or(7).cast_unsigned();
 
             let status = JobStatus::from_db_str(&status_str);
+            if !Self::is_retryable_failed_job(&status, &trigger_source) {
+                return Ok(None);
+            }
 
             Ok(Some((job_id, status, last_stage, window_days)))
         } else {
