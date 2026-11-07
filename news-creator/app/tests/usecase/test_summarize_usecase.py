@@ -347,6 +347,69 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         )
         assert summary
 
+    @pytest.mark.asyncio
+    async def test_hierarchical_propagates_high_priority_to_hold_slot(self):
+        """High-priority requests that switch to hierarchical summarization must
+        acquire every map and reduce slot with is_high_priority=True."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        recorded_priorities: list[bool] = []
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            recorded_priorities.append(is_high_priority)
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response("チャンクおよび最終要約。")
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        summary, _ = await usecase.generate_summary(
+            article_id="art-1", content="A" * 25_000, priority="high"
+        )
+
+        assert summary
+        assert len(recorded_priorities) >= 2
+        assert all(p is True for p in recorded_priorities)
+
+    @pytest.mark.asyncio
+    async def test_token_budget_hierarchical_propagates_high_priority_to_hold_slot(
+        self,
+    ):
+        """High-priority requests that fall back to hierarchical summarization via
+        the token-budget check must also pass is_high_priority=True to hold_slot."""
+        config = _make_config()
+        config.summary_num_predict = 1000
+        config.hierarchical_token_budget_percent = 75
+        config.hierarchical_single_article_threshold = 100_000
+        llm_provider = Mock()
+
+        recorded_priorities: list[bool] = []
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            recorded_priorities.append(is_high_priority)
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response("チャンクおよび最終要約。")
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        summary, _ = await usecase.generate_summary(
+            article_id="art-1", content="A" * 22_000, priority="high"
+        )
+
+        assert summary
+        assert len(recorded_priorities) >= 2
+        assert all(p is True for p in recorded_priorities)
+
 
 # --- Gemma 4 token cleanup tests ---
 
