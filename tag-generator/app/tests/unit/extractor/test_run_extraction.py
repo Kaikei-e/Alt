@@ -147,16 +147,77 @@ class TestRunExtractionFallbackThreshold:
                 "Machine learning and artificial intelligence are transforming software engineering.",
             )
 
-    def test_extract_tags_with_metrics_propagates_unexpected_runtime_error(self, extractor: TagExtractor):
-        """Unexpected runtime faults during primary extraction must propagate rather than return []."""
+    def test_extract_tags_with_metrics_propagates_unexpected_runtime_error(self):
+        """Runtime faults in KeyBERT.extract_keywords (English) must propagate rather than fall back or return []."""
+        config = TagExtractionConfig(use_onnx_runtime=False)
+        mock_keybert = MagicMock()
+        mock_keybert.extract_keywords.side_effect = RuntimeError("OOM during embedding")
+        mock_manager = MagicMock()
+        mock_manager.get_models.return_value = (MagicMock(), mock_keybert, MagicMock())
+        mock_manager.get_stopwords.return_value = (set(), set())
+        mock_manager.get_runtime_metadata.return_value = {
+            "embedder_backend": "test",
+            "embedder_metadata": {},
+        }
+        ext = TagExtractor(config=config, model_manager=mock_manager)
+
         with (
-            patch.object(extractor, "_detect_language", return_value="en"),
-            patch.object(extractor, "_extract_keywords_english", side_effect=RuntimeError("OOM during embedding")),
+            patch.object(ext, "_detect_language", return_value="en"),
             pytest.raises(RuntimeError, match="OOM during embedding"),
         ):
-            extractor.extract_tags_with_metrics(
+            ext.extract_tags_with_metrics(
                 "Machine Learning Overview",
                 "Machine learning and artificial intelligence are transforming software engineering.",
+            )
+
+    def test_extract_tags_with_metrics_propagates_japanese_keybert_runtime_error(self):
+        """Runtime faults in KeyBERT.extract_keywords (Japanese) must propagate rather than fall back to frequency."""
+        import sys
+
+        if "sklearn" not in sys.modules:
+            mock_sklearn = MagicMock()
+            sys.modules["sklearn"] = mock_sklearn
+            sys.modules["sklearn.feature_extraction"] = mock_sklearn.feature_extraction
+            sys.modules["sklearn.feature_extraction.text"] = mock_sklearn.feature_extraction.text
+
+        config = TagExtractionConfig(use_onnx_runtime=False, use_japanese_semantic=True)
+        mock_keybert = MagicMock()
+        mock_keybert.extract_keywords.side_effect = RuntimeError("ONNX session failed")
+
+        def _tok(surface: str) -> MagicMock:
+            tok = MagicMock()
+            tok.surface = surface
+            tok.feature.pos1 = "名詞"
+            tok.feature.pos2 = "一般"
+            return tok
+
+        tokens = [
+            _tok("機械学習"),
+            _tok("は"),
+            _tok("機械学習"),
+            _tok("と"),
+            _tok("人工知能"),
+            _tok("の"),
+            _tok("人工知能"),
+        ]
+        mock_tagger = MagicMock(side_effect=lambda _text: list(tokens))
+
+        mock_manager = MagicMock()
+        mock_manager.get_models.return_value = (MagicMock(), mock_keybert, mock_tagger)
+        mock_manager.get_stopwords.return_value = ({"は", "と", "の"}, set())
+        mock_manager.get_runtime_metadata.return_value = {
+            "embedder_backend": "test",
+            "embedder_metadata": {},
+        }
+        ext = TagExtractor(config=config, model_manager=mock_manager)
+
+        with (
+            patch.object(ext, "_detect_language", return_value="ja"),
+            pytest.raises(RuntimeError, match="ONNX session failed"),
+        ):
+            ext.extract_tags_with_metrics(
+                "機械学習と人工知能の展望",
+                "機械学習は機械学習と人工知能の人工知能による技術革新です。",
             )
 
     def test_extract_tags_with_metrics_returns_empty_when_text_legitimately_yields_no_tags(self):
