@@ -20,8 +20,9 @@ func TestNewHTTPServer_WriteTimeoutExceedsMaxTagGenerationWait(t *testing.T) {
 	}
 
 	maxTagWait := time.Duration(usecase.MaxTagGenerationTimeoutMs) * time.Millisecond
-	if srv.WriteTimeout <= maxTagWait {
-		t.Fatalf("WriteTimeout = %v, want > %v (MaxTagGenerationTimeoutMs)", srv.WriteTimeout, maxTagWait)
+	minWriteTimeout := maxTagWait + 5*time.Second
+	if srv.WriteTimeout < minWriteTimeout {
+		t.Fatalf("WriteTimeout = %v, want >= %v (MaxTagGenerationTimeoutMs + cleanup margin)", srv.WriteTimeout, minWriteTimeout)
 	}
 
 	if srv.ReadHeaderTimeout <= 0 || srv.ReadHeaderTimeout > 10*time.Second {

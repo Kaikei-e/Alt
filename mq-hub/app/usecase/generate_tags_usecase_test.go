@@ -188,9 +188,9 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 			Title:     "Test Article",
 			Content:   "Content",
 			FeedID:    "feed-456",
-			// Far above maxTagGenerationTimeoutMs: a client must not be able
+			// Far above MaxTagGenerationTimeoutMs: a client must not be able
 			// to tie up a connection/goroutine with a near-unbounded
-			// blocking XREAD (see maxTagGenerationTimeoutMs doc).
+			// blocking XREAD (see MaxTagGenerationTimeoutMs doc).
 			TimeoutMs: 999_999,
 		}
 
@@ -208,7 +208,7 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
 			Return("123-0", nil)
 
-		// Must be clamped to maxTagGenerationTimeoutMs (120s), not the
+		// Must be clamped to MaxTagGenerationTimeoutMs (120s), not the
 		// caller-requested ~1000s.
 		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 120*time.Second).
 			Return(replyEvent, nil)
