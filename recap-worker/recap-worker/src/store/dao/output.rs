@@ -699,7 +699,9 @@ pub(crate) fn escape_ilike_pattern(term: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::escape_ilike_pattern;
+    use super::{RecapDao, escape_ilike_pattern};
+    use sqlx::{Executor, postgres::PgPoolOptions};
+    use uuid::Uuid;
 
     #[test]
     fn escape_ilike_pattern_wraps_plain_term() {
@@ -712,5 +714,166 @@ mod tests {
             escape_ilike_pattern(r"100%_match\test"),
             r"%100\%\_match\\test%"
         );
+    }
+
+    #[test]
+    fn legacy_fallback_sql_joins_recap_jobs_and_filters_null_window_and_completed() {
+        let source = include_str!("output.rs");
+        let prod_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source before tests");
+        let after_arm = prod_source
+            .split("None if window_days == 7 =>")
+            .nth(1)
+            .expect("7-day legacy fallback arm exists");
+        let fallback_block = after_arm
+            .split("failed to fetch latest completed job (legacy fallback)")
+            .next()
+            .expect("legacy fallback error marker exists");
+
+        assert!(
+            fallback_block.contains("JOIN recap_jobs"),
+            "legacy fallback SQL must join recap_jobs, got:\n{fallback_block}"
+        );
+        assert!(
+            fallback_block.contains("window_days IS NULL"),
+            "legacy fallback SQL must filter window_days IS NULL, got:\n{fallback_block}"
+        );
+        assert!(
+            fallback_block.contains("status = 'completed'"),
+            "legacy fallback SQL must filter status = 'completed', got:\n{fallback_block}"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_latest_completed_job_legacy_fallback_requires_null_window_and_completed_status()
+    -> anyhow::Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await?;
+
+        pool.execute(
+            r"
+            CREATE TABLE IF NOT EXISTS recap_jobs (
+                job_id UUID PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'pending',
+                last_stage TEXT,
+                kicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                note TEXT,
+                window_days INTEGER
+            );
+            ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS window_days INTEGER;
+            ALTER TABLE recap_jobs ALTER COLUMN window_days DROP NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS recap_outputs (
+                job_id UUID NOT NULL,
+                genre TEXT NOT NULL,
+                response_id TEXT NOT NULL,
+                title_ja TEXT NOT NULL,
+                summary_ja TEXT NOT NULL,
+                bullets_ja JSONB NOT NULL,
+                body_json JSONB NOT NULL,
+                tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (job_id, genre)
+            );
+
+            CREATE TABLE IF NOT EXISTS recap_job_articles (
+                job_id UUID NOT NULL,
+                article_id TEXT NOT NULL,
+                PRIMARY KEY (job_id, article_id)
+            );
+            ",
+        )
+        .await?;
+
+        let completed_3day_job = Uuid::new_v4();
+        let failed_legacy_job = Uuid::new_v4();
+        let completed_legacy_job = Uuid::new_v4();
+
+        sqlx::query(
+            r"
+            INSERT INTO recap_jobs (job_id, status, window_days, kicked_at, updated_at)
+            VALUES
+                ($1, 'completed', 3, NOW(), NOW()),
+                ($2, 'failed', NULL, NOW(), NOW())
+            ",
+        )
+        .bind(completed_3day_job)
+        .bind(failed_legacy_job)
+        .execute(&pool)
+        .await?;
+
+        for job_id in [completed_3day_job, failed_legacy_job] {
+            sqlx::query(
+                r"
+                INSERT INTO recap_outputs (
+                    job_id, genre, response_id, title_ja, summary_ja, bullets_ja, body_json, created_at
+                )
+                VALUES ($1, 'ai', 'resp-1', 't', 's', '[]'::jsonb, '{}'::jsonb, NOW() + INTERVAL '1 hour')
+                ",
+            )
+            .bind(job_id)
+            .execute(&pool)
+            .await?;
+        }
+
+        let before_legacy = RecapDao::get_latest_completed_job(&pool, 7).await?;
+        assert!(
+            before_legacy.as_ref().map(|j| j.job_id) != Some(completed_3day_job),
+            "3-day job must not be returned by 7-day legacy fallback"
+        );
+        assert!(
+            before_legacy.as_ref().map(|j| j.job_id) != Some(failed_legacy_job),
+            "failed legacy job must not be returned by 7-day legacy fallback"
+        );
+
+        sqlx::query(
+            r"
+            INSERT INTO recap_jobs (job_id, status, window_days, kicked_at, updated_at)
+            VALUES ($1, 'completed', NULL, NOW(), NOW())
+            ",
+        )
+        .bind(completed_legacy_job)
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            r"
+            INSERT INTO recap_outputs (
+                job_id, genre, response_id, title_ja, summary_ja, bullets_ja, body_json, created_at
+            )
+            VALUES ($1, 'ai', 'resp-2', 't', 's', '[]'::jsonb, '{}'::jsonb, NOW() + INTERVAL '2 hours')
+            ",
+        )
+        .bind(completed_legacy_job)
+        .execute(&pool)
+        .await?;
+
+        let found = RecapDao::get_latest_completed_job(&pool, 7).await?;
+        if let Some(job) = found {
+            assert_ne!(job.job_id, completed_3day_job);
+            assert_ne!(job.job_id, failed_legacy_job);
+        }
+
+        for job_id in [completed_3day_job, failed_legacy_job, completed_legacy_job] {
+            let _ = sqlx::query("DELETE FROM recap_outputs WHERE job_id = $1")
+                .bind(job_id)
+                .execute(&pool)
+                .await;
+            let _ = sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+                .bind(job_id)
+                .execute(&pool)
+                .await;
+        }
+
+        Ok(())
     }
 }
