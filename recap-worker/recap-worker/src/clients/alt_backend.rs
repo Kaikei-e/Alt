@@ -205,6 +205,22 @@ struct ArticleTagEntry {
     updated_at: Option<DateTime<Utc>>,
 }
 
+const MAX_ERROR_BODY_CHARS: usize = 512;
+
+#[derive(Debug, thiserror::Error)]
+#[error("alt-backend returned error status {status}: {body}")]
+pub(crate) struct AltBackendStatusError {
+    pub(crate) status: reqwest::StatusCode,
+    pub(crate) body: String,
+}
+
+impl AltBackendStatusError {
+    fn new(status: reqwest::StatusCode, raw_body: &str) -> Self {
+        let body: String = raw_body.chars().take(MAX_ERROR_BODY_CHARS).collect();
+        Self { status, body }
+    }
+}
+
 /// alt-backendクライアントの設定。
 #[derive(Debug, Clone)]
 pub(crate) struct AltBackendConfig {
@@ -347,7 +363,7 @@ impl AltBackendClient {
             let status = response.status();
             if !status.is_success() {
                 let error_body = response.text().await.unwrap_or_default();
-                anyhow::bail!("alt-backend returned error status {status}: {error_body}");
+                return Err(AltBackendStatusError::new(status, &error_body).into());
             }
 
             let batch: BatchGetTagsByArticleIDsResponse = response
@@ -413,7 +429,7 @@ impl AltBackendClient {
 
         if !status.is_success() {
             let error_body = response.text().await.unwrap_or_default();
-            anyhow::bail!("alt-backend returned error status {status}: {error_body}");
+            return Err(AltBackendStatusError::new(status, &error_body).into());
         }
 
         response

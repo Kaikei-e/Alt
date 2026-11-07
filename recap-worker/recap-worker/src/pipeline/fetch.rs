@@ -6,11 +6,11 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::{
-    clients::alt_backend::{AltBackendArticle, AltBackendClient},
+    clients::alt_backend::{AltBackendArticle, AltBackendClient, AltBackendStatusError},
     error::{RecapError, Result},
     scheduler::JobContext,
     store::{dao::RecapDao, models::RawArticle},
-    util::retry::{RetryConfig, is_retryable_error},
+    util::retry::{RetryConfig, is_retryable_error, is_retryable_status},
     util::text::hash_text,
 };
 
@@ -130,10 +130,7 @@ impl AltBackendFetchStage {
                         return Err(err);
                     }
 
-                    // reqwest::Errorでない場合は再試行不可
-                    let is_retryable = err
-                        .downcast_ref::<reqwest::Error>()
-                        .is_some_and(is_retryable_error);
+                    let is_retryable = is_retryable_fetch_error(&err);
 
                     if !is_retryable {
                         warn!(?err, "error is not retryable");
@@ -183,9 +180,7 @@ impl AltBackendFetchStage {
                         return Err(err);
                     }
 
-                    let is_retryable = err
-                        .downcast_ref::<reqwest::Error>()
-                        .is_some_and(is_retryable_error);
+                    let is_retryable = is_retryable_fetch_error(&err);
 
                     if !is_retryable {
                         warn!(?err, "tag fetch error is not retryable");
@@ -331,6 +326,14 @@ impl FetchStage for AltBackendFetchStage {
                 .collect(),
         })
     }
+}
+
+fn is_retryable_fetch_error(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<reqwest::Error>()
+        .is_some_and(is_retryable_error)
+        || err
+            .downcast_ref::<AltBackendStatusError>()
+            .is_some_and(|e| is_retryable_status(e.status))
 }
 
 /// AltBackendArticleをRawArticleに変換する。
