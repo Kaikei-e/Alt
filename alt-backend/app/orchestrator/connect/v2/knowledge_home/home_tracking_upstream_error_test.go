@@ -191,3 +191,20 @@ func TestTrackHomeAction_LocalErrorStaysInternal(t *testing.T) {
 		"an uncoded error must stay 5xx even when its text looks like a validation failure")
 	require.Empty(t, capture.at(slog.LevelWarn))
 }
+
+func TestTrackHomeAction_UnknownActionTypeReturnsInvalidArgument(t *testing.T) {
+	t.Parallel()
+
+	handler, capture := trackActionHandler(t, nil)
+	ctx := domain.SetUserContext(context.Background(), snoozeTestUserContext(t))
+
+	_, err := handler.TrackHomeAction(ctx, connect.NewRequest(&knowledgehomev1.TrackHomeActionRequest{
+		ActionType: "bogus",
+		ItemKey:    "article:1",
+	}))
+
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	require.Empty(t, capture.at(slog.LevelError))
+}
+
