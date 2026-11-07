@@ -259,6 +259,38 @@ Here is some inner thinking that should be stripped
     assert result.card.headline_ja == "思考ブロック除去テスト"
 
 
+def test_parse_unterminated_thinking_only_returns_empty_output():
+    raw_text = """<|channel>thought
+【見出し】
+思考中の下書き見出し
+【何が起きた】
+思考中の一文目です。[1]
+思考中の二文目です。[1]
+【なぜ重要】
+該当なし"""
+    result = parse_card_output(raw_text, valid_refs={1})
+    assert result.success is False
+    assert result.reason == "empty_output"
+
+
+def test_parse_keeps_text_before_unterminated_thinking_block():
+    raw_text = """【見出し】
+未終了思考ブロック前の見出し
+【何が起きた】
+一文目の内容です。[1]
+二文目の内容です。[1]
+【なぜ重要】
+重要な理由です。[1]
+<|channel>thought
+ここでnum_predict上限により思考途中で切断された推論テキスト。"""
+    result = parse_card_output(raw_text, valid_refs={1})
+    assert result.success is True
+    assert result.card is not None
+    assert result.card.headline_ja == "未終了思考ブロック前の見出し"
+    assert result.card.why_ja is not None
+    assert result.card.why_ja.text == "重要な理由です。[1]"
+
+
 def test_clean_raw_output_reuses_neutralize_control_tokens():
     from news_creator.usecase.recap_card_parser import clean_raw_output
 

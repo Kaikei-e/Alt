@@ -576,6 +576,41 @@ class TestGemma4TokenCleanup:
         assert "<|channel>thought" not in summary
         assert "Internal reasoning" not in summary
 
+    def test_two_closed_thinking_blocks_keep_text_between(self):
+        """Two closed thinking blocks must not greedily span across the text between them."""
+        config = _make_config()
+        usecase = SummarizeUsecase(config=config, llm_provider=AsyncMock())
+
+        text = (
+            "<|channel>thought\n最初の思考<channel|>"
+            "中間の要約テキスト。"
+            "<|channel>thought\n二番目の思考<channel|>"
+            "末尾の要約テキスト。"
+        )
+        cleaned = usecase._clean_summary_text(text, "test-article")
+
+        assert "最初の思考" not in cleaned
+        assert "二番目の思考" not in cleaned
+        assert "中間の要約テキスト。" in cleaned
+        assert "末尾の要約テキスト。" in cleaned
+
+    def test_closed_thinking_block_followed_by_unterminated_keeps_middle_text(self):
+        """A closed thinking block followed by text and an unterminated thinking block
+        keeps only the text before the unterminated marker."""
+        config = _make_config()
+        usecase = SummarizeUsecase(config=config, llm_provider=AsyncMock())
+
+        text = (
+            "<|channel>thought\n最初の思考<channel|>"
+            "保持されるべき要約文。"
+            "<|channel>thought\n閉じられない思考と残りのテキスト"
+        )
+        cleaned = usecase._clean_summary_text(text, "test-article")
+
+        assert cleaned == "保持されるべき要約文。"
+        assert "最初の思考" not in cleaned
+        assert "閉じられない思考" not in cleaned
+
 
 class TestStreamingOutputGuardIsWired:
     """Streamed tokens reach the reader without passing _clean_summary_text."""
