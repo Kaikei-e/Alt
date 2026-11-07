@@ -235,3 +235,59 @@ func TestMarkTagSetVersionSuperseded_RetryMatchesAlreadySupersededBySameVersion(
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestGetLatestTagSetVersion_ReturnsNewestUnsupersededRow(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &TagRepository{pool: mock}
+
+	articleID := uuid.New()
+	versionID := uuid.New()
+	userID := uuid.New()
+	generatedAt := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	tagsJSON := []byte(`[{"name":"go","confidence":0.9}]`)
+
+	mock.ExpectQuery("SELECT tag_set_version_id, article_id, user_id, generated_at,.*FROM tag_set_versions.*WHERE article_id = \\$1 AND superseded_by IS NULL.*ORDER BY generated_at DESC, tag_set_version_id DESC.*LIMIT 1").
+		WithArgs(articleID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"tag_set_version_id", "article_id", "user_id", "generated_at",
+			"generator", "input_hash", "tags_json", "superseded_by",
+		}).AddRow(versionID, articleID, userID, generatedAt, "tag-generator", "", tagsJSON, nil))
+
+	got, err := repo.GetLatestTagSetVersion(context.Background(), articleID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, versionID, got.TagSetVersionID)
+	require.Equal(t, articleID, got.ArticleID)
+	require.Equal(t, userID, got.UserID)
+	require.Equal(t, generatedAt, got.GeneratedAt)
+	require.Equal(t, "tag-generator", got.Generator)
+	require.Equal(t, tagsJSON, []byte(got.TagsJSON))
+	require.Nil(t, got.SupersededBy)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetLatestTagSetVersion_ReturnsNilWhenNoCurrentVersion(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &TagRepository{pool: mock}
+	articleID := uuid.New()
+
+	mock.ExpectQuery("SELECT tag_set_version_id, article_id, user_id, generated_at,.*FROM tag_set_versions.*WHERE article_id = \\$1 AND superseded_by IS NULL.*ORDER BY generated_at DESC, tag_set_version_id DESC.*LIMIT 1").
+		WithArgs(articleID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"tag_set_version_id", "article_id", "user_id", "generated_at",
+			"generator", "input_hash", "tags_json", "superseded_by",
+		}))
+
+	got, err := repo.GetLatestTagSetVersion(context.Background(), articleID)
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}

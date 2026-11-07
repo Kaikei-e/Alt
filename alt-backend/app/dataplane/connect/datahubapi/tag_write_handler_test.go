@@ -460,7 +460,14 @@ func TestBatchUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
 
-		// Second attempt (whole-batch retry): both items succeed; article1 is a replay no-op.
+		// Second attempt (whole-batch retry after restart with a fresh usecase instance):
+		// both items succeed; article1 reuses its existing version row and dedupes its event.
+		ucAfterRestart := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetPort, eventPort, tagSetPort)
+		hAfterRestart := NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
+			WithTagCatalogPorts(nil, mockBatchUpsert, nil),
+			WithKnowledgeVersionUsecases(nil, ucAfterRestart),
+		)
+
 		mockBatchUpsert.EXPECT().
 			BatchUpsertArticleTags(gomock.Any(), gomock.Any()).
 			Return(int32(2), nil)
@@ -471,7 +478,7 @@ func TestBatchUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 			GetArticleByID(gomock.Any(), article2).
 			Return(&internal_article_port.ArticleWithTags{ID: article2, UserID: testTenantID}, nil)
 
-		resp, err := h.BatchUpsertArticleTags(context.Background(), connect.NewRequest(batchReq))
+		resp, err := hAfterRestart.BatchUpsertArticleTags(context.Background(), connect.NewRequest(batchReq))
 		require.NoError(t, err)
 		assert.True(t, resp.Msg.GetSuccess())
 		require.Len(t, tagSetPort.created, 2, "whole-batch retry must yield exactly one version per article")
@@ -504,8 +511,9 @@ func TestBatchUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 }
 
 type failOnSecondCallEventPort struct {
-	calls    int
-	appended []string
+	calls       int
+	appended    []string
+	byDedupeKey map[string]int64
 }
 
 func (f *failOnSecondCallEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
@@ -513,6 +521,18 @@ func (f *failOnSecondCallEventPort) AppendKnowledgeEvent(_ context.Context, even
 	if f.calls == 2 {
 		return 0, errors.New("sovereign unavailable")
 	}
+	if f.byDedupeKey == nil {
+		f.byDedupeKey = make(map[string]int64)
+	}
+	if event.DedupeKey != "" {
+		if seq, exists := f.byDedupeKey[event.DedupeKey]; exists {
+			return seq, nil
+		}
+	}
 	f.appended = append(f.appended, event.DedupeKey)
-	return int64(len(f.appended)), nil
+	seq := int64(len(f.appended))
+	if event.DedupeKey != "" {
+		f.byDedupeKey[event.DedupeKey] = seq
+	}
+	return seq, nil
 }
