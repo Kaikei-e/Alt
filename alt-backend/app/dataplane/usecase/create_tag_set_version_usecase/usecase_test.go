@@ -74,7 +74,18 @@ func TestCreateTagSetVersionUsecase_Execute(t *testing.T) {
 		{
 			name: "error - missing article_id",
 			tsv: domain.TagSetVersion{
+				UserID:   userID,
 				TagsJSON: json.RawMessage(`["go"]`),
+			},
+			tagSetPort: &mockTagSetPort{},
+			eventPort:  &mockEventPort{},
+			wantErr:    true,
+		},
+		{
+			name: "error - missing user_id",
+			tsv: domain.TagSetVersion{
+				ArticleID: articleID,
+				TagsJSON:  json.RawMessage(`["go"]`),
 			},
 			tagSetPort: &mockTagSetPort{},
 			eventPort:  &mockEventPort{},
@@ -84,6 +95,7 @@ func TestCreateTagSetVersionUsecase_Execute(t *testing.T) {
 			name: "error - empty tags_json",
 			tsv: domain.TagSetVersion{
 				ArticleID: articleID,
+				UserID:    userID,
 			},
 			tagSetPort: &mockTagSetPort{},
 			eventPort:  &mockEventPort{},
@@ -98,6 +110,8 @@ func TestCreateTagSetVersionUsecase_Execute(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				assert.Empty(t, tt.tagSetPort.created)
+				assert.Empty(t, tt.eventPort.appended)
 				return
 			}
 
@@ -107,6 +121,26 @@ func TestCreateTagSetVersionUsecase_Execute(t *testing.T) {
 			assert.Equal(t, domain.EventTagSetVersionCreated, tt.eventPort.appended[0].EventType)
 		})
 	}
+}
+
+func TestCreateTagSetVersionUsecase_RejectsNilUserID(t *testing.T) {
+	logger.InitLogger()
+
+	tagSetPort := &mockTagSetPort{}
+	eventPort := &mockEventPort{}
+	uc := NewCreateTagSetVersionUsecase(tagSetPort, eventPort, &mockMarkTagSupersededPort{})
+
+	err := uc.Execute(context.Background(), domain.TagSetVersion{
+		ArticleID: uuid.New(),
+		UserID:    uuid.Nil,
+		Generator: "tag-generator",
+		TagsJSON:  json.RawMessage(`[{"name":"go","confidence":0.9}]`),
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "user_id")
+	assert.Empty(t, tagSetPort.created, "no tag_set_versions row may be written when user_id is uuid.Nil")
+	assert.Empty(t, eventPort.appended, "no knowledge event may be appended when user_id is uuid.Nil")
 }
 
 // TestCreateTagSetVersionUsecase_EmitsTagsInPayload pins the producer payload
