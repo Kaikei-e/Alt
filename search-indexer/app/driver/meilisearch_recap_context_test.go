@@ -2,7 +2,6 @@ package driver
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -428,9 +427,10 @@ func TestMeilisearchRecapDriver_Search_PropagatesCallerContext(t *testing.T) {
 // there means the ports never come up at all.
 func TestMeilisearchRecapDriver_EnsureIndex_WaitIsBounded(t *testing.T) {
 	fake := newFakeRecapIndexManager(t)
-	fake.fetchInfoErr = errors.New("index not found")
+	fake.fetchInfoErr = &meilisearch.Error{StatusCode: 404}
 	fake.waitBlock = true
-	d := NewMeilisearchRecapDriver(&fakeServiceManager{idx: fake})
+	sm := &recapTestServiceManager{idx: fake}
+	d := NewMeilisearchRecapDriver(sm)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -447,5 +447,12 @@ func TestMeilisearchRecapDriver_EnsureIndex_WaitIsBounded(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("EnsureIndex never returned: the task wait is unbounded")
+	}
+
+	if !sm.createCalled {
+		t.Fatal("expected EnsureIndex to call CreateIndexWithContext when index is not found")
+	}
+	if !fake.called("WaitForTask") {
+		t.Fatal("expected EnsureIndex to reach WaitForTaskWithContext for the index creation task")
 	}
 }
