@@ -36,6 +36,7 @@ func newDoneInvariantUsecase(retrieve *mockRetrieveContextUsecase, llm *mockLLMC
 	return usecase.NewAnswerWithRAGUsecase(
 		retrieve, usecase.NewXMLPromptBuilder(), llm, usecase.NewOutputValidator(0),
 		10, 512, 6000, "alpha-v1", "ja", logger,
+		usecase.WithQueryClassifier(usecase.NewQueryClassifier(nil, 0)),
 	)
 }
 
@@ -217,10 +218,10 @@ func TestStream_FallbackTerminals_SetMatchingFallbackCategory(t *testing.T) {
 		},
 		{
 			name:  "answer rejected after retry for general query",
-			query: "test query",
+			query: "AとBの比較について教えて",
 			setup: func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) {
 				retrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievedSingle, nil)
-				disclaimer := `{"answer":"提供された情報からは判断できません。","citations":[],"fallback":false,"reason":""}`
+				disclaimer := `{"answer":"The provided context does not contain enough information.","citations":[],"fallback":false,"reason":""}`
 				chunkCh, errCh := makeLLMStream([]domain.LLMStreamChunk{
 					{Response: disclaimer},
 					{Done: true},
@@ -237,7 +238,7 @@ func TestStream_FallbackTerminals_SetMatchingFallbackCategory(t *testing.T) {
 			query: "なぜ半導体不足が起きたのか？",
 			setup: func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) {
 				retrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievedSingle, nil)
-				disclaimer := `{"answer":"提供された情報からは判断できません。","citations":[],"fallback":false,"reason":""}`
+				disclaimer := `{"answer":"The provided context does not contain enough information.","citations":[],"fallback":false,"reason":""}`
 				chunkCh, errCh := makeLLMStream([]domain.LLMStreamChunk{
 					{Response: disclaimer},
 					{Done: true},

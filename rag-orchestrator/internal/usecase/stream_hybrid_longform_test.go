@@ -38,6 +38,7 @@ func setupHybridLongFormTest(t *testing.T) (*mockRetrieveContextUsecase, *mockLL
 		"alpha-v1", "ja",
 		testLogger,
 		usecase.WithHeartbeatInterval(10*time.Millisecond),
+		usecase.WithQueryClassifier(usecase.NewQueryClassifier(nil, 0)),
 	)
 
 	firstChunkID := uuid.New()
@@ -153,7 +154,7 @@ func TestStreamHybridLongForm_OtherFallbackTerminals_SetMatchingFallbackCategory
 		},
 		{
 			name:      "answer rejected after retry",
-			query:     detailedQuery,
+			query:     "Please explain fully the difference between port A and port B",
 			rawStream: `{"answer":"Too short.","citations":[],"fallback":false,"reason":""}`,
 			retryResp: &domain.LLMResponse{
 				Text: `{"answer":"Still too short.","citations":[],"fallback":false,"reason":""}`,

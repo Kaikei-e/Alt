@@ -1,6 +1,9 @@
 package usecase
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 // Fallback codes name, in stable machine-readable form, why a turn produced no
 // answer. They travel as the payload of a StreamEventKindFallback event and
@@ -73,5 +76,55 @@ func classifyRetrievalFallback(err error) string {
 		return FallbackCodeRetrievalEmpty
 	default:
 		return FallbackCodeRetrievalFailed
+	}
+}
+
+func rejectedFallbackCode(promptData *promptBuildResult) string {
+	if promptData != nil && promptData.intentType == IntentCausalExplanation {
+		return FallbackCodeCausalTrailWeak
+	}
+	return FallbackCodeAnswerRejected
+}
+
+// Single source of truth so the client fallback frame and Done.FallbackCategory cannot diverge.
+func (u *answerWithRAGUsecase) emitFallback(
+	ctx context.Context,
+	events chan<- StreamEvent,
+	out *AnswerWithRAGOutput,
+	code string,
+	reason string,
+	answer string,
+) {
+	u.sendStreamEvent(ctx, events, StreamEvent{
+		Kind:    StreamEventKindFallback,
+		Payload: code,
+	})
+	out.Answer = answer
+	out.Fallback = true
+	out.FallbackCategory = FallbackCategory(code)
+	out.Reason = reason
+}
+
+// FallbackMessage returns the reader-facing explanation matching alt-frontend-sv's formatAugurFallbackMessage.
+func FallbackMessage(code string) string {
+	switch code {
+	case FallbackCodeArticleNotIndexed:
+		return "This article isn't in the search index yet, so I can't answer questions about it. Please try again a little after the feed has been fetched."
+	case FallbackCodeLLMUnavailable,
+		FallbackCodeLLMStreamFailed,
+		FallbackCodeLLMNoOutput,
+		FallbackCodeValidationFailed,
+		FallbackCodeGenerationFailed,
+		FallbackCodeRetrievalFailed:
+		return "The answer service was temporarily unable to respond. Please wait a moment and try again."
+	case FallbackCodeCausalTrailWeak:
+		return "Related articles were found, but they did not form a consistent enough causal chain to state a cause with confidence."
+	case FallbackCodeRetrievalEmpty,
+		FallbackCodeRelevanceLow,
+		FallbackCodeAnswerDeclined,
+		FallbackCodeAnswerRejected:
+		return "Not enough indexed evidence was available yet to answer this question."
+	default:
+		return "I wasn't able to put together an answer. Please try again in a moment."
 	}
 }

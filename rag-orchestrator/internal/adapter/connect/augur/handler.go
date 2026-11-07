@@ -394,15 +394,13 @@ func (h *Handler) persistAssistantTurn(
 	}
 
 	if strings.TrimSpace(done.Answer) == "" {
-		if isFallback {
+		if !isFallback {
 			h.logger.Error("assistant_turn_not_persisted",
 				slog.String("conversation_id", conv.ID.String()),
-				slog.String("reason", "fallback produced no answer text"),
-				slog.String("fallback_code", fallbackCode),
-				slog.String("fallback_reason", fallbackReason))
-			metrics.IncEmptyFallback(fallbackCode)
+				slog.String("reason", "done event produced no answer text"))
+			return
 		}
-		return
+		metrics.IncEmptyFallback(fallbackCode)
 	}
 
 	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -413,8 +411,12 @@ func (h *Handler) persistAssistantTurn(
 
 	var err error
 	if isFallback {
+		content := done.Answer
+		if strings.TrimSpace(content) == "" {
+			content = usecase.FallbackMessage(fallbackCode)
+		}
 		err = h.conversationUsecase.AppendFallbackAssistantTurn(
-			flushCtx, conv.ID, done.Answer, citations, related, fallbackCode, fallbackReason)
+			flushCtx, conv.ID, content, citations, related, fallbackCode, fallbackReason)
 	} else {
 		err = h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, done.Answer, citations, related)
 	}

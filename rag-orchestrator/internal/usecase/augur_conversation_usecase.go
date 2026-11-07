@@ -201,6 +201,10 @@ func (u *augurConversationUsecase) AppendFallbackAssistantTurn(
 	if marker.Code == "" {
 		marker.Code = "unspecified"
 	}
+	// Reloaded conversations render AugurMessage.Content directly because ChatMessage has no fallback_code wire field.
+	if strings.TrimSpace(content) == "" {
+		content = FallbackMessage(marker.Code)
+	}
 	return u.appendTurn(ctx, conversationID, "assistant", content, citations, relatedCitations, marker)
 }
 
