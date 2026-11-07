@@ -187,6 +187,11 @@ class RemoteHealthChecker:
 
     async def _probe_base_url(self, base_url: str, targets: list[RemoteTarget]) -> None:
         now = time.monotonic()
+        probed_targets = [
+            target
+            for target in targets
+            if now >= self._states[target]["cooldown_until"]
+        ]
         models_url = f"{base_url.rstrip('/')}/v1/models"
 
         try:
@@ -195,7 +200,7 @@ class RemoteHealthChecker:
 
             async with self._session.get(models_url, allow_redirects=False) as response:
                 if response.status != 200:
-                    for target in targets:
+                    for target in probed_targets:
                         log_fn = self._mark_target_unhealthy(target, now)
                         log_fn(
                             "Remote health check failed: HTTP %d from %s",
@@ -213,7 +218,7 @@ class RemoteHealthChecker:
                 try:
                     payload = json.loads(text)
                 except json.JSONDecodeError as err:
-                    for target in targets:
+                    for target in probed_targets:
                         self._mark_target_unhealthy(target, now, always_warn=True)
                     logger.warning(
                         "Remote health check received non-JSON 200 response from %s: %s",
@@ -225,7 +230,7 @@ class RemoteHealthChecker:
 
                 data_list = payload.get("data") if isinstance(payload, dict) else None
                 if not isinstance(data_list, list):
-                    for target in targets:
+                    for target in probed_targets:
                         self._mark_target_unhealthy(target, now, always_warn=True)
                     logger.warning(
                         "Remote health check response from %s missing 'data' list",
@@ -240,11 +245,9 @@ class RemoteHealthChecker:
                     if isinstance(item, dict) and isinstance(item.get("id"), str)
                 }
 
-                for target in targets:
+                for target in probed_targets:
                     state = self._states[target]
                     if target.model in available_ids:
-                        if now < state["cooldown_until"]:
-                            continue
                         state["last_checked"] = now
                         had_failures = state.get(
                             "consecutive_failures", 0
@@ -281,7 +284,7 @@ class RemoteHealthChecker:
                         )
 
         except Exception as err:
-            for target in targets:
+            for target in probed_targets:
                 log_fn = self._mark_target_unhealthy(target, now)
                 log_fn(
                     "Remote health check error for %s: %s",
@@ -297,8 +300,9 @@ class RemoteHealthChecker:
     async def _check_all(self) -> None:
         now = time.monotonic()
         for base_url, targets in self._targets_by_base_url.items():
-            if any(self._should_probe_target(t, now) for t in targets):
-                await self._probe_base_url(base_url, targets)
+            due_targets = [t for t in targets if self._should_probe_target(t, now)]
+            if due_targets:
+                await self._probe_base_url(base_url, due_targets)
 
     async def _loop(self) -> None:
         try:
