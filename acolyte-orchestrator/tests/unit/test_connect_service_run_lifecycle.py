@@ -149,3 +149,31 @@ async def test_run_pipeline_resumes_aborted_checkpoint_without_final_version() -
     assert jobs.fail_run_calls == []
     # The re-run succeeds this time, so it completes normally.
     assert jobs.complete_run_calls == [UUID(run_id)]
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_fails_run_when_mark_running_raises() -> None:
+    """If mark_running raises (e.g. transient DB pool timeout), the crash
+    handler must still call fail_run with pipeline_crashed so the run does
+    not stay 'pending' forever."""
+    settings = SimpleNamespace(checkpoint_enabled=False, default_model="gemma4-e4b-12k")
+    graph = MagicMock()
+    graph.ainvoke = AsyncMock(return_value={"final_version_no": 2})
+
+    class FailingMarkRunningJobQueue(FakeJobQueue):
+        async def mark_running(self, run_id: UUID, planner_model: str, writer_model: str, critic_model: str) -> None:
+            raise RuntimeError("psycopg pool timeout")
+
+    jobs = FailingMarkRunningJobQueue()
+    service = AcolyteConnectService(settings, MagicMock(), job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
+    run_id = str(uuid4())
+
+    await service._run_pipeline("report-1", run_id, {"topic": "AI"}, user_id=TEST_USER_ID)
+
+    assert len(jobs.fail_run_calls) == 1
+    failed_run_id, failure_code, failure_message = jobs.fail_run_calls[0]
+    assert failed_run_id == UUID(run_id)
+    assert failure_code == "pipeline_crashed"
+    assert "psycopg pool timeout" in failure_message
+    graph.ainvoke.assert_not_awaited()
+
