@@ -4,12 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"alt/orchestrator/usecase/summarize_article_usecase"
 )
 
 type sseErrorPayload struct {
 	Error string `json:"error"`
+}
+
+func isErrorJSONObject(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "{") {
+		return false
+	}
+	var payload sseErrorPayload
+	return json.Unmarshal([]byte(trimmed), &payload) == nil && payload.Error != ""
 }
 
 // extractSSEEvent extracts data content from an SSE event string, or returns
@@ -39,7 +46,7 @@ func extractSSEEvent(eventStr string) (string, error) {
 			var decoded string
 			if err := json.Unmarshal([]byte(dataContent), &decoded); err == nil {
 				result.WriteString(decoded)
-			} else if summarize_article_usecase.IsErrorPayloadSummary(dataContent) {
+			} else if isErrorJSONObject(dataContent) {
 				var errPayload sseErrorPayload
 				_ = json.Unmarshal([]byte(dataContent), &errPayload)
 				return "", fmt.Errorf("upstream SSE error: %s", errPayload.Error)
