@@ -130,6 +130,15 @@ def create_recap_card_router(usecase: RecapCardUsecase) -> APIRouter:
                 exc_info=True,
             )
             raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
+
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error while generating recap card",
+                extra={"job_id": str(request.job_id)},
+            )
+            raise HTTPException(
                 status_code=500, detail="Internal server error"
             ) from exc
 

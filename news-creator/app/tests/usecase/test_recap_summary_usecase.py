@@ -1100,7 +1100,6 @@ async def test_hierarchical_map_phase_includes_all_chunk_clusters():
     assert not missing, f"Clusters dropped from map prompts: {missing}"
 
 
-
 @pytest.mark.asyncio
 async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
     """Recursive reduce groups must also use hold_slot+generate_raw."""
@@ -1817,9 +1816,7 @@ async def test_degraded_llm_failure_response_is_not_cached():
         ],
     )
 
-    usecase = RecapSummaryUsecase(
-        config=config, llm_provider=llm_provider, cache=cache
-    )
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider, cache=cache)
 
     first = await usecase.generate_summary(request)
     second = await usecase.generate_summary(request)
@@ -1849,7 +1846,6 @@ async def test_degraded_llm_failure_response_is_not_cached():
     assert recovered.metadata.is_degraded is False
     assert recovered.summary.title == "AI業界の大型買収"
     cache.set.assert_awaited_once()
-
 
 
 @pytest.mark.asyncio
