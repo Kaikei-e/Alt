@@ -175,8 +175,7 @@ fn trigger_recap(
     let scheduler = state.scheduler().clone();
 
     tokio::spawn(async move {
-        let _permit = permit;
-        if let Err(error) = scheduler.run_job_locked(job).await {
+        if let Err(error) = scheduler.run_job_locked(job, permit).await {
             error!(%job_id, error = ?error, provided, label, "manual recap job failed");
         } else {
             info!(%job_id, provided, genres = scheduled_genre_count, label, "manual recap job scheduled");
