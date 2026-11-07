@@ -730,7 +730,9 @@ mod new_tests {
         }
     }
 
-    struct UnreachableGenre;
+    struct UnreachableGenre {
+        prepare_called: Arc<std::sync::atomic::AtomicBool>,
+    }
 
     #[async_trait::async_trait]
     impl GenreStage for UnreachableGenre {
@@ -740,6 +742,14 @@ mod new_tests {
             _corpus: crate::pipeline::dedup::DeduplicatedCorpus,
         ) -> Result<crate::pipeline::genre::GenreBundle> {
             anyhow::bail!("genre stage must not be called when resuming from evidence")
+        }
+
+        async fn update_config(
+            &self,
+            _overrides: &crate::pipeline::graph_override::GraphOverrideSettings,
+        ) {
+            self.prepare_called
+                .store(true, std::sync::atomic::Ordering::SeqCst);
         }
     }
 
@@ -803,6 +813,7 @@ mod new_tests {
                     ("RECAP_ADMIN_AUTH", Some("disabled")),
                     ("RECAP_EVAL_LISTENER", Some("disabled")),
                     ("RECAP_CARDS_JOB", Some("disabled")),
+                    ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                     ("MTLS_ENFORCE", None),
                 ],
                 || Arc::new(crate::config::Config::from_env().expect("config should load")),
@@ -831,13 +842,16 @@ mod new_tests {
         ));
 
         let fetch_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let prepare_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let pipeline = PipelineOrchestrator::builder(config)
             .with_fetch_stage(Arc::new(PanicIfCalledFetch {
                 called: Arc::clone(&fetch_called),
             }))
             .with_preprocess_stage(Arc::new(UnreachablePreprocess))
             .with_dedup_stage(Arc::new(UnreachableDedup))
-            .with_genre_stage(Arc::new(UnreachableGenre))
+            .with_genre_stage(Arc::new(UnreachableGenre {
+                prepare_called: Arc::clone(&prepare_called),
+            }))
             .with_select_stage(Arc::new(UnreachableSelect))
             .with_dispatch_stage(Arc::new(UnreachableDispatch))
             .with_persist_stage(Arc::new(UnreachablePersist))
@@ -861,12 +875,17 @@ mod new_tests {
             "resuming from \"evidence\" must reload saved select state for dispatch, got: {msg}"
         );
 
+        prepare_called.store(false, std::sync::atomic::Ordering::SeqCst);
         let unknown_job = JobContext::new(uuid::Uuid::new_v4(), vec!["ai".to_string()])
             .with_stage("bogus_stage".to_string());
         let unknown_err = pipeline
             .execute(&unknown_job)
             .await
             .expect_err("unknown resume stage must error");
+        assert!(
+            !prepare_called.load(std::sync::atomic::Ordering::SeqCst),
+            "unknown resume stage must fail before prepare_pipeline runs"
+        );
         assert!(
             !fetch_called.load(std::sync::atomic::Ordering::SeqCst),
             "unknown resume stage must not silently restart at fetch"
