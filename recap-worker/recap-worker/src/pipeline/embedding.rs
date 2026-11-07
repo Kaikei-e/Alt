@@ -596,6 +596,51 @@ mod tests {
         assert!(message.contains("1_Pooling/config.json"), "got: {message}");
     }
 
+    #[test]
+    fn missing_model_files_accepts_safetensors_without_rust_model_ot_and_reports_both_when_neither_exists()
+     {
+        let base_files = [
+            "modules.json",
+            "config.json",
+            "tokenizer_config.json",
+            "sentence_bert_config.json",
+            "vocab.txt",
+            "1_Pooling/config.json",
+        ];
+
+        let safetensors_dir = tempfile::tempdir().unwrap();
+        populate(safetensors_dir.path(), &base_files);
+        populate(safetensors_dir.path(), &["model.safetensors"]);
+        assert!(
+            missing_model_files(safetensors_dir.path()).is_empty(),
+            "dir with model.safetensors and all non-weight files must pass completeness check"
+        );
+
+        let ot_dir = tempfile::tempdir().unwrap();
+        populate(ot_dir.path(), &base_files);
+        populate(ot_dir.path(), &["rust_model.ot"]);
+        assert!(
+            missing_model_files(ot_dir.path()).is_empty(),
+            "dir with rust_model.ot and all non-weight files must pass completeness check"
+        );
+
+        let neither_dir = tempfile::tempdir().unwrap();
+        populate(neither_dir.path(), &base_files);
+        let missing = missing_model_files(neither_dir.path());
+        assert!(
+            missing.contains(&"model.safetensors") && missing.contains(&"rust_model.ot"),
+            "missing weight files must name both model.safetensors and rust_model.ot, got: {missing:?}"
+        );
+
+        let err = EmbeddingService::from_dir(neither_dir.path())
+            .expect_err("dir without weights must fail");
+        let message = format!("{err:#}");
+        assert!(
+            message.contains("model.safetensors") && message.contains("rust_model.ot"),
+            "from_dir error must name both weight file alternatives, got: {message}"
+        );
+    }
+
     /// Real AllMiniLM load + 384-d encode when a baked local directory is
     /// supplied. Skips when the dir is absent so `cargo test` stays hermetic.
     #[test]
