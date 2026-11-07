@@ -313,3 +313,125 @@ func TestAllocate_StillDeduplicatesRepeatedArticleWithoutChunkID(t *testing.T) {
 
 	assert.Len(t, contexts, 1, "the same article without a chunk id is still a duplicate")
 }
+
+type testSearchResult struct {
+	id      string
+	title   string
+	score   float32
+	content string
+}
+
+type testContextItem struct {
+	id    string
+	title string
+	score float32
+}
+
+func TestSelectContexts_DynamicAllocation(t *testing.T) {
+	tests := []struct {
+		name           string
+		hitsOriginal   []testSearchResult
+		hitsExpanded   []testContextItem
+		totalQuota     int
+		expectedTitles []string
+	}{
+		{
+			name: "selects top N by score regardless of language",
+			hitsOriginal: []testSearchResult{
+				{title: "EN Article 1", score: 0.90, content: "content1"},
+				{title: "日本語記事1", score: 0.85, content: "content2"},
+			},
+			hitsExpanded: []testContextItem{
+				{title: "日本語記事2", score: 0.95},
+				{title: "EN Article 2", score: 0.80},
+				{title: "日本語記事3", score: 0.75},
+			},
+			totalQuota: 5,
+			expectedTitles: []string{
+				"日本語記事2",
+				"EN Article 1",
+				"日本語記事1",
+				"EN Article 2",
+				"日本語記事3",
+			},
+		},
+		{
+			name: "all Japanese when JA scores higher",
+			hitsOriginal: []testSearchResult{
+				{title: "日本語記事1", score: 0.99, content: "content1"},
+				{title: "日本語記事2", score: 0.98, content: "content2"},
+			},
+			hitsExpanded: []testContextItem{
+				{title: "日本語記事3", score: 0.97},
+				{title: "EN Article", score: 0.50},
+			},
+			totalQuota:     3,
+			expectedTitles: []string{"日本語記事1", "日本語記事2", "日本語記事3"},
+		},
+		{
+			name: "all English when EN scores higher",
+			hitsOriginal: []testSearchResult{
+				{title: "EN Article 1", score: 0.99, content: "content1"},
+			},
+			hitsExpanded: []testContextItem{
+				{title: "EN Article 2", score: 0.98},
+				{title: "EN Article 3", score: 0.97},
+				{title: "日本語記事", score: 0.40},
+			},
+			totalQuota:     3,
+			expectedTitles: []string{"EN Article 1", "EN Article 2", "EN Article 3"},
+		},
+		{
+			name: "deduplicates by ChunkID",
+			hitsOriginal: []testSearchResult{
+				{id: "11111111-1111-1111-1111-111111111111", title: "Same Article", score: 0.90, content: "content"},
+			},
+			hitsExpanded: []testContextItem{
+				{id: "11111111-1111-1111-1111-111111111111", title: "Same Article", score: 0.85},
+				{title: "Another Article", score: 0.80},
+			},
+			totalQuota:     2,
+			expectedTitles: []string{"Same Article", "Another Article"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hitsOriginal := make([]domain.SearchResult, len(tt.hitsOriginal))
+			for i, hit := range tt.hitsOriginal {
+				id := uuid.New()
+				if hit.id != "" {
+					id = uuid.MustParse(hit.id)
+				}
+				hitsOriginal[i] = domain.SearchResult{
+					Chunk: domain.RagChunk{
+						ID:      id,
+						Content: hit.content,
+					},
+					Score: hit.score,
+					Title: hit.title,
+				}
+			}
+
+			hitsExpanded := make([]retrieval.ContextItem, len(tt.hitsExpanded))
+			for i, hit := range tt.hitsExpanded {
+				id := uuid.New()
+				if hit.id != "" {
+					id = uuid.MustParse(hit.id)
+				}
+				hitsExpanded[i] = retrieval.ContextItem{
+					ChunkID: id,
+					Title:   hit.title,
+					Score:   hit.score,
+				}
+			}
+
+			contexts := retrieval.SelectContextsDynamic(hitsOriginal, hitsExpanded, tt.totalQuota, true)
+
+			assert.Len(t, contexts, len(tt.expectedTitles), "wrong number of contexts")
+			for i, expectedTitle := range tt.expectedTitles {
+				assert.Equal(t, expectedTitle, contexts[i].Title, "wrong title at index %d", i)
+			}
+		})
+	}
+}

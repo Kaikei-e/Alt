@@ -206,28 +206,6 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 	}, nil
 }
 
-// SelectContextsDynamic is a pass-through to retrieval.SelectContextsDynamic for backward compatibility.
-func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []ContextItem, totalQuota int) []ContextItem {
-	// Convert usecase.ContextItem to retrieval.ContextItem
-	rExpanded := make([]retrieval.ContextItem, len(hitsExpanded))
-	for i, item := range hitsExpanded {
-		rExpanded[i] = retrieval.ContextItem{
-			ChunkText:       item.ChunkText,
-			URL:             item.URL,
-			Title:           item.Title,
-			PublishedAt:     item.PublishedAt,
-			Score:           item.Score,
-			ScoreKind:       item.ScoreKind,
-			DocumentVersion: item.DocumentVersion,
-			ChunkID:         item.ChunkID,
-			ArticleID:       item.ArticleID,
-		}
-	}
-
-	result := retrieval.SelectContextsDynamic(hitsOriginal, rExpanded, totalQuota, false)
-	return convertContextItems(result)
-}
-
 func convertContextItems(items []retrieval.ContextItem) []ContextItem {
 	result := make([]ContextItem, len(items))
 	for i, item := range items {
