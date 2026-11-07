@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -188,28 +187,9 @@ func handleFeedError(ctx context.Context, feedURL url.URL, err error, rateLimite
 }
 
 func feedHTTPStatusCode(err error) int {
-	if err == nil {
-		return 0
-	}
 	var httpErr rssFeed.HTTPError
 	if errors.As(err, &httpErr) {
 		return httpErr.StatusCode
-	}
-	var httpErrPtr *rssFeed.HTTPError
-	if errors.As(err, &httpErrPtr) && httpErrPtr != nil {
-		return httpErrPtr.StatusCode
-	}
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return feedHTTPStatusCode(urlErr.Err)
-	}
-	msg := err.Error()
-	for _, prefix := range []string{"http error: ", "http response status: "} {
-		if len(msg) >= len(prefix)+3 && strings.EqualFold(msg[:len(prefix)], prefix) {
-			if code, convErr := strconv.Atoi(msg[len(prefix) : len(prefix)+3]); convErr == nil {
-				return code
-			}
-		}
 	}
 	return 0
 }
@@ -224,8 +204,7 @@ func isPersistentFeedError(err error) bool {
 	case http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound:
 		return true
 	}
-	return errors.Is(err, rssFeed.ErrFeedTypeNotDetected) ||
-		strings.Contains(err.Error(), "Failed to detect feed type")
+	return errors.Is(err, rssFeed.ErrFeedTypeNotDetected)
 }
 
 // is403Error returns true if the error indicates a 403 Forbidden response.

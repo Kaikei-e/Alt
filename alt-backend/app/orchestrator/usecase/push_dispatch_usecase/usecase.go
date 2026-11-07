@@ -138,7 +138,7 @@ func (u *Usecase) DispatchBatch(ctx context.Context, limit int) (Stats, error) {
 				if err := u.release(ctx, unattempted.ID, 0, 0, "pass context canceled"); err != nil {
 					slog.ErrorContext(ctx, "push_delivery_release_failed",
 						"delivery_id", unattempted.ID, "error", err)
-					continue
+					break
 				}
 				stats.Released++
 			}

@@ -12,6 +12,7 @@ import (
 	"alt/utils/safeconv"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 )
 
 // WithPushCapabilities wires Web Push storage: the per-device subscription
@@ -56,7 +57,8 @@ func (h *Handler) UpsertPushSubscription(ctx context.Context, req *connect.Reque
 	if msg == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("subscription is required"))
 	}
-	if _, err := requiredUUID(msg.GetUserId(), "subscription.user_id"); err != nil {
+	userID, err := requiredUUID(msg.GetUserId(), "subscription.user_id")
+	if err != nil {
 		return nil, err
 	}
 	switch {
@@ -74,7 +76,7 @@ func (h *Handler) UpsertPushSubscription(ctx context.Context, req *connect.Reque
 	}
 
 	created, err := h.pushSubscriptions.Upsert(ctx, domain.PushSubscription{
-		UserID:              msg.GetUserId(),
+		UserID:              userID.String(),
 		Endpoint:            msg.GetEndpoint(),
 		P256dh:              msg.GetP256Dh(),
 		Auth:                msg.GetAuth(),
@@ -86,11 +88,11 @@ func (h *Handler) UpsertPushSubscription(ctx context.Context, req *connect.Reque
 		// Neither the log line nor the response names the endpoint. It is a
 		// capability URL, and this is exactly the path a caller replaying a
 		// leaked one would take.
-		h.logger.WarnContext(ctx, "UpsertPushSubscription rejected", "user_id", msg.GetUserId(),
+		h.logger.WarnContext(ctx, "UpsertPushSubscription rejected", "user_id", userID.String(),
 			"reason", "endpoint belongs to a different user")
 		return nil, connect.NewError(connect.CodeAlreadyExists, domain.ErrPushSubscriptionOwnedByAnotherUser)
 	case err != nil:
-		h.logger.ErrorContext(ctx, "UpsertPushSubscription failed", "error", err, "user_id", msg.GetUserId())
+		h.logger.ErrorContext(ctx, "UpsertPushSubscription failed", "error", err, "user_id", userID.String())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to store push subscription"))
 	}
 
@@ -101,13 +103,14 @@ func (h *Handler) UpsertPushSubscription(ctx context.Context, req *connect.Reque
 // subscription at that endpoint. The caller reads the absence as "not
 // subscribed on this device", which is a different screen from an error.
 func (h *Handler) GetPushSubscription(ctx context.Context, req *connect.Request[datahubv1.GetPushSubscriptionRequest]) (*connect.Response[datahubv1.GetPushSubscriptionResponse], error) {
-	if err := requireUserAndEndpoint(req.Msg.GetUserId(), req.Msg.GetEndpoint()); err != nil {
+	userID, err := requireUserAndEndpoint(req.Msg.GetUserId(), req.Msg.GetEndpoint())
+	if err != nil {
 		return nil, err
 	}
 
-	sub, err := h.pushSubscriptions.Get(ctx, req.Msg.GetUserId(), req.Msg.GetEndpoint())
+	sub, err := h.pushSubscriptions.Get(ctx, userID.String(), req.Msg.GetEndpoint())
 	if err != nil {
-		h.logger.ErrorContext(ctx, "GetPushSubscription failed", "error", err, "user_id", req.Msg.GetUserId())
+		h.logger.ErrorContext(ctx, "GetPushSubscription failed", "error", err, "user_id", userID.String())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get push subscription"))
 	}
 
@@ -124,15 +127,16 @@ func (h *Handler) GetPushSubscription(ctx context.Context, req *connect.Request[
 // false, so "turn the digest off" and "do not mention the digest" are the same
 // bytes, and a per-field update would have to guess which one the caller meant.
 func (h *Handler) UpdatePushSubscriptionPreferences(ctx context.Context, req *connect.Request[datahubv1.UpdatePushSubscriptionPreferencesRequest]) (*connect.Response[datahubv1.UpdatePushSubscriptionPreferencesResponse], error) {
-	if err := requireUserAndEndpoint(req.Msg.GetUserId(), req.Msg.GetEndpoint()); err != nil {
+	userID, err := requireUserAndEndpoint(req.Msg.GetUserId(), req.Msg.GetEndpoint())
+	if err != nil {
 		return nil, err
 	}
 
 	updated, err := h.pushSubscriptions.UpdatePreferences(ctx,
-		req.Msg.GetUserId(), req.Msg.GetEndpoint(),
+		userID.String(), req.Msg.GetEndpoint(),
 		notificationPreferencesFromProto(req.Msg.GetPreferences()))
 	if err != nil {
-		h.logger.ErrorContext(ctx, "UpdatePushSubscriptionPreferences failed", "error", err, "user_id", req.Msg.GetUserId())
+		h.logger.ErrorContext(ctx, "UpdatePushSubscriptionPreferences failed", "error", err, "user_id", userID.String())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to update push subscription preferences"))
 	}
 
@@ -143,13 +147,14 @@ func (h *Handler) UpdatePushSubscriptionPreferences(ctx context.Context, req *co
 // to remove, which the dispatcher reaches whenever a 410 races the user's own
 // removal.
 func (h *Handler) DeletePushSubscription(ctx context.Context, req *connect.Request[datahubv1.DeletePushSubscriptionRequest]) (*connect.Response[datahubv1.DeletePushSubscriptionResponse], error) {
-	if err := requireUserAndEndpoint(req.Msg.GetUserId(), req.Msg.GetEndpoint()); err != nil {
+	userID, err := requireUserAndEndpoint(req.Msg.GetUserId(), req.Msg.GetEndpoint())
+	if err != nil {
 		return nil, err
 	}
 
-	deleted, err := h.pushSubscriptions.Delete(ctx, req.Msg.GetUserId(), req.Msg.GetEndpoint())
+	deleted, err := h.pushSubscriptions.Delete(ctx, userID.String(), req.Msg.GetEndpoint())
 	if err != nil {
-		h.logger.ErrorContext(ctx, "DeletePushSubscription failed", "error", err, "user_id", req.Msg.GetUserId())
+		h.logger.ErrorContext(ctx, "DeletePushSubscription failed", "error", err, "user_id", userID.String())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to delete push subscription"))
 	}
 
@@ -157,13 +162,14 @@ func (h *Handler) DeletePushSubscription(ctx context.Context, req *connect.Reque
 }
 
 func (h *Handler) ListPushSubscriptionsForUser(ctx context.Context, req *connect.Request[datahubv1.ListPushSubscriptionsForUserRequest]) (*connect.Response[datahubv1.ListPushSubscriptionsForUserResponse], error) {
-	if _, err := requiredUserID(req.Msg.GetUserId()); err != nil {
+	userID, err := requiredUserID(req.Msg.GetUserId())
+	if err != nil {
 		return nil, err
 	}
 
-	subs, err := h.pushSubscriptions.ListForUser(ctx, req.Msg.GetUserId())
+	subs, err := h.pushSubscriptions.ListForUser(ctx, userID.String())
 	if err != nil {
-		h.logger.ErrorContext(ctx, "ListPushSubscriptionsForUser failed", "error", err, "user_id", req.Msg.GetUserId())
+		h.logger.ErrorContext(ctx, "ListPushSubscriptionsForUser failed", "error", err, "user_id", userID.String())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list push subscriptions"))
 	}
 
@@ -174,17 +180,18 @@ func (h *Handler) ListPushSubscriptionsForUser(ctx context.Context, req *connect
 	return connect.NewResponse(&datahubv1.ListPushSubscriptionsForUserResponse{Subscriptions: out}), nil
 }
 
-func requireUserAndEndpoint(userID, endpoint string) error {
-	if _, err := requiredUserID(userID); err != nil {
-		return err
+func requireUserAndEndpoint(rawUserID, endpoint string) (uuid.UUID, error) {
+	userID, err := requiredUserID(rawUserID)
+	if err != nil {
+		return uuid.Nil, err
 	}
 	if endpoint == "" {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("user_id and endpoint are required"))
+		return uuid.Nil, connect.NewError(connect.CodeInvalidArgument, errors.New("user_id and endpoint are required"))
 	}
 	if err := domain.ValidatePushEndpoint(endpoint); err != nil {
-		return connect.NewError(connect.CodeInvalidArgument, err)
+		return uuid.Nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	return nil
+	return userID, nil
 }
 
 func notificationPreferencesFromProto(p *datahubv1.NotificationPreferences) domain.NotificationPreferences {
@@ -230,12 +237,13 @@ func pushSubscriptionToProto(sub domain.PushSubscription) *datahubv1.PushSubscri
 // EnqueueNotification fans one notification out to every device of one user
 // that still wants that kind.
 func (h *Handler) EnqueueNotification(ctx context.Context, req *connect.Request[datahubv1.EnqueueNotificationRequest]) (*connect.Response[datahubv1.EnqueueNotificationResponse], error) {
-	if _, err := requiredUserID(req.Msg.GetUserId()); err != nil {
+	userID, err := requiredUserID(req.Msg.GetUserId())
+	if err != nil {
 		return nil, err
 	}
 	delivered, superseded, err := h.pushDeliveries.Enqueue(ctx, domain.NotificationEnqueue{
 		DedupeKey:  req.Msg.GetDedupeKey(),
-		UserID:     req.Msg.GetUserId(),
+		UserID:     userID.String(),
 		Kind:       req.Msg.GetKind(),
 		Payload:    req.Msg.GetPayload(),
 		OccurredAt: timeOrZero(req.Msg.GetOccurredAt()),
