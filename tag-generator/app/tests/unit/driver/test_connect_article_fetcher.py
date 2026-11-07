@@ -188,6 +188,13 @@ class TestFetchArticleById:
 
         assert result is None
 
+    def test_raises_on_transient_connect_error(self, fetcher, mock_client) -> None:
+        """Re-raises non-NOT_FOUND ConnectError so transient failures are not treated as missing."""
+        mock_client.get_article_content.side_effect = ConnectError(Code.UNAVAILABLE, "Datahub unavailable")
+
+        with pytest.raises(ConnectError):
+            fetcher.fetch_article_by_id(None, "art-1")
+
 
 class TestFetchArticlesByStatus:
     """Tests for fetch_articles_by_status method."""
