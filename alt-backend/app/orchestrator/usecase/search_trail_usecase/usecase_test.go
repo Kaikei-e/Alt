@@ -44,7 +44,11 @@ func (f *fakeSearchTrailPort) SearchTrailFootprints(_ context.Context, _ uuid.UU
 	f.calls++
 	f.gotItemKeys = itemKeys
 	f.gotLimit = limit
-	return f.episodes, f.branches, f.err
+	eps := f.episodes
+	if limit > 0 && len(eps) > limit {
+		eps = eps[:limit]
+	}
+	return eps, f.branches, f.err
 }
 
 type fakeThumbnailPort struct {
@@ -97,17 +101,17 @@ func TestExecute_ZeroSearchHitsSkipsSovereignCall(t *testing.T) {
 }
 
 // Search hits are mapped to "article:<id>" item_keys and passed to the trail
-// port's filter, alongside a generously large limit (there is no cursor —
-// the usecase itself pages the final result).
+// port's filter alongside the clamped request limit so sovereign computes
+// branches only for the episodes actually returned on the page.
 func TestExecute_MapsSearchHitsToItemKeysAndNarrowsViaTrailPort(t *testing.T) {
 	searchPort := &fakeSearchPort{hits: []domain.SearchIndexerArticleHit{{ID: "a1"}, {ID: "a2"}}}
 	trailPort := &fakeSearchTrailPort{episodes: []domain.TrailEpisode{episodeWithItemKey("ep:a1", "article:a1")}}
 	uc := NewSearchTrailUsecase(searchPort, trailPort, &fakeThumbnailPort{})
 
-	_, err := uc.Execute(context.Background(), uuid.New(), "llm", 20)
+	_, err := uc.Execute(context.Background(), uuid.New(), "llm", 7)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"article:a1", "article:a2"}, trailPort.gotItemKeys)
-	assert.Equal(t, sovereignSearchWindow, trailPort.gotLimit, "the sovereign call uses a large fixed window, not the caller's page limit")
+	assert.Equal(t, 7, trailPort.gotLimit, "the sovereign call receives the clamped request limit")
 	assert.Equal(t, "llm", searchPort.gotQuery)
 }
 
@@ -138,6 +142,7 @@ func TestExecute_ClampsNonPositiveLimitToDefault(t *testing.T) {
 
 	res, err := uc.Execute(context.Background(), uuid.New(), "llm", 0)
 	require.NoError(t, err)
+	assert.Equal(t, defaultLimit, trailPort.gotLimit, "non-positive limit must be clamped to defaultLimit before calling the trail port")
 	assert.Len(t, res.Episodes, defaultLimit)
 }
 
@@ -155,6 +160,7 @@ func TestExecute_ClampsOversizedLimitToDefault(t *testing.T) {
 
 	res, err := uc.Execute(context.Background(), uuid.New(), "llm", maxLimit+1)
 	require.NoError(t, err)
+	assert.Equal(t, defaultLimit, trailPort.gotLimit, "oversized limit must be clamped to defaultLimit before calling the trail port")
 	assert.Len(t, res.Episodes, defaultLimit)
 }
 

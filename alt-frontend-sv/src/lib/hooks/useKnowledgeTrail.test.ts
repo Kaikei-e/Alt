@@ -445,5 +445,62 @@ describe("useKnowledgeTrail", () => {
 		);
 		expect(goto).not.toHaveBeenCalled();
 		expect(getTrail).toHaveBeenCalledWith(expect.anything(), undefined);
+		expect(searchTrail).not.toHaveBeenCalled();
+	});
+
+	it("re-runs search() on dismiss while search is active so the dismissed branch disappears from visibleBranches", async () => {
+		const searchHitEp = makeEpisode("ep-hit", "article:99");
+		const branchB = {
+			branchKey: "br-search",
+			anchorItemKey: "article:99",
+			relationKind: "cluster",
+			why: "Search hit branch",
+			evidenceRefs: [],
+			confidence: "plausible",
+			targetItemKey: "article:100",
+			targetTitle: "Article 100",
+		};
+
+		vi.mocked(searchTrail)
+			.mockResolvedValueOnce({
+				episodes: [searchHitEp],
+				branches: [branchB],
+				matchedItemKeys: ["article:99"],
+			})
+			.mockResolvedValueOnce({
+				episodes: [searchHitEp],
+				branches: [],
+				matchedItemKeys: ["article:99"],
+			});
+		vi.mocked(resolveBranch).mockResolvedValueOnce(undefined);
+		vi.mocked(getTrail).mockResolvedValueOnce({
+			footprints: [],
+			episodes: [],
+			branches: [],
+			nextCursor: "",
+			hasMore: false,
+		});
+
+		const trail = useKnowledgeTrail();
+		await trail.search("compilers");
+		expect(trail.searchActive).toBe(true);
+		expect(trail.visibleBranches).toEqual([branchB]);
+
+		await trail.resolveBranch(
+			"br-search",
+			"dismissed",
+			undefined,
+			"already_known",
+		);
+
+		expect(goto).not.toHaveBeenCalled();
+		expect(getTrail).toHaveBeenCalledWith(expect.anything(), undefined);
+		expect(searchTrail).toHaveBeenCalledTimes(2);
+		expect(searchTrail).toHaveBeenNthCalledWith(
+			2,
+			expect.anything(),
+			"compilers",
+		);
+		expect(trail.visibleBranches).toEqual([]);
 	});
 });
