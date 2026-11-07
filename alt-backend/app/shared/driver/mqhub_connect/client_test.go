@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -153,4 +154,58 @@ func TestNewClient_AttachesAuthorizationHeader(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "Bearer test-mqhub-token-secret", receivedAuthHeader)
+}
+
+func TestClient_GenerateTagsTimeoutExceeds30sWhilePublishStaysBounded(t *testing.T) {
+	var publishTimeoutHeader string
+	var generateTagsTimeoutHeader string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/proto")
+		switch r.URL.Path {
+		case mqhubv1connect.MQHubServicePublishProcedure:
+			publishTimeoutHeader = r.Header.Get("Connect-Timeout-Ms")
+			b, err := proto.Marshal(&mqhubv1.PublishResponse{MessageId: "msg-1", Success: true})
+			require.NoError(t, err)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(b)
+		case mqhubv1connect.MQHubServiceGenerateTagsForArticleProcedure:
+			generateTagsTimeoutHeader = r.Header.Get("Connect-Timeout-Ms")
+			b, err := proto.Marshal(&mqhubv1.GenerateTagsForArticleResponse{Success: true, ArticleId: "art-1"})
+			require.NoError(t, err)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(b)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, true)
+
+	resp, err := client.GenerateTagsForArticle(context.Background(), GenerateTagsRequest{
+		ArticleID: "art-1",
+		Title:     "t",
+		Content:   "c",
+		FeedID:    "feed-1",
+		TimeoutMs: 60_000,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+
+	require.NotEmpty(t, generateTagsTimeoutHeader, "GenerateTagsForArticle must carry a Connect-Timeout-Ms deadline derived from TimeoutMs")
+	generateMs, err := strconv.Atoi(generateTagsTimeoutHeader)
+	require.NoError(t, err)
+	assert.Greater(t, generateMs, 60_000, "GenerateTagsForArticle timeout (%d ms) must exceed requested TimeoutMs (60000 ms)", generateMs)
+
+	_, err = client.PublishArticleCreated(context.Background(), ArticleCreatedPayload{
+		ArticleID: "art-1", UserID: "user-1", FeedID: "feed-1", Title: "t", URL: "https://example.com/a",
+	})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, publishTimeoutHeader, "Publish must carry a bounded Connect-Timeout-Ms deadline")
+	publishMs, err := strconv.Atoi(publishTimeoutHeader)
+	require.NoError(t, err)
+	assert.Greater(t, publishMs, 0)
+	assert.LessOrEqual(t, publishMs, 30_000, "Publish timeout (%d ms) must remain bounded at <= 30s", publishMs)
 }
