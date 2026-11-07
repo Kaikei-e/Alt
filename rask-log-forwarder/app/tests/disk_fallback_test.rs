@@ -176,6 +176,36 @@ async fn test_stale_temp_file_removed_on_construction_and_excluded_from_usage() 
 }
 
 #[tokio::test]
+async fn test_non_batch_tmp_file_survives_construction_while_batch_tmp_is_removed() {
+    let temp_dir = TempDir::new().unwrap();
+    let other_tmp = temp_dir.path().join("other.tmp");
+    let stale_batch_tmp = temp_dir.path().join("x.batch.tmp");
+    tokio::fs::write(&other_tmp, b"keep me").await.unwrap();
+    tokio::fs::write(&stale_batch_tmp, b"partial batch write")
+        .await
+        .unwrap();
+
+    let config = DiskConfig {
+        storage_path: temp_dir.path().to_path_buf(),
+        max_disk_usage: 100 * 1024 * 1024,
+        retention_period: Duration::from_secs(3600),
+        compression: true,
+        enabled: true,
+    };
+
+    let _disk_fallback = DiskFallback::new(config).await.unwrap();
+
+    assert!(
+        other_tmp.exists(),
+        "non-batch .tmp file must survive DiskFallback construction"
+    );
+    assert!(
+        !stale_batch_tmp.exists(),
+        "stale .batch.tmp file must be removed on DiskFallback construction"
+    );
+}
+
+#[tokio::test]
 async fn test_store_batch_write_failure_removes_temp_file() {
     let temp_dir = TempDir::new().unwrap();
     let config = DiskConfig {
