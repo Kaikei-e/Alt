@@ -158,15 +158,17 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 	}
 
 	// The candidates CTE filters ownership with an EXISTS semi-join on
-	// rag_documents.current_version_id = c.version_id before candidateLimit ($2):
-	// the two-key versions/documents join is estimated at one row, so the
-	// planner skips the HNSW index.
+	// rag_documents.current_version_id = c.version_id before candidateLimit ($2)
+	// because the two-key versions/documents join is estimated at one row and
+	// makes the planner skip the HNSW index; relaxed_order HNSW scans may emit
+	// rows slightly out of distance order and PostgreSQL reuses a CTE's sort
+	// order, so the candidates are materialized and re-sorted on distance + 0.
 	//
 	// c.embedding is selected only inside the distance projection, never as its
 	// own column: scanning it into the non-nullable domain.RagChunk.Embedding
 	// panics on a NULL embedding, and no caller reads it.
 	query := `
-		WITH candidates AS (
+		WITH candidates AS MATERIALIZED (
 			SELECT c.id, (c.embedding <=> $1) AS distance
 			FROM rag_chunks c
 			WHERE EXISTS (
@@ -190,7 +192,7 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		JOIN rag_documents d ON v.document_id = d.id
 		WHERE d.current_version_id = v.id
 		  AND d.user_id = $4
-		ORDER BY cand.distance ASC
+		ORDER BY cand.distance + 0 ASC
 		LIMIT $3
 	`
 
