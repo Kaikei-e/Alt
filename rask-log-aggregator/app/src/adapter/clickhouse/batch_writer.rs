@@ -293,8 +293,9 @@ fn drain_log_channel(
 /// Flush the log buffer and settle every caller waiting on it.
 ///
 /// A caller is answered Ok only when the buffer actually drained. If the retry
-/// budget is exhausted the buffer is cleared and the callers are answered Err,
-/// so the forwarder owns the retry without duplicating rows on resend.
+/// budget is exhausted — or every waiting caller disconnects before an attempt —
+/// the buffer is cleared so the forwarder owns the retry without duplicating
+/// rows on resend.
 async fn flush_logs(
     client: &Client,
     buf: &mut Vec<LogRow>,
@@ -321,18 +322,51 @@ async fn flush_logs_via<S: FlushSink<LogRow>>(
         return;
     }
 
-    let pending = buf.len();
-    flush_with_retry("logs", buf, sink, max_attempts).await;
+    let count = buf.len();
 
-    let outcome = if buf.is_empty() {
-        Ok(())
-    } else {
-        buf.clear();
-        Err(AggregatorError::Export(format!(
-            "ClickHouse did not accept {pending} rows within {max_attempts} attempts"
-        )))
-    };
-    settle(acks, &outcome);
+    for attempt in 1..=max_attempts {
+        if !acks.is_empty() && acks.iter().all(oneshot::Sender::is_closed) {
+            warn!(
+                table = "logs",
+                count,
+                attempt,
+                "All callers disconnected before flush attempt; dropping batch handed back to forwarder"
+            );
+            buf.clear();
+            acks.clear();
+            return;
+        }
+
+        match sink.write(buf.as_slice()).await {
+            Ok(()) => {
+                info!(
+                    table = "logs",
+                    count, attempt, "Flushed batch to ClickHouse"
+                );
+                buf.clear();
+                settle(acks, &Ok(()));
+                return;
+            }
+            Err(e) if attempt < max_attempts => {
+                warn!(
+                    table = "logs", count, attempt, error = %e,
+                    "Failed to flush batch to ClickHouse, retrying"
+                );
+                tokio::time::sleep(retry_backoff(attempt)).await;
+            }
+            Err(e) => {
+                error!(
+                    table = "logs", count, attempts = attempt, error = %e,
+                    "Flush retry budget exhausted; dropping batch and answering caller with error"
+                );
+                buf.clear();
+                let outcome = Err(AggregatorError::Export(format!(
+                    "ClickHouse did not accept {count} rows within {max_attempts} attempts"
+                )));
+                settle(acks, &outcome);
+            }
+        }
+    }
 }
 
 /// Resolve and clear every parked caller with the same outcome.
@@ -404,13 +438,12 @@ fn retry_backoff(attempt: u32) -> Duration {
 
 /// Flush `buf` via `sink`, retrying up to `max_attempts` times on failure.
 ///
-/// The buffer is cleared only once a write succeeds. On retry exhaustion the
-/// rows remain in `buf` (capped at `MAX_RETAINED_BUFFER_ROWS`): fire-and-forget
-/// callers (`otel_logs`, `otel_traces`) were already answered `Ok` on channel
-/// send and rely on the next flush to retry, whereas ack-gated callers
-/// (`flush_logs_via`) clear `buf` when answering `Err` so the forwarder owns
-/// the retry without duplicating rows. Holding the flush loop across the
-/// backoff ladder also applies backpressure to the bounded row channels.
+/// Used by fire-and-forget channels (`otel_logs`, `otel_traces`) whose callers
+/// were already answered `Ok` on channel send. The buffer is cleared only once
+/// a write succeeds; on retry exhaustion the rows remain in `buf` (capped at
+/// `MAX_RETAINED_BUFFER_ROWS`) to be retried on the next flush, while holding
+/// the flush loop across the backoff ladder applies backpressure to the bounded
+/// row channels.
 async fn flush_with_retry<T>(
     table: &str,
     buf: &mut Vec<T>,
