@@ -161,6 +161,13 @@ fn trigger_recap(
         None => (state.config().recap_genres().to_vec(), false),
     };
 
+    let Some(permit) = state.scheduler().try_acquire_run_permit() else {
+        let body = Json(ErrorResponse {
+            error: "another recap pipeline run is already in progress".into(),
+        });
+        return (StatusCode::CONFLICT, body).into_response();
+    };
+
     let job_id = Uuid::new_v4();
     let response_genres = genres.clone();
     let scheduled_genre_count = response_genres.len();
@@ -168,7 +175,8 @@ fn trigger_recap(
     let scheduler = state.scheduler().clone();
 
     tokio::spawn(async move {
-        if let Err(error) = scheduler.run_job(job).await {
+        let _permit = permit;
+        if let Err(error) = scheduler.run_job_locked(job).await {
             error!(%job_id, error = ?error, provided, label, "manual recap job failed");
         } else {
             info!(%job_id, provided, genres = scheduled_genre_count, label, "manual recap job scheduled");

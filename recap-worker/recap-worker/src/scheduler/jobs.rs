@@ -211,7 +211,6 @@ impl Scheduler {
         self.pipeline.classification_queue().shutdown().await;
     }
 
-    #[cfg(test)]
     pub(crate) fn try_acquire_run_permit(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
         Arc::clone(&self.run_lock).try_acquire_owned().ok()
     }
@@ -293,7 +292,7 @@ impl Scheduler {
     /// DAO lookup) so it can report `AlreadyRunning` synchronously instead
     /// of double-acquiring here.
     #[allow(clippy::too_many_lines)]
-    async fn run_job_locked(&self, context: JobContext) -> Result<()> {
+    pub(crate) async fn run_job_locked(&self, context: JobContext) -> Result<()> {
         tracing::info!(
             job_id = %context.job_id,
             prompt_version = %self.config.llm_prompt_version(),
