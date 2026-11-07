@@ -1,24 +1,17 @@
-"""Tests for RemoteHealthChecker."""
+"""Tests for RemoteHealthChecker rewritten around RemoteTarget and /v1/models."""
 
 import json
-import time
-import pytest
+import logging
 from unittest.mock import AsyncMock, MagicMock
+
 import aiohttp
+import pytest
 
 from news_creator.gateway.remote_health_checker import RemoteHealthChecker
 
 
 class _StubGetContext:
-    """Hand-rolled async context manager for ``aiohttp.ClientSession.get``.
-
-    Using ``AsyncMock`` for ``__aenter__`` / ``__aexit__`` on a ``MagicMock``
-    auto-provisioned by ``MagicMock(spec=aiohttp.ClientSession)`` regressed
-    on CPython 3.14.4 (the spec inspector started flagging the synchronous
-    ``ClientSession.get`` as if it were a coroutine, swallowing the
-    response on the second probe inside ``_check_all``). A real class
-    sidesteps that detection entirely and is also easier to read.
-    """
+    """Async context manager for aiohttp.ClientSession.get."""
 
     def __init__(self, response):
         self._response = response
@@ -30,370 +23,342 @@ class _StubGetContext:
         return False
 
 
-def _build_mock_session(response):
-    """Return a ``ClientSession``-shaped mock whose ``get`` yields ``response``."""
+def _make_response(status: int = 200, body: str = ""):
+    resp = MagicMock()
+    resp.status = status
+    resp.text = AsyncMock(return_value=body)
+    return resp
+
+
+def _build_session_by_url(url_to_response: dict[str, object]):
+    """Build a ClientSession mock that dispatches GET by URL."""
     session = MagicMock()
     session.closed = False
-    session.get = MagicMock(return_value=_StubGetContext(response))
+    session.headers = {}
+
+    def _get(url: str, **kwargs):
+        entry = url_to_response.get(url)
+        if isinstance(entry, BaseException):
+            raise entry
+        return _StubGetContext(entry)
+
+    session.get = MagicMock(side_effect=_get)
     return session
 
 
-@pytest.fixture
-def remotes():
+def _make_targets():
+    from news_creator.config.distributed_be_config import RemoteTarget
+
     return [
-        "http://remote-a:11434",
-        "http://remote-b:11434",
-        "http://remote-c:11436",
+        RemoteTarget(
+            base_url="http://router-a.example:8080",
+            model="provider-a/model-a:latest",
+            num_ctx=32768,
+        ),
+        RemoteTarget(
+            base_url="http://router-a.example:8080",
+            model="provider-b/model-b:latest",
+            num_ctx=16384,
+        ),
+        RemoteTarget(
+            base_url="http://router-b.example:8080",
+            model="provider-c/model-c:latest",
+            num_ctx=65536,
+        ),
     ]
 
 
-@pytest.fixture
-def checker(remotes):
-    return RemoteHealthChecker(
-        remotes=remotes,
-        required_model="gemma4-e4b-q4km",
+def _make_checker():
+    targets = _make_targets()
+    checker = RemoteHealthChecker(
+        targets=targets,
         interval_seconds=30,
         cooldown_seconds=60,
         timeout_seconds=10,
-        inference_token=None,
     )
+    return checker, targets
 
 
-def test_inference_token_is_required_keyword():
-    """Production wiring must state the bearer; omitting it is not 'disabled'."""
-    with pytest.raises(TypeError, match="inference_token"):
-        RemoteHealthChecker(remotes=[], required_model="gemma4-e4b-q4km")
-    with pytest.raises(TypeError):
-        RemoteHealthChecker([], "gemma4-e4b-q4km", 30, 60, 10, None, "token")
-
-
-def test_acquire_idle_remote_prefers_first_never_completed_remote(checker, remotes):
-    """When all remotes are healthy and unused, the first remote is selected."""
-    for url in remotes:
-        checker._states[url]["healthy"] = True
-
-    result = checker.acquire_idle_remote()
-    assert result == remotes[0]
-    assert checker._states[remotes[0]]["busy"] is True
-    assert checker._states[remotes[0]]["in_flight_count"] == 1
-
-
-def test_acquire_idle_remote_skips_unhealthy_and_busy(checker, remotes):
-    """Only healthy idle remotes are candidates for selection."""
-    for url in remotes:
-        checker._states[url]["healthy"] = True
-    checker._states[remotes[0]]["busy"] = True
-    checker._states[remotes[0]]["in_flight_count"] = 1
-    checker._states[remotes[1]]["healthy"] = False
-
-    result = checker.acquire_idle_remote()
-    assert result == remotes[2]
-
-
-def test_all_remotes_unavailable_returns_none(checker, remotes):
-    """When all remotes are unhealthy or busy, returns None."""
-    for url in remotes:
-        checker._states[url]["healthy"] = False
-
-    result = checker.acquire_idle_remote()
-    assert result is None
-
-
-def test_cooldown_prevents_probe_spam(checker, remotes):
-    """An unhealthy remote is not probed again until cooldown expires."""
-    checker._states[remotes[0]]["healthy"] = False
-    checker._states[remotes[0]]["last_checked"] = time.monotonic()
-
-    assert checker._should_probe(remotes[0]) is False
-
-
-def test_probe_allowed_after_cooldown(checker, remotes):
-    """After cooldown expires, the remote should be probed again."""
-    checker._states[remotes[0]]["healthy"] = False
-    checker._states[remotes[0]]["last_checked"] = time.monotonic() - 120
-
-    assert checker._should_probe(remotes[0]) is True
-
-
-def test_healthy_remote_probed_at_interval(checker, remotes):
-    """Healthy remote is probed at normal interval, not cooldown."""
-    checker._states[remotes[0]]["healthy"] = True
-    checker._states[remotes[0]]["last_checked"] = time.monotonic() - 35
-
-    assert checker._should_probe(remotes[0]) is True
-
-
-def test_healthy_remote_not_probed_before_interval(checker, remotes):
-    """Healthy remote is not probed before interval expires."""
-    checker._states[remotes[0]]["healthy"] = True
-    checker._states[remotes[0]]["last_checked"] = time.monotonic() - 10
-
-    assert checker._should_probe(remotes[0]) is False
-
-
-@pytest.mark.asyncio
-async def test_probe_marks_healthy_when_model_present(checker, remotes):
-    """Probe marks remote as healthy when required model is in /api/tags."""
-    tags_response = {"models": [{"name": "gemma4-e4b-q4km"}]}
-    mock_response = MagicMock()
-    mock_response.status = 200
-    mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
-
-    checker._session = _build_mock_session(mock_response)
-
-    await checker._probe(remotes[0])
-
-    assert checker._states[remotes[0]]["healthy"] is True
-    assert checker._states[remotes[0]]["consecutive_failures"] == 0
-
-
-@pytest.mark.asyncio
-async def test_probe_marks_unhealthy_when_model_missing(checker, remotes):
-    """Probe marks remote as unhealthy when required model is NOT in /api/tags."""
-    tags_response = {"models": [{"name": "some-other-model"}]}
-    mock_response = MagicMock()
-    mock_response.status = 200
-    mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
-
-    checker._session = _build_mock_session(mock_response)
-
-    await checker._probe(remotes[0])
-
-    assert checker._states[remotes[0]]["healthy"] is False
-
-
-@pytest.mark.asyncio
-async def test_probe_marks_unhealthy_on_connection_error(checker, remotes):
-    """Probe marks remote as unhealthy on connection error."""
-    mock_session = MagicMock(spec=aiohttp.ClientSession)
-    mock_session.closed = False
-    mock_session.get = MagicMock(
-        side_effect=aiohttp.ClientConnectorError(
-            connection_key=MagicMock(), os_error=OSError("Connection refused")
+async def _make_all_healthy(checker: RemoteHealthChecker, targets) -> None:
+    models_by_base: dict[str, list[dict[str, str]]] = {}
+    for t in targets:
+        models_by_base.setdefault(t.base_url, []).append({"id": t.model})
+    url_map = {
+        f"{base_url}/v1/models": _make_response(
+            200, json.dumps({"object": "list", "data": data})
         )
-    )
-    checker._session = mock_session
-
-    await checker._probe(remotes[0])
-
-    assert checker._states[remotes[0]]["healthy"] is False
-    assert checker._states[remotes[0]]["consecutive_failures"] == 1
+        for base_url, data in models_by_base.items()
+    }
+    checker._session = _build_session_by_url(url_map)
+    await checker._check_all()
 
 
 @pytest.mark.asyncio
-async def test_background_check_updates_state(checker, remotes):
-    """Background check loop probes and updates remote state."""
-    tags_response = {"models": [{"name": "gemma4-e4b-q4km"}]}
-    mock_response = MagicMock()
-    mock_response.status = 200
-    mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
-
-    checker._session = _build_mock_session(mock_response)
-
-    # Force all remotes to be due for probe. Use an offset relative to
-    # time.monotonic() rather than the literal 0; on a freshly provisioned
-    # CI VM monotonic time can be smaller than cooldown_seconds, leaving
-    # _should_probe() to skip every remote.
-    past = time.monotonic() - (checker._cooldown_seconds + 1)
-    for url in remotes:
-        checker._states[url]["last_checked"] = past
+async def test_one_get_v1_models_per_distinct_base_url_evaluates_all_targets():
+    """One GET {base_url}/v1/models per distinct base_url evaluates every target on that host."""
+    checker, _targets = _make_checker()
+    router_a_models = {
+        "object": "list",
+        "data": [{"id": "provider-a/model-a:latest"}],
+    }
+    router_b_models = {
+        "object": "list",
+        "data": [{"id": "provider-c/model-c:latest"}],
+    }
+    session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200, json.dumps(router_a_models)
+            ),
+            "http://router-b.example:8080/v1/models": _make_response(
+                200, json.dumps(router_b_models)
+            ),
+        }
+    )
+    checker._session = session
 
     await checker._check_all()
 
-    for url in remotes:
-        assert checker._states[url]["healthy"] is True
-
-
-def test_status_returns_all_remote_states(checker, remotes):
-    """status() returns a list with state of every remote."""
-    checker._states[remotes[0]]["healthy"] = True
-    checker._states[remotes[1]]["healthy"] = False
-    checker._states[remotes[2]]["healthy"] = True
-    checker._states[remotes[2]]["busy"] = True
-    checker._states[remotes[2]]["in_flight_count"] = 1
+    assert session.get.call_count == 2
+    called_urls = [call.args[0] for call in session.get.call_args_list]
+    assert called_urls == [
+        "http://router-a.example:8080/v1/models",
+        "http://router-b.example:8080/v1/models",
+    ]
+    for call in session.get.call_args_list:
+        assert call.kwargs.get("allow_redirects") is False
 
     status = checker.status()
-
     assert len(status) == 3
-    assert status[0]["url"] == remotes[0]
     assert status[0]["healthy"] is True
-    assert status[1]["url"] == remotes[1]
     assert status[1]["healthy"] is False
-    assert status[2]["url"] == remotes[2]
     assert status[2]["healthy"] is True
-    assert status[2]["busy"] is True
-    assert status[2]["in_flight_count"] == 1
 
 
-def test_no_remotes_returns_none():
-    """Empty remote list always returns None."""
-    checker = RemoteHealthChecker(
-        remotes=[],
-        required_model="gemma4-e4b-q4km",
+@pytest.mark.asyncio
+async def test_200_non_json_html_marks_all_targets_of_base_url_unhealthy_with_warning(
+    caplog,
+):
+    """A 200 response that is not JSON (e.g. HTML admin page) marks all targets of that base_url unhealthy with WARNING."""
+    checker, targets = _make_checker()
+    await _make_all_healthy(checker, targets)
+
+    session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200, "<html><body>Admin Login</body></html>"
+            ),
+            "http://router-b.example:8080/v1/models": _make_response(
+                200,
+                json.dumps(
+                    {
+                        "object": "list",
+                        "data": [{"id": "provider-c/model-c:latest"}],
+                    }
+                ),
+            ),
+        }
+    )
+    checker._session = session
+
+    import time
+
+    base_now = time.monotonic() + 120.0
+    with (
+        pytest.MonkeyPatch.context() as mp,
+        caplog.at_level(
+            logging.WARNING, logger="news_creator.gateway.remote_health_checker"
+        ),
+    ):
+        mp.setattr(
+            "news_creator.gateway.remote_health_checker.time.monotonic",
+            lambda: base_now,
+        )
+        await checker._check_all()
+
+    status = checker.status()
+    assert status[0]["healthy"] is False
+    assert status[1]["healthy"] is False
+    assert status[2]["healthy"] is True
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_200_json_without_data_list_marks_targets_unhealthy(caplog):
+    """A 200 JSON response without a 'data' list marks targets unhealthy with WARNING."""
+    checker, _targets = _make_checker()
+    session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200, json.dumps({"models": [{"name": "provider-a/model-a:latest"}]})
+            ),
+            "http://router-b.example:8080/v1/models": _make_response(
+                200, json.dumps({"data": "not-a-list"})
+            ),
+        }
+    )
+    checker._session = session
+
+    with caplog.at_level(
+        logging.WARNING, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await checker._check_all()
+
+    status = checker.status()
+    assert all(s["healthy"] is False for s in status)
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_probe_marks_unhealthy_on_http_error_and_connection_error():
+    """Non-200 status and aiohttp ClientError mark targets on that base_url unhealthy."""
+    checker, _targets = _make_checker()
+    session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(503, "busy"),
+            "http://router-b.example:8080/v1/models": aiohttp.ClientConnectorError(
+                connection_key=MagicMock(), os_error=OSError("Connection refused")
+            ),
+        }
+    )
+    checker._session = session
+
+    await checker._check_all()
+
+    status = checker.status()
+    assert all(s["healthy"] is False for s in status)
+    assert all(s["consecutive_failures"] == 1 for s in status)
+
+
+@pytest.mark.asyncio
+async def test_acquire_idle_target_filters_by_healthy_idle_and_fits_predicate():
+    """acquire_idle_target returns only healthy, non-in-flight targets where fits(target) is True."""
+    checker, targets = _make_checker()
+    await _make_all_healthy(checker, targets)
+
+    first = checker.acquire_idle_target(lambda t: t.num_ctx >= 32768)
+    assert first == targets[0]
+
+    second = checker.acquire_idle_target(lambda t: t.num_ctx >= 32768)
+    assert second == targets[2]
+
+    third = checker.acquire_idle_target(lambda t: t.num_ctx >= 32768)
+    assert third is None
+
+    small = checker.acquire_idle_target(lambda t: t.num_ctx >= 8192)
+    assert small == targets[1]
+
+
+@pytest.mark.asyncio
+async def test_release_target_and_mark_success_and_longest_idle_order(monkeypatch):
+    """release_target frees in-flight reservation; mark_success records completion time for longest-idle selection."""
+    checker, targets = _make_checker()
+    await _make_all_healthy(checker, targets)
+
+    t0 = checker.acquire_idle_target(lambda _: True)
+    assert t0 == targets[0]
+    checker.release_target(t0)
+
+    now = 1000.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: now
+    )
+
+    a0 = checker.acquire_idle_target(lambda _: True)
+    now = 1030.0
+    checker.mark_success(a0)
+
+    a1 = checker.acquire_idle_target(lambda _: True)
+    now = 1010.0
+    checker.mark_success(a1)
+
+    a2 = checker.acquire_idle_target(lambda _: True)
+    now = 1020.0
+    checker.mark_success(a2)
+
+    chosen = checker.acquire_idle_target(lambda _: True)
+    assert chosen == targets[1]
+
+
+@pytest.mark.asyncio
+async def test_mark_failure_immediately_marks_target_unhealthy_and_releases_slot():
+    """mark_failure releases the target and marks only that target unhealthy."""
+    checker, targets = _make_checker()
+    await _make_all_healthy(checker, targets)
+
+    acquired = checker.acquire_idle_target(lambda _: True)
+    assert acquired == targets[0]
+
+    checker.mark_failure(targets[0])
+
+    status = checker.status()
+    assert status[0]["healthy"] is False
+    assert status[0]["busy"] is False
+    assert status[0]["in_flight_count"] == 0
+    assert status[0]["consecutive_failures"] == 1
+    assert status[1]["healthy"] is True
+
+
+@pytest.mark.asyncio
+async def test_cooldown_and_exponential_backoff_semantics(monkeypatch):
+    """Unhealthy targets back off exponentially (60s -> 120s -> 240s -> 480s -> 900s cap)."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    single_target = [
+        RemoteTarget(
+            base_url="http://router-a.example:8080",
+            model="provider-a/model-a:latest",
+            num_ctx=32768,
+        )
+    ]
+    hc = RemoteHealthChecker(
+        targets=single_target,
         interval_seconds=30,
         cooldown_seconds=60,
         timeout_seconds=10,
-        inference_token=None,
     )
-    assert checker.acquire_idle_remote() is None
-    assert checker.status() == []
+    session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(503, "down"),
+        }
+    )
+    hc._session = session
 
+    clock = 1000.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
 
-def test_get_healthy_remotes_excludes_busy_and_requested_urls(checker, remotes):
-    """Healthy idle remotes should be returned in order, excluding requested URLs."""
-    for url in remotes:
-        checker._states[url]["healthy"] = True
-    checker._states[remotes[1]]["busy"] = True
+    await hc._check_all()
+    assert session.get.call_count == 1
 
-    assert checker.get_healthy_remotes(exclude={remotes[0]}) == [remotes[2]]
+    clock = 1059.0
+    await hc._check_all()
+    assert session.get.call_count == 1
 
+    clock = 1061.0
+    await hc._check_all()
+    assert session.get.call_count == 2
 
-def test_mark_failure_immediately_marks_remote_unhealthy(checker, remotes):
-    """A generation failure should immediately demote the remote."""
-    checker._states[remotes[0]]["healthy"] = True
-    checker._states[remotes[0]]["busy"] = True
-    checker._states[remotes[0]]["in_flight_count"] = 1
+    clock = 1180.0
+    await hc._check_all()
+    assert session.get.call_count == 2
 
-    checker.mark_failure(remotes[0])
-
-    assert checker._states[remotes[0]]["healthy"] is False
-    assert checker._states[remotes[0]]["busy"] is False
-    assert checker._states[remotes[0]]["in_flight_count"] == 0
-    assert checker._states[remotes[0]]["consecutive_failures"] == 1
-
-
-def test_acquire_idle_remote_uses_completion_order(checker, remotes):
-    """The remote that has been idle longest should be selected first."""
-    for url in remotes:
-        checker._states[url]["healthy"] = True
-    checker._states[remotes[0]]["last_completed"] = 30.0
-    checker._states[remotes[1]]["last_completed"] = 10.0
-    checker._states[remotes[2]]["last_completed"] = 20.0
-
-    assert checker.acquire_idle_remote() == remotes[1]
-
-
-def test_release_remote_makes_remote_available_again(checker, remotes):
-    """A released remote returns to the idle candidate pool."""
-    for url in remotes:
-        checker._states[url]["healthy"] = True
-
-    chosen = checker.acquire_idle_remote()
-    assert chosen == remotes[0]
-
-    checker.release_remote(chosen)
-    assert checker._states[chosen]["busy"] is False
-    assert checker._states[chosen]["in_flight_count"] == 0
-
-    next_candidates = checker.get_healthy_remotes()
-    assert remotes[0] in next_candidates
-
-
-def test_mark_success_updates_completion_time_and_releases_remote(checker, remotes):
-    """Successful completion should clear busy state and update completion time."""
-    checker._states[remotes[0]]["healthy"] = True
-    checker._states[remotes[0]]["busy"] = True
-    checker._states[remotes[0]]["in_flight_count"] = 1
-
-    before = time.monotonic()
-    checker.mark_success(remotes[0])
-
-    assert checker._states[remotes[0]]["busy"] is False
-    assert checker._states[remotes[0]]["in_flight_count"] == 0
-    assert checker._states[remotes[0]]["last_completed"] >= before
-
-
-def test_acquire_idle_remote_returns_none_when_all_busy(checker, remotes):
-    """No remote should be selected when every healthy remote is busy."""
-    checker._states[remotes[0]]["healthy"] = True
-    checker._states[remotes[0]]["busy"] = True
-    checker._states[remotes[2]]["healthy"] = True
-    checker._states[remotes[2]]["busy"] = True
-
-    assert checker.acquire_idle_remote() is None
+    clock = 1182.0
+    await hc._check_all()
+    assert session.get.call_count == 3
 
 
 @pytest.mark.asyncio
-async def test_start_performs_initial_probe_before_returning(checker, remotes):
-    """start() should perform an initial probe so remotes are available immediately after startup."""
+async def test_start_creates_session_without_authorization_header():
+    """start() initializes ClientSession with no Authorization header and runs an initial probe."""
+    checker, _targets = _make_checker()
     checker._check_all = AsyncMock()
 
     await checker.start()
-
-    checker._check_all.assert_awaited_once()
-    await checker.stop()
-
-
-def test_exponential_backoff_for_unhealthy_remote_capped_at_900s(checker, remotes):
-    """Unhealthy peers must back off exponentially (60s -> 120s -> 240s -> 480s -> 900s cap)."""
-    url = remotes[0]
-    checker._states[url]["healthy"] = False
-
-    expected_cooldowns = [
-        (1, 60.0),
-        (2, 120.0),
-        (3, 240.0),
-        (4, 480.0),
-        (5, 900.0),
-        (8, 900.0),
-    ]
-    for failures, expected in expected_cooldowns:
-        checker._states[url]["consecutive_failures"] = failures
-        assert checker._effective_cooldown(url) == expected
-
-        checker._states[url]["last_checked"] = time.monotonic() - (expected - 5)
-        assert checker._should_probe(url) is False
-
-        checker._states[url]["last_checked"] = time.monotonic() - (expected + 1)
-        assert checker._should_probe(url) is True
-
-
-@pytest.mark.asyncio
-async def test_unhealthy_peer_logs_warning_once_then_debug_until_recovery(
-    checker, remotes, caplog
-):
-    """Repeated probe failures must emit WARNING only on the first transition to unhealthy."""
-    import logging
-
-    url = remotes[0]
-    mock_session = MagicMock(spec=aiohttp.ClientSession)
-    mock_session.closed = False
-    mock_session.get = MagicMock(
-        side_effect=aiohttp.ClientConnectorError(
-            connection_key=MagicMock(), os_error=OSError("Offline peer")
-        )
-    )
-    checker._session = mock_session
-
-    with caplog.at_level(
-        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
-    ):
-        await checker._probe(url)
-        await checker._probe(url)
-        await checker._probe(url)
-
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    debugs = [r for r in caplog.records if r.levelno == logging.DEBUG]
-    assert len(warnings) == 1
-    assert len(debugs) == 2
-    assert checker._states[url]["consecutive_failures"] == 3
-    assert checker._states[url]["logged_unhealthy"] is True
-
-    # Recovery resets consecutive_failures and logged_unhealthy and logs at INFO
-    caplog.clear()
-    tags_response = {"models": [{"name": "gemma4-e4b-q4km"}]}
-    mock_response = MagicMock()
-    mock_response.status = 200
-    mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
-    checker._session = _build_mock_session(mock_response)
-
-    with caplog.at_level(
-        logging.INFO, logger="news_creator.gateway.remote_health_checker"
-    ):
-        await checker._probe(url)
-
-    assert checker._states[url]["healthy"] is True
-    assert checker._states[url]["consecutive_failures"] == 0
-    assert checker._states[url]["logged_unhealthy"] is False
-    infos = [r for r in caplog.records if r.levelno == logging.INFO]
-    assert len(infos) == 1
+    try:
+        assert checker._session is not None
+        assert "Authorization" not in checker._session.headers
+        checker._check_all.assert_awaited_once()
+    finally:
+        await checker.stop()

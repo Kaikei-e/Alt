@@ -10,12 +10,14 @@ class _DummyGateway:
     def __init__(self, config):
         self.config = config
         self.driver = object()
+        self.initialize_count = 0
+        self.cleanup_count = 0
 
     async def initialize(self) -> None:
-        return None
+        self.initialize_count += 1
 
     async def cleanup(self) -> None:
-        return None
+        self.cleanup_count += 1
 
 
 class _DummyWarmupService:
@@ -53,6 +55,18 @@ class _DummyExpandUsecase:
         self.llm_provider = llm_provider
 
 
+class _DummyPlanQueryUsecase:
+    def __init__(self, config, llm_provider):
+        self.config = config
+        self.llm_provider = llm_provider
+
+
+class _DummyMorningLetterUsecase:
+    def __init__(self, config, llm_provider):
+        self.config = config
+        self.llm_provider = llm_provider
+
+
 class _DummyRerankUsecase:
     def __init__(self):
         pass
@@ -68,21 +82,59 @@ class _DummyDistributedGateway:
         health_checker,
         remote_driver,
         enabled=True,
-        remote_model=None,
-        model_overrides=None,
     ):
         self.local_gateway = local_gateway
         self.health_checker = health_checker
         self.remote_driver = remote_driver
         self.enabled = enabled
-        self.remote_model = remote_model
-        self.model_overrides = model_overrides or {}
+
+    async def initialize(self) -> None:
+        await self.local_gateway.initialize()
+        if self.enabled:
+            await self.remote_driver.initialize()
+            await self.health_checker.start()
+
+    async def cleanup(self) -> None:
+        await self.local_gateway.cleanup()
+        if self.enabled:
+            await self.health_checker.stop()
+            await self.remote_driver.cleanup()
 
 
-class _DummyRemoteDriver:
-    def __init__(self, timeout_seconds=None, inference_token=""):
+class _DummyRemoteChatDriver:
+    def __init__(self, timeout_seconds: int, reasoning_effort: str | None = None):
         self.timeout_seconds = timeout_seconds
-        self.inference_token = inference_token
+        self.reasoning_effort = reasoning_effort
+        self.initialize_count = 0
+        self.cleanup_count = 0
+
+    async def initialize(self) -> None:
+        self.initialize_count += 1
+
+    async def cleanup(self) -> None:
+        self.cleanup_count += 1
+
+
+class _DummyRemoteHealthChecker:
+    def __init__(
+        self,
+        targets,
+        interval_seconds: int = 30,
+        cooldown_seconds: int = 60,
+        timeout_seconds: int = 10,
+    ):
+        self.targets = targets
+        self.interval_seconds = interval_seconds
+        self.cooldown_seconds = cooldown_seconds
+        self.timeout_seconds = timeout_seconds
+        self.start_count = 0
+        self.stop_count = 0
+
+    async def start(self) -> None:
+        self.start_count += 1
+
+    async def stop(self) -> None:
+        self.stop_count += 1
 
 
 @pytest.fixture(autouse=True)
@@ -92,31 +144,7 @@ def _setup_main_wiring_env(tmp_path, monkeypatch):
     secret_file.write_text("test-wiring-redis-password")
     monkeypatch.setenv("REDIS_PASSWORD_FILE", str(secret_file))
     monkeypatch.setenv("OTEL_ENABLED", "false")
-    # Pre-import main while environment is valid so top-level container is created safely
     import main  # noqa: F401
-
-
-class _DummyRemoteHealthChecker:
-    def __init__(self, **kwargs):
-        self.kwargs = kwargs
-
-
-class _DummyConfig(SimpleNamespace):
-    def __init__(self):
-        super().__init__(
-            distributed_be_enabled=True,
-            llm=SimpleNamespace(inference_service_token="test-inference-service-token"),
-            distributed_be_remotes=["http://remote-a:11434"],
-            distributed_be_health_interval_seconds=30,
-            distributed_be_timeout_seconds=300,
-            distributed_be_cooldown_seconds=60,
-            distributed_be_remote_model="gemma4-e4b-q4km",
-            distributed_be_model_overrides={"http://remote-a:11434": "gemma4-e4b-q4km"},
-            cache_enabled=False,
-            cache_redis_url="redis://localhost:6379/0",
-            cache_redis_password=None,
-            cache_ttl_seconds=3600,
-        )
 
 
 class _DummyCacheConfig(SimpleNamespace):
@@ -129,7 +157,8 @@ class _DummyCacheConfig(SimpleNamespace):
     ):
         super().__init__(
             distributed_be_enabled=False,
-            distributed_be_remotes=[],
+            distributed_be_targets=[],
+            distributed_be_reasoning_effort=None,
             cache_enabled=cache_enabled,
             cache_redis_url="redis://cache-test:6379/0",
             cache_redis_password=cache_redis_password,
@@ -161,51 +190,202 @@ class _SpyCacheGateway:
         return False
 
 
-def test_dependency_container_keeps_summarize_usecase_local(monkeypatch):
-    """SummarizeUsecase must keep the local Ollama gateway even when distributed BE is enabled."""
+def test_dependency_container_routes_only_summarize_usecase_through_distributing_gateway(
+    monkeypatch, caplog
+):
+    """When enabled, only SummarizeUsecase receives DistributingGateway; all other usecases receive local ollama_gateway."""
     import sys
 
     import main as main_module
+    from news_creator.config.distributed_be_config import RemoteTarget
 
-    monkeypatch.setattr(main_module, "NewsCreatorConfig", _DummyConfig)
+    targets = [
+        RemoteTarget(
+            base_url="http://router.example:8080",
+            model="provider-a/model-a:latest",
+            num_ctx=32768,
+        )
+    ]
+
+    class _EnabledConfig(SimpleNamespace):
+        def __init__(self):
+            super().__init__(
+                distributed_be_enabled=True,
+                distributed_be_targets=targets,
+                distributed_be_reasoning_effort="low",
+                distributed_be_health_interval_seconds=15,
+                distributed_be_timeout_seconds=120,
+                distributed_be_cooldown_seconds=45,
+                cache_enabled=False,
+                cache_redis_url="redis://localhost:6379/0",
+                cache_redis_password=None,
+                cache_ttl_seconds=3600,
+            )
+
+    monkeypatch.setattr(main_module, "NewsCreatorConfig", _EnabledConfig)
     monkeypatch.setattr(main_module, "OllamaGateway", _DummyGateway)
     monkeypatch.setattr(main_module, "ModelWarmupService", _DummyWarmupService)
     monkeypatch.setattr(main_module, "SummarizeUsecase", _DummySummarizeUsecase)
     monkeypatch.setattr(main_module, "RecapSummaryUsecase", _DummyRecapUsecase)
     monkeypatch.setattr(main_module, "RecapCardUsecase", _DummyRecapCardUsecase)
     monkeypatch.setattr(main_module, "ExpandQueryUsecase", _DummyExpandUsecase)
+    monkeypatch.setattr(main_module, "PlanQueryUsecase", _DummyPlanQueryUsecase)
+    monkeypatch.setattr(main_module, "MorningLetterUsecase", _DummyMorningLetterUsecase)
     monkeypatch.setattr(main_module, "RerankUsecase", _DummyRerankUsecase)
 
     distributing_mod = ModuleType("news_creator.gateway.distributing_gateway")
     distributing_mod.DistributingGateway = _DummyDistributedGateway
-    remote_ollama_mod = ModuleType("news_creator.gateway.remote_ollama_driver")
-    remote_ollama_mod.RemoteOllamaDriver = _DummyRemoteDriver
+    remote_chat_mod = ModuleType("news_creator.gateway.remote_chat_driver")
+    remote_chat_mod.RemoteChatDriver = _DummyRemoteChatDriver
     remote_health_mod = ModuleType("news_creator.gateway.remote_health_checker")
     remote_health_mod.RemoteHealthChecker = _DummyRemoteHealthChecker
     monkeypatch.setitem(
         sys.modules, "news_creator.gateway.distributing_gateway", distributing_mod
     )
     monkeypatch.setitem(
-        sys.modules, "news_creator.gateway.remote_ollama_driver", remote_ollama_mod
+        sys.modules, "news_creator.gateway.remote_chat_driver", remote_chat_mod
+    )
+    monkeypatch.setitem(
+        sys.modules, "news_creator.gateway.remote_health_checker", remote_health_mod
+    )
+
+    with caplog.at_level("INFO"):
+        container = main_module.DependencyContainer()
+
+    dist_gw = container.summarize_usecase.llm_provider
+    assert isinstance(dist_gw, _DummyDistributedGateway)
+    assert dist_gw.local_gateway is container.ollama_gateway
+    assert dist_gw.remote_driver.timeout_seconds == 120
+    assert dist_gw.remote_driver.reasoning_effort == "low"
+    assert dist_gw.health_checker.targets == targets
+    assert dist_gw.health_checker.interval_seconds == 15
+    assert dist_gw.health_checker.cooldown_seconds == 45
+    assert dist_gw.health_checker.timeout_seconds == 120
+
+    # All other LLM usecases must receive self.ollama_gateway directly
+    assert container.recap_summary_usecase.llm_provider is container.ollama_gateway
+    assert container.recap_card_usecase.llm_provider is container.ollama_gateway
+    assert container.expand_query_usecase.llm_provider is container.ollama_gateway
+    assert container.plan_query_usecase.llm_provider is container.ollama_gateway
+    assert container.morning_letter_usecase.llm_provider is container.ollama_gateway
+
+    enabled_logs = [
+        r for r in caplog.records if "distributed_be_enabled" in r.getMessage()
+    ]
+    disabled_logs = [
+        r for r in caplog.records if "distributed_be_disabled" in r.getMessage()
+    ]
+    assert len(enabled_logs) == 1
+    assert len(disabled_logs) == 0
+
+
+def test_dependency_container_logs_distributed_be_disabled_when_off(
+    monkeypatch, caplog
+):
+    """When disabled, startup logs distributed_be_disabled and wires ollama_gateway everywhere."""
+    import main as main_module
+
+    monkeypatch.setattr(
+        main_module,
+        "NewsCreatorConfig",
+        lambda: _DummyCacheConfig(cache_enabled=False),
+    )
+    monkeypatch.setattr(main_module, "OllamaGateway", _DummyGateway)
+    monkeypatch.setattr(main_module, "ModelWarmupService", _DummyWarmupService)
+
+    with caplog.at_level("INFO"):
+        container = main_module.DependencyContainer()
+
+    assert container.summarize_usecase.llm_provider is container.ollama_gateway
+    assert container.recap_summary_usecase.llm_provider is container.ollama_gateway
+    assert container.recap_card_usecase.llm_provider is container.ollama_gateway
+    assert container.expand_query_usecase.llm_provider is container.ollama_gateway
+    assert container.plan_query_usecase.llm_provider is container.ollama_gateway
+    assert container.morning_letter_usecase.llm_provider is container.ollama_gateway
+
+    enabled_logs = [
+        r for r in caplog.records if "distributed_be_enabled" in r.getMessage()
+    ]
+    disabled_logs = [
+        r for r in caplog.records if "distributed_be_disabled" in r.getMessage()
+    ]
+    assert len(enabled_logs) == 0
+    assert len(disabled_logs) == 1
+
+
+@pytest.mark.asyncio
+async def test_dependency_container_initializes_and_cleans_up_local_gateway_exactly_once(
+    monkeypatch,
+):
+    """When distributed BE is enabled, local ollama_gateway is initialized and cleaned up exactly once."""
+    import sys
+
+    import main as main_module
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    targets = [
+        RemoteTarget(
+            base_url="http://router.example:8080",
+            model="provider-a/model-a:latest",
+            num_ctx=32768,
+        )
+    ]
+
+    class _EnabledConfig(SimpleNamespace):
+        def __init__(self):
+            super().__init__(
+                distributed_be_enabled=True,
+                distributed_be_targets=targets,
+                distributed_be_reasoning_effort=None,
+                distributed_be_health_interval_seconds=30,
+                distributed_be_timeout_seconds=120,
+                distributed_be_cooldown_seconds=60,
+                cache_enabled=False,
+                cache_redis_url="redis://localhost:6379/0",
+                cache_redis_password=None,
+                cache_ttl_seconds=3600,
+            )
+
+    monkeypatch.setattr(main_module, "NewsCreatorConfig", _EnabledConfig)
+    monkeypatch.setattr(main_module, "OllamaGateway", _DummyGateway)
+    monkeypatch.setattr(main_module, "ModelWarmupService", _DummyWarmupService)
+    monkeypatch.setattr(main_module, "RerankUsecase", _DummyRerankUsecase)
+
+    distributing_mod = ModuleType("news_creator.gateway.distributing_gateway")
+    distributing_mod.DistributingGateway = _DummyDistributedGateway
+    remote_chat_mod = ModuleType("news_creator.gateway.remote_chat_driver")
+    remote_chat_mod.RemoteChatDriver = _DummyRemoteChatDriver
+    remote_health_mod = ModuleType("news_creator.gateway.remote_health_checker")
+    remote_health_mod.RemoteHealthChecker = _DummyRemoteHealthChecker
+    monkeypatch.setitem(
+        sys.modules, "news_creator.gateway.distributing_gateway", distributing_mod
+    )
+    monkeypatch.setitem(
+        sys.modules, "news_creator.gateway.remote_chat_driver", remote_chat_mod
     )
     monkeypatch.setitem(
         sys.modules, "news_creator.gateway.remote_health_checker", remote_health_mod
     )
 
     container = main_module.DependencyContainer()
+    await container.initialize()
+    assert container.ollama_gateway.initialize_count == 1
 
-    assert (
-        container.llm_provider.remote_driver.inference_token
-        == container.config.llm.inference_service_token
-    )
-    assert (
-        container.llm_provider.health_checker.kwargs["inference_token"]
-        == container.config.llm.inference_service_token
-    )
-    assert container.summarize_usecase.llm_provider is container.llm_provider
-    assert container.recap_summary_usecase.llm_provider is container.llm_provider
-    assert container.recap_card_usecase.llm_provider is container.llm_provider
-    assert container.expand_query_usecase.llm_provider is container.llm_provider
+    await container.cleanup()
+    assert container.ollama_gateway.cleanup_count == 1
+
+
+def test_dependency_container_fails_fast_when_distributed_be_enabled_with_empty_targets(
+    monkeypatch,
+):
+    """DISTRIBUTED_BE_ENABLED=true with empty DISTRIBUTED_BE_TARGETS fails container construction."""
+    import main as main_module
+
+    monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
+    monkeypatch.setenv("DISTRIBUTED_BE_TARGETS", "")
+
+    with pytest.raises(ValueError):
+        main_module.DependencyContainer()
 
 
 def _build_cache_wiring_container(monkeypatch, cache_enabled: bool):

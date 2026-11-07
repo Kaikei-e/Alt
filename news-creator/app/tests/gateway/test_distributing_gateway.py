@@ -1,19 +1,51 @@
-"""Tests for DistributingGateway."""
+"""Tests for DistributingGateway with deferred BE slot and RemoteChatDriver."""
 
 import asyncio
-import pytest
+import logging
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
+
+import aiohttp
+import pytest
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.gateway.distributing_gateway import DistributingGateway
 
 
-# --- Helpers ---
+def _target_a():
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    return RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+
+
+def _target_b():
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    return RemoteTarget(
+        base_url="http://router-b.example:8080",
+        model="provider-b/model-b:latest",
+        num_ctx=32768,
+    )
+
+
+def _small_target():
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    return RemoteTarget(
+        base_url="http://router-small.example:8080",
+        model="provider-s/model-small:latest",
+        num_ctx=1500,
+    )
 
 
 def _make_local_gateway():
-    """Create a mock OllamaGateway (local)."""
+    """Create a mock local OllamaGateway tracking hold_slot acquisitions."""
     gw = MagicMock()
     gw.config = MagicMock()
     gw.config.model_name = "gemma4-e4b-12k"
@@ -22,15 +54,28 @@ def _make_local_gateway():
     gw.config.get_llm_options.return_value = {
         "num_ctx": 8192,
         "num_predict": 1200,
+        "num_batch": 1024,
+        "num_gpu": 99,
+        "temperature": 0.7,
+        "top_p": 0.85,
+        "top_k": 40,
+        "repeat_penalty": 1.15,
+        "num_keep": 0,
+        "stop": ["<turn|>"],
     }
     gw.initialize = AsyncMock()
     gw.cleanup = AsyncMock()
-    gw.list_models = AsyncMock(return_value=[])
+    gw.list_models = AsyncMock(return_value=[{"name": "gemma4-e4b-12k"}])
+    gw.chat_generate = AsyncMock(return_value={"message": {"content": "local chat"}})
 
-    # hold_slot as async context manager yielding (wait_time, cancel_event, task_id)
+    gw.hold_slot_calls = []
+    gw.local_cancel_event = asyncio.Event()
+    gw.local_task_id = "local-slot-task-id"
+
     @asynccontextmanager
     async def _hold_slot(is_high_priority=False):
-        yield 0.1, asyncio.Event(), "local-task-id"
+        gw.hold_slot_calls.append(is_high_priority)
+        yield 0.1, gw.local_cancel_event, gw.local_task_id
 
     gw.hold_slot = _hold_slot
 
@@ -48,9 +93,6 @@ def _make_local_gateway():
             done=True,
         )
     )
-
-    # queue_status() is part of the LLMProviderPort contract now, not a
-    # private _semaphore attribute reached into by callers.
     gw.queue_status = MagicMock(
         return_value={
             "rt_queue": 0,
@@ -61,449 +103,76 @@ def _make_local_gateway():
             "max_queue_depth": 10,
         }
     )
-
     return gw
 
 
-def _make_health_checker(healthy_url=None):
-    """Create a mock RemoteHealthChecker."""
+def _make_health_checker(targets=None):
+    """Create a mock RemoteHealthChecker that evaluates fits(target)."""
+    candidate_pool = list(targets) if targets is not None else [_target_a()]
+    in_flight = set()
+    unhealthy = set()
+
     hc = MagicMock()
-    hc.acquire_idle_remote = MagicMock(return_value=healthy_url)
-    hc.release_remote = MagicMock()
-    hc.mark_success = MagicMock()
-    hc.mark_failure = MagicMock()
-    hc.get_healthy_remotes = MagicMock(return_value=[])
+
+    def _acquire_idle_target(fits):
+        for t in candidate_pool:
+            if t not in in_flight and t not in unhealthy and fits(t):
+                in_flight.add(t)
+                return t
+        return None
+
+    def _release_target(t):
+        in_flight.discard(t)
+
+    def _mark_success(t):
+        in_flight.discard(t)
+
+    def _mark_failure(t):
+        in_flight.discard(t)
+        unhealthy.add(t)
+
+    hc.acquire_idle_target = MagicMock(side_effect=_acquire_idle_target)
+    hc.release_target = MagicMock(side_effect=_release_target)
+    hc.mark_success = MagicMock(side_effect=_mark_success)
+    hc.mark_failure = MagicMock(side_effect=_mark_failure)
     hc.start = AsyncMock()
     hc.stop = AsyncMock()
-    hc.status.return_value = []
+    hc.status = MagicMock(return_value=[])
     return hc
 
 
 def _make_remote_driver():
-    """Create a mock RemoteOllamaDriver."""
+    """Create a mock RemoteChatDriver."""
     driver = MagicMock()
     driver.initialize = AsyncMock()
     driver.cleanup = AsyncMock()
-    driver.generate = AsyncMock(
+    driver.chat = AsyncMock(
         return_value=LLMGenerateResponse(
-            response="remote response",
-            model="gemma4-e4b-q4km",
+            response="remote chat response",
+            model="served-model-a:latest",
             done=True,
+            done_reason="stop",
+            prompt_eval_count=100,
+            eval_count=50,
         )
     )
     return driver
 
 
 def _make_gateway(
-    enabled=True,
-    healthy_url="http://remote:11434",
-    remote_model="gemma4-e4b-q4km",
-    model_overrides=None,
+    enabled: bool = True,
+    targets=None,
 ):
-    """Assemble a DistributingGateway with mocked dependencies."""
     local = _make_local_gateway()
-    hc = _make_health_checker(healthy_url)
+    hc = _make_health_checker(targets=targets)
     driver = _make_remote_driver()
-
     gw = DistributingGateway(
         local_gateway=local,
         health_checker=hc,
         remote_driver=driver,
         enabled=enabled,
-        remote_model=remote_model,
-        model_overrides=model_overrides,
     )
     return gw, local, hc, driver
-
-
-# --- Tests ---
-
-
-@pytest.mark.asyncio
-async def test_rt_always_uses_local():
-    """RT (high priority) requests always use local gateway."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote:11434"
-    )
-
-    async with gw.hold_slot(is_high_priority=True) as (
-        wait_time,
-        cancel_event,
-        task_id,
-    ):
-        await gw.generate_raw("prompt")
-
-    local.generate_raw.assert_awaited_once()
-    driver.generate.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_be_dispatched_to_remote_when_healthy():
-    """BE request dispatched to remote when a healthy remote exists."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote:11434"
-    )
-
-    async with gw.hold_slot(is_high_priority=False) as (
-        wait_time,
-        cancel_event,
-        task_id,
-    ):
-        result = await gw.generate_raw("prompt")
-
-    assert result.response == "remote response"
-    driver.generate.assert_awaited_once()
-    assert driver.generate.await_args.kwargs["payload"]["model"] == "gemma4-e4b-q4km"
-    # Local generate_raw should NOT have been called
-    local.generate_raw.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_be_falls_back_to_local_when_all_remotes_down():
-    """BE request falls back to local when no healthy remotes."""
-    gw, local, hc, driver = _make_gateway(enabled=True, healthy_url=None)
-
-    async with gw.hold_slot(is_high_priority=False) as (
-        wait_time,
-        cancel_event,
-        task_id,
-    ):
-        result = await gw.generate_raw("prompt")
-
-    assert result.response == "local raw response"
-    local.generate_raw.assert_awaited_once()
-    driver.generate.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_feature_off_always_uses_local():
-    """When feature is OFF, all requests use local gateway."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=False, healthy_url="http://remote:11434"
-    )
-
-    # BE request
-    async with gw.hold_slot(is_high_priority=False) as (
-        wait_time,
-        cancel_event,
-        task_id,
-    ):
-        result = await gw.generate_raw("prompt")
-
-    assert result.response == "local raw response"
-    local.generate_raw.assert_awaited_once()
-    driver.generate.assert_not_awaited()
-    # Health checker should not be queried
-    hc.acquire_idle_remote.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_generate_delegates_to_local():
-    """generate() always delegates to local gateway (used for streaming/hierarchical)."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote:11434"
-    )
-
-    result = await gw.generate("prompt", stream=False)
-
-    assert isinstance(result, LLMGenerateResponse)
-    assert result.response == "local response"
-    local.generate.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_concurrent_be_requests_use_contextvars():
-    """Concurrent BE requests maintain per-coroutine remote tracking."""
-    local = _make_local_gateway()
-    driver = _make_remote_driver()
-
-    # Health checker returns different remotes on successive calls
-    urls = ["http://remote-a:11434", "http://remote-b:11434"]
-    call_count = 0
-
-    def acquire_idle():
-        nonlocal call_count
-        url = urls[call_count % len(urls)]
-        call_count += 1
-        return url
-
-    hc = _make_health_checker()
-    hc.acquire_idle_remote = MagicMock(side_effect=acquire_idle)
-
-    gw = DistributingGateway(
-        local_gateway=local,
-        health_checker=hc,
-        remote_driver=driver,
-        enabled=True,
-        remote_model="gemma4-e4b-q4km",
-    )
-
-    results = []
-
-    async def be_task():
-        async with gw.hold_slot(is_high_priority=False):
-            # Small delay to ensure both are in-flight
-            await asyncio.sleep(0.01)
-            r = await gw.generate_raw("prompt")
-            results.append(r)
-
-    await asyncio.gather(be_task(), be_task())
-
-    assert len(results) == 2
-    assert driver.generate.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_initialize_starts_health_checker():
-    """initialize() starts the health checker."""
-    gw, local, hc, driver = _make_gateway(enabled=True)
-
-    await gw.initialize()
-
-    local.initialize.assert_awaited_once()
-    hc.start.assert_awaited_once()
-    driver.initialize.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_cleanup_stops_health_checker():
-    """cleanup() stops the health checker."""
-    gw, local, hc, driver = _make_gateway(enabled=True)
-
-    await gw.cleanup()
-
-    local.cleanup.assert_awaited_once()
-    hc.stop.assert_awaited_once()
-    driver.cleanup.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_initialize_skips_remote_when_disabled():
-    """When disabled, initialize skips health checker and remote driver."""
-    gw, local, hc, driver = _make_gateway(enabled=False)
-
-    await gw.initialize()
-
-    local.initialize.assert_awaited_once()
-    hc.start.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_remote_failure_retries_next_healthy_remote_then_succeeds():
-    """A failed remote should be marked unhealthy and the next healthy remote should be tried."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote-a:11434"
-    )
-    hc.get_healthy_remotes = MagicMock(
-        side_effect=[
-            ["http://remote-b:11434"],
-        ]
-    )
-    driver.generate = AsyncMock(
-        side_effect=[
-            RuntimeError("remote-a failed"),
-            LLMGenerateResponse(
-                response="remote-b response", model="gemma4-e4b-q4km", done=True
-            ),
-        ]
-    )
-
-    async with gw.hold_slot(is_high_priority=False):
-        result = await gw.generate_raw("prompt")
-
-    assert result.response == "remote-b response"
-    assert driver.generate.await_count == 2
-    first_call = driver.generate.await_args_list[0].kwargs
-    second_call = driver.generate.await_args_list[1].kwargs
-    assert first_call["base_url"] == "http://remote-a:11434"
-    assert second_call["base_url"] == "http://remote-b:11434"
-    hc.mark_failure.assert_called_once_with("http://remote-a:11434")
-    hc.mark_success.assert_called_once_with("http://remote-b:11434")
-
-
-@pytest.mark.asyncio
-async def test_remote_failure_falls_back_to_local_when_no_other_healthy_remote():
-    """If no other healthy remote remains, generate_raw should fall back to local."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote-a:11434"
-    )
-    hc.get_healthy_remotes = MagicMock(return_value=[])
-    driver.generate = AsyncMock(side_effect=RuntimeError("remote-a failed"))
-
-    async with gw.hold_slot(is_high_priority=False):
-        result = await gw.generate_raw("prompt")
-
-    assert result.response == "local raw response"
-    hc.mark_failure.assert_called_once_with("http://remote-a:11434")
-    local.generate_raw.assert_awaited_once()
-    driver.initialize.assert_not_awaited()
-
-
-def test_queue_status_includes_local_state():
-    """queue_status() returns local semaphore state."""
-    gw, local, hc, driver = _make_gateway(enabled=True)
-
-    status = gw.queue_status()
-
-    assert status["total_slots"] == 2
-    assert "remotes" in status
-
-
-def test_queue_status_includes_remote_state():
-    """queue_status() includes remote health states."""
-    gw, local, hc, driver = _make_gateway(enabled=True)
-    hc.status.return_value = [
-        {"url": "http://remote:11434", "healthy": True, "consecutive_failures": 0},
-    ]
-
-    status = gw.queue_status()
-
-    assert len(status["remotes"]) == 1
-    assert status["remotes"][0]["healthy"] is True
-
-
-@pytest.mark.asyncio
-async def test_remote_generate_failure_falls_back_to_local_when_no_backup_remote():
-    """If the selected remote fails and no backup remote exists, local fallback is used."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote:11434"
-    )
-    hc.get_healthy_remotes = MagicMock(return_value=[])
-    driver.generate = AsyncMock(side_effect=RuntimeError("Remote timeout"))
-
-    async with gw.hold_slot(is_high_priority=False):
-        result = await gw.generate_raw("prompt")
-
-    assert result.response == "local raw response"
-    hc.mark_failure.assert_called_once_with("http://remote:11434")
-    local.generate_raw.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_be_falls_back_to_local_when_all_remotes_busy():
-    """If all healthy remotes are busy, BE should use the local fallback path."""
-    gw, local, hc, driver = _make_gateway(enabled=True, healthy_url=None)
-
-    async with gw.hold_slot(is_high_priority=False):
-        result = await gw.generate_raw("prompt")
-
-    assert result.response == "local raw response"
-    hc.acquire_idle_remote.assert_called_once()
-    driver.generate.assert_not_awaited()
-    local.generate_raw.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_remote_success_marks_remote_available():
-    """Successful remote execution should mark the remote as available again."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote:11434"
-    )
-
-    async with gw.hold_slot(is_high_priority=False):
-        result = await gw.generate_raw("prompt")
-
-    assert result.response == "remote response"
-    hc.mark_success.assert_called_once_with("http://remote:11434")
-    hc.release_remote.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_reserved_remote_is_released_if_context_exits_without_generate():
-    """A reserved remote should not remain busy if generate_raw is never called."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote:11434"
-    )
-
-    async with gw.hold_slot(is_high_priority=False):
-        pass
-
-    hc.release_remote.assert_called_once_with("http://remote:11434")
-    hc.mark_success.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_model_override_takes_priority_over_caller_model():
-    """Per-remote override wins over the caller-supplied model name."""
-    gw, _local, _hc, driver = _make_gateway(
-        enabled=True,
-        healthy_url="http://remote-rag:11434",
-        model_overrides={"http://remote-rag:11434": "gemma4-e4b-rag"},
-    )
-
-    payload = gw._build_payload(
-        "prompt",
-        target_url="http://remote-rag:11434",
-        model="gemma4-e4b-12k",
-    )
-    assert payload["model"] == "gemma4-e4b-rag"
-
-
-def test_build_payload_without_config_does_not_mutate_caller_options():
-    """Config-absent path must copy options before writing num_predict."""
-    local = MagicMock()
-    local.config = None  # force config-absent branch
-    gw = DistributingGateway(
-        local_gateway=local,
-        health_checker=_make_health_checker(),
-        remote_driver=_make_remote_driver(),
-        enabled=False,
-    )
-    options = {"temperature": 0.1}
-    payload = gw._build_payload("prompt", options=options, num_predict=42)
-    assert payload["options"]["num_predict"] == 42
-    assert "num_predict" not in options
-
-
-@pytest.mark.asyncio
-async def test_no_model_override_uses_default():
-    """Remote without override uses the default remote model."""
-    gw, local, hc, driver = _make_gateway(
-        enabled=True,
-        healthy_url="http://remote-gpu:11434",
-        model_overrides={"http://other:11434": "gemma4-e4b-rag"},
-    )
-
-    async with gw.hold_slot(is_high_priority=False):
-        await gw.generate_raw("prompt")
-
-    payload = driver.generate.await_args.kwargs["payload"]
-    assert payload["model"] == "gemma4-e4b-q4km"
-
-
-# ============================================================================
-# Contract: generate() is local-only, BE distribution is via hold_slot+generate_raw
-# ============================================================================
-
-
-@pytest.mark.asyncio
-async def test_generate_is_local_only_contract():
-    """generate() MUST always delegate to local gateway, even when distributed BE is enabled.
-
-    This is a contract test — generate() handles streaming, model routing, and
-    local semaphore/cancel semantics. BE distribution is done exclusively through
-    hold_slot() + generate_raw(). Do not add remote dispatch to generate().
-    """
-    gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote:11434"
-    )
-
-    # Call generate with various options
-    await gw.generate("prompt", stream=False, priority="low")
-    await gw.generate("prompt", stream=True, priority="high")
-
-    # All calls must go to local, never to remote driver
-    assert local.generate.await_count == 2
-    driver.generate.assert_not_awaited()
-    # Health checker should never be consulted for generate()
-    hc.acquire_idle_remote.assert_not_called()
-
-
-# --- Metrics integration ---
-
-
-from opentelemetry.sdk.metrics import MeterProvider  # noqa: E402
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader  # noqa: E402
 
 
 @pytest.fixture
@@ -539,15 +208,42 @@ def _match(points, **attrs):
 
 
 @pytest.mark.asyncio
-async def test_successful_remote_dispatch_records_success_metric(metrics_reader):
-    gw, _, _, _ = _make_gateway(enabled=True, healthy_url="http://remote-a:11434")
+async def test_remote_success_takes_no_local_slot_and_logs_served_model(
+    metrics_reader, caplog
+):
+    """BE request inside deferred hold_slot dispatches to remote without taking a local slot and logs served_model."""
+    target_a = _target_a()
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    prompt = "<|turn>user\nSummarize this English article.<turn|>\n<|turn>model\n"
 
-    async with gw.hold_slot(is_high_priority=False):
-        await gw.generate_raw("prompt")
+    with caplog.at_level(
+        logging.INFO, logger="news_creator.gateway.distributing_gateway"
+    ):
+        async with gw.hold_slot(is_high_priority=False) as (
+            wait_time,
+            cancel_event,
+            task_id,
+        ):
+            assert (wait_time, cancel_event, task_id) == (0.0, None, None)
+            hc.acquire_idle_target.assert_not_called()
+            assert local.hold_slot_calls == []
+
+            result = await gw.generate_raw(prompt)
+
+    assert result.response == "remote chat response"
+    assert local.hold_slot_calls == []
+    local.generate_raw.assert_not_awaited()
+    driver.chat.assert_awaited_once()
+    hc.mark_success.assert_called_once_with(target_a)
+
+    assert any(
+        getattr(r, "served_model", None) == "served-model-a:latest"
+        or "served-model-a:latest" in r.getMessage()
+        for r in caplog.records
+    )
 
     dispatches = _match(
         _metric_points(metrics_reader, "newscreator.distributed_be.dispatches"),
-        remote_url="http://remote-a:11434",
         outcome="success",
     )
     assert len(dispatches) == 1
@@ -555,92 +251,283 @@ async def test_successful_remote_dispatch_records_success_metric(metrics_reader)
 
 
 @pytest.mark.asyncio
-async def test_cascade_retry_records_failure_and_fallback(metrics_reader):
-    gw, _, hc, driver = _make_gateway(enabled=True, healthy_url="http://remote-a:11434")
-    # First call fails, second succeeds on the next healthy remote
-    hc.get_healthy_remotes.return_value = ["http://remote-b:11434"]
-    driver.generate = AsyncMock(
-        side_effect=[
-            RuntimeError("connection refused"),
-            LLMGenerateResponse(response="ok", model="gemma4-e4b-q4km", done=True),
-        ]
-    )
+async def test_prompt_too_large_for_every_target_falls_back_to_local_with_local_slot():
+    """When estimated_prompt_tokens + max_tokens + 256 > target.num_ctx for all targets, run locally with a local BE slot."""
+    small_target = _small_target()
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[small_target])
+    oversized_body = "a" * 733
+    prompt = f"<|turn>user\n{oversized_body}<turn|>\n<|turn>model\n"
 
     async with gw.hold_slot(is_high_priority=False):
-        await gw.generate_raw("prompt")
+        result = await gw.generate_raw(prompt, num_predict=1000)
 
-    dispatches = _metric_points(metrics_reader, "newscreator.distributed_be.dispatches")
-    failure_a = _match(
-        dispatches, remote_url="http://remote-a:11434", outcome="failure"
+    assert result.response == "local raw response"
+    hc.acquire_idle_target.assert_called_once()
+    driver.chat.assert_not_awaited()
+    assert local.hold_slot_calls == [False]
+    local.generate_raw.assert_awaited_once()
+    assert (
+        local.generate_raw.await_args.kwargs["cancel_event"] is local.local_cancel_event
     )
-    success_b = _match(
-        dispatches, remote_url="http://remote-b:11434", outcome="success"
+    assert local.generate_raw.await_args.kwargs["task_id"] == local.local_task_id
+
+
+@pytest.mark.asyncio
+async def test_prompt_fitting_exact_num_ctx_boundary_dispatches_to_remote():
+    """When estimated_prompt_tokens + max_tokens + 256 == target.num_ctx, the target fits."""
+    small_target = _small_target()
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[small_target])
+    exact_body = "a" * 732
+    prompt = f"<|turn>user\n{exact_body}<turn|>\n<|turn>model\n"
+
+    async with gw.hold_slot(is_high_priority=False):
+        result = await gw.generate_raw(prompt, num_predict=1000)
+
+    assert result.response == "remote chat response"
+    driver.chat.assert_awaited_once()
+    assert local.hold_slot_calls == []
+    local.generate_raw.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_first_target_runtime_error_falls_over_to_second_target(metrics_reader):
+    """If the first target raises RuntimeError, mark_failure is called and the next fitting target is used."""
+    target_a = _target_a()
+    target_b = _target_b()
+    gw, local, hc, driver = _make_gateway(
+        enabled=True,
+        targets=[target_a, target_b],
     )
-    assert failure_a[0].value == 1
-    assert success_b[0].value == 1
+    driver.chat = AsyncMock(
+        side_effect=[
+            RuntimeError("target A HTTP 502"),
+            LLMGenerateResponse(
+                response="from target B",
+                model=target_b.model,
+                done=True,
+            ),
+        ]
+    )
+    prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
+
+    async with gw.hold_slot(is_high_priority=False):
+        result = await gw.generate_raw(prompt)
+
+    assert result.response == "from target B"
+    assert driver.chat.await_count == 2
+    assert driver.chat.await_args_list[0].args[0] == target_a
+    assert driver.chat.await_args_list[1].args[0] == target_b
+    hc.mark_failure.assert_called_once_with(target_a)
+    hc.mark_success.assert_called_once_with(target_b)
+    assert local.hold_slot_calls == []
+    local.generate_raw.assert_not_awaited()
 
     fallbacks = _match(
         _metric_points(metrics_reader, "newscreator.distributed_be.fallbacks"),
-        from_remote_url="http://remote-a:11434",
         to="next_remote",
         reason="error",
     )
+    assert len(fallbacks) == 1
     assert fallbacks[0].value == 1
 
 
 @pytest.mark.asyncio
-async def test_all_remotes_fail_falls_back_to_local(metrics_reader):
+async def test_all_targets_fail_falls_back_to_local_with_local_slot(metrics_reader):
+    """When every fitting target raises RuntimeError, fall back to local while holding a local BE slot."""
+    target_a = _target_a()
+    target_b = _target_b()
     gw, local, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote-a:11434"
+        enabled=True,
+        targets=[target_a, target_b],
     )
-    hc.get_healthy_remotes.return_value = []
-    driver.generate = AsyncMock(side_effect=RuntimeError("boom"))
+    driver.chat = AsyncMock(
+        side_effect=[
+            RuntimeError("target A failed"),
+            RuntimeError("target B failed"),
+        ]
+    )
+    prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
 
     async with gw.hold_slot(is_high_priority=False):
-        result = await gw.generate_raw("prompt")
+        result = await gw.generate_raw(prompt, num_predict=900)
 
     assert result.response == "local raw response"
+    assert driver.chat.await_count == 2
+    assert hc.mark_failure.call_count == 2
+    assert local.hold_slot_calls == [False]
     local.generate_raw.assert_awaited_once()
+    assert (
+        local.generate_raw.await_args.kwargs["cancel_event"] is local.local_cancel_event
+    )
+    assert local.generate_raw.await_args.kwargs["task_id"] == local.local_task_id
+    assert local.generate_raw.await_args.kwargs["num_predict"] == 900
 
     fallbacks = _match(
         _metric_points(metrics_reader, "newscreator.distributed_be.fallbacks"),
-        from_remote_url="http://remote-a:11434",
         to="local",
         reason="exhausted",
     )
+    assert len(fallbacks) == 1
     assert fallbacks[0].value == 1
 
 
-@pytest.mark.parametrize(
-    "input_prompt,expected_prompt",
-    [
-        (
-            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
-            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
-        ),
-        (
-            "<|turn>user\nHello world<turn|>\n<|turn>model",
-            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
-        ),
-        (
-            "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
-            "<|turn>user\nHello world<turn|>\n<|turn>model\n",
-        ),
-        (
-            "  hello  ",
-            "hello",
-        ),
-    ],
-)
-def test_build_payload_raw_prompt_handling(input_prompt, expected_prompt):
-    """DistributingGateway._build_payload should preserve model-turn trailing newline or strip plain prompt."""
-    local = MagicMock()
-    local.config = None
+@pytest.mark.asyncio
+async def test_connection_refused_on_every_target_still_produces_summary_locally():
+    """ADR-000943 degraded contract: connection refused on every remote target still produces summary locally."""
+    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+
+    target_a = _target_a()
+    target_b = _target_b()
+    local = _make_local_gateway()
+    hc = _make_health_checker(targets=[target_a, target_b])
+    real_driver = RemoteChatDriver(timeout_seconds=5, reasoning_effort=None)
+    mock_session = MagicMock()
+    mock_session.closed = False
+    mock_session.post = MagicMock(
+        side_effect=aiohttp.ClientConnectorError(
+            connection_key=MagicMock(),
+            os_error=ConnectionRefusedError("Connection refused"),
+        )
+    )
+    real_driver._session = mock_session
+
     gw = DistributingGateway(
         local_gateway=local,
-        health_checker=_make_health_checker(),
-        remote_driver=_make_remote_driver(),
-        enabled=False,
+        health_checker=hc,
+        remote_driver=real_driver,
+        enabled=True,
     )
-    payload = gw._build_payload(input_prompt)
-    assert payload["prompt"] == expected_prompt
+    prompt = (
+        "<|turn>user\nArticle content for degraded mode test.<turn|>\n<|turn>model\n"
+    )
+
+    async with gw.hold_slot(is_high_priority=False):
+        result = await gw.generate_raw(prompt)
+
+    assert result.response == "local raw response"
+    assert hc.mark_failure.call_count == 2
+    assert local.hold_slot_calls == [False]
+    local.generate_raw.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_rt_passthrough_holds_real_local_slot_and_delegates_unchanged():
+    """RT (is_high_priority=True) acquires a real local RT slot in hold_slot and delegates generate_raw unchanged."""
+    target_a = _target_a()
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    prompt = "<|turn>user\nRT request.<turn|>\n<|turn>model\n"
+
+    async with gw.hold_slot(is_high_priority=True) as (
+        wait_time,
+        cancel_event,
+        task_id,
+    ):
+        assert cancel_event is local.local_cancel_event
+        assert task_id == local.local_task_id
+        result = await gw.generate_raw(
+            prompt, cancel_event=cancel_event, task_id=task_id
+        )
+
+    assert result.response == "local raw response"
+    assert local.hold_slot_calls == [True]
+    local.generate_raw.assert_awaited_once()
+    assert (
+        local.generate_raw.await_args.kwargs["cancel_event"] is local.local_cancel_event
+    )
+    assert local.generate_raw.await_args.kwargs["task_id"] == local.local_task_id
+    hc.acquire_idle_target.assert_not_called()
+    driver.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_format_parameter_inside_deferred_be_slot_raises_value_error():
+    """format != None inside a deferred BE slot raises ValueError; structured output is never routed remotely."""
+    target_a = _target_a()
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    prompt = "<|turn>user\nReturn JSON.<turn|>\n<|turn>model\n"
+
+    async with gw.hold_slot(is_high_priority=False):
+        with pytest.raises(ValueError, match="format"):
+            await gw.generate_raw(prompt, format={"type": "object"})
+
+    driver.chat.assert_not_awaited()
+    local.generate_raw.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_options_mapping_sends_only_max_tokens_temperature_and_top_p():
+    """Options merged from config + caller options + num_predict send only max_tokens, temperature, top_p."""
+    target_a = _target_a()
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    prompt = "<|turn>user\nSummarize this.<turn|>\n<|turn>model\n"
+    caller_options = {
+        "temperature": 0.35,
+        "repeat_penalty": 1.2,
+        "top_k": 20,
+        "num_ctx": 16384,
+    }
+
+    async with gw.hold_slot(is_high_priority=False):
+        await gw.generate_raw(
+            prompt,
+            num_predict=950,
+            keep_alive="15m",
+            options=caller_options,
+        )
+
+    driver.chat.assert_awaited_once()
+    call = driver.chat.await_args
+    assert call.args[0] == target_a
+    assert call.args[1] == [{"role": "user", "content": "Summarize this."}]
+    assert call.kwargs == {
+        "max_tokens": 950,
+        "temperature": 0.35,
+        "top_p": 0.85,
+    }
+
+
+@pytest.mark.asyncio
+async def test_disabled_gateway_passes_through_to_local():
+    """When enabled=False, hold_slot(False) and generate_raw pass through to local gateway."""
+    target_a = _target_a()
+    gw, local, hc, driver = _make_gateway(enabled=False, targets=[target_a])
+    prompt = "<|turn>user\nSummarize.<turn|>\n<|turn>model\n"
+
+    async with gw.hold_slot(is_high_priority=False) as (
+        _wait_time,
+        cancel_event,
+        task_id,
+    ):
+        result = await gw.generate_raw(
+            prompt, cancel_event=cancel_event, task_id=task_id
+        )
+
+    assert result.response == "local raw response"
+    assert local.hold_slot_calls == [False]
+    local.generate_raw.assert_awaited_once()
+    hc.acquire_idle_target.assert_not_called()
+    driver.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_passthrough_methods_and_queue_status():
+    """generate(), chat_generate(), list_models() delegate to local; queue_status() includes remotes and flag."""
+    target_a = _target_a()
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    hc.status.return_value = [
+        {"url": target_a.base_url, "model": target_a.model, "healthy": True}
+    ]
+
+    gen_res = await gw.generate("prompt", stream=False, priority="low")
+    chat_res = await gw.chat_generate({"messages": []}, priority="high")
+    models_res = await gw.list_models()
+    q_status = gw.queue_status()
+
+    assert gen_res.response == "local response"
+    assert chat_res == {"message": {"content": "local chat"}}
+    assert models_res == [{"name": "gemma4-e4b-12k"}]
+    assert q_status["distributed_be_enabled"] is True
+    assert q_status["remotes"] == [
+        {"url": target_a.base_url, "model": target_a.model, "healthy": True}
+    ]
+    driver.chat.assert_not_awaited()
