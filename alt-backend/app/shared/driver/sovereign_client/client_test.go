@@ -435,6 +435,26 @@ func TestGetLens_MapsPermissionDeniedAndNotFoundToErrLensNotFound(t *testing.T) 
 			require.Error(t, err)
 			assert.Nil(t, lens)
 			assert.ErrorIs(t, err, domain.ErrLensNotFound)
+			var connectErr *connect.Error
+			require.ErrorAs(t, err, &connectErr)
+			assert.Equal(t, code, connectErr.Code())
 		})
 	}
+
+	t.Run(connect.CodeUnavailable.String(), func(t *testing.T) {
+		mux := http.NewServeMux()
+		path, h := sovereignv1connect.NewKnowledgeSovereignServiceHandler(&getLensErrorHandler{code: connect.CodeUnavailable})
+		mux.Handle(path, h)
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+
+		client := NewClient(srv.URL, true)
+		lens, err := client.GetLens(context.Background(), uuid.New())
+		require.Error(t, err)
+		assert.Nil(t, lens)
+		assert.NotErrorIs(t, err, domain.ErrLensNotFound)
+		var connectErr *connect.Error
+		require.ErrorAs(t, err, &connectErr)
+		assert.Equal(t, connect.CodeUnavailable, connectErr.Code())
+	})
 }
