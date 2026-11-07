@@ -680,7 +680,7 @@ mod tests {
 
         assert_eq!(clamp_offset(None), 0);
         assert_eq!(clamp_offset(Some(-10)), 0);
-        assert_eq!(clamp_offset(Some(25_000)), 999);
+        assert_eq!(clamp_offset(Some(25_000)), 1000);
     }
 
     #[tokio::test]
@@ -770,6 +770,28 @@ mod tests {
         assert_eq!(results[0]["job_id"], Uuid::from_u128(2).to_string());
         assert_eq!(results[0]["genre"], "genre-2");
 
+        let tail_req = Request::builder()
+            .uri("/v1/recaps/search?term=LLM&limit=50&offset=960")
+            .body(Body::empty())
+            .expect("request builds");
+        let tail_resp = app
+            .clone()
+            .oneshot(tail_req)
+            .await
+            .expect("request succeeds");
+        assert_eq!(tail_resp.status(), StatusCode::OK);
+        let tail_bytes = axum::body::to_bytes(tail_resp.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let tail_json: Value = serde_json::from_slice(&tail_bytes).expect("valid json");
+        let tail_results = tail_json["results"].as_array().expect("results array");
+        assert_eq!(tail_results.len(), 40);
+        assert_eq!(tail_results[0]["job_id"], Uuid::from_u128(961).to_string());
+        assert_eq!(
+            tail_results[39]["job_id"],
+            Uuid::from_u128(1000).to_string()
+        );
+
         let capped_req = Request::builder()
             .uri("/v1/recaps/search?term=LLM&limit=50&offset=1000")
             .body(Body::empty())
@@ -781,11 +803,7 @@ mod tests {
             .expect("body bytes");
         let capped_json: Value = serde_json::from_slice(&capped_bytes).expect("valid json");
         let capped_results = capped_json["results"].as_array().expect("results array");
-        assert_eq!(capped_results.len(), 50);
-        assert_eq!(
-            capped_results[0]["job_id"],
-            Uuid::from_u128(951).to_string()
-        );
+        assert_eq!(capped_results.len(), 0);
     }
 }
 
