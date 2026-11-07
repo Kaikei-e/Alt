@@ -1679,7 +1679,14 @@ func TestBFFHandler_ServeHTTP_BoundsUnaryResponseBody(t *testing.T) {
 	defer backend.Close()
 
 	secret := []byte("test-secret-key")
-	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, BFFConfig{})
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, BFFConfig{
+		EnableCache:          true,
+		EnableCircuitBreaker: true,
+		CacheMaxSize:         100,
+		CBFailureThreshold:   5,
+		CBSuccessThreshold:   2,
+		CBOpenTimeout:        time.Minute,
+	})
 	token := createTestToken(t, secret)
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader("req"))
@@ -1689,8 +1696,14 @@ func TestBFFHandler_ServeHTTP_BoundsUnaryResponseBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, int(maxResponseBodyBytes), rec.Body.Len())
+	assert.Equal(t, http.StatusBadGateway, rec.Code, "oversized backend response must fail with 502 rather than serving a truncated 200")
+	cacheStats := handler.GetCacheStats()
+	require.NotNil(t, cacheStats)
+	assert.Equal(t, 0, cacheStats.Size, "oversized backend response must not be cached")
+	cbStats := handler.GetCircuitBreakerStats()
+	require.NotNil(t, cbStats)
+	assert.Equal(t, int64(0), cbStats.TotalSuccesses, "oversized backend response must not record a breaker success")
+	assert.Equal(t, int64(1), cbStats.TotalFailures, "oversized backend response must record a breaker failure")
 }
 
 func TestBFFHandler_StreamingProcedure_CircuitBreaker_CallerCancelDoesNotRecordFailure(t *testing.T) {
