@@ -148,10 +148,12 @@ impl RecapDao {
                 // Legacy fallback: only for 7-day recaps, check jobs without explicit window_days
                 sqlx::query(
                     r"
-                    SELECT job_id, MAX(created_at) AS created_at
-                    FROM recap_outputs
-                    GROUP BY job_id
-                    ORDER BY MAX(created_at) DESC
+                    SELECT ro.job_id, MAX(ro.created_at) AS created_at
+                    FROM recap_outputs ro
+                    JOIN recap_jobs rj ON ro.job_id = rj.job_id
+                    WHERE rj.window_days IS NULL AND rj.status = 'completed'
+                    GROUP BY ro.job_id
+                    ORDER BY MAX(ro.created_at) DESC
                     LIMIT 1
                     ",
                 )
