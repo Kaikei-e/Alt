@@ -351,3 +351,24 @@ func TestBuildStreamResponse_Table(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildStreamResponse_RecallChanged_HomeSessionAggregate(t *testing.T) {
+	id := uuid.New().String()
+	occurredAt := time.Date(2026, 3, 20, 15, 0, 0, 0, time.UTC)
+
+	for _, eventType := range []string{domain.EventRecallDismissed, domain.EventRecallSnoozed} {
+		t.Run(eventType, func(t *testing.T) {
+			resp := buildStreamResponse(domain.KnowledgeEvent{
+				EventType:     eventType,
+				AggregateType: domain.AggregateHomeSession,
+				AggregateID:   "article:" + id,
+				OccurredAt:    occurredAt,
+			})
+			require.NotNil(t, resp)
+			assert.Equal(t, "recall_changed", resp.EventType)
+			require.NotNil(t, resp.RecallChange)
+			assert.Equal(t, "article:"+id, resp.RecallChange.ItemKey)
+		})
+	}
+}
+
