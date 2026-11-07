@@ -4,6 +4,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -275,10 +276,23 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Read request body once, for cache key, dedup key, and forwarding.
 	var body []byte
 	if r.Body != nil {
+		if r.ContentLength > maxRequestBodyBytes {
+			r.Body.Close()
+			h.logError("request body too large", &http.MaxBytesError{Limit: maxRequestBodyBytes})
+			h.handleError(w, http.StatusRequestEntityTooLarge, "Request Entity Too Large", requestID)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		var err error
 		body, err = io.ReadAll(r.Body)
 		r.Body.Close()
 		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				h.logError("request body too large", err)
+				h.handleError(w, http.StatusRequestEntityTooLarge, "Request Entity Too Large", requestID)
+				return
+			}
 			h.handleError(w, http.StatusBadRequest, "Failed to read request body", requestID)
 			return
 		}
@@ -433,7 +447,7 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	// never trips it, and a half-open trial passes on a torn body) and the
 	// truncated bytes went on to be cached, handing every caller a parse
 	// error behind X-Cache: HIT for the rest of the endpoint's TTL.
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 
 	// Invalidation stays keyed on the status line: a 2xx means the mutation
 	// already landed upstream, so read-your-writes has to hold even when the
