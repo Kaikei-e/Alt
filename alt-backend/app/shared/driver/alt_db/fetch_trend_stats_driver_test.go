@@ -2,10 +2,14 @@ package alt_db
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	pgxmock "github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFetchTrendStats_NilPool(t *testing.T) {
@@ -137,4 +141,46 @@ func TestBuildTrendQuery_InvalidGranularity(t *testing.T) {
 			assert.Contains(t, err.Error(), "invalid granularity")
 		})
 	}
+}
+
+func TestFetchTrendStatsForUser_ScanErrorReturnsError(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &DashboardRepository{pool: mock}
+
+	rows := pgxmock.NewRows([]string{"bucket", "articles", "summarized", "feed_activity"}).
+		AddRow(time.Now().Truncate(time.Hour), 3, 2, 5).
+		AddRow(nil, 1, 0, 1)
+
+	mock.ExpectQuery(`WITH articles_buckets AS`).
+		WithArgs(pgxmock.AnyArg(), statsTestUserID).
+		WillReturnRows(rows)
+
+	stats, err := repo.FetchTrendStatsForUser(context.Background(), statsTestUserID, "24h")
+	require.Error(t, err)
+	assert.Nil(t, stats)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestFetchTrendStatsForUser_RowsErrorReturnsError(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &DashboardRepository{pool: mock}
+
+	rows := pgxmock.NewRows([]string{"bucket", "articles", "summarized", "feed_activity"}).
+		AddRow(time.Now().Truncate(time.Hour), 3, 2, 5).
+		RowError(0, errors.New("network stream interrupted"))
+
+	mock.ExpectQuery(`WITH articles_buckets AS`).
+		WithArgs(pgxmock.AnyArg(), statsTestUserID).
+		WillReturnRows(rows)
+
+	stats, err := repo.FetchTrendStatsForUser(context.Background(), statsTestUserID, "24h")
+	require.Error(t, err)
+	assert.Nil(t, stats)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
