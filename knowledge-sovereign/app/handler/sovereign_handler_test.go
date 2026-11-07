@@ -386,6 +386,30 @@ func TestApplyRecallAndCurationMutation_ValidationErrorMapsToInvalidArgument(t *
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
+func TestApplyProjectionAndCurationMutation_DismissNotFoundMapsToCodeNotFound(t *testing.T) {
+	repo := &mockRepo{
+		returnErr: sovereign_db.ErrDismissTargetNotFound,
+	}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	_, err := client.ApplyProjectionMutation(context.Background(),
+		connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
+			MutationType: MutationDismissHomeItem,
+			Payload:      []byte(`{}`),
+		}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+
+	_, err = client.ApplyCurationMutation(context.Background(),
+		connect.NewRequest(&sovereignv1.ApplyCurationMutationRequest{
+			MutationType: MutationDismissCuration,
+			Payload:      []byte(`{}`),
+		}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+}
+
 func TestApplyRecallMutation_DispatchesCorrectly(t *testing.T) {
 	tests := []struct {
 		mutationType   string
