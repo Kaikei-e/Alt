@@ -501,8 +501,7 @@ class RecapSummaryUsecase:
             return 0
 
         return sum(
-            len(self._format_cluster_block(cluster)) + 2
-            for cluster in request.clusters
+            len(self._format_cluster_block(cluster)) + 2 for cluster in request.clusters
         )
 
     async def _generate_hierarchical_summary(
