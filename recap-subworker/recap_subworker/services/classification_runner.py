@@ -269,17 +269,34 @@ class ClassificationRunner:
         try:
             # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
             async_result = pool.apply_async(classification_worker.predict_batch, (texts,))
-            # Wait for the result in an executor to avoid blocking the event loop.
-            # A timeout on .get() itself (not just on the awaiting future) is required
-            # so the executor thread is released instead of blocking forever if the
-            # worker hangs.
-            result = await asyncio.to_thread(
-                async_result.get, self._settings.run_execution_timeout_seconds
-            )
-            return result
-        finally:
-            # Decrement active task counter and schedule idle shutdown off the event loop
+        except BaseException:
             await asyncio.to_thread(self._finish_task)
+            raise
+
+        # Wait for the result in an executor to avoid blocking the event loop.
+        # A timeout on .get() itself (not just on the awaiting future) is required
+        # so the executor thread is released instead of blocking forever if the
+        # worker hangs. Finish task accounting inside the worker thread so caller
+        # cancellation cannot schedule idle shutdown while the job is still running.
+        def _wait_and_finish() -> list[dict[str, Any]]:
+            try:
+                return async_result.get(self._settings.run_execution_timeout_seconds)
+            finally:
+                self._finish_task()
+
+        result_fut = asyncio.ensure_future(asyncio.to_thread(_wait_and_finish))
+        try:
+            return await asyncio.shield(result_fut)
+        except asyncio.CancelledError:
+
+            def _consume_result_outcome(fut: asyncio.Future[list[dict[str, Any]]]) -> None:
+                if fut.cancelled():
+                    threading.Thread(target=self._finish_task, daemon=True).start()
+                else:
+                    fut.exception()
+
+            result_fut.add_done_callback(_consume_result_outcome)
+            raise
 
     def shutdown(self) -> None:
         """Shutdown the process pool, waiting for running tasks to complete.
