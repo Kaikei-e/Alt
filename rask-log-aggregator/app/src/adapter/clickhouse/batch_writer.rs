@@ -1049,6 +1049,72 @@ mod tests {
         );
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn flush_logs_stops_retrying_when_caller_drops_ack_before_recovery() {
+        let mut buf = vec![
+            LogRow::from(make_enriched_log()),
+            LogRow::from(make_enriched_log()),
+        ];
+        let (ack_tx, ack_rx) = oneshot::channel();
+        let mut acks = vec![ack_tx];
+        let caller_rx = std::sync::Mutex::new(Some(ack_rx));
+        let attempts = std::sync::atomic::AtomicU32::new(0);
+        let accepted_rows = std::sync::atomic::AtomicUsize::new(0);
+
+        let sink = MockSink {
+            write_fn: |rows: &[LogRow]| {
+                let n = attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                if n <= 2 {
+                    if n == 2 {
+                        caller_rx.lock().unwrap().take();
+                    }
+                    Err(AggregatorError::Export("clickhouse restarting".to_string()))
+                } else {
+                    accepted_rows.fetch_add(rows.len(), std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                }
+            },
+        };
+
+        flush_logs_via(&sink, &mut buf, &mut acks, 5).await;
+
+        assert_eq!(
+            accepted_rows.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "sink must never receive rows once all waiting callers have timed out"
+        );
+        assert!(
+            buf.is_empty(),
+            "buffer must be cleared when all callers disconnect"
+        );
+        assert!(acks.is_empty());
+
+        // A caller that is still waiting keeps the existing retry behaviour.
+        let mut live_buf = vec![LogRow::from(make_enriched_log())];
+        let (live_tx, live_rx) = oneshot::channel();
+        let mut live_acks = vec![live_tx];
+        let live_attempts = std::sync::atomic::AtomicU32::new(0);
+        let live_accepted = std::sync::atomic::AtomicUsize::new(0);
+
+        let live_sink = MockSink {
+            write_fn: |rows: &[LogRow]| {
+                let n = live_attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                if n <= 2 {
+                    Err(AggregatorError::Export("clickhouse restarting".to_string()))
+                } else {
+                    live_accepted.fetch_add(rows.len(), std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                }
+            },
+        };
+
+        flush_logs_via(&live_sink, &mut live_buf, &mut live_acks, 5).await;
+
+        assert!(live_rx.await.unwrap().is_ok());
+        assert_eq!(live_accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(live_buf.is_empty());
+    }
+
     #[tokio::test]
     async fn a_batch_clickhouse_accepted_is_acked_as_a_success() {
         let mut buf = vec![LogRow::from(make_enriched_log())];
