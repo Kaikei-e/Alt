@@ -7,10 +7,12 @@ import (
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -185,25 +187,50 @@ func handleFeedError(ctx context.Context, feedURL url.URL, err error, rateLimite
 	}
 }
 
+func feedHTTPStatusCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var httpErr rssFeed.HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.StatusCode
+	}
+	var httpErrPtr *rssFeed.HTTPError
+	if errors.As(err, &httpErrPtr) && httpErrPtr != nil {
+		return httpErrPtr.StatusCode
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return feedHTTPStatusCode(urlErr.Err)
+	}
+	msg := err.Error()
+	for _, prefix := range []string{"http error: ", "http response status: "} {
+		if len(msg) >= len(prefix)+3 && strings.EqualFold(msg[:len(prefix)], prefix) {
+			if code, convErr := strconv.Atoi(msg[len(prefix) : len(prefix)+3]); convErr == nil {
+				return code
+			}
+		}
+	}
+	return 0
+}
+
 // isPersistentFeedError returns true for errors that indicate persistent issues with the feed.
 // Note: 403 is included because fetchWithRetryOn403 exhausts retries before this is called.
 func isPersistentFeedError(err error) bool {
 	if err == nil {
 		return false
 	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "400") ||
-		strings.Contains(errStr, "403") ||
-		strings.Contains(errStr, "404") ||
-		strings.Contains(errStr, "Failed to detect feed type")
+	switch feedHTTPStatusCode(err) {
+	case http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound:
+		return true
+	}
+	return errors.Is(err, rssFeed.ErrFeedTypeNotDetected) ||
+		strings.Contains(err.Error(), "Failed to detect feed type")
 }
 
 // is403Error returns true if the error indicates a 403 Forbidden response.
 func is403Error(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "403")
+	return feedHTTPStatusCode(err) == http.StatusForbidden
 }
 
 const max403Retries = 3
@@ -293,10 +320,7 @@ func backoffFor403Retry(rateLimiter *rate_limiter.HostRateLimiter, feedURL strin
 
 // is429Error returns true if the error indicates rate limiting by the target site.
 func is429Error(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "429")
+	return feedHTTPStatusCode(err) == http.StatusTooManyRequests
 }
 
 func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
