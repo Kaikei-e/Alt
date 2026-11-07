@@ -74,14 +74,11 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
     // Start log collection in background with cancellation support
     let collector_clone = collector.clone();
     let collector_cancel_token = cancel_token.clone();
-    tokio::spawn(async move {
+    let collector_handle = tokio::spawn(async move {
         let mut collector_guard = collector_clone.lock().await;
-        if let Err(e) = collector_guard
+        collector_guard
             .start_collection(log_tx, collector_cancel_token)
             .await
-        {
-            error!("Log collection failed: {}", e);
-        }
     });
 
     // Buffer for batching logs - directly collect EnrichedLogEntry (no double conversion)
@@ -118,12 +115,43 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
     loop {
         tokio::select! {
             // Process incoming log entries
-            Some(log_entry) = log_rx.recv() => {
-                log_batch.push(enrich_log_entry(&parser, log_entry).await);
+            maybe_entry = log_rx.recv() => {
+                match maybe_entry {
+                    Some(log_entry) => {
+                        log_batch.push(enrich_log_entry(&parser, log_entry).await);
 
-                // Send batch when it reaches the configured size
-                if log_batch.len() >= batch_size {
-                    flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
+                        // Send batch when it reaches the configured size
+                        if log_batch.len() >= batch_size {
+                            flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
+                        }
+                    }
+                    None => {
+                        match collector_handle.await {
+                            Ok(Ok(())) => {
+                                error!(
+                                    "Log collector for service '{}' stopped unexpectedly; stopping processing loop",
+                                    target_service
+                                );
+                            }
+                            Ok(Err(e)) => {
+                                error!(
+                                    "Log collection failed for service '{}': {}; stopping processing loop",
+                                    target_service, e
+                                );
+                            }
+                            Err(join_err) => {
+                                error!(
+                                    "Log collector task panicked for service '{}': {}; stopping processing loop",
+                                    target_service, join_err
+                                );
+                            }
+                        }
+                        cancel_token.cancel();
+                        if !log_batch.is_empty() {
+                            flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
+                        }
+                        break;
+                    }
                 }
             }
 

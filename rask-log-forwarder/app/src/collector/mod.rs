@@ -239,6 +239,7 @@ impl LogCollector {
                     &container_info,
                     tx.clone(),
                     cancel_token.clone(),
+                    &mut reconnect_delay,
                 )
                 .await
             {
@@ -288,6 +289,7 @@ impl LogCollector {
         container: &Arc<ContainerInfo>,
         tx: mpsc::Sender<LogEntry>,
         cancel_token: CancellationToken,
+        reconnect_delay: &mut Duration,
     ) -> Result<StreamExit, CollectorError> {
         use bollard::query_parameters::LogsOptions;
         use futures::StreamExt;
@@ -373,6 +375,7 @@ impl LogCollector {
                             if let Some(ts) = parsed_ts {
                                 self.last_timestamp = Some(ts);
                             }
+                            *reconnect_delay = INITIAL_RECONNECT_DELAY;
                         }
                         Some(Err(e)) => {
                             tracing::error!("Docker log stream error: {e}");
