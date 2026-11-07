@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -88,4 +89,49 @@ func TestCSRFHandler_RejectsWhenKratosCookieMissing(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	}
 	assert.Empty(t, validator.lastCookie, "validator should not be called when ory_kratos_session is absent")
+}
+
+func TestCSRFHandler_ValidatorErrorMapping(t *testing.T) {
+	tests := []struct {
+		name         string
+		validatorErr error
+		wantStatus   int
+	}{
+		{
+			name:         "kratos unavailable returns 502",
+			validatorErr: fmt.Errorf("%w: kratos returned status 503", domain.ErrKratosUnavailable),
+			wantStatus:   http.StatusBadGateway,
+		},
+		{
+			name:         "kratos rate limited returns 429",
+			validatorErr: fmt.Errorf("%w: kratos returned status 429", domain.ErrRateLimited),
+			wantStatus:   http.StatusTooManyRequests,
+		},
+		{
+			name:         "invalid session returns 401",
+			validatorErr: domain.ErrAuthFailed,
+			wantStatus:   http.StatusUnauthorized,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
+			validator := &stubSessionValidator{err: tt.validatorErr}
+			csrfGen := token.NewHMACCSRFGenerator(testHandlerCSRFSecret)
+			uc := usecase.NewGenerateCSRF(validator, csrfGen, slog.Default())
+			h := NewCSRFHandler(uc)
+
+			req := httptest.NewRequest(http.MethodPost, "/csrf", nil)
+			req.Header.Set("Cookie", "ory_kratos_session=sess-123")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			err := h.Handle(c)
+			require.Error(t, err)
+			he, ok := err.(*echo.HTTPError)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantStatus, he.Code)
+		})
+	}
 }
