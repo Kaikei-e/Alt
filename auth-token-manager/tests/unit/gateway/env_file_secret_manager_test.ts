@@ -1,5 +1,6 @@
 import { afterEach, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertRejects } from "@std/testing/asserts";
+import { stub } from "@std/testing/mock";
 import { EnvFileSecretManager } from "../../../src/gateway/env_file_secret_manager.ts";
 import type { TokenResponse } from "../../../src/domain/types.ts";
 
@@ -263,5 +264,83 @@ describe("EnvFileSecretManager", {
     }
 
     assertEquals(await manager.checkSecretExists(), false);
+  });
+
+  it("should create temp file with mode 0o640, remove it on rename failure, and not swallow chmod errors", async () => {
+    await Deno.mkdir(TEST_DIR, { recursive: true });
+    const filePath = `${TEST_DIR}/tokens.env`;
+    const manager = new EnvFileSecretManager(filePath);
+
+    const tokens: TokenResponse = {
+      access_token: "test-access-token-1234567890",
+      refresh_token: "test-refresh-token-1234567890",
+      expires_at: new Date(Date.now() + 3600 * 1000),
+    };
+
+    const origWriteTextFile = Deno.writeTextFile.bind(Deno);
+    let observedCreateMode: number | undefined;
+    let observedModeAtCreation: number | undefined;
+
+    const writeStub = stub(
+      Deno,
+      "writeTextFile",
+      async (
+        path: string | URL,
+        data: string | ReadableStream<string>,
+        options?: Deno.WriteFileOptions,
+      ) => {
+        observedCreateMode = options?.mode;
+        await origWriteTextFile(path, data, options);
+        const stat = await Deno.stat(path);
+        observedModeAtCreation = (stat.mode ?? 0) & 0o777;
+        // Place a directory at the target path so Deno.rename fails
+        await Deno.mkdir(filePath, { recursive: true });
+      },
+    );
+
+    try {
+      await assertRejects(
+        () => manager.updateTokenSecret(tokens),
+        Error,
+      );
+    } finally {
+      writeStub.restore();
+    }
+
+    const entries: string[] = [];
+    for await (const entry of Deno.readDir(TEST_DIR)) {
+      if (entry.name.includes(".tmp-")) {
+        entries.push(entry.name);
+      }
+    }
+    assertEquals(
+      entries,
+      [],
+      "temp file holding refresh token must be removed when rename fails",
+    );
+    assertEquals(observedCreateMode, 0o640);
+    assertEquals(observedModeAtCreation, 0o640);
+
+    await Deno.remove(filePath, { recursive: true });
+    const chmodStub = stub(Deno, "chmod", () => {
+      return Promise.reject(new Error("chmod EPERM"));
+    });
+    try {
+      await assertRejects(
+        () => manager.updateTokenSecret(tokens),
+        Error,
+        "chmod EPERM",
+      );
+    } finally {
+      chmodStub.restore();
+    }
+
+    const entriesAfterChmodFail: string[] = [];
+    for await (const entry of Deno.readDir(TEST_DIR)) {
+      if (entry.name.includes(".tmp-")) {
+        entriesAfterChmodFail.push(entry.name);
+      }
+    }
+    assertEquals(entriesAfterChmodFail, []);
   });
 });
