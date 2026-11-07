@@ -64,6 +64,10 @@ func (d *MeilisearchRecapDriver) waitForTask(ctx context.Context, taskUID int64)
 	return task, nil
 }
 
+func isIndexAlreadyExistsTask(task *meilisearch.Task) bool {
+	return task != nil && task.Status == meilisearch.TaskStatusFailed && task.Error.Code == "index_already_exists"
+}
+
 // EnsureIndex creates and configures the "recaps" index.
 func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 	// Try to fetch index info; if it doesn't exist, create it
@@ -79,7 +83,7 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 		if createErr != nil {
 			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to create index: %w", createErr)}
 		}
-		if _, waitErr := d.waitForTask(ctx, task.TaskUID); waitErr != nil {
+		if waitedTask, waitErr := d.waitForTask(ctx, task.TaskUID); waitErr != nil && !isIndexAlreadyExistsTask(waitedTask) {
 			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to wait for index creation: %w", waitErr)}
 		}
 	}
