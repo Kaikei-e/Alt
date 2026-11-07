@@ -434,7 +434,7 @@ impl RecapDao {
                       AND rj.kicked_at >= $1
                     ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
                 ) sub
-                ORDER BY sub.kicked_at ASC
+                ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre ASC
                 LIMIT $2
                 ",
             )
@@ -469,7 +469,7 @@ impl RecapDao {
                     WHERE rj.status = 'completed'
                     ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
                 ) sub
-                ORDER BY sub.kicked_at ASC
+                ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre ASC
                 LIMIT $1
                 ",
             )
@@ -686,7 +686,12 @@ async fn fetch_evidence_from_sentences(
 }
 
 pub(crate) fn sort_indexable_hits(hits: &mut [RecapSearchHit]) {
-    hits.sort_by_key(|b| std::cmp::Reverse(b.executed_at));
+    hits.sort_by(|a, b| {
+        a.executed_at
+            .cmp(&b.executed_at)
+            .then_with(|| a.job_id.cmp(&b.job_id))
+            .then_with(|| a.genre.cmp(&b.genre))
+    });
 }
 
 /// Escape SQL `ILIKE` metacharacters (`\`, `%`, `_`) and wrap in `%...%`.
