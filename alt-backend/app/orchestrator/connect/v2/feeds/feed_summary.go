@@ -15,6 +15,7 @@ import (
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
 	"alt/domain"
+	"alt/orchestrator/usecase/summarize_article_usecase"
 )
 
 // StreamSummarize streams article summarization in real-time.
@@ -64,7 +65,7 @@ func (h *Handler) StreamSummarize(
 	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
 	if !forceRefresh {
 		existingSummary, err := h.deps.SummaryStore.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
-		if err == nil && existingSummary != nil && existingSummary.Summary != "" && !isErrorPayloadSummary(existingSummary.Summary) {
+		if err == nil && existingSummary != nil && existingSummary.Summary != "" && !summarize_article_usecase.IsErrorPayloadSummary(existingSummary.Summary) {
 			h.logger.InfoContext(ctx, "returning cached summary", "article_id", resolvedArticleID)
 			return stream.Send(&feedsv2.StreamSummarizeResponse{
 				Chunk:       "",
