@@ -190,6 +190,9 @@ func (h *Handler) Subscribe(ctx context.Context, req *connect.Request[datahubv1.
 	}
 
 	if err := h.readState.Subscribe(ctx, userID, feedLinkID); err != nil {
+		if errors.Is(err, domain.ErrFeedNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
+		}
 		h.logger.ErrorContext(ctx, "Subscribe failed", "error", err, "user_id", userID, "feed_link_id", feedLinkID)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to subscribe"))
 	}
