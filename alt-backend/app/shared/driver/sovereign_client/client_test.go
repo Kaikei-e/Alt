@@ -66,6 +66,62 @@ func (m *mockSovereignHandler) ApplyCurationMutation(
 	return connect.NewResponse(&sovereignv1.ApplyCurationMutationResponse{Success: true}), nil
 }
 
+func (m *mockSovereignHandler) GetTrailFootprints(
+	_ context.Context,
+	_ *connect.Request[sovereignv1.GetTrailFootprintsRequest],
+) (*connect.Response[sovereignv1.GetTrailFootprintsResponse], error) {
+	if m.returnErr != nil {
+		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
+	}
+	return connect.NewResponse(&sovereignv1.GetTrailFootprintsResponse{
+		Episodes: []*sovereignv1.TrailEpisode{{
+			EpisodeKey: "ep:open:article:1",
+			Wear:       "worn",
+			Footprints: []*sovereignv1.TrailFootprint{{
+				FootprintKey: "open:article:1",
+				ItemKey:      "article:1",
+				Verb:         "read",
+			}},
+		}},
+		Branches: []*sovereignv1.TrailBranch{{
+			BranchKey:     "cluster:u:article:z",
+			AnchorItemKey: "article:1",
+			RelationKind:  "cluster",
+			Why:           "Joins a topic you follow.",
+			Confidence:    "plausible",
+			TargetItemKey: "article:z",
+			TargetTitle:   "Async Rust",
+			EvidenceRefs: []*sovereignv1.TrailEvidenceRef{{
+				RefId: "rust",
+				Label: "rust",
+				Kind:  "tag",
+			}},
+		}},
+	}), nil
+}
+
+func TestSearchTrailFootprints_ReturnsEpisodesAndBranches(t *testing.T) {
+	handler := &mockSovereignHandler{}
+	client, cleanup := setupMockServer(handler)
+	defer cleanup()
+
+	userID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	episodes, branches, err := client.SearchTrailFootprints(context.Background(), userID, []string{"article:1"}, 500)
+	require.NoError(t, err)
+	require.Len(t, episodes, 1)
+	assert.Equal(t, "ep:open:article:1", episodes[0].EpisodeKey)
+
+	require.Len(t, branches, 1)
+	b := branches[0]
+	assert.Equal(t, "cluster:u:article:z", b.BranchKey)
+	assert.Equal(t, "article:1", b.AnchorItemKey)
+	assert.Equal(t, "cluster", b.RelationKind)
+	assert.Equal(t, "Joins a topic you follow.", b.Why)
+	assert.Equal(t, "plausible", b.Confidence)
+	assert.Equal(t, "article:z", b.TargetItemKey)
+	assert.Equal(t, "Async Rust", b.TargetTitle)
+}
+
 func setupMockServer(handler *mockSovereignHandler) (*Client, func()) {
 	mux := http.NewServeMux()
 	path, h := sovereignv1connect.NewKnowledgeSovereignServiceHandler(handler)

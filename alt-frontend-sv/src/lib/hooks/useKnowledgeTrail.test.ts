@@ -193,6 +193,152 @@ describe("useKnowledgeTrail", () => {
 		]);
 	});
 
+	it("replaces branches on refresh via fetchData(true) so branches absent from the refreshed page disappear", async () => {
+		const ep1 = makeEpisode("ep-1", "article:1");
+		const brStale = {
+			branchKey: "br-stale",
+			anchorItemKey: "article:1",
+			relationKind: "cluster",
+			why: "Stale branch before refresh",
+			evidenceRefs: [],
+			confidence: "plausible",
+			targetItemKey: "article:10",
+			targetTitle: "Target 10",
+		};
+		const brFresh = {
+			branchKey: "br-fresh",
+			anchorItemKey: "article:1",
+			relationKind: "continuation",
+			why: "Fresh branch after refresh",
+			evidenceRefs: [],
+			confidence: "high",
+			targetItemKey: "article:11",
+			targetTitle: "Target 11",
+		};
+
+		vi.mocked(getTrail)
+			.mockResolvedValueOnce({
+				footprints: ep1.footprints,
+				episodes: [ep1],
+				branches: [brStale],
+				nextCursor: "",
+				hasMore: false,
+			})
+			.mockResolvedValueOnce({
+				footprints: ep1.footprints,
+				episodes: [ep1],
+				branches: [brFresh],
+				nextCursor: "",
+				hasMore: false,
+			});
+
+		const trail = useKnowledgeTrail();
+		await trail.fetchData(true);
+		expect(trail.branches.map((b) => b.branchKey)).toEqual(["br-stale"]);
+
+		await trail.fetchData(true);
+		expect(trail.branches.map((b) => b.branchKey)).toEqual(["br-fresh"]);
+	});
+
+	it("stores the search response branches in searchBranches and resets them on clearSearch()", async () => {
+		const ep1 = makeEpisode("ep-1", "article:1");
+		const searchHitEp = makeEpisode("ep-hit", "article:99");
+		const baseBranch = {
+			branchKey: "br-base",
+			anchorItemKey: "article:1",
+			relationKind: "continuation",
+			why: "Base spine branch",
+			evidenceRefs: [],
+			confidence: "high",
+			targetItemKey: "article:2",
+			targetTitle: "Article 2",
+		};
+		const searchBranch = {
+			branchKey: "br-search",
+			anchorItemKey: "article:99",
+			relationKind: "cluster",
+			why: "Search hit branch",
+			evidenceRefs: [],
+			confidence: "plausible",
+			targetItemKey: "article:100",
+			targetTitle: "Article 100",
+		};
+
+		vi.mocked(getTrail).mockResolvedValueOnce({
+			footprints: ep1.footprints,
+			episodes: [ep1],
+			branches: [baseBranch],
+			nextCursor: "",
+			hasMore: false,
+		});
+		vi.mocked(searchTrail).mockResolvedValueOnce({
+			episodes: [searchHitEp],
+			branches: [searchBranch],
+			matchedItemKeys: ["article:99"],
+		});
+
+		const trail = useKnowledgeTrail();
+		await trail.fetchData(true);
+		await trail.search("compilers");
+
+		expect(trail.searchActive).toBe(true);
+		expect(trail.searchBranches).toEqual([searchBranch]);
+		expect(trail.branches).toEqual([baseBranch]);
+
+		trail.clearSearch();
+		expect(trail.searchActive).toBe(false);
+		expect(trail.searchBranches).toEqual([]);
+		expect(trail.branches).toEqual([baseBranch]);
+	});
+
+	it("exposes visibleBranches that returns searchBranches in search mode and branches otherwise", async () => {
+		const ep1 = makeEpisode("ep-1", "article:1");
+		const searchHitEp = makeEpisode("ep-hit", "article:99");
+		const baseBranch = {
+			branchKey: "br-base",
+			anchorItemKey: "article:1",
+			relationKind: "continuation",
+			why: "Base spine branch",
+			evidenceRefs: [],
+			confidence: "high",
+			targetItemKey: "article:2",
+			targetTitle: "Article 2",
+		};
+		const searchBranch = {
+			branchKey: "br-search",
+			anchorItemKey: "article:99",
+			relationKind: "cluster",
+			why: "Search hit branch",
+			evidenceRefs: [],
+			confidence: "plausible",
+			targetItemKey: "article:100",
+			targetTitle: "Article 100",
+		};
+
+		vi.mocked(getTrail).mockResolvedValueOnce({
+			footprints: ep1.footprints,
+			episodes: [ep1],
+			branches: [baseBranch],
+			nextCursor: "",
+			hasMore: false,
+		});
+
+		const trail = useKnowledgeTrail();
+		await trail.fetchData(true);
+		expect(trail.visibleBranches).toEqual([baseBranch]);
+
+		vi.mocked(searchTrail).mockResolvedValueOnce({
+			episodes: [searchHitEp],
+			branches: [searchBranch],
+			matchedItemKeys: ["article:99"],
+		});
+		await trail.search("compilers");
+		expect(trail.visibleBranches).toEqual([searchBranch]);
+
+		trail.clearSearch();
+		expect(trail.visibleBranches).toEqual([baseBranch]);
+	});
+
 	it("preserves base episodes during search() so clearSearch() restores the spine without refetching (D25)", async () => {
 		const ep1 = makeEpisode("ep-1", "article:1");
 		const searchHitEp = makeEpisode("ep-hit", "article:99");
@@ -206,6 +352,7 @@ describe("useKnowledgeTrail", () => {
 		});
 		vi.mocked(searchTrail).mockResolvedValueOnce({
 			episodes: [searchHitEp],
+			branches: [],
 			matchedItemKeys: ["article:99"],
 		});
 

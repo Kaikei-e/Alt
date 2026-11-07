@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -322,6 +323,8 @@ func TestGetTrailFootprints_BranchesScopedToReturnedPageAnchorsNewestFirst(t *te
 	require.Len(t, resp.Msg.Episodes, 2)
 
 	assert.Equal(t, 1, repo.openBranchesCalls)
+	assert.Equal(t, uuid.MustParse("22222222-2222-2222-2222-222222222222"), repo.gotBranchUserID,
+		"branch query must be scoped to the requesting user")
 	assert.ElementsMatch(t, []string{"article:c2", "article:c1", "article:b"}, repo.gotBranchAnchorKeys,
 		"branch query must be scoped to footprint item_keys in the returned page, excluding off-page episode anchors")
 

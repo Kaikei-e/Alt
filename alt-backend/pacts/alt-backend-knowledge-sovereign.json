@@ -487,6 +487,22 @@
       },
       "response": {
         "body": {
+          "branches": [
+            {
+              "anchorItemKey": "article:1",
+              "branchKey": "cluster:u:article:z",
+              "confidence": "plausible",
+              "evidenceRefs": [
+                {
+                  "kind": "tag",
+                  "refId": "rust"
+                }
+              ],
+              "relationKind": "cluster",
+              "targetItemKey": "article:z",
+              "why": "Joins a topic you follow."
+            }
+          ],
           "episodes": [
             {
               "episodeKey": "ep:open:article:1",
@@ -507,6 +523,88 @@
         },
         "matchingRules": {
           "body": {
+            "$.branches": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.branches[*].anchorItemKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].branchKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].confidence": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs[*].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].evidenceRefs[*].refId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].relationKind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].targetItemKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.branches[*].why": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.episodes": {
               "combine": "AND",
               "matchers": [
