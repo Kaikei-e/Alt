@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"testing"
+	"time"
 
 	"alt/orchestrator/gateway/rag_gateway"
 
@@ -16,20 +17,28 @@ import (
 )
 
 type fakeOwnerBackfillClient struct {
-	batchesReceived  [][]rag_gateway.OwnerBackfillItem
-	returnUpdated    int64
-	returnAlreadySet int64
-	returnNotFound   int64
-	statusCode       int
-	statusBody       string
-	err              error
+	batchesReceived    [][]rag_gateway.OwnerBackfillItem
+	returnUpdated      int64
+	returnAlreadySet   int64
+	returnNotFound     int64
+	statusCode         int
+	statusBody         string
+	err                error
+	lastCtxDeadline    time.Time
+	lastCtxHasDeadline bool
+	waitForCtxDone     bool
 }
 
 func (f *fakeOwnerBackfillClient) BackfillDocumentOwnersWithResponse(
-	_ context.Context,
-	body rag_gateway.BackfillDocumentOwnersJSONRequestBody,
+	ctx context.Context,
+	body rag_gateway.OwnerBackfillRequest,
 	_ ...rag_gateway.RequestEditorFn,
 ) (*rag_gateway.BackfillDocumentOwnersResponse, error) {
+	f.lastCtxDeadline, f.lastCtxHasDeadline = ctx.Deadline()
+	if f.waitForCtxDone {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -291,4 +300,29 @@ func TestStreamAndBackfill_ClientError_ReturnsError(t *testing.T) {
 	_, err := streamAndBackfill(context.Background(), fetcher, fakeClient, 10, "", false, logger)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "status 400")
+}
+
+func TestProcessBatch_SetsBoundedTimeoutAndSurfacesDeadlineExceeded(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	items := []rag_gateway.OwnerBackfillItem{{ArticleId: "a1", UserId: "u1"}}
+
+	t.Run("attaches per-batch timeout to background context", func(t *testing.T) {
+		fakeClient := &fakeOwnerBackfillClient{returnUpdated: 1}
+		err := ProcessBatch(context.Background(), fakeClient, items, false, logger, &BackfillStats{})
+		require.NoError(t, err)
+		require.True(t, fakeClient.lastCtxHasDeadline, "ProcessBatch must set a per-batch context deadline")
+		remaining := time.Until(fakeClient.lastCtxDeadline)
+		assert.Greater(t, remaining, time.Duration(0))
+		assert.LessOrEqual(t, remaining, 60*time.Second)
+	})
+
+	t.Run("timeout surfaces as error", func(t *testing.T) {
+		fakeClient := &fakeOwnerBackfillClient{waitForCtxDone: true}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+
+		err := ProcessBatch(ctx, fakeClient, items, false, logger, &BackfillStats{})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+	})
 }
