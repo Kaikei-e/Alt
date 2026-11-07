@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -237,7 +238,10 @@ func (m *Migrator) startDatabaseContainers(ctx context.Context, targetVolumes []
 			return fmt.Errorf("resolving compose files: %w", err)
 		}
 		cmd := exec.CommandContext(ctx, "docker", args...)
-		if err := cmd.Run(); err != nil {
+		if out, err := cmd.CombinedOutput(); err != nil {
+			if msg := strings.TrimSpace(string(out)); msg != "" {
+				return fmt.Errorf("starting service %s: %w: %s", spec.Service, err, msg)
+			}
 			return fmt.Errorf("starting service %s: %w", spec.Service, err)
 		}
 		if err := m.waitForPostgres(ctx, spec); err != nil {
@@ -248,23 +252,54 @@ func (m *Migrator) startDatabaseContainers(ctx context.Context, targetVolumes []
 }
 
 func (m *Migrator) waitForPostgres(ctx context.Context, spec VolumeSpec) error {
-	pg := NewPostgresBackuper(m.projectName, m.composeDir, m.logger, m.dryRun)
-	container := pg.resolveContainer(ctx, spec)
-	args := []string{"exec", container, "pg_isready", "-U", spec.DBUser, "-d", spec.DBName}
+	var container string
+	if r, ok := m.pgBackup.(interface {
+		resolveContainer(context.Context, VolumeSpec) string
+	}); ok {
+		container = r.resolveContainer(ctx, spec)
+	} else {
+		container = (&PostgresBackuper{
+			projectName: m.projectName,
+			composeDir:  m.composeDir,
+			logger:      m.logger,
+			dryRun:      m.dryRun,
+		}).resolveContainer(ctx, spec)
+	}
+
+	port := spec.DBPort
+	if port <= 0 {
+		port = 5432
+	}
+	// Probe TCP rather than the unix socket so the temporary init-only server cannot satisfy readiness.
+	args := []string{
+		"exec", container,
+		"pg_isready",
+		"-h", "127.0.0.1",
+		"-p", strconv.Itoa(port),
+		"-U", spec.DBUser,
+		"-d", spec.DBName,
+	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	var lastErr error
+	var (
+		lastOut []byte
+		lastErr error
+	)
 	for {
-		if err := exec.CommandContext(waitCtx, "docker", args...).Run(); err == nil {
+		out, err := exec.CommandContext(waitCtx, "docker", args...).CombinedOutput()
+		if err == nil {
 			return nil
-		} else {
-			lastErr = err
 		}
+		lastOut = out
+		lastErr = err
 
 		select {
 		case <-waitCtx.Done():
+			if msg := strings.TrimSpace(string(lastOut)); msg != "" {
+				return fmt.Errorf("postgres container %s not ready: %w: %s", container, lastErr, msg)
+			}
 			return fmt.Errorf("postgres container %s not ready: %w", container, lastErr)
 		case <-time.After(500 * time.Millisecond):
 		}
