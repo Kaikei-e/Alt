@@ -84,6 +84,7 @@ on:
       - 'compose/.env.example'
       - 'deploy/host-prereqs.yaml'
       - 'scripts/tests/test-compose-prod-env-wiring.py'
+      - 'scripts/tests/test-compose-sovereign-knobs.py'
       - 'scripts/tests/test-recap-evaluator-auth-wiring.py'
       - 'scripts/check-env-overrides.py'
       - 'scripts/tests/test-check-env-overrides.py'
@@ -95,6 +96,7 @@ on:
       - 'recap-evaluator/src/recap_evaluator/infra/bearer_auth.py'
       - 'recap-evaluator/src/recap_evaluator/infra/mtls_client.py'
       - 'knowledge-sovereign/app/main.go'
+      - 'knowledge-sovereign/app/config/config.go'
       - 'alt-backend/app/cmd/*/main.go'
       - 'alt-butterfly-facade/main.go'
       - 'auth-hub/cmd/auth-hub/main.go'
@@ -179,6 +181,7 @@ on:
       - 'compose/.env.example'
       - 'deploy/host-prereqs.yaml'
       - 'scripts/tests/test-compose-prod-env-wiring.py'
+      - 'scripts/tests/test-compose-sovereign-knobs.py'
       - 'scripts/tests/test-recap-evaluator-auth-wiring.py'
       - 'scripts/check-env-overrides.py'
       - 'scripts/tests/test-check-env-overrides.py'
@@ -190,6 +193,7 @@ on:
       - 'recap-evaluator/src/recap_evaluator/infra/bearer_auth.py'
       - 'recap-evaluator/src/recap_evaluator/infra/mtls_client.py'
       - 'knowledge-sovereign/app/main.go'
+      - 'knowledge-sovereign/app/config/config.go'
       - 'alt-backend/app/cmd/*/main.go'
       - 'alt-butterfly-facade/main.go'
       - 'auth-hub/cmd/auth-hub/main.go'
@@ -560,6 +564,9 @@ jobs:
 
       - name: Pin production upstream wiring and env-template drift
         run: python3 scripts/tests/test-compose-prod-env-wiring.py
+
+      - name: Pin knowledge-sovereign compose tuning knobs
+        run: python3 scripts/tests/test-compose-sovereign-knobs.py
 
       - name: Pin recap-evaluator bearer wiring
         run: python3 scripts/tests/test-recap-evaluator-auth-wiring.py
