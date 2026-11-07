@@ -13,7 +13,7 @@ export const GET: RequestHandler = async ({ request, url, locals }) => {
 	let limit = DEFAULT_LIMIT;
 	if (limitParam !== null && limitParam !== "") {
 		const parsed = Number.parseInt(limitParam, 10);
-		if (!/^\d+$/.test(limitParam) || Number.isNaN(parsed) || parsed <= 0) {
+		if (!/^\d+$/.test(limitParam) || parsed <= 0) {
 			return Response.json(
 				{ error: "Invalid limit parameter" },
 				{ status: 400 },

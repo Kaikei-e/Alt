@@ -2,7 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { getArticlesByTag } from "#lib/api.js";
 
 const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 99;
 
 export const GET: RequestHandler = async ({ request, url }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
@@ -18,7 +18,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	let limit = DEFAULT_LIMIT;
 	if (limitStr !== null && limitStr !== "") {
 		const parsed = Number.parseInt(limitStr, 10);
-		if (!/^\d+$/.test(limitStr) || Number.isNaN(parsed) || parsed <= 0) {
+		if (!/^\d+$/.test(limitStr) || parsed <= 0) {
 			return Response.json(
 				{ error: "Invalid limit parameter" },
 				{ status: 400 },
