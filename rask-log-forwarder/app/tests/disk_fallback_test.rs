@@ -140,6 +140,73 @@ async fn test_cleanup_removes_corrupt_batch_past_retention() {
 }
 
 #[tokio::test]
+async fn test_stale_temp_file_removed_on_construction_and_excluded_from_usage() {
+    let temp_dir = TempDir::new().unwrap();
+    let stale_tmp = temp_dir.path().join("orphan.batch.tmp");
+    tokio::fs::write(&stale_tmp, b"partial write bytes")
+        .await
+        .unwrap();
+
+    let config = DiskConfig {
+        storage_path: temp_dir.path().to_path_buf(),
+        max_disk_usage: 100 * 1024 * 1024,
+        retention_period: Duration::from_secs(3600),
+        compression: true,
+        enabled: true,
+    };
+
+    let disk_fallback = DiskFallback::new(config).await.unwrap();
+
+    assert!(
+        !stale_tmp.exists(),
+        "stale .batch.tmp file must be removed on DiskFallback construction"
+    );
+    assert!(
+        disk_fallback
+            .list_stored_batches()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        disk_fallback.current_disk_usage(),
+        0,
+        "stale .batch.tmp file must not consume disk usage quota"
+    );
+}
+
+#[tokio::test]
+async fn test_store_batch_write_failure_removes_temp_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = DiskConfig {
+        storage_path: temp_dir.path().to_path_buf(),
+        max_disk_usage: 100 * 1024 * 1024,
+        retention_period: Duration::from_secs(3600),
+        compression: true,
+        enabled: true,
+    };
+
+    let mut disk_fallback = DiskFallback::new(config).await.unwrap();
+
+    let batch = create_test_batch_with_entries(10);
+    let batch_id = batch.id().to_string();
+
+    // Pre-create the final .batch path as a directory so rename fails after the .batch.tmp write.
+    let final_path = temp_dir.path().join(format!("{batch_id}.batch"));
+    tokio::fs::create_dir(&final_path).await.unwrap();
+
+    let result = disk_fallback.store_batch(batch).await;
+    assert!(result.is_err());
+
+    let temp_path = temp_dir.path().join(format!("{batch_id}.batch.tmp"));
+    assert!(
+        !temp_path.exists(),
+        "failed store_batch must remove the temporary .batch.tmp file"
+    );
+    assert_eq!(disk_fallback.current_disk_usage(), 0);
+}
+
+#[tokio::test]
 async fn test_delete_batch() {
     let temp_dir = TempDir::new().unwrap();
     let config = DiskConfig {
