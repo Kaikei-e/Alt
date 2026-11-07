@@ -353,7 +353,7 @@ impl PipelineOrchestrator {
 
         self.prepare_pipeline().await;
 
-        let resume_stage_idx = Self::get_resume_stage_index(job);
+        let resume_stage_idx = Self::get_resume_stage_index(job)?;
         tracing::info!(
             job_id = %job.job_id,
             current_stage = ?job.current_stage,
@@ -380,7 +380,7 @@ impl PipelineOrchestrator {
         // evidence ステージの状態遷移を記録（実際の状態保存は不要だが、Status History への記録が必要）
         if resume_stage_idx <= 5 {
             executor
-                .record_stage_transition(job.job_id, "evidence")
+                .record_stage_transition(job.job_id, STAGE_EVIDENCE)
                 .await?;
         }
         let dispatched = executor
@@ -450,22 +450,35 @@ impl PipelineOrchestrator {
         Ok(())
     }
 
-    fn get_resume_stage_index(job: &JobContext) -> usize {
-        let stages = [
-            "fetch",
-            "preprocess",
-            "dedup",
-            "genre",
-            "select",
-            "dispatch",
-            "persist",
-        ];
-        match &job.current_stage {
-            Some(stage) => stages.iter().position(|&s| s == stage).map_or(0, |i| i + 1),
-            None => 0,
+    fn get_resume_stage_index(job: &JobContext) -> Result<usize> {
+        match job.current_stage.as_deref() {
+            None => Ok(0),
+            Some(stage) => RESUME_STAGE_INDICES
+                .iter()
+                .find_map(|&(name, idx)| (name == stage).then_some(idx))
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "unknown resume stage `{stage}` for job {}; refusing to restart from fetch",
+                        job.job_id
+                    )
+                }),
         }
     }
 }
+
+const STAGE_EVIDENCE: &str = "evidence";
+
+// `"evidence"` is recorded after `"select"` state is saved and before `"dispatch"` runs, so both map to index 5.
+const RESUME_STAGE_INDICES: &[(&str, usize)] = &[
+    ("fetch", 1),
+    ("preprocess", 2),
+    ("dedup", 3),
+    ("genre", 4),
+    ("select", 5),
+    (STAGE_EVIDENCE, 5),
+    ("dispatch", 6),
+    ("persist", 7),
+];
 
 impl PipelineBuilder {
     pub(crate) fn new(config: Arc<Config>) -> Self {
