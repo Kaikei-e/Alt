@@ -752,7 +752,8 @@ fn extract_title_and_bullets(summary_ja: Option<&str>) -> (String, Vec<String>) 
 }
 
 fn edition_target_date(now: chrono::DateTime<chrono::Utc>) -> String {
-    now.format("%Y-%m-%d").to_string()
+    let jst = chrono::FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
+    now.with_timezone(&jst).format("%Y-%m-%d").to_string()
 }
 
 #[cfg(test)]
