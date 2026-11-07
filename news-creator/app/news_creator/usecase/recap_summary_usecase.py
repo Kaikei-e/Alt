@@ -435,8 +435,7 @@ class RecapSummaryUsecase:
     ) -> IntermediateSummary | None:
         """Generate an intermediate summary for a single chunk.
 
-        Uses hold_slot() + generate_raw() (BE path) instead of generate() (local-only)
-        so that DistributingGateway can dispatch to remote Ollama instances.
+        Uses hold_slot() + generate_raw() on the local gateway with preemption retry.
 
         Args:
             request: Original recap summary request
@@ -713,8 +712,7 @@ class RecapSummaryUsecase:
     ) -> IntermediateSummary | None:
         """Reduce a group of intermediate summaries into one.
 
-        Uses hold_slot() + generate_raw() (BE path) instead of generate() (local-only)
-        so that DistributingGateway can dispatch to remote Ollama instances.
+        Uses hold_slot() + generate_raw() on the local gateway with preemption retry.
 
         Args:
             group: List of intermediate summaries in this group

@@ -16,6 +16,60 @@ from news_creator.gateway import dispatch_metrics
 
 logger = logging.getLogger(__name__)
 
+MAX_MODELS_RESPONSE_BYTES = 1 * 1024 * 1024
+
+
+async def _read_bounded_models_text(response: Any, max_bytes: int) -> str:
+    content_length = getattr(response, "content_length", None)
+    if isinstance(content_length, int) and content_length > max_bytes:
+        raise ValueError(
+            f"/v1/models response exceeds {max_bytes} bytes (Content-Length: {content_length})"
+        )
+
+    headers = getattr(response, "headers", None)
+    if isinstance(headers, dict) or hasattr(headers, "get"):
+        raw_cl = headers.get("Content-Length") if headers is not None else None
+        if isinstance(raw_cl, str):
+            try:
+                parsed_cl = int(raw_cl)
+            except ValueError:
+                parsed_cl = None
+            if parsed_cl is not None and parsed_cl > max_bytes:
+                raise ValueError(
+                    f"/v1/models response exceeds {max_bytes} bytes (Content-Length: {parsed_cl})"
+                )
+
+    content = getattr(response, "content", None)
+    if isinstance(content, aiohttp.StreamReader):
+        chunks: list[bytes] = []
+        total = 0
+        while total <= max_bytes:
+            chunk = await content.read(max_bytes + 1 - total)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        raw_bytes = b"".join(chunks)
+    elif content is not None and callable(getattr(content, "read", None)):
+        maybe_bytes = await content.read(max_bytes + 1)
+        if isinstance(maybe_bytes, (bytes, bytearray)):
+            raw_bytes = bytes(maybe_bytes)
+        else:
+            text_val = await response.text(errors="replace")
+            raw_bytes = text_val.encode("utf-8")
+    else:
+        try:
+            text_val = await response.text(errors="replace")
+        except TypeError:
+            text_val = await response.text()
+        if len(text_val.encode("utf-8")) > max_bytes:
+            raise ValueError(f"/v1/models response exceeds {max_bytes} bytes")
+        return text_val
+
+    if len(raw_bytes) > max_bytes:
+        raise ValueError(f"/v1/models response exceeds {max_bytes} bytes")
+    return raw_bytes.decode("utf-8", errors="replace")
+
 
 class RemoteHealthChecker:
     """Periodic `/v1/models` health checker and in-flight slot tracker for remote targets."""
@@ -51,6 +105,8 @@ class RemoteHealthChecker:
                 "last_completed": 0.0,
                 "in_flight_count": 0,
                 "consecutive_failures": 0,
+                "dispatch_failures": 0,
+                "cooldown_until": 0.0,
                 "logged_unhealthy": False,
             }
             self._targets_by_base_url.setdefault(target.base_url, []).append(target)
@@ -59,11 +115,13 @@ class RemoteHealthChecker:
         self, fits: Callable[[RemoteTarget], bool]
     ) -> RemoteTarget | None:
         """Reserve the longest-idle healthy target where `fits(target)` is True."""
+        now = time.monotonic()
         idle_fitting = [
             target
             for target in self._targets
             if (
                 self._states[target]["healthy"]
+                and now >= self._states[target]["cooldown_until"]
                 and not self._states[target]["busy"]
                 and self._states[target]["in_flight_count"] == 0
                 and fits(target)
@@ -83,7 +141,7 @@ class RemoteHealthChecker:
         state = self._states[chosen]
         state["busy"] = True
         state["in_flight_count"] += 1
-        state["last_assigned"] = time.monotonic()
+        state["last_assigned"] = now
         return chosen
 
     def release_target(self, target: RemoteTarget) -> None:
@@ -101,16 +159,26 @@ class RemoteHealthChecker:
             return
         self.release_target(target)
         state["last_completed"] = time.monotonic()
+        state["dispatch_failures"] = 0
+        state["consecutive_failures"] = 0
+        state["cooldown_until"] = 0.0
 
     def mark_failure(self, target: RemoteTarget) -> None:
         """Immediately mark a target unhealthy after a dispatch failure."""
         state = self._states.get(target)
         if state is None:
             return
+        now = time.monotonic()
         self.release_target(target)
         state["healthy"] = False
+        state["dispatch_failures"] += 1
         state["consecutive_failures"] += 1
-        state["last_checked"] = time.monotonic()
+        state["last_checked"] = now
+        backoff = min(
+            self._cooldown_seconds * (2 ** (state["dispatch_failures"] - 1)),
+            self._max_cooldown_seconds,
+        )
+        state["cooldown_until"] = now + float(backoff)
         dispatch_metrics.record_cooldown(remote_url=target.base_url, reason="error")
 
     def status(self) -> list[dict[str, Any]]:
@@ -137,12 +205,19 @@ class RemoteHealthChecker:
         return result
 
     def _effective_cooldown(self, target: RemoteTarget) -> float:
-        failures = max(1, int(self._states[target].get("consecutive_failures", 0)))
+        state = self._states[target]
+        failures = max(
+            1,
+            int(state.get("consecutive_failures", 0)),
+            int(state.get("dispatch_failures", 0)),
+        )
         backoff = self._cooldown_seconds * (2 ** (failures - 1))
         return float(min(backoff, self._max_cooldown_seconds))
 
     def _should_probe_target(self, target: RemoteTarget, now: float) -> bool:
         state = self._states[target]
+        if now < state["cooldown_until"]:
+            return False
         elapsed = now - state["last_checked"]
         if state["healthy"]:
             return elapsed >= self._interval_seconds
@@ -186,7 +261,9 @@ class RemoteHealthChecker:
                         )
                     return
 
-                text = await response.text()
+                text = await _read_bounded_models_text(
+                    response, MAX_MODELS_RESPONSE_BYTES
+                )
                 try:
                     payload = json.loads(text)
                 except json.JSONDecodeError as err:
@@ -219,8 +296,10 @@ class RemoteHealthChecker:
 
                 for target in targets:
                     state = self._states[target]
-                    state["last_checked"] = now
                     if target.model in available_ids:
+                        if now < state["cooldown_until"]:
+                            continue
+                        state["last_checked"] = now
                         had_failures = state.get(
                             "consecutive_failures", 0
                         ) > 0 or state.get("logged_unhealthy", False)
@@ -254,7 +333,7 @@ class RemoteHealthChecker:
                             },
                         )
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+        except Exception as err:
             for target in targets:
                 log_fn = self._mark_target_unhealthy(target, now)
                 log_fn(
@@ -278,21 +357,25 @@ class RemoteHealthChecker:
         try:
             while True:
                 await asyncio.sleep(self._interval_seconds)
-                await self._check_all()
+                try:
+                    await self._check_all()
+                except Exception:
+                    logger.exception(
+                        "Unexpected error in remote health checker probe cycle"
+                    )
         except asyncio.CancelledError:
             logger.info("Remote health checker background task cancelled")
 
     async def start(self) -> None:
-        if not self._targets:
-            logger.info("No remote targets configured; health checker not started")
-            return
-
         timeout = aiohttp.ClientTimeout(
             total=self._timeout_seconds,
             connect=5,
         )
         self._session = aiohttp.ClientSession(timeout=timeout)
-        await self._check_all()
+        try:
+            await self._check_all()
+        except Exception:
+            logger.exception("Initial remote health check probe failed during start")
         self._task = asyncio.create_task(self._loop())
         logger.info(
             "Remote health checker started",

@@ -62,9 +62,10 @@ class NewsCreatorConfig:
             "DISTRIBUTED_BE_COOLDOWN_SECONDS", 60
         )
 
-        raw_targets = os.getenv("DISTRIBUTED_BE_TARGETS", "")
         self.distributed_be_targets: list[RemoteTarget]
+        self.distributed_be_reasoning_effort: str | None
         if self.distributed_be_enabled:
+            raw_targets = os.getenv("DISTRIBUTED_BE_TARGETS", "")
             self.distributed_be_targets = parse_distributed_be_targets(raw_targets)
             if not self.distributed_be_targets:
                 raise ValueError(
@@ -77,15 +78,8 @@ class NewsCreatorConfig:
                 )
             )
         else:
-            self.distributed_be_targets = (
-                parse_distributed_be_targets(raw_targets) if raw_targets.strip() else []
-            )
-            self.distributed_be_reasoning_effort = (
-                parse_distributed_be_reasoning_effort(
-                    os.getenv("DISTRIBUTED_BE_REASONING_EFFORT"),
-                    strict=False,
-                )
-            )
+            self.distributed_be_targets = []
+            self.distributed_be_reasoning_effort = None
 
         # Cache settings (remains at top level for now)
         self.cache_enabled = os.getenv("CACHE_ENABLED", "false").lower() == "true"

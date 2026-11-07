@@ -243,7 +243,7 @@ and news-creator has no env var to flip it, unlike acolyte-orchestrator's `PEER_
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DISTRIBUTED_BE_ENABLED` | `false` | Dispatch BE (`priority=low`) summarization requests to OpenAI-compatible remote targets, bypassing the local semaphore when a remote target fits and succeeds; RT always stays local |
-| `DISTRIBUTED_BE_TARGETS` | (empty) | Comma-separated `<base_url>|<model>|<num_ctx>` target entries (required when `DISTRIBUTED_BE_ENABLED=true`) |
+| `DISTRIBUTED_BE_TARGETS` | (empty) | Comma-separated `<base_url>\|<model>\|<num_ctx>` target entries (required when `DISTRIBUTED_BE_ENABLED=true`) |
 | `DISTRIBUTED_BE_REASONING_EFFORT` | (empty) | Optional `reasoning_effort` (`none`, `minimal`, `low`, `medium`, `high`) sent on `/v1/chat/completions`; omitted when empty |
 | `DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS` | `30` | Remote `/v1/models` health-poll interval |
 | `DISTRIBUTED_BE_TIMEOUT_SECONDS` | `300` | Per-request timeout on a remote target |

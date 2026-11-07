@@ -42,13 +42,45 @@ def parse_distributed_be_targets(raw: str) -> list[RemoteTarget]:
             )
 
         raw_base_url, raw_model, raw_num_ctx = parts
-        base_url = raw_base_url.strip().rstrip("/")
-        parsed_url = urlparse(base_url)
-        if parsed_url.scheme not in ("http", "https") or not parsed_url.netloc:
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in raw_base_url):
             raise ValueError(
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
-                f"base_url must be http or https with a host, got {raw_base_url.strip()!r}"
+                f"base_url must not contain control characters, got {raw_base_url!r}"
             )
+        stripped_base_url = raw_base_url.strip()
+        if any(ch.isspace() for ch in stripped_base_url):
+            raise ValueError(
+                f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
+                f"base_url must not contain whitespace, got {stripped_base_url!r}"
+            )
+        parsed_url = urlparse(stripped_base_url)
+        try:
+            _ = parsed_url.port
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
+                f"base_url has invalid port, got {stripped_base_url!r}"
+            ) from exc
+        if (
+            parsed_url.scheme not in ("http", "https")
+            or not parsed_url.netloc
+            or not parsed_url.hostname
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+            or "@" in parsed_url.netloc
+            or parsed_url.params
+            or parsed_url.query
+            or parsed_url.fragment
+            or ";" in stripped_base_url
+            or "?" in stripped_base_url
+            or "#" in stripped_base_url
+            or parsed_url.path.rstrip("/") != ""
+        ):
+            raise ValueError(
+                f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
+                f"base_url must be http or https with a host and no path, userinfo, params, query, or fragment, got {stripped_base_url!r}"
+            )
+        base_url = stripped_base_url.rstrip("/")
 
         model = raw_model.strip()
         if not model:

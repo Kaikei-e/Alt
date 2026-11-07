@@ -277,10 +277,7 @@ class SummarizeUsecase:
             )
             return await self._generate_hierarchical_summary(article_id, content)
 
-        # Retry loop with repetition detection
-        # IMPORTANT: Use hold_slot to acquire semaphore ONCE for all retries.
-        # Previously, generate() was called per retry, re-acquiring the semaphore each time,
-        # causing retries to wait 3500s+ in the queue again.
+        # Hold one slot across repetition retries so retries do not re-queue.
         max_retries = self.config.max_repetition_retries
         last_metadata = None
         has_repetition = False
@@ -586,9 +583,8 @@ class SummarizeUsecase:
         """
         Generate a summary for a large article using Hierarchical (Map-Reduce) strategy.
 
-        Uses hold_slot() + generate_raw() (BE path) instead of generate() (local-only)
-        so that DistributingGateway can dispatch chunks to remote Ollama instances,
-        avoiding local GPU starvation that blocks Ask Augur.
+        Uses hold_slot() + generate_raw() (BE path) so DistributingGateway can
+        offload chunk and reduce calls to configured remote targets when enabled.
 
         Args:
             article_id: Article identifier

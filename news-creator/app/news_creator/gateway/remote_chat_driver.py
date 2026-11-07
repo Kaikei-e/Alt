@@ -14,6 +14,74 @@ from news_creator.domain.models import LLMGenerateResponse
 
 logger = logging.getLogger(__name__)
 
+MAX_CHAT_RESPONSE_BYTES = 4 * 1024 * 1024
+
+
+class RemoteRequestRejectedError(RuntimeError):
+    """Raised when a remote target rejects a request (non-408/429 4xx or empty content)."""
+
+
+async def _read_bounded_text(response: Any, max_bytes: int, base_url: str) -> str:
+    content_length = getattr(response, "content_length", None)
+    if isinstance(content_length, int) and content_length > max_bytes:
+        raise RuntimeError(
+            f"Remote chat response from {base_url} exceeds {max_bytes} bytes "
+            f"(Content-Length: {content_length})"
+        )
+
+    headers = getattr(response, "headers", None)
+    if isinstance(headers, dict) or hasattr(headers, "get"):
+        raw_cl = headers.get("Content-Length") if headers is not None else None
+        if isinstance(raw_cl, str):
+            try:
+                parsed_cl = int(raw_cl)
+            except ValueError:
+                parsed_cl = None
+            if parsed_cl is not None and parsed_cl > max_bytes:
+                raise RuntimeError(
+                    f"Remote chat response from {base_url} exceeds {max_bytes} bytes "
+                    f"(Content-Length: {parsed_cl})"
+                )
+
+    content = getattr(response, "content", None)
+    if isinstance(content, aiohttp.StreamReader):
+        chunks: list[bytes] = []
+        total = 0
+        while total <= max_bytes:
+            chunk = await content.read(max_bytes + 1 - total)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        raw_bytes = b"".join(chunks)
+    elif content is not None and callable(getattr(content, "read", None)):
+        maybe_bytes = await content.read(max_bytes + 1)
+        if isinstance(maybe_bytes, (bytes, bytearray)):
+            raw_bytes = bytes(maybe_bytes)
+        else:
+            text_val = await response.text(errors="replace")
+            raw_bytes = text_val.encode("utf-8")
+    else:
+        try:
+            text_val = await response.text(errors="replace")
+        except TypeError:
+            text_val = await response.text()
+        except UnicodeDecodeError as err:
+            raise RuntimeError(
+                f"Failed to decode remote chat response from {base_url}: {err}"
+            ) from err
+        if len(text_val.encode("utf-8")) > max_bytes:
+            raise RuntimeError(
+                f"Remote chat response from {base_url} exceeds {max_bytes} bytes"
+            )
+        return text_val
+
+    if len(raw_bytes) > max_bytes:
+        raise RuntimeError(
+            f"Remote chat response from {base_url} exceeds {max_bytes} bytes"
+        )
+    return raw_bytes.decode("utf-8", errors="replace")
+
 
 class RemoteChatDriver:
     """HTTP client for OpenAI-compatible `/v1/chat/completions` targets."""
@@ -56,7 +124,7 @@ class RemoteChatDriver:
         top_p: float,
     ) -> LLMGenerateResponse:
         if self._session is None or self._session.closed:
-            await self.initialize()
+            raise RuntimeError("RemoteChatDriver session not initialized")
 
         url = f"{target.base_url.rstrip('/')}/v1/chat/completions"
         payload: dict[str, Any] = {
@@ -71,15 +139,14 @@ class RemoteChatDriver:
             payload["reasoning_effort"] = self._reasoning_effort
 
         try:
-            if self._session is None:
-                raise RuntimeError("RemoteChatDriver session not initialized")
-
             async with self._session.post(
                 url,
                 json=payload,
                 allow_redirects=False,
             ) as response:
-                text_body = await response.text()
+                text_body = await _read_bounded_text(
+                    response, MAX_CHAT_RESPONSE_BYTES, target.base_url
+                )
 
                 if response.status != 200:
                     error_msg = (
@@ -94,6 +161,11 @@ class RemoteChatDriver:
                             "model": target.model,
                         },
                     )
+                    if 400 <= response.status < 500 and response.status not in (
+                        408,
+                        429,
+                    ):
+                        raise RemoteRequestRejectedError(error_msg)
                     raise RuntimeError(error_msg)
 
                 try:
@@ -137,7 +209,7 @@ class RemoteChatDriver:
 
                 content = raw_content.strip()
                 if not content:
-                    raise RuntimeError(
+                    raise RemoteRequestRejectedError(
                         f"Empty 'content' in remote chat response from {target.base_url}"
                     )
 
