@@ -146,8 +146,14 @@ func (g *ArticleStoreGateway) SaveArticleSummary(ctx context.Context, articleID,
 
 // FetchArticleByID returns the article, or (nil, nil) for an unknown id.
 func (g *ArticleStoreGateway) FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("authentication required: %w", err)
+	}
+
 	resp, err := g.client.GetArticleContentByID(ctx, connect.NewRequest(&datahubv1.GetArticleContentByIDRequest{
 		ArticleId: articleID,
+		UserId:    user.UserID.String(),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("get article content %s: %w", articleID, err)

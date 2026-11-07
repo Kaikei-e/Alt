@@ -170,6 +170,11 @@ const fetchArticleByIDWithUserQuery = `
 // FetchArticleByID retrieves article content from database by ID.
 // Scopes to the authenticated user when user context is available.
 func (r *ArticleRepository) FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error) {
+	return r.FetchArticleByIDForUser(ctx, articleID, userIDFromContext(ctx))
+}
+
+// FetchArticleByIDForUser is the same read with the owner named explicitly.
+func (r *ArticleRepository) FetchArticleByIDForUser(ctx context.Context, articleID string, userID *uuid.UUID) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -179,10 +184,14 @@ func (r *ArticleRepository) FetchArticleByID(ctx context.Context, articleID stri
 		return nil, errors.New("article id cannot be empty")
 	}
 
+	if userID == nil {
+		userID = userIDFromContext(ctx)
+	}
+
 	var article domain.ArticleContent
 	var err error
-	if user, userErr := domain.GetUserFromContext(ctx); userErr == nil && user != nil && user.UserID != uuid.Nil {
-		err = r.pool.QueryRow(ctx, fetchArticleByIDWithUserQuery, cleanID, user.UserID).Scan(
+	if userID != nil && *userID != uuid.Nil {
+		err = r.pool.QueryRow(ctx, fetchArticleByIDWithUserQuery, cleanID, *userID).Scan(
 			&article.ID,
 			&article.Title,
 			&article.Content,
@@ -211,9 +220,4 @@ func (r *ArticleRepository) FetchArticleByID(ctx context.Context, articleID stri
 
 	logger.SafeInfoContext(ctx, "article retrieved from database", "id", cleanID)
 	return &article, nil
-}
-
-// FetchArticleByIDForUser is the same read with the owner named explicitly.
-func (r *ArticleRepository) FetchArticleByIDForUser(ctx context.Context, articleID string, _ *uuid.UUID) (*domain.ArticleContent, error) {
-	return r.FetchArticleByID(ctx, articleID)
 }

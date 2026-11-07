@@ -81,8 +81,8 @@ func (g *ArticleReadGateway) BatchGetByURLs(ctx context.Context, urls []string, 
 	return articles, nil
 }
 
-func (g *ArticleReadGateway) GetContentByID(ctx context.Context, articleID string, _ *uuid.UUID) (*domain.ArticleContent, error) {
-	article, err := g.db.FetchArticleByIDForUser(ctx, articleID, nil)
+func (g *ArticleReadGateway) GetContentByID(ctx context.Context, articleID string, userID *uuid.UUID) (*domain.ArticleContent, error) {
+	article, err := g.db.FetchArticleByIDForUser(ctx, articleID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get article content %s: %w", articleID, err)
 	}
