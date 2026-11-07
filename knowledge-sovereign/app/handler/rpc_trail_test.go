@@ -354,3 +354,28 @@ func TestGetTrailFootprints_EmptyPageSkipsBranchQuery(t *testing.T) {
 	assert.Empty(t, resp.Msg.Branches, "an empty episode page must return no branches")
 	assert.Equal(t, 0, repo.openBranchesCalls, "must not query branches when the returned episode page has no anchors")
 }
+
+func TestGetTrailFootprints_ZeroLimitDefaultsInsteadOfReturningEmptyCursorLoop(t *testing.T) {
+	base := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	repo := &mockRepo{
+		trailFootprints: []sovereign_db.TrailFootprint{
+			{FootprintKey: "fp:b", ItemKey: "article:b", Verb: "read", OccurredAt: base.Add(30 * 24 * time.Hour), Tags: []string{"postgres"}, Wear: "thin"},
+			{FootprintKey: "fp:a", ItemKey: "article:a", Verb: "read", OccurredAt: base, Tags: []string{"rust"}, Wear: "thin"},
+		},
+		openBranches: []sovereign_db.TrailBranch{
+			{BranchKey: "br:b", AnchorItemKey: "article:b", RelationKind: "cluster", Why: "Because you read B", Confidence: "plausible", TargetItemKey: "article:t1", TargetTitle: "T1"},
+		},
+	}
+	h := NewSovereignHandler(repo)
+
+	resp, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId: "22222222-2222-2222-2222-222222222222",
+		Limit:  0,
+	}))
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Episodes, 2, "omitted/zero limit must default to a positive page size and return both episodes")
+	assert.Len(t, resp.Msg.Branches, 1, "open branch for the returned page anchor must be included")
+	assert.False(t, resp.Msg.HasMore)
+	assert.NotEqual(t, "ep:0", resp.Msg.NextCursor, "zero limit must never emit a self-looping ep:0 cursor")
+	assert.Empty(t, resp.Msg.NextCursor)
+}
