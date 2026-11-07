@@ -1030,6 +1030,78 @@ async def test_hierarchical_3days_map_phase_uses_3days_prompt_contract():
 
 
 @pytest.mark.asyncio
+async def test_hierarchical_map_phase_includes_all_chunk_clusters():
+    """Every cluster assigned to a hierarchical map chunk must reach that chunk's prompt."""
+    from contextlib import asynccontextmanager
+
+    config = _make_recap_config_for_hierarchical()
+    config.hierarchical_chunk_max_chars = 6000
+    llm_provider = Mock()
+
+    map_prompts: list[str] = []
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt, **kwargs):
+        map_prompts.append(prompt)
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "bullets": ["中間要約1", "中間要約2"],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    async def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "title": "最終要約",
+                    "bullets": ["最終要点1"],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    distinctive_sentences = [
+        f"DISTINCTIVE_CLUSTER_SENTENCE_{i:02d}: クラスタ{i}の固有事実。"
+        for i in range(12)
+    ]
+    clusters = [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[RepresentativeSentence(text=sentence)],
+            top_terms=[f"term{i}"],
+        )
+        for i, sentence in enumerate(distinctive_sentences)
+    ]
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=clusters,
+        options=RecapSummaryOptions(max_bullets=4),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    combined_map_prompts = "\n".join(map_prompts)
+    missing = [s for s in distinctive_sentences if s not in combined_map_prompts]
+    assert not missing, f"Clusters dropped from map prompts: {missing}"
+
+
+
+@pytest.mark.asyncio
 async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
     """Recursive reduce groups must also use hold_slot+generate_raw."""
     from contextlib import asynccontextmanager
