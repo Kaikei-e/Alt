@@ -224,6 +224,8 @@ pub(crate) struct SearchRecapsQuery {
     offset: Option<i32>,
 }
 
+const MAX_SEARCH_SCAN_ROWS: i32 = 1000;
+
 pub(crate) fn clamp_search_limit(limit: Option<i32>) -> i32 {
     limit.unwrap_or(50).clamp(1, 200)
 }
@@ -233,7 +235,7 @@ pub(crate) fn clamp_indexable_limit(limit: Option<i32>) -> i32 {
 }
 
 pub(crate) fn clamp_offset(offset: Option<i32>) -> i32 {
-    offset.unwrap_or(0).clamp(0, 10_000)
+    offset.unwrap_or(0).clamp(0, MAX_SEARCH_SCAN_ROWS - 1)
 }
 
 #[derive(Debug, Serialize)]
@@ -271,7 +273,7 @@ pub(crate) async fn search_recaps(
     }
 
     let limit = clamp_search_limit(query.limit.or(query.max_results));
-    let offset = clamp_offset(query.offset);
+    let offset = clamp_offset(query.offset).min(MAX_SEARCH_SCAN_ROWS - limit);
     let dao = state.dao();
 
     match dao

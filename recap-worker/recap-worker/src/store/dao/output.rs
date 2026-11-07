@@ -340,7 +340,7 @@ impl RecapDao {
         let pattern = escape_ilike_pattern(term);
         let clamped_limit = i64::from(limit).clamp(1, MAX_SEARCH_SCAN_ROWS);
         let rows = sqlx::query(
-            r"
+            r#"
             SELECT sub.job_id, sub.kicked_at, sub.window_days,
                    sub.genre, sub.summary_ja, sub.output_tags, sub.top_terms
             FROM (
@@ -364,9 +364,9 @@ impl RecapDao {
                   )
                 ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
             ) sub
-            ORDER BY sub.kicked_at DESC
+            ORDER BY sub.kicked_at DESC, sub.job_id ASC, sub.genre COLLATE "C" ASC
             LIMIT $2
-            ",
+            "#,
         )
         .bind(&pattern)
         .bind(MAX_SEARCH_SCAN_ROWS)
@@ -396,8 +396,13 @@ impl RecapDao {
             });
         }
 
-        // Sort by date descending and apply limit
-        hits.sort_by_key(|b| std::cmp::Reverse(b.executed_at));
+        // Sort by date descending with deterministic tie-break and apply limit
+        hits.sort_by(|a, b| {
+            b.executed_at
+                .cmp(&a.executed_at)
+                .then_with(|| a.job_id.cmp(&b.job_id))
+                .then_with(|| a.genre.cmp(&b.genre))
+        });
         hits.truncate(usize::try_from(clamped_limit).unwrap_or(0));
 
         Ok(hits)
@@ -413,7 +418,7 @@ impl RecapDao {
         let limit = limit.clamp(1, 1000);
         let rows = if let Some(since_ts) = since {
             sqlx::query(
-                r"
+                r#"
                 SELECT sub.job_id, sub.kicked_at, sub.window_days,
                        sub.genre, sub.summary_ja, sub.output_tags, sub.top_terms
                 FROM (
@@ -434,9 +439,9 @@ impl RecapDao {
                       AND rj.kicked_at >= $1
                     ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
                 ) sub
-                ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre ASC
+                ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre COLLATE "C" ASC
                 LIMIT $2
-                ",
+                "#,
             )
             .bind(since_ts)
             .bind(limit)
@@ -449,7 +454,7 @@ impl RecapDao {
             })?
         } else {
             sqlx::query(
-                r"
+                r#"
                 SELECT sub.job_id, sub.kicked_at, sub.window_days,
                        sub.genre, sub.summary_ja, sub.output_tags, sub.top_terms
                 FROM (
@@ -469,9 +474,9 @@ impl RecapDao {
                     WHERE rj.status = 'completed'
                     ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
                 ) sub
-                ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre ASC
+                ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre COLLATE "C" ASC
                 LIMIT $1
-                ",
+                "#,
             )
             .bind(limit)
             .fetch_all(pool)
