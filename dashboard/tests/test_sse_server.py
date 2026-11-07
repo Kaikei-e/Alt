@@ -1,6 +1,7 @@
 """Tests for sse_server.py's auth-token gate, health exemption, and startup resolution."""
 
 import http.client
+import io
 import json
 import threading
 from urllib.parse import urlparse
@@ -345,3 +346,32 @@ class TestSystemMonitorTabTokenWiring:
         from tabs.system_monitor_tab import _resolve_sse_token
 
         assert _resolve_sse_token() is None
+
+
+class TestSseStreamSerializationError:
+    def test_stream_value_error_logged_and_exits_cleanly(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(sse_server, "AUTH_TOKEN", "")
+
+        def _raise_value_error():
+            raise ValueError("unserializable metric payload")
+
+        monkeypatch.setattr(
+            sse_server.system_monitor, "get_memory_info", _raise_value_error
+        )
+
+        handler = sse_server.SSEHandler.__new__(sse_server.SSEHandler)
+        handler.path = "/stream"
+        handler.client_address = ("127.0.0.1", 54321)
+        handler.headers = http.client.HTTPMessage()
+        handler.requestline = "GET /stream HTTP/1.1"
+        handler.request_version = "HTTP/1.1"
+        handler.wfile = io.BytesIO()
+
+        with caplog.at_level("ERROR"):
+            handler.do_GET()
+
+        assert "Data serialization error in SSE stream" in caplog.text
+        assert "unserializable metric payload" in caplog.text
+
