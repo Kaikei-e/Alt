@@ -168,6 +168,9 @@ func mapMutationError(err error) error {
 	if errors.Is(err, sovereign_db.ErrInvalidMutationPayload) {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if errors.Is(err, sovereign_db.ErrDismissTargetNotFound) {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
 	return connect.NewError(connect.CodeInternal, err)
 }
 

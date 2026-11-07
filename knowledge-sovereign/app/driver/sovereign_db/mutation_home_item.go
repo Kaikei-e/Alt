@@ -358,7 +358,7 @@ func (r *Repository) DismissKnowledgeHomeItem(ctx context.Context, payload json.
 	if err != nil {
 		return fmt.Errorf("DismissKnowledgeHomeItem: %w", err)
 	}
-	if m.ProjectionVersion != 0 && commandTag.RowsAffected() == 0 {
+	if commandTag.RowsAffected() == 0 {
 		return ErrDismissTargetNotFound
 	}
 	return nil
