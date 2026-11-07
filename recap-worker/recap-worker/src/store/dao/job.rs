@@ -360,6 +360,11 @@ impl RecapDao {
         DELETE FROM recap_jobs
         WHERE kicked_at < NOW() - make_interval(days => $1)
           AND NOT EXISTS (SELECT 1 FROM recap_card_snapshots s WHERE s.job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_card_candidates c WHERE c.job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_cards rc WHERE rc.job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_card_job_stats js WHERE js.job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_eval_windows ew WHERE ew.snapshot_job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_card_rejections cr WHERE cr.job_id = recap_jobs.job_id)
         ";
 
     pub async fn delete_old_jobs(pool: &PgPool, retention_days: i64) -> Result<u64> {
