@@ -543,3 +543,37 @@ func TestDispatchBatch_DetachesOutcomeWritesWhenPassContextExpires(t *testing.T)
 		t.Fatalf("expected dead-letter recorded, got stats.Dead=%d dead=%v", deadStats.Dead, deadDeliveries.dead)
 	}
 }
+
+func TestDispatchBatch_ReleasesInFlightSendAbortedByPassContextEvenAtMaxAttempts(t *testing.T) {
+	deliveries := &fakeDeliveries{batch: []domain.PushDelivery{delivery(maxAttempts)}}
+	ctx, cancel := context.WithCancel(context.Background())
+	sender := &fakeSender{
+		outcome: push_dispatch_port.SendOutcome{Retryable: true},
+		err:     context.Canceled,
+		onSend:  cancel,
+	}
+
+	stats, err := newUsecase(deliveries, &fakeSubscriptions{}, sender).DispatchBatch(ctx, 10)
+	if err != nil {
+		t.Fatalf("DispatchBatch: %v", err)
+	}
+
+	if len(deliveries.dead) != 0 || stats.Dead != 0 {
+		t.Fatalf("in-flight send aborted by pass ctx must not be marked dead, got dead=%v stats.Dead=%d", deliveries.dead, stats.Dead)
+	}
+	if len(deliveries.released) != 1 {
+		t.Fatalf("expected row released, got %v", deliveries.released)
+	}
+	if deliveries.released[0].retryAfter != 0 {
+		t.Fatalf("retryAfter = %v, want 0", deliveries.released[0].retryAfter)
+	}
+	if deliveries.released[0].reason != "pass context canceled" {
+		t.Fatalf("reason = %q, want %q", deliveries.released[0].reason, "pass context canceled")
+	}
+	if stats.Released != 1 {
+		t.Fatalf("stats.Released = %d, want 1", stats.Released)
+	}
+	if len(stats.Attempts) != 0 {
+		t.Fatalf("len(stats.Attempts) = %d, want 0", len(stats.Attempts))
+	}
+}
