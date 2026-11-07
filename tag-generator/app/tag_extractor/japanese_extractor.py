@@ -451,10 +451,7 @@ def extract_keywords_japanese(
 
     # Try semantic scoring with KeyBERT
     if config.use_japanese_semantic and keybert is not None and len(candidates) >= 2:
-        try:
-            return score_japanese_candidates_with_keybert(text, candidates, combined_freq, keybert, ja_tagger, config)
-        except Exception as e:
-            logger.warning("Japanese semantic scoring failed, falling back to frequency", error=str(e))
+        return score_japanese_candidates_with_keybert(text, candidates, combined_freq, keybert, ja_tagger, config)
 
     # Fallback: frequency-based scoring
     return score_candidates_by_frequency(candidates, combined_freq, config.top_keywords)

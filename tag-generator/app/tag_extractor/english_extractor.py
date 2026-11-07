@@ -30,87 +30,78 @@ def extract_keywords_english(
     if keybert is None:
         raise RuntimeError("KeyBERT not initialized")
 
-    try:
-        # Single call covering both single words and phrases (1-3 ngrams)
-        all_raw = keybert.extract_keywords(
-            text,
-            keyphrase_ngram_range=(1, 3),
-            top_n=config.top_keywords * 3,
-            use_mmr=True,
-            diversity=0.4,
-        )
+    # Single call covering both single words and phrases (1-3 ngrams)
+    all_raw = keybert.extract_keywords(
+        text,
+        keyphrase_ngram_range=(1, 3),
+        top_n=config.top_keywords * 3,
+        use_mmr=True,
+        diversity=0.4,
+    )
 
-        # Separate into phrases and single words, then merge
-        all_keywords = []
-        seen_words: set[str] = set()
+    # Separate into phrases and single words, then merge
+    all_keywords = []
+    seen_words: set[str] = set()
 
-        # Process phrases first to identify important compound terms
-        for phrase_tuple in cast(list[tuple[str, float]], all_raw):
-            phrase = phrase_tuple[0].strip().lower()
-            score = phrase_tuple[1]
-            words = phrase.split()
-            if len(words) >= 2:
-                # Only keep phrases with high scores or specific patterns
-                if score >= config.min_score_threshold * 1.5:  # Higher threshold for phrases
-                    # Check for tech terms, product names, or proper nouns
-                    if any(w[0].isupper() for w in phrase_tuple[0].strip().split() if w):
-                        all_keywords.append((phrase, score))
-                        # Mark individual words as seen to avoid duplication
-                        seen_words.update(words)
+    # Process phrases first to identify important compound terms
+    for phrase_tuple in cast(list[tuple[str, float]], all_raw):
+        phrase = phrase_tuple[0].strip().lower()
+        score = phrase_tuple[1]
+        words = phrase.split()
+        if len(words) >= 2:
+            # Only keep phrases with high scores or specific patterns
+            if score >= config.min_score_threshold * 1.5:  # Higher threshold for phrases
+                # Check for tech terms, product names, or proper nouns
+                if any(w[0].isupper() for w in phrase_tuple[0].strip().split() if w):
+                    all_keywords.append((phrase, score))
+                    # Mark individual words as seen to avoid duplication
+                    seen_words.update(words)
 
-        # Then add important single words not already in phrases
-        for word_tuple in cast(list[tuple[str, float]], all_raw):
-            word = word_tuple[0].strip().lower()
-            score = word_tuple[1]
-            words = word.split()
-            if len(words) == 1 and score >= config.min_score_threshold and word not in seen_words:
-                # Skip generic words
-                if len(word) > 2 and not word.isdigit():
-                    all_keywords.append((word, score))
-                    seen_words.add(word)
+    # Then add important single words not already in phrases
+    for word_tuple in cast(list[tuple[str, float]], all_raw):
+        word = word_tuple[0].strip().lower()
+        score = word_tuple[1]
+        words = word.split()
+        if len(words) == 1 and score >= config.min_score_threshold and word not in seen_words:
+            # Skip generic words
+            if len(word) > 2 and not word.isdigit():
+                all_keywords.append((word, score))
+                seen_words.add(word)
 
-        # Sort by score and filter
-        all_keywords.sort(key=lambda x: x[1], reverse=True)
+    # Sort by score and filter
+    all_keywords.sort(key=lambda x: x[1], reverse=True)
 
-        # Final filtering and cleaning
-        result: list[str] = []
-        tag_confidences: dict[str, float] = {}
-        seen_final: set[str] = set()
+    # Final filtering and cleaning
+    result: list[str] = []
+    tag_confidences: dict[str, float] = {}
+    seen_final: set[str] = set()
 
-        for keyword, score in all_keywords:
-            # Clean and check for duplicates
-            keyword_clean = keyword.strip()
-            keyword_lower = keyword_clean.lower()
+    for keyword, score in all_keywords:
+        # Clean and check for duplicates
+        keyword_clean = keyword.strip()
+        keyword_lower = keyword_clean.lower()
 
-            # Skip if we've seen this or a very similar variant
-            if keyword_lower not in seen_final:
-                # Check for substring relationships
-                is_substring = False
-                for seen in seen_final:
-                    if keyword_lower in seen or seen in keyword_lower:
-                        # Only skip if the longer one has higher score
-                        is_substring = True
-                        break
+        # Skip if we've seen this or a very similar variant
+        if keyword_lower not in seen_final:
+            # Check for substring relationships
+            is_substring = False
+            for seen in seen_final:
+                if keyword_lower in seen or seen in keyword_lower:
+                    # Only skip if the longer one has higher score
+                    is_substring = True
+                    break
 
-                if not is_substring:
-                    result.append(keyword_clean)
-                    # Normalize score to 0.0-1.0 range and store
-                    normalized_score = min(max(score, 0.0), 1.0)
-                    tag_confidences[keyword_clean] = round(normalized_score, 3)
-                    seen_final.add(keyword_lower)
+            if not is_substring:
+                result.append(keyword_clean)
+                # Normalize score to 0.0-1.0 range and store
+                normalized_score = min(max(score, 0.0), 1.0)
+                tag_confidences[keyword_clean] = round(normalized_score, 3)
+                seen_final.add(keyword_lower)
 
-                    if len(result) >= config.top_keywords:
-                        break
+                if len(result) >= config.top_keywords:
+                    break
 
-        return result, tag_confidences
-
-    except Exception as e:
-        logger.error(
-            "KeyBERT extraction failed for English",
-            error=str(e),
-            exc_info=True,
-        )
-        return [], {}
+    return result, tag_confidences
 
 
 def tokenize_english(
