@@ -338,28 +338,33 @@ impl RecapDao {
     ) -> Result<Vec<RecapSearchHit>> {
         const MAX_SEARCH_SCAN_ROWS: i64 = 1000;
         let pattern = escape_ilike_pattern(term);
-        let clamped_limit = limit.clamp(1, 200);
+        let clamped_limit = i64::from(limit).clamp(1, MAX_SEARCH_SCAN_ROWS);
         let rows = sqlx::query(
             r"
-            SELECT DISTINCT ON (rj.job_id, ro.genre)
-                rj.job_id,
-                rj.kicked_at,
-                rj.window_days,
-                ro.genre,
-                ro.summary_ja,
-                ro.tags AS output_tags,
-                c.top_terms
-            FROM recap_jobs rj
-            JOIN recap_outputs ro ON rj.job_id = ro.job_id
-            JOIN recap_subworker_runs sr
-                ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
-            JOIN recap_subworker_clusters c ON c.run_id = sr.id
-            WHERE rj.status = 'completed'
-              AND EXISTS (
-                SELECT 1 FROM jsonb_array_elements_text(c.top_terms) AS t
-                WHERE t ILIKE $1 ESCAPE '\'
-              )
-            ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+            SELECT sub.job_id, sub.kicked_at, sub.window_days,
+                   sub.genre, sub.summary_ja, sub.output_tags, sub.top_terms
+            FROM (
+                SELECT DISTINCT ON (rj.job_id, ro.genre)
+                    rj.job_id,
+                    rj.kicked_at,
+                    rj.window_days,
+                    ro.genre,
+                    ro.summary_ja,
+                    ro.tags AS output_tags,
+                    c.top_terms
+                FROM recap_jobs rj
+                JOIN recap_outputs ro ON rj.job_id = ro.job_id
+                JOIN recap_subworker_runs sr
+                    ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
+                JOIN recap_subworker_clusters c ON c.run_id = sr.id
+                WHERE rj.status = 'completed'
+                  AND EXISTS (
+                    SELECT 1 FROM jsonb_array_elements_text(c.top_terms) AS t
+                    WHERE t ILIKE $1 ESCAPE '\'
+                  )
+                ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+            ) sub
+            ORDER BY sub.kicked_at DESC
             LIMIT $2
             ",
         )

@@ -271,13 +271,20 @@ pub(crate) async fn search_recaps(
     }
 
     let limit = clamp_search_limit(query.limit.or(query.max_results));
-    let _offset = clamp_offset(query.offset);
+    let offset = clamp_offset(query.offset);
     let dao = state.dao();
 
-    match dao.search_recaps_by_term(term, limit).await {
+    match dao
+        .search_recaps_by_term(term, limit.saturating_add(offset))
+        .await
+    {
         Ok(hits) => {
+            let offset_usize = usize::try_from(offset).unwrap_or(0);
+            let limit_usize = usize::try_from(limit).unwrap_or(0);
             let results: Vec<RecapSearchHitResponse> = hits
                 .into_iter()
+                .skip(offset_usize)
+                .take(limit_usize)
                 .map(|hit| {
                     let summary =
                         normalize_summary_text(hit.summary_ja.as_deref().unwrap_or_default());
