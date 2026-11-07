@@ -443,7 +443,7 @@ onDestroy(stopPolling);
 									<footer class="section-sources">
 										<h4 class="sources-heading">Sources</h4>
 										<ol class="sources-list">
-											{#each citations as cite (`${cite.claim_id}:${cite.source_id}:${cite.offset_start}`)}
+											{#each citations as cite, i (i)}
 												<li class="source-item">
 													<div class="source-ref-row">
 														<span class="source-id">[{cite.claim_id}]</span>
