@@ -21,6 +21,7 @@
 #   rag_orchestrator_augur_empty_fallback_total{fallback_code}
 #     same file
 #   rag_orchestrator_rag_document_coverage{chunker_version,embedder_version,target}
+#   rag_orchestrator_rag_document_owner_coverage{state,target}
 #   rag_orchestrator_rag_document_coverage_scrape_timestamp_seconds
 #     rag-orchestrator/internal/infra/metrics/coverage.go, sampled every
 #     RAG_COVERAGE_SAMPLE_INTERVAL_MINUTES (default 15)
@@ -252,7 +253,7 @@ groups:
             Check: docker exec rag-db psql -U rag_user -d rag_db -c "SELECT count(*), count(embedding) FROM rag_chunks;"
 
       # WARN: retrieval filters by d.user_id = $owner, so NULL-owner rows on the target pair are invisible and skipped by rebuild.
-      # 5% tolerates brief ingestion-to-owner lag while catching an unbackfilled target corpus (98.5% unowned in the 2026-11 incident).
+      # 5% tolerates brief ingestion-to-owner lag while catching an unbackfilled target corpus.
       - alert: AugurDocumentOwnerCoverageLow
         expr: |
           (
