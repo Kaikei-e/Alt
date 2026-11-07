@@ -404,7 +404,6 @@ services:
   # postgres:18; staging skips the prod postgresql-rag.conf override to
   # keep the slice self-contained.
   rag-db:
-    image: alt-staging/rag-db:local
     build:
       context: ../rag-db
       dockerfile: Dockerfile

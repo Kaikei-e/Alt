@@ -17,11 +17,12 @@ PW_GREP='@authz'  bash e2e/playwright/rag-orchestrator/run.sh
 ```
 
 `run.sh` is the only supported entry point. It mints throwaway mutual-TLS
-material, renders an isolated compose slice, brings the stack up with `--build`,
-seeds the Augur fixtures through `psql`, installs dependencies on the default
-bridge, runs the suite *inside* the staging network (which is `internal: true`,
-so joining it is the only way the `rag-orchestrator` DNS name resolves), and
-tears everything down. See `../_lib/suite.sh`.
+material, renders an isolated compose slice, builds the local-only `rag-db` and
+`rag-db-migrator` images, brings the stack up with the pre-built
+`rag-orchestrator` image, seeds the Augur fixtures through `psql`, installs
+dependencies on the default bridge, runs the suite *inside* the staging network
+(which is `internal: true`, so joining it is the only way the `rag-orchestrator`
+DNS name resolves), and tears everything down. See `../_lib/suite.sh`.
 
 Build the image first, or you are testing the previous one:
 
