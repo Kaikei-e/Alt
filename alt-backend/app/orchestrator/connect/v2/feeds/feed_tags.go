@@ -43,7 +43,7 @@ func (h *Handler) GetFeedTags(
 
 	var cursor *time.Time
 	if req.Msg.Cursor != "" {
-		parsed, err := time.Parse(time.RFC3339, req.Msg.Cursor)
+		parsed, err := time.Parse(time.RFC3339Nano, req.Msg.Cursor)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid cursor: %w", err))
@@ -61,7 +61,7 @@ func (h *Handler) GetFeedTags(
 		protoTags = append(protoTags, &feedsv2.FeedTag{
 			Id:        tag.ID,
 			Name:      tag.TagName,
-			CreatedAt: tag.CreatedAt.Format(time.RFC3339),
+			CreatedAt: tag.CreatedAt.Format(time.RFC3339Nano),
 		})
 	}
 
