@@ -348,42 +348,42 @@ func TestBatchGetArticlesByURLs_OmitsMisses(t *testing.T) {
 
 func TestGetArticleContentByID(t *testing.T) {
 	userID := uuid.MustParse("33333333-3333-4333-8333-333333333333")
+	h, f := newArticleHandler(articleFakes{read: &fakeArticleReadPort{
+		content: &domain.ArticleContent{ID: "a1", Title: "T", Content: "C", URL: "https://example.com/a"},
+	}})
 
+	resp, err := h.GetArticleContentByID(context.Background(), connect.NewRequest(&datahubv1.GetArticleContentByIDRequest{
+		ArticleId: "a1",
+		UserId:    userID.String(),
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com/a", resp.Msg.GetArticle().GetUrl())
+	assert.Equal(t, "a1", f.read.gotArticleID)
+	require.NotNil(t, f.read.gotUser)
+	assert.Equal(t, userID, *f.read.gotUser)
+}
+
+func TestGetArticleContentByID_RequiresUser(t *testing.T) {
 	tests := []struct {
-		name     string
-		userID   string
-		wantUser *uuid.UUID
+		name   string
+		userID string
 	}{
-		{"scoped when user_id is set", userID.String(), &userID},
-		{"unscoped when user_id is empty", "", nil},
+		{"empty user_id", ""},
+		{"not a uuid", "not-a-uuid"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, f := newArticleHandler(articleFakes{read: &fakeArticleReadPort{
-				content: &domain.ArticleContent{ID: "a1", Title: "T", Content: "C", URL: "https://example.com/a"},
-			}})
-
-			resp, err := h.GetArticleContentByID(context.Background(), connect.NewRequest(&datahubv1.GetArticleContentByIDRequest{
+			h, f := newArticleHandler(articleFakes{})
+			_, err := h.GetArticleContentByID(context.Background(), connect.NewRequest(&datahubv1.GetArticleContentByIDRequest{
 				ArticleId: "a1",
 				UserId:    tt.userID,
 			}))
-			require.NoError(t, err)
-			assert.Equal(t, "https://example.com/a", resp.Msg.GetArticle().GetUrl())
-			assert.Equal(t, "a1", f.read.gotArticleID)
-			assert.Equal(t, tt.wantUser, f.read.gotUser)
+			require.Error(t, err)
+			assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+			assert.Empty(t, f.read.gotArticleID, "must not reach the repository when user_id is missing or invalid")
 		})
 	}
-}
-
-func TestGetArticleContentByID_RejectsInvalidUserID(t *testing.T) {
-	h, _ := newArticleHandler(articleFakes{})
-	_, err := h.GetArticleContentByID(context.Background(), connect.NewRequest(&datahubv1.GetArticleContentByIDRequest{
-		ArticleId: "a1",
-		UserId:    "not-a-uuid",
-	}))
-	require.Error(t, err)
-	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
 func TestGetArticleContentByID_RequiresArticleID(t *testing.T) {
