@@ -76,10 +76,9 @@ pub(crate) fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
     limit.unwrap_or(default).clamp(1, MAX_DASHBOARD_LIMIT)
 }
 
-#[allow(dead_code)]
 #[inline]
 pub(crate) fn clamp_window(window: Option<i64>, default: i64) -> i64 {
-    window.unwrap_or(default)
+    window.unwrap_or(default).clamp(1, MAX_DASHBOARD_WINDOW_SECONDS)
 }
 
 /// システムメトリクスを取得する
@@ -87,7 +86,7 @@ pub(crate) async fn get_metrics(
     State(state): State<AppState>,
     Query(params): Query<MetricsQuery>,
 ) -> Result<Json<Vec<SystemMetric>>, (StatusCode, String)> {
-    let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
+    let window_seconds = clamp_window(params.window, 14400); // デフォルト4時間
     let limit = clamp_limit(params.limit, 200);
 
     let metrics = state
@@ -119,7 +118,7 @@ pub(crate) async fn get_overview(
     State(state): State<AppState>,
     Query(params): Query<WindowQuery>,
 ) -> Result<Json<Vec<RecentActivity>>, (StatusCode, String)> {
-    let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
+    let window_seconds = clamp_window(params.window, 14400); // デフォルト4時間
     let limit = clamp_limit(params.limit, 200);
 
     let activities = state
@@ -151,7 +150,7 @@ pub(crate) async fn get_logs(
     State(state): State<AppState>,
     Query(params): Query<WindowQuery>,
 ) -> Result<Json<Vec<LogError>>, (StatusCode, String)> {
-    let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
+    let window_seconds = clamp_window(params.window, 14400); // デフォルト4時間
     let limit = clamp_limit(params.limit, 200);
 
     let logs = state
@@ -187,7 +186,7 @@ pub(crate) async fn get_jobs(
     State(state): State<AppState>,
     Query(params): Query<WindowQuery>,
 ) -> Result<Json<Vec<AdminJob>>, (StatusCode, String)> {
-    let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
+    let window_seconds = clamp_window(params.window, 14400); // デフォルト4時間
     let limit = clamp_limit(params.limit, 200);
 
     let jobs = state
@@ -226,7 +225,7 @@ pub(crate) async fn get_recap_jobs(
     State(state): State<AppState>,
     Query(params): Query<WindowQuery>,
 ) -> Result<Json<Vec<RecapJob>>, (StatusCode, String)> {
-    let window_seconds = params.window.unwrap_or(14400); // デフォルト4時間
+    let window_seconds = clamp_window(params.window, 14400); // デフォルト4時間
     let limit = clamp_limit(params.limit, 200);
 
     let jobs = state
@@ -410,7 +409,7 @@ pub(crate) async fn get_job_progress(
     State(state): State<AppState>,
     Query(params): Query<JobProgressQuery>,
 ) -> Result<Json<JobProgressEvent>, (StatusCode, String)> {
-    let window_seconds = params.window.unwrap_or(86400); // デフォルト24時間
+    let window_seconds = clamp_window(params.window, 86400); // デフォルト24時間
     let limit = clamp_limit(params.limit, 50);
     let dao = state.dao();
 
