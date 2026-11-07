@@ -29,10 +29,10 @@ const (
 	// worker replies late and recreates the stream (via XADD) after this
 	// cleanup has already run.
 	replyStreamTTL = 5 * time.Minute
-	// maxTagGenerationTimeoutMs bounds the caller-supplied TimeoutMs so a
+	// MaxTagGenerationTimeoutMs bounds the caller-supplied TimeoutMs so a
 	// client cannot force a near-unbounded blocking XREAD (TimeoutMs is
 	// int32 milliseconds and would otherwise allow ~24 days).
-	maxTagGenerationTimeoutMs = 120_000
+	MaxTagGenerationTimeoutMs = 120_000
 )
 
 // GenerateTagsRequest represents a request to generate tags for an article.
@@ -137,14 +137,14 @@ func (u *GenerateTagsUsecase) GenerateTagsForArticle(ctx context.Context, req *G
 		}, fmt.Errorf("publish request: %w", err)
 	}
 
-	// Determine timeout, clamped to maxTagGenerationTimeoutMs so a client
+	// Determine timeout, clamped to MaxTagGenerationTimeoutMs so a client
 	// can't tie up a connection/goroutine with a near-unbounded blocking XREAD.
 	timeoutMs := req.TimeoutMs
 	switch {
 	case timeoutMs <= 0:
 		timeoutMs = DefaultTagGenerationTimeoutMs
-	case timeoutMs > maxTagGenerationTimeoutMs:
-		timeoutMs = maxTagGenerationTimeoutMs
+	case timeoutMs > MaxTagGenerationTimeoutMs:
+		timeoutMs = MaxTagGenerationTimeoutMs
 	}
 	timeout := time.Duration(timeoutMs) * time.Millisecond
 
