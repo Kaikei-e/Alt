@@ -9,6 +9,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -108,7 +109,11 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 	// 3. Look up feed_link_id for this URL to associate feeds with their source
 	var feedLinkID *string
 	if r.feedLinkIDResolver != nil {
-		feedLinkID, _ = r.feedLinkIDResolver.FetchFeedLinkIDByURL(ctx, parsedFeed.FeedLink)
+		feedLinkID, err = r.feedLinkIDResolver.FetchFeedLinkIDByURL(ctx, parsedFeed.FeedLink)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "Failed to resolve feed link ID", "feed_link", parsedFeed.FeedLink, "error", err)
+			return fmt.Errorf("failed to resolve feed link id: %w", err)
+		}
 	}
 
 	// 4. Set FeedLinkID on all items
