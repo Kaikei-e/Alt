@@ -51,8 +51,11 @@ async fn find_retry_target(recap_dao: &dyn RecapDao) -> Result<Option<(Uuid, u32
     Ok(target.map(|(job_id, _status, _last_stage, window_days)| (job_id, window_days)))
 }
 
-fn build_retry_job(_config: &Config, job_id: Uuid, window_days: u32) -> JobContext {
-    JobContext::new_manual(job_id, Vec::new(), window_days)
+fn build_retry_job(config: &Config, job_id: Uuid, window_days: u32) -> JobContext {
+    super::daemon::apply_knowledge_owner(
+        JobContext::new_manual(job_id, Vec::new(), window_days),
+        config.knowledge_owner(),
+    )
 }
 
 #[derive(Debug, Clone)]

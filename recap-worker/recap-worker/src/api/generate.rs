@@ -192,12 +192,15 @@ fn trigger_recap(
 }
 
 fn build_manual_job(
-    _config: &crate::config::Config,
+    config: &crate::config::Config,
     job_id: Uuid,
     genres: Vec<String>,
     window_days: u32,
 ) -> JobContext {
-    JobContext::new_manual(job_id, genres, window_days)
+    crate::scheduler::daemon::apply_knowledge_owner(
+        JobContext::new_manual(job_id, genres, window_days),
+        config.knowledge_owner(),
+    )
 }
 
 fn normalize_genres(raw: Vec<String>) -> Vec<String> {
