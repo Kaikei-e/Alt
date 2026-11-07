@@ -21,27 +21,20 @@ function makeEvent(search = "") {
 describe("GET /api/articles/by-tag", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		getArticlesByTag.mockImplementation(
-			async (
-				_cookie: string,
-				_tagId: string,
-				_cursor: string | undefined,
-				limit: number,
-			) => {
-				if (Number.isNaN(limit)) {
-					throw new Error("invalid limit");
-				}
-				return { articles: [], has_more: false };
-			},
-		);
+		getArticlesByTag.mockResolvedValue({ articles: [], has_more: false });
 	});
 
-	it("returns 400 when limit is non-numeric", async () => {
-		const res = await GET(makeEvent("?tag_id=tag-1&limit=abc"));
+	it.each(["abc", "10abc", "1e3", " 10", "-0"])(
+		'returns 400 when limit is "%s"',
+		async (rawLimit) => {
+			const res = await GET(
+				makeEvent(`?tag_id=tag-1&limit=${encodeURIComponent(rawLimit)}`),
+			);
 
-		expect(res.status).toBe(400);
-		expect(getArticlesByTag).not.toHaveBeenCalled();
-	});
+			expect(res.status).toBe(400);
+			expect(getArticlesByTag).not.toHaveBeenCalled();
+		},
+	);
 
 	it("returns 400 when limit is non-positive", async () => {
 		const resZero = await GET(makeEvent("?tag_id=tag-1&limit=0"));
@@ -53,11 +46,11 @@ describe("GET /api/articles/by-tag", () => {
 		expect(getArticlesByTag).not.toHaveBeenCalled();
 	});
 
-	it("clamps oversized limit to 100", async () => {
+	it("clamps oversized limit to 99", async () => {
 		const res = await GET(makeEvent("?tag_id=tag-1&limit=100000"));
 
 		expect(res.status).toBe(200);
-		expect(getArticlesByTag).toHaveBeenCalledWith("", "tag-1", undefined, 100);
+		expect(getArticlesByTag).toHaveBeenCalledWith("", "tag-1", undefined, 99);
 	});
 
 	it("defaults limit to 20 when omitted", async () => {

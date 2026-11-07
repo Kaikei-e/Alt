@@ -17,13 +17,13 @@ vi.mock("#lib/api.js", async (importOriginal) => {
 
 import { POST } from "./+server";
 
-function makeEvent(body: BodyInit | null) {
+function makeEvent(body: BodyInit | null, csrfHeader = "expected-csrf") {
 	return {
 		request: new Request("http://localhost/api/v1/feeds/read", {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
-				"X-CSRF-Token": "expected-csrf",
+				"X-CSRF-Token": csrfHeader,
 				cookie: "csrf_token=expected-csrf",
 			},
 			body,
@@ -39,6 +39,13 @@ function makeEvent(body: BodyInit | null) {
 describe("POST /api/v1/feeds/read", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	it("returns 403 rather than 400 when both CSRF token and body are invalid", async () => {
+		const res = await POST(makeEvent("{", "wrong-csrf"));
+
+		expect(res.status).toBe(403);
+		expect(updateFeedReadStatus).not.toHaveBeenCalled();
 	});
 
 	it('returns 400 for invalid JSON body "{"', async () => {

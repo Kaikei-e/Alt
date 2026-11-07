@@ -24,22 +24,24 @@ function makeEvent(search = "") {
 describe("GET /api/v1/feeds/fetch/cursor", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		getFeedsWithCursor.mockImplementation(
-			async (_cookie: string, _cursor: string | undefined, limit: number) => {
-				if (Number.isNaN(limit)) {
-					throw new Error("invalid limit");
-				}
-				return { data: [], next_cursor: null, has_more: false };
-			},
-		);
+		getFeedsWithCursor.mockResolvedValue({
+			data: [],
+			next_cursor: null,
+			has_more: false,
+		});
 	});
 
-	it("returns 400 when limit is non-numeric", async () => {
-		const res = await GET(makeEvent("?limit=abc"));
+	it.each(["abc", "10abc", "1e3", " 10", "-0"])(
+		'returns 400 when limit is "%s"',
+		async (rawLimit) => {
+			const res = await GET(
+				makeEvent(`?limit=${encodeURIComponent(rawLimit)}`),
+			);
 
-		expect(res.status).toBe(400);
-		expect(getFeedsWithCursor).not.toHaveBeenCalled();
-	});
+			expect(res.status).toBe(400);
+			expect(getFeedsWithCursor).not.toHaveBeenCalled();
+		},
+	);
 
 	it("returns 400 when limit is non-positive", async () => {
 		const resZero = await GET(makeEvent("?limit=0"));
