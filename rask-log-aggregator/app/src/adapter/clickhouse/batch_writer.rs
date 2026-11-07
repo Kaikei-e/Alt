@@ -1148,6 +1148,41 @@ mod tests {
         assert!(live_buf.is_empty());
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn flush_logs_drops_closed_caller_rows_and_writes_open_caller_rows() {
+        let mut closed_entry = make_enriched_log();
+        closed_entry.message = "closed-caller-row".to_string();
+        let mut open_entry = make_enriched_log();
+        open_entry.message = "open-caller-row".to_string();
+
+        let (closed_tx, closed_rx) = oneshot::channel();
+        drop(closed_rx);
+        let (open_tx, open_rx) = oneshot::channel();
+
+        let mut buf = vec![LogRow::from(closed_entry), LogRow::from(open_entry)];
+        let mut acks = vec![closed_tx, open_tx];
+        let written_messages = std::sync::Mutex::new(Vec::new());
+
+        let sink = MockSink {
+            write_fn: |rows: &[LogRow]| {
+                written_messages
+                    .lock()
+                    .unwrap()
+                    .extend(rows.iter().map(|r| r.message.clone()));
+                Ok(())
+            },
+        };
+
+        flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
+
+        assert!(open_rx.await.unwrap().is_ok());
+        assert_eq!(
+            *written_messages.lock().unwrap(),
+            vec!["open-caller-row".to_string()],
+            "rows belonging to a caller whose ack is already closed must not be written"
+        );
+    }
+
     #[tokio::test]
     async fn a_batch_clickhouse_accepted_is_acked_as_a_success() {
         let mut buf = vec![LogRow::from(make_enriched_log())];
