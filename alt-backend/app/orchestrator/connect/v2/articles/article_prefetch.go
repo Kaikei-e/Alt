@@ -93,7 +93,7 @@ func (h *Handler) BatchPrefetchImages(
 	}
 
 	if h.deps.ImageProxy == nil {
-		return connect.NewResponse(&articlesv2.BatchPrefetchImagesResponse{}), nil
+		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("image prefetch is not available: the image proxy is disabled"))
 	}
 
 	// Fetch OGP URLs from article_heads, through alt-data-hub.
