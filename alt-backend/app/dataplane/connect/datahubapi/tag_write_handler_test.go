@@ -1,9 +1,11 @@
 package datahubapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -25,9 +27,13 @@ import (
 func TestBatchUpsertArticleTags_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBatchUpsert := mocks.NewMockBatchUpsertArticleTagsPort(ctrl)
+	tagSetPort := &fakeTagSetVersionPort{}
+	eventPort := &stubKnowledgeEventPort{}
+	uc := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetPort, eventPort, tagSetPort)
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
-		WithTagCatalogPorts(nil, mockBatchUpsert, nil))
+		WithTagCatalogPorts(nil, mockBatchUpsert, nil),
+		WithKnowledgeVersionUsecases(nil, uc))
 
 	mockBatchUpsert.EXPECT().
 		BatchUpsertArticleTags(gomock.Any(), gomock.Any()).
@@ -73,9 +79,13 @@ func TestBatchUpsertArticleTags_Unimplemented(t *testing.T) {
 func TestUpsertArticleTags_ValidationAndSuccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockUpsert := mocks.NewMockUpsertArticleTagsPort(ctrl)
+	tagSetPort := &fakeTagSetVersionPort{}
+	eventPort := &stubKnowledgeEventPort{}
+	uc := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetPort, eventPort, tagSetPort)
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
-		WithTagCatalogPorts(mockUpsert, nil, nil))
+		WithTagCatalogPorts(mockUpsert, nil, nil),
+		WithKnowledgeVersionUsecases(nil, uc))
 
 	t.Run("missing article_id returns CodeInvalidArgument", func(t *testing.T) {
 		_, err := h.UpsertArticleTags(context.Background(), connect.NewRequest(&datahubv1.UpsertArticleTagsRequest{}))
@@ -171,7 +181,7 @@ func TestUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 		assert.False(t, eventPort.called)
 	})
 
-	t.Run("unparseable article UserID skips Execute without writing nil tenant", func(t *testing.T) {
+	t.Run("unparseable article UserID skips Execute without writing nil tenant and logs at ERROR", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockUpsert := mocks.NewMockUpsertArticleTagsPort(ctrl)
 		mockGetByID := mocks.NewMockGetArticleByIDPort(ctrl)
@@ -179,7 +189,10 @@ func TestUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 		eventPort := &stubKnowledgeEventPort{}
 		uc := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetPort, eventPort, tagSetPort)
 
-		h := NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+
+		h := NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, logger,
 			WithTagCatalogPorts(mockUpsert, nil, nil),
 			WithKnowledgeVersionUsecases(nil, uc),
 		)
@@ -199,6 +212,8 @@ func TestUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, tagSetPort.created, "Execute must not be called with uuid.Nil UserID")
 		assert.False(t, eventPort.called)
+		assert.Contains(t, logBuf.String(), "level=ERROR", "unparseable article owner must log at ERROR")
+		assert.NotContains(t, logBuf.String(), "level=WARN", "unparseable article owner must not log at WARN")
 	})
 
 	t.Run("Execute failure returns CodeUnavailable so caller retries", func(t *testing.T) {
@@ -228,6 +243,57 @@ func TestUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 		}))
 		require.Error(t, err)
 		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
+	})
+
+	t.Run("permanent validation error from Execute maps to CodeInvalidArgument", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockUpsert := mocks.NewMockUpsertArticleTagsPort(ctrl)
+		mockGetByID := mocks.NewMockGetArticleByIDPort(ctrl)
+		tagSetPort := &fakeTagSetVersionPort{}
+		eventPort := &stubKnowledgeEventPort{err: create_tag_set_version_usecase.ErrMissingUserID}
+		uc := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetPort, eventPort, tagSetPort)
+
+		h := NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
+			WithTagCatalogPorts(mockUpsert, nil, nil),
+			WithKnowledgeVersionUsecases(nil, uc),
+		)
+
+		mockUpsert.EXPECT().
+			UpsertArticleTags(gomock.Any(), articleID, "feed-1", gomock.Any()).
+			Return(int32(1), nil)
+		mockGetByID.EXPECT().
+			GetArticleByID(gomock.Any(), articleID).
+			Return(&internal_article_port.ArticleWithTags{ID: articleID, UserID: testTenantID}, nil)
+
+		_, err := h.UpsertArticleTags(context.Background(), connect.NewRequest(&datahubv1.UpsertArticleTagsRequest{
+			ArticleId: articleID,
+			FeedId:    "feed-1",
+			Tags:      []*datahubv1.TagItem{{Name: "go", Confidence: 0.9}},
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("panics when CreateTagSetVersionUsecase is unwired", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockUpsert := mocks.NewMockUpsertArticleTagsPort(ctrl)
+		mockGetByID := mocks.NewMockGetArticleByIDPort(ctrl)
+
+		h := NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
+			WithTagCatalogPorts(mockUpsert, nil, nil),
+		)
+
+		mockUpsert.EXPECT().
+			UpsertArticleTags(gomock.Any(), articleID, "feed-1", gomock.Any()).
+			Return(int32(1), nil)
+
+		assert.Panics(t, func() {
+			_, _ = h.UpsertArticleTags(context.Background(), connect.NewRequest(&datahubv1.UpsertArticleTagsRequest{
+				ArticleId: articleID,
+				FeedId:    "feed-1",
+				Tags:      []*datahubv1.TagItem{{Name: "go", Confidence: 0.9}},
+			}))
+		})
 	})
 
 	t.Run("panics when GetArticleByIDPort is unwired while version usecase is wired", func(t *testing.T) {
@@ -412,6 +478,28 @@ func TestBatchUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 		assert.Equal(t, uuid.MustParse(article1), tagSetPort.created[0].ArticleID)
 		assert.Equal(t, uuid.MustParse(article2), tagSetPort.created[1].ArticleID)
 		require.Len(t, eventPort.appended, 2, "whole-batch retry must yield exactly one TagSetVersionCreated per article")
+	})
+
+	t.Run("panics when CreateTagSetVersionUsecase is unwired in batch", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBatchUpsert := mocks.NewMockBatchUpsertArticleTagsPort(ctrl)
+		mockGetByID := mocks.NewMockGetArticleByIDPort(ctrl)
+
+		h := NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
+			WithTagCatalogPorts(nil, mockBatchUpsert, nil),
+		)
+
+		mockBatchUpsert.EXPECT().
+			BatchUpsertArticleTags(gomock.Any(), gomock.Any()).
+			Return(int32(1), nil)
+
+		assert.Panics(t, func() {
+			_, _ = h.BatchUpsertArticleTags(context.Background(), connect.NewRequest(&datahubv1.BatchUpsertArticleTagsRequest{
+				Items: []*datahubv1.UpsertArticleTagsRequest{
+					{ArticleId: article1, FeedId: "feed-1", Tags: []*datahubv1.TagItem{{Name: "go", Confidence: 0.9}}},
+				},
+			}))
+		})
 	})
 }
 
