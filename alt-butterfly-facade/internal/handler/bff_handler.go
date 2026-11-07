@@ -242,6 +242,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Apply Connect-Timeout-Ms based context deadline (unary only)
+	callerCtx := r.Context()
 	r, cancel := h.applyConnectTimeout(r)
 	defer cancel()
 
@@ -314,7 +315,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Forward request directly
-	h.forwardRequest(w, r, userID, endpoint, body, token, requestID)
+	h.forwardRequest(w, r, callerCtx, userID, endpoint, body, token, requestID)
 }
 
 // serveStreaming forwards a server-streaming Connect-RPC request straight to
@@ -326,6 +327,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // and recorded (success/failure), judged solely by connection establishment
 // and the initial response status; chunk content never influences it.
 func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
+	callerCtx := r.Context()
 	r, cancel := h.applyStreamingConnectTimeout(r)
 	defer cancel()
 
@@ -349,7 +351,7 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.backendClient.ForwardStreamingRequest(r, token)
 	if err != nil {
-		if r.Context().Err() == nil {
+		if callerCtx.Err() == nil {
 			h.recordFailure(endpoint)
 		}
 		h.handleBackendError(w, err, requestID)
@@ -398,7 +400,7 @@ func (h *BFFHandler) handleWithDedup(w http.ResponseWriter, r *http.Request, use
 	dedupReq := r.WithContext(upstreamCtx)
 
 	result, err := h.deduplicator.Do(dedupKey, func() (*DedupResult, error) {
-		return h.executeRequest(dedupReq, userID, endpoint, body, token, requestID)
+		return h.executeRequest(dedupReq, context.Background(), userID, endpoint, body, token, requestID)
 	})
 
 	if err != nil {
@@ -412,7 +414,7 @@ func (h *BFFHandler) handleWithDedup(w http.ResponseWriter, r *http.Request, use
 }
 
 // executeRequest executes the actual backend request.
-func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, body []byte, token, requestID string) (*DedupResult, error) {
+func (h *BFFHandler) executeRequest(r *http.Request, callerCtx context.Context, userID, endpoint string, body []byte, token, requestID string) (*DedupResult, error) {
 	// Snapshot cache epoch before upstream I/O so a concurrent MarkAsRead
 	// invalidation can fence this response from re-populating stale unread data.
 	var cacheEpoch uint64
@@ -437,7 +439,7 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	}
 
 	if err != nil {
-		if r.Context().Err() == nil {
+		if callerCtx.Err() == nil {
 			h.recordFailure(endpoint)
 		}
 		return nil, err
@@ -459,7 +461,7 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	h.invalidateUnreadProjectionOnMutation(userID, endpoint, resp.StatusCode)
 
 	if err != nil {
-		if r.Context().Err() == nil {
+		if callerCtx.Err() == nil {
 			h.recordFailure(endpoint)
 		}
 		return nil, fmt.Errorf("read backend response body: %w", err)
@@ -481,8 +483,8 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 }
 
 // forwardRequest forwards a request without deduplication.
-func (h *BFFHandler) forwardRequest(w http.ResponseWriter, r *http.Request, userID, endpoint string, body []byte, token, requestID string) {
-	result, err := h.executeRequest(r, userID, endpoint, body, token, requestID)
+func (h *BFFHandler) forwardRequest(w http.ResponseWriter, r *http.Request, callerCtx context.Context, userID, endpoint string, body []byte, token, requestID string) {
+	result, err := h.executeRequest(r, callerCtx, userID, endpoint, body, token, requestID)
 	if err != nil {
 		h.handleBackendError(w, err, requestID)
 		return
