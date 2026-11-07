@@ -48,7 +48,7 @@ func (g *ArticleWriteGateway) Archive(ctx context.Context, url, title, content s
 type articleReadDriver interface {
 	FetchArticleByURLForUser(ctx context.Context, articleURL string, userID *uuid.UUID) (*domain.ArticleContent, error)
 	FetchArticlesByURLsForUser(ctx context.Context, urls []string, userID *uuid.UUID) (map[string]*domain.ArticleContent, error)
-	FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
+	FetchArticleByIDForUser(ctx context.Context, articleID string, userID *uuid.UUID) (*domain.ArticleContent, error)
 	FetchArticlesWithCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]*domain.Article, error)
 	FetchArticleIDsWithCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]uuid.UUID, error)
 	FetchArticlesByIDs(ctx context.Context, articleIDs []uuid.UUID) ([]*domain.Article, error)
@@ -81,8 +81,8 @@ func (g *ArticleReadGateway) BatchGetByURLs(ctx context.Context, urls []string, 
 	return articles, nil
 }
 
-func (g *ArticleReadGateway) GetContentByID(ctx context.Context, articleID string) (*domain.ArticleContent, error) {
-	article, err := g.db.FetchArticleByID(ctx, articleID)
+func (g *ArticleReadGateway) GetContentByID(ctx context.Context, articleID string, _ *uuid.UUID) (*domain.ArticleContent, error) {
+	article, err := g.db.FetchArticleByIDForUser(ctx, articleID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get article content %s: %w", articleID, err)
 	}

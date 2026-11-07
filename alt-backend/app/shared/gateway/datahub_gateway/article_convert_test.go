@@ -8,6 +8,7 @@ import (
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -176,4 +177,54 @@ func TestBackfillSummaryTitleFromProto_RejectsUnparseableTenant(t *testing.T) {
 		TenantId:         "x",
 	})
 	require.Error(t, err)
+}
+
+type fakeArticleDataHubClient struct {
+	articleDataHubClient
+	gotGetByIDReq *datahubv1.GetArticleContentByIDRequest
+	article       *datahubv1.ArticleContent
+}
+
+func (f *fakeArticleDataHubClient) GetArticleContentByID(_ context.Context, req *connect.Request[datahubv1.GetArticleContentByIDRequest]) (*connect.Response[datahubv1.GetArticleContentByIDResponse], error) {
+	f.gotGetByIDReq = req.Msg
+	return connect.NewResponse(&datahubv1.GetArticleContentByIDResponse{Article: f.article}), nil
+}
+
+func TestFetchArticleByID_SendsUserIDFromContext(t *testing.T) {
+	userID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	articleID := "22222222-2222-4222-8222-222222222222"
+
+	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    userID,
+		Email:     "u@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  userID,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+
+	client := &fakeArticleDataHubClient{
+		article: &datahubv1.ArticleContent{
+			Id:      articleID,
+			Title:   "Example",
+			Content: "body",
+			Url:     "https://example.com/post",
+		},
+	}
+	gw := &ArticleStoreGateway{client: client}
+
+	article, err := gw.FetchArticleByID(ctx, articleID)
+	require.NoError(t, err)
+	require.NotNil(t, article)
+	require.NotNil(t, client.gotGetByIDReq)
+	assert.Equal(t, articleID, client.gotGetByIDReq.GetArticleId())
+	assert.Equal(t, userID.String(), client.gotGetByIDReq.GetUserId())
+}
+
+func TestFetchArticleByID_RequiresAuthenticatedUser(t *testing.T) {
+	client := &fakeArticleDataHubClient{}
+	gw := &ArticleStoreGateway{client: client}
+
+	_, err := gw.FetchArticleByID(context.Background(), "22222222-2222-4222-8222-222222222222")
+	require.Error(t, err)
+	assert.Nil(t, client.gotGetByIDReq)
 }

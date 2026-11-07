@@ -267,7 +267,7 @@ func (h *Handler) GetArticleContentByID(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
 
-	article, err := h.articleRead.GetContentByID(ctx, req.Msg.GetArticleId())
+	article, err := h.articleRead.GetContentByID(ctx, req.Msg.GetArticleId(), nil)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "GetArticleContentByID failed", "error", err, "article_id", req.Msg.GetArticleId())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get article content"))

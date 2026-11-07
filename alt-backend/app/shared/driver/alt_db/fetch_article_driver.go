@@ -212,3 +212,8 @@ func (r *ArticleRepository) FetchArticleByID(ctx context.Context, articleID stri
 	logger.SafeInfoContext(ctx, "article retrieved from database", "id", cleanID)
 	return &article, nil
 }
+
+// FetchArticleByIDForUser is the same read with the owner named explicitly.
+func (r *ArticleRepository) FetchArticleByIDForUser(ctx context.Context, articleID string, _ *uuid.UUID) (*domain.ArticleContent, error) {
+	return r.FetchArticleByID(ctx, articleID)
+}
