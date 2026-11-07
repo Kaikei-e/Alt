@@ -43,7 +43,11 @@ SUITES_YAML = PW_ROOT / "suites.yaml"
 COMPOSE = ROOT / "compose" / "compose.staging.yaml"
 
 TAG_VAR = re.compile(r"\$\{([A-Z0-9_]+_IMAGE_TAG)")
-SUITE_UP = re.compile(r"^[ \t]*suite_up[ \t]+((?:\\\n|[^\n])+)", re.MULTILINE)
+SUITE_UP = re.compile(r"^[ \t]*suite_up(?:[ \t]+((?:\\\n|[^\n])+))?", re.MULTILINE)
+COMPOSE_BUILD = re.compile(
+    r"^[ \t]*docker[ \t]+compose[ \t]+(?:\\\n|[^\n])*?\bbuild\b((?:\\\n|[^\n])*)",
+    re.MULTILINE,
+)
 
 
 def main() -> int:
@@ -127,21 +131,58 @@ def main() -> int:
             forwarded.update(re.findall(r"[A-Z0-9_]+_IMAGE_TAG", stripped))
 
         # (4) a suite that declares pre-built images must not pass `--build` to
-        #     `suite_up` for them — `docker compose up --build` rebuilds every
-        #     service that has a `build:` stanza from source and ignores the
-        #     pre-built image. Local-only contexts (no registry `image:`) are
-        #     built by compose automatically when their image is missing.
-        for match in SUITE_UP.finditer(run_text):
-            tokens = match.group(1).replace("\\\n", " ").split()
-            if "--build" in tokens:
-                rebuilt = [img for img in declared_images if img in tokens]
+        #     `suite_up` (with or without a service list) or run `docker compose
+        #     ... build` on those services — compose would rebuild from source
+        #     and overwrite the pre-built image.
+        run_code = "\n".join(
+            line for line in run_text.splitlines() if not line.strip().startswith("#")
+        )
+        for match in SUITE_UP.finditer(run_code):
+            raw_args = (match.group(1) or "").replace("\\\n", " ")
+            tokens = raw_args.split()
+            if "--build" in tokens and declared_images:
+                service_args = [t for t in tokens if not t.startswith("-")]
+                rebuilt = (
+                    list(declared_images)
+                    if not service_args
+                    else [img for img in declared_images if img in service_args]
+                )
                 if rebuilt:
                     problems.append(
                         f"{name}: run.sh passes --build to suite_up for pre-built image(s) "
                         f"{rebuilt} — compose will rebuild from source and ignore the "
-                        f"pre-built image. Drop --build from suite_up (compose builds "
-                        f"local-only contexts automatically when their image is missing)"
+                        f"pre-built image"
                     )
+
+        built_services: set[str] = set()
+        for match in COMPOSE_BUILD.finditer(run_code):
+            raw_args = (match.group(1) or "").replace("\\\n", " ")
+            tokens = raw_args.split()
+            service_args = [t for t in tokens if not t.startswith("-")]
+            built_services.update(service_args)
+            if declared_images:
+                rebuilt = (
+                    list(declared_images)
+                    if not service_args
+                    else [img for img in declared_images if img in service_args]
+                )
+                if rebuilt:
+                    problems.append(
+                        f"{name}: run.sh runs 'docker compose ... build' for pre-built image(s) "
+                        f"{rebuilt} — only local-only helper services may be built here"
+                    )
+
+        if name == "rag-orchestrator":
+            if services.get("rag-db", {}).get("image"):
+                problems.append(
+                    "rag-orchestrator: compose.staging.yaml sets an `image:` on rag-db, "
+                    "which prevents per-run rebuilds when rag-db/Dockerfile changes"
+                )
+            if built_services != {"rag-db", "rag-db-migrator"}:
+                problems.append(
+                    "rag-orchestrator: run.sh must build exactly ['rag-db', 'rag-db-migrator'] "
+                    f"via docker compose build before suite_up (got {sorted(built_services)})"
+                )
 
         # (2) every taggable image in the profile is either forwarded or
         #     recorded as deliberately left on `:main`.
