@@ -711,4 +711,93 @@ mod tests {
         let resp3 = app.oneshot(req3).await.expect("request 3 succeeds");
         assert_eq!(resp3.status(), StatusCode::ACCEPTED);
     }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn trigger_7days_returns_409_when_run_lock_is_held() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:15432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let mock_dao = MockRecapDao::new();
+        let registry = registry.with_recap_dao(Arc::new(mock_dao));
+        let permit = registry
+            .scheduler()
+            .try_acquire_run_permit()
+            .expect("run lock should be idle before test");
+
+        let app = build_router(registry);
+
+        let held_req = Request::post("/v1/generate/recaps/7days")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .expect("request builds");
+        let held_resp = app
+            .clone()
+            .oneshot(held_req)
+            .await
+            .expect("request succeeds");
+        assert_eq!(held_resp.status(), StatusCode::CONFLICT);
+
+        let held_bytes = axum::body::to_bytes(held_resp.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let held_payload: serde_json::Value =
+            serde_json::from_slice(&held_bytes).expect("valid json");
+        assert_eq!(
+            held_payload["error"],
+            "another recap pipeline run is already in progress"
+        );
+
+        drop(permit);
+
+        let idle_req = Request::post("/v1/generate/recaps/7days")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .expect("request builds");
+        let idle_resp = app.oneshot(idle_req).await.expect("request succeeds");
+        assert_eq!(idle_resp.status(), StatusCode::ACCEPTED);
+
+        let idle_bytes = axum::body::to_bytes(idle_resp.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let idle_payload: serde_json::Value =
+            serde_json::from_slice(&idle_bytes).expect("valid json");
+        assert_eq!(idle_payload["status"], "accepted");
+        assert!(
+            idle_payload["job_id"]
+                .as_str()
+                .and_then(|id| Uuid::parse_str(id).ok())
+                .is_some()
+        );
+    }
 }

@@ -211,6 +211,11 @@ impl Scheduler {
         self.pipeline.classification_queue().shutdown().await;
     }
 
+    #[cfg(test)]
+    pub(crate) fn try_acquire_run_permit(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        Arc::clone(&self.run_lock).try_acquire_owned().ok()
+    }
+
     pub(crate) async fn run_job(&self, context: JobContext) -> Result<()> {
         // Non-blocking: a concurrent trigger must fail loudly and
         // immediately rather than queue up behind an in-flight pipeline run
