@@ -323,7 +323,10 @@ func TestGetArticleContentByIDContract(t *testing.T) {
 			Method:  "POST",
 			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleContentByID"),
 			Headers: jsonHeaders(),
-			Body:    map[string]interface{}{"articleId": testArticleID},
+			Body: map[string]interface{}{
+				"articleId": testArticleID,
+				"userId":    testUserID,
+			},
 		}).
 		WithCompleteResponse(consumer.Response{
 			Status:  200,
@@ -341,7 +344,7 @@ func TestGetArticleContentByIDContract(t *testing.T) {
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewArticleStoreGateway(newDataHubServiceClient(config))
-			article, err := gw.FetchArticleByID(context.Background(), testArticleID)
+			article, err := gw.FetchArticleByID(authedContext(testUserID), testArticleID)
 			if err != nil {
 				return fmt.Errorf("FetchArticleByID failed: %w", err)
 			}
