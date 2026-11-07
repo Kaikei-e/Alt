@@ -293,9 +293,8 @@ fn drain_log_channel(
 /// Flush the log buffer and settle every caller waiting on it.
 ///
 /// A caller is answered Ok only when the buffer actually drained. If the retry
-/// budget is exhausted the rows stay buffered for the next attempt *and* the
-/// callers are answered Err, so the forwarder keeps its copy and retries
-/// rather than discarding rows this process may still lose.
+/// budget is exhausted the buffer is cleared and the callers are answered Err,
+/// so the forwarder owns the retry without duplicating rows on resend.
 async fn flush_logs(
     client: &Client,
     buf: &mut Vec<LogRow>,
@@ -328,6 +327,7 @@ async fn flush_logs_via<S: FlushSink<LogRow>>(
     let outcome = if buf.is_empty() {
         Ok(())
     } else {
+        buf.clear();
         Err(AggregatorError::Export(format!(
             "ClickHouse did not accept {pending} rows within {max_attempts} attempts"
         )))
@@ -404,14 +404,13 @@ fn retry_backoff(attempt: u32) -> Duration {
 
 /// Flush `buf` via `sink`, retrying up to `max_attempts` times on failure.
 ///
-/// The buffer is cleared only once a write succeeds. Rows that ClickHouse
-/// never accepted stay buffered and are retried on the next flush: the
-/// forwarder was already answered 200, so this process holds the only copy
-/// of them. Holding them also stalls the flush loop, which is the intended
-/// backpressure — the bounded row channels fill up and ingest handlers park
-/// on `send`, pushing the backlog back to the forwarder (which has its own
-/// retry and disk fallback) instead of acknowledging logs this process is
-/// about to discard.
+/// The buffer is cleared only once a write succeeds. On retry exhaustion the
+/// rows remain in `buf` (capped at `MAX_RETAINED_BUFFER_ROWS`): fire-and-forget
+/// callers (`otel_logs`, `otel_traces`) were already answered `Ok` on channel
+/// send and rely on the next flush to retry, whereas ack-gated callers
+/// (`flush_logs_via`) clear `buf` when answering `Err` so the forwarder owns
+/// the retry without duplicating rows. Holding the flush loop across the
+/// backoff ladder also applies backpressure to the bounded row channels.
 async fn flush_with_retry<T>(
     table: &str,
     buf: &mut Vec<T>,
