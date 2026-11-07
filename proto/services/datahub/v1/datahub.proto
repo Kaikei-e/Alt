@@ -1097,6 +1097,10 @@ message BatchGetArticlesByURLsResponse {
 
 message GetArticleContentByIDRequest {
   string article_id = 1;
+  // Optional. When set the lookup is scoped to that user; when empty it
+  // matches any owner, which is the unauthenticated path the driver already
+  // had. The two are different queries and the caller chooses deliberately.
+  string user_id = 2;
 }
 
 message GetArticleContentByIDResponse {
