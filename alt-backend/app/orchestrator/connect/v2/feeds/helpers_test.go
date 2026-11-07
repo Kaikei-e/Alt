@@ -14,7 +14,10 @@ import (
 	"alt/config"
 	"alt/domain"
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
+	"alt/orchestrator/driver/models"
+	"alt/orchestrator/gateway/fetch_feed_gateway"
 	"alt/orchestrator/usecase/cached_feed_list_usecase"
+	"alt/orchestrator/usecase/fetch_feed_usecase"
 	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/utils/logger"
 )
@@ -134,4 +137,143 @@ func TestGetUnreadFeeds_CursorRoundTripKeepsSubSecondPrecision(t *testing.T) {
 	assert.True(t, port.lastCursor.Equal(firstPageTail),
 		"cursor %q became %q, so every row between them is skipped",
 		firstPageTail.Format(time.RFC3339Nano), port.lastCursor.Format(time.RFC3339Nano))
+}
+
+type cursorFilteringStoreStub struct {
+	rows []*models.Feed
+}
+
+func (s *cursorFilteringStoreStub) FetchFeedsList(context.Context) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *cursorFilteringStoreStub) FetchFeedsListLimit(context.Context, int) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *cursorFilteringStoreStub) FetchUnreadFeedsListPage(context.Context, int) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *cursorFilteringStoreStub) FetchAllFeedsListCursor(context.Context, *time.Time, int, []uuid.UUID) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *cursorFilteringStoreStub) FetchUnreadFeedsListCursor(context.Context, *time.Time, int, []uuid.UUID) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *cursorFilteringStoreStub) FetchReadFeedsListCursor(_ context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	return s.filterBySortKey(cursor, limit), nil
+}
+func (s *cursorFilteringStoreStub) FetchFavoriteFeedsListCursor(_ context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	return s.filterBySortKey(cursor, limit), nil
+}
+
+func (s *cursorFilteringStoreStub) filterBySortKey(cursor *time.Time, limit int) []*models.Feed {
+	var out []*models.Feed
+	for _, r := range s.rows {
+		if cursor == nil || r.UpdatedAt.Before(*cursor) {
+			out = append(out, r)
+			if len(out) == limit {
+				break
+			}
+		}
+	}
+	return out
+}
+
+func TestGetReadFeeds_CursorUsesReadAtAndReturnsPage2(t *testing.T) {
+	logger.InitLogger()
+
+	t1 := time.Date(2026, time.March, 1, 10, 0, 0, 111000000, time.UTC)
+	t2 := time.Date(2026, time.March, 2, 10, 0, 0, 222000000, time.UTC)
+	t8 := time.Date(2026, time.March, 8, 10, 0, 0, 888123456, time.UTC)
+	t9 := time.Date(2026, time.March, 9, 10, 0, 0, 999654321, time.UTC)
+
+	store := &cursorFilteringStoreStub{
+		rows: []*models.Feed{
+			{
+				ID:         uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").String(),
+				Title:      "Feed A",
+				WebsiteURL: "https://example.com/a",
+				CreatedAt:  t1,
+				UpdatedAt:  t9,
+			},
+			{
+				ID:         uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").String(),
+				Title:      "Feed B",
+				WebsiteURL: "https://example.com/b",
+				CreatedAt:  t2,
+				UpdatedAt:  t8,
+			},
+		},
+	}
+
+	gw := fetch_feed_gateway.NewFetchFeedsGateway(store)
+	handler := NewHandler(FeedHandlerDeps{
+		FetchReadFeedsCursor: fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(gw),
+		ResolveArticle:       resolve_article_usecase.New(nil, nil),
+	}, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	page1, err := handler.GetReadFeeds(ctx, connect.NewRequest(&feedsv2.GetReadFeedsRequest{Limit: 1}))
+	require.NoError(t, err)
+	require.Len(t, page1.Msg.Data, 1)
+	assert.Equal(t, "Feed A", page1.Msg.Data[0].Title)
+	require.NotNil(t, page1.Msg.NextCursor)
+	assert.Equal(t, t9.Format(time.RFC3339Nano), *page1.Msg.NextCursor)
+
+	page2, err := handler.GetReadFeeds(ctx, connect.NewRequest(&feedsv2.GetReadFeedsRequest{
+		Limit:  1,
+		Cursor: page1.Msg.NextCursor,
+	}))
+	require.NoError(t, err)
+	require.Len(t, page2.Msg.Data, 1)
+	assert.Equal(t, "Feed B", page2.Msg.Data[0].Title)
+}
+
+func TestGetFavoriteFeeds_CursorUsesFavoriteCreatedAtAndReturnsPage2(t *testing.T) {
+	logger.InitLogger()
+
+	t1 := time.Date(2026, time.March, 1, 10, 0, 0, 111000000, time.UTC)
+	t2 := time.Date(2026, time.March, 2, 10, 0, 0, 222000000, time.UTC)
+	t8 := time.Date(2026, time.March, 8, 10, 0, 0, 888123456, time.UTC)
+	t9 := time.Date(2026, time.March, 9, 10, 0, 0, 999654321, time.UTC)
+
+	store := &cursorFilteringStoreStub{
+		rows: []*models.Feed{
+			{
+				ID:         uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").String(),
+				Title:      "Feed A",
+				WebsiteURL: "https://example.com/a",
+				CreatedAt:  t1,
+				UpdatedAt:  t9,
+			},
+			{
+				ID:         uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").String(),
+				Title:      "Feed B",
+				WebsiteURL: "https://example.com/b",
+				CreatedAt:  t2,
+				UpdatedAt:  t8,
+			},
+		},
+	}
+
+	gw := fetch_feed_gateway.NewFetchFeedsGateway(store)
+	handler := NewHandler(FeedHandlerDeps{
+		FetchFavoriteFeedsCursor: fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(gw),
+		ResolveArticle:           resolve_article_usecase.New(nil, nil),
+	}, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	page1, err := handler.GetFavoriteFeeds(ctx, connect.NewRequest(&feedsv2.GetFavoriteFeedsRequest{Limit: 1}))
+	require.NoError(t, err)
+	require.Len(t, page1.Msg.Data, 1)
+	assert.Equal(t, "Feed A", page1.Msg.Data[0].Title)
+	require.NotNil(t, page1.Msg.NextCursor)
+	assert.Equal(t, t9.Format(time.RFC3339Nano), *page1.Msg.NextCursor)
+
+	page2, err := handler.GetFavoriteFeeds(ctx, connect.NewRequest(&feedsv2.GetFavoriteFeedsRequest{
+		Limit:  1,
+		Cursor: page1.Msg.NextCursor,
+	}))
+	require.NoError(t, err)
+	require.Len(t, page2.Msg.Data, 1)
+	assert.Equal(t, "Feed B", page2.Msg.Data[0].Title)
 }
