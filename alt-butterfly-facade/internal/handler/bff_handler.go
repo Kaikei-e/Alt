@@ -153,8 +153,10 @@ func NewBFFHandler(
 	}
 
 	// Initialize cache if enabled
-	if config.EnableCache {
+	if config.EnableCache || config.EnableDedup {
 		h.responseCache = cache.NewResponseCache(config.CacheMaxSize)
+	}
+	if config.EnableCache {
 		h.cacheConfig = cache.NewCacheConfig()
 	}
 
@@ -361,7 +363,8 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 
 // handleWithDedup handles a request with deduplication.
 func (h *BFFHandler) handleWithDedup(w http.ResponseWriter, r *http.Request, userID, endpoint string, body []byte, token, requestID string) {
-	dedupKey := BuildDedupKey(userID, r.Method, endpoint, body)
+	// Include the user's mutation epoch so post-mutation reads never join a pre-mutation flight.
+	dedupKey := BuildDedupKey(userID, r.Method, endpoint, body) + ":" + strconv.FormatUint(h.responseCache.UserEpoch(userID), 10)
 
 	// Decouple the shared upstream call from the leader's request context.
 	// With singleflight the first caller (the leader) runs the single upstream
@@ -803,7 +806,7 @@ func generateRequestID() string {
 
 // GetCacheStats returns cache statistics.
 func (h *BFFHandler) GetCacheStats() *cache.CacheStats {
-	if h.responseCache == nil {
+	if !h.config.EnableCache || h.responseCache == nil {
 		return nil
 	}
 	stats := h.responseCache.Stats()
