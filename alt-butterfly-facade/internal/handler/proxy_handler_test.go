@@ -487,3 +487,23 @@ func TestProxyHandler_ServeHTTP_BoundsUnaryResponseBody(t *testing.T) {
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, int(maxResponseBodyBytes), recorder.Body.Len())
 }
+
+func TestIsStreamingProcedure_IncludesAllPublicServerStreamingRPCs(t *testing.T) {
+	paths := []string{
+		"/alt.feeds.v2.FeedService/StreamFeedStats",
+		"/alt.feeds.v2.FeedService/StreamSummarize",
+		"/alt.augur.v2.AugurService/StreamChat",
+		"/alt.morning_letter.v2.MorningLetterService/StreamChat",
+		"/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates",
+		"/alt.acolyte.v1.AcolyteService/StreamRunProgress",
+		"/alt.tts.v1.TTSService/SynthesizeStream",
+		"/alt.articles.v2.ArticleService/StreamArticleTags",
+		"/alt.recap.v2.JobStatusService/StreamJobProgress",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			assert.True(t, isStreamingProcedure(path), "expected %s to be recognized as a streaming procedure", path)
+		})
+	}
+}
