@@ -31,6 +31,21 @@ func TestNewHybridSearchRepository_CustomRRFK(t *testing.T) {
 	assert.Equal(t, 30, concrete.rrfK)
 }
 
+func assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t *testing.T, arm, ownerPlaceholder, limitPlaceholder string) {
+	t.Helper()
+	assert.NotContains(t, arm, "rag_document_versions")
+	assert.Contains(t, arm, "EXISTS")
+	assert.Contains(t, arm, "FROM rag_documents d")
+	assert.Contains(t, arm, "d.current_version_id = c.version_id")
+	ownerFilter := "d.user_id = " + ownerPlaceholder
+	limitClause := "LIMIT " + limitPlaceholder
+	assert.Contains(t, arm, ownerFilter)
+	assert.Contains(t, arm, limitClause)
+	assert.Less(t, strings.Index(arm, "EXISTS"), strings.Index(arm, limitClause))
+	assert.Less(t, strings.Index(arm, "d.current_version_id = c.version_id"), strings.Index(arm, limitClause))
+	assert.Less(t, strings.Index(arm, ownerFilter), strings.Index(arm, limitClause))
+}
+
 func TestHybridSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
 	q := buildHybridSearchQuery("english", 60)
 
@@ -40,18 +55,10 @@ func TestHybridSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing
 	candidatesPart := parts[0]
 
 	vectorPart := strings.Split(candidatesPart, "text_matches AS")[0]
-	assert.Contains(t, vectorPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-	assert.Contains(t, vectorPart, "JOIN rag_documents d ON v.document_id = d.id")
-	assert.Contains(t, vectorPart, "d.current_version_id = v.id")
-	assert.Contains(t, vectorPart, "d.user_id = $5")
-	assert.Contains(t, vectorPart, "LIMIT $3")
+	assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, vectorPart, "$5", "$3")
 
 	textPart := strings.Split(candidatesPart, "text_matches AS")[1]
-	assert.Contains(t, textPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-	assert.Contains(t, textPart, "JOIN rag_documents d ON v.document_id = d.id")
-	assert.Contains(t, textPart, "d.current_version_id = v.id")
-	assert.Contains(t, textPart, "d.user_id = $5")
-	assert.Contains(t, textPart, "LIMIT $3")
+	assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$5", "$3")
 }
 
 func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
@@ -65,18 +72,10 @@ func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *test
 
 		require.Contains(t, candidatesPart, "vector_matches AS")
 		vectorPart := strings.Split(candidatesPart, "text_matches AS")[0]
-		assert.Contains(t, vectorPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-		assert.Contains(t, vectorPart, "JOIN rag_documents d ON v.document_id = d.id")
-		assert.Contains(t, vectorPart, "d.current_version_id = v.id")
-		assert.Contains(t, vectorPart, "d.user_id = $5")
-		assert.Contains(t, vectorPart, "LIMIT $2")
+		assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, vectorPart, "$5", "$2")
 
 		textPart := strings.Split(candidatesPart, "text_matches AS")[1]
-		assert.Contains(t, textPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-		assert.Contains(t, textPart, "JOIN rag_documents d ON v.document_id = d.id")
-		assert.Contains(t, textPart, "d.current_version_id = v.id")
-		assert.Contains(t, textPart, "d.user_id = $5")
-		assert.Contains(t, textPart, "LIMIT $2")
+		assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$5", "$2")
 	})
 
 	t.Run("text only arm", func(t *testing.T) {
@@ -90,10 +89,6 @@ func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *test
 		assert.NotContains(t, candidatesPart, "vector_matches AS")
 
 		textPart := candidatesPart
-		assert.Contains(t, textPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-		assert.Contains(t, textPart, "JOIN rag_documents d ON v.document_id = d.id")
-		assert.Contains(t, textPart, "d.current_version_id = v.id")
-		assert.Contains(t, textPart, "d.user_id = $4")
-		assert.Contains(t, textPart, "LIMIT $2")
+		assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$4", "$2")
 	})
 }
