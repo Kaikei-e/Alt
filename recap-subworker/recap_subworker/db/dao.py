@@ -668,6 +668,29 @@ class SubworkerDAO:
         )
         await self.session.execute(stmt)
 
+    async def fail_orphaned_admin_jobs(
+        self,
+        error_message: str,
+        finished_at: datetime | None = None,
+    ) -> int:
+        """Mark every admin job still flagged 'running' as failed, returning the row count.
+
+        Only meaningful for a process that has not scheduled an admin job of
+        its own yet: the service runs single-process, so such rows can only
+        be leftovers from a predecessor that died mid-job.
+        """
+        values: dict[str, Any] = {"status": "failed", "error": error_message}
+        if finished_at is not None:
+            values["finished_at"] = finished_at
+        stmt = (
+            update(admin_jobs_table)
+            .where(admin_jobs_table.c.status == "running")
+            .values(**values)
+            .returning(admin_jobs_table.c.job_id)
+        )
+        result = await self.session.execute(stmt)
+        return len(result.all())
+
     async def fetch_admin_job(self, job_id: UUID) -> AdminJobRecord | None:
         stmt = (
             select(
