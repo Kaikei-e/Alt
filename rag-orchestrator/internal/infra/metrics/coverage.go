@@ -53,14 +53,15 @@ var (
 			"NULL embedding is retrievable lexically and invisible to vector search.",
 	}, []string{"state"})
 
-	// Retrieval filters by d.user_id = $owner, so NULL-owner rows are invisible even when on the target version pair.
+	// Retrieval filters by d.user_id = $owner; target separates current-pair docs needing owner backfill from off-target orphans.
 	documentOwnerCoverage = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Subsystem: "rag",
 		Name:      "document_owner_coverage",
-		Help: "Documents (current version) by owner state (owned, unowned). " +
+		Help: "Documents (current version) by owner state (owned, unowned) and " +
+			"whether the version pair is the deployment target (target=\"true\"|\"false\"). " +
 			"A document with a NULL user_id is invisible to tenant-scoped retrieval.",
-	}, []string{"state"})
+	}, []string{"state", "target"})
 
 	coverageScrapeFailures = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: namespace,
@@ -206,7 +207,7 @@ func (s *CoverageSampler) publish(rows []coverageRow) {
 	// Retire label sets that no longer exist, or a version fully rebuilt away
 	// keeps reporting its last count forever.
 	current := make(map[[2]string]struct{}, len(rows))
-	var total, onTarget, unowned int64
+	var total, onTarget, unowned, unownedOnTarget int64
 	for _, row := range rows {
 		key := [2]string{row.chunkerVersion, row.embedderVersion}
 		current[key] = struct{}{}
@@ -218,6 +219,7 @@ func (s *CoverageSampler) publish(rows []coverageRow) {
 		unowned += row.unowned
 		if isTarget {
 			onTarget += row.documents
+			unownedOnTarget += row.unowned
 		}
 	}
 	for key := range s.previousLabels {
@@ -229,9 +231,14 @@ func (s *CoverageSampler) publish(rows []coverageRow) {
 	}
 	s.previousLabels = current
 
-	owned := total - unowned
-	documentOwnerCoverage.WithLabelValues("owned").Set(float64(owned))
-	documentOwnerCoverage.WithLabelValues("unowned").Set(float64(unowned))
+	ownedOnTarget := onTarget - unownedOnTarget
+	offTarget := total - onTarget
+	unownedOffTarget := unowned - unownedOnTarget
+	ownedOffTarget := offTarget - unownedOffTarget
+	documentOwnerCoverage.WithLabelValues("owned", "true").Set(float64(ownedOnTarget))
+	documentOwnerCoverage.WithLabelValues("unowned", "true").Set(float64(unownedOnTarget))
+	documentOwnerCoverage.WithLabelValues("owned", "false").Set(float64(ownedOffTarget))
+	documentOwnerCoverage.WithLabelValues("unowned", "false").Set(float64(unownedOffTarget))
 
 	coverageScrapeTimestamp.Set(float64(time.Now().Unix()))
 	s.logger.Info("rag_document_coverage_sampled",
@@ -239,12 +246,15 @@ func (s *CoverageSampler) publish(rows []coverageRow) {
 		slog.Int64("documents_total", total),
 		slog.Int64("documents_on_target", onTarget),
 		slog.Int64("documents_unowned", unowned),
+		slog.Int64("documents_unowned_on_target", unownedOnTarget),
 		slog.String("target_chunker_version", s.targetChunker),
 		slog.String("target_embedder_version", s.targetEmbedder))
-	if unowned > 0 {
+	if unownedOnTarget > 0 {
 		s.logger.Warn("rag_documents_missing_owner",
+			slog.Int64("documents_unowned_on_target", unownedOnTarget),
+			slog.Int64("documents_owned_on_target", ownedOnTarget),
+			slog.Int64("documents_on_target", onTarget),
 			slog.Int64("documents_unowned", unowned),
-			slog.Int64("documents_owned", owned),
 			slog.Int64("documents_total", total))
 	}
 }
