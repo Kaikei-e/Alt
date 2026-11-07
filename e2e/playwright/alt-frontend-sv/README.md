@@ -21,10 +21,12 @@ Unlike the staging-profile suites, this runner **does not bring up
 
 - `run.sh` starts the pre-built `ghcr.io/${GHCR_OWNER}/alt-alt-frontend-sv:${ALT_FRONTEND_SV_IMAGE_TAG}`
   container on `--network host` bound to `127.0.0.1:${ALT_E2E_PORT:-4174}`
-  with runtime environment variables pointing at the mock servers, waits
-  for `/health`, and passes `PW_NO_WEBSERVER=1` to Playwright so the
-  suite exercises the built image directly rather than recompiling
-  SvelteKit from source on every shard.
+  with runtime environment variables pointing at the mock servers and
+  `PROTOCOL_HEADER=x-forwarded-proto` standing in for the production TLS
+  proxy, waits for `/health`, and passes `PW_NO_WEBSERVER=1` and
+  `E2E_FORWARDED_PROTO=http` to Playwright so the suite exercises the
+  built image over plain HTTP rather than recompiling SvelteKit from
+  source on every shard.
 - [`tests/e2e/global-setup.ts`](../../../alt-frontend-sv/tests/e2e/global-setup.ts)
   binds mock Kratos on `127.0.0.1:4001`, mock AuthHub on `4002`, and a
   mock backend on `4003` inside the Playwright runner container.

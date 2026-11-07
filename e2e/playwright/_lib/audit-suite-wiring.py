@@ -38,6 +38,23 @@ from pathlib import Path
 
 import yaml
 
+
+class ComposeSafeLoader(yaml.SafeLoader):
+    """SafeLoader that accepts Docker Compose `!override` and `!reset` tags."""
+
+
+for _compose_tag in ("!override", "!reset"):
+    ComposeSafeLoader.add_constructor(
+        _compose_tag,
+        lambda loader, node: (
+            loader.construct_sequence(node)
+            if isinstance(node, yaml.SequenceNode)
+            else loader.construct_mapping(node)
+            if isinstance(node, yaml.MappingNode)
+            else loader.construct_scalar(node)
+        ),
+    )
+
 ROOT = Path(__file__).resolve().parents[3]
 PW_ROOT = ROOT / "e2e" / "playwright"
 SUITES_YAML = PW_ROOT / "suites.yaml"
@@ -80,11 +97,11 @@ def main() -> int:
     on_disk = {
         path.parent.name
         for path in PW_ROOT.glob("*/playwright.config.ts")
-        # The browser suite is a dispatch shim: it builds no images and runs
-        # under the Playwright browser image, so it is deliberately not in the
-        # manifest. See e2e/playwright/README.md.
-        if path.parent.name != "alt-frontend-sv"
     }
+    if (PW_ROOT / "alt-frontend-sv" / "run.sh").is_file() and (
+        ROOT / "alt-frontend-sv" / "playwright.config.ts"
+    ).is_file():
+        on_disk.add("alt-frontend-sv")
     for name in sorted(on_disk - set(suites)):
         problems.append(
             f"{name}: has a playwright.config.ts but no `suites:` entry, so it never runs in CI"
@@ -92,10 +109,21 @@ def main() -> int:
     for name in sorted(set(suites) - on_disk):
         problems.append(f"{name}: declared in suites.yaml but has no playwright.config.ts")
 
+    if list((suites.get("alt-frontend-sv") or {}).get("images") or []) != ["alt-frontend-sv"]:
+        problems.append(
+            "alt-frontend-sv: suites.yaml must register alt-frontend-sv with "
+            "images: [alt-frontend-sv] so PR CI builds the app image from the working tree"
+        )
+
     for name in sorted(suites):
         entry = suites[name] or {}
         declared_images = list(entry.get("images") or [])
         unpinned = set(entry.get("unpinnedImages") or [])
+
+        # alt-frontend-sv runs outside compose.staging.yaml; its run.sh wiring
+        # is checked in (5)-(10) and (12) below.
+        if name == "alt-frontend-sv":
+            continue
 
         # (1) every declared image must be something compose can consume.
         for image in declared_images:
@@ -330,7 +358,7 @@ def main() -> int:
                 )
                 app_cmd = app_cmd_match.group(1).replace("\\\n", " ")
                 passed_keys = set(re.findall(r"-e\s+([A-Z][A-Z0-9_]*)=", app_cmd))
-                allowed_extra = {"HOST", "NODE_ENV"}
+                allowed_extra = {"HOST", "NODE_ENV", "PROTOCOL_HEADER"}
                 missing_keys = sorted(expected_keys - passed_keys)
                 unexpected_keys = sorted((passed_keys - expected_keys) - allowed_extra)
                 if missing_keys or unexpected_keys:
@@ -339,6 +367,89 @@ def main() -> int:
                         f"playwright.config.ts webServer.env (missing={missing_keys}, "
                         f"unexpected={unexpected_keys})"
                     )
+
+            # (12) Guard (a): PROTOCOL_HEADER=x-forwarded-proto is passed ONLY to the
+            #      E2E app container in alt-frontend-sv/run.sh, the Playwright container
+            #      gets E2E_FORWARDED_PROTO=http, and playwright.config.ts opts into
+            #      extraHTTPHeaders x-forwarded-proto only when E2E_FORWARDED_PROTO is set.
+            pw_cmd_match = re.search(
+                r"docker run --rm\s+((?:\\\n|[^\n])+)",
+                fe_code,
+            )
+            app_cmd_str = app_cmd_match.group(1).replace("\\\n", " ") if app_cmd_match else ""
+            pw_cmd_str = pw_cmd_match.group(1).replace("\\\n", " ") if pw_cmd_match else ""
+            other_proto_refs = [
+                other_run.parent.name
+                for other_run in sorted(PW_ROOT.glob("*/run.sh"))
+                if other_run != frontend_run_sh
+                and "PROTOCOL_HEADER"
+                in "\n".join(
+                    line
+                    for line in other_run.read_text().splitlines()
+                    if not line.strip().startswith("#")
+                )
+            ]
+            if (
+                not re.search(
+                    r"(?:^|\s)-e\s+PROTOCOL_HEADER=x-forwarded-proto(?:\s|$)",
+                    app_cmd_str,
+                )
+                or len(re.findall(r"\bPROTOCOL_HEADER\b", fe_code)) != 1
+                or re.search(r"\bPROTOCOL_HEADER\b", pw_cmd_str)
+                or other_proto_refs
+            ):
+                problems.append(
+                    "alt-frontend-sv: run.sh must pass -e PROTOCOL_HEADER=x-forwarded-proto "
+                    "only to the E2E app container"
+                )
+            if (
+                not re.search(
+                    r"(?:^|\s)-e\s+E2E_FORWARDED_PROTO=http(?:\s|$)",
+                    pw_cmd_str,
+                )
+                or "E2E_FORWARDED_PROTO" in app_cmd_str
+            ):
+                problems.append(
+                    "alt-frontend-sv: run.sh must pass -e E2E_FORWARDED_PROTO=http "
+                    "to the Playwright container"
+                )
+            if (
+                "E2E_FORWARDED_PROTO" not in cfg_text
+                or "extraHTTPHeaders" not in cfg_text
+                or "x-forwarded-proto" not in cfg_text
+                or (
+                    env_block_match
+                    and "PROTOCOL_HEADER" in env_block_match.group(1)
+                )
+            ):
+                problems.append(
+                    "alt-frontend-sv: playwright.config.ts must gate extraHTTPHeaders "
+                    "x-forwarded-proto on E2E_FORWARDED_PROTO without setting "
+                    "PROTOCOL_HEADER in webServer.env"
+                )
+
+    # (13) Guard (b): no compose/*.yaml service definition for alt-frontend-sv
+    #      may set PROTOCOL_HEADER (production derives https behind its TLS proxy).
+    for compose_file in sorted((ROOT / "compose").glob("*.yaml")):
+        with compose_file.open() as handle:
+            compose_doc = yaml.load(handle, Loader=ComposeSafeLoader) or {}
+        if not isinstance(compose_doc, dict):
+            continue
+        fe_svc = (compose_doc.get("services") or {}).get("alt-frontend-sv")
+        if not isinstance(fe_svc, dict):
+            continue
+        env_spec = fe_svc.get("environment") or {}
+        env_keys: set[str] = set()
+        if isinstance(env_spec, dict):
+            env_keys.update(str(k) for k in env_spec)
+        elif isinstance(env_spec, list):
+            for entry_item in env_spec:
+                env_keys.add(str(entry_item).split("=", 1)[0].strip())
+        if "PROTOCOL_HEADER" in env_keys or "PROTOCOL_HEADER" in json.dumps(fe_svc):
+            problems.append(
+                f"{compose_file.relative_to(ROOT)}: alt-frontend-sv service must not set "
+                "PROTOCOL_HEADER (production must keep deriving https behind its proxy)"
+            )
 
     # (11) suite.sh's suite_init must clear SLICE and SLICE_DIR so an inherited
     #      environment variable cannot make suite_up reuse or suite_cleanup delete a

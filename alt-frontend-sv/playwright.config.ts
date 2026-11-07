@@ -29,6 +29,7 @@ const isCI = !!process.env.CI;
  */
 const previewPort = process.env.ALT_E2E_PORT || "4174";
 const previewOrigin = `http://127.0.0.1:${previewPort}`;
+const forwardedProto = process.env.E2E_FORWARDED_PROTO;
 
 export default defineConfig({
 	testDir: "./tests/e2e",
@@ -90,6 +91,9 @@ export default defineConfig({
 
 		baseURL: `${previewOrigin}/`,
 		storageState: "tests/e2e/.auth/storage.json",
+		...(forwardedProto
+			? { extraHTTPHeaders: { "x-forwarded-proto": forwardedProto } }
+			: {}),
 	},
 
 	projects: [

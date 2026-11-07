@@ -63,6 +63,14 @@ suites:
   alt-data-hub:
     images: [alt-data-hub, alt-backend-deps-stub]
 
+  alt-frontend-sv:
+    images: [alt-frontend-sv]
+    notes: >-
+      Browser-driven SvelteKit E2E suite. Runs outside compose.staging.yaml:
+      run.sh starts the pre-built alt-alt-frontend-sv image on --network host
+      against in-process mock servers (127.0.0.1:4001-4003) and drives the
+      specs with the Playwright browser container.
+
   auth-hub:
     images: [auth-hub]
 
