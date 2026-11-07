@@ -3,6 +3,7 @@ package di
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"alt/adapter/augur_adapter"
@@ -261,7 +262,9 @@ func newHarvesterImageProxyUsecase(
 // di/datahub, which became a package of its own when the database left the
 // other two binaries (ADR-000954 Wave 3 batch 6).
 func LogSovereignWiringState(binary, sovereignURL, appEnv string, eventAuthEnabled bool) bool {
-	enabled := sovereignURL != ""
+	trimmed := strings.TrimSpace(sovereignURL)
+	explicitlyDisabled := strings.EqualFold(trimmed, "disabled")
+	enabled := trimmed != "" && !explicitlyDisabled
 	if enabled {
 		slog.Info("sovereign_enabled", "binary", binary, "base_url", sovereignURL)
 		if eventAuthEnabled {
@@ -272,8 +275,12 @@ func LogSovereignWiringState(binary, sovereignURL, appEnv string, eventAuthEnabl
 		}
 		return true
 	}
+	reason := "SOVEREIGN_URL unset; all Knowledge Home mutations will no-op"
+	if explicitlyDisabled {
+		reason = "SOVEREIGN_URL=disabled (explicit opt-out); all Knowledge Home mutations will no-op"
+	}
 	slog.Warn("sovereign_disabled", "binary", binary,
-		"reason", "SOVEREIGN_URL unset; all Knowledge Home mutations will no-op")
+		"reason", reason)
 	if appEnv == "production" {
 		panic("SOVEREIGN_URL is required when APP_ENV=production — refusing to start with Knowledge Home silently disabled")
 	}
