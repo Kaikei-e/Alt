@@ -188,7 +188,7 @@ class TagGeneratorEventHandler(EventHandler):
                 "stream_consumer_not_configured_for_reply",
                 event_id=event.event_id,
             )
-            return
+            raise RuntimeError("stream_consumer is not configured for reply publishing")
 
         # Validate payload with size limits
         try:
@@ -307,7 +307,7 @@ class TagGeneratorEventHandler(EventHandler):
         """Publish a reply event to the reply stream."""
         if not self.stream_consumer:
             logger.error("cannot_publish_reply_no_consumer")
-            return
+            raise RuntimeError("stream_consumer is not configured for reply publishing")
 
         event_data = {
             "event_id": str(uuid.uuid4()),
