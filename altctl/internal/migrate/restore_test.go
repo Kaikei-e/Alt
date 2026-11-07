@@ -256,7 +256,7 @@ case "$*" in
   *"compose"*"up -d db")
     exit 0
     ;;
-  "exec alt-db pg_isready -U alt_db_user -d alt")
+  "exec alt-db pg_isready"*)
     exit 0
     ;;
   "exec -i alt-db pg_restore"*)
@@ -292,7 +292,7 @@ exit 1
 		readyIdx := -1
 		restoreIdx := -1
 		wantUp := "compose -f " + composeFile + " up -d db"
-		wantReady := "exec alt-db pg_isready -U alt_db_user -d alt"
+		wantReady := "exec alt-db pg_isready -h 127.0.0.1 -p 5432 -U alt_db_user -d alt"
 		wantRestorePrefix := "exec -i alt-db pg_restore -U alt_db_user -d alt"
 
 		for i, c := range calls {
