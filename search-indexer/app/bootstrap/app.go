@@ -477,12 +477,14 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 		bo.Reset()
 		recordBatch(ctx, "backfill", result.IndexedCount, result.DeletedCount, time.Since(start))
 
-		if result.IndexedCount == 0 {
+		if result.BackfillDone {
 			logger.Logger.Info("Phase 1 complete: backfill done")
 			break
 		}
 
-		logger.Logger.Info("backfill indexed", "count", result.IndexedCount)
+		if result.IndexedCount > 0 {
+			logger.Logger.Info("backfill indexed", "count", result.IndexedCount)
+		}
 		lastCreatedAt = result.LastCreatedAt
 		lastID = result.LastID
 	}
@@ -518,10 +520,10 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 		bo.Reset()
 		recordBatch(ctx, "incremental", result.IndexedCount, result.DeletedCount, time.Since(start))
 
+		lastCreatedAt = result.LastCreatedAt
+		lastID = result.LastID
 		if result.IndexedCount > 0 {
 			logger.Logger.Info("incremental indexed", "count", result.IndexedCount)
-			lastCreatedAt = result.LastCreatedAt
-			lastID = result.LastID
 		}
 
 		if result.DeletedCount > 0 {

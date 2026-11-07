@@ -44,14 +44,6 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTags(ctx context.Context, last
 	}
 
 	domainArticles := g.convertDriverPage(ctx, "GetArticlesWithTags", driverArticles)
-	lastDriver := driverArticles[len(driverArticles)-1]
-	if newLastCreatedAt == nil {
-		createdAt := lastDriver.CreatedAt
-		newLastCreatedAt = &createdAt
-	}
-	if newLastID == "" {
-		newLastID = lastDriver.ID
-	}
 
 	return domainArticles, newLastCreatedAt, newLastID, nil
 }
@@ -76,10 +68,6 @@ func (g *ArticleRepositoryGateway) convertDriverPage(ctx context.Context, op str
 		domainArticles = append(domainArticles, domainArticle)
 	}
 	return domainArticles
-}
-
-func (g *ArticleRepositoryGateway) SkippedCount() int64 {
-	return g.skippedArticles.Load()
 }
 
 func (g *ArticleRepositoryGateway) convertToDomain(driverArticle *driver.ArticleWithTags) (*domain.Article, error) {
@@ -118,14 +106,6 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTagsForward(ctx context.Contex
 	}
 
 	domainArticles := g.convertDriverPage(ctx, "GetArticlesWithTagsForward", driverArticles)
-	lastDriver := driverArticles[len(driverArticles)-1]
-	if newLastCreatedAt == nil {
-		createdAt := lastDriver.CreatedAt
-		newLastCreatedAt = &createdAt
-	}
-	if newLastID == "" {
-		newLastID = lastDriver.ID
-	}
 
 	return domainArticles, newLastCreatedAt, newLastID, nil
 }
