@@ -15,8 +15,9 @@ from news_creator.domain.output_guard import (
     sanitize_output_markdown,
 )
 from news_creator.domain.prompts import (
-    SUMMARY_PROMPT_TEMPLATE,
     CHUNK_SUMMARY_PROMPT_TEMPLATE,
+    SUMMARY_PROMPT_TEMPLATE,
+    _THINKING_BLOCK_RE,
 )
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
@@ -24,10 +25,6 @@ from news_creator.utils.html_cleaner import clean_html_content, sanitize_for_pro
 from news_creator.usecase.control_token_filter import ControlTokenFilter
 
 logger = logging.getLogger(__name__)
-
-_THINKING_BLOCK_RE = re.compile(
-    r"<\|channel>thought(?:.*?<channel\|>|.*)", flags=re.DOTALL
-)
 
 
 class SummarizeUsecase:

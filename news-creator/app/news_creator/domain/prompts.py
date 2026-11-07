@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Protocol
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,10 @@ CONTROL_TOKENS: frozenset[str] = frozenset(
         "<|user|>",
         "<|assistant|>",
     }
+)
+
+_THINKING_BLOCK_RE: re.Pattern[str] = re.compile(
+    r"<\|channel>thought(?:.*?<channel\|>|.*)", flags=re.DOTALL
 )
 
 # Longest first so removal stays deterministic when tokens overlap.
