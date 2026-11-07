@@ -161,8 +161,8 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 	// rag_documents.current_version_id = c.version_id before candidateLimit ($2)
 	// because the two-key versions/documents join is estimated at one row and
 	// makes the planner skip the HNSW index; relaxed_order HNSW scans may emit
-	// rows slightly out of distance order and PostgreSQL reuses a CTE's sort
-	// order, so the candidates are materialized and re-sorted on distance + 0.
+	// rows slightly out of distance order and PostgreSQL 17+ reuses a CTE's
+	// sort order, so the candidates are materialized and re-sorted on distance + 0.
 	//
 	// c.embedding is selected only inside the distance projection, never as its
 	// own column: scanning it into the non-nullable domain.RagChunk.Embedding

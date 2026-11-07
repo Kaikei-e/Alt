@@ -52,7 +52,7 @@ func NewHybridSearchRepository(pool *pgxpool.Pool, rrfK int) domain.HybridSearch
 
 // HybridSearch performs a combined vector + full-text search with RRF fusion.
 // Uses CTE-based approach:
-// 1. vector_matches: HNSW cosine similarity search
+// 1. vector_candidates / vector_matches: HNSW cosine similarity search, re-sorted for ranking
 // 2. text_matches: tsvector full-text search with ts_rank_cd
 // 3. RRF fusion: 1/(rank + k) summed across both search methods
 // 4. Metadata enrichment via JOIN
@@ -240,11 +240,13 @@ func (r *hybridSearchRepository) SearchNeighbors(
 	return results, nil
 }
 
+// buildHybridSearchQuery builds the RRF hybrid search SQL. The candidate arms
+// filter ownership with an EXISTS semi-join because the two-key
+// versions/documents join is estimated at one row and makes the planner skip
+// the HNSW index; relaxed_order HNSW scans may emit rows slightly out of
+// distance order and PostgreSQL 17+ reuses a CTE's sort order, so the
+// candidates are materialized and re-sorted on distance + 0.
 func buildHybridSearchQuery(tsConfig string, rrfK int) string {
-	// Candidate arms filter ownership via EXISTS on rag_documents.current_version_id
-	// (the two-key versions/documents join is estimated at one row, skipping the HNSW index);
-	// relaxed_order HNSW scans may emit rows slightly out of distance order and PostgreSQL
-	// reuses a CTE's sort order, so the candidates are materialized and re-sorted on distance + 0.
 	return fmt.Sprintf(`
 		WITH vector_candidates AS MATERIALIZED (
 			SELECT c.id, (c.embedding <=> $1) AS distance
@@ -301,13 +303,11 @@ func buildHybridSearchQuery(tsConfig string, rrfK int) string {
 	`, tsConfig, tsConfig, rrfK)
 }
 
+// buildSearchNeighborsQuery uses the same EXISTS semi-join and distance + 0
+// re-sort as buildHybridSearchQuery.
 func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgIdx int) string {
 	vectorArm := ""
 	if vectorArmArg > 0 {
-		// Candidate arms filter ownership via EXISTS on rag_documents.current_version_id
-		// (the two-key versions/documents join is estimated at one row, skipping the HNSW index);
-		// relaxed_order HNSW scans may emit rows slightly out of distance order and PostgreSQL
-		// reuses a CTE's sort order, so the candidates are materialized and re-sorted on distance + 0.
 		vectorArm = fmt.Sprintf(`
 			vector_candidates AS MATERIALIZED (
 				SELECT c.id, (c.embedding <=> $%d) AS distance
