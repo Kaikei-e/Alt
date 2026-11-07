@@ -130,26 +130,102 @@ func TestMigrator_Restore_DryRun_UnknownVolume(t *testing.T) {
 // failures were only logged and continued past, so Restore() always
 // returned nil even when every volume failed to restore.
 func TestMigrator_Restore_ReturnsErrorWhenAllVolumesFail(t *testing.T) {
-	backupDir := createTestBackup(t)
+	t.Run("reaches all volume engines and aggregates their failures", func(t *testing.T) {
+		backupDir := createTestBackup(t)
 
-	migrator := &Migrator{
-		registry:     NewVolumeRegistry(),
-		volumeBackup: &fakeBackupEngine{err: errors.New("simulated tar restore failure")},
-		pgBackup:     &fakeBackupEngine{err: errors.New("simulated pg_restore failure")},
-		composeDir:   "/tmp/compose",
-		projectName:  "alt",
-		logger:       slog.Default(),
-		dryRun:       false,
-	}
+		composeDir := t.TempDir()
+		composeFile := filepath.Join(composeDir, "compose.yaml")
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 
-	err := migrator.Restore(context.Background(), RestoreOptions{
-		BackupDir: backupDir,
-		Force:     true,
-		Verify:    false,
+		binDir := t.TempDir()
+		fakeDocker := filepath.Join(binDir, "docker")
+		script := `#!/usr/bin/env sh
+set -e
+case "$*" in
+  *"compose -f "*)
+    exit 0
+    ;;
+  "exec "*" pg_isready -h 127.0.0.1 -p 5432 "*)
+    exit 0
+    ;;
+esac
+exit 1
+`
+		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+		tarEngine := &fakeBackupEngine{err: errors.New("simulated tar restore failure")}
+		pgEngine := &fakeBackupEngine{err: errors.New("simulated pg_restore failure")}
+		migrator := &Migrator{
+			registry:     NewVolumeRegistry(),
+			volumeBackup: tarEngine,
+			pgBackup:     pgEngine,
+			composeDir:   composeDir,
+			projectName:  "alt",
+			logger:       slog.Default(),
+			dryRun:       false,
+		}
+
+		err := migrator.Restore(context.Background(), RestoreOptions{
+			BackupDir: backupDir,
+			Force:     true,
+			Verify:    false,
+		})
+		if err == nil {
+			t.Fatal("expected Restore() to return an error when every volume restore fails")
+		}
+		if pgEngine.calls.Load() != 7 || tarEngine.calls.Load() != 8 {
+			t.Fatalf("expected all 7 pg and 8 tar volumes to be attempted, got pg=%d tar=%d (err=%v)", pgEngine.calls.Load(), tarEngine.calls.Load(), err)
+		}
 	})
-	if err == nil {
-		t.Fatal("expected Restore() to return an error when every volume restore fails")
-	}
+
+	t.Run("fails fast without invoking docker compose up without -f when no compose files exist", func(t *testing.T) {
+		backupDir := createTestBackup(t)
+
+		binDir := t.TempDir()
+		logFile := filepath.Join(t.TempDir(), "docker.log")
+		fakeDocker := filepath.Join(binDir, "docker")
+		script := `#!/usr/bin/env sh
+printf '%s\n' "$*" >> "` + logFile + `"
+exit 1
+`
+		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+		tarEngine := &fakeBackupEngine{}
+		pgEngine := &fakeBackupEngine{}
+		migrator := &Migrator{
+			registry:     NewVolumeRegistry(),
+			volumeBackup: tarEngine,
+			pgBackup:     pgEngine,
+			composeDir:   filepath.Join(t.TempDir(), "nonexistent-compose-dir"),
+			projectName:  "alt",
+			logger:       slog.Default(),
+			dryRun:       false,
+		}
+
+		err := migrator.Restore(context.Background(), RestoreOptions{
+			BackupDir: backupDir,
+			Force:     true,
+			Verify:    false,
+		})
+		if err == nil {
+			t.Fatal("expected Restore() to fail when no compose files exist")
+		}
+
+		raw, _ := os.ReadFile(logFile)
+		for _, call := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+			if strings.Contains(call, "up -d") {
+				t.Fatalf("expected startDatabaseContainers to fail fast without invoking docker compose up without -f, got docker calls: %q", strings.TrimSpace(string(raw)))
+			}
+		}
+	})
 }
 
 // TestMigrator_Restore_ReturnsNilWhenVolumesSucceed is the GREEN-path
@@ -256,7 +332,7 @@ case "$*" in
   *"compose"*"up -d db")
     exit 0
     ;;
-  "exec alt-db pg_isready"*)
+  "exec alt-db pg_isready -h 127.0.0.1 -p 5432 -U alt_db_user -d alt")
     exit 0
     ;;
   "exec -i alt-db pg_restore"*)
