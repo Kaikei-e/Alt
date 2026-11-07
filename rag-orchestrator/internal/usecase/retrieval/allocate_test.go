@@ -1,6 +1,7 @@
 package retrieval_test
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func discardLogger() *slog.Logger {
@@ -22,6 +24,7 @@ func TestAllocate_DynamicMode_SortsByScore(t *testing.T) {
 		RetrievalID:   "test-1",
 		QuotaOriginal: 3,
 		QuotaExpanded: 3,
+		RerankApplied: true,
 		HitsOriginal: []domain.SearchResult{
 			makeSearchResult("EN Article", 0.90),
 			makeSearchResult("日本語記事", 0.85),
@@ -41,6 +44,65 @@ func TestAllocate_DynamicMode_SortsByScore(t *testing.T) {
 	assert.Equal(t, "EN Article", contexts[1].Title)
 	assert.Equal(t, "日本語記事", contexts[2].Title)
 	assert.Equal(t, "Low Article", contexts[3].Title)
+}
+
+func TestAllocate_DynamicMode_NonReranked_InterleavesOriginalAndExpandedHits(t *testing.T) {
+	origHits := make([]domain.SearchResult, 5)
+	for i := range origHits {
+		origHits[i] = domain.SearchResult{
+			Chunk: domain.RagChunk{
+				ID:        uuid.New(),
+				Content:   fmt.Sprintf("Example Model 15 overview chunk %d", i),
+				CreatedAt: time.Now(),
+			},
+			ArticleID: fmt.Sprintf("art-orig-%d", i),
+			Title:     fmt.Sprintf("Example Model 15 Article %d", i),
+			Score:     float32(2.0 / (60.0 + float64(i+1))),
+			ScoreKind: domain.ScoreKindRRF,
+		}
+	}
+
+	expHits := make([]retrieval.ContextItem, 10)
+	for i := range expHits {
+		expHits[i] = retrieval.ContextItem{
+			ChunkID:   uuid.New(),
+			ChunkText: fmt.Sprintf("Unrelated synthetic chunk %d", i),
+			ArticleID: fmt.Sprintf("art-exp-%d", i),
+			Title:     fmt.Sprintf("Unrelated Article %d", i),
+			Score:     0.145 - float32(i)*0.001,
+			ScoreKind: domain.ScoreKindRRF,
+		}
+	}
+
+	sc := &retrieval.StageContext{
+		RetrievalID:   "alloc-non-reranked-starvation",
+		QuotaOriginal: 3,
+		QuotaExpanded: 3,
+		RerankApplied: false,
+		HitsOriginal:  origHits,
+		HitsExpanded:  expHits,
+	}
+
+	contexts := retrieval.Allocate(sc, retrieval.AllocateConfig{
+		DynamicLanguageAllocationEnabled: true,
+	}, discardLogger())
+
+	require.Len(t, contexts, 6)
+	assert.Equal(t, []string{
+		"Example Model 15 Article 0",
+		"Unrelated Article 0",
+		"Example Model 15 Article 1",
+		"Unrelated Article 1",
+		"Example Model 15 Article 2",
+		"Unrelated Article 2",
+	}, []string{
+		contexts[0].Title,
+		contexts[1].Title,
+		contexts[2].Title,
+		contexts[3].Title,
+		contexts[4].Title,
+		contexts[5].Title,
+	}, "non-reranked dynamic allocation must rank-interleave original and expanded hits rather than sorting across incompatible RRF scales")
 }
 
 func TestAllocate_DynamicMode_RespectsQuota(t *testing.T) {

@@ -482,7 +482,7 @@ func TestExpandQueries_TagQueriesFilteredAndBounded(t *testing.T) {
 					"2026-04-07",
 					"OS",
 					"SIM",
-					"ストレージ512GBモデルは5万4980円で販売開始",
+					"大容量モデルは来月から店頭で販売を開始する予定",
 					"Example Model 15 overview",
 					"ExampleOS",
 					"ExampleTech",
@@ -522,4 +522,23 @@ func TestExpandQueries_TagQueriesFilteredAndBounded(t *testing.T) {
 		"フラッグシップスマホ",
 		"カメラセンサー",
 	}, sc.TagQueries, "generic short ASCII tokens, pure numbers/dates, and long sentence tags must be dropped and remaining tags bounded")
+}
+
+func TestFilterTagQueries_ASCIILengthUpTo40_NonASCIICappedAt20(t *testing.T) {
+	tags := []string{
+		"Large Language Models",                          // 21 ASCII runes -> keep
+		"Retrieval-Augmented Generation",                 // 30 ASCII runes -> keep
+		"Distributed Consensus Protocol Benchmark",       // 40 ASCII runes -> keep
+		"Distributed Consensus Protocol Benchmark Suite", // 46 ASCII runes -> drop (> 40)
+		"次世代フラッグシップスマートフォンの技術",                           // 20 non-ASCII runes -> keep
+		"大容量モデルは来月から店頭で販売を開始する予定",                        // 23 non-ASCII runes -> drop (> 20)
+	}
+
+	got := filterTagQueries(tags, "Example query")
+	assert.Equal(t, []string{
+		"Large Language Models",
+		"Retrieval-Augmented Generation",
+		"Distributed Consensus Protocol Benchmark",
+		"次世代フラッグシップスマートフォンの技術",
+	}, got, "pure-ASCII tags up to 40 runes must be allowed while non-ASCII tags stay capped at 20 runes")
 }
