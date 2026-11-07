@@ -41,12 +41,13 @@ func assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t *testing.T, arm, ownerPlac
 	limitClause := "LIMIT " + limitPlaceholder
 	assert.Contains(t, arm, ownerFilter)
 	assert.Contains(t, arm, limitClause)
+	assert.Less(t, strings.Index(arm, "EXISTS"), strings.Index(arm, ownerFilter))
 	assert.Less(t, strings.Index(arm, "EXISTS"), strings.Index(arm, limitClause))
 	assert.Less(t, strings.Index(arm, "d.current_version_id = c.version_id"), strings.Index(arm, limitClause))
 	assert.Less(t, strings.Index(arm, ownerFilter), strings.Index(arm, limitClause))
 }
 
-func assertVectorArmMaterializesAndResortsCandidates(t *testing.T, vectorPart, ownerPlaceholder, limitPlaceholder string) {
+func assertVectorArmMaterializesAndResortsCandidates(t *testing.T, vectorPart, vectorPlaceholder, ownerPlaceholder, limitPlaceholder string) {
 	t.Helper()
 	assert.Contains(t, vectorPart, "vector_candidates AS MATERIALIZED")
 	assert.Contains(t, vectorPart, "vector_matches AS")
@@ -56,8 +57,19 @@ func assertVectorArmMaterializesAndResortsCandidates(t *testing.T, vectorPart, o
 	vectorMatchesCTE := subparts[1]
 
 	assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, vectorCandidatesCTE, ownerPlaceholder, limitPlaceholder)
+	orderBy := "ORDER BY c.embedding <=> " + vectorPlaceholder
+	limitClause := "LIMIT " + limitPlaceholder
+	assert.Contains(t, vectorCandidatesCTE, orderBy)
+	assert.Less(t, strings.Index(vectorCandidatesCTE, orderBy), strings.Index(vectorCandidatesCTE, limitClause))
 	assert.Contains(t, vectorMatchesCTE, "rank() OVER (ORDER BY distance + 0) AS rank")
 	assert.Contains(t, vectorMatchesCTE, "FROM vector_candidates")
+}
+
+func assertOuterMetadataRejoin(t *testing.T, outerPart, ownerPlaceholder string) {
+	t.Helper()
+	assert.Contains(t, outerPart, "JOIN rag_documents d ON v.document_id = d.id")
+	assert.Contains(t, outerPart, "d.current_version_id = v.id")
+	assert.Contains(t, outerPart, "d.user_id = "+ownerPlaceholder)
 }
 
 func TestHybridSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
@@ -69,10 +81,12 @@ func TestHybridSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing
 	candidatesPart := parts[0]
 
 	vectorPart := strings.Split(candidatesPart, "text_matches AS")[0]
-	assertVectorArmMaterializesAndResortsCandidates(t, vectorPart, "$5", "$3")
+	assertVectorArmMaterializesAndResortsCandidates(t, vectorPart, "$1", "$5", "$3")
 
 	textPart := strings.Split(candidatesPart, "text_matches AS")[1]
 	assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$5", "$3")
+
+	assertOuterMetadataRejoin(t, parts[1], "$5")
 }
 
 func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
@@ -86,10 +100,12 @@ func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *test
 
 		require.Contains(t, candidatesPart, "vector_matches AS")
 		vectorPart := strings.Split(candidatesPart, "text_matches AS")[0]
-		assertVectorArmMaterializesAndResortsCandidates(t, vectorPart, "$5", "$2")
+		assertVectorArmMaterializesAndResortsCandidates(t, vectorPart, "$4", "$5", "$2")
 
 		textPart := strings.Split(candidatesPart, "text_matches AS")[1]
 		assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$5", "$2")
+
+		assertOuterMetadataRejoin(t, parts[1], "$5")
 	})
 
 	t.Run("text only arm", func(t *testing.T) {
@@ -105,5 +121,7 @@ func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *test
 
 		textPart := candidatesPart
 		assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$4", "$2")
+
+		assertOuterMetadataRejoin(t, parts[1], "$4")
 	})
 }
