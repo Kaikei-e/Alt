@@ -24,6 +24,7 @@ import (
 	"alt/orchestrator/gateway/rag_gateway"
 	"alt/tlsutil"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -305,4 +306,5 @@ func TestBuildPGXPoolConfig_SpecialCharactersAndSSLModePrefer(t *testing.T) {
 	require.NotNil(t, cfg.ConnConfig.TLSConfig, "sslmode=prefer must set initial TLSConfig")
 	require.Len(t, cfg.ConnConfig.Fallbacks, 1, "sslmode=prefer must configure one plaintext fallback")
 	assert.Nil(t, cfg.ConnConfig.Fallbacks[0].TLSConfig)
+	assert.Equal(t, pgx.QueryExecModeSimpleProtocol, cfg.ConnConfig.DefaultQueryExecMode)
 }
