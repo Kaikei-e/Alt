@@ -199,4 +199,4 @@ missing-module-attribute = false
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore::DeprecationWarning"]
-markers = ["perf: performance tests"]
+markers = ["perf: performance tests", "slow: slow smoke and end-to-end tests"]

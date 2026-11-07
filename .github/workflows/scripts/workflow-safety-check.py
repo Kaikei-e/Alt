@@ -110,7 +110,6 @@ def resolve_path_filter_target(entry: str) -> str:
     return "."
 
 
-
 def extract_labels(runs_on):
     """Return (labels, had_expression) for any runs-on shape."""
     if runs_on is None:
