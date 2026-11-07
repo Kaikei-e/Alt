@@ -134,16 +134,31 @@ impl DiskFallback {
             open_opts.mode(0o600);
         }
         let mut file = open_opts.open(&temp_path).await?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(std::fs::Permissions::from_mode(0o600))
-                .await?;
+        let persist_result: Result<(), std::io::Error> = async {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                file.set_permissions(std::fs::Permissions::from_mode(0o600))
+                    .await?;
+            }
+            file.write_all(&data).await?;
+            file.sync_all().await?;
+            drop(file);
+            fs::rename(&temp_path, &file_path).await
         }
-        file.write_all(&data).await?;
-        file.sync_all().await?;
-        drop(file);
-        fs::rename(&temp_path, &file_path).await?;
+        .await;
+
+        if let Err(e) = persist_result {
+            if let Err(rm_err) = fs::remove_file(&temp_path).await {
+                tracing::warn!(
+                    batch_id = %batch_id,
+                    temp_path = %temp_path.display(),
+                    error = %rm_err,
+                    "Failed to remove temporary batch file after write error"
+                );
+            }
+            return Err(DiskError::IoError(e));
+        }
 
         self.current_usage += data.len() as u64;
 
@@ -231,30 +246,60 @@ impl DiskFallback {
     }
 
     pub async fn cleanup_old_batches(&mut self) -> Result<u32, DiskError> {
-        let now_time = SystemTime::now();
-        let now = now_time
+        let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| DiskError::SystemTimeError(format!("Invalid system time: {e}")))?
             .as_secs();
 
+        let retention_secs = self.config.retention_period.as_secs();
         let batch_ids = self.list_stored_batches().await?;
         let mut deleted_count = 0;
 
         for batch_id in batch_ids {
-            let expired = if let Ok(stored_batch) = self.load_stored_batch(&batch_id).await {
-                let age = now.saturating_sub(stored_batch.stored_at);
-                age > self.config.retention_period.as_secs()
-            } else if let Ok(metadata) = fs::metadata(self.get_batch_file_path(&batch_id)).await
-                && let Ok(modified) = metadata.modified()
-            {
-                now_time.duration_since(modified).unwrap_or(Duration::ZERO)
-                    >= self.config.retention_period
-            } else {
-                false
+            let (stored_at, is_corrupt) = match self.load_stored_batch(&batch_id).await {
+                Ok(stored_batch) => (stored_batch.stored_at, false),
+                Err(load_err) => {
+                    let file_path = self.get_batch_file_path(&batch_id);
+                    match fs::metadata(&file_path).await.and_then(|m| m.modified()) {
+                        Ok(modified) => {
+                            let mtime_secs = modified
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap_or(Duration::ZERO)
+                                .as_secs();
+                            (mtime_secs, true)
+                        }
+                        Err(meta_err) => {
+                            tracing::warn!(
+                                batch_id = %batch_id,
+                                load_error = %load_err,
+                                metadata_error = %meta_err,
+                                "Failed to inspect undecodable batch file during cleanup"
+                            );
+                            continue;
+                        }
+                    }
+                }
             };
 
-            if expired && let Ok(()) = self.delete_batch(&batch_id).await {
-                deleted_count += 1;
+            if now.saturating_sub(stored_at) >= retention_secs {
+                match self.delete_batch(&batch_id).await {
+                    Ok(()) => {
+                        if is_corrupt {
+                            tracing::warn!(
+                                batch_id = %batch_id,
+                                "Deleted expired undecodable batch from disk"
+                            );
+                        }
+                        deleted_count += 1;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            batch_id = %batch_id,
+                            error = %e,
+                            "Failed to delete expired batch from disk"
+                        );
+                    }
+                }
             }
         }
 
@@ -322,6 +367,18 @@ impl DiskFallback {
 
         while let Some(entry) = entries.next_entry().await? {
             if entry.file_type().await?.is_file() {
+                let file_name = entry.file_name();
+                if file_name.to_str().is_some_and(|n| n.ends_with(".tmp")) {
+                    let path = entry.path();
+                    if let Err(e) = fs::remove_file(&path).await {
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "Failed to remove stale temporary batch file on startup"
+                        );
+                    }
+                    continue;
+                }
                 total_size += entry.metadata().await?.len();
             }
         }
