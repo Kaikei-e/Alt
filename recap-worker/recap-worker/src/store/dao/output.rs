@@ -122,8 +122,6 @@ impl RecapDao {
         pool: &PgPool,
         window_days: i32,
     ) -> Result<Option<RecapJob>> {
-        // First try to find a job with matching window_days in recap_jobs
-        // Fall back to the legacy query for backward compatibility
         let row = sqlx::query(
             r"
             SELECT ro.job_id, MAX(ro.created_at) AS created_at
@@ -139,34 +137,6 @@ impl RecapDao {
         .fetch_optional(pool)
         .await
         .map_err(|e| RecapError::Db(format!("failed to fetch latest completed job: {e}")))?;
-
-        // Fall back to legacy query if no matching window_days found
-        // (for backward compatibility with jobs created before this column was added)
-        let row = match row {
-            Some(r) => Some(r),
-            None if window_days == 7 => {
-                // Legacy fallback: only for 7-day recaps, check jobs without explicit window_days
-                sqlx::query(
-                    r"
-                    SELECT ro.job_id, MAX(ro.created_at) AS created_at
-                    FROM recap_outputs ro
-                    JOIN recap_jobs rj ON ro.job_id = rj.job_id
-                    WHERE rj.window_days IS NULL AND rj.status = 'completed'
-                    GROUP BY ro.job_id
-                    ORDER BY MAX(ro.created_at) DESC
-                    LIMIT 1
-                    ",
-                )
-                .fetch_optional(pool)
-                .await
-                .map_err(|e| {
-                    RecapError::Db(format!(
-                        "failed to fetch latest completed job (legacy fallback): {e}"
-                    ))
-                })?
-            }
-            None => None,
-        };
 
         match row {
             Some(row) => {
