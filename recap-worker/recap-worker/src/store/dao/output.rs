@@ -749,6 +749,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn get_latest_completed_job_legacy_fallback_requires_null_window_and_completed_status()
     -> anyhow::Result<()> {
         let Ok(database_url) = std::env::var("DATABASE_URL") else {

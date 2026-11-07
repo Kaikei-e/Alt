@@ -339,11 +339,21 @@ pub(crate) async fn get_indexable_genres(
     axum::extract::Query(query): axum::extract::Query<IndexableGenresQuery>,
 ) -> impl IntoResponse {
     let limit = clamp_indexable_limit(query.limit);
-    let since = query.since.as_deref().and_then(|s| {
-        chrono::DateTime::parse_from_rfc3339(s)
-            .ok()
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-    });
+    let since = match query.since.as_deref() {
+        Some(s) => match chrono::DateTime::parse_from_rfc3339(s) {
+            Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: format!("Invalid since timestamp: '{s}'. Expected RFC3339"),
+                    }),
+                )
+                    .into_response();
+            }
+        },
+        None => None,
+    };
 
     let pool = state.pool();
 
@@ -677,12 +687,12 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn get_indexable_genres_returns_400_on_invalid_or_offsetless_since() {
-        use axum::{body::Body, http::Request};
-        use tower::ServiceExt;
         use crate::{
             app::{ComponentRegistry, build_router},
             config::{Config, ENV_MUTEX},
         };
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
 
         let _lock = ENV_MUTEX
             .lock()
@@ -722,7 +732,9 @@ mod tests {
 
         for invalid_since in ["not-a-date", "2026-11-08T10:00:00"] {
             let uri = format!("/v1/recaps/genres/indexable?since={invalid_since}");
-            let request = Request::get(&uri).body(Body::empty()).expect("request builds");
+            let request = Request::get(&uri)
+                .body(Body::empty())
+                .expect("request builds");
             let response = app
                 .clone()
                 .oneshot(request)

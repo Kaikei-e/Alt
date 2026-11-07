@@ -78,7 +78,9 @@ pub(crate) fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
 
 #[inline]
 pub(crate) fn clamp_window(window: Option<i64>, default: i64) -> i64 {
-    window.unwrap_or(default).clamp(1, MAX_DASHBOARD_WINDOW_SECONDS)
+    window
+        .unwrap_or(default)
+        .clamp(1, MAX_DASHBOARD_WINDOW_SECONDS)
 }
 
 /// システムメトリクスを取得する
@@ -736,7 +738,10 @@ mod tests {
             self.inner.find_most_recent_failed_job().await
         }
 
-        async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> crate::error::Result<u64> {
+        async fn mark_abandoned_jobs(
+            &self,
+            keep_job_id: Option<Uuid>,
+        ) -> crate::error::Result<u64> {
             self.inner.mark_abandoned_jobs(keep_job_id).await
         }
 
@@ -750,22 +755,17 @@ mod tests {
             status: crate::store::dao::JobStatus,
             last_stage: Option<&str>,
         ) -> crate::error::Result<()> {
-            self.inner.update_job_status(job_id, status, last_stage).await
+            self.inner
+                .update_job_status(job_id, status, last_stage)
+                .await
         }
 
         async fn get_recap_jobs(
             &self,
             window_seconds: i64,
             limit: i64,
-        ) -> crate::error::Result<
-            Vec<(
-                Uuid,
-                String,
-                Option<String>,
-                DateTime<Utc>,
-                DateTime<Utc>,
-            )>,
-        > {
+        ) -> crate::error::Result<Vec<(Uuid, String, Option<String>, DateTime<Utc>, DateTime<Utc>)>>
+        {
             self.recorded_windows
                 .lock()
                 .expect("recorded_windows mutex")
@@ -821,7 +821,9 @@ mod tests {
             status: &str,
             message: Option<&str>,
         ) -> crate::error::Result<()> {
-            self.inner.insert_stage_log(job_id, stage, status, message).await
+            self.inner
+                .insert_stage_log(job_id, stage, status, message)
+                .await
         }
 
         async fn save_stage_state(
@@ -865,9 +867,8 @@ mod tests {
             &self,
             job_id: Uuid,
             article_ids: &[String],
-        ) -> crate::error::Result<
-            HashMap<String, (Option<DateTime<Utc>>, Option<String>)>,
-        > {
+        ) -> crate::error::Result<HashMap<String, (Option<DateTime<Utc>>, Option<String>)>>
+        {
             self.inner.get_article_metadata(job_id, article_ids).await
         }
 
@@ -1236,10 +1237,7 @@ mod tests {
                 .await
         }
 
-        async fn get_total_article_count_for_job(
-            &self,
-            job_id: Uuid,
-        ) -> crate::error::Result<i32> {
+        async fn get_total_article_count_for_job(&self, job_id: Uuid) -> crate::error::Result<i32> {
             self.inner.get_total_article_count_for_job(job_id).await
         }
 
@@ -1270,7 +1268,9 @@ mod tests {
             user_id: Uuid,
             window_seconds: i64,
         ) -> crate::error::Result<i32> {
-            self.inner.get_user_jobs_count(user_id, window_seconds).await
+            self.inner
+                .get_user_jobs_count(user_id, window_seconds)
+                .await
         }
 
         async fn get_pulse_by_date(
@@ -1298,12 +1298,12 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn get_recap_jobs_clamps_huge_window_instead_of_returning_500() {
-        use axum::{body::Body, http::Request};
-        use tower::ServiceExt;
         use crate::{
             app::{ComponentRegistry, build_router},
             config::ENV_MUTEX,
         };
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
 
         let _lock = ENV_MUTEX
             .lock()
@@ -1343,7 +1343,9 @@ mod tests {
         let app = build_router(registry);
 
         let uri = format!("/v1/dashboard/recap_jobs?window={}", i64::MAX);
-        let request = Request::get(uri).body(Body::empty()).expect("request builds");
+        let request = Request::get(uri)
+            .body(Body::empty())
+            .expect("request builds");
         let response = app.oneshot(request).await.expect("request succeeds");
 
         assert_eq!(response.status(), StatusCode::OK);
