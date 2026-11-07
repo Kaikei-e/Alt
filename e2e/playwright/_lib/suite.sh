@@ -88,6 +88,7 @@ redact_secrets() {
 # Establishes every path and identifier the rest of the run depends on, sources
 # the shared compose helpers, and installs the EXIT trap. Call first.
 suite_init() {
+  unset SLICE SLICE_DIR
   SUITE_NAME="$1"
 
   : "${NODE_IMAGE:=node:26-bookworm-slim}"
@@ -193,8 +194,11 @@ suite_endpoint() {
 # gone.
 suite_up() {
   # Renders a per-project slice (sets $SLICE + $SLICE_DIR) so parallel matrix
-  # jobs can coexist on one Docker daemon.
-  render_slice "$SUITE_NAME"
+  # jobs can coexist on one Docker daemon. If the caller already rendered the
+  # slice (e.g. to build local-only helper images before `up`), reuse it.
+  if [[ -z "${SLICE:-}" ]]; then
+    render_slice "$SUITE_NAME"
+  fi
 
   # Reclaim Docker's pre-defined address pool from networks left by cancelled
   # prior runs. Safe by default: `docker network prune` refuses to touch a

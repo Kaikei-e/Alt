@@ -31,6 +31,7 @@ suites.yaml is where. The audit then distinguishes "deliberately on main" from
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -43,6 +44,11 @@ SUITES_YAML = PW_ROOT / "suites.yaml"
 COMPOSE = ROOT / "compose" / "compose.staging.yaml"
 
 TAG_VAR = re.compile(r"\$\{([A-Z0-9_]+_IMAGE_TAG)")
+SUITE_UP = re.compile(r"^[ \t]*suite_up(?:[ \t]+((?:\\\n|[^\n])+))?", re.MULTILINE)
+COMPOSE_BUILD = re.compile(
+    r"^[ \t]*docker[ \t]+compose[ \t]+(?:\\\n|[^\n])*?\bbuild\b((?:\\\n|[^\n])*)",
+    re.MULTILINE,
+)
 
 
 def main() -> int:
@@ -117,12 +123,67 @@ def main() -> int:
         # the whole file would match the var names these scripts quote in their
         # comments while *explaining* why they are not forwarded — the audit
         # would then pass on precisely the file that documents the gap.
+        run_text = run_sh.read_text()
         forwarded: set[str] = set()
-        for line in run_sh.read_text().splitlines():
+        for line in run_text.splitlines():
             stripped = line.strip()
             if stripped.startswith("#") or not stripped.startswith("suite_image_tags"):
                 continue
             forwarded.update(re.findall(r"[A-Z0-9_]+_IMAGE_TAG", stripped))
+
+        # (4) a suite that declares pre-built images must not pass `--build` to
+        #     `suite_up` (with or without a service list) or run `docker compose
+        #     ... build` on those services — compose would rebuild from source
+        #     and overwrite the pre-built image.
+        run_code = "\n".join(
+            line for line in run_text.splitlines() if not line.strip().startswith("#")
+        )
+        for match in SUITE_UP.finditer(run_code):
+            raw_args = (match.group(1) or "").replace("\\\n", " ")
+            tokens = raw_args.split()
+            if "--build" in tokens and declared_images:
+                service_args = [t for t in tokens if not t.startswith("-")]
+                rebuilt = (
+                    list(declared_images)
+                    if not service_args
+                    else [img for img in declared_images if img in service_args]
+                )
+                if rebuilt:
+                    problems.append(
+                        f"{name}: run.sh passes --build to suite_up for pre-built image(s) "
+                        f"{rebuilt} — compose will rebuild from source and ignore the "
+                        f"pre-built image"
+                    )
+
+        built_services: set[str] = set()
+        for match in COMPOSE_BUILD.finditer(run_code):
+            raw_args = (match.group(1) or "").replace("\\\n", " ")
+            tokens = raw_args.split()
+            service_args = [t for t in tokens if not t.startswith("-")]
+            built_services.update(service_args)
+            if declared_images:
+                rebuilt = (
+                    list(declared_images)
+                    if not service_args
+                    else [img for img in declared_images if img in service_args]
+                )
+                if rebuilt:
+                    problems.append(
+                        f"{name}: run.sh runs 'docker compose ... build' for pre-built image(s) "
+                        f"{rebuilt} — only local-only helper services may be built here"
+                    )
+
+        if name == "rag-orchestrator":
+            if services.get("rag-db", {}).get("image"):
+                problems.append(
+                    "rag-orchestrator: compose.staging.yaml sets an `image:` on rag-db, "
+                    "which prevents per-run rebuilds when rag-db/Dockerfile changes"
+                )
+            if built_services != {"rag-db", "rag-db-migrator"}:
+                problems.append(
+                    "rag-orchestrator: run.sh must build exactly ['rag-db', 'rag-db-migrator'] "
+                    f"via docker compose build before suite_up (got {sorted(built_services)})"
+                )
 
         # (2) every taggable image in the profile is either forwarded or
         #     recorded as deliberately left on `:main`.
@@ -141,6 +202,169 @@ def main() -> int:
         for svc_name in sorted(unpinned - set(profiles.get(name, []))):
             problems.append(
                 f"{name}: `unpinnedImages` lists '{svc_name}', which is not in the {name} profile"
+            )
+
+    # (5) alt-frontend-sv runs outside compose.staging.yaml, but its run.sh
+    #     must still boot the pre-built alt-alt-frontend-sv image with
+    #     PW_NO_WEBSERVER=1 and avoid per-run apt/Bun/full-app installs.
+    frontend_run_sh = PW_ROOT / "alt-frontend-sv" / "run.sh"
+    if not frontend_run_sh.is_file():
+        problems.append("alt-frontend-sv: no run.sh")
+    else:
+        fe_code = "\n".join(
+            line
+            for line in frontend_run_sh.read_text().splitlines()
+            if not line.strip().startswith("#")
+        )
+        if "alt-alt-frontend-sv" not in fe_code or "IMAGE_TAG" not in fe_code:
+            problems.append(
+                "alt-frontend-sv: run.sh does not reference pre-built "
+                "alt-alt-frontend-sv:${IMAGE_TAG} image"
+            )
+        if "PW_NO_WEBSERVER" not in fe_code:
+            problems.append(
+                "alt-frontend-sv: run.sh does not set PW_NO_WEBSERVER=1 — "
+                "playwright.config.ts will rebuild the SvelteKit app from source"
+            )
+        for forbidden in ("apt-get", "bun.sh/install", "bun install", "npm install"):
+            if forbidden in fe_code:
+                problems.append(
+                    f"alt-frontend-sv: run.sh still invokes '{forbidden}' per run"
+                )
+
+        # (6) run.sh must use the shared lockfile-managed e2e/playwright manifest
+        #     with `npm ci ... --ignore-scripts`, and the three E2E runner package
+        #     versions in e2e/playwright/package.json must match alt-frontend-sv/bun.lock.
+        if not re.search(r"npm\s+ci\b[^\n]*--ignore-scripts\b", fe_code):
+            problems.append(
+                "alt-frontend-sv: run.sh must install runner deps with "
+                "`npm ci ... --ignore-scripts`"
+            )
+        pw_pkg_path = PW_ROOT / "package.json"
+        bun_lock_path = ROOT / "alt-frontend-sv" / "bun.lock"
+        if pw_pkg_path.is_file() and bun_lock_path.is_file():
+            pw_pkg = json.loads(pw_pkg_path.read_text())
+            pw_deps = {
+                **(pw_pkg.get("dependencies") or {}),
+                **(pw_pkg.get("devDependencies") or {}),
+            }
+            bun_lock_text = bun_lock_path.read_text()
+            for pkg_name in ("@playwright/test", "axe-playwright", "jsonwebtoken"):
+                pinned = pw_deps.get(pkg_name)
+                m = re.search(
+                    rf'^\s*"{re.escape(pkg_name)}"\s*:\s*\["{re.escape(pkg_name)}@([^"]+)"',
+                    bun_lock_text,
+                    re.MULTILINE,
+                )
+                lock_ver = m.group(1) if m else None
+                if pinned != lock_ver:
+                    problems.append(
+                        f"alt-frontend-sv: e2e/playwright/package.json pins "
+                        f"{pkg_name}={pinned!r}, but alt-frontend-sv/bun.lock "
+                        f"resolves {lock_ver!r}"
+                    )
+
+        # (7) pre-launch port guard, container State.Running check, and curl --max-time.
+        app_run_pos = fe_code.find("docker run -d")
+        pre_launch = fe_code[:app_run_pos] if app_run_pos != -1 else ""
+        post_launch = fe_code[app_run_pos:] if app_run_pos != -1 else ""
+        if not re.search(r"curl\b[^\n]*--max-time\b[^\n]*/health", pre_launch):
+            problems.append(
+                "alt-frontend-sv: run.sh must fail before `docker run -d` if "
+                "127.0.0.1:${PORT}/health already answers (using curl --max-time)"
+            )
+        if "State.Running" not in post_launch:
+            problems.append(
+                "alt-frontend-sv: run.sh health wait must check `docker inspect` "
+                "State.Running so an exited container fails immediately"
+            )
+        if not re.search(r"curl\b[^\n]*--max-time\b[^\n]*/health", post_launch):
+            problems.append(
+                "alt-frontend-sv: run.sh health wait curl must pass --max-time"
+            )
+
+        # (8) tmpfs mount over /work/repo/alt-frontend-sv/node_modules.
+        if "destination=/work/repo/alt-frontend-sv/node_modules" not in post_launch:
+            problems.append(
+                "alt-frontend-sv: run.sh must mount a tmpfs over "
+                "/work/repo/alt-frontend-sv/node_modules to prevent local "
+                "node_modules from shadowing /work/node_modules"
+            )
+
+        # (9) stale-container sweep must be scoped to this run/project, not global.
+        fe_joined = re.sub(r"\\\n[ \t]*", " ", fe_code)
+        ps_lines = [m.group(0) for m in re.finditer(r"docker ps[^\n]+", fe_joined)]
+        if not ps_lines or any(
+            "alt.e2e.suite=alt-frontend-sv" not in ps_line
+            or (
+                "com.docker.compose.project=" not in ps_line
+                and "APP_CONTAINER" not in ps_line
+                and "SAFE_RUN_ID" not in ps_line
+            )
+            for ps_line in ps_lines
+        ):
+            problems.append(
+                "alt-frontend-sv: run.sh stale-container sweep must be scoped "
+                "to this run/project, not every alt-frontend-sv container on the daemon"
+            )
+
+        # (10) env key parity with alt-frontend-sv/playwright.config.ts webServer.env.
+        pw_cfg = ROOT / "alt-frontend-sv" / "playwright.config.ts"
+        if pw_cfg.is_file():
+            cfg_text = pw_cfg.read_text()
+            env_block_match = re.search(
+                r"webServer\s*:[\s\S]*?\benv\s*:\s*\{([\s\S]*?)\}",
+                cfg_text,
+            )
+            app_cmd_match = re.search(
+                r"docker run -d\s+((?:\\\n|[^\n])+)",
+                fe_code,
+            )
+            if env_block_match and app_cmd_match:
+                expected_keys = set(
+                    re.findall(
+                        r"^\s*([A-Z][A-Z0-9_]*)\s*:",
+                        env_block_match.group(1),
+                        re.MULTILINE,
+                    )
+                )
+                app_cmd = app_cmd_match.group(1).replace("\\\n", " ")
+                passed_keys = set(re.findall(r"-e\s+([A-Z][A-Z0-9_]*)=", app_cmd))
+                allowed_extra = {"HOST", "NODE_ENV"}
+                missing_keys = sorted(expected_keys - passed_keys)
+                unexpected_keys = sorted((passed_keys - expected_keys) - allowed_extra)
+                if missing_keys or unexpected_keys:
+                    problems.append(
+                        "alt-frontend-sv: run.sh app container env keys drifted from "
+                        f"playwright.config.ts webServer.env (missing={missing_keys}, "
+                        f"unexpected={unexpected_keys})"
+                    )
+
+    # (11) suite.sh's suite_init must clear SLICE and SLICE_DIR so an inherited
+    #      environment variable cannot make suite_up reuse or suite_cleanup delete a
+    #      foreign slice.
+    suite_sh = PW_ROOT / "_lib" / "suite.sh"
+    if not suite_sh.is_file():
+        problems.append("suite.sh: missing e2e/playwright/_lib/suite.sh")
+    else:
+        suite_sh_code = "\n".join(
+            line
+            for line in suite_sh.read_text().splitlines()
+            if not line.strip().startswith("#")
+        )
+        init_match = re.search(
+            r"^[ \t]*suite_init\s*\(\)\s*\{([\s\S]*?)^\}",
+            suite_sh_code,
+            re.MULTILINE,
+        )
+        init_body = init_match.group(1) if init_match else ""
+        if not re.search(r"\bunset\b[^\n]*\bSLICE\b", init_body) or not re.search(
+            r"\bunset\b[^\n]*\bSLICE_DIR\b", init_body
+        ):
+            problems.append(
+                "suite.sh: suite_init must `unset SLICE SLICE_DIR` so an inherited "
+                "environment variable cannot make suite_up reuse or suite_cleanup "
+                "delete a foreign slice"
             )
 
     if problems:

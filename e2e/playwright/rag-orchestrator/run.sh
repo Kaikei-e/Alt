@@ -45,17 +45,26 @@ suite_endpoint BASE_URL         "http://rag-orchestrator:9010"
 suite_endpoint CONNECT_URL      "http://rag-orchestrator:9011"
 suite_endpoint MTLS_SIDECAR_URL "http://rag-orchestrator:9443"
 
-# `--build` is required: CI builds the rag-orchestrator image locally and
-# rag-db / rag-db-migrator are local build contexts with no GHCR image at all.
-# `--wait` blocks on healthcheck convergence; rag-db-migrator's `restart: "no"`
-# plus rag-orchestrator's `service_completed_successfully` gate is what
-# guarantees `atlas migrate apply` finishes before the server binds.
+# Build only the local-only rag-db and rag-db-migrator contexts against the
+# rendered slice so their images always reflect the checked-out Dockerfile and
+# migrations (with normal BuildKit layer caching), then bring the stack up
+# without `--build` so rag-orchestrator runs from its pre-built GHCR image
+# tagged by `suite_image_tags`. `--wait` blocks on healthcheck convergence;
+# rag-db-migrator's `restart: "no"` plus rag-orchestrator's
+# `service_completed_successfully` gate guarantees `atlas migrate apply`
+# finishes before the server binds.
 #
 # rag-orchestrator itself declares no container healthcheck — it ships on
 # distroless/static with no shell and no `healthcheck` subcommand — so `--wait`
 # only proves the process is running. `setup/global-setup.ts` closes that gap by
 # polling /readyz, /connect/health and the seeded rows before any test runs.
-suite_up --build \
+render_slice "$SUITE_NAME"
+echo "==> building local-only rag-db and rag-db-migrator images" >&2
+docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" build \
+  rag-db \
+  rag-db-migrator
+
+suite_up \
   rag-db \
   rag-db-migrator \
   rag-orchestrator
