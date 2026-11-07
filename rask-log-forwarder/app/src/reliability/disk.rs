@@ -124,15 +124,16 @@ impl DiskFallback {
             return Err(DiskError::DiskSpaceExceeded);
         }
 
-        // Write to file with restrictive 0600 permissions on Unix
+        // Write to temporary file with restrictive 0600 permissions on Unix, then rename into place
         let file_path = self.get_batch_file_path(&batch_id);
+        let temp_path = file_path.with_extension("batch.tmp");
         let mut open_opts = fs::OpenOptions::new();
         open_opts.write(true).create(true).truncate(true);
         #[cfg(unix)]
         {
             open_opts.mode(0o600);
         }
-        let mut file = open_opts.open(&file_path).await?;
+        let mut file = open_opts.open(&temp_path).await?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -141,6 +142,8 @@ impl DiskFallback {
         }
         file.write_all(&data).await?;
         file.sync_all().await?;
+        drop(file);
+        fs::rename(&temp_path, &file_path).await?;
 
         self.current_usage += data.len() as u64;
 
@@ -228,7 +231,8 @@ impl DiskFallback {
     }
 
     pub async fn cleanup_old_batches(&mut self) -> Result<u32, DiskError> {
-        let now = SystemTime::now()
+        let now_time = SystemTime::now();
+        let now = now_time
             .duration_since(UNIX_EPOCH)
             .map_err(|e| DiskError::SystemTimeError(format!("Invalid system time: {e}")))?
             .as_secs();
@@ -237,14 +241,20 @@ impl DiskFallback {
         let mut deleted_count = 0;
 
         for batch_id in batch_ids {
-            if let Ok(stored_batch) = self.load_stored_batch(&batch_id).await {
+            let expired = if let Ok(stored_batch) = self.load_stored_batch(&batch_id).await {
                 let age = now.saturating_sub(stored_batch.stored_at);
+                age > self.config.retention_period.as_secs()
+            } else if let Ok(metadata) = fs::metadata(self.get_batch_file_path(&batch_id)).await
+                && let Ok(modified) = metadata.modified()
+            {
+                now_time.duration_since(modified).unwrap_or(Duration::ZERO)
+                    >= self.config.retention_period
+            } else {
+                false
+            };
 
-                if age > self.config.retention_period.as_secs()
-                    && let Ok(()) = self.delete_batch(&batch_id).await
-                {
-                    deleted_count += 1;
-                }
+            if expired && let Ok(()) = self.delete_batch(&batch_id).await {
+                deleted_count += 1;
             }
         }
 
