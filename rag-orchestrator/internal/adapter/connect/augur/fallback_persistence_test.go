@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -408,5 +409,168 @@ func TestStreamChat_ClientCancelOnFallback_PersistsFallbackTurnAndNotNormalTurn(
 	assert.Contains(t, reason, "low keyword coverage")
 	h.mocks.AssertNumberOfCalls(t, "AppendFallbackAssistantTurn", 1)
 	h.mocks.AssertNotCalled(t, "AppendAssistantTurn",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+type failOnSignalResponseWriter struct {
+	http.ResponseWriter
+	failWrites *atomic.Bool
+	onFail     func()
+}
+
+func (w *failOnSignalResponseWriter) Write(p []byte) (int, error) {
+	if w.failWrites.Load() {
+		if w.onFail != nil {
+			w.onFail()
+		}
+		return 0, io.ErrClosedPipe
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *failOnSignalResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func TestStreamChat_SendFailureOnFallback_PersistsFallbackTurnAndNotNormalTurn(t *testing.T) {
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	mockConv := new(MockAugurConversationUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	userID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        uuid.New(),
+		UserID:    userID,
+		Title:     "fallback-send-fail",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	events := make(chan usecase.StreamEvent, 8)
+	mockConv.On("EnsureConversation", mock.Anything, userID, uuid.Nil, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("AppendUserTurn", mock.Anything, conv.ID, mock.AnythingOfType("string")).Return(nil)
+	mockAnswer.On("Stream", mock.Anything, mock.Anything).Return((<-chan usecase.StreamEvent)(events))
+
+	var (
+		mu             sync.Mutex
+		content        string
+		code           string
+		reason         string
+		fallbackCalled = make(chan struct{})
+		normalCalled   = make(chan struct{})
+		fallbackOnce   sync.Once
+		normalOnce     sync.Once
+	)
+	mockConv.On("AppendFallbackAssistantTurn",
+		mock.Anything, conv.ID, mock.AnythingOfType("string"),
+		mock.Anything, mock.Anything,
+		mock.AnythingOfType("string"), mock.AnythingOfType("string"),
+	).Run(func(args mock.Arguments) {
+		mu.Lock()
+		content, code, reason = args.String(2), args.String(5), args.String(6)
+		mu.Unlock()
+		fallbackOnce.Do(func() { close(fallbackCalled) })
+	}).Return(nil)
+	mockConv.On("AppendAssistantTurn",
+		mock.Anything, conv.ID, mock.AnythingOfType("string"),
+		mock.Anything, mock.Anything,
+	).Run(func(mock.Arguments) {
+		normalOnce.Do(func() { close(normalCalled) })
+	}).Return(nil).Maybe()
+
+	var (
+		failWrites     atomic.Bool
+		sendFailed     = make(chan struct{})
+		sendFailedOnce sync.Once
+		handlerDone    = make(chan struct{})
+	)
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, nil, logger)
+	mux := http.NewServeMux()
+	path, connectHandler := augurv2connect.NewAugurServiceHandler(handler)
+	mux.Handle(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(handlerDone)
+		reqCtx, reqCancel := context.WithCancel(context.WithoutCancel(r.Context()))
+		defer reqCancel()
+		fw := &failOnSignalResponseWriter{
+			ResponseWriter: w,
+			failWrites:     &failWrites,
+			onFail: func() {
+				reqCancel()
+				sendFailedOnce.Do(func() { close(sendFailed) })
+			},
+		}
+		connectHandler.ServeHTTP(fw, r.WithContext(reqCtx))
+	}))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := augurv2connect.NewAugurServiceClient(server.Client(), server.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
+		Messages: []*augurv2.ChatMessage{{Role: "user", Content: "なぜ物流が滞っているのか"}},
+	})
+	req.Header().Set("X-Alt-User-Id", userID.String())
+
+	stream, err := client.StreamChat(ctx, req)
+	require.NoError(t, err)
+
+	events <- usecase.StreamEvent{Kind: usecase.StreamEventKindDelta, Payload: "途中まで書いた回答"}
+
+	sawDelta := false
+	for stream.Receive() {
+		if stream.Msg().Kind == "delta" {
+			sawDelta = true
+			break
+		}
+	}
+	require.True(t, sawDelta, "client must receive delta before disconnecting")
+
+	// Client disconnects before the fallback frame is written, so stream.Send
+	// fails on the Fallback frame.
+	failWrites.Store(true)
+	cancel()
+
+	events <- usecase.StreamEvent{Kind: usecase.StreamEventKindFallback, Payload: string(usecase.FallbackShortUnderGrounded)}
+
+	select {
+	case <-sendFailed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("stream.Send did not attempt to write the Fallback frame")
+	}
+
+	events <- usecase.StreamEvent{Kind: usecase.StreamEventKindDone, Payload: &usecase.AnswerWithRAGOutput{
+		Answer:           "途中まで書いた回答",
+		Fallback:         true,
+		Reason:           "answer quality insufficient: low keyword coverage",
+		FallbackCategory: usecase.FallbackShortUnderGrounded,
+	}}
+	close(events)
+
+	select {
+	case <-fallbackCalled:
+	case <-normalCalled:
+		t.Fatal("rejected partial delta was persisted as a normal assistant turn instead of a fallback turn")
+	case <-handlerDone:
+		select {
+		case <-fallbackCalled:
+		default:
+			t.Fatal("handler exited on Fallback Send failure without calling AppendFallbackAssistantTurn")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("AppendFallbackAssistantTurn was not called after Send failed on Fallback")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, "途中まで書いた回答", content)
+	assert.Equal(t, string(usecase.FallbackShortUnderGrounded), code)
+	assert.Contains(t, reason, "low keyword coverage")
+	mockConv.AssertNumberOfCalls(t, "AppendFallbackAssistantTurn", 1)
+	mockConv.AssertNotCalled(t, "AppendAssistantTurn",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
