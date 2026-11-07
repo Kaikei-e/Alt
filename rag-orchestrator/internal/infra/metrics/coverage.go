@@ -53,6 +53,15 @@ var (
 			"NULL embedding is retrievable lexically and invisible to vector search.",
 	}, []string{"state"})
 
+	// Retrieval filters by d.user_id = $owner, so NULL-owner rows are invisible even when on the target version pair.
+	documentOwnerCoverage = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: "rag",
+		Name:      "document_owner_coverage",
+		Help: "Documents (current version) by owner state (owned, unowned). " +
+			"A document with a NULL user_id is invisible to tenant-scoped retrieval.",
+	}, []string{"state"})
+
 	coverageScrapeFailures = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "rag",
@@ -142,6 +151,7 @@ type coverageRow struct {
 	chunkerVersion  string
 	embedderVersion string
 	documents       int64
+	unowned         int64
 }
 
 func (s *CoverageSampler) sampleOnce(ctx context.Context) {
@@ -196,7 +206,7 @@ func (s *CoverageSampler) publish(rows []coverageRow) {
 	// Retire label sets that no longer exist, or a version fully rebuilt away
 	// keeps reporting its last count forever.
 	current := make(map[[2]string]struct{}, len(rows))
-	var total, onTarget int64
+	var total, onTarget, unowned int64
 	for _, row := range rows {
 		key := [2]string{row.chunkerVersion, row.embedderVersion}
 		current[key] = struct{}{}
@@ -205,6 +215,7 @@ func (s *CoverageSampler) publish(rows []coverageRow) {
 			WithLabelValues(row.chunkerVersion, row.embedderVersion, strconv.FormatBool(isTarget)).
 			Set(float64(row.documents))
 		total += row.documents
+		unowned += row.unowned
 		if isTarget {
 			onTarget += row.documents
 		}
@@ -218,25 +229,41 @@ func (s *CoverageSampler) publish(rows []coverageRow) {
 	}
 	s.previousLabels = current
 
+	owned := total - unowned
+	documentOwnerCoverage.WithLabelValues("owned").Set(float64(owned))
+	documentOwnerCoverage.WithLabelValues("unowned").Set(float64(unowned))
+
 	coverageScrapeTimestamp.Set(float64(time.Now().Unix()))
 	s.logger.Info("rag_document_coverage_sampled",
 		slog.Int("version_pairs", len(rows)),
 		slog.Int64("documents_total", total),
 		slog.Int64("documents_on_target", onTarget),
+		slog.Int64("documents_unowned", unowned),
 		slog.String("target_chunker_version", s.targetChunker),
 		slog.String("target_embedder_version", s.targetEmbedder))
+	if unowned > 0 {
+		s.logger.Warn("rag_documents_missing_owner",
+			slog.Int64("documents_unowned", unowned),
+			slog.Int64("documents_owned", owned),
+			slog.Int64("documents_total", total))
+	}
 }
+
+const documentCoverageQuery = `
+	SELECT
+		v.chunker_version,
+		v.embedder_version,
+		COUNT(*),
+		COUNT(*) FILTER (WHERE d.user_id IS NULL)
+	FROM rag_documents d
+	JOIN rag_document_versions v ON d.current_version_id = v.id
+	GROUP BY v.chunker_version, v.embedder_version
+`
 
 // queryCoverage counts each document once, through its current version only:
 // superseded versions are history, not corpus.
 func (s *CoverageSampler) queryCoverage(ctx context.Context) ([]coverageRow, error) {
-	const q = `
-		SELECT v.chunker_version, v.embedder_version, COUNT(*)
-		FROM rag_documents d
-		JOIN rag_document_versions v ON d.current_version_id = v.id
-		GROUP BY v.chunker_version, v.embedder_version
-	`
-	rows, err := s.pool.Query(ctx, q)
+	rows, err := s.pool.Query(ctx, documentCoverageQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +272,7 @@ func (s *CoverageSampler) queryCoverage(ctx context.Context) ([]coverageRow, err
 	var out []coverageRow
 	for rows.Next() {
 		var r coverageRow
-		if err := rows.Scan(&r.chunkerVersion, &r.embedderVersion, &r.documents); err != nil {
+		if err := rows.Scan(&r.chunkerVersion, &r.embedderVersion, &r.documents, &r.unowned); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
