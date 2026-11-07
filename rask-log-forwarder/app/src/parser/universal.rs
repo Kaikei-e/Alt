@@ -845,4 +845,31 @@ mod tests {
             Some(&"128".to_string())
         );
     }
+
+    #[test]
+    fn log_entry_from_docker_frame_enriches_with_source_timestamp() {
+        let container = std::sync::Arc::new(create_go_backend_container_info());
+        let frame = bytes::Bytes::from_static(b"2020-01-01T00:00:00.123456789Z {\"msg\":\"x\"}\n");
+        let (_parsed_ts, payload) = crate::collector::parse_log_timestamp_prefix(frame);
+        let log_entry = crate::collector::LogEntry {
+            container,
+            stream: LogStream::Stdout,
+            raw_bytes: payload,
+        };
+
+        let parser = UniversalParser::new();
+        let enriched = parser
+            .parse_docker_log_with_stream(
+                &log_entry.raw_bytes,
+                &log_entry.container,
+                log_entry.stream,
+            )
+            .expect("Failed to parse Docker log entry");
+
+        assert!(
+            enriched.timestamp.starts_with("2020-01-01T00:00:00.123"),
+            "expected enriched timestamp to start with 2020-01-01T00:00:00.123, got {}",
+            enriched.timestamp
+        );
+    }
 }
