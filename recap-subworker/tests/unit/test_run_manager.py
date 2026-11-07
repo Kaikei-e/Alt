@@ -851,3 +851,44 @@ async def test_process_classification_run_marks_failed_when_connection_closed_on
     assert dao.failure_status[1] == "failed"
     assert len(sessions) == 3
     assert sessions[-1].commit_called
+
+
+@pytest.mark.asyncio
+async def test_handle_failure_does_not_overwrite_succeeded_run():
+    from unittest.mock import MagicMock
+
+    from structlog.testing import capture_logs
+
+    from recap_subworker.db.dao import SubworkerDAO
+
+    row = {"id": 3, "status": "succeeded", "error_message": None}
+
+    class _StatusAwareSession(FakeSession):
+        async def execute(self, stmt):
+            compiled = stmt.compile()
+            sql = str(compiled)
+            params = compiled.params
+            result = MagicMock()
+            if "AND recap_subworker_runs.status = " in sql and "running" in params.values():
+                result.all = MagicMock(return_value=[])
+                return result
+            row["status"] = "failed"
+            row["error_message"] = "connection is closed"
+            result.all = MagicMock(return_value=[(3,)])
+            return result
+
+    session = _StatusAwareSession()
+    manager = RunManager(
+        Settings(),
+        lambda: DummySessionContext(session),  # pyrefly: ignore[bad-argument-type]
+        SubworkerDAO,  # pyrefly: ignore[bad-argument-type]
+    )
+
+    with capture_logs() as cap_logs:
+        await manager._handle_failure(3, "connection is closed")
+
+    assert row["status"] == "succeeded"
+    assert row["error_message"] is None
+    assert session.commit_called
+    assert any(log.get("run_id") == 3 for log in cap_logs)
+

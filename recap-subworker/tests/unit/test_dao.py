@@ -165,3 +165,23 @@ async def test_fail_orphaned_admin_jobs_updates_every_running_row():
     assert "failed" in compiled.params.values()
     assert "running" in compiled.params.values()
     assert "admin job orphaned by restart" in compiled.params.values()
+
+
+@pytest.mark.asyncio
+async def test_mark_run_failure_only_updates_running_run():
+    session = AsyncMock()
+    result = MagicMock()
+    result.all = MagicMock(return_value=[])
+    session.execute.return_value = result
+    dao = SubworkerDAO(session)
+
+    updated = await dao.mark_run_failure(42, "failed", "connection is closed")
+
+    assert updated is False
+    stmt = session.execute.await_args.args[0]
+    compiled = stmt.compile()
+    assert "UPDATE recap_subworker_runs SET status" in str(compiled)
+    assert "WHERE recap_subworker_runs.id = " in str(compiled)
+    assert "AND recap_subworker_runs.status = " in str(compiled)
+    assert "running" in compiled.params.values()
+

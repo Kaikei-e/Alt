@@ -320,3 +320,33 @@ async def test_startup_sweep_fails_orphaned_admin_jobs(monkeypatch):
 
     assert fake_dao.orphan_sweeps
     assert fake_dao.jobs[str(orphan_id)]["status"] == "failed"
+    assert fake_dao.jobs[str(orphan_id)]["finished_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_empty_exception_message_is_not_mislabeled_as_cancelled(monkeypatch, fake_settings):
+    from recap_subworker.services.async_jobs import CANCELLED_ADMIN_JOB_MESSAGE
+
+    fake_session = FakeSession()
+    fake_dao = FakeDAO(fake_session)
+    monkeypatch.setattr(
+        "recap_subworker.services.async_jobs.SubworkerDAO", lambda session: fake_dao
+    )
+
+    service = AdminJobService(
+        settings=fake_settings,
+        session_factory=lambda: fake_session,
+        learning_client=None,
+    )
+
+    async def _timeout_graph():
+        raise TimeoutError()
+
+    monkeypatch.setattr(service, "_run_graph_build", _timeout_graph)
+
+    job_id = await service.enqueue_graph_job()
+    await asyncio.gather(*list(service._tasks), return_exceptions=True)
+
+    assert fake_dao.jobs[str(job_id)]["status"] == "failed"
+    assert fake_dao.jobs[str(job_id)]["error"] != CANCELLED_ADMIN_JOB_MESSAGE
+
