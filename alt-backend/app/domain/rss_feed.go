@@ -74,6 +74,8 @@ type FeedItem struct {
 	OgImageURL string `json:"ogImageUrl,omitempty"`
 	// OgImageProxyURL is the HMAC-signed proxy URL for the OGP image (populated at response time).
 	OgImageProxyURL string `json:"ogImageProxyUrl,omitempty"`
+	// CursorAt is the sort-key timestamp used to derive next_cursor when a list is ordered by a column other than feeds.created_at.
+	CursorAt time.Time `json:"-"`
 }
 
 type Author struct {

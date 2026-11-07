@@ -77,6 +77,10 @@ func deriveNextCursor(feeds []*domain.FeedItem, hasMore bool) *string {
 		return nil
 	}
 	lastFeed := feeds[len(feeds)-1]
+	if !lastFeed.CursorAt.IsZero() {
+		cursor := lastFeed.CursorAt.Format(time.RFC3339Nano)
+		return &cursor
+	}
 	if !lastFeed.PublishedParsed.IsZero() {
 		cursor := lastFeed.PublishedParsed.Format(time.RFC3339Nano)
 		return &cursor

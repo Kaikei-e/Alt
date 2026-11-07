@@ -159,6 +159,7 @@ func (g *FetchFeedsGateway) FetchReadFeedsListCursor(ctx context.Context, cursor
 			logger.SafeErrorContext(ctx, "Error reading feed id from read cursor page", "error", err)
 			return nil, errors.New("error fetching read feeds with cursor")
 		}
+		feedItem.CursorAt = feed.UpdatedAt
 		feedItems = append(feedItems, feedItem)
 	}
 
@@ -179,6 +180,7 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 			logger.SafeErrorContext(ctx, "Error reading feed id from favorite cursor page", "error", err)
 			return nil, errors.New("error fetching favorite feeds with cursor")
 		}
+		feedItem.CursorAt = feed.UpdatedAt
 		feedItems = append(feedItems, feedItem)
 	}
 

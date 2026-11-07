@@ -99,6 +99,9 @@ func DeriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
 		return "", false
 	}
 	lastFeed := feeds[len(feeds)-1]
+	if !lastFeed.CursorAt.IsZero() {
+		return lastFeed.CursorAt.Format(time.RFC3339Nano), true
+	}
 	if !lastFeed.PublishedParsed.IsZero() {
 		return lastFeed.PublishedParsed.Format(time.RFC3339Nano), true
 	}
