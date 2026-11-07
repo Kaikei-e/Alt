@@ -564,6 +564,18 @@ class RecapSummaryUsecase:
         intermediate_summaries: list[IntermediateSummary] = [
             result for result in map_results if result is not None
         ]
+        dropped_map_chunks = len(chunks) - len(intermediate_summaries)
+        if dropped_map_chunks > 0 and intermediate_summaries:
+            logger.warning(
+                "Map phase completed with partial chunk failures",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "total_chunks": len(chunks),
+                    "succeeded_chunks": len(intermediate_summaries),
+                    "dropped_chunks": dropped_map_chunks,
+                },
+            )
 
         if not intermediate_summaries:
             # Fallback if all map phases failed
@@ -578,6 +590,17 @@ class RecapSummaryUsecase:
                 temperature_override,
                 llm_options,
             )
+            if dropped_map_chunks > 0 and not response.metadata.is_degraded:
+                response = response.model_copy(
+                    update={
+                        "metadata": response.metadata.model_copy(
+                            update={
+                                "is_degraded": True,
+                                "degradation_reason": "map_chunks_partial",
+                            }
+                        )
+                    }
+                )
 
         # Single aggregate INFO log for the whole job, replacing the need to
         # infer job shape from per-round-trip logs scattered across dozens of
@@ -683,6 +706,19 @@ class RecapSummaryUsecase:
             for result in reduced_results
             if result is not None and isinstance(result, IntermediateSummary)
         ]
+        dropped_groups = len(summary_groups) - len(reduced_summaries)
+        if dropped_groups > 0:
+            logger.warning(
+                "Recursive reduce completed with dropped groups",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "depth": depth,
+                    "total_groups": len(summary_groups),
+                    "succeeded_groups": len(reduced_summaries),
+                    "dropped_groups": dropped_groups,
+                },
+            )
 
         if not reduced_summaries:
             # Fallback: use original summaries and do final reduce anyway
@@ -693,10 +729,21 @@ class RecapSummaryUsecase:
             response = await self._final_reduce(
                 summaries, request, max_bullets, temperature_override
             )
+            if not response.metadata.is_degraded:
+                response = response.model_copy(
+                    update={
+                        "metadata": response.metadata.model_copy(
+                            update={
+                                "is_degraded": True,
+                                "degradation_reason": "reduce_groups_partial",
+                            }
+                        )
+                    }
+                )
             return response, depth
 
         # Recurse with reduced summaries
-        return await self._recursive_reduce_phase(
+        response, final_depth = await self._recursive_reduce_phase(
             reduced_summaries,
             request,
             max_bullets,
@@ -704,6 +751,18 @@ class RecapSummaryUsecase:
             llm_options,
             depth + 1,
         )
+        if dropped_groups > 0 and not response.metadata.is_degraded:
+            response = response.model_copy(
+                update={
+                    "metadata": response.metadata.model_copy(
+                        update={
+                            "is_degraded": True,
+                            "degradation_reason": "reduce_groups_partial",
+                        }
+                    )
+                }
+            )
+        return response, final_depth
 
     async def _reduce_group(
         self,
