@@ -158,7 +158,7 @@ def extract_topics(
     vectorizer = TfidfVectorizer(
         ngram_range=(1, 2),
         min_df=1,
-        max_df=0.95,
+        max_df=1.0 if len(corpus_by_cluster) == 1 else 0.95,
         lowercase=True,
         stop_words=sorted(stopword_set),
         tokenizer=custom_tokenizer,

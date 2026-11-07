@@ -255,5 +255,8 @@ def test_extract_topics_handles_single_corpus():
 
     assert len(result) == 1
     assert result[0]
-    assert any(term in {"product", "launch", "roadmap", "research"} for term in result[0])
+    assert any(
+        term in {"artificial", "intelligence", "product", "launch", "roadmap", "research"}
+        for term in result[0]
+    )
 
