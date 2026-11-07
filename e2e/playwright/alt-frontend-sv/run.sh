@@ -1,127 +1,172 @@
 #!/usr/bin/env bash
 # RECLAIM_NETWORK_POOL: skip (this suite creates no compose network — it runs
-# on --network host against a webServer and mock listeners inside the test
-# process, so there is no address pool for it to exhaust or reclaim)
+# on --network host against the pre-built app container and mock listeners
+# inside the test process, so there is no address pool for it to exhaust or
+# reclaim)
 # e2e/playwright/alt-frontend-sv/run.sh
 #
-# Dispatches the alt-frontend-sv Playwright E2E suite inside a Playwright
-# container. Parallels the Hurl `e2e/hurl/<svc>/run.sh` convention
-# (ADR-000766) so alt-deploy's release-deploy.yaml can matrix over
-# `bash e2e/<framework>/<svc>/run.sh` with a single two-directory probe.
+# Dispatches the alt-frontend-sv Playwright E2E suite against the pre-built
+# `alt-alt-frontend-sv` image.
 #
-# The suite is self-contained: `playwright.config.ts` webServer boots
-# `bun run build && node build` on 4174, and `tests/e2e/global-setup.ts`
-# spins up mock Kratos (4001), AuthHub (4002), and Backend (4003) inside
-# the test process. No compose.staging.yaml profile is required.
+# `alt-frontend-sv/src/env.ts` reads all backend URLs and ORIGIN from runtime
+# environment variables (`$app/env/private`), so the production image serves the
+# E2E suite when started on `--network host` with the mock endpoints on
+# 127.0.0.1:4001-4003 (started by `tests/e2e/global-setup.ts`). Passing
+# `PW_NO_WEBSERVER=1` disables `playwright.config.ts`'s `bun run build && node
+# build` webServer, and the Playwright container installs only the three E2E
+# runner packages (`@playwright/test`, `axe-playwright`, `jsonwebtoken`) into
+# `/work` rather than installing Bun and the full frontend dependency tree.
 #
 # Environment overrides:
-#   PLAYWRIGHT_IMAGE  — container image. Defaults to the tag matching the
-#                       @playwright/test version in alt-frontend-sv/package.json,
-#                       read at runtime rather than pinned (see below).
-#   BUN_VERSION       — bun toolchain (default: 1.2.14; matches alt-frontend-sv.yml)
-#   SHARD             — Playwright --shard value (default: 1/1; matrix sets 1/3|2/3|3/3)
-#   PROJECTS          — space-separated --project flags (default: auth + desktop-chromium + mobile-chrome)
-#   RUN_ID            — unique run identifier for report dir (default: $(date +%s))
-#   REPORT_DIR        — override report output path (default: e2e/reports/alt-frontend-sv-<RUN_ID>)
-#   KEEP_STACK=1      — no-op; kept for parity with Hurl run.sh ergonomics
+#   IMAGE_TAG                 — Docker tag for the service image (default: ci)
+#   GHCR_OWNER                — GHCR namespace (default: kaikei-e)
+#   ALT_FRONTEND_SV_IMAGE_TAG — override tag for alt-alt-frontend-sv (default: $IMAGE_TAG)
+#   ALT_FRONTEND_SV_IMAGE     — full image ref override
+#   ALT_E2E_PORT              — port for the frontend server (default: 4174)
+#   PLAYWRIGHT_IMAGE          — browser runner image (defaults to version in package.json)
+#   SHARD                     — Playwright --shard value (default: 1/1)
+#   PROJECTS                  — space-separated --project flags
+#   RUN_ID                    — unique run identifier for report dir
+#   REPORT_DIR                — override report output path
+#   KEEP_STACK=1              — leave the app container up on exit for inspection
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 
 # The container image tag MUST match the @playwright/test version the suite
-# installs: the image ships browser binaries at a revision the driver pins, and
-# a driver that finds the wrong revision either refuses to start ("Executable
-# doesn't exist") or downloads ~400MB mid-run on a network the container may
-# not have.
-#
-# This was pinned by hand and drifted: the workflow moved to v1.62.1-jammy
-# while this file — the one alt-deploy actually invokes at release time — sat
-# on v1.59.1-jammy. Reading the version out of package.json means the two
-# cannot disagree again, and a bump in one place is a bump everywhere.
+# installs: the image ships browser binaries at a revision the driver pins.
 PLAYWRIGHT_VERSION="$(
   python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["devDependencies"]["@playwright/test"].lstrip("^~"))' \
     "$ROOT/alt-frontend-sv/package.json"
 )"
+: "${IMAGE_TAG:=ci}"
+: "${GHCR_OWNER:=kaikei-e}"
+: "${ALT_FRONTEND_SV_IMAGE_TAG:=$IMAGE_TAG}"
+: "${ALT_FRONTEND_SV_IMAGE:=ghcr.io/${GHCR_OWNER}/alt-alt-frontend-sv:${ALT_FRONTEND_SV_IMAGE_TAG}}"
+: "${ALT_E2E_PORT:=4174}"
 : "${PLAYWRIGHT_IMAGE:=mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-jammy}"
-: "${BUN_VERSION:=1.2.14}"
 : "${SHARD:=1/1}"
 : "${PROJECTS:=--project=auth --project=desktop-chromium --project=mobile-chrome}"
 : "${RUN_ID:=$(date +%s)}"
 : "${REPORT_DIR:=$ROOT/e2e/reports/alt-frontend-sv-$RUN_ID}"
+: "${STAGING_PROJECT_NAME:=alt-staging-alt-frontend-sv}"
 
 mkdir -p "$REPORT_DIR"
 
-# Shard value must be sharable with the Playwright CLI's regex guard.
-# Matrix jobs pass 1/3|2/3|3/3; local runs default to 1/1.
 if ! [[ "$SHARD" =~ ^[0-9]+/[0-9]+$ ]]; then
   echo "SHARD must match N/M (got: $SHARD)" >&2
   exit 2
 fi
 
-# The Playwright container needs: unzip (bun installer prereq), bun
-# itself, and network host so `global-setup.ts` can bind 127.0.0.1:4001-4003
-# while `webServer` binds 4174. The in-container sequence mirrors
-# .github/workflows/alt-frontend-sv.yml step-for-step so CI green and
-# local run.sh green cannot diverge.
-# ALT_E2E_PORT is forwarded because --network host makes the preview port a
-# host-global resource: a developer whose 4174 is held by an unrelated
-# container cannot run this suite at all unless the escape hatch
-# playwright.config.ts documents actually reaches the container. Unset stays
-# unset, the config falls back to 4174, and CI is unchanged.
+E2E_ORIGIN="http://127.0.0.1:${ALT_E2E_PORT}"
+SAFE_RUN_ID="${RUN_ID//[^a-zA-Z0-9_.-]/-}"
+APP_CONTAINER="alt-e2e-frontend-sv-${SAFE_RUN_ID}-$$"
+
+cleanup() {
+  local rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo "::group::alt-frontend-sv container logs" >&2
+    docker logs --tail 200 "$APP_CONTAINER" >&2 || true
+    echo "::endgroup::" >&2
+  fi
+  if [[ "${KEEP_STACK:-0}" != "1" ]]; then
+    docker rm -f "$APP_CONTAINER" >/dev/null 2>&1 || true
+  fi
+  exit "$rc"
+}
+trap cleanup EXIT
+
+# Remove any leftover container from a prior shard or cancelled run so
+# 127.0.0.1:${ALT_E2E_PORT} is free before starting the new container.
+stale_containers="$(docker ps -aq --filter "label=alt.e2e.suite=alt-frontend-sv" 2>/dev/null || true)"
+if [[ -n "$stale_containers" ]]; then
+  # shellcheck disable=SC2086
+  docker rm -f $stale_containers >/dev/null 2>&1 || true
+fi
+
+echo "==> starting pre-built frontend ($ALT_FRONTEND_SV_IMAGE) on $E2E_ORIGIN" >&2
+docker run -d \
+  --name "$APP_CONTAINER" \
+  --label "alt.e2e.suite=alt-frontend-sv" \
+  --label "com.docker.compose.project=${STAGING_PROJECT_NAME}" \
+  --network host \
+  -e PORT="$ALT_E2E_PORT" \
+  -e HOST=127.0.0.1 \
+  -e ORIGIN="$E2E_ORIGIN" \
+  -e NODE_ENV=production \
+  -e E2E_TEST_MODE=true \
+  -e KRATOS_INTERNAL_URL="http://127.0.0.1:4001" \
+  -e KRATOS_PUBLIC_URL="http://127.0.0.1:4001" \
+  -e AUTH_HUB_INTERNAL_URL="http://127.0.0.1:4002" \
+  -e BACKEND_BASE_URL="http://127.0.0.1:4003" \
+  -e BACKEND_REST_URL="http://127.0.0.1:4003" \
+  -e BACKEND_CONNECT_URL="http://127.0.0.1:4003" \
+  -e BFF_CONNECT_URL="http://127.0.0.1:4003" \
+  -e RECAP_WORKER_BASE_URL="http://127.0.0.1:4003" \
+  -e SOVEREIGN_ADMIN_AUTH=disabled \
+  "$ALT_FRONTEND_SV_IMAGE" >/dev/null
+
+for attempt in $(seq 1 60); do
+  if curl -fsS "${E2E_ORIGIN}/health" >/dev/null 2>&1; then
+    break
+  fi
+  if [[ "$attempt" -eq 60 ]]; then
+    echo "alt-frontend-sv did not become healthy at ${E2E_ORIGIN}/health within 60s" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
 echo "==> running Playwright ($SHARD) in $PLAYWRIGHT_IMAGE" >&2
 docker run --rm \
   --network host \
-  -v "$ROOT:$ROOT" \
-  -w "$ROOT/alt-frontend-sv" \
+  -v "$ROOT:/work/repo" \
+  -v "$REPORT_DIR:$REPORT_DIR" \
+  -w /work/repo/alt-frontend-sv \
   -e CI=true \
-  -e ALT_E2E_PORT="${ALT_E2E_PORT:-}" \
+  -e PW_NO_WEBSERVER=1 \
+  -e ALT_E2E_PORT="$ALT_E2E_PORT" \
   -e FORCE_COLOR=1 \
   -e PLAYWRIGHT_SKIP_GIT_INFO=1 \
-  -e BUN_INSTALL=/root/.bun \
-  -e BUN_VERSION="$BUN_VERSION" \
+  -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
   -e PROJECTS="$PROJECTS" \
   -e SHARD="$SHARD" \
   -e REPORT_DIR="$REPORT_DIR" \
   "$PLAYWRIGHT_IMAGE" \
   bash -euxo pipefail -c '
+    # Install only the external packages imported under tests/e2e/ and
+    # playwright.config.ts into /work (an ancestor of /work/repo/alt-frontend-sv
+    # on container overlayfs so Node ESM/CJS resolution finds /work/node_modules
+    # without writing root-owned files into the bind-mounted checkout).
+    node -e '\''
+      const fs = require("node:fs");
+      const pkg = JSON.parse(fs.readFileSync("/work/repo/alt-frontend-sv/package.json", "utf8"));
+      const pick = (name) => pkg.devDependencies?.[name] ?? pkg.dependencies?.[name];
+      fs.writeFileSync("/work/package.json", JSON.stringify({
+        name: "alt-frontend-sv-e2e-runner",
+        private: true,
+        devDependencies: {
+          "@playwright/test": pick("@playwright/test"),
+          "axe-playwright": pick("axe-playwright"),
+          "jsonwebtoken": pick("jsonwebtoken"),
+        },
+      }, null, 2));
+    '\''
+
     for attempt in 1 2 3; do
-      apt-get clean
-      rm -rf /var/lib/apt/lists/*
-      if apt-get update && apt-get install -y --no-install-recommends unzip ca-certificates curl; then
+      if npm --prefix /work install --no-audit --no-fund --no-save --prefer-offline --loglevel=error; then
         break
       fi
       if [ "$attempt" = "3" ]; then
-        echo "apt install failed after 3 attempts" >&2
+        echo "npm install failed after 3 attempts" >&2
         exit 1
       fi
-      sleep $((attempt * 15))
+      sleep $((attempt * 5))
     done
 
-    curl -fsSL https://bun.sh/install | bash -s -- "bun-v${BUN_VERSION}"
-    export PATH="${BUN_INSTALL}/bin:${PATH}"
-    bun --version
-
-    # Same retry shape as the apt loop above, for the same reason: this runs on
-    # a release-time runner that fetches every tarball fresh, and a truncated
-    # download surfaces as "IntegrityCheckFailed" against a lockfile hash that
-    # is fine. It has taken out whole release legs while the identical install
-    # on a hosted runner passed. The cache is cleared between attempts so a
-    # corrupt entry is not simply re-read; a genuinely wrong hash fails all
-    # three attempts the same way.
-    for attempt in 1 2 3; do
-      if bun install --frozen-lockfile; then
-        break
-      fi
-      if [ "$attempt" = "3" ]; then
-        echo "bun install failed after 3 attempts" >&2
-        exit 1
-      fi
-      bun pm cache rm || true
-      sleep $((attempt * 10))
-    done
-
-    bunx playwright test ${PROJECTS} --shard="${SHARD}"
+    # shellcheck disable=SC2086
+    /work/node_modules/.bin/playwright test ${PROJECTS} --shard="${SHARD}"
   '
 
 echo "==> suite passed. reports: $REPORT_DIR" >&2

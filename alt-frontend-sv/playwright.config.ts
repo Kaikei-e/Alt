@@ -180,7 +180,7 @@ export default defineConfig({
 	webServer: process.env.PW_NO_WEBSERVER
 		? undefined
 		: {
-				command: "bun run build && node build",
+				command: "test -f build/index.js || bun run build; node build",
 				url: `${previewOrigin}/health`,
 				reuseExistingServer: !isCI,
 				stdout: "pipe",
