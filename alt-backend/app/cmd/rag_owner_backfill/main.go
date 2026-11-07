@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"alt/config"
 	"alt/orchestrator/gateway/rag_gateway"
@@ -22,6 +23,7 @@ import (
 
 const (
 	defaultBatchSize          = 500
+	defaultBatchTimeout       = 60 * time.Second
 	defaultRAGOrchestratorURL = "https://rag-orchestrator:9010"
 )
 
@@ -30,6 +32,13 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func requiredEnv(key string) (string, error) {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value, nil
+	}
+	return "", fmt.Errorf("%s is required", key)
 }
 
 func resolveRAGOrchestratorURL() string {
@@ -51,14 +60,10 @@ func newRAGHTTPClient(ragURL string, log *slog.Logger) (*http.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("build mTLS client for %s: %w", ragURL, err)
 		}
-		if log != nil {
-			log.Info("rag_mtls_enabled", "binary", "rag_owner_backfill", "url", ragURL)
-		}
+		log.Info("rag_mtls_enabled", "binary", "rag_owner_backfill", "url", ragURL)
 	case strings.HasPrefix(ragURL, "http://"):
-		if log != nil {
-			log.Warn("rag_mtls_disabled", "binary", "rag_owner_backfill", "url", ragURL,
-				"reason", "RAG_ORCHESTRATOR_URL is http (explicit opt-out)")
-		}
+		log.Warn("rag_mtls_disabled", "binary", "rag_owner_backfill", "url", ragURL,
+			"reason", "RAG_ORCHESTRATOR_URL is http (explicit opt-out)")
 		client = &http.Client{}
 	default:
 		return nil, fmt.Errorf("RAG_ORCHESTRATOR_URL=%q must use https:// or http:// scheme", ragURL)
@@ -75,12 +80,10 @@ func newRAGClient(ragURL string, log *slog.Logger) (*rag_gateway.ClientWithRespo
 	if err != nil {
 		return nil, fmt.Errorf("load RAG API authentication config: %w", err)
 	}
-	if log != nil {
-		if ragAuthEnabled {
-			log.Info("rag_api_auth_enabled", "binary", "rag_owner_backfill")
-		} else {
-			log.Warn("rag_api_auth_disabled", "binary", "rag_owner_backfill", "reason", "RAG_API_AUTH=disabled (explicit opt-out)")
-		}
+	if ragAuthEnabled {
+		log.Info("rag_api_auth_enabled", "binary", "rag_owner_backfill")
+	} else {
+		log.Warn("rag_api_auth_disabled", "binary", "rag_owner_backfill", "reason", "RAG_API_AUTH=disabled (explicit opt-out)")
 	}
 
 	httpClient, err := newRAGHTTPClient(ragURL, log)
@@ -120,15 +123,24 @@ func loadDBPassword() (string, error) {
 }
 
 func buildPGXPoolConfig() (*pgxpool.Config, error) {
+	dbHost, err := requiredEnv("DB_HOST")
+	if err != nil {
+		return nil, err
+	}
+	dbUser, err := requiredEnv("DB_USER")
+	if err != nil {
+		return nil, err
+	}
+	dbName, err := requiredEnv("DB_NAME")
+	if err != nil {
+		return nil, err
+	}
 	dbPassword, err := loadDBPassword()
 	if err != nil {
 		return nil, err
 	}
 
-	dbHost := getEnv("DB_HOST", "localhost")
 	dbPort := getEnv("DB_PORT", "5432")
-	dbUser := getEnv("DB_USER", "alt_db_user")
-	dbName := getEnv("DB_NAME", "alt")
 
 	dsnURL := &url.URL{
 		Scheme:   "postgres",
@@ -192,7 +204,10 @@ func ProcessBatch(
 		return nil
 	}
 
-	resp, err := client.BackfillDocumentOwnersWithResponse(ctx, rag_gateway.BackfillDocumentOwnersJSONRequestBody{
+	batchCtx, cancel := context.WithTimeout(ctx, defaultBatchTimeout)
+	defer cancel()
+
+	resp, err := client.BackfillDocumentOwnersWithResponse(batchCtx, rag_gateway.BackfillDocumentOwnersJSONRequestBody{
 		Items: items,
 	})
 	if err != nil {
