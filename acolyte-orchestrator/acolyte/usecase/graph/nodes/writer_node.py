@@ -366,18 +366,19 @@ def _collect_accepted_claims(
 def _update_best_sections(  # noqa: PLR0913 — mirrors best-section state fields updated together
     current_best: dict[str, str],
     current_metrics: dict[str, dict],
+    current_best_citations: dict[str, list[SectionCitationDict]],
     section_key: str,
     body: str,
     blocking_count: int,
-    current_best_citations: dict[str, list[SectionCitationDict]] | None = None,
-    citations: list[SectionCitationDict] | None = None,
-) -> tuple[dict[str, str], dict[str, dict]]:
+    citations: list[SectionCitationDict],
+) -> tuple[dict[str, str], dict[str, dict], dict[str, list[SectionCitationDict]]]:
     """Update best_sections if this revision is better than the previous best.
 
     Selection: blocking_count minimum → non-empty → char_len.
     """
     new_best = dict(current_best)
     new_metrics = dict(current_metrics)
+    new_best_citations = dict(current_best_citations)
 
     char_len = len(body)
     existing = current_metrics.get(section_key)
@@ -387,8 +388,7 @@ def _update_best_sections(  # noqa: PLR0913 — mirrors best-section state field
         if char_len > 0:
             new_best[section_key] = body
             new_metrics[section_key] = {"blocking_count": blocking_count, "char_len": char_len}
-            if current_best_citations is not None:
-                current_best_citations[section_key] = list(citations or [])
+            new_best_citations[section_key] = list(citations)
     else:
         # Compare: fewer blocking → non-empty → longer
         prev_blocking = existing["blocking_count"]
@@ -403,10 +403,9 @@ def _update_best_sections(  # noqa: PLR0913 — mirrors best-section state field
         if is_better:
             new_best[section_key] = body
             new_metrics[section_key] = {"blocking_count": blocking_count, "char_len": char_len}
-            if current_best_citations is not None:
-                current_best_citations[section_key] = list(citations or [])
+            new_best_citations[section_key] = list(citations)
 
-    return new_best, new_metrics
+    return new_best, new_metrics, new_best_citations
 
 
 _ROLE_TARGET_LENGTH = {
@@ -895,14 +894,14 @@ class WriterNode:
 
                 # Count blocking paragraphs (rejected/empty)
                 blocking_count = sum(1 for p in paragraphs if p["status"] == "rejected")
-                current_best, current_metrics = _update_best_sections(
+                current_best, current_metrics, current_best_citations = _update_best_sections(
                     current_best,
                     current_metrics,
+                    current_best_citations,
                     key,
                     section_body,
                     blocking_count,
-                    current_best_citations=current_best_citations,
-                    citations=all_cites,
+                    all_cites,
                 )
             else:
                 # Legacy evidence-based path (backward compat)
