@@ -184,12 +184,22 @@ async fn enrich_log_entry(
                 log_entry.raw_bytes.as_ref()
             };
             let sanitized_message = String::from_utf8_lossy(raw_slice).replace('\0', "");
+            let mut fields = std::collections::HashMap::new();
+            let timestamp = if let Some(ts) = log_entry.timestamp {
+                ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+            } else {
+                fields.insert(
+                    "timestamp_fallback".to_string(),
+                    "processing_time".to_string(),
+                );
+                chrono::Utc::now().to_rfc3339()
+            };
             EnrichedLogEntry {
                 service_type: container.service_name.clone(),
                 log_type: "plain".to_string(),
                 message: sanitized_message,
                 level: Some(crate::domain::LogLevel::Info),
-                timestamp: chrono::Utc::now().to_rfc3339(),
+                timestamp,
                 stream: log_entry.stream.as_str().to_string(),
                 method: None,
                 path: None,
@@ -202,7 +212,7 @@ async fn enrich_log_entry(
                 service_group: container.group.clone(),
                 trace_id: None,
                 span_id: None,
-                fields: std::collections::HashMap::new(),
+                fields,
             }
         }
     }
