@@ -189,6 +189,62 @@ func TestEmbedAndSearch_BM25UsesExpandedQueries(t *testing.T) {
 	assert.GreaterOrEqual(t, len(sc.BM25Results), 2, "BM25 results from both queries should be merged")
 }
 
+func TestEmbedAndSearch_BM25ExcludesTagQueries_AndPreservesPlannerQueries(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	mockEncoder := new(MockVectorEncoder)
+	mockBM25 := new(MockBM25Searcher)
+	mockChunkRepo := new(MockRagChunkRepository)
+
+	testUUID := uuid.New()
+	queryVec := []float32{0.1, 0.2, 0.3}
+	plannerQueries := []string{
+		"Example Model 15 specifications",
+		"Example Model 15 review",
+	}
+	sc := &retrieval.StageContext{
+		RetrievalID:       "test-bm25-no-tags",
+		Query:             "Example Model 15 overview",
+		OriginalEmbedding: queryVec,
+		ExpandedQueries:   plannerQueries,
+		TagQueries:        []string{"ExampleOS", "ExampleTech", "GB", "2026"},
+		SearchLimit:       50,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
+	}
+
+	mockBM25.On("SearchBM25", mock.Anything, "Example Model 15 overview", 50, testUUID.String()).Return([]domain.BM25SearchResult{
+		{ArticleID: "art-orig", Content: "orig", Title: "Orig", Rank: 1},
+	}, nil)
+	mockBM25.On("SearchBM25", mock.Anything, "Example Model 15 specifications", 50, testUUID.String()).Return([]domain.BM25SearchResult{
+		{ArticleID: "art-spec", Content: "spec", Title: "Spec", Rank: 1},
+	}, nil)
+	mockBM25.On("SearchBM25", mock.Anything, "Example Model 15 review", 50, testUUID.String()).Return([]domain.BM25SearchResult{
+		{ArticleID: "art-rev", Content: "rev", Title: "Rev", Rank: 1},
+	}, nil)
+	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, 50, testUUID.String()).Return([]domain.BM25SearchResult{
+		{ArticleID: "art-tag-noise", Content: "noise", Title: "Noise", Rank: 1},
+	}, nil)
+
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{}, nil)
+	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec, queryVec, queryVec, queryVec}, nil)
+
+	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, mockBM25, nil, mockChunkRepo, true, 50, logger)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{
+		"Example Model 15 specifications",
+		"Example Model 15 review",
+		"ExampleOS",
+		"ExampleTech",
+	}, sc.AdditionalQueries, "planner queries must come first and only filtered tag queries may be appended")
+
+	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, "ExampleOS", 50, testUUID.String())
+	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, "ExampleTech", 50, testUUID.String())
+	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, "GB", 50, testUUID.String())
+	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, "2026", 50, testUUID.String())
+	assert.Len(t, sc.BM25Results, 3, "BM25 leg for HitsOriginal must only include original + planner/expanded queries")
+}
+
 func TestEmbedAndSearch_BM25ExpandedDeduplicatesResults(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	mockEncoder := new(MockVectorEncoder)
