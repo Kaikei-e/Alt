@@ -450,6 +450,9 @@ func (u *IndexArticlesUsecase) FlushSynonyms(ctx context.Context) error {
 	u.synonymsMu.Unlock()
 
 	if err := u.searchEngine.RegisterSynonyms(ctx, union); err != nil {
+		u.synonymsMu.Lock()
+		u.synonymsDirty = true
+		u.synonymsMu.Unlock()
 		// Non-fatal: search still works without synonyms, just with reduced
 		// recall for the affected tags. But this used to be silently
 		// swallowed entirely, so a persistent Meilisearch problem here was
