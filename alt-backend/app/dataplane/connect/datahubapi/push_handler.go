@@ -56,9 +56,10 @@ func (h *Handler) UpsertPushSubscription(ctx context.Context, req *connect.Reque
 	if msg == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("subscription is required"))
 	}
+	if _, err := requiredUUID(msg.GetUserId(), "subscription.user_id"); err != nil {
+		return nil, err
+	}
 	switch {
-	case msg.GetUserId() == "":
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("subscription.user_id is required"))
 	case msg.GetEndpoint() == "":
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("subscription.endpoint is required"))
 	case msg.GetP256Dh() == "" || msg.GetAuth() == "":
@@ -156,8 +157,8 @@ func (h *Handler) DeletePushSubscription(ctx context.Context, req *connect.Reque
 }
 
 func (h *Handler) ListPushSubscriptionsForUser(ctx context.Context, req *connect.Request[datahubv1.ListPushSubscriptionsForUserRequest]) (*connect.Response[datahubv1.ListPushSubscriptionsForUserResponse], error) {
-	if req.Msg.GetUserId() == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("user_id is required"))
+	if _, err := requiredUserID(req.Msg.GetUserId()); err != nil {
+		return nil, err
 	}
 
 	subs, err := h.pushSubscriptions.ListForUser(ctx, req.Msg.GetUserId())
@@ -174,7 +175,10 @@ func (h *Handler) ListPushSubscriptionsForUser(ctx context.Context, req *connect
 }
 
 func requireUserAndEndpoint(userID, endpoint string) error {
-	if userID == "" || endpoint == "" {
+	if _, err := requiredUserID(userID); err != nil {
+		return err
+	}
+	if endpoint == "" {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("user_id and endpoint are required"))
 	}
 	if err := domain.ValidatePushEndpoint(endpoint); err != nil {
@@ -226,6 +230,9 @@ func pushSubscriptionToProto(sub domain.PushSubscription) *datahubv1.PushSubscri
 // EnqueueNotification fans one notification out to every device of one user
 // that still wants that kind.
 func (h *Handler) EnqueueNotification(ctx context.Context, req *connect.Request[datahubv1.EnqueueNotificationRequest]) (*connect.Response[datahubv1.EnqueueNotificationResponse], error) {
+	if _, err := requiredUserID(req.Msg.GetUserId()); err != nil {
+		return nil, err
+	}
 	delivered, superseded, err := h.pushDeliveries.Enqueue(ctx, domain.NotificationEnqueue{
 		DedupeKey:  req.Msg.GetDedupeKey(),
 		UserID:     req.Msg.GetUserId(),
