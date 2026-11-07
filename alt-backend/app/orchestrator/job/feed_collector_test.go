@@ -513,6 +513,61 @@ func TestIs403Error(t *testing.T) {
 	}
 }
 
+func TestFeedErrorClassifiers_IgnoreStatusDigitsInTransportURLAndMatchGofeedHTTPError(t *testing.T) {
+	timeoutURLs := []error{
+		&url.Error{Op: "Get", URL: "https://example.com/feed/2404.xml", Err: errorWithMessage("dial tcp: i/o timeout")},
+		&url.Error{Op: "Get", URL: "https://example.com:4040/feed.xml", Err: errorWithMessage("dial tcp: i/o timeout")},
+		&url.Error{Op: "Get", URL: "https://example.com/feed/403/rss.xml", Err: errorWithMessage("dial tcp: i/o timeout")},
+		&url.Error{Op: "Get", URL: "https://example.com/feed/429/rss.xml", Err: errorWithMessage("dial tcp: i/o timeout")},
+		&url.Error{Op: "Get", URL: "https://example.com/feed/400/rss.xml", Err: errorWithMessage("dial tcp: i/o timeout")},
+	}
+
+	for _, err := range timeoutURLs {
+		if isPersistentFeedError(err) {
+			t.Errorf("isPersistentFeedError(%q) = true, want false for transport timeout", err)
+		}
+		if is403Error(err) {
+			t.Errorf("is403Error(%q) = true, want false for transport timeout", err)
+		}
+		if is429Error(err) {
+			t.Errorf("is429Error(%q) = true, want false for transport timeout", err)
+		}
+	}
+
+	err404 := rssFeed.HTTPError{StatusCode: 404, Status: "404 Not Found"}
+	if !isPersistentFeedError(err404) {
+		t.Errorf("isPersistentFeedError(%v) = false, want true", err404)
+	}
+	if is403Error(err404) {
+		t.Errorf("is403Error(%v) = true, want false", err404)
+	}
+	if is429Error(err404) {
+		t.Errorf("is429Error(%v) = true, want false", err404)
+	}
+
+	err403 := rssFeed.HTTPError{StatusCode: 403, Status: "403 Forbidden"}
+	if !isPersistentFeedError(err403) {
+		t.Errorf("isPersistentFeedError(%v) = false, want true", err403)
+	}
+	if !is403Error(err403) {
+		t.Errorf("is403Error(%v) = false, want true", err403)
+	}
+	if is429Error(err403) {
+		t.Errorf("is429Error(%v) = true, want false", err403)
+	}
+
+	err429 := rssFeed.HTTPError{StatusCode: 429, Status: "429 Too Many Requests"}
+	if isPersistentFeedError(err429) {
+		t.Errorf("isPersistentFeedError(%v) = true, want false", err429)
+	}
+	if is403Error(err429) {
+		t.Errorf("is403Error(%v) = true, want false", err429)
+	}
+	if !is429Error(err429) {
+		t.Errorf("is429Error(%v) = false, want true", err429)
+	}
+}
+
 // fastRetryLimiter keeps the retry ladder inside the test's own budget. The
 // backoff is measured in host intervals, so a millisecond interval makes the
 // retries immediate without changing how many of them there are — and the
