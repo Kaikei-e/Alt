@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -45,6 +46,7 @@ func EmbedAndSearch(
 	bm25Limit int,
 	logger *slog.Logger,
 ) error {
+	sc.TagQueries = filterTagQueries(sc.TagQueries, sc.Query)
 	// Build the full list of additional queries that need embedding
 	sc.AdditionalQueries = buildAdditionalQueries(sc.ExpandedQueries, sc.TagQueries)
 
@@ -85,7 +87,7 @@ func EmbedAndSearch(
 			bm25Start := time.Now()
 
 			// Build deduplicated query list: original + expanded (for cross-language BM25)
-			queries := bm25Queries(sc.Query, sc.AdditionalQueries)
+			queries := bm25Queries(sc.Query, sc.ExpandedQueries)
 
 			// One HTTP round-trip per query, run together rather than in
 			// sequence: a nine-query expansion used to serialise nine
@@ -193,12 +195,13 @@ func bm25Queries(original string, additionalQueries []string) []string {
 }
 
 func buildAdditionalQueries(expandedQueries, tagQueries []string) []string {
-	additional := make([]string, 0, len(expandedQueries)+len(tagQueries))
+	filteredTags := filterTagQueries(tagQueries, "")
+	additional := make([]string, 0, len(expandedQueries)+len(filteredTags))
 	additional = append(additional, expandedQueries...)
-	for _, tq := range tagQueries {
+	for _, tq := range filteredTags {
 		exists := false
 		for _, eq := range expandedQueries {
-			if eq == tq {
+			if strings.EqualFold(eq, tq) {
 				exists = true
 				break
 			}

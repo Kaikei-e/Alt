@@ -57,55 +57,6 @@ func Rerank(
 
 	rerankStart := time.Now()
 
-	// Prepare candidates from all unique hits (original + expanded), keyed by
-	// hitIdentity rather than chunk id: BM25 hits all carry uuid.Nil, and
-	// keying on that collapses an entire BM25-only result set into one
-	// candidate. A hit that can be identified by neither id cannot be scored
-	// at all — there would be no way to map a cross-encoder score back onto
-	// it alone — so it does not enter the window.
-	candidateMap := make(map[string]domain.SearchResult)
-	candidateOrder := make([]string, 0, len(sc.HitsOriginal)+len(sc.HitsExpanded))
-	addCandidate := func(key string, res domain.SearchResult) {
-		if key == "" {
-			return
-		}
-		if _, exists := candidateMap[key]; exists {
-			return
-		}
-		candidateMap[key] = res
-		candidateOrder = append(candidateOrder, key)
-	}
-
-	for _, res := range sc.HitsOriginal {
-		addCandidate(hitIdentity(res.Chunk.ID, res.ArticleID), res)
-	}
-	for _, item := range sc.HitsExpanded {
-		addCandidate(hitIdentity(item.ChunkID, item.ArticleID), domain.SearchResult{
-			Chunk: domain.RagChunk{
-				ID:      item.ChunkID,
-				Content: item.ChunkText,
-			},
-			Score:           item.Score,
-			ScoreKind:       item.ScoreKind,
-			ArticleID:       item.ArticleID,
-			Title:           item.Title,
-			URL:             item.URL,
-			DocumentVersion: item.DocumentVersion,
-		})
-	}
-
-	// Convert to rerank candidates in insertion order, so which candidates
-	// survive the cap below does not depend on map iteration order.
-	candidates := make([]domain.RerankCandidate, 0, len(candidateOrder))
-	for _, key := range candidateOrder {
-		res := candidateMap[key]
-		candidates = append(candidates, domain.RerankCandidate{
-			ID:      key,
-			Content: res.Chunk.Content,
-			Score:   res.Score,
-		})
-	}
-
 	topK := cfg.TopK
 	if topK <= 0 {
 		topK = defaultRerankTopK
@@ -114,13 +65,40 @@ func Rerank(
 	if maxCandidates <= 0 {
 		maxCandidates = defaultRerankMaxCandidates
 	}
-	if len(candidates) > maxCandidates {
-		// Stable so a degraded result set whose scores are all equal (BM25-only
-		// retrieval carries no score at all) keeps its retrieval order.
-		sort.SliceStable(candidates, func(i, j int) bool {
-			return candidates[i].Score > candidates[j].Score
+
+	// Prepare candidates from all unique hits (original + expanded), keyed by
+	// hitIdentity rather than chunk id: BM25 hits all carry uuid.Nil, and
+	// keying on that collapses an entire BM25-only result set into one
+	// candidate. A hit that can be identified by neither id cannot be scored
+	// at all — there would be no way to map a cross-encoder score back onto
+	// it alone — so it does not enter the window.
+	// Rank-interleave original and expanded lists rather than sorting by raw score across incompatible RRF scales.
+	seen := make(map[string]struct{}, len(sc.HitsOriginal)+len(sc.HitsExpanded))
+	candidates := make([]domain.RerankCandidate, 0, min(maxCandidates, len(sc.HitsOriginal)+len(sc.HitsExpanded)))
+	addCandidate := func(key, content string, score float32) {
+		if key == "" || len(candidates) >= maxCandidates {
+			return
+		}
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		candidates = append(candidates, domain.RerankCandidate{
+			ID:      key,
+			Content: content,
+			Score:   score,
 		})
-		candidates = candidates[:maxCandidates]
+	}
+
+	for r := 0; len(candidates) < maxCandidates && (r < len(sc.HitsOriginal) || r < len(sc.HitsExpanded)); r++ {
+		if r < len(sc.HitsOriginal) {
+			res := sc.HitsOriginal[r]
+			addCandidate(hitIdentity(res.Chunk.ID, res.ArticleID), res.Chunk.Content, res.Score)
+		}
+		if r < len(sc.HitsExpanded) {
+			item := sc.HitsExpanded[r]
+			addCandidate(hitIdentity(item.ChunkID, item.ArticleID), item.ChunkText, item.Score)
+		}
 	}
 
 	rerankCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
