@@ -97,22 +97,22 @@ func TestCoverageSampler_SplitsDocumentsByOwnerStateAndWarnsWhenUnowned(t *testi
 		slog.New(slog.NewJSONHandler(&buf, nil)))
 
 	s.publish([]coverageRow{
-		{chunkerVersion: "v10", embedderVersion: "bge-m3/1024", documents: 78189, unowned: 77025},
-		{chunkerVersion: "v9", embedderVersion: "embeddinggemma", documents: 6178, unowned: 6105},
+		{chunkerVersion: "v10", embedderVersion: "bge-m3/1024", documents: 1000, unowned: 950},
+		{chunkerVersion: "v9", embedderVersion: "embeddinggemma", documents: 120, unowned: 100},
 	})
 
-	assert.Equal(t, 1164.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")))
-	assert.Equal(t, 77025.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "true")))
-	assert.Equal(t, 73.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")))
-	assert.Equal(t, 6105.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")))
+	assert.Equal(t, 50.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")))
+	assert.Equal(t, 950.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "true")))
+	assert.Equal(t, 20.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")))
+	assert.Equal(t, 100.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")))
 
 	logs := buf.String()
 	assert.Contains(t, logs, `"msg":"rag_document_coverage_sampled"`)
-	assert.Contains(t, logs, `"documents_unowned":83130`)
-	assert.Contains(t, logs, `"documents_unowned_on_target":77025`)
+	assert.Contains(t, logs, `"documents_unowned":1050`)
+	assert.Contains(t, logs, `"documents_unowned_on_target":950`)
 	assert.Contains(t, logs, `"level":"WARN"`)
 	assert.Contains(t, logs, `"msg":"rag_documents_missing_owner"`)
-	assert.Contains(t, logs, `"documents_owned_on_target":1164`)
+	assert.Contains(t, logs, `"documents_owned_on_target":50`)
 }
 
 // Off-target unowned rows are orphans whose source article is gone; warning on them after backfill would never clear.
@@ -124,17 +124,17 @@ func TestCoverageSampler_UnownedOnlyOffTargetDoesNotWarn(t *testing.T) {
 		slog.New(slog.NewJSONHandler(&buf, nil)))
 
 	s.publish([]coverageRow{
-		{chunkerVersion: "v10", embedderVersion: "bge-m3/1024", documents: 78189, unowned: 0},
-		{chunkerVersion: "v9", embedderVersion: "embeddinggemma", documents: 6178, unowned: 6105},
+		{chunkerVersion: "v10", embedderVersion: "bge-m3/1024", documents: 1000, unowned: 0},
+		{chunkerVersion: "v9", embedderVersion: "embeddinggemma", documents: 120, unowned: 100},
 	})
 
-	assert.Equal(t, 78189.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")))
+	assert.Equal(t, 1000.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "true")))
-	assert.Equal(t, 73.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")))
-	assert.Equal(t, 6105.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")))
+	assert.Equal(t, 20.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")))
+	assert.Equal(t, 100.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")))
 
 	logs := buf.String()
-	assert.Contains(t, logs, `"documents_unowned":6105`)
+	assert.Contains(t, logs, `"documents_unowned":100`)
 	assert.Contains(t, logs, `"documents_unowned_on_target":0`)
 	assert.NotContains(t, logs, "rag_documents_missing_owner")
 }
