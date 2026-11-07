@@ -12,9 +12,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// doneSendTimeout bounds how long the deferred terminal Done event waits for
+// DoneSendTimeout bounds how long the deferred terminal Done event waits for
 // a full events channel to drain before giving up and logging the drop.
-const doneSendTimeout = 5 * time.Second
+const DoneSendTimeout = 5 * time.Second
 
 // Stream streams a RAG answer using Server-Sent Events.
 //
@@ -41,7 +41,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			// the wait in case the handler has stopped draining the channel.
 			select {
 			case events <- StreamEvent{Kind: StreamEventKindDone, Payload: finalOutput}:
-			case <-time.After(doneSendTimeout):
+			case <-time.After(DoneSendTimeout):
 				u.logger.Error("stream_done_event_dropped",
 					slog.String("reason", "events channel not drained within timeout"))
 			}

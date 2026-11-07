@@ -56,10 +56,6 @@ const tenantIDHeader = "X-Alt-Tenant-Id"
 // event_type and as the metrics.IncEmitterFailure label.
 const augurConversationLinkedEventType = "augur.conversation_linked.v1"
 
-// fallbackDoneDrainTimeout matches the usecase's detached Done send window so
-// client cancellation after a Fallback frame still drains Done for persistence.
-const fallbackDoneDrainTimeout = 5 * time.Second
-
 // sanitizeUTF8 removes invalid UTF-8 sequences from a string.
 // This is necessary because Ollama LLM may return chunks containing
 // invalid UTF-8, which causes protobuf serialization to fail with
@@ -370,7 +366,7 @@ loop:
 				fallbackSeen = true
 				reqDone = nil
 				if drainTimer == nil {
-					drainTimer = time.NewTimer(fallbackDoneDrainTimeout)
+					drainTimer = time.NewTimer(usecase.DoneSendTimeout)
 					drainTimeout = drainTimer.C
 				}
 			}
@@ -386,9 +382,12 @@ loop:
 					}
 				}
 				if err := stream.Send(protoEvent); err != nil {
-					h.logger.Error("failed to send event", slog.String("error", err.Error()))
-					tel.outcome = metrics.OutcomeError
-					return connect.NewError(connect.CodeInternal, err)
+					if !fallbackSeen {
+						h.logger.Error("failed to send event", slog.String("error", err.Error()))
+						tel.outcome = metrics.OutcomeError
+						return connect.NewError(connect.CodeInternal, err)
+					}
+					clientStreamClosed = true
 				}
 			}
 
