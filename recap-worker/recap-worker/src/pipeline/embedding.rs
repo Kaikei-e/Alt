@@ -28,6 +28,7 @@ const DEFAULT_MODEL_DIR: &str = "/opt/rustbert-models/all-MiniLM-L12-v2";
 pub(crate) const REQUIRED_MODEL_FILES: &[&str] = &[
     "modules.json",
     "config.json",
+    "model.safetensors",
     "rust_model.ot",
     "tokenizer_config.json",
     "sentence_bert_config.json",
@@ -35,12 +36,24 @@ pub(crate) const REQUIRED_MODEL_FILES: &[&str] = &[
     "1_Pooling/config.json",
 ];
 
+const WEIGHT_MODEL_FILES: &[&str] = &["model.safetensors", "rust_model.ot"];
+
 /// Which of [`REQUIRED_MODEL_FILES`] are absent from `dir`.
+///
+/// Either `model.safetensors` or `rust_model.ot` satisfies the model-weights
+/// requirement; both names are reported when neither is present.
 pub(crate) fn missing_model_files(dir: &Path) -> Vec<&'static str> {
+    let has_weights = WEIGHT_MODEL_FILES.iter().any(|rel| dir.join(rel).is_file());
     REQUIRED_MODEL_FILES
         .iter()
         .copied()
-        .filter(|rel| !dir.join(rel).is_file())
+        .filter(|rel| {
+            if WEIGHT_MODEL_FILES.contains(rel) {
+                !has_weights
+            } else {
+                !dir.join(rel).is_file()
+            }
+        })
         .collect()
 }
 
