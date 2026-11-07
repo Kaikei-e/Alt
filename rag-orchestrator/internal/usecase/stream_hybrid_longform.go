@@ -24,11 +24,9 @@ import (
 //
 // streamHybridLongForm runs the long-form ChatStream path. It returns a
 // non-nil *AnswerWithRAGOutput so the caller (Stream) can forward it to its
-// deferred Done emit. Empty Answer means "nothing worth persisting"
-// (clarification, hard-fail before any LLM output, ctx cancellation).
-//
-// Invariant: every return path leaves a non-nil pointer. Fallback returns set
-// Fallback=true and Reason; success returns the full output.
+// deferred Done emit. Non-fallback empty Answer means nothing to persist
+// (e.g. ctx cancellation); fallback returns set Fallback=true, FallbackCategory,
+// and Reason so the handler can persist the fallback turn.
 func (u *answerWithRAGUsecase) streamHybridLongForm(
 	ctx context.Context,
 	events chan<- StreamEvent,

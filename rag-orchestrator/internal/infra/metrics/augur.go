@@ -102,8 +102,8 @@ var (
 		Namespace: namespace,
 		Subsystem: "augur",
 		Name:      "empty_fallback_total",
-		Help: "Fallback turns that produced no answer text and were therefore " +
-			"not persisted as an assistant message.",
+		Help: "Fallback turns that produced no LLM answer text and were " +
+			"persisted with canned fallback prose.",
 	}, []string{"fallback_code"})
 )
 

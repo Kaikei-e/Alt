@@ -105,26 +105,26 @@ func (u *answerWithRAGUsecase) emitFallback(
 	out.Reason = reason
 }
 
-// FallbackMessage returns the reader-facing explanation matching alt-frontend-sv's formatAugurFallbackMessage.
+// Strings and code grouping mirror alt-frontend-sv/src/lib/utils/augurFallback.ts verbatim.
 func FallbackMessage(code string) string {
 	switch code {
 	case FallbackCodeArticleNotIndexed:
-		return "This article isn't in the search index yet, so I can't answer questions about it. Please try again a little after the feed has been fetched."
+		return "This article hasn't been indexed yet, so there's nothing to answer from. It should become available once indexing catches up."
 	case FallbackCodeLLMUnavailable,
 		FallbackCodeLLMStreamFailed,
 		FallbackCodeLLMNoOutput,
 		FallbackCodeValidationFailed,
 		FallbackCodeGenerationFailed,
 		FallbackCodeRetrievalFailed:
-		return "The answer service was temporarily unable to respond. Please wait a moment and try again."
+		return "Something went wrong on our side while answering. Nothing is wrong with your question — please try again."
 	case FallbackCodeCausalTrailWeak:
-		return "Related articles were found, but they did not form a consistent enough causal chain to state a cause with confidence."
+		return "I couldn't establish a consistent enough evidence trail to explain the cause confidently. Please try a more specific question."
 	case FallbackCodeRetrievalEmpty,
 		FallbackCodeRelevanceLow,
 		FallbackCodeAnswerDeclined,
 		FallbackCodeAnswerRejected:
-		return "Not enough indexed evidence was available yet to answer this question."
+		return "Not enough indexed evidence was available yet. Please try a more specific question."
 	default:
-		return "I wasn't able to put together an answer. Please try again in a moment."
+		return "I couldn't find enough information to answer that properly. Please try a more specific question."
 	}
 }

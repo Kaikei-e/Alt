@@ -22,9 +22,9 @@ const doneSendTimeout = 5 * time.Second
 // event with a non-nil *AnswerWithRAGOutput payload as the LAST event before
 // the channel is closed. The Done is fired by a deferred closure so that all
 // return paths (success, fallback, error, clarification) honour the contract
-// without each call site having to remember to emit it. Persistence on the
-// handler side keys off Done.Answer != "" — empty answers signal "nothing
-// worth keeping" (clarification, hard-fail before any LLM output).
+// without each call site having to remember to emit it. The handler persists
+// non-empty answers and all fallback turns; non-fallback empty Done events
+// (clarification, pre-generation hard errors) are skipped.
 func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGInput) <-chan StreamEvent {
 	events := make(chan StreamEvent, 4)
 	go func() {

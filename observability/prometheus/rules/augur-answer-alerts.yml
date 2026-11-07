@@ -167,9 +167,8 @@ groups:
             and grep rag-orchestrator for rerank_fallback_original_scores, which
             carries the specific reason (timeout, unmatched ids, empty response).
 
-      # WARN: degraded turns with no text at all. These are deliberately not
-      # written to augur_messages — a blank assistant bubble is worse than the
-      # gap — so this counter is the only trace they leave.
+      # WARN: degraded turns where the pipeline produced no LLM answer text and
+      # persisted canned fallback prose instead.
       - alert: AugurEmptyFallbacksRising
         expr: sum(increase(rag_orchestrator_augur_empty_fallback_total[1h])) > 10
         for: 15m
@@ -180,8 +179,8 @@ groups:
         annotations:
           summary: "Ask Augur produced {{ $value }} answerless fallbacks in an hour"
           description: |
-            Fallbacks that produced no text are absent from chat history by
-            design, so history alone cannot show this.
+            Fallbacks that produced no LLM answer text were persisted with
+            canned fallback prose instead of a grounded answer.
             Break down by cause:
             sum by (fallback_code) (increase(rag_orchestrator_augur_empty_fallback_total[1h]))
 

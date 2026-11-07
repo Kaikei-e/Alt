@@ -176,26 +176,6 @@ func (h *Handler) StreamChat(
 		query = string(runes[:4000])
 	}
 
-	// Build conversation history (all messages except the last user message)
-	// Limit to last 6 messages (3 turns) for efficiency
-	allMsgs := req.Msg.Messages
-	if len(allMsgs) > 1 {
-		historyMsgs := allMsgs[:len(allMsgs)-1] // Exclude last message (the query)
-		start := 0
-		if len(historyMsgs) > 6 {
-			start = len(historyMsgs) - 6
-		}
-		for _, msg := range historyMsgs[start:] {
-			if msg.Role != "user" && msg.Role != "assistant" {
-				continue
-			}
-			conversationHistory = append(conversationHistory, domain.Message{
-				Role:    msg.Role,
-				Content: msg.Content,
-			})
-		}
-	}
-
 	// Resolve persisted conversation row. Zero UUID = new conversation.
 	var requestedConvID uuid.UUID
 	if raw := strings.TrimSpace(req.Msg.ConversationId); raw != "" {
@@ -204,6 +184,49 @@ func (h *Handler) StreamChat(
 			return connect.NewError(connect.CodeInvalidArgument, parseErr)
 		}
 		requestedConvID = parsed
+	}
+
+	// Build conversation history (all messages except the last user message)
+	// Limit to last 6 messages (3 turns) for efficiency
+	allMsgs := req.Msg.Messages
+	if len(allMsgs) > 1 {
+		var fallbackContents map[string]struct{}
+		// Reloaded conversations carry persisted fallback prose as ordinary assistant messages; strip them before windowing.
+		if requestedConvID != uuid.Nil {
+			if _, storedMsgs, getErr := h.conversationUsecase.GetConversation(ctx, userID, requestedConvID); getErr != nil {
+				h.logger.Warn("failed to load conversation for fallback history filter",
+					slog.String("conversation_id", requestedConvID.String()),
+					slog.String("error", getErr.Error()))
+			} else {
+				fallbackContents = make(map[string]struct{})
+				for _, m := range storedMsgs {
+					if m.Role == "assistant" && m.Fallback != nil {
+						fallbackContents[m.Content] = struct{}{}
+					}
+				}
+			}
+		}
+
+		filtered := make([]domain.Message, 0, len(allMsgs)-1)
+		for _, msg := range allMsgs[:len(allMsgs)-1] {
+			if msg.Role != "user" && msg.Role != "assistant" {
+				continue
+			}
+			if msg.Role == "assistant" {
+				if _, isFallback := fallbackContents[msg.Content]; isFallback {
+					continue
+				}
+			}
+			filtered = append(filtered, domain.Message{
+				Role:    msg.Role,
+				Content: msg.Content,
+			})
+		}
+		start := 0
+		if len(filtered) > 6 {
+			start = len(filtered) - 6
+		}
+		conversationHistory = filtered[start:]
 	}
 
 	firstMsg := firstUserMessage(req.Msg.Messages)
@@ -343,10 +366,8 @@ loop:
 				}
 			}
 
-			// Persist the assistant turn whenever the terminal Done event carries
-			// non-empty content — degraded answers included. A fallback is the
-			// answer the user actually read; dropping it left history holding
-			// only the successes and every figure computed from it flattered.
+			// Persist the terminal assistant turn — including empty-answer fallbacks,
+			// which synthesize the reader-facing fallback explanation in the usecase.
 			if donePayload != nil {
 				output, _ := event.Payload.(*usecase.AnswerWithRAGOutput)
 				h.persistAssistantTurn(conv, requestedConvID, userID, tenantID, hasTenantID, donePayload, output, &authoritativeSaved)
@@ -369,13 +390,9 @@ loop:
 
 // persistAssistantTurn writes the terminal answer, degraded or not.
 //
-// A fallback turn is tagged with its category and reason so history and any
-// quality figure derived from it can tell the two apart; previously the read
-// loop broke on the fallback frame and the turn was never written at all.
-//
-// An empty answer is the one case that stays unwritten: there is no text to
-// show, and a blank assistant bubble in history is worse than its absence. It
-// is logged at error and counted instead, so "vanished" still means "visible".
+// Fallback turns are always persisted via AppendFallbackAssistantTurn (using
+// canned fallback prose when Done.Answer is empty); non-fallback empty Done
+// events (e.g. clarification) are skipped and logged at Info.
 func (h *Handler) persistAssistantTurn(
 	conv *domain.AugurConversation,
 	requestedConvID uuid.UUID,
@@ -395,9 +412,13 @@ func (h *Handler) persistAssistantTurn(
 
 	if strings.TrimSpace(done.Answer) == "" {
 		if !isFallback {
-			h.logger.Error("assistant_turn_not_persisted",
+			reason := "done event produced no answer text"
+			if output != nil && output.Reason != "" {
+				reason = output.Reason
+			}
+			h.logger.Info("assistant_turn_skipped",
 				slog.String("conversation_id", conv.ID.String()),
-				slog.String("reason", "done event produced no answer text"))
+				slog.String("reason", reason))
 			return
 		}
 		metrics.IncEmptyFallback(fallbackCode)
@@ -411,12 +432,8 @@ func (h *Handler) persistAssistantTurn(
 
 	var err error
 	if isFallback {
-		content := done.Answer
-		if strings.TrimSpace(content) == "" {
-			content = usecase.FallbackMessage(fallbackCode)
-		}
 		err = h.conversationUsecase.AppendFallbackAssistantTurn(
-			flushCtx, conv.ID, content, citations, related, fallbackCode, fallbackReason)
+			flushCtx, conv.ID, done.Answer, citations, related, fallbackCode, fallbackReason)
 	} else {
 		err = h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, done.Answer, citations, related)
 	}
