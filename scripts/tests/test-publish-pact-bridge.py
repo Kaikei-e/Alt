@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Tests for scripts/publish-pact-bridge.py.
+"""Tests for scripts/publish-pact-bridge.py and playbooks/_publish-bridge.yml.
 
 Starts an in-process HTTP stub broker on 127.0.0.1 (ephemeral port) and
-exercises the manual Pact verification bridge helper across happy-path and
-failure modes.
+exercises the manual Pact verification bridge helper across happy-path,
+origin-normalisation, credential-handling, and failure modes, plus static
+invariants on playbooks/_publish-bridge.yml.
 
 Run:
     python3 scripts/tests/test-publish-pact-bridge.py
@@ -13,17 +14,20 @@ from __future__ import annotations
 
 import base64
 import http.server
+import importlib.util
 import json
 import os
 import pathlib
 import subprocess
 import sys
-import tempfile
 import threading
 from typing import Any
 
+import yaml
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "publish-pact-bridge.py"
+PLAYBOOK = ROOT / "playbooks" / "_publish-bridge.yml"
 
 PASS = 0
 FAIL = 0
@@ -47,8 +51,9 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 
 
 class BrokerState:
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, port: int) -> None:
         self.base_url = base_url
+        self.port = port
         self.requests: list[dict[str, Any]] = []
         self.routes: dict[tuple[str, str], tuple[int, Any]] = {}
 
@@ -77,6 +82,7 @@ class StubBrokerHandler(http.server.BaseHTTPRequestHandler):
                 "auth": self.headers.get("Authorization"),
                 "content_type": self.headers.get("Content-Type"),
                 "body": parsed_body,
+                "client_port": self.client_address[1],
             }
         )
 
@@ -103,8 +109,9 @@ class StubBroker:
             ("127.0.0.1", 0), StubBrokerHandler
         )
         host, port = self._server.server_address[:2]
+        self.port = int(port)
         self.base_url = f"http://{host}:{port}"
-        self.state = BrokerState(self.base_url)
+        self.state = BrokerState(self.base_url, self.port)
         StubBrokerHandler.state = self.state
         self._thread = threading.Thread(
             target=self._server.serve_forever, daemon=True
@@ -157,26 +164,16 @@ def make_payload(
 def run_helper(
     payload: dict[str, Any],
     *,
-    password: str = BROKER_PASS,
-    via_file: bool = False,
+    password: str | None = BROKER_PASS,
 ) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "PACT_BROKER_PASSWORD": password}
-    encoded = json.dumps(payload)
-    if via_file:
-        with tempfile.TemporaryDirectory() as tmp:
-            input_path = pathlib.Path(tmp) / "bridge-input.json"
-            input_path.write_text(encoded, encoding="utf-8")
-            os.chmod(input_path, 0o600)
-            return subprocess.run(
-                [sys.executable, str(SCRIPT), "--input", str(input_path)],
-                capture_output=True,
-                text=True,
-                env=env,
-                check=False,
-            )
+    env = dict(os.environ)
+    if password is None:
+        env.pop("PACT_BROKER_PASSWORD", None)
+    else:
+        env["PACT_BROKER_PASSWORD"] = password
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
-        input=encoded,
+        input=json.dumps(payload),
         capture_output=True,
         text=True,
         env=env,
@@ -184,7 +181,9 @@ def run_helper(
     )
 
 
-def assert_no_password_leak(label: str, proc: subprocess.CompletedProcess[str]) -> None:
+def assert_no_password_leak(
+    label: str, proc: subprocess.CompletedProcess[str]
+) -> None:
     combined = (proc.stdout or "") + (proc.stderr or "")
     b64_token = EXPECTED_AUTH.split(" ", 1)[1]
     check(
@@ -194,9 +193,47 @@ def assert_no_password_leak(label: str, proc: subprocess.CompletedProcess[str]) 
     )
 
 
+def load_helper_module() -> Any:
+    spec = importlib.util.spec_from_file_location("publish_pact_bridge", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def main() -> int:
-    print("1. Helper script presence")
+    print("1. Helper script and playbook static checks")
     check("scripts/publish-pact-bridge.py exists", SCRIPT.is_file(), str(SCRIPT))
+    check("playbooks/_publish-bridge.yml exists", PLAYBOOK.is_file(), str(PLAYBOOK))
+
+    tasks = yaml.safe_load(PLAYBOOK.read_text(encoding="utf-8"))
+    check(
+        "_publish-bridge.yml parses as a non-empty task list",
+        isinstance(tasks, list) and len(tasks) == 3,
+        repr(tasks),
+    )
+    env_with_pw = [
+        t.get("name")
+        for t in (tasks or [])
+        if isinstance(t, dict)
+        and isinstance(t.get("environment"), dict)
+        and "PACT_BROKER_PASSWORD" in t["environment"]
+    ]
+    check(
+        "no task in _publish-bridge.yml puts PACT_BROKER_PASSWORD in an environment mapping",
+        env_with_pw == [],
+        f"tasks with PACT_BROKER_PASSWORD in environment: {env_with_pw}",
+    )
+    helper_tasks = [
+        t
+        for t in (tasks or [])
+        if isinstance(t, dict) and "ansible.builtin.command" in t
+    ]
+    check(
+        "helper command task has no no_log so redacted stderr is visible on failure",
+        len(helper_tasks) == 1 and "no_log" not in helper_tasks[0],
+        repr(helper_tasks),
+    )
 
     versions_path = "/pacts/provider/recap-worker/consumer/alt-backend/versions"
     v1_path = "/pacts/provider/recap-worker/consumer/alt-backend/version/1.0.0"
@@ -205,7 +242,7 @@ def main() -> int:
     pub1_path = "/pacts/provider/recap-worker/consumer/alt-backend/pact-version/sha-1/verification-results"
     pub3_path = "/pacts/provider/recap-worker/consumer/alt-backend/pact-version/sha-3/verification-results"
 
-    print("2. Happy path: request order, headers, POST bodies, 200 and 201 accepted")
+    print("2. Happy path: request order, fresh connections, headers, POST bodies, 200 and 201 accepted")
     with StubBroker() as broker:
         b = broker.base_url
         broker.state.routes = {
@@ -271,6 +308,12 @@ def main() -> int:
             observed_order == expected_order,
             f"got {observed_order}",
         )
+        client_ports = {r["client_port"] for r in broker.state.requests}
+        check(
+            "opens a fresh connection per request instead of reusing keep-alive",
+            len(broker.state.requests) == 6 and len(client_ports) == 6,
+            f"distinct client ports={len(client_ports)} for {len(broker.state.requests)} requests",
+        )
         check(
             "every request carries the Basic Authorization header",
             len(broker.state.requests) == 6
@@ -312,7 +355,7 @@ def main() -> int:
             repr(proc.stdout),
         )
 
-    print("3. Default verifier_version fallback and --input file mode")
+    print("3. Default verifier_version fallback and missing PACT_BROKER_PASSWORD")
     with StubBroker() as broker:
         b = broker.base_url
         broker.state.routes = {
@@ -338,11 +381,9 @@ def main() -> int:
             ),
             ("POST", pub1_path): (200, {"ok": True}),
         }
-        proc = run_helper(
-            make_payload(b, verifier_version=None), via_file=True
-        )
+        proc = run_helper(make_payload(b, verifier_version=None))
         check(
-            "--input temp file mode exits 0",
+            "missing verifier_version exits 0",
             proc.returncode == 0,
             proc.stderr.strip(),
         )
@@ -363,9 +404,150 @@ def main() -> int:
             },
             repr(post_requests),
         )
-        assert_no_password_leak("input file mode", proc)
+        assert_no_password_leak("verifier_version default", proc)
 
-    print("4. Failure modes: 500 on POST, empty publish list, 404 list, no publish URL resolved, detail GET error")
+        proc_no_pw = run_helper(make_payload(b), password=None)
+        check(
+            "unset PACT_BROKER_PASSWORD exits non-zero",
+            proc_no_pw.returncode != 0,
+            f"rc={proc_no_pw.returncode}",
+        )
+        check(
+            "unset PACT_BROKER_PASSWORD prints a clear message naming the variable",
+            "PACT_BROKER_PASSWORD" in proc_no_pw.stderr,
+            proc_no_pw.stderr.strip(),
+        )
+        assert_no_password_leak("unset password", proc_no_pw)
+
+    print("4. Origin normalisation: case-insensitive scheme/host, default ports, reject cross-host and userinfo")
+    with StubBroker() as broker:
+        port = broker.port
+        # Base URL uses lower-case localhost; broker links use upper-case LOCALHOST
+        lower_base = f"http://localhost:{port}"
+        upper_base = f"HTTP://LOCALHOST:{port}"
+        broker.state.routes = {
+            ("GET", versions_path): (
+                200,
+                {
+                    "_embedded": {
+                        "pacts": [
+                            {
+                                "_links": {
+                                    "self": {"href": f"{upper_base}{v1_path}"}
+                                }
+                            },
+                        ]
+                    }
+                },
+            ),
+            ("GET", v1_path): (
+                200,
+                {
+                    "_links": {
+                        "pb:publish-verification-results": {
+                            "href": f"{upper_base}{pub1_path}"
+                        }
+                    }
+                },
+            ),
+            ("POST", pub1_path): (200, {"ok": True}),
+        }
+        proc_case = run_helper(make_payload(lower_base))
+        check(
+            "accepts upper-case scheme and host in broker links against lower-case broker_base_url",
+            proc_case.returncode == 0,
+            proc_case.stderr.strip(),
+        )
+        assert_no_password_leak("upper-case host link", proc_case)
+
+        # Reject cross-host link
+        broker.state.routes[("GET", versions_path)] = (
+            200,
+            {
+                "_embedded": {
+                    "pacts": [
+                        {
+                            "_links": {
+                                "self": {
+                                    "href": f"http://other.invalid:{port}{v1_path}"
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+        )
+        proc_cross = run_helper(make_payload(lower_base))
+        check(
+            "rejects broker link pointing to a different host",
+            proc_cross.returncode != 0
+            and f"http://other.invalid:{port}{v1_path}" in proc_cross.stderr,
+            proc_cross.stderr.strip(),
+        )
+        assert_no_password_leak("cross-host link", proc_cross)
+
+        # Reject userinfo in broker link even when host and port match
+        broker.state.routes[("GET", versions_path)] = (
+            200,
+            {
+                "_embedded": {
+                    "pacts": [
+                        {
+                            "_links": {
+                                "self": {
+                                    "href": f"http://attacker:pw@localhost:{port}{v1_path}"
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+        )
+        proc_userinfo = run_helper(make_payload(lower_base))
+        check(
+            "rejects broker link containing userinfo",
+            proc_userinfo.returncode != 0,
+            proc_userinfo.stderr.strip(),
+        )
+        assert_no_password_leak("userinfo in link", proc_userinfo)
+
+    mod = load_helper_module()
+    origin_fn = getattr(mod, "_origin", None)
+    if callable(origin_fn):
+        import urllib.parse
+
+        http_default = origin_fn(
+            urllib.parse.urlsplit("http://Broker.Example.COM/pacts"),
+            pair="c → p",
+        )
+        http_explicit = origin_fn(
+            urllib.parse.urlsplit("HTTP://broker.example.com:80/pacts"),
+            pair="c → p",
+        )
+        https_default = origin_fn(
+            urllib.parse.urlsplit("https://Broker.Example.COM/pacts"),
+            pair="c → p",
+        )
+        https_explicit = origin_fn(
+            urllib.parse.urlsplit("HTTPS://broker.example.com:443/pacts"),
+            pair="c → p",
+        )
+        check(
+            "origin normalisation equates explicit default ports (:80 for http, :443 for https) and case differences",
+            http_default == http_explicit == ("http", "broker.example.com", 80)
+            and https_default
+            == https_explicit
+            == ("https", "broker.example.com", 443),
+            f"http={http_default!r}/{http_explicit!r} https={https_default!r}/{https_explicit!r}",
+        )
+    else:
+        check(
+            "origin normalisation equates explicit default ports (:80 for http, :443 for https) and case differences",
+            False,
+            "_origin helper not defined on publish-pact-bridge.py",
+        )
+
+    print("5. Failure modes: 500 on POST, empty publish list, 404 list, no publish URL resolved, detail GET error")
     with StubBroker() as broker:
         b = broker.base_url
         failing_post_url = f"{b}{pub3_path}"
