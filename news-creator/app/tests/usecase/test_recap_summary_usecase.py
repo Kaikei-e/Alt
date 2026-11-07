@@ -1101,6 +1101,86 @@ async def test_hierarchical_map_phase_includes_all_chunk_clusters():
 
 
 @pytest.mark.asyncio
+async def test_hierarchical_partial_map_chunk_failure_marks_degraded_and_skips_cache():
+    """When 1 of 3 hierarchical map chunks fails, response is degraded with map_chunks_partial and not cached."""
+    from contextlib import asynccontextmanager
+
+    config = _make_recap_config_for_hierarchical()
+    config.hierarchical_chunk_max_chars = 250
+    config.hierarchical_chunk_overlap_ratio = 0.0
+
+    cache = AsyncMock()
+    cache.get.return_value = None
+
+    llm_provider = Mock()
+    map_call_idx = 0
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt, **kwargs):
+        nonlocal map_call_idx
+        map_call_idx += 1
+        if map_call_idx == 2:
+            raise RuntimeError("Ollama chunk timeout")
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "bullets": [
+                        f"チャンク{map_call_idx}の要約1",
+                        f"チャンク{map_call_idx}の要約2",
+                    ],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    async def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "title": "部分チャンク要約",
+                    "bullets": ["統合された要点1", "統合された要点2"],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    clusters = [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[
+                RepresentativeSentence(text=f"クラスタ{i}の本文。" + "あ" * 40)
+            ],
+            top_terms=[f"term{i}"],
+        )
+        for i in range(3)
+    ]
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=clusters,
+        options=RecapSummaryOptions(max_bullets=3),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider, cache=cache)
+    response = await usecase.generate_summary(request)
+
+    assert map_call_idx == 3
+    assert response.metadata.is_degraded is True
+    assert response.metadata.degradation_reason == "map_chunks_partial"
+    cache.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
     """Recursive reduce groups must also use hold_slot+generate_raw."""
     from contextlib import asynccontextmanager
