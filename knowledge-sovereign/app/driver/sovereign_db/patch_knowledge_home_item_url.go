@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -35,7 +36,7 @@ import (
 const patchKnowledgeHomeItemURLQuery = `
 UPDATE knowledge_home_items
 SET url = $1,
-    updated_at = NOW()
+    updated_at = $5
 WHERE user_id = $2
   AND item_key = $3
   AND projection_version = $4
@@ -45,12 +46,12 @@ WHERE user_id = $2
 const patchKnowledgeHomeItemURLWithTenantQuery = `
 UPDATE knowledge_home_items
 SET url = $1,
-    updated_at = NOW()
+    updated_at = $5
 WHERE user_id = $2
   AND item_key = $3
   AND projection_version = $4
   AND $1 <> ''
-  AND tenant_id = $5
+  AND tenant_id = $6
 `
 
 // PatchKnowledgeHomeItemURLPayload is the JSON payload accepted on the
@@ -59,11 +60,12 @@ WHERE user_id = $2
 // schema lives in alt-backend's knowledge_sovereign_port package; this
 // struct mirrors it for unmarshalling.
 type PatchKnowledgeHomeItemURLPayload struct {
-	UserID            string `json:"user_id"`
-	TenantID          string `json:"tenant_id,omitempty"`
-	ItemKey           string `json:"item_key"`
-	ProjectionVersion int    `json:"projection_version"`
-	URL               string `json:"url"`
+	UserID            string    `json:"user_id"`
+	TenantID          string    `json:"tenant_id,omitempty"`
+	ItemKey           string    `json:"item_key"`
+	ProjectionVersion int       `json:"projection_version"`
+	URL               string    `json:"url"`
+	OccurredAt        time.Time `json:"occurred_at"`
 }
 
 // PatchKnowledgeHomeItemURL applies the URL patch to one row, identified
@@ -97,14 +99,14 @@ func (r *Repository) PatchKnowledgeHomeItemURL(ctx context.Context, payload json
 			return errors.New("PatchKnowledgeHomeItemURL: tenant_id cannot be nil")
 		}
 		if _, err := r.pool.Exec(ctx, patchKnowledgeHomeItemURLWithTenantQuery,
-			p.URL, userID, p.ItemKey, p.ProjectionVersion, tenantID,
+			p.URL, userID, p.ItemKey, p.ProjectionVersion, p.OccurredAt, tenantID,
 		); err != nil {
 			return fmt.Errorf("PatchKnowledgeHomeItemURL: %w", err)
 		}
 		return nil
 	}
 	if _, err := r.pool.Exec(ctx, patchKnowledgeHomeItemURLQuery,
-		p.URL, userID, p.ItemKey, p.ProjectionVersion,
+		p.URL, userID, p.ItemKey, p.ProjectionVersion, p.OccurredAt,
 	); err != nil {
 		return fmt.Errorf("PatchKnowledgeHomeItemURL: %w", err)
 	}

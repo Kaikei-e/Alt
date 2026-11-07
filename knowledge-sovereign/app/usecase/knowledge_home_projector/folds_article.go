@@ -129,6 +129,7 @@ func buildURLPatch(evt sovereign_db.KnowledgeEvent, payload articleUrlBackfilled
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ProjectionVersion: version,
 		URL:               payload.URL,
+		OccurredAt:        evt.OccurredAt,
 	}
 	return patch, nil
 }
