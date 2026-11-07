@@ -69,10 +69,7 @@ func (h *SovereignHandler) GetTrailFootprints(
 			"user_id", userID.String(), "window_rows", episodeWindowRows)
 	}
 
-	limit := int(msg.Limit)
-	if limit < 0 {
-		limit = 0
-	}
+	limit := clampReadLimit(int(msg.Limit), defaultReadLimit)
 	if offset > len(episodes) {
 		offset = len(episodes)
 	}
