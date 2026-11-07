@@ -23,12 +23,6 @@ import (
 const (
 	defaultLimit = 20
 	maxLimit     = 100
-	// sovereignSearchWindow bounds how many episodes the narrowed
-	// GetTrailFootprints call may return. It mirrors knowledge-sovereign's own
-	// episodeWindowRows derivation window — generously large so a hit several
-	// episodes back isn't silently dropped before the caller's own limit
-	// truncates the final page.
-	sovereignSearchWindow = 500
 
 	// articleItemKeyPrefix anchors a search hit's article id back to the
 	// item_key vocabulary the trail spine uses.
@@ -85,14 +79,11 @@ func (u *SearchTrailUsecase) Execute(ctx context.Context, userID uuid.UUID, quer
 
 	itemKeys := hitsToItemKeys(hits)
 
-	episodes, branches, err := u.trailPort.SearchTrailFootprints(ctx, userID, itemKeys, sovereignSearchWindow)
+	episodes, branches, err := u.trailPort.SearchTrailFootprints(ctx, userID, itemKeys, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(episodes) > limit {
-		episodes = episodes[:limit]
-	}
 	episodes = trail_thumbnail_enrichment.Enrich(ctx, u.thumbnailPort, episodes)
 
 	return &Result{

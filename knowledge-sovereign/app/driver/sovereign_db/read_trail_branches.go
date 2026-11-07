@@ -141,8 +141,8 @@ ORDER BY b.created_at DESC, b.branch_key DESC`
 
 // GetOpenTrailBranchesForAnchor returns the user's open branches anchored on
 // one item, newest first, capped at limit (Wave 10, D26 — the patch-exit
-// surface is a handful, not an inbox). Mirrors GetLatestOpenTrailBranchesForAnchors
-// for a single anchor with a server-side cap.
+// surface is a handful, not an inbox). Returns up to limit open branches for
+// that anchor using the same target_title fallback as the spine read.
 func (r *Repository) GetOpenTrailBranchesForAnchor(ctx context.Context, userID uuid.UUID, anchorItemKey string, limit int) ([]TrailBranch, error) {
 	q := `
 SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_json,

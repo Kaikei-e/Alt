@@ -162,6 +162,9 @@ export function useKnowledgeTrail() {
 			return;
 		}
 		await fetchData(true);
+		if (searchActive) {
+			await search(searchQuery);
+		}
 	}
 
 	return {
