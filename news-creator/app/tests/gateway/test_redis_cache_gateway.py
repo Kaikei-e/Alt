@@ -226,10 +226,10 @@ async def test_cache_authentication_failure_is_a_loud_startup_error(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_cache_unreachable_connection_still_soft_disables(monkeypatch):
-    """A genuinely unreachable cache (not an auth failure) keeps the existing
-    soft-disable behaviour -- news-creator must not refuse to start just
-    because Redis has not come up yet."""
+async def test_cache_unreachable_connection_raises_on_initialize(monkeypatch):
+    """When CACHE_ENABLED=true, a connection failure during initialize() must
+    raise so startup fails fast instead of silently disabling the cache for
+    the lifetime of the process."""
 
     class _UnreachableClient:
         async def ping(self):
@@ -245,10 +245,9 @@ async def test_cache_unreachable_connection_still_soft_disables(monkeypatch):
 
     config = _recap_config()
     cache_gateway = RedisCacheGateway(config)
-    await cache_gateway.initialize()
 
-    assert cache_gateway._enabled is False
-    assert cache_gateway._client is None
+    with pytest.raises(ConnectionError, match="Connection refused"):
+        await cache_gateway.initialize()
 
 
 @pytest.mark.asyncio
