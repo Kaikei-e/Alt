@@ -138,6 +138,39 @@ func TestEnsureSummary_ReturnsCached(t *testing.T) {
 	assert.Equal(t, "cached summary", summary)
 }
 
+func TestGetCachedSummary_And_EnsureSummary_RejectsErrorPayload(t *testing.T) {
+	payloads := []struct {
+		name    string
+		summary string
+	}{
+		{
+			name:    "json error payload",
+			summary: `{"error": "summary generation failed"}`,
+		},
+		{
+			name:    "sse error event payload",
+			summary: "event: error\ndata: {\"error\": \"summary generation failed\"}\n\n",
+		},
+	}
+
+	for _, tc := range payloads {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeArticleRepository{summary: &domain.FeedSummary{Summary: tc.summary}}
+			pre := &fakePreProcessor{summary: "regenerated summary"}
+			uc := NewUsecase(repo, pre, &fakeFetcher{})
+
+			cached, ok := uc.GetCachedSummary(context.Background(), "id-1")
+			assert.False(t, ok)
+			assert.Empty(t, cached)
+
+			summary, fromCache, err := uc.EnsureSummary(context.Background(), "id-1", "user-1", "Title")
+			require.NoError(t, err)
+			assert.False(t, fromCache)
+			assert.Equal(t, "regenerated summary", summary)
+		})
+	}
+}
+
 func TestEnsureSummary_GeneratesAndSavesWhenNotCached(t *testing.T) {
 	repo := &fakeArticleRepository{}
 	pre := &fakePreProcessor{summary: "fresh summary"}
