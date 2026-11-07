@@ -101,7 +101,6 @@ impl From<std::sync::Arc<dyn std::any::Any + Send + Sync>> for EnrichedLogEntry 
 pub struct UniversalParser {
     docker_parser: DockerJsonParser,
     registry: super::registry::ServiceParserRegistry,
-    timestamp_fallback_count: std::sync::atomic::AtomicU64,
 }
 
 impl Default for UniversalParser {
@@ -149,13 +148,7 @@ impl UniversalParser {
         Self {
             docker_parser: DockerJsonParser::new(),
             registry,
-            timestamp_fallback_count: std::sync::atomic::AtomicU64::new(0),
         }
-    }
-
-    pub fn timestamp_fallback_count(&self) -> u64 {
-        self.timestamp_fallback_count
-            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Register a custom parser at runtime.
@@ -322,12 +315,6 @@ impl UniversalParser {
                     .as_str()
                     .to_string();
                 let source_ts = timestamp_hint
-                    .or_else(|| {
-                        crate::collector::parse_log_timestamp_prefix(bytes::Bytes::copy_from_slice(
-                            raw_str.as_bytes(),
-                        ))
-                        .0
-                    })
                     .map(|ts| ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true));
                 (log, stream, source_ts)
             };
@@ -347,8 +334,6 @@ impl UniversalParser {
         } else if let Some(docker_ts) = docker_timestamp {
             docker_ts
         } else {
-            self.timestamp_fallback_count
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             fields.insert(
                 "timestamp_fallback".to_string(),
                 "processing_time".to_string(),
@@ -927,7 +912,6 @@ mod tests {
             "expected enriched timestamp to start with 2020-01-01T00:00:00.123, got {}",
             enriched.timestamp
         );
-        assert_eq!(parser.timestamp_fallback_count(), 0);
         assert!(!enriched.fields.contains_key("timestamp_fallback"));
     }
 
@@ -955,7 +939,7 @@ mod tests {
             "expected service timestamp to take precedence over Docker frame timestamp, got {}",
             enriched.timestamp
         );
-        assert_eq!(parser.timestamp_fallback_count(), 0);
+        assert!(!enriched.fields.contains_key("timestamp_fallback"));
     }
 
     #[test]
@@ -969,13 +953,10 @@ mod tests {
         };
 
         let parser = UniversalParser::new();
-        assert_eq!(parser.timestamp_fallback_count(), 0);
-
         let enriched = parser
             .parse_log_entry(&log_entry)
             .expect("Failed to parse Docker log entry");
 
-        assert_eq!(parser.timestamp_fallback_count(), 1);
         assert_eq!(
             enriched.fields.get("timestamp_fallback"),
             Some(&"processing_time".to_string())
