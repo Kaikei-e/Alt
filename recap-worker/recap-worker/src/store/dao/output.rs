@@ -757,6 +757,8 @@ mod tests {
             make_hit(job_c, newer, "science"),
             make_hit(job_b, older, "world"),
             make_hit(job_a, older, "tech"),
+            make_hit(job_a, older, "ai_policy"),
+            make_hit(job_a, older, "ai-policy"),
             make_hit(job_a, older, "ai"),
         ];
 
@@ -770,11 +772,45 @@ mod tests {
             ordered,
             vec![
                 (older, job_a, "ai"),
+                (older, job_a, "ai-policy"),
+                (older, job_a, "ai_policy"),
                 (older, job_a, "tech"),
                 (older, job_b, "world"),
                 (newer, job_c, "science"),
             ]
         );
         assert_eq!(hits.last().unwrap().executed_at, newer);
+    }
+
+    #[test]
+    fn search_and_indexable_queries_enforce_deterministic_tie_break_and_c_collation() {
+        let prod_src = include_str!("output.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source before #[cfg(test)]");
+        let normalized = prod_src.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        assert!(
+            normalized.contains(
+                r#"ORDER BY sub.kicked_at DESC, sub.job_id ASC, sub.genre COLLATE "C" ASC LIMIT $2"#
+            ),
+            "search_recaps_by_term SQL must order by (kicked_at DESC, job_id ASC, genre COLLATE \"C\" ASC)"
+        );
+        assert!(
+            normalized.contains(
+                r#"ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre COLLATE "C" ASC LIMIT $2"#
+            ),
+            "fetch_indexable_genres incremental SQL must order by (kicked_at ASC, job_id ASC, genre COLLATE \"C\" ASC)"
+        );
+        assert!(
+            normalized.contains(
+                r#"ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre COLLATE "C" ASC LIMIT $1"#
+            ),
+            "fetch_indexable_genres backfill SQL must order by (kicked_at ASC, job_id ASC, genre COLLATE \"C\" ASC)"
+        );
+        assert!(
+            !normalized.contains("sort_by_key(|b| std::cmp::Reverse(b.executed_at))"),
+            "search_recaps_by_term must not re-sort by executed_at without a tie-break"
+        );
     }
 }

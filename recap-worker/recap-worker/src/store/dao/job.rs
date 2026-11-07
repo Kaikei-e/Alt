@@ -563,30 +563,3 @@ impl RecapDao {
         Ok(history)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_delete_old_jobs_sql_excludes_card_snapshots() {
-        let sql = RecapDao::DELETE_OLD_JOBS_SQL;
-        let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
-
-        assert!(
-            normalized.contains("DELETE FROM recap_jobs"),
-            "query must target recap_jobs"
-        );
-        assert!(
-            normalized.contains("NOT EXISTS (SELECT 1 FROM recap_card_snapshots")
-                || normalized.contains("NOT EXISTS ( SELECT 1 FROM recap_card_snapshots"),
-            "query must contain NOT EXISTS subquery on recap_card_snapshots"
-        );
-        assert!(
-            normalized.contains("s.job_id = recap_jobs.job_id"),
-            "subquery must correlate on s.job_id = recap_jobs.job_id"
-        );
-        // Note: Live database behavioural coverage is tested in DB-gated integration tests
-        // (test_delete_old_jobs_preserves_card_snapshots in src/store/dao/tests.rs).
-    }
-}

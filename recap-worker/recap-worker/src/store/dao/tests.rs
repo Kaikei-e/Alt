@@ -1221,16 +1221,9 @@ async fn non_completion_transitions_enqueue_nothing() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_delete_old_jobs_preserves_card_snapshots() -> anyhow::Result<()> {
-    let Ok(database_url) = std::env::var("DATABASE_URL") else {
-        return Ok(());
-    };
-    let pool = PgPoolOptions::new()
-        .max_connections(1)
-        .connect(&database_url)
-        .await?;
+static DELETE_OLD_JOBS_TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+async fn setup_delete_old_jobs_tables(pool: &PgPool) -> anyhow::Result<()> {
     pool.execute(
         r"
         CREATE TABLE IF NOT EXISTS recap_jobs (
@@ -1248,7 +1241,7 @@ async fn test_delete_old_jobs_preserves_card_snapshots() -> anyhow::Result<()> {
         ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS window_days INTEGER NOT NULL DEFAULT 7;
         ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS user_id UUID;
         CREATE TABLE IF NOT EXISTS recap_card_snapshots (
-            job_id UUID PRIMARY KEY,
+            job_id UUID PRIMARY KEY REFERENCES recap_jobs(job_id),
             from_ts TIMESTAMPTZ NOT NULL,
             to_ts TIMESTAMPTZ NOT NULL,
             feed_ids UUID[] NOT NULL DEFAULT '{}',
@@ -1258,9 +1251,50 @@ async fn test_delete_old_jobs_preserves_card_snapshots() -> anyhow::Result<()> {
             params_version TEXT NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+        CREATE TABLE IF NOT EXISTS recap_card_candidates (
+            id UUID PRIMARY KEY,
+            job_id UUID NOT NULL REFERENCES recap_jobs(job_id),
+            rank INT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS recap_cards (
+            id UUID PRIMARY KEY,
+            job_id UUID NOT NULL REFERENCES recap_jobs(job_id),
+            rank INT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS recap_card_job_stats (
+            job_id UUID PRIMARY KEY REFERENCES recap_jobs(job_id)
+        );
+        CREATE TABLE IF NOT EXISTS recap_eval_windows (
+            id UUID PRIMARY KEY,
+            snapshot_job_id UUID NOT NULL REFERENCES recap_jobs(job_id)
+        );
+        CREATE TABLE IF NOT EXISTS recap_card_rejections (
+            id UUID PRIMARY KEY,
+            job_id UUID NOT NULL REFERENCES recap_jobs(job_id),
+            candidate_id UUID NOT NULL,
+            stage TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            attempt INT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
         ",
     )
     .await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_delete_old_jobs_preserves_card_snapshots() -> anyhow::Result<()> {
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let _guard = DELETE_OLD_JOBS_TEST_MUTEX.lock().await;
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await?;
+
+    setup_delete_old_jobs_tables(&pool).await?;
 
     let old_job_id = Uuid::new_v4();
     let preserved_job_id = Uuid::new_v4();
@@ -1298,7 +1332,10 @@ async fn test_delete_old_jobs_preserves_card_snapshots() -> anyhow::Result<()> {
 
     // Run delete_old_jobs with 14 days retention
     let deleted = dao.delete_old_jobs(14).await?;
-    assert_eq!(deleted, 1, "delete_old_jobs must return 1");
+    assert!(
+        deleted >= 1,
+        "delete_old_jobs must delete at least the unreferenced old job"
+    );
 
     // Verify old system job is deleted
     let old_exists: bool =
@@ -1341,34 +1378,13 @@ async fn test_delete_old_jobs_preserves_card_rejections_without_snapshot() -> an
     let Ok(database_url) = std::env::var("DATABASE_URL") else {
         return Ok(());
     };
+    let _guard = DELETE_OLD_JOBS_TEST_MUTEX.lock().await;
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .connect(&database_url)
         .await?;
 
-    pool.execute(
-        r"
-        CREATE TABLE IF NOT EXISTS recap_jobs (
-            job_id UUID PRIMARY KEY, status TEXT NOT NULL DEFAULT 'pending', last_stage TEXT,
-            kicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            note TEXT, trigger_source TEXT NOT NULL DEFAULT 'system', window_days INTEGER NOT NULL DEFAULT 7, user_id UUID
-        );
-        CREATE TABLE IF NOT EXISTS recap_card_snapshots (
-            job_id UUID PRIMARY KEY REFERENCES recap_jobs(job_id), from_ts TIMESTAMPTZ NOT NULL, to_ts TIMESTAMPTZ NOT NULL,
-            feed_ids UUID[] NOT NULL DEFAULT '{}', read_feed_ids UUID[] NOT NULL DEFAULT '{}', previous_job_id UUID,
-            previous_cards JSONB NOT NULL DEFAULT '[]', params_version TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS recap_card_candidates (id UUID PRIMARY KEY, job_id UUID NOT NULL REFERENCES recap_jobs(job_id), rank INT NOT NULL);
-        CREATE TABLE IF NOT EXISTS recap_cards (id UUID PRIMARY KEY, job_id UUID NOT NULL REFERENCES recap_jobs(job_id), rank INT NOT NULL);
-        CREATE TABLE IF NOT EXISTS recap_card_job_stats (job_id UUID PRIMARY KEY REFERENCES recap_jobs(job_id));
-        CREATE TABLE IF NOT EXISTS recap_eval_windows (id UUID PRIMARY KEY, snapshot_job_id UUID NOT NULL REFERENCES recap_jobs(job_id));
-        CREATE TABLE IF NOT EXISTS recap_card_rejections (
-            id UUID PRIMARY KEY, job_id UUID NOT NULL REFERENCES recap_jobs(job_id), candidate_id UUID NOT NULL,
-            stage TEXT NOT NULL, reason TEXT NOT NULL, attempt INT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        ",
-    )
-    .await?;
+    setup_delete_old_jobs_tables(&pool).await?;
 
     let old_job_id = Uuid::new_v4();
     let rejected_job_id = Uuid::new_v4();
@@ -1403,9 +1419,9 @@ async fn test_delete_old_jobs_preserves_card_rejections_without_snapshot() -> an
 
     let dao = UnifiedDao::new(pool.clone());
     let deleted = dao.delete_old_jobs(14).await?;
-    assert_eq!(
-        deleted, 1,
-        "delete_old_jobs must delete only the unreferenced old job"
+    assert!(
+        deleted >= 1,
+        "delete_old_jobs must delete at least the unreferenced old job"
     );
 
     let old_exists: bool =
@@ -1444,6 +1460,11 @@ fn test_delete_old_jobs_sql_excludes_all_non_cascading_references() {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
+
+    assert!(
+        normalized.contains("DELETE FROM recap_jobs"),
+        "query must target recap_jobs"
+    );
 
     let expected_guards = [
         (

@@ -678,11 +678,11 @@ mod tests {
 
         assert_eq!(clamp_offset(None), 0);
         assert_eq!(clamp_offset(Some(-10)), 0);
-        assert_eq!(clamp_offset(Some(25_000)), 10_000);
+        assert_eq!(clamp_offset(Some(25_000)), 999);
     }
 
     #[tokio::test]
-    #[allow(clippy::await_holding_lock)]
+    #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
     async fn search_recaps_applies_offset_and_limit() {
         use std::sync::Arc;
 
@@ -729,51 +729,61 @@ mod tests {
         )
         .await;
 
-        let first_job = Uuid::from_u128(1);
-        let second_job = Uuid::from_u128(2);
-        let mock_dao = MockRecapDao::new();
-        mock_dao.set_search_recaps_hits(vec![
-            RecapSearchHit {
-                job_id: first_job,
-                executed_at: DateTime::parse_from_rfc3339("2026-04-02T00:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
-                window_days: 7,
-                genre: "ai".to_string(),
-                summary_ja: Some("First hit".to_string()),
-                top_terms: vec!["LLM".to_string()],
-                tags: vec!["ai".to_string()],
-            },
-            RecapSearchHit {
-                job_id: second_job,
-                executed_at: DateTime::parse_from_rfc3339("2026-04-01T00:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
-                window_days: 7,
-                genre: "tech".to_string(),
-                summary_ja: Some("Second hit".to_string()),
-                top_terms: vec!["LLM".to_string()],
-                tags: vec!["tech".to_string()],
-            },
-        ]);
+        let ts = DateTime::parse_from_rfc3339("2026-04-02T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let mock_dao = Arc::new(MockRecapDao::new());
+        mock_dao.set_search_recaps_hits(
+            (1..=1000_u128)
+                .map(|i| RecapSearchHit {
+                    job_id: Uuid::from_u128(i),
+                    executed_at: ts,
+                    window_days: 7,
+                    genre: format!("genre-{i}"),
+                    summary_ja: Some(format!("Hit {i}")),
+                    top_terms: vec!["LLM".to_string()],
+                    tags: vec!["ai".to_string()],
+                })
+                .collect(),
+        );
 
-        let app = build_router(registry.with_recap_dao(Arc::new(mock_dao)));
+        let app = build_router(registry.with_recap_dao(mock_dao));
         let request = Request::builder()
             .uri("/v1/recaps/search?term=LLM&limit=1&offset=1")
             .body(Body::empty())
             .expect("request builds");
 
-        let response = app.oneshot(request).await.expect("request succeeds");
+        let response = app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("request succeeds");
         assert_eq!(response.status(), StatusCode::OK);
-
         let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("body bytes");
         let payload: Value = serde_json::from_slice(&body_bytes).expect("valid json");
         let results = payload["results"].as_array().expect("results array");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0]["job_id"], second_job.to_string());
-        assert_eq!(results[0]["genre"], "tech");
+        assert_eq!(results[0]["job_id"], Uuid::from_u128(2).to_string());
+        assert_eq!(results[0]["genre"], "genre-2");
+
+        let capped_req = Request::builder()
+            .uri("/v1/recaps/search?term=LLM&limit=50&offset=1000")
+            .body(Body::empty())
+            .expect("request builds");
+        let capped_resp = app.oneshot(capped_req).await.expect("request succeeds");
+        assert_eq!(capped_resp.status(), StatusCode::OK);
+        let capped_bytes = axum::body::to_bytes(capped_resp.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let capped_json: Value = serde_json::from_slice(&capped_bytes).expect("valid json");
+        let capped_results = capped_json["results"].as_array().expect("results array");
+        assert_eq!(capped_results.len(), 50);
+        assert_eq!(
+            capped_results[0]["job_id"],
+            Uuid::from_u128(951).to_string()
+        );
     }
 }
 
