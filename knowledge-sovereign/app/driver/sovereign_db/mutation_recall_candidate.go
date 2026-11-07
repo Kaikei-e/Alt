@@ -34,10 +34,10 @@ func parseUpsertRecallCandidateMutation(payload json.RawMessage) (upsertRecallCa
 		ProjectionVersion int            `json:"projection_version"`
 	}
 	if err := json.Unmarshal(payload, &candidate); err != nil {
-		return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: unmarshal: %w", err)
+		return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: unmarshal: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	if candidate.UserID == uuid.Nil {
-		return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: user_id cannot be nil")
+		return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: user_id cannot be nil: %w", ErrInvalidMutationPayload)
 	}
 
 	if len(candidate.Reasons) > 1 {
@@ -63,10 +63,10 @@ func parseUpsertRecallCandidateMutation(payload json.RawMessage) (upsertRecallCa
 	if candidate.TenantID != "" {
 		tID, err := uuid.Parse(candidate.TenantID)
 		if err != nil {
-			return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: parse tenant_id: %w", err)
+			return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: parse tenant_id: %w: %w", ErrInvalidMutationPayload, err)
 		}
 		if tID == uuid.Nil {
-			return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: tenant_id cannot be nil")
+			return upsertRecallCandidateMutation{}, fmt.Errorf("UpsertRecallCandidate: tenant_id cannot be nil: %w", ErrInvalidMutationPayload)
 		}
 		tenantID = &tID
 	}
@@ -166,36 +166,36 @@ func parseSnoozeRecallCandidateMutation(payload json.RawMessage) (snoozeRecallCa
 		OccurredAt string `json:"occurred_at"`
 	}
 	if err := json.Unmarshal(payload, &params); err != nil {
-		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: unmarshal: %w", err)
+		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: unmarshal: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	userID, err := uuid.Parse(params.UserID)
 	if err != nil {
-		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse user_id: %w", err)
+		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse user_id: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	if userID == uuid.Nil {
-		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: user_id cannot be nil")
+		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: user_id cannot be nil: %w", ErrInvalidMutationPayload)
 	}
 	var tenantID *uuid.UUID
 	if params.TenantID != "" {
 		tID, err := uuid.Parse(params.TenantID)
 		if err != nil {
-			return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse tenant_id: %w", err)
+			return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse tenant_id: %w: %w", ErrInvalidMutationPayload, err)
 		}
 		if tID == uuid.Nil {
-			return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: tenant_id cannot be nil")
+			return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: tenant_id cannot be nil: %w", ErrInvalidMutationPayload)
 		}
 		tenantID = &tID
 	}
 	until, err := time.Parse(time.RFC3339Nano, params.Until)
 	if err != nil {
-		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse until: %w", err)
+		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse until: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	if params.OccurredAt == "" {
-		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: occurred_at is required")
+		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: occurred_at is required: %w", ErrInvalidMutationPayload)
 	}
 	occurredAt, err := time.Parse(time.RFC3339Nano, params.OccurredAt)
 	if err != nil {
-		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse occurred_at: %w", err)
+		return snoozeRecallCandidateMutation{}, fmt.Errorf("SnoozeRecallCandidate: parse occurred_at: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	return snoozeRecallCandidateMutation{
 		UserID:     userID,
@@ -266,32 +266,32 @@ func parseDismissRecallCandidateMutation(payload json.RawMessage) (dismissRecall
 		OccurredAt string `json:"occurred_at"`
 	}
 	if err := json.Unmarshal(payload, &params); err != nil {
-		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: unmarshal: %w", err)
+		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: unmarshal: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	userID, err := uuid.Parse(params.UserID)
 	if err != nil {
-		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: parse user_id: %w", err)
+		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: parse user_id: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	if userID == uuid.Nil {
-		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: user_id cannot be nil")
+		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: user_id cannot be nil: %w", ErrInvalidMutationPayload)
 	}
 	var tenantID *uuid.UUID
 	if params.TenantID != "" {
 		tID, err := uuid.Parse(params.TenantID)
 		if err != nil {
-			return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: parse tenant_id: %w", err)
+			return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: parse tenant_id: %w: %w", ErrInvalidMutationPayload, err)
 		}
 		if tID == uuid.Nil {
-			return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: tenant_id cannot be nil")
+			return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: tenant_id cannot be nil: %w", ErrInvalidMutationPayload)
 		}
 		tenantID = &tID
 	}
 	if params.OccurredAt == "" {
-		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: occurred_at is required")
+		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: occurred_at is required: %w", ErrInvalidMutationPayload)
 	}
 	occurredAt, err := time.Parse(time.RFC3339Nano, params.OccurredAt)
 	if err != nil {
-		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: parse occurred_at: %w", err)
+		return dismissRecallCandidateMutation{}, fmt.Errorf("DismissRecallCandidate: parse occurred_at: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	return dismissRecallCandidateMutation{
 		UserID:     userID,

@@ -71,7 +71,7 @@ func parseHomeItemMutation(payload json.RawMessage) (homeItemMutation, error) {
 		URL               string     `json:"url"`
 	}
 	if err := json.Unmarshal(payload, &item); err != nil {
-		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: unmarshal: %w", err)
+		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: unmarshal: %w: %w", ErrInvalidMutationPayload, err)
 	}
 
 	// score_op must be present and recognized. A payload that omits the key
@@ -84,21 +84,21 @@ func parseHomeItemMutation(payload json.RawMessage) (homeItemMutation, error) {
 	// rather than falling through to "untouched", so a typo doesn't
 	// silently become a permanent no-op either.
 	if item.ScoreOp == nil {
-		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: score_op is required")
+		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: score_op is required: %w", ErrInvalidMutationPayload)
 	}
 	scoreOp := *item.ScoreOp
 	switch scoreOp {
 	case "", scoreOpMax, scoreOpSet:
 	default:
-		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: unrecognized score_op %q (want \"\", %q, or %q)",
-			scoreOp, scoreOpMax, scoreOpSet)
+		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: unrecognized score_op %q (want \"\", %q, or %q): %w",
+			scoreOp, scoreOpMax, scoreOpSet, ErrInvalidMutationPayload)
 	}
 
 	if item.TenantID == uuid.Nil {
-		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: tenant_id is required and cannot be empty")
+		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: tenant_id is required and cannot be empty: %w", ErrInvalidMutationPayload)
 	}
 	if item.UserID == uuid.Nil {
-		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: user_id is required and cannot be empty")
+		return homeItemMutation{}, fmt.Errorf("UpsertKnowledgeHomeItem: user_id is required and cannot be empty: %w", ErrInvalidMutationPayload)
 	}
 
 	tags := item.Tags
@@ -287,23 +287,23 @@ func parseDismissHomeItemMutation(payload json.RawMessage) (dismissHomeItemMutat
 		DismissedAt       string `json:"dismissed_at"`
 	}
 	if err := json.Unmarshal(payload, &params); err != nil {
-		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: unmarshal: %w", err)
+		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: unmarshal: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	userID, err := uuid.Parse(params.UserID)
 	if err != nil {
-		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse user_id: %w", err)
+		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse user_id: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	if userID == uuid.Nil {
-		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: user_id cannot be nil")
+		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: user_id cannot be nil: %w", ErrInvalidMutationPayload)
 	}
 	var tenantID *uuid.UUID
 	if params.TenantID != "" {
 		tID, err := uuid.Parse(params.TenantID)
 		if err != nil {
-			return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse tenant_id: %w", err)
+			return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse tenant_id: %w: %w", ErrInvalidMutationPayload, err)
 		}
 		if tID == uuid.Nil {
-			return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: tenant_id cannot be nil")
+			return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: tenant_id cannot be nil: %w", ErrInvalidMutationPayload)
 		}
 		tenantID = &tID
 	}
@@ -313,11 +313,11 @@ func parseDismissHomeItemMutation(payload json.RawMessage) (dismissHomeItemMutat
 	// make each replay non-deterministic (immutable-design-guard: Event-time
 	// purity). Loudly reject rather than fabricate a value.
 	if params.DismissedAt == "" {
-		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: dismissed_at is required")
+		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: dismissed_at is required: %w", ErrInvalidMutationPayload)
 	}
 	dismissedAt, err := time.Parse(time.RFC3339Nano, params.DismissedAt)
 	if err != nil {
-		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse dismissed_at: %w", err)
+		return dismissHomeItemMutation{}, fmt.Errorf("DismissKnowledgeHomeItem: parse dismissed_at: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	return dismissHomeItemMutation{
 		UserID:            userID,
@@ -379,23 +379,23 @@ func parseClearSupersedeStateMutation(payload json.RawMessage) (clearSupersedeSt
 		ProjectionVersion int    `json:"projection_version"`
 	}
 	if err := json.Unmarshal(payload, &params); err != nil {
-		return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: unmarshal: %w", err)
+		return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: unmarshal: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	userID, err := uuid.Parse(params.UserID)
 	if err != nil {
-		return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: parse user_id: %w", err)
+		return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: parse user_id: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	if userID == uuid.Nil {
-		return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: user_id cannot be nil")
+		return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: user_id cannot be nil: %w", ErrInvalidMutationPayload)
 	}
 	var tenantID *uuid.UUID
 	if params.TenantID != "" {
 		tID, err := uuid.Parse(params.TenantID)
 		if err != nil {
-			return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: parse tenant_id: %w", err)
+			return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: parse tenant_id: %w: %w", ErrInvalidMutationPayload, err)
 		}
 		if tID == uuid.Nil {
-			return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: tenant_id cannot be nil")
+			return clearSupersedeStateMutation{}, fmt.Errorf("ClearSupersedeState: tenant_id cannot be nil: %w", ErrInvalidMutationPayload)
 		}
 		tenantID = &tID
 	}

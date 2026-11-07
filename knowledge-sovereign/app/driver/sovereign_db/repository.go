@@ -47,3 +47,6 @@ var ErrHomeItemTenantMismatch = fmt.Errorf("home item tenant mismatch")
 
 // ErrRecallHomeAssociationDenied is returned when a recall candidate has no matching home item association in the tenant.
 var ErrRecallHomeAssociationDenied = fmt.Errorf("recall home association denied or missing")
+
+// ErrInvalidMutationPayload is returned when a mutation payload fails JSON decoding or field validation.
+var ErrInvalidMutationPayload = fmt.Errorf("invalid mutation payload")
