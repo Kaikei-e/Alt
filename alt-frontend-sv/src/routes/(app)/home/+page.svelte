@@ -37,9 +37,9 @@ import { page } from "$app/state";
 import { buildHomeActionMetadata } from "./home-actions";
 import { refreshHomeWithRecallSync } from "./stream-refresh";
 
-const home = useKnowledgeHome();
-const recall = useRecallRail();
 const lens = useLens();
+const home = useKnowledgeHome(() => lens.activeLensId !== null);
+const recall = useRecallRail();
 const toast = useToastStore();
 
 let revealed = $state(false);

@@ -35,7 +35,7 @@ export type PageState =
 	| "fallback"
 	| "hard_error";
 
-export function useKnowledgeHome() {
+export function useKnowledgeHome(isLensActive?: () => boolean) {
 	let items = $state<KnowledgeHomeItemData[]>([]);
 	let digest = $state<TodayDigestData | null>(null);
 	let loading = $state(false);
@@ -78,7 +78,7 @@ export function useKnowledgeHome() {
 		return "no_data";
 	}
 
-	let activeLensId: string | null = null;
+	let activeLensId = $state<string | null>(null);
 
 	const fetchData = async (reset = false, lensId?: string | null) => {
 		try {
@@ -216,7 +216,7 @@ export function useKnowledgeHome() {
 				items,
 				error,
 				hasEverLoaded,
-				activeLensId !== null,
+				activeLensId !== null || Boolean(isLensActive?.()),
 				digest,
 			);
 		},
