@@ -1483,7 +1483,11 @@ class RecapSummaryUsecase:
     ) -> tuple[str, str]:
         MAX_CLUSTER_SECTION_LENGTH = self._max_cluster_section_length(request)
 
-        max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
+        max_clusters = (
+            len(request.clusters)
+            if intermediate
+            else max(3, min(len(request.clusters), max_bullets + 2))
+        )
         cluster_lines: list[str] = []
         cluster_section_length = 0
 
@@ -1527,6 +1531,7 @@ class RecapSummaryUsecase:
                         "job_id": str(request.job_id),
                         "genre": request.genre,
                         "clusters_included": len(cluster_lines),
+                        "clusters_dropped": len(request.clusters) - len(cluster_lines),
                         "total_clusters": len(request.clusters),
                         "cluster_section_length": cluster_section_length,
                         "max_length": MAX_CLUSTER_SECTION_LENGTH,
