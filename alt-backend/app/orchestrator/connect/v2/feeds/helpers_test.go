@@ -281,11 +281,31 @@ func TestGetFavoriteFeeds_CursorUsesFavoriteCreatedAtAndReturnsPage2(t *testing.
 type fakeFeedTagStore struct {
 	tags       []*domain.FeedTag
 	lastCursor *time.Time
+	called     bool
 }
 
 func (f *fakeFeedTagStore) FetchFeedTags(_ context.Context, _ string, cursor *time.Time, _ int) ([]*domain.FeedTag, error) {
+	f.called = true
 	f.lastCursor = cursor
 	return f.tags, nil
+}
+
+func TestGetFeedTags_RejectsMalformedUUID(t *testing.T) {
+	logger.InitLogger()
+
+	store := &fakeFeedTagStore{}
+	handler := NewHandler(FeedHandlerDeps{
+		FeedTagStore:   store,
+		ResolveArticle: resolve_article_usecase.New(nil, nil),
+	}, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	_, err := handler.GetFeedTags(ctx, connect.NewRequest(&feedsv2.GetFeedTagsRequest{
+		FeedId: "not-a-uuid",
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	assert.False(t, store.called)
 }
 
 func TestGetFeedTags_CursorRoundTripKeepsSubSecondPrecision(t *testing.T) {

@@ -375,11 +375,34 @@ func TestRestHandleFetchReadAndFavoriteFeedsCursor_UsesSortKeyTime(t *testing.T)
 type stubFetchFeedTagsPort struct {
 	tags       []*domain.FeedTag
 	lastCursor *time.Time
+	called     bool
 }
 
 func (s *stubFetchFeedTagsPort) FetchFeedTags(_ context.Context, _ string, cursor *time.Time, _ int) ([]*domain.FeedTag, error) {
+	s.called = true
 	s.lastCursor = cursor
 	return s.tags, nil
+}
+
+func TestRestHandleFetchFeedTagsByID_RejectsMalformedUUID(t *testing.T) {
+	logger.InitLogger()
+
+	stub := &stubFetchFeedTagsPort{}
+	container := &di.ApplicationComponents{
+		FetchFeedTagsByIDUsecase: fetch_feed_tags_by_id_usecase.NewFetchFeedTagsByIDUsecase(stub),
+	}
+	handler := RestHandleFetchFeedTagsByID(container)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds/not-a-uuid/tags", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("not-a-uuid")
+
+	require.NoError(t, handler(c))
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.False(t, stub.called)
 }
 
 func TestRestHandleFetchFeedTagsByID_CursorRoundTripKeepsSubSecondPrecision(t *testing.T) {
