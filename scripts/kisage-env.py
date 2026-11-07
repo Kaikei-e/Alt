@@ -464,6 +464,10 @@ def verify_declaration(
             errors.append(
                 f"mtls_allowlists/{key} peer allowlist mismatch against deploy/host-prereqs.yaml"
             )
+        if isinstance(got_peers, list) and len(got_peers) != len(set(got_peers)):
+            errors.append(
+                f"mtls_allowlists/{key} contains duplicate peer entries"
+            )
 
     rate_limits = sections.get("rate_limits") or {}
     interval_raw = rate_limits.get("RATE_LIMIT_EXTERNAL_API_INTERVAL")

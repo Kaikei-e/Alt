@@ -1,0 +1,26 @@
+{
+  "name": "alt",
+  "services": {
+    "pre-processor": {
+      "environment": {
+        "CERT_SUBJECT": "pre-processor",
+        "MTLS_CA_FILE": "/trust/ca-bundle.pem",
+        "MTLS_CERT_FILE": "/certs/svc-cert.pem",
+        "MTLS_ENFORCE": "true",
+        "MTLS_KEY_FILE": "/certs/svc-key.pem",
+        "NEWS_CREATOR_HOST": "https://news-creator:9443",
+        "NEWS_CREATOR_MTLS_SERVER_NAME": "news-creator",
+        "DB_PASSWORD": "SENTINEL_SECRET_DB_PASS_995"
+      }
+    },
+    "news-creator": {
+      "environment": {
+        "CERT_SANS": "news-creator,localhost",
+        "INBOUND_MTLS": "true",
+        "MTLS_ALLOWED_PEERS": "recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator,pre-processor",
+        "PEER_IDENTITY_STRICT": "true",
+        "BACKEND_TOKEN_SECRET": "SENTINEL_SECRET_JWT_KEY_995"
+      }
+    }
+  }
+}

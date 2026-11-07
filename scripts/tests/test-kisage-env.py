@@ -313,6 +313,172 @@ def main(argv: list[str] | None = None) -> int:
             repr(bad_errs),
         )
 
+        unchanged_file = pathlib.Path(tmp_check_dir) / "unchanged.lkal"
+        unchanged_file.write_text(decl_raw_text, encoding="utf-8")
+        os.chmod(unchanged_file, 0o600)
+        unchanged_rc, _unchanged_out, unchanged_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(unchanged_file)]
+        )
+        check(
+            "kisage-env.py verify exits 0 on an unchanged declaration copy",
+            unchanged_rc == 0,
+            unchanged_err,
+        )
+
+        reordered_text = decl_raw_text.replace(
+            '    "recap-evaluator",\n    "pre-processor"',
+            '    "pre-processor",\n    "recap-evaluator"',
+        )
+        reordered_file = pathlib.Path(tmp_check_dir) / "reordered-peers.lkal"
+        reordered_file.write_text(reordered_text, encoding="utf-8")
+        os.chmod(reordered_file, 0o600)
+        reordered_rc, _reordered_out, reordered_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(reordered_file)]
+        )
+        check(
+            "kisage-env.py verify exits 0 when peers in /mtls_allowlists are reordered",
+            reordered_text != decl_raw_text and reordered_rc == 0,
+            reordered_err,
+        )
+
+        missing_key_text = decl_raw_text.replace(
+            '  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend"]\n',
+            "",
+        )
+        missing_key_file = pathlib.Path(tmp_check_dir) / "missing-key.lkal"
+        missing_key_file.write_text(missing_key_text, encoding="utf-8")
+        os.chmod(missing_key_file, 0o600)
+        missing_key_rc, _missing_key_out, missing_key_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(missing_key_file)]
+        )
+        check(
+            "kisage-env.py verify exits non-zero when an /mtls_allowlists key is missing",
+            missing_key_text != decl_raw_text
+            and missing_key_rc == 1
+            and "PRE_PROCESSOR_MTLS_ALLOWED_PEERS" in missing_key_err,
+            missing_key_err,
+        )
+
+        extra_key_text = decl_raw_text.replace(
+            '  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend"]\n',
+            '  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend"]\n'
+            '  EXTRA_MTLS_ALLOWED_PEERS = ["alt-backend"]\n',
+        )
+        extra_key_file = pathlib.Path(tmp_check_dir) / "extra-key.lkal"
+        extra_key_file.write_text(extra_key_text, encoding="utf-8")
+        os.chmod(extra_key_file, 0o600)
+        extra_key_rc, _extra_key_out, extra_key_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(extra_key_file)]
+        )
+        check(
+            "kisage-env.py verify exits non-zero when an extra /mtls_allowlists key is declared",
+            extra_key_text != decl_raw_text
+            and extra_key_rc == 1
+            and "EXTRA_MTLS_ALLOWED_PEERS" in extra_key_err,
+            extra_key_err,
+        )
+
+        removed_peer_text = decl_raw_text.replace(
+            '    "recap-evaluator",\n    "pre-processor"',
+            '    "recap-evaluator"',
+        )
+        removed_peer_file = pathlib.Path(tmp_check_dir) / "removed-peer.lkal"
+        removed_peer_file.write_text(removed_peer_text, encoding="utf-8")
+        os.chmod(removed_peer_file, 0o600)
+        removed_peer_rc, _removed_peer_out, removed_peer_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(removed_peer_file)]
+        )
+        check(
+            "kisage-env.py verify exits non-zero when a peer is removed from /mtls_allowlists",
+            removed_peer_text != decl_raw_text
+            and removed_peer_rc == 1
+            and "mtls_allowlists/NEWS_CREATOR_MTLS_ALLOWED_PEERS peer allowlist mismatch against deploy/host-prereqs.yaml"
+            in removed_peer_err,
+            removed_peer_err,
+        )
+
+        peer_sentinel = "rogue-peer-sentinel-987654"
+        added_peer_text = decl_raw_text.replace(
+            '  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend"]',
+            f'  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend", "{peer_sentinel}"]',
+        )
+        added_peer_file = pathlib.Path(tmp_check_dir) / "added-peer.lkal"
+        added_peer_file.write_text(added_peer_text, encoding="utf-8")
+        os.chmod(added_peer_file, 0o600)
+        added_peer_rc, added_peer_stdout, added_peer_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(added_peer_file)]
+        )
+        added_peer_out = added_peer_stdout + added_peer_err
+        check(
+            "kisage-env.py verify exits non-zero when a peer is added to /mtls_allowlists and never echoes peer values",
+            added_peer_text != decl_raw_text
+            and added_peer_rc == 1
+            and "mtls_allowlists/PRE_PROCESSOR_MTLS_ALLOWED_PEERS peer allowlist mismatch against deploy/host-prereqs.yaml"
+            in added_peer_err
+            and peer_sentinel not in added_peer_out,
+            added_peer_out,
+        )
+
+        replaced_peer_text = decl_raw_text.replace(
+            '  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend"]',
+            f'  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["{peer_sentinel}"]',
+        )
+        replaced_peer_file = pathlib.Path(tmp_check_dir) / "replaced-peer.lkal"
+        replaced_peer_file.write_text(replaced_peer_text, encoding="utf-8")
+        os.chmod(replaced_peer_file, 0o600)
+        replaced_peer_rc, replaced_peer_stdout, replaced_peer_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(replaced_peer_file)]
+        )
+        replaced_peer_out = replaced_peer_stdout + replaced_peer_err
+        check(
+            "kisage-env.py verify exits non-zero when a peer is replaced in /mtls_allowlists and never echoes peer values",
+            replaced_peer_text != decl_raw_text
+            and replaced_peer_rc == 1
+            and "mtls_allowlists/PRE_PROCESSOR_MTLS_ALLOWED_PEERS peer allowlist mismatch against deploy/host-prereqs.yaml"
+            in replaced_peer_err
+            and peer_sentinel not in replaced_peer_out,
+            replaced_peer_out,
+        )
+
+        dup_peer_text = decl_raw_text.replace(
+            '  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend"]',
+            '  PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend", "alt-backend"]',
+        )
+        dup_peer_file = pathlib.Path(tmp_check_dir) / "dup-peer.lkal"
+        dup_peer_file.write_text(dup_peer_text, encoding="utf-8")
+        os.chmod(dup_peer_file, 0o600)
+        dup_peer_rc, dup_peer_stdout, dup_peer_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(dup_peer_file)]
+        )
+        dup_peer_out = dup_peer_stdout + dup_peer_err
+        check(
+            "kisage-env.py verify exits non-zero when /mtls_allowlists contains duplicate peers",
+            dup_peer_text != decl_raw_text
+            and dup_peer_rc == 1
+            and "PRE_PROCESSOR_MTLS_ALLOWED_PEERS" in dup_peer_err
+            and "alt-backend" not in dup_peer_out,
+            dup_peer_out,
+        )
+
+        flag_change_text = decl_raw_text.replace(
+            "  KNOWLEDGE_HOME_ENABLE_PAGE = true",
+            "  KNOWLEDGE_HOME_ENABLE_PAGE = false",
+        )
+        flag_change_file = pathlib.Path(tmp_check_dir) / "flag-change.lkal"
+        flag_change_file.write_text(flag_change_text, encoding="utf-8")
+        os.chmod(flag_change_file, 0o600)
+        flag_change_rc, flag_change_stdout, flag_change_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(flag_change_file)]
+        )
+        flag_change_out = flag_change_stdout + flag_change_err
+        check(
+            "kisage-env.py verify exits 0 and reports no mtls_allowlists error when only /feature_flags changes",
+            flag_change_text != decl_raw_text
+            and flag_change_rc == 0
+            and "mtls_allowlists" not in flag_change_out,
+            flag_change_out,
+        )
+
         # Unrepresentable dotenv value (embedded newline / control char) must be rejected
         newline_lkal = pathlib.Path(tmp_check_dir) / "newline.lkal"
         newline_lkal.write_text(
