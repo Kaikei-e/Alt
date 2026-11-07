@@ -34,15 +34,15 @@ def test_config_loads_from_environment(monkeypatch):
 
 
 def test_config_handles_invalid_numeric_values(monkeypatch):
-    """Test that config handles invalid numeric values gracefully."""
+    """Test that config fails fast on invalid numeric values."""
     monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "invalid")
+    with pytest.raises(ValueError, match="LLM_TIMEOUT_SECONDS"):
+        NewsCreatorConfig()
+
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "300")
     monkeypatch.setenv("LLM_TEMPERATURE", "not_a_float")
-
-    config = NewsCreatorConfig()
-
-    # Should fall back to defaults
-    assert config.llm_timeout_seconds == 300
-    assert config.llm_temperature == 0.7  # Gemma4 default
+    with pytest.raises(ValueError, match="LLM_TEMPERATURE"):
+        NewsCreatorConfig()
 
 
 def test_config_auth_settings(monkeypatch):
