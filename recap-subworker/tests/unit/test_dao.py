@@ -145,3 +145,23 @@ async def test_fail_orphaned_runs_updates_every_running_row():
     assert "failed" in compiled.params.values()
     assert "running" in compiled.params.values()
     assert "orphaned by restart" in compiled.params.values()
+
+
+@pytest.mark.asyncio
+async def test_fail_orphaned_admin_jobs_updates_every_running_row():
+    session = AsyncMock()
+    result = MagicMock()
+    result.all = MagicMock(return_value=[(uuid4(),), (uuid4(),)])
+    session.execute.return_value = result
+    dao = SubworkerDAO(session)
+
+    swept = await dao.fail_orphaned_admin_jobs("admin job orphaned by restart")
+
+    assert swept == 2
+    stmt = session.execute.await_args.args[0]
+    compiled = stmt.compile()
+    assert "UPDATE admin_jobs SET status" in str(compiled)
+    assert "WHERE admin_jobs.status = " in str(compiled)
+    assert "failed" in compiled.params.values()
+    assert "running" in compiled.params.values()
+    assert "admin job orphaned by restart" in compiled.params.values()
