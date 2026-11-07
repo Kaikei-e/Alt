@@ -10,6 +10,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"alt/connect/errorhandler"
 	"alt/domain"
 	knowledgetrailv1 "alt/gen/proto/alt/knowledge_trail/v1"
 	"alt/orchestrator/usecase/emit_trail_outcome_usecase"
@@ -69,7 +70,7 @@ func (h *Handler) ResolveBranch(
 		if errors.Is(err, resolve_trail_branch_usecase.ErrInvalidRequest) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "ResolveBranch")
 	}
 	return connect.NewResponse(&knowledgetrailv1.ResolveBranchResponse{Ok: true}), nil
 }
@@ -92,7 +93,7 @@ func (h *Handler) EmitTrailOutcome(
 		if errors.Is(err, emit_trail_outcome_usecase.ErrInvalidRequest) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "EmitTrailOutcome")
 	}
 	return connect.NewResponse(&knowledgetrailv1.EmitTrailOutcomeResponse{Ok: true}), nil
 }
@@ -114,7 +115,7 @@ func (h *Handler) GetTrail(
 
 	result, err := h.getTrailUsecase.Execute(ctx, user.UserID, cursor, int(req.Msg.Limit), req.Msg.FilterTags)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetTrail")
 	}
 
 	footprints := make([]*knowledgetrailv1.Footprint, len(result.Footprints))
@@ -152,7 +153,7 @@ func (h *Handler) SearchTrail(
 		if errors.Is(err, search_trail_usecase.ErrInvalidRequest) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "SearchTrail")
 	}
 
 	return connect.NewResponse(&knowledgetrailv1.SearchTrailResponse{
@@ -184,7 +185,7 @@ func (h *Handler) GetItemBranches(
 		if errors.Is(err, get_item_branches_usecase.ErrInvalidRequest) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetItemBranches")
 	}
 
 	return connect.NewResponse(&knowledgetrailv1.GetItemBranchesResponse{
