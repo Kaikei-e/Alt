@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -31,6 +32,30 @@ _CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 # Must stay in step with AcolyteConnectService._thread_id_for_run: the
 # checkpoint namespace is derived from run_id and is the only link back.
 _THREAD_ID_PREFIX = "acolyte-run:"
+
+
+def _parse_report_cursor(cursor: str) -> datetime:
+    try:
+        created_at = datetime.fromisoformat(cursor)
+    except ValueError as e:
+        msg = f"Invalid report cursor: {cursor!r}"
+        raise ValueError(msg) from e
+    if created_at.tzinfo is None:
+        msg = f"Invalid report cursor: {cursor!r}"
+        raise ValueError(msg)
+    return created_at
+
+
+def _parse_version_cursor(cursor: str) -> int:
+    try:
+        version_no = int(cursor)
+    except ValueError as e:
+        msg = f"Invalid version cursor: {cursor!r}"
+        raise ValueError(msg) from e
+    if version_no <= 0:
+        msg = f"Invalid version cursor: {cursor!r}"
+        raise ValueError(msg)
+    return version_no
 
 
 class PostgresReportGateway:
@@ -116,13 +141,14 @@ class PostgresReportGateway:
             )
 
     async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
+        cursor_created_at = _parse_report_cursor(cursor) if cursor else None
         async with self._pool.connection() as conn:
-            if cursor:
+            if cursor_created_at is not None:
                 row = await conn.execute(
                     "SELECT report_id, title, report_type, current_version, "
                     "latest_successful_run_id, created_at, user_id "
                     "FROM reports WHERE user_id = %s AND created_at < %s ORDER BY created_at DESC LIMIT %s",
-                    [user_id, cursor, limit + 1],
+                    [user_id, cursor_created_at, limit + 1],
                 )
             else:
                 row = await conn.execute(
@@ -232,14 +258,15 @@ class PostgresReportGateway:
     async def list_report_versions(
         self, report_id: UUID, cursor: str | None, limit: int
     ) -> tuple[list[ReportVersion], str | None]:
+        cursor_version = _parse_version_cursor(cursor) if cursor else None
         async with self._pool.connection() as conn:
-            if cursor:
+            if cursor_version is not None:
                 cur = await conn.execute(
                     "SELECT report_id, version_no, change_seq, change_reason, created_at, "
                     "prompt_template_version, scope_snapshot, outline_snapshot, summary_snapshot "
                     "FROM report_versions WHERE report_id = %s AND version_no < %s "
                     "ORDER BY version_no DESC LIMIT %s",
-                    [report_id, int(cursor), limit + 1],
+                    [report_id, cursor_version, limit + 1],
                 )
             else:
                 cur = await conn.execute(
