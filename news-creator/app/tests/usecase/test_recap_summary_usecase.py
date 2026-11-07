@@ -487,6 +487,65 @@ def test_split_clusters_into_chunks_single_large_cluster():
     assert clusters[0] in chunks[0]
 
 
+def test_split_clusters_into_chunks_accounts_for_rendered_metadata(caplog):
+    """Splitter must measure rendered metadata (published_at, source_url, article_id) so no chunk overflows MAX_CLUSTER_SECTION_LENGTH."""
+    import logging
+
+    config = _create_mock_config()
+    config.hierarchical_chunk_max_chars = 6000
+    config.hierarchical_chunk_overlap_ratio = 0.0
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=Mock())
+
+    clusters = [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[
+                RepresentativeSentence(
+                    text=f"METATEST_CLUSTER_{i:02d}_SENT_{j}: 要約対象の短文。",
+                    published_at="2026-11-08T00:00:00Z",
+                    source_url=(
+                        f"https://news.example.com/archive/2026/11/08/"
+                        f"technology-deep-dive-analysis-report-cluster-{i:02d}-item-{j}/index.html"
+                    ),
+                    article_id=f"00000000-0000-4000-8000-{i:06d}{j:06d}",
+                    is_centroid=(j == 0),
+                )
+                for j in range(4)
+            ],
+            top_terms=[f"term{i}"],
+        )
+        for i in range(10)
+    ]
+
+    chunks = usecase._split_clusters_into_chunks(clusters)
+
+    with caplog.at_level(logging.WARNING):
+        caplog.clear()
+        for chunk in chunks:
+            chunk_request = RecapSummaryRequest(
+                job_id=uuid4(),
+                genre="tech",
+                clusters=chunk,
+                window_days=3,
+            )
+            prompt = usecase._build_prompt(
+                chunk_request, max_bullets=4, intermediate=True
+            )
+            for cluster in chunk:
+                marker = f"METATEST_CLUSTER_{cluster.cluster_id:02d}_SENT_0"
+                assert marker in prompt, (
+                    f"Cluster {cluster.cluster_id} assigned to chunk was dropped from rendered prompt"
+                )
+
+    truncation_logs = [
+        r
+        for r in caplog.records
+        if "Cluster section truncated to fit context window" in r.getMessage()
+    ]
+    assert not truncation_logs
+
+
 # ============================================================================
 # Recursive Reduce Tests (12K-only mode)
 # ============================================================================
