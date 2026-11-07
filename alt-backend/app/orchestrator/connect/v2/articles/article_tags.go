@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	"alt/connect/errorhandler"
 	"alt/domain"
@@ -89,6 +90,10 @@ func (h *Handler) FetchArticleTags(
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("article_id is required"))
 	}
+	if _, err := uuid.Parse(articleID); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid article_id: %w", err))
+	}
 
 	tags, err := h.deps.FetchArticleTags.Execute(ctx, articleID)
 	if err != nil {
@@ -119,6 +124,10 @@ func (h *Handler) StreamArticleTags(
 	if articleID == "" {
 		return connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("article_id is required"))
+	}
+	if _, err := uuid.Parse(articleID); err != nil {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid article_id: %w", err))
 	}
 
 	h.logger.InfoContext(ctx, "starting article tags stream", "articleID", articleID)

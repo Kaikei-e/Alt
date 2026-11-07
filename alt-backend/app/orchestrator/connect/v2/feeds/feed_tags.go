@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
 
@@ -31,6 +32,10 @@ func (h *Handler) GetFeedTags(
 	if req.Msg.FeedId == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("feed_id is required"))
+	}
+	if _, err := uuid.Parse(req.Msg.FeedId); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid feed_id: %w", err))
 	}
 
 	limit := int(req.Msg.Limit)

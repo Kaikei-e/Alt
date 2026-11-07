@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -264,6 +265,10 @@ func RestHandleFetchFeedTagsByID(container *di.ApplicationComponents) echo.Handl
 		if feedID == "" {
 			logger.Logger.ErrorContext(ctx, "Feed ID is required")
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Feed ID is required"})
+		}
+		if _, err := uuid.Parse(feedID); err != nil {
+			logger.Logger.ErrorContext(ctx, "Invalid feed ID", "error", err, "feedID", feedID)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid feed ID"})
 		}
 
 		// Parse limit from query parameter (optional)

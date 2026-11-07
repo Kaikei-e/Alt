@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -242,6 +243,9 @@ func handleFetchArticleTags(container *di.ApplicationComponents) echo.HandlerFun
 		articleID := c.Param("id")
 		if strings.TrimSpace(articleID) == "" {
 			return resterr.HandleValidationError(c, "article id is required", "id", articleID)
+		}
+		if _, err := uuid.Parse(articleID); err != nil {
+			return resterr.HandleValidationError(c, "invalid article id", "id", articleID)
 		}
 
 		tags, err := container.FetchArticleTagsUsecase.Execute(ctx, articleID)
