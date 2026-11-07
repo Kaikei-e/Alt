@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 import weakref
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from typing import Any, AsyncIterator
 
 from news_creator.config.config import NewsCreatorConfig
@@ -290,20 +290,23 @@ class OllamaGateway(LLMProviderPort):
                     # Use stream driver for streaming requests
                     stream_iterator = self.stream_driver.generate_stream(payload)
                     # Handle streaming response
-                    async for chunk in stream_iterator:
-                        # Map chunk to LLMGenerateResponse
-                        yield LLMGenerateResponse(
-                            response=chunk.get("response", ""),
-                            model=str(chunk.get("model", payload["model"])),
-                            done=chunk.get("done", False),
-                            done_reason=chunk.get("done_reason"),
-                            prompt_eval_count=chunk.get("prompt_eval_count"),
-                            eval_count=chunk.get("eval_count"),
-                            total_duration=chunk.get("total_duration"),
-                            load_duration=chunk.get("load_duration"),
-                            prompt_eval_duration=chunk.get("prompt_eval_duration"),
-                            eval_duration=chunk.get("eval_duration"),
-                        )
+                    async with aclosing(  # pyrefly: ignore[bad-specialization]
+                        stream_iterator
+                    ):
+                        async for chunk in stream_iterator:
+                            # Map chunk to LLMGenerateResponse
+                            yield LLMGenerateResponse(
+                                response=chunk.get("response", ""),
+                                model=str(chunk.get("model", payload["model"])),
+                                done=chunk.get("done", False),
+                                done_reason=chunk.get("done_reason"),
+                                prompt_eval_count=chunk.get("prompt_eval_count"),
+                                eval_count=chunk.get("eval_count"),
+                                total_duration=chunk.get("total_duration"),
+                                load_duration=chunk.get("load_duration"),
+                                prompt_eval_duration=chunk.get("prompt_eval_duration"),
+                                eval_duration=chunk.get("eval_duration"),
+                            )
                 except GeneratorExit:
                     logger.info(
                         "Stream generator closed by client disconnect or explicit aclose()",
