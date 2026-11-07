@@ -34,6 +34,11 @@ type mockRepo struct {
 	gotAnchorUserID  uuid.UUID
 	gotAnchorItemKey string
 	gotAnchorLimit   int
+
+	openBranches        []sovereign_db.TrailBranch
+	openBranchesCalls   int
+	gotBranchUserID     uuid.UUID
+	gotBranchAnchorKeys []string
 }
 
 // --- MutationRepository ---
@@ -88,7 +93,33 @@ func (m *mockRepo) GetTrailFootprints(_ context.Context, _ uuid.UUID, cursor str
 	return m.trailFootprints, "", false, m.returnErr
 }
 func (m *mockRepo) GetOpenTrailBranches(_ context.Context, _ uuid.UUID) ([]sovereign_db.TrailBranch, error) {
-	return nil, m.returnErr
+	m.openBranchesCalls++
+	return m.openBranches, m.returnErr
+}
+func (m *mockRepo) GetLatestOpenTrailBranchesForAnchors(_ context.Context, userID uuid.UUID, anchorKeys []string) ([]sovereign_db.TrailBranch, error) {
+	m.openBranchesCalls++
+	m.gotBranchUserID = userID
+	m.gotBranchAnchorKeys = anchorKeys
+	if m.returnErr != nil {
+		return nil, m.returnErr
+	}
+	allowed := make(map[string]struct{}, len(anchorKeys))
+	for _, k := range anchorKeys {
+		allowed[k] = struct{}{}
+	}
+	seenAnchor := make(map[string]struct{}, len(anchorKeys))
+	var out []sovereign_db.TrailBranch
+	for _, b := range m.openBranches {
+		if _, ok := allowed[b.AnchorItemKey]; !ok {
+			continue
+		}
+		if _, dup := seenAnchor[b.AnchorItemKey]; dup {
+			continue
+		}
+		seenAnchor[b.AnchorItemKey] = struct{}{}
+		out = append(out, b)
+	}
+	return out, nil
 }
 func (m *mockRepo) GetOpenTrailBranchesForAnchor(_ context.Context, userID uuid.UUID, anchorItemKey string, limit int) ([]sovereign_db.TrailBranch, error) {
 	m.gotAnchorUserID = userID

@@ -54,6 +54,52 @@ func TestUpsertTrailBranch_FirstWriteWins(t *testing.T) {
 	assert.Equal(t, 2, call.Args[11])
 }
 
+// TestGetLatestOpenTrailBranchesForAnchors_ScopesToAnchorsDistinctNewestFirst
+// verifies that the trail page branch read scopes to the returned page's
+// anchor item keys, selects only the newest open branch per anchor via
+// DISTINCT ON (b.anchor_item_key) ordered by created_at DESC, branch_key DESC,
+// preserves the knowledge_home_items target_title fallback, and orders the
+// final result by created_at DESC, branch_key DESC.
+func TestGetLatestOpenTrailBranchesForAnchors_ScopesToAnchorsDistinctNewestFirst(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	userID := uuid.New()
+	anchors := []string{"article:1", "article:2"}
+	_, err := repo.GetLatestOpenTrailBranchesForAnchors(context.Background(), userID, anchors)
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1, "expected one anchor-scoped branch query")
+
+	call := mock.queryCalls[0]
+	assert.Contains(t, call.SQL, "DISTINCT ON (b.anchor_item_key)",
+		"must pick at most one branch per anchor")
+	assert.Contains(t, call.SQL, "b.anchor_item_key = ANY($2::text[])",
+		"must restrict branches to the provided anchor item keys")
+	assert.Contains(t, call.SQL, "b.state = 'open'",
+		"only open branches surface")
+	assert.Contains(t, call.SQL, "ORDER BY b.anchor_item_key, b.created_at DESC, b.branch_key DESC",
+		"DISTINCT ON must pick the newest open branch per anchor")
+	assert.Contains(t, call.SQL, "LEFT JOIN knowledge_home_items khi",
+		"must preserve the knowledge_home_items join for target_title fallback")
+	assert.Contains(t, call.SQL, "COALESCE(NULLIF(b.target_title, '')",
+		"must preserve the target_title COALESCE fallback")
+	assert.Contains(t, call.SQL, "ORDER BY b.created_at DESC, b.branch_key DESC",
+		"final list must be ordered newest-first")
+	require.Len(t, call.Args, 2)
+	assert.Equal(t, userID, call.Args[0])
+	assert.Equal(t, anchors, call.Args[1])
+}
+
+func TestGetLatestOpenTrailBranchesForAnchors_EmptyAnchorsSkipsQuery(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	branches, err := repo.GetLatestOpenTrailBranchesForAnchors(context.Background(), uuid.New(), nil)
+	require.NoError(t, err)
+	assert.Empty(t, branches)
+	assert.Empty(t, mock.queryCalls, "must not query the database when anchorKeys is empty")
+}
+
 // TestGetOpenTrailBranchesForAnchor_FiltersByAnchorAndLimits pins the Wave 10
 // (D26) patch-exit read shape: branches narrow to one anchor item and are
 // capped server-side, mirroring GetOpenTrailBranches but scoped to the

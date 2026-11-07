@@ -128,6 +128,71 @@ describe("useKnowledgeTrail", () => {
 		expect(getTrail).toHaveBeenCalledTimes(2);
 	});
 
+	it("merges page-scoped branches by branchKey on loadMore() so earlier pages retain their branches", async () => {
+		const ep1 = makeEpisode("ep-1", "article:1");
+		const ep2 = makeEpisode("ep-2", "article:2");
+		const br1 = {
+			branchKey: "br-1",
+			anchorItemKey: "article:1",
+			relationKind: "continuation",
+			why: "First page branch",
+			evidenceRefs: [],
+			confidence: "high",
+			targetItemKey: "article:10",
+			targetTitle: "Target 10",
+		};
+		const brShared = {
+			branchKey: "br-shared",
+			anchorItemKey: "article:shared",
+			relationKind: "cluster",
+			why: "Shared branch",
+			evidenceRefs: [],
+			confidence: "plausible",
+			targetItemKey: "article:15",
+			targetTitle: "Target 15",
+		};
+		const br2 = {
+			branchKey: "br-2",
+			anchorItemKey: "article:2",
+			relationKind: "cluster",
+			why: "Second page branch",
+			evidenceRefs: [],
+			confidence: "plausible",
+			targetItemKey: "article:20",
+			targetTitle: "Target 20",
+		};
+
+		vi.mocked(getTrail)
+			.mockResolvedValueOnce({
+				footprints: ep1.footprints,
+				episodes: [ep1],
+				branches: [br1, brShared],
+				nextCursor: "ep:1",
+				hasMore: true,
+			})
+			.mockResolvedValueOnce({
+				footprints: ep2.footprints,
+				episodes: [ep2],
+				branches: [brShared, br2],
+				nextCursor: "",
+				hasMore: false,
+			});
+
+		const trail = useKnowledgeTrail();
+		await trail.fetchData(true);
+		expect(trail.branches.map((b) => b.branchKey)).toEqual([
+			"br-1",
+			"br-shared",
+		]);
+
+		await trail.loadMore();
+		expect(trail.branches.map((b) => b.branchKey)).toEqual([
+			"br-1",
+			"br-shared",
+			"br-2",
+		]);
+	});
+
 	it("preserves base episodes during search() so clearSearch() restores the spine without refetching (D25)", async () => {
 		const ep1 = makeEpisode("ep-1", "article:1");
 		const searchHitEp = makeEpisode("ep-hit", "article:99");
