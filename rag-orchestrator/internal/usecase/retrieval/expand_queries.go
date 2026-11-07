@@ -183,6 +183,7 @@ const (
 	minTagRuneLen       = 2
 	maxShortASCIITagLen = 3
 	maxTagRuneLen       = 20
+	maxASCIITagRuneLen  = 40
 )
 
 // filterTagQueries drops generic/noisy tag tokens and caps low-confidence tag expansions.
@@ -198,14 +199,19 @@ func filterTagQueries(tags []string, originalQuery string) []string {
 		if q == "" || strings.EqualFold(q, trimmedOriginal) {
 			continue
 		}
+		ascii := isASCII(q)
+		maxLen := maxTagRuneLen
+		if ascii {
+			maxLen = maxASCIITagRuneLen
+		}
 		runeLen := utf8.RuneCountInString(q)
-		if runeLen < minTagRuneLen || runeLen > maxTagRuneLen {
+		if runeLen < minTagRuneLen || runeLen > maxLen {
 			continue
 		}
 		if isPureDigits(q) || isDateOnly(q) {
 			continue
 		}
-		if isASCII(q) && len(q) <= maxShortASCIITagLen {
+		if ascii && len(q) <= maxShortASCIITagLen {
 			continue
 		}
 		key := strings.ToLower(q)

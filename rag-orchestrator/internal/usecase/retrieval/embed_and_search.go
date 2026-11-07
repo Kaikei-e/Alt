@@ -46,7 +46,6 @@ func EmbedAndSearch(
 	bm25Limit int,
 	logger *slog.Logger,
 ) error {
-	sc.TagQueries = filterTagQueries(sc.TagQueries, sc.Query)
 	// Build the full list of additional queries that need embedding
 	sc.AdditionalQueries = buildAdditionalQueries(sc.ExpandedQueries, sc.TagQueries)
 
@@ -86,7 +85,7 @@ func EmbedAndSearch(
 		g.Go(func() error {
 			bm25Start := time.Now()
 
-			// Build deduplicated query list: original + expanded (for cross-language BM25)
+			// BM25 results are fused into HitsOriginal, so tag queries must stay out to avoid polluting the original-query ranking.
 			queries := bm25Queries(sc.Query, sc.ExpandedQueries)
 
 			// One HTTP round-trip per query, run together rather than in
@@ -181,11 +180,11 @@ func EmbedAndSearch(
 
 // bm25Queries builds a deduplicated list of queries for BM25 search.
 // Includes the original query plus expanded/translated queries for cross-language matching.
-func bm25Queries(original string, additionalQueries []string) []string {
-	queries := make([]string, 0, 1+len(additionalQueries))
+func bm25Queries(original string, expandedQueries []string) []string {
+	queries := make([]string, 0, 1+len(expandedQueries))
 	queries = append(queries, original)
 	seen := map[string]struct{}{original: {}}
-	for _, q := range additionalQueries {
+	for _, q := range expandedQueries {
 		if _, exists := seen[q]; !exists {
 			seen[q] = struct{}{}
 			queries = append(queries, q)
@@ -195,10 +194,9 @@ func bm25Queries(original string, additionalQueries []string) []string {
 }
 
 func buildAdditionalQueries(expandedQueries, tagQueries []string) []string {
-	filteredTags := filterTagQueries(tagQueries, "")
-	additional := make([]string, 0, len(expandedQueries)+len(filteredTags))
+	additional := make([]string, 0, len(expandedQueries)+len(tagQueries))
 	additional = append(additional, expandedQueries...)
-	for _, tq := range filteredTags {
+	for _, tq := range tagQueries {
 		exists := false
 		for _, eq := range expandedQueries {
 			if strings.EqualFold(eq, tq) {

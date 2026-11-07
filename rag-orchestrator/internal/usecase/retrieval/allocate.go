@@ -49,41 +49,12 @@ func Allocate(
 
 // SelectContextsDynamic merges and selects top N contexts from all sources by score.
 func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []ContextItem, totalQuota int, rerankApplied bool) []ContextItem {
-	seen := make(map[string]bool)
-	allCandidates := make([]ContextItem, 0, len(hitsOriginal)+len(hitsExpanded))
-
-	for _, res := range hitsOriginal {
-		key := hitIdentity(res.Chunk.ID, res.ArticleID)
-		if key != "" && seen[key] {
-			continue
-		}
-		item := ContextItem{
-			ChunkText:       res.Chunk.Content,
-			URL:             res.URL,
-			Title:           res.Title,
-			PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
-			Score:           res.Score,
-			ScoreKind:       res.ScoreKind,
-			DocumentVersion: res.DocumentVersion,
-			ChunkID:         res.Chunk.ID,
-			ArticleID:       res.ArticleID,
-		}
-		if rerankApplied {
-			item.RerankScore = res.Score
-			item.RerankApplied = true
-		}
-		allCandidates = append(allCandidates, item)
-		seen[key] = true
+	if !rerankApplied {
+		// Rank-interleave original and expanded hits when not reranked so incompatible RRF scales are not compared.
+		return interleaveHits(hitsOriginal, hitsExpanded, totalQuota, false)
 	}
 
-	for _, item := range hitsExpanded {
-		key := hitIdentity(item.ChunkID, item.ArticleID)
-		if key != "" && seen[key] {
-			continue
-		}
-		allCandidates = append(allCandidates, item)
-		seen[key] = true
-	}
+	allCandidates := interleaveHits(hitsOriginal, hitsExpanded, -1, true)
 
 	// Stable: a BM25-only degraded result set carries no score at all (the
 	// search-indexer response exposes none), and an unstable sort over equal
@@ -97,6 +68,59 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 	}
 
 	return allCandidates
+}
+
+// interleaveHits merges original and expanded hits in rank-interleaved order (original first at each rank), deduplicating by hitIdentity.
+func interleaveHits(hitsOriginal []domain.SearchResult, hitsExpanded []ContextItem, limit int, rerankApplied bool) []ContextItem {
+	if limit == 0 {
+		return []ContextItem{}
+	}
+	total := len(hitsOriginal) + len(hitsExpanded)
+	capHint := total
+	if limit > 0 && limit < capHint {
+		capHint = limit
+	}
+	seen := make(map[string]struct{}, total)
+	merged := make([]ContextItem, 0, capHint)
+
+	add := func(key string, item ContextItem) {
+		if key == "" || (limit > 0 && len(merged) >= limit) {
+			return
+		}
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, item)
+	}
+
+	for r := 0; (limit < 0 || len(merged) < limit) && (r < len(hitsOriginal) || r < len(hitsExpanded)); r++ {
+		if r < len(hitsOriginal) {
+			res := hitsOriginal[r]
+			item := ContextItem{
+				ChunkText:       res.Chunk.Content,
+				URL:             res.URL,
+				Title:           res.Title,
+				PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
+				Score:           res.Score,
+				ScoreKind:       res.ScoreKind,
+				DocumentVersion: res.DocumentVersion,
+				ChunkID:         res.Chunk.ID,
+				ArticleID:       res.ArticleID,
+			}
+			if rerankApplied {
+				item.RerankScore = res.Score
+				item.RerankApplied = true
+			}
+			add(hitIdentity(res.Chunk.ID, res.ArticleID), item)
+		}
+		if r < len(hitsExpanded) {
+			item := hitsExpanded[r]
+			add(hitIdentity(item.ChunkID, item.ArticleID), item)
+		}
+	}
+
+	return merged
 }
 
 func allocateLegacy(hitsOriginal []domain.SearchResult, hitsExpanded []ContextItem, quotaOriginal, quotaExpanded int) []ContextItem {

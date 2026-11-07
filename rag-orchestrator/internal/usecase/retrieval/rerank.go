@@ -73,31 +73,13 @@ func Rerank(
 	// at all — there would be no way to map a cross-encoder score back onto
 	// it alone — so it does not enter the window.
 	// Rank-interleave original and expanded lists rather than sorting by raw score across incompatible RRF scales.
-	seen := make(map[string]struct{}, len(sc.HitsOriginal)+len(sc.HitsExpanded))
-	candidates := make([]domain.RerankCandidate, 0, min(maxCandidates, len(sc.HitsOriginal)+len(sc.HitsExpanded)))
-	addCandidate := func(key, content string, score float32) {
-		if key == "" || len(candidates) >= maxCandidates {
-			return
-		}
-		if _, exists := seen[key]; exists {
-			return
-		}
-		seen[key] = struct{}{}
-		candidates = append(candidates, domain.RerankCandidate{
-			ID:      key,
-			Content: content,
-			Score:   score,
-		})
-	}
-
-	for r := 0; len(candidates) < maxCandidates && (r < len(sc.HitsOriginal) || r < len(sc.HitsExpanded)); r++ {
-		if r < len(sc.HitsOriginal) {
-			res := sc.HitsOriginal[r]
-			addCandidate(hitIdentity(res.Chunk.ID, res.ArticleID), res.Chunk.Content, res.Score)
-		}
-		if r < len(sc.HitsExpanded) {
-			item := sc.HitsExpanded[r]
-			addCandidate(hitIdentity(item.ChunkID, item.ArticleID), item.ChunkText, item.Score)
+	interleaved := interleaveHits(sc.HitsOriginal, sc.HitsExpanded, maxCandidates, false)
+	candidates := make([]domain.RerankCandidate, len(interleaved))
+	for i, item := range interleaved {
+		candidates[i] = domain.RerankCandidate{
+			ID:      hitIdentity(item.ChunkID, item.ArticleID),
+			Content: item.ChunkText,
+			Score:   item.Score,
 		}
 	}
 

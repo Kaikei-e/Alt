@@ -206,7 +206,7 @@ func TestEmbedAndSearch_BM25ExcludesTagQueries_AndPreservesPlannerQueries(t *tes
 		Query:             "Example Model 15 overview",
 		OriginalEmbedding: queryVec,
 		ExpandedQueries:   plannerQueries,
-		TagQueries:        []string{"ExampleOS", "ExampleTech", "GB", "2026"},
+		TagQueries:        []string{"ExampleOS", "ExampleTech"},
 		SearchLimit:       50,
 		UserID:            testUUID.String(),
 		UserUUID:          testUUID,
@@ -236,12 +236,10 @@ func TestEmbedAndSearch_BM25ExcludesTagQueries_AndPreservesPlannerQueries(t *tes
 		"Example Model 15 review",
 		"ExampleOS",
 		"ExampleTech",
-	}, sc.AdditionalQueries, "planner queries must come first and only filtered tag queries may be appended")
+	}, sc.AdditionalQueries, "planner queries must come first and filtered tag queries are appended")
 
 	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, "ExampleOS", 50, testUUID.String())
 	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, "ExampleTech", 50, testUUID.String())
-	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, "GB", 50, testUUID.String())
-	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, "2026", 50, testUUID.String())
 	assert.Len(t, sc.BM25Results, 3, "BM25 leg for HitsOriginal must only include original + planner/expanded queries")
 }
 

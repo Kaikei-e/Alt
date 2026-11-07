@@ -149,7 +149,10 @@ func FuseResults(
 		hitsExpanded = append(hitsExpanded, item)
 	}
 	sort.SliceStable(hitsExpanded, func(i, j int) bool {
-		return hitsExpanded[i].Score > hitsExpanded[j].Score
+		if hitsExpanded[i].Score != hitsExpanded[j].Score {
+			return hitsExpanded[i].Score > hitsExpanded[j].Score
+		}
+		return hitIdentity(hitsExpanded[i].ChunkID, hitsExpanded[i].ArticleID) < hitIdentity(hitsExpanded[j].ChunkID, hitsExpanded[j].ArticleID)
 	})
 
 	sc.HitsExpanded = hitsExpanded
