@@ -128,3 +128,24 @@ func TestPatchKnowledgeHomeItemURL_RejectsEmptyURL(t *testing.T) {
 	// Mock had no Expect set — confirming we never hit the DB.
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestPatchKnowledgeHomeItemURL_RejectsMissingOccurredAt(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+
+	payload, err := json.Marshal(map[string]any{
+		"user_id":            uuid.New().String(),
+		"item_key":           "article:11111111-1111-4111-8111-111111111111",
+		"projection_version": 5,
+		"url":                "https://example.com/recovered-article",
+	})
+	require.NoError(t, err)
+
+	err = repo.PatchKnowledgeHomeItemURL(context.Background(), payload)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "occurred_at is required")
+	require.NoError(t, mock.ExpectationsWereMet())
+}

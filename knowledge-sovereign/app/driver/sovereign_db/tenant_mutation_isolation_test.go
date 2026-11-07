@@ -359,9 +359,9 @@ func TestMutationsAndRecallRead_RejectNilUUIDs(t *testing.T) {
 	})
 
 	t.Run("PatchKnowledgeHomeItemURL rejects nil user_id and nil tenant_id", func(t *testing.T) {
-		err := repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","projection_version":1,"url":"https://example.com"}`))
+		err := repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","projection_version":1,"url":"https://example.com","occurred_at":"`+now+`"}`))
 		require.Error(t, err)
-		err = repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","projection_version":1,"url":"https://example.com"}`))
+		err = repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","projection_version":1,"url":"https://example.com","occurred_at":"`+now+`"}`))
 		require.Error(t, err)
 	})
 
