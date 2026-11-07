@@ -3,9 +3,11 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1613,4 +1615,79 @@ func TestBFFHandler_CircuitOpen_DeclaresGlobalFailureScope(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	assert.Equal(t, FailureScopeGlobal, rec.Header().Get(FailureScopeHeader))
 	assert.Equal(t, "5", rec.Header().Get("Retry-After"))
+}
+
+func TestBFFHandler_ServeHTTP_RejectsOversizedUnaryRequestBody(t *testing.T) {
+	var backendHits atomic.Int32
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendHits.Add(1)
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	secret := []byte("test-secret-key")
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, BFFConfig{
+		EnableCircuitBreaker:     true,
+		EnableDedup:              true,
+		EnableErrorNormalization: true,
+		CBFailureThreshold:       5,
+		CBSuccessThreshold:       2,
+		CBOpenTimeout:            30 * time.Second,
+		DedupWindow:              100 * time.Millisecond,
+	})
+	token := createTestToken(t, secret)
+
+	t.Run("known Content-Length exceeding maxRequestBodyBytes", func(t *testing.T) {
+		backendHits.Store(0)
+		oversized := bytes.NewReader(make([]byte, maxRequestBodyBytes+1))
+		req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", oversized)
+		req.Header.Set("Content-Type", "application/proto")
+		req.Header.Set("X-Alt-Backend-Token", token)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		assert.Zero(t, backendHits.Load(), "oversized request must be rejected before contacting backend")
+	})
+
+	t.Run("unknown Content-Length stream exceeding maxRequestBodyBytes", func(t *testing.T) {
+		backendHits.Store(0)
+		oversizedStream := io.NopCloser(bytes.NewReader(make([]byte, maxRequestBodyBytes+1)))
+		req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", nil)
+		req.Body = oversizedStream
+		req.ContentLength = -1
+		req.Header.Set("Content-Type", "application/proto")
+		req.Header.Set("X-Alt-Backend-Token", token)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		assert.Zero(t, backendHits.Load(), "oversized stream must be rejected before contacting backend")
+	})
+}
+
+func TestBFFHandler_ServeHTTP_BoundsUnaryResponseBody(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/proto")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.Copy(w, &zeroReader{remaining: maxResponseBodyBytes + 1024})
+	}))
+	defer backend.Close()
+
+	secret := []byte("test-secret-key")
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, BFFConfig{})
+	token := createTestToken(t, secret)
+
+	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader("req"))
+	req.Header.Set("Content-Type", "application/proto")
+	req.Header.Set("X-Alt-Backend-Token", token)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, int(maxResponseBodyBytes), rec.Body.Len())
 }
