@@ -270,14 +270,16 @@ class RecapSummaryUsecase:
             response = await self._generate_hierarchical_summary(
                 request, max_bullets, temperature_override
             )
-            await self._cache_response(cache_key, response)
+            if not response.metadata.is_degraded:
+                await self._cache_response(cache_key, response)
             return response
 
         # Single-shot summarization for smaller inputs
         response = await self._generate_single_shot_summary(
             request, max_bullets, temperature_override
         )
-        await self._cache_response(cache_key, response)
+        if not response.metadata.is_degraded:
+            await self._cache_response(cache_key, response)
         return response
 
     async def generate_batch_summary(
