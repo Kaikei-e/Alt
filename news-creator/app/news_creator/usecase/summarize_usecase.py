@@ -496,21 +496,27 @@ class SummarizeUsecase:
                 },
             )
 
-            # Minimal fallback cleaning: just remove turn tokens and trim
+            # Minimal fallback cleaning: strip thinking blocks, remove turn tokens, and sanitize
             fallback_summary = raw_summary
             if fallback_summary:
+                fallback_summary = re.sub(
+                    r"<\|channel>thought(?:.*?<channel\|>|.*)",
+                    "",
+                    fallback_summary,
+                    flags=re.DOTALL,
+                )
                 fallback_summary = (
                     fallback_summary.replace("<start_of_turn>", "")
                     .replace("<end_of_turn>", "")
                     .replace("<|turn>", "")
                     .replace("<turn|>", "")
-                    .replace("<|channel>thought", "")
                     .replace("<channel|>", "")
                     .replace("<|system|>", "")
                     .replace("<|user|>", "")
                     .replace("<|assistant|>", "")
                     .strip()
                 )
+                fallback_summary = sanitize_output_markdown(fallback_summary).strip()
 
             if not fallback_summary or not fallback_summary.strip():
                 # Check if prompt might have been truncated
