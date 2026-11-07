@@ -458,4 +458,3 @@ func TestGetTrail_PreservesUpstreamInvalidArgument(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
-

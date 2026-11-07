@@ -145,4 +145,3 @@ func TestTrackHomeAction_Snooze_BoundsSnoozeHours(t *testing.T) {
 		require.Equal(t, 1, candidatePort.calls)
 	})
 }
-

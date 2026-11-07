@@ -207,4 +207,3 @@ func TestTrackHomeAction_UnknownActionTypeReturnsInvalidArgument(t *testing.T) {
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	require.Empty(t, capture.at(slog.LevelError))
 }
-
