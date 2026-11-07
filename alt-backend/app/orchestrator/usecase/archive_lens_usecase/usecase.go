@@ -1,6 +1,7 @@
 package archive_lens_usecase
 
 import (
+	"alt/domain"
 	"alt/orchestrator/port/knowledge_lens_port"
 	"context"
 	"fmt"
@@ -29,7 +30,7 @@ func (u *ArchiveLensUsecase) Execute(ctx context.Context, userID uuid.UUID, lens
 		return fmt.Errorf("get lens: %w", err)
 	}
 	if lens.UserID != userID {
-		return fmt.Errorf("lens does not belong to user")
+		return domain.ErrLensNotFound
 	}
 
 	if err := u.archivePort.ArchiveLens(ctx, lensID); err != nil {

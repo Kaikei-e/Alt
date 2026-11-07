@@ -54,7 +54,7 @@ func (u *SelectLensUsecase) Execute(ctx context.Context, userID uuid.UUID, lensI
 		return fmt.Errorf("get lens: %w", err)
 	}
 	if lens.UserID != userID {
-		return fmt.Errorf("lens does not belong to user")
+		return domain.ErrLensNotFound
 	}
 
 	version, err := u.getVersion.GetCurrentLensVersion(ctx, lensID)

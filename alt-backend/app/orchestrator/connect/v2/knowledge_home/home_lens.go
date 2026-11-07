@@ -2,6 +2,7 @@ package knowledge_home
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"connectrpc.com/connect"
@@ -101,6 +102,9 @@ func (h *Handler) UpdateLens(
 
 	version, err := h.updateLensUsecase.Execute(ctx, input)
 	if err != nil {
+		if errors.Is(err, domain.ErrLensNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, domain.ErrLensNotFound)
+		}
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "UpdateLens")
 	}
 
@@ -133,6 +137,9 @@ func (h *Handler) DeleteLens(
 	}
 
 	if err := h.archiveLensUsecase.Execute(ctx, user.UserID, lensID); err != nil {
+		if errors.Is(err, domain.ErrLensNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, domain.ErrLensNotFound)
+		}
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "DeleteLens")
 	}
 
@@ -197,6 +204,9 @@ func (h *Handler) SelectLens(
 	}
 
 	if err := h.selectLensUsecase.Execute(ctx, user.UserID, lensID); err != nil {
+		if errors.Is(err, domain.ErrLensNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, domain.ErrLensNotFound)
+		}
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "SelectLens")
 	}
 

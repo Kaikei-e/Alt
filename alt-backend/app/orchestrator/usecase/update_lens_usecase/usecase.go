@@ -45,7 +45,7 @@ func (u *UpdateLensUsecase) Execute(ctx context.Context, input UpdateLensInput) 
 		return nil, fmt.Errorf("get lens: %w", err)
 	}
 	if lens.UserID != input.UserID {
-		return nil, fmt.Errorf("lens does not belong to user")
+		return nil, domain.ErrLensNotFound
 	}
 
 	if input.SortMode == "" {

@@ -46,6 +46,7 @@ var (
 	// Knowledge Home 関連エラー
 	ErrKnowledgeEventNotFound = errors.New("knowledge event not found")
 	ErrProjectionStale        = errors.New("projection is stale")
+	ErrLensNotFound           = errors.New("lens not found")
 
 	// Web Push 関連エラー
 	//
