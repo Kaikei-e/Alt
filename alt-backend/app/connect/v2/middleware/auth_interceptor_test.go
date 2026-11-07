@@ -196,4 +196,3 @@ func TestAuthInterceptor_RejectsNilUUIDClaims(t *testing.T) {
 		})
 	}
 }
-
