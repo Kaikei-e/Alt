@@ -117,6 +117,29 @@ async fn test_batch_cleanup_by_age() {
 }
 
 #[tokio::test]
+async fn test_cleanup_removes_corrupt_batch_past_retention() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = DiskConfig {
+        storage_path: temp_dir.path().to_path_buf(),
+        max_disk_usage: 100 * 1024 * 1024,
+        retention_period: Duration::ZERO,
+        compression: true,
+        enabled: true,
+    };
+
+    let mut disk_fallback = DiskFallback::new(config).await.unwrap();
+
+    let corrupt_path = temp_dir.path().join("deadbeef.batch");
+    tokio::fs::write(&corrupt_path, b"corrupt batch bytes")
+        .await
+        .unwrap();
+
+    let deleted = disk_fallback.cleanup_old_batches().await.unwrap();
+    assert_eq!(deleted, 1);
+    assert!(!corrupt_path.exists());
+}
+
+#[tokio::test]
 async fn test_delete_batch() {
     let temp_dir = TempDir::new().unwrap();
     let config = DiskConfig {
