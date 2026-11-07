@@ -6,13 +6,13 @@ on:
       - main
     paths:
       - "metrics/**"
-      - ".github/workflows/metrics.yaml"
+      - ".github/workflows/metrics-workflow.yaml"
   pull_request:
     branches:
       - main
     paths:
       - "metrics/**"
-      - ".github/workflows/metrics.yaml"
+      - ".github/workflows/metrics-workflow.yaml"
   workflow_dispatch:
 
 permissions:
