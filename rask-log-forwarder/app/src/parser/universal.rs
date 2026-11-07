@@ -1016,4 +1016,27 @@ mod tests {
         );
         assert!(!enriched.fields.contains_key("timestamp_fallback"));
     }
+
+    #[test]
+    fn application_json_starting_with_log_key_is_parsed_as_service_log() {
+        let container_info = create_go_backend_container_info();
+        let parser = UniversalParser::new();
+
+        let raw_line = br#"{"log":"request handled","level":"error","msg":"db timeout"}"#;
+
+        let entry = parser
+            .parse_docker_log_with_stream(raw_line, &container_info, LogStream::Stderr)
+            .expect(
+                "application JSON log starting with \"log\" key must not fail Docker envelope parsing",
+            );
+
+        assert_eq!(entry.log_type, "structured");
+        assert_eq!(entry.level, Some(LogLevel::Error));
+        assert_eq!(entry.stream, "stderr");
+        assert_eq!(entry.message, "db timeout");
+        assert_eq!(
+            entry.fields.get("log"),
+            Some(&"request handled".to_string())
+        );
+    }
 }
