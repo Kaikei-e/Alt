@@ -20,6 +20,7 @@ import pytest
 
 from acolyte.domain.report import Report
 from acolyte.domain.run import ReportJob, ReportRun
+from acolyte.gateway.memory_job_gw import MemoryJobGateway
 from acolyte.handler.connect_service import AcolyteConnectService
 from tests.conftest import TEST_USER_ID
 
@@ -184,16 +185,19 @@ async def test_run_pipeline_fails_run_when_mark_running_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_resume_pipeline_mark_running_failure_does_not_fail_already_succeeded_run() -> None:
-    """When resume_pipeline is called for a run that already succeeded and
-    mark_running raises, the crash handler must not overwrite the succeeded
-    run with fail_run."""
+    """When resume_pipeline is called for a run that already succeeded,
+    mark_running refuses the transition, the pipeline is not executed, and
+    the crash handler must not overwrite the succeeded run with fail_run."""
     report_id = uuid4()
-    run_id = uuid4()
     settings = SimpleNamespace(
         checkpoint_enabled=True,
         default_model="gemma4-e4b-12k",
         resolve_backend_token_secret=lambda: "test-secret",
     )
+    jobs = MemoryJobGateway()
+    run = await jobs.create_run(report_id, 1)
+    await jobs.complete_run(run.run_id)
+
     repo = MagicMock()
     repo.get_report = AsyncMock(
         return_value=Report(
@@ -201,7 +205,7 @@ async def test_resume_pipeline_mark_running_failure_does_not_fail_already_succee
             title="Test",
             report_type="weekly_briefing",
             current_version=1,
-            latest_successful_run_id=run_id,
+            latest_successful_run_id=run.run_id,
             created_at=datetime.now(UTC),
             user_id=TEST_USER_ID,
         )
@@ -209,20 +213,6 @@ async def test_resume_pipeline_mark_running_failure_does_not_fail_already_succee
     graph = MagicMock()
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 1})
 
-    class SucceededRunFailingMarkJobQueue(FakeJobQueue):
-        async def mark_running(self, run_id: UUID, planner_model: str, writer_model: str, critic_model: str) -> None:
-            msg = "psycopg pool timeout"
-            raise RuntimeError(msg)
-
-        async def get_run(self, queried_run_id: UUID) -> ReportRun | None:
-            return ReportRun(
-                run_id=queried_run_id,
-                report_id=report_id,
-                target_version_no=1,
-                run_status="succeeded",
-            )
-
-    jobs = SucceededRunFailingMarkJobQueue()
     service = AcolyteConnectService(settings, repo, job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
     token = jwt.encode(
         {
@@ -235,7 +225,35 @@ async def test_resume_pipeline_mark_running_failure_does_not_fail_already_succee
         algorithm="HS256",
     )
 
-    await service.resume_pipeline(str(report_id), str(run_id), {"topic": "AI"}, token=token)
+    await service.resume_pipeline(str(report_id), str(run.run_id), {"topic": "AI"}, token=token)
 
-    assert jobs.fail_run_calls == []
+    settled = await jobs.get_run(run.run_id)
+    assert settled is not None
+    assert settled.run_status == "succeeded"
+    assert settled.failure_code is None
     graph.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_does_not_execute_graph_when_mark_running_changes_no_row() -> None:
+    """When mark_running changes no row (e.g. cancelled or missing run), the
+    pipeline must not execute."""
+    settings = SimpleNamespace(checkpoint_enabled=False, default_model="gemma4-e4b-12k")
+    graph = MagicMock()
+    graph.ainvoke = AsyncMock(return_value={"final_version_no": 1})
+    jobs = MemoryJobGateway()
+    cancelled_id = uuid4()
+    jobs._runs[cancelled_id] = ReportRun(
+        run_id=cancelled_id,
+        report_id=uuid4(),
+        target_version_no=1,
+        run_status="cancelled",
+    )
+    service = AcolyteConnectService(settings, MagicMock(), job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
+
+    await service._run_pipeline("report-1", str(cancelled_id), {"topic": "AI"}, user_id=TEST_USER_ID)
+
+    graph.ainvoke.assert_not_awaited()
+    settled = await jobs.get_run(cancelled_id)
+    assert settled is not None
+    assert settled.run_status == "cancelled"
