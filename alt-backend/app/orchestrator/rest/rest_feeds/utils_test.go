@@ -15,6 +15,7 @@ import (
 	"alt/orchestrator/driver/models"
 	"alt/orchestrator/gateway/fetch_feed_gateway"
 	"alt/orchestrator/usecase/cached_feed_list_usecase"
+	"alt/orchestrator/usecase/fetch_feed_tags_by_id_usecase"
 	"alt/orchestrator/usecase/fetch_feed_usecase"
 	"alt/utils/logger"
 
@@ -369,4 +370,75 @@ func TestRestHandleFetchReadAndFavoriteFeedsCursor_UsesSortKeyTime(t *testing.T)
 			assert.Equal(t, "Feed B", body2.Data[0]["title"])
 		})
 	}
+}
+
+type stubFetchFeedTagsPort struct {
+	tags       []*domain.FeedTag
+	lastCursor *time.Time
+}
+
+func (s *stubFetchFeedTagsPort) FetchFeedTags(_ context.Context, _ string, cursor *time.Time, _ int) ([]*domain.FeedTag, error) {
+	s.lastCursor = cursor
+	return s.tags, nil
+}
+
+func TestRestHandleFetchFeedTagsByID_CursorRoundTripKeepsSubSecondPrecision(t *testing.T) {
+	logger.InitLogger()
+
+	ts := time.Date(2026, time.March, 2, 10, 0, 0, 123456000, time.UTC)
+	stub := &stubFetchFeedTagsPort{
+		tags: []*domain.FeedTag{
+			{
+				ID:        uuid.MustParse("11111111-1111-1111-1111-111111111111").String(),
+				TagName:   "golang",
+				CreatedAt: ts,
+			},
+		},
+	}
+
+	container := &di.ApplicationComponents{
+		FetchFeedTagsByIDUsecase: fetch_feed_tags_by_id_usecase.NewFetchFeedTagsByIDUsecase(stub),
+	}
+	handler := RestHandleFetchFeedTagsByID(container)
+	e := echo.New()
+	feedID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").String()
+
+	req1 := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1", nil)
+	rec1 := httptest.NewRecorder()
+	c1 := e.NewContext(req1, rec1)
+	c1.SetParamNames("id")
+	c1.SetParamValues(feedID)
+
+	require.NoError(t, handler(c1))
+	require.Equal(t, http.StatusOK, rec1.Code)
+
+	var body1 struct {
+		NextCursor string `json:"next_cursor"`
+	}
+	require.NoError(t, json.Unmarshal(rec1.Body.Bytes(), &body1))
+	require.NotEmpty(t, body1.NextCursor)
+
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1&cursor="+url.QueryEscape(body1.NextCursor), nil)
+	rec2 := httptest.NewRecorder()
+	c2 := e.NewContext(req2, rec2)
+	c2.SetParamNames("id")
+	c2.SetParamValues(feedID)
+
+	require.NoError(t, handler(c2))
+	require.Equal(t, http.StatusOK, rec2.Code)
+	require.NotNil(t, stub.lastCursor)
+	assert.True(t, stub.lastCursor.Equal(ts),
+		"cursor %q became %q", ts.Format(time.RFC3339Nano), stub.lastCursor.Format(time.RFC3339Nano))
+
+	wholeSec := time.Date(2026, time.March, 2, 10, 0, 0, 0, time.UTC)
+	req3 := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1&cursor="+url.QueryEscape(wholeSec.Format(time.RFC3339)), nil)
+	rec3 := httptest.NewRecorder()
+	c3 := e.NewContext(req3, rec3)
+	c3.SetParamNames("id")
+	c3.SetParamValues(feedID)
+
+	require.NoError(t, handler(c3))
+	require.Equal(t, http.StatusOK, rec3.Code)
+	require.NotNil(t, stub.lastCursor)
+	assert.True(t, stub.lastCursor.Equal(wholeSec))
 }

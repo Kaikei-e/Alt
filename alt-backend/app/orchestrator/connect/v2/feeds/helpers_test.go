@@ -277,3 +277,63 @@ func TestGetFavoriteFeeds_CursorUsesFavoriteCreatedAtAndReturnsPage2(t *testing.
 	require.Len(t, page2.Msg.Data, 1)
 	assert.Equal(t, "Feed B", page2.Msg.Data[0].Title)
 }
+
+type fakeFeedTagStore struct {
+	tags       []*domain.FeedTag
+	lastCursor *time.Time
+}
+
+func (f *fakeFeedTagStore) FetchFeedTags(_ context.Context, _ string, cursor *time.Time, _ int) ([]*domain.FeedTag, error) {
+	f.lastCursor = cursor
+	return f.tags, nil
+}
+
+func TestGetFeedTags_CursorRoundTripKeepsSubSecondPrecision(t *testing.T) {
+	logger.InitLogger()
+
+	ts := time.Date(2026, time.March, 2, 10, 0, 0, 123456000, time.UTC)
+	store := &fakeFeedTagStore{
+		tags: []*domain.FeedTag{
+			{
+				ID:        uuid.MustParse("11111111-1111-1111-1111-111111111111").String(),
+				TagName:   "golang",
+				CreatedAt: ts,
+			},
+		},
+	}
+
+	handler := NewHandler(FeedHandlerDeps{
+		FeedTagStore:   store,
+		ResolveArticle: resolve_article_usecase.New(nil, nil),
+	}, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+	feedID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").String()
+
+	page1, err := handler.GetFeedTags(ctx, connect.NewRequest(&feedsv2.GetFeedTagsRequest{
+		FeedId: feedID,
+		Limit:  1,
+	}))
+	require.NoError(t, err)
+	require.Len(t, page1.Msg.Tags, 1)
+	nextCursor := page1.Msg.Tags[0].CreatedAt
+
+	_, err = handler.GetFeedTags(ctx, connect.NewRequest(&feedsv2.GetFeedTagsRequest{
+		FeedId: feedID,
+		Limit:  1,
+		Cursor: nextCursor,
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, store.lastCursor)
+	assert.True(t, store.lastCursor.Equal(ts),
+		"cursor %q became %q", ts.Format(time.RFC3339Nano), store.lastCursor.Format(time.RFC3339Nano))
+
+	wholeSec := time.Date(2026, time.March, 2, 10, 0, 0, 0, time.UTC)
+	_, err = handler.GetFeedTags(ctx, connect.NewRequest(&feedsv2.GetFeedTagsRequest{
+		FeedId: feedID,
+		Limit:  1,
+		Cursor: wholeSec.Format(time.RFC3339),
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, store.lastCursor)
+	assert.True(t, store.lastCursor.Equal(wholeSec))
+}
