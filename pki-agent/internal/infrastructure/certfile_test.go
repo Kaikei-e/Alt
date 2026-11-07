@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -189,5 +190,47 @@ func TestCertFile_WriteAtomic_NoPartialOnError(t *testing.T) {
 		if filepath.Ext(e.Name()) == ".tmp" || len(e.Name()) > 10 && e.Name()[:10] == ".pkiagent-" {
 			t.Fatalf("leaked tmpfile: %s", e.Name())
 		}
+	}
+}
+
+func TestCertFile_Write_KeyFailureLeavesPreviousCertIntact(t *testing.T) {
+	dir := t.TempDir()
+	cf := &CertFile{
+		CertPath: filepath.Join(dir, "svc-cert.pem"),
+		KeyPath:  filepath.Join(dir, "svc-key.pem"),
+	}
+	cert1, key1 := newSelfSignedPEM(t)
+	if err := cf.Write(context.Background(), cert1, key1); err != nil {
+		t.Fatalf("initial write failed: %v", err)
+	}
+
+	cert2, key2 := newSelfSignedPEM(t)
+	cf.ChownRequested = true
+	cf.chown = func(name string, _, _ int) error {
+		b, err := os.ReadFile(name)
+		if err == nil && bytes.Equal(b, key2) {
+			return errors.New("chown EPERM on key")
+		}
+		return nil
+	}
+
+	if err := cf.Write(context.Background(), cert2, key2); err == nil {
+		t.Fatal("expected Write to fail when key write fails")
+	}
+
+	gotCert, err := os.ReadFile(cf.CertPath)
+	if err != nil {
+		t.Fatalf("read cert after failed write: %v", err)
+	}
+	if !bytes.Equal(gotCert, cert1) {
+		t.Fatal("previous cert on disk was overwritten despite key write failure")
+	}
+
+	gotKey, err := os.ReadFile(cf.KeyPath)
+	if err != nil {
+		t.Fatalf("read key after failed write: %v", err)
+	}
+	if !bytes.Equal(gotKey, key1) {
+		t.Fatal("previous key on disk was modified despite key write failure")
 	}
 }
