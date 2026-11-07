@@ -36,6 +36,10 @@ func (m *mockSovereignHandler) ApplyProjectionMutation(
 	m.lastEntityID = req.Msg.EntityId
 	m.lastPayload = req.Msg.Payload
 	if m.returnErr != nil {
+		var connectErr *connect.Error
+		if errors.As(m.returnErr, &connectErr) {
+			return nil, m.returnErr
+		}
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}
 	return connect.NewResponse(&sovereignv1.ApplyProjectionMutationResponse{Success: true}), nil
