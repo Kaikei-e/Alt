@@ -159,6 +159,19 @@ impl RecapDao {
         }
     }
 
+    pub(crate) const FIND_MOST_RECENT_FAILED_JOB_SQL: &'static str = r"
+            SELECT job_id, status, last_stage, window_days
+            FROM recap_jobs
+            WHERE status = 'failed'
+            ORDER BY kicked_at DESC
+            LIMIT 1
+            ";
+
+    pub(crate) fn is_retryable_failed_job(status: &JobStatus, trigger_source: &str) -> bool {
+        matches!(status, JobStatus::Failed)
+            && crate::scheduler::jobs::is_batch_retry_trigger_source(trigger_source)
+    }
+
     /// 直近で `failed` になった Job を 1 件探す（`POST /admin/jobs/retry` 用）。
     ///
     /// `trigger_source` は問わない（`system` / `morning` / `user` いずれの
@@ -167,18 +180,10 @@ impl RecapDao {
     pub async fn find_most_recent_failed_job(
         pool: &PgPool,
     ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
-        let row = sqlx::query(
-            r"
-            SELECT job_id, status, last_stage, window_days
-            FROM recap_jobs
-            WHERE status = 'failed'
-            ORDER BY kicked_at DESC
-            LIMIT 1
-            ",
-        )
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| RecapError::Db(format!("failed to find most recent failed job: {e}")))?;
+        let row = sqlx::query(Self::FIND_MOST_RECENT_FAILED_JOB_SQL)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to find most recent failed job: {e}")))?;
 
         if let Some(row) = row {
             let job_id: Uuid = row.try_get("job_id")?;

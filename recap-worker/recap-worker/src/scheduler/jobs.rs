@@ -41,6 +41,10 @@ pub(crate) enum RetryOutcome {
     AlreadyRunning,
 }
 
+pub(crate) fn is_batch_retry_trigger_source(_trigger_source: &str) -> bool {
+    true
+}
+
 /// Looks up the most recent `failed` job and reports what a retry should
 /// target: the failed job's id (for logging) and the window_days to reuse
 /// for the fresh run. Kept separate from `Scheduler` so it is testable with
@@ -707,6 +711,155 @@ mod tests {
         assert!(
             result.is_err(),
             "DB error must propagate, not degrade to None"
+        );
+    }
+
+    struct FakeJobRow {
+        job_id: Uuid,
+        status: JobStatus,
+        last_stage: Option<String>,
+        window_days: u32,
+        trigger_source: &'static str,
+    }
+
+    fn mock_dao_with_job_rows(rows: &[FakeJobRow]) -> crate::store::dao::mock::MockRecapDao {
+        use crate::store::dao::job::RecapDao as JobSqlDao;
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        let selected = rows
+            .iter()
+            .find(|row| JobSqlDao::is_retryable_failed_job(&row.status, row.trigger_source))
+            .map(|row| {
+                (
+                    row.job_id,
+                    row.status.clone(),
+                    row.last_stage.clone(),
+                    row.window_days,
+                )
+            });
+        dao.set_find_most_recent_failed_job_result(Ok(selected));
+        dao
+    }
+
+    /// Admin retry (`POST /admin/jobs/retry`) always runs the full multi-genre
+    /// batch `PipelineOrchestrator`, so it must only target failed batch recap
+    /// jobs (`trigger_source` in `["system", "user"]`). When a newer morning
+    /// update (`"morning"`, window 1) or topic-cards run (`"cards"` /
+    /// `"cards_replay"`, window 3) has failed more recently than a failed batch
+    /// job, the retry must skip the morning/cards rows and reuse the older
+    /// batch job's window.
+    #[tokio::test]
+    async fn find_retry_target_skips_morning_and_targets_older_batch_job() {
+        use crate::store::dao::job::RecapDao as JobSqlDao;
+
+        let morning_job_id = Uuid::new_v4();
+        let cards_job_id = Uuid::new_v4();
+        let batch_job_id = Uuid::new_v4();
+        // Ordered newest-first (`ORDER BY kicked_at DESC`).
+        let rows = [
+            FakeJobRow {
+                job_id: morning_job_id,
+                status: JobStatus::Failed,
+                last_stage: Some("fetch".to_string()),
+                window_days: 1,
+                trigger_source: "morning",
+            },
+            FakeJobRow {
+                job_id: cards_job_id,
+                status: JobStatus::Failed,
+                last_stage: Some("cards".to_string()),
+                window_days: 3,
+                trigger_source: "cards",
+            },
+            FakeJobRow {
+                job_id: batch_job_id,
+                status: JobStatus::Failed,
+                last_stage: Some("dispatch".to_string()),
+                window_days: 7,
+                trigger_source: "system",
+            },
+        ];
+
+        let dao = mock_dao_with_job_rows(&rows);
+        let target = find_retry_target(&dao).await.expect("dao call succeeds");
+
+        assert_eq!(
+            target,
+            Some((batch_job_id, 7)),
+            "retry must target the older failed batch job (window 7), never window 1/3 from morning/cards"
+        );
+
+        let user_batch_job_id = Uuid::new_v4();
+        let user_rows = [
+            FakeJobRow {
+                job_id: Uuid::new_v4(),
+                status: JobStatus::Failed,
+                last_stage: None,
+                window_days: 3,
+                trigger_source: "cards_replay",
+            },
+            FakeJobRow {
+                job_id: user_batch_job_id,
+                status: JobStatus::Failed,
+                last_stage: Some("persist".to_string()),
+                window_days: 7,
+                trigger_source: "user",
+            },
+        ];
+        let user_dao = mock_dao_with_job_rows(&user_rows);
+        assert_eq!(
+            find_retry_target(&user_dao)
+                .await
+                .expect("dao call succeeds"),
+            Some((user_batch_job_id, 7))
+        );
+
+        let normalized_sql = JobSqlDao::FIND_MOST_RECENT_FAILED_JOB_SQL
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            normalized_sql.contains("trigger_source IN ('system', 'user')"),
+            "SQL query must filter trigger_source to batch sources ('system', 'user'), got: {normalized_sql}"
+        );
+    }
+
+    /// When the only failed rows are morning updates or topic-cards jobs,
+    /// `find_retry_target` must return `None` (`RetryOutcome::NoFailedJob`),
+    /// never a 1- or 3-day window from those pipelines.
+    #[tokio::test]
+    async fn find_retry_target_returns_none_when_only_morning_or_cards_failed() {
+        let rows = [
+            FakeJobRow {
+                job_id: Uuid::new_v4(),
+                status: JobStatus::Failed,
+                last_stage: Some("fetch".to_string()),
+                window_days: 1,
+                trigger_source: "morning",
+            },
+            FakeJobRow {
+                job_id: Uuid::new_v4(),
+                status: JobStatus::Failed,
+                last_stage: Some("cards".to_string()),
+                window_days: 3,
+                trigger_source: "cards",
+            },
+            FakeJobRow {
+                job_id: Uuid::new_v4(),
+                status: JobStatus::Failed,
+                last_stage: None,
+                window_days: 3,
+                trigger_source: "cards_replay",
+            },
+        ];
+
+        let dao = mock_dao_with_job_rows(&rows);
+        let target = find_retry_target(&dao).await.expect("dao call succeeds");
+
+        assert_eq!(
+            target, None,
+            "morning/cards failures alone must yield None (NoFailedJob)"
         );
     }
 
