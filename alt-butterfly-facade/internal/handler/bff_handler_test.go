@@ -1802,3 +1802,92 @@ func TestBFFHandler_Unary_CircuitBreaker_CallerCancelDoesNotRecordFailure(t *tes
 	assert.NotEqual(t, http.StatusServiceUnavailable, rec.Code, "circuit breaker must not open after caller-side cancellations")
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+func TestBFFHandler_CircuitBreaker_BackendTimeoutRecordsFailure(t *testing.T) {
+	release := make(chan struct{})
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	defer backend.Close()
+	defer close(release)
+
+	secret := []byte("test-secret-key")
+	token := createTestToken(t, secret)
+
+	t.Run("non-dedup unary path", func(t *testing.T) {
+		backendClient := client.NewBackendClientWithTransport(
+			backend.URL,
+			50*time.Millisecond,
+			50*time.Millisecond,
+			http.DefaultTransport,
+		)
+		handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", nil, BFFConfig{
+			EnableCircuitBreaker: true,
+			CBFailureThreshold:   5,
+			CBSuccessThreshold:   2,
+			CBOpenTimeout:        time.Hour,
+		})
+
+		req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		req.Header.Set("Connect-Timeout-Ms", "20")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		stats := handler.GetCircuitBreakerStats()
+		require.NotNil(t, stats)
+		assert.Equal(t, int64(1), stats.TotalFailures, "backend timeout on non-dedup unary path must record a breaker failure")
+	})
+
+	t.Run("streaming path", func(t *testing.T) {
+		backendClient := client.NewBackendClientWithTransport(
+			backend.URL,
+			50*time.Millisecond,
+			50*time.Millisecond,
+			http.DefaultTransport,
+		)
+		handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", nil, BFFConfig{
+			EnableCircuitBreaker: true,
+			CBFailureThreshold:   5,
+			CBSuccessThreshold:   2,
+			CBOpenTimeout:        time.Hour,
+		})
+
+		req := httptest.NewRequest(http.MethodPost, "/alt.augur.v2.AugurService/StreamChat", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		req.Header.Set("Connect-Timeout-Ms", "20")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		stats := handler.GetCircuitBreakerStats()
+		require.NotNil(t, stats)
+		assert.Equal(t, int64(1), stats.TotalFailures, "backend timeout on streaming path must record a breaker failure")
+	})
+
+	t.Run("dedup path", func(t *testing.T) {
+		backendClient := client.NewBackendClientWithTransport(
+			backend.URL,
+			20*time.Millisecond,
+			50*time.Millisecond,
+			http.DefaultTransport,
+		)
+		handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", nil, BFFConfig{
+			EnableCircuitBreaker: true,
+			EnableDedup:          true,
+			CBFailureThreshold:   5,
+			CBSuccessThreshold:   2,
+			CBOpenTimeout:        time.Hour,
+			DedupWindow:          100 * time.Millisecond,
+		})
+
+		req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		req.Header.Set("Connect-Timeout-Ms", "20")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		stats := handler.GetCircuitBreakerStats()
+		require.NotNil(t, stats)
+		assert.Equal(t, int64(1), stats.TotalFailures, "backend timeout on dedup path must record a breaker failure")
+	})
+}
