@@ -287,7 +287,7 @@ func TestSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
 
 	require.Len(t, tx.queries, 1)
 	q := tx.queries[0]
-	assert.Contains(t, q, "WITH candidates AS")
+	assert.Contains(t, q, "WITH candidates AS MATERIALIZED (")
 	parts := strings.SplitN(q, "SELECT\n\t\t\tc.id", 2)
 	require.Len(t, parts, 2, "must have candidates CTE and outer SELECT")
 	candidatesCTE := parts[0]
@@ -300,6 +300,9 @@ func TestSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
 	assert.Less(t, strings.Index(candidatesCTE, "EXISTS"), strings.Index(candidatesCTE, "LIMIT $2"))
 	assert.Less(t, strings.Index(candidatesCTE, "d.current_version_id = c.version_id"), strings.Index(candidatesCTE, "LIMIT $2"))
 	assert.Less(t, strings.Index(candidatesCTE, "d.user_id = $4"), strings.Index(candidatesCTE, "LIMIT $2"))
+
+	outerSelect := parts[1]
+	assert.Contains(t, outerSelect, "ORDER BY cand.distance + 0 ASC")
 
 	require.Len(t, tx.args, 1)
 	assert.Equal(t, 80, tx.args[0][1], "candidateLimit = limit * 4")

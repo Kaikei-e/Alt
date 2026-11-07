@@ -46,16 +46,30 @@ func assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t *testing.T, arm, ownerPlac
 	assert.Less(t, strings.Index(arm, ownerFilter), strings.Index(arm, limitClause))
 }
 
+func assertVectorArmMaterializesAndResortsCandidates(t *testing.T, vectorPart, ownerPlaceholder, limitPlaceholder string) {
+	t.Helper()
+	assert.Contains(t, vectorPart, "vector_candidates AS MATERIALIZED")
+	assert.Contains(t, vectorPart, "vector_matches AS")
+	subparts := strings.SplitN(vectorPart, "vector_matches AS", 2)
+	require.Len(t, subparts, 2, "must have vector_candidates and vector_matches CTEs")
+	vectorCandidatesCTE := subparts[0]
+	vectorMatchesCTE := subparts[1]
+
+	assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, vectorCandidatesCTE, ownerPlaceholder, limitPlaceholder)
+	assert.Contains(t, vectorMatchesCTE, "rank() OVER (ORDER BY distance + 0) AS rank")
+	assert.Contains(t, vectorMatchesCTE, "FROM vector_candidates")
+}
+
 func TestHybridSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
 	q := buildHybridSearchQuery("english", 60)
 
-	// Ensure both vector_matches and text_matches filter current_version_id and user_id ($5) before candidate limit ($3)
+	// Ensure both vector_candidates and text_matches filter current_version_id and user_id ($5) before candidate limit ($3)
 	parts := strings.Split(q, "rrf AS")
 	require.Len(t, parts, 2, "must contain candidate CTEs and rrf CTE")
 	candidatesPart := parts[0]
 
 	vectorPart := strings.Split(candidatesPart, "text_matches AS")[0]
-	assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, vectorPart, "$5", "$3")
+	assertVectorArmMaterializesAndResortsCandidates(t, vectorPart, "$5", "$3")
 
 	textPart := strings.Split(candidatesPart, "text_matches AS")[1]
 	assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$5", "$3")
@@ -72,7 +86,7 @@ func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *test
 
 		require.Contains(t, candidatesPart, "vector_matches AS")
 		vectorPart := strings.Split(candidatesPart, "text_matches AS")[0]
-		assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, vectorPart, "$5", "$2")
+		assertVectorArmMaterializesAndResortsCandidates(t, vectorPart, "$5", "$2")
 
 		textPart := strings.Split(candidatesPart, "text_matches AS")[1]
 		assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$5", "$2")
@@ -86,6 +100,7 @@ func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *test
 		require.Len(t, parts, 2, "must contain candidate CTEs and rrf CTE")
 		candidatesPart := parts[0]
 
+		assert.NotContains(t, candidatesPart, "vector_candidates AS")
 		assert.NotContains(t, candidatesPart, "vector_matches AS")
 
 		textPart := candidatesPart
