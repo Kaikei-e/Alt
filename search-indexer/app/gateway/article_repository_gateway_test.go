@@ -424,4 +424,100 @@ func TestArticleRepositoryGateway_SkipsUntitledArticleAndAdvancesCursor(t *testi
 			t.Fatalf("expected structured warning with article id, reason, and skipped count, got log: %s", logged)
 		}
 	})
+
+	t.Run("bad row last advances cursor to last driver row", func(t *testing.T) {
+		lastBadPage := []*driver.ArticleWithTags{
+			{
+				ID:        "art-1",
+				Title:     "First Article",
+				Content:   "Content 1",
+				Tags:      []driver.TagModel{{TagName: "tag1"}},
+				CreatedAt: t1,
+				UserID:    "user-1",
+			},
+			{
+				ID:        "art-2",
+				Title:     "Second Article",
+				Content:   "Content 2",
+				Tags:      []driver.TagModel{{TagName: "tag2"}},
+				CreatedAt: t2,
+				UserID:    "user-1",
+			},
+			{
+				ID:        "art-3-untitled",
+				Title:     "",
+				Content:   "Content 3 without title",
+				Tags:      []driver.TagModel{{TagName: "tag3"}},
+				CreatedAt: t3,
+				UserID:    "user-1",
+			},
+		}
+		gwLastBad := NewArticleRepositoryGateway(&mockArticleDriver{articles: lastBadPage})
+
+		articles, nextCreatedAt, nextID, err := gwLastBad.GetArticlesWithTags(context.Background(), nil, "", 10)
+		if err != nil {
+			t.Fatalf("GetArticlesWithTags() error = %v, want nil", err)
+		}
+		if len(articles) != 2 || articles[0].ID() != "art-1" || articles[1].ID() != "art-2" {
+			t.Fatalf("GetArticlesWithTags() got %d articles, want [art-1, art-2]", len(articles))
+		}
+		if nextCreatedAt == nil || !nextCreatedAt.Equal(t3) || nextID != "art-3-untitled" {
+			t.Fatalf("GetArticlesWithTags() cursor = (%v, %q), want (%v, %q)", nextCreatedAt, nextID, t3, "art-3-untitled")
+		}
+
+		mark := t1.Add(-time.Minute)
+		articles, nextCreatedAt, nextID, err = gwLastBad.GetArticlesWithTagsForward(context.Background(), &mark, nil, "", 10)
+		if err != nil {
+			t.Fatalf("GetArticlesWithTagsForward() error = %v, want nil", err)
+		}
+		if len(articles) != 2 || articles[0].ID() != "art-1" || articles[1].ID() != "art-2" {
+			t.Fatalf("GetArticlesWithTagsForward() got %d articles, want [art-1, art-2]", len(articles))
+		}
+		if nextCreatedAt == nil || !nextCreatedAt.Equal(t3) || nextID != "art-3-untitled" {
+			t.Fatalf("GetArticlesWithTagsForward() cursor = (%v, %q), want (%v, %q)", nextCreatedAt, nextID, t3, "art-3-untitled")
+		}
+	})
+
+	t.Run("all rows bad returns empty slice with last driver row cursor", func(t *testing.T) {
+		allBadPage := []*driver.ArticleWithTags{
+			{
+				ID:        "art-1-untitled",
+				Title:     "",
+				Content:   "Content 1 without title",
+				CreatedAt: t1,
+				UserID:    "user-1",
+			},
+			{
+				ID:        "art-2-untitled",
+				Title:     "",
+				Content:   "Content 2 without title",
+				CreatedAt: t2,
+				UserID:    "user-1",
+			},
+		}
+		gwAllBad := NewArticleRepositoryGateway(&mockArticleDriver{articles: allBadPage})
+
+		articles, nextCreatedAt, nextID, err := gwAllBad.GetArticlesWithTags(context.Background(), nil, "", 10)
+		if err != nil {
+			t.Fatalf("GetArticlesWithTags() error = %v, want nil", err)
+		}
+		if len(articles) != 0 {
+			t.Fatalf("GetArticlesWithTags() got %d articles, want 0", len(articles))
+		}
+		if nextCreatedAt == nil || !nextCreatedAt.Equal(t2) || nextID != "art-2-untitled" {
+			t.Fatalf("GetArticlesWithTags() cursor = (%v, %q), want (%v, %q)", nextCreatedAt, nextID, t2, "art-2-untitled")
+		}
+
+		mark := t1.Add(-time.Minute)
+		articles, nextCreatedAt, nextID, err = gwAllBad.GetArticlesWithTagsForward(context.Background(), &mark, nil, "", 10)
+		if err != nil {
+			t.Fatalf("GetArticlesWithTagsForward() error = %v, want nil", err)
+		}
+		if len(articles) != 0 {
+			t.Fatalf("GetArticlesWithTagsForward() got %d articles, want 0", len(articles))
+		}
+		if nextCreatedAt == nil || !nextCreatedAt.Equal(t2) || nextID != "art-2-untitled" {
+			t.Fatalf("GetArticlesWithTagsForward() cursor = (%v, %q), want (%v, %q)", nextCreatedAt, nextID, t2, "art-2-untitled")
+		}
+	})
 }
