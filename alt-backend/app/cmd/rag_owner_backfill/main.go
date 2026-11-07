@@ -25,6 +25,26 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+func resolveRAGOrchestratorURL() string {
+	return ""
+}
+
+func newRAGHTTPClient(_ string, _ *slog.Logger) (*http.Client, error) {
+	return nil, nil
+}
+
+func newRAGClient(_ string, _ *slog.Logger) (*rag_gateway.ClientWithResponses, error) {
+	return nil, nil
+}
+
+func loadDBPassword() (string, error) {
+	return "", nil
+}
+
+func buildPGXPoolConfig() (*pgxpool.Config, error) {
+	return nil, nil
+}
+
 // ArticleOwnerPair represents an article ID and its owner user_id from alt-db.
 type ArticleOwnerPair struct {
 	ArticleID string
