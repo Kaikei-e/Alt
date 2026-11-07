@@ -145,6 +145,39 @@ class TestSettingsInferenceAuthContract:
         assert settings.inference_service_token is None
 
 
+class TestSettingsDbPasswordFileContract:
+    def test_missing_db_password_file_fails_startup(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("RECAP_SUBWORKER_DB_PASSWORD_FILE", str(tmp_path / "absent.password"))
+
+        with pytest.raises(ValidationError, match="RECAP_SUBWORKER_DB_PASSWORD_FILE"):
+            Settings()
+
+    def test_empty_db_password_file_fails_startup(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        empty = tmp_path / "empty.password"
+        empty.write_text("  \n", encoding="utf-8")
+        monkeypatch.setenv("RECAP_SUBWORKER_DB_PASSWORD_FILE", str(empty))
+
+        with pytest.raises(ValidationError, match="RECAP_SUBWORKER_DB_PASSWORD_FILE"):
+            Settings()
+
+    def test_valid_db_password_file_injects_password(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pw_file = tmp_path / "db.password"
+        pw_file.write_text("secret-db-pass\n", encoding="utf-8")
+        monkeypatch.setenv("RECAP_SUBWORKER_DB_PASSWORD_FILE", str(pw_file))
+
+        settings = Settings()
+
+        assert settings.recap_db_password is not None
+        assert settings.recap_db_password.get_secret_value() == "secret-db-pass"
+        assert "recap_user:secret-db-pass@recap-db:5432/recap" in settings.db_url_str
+
+
 class TestEmbedderConstructionSitesSendBearer:
     def test_container_embedder_sends_bearer(
         self, embed_server: tuple[str, list[str | None]], token_file: Path
