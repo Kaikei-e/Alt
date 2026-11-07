@@ -1,11 +1,14 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"search-indexer/domain"
 	"search-indexer/driver"
+	"strings"
 	"testing"
 	"time"
 )
@@ -148,7 +151,7 @@ func TestArticleRepositoryGateway_GetArticlesWithTags(t *testing.T) {
 			name: "invalid article data from driver",
 			mockArticles: []*driver.ArticleWithTags{
 				{
-					ID:        "", // empty ID should cause domain validation error
+					ID:        "", // empty ID causes domain validation error and is skipped
 					Title:     "Title",
 					Content:   "Content",
 					Tags:      []driver.TagModel{{TagName: "tag1"}},
@@ -158,7 +161,7 @@ func TestArticleRepositoryGateway_GetArticlesWithTags(t *testing.T) {
 			mockErr:   nil,
 			limit:     10,
 			wantCount: 0,
-			wantErr:   true,
+			wantErr:   false,
 		},
 	}
 
@@ -331,4 +334,94 @@ func TestArticleRepositoryGateway_GetArticleByID_DriverErrNotFound(t *testing.T)
 	if !errors.Is(err, domain.ErrArticleNotFound) {
 		t.Fatalf("GetArticleByID() error = %v, want errors.Is(err, domain.ErrArticleNotFound)", err)
 	}
+}
+
+func TestArticleRepositoryGateway_SkipsUntitledArticleAndAdvancesCursor(t *testing.T) {
+	t1 := time.Date(2026, 3, 26, 10, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 3, 26, 10, 1, 0, 0, time.UTC)
+	t3 := time.Date(2026, 3, 26, 10, 2, 0, 0, time.UTC)
+
+	page := []*driver.ArticleWithTags{
+		{
+			ID:        "art-1",
+			Title:     "First Article",
+			Content:   "Content 1",
+			Tags:      []driver.TagModel{{TagName: "tag1"}},
+			CreatedAt: t1,
+			UserID:    "user-1",
+		},
+		{
+			ID:        "art-2-untitled",
+			Title:     "",
+			Content:   "Content 2 without title",
+			Tags:      []driver.TagModel{{TagName: "tag2"}},
+			CreatedAt: t2,
+			UserID:    "user-1",
+		},
+		{
+			ID:        "art-3",
+			Title:     "Third Article",
+			Content:   "Content 3",
+			Tags:      []driver.TagModel{{TagName: "tag3"}},
+			CreatedAt: t3,
+			UserID:    "user-1",
+		},
+	}
+
+	var logBuf bytes.Buffer
+	prevLogger := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+	driverMock := &mockArticleDriver{articles: page}
+	gw := NewArticleRepositoryGateway(driverMock)
+
+	t.Run("GetArticlesWithTags", func(t *testing.T) {
+		logBuf.Reset()
+		articles, nextCreatedAt, nextID, err := gw.GetArticlesWithTags(context.Background(), nil, "", 10)
+		if err != nil {
+			t.Fatalf("GetArticlesWithTags() error = %v, want nil", err)
+		}
+		if len(articles) != 2 {
+			t.Fatalf("GetArticlesWithTags() got %d articles, want 2", len(articles))
+		}
+		if articles[0].ID() != "art-1" || articles[1].ID() != "art-3" {
+			t.Fatalf("GetArticlesWithTags() IDs = [%s, %s], want [art-1, art-3]", articles[0].ID(), articles[1].ID())
+		}
+		if nextCreatedAt == nil || !nextCreatedAt.Equal(t3) {
+			t.Fatalf("GetArticlesWithTags() nextCreatedAt = %v, want %v (third driver row)", nextCreatedAt, t3)
+		}
+		if nextID != "art-3" {
+			t.Fatalf("GetArticlesWithTags() nextID = %q, want %q (third driver row)", nextID, "art-3")
+		}
+		logged := logBuf.String()
+		if !strings.Contains(logged, "art-2-untitled") || !strings.Contains(logged, "article title cannot be empty") || !strings.Contains(logged, "skipped") {
+			t.Fatalf("expected structured warning with article id, reason, and skipped count, got log: %s", logged)
+		}
+	})
+
+	t.Run("GetArticlesWithTagsForward", func(t *testing.T) {
+		logBuf.Reset()
+		mark := t1.Add(-time.Minute)
+		articles, nextCreatedAt, nextID, err := gw.GetArticlesWithTagsForward(context.Background(), &mark, nil, "", 10)
+		if err != nil {
+			t.Fatalf("GetArticlesWithTagsForward() error = %v, want nil", err)
+		}
+		if len(articles) != 2 {
+			t.Fatalf("GetArticlesWithTagsForward() got %d articles, want 2", len(articles))
+		}
+		if articles[0].ID() != "art-1" || articles[1].ID() != "art-3" {
+			t.Fatalf("GetArticlesWithTagsForward() IDs = [%s, %s], want [art-1, art-3]", articles[0].ID(), articles[1].ID())
+		}
+		if nextCreatedAt == nil || !nextCreatedAt.Equal(t3) {
+			t.Fatalf("GetArticlesWithTagsForward() nextCreatedAt = %v, want %v (third driver row)", nextCreatedAt, t3)
+		}
+		if nextID != "art-3" {
+			t.Fatalf("GetArticlesWithTagsForward() nextID = %q, want %q (third driver row)", nextID, "art-3")
+		}
+		logged := logBuf.String()
+		if !strings.Contains(logged, "art-2-untitled") || !strings.Contains(logged, "article title cannot be empty") || !strings.Contains(logged, "skipped") {
+			t.Fatalf("expected structured warning with article id, reason, and skipped count, got log: %s", logged)
+		}
+	})
 }
