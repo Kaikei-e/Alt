@@ -731,3 +731,102 @@ func TestStreamChat_EmptyAnswerFallback_PersistsFallbackAssistantTurn(t *testing
 	h.mocks.AssertNotCalled(t, "AppendAssistantTurn",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
+
+func TestStreamChat_ExcludesPersistedFallbackTurnsFromConversationHistory(t *testing.T) {
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	mockConv := new(MockAugurConversationUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	userID := uuid.New()
+	convID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        convID,
+		UserID:    userID,
+		Title:     "Example Phone X について教えて",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	fallbackProse := usecase.FallbackMessage(usecase.FallbackCodeRelevanceLow)
+	storedMsgs := []domain.AugurMessage{
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "user",
+			Content:        "Example Phone X について教えて",
+		},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "assistant",
+			Content:        fallbackProse,
+			Fallback: &domain.AugurFallback{
+				Code:   usecase.FallbackCodeRelevanceLow,
+				Reason: "retrieval quality insufficient: context relevance too low",
+			},
+		},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "user",
+			Content:        "半導体サプライチェーンの動向は？",
+		},
+		{
+			ID:             uuid.New(),
+			ConversationID: convID,
+			Role:           "assistant",
+			Content:        "半導体サプライチェーンは回復基調にあります。",
+		},
+	}
+
+	events := make(chan usecase.StreamEvent, 2)
+	var capturedInput usecase.AnswerWithRAGInput
+	mockConv.On("GetConversation", mock.Anything, userID, convID).Return(conv, storedMsgs, nil)
+	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("AppendUserTurn", mock.Anything, convID, "さらに詳しく教えて").Return(nil)
+	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything, mock.Anything).Return(nil)
+	mockAnswer.On("Stream", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		capturedInput = args.Get(1).(usecase.AnswerWithRAGInput)
+	}).Return((<-chan usecase.StreamEvent)(events))
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, nil, logger)
+	mux := http.NewServeMux()
+	path, connectHandler := augurv2connect.NewAugurServiceHandler(handler)
+	mux.Handle(path, connectHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := augurv2connect.NewAugurServiceClient(server.Client(), server.URL)
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
+		ConversationId: convID.String(),
+		Messages: []*augurv2.ChatMessage{
+			{Role: "user", Content: "Example Phone X について教えて"},
+			{Role: "assistant", Content: fallbackProse},
+			{Role: "user", Content: "半導体サプライチェーンの動向は？"},
+			{Role: "assistant", Content: "半導体サプライチェーンは回復基調にあります。"},
+			{Role: "user", Content: "さらに詳しく教えて"},
+		},
+	})
+	req.Header().Set("X-Alt-User-Id", userID.String())
+
+	stream, err := client.StreamChat(context.Background(), req)
+	require.NoError(t, err)
+
+	events <- usecase.StreamEvent{
+		Kind: usecase.StreamEventKindDone,
+		Payload: &usecase.AnswerWithRAGOutput{
+			Answer: "詳細な回答です。",
+		},
+	}
+	close(events)
+
+	for stream.Receive() {
+	}
+	require.NoError(t, stream.Err())
+
+	assert.Equal(t, []domain.Message{
+		{Role: "user", Content: "Example Phone X について教えて"},
+		{Role: "user", Content: "半導体サプライチェーンの動向は？"},
+		{Role: "assistant", Content: "半導体サプライチェーンは回復基調にあります。"},
+	}, capturedInput.ConversationHistory, "persisted fallback assistant turns must be excluded from LLM conversation history")
+}

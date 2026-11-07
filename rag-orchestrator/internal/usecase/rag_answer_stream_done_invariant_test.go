@@ -127,7 +127,7 @@ func TestStream_FallbackTerminals_SetMatchingFallbackCategory(t *testing.T) {
 	}{
 		{
 			name:  "buildPrompt relevance insufficient",
-			query: "Xiaomi 15 Ultraについて教えて",
+			query: "Example Phone X について教えて",
 			setup: func(retrieve *mockRetrieveContextUsecase, _ *mockLLMClient) {
 				retrieve.On("Execute", mock.Anything, mock.Anything).
 					Return(nil, usecase.ErrRelevanceInsufficient)

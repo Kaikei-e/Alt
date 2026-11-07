@@ -231,7 +231,7 @@ func TestStreamChat_EmptyFallback_PersistsFallbackTurn(t *testing.T) {
 	h.mocks.AssertNumberOfCalls(t, "AppendFallbackAssistantTurn", 1)
 }
 
-func TestStreamChat_NonFallbackEmptyAnswer_IsNotPersistedAndLogsError(t *testing.T) {
+func TestStreamChat_Clarification_IsNotPersistedAndLogsNoError(t *testing.T) {
 	var logBuf bytes.Buffer
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
@@ -242,7 +242,7 @@ func TestStreamChat_NonFallbackEmptyAnswer_IsNotPersistedAndLogsError(t *testing
 	conv := &domain.AugurConversation{
 		ID:        uuid.New(),
 		UserID:    userID,
-		Title:     "empty-non-fallback",
+		Title:     "clarification",
 		CreatedAt: time.Now().UTC(),
 	}
 
@@ -267,9 +267,17 @@ func TestStreamChat_NonFallbackEmptyAnswer_IsNotPersistedAndLogsError(t *testing
 	stream, err := client.StreamChat(context.Background(), req)
 	require.NoError(t, err)
 
+	events <- usecase.StreamEvent{
+		Kind: usecase.StreamEventKindClarification,
+		Payload: usecase.StreamClarification{
+			Message: "Which aspect do you mean?",
+			Options: []string{"Option A", "Option B"},
+		},
+	}
 	events <- usecase.StreamEvent{Kind: usecase.StreamEventKindDone, Payload: &usecase.AnswerWithRAGOutput{
 		Answer:   "",
 		Fallback: false,
+		Reason:   "clarification requested",
 	}}
 	close(events)
 
@@ -282,17 +290,23 @@ func TestStreamChat_NonFallbackEmptyAnswer_IsNotPersistedAndLogsError(t *testing
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything)
 
-	var foundErrorLog bool
+	var (
+		foundErrorLog   bool
+		foundSkippedLog bool
+	)
 	for _, line := range bytes.Split(logBuf.Bytes(), []byte("\n")) {
 		if len(line) == 0 {
 			continue
 		}
 		var rec map[string]any
 		require.NoError(t, json.Unmarshal(line, &rec))
-		if rec["msg"] == "assistant_turn_not_persisted" && rec["level"] == "ERROR" {
+		if rec["level"] == "ERROR" {
 			foundErrorLog = true
-			break
+		}
+		if rec["msg"] == "assistant_turn_skipped" && rec["level"] == "INFO" && rec["reason"] == "clarification requested" {
+			foundSkippedLog = true
 		}
 	}
-	assert.True(t, foundErrorLog, "non-fallback empty answer must log assistant_turn_not_persisted at ERROR")
+	assert.False(t, foundErrorLog, "clarification turn must not log ERROR")
+	assert.True(t, foundSkippedLog, "clarification turn must log assistant_turn_skipped at INFO")
 }

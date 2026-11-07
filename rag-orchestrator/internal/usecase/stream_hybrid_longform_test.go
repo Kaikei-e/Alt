@@ -194,6 +194,18 @@ func TestStreamHybridLongForm_OtherFallbackTerminals_SetMatchingFallbackCategory
 				UserID: testHybridUserID,
 			}))
 
+			progressEvents := findEvents(events, usecase.StreamEventKindProgress)
+			var progressPayloads []string
+			for _, pe := range progressEvents {
+				if s, ok := pe.Payload.(string); ok {
+					progressPayloads = append(progressPayloads, s)
+				}
+			}
+			assert.Contains(t, progressPayloads, "drafting", "hybrid path must emit drafting progress event")
+			if tc.retryResp != nil {
+				assert.Contains(t, progressPayloads, "refining", "hybrid retry path must emit refining progress event")
+			}
+
 			fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
 			require.NotNil(t, fallbackEvt, "expected StreamEventKindFallback")
 			assert.Equal(t, tc.expectedCode, fallbackEvt.Payload, "fallback event payload must match expected code")
