@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"alt/dataplane/port/internal_tag_port"
+	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 
@@ -33,7 +34,11 @@ func (h *Handler) UpsertArticleTags(ctx context.Context, req *connect.Request[da
 	}
 
 	// Also create tag set version + knowledge event for Knowledge Home
-	if h.createTagSetVersionUsecase != nil && len(tags) > 0 {
+	if len(tags) > 0 {
+		if h.createTagSetVersionUsecase == nil {
+			panic("datahubapi: CreateTagSetVersionUsecase is nil — " +
+				"wire it via WithKnowledgeVersionUsecases (see .claude/rules/di-wiring.md)")
+		}
 		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
 		if parseErr == nil {
 			if err := h.recordTagSetVersion(ctx, req.Msg.ArticleId, articleUUID, tags); err != nil {
@@ -69,23 +74,25 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 	}
 
 	// Create tag set version + knowledge event for each article
-	if h.createTagSetVersionUsecase != nil {
-		for _, item := range req.Msg.Items {
-			if len(item.Tags) == 0 {
-				continue
-			}
-			if item.FeedId == "" {
-				h.logger.Warn("skipping tag set version creation for article without feed_id", "article_id", item.ArticleId)
-				continue
-			}
-			articleUUID, parseErr := uuid.Parse(item.ArticleId)
-			if parseErr != nil {
-				continue
-			}
-			batchTags := tagItemsFromProto(item.Tags)
-			if err := h.recordTagSetVersion(ctx, item.ArticleId, articleUUID, batchTags); err != nil {
-				return nil, err
-			}
+	if h.createTagSetVersionUsecase == nil {
+		panic("datahubapi: CreateTagSetVersionUsecase is nil — " +
+			"wire it via WithKnowledgeVersionUsecases (see .claude/rules/di-wiring.md)")
+	}
+	for _, item := range req.Msg.Items {
+		if len(item.Tags) == 0 {
+			continue
+		}
+		if item.FeedId == "" {
+			h.logger.Warn("skipping tag set version creation for article without feed_id", "article_id", item.ArticleId)
+			continue
+		}
+		articleUUID, parseErr := uuid.Parse(item.ArticleId)
+		if parseErr != nil {
+			continue
+		}
+		batchTags := tagItemsFromProto(item.Tags)
+		if err := h.recordTagSetVersion(ctx, item.ArticleId, articleUUID, batchTags); err != nil {
+			return nil, err
 		}
 	}
 
@@ -96,6 +103,10 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 }
 
 func (h *Handler) recordTagSetVersion(ctx context.Context, articleID string, articleUUID uuid.UUID, tags []internal_tag_port.TagItem) error {
+	if h.createTagSetVersionUsecase == nil {
+		panic("datahubapi: CreateTagSetVersionUsecase is nil — " +
+			"wire it via WithKnowledgeVersionUsecases (see .claude/rules/di-wiring.md)")
+	}
 	if h.getArticleByID == nil {
 		panic("datahubapi: internal_article_port.GetArticleByIDPort is nil — " +
 			"tag set versioning requires GetArticleByIDPort to resolve the article owner " +
@@ -122,7 +133,7 @@ func (h *Handler) recordTagSetVersion(ctx context.Context, articleID string, art
 
 	userUUID, uErr := uuid.Parse(article.UserID)
 	if uErr != nil || userUUID == uuid.Nil {
-		h.logger.Warn("could not resolve user for tag set version",
+		h.logger.Error("could not resolve user for tag set version",
 			"article_id", articleID, "error", uErr)
 		return nil
 	}
@@ -135,10 +146,21 @@ func (h *Handler) recordTagSetVersion(ctx context.Context, articleID string, art
 		TagsJSON:  tagsJSON,
 	}
 	if tsvErr := h.createTagSetVersionUsecase.Execute(ctx, tsv); tsvErr != nil {
+		if isPermanentTagSetVersionError(tsvErr) {
+			h.logger.Error("invalid tag set version; refusing to acknowledge the write",
+				"error", tsvErr, "article_id", articleID)
+			return connect.NewError(connect.CodeInvalidArgument, tsvErr)
+		}
 		h.logger.Error("failed to create tag set version; refusing to acknowledge the write",
 			"error", tsvErr, "article_id", articleID)
 		return connect.NewError(connect.CodeUnavailable,
 			errors.New("tags written but their version could not be recorded; retry"))
 	}
 	return nil
+}
+
+func isPermanentTagSetVersionError(err error) bool {
+	return errors.Is(err, create_tag_set_version_usecase.ErrMissingArticleID) ||
+		errors.Is(err, create_tag_set_version_usecase.ErrMissingUserID) ||
+		errors.Is(err, create_tag_set_version_usecase.ErrEmptyTagsJSON)
 }
