@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"search-indexer/domain"
 	"search-indexer/driver"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,7 +20,8 @@ type ArticleDriver interface {
 }
 
 type ArticleRepositoryGateway struct {
-	driver ArticleDriver
+	driver          ArticleDriver
+	skippedArticles atomic.Int64
 }
 
 func NewArticleRepositoryGateway(driver ArticleDriver) *ArticleRepositoryGateway {
@@ -40,19 +43,43 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTags(ctx context.Context, last
 		return []*domain.Article{}, newLastCreatedAt, newLastID, nil
 	}
 
-	domainArticles := make([]*domain.Article, 0, len(driverArticles))
-	for _, driverArticle := range driverArticles {
-		domainArticle, err := g.convertToDomain(driverArticle)
-		if err != nil {
-			return nil, nil, "", &domain.RepositoryError{
-				Op:  "GetArticlesWithTags",
-				Err: fmt.Errorf("failed to convert article to domain: id=%s: %w", driverArticle.ID, err),
-			}
-		}
-		domainArticles = append(domainArticles, domainArticle)
+	domainArticles := g.convertDriverPage(ctx, "GetArticlesWithTags", driverArticles)
+	lastDriver := driverArticles[len(driverArticles)-1]
+	if newLastCreatedAt == nil {
+		createdAt := lastDriver.CreatedAt
+		newLastCreatedAt = &createdAt
+	}
+	if newLastID == "" {
+		newLastID = lastDriver.ID
 	}
 
 	return domainArticles, newLastCreatedAt, newLastID, nil
+}
+
+func (g *ArticleRepositoryGateway) convertDriverPage(ctx context.Context, op string, driverArticles []*driver.ArticleWithTags) []*domain.Article {
+	domainArticles := make([]*domain.Article, 0, len(driverArticles))
+	skipped := 0
+	for _, driverArticle := range driverArticles {
+		domainArticle, err := g.convertToDomain(driverArticle)
+		if err != nil {
+			skipped++
+			totalSkipped := g.skippedArticles.Add(1)
+			slog.WarnContext(ctx, "skipping article that failed domain conversion",
+				"op", op,
+				"article_id", driverArticle.ID,
+				"reason", err.Error(),
+				"skipped_in_page", skipped,
+				"skipped_total", totalSkipped,
+			)
+			continue
+		}
+		domainArticles = append(domainArticles, domainArticle)
+	}
+	return domainArticles
+}
+
+func (g *ArticleRepositoryGateway) SkippedCount() int64 {
+	return g.skippedArticles.Load()
 }
 
 func (g *ArticleRepositoryGateway) convertToDomain(driverArticle *driver.ArticleWithTags) (*domain.Article, error) {
@@ -90,16 +117,14 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTagsForward(ctx context.Contex
 		return []*domain.Article{}, newLastCreatedAt, newLastID, nil
 	}
 
-	domainArticles := make([]*domain.Article, 0, len(driverArticles))
-	for _, driverArticle := range driverArticles {
-		domainArticle, err := g.convertToDomain(driverArticle)
-		if err != nil {
-			return nil, nil, "", &domain.RepositoryError{
-				Op:  "GetArticlesWithTagsForward",
-				Err: fmt.Errorf("failed to convert article to domain: id=%s: %w", driverArticle.ID, err),
-			}
-		}
-		domainArticles = append(domainArticles, domainArticle)
+	domainArticles := g.convertDriverPage(ctx, "GetArticlesWithTagsForward", driverArticles)
+	lastDriver := driverArticles[len(driverArticles)-1]
+	if newLastCreatedAt == nil {
+		createdAt := lastDriver.CreatedAt
+		newLastCreatedAt = &createdAt
+	}
+	if newLastID == "" {
+		newLastID = lastDriver.ID
 	}
 
 	return domainArticles, newLastCreatedAt, newLastID, nil
