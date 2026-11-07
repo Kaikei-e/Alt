@@ -144,7 +144,9 @@ class SummarizeUsecase:
                     "threshold": self.config.hierarchical_single_article_threshold,
                 },
             )
-            return await self._generate_hierarchical_summary(article_id, content)
+            return await self._generate_hierarchical_summary(
+                article_id, content, priority=priority
+            )
 
         truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
 
@@ -275,7 +277,9 @@ class SummarizeUsecase:
                     "context_window": context_window,
                 },
             )
-            return await self._generate_hierarchical_summary(article_id, content)
+            return await self._generate_hierarchical_summary(
+                article_id, content, priority=priority
+            )
 
         # Hold one slot across repetition retries so retries do not re-queue.
         max_retries = self.config.max_repetition_retries
@@ -578,7 +582,7 @@ class SummarizeUsecase:
         return truncated_summary, metadata
 
     async def _generate_hierarchical_summary(
-        self, article_id: str, content: str
+        self, article_id: str, content: str, priority: str = "low"
     ) -> tuple[str, SummaryMetadata]:
         """
         Generate a summary for a large article using Hierarchical (Map-Reduce) strategy.
@@ -594,6 +598,7 @@ class SummarizeUsecase:
             Tuple of (summary text, metadata dict)
         """
         start_time = time.time()
+        is_high_priority = priority == "high"
 
         chunk_size = self.config.hierarchical_single_article_chunk_size
         chunks = []
@@ -633,7 +638,9 @@ class SummarizeUsecase:
 
             try:
                 # Use hold_slot + generate_raw so DistributingGateway can dispatch to remote
-                async with self.llm_provider.hold_slot(is_high_priority=False) as (
+                async with self.llm_provider.hold_slot(
+                    is_high_priority=is_high_priority
+                ) as (
                     _wait_time,
                     cancel_event,
                     task_id,
@@ -698,7 +705,7 @@ class SummarizeUsecase:
         }
 
         # Reduce phase also uses hold_slot + generate_raw (BE path)
-        async with self.llm_provider.hold_slot(is_high_priority=False) as (
+        async with self.llm_provider.hold_slot(is_high_priority=is_high_priority) as (
             _wait_time,
             cancel_event,
             task_id,
