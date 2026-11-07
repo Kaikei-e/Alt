@@ -10,6 +10,7 @@ import pytest
 
 from tag_extractor.config import TagExtractionConfig
 from tag_extractor.extract import TagExtractor
+from tag_generator.exceptions import ModelLoadError
 
 
 @pytest.fixture()
@@ -131,3 +132,54 @@ class TestRunExtractionFallbackThreshold:
         assert tags.count("ml") == 1
         assert tags == ["python", "ml", "data-science", "tensorflow"]
         assert confidences["python"] == 0.9  # Primary confidence preserved, not overwritten
+
+    def test_extract_tags_with_metrics_raises_when_model_loader_raises_model_load_error(self):
+        """ModelLoadError from model_manager must propagate out of extract_tags_with_metrics."""
+        config = TagExtractionConfig(use_onnx_runtime=False)
+        failing_manager = MagicMock()
+        failing_manager.get_models.side_effect = ModelLoadError("Missing ML dependency")
+        failing_manager.get_stopwords.return_value = (set(), set())
+        ext = TagExtractor(config=config, model_manager=failing_manager)
+
+        with pytest.raises(ModelLoadError, match="Missing ML dependency"):
+            ext.extract_tags_with_metrics(
+                "Machine Learning Overview",
+                "Machine learning and artificial intelligence are transforming software engineering.",
+            )
+
+    def test_extract_tags_with_metrics_propagates_unexpected_runtime_error(self, extractor: TagExtractor):
+        """Unexpected runtime faults during primary extraction must propagate rather than return []."""
+        with (
+            patch.object(extractor, "_detect_language", return_value="en"),
+            patch.object(extractor, "_extract_keywords_english", side_effect=RuntimeError("OOM during embedding")),
+            pytest.raises(RuntimeError, match="OOM during embedding"),
+        ):
+            extractor.extract_tags_with_metrics(
+                "Machine Learning Overview",
+                "Machine learning and artificial intelligence are transforming software engineering.",
+            )
+
+    def test_extract_tags_with_metrics_returns_empty_when_text_legitimately_yields_no_tags(self):
+        """Input that legitimately produces no primary or fallback tags still returns [] without raising."""
+        config = TagExtractionConfig(use_onnx_runtime=False)
+        mock_keybert = MagicMock()
+        mock_keybert.extract_keywords.return_value = []
+        mock_manager = MagicMock()
+        mock_manager.get_models.return_value = (MagicMock(), mock_keybert, MagicMock())
+        mock_manager.get_stopwords.return_value = (
+            set(),
+            {"the", "and", "is", "to", "of", "in", "for", "on", "at", "by", "with", "from"},
+        )
+        mock_manager.get_runtime_metadata.return_value = {
+            "embedder_backend": "test",
+            "embedder_metadata": {},
+        }
+        ext = TagExtractor(config=config, model_manager=mock_manager)
+
+        outcome = ext.extract_tags_with_metrics(
+            "the and is",
+            "to of in for on at by with from",
+        )
+
+        assert outcome.tags == []
+        assert outcome.tag_count == 0

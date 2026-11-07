@@ -450,16 +450,16 @@ class TestFallbackJapanese:
         assert "これ" not in result
         assert "走る" not in result
 
-    def test_returns_empty_list_when_tagger_is_none_or_raises_during_extraction(
+    def test_returns_empty_list_when_tagger_is_none_or_propagates_tagger_runtime_error(
         self,
     ) -> None:
-        """Returns [] when ja_tagger is None or when analysis raises an exception in TagExtractor fallback."""
+        """Returns [] when ja_tagger is None in fallback_japanese, and propagates runtime tagger errors in TagExtractor."""
         config = TagExtractionConfig(top_keywords=5, use_onnx_runtime=False)
 
         # Direct call with ja_tagger=None returns []
         assert fallback_japanese("テスト文章", None, set(), config) == []
 
-        # When ja_tagger raises an exception during analysis, TagExtractor's fallback handling returns []
+        # When ja_tagger raises a runtime fault during analysis, TagExtractor propagates it
         failing_tagger = MagicMock(side_effect=RuntimeError("MeCab dictionary corrupted"))
         extractor = TagExtractor(config=config)
         extractor._models_loaded = True  # noqa: SLF001
@@ -467,6 +467,5 @@ class TestFallbackJapanese:
         extractor._ja_stopwords = set()  # noqa: SLF001
         extractor._stopwords_loaded = True  # type: ignore[attr-defined]  # noqa: SLF001
 
-        tags, confidences = extractor._run_extraction("日本語のテスト記事本文です", "ja")  # noqa: SLF001
-        assert tags == []
-        assert confidences == {}
+        with pytest.raises(RuntimeError, match="MeCab dictionary corrupted"):
+            extractor._run_extraction("日本語のテスト記事本文です", "ja")  # noqa: SLF001
