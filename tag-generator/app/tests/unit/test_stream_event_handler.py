@@ -149,15 +149,23 @@ class TestTagGeneratorEventHandler:
 
     @pytest.mark.anyio
     async def test_handle_tag_generation_requested_no_consumer(self, mock_service, tag_generation_request_event):
-        """Test that missing stream consumer is handled gracefully."""
+        """An unwired stream_consumer must raise RuntimeError before extraction so
+        StreamConsumer withholds XACK instead of silently dropping the request.
+        """
         handler = TagGeneratorEventHandler(mock_service, stream_consumer=None)
 
-        await handler._handle_tag_generation_requested(tag_generation_request_event)
+        with pytest.raises(RuntimeError, match="stream_consumer"):
+            await handler.handle_event(tag_generation_request_event)
 
-        # Should not raise, and must bail out before attempting extraction --
-        # there is no consumer to publish a reply to, so doing the (costly)
-        # extraction work would be silently wasted.
         mock_service.tag_extractor.extract_tags_with_metrics.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_publish_reply_without_consumer_raises(self, mock_service):
+        """Direct _publish_reply with stream_consumer=None must also raise RuntimeError."""
+        handler = TagGeneratorEventHandler(mock_service, stream_consumer=None)
+
+        with pytest.raises(RuntimeError, match="stream_consumer"):
+            await handler._publish_reply(REPLY_TO, "corr-123", {"success": True})
 
     @pytest.mark.anyio
     async def test_handle_tag_generation_requested_extraction_error(

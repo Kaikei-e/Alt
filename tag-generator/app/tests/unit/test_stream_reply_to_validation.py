@@ -145,3 +145,64 @@ def test_reply_xadd_failure_leaves_request_unacked() -> None:
     assert client.xadd_attempts == 1
     assert client.xadds == []
     assert client.acks == [], "a failed reply XADD must not ACK the request message"
+
+
+def test_unwired_reply_publisher_leaves_request_unacked() -> None:
+    """When TagGeneratorEventHandler has stream_consumer=None, receiving a
+    TagGenerationRequested with a valid reply_to must fail loudly so
+    StreamConsumer leaves the request unacked in the PEL.
+    """
+    service = _service()
+    handler = TagGeneratorEventHandler(service, stream_consumer=None)
+    consumer = StreamConsumer(ConsumerConfig(enabled=True), handler=handler)
+    client = _RecordingClient([_request("4-0", VALID_REPLY_TO)])
+    consumer.client = cast(redis.Redis, client)
+
+    asyncio.run(consumer._read_and_process())
+
+    assert client.xadds == []
+    assert client.acks == [], "an unwired reply publisher must not ACK the request message"
+    service.tag_extractor.extract_tags_with_metrics.assert_not_called()
+
+
+def test_main_logs_tags_stream_consumer_disabled_when_disabled(monkeypatch) -> None:
+    """When the dedicated tags stream consumer is disabled, main() must emit an
+    explicit startup log of the disabled wiring state.
+    """
+    import main as main_mod
+
+    logged_events: list[str] = []
+
+    class _FakeLogger:
+        def info(self, event: str, **_kwargs: Any) -> None:
+            logged_events.append(event)
+
+        def error(self, event: str, **_kwargs: Any) -> None:
+            logged_events.append(event)
+
+    class _FakeService:
+        def __init__(self, _config: object = None) -> None:
+            pass
+
+        def run_service(self) -> None:
+            pass
+
+    monkeypatch.setattr(main_mod, "logger", _FakeLogger())
+    monkeypatch.setattr(main_mod, "TagGeneratorService", _FakeService)
+    monkeypatch.setattr(main_mod, "otel_shutdown", lambda: None)
+    monkeypatch.setattr(
+        main_mod.ConsumerConfig,
+        "from_env",
+        classmethod(lambda cls: ConsumerConfig(enabled=False)),
+    )
+    monkeypatch.setattr(
+        main_mod.ConsumerConfig,
+        "tags_stream_from_env",
+        classmethod(lambda cls: ConsumerConfig(enabled=False, stream_key="alt:events:tags")),
+    )
+
+    rc = main_mod.main()
+
+    assert rc == 0
+    assert "redis_streams_consumer_disabled" in logged_events
+    assert "tags_stream_consumer_disabled" in logged_events
