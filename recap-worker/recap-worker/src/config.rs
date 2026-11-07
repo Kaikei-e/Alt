@@ -3381,4 +3381,24 @@ mod tests {
             assert!(!config.cards_catchup_enabled());
         });
     }
+
+    #[test]
+    fn from_env_rejects_zero_batch_summary_chunk_size() {
+        let res = {
+            let _lock = ENV_MUTEX.lock().expect("env mutex");
+            let mut vars = required_base();
+            vars.push(("RECAP_BATCH_SUMMARY_CHUNK_SIZE", Some("0")));
+            temp_env::with_vars(vars, Config::from_env)
+        };
+        assert!(
+            matches!(
+                res,
+                Err(ConfigError::Invalid {
+                    name: "RECAP_BATCH_SUMMARY_CHUNK_SIZE",
+                    ..
+                })
+            ),
+            "RECAP_BATCH_SUMMARY_CHUNK_SIZE=0 must be rejected as ConfigError::Invalid, got: {res:?}"
+        );
+    }
 }
