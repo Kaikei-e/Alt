@@ -259,7 +259,7 @@ func TestSyncArticles_UpsertsRepairedRowAboveHeldWatermark(t *testing.T) {
 		}, articleRepo.written, "a row re-fetched with a newer CreatedAt must be upserted even while the watermark is held")
 		if assert.Len(t, articleRepo.writtenArticles, 3) {
 			assert.Equal(t, t5, articleRepo.writtenArticles[2].CreatedAt)
-			assert.Equal(t, "Repaired content after the sidecar re-fetched the article.", articleRepo.writtenArticles[2].Content)
+			assert.Equal(t, "<p>Repaired content after the sidecar re-fetched the article.</p>", articleRepo.writtenArticles[2].Content)
 		}
 	})
 
