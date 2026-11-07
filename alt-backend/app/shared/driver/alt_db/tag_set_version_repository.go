@@ -20,7 +20,8 @@ func (r *TagRepository) CreateTagSetVersion(ctx context.Context, tsv domain.TagS
 	query := `INSERT INTO tag_set_versions
 		(tag_set_version_id, article_id, user_id, generated_at,
 		 generator, input_hash, tags_json, superseded_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (tag_set_version_id) DO NOTHING`
 
 	_, err := r.pool.Exec(ctx, query,
 		tsv.TagSetVersionID, tsv.ArticleID, tsv.UserID, tsv.GeneratedAt,
@@ -102,7 +103,7 @@ func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, article
 		return nil, fmt.Errorf("MarkTagSetVersionSuperseded select newer: %w", err)
 	}
 
-	const olderThanNew = `article_id = $1 AND superseded_by IS NULL
+	const olderThanNew = `article_id = $1 AND (superseded_by IS NULL OR superseded_by = $3)
 		AND (generated_at, tag_set_version_id) < ($2, $3)`
 
 	var prev domain.TagSetVersion
