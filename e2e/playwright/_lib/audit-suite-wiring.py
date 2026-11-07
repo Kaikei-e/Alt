@@ -231,6 +231,79 @@ def main() -> int:
                     f"alt-frontend-sv: run.sh still invokes '{forbidden}' per run"
                 )
 
+        # B4: pre-launch port guard + State.Running check + curl --max-time
+        app_run_pos = fe_code.find("docker run -d")
+        pre_launch = fe_code[:app_run_pos] if app_run_pos != -1 else ""
+        post_launch = fe_code[app_run_pos:] if app_run_pos != -1 else ""
+        if not re.search(r"curl\b[^\n]*--max-time\b[^\n]*/health", pre_launch):
+            problems.append(
+                "alt-frontend-sv: run.sh must fail before `docker run -d` if "
+                "127.0.0.1:${PORT}/health already answers (using curl --max-time)"
+            )
+        if "State.Running" not in post_launch:
+            problems.append(
+                "alt-frontend-sv: run.sh health wait must check `docker inspect` "
+                "State.Running so an exited container fails immediately"
+            )
+        if not re.search(r"curl\b[^\n]*--max-time\b[^\n]*/health", post_launch):
+            problems.append(
+                "alt-frontend-sv: run.sh health wait curl must pass --max-time"
+            )
+
+        # B5: tmpfs mount over /work/repo/alt-frontend-sv/node_modules
+        if "destination=/work/repo/alt-frontend-sv/node_modules" not in post_launch:
+            problems.append(
+                "alt-frontend-sv: run.sh must mount a tmpfs over "
+                "/work/repo/alt-frontend-sv/node_modules to prevent local "
+                "node_modules from shadowing /work/node_modules"
+            )
+
+        # Stale-container sweep must be scoped to this run/project, not global
+        for ps_match in re.finditer(r"docker ps[^\n]+", fe_code):
+            ps_line = ps_match.group(0)
+            if (
+                "alt.e2e.suite=alt-frontend-sv" in ps_line
+                and "com.docker.compose.project=" not in ps_line
+                and "APP_CONTAINER" not in ps_line
+                and "SAFE_RUN_ID" not in ps_line
+            ):
+                problems.append(
+                    "alt-frontend-sv: run.sh stale-container sweep must be scoped "
+                    "to this run/project, not every alt-frontend-sv container on the daemon"
+                )
+
+        # Env key parity with alt-frontend-sv/playwright.config.ts webServer.env
+        pw_cfg = ROOT / "alt-frontend-sv" / "playwright.config.ts"
+        if pw_cfg.is_file():
+            cfg_text = pw_cfg.read_text()
+            env_block_match = re.search(
+                r"webServer\s*:[\s\S]*?\benv\s*:\s*\{([\s\S]*?)\}",
+                cfg_text,
+            )
+            app_cmd_match = re.search(
+                r"docker run -d\s+((?:\\\n|[^\n])+)",
+                fe_code,
+            )
+            if env_block_match and app_cmd_match:
+                expected_keys = set(
+                    re.findall(
+                        r"^\s*([A-Z][A-Z0-9_]*)\s*:",
+                        env_block_match.group(1),
+                        re.MULTILINE,
+                    )
+                )
+                app_cmd = app_cmd_match.group(1).replace("\\\n", " ")
+                passed_keys = set(re.findall(r"-e\s+([A-Z][A-Z0-9_]*)=", app_cmd))
+                allowed_extra = {"HOST", "NODE_ENV"}
+                missing_keys = sorted(expected_keys - passed_keys)
+                unexpected_keys = sorted((passed_keys - expected_keys) - allowed_extra)
+                if missing_keys or unexpected_keys:
+                    problems.append(
+                        "alt-frontend-sv: run.sh app container env keys drifted from "
+                        f"playwright.config.ts webServer.env (missing={missing_keys}, "
+                        f"unexpected={unexpected_keys})"
+                    )
+
     if problems:
         print(f"suite wiring audit found {len(problems)} problem(s):\n", file=sys.stderr)
         for problem in problems:
