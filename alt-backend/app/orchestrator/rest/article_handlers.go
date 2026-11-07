@@ -244,9 +244,11 @@ func handleFetchArticleTags(container *di.ApplicationComponents) echo.HandlerFun
 		if strings.TrimSpace(articleID) == "" {
 			return resterr.HandleValidationError(c, "article id is required", "id", articleID)
 		}
-		if _, err := uuid.Parse(articleID); err != nil {
+		parsedArticleID, err := uuid.Parse(articleID)
+		if err != nil {
 			return resterr.HandleValidationError(c, "invalid article id", "id", articleID)
 		}
+		articleID = parsedArticleID.String()
 
 		tags, err := container.FetchArticleTagsUsecase.Execute(ctx, articleID)
 		if err != nil {

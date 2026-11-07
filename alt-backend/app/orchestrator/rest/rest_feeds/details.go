@@ -266,10 +266,12 @@ func RestHandleFetchFeedTagsByID(container *di.ApplicationComponents) echo.Handl
 			logger.Logger.ErrorContext(ctx, "Feed ID is required")
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Feed ID is required"})
 		}
-		if _, err := uuid.Parse(feedID); err != nil {
-			logger.Logger.ErrorContext(ctx, "Invalid feed ID", "error", err, "feedID", feedID)
+		parsedFeedID, err := uuid.Parse(feedID)
+		if err != nil {
+			logger.Logger.WarnContext(ctx, "Invalid feed ID", "error", err, "feedID", feedID)
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid feed ID"})
 		}
+		feedID = parsedFeedID.String()
 
 		// Parse limit from query parameter (optional)
 		limit := 20 // Default limit

@@ -142,6 +142,10 @@ func buildAllFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UUID,
 }
 
 // Builds the SQL query and arguments for fetching read feeds with cursor pagination.
+// buildReadFeedsCursorQuery builds the SQL query for read feeds with cursor pagination.
+// The 7th column (models.Feed.UpdatedAt / datahub.v1.Feed.updated_at) carries the
+// per-scope cursor sort key: rs.read_at for READ, ff.created_at for FAVORITE,
+// and f.updated_at for ALL/UNREAD.
 func buildReadFeedsCursorQuery(cursor *time.Time, limit int, userID uuid.UUID) (string, []any) {
 	var query string
 	var args []any

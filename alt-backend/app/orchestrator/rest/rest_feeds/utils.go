@@ -87,7 +87,7 @@ func formatAuthor(author domain.Author, authors []domain.Author) string {
 	return ""
 }
 
-// DeriveNextCursorFromFeeds extracts the next cursor from the feed list.
+// DeriveNextCursorFromFeeds extracts the next created_at cursor from the feed list.
 //
 // The cursor is formatted with sub-second precision because it comes back as
 // the right-hand side of a strict `created_at < $1`: created_at is microsecond
@@ -99,9 +99,6 @@ func DeriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
 		return "", false
 	}
 	lastFeed := feeds[len(feeds)-1]
-	if !lastFeed.CursorAt.IsZero() {
-		return lastFeed.CursorAt.Format(time.RFC3339Nano), true
-	}
 	if !lastFeed.PublishedParsed.IsZero() {
 		return lastFeed.PublishedParsed.Format(time.RFC3339Nano), true
 	}
@@ -117,6 +114,21 @@ func DeriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
 	}
 
 	return parsed.Format(time.RFC3339Nano), true
+}
+
+// DeriveSortKeyNextCursorFromFeeds extracts the next cursor for READ and
+// FAVORITE feed lists from CursorAt (rs.read_at for READ, ff.created_at for
+// FAVORITE). It never falls back to PublishedParsed (f.created_at): a missing
+// sort-key timestamp returns an error.
+func DeriveSortKeyNextCursorFromFeeds(feeds []*domain.FeedItem) (string, error) {
+	if len(feeds) == 0 {
+		return "", nil
+	}
+	lastFeed := feeds[len(feeds)-1]
+	if lastFeed.CursorAt.IsZero() {
+		return "", fmt.Errorf("missing sort-key cursor timestamp on feed item")
+	}
+	return lastFeed.CursorAt.Format(time.RFC3339Nano), nil
 }
 
 // OptimizeFeedsResponseForSearch optimizes feeds response specifically for search results

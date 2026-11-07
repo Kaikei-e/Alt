@@ -65,22 +65,21 @@ func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 	return result
 }
 
-// deriveNextCursor extracts the next cursor from the feed list.
+// deriveNextCursor extracts the next created_at cursor from an UNREAD or ALL
+// feed list (where the SQL query orders and filters by `f.created_at < $1`).
 //
-// The cursor is formatted with sub-second precision because it comes back as
-// the right-hand side of a strict `created_at < $1`: created_at is microsecond
-// precision and one harvester transaction stamps a whole batch inside the same
-// second, so a cursor truncated to the second skips every remaining row of
-// that second permanently.
+// The cursor is formatted with sub-second precision because created_at is
+// microsecond precision and one harvester transaction stamps a whole batch
+// inside the same second, so a cursor truncated to the second skips every
+// remaining row of that second permanently.
+//
+// READ and FAVORITE lists sort by rs.read_at and ff.created_at respectively and
+// must use deriveSortKeyNextCursor instead.
 func deriveNextCursor(feeds []*domain.FeedItem, hasMore bool) *string {
 	if !hasMore || len(feeds) == 0 {
 		return nil
 	}
 	lastFeed := feeds[len(feeds)-1]
-	if !lastFeed.CursorAt.IsZero() {
-		cursor := lastFeed.CursorAt.Format(time.RFC3339Nano)
-		return &cursor
-	}
 	if !lastFeed.PublishedParsed.IsZero() {
 		cursor := lastFeed.PublishedParsed.Format(time.RFC3339Nano)
 		return &cursor
@@ -98,6 +97,22 @@ func deriveNextCursor(feeds []*domain.FeedItem, hasMore bool) *string {
 
 	cursor := parsed.Format(time.RFC3339Nano)
 	return &cursor
+}
+
+// deriveSortKeyNextCursor extracts the next cursor for READ and FAVORITE feed
+// lists from CursorAt (rs.read_at for READ, ff.created_at for FAVORITE).
+// Unlike deriveNextCursor, it never falls back to PublishedParsed (f.created_at):
+// a missing sort-key timestamp is a contract violation and returns an error.
+func deriveSortKeyNextCursor(feeds []*domain.FeedItem, hasMore bool) (*string, error) {
+	if !hasMore || len(feeds) == 0 {
+		return nil, nil
+	}
+	lastFeed := feeds[len(feeds)-1]
+	if lastFeed.CursorAt.IsZero() {
+		return nil, fmt.Errorf("missing sort-key cursor timestamp on feed item")
+	}
+	cursor := lastFeed.CursorAt.Format(time.RFC3339Nano)
+	return &cursor, nil
 }
 
 // formatTimeAgo formats the time as a relative string (e.g., "2 hours ago").
