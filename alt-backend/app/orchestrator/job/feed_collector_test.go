@@ -385,32 +385,32 @@ func TestIsPersistentFeedError(t *testing.T) {
 		},
 		{
 			name: "400 error is persistent",
-			err:  errorWithMessage("HTTP error: 400 Bad Request"),
+			err:  rssFeed.HTTPError{StatusCode: 400, Status: "400 Bad Request"},
 			want: true,
 		},
 		{
 			name: "403 error is persistent (retries exhausted before reaching here)",
-			err:  errorWithMessage("HTTP error: 403 Forbidden"),
+			err:  rssFeed.HTTPError{StatusCode: 403, Status: "403 Forbidden"},
 			want: true,
 		},
 		{
 			name: "404 error is persistent",
-			err:  errorWithMessage("HTTP error: 404 Not Found"),
+			err:  rssFeed.HTTPError{StatusCode: 404, Status: "404 Not Found"},
 			want: true,
 		},
 		{
 			name: "429 error is NOT persistent",
-			err:  errorWithMessage("HTTP error: 429 Too Many Requests"),
+			err:  rssFeed.HTTPError{StatusCode: 429, Status: "429 Too Many Requests"},
 			want: false,
 		},
 		{
 			name: "500 error is NOT persistent",
-			err:  errorWithMessage("HTTP error: 500 Internal Server Error"),
+			err:  rssFeed.HTTPError{StatusCode: 500, Status: "500 Internal Server Error"},
 			want: false,
 		},
 		{
-			name: "Failed to detect feed type is persistent",
-			err:  errorWithMessage("Failed to detect feed type"),
+			name: "gofeed ErrFeedTypeNotDetected sentinel is persistent",
+			err:  rssFeed.ErrFeedTypeNotDetected,
 			want: true,
 		},
 		{
@@ -441,23 +441,23 @@ func TestIs429Error(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "429 error returns true",
-			err:  errorWithMessage("HTTP error: 429 Too Many Requests"),
+			name: "429 HTTPError returns true",
+			err:  rssFeed.HTTPError{StatusCode: 429, Status: "429 Too Many Requests"},
 			want: true,
 		},
 		{
-			name: "lowercase 429 returns true",
+			name: "plain string 429 without HTTPError returns false",
 			err:  errorWithMessage("http error: 429 too many requests"),
-			want: true,
+			want: false,
 		},
 		{
 			name: "400 error returns false",
-			err:  errorWithMessage("HTTP error: 400 Bad Request"),
+			err:  rssFeed.HTTPError{StatusCode: 400, Status: "400 Bad Request"},
 			want: false,
 		},
 		{
 			name: "500 error returns false",
-			err:  errorWithMessage("HTTP error: 500 Internal Server Error"),
+			err:  rssFeed.HTTPError{StatusCode: 500, Status: "500 Internal Server Error"},
 			want: false,
 		},
 		{
@@ -489,17 +489,17 @@ func TestIs403Error(t *testing.T) {
 		},
 		{
 			name: "403 Forbidden returns true",
-			err:  errorWithMessage("HTTP error: 403 Forbidden"),
+			err:  rssFeed.HTTPError{StatusCode: 403, Status: "403 Forbidden"},
 			want: true,
 		},
 		{
 			name: "404 Not Found returns false",
-			err:  errorWithMessage("HTTP error: 404 Not Found"),
+			err:  rssFeed.HTTPError{StatusCode: 404, Status: "404 Not Found"},
 			want: false,
 		},
 		{
 			name: "500 error returns false",
-			err:  errorWithMessage("HTTP error: 500 Internal Server Error"),
+			err:  rssFeed.HTTPError{StatusCode: 500, Status: "500 Internal Server Error"},
 			want: false,
 		},
 	}
@@ -603,7 +603,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 		fetchFn := func() (*rssFeed.Feed, error) {
 			callCount++
 			if callCount == 1 {
-				return nil, errorWithMessage("HTTP error: 403 Forbidden")
+				return nil, rssFeed.HTTPError{StatusCode: 403, Status: "403 Forbidden"}
 			}
 			return expectedFeed, nil
 		}
@@ -626,7 +626,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 		fetchFn := func() (*rssFeed.Feed, error) {
 			callCount++
 			if callCount <= 3 {
-				return nil, errorWithMessage("HTTP error: 403 Forbidden")
+				return nil, rssFeed.HTTPError{StatusCode: 403, Status: "403 Forbidden"}
 			}
 			return expectedFeed, nil
 		}
@@ -647,7 +647,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 		callCount := 0
 		fetchFn := func() (*rssFeed.Feed, error) {
 			callCount++
-			return nil, errorWithMessage("HTTP error: 403 Forbidden")
+			return nil, rssFeed.HTTPError{StatusCode: 403, Status: "403 Forbidden"}
 		}
 
 		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed", fastRetryLimiter())
@@ -669,7 +669,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 		callCount := 0
 		fetchFn := func() (*rssFeed.Feed, error) {
 			callCount++
-			return nil, errorWithMessage("HTTP error: 404 Not Found")
+			return nil, rssFeed.HTTPError{StatusCode: 404, Status: "404 Not Found"}
 		}
 
 		_, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed", fastRetryLimiter())
@@ -687,7 +687,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 		fetchFn := func() (*rssFeed.Feed, error) {
 			callCount++
 			cancel() // Cancel after first call
-			return nil, errorWithMessage("HTTP error: 403 Forbidden")
+			return nil, rssFeed.HTTPError{StatusCode: 403, Status: "403 Forbidden"}
 		}
 
 		_, err := fetchWithRetryOn403(ctx, fetchFn, "https://example.com/feed", fastRetryLimiter())

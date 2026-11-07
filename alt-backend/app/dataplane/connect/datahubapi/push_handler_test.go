@@ -21,18 +21,22 @@ type fakePushSubscriptionPort struct {
 	upsertErr     error
 	lastUpsert    domain.PushSubscription
 
-	getSub *domain.PushSubscription
-	getErr error
+	getSub        *domain.PushSubscription
+	getErr        error
+	lastGetUserID string
 
-	updateResult bool
-	updateErr    error
-	lastPrefs    domain.NotificationPreferences
+	updateResult     bool
+	updateErr        error
+	lastPrefs        domain.NotificationPreferences
+	lastUpdateUserID string
 
-	deleteResult bool
-	deleteErr    error
+	deleteResult     bool
+	deleteErr        error
+	lastDeleteUserID string
 
-	listSubs []domain.PushSubscription
-	listErr  error
+	listSubs       []domain.PushSubscription
+	listErr        error
+	lastListUserID string
 }
 
 func (f *fakePushSubscriptionPort) Upsert(_ context.Context, sub domain.PushSubscription) (bool, error) {
@@ -40,20 +44,24 @@ func (f *fakePushSubscriptionPort) Upsert(_ context.Context, sub domain.PushSubs
 	return f.upsertCreated, f.upsertErr
 }
 
-func (f *fakePushSubscriptionPort) Get(_ context.Context, _, _ string) (*domain.PushSubscription, error) {
+func (f *fakePushSubscriptionPort) Get(_ context.Context, userID, _ string) (*domain.PushSubscription, error) {
+	f.lastGetUserID = userID
 	return f.getSub, f.getErr
 }
 
-func (f *fakePushSubscriptionPort) UpdatePreferences(_ context.Context, _, _ string, prefs domain.NotificationPreferences) (bool, error) {
+func (f *fakePushSubscriptionPort) UpdatePreferences(_ context.Context, userID, _ string, prefs domain.NotificationPreferences) (bool, error) {
+	f.lastUpdateUserID = userID
 	f.lastPrefs = prefs
 	return f.updateResult, f.updateErr
 }
 
-func (f *fakePushSubscriptionPort) Delete(_ context.Context, _, _ string) (bool, error) {
+func (f *fakePushSubscriptionPort) Delete(_ context.Context, userID, _ string) (bool, error) {
+	f.lastDeleteUserID = userID
 	return f.deleteResult, f.deleteErr
 }
 
-func (f *fakePushSubscriptionPort) ListForUser(_ context.Context, _ string) ([]domain.PushSubscription, error) {
+func (f *fakePushSubscriptionPort) ListForUser(_ context.Context, userID string) ([]domain.PushSubscription, error) {
+	f.lastListUserID = userID
 	return f.listSubs, f.listErr
 }
 
@@ -67,6 +75,7 @@ type fakePushDeliveryPort struct {
 	enqueueDelivered  int
 	enqueueSuperseded int
 	enqueueErr        error
+	lastEnqueue       domain.NotificationEnqueue
 
 	claimedBatch []domain.PushDelivery
 	claimErr     error
@@ -76,7 +85,8 @@ type fakePushDeliveryPort struct {
 	markDeadErr error
 }
 
-func (f *fakePushDeliveryPort) Enqueue(_ context.Context, _ domain.NotificationEnqueue) (int, int, error) {
+func (f *fakePushDeliveryPort) Enqueue(_ context.Context, req domain.NotificationEnqueue) (int, int, error) {
+	f.lastEnqueue = req
 	return f.enqueueDelivered, f.enqueueSuperseded, f.enqueueErr
 }
 
@@ -533,4 +543,70 @@ func TestPushHandlers_RejectNonUUIDUserID(t *testing.T) {
 	}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestPushHandlers_CanonicalizeUUIDUserID(t *testing.T) {
+	const (
+		urnUserID       = "urn:uuid:3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+		canonicalUserID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+		validEndpoint   = "https://fcm.googleapis.com/fcm/send/dGhpcy1pcy1hLXRlc3Q"
+	)
+	occurred := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+
+	subPort := &fakePushSubscriptionPort{}
+	deliveryPort := &fakePushDeliveryPort{}
+	h := newTestHandler(WithPushCapabilities(
+		subPort,
+		push_delivery_usecase.NewPushDeliveryUsecase(deliveryPort),
+	))
+
+	_, err := h.UpsertPushSubscription(context.Background(), connect.NewRequest(&datahubv1.UpsertPushSubscriptionRequest{
+		Subscription: &datahubv1.PushSubscription{
+			UserId:              urnUserID,
+			Endpoint:            validEndpoint,
+			P256Dh:              "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTtF71JbFw",
+			Auth:                "tBHItJI5svbpez7KI4CCXg",
+			VapidKeyFingerprint: "b0a1c2d3e4f5",
+		},
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, canonicalUserID, subPort.lastUpsert.UserID)
+
+	_, err = h.GetPushSubscription(context.Background(), connect.NewRequest(&datahubv1.GetPushSubscriptionRequest{
+		UserId:   urnUserID,
+		Endpoint: validEndpoint,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, canonicalUserID, subPort.lastGetUserID)
+
+	_, err = h.UpdatePushSubscriptionPreferences(context.Background(), connect.NewRequest(&datahubv1.UpdatePushSubscriptionPreferencesRequest{
+		UserId:   urnUserID,
+		Endpoint: validEndpoint,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, canonicalUserID, subPort.lastUpdateUserID)
+
+	_, err = h.DeletePushSubscription(context.Background(), connect.NewRequest(&datahubv1.DeletePushSubscriptionRequest{
+		UserId:   urnUserID,
+		Endpoint: validEndpoint,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, canonicalUserID, subPort.lastDeleteUserID)
+
+	_, err = h.ListPushSubscriptionsForUser(context.Background(), connect.NewRequest(&datahubv1.ListPushSubscriptionsForUserRequest{
+		UserId: urnUserID,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, canonicalUserID, subPort.lastListUserID)
+
+	_, err = h.EnqueueNotification(context.Background(), connect.NewRequest(&datahubv1.EnqueueNotificationRequest{
+		DedupeKey:  "summary_ready:art-1",
+		UserId:     urnUserID,
+		Kind:       domain.NotificationKindSummaryReady,
+		Payload:    []byte(`{"title":"Ready"}`),
+		OccurredAt: timestamppb.New(occurred),
+		ExpiresAt:  timestamppb.New(occurred.Add(24 * time.Hour)),
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, canonicalUserID, deliveryPort.lastEnqueue.UserID)
 }

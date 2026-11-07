@@ -22,13 +22,15 @@ type recordedFinal struct {
 }
 
 type fakeDeliveries struct {
-	batch    []domain.PushDelivery
-	claimErr error
+	batch      []domain.PushDelivery
+	claimErr   error
+	releaseErr error
 
-	sent     []string
-	dead     []recordedFinal
-	released []recordedFinal
-	ctxErrs  []error
+	sent         []string
+	dead         []recordedFinal
+	released     []recordedFinal
+	releaseCalls int
+	ctxErrs      []error
 }
 
 func (f *fakeDeliveries) ClaimBatch(_ context.Context, _ int) ([]domain.PushDelivery, error) {
@@ -61,9 +63,13 @@ func (f *fakeDeliveries) MarkDead(ctx context.Context, id string, status int, re
 }
 
 func (f *fakeDeliveries) Release(ctx context.Context, id string, retryAfter time.Duration, status int, reason string) error {
+	f.releaseCalls++
 	f.ctxErrs = append(f.ctxErrs, ctx.Err())
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if f.releaseErr != nil {
+		return f.releaseErr
 	}
 	f.released = append(f.released, recordedFinal{
 		deliveryID: id, statusCode: status, reason: reason, retryAfter: retryAfter,
@@ -575,5 +581,32 @@ func TestDispatchBatch_ReleasesInFlightSendAbortedByPassContextEvenAtMaxAttempts
 	}
 	if len(stats.Attempts) != 0 {
 		t.Fatalf("len(stats.Attempts) = %d, want 0", len(stats.Attempts))
+	}
+}
+
+func TestDispatchBatch_StopsReleasingUnattemptedRowsAfterFirstError(t *testing.T) {
+	first := delivery(1)
+	second := delivery(1)
+	second.ID = "delivery-2"
+	third := delivery(1)
+	third.ID = "delivery-3"
+
+	deliveries := &fakeDeliveries{
+		batch:      []domain.PushDelivery{first, second, third},
+		releaseErr: errors.New("datahub unreachable"),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	sender := &fakeSender{
+		outcome: push_dispatch_port.SendOutcome{StatusCode: 201},
+		onSend:  cancel,
+	}
+
+	_, err := newUsecase(deliveries, &fakeSubscriptions{}, sender).DispatchBatch(ctx, 10)
+	if err != nil {
+		t.Fatalf("DispatchBatch: %v", err)
+	}
+
+	if deliveries.releaseCalls != 1 {
+		t.Fatalf("releaseCalls = %d, want 1 (stop after first release error)", deliveries.releaseCalls)
 	}
 }
