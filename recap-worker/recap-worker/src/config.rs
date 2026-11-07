@@ -1026,7 +1026,7 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
     let recap_summary_temperature = parse_f64("RECAP_SUMMARY_TEMPERATURE", 0.0)?;
     let llm_max_concurrency = parse_non_zero_usize("LLM_MAX_CONCURRENCY", 1)?;
     let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
-    let batch_summary_chunk_size = parse_usize("RECAP_BATCH_SUMMARY_CHUNK_SIZE", 3)?;
+    let batch_summary_chunk_size = parse_non_zero_usize("RECAP_BATCH_SUMMARY_CHUNK_SIZE", 3)?.get();
 
     Ok(BasicConfig {
         recap_db_dsn,
