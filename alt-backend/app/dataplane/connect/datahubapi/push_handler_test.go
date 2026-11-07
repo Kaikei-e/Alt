@@ -398,7 +398,7 @@ func TestPushDeliveryQueueHandlers(t *testing.T) {
 				ID:             "deliv-1",
 				DedupeKey:      "summary_ready:art-1",
 				SubscriptionID: "sub-1",
-				UserID:         "user-1",
+				UserID:         "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
 				Kind:           domain.NotificationKindSummaryReady,
 				State:          domain.NotificationSending,
 				Attempts:       1,
@@ -412,14 +412,14 @@ func TestPushDeliveryQueueHandlers(t *testing.T) {
 	t.Run("EnqueueNotification validates kind and returns counts", func(t *testing.T) {
 		_, err := h.EnqueueNotification(context.Background(), connect.NewRequest(&datahubv1.EnqueueNotificationRequest{
 			DedupeKey: "k1",
-			UserId:    "user-1",
+			UserId:    "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
 			Kind:      "unknown_kind",
 		}))
 		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
 		resp, err := h.EnqueueNotification(context.Background(), connect.NewRequest(&datahubv1.EnqueueNotificationRequest{
 			DedupeKey:  "summary_ready:art-1",
-			UserId:     "user-1",
+			UserId:     "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
 			Kind:       domain.NotificationKindSummaryReady,
 			Payload:    []byte(`{"title":"Ready"}`),
 			OccurredAt: timestamppb.New(now),
@@ -474,4 +474,63 @@ func TestPushDeliveryQueueHandlers(t *testing.T) {
 		}))
 		require.NoError(t, err)
 	})
+}
+
+func TestPushHandlers_RejectNonUUIDUserID(t *testing.T) {
+	const validEndpoint = "https://fcm.googleapis.com/fcm/send/dGhpcy1pcy1hLXRlc3Q"
+	occurred := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+
+	h := newPushTestHandler(t, &fakePushDeliveryPort{
+		enqueueErr: errors.New("SQLSTATE 22P02"),
+	})
+
+	_, err := h.EnqueueNotification(context.Background(), connect.NewRequest(&datahubv1.EnqueueNotificationRequest{
+		DedupeKey:  "summary_ready:art-1",
+		UserId:     "not-a-uuid",
+		Kind:       domain.NotificationKindSummaryReady,
+		Payload:    []byte(`{"title":"Ready"}`),
+		OccurredAt: timestamppb.New(occurred),
+		ExpiresAt:  timestamppb.New(occurred.Add(24 * time.Hour)),
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = h.GetPushSubscription(context.Background(), connect.NewRequest(&datahubv1.GetPushSubscriptionRequest{
+		UserId:   "not-a-uuid",
+		Endpoint: validEndpoint,
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = h.UpsertPushSubscription(context.Background(), connect.NewRequest(&datahubv1.UpsertPushSubscriptionRequest{
+		Subscription: &datahubv1.PushSubscription{
+			UserId:              "not-a-uuid",
+			Endpoint:            validEndpoint,
+			P256Dh:              "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTtF71JbFw",
+			Auth:                "tBHItJI5svbpez7KI4CCXg",
+			VapidKeyFingerprint: "b0a1c2d3e4f5",
+		},
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = h.UpdatePushSubscriptionPreferences(context.Background(), connect.NewRequest(&datahubv1.UpdatePushSubscriptionPreferencesRequest{
+		UserId:   "not-a-uuid",
+		Endpoint: validEndpoint,
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = h.DeletePushSubscription(context.Background(), connect.NewRequest(&datahubv1.DeletePushSubscriptionRequest{
+		UserId:   "not-a-uuid",
+		Endpoint: validEndpoint,
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = h.ListPushSubscriptionsForUser(context.Background(), connect.NewRequest(&datahubv1.ListPushSubscriptionsForUserRequest{
+		UserId: "not-a-uuid",
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
