@@ -83,7 +83,7 @@ impl AltBackendFetchStage {
 
     /// 再試行付きで記事を取得する。
     ///
-    /// `AltBackendClient` は `reqwest::Error` と `AltBackendHttpError`（非2xx）を
+    /// `AltBackendClient` は `reqwest::Error` と `AltBackendStatusError`（非2xx）を
     /// anyhow chain に保持したまま返す（retry 判定が `downcast_ref` に依存する）
     /// ため、この helper は anyhow のまま扱い、呼び出し側の stage 境界で
     /// `RecapError::Fetch` に変換する。
@@ -371,7 +371,7 @@ mod tests {
             // Short on purpose: the timeout retry test below relies on every
             // attempt timing out client-side against a deliberately slow
             // mock response (retry checks classify both client-level timeouts
-            // and transient non-2xx HTTP statuses via `AltBackendHttpError`
+            // and transient non-2xx HTTP statuses via `AltBackendStatusError`
             // as retryable).
             total_timeout: std::time::Duration::from_millis(100),
         }
