@@ -51,6 +51,10 @@ async fn find_retry_target(recap_dao: &dyn RecapDao) -> Result<Option<(Uuid, u32
     Ok(target.map(|(job_id, _status, _last_stage, window_days)| (job_id, window_days)))
 }
 
+fn build_retry_job(_config: &Config, job_id: Uuid, window_days: u32) -> JobContext {
+    JobContext::new_manual(job_id, Vec::new(), window_days)
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct JobContext {
     pub(crate) job_id: Uuid,
@@ -257,7 +261,7 @@ impl Scheduler {
         };
 
         let job_id = Uuid::new_v4();
-        let job = JobContext::new_manual(job_id, Vec::new(), window_days);
+        let job = build_retry_job(&self.config, job_id, window_days);
         let scheduler = self.clone();
 
         tokio::spawn(async move {
@@ -694,6 +698,58 @@ mod tests {
         let target = find_retry_target(&dao).await.expect("dao call succeeds");
 
         assert_eq!(target, Some((failed_job_id, 3)));
+    }
+
+    #[test]
+    fn build_retry_job_binds_knowledge_owner_when_emit_enabled() {
+        use crate::config::ENV_MUTEX;
+
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let user_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let user_id_str = user_id.to_string();
+        let tenant_id_str = tenant_id.to_string();
+
+        let config = temp_env::with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:15432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+                (
+                    "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                    Some("http://localhost:19500"),
+                ),
+                ("RECAP_KNOWLEDGE_SOVEREIGN_AUTH", Some("disabled")),
+                ("RECAP_KNOWLEDGE_OWNER_USER_ID", Some(user_id_str.as_str())),
+                (
+                    "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                    Some(tenant_id_str.as_str()),
+                ),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+            ],
+            || Config::from_env().expect("config loads"),
+        );
+
+        let job_id = Uuid::new_v4();
+        let job = build_retry_job(&config, job_id, 3);
+
+        assert_eq!(job.job_id, job_id);
+        assert!(job.genres().is_empty());
+        assert_eq!(job.window_days(), 3);
+        assert_eq!(job.trigger_source(), "user");
+        assert_eq!(job.user_id(), Some(user_id));
+        assert_eq!(job.tenant_id(), Some(tenant_id));
     }
 
     /// A transient DB error must propagate, not fold into "no failed job"
