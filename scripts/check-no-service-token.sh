@@ -77,7 +77,12 @@ PATTERNS=(
 
 TOTAL=0
 for pat in "${PATTERNS[@]}"; do
-  count=$(rg -c "$pat" "${EXCLUDES[@]}" 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')
+  rc=0
+  rg_out=$(rg -c "$pat" "${EXCLUDES[@]}" 2>/dev/null) || rc=$?
+  if [[ "$rc" -gt 1 ]]; then
+    exit "$rc"
+  fi
+  count=$(awk -F: '{s+=$2} END{print s+0}' <<<"$rg_out")
   if [[ "${count:-0}" -gt 0 ]]; then
     echo "[found $count] $pat"
     TOTAL=$((TOTAL + count))
