@@ -89,8 +89,13 @@ func (r *Repository) SetTrailBranchState(ctx context.Context, userID uuid.UUID, 
 	return nil
 }
 
-// GetOpenTrailBranches returns the user's open branches, newest first.
-func (r *Repository) GetOpenTrailBranches(ctx context.Context, userID uuid.UUID) ([]TrailBranch, error) {
+// GetLatestOpenTrailBranchesForAnchors returns the newest open branch per
+// anchor across anchorKeys, ordered newest-first overall. An empty anchorKeys
+// slice returns nil without querying the database.
+func (r *Repository) GetLatestOpenTrailBranchesForAnchors(ctx context.Context, userID uuid.UUID, anchorKeys []string) ([]TrailBranch, error) {
+	if len(anchorKeys) == 0 {
+		return nil, nil
+	}
 	// target_title carries a read-time display fallback for branches whose stored
 	// title is empty (title-less targets already in the log, before the planner
 	// title gate): live home title → excerpt snippet → source host → item key.
@@ -102,16 +107,24 @@ SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_
                 NULLIF(left(khi.summary_excerpt, 80), ''),
                 NULLIF(split_part(split_part(khi.url, '://', 2), '/', 1), ''),
                 b.target_item_key)
-FROM knowledge_trail_branches b
+FROM (SELECT DISTINCT unnest($2::text[]) AS anchor_item_key) a
+CROSS JOIN LATERAL (
+  SELECT b0.user_id, b0.branch_key, b0.anchor_item_key, b0.relation_kind, b0.why,
+         b0.evidence_refs_json, b0.confidence, b0.target_item_key, b0.target_title,
+         b0.created_at
+  FROM knowledge_trail_branches b0
+  WHERE b0.user_id = $1 AND b0.state = 'open' AND b0.anchor_item_key = a.anchor_item_key
+  ORDER BY b0.created_at DESC, b0.branch_key DESC
+  LIMIT 1
+) b
 LEFT JOIN knowledge_home_items khi
   ON khi.user_id = b.user_id
   AND khi.item_key = b.target_item_key
   AND khi.projection_version = ` + activeProjectionVersionSQL + `
-WHERE b.user_id = $1 AND b.state = 'open'
 ORDER BY b.created_at DESC, b.branch_key DESC`
-	rows, err := r.pool.Query(ctx, q, userID)
+	rows, err := r.pool.Query(ctx, q, userID, anchorKeys)
 	if err != nil {
-		return nil, fmt.Errorf("GetOpenTrailBranches: %w", err)
+		return nil, fmt.Errorf("GetLatestOpenTrailBranchesForAnchors: %w", err)
 	}
 	defer rows.Close()
 
@@ -119,7 +132,7 @@ ORDER BY b.created_at DESC, b.branch_key DESC`
 	for rows.Next() {
 		b, err := scanTrailBranchRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("GetOpenTrailBranches scan: %w", err)
+			return nil, fmt.Errorf("GetLatestOpenTrailBranchesForAnchors scan: %w", err)
 		}
 		branches = append(branches, b)
 	}
@@ -128,8 +141,8 @@ ORDER BY b.created_at DESC, b.branch_key DESC`
 
 // GetOpenTrailBranchesForAnchor returns the user's open branches anchored on
 // one item, newest first, capped at limit (Wave 10, D26 — the patch-exit
-// surface is a handful, not an inbox). Mirrors GetOpenTrailBranches with an
-// anchor filter and a server-side cap.
+// surface is a handful, not an inbox). Returns up to limit open branches for
+// that anchor using the same target_title fallback as the spine read.
 func (r *Repository) GetOpenTrailBranchesForAnchor(ctx context.Context, userID uuid.UUID, anchorItemKey string, limit int) ([]TrailBranch, error) {
 	q := `
 SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_json,

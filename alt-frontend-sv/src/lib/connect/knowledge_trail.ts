@@ -163,6 +163,8 @@ export async function getTrail(
 export interface SearchTrailResult {
 	/** Episodes containing at least one matching item, newest first. */
 	episodes: EpisodeData[];
+	/** Open branches anchored on the returned episodes. */
+	branches: BranchData[];
 	/** Member item keys that matched, so the UI can highlight the hit. */
 	matchedItemKeys: string[];
 }
@@ -186,6 +188,7 @@ export async function searchTrail(
 
 	return {
 		episodes: response.episodes.map(convertEpisode),
+		branches: response.branches.map(convertBranch),
 		matchedItemKeys: response.matchedItemKeys ?? [],
 	};
 }

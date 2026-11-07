@@ -178,8 +178,11 @@ type SearchTrailResponse struct {
 	// matched_item_keys marks which member items matched, so the UI can
 	// highlight the hit inside its episode.
 	MatchedItemKeys []string `protobuf:"bytes,2,rep,name=matched_item_keys,json=matchedItemKeys,proto3" json:"matched_item_keys,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// branches are the newest open branch per anchor among the members of the
+	// returned episodes, so search hits can show their branch like the spine does.
+	Branches      []*Branch `protobuf:"bytes,3,rep,name=branches,proto3" json:"branches,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchTrailResponse) Reset() {
@@ -222,6 +225,13 @@ func (x *SearchTrailResponse) GetEpisodes() []*Episode {
 func (x *SearchTrailResponse) GetMatchedItemKeys() []string {
 	if x != nil {
 		return x.MatchedItemKeys
+	}
+	return nil
+}
+
+func (x *SearchTrailResponse) GetBranches() []*Branch {
+	if x != nil {
+		return x.Branches
 	}
 	return nil
 }
@@ -998,10 +1008,11 @@ const file_alt_knowledge_trail_v1_knowledge_trail_proto_rawDesc = "" +
 	"\bbranches\x18\x01 \x03(\v2\x1e.alt.knowledge_trail.v1.BranchR\bbranches\"@\n" +
 	"\x12SearchTrailRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"~\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\xba\x01\n" +
 	"\x13SearchTrailResponse\x12;\n" +
 	"\bepisodes\x18\x01 \x03(\v2\x1f.alt.knowledge_trail.v1.EpisodeR\bepisodes\x12*\n" +
-	"\x11matched_item_keys\x18\x02 \x03(\tR\x0fmatchedItemKeys\"n\n" +
+	"\x11matched_item_keys\x18\x02 \x03(\tR\x0fmatchedItemKeys\x12:\n" +
+	"\bbranches\x18\x03 \x03(\v2\x1e.alt.knowledge_trail.v1.BranchR\bbranches\"n\n" +
 	"\x17EmitTrailOutcomeRequest\x12\x1d\n" +
 	"\n" +
 	"branch_key\x18\x01 \x01(\tR\tbranchKey\x12\x19\n" +
@@ -1112,26 +1123,27 @@ var file_alt_knowledge_trail_v1_knowledge_trail_proto_goTypes = []any{
 var file_alt_knowledge_trail_v1_knowledge_trail_proto_depIdxs = []int32{
 	11, // 0: alt.knowledge_trail.v1.GetItemBranchesResponse.branches:type_name -> alt.knowledge_trail.v1.Branch
 	10, // 1: alt.knowledge_trail.v1.SearchTrailResponse.episodes:type_name -> alt.knowledge_trail.v1.Episode
-	13, // 2: alt.knowledge_trail.v1.GetTrailResponse.footprints:type_name -> alt.knowledge_trail.v1.Footprint
-	11, // 3: alt.knowledge_trail.v1.GetTrailResponse.branches:type_name -> alt.knowledge_trail.v1.Branch
-	10, // 4: alt.knowledge_trail.v1.GetTrailResponse.episodes:type_name -> alt.knowledge_trail.v1.Episode
-	13, // 5: alt.knowledge_trail.v1.Episode.footprints:type_name -> alt.knowledge_trail.v1.Footprint
-	12, // 6: alt.knowledge_trail.v1.Branch.evidence_refs:type_name -> alt.knowledge_trail.v1.TrailEvidenceRef
-	8,  // 7: alt.knowledge_trail.v1.KnowledgeTrailService.GetTrail:input_type -> alt.knowledge_trail.v1.GetTrailRequest
-	6,  // 8: alt.knowledge_trail.v1.KnowledgeTrailService.ResolveBranch:input_type -> alt.knowledge_trail.v1.ResolveBranchRequest
-	4,  // 9: alt.knowledge_trail.v1.KnowledgeTrailService.EmitTrailOutcome:input_type -> alt.knowledge_trail.v1.EmitTrailOutcomeRequest
-	2,  // 10: alt.knowledge_trail.v1.KnowledgeTrailService.SearchTrail:input_type -> alt.knowledge_trail.v1.SearchTrailRequest
-	0,  // 11: alt.knowledge_trail.v1.KnowledgeTrailService.GetItemBranches:input_type -> alt.knowledge_trail.v1.GetItemBranchesRequest
-	9,  // 12: alt.knowledge_trail.v1.KnowledgeTrailService.GetTrail:output_type -> alt.knowledge_trail.v1.GetTrailResponse
-	7,  // 13: alt.knowledge_trail.v1.KnowledgeTrailService.ResolveBranch:output_type -> alt.knowledge_trail.v1.ResolveBranchResponse
-	5,  // 14: alt.knowledge_trail.v1.KnowledgeTrailService.EmitTrailOutcome:output_type -> alt.knowledge_trail.v1.EmitTrailOutcomeResponse
-	3,  // 15: alt.knowledge_trail.v1.KnowledgeTrailService.SearchTrail:output_type -> alt.knowledge_trail.v1.SearchTrailResponse
-	1,  // 16: alt.knowledge_trail.v1.KnowledgeTrailService.GetItemBranches:output_type -> alt.knowledge_trail.v1.GetItemBranchesResponse
-	12, // [12:17] is the sub-list for method output_type
-	7,  // [7:12] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	11, // 2: alt.knowledge_trail.v1.SearchTrailResponse.branches:type_name -> alt.knowledge_trail.v1.Branch
+	13, // 3: alt.knowledge_trail.v1.GetTrailResponse.footprints:type_name -> alt.knowledge_trail.v1.Footprint
+	11, // 4: alt.knowledge_trail.v1.GetTrailResponse.branches:type_name -> alt.knowledge_trail.v1.Branch
+	10, // 5: alt.knowledge_trail.v1.GetTrailResponse.episodes:type_name -> alt.knowledge_trail.v1.Episode
+	13, // 6: alt.knowledge_trail.v1.Episode.footprints:type_name -> alt.knowledge_trail.v1.Footprint
+	12, // 7: alt.knowledge_trail.v1.Branch.evidence_refs:type_name -> alt.knowledge_trail.v1.TrailEvidenceRef
+	8,  // 8: alt.knowledge_trail.v1.KnowledgeTrailService.GetTrail:input_type -> alt.knowledge_trail.v1.GetTrailRequest
+	6,  // 9: alt.knowledge_trail.v1.KnowledgeTrailService.ResolveBranch:input_type -> alt.knowledge_trail.v1.ResolveBranchRequest
+	4,  // 10: alt.knowledge_trail.v1.KnowledgeTrailService.EmitTrailOutcome:input_type -> alt.knowledge_trail.v1.EmitTrailOutcomeRequest
+	2,  // 11: alt.knowledge_trail.v1.KnowledgeTrailService.SearchTrail:input_type -> alt.knowledge_trail.v1.SearchTrailRequest
+	0,  // 12: alt.knowledge_trail.v1.KnowledgeTrailService.GetItemBranches:input_type -> alt.knowledge_trail.v1.GetItemBranchesRequest
+	9,  // 13: alt.knowledge_trail.v1.KnowledgeTrailService.GetTrail:output_type -> alt.knowledge_trail.v1.GetTrailResponse
+	7,  // 14: alt.knowledge_trail.v1.KnowledgeTrailService.ResolveBranch:output_type -> alt.knowledge_trail.v1.ResolveBranchResponse
+	5,  // 15: alt.knowledge_trail.v1.KnowledgeTrailService.EmitTrailOutcome:output_type -> alt.knowledge_trail.v1.EmitTrailOutcomeResponse
+	3,  // 16: alt.knowledge_trail.v1.KnowledgeTrailService.SearchTrail:output_type -> alt.knowledge_trail.v1.SearchTrailResponse
+	1,  // 17: alt.knowledge_trail.v1.KnowledgeTrailService.GetItemBranches:output_type -> alt.knowledge_trail.v1.GetItemBranchesResponse
+	13, // [13:18] is the sub-list for method output_type
+	8,  // [8:13] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_alt_knowledge_trail_v1_knowledge_trail_proto_init() }

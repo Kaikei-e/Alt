@@ -63,10 +63,11 @@ func (f *fakeSearchPort) SearchRecapsByQuery(_ context.Context, _ string, _ int)
 
 type fakeSearchTrailPort struct {
 	episodes []domain.TrailEpisode
+	branches []domain.TrailBranch
 }
 
-func (f *fakeSearchTrailPort) SearchTrailFootprints(_ context.Context, _ uuid.UUID, _ []string, _ int) ([]domain.TrailEpisode, error) {
-	return f.episodes, nil
+func (f *fakeSearchTrailPort) SearchTrailFootprints(_ context.Context, _ uuid.UUID, _ []string, _ int) ([]domain.TrailEpisode, []domain.TrailBranch, error) {
+	return f.episodes, f.branches, nil
 }
 
 func userCtx() context.Context {
@@ -226,6 +227,47 @@ func TestSearchTrail_MapsEpisodesAndMatchedItemKeys(t *testing.T) {
 	require.Len(t, resp.Msg.Episodes[0].Footprints, 1)
 	assert.Equal(t, "article:"+articleID, resp.Msg.Episodes[0].Footprints[0].ItemKey)
 	assert.Equal(t, []string{"article:" + articleID}, resp.Msg.MatchedItemKeys)
+}
+
+func TestSearchTrail_MapsBranches(t *testing.T) {
+	articleID := uuid.New().String()
+	anchorKey := "article:" + articleID
+	searchPort := &fakeSearchPort{hits: []domain.SearchIndexerArticleHit{{ID: articleID}}}
+	trailPort := &fakeSearchTrailPort{
+		episodes: []domain.TrailEpisode{{
+			EpisodeKey: "ep:open:article:1",
+			Wear:       "worn",
+			Footprints: []domain.TrailFootprint{{FootprintKey: "open:article:1", ItemKey: anchorKey, Verb: "read"}},
+		}},
+		branches: []domain.TrailBranch{{
+			BranchKey:     "cluster:u:article:z",
+			AnchorItemKey: anchorKey,
+			RelationKind:  "cluster",
+			Why:           `Because you read "US military courts in the UK" — joins rust`,
+			EvidenceRefs:  []domain.TrailEvidenceRef{{RefID: "rust", Label: "rust", Kind: "tag"}},
+			Confidence:    "plausible",
+			TargetItemKey: "article:z",
+			TargetTitle:   "Async Rust",
+		}},
+	}
+	searchUC := search_trail_usecase.NewSearchTrailUsecase(searchPort, trailPort, &fakeThumbnailPort{})
+	h := NewHandler(nil, nil, nil, searchUC, nil, nil, slog.Default())
+
+	resp, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "rust", Limit: 20}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Branches, 1)
+	b := resp.Msg.Branches[0]
+	assert.Equal(t, "cluster:u:article:z", b.BranchKey)
+	assert.Equal(t, anchorKey, b.AnchorItemKey)
+	assert.Equal(t, "cluster", b.RelationKind)
+	assert.Contains(t, b.Why, "US military courts in the UK")
+	assert.Equal(t, "plausible", b.Confidence)
+	assert.Equal(t, "article:z", b.TargetItemKey)
+	assert.Equal(t, "Async Rust", b.TargetTitle)
+	require.Len(t, b.EvidenceRefs, 1)
+	assert.Equal(t, "rust", b.EvidenceRefs[0].RefId)
+	assert.Equal(t, "rust", b.EvidenceRefs[0].Label)
+	assert.Equal(t, "tag", b.EvidenceRefs[0].Kind)
 }
 
 // D29: an OG image resolved for the episode's representative article must be

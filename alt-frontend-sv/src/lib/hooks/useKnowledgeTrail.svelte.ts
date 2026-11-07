@@ -11,6 +11,21 @@ import { createClientTransport } from "#lib/connect/transport-client.js";
 import { uuidv7 } from "#lib/utils/uuidv7.js";
 import { goto } from "$app/navigation";
 
+function mergeBranches(
+	existing: BranchData[],
+	incoming: BranchData[],
+): BranchData[] {
+	const seen = new Set(existing.map((b) => b.branchKey));
+	const merged = [...existing];
+	for (const branch of incoming) {
+		if (!seen.has(branch.branchKey)) {
+			seen.add(branch.branchKey);
+			merged.push(branch);
+		}
+	}
+	return merged;
+}
+
 /**
  * useKnowledgeTrail drives the Knowledge Trail spine. Pull-only by design: data
  * loads on an explicit fetchData()/loadMore()/refresh() call and never via an
@@ -32,6 +47,7 @@ export function useKnowledgeTrail() {
 	let searchActive = $state(false);
 	let searchQuery = $state("");
 	let searchEpisodes = $state<EpisodeData[]>([]);
+	let searchBranches = $state<BranchData[]>([]);
 	let matchedItemKeys = $state<string[]>([]);
 	let searching = $state(false);
 	let searchError = $state<Error | null>(null);
@@ -48,8 +64,11 @@ export function useKnowledgeTrail() {
 			// Episodes are the spine's default display unit (D24); cursor/limit page
 			// over them the same way as the legacy flat footprints did.
 			episodes = reset ? result.episodes : [...episodes, ...result.episodes];
-			// Branches are a full snapshot of the user's open branches (not paged).
-			branches = result.branches;
+			// Branches are scoped to each returned page's episode anchors; merge by
+			// branchKey on loadMore() so earlier pages retain their branches.
+			branches = reset
+				? result.branches
+				: mergeBranches(branches, result.branches);
 			nextCursor = result.nextCursor;
 			hasMore = result.hasMore;
 			hasEverLoaded = true;
@@ -86,6 +105,7 @@ export function useKnowledgeTrail() {
 			const result = await searchTrail(transport, trimmed);
 			searchQuery = trimmed;
 			searchEpisodes = result.episodes;
+			searchBranches = result.branches;
 			matchedItemKeys = result.matchedItemKeys;
 			searchActive = true;
 		} catch (err) {
@@ -100,6 +120,7 @@ export function useKnowledgeTrail() {
 		searchActive = false;
 		searchQuery = "";
 		searchEpisodes = [];
+		searchBranches = [];
 		matchedItemKeys = [];
 		searchError = null;
 	}
@@ -141,6 +162,9 @@ export function useKnowledgeTrail() {
 			return;
 		}
 		await fetchData(true);
+		if (searchActive) {
+			await search(searchQuery);
+		}
 	}
 
 	return {
@@ -152,6 +176,9 @@ export function useKnowledgeTrail() {
 		},
 		get branches() {
 			return branches;
+		},
+		get visibleBranches() {
+			return searchActive ? searchBranches : branches;
 		},
 		get loading() {
 			return loading;
@@ -173,6 +200,9 @@ export function useKnowledgeTrail() {
 		},
 		get searchEpisodes() {
 			return searchEpisodes;
+		},
+		get searchBranches() {
+			return searchBranches;
 		},
 		get matchedItemKeys() {
 			return matchedItemKeys;

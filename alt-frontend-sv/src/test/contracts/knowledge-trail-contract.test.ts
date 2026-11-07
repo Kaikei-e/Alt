@@ -9,6 +9,7 @@ import {
 	GetTrailRequestSchema,
 	GetTrailResponseSchema,
 	ResolveBranchRequestSchema,
+	SearchTrailResponseSchema,
 } from "#lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb.js";
 
 describe("Knowledge Trail API Contract", () => {
@@ -240,6 +241,54 @@ describe("Knowledge Trail API Contract", () => {
 			);
 			expect(deserialized.branches).toHaveLength(1);
 			expect(deserialized.branches[0]!.relationKind).toBe("inquiry");
+		});
+	});
+
+	describe("SearchTrailResponse", () => {
+		it("carries page-scoped branches alongside matched episodes and round-trips through proto serialization", () => {
+			const original = create(SearchTrailResponseSchema, {
+				episodes: [
+					{
+						episodeKey: "ep:open:article:99",
+						wear: "worn",
+						footprints: [
+							{
+								footprintKey: "open:article:99",
+								verb: "read",
+								itemKey: "article:99",
+								title: "Compiler passes",
+							},
+						],
+					},
+				],
+				matchedItemKeys: ["article:99"],
+				branches: [
+					{
+						branchKey: "cluster:u:article:100",
+						anchorItemKey: "article:99",
+						relationKind: "cluster",
+						why: "Because you read Compiler passes — joins rust",
+						evidenceRefs: [{ refId: "rust", label: "rust", kind: "tag" }],
+						confidence: "plausible",
+						targetItemKey: "article:100",
+						targetTitle: "Async Rust",
+					},
+				],
+			});
+			const deserialized = fromBinary(
+				SearchTrailResponseSchema,
+				toBinary(SearchTrailResponseSchema, original),
+			);
+
+			expect(deserialized.episodes).toHaveLength(1);
+			expect(deserialized.matchedItemKeys).toEqual(["article:99"]);
+			expect(deserialized.branches).toHaveLength(1);
+			expect(deserialized.branches[0]?.branchKey).toBe("cluster:u:article:100");
+			expect(deserialized.branches[0]?.anchorItemKey).toBe("article:99");
+			expect(deserialized.branches[0]?.relationKind).toBe("cluster");
+			expect(deserialized.branches[0]?.why).not.toBe("");
+			expect(deserialized.branches[0]?.evidenceRefs).toHaveLength(1);
+			expect(deserialized.branches[0]?.confidence).toBe("plausible");
 		});
 	});
 });

@@ -34,7 +34,9 @@ const branchByEpisodeKey = $derived.by(() => {
 	const map = new Map<string, BranchData>();
 	for (const episode of activeEpisodes) {
 		const memberKeys = new Set(episode.footprints.map((fp) => fp.itemKey));
-		const match = trail.branches.find((b) => memberKeys.has(b.anchorItemKey));
+		const match = trail.visibleBranches.find((b) =>
+			memberKeys.has(b.anchorItemKey),
+		);
 		if (match) map.set(episode.episodeKey, match);
 	}
 	return map;

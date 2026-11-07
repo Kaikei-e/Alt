@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -289,4 +290,67 @@ func TestGetTrailFootprints_InvalidEpisodeCursorIsInvalidArgument(t *testing.T) 
 	}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestGetTrailFootprints_BranchesScopedToReturnedPageAnchorsNewestFirst(t *testing.T) {
+	base := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	repo := &mockRepo{
+		trailFootprints: []sovereign_db.TrailFootprint{
+			// Episode 1 (newest): two footprints (article:c1 and article:c2) chained via shared tag.
+			{FootprintKey: "fp:c2", ItemKey: "article:c2", Verb: "read", OccurredAt: base.Add(61 * 24 * time.Hour), Tags: []string{"golang", "concurrency"}, Wear: "thin"},
+			{FootprintKey: "fp:c1", ItemKey: "article:c1", Verb: "read", OccurredAt: base.Add(60 * 24 * time.Hour), Tags: []string{"golang", "concurrency"}, Wear: "thin"},
+			// Episode 2: article:b.
+			{FootprintKey: "fp:b", ItemKey: "article:b", Verb: "read", OccurredAt: base.Add(30 * 24 * time.Hour), Tags: []string{"postgres"}, Wear: "thin"},
+			// Episode 3 (off-page when Limit=2): article:a.
+			{FootprintKey: "fp:a", ItemKey: "article:a", Verb: "read", OccurredAt: base, Tags: []string{"rust"}, Wear: "thin"},
+		},
+		// Ordered newest-first (created_at DESC, branch_key DESC) as stored in the read model.
+		openBranches: []sovereign_db.TrailBranch{
+			{BranchKey: "br:offpage-a", AnchorItemKey: "article:a", RelationKind: "cluster", Why: "Off-page episode anchor", Confidence: "plausible", TargetItemKey: "article:t0", TargetTitle: "T0"},
+			{BranchKey: "br:b-newest", AnchorItemKey: "article:b", RelationKind: "cluster", Why: "Newest for b", Confidence: "plausible", TargetItemKey: "article:t1", TargetTitle: "T1"},
+			{BranchKey: "br:c1-newest", AnchorItemKey: "article:c1", RelationKind: "continuation", Why: "Newest for c1", Confidence: "high", TargetItemKey: "article:c1", TargetTitle: "C1"},
+			{BranchKey: "br:c1-older", AnchorItemKey: "article:c1", RelationKind: "cluster", Why: "Older for c1", Confidence: "plausible", TargetItemKey: "article:t2", TargetTitle: "T2"},
+			{BranchKey: "br:b-older", AnchorItemKey: "article:b", RelationKind: "cluster", Why: "Older for b", Confidence: "plausible", TargetItemKey: "article:t3", TargetTitle: "T3"},
+		},
+	}
+	h := NewSovereignHandler(repo)
+
+	resp, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId: "22222222-2222-2222-2222-222222222222",
+		Limit:  2,
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Episodes, 2)
+
+	assert.Equal(t, 1, repo.openBranchesCalls)
+	assert.Equal(t, uuid.MustParse("22222222-2222-2222-2222-222222222222"), repo.gotBranchUserID,
+		"branch query must be scoped to the requesting user")
+	assert.ElementsMatch(t, []string{"article:c2", "article:c1", "article:b"}, repo.gotBranchAnchorKeys,
+		"branch query must be scoped to footprint item_keys in the returned page, excluding off-page episode anchors")
+
+	require.Len(t, resp.Msg.Branches, 2, "at most one newest open branch per anchor in the returned page")
+	assert.Equal(t, "br:b-newest", resp.Msg.Branches[0].BranchKey, "final branch list must preserve newest-first ordering")
+	assert.Equal(t, "br:c1-newest", resp.Msg.Branches[1].BranchKey, "only the newest branch for article:c1 should be returned")
+}
+
+func TestGetTrailFootprints_EmptyPageSkipsBranchQuery(t *testing.T) {
+	repo := &mockRepo{
+		trailFootprints: []sovereign_db.TrailFootprint{
+			{FootprintKey: "fp:a", ItemKey: "article:a", Verb: "read", OccurredAt: time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC), Wear: "thin"},
+		},
+		openBranches: []sovereign_db.TrailBranch{
+			{BranchKey: "br:a", AnchorItemKey: "article:a", RelationKind: "cluster", Why: "Why", Confidence: "plausible", TargetItemKey: "article:z", TargetTitle: "Z"},
+		},
+	}
+	h := NewSovereignHandler(repo)
+
+	resp, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
+		UserId:         "22222222-2222-2222-2222-222222222222",
+		Limit:          20,
+		FilterItemKeys: []string{"article:nonexistent"},
+	}))
+	require.NoError(t, err)
+	assert.Empty(t, resp.Msg.Episodes)
+	assert.Empty(t, resp.Msg.Branches, "an empty episode page must return no branches")
+	assert.Equal(t, 0, repo.openBranchesCalls, "must not query branches when the returned episode page has no anchors")
 }

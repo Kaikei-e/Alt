@@ -87,9 +87,14 @@ func (h *SovereignHandler) GetTrailFootprints(
 		nextCursor = fmt.Sprintf("%s%d", episodeCursorPrefix, end)
 	}
 
-	branches, err := h.readDB.GetOpenTrailBranches(ctx, userID)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetOpenTrailBranches: %w", err))
+	// Branches are scoped to the returned page's anchors because the trail renders at most one branch per shown episode.
+	anchorKeys := collectPageAnchorKeys(page)
+	var branches []sovereign_db.TrailBranch
+	if len(anchorKeys) > 0 {
+		branches, err = h.readDB.GetLatestOpenTrailBranchesForAnchors(ctx, userID, anchorKeys)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLatestOpenTrailBranchesForAnchors: %w", err))
+		}
 	}
 
 	pbEpisodes := make([]*sovereignv1.TrailEpisode, len(page))
@@ -221,6 +226,21 @@ func filterEpisodesByItemKeys(episodes []trail_episodes.Episode, itemKeys []stri
 		}
 	}
 	return filtered
+}
+
+func collectPageAnchorKeys(episodes []trail_episodes.Episode) []string {
+	seen := make(map[string]struct{})
+	var keys []string
+	for _, ep := range episodes {
+		for _, fp := range ep.Footprints {
+			if _, ok := seen[fp.ItemKey]; ok {
+				continue
+			}
+			seen[fp.ItemKey] = struct{}{}
+			keys = append(keys, fp.ItemKey)
+		}
+	}
+	return keys
 }
 
 // parseEpisodeCursor parses the handler-owned "ep:<offset>" episode-page

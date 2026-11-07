@@ -152,6 +152,21 @@ func TestGetTrailFootprintsNarrowedToMatchingItems(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
+				// Narrowed trail search responses carry the page-scoped open
+				// branches anchored on the returned episodes so search mode on
+				// the trail page can still render each episode's branch header.
+				"branches": matchers.EachLike(matchers.MapMatcher{
+					"branchKey":     matchers.Like("cluster:u:article:z"),
+					"anchorItemKey": matchers.Like("article:1"),
+					"relationKind":  matchers.Like("cluster"),
+					"why":           matchers.Like("Joins a topic you follow."),
+					"confidence":    matchers.Like("plausible"),
+					"targetItemKey": matchers.Like("article:z"),
+					"evidenceRefs": matchers.EachLike(matchers.MapMatcher{
+						"refId": matchers.Like("rust"),
+						"kind":  matchers.Like("tag"),
+					}, 1),
+				}, 1),
 				// Only the episode containing the matching item comes back —
 				// the non-matching article:2 episode must not leak through.
 				"episodes": matchers.EachLike(matchers.MapMatcher{
@@ -181,6 +196,15 @@ func TestGetTrailFootprintsNarrowedToMatchingItems(t *testing.T) {
 			assert.NotEmpty(t, ep.EpisodeKey)
 			require.NotEmpty(t, ep.Footprints)
 			assert.Equal(t, "article:1", ep.Footprints[0].ItemKey, "the narrowed response must contain the matching item")
+			require.NotEmpty(t, resp.Msg.Branches, "provider must return open branches anchored on the narrowed episodes")
+			b := resp.Msg.Branches[0]
+			assert.Equal(t, "cluster:u:article:z", b.BranchKey)
+			assert.Equal(t, "article:1", b.AnchorItemKey)
+			assert.Equal(t, "cluster", b.RelationKind)
+			assert.Equal(t, "Joins a topic you follow.", b.Why)
+			assert.Equal(t, "plausible", b.Confidence)
+			assert.Equal(t, "article:z", b.TargetItemKey)
+			assert.NotEmpty(t, b.EvidenceRefs)
 			return nil
 		})
 	require.NoError(t, err)

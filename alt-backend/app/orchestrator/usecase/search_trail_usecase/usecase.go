@@ -23,12 +23,6 @@ import (
 const (
 	defaultLimit = 20
 	maxLimit     = 100
-	// sovereignSearchWindow bounds how many episodes the narrowed
-	// GetTrailFootprints call may return. It mirrors knowledge-sovereign's own
-	// episodeWindowRows derivation window — generously large so a hit several
-	// episodes back isn't silently dropped before the caller's own limit
-	// truncates the final page.
-	sovereignSearchWindow = 500
 
 	// articleItemKeyPrefix anchors a search hit's article id back to the
 	// item_key vocabulary the trail spine uses.
@@ -41,10 +35,12 @@ const (
 var ErrInvalidRequest = errors.New("search_trail_usecase: invalid request")
 
 // Result is the trail search response: episodes containing at least one
-// matching item, plus the subset of searched item_keys that actually appear
-// among their members (D25 — anchors the hit inside its episode).
+// matching item, the open branches anchored on those episodes, plus the subset
+// of searched item_keys that actually appear among their members (D25 —
+// anchors the hit inside its episode).
 type Result struct {
 	Episodes        []domain.TrailEpisode
+	Branches        []domain.TrailBranch
 	MatchedItemKeys []string
 }
 
@@ -83,17 +79,18 @@ func (u *SearchTrailUsecase) Execute(ctx context.Context, userID uuid.UUID, quer
 
 	itemKeys := hitsToItemKeys(hits)
 
-	episodes, err := u.trailPort.SearchTrailFootprints(ctx, userID, itemKeys, sovereignSearchWindow)
+	episodes, branches, err := u.trailPort.SearchTrailFootprints(ctx, userID, itemKeys, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(episodes) > limit {
-		episodes = episodes[:limit]
-	}
 	episodes = trail_thumbnail_enrichment.Enrich(ctx, u.thumbnailPort, episodes)
 
-	return &Result{Episodes: episodes, MatchedItemKeys: matchedItemKeys(itemKeys, episodes)}, nil
+	return &Result{
+		Episodes:        episodes,
+		Branches:        branches,
+		MatchedItemKeys: matchedItemKeys(itemKeys, episodes),
+	}, nil
 }
 
 // clampLimit ensures requested limit stays within [1, maxLimit], defaulting otherwise.

@@ -1,4 +1,4 @@
-h1:V0PkXcUTgS8lqFGXm4C6UKU/s3DhHZ722BedA1b56VA=
+h1:rvxBfYpfiKwAQGwbK+/uouauwjHBrGt8HQnbZ65rYu0=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
@@ -32,3 +32,4 @@ h1:V0PkXcUTgS8lqFGXm4C6UKU/s3DhHZ722BedA1b56VA=
 00031_add_today_digest_last_event_seq.sql h1:yG+J583BUlb3kmWrjNA3SyWpIhHEUL+4waosFAHx3CQ=
 00032_optimize_sovereign_indexes.sql h1:+KtILqNI5jpoPTPRYoT/g8hqlmI6I+RO6QOq9Eq7jMs=
 00033_add_home_ranking_covering_indexes.sql h1:uKYdVz+gs6Imqvsae17P4ohwolDrBTCvCjXkd4inOXA=
+00034_add_trail_branches_anchor_and_cluster_indexes.sql h1:OIyd6FaWxmbhOUkt6gAwdTa18tCGH5P7aJ2v5ZV+bGM=

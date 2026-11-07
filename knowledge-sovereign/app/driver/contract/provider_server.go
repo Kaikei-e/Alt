@@ -124,7 +124,7 @@ func (f *fakeRepo) GetTrailFootprints(_ context.Context, userID uuid.UUID, _ str
 	}}, "", false, nil
 }
 
-func (f *fakeRepo) GetOpenTrailBranches(context.Context, uuid.UUID) ([]sovereign_db.TrailBranch, error) {
+func (f *fakeRepo) GetLatestOpenTrailBranchesForAnchors(context.Context, uuid.UUID, []string) ([]sovereign_db.TrailBranch, error) {
 	return []sovereign_db.TrailBranch{fixtureBranch()}, nil
 }
 
