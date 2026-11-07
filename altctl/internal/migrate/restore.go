@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // RestoreOptions configures the restore operation
@@ -70,6 +71,10 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 		"selected", len(targetVolumes),
 	)
 
+	if err := m.startDatabaseContainers(ctx, targetVolumes); err != nil {
+		return fmt.Errorf("starting database containers before restore: %w", err)
+	}
+
 	// Restore selected volumes
 	var failedVolumes []string
 	for _, vb := range targetVolumes {
@@ -113,12 +118,7 @@ func (m *Migrator) restoreVolume(ctx context.Context, spec VolumeSpec, backupDir
 	// Determine restore strategy based on the backup file type.
 	// This supports backward compatibility: if a PG volume was backed up as tar
 	// (old format), restore it as tar regardless of current registry type.
-	backupType := vb.Type
-	if strings.HasSuffix(vb.Filename, ".tar.gz") {
-		backupType = BackupTypeTar
-	} else if strings.HasSuffix(vb.Filename, ".dump") {
-		backupType = BackupTypePostgreSQL
-	}
+	backupType := resolveRestoreBackupType(vb)
 
 	switch backupType {
 	case BackupTypePostgreSQL:
@@ -198,6 +198,77 @@ func (m *Migrator) stopContainers(ctx context.Context) error {
 	}
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	return cmd.Run()
+}
+
+func resolveRestoreBackupType(vb VolumeBackup) BackupType {
+	if strings.HasSuffix(vb.Filename, ".tar.gz") {
+		return BackupTypeTar
+	}
+	if strings.HasSuffix(vb.Filename, ".dump") {
+		return BackupTypePostgreSQL
+	}
+	return vb.Type
+}
+
+func (m *Migrator) startDatabaseContainers(ctx context.Context, targetVolumes []VolumeBackup) error {
+	var pgSpecs []VolumeSpec
+	seenServices := make(map[string]bool)
+	for _, vb := range targetVolumes {
+		spec, ok := m.registry.Get(vb.Name)
+		if !ok {
+			continue
+		}
+		if resolveRestoreBackupType(vb) == BackupTypePostgreSQL && spec.Service != "" && !seenServices[spec.Service] {
+			seenServices[spec.Service] = true
+			pgSpecs = append(pgSpecs, spec)
+		}
+	}
+	if len(pgSpecs) == 0 {
+		return nil
+	}
+	if m.dryRun {
+		m.logger.Info("[dry-run] would start database containers", "count", len(pgSpecs))
+		return nil
+	}
+
+	for _, spec := range pgSpecs {
+		args, err := m.buildComposeArgs("up", "-d", spec.Service)
+		if err != nil {
+			return fmt.Errorf("resolving compose files: %w", err)
+		}
+		cmd := exec.CommandContext(ctx, "docker", args...)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("starting service %s: %w", spec.Service, err)
+		}
+		if err := m.waitForPostgres(ctx, spec); err != nil {
+			return fmt.Errorf("waiting for service %s: %w", spec.Service, err)
+		}
+	}
+	return nil
+}
+
+func (m *Migrator) waitForPostgres(ctx context.Context, spec VolumeSpec) error {
+	pg := NewPostgresBackuper(m.projectName, m.composeDir, m.logger, m.dryRun)
+	container := pg.resolveContainer(ctx, spec)
+	args := []string{"exec", container, "pg_isready", "-U", spec.DBUser, "-d", spec.DBName}
+
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var lastErr error
+	for {
+		if err := exec.CommandContext(waitCtx, "docker", args...).Run(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("postgres container %s not ready: %w", container, lastErr)
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
 }
 
 // buildComposeArgs builds docker compose command arguments. The compose file
