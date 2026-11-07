@@ -89,8 +89,13 @@ func (r *Repository) SetTrailBranchState(ctx context.Context, userID uuid.UUID, 
 	return nil
 }
 
-// GetOpenTrailBranches returns the user's open branches, newest first.
-func (r *Repository) GetOpenTrailBranches(ctx context.Context, userID uuid.UUID) ([]TrailBranch, error) {
+// GetLatestOpenTrailBranchesForAnchors returns the newest open branch per
+// anchor across anchorKeys, ordered newest-first overall. An empty anchorKeys
+// slice returns nil without querying the database.
+func (r *Repository) GetLatestOpenTrailBranchesForAnchors(ctx context.Context, userID uuid.UUID, anchorKeys []string) ([]TrailBranch, error) {
+	if len(anchorKeys) == 0 {
+		return nil, nil
+	}
 	// target_title carries a read-time display fallback for branches whose stored
 	// title is empty (title-less targets already in the log, before the planner
 	// title gate): live home title → excerpt snippet → source host → item key.
@@ -102,16 +107,23 @@ SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_
                 NULLIF(left(khi.summary_excerpt, 80), ''),
                 NULLIF(split_part(split_part(khi.url, '://', 2), '/', 1), ''),
                 b.target_item_key)
-FROM knowledge_trail_branches b
+FROM (
+  SELECT DISTINCT ON (b.anchor_item_key)
+         b.user_id, b.branch_key, b.anchor_item_key, b.relation_kind, b.why,
+         b.evidence_refs_json, b.confidence, b.target_item_key, b.target_title,
+         b.created_at
+  FROM knowledge_trail_branches b
+  WHERE b.user_id = $1 AND b.state = 'open' AND b.anchor_item_key = ANY($2::text[])
+  ORDER BY b.anchor_item_key, b.created_at DESC, b.branch_key DESC
+) b
 LEFT JOIN knowledge_home_items khi
   ON khi.user_id = b.user_id
   AND khi.item_key = b.target_item_key
   AND khi.projection_version = ` + activeProjectionVersionSQL + `
-WHERE b.user_id = $1 AND b.state = 'open'
 ORDER BY b.created_at DESC, b.branch_key DESC`
-	rows, err := r.pool.Query(ctx, q, userID)
+	rows, err := r.pool.Query(ctx, q, userID, anchorKeys)
 	if err != nil {
-		return nil, fmt.Errorf("GetOpenTrailBranches: %w", err)
+		return nil, fmt.Errorf("GetLatestOpenTrailBranchesForAnchors: %w", err)
 	}
 	defer rows.Close()
 
@@ -119,7 +131,7 @@ ORDER BY b.created_at DESC, b.branch_key DESC`
 	for rows.Next() {
 		b, err := scanTrailBranchRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("GetOpenTrailBranches scan: %w", err)
+			return nil, fmt.Errorf("GetLatestOpenTrailBranchesForAnchors scan: %w", err)
 		}
 		branches = append(branches, b)
 	}

@@ -11,6 +11,21 @@ import { createClientTransport } from "#lib/connect/transport-client.js";
 import { uuidv7 } from "#lib/utils/uuidv7.js";
 import { goto } from "$app/navigation";
 
+function mergeBranches(
+	existing: BranchData[],
+	incoming: BranchData[],
+): BranchData[] {
+	const seen = new Set(existing.map((b) => b.branchKey));
+	const merged = [...existing];
+	for (const branch of incoming) {
+		if (!seen.has(branch.branchKey)) {
+			seen.add(branch.branchKey);
+			merged.push(branch);
+		}
+	}
+	return merged;
+}
+
 /**
  * useKnowledgeTrail drives the Knowledge Trail spine. Pull-only by design: data
  * loads on an explicit fetchData()/loadMore()/refresh() call and never via an
@@ -48,8 +63,11 @@ export function useKnowledgeTrail() {
 			// Episodes are the spine's default display unit (D24); cursor/limit page
 			// over them the same way as the legacy flat footprints did.
 			episodes = reset ? result.episodes : [...episodes, ...result.episodes];
-			// Branches are a full snapshot of the user's open branches (not paged).
-			branches = result.branches;
+			// Branches are scoped to each returned page's episode anchors; merge by
+			// branchKey on loadMore() so earlier pages retain their branches.
+			branches = reset
+				? result.branches
+				: mergeBranches(branches, result.branches);
 			nextCursor = result.nextCursor;
 			hasMore = result.hasMore;
 			hasEverLoaded = true;

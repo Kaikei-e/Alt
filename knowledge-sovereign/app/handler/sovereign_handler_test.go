@@ -92,10 +92,6 @@ func (m *mockRepo) GetTrailFootprints(_ context.Context, _ uuid.UUID, cursor str
 	m.gotTrailLimit = limit
 	return m.trailFootprints, "", false, m.returnErr
 }
-func (m *mockRepo) GetOpenTrailBranches(_ context.Context, _ uuid.UUID) ([]sovereign_db.TrailBranch, error) {
-	m.openBranchesCalls++
-	return m.openBranches, m.returnErr
-}
 func (m *mockRepo) GetLatestOpenTrailBranchesForAnchors(_ context.Context, userID uuid.UUID, anchorKeys []string) ([]sovereign_db.TrailBranch, error) {
 	m.openBranchesCalls++
 	m.gotBranchUserID = userID
