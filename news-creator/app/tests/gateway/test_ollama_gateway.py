@@ -1154,6 +1154,64 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
+async def test_caller_cancellation_cancels_children_in_generate_with_cancellation(
+    mock_config, mock_driver
+):
+    """Caller cancellation during _generate_with_cancellation must cancel and await child tasks."""
+    generate_started = asyncio.Event()
+    never_finish = asyncio.Event()
+    generate_cancelled = False
+
+    async def blocking_generate(payload):
+        nonlocal generate_cancelled
+        generate_started.set()
+        try:
+            await never_finish.wait()
+            return {
+                "response": "Should not reach here",
+                "model": "test-model",
+                "done": True,
+            }
+        except asyncio.CancelledError:
+            generate_cancelled = True
+            raise
+
+    mock_driver.generate = blocking_generate
+
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        baseline_tasks = set(asyncio.all_tasks())
+        outer_task = asyncio.create_task(
+            gateway.generate("Test prompt", priority="low")
+        )
+
+        await generate_started.wait()
+
+        outer_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await outer_task
+
+        leaked_tasks = {t for t in asyncio.all_tasks() - baseline_tasks if not t.done()}
+        try:
+            assert generate_cancelled, (
+                "driver.generate() should observe CancelledError on caller cancellation"
+            )
+            assert not leaked_tasks, (
+                f"No child tasks should remain pending after caller cancellation, found: {leaked_tasks}"
+            )
+        finally:
+            for t in leaked_tasks:
+                t.cancel()
+            if leaked_tasks:
+                await asyncio.gather(*leaked_tasks, return_exceptions=True)
+            await gateway.cleanup()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "input_prompt,expected_prompt",
     [
