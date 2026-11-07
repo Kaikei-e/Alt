@@ -91,6 +91,7 @@ type mockSearchEngineForIndexing struct {
 	err               error
 	synonymsCallCount int
 	lastSynonymsArg   map[string][]string
+	synonymsErrs      []error
 }
 
 func (m *mockSearchEngineForIndexing) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
@@ -145,6 +146,11 @@ func (m *mockSearchEngineForIndexing) SearchByUserIDWithPagination(ctx context.C
 func (m *mockSearchEngineForIndexing) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	m.synonymsCallCount++
 	m.lastSynonymsArg = synonyms
+	if len(m.synonymsErrs) > 0 {
+		err := m.synonymsErrs[0]
+		m.synonymsErrs = m.synonymsErrs[1:]
+		return err
+	}
 	return nil
 }
 
@@ -707,6 +713,46 @@ func TestFlushSynonyms_IndexingAloneDoesNotPUT(t *testing.T) {
 	}
 	if engine.synonymsCallCount != 1 {
 		t.Fatalf("RegisterSynonyms call count = %d after 2nd flush with nothing new, want 1", engine.synonymsCallCount)
+	}
+}
+
+func TestFlushSynonyms_RetriesAfterRegisterSynonymsError(t *testing.T) {
+	now := time.Now()
+	tok, err := tokenize.InitTokenizer()
+	if err != nil {
+		t.Fatalf("InitTokenizer: %v", err)
+	}
+	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"機械学習"}, now, "u")
+	repo := &mockArticleRepo{articles: []*domain.Article{a1}}
+	engine := &mockSearchEngineForIndexing{
+		synonymsErrs: []error{errors.New("meilisearch settings task timeout")},
+	}
+	u := NewIndexArticlesUsecase(repo, engine, tok)
+
+	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
+		t.Fatalf("ExecuteBackfill: %v", err)
+	}
+
+	if err := u.FlushSynonyms(context.Background()); err == nil {
+		t.Fatal("FlushSynonyms (1st) = nil, want error from RegisterSynonyms")
+	}
+	if engine.synonymsCallCount != 1 {
+		t.Fatalf("RegisterSynonyms call count after failed 1st flush = %d, want 1", engine.synonymsCallCount)
+	}
+	wantTokens, ok := engine.lastSynonymsArg["機械学習"]
+	if !ok {
+		t.Fatalf("1st flush missing key 機械学習: %v", engine.lastSynonymsArg)
+	}
+	engine.lastSynonymsArg = nil
+
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms (2nd retry): %v", err)
+	}
+	if engine.synonymsCallCount != 2 {
+		t.Fatalf("RegisterSynonyms call count after 2nd flush = %d, want 2 (must retry after failure)", engine.synonymsCallCount)
+	}
+	if gotTokens, ok := engine.lastSynonymsArg["機械学習"]; !ok || !slices.Equal(gotTokens, wantTokens) {
+		t.Fatalf("2nd flush synonyms = %v, want 機械学習:%v", engine.lastSynonymsArg, wantTokens)
 	}
 }
 
