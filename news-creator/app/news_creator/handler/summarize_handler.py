@@ -7,7 +7,7 @@ from contextlib import aclosing
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from news_creator.domain.errors import QueueFullError
+from news_creator.domain.errors import PreemptedException, QueueFullError
 from news_creator.domain.models import SummarizeRequest, SummarizeResponse
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.utils.context_logger import (
@@ -366,6 +366,15 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
         except ValueError as exc:
             logger.warning("Invalid summarize request", extra={"error": str(exc)})
             raise HTTPException(status_code=400, detail="Invalid request") from exc
+
+        except PreemptedException as exc:
+            logger.warning(
+                "Summary generation preempted by higher-priority request",
+                extra={"article_id": request.article_id, "error": str(exc)},
+            )
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except RuntimeError as exc:
             error_detail = str(exc)

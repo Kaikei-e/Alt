@@ -7,6 +7,7 @@ from typing import AsyncGenerator, AsyncIterator
 from datetime import datetime, timedelta, timezone
 import aiohttp
 
+from news_creator.domain.errors import PreemptedException
 from news_creator.domain.models import LLMGenerateResponse, SummaryMetadata
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.output_guard import (
@@ -667,6 +668,8 @@ class SummarizeUsecase:
                 if chunk_resp.eval_count:
                     total_completion_tokens += chunk_resp.eval_count
 
+            except PreemptedException:
+                raise
             except Exception as e:
                 logger.error(
                     f"Failed to summarize chunk {i}",
