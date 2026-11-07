@@ -904,8 +904,14 @@ class RunManager:
     async def _handle_failure(self, run_id: int, message: str) -> None:
         async with self._session_factory() as session:
             dao = self._dao_factory(session)
-            await dao.mark_run_failure(run_id, "failed", message)
+            updated = await dao.mark_run_failure(run_id, "failed", message)
             await session.commit()
+        if not updated:
+            LOGGER.warning(
+                "run.failure.skipped_not_running",
+                run_id=run_id,
+                error=message,
+            )
 
     async def shutdown(self) -> None:
         """Cancel all pending tasks and wait for them to complete.

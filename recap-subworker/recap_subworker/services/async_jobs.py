@@ -292,7 +292,11 @@ class AdminJobService:
         started: float,
     ) -> None:
         duration = time.monotonic() - started
-        error_message = str(exc) or CANCELLED_ADMIN_JOB_MESSAGE
+        error_message = (
+            str(exc) or CANCELLED_ADMIN_JOB_MESSAGE
+            if isinstance(exc, asyncio.CancelledError)
+            else str(exc)
+        )
         ADMIN_JOB_STATUS_TOTAL.labels(kind=kind, status="failed").inc()
         ADMIN_JOB_DURATION_SECONDS.labels(kind=kind).observe(duration)
         async with self._session_factory() as session:

@@ -545,4 +545,3 @@ def test_pipeline_succeeds_when_genre_reduces_to_single_sentence_after_dedup():
     assert len(response.clusters[0].representatives) == 1
     assert response.clusters[0].label.top_terms
     assert response.evidence_budget.sentences == 1
-

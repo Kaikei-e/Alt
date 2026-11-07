@@ -349,4 +349,3 @@ async def test_empty_exception_message_is_not_mislabeled_as_cancelled(monkeypatc
 
     assert fake_dao.jobs[str(job_id)]["status"] == "failed"
     assert fake_dao.jobs[str(job_id)]["error"] != CANCELLED_ADMIN_JOB_MESSAGE
-

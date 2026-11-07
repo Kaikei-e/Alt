@@ -184,4 +184,3 @@ async def test_mark_run_failure_only_updates_running_run():
     assert "WHERE recap_subworker_runs.id = " in str(compiled)
     assert "AND recap_subworker_runs.status = " in str(compiled)
     assert "running" in compiled.params.values()
-

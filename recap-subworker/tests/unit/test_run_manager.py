@@ -861,7 +861,7 @@ async def test_handle_failure_does_not_overwrite_succeeded_run():
 
     from recap_subworker.db.dao import SubworkerDAO
 
-    row = {"id": 3, "status": "succeeded", "error_message": None}
+    row: dict[str, object] = {"id": 3, "status": "succeeded", "error_message": None}
 
     class _StatusAwareSession(FakeSession):
         async def execute(self, stmt):
@@ -891,4 +891,3 @@ async def test_handle_failure_does_not_overwrite_succeeded_run():
     assert row["error_message"] is None
     assert session.commit_called
     assert any(log.get("run_id") == 3 for log in cap_logs)
-

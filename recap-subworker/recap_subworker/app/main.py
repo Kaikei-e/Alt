@@ -34,7 +34,7 @@ from ..infra.config import get_settings
 from ..infra.logging import configure_logging
 from ..infra.loop_watchdog import LoopWatchdog
 from ..infra.telemetry import setup_metrics
-from ..services.async_jobs import ORPHANED_ADMIN_JOB_MESSAGE
+from ..services.async_jobs import ORPHANED_ADMIN_JOB_MESSAGE, _utcnow
 from ..services.run_manager import ORPHANED_RUN_MESSAGE, SessionFactory
 from .container import ServiceContainer
 from .infra.admin_auth import load_admin_auth_config, require_admin_token
@@ -157,7 +157,10 @@ async def sweep_orphaned_runs(session_factory: SessionFactory) -> int:
     async with session_factory() as session:
         dao = SubworkerDAO(session)
         swept = await dao.fail_orphaned_runs(ORPHANED_RUN_MESSAGE)
-        swept_admin = await dao.fail_orphaned_admin_jobs(ORPHANED_ADMIN_JOB_MESSAGE)
+        swept_admin = await dao.fail_orphaned_admin_jobs(
+            ORPHANED_ADMIN_JOB_MESSAGE,
+            finished_at=_utcnow(),
+        )
         await session.commit()
     if swept:
         logger.warning("run.orphans.swept", swept=swept)

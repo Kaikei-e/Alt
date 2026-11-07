@@ -259,4 +259,3 @@ def test_extract_topics_handles_single_corpus():
         term in {"artificial", "intelligence", "product", "launch", "roadmap", "research"}
         for term in result[0]
     )
-
