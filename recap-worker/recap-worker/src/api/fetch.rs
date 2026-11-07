@@ -673,6 +673,101 @@ mod tests {
         assert_eq!(clamp_offset(Some(-10)), 0);
         assert_eq!(clamp_offset(Some(25_000)), 10_000);
     }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn search_recaps_applies_offset_and_limit() {
+        use std::sync::Arc;
+
+        use axum::{body::Body, http::Request};
+        use chrono::{DateTime, Utc};
+        use tower::ServiceExt;
+        use uuid::Uuid;
+
+        use crate::{
+            app::{ComponentRegistry, build_router},
+            config::{Config, ENV_MUTEX},
+            store::{dao::mock::MockRecapDao, models::RecapSearchHit},
+        };
+
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_GENRES", Some("ai,space")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let first_job = Uuid::from_u128(1);
+        let second_job = Uuid::from_u128(2);
+        let mock_dao = MockRecapDao::new();
+        mock_dao.set_search_recaps_hits(vec![
+            RecapSearchHit {
+                job_id: first_job,
+                executed_at: DateTime::parse_from_rfc3339("2026-04-02T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+                window_days: 7,
+                genre: "ai".to_string(),
+                summary_ja: Some("First hit".to_string()),
+                top_terms: vec!["LLM".to_string()],
+                tags: vec!["ai".to_string()],
+            },
+            RecapSearchHit {
+                job_id: second_job,
+                executed_at: DateTime::parse_from_rfc3339("2026-04-01T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+                window_days: 7,
+                genre: "tech".to_string(),
+                summary_ja: Some("Second hit".to_string()),
+                top_terms: vec!["LLM".to_string()],
+                tags: vec!["tech".to_string()],
+            },
+        ]);
+
+        let app = build_router(registry.with_recap_dao(Arc::new(mock_dao)));
+        let request = Request::builder()
+            .uri("/v1/recaps/search?term=LLM&limit=1&offset=1")
+            .body(Body::empty())
+            .expect("request builds");
+
+        let response = app.oneshot(request).await.expect("request succeeds");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: Value = serde_json::from_slice(&body_bytes).expect("valid json");
+        let results = payload["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["job_id"], second_job.to_string());
+        assert_eq!(results[0]["genre"], "tech");
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]
