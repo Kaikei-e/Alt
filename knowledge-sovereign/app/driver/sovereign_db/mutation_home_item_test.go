@@ -167,6 +167,8 @@ func TestDismissKnowledgeHomeItem_RequiresDismissedAtInPayload(t *testing.T) {
 
 	err := repo.DismissKnowledgeHomeItem(context.Background(), payload)
 	require.Error(t, err, "missing dismissed_at must error loudly, not fabricate timestamp")
+	assert.Contains(t, err.Error(), "dismissed_at is required")
+	assert.True(t, errors.Is(err, ErrInvalidMutationPayload), "missing dismissed_at error must wrap ErrInvalidMutationPayload")
 	assert.Empty(t, mock.execCalls, "no UPDATE should be issued when dismissed_at is missing")
 }
 
