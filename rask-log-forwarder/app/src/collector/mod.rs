@@ -488,4 +488,120 @@ mod reconnect_tests {
             "an uncancelled sleep must report false once the delay elapses"
         );
     }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn start_collection_resets_reconnect_delay_after_established_stream() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
+
+        struct CountingDiscoveryResponder {
+            calls: Arc<AtomicUsize>,
+        }
+
+        impl Respond for CountingDiscoveryResponder {
+            fn respond(&self, _request: &Request) -> ResponseTemplate {
+                let call = self.calls.fetch_add(1, Ordering::SeqCst);
+                if call < 2 {
+                    // Fail the first two discovery attempts so reconnect_delay
+                    // ratchets from 500ms -> 1000ms -> 2000ms before the first
+                    // stream is established.
+                    ResponseTemplate::new(500)
+                } else {
+                    ResponseTemplate::new(200).set_body_string(
+                        r#"[{"Id":"abc123def456","Names":["/alt-backend"],"Labels":{"com.docker.compose.service":"alt-backend","rask.group":"alt-backend"}}]"#,
+                    )
+                }
+            }
+        }
+
+        struct IncrementalLogStreamResponder {
+            stream_num: Arc<AtomicUsize>,
+        }
+
+        impl Respond for IncrementalLogStreamResponder {
+            fn respond(&self, _request: &Request) -> ResponseTemplate {
+                let n = self.stream_num.fetch_add(1, Ordering::SeqCst) + 1;
+                let line = format!("2024-01-01T00:00:0{n}.000000000Z stream-{n}\n");
+                let bytes = line.as_bytes();
+                let mut frame = Vec::with_capacity(8 + bytes.len());
+                frame.extend_from_slice(&[1, 0, 0, 0]);
+                frame.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+                frame.extend_from_slice(bytes);
+                ResponseTemplate::new(200).set_body_bytes(frame)
+            }
+        }
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/containers/json$"))
+            .respond_with(CountingDiscoveryResponder {
+                calls: Arc::new(AtomicUsize::new(0)),
+            })
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/containers/abc123def456/logs$"))
+            .respond_with(IncrementalLogStreamResponder {
+                stream_num: Arc::new(AtomicUsize::new(0)),
+            })
+            .mount(&mock_server)
+            .await;
+
+        unsafe {
+            std::env::set_var("DOCKER_HOST", mock_server.uri());
+        }
+
+        let mut collector = LogCollector::new(CollectorConfig {
+            auto_discover: false,
+            target_service: Some("alt-backend".to_string()),
+            follow_rotations: true,
+            buffer_size: 8192,
+        })
+        .await
+        .expect("LogCollector::new should succeed with mock DOCKER_HOST");
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let cancel_token = CancellationToken::new();
+        let cancel_for_task = cancel_token.clone();
+
+        let handle =
+            tokio::spawn(async move { collector.start_collection(tx, cancel_for_task).await });
+
+        // Wait for the first stream's log frame (arrives after the two 500ms + 1000ms backoffs).
+        let first = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("first stream should deliver a frame within timeout")
+            .expect("channel should remain open");
+        assert_eq!(first.raw_bytes.as_ref(), b"stream-1\n");
+
+        // The first stream ends immediately after that frame. Measure how long
+        // start_collection waits before reconnecting and delivering the second
+        // stream's frame: if reconnect_delay was reset to INITIAL_RECONNECT_DELAY
+        // (500ms), this takes ~500ms; if not reset, it sleeps the ratcheted 2000ms.
+        let after_first_frame = tokio::time::Instant::now();
+        let second = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("second stream should deliver a frame within timeout")
+            .expect("channel should remain open");
+        let reconnect_elapsed = after_first_frame.elapsed();
+        assert_eq!(second.raw_bytes.as_ref(), b"stream-2\n");
+
+        cancel_token.cancel();
+        let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+
+        unsafe {
+            std::env::remove_var("DOCKER_HOST");
+        }
+
+        assert!(
+            reconnect_elapsed < Duration::from_millis(1200),
+            "reconnect_delay must reset to INITIAL_RECONNECT_DELAY (500ms) after a stream \
+             delivers frames, instead of keeping the pre-stream 2000ms backoff \
+             (took {reconnect_elapsed:?})"
+        );
+    }
 }

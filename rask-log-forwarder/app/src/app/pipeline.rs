@@ -591,4 +591,128 @@ mod tests {
             "parse-failure fallback without a Docker timestamp must record timestamp_fallback"
         );
     }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn run_processing_loop_flushes_pending_batch_and_exits_when_collector_stops() {
+        use crate::collector::{CollectorConfig, LogCollector};
+        use wiremock::matchers::{method, path, path_regex};
+        use wiremock::{Request, Respond};
+
+        struct OneShotLogStreamResponder;
+
+        impl Respond for OneShotLogStreamResponder {
+            fn respond(&self, _request: &Request) -> ResponseTemplate {
+                // Remove DOCKER_HOST once the first stream is served so the
+                // collector's subsequent reconnect hits a fatal EndpointError
+                // and exits, dropping log_tx without a shutdown signal.
+                unsafe {
+                    std::env::remove_var("DOCKER_HOST");
+                }
+                let line = b"2024-01-01T00:00:00.000000000Z {\"level\":\"info\",\"msg\":\"pending before collector exit\"}\n";
+                let mut frame = Vec::with_capacity(8 + line.len());
+                frame.extend_from_slice(&[1, 0, 0, 0]);
+                frame.extend_from_slice(&(line.len() as u32).to_be_bytes());
+                frame.extend_from_slice(line);
+                ResponseTemplate::new(200).set_body_bytes(frame)
+            }
+        }
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/aggregate"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/containers/json$"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"[{"Id":"abc123def456","Names":["/alt-backend"],"Labels":{"com.docker.compose.service":"alt-backend","rask.group":"alt-backend"}}]"#,
+            ))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/containers/abc123def456/logs$"))
+            .respond_with(OneShotLogStreamResponder)
+            .mount(&mock_server)
+            .await;
+
+        unsafe {
+            std::env::set_var("DOCKER_HOST", mock_server.uri());
+        }
+
+        let collector = LogCollector::new(CollectorConfig {
+            auto_discover: false,
+            target_service: Some("alt-backend".to_string()),
+            follow_rotations: true,
+            buffer_size: 8192,
+        })
+        .await
+        .expect("LogCollector::new should succeed with mock DOCKER_HOST");
+
+        let aggregate_endpoint = format!("{}/v1/aggregate", mock_server.uri());
+        let storage_dir = tempfile::tempdir().unwrap();
+        let reliability_manager = Arc::new(
+            build_reliability_manager(aggregate_endpoint.clone(), storage_dir.path().to_path_buf())
+                .await,
+        );
+        let sender = Arc::new(
+            LogSender::new(ClientConfig {
+                endpoint: aggregate_endpoint,
+                ingest_token: "test-token-valid".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap(),
+        );
+
+        let running = Arc::new(RwLock::new(true));
+        let (_shutdown_tx, shutdown_rx) = mpsc::unbounded_channel();
+        let cancel_token = CancellationToken::new();
+
+        let params = ProcessingLoopParams {
+            collector: Arc::new(tokio::sync::Mutex::new(collector)),
+            parser: Arc::new(UniversalParser::new()),
+            reliability_manager: Arc::clone(&reliability_manager),
+            sender,
+            running: Arc::clone(&running),
+            shutdown_rx,
+            target_service: "alt-backend".to_string(),
+            sender_config: test_sender_config(),
+            // Keep batch_size > 1 and flush_interval long so the single
+            // entry stays buffered in log_batch until the collector exits.
+            batch_size: 10,
+            flush_interval: Duration::from_secs(60),
+            channel_capacity: 16,
+            cancel_token: cancel_token.clone(),
+        };
+
+        let loop_result =
+            tokio::time::timeout(Duration::from_secs(2), run_processing_loop(params)).await;
+
+        unsafe {
+            std::env::remove_var("DOCKER_HOST");
+        }
+
+        assert!(
+            loop_result.is_ok(),
+            "run_processing_loop must terminate when the collector task exits and closes log_tx"
+        );
+        assert!(
+            !*running.read().await,
+            "running flag must be set to false when run_processing_loop exits"
+        );
+        assert!(
+            cancel_token.is_cancelled(),
+            "cancel_token must be cancelled when run_processing_loop exits"
+        );
+        let snapshot = reliability_manager.get_metrics_snapshot().await;
+        assert_eq!(
+            snapshot.successful_batches, 1,
+            "pending log_batch must be flushed before run_processing_loop exits"
+        );
+    }
 }
