@@ -1,11 +1,16 @@
 package repository
 
 import (
+	"context"
+	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	"rag-orchestrator/internal/domain"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -149,5 +154,149 @@ func TestHybridSearch_VectorArmsExcludeNullEmbeddingsOnly(t *testing.T) {
 		assert.Contains(t, vectorPart, "c.embedding IS NOT NULL")
 		assert.Less(t, strings.Index(vectorPart, "c.embedding IS NOT NULL"), strings.Index(vectorPart, "ORDER BY c.embedding <=> $4"))
 		assert.NotContains(t, textPart, "c.embedding IS NOT NULL")
+	})
+}
+
+type neighborRowItem struct {
+	chunkID   uuid.UUID
+	articleID string
+	score     float32
+}
+
+type neighborSearchRows struct {
+	pgx.Rows
+	all     []neighborRowItem
+	visible []neighborRowItem
+	i       int
+}
+
+func (r *neighborSearchRows) applyQuery(query string, args []interface{}) {
+	candidates := append([]neighborRowItem(nil), r.all...)
+	limitIdx := strings.Index(query, "LIMIT $3")
+	seedFilterIdx := strings.Index(query, "NOT (d.article_id = ANY(")
+	if seedFilterIdx >= 0 && (limitIdx < 0 || seedFilterIdx < limitIdx) {
+		var seeds []string
+		for _, arg := range args {
+			if s, ok := arg.([]string); ok {
+				seeds = s
+				break
+			}
+		}
+		seedSet := make(map[string]struct{}, len(seeds))
+		for _, s := range seeds {
+			seedSet[s] = struct{}{}
+		}
+		filtered := candidates[:0]
+		for _, item := range candidates {
+			if _, isSeed := seedSet[item.articleID]; !isSeed {
+				filtered = append(filtered, item)
+			}
+		}
+		candidates = filtered
+	}
+	if len(args) >= 3 {
+		if limit, ok := args[2].(int); ok && limit >= 0 && len(candidates) > limit {
+			candidates = candidates[:limit]
+		}
+	}
+	r.visible = candidates
+}
+
+func (r *neighborSearchRows) Next() bool {
+	if r.i >= len(r.visible) {
+		return false
+	}
+	r.i++
+	return true
+}
+
+func (r *neighborSearchRows) Scan(dest ...any) error {
+	row := r.visible[r.i-1]
+	uuidsSeen := 0
+	stringsSeen := 0
+	for _, d := range dest {
+		switch v := d.(type) {
+		case *float32:
+			*v = row.score
+		case *uuid.UUID:
+			if uuidsSeen == 0 {
+				*v = row.chunkID
+			} else {
+				*v = uuid.Nil
+			}
+			uuidsSeen++
+		case *int:
+			*v = 1
+		case *string:
+			if stringsSeen == 0 {
+				*v = "chunk content"
+			} else {
+				*v = row.articleID
+			}
+			stringsSeen++
+		case *sql.NullString:
+			*v = sql.NullString{String: "value", Valid: true}
+		case *time.Time:
+			*v = fixedCreatedAt
+		}
+	}
+	return nil
+}
+
+func (r *neighborSearchRows) Close()     {}
+func (r *neighborSearchRows) Err() error { return nil }
+
+type neighborRecordingTx struct {
+	recordingTx
+}
+
+func (f *neighborRecordingTx) Query(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
+	if nr, ok := f.rows.(*neighborSearchRows); ok {
+		nr.applyQuery(query, args)
+	}
+	return f.recordingTx.Query(ctx, query, args...)
+}
+
+func TestSearchNeighbors_ExcludesSeedArticlesBeforeLimit(t *testing.T) {
+	t.Run("SQL excludes seed article IDs in candidate arms before LIMIT", func(t *testing.T) {
+		q := buildSearchNeighborsQuery("english", 60, 4, 5)
+		parts := strings.Split(q, "rrf AS")
+		require.Len(t, parts, 2)
+		vectorPart := strings.Split(parts[0], "text_matches AS")[0]
+		textPart := strings.Split(parts[0], "text_matches AS")[1]
+
+		assert.Contains(t, vectorPart, "NOT (d.article_id = ANY($6))")
+		assert.Less(t, strings.Index(vectorPart, "NOT (d.article_id = ANY($6))"), strings.Index(vectorPart, "LIMIT $2"))
+		assert.Contains(t, textPart, "NOT (d.article_id = ANY($6))")
+		assert.Less(t, strings.Index(textPart, "NOT (d.article_id = ANY($6))"), strings.Index(textPart, "LIMIT $2"))
+		assert.Contains(t, parts[1], "NOT (d.article_id = ANY($6))")
+	})
+
+	t.Run("seed with 4 chunks plus one neighbor article returns the neighbor", func(t *testing.T) {
+		repo := NewHybridSearchRepository(nil, 60)
+		neighborChunkID := uuid.New()
+		rows := &neighborSearchRows{
+			all: []neighborRowItem{
+				{chunkID: uuid.New(), articleID: "seed-1", score: 0.033},
+				{chunkID: uuid.New(), articleID: "seed-1", score: 0.032},
+				{chunkID: uuid.New(), articleID: "seed-1", score: 0.031},
+				{chunkID: uuid.New(), articleID: "seed-1", score: 0.030},
+				{chunkID: neighborChunkID, articleID: "neighbor-1", score: 0.025},
+			},
+		}
+		tx := &neighborRecordingTx{recordingTx: recordingTx{rows: rows}}
+		ctx := InjectTx(context.Background(), tx)
+
+		var results []domain.SearchResult
+		var err error
+		require.NotPanics(t, func() {
+			results, err = repo.SearchNeighbors(ctx, []float32{0.1, 0.2}, "seed title", []string{"seed-1"}, 3, chunkRepoTestUserID)
+		})
+		require.NoError(t, err)
+		require.Len(t, tx.args, 1)
+		assert.Contains(t, tx.args[0], []string{"seed-1"})
+		require.Len(t, results, 1)
+		assert.Equal(t, "neighbor-1", results[0].ArticleID)
+		assert.Equal(t, neighborChunkID, results[0].Chunk.ID)
 	})
 }
