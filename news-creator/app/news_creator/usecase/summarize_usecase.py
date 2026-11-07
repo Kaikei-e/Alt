@@ -25,6 +25,10 @@ from news_creator.usecase.control_token_filter import ControlTokenFilter
 
 logger = logging.getLogger(__name__)
 
+_THINKING_BLOCK_RE = re.compile(
+    r"<\|channel>thought(?:.*?<channel\|>|.*)", flags=re.DOTALL
+)
+
 
 class SummarizeUsecase:
     """Usecase for generating Japanese article summaries."""
@@ -499,12 +503,7 @@ class SummarizeUsecase:
             # Minimal fallback cleaning: strip thinking blocks, remove turn tokens, and sanitize
             fallback_summary = raw_summary
             if fallback_summary:
-                fallback_summary = re.sub(
-                    r"<\|channel>thought(?:.*?<channel\|>|.*)",
-                    "",
-                    fallback_summary,
-                    flags=re.DOTALL,
-                )
+                fallback_summary = _THINKING_BLOCK_RE.sub("", fallback_summary)
                 fallback_summary = (
                     fallback_summary.replace("<start_of_turn>", "")
                     .replace("<end_of_turn>", "")
@@ -600,6 +599,7 @@ class SummarizeUsecase:
         Args:
             article_id: Article identifier
             content: Full article content
+            priority: Request priority ("high" or "low")
 
         Returns:
             Tuple of (summary text, metadata dict)
@@ -1077,10 +1077,8 @@ class SummarizeUsecase:
                 },
             )
 
-        # Strip Gemma 4 thinking blocks (<|channel>thought\n...<channel|>)
-        cleaned = re.sub(
-            r"<\|channel>thought.*?<channel\|>", "", cleaned, flags=re.DOTALL
-        )
+        # Strip Gemma 4 thinking blocks (<|channel>thought\n...<channel|> or unterminated)
+        cleaned = _THINKING_BLOCK_RE.sub("", cleaned)
 
         # Remove markdown code blocks (```...```)
         # Remove code blocks with triple backticks
