@@ -58,8 +58,13 @@ async def _conn_cm(conn: _FakeConnection) -> AsyncIterator[_FakeConnection]:
     yield conn
 
 
-def _report_row(report_id: UUID, user_id: UUID = _DEFAULT_USER_ID) -> Sequence[Any]:
-    return (report_id, "Briefing", "weekly_briefing", 2, None, datetime(2026, 8, 14, tzinfo=UTC), user_id)
+def _report_row(
+    report_id: UUID,
+    user_id: UUID = _DEFAULT_USER_ID,
+    *,
+    created_at: datetime = datetime(2026, 8, 14, tzinfo=UTC),
+) -> Sequence[Any]:
+    return (report_id, "Briefing", "weekly_briefing", 2, None, created_at, user_id)
 
 
 def _service(conn: _FakeConnection) -> AcolyteConnectService:
@@ -95,3 +100,42 @@ async def test_list_report_versions_rejects_malformed_cursor_with_invalid_argume
 
     assert exc_info.value.code == Code.INVALID_ARGUMENT
     assert not [q for q, _ in conn.executed if "FROM report_versions" in q]
+
+
+@pytest.mark.asyncio
+async def test_list_reports_paginates_by_composite_created_at_and_report_id_cursor() -> None:
+    newer_ts = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
+    tied_ts = datetime(2026, 8, 14, 9, 30, tzinfo=UTC)
+    rid_a = UUID("00000000-0000-0000-0000-000000000003")
+    rid_b = UUID("00000000-0000-0000-0000-000000000002")
+    rid_c = UUID("00000000-0000-0000-0000-000000000001")
+
+    page1_conn = _FakeConnection(
+        rows=[
+            _report_row(rid_a, created_at=newer_ts),
+            _report_row(rid_b, created_at=tied_ts),
+            _report_row(rid_c, created_at=tied_ts),
+        ]
+    )
+    page1_gw = PostgresReportGateway(_FakePool(page1_conn))  # type: ignore[arg-type]
+    page1_reports, next_cursor = await page1_gw.list_reports(cursor=None, limit=2, user_id=_DEFAULT_USER_ID)
+
+    assert [r.report_id for r in page1_reports] == [rid_a, rid_b]
+    assert next_cursor is not None
+    assert len(page1_conn.executed) == 1
+    q1, p1 = page1_conn.executed[0]
+    assert "WHERE user_id = %s" in q1
+    assert "ORDER BY created_at DESC, report_id DESC LIMIT %s" in q1
+    assert p1 == [_DEFAULT_USER_ID, 3]
+
+    page2_conn = _FakeConnection(rows=[_report_row(rid_c, created_at=tied_ts)])
+    page2_gw = PostgresReportGateway(_FakePool(page2_conn))  # type: ignore[arg-type]
+    page2_reports, page2_cursor = await page2_gw.list_reports(cursor=next_cursor, limit=2, user_id=_DEFAULT_USER_ID)
+
+    assert [r.report_id for r in page2_reports] == [rid_c]
+    assert page2_cursor is None
+    assert len(page2_conn.executed) == 1
+    q2, p2 = page2_conn.executed[0]
+    assert "WHERE user_id = %s AND (created_at, report_id) < (%s, %s)" in q2
+    assert "ORDER BY created_at DESC, report_id DESC LIMIT %s" in q2
+    assert p2 == [_DEFAULT_USER_ID, tied_ts, rid_b, 3]
