@@ -697,8 +697,7 @@ mod new_tests {
             &self,
             _job: &JobContext,
         ) -> crate::error::Result<crate::pipeline::fetch::FetchedCorpus> {
-            self.called
-                .store(true, std::sync::atomic::Ordering::SeqCst);
+            self.called.store(true, std::sync::atomic::Ordering::SeqCst);
             Err(crate::error::RecapError::Fetch(
                 "fetch stage must not be called when resuming from evidence".to_string(),
             ))
