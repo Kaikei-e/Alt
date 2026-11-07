@@ -846,34 +846,36 @@ class OllamaGateway(LLMProviderPort):
         generate_task = asyncio.create_task(self.driver.generate(payload))
         cancel_task = asyncio.create_task(cancel_event.wait())
 
-        done, _pending = await asyncio.wait(
-            {generate_task, cancel_task},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        if cancel_task in done:
-            # Preempted — cancel the HTTP request.
-            # task.cancel() raises CancelledError inside aiohttp's session.post(),
-            # which closes the HTTP connection. Ollama detects the disconnect
-            # and stops inference, freeing GPU resources immediately.
-            generate_task.cancel()
-            try:
-                await generate_task
-            except asyncio.CancelledError:
-                pass
-            logger.warning(
-                f"Request {task_id} preempted during generation — HTTP connection cancelled",
-                extra={"task_id": task_id},
-            )
-            raise PreemptedException(f"Request {task_id} preempted during generation")
-
-        # Generation completed normally — clean up cancel waiter
-        cancel_task.cancel()
         try:
-            await cancel_task
-        except asyncio.CancelledError:
-            pass
-        return generate_task.result()
+            done, _pending = await asyncio.wait(
+                {generate_task, cancel_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if cancel_task in done:
+                # Preempted — cancel the HTTP request.
+                # task.cancel() raises CancelledError inside aiohttp's session.post(),
+                # which closes the HTTP connection. Ollama detects the disconnect
+                # and stops inference, freeing GPU resources immediately.
+                generate_task.cancel()
+                try:
+                    await generate_task
+                except asyncio.CancelledError:
+                    pass
+                logger.warning(
+                    f"Request {task_id} preempted during generation — HTTP connection cancelled",
+                    extra={"task_id": task_id},
+                )
+                raise PreemptedException(
+                    f"Request {task_id} preempted during generation"
+                )
+
+            return generate_task.result()
+        finally:
+            for task in (generate_task, cancel_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(generate_task, cancel_task, return_exceptions=True)
 
     def queue_status(self) -> dict[str, Any]:
         """Current semaphore queue depth/availability for monitoring."""
