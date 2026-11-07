@@ -13,7 +13,7 @@ use crate::{
     observability::metrics::Metrics,
     queue::ClassificationJobQueue,
     scheduler::JobContext,
-    store::dao::RecapDao,
+    store::dao::{PipelineStage, RecapDao},
     util::retry::RetryConfig,
 };
 
@@ -351,8 +351,6 @@ impl PipelineOrchestrator {
     pub(crate) async fn execute(&self, job: &JobContext) -> Result<persist::PersistResult> {
         tracing::debug!(job_id = %job.job_id, prompt_version = %self.config.llm_prompt_version(), "recap pipeline started");
 
-        self.prepare_pipeline().await;
-
         let resume_stage_idx = Self::get_resume_stage_index(job)?;
         tracing::info!(
             job_id = %job.job_id,
@@ -360,6 +358,8 @@ impl PipelineOrchestrator {
             resume_idx = resume_stage_idx,
             "pipeline execution context determined"
         );
+
+        self.prepare_pipeline().await;
 
         let executor = executor::StageExecutor::new(self);
         let fetched = executor.execute_fetch_stage(job, resume_stage_idx).await?;
@@ -380,7 +380,7 @@ impl PipelineOrchestrator {
         // evidence ステージの状態遷移を記録（実際の状態保存は不要だが、Status History への記録が必要）
         if resume_stage_idx <= 5 {
             executor
-                .record_stage_transition(job.job_id, STAGE_EVIDENCE)
+                .record_stage_transition(job.job_id, PipelineStage::Evidence.as_ref())
                 .await?;
         }
         let dispatched = executor
@@ -453,32 +453,23 @@ impl PipelineOrchestrator {
     fn get_resume_stage_index(job: &JobContext) -> Result<usize> {
         match job.current_stage.as_deref() {
             None => Ok(0),
-            Some(stage) => RESUME_STAGE_INDICES
-                .iter()
-                .find_map(|&(name, idx)| (name == stage).then_some(idx))
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "unknown resume stage `{stage}` for job {}; refusing to restart from fetch",
-                        job.job_id
-                    )
-                }),
+            Some(stage) => match PipelineStage::from_str(stage) {
+                Some(PipelineStage::Fetch) => Ok(1),
+                Some(PipelineStage::Preprocess) => Ok(2),
+                Some(PipelineStage::Dedup) => Ok(3),
+                Some(PipelineStage::Genre) => Ok(4),
+                // Evidence is recorded after Select state is saved and before Dispatch runs, so both resume at 5.
+                Some(PipelineStage::Select | PipelineStage::Evidence) => Ok(5),
+                Some(PipelineStage::Dispatch) => Ok(6),
+                Some(PipelineStage::Persist) => Ok(7),
+                None => Err(anyhow::anyhow!(
+                    "unknown resume stage `{stage}` for job {}; refusing to restart from fetch",
+                    job.job_id
+                )),
+            },
         }
     }
 }
-
-const STAGE_EVIDENCE: &str = "evidence";
-
-// `"evidence"` is recorded after `"select"` state is saved and before `"dispatch"` runs, so both map to index 5.
-const RESUME_STAGE_INDICES: &[(&str, usize)] = &[
-    ("fetch", 1),
-    ("preprocess", 2),
-    ("dedup", 3),
-    ("genre", 4),
-    ("select", 5),
-    (STAGE_EVIDENCE, 5),
-    ("dispatch", 6),
-    ("persist", 7),
-];
 
 impl PipelineBuilder {
     pub(crate) fn new(config: Arc<Config>) -> Self {

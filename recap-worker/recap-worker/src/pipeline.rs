@@ -67,6 +67,7 @@ mod tests {
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
             ],
             || Config::from_env().expect("config should load for tests"),
         ))
