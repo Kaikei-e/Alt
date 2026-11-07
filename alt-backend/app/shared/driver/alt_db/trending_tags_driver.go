@@ -5,6 +5,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,7 +42,7 @@ func (r *TagRepository) FetchTagArticleCounts(ctx context.Context, userID uuid.U
 		var item domain.TagArticleCount
 		if err := rows.Scan(&item.TagName, &item.ArticleCount); err != nil {
 			logger.SafeErrorContext(ctx, "failed to scan tag article count", "error", err)
-			continue
+			return nil, fmt.Errorf("failed to scan tag article count: %w", err)
 		}
 		results = append(results, item)
 	}

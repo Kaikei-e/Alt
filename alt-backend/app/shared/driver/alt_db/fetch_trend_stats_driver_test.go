@@ -152,7 +152,7 @@ func TestFetchTrendStatsForUser_ScanErrorReturnsError(t *testing.T) {
 
 	rows := pgxmock.NewRows([]string{"bucket", "articles", "summarized", "feed_activity"}).
 		AddRow(time.Now().Truncate(time.Hour), 3, 2, 5).
-		AddRow(nil, 1, 0, 1)
+		AddRow("not-a-timestamp", 1, 0, 1)
 
 	mock.ExpectQuery(`WITH articles_buckets AS`).
 		WithArgs(pgxmock.AnyArg(), statsTestUserID).

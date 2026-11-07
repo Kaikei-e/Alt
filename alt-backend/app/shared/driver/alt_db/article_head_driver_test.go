@@ -42,7 +42,7 @@ func TestArticleRepository_FetchOgImageURLsByArticleIDs_ScanErrorReturnsError(t 
 
 	rows := pgxmock.NewRows([]string{"article_id", "coalesce"}).
 		AddRow("art-1", "https://example.com/1.png").
-		AddRow("art-2", nil)
+		AddRow("art-2", struct{}{})
 
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT article_id, COALESCE(og_image_url, '') FROM article_heads WHERE article_id = ANY($1)`)).
 		WithArgs(articleIDs).
