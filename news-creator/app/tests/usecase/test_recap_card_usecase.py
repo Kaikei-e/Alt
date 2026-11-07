@@ -639,8 +639,9 @@ def test_build_reminder_per_detail():
 
 @pytest.mark.asyncio
 async def test_generate_card_raises_runtime_error_if_measured_ratio_missing():
-    """Verify RuntimeError is raised when parser succeeds but measured_ratio is None."""
+    """Verify CardGenerationInvariantError is raised when parser succeeds but measured_ratio is None."""
     from unittest.mock import patch
+    from news_creator.domain.errors import CardGenerationInvariantError
     from news_creator.domain.models import CardContent
     from news_creator.usecase.recap_card_parser import CardParseResult
 
@@ -667,7 +668,7 @@ async def test_generate_card_raises_runtime_error_if_measured_ratio_missing():
         return_value=mock_result,
     ):
         with pytest.raises(
-            RuntimeError,
+            CardGenerationInvariantError,
             match="Parser succeeded but measured_ratio is None",
         ):
             await usecase.generate_card(request)
