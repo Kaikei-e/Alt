@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -92,5 +93,42 @@ func TestNewSelectLensUsecase_PanicsOnNilClearPort(t *testing.T) {
 			&mockSelectCurrentLensPort{},
 			nil,
 		)
+	})
+}
+
+func TestSelectLens_NilAndArchivedLensReturnErrLensNotFound(t *testing.T) {
+	userID := uuid.New()
+	lensID := uuid.New()
+	versionID := uuid.New()
+	archivedAt := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+
+	t.Run("nil lens returns ErrLensNotFound", func(t *testing.T) {
+		selectPort := &mockSelectCurrentLensPort{}
+		uc := NewSelectLensUsecase(
+			&mockGetLensPort{lens: nil},
+			&mockGetCurrentLensVersionPort{version: &domain.KnowledgeLensVersion{LensVersionID: versionID}},
+			selectPort,
+			&mockClearCurrentLensPort{},
+		)
+
+		err := uc.Execute(context.Background(), userID, lensID)
+
+		require.ErrorIs(t, err, domain.ErrLensNotFound)
+		assert.False(t, selectPort.called)
+	})
+
+	t.Run("archived lens returns ErrLensNotFound", func(t *testing.T) {
+		selectPort := &mockSelectCurrentLensPort{}
+		uc := NewSelectLensUsecase(
+			&mockGetLensPort{lens: &domain.KnowledgeLens{LensID: lensID, UserID: userID, ArchivedAt: &archivedAt}},
+			&mockGetCurrentLensVersionPort{version: &domain.KnowledgeLensVersion{LensVersionID: versionID}},
+			selectPort,
+			&mockClearCurrentLensPort{},
+		)
+
+		err := uc.Execute(context.Background(), userID, lensID)
+
+		require.ErrorIs(t, err, domain.ErrLensNotFound)
+		assert.False(t, selectPort.called)
 	})
 }

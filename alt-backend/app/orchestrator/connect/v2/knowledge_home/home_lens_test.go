@@ -149,3 +149,80 @@ func TestHomeLens_OtherUsersLensReturnsNotFound(t *testing.T) {
 		assert.False(t, selectPort.called)
 	})
 }
+
+func TestHomeLens_MissingAndArchivedLensesReturnNotFound(t *testing.T) {
+	callerID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	lensID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	ctx := testUserContextWithID(callerID)
+
+	t.Run("nil lens from GetLens returns CodeNotFound without panicking", func(t *testing.T) {
+		getLens := &stubGetLensPort{lens: nil}
+		archivePort := &stubArchiveLensPort{}
+		versionPort := &stubCreateLensVersionPort{}
+		selectPort := &stubSelectCurrentLensPort{}
+		clearPort := &stubClearCurrentLensPort{}
+
+		h := &Handler{
+			archiveLensUsecase: archive_lens_usecase.NewArchiveLensUsecase(getLens, archivePort),
+			updateLensUsecase:  update_lens_usecase.NewUpdateLensUsecase(getLens, versionPort),
+			selectLensUsecase: select_lens_usecase.NewSelectLensUsecase(
+				getLens,
+				&stubGetCurrentLensVersionPort{version: &domain.KnowledgeLensVersion{LensVersionID: uuid.New()}},
+				selectPort,
+				clearPort,
+			),
+			logger: slog.Default(),
+		}
+
+		_, err := h.DeleteLens(ctx, connect.NewRequest(&knowledgehomev1.DeleteLensRequest{LensId: lensID.String()}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+		assert.False(t, archivePort.called)
+
+		_, err = h.UpdateLens(ctx, connect.NewRequest(&knowledgehomev1.UpdateLensRequest{LensId: lensID.String()}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+		assert.False(t, versionPort.called)
+
+		_, err = h.SelectLens(ctx, connect.NewRequest(&knowledgehomev1.SelectLensRequest{LensId: lensID.String()}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+		assert.False(t, selectPort.called)
+	})
+
+	t.Run("archived lens returns CodeNotFound for UpdateLens and SelectLens", func(t *testing.T) {
+		archivedAt := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+		getLens := &stubGetLensPort{
+			lens: &domain.KnowledgeLens{
+				LensID:     lensID,
+				UserID:     callerID,
+				Name:       "archived-lens",
+				ArchivedAt: &archivedAt,
+			},
+		}
+		versionPort := &stubCreateLensVersionPort{}
+		selectPort := &stubSelectCurrentLensPort{}
+		clearPort := &stubClearCurrentLensPort{}
+
+		h := &Handler{
+			updateLensUsecase: update_lens_usecase.NewUpdateLensUsecase(getLens, versionPort),
+			selectLensUsecase: select_lens_usecase.NewSelectLensUsecase(
+				getLens,
+				&stubGetCurrentLensVersionPort{version: &domain.KnowledgeLensVersion{LensVersionID: uuid.New()}},
+				selectPort,
+				clearPort,
+			),
+			logger: slog.Default(),
+		}
+
+		_, err := h.UpdateLens(ctx, connect.NewRequest(&knowledgehomev1.UpdateLensRequest{LensId: lensID.String()}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+		assert.False(t, versionPort.called)
+
+		_, err = h.SelectLens(ctx, connect.NewRequest(&knowledgehomev1.SelectLensRequest{LensId: lensID.String()}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+		assert.False(t, selectPort.called)
+	})
+}
