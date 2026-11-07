@@ -292,18 +292,20 @@ def main() -> int:
             )
 
         # Stale-container sweep must be scoped to this run/project, not global
-        for ps_match in re.finditer(r"docker ps[^\n]+", fe_code):
-            ps_line = ps_match.group(0)
-            if (
-                "alt.e2e.suite=alt-frontend-sv" in ps_line
-                and "com.docker.compose.project=" not in ps_line
+        ps_lines = [m.group(0) for m in re.finditer(r"docker ps[^\n]+", fe_code)]
+        if not ps_lines or any(
+            "alt.e2e.suite=alt-frontend-sv" not in ps_line
+            or (
+                "com.docker.compose.project=" not in ps_line
                 and "APP_CONTAINER" not in ps_line
                 and "SAFE_RUN_ID" not in ps_line
-            ):
-                problems.append(
-                    "alt-frontend-sv: run.sh stale-container sweep must be scoped "
-                    "to this run/project, not every alt-frontend-sv container on the daemon"
-                )
+            )
+            for ps_line in ps_lines
+        ):
+            problems.append(
+                "alt-frontend-sv: run.sh stale-container sweep must be scoped "
+                "to this run/project, not every alt-frontend-sv container on the daemon"
+            )
 
         # Env key parity with alt-frontend-sv/playwright.config.ts webServer.env
         pw_cfg = ROOT / "alt-frontend-sv" / "playwright.config.ts"
@@ -336,6 +338,33 @@ def main() -> int:
                         f"playwright.config.ts webServer.env (missing={missing_keys}, "
                         f"unexpected={unexpected_keys})"
                     )
+
+    # suite.sh's suite_init must clear SLICE and SLICE_DIR so an inherited
+    # environment variable cannot make suite_up reuse or suite_cleanup delete a
+    # foreign slice.
+    suite_sh = PW_ROOT / "_lib" / "suite.sh"
+    if not suite_sh.is_file():
+        problems.append("suite.sh: missing e2e/playwright/_lib/suite.sh")
+    else:
+        suite_sh_code = "\n".join(
+            line
+            for line in suite_sh.read_text().splitlines()
+            if not line.strip().startswith("#")
+        )
+        init_match = re.search(
+            r"^[ \t]*suite_init\s*\(\)\s*\{([\s\S]*?)^\}",
+            suite_sh_code,
+            re.MULTILINE,
+        )
+        init_body = init_match.group(1) if init_match else ""
+        if not re.search(r"\bunset\b[^\n]*\bSLICE\b", init_body) or not re.search(
+            r"\bunset\b[^\n]*\bSLICE_DIR\b", init_body
+        ):
+            problems.append(
+                "suite.sh: suite_init must `unset SLICE SLICE_DIR` so an inherited "
+                "environment variable cannot make suite_up reuse or suite_cleanup "
+                "delete a foreign slice"
+            )
 
     if problems:
         print(f"suite wiring audit found {len(problems)} problem(s):\n", file=sys.stderr)
