@@ -11,6 +11,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // ── Tag operations (tag-generator) ──
@@ -35,26 +36,8 @@ func (h *Handler) UpsertArticleTags(ctx context.Context, req *connect.Request[da
 	if h.createTagSetVersionUsecase != nil && len(tags) > 0 {
 		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
 		if parseErr == nil {
-			tagsJSON, _ := json.Marshal(tags)
-			tsv := domain.TagSetVersion{
-				ArticleID: articleUUID,
-				Generator: "tag-generator",
-				TagsJSON:  tagsJSON,
-			}
-			// Resolve UserID from article
-			if h.getArticleByID != nil {
-				article, artErr := h.getArticleByID.GetArticleByID(ctx, req.Msg.ArticleId)
-				if artErr == nil && article != nil {
-					userUUID, uErr := uuid.Parse(article.UserID)
-					if uErr == nil {
-						tsv.UserID = userUUID
-					}
-				} else {
-					h.logger.Warn("could not resolve user for tag set version", "article_id", req.Msg.ArticleId, "error", artErr)
-				}
-			}
-			if tsvErr := h.createTagSetVersionUsecase.Execute(ctx, tsv); tsvErr != nil {
-				h.logger.Error("failed to create tag set version", "error", tsvErr, "article_id", req.Msg.ArticleId)
+			if err := h.recordTagSetVersion(ctx, req.Msg.ArticleId, articleUUID, tags); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -100,24 +83,8 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 				continue
 			}
 			batchTags := tagItemsFromProto(item.Tags)
-			tagsJSON, _ := json.Marshal(batchTags)
-			tsv := domain.TagSetVersion{
-				ArticleID: articleUUID,
-				Generator: "tag-generator",
-				TagsJSON:  tagsJSON,
-			}
-			// Resolve UserID from article
-			if h.getArticleByID != nil {
-				article, artErr := h.getArticleByID.GetArticleByID(ctx, item.ArticleId)
-				if artErr == nil && article != nil {
-					userUUID, uErr := uuid.Parse(article.UserID)
-					if uErr == nil {
-						tsv.UserID = userUUID
-					}
-				}
-			}
-			if tsvErr := h.createTagSetVersionUsecase.Execute(ctx, tsv); tsvErr != nil {
-				h.logger.Error("failed to create tag set version in batch", "error", tsvErr, "article_id", item.ArticleId)
+			if err := h.recordTagSetVersion(ctx, item.ArticleId, articleUUID, batchTags); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -126,4 +93,52 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 		Success:       true,
 		TotalUpserted: total,
 	}), nil
+}
+
+func (h *Handler) recordTagSetVersion(ctx context.Context, articleID string, articleUUID uuid.UUID, tags []internal_tag_port.TagItem) error {
+	if h.getArticleByID == nil {
+		panic("datahubapi: internal_article_port.GetArticleByIDPort is nil — " +
+			"tag set versioning requires GetArticleByIDPort to resolve the article owner " +
+			"(see .claude/rules/di-wiring.md)")
+	}
+
+	article, artErr := h.getArticleByID.GetArticleByID(ctx, articleID)
+	if artErr != nil {
+		if errors.Is(artErr, pgx.ErrNoRows) || errors.Is(artErr, domain.ErrArticleNotFound) {
+			h.logger.Warn("skipping tag set version for missing or deleted article",
+				"article_id", articleID, "error", artErr)
+			return nil
+		}
+		h.logger.Error("failed to resolve article owner for tag set version; refusing to acknowledge the write",
+			"article_id", articleID, "error", artErr)
+		return connect.NewError(connect.CodeUnavailable,
+			errors.New("tags written but article owner could not be resolved; retry"))
+	}
+	if article == nil {
+		h.logger.Warn("skipping tag set version for missing or deleted article",
+			"article_id", articleID)
+		return nil
+	}
+
+	userUUID, uErr := uuid.Parse(article.UserID)
+	if uErr != nil || userUUID == uuid.Nil {
+		h.logger.Warn("could not resolve user for tag set version",
+			"article_id", articleID, "error", uErr)
+		return nil
+	}
+
+	tagsJSON, _ := json.Marshal(tags)
+	tsv := domain.TagSetVersion{
+		ArticleID: articleUUID,
+		UserID:    userUUID,
+		Generator: "tag-generator",
+		TagsJSON:  tagsJSON,
+	}
+	if tsvErr := h.createTagSetVersionUsecase.Execute(ctx, tsv); tsvErr != nil {
+		h.logger.Error("failed to create tag set version; refusing to acknowledge the write",
+			"error", tsvErr, "article_id", articleID)
+		return connect.NewError(connect.CodeUnavailable,
+			errors.New("tags written but their version could not be recorded; retry"))
+	}
+	return nil
 }

@@ -47,12 +47,18 @@ func NewCreateTagSetVersionUsecase(
 	}
 }
 
+// ErrMissingUserID is returned when a tag set version has a nil tenant owner.
+var ErrMissingUserID = errors.New("user_id is required")
+
 // Execute creates a tag set version and appends a TagSetVersionCreated event.
 // If a previous version exists, it also marks the old versions as superseded
 // and emits a TagSetSuperseded event.
 func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.TagSetVersion) error {
 	if tsv.ArticleID == uuid.Nil {
 		return errors.New("article_id is required")
+	}
+	if tsv.UserID == uuid.Nil {
+		return ErrMissingUserID
 	}
 	if len(tsv.TagsJSON) == 0 {
 		return errors.New("tags_json is required")
