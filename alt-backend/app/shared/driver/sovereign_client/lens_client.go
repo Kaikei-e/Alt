@@ -102,7 +102,7 @@ func (c *Client) GetLens(ctx context.Context, lensID uuid.UUID) (*domain.Knowled
 	if err != nil {
 		switch connect.CodeOf(err) {
 		case connect.CodePermissionDenied, connect.CodeNotFound:
-			return nil, fmt.Errorf("sovereign GetLens: %w", domain.ErrLensNotFound)
+			return nil, fmt.Errorf("sovereign GetLens: %w: %w", domain.ErrLensNotFound, err)
 		default:
 			return nil, fmt.Errorf("sovereign GetLens: %w", err)
 		}
