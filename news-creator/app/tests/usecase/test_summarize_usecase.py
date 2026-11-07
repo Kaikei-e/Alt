@@ -524,6 +524,58 @@ class TestGemma4TokenCleanup:
         assert "javascript:" not in summary
         assert "要約" in summary
 
+    @pytest.mark.asyncio
+    async def test_unterminated_thinking_only_output_raises_runtime_error(self):
+        """An output truncated inside a thinking block without <channel|> must be
+        stripped to empty by _clean_summary_text and raise RuntimeError."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response(
+                "<|channel>thought\nInternal reasoning that never closes and exceeds ten chars"
+            )
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        with pytest.raises(RuntimeError, match="empty summary after cleaning"):
+            await usecase.generate_summary("art-unterminated-thought", "A" * 200)
+
+    @pytest.mark.asyncio
+    async def test_summary_followed_by_unterminated_thinking_block_returns_only_summary(
+        self,
+    ):
+        """Text before an unterminated thinking block is kept while the trailing
+        unterminated thinking block is stripped."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response(
+                "実際の要約文です。<|channel>thought\nInternal reasoning that never closes"
+            )
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        summary, _ = await usecase.generate_summary(
+            "art-partial-unterminated", "A" * 200
+        )
+
+        assert summary == "実際の要約文です。"
+        assert "<|channel>thought" not in summary
+        assert "Internal reasoning" not in summary
+
 
 class TestStreamingOutputGuardIsWired:
     """Streamed tokens reach the reader without passing _clean_summary_text."""
