@@ -29,7 +29,11 @@ const MAX_BATCH_SIZE: usize = 5000;
 /// Maximum number of attempts (including the first) to flush a single batch
 /// to ClickHouse before handing the batch back to the caller. With
 /// `retry_backoff` this spans just over 60s, so a whole ClickHouse restart
-/// (10-30s) is ridden out inside a single flush.
+/// (10-30s) is ridden out inside a single flush. On the ack-gated log path
+/// the effective budget is bounded by the caller's request timeout (once the
+/// caller disconnects, remaining retries for its batch are aborted), and
+/// delivery is at-least-once because an attempt already in flight can span
+/// that timeout.
 const MAX_FLUSH_ATTEMPTS: u32 = 12;
 
 /// Attempts allowed for the final flush on shutdown.
@@ -61,6 +65,9 @@ const MAX_RETRY_BACKOFF: Duration = Duration::from_secs(10);
 /// the error that stopped it. The ingest handler awaits this before it answers,
 /// so a 2xx means the rows are written and the forwarder may drop its copy.
 type LogAck = oneshot::Sender<Result<(), AggregatorError>>;
+
+/// A single caller's log batch paired with its durability ack.
+type LogBatch = (Vec<LogRow>, LogAck);
 
 /// Batch writer that buffers rows through channels before writing to ClickHouse.
 ///
@@ -173,16 +180,15 @@ impl crate::port::OTelExporter for BatchWriter {
 
 async fn flush_loop(
     client: Client,
-    mut log_rx: mpsc::Receiver<(Vec<LogRow>, LogAck)>,
+    mut log_rx: mpsc::Receiver<LogBatch>,
     mut otel_log_rx: mpsc::Receiver<Vec<OTelLogRow>>,
     mut otel_trace_rx: mpsc::Receiver<Vec<OTelTraceRow>>,
     shutdown_token: CancellationToken,
 ) {
-    let mut log_buf: Vec<LogRow> = Vec::new();
-    // One entry per caller currently parked on `export_batch`, covering the
-    // rows sitting in `log_buf`. Resolved together whenever that buffer is
-    // flushed, so nobody is answered before their rows land.
-    let mut log_acks: Vec<LogAck> = Vec::new();
+    // Each caller's rows stay paired with its ack so a caller that times out
+    // can be dropped before the next attempt without discarding or duplicating
+    // other callers' batches.
+    let mut log_batches: Vec<LogBatch> = Vec::new();
     let mut otel_log_buf: Vec<OTelLogRow> = Vec::new();
     let mut otel_trace_buf: Vec<OTelTraceRow> = Vec::new();
     let mut flush_interval = tokio::time::interval(Duration::from_secs(FLUSH_INTERVAL_SECS));
@@ -196,32 +202,32 @@ async fn flush_loop(
             // Periodic flush
             _ = flush_interval.tick() => {
                 flush_all(
-                    &client, &mut log_buf, &mut log_acks, &mut otel_log_buf, &mut otel_trace_buf,
+                    &client, &mut log_batches, &mut otel_log_buf, &mut otel_trace_buf,
                     MAX_FLUSH_ATTEMPTS,
                 ).await;
             }
 
             // Drain log rows
             Some((rows, ack)) = log_rx.recv() => {
-                log_buf.extend(rows);
-                log_acks.push(ack);
+                log_batches.push((rows, ack));
+                let mut buffered_rows: usize = log_batches.iter().map(|(r, _)| r.len()).sum();
 
                 // Opportunistic batching: absorb whatever else is already
                 // queued so ClickHouse still sees large inserts, but do not
                 // wait for the tick - every batch here has a caller parked on
                 // its ack, and holding them for up to FLUSH_INTERVAL_SECS
                 // would put that latency on the forwarder's request.
-                while log_buf.len() < MAX_BATCH_SIZE {
+                while buffered_rows < MAX_BATCH_SIZE {
                     match log_rx.try_recv() {
                         Ok((more, more_ack)) => {
-                            log_buf.extend(more);
-                            log_acks.push(more_ack);
+                            buffered_rows += more.len();
+                            log_batches.push((more, more_ack));
                         }
                         Err(_) => break,
                     }
                 }
 
-                flush_logs(&client, &mut log_buf, &mut log_acks, MAX_FLUSH_ATTEMPTS).await;
+                flush_logs(&client, &mut log_batches, MAX_FLUSH_ATTEMPTS).await;
             }
 
             // Drain OTel log rows
@@ -243,14 +249,15 @@ async fn flush_loop(
             // Shutdown signal
             () = shutdown_token.cancelled() => {
                 info!("BatchWriter shutting down: draining channels before final flush");
-                drain_log_channel(&mut log_rx, &mut log_buf, &mut log_acks);
+                drain_log_channel(&mut log_rx, &mut log_batches);
                 drain_channel(&mut otel_log_rx, &mut otel_log_buf);
                 drain_channel(&mut otel_trace_rx, &mut otel_trace_buf);
                 flush_all(
-                    &client, &mut log_buf, &mut log_acks, &mut otel_log_buf, &mut otel_trace_buf,
+                    &client, &mut log_batches, &mut otel_log_buf, &mut otel_trace_buf,
                     SHUTDOWN_FLUSH_ATTEMPTS,
                 ).await;
-                let unwritten = log_buf.len() + otel_log_buf.len() + otel_trace_buf.len();
+                let unwritten_logs: usize = log_batches.iter().map(|(r, _)| r.len()).sum();
+                let unwritten = unwritten_logs + otel_log_buf.len() + otel_trace_buf.len();
                 if unwritten > 0 {
                     error!(unwritten, "Exiting with rows ClickHouse never accepted");
                 }
@@ -276,75 +283,71 @@ fn drain_channel<T>(rx: &mut mpsc::Receiver<Vec<T>>, buf: &mut Vec<T>) {
 }
 
 /// `drain_channel` for the log channel, which carries a durability ack
-/// alongside its rows. The acks are collected too, so the final flush can
-/// answer callers that were still parked when shutdown began.
-fn drain_log_channel(
-    rx: &mut mpsc::Receiver<(Vec<LogRow>, LogAck)>,
-    buf: &mut Vec<LogRow>,
-    acks: &mut Vec<LogAck>,
-) {
+/// alongside its rows. Each batch stays paired with its ack so the final
+/// flush can answer callers that were still parked when shutdown began.
+fn drain_log_channel(rx: &mut mpsc::Receiver<LogBatch>, batches: &mut Vec<LogBatch>) {
     rx.close();
-    while let Ok((rows, ack)) = rx.try_recv() {
-        buf.extend(rows);
-        acks.push(ack);
+    while let Ok(batch) = rx.try_recv() {
+        batches.push(batch);
     }
 }
 
-/// Flush the log buffer and settle every caller waiting on it.
+/// Flush the log batches and settle every caller waiting on them.
 ///
-/// A caller is answered Ok only when the buffer actually drained. If the retry
-/// budget is exhausted — or every waiting caller disconnects before an attempt —
-/// the buffer is cleared so the forwarder owns the retry without duplicating
-/// rows on resend.
-async fn flush_logs(
-    client: &Client,
-    buf: &mut Vec<LogRow>,
-    acks: &mut Vec<LogAck>,
-    max_attempts: u32,
-) {
+/// Before each attempt, any caller whose ack receiver has already been dropped
+/// is removed so its rows are not written after the forwarder timed out and
+/// reclaimed the retry. Remaining callers are answered Ok once written, or Err
+/// when the retry budget is exhausted.
+async fn flush_logs(client: &Client, batches: &mut Vec<LogBatch>, max_attempts: u32) {
     let sink = ClickHouseSink {
         client,
         table: "logs",
     };
-    flush_logs_via(&sink, buf, acks, max_attempts).await;
+    flush_logs_via(&sink, batches, max_attempts).await;
 }
 
 /// The sink-generic half of `flush_logs`, so the ack contract can be exercised
 /// against a failing write without a ClickHouse connection.
 async fn flush_logs_via<S: FlushSink<LogRow>>(
     sink: &S,
-    buf: &mut Vec<LogRow>,
-    acks: &mut Vec<LogAck>,
+    batches: &mut Vec<LogBatch>,
     max_attempts: u32,
 ) {
-    if buf.is_empty() {
-        settle(acks, &Ok(()));
+    if batches.is_empty() {
         return;
     }
 
-    let count = buf.len();
-
     for attempt in 1..=max_attempts {
-        if !acks.is_empty() && acks.iter().all(oneshot::Sender::is_closed) {
+        let before = batches.len();
+        batches.retain(|(_, ack)| !ack.is_closed());
+        let dropped_callers = before - batches.len();
+        if batches.is_empty() {
             warn!(
                 table = "logs",
-                count,
                 attempt,
+                dropped_callers,
                 "All callers disconnected before flush attempt; dropping batch handed back to forwarder"
             );
-            buf.clear();
-            acks.clear();
             return;
         }
 
-        match sink.write(buf.as_slice()).await {
+        let rows: Vec<LogRow> = batches
+            .iter()
+            .flat_map(|(r, _)| r.iter().cloned())
+            .collect();
+        let count = rows.len();
+        if count == 0 {
+            settle(batches, &Ok(()));
+            return;
+        }
+
+        match sink.write(rows.as_slice()).await {
             Ok(()) => {
                 info!(
                     table = "logs",
                     count, attempt, "Flushed batch to ClickHouse"
                 );
-                buf.clear();
-                settle(acks, &Ok(()));
+                settle(batches, &Ok(()));
                 return;
             }
             Err(e) if attempt < max_attempts => {
@@ -359,19 +362,18 @@ async fn flush_logs_via<S: FlushSink<LogRow>>(
                     table = "logs", count, attempts = attempt, error = %e,
                     "Flush retry budget exhausted; dropping batch and answering caller with error"
                 );
-                buf.clear();
                 let outcome = Err(AggregatorError::Export(format!(
                     "ClickHouse did not accept {count} rows within {max_attempts} attempts"
                 )));
-                settle(acks, &outcome);
+                settle(batches, &outcome);
             }
         }
     }
 }
 
 /// Resolve and clear every parked caller with the same outcome.
-fn settle(acks: &mut Vec<LogAck>, outcome: &Result<(), AggregatorError>) {
-    for ack in acks.drain(..) {
+fn settle(batches: &mut Vec<LogBatch>, outcome: &Result<(), AggregatorError>) {
+    for (_, ack) in batches.drain(..) {
         // Err means the caller's request was already cancelled; nothing to do.
         let _ = ack.send(match outcome {
             Ok(()) => Ok(()),
@@ -382,14 +384,13 @@ fn settle(acks: &mut Vec<LogAck>, outcome: &Result<(), AggregatorError>) {
 
 async fn flush_all(
     client: &Client,
-    log_buf: &mut Vec<LogRow>,
-    log_acks: &mut Vec<LogAck>,
+    log_batches: &mut Vec<LogBatch>,
     otel_log_buf: &mut Vec<OTelLogRow>,
     otel_trace_buf: &mut Vec<OTelTraceRow>,
     max_attempts: u32,
 ) {
-    if !log_buf.is_empty() || !log_acks.is_empty() {
-        flush_logs(client, log_buf, log_acks, max_attempts).await;
+    if !log_batches.is_empty() {
+        flush_logs(client, log_batches, max_attempts).await;
     }
     if !otel_log_buf.is_empty() {
         flush_rows(client, "otel_logs", otel_log_buf, max_attempts).await;
@@ -1018,13 +1019,11 @@ mod tests {
     /// it silently.
     #[tokio::test]
     async fn a_batch_clickhouse_never_accepted_is_acked_as_a_failure() {
-        let mut buf = vec![LogRow::from(make_enriched_log())];
-        let mut acks = Vec::new();
         let (ack_tx, ack_rx) = oneshot::channel();
-        acks.push(ack_tx);
+        let mut batches = vec![(vec![LogRow::from(make_enriched_log())], ack_tx)];
 
         let sink = FailingLogSink;
-        flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
+        flush_logs_via(&sink, &mut batches, 2).await;
 
         assert!(
             ack_rx.await.unwrap().is_err(),
@@ -1032,7 +1031,7 @@ mod tests {
              tells the forwarder to discard rows that exist nowhere else"
         );
         assert!(
-            buf.is_empty(),
+            batches.is_empty(),
             "rejected rows must leave the buffer because the caller received Err and owns the retry"
         );
     }
@@ -1044,8 +1043,7 @@ mod tests {
             LogRow::from(make_enriched_log()),
         ];
         let batch_len = batch_a.len();
-        let mut buf = Vec::new();
-        let mut acks = Vec::new();
+        let mut batches = Vec::new();
         let attempts = std::sync::atomic::AtomicU32::new(0);
         let accepted_rows = std::sync::atomic::AtomicUsize::new(0);
 
@@ -1064,15 +1062,13 @@ mod tests {
         };
 
         let (first_tx, first_ack) = oneshot::channel();
-        buf.extend(batch_a.clone());
-        acks.push(first_tx);
-        flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
+        batches.push((batch_a.clone(), first_tx));
+        flush_logs_via(&sink, &mut batches, 2).await;
         assert!(first_ack.await.unwrap().is_err());
 
         let (retry_tx, retry_ack) = oneshot::channel();
-        buf.extend(batch_a);
-        acks.push(retry_tx);
-        flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
+        batches.push((batch_a, retry_tx));
+        flush_logs_via(&sink, &mut batches, 2).await;
         assert!(retry_ack.await.unwrap().is_ok());
 
         assert_eq!(
@@ -1084,12 +1080,12 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn flush_logs_stops_retrying_when_caller_drops_ack_before_recovery() {
-        let mut buf = vec![
+        let rows = vec![
             LogRow::from(make_enriched_log()),
             LogRow::from(make_enriched_log()),
         ];
         let (ack_tx, ack_rx) = oneshot::channel();
-        let mut acks = vec![ack_tx];
+        let mut batches = vec![(rows, ack_tx)];
         let caller_rx = std::sync::Mutex::new(Some(ack_rx));
         let attempts = std::sync::atomic::AtomicU32::new(0);
         let accepted_rows = std::sync::atomic::AtomicUsize::new(0);
@@ -1109,7 +1105,7 @@ mod tests {
             },
         };
 
-        flush_logs_via(&sink, &mut buf, &mut acks, 5).await;
+        flush_logs_via(&sink, &mut batches, 5).await;
 
         assert_eq!(
             accepted_rows.load(std::sync::atomic::Ordering::SeqCst),
@@ -1117,15 +1113,13 @@ mod tests {
             "sink must never receive rows once all waiting callers have timed out"
         );
         assert!(
-            buf.is_empty(),
+            batches.is_empty(),
             "buffer must be cleared when all callers disconnect"
         );
-        assert!(acks.is_empty());
 
         // A caller that is still waiting keeps the existing retry behaviour.
-        let mut live_buf = vec![LogRow::from(make_enriched_log())];
         let (live_tx, live_rx) = oneshot::channel();
-        let mut live_acks = vec![live_tx];
+        let mut live_batches = vec![(vec![LogRow::from(make_enriched_log())], live_tx)];
         let live_attempts = std::sync::atomic::AtomicU32::new(0);
         let live_accepted = std::sync::atomic::AtomicUsize::new(0);
 
@@ -1141,11 +1135,11 @@ mod tests {
             },
         };
 
-        flush_logs_via(&live_sink, &mut live_buf, &mut live_acks, 5).await;
+        flush_logs_via(&live_sink, &mut live_batches, 5).await;
 
         assert!(live_rx.await.unwrap().is_ok());
         assert_eq!(live_accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
-        assert!(live_buf.is_empty());
+        assert!(live_batches.is_empty());
     }
 
     #[tokio::test(start_paused = true)]
@@ -1159,8 +1153,10 @@ mod tests {
         drop(closed_rx);
         let (open_tx, open_rx) = oneshot::channel();
 
-        let mut buf = vec![LogRow::from(closed_entry), LogRow::from(open_entry)];
-        let mut acks = vec![closed_tx, open_tx];
+        let mut batches = vec![
+            (vec![LogRow::from(closed_entry)], closed_tx),
+            (vec![LogRow::from(open_entry)], open_tx),
+        ];
         let written_messages = std::sync::Mutex::new(Vec::new());
 
         let sink = MockSink {
@@ -1173,9 +1169,10 @@ mod tests {
             },
         };
 
-        flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
+        flush_logs_via(&sink, &mut batches, 2).await;
 
         assert!(open_rx.await.unwrap().is_ok());
+        assert!(batches.is_empty());
         assert_eq!(
             *written_messages.lock().unwrap(),
             vec!["open-caller-row".to_string()],
@@ -1185,15 +1182,13 @@ mod tests {
 
     #[tokio::test]
     async fn a_batch_clickhouse_accepted_is_acked_as_a_success() {
-        let mut buf = vec![LogRow::from(make_enriched_log())];
-        let mut acks = Vec::new();
         let (ack_tx, ack_rx) = oneshot::channel();
-        acks.push(ack_tx);
+        let mut batches = vec![(vec![LogRow::from(make_enriched_log())], ack_tx)];
 
-        flush_logs_via(&AcceptingLogSink, &mut buf, &mut acks, 2).await;
+        flush_logs_via(&AcceptingLogSink, &mut batches, 2).await;
 
         assert!(ack_rx.await.unwrap().is_ok());
-        assert!(buf.is_empty(), "a written batch must leave the buffer");
+        assert!(batches.is_empty(), "a written batch must leave the buffer");
     }
 
     struct FailingLogSink;
