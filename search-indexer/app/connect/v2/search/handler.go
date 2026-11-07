@@ -3,6 +3,7 @@ package search
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -85,6 +86,9 @@ func (h *Handler) SearchArticles(
 
 	result, err := h.searchByUserUsecase.ExecuteWithPagination(ctx, query, userID, offset, limit)
 	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidSearchQuery) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
 		logger.Logger.Error("search failed", "err", err, "user_id", userID, "query_hash", logger.HashQuery(query), "offset", offset, "limit", limit)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("search failed"))
 	}
