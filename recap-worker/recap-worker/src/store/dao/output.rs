@@ -503,7 +503,7 @@ impl RecapDao {
             });
         }
 
-        hits.sort_by_key(|b| std::cmp::Reverse(b.executed_at));
+        sort_indexable_hits(&mut hits);
         Ok(hits)
     }
 
@@ -685,6 +685,10 @@ async fn fetch_evidence_from_sentences(
     Ok(grouped)
 }
 
+pub(crate) fn sort_indexable_hits(hits: &mut [RecapSearchHit]) {
+    hits.sort_by_key(|b| std::cmp::Reverse(b.executed_at));
+}
+
 /// Escape SQL `ILIKE` metacharacters (`\`, `%`, `_`) and wrap in `%...%`.
 pub(crate) fn escape_ilike_pattern(term: &str) -> String {
     let mut escaped = String::with_capacity(term.len() + 2);
@@ -704,7 +708,10 @@ pub(crate) fn escape_ilike_pattern(term: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::escape_ilike_pattern;
+    use super::{escape_ilike_pattern, sort_indexable_hits};
+    use crate::store::models::RecapSearchHit;
+    use chrono::{DateTime, Utc};
+    use uuid::Uuid;
 
     #[test]
     fn escape_ilike_pattern_wraps_plain_term() {
@@ -717,5 +724,52 @@ mod tests {
             escape_ilike_pattern(r"100%_match\test"),
             r"%100\%\_match\\test%"
         );
+    }
+
+    #[test]
+    fn sort_indexable_hits_orders_ascending_with_deterministic_tie_break() {
+        let older = DateTime::parse_from_rfc3339("2026-04-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let newer = DateTime::parse_from_rfc3339("2026-04-02T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let job_a = Uuid::from_u128(1);
+        let job_b = Uuid::from_u128(2);
+        let job_c = Uuid::from_u128(3);
+
+        let make_hit = |job_id: Uuid, executed_at: DateTime<Utc>, genre: &str| RecapSearchHit {
+            job_id,
+            executed_at,
+            window_days: 7,
+            genre: genre.to_string(),
+            summary_ja: None,
+            top_terms: vec![],
+            tags: vec![],
+        };
+
+        let mut hits = vec![
+            make_hit(job_c, newer, "science"),
+            make_hit(job_b, older, "world"),
+            make_hit(job_a, older, "tech"),
+            make_hit(job_a, older, "ai"),
+        ];
+
+        sort_indexable_hits(&mut hits);
+
+        let ordered: Vec<(DateTime<Utc>, Uuid, &str)> = hits
+            .iter()
+            .map(|h| (h.executed_at, h.job_id, h.genre.as_str()))
+            .collect();
+        assert_eq!(
+            ordered,
+            vec![
+                (older, job_a, "ai"),
+                (older, job_a, "tech"),
+                (older, job_b, "world"),
+                (newer, job_c, "science"),
+            ]
+        );
+        assert_eq!(hits.last().unwrap().executed_at, newer);
     }
 }
