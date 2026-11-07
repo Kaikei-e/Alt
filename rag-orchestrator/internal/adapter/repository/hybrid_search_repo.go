@@ -241,24 +241,28 @@ func (r *hybridSearchRepository) SearchNeighbors(
 }
 
 func buildHybridSearchQuery(tsConfig string, rrfK int) string {
+	// Candidate arms filter ownership via EXISTS on rag_documents.current_version_id:
+	// the two-key versions/documents join is estimated at one row, so the planner skips the HNSW index.
 	return fmt.Sprintf(`
 		WITH vector_matches AS (
 			SELECT c.id, rank() OVER (ORDER BY c.embedding <=> $1) AS rank
 			FROM rag_chunks c
-			JOIN rag_document_versions v ON c.version_id = v.id
-			JOIN rag_documents d ON v.document_id = d.id
-			WHERE d.current_version_id = v.id
-			  AND d.user_id = $5
+			WHERE EXISTS (
+				SELECT 1 FROM rag_documents d
+				WHERE d.current_version_id = c.version_id
+				  AND d.user_id = $5
+			)
 			ORDER BY c.embedding <=> $1
 			LIMIT $3
 		),
 		text_matches AS (
 			SELECT c.id, rank() OVER (ORDER BY ts_rank_cd(c.tsv, plainto_tsquery('%s', $2)) DESC) AS rank
 			FROM rag_chunks c
-			JOIN rag_document_versions v ON c.version_id = v.id
-			JOIN rag_documents d ON v.document_id = d.id
-			WHERE d.current_version_id = v.id
-			  AND d.user_id = $5
+			WHERE EXISTS (
+				SELECT 1 FROM rag_documents d
+				WHERE d.current_version_id = c.version_id
+				  AND d.user_id = $5
+			)
 			  AND c.tsv @@ plainto_tsquery('%s', $2)
 			ORDER BY rank
 			LIMIT $3
@@ -294,14 +298,17 @@ func buildHybridSearchQuery(tsConfig string, rrfK int) string {
 func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgIdx int) string {
 	vectorArm := ""
 	if vectorArmArg > 0 {
+		// Candidate arms filter ownership via EXISTS on rag_documents.current_version_id:
+		// the two-key versions/documents join is estimated at one row, so the planner skips the HNSW index.
 		vectorArm = fmt.Sprintf(`
 			vector_matches AS (
 				SELECT c.id, rank() OVER (ORDER BY c.embedding <=> $%d) AS rank
 				FROM rag_chunks c
-				JOIN rag_document_versions v ON c.version_id = v.id
-				JOIN rag_documents d ON v.document_id = d.id
-				WHERE d.current_version_id = v.id
-				  AND d.user_id = $%d
+				WHERE EXISTS (
+					SELECT 1 FROM rag_documents d
+					WHERE d.current_version_id = c.version_id
+					  AND d.user_id = $%d
+				)
 				ORDER BY c.embedding <=> $%d
 				LIMIT $2
 			),`, vectorArmArg, userArgIdx, vectorArmArg)
@@ -319,10 +326,11 @@ func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgI
 		text_matches AS (
 			SELECT c.id, rank() OVER (ORDER BY ts_rank_cd(c.tsv, plainto_tsquery('%s', $1)) DESC) AS rank
 			FROM rag_chunks c
-			JOIN rag_document_versions v ON c.version_id = v.id
-			JOIN rag_documents d ON v.document_id = d.id
-			WHERE d.current_version_id = v.id
-			  AND d.user_id = $%d
+			WHERE EXISTS (
+				SELECT 1 FROM rag_documents d
+				WHERE d.current_version_id = c.version_id
+				  AND d.user_id = $%d
+			)
 			  AND c.tsv @@ plainto_tsquery('%s', $1)
 			ORDER BY rank
 			LIMIT $2

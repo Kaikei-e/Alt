@@ -157,9 +157,10 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		candidateLimit = searchOverfetchCap
 	}
 
-	// The candidates CTE filters by current document version and user_id before
-	// applying candidateLimit ($2), ensuring other users' chunks cannot crowd out
-	// this user's results.
+	// The candidates CTE filters ownership with an EXISTS semi-join on
+	// rag_documents.current_version_id = c.version_id before candidateLimit ($2):
+	// the two-key versions/documents join is estimated at one row, so the
+	// planner skips the HNSW index.
 	//
 	// c.embedding is selected only inside the distance projection, never as its
 	// own column: scanning it into the non-nullable domain.RagChunk.Embedding
@@ -168,10 +169,11 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		WITH candidates AS (
 			SELECT c.id, (c.embedding <=> $1) AS distance
 			FROM rag_chunks c
-			JOIN rag_document_versions v ON c.version_id = v.id
-			JOIN rag_documents d ON v.document_id = d.id
-			WHERE d.current_version_id = v.id
-			  AND d.user_id = $4
+			WHERE EXISTS (
+				SELECT 1 FROM rag_documents d
+				WHERE d.current_version_id = c.version_id
+				  AND d.user_id = $4
+			)
 			ORDER BY c.embedding <=> $1
 			LIMIT $2
 		)
