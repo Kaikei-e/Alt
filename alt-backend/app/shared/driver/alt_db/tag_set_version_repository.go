@@ -170,3 +170,32 @@ func (r *TagRepository) GetTagSetVersionByID(ctx context.Context, tagSetVersionI
 
 	return tsv, nil
 }
+
+// GetLatestTagSetVersion reads the article's current (newest non-superseded)
+// tag set version, ordered consistently with MarkTagSetVersionSuperseded.
+// Returns (nil, nil) when the article has no current version yet.
+func (r *TagRepository) GetLatestTagSetVersion(ctx context.Context, articleID uuid.UUID) (*domain.TagSetVersion, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetLatestTagSetVersion")
+	defer span.End()
+
+	query := `SELECT tag_set_version_id, article_id, user_id, generated_at,
+		generator, input_hash, tags_json, superseded_by
+		FROM tag_set_versions
+		WHERE article_id = $1 AND superseded_by IS NULL
+		ORDER BY generated_at DESC, tag_set_version_id DESC
+		LIMIT 1`
+
+	var tsv domain.TagSetVersion
+	err := r.pool.QueryRow(ctx, query, articleID).Scan(
+		&tsv.TagSetVersionID, &tsv.ArticleID, &tsv.UserID, &tsv.GeneratedAt,
+		&tsv.Generator, &tsv.InputHash, &tsv.TagsJSON, &tsv.SupersededBy,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetLatestTagSetVersion: %w", err)
+	}
+
+	return &tsv, nil
+}

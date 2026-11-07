@@ -49,9 +49,11 @@ type SummaryVersionPort interface {
 
 //go:generate go run go.uber.org/mock/mockgen -destination=../../../mocks/mock_tag_set_version_port.go -package=mocks alt/dataplane/port/datahub_capability_port CreateTagSetVersionPort,GetTagSetVersionByIDPort,MarkTagSetVersionSupersededPort
 
-// CreateTagSetVersionPort creates versioned tag set snapshots.
+// CreateTagSetVersionPort creates versioned tag set snapshots and reads the
+// current version for an article so retries and replays converge from durable state.
 type CreateTagSetVersionPort interface {
 	CreateTagSetVersion(ctx context.Context, tsv domain.TagSetVersion) error
+	GetLatestTagSetVersion(ctx context.Context, articleID uuid.UUID) (*domain.TagSetVersion, error)
 }
 
 // GetTagSetVersionByIDPort reads a specific tag set version by its ID.

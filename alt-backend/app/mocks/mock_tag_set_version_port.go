@@ -56,6 +56,21 @@ func (mr *MockCreateTagSetVersionPortMockRecorder) CreateTagSetVersion(ctx, tsv 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTagSetVersion", reflect.TypeOf((*MockCreateTagSetVersionPort)(nil).CreateTagSetVersion), ctx, tsv)
 }
 
+// GetLatestTagSetVersion mocks base method.
+func (m *MockCreateTagSetVersionPort) GetLatestTagSetVersion(ctx context.Context, articleID uuid.UUID) (*domain.TagSetVersion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestTagSetVersion", ctx, articleID)
+	ret0, _ := ret[0].(*domain.TagSetVersion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLatestTagSetVersion indicates an expected call of GetLatestTagSetVersion.
+func (mr *MockCreateTagSetVersionPortMockRecorder) GetLatestTagSetVersion(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestTagSetVersion", reflect.TypeOf((*MockCreateTagSetVersionPort)(nil).GetLatestTagSetVersion), ctx, articleID)
+}
+
 // MockGetTagSetVersionByIDPort is a mock of GetTagSetVersionByIDPort interface.
 type MockGetTagSetVersionByIDPort struct {
 	ctrl     *gomock.Controller

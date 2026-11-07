@@ -12,34 +12,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
-
-type completedVersion struct {
-	versionID uuid.UUID
-	tagsHash  string
-}
-
-type inflightVersion struct {
-	versionID      uuid.UUID
-	tagsHash       string
-	generatedAt    time.Time
-	rowCreated     bool
-	supersededPrev *domain.TagSetVersion
-}
 
 // CreateTagSetVersionUsecase creates a new tag set version and emits an event.
 type CreateTagSetVersionUsecase struct {
 	tagSetPort         datahub_capability_port.CreateTagSetVersionPort
 	eventPort          knowledge_event_port.AppendKnowledgeEventPort
 	markSupersededPort datahub_capability_port.MarkTagSetVersionSupersededPort
-
-	mu                sync.Mutex
-	latestByArticle   map[uuid.UUID]completedVersion
-	inflightByArticle map[uuid.UUID]*inflightVersion
 }
 
 // NewCreateTagSetVersionUsecase creates a new CreateTagSetVersionUsecase.
@@ -49,9 +31,9 @@ func NewCreateTagSetVersionUsecase(
 	markSupersededPort datahub_capability_port.MarkTagSetVersionSupersededPort,
 ) *CreateTagSetVersionUsecase {
 	// All three ports are required and wired unconditionally at composition root
-	// (di/datahub/container.go, di/knowledge_module.go). A nil is a DI wiring bug,
-	// not a disabled feature — panic instead of a defensive nil guard that would
-	// silently skip the supersede fact (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
+	// (di/datahub/container.go). A nil is a DI wiring bug, not a disabled feature —
+	// panic instead of a defensive nil guard that would silently skip the supersede
+	// fact (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
 	if tagSetPort == nil {
 		panic("create_tag_set_version_usecase: CreateTagSetVersionPort is nil — wire it at composition root")
 	}
@@ -65,8 +47,6 @@ func NewCreateTagSetVersionUsecase(
 		tagSetPort:         tagSetPort,
 		eventPort:          eventPort,
 		markSupersededPort: markSupersededPort,
-		latestByArticle:    make(map[uuid.UUID]completedVersion),
-		inflightByArticle:  make(map[uuid.UUID]*inflightVersion),
 	}
 }
 
@@ -82,6 +62,21 @@ var (
 // Execute creates a tag set version and appends a TagSetVersionCreated event.
 // If a previous version exists, it also marks the old versions as superseded
 // and emits a TagSetSuperseded event.
+//
+// Retry and replay convergence is derived entirely from durable state in alt-db
+// and knowledge-sovereign (no in-process version cache):
+//  1. Read the article's current non-superseded version from alt-db.
+//  2. If the current row's canonical tags match the incoming tags, reuse its
+//     version ID (retry after partial failure or replay after completion).
+//     Otherwise derive a deterministic version ID from (article_id, current.id
+//     or uuid.Nil, canonical tags hash) and insert the row with ON CONFLICT DO
+//     NOTHING before appending the created event so an interleaved tag set
+//     cannot leave an orphan TagSetVersionCreated event.
+//  3. Append TagSetVersionCreated (idempotent via dedupe_key).
+//  4. Mark older versions superseded in alt-db (idempotent; returns predecessor
+//     even if already marked superseded by this version ID).
+//  5. If a predecessor was superseded, append TagSetSuperseded (idempotent via
+//     dedupe_key).
 func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.TagSetVersion) error {
 	if tsv.ArticleID == uuid.Nil {
 		return ErrMissingArticleID
@@ -95,42 +90,38 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 
 	tagsHash := canonicalTagsHash(tsv.TagsJSON)
 
-	u.mu.Lock()
-	if tsv.TagSetVersionID == uuid.Nil {
-		if latest, ok := u.latestByArticle[tsv.ArticleID]; ok && latest.tagsHash == tagsHash {
-			u.mu.Unlock()
-			return nil
-		}
+	current, err := u.tagSetPort.GetLatestTagSetVersion(ctx, tsv.ArticleID)
+	if err != nil {
+		return fmt.Errorf("get latest tag set version: %w", err)
 	}
 
-	inflight := u.inflightByArticle[tsv.ArticleID]
-	if inflight != nil && inflight.tagsHash == tagsHash &&
-		(tsv.TagSetVersionID == uuid.Nil || tsv.TagSetVersionID == inflight.versionID) {
-		tsv.TagSetVersionID = inflight.versionID
+	if current != nil && canonicalTagsHash(current.TagsJSON) == tagsHash &&
+		(tsv.TagSetVersionID == uuid.Nil || tsv.TagSetVersionID == current.TagSetVersionID) {
+		tsv.TagSetVersionID = current.TagSetVersionID
 		if tsv.GeneratedAt.IsZero() {
-			tsv.GeneratedAt = inflight.generatedAt
+			tsv.GeneratedAt = current.GeneratedAt
 		}
 	} else {
 		if tsv.TagSetVersionID == uuid.Nil {
 			var prevID uuid.UUID
-			if latest, ok := u.latestByArticle[tsv.ArticleID]; ok {
-				prevID = latest.versionID
+			if current != nil {
+				prevID = current.TagSetVersionID
 			}
 			tsv.TagSetVersionID = deriveTagSetVersionID(tsv.ArticleID, prevID, tagsHash)
 		}
 		if tsv.GeneratedAt.IsZero() {
-			tsv.GeneratedAt = time.Now()
+			now := time.Now()
+			if current != nil {
+				if minNext := current.GeneratedAt.Add(time.Microsecond); now.Before(minNext) {
+					now = minNext
+				}
+			}
+			tsv.GeneratedAt = now
 		}
-		inflight = &inflightVersion{
-			versionID:   tsv.TagSetVersionID,
-			tagsHash:    tagsHash,
-			generatedAt: tsv.GeneratedAt,
+		if err := u.tagSetPort.CreateTagSetVersion(ctx, tsv); err != nil {
+			return fmt.Errorf("create tag set version: %w", err)
 		}
-		u.inflightByArticle[tsv.ArticleID] = inflight
 	}
-	rowCreated := inflight.rowCreated
-	cachedPrev := inflight.supersededPrev
-	u.mu.Unlock()
 
 	// Extract canonical tag names from the version being created so the
 	// sovereign evidence accumulator can derive Cluster relations
@@ -138,8 +129,6 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 	// version's payload, never a latest-state lookup.
 	tagNames := tagNamesFromJSON(tsv.TagsJSON)
 
-	// Append TagSetVersionCreated before inserting the version row so a retry
-	// deduplicates the event via the deterministic version ID.
 	payload, _ := json.Marshal(map[string]any{
 		"tag_set_version_id": tsv.TagSetVersionID.String(),
 		"article_id":         tsv.ArticleID.String(),
@@ -165,32 +154,12 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 		return fmt.Errorf("append tag set version event: %w", err)
 	}
 
-	if !rowCreated {
-		if err := u.tagSetPort.CreateTagSetVersion(ctx, tsv); err != nil {
-			return fmt.Errorf("create tag set version: %w", err)
-		}
-		u.mu.Lock()
-		if u.inflightByArticle[tsv.ArticleID] == inflight {
-			inflight.rowCreated = true
-		}
-		u.mu.Unlock()
-	}
-
 	// Mark previous versions as superseded and emit TagSetSuperseded event.
 	prev, err := u.markSupersededPort.MarkTagSetVersionSuperseded(ctx, tsv.ArticleID, tsv.TagSetVersionID)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to mark tag set version superseded",
 			"error", err, "article_id", tsv.ArticleID)
 		return fmt.Errorf("mark tag set version superseded: %w", err)
-	}
-	if prev == nil {
-		prev = cachedPrev
-	} else {
-		u.mu.Lock()
-		if u.inflightByArticle[tsv.ArticleID] == inflight {
-			inflight.supersededPrev = prev
-		}
-		u.mu.Unlock()
 	}
 
 	if prev != nil {
@@ -227,16 +196,6 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 		}
 	}
 
-	u.mu.Lock()
-	if u.inflightByArticle[tsv.ArticleID] == inflight {
-		delete(u.inflightByArticle, tsv.ArticleID)
-	}
-	u.latestByArticle[tsv.ArticleID] = completedVersion{
-		versionID: tsv.TagSetVersionID,
-		tagsHash:  tagsHash,
-	}
-	u.mu.Unlock()
-
 	return nil
 }
 
@@ -246,10 +205,17 @@ func deriveTagSetVersionID(articleID, prevVersionID uuid.UUID, tagsHash string) 
 }
 
 func canonicalTagsHash(tagsJSON json.RawMessage) string {
-	var compact bytes.Buffer
 	raw := []byte(tagsJSON)
-	if err := json.Compact(&compact, raw); err == nil {
-		raw = compact.Bytes()
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err == nil {
+		if canonical, err := json.Marshal(decoded); err == nil {
+			raw = canonical
+		}
+	} else {
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, raw); err == nil {
+			raw = compact.Bytes()
+		}
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
