@@ -35,10 +35,6 @@ func (h *Handler) UpsertArticleTags(ctx context.Context, req *connect.Request[da
 
 	// Also create tag set version + knowledge event for Knowledge Home
 	if len(tags) > 0 {
-		if h.createTagSetVersionUsecase == nil {
-			panic("datahubapi: CreateTagSetVersionUsecase is nil — " +
-				"wire it via WithKnowledgeVersionUsecases (see .claude/rules/di-wiring.md)")
-		}
 		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
 		if parseErr == nil {
 			if err := h.recordTagSetVersion(ctx, req.Msg.ArticleId, articleUUID, tags); err != nil {
@@ -74,10 +70,6 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 	}
 
 	// Create tag set version + knowledge event for each article
-	if h.createTagSetVersionUsecase == nil {
-		panic("datahubapi: CreateTagSetVersionUsecase is nil — " +
-			"wire it via WithKnowledgeVersionUsecases (see .claude/rules/di-wiring.md)")
-	}
 	for _, item := range req.Msg.Items {
 		if len(item.Tags) == 0 {
 			continue
@@ -103,10 +95,6 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 }
 
 func (h *Handler) recordTagSetVersion(ctx context.Context, articleID string, articleUUID uuid.UUID, tags []internal_tag_port.TagItem) error {
-	if h.createTagSetVersionUsecase == nil {
-		panic("datahubapi: CreateTagSetVersionUsecase is nil — " +
-			"wire it via WithKnowledgeVersionUsecases (see .claude/rules/di-wiring.md)")
-	}
 	if h.getArticleByID == nil {
 		panic("datahubapi: internal_article_port.GetArticleByIDPort is nil — " +
 			"tag set versioning requires GetArticleByIDPort to resolve the article owner " +

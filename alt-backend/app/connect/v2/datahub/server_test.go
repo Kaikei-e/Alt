@@ -12,6 +12,7 @@ import (
 	"alt/config"
 	"alt/dataplane/driver/kratos_client"
 	"alt/dataplane/gateway/datahub_capability_gateway"
+	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/dataplane/usecase/outbox_usecase"
 	"alt/dataplane/usecase/push_delivery_usecase"
 	datahubdi "alt/di/datahub"
@@ -33,6 +34,9 @@ func mounted(t *testing.T, mux *http.ServeMux, path string) bool {
 // (ADR-000954 D6, CLAUDE.md rule 8). They are wired to zero-valued instances
 // because these tests assert routing, not behaviour.
 func components() *datahubdi.DataHubComponents {
+	sovereignCli := sovereign_client.NewClient("", false)
+	tagSetVersionGw := datahub_capability_gateway.NewTagSetVersionGateway(nil)
+
 	return &datahubdi.DataHubComponents{
 		KratosClient:               kratos_client.NewKratosClient("https://auth-hub.internal", "", &http.Client{}),
 		FetchRecentArticlesUsecase: fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(nil),
@@ -42,7 +46,10 @@ func components() *datahubdi.DataHubComponents {
 		// articles without appending the event fills Home with blank-title
 		// rows. Disabled here rather than nil — these tests assert routing,
 		// and a disabled client rejects appends loudly instead of no-op'ing.
-		SovereignClient: sovereign_client.NewClient("", false),
+		SovereignClient: sovereignCli,
+		CreateTagSetVersionUsecase: create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(
+			tagSetVersionGw, sovereignCli, tagSetVersionGw,
+		),
 
 		// The required capabilities panic on a nil one,
 		// because alt-backend and alt-harvester have no other route to these
@@ -90,6 +97,12 @@ func components() *datahubdi.DataHubComponents {
 func withoutSovereignClient() *datahubdi.DataHubComponents {
 	c := components()
 	c.SovereignClient = nil
+	return c
+}
+
+func withoutCreateTagSetVersionUsecase() *datahubdi.DataHubComponents {
+	c := components()
+	c.CreateTagSetVersionUsecase = nil
 	return c
 }
 
@@ -161,6 +174,10 @@ func TestSetupConnectHandlers_RefusesToMountWithoutTheAbsorbedRESTCapabilities(t
 			// field here.
 			name:      "no sovereign client",
 			container: withoutSovereignClient(),
+		},
+		{
+			name:      "no create tag set version usecase",
+			container: withoutCreateTagSetVersionUsecase(),
 		},
 	}
 

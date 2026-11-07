@@ -274,25 +274,15 @@ func TestUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	})
 
-	t.Run("panics when CreateTagSetVersionUsecase is unwired", func(t *testing.T) {
+	t.Run("panics at construction when CreateTagSetVersionUsecase is unwired", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockUpsert := mocks.NewMockUpsertArticleTagsPort(ctrl)
 		mockGetByID := mocks.NewMockGetArticleByIDPort(ctrl)
 
-		h := NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
-			WithTagCatalogPorts(mockUpsert, nil, nil),
-		)
-
-		mockUpsert.EXPECT().
-			UpsertArticleTags(gomock.Any(), articleID, "feed-1", gomock.Any()).
-			Return(int32(1), nil)
-
 		assert.Panics(t, func() {
-			_, _ = h.UpsertArticleTags(context.Background(), connect.NewRequest(&datahubv1.UpsertArticleTagsRequest{
-				ArticleId: articleID,
-				FeedId:    "feed-1",
-				Tags:      []*datahubv1.TagItem{{Name: "go", Confidence: 0.9}},
-			}))
+			_ = NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
+				WithTagCatalogPorts(mockUpsert, nil, nil),
+			)
 		})
 	})
 
@@ -487,25 +477,15 @@ func TestBatchUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 		require.Len(t, eventPort.appended, 2, "whole-batch retry must yield exactly one TagSetVersionCreated per article")
 	})
 
-	t.Run("panics when CreateTagSetVersionUsecase is unwired in batch", func(t *testing.T) {
+	t.Run("panics at construction when CreateTagSetVersionUsecase is unwired in batch", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBatchUpsert := mocks.NewMockBatchUpsertArticleTagsPort(ctrl)
 		mockGetByID := mocks.NewMockGetArticleByIDPort(ctrl)
 
-		h := NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
-			WithTagCatalogPorts(nil, mockBatchUpsert, nil),
-		)
-
-		mockBatchUpsert.EXPECT().
-			BatchUpsertArticleTags(gomock.Any(), gomock.Any()).
-			Return(int32(1), nil)
-
 		assert.Panics(t, func() {
-			_, _ = h.BatchUpsertArticleTags(context.Background(), connect.NewRequest(&datahubv1.BatchUpsertArticleTagsRequest{
-				Items: []*datahubv1.UpsertArticleTagsRequest{
-					{ArticleId: article1, FeedId: "feed-1", Tags: []*datahubv1.TagItem{{Name: "go", Confidence: 0.9}}},
-				},
-			}))
+			_ = NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
+				WithTagCatalogPorts(nil, mockBatchUpsert, nil),
+			)
 		})
 	})
 }
