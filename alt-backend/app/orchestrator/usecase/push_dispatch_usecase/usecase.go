@@ -210,6 +210,15 @@ func (u *Usecase) settle(ctx context.Context, delivery domain.PushDelivery, stat
 		stats.record(outcome.StatusCode, "gone")
 
 	case outcome.Retryable:
+		if sendErr != nil && ctx.Err() != nil {
+			if err := u.release(ctx, delivery.ID, 0, outcome.StatusCode, "pass context canceled"); err != nil {
+				slog.ErrorContext(ctx, "push_delivery_release_failed",
+					"delivery_id", delivery.ID, "error", err)
+				return
+			}
+			stats.Released++
+			return
+		}
 		if delivery.Attempts >= maxAttempts {
 			u.finalize(ctx, delivery, outcome.StatusCode, "retry budget exhausted")
 			stats.Dead++
