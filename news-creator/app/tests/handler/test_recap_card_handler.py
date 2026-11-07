@@ -298,10 +298,10 @@ def test_recap_card_handler_preempted_502():
     assert resp.json()["detail"] == "Upstream service error"
 
 
-def test_recap_card_handler_runtime_error_500():
-    """RuntimeError from usecase returns 500 Internal server error."""
+def test_recap_card_handler_runtime_error_502():
+    """RuntimeError from usecase returns 502 Upstream service error."""
     usecase = AsyncMock()
-    usecase.generate_card.side_effect = RuntimeError("unexpected LLM response type")
+    usecase.generate_card.side_effect = RuntimeError("Ollama API error: HTTP 503")
 
     app = FastAPI()
     app.include_router(create_recap_card_router(usecase))
@@ -309,5 +309,5 @@ def test_recap_card_handler_runtime_error_500():
 
     resp = client.post("/v1/cards/generate", json=_build_card_request_payload())
 
-    assert resp.status_code == 500
-    assert resp.json()["detail"] == "Internal server error"
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "Upstream service error"
