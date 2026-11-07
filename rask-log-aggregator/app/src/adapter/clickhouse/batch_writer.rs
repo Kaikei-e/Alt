@@ -793,11 +793,11 @@ mod tests {
         write_fn: F,
     }
 
-    impl<F> FlushSink<i32> for MockSink<F>
+    impl<T, F> FlushSink<T> for MockSink<F>
     where
-        F: Fn(&[i32]) -> Result<(), AggregatorError>,
+        F: Fn(&[T]) -> Result<(), AggregatorError>,
     {
-        fn write(&self, rows: &[i32]) -> impl Future<Output = Result<(), AggregatorError>> {
+        fn write(&self, rows: &[T]) -> impl Future<Output = Result<(), AggregatorError>> {
             std::future::ready((self.write_fn)(rows))
         }
     }
@@ -999,10 +999,54 @@ mod tests {
             "a caller must not be told Ok for rows ClickHouse rejected; a 200 built on this \
              tells the forwarder to discard rows that exist nowhere else"
         );
+        assert!(
+            buf.is_empty(),
+            "rejected rows must leave the buffer because the caller received Err and owns the retry"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn retried_batch_after_failed_flush_is_not_duplicated() {
+        let batch_a = vec![
+            LogRow::from(make_enriched_log()),
+            LogRow::from(make_enriched_log()),
+        ];
+        let batch_len = batch_a.len();
+        let mut buf = Vec::new();
+        let mut acks = Vec::new();
+        let attempts = std::sync::atomic::AtomicU32::new(0);
+        let accepted_rows = std::sync::atomic::AtomicUsize::new(0);
+
+        let sink = MockSink {
+            write_fn: |rows: &[LogRow]| {
+                let n = attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                if n <= 2 {
+                    Err(AggregatorError::Export(
+                        "clickhouse unreachable".to_string(),
+                    ))
+                } else {
+                    accepted_rows.fetch_add(rows.len(), std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                }
+            },
+        };
+
+        let (ack_tx1, ack_rx1) = oneshot::channel();
+        buf.extend(batch_a.clone());
+        acks.push(ack_tx1);
+        flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
+        assert!(ack_rx1.await.unwrap().is_err());
+
+        let (ack_tx2, ack_rx2) = oneshot::channel();
+        buf.extend(batch_a);
+        acks.push(ack_tx2);
+        flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
+        assert!(ack_rx2.await.unwrap().is_ok());
+
         assert_eq!(
-            buf.len(),
-            1,
-            "rejected rows stay buffered for the next attempt"
+            accepted_rows.load(std::sync::atomic::Ordering::SeqCst),
+            batch_len,
+            "rows whose caller was answered Err must not stay in the buffer and duplicate the retry"
         );
     }
 
