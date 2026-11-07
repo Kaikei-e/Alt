@@ -102,6 +102,7 @@ fi
 echo "==> starting pre-built frontend ($ALT_FRONTEND_SV_IMAGE) on $E2E_ORIGIN" >&2
 # The compose project label lets `e2e/_lib/teardown-project.sh` collect this
 # container after a `KEEP_STACK=1` run or an external cancellation.
+# PROTOCOL_HEADER stands in for the production TLS proxy so adapter-node derives http:// on loopback.
 docker run -d \
   --name "$APP_CONTAINER" \
   --label "alt.e2e.suite=alt-frontend-sv" \
@@ -110,6 +111,7 @@ docker run -d \
   -e PORT="$ALT_E2E_PORT" \
   -e HOST=127.0.0.1 \
   -e ORIGIN="$E2E_ORIGIN" \
+  -e PROTOCOL_HEADER=x-forwarded-proto \
   -e NODE_ENV=production \
   -e E2E_TEST_MODE=true \
   -e KRATOS_INTERNAL_URL="http://127.0.0.1:4001" \
@@ -149,6 +151,7 @@ docker run --rm \
   -w /work/repo/alt-frontend-sv \
   -e CI=true \
   -e PW_NO_WEBSERVER=1 \
+  -e E2E_FORWARDED_PROTO=http \
   -e ALT_E2E_PORT="$ALT_E2E_PORT" \
   -e FORCE_COLOR=1 \
   -e PLAYWRIGHT_SKIP_GIT_INFO=1 \
