@@ -275,14 +275,12 @@ impl UniversalParser {
         self.validate_field_size(&raw_str, "log_line")?;
 
         // Check if this is already a Docker JSON format or raw application log
-        let (log_content, stream, docker_timestamp) =
-            if raw_str.trim_start().starts_with("{\"log\":") {
-                // This is Docker JSON format. Parse directly from the validated
-                // borrow instead of round-tripping through an owned `String` and
-                // then `Bytes` first - `parse_slice` still needs its own mutable
-                // copy for simd-json, but this skips the extra one in between.
-                let docker_entry = self.docker_parser.parse_slice(raw_str.as_bytes())?;
-
+        let (log_content, stream, docker_timestamp) = match raw_str
+            .trim_start()
+            .starts_with("{\"log\":")
+            .then(|| self.docker_parser.parse_slice(raw_str.as_bytes()))
+        {
+            Some(Ok(docker_entry)) => {
                 // Remove trailing newline from log content
                 let log = docker_entry.log.trim_end_matches('\n').to_string();
 
@@ -304,7 +302,8 @@ impl UniversalParser {
                     });
 
                 (log, stream, source_ts)
-            } else {
+            }
+            Some(Err(ParseError::MissingField(_) | ParseError::InvalidFieldType(_))) | None => {
                 // Raw application log from Docker API streaming
                 let log = raw_str
                     .trim_end_matches('\n')
@@ -317,7 +316,9 @@ impl UniversalParser {
                 let source_ts = timestamp_hint
                     .map(|ts| ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true));
                 (log, stream, source_ts)
-            };
+            }
+            Some(Err(e)) => return Err(e),
+        };
 
         // Now parse the actual log content
         let parsed_entry = self.parse_service_log(&log_content, &container_info.service_name)?;
