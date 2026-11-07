@@ -11,7 +11,19 @@ import (
 
 	"alt/domain"
 	knowledgehomev1 "alt/gen/proto/alt/knowledge_home/v1"
+	"alt/orchestrator/usecase/recall_snooze_usecase"
 )
+
+type stubSnoozeCandidatePort struct {
+	until time.Time
+	calls int
+}
+
+func (s *stubSnoozeCandidatePort) SnoozeRecallCandidate(_ context.Context, _ uuid.UUID, _ string, until time.Time, _ time.Time) error {
+	s.calls++
+	s.until = until
+	return nil
+}
 
 func snoozeTestUserContext(t *testing.T) *domain.UserContext {
 	t.Helper()
@@ -78,3 +90,59 @@ func TestTrackHomeAction_ValidatesItemKeyAndActionType(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
+
+func TestTrackHomeAction_Snooze_BoundsSnoozeHours(t *testing.T) {
+	t.Parallel()
+	ctx := domain.SetUserContext(context.Background(), snoozeTestUserContext(t))
+
+	t.Run("excessive snooze_hours returns InvalidArgument", func(t *testing.T) {
+		candidatePort := &stubSnoozeCandidatePort{}
+		eventPort := &mockKnowledgeEventPort{}
+		handler := &Handler{
+			recallSnoozeUsecase: recall_snooze_usecase.NewRecallSnoozeUsecase(candidatePort, eventPort),
+		}
+		meta := `{"snooze_hours":1e12}`
+		_, err := handler.TrackHomeAction(ctx, connect.NewRequest(&knowledgehomev1.TrackHomeActionRequest{
+			ActionType:   "snooze",
+			ItemKey:      "article:1",
+			MetadataJson: &meta,
+		}))
+		require.Error(t, err)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		require.Zero(t, candidatePort.calls)
+	})
+
+	t.Run("non-positive snooze_hours returns InvalidArgument", func(t *testing.T) {
+		candidatePort := &stubSnoozeCandidatePort{}
+		eventPort := &mockKnowledgeEventPort{}
+		handler := &Handler{
+			recallSnoozeUsecase: recall_snooze_usecase.NewRecallSnoozeUsecase(candidatePort, eventPort),
+		}
+		meta := `{"snooze_hours":0}`
+		_, err := handler.TrackHomeAction(ctx, connect.NewRequest(&knowledgehomev1.TrackHomeActionRequest{
+			ActionType:   "snooze",
+			ItemKey:      "article:1",
+			MetadataJson: &meta,
+		}))
+		require.Error(t, err)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		require.Zero(t, candidatePort.calls)
+	})
+
+	t.Run("normal snooze_hours succeeds", func(t *testing.T) {
+		candidatePort := &stubSnoozeCandidatePort{}
+		eventPort := &mockKnowledgeEventPort{}
+		handler := &Handler{
+			recallSnoozeUsecase: recall_snooze_usecase.NewRecallSnoozeUsecase(candidatePort, eventPort),
+		}
+		meta := `{"snooze_hours":24}`
+		_, err := handler.TrackHomeAction(ctx, connect.NewRequest(&knowledgehomev1.TrackHomeActionRequest{
+			ActionType:   "snooze",
+			ItemKey:      "article:1",
+			MetadataJson: &meta,
+		}))
+		require.NoError(t, err)
+		require.Equal(t, 1, candidatePort.calls)
+	})
+}
+

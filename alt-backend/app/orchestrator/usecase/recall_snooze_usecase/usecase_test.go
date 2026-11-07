@@ -85,3 +85,18 @@ func TestRecallSnoozeUsecase_Execute_FailsWhenAppendFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "sovereign unavailable")
 	assert.Equal(t, []string{"snooze", "append"}, rec.calls)
 }
+
+func TestRecallSnoozeUsecase_Execute_RejectsOutOfRangeSnoozeHours(t *testing.T) {
+	for _, hours := range []int{0, -5, int(1e12)} {
+		rec := &recorder{}
+		candidatePort := &mockCandidatePort{rec: rec}
+		eventPort := &mockEventPort{rec: rec, eventSeq: 42}
+
+		err := NewRecallSnoozeUsecase(candidatePort, eventPort).
+			Execute(context.Background(), uuid.New(), uuid.New(), "article:1", hours)
+
+		require.Error(t, err, "snoozeHours=%d must be rejected", hours)
+		assert.Empty(t, rec.calls)
+	}
+}
+
