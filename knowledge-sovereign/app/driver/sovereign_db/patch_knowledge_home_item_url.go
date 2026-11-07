@@ -54,11 +54,11 @@ WHERE user_id = $2
   AND tenant_id = $6
 `
 
-// PatchKnowledgeHomeItemURLPayload is the JSON payload accepted on the
-// Connect-RPC ApplyProjectionMutation envelope when MutationType ==
-// MutationPatchHomeItemURL. The single source of truth for the wire
-// schema lives in alt-backend's knowledge_sovereign_port package; this
-// struct mirrors it for unmarshalling.
+// PatchKnowledgeHomeItemURLPayload is the canonical JSON wire schema for
+// PatchKnowledgeHomeItemURL (built by knowledge_home_projector's
+// ArticleUrlBackfilled fold and accepted on the Connect-RPC
+// ApplyProjectionMutation envelope when MutationType ==
+// MutationPatchHomeItemURL).
 type PatchKnowledgeHomeItemURLPayload struct {
 	UserID            string    `json:"user_id"`
 	TenantID          string    `json:"tenant_id,omitempty"`
@@ -82,6 +82,9 @@ func (r *Repository) PatchKnowledgeHomeItemURL(ctx context.Context, payload json
 		// Reject at the application boundary so callers fail loudly
 		// rather than silently emitting no-op UPDATEs.
 		return errors.New("PatchKnowledgeHomeItemURL: empty URL")
+	}
+	if p.OccurredAt.IsZero() {
+		return errors.New("PatchKnowledgeHomeItemURL: occurred_at is required")
 	}
 	userID, err := uuid.Parse(p.UserID)
 	if err != nil {

@@ -174,10 +174,11 @@ func buildSummarySupersededWrite(evt sovereign_db.KnowledgeEvent, version int) (
 
 	occurredAt := evt.OccurredAt
 	item := homeItemWrite{
-		UserID:   resolveUserID(evt),
-		TenantID: evt.TenantID,
-		ItemKey:  fmt.Sprintf("article:%s", articleID),
-		ItemType: itemTypeArticle,
+		UserID:       resolveUserID(evt),
+		TenantID:     evt.TenantID,
+		ItemKey:      fmt.Sprintf("article:%s", articleID),
+		ItemType:     itemTypeArticle,
+		PrimaryRefID: &articleID,
 		// Explicit empty slice, not nil — nil serializes to JSON null, which
 		// would wipe the row's existing tags via the merge-safe upsert.
 		Tags:              []string{},
@@ -220,6 +221,7 @@ func buildTagSetSupersededWrite(evt sovereign_db.KnowledgeEvent, version int) (h
 		TenantID:          evt.TenantID,
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ItemType:          itemTypeArticle,
+		PrimaryRefID:      &articleID,
 		Tags:              []string{}, // explicit empty slice — see foldSummarySuperseded
 		SupersedeState:    supersedeTagsUpdated,
 		SupersededAt:      &occurredAt,
