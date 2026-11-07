@@ -53,7 +53,7 @@ func (u *SelectLensUsecase) Execute(ctx context.Context, userID uuid.UUID, lensI
 	if err != nil {
 		return fmt.Errorf("get lens: %w", err)
 	}
-	if lens.UserID != userID {
+	if lens == nil || lens.UserID != userID || lens.ArchivedAt != nil {
 		return domain.ErrLensNotFound
 	}
 
