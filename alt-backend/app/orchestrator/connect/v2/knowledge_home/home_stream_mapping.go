@@ -71,7 +71,10 @@ func buildStreamResponse(event domain.KnowledgeEvent) *knowledgehomev1.StreamKno
 		itemKey := event.AggregateType + ":" + event.AggregateID
 		resp.Item = &knowledgehomev1.KnowledgeHomeItem{ItemKey: itemKey}
 	case "recall_changed":
-		itemKey := event.AggregateType + ":" + event.AggregateID
+		itemKey := event.AggregateID
+		if event.AggregateType != domain.AggregateHomeSession {
+			itemKey = event.AggregateType + ":" + event.AggregateID
+		}
 		resp.RecallChange = &knowledgehomev1.RecallCandidate{ItemKey: itemKey}
 	}
 	return resp
