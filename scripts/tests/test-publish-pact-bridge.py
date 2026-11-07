@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Tests for scripts/publish-pact-bridge.py and playbooks/_publish-bridge.yml.
+"""Tests for scripts/publish-pact-bridge.py and the Pact bridge playbooks.
 
 Starts an in-process HTTP stub broker on 127.0.0.1 (ephemeral port) and
 exercises the manual Pact verification bridge helper across happy-path,
 origin-normalisation, credential-handling, and failure modes, plus static
-invariants on playbooks/_publish-bridge.yml.
+invariants on playbooks/publish-manual-verifications.yml and
+playbooks/_publish-bridge.yml.
 
 Run:
     python3 scripts/tests/test-publish-pact-bridge.py
@@ -28,6 +29,7 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "publish-pact-bridge.py"
 PLAYBOOK = ROOT / "playbooks" / "_publish-bridge.yml"
+MAIN_PLAYBOOK = ROOT / "playbooks" / "publish-manual-verifications.yml"
 
 PASS = 0
 FAIL = 0
@@ -182,15 +184,36 @@ def run_helper(
 
 
 def assert_no_password_leak(
-    label: str, proc: subprocess.CompletedProcess[str]
+    label: str,
+    proc: subprocess.CompletedProcess[str],
+    extra_secrets: tuple[str, ...] = (),
 ) -> None:
     combined = (proc.stdout or "") + (proc.stderr or "")
     b64_token = EXPECTED_AUTH.split(" ", 1)[1]
+    secrets = (BROKER_PASS, b64_token, *extra_secrets)
     check(
         f"{label}: password never appears in stdout/stderr",
-        BROKER_PASS not in combined and b64_token not in combined,
+        all(s not in combined for s in secrets if s),
         combined,
     )
+
+
+def find_env_password_nodes(node: Any, path: str = "") -> list[str]:
+    """Recursively collect node paths where an `environment` block references PACT_BROKER_PASSWORD."""
+    hits: list[str] = []
+    if isinstance(node, dict):
+        label = str(node.get("name") or path or "<unnamed>")
+        if "environment" in node:
+            env_val = node["environment"]
+            if "PACT_BROKER_PASSWORD" in json.dumps(env_val):
+                hits.append(label)
+        for k, v in node.items():
+            if k != "environment":
+                hits.extend(find_env_password_nodes(v, f"{path}.{k}"))
+    elif isinstance(node, list):
+        for idx, item in enumerate(node):
+            hits.extend(find_env_password_nodes(item, f"{path}[{idx}]"))
+    return hits
 
 
 def load_helper_module() -> Any:
@@ -205,32 +228,57 @@ def main() -> int:
     print("1. Helper script and playbook static checks")
     check("scripts/publish-pact-bridge.py exists", SCRIPT.is_file(), str(SCRIPT))
     check("playbooks/_publish-bridge.yml exists", PLAYBOOK.is_file(), str(PLAYBOOK))
+    check(
+        "playbooks/publish-manual-verifications.yml exists",
+        MAIN_PLAYBOOK.is_file(),
+        str(MAIN_PLAYBOOK),
+    )
+
+    plays = yaml.safe_load(MAIN_PLAYBOOK.read_text(encoding="utf-8"))
+    check(
+        "publish-manual-verifications.yml declares connection: local on the play",
+        isinstance(plays, list)
+        and len(plays) >= 1
+        and all(
+            isinstance(p, dict) and p.get("connection") == "local"
+            for p in plays
+        ),
+        repr(
+            [
+                p.get("connection") if isinstance(p, dict) else p
+                for p in (plays or [])
+            ]
+        ),
+    )
 
     tasks = yaml.safe_load(PLAYBOOK.read_text(encoding="utf-8"))
     check(
         "_publish-bridge.yml parses as a non-empty task list",
-        isinstance(tasks, list) and len(tasks) == 3,
+        isinstance(tasks, list) and len(tasks) > 0,
         repr(tasks),
     )
-    env_with_pw = [
-        t.get("name")
-        for t in (tasks or [])
-        if isinstance(t, dict)
-        and isinstance(t.get("environment"), dict)
-        and "PACT_BROKER_PASSWORD" in t["environment"]
-    ]
+
+    env_with_pw = find_env_password_nodes(
+        plays, "publish-manual-verifications.yml"
+    ) + find_env_password_nodes(tasks, "_publish-bridge.yml")
     check(
-        "no task in _publish-bridge.yml puts PACT_BROKER_PASSWORD in an environment mapping",
+        "no play, block, or task in either playbook puts PACT_BROKER_PASSWORD in environment:",
         env_with_pw == [],
-        f"tasks with PACT_BROKER_PASSWORD in environment: {env_with_pw}",
+        f"nodes with PACT_BROKER_PASSWORD in environment: {env_with_pw}",
     )
+
     helper_tasks = [
         t
         for t in (tasks or [])
-        if isinstance(t, dict) and "ansible.builtin.command" in t
+        if isinstance(t, dict)
+        and isinstance(t.get("ansible.builtin.command"), dict)
+        and any(
+            "publish-pact-bridge.py" in str(arg)
+            for arg in (t["ansible.builtin.command"].get("argv") or [])
+        )
     ]
     check(
-        "helper command task has no no_log so redacted stderr is visible on failure",
+        "helper command task is present and has no no_log so redacted stderr is visible on failure",
         len(helper_tasks) == 1 and "no_log" not in helper_tasks[0],
         repr(helper_tasks),
     )
@@ -487,6 +535,7 @@ def main() -> int:
         assert_no_password_leak("cross-host link", proc_cross)
 
         # Reject userinfo in broker link even when host and port match
+        userinfo_secret = "embedded-url-secret-value"
         broker.state.routes[("GET", versions_path)] = (
             200,
             {
@@ -495,7 +544,7 @@ def main() -> int:
                         {
                             "_links": {
                                 "self": {
-                                    "href": f"http://attacker:pw@localhost:{port}{v1_path}"
+                                    "href": f"http://attacker:{userinfo_secret}@localhost:{port}{v1_path}"
                                 }
                             }
                         }
@@ -505,11 +554,16 @@ def main() -> int:
         )
         proc_userinfo = run_helper(make_payload(lower_base))
         check(
-            "rejects broker link containing userinfo",
-            proc_userinfo.returncode != 0,
+            "rejects broker link containing userinfo with error naming the pair",
+            proc_userinfo.returncode != 0
+            and "Refusing broker URL containing userinfo" in proc_userinfo.stderr
+            and "alt-backend" in proc_userinfo.stderr
+            and "recap-worker" in proc_userinfo.stderr,
             proc_userinfo.stderr.strip(),
         )
-        assert_no_password_leak("userinfo in link", proc_userinfo)
+        assert_no_password_leak(
+            "userinfo in link", proc_userinfo, extra_secrets=(userinfo_secret,)
+        )
 
     mod = load_helper_module()
     origin_fn = getattr(mod, "_origin", None)
