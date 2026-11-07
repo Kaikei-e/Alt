@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import replace
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import InterfaceError
 
 from recap_subworker.db.dao import RunRecord
 from recap_subworker.domain.models import (
@@ -727,3 +729,125 @@ async def test_shutdown_marks_cancelled_cluster_run_failed(payload):
     assert dao.failure_status is not None, "a cancelled run must not stay 'running'"
     assert dao.failure_status[0] == 7
     assert dao.failure_status[1] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_process_run_marks_failed_when_connection_closed_on_mark_success(payload):
+    sessions: list[FakeSession] = []
+
+    def session_factory():
+        s = FakeSession()
+        sessions.append(s)
+        return DummySessionContext(s)
+
+    dao = FakeDAO(None)
+    job_id = uuid4()
+    dao.fetched_record = RunRecord(
+        run_id=1,
+        job_id=job_id,
+        genre="ai",
+        status="running",
+        cluster_count=0,
+        request_payload={"payload": payload.model_dump(mode="json")},
+        response_payload=None,
+        error_message=None,
+    )
+
+    async def _failing_mark_success(run_id, cluster_count, response_payload, status="succeeded"):
+        raise InterfaceError("UPDATE", {}, Exception("connection is closed"))
+
+    async def _recording_mark_failure(run_id, status, error_message):
+        dao.failure_status = (run_id, status, error_message)
+        if dao.fetched_record is not None:
+            dao.fetched_record = replace(
+                dao.fetched_record, status=status, error_message=error_message
+            )
+
+    dao.mark_run_success = _failing_mark_success  # type: ignore[method-assign]
+    dao.mark_run_failure = _recording_mark_failure  # type: ignore[method-assign]
+
+    pipeline_response = EvidenceResponse(
+        job_id="job",
+        genre="ai",
+        clusters=[],
+        evidence_budget=EvidenceBudget(sentences=0, tokens_estimated=0),
+        diagnostics=Diagnostics(),
+    )
+    runner = PipelineRunnerStub(pipeline_response)
+    settings = Settings(max_background_runs=1, pipeline_mode="processpool")
+    manager = RunManager(
+        settings,
+        session_factory,
+        lambda _s: dao,  # pyrefly: ignore[bad-argument-type]
+        pipeline_runner=runner,
+    )
+
+    with contextlib.suppress(InterfaceError):
+        await manager._process_run(1)
+
+    assert dao.fetched_record is not None
+    assert dao.fetched_record.status == "failed"
+    assert dao.failure_status is not None
+    assert dao.failure_status[0] == 1
+    assert dao.failure_status[1] == "failed"
+    assert len(sessions) == 3
+    assert sessions[-1].commit_called
+
+
+@pytest.mark.asyncio
+async def test_process_classification_run_marks_failed_when_connection_closed_on_mark_success():
+    sessions: list[FakeSession] = []
+
+    def session_factory():
+        s = FakeSession()
+        sessions.append(s)
+        return DummySessionContext(s)
+
+    dao = FakeDAO(None)
+    job_id = uuid4()
+    payload = ClassificationJobPayload(texts=["classification text"])
+    dao.fetched_record = RunRecord(
+        run_id=2,
+        job_id=job_id,
+        genre="classification",
+        status="running",
+        cluster_count=0,
+        request_payload={"payload": payload.model_dump(mode="json"), "type": "classification"},
+        response_payload=None,
+        error_message=None,
+    )
+
+    async def _failing_mark_success(run_id, cluster_count, response_payload, status="succeeded"):
+        raise InterfaceError("UPDATE", {}, Exception("underlying connection is closed"))
+
+    async def _recording_mark_failure(run_id, status, error_message):
+        dao.failure_status = (run_id, status, error_message)
+        if dao.fetched_record is not None:
+            dao.fetched_record = replace(
+                dao.fetched_record, status=status, error_message=error_message
+            )
+
+    dao.mark_run_success = _failing_mark_success  # type: ignore[method-assign]
+    dao.mark_run_failure = _recording_mark_failure  # type: ignore[method-assign]
+
+    class _OkClassificationRunner:
+        async def predict_batch(self, texts):
+            return [{"top_genre": "ai", "confidence": 0.9, "scores": {"ai": 0.9}}]
+
+    manager = RunManager(
+        Settings(),
+        session_factory,
+        lambda _s: dao,  # pyrefly: ignore[bad-argument-type]
+        classification_runner=_OkClassificationRunner(),
+    )
+
+    with contextlib.suppress(InterfaceError):
+        await manager._process_classification_run(2)
+
+    assert dao.fetched_record is not None
+    assert dao.fetched_record.status == "failed"
+    assert dao.failure_status is not None
+    assert dao.failure_status[0] == 2
+    assert dao.failure_status[1] == "failed"
+    assert len(sessions) == 3
+    assert sessions[-1].commit_called
