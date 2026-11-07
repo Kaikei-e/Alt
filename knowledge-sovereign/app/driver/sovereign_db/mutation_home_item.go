@@ -190,6 +190,7 @@ const upsertKnowledgeHomeItemQuery = `INSERT INTO knowledge_home_items
 		 -- .claude/rules/knowledge-home.md): "preserve previous on
 		 -- empty new" is encoded with COALESCE/NULLIF rather than
 		 -- SQL CASE so business logic stays in Go.
+		 primary_ref_id = COALESCE(knowledge_home_items.primary_ref_id, EXCLUDED.primary_ref_id),
 		 title = COALESCE(NULLIF(EXCLUDED.title, ''), knowledge_home_items.title),
 		 summary_excerpt = COALESCE(NULLIF(EXCLUDED.summary_excerpt, ''), knowledge_home_items.summary_excerpt),
 		 tags_json = COALESCE(NULLIF(EXCLUDED.tags_json, '[]'::jsonb), knowledge_home_items.tags_json),
