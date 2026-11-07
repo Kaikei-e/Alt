@@ -1654,8 +1654,8 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 		ConversationHistory: input.ConversationHistory,
 	}
 
-	// Extract article scope from the raw query (reuse ParseQueryIntent for metadata extraction)
-	parsedIntent := ParseQueryIntent(input.Query)
+	// Extract article scope from the current query or conversation history
+	parsedIntent := ResolveQueryIntent(input.Query, input.ConversationHistory)
 	if parsedIntent.IntentType == IntentArticleScoped {
 		qpInput.ArticleID = parsedIntent.ArticleID
 		qpInput.ArticleTitle = parsedIntent.ArticleTitle
@@ -1727,6 +1727,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 		}
 		result.retrievalPolicy = string(plannerOut.RetrievalPolicy)
 	}
+	result.parsedIntent = plannerIntent
 
 	// Clarification: short-circuit before retrieval
 	if qPlan.ShouldClarify {
@@ -1786,6 +1787,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	}
 
 	contexts := retrieved.Contexts
+	originalContextCount := len(contexts)
 	if len(contexts) > maxChunks {
 		contexts = contexts[:maxChunks]
 	}
@@ -1807,6 +1809,22 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 		}
 		estimatedTokens += chunkTokens
 		limitedContexts = append(limitedContexts, ctx)
+	}
+	var artCtx *ArticleContext
+	if parsedIntent.IntentType == IntentArticleScoped {
+		truncated := len(limitedContexts) < len(contexts) || len(contexts) < originalContextCount
+		if truncated {
+			u.logger.Info("article_scoped_truncated",
+				slog.String("article_id", parsedIntent.ArticleID),
+				slog.Int("total_chunks", originalContextCount),
+				slog.Int("used_chunks", len(limitedContexts)))
+		}
+		artCtx = &ArticleContext{
+			ArticleID: parsedIntent.ArticleID,
+			Title:     parsedIntent.ArticleTitle,
+			Truncated: truncated,
+		}
+		result.articleContext = artCtx
 	}
 	contexts = limitedContexts
 
@@ -1836,7 +1854,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 		result.toolsUsed = append(result.toolsUsed, retrieved.ToolsUsed...)
 	}
 	if u.toolDispatcher != nil {
-		toolResults := u.toolDispatcher.Dispatch(ctx, parsedIntent, qPlan.ResolvedQuery)
+		toolResults := u.toolDispatcher.Dispatch(ctx, plannerIntent, qPlan.ResolvedQuery)
 		for _, tr := range toolResults {
 			supplementary = append(supplementary, tr.Data)
 			result.toolsUsed = append(result.toolsUsed, tr.ToolName)
@@ -1849,6 +1867,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 		PromptVersion:       u.promptVersion,
 		Contexts:            promptContexts,
 		ConversationHistory: input.ConversationHistory,
+		ArticleContext:      artCtx,
 		IntentType:          result.intentType,
 		SupplementaryInfo:   supplementary,
 		PlannerOutput:       plannerOut,
