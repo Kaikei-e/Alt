@@ -7,10 +7,13 @@ import (
 	"log/slog"
 	"testing"
 
+	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // countDone returns the number of Done events in the stream and the last Done's payload.
@@ -96,4 +99,180 @@ func TestDoneInvariant_BuildPromptFailure(t *testing.T) {
 	}
 	assert.True(t, sawFallback, "fallback event must be emitted for FE display")
 	assert.True(t, sawDoneAfter, "Done must come after Fallback")
+}
+
+func TestStream_FallbackTerminals_SetMatchingFallbackCategory(t *testing.T) {
+	const userID = "11111111-1111-4111-8111-111111111111"
+	chunkID := uuid.New()
+	retrievedSingle := &usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{
+				ChunkID:         chunkID,
+				ChunkText:       "Context about semiconductor logistics and port congestion",
+				URL:             "https://example.com/a",
+				Title:           "Logistics",
+				PublishedAt:     "2026-04-01T00:00:00Z",
+				Score:           0.9,
+				DocumentVersion: 1,
+			},
+		},
+	}
+
+	cases := []struct {
+		name         string
+		query        string
+		setup        func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient)
+		expectedCode string
+	}{
+		{
+			name:  "buildPrompt relevance insufficient",
+			query: "Xiaomi 15 Ultraについて教えて",
+			setup: func(retrieve *mockRetrieveContextUsecase, _ *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).
+					Return(nil, usecase.ErrRelevanceInsufficient)
+			},
+			expectedCode: usecase.FallbackCodeRelevanceLow,
+		},
+		{
+			name:  "buildPrompt retrieval empty",
+			query: "unknown topic",
+			setup: func(retrieve *mockRetrieveContextUsecase, _ *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).
+					Return(&usecase.RetrieveContextOutput{Contexts: nil}, nil)
+			},
+			expectedCode: usecase.FallbackCodeRetrievalEmpty,
+		},
+		{
+			name:  "buildPrompt retrieval failed",
+			query: "test query",
+			setup: func(retrieve *mockRetrieveContextUsecase, _ *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).
+					Return(nil, errors.New("search backend down"))
+			},
+			expectedCode: usecase.FallbackCodeRetrievalFailed,
+		},
+		{
+			name:  "chat stream setup error",
+			query: "test query",
+			setup: func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievedSingle, nil)
+				llm.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, nil, errors.New("ollama unreachable"))
+			},
+			expectedCode: usecase.FallbackCodeLLMUnavailable,
+		},
+		{
+			name:  "chat stream mid-stream error",
+			query: "test query",
+			setup: func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievedSingle, nil)
+				chunkCh := make(chan domain.LLMStreamChunk)
+				errCh := make(chan error, 1)
+				errCh <- errors.New("stream reset")
+				close(chunkCh)
+				close(errCh)
+				llm.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+					Return((<-chan domain.LLMStreamChunk)(chunkCh), (<-chan error)(errCh), nil)
+			},
+			expectedCode: usecase.FallbackCodeLLMStreamFailed,
+		},
+		{
+			name:  "chat stream produced no data",
+			query: "test query",
+			setup: func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievedSingle, nil)
+				chunkCh, errCh := makeLLMStream([]domain.LLMStreamChunk{{Done: true}})
+				llm.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+					Return(chunkCh, errCh, nil)
+			},
+			expectedCode: usecase.FallbackCodeLLMNoOutput,
+		},
+		{
+			name:  "output validation failed",
+			query: "test query",
+			setup: func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievedSingle, nil)
+				chunkCh, errCh := makeLLMStream([]domain.LLMStreamChunk{
+					{Response: "not valid json at all"},
+					{Done: true},
+				})
+				llm.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+					Return(chunkCh, errCh, nil)
+			},
+			expectedCode: usecase.FallbackCodeValidationFailed,
+		},
+		{
+			name:  "model declined answer with empty answer",
+			query: "test query",
+			setup: func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievedSingle, nil)
+				chunkCh, errCh := makeLLMStream([]domain.LLMStreamChunk{
+					{Response: `{"answer":"","citations":[],"fallback":true,"reason":"insufficient context"}`},
+					{Done: true},
+				})
+				llm.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+					Return(chunkCh, errCh, nil)
+			},
+			expectedCode: usecase.FallbackCodeAnswerDeclined,
+		},
+		{
+			name:  "answer rejected after retry for general query",
+			query: "test query",
+			setup: func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievedSingle, nil)
+				disclaimer := `{"answer":"提供された情報からは判断できません。","citations":[],"fallback":false,"reason":""}`
+				chunkCh, errCh := makeLLMStream([]domain.LLMStreamChunk{
+					{Response: disclaimer},
+					{Done: true},
+				})
+				llm.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+					Return(chunkCh, errCh, nil)
+				llm.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+					Return(&domain.LLMResponse{Text: disclaimer, Done: true}, nil)
+			},
+			expectedCode: usecase.FallbackCodeAnswerRejected,
+		},
+		{
+			name:  "causal trail weak after retry for causal query",
+			query: "なぜ半導体不足が起きたのか？",
+			setup: func(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) {
+				retrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievedSingle, nil)
+				disclaimer := `{"answer":"提供された情報からは判断できません。","citations":[],"fallback":false,"reason":""}`
+				chunkCh, errCh := makeLLMStream([]domain.LLMStreamChunk{
+					{Response: disclaimer},
+					{Done: true},
+				})
+				llm.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+					Return(chunkCh, errCh, nil)
+				llm.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+					Return(&domain.LLMResponse{Text: disclaimer, Done: true}, nil)
+			},
+			expectedCode: usecase.FallbackCodeCausalTrailWeak,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRetrieve := new(mockRetrieveContextUsecase)
+			mockLLM := new(mockLLMClient)
+			tc.setup(mockRetrieve, mockLLM)
+
+			uc := newDoneInvariantUsecase(mockRetrieve, mockLLM)
+			events := drainStream(t, uc.Stream(context.Background(), usecase.AnswerWithRAGInput{
+				Query:  tc.query,
+				UserID: userID,
+			}))
+
+			fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
+			require.NotNil(t, fallbackEvt, "expected StreamEventKindFallback")
+			assert.Equal(t, tc.expectedCode, fallbackEvt.Payload, "fallback event payload must match expected code")
+
+			count, doneOut := countDone(events)
+			assert.Equal(t, 1, count, "expected exactly one Done event")
+			require.NotNil(t, doneOut, "Done payload must not be nil")
+			assert.True(t, doneOut.Fallback, "Done.Fallback must be true")
+			assert.Equal(t, usecase.FallbackCategory(tc.expectedCode), doneOut.FallbackCategory,
+				"Done.FallbackCategory must match the fallback code sent to the client")
+		})
+	}
 }

@@ -228,6 +228,39 @@ func TestAppendTurns_RejectsEmptyContent(t *testing.T) {
 	uc := NewAugurConversationUsecase(newFakeAugurRepo(), nil)
 	err := uc.AppendUserTurn(context.Background(), uuid.New(), "   \n\t ")
 	assert.Error(t, err)
+	err = uc.AppendAssistantTurn(context.Background(), uuid.New(), "   \n\t ", nil, nil)
+	assert.Error(t, err)
+}
+
+func TestAppendFallbackAssistantTurn_EmptyContent_SynthesizesFallbackMessage(t *testing.T) {
+	repo := newFakeAugurRepo()
+	clock, _ := fixedClock(time.Date(2026, 4, 13, 12, 0, 0, 0, time.UTC))
+	uc := NewAugurConversationUsecase(repo, clock)
+
+	userID := uuid.New()
+	conv, err := uc.EnsureConversation(context.Background(), userID, uuid.Nil, "Xiaomi 15 Ultraについて教えて")
+	require.NoError(t, err)
+	require.NoError(t, uc.AppendUserTurn(context.Background(), conv.ID, "Xiaomi 15 Ultraについて教えて"))
+
+	err = uc.AppendFallbackAssistantTurn(
+		context.Background(),
+		conv.ID,
+		"",
+		nil,
+		nil,
+		FallbackCodeRelevanceLow,
+		"retrieval quality insufficient: context relevance too low",
+	)
+	require.NoError(t, err)
+
+	_, msgs, err := uc.GetConversation(context.Background(), userID, conv.ID)
+	require.NoError(t, err)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, "assistant", msgs[1].Role)
+	assert.Equal(t, "Not enough indexed evidence was available yet to answer this question.", msgs[1].Content)
+	require.NotNil(t, msgs[1].Fallback)
+	assert.Equal(t, FallbackCodeRelevanceLow, msgs[1].Fallback.Code)
+	assert.Equal(t, "retrieval quality insufficient: context relevance too low", msgs[1].Fallback.Reason)
 }
 
 func TestListConversations_SortsByLastActivity(t *testing.T) {

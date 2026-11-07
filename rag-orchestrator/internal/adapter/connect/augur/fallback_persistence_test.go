@@ -1,7 +1,9 @@
 package augur_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -179,34 +181,118 @@ func TestStreamChat_FallbackStaysTerminalForTheClient(t *testing.T) {
 	assert.NotContains(t, kinds[1:], "done")
 }
 
-// A fallback with no text at all has nothing to show in history; writing an
-// empty assistant bubble would be worse than the hole. It must still be
-// counted and named in the log rather than disappearing.
-func TestStreamChat_EmptyFallback_IsNotPersistedAsBlankTurn(t *testing.T) {
+func TestStreamChat_EmptyFallback_PersistsFallbackTurn(t *testing.T) {
 	h := newFallbackStreamHarness(t)
 	defer h.stop()
 
+	var (
+		mu       sync.Mutex
+		code     string
+		reason   string
+		called   = make(chan struct{})
+		callOnce sync.Once
+	)
 	h.mocks.On("AppendFallbackAssistantTurn",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, h.conv.ID, mock.AnythingOfType("string"),
 		mock.Anything, mock.Anything,
-	).Return(nil)
+		mock.AnythingOfType("string"), mock.AnythingOfType("string"),
+	).Run(func(args mock.Arguments) {
+		mu.Lock()
+		code, reason = args.String(5), args.String(6)
+		mu.Unlock()
+		callOnce.Do(func() { close(called) })
+	}).Return(nil)
 
 	stream, err := h.client.StreamChat(context.Background(), h.request())
 	require.NoError(t, err)
 
-	h.events <- usecase.StreamEvent{Kind: usecase.StreamEventKindFallback, Payload: "llm_no_output"}
+	h.events <- usecase.StreamEvent{Kind: usecase.StreamEventKindFallback, Payload: usecase.FallbackCodeLLMNoOutput}
 	h.events <- usecase.StreamEvent{Kind: usecase.StreamEventKindDone, Payload: &usecase.AnswerWithRAGOutput{
-		Answer:   "",
-		Fallback: true,
-		Reason:   "llm stream produced no data",
+		Answer:           "",
+		Fallback:         true,
+		FallbackCategory: usecase.FallbackCategory(usecase.FallbackCodeLLMNoOutput),
+		Reason:           "llm stream produced no data",
 	}}
 	close(h.events)
 
 	for stream.Receive() {
 	}
-	time.Sleep(200 * time.Millisecond)
 
-	h.mocks.AssertNotCalled(t, "AppendFallbackAssistantTurn",
+	select {
+	case <-called:
+	case <-time.After(3 * time.Second):
+		t.Fatal("empty-answer fallback turn must still be persisted")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, usecase.FallbackCodeLLMNoOutput, code)
+	assert.Equal(t, "llm stream produced no data", reason)
+	h.mocks.AssertNumberOfCalls(t, "AppendFallbackAssistantTurn", 1)
+}
+
+func TestStreamChat_NonFallbackEmptyAnswer_IsNotPersistedAndLogsError(t *testing.T) {
+	var logBuf bytes.Buffer
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	mockConv := new(MockAugurConversationUsecase)
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	userID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        uuid.New(),
+		UserID:    userID,
+		Title:     "empty-non-fallback",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	events := make(chan usecase.StreamEvent, 4)
+	mockConv.On("EnsureConversation", mock.Anything, userID, uuid.Nil, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("AppendUserTurn", mock.Anything, conv.ID, mock.AnythingOfType("string")).Return(nil)
+	mockAnswer.On("Stream", mock.Anything, mock.Anything).Return((<-chan usecase.StreamEvent)(events))
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, nil, logger)
+	mux := http.NewServeMux()
+	path, connectHandler := augurv2connect.NewAugurServiceHandler(handler)
+	mux.Handle(path, connectHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := augurv2connect.NewAugurServiceClient(server.Client(), server.URL)
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
+		Messages: []*augurv2.ChatMessage{{Role: "user", Content: "test query"}},
+	})
+	req.Header().Set("X-Alt-User-Id", userID.String())
+
+	stream, err := client.StreamChat(context.Background(), req)
+	require.NoError(t, err)
+
+	events <- usecase.StreamEvent{Kind: usecase.StreamEventKindDone, Payload: &usecase.AnswerWithRAGOutput{
+		Answer:   "",
+		Fallback: false,
+	}}
+	close(events)
+
+	for stream.Receive() {
+	}
+
+	mockConv.AssertNotCalled(t, "AppendAssistantTurn",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mockConv.AssertNotCalled(t, "AppendFallbackAssistantTurn",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything)
+
+	var foundErrorLog bool
+	for _, line := range bytes.Split(logBuf.Bytes(), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal(line, &rec))
+		if rec["msg"] == "assistant_turn_not_persisted" && rec["level"] == "ERROR" {
+			foundErrorLog = true
+			break
+		}
+	}
+	assert.True(t, foundErrorLog, "non-fallback empty answer must log assistant_turn_not_persisted at ERROR")
 }

@@ -672,3 +672,62 @@ func TestStreamChat_LogsFullEventFieldsForReplay_OnEmitError(t *testing.T) {
 	assert.Equal(t, "default", replayRecord["lens_mode_id"], "lens_mode_id must be replayable")
 	assert.EqualValues(t, conv.CreatedAt.UnixMilli(), replayRecord["linked_at"], "linked_at must be replayable")
 }
+
+func TestStreamChat_EmptyAnswerFallback_PersistsFallbackAssistantTurn(t *testing.T) {
+	h := newFallbackStreamHarness(t)
+	defer h.stop()
+
+	var (
+		mu       sync.Mutex
+		code     string
+		reason   string
+		called   = make(chan struct{})
+		callOnce sync.Once
+	)
+	h.mocks.On("AppendFallbackAssistantTurn",
+		mock.Anything, h.conv.ID, mock.AnythingOfType("string"),
+		mock.Anything, mock.Anything,
+		mock.AnythingOfType("string"), mock.AnythingOfType("string"),
+	).Run(func(args mock.Arguments) {
+		mu.Lock()
+		code, reason = args.String(5), args.String(6)
+		mu.Unlock()
+		callOnce.Do(func() { close(called) })
+	}).Return(nil)
+
+	stream, err := h.client.StreamChat(context.Background(), h.request())
+	require.NoError(t, err)
+
+	h.events <- usecase.StreamEvent{
+		Kind:    usecase.StreamEventKindFallback,
+		Payload: usecase.FallbackCodeRelevanceLow,
+	}
+	h.events <- usecase.StreamEvent{
+		Kind: usecase.StreamEventKindDone,
+		Payload: &usecase.AnswerWithRAGOutput{
+			Answer:           "",
+			Fallback:         true,
+			FallbackCategory: usecase.FallbackCategory(usecase.FallbackCodeRelevanceLow),
+			Reason:           "retrieval quality insufficient: context relevance too low",
+		},
+	}
+	close(h.events)
+
+	for stream.Receive() {
+	}
+	require.NoError(t, stream.Err())
+
+	select {
+	case <-called:
+	case <-time.After(3 * time.Second):
+		t.Fatal("AppendFallbackAssistantTurn was not called for empty-answer fallback")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, usecase.FallbackCodeRelevanceLow, code)
+	assert.Equal(t, "retrieval quality insufficient: context relevance too low", reason)
+	h.mocks.AssertNumberOfCalls(t, "AppendFallbackAssistantTurn", 1)
+	h.mocks.AssertNotCalled(t, "AppendAssistantTurn",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
