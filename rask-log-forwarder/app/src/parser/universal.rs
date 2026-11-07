@@ -981,4 +981,58 @@ mod tests {
             Some(&"processing_time".to_string())
         );
     }
+
+    #[test]
+    fn service_timestamp_with_positive_offset_normalizes_to_utc() {
+        let container = std::sync::Arc::new(create_go_backend_container_info());
+        let frame = bytes::Bytes::from_static(
+            b"2020-01-01T00:00:01.000000000Z {\"time\":\"2020-01-01T09:00:00.123456789+09:00\",\"level\":\"info\",\"msg\":\"x\"}\n",
+        );
+        let (parsed_ts, payload) = crate::collector::parse_log_timestamp_prefix(frame);
+        let log_entry = crate::collector::LogEntry {
+            container,
+            stream: LogStream::Stdout,
+            timestamp: parsed_ts,
+            raw_bytes: payload,
+        };
+
+        let parser = UniversalParser::new();
+        let enriched = parser
+            .parse_log_entry(&log_entry)
+            .expect("Failed to parse Docker log entry");
+
+        assert_eq!(
+            enriched.timestamp, "2020-01-01T00:00:00.123456789Z",
+            "expected +09:00 service timestamp to normalize to UTC instant, got {}",
+            enriched.timestamp
+        );
+        assert!(!enriched.fields.contains_key("timestamp_fallback"));
+    }
+
+    #[test]
+    fn unparseable_service_timestamp_falls_back_to_docker_frame_timestamp() {
+        let container = std::sync::Arc::new(create_go_backend_container_info());
+        let frame = bytes::Bytes::from_static(
+            b"2020-01-01T00:00:00.123456789Z {\"time\":\"not-a-timestamp\",\"level\":\"info\",\"msg\":\"x\"}\n",
+        );
+        let (parsed_ts, payload) = crate::collector::parse_log_timestamp_prefix(frame);
+        let log_entry = crate::collector::LogEntry {
+            container,
+            stream: LogStream::Stdout,
+            timestamp: parsed_ts,
+            raw_bytes: payload,
+        };
+
+        let parser = UniversalParser::new();
+        let enriched = parser
+            .parse_log_entry(&log_entry)
+            .expect("Failed to parse Docker log entry");
+
+        assert_eq!(
+            enriched.timestamp, "2020-01-01T00:00:00.123456789Z",
+            "expected unparseable service timestamp to fall back to Docker frame timestamp, got {}",
+            enriched.timestamp
+        );
+        assert!(!enriched.fields.contains_key("timestamp_fallback"));
+    }
 }

@@ -537,4 +537,48 @@ mod tests {
         assert_eq!(snapshot.successful_batches, 1);
         assert_eq!(snapshot.disk_fallback_count, 0);
     }
+
+    #[tokio::test]
+    async fn enrich_log_entry_fallback_preserves_docker_timestamp_on_oversized_line() {
+        let parser = UniversalParser::new();
+        let parsed_ts = chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00.123456789Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::Stderr,
+            timestamp: Some(parsed_ts),
+            raw_bytes: bytes::Bytes::from(vec![b'x'; 65 * 1024]),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        assert_eq!(
+            enriched.timestamp, "2020-01-01T00:00:00.123456789Z",
+            "parse-failure fallback must preserve the Docker frame timestamp when present, got {}",
+            enriched.timestamp
+        );
+        assert!(!enriched.fields.contains_key("timestamp_fallback"));
+    }
+
+    #[tokio::test]
+    async fn enrich_log_entry_fallback_marks_processing_time_when_docker_timestamp_missing() {
+        let parser = UniversalParser::new();
+
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::Stderr,
+            timestamp: None,
+            raw_bytes: bytes::Bytes::from(vec![b'x'; 65 * 1024]),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        assert_eq!(
+            enriched.fields.get("timestamp_fallback"),
+            Some(&"processing_time".to_string()),
+            "parse-failure fallback without a Docker timestamp must record timestamp_fallback"
+        );
+    }
 }
