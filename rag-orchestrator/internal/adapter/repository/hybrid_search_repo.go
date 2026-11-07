@@ -50,6 +50,14 @@ func NewHybridSearchRepository(pool *pgxpool.Pool, rrfK int) domain.HybridSearch
 	return &hybridSearchRepository{pool: pool, rrfK: rrfK}
 }
 
+func (r *hybridSearchRepository) getExecutor(ctx context.Context) dbExecutor {
+	tx := ExtractTx(ctx)
+	if tx != nil {
+		return tx
+	}
+	return r.pool
+}
+
 // HybridSearch performs a combined vector + full-text search with RRF fusion.
 // Uses CTE-based approach:
 // 1. vector_candidates / vector_matches: HNSW cosine similarity search, re-sorted for ranking
@@ -73,7 +81,7 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 	tsConfig := tsqueryConfig(queryText)
 	query := buildHybridSearchQuery(tsConfig, r.rrfK)
 
-	rows, err := r.pool.Query(ctx, query,
+	rows, err := r.getExecutor(ctx).Query(ctx, query,
 		pgvector.NewVector(queryVector),
 		queryText,
 		candidateLimit,
@@ -131,14 +139,9 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 // full-text) pipeline as HybridSearch, but excludes documents whose article_id
 // is in seedArticleIDs, scoped to rag_documents.user_id = userID.
 //
-// Implementation notes:
-//   - Filtering is applied at the metadata enrichment stage (after the RRF
-//     CTE) because rag_chunks does not carry article_id directly; only the
-//     joined rag_documents row does. This means the candidate pool is allowed
-//     to include seed chunks but they are dropped before the LIMIT.
-//   - We compensate by widening the RRF candidate pool to limit + len(seeds)
-//     and then truncating client-side, so the seeds do not eat into the final
-//     budget.
+// Seed article IDs are excluded inside the EXISTS semi-join of each candidate
+// arm (and re-checked on the outer join) so multi-chunk seed articles cannot
+// consume the candidate or RRF LIMIT budgets before neighbor chunks are scored.
 func (r *hybridSearchRepository) SearchNeighbors(
 	ctx context.Context,
 	queryVector []float32,
@@ -154,7 +157,7 @@ func (r *hybridSearchRepository) SearchNeighbors(
 		limit = 5
 	}
 
-	// Drop empty seeds so the NOT IN clause never sees a "".
+	// Drop empty seeds so the exclusion clause never sees a "".
 	seeds := make([]string, 0, len(seedArticleIDs))
 	for _, s := range seedArticleIDs {
 		if trimmed := strings.TrimSpace(s); trimmed != "" {
@@ -162,16 +165,14 @@ func (r *hybridSearchRepository) SearchNeighbors(
 		}
 	}
 
-	// Inflate to give the post-filter step room to drop seeds.
-	rrfLimit := limit + len(seeds)
-	candidateLimit := rrfLimit * 2
+	candidateLimit := limit * 2
 	if candidateLimit > 200 {
 		candidateLimit = 200
 	}
 
 	// Optional vector arm: when the encoder failed upstream, queryVector may be
 	// empty. We still run the text arm so the lexical neighbors survive.
-	args := []any{queryText, candidateLimit, rrfLimit}
+	args := []any{queryText, candidateLimit, limit}
 	vectorArmArg := 0
 	if len(queryVector) > 0 {
 		args = append(args, pgvector.NewVector(queryVector))
@@ -179,21 +180,16 @@ func (r *hybridSearchRepository) SearchNeighbors(
 	}
 	args = append(args, userID)
 	userArgIdx := len(args)
+	args = append(args, seeds)
 
 	tsConfig := tsqueryConfig(queryText)
 	query := buildSearchNeighborsQuery(tsConfig, r.rrfK, vectorArmArg, userArgIdx)
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.getExecutor(ctx).Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("neighbor search failed: %w", err)
 	}
 	defer rows.Close()
-
-	// Build a seed set for fast exclusion.
-	seedSet := make(map[string]struct{}, len(seeds))
-	for _, s := range seeds {
-		seedSet[s] = struct{}{}
-	}
 
 	results := make([]domain.SearchResult, 0, limit)
 	for rows.Next() {
@@ -214,10 +210,6 @@ func (r *hybridSearchRepository) SearchNeighbors(
 			return nil, fmt.Errorf("failed to scan neighbor row: %w", err)
 		}
 
-		if _, isSeed := seedSet[articleID]; isSeed {
-			continue
-		}
-
 		results = append(results, domain.SearchResult{
 			Chunk: chunk,
 			// The RRF sum, not a similarity: a hit scores about 1/(k+rank) per
@@ -229,9 +221,6 @@ func (r *hybridSearchRepository) SearchNeighbors(
 			URL:             url.String,
 			DocumentVersion: versionNumber,
 		})
-		if len(results) >= limit {
-			break
-		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("neighbor search rows error: %w", err)
@@ -307,6 +296,7 @@ func buildHybridSearchQuery(tsConfig string, rrfK int) string {
 // buildSearchNeighborsQuery uses the same EXISTS semi-join and distance + 0
 // re-sort as buildHybridSearchQuery.
 func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgIdx int) string {
+	seedsArgIdx := userArgIdx + 1
 	vectorArm := ""
 	if vectorArmArg > 0 {
 		vectorArm = fmt.Sprintf(`
@@ -317,6 +307,7 @@ func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgI
 					SELECT 1 FROM rag_documents d
 					WHERE d.current_version_id = c.version_id
 					  AND d.user_id = $%d
+					  AND NOT (d.article_id = ANY($%d))
 				)
 				  AND c.embedding IS NOT NULL
 				ORDER BY c.embedding <=> $%d
@@ -325,7 +316,7 @@ func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgI
 			vector_matches AS (
 				SELECT id, rank() OVER (ORDER BY distance + 0) AS rank
 				FROM vector_candidates
-			),`, vectorArmArg, userArgIdx, vectorArmArg)
+			),`, vectorArmArg, userArgIdx, seedsArgIdx, vectorArmArg)
 	}
 
 	combinedSource := `SELECT id, rank FROM text_matches`
@@ -344,6 +335,7 @@ func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgI
 				SELECT 1 FROM rag_documents d
 				WHERE d.current_version_id = c.version_id
 				  AND d.user_id = $%d
+				  AND NOT (d.article_id = ANY($%d))
 			)
 			  AND c.tsv @@ plainto_tsquery('%s', $1)
 			ORDER BY rank
@@ -371,6 +363,7 @@ func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgI
 		JOIN rag_documents d ON v.document_id = d.id
 		WHERE d.current_version_id = v.id
 		  AND d.user_id = $%d
+		  AND NOT (d.article_id = ANY($%d))
 		ORDER BY r.score DESC
-	`, vectorArm, tsConfig, userArgIdx, tsConfig, rrfK, combinedSource, userArgIdx)
+	`, vectorArm, tsConfig, userArgIdx, seedsArgIdx, tsConfig, rrfK, combinedSource, userArgIdx, seedsArgIdx)
 }
