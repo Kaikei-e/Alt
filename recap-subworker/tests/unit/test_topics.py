@@ -245,3 +245,15 @@ def test_stopwords_include_web_tech_terms():
     }
     for term in web_terms:
         assert term in terms, f"Missing web/tech stopword: {term}"
+
+
+def test_extract_topics_handles_single_corpus():
+    """Single-cluster corpus must not fail with max_df < min_df in TfidfVectorizer."""
+    corpus = ["New product launch highlights artificial intelligence roadmap and research."]
+
+    result = topics.extract_topics(corpus, top_n=5, bm25_weighting=True)
+
+    assert len(result) == 1
+    assert result[0]
+    assert any(term in {"product", "launch", "roadmap", "research"} for term in result[0])
+

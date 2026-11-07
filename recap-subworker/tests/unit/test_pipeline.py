@@ -503,3 +503,46 @@ def test_pipeline_filters_code_fragments():
             assert len(rep.text) >= 20, f"Representative text too short: {rep.text}"
             assert "stackTrace" not in rep.text.lower()
             assert "}){" not in rep.text
+
+
+def test_pipeline_succeeds_when_genre_reduces_to_single_sentence_after_dedup():
+    """A genre that deduplicates down to one sentence must succeed with one cluster."""
+
+    class DuplicateEmbedder(FakeEmbedder):
+        def encode(self, sentences):
+            vec = np.array([[1.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+            return np.repeat(vec, max(1, len(sentences)), axis=0)
+
+    settings = Settings(model_id="fake")
+    pipeline = EvidencePipeline(settings=settings, embedder=DuplicateEmbedder(), process_pool=None)
+
+    request = EvidenceRequest(
+        job_id="job-single",
+        genre="ai",
+        documents=[
+            ClusterDocument(
+                article_id="art1",
+                paragraphs=[
+                    "New product launch highlights artificial intelligence roadmap and research."
+                ],
+            ),
+            ClusterDocument(
+                article_id="art2",
+                paragraphs=[
+                    "New product launch highlights artificial intelligence roadmap and research."
+                ],
+            ),
+        ],
+    )
+
+    response = pipeline.run(request)
+
+    assert response.job_id == "job-single"
+    assert response.genre == "ai"
+    assert response.diagnostics.dedup_pairs == 1
+    assert len(response.clusters) == 1
+    assert response.clusters[0].size == 1
+    assert len(response.clusters[0].representatives) == 1
+    assert response.clusters[0].label.top_terms
+    assert response.evidence_budget.sentences == 1
+
