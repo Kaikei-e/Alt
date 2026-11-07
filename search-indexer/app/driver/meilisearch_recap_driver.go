@@ -69,29 +69,18 @@ func (d *MeilisearchRecapDriver) EnsureIndex(ctx context.Context) error {
 	// Try to fetch index info; if it doesn't exist, create it
 	_, err := d.index.FetchInfoWithContext(ctx)
 	if err != nil {
-		dummyDoc := []map[string]interface{}{
-			{
-				"id":          "init",
-				"job_id":      "",
-				"genre":       "",
-				"top_terms":   []string{},
-				"summary":     "",
-				"executed_at": "",
-			},
+		if !isIndexNotFoundErr(err) {
+			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("fetch index info: %w", err)}
 		}
-
-		pk := "id"
-		task, err := d.index.AddDocumentsWithContext(ctx, dummyDoc, &meilisearch.DocumentOptions{PrimaryKey: &pk})
-		if err != nil {
-			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to create index: %w", err)}
+		task, createErr := d.client.CreateIndexWithContext(ctx, &meilisearch.IndexConfig{
+			Uid:        "recaps",
+			PrimaryKey: "id",
+		})
+		if createErr != nil {
+			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to create index: %w", createErr)}
 		}
-		if _, err = d.waitForTask(ctx, task.TaskUID); err != nil {
-			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to wait for index creation: %w", err)}
-		}
-
-		deleteTask, err := d.index.DeleteDocumentWithContext(ctx, "init", nil)
-		if err == nil {
-			_, _ = d.waitForTask(ctx, deleteTask.TaskUID)
+		if _, waitErr := d.waitForTask(ctx, task.TaskUID); waitErr != nil {
+			return &DriverError{Op: "EnsureRecapIndex", Err: fmt.Errorf("failed to wait for index creation: %w", waitErr)}
 		}
 	}
 
