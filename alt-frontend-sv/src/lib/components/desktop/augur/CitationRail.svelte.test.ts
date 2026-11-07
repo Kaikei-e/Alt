@@ -65,4 +65,77 @@ describe("CitationRail", () => {
 		await expect.element(page.getByText("Neighbor A")).toBeInTheDocument();
 		await expect.element(page.getByText("Neighbor B")).toBeInTheDocument();
 	});
+
+	it("renders several citations that share one article RefID and URL", async () => {
+		const sharedRefId = "55555555-5555-4555-8555-555555555555";
+		const sharedUrl = "https://example.test/articles/shared";
+		const citations: Citation[] = [
+			{
+				URL: sharedUrl,
+				Title: "Shared chunk one",
+				Kind: "ARTICLE",
+				RefID: sharedRefId,
+			},
+			{
+				URL: sharedUrl,
+				Title: "Shared chunk two",
+				Kind: "ARTICLE",
+				RefID: sharedRefId,
+			},
+			{
+				URL: sharedUrl,
+				Title: "Shared chunk three",
+				Kind: "ARTICLE",
+				RefID: sharedRefId,
+			},
+		];
+
+		render(CitationRail, { props: { citations } });
+
+		await expect
+			.element(page.getByText("Shared chunk one"))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("Shared chunk two"))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("Shared chunk three"))
+			.toBeInTheDocument();
+	});
+
+	it("renders related citations that share one article RefID and URL", async () => {
+		const sharedRefId = "77777777-7777-4777-8777-777777777777";
+		const sharedUrl = "https://example.test/articles/neighbor";
+		const citations: Citation[] = [
+			{
+				URL: "",
+				Title: "Direct source",
+				Kind: "ARTICLE",
+				RefID: "66666666-6666-4666-8666-666666666666",
+			},
+		];
+		const relatedCitations: Citation[] = [
+			{
+				URL: sharedUrl,
+				Title: "Neighbor shared one",
+				Kind: "ARTICLE",
+				RefID: sharedRefId,
+			},
+			{
+				URL: sharedUrl,
+				Title: "Neighbor shared two",
+				Kind: "ARTICLE",
+				RefID: sharedRefId,
+			},
+		];
+
+		render(CitationRail, { props: { citations, relatedCitations } });
+
+		await expect
+			.element(page.getByText("Neighbor shared one"))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("Neighbor shared two"))
+			.toBeInTheDocument();
+	});
 });
