@@ -287,3 +287,158 @@ func TestNewCreateTagSetVersionUsecase_PanicsOnNilPort(t *testing.T) {
 		NewCreateTagSetVersionUsecase(&mockTagSetPort{}, &mockEventPort{}, nil)
 	})
 }
+
+type failOnceDedupEventPort struct {
+	failEventType string
+	failedOnce    bool
+	calls         int
+	appended      []domain.KnowledgeEvent
+	byDedupeKey   map[string]int64
+}
+
+func (f *failOnceDedupEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
+	f.calls++
+	if f.failEventType != "" && event.EventType == f.failEventType && !f.failedOnce {
+		f.failedOnce = true
+		return 0, assert.AnError
+	}
+	if f.byDedupeKey == nil {
+		f.byDedupeKey = make(map[string]int64)
+	}
+	if event.DedupeKey != "" {
+		if _, exists := f.byDedupeKey[event.DedupeKey]; exists {
+			return 0, nil
+		}
+	}
+	f.appended = append(f.appended, event)
+	seq := int64(len(f.appended))
+	if event.DedupeKey != "" {
+		f.byDedupeKey[event.DedupeKey] = seq
+	}
+	return seq, nil
+}
+
+func TestCreateTagSetVersionUsecase_RetryAndReplayIdempotency(t *testing.T) {
+	logger.InitLogger()
+
+	t.Run("first version: event append fails once then succeeds produces one row and one event, and replay is a no-op", func(t *testing.T) {
+		articleID := uuid.New()
+		userID := uuid.New()
+		tagSetPort := &mockTagSetPort{}
+		eventPort := &failOnceDedupEventPort{failEventType: domain.EventTagSetVersionCreated}
+		markPort := &mockMarkTagSupersededPort{}
+
+		uc := NewCreateTagSetVersionUsecase(tagSetPort, eventPort, markPort)
+		input := domain.TagSetVersion{
+			ArticleID: articleID,
+			UserID:    userID,
+			Generator: "tag-generator",
+			TagsJSON:  json.RawMessage(`[{"name":"go","confidence":0.9}]`),
+		}
+
+		err := uc.Execute(context.Background(), input)
+		require.Error(t, err, "first call must fail when event append fails")
+
+		err = uc.Execute(context.Background(), input)
+		require.NoError(t, err, "retry with identical input must succeed")
+		require.Len(t, tagSetPort.created, 1, "two Execute calls after partial failure must produce exactly one version row")
+		require.Len(t, eventPort.appended, 1, "two Execute calls after partial failure must produce exactly one TagSetVersionCreated")
+		assert.Equal(t, domain.EventTagSetVersionCreated, eventPort.appended[0].EventType)
+
+		callsBeforeReplay := eventPort.calls
+		err = uc.Execute(context.Background(), input)
+		require.NoError(t, err, "identical-tags replay after full success must succeed")
+		assert.Len(t, tagSetPort.created, 1, "identical-tags replay must not insert another version row")
+		assert.Len(t, eventPort.appended, 1, "identical-tags replay must not emit another event")
+		assert.Equal(t, callsBeforeReplay, eventPort.calls, "identical-tags replay must be a no-op")
+	})
+
+	t.Run("second version: supersede event append fails once then succeeds produces one version row, one created event, and one superseded event", func(t *testing.T) {
+		articleID := uuid.New()
+		userID := uuid.New()
+		oldVersionID := uuid.New()
+
+		tagSetPort := &mockTagSetPort{}
+		eventPort := &failOnceDedupEventPort{failEventType: domain.EventTagSetSuperseded}
+		markPort := &mockMarkTagSupersededPort{
+			prev: &domain.TagSetVersion{
+				TagSetVersionID: oldVersionID,
+				ArticleID:       articleID,
+				UserID:          userID,
+				TagsJSON:        json.RawMessage(`[{"name":"old-tag","confidence":0.8}]`),
+			},
+		}
+
+		uc := NewCreateTagSetVersionUsecase(tagSetPort, eventPort, markPort)
+		input := domain.TagSetVersion{
+			ArticleID: articleID,
+			UserID:    userID,
+			Generator: "tag-generator",
+			TagsJSON:  json.RawMessage(`[{"name":"new-tag","confidence":0.9}]`),
+		}
+
+		err := uc.Execute(context.Background(), input)
+		require.Error(t, err, "first call must fail when TagSetSuperseded append fails")
+
+		err = uc.Execute(context.Background(), input)
+		require.NoError(t, err, "retry must succeed and complete the supersede event")
+		require.Len(t, tagSetPort.created, 1, "retry must produce exactly one new version row")
+		require.Len(t, eventPort.appended, 2, "retry must produce exactly one TagSetVersionCreated and one TagSetSuperseded")
+		assert.Equal(t, domain.EventTagSetVersionCreated, eventPort.appended[0].EventType)
+		assert.Equal(t, domain.EventTagSetSuperseded, eventPort.appended[1].EventType)
+
+		callsBeforeReplay := eventPort.calls
+		err = uc.Execute(context.Background(), input)
+		require.NoError(t, err, "identical-tags replay after full success must be a no-op")
+		assert.Len(t, tagSetPort.created, 1)
+		assert.Len(t, eventPort.appended, 2)
+		assert.Equal(t, callsBeforeReplay, eventPort.calls)
+	})
+
+	t.Run("A->B->A transitions get distinct version IDs while immediate replay is a no-op", func(t *testing.T) {
+		articleID := uuid.New()
+		userID := uuid.New()
+		tagSetPort := &mockTagSetPort{}
+		eventPort := &failOnceDedupEventPort{}
+		markPort := &mockMarkTagSupersededPort{}
+
+		uc := NewCreateTagSetVersionUsecase(tagSetPort, eventPort, markPort)
+
+		tagsA := json.RawMessage(`[{"name":"go","confidence":0.9}]`)
+		tagsB := json.RawMessage(`[{"name":"rust","confidence":0.8}]`)
+
+		require.NoError(t, uc.Execute(context.Background(), domain.TagSetVersion{
+			ArticleID: articleID,
+			UserID:    userID,
+			Generator: "tag-generator",
+			TagsJSON:  tagsA,
+		}))
+		require.NoError(t, uc.Execute(context.Background(), domain.TagSetVersion{
+			ArticleID: articleID,
+			UserID:    userID,
+			Generator: "tag-generator",
+			TagsJSON:  tagsB,
+		}))
+		require.NoError(t, uc.Execute(context.Background(), domain.TagSetVersion{
+			ArticleID: articleID,
+			UserID:    userID,
+			Generator: "tag-generator",
+			TagsJSON:  tagsA,
+		}))
+		// Immediate replay of tagsA must be a no-op.
+		require.NoError(t, uc.Execute(context.Background(), domain.TagSetVersion{
+			ArticleID: articleID,
+			UserID:    userID,
+			Generator: "tag-generator",
+			TagsJSON:  tagsA,
+		}))
+
+		require.Len(t, tagSetPort.created, 3, "A->B->A followed by replay of A must create exactly three versions")
+		v1 := tagSetPort.created[0].TagSetVersionID
+		v2 := tagSetPort.created[1].TagSetVersionID
+		v3 := tagSetPort.created[2].TagSetVersionID
+		assert.NotEqual(t, v1, v2)
+		assert.NotEqual(t, v2, v3)
+		assert.NotEqual(t, v1, v3, "returning to tags A after B must mint a distinct version ID")
+	})
+}

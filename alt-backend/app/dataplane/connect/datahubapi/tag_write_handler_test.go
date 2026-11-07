@@ -15,6 +15,7 @@ import (
 
 	"alt/dataplane/port/internal_article_port"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
+	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/mocks"
 )
@@ -357,4 +358,73 @@ func TestBatchUpsertArticleTags_OwnerResolutionAndErrors(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
 	})
+
+	t.Run("whole-batch retry after mid-batch failure yields exactly one version per article", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBatchUpsert := mocks.NewMockBatchUpsertArticleTagsPort(ctrl)
+		mockGetByID := mocks.NewMockGetArticleByIDPort(ctrl)
+		tagSetPort := &fakeTagSetVersionPort{}
+		eventPort := &failOnSecondCallEventPort{}
+		uc := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetPort, eventPort, tagSetPort)
+
+		h := NewHandler(nil, nil, nil, nil, mockGetByID, &fakeSystemUser{}, &fakeRecentArticles{}, testLogger(),
+			WithTagCatalogPorts(nil, mockBatchUpsert, nil),
+			WithKnowledgeVersionUsecases(nil, uc),
+		)
+
+		batchReq := &datahubv1.BatchUpsertArticleTagsRequest{
+			Items: []*datahubv1.UpsertArticleTagsRequest{
+				{ArticleId: article1, FeedId: "feed-1", Tags: []*datahubv1.TagItem{{Name: "go", Confidence: 0.9}}},
+				{ArticleId: article2, FeedId: "feed-1", Tags: []*datahubv1.TagItem{{Name: "rust", Confidence: 0.8}}},
+			},
+		}
+
+		// First attempt: article1 succeeds, article2 event append fails -> Unavailable.
+		mockBatchUpsert.EXPECT().
+			BatchUpsertArticleTags(gomock.Any(), gomock.Any()).
+			Return(int32(2), nil)
+		mockGetByID.EXPECT().
+			GetArticleByID(gomock.Any(), article1).
+			Return(&internal_article_port.ArticleWithTags{ID: article1, UserID: testTenantID}, nil)
+		mockGetByID.EXPECT().
+			GetArticleByID(gomock.Any(), article2).
+			Return(&internal_article_port.ArticleWithTags{ID: article2, UserID: testTenantID}, nil)
+
+		_, err := h.BatchUpsertArticleTags(context.Background(), connect.NewRequest(batchReq))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
+
+		// Second attempt (whole-batch retry): both items succeed; article1 is a replay no-op.
+		mockBatchUpsert.EXPECT().
+			BatchUpsertArticleTags(gomock.Any(), gomock.Any()).
+			Return(int32(2), nil)
+		mockGetByID.EXPECT().
+			GetArticleByID(gomock.Any(), article1).
+			Return(&internal_article_port.ArticleWithTags{ID: article1, UserID: testTenantID}, nil)
+		mockGetByID.EXPECT().
+			GetArticleByID(gomock.Any(), article2).
+			Return(&internal_article_port.ArticleWithTags{ID: article2, UserID: testTenantID}, nil)
+
+		resp, err := h.BatchUpsertArticleTags(context.Background(), connect.NewRequest(batchReq))
+		require.NoError(t, err)
+		assert.True(t, resp.Msg.GetSuccess())
+		require.Len(t, tagSetPort.created, 2, "whole-batch retry must yield exactly one version per article")
+		assert.Equal(t, uuid.MustParse(article1), tagSetPort.created[0].ArticleID)
+		assert.Equal(t, uuid.MustParse(article2), tagSetPort.created[1].ArticleID)
+		require.Len(t, eventPort.appended, 2, "whole-batch retry must yield exactly one TagSetVersionCreated per article")
+	})
+}
+
+type failOnSecondCallEventPort struct {
+	calls    int
+	appended []string
+}
+
+func (f *failOnSecondCallEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
+	f.calls++
+	if f.calls == 2 {
+		return 0, errors.New("sovereign unavailable")
+	}
+	f.appended = append(f.appended, event.DedupeKey)
+	return int64(len(f.appended)), nil
 }
