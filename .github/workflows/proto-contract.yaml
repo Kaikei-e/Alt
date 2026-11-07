@@ -65,6 +65,7 @@ on:
       - 'scripts/publish-pact-bridge.py'
       - 'scripts/tests/**'
       - 'scripts/ci/**'
+      - 'playbooks/publish-manual-verifications.yml'
       - 'playbooks/_publish-bridge.yml'
   pull_request:
     branches: [main]
@@ -104,6 +105,7 @@ on:
       - 'scripts/publish-pact-bridge.py'
       - 'scripts/tests/**'
       - 'scripts/ci/**'
+      - 'playbooks/publish-manual-verifications.yml'
       - 'playbooks/_publish-bridge.yml'
 
 # Superseded PR runs are cancelled; main-branch runs are not, because they
@@ -376,6 +378,9 @@ jobs:
       # strands alt-data-hub at verifications=0 and blocks every release.
       - name: pact-check.sh leg-selection guard
         run: ./scripts/tests/test-pact-check-filter.sh
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
 
       - name: Manual verification bridge helper guard
         run: python3 scripts/tests/test-publish-pact-bridge.py
