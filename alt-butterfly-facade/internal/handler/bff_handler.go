@@ -349,7 +349,9 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.backendClient.ForwardStreamingRequest(r, token)
 	if err != nil {
-		h.recordFailure(endpoint)
+		if r.Context().Err() == nil {
+			h.recordFailure(endpoint)
+		}
 		h.handleBackendError(w, err, requestID)
 		return
 	}
@@ -435,7 +437,9 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	}
 
 	if err != nil {
-		h.recordFailure(endpoint)
+		if r.Context().Err() == nil {
+			h.recordFailure(endpoint)
+		}
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -455,7 +459,9 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	h.invalidateUnreadProjectionOnMutation(userID, endpoint, resp.StatusCode)
 
 	if err != nil {
-		h.recordFailure(endpoint)
+		if r.Context().Err() == nil {
+			h.recordFailure(endpoint)
+		}
 		return nil, fmt.Errorf("read backend response body: %w", err)
 	}
 
