@@ -267,12 +267,12 @@ func (h *Handler) GetArticleContentByID(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
 
-	userID, err := optionalUUID(req.Msg.GetUserId(), "user_id")
+	userID, err := requiredUUID(req.Msg.GetUserId(), "user_id")
 	if err != nil {
 		return nil, err
 	}
 
-	article, err := h.articleRead.GetContentByID(ctx, req.Msg.GetArticleId(), userID)
+	article, err := h.articleRead.GetContentByID(ctx, req.Msg.GetArticleId(), &userID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "GetArticleContentByID failed", "error", err, "article_id", req.Msg.GetArticleId())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get article content"))
