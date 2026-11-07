@@ -6,11 +6,19 @@ import (
 	"alt/shared/port/knowledge_event_port"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+const (
+	DefaultSnoozeHours = 24
+	MaxSnoozeHours     = 24 * 30
+)
+
+var ErrInvalidSnoozeHours = errors.New("invalid snooze_hours")
 
 type RecallSnoozeUsecase struct {
 	candidatePort recall_candidate_port.SnoozeRecallCandidatePort
@@ -28,8 +36,8 @@ func NewRecallSnoozeUsecase(
 }
 
 func (u *RecallSnoozeUsecase) Execute(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, itemKey string, snoozeHours int) error {
-	if snoozeHours <= 0 {
-		snoozeHours = 24
+	if snoozeHours <= 0 || snoozeHours > MaxSnoozeHours {
+		return fmt.Errorf("%w: must be between 1 and %d", ErrInvalidSnoozeHours, MaxSnoozeHours)
 	}
 	// occurredAt is the origination time of this command, minted once here
 	// and forwarded both to the direct recall_candidate_view mutation and the

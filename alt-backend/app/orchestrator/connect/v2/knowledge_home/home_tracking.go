@@ -12,6 +12,7 @@ import (
 
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
+	"alt/orchestrator/usecase/recall_snooze_usecase"
 	"alt/orchestrator/usecase/track_home_action_usecase"
 )
 
@@ -96,16 +97,23 @@ func (h *Handler) TrackHomeAction(
 			return nil, connect.NewError(connect.CodeUnimplemented,
 				fmt.Errorf("recall snooze is not enabled on this deployment"))
 		}
-		snoozeHours := 24
+		snoozeHours := recall_snooze_usecase.DefaultSnoozeHours
 		if metadataJSON != "" {
 			var meta map[string]any
 			if err := json.Unmarshal([]byte(metadataJSON), &meta); err == nil {
-				if v, ok := meta["snooze_hours"].(float64); ok && v > 0 {
+				if v, ok := meta["snooze_hours"].(float64); ok {
+					if v < 1 || v > float64(recall_snooze_usecase.MaxSnoozeHours) {
+						return nil, connect.NewError(connect.CodeInvalidArgument,
+							fmt.Errorf("%w: must be between 1 and %d", recall_snooze_usecase.ErrInvalidSnoozeHours, recall_snooze_usecase.MaxSnoozeHours))
+					}
 					snoozeHours = int(v)
 				}
 			}
 		}
 		if err := h.recallSnoozeUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKey, snoozeHours); err != nil {
+			if errors.Is(err, recall_snooze_usecase.ErrInvalidSnoozeHours) {
+				return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			}
 			return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "TrackHomeAction.snooze")
 		}
 	case "dismiss_recall":
