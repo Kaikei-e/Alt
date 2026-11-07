@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/meilisearch/meilisearch-go"
 )
@@ -92,5 +93,54 @@ func TestMeilisearchRecapDriver_EnsureIndex_CreatesIndexExplicitlyWhenNotFound(t
 	}
 	if fakeIdx.called("AddDocuments") || fakeIdx.called("AddDocumentsNoContext") {
 		t.Fatal("EnsureIndex() must not insert a dummy document to create the index")
+	}
+}
+
+type taskByUIDRecapIndexManager struct {
+	*fakeRecapIndexManager
+	tasks map[int64]*meilisearch.Task
+}
+
+func (m *taskByUIDRecapIndexManager) WaitForTaskWithContext(ctx context.Context, taskUID int64, interval time.Duration) (*meilisearch.Task, error) {
+	if task, ok := m.tasks[taskUID]; ok {
+		m.record("WaitForTask", ctx)
+		return task, nil
+	}
+	return m.fakeRecapIndexManager.WaitForTaskWithContext(ctx, taskUID, interval)
+}
+
+func TestMeilisearchRecapDriver_EnsureIndex_TreatsIndexAlreadyExistsTaskAsSuccess(t *testing.T) {
+	baseIdx := newFakeRecapIndexManager(t)
+	baseIdx.fetchInfoErr = &meilisearch.Error{StatusCode: 404}
+
+	alreadyExistsTask := &meilisearch.Task{
+		UID:    10,
+		Status: meilisearch.TaskStatusFailed,
+	}
+	alreadyExistsTask.Error.Code = "index_already_exists"
+	alreadyExistsTask.Error.Message = "Index `recaps` already exists."
+
+	idx := &taskByUIDRecapIndexManager{
+		fakeRecapIndexManager: baseIdx,
+		tasks: map[int64]*meilisearch.Task{
+			10: alreadyExistsTask,
+		},
+	}
+	sm := &recapTestServiceManager{idx: idx, createTaskUID: 10}
+	d := NewMeilisearchRecapDriver(sm)
+
+	if err := d.EnsureIndex(context.Background()); err != nil {
+		t.Fatalf("EnsureIndex() error = %v, want nil when create task fails with index_already_exists", err)
+	}
+
+	for _, call := range []string{
+		"UpdateSearchableAttributes",
+		"UpdateFilterableAttributes",
+		"UpdateSortableAttributes",
+		"UpdateLocalizedAttributes",
+	} {
+		if !baseIdx.called(call) {
+			t.Errorf("expected EnsureIndex() to apply setting %s after index_already_exists", call)
+		}
 	}
 }
