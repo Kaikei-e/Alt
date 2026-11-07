@@ -44,6 +44,10 @@ const metadataIdempotencyKeyField = "idempotency_key"
 // each carries more signal, so this is deliberately tighter.
 const dedupeBucket = time.Minute
 
+// ErrInvalidActionType wraps client-side action_type validation failures so
+// the handler can map them to InvalidArgument.
+var ErrInvalidActionType = errors.New("invalid action type")
+
 // Valid action types.
 var validActionTypes = map[string]string{
 	"open":        domain.EventHomeItemOpened,
@@ -174,7 +178,7 @@ func metadataFingerprint(metadataJSON string) string {
 func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, actionType string, itemKey string, metadataJSON string) error {
 	eventType, ok := validActionTypes[actionType]
 	if !ok {
-		return errors.New("invalid action type: " + actionType)
+		return fmt.Errorf("%w: %s", ErrInvalidActionType, actionType)
 	}
 
 	if itemKey == "" {

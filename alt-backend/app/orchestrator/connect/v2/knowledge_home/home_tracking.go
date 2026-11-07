@@ -3,6 +3,7 @@ package knowledge_home
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"connectrpc.com/connect"
@@ -11,6 +12,7 @@ import (
 
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
+	"alt/orchestrator/usecase/track_home_action_usecase"
 )
 
 // TrackHomeItemsSeen records which items were visible on screen.
@@ -116,6 +118,9 @@ func (h *Handler) TrackHomeAction(
 		}
 	default:
 		if err := h.trackActionUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ActionType, req.Msg.ItemKey, metadataJSON); err != nil {
+			if errors.Is(err, track_home_action_usecase.ErrInvalidActionType) {
+				return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			}
 			return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "TrackHomeAction")
 		}
 	}
