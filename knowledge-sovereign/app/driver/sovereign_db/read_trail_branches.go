@@ -107,14 +107,15 @@ SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_
                 NULLIF(left(khi.summary_excerpt, 80), ''),
                 NULLIF(split_part(split_part(khi.url, '://', 2), '/', 1), ''),
                 b.target_item_key)
-FROM (
-  SELECT DISTINCT ON (b.anchor_item_key)
-         b.user_id, b.branch_key, b.anchor_item_key, b.relation_kind, b.why,
-         b.evidence_refs_json, b.confidence, b.target_item_key, b.target_title,
-         b.created_at
-  FROM knowledge_trail_branches b
-  WHERE b.user_id = $1 AND b.state = 'open' AND b.anchor_item_key = ANY($2::text[])
-  ORDER BY b.anchor_item_key, b.created_at DESC, b.branch_key DESC
+FROM (SELECT DISTINCT unnest($2::text[]) AS anchor_item_key) a
+CROSS JOIN LATERAL (
+  SELECT b0.user_id, b0.branch_key, b0.anchor_item_key, b0.relation_kind, b0.why,
+         b0.evidence_refs_json, b0.confidence, b0.target_item_key, b0.target_title,
+         b0.created_at
+  FROM knowledge_trail_branches b0
+  WHERE b0.user_id = $1 AND b0.state = 'open' AND b0.anchor_item_key = a.anchor_item_key
+  ORDER BY b0.created_at DESC, b0.branch_key DESC
+  LIMIT 1
 ) b
 LEFT JOIN knowledge_home_items khi
   ON khi.user_id = b.user_id
@@ -140,8 +141,8 @@ ORDER BY b.created_at DESC, b.branch_key DESC`
 
 // GetOpenTrailBranchesForAnchor returns the user's open branches anchored on
 // one item, newest first, capped at limit (Wave 10, D26 — the patch-exit
-// surface is a handful, not an inbox). Mirrors GetOpenTrailBranches with an
-// anchor filter and a server-side cap.
+// surface is a handful, not an inbox). Mirrors GetLatestOpenTrailBranchesForAnchors
+// for a single anchor with a server-side cap.
 func (r *Repository) GetOpenTrailBranchesForAnchor(ctx context.Context, userID uuid.UUID, anchorItemKey string, limit int) ([]TrailBranch, error) {
 	q := `
 SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_json,

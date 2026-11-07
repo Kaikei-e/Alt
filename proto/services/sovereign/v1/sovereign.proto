@@ -721,7 +721,8 @@ message GetTrailFootprintsResponse {
   repeated TrailFootprint footprints = 1;
   string next_cursor = 2;
   bool has_more = 3;
-  // branches are the user's open system-proposed branches (all anchors).
+  // branches are the newest open system-proposed branch per anchor, scoped to
+  // the anchors of the returned episode page.
   repeated TrailBranch branches = 4;
   // episodes are the derived display units of the spine (D24/D30): collapsed
   // footprints linked by same-article identity and cleaned-tag chaining.

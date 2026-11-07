@@ -11,11 +11,12 @@ import (
 )
 
 // SearchTrailPort narrows the user's derived episode spine to episodes
-// containing at least one footprint whose item_key is in itemKeys. It reuses
-// the same sovereign GetTrailFootprints RPC as knowledge_trail_port.GetTrailPort,
+// containing at least one footprint whose item_key is in itemKeys, along with
+// the page-scoped open branches anchored on those episodes. It reuses the same
+// sovereign GetTrailFootprints RPC as knowledge_trail_port.GetTrailPort,
 // narrowed server-side via filter_item_keys — there is no cursor because the
 // caller supplies a single generously-sized limit and pages the search hits,
 // not the sovereign call.
 type SearchTrailPort interface {
-	SearchTrailFootprints(ctx context.Context, userID uuid.UUID, itemKeys []string, limit int) ([]domain.TrailEpisode, error)
+	SearchTrailFootprints(ctx context.Context, userID uuid.UUID, itemKeys []string, limit int) ([]domain.TrailEpisode, []domain.TrailBranch, error)
 }

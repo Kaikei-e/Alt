@@ -58,6 +58,9 @@ message SearchTrailResponse {
   // matched_item_keys marks which member items matched, so the UI can
   // highlight the hit inside its episode.
   repeated string matched_item_keys = 2;
+  // branches are the newest open branch per anchor among the members of the
+  // returned episodes, so search hits can show their branch like the spine does.
+  repeated Branch branches = 3;
 }
 
 message EmitTrailOutcomeRequest {

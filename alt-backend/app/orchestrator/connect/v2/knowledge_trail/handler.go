@@ -158,6 +158,7 @@ func (h *Handler) SearchTrail(
 	return connect.NewResponse(&knowledgetrailv1.SearchTrailResponse{
 		Episodes:        h.mapEpisodes(result.Episodes),
 		MatchedItemKeys: result.MatchedItemKeys,
+		Branches:        mapBranches(result.Branches),
 	}), nil
 }
 
@@ -191,9 +192,9 @@ func (h *Handler) GetItemBranches(
 	}), nil
 }
 
-// mapBranches maps domain branches to their wire form. Shared by GetTrail and
-// GetItemBranches so the two branch surfaces (Trail episode header vs.
-// patch-exit) can never diverge on mapping.
+// mapBranches maps domain branches to their wire form. Shared by GetTrail,
+// SearchTrail, and GetItemBranches so the branch surfaces (Trail episode
+// header vs. patch-exit) can never diverge on mapping.
 func mapBranches(branches []domain.TrailBranch) []*knowledgetrailv1.Branch {
 	out := make([]*knowledgetrailv1.Branch, len(branches))
 	for i, b := range branches {

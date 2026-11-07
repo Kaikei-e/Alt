@@ -47,6 +47,7 @@ export function useKnowledgeTrail() {
 	let searchActive = $state(false);
 	let searchQuery = $state("");
 	let searchEpisodes = $state<EpisodeData[]>([]);
+	let searchBranches = $state<BranchData[]>([]);
 	let matchedItemKeys = $state<string[]>([]);
 	let searching = $state(false);
 	let searchError = $state<Error | null>(null);
@@ -104,6 +105,7 @@ export function useKnowledgeTrail() {
 			const result = await searchTrail(transport, trimmed);
 			searchQuery = trimmed;
 			searchEpisodes = result.episodes;
+			searchBranches = result.branches;
 			matchedItemKeys = result.matchedItemKeys;
 			searchActive = true;
 		} catch (err) {
@@ -118,6 +120,7 @@ export function useKnowledgeTrail() {
 		searchActive = false;
 		searchQuery = "";
 		searchEpisodes = [];
+		searchBranches = [];
 		matchedItemKeys = [];
 		searchError = null;
 	}
@@ -171,6 +174,9 @@ export function useKnowledgeTrail() {
 		get branches() {
 			return branches;
 		},
+		get visibleBranches() {
+			return searchActive ? searchBranches : branches;
+		},
 		get loading() {
 			return loading;
 		},
@@ -191,6 +197,9 @@ export function useKnowledgeTrail() {
 		},
 		get searchEpisodes() {
 			return searchEpisodes;
+		},
+		get searchBranches() {
+			return searchBranches;
 		},
 		get matchedItemKeys() {
 			return matchedItemKeys;

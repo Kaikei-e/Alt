@@ -6114,7 +6114,8 @@ type GetTrailFootprintsResponse struct {
 	Footprints []*TrailFootprint `protobuf:"bytes,1,rep,name=footprints,proto3" json:"footprints,omitempty"`
 	NextCursor string            `protobuf:"bytes,2,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
 	HasMore    bool              `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// branches are the user's open system-proposed branches (all anchors).
+	// branches are the newest open system-proposed branch per anchor, scoped to
+	// the anchors of the returned episode page.
 	Branches []*TrailBranch `protobuf:"bytes,4,rep,name=branches,proto3" json:"branches,omitempty"`
 	// episodes are the derived display units of the spine (D24/D30): collapsed
 	// footprints linked by same-article identity and cleaned-tag chaining.

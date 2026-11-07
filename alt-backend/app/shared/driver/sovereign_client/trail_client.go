@@ -42,13 +42,14 @@ func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, curso
 
 // SearchTrailFootprints narrows the derived episode spine to episodes
 // containing at least one footprint whose item_key is in itemKeys (trail
-// search capability, D25). It reuses the same GetTrailFootprints RPC as
-// GetTrailFootprints above, narrowed server-side via filter_item_keys; a
-// single cursor-less call with a generously-sized limit is sufficient since
-// the caller pages the search hits, not the sovereign call.
-func (c *Client) SearchTrailFootprints(ctx context.Context, userID uuid.UUID, itemKeys []string, limit int) ([]domain.TrailEpisode, error) {
+// search capability, D25) and returns the open branches anchored on those
+// episodes. It reuses the same GetTrailFootprints RPC as GetTrailFootprints
+// above, narrowed server-side via filter_item_keys; a single cursor-less call
+// with a generously-sized limit is sufficient since the caller pages the
+// search hits, not the sovereign call.
+func (c *Client) SearchTrailFootprints(ctx context.Context, userID uuid.UUID, itemKeys []string, limit int) ([]domain.TrailEpisode, []domain.TrailBranch, error) {
 	if !c.enabled {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	resp, err := c.client.GetTrailFootprints(ctx, connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
@@ -58,10 +59,10 @@ func (c *Client) SearchTrailFootprints(ctx context.Context, userID uuid.UUID, it
 		FilterItemKeys: itemKeys,
 	}))
 	if err != nil {
-		return nil, fmt.Errorf("sovereign GetTrailFootprints (search): %w", err)
+		return nil, nil, fmt.Errorf("sovereign GetTrailFootprints (search): %w", err)
 	}
 
-	return protoToTrailEpisodes(resp.Msg.Episodes), nil
+	return protoToTrailEpisodes(resp.Msg.Episodes), protoToTrailBranches(resp.Msg.Branches), nil
 }
 
 // GetTrailBranchesForAnchor fetches the user's open branches anchored on one
