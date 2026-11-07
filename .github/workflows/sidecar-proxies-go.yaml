@@ -1,0 +1,72 @@
+name: Sidecar and Docker Proxy Go Tests
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'alt-backend/sidecar-proxy/**'
+      - 'docker/readonly-proxy/**'
+      - 'docker/otel-relay/**'
+      - 'docker/inference-proxy/**'
+      - '.github/workflows/sidecar-proxies-go.yaml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'alt-backend/sidecar-proxy/**'
+      - 'docker/readonly-proxy/**'
+      - 'docker/otel-relay/**'
+      - 'docker/inference-proxy/**'
+      - '.github/workflows/sidecar-proxies-go.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sidecar-proxy:
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'alt-backend/sidecar-proxy'
+      coverage-flags: 'sidecar-proxy'
+      use-local-persistent-cache: false
+      sparse-checkout: 'alt-backend/sidecar-proxy'
+
+  readonly-proxy:
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'docker/readonly-proxy'
+      coverage-flags: 'readonly-proxy'
+      use-local-persistent-cache: false
+      sparse-checkout: 'docker/readonly-proxy'
+
+  otel-relay:
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'docker/otel-relay'
+      coverage-flags: 'otel-relay'
+      use-local-persistent-cache: false
+      sparse-checkout: 'docker/otel-relay'
+
+  inference-proxy:
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reusable-test-go.yaml
+    with:
+      working-directory: 'docker/inference-proxy'
+      coverage-flags: 'inference-proxy'
+      use-local-persistent-cache: false
+      sparse-checkout: 'docker/inference-proxy'
