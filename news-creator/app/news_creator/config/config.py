@@ -73,8 +73,7 @@ class NewsCreatorConfig:
                 )
             self.distributed_be_reasoning_effort = (
                 parse_distributed_be_reasoning_effort(
-                    os.getenv("DISTRIBUTED_BE_REASONING_EFFORT"),
-                    strict=True,
+                    os.getenv("DISTRIBUTED_BE_REASONING_EFFORT")
                 )
             )
         else:

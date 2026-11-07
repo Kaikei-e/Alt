@@ -112,7 +112,10 @@ class DependencyContainer:
                 targets=self.config.distributed_be_targets,
                 interval_seconds=self.config.distributed_be_health_interval_seconds,
                 cooldown_seconds=self.config.distributed_be_cooldown_seconds,
-                timeout_seconds=self.config.distributed_be_timeout_seconds,
+                timeout_seconds=min(
+                    self.config.distributed_be_health_interval_seconds,
+                    self.config.distributed_be_timeout_seconds,
+                ),
             )
             self.llm_provider = DistributingGateway(
                 local_gateway=self.ollama_gateway,

@@ -139,6 +139,14 @@ A multi-layer backpressure mechanism that prevents unbounded queue growth and pr
 - `RemoteHealthChecker` probes each distinct `base_url` via `GET /v1/models` on `DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS` (default 30s); an unhealthy target backs off starting from `DISTRIBUTED_BE_COOLDOWN_SECONDS` (default 60s).
 - Optional `DISTRIBUTED_BE_REASONING_EFFORT` (`none`, `minimal`, `low`, `medium`, `high`) is forwarded on `/v1/chat/completions` when set and omitted when empty.
 - When disabled, or when no healthy idle target fits the request's token budget, behavior falls back to holding a local BE slot on `OllamaGateway`.
+- **Operator notes**:
+  - `base_url` must be a bare origin (`http://` or `https://` host and optional port only — no path such as `/v1`, no credentials, query, or fragment).
+  - A prompt is dispatched to a remote target only if its estimated input tokens plus the completion budget (`num_predict`) and safety margin fit the target's declared `num_ctx`; otherwise the next fitting idle target or the local gateway is used.
+  - Dispatch failures start an exponential cooldown (starting at `DISTRIBUTED_BE_COOLDOWN_SECONDS`, capped) that only a successful dispatch clears; `/v1/models` health probes do not clear an active dispatch cooldown.
+  - Request-level rejections (HTTP 4xx other than 408/429, or empty assistant content) move to the next fitting target without triggering a cooldown.
+  - Remote response bodies are bounded (`4 MiB` for `/v1/chat/completions`, `1 MiB` for `/v1/models`).
+  - Once a deferred batch slot falls back to the local gateway, it holds that single local BE slot and stays local across any retries in the same `hold_slot(False)` scope.
+  - The `/v1/models` health-probe timeout is `min(DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS, DISTRIBUTED_BE_TIMEOUT_SECONDS)`.
 
 ## Handlers & Contracts
 

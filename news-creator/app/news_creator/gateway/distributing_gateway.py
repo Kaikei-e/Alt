@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import logging
 import math
@@ -29,6 +30,8 @@ _TOKEN_BUDGET_SAFETY_MARGIN = 256
 @dataclass
 class _DeferredSlotState:
     stack: AsyncExitStack
+    owner_task: asyncio.Task[Any] | None = None
+    closed: bool = False
     local_acquired: bool = False
     local_cancel_event: Any | None = None
     local_task_id: str | None = None
@@ -110,11 +113,15 @@ class DistributingGateway(LLMProviderPort):
             return
 
         async with AsyncExitStack() as stack:
-            state = _DeferredSlotState(stack=stack)
+            state = _DeferredSlotState(
+                stack=stack,
+                owner_task=asyncio.current_task(),
+            )
             token = _deferred_be_slot.set(state)
             try:
                 yield 0.0, None, None
             finally:
+                state.closed = True
                 _deferred_be_slot.reset(token)
 
     async def generate_raw(
@@ -140,6 +147,11 @@ class DistributingGateway(LLMProviderPort):
                 keep_alive=keep_alive,
                 format=format,
                 options=options,
+            )
+
+        if slot_state.closed or slot_state.owner_task is not asyncio.current_task():
+            raise RuntimeError(
+                "Deferred BE slot must only be used by its owning task while open"
             )
 
         if format is not None:

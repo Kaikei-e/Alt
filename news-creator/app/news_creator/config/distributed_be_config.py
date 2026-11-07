@@ -42,10 +42,10 @@ def parse_distributed_be_targets(raw: str) -> list[RemoteTarget]:
             )
 
         raw_base_url, raw_model, raw_num_ctx = parts
-        if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in raw_base_url):
+        if not raw_base_url.isprintable():
             raise ValueError(
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
-                f"base_url must not contain control characters, got {raw_base_url!r}"
+                f"base_url must not contain non-printable characters, got {raw_base_url!r}"
             )
         stripped_base_url = raw_base_url.strip()
         if any(ch.isspace() for ch in stripped_base_url):
@@ -116,9 +116,7 @@ def parse_distributed_be_targets(raw: str) -> list[RemoteTarget]:
     return targets
 
 
-def parse_distributed_be_reasoning_effort(
-    raw: str | None, *, strict: bool = True
-) -> str | None:
+def parse_distributed_be_reasoning_effort(raw: str | None) -> str | None:
     """Parse optional DISTRIBUTED_BE_REASONING_EFFORT value."""
     if raw is None:
         return None
@@ -126,11 +124,9 @@ def parse_distributed_be_reasoning_effort(
     if not value:
         return None
     if value not in VALID_REASONING_EFFORTS:
-        if strict:
-            allowed = ", ".join(sorted(VALID_REASONING_EFFORTS))
-            raise ValueError(
-                f"Invalid DISTRIBUTED_BE_REASONING_EFFORT: {raw!r}; "
-                f"must be one of: {allowed}"
-            )
-        return None
+        allowed = ", ".join(sorted(VALID_REASONING_EFFORTS))
+        raise ValueError(
+            f"Invalid DISTRIBUTED_BE_REASONING_EFFORT: {raw!r}; "
+            f"must be one of: {allowed}"
+        )
     return value

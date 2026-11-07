@@ -13,62 +13,11 @@ import aiohttp
 
 from news_creator.config.distributed_be_config import RemoteTarget
 from news_creator.gateway import dispatch_metrics
+from news_creator.gateway.bounded_body import read_bounded_text
 
 logger = logging.getLogger(__name__)
 
 MAX_MODELS_RESPONSE_BYTES = 1 * 1024 * 1024
-
-
-async def _read_bounded_models_text(response: Any, max_bytes: int) -> str:
-    content_length = getattr(response, "content_length", None)
-    if isinstance(content_length, int) and content_length > max_bytes:
-        raise ValueError(
-            f"/v1/models response exceeds {max_bytes} bytes (Content-Length: {content_length})"
-        )
-
-    headers = getattr(response, "headers", None)
-    if isinstance(headers, dict) or hasattr(headers, "get"):
-        raw_cl = headers.get("Content-Length") if headers is not None else None
-        if isinstance(raw_cl, str):
-            try:
-                parsed_cl = int(raw_cl)
-            except ValueError:
-                parsed_cl = None
-            if parsed_cl is not None and parsed_cl > max_bytes:
-                raise ValueError(
-                    f"/v1/models response exceeds {max_bytes} bytes (Content-Length: {parsed_cl})"
-                )
-
-    content = getattr(response, "content", None)
-    if isinstance(content, aiohttp.StreamReader):
-        chunks: list[bytes] = []
-        total = 0
-        while total <= max_bytes:
-            chunk = await content.read(max_bytes + 1 - total)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            total += len(chunk)
-        raw_bytes = b"".join(chunks)
-    elif content is not None and callable(getattr(content, "read", None)):
-        maybe_bytes = await content.read(max_bytes + 1)
-        if isinstance(maybe_bytes, (bytes, bytearray)):
-            raw_bytes = bytes(maybe_bytes)
-        else:
-            text_val = await response.text(errors="replace")
-            raw_bytes = text_val.encode("utf-8")
-    else:
-        try:
-            text_val = await response.text(errors="replace")
-        except TypeError:
-            text_val = await response.text()
-        if len(text_val.encode("utf-8")) > max_bytes:
-            raise ValueError(f"/v1/models response exceeds {max_bytes} bytes")
-        return text_val
-
-    if len(raw_bytes) > max_bytes:
-        raise ValueError(f"/v1/models response exceeds {max_bytes} bytes")
-    return raw_bytes.decode("utf-8", errors="replace")
 
 
 class RemoteHealthChecker:
@@ -105,6 +54,7 @@ class RemoteHealthChecker:
                 "last_completed": 0.0,
                 "in_flight_count": 0,
                 "consecutive_failures": 0,
+                "probe_failures": 0,
                 "dispatch_failures": 0,
                 "cooldown_until": 0.0,
                 "logged_unhealthy": False,
@@ -160,6 +110,7 @@ class RemoteHealthChecker:
         self.release_target(target)
         state["last_completed"] = time.monotonic()
         state["dispatch_failures"] = 0
+        state["probe_failures"] = 0
         state["consecutive_failures"] = 0
         state["cooldown_until"] = 0.0
 
@@ -206,11 +157,7 @@ class RemoteHealthChecker:
 
     def _effective_cooldown(self, target: RemoteTarget) -> float:
         state = self._states[target]
-        failures = max(
-            1,
-            int(state.get("consecutive_failures", 0)),
-            int(state.get("dispatch_failures", 0)),
-        )
+        failures = max(1, int(state.get("probe_failures", 0)))
         backoff = self._cooldown_seconds * (2 ** (failures - 1))
         return float(min(backoff, self._max_cooldown_seconds))
 
@@ -228,6 +175,7 @@ class RemoteHealthChecker:
     ) -> Callable[..., None]:
         state = self._states[target]
         state["healthy"] = False
+        state["probe_failures"] += 1
         state["consecutive_failures"] += 1
         state["last_checked"] = now
         if always_warn:
@@ -261,9 +209,7 @@ class RemoteHealthChecker:
                         )
                     return
 
-                text = await _read_bounded_models_text(
-                    response, MAX_MODELS_RESPONSE_BYTES
-                )
+                text = await read_bounded_text(response, MAX_MODELS_RESPONSE_BYTES)
                 try:
                     payload = json.loads(text)
                 except json.JSONDecodeError as err:
@@ -305,6 +251,7 @@ class RemoteHealthChecker:
                         ) > 0 or state.get("logged_unhealthy", False)
                         state["healthy"] = True
                         state["last_healthy"] = now
+                        state["probe_failures"] = 0
                         state["consecutive_failures"] = 0
                         state["logged_unhealthy"] = False
                         if had_failures:

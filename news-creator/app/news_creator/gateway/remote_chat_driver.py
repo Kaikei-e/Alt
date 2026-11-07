@@ -11,6 +11,7 @@ import aiohttp
 
 from news_creator.config.distributed_be_config import RemoteTarget
 from news_creator.domain.models import LLMGenerateResponse
+from news_creator.gateway.bounded_body import BoundedBodyError, read_bounded_text
 
 logger = logging.getLogger(__name__)
 
@@ -19,68 +20,6 @@ MAX_CHAT_RESPONSE_BYTES = 4 * 1024 * 1024
 
 class RemoteRequestRejectedError(RuntimeError):
     """Raised when a remote target rejects a request (non-408/429 4xx or empty content)."""
-
-
-async def _read_bounded_text(response: Any, max_bytes: int, base_url: str) -> str:
-    content_length = getattr(response, "content_length", None)
-    if isinstance(content_length, int) and content_length > max_bytes:
-        raise RuntimeError(
-            f"Remote chat response from {base_url} exceeds {max_bytes} bytes "
-            f"(Content-Length: {content_length})"
-        )
-
-    headers = getattr(response, "headers", None)
-    if isinstance(headers, dict) or hasattr(headers, "get"):
-        raw_cl = headers.get("Content-Length") if headers is not None else None
-        if isinstance(raw_cl, str):
-            try:
-                parsed_cl = int(raw_cl)
-            except ValueError:
-                parsed_cl = None
-            if parsed_cl is not None and parsed_cl > max_bytes:
-                raise RuntimeError(
-                    f"Remote chat response from {base_url} exceeds {max_bytes} bytes "
-                    f"(Content-Length: {parsed_cl})"
-                )
-
-    content = getattr(response, "content", None)
-    if isinstance(content, aiohttp.StreamReader):
-        chunks: list[bytes] = []
-        total = 0
-        while total <= max_bytes:
-            chunk = await content.read(max_bytes + 1 - total)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            total += len(chunk)
-        raw_bytes = b"".join(chunks)
-    elif content is not None and callable(getattr(content, "read", None)):
-        maybe_bytes = await content.read(max_bytes + 1)
-        if isinstance(maybe_bytes, (bytes, bytearray)):
-            raw_bytes = bytes(maybe_bytes)
-        else:
-            text_val = await response.text(errors="replace")
-            raw_bytes = text_val.encode("utf-8")
-    else:
-        try:
-            text_val = await response.text(errors="replace")
-        except TypeError:
-            text_val = await response.text()
-        except UnicodeDecodeError as err:
-            raise RuntimeError(
-                f"Failed to decode remote chat response from {base_url}: {err}"
-            ) from err
-        if len(text_val.encode("utf-8")) > max_bytes:
-            raise RuntimeError(
-                f"Remote chat response from {base_url} exceeds {max_bytes} bytes"
-            )
-        return text_val
-
-    if len(raw_bytes) > max_bytes:
-        raise RuntimeError(
-            f"Remote chat response from {base_url} exceeds {max_bytes} bytes"
-        )
-    return raw_bytes.decode("utf-8", errors="replace")
 
 
 class RemoteChatDriver:
@@ -144,9 +83,15 @@ class RemoteChatDriver:
                 json=payload,
                 allow_redirects=False,
             ) as response:
-                text_body = await _read_bounded_text(
-                    response, MAX_CHAT_RESPONSE_BYTES, target.base_url
-                )
+                try:
+                    text_body = await read_bounded_text(
+                        response, MAX_CHAT_RESPONSE_BYTES
+                    )
+                except BoundedBodyError as err:
+                    raise RuntimeError(
+                        f"Remote chat response from {target.base_url} exceeds "
+                        f"{MAX_CHAT_RESPONSE_BYTES} bytes"
+                    ) from err
 
                 if response.status != 200:
                     error_msg = (
