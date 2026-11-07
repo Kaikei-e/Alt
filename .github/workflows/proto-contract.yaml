@@ -62,8 +62,10 @@ on:
       # of this workflow, so a change there is invisible here unless the
       # script and its filter tests are watched paths.
       - 'scripts/pact-check.sh'
+      - 'scripts/publish-pact-bridge.py'
       - 'scripts/tests/**'
       - 'scripts/ci/**'
+      - 'playbooks/_publish-bridge.yml'
   pull_request:
     branches: [main]
     paths:
@@ -99,8 +101,10 @@ on:
       # of this workflow, so a change there is invisible here unless the
       # script and its filter tests are watched paths.
       - 'scripts/pact-check.sh'
+      - 'scripts/publish-pact-bridge.py'
       - 'scripts/tests/**'
       - 'scripts/ci/**'
+      - 'playbooks/_publish-bridge.yml'
 
 # Superseded PR runs are cancelled; main-branch runs are not, because they
 # publish pacts and a half-cancelled publish leaves the broker inconsistent.
@@ -372,6 +376,9 @@ jobs:
       # strands alt-data-hub at verifications=0 and blocks every release.
       - name: pact-check.sh leg-selection guard
         run: ./scripts/tests/test-pact-check-filter.sh
+
+      - name: Manual verification bridge helper guard
+        run: python3 scripts/tests/test-publish-pact-bridge.py
 
       - name: Download all pact artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2

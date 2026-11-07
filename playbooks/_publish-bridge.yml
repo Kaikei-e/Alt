@@ -16,11 +16,15 @@
 #                            during this run. Every value posted to the
 #                            broker is read out of it.
 #
-# The publish task delegates HTTP calls to scripts/publish-pact-bridge.py,
-# which reads PACT_BROKER_PASSWORD from its environment rather than argv
-# and redacts it from stderr. The Ansible task keeps no_log: true
-# (audit F-001 / F-002) so task environment and module invocation details
-# cannot leak into `-vv` runs (CI logs included).
+# Credential handling (audit F-001 / F-002): scripts/pact-check.sh exports
+# PACT_BROKER_PASSWORD into the `ansible-playbook -c local` process
+# environment, and scripts/publish-pact-bridge.py reads it directly from
+# `os.environ`. Do NOT add a task `environment:` block here — Ansible's
+# shell plugin expands task environment variables into `/bin/sh -c 'K=V ...'`,
+# which exposes the password in `ps` argv and `-vvv` logs. Because neither
+# task arguments nor stdin carry the secret and the helper redacts it from
+# stderr, the command task omits `no_log` so operator-facing failure reasons
+# remain visible.
 
 - name: "Re-assert evidence at publish time ({{ bridge.consumer }} → {{ bridge.provider }})"
   ansible.builtin.assert:
@@ -49,11 +53,8 @@
            'broker_username': broker_username,
            'bridge': bridge,
          } | to_json }}
-  environment:
-    PACT_BROKER_PASSWORD: "{{ lookup('ansible.builtin.env', 'PACT_BROKER_PASSWORD') }}"
   register: bridge_publish
   changed_when: true
-  no_log: true
 
 - name: "Summary: {{ bridge.consumer }} → {{ bridge.provider }}"
   ansible.builtin.debug:

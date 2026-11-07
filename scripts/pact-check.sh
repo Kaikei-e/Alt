@@ -606,12 +606,12 @@ if [[ "$MANUAL_ONLY" == "true" ]] || \
   echo " Publishing Manual Verifications to Broker"
   echo "============================="
 
-  # Delegate to the Ansible playbook. Bridge registry, evidence gate, broker
-  # iteration, and credential handling all live in
-  # playbooks/publish-manual-verifications.yml so the logic is data-driven,
-  # uri-basic-auth hides creds from argv (shell curl -u leaked them into ps
-  # listings), and every sensitive task is wrapped in no_log per security
-  # audit F-001 / F-002.
+  # Delegate to the Ansible playbook. Bridge registry and evidence gating
+  # live in playbooks/publish-manual-verifications.yml, and
+  # playbooks/_publish-bridge.yml invokes scripts/publish-pact-bridge.py,
+  # which reads PACT_BROKER_PASSWORD directly from its inherited process
+  # environment (never on argv, unlike shell curl -u or an Ansible task
+  # environment prefix) and redacts it from stderr (audit F-001 / F-002).
   #
   # --dry-run passes bridge_dry_run=true so the playbook prints the plan and
   # its evidence verdict per row without touching the Broker. Broker vars may
