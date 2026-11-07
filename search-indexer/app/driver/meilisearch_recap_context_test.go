@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,8 +17,9 @@ import (
 type fakeRecapIndexManager struct {
 	meilisearch.IndexManager
 
-	mu    sync.Mutex
-	calls map[string]context.Context
+	mu             sync.Mutex
+	calls          map[string]context.Context
+	waitedTaskUIDs []int64
 
 	localizedAttrs []*meilisearch.LocalizedAttributes
 	lastSearchReq  *meilisearch.SearchRequest
@@ -221,7 +223,10 @@ func (f *fakeRecapIndexManager) WaitForTask(_ int64, _ time.Duration) (*meilisea
 	return &meilisearch.Task{Status: meilisearch.TaskStatusSucceeded}, nil
 }
 
-func (f *fakeRecapIndexManager) WaitForTaskWithContext(ctx context.Context, _ int64, _ time.Duration) (*meilisearch.Task, error) {
+func (f *fakeRecapIndexManager) WaitForTaskWithContext(ctx context.Context, taskUID int64, _ time.Duration) (*meilisearch.Task, error) {
+	f.mu.Lock()
+	f.waitedTaskUIDs = append(f.waitedTaskUIDs, taskUID)
+	f.mu.Unlock()
 	f.record("WaitForTask", ctx)
 	if f.waitBlock {
 		select {
@@ -429,7 +434,7 @@ func TestMeilisearchRecapDriver_EnsureIndex_WaitIsBounded(t *testing.T) {
 	fake := newFakeRecapIndexManager(t)
 	fake.fetchInfoErr = &meilisearch.Error{StatusCode: 404}
 	fake.waitBlock = true
-	sm := &recapTestServiceManager{idx: fake}
+	sm := &recapTestServiceManager{idx: fake, createTaskUID: 10}
 	d := NewMeilisearchRecapDriver(sm)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -440,19 +445,26 @@ func TestMeilisearchRecapDriver_EnsureIndex_WaitIsBounded(t *testing.T) {
 		done <- d.EnsureIndex(ctx)
 	}()
 
+	var gotErr error
 	select {
-	case err := <-done:
-		if err == nil {
+	case gotErr = <-done:
+		if gotErr == nil {
 			t.Fatal("expected EnsureIndex to return an error when index creation never completes")
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("EnsureIndex never returned: the task wait is unbounded")
 	}
 
+	if !strings.Contains(gotErr.Error(), "failed to wait for index creation") {
+		t.Fatalf("EnsureIndex error = %v, want error from the index creation wait", gotErr)
+	}
 	if !sm.createCalled {
 		t.Fatal("expected EnsureIndex to call CreateIndexWithContext when index is not found")
 	}
-	if !fake.called("WaitForTask") {
-		t.Fatal("expected EnsureIndex to reach WaitForTaskWithContext for the index creation task")
+	if !reflect.DeepEqual(fake.waitedTaskUIDs, []int64{10}) {
+		t.Fatalf("waitedTaskUIDs = %v, want [10] (only the index creation task)", fake.waitedTaskUIDs)
+	}
+	if fake.called("UpdateSearchableAttributes") {
+		t.Fatal("UpdateSearchableAttributes must not be called when the index creation wait fails")
 	}
 }

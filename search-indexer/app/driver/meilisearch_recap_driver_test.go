@@ -144,3 +144,31 @@ func TestMeilisearchRecapDriver_EnsureIndex_TreatsIndexAlreadyExistsTaskAsSucces
 		}
 	}
 }
+
+func TestMeilisearchRecapDriver_EnsureIndex_ReturnsErrorWhenCreateTaskFailsWithOtherCode(t *testing.T) {
+	baseIdx := newFakeRecapIndexManager(t)
+	baseIdx.fetchInfoErr = &meilisearch.Error{StatusCode: 404}
+
+	failedTask := &meilisearch.Task{
+		UID:    10,
+		Status: meilisearch.TaskStatusFailed,
+	}
+	failedTask.Error.Code = "internal"
+	failedTask.Error.Message = "disk full"
+
+	idx := &taskByUIDRecapIndexManager{
+		fakeRecapIndexManager: baseIdx,
+		tasks: map[int64]*meilisearch.Task{
+			10: failedTask,
+		},
+	}
+	sm := &recapTestServiceManager{idx: idx, createTaskUID: 10}
+	d := NewMeilisearchRecapDriver(sm)
+
+	if err := d.EnsureIndex(context.Background()); err == nil {
+		t.Fatal("EnsureIndex() error = nil, want error when create task fails with non-index_already_exists code")
+	}
+	if baseIdx.called("UpdateSearchableAttributes") {
+		t.Fatal("EnsureIndex() must not apply settings when index creation fails with a non-benign error")
+	}
+}
