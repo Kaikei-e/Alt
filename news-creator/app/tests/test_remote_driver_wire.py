@@ -1,7 +1,8 @@
+"""Wire-level tests for local Ollama drivers and remote OpenAI-compatible BE drivers."""
+
 import json
 import logging
 
-import aiohttp
 import pytest
 import pytest_asyncio
 from aiohttp import web
@@ -12,7 +13,6 @@ from news_creator.config.llm_config import LLMConfig
 from news_creator.driver.ollama_driver import OllamaDriver
 from news_creator.driver.ollama_stream_driver import OllamaStreamDriver
 from news_creator.gateway.remote_health_checker import RemoteHealthChecker
-from news_creator.gateway.remote_ollama_driver import RemoteOllamaDriver
 
 
 @pytest_asyncio.fixture
@@ -79,6 +79,47 @@ async def wire_server():
         )
         return web.json_response({"models": [{"name": "test-model"}]})
 
+    async def handle_v1_chat_completions(request):
+        body = await request.json()
+        received_requests.append(
+            {
+                "path": request.path,
+                "method": request.method,
+                "headers": dict(request.headers),
+                "body": body,
+            }
+        )
+        return web.json_response(
+            {
+                "id": "chatcmpl-wire",
+                "object": "chat.completion",
+                "model": "model-a:latest",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "remote-ok"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 24},
+            }
+        )
+
+    async def handle_v1_models(request):
+        received_requests.append(
+            {
+                "path": request.path,
+                "method": request.method,
+                "headers": dict(request.headers),
+            }
+        )
+        return web.json_response(
+            {
+                "object": "list",
+                "data": [{"id": "provider-a/model-a:latest"}],
+            }
+        )
+
     async def handle_307(request):
         return web.Response(
             status=307,
@@ -93,9 +134,13 @@ async def wire_server():
     app.router.add_post("/api/generate", handle_generate)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/tags", handle_tags)
+    app.router.add_post("/v1/chat/completions", handle_v1_chat_completions)
+    app.router.add_get("/v1/models", handle_v1_models)
     app.router.add_post("/redirect-307/api/generate", handle_307)
     app.router.add_post("/redirect-307/api/chat", handle_307)
     app.router.add_get("/redirect-307/api/tags", handle_307)
+    app.router.add_post("/redirect-307/v1/chat/completions", handle_307)
+    app.router.add_get("/redirect-307/v1/models", handle_307)
     app.router.add_get("/destination-counter", handle_destination)
     app.router.add_post("/destination-counter", handle_destination)
 
@@ -119,7 +164,10 @@ async def wire_server():
 async def test_production_constructors_wire_auth_and_no_redirect(
     wire_server, tmp_path, monkeypatch, dummy_redis_password_file
 ):
-    """Production constructors emit real requests with Bearer and refuse 307 redirect."""
+    """Local drivers emit Bearer and refuse 307; remote chat/health drivers NEVER emit Bearer and refuse 307."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+
     token_val = "prod-test-secret-token123="
     token_file = tmp_path / "inference.token"
     token_file.write_text(token_val, encoding="utf-8")
@@ -172,59 +220,70 @@ async def test_production_constructors_wire_auth_and_no_redirect(
             pass
     assert wire_server["dest_counter"]["count"] == 0
 
-    # 3. RemoteOllamaDriver: remote generate
-    remote_driver = RemoteOllamaDriver(
-        timeout_seconds=5,
-        inference_token=cfg.llm.inference_service_token,
-    )
+    # 3. RemoteChatDriver: POST /v1/chat/completions without Authorization header
+    remote_driver = RemoteChatDriver(timeout_seconds=5, reasoning_effort=None)
     await remote_driver.initialize()
-    rem_resp = await remote_driver.generate(
-        wire_server["base_url"],
-        {"model": "test-model", "prompt": "hello remote"},
+    target = RemoteTarget(
+        base_url=wire_server["base_url"],
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
     )
-    assert rem_resp.response == "ok"
+    rem_resp = await remote_driver.chat(
+        target,
+        [{"role": "user", "content": "hello remote"}],
+        max_tokens=128,
+        temperature=0.5,
+        top_p=0.85,
+    )
+    assert rem_resp.response == "remote-ok"
 
-    # RemoteOllamaDriver 307 redirect defense
+    # RemoteChatDriver 307 redirect defense
+    redirect_target = RemoteTarget(
+        base_url=f"{wire_server['base_url']}/redirect-307",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
     with pytest.raises(RuntimeError, match="307"):
-        await remote_driver.generate(
-            f"{wire_server['base_url']}/redirect-307",
-            {"model": "test-model", "prompt": "redirect test"},
+        await remote_driver.chat(
+            redirect_target,
+            [{"role": "user", "content": "redirect test"}],
+            max_tokens=128,
+            temperature=0.5,
+            top_p=0.85,
         )
     assert wire_server["dest_counter"]["count"] == 0
 
-    # 4. RemoteHealthChecker: remote warmup/health checks
+    # 4. RemoteHealthChecker: GET /v1/models without Authorization header
     checker = RemoteHealthChecker(
-        remotes=[wire_server["base_url"]],
-        required_model="test-model",
-        inference_token=cfg.llm.inference_service_token,
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=5,
     )
-    # Initialize session and run check
-    timeout = aiohttp.ClientTimeout(total=5, connect=5)
-    headers = {"Authorization": f"Bearer {cfg.llm.inference_service_token}"}
-    checker._session = aiohttp.ClientSession(timeout=timeout, headers=headers)
-    await checker._check_all()
-    assert checker._states[wire_server["base_url"]]["healthy"] is True
+    await checker.start()
+    assert checker.status()[0]["healthy"] is True
 
     # RemoteHealthChecker 307 redirect defense
     redirect_checker = RemoteHealthChecker(
-        remotes=[f"{wire_server['base_url']}/redirect-307"],
-        required_model="test-model",
-        inference_token=cfg.llm.inference_service_token,
+        targets=[redirect_target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=5,
     )
-    redirect_checker._session = aiohttp.ClientSession(timeout=timeout, headers=headers)
-    await redirect_checker._check_all()
-    assert (
-        redirect_checker._states[f"{wire_server['base_url']}/redirect-307"]["healthy"]
-        is False
-    )
+    await redirect_checker.start()
+    assert redirect_checker.status()[0]["healthy"] is False
     assert wire_server["dest_counter"]["count"] == 0
 
-    # Verify all received requests had valid Authorization header
-    assert len(wire_server["received"]) >= 4
-    for req in wire_server["received"]:
+    # Local Ollama requests carry Authorization; remote /v1/* requests NEVER carry Authorization
+    local_reqs = [r for r in wire_server["received"] if r["path"].startswith("/api/")]
+    remote_reqs = [r for r in wire_server["received"] if r["path"].startswith("/v1/")]
+    assert len(local_reqs) == 3
+    assert len(remote_reqs) == 2
+    for req in local_reqs:
         assert req["headers"].get("Authorization") == f"Bearer {token_val}"
+    for req in remote_reqs:
+        assert "Authorization" not in req["headers"]
 
-    # Cleanup sessions
     await driver.cleanup()
     await redirect_driver.cleanup()
     await stream_driver.cleanup()
@@ -270,6 +329,9 @@ async def test_explicit_auth_disabled_sends_no_authorization_header(
     wire_server, monkeypatch, caplog, dummy_redis_password_file
 ):
     """INFERENCE_AUTH=disabled logs once and every driver omits the bearer."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+
     monkeypatch.setattr(inference_token, "_disabled_logged", False)
     monkeypatch.setenv("INFERENCE_AUTH", "disabled")
     monkeypatch.delenv("INFERENCE_SERVICE_TOKEN_FILE", raising=False)
@@ -294,20 +356,159 @@ async def test_explicit_auth_disabled_sends_no_authorization_header(
     ):
         pass
 
-    remote_driver = RemoteOllamaDriver(
-        timeout_seconds=5,
-        inference_token=cfg.llm.inference_service_token,
-    )
+    remote_driver = RemoteChatDriver(timeout_seconds=5, reasoning_effort=None)
     await remote_driver.initialize()
-    await remote_driver.generate(
-        wire_server["base_url"], {"model": "test-model", "prompt": "hello remote"}
+    target = RemoteTarget(
+        base_url=wire_server["base_url"],
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    await remote_driver.chat(
+        target,
+        [{"role": "user", "content": "hello remote"}],
+        max_tokens=100,
+        temperature=0.5,
+        top_p=0.85,
     )
 
     paths = [req["path"] for req in wire_server["received"]]
-    assert paths == ["/api/generate", "/api/chat", "/api/generate"]
+    assert paths == ["/api/generate", "/api/chat", "/v1/chat/completions"]
     for req in wire_server["received"]:
         assert "Authorization" not in req["headers"]
 
     await driver.cleanup()
     await stream_driver.cleanup()
     await remote_driver.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_remote_chat_driver_wire_rejects_response_body_just_over_4_mib():
+    """S1: Wire server returning a /v1/chat/completions body just over 4 MiB raises RuntimeError."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+
+    four_mib = 4 * 1024 * 1024
+    oversized_content = "x" * (four_mib + 64)
+    oversized_payload = json.dumps(
+        {
+            "id": "chatcmpl-wire-oversized",
+            "object": "chat.completion",
+            "model": "provider-a/model-a:latest",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": oversized_content},
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+    ).encode("utf-8")
+    assert len(oversized_payload) > four_mib
+
+    async def handle_v1_chat(_request):
+        return web.Response(
+            status=200,
+            body=oversized_payload,
+            content_type="application/json",
+        )
+
+    app = web.Application()
+    app.router.add_post("/v1/chat/completions", handle_v1_chat)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        target = RemoteTarget(
+            base_url=f"http://127.0.0.1:{port}",
+            model="provider-a/model-a:latest",
+            num_ctx=32768,
+        )
+        remote_driver = RemoteChatDriver(timeout_seconds=5, reasoning_effort=None)
+        await remote_driver.initialize()
+        try:
+            with pytest.raises(RuntimeError):
+                await remote_driver.chat(
+                    target,
+                    [{"role": "user", "content": "hello"}],
+                    max_tokens=128,
+                    temperature=0.5,
+                    top_p=0.85,
+                )
+        finally:
+            await remote_driver.cleanup()
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_remote_chat_driver_wire_rejects_chunked_response_body_without_content_length_over_4_mib():
+    """L2: Wire server serving an oversized CHUNKED /v1/chat/completions body with no Content-Length raises RuntimeError via bounded_body."""
+    from unittest.mock import patch
+
+    from news_creator.config.distributed_be_config import RemoteTarget
+    from news_creator.gateway import bounded_body
+    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+
+    four_mib = 4 * 1024 * 1024
+    prefix = (
+        b'{"id":"chatcmpl-chunked","object":"chat.completion",'
+        b'"model":"provider-a/model-a:latest","choices":[{"index":0,'
+        b'"message":{"role":"assistant","content":"'
+    )
+    suffix = b'"},"finish_reason":"stop"}]}'
+    chunk = b"x" * (1024 * 1024)
+
+    async def handle_v1_chat(request):
+        resp = web.StreamResponse(
+            status=200,
+            headers={"Content-Type": "application/json"},
+        )
+        resp.enable_chunked_encoding()
+        await resp.prepare(request)
+        try:
+            await resp.write(prefix)
+            for _ in range(4):
+                await resp.write(chunk)
+            await resp.write(b"x" * 64)
+            await resp.write(suffix)
+            await resp.write_eof()
+        except ConnectionError:
+            pass
+        return resp
+
+    app = web.Application()
+    app.router.add_post("/v1/chat/completions", handle_v1_chat)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        target = RemoteTarget(
+            base_url=f"http://127.0.0.1:{port}",
+            model="provider-a/model-a:latest",
+            num_ctx=32768,
+        )
+        remote_driver = RemoteChatDriver(timeout_seconds=5, reasoning_effort=None)
+        await remote_driver.initialize()
+        try:
+            with patch(
+                "news_creator.gateway.remote_chat_driver.read_bounded_text",
+                wraps=bounded_body.read_bounded_text,
+            ) as spy_reader:
+                with pytest.raises(RuntimeError):
+                    await remote_driver.chat(
+                        target,
+                        [{"role": "user", "content": "hello"}],
+                        max_tokens=128,
+                        temperature=0.5,
+                        top_p=0.85,
+                    )
+                spy_reader.assert_awaited_once()
+                assert spy_reader.await_args.args[1] == four_mib
+        finally:
+            await remote_driver.cleanup()
+    finally:
+        await runner.cleanup()

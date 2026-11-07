@@ -1,55 +1,51 @@
-"""Background health checker for remote Ollama instances.
+"""Background health checker for OpenAI-compatible remote LLM targets."""
 
-Probes each remote with GET /api/tags at configurable intervals.
-Marks remotes as healthy only if the required model is present.
-Unhealthy remotes are re-probed after a cooldown period.
-"""
+from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
 import aiohttp
 
+from news_creator.config.distributed_be_config import RemoteTarget
 from news_creator.gateway import dispatch_metrics
+from news_creator.gateway.bounded_body import read_bounded_text
 
 logger = logging.getLogger(__name__)
 
+MAX_MODELS_RESPONSE_BYTES = 1 * 1024 * 1024
+
 
 class RemoteHealthChecker:
-    """Periodic health checker for remote Ollama instances."""
+    """Periodic `/v1/models` health checker and in-flight slot tracker for remote targets."""
 
     MAX_COOLDOWN_SECONDS = 900
 
     def __init__(
         self,
-        remotes: list[str],
-        required_model: str,
+        targets: list[RemoteTarget],
         interval_seconds: int = 30,
         cooldown_seconds: int = 60,
         timeout_seconds: int = 10,
-        model_overrides: dict[str, str] | None = None,
         *,
-        inference_token: str | None,
         max_cooldown_seconds: int = MAX_COOLDOWN_SECONDS,
     ):
-        self._remotes = remotes
-        self._required_model = required_model
-        self._model_overrides = model_overrides or {}
+        self._targets = list(targets)
         self._interval_seconds = interval_seconds
         self._cooldown_seconds = cooldown_seconds
         self._max_cooldown_seconds = max(cooldown_seconds, max_cooldown_seconds)
         self._timeout_seconds = timeout_seconds
-        self._inference_token = inference_token
         self._session: aiohttp.ClientSession | None = None
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
 
-        # Per-remote state
-        self._states: dict[str, dict[str, Any]] = {}
-        for url in remotes:
-            self._states[url] = {
+        self._states: dict[RemoteTarget, dict[str, Any]] = {}
+        self._targets_by_base_url: dict[str, list[RemoteTarget]] = {}
+        for target in self._targets:
+            self._states[target] = {
                 "healthy": False,
                 "busy": False,
                 "last_checked": 0.0,
@@ -58,82 +54,95 @@ class RemoteHealthChecker:
                 "last_completed": 0.0,
                 "in_flight_count": 0,
                 "consecutive_failures": 0,
+                "probe_failures": 0,
+                "dispatch_failures": 0,
+                "cooldown_until": 0.0,
                 "logged_unhealthy": False,
             }
+            self._targets_by_base_url.setdefault(target.base_url, []).append(target)
 
-    def acquire_idle_remote(self) -> str | None:
-        """Reserve the next idle healthy remote, or None if all are busy/unhealthy."""
-        idle_healthy = [
-            url
-            for url in self._remotes
-            if self._states[url]["healthy"] and not self._states[url]["busy"]
+    def acquire_idle_target(
+        self, fits: Callable[[RemoteTarget], bool]
+    ) -> RemoteTarget | None:
+        """Reserve the longest-idle healthy target where `fits(target)` is True."""
+        now = time.monotonic()
+        idle_fitting = [
+            target
+            for target in self._targets
+            if (
+                self._states[target]["healthy"]
+                and now >= self._states[target]["cooldown_until"]
+                and not self._states[target]["busy"]
+                and self._states[target]["in_flight_count"] == 0
+                and fits(target)
+            )
         ]
-        if not idle_healthy:
+        if not idle_fitting:
             return None
 
-        # Prefer the remote that has been idle longest.
-        remote_url = min(
-            idle_healthy,
-            key=lambda url: (
-                self._states[url]["last_completed"] > 0.0,
-                self._states[url]["last_completed"],
-                self._states[url]["last_assigned"],
-                self._remotes.index(url),
+        chosen = min(
+            idle_fitting,
+            key=lambda target: (
+                self._states[target]["last_completed"] > 0.0,
+                self._states[target]["last_completed"],
+                self._targets.index(target),
             ),
         )
-        state = self._states[remote_url]
+        state = self._states[chosen]
         state["busy"] = True
         state["in_flight_count"] += 1
-        state["last_assigned"] = time.monotonic()
-        return remote_url
+        state["last_assigned"] = now
+        return chosen
 
-    def release_remote(self, url: str) -> None:
-        """Release a previously reserved remote without affecting health."""
-        if url not in self._states:
+    def release_target(self, target: RemoteTarget) -> None:
+        """Release a previously reserved target without affecting health."""
+        state = self._states.get(target)
+        if state is None:
             return
-        state = self._states[url]
         state["busy"] = False
         state["in_flight_count"] = max(0, state["in_flight_count"] - 1)
 
-    def mark_success(self, url: str) -> None:
-        """Release a remote after successful generation."""
-        if url not in self._states:
+    def mark_success(self, target: RemoteTarget) -> None:
+        """Release a target after successful generation and record completion time."""
+        state = self._states.get(target)
+        if state is None:
             return
-        self.release_remote(url)
-        self._states[url]["last_completed"] = time.monotonic()
+        self.release_target(target)
+        state["last_completed"] = time.monotonic()
+        state["dispatch_failures"] = 0
+        state["probe_failures"] = 0
+        state["consecutive_failures"] = 0
+        state["cooldown_until"] = 0.0
 
-    def get_healthy_remotes(self, exclude: set[str] | None = None) -> list[str]:
-        """Return healthy idle remotes in priority order, excluding any specified URLs."""
-        excluded = exclude or set()
-        return [
-            url
-            for url in self._remotes
-            if (
-                self._states[url]["healthy"]
-                and not self._states[url]["busy"]
-                and url not in excluded
-            )
-        ]
-
-    def mark_failure(self, url: str) -> None:
-        """Immediately mark a remote unhealthy after a dispatch failure."""
-        if url not in self._states:
+    def mark_failure(self, target: RemoteTarget) -> None:
+        """Immediately mark a target unhealthy after a dispatch failure."""
+        state = self._states.get(target)
+        if state is None:
             return
-        self.release_remote(url)
-        state = self._states[url]
+        now = time.monotonic()
+        self.release_target(target)
         state["healthy"] = False
+        state["dispatch_failures"] += 1
         state["consecutive_failures"] += 1
-        state["last_checked"] = time.monotonic()
-        dispatch_metrics.record_cooldown(remote_url=url, reason="error")
+        state["last_checked"] = now
+        backoff = min(
+            self._cooldown_seconds * (2 ** (state["dispatch_failures"] - 1)),
+            self._max_cooldown_seconds,
+        )
+        state["cooldown_until"] = now + float(backoff)
+        dispatch_metrics.record_cooldown(remote_url=target.base_url, reason="error")
 
     def status(self) -> list[dict[str, Any]]:
-        """Return state of all remotes for health endpoint."""
-        result = []
-        for url in self._remotes:
-            state = self._states[url]
+        """Return state of all targets for health and queue status endpoints."""
+        result: list[dict[str, Any]] = []
+        for target in self._targets:
+            state = self._states[target]
             result.append(
                 {
-                    "url": url,
+                    "url": target.base_url,
+                    "base_url": target.base_url,
+                    "model": target.model,
+                    "num_ctx": target.num_ctx,
                     "healthy": state["healthy"],
                     "busy": state["busy"],
                     "last_checked": state["last_checked"],
@@ -146,157 +155,185 @@ class RemoteHealthChecker:
             )
         return result
 
-    def _effective_cooldown(self, url: str) -> float:
-        """Calculate exponential backoff cooldown for an unhealthy remote."""
-        failures = max(1, int(self._states[url].get("consecutive_failures", 0)))
+    def _effective_cooldown(self, target: RemoteTarget) -> float:
+        state = self._states[target]
+        failures = max(1, int(state.get("probe_failures", 0)))
         backoff = self._cooldown_seconds * (2 ** (failures - 1))
         return float(min(backoff, self._max_cooldown_seconds))
 
-    def _should_probe(self, url: str) -> bool:
-        """Determine if a remote should be probed now."""
-        state = self._states[url]
-        now = time.monotonic()
+    def _should_probe_target(self, target: RemoteTarget, now: float) -> bool:
+        state = self._states[target]
+        if now < state["cooldown_until"]:
+            return False
         elapsed = now - state["last_checked"]
-
         if state["healthy"]:
             return elapsed >= self._interval_seconds
-        else:
-            return elapsed >= self._effective_cooldown(url)
+        return elapsed >= self._effective_cooldown(target)
 
-    async def _probe(self, url: str) -> None:
-        """Probe a single remote and update its state."""
-        state = self._states[url]
-        state["last_checked"] = time.monotonic()
+    def _mark_target_unhealthy(
+        self, target: RemoteTarget, now: float, *, always_warn: bool = False
+    ) -> Callable[..., None]:
+        state = self._states[target]
+        state["healthy"] = False
+        state["probe_failures"] += 1
+        state["consecutive_failures"] += 1
+        state["last_checked"] = now
+        if always_warn:
+            state["logged_unhealthy"] = True
+            return logger.warning
+        log_fn = logger.debug if state.get("logged_unhealthy") else logger.warning
+        state["logged_unhealthy"] = True
+        return log_fn
+
+    async def _probe_base_url(self, base_url: str, targets: list[RemoteTarget]) -> None:
+        now = time.monotonic()
+        models_url = f"{base_url.rstrip('/')}/v1/models"
 
         try:
-            tags_url = f"{url.rstrip('/')}/api/tags"
-            if not (self._session is not None):
+            if self._session is None:
                 raise RuntimeError("Session not initialized")
-            async with self._session.get(tags_url, allow_redirects=False) as response:
+
+            async with self._session.get(models_url, allow_redirects=False) as response:
                 if response.status != 200:
-                    state["healthy"] = False
-                    state["consecutive_failures"] += 1
-                    log_fn = (
-                        logger.debug
-                        if state.get("logged_unhealthy")
-                        else logger.warning
-                    )
-                    state["logged_unhealthy"] = True
-                    log_fn(
-                        "Remote health check failed: HTTP %d from %s",
-                        response.status,
-                        url,
-                        extra={"remote_url": url, "status": response.status},
+                    for target in targets:
+                        log_fn = self._mark_target_unhealthy(target, now)
+                        log_fn(
+                            "Remote health check failed: HTTP %d from %s",
+                            response.status,
+                            base_url,
+                            extra={
+                                "remote_url": base_url,
+                                "model": target.model,
+                                "status": response.status,
+                            },
+                        )
+                    return
+
+                text = await read_bounded_text(response, MAX_MODELS_RESPONSE_BYTES)
+                try:
+                    payload = json.loads(text)
+                except json.JSONDecodeError as err:
+                    for target in targets:
+                        self._mark_target_unhealthy(target, now, always_warn=True)
+                    logger.warning(
+                        "Remote health check received non-JSON 200 response from %s: %s",
+                        base_url,
+                        err,
+                        extra={"remote_url": base_url},
                     )
                     return
 
-                text = await response.text()
-                data = json.loads(text)
-                models = data.get("models", [])
-                model_names = [m.get("name", "") for m in models]
+                data_list = payload.get("data") if isinstance(payload, dict) else None
+                if not isinstance(data_list, list):
+                    for target in targets:
+                        self._mark_target_unhealthy(target, now, always_warn=True)
+                    logger.warning(
+                        "Remote health check response from %s missing 'data' list",
+                        base_url,
+                        extra={"remote_url": base_url},
+                    )
+                    return
 
-                required = self._model_overrides.get(url, self._required_model)
-                # Match model name with or without :latest tag suffix
-                if any(
-                    name == required or name.startswith(f"{required}:")
-                    for name in model_names
-                ):
-                    had_failures = state.get(
-                        "consecutive_failures", 0
-                    ) > 0 or state.get("logged_unhealthy", False)
-                    state["healthy"] = True
-                    state["last_healthy"] = time.monotonic()
-                    state["consecutive_failures"] = 0
-                    state["logged_unhealthy"] = False
-                    if had_failures:
-                        logger.info(
-                            "Remote %s recovered and is healthy (model %s present)",
-                            url,
-                            required,
-                        )
+                available_ids = {
+                    item.get("id")
+                    for item in data_list
+                    if isinstance(item, dict) and isinstance(item.get("id"), str)
+                }
+
+                for target in targets:
+                    state = self._states[target]
+                    if target.model in available_ids:
+                        if now < state["cooldown_until"]:
+                            continue
+                        state["last_checked"] = now
+                        had_failures = state.get(
+                            "consecutive_failures", 0
+                        ) > 0 or state.get("logged_unhealthy", False)
+                        state["healthy"] = True
+                        state["last_healthy"] = now
+                        state["probe_failures"] = 0
+                        state["consecutive_failures"] = 0
+                        state["logged_unhealthy"] = False
+                        if had_failures:
+                            logger.info(
+                                "Remote target %s (%s) recovered and is healthy",
+                                base_url,
+                                target.model,
+                            )
+                        else:
+                            logger.debug(
+                                "Remote target %s (%s) healthy",
+                                base_url,
+                                target.model,
+                            )
                     else:
-                        logger.debug(
-                            "Remote %s healthy (model %s present)",
-                            url,
-                            required,
+                        log_fn = self._mark_target_unhealthy(target, now)
+                        log_fn(
+                            "Remote %s missing required model %s (has: %s)",
+                            base_url,
+                            target.model,
+                            sorted(available_ids),
+                            extra={
+                                "remote_url": base_url,
+                                "model": target.model,
+                                "models": sorted(available_ids),
+                            },
                         )
-                else:
-                    state["healthy"] = False
-                    state["consecutive_failures"] += 1
-                    log_fn = (
-                        logger.debug
-                        if state.get("logged_unhealthy")
-                        else logger.warning
-                    )
-                    state["logged_unhealthy"] = True
-                    log_fn(
-                        "Remote %s missing required model %s (has: %s)",
-                        url,
-                        required,
-                        model_names,
-                        extra={"remote_url": url, "models": model_names},
-                    )
 
-        except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as err:
-            state["healthy"] = False
-            state["consecutive_failures"] += 1
-            log_fn = logger.debug if state.get("logged_unhealthy") else logger.warning
-            state["logged_unhealthy"] = True
-            log_fn(
-                "Remote health check error for %s: %s",
-                url,
-                err,
-                extra={
-                    "remote_url": url,
-                    "error_type": type(err).__name__,
-                },
-            )
+        except Exception as err:
+            for target in targets:
+                log_fn = self._mark_target_unhealthy(target, now)
+                log_fn(
+                    "Remote health check error for %s: %s",
+                    base_url,
+                    err,
+                    extra={
+                        "remote_url": base_url,
+                        "model": target.model,
+                        "error_type": type(err).__name__,
+                    },
+                )
 
     async def _check_all(self) -> None:
-        """Probe all remotes that are due for checking."""
-        for url in self._remotes:
-            if self._should_probe(url):
-                await self._probe(url)
+        now = time.monotonic()
+        for base_url, targets in self._targets_by_base_url.items():
+            if any(self._should_probe_target(t, now) for t in targets):
+                await self._probe_base_url(base_url, targets)
 
     async def _loop(self) -> None:
-        """Background loop that periodically checks all remotes."""
         try:
-            # Initial probe of all remotes
-            await self._check_all()
             while True:
                 await asyncio.sleep(self._interval_seconds)
-                await self._check_all()
+                try:
+                    await self._check_all()
+                except Exception:
+                    logger.exception(
+                        "Unexpected error in remote health checker probe cycle"
+                    )
         except asyncio.CancelledError:
             logger.info("Remote health checker background task cancelled")
 
     async def start(self) -> None:
-        """Start the background health check loop."""
-        if not self._remotes:
-            logger.info("No remotes configured; health checker not started")
-            return
-
         timeout = aiohttp.ClientTimeout(
             total=self._timeout_seconds,
             connect=5,
         )
-        headers = {}
-        if self._inference_token:
-            headers["Authorization"] = f"Bearer {self._inference_token}"
-        self._session = aiohttp.ClientSession(timeout=timeout, headers=headers)
-        await self._check_all()
+        self._session = aiohttp.ClientSession(timeout=timeout)
+        try:
+            await self._check_all()
+        except Exception:
+            logger.exception("Initial remote health check probe failed during start")
         self._task = asyncio.create_task(self._loop())
         logger.info(
             "Remote health checker started",
             extra={
-                "remotes": self._remotes,
+                "targets": [t.key for t in self._targets],
                 "interval": self._interval_seconds,
                 "cooldown": self._cooldown_seconds,
-                "required_model": self._required_model,
             },
         )
 
     async def stop(self) -> None:
-        """Stop the background health check loop and clean up."""
         if self._task is not None:
             self._task.cancel()
             try:
