@@ -157,21 +157,25 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		candidateLimit = searchOverfetchCap
 	}
 
-	// The candidates CTE filters by current document version and user_id before
-	// applying candidateLimit ($2), ensuring other users' chunks cannot crowd out
-	// this user's results.
+	// The candidates CTE filters ownership with an EXISTS semi-join on
+	// rag_documents.current_version_id = c.version_id before candidateLimit ($2)
+	// because the two-key versions/documents join is estimated at one row and
+	// makes the planner skip the HNSW index; relaxed_order HNSW scans may emit
+	// rows slightly out of distance order and PostgreSQL 17+ reuses a CTE's
+	// sort order, so the candidates are materialized and re-sorted on distance + 0.
 	//
 	// c.embedding is selected only inside the distance projection, never as its
 	// own column: scanning it into the non-nullable domain.RagChunk.Embedding
 	// panics on a NULL embedding, and no caller reads it.
 	query := `
-		WITH candidates AS (
+		WITH candidates AS MATERIALIZED (
 			SELECT c.id, (c.embedding <=> $1) AS distance
 			FROM rag_chunks c
-			JOIN rag_document_versions v ON c.version_id = v.id
-			JOIN rag_documents d ON v.document_id = d.id
-			WHERE d.current_version_id = v.id
-			  AND d.user_id = $4
+			WHERE EXISTS (
+				SELECT 1 FROM rag_documents d
+				WHERE d.current_version_id = c.version_id
+				  AND d.user_id = $4
+			)
 			ORDER BY c.embedding <=> $1
 			LIMIT $2
 		)
@@ -188,7 +192,7 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		JOIN rag_documents d ON v.document_id = d.id
 		WHERE d.current_version_id = v.id
 		  AND d.user_id = $4
-		ORDER BY cand.distance ASC
+		ORDER BY cand.distance + 0 ASC
 		LIMIT $3
 	`
 

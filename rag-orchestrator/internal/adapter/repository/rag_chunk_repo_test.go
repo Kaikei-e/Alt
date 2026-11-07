@@ -287,15 +287,28 @@ func TestSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
 
 	require.Len(t, tx.queries, 1)
 	q := tx.queries[0]
-	assert.Contains(t, q, "WITH candidates AS")
+	assert.Contains(t, q, "WITH candidates AS MATERIALIZED (")
 	parts := strings.SplitN(q, "SELECT\n\t\t\tc.id", 2)
 	require.Len(t, parts, 2, "must have candidates CTE and outer SELECT")
 	candidatesCTE := parts[0]
-	assert.Contains(t, candidatesCTE, "JOIN rag_document_versions v ON c.version_id = v.id")
-	assert.Contains(t, candidatesCTE, "JOIN rag_documents d ON v.document_id = d.id")
-	assert.Contains(t, candidatesCTE, "d.current_version_id = v.id")
+	assert.NotContains(t, candidatesCTE, "rag_document_versions")
+	assert.Contains(t, candidatesCTE, "EXISTS")
+	assert.Contains(t, candidatesCTE, "FROM rag_documents d")
+	assert.Contains(t, candidatesCTE, "d.current_version_id = c.version_id")
 	assert.Contains(t, candidatesCTE, "d.user_id = $4")
+	assert.Contains(t, candidatesCTE, "ORDER BY c.embedding <=> $1")
 	assert.Contains(t, candidatesCTE, "LIMIT $2")
+	assert.Less(t, strings.Index(candidatesCTE, "EXISTS"), strings.Index(candidatesCTE, "d.user_id = $4"))
+	assert.Less(t, strings.Index(candidatesCTE, "EXISTS"), strings.Index(candidatesCTE, "LIMIT $2"))
+	assert.Less(t, strings.Index(candidatesCTE, "d.current_version_id = c.version_id"), strings.Index(candidatesCTE, "LIMIT $2"))
+	assert.Less(t, strings.Index(candidatesCTE, "d.user_id = $4"), strings.Index(candidatesCTE, "LIMIT $2"))
+	assert.Less(t, strings.Index(candidatesCTE, "ORDER BY c.embedding <=> $1"), strings.Index(candidatesCTE, "LIMIT $2"))
+
+	outerSelect := parts[1]
+	assert.Contains(t, outerSelect, "JOIN rag_documents d ON v.document_id = d.id")
+	assert.Contains(t, outerSelect, "d.current_version_id = v.id")
+	assert.Contains(t, outerSelect, "d.user_id = $4")
+	assert.Contains(t, outerSelect, "ORDER BY cand.distance + 0 ASC")
 
 	require.Len(t, tx.args, 1)
 	assert.Equal(t, 80, tx.args[0][1], "candidateLimit = limit * 4")

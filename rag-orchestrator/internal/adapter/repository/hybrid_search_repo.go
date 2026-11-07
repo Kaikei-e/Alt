@@ -52,7 +52,7 @@ func NewHybridSearchRepository(pool *pgxpool.Pool, rrfK int) domain.HybridSearch
 
 // HybridSearch performs a combined vector + full-text search with RRF fusion.
 // Uses CTE-based approach:
-// 1. vector_matches: HNSW cosine similarity search
+// 1. vector_candidates / vector_matches: HNSW cosine similarity search, re-sorted for ranking
 // 2. text_matches: tsvector full-text search with ts_rank_cd
 // 3. RRF fusion: 1/(rank + k) summed across both search methods
 // 4. Metadata enrichment via JOIN
@@ -240,25 +240,37 @@ func (r *hybridSearchRepository) SearchNeighbors(
 	return results, nil
 }
 
+// buildHybridSearchQuery builds the RRF hybrid search SQL. The candidate arms
+// filter ownership with an EXISTS semi-join because the two-key
+// versions/documents join is estimated at one row and makes the planner skip
+// the HNSW index; relaxed_order HNSW scans may emit rows slightly out of
+// distance order and PostgreSQL 17+ reuses a CTE's sort order, so the
+// candidates are materialized and re-sorted on distance + 0.
 func buildHybridSearchQuery(tsConfig string, rrfK int) string {
 	return fmt.Sprintf(`
-		WITH vector_matches AS (
-			SELECT c.id, rank() OVER (ORDER BY c.embedding <=> $1) AS rank
+		WITH vector_candidates AS MATERIALIZED (
+			SELECT c.id, (c.embedding <=> $1) AS distance
 			FROM rag_chunks c
-			JOIN rag_document_versions v ON c.version_id = v.id
-			JOIN rag_documents d ON v.document_id = d.id
-			WHERE d.current_version_id = v.id
-			  AND d.user_id = $5
+			WHERE EXISTS (
+				SELECT 1 FROM rag_documents d
+				WHERE d.current_version_id = c.version_id
+				  AND d.user_id = $5
+			)
 			ORDER BY c.embedding <=> $1
 			LIMIT $3
+		),
+		vector_matches AS (
+			SELECT id, rank() OVER (ORDER BY distance + 0) AS rank
+			FROM vector_candidates
 		),
 		text_matches AS (
 			SELECT c.id, rank() OVER (ORDER BY ts_rank_cd(c.tsv, plainto_tsquery('%s', $2)) DESC) AS rank
 			FROM rag_chunks c
-			JOIN rag_document_versions v ON c.version_id = v.id
-			JOIN rag_documents d ON v.document_id = d.id
-			WHERE d.current_version_id = v.id
-			  AND d.user_id = $5
+			WHERE EXISTS (
+				SELECT 1 FROM rag_documents d
+				WHERE d.current_version_id = c.version_id
+				  AND d.user_id = $5
+			)
 			  AND c.tsv @@ plainto_tsquery('%s', $2)
 			ORDER BY rank
 			LIMIT $3
@@ -291,19 +303,26 @@ func buildHybridSearchQuery(tsConfig string, rrfK int) string {
 	`, tsConfig, tsConfig, rrfK)
 }
 
+// buildSearchNeighborsQuery uses the same EXISTS semi-join and distance + 0
+// re-sort as buildHybridSearchQuery.
 func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgIdx int) string {
 	vectorArm := ""
 	if vectorArmArg > 0 {
 		vectorArm = fmt.Sprintf(`
-			vector_matches AS (
-				SELECT c.id, rank() OVER (ORDER BY c.embedding <=> $%d) AS rank
+			vector_candidates AS MATERIALIZED (
+				SELECT c.id, (c.embedding <=> $%d) AS distance
 				FROM rag_chunks c
-				JOIN rag_document_versions v ON c.version_id = v.id
-				JOIN rag_documents d ON v.document_id = d.id
-				WHERE d.current_version_id = v.id
-				  AND d.user_id = $%d
+				WHERE EXISTS (
+					SELECT 1 FROM rag_documents d
+					WHERE d.current_version_id = c.version_id
+					  AND d.user_id = $%d
+				)
 				ORDER BY c.embedding <=> $%d
 				LIMIT $2
+			),
+			vector_matches AS (
+				SELECT id, rank() OVER (ORDER BY distance + 0) AS rank
+				FROM vector_candidates
 			),`, vectorArmArg, userArgIdx, vectorArmArg)
 	}
 
@@ -319,10 +338,11 @@ func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgI
 		text_matches AS (
 			SELECT c.id, rank() OVER (ORDER BY ts_rank_cd(c.tsv, plainto_tsquery('%s', $1)) DESC) AS rank
 			FROM rag_chunks c
-			JOIN rag_document_versions v ON c.version_id = v.id
-			JOIN rag_documents d ON v.document_id = d.id
-			WHERE d.current_version_id = v.id
-			  AND d.user_id = $%d
+			WHERE EXISTS (
+				SELECT 1 FROM rag_documents d
+				WHERE d.current_version_id = c.version_id
+				  AND d.user_id = $%d
+			)
 			  AND c.tsv @@ plainto_tsquery('%s', $1)
 			ORDER BY rank
 			LIMIT $2

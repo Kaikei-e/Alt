@@ -31,27 +31,62 @@ func TestNewHybridSearchRepository_CustomRRFK(t *testing.T) {
 	assert.Equal(t, 30, concrete.rrfK)
 }
 
+func assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t *testing.T, arm, ownerPlaceholder, limitPlaceholder string) {
+	t.Helper()
+	assert.NotContains(t, arm, "rag_document_versions")
+	assert.Contains(t, arm, "EXISTS")
+	assert.Contains(t, arm, "FROM rag_documents d")
+	assert.Contains(t, arm, "d.current_version_id = c.version_id")
+	ownerFilter := "d.user_id = " + ownerPlaceholder
+	limitClause := "LIMIT " + limitPlaceholder
+	assert.Contains(t, arm, ownerFilter)
+	assert.Contains(t, arm, limitClause)
+	assert.Less(t, strings.Index(arm, "EXISTS"), strings.Index(arm, ownerFilter))
+	assert.Less(t, strings.Index(arm, "EXISTS"), strings.Index(arm, limitClause))
+	assert.Less(t, strings.Index(arm, "d.current_version_id = c.version_id"), strings.Index(arm, limitClause))
+	assert.Less(t, strings.Index(arm, ownerFilter), strings.Index(arm, limitClause))
+}
+
+func assertVectorArmMaterializesAndResortsCandidates(t *testing.T, vectorPart, vectorPlaceholder, ownerPlaceholder, limitPlaceholder string) {
+	t.Helper()
+	assert.Contains(t, vectorPart, "vector_candidates AS MATERIALIZED")
+	assert.Contains(t, vectorPart, "vector_matches AS")
+	subparts := strings.SplitN(vectorPart, "vector_matches AS", 2)
+	require.Len(t, subparts, 2, "must have vector_candidates and vector_matches CTEs")
+	vectorCandidatesCTE := subparts[0]
+	vectorMatchesCTE := subparts[1]
+
+	assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, vectorCandidatesCTE, ownerPlaceholder, limitPlaceholder)
+	orderBy := "ORDER BY c.embedding <=> " + vectorPlaceholder
+	limitClause := "LIMIT " + limitPlaceholder
+	assert.Contains(t, vectorCandidatesCTE, orderBy)
+	assert.Less(t, strings.Index(vectorCandidatesCTE, orderBy), strings.Index(vectorCandidatesCTE, limitClause))
+	assert.Contains(t, vectorMatchesCTE, "rank() OVER (ORDER BY distance + 0) AS rank")
+	assert.Contains(t, vectorMatchesCTE, "FROM vector_candidates")
+}
+
+func assertOuterMetadataRejoin(t *testing.T, outerPart, ownerPlaceholder string) {
+	t.Helper()
+	assert.Contains(t, outerPart, "JOIN rag_documents d ON v.document_id = d.id")
+	assert.Contains(t, outerPart, "d.current_version_id = v.id")
+	assert.Contains(t, outerPart, "d.user_id = "+ownerPlaceholder)
+}
+
 func TestHybridSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
 	q := buildHybridSearchQuery("english", 60)
 
-	// Ensure both vector_matches and text_matches filter current_version_id and user_id ($5) before candidate limit ($3)
+	// Ensure both vector_candidates and text_matches filter current_version_id and user_id ($5) before candidate limit ($3)
 	parts := strings.Split(q, "rrf AS")
 	require.Len(t, parts, 2, "must contain candidate CTEs and rrf CTE")
 	candidatesPart := parts[0]
 
 	vectorPart := strings.Split(candidatesPart, "text_matches AS")[0]
-	assert.Contains(t, vectorPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-	assert.Contains(t, vectorPart, "JOIN rag_documents d ON v.document_id = d.id")
-	assert.Contains(t, vectorPart, "d.current_version_id = v.id")
-	assert.Contains(t, vectorPart, "d.user_id = $5")
-	assert.Contains(t, vectorPart, "LIMIT $3")
+	assertVectorArmMaterializesAndResortsCandidates(t, vectorPart, "$1", "$5", "$3")
 
 	textPart := strings.Split(candidatesPart, "text_matches AS")[1]
-	assert.Contains(t, textPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-	assert.Contains(t, textPart, "JOIN rag_documents d ON v.document_id = d.id")
-	assert.Contains(t, textPart, "d.current_version_id = v.id")
-	assert.Contains(t, textPart, "d.user_id = $5")
-	assert.Contains(t, textPart, "LIMIT $3")
+	assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$5", "$3")
+
+	assertOuterMetadataRejoin(t, parts[1], "$5")
 }
 
 func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
@@ -65,18 +100,12 @@ func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *test
 
 		require.Contains(t, candidatesPart, "vector_matches AS")
 		vectorPart := strings.Split(candidatesPart, "text_matches AS")[0]
-		assert.Contains(t, vectorPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-		assert.Contains(t, vectorPart, "JOIN rag_documents d ON v.document_id = d.id")
-		assert.Contains(t, vectorPart, "d.current_version_id = v.id")
-		assert.Contains(t, vectorPart, "d.user_id = $5")
-		assert.Contains(t, vectorPart, "LIMIT $2")
+		assertVectorArmMaterializesAndResortsCandidates(t, vectorPart, "$4", "$5", "$2")
 
 		textPart := strings.Split(candidatesPart, "text_matches AS")[1]
-		assert.Contains(t, textPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-		assert.Contains(t, textPart, "JOIN rag_documents d ON v.document_id = d.id")
-		assert.Contains(t, textPart, "d.current_version_id = v.id")
-		assert.Contains(t, textPart, "d.user_id = $5")
-		assert.Contains(t, textPart, "LIMIT $2")
+		assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$5", "$2")
+
+		assertOuterMetadataRejoin(t, parts[1], "$5")
 	})
 
 	t.Run("text only arm", func(t *testing.T) {
@@ -87,13 +116,12 @@ func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *test
 		require.Len(t, parts, 2, "must contain candidate CTEs and rrf CTE")
 		candidatesPart := parts[0]
 
+		assert.NotContains(t, candidatesPart, "vector_candidates AS")
 		assert.NotContains(t, candidatesPart, "vector_matches AS")
 
 		textPart := candidatesPart
-		assert.Contains(t, textPart, "JOIN rag_document_versions v ON c.version_id = v.id")
-		assert.Contains(t, textPart, "JOIN rag_documents d ON v.document_id = d.id")
-		assert.Contains(t, textPart, "d.current_version_id = v.id")
-		assert.Contains(t, textPart, "d.user_id = $4")
-		assert.Contains(t, textPart, "LIMIT $2")
+		assertCandidateArmUsesOwnerSemiJoinBeforeLimit(t, textPart, "$4", "$2")
+
+		assertOuterMetadataRejoin(t, parts[1], "$4")
 	})
 }

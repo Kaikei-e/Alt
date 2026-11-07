@@ -18,6 +18,7 @@ import (
 	"alt/tlsutil"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -156,6 +157,8 @@ func buildPGXPoolConfig() (*pgxpool.Config, error) {
 	}
 	// Assign password directly on ConnConfig so special characters never break URL parsing.
 	poolCfg.ConnConfig.Password = dbPassword
+	// Use simple protocol to avoid prepared statement cache collisions across pgbouncer transaction-pooled connections.
+	poolCfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	return poolCfg, nil
 }
 
