@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -1690,4 +1691,114 @@ func TestBFFHandler_ServeHTTP_BoundsUnaryResponseBody(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, int(maxResponseBodyBytes), rec.Body.Len())
+}
+
+func TestBFFHandler_StreamingProcedure_CircuitBreaker_CallerCancelDoesNotRecordFailure(t *testing.T) {
+	var blockBackend atomic.Bool
+	blockBackend.Store(true)
+	var cancelCurrent atomic.Value
+	release := make(chan struct{})
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if blockBackend.Load() {
+			if cancel, ok := cancelCurrent.Load().(context.CancelFunc); ok && cancel != nil {
+				cancel()
+			}
+			<-release
+			return
+		}
+		w.Header().Set("Content-Type", "application/connect+proto")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("chunk"))
+	}))
+	defer backend.Close()
+	defer close(release)
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   5,
+		CBSuccessThreshold:   2,
+		CBOpenTimeout:        time.Hour,
+	}
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	const path = "/alt.augur.v2.AugurService/StreamChat"
+	for i := 0; i < 5; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancelCurrent.Store(cancel)
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader([]byte(`{}`))).WithContext(ctx)
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+
+	stats := handler.GetCircuitBreakerStats()
+	require.NotNil(t, stats)
+	assert.Equal(t, int64(0), stats.TotalFailures, "caller-side stream cancellation must not count as a backend failure")
+
+	blockBackend.Store(false)
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.NotEqual(t, http.StatusServiceUnavailable, rec.Code, "circuit breaker must not open after caller-side cancellations")
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestBFFHandler_Unary_CircuitBreaker_CallerCancelDoesNotRecordFailure(t *testing.T) {
+	var blockBackend atomic.Bool
+	blockBackend.Store(true)
+	var cancelCurrent atomic.Value
+	release := make(chan struct{})
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if blockBackend.Load() {
+			if cancel, ok := cancelCurrent.Load().(context.CancelFunc); ok && cancel != nil {
+				cancel()
+			}
+			<-release
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer backend.Close()
+	defer close(release)
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   5,
+		CBSuccessThreshold:   2,
+		CBOpenTimeout:        time.Hour,
+	}
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	const path = "/alt.feeds.v2.FeedService/GetFeedStats"
+	for i := 0; i < 5; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancelCurrent.Store(cancel)
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader([]byte(`{}`))).WithContext(ctx)
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+
+	stats := handler.GetCircuitBreakerStats()
+	require.NotNil(t, stats)
+	assert.Equal(t, int64(0), stats.TotalFailures, "caller-side unary cancellation must not count as a backend failure")
+
+	blockBackend.Store(false)
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.NotEqual(t, http.StatusServiceUnavailable, rec.Code, "circuit breaker must not open after caller-side cancellations")
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
