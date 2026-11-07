@@ -372,6 +372,66 @@ func TestRestHandleFetchReadAndFavoriteFeedsCursor_UsesSortKeyTime(t *testing.T)
 	}
 }
 
+type restMissingCursorAtPortStub struct {
+	items []*domain.FeedItem
+}
+
+func (s *restMissingCursorAtPortStub) FetchReadFeedsListCursor(_ context.Context, _ *time.Time, _ int) ([]*domain.FeedItem, error) {
+	return s.items, nil
+}
+
+func (s *restMissingCursorAtPortStub) FetchFavoriteFeedsListCursor(_ context.Context, _ *time.Time, _ int) ([]*domain.FeedItem, error) {
+	return s.items, nil
+}
+
+func TestRestHandleFetchReadAndFavoriteFeedsCursor_MissingCursorAtReturnsError(t *testing.T) {
+	logger.InitLogger()
+
+	createdAt := time.Date(2026, time.March, 1, 10, 0, 0, 111000000, time.UTC)
+	portStub := &restMissingCursorAtPortStub{
+		items: []*domain.FeedItem{{
+			Title:           "Feed Missing CursorAt",
+			Link:            "https://example.com/a",
+			Published:       createdAt.Format(time.RFC3339),
+			PublishedParsed: createdAt,
+		}},
+	}
+
+	container := &di.ApplicationComponents{
+		FetchReadFeedsListCursorUsecase:     fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(portStub),
+		FetchFavoriteFeedsListCursorUsecase: fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(portStub),
+	}
+
+	e := echo.New()
+	tests := []struct {
+		name    string
+		target  string
+		handler echo.HandlerFunc
+	}{
+		{
+			name:    "read feeds cursor missing sort key",
+			target:  "/v1/feeds/fetch/viewed/cursor?limit=1",
+			handler: RestHandleFetchReadFeedsCursor(container),
+		},
+		{
+			name:    "favorite feeds cursor missing sort key",
+			target:  "/v1/feeds/fetch/favorites/cursor?limit=1",
+			handler: RestHandleFetchFavoriteFeedsCursor(container),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			require.NoError(t, tt.handler(c))
+			assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		})
+	}
+}
+
 type stubFetchFeedTagsPort struct {
 	tags       []*domain.FeedTag
 	lastCursor *time.Time

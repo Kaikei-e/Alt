@@ -280,14 +280,75 @@ func TestGetFavoriteFeeds_CursorUsesFavoriteCreatedAtAndReturnsPage2(t *testing.
 
 type fakeFeedTagStore struct {
 	tags       []*domain.FeedTag
+	lastFeedID string
 	lastCursor *time.Time
 	called     bool
 }
 
-func (f *fakeFeedTagStore) FetchFeedTags(_ context.Context, _ string, cursor *time.Time, _ int) ([]*domain.FeedTag, error) {
+func (f *fakeFeedTagStore) FetchFeedTags(_ context.Context, feedID string, cursor *time.Time, _ int) ([]*domain.FeedTag, error) {
 	f.called = true
+	f.lastFeedID = feedID
 	f.lastCursor = cursor
 	return f.tags, nil
+}
+
+type missingCursorAtFeedPortStub struct {
+	items []*domain.FeedItem
+}
+
+func (s *missingCursorAtFeedPortStub) FetchReadFeedsListCursor(_ context.Context, _ *time.Time, _ int) ([]*domain.FeedItem, error) {
+	return s.items, nil
+}
+
+func (s *missingCursorAtFeedPortStub) FetchFavoriteFeedsListCursor(_ context.Context, _ *time.Time, _ int) ([]*domain.FeedItem, error) {
+	return s.items, nil
+}
+
+func TestGetReadAndFavoriteFeeds_MissingCursorAtReturnsError(t *testing.T) {
+	logger.InitLogger()
+
+	createdAt := time.Date(2026, time.March, 1, 10, 0, 0, 111000000, time.UTC)
+	portStub := &missingCursorAtFeedPortStub{
+		items: []*domain.FeedItem{{
+			Title:           "Feed Missing CursorAt",
+			Link:            "https://example.com/a",
+			Published:       createdAt.Format(time.RFC3339),
+			PublishedParsed: createdAt,
+		}},
+	}
+
+	handler := NewHandler(FeedHandlerDeps{
+		FetchReadFeedsCursor:     fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(portStub),
+		FetchFavoriteFeedsCursor: fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(portStub),
+		ResolveArticle:           resolve_article_usecase.New(nil, nil),
+	}, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	_, err := handler.GetReadFeeds(ctx, connect.NewRequest(&feedsv2.GetReadFeedsRequest{Limit: 1}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+
+	_, err = handler.GetFavoriteFeeds(ctx, connect.NewRequest(&feedsv2.GetFavoriteFeedsRequest{Limit: 1}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+}
+
+func TestGetFeedTags_NormalizesUUID(t *testing.T) {
+	logger.InitLogger()
+
+	store := &fakeFeedTagStore{}
+	handler := NewHandler(FeedHandlerDeps{
+		FeedTagStore:   store,
+		ResolveArticle: resolve_article_usecase.New(nil, nil),
+	}, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	_, err := handler.GetFeedTags(ctx, connect.NewRequest(&feedsv2.GetFeedTagsRequest{
+		FeedId: "urn:uuid:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+	}))
+	require.NoError(t, err)
+	assert.True(t, store.called)
+	assert.Equal(t, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", store.lastFeedID)
 }
 
 func TestGetFeedTags_RejectsMalformedUUID(t *testing.T) {
