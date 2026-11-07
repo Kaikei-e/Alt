@@ -673,6 +673,77 @@ mod tests {
         assert_eq!(clamp_offset(Some(-10)), 0);
         assert_eq!(clamp_offset(Some(25_000)), 10_000);
     }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn get_indexable_genres_returns_400_on_invalid_or_offsetless_since() {
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+        use crate::{
+            app::{ComponentRegistry, build_router},
+            config::{Config, ENV_MUTEX},
+        };
+
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@127.0.0.1:15432/recap"),
+                ),
+                ("RECAP_DB_ACQUIRE_TIMEOUT_SECS", Some("1")),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let app = build_router(registry);
+
+        for invalid_since in ["not-a-date", "2026-11-08T10:00:00"] {
+            let uri = format!("/v1/recaps/genres/indexable?since={invalid_since}");
+            let request = Request::get(&uri).body(Body::empty()).expect("request builds");
+            let response = app
+                .clone()
+                .oneshot(request)
+                .await
+                .expect("request succeeds");
+            assert_eq!(
+                response.status(),
+                StatusCode::BAD_REQUEST,
+                "expected 400 for since={invalid_since}"
+            );
+
+            let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("body bytes");
+            let payload: Value = serde_json::from_slice(&body_bytes).expect("valid json");
+            assert!(
+                payload["error"].as_str().is_some_and(|s| !s.is_empty()),
+                "error field must be non-empty string for since={invalid_since}"
+            );
+        }
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]
