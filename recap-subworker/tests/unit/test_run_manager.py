@@ -779,7 +779,7 @@ async def test_process_run_marks_failed_when_connection_closed_on_mark_success(p
         settings,
         session_factory,
         lambda _s: dao,  # pyrefly: ignore[bad-argument-type]
-        pipeline_runner=runner,
+        pipeline_runner=runner,  # pyrefly: ignore[bad-argument-type]
     )
 
     with contextlib.suppress(InterfaceError):
