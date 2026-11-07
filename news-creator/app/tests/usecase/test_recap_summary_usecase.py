@@ -1771,6 +1771,88 @@ async def test_fallback_includes_degraded_metadata():
 
 
 @pytest.mark.asyncio
+async def test_degraded_llm_failure_response_is_not_cached():
+    """Responses degraded due to LLM failure must not be cached, allowing retries to recover."""
+    config = _create_mock_config()
+    config.max_repetition_retries = 0
+    config.recap_summary_repair_attempts = 0
+
+    store: dict[str, str] = {}
+    cache = AsyncMock()
+    cache.get.side_effect = lambda key: store.get(key)
+
+    def _cache_set(key: str, value: str, ttl=None) -> bool:
+        store[key] = value
+        return True
+
+    cache.set.side_effect = _cache_set
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not valid json",
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="TechFusion announced the acquisition of Nova Labs for $1.2B.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                    RepresentativeSentence(
+                        text="Executives expect integration to complete in March 2026.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                ],
+                top_terms=["acquisition", "AI"],
+            )
+        ],
+    )
+
+    usecase = RecapSummaryUsecase(
+        config=config, llm_provider=llm_provider, cache=cache
+    )
+
+    first = await usecase.generate_summary(request)
+    second = await usecase.generate_summary(request)
+
+    assert first.metadata.is_degraded is True
+    assert second.metadata.is_degraded is True
+    cache.set.assert_not_awaited()
+
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps(
+            {
+                "title": "AI業界の大型買収",
+                "bullets": [
+                    "米TechFusion社はAIスタートアップNova Labsを総額12億ドルで買収したと発表した。",
+                    "統合完了は2026年3月を見込んでおり、推論基盤の強化を進める。",
+                ],
+                "language": "ja",
+            }
+        ),
+        model="gemma4-e4b-q4km",
+        prompt_eval_count=120,
+        eval_count=60,
+        total_duration=500_000_000,
+    )
+
+    recovered = await usecase.generate_summary(request)
+    assert recovered.metadata.is_degraded is False
+    assert recovered.summary.title == "AI業界の大型買収"
+    cache.set.assert_awaited_once()
+
+
+
+@pytest.mark.asyncio
 async def test_fallback_preserves_references():
     """Fallback response should include references from cluster source_urls."""
     config = Mock()
