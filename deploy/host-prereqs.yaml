@@ -379,6 +379,10 @@ retired_env:
     reason: >-
       compose/rag.yaml pins these for rag-orchestrator, which loads no
       env_file, so a .env value never reaches it.
+  - id: news-creator-ollama-remote-dispatch
+    keys: [DISTRIBUTED_BE_REMOTES, DISTRIBUTED_BE_REMOTE_MODEL, DISTRIBUTED_BE_MODEL_OVERRIDES]
+    reason: >-
+      news-creator now reads DISTRIBUTED_BE_TARGETS; compose no longer passes these.
 
 dead_env_values:
   - id: auth-hub-health-only-port

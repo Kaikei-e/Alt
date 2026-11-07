@@ -99,38 +99,37 @@ class DependencyContainer:
 
         # Distributed BE dispatch (optional, default OFF)
         self.llm_provider: LLMProviderPort
-        if self.config.distributed_be_enabled and self.config.distributed_be_remotes:
-            from news_creator.gateway.remote_ollama_driver import RemoteOllamaDriver
-            from news_creator.gateway.remote_health_checker import RemoteHealthChecker
+        if self.config.distributed_be_enabled:
             from news_creator.gateway.distributing_gateway import DistributingGateway
+            from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+            from news_creator.gateway.remote_health_checker import RemoteHealthChecker
 
-            remote_driver = RemoteOllamaDriver(
+            remote_driver = RemoteChatDriver(
                 timeout_seconds=self.config.distributed_be_timeout_seconds,
-                inference_token=self.config.llm.inference_service_token,
+                reasoning_effort=self.config.distributed_be_reasoning_effort,
             )
             health_checker = RemoteHealthChecker(
-                remotes=self.config.distributed_be_remotes,
-                required_model=self.config.distributed_be_remote_model,
+                targets=self.config.distributed_be_targets,
                 interval_seconds=self.config.distributed_be_health_interval_seconds,
                 cooldown_seconds=self.config.distributed_be_cooldown_seconds,
                 timeout_seconds=self.config.distributed_be_timeout_seconds,
-                model_overrides=self.config.distributed_be_model_overrides,
-                inference_token=self.config.llm.inference_service_token,
             )
             self.llm_provider = DistributingGateway(
                 local_gateway=self.ollama_gateway,
                 health_checker=health_checker,
                 remote_driver=remote_driver,
                 enabled=True,
-                remote_model=self.config.distributed_be_remote_model,
-                model_overrides=self.config.distributed_be_model_overrides,
             )
             logger.info(
-                "Distributed BE dispatch enabled",
-                extra={"remotes": self.config.distributed_be_remotes},
+                "distributed_be_enabled",
+                extra={
+                    "targets": [t.key for t in self.config.distributed_be_targets],
+                    "reasoning_effort": self.config.distributed_be_reasoning_effort,
+                },
             )
         else:
             self.llm_provider = self.ollama_gateway
+            logger.info("distributed_be_disabled")
 
         # Service layer
         self.model_warmup_service = ModelWarmupService(
@@ -152,37 +151,36 @@ class DependencyContainer:
             logger.info("cache_disabled")
 
         # Usecase layer
-        # FE-triggered summarization must stay on the local GPU path.
-        # Keep recap/expand on the shared provider so batch-oriented flows can
-        # still use distributed BE dispatch when explicitly enabled.
+        # Only SummarizeUsecase receives DistributingGateway; structured-JSON
+        # and interactive usecases always run against local ollama_gateway.
         self.summarize_usecase = SummarizeUsecase(
             config=self.config,
             llm_provider=self.llm_provider,
         )
         self.recap_summary_usecase = RecapSummaryUsecase(
             config=self.config,
-            llm_provider=self.llm_provider,
+            llm_provider=self.ollama_gateway,
             cache=self.cache_gateway,
         )
         self.recap_card_usecase = RecapCardUsecase(
             config=self.config,
-            llm_provider=self.llm_provider,
+            llm_provider=self.ollama_gateway,
             cache=self.cache_gateway,
         )
         self.expand_query_usecase = ExpandQueryUsecase(
             config=self.config,
-            llm_provider=self.llm_provider,
+            llm_provider=self.ollama_gateway,
         )
         self.plan_query_usecase = PlanQueryUsecase(
             config=self.config,
-            llm_provider=self.llm_provider,
+            llm_provider=self.ollama_gateway,
         )
         # Rerank usecase (cross-encoder, no Ollama dependency)
         self.rerank_usecase = RerankUsecase()
         # Morning Letter usecase
         self.morning_letter_usecase = MorningLetterUsecase(
             config=self.config,
-            llm_provider=self.llm_provider,
+            llm_provider=self.ollama_gateway,
         )
 
     async def initialize(self) -> None:

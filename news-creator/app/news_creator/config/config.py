@@ -9,6 +9,11 @@ from __future__ import annotations
 import os
 import logging
 
+from news_creator.config.distributed_be_config import (
+    RemoteTarget,
+    parse_distributed_be_reasoning_effort,
+    parse_distributed_be_targets,
+)
 from news_creator.config.llm_config import LLMConfig
 from news_creator.config.scheduling_config import SchedulingConfig
 from news_creator.config.hierarchical_config import HierarchicalConfig
@@ -47,9 +52,6 @@ class NewsCreatorConfig:
         self.distributed_be_enabled = (
             os.getenv("DISTRIBUTED_BE_ENABLED", "false").lower() == "true"
         )
-        self.distributed_be_remotes = self._parse_remote_urls(
-            os.getenv("DISTRIBUTED_BE_REMOTES", "")
-        )
         self.distributed_be_health_interval_seconds = self._get_int(
             "DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS", 30
         )
@@ -59,17 +61,30 @@ class NewsCreatorConfig:
         self.distributed_be_cooldown_seconds = self._get_int(
             "DISTRIBUTED_BE_COOLDOWN_SECONDS", 60
         )
-        self.distributed_be_remote_model = os.getenv(
-            "DISTRIBUTED_BE_REMOTE_MODEL", "gemma4-e4b-q4km"
-        ).strip()
-        self.distributed_be_model_overrides = self._parse_model_overrides(
-            os.getenv("DISTRIBUTED_BE_MODEL_OVERRIDES", "")
-        )
 
-        if self.distributed_be_enabled and not self.distributed_be_remotes:
-            logger.warning(
-                "DISTRIBUTED_BE_ENABLED=true but DISTRIBUTED_BE_REMOTES is empty; "
-                "distributed dispatch will be effectively disabled"
+        raw_targets = os.getenv("DISTRIBUTED_BE_TARGETS", "")
+        self.distributed_be_targets: list[RemoteTarget]
+        if self.distributed_be_enabled:
+            self.distributed_be_targets = parse_distributed_be_targets(raw_targets)
+            if not self.distributed_be_targets:
+                raise ValueError(
+                    "DISTRIBUTED_BE_ENABLED=true requires non-empty DISTRIBUTED_BE_TARGETS"
+                )
+            self.distributed_be_reasoning_effort = (
+                parse_distributed_be_reasoning_effort(
+                    os.getenv("DISTRIBUTED_BE_REASONING_EFFORT"),
+                    strict=True,
+                )
+            )
+        else:
+            self.distributed_be_targets = (
+                parse_distributed_be_targets(raw_targets) if raw_targets.strip() else []
+            )
+            self.distributed_be_reasoning_effort = (
+                parse_distributed_be_reasoning_effort(
+                    os.getenv("DISTRIBUTED_BE_REASONING_EFFORT"),
+                    strict=False,
+                )
             )
 
         # Cache settings (remains at top level for now)
@@ -443,38 +458,6 @@ class NewsCreatorConfig:
     # =========================================================================
     # Helper Methods
     # =========================================================================
-
-    def _parse_model_overrides(self, raw: str) -> dict[str, str]:
-        """Parse comma-separated url=model overrides into a dict."""
-        overrides: dict[str, str] = {}
-        for part in raw.split(","):
-            part = part.strip()
-            if not part or "=" not in part:
-                continue
-            url, model = part.split("=", 1)
-            url = url.strip().rstrip("/")
-            model = model.strip()
-            if url and model:
-                overrides[url] = model
-        return overrides
-
-    def _parse_remote_urls(self, raw: str) -> list[str]:
-        """Parse comma-separated remote URLs, stripping whitespace and trailing slashes."""
-        urls = []
-        seen: set[str] = set()
-        for part in raw.split(","):
-            url = part.strip().rstrip("/")
-            if not url:
-                continue
-            if url in seen:
-                logger.warning("Duplicate remote URL ignored: %s", url)
-                continue
-            if not url.startswith("http://") and not url.startswith("https://"):
-                logger.warning("Remote URL missing scheme, ignored: %s", url)
-                continue
-            seen.add(url)
-            urls.append(url)
-        return urls
 
     def _get_int(self, name: str, default: int) -> int:
         """Get integer value from environment variable.

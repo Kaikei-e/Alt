@@ -133,12 +133,12 @@ A multi-layer backpressure mechanism that prevents unbounded queue growth and pr
 - Normal polling interval (10s) is restored on the next successful `ProcessQueue`.
 
 ### 8. Distributed BE Dispatch (opt-in, disabled by default)
-`DistributingGateway` decorates `OllamaGateway`. When `DISTRIBUTED_BE_ENABLED=true`:
-- BE (batch, `priority=low`) `hold_slot()` requests are intercepted and dispatched to a healthy remote Ollama instance from `DISTRIBUTED_BE_REMOTES`, **bypassing the local `HybridPrioritySemaphore` entirely**.
-- RT (`priority=high`) requests always stay on the local instance — `chat_generate()` and `generate()` are never distributed.
-- `RemoteHealthChecker` polls remotes on `DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS` (default 30s); an unhealthy remote is skipped for `DISTRIBUTED_BE_COOLDOWN_SECONDS` (default 60s).
-- Remote model defaults to `DISTRIBUTED_BE_REMOTE_MODEL` (`gemma4-e4b-q4km`); `DISTRIBUTED_BE_MODEL_OVERRIDES` allows a per-remote override.
-- When disabled, or when every remote is unhealthy, behavior is identical to using `OllamaGateway` directly (all requests stay local).
+`DistributingGateway` decorates `OllamaGateway` for `SummarizeUsecase`. When `DISTRIBUTED_BE_ENABLED=true`:
+- BE (batch, `priority=low`) `hold_slot()` requests defer local slot reservation and dispatch `generate_raw()` to a fitting idle target from `DISTRIBUTED_BE_TARGETS` (`<base_url>|<model>|<num_ctx>`) via `POST /v1/chat/completions`, **bypassing the local `HybridPrioritySemaphore` entirely** when a remote target succeeds.
+- RT (`priority=high`) requests and all other usecases always stay on the local instance — `chat_generate()` and `generate()` are never distributed.
+- `RemoteHealthChecker` probes each distinct `base_url` via `GET /v1/models` on `DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS` (default 30s); an unhealthy target backs off starting from `DISTRIBUTED_BE_COOLDOWN_SECONDS` (default 60s).
+- Optional `DISTRIBUTED_BE_REASONING_EFFORT` (`none`, `minimal`, `low`, `medium`, `high`) is forwarded on `/v1/chat/completions` when set and omitted when empty.
+- When disabled, or when no healthy idle target fits the request's token budget, behavior falls back to holding a local BE slot on `OllamaGateway`.
 
 ## Handlers & Contracts
 
@@ -242,13 +242,12 @@ and news-creator has no env var to flip it, unlike acolyte-orchestrator's `PEER_
 ### Distributed BE Dispatch
 | Variable | Default | Description |
 | --- | --- | --- |
-| `DISTRIBUTED_BE_ENABLED` | `false` | Dispatch BE (`priority=low`) requests to a remote Ollama instance, bypassing the local semaphore; RT always stays local |
-| `DISTRIBUTED_BE_REMOTES` | (empty) | Remote Ollama URLs to dispatch to |
-| `DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS` | `30` | Remote health-poll interval |
-| `DISTRIBUTED_BE_TIMEOUT_SECONDS` | `300` | Per-request timeout on a remote |
-| `DISTRIBUTED_BE_COOLDOWN_SECONDS` | `60` | Skip an unhealthy remote for this long |
-| `DISTRIBUTED_BE_REMOTE_MODEL` | `gemma4-e4b-q4km` | Model requested on the remote |
-| `DISTRIBUTED_BE_MODEL_OVERRIDES` | (empty) | Per-remote model override map |
+| `DISTRIBUTED_BE_ENABLED` | `false` | Dispatch BE (`priority=low`) summarization requests to OpenAI-compatible remote targets, bypassing the local semaphore when a remote target fits and succeeds; RT always stays local |
+| `DISTRIBUTED_BE_TARGETS` | (empty) | Comma-separated `<base_url>|<model>|<num_ctx>` target entries (required when `DISTRIBUTED_BE_ENABLED=true`) |
+| `DISTRIBUTED_BE_REASONING_EFFORT` | (empty) | Optional `reasoning_effort` (`none`, `minimal`, `low`, `medium`, `high`) sent on `/v1/chat/completions`; omitted when empty |
+| `DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS` | `30` | Remote `/v1/models` health-poll interval |
+| `DISTRIBUTED_BE_TIMEOUT_SECONDS` | `300` | Per-request timeout on a remote target |
+| `DISTRIBUTED_BE_COOLDOWN_SECONDS` | `60` | Initial cooldown before re-probing an unhealthy target |
 
 ### Generation Parameters
 | Variable | Default | Description |
