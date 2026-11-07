@@ -31,6 +31,7 @@ suites.yaml is where. The audit then distinguishes "deliberately on main" from
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -225,11 +226,43 @@ def main() -> int:
                 "alt-frontend-sv: run.sh does not set PW_NO_WEBSERVER=1 — "
                 "playwright.config.ts will rebuild the SvelteKit app from source"
             )
-        for forbidden in ("apt-get", "bun.sh/install", "bun install"):
+        for forbidden in ("apt-get", "bun.sh/install", "bun install", "npm install"):
             if forbidden in fe_code:
                 problems.append(
                     f"alt-frontend-sv: run.sh still invokes '{forbidden}' per run"
                 )
+
+        # B1: run.sh must use the shared lockfile-managed e2e/playwright manifest
+        #     with `npm ci ... --ignore-scripts`, and the three E2E runner package
+        #     versions in e2e/playwright/package.json must match alt-frontend-sv/bun.lock.
+        if not re.search(r"npm\s+ci\b[^\n]*--ignore-scripts\b", fe_code):
+            problems.append(
+                "alt-frontend-sv: run.sh must install runner deps with "
+                "`npm ci ... --ignore-scripts`"
+            )
+        pw_pkg_path = PW_ROOT / "package.json"
+        bun_lock_path = ROOT / "alt-frontend-sv" / "bun.lock"
+        if pw_pkg_path.is_file() and bun_lock_path.is_file():
+            pw_pkg = json.loads(pw_pkg_path.read_text())
+            pw_deps = {
+                **(pw_pkg.get("dependencies") or {}),
+                **(pw_pkg.get("devDependencies") or {}),
+            }
+            bun_lock_text = bun_lock_path.read_text()
+            for pkg_name in ("@playwright/test", "axe-playwright", "jsonwebtoken"):
+                pinned = pw_deps.get(pkg_name)
+                m = re.search(
+                    rf'^\s*"{re.escape(pkg_name)}"\s*:\s*\["{re.escape(pkg_name)}@([^"]+)"',
+                    bun_lock_text,
+                    re.MULTILINE,
+                )
+                lock_ver = m.group(1) if m else None
+                if pinned != lock_ver:
+                    problems.append(
+                        f"alt-frontend-sv: e2e/playwright/package.json pins "
+                        f"{pkg_name}={pinned!r}, but alt-frontend-sv/bun.lock "
+                        f"resolves {lock_ver!r}"
+                    )
 
         # B4: pre-launch port guard + State.Running check + curl --max-time
         app_run_pos = fe_code.find("docker run -d")
