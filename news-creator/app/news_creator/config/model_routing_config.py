@@ -69,9 +69,11 @@ class ModelRoutingConfig:
 
 
 def _get_int(name: str, default: int) -> int:
-    """Get integer value from environment variable with fallback."""
-    try:
-        return int(os.getenv(name, default))
-    except ValueError:
-        logger.warning("Invalid int for %s. Using default %s", name, default)
+    """Get integer value from environment variable."""
+    raw = os.getenv(name)
+    if raw is None:
         return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid integer value for {name}: {raw!r}") from exc
