@@ -23,10 +23,17 @@ VALID_REPLY_TO = "alt:replies:tags:0f8e3c1a-5b2d-4c7e-9a10-3d4f5e6a7b8c"
 class _RecordingClient:
     """Replays one XREADGROUP batch and records XACK / XADD calls."""
 
-    def __init__(self, batches: list[list[Any]] | None = None) -> None:
+    def __init__(
+        self,
+        batches: list[list[Any]] | None = None,
+        *,
+        xadd_errors: list[Exception | None] | None = None,
+    ) -> None:
         self.batches = list(batches or [])
         self.acks: list[str] = []
         self.xadds: list[str] = []
+        self.xadd_attempts = 0
+        self.xadd_errors = list(xadd_errors or [])
 
     async def xreadgroup(self, **kwargs: Any) -> list[Any]:
         del kwargs
@@ -38,6 +45,10 @@ class _RecordingClient:
 
     async def xadd(self, stream: str, fields: dict[Any, Any], **kwargs: Any) -> str:
         del fields, kwargs
+        self.xadd_attempts += 1
+        error = self.xadd_errors.pop(0) if self.xadd_errors else None
+        if error is not None:
+            raise error
         self.xadds.append(stream)
         return "9-0"
 
@@ -116,3 +127,21 @@ def test_publish_reply_writes_to_an_mq_hub_reply_stream() -> None:
 
     assert result == "9-0"
     assert client.xadds == [VALID_REPLY_TO]
+
+
+def test_reply_xadd_failure_leaves_request_unacked() -> None:
+    """When XADD to the reply stream fails (e.g. Redis OOM under noeviction),
+    the TagGenerationRequested message must stay unacked in the PEL for retry.
+    """
+    oom = redis.ResponseError("OOM command not allowed when used memory > 'maxmemory'.")
+    service = _service()
+    consumer = StreamConsumer(ConsumerConfig(enabled=True), handler=cast(Any, None))
+    consumer.handler = TagGeneratorEventHandler(service, consumer)
+    client = _RecordingClient([_request("3-0", VALID_REPLY_TO)], xadd_errors=[oom])
+    consumer.client = cast(redis.Redis, client)
+
+    asyncio.run(consumer._read_and_process())
+
+    assert client.xadd_attempts == 1
+    assert client.xadds == []
+    assert client.acks == [], "a failed reply XADD must not ACK the request message"

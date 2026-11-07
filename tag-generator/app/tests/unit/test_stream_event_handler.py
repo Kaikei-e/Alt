@@ -360,3 +360,15 @@ class TestTagGeneratorEventHandler:
         await handler._handle_article_created(event)
 
         mock_service.tag_inserter.upsert_tags.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_handle_tag_generation_requested_raises_when_reply_publish_returns_none(
+        self, handler, mock_stream_consumer, tag_generation_request_event
+    ):
+        """A failed reply publish must raise so StreamConsumer does not XACK."""
+        mock_stream_consumer.publish_reply.return_value = None
+
+        with pytest.raises(RuntimeError, match="reply publish failed"):
+            await handler._handle_tag_generation_requested(tag_generation_request_event)
+
+        mock_stream_consumer.publish_reply.assert_called_once()
