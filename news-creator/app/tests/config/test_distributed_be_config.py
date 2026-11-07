@@ -132,6 +132,8 @@ def test_parse_distributed_be_targets_rejects_duplicate_base_url_and_model():
         ("http://gw.example :8080|m|8192", "0", ""),
         ("http://gw.example:8080\x00|m|8192", "0", ""),
         ("http://gw.example:8080\x1f|m|8192", "0", ""),
+        ("http://gw\x9b.example:8080|m|8192", "0", ""),
+        ("http://gw\u200b.example:8080|m|8192", "0", ""),
         (
             "http://gw.example:8080|m-a|8192,http://u:p@gw.example:8080|m-b|8192",
             "1",
@@ -310,3 +312,22 @@ def test_distributed_be_disabled_ignores_populated_targets_and_reasoning_effort(
     assert config.distributed_be_enabled is False
     assert config.distributed_be_targets == []
     assert config.distributed_be_reasoning_effort is None
+
+
+def test_parse_distributed_be_reasoning_effort_has_no_strict_parameter():
+    """L5: parse_distributed_be_reasoning_effort takes only raw (no strict parameter)."""
+    import inspect
+
+    from news_creator.config.distributed_be_config import (
+        parse_distributed_be_reasoning_effort,
+    )
+
+    sig = inspect.signature(parse_distributed_be_reasoning_effort)
+    assert "strict" not in sig.parameters
+    assert parse_distributed_be_reasoning_effort(None) is None
+    assert parse_distributed_be_reasoning_effort("   ") is None
+    assert parse_distributed_be_reasoning_effort("low") == "low"
+    with pytest.raises(ValueError, match="DISTRIBUTED_BE_REASONING_EFFORT"):
+        parse_distributed_be_reasoning_effort("turbo")
+    with pytest.raises(TypeError):
+        parse_distributed_be_reasoning_effort("turbo", strict=False)  # type: ignore[call-arg]

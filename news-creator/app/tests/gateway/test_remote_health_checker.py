@@ -455,6 +455,7 @@ async def test_dispatch_failure_cooldown_escalates_across_4_failures_up_to_cap_a
         assert acquired == target
         t_fail = clock
         hc.mark_failure(target)
+        observed_cooldowns.append(hc._states[target]["cooldown_until"] - t_fail)
 
         # 1 second before cooldown_until: still in cooldown, not probed or acquirable
         clock = t_fail + expected_cd - 1.0
@@ -464,8 +465,8 @@ async def test_dispatch_failure_cooldown_escalates_across_4_failures_up_to_cap_a
         # After cooldown_until: probe succeeds and target becomes acquirable again
         clock = t_fail + expected_cd + 1.0
         await hc._check_all()
-        observed_cooldowns.append(expected_cd)
 
+    assert observed_cooldowns == expected_cooldowns
     assert (
         observed_cooldowns[0]
         < observed_cooldowns[1]
@@ -533,10 +534,19 @@ async def test_probe_success_during_cooldown_keeps_target_unacquirable(monkeypat
     # Probe succeeds at t=1020 during active cooldown -> target must remain unacquirable
     clock = 1020.0
     await hc._probe_base_url(target.base_url, [target])
+    assert hc.status()[0]["healthy"] is False
     assert hc.acquire_idle_target(lambda _: True) is None
 
+    # Even if healthy were flipped, acquire_idle_target must still skip before cooldown_until
     clock = 1059.0
+    hc._states[target]["healthy"] = True
     assert hc.acquire_idle_target(lambda _: True) is None
+    hc._states[target]["healthy"] = False
+
+    # After cooldown boundary (t=1060), probe succeeds and target can be acquired again
+    clock = 1061.0
+    await hc._check_all()
+    assert hc.acquire_idle_target(lambda _: True) == target
 
 
 @pytest.mark.asyncio
@@ -695,3 +705,67 @@ async def test_probe_response_body_over_1_mib_marks_targets_unhealthy(
     status = checker.status()
     assert status[0]["healthy"] is False
     assert status[1]["healthy"] is False
+
+
+@pytest.mark.asyncio
+async def test_probe_backoff_after_dispatch_cooldown_depends_only_on_consecutive_probe_failures(
+    monkeypatch,
+):
+    """L3: After 4 dispatch failures and cooldown expiry, 1 probe failure schedules the next probe after base cooldown, not escalated."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+    )
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target.model}]}),
+            ),
+        }
+    )
+
+    clock = 1000.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+
+    # 4 consecutive dispatch failures at t=1000 -> dispatch cooldown_until = 1000 + 480 = 1480
+    for _ in range(4):
+        hc.mark_failure(target)
+    assert hc._states[target]["cooldown_until"] == 1480.0
+
+    # Now /v1/models returns 503 when probed after the dispatch cooldown expires
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                503, '{"error": "temporarily unavailable"}'
+            ),
+        }
+    )
+
+    # First probe after dispatch cooldown expires at t=1481 fails (1 consecutive probe failure)
+    clock = 1481.0
+    await hc._check_all()
+    assert hc._session.get.call_count == 1
+
+    # Next probe must be scheduled after base cooldown (60s), not escalated (480s/900s)
+    clock = 1481.0 + 59.0
+    await hc._check_all()
+    assert hc._session.get.call_count == 1
+
+    clock = 1481.0 + 61.0
+    await hc._check_all()
+    assert hc._session.get.call_count == 2

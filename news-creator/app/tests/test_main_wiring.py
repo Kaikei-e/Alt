@@ -260,7 +260,7 @@ def test_dependency_container_routes_only_summarize_usecase_through_distributing
     assert dist_gw.health_checker.targets == targets
     assert dist_gw.health_checker.interval_seconds == 15
     assert dist_gw.health_checker.cooldown_seconds == 45
-    assert dist_gw.health_checker.timeout_seconds == 120
+    assert dist_gw.health_checker.timeout_seconds == 15
 
     # All other LLM usecases must receive self.ollama_gateway directly
     assert container.recap_summary_usecase.llm_provider is container.ollama_gateway

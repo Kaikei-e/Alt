@@ -440,3 +440,75 @@ async def test_remote_chat_driver_wire_rejects_response_body_just_over_4_mib():
             await remote_driver.cleanup()
     finally:
         await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_remote_chat_driver_wire_rejects_chunked_response_body_without_content_length_over_4_mib():
+    """L2: Wire server serving an oversized CHUNKED /v1/chat/completions body with no Content-Length raises RuntimeError via bounded_body."""
+    from unittest.mock import patch
+
+    from news_creator.config.distributed_be_config import RemoteTarget
+    from news_creator.gateway import bounded_body
+    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+
+    four_mib = 4 * 1024 * 1024
+    prefix = (
+        b'{"id":"chatcmpl-chunked","object":"chat.completion",'
+        b'"model":"provider-a/model-a:latest","choices":[{"index":0,'
+        b'"message":{"role":"assistant","content":"'
+    )
+    suffix = b'"},"finish_reason":"stop"}]}'
+    chunk = b"x" * (1024 * 1024)
+
+    async def handle_v1_chat(request):
+        resp = web.StreamResponse(
+            status=200,
+            headers={"Content-Type": "application/json"},
+        )
+        resp.enable_chunked_encoding()
+        await resp.prepare(request)
+        try:
+            await resp.write(prefix)
+            for _ in range(4):
+                await resp.write(chunk)
+            await resp.write(b"x" * 64)
+            await resp.write(suffix)
+            await resp.write_eof()
+        except ConnectionError:
+            pass
+        return resp
+
+    app = web.Application()
+    app.router.add_post("/v1/chat/completions", handle_v1_chat)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        target = RemoteTarget(
+            base_url=f"http://127.0.0.1:{port}",
+            model="provider-a/model-a:latest",
+            num_ctx=32768,
+        )
+        remote_driver = RemoteChatDriver(timeout_seconds=5, reasoning_effort=None)
+        await remote_driver.initialize()
+        try:
+            with patch(
+                "news_creator.gateway.remote_chat_driver.read_bounded_text",
+                wraps=bounded_body.read_bounded_text,
+            ) as spy_reader:
+                with pytest.raises(RuntimeError):
+                    await remote_driver.chat(
+                        target,
+                        [{"role": "user", "content": "hello"}],
+                        max_tokens=128,
+                        temperature=0.5,
+                        top_p=0.85,
+                    )
+                spy_reader.assert_awaited_once()
+                assert spy_reader.await_args.args[1] == four_mib
+        finally:
+            await remote_driver.cleanup()
+    finally:
+        await runner.cleanup()

@@ -728,3 +728,54 @@ async def test_cancelled_error_during_remote_chat_releases_target_and_propagates
     assert state["in_flight_count"] == 0
     assert state["healthy"] is True
     local.generate_raw.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_child_task_calling_generate_raw_inside_deferred_slot_raises_runtime_error():
+    """L1: A child task spawned inside hold_slot(False) is not the slot owner; generate_raw raises RuntimeError and enters no local slot."""
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[])
+    prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
+
+    async with gw.hold_slot(is_high_priority=False):
+        child = asyncio.create_task(gw.generate_raw(prompt))
+        with pytest.raises(RuntimeError):
+            await child
+
+    assert local.hold_slot_calls == []
+    local.generate_raw.assert_not_awaited()
+    hc.acquire_idle_target.assert_not_called()
+    driver.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_generate_raw_after_deferred_slot_exits_via_captured_context_raises_runtime_error():
+    """L1: Calling generate_raw with a captured deferred-slot state after hold_slot(False) exited raises RuntimeError."""
+    import contextvars
+
+    gw, local, hc, driver = _make_gateway(enabled=True, targets=[])
+    prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
+
+    before_ctx = contextvars.copy_context()
+    async with gw.hold_slot(is_high_priority=False):
+        captured_ctx = contextvars.copy_context()
+
+    # Restore the captured deferred-slot ContextVar value in the same task after outer exit
+    restored_tokens = []
+    for var, val in captured_ctx.items():
+        if before_ctx.get(var) is not val:
+            restored_tokens.append((var, var.set(val)))
+    assert restored_tokens, (
+        "Expected hold_slot(False) to set a deferred-slot ContextVar"
+    )
+
+    try:
+        with pytest.raises(RuntimeError):
+            await gw.generate_raw(prompt)
+    finally:
+        for var, token in restored_tokens:
+            var.reset(token)
+
+    assert local.hold_slot_calls == []
+    local.generate_raw.assert_not_awaited()
+    hc.acquire_idle_target.assert_not_called()
+    driver.chat.assert_not_awaited()

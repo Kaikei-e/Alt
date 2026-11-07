@@ -37,7 +37,9 @@ async def test_remote_health_checker_gets_v1_models_with_no_auth_and_no_redirect
         mock_response.text = AsyncMock(return_value=body_text)
         mock_response.read = AsyncMock(return_value=body_bytes)
         mock_response.content = MagicMock()
-        mock_response.content.read = AsyncMock(return_value=body_bytes)
+        mock_response.content.read = AsyncMock(
+            side_effect=[body_bytes[:20], body_bytes[20:], b""]
+        )
         mock_response.__aenter__.return_value = mock_response
         mock_get.return_value = mock_response
 
@@ -49,6 +51,7 @@ async def test_remote_health_checker_gets_v1_models_with_no_auth_and_no_redirect
             assert kwargs.get("allow_redirects") is False
             assert checker._session is not None
             assert "Authorization" not in checker._session.headers
+            assert checker.status()[0]["healthy"] is True
         finally:
             await checker.stop()
 
@@ -102,5 +105,68 @@ async def test_remote_health_checker_wire_rejects_models_body_just_over_1_mib():
             assert checker.status()[0]["healthy"] is False
         finally:
             await checker.stop()
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_remote_health_checker_wire_rejects_chunked_models_body_without_content_length_over_1_mib():
+    """L2: Wire server serving an oversized CHUNKED /v1/models body with no Content-Length leaves target unhealthy via bounded_body."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+    from news_creator.gateway import bounded_body
+
+    one_mib = 1 * 1024 * 1024
+    prefix = b'{"object":"list","data":[{"id":"provider-a/model-a:latest"},{"id":"'
+    suffix = b'"}]}'
+    chunk = b"p" * (256 * 1024)
+
+    async def handle_v1_models(request):
+        resp = web.StreamResponse(
+            status=200,
+            headers={"Content-Type": "application/json"},
+        )
+        resp.enable_chunked_encoding()
+        await resp.prepare(request)
+        try:
+            await resp.write(prefix)
+            for _ in range(4):
+                await resp.write(chunk)
+            await resp.write(b"p" * 64)
+            await resp.write(suffix)
+            await resp.write_eof()
+        except ConnectionError:
+            pass
+        return resp
+
+    app = web.Application()
+    app.router.add_get("/v1/models", handle_v1_models)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        target = RemoteTarget(
+            base_url=f"http://127.0.0.1:{port}",
+            model="provider-a/model-a:latest",
+            num_ctx=32768,
+        )
+        checker = RemoteHealthChecker(
+            targets=[target],
+            interval_seconds=30,
+            cooldown_seconds=60,
+            timeout_seconds=5,
+        )
+        with patch(
+            "news_creator.gateway.remote_health_checker.read_bounded_text",
+            wraps=bounded_body.read_bounded_text,
+        ) as spy_reader:
+            await checker.start()
+            try:
+                assert checker.status()[0]["healthy"] is False
+                spy_reader.assert_awaited_once()
+                assert spy_reader.await_args.args[1] == one_mib
+            finally:
+                await checker.stop()
     finally:
         await runner.cleanup()
