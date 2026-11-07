@@ -176,7 +176,7 @@ function toggleBreakdown() {
 				<span class="why-refs-count">{evidenceRefs.length}</span>
 			</h3>
 			<ol class="why-refs-list">
-				{#each evidenceRefs as ref (ref.refId)}
+				{#each evidenceRefs as ref, i (i)}
 					<li class="why-refs-item" data-ref-id={ref.refId}>
 						<span class="why-refs-kind">{displayKindLabel(ref.kind)}</span>
 						{#if ref.label}
@@ -212,7 +212,7 @@ function toggleBreakdown() {
 				class:why-refs-list--collapsed={!counterExpanded}
 				aria-hidden={!counterExpanded}
 			>
-				{#each counterEvidenceRefs as ref (ref.refId)}
+				{#each counterEvidenceRefs as ref, i (i)}
 					<li class="why-refs-item" data-ref-id={ref.refId}>
 						<span class="why-refs-kind">{displayKindLabel(ref.kind)}</span>
 						{#if ref.label}
