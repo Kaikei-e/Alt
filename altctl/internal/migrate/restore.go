@@ -44,6 +44,17 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 		m.logger.Info("backup integrity verified")
 	}
 
+	// Build filter set for selective restore
+	targetVolumes, err := m.filterRestoreVolumes(manifest.Volumes, opts)
+	if err != nil {
+		return fmt.Errorf("filtering volumes: %w", err)
+	}
+
+	pgSpecs, err := m.postgresRestoreSpecs(targetVolumes)
+	if err != nil {
+		return err
+	}
+
 	// Check if any containers are running
 	running, err := m.getRunningContainers(ctx)
 	if err != nil {
@@ -61,18 +72,12 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 		}
 	}
 
-	// Build filter set for selective restore
-	targetVolumes, err := m.filterRestoreVolumes(manifest.Volumes, opts)
-	if err != nil {
-		return fmt.Errorf("filtering volumes: %w", err)
-	}
-
 	m.logger.Info("restoring volumes",
 		"total_in_manifest", len(manifest.Volumes),
 		"selected", len(targetVolumes),
 	)
 
-	if err := m.startDatabaseContainers(ctx, targetVolumes); err != nil {
+	if err := m.startDatabaseContainers(ctx, pgSpecs); err != nil {
 		return fmt.Errorf("starting database containers before restore: %w", err)
 	}
 
@@ -211,7 +216,11 @@ func resolveRestoreBackupType(vb VolumeBackup) BackupType {
 	return vb.Type
 }
 
-func (m *Migrator) startDatabaseContainers(ctx context.Context, targetVolumes []VolumeBackup) error {
+type containerResolver interface {
+	resolveContainer(context.Context, VolumeSpec) string
+}
+
+func (m *Migrator) postgresRestoreSpecs(targetVolumes []VolumeBackup) ([]VolumeSpec, error) {
 	var pgSpecs []VolumeSpec
 	seenServices := make(map[string]bool)
 	for _, vb := range targetVolumes {
@@ -219,17 +228,30 @@ func (m *Migrator) startDatabaseContainers(ctx context.Context, targetVolumes []
 		if !ok {
 			continue
 		}
-		if resolveRestoreBackupType(vb) == BackupTypePostgreSQL && spec.Service != "" && !seenServices[spec.Service] {
+		if resolveRestoreBackupType(vb) != BackupTypePostgreSQL {
+			continue
+		}
+		if spec.DBPort <= 0 {
+			return nil, fmt.Errorf("postgresql volume %s has invalid DBPort %d", spec.Name, spec.DBPort)
+		}
+		if spec.Service != "" && !seenServices[spec.Service] {
 			seenServices[spec.Service] = true
 			pgSpecs = append(pgSpecs, spec)
 		}
 	}
+	return pgSpecs, nil
+}
+
+func (m *Migrator) startDatabaseContainers(ctx context.Context, pgSpecs []VolumeSpec) error {
 	if len(pgSpecs) == 0 {
 		return nil
 	}
 	if m.dryRun {
 		m.logger.Info("[dry-run] would start database containers", "count", len(pgSpecs))
 		return nil
+	}
+	if _, ok := m.pgBackup.(containerResolver); !ok {
+		return fmt.Errorf("postgresql backup engine %T does not support container resolution", m.pgBackup)
 	}
 
 	for _, spec := range pgSpecs {
@@ -252,30 +274,21 @@ func (m *Migrator) startDatabaseContainers(ctx context.Context, targetVolumes []
 }
 
 func (m *Migrator) waitForPostgres(ctx context.Context, spec VolumeSpec) error {
-	var container string
-	if r, ok := m.pgBackup.(interface {
-		resolveContainer(context.Context, VolumeSpec) string
-	}); ok {
-		container = r.resolveContainer(ctx, spec)
-	} else {
-		container = (&PostgresBackuper{
-			projectName: m.projectName,
-			composeDir:  m.composeDir,
-			logger:      m.logger,
-			dryRun:      m.dryRun,
-		}).resolveContainer(ctx, spec)
+	if spec.DBPort <= 0 {
+		return fmt.Errorf("postgresql volume %s has invalid DBPort %d", spec.Name, spec.DBPort)
 	}
+	r, ok := m.pgBackup.(containerResolver)
+	if !ok {
+		return fmt.Errorf("postgresql backup engine %T does not support container resolution", m.pgBackup)
+	}
+	container := r.resolveContainer(ctx, spec)
 
-	port := spec.DBPort
-	if port <= 0 {
-		port = 5432
-	}
 	// Probe TCP rather than the unix socket so the temporary init-only server cannot satisfy readiness.
 	args := []string{
 		"exec", container,
 		"pg_isready",
 		"-h", "127.0.0.1",
-		"-p", strconv.Itoa(port),
+		"-p", strconv.Itoa(spec.DBPort),
 		"-U", spec.DBUser,
 		"-d", spec.DBName,
 	}
