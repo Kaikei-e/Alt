@@ -89,11 +89,9 @@ impl LogStream {
     }
 }
 
-/// Raw collected log line. `log`/`time` are deliberately absent: they get
-/// re-derived from `raw_bytes` by the downstream Docker JSON parser, so
-/// allocating placeholder values for them here would be pure waste on the
-/// per-line hot path. `stream` and `container` are the opposite case - they
-/// are known here and nowhere else, so dropping them loses them for good.
+/// Raw collected log line carrying the demultiplexed `stream`, resolved
+/// `container` metadata, and the Docker RFC3339 prefix `timestamp` stripped
+/// from the frame before `raw_bytes`.
 #[derive(Debug, Clone)]
 pub struct LogEntry {
     /// Container metadata discovery resolved for the connection this line
@@ -101,6 +99,7 @@ pub struct LogEntry {
     /// rather than cloned per line.
     pub container: Arc<ContainerInfo>,
     pub stream: LogStream,
+    pub timestamp: Option<DateTime<Utc>>,
     pub raw_bytes: Bytes,
 }
 
@@ -352,6 +351,7 @@ impl LogCollector {
                             let entry = LogEntry {
                                 container: Arc::clone(container),
                                 stream,
+                                timestamp: parsed_ts,
                                 raw_bytes: payload,
                             };
 

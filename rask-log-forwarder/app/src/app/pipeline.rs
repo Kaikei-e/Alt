@@ -172,11 +172,7 @@ async fn enrich_log_entry(
     log_entry: crate::collector::LogEntry,
 ) -> EnrichedLogEntry {
     let container = &log_entry.container;
-    match parser.parse_docker_log_with_stream(
-        log_entry.raw_bytes.as_ref(),
-        container,
-        log_entry.stream,
-    ) {
+    match parser.parse_log_entry(&log_entry) {
         Ok(enriched_entry) => enriched_entry,
         Err(e) => {
             error!("Failed to parse log entry: {}", e);
@@ -463,6 +459,7 @@ mod tests {
         let collected = crate::collector::LogEntry {
             container: discovered_container(),
             stream: crate::collector::LogStream::Stdout,
+            timestamp: None,
             raw_bytes: bytes::Bytes::from_static(b"backend is up\n"),
         };
 
@@ -491,6 +488,7 @@ mod tests {
         let collected = crate::collector::LogEntry {
             container: discovered_container(),
             stream: crate::collector::LogStream::from_log_output(&frame),
+            timestamp: None,
             raw_bytes: frame.into_bytes(),
         };
 

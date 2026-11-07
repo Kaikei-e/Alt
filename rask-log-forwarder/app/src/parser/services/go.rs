@@ -72,6 +72,13 @@ impl ServiceParser for GoStructuredParser {
                         let status_code =
                             obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);
 
+                        let timestamp = obj
+                            .get("time")
+                            .or_else(|| obj.get("timestamp"))
+                            .or_else(|| obj.get("ts"))
+                            .and_then(|v| v.as_str())
+                            .and_then(super::parse_rfc3339_utc);
+
                         let mut fields = std::collections::HashMap::new();
                         for (key, value) in obj {
                             if !["level", "msg", "message", "method", "path", "status"]
@@ -86,7 +93,7 @@ impl ServiceParser for GoStructuredParser {
                             log_type: "structured".to_string(), // 正しく "structured" になる
                             message,
                             level: Some(level),
-                            timestamp: None,
+                            timestamp,
                             stream: "stdout".to_string(),
                             method,
                             path,

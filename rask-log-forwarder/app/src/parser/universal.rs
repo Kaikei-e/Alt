@@ -101,6 +101,7 @@ impl From<std::sync::Arc<dyn std::any::Any + Send + Sync>> for EnrichedLogEntry 
 pub struct UniversalParser {
     docker_parser: DockerJsonParser,
     registry: super::registry::ServiceParserRegistry,
+    timestamp_fallback_count: std::sync::atomic::AtomicU64,
 }
 
 impl Default for UniversalParser {
@@ -148,7 +149,13 @@ impl UniversalParser {
         Self {
             docker_parser: DockerJsonParser::new(),
             registry,
+            timestamp_fallback_count: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    pub fn timestamp_fallback_count(&self) -> u64 {
+        self.timestamp_fallback_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Register a custom parser at runtime.
@@ -214,6 +221,21 @@ impl UniversalParser {
         Ok(())
     }
 
+    /// Enrich a collected `LogEntry`, preserving the Docker frame timestamp
+    /// parsed by the collector alongside the demultiplexed `stream` and
+    /// `container` metadata.
+    pub fn parse_log_entry(
+        &self,
+        entry: &crate::collector::LogEntry,
+    ) -> Result<EnrichedLogEntry, ParseError> {
+        self.parse_docker_log_inner(
+            entry.raw_bytes.as_ref(),
+            &entry.container,
+            Some(entry.stream),
+            entry.timestamp,
+        )
+    }
+
     /// Parse a log line for which the OS stream is already known, because
     /// Docker demultiplexed it for us (see `collector::LogStream`). Callers
     /// reading straight off the Docker API must use this: once bollard has
@@ -225,7 +247,7 @@ impl UniversalParser {
         container_info: &ContainerInfo,
         stream: LogStream,
     ) -> Result<EnrichedLogEntry, ParseError> {
-        self.parse_docker_log_inner(log_bytes, container_info, Some(stream))
+        self.parse_docker_log_inner(log_bytes, container_info, Some(stream), None)
     }
 
     /// Parse a log line with no out-of-band stream information, so the stream
@@ -240,7 +262,7 @@ impl UniversalParser {
         log_bytes: &[u8],
         container_info: &ContainerInfo,
     ) -> Result<EnrichedLogEntry, ParseError> {
-        self.parse_docker_log_inner(log_bytes, container_info, None)
+        self.parse_docker_log_inner(log_bytes, container_info, None, None)
     }
 
     fn parse_docker_log_inner(
@@ -248,6 +270,7 @@ impl UniversalParser {
         log_bytes: &[u8],
         container_info: &ContainerInfo,
         stream_hint: Option<LogStream>,
+        timestamp_hint: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<EnrichedLogEntry, ParseError> {
         // Validate input size first
         self.validate_input_size(log_bytes)?;
@@ -259,40 +282,55 @@ impl UniversalParser {
         self.validate_field_size(&raw_str, "log_line")?;
 
         // Check if this is already a Docker JSON format or raw application log
-        let (log_content, stream, timestamp) = if raw_str.trim_start().starts_with("{\"log\":") {
-            // This is Docker JSON format. Parse directly from the validated
-            // borrow instead of round-tripping through an owned `String` and
-            // then `Bytes` first - `parse_slice` still needs its own mutable
-            // copy for simd-json, but this skips the extra one in between.
-            let docker_entry = self.docker_parser.parse_slice(raw_str.as_bytes())?;
+        let (log_content, stream, docker_timestamp) =
+            if raw_str.trim_start().starts_with("{\"log\":") {
+                // This is Docker JSON format. Parse directly from the validated
+                // borrow instead of round-tripping through an owned `String` and
+                // then `Bytes` first - `parse_slice` still needs its own mutable
+                // copy for simd-json, but this skips the extra one in between.
+                let docker_entry = self.docker_parser.parse_slice(raw_str.as_bytes())?;
 
-            // Remove trailing newline from log content
-            let log = docker_entry.log.trim_end_matches('\n').to_string();
+                // Remove trailing newline from log content
+                let log = docker_entry.log.trim_end_matches('\n').to_string();
 
-            // Validate extracted fields
-            self.validate_field_size(&log, "log_content")?;
-            self.validate_field_size(&docker_entry.stream, "stream")?;
-            self.validate_field_size(&docker_entry.time, "timestamp")?;
+                // Validate extracted fields
+                self.validate_field_size(&log, "log_content")?;
+                self.validate_field_size(&docker_entry.stream, "stream")?;
+                self.validate_field_size(&docker_entry.time, "timestamp")?;
 
-            // The demultiplexed frame wins when we have one: a payload that
-            // merely looks like json-file format (an application logging its
-            // own "log" key) must not talk us out of the real stream.
-            let stream = stream_hint.map_or(docker_entry.stream, |s| s.as_str().to_string());
+                // The demultiplexed frame wins when we have one: a payload that
+                // merely looks like json-file format (an application logging its
+                // own "log" key) must not talk us out of the real stream.
+                let stream = stream_hint.map_or(docker_entry.stream, |s| s.as_str().to_string());
 
-            (log, stream, docker_entry.time)
-        } else {
-            // This is raw application log (when timestamps: false in Docker API)
-            // Remove trailing newline/carriage return
-            let log = raw_str
-                .trim_end_matches('\n')
-                .trim_end_matches('\r')
-                .to_string();
-            let stream = stream_hint
-                .unwrap_or(LogStream::Stdout)
-                .as_str()
-                .to_string();
-            (log, stream, chrono::Utc::now().to_rfc3339())
-        };
+                let source_ts = timestamp_hint
+                    .map(|ts| ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true))
+                    .or_else(|| {
+                        super::services::parse_rfc3339_utc(&docker_entry.time)
+                            .map(|_| docker_entry.time)
+                    });
+
+                (log, stream, source_ts)
+            } else {
+                // Raw application log from Docker API streaming
+                let log = raw_str
+                    .trim_end_matches('\n')
+                    .trim_end_matches('\r')
+                    .to_string();
+                let stream = stream_hint
+                    .unwrap_or(LogStream::Stdout)
+                    .as_str()
+                    .to_string();
+                let source_ts = timestamp_hint
+                    .or_else(|| {
+                        crate::collector::parse_log_timestamp_prefix(bytes::Bytes::copy_from_slice(
+                            raw_str.as_bytes(),
+                        ))
+                        .0
+                    })
+                    .map(|ts| ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true));
+                (log, stream, source_ts)
+            };
 
         // Now parse the actual log content
         let parsed_entry = self.parse_service_log(&log_content, &container_info.service_name)?;
@@ -301,6 +339,27 @@ impl UniversalParser {
         let mut fields = parsed_entry.fields;
         let trace_id = fields.remove("trace_id");
         let span_id = fields.remove("span_id");
+
+        // Service-emitted event timestamp wins over the Docker pipe timestamp; fall back to
+        // wall-clock only when neither exists, and record that fallback explicitly.
+        let timestamp = if let Some(service_ts) = parsed_entry.timestamp {
+            service_ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+        } else if let Some(docker_ts) = docker_timestamp {
+            docker_ts
+        } else {
+            self.timestamp_fallback_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            fields.insert(
+                "timestamp_fallback".to_string(),
+                "processing_time".to_string(),
+            );
+            tracing::debug!(
+                service_name = %container_info.service_name,
+                container_id = %container_info.id,
+                "No source timestamp in log entry; falling back to forwarder processing time"
+            );
+            chrono::Utc::now().to_rfc3339()
+        };
 
         // Enrich with container metadata
         Ok(EnrichedLogEntry {
@@ -850,26 +909,76 @@ mod tests {
     fn log_entry_from_docker_frame_enriches_with_source_timestamp() {
         let container = std::sync::Arc::new(create_go_backend_container_info());
         let frame = bytes::Bytes::from_static(b"2020-01-01T00:00:00.123456789Z {\"msg\":\"x\"}\n");
-        let (_parsed_ts, payload) = crate::collector::parse_log_timestamp_prefix(frame);
+        let (parsed_ts, payload) = crate::collector::parse_log_timestamp_prefix(frame);
         let log_entry = crate::collector::LogEntry {
             container,
             stream: LogStream::Stdout,
+            timestamp: parsed_ts,
             raw_bytes: payload,
         };
 
         let parser = UniversalParser::new();
         let enriched = parser
-            .parse_docker_log_with_stream(
-                &log_entry.raw_bytes,
-                &log_entry.container,
-                log_entry.stream,
-            )
+            .parse_log_entry(&log_entry)
             .expect("Failed to parse Docker log entry");
 
         assert!(
             enriched.timestamp.starts_with("2020-01-01T00:00:00.123"),
             "expected enriched timestamp to start with 2020-01-01T00:00:00.123, got {}",
             enriched.timestamp
+        );
+        assert_eq!(parser.timestamp_fallback_count(), 0);
+        assert!(!enriched.fields.contains_key("timestamp_fallback"));
+    }
+
+    #[test]
+    fn service_timestamp_takes_precedence_over_docker_frame_timestamp() {
+        let container = std::sync::Arc::new(create_go_backend_container_info());
+        let frame = bytes::Bytes::from_static(
+            b"2020-01-01T00:00:01.000000000Z {\"time\":\"2020-01-01T00:00:00.123456789Z\",\"level\":\"info\",\"msg\":\"x\"}\n",
+        );
+        let (parsed_ts, payload) = crate::collector::parse_log_timestamp_prefix(frame);
+        let log_entry = crate::collector::LogEntry {
+            container,
+            stream: LogStream::Stdout,
+            timestamp: parsed_ts,
+            raw_bytes: payload,
+        };
+
+        let parser = UniversalParser::new();
+        let enriched = parser
+            .parse_log_entry(&log_entry)
+            .expect("Failed to parse Docker log entry");
+
+        assert!(
+            enriched.timestamp.starts_with("2020-01-01T00:00:00.123"),
+            "expected service timestamp to take precedence over Docker frame timestamp, got {}",
+            enriched.timestamp
+        );
+        assert_eq!(parser.timestamp_fallback_count(), 0);
+    }
+
+    #[test]
+    fn missing_source_timestamp_records_explicit_processing_time_fallback() {
+        let container = std::sync::Arc::new(create_go_backend_container_info());
+        let log_entry = crate::collector::LogEntry {
+            container,
+            stream: LogStream::Stdout,
+            timestamp: None,
+            raw_bytes: bytes::Bytes::from_static(b"{\"msg\":\"x\"}\n"),
+        };
+
+        let parser = UniversalParser::new();
+        assert_eq!(parser.timestamp_fallback_count(), 0);
+
+        let enriched = parser
+            .parse_log_entry(&log_entry)
+            .expect("Failed to parse Docker log entry");
+
+        assert_eq!(parser.timestamp_fallback_count(), 1);
+        assert_eq!(
+            enriched.fields.get("timestamp_fallback"),
+            Some(&"processing_time".to_string())
         );
     }
 }
