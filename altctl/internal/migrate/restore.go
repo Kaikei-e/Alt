@@ -320,10 +320,15 @@ func (m *Migrator) buildComposeArgs(args ...string) ([]string, error) {
 		return nil, err
 	}
 	result := []string{"compose"}
+	var found int
 	for _, f := range files {
 		if _, err := os.Stat(f); err == nil {
 			result = append(result, "-f", f)
+			found++
 		}
+	}
+	if found == 0 {
+		return nil, fmt.Errorf("no compose files found in %s", m.composeDir)
 	}
 	result = append(result, args...)
 	return result, nil
