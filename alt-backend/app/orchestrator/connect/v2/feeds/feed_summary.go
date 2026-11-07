@@ -91,14 +91,25 @@ func (h *Handler) StreamSummarize(
 		return sendErr
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	type ppStreamResult struct {
 		stream io.ReadCloser
 		err    error
 	}
-	ppCh := make(chan ppStreamResult, 1)
+	ppCh := make(chan ppStreamResult)
 	go func() {
 		s, e := h.streamPreProcessorSummarize(ctx, resolvedContent, resolvedArticleID, resolvedTitle)
-		ppCh <- ppStreamResult{stream: s, err: e}
+		select {
+		case ppCh <- ppStreamResult{stream: s, err: e}:
+		case <-ctx.Done():
+			if s != nil {
+				if closeErr := s.Close(); closeErr != nil {
+					h.logger.DebugContext(ctx, "failed to close pre-processor stream", "error", closeErr)
+				}
+			}
+		}
 	}()
 
 	heartbeatTicker := time.NewTicker(15 * time.Second)
