@@ -39,6 +39,8 @@ Checks:
      for `docker://` images, an `@sha256:` digest). Tags move; digests do
      not. The repository setting `sha_pinning_required` enforces the same
      at run time; this check surfaces it at PR time.
+  8. Every literal (non-glob prefix) entry in `on.push.paths` and
+     `on.pull_request.paths` resolves to an existing file or directory.
 """
 from __future__ import annotations
 
@@ -84,6 +86,29 @@ INLINE_ENV_RE = re.compile(r"\b([A-Z_][A-Z0-9_]*)=(\S+)")
 PROJECT_FLAG_RE = re.compile(r"--project(?:=|\s+)([A-Za-z0-9:_.-]+)")
 # Shell separators that start a fresh command within one `run:` block.
 COMMAND_SPLIT_RE = re.compile(r"&&|\|\||;|\n|\|")
+GLOB_CHAR_RE = re.compile(r"[*?[]")
+
+# Pre-existing dead trigger paths in helm-validation.yml (legacy Kubernetes assets moved under stopped-using-k8s/).
+ALLOWLISTED_DEAD_PATHS: set[tuple[str, str]] = {
+    (".github/workflows/helm-validation.yml", "charts/**"),
+    (".github/workflows/helm-validation.yml", "k8s-manifests/deploy-helm.sh"),
+    (".github/workflows/helm-validation.yml", "k8s-manifests/validate-helm.sh"),
+}
+
+
+def resolve_path_filter_target(entry: str) -> str:
+    """Return the literal path or non-glob directory prefix for a paths entry."""
+    clean = entry.lstrip("!")
+    m = GLOB_CHAR_RE.search(clean)
+    if m is None:
+        return clean.rstrip("/") or "."
+    prefix = clean[: m.start()]
+    if prefix.endswith("/"):
+        return prefix.rstrip("/") or "."
+    if "/" in prefix:
+        return prefix.rsplit("/", 1)[0] or "."
+    return "."
+
 
 
 def extract_labels(runs_on):
@@ -285,6 +310,38 @@ def main() -> int:
                     file=sys.stderr,
                 )
             bad += 1
+
+        # Rule 8 — every literal (or non-glob prefix) entry in
+        # on.push.paths / on.pull_request.paths resolves to an existing
+        # file or directory.
+        if isinstance(triggers, dict):
+            for trig_name in ("push", "pull_request"):
+                trig_cfg = triggers.get(trig_name)
+                if not isinstance(trig_cfg, dict):
+                    continue
+                paths_list = trig_cfg.get("paths")
+                if not isinstance(paths_list, list):
+                    continue
+                for raw_entry in paths_list:
+                    if not isinstance(raw_entry, str):
+                        continue
+                    target = resolve_path_filter_target(raw_entry)
+                    if not os.path.exists(target):
+                        if (path, raw_entry) in ALLOWLISTED_DEAD_PATHS:
+                            print(
+                                f"::warning file={path}::on.{trig_name}.paths "
+                                f"entry {raw_entry!r} resolves to missing "
+                                f"path {target!r} (allowlisted legacy entry).",
+                                file=sys.stderr,
+                            )
+                        else:
+                            print(
+                                f"::error file={path}::on.{trig_name}.paths "
+                                f"entry {raw_entry!r} resolves to missing "
+                                f"path {target!r}.",
+                                file=sys.stderr,
+                            )
+                            bad += 1
 
         # Rule 2 — every job on a static GitHub-hosted label. Applies to all
         # triggers: a reusable workflow has no pull_request trigger of its
