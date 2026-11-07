@@ -181,12 +181,25 @@ class TestFetchArticleById:
         assert result["url"] == "https://example.com"
 
     def test_returns_none_on_connect_error(self, fetcher, mock_client) -> None:
-        """Returns None when ConnectError is raised."""
+        """Returns None when ConnectError is Code.NOT_FOUND."""
         mock_client.get_article_content.side_effect = ConnectError(Code.NOT_FOUND, "Article not found")
 
         result = fetcher.fetch_article_by_id(None, "missing-id")
 
         assert result is None
+
+    @pytest.mark.parametrize(
+        "code",
+        [Code.UNAVAILABLE, Code.INTERNAL, Code.DEADLINE_EXCEEDED],
+    )
+    def test_propagates_non_not_found_connect_error(self, fetcher, mock_client, code: Code) -> None:
+        """Transient or internal ConnectError must propagate so callers do not treat it as a missing article."""
+        mock_client.get_article_content.side_effect = ConnectError(code, "upstream failure")
+
+        with pytest.raises(ConnectError) as exc_info:
+            fetcher.fetch_article_by_id(None, "art-1")
+
+        assert exc_info.value.code == code
 
 
 class TestFetchArticlesByStatus:

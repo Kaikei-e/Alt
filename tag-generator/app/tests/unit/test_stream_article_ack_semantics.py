@@ -14,10 +14,14 @@ ports, so they pin what a caller observes: which deliveries leave the PEL.
 
 import asyncio
 from typing import Any, cast
+from unittest.mock import MagicMock
 
 import redis.asyncio as redis
+from connectrpc.code import Code
+from connectrpc.errors import ConnectError
 
 from tag_extractor.extract import TagExtractionOutcome
+from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
 from tag_generator.service import TagGeneratorService
 from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer
 from tag_generator.stream_event_handler import TagGeneratorEventHandler
@@ -193,3 +197,46 @@ def test_missing_article_is_acked() -> None:
 
     assert extractor.calls == 0
     assert client.acks == ["4-0"]
+
+
+def test_transient_connect_error_on_fetch_article_is_not_acked() -> None:
+    """A transient ConnectError from GetArticleContent must leave the message
+    unacked in the PEL for redelivery, while Code.NOT_FOUND still ACKs.
+    """
+    extractor = _FakeExtractor(tags=["technology"])
+    inserter = _FakeInserter()
+    rpc_client = MagicMock()
+    rpc_client.get_article_content.side_effect = ConnectError(Code.UNAVAILABLE, "upstream unavailable")
+
+    service = _service(extractor, inserter)
+    service.article_fetcher = ConnectArticleFetcher(rpc_client, {})
+    consumer = StreamConsumer(ConsumerConfig(enabled=True), handler=cast(Any, None))
+    consumer.handler = TagGeneratorEventHandler(service, consumer)
+    client = _ScriptedReadClient([_delivery("5-0")])
+    consumer.client = cast(redis.Redis, client)
+
+    asyncio.run(consumer._read_and_process())
+
+    assert extractor.calls == 0
+    assert inserter.calls == []
+    assert client.acks == [], "transient ConnectError must not ACK the ArticleCreated message"
+
+
+def test_not_found_connect_error_on_fetch_article_is_acked() -> None:
+    extractor = _FakeExtractor(tags=["technology"])
+    inserter = _FakeInserter()
+    rpc_client = MagicMock()
+    rpc_client.get_article_content.side_effect = ConnectError(Code.NOT_FOUND, "article not found")
+
+    service = _service(extractor, inserter)
+    service.article_fetcher = ConnectArticleFetcher(rpc_client, {})
+    consumer = StreamConsumer(ConsumerConfig(enabled=True), handler=cast(Any, None))
+    consumer.handler = TagGeneratorEventHandler(service, consumer)
+    client = _ScriptedReadClient([_delivery("6-0")])
+    consumer.client = cast(redis.Redis, client)
+
+    asyncio.run(consumer._read_and_process())
+
+    assert extractor.calls == 0
+    assert inserter.calls == []
+    assert client.acks == ["6-0"]
