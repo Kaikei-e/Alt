@@ -5,6 +5,7 @@ package infrastructure
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -58,6 +59,16 @@ func (c *CertFile) Load(_ context.Context) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrCertParseFailed, err)
 	}
+	keyRaw, err := os.ReadFile(c.KeyPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, domain.ErrCertNotFound
+		}
+		return nil, fmt.Errorf("%w: %v", domain.ErrCertParseFailed, err)
+	}
+	if _, err := tls.X509KeyPair(raw, keyRaw); err != nil {
+		return nil, fmt.Errorf("%w: %v", domain.ErrCertKeyMismatch, err)
+	}
 	return cert, nil
 }
 
@@ -65,11 +76,29 @@ func (c *CertFile) Load(_ context.Context) (*x509.Certificate, error) {
 // 0444, the key as 0400. Both are chowned to OwnerUID:OwnerGID *before*
 // rename; post-rename fchmod/fchown would race a reader.
 func (c *CertFile) Write(_ context.Context, certPEM, keyPEM []byte) error {
-	if err := c.atomicWrite(c.CertPath, certPEM, 0o444); err != nil {
+	certTmp, err := c.stageTempFile(c.CertPath, certPEM, 0o444)
+	if err != nil {
 		return fmt.Errorf("write cert: %w", err)
 	}
-	if err := c.atomicWrite(c.KeyPath, keyPEM, 0o400); err != nil {
+	keyTmp, err := c.stageTempFile(c.KeyPath, keyPEM, 0o400)
+	if err != nil {
+		_ = os.Remove(certTmp)
 		return fmt.Errorf("write key: %w", err)
+	}
+	prevKey, prevKeyErr := os.ReadFile(c.KeyPath)
+	if err := os.Rename(keyTmp, c.KeyPath); err != nil {
+		_ = os.Remove(keyTmp)
+		_ = os.Remove(certTmp)
+		return fmt.Errorf("write key: %w", err)
+	}
+	if err := os.Rename(certTmp, c.CertPath); err != nil {
+		_ = os.Remove(certTmp)
+		if prevKeyErr == nil {
+			_ = c.atomicWrite(c.KeyPath, prevKey, 0o400)
+		} else if errors.Is(prevKeyErr, os.ErrNotExist) {
+			_ = os.Remove(c.KeyPath)
+		}
+		return fmt.Errorf("write cert: %w", err)
 	}
 	return nil
 }
@@ -85,10 +114,22 @@ func (c *CertFile) MarkRotated(_ context.Context, at time.Time) error {
 }
 
 func (c *CertFile) atomicWrite(path string, data []byte, mode os.FileMode) error {
+	tmpName, err := c.stageTempFile(path, data, mode)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
+}
+
+func (c *CertFile) stageTempFile(path string, data []byte, mode os.FileMode) (string, error) {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".pkiagent-*")
 	if err != nil {
-		return err
+		return "", err
 	}
 	tmpName := tmp.Name()
 	cleanup := func() { _ = os.Remove(tmpName) }
@@ -96,12 +137,12 @@ func (c *CertFile) atomicWrite(path string, data []byte, mode os.FileMode) error
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		cleanup()
-		return err
+		return "", err
 	}
 	if err := tmp.Chmod(mode); err != nil {
 		_ = tmp.Close()
 		cleanup()
-		return err
+		return "", err
 	}
 	// Only chown if explicitly requested; otherwise inherit the runtime
 	// uid (lets the consumer's uid drive the perms via the sidecar
@@ -115,21 +156,17 @@ func (c *CertFile) atomicWrite(path string, data []byte, mode os.FileMode) error
 		if err := chown(tmpName, c.OwnerUID, c.OwnerGID); err != nil {
 			_ = tmp.Close()
 			cleanup()
-			return err
+			return "", err
 		}
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 		cleanup()
-		return err
+		return "", err
 	}
 	if err := tmp.Close(); err != nil {
 		cleanup()
-		return err
+		return "", err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		cleanup()
-		return err
-	}
-	return nil
+	return tmpName, nil
 }
