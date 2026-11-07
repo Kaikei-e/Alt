@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -110,4 +111,101 @@ func TestBFFHandler_Dedup_LeaderCancel_WaiterStillGets200(t *testing.T) {
 	defer hitsMu.Unlock()
 	assert.Equal(t, 1, hits,
 		"the leader and waiter must share a single upstream call (singleflight)")
+}
+
+func TestBFFHandler_Dedup_PostMutationReadDoesNotJoinPreMutationFlight(t *testing.T) {
+	const unreadEndpoint = "/alt.feeds.v2.FeedService/GetUnreadFeeds"
+	const markAsReadEndpoint = "/alt.feeds.v2.FeedService/MarkAsRead"
+	const reqBody = `{"cursor":"1"}`
+	const staleBody = `{"feeds":["unread-1"]}`
+	const freshBody = `{"feeds":[]}`
+
+	received := make(chan struct{}, 1)
+	release := make(chan struct{})
+
+	var hits int
+	var hitsMu sync.Mutex
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == markAsReadEndpoint {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+			return
+		}
+
+		hitsMu.Lock()
+		hits++
+		callNum := hits
+		hitsMu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if callNum == 1 {
+			select {
+			case received <- struct{}{}:
+			default:
+			}
+			<-release
+			w.Write([]byte(staleBody))
+			return
+		}
+		w.Write([]byte(freshBody))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCache:  true,
+		CacheMaxSize: 100,
+		EnableDedup:  true,
+		DedupWindow:  500 * time.Millisecond,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	firstReq := httptest.NewRequest("POST", unreadEndpoint, strings.NewReader(reqBody))
+	firstReq.Header.Set("X-Alt-Backend-Token", token)
+	firstRec := httptest.NewRecorder()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		handler.ServeHTTP(firstRec, firstReq)
+	}()
+
+	select {
+	case <-received:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first GetUnreadFeeds call never reached the backend")
+	}
+
+	markReq := httptest.NewRequest("POST", markAsReadEndpoint, strings.NewReader(`{"articleUrl":"https://example.com/1"}`))
+	markReq.Header.Set("X-Alt-Backend-Token", token)
+	markRec := httptest.NewRecorder()
+	handler.ServeHTTP(markRec, markReq)
+	assert.Equal(t, http.StatusOK, markRec.Code)
+
+	secondReq := httptest.NewRequest("POST", unreadEndpoint, strings.NewReader(reqBody))
+	secondReq.Header.Set("X-Alt-Backend-Token", token)
+	secondRec := httptest.NewRecorder()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		handler.ServeHTTP(secondRec, secondReq)
+	}()
+
+	time.Sleep(150 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	assert.Equal(t, http.StatusOK, secondRec.Code)
+	assert.Equal(t, freshBody, secondRec.Body.String(),
+		"a read issued after MarkAsRead completed must not receive the pre-mutation flight's stale response")
+
+	hitsMu.Lock()
+	defer hitsMu.Unlock()
+	assert.Equal(t, 2, hits,
+		"post-mutation GetUnreadFeeds must start a new upstream call rather than joining the pre-mutation flight")
 }
