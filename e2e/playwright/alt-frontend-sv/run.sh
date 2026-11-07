@@ -12,10 +12,9 @@
 # environment variables (`$app/env/private`), so the production image serves the
 # E2E suite when started on `--network host` with the mock endpoints on
 # 127.0.0.1:4001-4003 (started by `tests/e2e/global-setup.ts`). Passing
-# `PW_NO_WEBSERVER=1` disables `playwright.config.ts`'s `bun run build && node
-# build` webServer, and the Playwright container installs only the three E2E
-# runner packages (`@playwright/test`, `axe-playwright`, `jsonwebtoken`) into
-# `/work` rather than installing Bun and the full frontend dependency tree.
+# `PW_NO_WEBSERVER=1` disables `playwright.config.ts`'s `webServer` command, and
+# the Playwright container installs only the E2E runner dependencies into `/work`
+# rather than installing Bun and the full frontend dependency tree.
 #
 # Environment overrides:
 #   IMAGE_TAG                 — Docker tag for the service image (default: ci)
@@ -50,7 +49,6 @@ PLAYWRIGHT_VERSION="$(
 : "${PROJECTS:=--project=auth --project=desktop-chromium --project=mobile-chrome}"
 : "${RUN_ID:=$(date +%s)}"
 : "${REPORT_DIR:=$ROOT/e2e/reports/alt-frontend-sv-$RUN_ID}"
-: "${STAGING_PROJECT_NAME:=alt-staging-alt-frontend-sv}"
 
 mkdir -p "$REPORT_DIR"
 
@@ -61,6 +59,7 @@ fi
 
 E2E_ORIGIN="http://127.0.0.1:${ALT_E2E_PORT}"
 SAFE_RUN_ID="${RUN_ID//[^a-zA-Z0-9_.-]/-}"
+: "${STAGING_PROJECT_NAME:=alt-staging-alt-frontend-sv-${SAFE_RUN_ID}}"
 APP_CONTAINER="alt-e2e-frontend-sv-${SAFE_RUN_ID}-$$"
 
 cleanup() {
@@ -77,15 +76,30 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Remove any leftover container from a prior shard or cancelled run so
-# 127.0.0.1:${ALT_E2E_PORT} is free before starting the new container.
-stale_containers="$(docker ps -aq --filter "label=alt.e2e.suite=alt-frontend-sv" 2>/dev/null || true)"
+# Remove any leftover container belonging to this project/run before checking
+# whether the target port is free.
+stale_containers="$(
+  docker ps -aq \
+    --filter "label=alt.e2e.suite=alt-frontend-sv" \
+    --filter "label=com.docker.compose.project=${STAGING_PROJECT_NAME}" \
+    2>/dev/null || true
+)"
 if [[ -n "$stale_containers" ]]; then
   # shellcheck disable=SC2086
   docker rm -f $stale_containers >/dev/null 2>&1 || true
 fi
 
+# Guard against running green or red against an unrelated process already bound
+# to ${ALT_E2E_PORT} (the same invariant `reuseExistingServer: false` enforced
+# when Playwright managed webServer).
+if curl -fsS --max-time 2 "${E2E_ORIGIN}/health" >/dev/null 2>&1; then
+  echo "refusing to start: ${E2E_ORIGIN}/health is already answering before container launch (set ALT_E2E_PORT to choose an unused port)" >&2
+  exit 1
+fi
+
 echo "==> starting pre-built frontend ($ALT_FRONTEND_SV_IMAGE) on $E2E_ORIGIN" >&2
+# The compose project label lets `e2e/_lib/teardown-project.sh` collect this
+# container after a `KEEP_STACK=1` run or an external cancellation.
 docker run -d \
   --name "$APP_CONTAINER" \
   --label "alt.e2e.suite=alt-frontend-sv" \
@@ -108,7 +122,11 @@ docker run -d \
   "$ALT_FRONTEND_SV_IMAGE" >/dev/null
 
 for attempt in $(seq 1 60); do
-  if curl -fsS "${E2E_ORIGIN}/health" >/dev/null 2>&1; then
+  if [[ "$(docker inspect -f '{{.State.Running}}' "$APP_CONTAINER" 2>/dev/null || echo false)" != "true" ]]; then
+    echo "alt-frontend-sv container ($APP_CONTAINER) exited before becoming healthy" >&2
+    exit 1
+  fi
+  if curl -fsS --max-time 2 "${E2E_ORIGIN}/health" >/dev/null 2>&1; then
     break
   fi
   if [[ "$attempt" -eq 60 ]]; then
@@ -119,10 +137,13 @@ for attempt in $(seq 1 60); do
 done
 
 echo "==> running Playwright ($SHARD) in $PLAYWRIGHT_IMAGE" >&2
+# Mask any host `alt-frontend-sv/node_modules` with a tmpfs so Node never loads
+# a second copy of `@playwright/test` from the checkout ahead of `/work/node_modules`.
 docker run --rm \
   --network host \
   -v "$ROOT:/work/repo" \
   -v "$REPORT_DIR:$REPORT_DIR" \
+  --mount type=tmpfs,destination=/work/repo/alt-frontend-sv/node_modules \
   -w /work/repo/alt-frontend-sv \
   -e CI=true \
   -e PW_NO_WEBSERVER=1 \
@@ -135,10 +156,6 @@ docker run --rm \
   -e REPORT_DIR="$REPORT_DIR" \
   "$PLAYWRIGHT_IMAGE" \
   bash -euxo pipefail -c '
-    # Install only the external packages imported under tests/e2e/ and
-    # playwright.config.ts into /work (an ancestor of /work/repo/alt-frontend-sv
-    # on container overlayfs so Node ESM/CJS resolution finds /work/node_modules
-    # without writing root-owned files into the bind-mounted checkout).
     node -e '\''
       const fs = require("node:fs");
       const pkg = JSON.parse(fs.readFileSync("/work/repo/alt-frontend-sv/package.json", "utf8"));
