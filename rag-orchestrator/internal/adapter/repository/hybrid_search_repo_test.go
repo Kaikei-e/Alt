@@ -125,3 +125,29 @@ func TestSearchNeighbors_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *test
 		assertOuterMetadataRejoin(t, parts[1], "$4")
 	})
 }
+
+func TestHybridSearch_VectorArmsExcludeNullEmbeddingsOnly(t *testing.T) {
+	t.Run("HybridSearch excludes NULL embeddings in vector_candidates only", func(t *testing.T) {
+		q := buildHybridSearchQuery("english", 60)
+		parts := strings.Split(q, "rrf AS")
+		require.Len(t, parts, 2)
+		vectorPart := strings.Split(parts[0], "text_matches AS")[0]
+		textPart := strings.Split(parts[0], "text_matches AS")[1]
+
+		assert.Contains(t, vectorPart, "c.embedding IS NOT NULL")
+		assert.Less(t, strings.Index(vectorPart, "c.embedding IS NOT NULL"), strings.Index(vectorPart, "ORDER BY c.embedding <=> $1"))
+		assert.NotContains(t, textPart, "c.embedding IS NOT NULL")
+	})
+
+	t.Run("SearchNeighbors excludes NULL embeddings in vector_candidates only", func(t *testing.T) {
+		q := buildSearchNeighborsQuery("english", 60, 4, 5)
+		parts := strings.Split(q, "rrf AS")
+		require.Len(t, parts, 2)
+		vectorPart := strings.Split(parts[0], "text_matches AS")[0]
+		textPart := strings.Split(parts[0], "text_matches AS")[1]
+
+		assert.Contains(t, vectorPart, "c.embedding IS NOT NULL")
+		assert.Less(t, strings.Index(vectorPart, "c.embedding IS NOT NULL"), strings.Index(vectorPart, "ORDER BY c.embedding <=> $4"))
+		assert.NotContains(t, textPart, "c.embedding IS NOT NULL")
+	})
+}
