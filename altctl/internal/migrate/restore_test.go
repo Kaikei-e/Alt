@@ -12,6 +12,15 @@ import (
 	"time"
 )
 
+func (f *fakeBackupEngine) resolveContainer(_ context.Context, spec VolumeSpec) string {
+	return "alt-" + spec.Service
+}
+
+type noResolverBackupEngine struct{}
+
+func (noResolverBackupEngine) Backup(context.Context, VolumeSpec, string) error  { return nil }
+func (noResolverBackupEngine) Restore(context.Context, VolumeSpec, string) error { return nil }
+
 // createTestBackup creates a test backup directory with a valid manifest
 func createTestBackup(t *testing.T) string {
 	t.Helper()
@@ -449,6 +458,105 @@ exit 0
 		}
 		if tarEngine.calls.Load() > 0 || pgEngine.calls.Load() > 0 {
 			t.Fatalf("expected restore to abort before touching any volume, got tar calls=%d pg calls=%d", tarEngine.calls.Load(), pgEngine.calls.Load())
+		}
+	})
+
+	t.Run("returns error when injected pgBackup engine lacks container resolution", func(t *testing.T) {
+		backupDir := createTestBackup(t)
+
+		composeDir := t.TempDir()
+		composeFile := filepath.Join(composeDir, "compose.yaml")
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		binDir := t.TempDir()
+		fakeDocker := filepath.Join(binDir, "docker")
+		script := `#!/usr/bin/env sh
+exit 0
+`
+		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+		migrator := &Migrator{
+			registry:     NewVolumeRegistry(),
+			volumeBackup: &fakeBackupEngine{},
+			pgBackup:     noResolverBackupEngine{},
+			composeDir:   composeDir,
+			projectName:  "alt",
+			logger:       slog.Default(),
+			dryRun:       false,
+		}
+
+		err := migrator.Restore(context.Background(), RestoreOptions{
+			BackupDir: backupDir,
+			Force:     true,
+			Verify:    false,
+			Volumes:   []string{"db_data_17"},
+		})
+		if err == nil {
+			t.Fatal("expected Restore() to return an error when pgBackup lacks resolveContainer")
+		}
+	})
+
+	t.Run("returns error before any docker call when PostgreSQL volume spec has DBPort 0", func(t *testing.T) {
+		backupDir := createTestBackup(t)
+
+		composeDir := t.TempDir()
+		composeFile := filepath.Join(composeDir, "compose.yaml")
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		binDir := t.TempDir()
+		logFile := filepath.Join(t.TempDir(), "docker.log")
+		fakeDocker := filepath.Join(binDir, "docker")
+		script := `#!/usr/bin/env sh
+printf '%s\n' "$*" >> "` + logFile + `"
+exit 0
+`
+		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+		registry := &VolumeRegistry{
+			volumes: []VolumeSpec{
+				{
+					Name:       "db_data_17",
+					Service:    "db",
+					BackupType: BackupTypePostgreSQL,
+					Category:   CategoryCritical,
+					DBName:     "alt",
+					DBUser:     "alt_db_user",
+					DBPort:     0,
+				},
+			},
+		}
+
+		migrator := &Migrator{
+			registry:     registry,
+			volumeBackup: &fakeBackupEngine{},
+			pgBackup:     &fakeBackupEngine{},
+			composeDir:   composeDir,
+			projectName:  "alt",
+			logger:       slog.Default(),
+			dryRun:       false,
+		}
+
+		err := migrator.Restore(context.Background(), RestoreOptions{
+			BackupDir: backupDir,
+			Force:     true,
+			Verify:    false,
+			Volumes:   []string{"db_data_17"},
+		})
+		if err == nil {
+			t.Fatal("expected Restore() to return an error when PostgreSQL volume spec has DBPort 0")
+		}
+		if raw, _ := os.ReadFile(logFile); strings.TrimSpace(string(raw)) != "" {
+			t.Fatalf("expected no docker calls before failing on DBPort 0, got: %q", strings.TrimSpace(string(raw)))
 		}
 	})
 }
