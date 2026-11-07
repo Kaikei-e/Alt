@@ -132,3 +132,40 @@ class TestGetMetricsUsecase:
         trends = await get_metrics_uc.get_trends(window_days=30)
 
         assert trends == []
+
+    async def test_get_trends_skips_none_cluster_silhouette(self, get_metrics_uc, mock_db):
+        ts = datetime(2025, 1, 1, tzinfo=UTC)
+        mock_db.fetch_evaluation_history.return_value = [
+            {
+                "created_at": ts,
+                "metrics": {
+                    "cluster": {"economy": {"silhouette_score": None, "num_clusters": 3}},
+                    "pipeline": {"success_rate": 1.0},
+                },
+            }
+        ]
+
+        trends = await get_metrics_uc.get_trends(window_days=7)
+
+        metric_names = {t["metric_name"] for t in trends}
+        assert "cluster_avg_silhouette" not in metric_names
+        assert "pipeline_success_rate" in metric_names
+
+        mock_db.fetch_evaluation_history.return_value = [
+            {
+                "created_at": ts,
+                "metrics": {
+                    "cluster": {
+                        "economy": {"silhouette_score": None, "num_clusters": 3},
+                        "tech": {"silhouette_score": 0.4, "num_clusters": 4},
+                    },
+                    "pipeline": {"success_rate": 1.0},
+                },
+            }
+        ]
+
+        trends = await get_metrics_uc.get_trends(window_days=7)
+
+        cluster_trend = next(t for t in trends if t["metric_name"] == "cluster_avg_silhouette")
+        assert cluster_trend["current_value"] == pytest.approx(0.4)
+        assert cluster_trend["data_points"] == [{"timestamp": ts, "value": pytest.approx(0.4)}]
