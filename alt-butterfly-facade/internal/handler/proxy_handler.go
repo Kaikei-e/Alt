@@ -38,6 +38,8 @@ var streamingProcedures = map[string]bool{
 	"/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates": true,
 	"/alt.acolyte.v1.AcolyteService/StreamRunProgress":                       true,
 	"/alt.tts.v1.TTSService/SynthesizeStream":                                true,
+	"/alt.articles.v2.ArticleService/StreamArticleTags":                      true,
+	"/alt.recap.v2.JobStatusService/StreamJobProgress":                       true,
 }
 
 // ProxyHandler proxies Connect-RPC requests to the backend.
