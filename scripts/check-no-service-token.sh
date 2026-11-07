@@ -78,8 +78,9 @@ PATTERNS=(
 TOTAL=0
 for pat in "${PATTERNS[@]}"; do
   rc=0
-  rg_out=$(rg -c "$pat" "${EXCLUDES[@]}" 2>/dev/null) || rc=$?
-  if [[ "$rc" -gt 1 ]]; then
+  rg_out=$(rg -c "$pat" "${EXCLUDES[@]}" . 2>/dev/null) || rc=$?
+  if [[ "$rc" -ge 2 ]]; then
+    echo "ERROR: rg failed for pattern '$pat' (exit $rc)" >&2
     exit "$rc"
   fi
   count=$(awk -F: '{s+=$2} END{print s+0}' <<<"$rg_out")
