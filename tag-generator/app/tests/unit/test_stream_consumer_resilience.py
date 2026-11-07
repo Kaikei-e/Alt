@@ -407,6 +407,7 @@ def test_default_claim_idle_time_exceeds_sequential_batch_rpc_budget(
 
     monkeypatch.delenv("CONSUMER_CLAIM_IDLE_TIME_MS", raising=False)
     monkeypatch.delenv("CONSUMER_BATCH_SIZE", raising=False)
+    monkeypatch.setenv("REDIS_AUTH", "disabled")
 
     config = ConsumerConfig()
     per_article_rpc_budget_ms = fetch_timeout_ms + upsert_timeout_ms
