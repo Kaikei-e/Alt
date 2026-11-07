@@ -232,7 +232,7 @@ def main() -> int:
                     f"alt-frontend-sv: run.sh still invokes '{forbidden}' per run"
                 )
 
-        # B1: run.sh must use the shared lockfile-managed e2e/playwright manifest
+        # (6) run.sh must use the shared lockfile-managed e2e/playwright manifest
         #     with `npm ci ... --ignore-scripts`, and the three E2E runner package
         #     versions in e2e/playwright/package.json must match alt-frontend-sv/bun.lock.
         if not re.search(r"npm\s+ci\b[^\n]*--ignore-scripts\b", fe_code):
@@ -264,7 +264,7 @@ def main() -> int:
                         f"resolves {lock_ver!r}"
                     )
 
-        # B4: pre-launch port guard + State.Running check + curl --max-time
+        # (7) pre-launch port guard, container State.Running check, and curl --max-time.
         app_run_pos = fe_code.find("docker run -d")
         pre_launch = fe_code[:app_run_pos] if app_run_pos != -1 else ""
         post_launch = fe_code[app_run_pos:] if app_run_pos != -1 else ""
@@ -283,7 +283,7 @@ def main() -> int:
                 "alt-frontend-sv: run.sh health wait curl must pass --max-time"
             )
 
-        # B5: tmpfs mount over /work/repo/alt-frontend-sv/node_modules
+        # (8) tmpfs mount over /work/repo/alt-frontend-sv/node_modules.
         if "destination=/work/repo/alt-frontend-sv/node_modules" not in post_launch:
             problems.append(
                 "alt-frontend-sv: run.sh must mount a tmpfs over "
@@ -291,8 +291,9 @@ def main() -> int:
                 "node_modules from shadowing /work/node_modules"
             )
 
-        # Stale-container sweep must be scoped to this run/project, not global
-        ps_lines = [m.group(0) for m in re.finditer(r"docker ps[^\n]+", fe_code)]
+        # (9) stale-container sweep must be scoped to this run/project, not global.
+        fe_joined = re.sub(r"\\\n[ \t]*", " ", fe_code)
+        ps_lines = [m.group(0) for m in re.finditer(r"docker ps[^\n]+", fe_joined)]
         if not ps_lines or any(
             "alt.e2e.suite=alt-frontend-sv" not in ps_line
             or (
@@ -307,7 +308,7 @@ def main() -> int:
                 "to this run/project, not every alt-frontend-sv container on the daemon"
             )
 
-        # Env key parity with alt-frontend-sv/playwright.config.ts webServer.env
+        # (10) env key parity with alt-frontend-sv/playwright.config.ts webServer.env.
         pw_cfg = ROOT / "alt-frontend-sv" / "playwright.config.ts"
         if pw_cfg.is_file():
             cfg_text = pw_cfg.read_text()
@@ -339,9 +340,9 @@ def main() -> int:
                         f"unexpected={unexpected_keys})"
                     )
 
-    # suite.sh's suite_init must clear SLICE and SLICE_DIR so an inherited
-    # environment variable cannot make suite_up reuse or suite_cleanup delete a
-    # foreign slice.
+    # (11) suite.sh's suite_init must clear SLICE and SLICE_DIR so an inherited
+    #      environment variable cannot make suite_up reuse or suite_cleanup delete a
+    #      foreign slice.
     suite_sh = PW_ROOT / "_lib" / "suite.sh"
     if not suite_sh.is_file():
         problems.append("suite.sh: missing e2e/playwright/_lib/suite.sh")

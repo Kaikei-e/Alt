@@ -88,6 +88,7 @@ redact_secrets() {
 # Establishes every path and identifier the rest of the run depends on, sources
 # the shared compose helpers, and installs the EXIT trap. Call first.
 suite_init() {
+  unset SLICE SLICE_DIR
   SUITE_NAME="$1"
 
   : "${NODE_IMAGE:=node:26-bookworm-slim}"

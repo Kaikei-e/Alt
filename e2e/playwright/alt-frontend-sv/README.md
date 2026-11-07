@@ -52,8 +52,8 @@ SHARD=3/3 bash e2e/playwright/alt-frontend-sv/run.sh
 # Custom project selection
 PROJECTS="--project=auth" bash e2e/playwright/alt-frontend-sv/run.sh
 
-# Reports land under:
-ls e2e/reports/alt-frontend-sv-*/
+# HTML report and JSON/test artifacts are written by alt-frontend-sv/playwright.config.ts under:
+ls alt-frontend-sv/playwright-report/ alt-frontend-sv/test-results/
 ```
 
 ## Environment overrides
@@ -69,7 +69,7 @@ ls e2e/reports/alt-frontend-sv-*/
 | `SHARD` | `1/1` | Playwright `--shard` value; matrix sets `1/3`, `2/3`, `3/3` |
 | `PROJECTS` | `--project=auth --project=desktop-chromium --project=mobile-chrome` | space-separated `--project` flags |
 | `RUN_ID` | `$(date +%s)` | unique run identifier used in the report directory and container name |
-| `REPORT_DIR` | `e2e/reports/alt-frontend-sv-<RUN_ID>` | override report output path |
+| `REPORT_DIR` | `e2e/reports/alt-frontend-sv-<RUN_ID>` | created and mounted at `/work/reports` for dispatch-caller compatibility (Playwright itself currently writes reports to `alt-frontend-sv/playwright-report/` and `alt-frontend-sv/test-results/`) |
 | `KEEP_STACK` | `0` | when `1`, leaves the frontend container running on exit for inspection |
 
 ## Out of scope
