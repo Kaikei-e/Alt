@@ -306,6 +306,55 @@ func TestProjector_DelayedArticleCreated_FillsBlankTitleURLAfterSummary(t *testi
 	assert.Equal(t, "A durable summary that must survive the delayed ArticleCreated fold.", item.SummaryExcerpt,
 		"merge-safe upsert must preserve the summary excerpt already folded")
 	assert.Equal(t, "ready", item.SummaryState)
+	require.NotNil(t, item.PrimaryRefID)
+	assert.Equal(t, articleID, *item.PrimaryRefID)
+}
+
+func TestProjector_OutOfOrderSummaryThenArticleCreated_SetsAndPreservesPrimaryRefID(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	articleID := uuid.New()
+	summaryAt := time.Date(2026, 8, 9, 10, 13, 0, 0, time.UTC)
+	createdAt := summaryAt.Add(2 * time.Hour)
+	openedAt := createdAt.Add(15 * time.Minute)
+	itemKey := fmt.Sprintf("article:%s", articleID)
+
+	summaryPayload := mustJSON(t, map[string]any{
+		"summary_version_id": uuid.New().String(),
+		"article_id":         articleID.String(),
+		"summary_text":       "Summary arrives before ArticleCreated.",
+	})
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		homeEvent(1, "SummaryVersionCreated", articleID.String(), summaryAt, tenant, user, summaryPayload),
+	})
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	item, ok := repo.homeItems[itemKey]
+	require.True(t, ok)
+	require.NotNil(t, item.PrimaryRefID, "SummaryVersionCreated must populate PrimaryRefID from payload article_id")
+	assert.Equal(t, articleID, *item.PrimaryRefID)
+
+	articlePayload := mustJSON(t, map[string]any{
+		"article_id":   articleID.String(),
+		"title":        "Delayed article title",
+		"url":          "https://example.com/articles/out-of-order",
+		"published_at": createdAt.Format(time.RFC3339),
+		"tenant_id":    tenant.String(),
+	})
+	openedPayload := mustJSON(t, map[string]any{
+		"item_key": itemKey,
+	})
+	repo.events = append(repo.events,
+		homeEvent(2, "ArticleCreated", articleID.String(), createdAt, tenant, user, articlePayload),
+		homeEvent(3, "HomeItemOpened", itemKey, openedAt, tenant, user, openedPayload),
+	)
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	item, ok = repo.homeItems[itemKey]
+	require.True(t, ok)
+	require.NotNil(t, item.PrimaryRefID, "PrimaryRefID must remain populated after ArticleCreated and HomeItemOpened")
+	assert.Equal(t, articleID, *item.PrimaryRefID)
 }
 
 // ── TagSetVersionCreated (design change: no alt-db read) ──

@@ -332,6 +332,8 @@ func TestBuildSummaryVersionCreatedWrites(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			require.NotNil(t, item.PrimaryRefID)
+			assert.Equal(t, articleID, *item.PrimaryRefID)
 			assert.Equal(t, tt.wantState, item.SummaryState)
 			assert.Equal(t, tt.wantExcerpt, item.SummaryExcerpt)
 			assert.Equal(t, 0.8, item.Score)
@@ -405,6 +407,8 @@ func TestBuildTagSetVersionCreatedWrites(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			require.NotNil(t, item.PrimaryRefID)
+			assert.Equal(t, articleID, *item.PrimaryRefID)
 			assert.Equal(t, tt.tags, item.Tags)
 			assert.Equal(t, 0.7, item.Score)
 			assert.Equal(t, scoreOpMax, item.ScoreOp)

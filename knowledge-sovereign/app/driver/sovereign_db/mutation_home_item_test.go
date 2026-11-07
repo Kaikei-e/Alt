@@ -57,6 +57,7 @@ func TestUpsertKnowledgeHomeItem_UsesMergeSafeSQL(t *testing.T) {
 	}
 
 	for _, required := range []string{
+		`primary_ref_id = COALESCE(knowledge_home_items.primary_ref_id, EXCLUDED.primary_ref_id)`,
 		`COALESCE(NULLIF(EXCLUDED.title, ''), knowledge_home_items.title)`,
 		`COALESCE(NULLIF(EXCLUDED.summary_excerpt, ''), knowledge_home_items.summary_excerpt)`,
 		`COALESCE(NULLIF(EXCLUDED.tags_json, '[]'::jsonb), knowledge_home_items.tags_json)`,
