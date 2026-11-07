@@ -36,8 +36,8 @@ cd "$ROOT"
 # The container image tag MUST match the @playwright/test version the suite
 # installs: the image ships browser binaries at a revision the driver pins.
 PLAYWRIGHT_VERSION="$(
-  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["devDependencies"]["@playwright/test"].lstrip("^~"))' \
-    "$ROOT/alt-frontend-sv/package.json"
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["devDependencies"]["@playwright/test"])' \
+    "$ROOT/e2e/playwright/package.json"
 )"
 : "${IMAGE_TAG:=ci}"
 : "${GHCR_OWNER:=kaikei-e}"
@@ -45,6 +45,8 @@ PLAYWRIGHT_VERSION="$(
 : "${ALT_FRONTEND_SV_IMAGE:=ghcr.io/${GHCR_OWNER}/alt-alt-frontend-sv:${ALT_FRONTEND_SV_IMAGE_TAG}}"
 : "${ALT_E2E_PORT:=4174}"
 : "${PLAYWRIGHT_IMAGE:=mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-jammy}"
+: "${NPM_CI_MAX_ATTEMPTS:=3}"
+: "${NPM_CI_BACKOFF_SECS:=10}"
 : "${SHARD:=1/1}"
 : "${PROJECTS:=--project=auth --project=desktop-chromium --project=mobile-chrome}"
 : "${RUN_ID:=$(date +%s)}"
@@ -151,35 +153,30 @@ docker run --rm \
   -e FORCE_COLOR=1 \
   -e PLAYWRIGHT_SKIP_GIT_INFO=1 \
   -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+  -e npm_config_update_notifier=false \
+  -e npm_config_fetch_retries=5 \
+  -e npm_config_fetch_retry_maxtimeout=120000 \
+  -e npm_config_fetch_timeout=600000 \
+  -e NPM_CI_MAX_ATTEMPTS="$NPM_CI_MAX_ATTEMPTS" \
+  -e NPM_CI_BACKOFF_SECS="$NPM_CI_BACKOFF_SECS" \
   -e PROJECTS="$PROJECTS" \
   -e SHARD="$SHARD" \
   -e REPORT_DIR="$REPORT_DIR" \
   "$PLAYWRIGHT_IMAGE" \
   bash -euxo pipefail -c '
-    node -e '\''
-      const fs = require("node:fs");
-      const pkg = JSON.parse(fs.readFileSync("/work/repo/alt-frontend-sv/package.json", "utf8"));
-      const pick = (name) => pkg.devDependencies?.[name] ?? pkg.dependencies?.[name];
-      fs.writeFileSync("/work/package.json", JSON.stringify({
-        name: "alt-frontend-sv-e2e-runner",
-        private: true,
-        devDependencies: {
-          "@playwright/test": pick("@playwright/test"),
-          "axe-playwright": pick("axe-playwright"),
-          "jsonwebtoken": pick("jsonwebtoken"),
-        },
-      }, null, 2));
-    '\''
+    cp /work/repo/e2e/playwright/package.json /work/repo/e2e/playwright/package-lock.json /work/
 
-    for attempt in 1 2 3; do
-      if npm --prefix /work install --no-audit --no-fund --no-save --prefer-offline --loglevel=error; then
+    for attempt in $(seq 1 "$NPM_CI_MAX_ATTEMPTS"); do
+      if npm ci --prefix /work --no-audit --no-fund --ignore-scripts; then
         break
       fi
-      if [ "$attempt" = "3" ]; then
-        echo "npm install failed after 3 attempts" >&2
+      if (( attempt < NPM_CI_MAX_ATTEMPTS )); then
+        echo "==> npm ci attempt ${attempt}/${NPM_CI_MAX_ATTEMPTS} failed; retrying in ${NPM_CI_BACKOFF_SECS}s" >&2
+        sleep "$NPM_CI_BACKOFF_SECS"
+      else
+        echo "==> npm ci exhausted ${NPM_CI_MAX_ATTEMPTS} attempts against the registry" >&2
         exit 1
       fi
-      sleep $((attempt * 5))
     done
 
     # shellcheck disable=SC2086
