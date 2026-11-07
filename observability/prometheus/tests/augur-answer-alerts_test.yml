@@ -174,13 +174,17 @@ tests:
         alertname: AugurChunkEmbeddingCoverageLow
         exp_alerts: []
 
-  # 83,130 of 84,367 documents have user_id IS NULL and are invisible to tenant-scoped retrieval.
+  # 77,025 of 78,189 target-pair documents have user_id IS NULL and are invisible to tenant-scoped retrieval.
   - interval: 1m
     input_series:
-      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned"}'
-        values: '1237+0x200'
-      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned"}'
-        values: '83130+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned",target="true"}'
+        values: '1164+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned",target="true"}'
+        values: '77025+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned",target="false"}'
+        values: '73+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned",target="false"}'
+        values: '6105+0x200'
     alert_rule_test:
       - eval_time: 150m
         alertname: AugurDocumentOwnerCoverageLow
@@ -190,20 +194,27 @@ tests:
               service: rag-orchestrator
               stack: rag
             exp_annotations:
-              summary: "98.53% of RAG documents have no owner and are invisible to retrieval"
+              summary: "98.51% of target-version RAG documents have no owner and are invisible to retrieval"
               description: |
                 Retrieval filters rag_documents by d.user_id = $owner, so documents
                 with a NULL user_id never return from vector or lexical search even
                 when their chunker and embedder versions are on target.
-                Check: docker exec rag-db psql -U rag_user -d rag_db -c "SELECT count(*), count(*) FILTER (WHERE user_id IS NULL) AS unowned FROM rag_documents;"
+                Remedy: run alt-backend cmd/rag_owner_backfill. Unowned documents
+                whose source article is gone cannot be backfilled and belong to
+                orphan cleanup, not this alert.
+                Check: docker exec rag-db psql -U rag_user -d rag_db -c "SELECT v.chunker_version, v.embedder_version, COUNT(*), COUNT(*) FILTER (WHERE d.user_id IS NULL) AS unowned FROM rag_documents d JOIN rag_document_versions v ON d.current_version_id = v.id GROUP BY v.chunker_version, v.embedder_version;"
 
-  # A corpus where every document has an owner stays quiet.
+  # Post-backfill state: target pair is 100% owned while 6,105 orphan docs on a retired pair have no source article to backfill from.
   - interval: 1m
     input_series:
-      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned"}'
-        values: '84367+0x200'
-      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned"}'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned",target="true"}'
+        values: '78189+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned",target="true"}'
         values: '0+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="owned",target="false"}'
+        values: '73+0x200'
+      - series: 'rag_orchestrator_rag_document_owner_coverage{state="unowned",target="false"}'
+        values: '6105+0x200'
     alert_rule_test:
       - eval_time: 150m
         alertname: AugurDocumentOwnerCoverageLow
