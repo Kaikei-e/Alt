@@ -43,6 +43,7 @@ SUITES_YAML = PW_ROOT / "suites.yaml"
 COMPOSE = ROOT / "compose" / "compose.staging.yaml"
 
 TAG_VAR = re.compile(r"\$\{([A-Z0-9_]+_IMAGE_TAG)")
+SUITE_UP = re.compile(r"^[ \t]*suite_up[ \t]+((?:\\\n|[^\n])+)", re.MULTILINE)
 
 
 def main() -> int:
@@ -117,12 +118,30 @@ def main() -> int:
         # the whole file would match the var names these scripts quote in their
         # comments while *explaining* why they are not forwarded — the audit
         # would then pass on precisely the file that documents the gap.
+        run_text = run_sh.read_text()
         forwarded: set[str] = set()
-        for line in run_sh.read_text().splitlines():
+        for line in run_text.splitlines():
             stripped = line.strip()
             if stripped.startswith("#") or not stripped.startswith("suite_image_tags"):
                 continue
             forwarded.update(re.findall(r"[A-Z0-9_]+_IMAGE_TAG", stripped))
+
+        # (4) a suite that declares pre-built images must not pass `--build` to
+        #     `suite_up` for them — `docker compose up --build` rebuilds every
+        #     service that has a `build:` stanza from source and ignores the
+        #     pre-built image. Local-only contexts (no registry `image:`) are
+        #     built by compose automatically when their image is missing.
+        for match in SUITE_UP.finditer(run_text):
+            tokens = match.group(1).replace("\\\n", " ").split()
+            if "--build" in tokens:
+                rebuilt = [img for img in declared_images if img in tokens]
+                if rebuilt:
+                    problems.append(
+                        f"{name}: run.sh passes --build to suite_up for pre-built image(s) "
+                        f"{rebuilt} — compose will rebuild from source and ignore the "
+                        f"pre-built image. Drop --build from suite_up (compose builds "
+                        f"local-only contexts automatically when their image is missing)"
+                    )
 
         # (2) every taggable image in the profile is either forwarded or
         #     recorded as deliberately left on `:main`.
