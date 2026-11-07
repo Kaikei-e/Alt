@@ -124,7 +124,8 @@ func TestSnoozeRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
 
 	assert.Contains(t, sql, "knowledge_home_items", "SnoozeRecallCandidate must guard against knowledge_home_items")
 	assert.Contains(t, sql, "khi.tenant_id = $5", "SnoozeRecallCandidate must check home item tenant_id")
-	assert.Contains(t, sql, "khi.projection_version = recall_candidate_view.projection_version", "SnoozeRecallCandidate must check projection_version association")
+	assert.Contains(t, sql, "khi.projection_version = "+activeProjectionVersionSQL, "SnoozeRecallCandidate must check active projection_version association")
+	assert.NotContains(t, sql, "recall_candidate_view.projection_version", "SnoozeRecallCandidate must not join on stale recall_candidate_view.projection_version")
 	require.Len(t, args, 5)
 	assert.Equal(t, tenantID, args[4])
 }
@@ -155,7 +156,8 @@ func TestDismissRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
 
 	assert.Contains(t, sql, "knowledge_home_items", "DismissRecallCandidate must guard against knowledge_home_items")
 	assert.Contains(t, sql, "khi.tenant_id = $4", "DismissRecallCandidate must check home item tenant_id")
-	assert.Contains(t, sql, "khi.projection_version = recall_candidate_view.projection_version", "DismissRecallCandidate must check projection_version association")
+	assert.Contains(t, sql, "khi.projection_version = "+activeProjectionVersionSQL, "DismissRecallCandidate must check active projection_version association")
+	assert.NotContains(t, sql, "recall_candidate_view.projection_version", "DismissRecallCandidate must not join on stale recall_candidate_view.projection_version")
 	require.Len(t, args, 4)
 	assert.Equal(t, tenantID, args[3])
 }
@@ -296,7 +298,8 @@ func TestUpsertRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
 	assert.Contains(t, sql, "knowledge_home_items", "UpsertRecallCandidate must check knowledge_home_items association")
 	assert.Contains(t, sql, "khi.tenant_id = $9", "UpsertRecallCandidate must check home item tenant_id")
 	assert.Contains(t, sql, "khi.projection_version = $8", "UpsertRecallCandidate must check incoming candidate projection_version association")
-	assert.Contains(t, sql, "khi.projection_version = recall_candidate_view.projection_version", "UpsertRecallCandidate must check existing candidate projection_version association on conflict update")
+	assert.Contains(t, sql, "khi.projection_version = EXCLUDED.projection_version", "UpsertRecallCandidate must check incoming candidate projection_version association on conflict update")
+	assert.NotContains(t, sql, "recall_candidate_view.projection_version", "UpsertRecallCandidate must not join on stale recall_candidate_view.projection_version")
 	require.Len(t, args, 9)
 	assert.Equal(t, tenantID, args[8])
 
