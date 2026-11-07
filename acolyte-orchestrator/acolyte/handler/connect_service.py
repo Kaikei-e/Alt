@@ -441,15 +441,6 @@ class AcolyteConnectService:
             logger.exception("Pipeline crashed", report_id=report_id, run_id=run_id, error=str(exc))
             if self._jobs is not None:
                 try:
-                    run = await self._jobs.get_run(UUID(run_id))
-                    if run is not None and run.run_status in ("succeeded", "failed", "cancelled"):
-                        logger.warning(
-                            "Skipped fail_run after crash: run is already in terminal status",
-                            report_id=report_id,
-                            run_id=run_id,
-                            run_status=run.run_status,
-                        )
-                        return
                     await self._jobs.fail_run(UUID(run_id), "pipeline_crashed", str(exc))
                 except Exception as mark_exc:
                     logger.exception(
