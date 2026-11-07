@@ -256,6 +256,7 @@ func buildHybridSearchQuery(tsConfig string, rrfK int) string {
 				WHERE d.current_version_id = c.version_id
 				  AND d.user_id = $5
 			)
+			  AND c.embedding IS NOT NULL
 			ORDER BY c.embedding <=> $1
 			LIMIT $3
 		),
@@ -317,6 +318,7 @@ func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgI
 					WHERE d.current_version_id = c.version_id
 					  AND d.user_id = $%d
 				)
+				  AND c.embedding IS NOT NULL
 				ORDER BY c.embedding <=> $%d
 				LIMIT $2
 			),
