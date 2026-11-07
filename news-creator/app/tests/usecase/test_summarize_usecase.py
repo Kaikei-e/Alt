@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 from contextlib import asynccontextmanager
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.errors import PreemptedException
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 
@@ -409,6 +410,36 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         assert summary
         assert len(recorded_priorities) >= 2
         assert all(p is True for p in recorded_priorities)
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_map_phase_reraises_preempted_exception(self):
+        """PreemptedException in a map chunk must propagate immediately instead
+        of being swallowed by the best-effort per-chunk except Exception handler."""
+        config = _make_config()
+        config.hierarchical_single_article_threshold = 1_000
+        config.hierarchical_single_article_chunk_size = 500
+        llm_provider = Mock()
+
+        hold_slot_calls = 0
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            nonlocal hold_slot_calls
+            hold_slot_calls += 1
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            side_effect=PreemptedException("preempted during map chunk")
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        with pytest.raises(PreemptedException, match="preempted during map chunk"):
+            await usecase.generate_summary("art-preempt", "A" * 2_000)
+
+        assert hold_slot_calls == 1
+        assert llm_provider.generate_raw.call_count == 1
 
 
 # --- Gemma 4 token cleanup tests ---
