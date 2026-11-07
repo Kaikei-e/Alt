@@ -162,7 +162,8 @@ async def test_run_pipeline_fails_run_when_mark_running_raises() -> None:
 
     class FailingMarkRunningJobQueue(FakeJobQueue):
         async def mark_running(self, run_id: UUID, planner_model: str, writer_model: str, critic_model: str) -> None:
-            raise RuntimeError("psycopg pool timeout")
+            msg = "psycopg pool timeout"
+            raise RuntimeError(msg)
 
     jobs = FailingMarkRunningJobQueue()
     service = AcolyteConnectService(settings, MagicMock(), job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
@@ -176,4 +177,3 @@ async def test_run_pipeline_fails_run_when_mark_running_raises() -> None:
     assert failure_code == "pipeline_crashed"
     assert "psycopg pool timeout" in failure_message
     graph.ainvoke.assert_not_awaited()
-

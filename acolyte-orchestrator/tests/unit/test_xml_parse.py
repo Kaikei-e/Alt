@@ -505,7 +505,8 @@ class TestGenerateXmlValidated:
     async def test_llm_always_raises_returns_fallback(self) -> None:
         class AlwaysFailsLLM:
             async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
-                raise LLMProviderError("upstream 500 error")
+                msg = "upstream 500 error"
+                raise LLMProviderError(msg)
 
         fallback = QueryExpansionOutput(reasoning="fallback", queries={})
         result = await generate_xml_validated(
