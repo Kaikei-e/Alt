@@ -83,8 +83,8 @@ impl AltBackendFetchStage {
 
     /// 再試行付きで記事を取得する。
     ///
-    /// `AltBackendClient` は素の `reqwest::Error` を anyhow chain に保持した
-    /// まま返す（retry 判定が `downcast_ref::<reqwest::Error>` に依存する）
+    /// `AltBackendClient` は `reqwest::Error` と `AltBackendHttpError`（非2xx）を
+    /// anyhow chain に保持したまま返す（retry 判定が `downcast_ref` に依存する）
     /// ため、この helper は anyhow のまま扱い、呼び出し側の stage 境界で
     /// `RecapError::Fetch` に変換する。
     async fn fetch_with_retry(
@@ -368,13 +368,11 @@ mod tests {
         AltBackendConfig {
             base_url,
             connect_timeout: std::time::Duration::from_secs(3),
-            // Short on purpose: the retry test below relies on every
+            // Short on purpose: the timeout retry test below relies on every
             // attempt timing out client-side against a deliberately slow
-            // mock response (see `is_retryable_error`, which treats a
-            // client-level timeout as retryable — unlike the plain
-            // `anyhow::bail!` this client raises for a non-2xx HTTP status,
-            // which is not downcastable to `reqwest::Error` and therefore
-            // not retryable under the shared idiom).
+            // mock response (retry checks classify both client-level timeouts
+            // and transient non-2xx HTTP statuses via `AltBackendHttpError`
+            // as retryable).
             total_timeout: std::time::Duration::from_millis(100),
         }
     }
