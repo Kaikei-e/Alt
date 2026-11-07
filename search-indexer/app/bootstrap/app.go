@@ -139,7 +139,7 @@ func Run(ctx context.Context) error {
 	if config.MeiliHybridEmbedder != "" {
 		embedderSettings := driver.NewEmbedderSettingsDriver(
 			os.Getenv("MEILISEARCH_HOST"),
-			readSecretEnv("MEILISEARCH_API_KEY"),
+			appCfg.Meilisearch.APIKey,
 			"articles",
 			config.MeiliTimeout,
 		)
