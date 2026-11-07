@@ -681,65 +681,6 @@ func TestStreamChat_LogsFullEventFieldsForReplay_OnEmitError(t *testing.T) {
 	assert.EqualValues(t, conv.CreatedAt.UnixMilli(), replayRecord["linked_at"], "linked_at must be replayable")
 }
 
-func TestStreamChat_EmptyAnswerFallback_PersistsFallbackAssistantTurn(t *testing.T) {
-	h := newFallbackStreamHarness(t)
-	defer h.stop()
-
-	var (
-		mu       sync.Mutex
-		code     string
-		reason   string
-		called   = make(chan struct{})
-		callOnce sync.Once
-	)
-	h.mocks.On("AppendFallbackAssistantTurn",
-		mock.Anything, h.conv.ID, mock.AnythingOfType("string"),
-		mock.Anything, mock.Anything,
-		mock.AnythingOfType("string"), mock.AnythingOfType("string"),
-	).Run(func(args mock.Arguments) {
-		mu.Lock()
-		code, reason = args.String(5), args.String(6)
-		mu.Unlock()
-		callOnce.Do(func() { close(called) })
-	}).Return(nil)
-
-	stream, err := h.client.StreamChat(context.Background(), h.request())
-	require.NoError(t, err)
-
-	h.events <- usecase.StreamEvent{
-		Kind:    usecase.StreamEventKindFallback,
-		Payload: usecase.FallbackCodeRelevanceLow,
-	}
-	h.events <- usecase.StreamEvent{
-		Kind: usecase.StreamEventKindDone,
-		Payload: &usecase.AnswerWithRAGOutput{
-			Answer:           "",
-			Fallback:         true,
-			FallbackCategory: usecase.FallbackCategory(usecase.FallbackCodeRelevanceLow),
-			Reason:           "retrieval quality insufficient: context relevance too low",
-		},
-	}
-	close(h.events)
-
-	for stream.Receive() {
-	}
-	require.NoError(t, stream.Err())
-
-	select {
-	case <-called:
-	case <-time.After(3 * time.Second):
-		t.Fatal("AppendFallbackAssistantTurn was not called for empty-answer fallback")
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, usecase.FallbackCodeRelevanceLow, code)
-	assert.Equal(t, "retrieval quality insufficient: context relevance too low", reason)
-	h.mocks.AssertNumberOfCalls(t, "AppendFallbackAssistantTurn", 1)
-	h.mocks.AssertNotCalled(t, "AppendAssistantTurn",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-}
-
 func TestStreamChat_ExcludesPersistedFallbackTurnsFromConversationHistory(t *testing.T) {
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
@@ -789,8 +730,8 @@ func TestStreamChat_ExcludesPersistedFallbackTurnsFromConversationHistory(t *tes
 
 	events := make(chan usecase.StreamEvent, 2)
 	var capturedInput usecase.AnswerWithRAGInput
-	mockConv.On("GetConversation", mock.Anything, userID, convID).Return(conv, storedMsgs, nil)
 	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("ListMessages", mock.Anything, convID).Return(storedMsgs, nil)
 	mockConv.On("AppendUserTurn", mock.Anything, convID, "さらに詳しく教えて").Return(nil)
 	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything, mock.Anything).Return(nil)
 	mockAnswer.On("Stream", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -837,6 +778,7 @@ func TestStreamChat_ExcludesPersistedFallbackTurnsFromConversationHistory(t *tes
 		{Role: "user", Content: "半導体サプライチェーンの動向は？"},
 		{Role: "assistant", Content: "半導体サプライチェーンは回復基調にあります。"},
 	}, capturedInput.ConversationHistory, "persisted fallback assistant turns must be excluded from LLM conversation history")
+	mockConv.AssertNotCalled(t, "GetConversation", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestStreamChat_FallbackHistoryLookupError_FailsWithInternalAndSkipsAnswerUsecase(t *testing.T) {
@@ -854,17 +796,10 @@ func TestStreamChat_FallbackHistoryLookupError_FailsWithInternalAndSkipsAnswerUs
 		CreatedAt: time.Now().UTC(),
 	}
 
-	events := make(chan usecase.StreamEvent)
-	close(events)
-
 	lookupErr := errors.New("db connection lost")
-	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil).Maybe()
-	mockConv.On("GetConversation", mock.Anything, userID, convID).
-		Return((*domain.AugurConversation)(nil), ([]domain.AugurMessage)(nil), lookupErr).Maybe()
+	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil)
 	mockConv.On("ListMessages", mock.Anything, convID).
-		Return(([]domain.AugurMessage)(nil), lookupErr).Maybe()
-	mockConv.On("AppendUserTurn", mock.Anything, convID, mock.AnythingOfType("string")).Return(nil).Maybe()
-	mockAnswer.On("Stream", mock.Anything, mock.Anything).Return((<-chan usecase.StreamEvent)(events)).Maybe()
+		Return(([]domain.AugurMessage)(nil), lookupErr)
 
 	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, nil, logger)
 	mux := http.NewServeMux()
@@ -893,6 +828,8 @@ func TestStreamChat_FallbackHistoryLookupError_FailsWithInternalAndSkipsAnswerUs
 
 	require.Error(t, err, "lookup error during fallback history filtering must fail the stream")
 	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+	mockConv.AssertNotCalled(t, "GetConversation", mock.Anything, mock.Anything, mock.Anything)
+	mockConv.AssertNotCalled(t, "AppendUserTurn", mock.Anything, mock.Anything, mock.Anything)
 	mockAnswer.AssertNotCalled(t, "Stream", mock.Anything, mock.Anything)
 }
 
@@ -945,9 +882,8 @@ func TestStreamChat_ExcludesPersistedPartialFallbackTurnFromConversationHistory(
 
 	events := make(chan usecase.StreamEvent, 2)
 	var capturedInput usecase.AnswerWithRAGInput
-	mockConv.On("GetConversation", mock.Anything, userID, convID).Return(conv, storedMsgs, nil).Maybe()
-	mockConv.On("ListMessages", mock.Anything, convID).Return(storedMsgs, nil).Maybe()
 	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("ListMessages", mock.Anything, convID).Return(storedMsgs, nil)
 	mockConv.On("AppendUserTurn", mock.Anything, convID, "内陸輸送への影響は？").Return(nil)
 	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything, mock.Anything).Return(nil)
 	mockAnswer.On("Stream", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -994,6 +930,7 @@ func TestStreamChat_ExcludesPersistedPartialFallbackTurnFromConversationHistory(
 		{Role: "user", Content: "港湾の混雑状況はどうなっている？"},
 		{Role: "assistant", Content: "主要港での滞留日数は減少傾向にあります。"},
 	}, capturedInput.ConversationHistory, "persisted non-canned partial fallback turns must be excluded from LLM conversation history")
+	mockConv.AssertNotCalled(t, "GetConversation", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestStreamChat_WindowsLastSixNormalTurnsAfterExcludingFallbacks(t *testing.T) {
@@ -1038,9 +975,8 @@ func TestStreamChat_WindowsLastSixNormalTurnsAfterExcludingFallbacks(t *testing.
 
 	events := make(chan usecase.StreamEvent, 2)
 	var capturedInput usecase.AnswerWithRAGInput
-	mockConv.On("GetConversation", mock.Anything, userID, convID).Return(conv, storedMsgs, nil).Maybe()
-	mockConv.On("ListMessages", mock.Anything, convID).Return(storedMsgs, nil).Maybe()
 	mockConv.On("EnsureConversation", mock.Anything, userID, convID, mock.AnythingOfType("string")).Return(conv, nil)
+	mockConv.On("ListMessages", mock.Anything, convID).Return(storedMsgs, nil)
 	mockConv.On("AppendUserTurn", mock.Anything, convID, "turn 5 user").Return(nil)
 	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything, mock.Anything).Return(nil)
 	mockAnswer.On("Stream", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -1096,4 +1032,5 @@ func TestStreamChat_WindowsLastSixNormalTurnsAfterExcludingFallbacks(t *testing.
 		{Role: "user", Content: "turn 4 user"},
 		{Role: "assistant", Content: "turn 4 assistant"},
 	}, capturedInput.ConversationHistory, "history window must keep the last 6 normal turns after excluding fallback turns")
+	mockConv.AssertNotCalled(t, "GetConversation", mock.Anything, mock.Anything, mock.Anything)
 }

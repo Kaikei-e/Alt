@@ -186,6 +186,24 @@ func (h *Handler) StreamChat(
 		requestedConvID = parsed
 	}
 
+	firstMsg := firstUserMessage(req.Msg.Messages)
+	if firstMsg == "" {
+		firstMsg = query
+	}
+	// Detach persistence writes from the request ctx. When the Knowledge Home
+	// AskSheet closes while a stream is in flight the client-side abort
+	// propagates into the handler; we must not let that orphan the conversation
+	// or the user turn. AppendAssistantTurn uses the same pattern on the
+	// completion path.
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer persistCancel()
+
+	conv, err := h.conversationUsecase.EnsureConversation(persistCtx, userID, requestedConvID, firstMsg)
+	if err != nil {
+		h.logger.Error("failed to ensure conversation", slog.String("error", err.Error()))
+		return connect.NewError(connect.CodeInternal, err)
+	}
+
 	// Build conversation history (all messages except the last user message)
 	// Limit to last 6 messages (3 turns) for efficiency
 	allMsgs := req.Msg.Messages
@@ -193,16 +211,17 @@ func (h *Handler) StreamChat(
 		var fallbackContents map[string]struct{}
 		// Reloaded conversations carry persisted fallback prose as ordinary assistant messages; strip them before windowing.
 		if requestedConvID != uuid.Nil {
-			if _, storedMsgs, getErr := h.conversationUsecase.GetConversation(ctx, userID, requestedConvID); getErr != nil {
-				h.logger.Warn("failed to load conversation for fallback history filter",
-					slog.String("conversation_id", requestedConvID.String()),
-					slog.String("error", getErr.Error()))
-			} else {
-				fallbackContents = make(map[string]struct{})
-				for _, m := range storedMsgs {
-					if m.Role == "assistant" && m.Fallback != nil {
-						fallbackContents[m.Content] = struct{}{}
-					}
+			storedMsgs, listErr := h.conversationUsecase.ListMessages(ctx, conv.ID)
+			if listErr != nil {
+				h.logger.Error("failed to load conversation messages for fallback history filter",
+					slog.String("conversation_id", conv.ID.String()),
+					slog.String("error", listErr.Error()))
+				return connect.NewError(connect.CodeInternal, listErr)
+			}
+			fallbackContents = make(map[string]struct{})
+			for _, m := range storedMsgs {
+				if m.Role == "assistant" && m.Fallback != nil {
+					fallbackContents[m.Content] = struct{}{}
 				}
 			}
 		}
@@ -227,24 +246,6 @@ func (h *Handler) StreamChat(
 			start = len(filtered) - 6
 		}
 		conversationHistory = filtered[start:]
-	}
-
-	firstMsg := firstUserMessage(req.Msg.Messages)
-	if firstMsg == "" {
-		firstMsg = query
-	}
-	// Detach persistence writes from the request ctx. When the Knowledge Home
-	// AskSheet closes while a stream is in flight the client-side abort
-	// propagates into the handler; we must not let that orphan the conversation
-	// or the user turn. AppendAssistantTurn uses the same pattern on the
-	// completion path.
-	persistCtx, persistCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer persistCancel()
-
-	conv, err := h.conversationUsecase.EnsureConversation(persistCtx, userID, requestedConvID, firstMsg)
-	if err != nil {
-		h.logger.Error("failed to ensure conversation", slog.String("error", err.Error()))
-		return connect.NewError(connect.CodeInternal, err)
 	}
 
 	if err := h.conversationUsecase.AppendUserTurn(persistCtx, conv.ID, query); err != nil {

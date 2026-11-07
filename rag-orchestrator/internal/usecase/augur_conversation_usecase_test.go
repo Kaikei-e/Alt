@@ -339,3 +339,26 @@ func TestDeleteConversation_IsIdempotentAndScoped(t *testing.T) {
 	assert.Nil(t, got)
 	assert.Nil(t, msgs)
 }
+
+func TestListMessages_ReturnsStoredMessagesForConversation(t *testing.T) {
+	repo := newFakeAugurRepo()
+	clock, _ := fixedClock(time.Date(2026, 4, 13, 12, 0, 0, 0, time.UTC))
+	uc := NewAugurConversationUsecase(repo, clock)
+
+	userID := uuid.New()
+	conv, err := uc.EnsureConversation(context.Background(), userID, uuid.Nil, "hello")
+	require.NoError(t, err)
+	require.NoError(t, uc.AppendUserTurn(context.Background(), conv.ID, "hello"))
+	require.NoError(t, uc.AppendFallbackAssistantTurn(context.Background(), conv.ID, "", nil, nil, FallbackCodeRelevanceLow, "low relevance"))
+
+	msgs, err := uc.ListMessages(context.Background(), conv.ID)
+	require.NoError(t, err)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, "user", msgs[0].Role)
+	assert.Equal(t, "assistant", msgs[1].Role)
+	require.NotNil(t, msgs[1].Fallback)
+	assert.Equal(t, FallbackCodeRelevanceLow, msgs[1].Fallback.Code)
+
+	_, err = uc.ListMessages(context.Background(), uuid.Nil)
+	require.Error(t, err)
+}

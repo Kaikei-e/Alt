@@ -49,6 +49,7 @@ type AugurConversationUsecase interface {
 
 	ListConversations(ctx context.Context, userID uuid.UUID, limit int, afterActivity *time.Time, afterID *uuid.UUID) ([]domain.AugurConversationSummary, error)
 	GetConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) (*domain.AugurConversation, []domain.AugurMessage, error)
+	ListMessages(ctx context.Context, conversationID uuid.UUID) ([]domain.AugurMessage, error)
 	DeleteConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) error
 }
 
@@ -272,6 +273,17 @@ func (u *augurConversationUsecase) GetConversation(
 		return nil, nil, fmt.Errorf("load messages: %w", err)
 	}
 	return conv, msgs, nil
+}
+
+func (u *augurConversationUsecase) ListMessages(ctx context.Context, conversationID uuid.UUID) ([]domain.AugurMessage, error) {
+	if conversationID == uuid.Nil {
+		return nil, errors.New("augur usecase: conversationID required")
+	}
+	msgs, err := u.repo.ListMessages(ctx, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("load messages: %w", err)
+	}
+	return msgs, nil
 }
 
 func (u *augurConversationUsecase) DeleteConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) error {

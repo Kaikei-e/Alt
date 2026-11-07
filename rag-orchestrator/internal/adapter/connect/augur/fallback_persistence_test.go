@@ -217,6 +217,7 @@ func TestStreamChat_EmptyFallback_PersistsFallbackTurn(t *testing.T) {
 
 	for stream.Receive() {
 	}
+	require.NoError(t, stream.Err())
 
 	select {
 	case <-called:
@@ -229,6 +230,8 @@ func TestStreamChat_EmptyFallback_PersistsFallbackTurn(t *testing.T) {
 	assert.Equal(t, usecase.FallbackCodeLLMNoOutput, code)
 	assert.Equal(t, "llm stream produced no data", reason)
 	h.mocks.AssertNumberOfCalls(t, "AppendFallbackAssistantTurn", 1)
+	h.mocks.AssertNotCalled(t, "AppendAssistantTurn",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestStreamChat_Clarification_IsNotPersistedAndLogsNoError(t *testing.T) {
