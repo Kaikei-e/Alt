@@ -28,7 +28,9 @@ def _avg_cluster_silhouette(metrics: dict[str, Any]) -> float | None:
     cluster = metrics.get("cluster")
     if not cluster:
         return None
-    scores = [g.get("silhouette_score", 0) for g in cluster.values()]
+    scores = [
+        g["silhouette_score"] for g in cluster.values() if g.get("silhouette_score") is not None
+    ]
     return sum(scores) / len(scores) if scores else None
 
 
