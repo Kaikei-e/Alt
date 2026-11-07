@@ -673,4 +673,195 @@ mod new_tests {
         })
         .await;
     }
+
+    struct PanicIfCalledFetch {
+        called: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl FetchStage for PanicIfCalledFetch {
+        async fn fetch(
+            &self,
+            _job: &JobContext,
+        ) -> crate::error::Result<crate::pipeline::fetch::FetchedCorpus> {
+            self.called
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Err(crate::error::RecapError::Fetch(
+                "fetch stage must not be called when resuming from evidence".to_string(),
+            ))
+        }
+    }
+
+    struct UnreachablePreprocess;
+
+    #[async_trait::async_trait]
+    impl PreprocessStage for UnreachablePreprocess {
+        async fn preprocess(
+            &self,
+            _job: &JobContext,
+            _corpus: crate::pipeline::fetch::FetchedCorpus,
+        ) -> Result<crate::pipeline::preprocess::PreprocessedCorpus> {
+            anyhow::bail!("preprocess stage must not be called when resuming from evidence")
+        }
+    }
+
+    struct UnreachableDedup;
+
+    #[async_trait::async_trait]
+    impl DedupStage for UnreachableDedup {
+        async fn deduplicate(
+            &self,
+            _job: &JobContext,
+            _corpus: crate::pipeline::preprocess::PreprocessedCorpus,
+        ) -> Result<crate::pipeline::dedup::DeduplicatedCorpus> {
+            anyhow::bail!("dedup stage must not be called when resuming from evidence")
+        }
+    }
+
+    struct UnreachableGenre;
+
+    #[async_trait::async_trait]
+    impl GenreStage for UnreachableGenre {
+        async fn assign(
+            &self,
+            _job: &JobContext,
+            _corpus: crate::pipeline::dedup::DeduplicatedCorpus,
+        ) -> Result<crate::pipeline::genre::GenreBundle> {
+            anyhow::bail!("genre stage must not be called when resuming from evidence")
+        }
+    }
+
+    struct UnreachableSelect;
+
+    #[async_trait::async_trait]
+    impl SelectStage for UnreachableSelect {
+        async fn select(
+            &self,
+            _job: &JobContext,
+            _bundle: crate::pipeline::genre::GenreBundle,
+        ) -> Result<crate::pipeline::select::SelectedSummary> {
+            anyhow::bail!("select stage must not be called when resuming from evidence")
+        }
+    }
+
+    struct UnreachableDispatch;
+
+    #[async_trait::async_trait]
+    impl DispatchStage for UnreachableDispatch {
+        async fn dispatch(
+            &self,
+            _job: &JobContext,
+            _evidence: crate::pipeline::evidence::EvidenceBundle,
+        ) -> crate::error::Result<crate::pipeline::dispatch::DispatchResult> {
+            Err(crate::error::RecapError::Clustering(
+                "dispatch not reached without select state".to_string(),
+            ))
+        }
+    }
+
+    struct UnreachablePersist;
+
+    #[async_trait::async_trait]
+    impl PersistStage for UnreachablePersist {
+        async fn persist(
+            &self,
+            _job: &JobContext,
+            _result: crate::pipeline::dispatch::DispatchResult,
+        ) -> crate::error::Result<persist::PersistResult> {
+            Err(crate::error::RecapError::Db(
+                "persist not reached".to_string(),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_resumes_from_evidence_at_dispatch_without_rerunning_fetch() {
+        let config = {
+            let _lock = ENV_MUTEX.lock().expect("env mutex");
+            temp_env::with_vars(
+                [
+                    (
+                        "RECAP_DB_DSN",
+                        Some("postgres://recap:recap@localhost:5555/recap_db"),
+                    ),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                    ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                    ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                    ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("RECAP_EVAL_LISTENER", Some("disabled")),
+                    ("RECAP_CARDS_JOB", Some("disabled")),
+                    ("MTLS_ENFORCE", None),
+                ],
+                || Arc::new(crate::config::Config::from_env().expect("config should load")),
+            )
+        };
+
+        let subworker = Arc::new(
+            SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+            )
+            .expect("subworker client builds"),
+        );
+        let recap_dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")
+            .expect("lazy pool");
+        let queue_store = QueueStore::new(pool);
+        let classification_queue = Arc::new(ClassificationJobQueue::new(
+            queue_store,
+            (*subworker).clone(),
+            0,
+            10,
+            3,
+            1000,
+        ));
+
+        let fetch_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pipeline = PipelineOrchestrator::builder(config)
+            .with_fetch_stage(Arc::new(PanicIfCalledFetch {
+                called: Arc::clone(&fetch_called),
+            }))
+            .with_preprocess_stage(Arc::new(UnreachablePreprocess))
+            .with_dedup_stage(Arc::new(UnreachableDedup))
+            .with_genre_stage(Arc::new(UnreachableGenre))
+            .with_select_stage(Arc::new(UnreachableSelect))
+            .with_dispatch_stage(Arc::new(UnreachableDispatch))
+            .with_persist_stage(Arc::new(UnreachablePersist))
+            .build(recap_dao, subworker, classification_queue, None)
+            .expect("pipeline builds");
+
+        let job = JobContext::new(uuid::Uuid::new_v4(), vec!["ai".to_string()])
+            .with_stage("evidence".to_string());
+        let err = pipeline
+            .execute(&job)
+            .await
+            .expect_err("mock dao has no saved select state");
+
+        assert!(
+            !fetch_called.load(std::sync::atomic::Ordering::SeqCst),
+            "resuming from last_stage=\"evidence\" must not restart at fetch"
+        );
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("State not found for stage: select"),
+            "resuming from \"evidence\" must reload saved select state for dispatch, got: {msg}"
+        );
+
+        let unknown_job = JobContext::new(uuid::Uuid::new_v4(), vec!["ai".to_string()])
+            .with_stage("bogus_stage".to_string());
+        let unknown_err = pipeline
+            .execute(&unknown_job)
+            .await
+            .expect_err("unknown resume stage must error");
+        assert!(
+            !fetch_called.load(std::sync::atomic::Ordering::SeqCst),
+            "unknown resume stage must not silently restart at fetch"
+        );
+        assert!(
+            format!("{unknown_err:#}").contains("bogus_stage"),
+            "error should name the unknown stage, got: {unknown_err:#}"
+        );
+    }
 }
