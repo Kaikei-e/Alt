@@ -159,6 +159,16 @@ mod tests {
     }
 
     #[test]
+    fn rolling_hash_windows_handles_short_multibyte_text() {
+        let ja_text = "あ".repeat(40);
+        let ascii_text = "a".repeat(40);
+        let ja_hashes = rolling_hash_windows(&ja_text, 100);
+        let ascii_hashes = rolling_hash_windows(&ascii_text, 100);
+        assert_eq!(ja_hashes.len(), ascii_hashes.len());
+        assert_eq!(ja_hashes, vec![hash_text(&ja_text)]);
+    }
+
+    #[test]
     fn is_near_duplicate_detects_identical() {
         let text1 = "This is identical text.";
         let text2 = "This is identical text.";
