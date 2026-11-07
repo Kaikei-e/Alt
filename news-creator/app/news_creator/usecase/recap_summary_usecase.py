@@ -500,13 +500,10 @@ class RecapSummaryUsecase:
             # If highlights are provided, they will be used instead
             return 0
 
-        estimated = 0
-        for cluster in request.clusters:
-            # Rough estimate: cluster header + sentences
-            estimated += 100  # Header overhead
-            for sentence in cluster.representative_sentences:
-                estimated += len(sentence.text) + 50  # Text + metadata overhead
-        return estimated
+        return sum(
+            len(self._format_cluster_block(cluster)) + 2
+            for cluster in request.clusters
+        )
 
     async def _generate_hierarchical_summary(
         self,
@@ -986,12 +983,9 @@ class RecapSummaryUsecase:
         overlap_ratio = getattr(self.config, "hierarchical_chunk_overlap_ratio", 0.15)
 
         # Calculate cluster lengths
-        cluster_lengths = []
-        for cluster in clusters:
-            length = (
-                sum(len(s.text) for s in cluster.representative_sentences) + 200
-            )  # Overhead
-            cluster_lengths.append(length)
+        cluster_lengths = [
+            len(self._format_cluster_block(cluster)) + 2 for cluster in clusters
+        ]
 
         chunks: list[List] = []
         current_chunk: List = []
@@ -1536,6 +1530,36 @@ class RecapSummaryUsecase:
         except Exception:
             return url
 
+    @staticmethod
+    def _format_cluster_block(cluster: RecapClusterInput) -> str:
+        top_terms = ", ".join(cluster.top_terms or []) or "未提示"
+        sentence_lines: list[str] = []
+        for sentence in cluster.representative_sentences:
+            prefix = "- [Main Point] " if sentence.is_centroid else "- "
+            parts: list[str] = [f"{prefix}{sentence.text}"]
+            if sentence.published_at:
+                parts.append(f"  (公開日: {sentence.published_at})")
+            if sentence.source_url:
+                # ADR-890 followup: 以前は domain だけを露出していたため LLM が
+                # `url`/`article_id` をドメイン文字列で埋め、reconciler が
+                # grounded=0 になる事故が発生した。full URL と UUID 形式の
+                # article_id を sentence 行に出して LLM が verbatim echo できる
+                # ようにする。LLM の UUID 直引き信頼性は低いため最終的には
+                # recap-worker reconciler 側で UUID 検証 + URL fallback が走る。
+                parts.append(f"  (source_url: {sentence.source_url})")
+            if sentence.article_id:
+                parts.append(f"  (article_id: {sentence.article_id})")
+            sentence_lines.append(" ".join(parts))
+        sentences = "\n".join(sentence_lines)
+        return textwrap.dedent(
+            f"""
+            ### Cluster {cluster.cluster_id}
+            Top Terms: {top_terms}
+            Representative Sentences:
+            {sentences}
+            """
+        ).strip()
+
     def _render_prompt_body(
         self,
         request: RecapSummaryRequest,
@@ -1553,33 +1577,7 @@ class RecapSummaryUsecase:
         cluster_section_length = 0
 
         for cluster in request.clusters[:max_clusters]:
-            top_terms = ", ".join(cluster.top_terms or []) or "未提示"
-            sentence_lines: list[str] = []
-            for sentence in cluster.representative_sentences:
-                prefix = "- [Main Point] " if sentence.is_centroid else "- "
-                parts: list[str] = [f"{prefix}{sentence.text}"]
-                if sentence.published_at:
-                    parts.append(f"  (公開日: {sentence.published_at})")
-                if sentence.source_url:
-                    # ADR-890 followup: 以前は domain だけを露出していたため LLM が
-                    # `url`/`article_id` をドメイン文字列で埋め、reconciler が
-                    # grounded=0 になる事故が発生した。full URL と UUID 形式の
-                    # article_id を sentence 行に出して LLM が verbatim echo できる
-                    # ようにする。LLM の UUID 直引き信頼性は低いため最終的には
-                    # recap-worker reconciler 側で UUID 検証 + URL fallback が走る。
-                    parts.append(f"  (source_url: {sentence.source_url})")
-                if sentence.article_id:
-                    parts.append(f"  (article_id: {sentence.article_id})")
-                sentence_lines.append(" ".join(parts))
-            sentences = "\n".join(sentence_lines)
-            cluster_block = textwrap.dedent(
-                f"""
-                ### Cluster {cluster.cluster_id}
-                Top Terms: {top_terms}
-                Representative Sentences:
-                {sentences}
-                """
-            ).strip()
+            cluster_block = self._format_cluster_block(cluster)
 
             # Check if adding this cluster would exceed the limit
             estimated_length = (

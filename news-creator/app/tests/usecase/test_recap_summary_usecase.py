@@ -1216,7 +1216,7 @@ async def test_hierarchical_partial_map_chunk_failure_marks_degraded_and_skips_c
         RecapClusterInput(
             cluster_id=i,
             representative_sentences=[
-                RepresentativeSentence(text=f"クラスタ{i}の本文。" + "あ" * 40)
+                RepresentativeSentence(text=f"クラスタ{i}の本文。" + "あ" * 150)
             ],
             top_terms=[f"term{i}"],
         )
