@@ -234,6 +234,23 @@ func TestHandler_SearchArticles_WhitespaceUserID_ReturnsBadRequest(t *testing.T)
 	}
 }
 
+func TestHandler_SearchArticles_InvalidQueryControlChar_ReturnsBadRequest(t *testing.T) {
+	mock := &mockSearchEngine{}
+
+	searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
+	handler := NewHandler(searchByUserUsecase, usecase.NewAuthUsecase(&fakeAuthHub{}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=a%00b&user_id=user1", nil)
+	req.Header.Set("Authorization", "Bearer user1")
+	rec := httptest.NewRecorder()
+
+	handler.SearchArticles(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
 // TestHandler_SearchArticles_ResponseHasTotal verifies L-002: the REST
 // response must expose a Total field so paginating clients know when to stop,
 // matching the Connect-RPC SearchService contract's EstimatedTotalHits.

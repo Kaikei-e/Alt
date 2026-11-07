@@ -206,6 +206,40 @@ func TestHandler_SearchArticles_NegativeOffset(t *testing.T) {
 	}
 }
 
+func TestHandler_SearchArticles_ValidationErrorsReturnInvalidArgument(t *testing.T) {
+	se := &mockSearchEngine{}
+	uc := usecase.NewSearchByUserUsecase(se)
+	handler := NewHandler(uc, nil, usecase.NewAuthUsecase(&fakeAuthHub{}))
+
+	tests := []struct {
+		name  string
+		query string
+		limit int32
+	}{
+		{name: "limit too large", query: "test", limit: 5000},
+		{name: "query with null byte", query: "a\x00b", limit: 10},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := connect.NewRequest(&searchv2.SearchArticlesRequest{
+				Query:  tt.query,
+				UserId: "user1",
+				Limit:  tt.limit,
+			})
+			req.Header().Set("Authorization", "Bearer user1")
+
+			_, err := handler.SearchArticles(context.Background(), req)
+			if err == nil {
+				t.Fatal("SearchArticles() error = nil, want InvalidArgument")
+			}
+			if got := connect.CodeOf(err); got != connect.CodeInvalidArgument {
+				t.Errorf("connect.CodeOf(err) = %v, want %v (err = %v)", got, connect.CodeInvalidArgument, err)
+			}
+		})
+	}
+}
+
 func TestHandler_SearchArticles_SearchError(t *testing.T) {
 	se := &mockSearchEngine{
 		err: &domain.SearchEngineError{Op: "Search", Err: errors.New("search failed")},
