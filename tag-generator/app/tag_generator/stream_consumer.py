@@ -614,4 +614,4 @@ class StreamConsumer:
                 stream_key=stream_key,
                 error=str(e),
             )
-            return None
+            raise
