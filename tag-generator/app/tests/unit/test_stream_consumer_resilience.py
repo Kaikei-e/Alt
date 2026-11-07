@@ -391,3 +391,55 @@ def test_consume_loop_survives_an_error_and_backs_off_once(
 
     assert calls["n"] == 2, "the loop must poll again after an error"
     assert delays == [1], "exactly one backoff: after the error, not after the idle poll"
+
+
+def test_default_claim_idle_time_exceeds_sequential_batch_rpc_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """XREADGROUP starts the PEL idle timer for all batch_size messages at once,
+    and _read_and_process handles them sequentially. Each ArticleCreated item can
+    spend _TIMEOUT_MS in GetArticleContent + ML extraction + _TIMEOUT_MS in
+    UpsertArticleTags, so claim_idle_time_ms must comfortably exceed that
+    full-batch budget to prevent _reclaim_loop from stealing in-flight items.
+    """
+    from tag_generator.driver.connect_article_fetcher import _TIMEOUT_MS as fetch_timeout_ms
+    from tag_generator.driver.connect_tag_inserter import _TIMEOUT_MS as upsert_timeout_ms
+
+    monkeypatch.delenv("CONSUMER_CLAIM_IDLE_TIME_MS", raising=False)
+    monkeypatch.delenv("CONSUMER_BATCH_SIZE", raising=False)
+
+    config = ConsumerConfig()
+    per_article_rpc_budget_ms = fetch_timeout_ms + upsert_timeout_ms
+    assert config.claim_idle_time_ms > config.batch_size * per_article_rpc_budget_ms
+
+    tags_config = ConsumerConfig.tags_stream_from_env()
+    assert tags_config.claim_idle_time_ms > tags_config.batch_size * per_article_rpc_budget_ms
+
+
+def test_reclaim_loop_exits_promptly_when_stopped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When stop() is called while _reclaim_loop is waiting for the next sweep,
+    it must not block TaskGroup shutdown for the full 30s reclaim interval.
+    """
+    slept: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+        consumer.stop()
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    config = ConsumerConfig(enabled=True, reclaim_interval_seconds=30.0)
+    consumer = StreamConsumer(config, handler=EventHandler())
+
+    class _IdleClaimClient:
+        async def xautoclaim(self, **kwargs: Any) -> tuple[str, list[Any], int]:
+            del kwargs
+            return ("0-0", [], 0)
+
+    consumer.client = cast(redis.Redis, _IdleClaimClient())
+
+    asyncio.run(consumer._reclaim_loop())
+
+    assert sum(slept) < 1.0, "reclaim loop must wake up promptly on stop() instead of sleeping 30s"
