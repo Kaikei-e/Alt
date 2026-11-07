@@ -327,4 +327,20 @@ mod tests {
              would let Docker SIGKILL the forwarder mid-flush"
         );
     }
+
+    #[tokio::test]
+    async fn wait_for_shutdown_returns_when_processing_loop_exits_without_signal() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let processing_loop = tokio::spawn(async {});
+
+        timeout(
+            TokioDuration::from_millis(200),
+            ShutdownHandle::new(tx, test_handler(), processing_loop).wait_for_shutdown(),
+        )
+        .await
+        .expect(
+            "wait_for_shutdown must return promptly when the processing loop finishes on its own \
+             instead of hanging until SIGTERM",
+        );
+    }
 }
