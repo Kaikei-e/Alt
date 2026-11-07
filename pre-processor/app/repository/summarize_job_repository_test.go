@@ -329,6 +329,19 @@ func TestSummarizeJobRepository_UpdateJobStatus(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	t.Run("releases running job back to pending without incrementing retry_count", func(t *testing.T) {
+		repo, mock := newMockJobRepo(t)
+
+		mock.ExpectExec(`UPDATE summarize_job_queue\s+SET status = \$1, started_at = NULL\s+WHERE job_id = \$2 AND status = 'running'`).
+			WithArgs(string(domain.SummarizeJobStatusPending), "job-unprocessed").
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		err := repo.UpdateJobStatus(context.Background(), "job-unprocessed", domain.SummarizeJobStatusPending, "", "")
+
+		require.NoError(t, err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	// Note: The following integration tests should verify the dead_letter transition logic:
 	// - domain.ErrContentNotProcessable moves a job straight to dead_letter, bypassing retry
 	// - GetPendingJobs should not return dead_letter or failed jobs
