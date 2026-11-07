@@ -1030,17 +1030,17 @@ mod tests {
             },
         };
 
-        let (ack_tx1, ack_rx1) = oneshot::channel();
+        let (first_tx, first_ack) = oneshot::channel();
         buf.extend(batch_a.clone());
-        acks.push(ack_tx1);
+        acks.push(first_tx);
         flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
-        assert!(ack_rx1.await.unwrap().is_err());
+        assert!(first_ack.await.unwrap().is_err());
 
-        let (ack_tx2, ack_rx2) = oneshot::channel();
+        let (retry_tx, retry_ack) = oneshot::channel();
         buf.extend(batch_a);
-        acks.push(ack_tx2);
+        acks.push(retry_tx);
         flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
-        assert!(ack_rx2.await.unwrap().is_ok());
+        assert!(retry_ack.await.unwrap().is_ok());
 
         assert_eq!(
             accepted_rows.load(std::sync::atomic::Ordering::SeqCst),
