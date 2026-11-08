@@ -19,10 +19,11 @@ import (
 // stepped over the row would drop the article forever.
 type stubRefusingArticleRepo struct {
 	repository.ArticleRepository
-	available   []*domain.Article
-	knownFeeds  map[string]bool
-	sinceValues []time.Time
-	written     []string
+	available       []*domain.Article
+	knownFeeds      map[string]bool
+	sinceValues     []time.Time
+	written         []string
+	writtenArticles []*domain.Article
 }
 
 func (s *stubRefusingArticleRepo) FetchInoreaderArticles(_ context.Context, since time.Time) ([]*domain.Article, error) {
@@ -47,6 +48,7 @@ func (s *stubRefusingArticleRepo) UpsertArticlesReportingSkipped(_ context.Conte
 			continue
 		}
 		s.written = append(s.written, article.URL)
+		s.writtenArticles = append(s.writtenArticles, article)
 	}
 
 	return skipped, nil
@@ -189,5 +191,117 @@ func TestHoldWatermarkBelow_AbandonsARowRefusedFarBehindTheScanFront(t *testing.
 
 		assert.Equal(t, scannedThrough, held,
 			"a row refused for longer than the hold window must not pin the cursor forever")
+	})
+}
+
+func TestSyncArticles_UpsertsRepairedRowAboveHeldWatermark(t *testing.T) {
+	now := time.Now()
+	t1 := now.Add(-5 * time.Hour)
+	t2 := now.Add(-4 * time.Hour)
+	t3 := now.Add(-3 * time.Hour)
+	t5 := now.Add(-1 * time.Hour)
+
+	t.Run("should upsert B when re-fetched with a newer CreatedAt while the watermark is held", func(t *testing.T) {
+		articleRepo := &stubRefusingArticleRepo{
+			available: []*domain.Article{
+				{
+					ID:        "inoreader-a",
+					URL:       "https://example.com/article-a",
+					Title:     "Article A",
+					Content:   "<p>Valid content long enough to survive sanitization.</p>",
+					FeedURL:   "https://example.com/known-feed",
+					CreatedAt: t1,
+				},
+				{
+					ID:        "inoreader-r",
+					URL:       "https://example.com/refused",
+					Title:     "Refused R",
+					Content:   "<p>Valid content long enough to survive sanitization.</p>",
+					FeedURL:   "https://example.com/unregistered-feed",
+					CreatedAt: t2,
+				},
+				{
+					ID:        "inoreader-b",
+					URL:       "https://example.com/article-b",
+					Title:     "Article B",
+					Content:   "<p>Initial content long enough to survive sanitization.</p>",
+					FeedURL:   "https://example.com/known-feed",
+					CreatedAt: t3,
+				},
+			},
+			knownFeeds: map[string]bool{"https://example.com/known-feed": true},
+		}
+		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
+
+		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+
+		assert.NoError(t, svc.SyncArticles(context.Background()))
+		assert.Equal(t, []string{
+			"https://example.com/article-a",
+			"https://example.com/article-b",
+		}, articleRepo.written)
+
+		// Sidecar re-fetches B with repaired content, bumping fetched_at to t5.
+		articleRepo.available[2] = &domain.Article{
+			ID:        "inoreader-b",
+			URL:       "https://example.com/article-b",
+			Title:     "Article B",
+			Content:   "<p>Repaired content after the sidecar re-fetched the article.</p>",
+			FeedURL:   "https://example.com/known-feed",
+			CreatedAt: t5,
+		}
+
+		assert.NoError(t, svc.SyncArticles(context.Background()))
+		assert.Equal(t, []string{
+			"https://example.com/article-a",
+			"https://example.com/article-b",
+			"https://example.com/article-b",
+		}, articleRepo.written, "a row re-fetched with a newer CreatedAt must be upserted even while the watermark is held")
+		if assert.Len(t, articleRepo.writtenArticles, 3) {
+			assert.Equal(t, t5, articleRepo.writtenArticles[2].CreatedAt)
+			assert.Equal(t, "<p>Repaired content after the sidecar re-fetched the article.</p>", articleRepo.writtenArticles[2].Content)
+		}
+	})
+
+	t.Run("should still skip an unchanged B(t3) when re-served in run 2", func(t *testing.T) {
+		articleRepo := &stubRefusingArticleRepo{
+			available: []*domain.Article{
+				{
+					ID:        "inoreader-a",
+					URL:       "https://example.com/article-a",
+					Title:     "Article A",
+					Content:   "<p>Valid content long enough to survive sanitization.</p>",
+					FeedURL:   "https://example.com/known-feed",
+					CreatedAt: t1,
+				},
+				{
+					ID:        "inoreader-r",
+					URL:       "https://example.com/refused",
+					Title:     "Refused R",
+					Content:   "<p>Valid content long enough to survive sanitization.</p>",
+					FeedURL:   "https://example.com/unregistered-feed",
+					CreatedAt: t2,
+				},
+				{
+					ID:        "inoreader-b",
+					URL:       "https://example.com/article-b",
+					Title:     "Article B",
+					Content:   "<p>Initial content long enough to survive sanitization.</p>",
+					FeedURL:   "https://example.com/known-feed",
+					CreatedAt: t3,
+				},
+			},
+			knownFeeds: map[string]bool{"https://example.com/known-feed": true},
+		}
+		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
+
+		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+
+		assert.NoError(t, svc.SyncArticles(context.Background()))
+		assert.NoError(t, svc.SyncArticles(context.Background()))
+		assert.Equal(t, []string{
+			"https://example.com/article-a",
+			"https://example.com/article-b",
+		}, articleRepo.written, "an unchanged B(t3) re-served in run 2 must still be skipped")
 	})
 }
