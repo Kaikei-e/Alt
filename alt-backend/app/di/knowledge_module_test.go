@@ -23,14 +23,27 @@ func TestLogSovereignWiringState(t *testing.T) {
 		assert.True(t, LogSovereignWiringState("alt-backend", "http://knowledge-sovereign:9500", "development", false))
 	})
 
+	t.Run("disabled when SOVEREIGN_URL=disabled outside production", func(t *testing.T) {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		assert.False(t, LogSovereignWiringState("alt-backend", "disabled", "development", false))
+		assert.Contains(t, buf.String(), "SOVEREIGN_URL=disabled (explicit opt-out)")
+	})
+
 	t.Run("disabled but non-fatal outside production", func(t *testing.T) {
 		assert.False(t, LogSovereignWiringState("alt-backend", "", "development", false))
 		assert.False(t, LogSovereignWiringState("alt-backend", "", "", false))
 	})
 
-	t.Run("panics when unset in production", func(t *testing.T) {
+	t.Run("panics when unset or disabled in production", func(t *testing.T) {
 		assert.Panics(t, func() {
 			LogSovereignWiringState("alt-backend", "", "production", false)
+		})
+		assert.Panics(t, func() {
+			LogSovereignWiringState("alt-backend", "disabled", "production", false)
 		})
 	})
 }

@@ -50,6 +50,8 @@ func TestMQHubAuth_EnabledRequiresToken(t *testing.T) {
 	t.Run("ValidateBackendConfig fails when MQHUB_ENABLED=true and token is empty", func(t *testing.T) {
 		cfg := &Config{
 			AppEnv:        "development",
+			Auth:          AuthConfig{BackendTokenSecret: "secret-123456789012345678901234"},
+			Sovereign:     SovereignConfig{URL: "http://sovereign:9500"},
 			SearchIndexer: SearchIndexerConfig{ConnectURL: "https://search-indexer:9443"},
 			Rag: RAGConfig{
 				OrchestratorURL:        "http://rag:8000",

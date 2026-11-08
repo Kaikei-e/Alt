@@ -389,6 +389,14 @@ func TestValidateBinaryConfig(t *testing.T) {
 		wantErr  string
 	}{
 		{name: "backend accepts a complete config", validate: ValidateBackendConfig, mutate: func(*Config) {}},
+		{name: "backend needs the backend token secret", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.Auth.BackendTokenSecret = "" }, wantErr: "BACKEND_TOKEN_SECRET"},
+		{name: "backend needs sovereign", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.Sovereign.URL = "" }, wantErr: "SOVEREIGN_URL"},
+		{name: "backend accepts disabled sovereign in dev", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.Sovereign.URL = "disabled" }, wantErr: ""},
+		{name: "backend refuses disabled sovereign in prod", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.AppEnv = "production"; c.Sovereign.URL = "disabled" }, wantErr: "SOVEREIGN_URL=disabled is not permitted in production"},
 		{name: "backend needs the search indexer", validate: ValidateBackendConfig,
 			mutate: func(c *Config) { c.SearchIndexer.ConnectURL = "" }, wantErr: "SEARCH_INDEXER_CONNECT_URL"},
 		{name: "backend needs the rag connect url", validate: ValidateBackendConfig,

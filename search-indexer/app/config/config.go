@@ -20,7 +20,7 @@ func parseFloatEnv(key string, defaultValue float64) (float64, error) {
 	}
 	f, err := strconv.ParseFloat(v, 64)
 	if err != nil || f <= 0 {
-		return defaultValue, nil
+		return 0, fmt.Errorf("invalid %s=%q: must be a positive number", key, v)
 	}
 	return f, nil
 }
@@ -35,7 +35,7 @@ func parseIntEnv(key string, defaultValue int) (int, error) {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n <= 0 {
-		return defaultValue, nil
+		return 0, fmt.Errorf("invalid %s=%q: must be a positive integer", key, v)
 	}
 	return n, nil
 }

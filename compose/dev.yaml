@@ -173,6 +173,9 @@ services:
       - REDIS_AUTH=disabled
       # No rag-orchestrator in the dev stack; disable RAG API auth explicitly.
       - RAG_API_AUTH=disabled
+      # No knowledge-sovereign in the dev stack; disable sovereign explicitly.
+      - SOVEREIGN_URL=disabled
+      - SOVEREIGN_EVENT_AUTH=disabled
     depends_on:
       dev-secret-init:
         condition: service_completed_successfully

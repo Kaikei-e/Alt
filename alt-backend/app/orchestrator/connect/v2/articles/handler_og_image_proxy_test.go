@@ -108,3 +108,17 @@ func TestFetchArticleContent_ImageProxyDisabled_LeavesProxyURLEmpty(t *testing.T
 	require.NoError(t, err)
 	assert.Empty(t, resp.Msg.OgImageProxyUrl)
 }
+
+func TestBatchPrefetchImages_ImageProxyDisabled_ReturnsUnimplemented(t *testing.T) {
+	handler := NewHandler(ArticleHandlerDeps{
+		ImageProxy: nil,
+	}, &config.Config{}, slog.Default())
+
+	_, err := handler.BatchPrefetchImages(createAuthContext(),
+		connect.NewRequest(&articlesv2.BatchPrefetchImagesRequest{
+			ArticleIds: []string{"article-1"},
+		}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+}

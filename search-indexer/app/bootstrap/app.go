@@ -139,7 +139,7 @@ func Run(ctx context.Context) error {
 	if config.MeiliHybridEmbedder != "" {
 		embedderSettings := driver.NewEmbedderSettingsDriver(
 			os.Getenv("MEILISEARCH_HOST"),
-			readSecretEnv("MEILISEARCH_API_KEY"),
+			appCfg.Meilisearch.APIKey,
 			"articles",
 			config.MeiliTimeout,
 		)
@@ -169,22 +169,25 @@ func Run(ctx context.Context) error {
 	var indexRecapsUsecase *usecase.IndexRecapsUsecase
 	var searchRecapsUsecase *usecase.SearchRecapsUsecase
 
-	if config.RecapWorkerURL != "" {
-		recapClient := recap_api.NewClient(config.RecapWorkerURL)
+	recapWorkerURL := strings.TrimSpace(config.RecapWorkerURL)
+	if recapWorkerURL == "" {
+		return fmt.Errorf("RECAP_WORKER_URL is required: set a URL or RECAP_WORKER_URL=disabled")
+	}
+	if strings.EqualFold(recapWorkerURL, "disabled") {
+		logger.Logger.Info("Recap indexing disabled (RECAP_WORKER_URL=disabled)")
+	} else {
+		recapClient := recap_api.NewClient(recapWorkerURL)
 		recapDriver := driver.NewMeilisearchRecapDriver(msClient)
 		recapRepo := gateway.NewRecapRepositoryGateway(recapClient)
 		recapSearchEngine := gateway.NewRecapSearchEngineGateway(recapDriver)
 
 		if err := recapSearchEngine.EnsureRecapIndex(ctx); err != nil {
 			logger.Logger.Error("Failed to ensure recap search index", "err", err)
-			// Non-fatal: continue without recap indexing
-		} else {
-			indexRecapsUsecase = usecase.NewIndexRecapsUsecase(recapRepo, recapSearchEngine)
-			searchRecapsUsecase = usecase.NewSearchRecapsUsecase(recapSearchEngine)
-			logger.Logger.Info("Recap indexing enabled", "recap_worker_url", config.RecapWorkerURL)
+			return fmt.Errorf("ensure recap search index: %w", err)
 		}
-	} else {
-		logger.Logger.Info("Recap indexing disabled (RECAP_WORKER_URL not set)")
+		indexRecapsUsecase = usecase.NewIndexRecapsUsecase(recapRepo, recapSearchEngine)
+		searchRecapsUsecase = usecase.NewSearchRecapsUsecase(recapSearchEngine)
+		logger.Logger.Info("Recap indexing enabled", "recap_worker_url", recapWorkerURL)
 	}
 
 	// ── Use cases (application layer) ──

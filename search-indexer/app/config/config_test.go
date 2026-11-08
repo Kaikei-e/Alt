@@ -291,3 +291,45 @@ func TestMeiliHybridDefaults(t *testing.T) {
 		assert.InDelta(t, 0.75, MeiliHybridMinSemanticScore, 1e-9)
 	}
 }
+
+func TestLoad_RateLimitEnvValidation(t *testing.T) {
+	t.Run("unset variables keep defaults", func(t *testing.T) {
+		setRequiredLoadEnv(t)
+		t.Setenv("INFERENCE_AUTH", "disabled")
+		unsetEnv(t, "SEARCH_RATE_LIMIT_RPS")
+		unsetEnv(t, "SEARCH_RATE_LIMIT_BURST")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.InDelta(t, 100.0, cfg.RateLimit.RequestsPerSecond, 1e-9)
+		assert.Equal(t, 200, cfg.RateLimit.Burst)
+	})
+
+	invalidCases := []struct {
+		name    string
+		key     string
+		val     string
+		wantErr string
+	}{
+		{name: "unparseable RPS", key: "SEARCH_RATE_LIMIT_RPS", val: "not-a-float", wantErr: "SEARCH_RATE_LIMIT_RPS"},
+		{name: "zero RPS", key: "SEARCH_RATE_LIMIT_RPS", val: "0", wantErr: "SEARCH_RATE_LIMIT_RPS"},
+		{name: "negative RPS", key: "SEARCH_RATE_LIMIT_RPS", val: "-5", wantErr: "SEARCH_RATE_LIMIT_RPS"},
+		{name: "unparseable burst", key: "SEARCH_RATE_LIMIT_BURST", val: "not-an-int", wantErr: "SEARCH_RATE_LIMIT_BURST"},
+		{name: "zero burst", key: "SEARCH_RATE_LIMIT_BURST", val: "0", wantErr: "SEARCH_RATE_LIMIT_BURST"},
+		{name: "negative burst", key: "SEARCH_RATE_LIMIT_BURST", val: "-10", wantErr: "SEARCH_RATE_LIMIT_BURST"},
+	}
+
+	for _, tc := range invalidCases {
+		t.Run(tc.name, func(t *testing.T) {
+			setRequiredLoadEnv(t)
+			t.Setenv("INFERENCE_AUTH", "disabled")
+			unsetEnv(t, "SEARCH_RATE_LIMIT_RPS")
+			unsetEnv(t, "SEARCH_RATE_LIMIT_BURST")
+			t.Setenv(tc.key, tc.val)
+
+			_, err := Load()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
