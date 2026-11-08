@@ -30,6 +30,8 @@ const (
 
 	backoffBase = 10 * time.Second
 	backoffCap  = time.Hour
+
+	statusUpdateTimeout = 10 * time.Second
 )
 
 // Stats is one batch's outcome, for metrics and for the log line.
@@ -130,7 +132,18 @@ func (u *Usecase) DispatchBatch(ctx context.Context, limit int) (Stats, error) {
 	}
 	stats.Claimed = len(batch)
 
-	for _, delivery := range batch {
+	for i, delivery := range batch {
+		if ctx.Err() != nil {
+			for _, unattempted := range batch[i:] {
+				if err := u.release(ctx, unattempted.ID, 0, 0, "pass context canceled"); err != nil {
+					slog.ErrorContext(ctx, "push_delivery_release_failed",
+						"delivery_id", unattempted.ID, "error", err)
+					break
+				}
+				stats.Released++
+			}
+			break
+		}
 		u.settle(ctx, delivery, &stats)
 	}
 
@@ -188,7 +201,7 @@ func (u *Usecase) settle(ctx context.Context, delivery domain.PushDelivery, stat
 		// The only signal a push service gives that a device is gone for good.
 		// Delete first: if the finalize below fails, a stale row is cheaper
 		// than a subscription that keeps consuming fan-out forever.
-		if err := u.subscriptions.DeleteByEndpoint(ctx, delivery.UserID, delivery.Endpoint); err != nil {
+		if err := u.deleteSubscription(ctx, delivery.UserID, delivery.Endpoint); err != nil {
 			slog.ErrorContext(ctx, "push_subscription_delete_failed",
 				"delivery_id", delivery.ID, "error", err)
 		}
@@ -197,6 +210,15 @@ func (u *Usecase) settle(ctx context.Context, delivery domain.PushDelivery, stat
 		stats.record(outcome.StatusCode, "gone")
 
 	case outcome.Retryable:
+		if sendErr != nil && ctx.Err() != nil {
+			if err := u.release(ctx, delivery.ID, 0, outcome.StatusCode, "pass context canceled"); err != nil {
+				slog.ErrorContext(ctx, "push_delivery_release_failed",
+					"delivery_id", delivery.ID, "error", err)
+				return
+			}
+			stats.Released++
+			return
+		}
 		if delivery.Attempts >= maxAttempts {
 			u.finalize(ctx, delivery, outcome.StatusCode, "retry budget exhausted")
 			stats.Dead++
@@ -215,7 +237,7 @@ func (u *Usecase) settle(ctx context.Context, delivery domain.PushDelivery, stat
 		if sendErr != nil {
 			reason = "transport failure"
 		}
-		if err := u.deliveries.Release(ctx, delivery.ID, wait, outcome.StatusCode, reason); err != nil {
+		if err := u.release(ctx, delivery.ID, wait, outcome.StatusCode, reason); err != nil {
 			slog.ErrorContext(ctx, "push_delivery_release_failed",
 				"delivery_id", delivery.ID, "error", err)
 			return
@@ -231,7 +253,7 @@ func (u *Usecase) settle(ctx context.Context, delivery domain.PushDelivery, stat
 		stats.record(outcome.StatusCode, "dead")
 
 	case outcome.StatusCode >= 200 && outcome.StatusCode < 300:
-		if err := u.deliveries.MarkSent(ctx, delivery.ID, outcome.StatusCode); err != nil {
+		if err := u.markSent(ctx, delivery.ID, outcome.StatusCode); err != nil {
 			slog.ErrorContext(ctx, "push_delivery_mark_sent_failed",
 				"delivery_id", delivery.ID, "error", err)
 			return
@@ -283,8 +305,28 @@ func (s *Stats) record(statusCode int, result string) {
 	s.Attempts = append(s.Attempts, Attempt{StatusCode: statusCode, Result: result})
 }
 
+func (u *Usecase) markSent(ctx context.Context, deliveryID string, status int) error {
+	detachedCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), statusUpdateTimeout)
+	defer cancel()
+	return u.deliveries.MarkSent(detachedCtx, deliveryID, status)
+}
+
+func (u *Usecase) release(ctx context.Context, deliveryID string, wait time.Duration, status int, reason string) error {
+	detachedCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), statusUpdateTimeout)
+	defer cancel()
+	return u.deliveries.Release(detachedCtx, deliveryID, wait, status, reason)
+}
+
+func (u *Usecase) deleteSubscription(ctx context.Context, userID, endpoint string) error {
+	detachedCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), statusUpdateTimeout)
+	defer cancel()
+	return u.subscriptions.DeleteByEndpoint(detachedCtx, userID, endpoint)
+}
+
 func (u *Usecase) finalize(ctx context.Context, delivery domain.PushDelivery, status int, reason string) {
-	if err := u.deliveries.MarkDead(ctx, delivery.ID, status, reason); err != nil {
+	detachedCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), statusUpdateTimeout)
+	defer cancel()
+	if err := u.deliveries.MarkDead(detachedCtx, delivery.ID, status, reason); err != nil {
 		// The row keeps its lease and will be re-claimed, which is the safe
 		// direction: a duplicate notification is survivable, a row stuck in
 		// 'sending' forever is what makes the backlog-age alert lie.

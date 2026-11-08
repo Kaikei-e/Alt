@@ -22,6 +22,8 @@ import (
 
 	"alt/dataplane/port/datahub_capability_port"
 	"alt/domain"
+
+	"github.com/google/uuid"
 )
 
 // Claim sizing and lease bounds. A requested value of zero means "the caller
@@ -127,6 +129,9 @@ func validateEnqueue(in domain.NotificationEnqueue) error {
 		// and names the enqueue.
 		return fmt.Errorf("%w: payload must be JSON; it is stored as JSONB and read back by the "+
 			"dispatcher without being re-encoded", ErrInvalidEnqueue)
+	}
+	if _, err := uuid.Parse(in.UserID); err != nil {
+		return fmt.Errorf("%w: user_id must be a uuid: %w", ErrInvalidEnqueue, err)
 	}
 	if !isKnownKind(in.Kind) {
 		return fmt.Errorf("%w: %q", ErrUnknownKind, in.Kind)

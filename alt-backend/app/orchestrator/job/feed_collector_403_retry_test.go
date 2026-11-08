@@ -68,7 +68,7 @@ func TestFetchWithRetryOn403_WithoutLimiter_HoldsTheExternalAPIFloor(t *testing.
 	attempts := 0
 	_, err := fetchWithRetryOn403(ctx, func() (*rssFeed.Feed, error) {
 		attempts++
-		return nil, errorWithMessage("http error: 403 Forbidden")
+		return nil, rssFeed.HTTPError{StatusCode: 403, Status: "403 Forbidden"}
 	}, "https://example.com/feed.xml", nil)
 
 	require.Error(t, err, "the context runs out before the backoff does")

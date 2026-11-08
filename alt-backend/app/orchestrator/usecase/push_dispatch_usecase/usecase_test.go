@@ -22,12 +22,15 @@ type recordedFinal struct {
 }
 
 type fakeDeliveries struct {
-	batch    []domain.PushDelivery
-	claimErr error
+	batch      []domain.PushDelivery
+	claimErr   error
+	releaseErr error
 
-	sent     []string
-	dead     []recordedFinal
-	released []recordedFinal
+	sent         []string
+	dead         []recordedFinal
+	released     []recordedFinal
+	releaseCalls int
+	ctxErrs      []error
 }
 
 func (f *fakeDeliveries) ClaimBatch(_ context.Context, _ int) ([]domain.PushDelivery, error) {
@@ -41,17 +44,33 @@ func (f *fakeDeliveries) BacklogAge(_ context.Context) (time.Duration, int64, in
 	return 0, 0, 0, nil
 }
 
-func (f *fakeDeliveries) MarkSent(_ context.Context, id string, _ int) error {
+func (f *fakeDeliveries) MarkSent(ctx context.Context, id string, _ int) error {
+	f.ctxErrs = append(f.ctxErrs, ctx.Err())
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.sent = append(f.sent, id)
 	return nil
 }
 
-func (f *fakeDeliveries) MarkDead(_ context.Context, id string, status int, reason string) error {
+func (f *fakeDeliveries) MarkDead(ctx context.Context, id string, status int, reason string) error {
+	f.ctxErrs = append(f.ctxErrs, ctx.Err())
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.dead = append(f.dead, recordedFinal{deliveryID: id, statusCode: status, reason: reason})
 	return nil
 }
 
-func (f *fakeDeliveries) Release(_ context.Context, id string, retryAfter time.Duration, status int, reason string) error {
+func (f *fakeDeliveries) Release(ctx context.Context, id string, retryAfter time.Duration, status int, reason string) error {
+	f.releaseCalls++
+	f.ctxErrs = append(f.ctxErrs, ctx.Err())
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if f.releaseErr != nil {
+		return f.releaseErr
+	}
 	f.released = append(f.released, recordedFinal{
 		deliveryID: id, statusCode: status, reason: reason, retryAfter: retryAfter,
 	})
@@ -68,6 +87,7 @@ func (f *fakeSubscriptions) DeleteByEndpoint(_ context.Context, _, endpoint stri
 type fakeSender struct {
 	outcome  push_dispatch_port.SendOutcome
 	err      error
+	onSend   func()
 	calls    int
 	requests []push_dispatch_port.SendRequest
 }
@@ -75,6 +95,9 @@ type fakeSender struct {
 func (f *fakeSender) Send(_ context.Context, req push_dispatch_port.SendRequest) (push_dispatch_port.SendOutcome, error) {
 	f.calls++
 	f.requests = append(f.requests, req)
+	if f.onSend != nil {
+		f.onSend()
+	}
 	return f.outcome, f.err
 }
 
@@ -462,5 +485,128 @@ func TestFullJitterBackoff_NeverExceedsCapAndIsNonNegative(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDispatchBatch_DetachesOutcomeWritesWhenPassContextExpires(t *testing.T) {
+	first := delivery(1)
+	second := delivery(maxAttempts)
+	second.ID = "delivery-2"
+
+	deliveries := &fakeDeliveries{batch: []domain.PushDelivery{first, second}}
+	ctx, cancel := context.WithCancel(context.Background())
+	sender := &fakeSender{
+		outcome: push_dispatch_port.SendOutcome{StatusCode: 201},
+		onSend:  cancel,
+	}
+
+	stats, err := newUsecase(deliveries, &fakeSubscriptions{}, sender).DispatchBatch(ctx, 10)
+	if err != nil {
+		t.Fatalf("DispatchBatch: %v", err)
+	}
+
+	if len(deliveries.ctxErrs) == 0 {
+		t.Fatal("expected outcome writes to be invoked")
+	}
+	for i, recordedErr := range deliveries.ctxErrs {
+		if recordedErr != nil {
+			t.Fatalf("outcome write %d saw ctx.Err() = %v, want nil", i, recordedErr)
+		}
+	}
+	if stats.Sent != 1 {
+		t.Fatalf("stats.Sent = %d, want 1", stats.Sent)
+	}
+	if sender.calls != 1 {
+		t.Fatalf("sender.calls = %d, want 1 (unattempted row must not be sent after pass ctx ends)", sender.calls)
+	}
+	if len(deliveries.released) != 1 || deliveries.released[0].deliveryID != "delivery-2" {
+		t.Fatalf("expected unattempted second row to be released, got %v", deliveries.released)
+	}
+	if deliveries.released[0].retryAfter != 0 {
+		t.Fatalf("unattempted release retryAfter = %v, want 0", deliveries.released[0].retryAfter)
+	}
+	if len(deliveries.dead) != 0 {
+		t.Fatalf("unattempted row at maxAttempts must not be dead-lettered, got %v", deliveries.dead)
+	}
+	if len(stats.Attempts) != 1 {
+		t.Fatalf("len(stats.Attempts) = %d, want 1", len(stats.Attempts))
+	}
+
+	deadDeliveries := &fakeDeliveries{batch: []domain.PushDelivery{delivery(1)}}
+	deadCtx, deadCancel := context.WithCancel(context.Background())
+	deadSender := &fakeSender{
+		outcome: push_dispatch_port.SendOutcome{StatusCode: 400},
+		onSend:  deadCancel,
+	}
+	deadStats, err := newUsecase(deadDeliveries, &fakeSubscriptions{}, deadSender).DispatchBatch(deadCtx, 10)
+	if err != nil {
+		t.Fatalf("DispatchBatch (dead): %v", err)
+	}
+	if len(deadDeliveries.ctxErrs) != 1 || deadDeliveries.ctxErrs[0] != nil {
+		t.Fatalf("MarkDead ctxErrs = %v, want [nil]", deadDeliveries.ctxErrs)
+	}
+	if deadStats.Dead != 1 || len(deadDeliveries.dead) != 1 {
+		t.Fatalf("expected dead-letter recorded, got stats.Dead=%d dead=%v", deadStats.Dead, deadDeliveries.dead)
+	}
+}
+
+func TestDispatchBatch_ReleasesInFlightSendAbortedByPassContextEvenAtMaxAttempts(t *testing.T) {
+	deliveries := &fakeDeliveries{batch: []domain.PushDelivery{delivery(maxAttempts)}}
+	ctx, cancel := context.WithCancel(context.Background())
+	sender := &fakeSender{
+		outcome: push_dispatch_port.SendOutcome{Retryable: true},
+		err:     context.Canceled,
+		onSend:  cancel,
+	}
+
+	stats, err := newUsecase(deliveries, &fakeSubscriptions{}, sender).DispatchBatch(ctx, 10)
+	if err != nil {
+		t.Fatalf("DispatchBatch: %v", err)
+	}
+
+	if len(deliveries.dead) != 0 || stats.Dead != 0 {
+		t.Fatalf("in-flight send aborted by pass ctx must not be marked dead, got dead=%v stats.Dead=%d", deliveries.dead, stats.Dead)
+	}
+	if len(deliveries.released) != 1 {
+		t.Fatalf("expected row released, got %v", deliveries.released)
+	}
+	if deliveries.released[0].retryAfter != 0 {
+		t.Fatalf("retryAfter = %v, want 0", deliveries.released[0].retryAfter)
+	}
+	if deliveries.released[0].reason != "pass context canceled" {
+		t.Fatalf("reason = %q, want %q", deliveries.released[0].reason, "pass context canceled")
+	}
+	if stats.Released != 1 {
+		t.Fatalf("stats.Released = %d, want 1", stats.Released)
+	}
+	if len(stats.Attempts) != 0 {
+		t.Fatalf("len(stats.Attempts) = %d, want 0", len(stats.Attempts))
+	}
+}
+
+func TestDispatchBatch_StopsReleasingUnattemptedRowsAfterFirstError(t *testing.T) {
+	first := delivery(1)
+	second := delivery(1)
+	second.ID = "delivery-2"
+	third := delivery(1)
+	third.ID = "delivery-3"
+
+	deliveries := &fakeDeliveries{
+		batch:      []domain.PushDelivery{first, second, third},
+		releaseErr: errors.New("datahub unreachable"),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	sender := &fakeSender{
+		outcome: push_dispatch_port.SendOutcome{StatusCode: 201},
+		onSend:  cancel,
+	}
+
+	_, err := newUsecase(deliveries, &fakeSubscriptions{}, sender).DispatchBatch(ctx, 10)
+	if err != nil {
+		t.Fatalf("DispatchBatch: %v", err)
+	}
+
+	if deliveries.releaseCalls != 1 {
+		t.Fatalf("releaseCalls = %d, want 1 (stop after first release error)", deliveries.releaseCalls)
 	}
 }
