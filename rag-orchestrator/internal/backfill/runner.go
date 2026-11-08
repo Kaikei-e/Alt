@@ -497,13 +497,17 @@ func (r *Runner) sendArticle(ctx context.Context, a Article) error {
 		return nil
 	}
 
-	// Duplicate key race: server returns 409 Conflict; treat as success.
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+
 	if resp.StatusCode == http.StatusConflict {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return nil
+		var conflict struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(bodyBytes, &conflict); err == nil && conflict.Code == "duplicate_key" {
+			return nil
+		}
 	}
 
-	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	return fmt.Errorf("status %d: %s", resp.StatusCode, string(bodyBytes))
 }
 

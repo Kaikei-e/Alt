@@ -16,10 +16,10 @@ import (
 
 // staleProcessingLease bounds how long a job may sit in 'processing' before
 // AcquireNextJob treats it as abandoned (worker crashed / status update
-// failed) and reclaims it. Comfortably above the worker's per-job timeout
-// (60s) so healthy in-flight jobs are never reclaimed out from under a
-// live worker.
-const staleProcessingLease = 5 * time.Minute
+// failed) and reclaims it. Must strictly exceed both JobWorker's 60s timeout
+// and DefaultRebuildConfig().JobTimeout (5m) with margin so healthy in-flight
+// jobs are never reclaimed out from under a live worker.
+const staleProcessingLease = 10 * time.Minute
 
 type RagJobRepository struct {
 	db *pgxpool.Pool

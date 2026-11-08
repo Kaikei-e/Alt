@@ -292,15 +292,19 @@ func (e *RebuildEngine) processJob(ctx context.Context, job *domain.RagJob, inde
 	status := "completed"
 	var errMsg *string
 	if err != nil {
-		status = "failed"
-		msg := err.Error()
-		errMsg = &msg
-		e.failed.Add(1)
-		e.logger.Error("rebuild_job_failed",
-			slog.String("job_id", job.ID.String()),
-			slog.String("error", msg),
-		)
-		e.recordFailure(err)
+		if ctx.Err() != nil {
+			status = "new"
+		} else {
+			status = "failed"
+			msg := err.Error()
+			errMsg = &msg
+			e.failed.Add(1)
+			e.logger.Error("rebuild_job_failed",
+				slog.String("job_id", job.ID.String()),
+				slog.String("error", msg),
+			)
+			e.recordFailure(err)
+		}
 	} else {
 		e.consecutiveFailures.Store(0)
 		if outcome == outcomeSkipped {

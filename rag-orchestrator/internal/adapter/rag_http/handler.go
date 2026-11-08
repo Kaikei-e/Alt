@@ -212,6 +212,11 @@ func (h *Handler) DeleteIndex(ctx echo.Context) error {
 
 const upsertTimeout = 90 * time.Second
 
+const (
+	ConflictCodeOwnerConflict = "owner_conflict"
+	ConflictCodeDuplicateKey  = "duplicate_key"
+)
+
 // Upsert an article to the RAG index
 // (POST /internal/rag/index/upsert)
 func (h *Handler) UpsertIndex(ctx echo.Context) error {
@@ -275,8 +280,17 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 		if errors.Is(err, usecase.ErrInvalidUserID) {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
 		}
-		if errors.Is(err, usecase.ErrOwnerConflict) || isDuplicateKeyError(err) {
-			return ctx.JSON(http.StatusConflict, map[string]string{"error": "document owned by another user"})
+		if errors.Is(err, usecase.ErrOwnerConflict) {
+			return ctx.JSON(http.StatusConflict, map[string]string{
+				"code":  ConflictCodeOwnerConflict,
+				"error": "document owned by another user",
+			})
+		}
+		if isDuplicateKeyError(err) {
+			return ctx.JSON(http.StatusConflict, map[string]string{
+				"code":  ConflictCodeDuplicateKey,
+				"error": "duplicate key conflict",
+			})
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to index article"})
 	}
