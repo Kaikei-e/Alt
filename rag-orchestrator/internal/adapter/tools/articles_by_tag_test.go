@@ -102,6 +102,29 @@ func TestArticlesByTagTool_RequiresUserID(t *testing.T) {
 	}
 }
 
+func TestArticlesByTagTool_RejectsParamsOnlyUserID(t *testing.T) {
+	client := &mockArticlesByTagClient{
+		articles: []domain.TagArticle{
+			{ID: "1", Title: "Victim Article", URL: "https://example.com/1"},
+		},
+	}
+	tool := NewArticlesByTagTool(client)
+
+	result, err := tool.Execute(context.Background(), map[string]string{
+		"tag_name": "art",
+		"user_id":  "forged-victim-user",
+	})
+	if err == nil {
+		t.Fatal("expected error when user_id is only in params and not in context")
+	}
+	if result != nil && result.Success {
+		t.Error("expected tool result to report failure when context has no user_id")
+	}
+	if client.called {
+		t.Error("must not call client when context has no user_id")
+	}
+}
+
 func TestArticlesByTagTool_EmptyTagName(t *testing.T) {
 	tool := NewArticlesByTagTool(nil)
 	result, err := tool.Execute(context.Background(), map[string]string{})

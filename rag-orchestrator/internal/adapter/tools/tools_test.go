@@ -16,9 +16,11 @@ type mockSearchClient struct {
 	hits       []domain.SearchHit
 	err        error
 	lastUserID string
+	called     bool
 }
 
 func (m *mockSearchClient) Search(_ context.Context, _, userID string) ([]domain.SearchHit, error) {
+	m.called = true
 	m.lastUserID = userID
 	return m.hits, m.err
 }
@@ -36,8 +38,9 @@ func TestTagSearchTool_Execute_Success(t *testing.T) {
 		},
 	}
 	tool := tools.NewTagSearchTool(client)
+	ctx := domain.WithUserID(context.Background(), "00000000-0000-0000-0000-000000000001")
 
-	result, err := tool.Execute(context.Background(), map[string]string{"query": "Rust", "user_id": "00000000-0000-0000-0000-000000000001"})
+	result, err := tool.Execute(ctx, map[string]string{"query": "Rust"})
 	assert.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Contains(t, result.Data, "Rust")
@@ -46,8 +49,9 @@ func TestTagSearchTool_Execute_Success(t *testing.T) {
 func TestTagSearchTool_Execute_Empty(t *testing.T) {
 	client := &mockSearchClient{hits: nil}
 	tool := tools.NewTagSearchTool(client)
+	ctx := domain.WithUserID(context.Background(), "00000000-0000-0000-0000-000000000001")
 
-	result, err := tool.Execute(context.Background(), map[string]string{"query": "nonexistent", "user_id": "00000000-0000-0000-0000-000000000001"})
+	result, err := tool.Execute(ctx, map[string]string{"query": "nonexistent"})
 	assert.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Equal(t, "no results", result.Data)
@@ -69,6 +73,23 @@ func TestTagSearchTool_Execute_PrefersContextUserIDOverParams(t *testing.T) {
 	assert.Equal(t, "authenticated-user", client.lastUserID)
 }
 
+func TestTagSearchTool_Execute_RejectsParamsOnlyUserID(t *testing.T) {
+	client := &mockSearchClient{
+		hits: []domain.SearchHit{{ID: "1", Title: "Victim", Content: "Victim content"}},
+	}
+	tool := tools.NewTagSearchTool(client)
+
+	result, err := tool.Execute(context.Background(), map[string]string{
+		"query":   "Rust",
+		"user_id": "forged-victim-user",
+	})
+	assert.Error(t, err)
+	if result != nil {
+		assert.False(t, result.Success)
+	}
+	assert.False(t, client.called)
+}
+
 // --- DateRangeFilterTool ---
 
 func TestDateRangeFilterTool_Name(t *testing.T) {
@@ -83,8 +104,9 @@ func TestDateRangeFilterTool_Execute(t *testing.T) {
 		},
 	}
 	tool := tools.NewDateRangeFilterTool(client)
+	ctx := domain.WithUserID(context.Background(), "00000000-0000-0000-0000-000000000001")
 
-	result, err := tool.Execute(context.Background(), map[string]string{"query": "最近のAIニュース", "user_id": "00000000-0000-0000-0000-000000000001"})
+	result, err := tool.Execute(ctx, map[string]string{"query": "最近のAIニュース"})
 	assert.NoError(t, err)
 	assert.True(t, result.Success)
 }
@@ -105,6 +127,23 @@ func TestDateRangeFilterTool_Execute_PrefersContextUserIDOverParams(t *testing.T
 	assert.Equal(t, "authenticated-user", client.lastUserID)
 }
 
+func TestDateRangeFilterTool_Execute_RejectsParamsOnlyUserID(t *testing.T) {
+	client := &mockSearchClient{
+		hits: []domain.SearchHit{{ID: "1", Title: "Recent news", Content: "Today's article"}},
+	}
+	tool := tools.NewDateRangeFilterTool(client)
+
+	result, err := tool.Execute(context.Background(), map[string]string{
+		"query":   "最近のAIニュース",
+		"user_id": "forged-victim-user",
+	})
+	assert.Error(t, err)
+	if result != nil {
+		assert.False(t, result.Success)
+	}
+	assert.False(t, client.called)
+}
+
 // --- RelatedArticlesTool ---
 
 func TestRelatedArticlesTool_Execute_PrefersContextUserIDOverParams(t *testing.T) {
@@ -121,4 +160,21 @@ func TestRelatedArticlesTool_Execute_PrefersContextUserIDOverParams(t *testing.T
 	assert.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Equal(t, "authenticated-user", client.lastUserID)
+}
+
+func TestRelatedArticlesTool_Execute_RejectsParamsOnlyUserID(t *testing.T) {
+	client := &mockSearchClient{
+		hits: []domain.SearchHit{{ID: "1", Title: "Related article", Content: "Body"}},
+	}
+	tool := tools.NewRelatedArticlesTool(client)
+
+	result, err := tool.Execute(context.Background(), map[string]string{
+		"query":   "AI",
+		"user_id": "forged-victim-user",
+	})
+	assert.Error(t, err)
+	if result != nil {
+		assert.False(t, result.Success)
+	}
+	assert.False(t, client.called)
 }
