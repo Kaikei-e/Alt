@@ -557,7 +557,10 @@ func TestGetArticleTagsEmptyContract(t *testing.T) {
 			Method:  "POST",
 			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleTags"),
 			Headers: jsonHeaders(),
-			Body:    map[string]interface{}{"articleId": readStateArticleID},
+			Body: map[string]interface{}{
+				"articleId": readStateArticleID,
+				"userId":    readStateUserID,
+			},
 		}).
 		WithCompleteResponse(consumer.Response{
 			Status:  200,
@@ -567,7 +570,7 @@ func TestGetArticleTagsEmptyContract(t *testing.T) {
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewTagGateway(newDataHubServiceClient(config))
-			tags, err := gw.FetchArticleTags(context.Background(), readStateArticleID)
+			tags, err := gw.FetchArticleTags(authedContext(readStateUserID), readStateArticleID)
 			if err != nil {
 				return fmt.Errorf("FetchArticleTags failed: %w", err)
 			}
