@@ -706,6 +706,7 @@ message GetArticleHeadResponse {
 
 message BatchGetOgImageURLsRequest {
   repeated string article_ids = 1;
+  string user_id = 2;
 }
 
 message BatchGetOgImageURLsResponse {
