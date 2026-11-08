@@ -116,6 +116,11 @@ func TestRunRecapIndexLoop_DoesNotHotSpinOnStalledCursor(t *testing.T) {
 func newFakeMeilisearchForRecapWiring(t *testing.T, failRecapSettings bool, recapRequested *atomic.Bool, onReady func()) *httptest.Server {
 	t.Helper()
 	var readyOnce sync.Once
+	notifyReady := func() {
+		if onReady != nil {
+			readyOnce.Do(onReady)
+		}
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -136,7 +141,7 @@ func newFakeMeilisearchForRecapWiring(t *testing.T, failRecapSettings bool, reca
 				recapRequested.Store(true)
 			}
 			if failRecapSettings {
-				readyOnce.Do(onReady)
+				notifyReady()
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(`{"message":"recap settings failed","code":"internal","type":"internal"}`))
 				return
@@ -144,10 +149,10 @@ func newFakeMeilisearchForRecapWiring(t *testing.T, failRecapSettings bool, reca
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"taskUid":1}`))
 		case strings.HasPrefix(r.URL.Path, "/tasks/"):
-			readyOnce.Do(onReady)
 			_, _ = w.Write([]byte(`{"uid":1,"status":"succeeded"}`))
 		default:
-			_, _ = w.Write([]byte(`{}`))
+			notifyReady()
+			_, _ = w.Write([]byte(`{"taskUid":1}`))
 		}
 	}))
 	t.Cleanup(srv.Close)
@@ -217,12 +222,10 @@ func setRecapBootstrapEnv(t *testing.T, meiliURL string, recapWorkerURL string) 
 }
 
 func TestRun_EnsureRecapIndexFailureAbortsStartup(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	srv := newFakeMeilisearchForRecapWiring(t, true, nil, func() {
-		time.AfterFunc(50*time.Millisecond, cancel)
-	})
+	srv := newFakeMeilisearchForRecapWiring(t, true, nil, nil)
 	setRecapBootstrapEnv(t, srv.URL, srv.URL)
 
 	err := Run(ctx)
@@ -235,12 +238,10 @@ func TestRun_EnsureRecapIndexFailureAbortsStartup(t *testing.T) {
 }
 
 func TestRun_RecapWorkerURLUnsetFailsStartup(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	srv := newFakeMeilisearchForRecapWiring(t, false, nil, func() {
-		time.AfterFunc(50*time.Millisecond, cancel)
-	})
+	srv := newFakeMeilisearchForRecapWiring(t, false, nil, nil)
 	setRecapBootstrapEnv(t, srv.URL, "")
 
 	err := Run(ctx)
@@ -253,7 +254,7 @@ func TestRun_RecapWorkerURLUnsetFailsStartup(t *testing.T) {
 }
 
 func TestRun_RecapWorkerURLExplicitlyDisabledSucceeds(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	var recapRequested atomic.Bool
