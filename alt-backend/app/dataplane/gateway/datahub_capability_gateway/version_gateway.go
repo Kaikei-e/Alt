@@ -60,8 +60,8 @@ func (g *SummaryVersionGateway) MarkSummaryVersionSuperseded(ctx context.Context
 	return prev, nil
 }
 
-func (g *SummaryVersionGateway) GetSummaryVersionByID(ctx context.Context, summaryVersionID, _ uuid.UUID) (domain.SummaryVersion, error) {
-	sv, err := g.db.GetSummaryVersionByID(ctx, summaryVersionID, uuid.Nil)
+func (g *SummaryVersionGateway) GetSummaryVersionByID(ctx context.Context, summaryVersionID, userID uuid.UUID) (domain.SummaryVersion, error) {
+	sv, err := g.db.GetSummaryVersionByID(ctx, summaryVersionID, userID)
 	if err != nil {
 		return domain.SummaryVersion{}, fmt.Errorf("get summary version %s: %w", summaryVersionID, err)
 	}

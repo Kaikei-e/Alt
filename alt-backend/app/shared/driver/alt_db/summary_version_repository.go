@@ -151,37 +151,27 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 	}
 }
 
-// GetSummaryVersionByID returns a specific summary version by its ID.
+// GetSummaryVersionByID returns a specific summary version by its ID scoped to userID.
 // This is reproject-safe: replaying an old event will always fetch the correct version.
-func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVersionID, _ uuid.UUID) (domain.SummaryVersion, error) {
+func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVersionID, userID uuid.UUID) (domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetSummaryVersionByID")
 	defer span.End()
 
-	var sv domain.SummaryVersion
-	var err error
-	if user, userErr := domain.GetUserFromContext(ctx); userErr == nil && user != nil && user.UserID != uuid.Nil {
-		query := `SELECT summary_version_id, article_id, user_id, generated_at,
-			model, prompt_version, input_hash, quality_score,
-			summary_text, superseded_by
-			FROM summary_versions
-			WHERE summary_version_id = $1 AND user_id = $2`
-		err = r.pool.QueryRow(ctx, query, summaryVersionID, user.UserID).Scan(
-			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
-			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
-			&sv.SummaryText, &sv.SupersededBy,
-		)
-	} else {
-		query := `SELECT summary_version_id, article_id, user_id, generated_at,
-			model, prompt_version, input_hash, quality_score,
-			summary_text, superseded_by
-			FROM summary_versions
-			WHERE summary_version_id = $1`
-		err = r.pool.QueryRow(ctx, query, summaryVersionID).Scan(
-			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
-			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
-			&sv.SummaryText, &sv.SupersededBy,
-		)
+	if userID == uuid.Nil {
+		return domain.SummaryVersion{}, errors.New("user id is required")
 	}
+
+	var sv domain.SummaryVersion
+	query := `SELECT summary_version_id, article_id, user_id, generated_at,
+		model, prompt_version, input_hash, quality_score,
+		summary_text, superseded_by
+		FROM summary_versions
+		WHERE summary_version_id = $1 AND user_id = $2`
+	err := r.pool.QueryRow(ctx, query, summaryVersionID, userID).Scan(
+		&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
+		&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
+		&sv.SummaryText, &sv.SupersededBy,
+	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return domain.SummaryVersion{}, fmt.Errorf("no summary version found for id %s", summaryVersionID)

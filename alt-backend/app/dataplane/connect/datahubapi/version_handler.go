@@ -71,8 +71,12 @@ func (h *Handler) GetSummaryVersionByID(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, err
 	}
+	userID, err := requiredUserID(req.Msg.GetUserId())
+	if err != nil {
+		return nil, err
+	}
 
-	sv, err := h.summaryVersion.GetSummaryVersionByID(ctx, versionID, uuid.Nil)
+	sv, err := h.summaryVersion.GetSummaryVersionByID(ctx, versionID, userID)
 	if err != nil {
 		return nil, h.versionReadError(ctx, "GetSummaryVersionByID", err, "summary_version_id", versionID.String())
 	}
