@@ -77,7 +77,7 @@ func (r *DashboardRepository) FetchTrendStatsForUser(ctx context.Context, userID
 
 		if err := rows.Scan(&bucket, &articles, &summarized, &feedActivity); err != nil {
 			logger.SafeErrorContext(ctx, "failed to scan trend stats row", "error", err)
-			continue
+			return nil, fmt.Errorf("failed to scan trend stats row: %w", err)
 		}
 
 		dataPoints = append(dataPoints, TrendStatsRow{

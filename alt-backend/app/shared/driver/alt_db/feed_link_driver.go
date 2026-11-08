@@ -5,9 +5,11 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func (r *FeedRepository) FetchFeedLinks(ctx context.Context) ([]*domain.FeedLink, error) {
@@ -42,8 +44,11 @@ func (r *FeedRepository) FetchFeedLinkIDByURL(ctx context.Context, feedURL strin
 	var id string
 	err := r.pool.QueryRow(ctx, "SELECT id FROM feed_links WHERE url = $1", feedURL).Scan(&id)
 	if err != nil {
-		// Not found is not an error - just return nil
-		return nil, nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		logger.SafeErrorContext(ctx, "Error fetching feed link ID by URL", "error", err, "url", feedURL)
+		return nil, fmt.Errorf("fetch feed link id by url: %w", err)
 	}
 	return &id, nil
 }

@@ -104,7 +104,7 @@ func (r *ArticleRepository) FetchOgImageURLsByArticleIDs(ctx context.Context, ar
 	for rows.Next() {
 		var articleID, ogURL string
 		if err := rows.Scan(&articleID, &ogURL); err != nil {
-			continue
+			return nil, fmt.Errorf("failed to scan og_image_url: %w", err)
 		}
 		if ogURL != "" {
 			result[articleID] = ogURL

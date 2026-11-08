@@ -8,10 +8,69 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	pgxmock "github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFetchFeedLinkIDByURL_Found(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &FeedRepository{pool: mock}
+	feedURL := "https://example.com/feed.xml"
+	wantID := uuid.NewString()
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM feed_links WHERE url = $1")).
+		WithArgs(feedURL).
+		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(wantID))
+
+	gotID, err := repo.FetchFeedLinkIDByURL(context.Background(), feedURL)
+	require.NoError(t, err)
+	require.NotNil(t, gotID)
+	assert.Equal(t, wantID, *gotID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestFetchFeedLinkIDByURL_ErrNoRowsReturnsNilNil(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &FeedRepository{pool: mock}
+	feedURL := "https://example.com/missing.xml"
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM feed_links WHERE url = $1")).
+		WithArgs(feedURL).
+		WillReturnError(pgx.ErrNoRows)
+
+	gotID, err := repo.FetchFeedLinkIDByURL(context.Background(), feedURL)
+	require.NoError(t, err)
+	assert.Nil(t, gotID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestFetchFeedLinkIDByURL_QueryErrorPropagated(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &FeedRepository{pool: mock}
+	feedURL := "https://example.com/feed.xml"
+	dbErr := errors.New("conn busy")
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM feed_links WHERE url = $1")).
+		WithArgs(feedURL).
+		WillReturnError(dbErr)
+
+	gotID, err := repo.FetchFeedLinkIDByURL(context.Background(), feedURL)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, dbErr)
+	assert.Nil(t, gotID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
 
 func TestFetchFeedLinksWithAvailability_AllWithAvailability(t *testing.T) {
 	mock, err := pgxmock.NewPool()
