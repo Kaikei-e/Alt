@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -15,6 +15,7 @@ from acolyte.usecase.graph.nodes.writer_node import WriterNode
 
 if TYPE_CHECKING:
     from acolyte.domain.brief import ReportBrief
+    from acolyte.usecase.graph.state import ReportGenerationState, SectionCitationDict
 
 
 class FakeRepo:
@@ -106,7 +107,7 @@ async def test_finalizer_always_prefers_best_sections_when_available() -> None:
     repo = FakeRepo()
     node = FinalizerNode(repo)
 
-    state = {
+    state: ReportGenerationState = {
         "report_id": str(repo.report_id),
         "outline": [{"key": "analysis"}],
         "brief": {"topic": "AI"},
@@ -127,7 +128,7 @@ async def test_finalizer_persists_best_citations_corresponding_to_best_section_b
     repo = FakeRepo()
     node = FinalizerNode(repo)
 
-    earlier_citations = [
+    earlier_citations: list[SectionCitationDict] = [
         {
             "claim_id": "analysis-1",
             "source_id": "art-rev1",
@@ -137,7 +138,7 @@ async def test_finalizer_persists_best_citations_corresponding_to_best_section_b
             "offset_end": 22,
         }
     ]
-    latest_citations = [
+    latest_citations: list[SectionCitationDict] = [
         {
             "claim_id": "analysis-1",
             "source_id": "art-rev2",
@@ -148,7 +149,7 @@ async def test_finalizer_persists_best_citations_corresponding_to_best_section_b
         }
     ]
 
-    state = {
+    state: ReportGenerationState = {
         "report_id": str(repo.report_id),
         "outline": [{"key": "analysis"}],
         "brief": {"topic": "AI"},
@@ -173,10 +174,12 @@ async def test_finalizer_old_checkpoint_without_best_citations_falls_back_only_w
     repo = FakeRepo()
     node = FinalizerNode(repo)
 
-    latest_citations = [{"claim_id": "analysis-1", "source_id": "art-rev2", "source_type": "article", "quote": "q"}]
+    latest_citations: list[SectionCitationDict] = [
+        {"claim_id": "analysis-1", "source_id": "art-rev2", "source_type": "article", "quote": "q"}
+    ]
 
     # Case 1: best body != latest body -> do not persist stale latest citations
-    state_mismatch = {
+    state_mismatch: ReportGenerationState = {
         "report_id": str(repo.report_id),
         "outline": [{"key": "analysis"}],
         "brief": {"topic": "AI"},
@@ -188,7 +191,7 @@ async def test_finalizer_old_checkpoint_without_best_citations_falls_back_only_w
     assert repo.saved_citations["analysis"] == []
 
     # Case 2: best body == latest body -> fall back to latest citations
-    state_match = {
+    state_match: ReportGenerationState = {
         "report_id": str(repo.report_id),
         "outline": [{"key": "analysis"}],
         "brief": {"topic": "AI"},
@@ -233,7 +236,7 @@ async def test_writer_preserves_best_section_citations_when_later_revision_is_wo
     }
 
     # Revision 1: accepted longer body citing art-1
-    rev1 = await writer(state)
+    rev1 = await writer(cast("ReportGenerationState", state))
     state.update(rev1)
 
     # Revision 2: critic asks to regenerate analysis-1 with different evidence, producing a shorter body
@@ -256,7 +259,7 @@ async def test_writer_preserves_best_section_citations_when_later_revision_is_wo
             }
         ]
     }
-    rev2 = await writer(state)
+    rev2 = await writer(cast("ReportGenerationState", state))
     state.update(rev2)
 
     assert state["sections"]["analysis"] == "Short rev2."
@@ -266,7 +269,7 @@ async def test_writer_preserves_best_section_citations_when_later_revision_is_wo
 
     repo = FakeRepo()
     state["report_id"] = str(repo.report_id)
-    await FinalizerNode(repo)(state)
+    await FinalizerNode(repo)(cast("ReportGenerationState", state))
 
     assert repo.saved_bodies["analysis"] == "Detailed revision one body with grounded evidence."
     assert repo.saved_citations["analysis"] is not None
