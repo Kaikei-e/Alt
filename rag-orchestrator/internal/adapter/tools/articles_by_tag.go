@@ -35,9 +35,6 @@ func (t *ArticlesByTagTool) Execute(ctx context.Context, params map[string]strin
 
 	userID := strings.TrimSpace(domain.UserIDFromContext(ctx))
 	if userID == "" {
-		userID = strings.TrimSpace(params["user_id"])
-	}
-	if userID == "" {
 		return &domain.ToolResult{
 			ToolName: t.Name(),
 			Success:  false,
