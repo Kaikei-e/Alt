@@ -277,6 +277,7 @@ mod tests {
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",

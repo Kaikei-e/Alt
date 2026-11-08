@@ -191,7 +191,7 @@ impl MorningPipeline {
             .collect();
         let overnight_groups = cap_overnight_groups_for_prompt(overnight_groups);
 
-        let target_date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let target_date = edition_target_date(chrono::Utc::now());
         let edition_timezone = "Asia/Tokyo".to_string();
 
         // Cap recap context to fit the LLM prompt budget — once the
@@ -751,6 +751,11 @@ fn extract_title_and_bullets(summary_ja: Option<&str>) -> (String, Vec<String>) 
     (title, bullets)
 }
 
+fn edition_target_date(now: chrono::DateTime<chrono::Utc>) -> String {
+    let jst = chrono::FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
+    now.with_timezone(&jst).format("%Y-%m-%d").to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1129,5 +1134,18 @@ mod tests {
         };
         let (_title, bullets) = extract_title_and_bullets_from_genre(&g);
         assert!(bullets.is_empty(), "bullets should be empty for prose-only");
+    }
+
+    #[test]
+    fn edition_target_date_uses_asia_tokyo_calendar_date() {
+        let after_midnight_jst = chrono::DateTime::parse_from_rfc3339("2026-11-07T20:00:00Z")
+            .expect("valid timestamp")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(edition_target_date(after_midnight_jst), "2026-11-08");
+
+        let before_midnight_jst = chrono::DateTime::parse_from_rfc3339("2026-11-07T14:59:59Z")
+            .expect("valid timestamp")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(edition_target_date(before_midnight_jst), "2026-11-07");
     }
 }
