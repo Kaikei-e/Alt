@@ -20,9 +20,6 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-_ACTIVE_RUN_STATUSES_SQL = "'pending', 'running'"
-_RUNNABLE_RUN_STATUSES_SQL = f"{_ACTIVE_RUN_STATUSES_SQL}, 'failed'"
-
 
 class PostgresJobGateway:
     """Job queue and run lifecycle backed by PostgreSQL."""
@@ -104,12 +101,12 @@ class PostgresJobGateway:
         """
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT run_id, report_id, target_version_no, run_status, "  # noqa: S608
+                "SELECT run_id, report_id, target_version_no, run_status, "
                 "planner_model, writer_model, critic_model, "
                 "started_at, finished_at, failure_code, failure_message "
                 "FROM report_runs "
                 "WHERE report_id = %s "
-                f"  AND run_status IN ({_ACTIVE_RUN_STATUSES_SQL}) "
+                "  AND run_status IN ('pending', 'running') "
                 "ORDER BY started_at DESC NULLS LAST, run_id "
                 "LIMIT 1",
                 [report_id],
@@ -187,11 +184,11 @@ class PostgresJobGateway:
         """
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT run_id, report_id, target_version_no, run_status, "  # noqa: S608
+                "SELECT run_id, report_id, target_version_no, run_status, "
                 "planner_model, writer_model, critic_model, "
                 "started_at, finished_at, failure_code, failure_message "
                 "FROM report_runs "
-                f"WHERE run_status IN ({_ACTIVE_RUN_STATUSES_SQL})",
+                "WHERE run_status IN ('pending', 'running')",
             )
             rows = await cur.fetchall()
             return [
@@ -276,10 +273,10 @@ class PostgresJobGateway:
         """Mark a run as started and stamp the model names used for this attempt."""
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "UPDATE report_runs SET run_status = 'running', started_at = NOW(), "  # noqa: S608
+                "UPDATE report_runs SET run_status = 'running', started_at = NOW(), "
                 "finished_at = NULL, failure_code = NULL, failure_message = NULL, "
                 "planner_model = %s, writer_model = %s, critic_model = %s "
-                f"WHERE run_id = %s AND run_status IN ({_RUNNABLE_RUN_STATUSES_SQL}) "
+                "WHERE run_id = %s AND run_status IN ('pending', 'running', 'failed') "
                 "RETURNING run_id",
                 [planner_model, writer_model, critic_model, run_id],
             )
@@ -290,8 +287,8 @@ class PostgresJobGateway:
     async def complete_run(self, run_id: UUID) -> None:
         async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
-                "UPDATE report_runs SET run_status = 'succeeded', finished_at = NOW() "  # noqa: S608
-                f"WHERE run_id = %s AND run_status IN ({_ACTIVE_RUN_STATUSES_SQL}) "
+                "UPDATE report_runs SET run_status = 'succeeded', finished_at = NOW() "
+                "WHERE run_id = %s AND run_status IN ('pending', 'running') "
                 "RETURNING report_id, finished_at",
                 [run_id],
             )
@@ -339,9 +336,9 @@ class PostgresJobGateway:
     async def fail_run(self, run_id: UUID, failure_code: str, failure_message: str) -> None:
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "UPDATE report_runs SET run_status = 'failed', finished_at = NOW(), "  # noqa: S608
+                "UPDATE report_runs SET run_status = 'failed', finished_at = NOW(), "
                 "failure_code = %s, failure_message = %s "
-                f"WHERE run_id = %s AND run_status IN ({_ACTIVE_RUN_STATUSES_SQL}) "
+                "WHERE run_id = %s AND run_status IN ('pending', 'running') "
                 "RETURNING run_id",
                 [failure_code, failure_message, run_id],
             )
