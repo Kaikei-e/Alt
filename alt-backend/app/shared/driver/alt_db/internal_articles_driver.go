@@ -196,13 +196,14 @@ func (r *InternalRepository) ListDeletedArticles(ctx context.Context, lastDelete
 	var query string
 	var args []interface{}
 
+	// FETCH FIRST ... WITH TIES keeps rows sharing the boundary deleted_at together so an exclusive timestamp cursor never drops or re-serves rows.
 	if lastDeletedAt == nil || lastDeletedAt.IsZero() {
 		query = `
 			SELECT id, deleted_at
 			FROM articles
 			WHERE deleted_at IS NOT NULL
-			ORDER BY deleted_at ASC, id ASC
-			LIMIT $1
+			ORDER BY deleted_at ASC
+			FETCH FIRST $1 ROWS WITH TIES
 		`
 		args = []interface{}{limit}
 	} else {
@@ -210,9 +211,9 @@ func (r *InternalRepository) ListDeletedArticles(ctx context.Context, lastDelete
 			SELECT id, deleted_at
 			FROM articles
 			WHERE deleted_at IS NOT NULL
-			  AND (deleted_at, id) > ($1, '')
-			ORDER BY deleted_at ASC, id ASC
-			LIMIT $2
+			  AND deleted_at > $1
+			ORDER BY deleted_at ASC
+			FETCH FIRST $2 ROWS WITH TIES
 		`
 		args = []interface{}{*lastDeletedAt, limit}
 	}
