@@ -224,6 +224,8 @@ pub(crate) struct SearchRecapsQuery {
     offset: Option<i32>,
 }
 
+const MAX_SEARCH_SCAN_ROWS: i32 = 1000;
+
 pub(crate) fn clamp_search_limit(limit: Option<i32>) -> i32 {
     limit.unwrap_or(50).clamp(1, 200)
 }
@@ -233,7 +235,7 @@ pub(crate) fn clamp_indexable_limit(limit: Option<i32>) -> i32 {
 }
 
 pub(crate) fn clamp_offset(offset: Option<i32>) -> i32 {
-    offset.unwrap_or(0).clamp(0, 10_000)
+    offset.unwrap_or(0).clamp(0, MAX_SEARCH_SCAN_ROWS)
 }
 
 #[derive(Debug, Serialize)]
@@ -271,13 +273,20 @@ pub(crate) async fn search_recaps(
     }
 
     let limit = clamp_search_limit(query.limit.or(query.max_results));
-    let _offset = clamp_offset(query.offset);
+    let offset = clamp_offset(query.offset);
     let dao = state.dao();
 
-    match dao.search_recaps_by_term(term, limit).await {
+    match dao
+        .search_recaps_by_term(term, limit.saturating_add(offset).min(MAX_SEARCH_SCAN_ROWS))
+        .await
+    {
         Ok(hits) => {
+            let offset_usize = usize::try_from(offset).unwrap_or(0);
+            let limit_usize = usize::try_from(limit).unwrap_or(0);
             let results: Vec<RecapSearchHitResponse> = hits
                 .into_iter()
+                .skip(offset_usize)
+                .take(limit_usize)
                 .map(|hit| {
                     let summary =
                         normalize_summary_text(hit.summary_ja.as_deref().unwrap_or_default());
@@ -681,7 +690,130 @@ mod tests {
 
         assert_eq!(clamp_offset(None), 0);
         assert_eq!(clamp_offset(Some(-10)), 0);
-        assert_eq!(clamp_offset(Some(25_000)), 10_000);
+        assert_eq!(clamp_offset(Some(25_000)), 1000);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
+    async fn search_recaps_applies_offset_and_limit() {
+        use std::sync::Arc;
+
+        use axum::{body::Body, http::Request};
+        use chrono::{DateTime, Utc};
+        use tower::ServiceExt;
+        use uuid::Uuid;
+
+        use crate::{
+            app::{ComponentRegistry, build_router},
+            config::{Config, ENV_MUTEX},
+            store::{dao::mock::MockRecapDao, models::RecapSearchHit},
+        };
+
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_GENRES", Some("ai,space")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let ts = DateTime::parse_from_rfc3339("2026-04-02T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let mock_dao = Arc::new(MockRecapDao::new());
+        mock_dao.set_search_recaps_hits(
+            (1..=1000_u128)
+                .map(|i| RecapSearchHit {
+                    job_id: Uuid::from_u128(i),
+                    executed_at: ts,
+                    window_days: 7,
+                    genre: format!("genre-{i}"),
+                    summary_ja: Some(format!("Hit {i}")),
+                    top_terms: vec!["LLM".to_string()],
+                    tags: vec!["ai".to_string()],
+                })
+                .collect(),
+        );
+
+        let app = build_router(registry.with_recap_dao(mock_dao));
+        let request = Request::builder()
+            .uri("/v1/recaps/search?term=LLM&limit=1&offset=1")
+            .body(Body::empty())
+            .expect("request builds");
+
+        let response = app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("request succeeds");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: Value = serde_json::from_slice(&body_bytes).expect("valid json");
+        let results = payload["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["job_id"], Uuid::from_u128(2).to_string());
+        assert_eq!(results[0]["genre"], "genre-2");
+
+        let tail_req = Request::builder()
+            .uri("/v1/recaps/search?term=LLM&limit=50&offset=960")
+            .body(Body::empty())
+            .expect("request builds");
+        let tail_resp = app
+            .clone()
+            .oneshot(tail_req)
+            .await
+            .expect("request succeeds");
+        assert_eq!(tail_resp.status(), StatusCode::OK);
+        let tail_bytes = axum::body::to_bytes(tail_resp.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let tail_json: Value = serde_json::from_slice(&tail_bytes).expect("valid json");
+        let tail_results = tail_json["results"].as_array().expect("results array");
+        assert_eq!(tail_results.len(), 40);
+        assert_eq!(tail_results[0]["job_id"], Uuid::from_u128(961).to_string());
+        assert_eq!(
+            tail_results[39]["job_id"],
+            Uuid::from_u128(1000).to_string()
+        );
+
+        let capped_req = Request::builder()
+            .uri("/v1/recaps/search?term=LLM&limit=50&offset=1000")
+            .body(Body::empty())
+            .expect("request builds");
+        let capped_resp = app.oneshot(capped_req).await.expect("request succeeds");
+        assert_eq!(capped_resp.status(), StatusCode::OK);
+        let capped_bytes = axum::body::to_bytes(capped_resp.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let capped_json: Value = serde_json::from_slice(&capped_bytes).expect("valid json");
+        let capped_results = capped_json["results"].as_array().expect("results array");
+        assert_eq!(capped_results.len(), 0);
     }
 
     #[tokio::test]

@@ -310,30 +310,35 @@ impl RecapDao {
     ) -> Result<Vec<RecapSearchHit>> {
         const MAX_SEARCH_SCAN_ROWS: i64 = 1000;
         let pattern = escape_ilike_pattern(term);
-        let clamped_limit = limit.clamp(1, 200);
+        let clamped_limit = i64::from(limit).clamp(1, MAX_SEARCH_SCAN_ROWS);
         let rows = sqlx::query(
-            r"
-            SELECT DISTINCT ON (rj.job_id, ro.genre)
-                rj.job_id,
-                rj.kicked_at,
-                rj.window_days,
-                ro.genre,
-                ro.summary_ja,
-                ro.tags AS output_tags,
-                c.top_terms
-            FROM recap_jobs rj
-            JOIN recap_outputs ro ON rj.job_id = ro.job_id
-            JOIN recap_subworker_runs sr
-                ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
-            JOIN recap_subworker_clusters c ON c.run_id = sr.id
-            WHERE rj.status = 'completed'
-              AND EXISTS (
-                SELECT 1 FROM jsonb_array_elements_text(c.top_terms) AS t
-                WHERE t ILIKE $1 ESCAPE '\'
-              )
-            ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+            r#"
+            SELECT sub.job_id, sub.kicked_at, sub.window_days,
+                   sub.genre, sub.summary_ja, sub.output_tags, sub.top_terms
+            FROM (
+                SELECT DISTINCT ON (rj.job_id, ro.genre)
+                    rj.job_id,
+                    rj.kicked_at,
+                    rj.window_days,
+                    ro.genre,
+                    ro.summary_ja,
+                    ro.tags AS output_tags,
+                    c.top_terms
+                FROM recap_jobs rj
+                JOIN recap_outputs ro ON rj.job_id = ro.job_id
+                JOIN recap_subworker_runs sr
+                    ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
+                JOIN recap_subworker_clusters c ON c.run_id = sr.id
+                WHERE rj.status = 'completed'
+                  AND EXISTS (
+                    SELECT 1 FROM jsonb_array_elements_text(c.top_terms) AS t
+                    WHERE t ILIKE $1 ESCAPE '\'
+                  )
+                ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+            ) sub
+            ORDER BY sub.kicked_at DESC, sub.job_id ASC, sub.genre COLLATE "C" ASC
             LIMIT $2
-            ",
+            "#,
         )
         .bind(&pattern)
         .bind(MAX_SEARCH_SCAN_ROWS)
@@ -363,8 +368,13 @@ impl RecapDao {
             });
         }
 
-        // Sort by date descending and apply limit
-        hits.sort_by_key(|b| std::cmp::Reverse(b.executed_at));
+        // Sort by date descending with deterministic tie-break and apply limit
+        hits.sort_by(|a, b| {
+            b.executed_at
+                .cmp(&a.executed_at)
+                .then_with(|| a.job_id.cmp(&b.job_id))
+                .then_with(|| a.genre.cmp(&b.genre))
+        });
         hits.truncate(usize::try_from(clamped_limit).unwrap_or(0));
 
         Ok(hits)
@@ -380,7 +390,7 @@ impl RecapDao {
         let limit = limit.clamp(1, 1000);
         let rows = if let Some(since_ts) = since {
             sqlx::query(
-                r"
+                r#"
                 SELECT sub.job_id, sub.kicked_at, sub.window_days,
                        sub.genre, sub.summary_ja, sub.output_tags, sub.top_terms
                 FROM (
@@ -401,9 +411,9 @@ impl RecapDao {
                       AND rj.kicked_at >= $1
                     ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
                 ) sub
-                ORDER BY sub.kicked_at ASC
+                ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre COLLATE "C" ASC
                 LIMIT $2
-                ",
+                "#,
             )
             .bind(since_ts)
             .bind(limit)
@@ -416,7 +426,7 @@ impl RecapDao {
             })?
         } else {
             sqlx::query(
-                r"
+                r#"
                 SELECT sub.job_id, sub.kicked_at, sub.window_days,
                        sub.genre, sub.summary_ja, sub.output_tags, sub.top_terms
                 FROM (
@@ -436,9 +446,9 @@ impl RecapDao {
                     WHERE rj.status = 'completed'
                     ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
                 ) sub
-                ORDER BY sub.kicked_at ASC
+                ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre COLLATE "C" ASC
                 LIMIT $1
-                ",
+                "#,
             )
             .bind(limit)
             .fetch_all(pool)
@@ -470,7 +480,7 @@ impl RecapDao {
             });
         }
 
-        hits.sort_by_key(|b| std::cmp::Reverse(b.executed_at));
+        sort_indexable_hits(&mut hits);
         Ok(hits)
     }
 
@@ -652,6 +662,15 @@ async fn fetch_evidence_from_sentences(
     Ok(grouped)
 }
 
+pub(crate) fn sort_indexable_hits(hits: &mut [RecapSearchHit]) {
+    hits.sort_by(|a, b| {
+        a.executed_at
+            .cmp(&b.executed_at)
+            .then_with(|| a.job_id.cmp(&b.job_id))
+            .then_with(|| a.genre.cmp(&b.genre))
+    });
+}
+
 /// Escape SQL `ILIKE` metacharacters (`\`, `%`, `_`) and wrap in `%...%`.
 pub(crate) fn escape_ilike_pattern(term: &str) -> String {
     let mut escaped = String::with_capacity(term.len() + 2);
@@ -671,7 +690,9 @@ pub(crate) fn escape_ilike_pattern(term: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{RecapDao, escape_ilike_pattern};
+    use super::{RecapDao, escape_ilike_pattern, sort_indexable_hits};
+    use crate::store::models::RecapSearchHit;
+    use chrono::{DateTime, Utc};
     use sqlx::postgres::PgPoolOptions;
     use std::sync::{Arc, Mutex};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -952,5 +973,88 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn sort_indexable_hits_orders_ascending_with_deterministic_tie_break() {
+        let older = DateTime::parse_from_rfc3339("2026-04-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let newer = DateTime::parse_from_rfc3339("2026-04-02T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let job_a = Uuid::from_u128(1);
+        let job_b = Uuid::from_u128(2);
+        let job_c = Uuid::from_u128(3);
+
+        let make_hit = |job_id: Uuid, executed_at: DateTime<Utc>, genre: &str| RecapSearchHit {
+            job_id,
+            executed_at,
+            window_days: 7,
+            genre: genre.to_string(),
+            summary_ja: None,
+            top_terms: vec![],
+            tags: vec![],
+        };
+
+        let mut hits = vec![
+            make_hit(job_c, newer, "science"),
+            make_hit(job_b, older, "world"),
+            make_hit(job_a, older, "tech"),
+            make_hit(job_a, older, "ai_policy"),
+            make_hit(job_a, older, "ai-policy"),
+            make_hit(job_a, older, "ai"),
+        ];
+
+        sort_indexable_hits(&mut hits);
+
+        let ordered: Vec<(DateTime<Utc>, Uuid, &str)> = hits
+            .iter()
+            .map(|h| (h.executed_at, h.job_id, h.genre.as_str()))
+            .collect();
+        assert_eq!(
+            ordered,
+            vec![
+                (older, job_a, "ai"),
+                (older, job_a, "ai-policy"),
+                (older, job_a, "ai_policy"),
+                (older, job_a, "tech"),
+                (older, job_b, "world"),
+                (newer, job_c, "science"),
+            ]
+        );
+        assert_eq!(hits.last().unwrap().executed_at, newer);
+    }
+
+    #[test]
+    fn search_and_indexable_queries_enforce_deterministic_tie_break_and_c_collation() {
+        let prod_src = include_str!("output.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source before #[cfg(test)]");
+        let normalized = prod_src.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        assert!(
+            normalized.contains(
+                r#"ORDER BY sub.kicked_at DESC, sub.job_id ASC, sub.genre COLLATE "C" ASC LIMIT $2"#
+            ),
+            "search_recaps_by_term SQL must order by (kicked_at DESC, job_id ASC, genre COLLATE \"C\" ASC)"
+        );
+        assert!(
+            normalized.contains(
+                r#"ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre COLLATE "C" ASC LIMIT $2"#
+            ),
+            "fetch_indexable_genres incremental SQL must order by (kicked_at ASC, job_id ASC, genre COLLATE \"C\" ASC)"
+        );
+        assert!(
+            normalized.contains(
+                r#"ORDER BY sub.kicked_at ASC, sub.job_id ASC, sub.genre COLLATE "C" ASC LIMIT $1"#
+            ),
+            "fetch_indexable_genres backfill SQL must order by (kicked_at ASC, job_id ASC, genre COLLATE \"C\" ASC)"
+        );
+        assert!(
+            !normalized.contains("sort_by_key(|b| std::cmp::Reverse(b.executed_at))"),
+            "search_recaps_by_term must not re-sort by executed_at without a tie-break"
+        );
     }
 }

@@ -6,11 +6,11 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::{
-    clients::alt_backend::{AltBackendArticle, AltBackendClient},
+    clients::alt_backend::{AltBackendArticle, AltBackendClient, AltBackendStatusError},
     error::{RecapError, Result},
     scheduler::JobContext,
     store::{dao::RecapDao, models::RawArticle},
-    util::retry::{RetryConfig, is_retryable_error},
+    util::retry::{RetryConfig, is_retryable_error, is_retryable_status},
     util::text::hash_text,
 };
 
@@ -83,8 +83,8 @@ impl AltBackendFetchStage {
 
     /// 再試行付きで記事を取得する。
     ///
-    /// `AltBackendClient` は素の `reqwest::Error` を anyhow chain に保持した
-    /// まま返す（retry 判定が `downcast_ref::<reqwest::Error>` に依存する）
+    /// `AltBackendClient` は `reqwest::Error` と `AltBackendStatusError`（非2xx）を
+    /// anyhow chain に保持したまま返す（retry 判定が `downcast_ref` に依存する）
     /// ため、この helper は anyhow のまま扱い、呼び出し側の stage 境界で
     /// `RecapError::Fetch` に変換する。
     async fn fetch_with_retry(
@@ -130,10 +130,7 @@ impl AltBackendFetchStage {
                         return Err(err);
                     }
 
-                    // reqwest::Errorでない場合は再試行不可
-                    let is_retryable = err
-                        .downcast_ref::<reqwest::Error>()
-                        .is_some_and(is_retryable_error);
+                    let is_retryable = is_retryable_fetch_error(&err);
 
                     if !is_retryable {
                         warn!(?err, "error is not retryable");
@@ -183,9 +180,7 @@ impl AltBackendFetchStage {
                         return Err(err);
                     }
 
-                    let is_retryable = err
-                        .downcast_ref::<reqwest::Error>()
-                        .is_some_and(is_retryable_error);
+                    let is_retryable = is_retryable_fetch_error(&err);
 
                     if !is_retryable {
                         warn!(?err, "tag fetch error is not retryable");
@@ -333,6 +328,14 @@ impl FetchStage for AltBackendFetchStage {
     }
 }
 
+fn is_retryable_fetch_error(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<reqwest::Error>()
+        .is_some_and(is_retryable_error)
+        || err
+            .downcast_ref::<AltBackendStatusError>()
+            .is_some_and(|e| is_retryable_status(e.status))
+}
+
 /// AltBackendArticleをRawArticleに変換する。
 fn convert_to_raw_articles(articles: &[AltBackendArticle]) -> Vec<RawArticle> {
     articles
@@ -365,19 +368,154 @@ mod tests {
         AltBackendConfig {
             base_url,
             connect_timeout: std::time::Duration::from_secs(3),
-            // Short on purpose: the retry test below relies on every
+            // Short on purpose: the timeout retry test below relies on every
             // attempt timing out client-side against a deliberately slow
-            // mock response (see `is_retryable_error`, which treats a
-            // client-level timeout as retryable — unlike the plain
-            // `anyhow::bail!` this client raises for a non-2xx HTTP status,
-            // which is not downcastable to `reqwest::Error` and therefore
-            // not retryable under the shared idiom).
+            // mock response (retry checks classify both client-level timeouts
+            // and transient non-2xx HTTP statuses via `AltBackendStatusError`
+            // as retryable).
             total_timeout: std::time::Duration::from_millis(100),
         }
     }
 
+    const LIST_RECAP_ARTICLES_RPC_PATH: &str =
+        "/services.datahub.v1.DataHubService/ListRecapArticles";
     const BATCH_TAGS_RPC_PATH: &str =
         "/services.datahub.v1.DataHubService/BatchGetTagsByArticleIDs";
+
+    #[tokio::test]
+    async fn fetch_with_retry_retries_503_then_succeeds() {
+        let server = MockServer::start().await;
+        let articles_calls = std::sync::atomic::AtomicUsize::new(0);
+        Mock::given(method("POST"))
+            .and(path(LIST_RECAP_ARTICLES_RPC_PATH))
+            .respond_with(move |_: &wiremock::Request| {
+                let prev = articles_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if prev == 0 {
+                    ResponseTemplate::new(503).set_body_string("upstream temporarily unavailable")
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "hasMore": false,
+                        "articles": [
+                            {
+                                "articleId": "art-1",
+                                "title": "Article 1",
+                                "fulltext": "Content 1",
+                                "publishedAt": "2026-01-01T00:00:00Z",
+                                "sourceUrl": "https://example.com/1",
+                                "langHint": "en"
+                            }
+                        ]
+                    }))
+                }
+            })
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let tags_calls = std::sync::atomic::AtomicUsize::new(0);
+        Mock::given(method("POST"))
+            .and(path(BATCH_TAGS_RPC_PATH))
+            .respond_with(move |_: &wiremock::Request| {
+                let prev = tags_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if prev == 0 {
+                    ResponseTemplate::new(503).set_body_string("tags temporarily unavailable")
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "items": [
+                            {
+                                "articleId": "art-1",
+                                "tags": [
+                                    {
+                                        "tagName": "rust",
+                                        "confidence": 0.9,
+                                        "source": "ml"
+                                    }
+                                ]
+                            }
+                        ]
+                    }))
+                }
+            })
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let client = Arc::new(
+            AltBackendClient::new(test_alt_backend_config(server.uri()))
+                .expect("client should build"),
+        );
+        let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+        let stage = AltBackendFetchStage::new(client, dao, RetryConfig::new(3, 5, 20));
+
+        let now = Utc::now();
+        let articles = stage
+            .fetch_with_retry(now - Duration::days(1), now)
+            .await
+            .expect("fetch_with_retry should succeed after one 503 retry");
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].article_id, "art-1");
+
+        let tags = stage
+            .fetch_tags_with_retry(&["art-1".to_string()])
+            .await
+            .expect("fetch_tags_with_retry should succeed after one 503 retry");
+        assert_eq!(tags.get("art-1").map(Vec::len), Some(1));
+
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn fetch_with_retry_does_not_retry_400() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(LIST_RECAP_ARTICLES_RPC_PATH))
+            .respond_with(ResponseTemplate::new(400).set_body_string("invalid window"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path(BATCH_TAGS_RPC_PATH))
+            .respond_with(ResponseTemplate::new(400).set_body_string("invalid article ids"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = Arc::new(
+            AltBackendClient::new(test_alt_backend_config(server.uri()))
+                .expect("client should build"),
+        );
+        let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+        let stage = AltBackendFetchStage::new(client, dao, RetryConfig::new(3, 5, 20));
+
+        let now = Utc::now();
+        let err = stage
+            .fetch_with_retry(now - Duration::days(1), now)
+            .await
+            .expect_err("400 should not succeed");
+        let msg = err.to_string();
+        assert!(msg.contains("400"), "error should include status: {msg}");
+        assert!(
+            msg.contains("invalid window"),
+            "error should include body: {msg}"
+        );
+
+        let tag_err = stage
+            .fetch_tags_with_retry(&["art-1".to_string()])
+            .await
+            .expect_err("400 on tag fetch should not succeed");
+        let tag_msg = tag_err.to_string();
+        assert!(
+            tag_msg.contains("400"),
+            "tag error should include status: {tag_msg}"
+        );
+        assert!(
+            tag_msg.contains("invalid article ids"),
+            "tag error should include body: {tag_msg}"
+        );
+
+        server.verify().await;
+    }
 
     /// RED→GREEN regression: the batch tag fetch in `AltBackendFetchStage`
     /// was fully swallowed on any error with zero retry, while the article

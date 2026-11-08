@@ -86,6 +86,8 @@ pub(crate) struct MockRecapDao {
     mark_abandoned_jobs_calls: Arc<Mutex<Vec<Option<Uuid>>>>,
     /// `find_running_cards_job` の応答。
     running_cards_job: Arc<Mutex<Option<Uuid>>>,
+    /// `search_recaps_by_term` の応答。
+    search_recaps_hits: Arc<Mutex<Vec<RecapSearchHit>>>,
 }
 
 #[cfg(test)]
@@ -166,6 +168,14 @@ impl MockRecapDao {
             .running_cards_job
             .lock()
             .expect("running_cards_job mutex poisoned") = job_id;
+    }
+
+    /// テスト用に `search_recaps_by_term` の応答をセットする。
+    pub(crate) fn set_search_recaps_hits(&self, hits: Vec<RecapSearchHit>) {
+        *self
+            .search_recaps_hits
+            .lock()
+            .expect("search_recaps_hits mutex poisoned") = hits;
     }
 
     /// 記録された `mark_abandoned_jobs` 呼び出し（`keep_job_id` 引数）のスナップショットを取得する。
@@ -571,8 +581,14 @@ impl RecapDao for MockRecapDao {
         Ok(std::collections::HashMap::new())
     }
 
-    async fn search_recaps_by_term(&self, _term: &str, _limit: i32) -> Result<Vec<RecapSearchHit>> {
-        Ok(vec![])
+    async fn search_recaps_by_term(&self, _term: &str, limit: i32) -> Result<Vec<RecapSearchHit>> {
+        let mut hits = self
+            .search_recaps_hits
+            .lock()
+            .expect("search_recaps_hits mutex poisoned")
+            .clone();
+        hits.truncate(usize::try_from(limit).unwrap_or(0));
+        Ok(hits)
     }
 
     // Subworker
