@@ -256,7 +256,8 @@
         "body": {
           "articleIds": [
             "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
-          ]
+          ],
+          "userId": "11111111-2222-3333-4444-555555555555"
         },
         "headers": {
           "Content-Type": "application/json"
