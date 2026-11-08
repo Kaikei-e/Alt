@@ -1,10 +1,12 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -149,4 +151,48 @@ func TestValidateToken_UnexpectedAlgorithm_Fails(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, errInvalidToken),
 		"HS384 token must be rejected when only HS256 is permitted; got %v", err)
+}
+
+func TestAuthInterceptor_RejectsNilUUIDClaims(t *testing.T) {
+	validUserID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	validTenantID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+
+	tests := []struct {
+		name     string
+		userID   uuid.UUID
+		tenantID uuid.UUID
+	}{
+		{
+			name:     "nil sub",
+			userID:   uuid.Nil,
+			tenantID: validTenantID,
+		},
+		{
+			name:     "nil tenant_id",
+			userID:   validUserID,
+			tenantID: uuid.Nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claims := baseClaims(tt.userID)
+			claims.TenantID = tt.tenantID.String()
+			tokenStr := signTestToken(t, claims)
+
+			a := newTestInterceptor()
+			_, err := a.validateToken(tokenStr)
+			require.Error(t, err)
+			assert.Equal(t, connect.CodeUnauthenticated, a.toConnectError(err).Code())
+
+			unary := a.Interceptor().WrapUnary(func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+				return connect.NewResponse(&struct{}{}), nil
+			})
+			req := connect.NewRequest(&struct{}{})
+			req.Header().Set(backendTokenHeader, tokenStr)
+			_, unaryErr := unary(context.Background(), req)
+			require.Error(t, unaryErr)
+			assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(unaryErr))
+		})
+	}
 }
