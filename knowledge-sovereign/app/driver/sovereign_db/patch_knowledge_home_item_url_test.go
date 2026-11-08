@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pashagolub/pgxmock/v5"
@@ -14,7 +16,7 @@ import (
 // TestPatchKnowledgeHomeItemURL_AppliesPatchOnly exercises the
 // corrective-event patch path. The SQL must NOT touch title,
 // summary_excerpt, tags_json, why_json, score, or any other field
-// — only the `url` column (plus updated_at for monitoring).
+// — only the `url` column (plus updated_at from the event time).
 func TestPatchKnowledgeHomeItemURL_AppliesPatchOnly(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
@@ -23,12 +25,15 @@ func TestPatchKnowledgeHomeItemURL_AppliesPatchOnly(t *testing.T) {
 	repo := &Repository{pool: mock}
 
 	userID := uuid.New()
-	payload, _ := json.Marshal(PatchKnowledgeHomeItemURLPayload{
-		UserID:            userID.String(),
-		ItemKey:           "article:11111111-1111-4111-8111-111111111111",
-		ProjectionVersion: 5,
-		URL:               "https://example.com/recovered-article",
+	occurredAt := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	payload, err := json.Marshal(map[string]any{
+		"user_id":            userID.String(),
+		"item_key":           "article:11111111-1111-4111-8111-111111111111",
+		"projection_version": 5,
+		"url":                "https://example.com/recovered-article",
+		"occurred_at":        occurredAt.Format(time.RFC3339Nano),
 	})
+	require.NoError(t, err)
 
 	mock.ExpectExec(regexp.QuoteMeta(patchKnowledgeHomeItemURLQuery)).
 		WithArgs(
@@ -36,6 +41,7 @@ func TestPatchKnowledgeHomeItemURL_AppliesPatchOnly(t *testing.T) {
 			userID,
 			"article:11111111-1111-4111-8111-111111111111",
 			5,
+			occurredAt,
 		).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
@@ -54,6 +60,48 @@ func TestPatchKnowledgeHomeItemURL_AppliesPatchOnly(t *testing.T) {
 		require.NotContains(t, patchKnowledgeHomeItemURLQuery, forbidden,
 			"patch SQL must NOT touch %s — that field belongs to the upsert path", forbidden)
 	}
+}
+
+func TestPatchKnowledgeHomeItemURL_BindsEventOccurredAtWithoutWallClockSQL(t *testing.T) {
+	require.NotContains(t, strings.ToUpper(patchKnowledgeHomeItemURLQuery), "NOW()",
+		"plain URL patch query must not use wall-clock NOW() for updated_at")
+	require.NotContains(t, strings.ToUpper(patchKnowledgeHomeItemURLWithTenantQuery), "NOW()",
+		"tenant URL patch query must not use wall-clock NOW() for updated_at")
+	require.Contains(t, patchKnowledgeHomeItemURLQuery, "updated_at = $5")
+	require.Contains(t, patchKnowledgeHomeItemURLWithTenantQuery, "updated_at = $5")
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+	userID := uuid.New()
+	tenantID := uuid.New()
+	occurredAt := time.Date(2026, 7, 14, 10, 30, 0, 0, time.UTC)
+
+	tenantPayload, err := json.Marshal(map[string]any{
+		"user_id":            userID.String(),
+		"tenant_id":          tenantID.String(),
+		"item_key":           "article:11111111-1111-4111-8111-111111111111",
+		"projection_version": 5,
+		"url":                "https://example.com/recovered-article",
+		"occurred_at":        occurredAt.Format(time.RFC3339Nano),
+	})
+	require.NoError(t, err)
+
+	mock.ExpectExec(regexp.QuoteMeta(patchKnowledgeHomeItemURLWithTenantQuery)).
+		WithArgs(
+			"https://example.com/recovered-article",
+			userID,
+			"article:11111111-1111-4111-8111-111111111111",
+			5,
+			occurredAt,
+			tenantID,
+		).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	require.NoError(t, repo.PatchKnowledgeHomeItemURL(context.Background(), tenantPayload))
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 // TestPatchKnowledgeHomeItemURL_RejectsEmptyURL surfaces the application
@@ -78,5 +126,26 @@ func TestPatchKnowledgeHomeItemURL_RejectsEmptyURL(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty URL")
 	// Mock had no Expect set — confirming we never hit the DB.
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPatchKnowledgeHomeItemURL_RejectsMissingOccurredAt(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &Repository{pool: mock}
+
+	payload, err := json.Marshal(map[string]any{
+		"user_id":            uuid.New().String(),
+		"item_key":           "article:11111111-1111-4111-8111-111111111111",
+		"projection_version": 5,
+		"url":                "https://example.com/recovered-article",
+	})
+	require.NoError(t, err)
+
+	err = repo.PatchKnowledgeHomeItemURL(context.Background(), payload)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "occurred_at is required")
 	require.NoError(t, mock.ExpectationsWereMet())
 }

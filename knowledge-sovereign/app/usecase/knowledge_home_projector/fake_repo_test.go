@@ -194,6 +194,9 @@ func (f *fakeRepo) UpsertKnowledgeHomeItem(_ context.Context, payload json.RawMe
 	// already folded from an earlier event (SummaryVersionCreated → delayed
 	// ArticleCreated is the Trail blank-title failure mode).
 	if existing, ok := f.homeItems[w.ItemKey]; ok {
+		if existing.PrimaryRefID != nil {
+			w.PrimaryRefID = existing.PrimaryRefID
+		}
 		if w.Title == "" {
 			w.Title = existing.Title
 		}

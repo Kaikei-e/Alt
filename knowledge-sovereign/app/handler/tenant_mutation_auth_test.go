@@ -228,7 +228,7 @@ func TestApplyProjectionMutation_PatchURL_TenantAuth(t *testing.T) {
 	reqForeign := connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
 		MutationType:   MutationPatchHomeItemURL,
 		EntityId:       uuid.New().String(),
-		Payload:        []byte(`{"user_id":"` + targetUserID + `","tenant_id":"` + otherTenantID + `","item_key":"k","projection_version":1,"url":"https://example.com"}`),
+		Payload:        []byte(`{"user_id":"` + targetUserID + `","tenant_id":"` + otherTenantID + `","item_key":"k","projection_version":1,"url":"https://example.com","occurred_at":"2026-07-14T10:00:00Z"}`),
 		IdempotencyKey: uuid.New().String(),
 	})
 	reqForeign.Header().Set("Authorization", "Bearer "+backendToken)
@@ -241,7 +241,7 @@ func TestApplyProjectionMutation_PatchURL_TenantAuth(t *testing.T) {
 	reqMissing := connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
 		MutationType:   MutationPatchHomeItemURL,
 		EntityId:       uuid.New().String(),
-		Payload:        []byte(`{"user_id":"` + targetUserID + `","item_key":"k","projection_version":1,"url":"https://example.com"}`),
+		Payload:        []byte(`{"user_id":"` + targetUserID + `","item_key":"k","projection_version":1,"url":"https://example.com","occurred_at":"2026-07-14T10:00:00Z"}`),
 		IdempotencyKey: uuid.New().String(),
 	})
 	reqMissing.Header().Set("Authorization", "Bearer "+backendToken)

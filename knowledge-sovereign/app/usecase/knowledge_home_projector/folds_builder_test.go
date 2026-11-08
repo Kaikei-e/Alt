@@ -175,6 +175,7 @@ func TestBuildURLPatch(t *testing.T) {
 	tenantID := uuid.New()
 	userID := uuid.New()
 	articleID := uuid.New()
+	occurredAt := time.Date(2026, 8, 1, 13, 0, 0, 0, time.UTC)
 
 	tests := []struct {
 		name       string
@@ -189,8 +190,9 @@ func TestBuildURLPatch(t *testing.T) {
 		{
 			name: "valid patch with user_id",
 			evt: sovereign_db.KnowledgeEvent{
-				TenantID: tenantID,
-				UserID:   &userID,
+				TenantID:   tenantID,
+				UserID:     &userID,
+				OccurredAt: occurredAt,
 			},
 			payload: articleUrlBackfilledPayload{
 				ArticleID: articleID.String(),
@@ -205,8 +207,9 @@ func TestBuildURLPatch(t *testing.T) {
 		{
 			name: "valid patch with tenant fallback",
 			evt: sovereign_db.KnowledgeEvent{
-				TenantID: tenantID,
-				UserID:   nil,
+				TenantID:   tenantID,
+				UserID:     nil,
+				OccurredAt: occurredAt,
 			},
 			payload: articleUrlBackfilledPayload{
 				ArticleID: articleID.String(),
@@ -221,7 +224,8 @@ func TestBuildURLPatch(t *testing.T) {
 		{
 			name: "invalid article uuid",
 			evt: sovereign_db.KnowledgeEvent{
-				TenantID: tenantID,
+				TenantID:   tenantID,
+				OccurredAt: occurredAt,
 			},
 			payload: articleUrlBackfilledPayload{
 				ArticleID: "invalid-uuid",
@@ -245,6 +249,11 @@ func TestBuildURLPatch(t *testing.T) {
 			assert.Equal(t, tt.wantItem, patch.ItemKey)
 			assert.Equal(t, tt.version, patch.ProjectionVersion)
 			assert.Equal(t, tt.wantURL, patch.URL)
+
+			var got capturedURLPatch
+			require.NoError(t, json.Unmarshal(mustJSON(t, patch), &got))
+			assert.True(t, tt.evt.OccurredAt.Equal(got.OccurredAt),
+				"buildURLPatch must carry evt.OccurredAt onto the patch payload")
 		})
 	}
 }
@@ -323,6 +332,8 @@ func TestBuildSummaryVersionCreatedWrites(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			require.NotNil(t, item.PrimaryRefID)
+			assert.Equal(t, articleID, *item.PrimaryRefID)
 			assert.Equal(t, tt.wantState, item.SummaryState)
 			assert.Equal(t, tt.wantExcerpt, item.SummaryExcerpt)
 			assert.Equal(t, 0.8, item.Score)
@@ -396,6 +407,8 @@ func TestBuildTagSetVersionCreatedWrites(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			require.NotNil(t, item.PrimaryRefID)
+			assert.Equal(t, articleID, *item.PrimaryRefID)
 			assert.Equal(t, tt.tags, item.Tags)
 			assert.Equal(t, 0.7, item.Score)
 			assert.Equal(t, scoreOpMax, item.ScoreOp)
