@@ -441,3 +441,104 @@ func TestGetRecallCandidates_JoinedHomeItemAndSnoozeDismissAgainstPostgres(t *te
 	require.NoError(t, err)
 	assert.Empty(t, candidates, "dismissed recall candidate must be excluded")
 }
+
+func TestRecallCandidate_ProjectionVersionCutoverAgainstPostgres(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := pgtest.NewDB(t)
+	repo := NewRepository(db)
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	itemKey := "article:" + articleID.String()
+	baseAt := time.Date(2026, time.October, 20, 12, 0, 0, 0, time.UTC)
+	pastEligible := baseAt.Add(-30 * time.Minute)
+
+	// 1. Seed home item and recall candidate at projection_version = 1.
+	require.NoError(t, repo.UpsertKnowledgeHomeItem(ctx, mustMarshalJSON(t, map[string]any{
+		"user_id":            userID,
+		"tenant_id":          tenantID,
+		"item_key":           itemKey,
+		"item_type":          "article",
+		"primary_ref_id":     articleID,
+		"title":              "Pre-Cutover Recall Item",
+		"score":              0.8,
+		"score_op":           "max",
+		"published_at":       pastEligible,
+		"generated_at":       pastEligible,
+		"updated_at":         pastEligible,
+		"projection_version": 1,
+		"summary_state":      "ready",
+	})))
+
+	require.NoError(t, repo.UpsertRecallCandidate(ctx, mustMarshalJSON(t, map[string]any{
+		"user_id":            userID,
+		"tenant_id":          tenantID.String(),
+		"item_key":           itemKey,
+		"recall_score":       0.75,
+		"reasons":            []map[string]string{{"type": "opened_before_but_not_revisited", "description": "Opened earlier"}},
+		"next_suggest_at":    pastEligible,
+		"first_eligible_at":  pastEligible,
+		"updated_at":         baseAt,
+		"projection_version": 1,
+	})))
+
+	// 2. Cut over to projection_version = 2 and drop the v1 home item row so the
+	// item exists only at the active version 2 while recall_candidate_view still
+	// holds projection_version = 1.
+	require.NoError(t, repo.CreateProjectionVersion(ctx, ProjectionVersion{
+		Version:     2,
+		Description: "v2 cutover",
+		Status:      "pending",
+		CreatedAt:   baseAt,
+	}))
+	require.NoError(t, repo.ActivateProjectionVersion(ctx, 2))
+
+	require.NoError(t, repo.UpsertKnowledgeHomeItem(ctx, mustMarshalJSON(t, map[string]any{
+		"user_id":            userID,
+		"tenant_id":          tenantID,
+		"item_key":           itemKey,
+		"item_type":          "article",
+		"primary_ref_id":     articleID,
+		"title":              "Post-Cutover Recall Item",
+		"score":              0.85,
+		"score_op":           "max",
+		"published_at":       pastEligible,
+		"generated_at":       pastEligible,
+		"updated_at":         baseAt,
+		"projection_version": 2,
+		"summary_state":      "ready",
+	})))
+	_, err := db.Exec(ctx, `DELETE FROM knowledge_home_items WHERE user_id = $1 AND item_key = $2 AND projection_version = 1`, userID, itemKey)
+	require.NoError(t, err)
+
+	// 3. Snooze, Dismiss, and conflicting Upsert at version 2 must all succeed
+	// without returning ErrRecallHomeAssociationDenied.
+	require.NoError(t, repo.SnoozeRecallCandidate(ctx, mustMarshalJSON(t, map[string]any{
+		"user_id":     userID.String(),
+		"tenant_id":   tenantID.String(),
+		"item_key":    itemKey,
+		"until":       baseAt.Add(time.Hour).Format(time.RFC3339Nano),
+		"occurred_at": baseAt.Format(time.RFC3339Nano),
+	})))
+
+	require.NoError(t, repo.UpsertRecallCandidate(ctx, mustMarshalJSON(t, map[string]any{
+		"user_id":            userID,
+		"tenant_id":          tenantID.String(),
+		"item_key":           itemKey,
+		"recall_score":       0.9,
+		"reasons":            []map[string]string{{"type": "opened_before_but_not_revisited", "description": "Re-evaluated at v2"}},
+		"next_suggest_at":    pastEligible,
+		"first_eligible_at":  pastEligible,
+		"updated_at":         baseAt.Add(5 * time.Minute),
+		"projection_version": 2,
+	})))
+
+	require.NoError(t, repo.DismissRecallCandidate(ctx, mustMarshalJSON(t, map[string]any{
+		"user_id":     userID.String(),
+		"tenant_id":   tenantID.String(),
+		"item_key":    itemKey,
+		"occurred_at": baseAt.Add(10 * time.Minute).Format(time.RFC3339Nano),
+	})))
+}

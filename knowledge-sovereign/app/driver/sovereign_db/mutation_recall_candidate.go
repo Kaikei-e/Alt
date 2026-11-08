@@ -125,7 +125,7 @@ const upsertRecallCandidateWithHomeAssociationQuery = `INSERT INTO recall_candid
 			SELECT 1 FROM knowledge_home_items khi
 			WHERE khi.user_id = recall_candidate_view.user_id
 			  AND khi.item_key = recall_candidate_view.item_key
-			  AND khi.projection_version = recall_candidate_view.projection_version
+			  AND khi.projection_version = EXCLUDED.projection_version
 			  AND khi.tenant_id = $9
 		)`
 
@@ -223,7 +223,7 @@ const snoozeRecallCandidateWithHomeAssociationQuery = `UPDATE recall_candidate_v
 		    SELECT 1 FROM knowledge_home_items khi
 		    WHERE khi.user_id = recall_candidate_view.user_id
 		      AND khi.item_key = recall_candidate_view.item_key
-		      AND khi.projection_version = recall_candidate_view.projection_version
+		      AND khi.projection_version = ` + activeProjectionVersionSQL + `
 		      AND khi.tenant_id = $5
 		  )`
 
@@ -318,7 +318,7 @@ const dismissRecallCandidateWithHomeAssociationQuery = `UPDATE recall_candidate_
 		    SELECT 1 FROM knowledge_home_items khi
 		    WHERE khi.user_id = recall_candidate_view.user_id
 		      AND khi.item_key = recall_candidate_view.item_key
-		      AND khi.projection_version = recall_candidate_view.projection_version
+		      AND khi.projection_version = ` + activeProjectionVersionSQL + `
 		      AND khi.tenant_id = $4
 		  )`
 
