@@ -297,13 +297,22 @@ func (h *Handler) StreamChat(
 		assistantBuffer    strings.Builder
 		lastCitations      []domain.AugurCitation
 		authoritativeSaved bool
+		fallbackSeen       bool
 		// clientStreamClosed marks that a terminal frame (fallback, error,
 		// clarification) has already been delivered. The loop keeps draining
 		// after it so the terminal Done event — the only carrier of the final
 		// answer and its fallback reason — still reaches persistence, but
 		// nothing further is written to the wire.
 		clientStreamClosed bool
+		drainTimer         *time.Timer
+		drainTimeout       <-chan time.Time
 	)
+	reqDone := ctx.Done()
+	defer func() {
+		if drainTimer != nil {
+			drainTimer.Stop()
+		}
+	}()
 
 	// One stream telemetry record, finalized by the deferred close below so
 	// every exit path (success, fallback, abort, transport error) lands in the
@@ -312,7 +321,7 @@ func (h *Handler) StreamChat(
 	defer tel.finish()
 
 	defer func() {
-		if authoritativeSaved {
+		if authoritativeSaved || fallbackSeen {
 			return
 		}
 		if strings.TrimSpace(assistantBuffer.String()) == "" {
@@ -332,10 +341,14 @@ func (h *Handler) StreamChat(
 loop:
 	for {
 		select {
-		case <-ctx.Done():
+		case <-reqDone:
 			h.logger.Info("stream chat cancelled by client")
 			tel.outcome = metrics.OutcomeCancelled
 			return nil
+		case <-drainTimeout:
+			h.logger.Warn("timed out waiting for done event after fallback",
+				slog.String("conversation_id", conv.ID.String()))
+			break loop
 		case event, ok := <-events:
 			if !ok {
 				break loop
@@ -347,6 +360,14 @@ loop:
 						tel.markFirstContent()
 					}
 					assistantBuffer.WriteString(sanitizeUTF8(delta))
+				}
+			}
+			if event.Kind == usecase.StreamEventKindFallback {
+				fallbackSeen = true
+				reqDone = nil
+				if drainTimer == nil {
+					drainTimer = time.NewTimer(usecase.DoneSendTimeout)
+					drainTimeout = drainTimer.C
 				}
 			}
 			tel.observeEvent(event)
@@ -361,9 +382,12 @@ loop:
 					}
 				}
 				if err := stream.Send(protoEvent); err != nil {
-					h.logger.Error("failed to send event", slog.String("error", err.Error()))
-					tel.outcome = metrics.OutcomeError
-					return connect.NewError(connect.CodeInternal, err)
+					if !fallbackSeen {
+						h.logger.Error("failed to send event", slog.String("error", err.Error()))
+						tel.outcome = metrics.OutcomeError
+						return connect.NewError(connect.CodeInternal, err)
+					}
+					clientStreamClosed = true
 				}
 			}
 
