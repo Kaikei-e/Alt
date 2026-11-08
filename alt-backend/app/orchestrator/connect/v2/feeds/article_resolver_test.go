@@ -128,18 +128,17 @@ func TestResolveArticle_ErrorWhenDBEmptyAndNoRequestContent(t *testing.T) {
 	assert.Empty(t, resolvedContent)
 }
 
-func TestResolveArticle_FallbackToRequestContentWhenArticleNotInDB(t *testing.T) {
+func TestResolveArticle_ReturnsNotFoundWhenArticleNotInDB(t *testing.T) {
 	store := &stubArticleStore{byID: nil}
 	handler := newResolveArticleHandler(store)
 
 	articleID := "non-existent-article-id"
-	requestContent := "Fallback content when article not in DB"
-	resolvedArticleID, resolvedTitle, resolvedContent, err := handler.resolveArticle(createAuthContext(), "", articleID, requestContent, "Request Title")
+	resolvedArticleID, resolvedTitle, resolvedContent, err := handler.resolveArticle(createAuthContext(), "", articleID, "Fallback content when article not in DB", "Request Title")
 
-	require.NoError(t, err)
-	assert.Equal(t, articleID, resolvedArticleID)
-	assert.Equal(t, "Request Title", resolvedTitle)
-	assert.Equal(t, requestContent, resolvedContent, "Should use request content when the article is not stored")
+	require.ErrorIs(t, err, domain.ErrArticleNotFound)
+	assert.Empty(t, resolvedArticleID)
+	assert.Empty(t, resolvedTitle)
+	assert.Empty(t, resolvedContent)
 }
 
 func TestNewHandler_NilResolveArticlePanics(t *testing.T) {

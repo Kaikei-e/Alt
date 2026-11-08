@@ -40,11 +40,17 @@ func (m *mockEventPort) AppendKnowledgeEvent(_ context.Context, event domain.Kno
 }
 
 type mockMarkSupersededPort struct {
-	prev *domain.SummaryVersion
-	err  error
+	prev          *domain.SummaryVersion
+	err           error
+	lastArticleID uuid.UUID
+	lastNewID     uuid.UUID
+	lastUserID    uuid.UUID
 }
 
-func (m *mockMarkSupersededPort) MarkSummaryVersionSuperseded(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*domain.SummaryVersion, error) {
+func (m *mockMarkSupersededPort) MarkSummaryVersionSuperseded(_ context.Context, articleID uuid.UUID, newVersionID uuid.UUID, userID uuid.UUID) (*domain.SummaryVersion, error) {
+	m.lastArticleID = articleID
+	m.lastNewID = newVersionID
+	m.lastUserID = userID
 	return m.prev, m.err
 }
 
@@ -253,6 +259,11 @@ func TestCreateSummaryVersionUsecase_SecondVersion_EmitsSupersedeEvent(t *testin
 	require.Len(t, eventPort.appended, 2, "second version: SummaryVersionCreated + SummarySuperseded")
 	assert.Equal(t, domain.EventSummaryVersionCreated, eventPort.appended[0].EventType)
 	assert.Equal(t, domain.EventSummarySuperseded, eventPort.appended[1].EventType)
+	assert.Equal(t, articleID, markPort.lastArticleID)
+	assert.Equal(t, userID, markPort.lastUserID)
+	assert.Equal(t, userID, eventPort.appended[1].TenantID)
+	require.NotNil(t, eventPort.appended[1].UserID)
+	assert.Equal(t, userID, *eventPort.appended[1].UserID)
 
 	// Verify supersede event payload contains previous excerpt
 	assert.Contains(t, string(eventPort.appended[1].Payload), "previous_summary_excerpt")

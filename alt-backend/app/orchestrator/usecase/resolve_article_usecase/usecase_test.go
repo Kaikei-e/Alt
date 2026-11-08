@@ -113,18 +113,24 @@ func TestResolveArticle_ErrorWhenDBEmptyAndNoRequestContent(t *testing.T) {
 	assert.Empty(t, resolvedContent)
 }
 
-func TestResolveArticle_FallbackToRequestContentWhenArticleNotInDB(t *testing.T) {
+func TestResolveArticle_ReturnsNotFoundWhenArticleNotInDB(t *testing.T) {
 	repo := &stubArticleRepo{byID: nil}
 	uc := New(repo, &stubExtractor{})
 
 	articleID := "non-existent-article-id"
-	requestContent := "Fallback content when article not in DB"
-	resolvedArticleID, resolvedTitle, resolvedContent, err := uc.ResolveArticle(context.Background(), "", articleID, requestContent, "Request Title")
+	resolvedArticleID, resolvedTitle, resolvedContent, err := uc.ResolveArticle(context.Background(), "", articleID, "Fallback content when article not in DB", "Request Title")
 
-	require.NoError(t, err)
-	assert.Equal(t, articleID, resolvedArticleID)
-	assert.Equal(t, "Request Title", resolvedTitle)
-	assert.Equal(t, requestContent, resolvedContent, "Should use request content when the article is not stored")
+	require.ErrorIs(t, err, domain.ErrArticleNotFound)
+	assert.Empty(t, resolvedArticleID)
+	assert.Empty(t, resolvedTitle)
+	assert.Empty(t, resolvedContent)
+
+	resolvedArticleID, resolvedTitle, resolvedContent, errWithoutContent := uc.ResolveArticle(context.Background(), "", articleID, "", "")
+	require.ErrorIs(t, errWithoutContent, domain.ErrArticleNotFound)
+	assert.Equal(t, err.Error(), errWithoutContent.Error())
+	assert.Empty(t, resolvedArticleID)
+	assert.Empty(t, resolvedTitle)
+	assert.Empty(t, resolvedContent)
 }
 
 func TestResolveArticle_RequiresFeedURLOrArticleID(t *testing.T) {

@@ -71,3 +71,33 @@ func TestStreamSummarizeResponse_Construction(t *testing.T) {
 	assert.False(t, chunkResp.IsFinal)
 	assert.False(t, chunkResp.IsCached)
 }
+
+func TestStreamSummarize_UnownedArticleIDReturnsNotFoundEvenWithContent(t *testing.T) {
+	store := &stubArticleStore{byID: nil}
+	handler := newResolveArticleHandler(store)
+	ctx := createAuthContext()
+
+	articleID := "11111111-1111-4111-8111-111111111111"
+	content := "injected content for another user's article"
+	title := "Injected Title"
+
+	errWithContent := handler.StreamSummarize(ctx, connect.NewRequest(&feedsv2.StreamSummarizeRequest{
+		ArticleId: &articleID,
+		Content:   &content,
+		Title:     &title,
+	}), nil)
+	require.Error(t, errWithContent)
+	var connectErrWithContent *connect.Error
+	require.ErrorAs(t, errWithContent, &connectErrWithContent)
+	assert.Equal(t, connect.CodeNotFound, connectErrWithContent.Code())
+
+	errWithoutContent := handler.StreamSummarize(ctx, connect.NewRequest(&feedsv2.StreamSummarizeRequest{
+		ArticleId: &articleID,
+	}), nil)
+	require.Error(t, errWithoutContent)
+	var connectErrWithoutContent *connect.Error
+	require.ErrorAs(t, errWithoutContent, &connectErrWithoutContent)
+	assert.Equal(t, connect.CodeNotFound, connectErrWithoutContent.Code())
+	assert.Equal(t, connectErrWithoutContent.Message(), connectErrWithContent.Message())
+	assert.Empty(t, store.savedSummaryID)
+}

@@ -209,14 +209,22 @@ func TestResolveStreamArticle_KeepsProvidedTitleAndContent(t *testing.T) {
 	assert.Equal(t, "given content", content)
 }
 
-func TestResolveStreamArticle_ArticleIDNotFoundKeepsRequest(t *testing.T) {
+func TestResolveStreamArticle_ArticleIDNotFoundReturnsError(t *testing.T) {
 	repo := &fakeArticleRepository{}
 	uc := NewUsecase(repo, &fakePreProcessor{}, &fakeFetcher{})
 
 	id, title, content, err := uc.ResolveStreamArticle(context.Background(), "id-1", "", "", "")
 
-	require.NoError(t, err)
-	assert.Equal(t, "id-1", id)
+	require.ErrorIs(t, err, domain.ErrArticleNotFound)
+	assert.Empty(t, id)
+	assert.Empty(t, title)
+	assert.Empty(t, content)
+
+	id, title, content, errWithContent := uc.ResolveStreamArticle(context.Background(), "id-1", "", "Given Title", "injected content")
+
+	require.ErrorIs(t, errWithContent, domain.ErrArticleNotFound)
+	assert.Equal(t, err.Error(), errWithContent.Error())
+	assert.Empty(t, id)
 	assert.Empty(t, title)
 	assert.Empty(t, content)
 }
