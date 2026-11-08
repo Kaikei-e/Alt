@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -31,6 +33,38 @@ _CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 # Must stay in step with AcolyteConnectService._thread_id_for_run: the
 # checkpoint namespace is derived from run_id and is the only link back.
 _THREAD_ID_PREFIX = "acolyte-run:"
+
+
+def _encode_report_cursor(created_at: datetime, report_id: UUID) -> str:
+    raw = f"{created_at.isoformat()}|{report_id}"
+    return base64.urlsafe_b64encode(raw.encode("ascii")).decode("ascii")
+
+
+def _parse_report_cursor(cursor: str) -> tuple[datetime, UUID]:
+    try:
+        decoded = base64.b64decode(cursor.encode("ascii"), altchars=b"-_", validate=True).decode("ascii")
+        ts_str, id_str = decoded.split("|")
+        created_at = datetime.fromisoformat(ts_str)
+        report_id = UUID(id_str)
+    except ValueError as e:
+        msg = f"Invalid report cursor: {cursor!r}"
+        raise ValueError(msg) from e
+    if created_at.tzinfo is None:
+        msg = f"Invalid report cursor: {cursor!r}"
+        raise ValueError(msg)
+    return created_at, report_id
+
+
+def _parse_version_cursor(cursor: str) -> int:
+    try:
+        version_no = int(cursor)
+    except ValueError as e:
+        msg = f"Invalid version cursor: {cursor!r}"
+        raise ValueError(msg) from e
+    if version_no <= 0:
+        msg = f"Invalid version cursor: {cursor!r}"
+        raise ValueError(msg)
+    return version_no
 
 
 class PostgresReportGateway:
@@ -116,19 +150,22 @@ class PostgresReportGateway:
             )
 
     async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
+        cursor_key = _parse_report_cursor(cursor) if cursor else None
         async with self._pool.connection() as conn:
-            if cursor:
+            if cursor_key is not None:
+                cursor_created_at, cursor_report_id = cursor_key
                 row = await conn.execute(
                     "SELECT report_id, title, report_type, current_version, "
                     "latest_successful_run_id, created_at, user_id "
-                    "FROM reports WHERE user_id = %s AND created_at < %s ORDER BY created_at DESC LIMIT %s",
-                    [user_id, cursor, limit + 1],
+                    "FROM reports WHERE user_id = %s AND (created_at, report_id) < (%s, %s) "
+                    "ORDER BY created_at DESC, report_id DESC LIMIT %s",
+                    [user_id, cursor_created_at, cursor_report_id, limit + 1],
                 )
             else:
                 row = await conn.execute(
                     "SELECT report_id, title, report_type, current_version, "
                     "latest_successful_run_id, created_at, user_id "
-                    "FROM reports WHERE user_id = %s ORDER BY created_at DESC LIMIT %s",
+                    "FROM reports WHERE user_id = %s ORDER BY created_at DESC, report_id DESC LIMIT %s",
                     [user_id, limit + 1],
                 )
             rows = await row.fetchall()
@@ -145,7 +182,9 @@ class PostgresReportGateway:
             )
             for r in rows[:limit]
         ]
-        next_cursor = reports[-1].created_at.isoformat() if len(rows) > limit else None
+        next_cursor = (
+            _encode_report_cursor(reports[-1].created_at, reports[-1].report_id) if len(rows) > limit else None
+        )
         return reports, next_cursor
 
     async def bump_version(  # noqa: PLR0913 — implements ReportRepositoryPort's bump_version() signature
@@ -232,14 +271,15 @@ class PostgresReportGateway:
     async def list_report_versions(
         self, report_id: UUID, cursor: str | None, limit: int
     ) -> tuple[list[ReportVersion], str | None]:
+        cursor_version = _parse_version_cursor(cursor) if cursor else None
         async with self._pool.connection() as conn:
-            if cursor:
+            if cursor_version is not None:
                 cur = await conn.execute(
                     "SELECT report_id, version_no, change_seq, change_reason, created_at, "
                     "prompt_template_version, scope_snapshot, outline_snapshot, summary_snapshot "
                     "FROM report_versions WHERE report_id = %s AND version_no < %s "
                     "ORDER BY version_no DESC LIMIT %s",
-                    [report_id, int(cursor), limit + 1],
+                    [report_id, cursor_version, limit + 1],
                 )
             else:
                 cur = await conn.execute(

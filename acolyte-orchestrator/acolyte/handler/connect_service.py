@@ -158,7 +158,10 @@ class AcolyteConnectService:
             raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
         cursor = request.cursor if request.cursor else None
         limit = request.limit if request.limit > 0 else 20
-        reports, next_cursor = await ListReportsUsecase(self._repo).execute(cursor, limit, user_id=user_id)
+        try:
+            reports, next_cursor = await ListReportsUsecase(self._repo).execute(cursor, limit, user_id=user_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid cursor: {e}") from e
 
         summaries = []
         for r in reports:
@@ -204,7 +207,10 @@ class AcolyteConnectService:
             raise ConnectError(Code.NOT_FOUND, f"Report {request.report_id} not found")
         cursor = request.cursor if request.cursor else None
         limit = request.limit if request.limit > 0 else 20
-        versions, next_cursor = await self._repo.list_report_versions(report_id, cursor, limit)
+        try:
+            versions, next_cursor = await self._repo.list_report_versions(report_id, cursor, limit)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid cursor: {e}") from e
 
         result = []
         for v in versions:
