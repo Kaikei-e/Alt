@@ -218,10 +218,10 @@ async def test_shutdown_still_closes_the_pool_when_marking_a_run_failed_blows_up
 async def test_shutdown_drains_pipelines_before_the_checkpointer_closes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The grace window is worthless if the checkpoint connection is already gone.
+    """The grace window is worthless if the checkpoint pool is already gone.
 
     Production runs with CHECKPOINT_ENABLED=true and durability="sync", so every
-    super-step writes through the single psycopg connection create_checkpointer
+    super-step writes through the psycopg connection pool create_checkpointer
     owns. Draining after that context exits means the pipeline we are giving
     time to land its terminal write cannot actually write.
     """

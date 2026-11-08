@@ -371,7 +371,7 @@ def create_app() -> Starlette:  # noqa: PLR0915 — composition root wires pool,
         try:
             # The drain sits *inside* the checkpointer scope on purpose. With
             # CHECKPOINT_ENABLED=true the graph runs durability="sync", so every
-            # super-step writes through the single connection create_checkpointer
+            # super-step writes through the connection pool create_checkpointer
             # owns; draining after that context exits would hand a pipeline its
             # grace window with nothing left to write the terminal checkpoint to.
             if settings.checkpoint_enabled:

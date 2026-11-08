@@ -43,22 +43,13 @@ async def _patched_factory_deps() -> AsyncIterator[tuple[MagicMock, AsyncMock, M
     mock_saver = AsyncMock()
     mock_saver.setup = AsyncMock()
 
-    # Allow legacy from_conn_string path to execute without TypeError during RED
-    # so assertions fail cleanly on the new pool contract.
-    legacy_saver = AsyncMock()
-    legacy_saver.setup = AsyncMock()
-    legacy_ctx = AsyncMock()
-    legacy_ctx.__aenter__ = AsyncMock(return_value=legacy_saver)
-    legacy_ctx.__aexit__ = AsyncMock(return_value=False)
-
     with (
-        patch("acolyte.gateway.checkpoint_factory.AsyncConnectionPool", create=True) as mock_pool_cls,
+        patch("acolyte.gateway.checkpoint_factory.AsyncConnectionPool") as mock_pool_cls,
         patch("acolyte.gateway.checkpoint_factory.AsyncPostgresSaver") as mock_saver_cls,
     ):
         mock_pool_cls.check_connection = AsyncConnectionPool.check_connection
         mock_pool_cls.return_value = mock_pool
         mock_saver_cls.return_value = mock_saver
-        mock_saver_cls.from_conn_string.return_value = legacy_ctx
         yield mock_pool_cls, mock_pool, mock_saver_cls, mock_saver
 
 
