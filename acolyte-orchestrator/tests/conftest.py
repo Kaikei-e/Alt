@@ -29,6 +29,7 @@ _TEST_ENV_KEYS = (
     "ACOLYTE_DB_DSN",
     "BACKEND_TOKEN_VERIFICATION",
     "USER_IDENTITY_DEV_USER_ID",
+    "OTEL_ENABLED",
 )
 _ORIGINAL_TEST_ENV = {key: os.environ.get(key) for key in _TEST_ENV_KEYS}
 _TEST_SECRET_DIRECTORY = tempfile.TemporaryDirectory(prefix="acolyte-test-secret-")
@@ -41,6 +42,7 @@ os.environ["BACKEND_TOKEN_SECRET_FILE"] = str(_TEST_SECRET_FILE)
 os.environ["ACOLYTE_DB_DSN"] = _TEST_DB_DSN
 os.environ["BACKEND_TOKEN_VERIFICATION"] = "disabled"
 os.environ["USER_IDENTITY_DEV_USER_ID"] = _TEST_DEV_USER_ID
+os.environ["OTEL_ENABLED"] = "false"
 
 # Acting user for tests that need an owner UUID but do not exercise ownership
 # isolation themselves; matches the dev identity the interceptor injects.
@@ -92,6 +94,7 @@ def _force_test_db_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
     """Re-assert the test DSN and dev user for every test via monkeypatch (restored after)."""
     monkeypatch.setenv("ACOLYTE_DB_DSN", _TEST_DB_DSN)
     monkeypatch.setenv("USER_IDENTITY_DEV_USER_ID", _TEST_DEV_USER_ID)
+    monkeypatch.setenv("OTEL_ENABLED", "false")
 
 
 def _create_test_app() -> Starlette:

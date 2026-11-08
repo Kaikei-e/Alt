@@ -34,6 +34,7 @@ from acolyte.gen.proto.alt.acolyte.v1.acolyte_connect import AcolyteServiceASGIA
 from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.infra.inbound_tls import resolve_inbound_tls_bind, start_inbound_tls_listener
 from acolyte.infra.logging import configure_logging
+from acolyte.infra.otel import init_otel_provider
 from acolyte.infra.peer_identity import PeerIdentityMiddleware, allowed_peers_from_env
 from acolyte.infra.pki import start_enrollment
 from acolyte.infra.user_identity import UserIdentityInterceptor
@@ -51,6 +52,9 @@ if TYPE_CHECKING:
 
 settings = Settings()
 configure_logging(log_level=settings.log_level)
+_otel_handle = init_otel_provider()
+if _otel_handle.logger_provider is not None:
+    configure_logging(log_level=settings.log_level, logger_provider=_otel_handle.logger_provider)
 logger = structlog.get_logger(__name__)
 
 # DB pool (opened in lifespan)
@@ -392,6 +396,7 @@ def create_app() -> Starlette:  # noqa: PLR0915 — composition root wires pool,
             await _http_client.aclose()
             await _pool.close()
             logger.info("Shutting down acolyte-orchestrator")
+            _otel_handle.shutdown()
 
     asgi_app = AcolyteServiceASGIApplication(connect_service, interceptors=[_user_identity_interceptor])
 

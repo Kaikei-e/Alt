@@ -999,6 +999,7 @@ services:
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_VERIFICATION=enabled
+      - OTEL_ENABLED=false
     secrets:
       - backend_token_secret
     volumes:
