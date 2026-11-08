@@ -155,21 +155,20 @@ func (r *ArticleRepository) FetchArticlesByURLsForUser(ctx context.Context, urls
 	return result, nil
 }
 
-const fetchArticleByIDQuery = `
-	SELECT id, title, content, url, COALESCE(feed_id::text, '') AS feed_id
-	FROM articles
-	WHERE id = $1 AND deleted_at IS NULL
-`
-
 const fetchArticleByIDWithUserQuery = `
 	SELECT id, title, content, url, COALESCE(feed_id::text, '') AS feed_id
 	FROM articles
 	WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 `
 
-// FetchArticleByID retrieves article content from database by ID.
-// Scopes to the authenticated user when user context is available.
+// FetchArticleByID retrieves article content from database by ID for the
+// authenticated user in ctx.
 func (r *ArticleRepository) FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error) {
+	return r.FetchArticleByIDForUser(ctx, articleID, userIDFromContext(ctx))
+}
+
+// FetchArticleByIDForUser is the same read with the owner named explicitly.
+func (r *ArticleRepository) FetchArticleByIDForUser(ctx context.Context, articleID string, userID *uuid.UUID) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -179,25 +178,21 @@ func (r *ArticleRepository) FetchArticleByID(ctx context.Context, articleID stri
 		return nil, errors.New("article id cannot be empty")
 	}
 
-	var article domain.ArticleContent
-	var err error
-	if user, userErr := domain.GetUserFromContext(ctx); userErr == nil && user != nil && user.UserID != uuid.Nil {
-		err = r.pool.QueryRow(ctx, fetchArticleByIDWithUserQuery, cleanID, user.UserID).Scan(
-			&article.ID,
-			&article.Title,
-			&article.Content,
-			&article.URL,
-			&article.FeedID,
-		)
-	} else {
-		err = r.pool.QueryRow(ctx, fetchArticleByIDQuery, cleanID).Scan(
-			&article.ID,
-			&article.Title,
-			&article.Content,
-			&article.URL,
-			&article.FeedID,
-		)
+	if userID == nil {
+		userID = userIDFromContext(ctx)
 	}
+	if userID == nil || *userID == uuid.Nil {
+		return nil, errors.New("user id is required")
+	}
+
+	var article domain.ArticleContent
+	err := r.pool.QueryRow(ctx, fetchArticleByIDWithUserQuery, cleanID, *userID).Scan(
+		&article.ID,
+		&article.Title,
+		&article.Content,
+		&article.URL,
+		&article.FeedID,
+	)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
