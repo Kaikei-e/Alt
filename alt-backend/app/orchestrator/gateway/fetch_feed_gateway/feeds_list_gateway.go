@@ -152,13 +152,24 @@ func (g *FetchFeedsGateway) FetchReadFeedsListCursor(ctx context.Context, cursor
 		return nil, errors.New("error fetching read feeds with cursor")
 	}
 
+	// Per-scope meaning of models.Feed.UpdatedAt (datahub.v1.Feed.updated_at):
+	//   - ALL / UNREAD: f.updated_at (cursor pagination uses f.created_at)
+	//   - READ:         rs.read_at (sort and filter key for read feeds)
+	//   - FAVORITE:     ff.created_at (sort and filter key for favorite feeds)
+	// A zero UpdatedAt in READ or FAVORITE scope is a contract violation; fail
+	// explicitly rather than falling back to f.created_at.
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
+		if feed.UpdatedAt.IsZero() {
+			logger.SafeErrorContext(ctx, "Missing read_at sort key in read cursor page", "feed_id", feed.ID)
+			return nil, errors.New("error fetching read feeds with cursor")
+		}
 		feedItem, err := mapFeedCursor(feed, false)
 		if err != nil {
 			logger.SafeErrorContext(ctx, "Error reading feed id from read cursor page", "error", err)
 			return nil, errors.New("error fetching read feeds with cursor")
 		}
+		feedItem.CursorAt = feed.UpdatedAt
 		feedItems = append(feedItems, feedItem)
 	}
 
@@ -174,11 +185,16 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
+		if feed.UpdatedAt.IsZero() {
+			logger.SafeErrorContext(ctx, "Missing favorite created_at sort key in favorite cursor page", "feed_id", feed.ID)
+			return nil, errors.New("error fetching favorite feeds with cursor")
+		}
 		feedItem, err := mapFeedCursor(feed, false)
 		if err != nil {
 			logger.SafeErrorContext(ctx, "Error reading feed id from favorite cursor page", "error", err)
 			return nil, errors.New("error fetching favorite feeds with cursor")
 		}
+		feedItem.CursorAt = feed.UpdatedAt
 		feedItems = append(feedItems, feedItem)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"alt/domain"
 	"alt/orchestrator/gateway/fetch_article_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
+	"alt/orchestrator/usecase/fetch_article_tags_usecase"
 	"alt/orchestrator/usecase/fetch_article_usecase"
 	"alt/orchestrator/usecase/fetch_articles_usecase"
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
@@ -365,4 +366,43 @@ func TestHandleFetchArticlesByTag_RoundTripKeepsSubSecondPrecision(t *testing.T)
 		t.Fatalf("cursor %s became %s, so every row between them is skipped",
 			firstPageTail.Format(time.RFC3339Nano), port.lastCursor.Format(time.RFC3339Nano))
 	}
+}
+
+type stubArticleTagsPort struct {
+	called bool
+}
+
+func (s *stubArticleTagsPort) FetchArticleTags(_ context.Context, _ string) ([]*domain.FeedTag, error) {
+	s.called = true
+	return nil, fmt.Errorf("unexpected store call")
+}
+
+func TestHandleFetchArticleTags_RejectsMalformedUUID(t *testing.T) {
+	logger.InitLogger()
+
+	port := &stubArticleTagsPort{}
+	handler := handleFetchArticleTags(&di.ApplicationComponents{
+		FetchArticleTagsUsecase: fetch_article_tags_usecase.NewFetchArticleTagsUsecase(port),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/articles/not-a-uuid/tags", nil)
+	loginAt := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	req = req.WithContext(domain.SetUserContext(req.Context(), &domain.UserContext{
+		UserID:    uuid.New(),
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  uuid.New(),
+		SessionID: "test-session",
+		LoginAt:   loginAt,
+		ExpiresAt: time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC),
+	}))
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("not-a-uuid")
+
+	err := handler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.False(t, port.called)
 }

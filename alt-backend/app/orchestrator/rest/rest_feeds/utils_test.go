@@ -2,15 +2,20 @@ package rest_feeds
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
 	"alt/config"
 	"alt/di"
 	"alt/domain"
+	"alt/orchestrator/driver/models"
+	"alt/orchestrator/gateway/fetch_feed_gateway"
 	"alt/orchestrator/usecase/cached_feed_list_usecase"
+	"alt/orchestrator/usecase/fetch_feed_tags_by_id_usecase"
 	"alt/orchestrator/usecase/fetch_feed_usecase"
 	"alt/utils/logger"
 
@@ -240,4 +245,283 @@ func TestFeedFetchHandlers_SetPrivateNoCacheHeader(t *testing.T) {
 			assert.Equal(t, "private, no-cache", rec.Header().Get("Cache-Control"))
 		})
 	}
+}
+
+type restCursorFilteringStoreStub struct {
+	rows []*models.Feed
+}
+
+func (s *restCursorFilteringStoreStub) FetchFeedsList(context.Context) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *restCursorFilteringStoreStub) FetchFeedsListLimit(context.Context, int) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *restCursorFilteringStoreStub) FetchUnreadFeedsListPage(context.Context, int) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *restCursorFilteringStoreStub) FetchAllFeedsListCursor(context.Context, *time.Time, int, []uuid.UUID) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *restCursorFilteringStoreStub) FetchUnreadFeedsListCursor(context.Context, *time.Time, int, []uuid.UUID) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *restCursorFilteringStoreStub) FetchReadFeedsListCursor(_ context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	return s.filterBySortKey(cursor, limit), nil
+}
+func (s *restCursorFilteringStoreStub) FetchFavoriteFeedsListCursor(_ context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	return s.filterBySortKey(cursor, limit), nil
+}
+
+func (s *restCursorFilteringStoreStub) filterBySortKey(cursor *time.Time, limit int) []*models.Feed {
+	var out []*models.Feed
+	for _, r := range s.rows {
+		if cursor == nil || r.UpdatedAt.Before(*cursor) {
+			out = append(out, r)
+			if len(out) == limit {
+				break
+			}
+		}
+	}
+	return out
+}
+
+func TestRestHandleFetchReadAndFavoriteFeedsCursor_UsesSortKeyTime(t *testing.T) {
+	logger.InitLogger()
+
+	t1 := time.Date(2026, time.March, 1, 10, 0, 0, 111000000, time.UTC)
+	t2 := time.Date(2026, time.March, 2, 10, 0, 0, 222000000, time.UTC)
+	t8 := time.Date(2026, time.March, 8, 10, 0, 0, 888123456, time.UTC)
+	t9 := time.Date(2026, time.March, 9, 10, 0, 0, 999654321, time.UTC)
+
+	store := &restCursorFilteringStoreStub{
+		rows: []*models.Feed{
+			{
+				ID:         uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").String(),
+				Title:      "Feed A",
+				WebsiteURL: "https://example.com/a",
+				CreatedAt:  t1,
+				UpdatedAt:  t9,
+			},
+			{
+				ID:         uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").String(),
+				Title:      "Feed B",
+				WebsiteURL: "https://example.com/b",
+				CreatedAt:  t2,
+				UpdatedAt:  t8,
+			},
+		},
+	}
+
+	gw := fetch_feed_gateway.NewFetchFeedsGateway(store)
+	container := &di.ApplicationComponents{
+		FetchReadFeedsListCursorUsecase:     fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(gw),
+		FetchFavoriteFeedsListCursorUsecase: fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(gw),
+	}
+
+	e := echo.New()
+	tests := []struct {
+		name    string
+		baseURL string
+		handler echo.HandlerFunc
+	}{
+		{
+			name:    "read feeds cursor",
+			baseURL: "/v1/feeds/fetch/viewed/cursor",
+			handler: RestHandleFetchReadFeedsCursor(container),
+		},
+		{
+			name:    "favorite feeds cursor",
+			baseURL: "/v1/feeds/fetch/favorites/cursor",
+			handler: RestHandleFetchFavoriteFeedsCursor(container),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req1 := httptest.NewRequest(http.MethodGet, tt.baseURL+"?limit=1", nil)
+			rec1 := httptest.NewRecorder()
+			c1 := e.NewContext(req1, rec1)
+
+			require.NoError(t, tt.handler(c1))
+			require.Equal(t, http.StatusOK, rec1.Code)
+
+			var body1 struct {
+				Data       []map[string]any `json:"data"`
+				NextCursor string           `json:"next_cursor"`
+			}
+			require.NoError(t, json.Unmarshal(rec1.Body.Bytes(), &body1))
+			require.Len(t, body1.Data, 1)
+			assert.Equal(t, "Feed A", body1.Data[0]["title"])
+			assert.Equal(t, t9.Format(time.RFC3339Nano), body1.NextCursor)
+
+			req2 := httptest.NewRequest(http.MethodGet, tt.baseURL+"?limit=1&cursor="+url.QueryEscape(body1.NextCursor), nil)
+			rec2 := httptest.NewRecorder()
+			c2 := e.NewContext(req2, rec2)
+
+			require.NoError(t, tt.handler(c2))
+			require.Equal(t, http.StatusOK, rec2.Code)
+
+			var body2 struct {
+				Data []map[string]any `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &body2))
+			require.Len(t, body2.Data, 1)
+			assert.Equal(t, "Feed B", body2.Data[0]["title"])
+		})
+	}
+}
+
+type restMissingCursorAtPortStub struct {
+	items []*domain.FeedItem
+}
+
+func (s *restMissingCursorAtPortStub) FetchReadFeedsListCursor(_ context.Context, _ *time.Time, _ int) ([]*domain.FeedItem, error) {
+	return s.items, nil
+}
+
+func (s *restMissingCursorAtPortStub) FetchFavoriteFeedsListCursor(_ context.Context, _ *time.Time, _ int) ([]*domain.FeedItem, error) {
+	return s.items, nil
+}
+
+func TestRestHandleFetchReadAndFavoriteFeedsCursor_MissingCursorAtReturnsError(t *testing.T) {
+	logger.InitLogger()
+
+	createdAt := time.Date(2026, time.March, 1, 10, 0, 0, 111000000, time.UTC)
+	portStub := &restMissingCursorAtPortStub{
+		items: []*domain.FeedItem{{
+			Title:           "Feed Missing CursorAt",
+			Link:            "https://example.com/a",
+			Published:       createdAt.Format(time.RFC3339),
+			PublishedParsed: createdAt,
+		}},
+	}
+
+	container := &di.ApplicationComponents{
+		FetchReadFeedsListCursorUsecase:     fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(portStub),
+		FetchFavoriteFeedsListCursorUsecase: fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(portStub),
+	}
+
+	e := echo.New()
+	tests := []struct {
+		name    string
+		target  string
+		handler echo.HandlerFunc
+	}{
+		{
+			name:    "read feeds cursor missing sort key",
+			target:  "/v1/feeds/fetch/viewed/cursor?limit=1",
+			handler: RestHandleFetchReadFeedsCursor(container),
+		},
+		{
+			name:    "favorite feeds cursor missing sort key",
+			target:  "/v1/feeds/fetch/favorites/cursor?limit=1",
+			handler: RestHandleFetchFavoriteFeedsCursor(container),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			require.NoError(t, tt.handler(c))
+			assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		})
+	}
+}
+
+type stubFetchFeedTagsPort struct {
+	tags       []*domain.FeedTag
+	lastCursor *time.Time
+	called     bool
+}
+
+func (s *stubFetchFeedTagsPort) FetchFeedTags(_ context.Context, _ string, cursor *time.Time, _ int) ([]*domain.FeedTag, error) {
+	s.called = true
+	s.lastCursor = cursor
+	return s.tags, nil
+}
+
+func TestRestHandleFetchFeedTagsByID_RejectsMalformedUUID(t *testing.T) {
+	logger.InitLogger()
+
+	stub := &stubFetchFeedTagsPort{}
+	container := &di.ApplicationComponents{
+		FetchFeedTagsByIDUsecase: fetch_feed_tags_by_id_usecase.NewFetchFeedTagsByIDUsecase(stub),
+	}
+	handler := RestHandleFetchFeedTagsByID(container)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds/not-a-uuid/tags", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("not-a-uuid")
+
+	require.NoError(t, handler(c))
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.False(t, stub.called)
+}
+
+func TestRestHandleFetchFeedTagsByID_CursorRoundTripKeepsSubSecondPrecision(t *testing.T) {
+	logger.InitLogger()
+
+	ts := time.Date(2026, time.March, 2, 10, 0, 0, 123456000, time.UTC)
+	stub := &stubFetchFeedTagsPort{
+		tags: []*domain.FeedTag{
+			{
+				ID:        uuid.MustParse("11111111-1111-1111-1111-111111111111").String(),
+				TagName:   "golang",
+				CreatedAt: ts,
+			},
+		},
+	}
+
+	container := &di.ApplicationComponents{
+		FetchFeedTagsByIDUsecase: fetch_feed_tags_by_id_usecase.NewFetchFeedTagsByIDUsecase(stub),
+	}
+	handler := RestHandleFetchFeedTagsByID(container)
+	e := echo.New()
+	feedID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").String()
+
+	req1 := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1", nil)
+	rec1 := httptest.NewRecorder()
+	c1 := e.NewContext(req1, rec1)
+	c1.SetParamNames("id")
+	c1.SetParamValues(feedID)
+
+	require.NoError(t, handler(c1))
+	require.Equal(t, http.StatusOK, rec1.Code)
+
+	var body1 struct {
+		NextCursor string `json:"next_cursor"`
+	}
+	require.NoError(t, json.Unmarshal(rec1.Body.Bytes(), &body1))
+	require.NotEmpty(t, body1.NextCursor)
+
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1&cursor="+url.QueryEscape(body1.NextCursor), nil)
+	rec2 := httptest.NewRecorder()
+	c2 := e.NewContext(req2, rec2)
+	c2.SetParamNames("id")
+	c2.SetParamValues(feedID)
+
+	require.NoError(t, handler(c2))
+	require.Equal(t, http.StatusOK, rec2.Code)
+	require.NotNil(t, stub.lastCursor)
+	assert.True(t, stub.lastCursor.Equal(ts),
+		"cursor %q became %q", ts.Format(time.RFC3339Nano), stub.lastCursor.Format(time.RFC3339Nano))
+
+	wholeSec := time.Date(2026, time.March, 2, 10, 0, 0, 0, time.UTC)
+	req3 := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1&cursor="+url.QueryEscape(wholeSec.Format(time.RFC3339)), nil)
+	rec3 := httptest.NewRecorder()
+	c3 := e.NewContext(req3, rec3)
+	c3.SetParamNames("id")
+	c3.SetParamValues(feedID)
+
+	require.NoError(t, handler(c3))
+	require.Equal(t, http.StatusOK, rec3.Code)
+	require.NotNil(t, stub.lastCursor)
+	assert.True(t, stub.lastCursor.Equal(wholeSec))
 }

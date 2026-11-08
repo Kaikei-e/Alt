@@ -252,7 +252,7 @@ func TestBuildReadFeedsCursorQuery(t *testing.T) {
 		gotSQL, gotArgs := buildReadFeedsCursorQuery(nil, limit, userID)
 
 		wantSQL := fmt.Sprintf(`
-			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, rs.read_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
@@ -275,7 +275,7 @@ func TestBuildReadFeedsCursorQuery(t *testing.T) {
 		gotSQL, gotArgs := buildReadFeedsCursorQuery(&cursor, limit, userID)
 
 		wantSQL := fmt.Sprintf(`
-			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, rs.read_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
@@ -304,7 +304,7 @@ func TestBuildFavoriteFeedsCursorQuery(t *testing.T) {
 		gotSQL, gotArgs := buildFavoriteFeedsCursorQuery(nil, limit, userID)
 
 		wantSQL := fmt.Sprintf(`
-                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, ff.created_at,
                               (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               %s
                        FROM feeds f
@@ -326,7 +326,7 @@ func TestBuildFavoriteFeedsCursorQuery(t *testing.T) {
 		gotSQL, gotArgs := buildFavoriteFeedsCursorQuery(&cursor, limit, userID)
 
 		wantSQL := fmt.Sprintf(`
-                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, ff.created_at,
                               (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               %s
                        FROM feeds f

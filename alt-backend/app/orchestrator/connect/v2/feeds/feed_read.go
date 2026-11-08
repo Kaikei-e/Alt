@@ -226,12 +226,17 @@ func (h *Handler) GetReadFeeds(
 	// Determine hasMore based on result count vs requested limit
 	hasMore := len(feeds) >= limit
 
+	nextCursor, err := deriveSortKeyNextCursor(feeds, hasMore)
+	if err != nil {
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetReadFeeds")
+	}
+
 	h.enrichWithProxyURLs(feeds)
 
 	stopMarshal := timer.StartPhase(ctx, "marshal")
 	resp := connect.NewResponse(&feedsv2.GetReadFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
-		NextCursor: deriveNextCursor(feeds, hasMore),
+		NextCursor: nextCursor,
 		HasMore:    hasMore,
 	})
 	stopMarshal()
@@ -285,12 +290,17 @@ func (h *Handler) GetFavoriteFeeds(
 	// Determine hasMore based on result count vs requested limit
 	hasMore := len(feeds) >= limit
 
+	nextCursor, err := deriveSortKeyNextCursor(feeds, hasMore)
+	if err != nil {
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetFavoriteFeeds")
+	}
+
 	h.enrichWithProxyURLs(feeds)
 
 	stopMarshal := timer.StartPhase(ctx, "marshal")
 	resp := connect.NewResponse(&feedsv2.GetFavoriteFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
-		NextCursor: deriveNextCursor(feeds, hasMore),
+		NextCursor: nextCursor,
 		HasMore:    hasMore,
 	})
 	stopMarshal()
