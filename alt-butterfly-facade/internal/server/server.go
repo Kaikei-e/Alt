@@ -530,6 +530,24 @@ func createQueryFetcher(backendClient *client.BackendClient, requestTimeout time
 			}, nil
 		}
 
+		if !json.Valid(respBody) {
+			errMsg := strings.TrimSpace(string(respBody))
+			if errMsg == "" {
+				errMsg = http.StatusText(resp.StatusCode)
+			}
+			if errMsg == "" {
+				errMsg = "invalid JSON response from backend"
+			}
+			statusCode := resp.StatusCode
+			if statusCode < http.StatusBadRequest {
+				statusCode = http.StatusBadGateway
+			}
+			return &handler.AggregatedResult{
+				Error:      errMsg,
+				StatusCode: statusCode,
+			}, nil
+		}
+
 		return &handler.AggregatedResult{
 			Data:       respBody,
 			StatusCode: resp.StatusCode,

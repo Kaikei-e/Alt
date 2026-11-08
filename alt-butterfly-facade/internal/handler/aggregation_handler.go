@@ -2,12 +2,14 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"html"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 
 	"alt-butterfly-facade/internal/middleware"
@@ -131,10 +133,19 @@ func (h *AggregationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Results: results,
 	}
 
-	// Write response
+	// Encode into a buffer first so an encoding failure becomes a 5xx instead of a 200 with no body.
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(resp); err != nil {
+		if h.logger != nil {
+			h.logger.Error("aggregation response encode failed", "error", err)
+		}
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	_, _ = w.Write(buf.Bytes())
 }
 
 // fetchAll fetches all queries in parallel.
@@ -192,6 +203,27 @@ func (h *AggregationHandler) fetchSingle(query string, token string, body []byte
 		return &AggregatedResult{
 			Error:      "no result from fetcher",
 			StatusCode: http.StatusInternalServerError,
+		}
+	}
+
+	if len(result.Data) > 0 && !json.Valid(result.Data) {
+		errMsg := result.Error
+		if errMsg == "" {
+			errMsg = strings.TrimSpace(string(result.Data))
+		}
+		if errMsg == "" {
+			errMsg = http.StatusText(result.StatusCode)
+		}
+		if errMsg == "" {
+			errMsg = "invalid JSON response from backend"
+		}
+		statusCode := result.StatusCode
+		if statusCode < http.StatusBadRequest {
+			statusCode = http.StatusBadGateway
+		}
+		return &AggregatedResult{
+			Error:      errMsg,
+			StatusCode: statusCode,
 		}
 	}
 
