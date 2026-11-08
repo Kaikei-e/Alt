@@ -270,14 +270,16 @@ class RecapSummaryUsecase:
             response = await self._generate_hierarchical_summary(
                 request, max_bullets, temperature_override
             )
-            await self._cache_response(cache_key, response)
+            if not response.metadata.is_degraded:
+                await self._cache_response(cache_key, response)
             return response
 
         # Single-shot summarization for smaller inputs
         response = await self._generate_single_shot_summary(
             request, max_bullets, temperature_override
         )
-        await self._cache_response(cache_key, response)
+        if not response.metadata.is_degraded:
+            await self._cache_response(cache_key, response)
         return response
 
     async def generate_batch_summary(
@@ -498,13 +500,9 @@ class RecapSummaryUsecase:
             # If highlights are provided, they will be used instead
             return 0
 
-        estimated = 0
-        for cluster in request.clusters:
-            # Rough estimate: cluster header + sentences
-            estimated += 100  # Header overhead
-            for sentence in cluster.representative_sentences:
-                estimated += len(sentence.text) + 50  # Text + metadata overhead
-        return estimated
+        return sum(
+            len(self._format_cluster_block(cluster)) + 2 for cluster in request.clusters
+        )
 
     async def _generate_hierarchical_summary(
         self,
@@ -562,6 +560,18 @@ class RecapSummaryUsecase:
         intermediate_summaries: list[IntermediateSummary] = [
             result for result in map_results if result is not None
         ]
+        dropped_map_chunks = len(chunks) - len(intermediate_summaries)
+        if dropped_map_chunks > 0 and intermediate_summaries:
+            logger.warning(
+                "Map phase completed with partial chunk failures",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "total_chunks": len(chunks),
+                    "succeeded_chunks": len(intermediate_summaries),
+                    "dropped_chunks": dropped_map_chunks,
+                },
+            )
 
         if not intermediate_summaries:
             # Fallback if all map phases failed
@@ -576,6 +586,17 @@ class RecapSummaryUsecase:
                 temperature_override,
                 llm_options,
             )
+            if dropped_map_chunks > 0 and not response.metadata.is_degraded:
+                response = response.model_copy(
+                    update={
+                        "metadata": response.metadata.model_copy(
+                            update={
+                                "is_degraded": True,
+                                "degradation_reason": "map_chunks_partial",
+                            }
+                        )
+                    }
+                )
 
         # Single aggregate INFO log for the whole job, replacing the need to
         # infer job shape from per-round-trip logs scattered across dozens of
@@ -681,6 +702,19 @@ class RecapSummaryUsecase:
             for result in reduced_results
             if result is not None and isinstance(result, IntermediateSummary)
         ]
+        dropped_groups = len(summary_groups) - len(reduced_summaries)
+        if dropped_groups > 0:
+            logger.warning(
+                "Recursive reduce completed with dropped groups",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "depth": depth,
+                    "total_groups": len(summary_groups),
+                    "succeeded_groups": len(reduced_summaries),
+                    "dropped_groups": dropped_groups,
+                },
+            )
 
         if not reduced_summaries:
             # Fallback: use original summaries and do final reduce anyway
@@ -691,10 +725,21 @@ class RecapSummaryUsecase:
             response = await self._final_reduce(
                 summaries, request, max_bullets, temperature_override
             )
+            if not response.metadata.is_degraded:
+                response = response.model_copy(
+                    update={
+                        "metadata": response.metadata.model_copy(
+                            update={
+                                "is_degraded": True,
+                                "degradation_reason": "reduce_groups_partial",
+                            }
+                        )
+                    }
+                )
             return response, depth
 
         # Recurse with reduced summaries
-        return await self._recursive_reduce_phase(
+        response, final_depth = await self._recursive_reduce_phase(
             reduced_summaries,
             request,
             max_bullets,
@@ -702,6 +747,18 @@ class RecapSummaryUsecase:
             llm_options,
             depth + 1,
         )
+        if dropped_groups > 0 and not response.metadata.is_degraded:
+            response = response.model_copy(
+                update={
+                    "metadata": response.metadata.model_copy(
+                        update={
+                            "is_degraded": True,
+                            "degradation_reason": "reduce_groups_partial",
+                        }
+                    )
+                }
+            )
+        return response, final_depth
 
     async def _reduce_group(
         self,
@@ -925,12 +982,9 @@ class RecapSummaryUsecase:
         overlap_ratio = getattr(self.config, "hierarchical_chunk_overlap_ratio", 0.15)
 
         # Calculate cluster lengths
-        cluster_lengths = []
-        for cluster in clusters:
-            length = (
-                sum(len(s.text) for s in cluster.representative_sentences) + 200
-            )  # Overhead
-            cluster_lengths.append(length)
+        cluster_lengths = [
+            len(self._format_cluster_block(cluster)) + 2 for cluster in clusters
+        ]
 
         chunks: list[List] = []
         current_chunk: List = []
@@ -1475,6 +1529,36 @@ class RecapSummaryUsecase:
         except Exception:
             return url
 
+    @staticmethod
+    def _format_cluster_block(cluster: RecapClusterInput) -> str:
+        top_terms = ", ".join(cluster.top_terms or []) or "未提示"
+        sentence_lines: list[str] = []
+        for sentence in cluster.representative_sentences:
+            prefix = "- [Main Point] " if sentence.is_centroid else "- "
+            parts: list[str] = [f"{prefix}{sentence.text}"]
+            if sentence.published_at:
+                parts.append(f"  (公開日: {sentence.published_at})")
+            if sentence.source_url:
+                # ADR-890 followup: 以前は domain だけを露出していたため LLM が
+                # `url`/`article_id` をドメイン文字列で埋め、reconciler が
+                # grounded=0 になる事故が発生した。full URL と UUID 形式の
+                # article_id を sentence 行に出して LLM が verbatim echo できる
+                # ようにする。LLM の UUID 直引き信頼性は低いため最終的には
+                # recap-worker reconciler 側で UUID 検証 + URL fallback が走る。
+                parts.append(f"  (source_url: {sentence.source_url})")
+            if sentence.article_id:
+                parts.append(f"  (article_id: {sentence.article_id})")
+            sentence_lines.append(" ".join(parts))
+        sentences = "\n".join(sentence_lines)
+        return textwrap.dedent(
+            f"""
+            ### Cluster {cluster.cluster_id}
+            Top Terms: {top_terms}
+            Representative Sentences:
+            {sentences}
+            """
+        ).strip()
+
     def _render_prompt_body(
         self,
         request: RecapSummaryRequest,
@@ -1483,38 +1567,16 @@ class RecapSummaryUsecase:
     ) -> tuple[str, str]:
         MAX_CLUSTER_SECTION_LENGTH = self._max_cluster_section_length(request)
 
-        max_clusters = max(3, min(len(request.clusters), max_bullets + 2))
+        max_clusters = (
+            len(request.clusters)
+            if intermediate
+            else max(3, min(len(request.clusters), max_bullets + 2))
+        )
         cluster_lines: list[str] = []
         cluster_section_length = 0
 
         for cluster in request.clusters[:max_clusters]:
-            top_terms = ", ".join(cluster.top_terms or []) or "未提示"
-            sentence_lines: list[str] = []
-            for sentence in cluster.representative_sentences:
-                prefix = "- [Main Point] " if sentence.is_centroid else "- "
-                parts: list[str] = [f"{prefix}{sentence.text}"]
-                if sentence.published_at:
-                    parts.append(f"  (公開日: {sentence.published_at})")
-                if sentence.source_url:
-                    # ADR-890 followup: 以前は domain だけを露出していたため LLM が
-                    # `url`/`article_id` をドメイン文字列で埋め、reconciler が
-                    # grounded=0 になる事故が発生した。full URL と UUID 形式の
-                    # article_id を sentence 行に出して LLM が verbatim echo できる
-                    # ようにする。LLM の UUID 直引き信頼性は低いため最終的には
-                    # recap-worker reconciler 側で UUID 検証 + URL fallback が走る。
-                    parts.append(f"  (source_url: {sentence.source_url})")
-                if sentence.article_id:
-                    parts.append(f"  (article_id: {sentence.article_id})")
-                sentence_lines.append(" ".join(parts))
-            sentences = "\n".join(sentence_lines)
-            cluster_block = textwrap.dedent(
-                f"""
-                ### Cluster {cluster.cluster_id}
-                Top Terms: {top_terms}
-                Representative Sentences:
-                {sentences}
-                """
-            ).strip()
+            cluster_block = self._format_cluster_block(cluster)
 
             # Check if adding this cluster would exceed the limit
             estimated_length = (
@@ -1527,6 +1589,7 @@ class RecapSummaryUsecase:
                         "job_id": str(request.job_id),
                         "genre": request.genre,
                         "clusters_included": len(cluster_lines),
+                        "clusters_dropped": len(request.clusters) - len(cluster_lines),
                         "total_clusters": len(request.clusters),
                         "cluster_section_length": cluster_section_length,
                         "max_length": MAX_CLUSTER_SECTION_LENGTH,

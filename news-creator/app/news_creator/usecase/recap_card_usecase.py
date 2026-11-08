@@ -11,6 +11,7 @@ from typing import Any
 from jinja2 import Template
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.errors import CardGenerationInvariantError
 from news_creator.domain.models import (
     Card422Reason,
     CardGenerateRequest,
@@ -203,7 +204,7 @@ class RecapCardUsecase:
         elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 
         if not isinstance(llm_response, LLMGenerateResponse):
-            raise RuntimeError(
+            raise CardGenerationInvariantError(
                 f"Unexpected LLM response type: {type(llm_response).__name__}"
             )
 
@@ -315,7 +316,9 @@ class RecapCardUsecase:
 
         if parse_result_1.success and parse_result_1.card is not None:
             if parse_result_1.measured_ratio is None:
-                raise RuntimeError("Parser succeeded but measured_ratio is None")
+                raise CardGenerationInvariantError(
+                    "Parser succeeded but measured_ratio is None"
+                )
             response = CardGenerateResponse(
                 card=parse_result_1.card,
                 generation=CardGenerationMetadata(
@@ -372,7 +375,9 @@ class RecapCardUsecase:
 
         if parse_result_2.success and parse_result_2.card is not None:
             if parse_result_2.measured_ratio is None:
-                raise RuntimeError("Parser succeeded but measured_ratio is None")
+                raise CardGenerationInvariantError(
+                    "Parser succeeded but measured_ratio is None"
+                )
             response = CardGenerateResponse(
                 card=parse_result_2.card,
                 generation=CardGenerationMetadata(

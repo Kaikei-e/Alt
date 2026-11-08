@@ -14,6 +14,7 @@ from news_creator.domain.models import (
     CardGenerationRejectedError,
 )
 from news_creator.domain.errors import (
+    CardGenerationInvariantError,
     PreemptedException,
     QueueFullError,
 )
@@ -123,11 +124,30 @@ def create_recap_card_router(usecase: RecapCardUsecase) -> APIRouter:
                 status_code=502, detail="Upstream service error"
             ) from exc
 
+        except CardGenerationInvariantError as exc:
+            logger.error(
+                "Recap card generation failed with invariant violation",
+                extra={"error": str(exc), "job_id": str(request.job_id)},
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from exc
+
         except RuntimeError as exc:
             logger.error(
                 "Recap card generation failed with runtime error",
                 extra={"error": str(exc), "job_id": str(request.job_id)},
                 exc_info=True,
+            )
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
+
+        except Exception as exc:
+            logger.exception(
+                "Unexpected error while generating recap card",
+                extra={"job_id": str(request.job_id)},
             )
             raise HTTPException(
                 status_code=500, detail="Internal server error"

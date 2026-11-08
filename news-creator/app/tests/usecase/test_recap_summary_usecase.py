@@ -487,6 +487,65 @@ def test_split_clusters_into_chunks_single_large_cluster():
     assert clusters[0] in chunks[0]
 
 
+def test_split_clusters_into_chunks_accounts_for_rendered_metadata(caplog):
+    """Splitter must measure rendered metadata (published_at, source_url, article_id) so no chunk overflows MAX_CLUSTER_SECTION_LENGTH."""
+    import logging
+
+    config = _create_mock_config()
+    config.hierarchical_chunk_max_chars = 6000
+    config.hierarchical_chunk_overlap_ratio = 0.0
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=Mock())
+
+    clusters = [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[
+                RepresentativeSentence(
+                    text=f"METATEST_CLUSTER_{i:02d}_SENT_{j}: 要約対象の短文。",
+                    published_at="2026-11-08T00:00:00Z",
+                    source_url=(
+                        f"https://news.example.com/archive/2026/11/08/"
+                        f"technology-deep-dive-analysis-report-cluster-{i:02d}-item-{j}/index.html"
+                    ),
+                    article_id=f"00000000-0000-4000-8000-{i:06d}{j:06d}",
+                    is_centroid=(j == 0),
+                )
+                for j in range(4)
+            ],
+            top_terms=[f"term{i}"],
+        )
+        for i in range(10)
+    ]
+
+    chunks = usecase._split_clusters_into_chunks(clusters)
+
+    with caplog.at_level(logging.WARNING):
+        caplog.clear()
+        for chunk in chunks:
+            chunk_request = RecapSummaryRequest(
+                job_id=uuid4(),
+                genre="tech",
+                clusters=chunk,
+                window_days=3,
+            )
+            prompt = usecase._build_prompt(
+                chunk_request, max_bullets=4, intermediate=True
+            )
+            for cluster in chunk:
+                marker = f"METATEST_CLUSTER_{cluster.cluster_id:02d}_SENT_0"
+                assert marker in prompt, (
+                    f"Cluster {cluster.cluster_id} assigned to chunk was dropped from rendered prompt"
+                )
+
+    truncation_logs = [
+        r
+        for r in caplog.records
+        if "Cluster section truncated to fit context window" in r.getMessage()
+    ]
+    assert not truncation_logs
+
+
 # ============================================================================
 # Recursive Reduce Tests (12K-only mode)
 # ============================================================================
@@ -1027,6 +1086,157 @@ async def test_hierarchical_3days_map_phase_uses_3days_prompt_contract():
     assert first_prompt.startswith("<|turn>system\n")
     assert "直近3日間" in first_prompt
     assert "language" in first_prompt and '"ja"' in first_prompt
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_map_phase_includes_all_chunk_clusters():
+    """Every cluster assigned to a hierarchical map chunk must reach that chunk's prompt."""
+    from contextlib import asynccontextmanager
+
+    config = _make_recap_config_for_hierarchical()
+    config.hierarchical_chunk_max_chars = 6000
+    llm_provider = Mock()
+
+    map_prompts: list[str] = []
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt, **kwargs):
+        map_prompts.append(prompt)
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "bullets": ["中間要約1", "中間要約2"],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    async def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "title": "最終要約",
+                    "bullets": ["最終要点1"],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    distinctive_sentences = [
+        f"DISTINCTIVE_CLUSTER_SENTENCE_{i:02d}: クラスタ{i}の固有事実。"
+        for i in range(12)
+    ]
+    clusters = [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[RepresentativeSentence(text=sentence)],
+            top_terms=[f"term{i}"],
+        )
+        for i, sentence in enumerate(distinctive_sentences)
+    ]
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=clusters,
+        options=RecapSummaryOptions(max_bullets=4),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    combined_map_prompts = "\n".join(map_prompts)
+    missing = [s for s in distinctive_sentences if s not in combined_map_prompts]
+    assert not missing, f"Clusters dropped from map prompts: {missing}"
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_partial_map_chunk_failure_marks_degraded_and_skips_cache():
+    """When 1 of 3 hierarchical map chunks fails, response is degraded with map_chunks_partial and not cached."""
+    from contextlib import asynccontextmanager
+
+    config = _make_recap_config_for_hierarchical()
+    config.hierarchical_chunk_max_chars = 250
+    config.hierarchical_chunk_overlap_ratio = 0.0
+
+    cache = AsyncMock()
+    cache.get.return_value = None
+
+    llm_provider = Mock()
+    map_call_idx = 0
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt, **kwargs):
+        nonlocal map_call_idx
+        map_call_idx += 1
+        if map_call_idx == 2:
+            raise RuntimeError("Ollama chunk timeout")
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "bullets": [
+                        f"チャンク{map_call_idx}の要約1",
+                        f"チャンク{map_call_idx}の要約2",
+                    ],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    async def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "title": "部分チャンク要約",
+                    "bullets": ["統合された要点1", "統合された要点2"],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    clusters = [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[
+                RepresentativeSentence(text=f"クラスタ{i}の本文。" + "あ" * 150)
+            ],
+            top_terms=[f"term{i}"],
+        )
+        for i in range(3)
+    ]
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=clusters,
+        options=RecapSummaryOptions(max_bullets=3),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider, cache=cache)
+    response = await usecase.generate_summary(request)
+
+    assert map_call_idx == 3
+    assert response.metadata.is_degraded is True
+    assert response.metadata.degradation_reason == "map_chunks_partial"
+    cache.set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1696,6 +1906,85 @@ async def test_fallback_includes_degraded_metadata():
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason is not None
     assert len(response.metadata.degradation_reason) > 0
+
+
+@pytest.mark.asyncio
+async def test_degraded_llm_failure_response_is_not_cached():
+    """Responses degraded due to LLM failure must not be cached, allowing retries to recover."""
+    config = _create_mock_config()
+    config.max_repetition_retries = 0
+    config.recap_summary_repair_attempts = 0
+
+    store: dict[str, str] = {}
+    cache = AsyncMock()
+    cache.get.side_effect = lambda key: store.get(key)
+
+    def _cache_set(key: str, value: str, ttl=None) -> bool:
+        store[key] = value
+        return True
+
+    cache.set.side_effect = _cache_set
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not valid json",
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="TechFusion announced the acquisition of Nova Labs for $1.2B.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                    RepresentativeSentence(
+                        text="Executives expect integration to complete in March 2026.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                ],
+                top_terms=["acquisition", "AI"],
+            )
+        ],
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider, cache=cache)
+
+    first = await usecase.generate_summary(request)
+    second = await usecase.generate_summary(request)
+
+    assert first.metadata.is_degraded is True
+    assert second.metadata.is_degraded is True
+    cache.set.assert_not_awaited()
+
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps(
+            {
+                "title": "AI業界の大型買収",
+                "bullets": [
+                    "米TechFusion社はAIスタートアップNova Labsを総額12億ドルで買収したと発表した。",
+                    "統合完了は2026年3月を見込んでおり、推論基盤の強化を進める。",
+                ],
+                "language": "ja",
+            }
+        ),
+        model="gemma4-e4b-q4km",
+        prompt_eval_count=120,
+        eval_count=60,
+        total_duration=500_000_000,
+    )
+
+    recovered = await usecase.generate_summary(request)
+    assert recovered.metadata.is_degraded is False
+    assert recovered.summary.title == "AI業界の大型買収"
+    cache.set.assert_awaited_once()
 
 
 @pytest.mark.asyncio
