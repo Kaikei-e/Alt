@@ -115,6 +115,47 @@ class _FakeClientForStart:
         pass
 
 
+class _FailingGroupCreateClient:
+    """Fake client whose `xgroup_create` fails with `ConnectionError`."""
+
+    def __init__(self) -> None:
+        self.close_calls = 0
+
+    async def xgroup_create(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise redis.ConnectionError("Connection refused")
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+    async def aclose(self) -> None:
+        self.close_calls += 1
+
+
+def test_start_closes_redis_client_when_ensure_consumer_group_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When `_ensure_consumer_group` raises at startup, `start()` must close the
+    Redis client before propagating the exception so supervised retries do not
+    leak a client and connection pool per attempt.
+    """
+    client = _FailingGroupCreateClient()
+
+    def fake_from_url(url: str, **kwargs: object) -> _FailingGroupCreateClient:
+        del url, kwargs
+        return client
+
+    monkeypatch.setattr(redis, "from_url", fake_from_url)
+
+    config = ConsumerConfig(enabled=True)
+    consumer = StreamConsumer(config, handler=EventHandler())
+
+    with pytest.raises(redis.ConnectionError, match="Connection refused"):
+        asyncio.run(consumer.start())
+
+    assert client.close_calls == 1
+
+
 def test_start_gives_the_redis_client_a_socket_timeout_above_block_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

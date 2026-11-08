@@ -263,17 +263,17 @@ class StreamConsumer:
         socket_timeout_seconds = self.config.block_timeout_ms / 1000 + _SOCKET_TIMEOUT_MARGIN_SECONDS
         self.client = build_redis_client(self.config, socket_timeout_seconds)
 
-        # Ensure consumer group exists
-        await self._ensure_consumer_group()
-
-        logger.info(
-            "consumer_started",
-            stream=self.config.stream_key,
-            group=self.config.group_name,
-            consumer=self.config.consumer_name,
-        )
-
         try:
+            # Ensure consumer group exists
+            await self._ensure_consumer_group()
+
+            logger.info(
+                "consumer_started",
+                stream=self.config.stream_key,
+                group=self.config.group_name,
+                consumer=self.config.consumer_name,
+            )
+
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(self._consume_loop())
                 tg.create_task(self._reclaim_loop())
