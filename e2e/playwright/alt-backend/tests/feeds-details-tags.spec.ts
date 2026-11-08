@@ -104,21 +104,12 @@ test.describe("GET /v1/feeds/:id/tags", () => {
 		expect(body.tags.length).toBe(0);
 	});
 
-	test("KNOWN BUG: a malformed feed id reaches the query layer and 500s", async ({ rest }) => {
-		// New coverage, and it found something. `RestHandleFetchFeedTagsByID`
-		// checks only that `:id` is non-empty (details.go:262-266) — there is no
-		// `uuid.Parse`, unlike every sibling handler that takes an id
-		// (`RestHandleDeleteRSSFeedLink`, `handleGetScrapingDomain`,
-		// `handleRefreshRobotsTxt`). So the raw path segment is handed to the
-		// query and Postgres rejects it as an invalid uuid input syntax, which
-		// surfaces as a generic 500.
-		//
-		// A caller-controlled string reaching the query layer is worth naming
-		// even when the driver parameterises it: the 400-vs-500 split is what
-		// tells a client "you sent nonsense" from "we broke". Pinning the
-		// current answer means the fix — adding `uuid.Parse` and returning
-		// HandleValidationError — fails this test and gets it updated.
+	test("a malformed feed id is rejected as a validation error", async ({ rest }) => {
+		// `RestHandleFetchFeedTagsByID` parses `:id` with `uuid.Parse` before any
+		// query runs, like its sibling id handlers, so a caller-controlled string
+		// never reaches the query layer and the client gets 400, not a generic 500.
 		const response = await rest.get("/v1/feeds/not-a-uuid/tags");
-		await expectStatus(response, 500);
+		await expectStatus(response, 400);
+		expect(await response.json()).toEqual({ error: "Invalid feed ID" });
 	});
 });
