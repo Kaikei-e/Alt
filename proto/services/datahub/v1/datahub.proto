@@ -1964,6 +1964,7 @@ message CreateSummaryVersionResponse {}
 message MarkSummaryVersionSupersededRequest {
   string article_id = 1;
   string new_version_id = 2;
+  string user_id = 3;
 }
 
 message MarkSummaryVersionSupersededResponse {
@@ -1984,6 +1985,7 @@ message GetSummaryVersionByIDResponse {
 
 message GetLatestSummaryVersionRequest {
   string article_id = 1;
+  string user_id = 2;
 }
 
 message GetLatestSummaryVersionResponse {

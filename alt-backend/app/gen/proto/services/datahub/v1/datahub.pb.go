@@ -14457,6 +14457,7 @@ type MarkSummaryVersionSupersededRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ArticleId     string                 `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
 	NewVersionId  string                 `protobuf:"bytes,2,opt,name=new_version_id,json=newVersionId,proto3" json:"new_version_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -14501,6 +14502,13 @@ func (x *MarkSummaryVersionSupersededRequest) GetArticleId() string {
 func (x *MarkSummaryVersionSupersededRequest) GetNewVersionId() string {
 	if x != nil {
 		return x.NewVersionId
+	}
+	return ""
+}
+
+func (x *MarkSummaryVersionSupersededRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
 	}
 	return ""
 }
@@ -14644,6 +14652,7 @@ func (x *GetSummaryVersionByIDResponse) GetVersion() *SummaryVersion {
 type GetLatestSummaryVersionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ArticleId     string                 `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -14681,6 +14690,13 @@ func (*GetLatestSummaryVersionRequest) Descriptor() ([]byte, []int) {
 func (x *GetLatestSummaryVersionRequest) GetArticleId() string {
 	if x != nil {
 		return x.ArticleId
+	}
+	return ""
+}
+
+func (x *GetLatestSummaryVersionRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
 	}
 	return ""
 }
@@ -18292,21 +18308,23 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\x0e_superseded_by\"\\\n" +
 	"\x1bCreateSummaryVersionRequest\x12=\n" +
 	"\aversion\x18\x01 \x01(\v2#.services.datahub.v1.SummaryVersionR\aversion\"\x1e\n" +
-	"\x1cCreateSummaryVersionResponse\"j\n" +
+	"\x1cCreateSummaryVersionResponse\"\x83\x01\n" +
 	"#MarkSummaryVersionSupersededRequest\x12\x1d\n" +
 	"\n" +
 	"article_id\x18\x01 \x01(\tR\tarticleId\x12$\n" +
-	"\x0enew_version_id\x18\x02 \x01(\tR\fnewVersionId\"\x90\x01\n" +
+	"\x0enew_version_id\x18\x02 \x01(\tR\fnewVersionId\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\tR\x06userId\"\x90\x01\n" +
 	"$MarkSummaryVersionSupersededResponse\x12S\n" +
 	"\x10previous_version\x18\x01 \x01(\v2#.services.datahub.v1.SummaryVersionH\x00R\x0fpreviousVersion\x88\x01\x01B\x13\n" +
 	"\x11_previous_version\"L\n" +
 	"\x1cGetSummaryVersionByIDRequest\x12,\n" +
 	"\x12summary_version_id\x18\x01 \x01(\tR\x10summaryVersionId\"^\n" +
 	"\x1dGetSummaryVersionByIDResponse\x12=\n" +
-	"\aversion\x18\x01 \x01(\v2#.services.datahub.v1.SummaryVersionR\aversion\"?\n" +
+	"\aversion\x18\x01 \x01(\v2#.services.datahub.v1.SummaryVersionR\aversion\"X\n" +
 	"\x1eGetLatestSummaryVersionRequest\x12\x1d\n" +
 	"\n" +
-	"article_id\x18\x01 \x01(\tR\tarticleId\"`\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"`\n" +
 	"\x1fGetLatestSummaryVersionResponse\x12=\n" +
 	"\aversion\x18\x01 \x01(\v2#.services.datahub.v1.SummaryVersionR\aversion\"\xc9\x02\n" +
 	"\rTagSetVersion\x12+\n" +
