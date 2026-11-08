@@ -83,7 +83,7 @@ func (r *Repository) PatchKnowledgeHomeItemURL(ctx context.Context, payload json
 		return fmt.Errorf("PatchKnowledgeHomeItemURL: empty URL: %w", ErrInvalidMutationPayload)
 	}
 	if p.OccurredAt.IsZero() {
-		return errors.New("PatchKnowledgeHomeItemURL: occurred_at is required")
+		return fmt.Errorf("PatchKnowledgeHomeItemURL: occurred_at is required: %w", ErrInvalidMutationPayload)
 	}
 	userID, err := uuid.Parse(p.UserID)
 	if err != nil {
