@@ -292,6 +292,9 @@ func (r *articleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Cont
 		if !cached {
 			feedID, err = r.getEmptyFeedID(ctx, candidate.FeedURL)
 			if err != nil {
+				if !isNotFoundError(err) {
+					return nil, time.Time{}, fmt.Errorf("getEmptyFeedID for %s: %w", candidate.FeedURL, err)
+				}
 				slog.WarnContext(ctx, "failed to get empty feed ID, skipping",
 					"feedURL", candidate.FeedURL, "error", err)
 				emptyFeedCache[candidate.FeedURL] = ""
@@ -430,6 +433,9 @@ func (r *articleRepository) UpsertArticlesWithFeedID(ctx context.Context, articl
 		// article URL and never find one.
 		exists, err := r.CheckExistsWithFeedID(ctx, article.FeedID, []string{article.URL})
 		if err != nil {
+			if !isNotFoundError(err) {
+				return fmt.Errorf("check article existence for %s: %w", article.URL, err)
+			}
 			slog.WarnContext(ctx, "failed to check article existence, skipping", "url", article.URL, "error", err)
 			skipped++
 			continue

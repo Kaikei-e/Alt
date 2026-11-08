@@ -77,6 +77,10 @@ impl RetryConfig {
     }
 }
 
+pub(crate) fn is_retryable_status(status: reqwest::StatusCode) -> bool {
+    status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+}
+
 /// エラーが再試行可能かどうかを判定する。
 ///
 /// 以下の場合に再試行可能と判断します：
@@ -93,7 +97,7 @@ pub(crate) fn is_retryable_error(error: &reqwest::Error) -> bool {
     // ステータスコードをチェック
     if let Some(status) = error.status() {
         // 5xxエラーまたは429は再試行可能
-        if status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        if is_retryable_status(status) {
             return true;
         }
     }

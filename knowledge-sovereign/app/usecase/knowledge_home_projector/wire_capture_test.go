@@ -96,11 +96,12 @@ type capturedRecallCandidate struct {
 }
 
 type capturedURLPatch struct {
-	UserID            string `json:"user_id"`
-	TenantID          string `json:"tenant_id"`
-	ItemKey           string `json:"item_key"`
-	ProjectionVersion int    `json:"projection_version"`
-	URL               string `json:"url"`
+	UserID            string    `json:"user_id"`
+	TenantID          string    `json:"tenant_id"`
+	ItemKey           string    `json:"item_key"`
+	ProjectionVersion int       `json:"projection_version"`
+	URL               string    `json:"url"`
+	OccurredAt        time.Time `json:"occurred_at"`
 }
 
 type capturedSnooze struct {

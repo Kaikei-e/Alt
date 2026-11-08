@@ -142,13 +142,17 @@ func buildAllFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UUID,
 }
 
 // Builds the SQL query and arguments for fetching read feeds with cursor pagination.
+// buildReadFeedsCursorQuery builds the SQL query for read feeds with cursor pagination.
+// The 7th column (models.Feed.UpdatedAt / datahub.v1.Feed.updated_at) carries the
+// per-scope cursor sort key: rs.read_at for READ, ff.created_at for FAVORITE,
+// and f.updated_at for ALL/UNREAD.
 func buildReadFeedsCursorQuery(cursor *time.Time, limit int, userID uuid.UUID) (string, []any) {
 	var query string
 	var args []any
 
 	if cursor == nil {
 		query = fmt.Sprintf(`
-			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, rs.read_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
@@ -162,7 +166,7 @@ func buildReadFeedsCursorQuery(cursor *time.Time, limit int, userID uuid.UUID) (
 		args = []any{limit, userID}
 	} else {
 		query = fmt.Sprintf(`
-			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, rs.read_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
@@ -187,7 +191,7 @@ func buildFavoriteFeedsCursorQuery(cursor *time.Time, limit int, userID uuid.UUI
 
 	if cursor == nil {
 		query = fmt.Sprintf(`
-                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, ff.created_at,
                               (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               %s
                        FROM feeds f
@@ -200,7 +204,7 @@ func buildFavoriteFeedsCursorQuery(cursor *time.Time, limit int, userID uuid.UUI
 		args = []any{limit, userID}
 	} else {
 		query = fmt.Sprintf(`
-                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+                       SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, ff.created_at,
                               (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               %s
                        FROM feeds f

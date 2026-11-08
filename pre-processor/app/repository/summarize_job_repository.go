@@ -368,6 +368,13 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 	var args []interface{}
 
 	switch status {
+	case domain.SummarizeJobStatusPending:
+		query = `
+			UPDATE summarize_job_queue
+			SET status = $1, started_at = NULL
+			WHERE job_id = $2 AND status = 'running'
+		`
+		args = []interface{}{string(status), jobID}
 	case domain.SummarizeJobStatusRunning:
 		query = `
 			UPDATE summarize_job_queue

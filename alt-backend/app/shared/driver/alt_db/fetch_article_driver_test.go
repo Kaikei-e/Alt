@@ -9,42 +9,13 @@ import (
 	"alt/domain"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	pgxmock "github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestFetchArticleByID_ScopesByUserContextWhenPresent(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	defer mock.Close()
-
-	repo := &ArticleRepository{pool: mock}
-	userID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
-	articleID := "22222222-2222-4222-8222-222222222222"
-
-	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
-		UserID:    userID,
-		Email:     "u@example.com",
-		Role:      domain.UserRoleUser,
-		TenantID:  userID,
-		LoginAt:   time.Now(),
-		ExpiresAt: time.Now().Add(time.Hour),
-	})
-
-	mock.ExpectQuery(regexp.QuoteMeta(fetchArticleByIDWithUserQuery)).
-		WithArgs(articleID, userID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url", "feed_id"}).
-			AddRow(articleID, "Title", "Content", "https://example.com/a", "f1"))
-
-	article, err := repo.FetchArticleByID(ctx, articleID)
-	require.NoError(t, err)
-	require.NotNil(t, article)
-	assert.Equal(t, articleID, article.ID)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestFetchArticleByID_UnscopedWhenNoUserInContext(t *testing.T) {
+func TestFetchArticleByIDForUser_RejectsMissingUser(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	defer mock.Close()
@@ -52,15 +23,17 @@ func TestFetchArticleByID_UnscopedWhenNoUserInContext(t *testing.T) {
 	repo := &ArticleRepository{pool: mock}
 	articleID := "22222222-2222-4222-8222-222222222222"
 
-	mock.ExpectQuery(regexp.QuoteMeta(fetchArticleByIDQuery)).
-		WithArgs(articleID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url", "feed_id"}).
-			AddRow(articleID, "Title", "Content", "https://example.com/a", "f1"))
+	article, err := repo.FetchArticleByIDForUser(context.Background(), articleID, nil)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "user")
+	assert.Nil(t, article)
 
-	article, err := repo.FetchArticleByID(context.Background(), articleID)
-	require.NoError(t, err)
-	require.NotNil(t, article)
-	assert.Equal(t, articleID, article.ID)
+	nilUUID := uuid.Nil
+	article, err = repo.FetchArticleByIDForUser(context.Background(), articleID, &nilUUID)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "user")
+	assert.Nil(t, article)
+
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -109,6 +82,37 @@ func TestSummaryAndTagSetVersionByID_ScopesByUserContextWhenPresent(t *testing.T
 	tsv, err := tagRepo.GetTagSetVersionByID(ctx, tsvID)
 	require.NoError(t, err)
 	assert.Equal(t, tsvID, tsv.TagSetVersionID)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestFetchArticleByIDForUser_ScopesByUserAndPreventsCrossUserRead(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &ArticleRepository{pool: mock}
+	userA := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	userB := uuid.MustParse("99999999-9999-4999-8999-999999999999")
+	articleID := "22222222-2222-4222-8222-222222222222"
+
+	mock.ExpectQuery(regexp.QuoteMeta(fetchArticleByIDWithUserQuery)).
+		WithArgs(articleID, userA).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url", "feed_id"}).
+			AddRow(articleID, "Private A", "Body A", "https://example.com/a", "f1"))
+
+	articleA, err := repo.FetchArticleByIDForUser(context.Background(), articleID, &userA)
+	require.NoError(t, err)
+	require.NotNil(t, articleA)
+	assert.Equal(t, articleID, articleA.ID)
+
+	mock.ExpectQuery(regexp.QuoteMeta(fetchArticleByIDWithUserQuery)).
+		WithArgs(articleID, userB).
+		WillReturnError(pgx.ErrNoRows)
+
+	articleB, err := repo.FetchArticleByIDForUser(context.Background(), articleID, &userB)
+	require.NoError(t, err)
+	assert.Nil(t, articleB)
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }

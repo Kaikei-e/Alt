@@ -172,6 +172,9 @@ func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, e
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID in token: %w", err)
 	}
+	if userID == uuid.Nil {
+		return nil, errInvalidClaims
+	}
 
 	// Get expiration and issued-at times from standard JWT claims
 	if claims.ExpiresAt == nil || claims.ExpiresAt.IsZero() {
@@ -187,7 +190,7 @@ func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, e
 		return nil, errInvalidClaims
 	}
 	tenantID, err := uuid.Parse(claims.TenantID)
-	if err != nil {
+	if err != nil || tenantID == uuid.Nil {
 		return nil, errInvalidClaims
 	}
 

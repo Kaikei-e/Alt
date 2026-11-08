@@ -1,17 +1,22 @@
 package articles
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"alt/config"
 	"alt/domain"
 	articlesv2 "alt/gen/proto/alt/articles/v2"
+	"alt/orchestrator/usecase/fetch_article_tags_usecase"
+	"alt/orchestrator/usecase/stream_article_tags_usecase"
+	"alt/utils/logger"
 )
 
 func TestStreamArticleTagsResponse_Construction(t *testing.T) {
@@ -130,5 +135,58 @@ func TestStreamArticleTags_EventTypes_Documented(t *testing.T) {
 	t.Run("fail_open_behavior", func(t *testing.T) {
 		err := errors.New("mq-hub connection failed")
 		assert.NotNil(t, err)
+	})
+}
+
+type recordingFetchArticleTagsPort struct {
+	called bool
+}
+
+func (r *recordingFetchArticleTagsPort) FetchArticleTags(_ context.Context, _ string) ([]*domain.FeedTag, error) {
+	r.called = true
+	return nil, errors.New("unexpected store call")
+}
+
+type recordingCachedArticleTagsPort struct {
+	called bool
+}
+
+func (r *recordingCachedArticleTagsPort) FetchCachedArticleTags(_ context.Context, _ string) ([]*domain.FeedTag, error) {
+	r.called = true
+	return nil, errors.New("unexpected store call")
+}
+
+func TestArticleTags_RejectsMalformedUUID(t *testing.T) {
+	logger.InitLogger()
+	ctx := createAuthContext()
+
+	t.Run("FetchArticleTags returns CodeInvalidArgument and does not call store", func(t *testing.T) {
+		fetchPort := &recordingFetchArticleTagsPort{}
+		handler := NewHandler(ArticleHandlerDeps{
+			FetchArticleTags: fetch_article_tags_usecase.NewFetchArticleTagsUsecase(fetchPort),
+		}, &config.Config{}, slog.Default())
+
+		_, err := handler.FetchArticleTags(ctx, connect.NewRequest(&articlesv2.FetchArticleTagsRequest{
+			ArticleId: "not-a-uuid",
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.False(t, fetchPort.called)
+	})
+
+	t.Run("StreamArticleTags returns CodeInvalidArgument and does not call store", func(t *testing.T) {
+		cachedPort := &recordingCachedArticleTagsPort{}
+		fetchPort := &recordingFetchArticleTagsPort{}
+		handler := NewHandler(ArticleHandlerDeps{
+			StreamArticleTags: stream_article_tags_usecase.NewStreamArticleTagsUsecase(cachedPort, fetchPort),
+		}, &config.Config{}, slog.Default())
+
+		err := handler.StreamArticleTags(ctx, connect.NewRequest(&articlesv2.StreamArticleTagsRequest{
+			ArticleId: "not-a-uuid",
+		}), nil)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.False(t, cachedPort.called)
+		assert.False(t, fetchPort.called)
 	})
 }

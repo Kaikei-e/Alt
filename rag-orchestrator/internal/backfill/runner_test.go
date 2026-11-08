@@ -494,3 +494,52 @@ func TestRunner_SkipsMissingOrInvalidOwnerSafely(t *testing.T) {
 	assert.Equal(t, int64(1), atomic.LoadInt64(&runner.stats.Processed))
 	assert.ElementsMatch(t, []string{"valid"}, orch.indexedIDs())
 }
+
+func TestRunner_ConflictDistinguishesOwnerConflictFromDuplicateKey(t *testing.T) {
+	base := time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
+	rows := []Article{
+		testArticle("a3", base.Add(2*time.Hour)),
+		testArticle("a2", base.Add(1*time.Hour)),
+		testArticle("a1", base),
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			ArticleID string `json:"article_id"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+
+		w.Header().Set("Content-Type", "application/json")
+		switch payload.ArticleID {
+		case "a3":
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"code":"duplicate_key","error":"duplicate key conflict"}`))
+		case "a2":
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"code":"owner_conflict","error":"document owned by another user"}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"indexed"}`))
+		}
+	}))
+	defer srv.Close()
+
+	cursorPath := filepath.Join(t.TempDir(), "cursor.json")
+	runner := newTestRunner(t, cursorPath, srv.URL, rows)
+
+	require.NoError(t, runner.sendArticle(context.Background(), rows[0]),
+		"duplicate_key 409 must be treated as success")
+	require.Error(t, runner.sendArticle(context.Background(), rows[1]),
+		"owner_conflict 409 must return an error")
+
+	require.NoError(t, runner.Run(context.Background()))
+	assert.Equal(t, int64(2), atomic.LoadInt64(&runner.stats.Processed),
+		"duplicate_key (a3) and 200 OK (a1) must count as processed")
+	assert.Equal(t, int64(1), atomic.LoadInt64(&runner.stats.Failed),
+		"owner_conflict (a2) must count as failed")
+
+	cursor, err := runner.GetCursor()
+	require.NoError(t, err)
+	assert.Equal(t, "a3", cursor.LastID,
+		"cursor must be held in front of owner-conflicted article a2")
+}

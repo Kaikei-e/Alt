@@ -159,35 +159,46 @@ impl RecapDao {
         }
     }
 
-    /// 直近で `failed` になった Job を 1 件探す（`POST /admin/jobs/retry` 用）。
+    pub(crate) const FIND_MOST_RECENT_FAILED_JOB_SQL: &'static str = r"
+            SELECT job_id, status, last_stage, window_days, trigger_source
+            FROM recap_jobs
+            WHERE status = 'failed'
+              AND trigger_source IN ('system', 'user')
+            ORDER BY kicked_at DESC
+            LIMIT 1
+            ";
+
+    pub(crate) fn is_retryable_failed_job(status: &JobStatus, trigger_source: &str) -> bool {
+        matches!(status, JobStatus::Failed)
+            && crate::scheduler::jobs::is_batch_retry_trigger_source(trigger_source)
+    }
+
+    /// 直近で `failed` になったバッチ Recap Job を 1 件探す（`POST /admin/jobs/retry` 用）。
     ///
-    /// `trigger_source` は問わない（`system` / `morning` / `user` いずれの
-    /// 失敗も再試行対象になり得る）。年齢上限を設けないのは、
-    /// `job_retention_days` の cleanup が古い行を自然に消すため。
+    /// 再試行ハンドラはマルチジャンルのバッチ `PipelineOrchestrator` を走らせるため、
+    /// バッチパイプライン自身が作成する `trigger_source IN ('system', 'user')` のみを
+    /// 対象とし、`morning` や `cards` / `cards_replay` の失敗は除外する。年齢上限を
+    /// 設けないのは、`job_retention_days` の cleanup が古い行を自然に消すため。
     pub async fn find_most_recent_failed_job(
         pool: &PgPool,
     ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
-        let row = sqlx::query(
-            r"
-            SELECT job_id, status, last_stage, window_days
-            FROM recap_jobs
-            WHERE status = 'failed'
-            ORDER BY kicked_at DESC
-            LIMIT 1
-            ",
-        )
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| RecapError::Db(format!("failed to find most recent failed job: {e}")))?;
+        let row = sqlx::query(Self::FIND_MOST_RECENT_FAILED_JOB_SQL)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to find most recent failed job: {e}")))?;
 
         if let Some(row) = row {
             let job_id: Uuid = row.try_get("job_id")?;
             let status_str: String = row.try_get("status")?;
             let last_stage: Option<String> = row.try_get("last_stage")?;
             let window_days: Option<i32> = row.try_get("window_days")?;
+            let trigger_source: String = row.try_get("trigger_source")?;
             let window_days = window_days.unwrap_or(7).cast_unsigned();
 
             let status = JobStatus::from_db_str(&status_str);
+            if !Self::is_retryable_failed_job(&status, &trigger_source) {
+                return Ok(None);
+            }
 
             Ok(Some((job_id, status, last_stage, window_days)))
         } else {
@@ -360,6 +371,11 @@ impl RecapDao {
         DELETE FROM recap_jobs
         WHERE kicked_at < NOW() - make_interval(days => $1)
           AND NOT EXISTS (SELECT 1 FROM recap_card_snapshots s WHERE s.job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_card_candidates c WHERE c.job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_cards rc WHERE rc.job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_card_job_stats js WHERE js.job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_eval_windows ew WHERE ew.snapshot_job_id = recap_jobs.job_id)
+          AND NOT EXISTS (SELECT 1 FROM recap_card_rejections cr WHERE cr.job_id = recap_jobs.job_id)
         ";
 
     pub async fn delete_old_jobs(pool: &PgPool, retention_days: i64) -> Result<u64> {
@@ -556,32 +572,5 @@ impl RecapDao {
         }
 
         Ok(history)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_delete_old_jobs_sql_excludes_card_snapshots() {
-        let sql = RecapDao::DELETE_OLD_JOBS_SQL;
-        let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
-
-        assert!(
-            normalized.contains("DELETE FROM recap_jobs"),
-            "query must target recap_jobs"
-        );
-        assert!(
-            normalized.contains("NOT EXISTS (SELECT 1 FROM recap_card_snapshots")
-                || normalized.contains("NOT EXISTS ( SELECT 1 FROM recap_card_snapshots"),
-            "query must contain NOT EXISTS subquery on recap_card_snapshots"
-        );
-        assert!(
-            normalized.contains("s.job_id = recap_jobs.job_id"),
-            "subquery must correlate on s.job_id = recap_jobs.job_id"
-        );
-        // Note: Live database behavioural coverage is tested in DB-gated integration tests
-        // (test_delete_old_jobs_preserves_card_snapshots in src/store/dao/tests.rs).
     }
 }

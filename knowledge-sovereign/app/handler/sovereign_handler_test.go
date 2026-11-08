@@ -326,6 +326,88 @@ func TestApplyProjectionMutation_RepoError(t *testing.T) {
 		}))
 
 	require.Error(t, err)
+	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+}
+
+func TestApplyProjectionMutation_ValidationErrorMapsToInvalidArgument(t *testing.T) {
+	repo := &mockRepo{
+		returnErr: fmt.Errorf("DismissKnowledgeHomeItem: dismissed_at is required: %w", sovereign_db.ErrInvalidMutationPayload),
+	}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	_, err := client.ApplyProjectionMutation(context.Background(),
+		connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
+			MutationType: MutationDismissHomeItem,
+			Payload:      []byte(`{}`),
+		}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestApplyProjectionMutation_MalformedJSONMapsToInvalidArgument(t *testing.T) {
+	repo := &mockRepo{}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	_, err := client.ApplyProjectionMutation(context.Background(),
+		connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
+			MutationType: MutationUpsertHomeItem,
+			Payload:      []byte(`{malformed`),
+		}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	assert.Empty(t, repo.lastMethod, "malformed JSON payload must be rejected before repository dispatch")
+}
+
+func TestApplyRecallAndCurationMutation_ValidationErrorMapsToInvalidArgument(t *testing.T) {
+	repo := &mockRepo{
+		returnErr: fmt.Errorf("SnoozeRecallCandidate: occurred_at is required: %w", sovereign_db.ErrInvalidMutationPayload),
+	}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	_, err := client.ApplyRecallMutation(context.Background(),
+		connect.NewRequest(&sovereignv1.ApplyRecallMutationRequest{
+			MutationType: MutationSnoozeCandidate,
+			Payload:      []byte(`{}`),
+		}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = client.ApplyCurationMutation(context.Background(),
+		connect.NewRequest(&sovereignv1.ApplyCurationMutationRequest{
+			MutationType: MutationDismissCuration,
+			Payload:      []byte(`{}`),
+		}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestApplyProjectionAndCurationMutation_DismissNotFoundMapsToCodeNotFound(t *testing.T) {
+	repo := &mockRepo{
+		returnErr: sovereign_db.ErrDismissTargetNotFound,
+	}
+	client, cleanup := setupTestServer(repo)
+	defer cleanup()
+
+	_, err := client.ApplyProjectionMutation(context.Background(),
+		connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
+			MutationType: MutationDismissHomeItem,
+			Payload:      []byte(`{}`),
+		}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+
+	_, err = client.ApplyCurationMutation(context.Background(),
+		connect.NewRequest(&sovereignv1.ApplyCurationMutationRequest{
+			MutationType: MutationDismissCuration,
+			Payload:      []byte(`{}`),
+		}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }
 
 func TestApplyRecallMutation_DispatchesCorrectly(t *testing.T) {

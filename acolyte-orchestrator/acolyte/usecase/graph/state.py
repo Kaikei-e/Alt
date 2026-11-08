@@ -96,6 +96,7 @@ class ReportGenerationState(TypedDict, total=False):
     section_paragraphs: dict[str, list[SectionParagraphDict]]  # section_key → GeneratedParagraph dicts
     best_sections: dict[str, str]  # section_key → best non-empty, non-blocking body
     best_section_metrics: dict[str, dict]  # section_key → {"blocking_count": int, "char_len": int}
+    best_section_citations: dict[str, list[SectionCitationDict]]  # section_key → citations for best_sections
     claim_feedbacks: dict[str, list[dict]]  # section_key → [{"claim_id", "action", "reason"}]
     accepted_claims_by_section: dict[str, list[dict]]  # section_key → accepted claims used for synthesis/debug
     final_version_no: int | None

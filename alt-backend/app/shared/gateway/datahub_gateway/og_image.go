@@ -85,8 +85,14 @@ func (g *OgImageGateway) FetchOgImageURLsByArticleIDs(ctx context.Context, artic
 		return map[string]string{}, nil
 	}
 
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("authentication required: %w", err)
+	}
+
 	resp, err := g.client.BatchGetOgImageURLs(ctx, connect.NewRequest(&datahubv1.BatchGetOgImageURLsRequest{
 		ArticleIds: articleIDs,
+		UserId:     user.UserID.String(),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("batch get og image urls (%d ids): %w", len(articleIDs), err)

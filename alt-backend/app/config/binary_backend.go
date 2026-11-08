@@ -77,6 +77,8 @@ func ValidateBackendConfig(cfg *Config) error {
 		env   string
 		value string
 	}{
+		{"BACKEND_TOKEN_SECRET", cfg.Auth.BackendTokenSecret},
+		{"SOVEREIGN_URL", cfg.Sovereign.URL},
 		{"SEARCH_INDEXER_CONNECT_URL", cfg.SearchIndexer.ConnectURL},
 		{"MQHUB_CONNECT_URL", cfg.MQHub.ConnectURL},
 		{"RAG_ORCHESTRATOR_URL", cfg.Rag.OrchestratorURL},
@@ -87,6 +89,9 @@ func ValidateBackendConfig(cfg *Config) error {
 	}
 	if err := requireAll("backend", required); err != nil {
 		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.Sovereign.URL), "disabled") && cfg.AppEnv == "production" {
+		return fmt.Errorf("backend config: SOVEREIGN_URL=disabled is not permitted in production")
 	}
 	if err := ValidateRAGAuthConfig(&cfg.Rag, cfg.AppEnv); err != nil {
 		return fmt.Errorf("backend config: %w", err)

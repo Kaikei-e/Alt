@@ -394,6 +394,33 @@ func TestRegisterFeedUsecase_AutoSubscribe_SubscribeError(t *testing.T) {
 	wg.Wait()
 }
 
+func TestRegisterFeedUsecase_FailsWhenFeedLinkIDLookupFails(t *testing.T) {
+	logger.InitLogger()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
+	mockRegisterFeedLinkPort := mocks.NewMockRegisterFeedLinkPort(ctrl)
+	mockRegisterFeedsPort := mocks.NewMockRegisterFeedsPort(ctrl)
+	mockSubscriptionPort := mocks.NewMockSubscriptionPort(ctrl)
+	mockResolver := mocks.NewMockFeedLinkIDResolver(ctrl)
+	mockData := testutil.CreateMockFeedItems()
+
+	pf := mockParsedFeed("https://example.com/rss/news", mockData)
+	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
+	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
+	mockResolver.EXPECT().FetchFeedLinkIDByURL(gomock.Any(), "https://example.com/rss/news").Return(nil, errors.New("conn busy")).Times(1)
+
+	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
+		FeedLinkIDResolver: mockResolver,
+		SubscriptionPort:   mockSubscriptionPort,
+		URLValidator:       &stubURLValidator{},
+	})
+
+	err := r.Execute(context.Background(), "https://example.com/rss/news")
+	require.Error(t, err)
+}
+
 func TestRegisterFeedUsecase_InitializesAvailabilityOnSuccessfulRegistration(t *testing.T) {
 	logger.InitLogger()
 	ctrl := gomock.NewController(t)

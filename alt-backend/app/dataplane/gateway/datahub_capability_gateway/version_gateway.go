@@ -25,9 +25,9 @@ import (
 // calls.
 type summaryVersionDriver interface {
 	CreateSummaryVersion(ctx context.Context, sv domain.SummaryVersion) error
-	MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.SummaryVersion, error)
+	MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID, userID uuid.UUID) (*domain.SummaryVersion, error)
 	GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error)
-	GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error)
+	GetLatestSummaryVersionForUser(ctx context.Context, articleID uuid.UUID, userID *uuid.UUID) (domain.SummaryVersion, error)
 }
 
 // SummaryVersionGateway implements datahub_capability_port.SummaryVersionPort.
@@ -52,8 +52,8 @@ func (g *SummaryVersionGateway) CreateSummaryVersion(ctx context.Context, sv dom
 // That nil is the answer the caller acts on — it emits SummarySuperseded only
 // when a previous version came back — so it must not become a zero-valued
 // struct on the way through.
-func (g *SummaryVersionGateway) MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
-	prev, err := g.db.MarkSummaryVersionSuperseded(ctx, articleID, newVersionID)
+func (g *SummaryVersionGateway) MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID, userID uuid.UUID) (*domain.SummaryVersion, error) {
+	prev, err := g.db.MarkSummaryVersionSuperseded(ctx, articleID, newVersionID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("mark summary versions superseded for article %s: %w", articleID, err)
 	}
@@ -68,8 +68,8 @@ func (g *SummaryVersionGateway) GetSummaryVersionByID(ctx context.Context, summa
 	return sv, nil
 }
 
-func (g *SummaryVersionGateway) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error) {
-	sv, err := g.db.GetLatestSummaryVersion(ctx, articleID)
+func (g *SummaryVersionGateway) GetLatestSummaryVersion(ctx context.Context, articleID, userID uuid.UUID) (domain.SummaryVersion, error) {
+	sv, err := g.db.GetLatestSummaryVersionForUser(ctx, articleID, &userID)
 	if err != nil {
 		return domain.SummaryVersion{}, fmt.Errorf("get latest summary version for article %s: %w", articleID, err)
 	}
@@ -80,6 +80,7 @@ func (g *SummaryVersionGateway) GetLatestSummaryVersion(ctx context.Context, art
 // summaryVersionDriver.
 type tagSetVersionDriver interface {
 	CreateTagSetVersion(ctx context.Context, tsv domain.TagSetVersion) error
+	GetLatestTagSetVersion(ctx context.Context, articleID uuid.UUID) (*domain.TagSetVersion, error)
 	MarkTagSetVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.TagSetVersion, error)
 	GetTagSetVersionByID(ctx context.Context, tagSetVersionID uuid.UUID) (domain.TagSetVersion, error)
 }
@@ -98,6 +99,14 @@ func (g *TagSetVersionGateway) CreateTagSetVersion(ctx context.Context, tsv doma
 		return fmt.Errorf("create tag set version %s: %w", tsv.TagSetVersionID, err)
 	}
 	return nil
+}
+
+func (g *TagSetVersionGateway) GetLatestTagSetVersion(ctx context.Context, articleID uuid.UUID) (*domain.TagSetVersion, error) {
+	tsv, err := g.db.GetLatestTagSetVersion(ctx, articleID)
+	if err != nil {
+		return nil, fmt.Errorf("get latest tag set version for article %s: %w", articleID, err)
+	}
+	return tsv, nil
 }
 
 func (g *TagSetVersionGateway) MarkTagSetVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.TagSetVersion, error) {

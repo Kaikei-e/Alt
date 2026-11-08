@@ -145,10 +145,6 @@ class DependencyContainer:
         self.cache_gateway: CachePort
         if self.config.cache_enabled:
             self.cache_gateway = RedisCacheGateway(self.config)
-            logger.info(
-                "cache_enabled",
-                extra={"cache_redis_url": self.config.cache_redis_url},
-            )
         else:
             self.cache_gateway = NullCacheGateway()
             logger.info("cache_disabled")
@@ -190,6 +186,11 @@ class DependencyContainer:
         """Initialize all async resources."""
         await self.llm_provider.initialize()
         await self.cache_gateway.initialize()
+        if self.config.cache_enabled:
+            logger.info(
+                "cache_enabled",
+                extra={"cache_redis_url": self.config.cache_redis_url},
+            )
         # Warm up models if enabled
         await self.model_warmup_service.warmup_models()
         await self.rerank_usecase.warmup()

@@ -1,16 +1,30 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { getArticlesByTag } from "#lib/api.js";
 
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 99;
+
 export const GET: RequestHandler = async ({ request, url }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
 	const tagId = url.searchParams.get("tag_id");
 	const cursor = url.searchParams.get("cursor");
 	const limitStr = url.searchParams.get("limit");
-	const limit = limitStr ? Number.parseInt(limitStr, 10) : 20;
 
 	if (!tagId) {
 		return Response.json({ error: "tag_id is required" }, { status: 400 });
+	}
+
+	let limit = DEFAULT_LIMIT;
+	if (limitStr !== null && limitStr !== "") {
+		const parsed = Number.parseInt(limitStr, 10);
+		if (!/^\d+$/.test(limitStr) || parsed <= 0) {
+			return Response.json(
+				{ error: "Invalid limit parameter" },
+				{ status: 400 },
+			);
+		}
+		limit = Math.min(parsed, MAX_LIMIT);
 	}
 
 	try {

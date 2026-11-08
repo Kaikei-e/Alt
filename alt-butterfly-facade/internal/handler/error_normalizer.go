@@ -93,6 +93,7 @@ var errorMapping = map[int]struct {
 		isRetryable: false,
 		retryAfter:  0,
 	},
+	http.StatusRequestEntityTooLarge: {code: CodeBadRequest, message: "Request Entity Too Large"},
 }
 
 // NormalizeError converts an HTTP response to a normalized error.

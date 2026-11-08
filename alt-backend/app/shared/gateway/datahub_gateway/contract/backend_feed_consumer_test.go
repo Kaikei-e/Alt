@@ -133,7 +133,60 @@ func TestListFeedsCursorUnreadContract(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestListFeedsCursorFavoriteNoOgImageContract pins the absent og:image.
+// TestListFeedsCursorReadContract pins the read-at sort-key timestamp in updatedAt.
+//
+// For FEED_SCOPE_READ, alt-data-hub orders and filters by rs.read_at and places
+// that timestamp in Feed.updated_at so alt-backend can emit next_cursor from
+// the sort key without falling back to created_at.
+func TestListFeedsCursorReadContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerBackend)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub has read marks for the user").
+		UponReceiving("a ListFeedsCursor request from alt-backend for the read scope").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListFeedsCursor"),
+			Headers: jsonHeaders(),
+			Body: map[string]interface{}{
+				"scope":  "FEED_SCOPE_READ",
+				"userId": testUserID,
+				"limit":  20,
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body: matchers.MapMatcher{
+				"feeds": matchers.EachLike(map[string]interface{}{
+					"id":          matchers.Regex(testFeedRowID, uuidLikePattern),
+					"title":       matchers.Like("Example Post"),
+					"description": matchers.Like("body"),
+					"websiteUrl":  matchers.Like("https://example.com/post"),
+					"pubDate":     matchers.Like("2026-07-31T00:00:00Z"),
+					"createdAt":   matchers.Like("2026-07-31T09:00:00Z"),
+					"updatedAt":   matchers.Like("2026-07-31T09:00:00Z"),
+					"articleId":   matchers.Regex(testArticleID, uuidLikePattern),
+					"ogImageUrl":  matchers.Like("https://cdn.example.com/og.png"),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewFeedGateway(newDataHubServiceClient(config))
+			feeds, err := gw.FetchReadFeedsListCursor(authedContext(testUserID), nil, 20)
+			if err != nil {
+				return fmt.Errorf("FetchReadFeedsListCursor failed: %w", err)
+			}
+			require.Len(t, feeds, 1)
+			assert.False(t, feeds[0].UpdatedAt.IsZero(), "READ scope requires updatedAt (rs.read_at) for cursor pagination")
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+// TestListFeedsCursorFavoriteNoOgImageContract pins the absent og:image and
+// the favorite-created-at sort-key timestamp in updatedAt.
 //
 // A feed past the 7-day copyright retention window returns no image, and the
 // frontend renders a placeholder for it. Encoding the absence as "" would make
@@ -164,6 +217,7 @@ func TestListFeedsCursorFavoriteNoOgImageContract(t *testing.T) {
 					"title":      matchers.Like("Older Post"),
 					"websiteUrl": matchers.Like("https://example.com/older"),
 					"createdAt":  matchers.Like("2026-06-01T09:00:00Z"),
+					"updatedAt":  matchers.Like("2026-07-31T09:00:00Z"),
 				}, 1),
 			},
 		}).
@@ -176,6 +230,7 @@ func TestListFeedsCursorFavoriteNoOgImageContract(t *testing.T) {
 			require.Len(t, feeds, 1)
 			assert.Nil(t, feeds[0].OgImageURL, "a retired og image must be absent, not empty")
 			assert.Nil(t, feeds[0].ArticleID)
+			assert.False(t, feeds[0].UpdatedAt.IsZero(), "FAVORITE scope requires updatedAt (ff.created_at) for cursor pagination")
 			return nil
 		})
 	require.NoError(t, err)

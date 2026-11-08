@@ -65,20 +65,19 @@ func initArticleDriver(cfg *config.Config) (gateway.ArticleDriver, error) {
 
 // readSecretEnv returns the value of key, or the contents of the file named
 // by key+"_FILE" if set (Docker Secrets convention).
-func readSecretEnv(key string) string {
+func readSecretEnv(key string) (string, error) {
 	if fileEnv := os.Getenv(key + "_FILE"); fileEnv != "" {
 		content, err := os.ReadFile(fileEnv)
 		if err != nil {
-			logger.Logger.Warn("failed to read secret file; falling back to env",
-				"key", key,
-				"file", fileEnv,
-				"error", err,
-			)
-		} else {
-			return strings.TrimSpace(string(content))
+			return "", fmt.Errorf("read %s_FILE %q: %w", key, fileEnv, err)
 		}
+		trimmed := strings.TrimSpace(string(content))
+		if trimmed == "" {
+			return "", fmt.Errorf("%s_FILE %q is empty", key, fileEnv)
+		}
+		return trimmed, nil
 	}
-	return os.Getenv(key)
+	return strings.TrimSpace(os.Getenv(key)), nil
 }
 
 // meilisearchHTTPClient builds the client every meilisearch-go call runs on.
@@ -128,12 +127,21 @@ func initMeilisearchClients(ctx context.Context) (admin meilisearch.ServiceManag
 		return nil, nil, fmt.Errorf("MEILISEARCH_HOST environment variable is not set")
 	}
 
-	adminKey := readSecretEnv("MEILISEARCH_API_KEY")
-	searchKey := readSecretEnv("MEILISEARCH_SEARCH_API_KEY")
+	adminKey, err := readSecretEnv("MEILISEARCH_API_KEY")
+	if err != nil {
+		return nil, nil, err
+	}
+	searchKey, err := readSecretEnv("MEILISEARCH_SEARCH_API_KEY")
+	if err != nil {
+		return nil, nil, err
+	}
+	if searchKey == "" {
+		return nil, nil, fmt.Errorf("MEILISEARCH_SEARCH_API_KEY or MEILISEARCH_SEARCH_API_KEY_FILE is required")
+	}
 
 	logger.Logger.Info("Connecting to Meilisearch",
 		"host", meilisearchHost,
-		"search_key_role_split", searchKey != "" && searchKey != adminKey,
+		"search_key_role_split", searchKey != adminKey,
 	)
 
 	for i := range maxRetries {
@@ -157,7 +165,7 @@ func initMeilisearchClients(ctx context.Context) (admin meilisearch.ServiceManag
 		break
 	}
 
-	if searchKey != "" && searchKey != adminKey {
+	if searchKey != adminKey {
 		search = meilisearch.New(meilisearchHost,
 			meilisearch.WithAPIKey(searchKey),
 			meilisearch.WithCustomClient(meilisearchHTTPClient()),

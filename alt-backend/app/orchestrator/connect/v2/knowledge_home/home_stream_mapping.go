@@ -9,24 +9,24 @@ import (
 	knowledgehomev1 "alt/gen/proto/alt/knowledge_home/v1"
 )
 
-// coalesceStreamEvents deduplicates events by aggregate_id within a batch,
-// keeping only the latest event for each aggregate. This reduces wire traffic
-// when multiple updates arrive for the same item within a 5-second window.
+// coalesceStreamEvents deduplicates events by aggregate and canonical stream
+// class within a batch, keeping only the latest event for each (aggregate, class)
+// in sequence order.
 func coalesceStreamEvents(events []domain.KnowledgeEvent) []domain.KnowledgeEvent {
 	if len(events) <= 1 {
 		return events
 	}
 
-	seen := make(map[string]int, len(events))
-	result := make([]domain.KnowledgeEvent, 0, len(events))
+	lastIdx := make(map[string]int, len(events))
+	for i, event := range events {
+		key := event.AggregateType + ":" + event.AggregateID + ":" + mapToCanonicalStreamType(event.EventType)
+		lastIdx[key] = i
+	}
 
-	for _, event := range events {
-		key := event.AggregateType + ":" + event.AggregateID
-		if idx, exists := seen[key]; exists {
-			// Replace with later event (higher seq)
-			result[idx] = event
-		} else {
-			seen[key] = len(result)
+	result := make([]domain.KnowledgeEvent, 0, len(lastIdx))
+	for i, event := range events {
+		key := event.AggregateType + ":" + event.AggregateID + ":" + mapToCanonicalStreamType(event.EventType)
+		if lastIdx[key] == i {
 			result = append(result, event)
 		}
 	}
@@ -71,7 +71,10 @@ func buildStreamResponse(event domain.KnowledgeEvent) *knowledgehomev1.StreamKno
 		itemKey := event.AggregateType + ":" + event.AggregateID
 		resp.Item = &knowledgehomev1.KnowledgeHomeItem{ItemKey: itemKey}
 	case "recall_changed":
-		itemKey := event.AggregateType + ":" + event.AggregateID
+		itemKey := event.AggregateID
+		if event.AggregateType != domain.AggregateHomeSession {
+			itemKey = event.AggregateType + ":" + event.AggregateID
+		}
 		resp.RecallChange = &knowledgehomev1.RecallCandidate{ItemKey: itemKey}
 	}
 	return resp

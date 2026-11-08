@@ -2,6 +2,7 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -120,6 +121,10 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 		result, execErr = h.searchByUserUsecase.ExecuteWithPagination(ctx, query, userID, 0, limit)
 	}
 	if execErr != nil {
+		if errors.Is(execErr, usecase.ErrInvalidSearchQuery) {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
 		logger.Logger.ErrorContext(ctx, "search failed", "err", execErr, "user_id", userID, "query_hash", logger.HashQuery(query))
 		if m := appOtel.Metrics; m != nil {
 			m.ErrorsTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "search")))

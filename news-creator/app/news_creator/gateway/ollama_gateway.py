@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 import weakref
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from typing import Any, AsyncIterator
 
 from news_creator.config.config import NewsCreatorConfig
@@ -290,20 +290,23 @@ class OllamaGateway(LLMProviderPort):
                     # Use stream driver for streaming requests
                     stream_iterator = self.stream_driver.generate_stream(payload)
                     # Handle streaming response
-                    async for chunk in stream_iterator:
-                        # Map chunk to LLMGenerateResponse
-                        yield LLMGenerateResponse(
-                            response=chunk.get("response", ""),
-                            model=str(chunk.get("model", payload["model"])),
-                            done=chunk.get("done", False),
-                            done_reason=chunk.get("done_reason"),
-                            prompt_eval_count=chunk.get("prompt_eval_count"),
-                            eval_count=chunk.get("eval_count"),
-                            total_duration=chunk.get("total_duration"),
-                            load_duration=chunk.get("load_duration"),
-                            prompt_eval_duration=chunk.get("prompt_eval_duration"),
-                            eval_duration=chunk.get("eval_duration"),
-                        )
+                    async with aclosing(  # pyrefly: ignore[bad-specialization]
+                        stream_iterator
+                    ):
+                        async for chunk in stream_iterator:
+                            # Map chunk to LLMGenerateResponse
+                            yield LLMGenerateResponse(
+                                response=chunk.get("response", ""),
+                                model=str(chunk.get("model", payload["model"])),
+                                done=chunk.get("done", False),
+                                done_reason=chunk.get("done_reason"),
+                                prompt_eval_count=chunk.get("prompt_eval_count"),
+                                eval_count=chunk.get("eval_count"),
+                                total_duration=chunk.get("total_duration"),
+                                load_duration=chunk.get("load_duration"),
+                                prompt_eval_duration=chunk.get("prompt_eval_duration"),
+                                eval_duration=chunk.get("eval_duration"),
+                            )
                 except GeneratorExit:
                     logger.info(
                         "Stream generator closed by client disconnect or explicit aclose()",
@@ -386,74 +389,9 @@ class OllamaGateway(LLMProviderPort):
                 },
             )
             # Call appropriate driver based on stream flag
-            try:
-                # Use regular driver for non-streaming requests
-                # For BE requests, use cancellation-aware generation
-                response_data = await self._generate_with_cancellation(
-                    payload, cancel_event, task_id
-                )
-
-                # Non-streaming response handling (existing logic)
-                # Check for OOM in response
-                if self.oom_detector.detect_oom_from_response(response_data):
-                    # OOM detected - retry with 2-model mode
-                    logger.warning(
-                        "OOM detected in response, retrying with 2-model mode",
-                        extra={"original_model": model},
-                    )
-                    # Retry with router in 2-model mode (OOM detector already set two_model_mode)
-                    selected_model, _ = self.model_router.select_model(
-                        prompt, max_new_tokens=num_predict
-                    )
-                    if selected_model != model:
-                        payload["model"] = selected_model
-                        logger.info(
-                            f"Retrying with model {selected_model} (2-model mode)",
-                            extra={
-                                "original_model": model,
-                                "new_model": selected_model,
-                            },
-                        )
-                        response_data = await self._generate_with_cancellation(
-                            payload, cancel_event, task_id
-                        )
-            except PreemptedException:
-                # BE request was preempted for RT priority
-                logger.info(
-                    f"Request {task_id} preempted, will retry later",
-                    extra={"task_id": task_id, "model": payload["model"]},
-                )
-                raise
-            except Exception as e:
-                # Check if exception indicates OOM
-                if self.oom_detector.detect_oom_from_exception(e):
-                    logger.warning(
-                        "OOM detected from exception, retrying with 2-model mode",
-                        extra={"original_model": model, "error": str(e)},
-                    )
-                    # Retry with router in 2-model mode (OOM detector already set two_model_mode)
-                    selected_model, _ = self.model_router.select_model(
-                        prompt, max_new_tokens=num_predict
-                    )
-                    if selected_model != model:
-                        payload["model"] = selected_model
-                        logger.info(
-                            f"Retrying with model {selected_model} (2-model mode)",
-                            extra={
-                                "original_model": model,
-                                "new_model": selected_model,
-                            },
-                        )
-                        # Ensure stream is False for retry to avoid complexity
-                        payload["stream"] = False
-                        response_data = await self._generate_with_cancellation(
-                            payload, cancel_event, task_id
-                        )
-                    else:
-                        # Same model selected, re-raise original exception
-                        raise
-                else:
-                    raise
+            response_data = await self._generate_with_oom_retry(
+                payload, prompt, model, num_predict, cancel_event, task_id
+            )
         finally:
             # Unregister BE request from active tracking
             if task_id:
@@ -774,21 +712,9 @@ class OllamaGateway(LLMProviderPort):
         if format is not None:
             payload["format"] = format
 
-        # Call driver with cancellation support
-        response_data = await self._generate_with_cancellation(
-            payload, cancel_event, task_id
+        response_data = await self._generate_with_oom_retry(
+            payload, prompt, model, num_predict, cancel_event, task_id
         )
-
-        # OOM detection and retry
-        if self.oom_detector.detect_oom_from_response(response_data):
-            selected_model, _ = self.model_router.select_model(
-                prompt, max_new_tokens=num_predict
-            )
-            if selected_model != model:
-                payload["model"] = selected_model
-                response_data = await self._generate_with_cancellation(
-                    payload, cancel_event, task_id
-                )
 
         if "response" not in response_data:
             raise RuntimeError("Invalid Ollama response format")
@@ -805,6 +731,71 @@ class OllamaGateway(LLMProviderPort):
             prompt_eval_duration=response_data.get("prompt_eval_duration"),
             eval_duration=response_data.get("eval_duration"),
         )
+
+    async def _generate_with_oom_retry(
+        self,
+        payload: dict[str, Any],
+        prompt: str,
+        model: str | None,
+        num_predict: int | None,
+        cancel_event: asyncio.Event | None,
+        task_id: str | None,
+    ) -> dict[str, Any]:
+        try:
+            response_data = await self._generate_with_cancellation(
+                payload, cancel_event, task_id
+            )
+            if self.oom_detector.detect_oom_from_response(response_data):
+                logger.warning(
+                    "OOM detected in response, retrying with 2-model mode",
+                    extra={"original_model": model},
+                )
+                selected_model, _ = self.model_router.select_model(
+                    prompt, max_new_tokens=num_predict
+                )
+                if selected_model != model:
+                    payload["model"] = selected_model
+                    logger.info(
+                        f"Retrying with model {selected_model} (2-model mode)",
+                        extra={
+                            "original_model": model,
+                            "new_model": selected_model,
+                        },
+                    )
+                    response_data = await self._generate_with_cancellation(
+                        payload, cancel_event, task_id
+                    )
+            return response_data
+        except PreemptedException:
+            logger.info(
+                f"Request {task_id} preempted, will retry later",
+                extra={"task_id": task_id, "model": payload["model"]},
+            )
+            raise
+        except Exception as e:
+            if self.oom_detector.detect_oom_from_exception(e):
+                logger.warning(
+                    "OOM detected from exception, retrying with 2-model mode",
+                    extra={"original_model": model, "error": str(e)},
+                )
+                selected_model, _ = self.model_router.select_model(
+                    prompt, max_new_tokens=num_predict
+                )
+                if selected_model != model:
+                    payload["model"] = selected_model
+                    logger.info(
+                        f"Retrying with model {selected_model} (2-model mode)",
+                        extra={
+                            "original_model": model,
+                            "new_model": selected_model,
+                        },
+                    )
+                    payload["stream"] = False
+                    return await self._generate_with_cancellation(
+                        payload, cancel_event, task_id
+                    )
+                raise
+            raise
 
     async def _generate_with_cancellation(
         self,
@@ -846,34 +837,36 @@ class OllamaGateway(LLMProviderPort):
         generate_task = asyncio.create_task(self.driver.generate(payload))
         cancel_task = asyncio.create_task(cancel_event.wait())
 
-        done, _pending = await asyncio.wait(
-            {generate_task, cancel_task},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        if cancel_task in done:
-            # Preempted — cancel the HTTP request.
-            # task.cancel() raises CancelledError inside aiohttp's session.post(),
-            # which closes the HTTP connection. Ollama detects the disconnect
-            # and stops inference, freeing GPU resources immediately.
-            generate_task.cancel()
-            try:
-                await generate_task
-            except asyncio.CancelledError:
-                pass
-            logger.warning(
-                f"Request {task_id} preempted during generation — HTTP connection cancelled",
-                extra={"task_id": task_id},
-            )
-            raise PreemptedException(f"Request {task_id} preempted during generation")
-
-        # Generation completed normally — clean up cancel waiter
-        cancel_task.cancel()
         try:
-            await cancel_task
-        except asyncio.CancelledError:
-            pass
-        return generate_task.result()
+            done, _pending = await asyncio.wait(
+                {generate_task, cancel_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if cancel_task in done:
+                # Preempted — cancel the HTTP request.
+                # task.cancel() raises CancelledError inside aiohttp's session.post(),
+                # which closes the HTTP connection. Ollama detects the disconnect
+                # and stops inference, freeing GPU resources immediately.
+                generate_task.cancel()
+                try:
+                    await generate_task
+                except asyncio.CancelledError:
+                    pass
+                logger.warning(
+                    f"Request {task_id} preempted during generation — HTTP connection cancelled",
+                    extra={"task_id": task_id},
+                )
+                raise PreemptedException(
+                    f"Request {task_id} preempted during generation"
+                )
+
+            return generate_task.result()
+        finally:
+            for task in (generate_task, cancel_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(generate_task, cancel_task, return_exceptions=True)
 
     def queue_status(self) -> dict[str, Any]:
         """Current semaphore queue depth/availability for monitoring."""

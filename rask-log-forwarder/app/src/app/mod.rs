@@ -69,7 +69,7 @@ impl App {
         info!("rask-log-forwarder is running. Press Ctrl+C to stop.");
 
         // Wait for shutdown signal
-        shutdown_handle.wait_for_shutdown().await;
+        shutdown_handle.wait_for_shutdown().await?;
 
         info!("rask-log-forwarder stopped.");
         Ok(())

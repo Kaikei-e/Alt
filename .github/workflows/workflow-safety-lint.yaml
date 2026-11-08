@@ -15,8 +15,11 @@
 #       reported green.
 #   (4) a workflow lacks a top-level `permissions:` block,
 #   (5) an `actions/checkout` step keeps `persist-credentials`,
-#   (6) a `run:` body interpolates `github.event.*` / `github.head_ref`, or
-#   (7) a `uses:` reference is not pinned to a commit SHA / image digest.
+#   (6) a `run:` body interpolates `github.event.*` / `github.head_ref`,
+#   (7) a `uses:` reference is not pinned to a commit SHA / image digest, or
+#   (8) an `on.push.paths` / `on.pull_request.paths` entry's literal path or
+#       non-glob directory prefix does not resolve to an existing file or
+#       directory.
 #   (4)-(7) are the GitHub Actions hardening guide's baseline, made
 #   structural so a new workflow cannot quietly regress them.
 #

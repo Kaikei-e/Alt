@@ -41,7 +41,7 @@ func parseTodayDigestMutation(payload json.RawMessage) (todayDigestMutation, err
 		EveningPulseAvailable bool   `json:"evening_pulse_available"`
 	}
 	if err := json.Unmarshal(payload, &digest); err != nil {
-		return todayDigestMutation{}, fmt.Errorf("UpsertTodayDigest: unmarshal: %w", err)
+		return todayDigestMutation{}, fmt.Errorf("UpsertTodayDigest: unmarshal: %w: %w", ErrInvalidMutationPayload, err)
 	}
 
 	// last_event_seq must be present and identify a real event. A payload
@@ -53,10 +53,10 @@ func parseTodayDigestMutation(payload json.RawMessage) (todayDigestMutation, err
 	// the Go/JSON zero value leaking through, and it would tie or lose
 	// against every stored value and strand the row forever.
 	if digest.LastEventSeq == nil {
-		return todayDigestMutation{}, fmt.Errorf("UpsertTodayDigest: last_event_seq is required")
+		return todayDigestMutation{}, fmt.Errorf("UpsertTodayDigest: last_event_seq is required: %w", ErrInvalidMutationPayload)
 	}
 	if *digest.LastEventSeq <= 0 {
-		return todayDigestMutation{}, fmt.Errorf("UpsertTodayDigest: last_event_seq must be a positive event_seq, got %d", *digest.LastEventSeq)
+		return todayDigestMutation{}, fmt.Errorf("UpsertTodayDigest: last_event_seq must be a positive event_seq, got %d: %w", *digest.LastEventSeq, ErrInvalidMutationPayload)
 	}
 
 	topTags := digest.TopTags

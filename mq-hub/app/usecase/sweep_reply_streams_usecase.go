@@ -24,7 +24,7 @@ type SweepReport struct {
 // domain.AllStreamKeys(), so it never touches these per-correlation keys; without
 // this sweep such a key lives forever. The sweep is non-destructive: it only
 // applies replyStreamTTL to keys that currently have no expiry, and that TTL
-// (5m) sits well above maxTagGenerationTimeoutMs, so it can never truncate a
+// (5m) sits well above MaxTagGenerationTimeoutMs, so it can never truncate a
 // reply an in-flight request is still waiting on.
 type SweepReplyStreamsUsecase struct {
 	sweeper port.ReplyStreamSweeper

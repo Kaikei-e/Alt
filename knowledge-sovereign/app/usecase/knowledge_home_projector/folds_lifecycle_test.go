@@ -206,6 +206,8 @@ func TestProjector_FoldsSummarySuperseded(t *testing.T) {
 	itemKey := fmt.Sprintf("article:%s", articleID)
 	item, ok := repo.homeItems[itemKey]
 	require.True(t, ok)
+	require.NotNil(t, item.PrimaryRefID)
+	assert.Equal(t, articleID, *item.PrimaryRefID)
 	assert.Equal(t, "summary_updated", item.SupersedeState)
 	require.NotNil(t, item.SupersededAt)
 	assert.True(t, occurredAt.Equal(*item.SupersededAt))
@@ -238,6 +240,8 @@ func TestProjector_FoldsTagSetSuperseded(t *testing.T) {
 	itemKey := fmt.Sprintf("article:%s", articleID)
 	item, ok := repo.homeItems[itemKey]
 	require.True(t, ok)
+	require.NotNil(t, item.PrimaryRefID)
+	assert.Equal(t, articleID, *item.PrimaryRefID)
 	assert.Equal(t, "tags_updated", item.SupersedeState)
 	assert.Equal(t, []string{}, item.Tags, "tags must be an explicit empty slice, not nil — nil would serialize to null and wipe existing tags")
 

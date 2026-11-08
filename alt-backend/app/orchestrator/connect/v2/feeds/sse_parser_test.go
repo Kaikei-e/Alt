@@ -65,6 +65,11 @@ func TestExtractSSEData(t *testing.T) {
 			input:    "data: {\"error\": \"summary generation failed\"}\n",
 			expected: "",
 		},
+		{
+			name:     "preserves literal event: error text inside a data line",
+			input:    "data: event: error\n",
+			expected: "event: error",
+		},
 	}
 
 	for _, tt := range tests {

@@ -1026,7 +1026,7 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
     let recap_summary_temperature = parse_f64("RECAP_SUMMARY_TEMPERATURE", 0.0)?;
     let llm_max_concurrency = parse_non_zero_usize("LLM_MAX_CONCURRENCY", 1)?;
     let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
-    let batch_summary_chunk_size = parse_usize("RECAP_BATCH_SUMMARY_CHUNK_SIZE", 3)?;
+    let batch_summary_chunk_size = parse_non_zero_usize("RECAP_BATCH_SUMMARY_CHUNK_SIZE", 3)?.get();
 
     Ok(BasicConfig {
         recap_db_dsn,
@@ -3380,5 +3380,25 @@ mod tests {
             assert_eq!(config.cards_catchup(), CardsCatchupConfig::Disabled);
             assert!(!config.cards_catchup_enabled());
         });
+    }
+
+    #[test]
+    fn from_env_rejects_zero_batch_summary_chunk_size() {
+        let res = {
+            let _lock = ENV_MUTEX.lock().expect("env mutex");
+            let mut vars = required_base();
+            vars.push(("RECAP_BATCH_SUMMARY_CHUNK_SIZE", Some("0")));
+            temp_env::with_vars(vars, Config::from_env)
+        };
+        assert!(
+            matches!(
+                res,
+                Err(ConfigError::Invalid {
+                    name: "RECAP_BATCH_SUMMARY_CHUNK_SIZE",
+                    ..
+                })
+            ),
+            "RECAP_BATCH_SUMMARY_CHUNK_SIZE=0 must be rejected as ConfigError::Invalid, got: {res:?}"
+        );
     }
 }

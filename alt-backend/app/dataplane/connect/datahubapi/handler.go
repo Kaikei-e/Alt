@@ -245,6 +245,10 @@ func NewHandler(
 	for _, opt := range opts {
 		opt(h)
 	}
+	if (h.upsertArticleTags != nil || h.batchUpsertArticleTags != nil) && h.createTagSetVersionUsecase == nil {
+		panic("datahubapi: CreateTagSetVersionUsecase is nil — " +
+			"wire it via WithKnowledgeVersionUsecases (see .claude/rules/di-wiring.md)")
+	}
 	return h
 }
 

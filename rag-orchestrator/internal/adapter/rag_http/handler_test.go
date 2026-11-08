@@ -554,6 +554,39 @@ func TestUpsertIndex_Returns409OnOwnerConflict(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, rec.Code)
 	assert.Contains(t, rec.Body.String(), "document owned by another user")
 	assert.NotContains(t, rec.Body.String(), "indexArticleUsecase:")
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "owner_conflict", resp["code"])
+}
+
+func TestUpsertIndex_Returns409WithDuplicateKeyCodeOnDuplicateKeyError(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{
+		returnError: errors.New("ERROR: duplicate key value violates unique constraint \"rag_documents_article_id_key\" (SQLSTATE 23505)"),
+	}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	reqBody := openapi.UpsertIndexRequest{
+		ArticleId: "test-article-123",
+		Title:     "Test Article",
+		Url:       "https://example.com/article",
+		Body:      "Content",
+		UserId:    testUserID,
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.UpsertIndex(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusConflict, rec.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "duplicate_key", resp["code"])
 }
 
 func TestBackfillDocumentOwners(t *testing.T) {

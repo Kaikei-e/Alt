@@ -1154,6 +1154,64 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
+async def test_caller_cancellation_cancels_children_in_generate_with_cancellation(
+    mock_config, mock_driver
+):
+    """Caller cancellation during _generate_with_cancellation must cancel and await child tasks."""
+    generate_started = asyncio.Event()
+    never_finish = asyncio.Event()
+    generate_cancelled = False
+
+    async def blocking_generate(payload):
+        nonlocal generate_cancelled
+        generate_started.set()
+        try:
+            await never_finish.wait()
+            return {
+                "response": "Should not reach here",
+                "model": "test-model",
+                "done": True,
+            }
+        except asyncio.CancelledError:
+            generate_cancelled = True
+            raise
+
+    mock_driver.generate = blocking_generate
+
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        baseline_tasks = set(asyncio.all_tasks())
+        outer_task = asyncio.create_task(
+            gateway.generate("Test prompt", priority="low")
+        )
+
+        await generate_started.wait()
+
+        outer_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await outer_task
+
+        leaked_tasks = {t for t in asyncio.all_tasks() - baseline_tasks if not t.done()}
+        try:
+            assert generate_cancelled, (
+                "driver.generate() should observe CancelledError on caller cancellation"
+            )
+            assert not leaked_tasks, (
+                f"No child tasks should remain pending after caller cancellation, found: {leaked_tasks}"
+            )
+        finally:
+            for t in leaked_tasks:
+                t.cancel()
+            if leaked_tasks:
+                await asyncio.gather(*leaked_tasks, return_exceptions=True)
+            await gateway.cleanup()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "input_prompt,expected_prompt",
     [
@@ -1237,3 +1295,101 @@ async def test_generate_raw_prompt_handling(mock_config, input_prompt, expected_
     assert len(captured_payloads) == 1
     assert captured_payloads[0]["prompt"] == expected_prompt
     await gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_streaming_aclose_closes_inner_driver_stream_without_gc(
+    mock_config, mock_driver
+):
+    """Closing the outer streaming generator must deterministically close the inner driver generator."""
+    import gc
+
+    inner_closed = False
+
+    async def mock_generate_stream(payload):
+        nonlocal inner_closed
+        try:
+            yield {"response": "chunk0", "model": "test-model", "done": False}
+            yield {"response": "chunk1", "model": "test-model", "done": True}
+        finally:
+            inner_closed = True
+
+    mock_stream_driver = AsyncMock()
+    mock_stream_driver.generate_stream = mock_generate_stream
+    mock_stream_driver.initialize = AsyncMock()
+    mock_stream_driver.cleanup = AsyncMock()
+
+    with (
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+        ),
+        patch(
+            "news_creator.gateway.ollama_gateway.OllamaStreamDriver",
+            return_value=mock_stream_driver,
+        ),
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            result = await gateway.generate("Test prompt", stream=True)
+            assert not isinstance(result, LLMGenerateResponse)
+            first = await anext(result)
+            assert first.response == "chunk0"
+            assert not inner_closed
+            await result.aclose()
+            assert inner_closed, (
+                "Inner stream_driver.generate_stream generator must be closed immediately on outer aclose()"
+            )
+        finally:
+            if gc_was_enabled:
+                gc.enable()
+
+
+@pytest.mark.asyncio
+async def test_generate_raw_retries_on_oom_exception_and_reraises_non_oom(
+    mock_config, mock_driver
+):
+    """generate_raw catches OOM exceptions, switches to 2-model mode, retries once with the routed model, and re-raises non-OOM errors."""
+    mock_config.oom_detection_enabled = True
+    mock_config.model_routing_enabled = True
+
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+        try:
+            gateway.model_router.select_model = Mock(
+                side_effect=[("gemma4-e4b-60k", 61440), ("gemma4-e4b-12k", 8192)]
+            )
+            mock_driver.generate = AsyncMock(
+                side_effect=[
+                    RuntimeError("Ollama API error: HTTP 500 - CUDA out of memory"),
+                    {
+                        "response": "ok",
+                        "model": "gemma4-e4b-12k",
+                        "done": True,
+                    },
+                ]
+            )
+
+            result = await gateway.generate_raw("Test prompt")
+
+            assert result.response == "ok"
+            assert result.model == "gemma4-e4b-12k"
+            assert gateway.oom_detector.two_model_mode is True
+            assert mock_driver.generate.call_count == 2
+
+            gateway.model_router.select_model = Mock(
+                return_value=("gemma4-e4b-12k", 8192)
+            )
+            mock_driver.generate = AsyncMock(
+                side_effect=RuntimeError("Ollama API error: HTTP 500 - internal error")
+            )
+            with pytest.raises(RuntimeError, match="internal error"):
+                await gateway.generate_raw("Test prompt")
+        finally:
+            await gateway.cleanup()

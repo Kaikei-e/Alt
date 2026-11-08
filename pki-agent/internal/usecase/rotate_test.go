@@ -2,12 +2,21 @@ package usecase
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
+	"math/big"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"pki-agent/internal/domain"
+	"pki-agent/internal/infrastructure"
 )
 
 var (
@@ -202,5 +211,63 @@ func TestTick_Missing_IssueUpdatesObserverClassified(t *testing.T) {
 	}
 	if !sawFresh {
 		t.Fatalf("want OnClassified(StateFresh) after issue-on-missing; got classified=%v", obs.classified)
+	}
+}
+
+func newSelfSignedPEMAt(t *testing.T, notBefore, notAfter time.Time) (certPEM, keyPEM []byte) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "alt-backend"},
+		NotBefore:    notBefore,
+		NotAfter:     notAfter,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	return certPEM, keyPEM
+}
+
+func TestTick_MismatchedPairOnDisk_TriggersReissue(t *testing.T) {
+	dir := t.TempDir()
+	nb := time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC)
+	cert1, _ := newSelfSignedPEMAt(t, nb, nb.Add(24*time.Hour))
+	_, key2 := newSelfSignedPEMAt(t, nb, nb.Add(24*time.Hour))
+
+	certPath := filepath.Join(dir, "svc-cert.pem")
+	keyPath := filepath.Join(dir, "svc-key.pem")
+	if err := os.WriteFile(certPath, cert1, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, key2, 0o400); err != nil {
+		t.Fatal(err)
+	}
+
+	loader := &infrastructure.CertFile{CertPath: certPath, KeyPath: keyPath}
+	issuer := &fakeIssuer{}
+	writer := &fakeWriter{}
+	obs := &fakeObs{}
+	r := newRotator(loader, issuer, writer, obs)
+
+	state, err := r.Tick(context.Background(), nb.Add(1*time.Hour))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state != domain.StateFresh {
+		t.Fatalf("want StateFresh after reissue, got %s", state)
+	}
+	if issuer.called != 1 || writer.wrote != 1 {
+		t.Fatalf("mismatched cert/key pair on disk must trigger reissue: issuer.called=%d writer.wrote=%d", issuer.called, writer.wrote)
 	}
 }

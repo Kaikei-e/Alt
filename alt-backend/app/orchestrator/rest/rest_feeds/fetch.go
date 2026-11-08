@@ -249,9 +249,12 @@ func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.Ha
 
 		// Add next cursor if there are results
 		if len(feeds) > 0 {
-			if derivedCursor, ok := DeriveNextCursorFromFeeds(feeds); ok {
-				response["next_cursor"] = derivedCursor
+			derivedCursor, err := DeriveSortKeyNextCursorFromFeeds(feeds)
+			if err != nil {
+				logger.Logger.ErrorContext(ctx, "Error deriving read feeds cursor", "error", err)
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch read feeds with cursor"})
 			}
+			response["next_cursor"] = derivedCursor
 		}
 
 		return c.JSON(http.StatusOK, response)
@@ -306,9 +309,12 @@ func RestHandleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) ech
 		}
 
 		if len(feeds) > 0 {
-			if derivedCursor, ok := DeriveNextCursorFromFeeds(feeds); ok {
-				response["next_cursor"] = derivedCursor
+			derivedCursor, err := DeriveSortKeyNextCursorFromFeeds(feeds)
+			if err != nil {
+				logger.Logger.ErrorContext(ctx, "Error deriving favorite feeds cursor", "error", err)
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch favorite feeds with cursor"})
 			}
+			response["next_cursor"] = derivedCursor
 		}
 
 		return c.JSON(http.StatusOK, response)

@@ -41,6 +41,15 @@ pub(crate) enum RetryOutcome {
     AlreadyRunning,
 }
 
+/// `recap_jobs.trigger_source` values created by the multi-genre batch recap
+/// pipeline (`JobContext::new` / `new_with_window` -> `"system"`,
+/// `JobContext::new_manual` -> `"user"`).
+pub(crate) const BATCH_RETRY_TRIGGER_SOURCES: &[&str] = &["system", "user"];
+
+pub(crate) fn is_batch_retry_trigger_source(trigger_source: &str) -> bool {
+    BATCH_RETRY_TRIGGER_SOURCES.contains(&trigger_source)
+}
+
 /// Looks up the most recent `failed` job and reports what a retry should
 /// target: the failed job's id (for logging) and the window_days to reuse
 /// for the fresh run. Kept separate from `Scheduler` so it is testable with
@@ -49,6 +58,13 @@ pub(crate) enum RetryOutcome {
 async fn find_retry_target(recap_dao: &dyn RecapDao) -> Result<Option<(Uuid, u32)>> {
     let target = recap_dao.find_most_recent_failed_job().await?;
     Ok(target.map(|(job_id, _status, _last_stage, window_days)| (job_id, window_days)))
+}
+
+fn build_retry_job(config: &Config, job_id: Uuid, window_days: u32) -> JobContext {
+    super::daemon::apply_knowledge_owner(
+        JobContext::new_manual(job_id, Vec::new(), window_days),
+        config.knowledge_owner(),
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -177,11 +193,13 @@ pub struct Scheduler {
     config: Arc<Config>,
     recap_dao: Arc<dyn RecapDao>,
     subworker_client: Arc<SubworkerClient>,
-    /// Caps concurrent `run_job` executions at 1. `run_job` is the single
-    /// choke point for the nightly batch daemon, the admin trigger, and the
-    /// manual `/v1/generate/recaps/*` endpoints — without this, a manual
-    /// re-trigger racing the nightly batch (or repeated manual triggers)
-    /// could run the full LLM/clustering pipeline multiple times at once.
+    /// Caps concurrent `run_job_locked` executions at 1 across the nightly
+    /// batch daemon (`run_job`), the admin retry endpoint
+    /// (`retry_most_recent_failed_job`), and the manual
+    /// `/v1/generate/recaps/*` triggers (`try_acquire_run_permit` +
+    /// `run_job_locked`) — without this, a manual re-trigger racing the
+    /// nightly batch (or repeated manual triggers) could run the full
+    /// LLM/clustering pipeline multiple times at once.
     run_lock: Arc<Semaphore>,
 }
 
@@ -211,20 +229,22 @@ impl Scheduler {
         self.pipeline.classification_queue().shutdown().await;
     }
 
+    pub(crate) fn try_acquire_run_permit(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        Arc::clone(&self.run_lock).try_acquire_owned().ok()
+    }
+
     pub(crate) async fn run_job(&self, context: JobContext) -> Result<()> {
         // Non-blocking: a concurrent trigger must fail loudly and
         // immediately rather than queue up behind an in-flight pipeline run
         // (or worse, run alongside it).
-        let _run_permit = Arc::clone(&self.run_lock)
-            .try_acquire_owned()
-            .map_err(|_| {
-                anyhow!(
-                    "job {} rejected: another recap pipeline run is already in progress",
-                    context.job_id
-                )
-            })?;
+        let run_permit = self.try_acquire_run_permit().ok_or_else(|| {
+            anyhow!(
+                "job {} rejected: another recap pipeline run is already in progress",
+                context.job_id
+            )
+        })?;
 
-        self.run_job_locked(context).await
+        self.run_job_locked(context, run_permit).await
     }
 
     /// Handles `POST /admin/jobs/retry`: finds the most recent `failed`
@@ -242,7 +262,7 @@ impl Scheduler {
     /// real failed job, or reports explicitly why it did not
     /// (`NoFailedJob` / `AlreadyRunning`).
     pub(crate) async fn retry_most_recent_failed_job(&self) -> Result<RetryOutcome> {
-        let Ok(permit) = Arc::clone(&self.run_lock).try_acquire_owned() else {
+        let Some(permit) = self.try_acquire_run_permit() else {
             return Ok(RetryOutcome::AlreadyRunning);
         };
 
@@ -253,14 +273,13 @@ impl Scheduler {
         };
 
         let job_id = Uuid::new_v4();
-        let job = JobContext::new_manual(job_id, Vec::new(), window_days);
+        let job = build_retry_job(&self.config, job_id, window_days);
         let scheduler = self.clone();
 
         tokio::spawn(async move {
-            // Held for the lifetime of the spawned task so no other run can
-            // start until this retry finishes.
-            let _permit = permit;
-            if let Err(error) = scheduler.run_job_locked(job).await {
+            // Permit is moved into `run_job_locked` and held for the lifetime
+            // of the spawned pipeline run.
+            if let Err(error) = scheduler.run_job_locked(job, permit).await {
                 tracing::error!(
                     %job_id,
                     %retried_failed_job_id,
@@ -282,13 +301,18 @@ impl Scheduler {
         })
     }
 
-    /// Core pipeline-run body. Callers must already hold a `run_lock`
-    /// permit: `run_job` acquires one itself before calling this;
-    /// `retry_most_recent_failed_job` acquires its own up front (before the
-    /// DAO lookup) so it can report `AlreadyRunning` synchronously instead
-    /// of double-acquiring here.
+    /// Core pipeline-run body. Takes ownership of `_permit` for the duration
+    /// of the run so this method cannot be invoked without holding `run_lock`:
+    /// `run_job` acquires one itself before calling this, while
+    /// `retry_most_recent_failed_job` and the manual `/v1/generate/recaps/*`
+    /// handlers acquire theirs up front via `try_acquire_run_permit` so they
+    /// can report `409 Conflict` synchronously before spawning.
     #[allow(clippy::too_many_lines)]
-    async fn run_job_locked(&self, context: JobContext) -> Result<()> {
+    pub(crate) async fn run_job_locked(
+        &self,
+        context: JobContext,
+        _permit: tokio::sync::OwnedSemaphorePermit,
+    ) -> Result<()> {
         tracing::info!(
             job_id = %context.job_id,
             prompt_version = %self.config.llm_prompt_version(),
@@ -688,6 +712,58 @@ mod tests {
         assert_eq!(target, Some((failed_job_id, 3)));
     }
 
+    #[test]
+    fn build_retry_job_binds_knowledge_owner_when_emit_enabled() {
+        use crate::config::ENV_MUTEX;
+
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let user_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let user_id_str = user_id.to_string();
+        let tenant_id_str = tenant_id.to_string();
+
+        let config = temp_env::with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:15432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+                (
+                    "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                    Some("http://localhost:19500"),
+                ),
+                ("RECAP_KNOWLEDGE_SOVEREIGN_AUTH", Some("disabled")),
+                ("RECAP_KNOWLEDGE_OWNER_USER_ID", Some(user_id_str.as_str())),
+                (
+                    "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                    Some(tenant_id_str.as_str()),
+                ),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+            ],
+            || Config::from_env().expect("config loads"),
+        );
+
+        let job_id = Uuid::new_v4();
+        let job = build_retry_job(&config, job_id, 3);
+
+        assert_eq!(job.job_id, job_id);
+        assert!(job.genres().is_empty());
+        assert_eq!(job.window_days(), 3);
+        assert_eq!(job.trigger_source(), "user");
+        assert_eq!(job.user_id(), Some(user_id));
+        assert_eq!(job.tenant_id(), Some(tenant_id));
+    }
+
     /// A transient DB error must propagate, not fold into "no failed job"
     /// (which would silently report `NoFailedJob` — itself an honest
     /// answer, but for the wrong reason, masking a DB outage as "nothing to
@@ -707,6 +783,155 @@ mod tests {
         assert!(
             result.is_err(),
             "DB error must propagate, not degrade to None"
+        );
+    }
+
+    struct FakeJobRow {
+        job_id: Uuid,
+        status: JobStatus,
+        last_stage: Option<String>,
+        window_days: u32,
+        trigger_source: &'static str,
+    }
+
+    fn mock_dao_with_job_rows(rows: &[FakeJobRow]) -> crate::store::dao::mock::MockRecapDao {
+        use crate::store::dao::job::RecapDao as JobSqlDao;
+        use crate::store::dao::mock::MockRecapDao;
+
+        let dao = MockRecapDao::new();
+        let selected = rows
+            .iter()
+            .find(|row| JobSqlDao::is_retryable_failed_job(&row.status, row.trigger_source))
+            .map(|row| {
+                (
+                    row.job_id,
+                    row.status.clone(),
+                    row.last_stage.clone(),
+                    row.window_days,
+                )
+            });
+        dao.set_find_most_recent_failed_job_result(Ok(selected));
+        dao
+    }
+
+    /// Admin retry (`POST /admin/jobs/retry`) always runs the full multi-genre
+    /// batch `PipelineOrchestrator`, so it must only target failed batch recap
+    /// jobs (`trigger_source` in `["system", "user"]`). When a newer morning
+    /// update (`"morning"`, window 1) or topic-cards run (`"cards"` /
+    /// `"cards_replay"`, window 3) has failed more recently than a failed batch
+    /// job, the retry must skip the morning/cards rows and reuse the older
+    /// batch job's window.
+    #[tokio::test]
+    async fn find_retry_target_skips_morning_and_targets_older_batch_job() {
+        use crate::store::dao::job::RecapDao as JobSqlDao;
+
+        let morning_job_id = Uuid::new_v4();
+        let cards_job_id = Uuid::new_v4();
+        let batch_job_id = Uuid::new_v4();
+        // Ordered newest-first (`ORDER BY kicked_at DESC`).
+        let rows = [
+            FakeJobRow {
+                job_id: morning_job_id,
+                status: JobStatus::Failed,
+                last_stage: Some("fetch".to_string()),
+                window_days: 1,
+                trigger_source: "morning",
+            },
+            FakeJobRow {
+                job_id: cards_job_id,
+                status: JobStatus::Failed,
+                last_stage: Some("cards".to_string()),
+                window_days: 3,
+                trigger_source: "cards",
+            },
+            FakeJobRow {
+                job_id: batch_job_id,
+                status: JobStatus::Failed,
+                last_stage: Some("dispatch".to_string()),
+                window_days: 7,
+                trigger_source: "system",
+            },
+        ];
+
+        let dao = mock_dao_with_job_rows(&rows);
+        let target = find_retry_target(&dao).await.expect("dao call succeeds");
+
+        assert_eq!(
+            target,
+            Some((batch_job_id, 7)),
+            "retry must target the older failed batch job (window 7), never window 1/3 from morning/cards"
+        );
+
+        let user_batch_job_id = Uuid::new_v4();
+        let user_rows = [
+            FakeJobRow {
+                job_id: Uuid::new_v4(),
+                status: JobStatus::Failed,
+                last_stage: None,
+                window_days: 3,
+                trigger_source: "cards_replay",
+            },
+            FakeJobRow {
+                job_id: user_batch_job_id,
+                status: JobStatus::Failed,
+                last_stage: Some("persist".to_string()),
+                window_days: 7,
+                trigger_source: "user",
+            },
+        ];
+        let user_dao = mock_dao_with_job_rows(&user_rows);
+        assert_eq!(
+            find_retry_target(&user_dao)
+                .await
+                .expect("dao call succeeds"),
+            Some((user_batch_job_id, 7))
+        );
+
+        let normalized_sql = JobSqlDao::FIND_MOST_RECENT_FAILED_JOB_SQL
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            normalized_sql.contains("trigger_source IN ('system', 'user')"),
+            "SQL query must filter trigger_source to batch sources ('system', 'user'), got: {normalized_sql}"
+        );
+    }
+
+    /// When the only failed rows are morning updates or topic-cards jobs,
+    /// `find_retry_target` must return `None` (`RetryOutcome::NoFailedJob`),
+    /// never a 1- or 3-day window from those pipelines.
+    #[tokio::test]
+    async fn find_retry_target_returns_none_when_only_morning_or_cards_failed() {
+        let rows = [
+            FakeJobRow {
+                job_id: Uuid::new_v4(),
+                status: JobStatus::Failed,
+                last_stage: Some("fetch".to_string()),
+                window_days: 1,
+                trigger_source: "morning",
+            },
+            FakeJobRow {
+                job_id: Uuid::new_v4(),
+                status: JobStatus::Failed,
+                last_stage: Some("cards".to_string()),
+                window_days: 3,
+                trigger_source: "cards",
+            },
+            FakeJobRow {
+                job_id: Uuid::new_v4(),
+                status: JobStatus::Failed,
+                last_stage: None,
+                window_days: 3,
+                trigger_source: "cards_replay",
+            },
+        ];
+
+        let dao = mock_dao_with_job_rows(&rows);
+        let target = find_retry_target(&dao).await.expect("dao call succeeds");
+
+        assert_eq!(
+            target, None,
+            "morning/cards failures alone must yield None (NoFailedJob)"
         );
     }
 

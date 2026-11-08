@@ -179,7 +179,6 @@ own description of the API turned out to disagree with the API.
 | `tests/feeds-cursor.spec.ts` | ValidationMiddleware matches `/feeds/fetch/cursor` by substring, so the viewed and favorites variants get no pagination validation and silently clamp instead of rejecting |
 | `tests/rss-feed-link.spec.ts` | `DELETE /:id` unsubscribes the caller (`user_feed_subscriptions`) while `/list` is global — they read as a CRUD pair and are not one |
 | `tests/rss-feed-link.spec.ts` | `DELETE` of an unknown id answers 200, while the admin surface answers 404 for the same shape of miss |
-| `tests/feeds-details-tags.spec.ts` | `GET /v1/feeds/:id/tags` never parses `:id`, so a malformed one reaches the query and 500s |
 | `tests/feeds-mutations.spec.ts` | `POST /v1/feeds/read` runs no validator, so an empty `feed_url` 500s instead of 400 |
 | `tests/rss-feed-link.spec.ts` | a non-OPML upload to `/import/opml` 500s instead of 4xx |
 | `tests/articles.spec.ts` | `/v1/articles/search` silently ignores `limit`, unlike every neighbouring paginated read |

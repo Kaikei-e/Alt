@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -29,6 +30,9 @@ func (uc *GenerateCSRF) Execute(ctx context.Context, rawCookie string, sessionID
 	// Validate session with Kratos
 	_, err := uc.validator.ValidateSession(ctx, rawCookie)
 	if err != nil {
+		if errors.Is(err, domain.ErrKratosUnavailable) || errors.Is(err, domain.ErrRateLimited) {
+			return "", err
+		}
 		return "", fmt.Errorf("%w: %w", domain.ErrAuthFailed, err)
 	}
 

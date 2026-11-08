@@ -131,6 +131,24 @@ class TestLLMConfig:
         assert config.model_name == "custom-model"
         assert config.timeout_seconds == 600
 
+    def test_llm_config_from_env_invalid_int_raises(self, monkeypatch):
+        """LLMConfig.from_env() must raise ValueError when an int env var is invalid."""
+        from news_creator.config.llm_config import LLMConfig
+
+        monkeypatch.setenv("LLM_NUM_CTX", "12k")
+
+        with pytest.raises(ValueError, match="LLM_NUM_CTX"):
+            LLMConfig.from_env()
+
+    def test_llm_config_from_env_invalid_float_raises(self, monkeypatch):
+        """LLMConfig.from_env() must raise ValueError when a float env var is invalid."""
+        from news_creator.config.llm_config import LLMConfig
+
+        monkeypatch.setenv("LLM_TEMPERATURE", "hot")
+
+        with pytest.raises(ValueError, match="LLM_TEMPERATURE"):
+            LLMConfig.from_env()
+
 
 class TestSchedulingConfig:
     """Tests for SchedulingConfig dataclass."""
@@ -211,6 +229,24 @@ class TestSchedulingConfig:
 
         assert config.aging_sweep_interval_releases == 16
 
+    def test_scheduling_config_from_env_invalid_int_raises(self, monkeypatch):
+        """SchedulingConfig.from_env() must raise ValueError when an int env var is invalid."""
+        from news_creator.config.scheduling_config import SchedulingConfig
+
+        monkeypatch.setenv("OLLAMA_NUM_PARALLEL", "invalid")
+
+        with pytest.raises(ValueError, match="OLLAMA_NUM_PARALLEL"):
+            SchedulingConfig.from_env()
+
+    def test_scheduling_config_from_env_invalid_float_raises(self, monkeypatch):
+        """SchedulingConfig.from_env() must raise ValueError when a float env var is invalid."""
+        from news_creator.config.scheduling_config import SchedulingConfig
+
+        monkeypatch.setenv("SCHEDULING_AGING_THRESHOLD_SECONDS", "60s")
+
+        with pytest.raises(ValueError, match="SCHEDULING_AGING_THRESHOLD_SECONDS"):
+            SchedulingConfig.from_env()
+
 
 class TestHierarchicalConfig:
     """Tests for HierarchicalConfig dataclass."""
@@ -262,6 +298,24 @@ class TestHierarchicalConfig:
 
         assert config.threshold_chars == 10000
         assert config.threshold_clusters == 10
+
+    def test_hierarchical_config_from_env_invalid_int_raises(self, monkeypatch):
+        """HierarchicalConfig.from_env() must raise ValueError when an int env var is invalid."""
+        from news_creator.config.hierarchical_config import HierarchicalConfig
+
+        monkeypatch.setenv("HIERARCHICAL_THRESHOLD_CHARS", "8k")
+
+        with pytest.raises(ValueError, match="HIERARCHICAL_THRESHOLD_CHARS"):
+            HierarchicalConfig.from_env()
+
+    def test_hierarchical_config_from_env_invalid_float_raises(self, monkeypatch):
+        """HierarchicalConfig.from_env() must raise ValueError when a float env var is invalid."""
+        from news_creator.config.hierarchical_config import HierarchicalConfig
+
+        monkeypatch.setenv("HIERARCHICAL_CHUNK_OVERLAP_RATIO", "fifteen_percent")
+
+        with pytest.raises(ValueError, match="HIERARCHICAL_CHUNK_OVERLAP_RATIO"):
+            HierarchicalConfig.from_env()
 
 
 class TestModelRoutingConfig:
@@ -342,6 +396,15 @@ class TestModelRoutingConfig:
 
         assert config.enabled is False
         assert config.base_name == "custom-base"
+
+    def test_model_routing_config_from_env_invalid_int_raises(self, monkeypatch):
+        """ModelRoutingConfig.from_env() must raise ValueError when an int env var is invalid."""
+        from news_creator.config.model_routing_config import ModelRoutingConfig
+
+        monkeypatch.setenv("TOKEN_SAFETY_MARGIN_PERCENT", "ten")
+
+        with pytest.raises(ValueError, match="TOKEN_SAFETY_MARGIN_PERCENT"):
+            ModelRoutingConfig.from_env()
 
 
 class TestNewsCreatorConfigComposition:

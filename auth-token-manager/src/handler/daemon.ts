@@ -61,6 +61,7 @@ export class DaemonLoop {
       logger.error("Failed to start OAuth server", {
         error: err instanceof Error ? err.message : String(err),
       });
+      throw err;
     }
 
     // Token monitor loop

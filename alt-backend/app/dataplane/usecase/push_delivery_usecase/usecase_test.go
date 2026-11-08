@@ -100,6 +100,7 @@ func TestEnqueue_RejectsMalformedRequests(t *testing.T) {
 	cases := map[string]func(*domain.NotificationEnqueue){
 		"no dedupe key":         func(in *domain.NotificationEnqueue) { in.DedupeKey = "" },
 		"no user":               func(in *domain.NotificationEnqueue) { in.UserID = "" },
+		"non-uuid user":         func(in *domain.NotificationEnqueue) { in.UserID = "not-a-uuid" },
 		"no occurred_at":        func(in *domain.NotificationEnqueue) { in.OccurredAt = time.Time{} },
 		"no expires_at":         func(in *domain.NotificationEnqueue) { in.ExpiresAt = time.Time{} },
 		"expires before occurs": func(in *domain.NotificationEnqueue) { in.ExpiresAt = in.OccurredAt.Add(-time.Hour) },

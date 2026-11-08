@@ -57,6 +57,7 @@ func TestUpsertKnowledgeHomeItem_UsesMergeSafeSQL(t *testing.T) {
 	}
 
 	for _, required := range []string{
+		`primary_ref_id = COALESCE(knowledge_home_items.primary_ref_id, EXCLUDED.primary_ref_id)`,
 		`COALESCE(NULLIF(EXCLUDED.title, ''), knowledge_home_items.title)`,
 		`COALESCE(NULLIF(EXCLUDED.summary_excerpt, ''), knowledge_home_items.summary_excerpt)`,
 		`COALESCE(NULLIF(EXCLUDED.tags_json, '[]'::jsonb), knowledge_home_items.tags_json)`,
@@ -167,6 +168,8 @@ func TestDismissKnowledgeHomeItem_RequiresDismissedAtInPayload(t *testing.T) {
 
 	err := repo.DismissKnowledgeHomeItem(context.Background(), payload)
 	require.Error(t, err, "missing dismissed_at must error loudly, not fabricate timestamp")
+	assert.Contains(t, err.Error(), "dismissed_at is required")
+	assert.True(t, errors.Is(err, ErrInvalidMutationPayload), "missing dismissed_at error must wrap ErrInvalidMutationPayload")
 	assert.Empty(t, mock.execCalls, "no UPDATE should be issued when dismissed_at is missing")
 }
 
@@ -208,6 +211,25 @@ func TestDismissKnowledgeHomeItem_NotFound(t *testing.T) {
 
 	err := repo.DismissKnowledgeHomeItem(context.Background(), payload)
 	require.True(t, errors.Is(err, ErrDismissTargetNotFound))
+}
+
+func TestDismissKnowledgeHomeItem_VersionZero_NotFound(t *testing.T) {
+	mock := &mockPgx{
+		execFunc: func(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+			return pgconn.NewCommandTag("UPDATE 0"), nil
+		},
+	}
+	repo := &Repository{pool: mock}
+
+	payload := json.RawMessage(`{
+		"user_id": "11111111-1111-4111-8111-111111111111",
+		"tenant_id": "22222222-2222-4222-8222-222222222222",
+		"item_key": "article:missing",
+		"dismissed_at": "2026-05-04T03:00:00Z"
+	}`)
+
+	err := repo.DismissKnowledgeHomeItem(context.Background(), payload)
+	require.ErrorIs(t, err, ErrDismissTargetNotFound)
 }
 
 func TestClearSupersedeState_Success(t *testing.T) {

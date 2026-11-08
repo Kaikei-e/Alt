@@ -450,7 +450,7 @@ func (p *pactReadStatePort) RemoveFavorite(context.Context, string, uuid.UUID) e
 
 type pactTagReadPort struct{}
 
-func (pactTagReadPort) ArticleTags(context.Context, string) ([]*domain.FeedTag, error) {
+func (pactTagReadPort) ArticleTags(context.Context, string, *uuid.UUID) ([]*domain.FeedTag, error) {
 	return nil, nil
 }
 func (pactTagReadPort) FeedTags(context.Context, string, *time.Time, int) ([]*domain.FeedTag, error) {

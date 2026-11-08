@@ -155,6 +155,64 @@ async def test_cancellation_during_slow_acquire_leaves_active_tasks_zero():
     )
 
 
+@pytest.mark.asyncio
+async def test_cancellation_during_running_job_keeps_active_tasks_until_job_completes():
+    """Cancelling predict_batch while async_result.get is blocked must keep _active_tasks == 1
+    and must not schedule idle pool shutdown until the underlying job finishes.
+    """
+    settings = Settings()
+    runner = ClassificationRunner(settings)
+
+    get_started = threading.Event()
+    get_proceed = threading.Event()
+
+    fake_pool = MagicMock()
+    fake_async_result = MagicMock()
+
+    def blocking_get(timeout):
+        get_started.set()
+        get_proceed.wait(timeout=5.0)
+        return [{"label": "test", "score": 0.99}]
+
+    fake_async_result.get.side_effect = blocking_get
+    fake_pool.apply_async.return_value = fake_async_result
+    runner._pool = fake_pool
+
+    task = asyncio.create_task(runner.predict_batch(["sample text"]))
+    try:
+        # Wait until the worker thread is blocked inside async_result.get
+        await asyncio.to_thread(get_started.wait, 5.0)
+        assert get_started.is_set()
+        assert runner._active_tasks == 1
+
+        # Cancel the awaiting coroutine while the job is still running
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # While the job is still blocked, _active_tasks must stay 1 and idle shutdown must not be scheduled
+        assert runner._active_tasks == 1
+        assert runner._idle_timer is None
+        assert runner._pool is fake_pool
+        fake_pool.close.assert_not_called()
+
+        # Release the blocked job and wait for completion accounting
+        get_proceed.set()
+        for _ in range(50):
+            if runner._active_tasks == 0 and runner._idle_timer is not None:
+                break
+            await asyncio.sleep(0.02)
+
+        assert runner._active_tasks == 0
+        assert runner._idle_timer is not None
+        runner._idle_timer.function()
+        fake_pool.close.assert_called_once()
+        assert runner._pool is None
+    finally:
+        get_proceed.set()
+        runner._cancel_idle_timer()
+
+
 def test_idle_timer_cannot_close_pool_between_ensure_and_increment():
     """_acquire_pool ensures pool, cancels timer, and increments active tasks under single lock hold."""
     settings = Settings()

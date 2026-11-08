@@ -28,6 +28,21 @@ type ResolutionError struct {
 	ErrorCode          string `json:"error_code"`
 }
 
+// IsRetryableFailure reports whether the article failed UUID resolution for a
+// transient reason (auto-creation error on a parseable stream ID) rather than a
+// permanent validation error.
+func (r *UUIDResolutionResult) IsRetryableFailure(inoreaderID string) bool {
+	if r == nil {
+		return false
+	}
+	for _, err := range r.Errors {
+		if err.ArticleInoreaderID == inoreaderID && err.ErrorCode == "AUTO_CREATION_ERROR" {
+			return true
+		}
+	}
+	return false
+}
+
 // SubscriptionMapping はスレッドセーフなサブスクリプションマッピング
 type SubscriptionMapping struct {
 	InoreaderIDToUUID map[string]uuid.UUID

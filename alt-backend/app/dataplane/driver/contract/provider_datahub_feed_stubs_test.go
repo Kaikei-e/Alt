@@ -65,6 +65,7 @@ func mountFeedProcedures(mux *http.ServeMux) {
 		"title":      "Older Post",
 		"websiteUrl": "https://example.com/older",
 		"createdAt":  "2026-06-01T09:00:00Z",
+		"updatedAt":  "2026-06-01T09:00:00Z",
 	}
 
 	// ---- §2.F Feed links ---------------------------------------------------

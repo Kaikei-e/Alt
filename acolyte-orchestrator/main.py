@@ -240,9 +240,8 @@ async def _fail_interrupted_run(task: asyncio.Task[None]) -> None:
     # HTTP client still have to close.
     try:
         # The cancellation can land after complete_run's UPDATE committed but
-        # before the coroutine returned. fail_run is an unconditional UPDATE, so
-        # without this read it would pair a bumped report version with a failed
-        # run — the corruption the drain exists to prevent.
+        # before the coroutine returned; check first so a settled run is logged
+        # as such instead of hitting fail_run's active-status guard.
         run = await _job_queue.get_run(run_id)
         if run is not None and run.run_status not in _UNFINISHED_RUN_STATUSES:
             logger.info(

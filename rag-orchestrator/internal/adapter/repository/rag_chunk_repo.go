@@ -176,6 +176,7 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 				WHERE d.current_version_id = c.version_id
 				  AND d.user_id = $4
 			)
+			  AND c.embedding IS NOT NULL
 			ORDER BY c.embedding <=> $1
 			LIMIT $2
 		)
@@ -238,9 +239,8 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 // projection, never as its own column: scanning it into the non-nullable
 // domain.RagChunk.Embedding (pgvector.Vector) would panic on any row whose
 // embedding is NULL, exactly like the bug fixed in GetChunksByVersionID.
-// This query has no "embedding IS NOT NULL" filter — a NULL embedding
-// still produces a NULL distance and sorts last, it does not exclude the
-// row — so a NULL-embedding chunk for a requested article reaches Scan.
+// Rows with a NULL embedding are excluded by WHERE c.embedding IS NOT NULL so
+// a NULL distance never reaches rows.Scan into float32.
 // No caller reads SearchResult.Chunk.Embedding, so the column is dropped.
 func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
 	if userID == uuid.Nil {
@@ -264,6 +264,7 @@ func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVect
 		WHERE d.article_id = ANY($2)
 		  AND d.current_version_id = v.id
 		  AND d.user_id = $4
+		  AND c.embedding IS NOT NULL
 		ORDER BY distance ASC
 		LIMIT $3
 	`

@@ -251,3 +251,29 @@ func TestFetchFeedsGateway_FetchUnreadFeedsListCursor_PropagatesStoreFailure(t *
 		})
 	}
 }
+
+func TestFetchFeedsGateway_ReadAndFavoriteCursor_RejectMissingSortKeyTimestamp(t *testing.T) {
+	logger.InitLogger()
+
+	createdAt := time.Date(2026, time.March, 1, 10, 0, 0, 0, time.UTC)
+	gateway := &FetchFeedsGateway{
+		store: &feedListStoreStub{
+			feeds: []*models.Feed{{
+				ID:         uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").String(),
+				Title:      "Feed Without Sort Key",
+				WebsiteURL: "https://example.com/a",
+				CreatedAt:  createdAt,
+			}},
+		},
+	}
+
+	ctx := context.Background()
+
+	readItems, err := gateway.FetchReadFeedsListCursor(ctx, nil, 10)
+	require.Error(t, err)
+	require.Nil(t, readItems)
+
+	favItems, err := gateway.FetchFavoriteFeedsListCursor(ctx, nil, 10)
+	require.Error(t, err)
+	require.Nil(t, favItems)
+}

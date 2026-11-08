@@ -172,6 +172,29 @@ func TestValidateConfig(t *testing.T) {
 			expectError: true,
 			errorMsg:    "backoff factor must be greater than 1.0",
 		},
+		"rate limit default interval below 5s": {
+			config: &Config{
+				Server:    ServerConfig{Port: 9200},
+				HTTP:      HTTPConfig{Timeout: 30 * time.Second},
+				Retry:     RetryConfig{MaxAttempts: 3, BackoffFactor: 2.0},
+				RateLimit: RateLimitConfig{DefaultInterval: 1 * time.Second},
+				Metrics:   MetricsConfig{Port: 9201},
+				NewsCreator: NewsCreatorConfig{
+					Host:    "http://news-creator:11434",
+					APIPath: "/api/generate",
+					Model:   "gemma4-e4b-q4km",
+					Timeout: 60 * time.Second,
+				},
+				SummarizeQueue: SummarizeQueueConfig{
+					WorkerInterval:  10 * time.Second,
+					MaxRetries:      3,
+					PollingInterval: 5 * time.Second,
+					Concurrency:     3,
+				},
+			},
+			expectError: true,
+			errorMsg:    "rate limit default interval must be at least 5s",
+		},
 	}
 
 	for name, tc := range tests {

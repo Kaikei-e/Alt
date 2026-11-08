@@ -239,11 +239,22 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 	filterResult := FilterTier1Articles(articles, s.logger)
 	tier1Articles := filterResult.Tier1
 
+	batchArticles := make([]*models.Article, 0, len(tier1Articles))
+	resolutionFailed := 0
+	for _, article := range tier1Articles {
+		if article.ArticleURL != "" && article.SubscriptionID == uuid.Nil && uuidResult.IsRetryableFailure(article.InoreaderID) {
+			resolutionFailed++
+			continue
+		}
+		batchArticles = append(batchArticles, article)
+	}
+
 	// Step 6: Process only Tier1 articles in batches. A batch error means the
 	// whole page was lost; it is reported to the caller below, but only after
 	// sync state is written, since bailing out here would leave last_sync
 	// untouched and pin the scheduler to this stream forever.
-	processed, failed, dropped, batchErr := s.ProcessArticleBatch(ctx, tier1Articles)
+	processed, failed, dropped, batchErr := s.ProcessArticleBatch(ctx, batchArticles)
+	failed += resolutionFailed
 	if batchErr != nil {
 		s.logger.Error("Failed to process article batch", "error", batchErr)
 	}
@@ -306,6 +317,9 @@ func (s *ArticleFetchService) ProcessArticleBatch(ctx context.Context, articles 
 		"total_articles", len(articles))
 
 	persistable, dropped := s.dropUnresolvableArticles(articles)
+	if len(persistable) == 0 {
+		return 0, 0, dropped, nil
+	}
 
 	// Use CreateBatch for resilient processing (individual transactions)
 	processed, failed, batchErr := s.articleRepo.CreateBatch(ctx, persistable)

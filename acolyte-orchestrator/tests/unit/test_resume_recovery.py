@@ -32,6 +32,7 @@ from structlog.testing import capture_logs
 
 from acolyte.config.settings import Settings
 from acolyte.domain.brief import ReportBrief
+from acolyte.domain.run import ReportRun
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.memory_job_gw import MemoryJobGateway
 from acolyte.gateway.memory_report_gw import MemoryReportGateway
@@ -322,3 +323,58 @@ async def test_resume_pipeline_accepts_a_brief_dict_from_the_repository() -> Non
     assert completed is not None
     assert completed.run_status == "succeeded"
     assert completed.run_id == UUID(str(run.run_id))
+
+
+@pytest.mark.asyncio
+async def test_memory_job_gateway_enforces_run_status_transitions() -> None:
+    """MemoryJobGateway must enforce the same status transition rules as Postgres:
+    failed -> mark_running -> running (clearing failure fields) -> complete_run -> succeeded,
+    succeeded -> fail_run is a no-op, and cancelled -> mark_running is refused."""
+    gw = MemoryJobGateway()
+    report_id = uuid4()
+
+    run = await gw.create_run(report_id, 1)
+    await gw.fail_run(run.run_id, "no_evidence", "upstream down")
+    failed = await gw.get_run(run.run_id)
+    assert failed is not None
+    assert failed.run_status == "failed"
+    assert failed.finished_at is not None
+    assert failed.failure_code == "no_evidence"
+    assert failed.failure_message == "upstream down"
+
+    await gw.mark_running(run.run_id, "planner-m", "writer-m", "critic-m")
+    running = await gw.get_run(run.run_id)
+    assert running is not None
+    assert running.run_status == "running"
+    assert running.finished_at is None
+    assert running.failure_code is None
+    assert running.failure_message is None
+
+    await gw.complete_run(run.run_id)
+    succeeded = await gw.get_run(run.run_id)
+    assert succeeded is not None
+    assert succeeded.run_status == "succeeded"
+    assert succeeded.finished_at is not None
+
+    # succeeded -> fail_run is a no-op
+    await gw.fail_run(run.run_id, "pipeline_crashed", "late crash")
+    after_fail = await gw.get_run(run.run_id)
+    assert after_fail is not None
+    assert after_fail.run_status == "succeeded"
+    assert after_fail.failure_code is None
+    assert after_fail.failure_message is None
+
+    # cancelled -> mark_running is refused, and complete_run is a no-op
+    cancelled_id = uuid4()
+    gw._runs[cancelled_id] = ReportRun(
+        run_id=cancelled_id,
+        report_id=report_id,
+        target_version_no=2,
+        run_status="cancelled",
+    )
+    with pytest.raises(RuntimeError, match=str(cancelled_id)):
+        await gw.mark_running(cancelled_id, "planner-m", "writer-m", "critic-m")
+    await gw.complete_run(cancelled_id)
+    cancelled = await gw.get_run(cancelled_id)
+    assert cancelled is not None
+    assert cancelled.run_status == "cancelled"

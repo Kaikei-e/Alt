@@ -9,6 +9,7 @@ by batch summarization jobs.
 import json
 import logging
 import re
+from contextlib import aclosing
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -129,8 +130,9 @@ def create_chat_router(
             stream_iter = await gateway.chat_stream(payload=payload)
 
             async def ndjson_generator():
-                async for chunk in stream_iter:
-                    yield json.dumps(chunk, ensure_ascii=False) + "\n"
+                async with aclosing(stream_iter):  # pyrefly: ignore[bad-specialization]
+                    async for chunk in stream_iter:
+                        yield json.dumps(chunk, ensure_ascii=False) + "\n"
 
             return StreamingResponse(
                 ndjson_generator(),

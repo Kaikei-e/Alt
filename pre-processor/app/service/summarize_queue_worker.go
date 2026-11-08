@@ -136,18 +136,21 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 		workerCount = len(jobs)
 	}
 
-	jobCh := make(chan *domain.SummarizeJob)
+	jobCh := make(chan int)
+	processed := make([]bool, len(jobs))
 	var wg sync.WaitGroup
 	var overloadOnce sync.Once
 	var overloaded atomic.Bool
 
 	workerFn := func() {
 		defer wg.Done()
-		for job := range jobCh {
+		for idx := range jobCh {
 			if ctx.Err() != nil || overloaded.Load() {
 				continue
 			}
 
+			job := jobs[idx]
+			processed[idx] = true
 			if err := w.processJob(ctx, job); err != nil {
 				if errors.Is(err, domain.ErrServiceOverloaded) || errors.Is(err, domain.ErrUpstreamBusy) {
 					overloadOnce.Do(func() {
@@ -170,7 +173,7 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 		go workerFn()
 	}
 
-	for i, job := range jobs {
+	for i := range jobs {
 		if ctx.Err() != nil {
 			w.logger.WarnContext(ctx, "context canceled, skipping remaining jobs",
 				"remaining", len(jobs)-i)
@@ -181,11 +184,17 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 				"remaining", len(jobs)-i)
 			break
 		}
-		jobCh <- job
+		jobCh <- i
 	}
 
 	close(jobCh)
 	wg.Wait()
+
+	for i, job := range jobs {
+		if !processed[i] {
+			w.releaseJob(ctx, job)
+		}
+	}
 
 	if overloaded.Load() {
 		// Returning ErrServiceOverloaded keeps the existing ticker backoff path;
@@ -196,6 +205,18 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (w *SummarizeQueueWorker) releaseJob(ctx context.Context, job *domain.SummarizeJob) {
+	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	if err := w.jobRepo.UpdateJobStatus(releaseCtx, job.JobID.String(), domain.SummarizeJobStatusPending, "", ""); err != nil {
+		w.logger.ErrorContext(releaseCtx, "failed to release unprocessed job back to pending",
+			"error", err,
+			"job_id", job.JobID,
+			"article_id", job.ArticleID)
+	}
 }
 
 // processJob processes a single summarization job.

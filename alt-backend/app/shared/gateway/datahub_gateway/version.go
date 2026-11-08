@@ -85,10 +85,20 @@ func (g *VersionGateway) CreateSummaryVersion(ctx context.Context, sv domain.Sum
 // side may be added between "read the previous version" and "point it at the
 // new one", because there is no longer a place on this side where those two
 // are separate.
-func (g *VersionGateway) MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
+func (g *VersionGateway) MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID, userID uuid.UUID) (*domain.SummaryVersion, error) {
+	if userID == uuid.Nil {
+		if user, err := domain.GetUserFromContext(ctx); err == nil && user != nil {
+			userID = user.UserID
+		}
+	}
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("authentication required: user_id is required")
+	}
+
 	resp, err := g.client.MarkSummaryVersionSuperseded(ctx, connect.NewRequest(&datahubv1.MarkSummaryVersionSupersededRequest{
 		ArticleId:    articleID.String(),
 		NewVersionId: newVersionID.String(),
+		UserId:       userID.String(),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("mark summary versions superseded for article %s: %w", articleID, err)
@@ -123,8 +133,14 @@ func (g *VersionGateway) GetSummaryVersionByID(ctx context.Context, summaryVersi
 
 // GetLatestSummaryVersion resolves the article's current version.
 func (g *VersionGateway) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil || user == nil || user.UserID == uuid.Nil {
+		return domain.SummaryVersion{}, fmt.Errorf("authentication required: %w", err)
+	}
+
 	resp, err := g.client.GetLatestSummaryVersion(ctx, connect.NewRequest(&datahubv1.GetLatestSummaryVersionRequest{
 		ArticleId: articleID.String(),
+		UserId:    user.UserID.String(),
 	}))
 	if err != nil {
 		return domain.SummaryVersion{}, fmt.Errorf("get latest summary version for article %s: %w", articleID, err)

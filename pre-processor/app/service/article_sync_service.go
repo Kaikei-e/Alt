@@ -108,11 +108,11 @@ func (s *articleSyncService) advanceSyncCursor(t time.Time) {
 	}
 }
 
-func (s *articleSyncService) isAcceptedWhileHeld(url string) bool {
+func (s *articleSyncService) isAcceptedWhileHeld(url string, createdAt time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.acceptedWhileHeld[url]
-	return ok
+	acceptedAt, ok := s.acceptedWhileHeld[url]
+	return ok && !createdAt.After(acceptedAt)
 }
 
 func (s *articleSyncService) recordAcceptedWhileHeld(valid, refused []*domain.Article, heldWatermark time.Time) {
@@ -131,7 +131,9 @@ func (s *articleSyncService) recordAcceptedWhileHeld(valid, refused []*domain.Ar
 			continue
 		}
 		if a.CreatedAt.After(heldWatermark) {
-			s.acceptedWhileHeld[a.URL] = a.CreatedAt
+			if prev, ok := s.acceptedWhileHeld[a.URL]; !ok || a.CreatedAt.After(prev) {
+				s.acceptedWhileHeld[a.URL] = a.CreatedAt
+			}
 		}
 	}
 }
@@ -243,7 +245,7 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 
 		// Skip articles that were already accepted during an earlier run while
 		// the watermark was pinned below an older refused row.
-		if s.isAcceptedWhileHeld(article.URL) {
+		if s.isAcceptedWhileHeld(article.URL, article.CreatedAt) {
 			continue
 		}
 

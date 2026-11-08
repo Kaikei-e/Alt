@@ -438,6 +438,7 @@ mod tests {
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
                     Some("/tmp/test-token-which-does-not-exist"),

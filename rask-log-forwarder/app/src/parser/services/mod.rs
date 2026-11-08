@@ -77,6 +77,12 @@ pub trait ServiceParser: Send + Sync {
     fn can_parse(&self, log: &str) -> bool;
 }
 
+pub(crate) fn parse_rfc3339_utc(raw: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(raw.trim())
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

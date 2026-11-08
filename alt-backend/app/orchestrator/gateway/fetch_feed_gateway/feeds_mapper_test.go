@@ -238,6 +238,7 @@ func TestGateway_FieldPopulationsMatchHEAD(t *testing.T) {
 		Description: "Desc",
 		WebsiteURL:  "https://example.com/post",
 		CreatedAt:   now,
+		UpdatedAt:   now,
 		IsRead:      true,
 		ArticleID:   &articleID,
 		OgImageURL:  &ogURL,

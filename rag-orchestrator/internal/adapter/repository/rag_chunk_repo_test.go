@@ -85,7 +85,10 @@ type fakeTxQueryOnly struct {
 	rows pgx.Rows
 }
 
-func (f *fakeTxQueryOnly) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
+func (f *fakeTxQueryOnly) Query(_ context.Context, query string, _ ...interface{}) (pgx.Rows, error) {
+	if r, ok := f.rows.(*enrichedChunkRow); ok && r.nullEmbedding && strings.Contains(query, "c.embedding IS NOT NULL") {
+		r.served = true
+	}
 	return f.rows, nil
 }
 
@@ -104,6 +107,9 @@ func (f *recordingTx) Query(_ context.Context, query string, args ...interface{}
 	f.calls++
 	f.queries = append(f.queries, query)
 	f.args = append(f.args, args)
+	if r, ok := f.rows.(*enrichedChunkRow); ok && r.nullEmbedding && strings.Contains(query, "c.embedding IS NOT NULL") {
+		r.served = true
+	}
 	return f.rows, nil
 }
 
@@ -121,6 +127,7 @@ func (f *recordingTx) Query(_ context.Context, query string, args ...interface{}
 type enrichedChunkRow struct {
 	pgx.Rows
 	id, versionID uuid.UUID
+	nullEmbedding bool
 	served        bool
 }
 
@@ -164,6 +171,9 @@ func (r *enrichedChunkRow) Scan(dest ...any) error {
 		case *time.Time:
 			*v = fixedCreatedAt
 		case *float32:
+			if r.nullEmbedding {
+				return errors.New("cannot scan NULL into *float32")
+			}
 			*v = 0.1
 		case *pgvector.Vector:
 			// Column value is SQL NULL: reproduce pgx's real NULL decode path.
@@ -495,4 +505,38 @@ func TestSearch_ScoresEachRowFromItsOwnDistance(t *testing.T) {
 	assert.InDelta(t, 0.9, results[0].Score, 1e-6)
 	assert.InDelta(t, 0.8, results[1].Score, 1e-6)
 	assert.InDelta(t, 0.7, results[2].Score, 1e-6)
+}
+
+func TestSearch_ExcludesNullEmbeddingChunks(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+
+	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New(), nullEmbedding: true}}
+	ctx := InjectTx(context.Background(), tx)
+
+	results, err := repo.Search(ctx, []float32{0.1, 0.2}, 5, chunkRepoTestUserID)
+	require.NoError(t, err)
+	assert.Empty(t, results)
+
+	require.Len(t, tx.queries, 1)
+	parts := strings.SplitN(tx.queries[0], "SELECT\n\t\t\tc.id", 2)
+	require.Len(t, parts, 2)
+	candidatesCTE := parts[0]
+	assert.Contains(t, candidatesCTE, "c.embedding IS NOT NULL")
+	assert.Less(t, strings.Index(candidatesCTE, "c.embedding IS NOT NULL"), strings.Index(candidatesCTE, "ORDER BY c.embedding <=> $1"))
+}
+
+func TestSearchWithinArticles_ExcludesNullEmbeddingChunks(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+
+	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New(), nullEmbedding: true}}
+	ctx := InjectTx(context.Background(), tx)
+
+	results, err := repo.SearchWithinArticles(ctx, []float32{0.1, 0.2}, []string{"article-1"}, 5, chunkRepoTestUserID)
+	require.NoError(t, err)
+	assert.Empty(t, results)
+
+	require.Len(t, tx.queries, 1)
+	q := tx.queries[0]
+	assert.Contains(t, q, "c.embedding IS NOT NULL")
+	assert.Less(t, strings.Index(q, "c.embedding IS NOT NULL"), strings.Index(q, "ORDER BY distance ASC"))
 }

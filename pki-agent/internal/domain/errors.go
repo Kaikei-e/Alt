@@ -9,6 +9,8 @@ var (
 	ErrCertNotFound = errors.New("pki-agent: cert not found")
 	// ErrCertParseFailed: file present but not a valid X.509 PEM.
 	ErrCertParseFailed = errors.New("pki-agent: cert parse failed")
+	// ErrCertKeyMismatch: cert and private key files on disk do not form a valid pair.
+	ErrCertKeyMismatch = errors.New("pki-agent: cert and key do not match")
 	// ErrCAUnreachable: step-ca HTTP call failed or timed out.
 	ErrCAUnreachable = errors.New("pki-agent: CA unreachable")
 	// ErrCARejected: step-ca returned a non-2xx (including 401 / 400).
@@ -30,6 +32,8 @@ func LogSafeError(err error) string {
 		return "cert_not_found"
 	case errors.Is(err, ErrCertParseFailed):
 		return "cert_parse_failed"
+	case errors.Is(err, ErrCertKeyMismatch):
+		return "cert_key_mismatch"
 	case errors.Is(err, ErrCAUnreachable):
 		return "ca_unreachable"
 	case errors.Is(err, ErrCARejected):

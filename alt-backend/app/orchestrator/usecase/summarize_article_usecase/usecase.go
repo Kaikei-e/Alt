@@ -13,8 +13,10 @@ import (
 	"alt/utils/html_parser"
 	"alt/utils/logger"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -118,20 +120,20 @@ func (u *Usecase) ResolveStreamArticle(ctx context.Context, articleID, feedURL, 
 	}
 
 	if articleID != "" {
+		article, err := u.repo.FetchArticleByID(ctx, articleID)
+		if err != nil {
+			return "", "", "", fmt.Errorf("fetch article by id: %w", err)
+		}
+		if article == nil {
+			logger.Logger.WarnContext(ctx, "Article ID provided but not found in DB", "article_id", articleID)
+			return "", "", "", domain.ErrArticleNotFound
+		}
 		if content == "" {
-			article, err := u.repo.FetchArticleByID(ctx, articleID)
-			if err != nil {
-				return "", "", "", fmt.Errorf("fetch article by id: %w", err)
-			}
-			if article != nil {
-				logger.Logger.InfoContext(ctx, "Fetched article content from DB", "article_id", articleID, "content_length", len(article.Content))
-				content = article.Content
-				if title == "" {
-					title = article.Title
-				}
-			} else {
-				logger.Logger.WarnContext(ctx, "Article ID provided but not found in DB", "article_id", articleID)
-			}
+			logger.Logger.InfoContext(ctx, "Fetched article content from DB", "article_id", articleID, "content_length", len(article.Content))
+			content = article.Content
+		}
+		if title == "" {
+			title = article.Title
 		}
 		return articleID, title, content, nil
 	}
@@ -193,6 +195,36 @@ func (u *Usecase) SaveStreamedSummary(ctx context.Context, articleID, userID, ti
 	return nil
 }
 
+type sseErrorPayload struct {
+	Error string `json:"error"`
+}
+
+func isErrorJSONObject(s string) bool {
+	if !strings.HasPrefix(s, "{") {
+		return false
+	}
+	var payload sseErrorPayload
+	return json.Unmarshal([]byte(s), &payload) == nil && payload.Error != ""
+}
+
+// IsErrorPayloadSummary reports whether raw is a persisted upstream error payload.
+func IsErrorPayloadSummary(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if isErrorJSONObject(trimmed) {
+		return true
+	}
+	for _, line := range strings.Split(trimmed, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "event:") && strings.TrimSpace(strings.TrimPrefix(line, "event:")) == "error" {
+			return true
+		}
+		if strings.HasPrefix(line, "data:") && isErrorJSONObject(strings.TrimSpace(strings.TrimPrefix(line, "data:"))) {
+			return true
+		}
+	}
+	return false
+}
+
 // GetCachedSummary returns a previously generated, non-empty summary for
 // articleID, if any. A lookup error is treated the same as "not found" —
 // matches the legacy handlers' behavior of falling back to generation.
@@ -201,7 +233,7 @@ func (u *Usecase) GetCachedSummary(ctx context.Context, articleID string) (strin
 		return "", false
 	}
 	existing, err := u.repo.FetchArticleSummaryByArticleID(ctx, articleID)
-	if err != nil || existing == nil || existing.Summary == "" {
+	if err != nil || existing == nil || existing.Summary == "" || IsErrorPayloadSummary(existing.Summary) {
 		return "", false
 	}
 	return existing.Summary, true

@@ -55,6 +55,22 @@ def test_wav_info_rejects_invalid_framerate() -> None:
         wav_info(raw)
 
 
+def test_wav_info_rejects_zero_frames() -> None:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(48000)
+        wf.writeframes(b"")
+    with pytest.raises(AudioFormatError):
+        wav_info(buf.getvalue())
+
+
+def test_wav_info_rejects_truncated_frames(sample_wav_bytes: bytes) -> None:
+    with pytest.raises(AudioFormatError):
+        wav_info(sample_wav_bytes[:-10])
+
+
 def test_append_silence_success(sample_wav_bytes: bytes) -> None:
     _, original_duration = wav_info(sample_wav_bytes)
     result = append_silence(sample_wav_bytes, ms=200)

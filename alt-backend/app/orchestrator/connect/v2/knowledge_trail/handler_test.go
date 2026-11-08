@@ -3,6 +3,8 @@ package knowledge_trail
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"testing"
@@ -27,10 +29,11 @@ import (
 type fakeTrailPort struct {
 	footprints []domain.TrailFootprint
 	episodes   []domain.TrailEpisode
+	err        error
 }
 
 func (f *fakeTrailPort) GetTrailFootprints(_ context.Context, _ uuid.UUID, _ string, _ int, _ []string) ([]domain.TrailFootprint, []domain.TrailBranch, []domain.TrailEpisode, string, bool, error) {
-	return f.footprints, nil, f.episodes, "", false, nil
+	return f.footprints, nil, f.episodes, "", false, f.err
 }
 
 type fakeThumbnailPort struct {
@@ -441,6 +444,17 @@ func TestResolveBranch_InvalidDismissReasonReturnsInvalidArgument(t *testing.T) 
 		ClientResolutionId: resolveGoodUUIDv7,
 		DismissReason:      "not_a_real_reason",
 	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestGetTrail_PreservesUpstreamInvalidArgument(t *testing.T) {
+	port := &fakeTrailPort{
+		err: fmt.Errorf("x: %w", connect.NewError(connect.CodeInvalidArgument, errors.New("bad cursor"))),
+	}
+	h := NewHandler(get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(port, &fakeThumbnailPort{}), nil, nil, nil, nil, nil, slog.Default())
+
+	_, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }

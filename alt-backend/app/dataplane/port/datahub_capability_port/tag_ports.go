@@ -18,7 +18,7 @@ import (
 type TagReadPort interface {
 	// ArticleTags returns an article's tags. An untagged article is an empty
 	// slice, not an error: the caller reads emptiness as "generate some".
-	ArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error)
+	ArticleTags(ctx context.Context, articleID string, userID *uuid.UUID) ([]*domain.FeedTag, error)
 	// FeedTags pages one feed's tags newest first. A nil cursor is the first
 	// page.
 	FeedTags(ctx context.Context, feedID string, cursor *time.Time, limit int) ([]*domain.FeedTag, error)
@@ -48,9 +48,9 @@ type TagReadPort interface {
 // and because merging them would need a third state meaning "neither
 // identifier given".
 type TagTrailPort interface {
-	// ArticlesByTagID pages one feed tag's articles, newest first.
-	ArticlesByTagID(ctx context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
-	// ArticlesByTagName pages every feed's articles carrying a tag of this
-	// name, deduplicated.
-	ArticlesByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
+	// ArticlesByTagID pages one feed tag's articles owned by userID, newest first.
+	ArticlesByTagID(ctx context.Context, tagID string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
+	// ArticlesByTagName pages every feed's articles owned by userID carrying a
+	// tag of this name, deduplicated.
+	ArticlesByTagName(ctx context.Context, tagName string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
 }

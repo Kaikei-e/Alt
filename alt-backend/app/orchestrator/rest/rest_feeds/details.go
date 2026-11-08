@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -207,7 +208,7 @@ func RestHandleFetchFeedTags(container *di.ApplicationComponents) echo.HandlerFu
 		// Parse cursor if provided (same pattern as existing cursor endpoints)
 		var cursor *time.Time
 		if req.Cursor != "" {
-			parsedCursor, err := time.Parse(time.RFC3339, req.Cursor)
+			parsedCursor, err := time.Parse(time.RFC3339Nano, req.Cursor)
 			if err != nil {
 				logger.Logger.ErrorContext(ctx, "Invalid cursor parameter", "error", err, "cursor", req.Cursor)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
@@ -231,7 +232,7 @@ func RestHandleFetchFeedTags(container *di.ApplicationComponents) echo.HandlerFu
 			tagResponses[i] = FeedTagResponse{
 				ID:        tag.ID,
 				Name:      tag.TagName,
-				CreatedAt: tag.CreatedAt.Format(time.RFC3339),
+				CreatedAt: tag.CreatedAt.Format(time.RFC3339Nano),
 			}
 		}
 
@@ -244,7 +245,7 @@ func RestHandleFetchFeedTags(container *di.ApplicationComponents) echo.HandlerFu
 		// Add next cursor if there are results
 		if len(tags) > 0 {
 			lastTag := tags[len(tags)-1]
-			response["next_cursor"] = lastTag.CreatedAt.Format(time.RFC3339)
+			response["next_cursor"] = lastTag.CreatedAt.Format(time.RFC3339Nano)
 		}
 
 		logger.Logger.InfoContext(ctx, "Feed tags retrieved successfully", "feed_url", req.FeedURL, "count", len(tags))
@@ -265,6 +266,12 @@ func RestHandleFetchFeedTagsByID(container *di.ApplicationComponents) echo.Handl
 			logger.Logger.ErrorContext(ctx, "Feed ID is required")
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Feed ID is required"})
 		}
+		parsedFeedID, err := uuid.Parse(feedID)
+		if err != nil {
+			logger.Logger.WarnContext(ctx, "Invalid feed ID", "error", err, "feedID", feedID)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid feed ID"})
+		}
+		feedID = parsedFeedID.String()
 
 		// Parse limit from query parameter (optional)
 		limit := 20 // Default limit
@@ -283,7 +290,7 @@ func RestHandleFetchFeedTagsByID(container *di.ApplicationComponents) echo.Handl
 		// Parse cursor from query parameter (optional)
 		var cursor *time.Time
 		if cursorStr := c.QueryParam("cursor"); cursorStr != "" {
-			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
+			parsedCursor, err := time.Parse(time.RFC3339Nano, cursorStr)
 			if err != nil {
 				logger.Logger.ErrorContext(ctx, "Invalid cursor parameter", "error", err, "cursor", cursorStr)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid cursor format. Use RFC3339 format"})
@@ -309,7 +316,7 @@ func RestHandleFetchFeedTagsByID(container *di.ApplicationComponents) echo.Handl
 			tagResponses[i] = FeedTagResponse{
 				ID:        tag.ID,
 				Name:      tag.TagName,
-				CreatedAt: tag.CreatedAt.Format(time.RFC3339),
+				CreatedAt: tag.CreatedAt.Format(time.RFC3339Nano),
 			}
 		}
 
@@ -322,7 +329,7 @@ func RestHandleFetchFeedTagsByID(container *di.ApplicationComponents) echo.Handl
 		// Add next cursor if there are results
 		if len(tags) > 0 {
 			lastTag := tags[len(tags)-1]
-			response["next_cursor"] = lastTag.CreatedAt.Format(time.RFC3339)
+			response["next_cursor"] = lastTag.CreatedAt.Format(time.RFC3339Nano)
 		}
 
 		logger.Logger.InfoContext(ctx, "Feed tags by ID retrieved successfully", "feedID", feedID, "count", len(tags))

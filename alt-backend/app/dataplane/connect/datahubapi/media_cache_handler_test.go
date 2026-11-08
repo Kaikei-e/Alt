@@ -54,13 +54,16 @@ func (f *fakeOutboxPort) Prune(_ context.Context, olderThan time.Duration) (int6
 }
 
 type fakeOgImagePort struct {
-	head       *domain.ArticleHead
-	headErr    error
-	urls       map[string]string
-	candidates []domain.OgImageBackfillCandidate
-	unwarmed   []string
-	purgeTTL   time.Duration
-	purged     int64
+	head          *domain.ArticleHead
+	headErr       error
+	urls          map[string]string
+	urlsByUser    map[uuid.UUID]map[string]string
+	gotArticleIDs []string
+	gotUser       *uuid.UUID
+	candidates    []domain.OgImageBackfillCandidate
+	unwarmed      []string
+	purgeTTL      time.Duration
+	purged        int64
 
 	// SaveArticleHead is catalog §2.B, part of the article write capability. It
 	// writes the table the reads above read, so it lives on the same port.
@@ -86,7 +89,20 @@ func (f *fakeOgImagePort) GetArticleHead(_ context.Context, _ string) (*domain.A
 	return f.head, f.headErr
 }
 
-func (f *fakeOgImagePort) BatchGetOgImageURLs(_ context.Context, _ []string) (map[string]string, error) {
+func (f *fakeOgImagePort) BatchGetOgImageURLs(_ context.Context, articleIDs []string, userID *uuid.UUID) (map[string]string, error) {
+	f.gotArticleIDs, f.gotUser = articleIDs, userID
+	if f.urlsByUser != nil {
+		if userID == nil {
+			all := make(map[string]string)
+			for _, m := range f.urlsByUser {
+				for k, v := range m {
+					all[k] = v
+				}
+			}
+			return all, nil
+		}
+		return f.urlsByUser[*userID], nil
+	}
 	return f.urls, nil
 }
 
@@ -438,6 +454,63 @@ func TestBatchGetOgImageURLsRejectsOversizedBatch(t *testing.T) {
 		connect.NewRequest(&datahubv1.BatchGetOgImageURLsRequest{ArticleIds: ids}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestBatchGetOgImageURLsForwardsUserAndOmitsForeignArticles(t *testing.T) {
+	ownerID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	otherID := uuid.MustParse("99999999-9999-4999-8999-999999999999")
+	articleID := "22222222-2222-4222-8222-222222222222"
+
+	h, f := newMediaHandler(mediaFakes{ogImage: &fakeOgImagePort{
+		urlsByUser: map[uuid.UUID]map[string]string{
+			ownerID: {articleID: "https://cdn.example.com/private-a.png"},
+		},
+	}})
+
+	ownerResp, err := h.BatchGetOgImageURLs(context.Background(),
+		connect.NewRequest(&datahubv1.BatchGetOgImageURLsRequest{
+			ArticleIds: []string{articleID},
+			UserId:     ownerID.String(),
+		}))
+	require.NoError(t, err)
+	assert.Equal(t, []string{articleID}, f.ogImage.gotArticleIDs)
+	require.NotNil(t, f.ogImage.gotUser)
+	assert.Equal(t, ownerID, *f.ogImage.gotUser)
+	assert.Equal(t, map[string]string{articleID: "https://cdn.example.com/private-a.png"}, ownerResp.Msg.GetOgImageUrls())
+
+	otherResp, err := h.BatchGetOgImageURLs(context.Background(),
+		connect.NewRequest(&datahubv1.BatchGetOgImageURLsRequest{
+			ArticleIds: []string{articleID},
+			UserId:     otherID.String(),
+		}))
+	require.NoError(t, err)
+	require.NotNil(t, f.ogImage.gotUser)
+	assert.Equal(t, otherID, *f.ogImage.gotUser)
+	assert.Empty(t, otherResp.Msg.GetOgImageUrls())
+}
+
+func TestBatchGetOgImageURLsRequiresUser(t *testing.T) {
+	tests := []struct {
+		name   string
+		userID string
+	}{
+		{"empty user_id", ""},
+		{"not a uuid", "not-a-uuid"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, f := newMediaHandler(mediaFakes{})
+			_, err := h.BatchGetOgImageURLs(context.Background(),
+				connect.NewRequest(&datahubv1.BatchGetOgImageURLsRequest{
+					ArticleIds: []string{"22222222-2222-4222-8222-222222222222"},
+					UserId:     tt.userID,
+				}))
+			require.Error(t, err)
+			assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+			assert.Empty(t, f.ogImage.gotArticleIDs, "must not reach the repository when user_id is missing or invalid")
+		})
+	}
 }
 
 // TestPurgeRetentionRejectsZeroTTL covers both retention deletes at once:

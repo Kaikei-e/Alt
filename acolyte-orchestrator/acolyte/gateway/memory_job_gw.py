@@ -7,6 +7,9 @@ from uuid import UUID, uuid4
 
 from acolyte.domain.run import ReportJob, ReportRun
 
+_ACTIVE_RUN_STATUSES = ("pending", "running")
+_RUNNABLE_RUN_STATUSES = (*_ACTIVE_RUN_STATUSES, "failed")
+
 
 class MemoryJobGateway:
     """In-memory JobQueuePort implementation."""
@@ -36,7 +39,7 @@ class MemoryJobGateway:
         return self._runs.get(run_id)
 
     async def get_active_run_for_report(self, report_id: UUID) -> ReportRun | None:
-        active = [r for r in self._runs.values() if r.report_id == report_id and r.run_status in ("pending", "running")]
+        active = [r for r in self._runs.values() if r.report_id == report_id and r.run_status in _ACTIVE_RUN_STATUSES]
         if not active:
             return None
         # started_at DESC NULLS LAST — match Postgres ordering.
@@ -59,7 +62,7 @@ class MemoryJobGateway:
         return matching[-1] if matching else None
 
     async def list_running_runs(self) -> list[ReportRun]:
-        return [r for r in self._runs.values() if r.run_status in ("pending", "running")]
+        return [r for r in self._runs.values() if r.run_status in _ACTIVE_RUN_STATUSES]
 
     async def claim_job(self, worker_id: str) -> ReportJob | None:
         for job in self._jobs.values():
@@ -100,49 +103,53 @@ class MemoryJobGateway:
 
     async def mark_running(self, run_id: UUID, planner_model: str, writer_model: str, critic_model: str) -> None:
         run = self._runs.get(run_id)
-        if run:
-            self._runs[run_id] = ReportRun(
-                run_id=run.run_id,
-                report_id=run.report_id,
-                target_version_no=run.target_version_no,
-                run_status="running",
-                planner_model=planner_model,
-                writer_model=writer_model,
-                critic_model=critic_model,
-                started_at=datetime.now(UTC),
-                finished_at=run.finished_at,
-                failure_code=run.failure_code,
-                failure_message=run.failure_message,
-            )
+        if run is None or run.run_status not in _RUNNABLE_RUN_STATUSES:
+            msg = f"Cannot mark run {run_id} as running: run not found or already in terminal status"
+            raise RuntimeError(msg)
+        self._runs[run_id] = ReportRun(
+            run_id=run.run_id,
+            report_id=run.report_id,
+            target_version_no=run.target_version_no,
+            run_status="running",
+            planner_model=planner_model,
+            writer_model=writer_model,
+            critic_model=critic_model,
+            started_at=datetime.now(UTC),
+            finished_at=None,
+            failure_code=None,
+            failure_message=None,
+        )
 
     async def complete_run(self, run_id: UUID) -> None:
         run = self._runs.get(run_id)
-        if run:
-            self._runs[run_id] = ReportRun(
-                run_id=run.run_id,
-                report_id=run.report_id,
-                target_version_no=run.target_version_no,
-                run_status="succeeded",
-                planner_model=run.planner_model,
-                writer_model=run.writer_model,
-                critic_model=run.critic_model,
-                started_at=run.started_at,
-                finished_at=datetime.now(UTC),
-            )
+        if run is None or run.run_status not in _ACTIVE_RUN_STATUSES:
+            return
+        self._runs[run_id] = ReportRun(
+            run_id=run.run_id,
+            report_id=run.report_id,
+            target_version_no=run.target_version_no,
+            run_status="succeeded",
+            planner_model=run.planner_model,
+            writer_model=run.writer_model,
+            critic_model=run.critic_model,
+            started_at=run.started_at,
+            finished_at=datetime.now(UTC),
+        )
 
     async def fail_run(self, run_id: UUID, failure_code: str, failure_message: str) -> None:
         run = self._runs.get(run_id)
-        if run:
-            self._runs[run_id] = ReportRun(
-                run_id=run.run_id,
-                report_id=run.report_id,
-                target_version_no=run.target_version_no,
-                run_status="failed",
-                planner_model=run.planner_model,
-                writer_model=run.writer_model,
-                critic_model=run.critic_model,
-                started_at=run.started_at,
-                finished_at=datetime.now(UTC),
-                failure_code=failure_code,
-                failure_message=failure_message,
-            )
+        if run is None or run.run_status not in _ACTIVE_RUN_STATUSES:
+            return
+        self._runs[run_id] = ReportRun(
+            run_id=run.run_id,
+            report_id=run.report_id,
+            target_version_no=run.target_version_no,
+            run_status="failed",
+            planner_model=run.planner_model,
+            writer_model=run.writer_model,
+            critic_model=run.critic_model,
+            started_at=run.started_at,
+            finished_at=datetime.now(UTC),
+            failure_code=failure_code,
+            failure_message=failure_message,
+        )

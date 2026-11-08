@@ -44,6 +44,11 @@ func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, arti
 		}
 		return nil, err
 	}
+	if ctx.Err() != nil {
+		cancel()
+		_ = stream.Close()
+		return nil, fmt.Errorf("client disconnected during stream setup: %w", ctx.Err())
+	}
 
 	h.logger.InfoContext(ctx, "pre-processor Connect-RPC stream obtained", "article_id", articleID)
 

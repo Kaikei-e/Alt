@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"alt/domain"
+
 	"github.com/google/uuid"
 	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/require"
@@ -51,6 +53,7 @@ func TestMarkSummaryVersionSuperseded_UsesTransactionWithAdvisoryLock(t *testing
 
 	articleID := uuid.New()
 	newVersionID := uuid.New()
+	userID := uuid.New()
 	prevID := uuid.New()
 	generatedAt := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
 
@@ -60,29 +63,29 @@ func TestMarkSummaryVersionSuperseded_UsesTransactionWithAdvisoryLock(t *testing
 		WillReturnResult(pgxmock.NewResult("SELECT", 0))
 
 	mock.ExpectQuery("SELECT generated_at FROM summary_versions").
-		WithArgs(newVersionID).
+		WithArgs(newVersionID, userID).
 		WillReturnRows(pgxmock.NewRows([]string{"generated_at"}).AddRow(generatedAt))
 
 	// No newer version outstanding, so this one goes on to supersede.
 	mock.ExpectQuery("SELECT summary_version_id FROM summary_versions").
-		WithArgs(articleID, generatedAt, newVersionID).
+		WithArgs(articleID, userID, generatedAt, newVersionID).
 		WillReturnRows(pgxmock.NewRows([]string{"summary_version_id"}))
 
 	mock.ExpectQuery("SELECT summary_version_id, article_id, user_id").
-		WithArgs(articleID, generatedAt, newVersionID).
+		WithArgs(articleID, userID, generatedAt, newVersionID).
 		WillReturnRows(pgxmock.NewRows([]string{
 			"summary_version_id", "article_id", "user_id", "generated_at",
 			"model", "prompt_version", "input_hash", "quality_score",
 			"summary_text", "superseded_by",
-		}).AddRow(prevID, articleID, uuid.New(), generatedAt.Add(-time.Minute), "model", "v1", "hash", (*float64)(nil), "text", nil))
+		}).AddRow(prevID, articleID, userID, generatedAt.Add(-time.Minute), "model", "v1", "hash", (*float64)(nil), "text", nil))
 
 	mock.ExpectExec("UPDATE summary_versions").
-		WithArgs(articleID, generatedAt, newVersionID, newVersionID).
+		WithArgs(articleID, userID, generatedAt, newVersionID, newVersionID).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	mock.ExpectCommit()
 
-	prev, err := repo.MarkSummaryVersionSuperseded(context.Background(), articleID, newVersionID)
+	prev, err := repo.MarkSummaryVersionSuperseded(context.Background(), articleID, newVersionID, userID)
 	require.NoError(t, err)
 	require.NotNil(t, prev)
 	require.Equal(t, prevID, prev.SummaryVersionID)
@@ -101,6 +104,7 @@ func TestMarkSummaryVersionSuperseded_NoPreviousVersion_CommitsEmptyTx(t *testin
 
 	articleID := uuid.New()
 	newVersionID := uuid.New()
+	userID := uuid.New()
 	generatedAt := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
@@ -108,13 +112,13 @@ func TestMarkSummaryVersionSuperseded_NoPreviousVersion_CommitsEmptyTx(t *testin
 		WithArgs(articleID).
 		WillReturnResult(pgxmock.NewResult("SELECT", 0))
 	mock.ExpectQuery("SELECT generated_at FROM summary_versions").
-		WithArgs(newVersionID).
+		WithArgs(newVersionID, userID).
 		WillReturnRows(pgxmock.NewRows([]string{"generated_at"}).AddRow(generatedAt))
 	mock.ExpectQuery("SELECT summary_version_id FROM summary_versions").
-		WithArgs(articleID, generatedAt, newVersionID).
+		WithArgs(articleID, userID, generatedAt, newVersionID).
 		WillReturnRows(pgxmock.NewRows([]string{"summary_version_id"}))
 	mock.ExpectQuery("SELECT summary_version_id, article_id, user_id").
-		WithArgs(articleID, generatedAt, newVersionID).
+		WithArgs(articleID, userID, generatedAt, newVersionID).
 		WillReturnRows(pgxmock.NewRows([]string{
 			"summary_version_id", "article_id", "user_id", "generated_at",
 			"model", "prompt_version", "input_hash", "quality_score",
@@ -122,7 +126,7 @@ func TestMarkSummaryVersionSuperseded_NoPreviousVersion_CommitsEmptyTx(t *testin
 		}))
 	mock.ExpectCommit()
 
-	prev, err := repo.MarkSummaryVersionSuperseded(context.Background(), articleID, newVersionID)
+	prev, err := repo.MarkSummaryVersionSuperseded(context.Background(), articleID, newVersionID, userID)
 	require.NoError(t, err)
 	require.Nil(t, prev)
 
@@ -141,6 +145,7 @@ func TestMarkSummaryVersionSuperseded_YieldsToNewerVersion(t *testing.T) {
 
 	articleID := uuid.New()
 	newVersionID := uuid.New()
+	userID := uuid.New()
 	winnerID := uuid.New()
 	generatedAt := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
 
@@ -149,19 +154,82 @@ func TestMarkSummaryVersionSuperseded_YieldsToNewerVersion(t *testing.T) {
 		WithArgs(articleID).
 		WillReturnResult(pgxmock.NewResult("SELECT", 0))
 	mock.ExpectQuery("SELECT generated_at FROM summary_versions").
-		WithArgs(newVersionID).
+		WithArgs(newVersionID, userID).
 		WillReturnRows(pgxmock.NewRows([]string{"generated_at"}).AddRow(generatedAt))
 	mock.ExpectQuery("SELECT summary_version_id FROM summary_versions").
-		WithArgs(articleID, generatedAt, newVersionID).
+		WithArgs(articleID, userID, generatedAt, newVersionID).
 		WillReturnRows(pgxmock.NewRows([]string{"summary_version_id"}).AddRow(winnerID))
 	mock.ExpectExec("UPDATE summary_versions").
-		WithArgs(winnerID, newVersionID).
+		WithArgs(winnerID, newVersionID, userID).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectCommit()
 
-	prev, err := repo.MarkSummaryVersionSuperseded(context.Background(), articleID, newVersionID)
+	prev, err := repo.MarkSummaryVersionSuperseded(context.Background(), articleID, newVersionID, userID)
 	require.NoError(t, err)
 	require.Nil(t, prev)
 
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestMarkSummaryVersionSuperseded_RequiresUserID(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &SummaryRepository{pool: mock}
+
+	_, err = repo.MarkSummaryVersionSuperseded(context.Background(), uuid.New(), uuid.New(), uuid.Nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user id is required")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetLatestSummaryVersion_ScopesByUserID(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &SummaryRepository{pool: mock}
+
+	articleID := uuid.New()
+	userID := uuid.New()
+	versionID := uuid.New()
+	generatedAt := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("SELECT summary_version_id, article_id, user_id").
+		WithArgs(articleID, userID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"summary_version_id", "article_id", "user_id", "generated_at",
+			"model", "prompt_version", "input_hash", "quality_score",
+			"summary_text", "superseded_by",
+		}).AddRow(versionID, articleID, userID, generatedAt, "model", "v1", "hash", (*float64)(nil), "summary text", nil))
+
+	sv, err := repo.GetLatestSummaryVersionForUser(context.Background(), articleID, &userID)
+	require.NoError(t, err)
+	require.Equal(t, versionID, sv.SummaryVersionID)
+	require.Equal(t, userID, sv.UserID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetLatestSummaryVersion_RequiresUserID(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &SummaryRepository{pool: mock}
+
+	_, err = repo.GetLatestSummaryVersion(context.Background(), uuid.New())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user id is required")
+
+	nilUUID := uuid.Nil
+	_, err = repo.GetLatestSummaryVersionForUser(context.Background(), uuid.New(), &nilUUID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user id is required")
+
+	ctxWithNilUser := domain.SetUserContext(context.Background(), &domain.UserContext{})
+	_, err = repo.GetLatestSummaryVersion(ctxWithNilUser, uuid.New())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user id is required")
 	require.NoError(t, mock.ExpectationsWereMet())
 }

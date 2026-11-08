@@ -769,3 +769,68 @@ async def test_probe_backoff_after_dispatch_cooldown_depends_only_on_consecutive
     clock = 1481.0 + 61.0
     await hc._check_all()
     assert hc._session.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_sibling_probe_failure_does_not_reset_last_checked_or_inflate_backoff(
+    monkeypatch,
+):
+    """A failing /v1/models probe triggered by a due sibling must not update a target that is not due."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target_a = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    target_b = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-b/model-b:latest",
+        num_ctx=16384,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target_a, target_b],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+    )
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps(
+                    {
+                        "object": "list",
+                        "data": [{"id": target_a.model}, {"id": target_b.model}],
+                    }
+                ),
+            ),
+        }
+    )
+
+    clock = 100.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+    assert hc.status()[1]["healthy"] is True
+
+    # target_a fails dispatch at t=100 -> cooldown_until = 160
+    hc.mark_failure(target_a)
+    assert hc._states[target_a]["cooldown_until"] == 160.0
+    assert hc._states[target_a]["probe_failures"] == 0
+
+    # At t=155, target_b is due (155 - 100 >= 30) while target_a is in cooldown; /v1/models returns 503
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(503, "busy"),
+        }
+    )
+    clock = 155.0
+    await hc._check_all()
+
+    assert hc._should_probe_target(target_a, 161.0) is True
+    assert hc._states[target_a]["probe_failures"] == 0
+    assert hc._states[target_a]["last_checked"] == 100.0

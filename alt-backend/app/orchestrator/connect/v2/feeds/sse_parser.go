@@ -10,7 +10,7 @@ type sseErrorPayload struct {
 	Error string `json:"error"`
 }
 
-func isErrorPayloadSummary(raw string) bool {
+func isErrorJSONObject(raw string) bool {
 	trimmed := strings.TrimSpace(raw)
 	if !strings.HasPrefix(trimmed, "{") {
 		return false
@@ -46,7 +46,7 @@ func extractSSEEvent(eventStr string) (string, error) {
 			var decoded string
 			if err := json.Unmarshal([]byte(dataContent), &decoded); err == nil {
 				result.WriteString(decoded)
-			} else if isErrorPayloadSummary(dataContent) {
+			} else if isErrorJSONObject(dataContent) {
 				var errPayload sseErrorPayload
 				_ = json.Unmarshal([]byte(dataContent), &errPayload)
 				return "", fmt.Errorf("upstream SSE error: %s", errPayload.Error)

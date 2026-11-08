@@ -142,6 +142,7 @@ func TestMarkSummaryVersionSupersededContract(t *testing.T) {
 			Body: map[string]interface{}{
 				"articleId":    versionArticleID,
 				"newVersionId": summaryVersionID,
+				"userId":       statsUserIDValue,
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -173,8 +174,12 @@ func TestMarkSummaryVersionSupersededContract(t *testing.T) {
 			if parseErr != nil {
 				return parseErr
 			}
+			userID, parseErr := parseTestUUID(statsUserIDValue)
+			if parseErr != nil {
+				return parseErr
+			}
 
-			prev, markErr := gw.MarkSummaryVersionSuperseded(context.Background(), articleID, newID)
+			prev, markErr := gw.MarkSummaryVersionSuperseded(context.Background(), articleID, newID, userID)
 			if markErr != nil {
 				return fmt.Errorf("MarkSummaryVersionSuperseded failed: %w", markErr)
 			}
@@ -208,6 +213,7 @@ func TestMarkSummaryVersionSupersededFirstVersionContract(t *testing.T) {
 			Body: map[string]interface{}{
 				"articleId":    "00000000-0000-4000-8000-000000000000",
 				"newVersionId": summaryVersionID,
+				"userId":       statsUserIDValue,
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -226,8 +232,12 @@ func TestMarkSummaryVersionSupersededFirstVersionContract(t *testing.T) {
 			if parseErr != nil {
 				return parseErr
 			}
+			userID, parseErr := parseTestUUID(statsUserIDValue)
+			if parseErr != nil {
+				return parseErr
+			}
 
-			prev, markErr := gw.MarkSummaryVersionSuperseded(context.Background(), articleID, newID)
+			prev, markErr := gw.MarkSummaryVersionSuperseded(context.Background(), articleID, newID, userID)
 			if markErr != nil {
 				return fmt.Errorf("MarkSummaryVersionSuperseded failed: %w", markErr)
 			}
@@ -302,7 +312,10 @@ func TestGetLatestSummaryVersionContract(t *testing.T) {
 			Method:  "POST",
 			Path:    matchers.String("/services.datahub.v1.DataHubService/GetLatestSummaryVersion"),
 			Headers: jsonHeaders(),
-			Body:    map[string]interface{}{"articleId": versionArticleID},
+			Body: map[string]interface{}{
+				"articleId": versionArticleID,
+				"userId":    statsUserIDValue,
+			},
 		}).
 		WithCompleteResponse(consumer.Response{
 			Status:  200,
@@ -329,7 +342,7 @@ func TestGetLatestSummaryVersionContract(t *testing.T) {
 				return parseErr
 			}
 
-			sv, getErr := gw.GetLatestSummaryVersion(context.Background(), articleID)
+			sv, getErr := gw.GetLatestSummaryVersion(authedContext(statsUserIDValue), articleID)
 			if getErr != nil {
 				return fmt.Errorf("GetLatestSummaryVersion failed: %w", getErr)
 			}

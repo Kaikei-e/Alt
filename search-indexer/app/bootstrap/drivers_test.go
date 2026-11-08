@@ -4,6 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,7 +121,7 @@ func TestInitMeilisearchClients_ReturnsWhenMeilisearchNeverAnswers(t *testing.T)
 	srv := newStallingMeilisearchServer(t)
 	t.Setenv("MEILISEARCH_HOST", srv.URL)
 	t.Setenv("MEILISEARCH_API_KEY", "test-key")
-	t.Setenv("MEILISEARCH_SEARCH_API_KEY", "")
+	t.Setenv("MEILISEARCH_SEARCH_API_KEY", "test-search-key")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -147,7 +150,7 @@ func TestInitMeilisearchClients_HealthProbeHonoursContext(t *testing.T) {
 	srv := newStallingMeilisearchServer(t)
 	t.Setenv("MEILISEARCH_HOST", srv.URL)
 	t.Setenv("MEILISEARCH_API_KEY", "test-key")
-	t.Setenv("MEILISEARCH_SEARCH_API_KEY", "")
+	t.Setenv("MEILISEARCH_SEARCH_API_KEY", "test-search-key")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -192,5 +195,83 @@ func TestEnsureIndex_ReturnsWhenMeilisearchNeverAnswers(t *testing.T) {
 		}
 	case <-time.After(stallCeiling):
 		t.Fatal("EnsureIndex never returned: it runs before the HTTP listeners open, so :9300/:9301 never bind")
+	}
+}
+
+func TestInitMeilisearchClients_FailsFastOnInvalidSecretFileOrMissingSearchKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"available"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	emptyFile := filepath.Join(t.TempDir(), "empty_key")
+	if err := os.WriteFile(emptyFile, []byte("  \n\t "), 0o600); err != nil {
+		t.Fatalf("write empty file: %v", err)
+	}
+	missingFile := filepath.Join(t.TempDir(), "nonexistent_key")
+
+	tests := []struct {
+		name    string
+		env     map[string]string
+		wantErr string
+	}{
+		{
+			name: "nonexistent MEILISEARCH_SEARCH_API_KEY_FILE fails startup",
+			env: map[string]string{
+				"MEILISEARCH_API_KEY":             "master-key",
+				"MEILISEARCH_API_KEY_FILE":        "",
+				"MEILISEARCH_SEARCH_API_KEY":      "",
+				"MEILISEARCH_SEARCH_API_KEY_FILE": missingFile,
+			},
+			wantErr: "MEILISEARCH_SEARCH_API_KEY_FILE",
+		},
+		{
+			name: "empty MEILISEARCH_SEARCH_API_KEY_FILE fails startup",
+			env: map[string]string{
+				"MEILISEARCH_API_KEY":             "master-key",
+				"MEILISEARCH_API_KEY_FILE":        "",
+				"MEILISEARCH_SEARCH_API_KEY":      "fallback-key-must-not-be-used",
+				"MEILISEARCH_SEARCH_API_KEY_FILE": emptyFile,
+			},
+			wantErr: "MEILISEARCH_SEARCH_API_KEY_FILE",
+		},
+		{
+			name: "nonexistent MEILISEARCH_API_KEY_FILE fails startup",
+			env: map[string]string{
+				"MEILISEARCH_API_KEY":             "fallback-master-must-not-be-used",
+				"MEILISEARCH_API_KEY_FILE":        missingFile,
+				"MEILISEARCH_SEARCH_API_KEY":      "search-key",
+				"MEILISEARCH_SEARCH_API_KEY_FILE": "",
+			},
+			wantErr: "MEILISEARCH_API_KEY_FILE",
+		},
+		{
+			name: "missing MEILISEARCH_SEARCH_API_KEY fails startup rather than falling back to master key",
+			env: map[string]string{
+				"MEILISEARCH_API_KEY":             "master-key",
+				"MEILISEARCH_API_KEY_FILE":        "",
+				"MEILISEARCH_SEARCH_API_KEY":      "",
+				"MEILISEARCH_SEARCH_API_KEY_FILE": "",
+			},
+			wantErr: "MEILISEARCH_SEARCH_API_KEY",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("MEILISEARCH_HOST", srv.URL)
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			_, _, err := initMeilisearchClients(context.Background())
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want it to contain %q", err, tt.wantErr)
+			}
+		})
 	}
 }

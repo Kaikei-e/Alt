@@ -109,3 +109,60 @@ func TestReadStateGateway_AllReadFeedIDs_DriverError(t *testing.T) {
 	assert.Nil(t, ids)
 	assert.Contains(t, err.Error(), "get all read feed ids for user")
 }
+
+type mockTagReadDriver struct {
+	gotArticleID string
+	gotUser      *uuid.UUID
+	tagsByUser   map[uuid.UUID][]*domain.FeedTag
+}
+
+func (m *mockTagReadDriver) FetchArticleTagsForUser(_ context.Context, articleID string, userID *uuid.UUID) ([]*domain.FeedTag, error) {
+	m.gotArticleID, m.gotUser = articleID, userID
+	if userID == nil {
+		return nil, nil
+	}
+	return m.tagsByUser[*userID], nil
+}
+
+func (m *mockTagReadDriver) FetchFeedTags(_ context.Context, _ string, _ *time.Time, _ int) ([]*domain.FeedTag, error) {
+	return nil, nil
+}
+
+func (m *mockTagReadDriver) FetchTagCooccurrences(_ context.Context, _ []string) ([]*domain.TagCooccurrence, error) {
+	return nil, nil
+}
+
+func (m *mockTagReadDriver) SearchTagsByPrefix(_ context.Context, _ string, _ int) ([]domain.GlobalTagHit, error) {
+	return nil, nil
+}
+
+func (m *mockTagReadDriver) FetchTagArticleCounts(_ context.Context, _ uuid.UUID, _ time.Time) ([]domain.TagArticleCount, error) {
+	return nil, nil
+}
+
+func TestTagReadGateway_ArticleTags_ForwardsUserScope(t *testing.T) {
+	userA := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	userB := uuid.MustParse("99999999-9999-4999-8999-999999999999")
+	articleID := "22222222-2222-4222-8222-222222222222"
+
+	mock := &mockTagReadDriver{
+		tagsByUser: map[uuid.UUID][]*domain.FeedTag{
+			userA: {{ID: "t1", TagName: "PrivateTag"}},
+		},
+	}
+	gw := &TagReadGateway{db: mock}
+
+	tagsA, err := gw.ArticleTags(context.Background(), articleID, &userA)
+	require.NoError(t, err)
+	assert.Equal(t, articleID, mock.gotArticleID)
+	require.NotNil(t, mock.gotUser)
+	assert.Equal(t, userA, *mock.gotUser)
+	require.Len(t, tagsA, 1)
+	assert.Equal(t, "PrivateTag", tagsA[0].TagName)
+
+	tagsB, err := gw.ArticleTags(context.Background(), articleID, &userB)
+	require.NoError(t, err)
+	require.NotNil(t, mock.gotUser)
+	assert.Equal(t, userB, *mock.gotUser)
+	assert.Empty(t, tagsB)
+}

@@ -3,10 +3,12 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -319,4 +321,127 @@ func TestParseDismissRecallCandidateMutation_Table(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRecallCandidateMutations_ProjectionVersionCutover(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	tenantID := uuid.MustParse("22222222-2222-4222-8222-222222222222")
+	itemKey := "article:cutover-recall"
+
+	t.Run("structural SQL uses incoming/active projection_version instead of existing row version", func(t *testing.T) {
+		mock := &mockPgx{}
+		repo := &Repository{pool: mock}
+
+		upsertPayload, err := json.Marshal(map[string]any{
+			"user_id":            userID.String(),
+			"tenant_id":          tenantID.String(),
+			"item_key":           itemKey,
+			"recall_score":       0.75,
+			"updated_at":         fixedTestTimeRFC3339,
+			"projection_version": 2,
+		})
+		require.NoError(t, err)
+		require.NoError(t, repo.UpsertRecallCandidate(ctx, upsertPayload))
+
+		snoozePayload, err := json.Marshal(map[string]any{
+			"user_id":     userID.String(),
+			"tenant_id":   tenantID.String(),
+			"item_key":    itemKey,
+			"until":       "2026-05-05T03:00:00Z",
+			"occurred_at": fixedTestTimeRFC3339,
+		})
+		require.NoError(t, err)
+		require.NoError(t, repo.SnoozeRecallCandidate(ctx, snoozePayload))
+
+		dismissPayload, err := json.Marshal(map[string]any{
+			"user_id":     userID.String(),
+			"tenant_id":   tenantID.String(),
+			"item_key":    itemKey,
+			"occurred_at": fixedTestTimeRFC3339,
+		})
+		require.NoError(t, err)
+		require.NoError(t, repo.DismissRecallCandidate(ctx, dismissPayload))
+
+		require.Len(t, mock.execCalls, 3)
+
+		upsertSQL := mock.execCalls[0].SQL
+		assert.Contains(t, upsertSQL, "khi.projection_version = $8")
+		assert.Contains(t, upsertSQL, "khi.projection_version = EXCLUDED.projection_version")
+		assert.NotContains(t, upsertSQL, "recall_candidate_view.projection_version")
+
+		snoozeSQL := mock.execCalls[1].SQL
+		assert.Contains(t, snoozeSQL, "khi.projection_version = "+activeProjectionVersionSQL)
+		assert.NotContains(t, snoozeSQL, "recall_candidate_view.projection_version")
+
+		dismissSQL := mock.execCalls[2].SQL
+		assert.Contains(t, dismissSQL, "khi.projection_version = "+activeProjectionVersionSQL)
+		assert.NotContains(t, dismissSQL, "recall_candidate_view.projection_version")
+	})
+
+	t.Run("cutover scenario succeeds when home item exists only at new projection_version", func(t *testing.T) {
+		const (
+			existingCandidateVersion = 1
+			activeVersion            = 2
+		)
+		homeItemsByVersion := map[int]uuid.UUID{
+			activeVersion: tenantID,
+		}
+
+		// Simulate Postgres evaluating WHERE EXISTS against knowledge_home_items
+		// when recall_candidate_view holds a pre-cutover row at version 1 and
+		// knowledge_home_items only has the row at version 2.
+		mock := &mockPgx{
+			execFunc: func(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+				var checkedVersion int
+				switch {
+				case strings.Contains(sql, "khi.projection_version = recall_candidate_view.projection_version"):
+					checkedVersion = existingCandidateVersion
+				case strings.Contains(sql, "khi.projection_version = EXCLUDED.projection_version"):
+					checkedVersion = args[7].(int)
+				case strings.Contains(sql, "khi.projection_version = "+activeProjectionVersionSQL):
+					checkedVersion = activeVersion
+				}
+				boundTenant := args[len(args)-1].(uuid.UUID)
+				if ownerTenant, ok := homeItemsByVersion[checkedVersion]; ok && ownerTenant == boundTenant {
+					return pgconn.NewCommandTag("UPDATE 1"), nil
+				}
+				return pgconn.NewCommandTag("UPDATE 0"), nil
+			},
+		}
+		repo := &Repository{pool: mock}
+
+		snoozePayload, err := json.Marshal(map[string]any{
+			"user_id":     userID.String(),
+			"tenant_id":   tenantID.String(),
+			"item_key":    itemKey,
+			"until":       "2026-05-05T03:00:00Z",
+			"occurred_at": fixedTestTimeRFC3339,
+		})
+		require.NoError(t, err)
+		require.NoError(t, repo.SnoozeRecallCandidate(ctx, snoozePayload),
+			"SnoozeRecallCandidate after projection cutover must not return ErrRecallHomeAssociationDenied")
+
+		dismissPayload, err := json.Marshal(map[string]any{
+			"user_id":     userID.String(),
+			"tenant_id":   tenantID.String(),
+			"item_key":    itemKey,
+			"occurred_at": fixedTestTimeRFC3339,
+		})
+		require.NoError(t, err)
+		require.NoError(t, repo.DismissRecallCandidate(ctx, dismissPayload),
+			"DismissRecallCandidate after projection cutover must not return ErrRecallHomeAssociationDenied")
+
+		upsertPayload, err := json.Marshal(map[string]any{
+			"user_id":            userID.String(),
+			"tenant_id":          tenantID.String(),
+			"item_key":           itemKey,
+			"recall_score":       0.85,
+			"updated_at":         fixedTestTimeRFC3339,
+			"projection_version": activeVersion,
+		})
+		require.NoError(t, err)
+		require.NoError(t, repo.UpsertRecallCandidate(ctx, upsertPayload),
+			"UpsertRecallCandidate on conflict after projection cutover must not return ErrRecallHomeAssociationDenied")
+	})
 }

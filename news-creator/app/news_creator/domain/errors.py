@@ -11,3 +11,9 @@ class QueueFullError(Exception):
     """Raised when the queue depth limit is exceeded."""
 
     pass
+
+
+class CardGenerationInvariantError(RuntimeError):
+    """Raised when an internal invariant in card generation is violated."""
+
+    pass

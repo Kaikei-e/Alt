@@ -173,8 +173,9 @@ test.describe("the recap pipeline", () => {
 		expect(accepted.genres).toEqual([env.defaultGenre]);
 
 		// Drained rather than abandoned: the run this started holds the lock,
-		// and leaving it in flight is exactly how the next test's trigger would
-		// be rejected while still answering 202.
+		// and leaving it in flight would make the next test's trigger fail
+		// synchronously with 409 Conflict (`try_acquire_run_permit` in
+		// `api/generate.rs`).
 		await waitForPipelineIdle(api, before + 1, PIPELINE_BUDGET_MS);
 	});
 

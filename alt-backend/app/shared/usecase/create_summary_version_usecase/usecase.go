@@ -116,7 +116,7 @@ func (u *CreateSummaryVersionUsecase) Execute(ctx context.Context, sv domain.Sum
 	}
 
 	// Mark previous versions as superseded and emit SummarySuperseded event.
-	prev, err := u.markSupersededPort.MarkSummaryVersionSuperseded(ctx, sv.ArticleID, sv.SummaryVersionID)
+	prev, err := u.markSupersededPort.MarkSummaryVersionSuperseded(ctx, sv.ArticleID, sv.SummaryVersionID, sv.UserID)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to mark summary version superseded",
 			"error", err, "article_id", sv.ArticleID)

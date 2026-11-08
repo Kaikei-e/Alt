@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // RestoreOptions configures the restore operation
@@ -42,6 +44,17 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 		m.logger.Info("backup integrity verified")
 	}
 
+	// Build filter set for selective restore
+	targetVolumes, err := m.filterRestoreVolumes(manifest.Volumes, opts)
+	if err != nil {
+		return fmt.Errorf("filtering volumes: %w", err)
+	}
+
+	pgSpecs, err := m.postgresRestoreSpecs(targetVolumes)
+	if err != nil {
+		return err
+	}
+
 	// Check if any containers are running
 	running, err := m.getRunningContainers(ctx)
 	if err != nil {
@@ -59,16 +72,14 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 		}
 	}
 
-	// Build filter set for selective restore
-	targetVolumes, err := m.filterRestoreVolumes(manifest.Volumes, opts)
-	if err != nil {
-		return fmt.Errorf("filtering volumes: %w", err)
-	}
-
 	m.logger.Info("restoring volumes",
 		"total_in_manifest", len(manifest.Volumes),
 		"selected", len(targetVolumes),
 	)
+
+	if err := m.startDatabaseContainers(ctx, pgSpecs); err != nil {
+		return fmt.Errorf("starting database containers before restore: %w", err)
+	}
 
 	// Restore selected volumes
 	var failedVolumes []string
@@ -113,12 +124,7 @@ func (m *Migrator) restoreVolume(ctx context.Context, spec VolumeSpec, backupDir
 	// Determine restore strategy based on the backup file type.
 	// This supports backward compatibility: if a PG volume was backed up as tar
 	// (old format), restore it as tar regardless of current registry type.
-	backupType := vb.Type
-	if strings.HasSuffix(vb.Filename, ".tar.gz") {
-		backupType = BackupTypeTar
-	} else if strings.HasSuffix(vb.Filename, ".dump") {
-		backupType = BackupTypePostgreSQL
-	}
+	backupType := resolveRestoreBackupType(vb)
 
 	switch backupType {
 	case BackupTypePostgreSQL:
@@ -200,6 +206,119 @@ func (m *Migrator) stopContainers(ctx context.Context) error {
 	return cmd.Run()
 }
 
+func resolveRestoreBackupType(vb VolumeBackup) BackupType {
+	if strings.HasSuffix(vb.Filename, ".tar.gz") {
+		return BackupTypeTar
+	}
+	if strings.HasSuffix(vb.Filename, ".dump") {
+		return BackupTypePostgreSQL
+	}
+	return vb.Type
+}
+
+type containerResolver interface {
+	resolveContainer(context.Context, VolumeSpec) string
+}
+
+func (m *Migrator) postgresRestoreSpecs(targetVolumes []VolumeBackup) ([]VolumeSpec, error) {
+	var pgSpecs []VolumeSpec
+	seenServices := make(map[string]bool)
+	for _, vb := range targetVolumes {
+		spec, ok := m.registry.Get(vb.Name)
+		if !ok {
+			continue
+		}
+		if resolveRestoreBackupType(vb) != BackupTypePostgreSQL {
+			continue
+		}
+		if spec.DBPort <= 0 {
+			return nil, fmt.Errorf("postgresql volume %s has invalid DBPort %d", spec.Name, spec.DBPort)
+		}
+		if spec.Service != "" && !seenServices[spec.Service] {
+			seenServices[spec.Service] = true
+			pgSpecs = append(pgSpecs, spec)
+		}
+	}
+	return pgSpecs, nil
+}
+
+func (m *Migrator) startDatabaseContainers(ctx context.Context, pgSpecs []VolumeSpec) error {
+	if len(pgSpecs) == 0 {
+		return nil
+	}
+	if m.dryRun {
+		m.logger.Info("[dry-run] would start database containers", "count", len(pgSpecs))
+		return nil
+	}
+	if _, ok := m.pgBackup.(containerResolver); !ok {
+		return fmt.Errorf("postgresql backup engine %T does not support container resolution", m.pgBackup)
+	}
+
+	for _, spec := range pgSpecs {
+		args, err := m.buildComposeArgs("up", "-d", spec.Service)
+		if err != nil {
+			return fmt.Errorf("resolving compose files: %w", err)
+		}
+		cmd := exec.CommandContext(ctx, "docker", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			if msg := strings.TrimSpace(string(out)); msg != "" {
+				return fmt.Errorf("starting service %s: %w: %s", spec.Service, err, msg)
+			}
+			return fmt.Errorf("starting service %s: %w", spec.Service, err)
+		}
+		if err := m.waitForPostgres(ctx, spec); err != nil {
+			return fmt.Errorf("waiting for service %s: %w", spec.Service, err)
+		}
+	}
+	return nil
+}
+
+func (m *Migrator) waitForPostgres(ctx context.Context, spec VolumeSpec) error {
+	if spec.DBPort <= 0 {
+		return fmt.Errorf("postgresql volume %s has invalid DBPort %d", spec.Name, spec.DBPort)
+	}
+	r, ok := m.pgBackup.(containerResolver)
+	if !ok {
+		return fmt.Errorf("postgresql backup engine %T does not support container resolution", m.pgBackup)
+	}
+	container := r.resolveContainer(ctx, spec)
+
+	// Probe TCP rather than the unix socket so the temporary init-only server cannot satisfy readiness.
+	args := []string{
+		"exec", container,
+		"pg_isready",
+		"-h", "127.0.0.1",
+		"-p", strconv.Itoa(spec.DBPort),
+		"-U", spec.DBUser,
+		"-d", spec.DBName,
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var (
+		lastOut []byte
+		lastErr error
+	)
+	for {
+		out, err := exec.CommandContext(waitCtx, "docker", args...).CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		lastOut = out
+		lastErr = err
+
+		select {
+		case <-waitCtx.Done():
+			if msg := strings.TrimSpace(string(lastOut)); msg != "" {
+				return fmt.Errorf("postgres container %s not ready: %w: %s", container, lastErr, msg)
+			}
+			return fmt.Errorf("postgres container %s not ready: %w", container, lastErr)
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
 // buildComposeArgs builds docker compose command arguments. The compose file
 // list comes from composeFileList (the aggregate compose.yaml alone) so it
 // can't drift out of sync with getRunningContainers — a pre-restore "down"
@@ -214,10 +333,15 @@ func (m *Migrator) buildComposeArgs(args ...string) ([]string, error) {
 		return nil, err
 	}
 	result := []string{"compose"}
+	var found int
 	for _, f := range files {
 		if _, err := os.Stat(f); err == nil {
 			result = append(result, "-f", f)
+			found++
 		}
+	}
+	if found == 0 {
+		return nil, fmt.Errorf("no compose files found in %s", m.composeDir)
 	}
 	result = append(result, args...)
 	return result, nil

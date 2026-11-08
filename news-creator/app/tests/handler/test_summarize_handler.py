@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 
-from news_creator.domain.errors import QueueFullError
+from news_creator.domain.errors import PreemptedException, QueueFullError
 from news_creator.domain.models import SummaryMetadata
 
 
@@ -237,3 +237,19 @@ def test_summarize_unexpected_exception_returns_500():
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"
+
+
+def test_summarize_preempted_returns_502():
+    """PreemptedException must surface as HTTP 502 (matching recap handlers), never 500."""
+    secret = "request preempted during generation at slot 2"
+    mock_usecase = _make_mock_usecase(side_effect=PreemptedException(secret))
+    client = _make_client(mock_usecase)
+
+    response = client.post(
+        "/api/v1/summarize",
+        json={"article_id": "preempt-1", "content": "A" * 200, "stream": False},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Upstream service error"
+    assert secret not in response.text

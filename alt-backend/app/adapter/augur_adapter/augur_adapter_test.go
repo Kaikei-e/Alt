@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -328,4 +332,192 @@ func TestAugurAdapter_RetrieveContext_RequestBody_GoldenJSON(t *testing.T) {
 
 	assert.JSONEq(t, expectedGoldenJSON, string(bodyBytes),
 		"RAG retrieve context request body must match expected golden JSON format including user_id")
+}
+
+type observedBody struct {
+	io.ReadCloser
+	bytesRead  atomic.Int64
+	readCount  atomic.Int32
+	onRead     func(call int32, n int)
+	closeOnce  sync.Once
+	closedChan chan struct{}
+}
+
+func newObservedBody(rc io.ReadCloser, onRead func(call int32, n int)) *observedBody {
+	return &observedBody{
+		ReadCloser: rc,
+		onRead:     onRead,
+		closedChan: make(chan struct{}),
+	}
+}
+
+func (b *observedBody) Read(p []byte) (int, error) {
+	call := b.readCount.Add(1)
+	n, err := b.ReadCloser.Read(p)
+	if n > 0 {
+		b.bytesRead.Add(int64(n))
+	}
+	if b.onRead != nil {
+		b.onRead(call, n)
+	}
+	return n, err
+}
+
+func (b *observedBody) Close() error {
+	b.closeOnce.Do(func() {
+		close(b.closedChan)
+	})
+	return b.ReadCloser.Close()
+}
+
+type bodyObservingTransport struct {
+	base   http.RoundTripper
+	onBody func(rc io.ReadCloser) *observedBody
+}
+
+func (t *bodyObservingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp != nil && resp.Body != nil && t.onBody != nil {
+		resp.Body = t.onBody(resp.Body)
+	}
+	return resp, nil
+}
+
+func TestAugurAdapter_Answer_StreamResourceCleanup(t *testing.T) {
+	t.Run("non-200 status drains and closes response body", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("upstream failure body"))
+		}))
+		defer srv.Close()
+
+		var tracked *observedBody
+		httpClient := &http.Client{
+			Transport: &bodyObservingTransport{
+				base: srv.Client().Transport,
+				onBody: func(rc io.ReadCloser) *observedBody {
+					tracked = newObservedBody(rc, nil)
+					return tracked
+				},
+			},
+		}
+
+		ragClient, err := rag_gateway.NewClientWithResponses(srv.URL, rag_gateway.WithHTTPClient(httpClient))
+		require.NoError(t, err)
+		adapter := NewAugurAdapter(ragClient)
+
+		ch, err := adapter.Answer(context.Background(), rag_integration_port.AnswerInput{
+			Query:  "what happened",
+			Stream: true,
+		})
+		require.Error(t, err)
+		assert.Nil(t, ch)
+		require.NotNil(t, tracked)
+
+		select {
+		case <-tracked.closedChan:
+		default:
+			t.Fatal("expected response body to be closed on non-200 status")
+		}
+		assert.Greater(t, tracked.bytesRead.Load(), int64(0), "expected non-200 response body to be drained before closing")
+	})
+
+	t.Run("streaming goroutine exits and closes body when consumer stops reading and cancels ctx", func(t *testing.T) {
+		firstChunkConsumed := make(chan struct{})
+		secondReadDone := make(chan struct{})
+		var secondReadOnce sync.Once
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+
+			_, _ = w.Write([]byte("data: chunk-1\n\n"))
+			flusher.Flush()
+
+			select {
+			case <-firstChunkConsumed:
+			case <-r.Context().Done():
+				return
+			}
+
+			_, _ = w.Write([]byte("data: chunk-2\n\n"))
+			flusher.Flush()
+
+			<-r.Context().Done()
+		}))
+		defer srv.Close()
+
+		var tracked *observedBody
+		httpClient := &http.Client{
+			Transport: &bodyObservingTransport{
+				base: srv.Client().Transport,
+				onBody: func(rc io.ReadCloser) *observedBody {
+					tracked = newObservedBody(rc, func(call int32, n int) {
+						if call >= 2 && n > 0 {
+							secondReadOnce.Do(func() {
+								close(secondReadDone)
+							})
+						}
+					})
+					return tracked
+				},
+			},
+		}
+
+		ragClient, err := rag_gateway.NewClientWithResponses(srv.URL, rag_gateway.WithHTTPClient(httpClient))
+		require.NoError(t, err)
+		adapter := NewAugurAdapter(ragClient)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		ch, err := adapter.Answer(ctx, rag_integration_port.AnswerInput{
+			Query:  "stream query",
+			Stream: true,
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			cancel()
+			if tracked != nil {
+				_ = tracked.ReadCloser.Close()
+			}
+			for range ch {
+			}
+		})
+
+		firstChunk, ok := <-ch
+		require.True(t, ok)
+		assert.Contains(t, firstChunk, "chunk-1")
+		close(firstChunkConsumed)
+
+		select {
+		case <-secondReadDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for reader goroutine to read second chunk")
+		}
+
+		// Consumer stops reading and cancels ctx while reader goroutine is blocked sending chunk-2.
+		cancel()
+
+		select {
+		case <-tracked.closedChan:
+		case <-time.After(300 * time.Millisecond):
+			t.Fatal("expected response body to be closed promptly after consumer cancels ctx")
+		}
+
+		select {
+		case _, open := <-ch:
+			assert.False(t, open, "expected resultChan to be closed when reader goroutine exits")
+		case <-time.After(300 * time.Millisecond):
+			t.Fatal("expected reader goroutine to close resultChan and exit")
+		}
+	})
 }

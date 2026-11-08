@@ -134,13 +134,40 @@ func TestCoalesceStreamEvents_SingleEvent(t *testing.T) {
 
 func TestCoalesceStreamEvents_DeduplicatesByAggregate(t *testing.T) {
 	events := []domain.KnowledgeEvent{
-		{EventType: domain.EventArticleCreated, AggregateType: "article", AggregateID: "1", EventSeq: 1},
-		{EventType: domain.EventSummaryVersionCreated, AggregateType: "article", AggregateID: "1", EventSeq: 2},
-		{EventType: domain.EventTagSetVersionCreated, AggregateType: "article", AggregateID: "1", EventSeq: 3},
+		{EventType: domain.EventSummaryVersionCreated, AggregateType: "article", AggregateID: "1", EventSeq: 1},
+		{EventType: domain.EventTagSetVersionCreated, AggregateType: "article", AggregateID: "1", EventSeq: 2},
+		{EventType: domain.EventSummarySuperseded, AggregateType: "article", AggregateID: "1", EventSeq: 3},
 	}
 	result := coalesceStreamEvents(events)
-	assert.Len(t, result, 1, "same aggregate should be deduplicated to one event")
+	assert.Len(t, result, 1, "same aggregate and stream class should be deduplicated to one event")
 	assert.Equal(t, int64(3), result[0].EventSeq, "should keep the latest event")
+}
+
+func TestCoalesceStreamEvents_PreservesCanonicalClassesPerAggregate(t *testing.T) {
+	t.Run("article_created followed by summary_version_created keeps item_added", func(t *testing.T) {
+		events := []domain.KnowledgeEvent{
+			{EventType: domain.EventArticleCreated, AggregateType: domain.AggregateArticle, AggregateID: "1", EventSeq: 1},
+			{EventType: domain.EventSummaryVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: "1", EventSeq: 2},
+			{EventType: domain.EventTagSetVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: "1", EventSeq: 3},
+		}
+		result := coalesceStreamEvents(events)
+		require.Len(t, result, 2)
+		assert.Equal(t, "item_added", buildStreamResponse(result[0]).EventType)
+		assert.Equal(t, int64(1), result[0].EventSeq)
+		assert.Equal(t, "item_updated", buildStreamResponse(result[1]).EventType)
+		assert.Equal(t, int64(3), result[1].EventSeq)
+	})
+
+	t.Run("recall_changed and digest_changed on same aggregate are both preserved", func(t *testing.T) {
+		events := []domain.KnowledgeEvent{
+			{EventType: domain.EventRecallSnoozed, AggregateType: domain.AggregateHomeSession, AggregateID: "article:1", EventSeq: 1},
+			{EventType: domain.EventHomeItemOpened, AggregateType: domain.AggregateHomeSession, AggregateID: "article:1", EventSeq: 2},
+		}
+		result := coalesceStreamEvents(events)
+		require.Len(t, result, 2)
+		assert.Equal(t, "recall_changed", buildStreamResponse(result[0]).EventType)
+		assert.Equal(t, "digest_changed", buildStreamResponse(result[1]).EventType)
+	})
 }
 
 func TestCoalesceStreamEvents_MultipleAggregates(t *testing.T) {
@@ -348,6 +375,26 @@ func TestBuildStreamResponse_Table(t *testing.T) {
 			} else {
 				assert.Nil(t, got.RecallChange)
 			}
+		})
+	}
+}
+
+func TestBuildStreamResponse_RecallChanged_HomeSessionAggregate(t *testing.T) {
+	id := uuid.New().String()
+	occurredAt := time.Date(2026, 3, 20, 15, 0, 0, 0, time.UTC)
+
+	for _, eventType := range []string{domain.EventRecallDismissed, domain.EventRecallSnoozed} {
+		t.Run(eventType, func(t *testing.T) {
+			resp := buildStreamResponse(domain.KnowledgeEvent{
+				EventType:     eventType,
+				AggregateType: domain.AggregateHomeSession,
+				AggregateID:   "article:" + id,
+				OccurredAt:    occurredAt,
+			})
+			require.NotNil(t, resp)
+			assert.Equal(t, "recall_changed", resp.EventType)
+			require.NotNil(t, resp.RecallChange)
+			assert.Equal(t, "article:"+id, resp.RecallChange.ItemKey)
 		})
 	}
 }

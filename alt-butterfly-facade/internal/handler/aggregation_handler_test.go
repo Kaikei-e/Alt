@@ -402,3 +402,43 @@ func TestMaxQueries(t *testing.T) {
 	body, _ := io.ReadAll(rec.Body)
 	assert.Contains(t, string(body), "too many queries")
 }
+
+func TestAggregationHandler_NonJSONBackendBodyBecomesQueryError(t *testing.T) {
+	handler := NewAggregationHandler(
+		func(path string, token string, body []byte) (*AggregatedResult, error) {
+			switch path {
+			case "/alt.feeds.v2.FeedService/GetFeedStats":
+				return &AggregatedResult{
+					Data:       json.RawMessage(`{"total": 10}`),
+					StatusCode: http.StatusOK,
+				}, nil
+			case "/alt.feeds.v2.FeedService/GetUnreadCount":
+				return &AggregatedResult{
+					Data:       []byte("Bad Gateway"),
+					StatusCode: http.StatusBadGateway,
+				}, nil
+			}
+			return nil, nil
+		},
+		testAggSecret, "auth-hub", "alt-backend", nil,
+	)
+
+	reqBody := `{"queries": ["feed_stats", "unread_count"]}`
+	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp AggregationResponse
+	err := json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "aggregation response must remain valid JSON when a query body is non-JSON: %q", rec.Body.String())
+
+	unreadCount := resp.Results["unread_count"]
+	require.NotNil(t, unreadCount)
+	assert.Equal(t, http.StatusBadGateway, unreadCount.StatusCode)
+	assert.NotEmpty(t, unreadCount.Error)
+	assert.Empty(t, unreadCount.Data)
+}

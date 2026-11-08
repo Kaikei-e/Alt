@@ -256,7 +256,8 @@
         "body": {
           "articleIds": [
             "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
-          ]
+          ],
+          "userId": "11111111-2222-3333-4444-555555555555"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -1115,7 +1116,8 @@
       ],
       "request": {
         "body": {
-          "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
+          "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+          "userId": "11111111-2222-3333-4444-555555555555"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -1321,7 +1323,8 @@
       ],
       "request": {
         "body": {
-          "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
+          "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -2079,7 +2082,8 @@
       ],
       "request": {
         "body": {
-          "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d"
+          "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -3404,7 +3408,8 @@
         "body": {
           "cursor": "2026-07-31T00:00:00Z",
           "limit": 20,
-          "tagId": "8c9d0e1f-2a3b-4c5d-8e9f-0a1b2c3d4e5f"
+          "tagId": "8c9d0e1f-2a3b-4c5d-8e9f-0a1b2c3d4e5f",
+          "userId": "11111111-2222-3333-4444-555555555555"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -3504,7 +3509,8 @@
       "request": {
         "body": {
           "limit": 20,
-          "tagId": "8c9d0e1f-2a3b-4c5d-8e9f-0a1b2c3d4e5f"
+          "tagId": "8c9d0e1f-2a3b-4c5d-8e9f-0a1b2c3d4e5f",
+          "userId": "11111111-2222-3333-4444-555555555555"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -3531,7 +3537,8 @@
         "body": {
           "cursor": "2026-07-31T00:00:00Z",
           "limit": 20,
-          "tagName": "golang"
+          "tagName": "golang",
+          "userId": "11111111-2222-3333-4444-555555555555"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -4222,6 +4229,7 @@
               "createdAt": "2026-06-01T09:00:00Z",
               "id": "b2c3d4e5-2222-4222-8222-222222222222",
               "title": "Older Post",
+              "updatedAt": "2026-07-31T09:00:00Z",
               "websiteUrl": "https://example.com/older"
             }
           ]
@@ -4258,6 +4266,142 @@
               ]
             },
             "$.feeds[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].websiteUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListFeedsCursor request from alt-backend for the read scope",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has read marks for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 20,
+          "scope": "FEED_SCOPE_READ",
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/ListFeedsCursor"
+      },
+      "response": {
+        "body": {
+          "feeds": [
+            {
+              "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+              "createdAt": "2026-07-31T09:00:00Z",
+              "description": "body",
+              "id": "b2c3d4e5-2222-4222-8222-222222222222",
+              "ogImageUrl": "https://cdn.example.com/og.png",
+              "pubDate": "2026-07-31T00:00:00Z",
+              "title": "Example Post",
+              "updatedAt": "2026-07-31T09:00:00Z",
+              "websiteUrl": "https://example.com/post"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feeds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feeds[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].description": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].ogImageUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].pubDate": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].updatedAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -5010,7 +5154,8 @@
       "request": {
         "body": {
           "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
-          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -5108,7 +5253,8 @@
       "request": {
         "body": {
           "articleId": "00000000-0000-4000-8000-000000000000",
-          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
         },
         "headers": {
           "Content-Type": "application/json"

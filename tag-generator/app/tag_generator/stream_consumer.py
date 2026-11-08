@@ -162,7 +162,8 @@ class ConsumerConfig(BaseSettings):
     stream_key: str = Field(default="alt:events:articles", validation_alias="STREAM_KEY")
     batch_size: int = Field(default=10, validation_alias="CONSUMER_BATCH_SIZE")
     block_timeout_ms: int = Field(default=5000, validation_alias="CONSUMER_BLOCK_TIMEOUT_MS")
-    claim_idle_time_ms: int = Field(default=30000, validation_alias="CONSUMER_CLAIM_IDLE_TIME_MS")
+    # 10 items * (30s GetArticleContent + 30s ML extraction + 30s UpsertArticleTags).
+    claim_idle_time_ms: int = Field(default=900_000, validation_alias="CONSUMER_CLAIM_IDLE_TIME_MS")
     enabled: bool = Field(default=False, validation_alias="CONSUMER_ENABLED")
     max_delivery_count: int = Field(default=5, validation_alias="CONSUMER_MAX_DELIVERY_COUNT")
     reclaim_interval_seconds: float = Field(default=30.0, validation_alias="CONSUMER_RECLAIM_INTERVAL_SECONDS")
@@ -195,7 +196,7 @@ class ConsumerConfig(BaseSettings):
             stream_key="alt:events:tags",
             batch_size=1,
             block_timeout_ms=1000,
-            claim_idle_time_ms=os.getenv("CONSUMER_CLAIM_IDLE_TIME_MS", "30000"),
+            claim_idle_time_ms=os.getenv("CONSUMER_CLAIM_IDLE_TIME_MS", "900000"),
             enabled=os.getenv("CONSUMER_ENABLED", "false"),
             max_delivery_count=os.getenv("CONSUMER_MAX_DELIVERY_COUNT", "5"),
             reclaim_interval_seconds=os.getenv("CONSUMER_RECLAIM_INTERVAL_SECONDS", "30"),
@@ -263,17 +264,17 @@ class StreamConsumer:
         socket_timeout_seconds = self.config.block_timeout_ms / 1000 + _SOCKET_TIMEOUT_MARGIN_SECONDS
         self.client = build_redis_client(self.config, socket_timeout_seconds)
 
-        # Ensure consumer group exists
-        await self._ensure_consumer_group()
-
-        logger.info(
-            "consumer_started",
-            stream=self.config.stream_key,
-            group=self.config.group_name,
-            consumer=self.config.consumer_name,
-        )
-
         try:
+            # Ensure consumer group exists
+            await self._ensure_consumer_group()
+
+            logger.info(
+                "consumer_started",
+                stream=self.config.stream_key,
+                group=self.config.group_name,
+                consumer=self.config.consumer_name,
+            )
+
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(self._consume_loop())
                 tg.create_task(self._reclaim_loop())
@@ -358,7 +359,11 @@ class StreamConsumer:
                 await self._reclaim_idle_messages()
             except Exception as e:
                 logger.error("reclaim_error", error=str(e))
-            await asyncio.sleep(self.config.reclaim_interval_seconds)
+            remaining = self.config.reclaim_interval_seconds
+            while not self._shutdown and remaining > 0:
+                step = min(remaining, 0.1)
+                await asyncio.sleep(step)
+                remaining -= step
 
     async def _reclaim_idle_messages(self) -> None:
         """Walk the PEL via XAUTOCLAIM, reprocessing or dead-lettering entries."""
@@ -614,4 +619,4 @@ class StreamConsumer:
                 stream_key=stream_key,
                 error=str(e),
             )
-            return None
+            raise

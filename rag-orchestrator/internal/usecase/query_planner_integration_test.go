@@ -331,3 +331,78 @@ func TestExecute_WithQueryPlanner_NilRetrievalReturnsFallbackInsteadOfPanic(t *t
 	assert.True(t, output.Fallback)
 	assert.Contains(t, output.Reason, "no context returned")
 }
+
+type stubTool struct {
+	name   string
+	result *domain.ToolResult
+}
+
+func (t *stubTool) Name() string        { return t.name }
+func (t *stubTool) Description() string { return "stub tool" }
+func (t *stubTool) Execute(_ context.Context, _ map[string]string) (*domain.ToolResult, error) {
+	return t.result, nil
+}
+
+func TestExecute_WithQueryPlanner_TemporalIntentDispatchesDateRangeFilterTool(t *testing.T) {
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	mockQP := new(mockQueryPlannerPort)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	chunkID := uuid.New()
+	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
+		ResolvedQuery:   "最近のAIニュースの動向",
+		SearchQueries:   []string{"AI ニュース 最新"},
+		Intent:          "temporal",
+		RetrievalPolicy: "global_only",
+		AnswerFormat:    "summary",
+	}, nil).Once()
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{
+				ChunkID:   chunkID,
+				ChunkText: "直近のAIモデルの発表が続いている。",
+				Title:     "Recent AI News",
+				URL:       "https://example.com/recent-ai",
+				Score:     0.9,
+			},
+		},
+	}, nil).Once()
+
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{
+		Text: `{"answer":"直近では新しいAIモデルの発表が続いています。[1]","citations":[{"chunk_id":"` + chunkID.String() + `","reason":"最新動向"}],"fallback":false,"reason":""}`,
+		Done: true,
+	}, nil).Once()
+
+	dateTool := &stubTool{
+		name:   "date_range_filter",
+		result: &domain.ToolResult{Data: "Recent articles (2026-11)", Success: true},
+	}
+	dispatcher := usecase.NewToolDispatcher(map[string]domain.Tool{
+		"date_range_filter": dateTool,
+	}, testLogger)
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve,
+		usecase.NewXMLPromptBuilder(),
+		mockLLM,
+		usecase.NewOutputValidator(10),
+		7, 512, 6000,
+		"v1", "ja",
+		testLogger,
+		usecase.WithQueryPlanner(mockQP),
+		usecase.WithToolDispatcher(dispatcher),
+	)
+
+	output, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
+		Query:  "最近のAIニュースは？",
+		UserID: testPlannerUserID,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	assert.False(t, output.Fallback)
+	assert.Contains(t, output.Debug.ToolsUsed, "date_range_filter",
+		"planner-classified temporal intent must reach ToolDispatcher so date_range_filter is selected")
+}

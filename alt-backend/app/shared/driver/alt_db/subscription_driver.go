@@ -3,10 +3,12 @@ package alt_db
 import (
 	"alt/domain"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // FetchSubscriptions returns all feed_links with subscription status for a given user.
@@ -53,6 +55,10 @@ func (r *SubscriptionRepository) InsertSubscription(ctx context.Context, userID 
 	`
 	_, err := r.pool.Exec(ctx, query, userID, feedLinkID)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return domain.ErrFeedNotFound
+		}
 		return fmt.Errorf("insert subscription: %w", err)
 	}
 	return nil

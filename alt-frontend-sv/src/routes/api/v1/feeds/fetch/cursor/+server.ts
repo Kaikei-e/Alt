@@ -1,17 +1,32 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { getFeedsWithCursor } from "#lib/api.js";
 
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
+
 export const GET: RequestHandler = async ({ request, url, locals }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
 
-	const limit = url.searchParams.get("limit");
+	const limitParam = url.searchParams.get("limit");
 	const cursor = url.searchParams.get("cursor");
+
+	let limit = DEFAULT_LIMIT;
+	if (limitParam !== null && limitParam !== "") {
+		const parsed = Number.parseInt(limitParam, 10);
+		if (!/^\d+$/.test(limitParam) || parsed <= 0) {
+			return Response.json(
+				{ error: "Invalid limit parameter" },
+				{ status: 400 },
+			);
+		}
+		limit = Math.min(parsed, MAX_LIMIT);
+	}
 
 	try {
 		const response = await getFeedsWithCursor(
 			cookieHeader,
 			cursor || undefined,
-			limit ? parseInt(limit, 10) : 20,
+			limit,
 			locals?.backendToken,
 		);
 

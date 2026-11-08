@@ -18,6 +18,8 @@ const (
 	CacheStateFresh
 	CacheStateStale
 	CacheStateExpired
+
+	maxExpiredSweep = 1024
 )
 
 // SharedCache is a generic in-memory cache with stale-while-revalidate.
@@ -58,7 +60,7 @@ func (c *SharedCache[K, V]) Get(ctx context.Context, key K) (V, error) {
 	case CacheStateFresh:
 		return value, nil
 	case CacheStateStale:
-		c.refreshInBackground(key)
+		c.RefreshInBackground(ctx, key)
 		return value, nil
 	default:
 		return c.loadAndStore(ctx, key)
@@ -72,6 +74,7 @@ func (c *SharedCache[K, V]) Refresh(ctx context.Context, key K) (V, error) {
 func (c *SharedCache[K, V]) Peek(key K) (V, CacheState) {
 	var zero V
 
+	now := c.now()
 	c.mu.RLock()
 	entry, ok := c.items[key]
 	c.mu.RUnlock()
@@ -79,23 +82,46 @@ func (c *SharedCache[K, V]) Peek(key K) (V, CacheState) {
 		return zero, CacheStateMissing
 	}
 
-	age := c.now().Sub(entry.storedAt)
+	age := now.Sub(entry.storedAt)
 	if age <= c.ttl {
 		return entry.value, CacheStateFresh
 	}
 	if age <= c.ttl+c.staleTTL {
 		return entry.value, CacheStateStale
 	}
+
+	c.mu.Lock()
+	if current, exists := c.items[key]; exists && now.Sub(current.storedAt) > c.ttl+c.staleTTL && atomic.LoadInt32(&current.refreshing) == 0 {
+		delete(c.items, key)
+	}
+	c.evictExpiredLocked(now)
+	c.mu.Unlock()
 	return zero, CacheStateExpired
 }
 
 func (c *SharedCache[K, V]) Set(key K, value V) {
+	now := c.now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.evictExpiredLocked(now)
 	c.items[key] = &cacheEntry[V]{
 		value:    value,
-		storedAt: c.now(),
+		storedAt: now,
+	}
+}
+
+func (c *SharedCache[K, V]) evictExpiredLocked(now time.Time) {
+	swept := 0
+	maxAge := c.ttl + c.staleTTL
+	for k, entry := range c.items {
+		if swept >= maxExpiredSweep {
+			break
+		}
+		swept++
+		if now.Sub(entry.storedAt) > maxAge && atomic.LoadInt32(&entry.refreshing) == 0 {
+			delete(c.items, k)
+		}
 	}
 }
 
@@ -111,11 +137,11 @@ func (c *SharedCache[K, V]) InvalidateAll() {
 	c.items = make(map[K]*cacheEntry[V])
 }
 
-func (c *SharedCache[K, V]) refreshInBackground(key K) {
+func (c *SharedCache[K, V]) RefreshInBackground(ctx context.Context, key K) {
 	c.mu.RLock()
 	entry, ok := c.items[key]
 	c.mu.RUnlock()
-	if !ok {
+	if !ok || c.now().Sub(entry.storedAt) <= c.ttl {
 		return
 	}
 	if !atomic.CompareAndSwapInt32(&entry.refreshing, 0, 1) {
@@ -124,7 +150,7 @@ func (c *SharedCache[K, V]) refreshInBackground(key K) {
 
 	go func() {
 		defer atomic.StoreInt32(&entry.refreshing, 0)
-		refreshCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
 		if _, err := c.loadAndStore(refreshCtx, key); err != nil {
 			slog.Default().Error("shared cache background refresh failed",

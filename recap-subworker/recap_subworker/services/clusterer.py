@@ -355,7 +355,11 @@ class Clusterer:
                 return clusterer.labels_, clusterer.probabilities_
 
             # Run HDBSCAN with timeout or fallback if abandoned HDBSCAN still running
-            if _is_abandoned_hdbscan_running():
+            if reduced.shape[0] < max(2, effective_mcs, effective_ms):
+                labels = np.arange(embeddings.shape[0], dtype=int)
+                probs = np.ones_like(labels, dtype=float)
+                use_umap = False
+            elif _is_abandoned_hdbscan_running():
                 _LOGGER.warning(
                     "abandoned_hdbscan_still_running",
                     reason="abandoned_hdbscan_still_running",
@@ -612,7 +616,7 @@ class Clusterer:
         best_result = None
 
         # Pre-validation
-        if embeddings.size == 0 or not np.isfinite(embeddings).all():
+        if embeddings.size == 0 or n_data_points < 2 or not np.isfinite(embeddings).all():
             return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
         n_data_points = embeddings.shape[0]
@@ -857,7 +861,7 @@ class Clusterer:
         n_data_points = embeddings.shape[0]
 
         # Pre-validation
-        if embeddings.size == 0 or not np.isfinite(embeddings).all():
+        if embeddings.size == 0 or n_data_points < 2 or not np.isfinite(embeddings).all():
             return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
         # Set default ranges if not provided
@@ -1030,7 +1034,7 @@ class Clusterer:
         best_result = None
 
         # Pre-validation
-        if embeddings.size == 0 or not np.isfinite(embeddings).all():
+        if embeddings.size == 0 or n_data_points < 2 or not np.isfinite(embeddings).all():
             return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
         n_data_points = embeddings.shape[0]

@@ -14,6 +14,11 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	hostLimiterIdleTTL = time.Hour
+	maxIdleHostSweep   = 1024
+)
+
 // HostRateLimiter implements per-host rate limiting using token bucket algorithm.
 // It maintains separate rate limiters for each unique host to prevent exceeding
 // external API rate limits.
@@ -29,9 +34,11 @@ type HostRateLimiter struct {
 	// backoff) instead of always doubling the configured base interval.
 	// A host absent from this map is still at the base interval.
 	currentIntervals map[string]time.Duration
+	lastSeen         map[string]time.Time
 	mu               sync.RWMutex
 	interval         time.Duration
 	burst            int
+	now              func() time.Time
 
 	// coord is the cross-process arbiter. Zero value = ModeLocal.
 	coord Coordination
@@ -55,8 +62,10 @@ func NewHostRateLimiter(interval time.Duration, burst ...int) *HostRateLimiter {
 	return &HostRateLimiter{
 		limiters:         make(map[string]*rate.Limiter),
 		currentIntervals: make(map[string]time.Duration),
+		lastSeen:         make(map[string]time.Time),
 		interval:         interval,
 		burst:            b,
+		now:              time.Now,
 	}
 }
 
@@ -94,25 +103,54 @@ func (h *HostRateLimiter) WaitForHost(ctx context.Context, urlStr string) error 
 }
 
 func (h *HostRateLimiter) getLimiterForHost(host string) *rate.Limiter {
-	h.mu.RLock()
-	limiter, exists := h.limiters[host]
-	h.mu.RUnlock()
-
-	if exists {
-		return limiter
-	}
-
+	now := h.currentTime()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// Double-check pattern
 	if limiter, exists := h.limiters[host]; exists {
+		h.lastSeen[host] = now
 		return limiter
 	}
 
-	limiter = rate.NewLimiter(rate.Every(h.interval), h.burst)
+	h.evictIdleLocked(now)
+	limiter := rate.NewLimiter(rate.Every(h.interval), h.burst)
 	h.limiters[host] = limiter
+	h.lastSeen[host] = now
 	return limiter
+}
+
+func (h *HostRateLimiter) setClock(now func() time.Time) {
+	h.mu.Lock()
+	h.now = now
+	h.mu.Unlock()
+}
+
+func (h *HostRateLimiter) currentTime() time.Time {
+	if h.now != nil {
+		return h.now()
+	}
+	return time.Now()
+}
+
+func (h *HostRateLimiter) evictIdleLocked(now time.Time) {
+	idleTTL := hostLimiterIdleTTL
+	if minTTL := h.interval * 2; minTTL > idleTTL {
+		idleTTL = minTTL
+	}
+	swept := 0
+	for host := range h.limiters {
+		if swept >= maxIdleHostSweep {
+			break
+		}
+		swept++
+		if _, backedOff := h.currentIntervals[host]; backedOff {
+			continue
+		}
+		if last, ok := h.lastSeen[host]; ok && now.Sub(last) > idleTTL {
+			delete(h.limiters, host)
+			delete(h.lastSeen, host)
+		}
+	}
 }
 
 // RetryAfterFor reports how long a caller that just failed to get its turn
@@ -135,6 +173,7 @@ func (h *HostRateLimiter) RetryAfterFor(urlStr string) time.Duration {
 // Call RecordSuccess once the host responds normally again to decay the
 // backoff back to the base interval.
 func (h *HostRateLimiter) RecordRateLimitHit(host string, retryAfter time.Duration) {
+	now := h.currentTime()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -166,8 +205,10 @@ func (h *HostRateLimiter) RecordRateLimitHit(host string, retryAfter time.Durati
 	if lim, exists := h.limiters[host]; exists {
 		lim.SetLimit(rate.Every(backoff))
 	} else {
+		h.evictIdleLocked(now)
 		h.limiters[host] = rate.NewLimiter(rate.Every(backoff), h.burst)
 	}
+	h.lastSeen[host] = now
 }
 
 // RecordSuccess decays a host's rate limiter back to the configured base
@@ -175,6 +216,7 @@ func (h *HostRateLimiter) RecordRateLimitHit(host string, retryAfter time.Durati
 // was previously backed off recovers instead of staying throttled forever.
 // It is a no-op if the host was never backed off.
 func (h *HostRateLimiter) RecordSuccess(host string) {
+	now := h.currentTime()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -184,4 +226,5 @@ func (h *HostRateLimiter) RecordSuccess(host string) {
 
 	delete(h.currentIntervals, host)
 	h.limiters[host] = rate.NewLimiter(rate.Every(h.interval), h.burst)
+	h.lastSeen[host] = now
 }

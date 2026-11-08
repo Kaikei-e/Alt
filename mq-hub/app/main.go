@@ -145,15 +145,7 @@ func run() error {
 
 	// Start server with graceful shutdown
 	addr := fmt.Sprintf(":%d", cfg.ConnectPort)
-	srv := &http.Server{
-		Addr:              addr,
-		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20,
-	}
+	srv := newHTTPServer(addr, mux)
 
 	// Channel to signal server startup errors
 	serverErr := make(chan error, 1)
@@ -187,6 +179,19 @@ func run() error {
 
 	slog.InfoContext(ctx, "server shutdown complete")
 	return nil
+}
+
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		// WriteTimeout covers handler execution through response write, so it must exceed the max tag-generation wait.
+		WriteTimeout:   time.Duration(usecase.MaxTagGenerationTimeoutMs)*time.Millisecond + 10*time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
 }
 
 // startStreamTrimLoop runs the stream-length backstop until ctx is cancelled.

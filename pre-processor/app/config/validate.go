@@ -3,7 +3,10 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 )
+
+const minExternalRateLimitInterval = 5 * time.Second
 
 func validateConfig(config *Config) error {
 	if config.Server.Port <= 0 || config.Server.Port > 65535 {
@@ -22,8 +25,13 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("backoff factor must be greater than 1.0: %f", config.Retry.BackoffFactor)
 	}
 
-	if config.RateLimit.DefaultInterval <= 0 {
-		return fmt.Errorf("rate limit default interval must be positive: %v", config.RateLimit.DefaultInterval)
+	if config.RateLimit.DefaultInterval < minExternalRateLimitInterval {
+		return fmt.Errorf("rate limit default interval must be at least 5s: %v", config.RateLimit.DefaultInterval)
+	}
+	for domain, interval := range config.RateLimit.DomainIntervals {
+		if interval < minExternalRateLimitInterval {
+			return fmt.Errorf("rate limit interval for domain %q must be at least 5s: %v", domain, interval)
+		}
 	}
 
 	if config.Metrics.Port <= 0 || config.Metrics.Port > 65535 {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
 
@@ -32,6 +33,12 @@ func (h *Handler) GetFeedTags(
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("feed_id is required"))
 	}
+	parsedFeedID, err := uuid.Parse(req.Msg.FeedId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid feed_id: %w", err))
+	}
+	feedID := parsedFeedID.String()
 
 	limit := int(req.Msg.Limit)
 	if limit <= 0 {
@@ -43,7 +50,7 @@ func (h *Handler) GetFeedTags(
 
 	var cursor *time.Time
 	if req.Msg.Cursor != "" {
-		parsed, err := time.Parse(time.RFC3339, req.Msg.Cursor)
+		parsed, err := time.Parse(time.RFC3339Nano, req.Msg.Cursor)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid cursor: %w", err))
@@ -51,7 +58,7 @@ func (h *Handler) GetFeedTags(
 		cursor = &parsed
 	}
 
-	tags, err := h.deps.FeedTagStore.FetchFeedTags(ctx, req.Msg.FeedId, cursor, limit)
+	tags, err := h.deps.FeedTagStore.FetchFeedTags(ctx, feedID, cursor, limit)
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetFeedTags")
 	}
@@ -61,7 +68,7 @@ func (h *Handler) GetFeedTags(
 		protoTags = append(protoTags, &feedsv2.FeedTag{
 			Id:        tag.ID,
 			Name:      tag.TagName,
-			CreatedAt: tag.CreatedAt.Format(time.RFC3339),
+			CreatedAt: tag.CreatedAt.Format(time.RFC3339Nano),
 		})
 	}
 

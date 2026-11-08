@@ -125,6 +125,7 @@ func TestBatchGetOgImageURLsContract(t *testing.T) {
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleIds": []string{"6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"},
+				"userId":     testUserID,
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -139,7 +140,7 @@ func TestBatchGetOgImageURLsContract(t *testing.T) {
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewOgImageGateway(newDataHubServiceClient(config))
-			urls, err := gw.FetchOgImageURLsByArticleIDs(context.Background(),
+			urls, err := gw.FetchOgImageURLsByArticleIDs(authedContext(testUserID),
 				[]string{"6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"})
 			if err != nil {
 				return fmt.Errorf("FetchOgImageURLsByArticleIDs failed: %w", err)

@@ -115,6 +115,11 @@ impl ServiceParser for RustTracingParser {
                         .unwrap_or("")
                         .to_string();
 
+                        let timestamp = obj
+                            .get("timestamp")
+                            .and_then(|v| v.as_str())
+                            .and_then(super::parse_rfc3339_utc);
+
                         // Also collect top-level fields (except level, timestamp, fields, target, span, spans)
                         for (key, value) in obj {
                             if ![
@@ -137,7 +142,7 @@ impl ServiceParser for RustTracingParser {
                             log_type: "structured".to_string(),
                             message,
                             level: Some(level),
-                            timestamp: None,
+                            timestamp,
                             stream: "stdout".to_string(),
                             method: None,
                             path: None,

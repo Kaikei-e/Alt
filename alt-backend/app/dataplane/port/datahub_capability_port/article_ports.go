@@ -37,7 +37,8 @@ type ArticleReadPort interface {
 	// BatchGetByURLs omits URLs with no archived article.
 	BatchGetByURLs(ctx context.Context, urls []string, userID *uuid.UUID) (map[string]*domain.ArticleContent, error)
 	// GetContentByID returns nil without error for an unknown id.
-	GetContentByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
+	// userID is required and scopes the lookup to that user's articles.
+	GetContentByID(ctx context.Context, articleID string, userID *uuid.UUID) (*domain.ArticleContent, error)
 	// ListCursor pages one user's articles newest first, with tags.
 	ListCursor(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]*domain.Article, error)
 	// ListIDsCursor is the same walk without the tag join or the bodies.

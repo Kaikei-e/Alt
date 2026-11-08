@@ -129,6 +129,7 @@ func buildURLPatch(evt sovereign_db.KnowledgeEvent, payload articleUrlBackfilled
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ProjectionVersion: version,
 		URL:               payload.URL,
+		OccurredAt:        evt.OccurredAt,
 	}
 	return patch, nil
 }
@@ -190,6 +191,7 @@ func buildSummaryVersionCreatedWrites(evt sovereign_db.KnowledgeEvent, version i
 		TenantID:          evt.TenantID,
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ItemType:          itemTypeArticle,
+		PrimaryRefID:      &articleID,
 		SummaryExcerpt:    payload.SummaryText,
 		SummaryState:      summaryState,
 		WhyReasons:        whyReasons,
@@ -248,6 +250,7 @@ func buildTagSetVersionCreatedWrites(evt sovereign_db.KnowledgeEvent, version in
 		TenantID:          evt.TenantID,
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ItemType:          itemTypeArticle,
+		PrimaryRefID:      &articleID,
 		Tags:              payload.Tags,
 		WhyReasons:        []whyReasonWire{{Code: whyNewUnread}},
 		Score:             0.7,

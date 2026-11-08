@@ -22,9 +22,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Scope: tests/unit + tests/services. tests/contract is verified by
-  # proto-contract.yaml, and tests/integration needs a live DB + model
-  # artefacts that this hermetic runner does not provide.
+  # Scope: tests/unit + tests/services + non-slow tests/integration.
+  # tests/contract is verified by proto-contract.yaml.
   tests:
     uses: ./.github/workflows/reusable-test-python.yaml
     with:
@@ -36,7 +35,7 @@ jobs:
       coverage-flags: "recap-subworker"
       upload-coverage: true
       job-type: "test"
-      test-command: "pytest -v tests/unit tests/services --cov=recap_subworker --cov-report=xml --junit-xml=tests/results.xml"
+      test-command: 'pytest -v tests/unit tests/services tests/integration -m "not slow" --cov=recap_subworker --cov-report=xml --junit-xml=tests/results.xml'
     permissions:
       contents: read
     secrets: inherit

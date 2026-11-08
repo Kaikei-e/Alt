@@ -8,11 +8,15 @@ import (
 )
 
 type mockArticlesByTagClient struct {
-	articles []domain.TagArticle
-	err      error
+	articles   []domain.TagArticle
+	err        error
+	lastUserID string
+	called     bool
 }
 
 func (m *mockArticlesByTagClient) FetchArticlesByTag(ctx context.Context, tagName string, limit int) ([]domain.TagArticle, error) {
+	m.called = true
+	m.lastUserID = domain.UserIDFromContext(ctx)
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -35,7 +39,8 @@ func TestArticlesByTagTool_ReturnsArticles(t *testing.T) {
 	}
 	tool := NewArticlesByTagTool(client)
 
-	result, err := tool.Execute(context.Background(), map[string]string{
+	ctx := domain.WithUserID(context.Background(), "00000000-0000-0000-0000-000000000001")
+	result, err := tool.Execute(ctx, map[string]string{
 		"tag_name": "art",
 	})
 	if err != nil {
@@ -44,11 +49,79 @@ func TestArticlesByTagTool_ReturnsArticles(t *testing.T) {
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
+	if client.lastUserID != "00000000-0000-0000-0000-000000000001" {
+		t.Errorf("expected user_id 00000000-0000-0000-0000-000000000001, got %q", client.lastUserID)
+	}
 	if !containsString(result.Data, "MoMA") {
 		t.Error("result should contain article title")
 	}
 	if !containsString(result.Data, "https://example.com/1") {
 		t.Error("result should contain article URL")
+	}
+}
+
+func TestArticlesByTagTool_PrefersContextUserIDOverParams(t *testing.T) {
+	client := &mockArticlesByTagClient{
+		articles: []domain.TagArticle{
+			{ID: "1", Title: "Owned Article", URL: "https://example.com/1"},
+		},
+	}
+	tool := NewArticlesByTagTool(client)
+	ctx := domain.WithUserID(context.Background(), "authenticated-user")
+
+	result, err := tool.Execute(ctx, map[string]string{
+		"tag_name": "art",
+		"user_id":  "forged-victim-user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("expected success, got error: %s", result.Error)
+	}
+	if client.lastUserID != "authenticated-user" {
+		t.Errorf("expected authenticated-user, got %q", client.lastUserID)
+	}
+}
+
+func TestArticlesByTagTool_RequiresUserID(t *testing.T) {
+	client := &mockArticlesByTagClient{}
+	tool := NewArticlesByTagTool(client)
+
+	result, err := tool.Execute(context.Background(), map[string]string{
+		"tag_name": "art",
+	})
+	if err == nil {
+		t.Fatal("expected error when user_id is missing")
+	}
+	if result != nil && result.Success {
+		t.Error("expected tool result to report failure when user_id is missing")
+	}
+	if client.called {
+		t.Error("must not call client when user_id is missing")
+	}
+}
+
+func TestArticlesByTagTool_RejectsParamsOnlyUserID(t *testing.T) {
+	client := &mockArticlesByTagClient{
+		articles: []domain.TagArticle{
+			{ID: "1", Title: "Victim Article", URL: "https://example.com/1"},
+		},
+	}
+	tool := NewArticlesByTagTool(client)
+
+	result, err := tool.Execute(context.Background(), map[string]string{
+		"tag_name": "art",
+		"user_id":  "forged-victim-user",
+	})
+	if err == nil {
+		t.Fatal("expected error when user_id is only in params and not in context")
+	}
+	if result != nil && result.Success {
+		t.Error("expected tool result to report failure when context has no user_id")
+	}
+	if client.called {
+		t.Error("must not call client when context has no user_id")
 	}
 }
 
@@ -67,7 +140,8 @@ func TestArticlesByTagTool_NoResults(t *testing.T) {
 	client := &mockArticlesByTagClient{articles: nil}
 	tool := NewArticlesByTagTool(client)
 
-	result, err := tool.Execute(context.Background(), map[string]string{
+	ctx := domain.WithUserID(context.Background(), "00000000-0000-0000-0000-000000000001")
+	result, err := tool.Execute(ctx, map[string]string{
 		"tag_name": "nonexistent",
 	})
 	if err != nil {
@@ -85,7 +159,8 @@ func TestArticlesByTagTool_ClientError(t *testing.T) {
 	client := &mockArticlesByTagClient{err: context.DeadlineExceeded}
 	tool := NewArticlesByTagTool(client)
 
-	_, err := tool.Execute(context.Background(), map[string]string{
+	ctx := domain.WithUserID(context.Background(), "00000000-0000-0000-0000-000000000001")
+	_, err := tool.Execute(ctx, map[string]string{
 		"tag_name": "art",
 	})
 	if err == nil {

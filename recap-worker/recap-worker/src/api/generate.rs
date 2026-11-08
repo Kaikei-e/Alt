@@ -161,14 +161,21 @@ fn trigger_recap(
         None => (state.config().recap_genres().to_vec(), false),
     };
 
+    let Some(permit) = state.scheduler().try_acquire_run_permit() else {
+        let body = Json(ErrorResponse {
+            error: "another recap pipeline run is already in progress".into(),
+        });
+        return (StatusCode::CONFLICT, body).into_response();
+    };
+
     let job_id = Uuid::new_v4();
     let response_genres = genres.clone();
     let scheduled_genre_count = response_genres.len();
-    let job = JobContext::new_manual(job_id, genres, window_days);
+    let job = build_manual_job(state.config(), job_id, genres, window_days);
     let scheduler = state.scheduler().clone();
 
     tokio::spawn(async move {
-        if let Err(error) = scheduler.run_job(job).await {
+        if let Err(error) = scheduler.run_job_locked(job, permit).await {
             error!(%job_id, error = ?error, provided, label, "manual recap job failed");
         } else {
             info!(%job_id, provided, genres = scheduled_genre_count, label, "manual recap job scheduled");
@@ -182,6 +189,18 @@ fn trigger_recap(
     });
 
     (StatusCode::ACCEPTED, body).into_response()
+}
+
+fn build_manual_job(
+    config: &crate::config::Config,
+    job_id: Uuid,
+    genres: Vec<String>,
+    window_days: u32,
+) -> JobContext {
+    crate::scheduler::daemon::apply_knowledge_owner(
+        JobContext::new_manual(job_id, genres, window_days),
+        config.knowledge_owner(),
+    )
 }
 
 fn normalize_genres(raw: Vec<String>) -> Vec<String> {
@@ -208,7 +227,7 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    use super::normalize_genres;
+    use super::{build_manual_job, normalize_genres};
     use crate::{
         app::{ComponentRegistry, build_router},
         config::{Config, ENV_MUTEX},
@@ -258,6 +277,7 @@ mod tests {
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
@@ -710,5 +730,145 @@ mod tests {
             .expect("request builds");
         let resp3 = app.oneshot(req3).await.expect("request 3 succeeds");
         assert_eq!(resp3.status(), StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn trigger_7days_returns_409_when_run_lock_is_held() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:15432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let mock_dao = MockRecapDao::new();
+        let registry = registry.with_recap_dao(Arc::new(mock_dao));
+        let permit = registry
+            .scheduler()
+            .try_acquire_run_permit()
+            .expect("run lock should be idle before test");
+
+        let app = build_router(registry);
+
+        let held_req = Request::post("/v1/generate/recaps/7days")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .expect("request builds");
+        let held_resp = app
+            .clone()
+            .oneshot(held_req)
+            .await
+            .expect("request succeeds");
+        assert_eq!(held_resp.status(), StatusCode::CONFLICT);
+
+        let held_bytes = axum::body::to_bytes(held_resp.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let held_payload: serde_json::Value =
+            serde_json::from_slice(&held_bytes).expect("valid json");
+        assert_eq!(
+            held_payload["error"],
+            "another recap pipeline run is already in progress"
+        );
+
+        drop(permit);
+
+        let idle_req = Request::post("/v1/generate/recaps/7days")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .expect("request builds");
+        let idle_resp = app.oneshot(idle_req).await.expect("request succeeds");
+        assert_eq!(idle_resp.status(), StatusCode::ACCEPTED);
+
+        let idle_bytes = axum::body::to_bytes(idle_resp.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let idle_payload: serde_json::Value =
+            serde_json::from_slice(&idle_bytes).expect("valid json");
+        assert_eq!(idle_payload["status"], "accepted");
+        assert!(
+            idle_payload["job_id"]
+                .as_str()
+                .and_then(|id| Uuid::parse_str(id).ok())
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn build_manual_job_binds_knowledge_owner_when_emit_enabled() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let user_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let user_id_str = user_id.to_string();
+        let tenant_id_str = tenant_id.to_string();
+
+        let config = temp_env::with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:15432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+                (
+                    "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                    Some("http://localhost:19500"),
+                ),
+                ("RECAP_KNOWLEDGE_SOVEREIGN_AUTH", Some("disabled")),
+                ("RECAP_KNOWLEDGE_OWNER_USER_ID", Some(user_id_str.as_str())),
+                (
+                    "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                    Some(tenant_id_str.as_str()),
+                ),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+            ],
+            || Config::from_env().expect("config loads"),
+        );
+
+        let job_id = Uuid::new_v4();
+        let genres = vec!["ai".to_string(), "space".to_string()];
+        let job = build_manual_job(&config, job_id, genres.clone(), 7);
+
+        assert_eq!(job.job_id, job_id);
+        assert_eq!(job.genres(), genres.as_slice());
+        assert_eq!(job.window_days(), 7);
+        assert_eq!(job.trigger_source(), "user");
+        assert_eq!(job.user_id(), Some(user_id));
+        assert_eq!(job.tenant_id(), Some(tenant_id));
     }
 }

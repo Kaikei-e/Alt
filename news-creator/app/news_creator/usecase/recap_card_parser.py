@@ -13,7 +13,7 @@ from news_creator.domain.models import (
     CardSentence,
 )
 from news_creator.domain.prompt_boundary import _strip_hidden
-from news_creator.domain.prompts import neutralize_control_tokens
+from news_creator.domain.prompts import _THINKING_BLOCK_RE, neutralize_control_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def clean_raw_output(text: str) -> str:
         return ""
 
     # Strip thinking blocks (Gemma 4 channel thoughts and standard <think> blocks)
-    cleaned = re.sub(r"<\|channel>thought.*?<channel\|>", "", text, flags=re.DOTALL)
+    cleaned = _THINKING_BLOCK_RE.sub("", text)
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL)
 
     # Strip zero-width, invisible formatting, BiDi overrides, and control chars

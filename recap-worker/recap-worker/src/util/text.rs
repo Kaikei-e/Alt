@@ -28,11 +28,11 @@ pub fn split_sentences(text: &str) -> Vec<String> {
 /// 近似重複検出に使用します。
 #[must_use]
 pub(crate) fn rolling_hash_windows(text: &str, window_size: usize) -> Vec<u64> {
-    if text.len() < window_size {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() < window_size {
         return vec![hash_text(text)];
     }
 
-    let chars: Vec<char> = text.chars().collect();
     let mut hashes = Vec::new();
 
     for window in chars.windows(window_size) {
@@ -156,6 +156,16 @@ mod tests {
         let text = "Short";
         let hashes = rolling_hash_windows(text, 100);
         assert_eq!(hashes.len(), 1);
+    }
+
+    #[test]
+    fn rolling_hash_windows_handles_short_multibyte_text() {
+        let ja_text = "あ".repeat(40);
+        let ascii_text = "a".repeat(40);
+        let ja_hashes = rolling_hash_windows(&ja_text, 100);
+        let ascii_hashes = rolling_hash_windows(&ascii_text, 100);
+        assert_eq!(ja_hashes.len(), ascii_hashes.len());
+        assert_eq!(ja_hashes, vec![hash_text(&ja_text)]);
     }
 
     #[test]

@@ -37,8 +37,9 @@ type ArticleRepository interface {
 
 // fetchResult holds the result of a singleflight web fetch.
 type fetchResult struct {
+	title      string
 	content    string
-	articleID  string
+	headHTML   string
 	ogImageURL string
 }
 
@@ -203,7 +204,7 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 		return "", "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
-	// 4-7. Fetch from Web, extract, save — deduplicated via singleflight
+	// 4-6. Fetch from Web and extract HTML — deduplicated via singleflight
 	// Concurrent requests for the same URL share a single in-flight fetch.
 	// Use separate singleflight key for force refresh to avoid sharing with normal fetches.
 	sfKey := urlStr
@@ -215,8 +216,9 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 		timeout = defaultExternalFetchTimeout
 	}
 	logger.Logger.InfoContext(ctx, "Fetching article from Web", "url", urlStr, "force_refresh", forceRefresh, "timeout", timeout)
-	resultIface, err, _ := u.fetchGroup.Do(sfKey, func() (interface{}, error) {
-		fetchCtx, fetchCancel := context.WithTimeout(ctx, timeout)
+	// Detach from the first caller's cancellation so one caller aborting does not cancel the shared fetch for waiting callers.
+	ch := u.fetchGroup.DoChan(sfKey, func() (interface{}, error) {
+		fetchCtx, fetchCancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 		defer fetchCancel()
 		contentPtr, fetchErr := u.articleFetcher.FetchArticleContents(fetchCtx, urlStr)
 		if fetchErr != nil {
@@ -227,12 +229,12 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 			var rateErr *domain.RateLimitedError
 			switch {
 			case errors.As(fetchErr, &upstreamErr):
-				logger.Logger.WarnContext(ctx, "Upstream site did not complete the fetch", "error", fetchErr, "url", urlStr)
+				logger.Logger.WarnContext(fetchCtx, "Upstream site did not complete the fetch", "error", fetchErr, "url", urlStr)
 			case errors.As(fetchErr, &rateErr):
-				logger.Logger.InfoContext(ctx, "Host slot busy, asking the client to retry",
+				logger.Logger.InfoContext(fetchCtx, "Host slot busy, asking the client to retry",
 					"url", urlStr, "retry_after", rateErr.RetryAfter)
 			default:
-				logger.Logger.ErrorContext(ctx, "Failed to fetch article content", "error", fetchErr, "url", urlStr)
+				logger.Logger.ErrorContext(fetchCtx, "Failed to fetch article content", "error", fetchErr, "url", urlStr)
 			}
 			return nil, fmt.Errorf("fetch failed: %w", fetchErr)
 		}
@@ -250,34 +252,50 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 		contentStr := html_parser.ExtractArticleHTML(htmlContent)
 
 		if contentStr == "" {
-			logger.Logger.WarnContext(ctx, "failed to extract article HTML from content, falling back to sanitized HTML",
+			logger.Logger.WarnContext(fetchCtx, "failed to extract article HTML from content, falling back to sanitized HTML",
 				"url", urlStr, "html_size_bytes", len(htmlContent))
 			contentStr = html_parser.SanitizeHTML(htmlContent)
 		}
 
-		// 7. Save to Database
-		newID, saveErr := u.repo.SaveArticle(ctx, urlStr, fetchedTitle, contentStr)
-		if saveErr != nil {
-			logger.Logger.ErrorContext(ctx, "Failed to save article to database", "error", saveErr, "url", urlStr)
-		} else {
-			logger.Logger.InfoContext(ctx, "Article content saved", "url", urlStr, "new_id", newID)
-
-			// 7a. Save article head (best-effort, don't fail the request)
-			if headHTML != "" {
-				if headErr := u.repo.SaveArticleHead(ctx, newID, headHTML, extractedOgImage); headErr != nil {
-					logger.Logger.ErrorContext(ctx, "Failed to save article head", "error", headErr, "article_id", newID)
-				}
-			}
-
-			// 8. RAG upsert is handled by the outbox worker via ARTICLE_UPSERT
-			// enqueued inside SaveArticle — no fire-and-forget goroutine here.
-		}
-
-		return &fetchResult{content: contentStr, articleID: newID, ogImageURL: extractedOgImage}, nil
+		return &fetchResult{
+			title:      fetchedTitle,
+			content:    contentStr,
+			headHTML:   headHTML,
+			ogImageURL: extractedOgImage,
+		}, nil
 	})
-	if err != nil {
+
+	var res singleflight.Result
+	select {
+	case <-ctx.Done():
+		return "", "", "", ctx.Err()
+	case res = <-ch:
+	}
+	if res.Err != nil {
+		return "", "", "", res.Err
+	}
+	if err := ctx.Err(); err != nil {
 		return "", "", "", err
 	}
-	result := resultIface.(*fetchResult)
-	return result.content, result.articleID, result.ogImageURL, nil
+	result := res.Val.(*fetchResult)
+
+	// 7. Save to Database per caller so each user gets their own article row and outbox event.
+	newID, saveErr := u.repo.SaveArticle(ctx, urlStr, result.title, result.content)
+	if saveErr != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to save article to database", "error", saveErr, "url", urlStr)
+	} else {
+		logger.Logger.InfoContext(ctx, "Article content saved", "url", urlStr, "new_id", newID)
+
+		// 7a. Save article head (best-effort, don't fail the request)
+		if result.headHTML != "" {
+			if headErr := u.repo.SaveArticleHead(ctx, newID, result.headHTML, result.ogImageURL); headErr != nil {
+				logger.Logger.ErrorContext(ctx, "Failed to save article head", "error", headErr, "article_id", newID)
+			}
+		}
+
+		// 8. RAG upsert is handled by the outbox worker via ARTICLE_UPSERT
+		// enqueued inside SaveArticle — no fire-and-forget goroutine here.
+	}
+
+	return result.content, newID, result.ogImageURL, nil
 }

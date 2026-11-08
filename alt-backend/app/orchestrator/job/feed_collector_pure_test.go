@@ -1,11 +1,11 @@
 package job
 
 import (
-	"errors"
 	"net/url"
 	"testing"
 	"time"
 
+	rssFeed "github.com/mmcdole/gofeed"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -89,12 +89,12 @@ func TestIs403Error_Pure(t *testing.T) {
 		},
 		{
 			name: "error containing 403 returns true",
-			err:  errors.New("HTTP response status: 403 Forbidden"),
+			err:  rssFeed.HTTPError{StatusCode: 403, Status: "403 Forbidden"},
 			want: true,
 		},
 		{
 			name: "error without 403 returns false",
-			err:  errors.New("HTTP response status: 500 Internal Server Error"),
+			err:  rssFeed.HTTPError{StatusCode: 500, Status: "500 Internal Server Error"},
 			want: false,
 		},
 	}

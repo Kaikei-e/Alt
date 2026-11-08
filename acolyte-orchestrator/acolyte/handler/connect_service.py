@@ -158,7 +158,10 @@ class AcolyteConnectService:
             raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
         cursor = request.cursor if request.cursor else None
         limit = request.limit if request.limit > 0 else 20
-        reports, next_cursor = await ListReportsUsecase(self._repo).execute(cursor, limit, user_id=user_id)
+        try:
+            reports, next_cursor = await ListReportsUsecase(self._repo).execute(cursor, limit, user_id=user_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid cursor: {e}") from e
 
         summaries = []
         for r in reports:
@@ -204,7 +207,10 @@ class AcolyteConnectService:
             raise ConnectError(Code.NOT_FOUND, f"Report {request.report_id} not found")
         cursor = request.cursor if request.cursor else None
         limit = request.limit if request.limit > 0 else 20
-        versions, next_cursor = await self._repo.list_report_versions(report_id, cursor, limit)
+        try:
+            versions, next_cursor = await self._repo.list_report_versions(report_id, cursor, limit)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid cursor: {e}") from e
 
         result = []
         for v in versions:
@@ -348,26 +354,26 @@ class AcolyteConnectService:
 
         current_user_id.set(user_id)
 
-        if self._jobs is not None:
-            # Single default_model for all three roles — the pipeline is
-            # mono-model today; report_runs keeps separate columns for a
-            # future per-role routing split.
-            model = self._settings.default_model
-            await self._jobs.mark_running(UUID(run_id), model, model, model)
-
-        config = self._graph_config(run_id)
-        initial_state = {
-            "report_id": report_id,
-            "run_id": run_id,
-            "brief": brief_dict,
-            "revision_count": 0,
-            "user_id": user_id,
-        }
-
-        logger.info(
-            "Pipeline started", report_id=report_id, run_id=run_id, thread_id=config["configurable"]["thread_id"]
-        )
         try:
+            if self._jobs is not None:
+                # Single default_model for all three roles — the pipeline is
+                # mono-model today; report_runs keeps separate columns for a
+                # future per-role routing split.
+                model = self._settings.default_model
+                await self._jobs.mark_running(UUID(run_id), model, model, model)
+
+            config = self._graph_config(run_id)
+            initial_state = {
+                "report_id": report_id,
+                "run_id": run_id,
+                "brief": brief_dict,
+                "revision_count": 0,
+                "user_id": user_id,
+            }
+
+            logger.info(
+                "Pipeline started", report_id=report_id, run_id=run_id, thread_id=config["configurable"]["thread_id"]
+            )
             invoke_input = initial_state
 
             if self._settings.checkpoint_enabled:

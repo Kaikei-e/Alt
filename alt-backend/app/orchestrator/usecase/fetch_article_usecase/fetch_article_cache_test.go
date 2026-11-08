@@ -43,7 +43,7 @@ func TestFetchCompliantArticle_SingleflightDeduplicates(t *testing.T) {
 		},
 	).Times(1)
 
-	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).Return(articleID, nil).Times(1)
+	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).Return(articleID, nil).Times(2)
 
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
@@ -350,4 +350,251 @@ func TestFetchCompliantArticle_DefaultExternalFetchTimeoutIs8s(t *testing.T) {
 	if uc.externalFetchTimeout != 8*time.Second {
 		t.Errorf("Expected default 8s timeout, got %v", uc.externalFetchTimeout)
 	}
+}
+
+func TestFetchCompliantArticle_SingleflightUserScopeAndCancelIsolation(t *testing.T) {
+	articleURLStr := "https://zenn.dev/test/articles/cross-user-singleflight"
+	articleURL, _ := url.Parse(articleURLStr)
+	rawHTML := "<html><head><title>Shared Title</title><meta property=\"og:image\" content=\"https://example.com/og.png\"></head><body><p>" +
+		strings.Repeat("Article content for cross-user singleflight isolation test. ", 5) +
+		"</p></body></html>"
+
+	userAID := uuid.MustParse("00000000-0000-0000-0000-00000000000a")
+	userBID := uuid.MustParse("00000000-0000-0000-0000-00000000000b")
+	userCtxA := &domain.UserContext{
+		UserID:    userAID,
+		Email:     "usera@example.com",
+		Role:      domain.UserRoleUser,
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+	userCtxB := &domain.UserContext{
+		UserID:    userBID,
+		Email:     "userb@example.com",
+		Role:      domain.UserRoleUser,
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+
+	t.Run("saves article per user and returns each user own article id", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+		mockRobotsTxt := mocks.NewMockRobotsTxtPolicyPort(ctrl)
+		mockRepo := mocks.NewMockArticleRepository(ctrl)
+		usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
+
+		mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(nil, nil).Times(2)
+		mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).Times(2)
+
+		fetchEntered := make(chan struct{})
+		userBAtPolicy := make(chan struct{})
+
+		mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _ *url.URL, _ string) (bool, error) {
+				u, err := domain.GetUserFromContext(ctx)
+				if err == nil && u.UserID == userBID {
+					close(userBAtPolicy)
+				}
+				return true, nil
+			},
+		).Times(2)
+
+		mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).DoAndReturn(
+			func(_ context.Context, _ string) (*string, error) {
+				close(fetchEntered)
+				<-userBAtPolicy
+				time.Sleep(20 * time.Millisecond)
+				return &rawHTML, nil
+			},
+		).Times(1)
+
+		var savedMu sync.Mutex
+		savedByUser := make(map[uuid.UUID]int)
+		headByArticleID := make(map[string]int)
+
+		mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _, _, _ string) (string, error) {
+				u, err := domain.GetUserFromContext(ctx)
+				if err != nil {
+					t.Errorf("SaveArticle called without valid user context: %v", err)
+					return "", err
+				}
+				savedMu.Lock()
+				savedByUser[u.UserID]++
+				savedMu.Unlock()
+				switch u.UserID {
+				case userAID:
+					return "article-user-a", nil
+				case userBID:
+					return "article-user-b", nil
+				default:
+					return "article-unknown", nil
+				}
+			},
+		).AnyTimes()
+
+		mockRepo.EXPECT().SaveArticleHead(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, articleID, _, _ string) error {
+				savedMu.Lock()
+				headByArticleID[articleID]++
+				savedMu.Unlock()
+				return nil
+			},
+		).AnyTimes()
+
+		ctxA := domain.SetUserContext(context.Background(), userCtxA)
+		ctxB := domain.SetUserContext(context.Background(), userCtxB)
+
+		var (
+			wg         sync.WaitGroup
+			idA, idB   string
+			errA, errB error
+		)
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, idA, _, errA = usecase.FetchCompliantArticle(ctxA, articleURL, *userCtxA)
+		}()
+		go func() {
+			defer wg.Done()
+			<-fetchEntered
+			_, idB, _, errB = usecase.FetchCompliantArticle(ctxB, articleURL, *userCtxB)
+		}()
+		wg.Wait()
+
+		if errA != nil {
+			t.Fatalf("user A unexpected error: %v", errA)
+		}
+		if errB != nil {
+			t.Fatalf("user B unexpected error: %v", errB)
+		}
+		if savedByUser[userAID] != 1 {
+			t.Errorf("SaveArticle calls for user A = %d, want 1", savedByUser[userAID])
+		}
+		if savedByUser[userBID] != 1 {
+			t.Errorf("SaveArticle calls for user B = %d, want 1", savedByUser[userBID])
+		}
+		if idA != "article-user-a" {
+			t.Errorf("user A got articleID %q, want %q", idA, "article-user-a")
+		}
+		if idB != "article-user-b" {
+			t.Errorf("user B got articleID %q, want %q", idB, "article-user-b")
+		}
+		if headByArticleID["article-user-a"] != 1 || headByArticleID["article-user-b"] != 1 {
+			t.Errorf("SaveArticleHead calls by articleID = %v, want 1 each for article-user-a and article-user-b", headByArticleID)
+		}
+	})
+
+	t.Run("cancelling user A ctx does not fail user B request", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+		mockRobotsTxt := mocks.NewMockRobotsTxtPolicyPort(ctrl)
+		mockRepo := mocks.NewMockArticleRepository(ctrl)
+		usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo)
+
+		mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(nil, nil).Times(2)
+		mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).Times(2)
+
+		fetchEntered := make(chan struct{})
+		userBAtPolicy := make(chan struct{})
+		releaseFetch := make(chan struct{})
+
+		mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _ *url.URL, _ string) (bool, error) {
+				u, err := domain.GetUserFromContext(ctx)
+				if err == nil && u.UserID == userBID {
+					close(userBAtPolicy)
+				}
+				return true, nil
+			},
+		).Times(2)
+
+		mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).DoAndReturn(
+			func(fetchCtx context.Context, _ string) (*string, error) {
+				close(fetchEntered)
+				select {
+				case <-releaseFetch:
+				case <-fetchCtx.Done():
+					return nil, fetchCtx.Err()
+				}
+				if err := fetchCtx.Err(); err != nil {
+					return nil, err
+				}
+				return &rawHTML, nil
+			},
+		).Times(1)
+
+		var savedMu sync.Mutex
+		savedByUser := make(map[uuid.UUID]int)
+
+		mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _, _, _ string) (string, error) {
+				if err := ctx.Err(); err != nil {
+					return "", err
+				}
+				u, err := domain.GetUserFromContext(ctx)
+				if err != nil {
+					return "", err
+				}
+				savedMu.Lock()
+				savedByUser[u.UserID]++
+				savedMu.Unlock()
+				if u.UserID == userBID {
+					return "article-user-b", nil
+				}
+				return "article-user-a", nil
+			},
+		).AnyTimes()
+
+		mockRepo.EXPECT().SaveArticleHead(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		ctxA, cancelA := context.WithCancel(domain.SetUserContext(context.Background(), userCtxA))
+		defer cancelA()
+		ctxB := domain.SetUserContext(context.Background(), userCtxB)
+
+		var (
+			wg   sync.WaitGroup
+			idB  string
+			errA error
+			errB error
+		)
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, _, _, errA = usecase.FetchCompliantArticle(ctxA, articleURL, *userCtxA)
+		}()
+		go func() {
+			defer wg.Done()
+			<-fetchEntered
+			_, idB, _, errB = usecase.FetchCompliantArticle(ctxB, articleURL, *userCtxB)
+		}()
+
+		<-userBAtPolicy
+		time.Sleep(20 * time.Millisecond)
+		cancelA()
+		time.Sleep(10 * time.Millisecond)
+		close(releaseFetch)
+
+		wg.Wait()
+
+		if errA == nil {
+			t.Errorf("expected user A request to fail after ctxA cancellation, got nil")
+		}
+		if errB != nil {
+			t.Fatalf("user B failed when user A cancelled: %v", errB)
+		}
+		if idB != "article-user-b" {
+			t.Errorf("user B got articleID %q, want %q", idB, "article-user-b")
+		}
+		if savedByUser[userBID] != 1 {
+			t.Errorf("SaveArticle calls for user B = %d, want 1", savedByUser[userBID])
+		}
+		if savedByUser[userAID] != 0 {
+			t.Errorf("SaveArticle calls for cancelled user A = %d, want 0", savedByUser[userAID])
+		}
+	})
 }

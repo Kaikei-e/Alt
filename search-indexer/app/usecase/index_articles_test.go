@@ -91,6 +91,7 @@ type mockSearchEngineForIndexing struct {
 	err               error
 	synonymsCallCount int
 	lastSynonymsArg   map[string][]string
+	synonymsErrs      []error
 }
 
 func (m *mockSearchEngineForIndexing) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
@@ -145,6 +146,11 @@ func (m *mockSearchEngineForIndexing) SearchByUserIDWithPagination(ctx context.C
 func (m *mockSearchEngineForIndexing) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	m.synonymsCallCount++
 	m.lastSynonymsArg = synonyms
+	if len(m.synonymsErrs) > 0 {
+		err := m.synonymsErrs[0]
+		m.synonymsErrs = m.synonymsErrs[1:]
+		return err
+	}
 	return nil
 }
 
@@ -710,6 +716,46 @@ func TestFlushSynonyms_IndexingAloneDoesNotPUT(t *testing.T) {
 	}
 }
 
+func TestFlushSynonyms_RetriesAfterRegisterSynonymsError(t *testing.T) {
+	now := time.Now()
+	tok, err := tokenize.InitTokenizer()
+	if err != nil {
+		t.Fatalf("InitTokenizer: %v", err)
+	}
+	a1, _ := domain.NewArticle("1", "T1", "C1", []string{"機械学習"}, now, "u")
+	repo := &mockArticleRepo{articles: []*domain.Article{a1}}
+	engine := &mockSearchEngineForIndexing{
+		synonymsErrs: []error{errors.New("meilisearch settings task timeout")},
+	}
+	u := NewIndexArticlesUsecase(repo, engine, tok)
+
+	if _, err := u.ExecuteBackfill(context.Background(), nil, "", 10); err != nil {
+		t.Fatalf("ExecuteBackfill: %v", err)
+	}
+
+	if err := u.FlushSynonyms(context.Background()); err == nil {
+		t.Fatal("FlushSynonyms (1st) = nil, want error from RegisterSynonyms")
+	}
+	if engine.synonymsCallCount != 1 {
+		t.Fatalf("RegisterSynonyms call count after failed 1st flush = %d, want 1", engine.synonymsCallCount)
+	}
+	wantTokens, ok := engine.lastSynonymsArg["機械学習"]
+	if !ok {
+		t.Fatalf("1st flush missing key 機械学習: %v", engine.lastSynonymsArg)
+	}
+	engine.lastSynonymsArg = nil
+
+	if err := u.FlushSynonyms(context.Background()); err != nil {
+		t.Fatalf("FlushSynonyms (2nd retry): %v", err)
+	}
+	if engine.synonymsCallCount != 2 {
+		t.Fatalf("RegisterSynonyms call count after 2nd flush = %d, want 2 (must retry after failure)", engine.synonymsCallCount)
+	}
+	if gotTokens, ok := engine.lastSynonymsArg["機械学習"]; !ok || !slices.Equal(gotTokens, wantTokens) {
+		t.Fatalf("2nd flush synonyms = %v, want 機械学習:%v", engine.lastSynonymsArg, wantTokens)
+	}
+}
+
 // TestResetSynonyms_ClearsAndRegistersEmptyMap verifies that ResetSynonyms
 // clears the in-memory synonyms dictionary and PUTs an empty map to
 // Meilisearch so a previously persisted polluted dictionary is wiped clean.
@@ -922,5 +968,135 @@ func TestExecuteBatchArticles_IndexWriteFailureFailsEveryFetchedID(t *testing.T)
 	}
 	if !slices.Equal(result.FailedIDs, ids) {
 		t.Errorf("FailedIDs = %v, want all fetched IDs %v", result.FailedIDs, ids)
+	}
+}
+
+type scriptedPage struct {
+	articles      []*domain.Article
+	nextCreatedAt *time.Time
+	nextID        string
+}
+
+type scriptedPageArticleRepo struct {
+	backfillPages    []scriptedPage
+	incrementalPages []scriptedPage
+	backfillIdx      int
+	incrementalIdx   int
+	lastCursorIDs    []string
+}
+
+func (m *scriptedPageArticleRepo) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
+	m.lastCursorIDs = append(m.lastCursorIDs, lastID)
+	if m.backfillIdx >= len(m.backfillPages) {
+		return []*domain.Article{}, nil, "", nil
+	}
+	p := m.backfillPages[m.backfillIdx]
+	m.backfillIdx++
+	return p.articles, p.nextCreatedAt, p.nextID, nil
+}
+
+func (m *scriptedPageArticleRepo) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
+	m.lastCursorIDs = append(m.lastCursorIDs, lastID)
+	if m.incrementalIdx >= len(m.incrementalPages) {
+		return []*domain.Article{}, nil, "", nil
+	}
+	p := m.incrementalPages[m.incrementalIdx]
+	m.incrementalIdx++
+	return p.articles, p.nextCreatedAt, p.nextID, nil
+}
+
+func (m *scriptedPageArticleRepo) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]string, *time.Time, error) {
+	return nil, nil, nil
+}
+
+func (m *scriptedPageArticleRepo) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
+	return nil, nil
+}
+
+func (m *scriptedPageArticleRepo) GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error) {
+	return nil, domain.ErrArticleNotFound
+}
+
+func TestExecuteBackfill_AllBadPageAdvancesCursorAndContinues(t *testing.T) {
+	t1 := time.Date(2026, 3, 26, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 3, 26, 11, 0, 0, 0, time.UTC)
+	good1, err := domain.NewArticle("good-1", "Good 1", "Content 1", nil, t2, "user-1")
+	if err != nil {
+		t.Fatalf("NewArticle(good-1): %v", err)
+	}
+	good2, err := domain.NewArticle("good-2", "Good 2", "Content 2", nil, t2.Add(-time.Minute), "user-1")
+	if err != nil {
+		t.Fatalf("NewArticle(good-2): %v", err)
+	}
+	t2Last := good2.CreatedAt()
+
+	repo := &scriptedPageArticleRepo{
+		backfillPages: []scriptedPage{
+			// Page 1: every driver row failed domain conversion, but driver returned its last row cursor.
+			{articles: []*domain.Article{}, nextCreatedAt: &t1, nextID: "bad-2"},
+			// Page 2: valid articles after "bad-2".
+			{articles: []*domain.Article{good1, good2}, nextCreatedAt: &t2Last, nextID: "good-2"},
+			// Page 3: truly empty driver page.
+			{articles: []*domain.Article{}, nextCreatedAt: nil, nextID: ""},
+		},
+	}
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(repo, engine, nil)
+
+	res1, err := u.ExecuteBackfill(context.Background(), nil, "", 2)
+	if err != nil {
+		t.Fatalf("ExecuteBackfill(page 1) error = %v, want nil", err)
+	}
+	if res1.BackfillDone {
+		t.Fatalf("ExecuteBackfill(page 1) BackfillDone = true, want false when all rows in page were skipped")
+	}
+	if res1.LastID != "bad-2" || res1.LastCreatedAt == nil || !res1.LastCreatedAt.Equal(t1) {
+		t.Fatalf("ExecuteBackfill(page 1) cursor = (%v, %q), want (%v, %q)", res1.LastCreatedAt, res1.LastID, t1, "bad-2")
+	}
+
+	res2, err := u.ExecuteBackfill(context.Background(), res1.LastCreatedAt, res1.LastID, 2)
+	if err != nil {
+		t.Fatalf("ExecuteBackfill(page 2) error = %v, want nil", err)
+	}
+	if res2.BackfillDone {
+		t.Fatalf("ExecuteBackfill(page 2) BackfillDone = true, want false")
+	}
+	if res2.IndexedCount != 2 {
+		t.Fatalf("ExecuteBackfill(page 2) IndexedCount = %d, want 2", res2.IndexedCount)
+	}
+
+	res3, err := u.ExecuteBackfill(context.Background(), res2.LastCreatedAt, res2.LastID, 2)
+	if err != nil {
+		t.Fatalf("ExecuteBackfill(page 3) error = %v, want nil", err)
+	}
+	if !res3.BackfillDone {
+		t.Fatalf("ExecuteBackfill(page 3) BackfillDone = false, want true on truly empty page")
+	}
+	if len(engine.indexedDocs) != 2 {
+		t.Fatalf("indexed docs = %d, want 2", len(engine.indexedDocs))
+	}
+}
+
+func TestExecuteIncremental_AllBadPageAdvancesCursor(t *testing.T) {
+	mark := time.Date(2026, 3, 26, 12, 0, 0, 0, time.UTC)
+	tBadLast := mark.Add(time.Minute)
+
+	repo := &scriptedPageArticleRepo{
+		incrementalPages: []scriptedPage{
+			{articles: []*domain.Article{}, nextCreatedAt: &tBadLast, nextID: "bad-last"},
+		},
+	}
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(repo, engine, nil)
+
+	res, err := u.ExecuteIncremental(context.Background(), &mark, nil, "", nil, 200)
+	if err != nil {
+		t.Fatalf("ExecuteIncremental() error = %v, want nil", err)
+	}
+	if res.IndexedCount != 0 {
+		t.Fatalf("ExecuteIncremental() IndexedCount = %d, want 0", res.IndexedCount)
+	}
+	if res.LastID != "bad-last" || res.LastCreatedAt == nil || !res.LastCreatedAt.Equal(tBadLast) {
+		t.Fatalf("ExecuteIncremental() cursor = (%v, %q), want (%v, %q)", res.LastCreatedAt, res.LastID, tBadLast, "bad-last")
 	}
 }

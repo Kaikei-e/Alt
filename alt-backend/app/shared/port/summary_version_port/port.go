@@ -26,5 +26,5 @@ type GetSummaryVersionByIDPort interface {
 // MarkSummaryVersionSupersededPort marks all non-superseded versions as superseded by the new version.
 // Returns the previous latest version (before marking), or nil if none existed.
 type MarkSummaryVersionSupersededPort interface {
-	MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.SummaryVersion, error)
+	MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID, userID uuid.UUID) (*domain.SummaryVersion, error)
 }

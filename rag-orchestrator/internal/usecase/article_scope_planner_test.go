@@ -205,3 +205,95 @@ func TestBuildPrompt_ArticleScopedNotIndexed_FallsBackToConstrainedGeneral(t *te
 	assert.False(t, out.Fallback, "an unindexed article must degrade to constrained general retrieval, not a fallback answer")
 	assert.Equal(t, "article_constrained_fallback", out.Debug.StrategyUsed)
 }
+
+type recordingPromptBuilder struct {
+	inner usecase.PromptBuilder
+	last  usecase.PromptInput
+}
+
+func (r *recordingPromptBuilder) Build(input usecase.PromptInput) ([]domain.Message, error) {
+	r.last = input
+	return r.inner.Build(input)
+}
+
+func TestBuildPrompt_ArticleScopedFollowUp_InheritsScopeAndSetsArticleContext(t *testing.T) {
+	articleID := uuid.New().String()
+
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	mockQP := new(mockQueryPlannerPort)
+	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
+	promptBuilder := &recordingPromptBuilder{inner: usecase.NewXMLPromptBuilder()}
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	var seenQPInput domain.QueryPlannerInput
+	mockQP.On("PlanQuery", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			seenQPInput = args.Get(1).(domain.QueryPlannerInput)
+		}).
+		Return(&domain.QueryPlan{
+			ResolvedQuery:   "供給網の逼迫が起きた背景は何ですか",
+			SearchQueries:   []string{"供給網 背景"},
+			Intent:          "general",
+			RetrievalPolicy: "article_only",
+			AnswerFormat:    "summary",
+		}, nil)
+
+	articleStrategy.On("Retrieve", mock.Anything, mock.Anything, mock.Anything).
+		Return(&usecase.RetrieveContextOutput{
+			Contexts: []usecase.ContextItem{{
+				ChunkText: "記事本文のチャンク。供給網の逼迫の背景を説明している。",
+				Title:     "Supply chain report",
+				URL:       "https://example.com/a",
+				ArticleID: articleID,
+				Score:     1.0,
+				ChunkID:   uuid.New(),
+			}},
+		}, nil)
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).
+		Return(&usecase.RetrieveContextOutput{
+			Contexts: []usecase.ContextItem{{
+				ChunkText: "一般検索チャンク。",
+				Title:     "Other",
+				URL:       "https://example.com/other",
+				Score:     0.5,
+				ChunkID:   uuid.New(),
+			}},
+		}, nil)
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: answerJSON("供給網の逼迫の背景は需要の急回復です。[1]")}, nil)
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve,
+		promptBuilder,
+		mockLLM,
+		usecase.NewOutputValidator(5),
+		7, 512, 6000,
+		"v1", "ja",
+		testLogger,
+		usecase.WithQueryPlanner(mockQP),
+		usecase.WithStrategy(usecase.IntentArticleScoped, articleStrategy),
+	)
+
+	out, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
+		Query:  "その背景は何ですか",
+		UserID: testScopeUserID,
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: articleScopedQuery(articleID, "Supply chain report", "この記事の要点は何ですか")},
+			{Role: "assistant", Content: "記事の要点は供給網の逼迫です。"},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, out)
+
+	assert.Equal(t, articleID, seenQPInput.ArticleID,
+		"follow-up turn must forward the article_id inherited from conversation history to the query planner")
+	assert.Equal(t, "Supply chain report", seenQPInput.ArticleTitle)
+	articleStrategy.AssertCalled(t, "Retrieve", mock.Anything, mock.Anything, mock.Anything)
+	assert.Equal(t, string(usecase.IntentArticleScoped), out.Debug.IntentType)
+	assert.Equal(t, "article_scoped", out.Debug.StrategyUsed)
+	require.NotNil(t, promptBuilder.last.ArticleContext,
+		"PromptInput.ArticleContext must be populated on the query planner path")
+	assert.Equal(t, articleID, promptBuilder.last.ArticleContext.ArticleID)
+	assert.Equal(t, "Supply chain report", promptBuilder.last.ArticleContext.Title)
+}

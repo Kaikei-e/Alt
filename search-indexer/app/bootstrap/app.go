@@ -2,11 +2,13 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"search-indexer/config"
@@ -35,6 +37,7 @@ type App struct {
 	redisConsumer *consumer.Consumer
 	eventHandler  *consumer.IndexEventHandler
 	otelShutdown  appOtel.ShutdownFunc
+	bgWG          sync.WaitGroup
 }
 
 // Run initializes all components and starts the service.
@@ -139,7 +142,7 @@ func Run(ctx context.Context) error {
 	if config.MeiliHybridEmbedder != "" {
 		embedderSettings := driver.NewEmbedderSettingsDriver(
 			os.Getenv("MEILISEARCH_HOST"),
-			readSecretEnv("MEILISEARCH_API_KEY"),
+			appCfg.Meilisearch.APIKey,
 			"articles",
 			config.MeiliTimeout,
 		)
@@ -151,47 +154,36 @@ func Run(ctx context.Context) error {
 		logger.Logger.Info("Hybrid search disabled (MEILI_HYBRID_EMBEDDER empty); embedder settings left unmanaged")
 	}
 
-	// Periodically probe Search so Meilisearch keeps the embedding model in
-	// Ollama's resident set. A single startup-only probe is not enough:
-	// gemma4 (chat/RAG) and the embedding model were observed to exclusively
-	// swap GPU residency, so the embedder goes cold again within minutes
-	// regardless of OLLAMA_KEEP_ALIVE. Goroutine so a stalled embedder cannot
-	// delay service start or block the loop.
-	go runWarmupLoop(ctx, searchEngine, config.WarmupInterval)
-
-	// Periodically prune finished Meilisearch tasks so registerBatchSynonyms's
-	// full-replace settings PUTs never again fill the task database and wedge
-	// all writes (2026-07-22 incident: search-indexer/CLAUDE.md known failure
-	// patterns).
-	go runTaskPruneLoop(ctx, searchEngine, config.TaskPruneInterval, config.TaskRetention)
-
 	// ── Recap drivers & gateways ──
 	var indexRecapsUsecase *usecase.IndexRecapsUsecase
 	var searchRecapsUsecase *usecase.SearchRecapsUsecase
 
-	if config.RecapWorkerURL != "" {
-		recapClient := recap_api.NewClient(config.RecapWorkerURL)
+	recapWorkerURL := strings.TrimSpace(config.RecapWorkerURL)
+	if recapWorkerURL == "" {
+		return fmt.Errorf("RECAP_WORKER_URL is required: set a URL or RECAP_WORKER_URL=disabled")
+	}
+	if strings.EqualFold(recapWorkerURL, "disabled") {
+		logger.Logger.Info("Recap indexing disabled (RECAP_WORKER_URL=disabled)")
+	} else {
+		recapClient := recap_api.NewClient(recapWorkerURL)
 		recapDriver := driver.NewMeilisearchRecapDriver(msClient)
 		recapRepo := gateway.NewRecapRepositoryGateway(recapClient)
 		recapSearchEngine := gateway.NewRecapSearchEngineGateway(recapDriver)
 
 		if err := recapSearchEngine.EnsureRecapIndex(ctx); err != nil {
 			logger.Logger.Error("Failed to ensure recap search index", "err", err)
-			// Non-fatal: continue without recap indexing
-		} else {
-			indexRecapsUsecase = usecase.NewIndexRecapsUsecase(recapRepo, recapSearchEngine)
-			searchRecapsUsecase = usecase.NewSearchRecapsUsecase(recapSearchEngine)
-			logger.Logger.Info("Recap indexing enabled", "recap_worker_url", config.RecapWorkerURL)
+			return fmt.Errorf("ensure recap search index: %w", err)
 		}
-	} else {
-		logger.Logger.Info("Recap indexing disabled (RECAP_WORKER_URL not set)")
+		indexRecapsUsecase = usecase.NewIndexRecapsUsecase(recapRepo, recapSearchEngine)
+		searchRecapsUsecase = usecase.NewSearchRecapsUsecase(recapSearchEngine)
+		logger.Logger.Info("Recap indexing enabled", "recap_worker_url", recapWorkerURL)
 	}
 
 	// ── Use cases (application layer) ──
 	indexUsecase := usecase.NewIndexArticlesUsecase(articleRepo, searchEngine, tokenizer)
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(searchEngine)
 
-	// ── Redis Streams Consumer ──
+	// ── Redis Streams Consumer (config & construction) ──
 	var redisConsumer *consumer.Consumer
 	var eventHandler *consumer.IndexEventHandler
 	consumerCfg, err := consumer.ConfigFromEnv()
@@ -206,56 +198,14 @@ func Run(ctx context.Context) error {
 			logger.Logger.Error("Failed to create Redis Streams consumer", "err", err)
 			return fmt.Errorf("create redis streams consumer: %w", err)
 		}
-		// CONSUMER_ENABLED=true is an explicit request for event-driven
-		// indexing; if it can't start, fail startup instead of silently
-		// falling back to the 5-minute polling loop (a quiet search-latency
-		// regression that healthchecks would not catch, CLAUDE.md rule 8).
-		if err := redisConsumer.Start(ctx); err != nil {
-			logger.Logger.Error("Failed to start Redis Streams consumer", "err", err)
-			return fmt.Errorf("start redis streams consumer: %w", err)
-		}
-		logger.Logger.Info("Redis Streams consumer started",
-			"stream", consumerCfg.StreamKey,
-			"group", consumerCfg.GroupName,
-		)
-	} else {
-		logger.Logger.Info("Redis Streams consumer disabled")
 	}
-
-	// ── Batch indexer (polling fallback) ──
-	go runIndexLoop(ctx, indexUsecase)
-
-	// Periodically PUT the accumulated synonyms union instead of once per
-	// indexed batch, bounding how often Meilisearch's task history grows
-	// from a settingsUpdate task (PM-2026-047 action item #2).
-	go runSynonymsFlushLoop(ctx, indexUsecase, config.SynonymsFlushInterval)
-
-	// ── Recap indexer ──
-	if indexRecapsUsecase != nil {
-		go runRecapIndexLoop(ctx, indexRecapsUsecase)
-	}
-
-	// ── Servers ──
-	app := &App{
-		httpServer:    newHTTPServer(searchByUserUsecase, otelCfg, appCfg.RateLimit, searchDriver.Ping),
-		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, authUsecase, appCfg.RateLimit),
-		redisConsumer: redisConsumer,
-		eventHandler:  eventHandler,
-		otelShutdown:  otelShutdown,
-	}
-
-	go func() {
-		logger.Logger.Info("http listen", "addr", config.HTTPAddr)
-		if err := app.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Logger.Error("http", "err", err)
-		}
-	}()
 
 	// Plaintext :9301 is retired per C01. Connect-RPC is served exclusively
 	// over mTLS on :9443 via newMTLSMuxHandler.
-
+	var mtlsPort string
+	var tlsCfg *tls.Config
 	if os.Getenv("MTLS_LISTEN") == "true" {
-		mtlsPort := os.Getenv("MTLS_PORT")
+		mtlsPort = os.Getenv("MTLS_PORT")
 		if mtlsPort == "" {
 			mtlsPort = "9443"
 		}
@@ -280,7 +230,8 @@ func Run(ctx context.Context) error {
 			)
 		}
 
-		tlsCfg, tlsErr := tlsutil.LoadServerConfig(
+		var tlsErr error
+		tlsCfg, tlsErr = tlsutil.LoadServerConfig(
 			os.Getenv("MTLS_CERT_FILE"),
 			os.Getenv("MTLS_KEY_FILE"),
 			os.Getenv("MTLS_CA_FILE"),
@@ -289,25 +240,110 @@ func Run(ctx context.Context) error {
 		if tlsErr != nil {
 			return fmt.Errorf("mTLS listener config (fail-closed): %w", tlsErr)
 		}
-		{
-			// :9443 serves REST + Connect-RPC with peer-identity
-			// enforcement. Plain :9300 is health-only; :9301 is retired.
-			mtlsHandler := newMTLSMuxHandler(
-				authUsecase,
-				searchByUserUsecase,
-				app.connectServer.Handler,
-				otelCfg,
-				appCfg.RateLimit,
-				searchDriver.Ping,
-			)
-			app.mtlsServer = tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, mtlsHandler)
-			go func() {
-				logger.Logger.Info("mtls listen (REST + Connect-RPC, peer-identity gated)", "port", mtlsPort)
-				if err := app.mtlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-					logger.Logger.Error("mtls", "err", err)
-				}
-			}()
+	}
+
+	if consumerCfg.Enabled {
+		// CONSUMER_ENABLED=true is an explicit request for event-driven
+		// indexing; if it can't start, fail startup instead of silently
+		// falling back to the 5-minute polling loop (a quiet search-latency
+		// regression that healthchecks would not catch, CLAUDE.md rule 8).
+		if err := redisConsumer.Start(ctx); err != nil {
+			logger.Logger.Error("Failed to start Redis Streams consumer", "err", err)
+			return fmt.Errorf("start redis streams consumer: %w", err)
 		}
+		logger.Logger.Info("Redis Streams consumer started",
+			"stream", consumerCfg.StreamKey,
+			"group", consumerCfg.GroupName,
+		)
+	} else {
+		logger.Logger.Info("Redis Streams consumer disabled")
+	}
+
+	// ── Servers ──
+	app := &App{
+		httpServer:    newHTTPServer(searchByUserUsecase, otelCfg, appCfg.RateLimit, searchDriver.Ping),
+		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, authUsecase, appCfg.RateLimit),
+		redisConsumer: redisConsumer,
+		eventHandler:  eventHandler,
+		otelShutdown:  otelShutdown,
+	}
+
+	// Periodically probe Search so Meilisearch keeps the embedding model in
+	// Ollama's resident set. A single startup-only probe is not enough:
+	// gemma4 (chat/RAG) and the embedding model were observed to exclusively
+	// swap GPU residency, so the embedder goes cold again within minutes
+	// regardless of OLLAMA_KEEP_ALIVE. Goroutine so a stalled embedder cannot
+	// delay service start or block the loop.
+	app.bgWG.Add(1)
+	go func() {
+		defer app.bgWG.Done()
+		runWarmupLoop(ctx, searchEngine, config.WarmupInterval)
+	}()
+
+	// Periodically prune finished Meilisearch tasks so registerBatchSynonyms's
+	// full-replace settings PUTs never again fill the task database and wedge
+	// all writes (2026-07-22 incident: search-indexer/CLAUDE.md known failure
+	// patterns).
+	app.bgWG.Add(1)
+	go func() {
+		defer app.bgWG.Done()
+		runTaskPruneLoop(ctx, searchEngine, config.TaskPruneInterval, config.TaskRetention)
+	}()
+
+	// ── Batch indexer (polling fallback) ──
+	app.bgWG.Add(1)
+	go func() {
+		defer app.bgWG.Done()
+		runIndexLoop(ctx, indexUsecase)
+	}()
+
+	// Periodically PUT the accumulated synonyms union instead of once per
+	// indexed batch, bounding how often Meilisearch's task history grows
+	// from a settingsUpdate task (PM-2026-047 action item #2).
+	app.bgWG.Add(1)
+	go func() {
+		defer app.bgWG.Done()
+		runSynonymsFlushLoop(ctx, indexUsecase, config.SynonymsFlushInterval)
+	}()
+
+	// ── Recap indexer ──
+	if indexRecapsUsecase != nil {
+		app.bgWG.Add(1)
+		go func() {
+			defer app.bgWG.Done()
+			runRecapIndexLoop(ctx, indexRecapsUsecase)
+		}()
+	}
+
+	app.bgWG.Add(1)
+	go func() {
+		defer app.bgWG.Done()
+		logger.Logger.Info("http listen", "addr", config.HTTPAddr)
+		if err := app.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Logger.Error("http", "err", err)
+		}
+	}()
+
+	if tlsCfg != nil {
+		// :9443 serves REST + Connect-RPC with peer-identity
+		// enforcement. Plain :9300 is health-only; :9301 is retired.
+		mtlsHandler := newMTLSMuxHandler(
+			authUsecase,
+			searchByUserUsecase,
+			app.connectServer.Handler,
+			otelCfg,
+			appCfg.RateLimit,
+			searchDriver.Ping,
+		)
+		app.mtlsServer = tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, mtlsHandler)
+		app.bgWG.Add(1)
+		go func() {
+			defer app.bgWG.Done()
+			logger.Logger.Info("mtls listen (REST + Connect-RPC, peer-identity gated)", "port", mtlsPort)
+			if err := app.mtlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				logger.Logger.Error("mtls", "err", err)
+			}
+		}()
 	}
 
 	// ── Wait for shutdown signal ──
@@ -357,6 +393,8 @@ func (a *App) shutdown() {
 	if a.redisConsumer != nil {
 		a.redisConsumer.Close()
 	}
+
+	a.bgWG.Wait()
 
 	otelCtx, otelCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer otelCancel()
@@ -477,12 +515,14 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 		bo.Reset()
 		recordBatch(ctx, "backfill", result.IndexedCount, result.DeletedCount, time.Since(start))
 
-		if result.IndexedCount == 0 {
+		if result.BackfillDone {
 			logger.Logger.Info("Phase 1 complete: backfill done")
 			break
 		}
 
-		logger.Logger.Info("backfill indexed", "count", result.IndexedCount)
+		if result.IndexedCount > 0 {
+			logger.Logger.Info("backfill indexed", "count", result.IndexedCount)
+		}
 		lastCreatedAt = result.LastCreatedAt
 		lastID = result.LastID
 	}
@@ -518,10 +558,10 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 		bo.Reset()
 		recordBatch(ctx, "incremental", result.IndexedCount, result.DeletedCount, time.Since(start))
 
+		lastCreatedAt = result.LastCreatedAt
+		lastID = result.LastID
 		if result.IndexedCount > 0 {
 			logger.Logger.Info("incremental indexed", "count", result.IndexedCount)
-			lastCreatedAt = result.LastCreatedAt
-			lastID = result.LastID
 		}
 
 		if result.DeletedCount > 0 {

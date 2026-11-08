@@ -270,28 +270,34 @@ class PostgresJobGateway:
         writer_model: str,
         critic_model: str,
     ) -> None:
-        """Mark a run as started and stamp the model names used for this attempt.
-
-        Not called from any production code path yet — wiring this into the
-        pipeline runner (connect_service.py) is out of this change's scope.
-        """
+        """Mark a run as started and stamp the model names used for this attempt."""
         async with self._pool.connection() as conn:
-            await conn.execute(
+            cur = await conn.execute(
                 "UPDATE report_runs SET run_status = 'running', started_at = NOW(), "
+                "finished_at = NULL, failure_code = NULL, failure_message = NULL, "
                 "planner_model = %s, writer_model = %s, critic_model = %s "
-                "WHERE run_id = %s",
+                "WHERE run_id = %s AND run_status IN ('pending', 'running', 'failed') "
+                "RETURNING run_id",
                 [planner_model, writer_model, critic_model, run_id],
             )
+            if await cur.fetchone() is None:
+                msg = f"Cannot mark run {run_id} as running: run not found or already in terminal status"
+                raise RuntimeError(msg)
 
     async def complete_run(self, run_id: UUID) -> None:
         async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
                 "UPDATE report_runs SET run_status = 'succeeded', finished_at = NOW() "
-                "WHERE run_id = %s RETURNING report_id, finished_at",
+                "WHERE run_id = %s AND run_status IN ('pending', 'running') "
+                "RETURNING report_id, finished_at",
                 [run_id],
             )
             row = await cur.fetchone()
             if row is None:
+                logger.warning(
+                    "Skipped complete_run: run not found or already in terminal status",
+                    run_id=str(run_id),
+                )
                 return
             report_id, finished_at = row[0], row[1]
             await conn.execute(
@@ -329,8 +335,16 @@ class PostgresJobGateway:
 
     async def fail_run(self, run_id: UUID, failure_code: str, failure_message: str) -> None:
         async with self._pool.connection() as conn:
-            await conn.execute(
+            cur = await conn.execute(
                 "UPDATE report_runs SET run_status = 'failed', finished_at = NOW(), "
-                "failure_code = %s, failure_message = %s WHERE run_id = %s",
+                "failure_code = %s, failure_message = %s "
+                "WHERE run_id = %s AND run_status IN ('pending', 'running') "
+                "RETURNING run_id",
                 [failure_code, failure_message, run_id],
             )
+            if await cur.fetchone() is None:
+                logger.warning(
+                    "Skipped fail_run: run not found or already in terminal status",
+                    run_id=str(run_id),
+                    failure_code=failure_code,
+                )

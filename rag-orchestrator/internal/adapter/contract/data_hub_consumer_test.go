@@ -51,6 +51,7 @@ import (
 	"testing"
 
 	"rag-orchestrator/internal/adapter/altdb"
+	"rag-orchestrator/internal/domain"
 
 	datahubv1connect "alt/gen/proto/services/datahub/v1/datahubv1connect"
 
@@ -215,6 +216,7 @@ func TestDataHubFetchArticlesByTagContract(t *testing.T) {
 			Body: map[string]interface{}{
 				"tagName": "ai",
 				"limit":   10,
+				"userId":  "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -234,7 +236,8 @@ func TestDataHubFetchArticlesByTagContract(t *testing.T) {
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			client := altdb.NewDataHubArticlesByTagClient(newDataHubServiceClient(config), testContractLogger())
 
-			articles, err := client.FetchArticlesByTag(context.Background(), "ai", 10)
+			ctx := domain.WithUserID(context.Background(), "3f2504e0-4f89-41d3-9a0c-0305e82c3301")
+			articles, err := client.FetchArticlesByTag(ctx, "ai", 10)
 			if err != nil {
 				return fmt.Errorf("FetchArticlesByTag failed: %w", err)
 			}

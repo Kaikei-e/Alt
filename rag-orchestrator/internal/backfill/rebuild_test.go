@@ -87,6 +87,7 @@ type stubIndexer struct {
 	delay        time.Duration
 	inFlight     atomic.Int64
 	maxInFlight  atomic.Int64
+	onStart      func()
 	onUpsertDone func(articleID string)
 }
 
@@ -99,6 +100,10 @@ func (s *stubIndexer) Upsert(ctx context.Context, articleID, userID, title, url,
 		}
 	}
 	defer s.inFlight.Add(-1)
+
+	if s.onStart != nil {
+		s.onStart()
+	}
 
 	if s.delay > 0 {
 		select {
@@ -461,6 +466,51 @@ func TestRebuildEngine_StopsOnCanceledContext(t *testing.T) {
 	stats, err := engine.Run(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, stats.Rebuilt, int64(len(jobs)))
+}
+
+func TestRebuildEngine_CancellationReleasesInFlightJobWithoutMarkingFailed(t *testing.T) {
+	job := rebuildJob("in-flight-on-cancel")
+	queue := newStubJobQueue(job)
+	state := newStubVersionState()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	indexer := &stubIndexer{
+		delay:   time.Hour,
+		onStart: cancel,
+	}
+
+	cfg := testRebuildConfig(testTarget())
+	cfg.Workers = 1
+	cfg.MaxConsecutiveFailures = 1
+	engine, err := NewRebuildEngine(queue, []usecase.IndexArticleUsecase{indexer}, state, cfg, rebuildTestLogger())
+	require.NoError(t, err)
+
+	stats, err := engine.Run(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Zero(t, stats.Failed, "cancelled in-flight job must not count as failed")
+	assert.NotEqual(t, "failed", queue.statusOf(job.ID), "UpdateStatus must not be called with failed on run cancellation")
+	assert.Equal(t, "new", queue.statusOf(job.ID), "cancelled in-flight job must be released back to new")
+}
+
+func TestRebuildEngine_PerJobTimeoutStillMarksFailed(t *testing.T) {
+	job := rebuildJob("slow-job")
+	queue := newStubJobQueue(job)
+	state := newStubVersionState()
+
+	indexer := &stubIndexer{delay: time.Hour}
+
+	cfg := testRebuildConfig(testTarget())
+	cfg.Workers = 1
+	cfg.JobTimeout = 20 * time.Millisecond
+	engine, err := NewRebuildEngine(queue, []usecase.IndexArticleUsecase{indexer}, state, cfg, rebuildTestLogger())
+	require.NoError(t, err)
+
+	stats, err := engine.Run(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.Failed)
+	assert.Equal(t, "failed", queue.statusOf(job.ID))
 }
 
 func TestRebuildEngine_DistributesWorkAcrossEmbedderReplicas(t *testing.T) {

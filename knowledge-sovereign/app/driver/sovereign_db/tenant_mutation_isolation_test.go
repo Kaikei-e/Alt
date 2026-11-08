@@ -74,6 +74,7 @@ func TestPatchKnowledgeHomeItemURL_TenantGuardSQL(t *testing.T) {
 
 	userID := uuid.New()
 	tenantID := uuid.New()
+	occurredAt := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 
 	payload, err := json.Marshal(map[string]any{
 		"user_id":            userID.String(),
@@ -81,6 +82,7 @@ func TestPatchKnowledgeHomeItemURL_TenantGuardSQL(t *testing.T) {
 		"item_key":           "article:patch-url-1",
 		"projection_version": 3,
 		"url":                "https://example.com/item1",
+		"occurred_at":        occurredAt.Format(time.RFC3339Nano),
 	})
 	require.NoError(t, err)
 
@@ -91,9 +93,10 @@ func TestPatchKnowledgeHomeItemURL_TenantGuardSQL(t *testing.T) {
 	sql := mock.execCalls[0].SQL
 	args := mock.execCalls[0].Args
 
-	assert.Contains(t, sql, "AND tenant_id = $5", "PatchKnowledgeHomeItemURL must enforce tenant_id in SQL WHERE clause")
-	require.Len(t, args, 5)
-	assert.Equal(t, tenantID, args[4])
+	assert.Contains(t, sql, "AND tenant_id = $6", "PatchKnowledgeHomeItemURL must enforce tenant_id in SQL WHERE clause")
+	require.Len(t, args, 6)
+	assert.Equal(t, occurredAt, args[4])
+	assert.Equal(t, tenantID, args[5])
 }
 
 func TestSnoozeRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
@@ -124,7 +127,8 @@ func TestSnoozeRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
 
 	assert.Contains(t, sql, "knowledge_home_items", "SnoozeRecallCandidate must guard against knowledge_home_items")
 	assert.Contains(t, sql, "khi.tenant_id = $5", "SnoozeRecallCandidate must check home item tenant_id")
-	assert.Contains(t, sql, "khi.projection_version = recall_candidate_view.projection_version", "SnoozeRecallCandidate must check projection_version association")
+	assert.Contains(t, sql, "khi.projection_version = "+activeProjectionVersionSQL, "SnoozeRecallCandidate must check active projection_version association")
+	assert.NotContains(t, sql, "recall_candidate_view.projection_version", "SnoozeRecallCandidate must not join on stale recall_candidate_view.projection_version")
 	require.Len(t, args, 5)
 	assert.Equal(t, tenantID, args[4])
 }
@@ -155,7 +159,8 @@ func TestDismissRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
 
 	assert.Contains(t, sql, "knowledge_home_items", "DismissRecallCandidate must guard against knowledge_home_items")
 	assert.Contains(t, sql, "khi.tenant_id = $4", "DismissRecallCandidate must check home item tenant_id")
-	assert.Contains(t, sql, "khi.projection_version = recall_candidate_view.projection_version", "DismissRecallCandidate must check projection_version association")
+	assert.Contains(t, sql, "khi.projection_version = "+activeProjectionVersionSQL, "DismissRecallCandidate must check active projection_version association")
+	assert.NotContains(t, sql, "recall_candidate_view.projection_version", "DismissRecallCandidate must not join on stale recall_candidate_view.projection_version")
 	require.Len(t, args, 4)
 	assert.Equal(t, tenantID, args[3])
 }
@@ -296,7 +301,8 @@ func TestUpsertRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
 	assert.Contains(t, sql, "knowledge_home_items", "UpsertRecallCandidate must check knowledge_home_items association")
 	assert.Contains(t, sql, "khi.tenant_id = $9", "UpsertRecallCandidate must check home item tenant_id")
 	assert.Contains(t, sql, "khi.projection_version = $8", "UpsertRecallCandidate must check incoming candidate projection_version association")
-	assert.Contains(t, sql, "khi.projection_version = recall_candidate_view.projection_version", "UpsertRecallCandidate must check existing candidate projection_version association on conflict update")
+	assert.Contains(t, sql, "khi.projection_version = EXCLUDED.projection_version", "UpsertRecallCandidate must check incoming candidate projection_version association on conflict update")
+	assert.NotContains(t, sql, "recall_candidate_view.projection_version", "UpsertRecallCandidate must not join on stale recall_candidate_view.projection_version")
 	require.Len(t, args, 9)
 	assert.Equal(t, tenantID, args[8])
 
@@ -356,9 +362,9 @@ func TestMutationsAndRecallRead_RejectNilUUIDs(t *testing.T) {
 	})
 
 	t.Run("PatchKnowledgeHomeItemURL rejects nil user_id and nil tenant_id", func(t *testing.T) {
-		err := repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","projection_version":1,"url":"https://example.com"}`))
+		err := repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+nilID+`","tenant_id":"`+validID+`","item_key":"k","projection_version":1,"url":"https://example.com","occurred_at":"`+now+`"}`))
 		require.Error(t, err)
-		err = repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","projection_version":1,"url":"https://example.com"}`))
+		err = repo.PatchKnowledgeHomeItemURL(ctx, json.RawMessage(`{"user_id":"`+validID+`","tenant_id":"`+nilID+`","item_key":"k","projection_version":1,"url":"https://example.com","occurred_at":"`+now+`"}`))
 		require.Error(t, err)
 	})
 

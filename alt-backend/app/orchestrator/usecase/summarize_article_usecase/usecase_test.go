@@ -138,6 +138,79 @@ func TestEnsureSummary_ReturnsCached(t *testing.T) {
 	assert.Equal(t, "cached summary", summary)
 }
 
+func TestGetCachedSummary_And_EnsureSummary_RejectsErrorPayload(t *testing.T) {
+	payloads := []struct {
+		name    string
+		summary string
+	}{
+		{
+			name:    "json error payload",
+			summary: `{"error": "summary generation failed"}`,
+		},
+		{
+			name:    "sse error event payload",
+			summary: "event: error\ndata: {\"error\": \"summary generation failed\"}\n\n",
+		},
+	}
+
+	for _, tc := range payloads {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeArticleRepository{summary: &domain.FeedSummary{Summary: tc.summary}}
+			pre := &fakePreProcessor{summary: "regenerated summary"}
+			uc := NewUsecase(repo, pre, &fakeFetcher{})
+
+			cached, ok := uc.GetCachedSummary(context.Background(), "id-1")
+			assert.False(t, ok)
+			assert.Empty(t, cached)
+
+			summary, fromCache, err := uc.EnsureSummary(context.Background(), "id-1", "user-1", "Title")
+			require.NoError(t, err)
+			assert.False(t, fromCache)
+			assert.Equal(t, "regenerated summary", summary)
+		})
+	}
+}
+
+func TestIsErrorPayloadSummary(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{
+			name: "JSON error object",
+			raw:  `{"error": "summary generation failed"}`,
+			want: true,
+		},
+		{
+			name: "SSE event error and data line",
+			raw:  "event: error\ndata: {\"error\": \"summary generation failed\"}\n\n",
+			want: true,
+		},
+		{
+			name: "normal summary mentioning error",
+			raw:  "This article discusses error handling in Go.",
+			want: false,
+		},
+		{
+			name: "empty string",
+			raw:  "",
+			want: false,
+		},
+		{
+			name: "whitespace only",
+			raw:  "   \n\t  ",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsErrorPayloadSummary(tt.raw))
+		})
+	}
+}
+
 func TestEnsureSummary_GeneratesAndSavesWhenNotCached(t *testing.T) {
 	repo := &fakeArticleRepository{}
 	pre := &fakePreProcessor{summary: "fresh summary"}
@@ -209,14 +282,22 @@ func TestResolveStreamArticle_KeepsProvidedTitleAndContent(t *testing.T) {
 	assert.Equal(t, "given content", content)
 }
 
-func TestResolveStreamArticle_ArticleIDNotFoundKeepsRequest(t *testing.T) {
+func TestResolveStreamArticle_ArticleIDNotFoundReturnsError(t *testing.T) {
 	repo := &fakeArticleRepository{}
 	uc := NewUsecase(repo, &fakePreProcessor{}, &fakeFetcher{})
 
 	id, title, content, err := uc.ResolveStreamArticle(context.Background(), "id-1", "", "", "")
 
-	require.NoError(t, err)
-	assert.Equal(t, "id-1", id)
+	require.ErrorIs(t, err, domain.ErrArticleNotFound)
+	assert.Empty(t, id)
+	assert.Empty(t, title)
+	assert.Empty(t, content)
+
+	id, title, content, errWithContent := uc.ResolveStreamArticle(context.Background(), "id-1", "", "Given Title", "injected content")
+
+	require.ErrorIs(t, errWithContent, domain.ErrArticleNotFound)
+	assert.Equal(t, err.Error(), errWithContent.Error())
+	assert.Empty(t, id)
 	assert.Empty(t, title)
 	assert.Empty(t, content)
 }

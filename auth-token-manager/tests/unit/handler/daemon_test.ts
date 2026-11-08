@@ -1,5 +1,10 @@
 import { describe, it } from "@std/testing/bdd";
-import { assertEquals, assertThrows } from "@std/testing/asserts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "@std/testing/asserts";
+import { stub } from "@std/testing/mock";
 import { DaemonLoop } from "../../../src/handler/daemon.ts";
 import type { RefreshTokenUsecase } from "../../../src/usecase/refresh_token.ts";
 import type { GetTokenUsecase } from "../../../src/usecase/get_token.ts";
@@ -9,7 +14,10 @@ import type {
   SecretData,
 } from "../../../src/domain/types.ts";
 
-describe("DaemonLoop", () => {
+describe("DaemonLoop", {
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, () => {
   it("should fail fast when required dependencies are missing", () => {
     const refresh = {} as RefreshTokenUsecase;
     const getToken = {} as GetTokenUsecase;
@@ -117,5 +125,58 @@ describe("DaemonLoop", () => {
       .checkAndRefreshToken();
 
     assertEquals(refreshCalled, false);
+  });
+
+  it("should reject from start() and not enter the refresh loop when OAuthServer.start() throws", async () => {
+    let refreshLoopEntered = false;
+    let abortDaemon: (() => void) | undefined;
+
+    const addSigStub = stub(
+      Deno,
+      "addSignalListener",
+      (_sig: Deno.Signal, handler: () => void) => {
+        abortDaemon = handler;
+      },
+    );
+    const removeSigStub = stub(
+      Deno,
+      "removeSignalListener",
+      () => {},
+    );
+
+    const mockRefresh = {
+      execute: () => {
+        refreshLoopEntered = true;
+        return Promise.resolve({ success: true } as AuthenticationResult);
+      },
+    } as unknown as RefreshTokenUsecase;
+
+    const mockGetToken = {
+      execute: () => {
+        refreshLoopEntered = true;
+        setTimeout(() => abortDaemon?.(), 5);
+        return Promise.resolve(null);
+      },
+    } as unknown as GetTokenUsecase;
+
+    const mockOAuth = {
+      start: () => {
+        throw new Error("AddrInUse: address already in use");
+      },
+    } as unknown as OAuthServer;
+
+    const daemon = new DaemonLoop(mockRefresh, mockGetToken, mockOAuth);
+
+    try {
+      await assertRejects(
+        () => daemon.start(),
+        Error,
+        "AddrInUse: address already in use",
+      );
+      assertEquals(refreshLoopEntered, false);
+    } finally {
+      addSigStub.restore();
+      removeSigStub.restore();
+    }
   });
 });

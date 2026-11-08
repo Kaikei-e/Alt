@@ -12,10 +12,10 @@ export const POST: RequestHandler = async ({ request, cookies, locals }) => {
 	}
 
 	try {
-		const body = await request.json();
-		const feedUrl = body.feed_url;
+		const body = await request.json().catch(() => null);
+		const feedUrl = body?.feed_url;
 
-		if (!feedUrl) {
+		if (!feedUrl || typeof feedUrl !== "string") {
 			return Response.json({ error: "feed_url is required" }, { status: 400 });
 		}
 
