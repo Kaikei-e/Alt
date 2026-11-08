@@ -52,8 +52,8 @@ func (g *OgImageGateway) GetArticleHead(ctx context.Context, articleID string) (
 	return head, nil
 }
 
-func (g *OgImageGateway) BatchGetOgImageURLs(ctx context.Context, articleIDs []string, _ *uuid.UUID) (map[string]string, error) {
-	urls, err := g.db.FetchOgImageURLsByArticleIDsForUser(ctx, articleIDs, nil)
+func (g *OgImageGateway) BatchGetOgImageURLs(ctx context.Context, articleIDs []string, userID *uuid.UUID) (map[string]string, error) {
+	urls, err := g.db.FetchOgImageURLsByArticleIDsForUser(ctx, articleIDs, userID)
 	if err != nil {
 		return nil, fmt.Errorf("batch get og image urls: %w", err)
 	}

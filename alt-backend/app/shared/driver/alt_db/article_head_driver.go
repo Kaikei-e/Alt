@@ -74,35 +74,36 @@ func (r *ArticleRepository) FetchArticleHeadByArticleID(ctx context.Context, art
 // FetchOgImageURLByArticleID retrieves only the og_image_url for a given article ID.
 // Returns empty string if not found.
 func (r *ArticleRepository) FetchOgImageURLByArticleID(ctx context.Context, articleID string) (string, error) {
-	if r == nil || r.pool == nil {
-		return "", errors.New("database connection not available")
-	}
-
-	query := `SELECT COALESCE(og_image_url, '') FROM article_heads WHERE article_id = $1`
-	var ogImageURL string
-	err := r.pool.QueryRow(ctx, query, articleID).Scan(&ogImageURL)
+	urls, err := r.FetchOgImageURLsByArticleIDs(ctx, []string{articleID})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", nil
-		}
-		return "", fmt.Errorf("failed to fetch og_image_url: %w", err)
+		return "", err
 	}
-
-	return ogImageURL, nil
+	return urls[articleID], nil
 }
 
-// FetchOgImageURLsByArticleIDs retrieves og_image_url for multiple article IDs.
-// Returns a map of articleID -> ogImageURL (only non-empty entries).
+// FetchOgImageURLsByArticleIDs retrieves og_image_url for multiple article IDs
+// owned by the authenticated user in ctx.
 func (r *ArticleRepository) FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error) {
+	return r.FetchOgImageURLsByArticleIDsForUser(ctx, articleIDs, userIDFromContext(ctx))
+}
+
+// FetchOgImageURLsByArticleIDsForUser retrieves og_image_url for multiple article IDs owned by userID.
+// Returns a map of articleID -> ogImageURL (only non-empty entries).
+func (r *ArticleRepository) FetchOgImageURLsByArticleIDsForUser(ctx context.Context, articleIDs []string, userID *uuid.UUID) (map[string]string, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
 	if len(articleIDs) == 0 {
 		return map[string]string{}, nil
 	}
+	if userID == nil {
+		userID = userIDFromContext(ctx)
+	}
+	if userID == nil || *userID == uuid.Nil {
+		return nil, errors.New("user id is required")
+	}
 
-	query := `SELECT article_id, COALESCE(og_image_url, '') FROM article_heads WHERE article_id = ANY($1)`
-	rows, err := r.pool.Query(ctx, query, articleIDs)
+	rows, err := r.pool.Query(ctx, fetchOgImageURLsByArticleIDsWithUserQuery, articleIDs, *userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch og_image_urls: %w", err)
 	}
@@ -122,11 +123,6 @@ func (r *ArticleRepository) FetchOgImageURLsByArticleIDs(ctx context.Context, ar
 		return nil, fmt.Errorf("failed to fetch og_image_urls: %w", err)
 	}
 	return result, nil
-}
-
-// FetchOgImageURLsByArticleIDsForUser retrieves og_image_url for multiple article IDs owned by userID.
-func (r *ArticleRepository) FetchOgImageURLsByArticleIDsForUser(ctx context.Context, articleIDs []string, _ *uuid.UUID) (map[string]string, error) {
-	return r.FetchOgImageURLsByArticleIDs(ctx, articleIDs)
 }
 
 // CleanupExpiredArticleHeads deletes article_heads older than the given TTL.
