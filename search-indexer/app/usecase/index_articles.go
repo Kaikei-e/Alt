@@ -85,6 +85,15 @@ func (u *IndexArticlesUsecase) ExecuteBackfill(ctx context.Context, lastCreatedA
 	}
 
 	if len(articles) == 0 {
+		if hasPageCursor(lastCreatedAt, lastID, newLastCreatedAt, newLastID) {
+			return &IndexResult{
+				IndexedCount:  0,
+				LastCreatedAt: newLastCreatedAt,
+				LastID:        newLastID,
+				Phase:         PhaseBackfill,
+				BackfillDone:  false,
+			}, nil
+		}
 		return &IndexResult{
 			IndexedCount:  0,
 			LastCreatedAt: lastCreatedAt,
@@ -145,6 +154,9 @@ func (u *IndexArticlesUsecase) ExecuteIncremental(ctx context.Context, increment
 		result.IndexedCount = len(docs)
 		result.LastCreatedAt = newLastCreatedAt
 		result.LastID = newLastID
+	} else if hasPageCursor(lastCreatedAt, lastID, newLastCreatedAt, newLastID) {
+		result.LastCreatedAt = newLastCreatedAt
+		result.LastID = newLastID
 	}
 
 	// 2. Sync deletions
@@ -162,6 +174,19 @@ func (u *IndexArticlesUsecase) ExecuteIncremental(ctx context.Context, increment
 	}
 
 	return result, nil
+}
+
+func hasPageCursor(lastCreatedAt *time.Time, lastID string, newLastCreatedAt *time.Time, newLastID string) bool {
+	if newLastCreatedAt == nil && newLastID == "" {
+		return false
+	}
+	if newLastID != lastID {
+		return true
+	}
+	if lastCreatedAt == nil {
+		return newLastCreatedAt != nil
+	}
+	return newLastCreatedAt != nil && !newLastCreatedAt.Equal(*lastCreatedAt)
 }
 
 // GetIncrementalMark gets the latest created_at to use as incrementalMark
