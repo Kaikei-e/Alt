@@ -406,7 +406,7 @@ func (s *statefulTagSetStore) MarkTagSetVersionSuperseded(_ context.Context, art
 		if r.ArticleID != articleID {
 			continue
 		}
-		if !(r.SupersededBy == nil || *r.SupersededBy == newVersionID) {
+		if r.SupersededBy != nil && *r.SupersededBy != newVersionID {
 			continue
 		}
 		if !newerTagSetRow(newRow, r) {
@@ -426,7 +426,7 @@ func (s *statefulTagSetStore) MarkTagSetVersionSuperseded(_ context.Context, art
 		if r.ArticleID != articleID {
 			continue
 		}
-		if !(r.SupersededBy == nil || *r.SupersededBy == newVersionID) {
+		if r.SupersededBy != nil && *r.SupersededBy != newVersionID {
 			continue
 		}
 		if newerTagSetRow(newRow, r) {
