@@ -19,6 +19,9 @@ var (
 	controlCharPattern = regexp.MustCompile(`[\x00-\x1F\x7F]`)
 	zeroWidthPattern   = regexp.MustCompile("[\u200B\u200C\u200D\uFEFF]")
 	whitespaceRun      = regexp.MustCompile(`\s+`)
+
+	// ErrInvalidSearchQuery is returned when a search request fails input validation.
+	ErrInvalidSearchQuery = errors.New("invalid search query")
 )
 
 // validateQuerySecurity rejects queries whose raw bytes would confuse parsers
@@ -57,24 +60,24 @@ func sanitizeQuery(query string) string {
 // operation a request happens to go through never changes what input is accepted.
 func validateAndSanitizeQuery(query string, limit int) (string, error) {
 	if query == "" {
-		return "", errors.New("query cannot be empty")
+		return "", fmt.Errorf("%w: query cannot be empty", ErrInvalidSearchQuery)
 	}
 
 	if limit <= 0 {
-		return "", errors.New("limit must be greater than 0")
+		return "", fmt.Errorf("%w: limit must be greater than 0", ErrInvalidSearchQuery)
 	}
 
 	if len(query) > 1000 {
-		return "", errors.New("query too long")
+		return "", fmt.Errorf("%w: query too long", ErrInvalidSearchQuery)
 	}
 
 	if limit > 1000 {
-		return "", errors.New("limit too large")
+		return "", fmt.Errorf("%w: limit too large", ErrInvalidSearchQuery)
 	}
 
 	// Perform security validation
 	if err := validateQuerySecurity(query); err != nil {
-		return "", fmt.Errorf("security validation failed: %w", err)
+		return "", fmt.Errorf("%w: security validation failed: %w", ErrInvalidSearchQuery, err)
 	}
 
 	// Sanitize the query
@@ -82,7 +85,7 @@ func validateAndSanitizeQuery(query string, limit int) (string, error) {
 
 	// Final check after sanitization
 	if sanitizedQuery == "" {
-		return "", errors.New("query became empty after sanitization")
+		return "", fmt.Errorf("%w: query became empty after sanitization", ErrInvalidSearchQuery)
 	}
 
 	return sanitizedQuery, nil

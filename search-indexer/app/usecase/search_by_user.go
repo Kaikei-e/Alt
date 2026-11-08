@@ -2,7 +2,7 @@ package usecase
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"search-indexer/domain"
 	"search-indexer/port"
 	"strings"
@@ -28,7 +28,7 @@ type SearchByUserResult struct {
 // Execute performs a user-scoped search with a fixed limit.
 func (u *SearchByUserUsecase) Execute(ctx context.Context, query, userID string) (*SearchByUserResult, error) {
 	if strings.TrimSpace(userID) == "" {
-		return nil, errors.New("user_id parameter required")
+		return nil, fmt.Errorf("%w: user_id parameter required", ErrInvalidSearchQuery)
 	}
 	// Apply length, control-character, zero-width validation and NFC sanitization
 	// so malicious or malformed query strings are rejected early.
@@ -52,10 +52,10 @@ func (u *SearchByUserUsecase) Execute(ctx context.Context, query, userID string)
 // within the optional published_after and published_before window.
 func (u *SearchByUserUsecase) ExecuteWithDateFilter(ctx context.Context, query, userID string, publishedAfter, publishedBefore *time.Time, limit int) (*SearchByUserResult, error) {
 	if strings.TrimSpace(userID) == "" {
-		return nil, errors.New("user_id parameter required")
+		return nil, fmt.Errorf("%w: user_id parameter required", ErrInvalidSearchQuery)
 	}
 	if publishedAfter != nil && publishedBefore != nil && publishedAfter.After(*publishedBefore) {
-		return nil, errors.New("published_after must not be after published_before")
+		return nil, fmt.Errorf("%w: published_after must not be after published_before", ErrInvalidSearchQuery)
 	}
 	effectiveLimit := limit
 	if effectiveLimit <= 0 {
@@ -80,7 +80,7 @@ func (u *SearchByUserUsecase) ExecuteWithDateFilter(ctx context.Context, query, 
 // ExecuteWithPagination performs a user-scoped search with pagination.
 func (u *SearchByUserUsecase) ExecuteWithPagination(ctx context.Context, query, userID string, offset, limit int64) (*SearchByUserResult, error) {
 	if strings.TrimSpace(userID) == "" {
-		return nil, errors.New("user_id is required")
+		return nil, fmt.Errorf("%w: user_id is required", ErrInvalidSearchQuery)
 	}
 	// limit<=0 means "caller didn't specify one" -- the driver already
 	// defaults and clamps it (see SearchByUserIDWithPagination). Validate
