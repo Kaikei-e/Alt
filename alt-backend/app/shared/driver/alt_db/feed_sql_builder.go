@@ -58,7 +58,7 @@ func buildUnreadFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UU
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			WHERE NOT EXISTS (
@@ -78,7 +78,7 @@ func buildUnreadFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UU
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			WHERE NOT EXISTS (
@@ -110,7 +110,7 @@ func buildAllFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UUID,
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
 			       %s
 			FROM feeds f
@@ -125,7 +125,7 @@ func buildAllFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UUID,
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
 			       %s
 			FROM feeds f
@@ -153,7 +153,7 @@ func buildReadFeedsCursorQuery(cursor *time.Time, limit int, userID uuid.UUID) (
 	if cursor == nil {
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, rs.read_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
@@ -167,7 +167,7 @@ func buildReadFeedsCursorQuery(cursor *time.Time, limit int, userID uuid.UUID) (
 	} else {
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, rs.read_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
@@ -192,7 +192,7 @@ func buildFavoriteFeedsCursorQuery(cursor *time.Time, limit int, userID uuid.UUI
 	if cursor == nil {
 		query = fmt.Sprintf(`
                        SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, ff.created_at,
-                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               %s
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
@@ -205,7 +205,7 @@ func buildFavoriteFeedsCursorQuery(cursor *time.Time, limit int, userID uuid.UUI
 	} else {
 		query = fmt.Sprintf(`
                        SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, ff.created_at,
-                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               %s
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id

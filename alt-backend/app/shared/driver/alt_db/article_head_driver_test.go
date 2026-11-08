@@ -35,35 +35,6 @@ func TestArticleRepository_CleanupExpiredArticleHeads(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestArticleRepository_FetchOgImageURLsByArticleIDs_ScopesByUserContextWhenPresent(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	defer mock.Close()
-
-	repo := &ArticleRepository{pool: mock}
-	userID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
-	articleID := "22222222-2222-4222-8222-222222222222"
-
-	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
-		UserID:    userID,
-		Email:     "u@example.com",
-		Role:      domain.UserRoleUser,
-		TenantID:  userID,
-		LoginAt:   time.Now(),
-		ExpiresAt: time.Now().Add(time.Hour),
-	})
-
-	mock.ExpectQuery(regexp.QuoteMeta(fetchOgImageURLsByArticleIDsWithUserQuery)).
-		WithArgs([]string{articleID}, userID).
-		WillReturnRows(pgxmock.NewRows([]string{"article_id", "og_image_url"}).
-			AddRow(articleID, "https://cdn.example.com/og.png"))
-
-	urls, err := repo.FetchOgImageURLsByArticleIDs(ctx, []string{articleID})
-	require.NoError(t, err)
-	assert.Equal(t, map[string]string{articleID: "https://cdn.example.com/og.png"}, urls)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
 func TestArticleRepository_FetchOgImageURLsByArticleIDsForUser_ScopesByUserAndPreventsCrossUserRead(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
@@ -94,7 +65,7 @@ func TestArticleRepository_FetchOgImageURLsByArticleIDsForUser_ScopesByUserAndPr
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestArticleRepository_FetchOgImageURLsByArticleIDs_RejectsMissingUser(t *testing.T) {
+func TestArticleRepository_FetchOgImageURLsByArticleIDsForUser_RejectsMissingUser(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	defer mock.Close()
@@ -102,52 +73,22 @@ func TestArticleRepository_FetchOgImageURLsByArticleIDs_RejectsMissingUser(t *te
 	repo := &ArticleRepository{pool: mock}
 	articleID := "22222222-2222-4222-8222-222222222222"
 
-	urls, err := repo.FetchOgImageURLsByArticleIDs(context.Background(), []string{articleID})
+	urls, err := repo.FetchOgImageURLsByArticleIDsForUser(context.Background(), []string{articleID}, nil)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "user")
 	assert.Nil(t, urls)
 
-	urls, err = repo.FetchOgImageURLsByArticleIDsForUser(context.Background(), []string{articleID}, nil)
+	nilUUID := uuid.Nil
+	urls, err = repo.FetchOgImageURLsByArticleIDsForUser(context.Background(), []string{articleID}, &nilUUID)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "user")
 	assert.Nil(t, urls)
 
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestArticleRepository_FetchOgImageURLByArticleID_ScopesByUserContext(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	defer mock.Close()
-
-	repo := &ArticleRepository{pool: mock}
-	userA := uuid.MustParse("11111111-1111-4111-8111-111111111111")
-	userB := uuid.MustParse("99999999-9999-4999-8999-999999999999")
-	articleID := "22222222-2222-4222-8222-222222222222"
-
-	ctxA := domain.SetUserContext(context.Background(), &domain.UserContext{
-		UserID: userA, Email: "a@example.com", Role: domain.UserRoleUser, TenantID: userA, ExpiresAt: time.Now().Add(time.Hour),
-	})
-	ctxB := domain.SetUserContext(context.Background(), &domain.UserContext{
-		UserID: userB, Email: "b@example.com", Role: domain.UserRoleUser, TenantID: userB, ExpiresAt: time.Now().Add(time.Hour),
-	})
-
-	mock.ExpectQuery(regexp.QuoteMeta(fetchOgImageURLsByArticleIDsWithUserQuery)).
-		WithArgs([]string{articleID}, userA).
-		WillReturnRows(pgxmock.NewRows([]string{"article_id", "og_image_url"}).
-			AddRow(articleID, "https://cdn.example.com/private-a.png"))
-
-	urlA, err := repo.FetchOgImageURLByArticleID(ctxA, articleID)
-	require.NoError(t, err)
-	assert.Equal(t, "https://cdn.example.com/private-a.png", urlA)
-
-	mock.ExpectQuery(regexp.QuoteMeta(fetchOgImageURLsByArticleIDsWithUserQuery)).
-		WithArgs([]string{articleID}, userB).
-		WillReturnRows(pgxmock.NewRows([]string{"article_id", "og_image_url"}))
-
-	urlB, err := repo.FetchOgImageURLByArticleID(ctxB, articleID)
-	require.NoError(t, err)
-	assert.Empty(t, urlB)
+	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New()})
+	urls, err = repo.FetchOgImageURLsByArticleIDsForUser(ctxWithUser, []string{articleID}, nil)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "user")
+	assert.Nil(t, urls)
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }

@@ -65,9 +65,6 @@ func (r *TagRepository) FetchArticlesByTagForUser(ctx context.Context, tagID str
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
-	if userID == nil {
-		userID = userIDFromContext(ctx)
-	}
 	if userID == nil || *userID == uuid.Nil {
 		return nil, errors.New("user id is required")
 	}
@@ -121,9 +118,6 @@ func (r *TagRepository) FetchArticlesByTagName(ctx context.Context, tagName stri
 func (r *TagRepository) FetchArticlesByTagNameForUser(ctx context.Context, tagName string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
-	}
-	if userID == nil {
-		userID = userIDFromContext(ctx)
 	}
 	if userID == nil || *userID == uuid.Nil {
 		return nil, errors.New("user id is required")

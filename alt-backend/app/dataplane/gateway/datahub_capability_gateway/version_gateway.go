@@ -26,7 +26,7 @@ import (
 type summaryVersionDriver interface {
 	CreateSummaryVersion(ctx context.Context, sv domain.SummaryVersion) error
 	MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID, userID uuid.UUID) (*domain.SummaryVersion, error)
-	GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error)
+	GetSummaryVersionByID(ctx context.Context, summaryVersionID, userID uuid.UUID) (domain.SummaryVersion, error)
 	GetLatestSummaryVersionForUser(ctx context.Context, articleID uuid.UUID, userID *uuid.UUID) (domain.SummaryVersion, error)
 }
 
@@ -60,8 +60,8 @@ func (g *SummaryVersionGateway) MarkSummaryVersionSuperseded(ctx context.Context
 	return prev, nil
 }
 
-func (g *SummaryVersionGateway) GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error) {
-	sv, err := g.db.GetSummaryVersionByID(ctx, summaryVersionID)
+func (g *SummaryVersionGateway) GetSummaryVersionByID(ctx context.Context, summaryVersionID, userID uuid.UUID) (domain.SummaryVersion, error) {
+	sv, err := g.db.GetSummaryVersionByID(ctx, summaryVersionID, userID)
 	if err != nil {
 		return domain.SummaryVersion{}, fmt.Errorf("get summary version %s: %w", summaryVersionID, err)
 	}

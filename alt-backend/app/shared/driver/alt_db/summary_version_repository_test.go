@@ -181,6 +181,11 @@ func TestMarkSummaryVersionSuperseded_RequiresUserID(t *testing.T) {
 	_, err = repo.MarkSummaryVersionSuperseded(context.Background(), uuid.New(), uuid.New(), uuid.Nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user id is required")
+
+	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New()})
+	_, err = repo.MarkSummaryVersionSuperseded(ctxWithUser, uuid.New(), uuid.New(), uuid.Nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user id is required")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -218,7 +223,7 @@ func TestGetLatestSummaryVersion_RequiresUserID(t *testing.T) {
 
 	repo := &SummaryRepository{pool: mock}
 
-	_, err = repo.GetLatestSummaryVersion(context.Background(), uuid.New())
+	_, err = repo.GetLatestSummaryVersionForUser(context.Background(), uuid.New(), nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user id is required")
 
@@ -227,8 +232,48 @@ func TestGetLatestSummaryVersion_RequiresUserID(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user id is required")
 
-	ctxWithNilUser := domain.SetUserContext(context.Background(), &domain.UserContext{})
-	_, err = repo.GetLatestSummaryVersion(ctxWithNilUser, uuid.New())
+	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New()})
+	_, err = repo.GetLatestSummaryVersionForUser(ctxWithUser, uuid.New(), nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user id is required")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetSummaryVersionByID_ScopesByUserID(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &SummaryRepository{pool: mock}
+
+	articleID := uuid.New()
+	userID := uuid.New()
+	versionID := uuid.New()
+	generatedAt := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(`FROM summary_versions\s+WHERE summary_version_id = \$1 AND user_id = \$2`).
+		WithArgs(versionID, userID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"summary_version_id", "article_id", "user_id", "generated_at",
+			"model", "prompt_version", "input_hash", "quality_score",
+			"summary_text", "superseded_by",
+		}).AddRow(versionID, articleID, userID, generatedAt, "model", "v1", "hash", (*float64)(nil), "summary text", nil))
+
+	sv, err := repo.GetSummaryVersionByID(context.Background(), versionID, userID)
+	require.NoError(t, err)
+	require.Equal(t, versionID, sv.SummaryVersionID)
+	require.Equal(t, userID, sv.UserID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetSummaryVersionByID_RequiresUserID(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &SummaryRepository{pool: mock}
+
+	_, err = repo.GetSummaryVersionByID(context.Background(), uuid.New(), uuid.Nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user id is required")
 	require.NoError(t, mock.ExpectationsWereMet())

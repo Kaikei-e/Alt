@@ -75,7 +75,7 @@ func TestSummaryAndTagSetVersionByID_ScopesByUserContextWhenPresent(t *testing.T
 			"generator", "input_hash", "tags_json", "superseded_by",
 		}).AddRow(tsvID, articleID, userID, now, "g", "h", []byte(`["t1"]`), nil))
 
-	sv, err := summaryRepo.GetSummaryVersionByID(ctx, svID)
+	sv, err := summaryRepo.GetSummaryVersionByID(context.Background(), svID, userID)
 	require.NoError(t, err)
 	assert.Equal(t, svID, sv.SummaryVersionID)
 

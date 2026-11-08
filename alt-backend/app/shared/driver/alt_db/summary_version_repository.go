@@ -58,11 +58,6 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 	defer span.End()
 
 	if userID == uuid.Nil {
-		if u := userIDFromContext(ctx); u != nil {
-			userID = *u
-		}
-	}
-	if userID == uuid.Nil {
 		return nil, errors.New("user id is required")
 	}
 
@@ -151,37 +146,27 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 	}
 }
 
-// GetSummaryVersionByID returns a specific summary version by its ID.
+// GetSummaryVersionByID returns a specific summary version by its ID scoped to userID.
 // This is reproject-safe: replaying an old event will always fetch the correct version.
-func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error) {
+func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVersionID, userID uuid.UUID) (domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetSummaryVersionByID")
 	defer span.End()
 
-	var sv domain.SummaryVersion
-	var err error
-	if user, userErr := domain.GetUserFromContext(ctx); userErr == nil && user != nil && user.UserID != uuid.Nil {
-		query := `SELECT summary_version_id, article_id, user_id, generated_at,
-			model, prompt_version, input_hash, quality_score,
-			summary_text, superseded_by
-			FROM summary_versions
-			WHERE summary_version_id = $1 AND user_id = $2`
-		err = r.pool.QueryRow(ctx, query, summaryVersionID, user.UserID).Scan(
-			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
-			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
-			&sv.SummaryText, &sv.SupersededBy,
-		)
-	} else {
-		query := `SELECT summary_version_id, article_id, user_id, generated_at,
-			model, prompt_version, input_hash, quality_score,
-			summary_text, superseded_by
-			FROM summary_versions
-			WHERE summary_version_id = $1`
-		err = r.pool.QueryRow(ctx, query, summaryVersionID).Scan(
-			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
-			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
-			&sv.SummaryText, &sv.SupersededBy,
-		)
+	if userID == uuid.Nil {
+		return domain.SummaryVersion{}, errors.New("user id is required")
 	}
+
+	var sv domain.SummaryVersion
+	query := `SELECT summary_version_id, article_id, user_id, generated_at,
+		model, prompt_version, input_hash, quality_score,
+		summary_text, superseded_by
+		FROM summary_versions
+		WHERE summary_version_id = $1 AND user_id = $2`
+	err := r.pool.QueryRow(ctx, query, summaryVersionID, userID).Scan(
+		&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
+		&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
+		&sv.SummaryText, &sv.SupersededBy,
+	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return domain.SummaryVersion{}, fmt.Errorf("no summary version found for id %s", summaryVersionID)
@@ -192,19 +177,11 @@ func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVe
 	return sv, nil
 }
 
-// GetLatestSummaryVersion returns the latest non-superseded summary version for an article.
-func (r *SummaryRepository) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error) {
-	return r.GetLatestSummaryVersionForUser(ctx, articleID, userIDFromContext(ctx))
-}
-
 // GetLatestSummaryVersionForUser returns the latest non-superseded summary version for an article scoped to userID.
 func (r *SummaryRepository) GetLatestSummaryVersionForUser(ctx context.Context, articleID uuid.UUID, userID *uuid.UUID) (domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetLatestSummaryVersion")
 	defer span.End()
 
-	if userID == nil {
-		userID = userIDFromContext(ctx)
-	}
 	if userID == nil || *userID == uuid.Nil {
 		return domain.SummaryVersion{}, errors.New("user id is required")
 	}

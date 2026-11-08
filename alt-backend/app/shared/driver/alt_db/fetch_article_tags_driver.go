@@ -18,21 +18,12 @@ const fetchArticleTagsWithUserQuery = `
 	ORDER BY ft.created_at DESC
 `
 
-// FetchArticleTags retrieves tags associated with a specific article for the
-// authenticated user in ctx.
-func (r *TagRepository) FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error) {
-	return r.FetchArticleTagsForUser(ctx, articleID, userIDFromContext(ctx))
-}
-
 // FetchArticleTagsForUser retrieves tags associated with an article owned by userID.
 func (r *TagRepository) FetchArticleTagsForUser(ctx context.Context, articleID string, userID *uuid.UUID) ([]*domain.FeedTag, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
 
-	if userID == nil {
-		userID = userIDFromContext(ctx)
-	}
 	if userID == nil || *userID == uuid.Nil {
 		return nil, errors.New("user id is required")
 	}

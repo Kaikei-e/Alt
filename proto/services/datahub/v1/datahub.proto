@@ -1981,6 +1981,7 @@ message MarkSummaryVersionSupersededResponse {
 
 message GetSummaryVersionByIDRequest {
   string summary_version_id = 1;
+  string user_id = 2;
 }
 
 message GetSummaryVersionByIDResponse {
