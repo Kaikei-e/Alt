@@ -7903,9 +7903,7 @@ func (x *BatchGetArticlesByURLsResponse) GetArticles() map[string]*ArticleConten
 type GetArticleContentByIDRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	ArticleId string                 `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
-	// Optional. When set the lookup is scoped to that user; when empty it
-	// matches any owner, which is the unauthenticated path the driver already
-	// had. The two are different queries and the caller chooses deliberately.
+	// Required. Scopes the lookup to that user's articles.
 	UserId        string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
