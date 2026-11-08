@@ -107,11 +107,7 @@ func WithProjectorWatcherOpener(opener ProjectorWatcherOpener) Option {
 
 func normalizeMutationPayload(ctx context.Context, rawPayload json.RawMessage, mutationType string) (json.RawMessage, error) {
 	claims, hasClaims := BackendClaimsFromContext(ctx)
-	if !hasClaims {
-		return rawPayload, nil
-	}
-
-	if claims.Subject == "" || claims.TenantID == "" {
+	if hasClaims && (claims.Subject == "" || claims.TenantID == "") {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("delegation token missing subject or tenant_id"))
 	}
 
@@ -119,7 +115,10 @@ func normalizeMutationPayload(ctx context.Context, rawPayload json.RawMessage, m
 	dec := json.NewDecoder(strings.NewReader(string(rawPayload)))
 	dec.UseNumber()
 	if err := dec.Decode(&p); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid json payload"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%w: invalid json payload", sovereign_db.ErrInvalidMutationPayload))
+	}
+	if !hasClaims {
+		return rawPayload, nil
 	}
 	if p == nil {
 		p = make(map[string]any)
@@ -162,12 +161,34 @@ func normalizeMutationPayload(ctx context.Context, rawPayload json.RawMessage, m
 	return json.RawMessage(normalized), nil
 }
 
+func mapMutationError(err error) error {
+	if errors.Is(err, sovereign_db.ErrHomeItemTenantMismatch) || errors.Is(err, sovereign_db.ErrRecallHomeAssociationDenied) {
+		return connect.NewError(connect.CodePermissionDenied, err)
+	}
+	if errors.Is(err, sovereign_db.ErrInvalidMutationPayload) {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if errors.Is(err, sovereign_db.ErrDismissTargetNotFound) {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	return connect.NewError(connect.CodeInternal, err)
+}
+
 // ApplyProjectionMutation dispatches a projection mutation to the repository.
 func (h *SovereignHandler) ApplyProjectionMutation(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ApplyProjectionMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyProjectionMutationResponse], error) {
 	msg := req.Msg
+	switch msg.MutationType {
+	case MutationUpsertHomeItem, MutationDismissHomeItem, MutationClearSupersede, MutationUpsertRecallCandidate, MutationPatchHomeItemURL:
+	case MutationUpsertTodayDigest:
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("upsert_today_digest is restricted to local projector"))
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("unknown projection mutation type: %s", msg.MutationType))
+	}
+
 	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
 	if err != nil {
 		return nil, err
@@ -180,24 +201,16 @@ func (h *SovereignHandler) ApplyProjectionMutation(
 		err = h.repo.DismissKnowledgeHomeItem(ctx, payload)
 	case MutationClearSupersede:
 		err = h.repo.ClearSupersedeState(ctx, payload)
-	case MutationUpsertTodayDigest:
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("upsert_today_digest is restricted to local projector"))
 	case MutationUpsertRecallCandidate:
 		err = h.repo.UpsertRecallCandidate(ctx, payload)
 	case MutationPatchHomeItemURL:
 		err = h.repo.PatchKnowledgeHomeItemURL(ctx, payload)
-	default:
-		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("unknown projection mutation type: %s", msg.MutationType))
 	}
 
 	if err != nil {
 		slog.ErrorContext(ctx, "projection mutation failed",
 			"type", msg.MutationType, "entity_id", msg.EntityId, "error", err)
-		if errors.Is(err, sovereign_db.ErrHomeItemTenantMismatch) || errors.Is(err, sovereign_db.ErrRecallHomeAssociationDenied) {
-			return nil, connect.NewError(connect.CodePermissionDenied, err)
-		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, mapMutationError(err)
 	}
 
 	return connect.NewResponse(&sovereignv1.ApplyProjectionMutationResponse{Success: true}), nil
@@ -209,6 +222,13 @@ func (h *SovereignHandler) ApplyRecallMutation(
 	req *connect.Request[sovereignv1.ApplyRecallMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyRecallMutationResponse], error) {
 	msg := req.Msg
+	switch msg.MutationType {
+	case MutationUpsertCandidate, MutationSnoozeCandidate, MutationDismissCandidate:
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("unknown recall mutation type: %s", msg.MutationType))
+	}
+
 	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
 	if err != nil {
 		return nil, err
@@ -221,18 +241,12 @@ func (h *SovereignHandler) ApplyRecallMutation(
 		err = h.repo.SnoozeRecallCandidate(ctx, payload)
 	case MutationDismissCandidate:
 		err = h.repo.DismissRecallCandidate(ctx, payload)
-	default:
-		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("unknown recall mutation type: %s", msg.MutationType))
 	}
 
 	if err != nil {
 		slog.ErrorContext(ctx, "recall mutation failed",
 			"type", msg.MutationType, "entity_id", msg.EntityId, "error", err)
-		if errors.Is(err, sovereign_db.ErrRecallHomeAssociationDenied) || errors.Is(err, sovereign_db.ErrHomeItemTenantMismatch) {
-			return nil, connect.NewError(connect.CodePermissionDenied, err)
-		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, mapMutationError(err)
 	}
 
 	return connect.NewResponse(&sovereignv1.ApplyRecallMutationResponse{Success: true}), nil
@@ -244,23 +258,23 @@ func (h *SovereignHandler) ApplyCurationMutation(
 	req *connect.Request[sovereignv1.ApplyCurationMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyCurationMutationResponse], error) {
 	msg := req.Msg
-	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
-	if err != nil {
-		return nil, err
-	}
-
 	switch msg.MutationType {
 	case MutationDismissCuration:
-		err = h.repo.DismissKnowledgeHomeItem(ctx, payload)
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("unknown curation mutation type: %s", msg.MutationType))
 	}
 
+	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
+	if err != nil {
+		return nil, err
+	}
+
+	err = h.repo.DismissKnowledgeHomeItem(ctx, payload)
 	if err != nil {
 		slog.ErrorContext(ctx, "curation mutation failed",
 			"type", msg.MutationType, "entity_id", msg.EntityId, "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, mapMutationError(err)
 	}
 
 	return connect.NewResponse(&sovereignv1.ApplyCurationMutationResponse{Success: true}), nil

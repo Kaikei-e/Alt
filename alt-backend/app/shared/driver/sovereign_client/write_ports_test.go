@@ -1,15 +1,49 @@
 package sovereign_client
 
 import (
+	"alt/orchestrator/port/knowledge_home_port"
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDismissKnowledgeHomeItem_MapsNotFoundToErrDismissTargetNotFound(t *testing.T) {
+	userID := uuid.New()
+	dismissedAt := time.Date(2026, 7, 7, 22, 30, 0, 0, time.UTC)
+
+	t.Run("CodeNotFound wraps ErrDismissTargetNotFound and keeps Connect error in chain", func(t *testing.T) {
+		handler := &mockSovereignHandler{
+			returnErr: connect.NewError(connect.CodeNotFound, errors.New("dismiss target not found")),
+		}
+		client, cleanup := setupMockServer(handler)
+		defer cleanup()
+
+		err := client.DismissKnowledgeHomeItem(context.Background(), userID, "article:missing", 1, dismissedAt)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, knowledge_home_port.ErrDismissTargetNotFound))
+		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+	})
+
+	t.Run("CodeUnavailable does not match ErrDismissTargetNotFound", func(t *testing.T) {
+		handler := &mockSovereignHandler{
+			returnErr: connect.NewError(connect.CodeUnavailable, errors.New("upstream unavailable")),
+		}
+		client, cleanup := setupMockServer(handler)
+		defer cleanup()
+
+		err := client.DismissKnowledgeHomeItem(context.Background(), userID, "article:missing", 1, dismissedAt)
+		require.Error(t, err)
+		assert.False(t, errors.Is(err, knowledge_home_port.ErrDismissTargetNotFound))
+		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
+	})
+}
 
 // TestSnoozeRecallCandidate_PayloadIncludesOccurredAtAndUntil pins the wire
 // shape knowledge-sovereign's SnoozeRecallCandidate driver requires:

@@ -3,7 +3,6 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -76,30 +75,30 @@ type PatchKnowledgeHomeItemURLPayload struct {
 func (r *Repository) PatchKnowledgeHomeItemURL(ctx context.Context, payload json.RawMessage) error {
 	var p PatchKnowledgeHomeItemURLPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
-		return fmt.Errorf("PatchKnowledgeHomeItemURL: unmarshal: %w", err)
+		return fmt.Errorf("PatchKnowledgeHomeItemURL: unmarshal: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	if p.URL == "" {
 		// Reject at the application boundary so callers fail loudly
 		// rather than silently emitting no-op UPDATEs.
-		return errors.New("PatchKnowledgeHomeItemURL: empty URL")
+		return fmt.Errorf("PatchKnowledgeHomeItemURL: empty URL: %w", ErrInvalidMutationPayload)
 	}
 	if p.OccurredAt.IsZero() {
 		return errors.New("PatchKnowledgeHomeItemURL: occurred_at is required")
 	}
 	userID, err := uuid.Parse(p.UserID)
 	if err != nil {
-		return fmt.Errorf("PatchKnowledgeHomeItemURL: parse user_id: %w", err)
+		return fmt.Errorf("PatchKnowledgeHomeItemURL: parse user_id: %w: %w", ErrInvalidMutationPayload, err)
 	}
 	if userID == uuid.Nil {
-		return errors.New("PatchKnowledgeHomeItemURL: user_id cannot be nil")
+		return fmt.Errorf("PatchKnowledgeHomeItemURL: user_id cannot be nil: %w", ErrInvalidMutationPayload)
 	}
 	if p.TenantID != "" {
 		tenantID, err := uuid.Parse(p.TenantID)
 		if err != nil {
-			return fmt.Errorf("PatchKnowledgeHomeItemURL: parse tenant_id: %w", err)
+			return fmt.Errorf("PatchKnowledgeHomeItemURL: parse tenant_id: %w: %w", ErrInvalidMutationPayload, err)
 		}
 		if tenantID == uuid.Nil {
-			return errors.New("PatchKnowledgeHomeItemURL: tenant_id cannot be nil")
+			return fmt.Errorf("PatchKnowledgeHomeItemURL: tenant_id cannot be nil: %w", ErrInvalidMutationPayload)
 		}
 		if _, err := r.pool.Exec(ctx, patchKnowledgeHomeItemURLWithTenantQuery,
 			p.URL, userID, p.ItemKey, p.ProjectionVersion, p.OccurredAt, tenantID,

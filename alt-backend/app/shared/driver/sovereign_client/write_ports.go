@@ -2,12 +2,14 @@ package sovereign_client
 
 import (
 	"alt/domain"
+	"alt/orchestrator/port/knowledge_home_port"
 	"alt/orchestrator/port/knowledge_sovereign_port"
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 )
 
@@ -35,11 +37,18 @@ func (c *Client) DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID,
 	if err != nil {
 		return fmt.Errorf("sovereign DismissKnowledgeHomeItem marshal: %w", err)
 	}
-	return c.ApplyProjectionMutation(ctx, knowledge_sovereign_port.ProjectionMutation{
+	err = c.ApplyProjectionMutation(ctx, knowledge_sovereign_port.ProjectionMutation{
 		MutationType: knowledge_sovereign_port.MutationDismissHomeItem,
 		EntityID:     itemKey,
 		Payload:      payload,
 	})
+	if err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return fmt.Errorf("%w: %w", knowledge_home_port.ErrDismissTargetNotFound, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // PatchKnowledgeHomeItemURL implements knowledge_home_port.PatchKnowledgeHomeItemURLPort.
