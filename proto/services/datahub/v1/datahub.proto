@@ -448,6 +448,8 @@ message TagCloudItem {
 message FetchArticlesByTagRequest {
   string tag_name = 1;
   int32 limit = 2;
+  // Required. Scopes the lookup to articles owned by this user.
+  string user_id = 3;
 }
 
 // FetchArticlesByTagResponse contains articles matching the tag.
@@ -1879,6 +1881,8 @@ message ListArticlesByTagIDRequest {
   // Exclusive upper bound on published_at. Unset is the first page.
   google.protobuf.Timestamp cursor = 2;
   int32 limit = 3;
+  // Required. Scopes the lookup to articles owned by this user.
+  string user_id = 4;
 }
 
 message ListArticlesByTagIDResponse {
@@ -1891,6 +1895,8 @@ message ListArticlesByTagNameRequest {
   // Exclusive upper bound on published_at. Unset is the first page.
   google.protobuf.Timestamp cursor = 2;
   int32 limit = 3;
+  // Required. Scopes the lookup to articles owned by this user.
+  string user_id = 4;
 }
 
 message ListArticlesByTagNameResponse {

@@ -3398,9 +3398,11 @@ func (x *TagCloudItem) GetArticleCount() int32 {
 // Wire-identical to
 // services.backend.v1.BackendInternalServiceFetchArticlesByTagRequest.
 type FetchArticlesByTagRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TagName       string                 `protobuf:"bytes,1,opt,name=tag_name,json=tagName,proto3" json:"tag_name,omitempty"`
-	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	TagName string                 `protobuf:"bytes,1,opt,name=tag_name,json=tagName,proto3" json:"tag_name,omitempty"`
+	Limit   int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Required. Scopes the lookup to articles owned by this user.
+	UserId        string `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3447,6 +3449,13 @@ func (x *FetchArticlesByTagRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *FetchArticlesByTagRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
 }
 
 // FetchArticlesByTagResponse contains articles matching the tag.
@@ -13913,8 +13922,10 @@ type ListArticlesByTagIDRequest struct {
 	// why the two identifiers are separate procedures.
 	TagId string `protobuf:"bytes,1,opt,name=tag_id,json=tagId,proto3" json:"tag_id,omitempty"`
 	// Exclusive upper bound on published_at. Unset is the first page.
-	Cursor        *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Cursor *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Limit  int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Required. Scopes the lookup to articles owned by this user.
+	UserId        string `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -13970,6 +13981,13 @@ func (x *ListArticlesByTagIDRequest) GetLimit() int32 {
 	return 0
 }
 
+func (x *ListArticlesByTagIDRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
 type ListArticlesByTagIDResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Articles      []*TagTrailArticle     `protobuf:"bytes,1,rep,name=articles,proto3" json:"articles,omitempty"`
@@ -14019,8 +14037,10 @@ type ListArticlesByTagNameRequest struct {
 	// feed_tags.tag_name — the same label across every feed that uses it.
 	TagName string `protobuf:"bytes,1,opt,name=tag_name,json=tagName,proto3" json:"tag_name,omitempty"`
 	// Exclusive upper bound on published_at. Unset is the first page.
-	Cursor        *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Cursor *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Limit  int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Required. Scopes the lookup to articles owned by this user.
+	UserId        string `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -14074,6 +14094,13 @@ func (x *ListArticlesByTagNameRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *ListArticlesByTagNameRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
 }
 
 type ListArticlesByTagNameResponse struct {
@@ -17560,10 +17587,11 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\x04tags\x18\x01 \x03(\v2!.services.datahub.v1.TagCloudItemR\x04tags\"N\n" +
 	"\fTagCloudItem\x12\x19\n" +
 	"\btag_name\x18\x01 \x01(\tR\atagName\x12#\n" +
-	"\rarticle_count\x18\x02 \x01(\x05R\farticleCount\"L\n" +
+	"\rarticle_count\x18\x02 \x01(\x05R\farticleCount\"e\n" +
 	"\x19FetchArticlesByTagRequest\x12\x19\n" +
 	"\btag_name\x18\x01 \x01(\tR\atagName\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"_\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\tR\x06userId\"_\n" +
 	"\x1aFetchArticlesByTagResponse\x12A\n" +
 	"\barticles\x18\x01 \x03(\v2%.services.datahub.v1.ArticleByTagItemR\barticles\"m\n" +
 	"\x10ArticleByTagItem\x12\x0e\n" +
@@ -18269,17 +18297,19 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\fpublished_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vpublishedAt\x12\x17\n" +
 	"\afeed_id\x18\x05 \x01(\tR\x06feedId\x12\x1d\n" +
 	"\n" +
-	"feed_title\x18\x06 \x01(\tR\tfeedTitle\"}\n" +
+	"feed_title\x18\x06 \x01(\tR\tfeedTitle\"\x96\x01\n" +
 	"\x1aListArticlesByTagIDRequest\x12\x15\n" +
 	"\x06tag_id\x18\x01 \x01(\tR\x05tagId\x122\n" +
 	"\x06cursor\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x06cursor\x12\x14\n" +
-	"\x05limit\x18\x03 \x01(\x05R\x05limit\"_\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x17\n" +
+	"\auser_id\x18\x04 \x01(\tR\x06userId\"_\n" +
 	"\x1bListArticlesByTagIDResponse\x12@\n" +
-	"\barticles\x18\x01 \x03(\v2$.services.datahub.v1.TagTrailArticleR\barticles\"\x83\x01\n" +
+	"\barticles\x18\x01 \x03(\v2$.services.datahub.v1.TagTrailArticleR\barticles\"\x9c\x01\n" +
 	"\x1cListArticlesByTagNameRequest\x12\x19\n" +
 	"\btag_name\x18\x01 \x01(\tR\atagName\x122\n" +
 	"\x06cursor\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x06cursor\x12\x14\n" +
-	"\x05limit\x18\x03 \x01(\x05R\x05limit\"a\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x17\n" +
+	"\auser_id\x18\x04 \x01(\tR\x06userId\"a\n" +
 	"\x1dListArticlesByTagNameResponse\x12@\n" +
 	"\barticles\x18\x01 \x03(\v2$.services.datahub.v1.TagTrailArticleR\barticles\">\n" +
 	"\x1dGetArticleTitleAndLinkRequest\x12\x1d\n" +

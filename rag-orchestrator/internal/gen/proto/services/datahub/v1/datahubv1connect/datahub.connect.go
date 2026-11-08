@@ -132,6 +132,9 @@ const (
 	// DataHubServiceListRecapArticlesProcedure is the fully-qualified name of the DataHubService's
 	// ListRecapArticles RPC.
 	DataHubServiceListRecapArticlesProcedure = "/services.datahub.v1.DataHubService/ListRecapArticles"
+	// DataHubServiceListFeedsInWindowProcedure is the fully-qualified name of the DataHubService's
+	// ListFeedsInWindow RPC.
+	DataHubServiceListFeedsInWindowProcedure = "/services.datahub.v1.DataHubService/ListFeedsInWindow"
 	// DataHubServiceGetSystemUserProcedure is the fully-qualified name of the DataHubService's
 	// GetSystemUser RPC.
 	DataHubServiceGetSystemUserProcedure = "/services.datahub.v1.DataHubService/GetSystemUser"
@@ -165,6 +168,15 @@ const (
 	// DataHubServicePurgeExpiredArticleHeadsProcedure is the fully-qualified name of the
 	// DataHubService's PurgeExpiredArticleHeads RPC.
 	DataHubServicePurgeExpiredArticleHeadsProcedure = "/services.datahub.v1.DataHubService/PurgeExpiredArticleHeads"
+	// DataHubServiceGetFeedOgImageTargetsProcedure is the fully-qualified name of the DataHubService's
+	// GetFeedOgImageTargets RPC.
+	DataHubServiceGetFeedOgImageTargetsProcedure = "/services.datahub.v1.DataHubService/GetFeedOgImageTargets"
+	// DataHubServiceSaveFeedOgImageProcedure is the fully-qualified name of the DataHubService's
+	// SaveFeedOgImage RPC.
+	DataHubServiceSaveFeedOgImageProcedure = "/services.datahub.v1.DataHubService/SaveFeedOgImage"
+	// DataHubServicePurgeExpiredFeedOgImagesProcedure is the fully-qualified name of the
+	// DataHubService's PurgeExpiredFeedOgImages RPC.
+	DataHubServicePurgeExpiredFeedOgImagesProcedure = "/services.datahub.v1.DataHubService/PurgeExpiredFeedOgImages"
 	// DataHubServiceGetImageProxyCacheProcedure is the fully-qualified name of the DataHubService's
 	// GetImageProxyCache RPC.
 	DataHubServiceGetImageProxyCacheProcedure = "/services.datahub.v1.DataHubService/GetImageProxyCache"
@@ -414,6 +426,39 @@ const (
 	// DataHubServiceListUserFeedIDsProcedure is the fully-qualified name of the DataHubService's
 	// ListUserFeedIDs RPC.
 	DataHubServiceListUserFeedIDsProcedure = "/services.datahub.v1.DataHubService/ListUserFeedIDs"
+	// DataHubServiceUpsertPushSubscriptionProcedure is the fully-qualified name of the DataHubService's
+	// UpsertPushSubscription RPC.
+	DataHubServiceUpsertPushSubscriptionProcedure = "/services.datahub.v1.DataHubService/UpsertPushSubscription"
+	// DataHubServiceGetPushSubscriptionProcedure is the fully-qualified name of the DataHubService's
+	// GetPushSubscription RPC.
+	DataHubServiceGetPushSubscriptionProcedure = "/services.datahub.v1.DataHubService/GetPushSubscription"
+	// DataHubServiceUpdatePushSubscriptionPreferencesProcedure is the fully-qualified name of the
+	// DataHubService's UpdatePushSubscriptionPreferences RPC.
+	DataHubServiceUpdatePushSubscriptionPreferencesProcedure = "/services.datahub.v1.DataHubService/UpdatePushSubscriptionPreferences"
+	// DataHubServiceDeletePushSubscriptionProcedure is the fully-qualified name of the DataHubService's
+	// DeletePushSubscription RPC.
+	DataHubServiceDeletePushSubscriptionProcedure = "/services.datahub.v1.DataHubService/DeletePushSubscription"
+	// DataHubServiceListPushSubscriptionsForUserProcedure is the fully-qualified name of the
+	// DataHubService's ListPushSubscriptionsForUser RPC.
+	DataHubServiceListPushSubscriptionsForUserProcedure = "/services.datahub.v1.DataHubService/ListPushSubscriptionsForUser"
+	// DataHubServiceEnqueueNotificationProcedure is the fully-qualified name of the DataHubService's
+	// EnqueueNotification RPC.
+	DataHubServiceEnqueueNotificationProcedure = "/services.datahub.v1.DataHubService/EnqueueNotification"
+	// DataHubServiceClaimNotificationBatchProcedure is the fully-qualified name of the DataHubService's
+	// ClaimNotificationBatch RPC.
+	DataHubServiceClaimNotificationBatchProcedure = "/services.datahub.v1.DataHubService/ClaimNotificationBatch"
+	// DataHubServiceMarkNotificationSentProcedure is the fully-qualified name of the DataHubService's
+	// MarkNotificationSent RPC.
+	DataHubServiceMarkNotificationSentProcedure = "/services.datahub.v1.DataHubService/MarkNotificationSent"
+	// DataHubServiceReleaseNotificationProcedure is the fully-qualified name of the DataHubService's
+	// ReleaseNotification RPC.
+	DataHubServiceReleaseNotificationProcedure = "/services.datahub.v1.DataHubService/ReleaseNotification"
+	// DataHubServiceMarkNotificationDeadProcedure is the fully-qualified name of the DataHubService's
+	// MarkNotificationDead RPC.
+	DataHubServiceMarkNotificationDeadProcedure = "/services.datahub.v1.DataHubService/MarkNotificationDead"
+	// DataHubServiceGetNotificationBacklogAgeProcedure is the fully-qualified name of the
+	// DataHubService's GetNotificationBacklogAge RPC.
+	DataHubServiceGetNotificationBacklogAgeProcedure = "/services.datahub.v1.DataHubService/GetNotificationBacklogAge"
 )
 
 // DataHubServiceClient is a client for the services.datahub.v1.DataHubService service.
@@ -523,6 +568,9 @@ type DataHubServiceClient interface {
 	// Service-to-service only; auth is established at the mTLS transport layer.
 	// Origin: services.backend.v1.BackendInternalService/ListRecapArticles
 	ListRecapArticles(context.Context, *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error)
+	// ListFeedsInWindow returns paginated RSS feed items created within a time window.
+	// Service-to-service only; auth is established at the mTLS transport layer.
+	ListFeedsInWindow(context.Context, *connect.Request[v1.ListFeedsInWindowRequest]) (*connect.Response[v1.ListFeedsInWindowResponse], error)
 	// GetSystemUser returns the first Kratos identity id.
 	// Origin: GET /v1/internal/system-user (REST). Called by pre-processor.
 	GetSystemUser(context.Context, *connect.Request[v1.GetSystemUserRequest]) (*connect.Response[v1.GetSystemUserResponse], error)
@@ -555,12 +603,25 @@ type DataHubServiceClient interface {
 	GetArticleHead(context.Context, *connect.Request[v1.GetArticleHeadRequest]) (*connect.Response[v1.GetArticleHeadResponse], error)
 	// BatchGetOgImageURLs resolves og:image URLs for many articles at once.
 	BatchGetOgImageURLs(context.Context, *connect.Request[v1.BatchGetOgImageURLsRequest]) (*connect.Response[v1.BatchGetOgImageURLsResponse], error)
-	// ListFeedsMissingOgImage returns the og-image-backfill work list.
+	// ListFeedsMissingOgImage served the batch og-image-backfill job, which has
+	// been removed in favour of resolving on demand. No caller remains; deleting
+	// it is a follow-up once main carries the new breaking-change baseline.
+	//
+	// Deprecated: do not use.
 	ListFeedsMissingOgImage(context.Context, *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error)
 	// ListUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
 	ListUnwarmedOgImageURLs(context.Context, *connect.Request[v1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[v1.ListUnwarmedOgImageURLsResponse], error)
 	// PurgeExpiredArticleHeads enforces the article_heads retention window.
 	PurgeExpiredArticleHeads(context.Context, *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error)
+	// GetFeedOgImageTargets returns, for feeds a reader has brought into view,
+	// the page to fetch and whether an earlier attempt already settled the
+	// question.
+	GetFeedOgImageTargets(context.Context, *connect.Request[v1.GetFeedOgImageTargetsRequest]) (*connect.Response[v1.GetFeedOgImageTargetsResponse], error)
+	// SaveFeedOgImage records one resolution outcome — a URL, or the refusal
+	// that must stop the origin being asked again.
+	SaveFeedOgImage(context.Context, *connect.Request[v1.SaveFeedOgImageRequest]) (*connect.Response[v1.SaveFeedOgImageResponse], error)
+	// PurgeExpiredFeedOgImages enforces the feed_og_images retention window.
+	PurgeExpiredFeedOgImages(context.Context, *connect.Request[v1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[v1.PurgeExpiredFeedOgImagesResponse], error)
 	// GetImageProxyCache returns a live cache entry, or nothing.
 	GetImageProxyCache(context.Context, *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error)
 	// PutImageProxyCache upserts a cache entry by url_hash.
@@ -952,6 +1013,60 @@ type DataHubServiceClient interface {
 	// ListUserFeedIDs returns the feeds a user has read state against — the
 	// Morning Letter's candidate set.
 	ListUserFeedIDs(context.Context, *connect.Request[v1.ListUserFeedIDsRequest]) (*connect.Response[v1.ListUserFeedIDsResponse], error)
+	// UpsertPushSubscription stores a browser subscription, replacing the key
+	// material and preferences of an endpoint already registered.
+	//
+	// Idempotent on endpoint rather than insert-or-fail: a browser hands out the
+	// same endpoint again after a permission re-prompt, and a second row for one
+	// device would push to it twice.
+	UpsertPushSubscription(context.Context, *connect.Request[v1.UpsertPushSubscriptionRequest]) (*connect.Response[v1.UpsertPushSubscriptionResponse], error)
+	// GetPushSubscription reads one device's subscription, scoped to its owner.
+	GetPushSubscription(context.Context, *connect.Request[v1.GetPushSubscriptionRequest]) (*connect.Response[v1.GetPushSubscriptionResponse], error)
+	// UpdatePushSubscriptionPreferences changes which kinds are delivered
+	// without touching the key material, so the browser need not re-subscribe.
+	UpdatePushSubscriptionPreferences(context.Context, *connect.Request[v1.UpdatePushSubscriptionPreferencesRequest]) (*connect.Response[v1.UpdatePushSubscriptionPreferencesResponse], error)
+	// DeletePushSubscription removes one device. Idempotent: the dispatcher
+	// calls it on a 404/410 from the push service, which can race the user's own
+	// removal.
+	DeletePushSubscription(context.Context, *connect.Request[v1.DeletePushSubscriptionRequest]) (*connect.Response[v1.DeletePushSubscriptionResponse], error)
+	// ListPushSubscriptionsForUser returns every device of one user — the
+	// fan-out list.
+	ListPushSubscriptionsForUser(context.Context, *connect.Request[v1.ListPushSubscriptionsForUserRequest]) (*connect.Response[v1.ListPushSubscriptionsForUserResponse], error)
+	// EnqueueNotification fans one notification out to every device of one user
+	// that still wants that kind, in one transaction.
+	//
+	// Idempotent per device on (dedupe_key, subscription_id), so a relayed retry
+	// is a no-op rather than a second push, and superseding: an unsent daily
+	// digest for a device is expired by the next day's enqueue instead of both
+	// being delivered.
+	EnqueueNotification(context.Context, *connect.Request[v1.EnqueueNotificationRequest]) (*connect.Response[v1.EnqueueNotificationResponse], error)
+	// ClaimNotificationBatch takes ownership of due rows and marks them SENDING
+	// in one statement.
+	//
+	// The statement covers fresh work and crash reclaim together: it matches
+	// `state IN ('pending','sending') AND next_attempt_at <= clock_timestamp()`,
+	// and the claim pushes next_attempt_at forward by the lease. A row orphaned
+	// by a dispatcher that died mid-attempt therefore re-enters this same query
+	// when its lease expires, which is why there is no reclaim procedure here —
+	// and no reclaim sweeper anyone can forget to deploy.
+	ClaimNotificationBatch(context.Context, *connect.Request[v1.ClaimNotificationBatchRequest]) (*connect.Response[v1.ClaimNotificationBatchResponse], error)
+	// MarkNotificationSent records delivery and stamps finalized_at.
+	MarkNotificationSent(context.Context, *connect.Request[v1.MarkNotificationSentRequest]) (*connect.Response[v1.MarkNotificationSentResponse], error)
+	// ReleaseNotification returns a claimed row to PENDING with the caller's
+	// backoff, for a failure worth retrying.
+	ReleaseNotification(context.Context, *connect.Request[v1.ReleaseNotificationRequest]) (*connect.Response[v1.ReleaseNotificationResponse], error)
+	// MarkNotificationDead ends delivery for a failure that will not improve —
+	// a malformed payload, or a push service refusing the subscription itself.
+	MarkNotificationDead(context.Context, *connect.Request[v1.MarkNotificationDeadRequest]) (*connect.Response[v1.MarkNotificationDeadResponse], error)
+	// GetNotificationBacklogAge reports how stale the delivery queue is, for the
+	// dispatcher's backlog gauge.
+	//
+	// It counts `sending` alongside `pending`, and that is the whole procedure.
+	// A row orphaned by a dispatcher that died mid-attempt sits in `sending`
+	// until its lease expires; a query that looked only at `pending` would report
+	// an age of 0 while the backlog was in fact stuck, which is precisely the
+	// outage the alert over this metric exists to notice.
+	GetNotificationBacklogAge(context.Context, *connect.Request[v1.GetNotificationBacklogAgeRequest]) (*connect.Response[v1.GetNotificationBacklogAgeResponse], error)
 }
 
 // NewDataHubServiceClient constructs a client for the services.datahub.v1.DataHubService service.
@@ -1109,6 +1224,12 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("ListRecapArticles")),
 			connect.WithClientOptions(opts...),
 		),
+		listFeedsInWindow: connect.NewClient[v1.ListFeedsInWindowRequest, v1.ListFeedsInWindowResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedsInWindowProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsInWindow")),
+			connect.WithClientOptions(opts...),
+		),
 		getSystemUser: connect.NewClient[v1.GetSystemUserRequest, v1.GetSystemUserResponse](
 			httpClient,
 			baseURL+DataHubServiceGetSystemUserProcedure,
@@ -1173,6 +1294,24 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			httpClient,
 			baseURL+DataHubServicePurgeExpiredArticleHeadsProcedure,
 			connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredArticleHeads")),
+			connect.WithClientOptions(opts...),
+		),
+		getFeedOgImageTargets: connect.NewClient[v1.GetFeedOgImageTargetsRequest, v1.GetFeedOgImageTargetsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetFeedOgImageTargetsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetFeedOgImageTargets")),
+			connect.WithClientOptions(opts...),
+		),
+		saveFeedOgImage: connect.NewClient[v1.SaveFeedOgImageRequest, v1.SaveFeedOgImageResponse](
+			httpClient,
+			baseURL+DataHubServiceSaveFeedOgImageProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("SaveFeedOgImage")),
+			connect.WithClientOptions(opts...),
+		),
+		purgeExpiredFeedOgImages: connect.NewClient[v1.PurgeExpiredFeedOgImagesRequest, v1.PurgeExpiredFeedOgImagesResponse](
+			httpClient,
+			baseURL+DataHubServicePurgeExpiredFeedOgImagesProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredFeedOgImages")),
 			connect.WithClientOptions(opts...),
 		),
 		getImageProxyCache: connect.NewClient[v1.GetImageProxyCacheRequest, v1.GetImageProxyCacheResponse](
@@ -1673,6 +1812,72 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("ListUserFeedIDs")),
 			connect.WithClientOptions(opts...),
 		),
+		upsertPushSubscription: connect.NewClient[v1.UpsertPushSubscriptionRequest, v1.UpsertPushSubscriptionResponse](
+			httpClient,
+			baseURL+DataHubServiceUpsertPushSubscriptionProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("UpsertPushSubscription")),
+			connect.WithClientOptions(opts...),
+		),
+		getPushSubscription: connect.NewClient[v1.GetPushSubscriptionRequest, v1.GetPushSubscriptionResponse](
+			httpClient,
+			baseURL+DataHubServiceGetPushSubscriptionProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetPushSubscription")),
+			connect.WithClientOptions(opts...),
+		),
+		updatePushSubscriptionPreferences: connect.NewClient[v1.UpdatePushSubscriptionPreferencesRequest, v1.UpdatePushSubscriptionPreferencesResponse](
+			httpClient,
+			baseURL+DataHubServiceUpdatePushSubscriptionPreferencesProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("UpdatePushSubscriptionPreferences")),
+			connect.WithClientOptions(opts...),
+		),
+		deletePushSubscription: connect.NewClient[v1.DeletePushSubscriptionRequest, v1.DeletePushSubscriptionResponse](
+			httpClient,
+			baseURL+DataHubServiceDeletePushSubscriptionProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("DeletePushSubscription")),
+			connect.WithClientOptions(opts...),
+		),
+		listPushSubscriptionsForUser: connect.NewClient[v1.ListPushSubscriptionsForUserRequest, v1.ListPushSubscriptionsForUserResponse](
+			httpClient,
+			baseURL+DataHubServiceListPushSubscriptionsForUserProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListPushSubscriptionsForUser")),
+			connect.WithClientOptions(opts...),
+		),
+		enqueueNotification: connect.NewClient[v1.EnqueueNotificationRequest, v1.EnqueueNotificationResponse](
+			httpClient,
+			baseURL+DataHubServiceEnqueueNotificationProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("EnqueueNotification")),
+			connect.WithClientOptions(opts...),
+		),
+		claimNotificationBatch: connect.NewClient[v1.ClaimNotificationBatchRequest, v1.ClaimNotificationBatchResponse](
+			httpClient,
+			baseURL+DataHubServiceClaimNotificationBatchProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ClaimNotificationBatch")),
+			connect.WithClientOptions(opts...),
+		),
+		markNotificationSent: connect.NewClient[v1.MarkNotificationSentRequest, v1.MarkNotificationSentResponse](
+			httpClient,
+			baseURL+DataHubServiceMarkNotificationSentProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("MarkNotificationSent")),
+			connect.WithClientOptions(opts...),
+		),
+		releaseNotification: connect.NewClient[v1.ReleaseNotificationRequest, v1.ReleaseNotificationResponse](
+			httpClient,
+			baseURL+DataHubServiceReleaseNotificationProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ReleaseNotification")),
+			connect.WithClientOptions(opts...),
+		),
+		markNotificationDead: connect.NewClient[v1.MarkNotificationDeadRequest, v1.MarkNotificationDeadResponse](
+			httpClient,
+			baseURL+DataHubServiceMarkNotificationDeadProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("MarkNotificationDead")),
+			connect.WithClientOptions(opts...),
+		),
+		getNotificationBacklogAge: connect.NewClient[v1.GetNotificationBacklogAgeRequest, v1.GetNotificationBacklogAgeResponse](
+			httpClient,
+			baseURL+DataHubServiceGetNotificationBacklogAgeProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetNotificationBacklogAge")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1702,6 +1907,7 @@ type dataHubServiceClient struct {
 	fetchTagCloud                     *connect.Client[v1.FetchTagCloudRequest, v1.FetchTagCloudResponse]
 	fetchArticlesByTag                *connect.Client[v1.FetchArticlesByTagRequest, v1.FetchArticlesByTagResponse]
 	listRecapArticles                 *connect.Client[v1.ListRecapArticlesRequest, v1.ListRecapArticlesResponse]
+	listFeedsInWindow                 *connect.Client[v1.ListFeedsInWindowRequest, v1.ListFeedsInWindowResponse]
 	getSystemUser                     *connect.Client[v1.GetSystemUserRequest, v1.GetSystemUserResponse]
 	listRecentArticles                *connect.Client[v1.ListRecentArticlesRequest, v1.ListRecentArticlesResponse]
 	claimOutboxBatch                  *connect.Client[v1.ClaimOutboxBatchRequest, v1.ClaimOutboxBatchResponse]
@@ -1713,6 +1919,9 @@ type dataHubServiceClient struct {
 	listFeedsMissingOgImage           *connect.Client[v1.ListFeedsMissingOgImageRequest, v1.ListFeedsMissingOgImageResponse]
 	listUnwarmedOgImageURLs           *connect.Client[v1.ListUnwarmedOgImageURLsRequest, v1.ListUnwarmedOgImageURLsResponse]
 	purgeExpiredArticleHeads          *connect.Client[v1.PurgeExpiredArticleHeadsRequest, v1.PurgeExpiredArticleHeadsResponse]
+	getFeedOgImageTargets             *connect.Client[v1.GetFeedOgImageTargetsRequest, v1.GetFeedOgImageTargetsResponse]
+	saveFeedOgImage                   *connect.Client[v1.SaveFeedOgImageRequest, v1.SaveFeedOgImageResponse]
+	purgeExpiredFeedOgImages          *connect.Client[v1.PurgeExpiredFeedOgImagesRequest, v1.PurgeExpiredFeedOgImagesResponse]
 	getImageProxyCache                *connect.Client[v1.GetImageProxyCacheRequest, v1.GetImageProxyCacheResponse]
 	putImageProxyCache                *connect.Client[v1.PutImageProxyCacheRequest, v1.PutImageProxyCacheResponse]
 	evictExpiredImageProxyCache       *connect.Client[v1.EvictExpiredImageProxyCacheRequest, v1.EvictExpiredImageProxyCacheResponse]
@@ -1796,6 +2005,17 @@ type dataHubServiceClient struct {
 	getTodayUnreadArticlesCount       *connect.Client[v1.GetTodayUnreadArticlesCountRequest, v1.GetTodayUnreadArticlesCountResponse]
 	getTrendStats                     *connect.Client[v1.GetTrendStatsRequest, v1.GetTrendStatsResponse]
 	listUserFeedIDs                   *connect.Client[v1.ListUserFeedIDsRequest, v1.ListUserFeedIDsResponse]
+	upsertPushSubscription            *connect.Client[v1.UpsertPushSubscriptionRequest, v1.UpsertPushSubscriptionResponse]
+	getPushSubscription               *connect.Client[v1.GetPushSubscriptionRequest, v1.GetPushSubscriptionResponse]
+	updatePushSubscriptionPreferences *connect.Client[v1.UpdatePushSubscriptionPreferencesRequest, v1.UpdatePushSubscriptionPreferencesResponse]
+	deletePushSubscription            *connect.Client[v1.DeletePushSubscriptionRequest, v1.DeletePushSubscriptionResponse]
+	listPushSubscriptionsForUser      *connect.Client[v1.ListPushSubscriptionsForUserRequest, v1.ListPushSubscriptionsForUserResponse]
+	enqueueNotification               *connect.Client[v1.EnqueueNotificationRequest, v1.EnqueueNotificationResponse]
+	claimNotificationBatch            *connect.Client[v1.ClaimNotificationBatchRequest, v1.ClaimNotificationBatchResponse]
+	markNotificationSent              *connect.Client[v1.MarkNotificationSentRequest, v1.MarkNotificationSentResponse]
+	releaseNotification               *connect.Client[v1.ReleaseNotificationRequest, v1.ReleaseNotificationResponse]
+	markNotificationDead              *connect.Client[v1.MarkNotificationDeadRequest, v1.MarkNotificationDeadResponse]
+	getNotificationBacklogAge         *connect.Client[v1.GetNotificationBacklogAgeRequest, v1.GetNotificationBacklogAgeResponse]
 }
 
 // ListArticlesWithTags calls services.datahub.v1.DataHubService.ListArticlesWithTags.
@@ -1918,6 +2138,11 @@ func (c *dataHubServiceClient) ListRecapArticles(ctx context.Context, req *conne
 	return c.listRecapArticles.CallUnary(ctx, req)
 }
 
+// ListFeedsInWindow calls services.datahub.v1.DataHubService.ListFeedsInWindow.
+func (c *dataHubServiceClient) ListFeedsInWindow(ctx context.Context, req *connect.Request[v1.ListFeedsInWindowRequest]) (*connect.Response[v1.ListFeedsInWindowResponse], error) {
+	return c.listFeedsInWindow.CallUnary(ctx, req)
+}
+
 // GetSystemUser calls services.datahub.v1.DataHubService.GetSystemUser.
 func (c *dataHubServiceClient) GetSystemUser(ctx context.Context, req *connect.Request[v1.GetSystemUserRequest]) (*connect.Response[v1.GetSystemUserResponse], error) {
 	return c.getSystemUser.CallUnary(ctx, req)
@@ -1959,6 +2184,8 @@ func (c *dataHubServiceClient) BatchGetOgImageURLs(ctx context.Context, req *con
 }
 
 // ListFeedsMissingOgImage calls services.datahub.v1.DataHubService.ListFeedsMissingOgImage.
+//
+// Deprecated: do not use.
 func (c *dataHubServiceClient) ListFeedsMissingOgImage(ctx context.Context, req *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error) {
 	return c.listFeedsMissingOgImage.CallUnary(ctx, req)
 }
@@ -1971,6 +2198,21 @@ func (c *dataHubServiceClient) ListUnwarmedOgImageURLs(ctx context.Context, req 
 // PurgeExpiredArticleHeads calls services.datahub.v1.DataHubService.PurgeExpiredArticleHeads.
 func (c *dataHubServiceClient) PurgeExpiredArticleHeads(ctx context.Context, req *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error) {
 	return c.purgeExpiredArticleHeads.CallUnary(ctx, req)
+}
+
+// GetFeedOgImageTargets calls services.datahub.v1.DataHubService.GetFeedOgImageTargets.
+func (c *dataHubServiceClient) GetFeedOgImageTargets(ctx context.Context, req *connect.Request[v1.GetFeedOgImageTargetsRequest]) (*connect.Response[v1.GetFeedOgImageTargetsResponse], error) {
+	return c.getFeedOgImageTargets.CallUnary(ctx, req)
+}
+
+// SaveFeedOgImage calls services.datahub.v1.DataHubService.SaveFeedOgImage.
+func (c *dataHubServiceClient) SaveFeedOgImage(ctx context.Context, req *connect.Request[v1.SaveFeedOgImageRequest]) (*connect.Response[v1.SaveFeedOgImageResponse], error) {
+	return c.saveFeedOgImage.CallUnary(ctx, req)
+}
+
+// PurgeExpiredFeedOgImages calls services.datahub.v1.DataHubService.PurgeExpiredFeedOgImages.
+func (c *dataHubServiceClient) PurgeExpiredFeedOgImages(ctx context.Context, req *connect.Request[v1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[v1.PurgeExpiredFeedOgImagesResponse], error) {
+	return c.purgeExpiredFeedOgImages.CallUnary(ctx, req)
 }
 
 // GetImageProxyCache calls services.datahub.v1.DataHubService.GetImageProxyCache.
@@ -2395,6 +2637,63 @@ func (c *dataHubServiceClient) ListUserFeedIDs(ctx context.Context, req *connect
 	return c.listUserFeedIDs.CallUnary(ctx, req)
 }
 
+// UpsertPushSubscription calls services.datahub.v1.DataHubService.UpsertPushSubscription.
+func (c *dataHubServiceClient) UpsertPushSubscription(ctx context.Context, req *connect.Request[v1.UpsertPushSubscriptionRequest]) (*connect.Response[v1.UpsertPushSubscriptionResponse], error) {
+	return c.upsertPushSubscription.CallUnary(ctx, req)
+}
+
+// GetPushSubscription calls services.datahub.v1.DataHubService.GetPushSubscription.
+func (c *dataHubServiceClient) GetPushSubscription(ctx context.Context, req *connect.Request[v1.GetPushSubscriptionRequest]) (*connect.Response[v1.GetPushSubscriptionResponse], error) {
+	return c.getPushSubscription.CallUnary(ctx, req)
+}
+
+// UpdatePushSubscriptionPreferences calls
+// services.datahub.v1.DataHubService.UpdatePushSubscriptionPreferences.
+func (c *dataHubServiceClient) UpdatePushSubscriptionPreferences(ctx context.Context, req *connect.Request[v1.UpdatePushSubscriptionPreferencesRequest]) (*connect.Response[v1.UpdatePushSubscriptionPreferencesResponse], error) {
+	return c.updatePushSubscriptionPreferences.CallUnary(ctx, req)
+}
+
+// DeletePushSubscription calls services.datahub.v1.DataHubService.DeletePushSubscription.
+func (c *dataHubServiceClient) DeletePushSubscription(ctx context.Context, req *connect.Request[v1.DeletePushSubscriptionRequest]) (*connect.Response[v1.DeletePushSubscriptionResponse], error) {
+	return c.deletePushSubscription.CallUnary(ctx, req)
+}
+
+// ListPushSubscriptionsForUser calls
+// services.datahub.v1.DataHubService.ListPushSubscriptionsForUser.
+func (c *dataHubServiceClient) ListPushSubscriptionsForUser(ctx context.Context, req *connect.Request[v1.ListPushSubscriptionsForUserRequest]) (*connect.Response[v1.ListPushSubscriptionsForUserResponse], error) {
+	return c.listPushSubscriptionsForUser.CallUnary(ctx, req)
+}
+
+// EnqueueNotification calls services.datahub.v1.DataHubService.EnqueueNotification.
+func (c *dataHubServiceClient) EnqueueNotification(ctx context.Context, req *connect.Request[v1.EnqueueNotificationRequest]) (*connect.Response[v1.EnqueueNotificationResponse], error) {
+	return c.enqueueNotification.CallUnary(ctx, req)
+}
+
+// ClaimNotificationBatch calls services.datahub.v1.DataHubService.ClaimNotificationBatch.
+func (c *dataHubServiceClient) ClaimNotificationBatch(ctx context.Context, req *connect.Request[v1.ClaimNotificationBatchRequest]) (*connect.Response[v1.ClaimNotificationBatchResponse], error) {
+	return c.claimNotificationBatch.CallUnary(ctx, req)
+}
+
+// MarkNotificationSent calls services.datahub.v1.DataHubService.MarkNotificationSent.
+func (c *dataHubServiceClient) MarkNotificationSent(ctx context.Context, req *connect.Request[v1.MarkNotificationSentRequest]) (*connect.Response[v1.MarkNotificationSentResponse], error) {
+	return c.markNotificationSent.CallUnary(ctx, req)
+}
+
+// ReleaseNotification calls services.datahub.v1.DataHubService.ReleaseNotification.
+func (c *dataHubServiceClient) ReleaseNotification(ctx context.Context, req *connect.Request[v1.ReleaseNotificationRequest]) (*connect.Response[v1.ReleaseNotificationResponse], error) {
+	return c.releaseNotification.CallUnary(ctx, req)
+}
+
+// MarkNotificationDead calls services.datahub.v1.DataHubService.MarkNotificationDead.
+func (c *dataHubServiceClient) MarkNotificationDead(ctx context.Context, req *connect.Request[v1.MarkNotificationDeadRequest]) (*connect.Response[v1.MarkNotificationDeadResponse], error) {
+	return c.markNotificationDead.CallUnary(ctx, req)
+}
+
+// GetNotificationBacklogAge calls services.datahub.v1.DataHubService.GetNotificationBacklogAge.
+func (c *dataHubServiceClient) GetNotificationBacklogAge(ctx context.Context, req *connect.Request[v1.GetNotificationBacklogAgeRequest]) (*connect.Response[v1.GetNotificationBacklogAgeResponse], error) {
+	return c.getNotificationBacklogAge.CallUnary(ctx, req)
+}
+
 // DataHubServiceHandler is an implementation of the services.datahub.v1.DataHubService service.
 type DataHubServiceHandler interface {
 	// ListArticlesWithTags returns articles with tags using backward keyset pagination.
@@ -2502,6 +2801,9 @@ type DataHubServiceHandler interface {
 	// Service-to-service only; auth is established at the mTLS transport layer.
 	// Origin: services.backend.v1.BackendInternalService/ListRecapArticles
 	ListRecapArticles(context.Context, *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error)
+	// ListFeedsInWindow returns paginated RSS feed items created within a time window.
+	// Service-to-service only; auth is established at the mTLS transport layer.
+	ListFeedsInWindow(context.Context, *connect.Request[v1.ListFeedsInWindowRequest]) (*connect.Response[v1.ListFeedsInWindowResponse], error)
 	// GetSystemUser returns the first Kratos identity id.
 	// Origin: GET /v1/internal/system-user (REST). Called by pre-processor.
 	GetSystemUser(context.Context, *connect.Request[v1.GetSystemUserRequest]) (*connect.Response[v1.GetSystemUserResponse], error)
@@ -2534,12 +2836,25 @@ type DataHubServiceHandler interface {
 	GetArticleHead(context.Context, *connect.Request[v1.GetArticleHeadRequest]) (*connect.Response[v1.GetArticleHeadResponse], error)
 	// BatchGetOgImageURLs resolves og:image URLs for many articles at once.
 	BatchGetOgImageURLs(context.Context, *connect.Request[v1.BatchGetOgImageURLsRequest]) (*connect.Response[v1.BatchGetOgImageURLsResponse], error)
-	// ListFeedsMissingOgImage returns the og-image-backfill work list.
+	// ListFeedsMissingOgImage served the batch og-image-backfill job, which has
+	// been removed in favour of resolving on demand. No caller remains; deleting
+	// it is a follow-up once main carries the new breaking-change baseline.
+	//
+	// Deprecated: do not use.
 	ListFeedsMissingOgImage(context.Context, *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error)
 	// ListUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
 	ListUnwarmedOgImageURLs(context.Context, *connect.Request[v1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[v1.ListUnwarmedOgImageURLsResponse], error)
 	// PurgeExpiredArticleHeads enforces the article_heads retention window.
 	PurgeExpiredArticleHeads(context.Context, *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error)
+	// GetFeedOgImageTargets returns, for feeds a reader has brought into view,
+	// the page to fetch and whether an earlier attempt already settled the
+	// question.
+	GetFeedOgImageTargets(context.Context, *connect.Request[v1.GetFeedOgImageTargetsRequest]) (*connect.Response[v1.GetFeedOgImageTargetsResponse], error)
+	// SaveFeedOgImage records one resolution outcome — a URL, or the refusal
+	// that must stop the origin being asked again.
+	SaveFeedOgImage(context.Context, *connect.Request[v1.SaveFeedOgImageRequest]) (*connect.Response[v1.SaveFeedOgImageResponse], error)
+	// PurgeExpiredFeedOgImages enforces the feed_og_images retention window.
+	PurgeExpiredFeedOgImages(context.Context, *connect.Request[v1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[v1.PurgeExpiredFeedOgImagesResponse], error)
 	// GetImageProxyCache returns a live cache entry, or nothing.
 	GetImageProxyCache(context.Context, *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error)
 	// PutImageProxyCache upserts a cache entry by url_hash.
@@ -2931,6 +3246,60 @@ type DataHubServiceHandler interface {
 	// ListUserFeedIDs returns the feeds a user has read state against — the
 	// Morning Letter's candidate set.
 	ListUserFeedIDs(context.Context, *connect.Request[v1.ListUserFeedIDsRequest]) (*connect.Response[v1.ListUserFeedIDsResponse], error)
+	// UpsertPushSubscription stores a browser subscription, replacing the key
+	// material and preferences of an endpoint already registered.
+	//
+	// Idempotent on endpoint rather than insert-or-fail: a browser hands out the
+	// same endpoint again after a permission re-prompt, and a second row for one
+	// device would push to it twice.
+	UpsertPushSubscription(context.Context, *connect.Request[v1.UpsertPushSubscriptionRequest]) (*connect.Response[v1.UpsertPushSubscriptionResponse], error)
+	// GetPushSubscription reads one device's subscription, scoped to its owner.
+	GetPushSubscription(context.Context, *connect.Request[v1.GetPushSubscriptionRequest]) (*connect.Response[v1.GetPushSubscriptionResponse], error)
+	// UpdatePushSubscriptionPreferences changes which kinds are delivered
+	// without touching the key material, so the browser need not re-subscribe.
+	UpdatePushSubscriptionPreferences(context.Context, *connect.Request[v1.UpdatePushSubscriptionPreferencesRequest]) (*connect.Response[v1.UpdatePushSubscriptionPreferencesResponse], error)
+	// DeletePushSubscription removes one device. Idempotent: the dispatcher
+	// calls it on a 404/410 from the push service, which can race the user's own
+	// removal.
+	DeletePushSubscription(context.Context, *connect.Request[v1.DeletePushSubscriptionRequest]) (*connect.Response[v1.DeletePushSubscriptionResponse], error)
+	// ListPushSubscriptionsForUser returns every device of one user — the
+	// fan-out list.
+	ListPushSubscriptionsForUser(context.Context, *connect.Request[v1.ListPushSubscriptionsForUserRequest]) (*connect.Response[v1.ListPushSubscriptionsForUserResponse], error)
+	// EnqueueNotification fans one notification out to every device of one user
+	// that still wants that kind, in one transaction.
+	//
+	// Idempotent per device on (dedupe_key, subscription_id), so a relayed retry
+	// is a no-op rather than a second push, and superseding: an unsent daily
+	// digest for a device is expired by the next day's enqueue instead of both
+	// being delivered.
+	EnqueueNotification(context.Context, *connect.Request[v1.EnqueueNotificationRequest]) (*connect.Response[v1.EnqueueNotificationResponse], error)
+	// ClaimNotificationBatch takes ownership of due rows and marks them SENDING
+	// in one statement.
+	//
+	// The statement covers fresh work and crash reclaim together: it matches
+	// `state IN ('pending','sending') AND next_attempt_at <= clock_timestamp()`,
+	// and the claim pushes next_attempt_at forward by the lease. A row orphaned
+	// by a dispatcher that died mid-attempt therefore re-enters this same query
+	// when its lease expires, which is why there is no reclaim procedure here —
+	// and no reclaim sweeper anyone can forget to deploy.
+	ClaimNotificationBatch(context.Context, *connect.Request[v1.ClaimNotificationBatchRequest]) (*connect.Response[v1.ClaimNotificationBatchResponse], error)
+	// MarkNotificationSent records delivery and stamps finalized_at.
+	MarkNotificationSent(context.Context, *connect.Request[v1.MarkNotificationSentRequest]) (*connect.Response[v1.MarkNotificationSentResponse], error)
+	// ReleaseNotification returns a claimed row to PENDING with the caller's
+	// backoff, for a failure worth retrying.
+	ReleaseNotification(context.Context, *connect.Request[v1.ReleaseNotificationRequest]) (*connect.Response[v1.ReleaseNotificationResponse], error)
+	// MarkNotificationDead ends delivery for a failure that will not improve —
+	// a malformed payload, or a push service refusing the subscription itself.
+	MarkNotificationDead(context.Context, *connect.Request[v1.MarkNotificationDeadRequest]) (*connect.Response[v1.MarkNotificationDeadResponse], error)
+	// GetNotificationBacklogAge reports how stale the delivery queue is, for the
+	// dispatcher's backlog gauge.
+	//
+	// It counts `sending` alongside `pending`, and that is the whole procedure.
+	// A row orphaned by a dispatcher that died mid-attempt sits in `sending`
+	// until its lease expires; a query that looked only at `pending` would report
+	// an age of 0 while the backlog was in fact stuck, which is precisely the
+	// outage the alert over this metric exists to notice.
+	GetNotificationBacklogAge(context.Context, *connect.Request[v1.GetNotificationBacklogAgeRequest]) (*connect.Response[v1.GetNotificationBacklogAgeResponse], error)
 }
 
 // NewDataHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -3084,6 +3453,12 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("ListRecapArticles")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceListFeedsInWindowHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedsInWindowProcedure,
+		svc.ListFeedsInWindow,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsInWindow")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataHubServiceGetSystemUserHandler := connect.NewUnaryHandler(
 		DataHubServiceGetSystemUserProcedure,
 		svc.GetSystemUser,
@@ -3148,6 +3523,24 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		DataHubServicePurgeExpiredArticleHeadsProcedure,
 		svc.PurgeExpiredArticleHeads,
 		connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredArticleHeads")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetFeedOgImageTargetsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetFeedOgImageTargetsProcedure,
+		svc.GetFeedOgImageTargets,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetFeedOgImageTargets")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceSaveFeedOgImageHandler := connect.NewUnaryHandler(
+		DataHubServiceSaveFeedOgImageProcedure,
+		svc.SaveFeedOgImage,
+		connect.WithSchema(dataHubServiceMethods.ByName("SaveFeedOgImage")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServicePurgeExpiredFeedOgImagesHandler := connect.NewUnaryHandler(
+		DataHubServicePurgeExpiredFeedOgImagesProcedure,
+		svc.PurgeExpiredFeedOgImages,
+		connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredFeedOgImages")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataHubServiceGetImageProxyCacheHandler := connect.NewUnaryHandler(
@@ -3648,6 +4041,72 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("ListUserFeedIDs")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceUpsertPushSubscriptionHandler := connect.NewUnaryHandler(
+		DataHubServiceUpsertPushSubscriptionProcedure,
+		svc.UpsertPushSubscription,
+		connect.WithSchema(dataHubServiceMethods.ByName("UpsertPushSubscription")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetPushSubscriptionHandler := connect.NewUnaryHandler(
+		DataHubServiceGetPushSubscriptionProcedure,
+		svc.GetPushSubscription,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetPushSubscription")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceUpdatePushSubscriptionPreferencesHandler := connect.NewUnaryHandler(
+		DataHubServiceUpdatePushSubscriptionPreferencesProcedure,
+		svc.UpdatePushSubscriptionPreferences,
+		connect.WithSchema(dataHubServiceMethods.ByName("UpdatePushSubscriptionPreferences")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceDeletePushSubscriptionHandler := connect.NewUnaryHandler(
+		DataHubServiceDeletePushSubscriptionProcedure,
+		svc.DeletePushSubscription,
+		connect.WithSchema(dataHubServiceMethods.ByName("DeletePushSubscription")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListPushSubscriptionsForUserHandler := connect.NewUnaryHandler(
+		DataHubServiceListPushSubscriptionsForUserProcedure,
+		svc.ListPushSubscriptionsForUser,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListPushSubscriptionsForUser")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceEnqueueNotificationHandler := connect.NewUnaryHandler(
+		DataHubServiceEnqueueNotificationProcedure,
+		svc.EnqueueNotification,
+		connect.WithSchema(dataHubServiceMethods.ByName("EnqueueNotification")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceClaimNotificationBatchHandler := connect.NewUnaryHandler(
+		DataHubServiceClaimNotificationBatchProcedure,
+		svc.ClaimNotificationBatch,
+		connect.WithSchema(dataHubServiceMethods.ByName("ClaimNotificationBatch")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceMarkNotificationSentHandler := connect.NewUnaryHandler(
+		DataHubServiceMarkNotificationSentProcedure,
+		svc.MarkNotificationSent,
+		connect.WithSchema(dataHubServiceMethods.ByName("MarkNotificationSent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceReleaseNotificationHandler := connect.NewUnaryHandler(
+		DataHubServiceReleaseNotificationProcedure,
+		svc.ReleaseNotification,
+		connect.WithSchema(dataHubServiceMethods.ByName("ReleaseNotification")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceMarkNotificationDeadHandler := connect.NewUnaryHandler(
+		DataHubServiceMarkNotificationDeadProcedure,
+		svc.MarkNotificationDead,
+		connect.WithSchema(dataHubServiceMethods.ByName("MarkNotificationDead")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetNotificationBacklogAgeHandler := connect.NewUnaryHandler(
+		DataHubServiceGetNotificationBacklogAgeProcedure,
+		svc.GetNotificationBacklogAge,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetNotificationBacklogAge")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.datahub.v1.DataHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataHubServiceListArticlesWithTagsProcedure:
@@ -3698,6 +4157,8 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceFetchArticlesByTagHandler.ServeHTTP(w, r)
 		case DataHubServiceListRecapArticlesProcedure:
 			dataHubServiceListRecapArticlesHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedsInWindowProcedure:
+			dataHubServiceListFeedsInWindowHandler.ServeHTTP(w, r)
 		case DataHubServiceGetSystemUserProcedure:
 			dataHubServiceGetSystemUserHandler.ServeHTTP(w, r)
 		case DataHubServiceListRecentArticlesProcedure:
@@ -3720,6 +4181,12 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceListUnwarmedOgImageURLsHandler.ServeHTTP(w, r)
 		case DataHubServicePurgeExpiredArticleHeadsProcedure:
 			dataHubServicePurgeExpiredArticleHeadsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetFeedOgImageTargetsProcedure:
+			dataHubServiceGetFeedOgImageTargetsHandler.ServeHTTP(w, r)
+		case DataHubServiceSaveFeedOgImageProcedure:
+			dataHubServiceSaveFeedOgImageHandler.ServeHTTP(w, r)
+		case DataHubServicePurgeExpiredFeedOgImagesProcedure:
+			dataHubServicePurgeExpiredFeedOgImagesHandler.ServeHTTP(w, r)
 		case DataHubServiceGetImageProxyCacheProcedure:
 			dataHubServiceGetImageProxyCacheHandler.ServeHTTP(w, r)
 		case DataHubServicePutImageProxyCacheProcedure:
@@ -3886,6 +4353,28 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceGetTrendStatsHandler.ServeHTTP(w, r)
 		case DataHubServiceListUserFeedIDsProcedure:
 			dataHubServiceListUserFeedIDsHandler.ServeHTTP(w, r)
+		case DataHubServiceUpsertPushSubscriptionProcedure:
+			dataHubServiceUpsertPushSubscriptionHandler.ServeHTTP(w, r)
+		case DataHubServiceGetPushSubscriptionProcedure:
+			dataHubServiceGetPushSubscriptionHandler.ServeHTTP(w, r)
+		case DataHubServiceUpdatePushSubscriptionPreferencesProcedure:
+			dataHubServiceUpdatePushSubscriptionPreferencesHandler.ServeHTTP(w, r)
+		case DataHubServiceDeletePushSubscriptionProcedure:
+			dataHubServiceDeletePushSubscriptionHandler.ServeHTTP(w, r)
+		case DataHubServiceListPushSubscriptionsForUserProcedure:
+			dataHubServiceListPushSubscriptionsForUserHandler.ServeHTTP(w, r)
+		case DataHubServiceEnqueueNotificationProcedure:
+			dataHubServiceEnqueueNotificationHandler.ServeHTTP(w, r)
+		case DataHubServiceClaimNotificationBatchProcedure:
+			dataHubServiceClaimNotificationBatchHandler.ServeHTTP(w, r)
+		case DataHubServiceMarkNotificationSentProcedure:
+			dataHubServiceMarkNotificationSentHandler.ServeHTTP(w, r)
+		case DataHubServiceReleaseNotificationProcedure:
+			dataHubServiceReleaseNotificationHandler.ServeHTTP(w, r)
+		case DataHubServiceMarkNotificationDeadProcedure:
+			dataHubServiceMarkNotificationDeadHandler.ServeHTTP(w, r)
+		case DataHubServiceGetNotificationBacklogAgeProcedure:
+			dataHubServiceGetNotificationBacklogAgeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -3991,6 +4480,10 @@ func (UnimplementedDataHubServiceHandler) ListRecapArticles(context.Context, *co
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.ListRecapArticles is not implemented"))
 }
 
+func (UnimplementedDataHubServiceHandler) ListFeedsInWindow(context.Context, *connect.Request[v1.ListFeedsInWindowRequest]) (*connect.Response[v1.ListFeedsInWindowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.ListFeedsInWindow is not implemented"))
+}
+
 func (UnimplementedDataHubServiceHandler) GetSystemUser(context.Context, *connect.Request[v1.GetSystemUserRequest]) (*connect.Response[v1.GetSystemUserResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.GetSystemUser is not implemented"))
 }
@@ -4033,6 +4526,18 @@ func (UnimplementedDataHubServiceHandler) ListUnwarmedOgImageURLs(context.Contex
 
 func (UnimplementedDataHubServiceHandler) PurgeExpiredArticleHeads(context.Context, *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.PurgeExpiredArticleHeads is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetFeedOgImageTargets(context.Context, *connect.Request[v1.GetFeedOgImageTargetsRequest]) (*connect.Response[v1.GetFeedOgImageTargetsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.GetFeedOgImageTargets is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) SaveFeedOgImage(context.Context, *connect.Request[v1.SaveFeedOgImageRequest]) (*connect.Response[v1.SaveFeedOgImageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.SaveFeedOgImage is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) PurgeExpiredFeedOgImages(context.Context, *connect.Request[v1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[v1.PurgeExpiredFeedOgImagesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.PurgeExpiredFeedOgImages is not implemented"))
 }
 
 func (UnimplementedDataHubServiceHandler) GetImageProxyCache(context.Context, *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error) {
@@ -4365,4 +4870,48 @@ func (UnimplementedDataHubServiceHandler) GetTrendStats(context.Context, *connec
 
 func (UnimplementedDataHubServiceHandler) ListUserFeedIDs(context.Context, *connect.Request[v1.ListUserFeedIDsRequest]) (*connect.Response[v1.ListUserFeedIDsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.ListUserFeedIDs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) UpsertPushSubscription(context.Context, *connect.Request[v1.UpsertPushSubscriptionRequest]) (*connect.Response[v1.UpsertPushSubscriptionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.UpsertPushSubscription is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetPushSubscription(context.Context, *connect.Request[v1.GetPushSubscriptionRequest]) (*connect.Response[v1.GetPushSubscriptionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.GetPushSubscription is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) UpdatePushSubscriptionPreferences(context.Context, *connect.Request[v1.UpdatePushSubscriptionPreferencesRequest]) (*connect.Response[v1.UpdatePushSubscriptionPreferencesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.UpdatePushSubscriptionPreferences is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) DeletePushSubscription(context.Context, *connect.Request[v1.DeletePushSubscriptionRequest]) (*connect.Response[v1.DeletePushSubscriptionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.DeletePushSubscription is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListPushSubscriptionsForUser(context.Context, *connect.Request[v1.ListPushSubscriptionsForUserRequest]) (*connect.Response[v1.ListPushSubscriptionsForUserResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.ListPushSubscriptionsForUser is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) EnqueueNotification(context.Context, *connect.Request[v1.EnqueueNotificationRequest]) (*connect.Response[v1.EnqueueNotificationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.EnqueueNotification is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ClaimNotificationBatch(context.Context, *connect.Request[v1.ClaimNotificationBatchRequest]) (*connect.Response[v1.ClaimNotificationBatchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.ClaimNotificationBatch is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) MarkNotificationSent(context.Context, *connect.Request[v1.MarkNotificationSentRequest]) (*connect.Response[v1.MarkNotificationSentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.MarkNotificationSent is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ReleaseNotification(context.Context, *connect.Request[v1.ReleaseNotificationRequest]) (*connect.Response[v1.ReleaseNotificationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.ReleaseNotification is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) MarkNotificationDead(context.Context, *connect.Request[v1.MarkNotificationDeadRequest]) (*connect.Response[v1.MarkNotificationDeadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.MarkNotificationDead is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetNotificationBacklogAge(context.Context, *connect.Request[v1.GetNotificationBacklogAgeRequest]) (*connect.Response[v1.GetNotificationBacklogAgeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.GetNotificationBacklogAge is not implemented"))
 }
