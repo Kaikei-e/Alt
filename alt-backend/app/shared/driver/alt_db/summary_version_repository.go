@@ -58,11 +58,6 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 	defer span.End()
 
 	if userID == uuid.Nil {
-		if u := userIDFromContext(ctx); u != nil {
-			userID = *u
-		}
-	}
-	if userID == uuid.Nil {
 		return nil, errors.New("user id is required")
 	}
 
@@ -182,19 +177,11 @@ func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVe
 	return sv, nil
 }
 
-// GetLatestSummaryVersion returns the latest non-superseded summary version for an article.
-func (r *SummaryRepository) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error) {
-	return r.GetLatestSummaryVersionForUser(ctx, articleID, userIDFromContext(ctx))
-}
-
 // GetLatestSummaryVersionForUser returns the latest non-superseded summary version for an article scoped to userID.
 func (r *SummaryRepository) GetLatestSummaryVersionForUser(ctx context.Context, articleID uuid.UUID, userID *uuid.UUID) (domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetLatestSummaryVersion")
 	defer span.End()
 
-	if userID == nil {
-		userID = userIDFromContext(ctx)
-	}
 	if userID == nil || *userID == uuid.Nil {
 		return domain.SummaryVersion{}, errors.New("user id is required")
 	}

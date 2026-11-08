@@ -77,11 +77,23 @@ func TestVersionGateway_MarkSummaryVersionSuperseded_ForwardsUserID(t *testing.T
 func TestVersionGateway_MarkSummaryVersionSuperseded_RequiresUserID(t *testing.T) {
 	articleID := uuid.MustParse("22222222-2222-4222-8222-222222222222")
 	newVersionID := uuid.MustParse("33333333-3333-4333-8333-333333333333")
+	ctxUser := uuid.MustParse("11111111-1111-4111-8111-111111111111")
 
 	client := &fakeVersionDataHubClient{}
 	gw := &VersionGateway{client: client}
 
 	_, err := gw.MarkSummaryVersionSuperseded(context.Background(), articleID, newVersionID, uuid.Nil)
+	require.Error(t, err)
+	assert.Nil(t, client.gotSupersedeReq)
+
+	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    ctxUser,
+		Email:     "u@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  ctxUser,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	_, err = gw.MarkSummaryVersionSuperseded(ctxWithUser, articleID, newVersionID, uuid.Nil)
 	require.Error(t, err)
 	assert.Nil(t, client.gotSupersedeReq)
 }

@@ -114,6 +114,12 @@ func TestFetchArticlesByTag_RejectsMissingUser(t *testing.T) {
 	assert.ErrorContains(t, err, "user")
 	assert.Nil(t, articles)
 
+	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New()})
+	articles, err = repo.FetchArticlesByTagForUser(ctxWithUser, tagID, nil, nil, 20)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "user")
+	assert.Nil(t, articles)
+
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -209,6 +215,12 @@ func TestFetchArticlesByTagName_RejectsMissingUser(t *testing.T) {
 	assert.Nil(t, articles)
 
 	articles, err = repo.FetchArticlesByTagNameForUser(context.Background(), "golang", nil, nil, 20)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "user")
+	assert.Nil(t, articles)
+
+	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New()})
+	articles, err = repo.FetchArticlesByTagNameForUser(ctxWithUser, "golang", nil, nil, 20)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "user")
 	assert.Nil(t, articles)

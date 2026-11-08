@@ -181,6 +181,11 @@ func TestMarkSummaryVersionSuperseded_RequiresUserID(t *testing.T) {
 	_, err = repo.MarkSummaryVersionSuperseded(context.Background(), uuid.New(), uuid.New(), uuid.Nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user id is required")
+
+	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New()})
+	_, err = repo.MarkSummaryVersionSuperseded(ctxWithUser, uuid.New(), uuid.New(), uuid.Nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user id is required")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -218,7 +223,7 @@ func TestGetLatestSummaryVersion_RequiresUserID(t *testing.T) {
 
 	repo := &SummaryRepository{pool: mock}
 
-	_, err = repo.GetLatestSummaryVersion(context.Background(), uuid.New())
+	_, err = repo.GetLatestSummaryVersionForUser(context.Background(), uuid.New(), nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user id is required")
 
@@ -227,8 +232,8 @@ func TestGetLatestSummaryVersion_RequiresUserID(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user id is required")
 
-	ctxWithNilUser := domain.SetUserContext(context.Background(), &domain.UserContext{})
-	_, err = repo.GetLatestSummaryVersion(ctxWithNilUser, uuid.New())
+	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New()})
+	_, err = repo.GetLatestSummaryVersionForUser(ctxWithUser, uuid.New(), nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user id is required")
 	require.NoError(t, mock.ExpectationsWereMet())
