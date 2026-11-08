@@ -59,8 +59,14 @@ func NewTagGateway(client datahubv1connect.DataHubServiceClient) *TagGateway {
 // FetchArticleTags returns an article's tags. An article nobody has tagged is
 // an empty slice and not an error — the on-the-fly path keys on exactly that.
 func (g *TagGateway) FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("authentication required: %w", err)
+	}
+
 	resp, err := g.client.GetArticleTags(ctx, connect.NewRequest(&datahubv1.GetArticleTagsRequest{
 		ArticleId: articleID,
+		UserId:    user.UserID.String(),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("get article tags %s: %w", articleID, err)

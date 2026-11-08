@@ -169,8 +169,8 @@ func NewTagReadGateway(db *alt_db.AltDBRepository) *TagReadGateway {
 	return &TagReadGateway{db: db}
 }
 
-func (g *TagReadGateway) ArticleTags(ctx context.Context, articleID string, _ *uuid.UUID) ([]*domain.FeedTag, error) {
-	tags, err := g.db.FetchArticleTagsForUser(ctx, articleID, nil)
+func (g *TagReadGateway) ArticleTags(ctx context.Context, articleID string, userID *uuid.UUID) ([]*domain.FeedTag, error) {
+	tags, err := g.db.FetchArticleTagsForUser(ctx, articleID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get article tags %s: %w", articleID, err)
 	}

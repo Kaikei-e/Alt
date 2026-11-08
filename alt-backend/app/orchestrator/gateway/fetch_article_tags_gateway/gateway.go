@@ -118,8 +118,8 @@ func (g *FetchArticleTagsGateway) FetchArticleTags(ctx context.Context, articleI
 	}
 
 	// 3-6. On-the-fly tag generation with singleflight deduplication.
-	// Concurrent requests for the same articleID share a single generation call.
-	result, err, _ := g.sfGroup.Do(articleID, func() (interface{}, error) {
+	// Concurrent requests for the same user and articleID share a single generation call.
+	result, err, _ := g.sfGroup.Do(singleflightKey(ctx, articleID), func() (interface{}, error) {
 		return g.generateAndPersistTags(ctx, articleID)
 	})
 	if err != nil {
@@ -127,6 +127,13 @@ func (g *FetchArticleTagsGateway) FetchArticleTags(ctx context.Context, articleI
 	}
 
 	return result.([]*domain.FeedTag), nil
+}
+
+func singleflightKey(ctx context.Context, articleID string) string {
+	if user, err := domain.GetUserFromContext(ctx); err == nil {
+		return user.UserID.String() + ":" + articleID
+	}
+	return articleID
 }
 
 // generateAndPersistTags fetches article content, generates tags via mq-hub, and persists them.

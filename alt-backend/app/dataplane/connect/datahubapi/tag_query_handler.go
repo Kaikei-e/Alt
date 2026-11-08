@@ -57,8 +57,12 @@ func (h *Handler) GetArticleTags(ctx context.Context, req *connect.Request[datah
 	if req.Msg.GetArticleId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
+	userID, err := requiredUserID(req.Msg.GetUserId())
+	if err != nil {
+		return nil, err
+	}
 
-	tags, err := h.tagRead.ArticleTags(ctx, req.Msg.GetArticleId(), nil)
+	tags, err := h.tagRead.ArticleTags(ctx, req.Msg.GetArticleId(), &userID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "GetArticleTags failed", "error", err, "article_id", req.Msg.GetArticleId())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get article tags"))
