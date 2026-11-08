@@ -4,6 +4,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -241,6 +242,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Apply Connect-Timeout-Ms based context deadline (unary only)
+	callerCtx := r.Context()
 	r, cancel := h.applyConnectTimeout(r)
 	defer cancel()
 
@@ -275,10 +277,23 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Read request body once, for cache key, dedup key, and forwarding.
 	var body []byte
 	if r.Body != nil {
+		if r.ContentLength > maxRequestBodyBytes {
+			r.Body.Close()
+			h.logError("request body too large", &http.MaxBytesError{Limit: maxRequestBodyBytes})
+			h.handleError(w, http.StatusRequestEntityTooLarge, "Request Entity Too Large", requestID)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		var err error
 		body, err = io.ReadAll(r.Body)
 		r.Body.Close()
 		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				h.logError("request body too large", err)
+				h.handleError(w, http.StatusRequestEntityTooLarge, "Request Entity Too Large", requestID)
+				return
+			}
 			h.handleError(w, http.StatusBadRequest, "Failed to read request body", requestID)
 			return
 		}
@@ -300,7 +315,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Forward request directly
-	h.forwardRequest(w, r, userID, endpoint, body, token, requestID)
+	h.forwardRequest(w, r, callerCtx, userID, endpoint, body, token, requestID)
 }
 
 // serveStreaming forwards a server-streaming Connect-RPC request straight to
@@ -312,6 +327,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // and recorded (success/failure), judged solely by connection establishment
 // and the initial response status; chunk content never influences it.
 func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
+	callerCtx := r.Context()
 	r, cancel := h.applyStreamingConnectTimeout(r)
 	defer cancel()
 
@@ -335,7 +351,9 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.backendClient.ForwardStreamingRequest(r, token)
 	if err != nil {
-		h.recordFailure(endpoint)
+		if callerCtx.Err() == nil {
+			h.recordFailure(endpoint)
+		}
 		h.handleBackendError(w, err, requestID)
 		return
 	}
@@ -382,7 +400,7 @@ func (h *BFFHandler) handleWithDedup(w http.ResponseWriter, r *http.Request, use
 	dedupReq := r.WithContext(upstreamCtx)
 
 	result, err := h.deduplicator.Do(dedupKey, func() (*DedupResult, error) {
-		return h.executeRequest(dedupReq, userID, endpoint, body, token, requestID)
+		return h.executeRequest(dedupReq, context.Background(), userID, endpoint, body, token, requestID)
 	})
 
 	if err != nil {
@@ -396,7 +414,7 @@ func (h *BFFHandler) handleWithDedup(w http.ResponseWriter, r *http.Request, use
 }
 
 // executeRequest executes the actual backend request.
-func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, body []byte, token, requestID string) (*DedupResult, error) {
+func (h *BFFHandler) executeRequest(r *http.Request, callerCtx context.Context, userID, endpoint string, body []byte, token, requestID string) (*DedupResult, error) {
 	// Snapshot cache epoch before upstream I/O so a concurrent MarkAsRead
 	// invalidation can fence this response from re-populating stale unread data.
 	var cacheEpoch uint64
@@ -421,7 +439,9 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	}
 
 	if err != nil {
-		h.recordFailure(endpoint)
+		if callerCtx.Err() == nil {
+			h.recordFailure(endpoint)
+		}
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -433,7 +453,10 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	// never trips it, and a half-open trial passes on a torn body) and the
 	// truncated bytes went on to be cached, handing every caller a parse
 	// error behind X-Cache: HIT for the rest of the endpoint's TTL.
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
+	if err == nil && len(respBody) > maxResponseBodyBytes {
+		err = &http.MaxBytesError{Limit: maxResponseBodyBytes}
+	}
 
 	// Invalidation stays keyed on the status line: a 2xx means the mutation
 	// already landed upstream, so read-your-writes has to hold even when the
@@ -441,7 +464,9 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	h.invalidateUnreadProjectionOnMutation(userID, endpoint, resp.StatusCode)
 
 	if err != nil {
-		h.recordFailure(endpoint)
+		if callerCtx.Err() == nil {
+			h.recordFailure(endpoint)
+		}
 		return nil, fmt.Errorf("read backend response body: %w", err)
 	}
 
@@ -461,8 +486,8 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 }
 
 // forwardRequest forwards a request without deduplication.
-func (h *BFFHandler) forwardRequest(w http.ResponseWriter, r *http.Request, userID, endpoint string, body []byte, token, requestID string) {
-	result, err := h.executeRequest(r, userID, endpoint, body, token, requestID)
+func (h *BFFHandler) forwardRequest(w http.ResponseWriter, r *http.Request, callerCtx context.Context, userID, endpoint string, body []byte, token, requestID string) {
+	result, err := h.executeRequest(r, callerCtx, userID, endpoint, body, token, requestID)
 	if err != nil {
 		h.handleBackendError(w, err, requestID)
 		return
