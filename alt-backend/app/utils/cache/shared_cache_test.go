@@ -189,3 +189,37 @@ func TestSharedCache_ConcurrentSetInvalidate(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedCache_EvictsExpiredEntries(t *testing.T) {
+	const n = 100
+	now := time.Date(2026, 3, 11, 10, 0, 0, 0, time.UTC)
+
+	cache := NewSharedCache[int, int](time.Minute, time.Minute, func(ctx context.Context, key int) (int, error) {
+		return key * 10, nil
+	})
+	cache.now = func() time.Time { return now }
+
+	for i := 0; i < n; i++ {
+		cache.Set(i, i)
+	}
+	if got := len(cache.items); got != n {
+		t.Fatalf("len(items) = %d, want %d", got, n)
+	}
+
+	// Advance past ttl + staleTTL so all N entries are expired.
+	now = now.Add(3 * time.Minute)
+
+	if _, state := cache.Peek(0); state != CacheStateExpired {
+		t.Fatalf("Peek(0) state = %v, want expired", state)
+	}
+	if _, err := cache.Get(context.Background(), n); err != nil {
+		t.Fatalf("Get(%d) error = %v", n, err)
+	}
+
+	cache.mu.RLock()
+	remaining := len(cache.items)
+	cache.mu.RUnlock()
+	if remaining != 1 {
+		t.Fatalf("len(items) after expiry sweep = %d, want 1", remaining)
+	}
+}

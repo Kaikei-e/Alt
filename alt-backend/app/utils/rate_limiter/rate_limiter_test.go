@@ -2,6 +2,7 @@ package rate_limiter
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -339,5 +340,48 @@ func TestHostRateLimiter_RecordRateLimitHit_IncreasesBackoff(t *testing.T) {
 	// Should wait approximately 300ms (accounting for some tolerance)
 	if duration < 250*time.Millisecond {
 		t.Errorf("RecordRateLimitHit() did not apply backoff to the immediate next request, wait was only %v", duration)
+	}
+}
+
+func TestHostRateLimiter_EvictsIdleHostsAndPreservesBackedOffHost(t *testing.T) {
+	const idleHosts = 50
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+
+	limiter := NewHostRateLimiter(10 * time.Millisecond)
+	if c, ok := any(limiter).(interface{ setClock(func() time.Time) }); ok {
+		c.setClock(func() time.Time { return now })
+	}
+
+	ctx := context.Background()
+	for i := 0; i < idleHosts; i++ {
+		u := fmt.Sprintf("https://idle-%d.example.com/feed.xml", i)
+		if err := limiter.WaitForHost(ctx, u); err != nil {
+			t.Fatalf("WaitForHost(%q) failed: %v", u, err)
+		}
+	}
+
+	backedOffHost := "backedoff.example.com"
+	limiter.RecordRateLimitHit(backedOffHost, 30*time.Minute)
+
+	now = now.Add(2 * time.Hour)
+
+	if err := limiter.WaitForHost(ctx, "https://active.example.com/feed.xml"); err != nil {
+		t.Fatalf("WaitForHost(active) failed: %v", err)
+	}
+
+	limiter.mu.RLock()
+	totalLimiters := len(limiter.limiters)
+	_, backedOffPresent := limiter.limiters[backedOffHost]
+	_, activePresent := limiter.limiters["active.example.com"]
+	limiter.mu.RUnlock()
+
+	if !backedOffPresent {
+		t.Fatalf("expected backed-off host %q to remain in limiters", backedOffHost)
+	}
+	if !activePresent {
+		t.Fatal("expected newly inserted active host to be in limiters")
+	}
+	if totalLimiters != 2 {
+		t.Fatalf("expected %d idle hosts to be evicted leaving 2 entries, got %d", idleHosts, totalLimiters)
 	}
 }

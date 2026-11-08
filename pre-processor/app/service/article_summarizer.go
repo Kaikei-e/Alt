@@ -14,6 +14,7 @@ import (
 const (
 	maxBatchFailures     = 3
 	failureBlockDuration = 1 * time.Hour
+	maxFailureSweep      = 1024
 )
 
 // articleFailure tracks failure count and last failure time for a single article.
@@ -31,6 +32,7 @@ type articleSummarizerService struct {
 	cursor         *domain.Cursor
 	failureTracker map[string]*articleFailure
 	failureMu      sync.Mutex
+	now            func() time.Time
 }
 
 // NewArticleSummarizerService creates a new article summarizer service.
@@ -47,6 +49,7 @@ func NewArticleSummarizerService(
 		logger:         logger,
 		cursor:         &domain.Cursor{},
 		failureTracker: make(map[string]*articleFailure),
+		now:            time.Now,
 	}
 }
 
@@ -178,36 +181,64 @@ func (s *articleSummarizerService) ResetPagination() error {
 // isBlocked checks if an article is blocked due to repeated failures.
 // Returns true if the article has failed maxBatchFailures times and the block duration hasn't elapsed.
 func (s *articleSummarizerService) isBlocked(articleID string) bool {
+	now := s.currentTime()
 	s.failureMu.Lock()
 	defer s.failureMu.Unlock()
+
+	s.pruneExpiredFailuresLocked(now)
 
 	f, ok := s.failureTracker[articleID]
 	if !ok {
 		return false
 	}
-
-	if f.count >= maxBatchFailures {
-		if time.Since(f.lastFailed) < failureBlockDuration {
-			return true
-		}
-		// Block duration elapsed, remove from tracker
+	if now.Sub(f.lastFailed) >= failureBlockDuration {
 		delete(s.failureTracker, articleID)
+		return false
 	}
-	return false
+	return f.count >= maxBatchFailures
 }
 
 // recordFailure records a failure for an article.
 func (s *articleSummarizerService) recordFailure(articleID string) {
+	now := s.currentTime()
 	s.failureMu.Lock()
 	defer s.failureMu.Unlock()
 
+	s.pruneExpiredFailuresLocked(now)
+
 	f, ok := s.failureTracker[articleID]
-	if !ok {
+	if !ok || now.Sub(f.lastFailed) >= failureBlockDuration {
 		f = &articleFailure{}
 		s.failureTracker[articleID] = f
 	}
 	f.count++
-	f.lastFailed = time.Now()
+	f.lastFailed = now
+}
+
+func (s *articleSummarizerService) setClock(now func() time.Time) {
+	s.failureMu.Lock()
+	s.now = now
+	s.failureMu.Unlock()
+}
+
+func (s *articleSummarizerService) currentTime() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
+func (s *articleSummarizerService) pruneExpiredFailuresLocked(now time.Time) {
+	swept := 0
+	for id, f := range s.failureTracker {
+		if swept >= maxFailureSweep {
+			break
+		}
+		swept++
+		if now.Sub(f.lastFailed) >= failureBlockDuration {
+			delete(s.failureTracker, id)
+		}
+	}
 }
 
 // placeholderMessages maps content-length errors to Japanese placeholder messages.

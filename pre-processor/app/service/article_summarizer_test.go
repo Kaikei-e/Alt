@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"pre-processor/domain"
 	"pre-processor/repository"
@@ -175,6 +176,48 @@ func TestArticleSummarizerService_SummarizeArticles_FailureTracker(t *testing.T)
 		assert.Equal(t, 0, result.ErrorCount, "blocked article should be skipped, not counted as error")
 		assert.Equal(t, maxBatchFailures, apiRepo.callCount,
 			"API should not be called for blocked article")
+	})
+
+	t.Run("should expire failure entries after TTL and keep blocked articles blocked until window ends", func(t *testing.T) {
+		const n = 50
+		now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+
+		svc := NewArticleSummarizerService(
+			&stubArticleRepo{},
+			&noopSummaryRepo{},
+			&failingAPIRepo{},
+			testLoggerSummarizer(),
+		).(*articleSummarizerService)
+		if c, ok := any(svc).(interface{ setClock(func() time.Time) }); ok {
+			c.setClock(func() time.Time { return now })
+		}
+
+		for i := 0; i < n; i++ {
+			id := fmt.Sprintf("article-%d", i)
+			svc.recordFailure(id)
+			if i%2 == 0 {
+				for j := 1; j < maxBatchFailures; j++ {
+					svc.recordFailure(id)
+				}
+			}
+		}
+
+		now = now.Add(30 * time.Minute)
+		for i := 0; i < maxBatchFailures; i++ {
+			svc.recordFailure("blocked-article")
+		}
+		assert.True(t, svc.isBlocked("blocked-article"), "article at maxBatchFailures must be blocked within window")
+
+		now = now.Add(31 * time.Minute)
+		assert.True(t, svc.isBlocked("blocked-article"), "article at maxBatchFailures must remain blocked until its window ends")
+
+		now = now.Add(30 * time.Minute)
+		assert.False(t, svc.isBlocked("blocked-article"), "article should unblock once its window ends")
+
+		svc.failureMu.Lock()
+		remaining := len(svc.failureTracker)
+		svc.failureMu.Unlock()
+		assert.Equal(t, 0, remaining, "expired failure entries must be pruned so map size returns to zero")
 	})
 }
 
