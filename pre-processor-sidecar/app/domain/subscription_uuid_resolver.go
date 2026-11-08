@@ -5,6 +5,7 @@ package domain
 
 import (
 	"context"
+	"strings"
 
 	"pre-processor-sidecar/models"
 
@@ -75,7 +76,11 @@ func (r *SubscriptionUUIDResolver) ResolveArticleUUIDs(
 
 		newUUID, err := r.autoCreateMissingSubscription(ctx, article.OriginStreamID)
 		if err != nil {
-			r.addResolutionError(result, article, err, "AUTO_CREATION_ERROR")
+			errorCode := "AUTO_CREATION_ERROR"
+			if !isParseableStreamID(article.OriginStreamID) {
+				errorCode = "VALIDATION_ERROR"
+			}
+			r.addResolutionError(result, article, err, errorCode)
 			result.UnknownCount++
 			r.updateArticleSubscriptionID(article, uuid.Nil) // 明示的にNil設定
 		} else {
@@ -119,6 +124,13 @@ func (r *SubscriptionUUIDResolver) validateArticleForResolution(article *models.
 		return ErrEmptyOriginStreamID
 	}
 	return nil
+}
+
+func isParseableStreamID(originStreamID string) bool {
+	if strings.HasPrefix(originStreamID, "feed/") {
+		return strings.TrimPrefix(originStreamID, "feed/") != ""
+	}
+	return strings.Contains(originStreamID, "://")
 }
 
 // resolveKnownSubscription は既知サブスクリプションのUUID解決

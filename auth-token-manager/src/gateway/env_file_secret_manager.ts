@@ -104,16 +104,20 @@ export class EnvFileSecretManager implements SecretManager {
       }
 
       const tmpPath = `${this.filePath}.tmp-${crypto.randomUUID()}`;
-      await Deno.writeTextFile(tmpPath, newLines.join("\n") + "\n");
-
-      // Set file permissions before publishing (owner rw, group read for cross-container access)
       try {
+        await Deno.writeTextFile(tmpPath, newLines.join("\n") + "\n", {
+          mode: 0o640,
+        });
         await Deno.chmod(tmpPath, 0o640);
-      } catch {
-        // chmod may not be supported on all platforms
+        await Deno.rename(tmpPath, this.filePath);
+      } catch (err) {
+        try {
+          await Deno.remove(tmpPath);
+        } catch {
+          // Temp file may not exist if writeTextFile failed before creation
+        }
+        throw err;
       }
-
-      await Deno.rename(tmpPath, this.filePath);
 
       logger.info("Token file updated successfully", {
         expires_at: tokens.expires_at.toISOString(),

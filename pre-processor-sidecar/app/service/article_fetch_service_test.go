@@ -253,8 +253,8 @@ func TestFetchArticles_UnresolvableArticles_AreDroppedNotFailed(t *testing.T) {
 
 	healthy := tier1TestArticle("aaaa1111", streamID)
 
-	// Auto-creation of its subscription fails below, so this one keeps uuid.Nil.
-	orphan := tier1TestArticle("bbbb2222", "feed/http://orphan.example.com/rss")
+	// Unparseable stream ID carries no feed URL, so its subscription can never be resolved.
+	orphan := tier1TestArticle("bbbb2222", "user/-/state/com.google/reading-list")
 
 	urlless := tier1TestArticle("cccc3333", streamID)
 	urlless.ArticleURL = ""
@@ -291,9 +291,6 @@ func TestFetchArticles_UnresolvableArticles_AreDroppedNotFailed(t *testing.T) {
 
 	subscriptionRepo := mocks.NewMockSubscriptionRepository(ctrl)
 	setupSubscriptionMock(subscriptionRepo)
-	subscriptionRepo.EXPECT().
-		CreateSubscription(gomock.Any(), gomock.Any()).
-		Return(fmt.Errorf("subscription insert rejected"))
 
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
@@ -322,6 +319,69 @@ func TestFetchArticles_UnresolvableArticles_AreDroppedNotFailed(t *testing.T) {
 	assert.Contains(t, logged, "empty_article_url")
 	assert.Contains(t, logged, orphan.InoreaderID)
 	assert.Contains(t, logged, urlless.InoreaderID)
+}
+
+func TestFetchArticles_TransientSubscriptionResolutionError_HoldsContinuationToken(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	const streamID = "feed/http://example.com/rss"
+	const currentToken = "token-page-1"
+	const nextToken = "token-page-2"
+
+	healthy := tier1TestArticle("aaaa1111", streamID)
+	unmapped := tier1TestArticle("bbbb2222", "feed/http://orphan.example.com/rss")
+
+	client := mocks.NewMockInoreaderClient(ctrl)
+	client.EXPECT().
+		FetchStreamContents(gomock.Any(), gomock.Any(), streamID, currentToken, gomock.Any()).
+		Return(map[string]interface{}{}, nil)
+	client.EXPECT().
+		ParseStreamContentsResponse(gomock.Any()).
+		Return([]*models.Article{healthy, unmapped}, nextToken, nil)
+
+	articleRepo := mocks.NewMockArticleRepository(ctrl)
+	articleRepo.EXPECT().
+		CreateBatch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, articles []*models.Article) (int, int, error) {
+			return len(articles), 0, nil
+		})
+
+	staleSync := time.Now().Add(-2 * time.Hour)
+	syncStateRepo := mocks.NewMockSyncStateRepository(ctrl)
+	syncStateRepo.EXPECT().
+		FindByStreamID(gomock.Any(), streamID).
+		Return(&models.SyncState{StreamID: streamID, ContinuationToken: currentToken, LastSync: staleSync}, nil)
+
+	var persisted *models.SyncState
+	syncStateRepo.EXPECT().
+		Update(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, state *models.SyncState) error {
+			persisted = state
+			return nil
+		})
+
+	subscriptionRepo := mocks.NewMockSubscriptionRepository(ctrl)
+	setupSubscriptionMock(subscriptionRepo)
+	subscriptionRepo.EXPECT().
+		CreateSubscription(gomock.Any(), gomock.Any()).
+		Return(fmt.Errorf("transient db timeout"))
+
+	inoreaderService := NewInoreaderService(client, nil, stubTokenProvider{}, slog.Default())
+	svc := NewArticleFetchService(inoreaderService, articleRepo, syncStateRepo, subscriptionRepo, slog.Default())
+
+	result, err := svc.FetchArticles(context.Background(), streamID, 100)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, result.NewArticles)
+	assert.Equal(t, 0, result.DroppedUnresolvable,
+		"transient subscription auto-creation failure must not permanently drop the article")
+	assert.Equal(t, currentToken, result.ContinuationToken,
+		"continuation token must be held when subscription auto-creation fails")
+	require.NotNil(t, persisted)
+	assert.Equal(t, currentToken, persisted.ContinuationToken,
+		"persisted continuation token must remain the old token so the page is refetched")
+	assert.True(t, persisted.LastSync.After(staleSync))
 }
 
 func TestFetchArticles_FullBatchSuccess_AdvancesContinuationToken(t *testing.T) {

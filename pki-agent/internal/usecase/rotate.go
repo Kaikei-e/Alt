@@ -31,7 +31,7 @@ func (r *Rotator) Tick(ctx context.Context, now time.Time) (domain.CertState, er
 		if errors.Is(err, domain.ErrCertNotFound) {
 			return r.issue(ctx, now, "missing")
 		}
-		if errors.Is(err, domain.ErrCertParseFailed) {
+		if errors.Is(err, domain.ErrCertParseFailed) || errors.Is(err, domain.ErrCertKeyMismatch) {
 			return r.issue(ctx, now, "corrupt")
 		}
 		return domain.StateCorrupt, fmt.Errorf("load cert: %w", err)
