@@ -48,8 +48,8 @@ class PgRunRepository:
     ) -> None:
         await self._dao.mark_run_success(run_id, cluster_count, response_payload, status)
 
-    async def mark_run_failure(self, run_id: int, status: str, error_message: str) -> None:
-        await self._dao.mark_run_failure(run_id, status, error_message)
+    async def mark_run_failure(self, run_id: int, status: str, error_message: str) -> bool:
+        return await self._dao.mark_run_failure(run_id, status, error_message)
 
     async def fail_orphaned_runs(self, error_message: str) -> int:
         return await self._dao.fail_orphaned_runs(error_message)

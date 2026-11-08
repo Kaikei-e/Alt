@@ -293,7 +293,6 @@ class RunManager:
                     error_type=error_type,
                     message="Connection was closed during record fetch",
                 )
-                return
             raise
 
         # Long-running operation: Run pipeline (embedding generation and clustering, no database connection needed)
@@ -397,10 +396,6 @@ class RunManager:
                     error_type=error_type,
                     message="Connection was closed during result save",
                 )
-                # Don't re-raise connection closed errors during cleanup
-                # The failure will be handled by _process_run
-                return
-            # For other exceptions, re-raise to be handled by the caller
             raise
 
     @staticmethod
@@ -590,7 +585,6 @@ class RunManager:
                     error_type=error_type,
                     message="Connection was closed during record fetch",
                 )
-                return
             raise
 
         # Long-running operation: Run classification (no database connection needed)
@@ -677,10 +671,6 @@ class RunManager:
                     error_type=error_type,
                     message="Connection was closed during result save",
                 )
-                # Don't re-raise connection closed errors during cleanup
-                # The failure will be handled by _process_classification_run
-                return
-            # For other exceptions, re-raise to be handled by the caller
             raise
 
     async def get_run(self, run_id: int) -> RunRecord | None:
@@ -914,8 +904,14 @@ class RunManager:
     async def _handle_failure(self, run_id: int, message: str) -> None:
         async with self._session_factory() as session:
             dao = self._dao_factory(session)
-            await dao.mark_run_failure(run_id, "failed", message)
+            updated = await dao.mark_run_failure(run_id, "failed", message)
             await session.commit()
+        if not updated:
+            LOGGER.warning(
+                "run.failure.skipped_not_running",
+                run_id=run_id,
+                error=message,
+            )
 
     async def shutdown(self) -> None:
         """Cancel all pending tasks and wait for them to complete.

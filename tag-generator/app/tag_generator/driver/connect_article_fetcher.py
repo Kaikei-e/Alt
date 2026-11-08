@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
+from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -140,6 +141,8 @@ class ConnectArticleFetcher:
                 "created_at": "",
                 "feed_id": None,
             }
-        except ConnectError:
-            logger.warning("Failed to fetch article by ID via API", article_id=article_id)
-            return None
+        except ConnectError as exc:
+            if exc.code == Code.NOT_FOUND:
+                logger.warning("Failed to fetch article by ID via API", article_id=article_id)
+                return None
+            raise

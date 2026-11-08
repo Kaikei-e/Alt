@@ -39,3 +39,22 @@ def test_clusterer_handles_valid_embeddings(settings):
     result = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
     # Should return valid labels (size match input)
     assert result.labels.size == 5
+
+
+def test_clusterer_handles_single_row_input(settings):
+    clusterer = Clusterer(settings)
+    result = clusterer.cluster(np.array([[1.0, 0.0]]), min_cluster_size=3, min_samples=1)
+    assert result.labels.size == 1
+    assert result.probabilities.size == 1
+
+
+def test_optimize_clustering_handles_single_row_input(settings):
+    clusterer = Clusterer(settings)
+    embeddings = np.ones((1, 8), dtype=np.float32)
+    result = clusterer.optimize_clustering(embeddings)
+    assert result.labels.size == 1
+    assert result.probabilities.size == 1
+
+    other_result = clusterer.subcluster_other(embeddings)
+    assert other_result.labels.size == 1
+    assert other_result.probabilities.size == 1

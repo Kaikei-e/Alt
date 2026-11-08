@@ -42,7 +42,7 @@ class RunRepositoryPort(Protocol):
         """Mark a run as successful with response data."""
         ...
 
-    async def mark_run_failure(self, run_id: int, status: str, error_message: str) -> None:
+    async def mark_run_failure(self, run_id: int, status: str, error_message: str) -> bool:
         """Mark a run as failed."""
         ...
 

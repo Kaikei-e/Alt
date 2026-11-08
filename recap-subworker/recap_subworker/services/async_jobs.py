@@ -25,6 +25,10 @@ class ConcurrentAdminJobError(Exception):
     """Raised when a job of the same kind is already running."""
 
 
+ORPHANED_ADMIN_JOB_MESSAGE = "admin job orphaned by a subworker restart"
+CANCELLED_ADMIN_JOB_MESSAGE = "admin job cancelled during shutdown"
+
+
 def _utcnow() -> datetime:
     return datetime.now(UTC)
 
@@ -44,9 +48,31 @@ class AdminJobService:
         self._tasks: set[asyncio.Task] = set()
         # Limit concurrent admin jobs (graph / learning)
         self._semaphore = asyncio.Semaphore(settings.graph_build_max_concurrency)
+        self._orphan_sweep_lock = asyncio.Lock()
+        self._orphan_sweep_done = False
+
+    async def _sweep_orphaned_admin_jobs(self) -> None:
+        """Fail admin jobs a previous process left behind, once per process."""
+        if self._orphan_sweep_done:
+            return
+        async with self._orphan_sweep_lock:
+            if self._orphan_sweep_done:
+                return
+            async with self._session_factory() as session:
+                dao = SubworkerDAO(session)
+                swept = await dao.fail_orphaned_admin_jobs(
+                    ORPHANED_ADMIN_JOB_MESSAGE,
+                    finished_at=_utcnow(),
+                )
+                if swept:
+                    await session.commit()
+            self._orphan_sweep_done = True
+            if swept:
+                LOGGER.warning("admin_job.orphans.swept", swept=swept)
 
     async def enqueue_graph_job(self) -> UUID:
         """Schedule a graph-build job and return its ID."""
+        await self._sweep_orphaned_admin_jobs()
         job_id = uuid4()
         async with self._session_factory() as session:
             dao = SubworkerDAO(session)
@@ -67,6 +93,7 @@ class AdminJobService:
 
     async def enqueue_learning_job(self) -> UUID:
         """Schedule a genre learning job and return its ID."""
+        await self._sweep_orphaned_admin_jobs()
         job_id = uuid4()
         async with self._session_factory() as session:
             dao = SubworkerDAO(session)
@@ -109,14 +136,17 @@ class AdminJobService:
     ) -> None:
         try:
             await fn(job_id)
+        except asyncio.CancelledError:
+            LOGGER.warning("admin job cancelled", job_id=str(job_id))
+            raise
         except Exception:
             LOGGER.exception("admin job execution failed", job_id=str(job_id))
 
     async def _execute_graph_job(self, job_id: UUID) -> None:
         LOGGER.info("graph job execution started", job_id=str(job_id))
         started = time.monotonic()
-        async with self._semaphore:
-            try:
+        try:
+            async with self._semaphore:
                 result = await self._run_graph_build()
                 await self._mark_success(job_id, "graph", result)
                 duration = time.monotonic() - started
@@ -128,13 +158,16 @@ class AdminJobService:
                     duration_seconds=duration,
                     result=result,
                 )
-            except Exception as exc:
-                await self._mark_failure(job_id, "graph", exc, started)
+        except asyncio.CancelledError as exc:
+            await self._mark_failure(job_id, "graph", exc, started)
+            raise
+        except Exception as exc:
+            await self._mark_failure(job_id, "graph", exc, started)
 
     async def _execute_learning_job(self, job_id: UUID) -> None:
         started = time.monotonic()
-        async with self._semaphore:
-            try:
+        try:
+            async with self._semaphore:
                 result = await self._run_learning()
                 await self._mark_success(job_id, "learning", result)
                 duration = time.monotonic() - started
@@ -146,8 +179,11 @@ class AdminJobService:
                     duration_seconds=duration,
                     recap_worker_status=result.get("recap_worker_status"),
                 )
-            except Exception as exc:
-                await self._mark_failure(job_id, "learning", exc, started)
+        except asyncio.CancelledError as exc:
+            await self._mark_failure(job_id, "learning", exc, started)
+            raise
+        except Exception as exc:
+            await self._mark_failure(job_id, "learning", exc, started)
 
     async def _run_graph_build(self) -> dict[str, Any]:
         async with self._session_factory() as session:
@@ -252,10 +288,15 @@ class AdminJobService:
         self,
         job_id: UUID,
         kind: str,
-        exc: Exception,
+        exc: BaseException,
         started: float,
     ) -> None:
         duration = time.monotonic() - started
+        error_message = (
+            str(exc) or CANCELLED_ADMIN_JOB_MESSAGE
+            if isinstance(exc, asyncio.CancelledError)
+            else str(exc)
+        )
         ADMIN_JOB_STATUS_TOTAL.labels(kind=kind, status="failed").inc()
         ADMIN_JOB_DURATION_SECONDS.labels(kind=kind).observe(duration)
         async with self._session_factory() as session:
@@ -264,7 +305,7 @@ class AdminJobService:
                 job_id=job_id,
                 status="failed",
                 finished_at=_utcnow(),
-                error=str(exc),
+                error=error_message,
                 result=None,
             )
             await session.commit()
@@ -272,7 +313,7 @@ class AdminJobService:
             "admin job failed",
             job_id=str(job_id),
             kind=kind,
-            error=str(exc),
+            error=error_message,
             error_type=type(exc).__name__,
         )
 
@@ -293,4 +334,9 @@ class AdminJobService:
         self._tasks.clear()
 
 
-__all__ = ["AdminJobService", "ConcurrentAdminJobError"]
+__all__ = [
+    "CANCELLED_ADMIN_JOB_MESSAGE",
+    "ORPHANED_ADMIN_JOB_MESSAGE",
+    "AdminJobService",
+    "ConcurrentAdminJobError",
+]
