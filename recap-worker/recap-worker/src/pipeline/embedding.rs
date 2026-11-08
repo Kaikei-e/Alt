@@ -28,6 +28,7 @@ const DEFAULT_MODEL_DIR: &str = "/opt/rustbert-models/all-MiniLM-L12-v2";
 pub(crate) const REQUIRED_MODEL_FILES: &[&str] = &[
     "modules.json",
     "config.json",
+    "model.safetensors",
     "rust_model.ot",
     "tokenizer_config.json",
     "sentence_bert_config.json",
@@ -35,12 +36,24 @@ pub(crate) const REQUIRED_MODEL_FILES: &[&str] = &[
     "1_Pooling/config.json",
 ];
 
+const WEIGHT_MODEL_FILES: &[&str] = &["model.safetensors", "rust_model.ot"];
+
 /// Which of [`REQUIRED_MODEL_FILES`] are absent from `dir`.
+///
+/// Either `model.safetensors` or `rust_model.ot` satisfies the model-weights
+/// requirement; both names are reported when neither is present.
 pub(crate) fn missing_model_files(dir: &Path) -> Vec<&'static str> {
+    let has_weights = WEIGHT_MODEL_FILES.iter().any(|rel| dir.join(rel).is_file());
     REQUIRED_MODEL_FILES
         .iter()
         .copied()
-        .filter(|rel| !dir.join(rel).is_file())
+        .filter(|rel| {
+            if WEIGHT_MODEL_FILES.contains(rel) {
+                !has_weights
+            } else {
+                !dir.join(rel).is_file()
+            }
+        })
         .collect()
 }
 
@@ -594,6 +607,51 @@ mod tests {
 
         assert!(message.contains("rust_model.ot"), "got: {message}");
         assert!(message.contains("1_Pooling/config.json"), "got: {message}");
+    }
+
+    #[test]
+    fn missing_model_files_accepts_safetensors_without_rust_model_ot_and_reports_both_when_neither_exists()
+     {
+        let base_files = [
+            "modules.json",
+            "config.json",
+            "tokenizer_config.json",
+            "sentence_bert_config.json",
+            "vocab.txt",
+            "1_Pooling/config.json",
+        ];
+
+        let safetensors_dir = tempfile::tempdir().unwrap();
+        populate(safetensors_dir.path(), &base_files);
+        populate(safetensors_dir.path(), &["model.safetensors"]);
+        assert!(
+            missing_model_files(safetensors_dir.path()).is_empty(),
+            "dir with model.safetensors and all non-weight files must pass completeness check"
+        );
+
+        let ot_dir = tempfile::tempdir().unwrap();
+        populate(ot_dir.path(), &base_files);
+        populate(ot_dir.path(), &["rust_model.ot"]);
+        assert!(
+            missing_model_files(ot_dir.path()).is_empty(),
+            "dir with rust_model.ot and all non-weight files must pass completeness check"
+        );
+
+        let neither_dir = tempfile::tempdir().unwrap();
+        populate(neither_dir.path(), &base_files);
+        let missing = missing_model_files(neither_dir.path());
+        assert!(
+            missing.contains(&"model.safetensors") && missing.contains(&"rust_model.ot"),
+            "missing weight files must name both model.safetensors and rust_model.ot, got: {missing:?}"
+        );
+
+        let err = EmbeddingService::from_dir(neither_dir.path())
+            .expect_err("dir without weights must fail");
+        let message = format!("{err:#}");
+        assert!(
+            message.contains("model.safetensors") && message.contains("rust_model.ot"),
+            "from_dir error must name both weight file alternatives, got: {message}"
+        );
     }
 
     /// Real AllMiniLM load + 384-d encode when a baked local directory is
