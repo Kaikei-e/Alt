@@ -23,7 +23,7 @@ func (h *Handler) ListArticlesByTagID(ctx context.Context, req *connect.Request[
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_id is required"))
 	}
 
-	articles, err := h.tagTrail.ArticlesByTagID(ctx, tagID, cursorFromProto(req.Msg.GetCursor()), clampTagLimit(req.Msg.GetLimit()))
+	articles, err := h.tagTrail.ArticlesByTagID(ctx, tagID, nil, cursorFromProto(req.Msg.GetCursor()), clampTagLimit(req.Msg.GetLimit()))
 	if err != nil {
 		h.logger.ErrorContext(ctx, "ListArticlesByTagID failed", "error", err, "tag_id", tagID)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list articles by tag id"))
@@ -39,7 +39,7 @@ func (h *Handler) ListArticlesByTagName(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_name is required"))
 	}
 
-	articles, err := h.tagTrail.ArticlesByTagName(ctx, tagName, cursorFromProto(req.Msg.GetCursor()), clampTagLimit(req.Msg.GetLimit()))
+	articles, err := h.tagTrail.ArticlesByTagName(ctx, tagName, nil, cursorFromProto(req.Msg.GetCursor()), clampTagLimit(req.Msg.GetLimit()))
 	if err != nil {
 		h.logger.ErrorContext(ctx, "ListArticlesByTagName failed", "error", err, "tag_name", tagName)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list articles by tag name"))

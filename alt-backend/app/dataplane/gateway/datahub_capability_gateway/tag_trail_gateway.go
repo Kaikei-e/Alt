@@ -7,6 +7,8 @@ import (
 
 	"alt/domain"
 	"alt/shared/driver/alt_db"
+
+	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------
@@ -14,8 +16,8 @@ import (
 // ---------------------------------------------------------------------------
 
 type tagTrailDriver interface {
-	FetchArticlesByTag(ctx context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
-	FetchArticlesByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
+	FetchArticlesByTagForUser(ctx context.Context, tagID string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
+	FetchArticlesByTagNameForUser(ctx context.Context, tagName string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
 }
 
 // TagTrailGateway implements datahub_capability_port.TagTrailPort.
@@ -27,16 +29,16 @@ func NewTagTrailGateway(db *alt_db.AltDBRepository) *TagTrailGateway {
 	return &TagTrailGateway{db: db}
 }
 
-func (g *TagTrailGateway) ArticlesByTagID(ctx context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
-	articles, err := g.db.FetchArticlesByTag(ctx, tagID, cursor, limit)
+func (g *TagTrailGateway) ArticlesByTagID(ctx context.Context, tagID string, _ *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	articles, err := g.db.FetchArticlesByTagForUser(ctx, tagID, nil, cursor, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list articles by tag id %s: %w", tagID, err)
 	}
 	return articles, nil
 }
 
-func (g *TagTrailGateway) ArticlesByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
-	articles, err := g.db.FetchArticlesByTagName(ctx, tagName, cursor, limit)
+func (g *TagTrailGateway) ArticlesByTagName(ctx context.Context, tagName string, _ *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	articles, err := g.db.FetchArticlesByTagNameForUser(ctx, tagName, nil, cursor, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list articles by tag name %q: %w", tagName, err)
 	}

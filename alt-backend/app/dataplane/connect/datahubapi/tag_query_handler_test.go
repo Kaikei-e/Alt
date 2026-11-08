@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -235,19 +236,22 @@ type fakeTagTrailPort struct {
 
 	sawTagID   string
 	sawTagName string
+	sawUserID  *uuid.UUID
 	sawCursor  *time.Time
 	sawLimit   int
 }
 
-func (f *fakeTagTrailPort) ArticlesByTagID(_ context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+func (f *fakeTagTrailPort) ArticlesByTagID(_ context.Context, tagID string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
 	f.sawTagID = tagID
+	f.sawUserID = userID
 	f.sawCursor = cursor
 	f.sawLimit = limit
 	return f.articles, f.err
 }
 
-func (f *fakeTagTrailPort) ArticlesByTagName(_ context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+func (f *fakeTagTrailPort) ArticlesByTagName(_ context.Context, tagName string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
 	f.sawTagName = tagName
+	f.sawUserID = userID
 	f.sawCursor = cursor
 	f.sawLimit = limit
 	return f.articles, f.err
@@ -281,6 +285,7 @@ const (
 	testTrailTagID   = "44444444-dddd-4ddd-8ddd-dddddddddddd"
 	testTrailFeedID  = "55555555-eeee-4eee-8eee-eeeeeeeeeeee"
 	testTrailArticle = "66666666-ffff-4fff-8fff-ffffffffffff"
+	testTrailUserID  = "11111111-1111-4111-8111-111111111111"
 )
 
 // ---------------------------------------------------------------------------
@@ -336,10 +341,13 @@ func TestListArticlesByTagID(t *testing.T) {
 		TagId:  testTrailTagID,
 		Cursor: timestamppb.New(cursor),
 		Limit:  25,
+		UserId: testTrailUserID,
 	}))
 	require.NoError(t, err)
 
 	assert.Equal(t, testTrailTagID, trail.sawTagID)
+	require.NotNil(t, trail.sawUserID)
+	assert.Equal(t, uuid.MustParse(testTrailUserID), *trail.sawUserID)
 	require.NotNil(t, trail.sawCursor)
 	assert.Equal(t, cursor, trail.sawCursor.UTC())
 	assert.Equal(t, 25, trail.sawLimit)
@@ -363,7 +371,8 @@ func TestListArticlesByTagIDFirstPage(t *testing.T) {
 	h := tagTrailHandler(t, trail, nil)
 
 	_, err := h.ListArticlesByTagID(context.Background(), connect.NewRequest(&datahubv1.ListArticlesByTagIDRequest{
-		TagId: testTrailTagID,
+		TagId:  testTrailTagID,
+		UserId: testTrailUserID,
 	}))
 	require.NoError(t, err)
 	assert.Nil(t, trail.sawCursor)
@@ -373,9 +382,26 @@ func TestListArticlesByTagIDFirstPage(t *testing.T) {
 func TestListArticlesByTagIDRejectsEmptyTagID(t *testing.T) {
 	h := tagTrailHandler(t, nil, nil)
 
-	_, err := h.ListArticlesByTagID(context.Background(), connect.NewRequest(&datahubv1.ListArticlesByTagIDRequest{}))
+	_, err := h.ListArticlesByTagID(context.Background(), connect.NewRequest(&datahubv1.ListArticlesByTagIDRequest{
+		UserId: testTrailUserID,
+	}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestListArticlesByTagIDRejectsInvalidUserID(t *testing.T) {
+	for _, userID := range []string{"", "not-a-uuid", uuid.Nil.String()} {
+		trail := &fakeTagTrailPort{}
+		h := tagTrailHandler(t, trail, nil)
+
+		_, err := h.ListArticlesByTagID(context.Background(), connect.NewRequest(&datahubv1.ListArticlesByTagIDRequest{
+			TagId:  testTrailTagID,
+			UserId: userID,
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.Empty(t, trail.sawTagID)
+	}
 }
 
 func TestListArticlesByTagIDClampsLimit(t *testing.T) {
@@ -383,8 +409,9 @@ func TestListArticlesByTagIDClampsLimit(t *testing.T) {
 	h := tagTrailHandler(t, trail, nil)
 
 	_, err := h.ListArticlesByTagID(context.Background(), connect.NewRequest(&datahubv1.ListArticlesByTagIDRequest{
-		TagId: testTrailTagID,
-		Limit: maxTagLimit + 1,
+		TagId:  testTrailTagID,
+		Limit:  maxTagLimit + 1,
+		UserId: testTrailUserID,
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, maxTagLimit, trail.sawLimit)
@@ -394,7 +421,8 @@ func TestListArticlesByTagIDPortFailure(t *testing.T) {
 	h := tagTrailHandler(t, &fakeTagTrailPort{err: errors.New("boom")}, nil)
 
 	_, err := h.ListArticlesByTagID(context.Background(), connect.NewRequest(&datahubv1.ListArticlesByTagIDRequest{
-		TagId: testTrailTagID,
+		TagId:  testTrailTagID,
+		UserId: testTrailUserID,
 	}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
@@ -414,10 +442,13 @@ func TestListArticlesByTagName(t *testing.T) {
 		TagName: "golang",
 		Cursor:  timestamppb.New(cursor),
 		Limit:   10,
+		UserId:  testTrailUserID,
 	}))
 	require.NoError(t, err)
 
 	assert.Equal(t, "golang", trail.sawTagName)
+	require.NotNil(t, trail.sawUserID)
+	assert.Equal(t, uuid.MustParse(testTrailUserID), *trail.sawUserID)
 	require.NotNil(t, trail.sawCursor)
 	assert.Equal(t, cursor, trail.sawCursor.UTC())
 	assert.Equal(t, 10, trail.sawLimit)
@@ -430,9 +461,26 @@ func TestListArticlesByTagName(t *testing.T) {
 func TestListArticlesByTagNameRejectsEmptyName(t *testing.T) {
 	h := tagTrailHandler(t, nil, nil)
 
-	_, err := h.ListArticlesByTagName(context.Background(), connect.NewRequest(&datahubv1.ListArticlesByTagNameRequest{}))
+	_, err := h.ListArticlesByTagName(context.Background(), connect.NewRequest(&datahubv1.ListArticlesByTagNameRequest{
+		UserId: testTrailUserID,
+	}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestListArticlesByTagNameRejectsInvalidUserID(t *testing.T) {
+	for _, userID := range []string{"", "not-a-uuid", uuid.Nil.String()} {
+		trail := &fakeTagTrailPort{}
+		h := tagTrailHandler(t, trail, nil)
+
+		_, err := h.ListArticlesByTagName(context.Background(), connect.NewRequest(&datahubv1.ListArticlesByTagNameRequest{
+			TagName: "golang",
+			UserId:  userID,
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.Empty(t, trail.sawTagName)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -544,4 +592,62 @@ func TestFetchTagCloud_UsesExecuteCountsOnly(t *testing.T) {
 	require.Len(t, resp.Msg.GetTags(), 2)
 	assert.Equal(t, "golang", resp.Msg.GetTags()[0].GetTagName())
 	assert.Equal(t, int32(42), resp.Msg.GetTags()[0].GetArticleCount())
+}
+
+type fakeFetchArticlesByTagPort struct {
+	articles   []*domain.TagTrailArticle
+	err        error
+	sawTagName string
+	sawLimit   int
+	sawUser    *domain.UserContext
+}
+
+func (f *fakeFetchArticlesByTagPort) ExecuteByTagName(ctx context.Context, tagName string, _ *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	f.sawTagName = tagName
+	f.sawLimit = limit
+	if u, err := domain.GetUserFromContext(ctx); err == nil {
+		f.sawUser = u
+	}
+	return f.articles, f.err
+}
+
+func TestFetchArticlesByTag_ScopesByUserAndRejectsInvalidUserID(t *testing.T) {
+	published := time.Date(2026, 7, 30, 8, 0, 0, 0, time.UTC)
+	fake := &fakeFetchArticlesByTagPort{
+		articles: []*domain.TagTrailArticle{{
+			ID:          testTrailArticle,
+			Title:       "RAG tagged article",
+			Link:        "https://example.com/rag-tagged",
+			PublishedAt: published,
+		}},
+	}
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, slog.Default(),
+		WithRAGToolPorts(nil, fake))
+
+	resp, err := h.FetchArticlesByTag(context.Background(), connect.NewRequest(&datahubv1.FetchArticlesByTagRequest{
+		TagName: "ai",
+		Limit:   10,
+		UserId:  testTrailUserID,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, "ai", fake.sawTagName)
+	assert.Equal(t, 10, fake.sawLimit)
+	require.NotNil(t, fake.sawUser, "FetchArticlesByTag must propagate user_id into context for the port")
+	assert.Equal(t, uuid.MustParse(testTrailUserID), fake.sawUser.UserID)
+	require.Len(t, resp.Msg.GetArticles(), 1)
+	assert.Equal(t, testTrailArticle, resp.Msg.GetArticles()[0].GetId())
+
+	for _, badUserID := range []string{"", "not-a-uuid", uuid.Nil.String()} {
+		port := &fakeFetchArticlesByTagPort{}
+		handler := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, slog.Default(),
+			WithRAGToolPorts(nil, port))
+		_, err := handler.FetchArticlesByTag(context.Background(), connect.NewRequest(&datahubv1.FetchArticlesByTagRequest{
+			TagName: "ai",
+			Limit:   10,
+			UserId:  badUserID,
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.Empty(t, port.sawTagName)
+	}
 }

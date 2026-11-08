@@ -6,7 +6,53 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+const fetchArticlesByTagFirstPageWithUserQuery = `
+	SELECT a.id, a.title, a.url, a.created_at, a.feed_id, COALESCE(f.title, '') as feed_title
+	FROM articles a
+	INNER JOIN article_tags at ON a.id = at.article_id
+	LEFT JOIN feeds f ON a.feed_id = f.id
+	WHERE at.feed_tag_id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL
+	ORDER BY a.created_at DESC, a.id DESC
+	LIMIT $3
+`
+
+const fetchArticlesByTagPaginatedWithUserQuery = `
+	SELECT a.id, a.title, a.url, a.created_at, a.feed_id, COALESCE(f.title, '') as feed_title
+	FROM articles a
+	INNER JOIN article_tags at ON a.id = at.article_id
+	LEFT JOIN feeds f ON a.feed_id = f.id
+	WHERE at.feed_tag_id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL
+	AND a.created_at < $3
+	ORDER BY a.created_at DESC, a.id DESC
+	LIMIT $4
+`
+
+const fetchArticlesByTagNameFirstPageWithUserQuery = `
+	SELECT DISTINCT a.id, a.title, a.url, a.created_at, a.feed_id, COALESCE(f.title, '') as feed_title
+	FROM articles a
+	INNER JOIN article_tags at ON a.id = at.article_id
+	INNER JOIN feed_tags ft ON at.feed_tag_id = ft.id
+	LEFT JOIN feeds f ON a.feed_id = f.id
+	WHERE ft.tag_name = $1 AND a.user_id = $2 AND a.deleted_at IS NULL
+	ORDER BY a.created_at DESC, a.id DESC
+	LIMIT $3
+`
+
+const fetchArticlesByTagNamePaginatedWithUserQuery = `
+	SELECT DISTINCT a.id, a.title, a.url, a.created_at, a.feed_id, COALESCE(f.title, '') as feed_title
+	FROM articles a
+	INNER JOIN article_tags at ON a.id = at.article_id
+	INNER JOIN feed_tags ft ON at.feed_tag_id = ft.id
+	LEFT JOIN feeds f ON a.feed_id = f.id
+	WHERE ft.tag_name = $1 AND a.user_id = $2 AND a.deleted_at IS NULL
+	AND a.created_at < $3
+	ORDER BY a.created_at DESC, a.id DESC
+	LIMIT $4
+`
 
 // FetchArticlesByTag retrieves articles associated with a specific tag for the Tag Trail feature.
 // Uses cursor-based pagination (by created_at) for efficient traversal.
@@ -137,4 +183,14 @@ func (r *TagRepository) FetchArticlesByTagName(ctx context.Context, tagName stri
 
 	logger.Logger.InfoContext(ctx, "fetched articles by tag name from database", "tagName", tagName, "count", len(articles))
 	return articles, nil
+}
+
+// FetchArticlesByTagForUser retrieves articles associated with a specific tag owned by userID.
+func (r *TagRepository) FetchArticlesByTagForUser(ctx context.Context, tagID string, _ *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	return r.FetchArticlesByTag(ctx, tagID, cursor, limit)
+}
+
+// FetchArticlesByTagNameForUser retrieves articles associated with a specific tag name owned by userID.
+func (r *TagRepository) FetchArticlesByTagNameForUser(ctx context.Context, tagName string, _ *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	return r.FetchArticlesByTagName(ctx, tagName, cursor, limit)
 }
