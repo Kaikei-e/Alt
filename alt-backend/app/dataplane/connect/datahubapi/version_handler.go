@@ -45,7 +45,7 @@ func (h *Handler) MarkSummaryVersionSuperseded(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	userID, err := requiredUUID(req.Msg.GetUserId(), "user_id")
+	userID, err := requiredUserID(req.Msg.GetUserId())
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (h *Handler) GetLatestSummaryVersion(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, err
 	}
-	userID, err := requiredUUID(req.Msg.GetUserId(), "user_id")
+	userID, err := requiredUserID(req.Msg.GetUserId())
 	if err != nil {
 		return nil, err
 	}
