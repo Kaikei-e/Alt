@@ -1,11 +1,14 @@
 """Unit tests for SynthesizeUsecase streaming API."""
 
 import asyncio
+import io
+import wave
 from unittest.mock import AsyncMock, call
 
 import pytest
 
 from tts_speaker.domain.errors import (
+    AudioFormatError,
     EmptyTextError,
     SynthesisBusyError,
     TextTooLongError,
@@ -259,3 +262,28 @@ async def test_explicit_speed_overrides_default_speed(mock_synthesizer: AsyncMoc
     chunks = [c async for c in usecase.stream("こんにちは", speed=0.8)]
     assert len(chunks) == 1
     mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=0.8)
+
+
+async def test_zero_frame_wav_raises_audio_format_error(mock_synthesizer: AsyncMock) -> None:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(48000)
+        wf.writeframes(b"")
+    mock_synthesizer.synthesize_chunk.return_value = buf.getvalue()
+    usecase = SynthesizeUsecase(
+        synthesizer=mock_synthesizer,
+        max_chunk_chars=10,
+        max_text_chars=5000,
+        chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
+        default_speed=1.25,
+    )
+    with pytest.raises(AudioFormatError):
+        async for _ in usecase.stream("こんにちは"):
+            pass
+
+    with pytest.raises(AudioFormatError):
+        async for _ in usecase.stream("吾輩は猫である。名前はまだ無い。"):
+            pass

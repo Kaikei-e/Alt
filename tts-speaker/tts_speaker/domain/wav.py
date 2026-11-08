@@ -15,6 +15,7 @@ def wav_info(wav: bytes) -> tuple[int, float]:
             framerate = wf.getframerate()
             comptype = wf.getcomptype()
             nframes = wf.getnframes()
+            frames = wf.readframes(nframes)
     except (wave.Error, EOFError) as e:
         raise AudioFormatError(f"Corrupt WAV data: {e}") from e
 
@@ -26,6 +27,10 @@ def wav_info(wav: bytes) -> tuple[int, float]:
         raise AudioFormatError(f"Expected uncompressed PCM, got {comptype}")
     if framerate <= 0:
         raise AudioFormatError("Invalid framerate in WAV")
+    if nframes <= 0:
+        raise AudioFormatError("WAV contains no audio frames")
+    if len(frames) != nframes * nchannels * sampwidth:
+        raise AudioFormatError("WAV data size does not match frame count")
 
     duration = nframes / float(framerate)
     return framerate, duration
@@ -39,12 +44,17 @@ def append_silence(wav: bytes, ms: int) -> bytes:
             sampwidth = wf.getsampwidth()
             framerate = wf.getframerate()
             comptype = wf.getcomptype()
-            frames = wf.readframes(wf.getnframes())
+            nframes = wf.getnframes()
+            frames = wf.readframes(nframes)
     except (wave.Error, EOFError) as e:
         raise AudioFormatError(f"Corrupt WAV segment: {e}") from e
 
     if sampwidth != 2:
         raise AudioFormatError(f"Expected sampwidth == 2, got {sampwidth}")
+    if nframes <= 0:
+        raise AudioFormatError("WAV contains no audio frames")
+    if len(frames) != nframes * nchannels * sampwidth:
+        raise AudioFormatError("WAV data size does not match frame count")
 
     if ms <= 0:
         gap_frames = 0
