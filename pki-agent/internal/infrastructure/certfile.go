@@ -118,8 +118,8 @@ func (c *CertFile) atomicWrite(path string, data []byte, mode os.FileMode) error
 	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
+	if err := os.Rename(tmpName, path); err != nil { // #nosec G703 -- tmpName comes from os.CreateTemp in path's directory; path is the configured cert/key path, not request input
+		_ = os.Remove(tmpName) // #nosec G703 -- tmpName comes from os.CreateTemp in the cert directory
 		return err
 	}
 	return nil
