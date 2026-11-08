@@ -19,6 +19,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from structlog.testing import capture_logs
 
 from acolyte.gateway.postgres_job_gw import PostgresJobGateway
 
@@ -79,7 +80,7 @@ def _gw(conn: _FakeConnection) -> PostgresJobGateway:
 @pytest.mark.asyncio
 async def test_mark_running_sets_status_started_at_and_model_names() -> None:
     run_id = uuid4()
-    conn = _FakeConnection(rows=[None])
+    conn = _FakeConnection(rows=[(run_id,)])
     gw = _gw(conn)
 
     await gw.mark_running(run_id, "gemma4-e4b-12k", "gemma4-e4b-12k", "gemma4-e4b-12k")
@@ -88,10 +89,14 @@ async def test_mark_running_sets_status_started_at_and_model_names() -> None:
     query, params = conn.executed[0]
     assert "run_status = 'running'" in query
     assert "started_at = NOW()" in query
+    assert "finished_at = NULL" in query
+    assert "failure_code = NULL" in query
+    assert "failure_message = NULL" in query
     assert "planner_model = %s" in query
     assert "writer_model = %s" in query
     assert "critic_model = %s" in query
     assert "WHERE run_id = %s" in query
+    assert "run_status IN ('pending', 'running', 'failed')" in query
     assert params == ["gemma4-e4b-12k", "gemma4-e4b-12k", "gemma4-e4b-12k", run_id]
 
 
@@ -265,3 +270,39 @@ async def test_list_running_runs_returns_empty_list_when_none_running() -> None:
     result = await gw.list_running_runs()
 
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_run_transitions_guard_against_terminal_statuses_and_log_noop() -> None:
+    """mark_running allows pending/running/failed and raises when no row is
+    updated; complete_run and fail_run only transition pending/running and log
+    a warning without raising when no row matches."""
+    run_id = uuid4()
+    conn = _FakeConnection(rows=[None, None, None])
+    gw = _gw(conn)
+
+    with capture_logs() as logs:
+        with pytest.raises(RuntimeError, match=str(run_id)):
+            await gw.mark_running(run_id, "gemma4-e4b-12k", "gemma4-e4b-12k", "gemma4-e4b-12k")
+        await gw.complete_run(run_id)
+        await gw.fail_run(run_id, "pipeline_crashed", "boom")
+
+    assert len(conn.executed) == 3
+    mark_query, _mark_params = conn.executed[0]
+    assert "run_status IN ('pending', 'running', 'failed')" in mark_query
+    assert "finished_at = NULL" in mark_query
+    assert "failure_code = NULL" in mark_query
+    assert "failure_message = NULL" in mark_query
+
+    complete_query, _complete_params = conn.executed[1]
+    assert "run_status IN ('pending', 'running')" in complete_query
+
+    fail_query, fail_params = conn.executed[2]
+    assert "run_status = 'failed'" in fail_query
+    assert "run_status IN ('pending', 'running')" in fail_query
+    assert fail_params == ["pipeline_crashed", "boom", run_id]
+
+    warnings = [e for e in logs if e.get("log_level") == "warning"]
+    assert len(warnings) == 2
+    assert all(e.get("run_id") == str(run_id) for e in warnings)
+    assert "Not called from any production code path yet" not in (PostgresJobGateway.mark_running.__doc__ or "")

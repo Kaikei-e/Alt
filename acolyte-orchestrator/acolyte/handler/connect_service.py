@@ -348,26 +348,26 @@ class AcolyteConnectService:
 
         current_user_id.set(user_id)
 
-        if self._jobs is not None:
-            # Single default_model for all three roles — the pipeline is
-            # mono-model today; report_runs keeps separate columns for a
-            # future per-role routing split.
-            model = self._settings.default_model
-            await self._jobs.mark_running(UUID(run_id), model, model, model)
-
-        config = self._graph_config(run_id)
-        initial_state = {
-            "report_id": report_id,
-            "run_id": run_id,
-            "brief": brief_dict,
-            "revision_count": 0,
-            "user_id": user_id,
-        }
-
-        logger.info(
-            "Pipeline started", report_id=report_id, run_id=run_id, thread_id=config["configurable"]["thread_id"]
-        )
         try:
+            if self._jobs is not None:
+                # Single default_model for all three roles — the pipeline is
+                # mono-model today; report_runs keeps separate columns for a
+                # future per-role routing split.
+                model = self._settings.default_model
+                await self._jobs.mark_running(UUID(run_id), model, model, model)
+
+            config = self._graph_config(run_id)
+            initial_state = {
+                "report_id": report_id,
+                "run_id": run_id,
+                "brief": brief_dict,
+                "revision_count": 0,
+                "user_id": user_id,
+            }
+
+            logger.info(
+                "Pipeline started", report_id=report_id, run_id=run_id, thread_id=config["configurable"]["thread_id"]
+            )
             invoke_input = initial_state
 
             if self._settings.checkpoint_enabled:

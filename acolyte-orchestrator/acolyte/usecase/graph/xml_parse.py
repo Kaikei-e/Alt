@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from pydantic import TypeAdapter, ValidationError
 
+from acolyte.port.llm_provider import LLMProviderError
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -337,7 +339,7 @@ async def generate_xml_validated[T: "BaseModel"](  # noqa: PLR0913 — public ut
                     max_attempts=1 + retries,
                     error=str(exc),
                 )
-        except ValidationError as exc:
+        except (ValidationError, TimeoutError, LLMProviderError) as exc:
             last_error = exc
             logger.warning(
                 "XML validation failed",

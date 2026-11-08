@@ -363,19 +363,22 @@ def _collect_accepted_claims(
     return accepted_by_section
 
 
-def _update_best_sections(
+def _update_best_sections(  # noqa: PLR0913 — mirrors best-section state fields updated together
     current_best: dict[str, str],
     current_metrics: dict[str, dict],
+    current_best_citations: dict[str, list[SectionCitationDict]],
     section_key: str,
     body: str,
     blocking_count: int,
-) -> tuple[dict[str, str], dict[str, dict]]:
+    citations: list[SectionCitationDict],
+) -> tuple[dict[str, str], dict[str, dict], dict[str, list[SectionCitationDict]]]:
     """Update best_sections if this revision is better than the previous best.
 
     Selection: blocking_count minimum → non-empty → char_len.
     """
     new_best = dict(current_best)
     new_metrics = dict(current_metrics)
+    new_best_citations = dict(current_best_citations)
 
     char_len = len(body)
     existing = current_metrics.get(section_key)
@@ -385,6 +388,7 @@ def _update_best_sections(
         if char_len > 0:
             new_best[section_key] = body
             new_metrics[section_key] = {"blocking_count": blocking_count, "char_len": char_len}
+            new_best_citations[section_key] = list(citations)
     else:
         # Compare: fewer blocking → non-empty → longer
         prev_blocking = existing["blocking_count"]
@@ -399,8 +403,9 @@ def _update_best_sections(
         if is_better:
             new_best[section_key] = body
             new_metrics[section_key] = {"blocking_count": blocking_count, "char_len": char_len}
+            new_best_citations[section_key] = list(citations)
 
-    return new_best, new_metrics
+    return new_best, new_metrics, new_best_citations
 
 
 _ROLE_TARGET_LENGTH = {
@@ -727,6 +732,7 @@ class WriterNode:
         existing_paragraphs: dict[str, list[SectionParagraphDict]] = state.get("section_paragraphs", {})
         current_best = dict(state.get("best_sections", {}))
         current_metrics = dict(state.get("best_section_metrics", {}))
+        current_best_citations: dict[str, list[SectionCitationDict]] = dict(state.get("best_section_citations", {}))
 
         # Load SourceMap for short ID conversion (Phase 4). Kept as a local
         # variable (not `self._source_map`) because this WriterNode instance
@@ -845,6 +851,7 @@ class WriterNode:
                     section_paragraphs[key] = es_paragraphs
                     current_best[key] = es_body
                     current_metrics[key] = {"blocking_count": 0, "char_len": len(es_body)}
+                    current_best_citations[key] = list(es_cites)
                     logger.info(
                         "Writer ES rendered",
                         section_key=key,
@@ -887,12 +894,14 @@ class WriterNode:
 
                 # Count blocking paragraphs (rejected/empty)
                 blocking_count = sum(1 for p in paragraphs if p["status"] == "rejected")
-                current_best, current_metrics = _update_best_sections(
+                current_best, current_metrics, current_best_citations = _update_best_sections(
                     current_best,
                     current_metrics,
+                    current_best_citations,
                     key,
                     section_body,
                     blocking_count,
+                    all_cites,
                 )
             else:
                 # Legacy evidence-based path (backward compat)
@@ -927,6 +936,7 @@ class WriterNode:
             result["section_paragraphs"] = section_paragraphs
             result["best_sections"] = current_best
             result["best_section_metrics"] = current_metrics
+            result["best_section_citations"] = current_best_citations
             result["claim_plans"] = claim_plans
             result["accepted_claims_by_section"] = accepted_claims_by_section
         return result

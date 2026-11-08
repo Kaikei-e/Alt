@@ -141,7 +141,7 @@ class FinalizerNode:
         sections = dict(state.get("sections", {}))
         outline = state.get("outline", [])
         brief = state.get("brief") or state.get("scope") or {}
-        section_citations: dict[str, list[SectionCitationDict]] = state.get("section_citations", {})
+        section_citations: dict[str, list[SectionCitationDict]] = dict(state.get("section_citations", {}))
 
         report = await self._report_repo.get_report(report_id)
         if report is None:
@@ -155,9 +155,14 @@ class FinalizerNode:
 
         # Persist the best revision body when available, not only when latest is empty.
         best = state.get("best_sections")
+        best_citations = state.get("best_section_citations") or {}
         if best:
             for key in list(sections.keys()):
                 if best.get(key):
+                    if key in best_citations:
+                        section_citations[key] = best_citations[key]
+                    elif best[key] != sections[key]:
+                        section_citations[key] = []
                     sections[key] = best[key]
                     logger.info("Finalizer using best_sections", section_key=key, body_len=len(best[key]))
 

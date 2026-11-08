@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from acolyte.domain.section_contract import QueryExpansionOutput
-from acolyte.port.llm_provider import LLMResponse
+from acolyte.port.llm_provider import LLMProviderError, LLMResponse, LLMTimeoutError
 from acolyte.usecase.graph.xml_parse import (
     XmlParseError,
     confidence_to_score,
@@ -472,6 +472,53 @@ class TestGenerateXmlValidated:
             fallback=fallback,
         )
         assert result.reasoning == "ok"
+
+    @pytest.mark.asyncio
+    async def test_llm_timeout_error_retries_and_returns_parsed_result(self) -> None:
+        class TimeoutOnceLLM:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+                self.calls += 1
+                if self.calls == 1:
+                    raise LLMTimeoutError("ReadTimeout")
+                return LLMResponse(
+                    text="<plan><reasoning>recovered</reasoning><section><key>a</key><query>q</query></section></plan>",
+                    model="fake",
+                )
+
+        llm = TimeoutOnceLLM()
+        result = await generate_xml_validated(
+            llm,
+            "test",
+            QueryExpansionOutput,
+            root_tag="plan",
+            normalizer=normalize_plan_output,
+            retries=1,
+        )
+        assert llm.calls == 2
+        assert result.reasoning == "recovered"
+        assert result.queries == {"a": ["q"]}
+
+    @pytest.mark.asyncio
+    async def test_llm_always_raises_returns_fallback(self) -> None:
+        class AlwaysFailsLLM:
+            async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+                msg = "upstream 500 error"
+                raise LLMProviderError(msg)
+
+        fallback = QueryExpansionOutput(reasoning="fallback", queries={})
+        result = await generate_xml_validated(
+            AlwaysFailsLLM(),
+            "test",
+            QueryExpansionOutput,
+            root_tag="plan",
+            normalizer=normalize_plan_output,
+            retries=1,
+            fallback=fallback,
+        )
+        assert result is fallback
 
 
 class TestXmlSecurityGuards:
