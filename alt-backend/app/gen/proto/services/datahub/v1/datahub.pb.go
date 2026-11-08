@@ -13146,6 +13146,7 @@ func (x *FeedTag) GetUpdatedAt() *timestamppb.Timestamp {
 type GetArticleTagsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ArticleId     string                 `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -13183,6 +13184,13 @@ func (*GetArticleTagsRequest) Descriptor() ([]byte, []int) {
 func (x *GetArticleTagsRequest) GetArticleId() string {
 	if x != nil {
 		return x.ArticleId
+	}
+	return ""
+}
+
+func (x *GetArticleTagsRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
 	}
 	return ""
 }
@@ -18189,10 +18197,11 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"6\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"O\n" +
 	"\x15GetArticleTagsRequest\x12\x1d\n" +
 	"\n" +
-	"article_id\x18\x01 \x01(\tR\tarticleId\"J\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"J\n" +
 	"\x16GetArticleTagsResponse\x120\n" +
 	"\x04tags\x18\x01 \x03(\v2\x1c.services.datahub.v1.FeedTagR\x04tags\"\x87\x01\n" +
 	"\x12GetFeedTagsRequest\x12\x17\n" +

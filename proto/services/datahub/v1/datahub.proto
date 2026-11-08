@@ -1771,6 +1771,7 @@ message FeedTag {
 
 message GetArticleTagsRequest {
   string article_id = 1;
+  string user_id = 2;
 }
 
 message GetArticleTagsResponse {
