@@ -196,7 +196,8 @@ describe("useKnowledgeHome", () => {
 			generatedAt: "2026-03-17T00:00:00Z",
 		});
 
-		const home = useKnowledgeHome();
+		let externalLensActive = false;
+		const home = useKnowledgeHome(() => externalLensActive);
 		await home.fetchData(true);
 		expect(home.emptyReason).toBe("no_data");
 
@@ -240,6 +241,22 @@ describe("useKnowledgeHome", () => {
 		});
 		await home.fetchData(true, null);
 		expect(home.emptyReason).toBe("ingest_pending");
+
+		// When fetchData runs with a null lens while an external persisted lens is active, emptyReason is lens_strict
+		externalLensActive = true;
+		mockGetKnowledgeHome.mockResolvedValueOnce({
+			items: [],
+			digest: null,
+			hasMore: false,
+			degraded: false,
+			nextCursor: "",
+			serviceQuality: "full",
+			featureFlags: [],
+			recallCandidates: [],
+			generatedAt: "2026-03-17T00:00:00Z",
+		});
+		await home.fetchData(true, null);
+		expect(home.emptyReason).toBe("lens_strict");
 	});
 
 	it("flushes non-empty itemKeys batches via trackSeen and ignores empty batches", () => {

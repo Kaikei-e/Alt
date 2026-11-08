@@ -222,4 +222,48 @@ describe("MobileAcolyteDetail", () => {
 			expect(window.getComputedStyle(li).minWidth).toBe("0px");
 		});
 	});
+
+	it("renders multiple citations sharing the same claim_id and source_id", async () => {
+		const duplicateKeySections: AcolyteSection[] = [
+			{
+				sectionKey: "executive_summary",
+				currentVersion: 1,
+				displayOrder: 1,
+				body: "Body text.",
+				citationsJson: JSON.stringify([
+					{
+						claim_id: "executive_summary-1",
+						source_type: "article",
+						source_id: "936a9156-a70b-48ee-9efa-a8c6f4d4a538",
+						quote: "First supporting quote from the same article.",
+						offset_start: -1,
+						offset_end: -1,
+					},
+					{
+						claim_id: "executive_summary-1",
+						source_type: "article",
+						source_id: "936a9156-a70b-48ee-9efa-a8c6f4d4a538",
+						quote: "Second supporting quote from the same article.",
+						offset_start: -1,
+						offset_end: -1,
+					},
+				]),
+			},
+		];
+
+		render(MobileAcolyteDetail, {
+			props: { ...baseProps, sections: duplicateKeySections },
+		});
+
+		await expect
+			.element(
+				page.getByText(/First supporting quote from the same article\./),
+			)
+			.toBeInTheDocument();
+		await expect
+			.element(
+				page.getByText(/Second supporting quote from the same article\./),
+			)
+			.toBeInTheDocument();
+	});
 });
