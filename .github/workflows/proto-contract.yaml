@@ -57,6 +57,7 @@ on:
       # contract lives a directory deeper.
       - 'recap-worker/recap-worker/src/clients/**/contract.rs'
       - 'alt-butterfly-facade/internal/handler/contract/**'
+      - 'altctl/internal/sovereignclient/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
       # The deploy host runs its provider legs out of pact-check.sh, not out
       # of this workflow, so a change there is invisible here unless the
@@ -97,6 +98,7 @@ on:
       # contract lives a directory deeper.
       - 'recap-worker/recap-worker/src/clients/**/contract.rs'
       - 'alt-butterfly-facade/internal/handler/contract/**'
+      - 'altctl/internal/sovereignclient/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
       # The deploy host runs its provider legs out of pact-check.sh, not out
       # of this workflow, so a change there is invisible here unless the
