@@ -53,8 +53,12 @@ func (h *Handler) BatchGetOgImageURLs(ctx context.Context, req *connect.Request[
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("article_ids exceeds the %d id limit", maxLimit))
 	}
+	userID, err := requiredUUID(req.Msg.GetUserId(), "user_id")
+	if err != nil {
+		return nil, err
+	}
 
-	urls, err := h.ogImage.BatchGetOgImageURLs(ctx, ids)
+	urls, err := h.ogImage.BatchGetOgImageURLs(ctx, ids, &userID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "BatchGetOgImageURLs failed", "error", err, "count", len(ids))
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get og image urls"))

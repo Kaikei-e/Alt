@@ -18,7 +18,7 @@ import (
 type TagReadPort interface {
 	// ArticleTags returns an article's tags. An untagged article is an empty
 	// slice, not an error: the caller reads emptiness as "generate some".
-	ArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error)
+	ArticleTags(ctx context.Context, articleID string, userID *uuid.UUID) ([]*domain.FeedTag, error)
 	// FeedTags pages one feed's tags newest first. A nil cursor is the first
 	// page.
 	FeedTags(ctx context.Context, feedID string, cursor *time.Time, limit int) ([]*domain.FeedTag, error)

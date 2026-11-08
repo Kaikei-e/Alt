@@ -153,7 +153,7 @@ func (g *ReadStateGateway) RemoveFavorite(ctx context.Context, feedURL string, u
 // ---------------------------------------------------------------------------
 
 type tagReadDriver interface {
-	FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error)
+	FetchArticleTagsForUser(ctx context.Context, articleID string, userID *uuid.UUID) ([]*domain.FeedTag, error)
 	FetchFeedTags(ctx context.Context, feedID string, cursor *time.Time, limit int) ([]*domain.FeedTag, error)
 	FetchTagCooccurrences(ctx context.Context, tagNames []string) ([]*domain.TagCooccurrence, error)
 	SearchTagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.GlobalTagHit, error)
@@ -169,8 +169,8 @@ func NewTagReadGateway(db *alt_db.AltDBRepository) *TagReadGateway {
 	return &TagReadGateway{db: db}
 }
 
-func (g *TagReadGateway) ArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error) {
-	tags, err := g.db.FetchArticleTags(ctx, articleID)
+func (g *TagReadGateway) ArticleTags(ctx context.Context, articleID string, userID *uuid.UUID) ([]*domain.FeedTag, error) {
+	tags, err := g.db.FetchArticleTagsForUser(ctx, articleID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get article tags %s: %w", articleID, err)
 	}
