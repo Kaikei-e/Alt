@@ -150,6 +150,12 @@ func (c *Consumer) deliveryCounts(ctx context.Context, messages []redis.XMessage
 			)
 			continue
 		}
+		if len(pending) == 0 {
+			c.logger.Error("failed to look up delivery count for reclaimed message: entry missing from PEL",
+				"message_id", message.ID,
+			)
+			continue
+		}
 		for _, p := range pending {
 			counts[p.ID] = p.RetryCount
 		}
@@ -167,7 +173,11 @@ func (c *Consumer) routeReclaimedMessages(ctx context.Context, messages []redis.
 
 	retryable := make([]redis.XMessage, 0, len(messages))
 	for _, message := range messages {
-		count := retryCounts[message.ID]
+		count, ok := retryCounts[message.ID]
+		if !ok {
+			// Leave the message pending so the next reclaim pass retries the lookup.
+			continue
+		}
 		if shouldSendToDLQ(count, c.config.MaxDeliveries) {
 			c.sendToDLQ(ctx, message, count)
 			continue
