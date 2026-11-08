@@ -249,7 +249,7 @@ class SSEHandler(BaseHTTPRequestHandler):
                             e,
                         )
                         break
-                    except (TypeError, ValueError, json.JSONEncodeError) as e:
+                    except (TypeError, ValueError) as e:
                         logger.error(
                             "Data serialization error in SSE stream for %s: %s",
                             self.client_address,
