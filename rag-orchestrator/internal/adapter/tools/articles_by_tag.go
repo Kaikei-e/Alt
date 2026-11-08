@@ -33,6 +33,19 @@ func (t *ArticlesByTagTool) Execute(ctx context.Context, params map[string]strin
 		}, nil
 	}
 
+	userID := strings.TrimSpace(domain.UserIDFromContext(ctx))
+	if userID == "" {
+		userID = strings.TrimSpace(params["user_id"])
+	}
+	if userID == "" {
+		return &domain.ToolResult{
+			ToolName: t.Name(),
+			Success:  false,
+			Error:    "user_id is required",
+		}, fmt.Errorf("user_id is required")
+	}
+	ctx = domain.WithUserID(ctx, userID)
+
 	articles, err := t.client.FetchArticlesByTag(ctx, tagName, 10)
 	if err != nil {
 		return nil, fmt.Errorf("articles_by_tag fetch failed: %w", err)

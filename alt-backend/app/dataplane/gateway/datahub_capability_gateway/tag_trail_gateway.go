@@ -29,16 +29,16 @@ func NewTagTrailGateway(db *alt_db.AltDBRepository) *TagTrailGateway {
 	return &TagTrailGateway{db: db}
 }
 
-func (g *TagTrailGateway) ArticlesByTagID(ctx context.Context, tagID string, _ *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
-	articles, err := g.db.FetchArticlesByTagForUser(ctx, tagID, nil, cursor, limit)
+func (g *TagTrailGateway) ArticlesByTagID(ctx context.Context, tagID string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	articles, err := g.db.FetchArticlesByTagForUser(ctx, tagID, userID, cursor, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list articles by tag id %s: %w", tagID, err)
 	}
 	return articles, nil
 }
 
-func (g *TagTrailGateway) ArticlesByTagName(ctx context.Context, tagName string, _ *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
-	articles, err := g.db.FetchArticlesByTagNameForUser(ctx, tagName, nil, cursor, limit)
+func (g *TagTrailGateway) ArticlesByTagName(ctx context.Context, tagName string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	articles, err := g.db.FetchArticlesByTagNameForUser(ctx, tagName, userID, cursor, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list articles by tag name %q: %w", tagName, err)
 	}

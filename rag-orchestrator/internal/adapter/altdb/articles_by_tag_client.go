@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
@@ -31,9 +32,15 @@ func NewDataHubArticlesByTagClient(client datahubv1connect.DataHubServiceClient,
 }
 
 func (c *DataHubArticlesByTagClient) FetchArticlesByTag(ctx context.Context, tagName string, limit int) ([]domain.TagArticle, error) {
+	userID := strings.TrimSpace(domain.UserIDFromContext(ctx))
+	if userID == "" {
+		return nil, fmt.Errorf("FetchArticlesByTag: user_id is required")
+	}
+
 	req := connect.NewRequest(&datahubv1.FetchArticlesByTagRequest{
 		TagName: tagName,
 		Limit:   int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
+		UserId:  userID,
 	})
 
 	resp, err := c.client.FetchArticlesByTag(ctx, req)

@@ -225,9 +225,18 @@ func (g *TagGateway) FetchTagArticleCounts(ctx context.Context, userID uuid.UUID
 // becoming the zero time: protojson omits an unset timestamp, and the provider
 // reads its absence as "no upper bound".
 func (g *TagGateway) FetchArticlesByTag(ctx context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("authentication required: %w", err)
+	}
+	if user == nil || user.UserID == uuid.Nil {
+		return nil, fmt.Errorf("authentication required: user_id is empty")
+	}
+
 	req := &datahubv1.ListArticlesByTagIDRequest{
-		TagId: tagID,
-		Limit: safeconv.Int32(limit),
+		TagId:  tagID,
+		Limit:  safeconv.Int32(limit),
+		UserId: user.UserID.String(),
 	}
 	if cursor != nil {
 		req.Cursor = timestamppb.New(*cursor)
@@ -241,9 +250,18 @@ func (g *TagGateway) FetchArticlesByTag(ctx context.Context, tagID string, curso
 }
 
 func (g *TagGateway) FetchArticlesByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("authentication required: %w", err)
+	}
+	if user == nil || user.UserID == uuid.Nil {
+		return nil, fmt.Errorf("authentication required: user_id is empty")
+	}
+
 	req := &datahubv1.ListArticlesByTagNameRequest{
 		TagName: tagName,
 		Limit:   safeconv.Int32(limit),
+		UserId:  user.UserID.String(),
 	}
 	if cursor != nil {
 		req.Cursor = timestamppb.New(*cursor)

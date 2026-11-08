@@ -57,38 +57,30 @@ const fetchArticlesByTagNamePaginatedWithUserQuery = `
 // FetchArticlesByTag retrieves articles associated with a specific tag for the Tag Trail feature.
 // Uses cursor-based pagination (by created_at) for efficient traversal.
 func (r *TagRepository) FetchArticlesByTag(ctx context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	return r.FetchArticlesByTagForUser(ctx, tagID, userIDFromContext(ctx), cursor, limit)
+}
+
+// FetchArticlesByTagForUser retrieves articles associated with a specific tag owned by userID.
+func (r *TagRepository) FetchArticlesByTagForUser(ctx context.Context, tagID string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
+	}
+	if userID == nil {
+		userID = userIDFromContext(ctx)
+	}
+	if userID == nil || *userID == uuid.Nil {
+		return nil, errors.New("user id is required")
 	}
 
 	var query string
 	var args []interface{}
 
 	if cursor == nil {
-		// First page - no cursor
-		query = `
-			SELECT a.id, a.title, a.url, a.created_at, a.feed_id, COALESCE(f.title, '') as feed_title
-			FROM articles a
-			INNER JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN feeds f ON a.feed_id = f.id
-			WHERE at.feed_tag_id = $1
-			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $2
-		`
-		args = []interface{}{tagID, limit}
+		query = fetchArticlesByTagFirstPageWithUserQuery
+		args = []interface{}{tagID, *userID, limit}
 	} else {
-		// Subsequent pages - use cursor
-		query = `
-			SELECT a.id, a.title, a.url, a.created_at, a.feed_id, COALESCE(f.title, '') as feed_title
-			FROM articles a
-			INNER JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN feeds f ON a.feed_id = f.id
-			WHERE at.feed_tag_id = $1
-			AND a.created_at < $2
-			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $3
-		`
-		args = []interface{}{tagID, cursor, limit}
+		query = fetchArticlesByTagPaginatedWithUserQuery
+		args = []interface{}{tagID, *userID, cursor, limit}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -122,40 +114,30 @@ func (r *TagRepository) FetchArticlesByTag(ctx context.Context, tagID string, cu
 // This allows searching for articles by tag name rather than a specific feed_tag_id,
 // enabling cross-feed tag discovery for the Tag Trail feature.
 func (r *TagRepository) FetchArticlesByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	return r.FetchArticlesByTagNameForUser(ctx, tagName, userIDFromContext(ctx), cursor, limit)
+}
+
+// FetchArticlesByTagNameForUser retrieves articles associated with a specific tag name owned by userID.
+func (r *TagRepository) FetchArticlesByTagNameForUser(ctx context.Context, tagName string, userID *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
+	}
+	if userID == nil {
+		userID = userIDFromContext(ctx)
+	}
+	if userID == nil || *userID == uuid.Nil {
+		return nil, errors.New("user id is required")
 	}
 
 	var query string
 	var args []interface{}
 
 	if cursor == nil {
-		// First page - no cursor
-		query = `
-			SELECT DISTINCT a.id, a.title, a.url, a.created_at, a.feed_id, COALESCE(f.title, '') as feed_title
-			FROM articles a
-			INNER JOIN article_tags at ON a.id = at.article_id
-			INNER JOIN feed_tags ft ON at.feed_tag_id = ft.id
-			LEFT JOIN feeds f ON a.feed_id = f.id
-			WHERE ft.tag_name = $1
-			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $2
-		`
-		args = []interface{}{tagName, limit}
+		query = fetchArticlesByTagNameFirstPageWithUserQuery
+		args = []interface{}{tagName, *userID, limit}
 	} else {
-		// Subsequent pages - use cursor
-		query = `
-			SELECT DISTINCT a.id, a.title, a.url, a.created_at, a.feed_id, COALESCE(f.title, '') as feed_title
-			FROM articles a
-			INNER JOIN article_tags at ON a.id = at.article_id
-			INNER JOIN feed_tags ft ON at.feed_tag_id = ft.id
-			LEFT JOIN feeds f ON a.feed_id = f.id
-			WHERE ft.tag_name = $1
-			AND a.created_at < $2
-			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $3
-		`
-		args = []interface{}{tagName, cursor, limit}
+		query = fetchArticlesByTagNamePaginatedWithUserQuery
+		args = []interface{}{tagName, *userID, cursor, limit}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -183,14 +165,4 @@ func (r *TagRepository) FetchArticlesByTagName(ctx context.Context, tagName stri
 
 	logger.Logger.InfoContext(ctx, "fetched articles by tag name from database", "tagName", tagName, "count", len(articles))
 	return articles, nil
-}
-
-// FetchArticlesByTagForUser retrieves articles associated with a specific tag owned by userID.
-func (r *TagRepository) FetchArticlesByTagForUser(ctx context.Context, tagID string, _ *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
-	return r.FetchArticlesByTag(ctx, tagID, cursor, limit)
-}
-
-// FetchArticlesByTagNameForUser retrieves articles associated with a specific tag name owned by userID.
-func (r *TagRepository) FetchArticlesByTagNameForUser(ctx context.Context, tagName string, _ *uuid.UUID, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
-	return r.FetchArticlesByTagName(ctx, tagName, cursor, limit)
 }
