@@ -76,11 +76,13 @@ class RedisCacheGateway(CachePort):
             raise
         except Exception as e:
             logger.error(
-                "Failed to connect to Redis, cache will be disabled",
-                extra={"error": str(e)},
+                "Failed to connect to Redis; refusing to start with cache silently disabled",
+                extra={
+                    "url": self._sanitize_url(self.config.cache_redis_url),
+                    "error": str(e),
+                },
             )
-            self._enabled = False
-            self._client = None
+            raise
 
     async def cleanup(self) -> None:
         """Cleanup Redis connection resources."""

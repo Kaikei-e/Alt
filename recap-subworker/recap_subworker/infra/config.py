@@ -43,20 +43,16 @@ class Settings(BaseSettings):
         password_file = os.getenv("RECAP_SUBWORKER_DB_PASSWORD_FILE")
         if password_file and not self.recap_db_password:
             try:
-                with Path(password_file).open() as f:
-                    self.recap_db_password = SecretStr(f.read().strip())
+                password = Path(password_file).read_text(encoding="utf-8").strip()
             except OSError as exc:
-                # Fall back to secrets_dir or default, but surface misconfiguration.
-                import structlog
+                raise ValueError(
+                    f"RECAP_SUBWORKER_DB_PASSWORD_FILE {password_file} not found or unreadable: {exc}"
+                ) from exc
+            if not password:
+                raise ValueError(f"RECAP_SUBWORKER_DB_PASSWORD_FILE {password_file} is empty")
+            self.recap_db_password = SecretStr(password)
 
-                structlog.get_logger(__name__).warning(
-                    "db_password_file_read_failed",
-                    path=password_file,
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-
-        if self.recap_db_password:
+        if self.recap_db_password and self.recap_db_password.get_secret_value():
             db_url_str = (
                 self.db_url.get_secret_value()
                 if isinstance(self.db_url, SecretStr)

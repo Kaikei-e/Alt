@@ -143,18 +143,22 @@ class LLMConfig:
 
 
 def _get_int(name: str, default: int) -> int:
-    """Get integer value from environment variable with fallback."""
-    try:
-        return int(os.getenv(name, default))
-    except ValueError:
-        logger.warning("Invalid int for %s. Using default %s", name, default)
+    """Get integer value from environment variable."""
+    raw = os.getenv(name)
+    if raw is None:
         return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid integer value for {name}: {raw!r}") from exc
 
 
 def _get_float(name: str, default: float) -> float:
-    """Get float value from environment variable with fallback."""
-    try:
-        return float(os.getenv(name, default))
-    except ValueError:
-        logger.warning("Invalid float for %s. Using default %s", name, default)
+    """Get float value from environment variable."""
+    raw = os.getenv(name)
+    if raw is None:
         return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid float value for {name}: {raw!r}") from exc

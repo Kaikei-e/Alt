@@ -466,7 +466,7 @@ def test_dependency_container_wires_real_cache_when_cache_enabled_true(
 ):
     """CACHE_ENABLED=true must produce a real RedisCacheGateway wired into
     RecapSummaryUsecase -- not a silently-ignored config value (CLAUDE.md
-    rule 8 / di-wiring.md)."""
+    rule 8 / di-wiring.md), and must not log cache_enabled before connecting."""
     from news_creator.gateway.redis_cache_gateway import RedisCacheGateway
 
     with caplog.at_level("INFO"):
@@ -475,7 +475,7 @@ def test_dependency_container_wires_real_cache_when_cache_enabled_true(
     assert isinstance(container.cache_gateway, RedisCacheGateway)
     assert container.recap_summary_usecase.cache is container.cache_gateway
     assert container.recap_card_usecase.cache is container.cache_gateway
-    assert any("cache_enabled" in record.message for record in caplog.records)
+    assert not any("cache_enabled" in record.message for record in caplog.records)
 
 
 def test_dependency_container_wires_null_cache_when_cache_enabled_false(
@@ -496,10 +496,10 @@ def test_dependency_container_wires_null_cache_when_cache_enabled_false(
 
 @pytest.mark.asyncio
 async def test_dependency_container_initialize_and_cleanup_manage_cache_lifecycle(
-    monkeypatch,
+    monkeypatch, caplog
 ):
     """initialize()/cleanup() must drive the cache gateway's own lifecycle,
-    not just construct it and forget it."""
+    and log cache_enabled only after initialize() succeeds."""
     import main as main_module
 
     monkeypatch.setattr(
@@ -510,15 +510,47 @@ async def test_dependency_container_initialize_and_cleanup_manage_cache_lifecycl
     monkeypatch.setattr(main_module, "RerankUsecase", _DummyRerankUsecase)
     monkeypatch.setattr(main_module, "RedisCacheGateway", _SpyCacheGateway)
 
-    container = main_module.DependencyContainer()
-    spy_cache = container.cache_gateway
-    assert isinstance(spy_cache, _SpyCacheGateway)
+    with caplog.at_level("INFO"):
+        container = main_module.DependencyContainer()
+        assert not any("cache_enabled" in record.message for record in caplog.records)
 
-    await container.initialize()
-    assert spy_cache.initialized is True
+        spy_cache = container.cache_gateway
+        assert isinstance(spy_cache, _SpyCacheGateway)
+
+        await container.initialize()
+        assert spy_cache.initialized is True
+        assert any("cache_enabled" in record.message for record in caplog.records)
 
     await container.cleanup()
     assert spy_cache.cleaned_up is True
+
+
+@pytest.mark.asyncio
+async def test_dependency_container_does_not_log_cache_enabled_when_connect_fails(
+    monkeypatch, caplog
+):
+    """When cache_gateway.initialize() fails, container.initialize() must raise
+    and never emit cache_enabled."""
+    import main as main_module
+
+    class _FailingCacheGateway(_SpyCacheGateway):
+        async def initialize(self) -> None:
+            raise ConnectionError("Connection refused")
+
+    monkeypatch.setattr(
+        main_module, "NewsCreatorConfig", lambda: _DummyCacheConfig(cache_enabled=True)
+    )
+    monkeypatch.setattr(main_module, "OllamaGateway", _DummyGateway)
+    monkeypatch.setattr(main_module, "ModelWarmupService", _DummyWarmupService)
+    monkeypatch.setattr(main_module, "RerankUsecase", _DummyRerankUsecase)
+    monkeypatch.setattr(main_module, "RedisCacheGateway", _FailingCacheGateway)
+
+    with caplog.at_level("INFO"):
+        container = main_module.DependencyContainer()
+        with pytest.raises(ConnectionError, match="Connection refused"):
+            await container.initialize()
+
+    assert not any("cache_enabled" in record.message for record in caplog.records)
 
 
 @pytest.mark.asyncio
