@@ -261,7 +261,10 @@ func TestGetSummaryVersionByIDContract(t *testing.T) {
 			Method:  "POST",
 			Path:    matchers.String("/services.datahub.v1.DataHubService/GetSummaryVersionByID"),
 			Headers: jsonHeaders(),
-			Body:    map[string]interface{}{"summaryVersionId": prevSummaryID},
+			Body: map[string]interface{}{
+				"summaryVersionId": prevSummaryID,
+				"userId":           statsUserIDValue,
+			},
 		}).
 		WithCompleteResponse(consumer.Response{
 			Status:  200,
@@ -289,7 +292,7 @@ func TestGetSummaryVersionByIDContract(t *testing.T) {
 				return parseErr
 			}
 
-			sv, getErr := gw.GetSummaryVersionByID(context.Background(), versionID)
+			sv, getErr := gw.GetSummaryVersionByID(authedContext(statsUserIDValue), versionID)
 			if getErr != nil {
 				return fmt.Errorf("GetSummaryVersionByID failed: %w", getErr)
 			}

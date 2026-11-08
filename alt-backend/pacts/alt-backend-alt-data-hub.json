@@ -2756,7 +2756,8 @@
       ],
       "request": {
         "body": {
-          "summaryVersionId": "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+          "summaryVersionId": "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
         },
         "headers": {
           "Content-Type": "application/json"
