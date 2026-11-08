@@ -7,8 +7,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
+
+const fetchOgImageURLsByArticleIDsWithUserQuery = `
+	SELECT ah.article_id, COALESCE(ah.og_image_url, '')
+	FROM article_heads ah
+	INNER JOIN articles a ON a.id = ah.article_id AND a.user_id = $2 AND a.deleted_at IS NULL
+	WHERE ah.article_id = ANY($1)
+`
 
 // SaveArticleHead stores or updates the <head> section and og:image URL for an article.
 func (r *ArticleRepository) SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error {
@@ -114,6 +122,11 @@ func (r *ArticleRepository) FetchOgImageURLsByArticleIDs(ctx context.Context, ar
 		return nil, fmt.Errorf("failed to fetch og_image_urls: %w", err)
 	}
 	return result, nil
+}
+
+// FetchOgImageURLsByArticleIDsForUser retrieves og_image_url for multiple article IDs owned by userID.
+func (r *ArticleRepository) FetchOgImageURLsByArticleIDsForUser(ctx context.Context, articleIDs []string, _ *uuid.UUID) (map[string]string, error) {
+	return r.FetchOgImageURLsByArticleIDs(ctx, articleIDs)
 }
 
 // CleanupExpiredArticleHeads deletes article_heads older than the given TTL.

@@ -22,7 +22,7 @@ type OgImagePort interface {
 	GetArticleHead(ctx context.Context, articleID string) (*domain.ArticleHead, error)
 	// BatchGetOgImageURLs omits article ids with no row and rows with no
 	// image, rather than mapping them to the empty string.
-	BatchGetOgImageURLs(ctx context.Context, articleIDs []string) (map[string]string, error)
+	BatchGetOgImageURLs(ctx context.Context, articleIDs []string, userID *uuid.UUID) (map[string]string, error)
 	// ListUnwarmedOgImageURLs is the cache-warmer work list.
 	ListUnwarmedOgImageURLs(ctx context.Context, limit int) ([]string, error)
 	// PurgeExpiredArticleHeads enforces the copyright retention window.

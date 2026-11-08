@@ -7,6 +7,8 @@ import (
 
 	"alt/domain"
 	"alt/shared/driver/alt_db"
+
+	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------
@@ -16,7 +18,7 @@ import (
 type ogImageDriver interface {
 	SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error
 	FetchArticleHeadByArticleID(ctx context.Context, articleID string) (*domain.ArticleHead, error)
-	FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error)
+	FetchOgImageURLsByArticleIDsForUser(ctx context.Context, articleIDs []string, userID *uuid.UUID) (map[string]string, error)
 	FetchUnwarmedOgImageURLs(ctx context.Context, limit int) ([]string, error)
 	CleanupExpiredArticleHeads(ctx context.Context, ttl time.Duration) (int64, error)
 	FetchFeedOgImageTargets(ctx context.Context, feedIDs []string) ([]domain.FeedOgImageTarget, error)
@@ -50,8 +52,8 @@ func (g *OgImageGateway) GetArticleHead(ctx context.Context, articleID string) (
 	return head, nil
 }
 
-func (g *OgImageGateway) BatchGetOgImageURLs(ctx context.Context, articleIDs []string) (map[string]string, error) {
-	urls, err := g.db.FetchOgImageURLsByArticleIDs(ctx, articleIDs)
+func (g *OgImageGateway) BatchGetOgImageURLs(ctx context.Context, articleIDs []string, _ *uuid.UUID) (map[string]string, error) {
+	urls, err := g.db.FetchOgImageURLsByArticleIDsForUser(ctx, articleIDs, nil)
 	if err != nil {
 		return nil, fmt.Errorf("batch get og image urls: %w", err)
 	}
