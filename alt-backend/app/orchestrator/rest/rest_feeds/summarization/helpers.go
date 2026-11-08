@@ -1,8 +1,10 @@
 package summarization
 
 import (
+	stderrors "errors"
 	"net/http"
 
+	"alt/domain"
 	"alt/utils/errors"
 	"alt/utils/logger"
 
@@ -45,6 +47,22 @@ func handleError(c echo.Context, err error, operation string) error {
 				"user_agent":     c.Request().UserAgent(),
 				"request_id":     c.Response().Header().Get("X-Request-ID"),
 				"legacy_context": appErr.Context,
+			},
+		)
+	} else if stderrors.Is(err, domain.ErrArticleNotFound) {
+		enrichedErr = errors.NewAppContextError(
+			"ARTICLE_NOT_FOUND",
+			"article not found",
+			"summarization",
+			"RESTHandler",
+			operation,
+			err,
+			map[string]interface{}{
+				"path":        c.Request().URL.Path,
+				"method":      c.Request().Method,
+				"remote_addr": c.Request().RemoteAddr,
+				"user_agent":  c.Request().UserAgent(),
+				"request_id":  c.Response().Header().Get("X-Request-ID"),
 			},
 		)
 	} else {

@@ -53,6 +53,9 @@ func (h *Handler) StreamSummarize(
 
 	resolvedArticleID, resolvedTitle, resolvedContent, err := h.resolveArticle(ctx, feedURL, articleID, content, title)
 	if err != nil {
+		if errors.Is(err, domain.ErrArticleNotFound) {
+			return connect.NewError(connect.CodeNotFound, errors.New("article not found"))
+		}
 		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamSummarize.ResolveArticle")
 	}
 

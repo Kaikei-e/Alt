@@ -45,8 +45,12 @@ func (h *Handler) MarkSummaryVersionSuperseded(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
+	userID, err := requiredUUID(req.Msg.GetUserId(), "user_id")
+	if err != nil {
+		return nil, err
+	}
 
-	prev, err := h.summaryVersion.MarkSummaryVersionSuperseded(ctx, articleID, newVersionID)
+	prev, err := h.summaryVersion.MarkSummaryVersionSuperseded(ctx, articleID, newVersionID, userID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "MarkSummaryVersionSuperseded failed", "error", err, "article_id", articleID)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to mark summary versions superseded"))
@@ -80,8 +84,12 @@ func (h *Handler) GetLatestSummaryVersion(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, err
 	}
+	userID, err := requiredUUID(req.Msg.GetUserId(), "user_id")
+	if err != nil {
+		return nil, err
+	}
 
-	sv, err := h.summaryVersion.GetLatestSummaryVersion(ctx, articleID)
+	sv, err := h.summaryVersion.GetLatestSummaryVersion(ctx, articleID, userID)
 	if err != nil {
 		return nil, h.versionReadError(ctx, "GetLatestSummaryVersion", err, "article_id", articleID.String())
 	}

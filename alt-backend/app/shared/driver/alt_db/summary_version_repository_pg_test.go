@@ -101,7 +101,7 @@ func TestMarkSummaryVersionSuperseded_ConcurrentKeepsExactlyOneLatest(t *testing
 		go func() {
 			defer wg.Done()
 			<-start
-			_, errs[i] = repo.MarkSummaryVersionSuperseded(ctx, articleID, ids[i])
+			_, errs[i] = repo.MarkSummaryVersionSuperseded(ctx, articleID, ids[i], userID)
 		}()
 	}
 	close(start)
@@ -122,15 +122,15 @@ func TestMarkSummaryVersionSuperseded_LateOlderVersionLosesToTheNewer(t *testing
 	articleID, userID := uuid.New(), uuid.New()
 
 	original := writeSummaryVersionAt(t, repo, articleID, userID, epoch)
-	_, err := repo.MarkSummaryVersionSuperseded(ctx, articleID, original)
+	_, err := repo.MarkSummaryVersionSuperseded(ctx, articleID, original, userID)
 	require.NoError(t, err)
 
 	newer := writeSummaryVersionAt(t, repo, articleID, userID, epoch.Add(2*time.Minute))
-	_, err = repo.MarkSummaryVersionSuperseded(ctx, articleID, newer)
+	_, err = repo.MarkSummaryVersionSuperseded(ctx, articleID, newer, userID)
 	require.NoError(t, err)
 
 	older := writeSummaryVersionAt(t, repo, articleID, userID, epoch.Add(time.Minute))
-	prev, err := repo.MarkSummaryVersionSuperseded(ctx, articleID, older)
+	prev, err := repo.MarkSummaryVersionSuperseded(ctx, articleID, older, userID)
 	require.NoError(t, err)
 	require.Nil(t, prev, "a version that arrives already beaten supersedes nothing, so it must not report a predecessor it did not replace")
 
@@ -143,6 +143,6 @@ func TestMarkSummaryVersionSuperseded_UnknownVersionIsAnError(t *testing.T) {
 	articleID, userID := uuid.New(), uuid.New()
 	writeSummaryVersionAt(t, repo, articleID, userID, epoch)
 
-	_, err := repo.MarkSummaryVersionSuperseded(context.Background(), articleID, uuid.New())
+	_, err := repo.MarkSummaryVersionSuperseded(context.Background(), articleID, uuid.New(), userID)
 	require.Error(t, err, "naming a version that was never written is a wiring fault, not a no-op")
 }

@@ -174,8 +174,12 @@ func TestMarkSummaryVersionSupersededContract(t *testing.T) {
 			if parseErr != nil {
 				return parseErr
 			}
+			userID, parseErr := parseTestUUID(statsUserIDValue)
+			if parseErr != nil {
+				return parseErr
+			}
 
-			prev, markErr := gw.MarkSummaryVersionSuperseded(authedContext(statsUserIDValue), articleID, newID)
+			prev, markErr := gw.MarkSummaryVersionSuperseded(context.Background(), articleID, newID, userID)
 			if markErr != nil {
 				return fmt.Errorf("MarkSummaryVersionSuperseded failed: %w", markErr)
 			}
@@ -228,8 +232,12 @@ func TestMarkSummaryVersionSupersededFirstVersionContract(t *testing.T) {
 			if parseErr != nil {
 				return parseErr
 			}
+			userID, parseErr := parseTestUUID(statsUserIDValue)
+			if parseErr != nil {
+				return parseErr
+			}
 
-			prev, markErr := gw.MarkSummaryVersionSuperseded(authedContext(statsUserIDValue), articleID, newID)
+			prev, markErr := gw.MarkSummaryVersionSuperseded(context.Background(), articleID, newID, userID)
 			if markErr != nil {
 				return fmt.Errorf("MarkSummaryVersionSuperseded failed: %w", markErr)
 			}

@@ -53,9 +53,18 @@ func (r *SummaryRepository) CreateSummaryVersion(ctx context.Context, sv domain.
 // made two serialized calls undo each other: each superseded the other's row,
 // and the article ended up with every version pointing at a successor and no
 // current summary at all.
-func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
+func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID, userID uuid.UUID) (*domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.MarkSummaryVersionSuperseded")
 	defer span.End()
+
+	if userID == uuid.Nil {
+		if u := userIDFromContext(ctx); u != nil {
+			userID = *u
+		}
+	}
+	if userID == uuid.Nil {
+		return nil, errors.New("user id is required")
+	}
 
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -72,8 +81,8 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 	// silent no-op would leave the article's summary frozen with nothing said.
 	var newGeneratedAt time.Time
 	err = tx.QueryRow(ctx,
-		`SELECT generated_at FROM summary_versions WHERE summary_version_id = $1`,
-		newVersionID).Scan(&newGeneratedAt)
+		`SELECT generated_at FROM summary_versions WHERE summary_version_id = $1 AND user_id = $2`,
+		newVersionID, userID).Scan(&newGeneratedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("MarkSummaryVersionSuperseded: summary version %s does not exist", newVersionID)
@@ -86,14 +95,14 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 	// transaction with exactly one version that no other supersedes.
 	var winner uuid.UUID
 	err = tx.QueryRow(ctx, `SELECT summary_version_id FROM summary_versions
-		WHERE article_id = $1 AND superseded_by IS NULL
-		  AND (generated_at, summary_version_id) > ($2, $3)
+		WHERE article_id = $1 AND user_id = $2 AND superseded_by IS NULL
+		  AND (generated_at, summary_version_id) > ($3, $4)
 		ORDER BY generated_at DESC, summary_version_id DESC
-		LIMIT 1`, articleID, newGeneratedAt, newVersionID).Scan(&winner)
+		LIMIT 1`, articleID, userID, newGeneratedAt, newVersionID).Scan(&winner)
 	switch {
 	case err == nil:
 		if _, err := tx.Exec(ctx, `UPDATE summary_versions SET superseded_by = $1
-			WHERE summary_version_id = $2 AND superseded_by IS NULL`, winner, newVersionID); err != nil {
+			WHERE summary_version_id = $2 AND user_id = $3 AND superseded_by IS NULL`, winner, newVersionID, userID); err != nil {
 			return nil, fmt.Errorf("MarkSummaryVersionSuperseded yield to newer: %w", err)
 		}
 		if err := tx.Commit(ctx); err != nil {
@@ -105,8 +114,8 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 		return nil, fmt.Errorf("MarkSummaryVersionSuperseded select newer: %w", err)
 	}
 
-	const olderThanNew = `article_id = $1 AND superseded_by IS NULL
-		AND (generated_at, summary_version_id) < ($2, $3)`
+	const olderThanNew = `article_id = $1 AND user_id = $2 AND superseded_by IS NULL
+		AND (generated_at, summary_version_id) < ($3, $4)`
 
 	var prev domain.SummaryVersion
 	err = tx.QueryRow(ctx, `SELECT summary_version_id, article_id, user_id, generated_at,
@@ -115,7 +124,7 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 		FROM summary_versions
 		WHERE `+olderThanNew+`
 		ORDER BY generated_at DESC, summary_version_id DESC
-		LIMIT 1`, articleID, newGeneratedAt, newVersionID).Scan(
+		LIMIT 1`, articleID, userID, newGeneratedAt, newVersionID).Scan(
 		&prev.SummaryVersionID, &prev.ArticleID, &prev.UserID, &prev.GeneratedAt,
 		&prev.Model, &prev.PromptVersion, &prev.InputHash, &prev.QualityScore,
 		&prev.SummaryText, &prev.SupersededBy,
@@ -123,8 +132,8 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 	switch {
 	case err == nil:
 		if _, err := tx.Exec(ctx, `UPDATE summary_versions
-			SET superseded_by = $4
-			WHERE `+olderThanNew, articleID, newGeneratedAt, newVersionID, newVersionID); err != nil {
+			SET superseded_by = $5
+			WHERE `+olderThanNew, articleID, userID, newGeneratedAt, newVersionID, newVersionID); err != nil {
 			return nil, fmt.Errorf("MarkSummaryVersionSuperseded update: %w", err)
 		}
 
@@ -185,38 +194,34 @@ func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVe
 
 // GetLatestSummaryVersion returns the latest non-superseded summary version for an article.
 func (r *SummaryRepository) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error) {
+	return r.GetLatestSummaryVersionForUser(ctx, articleID, userIDFromContext(ctx))
+}
+
+// GetLatestSummaryVersionForUser returns the latest non-superseded summary version for an article scoped to userID.
+func (r *SummaryRepository) GetLatestSummaryVersionForUser(ctx context.Context, articleID uuid.UUID, userID *uuid.UUID) (domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetLatestSummaryVersion")
 	defer span.End()
 
-	var sv domain.SummaryVersion
-	var err error
-	if user, userErr := domain.GetUserFromContext(ctx); userErr == nil && user != nil && user.UserID != uuid.Nil {
-		query := `SELECT summary_version_id, article_id, user_id, generated_at,
-			model, prompt_version, input_hash, quality_score,
-			summary_text, superseded_by
-			FROM summary_versions
-			WHERE article_id = $1 AND user_id = $2 AND superseded_by IS NULL
-			ORDER BY generated_at DESC
-			LIMIT 1`
-		err = r.pool.QueryRow(ctx, query, articleID, user.UserID).Scan(
-			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
-			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
-			&sv.SummaryText, &sv.SupersededBy,
-		)
-	} else {
-		query := `SELECT summary_version_id, article_id, user_id, generated_at,
-			model, prompt_version, input_hash, quality_score,
-			summary_text, superseded_by
-			FROM summary_versions
-			WHERE article_id = $1 AND superseded_by IS NULL
-			ORDER BY generated_at DESC
-			LIMIT 1`
-		err = r.pool.QueryRow(ctx, query, articleID).Scan(
-			&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
-			&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
-			&sv.SummaryText, &sv.SupersededBy,
-		)
+	if userID == nil {
+		userID = userIDFromContext(ctx)
 	}
+	if userID == nil || *userID == uuid.Nil {
+		return domain.SummaryVersion{}, errors.New("user id is required")
+	}
+
+	var sv domain.SummaryVersion
+	query := `SELECT summary_version_id, article_id, user_id, generated_at,
+		model, prompt_version, input_hash, quality_score,
+		summary_text, superseded_by
+		FROM summary_versions
+		WHERE article_id = $1 AND user_id = $2 AND superseded_by IS NULL
+		ORDER BY generated_at DESC
+		LIMIT 1`
+	err := r.pool.QueryRow(ctx, query, articleID, *userID).Scan(
+		&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
+		&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
+		&sv.SummaryText, &sv.SupersededBy,
+	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return domain.SummaryVersion{}, fmt.Errorf("no summary version found for article %s", articleID)

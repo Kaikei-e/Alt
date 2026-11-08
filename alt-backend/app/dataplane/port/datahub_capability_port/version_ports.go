@@ -38,13 +38,13 @@ type SummaryVersionPort interface {
 	// mark the other, and the article ends up with no current version at all.
 	// Row-level locking does not help — each call's WHERE excludes only its
 	// own new id, so the two UPDATEs never touch the same row.
-	MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.SummaryVersion, error)
+	MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID, userID uuid.UUID) (*domain.SummaryVersion, error)
 	// GetSummaryVersionByID is the reproject-safe read: the version an old
 	// event named, not whichever is current now.
 	GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error)
 	// GetLatestSummaryVersion is the current version — the one nothing has
 	// superseded.
-	GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error)
+	GetLatestSummaryVersion(ctx context.Context, articleID, userID uuid.UUID) (domain.SummaryVersion, error)
 }
 
 //go:generate go run go.uber.org/mock/mockgen -destination=../../../mocks/mock_tag_set_version_port.go -package=mocks alt/dataplane/port/datahub_capability_port CreateTagSetVersionPort,GetTagSetVersionByIDPort,MarkTagSetVersionSupersededPort

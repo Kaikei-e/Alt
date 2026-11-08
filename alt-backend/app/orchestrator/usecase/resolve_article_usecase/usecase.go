@@ -41,16 +41,22 @@ func (u *Usecase) ResolveArticle(ctx context.Context, feedURL, articleID, conten
 		if err != nil {
 			return "", "", "", fmt.Errorf("failed to fetch article by ID: %w", err)
 		}
-		if article != nil && article.Content != "" {
+		if article == nil {
+			return "", "", "", domain.ErrArticleNotFound
+		}
+		if article.Content != "" {
 			if title == "" {
 				title = article.Title
 			}
 			return articleID, title, article.Content, nil
 		}
 		if content != "" {
+			if title == "" {
+				title = article.Title
+			}
 			return articleID, title, content, nil
 		}
-		return "", "", "", fmt.Errorf("article not found or content is empty")
+		return "", "", "", fmt.Errorf("article content is empty")
 	}
 
 	if feedURL == "" {
