@@ -166,6 +166,7 @@ type updateJobStatusCall struct {
 	status   domain.SummarizeJobStatus
 	summary  string
 	errorMsg string
+	ctxErr   error
 }
 
 func (m *stubJobRepoTracking) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
@@ -176,7 +177,7 @@ func (m *stubJobRepoTracking) DequeueJobs(_ context.Context, _ int) ([]*domain.S
 	return m.jobs, nil
 }
 
-func (m *stubJobRepoTracking) UpdateJobStatus(_ context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMsg string) error {
+func (m *stubJobRepoTracking) UpdateJobStatus(ctx context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMsg string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.updateCalls = append(m.updateCalls, updateJobStatusCall{
@@ -184,6 +185,7 @@ func (m *stubJobRepoTracking) UpdateJobStatus(_ context.Context, jobID string, s
 		status:   status,
 		summary:  summary,
 		errorMsg: errorMsg,
+		ctxErr:   ctx.Err(),
 	})
 	return nil
 }
@@ -243,6 +245,44 @@ func TestSummarizeQueueWorker_ProcessQueue_ServiceOverloaded(t *testing.T) {
 			"should stop after first overloaded response")
 		assert.Equal(t, 1, articleRepo.findCalls,
 			"should only fetch article for the first job")
+	})
+
+	t.Run("should release remaining dequeued jobs back to pending when first job is overloaded", func(t *testing.T) {
+		ctx := context.Background()
+
+		job1 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "article-1", MaxRetries: 3}
+		job2 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "article-2", MaxRetries: 3}
+		job3 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "article-3", MaxRetries: 3}
+		jobs := []*domain.SummarizeJob{job1, job2, job3}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoOverloaded{}
+		summaryRepo := &stubSummaryRepoForWorker{}
+
+		worker := NewSummarizeQueueWorker(
+			jobRepo,
+			articleRepo,
+			apiRepo,
+			summaryRepo,
+			testLogger(),
+			10,
+		)
+
+		err := worker.ProcessQueue(ctx)
+		assert.ErrorIs(t, err, domain.ErrServiceOverloaded)
+		assert.Equal(t, 1, apiRepo.summarizeCalls)
+
+		if assert.Len(t, jobRepo.updateCalls, 3, "first job fails and the 2 unprocessed jobs must be released back to pending") {
+			assert.Equal(t, job1.JobID.String(), jobRepo.updateCalls[0].jobID)
+			assert.Equal(t, domain.SummarizeJobStatusFailed, jobRepo.updateCalls[0].status)
+
+			assert.Equal(t, job2.JobID.String(), jobRepo.updateCalls[1].jobID)
+			assert.Equal(t, domain.SummarizeJobStatusPending, jobRepo.updateCalls[1].status)
+
+			assert.Equal(t, job3.JobID.String(), jobRepo.updateCalls[2].jobID)
+			assert.Equal(t, domain.SummarizeJobStatusPending, jobRepo.updateCalls[2].status)
+		}
 	})
 }
 
@@ -389,11 +429,48 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 		err := worker.ProcessQueue(ctx)
 		assert.NoError(t, err)
 
-		// No jobs should be processed because context was canceled after GetPendingJobs
+		// No jobs should be processed because context was canceled after DequeueJobs,
+		// and all dequeued jobs must be released back to pending.
 		assert.Equal(t, 0, articleRepo.findCalls,
 			"no articles should be fetched when context is canceled before processing jobs")
-		assert.Equal(t, 0, jobRepo.updateCalls,
-			"no job status updates should occur when context is canceled")
+		assert.Equal(t, len(jobs), jobRepo.updateCalls,
+			"dequeued jobs should be released back to pending when context is canceled")
+	})
+
+	t.Run("should release dequeued jobs with a valid context when context is already canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: uuid.New(), ArticleID: "article-1", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-2", MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoForWorker{}
+		summaryRepo := &stubSummaryRepoForWorker{}
+
+		worker := NewSummarizeQueueWorker(
+			jobRepo,
+			articleRepo,
+			apiRepo,
+			summaryRepo,
+			testLogger(),
+			10,
+		)
+
+		err := worker.ProcessQueue(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, articleRepo.findCalls)
+
+		if assert.Len(t, jobRepo.updateCalls, 2, "all dequeued jobs must be released back to pending") {
+			for i, call := range jobRepo.updateCalls {
+				assert.Equal(t, jobs[i].JobID.String(), call.jobID)
+				assert.Equal(t, domain.SummarizeJobStatusPending, call.status)
+				assert.NoError(t, call.ctxErr, "release must use a valid context even when worker ctx is canceled")
+			}
+		}
 	})
 
 	t.Run("should process zero jobs when context is already canceled", func(t *testing.T) {
