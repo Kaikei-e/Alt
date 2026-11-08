@@ -10,6 +10,7 @@ import (
 	"alt/orchestrator/usecase/answer_chat_usecase"
 	"alt/orchestrator/usecase/retrieve_context_usecase"
 	"alt/utils/logger"
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -88,7 +89,10 @@ func (h *AugurHandler) Answer(c echo.Context) error {
 		Stream: req.Stream,
 	}
 
-	answerChan, err := h.answerChatUsecase.Execute(c.Request().Context(), input)
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
+
+	answerChan, err := h.answerChatUsecase.Execute(ctx, input)
 	if err != nil {
 		return resterr.HandleError(c, err, "Answer")
 	}

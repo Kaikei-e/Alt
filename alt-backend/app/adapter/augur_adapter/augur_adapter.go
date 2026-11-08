@@ -9,6 +9,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -191,6 +192,8 @@ func (a *AugurAdapter) Answer(ctx context.Context, input rag_integration_port.An
 			return nil, fmt.Errorf("failed to call AnswerWithRAGStream: %w", err)
 		}
 		if resp.StatusCode != http.StatusOK {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("rag-orchestrator returned status %d", resp.StatusCode)
 		}
 
@@ -212,7 +215,11 @@ func (a *AugurAdapter) Answer(ctx context.Context, input rag_integration_port.An
 			for {
 				n, err := resp.Body.Read(buf)
 				if n > 0 {
-					resultChan <- string(buf[:n])
+					select {
+					case resultChan <- string(buf[:n]):
+					case <-ctx.Done():
+						return
+					}
 				}
 				if err != nil {
 					break
@@ -230,7 +237,10 @@ func (a *AugurAdapter) Answer(ctx context.Context, input rag_integration_port.An
 		if resp.JSON200 != nil && resp.JSON200.Answer != nil {
 			go func() {
 				defer close(resultChan)
-				resultChan <- *resp.JSON200.Answer
+				select {
+				case resultChan <- *resp.JSON200.Answer:
+				case <-ctx.Done():
+				}
 			}()
 		} else {
 			close(resultChan)
