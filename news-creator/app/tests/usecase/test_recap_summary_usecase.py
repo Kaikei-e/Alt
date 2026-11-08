@@ -3317,3 +3317,63 @@ def test_sanitize_summary_payload_strips_javascript_and_data_source_urls():
     assert refs[0]["id"] == 3
     assert refs[0]["url"] == "https://example.com/valid"
     assert "source_url" not in refs[0]
+
+
+def test_parse_summary_json_strips_unterminated_thinking_block():
+    """An unterminated thinking block must be stripped in _parse_summary_json:
+    thinking-only output raises RuntimeError, while JSON before the marker is kept."""
+    usecase = RecapSummaryUsecase(
+        config=_create_mock_config(), llm_provider=AsyncMock()
+    )
+
+    thinking_only = (
+        "<|channel>thought\n"
+        'Drafting candidate: {"title": "思考中", "bullets": ["推論テキスト"], "language": "ja"}'
+    )
+    with pytest.raises(RuntimeError):
+        usecase._parse_summary_json(thinking_only, max_bullets=5)
+
+    json_then_unterminated = (
+        '{"title": "確定タイトル", "bullets": ["確定した要点"], "language": "ja"}'
+        '<|channel>thought\nUnfinished trailing thought {"title": "漏洩"}'
+    )
+    parsed, parse_errors = usecase._parse_summary_json(
+        json_then_unterminated, max_bullets=5
+    )
+    assert parse_errors == 0
+    assert parsed["title"] == "確定タイトル"
+    assert parsed["bullets"] == ["確定した要点"]
+
+
+def test_parse_intermediate_summary_json_strips_unterminated_thinking_block():
+    """An unterminated thinking block must be stripped in _parse_intermediate_summary_json:
+    thinking-only output fails as empty, while JSON before the marker is kept."""
+    usecase = RecapSummaryUsecase(
+        config=_create_mock_config(), llm_provider=AsyncMock()
+    )
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[RepresentativeSentence(text="本文。")],
+            )
+        ],
+    )
+
+    thinking_only = (
+        "<|channel>thought\n"
+        'Drafting intermediate: {"bullets": ["思考中の下書き要点"], "language": "ja"}'
+    )
+    with pytest.raises(Exception):
+        usecase._parse_intermediate_summary_json(thinking_only, request)
+
+    json_then_unterminated = (
+        '{"bullets": ["確定した中間要点"], "language": "ja"}'
+        '<|channel>thought\nUnfinished trailing thought {"bullets": ["漏洩"]}'
+    )
+    intermediate = usecase._parse_intermediate_summary_json(
+        json_then_unterminated, request
+    )
+    assert intermediate.bullets == ["確定した中間要点"]

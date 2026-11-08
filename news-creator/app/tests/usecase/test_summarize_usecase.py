@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 from contextlib import asynccontextmanager
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.errors import PreemptedException
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 
@@ -347,6 +348,99 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         )
         assert summary
 
+    @pytest.mark.asyncio
+    async def test_hierarchical_propagates_high_priority_to_hold_slot(self):
+        """High-priority requests that switch to hierarchical summarization must
+        acquire every map and reduce slot with is_high_priority=True."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        recorded_priorities: list[bool] = []
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            recorded_priorities.append(is_high_priority)
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response("チャンクおよび最終要約。")
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        summary, _ = await usecase.generate_summary(
+            article_id="art-1", content="A" * 25_000, priority="high"
+        )
+
+        assert summary
+        assert len(recorded_priorities) >= 2
+        assert all(p is True for p in recorded_priorities)
+
+    @pytest.mark.asyncio
+    async def test_token_budget_hierarchical_propagates_high_priority_to_hold_slot(
+        self,
+    ):
+        """High-priority requests that fall back to hierarchical summarization via
+        the token-budget check must also pass is_high_priority=True to hold_slot."""
+        config = _make_config()
+        config.summary_num_predict = 1000
+        config.hierarchical_token_budget_percent = 75
+        config.hierarchical_single_article_threshold = 100_000
+        llm_provider = Mock()
+
+        recorded_priorities: list[bool] = []
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            recorded_priorities.append(is_high_priority)
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response("チャンクおよび最終要約。")
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        summary, _ = await usecase.generate_summary(
+            article_id="art-1", content="A" * 22_000, priority="high"
+        )
+
+        assert summary
+        assert len(recorded_priorities) >= 2
+        assert all(p is True for p in recorded_priorities)
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_map_phase_reraises_preempted_exception(self):
+        """PreemptedException in a map chunk must propagate immediately instead
+        of being swallowed by the best-effort per-chunk except Exception handler."""
+        config = _make_config()
+        config.hierarchical_single_article_threshold = 1_000
+        config.hierarchical_single_article_chunk_size = 500
+        llm_provider = Mock()
+
+        hold_slot_calls = 0
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            nonlocal hold_slot_calls
+            hold_slot_calls += 1
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            side_effect=PreemptedException("preempted during map chunk")
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        with pytest.raises(PreemptedException, match="preempted during map chunk"):
+            await usecase.generate_summary("art-preempt", "A" * 2_000)
+
+        assert hold_slot_calls == 1
+        assert llm_provider.generate_raw.call_count == 1
+
 
 # --- Gemma 4 token cleanup tests ---
 
@@ -379,6 +473,143 @@ class TestGemma4TokenCleanup:
         assert "内部推論" not in cleaned
         assert "実際の出力" in cleaned
         assert "続きの出力" in cleaned
+
+    @pytest.mark.asyncio
+    async def test_thinking_only_output_raises_runtime_error_not_leaked_via_fallback(
+        self,
+    ):
+        """An output that is entirely a thinking block must be treated as empty and
+        raise RuntimeError instead of promoting chain-of-thought text via fallback."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response(
+                "<|channel>thought\nInternal reasoning about the article that exceeds ten chars.\n<channel|>"
+            )
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        with pytest.raises(RuntimeError):
+            await usecase.generate_summary("art-thought-only", "A" * 200)
+
+    @pytest.mark.asyncio
+    async def test_fallback_strips_thinking_block_and_sanitizes_markdown(self):
+        """When _clean_summary_text returns empty (e.g. bold-only line) alongside a
+        thinking block, fallback must strip the thinking block body and sanitize markdown."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response(
+                "<|channel>thought\nInternal reasoning that must never leak.\n<channel|>\n**要約 [リンク](javascript:alert(1))**"
+            )
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        summary, _ = await usecase.generate_summary("art-fallback", "A" * 200)
+
+        assert "Internal reasoning" not in summary
+        assert "javascript:" not in summary
+        assert "要約" in summary
+
+    @pytest.mark.asyncio
+    async def test_unterminated_thinking_only_output_raises_runtime_error(self):
+        """An output truncated inside a thinking block without <channel|> must be
+        stripped to empty by _clean_summary_text and raise RuntimeError."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response(
+                "<|channel>thought\nInternal reasoning that never closes and exceeds ten chars"
+            )
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        with pytest.raises(RuntimeError, match="empty summary after cleaning"):
+            await usecase.generate_summary("art-unterminated-thought", "A" * 200)
+
+    @pytest.mark.asyncio
+    async def test_summary_followed_by_unterminated_thinking_block_returns_only_summary(
+        self,
+    ):
+        """Text before an unterminated thinking block is kept while the trailing
+        unterminated thinking block is stripped."""
+        config = _make_config()
+        llm_provider = Mock()
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(
+            return_value=_make_llm_response(
+                "実際の要約文です。<|channel>thought\nInternal reasoning that never closes"
+            )
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        summary, _ = await usecase.generate_summary(
+            "art-partial-unterminated", "A" * 200
+        )
+
+        assert summary == "実際の要約文です。"
+        assert "<|channel>thought" not in summary
+        assert "Internal reasoning" not in summary
+
+    def test_two_closed_thinking_blocks_keep_text_between(self):
+        """Two closed thinking blocks must not greedily span across the text between them."""
+        config = _make_config()
+        usecase = SummarizeUsecase(config=config, llm_provider=AsyncMock())
+
+        text = (
+            "<|channel>thought\n最初の思考<channel|>"
+            "中間の要約テキスト。"
+            "<|channel>thought\n二番目の思考<channel|>"
+            "末尾の要約テキスト。"
+        )
+        cleaned = usecase._clean_summary_text(text, "test-article")
+
+        assert "最初の思考" not in cleaned
+        assert "二番目の思考" not in cleaned
+        assert "中間の要約テキスト。" in cleaned
+        assert "末尾の要約テキスト。" in cleaned
+
+    def test_closed_thinking_block_followed_by_unterminated_keeps_middle_text(self):
+        """A closed thinking block followed by text and an unterminated thinking block
+        keeps only the text before the unterminated marker."""
+        config = _make_config()
+        usecase = SummarizeUsecase(config=config, llm_provider=AsyncMock())
+
+        text = (
+            "<|channel>thought\n最初の思考<channel|>"
+            "保持されるべき要約文。"
+            "<|channel>thought\n閉じられない思考と残りのテキスト"
+        )
+        cleaned = usecase._clean_summary_text(text, "test-article")
+
+        assert cleaned == "保持されるべき要約文。"
+        assert "最初の思考" not in cleaned
+        assert "閉じられない思考" not in cleaned
 
 
 class TestStreamingOutputGuardIsWired:

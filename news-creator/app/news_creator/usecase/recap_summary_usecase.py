@@ -25,7 +25,7 @@ from news_creator.domain.prompt_boundary import (
     sanitize_untrusted_content,
     wrap_untrusted_content_with_report,
 )
-from news_creator.domain.prompts import wrap_gemma_prompt
+from news_creator.domain.prompts import _THINKING_BLOCK_RE, wrap_gemma_prompt
 from news_creator.domain.models import (
     BatchRecapSummaryError,
     BatchRecapSummaryRequest,
@@ -1859,9 +1859,7 @@ class RecapSummaryUsecase:
             raise RuntimeError("LLM returned empty response for recap summary")
 
         # Strip Gemma 4 thinking blocks before JSON parse
-        content = re.sub(
-            r"<\|channel>thought.*?<channel\|>", "", content, flags=re.DOTALL
-        )
+        content = _THINKING_BLOCK_RE.sub("", content)
 
         parse_errors = 0
         try:
@@ -1909,9 +1907,7 @@ class RecapSummaryUsecase:
             )
 
         # Strip Gemma 4 thinking blocks before JSON parse
-        content = re.sub(
-            r"<\|channel>thought.*?<channel\|>", "", content, flags=re.DOTALL
-        )
+        content = _THINKING_BLOCK_RE.sub("", content)
 
         try:
             parsed = json.loads(content)

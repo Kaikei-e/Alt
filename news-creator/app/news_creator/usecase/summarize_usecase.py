@@ -7,6 +7,7 @@ from typing import AsyncGenerator, AsyncIterator
 from datetime import datetime, timedelta, timezone
 import aiohttp
 
+from news_creator.domain.errors import PreemptedException
 from news_creator.domain.models import LLMGenerateResponse, SummaryMetadata
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.output_guard import (
@@ -14,8 +15,9 @@ from news_creator.domain.output_guard import (
     sanitize_output_markdown,
 )
 from news_creator.domain.prompts import (
-    SUMMARY_PROMPT_TEMPLATE,
     CHUNK_SUMMARY_PROMPT_TEMPLATE,
+    SUMMARY_PROMPT_TEMPLATE,
+    _THINKING_BLOCK_RE,
 )
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
@@ -144,7 +146,9 @@ class SummarizeUsecase:
                     "threshold": self.config.hierarchical_single_article_threshold,
                 },
             )
-            return await self._generate_hierarchical_summary(article_id, content)
+            return await self._generate_hierarchical_summary(
+                article_id, content, priority=priority
+            )
 
         truncated_content = content.strip()[:MAX_CONTENT_LENGTH]
 
@@ -275,7 +279,9 @@ class SummarizeUsecase:
                     "context_window": context_window,
                 },
             )
-            return await self._generate_hierarchical_summary(article_id, content)
+            return await self._generate_hierarchical_summary(
+                article_id, content, priority=priority
+            )
 
         # Hold one slot across repetition retries so retries do not re-queue.
         max_retries = self.config.max_repetition_retries
@@ -491,21 +497,22 @@ class SummarizeUsecase:
                 },
             )
 
-            # Minimal fallback cleaning: just remove turn tokens and trim
+            # Minimal fallback cleaning: strip thinking blocks, remove turn tokens, and sanitize
             fallback_summary = raw_summary
             if fallback_summary:
+                fallback_summary = _THINKING_BLOCK_RE.sub("", fallback_summary)
                 fallback_summary = (
                     fallback_summary.replace("<start_of_turn>", "")
                     .replace("<end_of_turn>", "")
                     .replace("<|turn>", "")
                     .replace("<turn|>", "")
-                    .replace("<|channel>thought", "")
                     .replace("<channel|>", "")
                     .replace("<|system|>", "")
                     .replace("<|user|>", "")
                     .replace("<|assistant|>", "")
                     .strip()
                 )
+                fallback_summary = sanitize_output_markdown(fallback_summary).strip()
 
             if not fallback_summary or not fallback_summary.strip():
                 # Check if prompt might have been truncated
@@ -578,7 +585,7 @@ class SummarizeUsecase:
         return truncated_summary, metadata
 
     async def _generate_hierarchical_summary(
-        self, article_id: str, content: str
+        self, article_id: str, content: str, priority: str = "low"
     ) -> tuple[str, SummaryMetadata]:
         """
         Generate a summary for a large article using Hierarchical (Map-Reduce) strategy.
@@ -589,11 +596,13 @@ class SummarizeUsecase:
         Args:
             article_id: Article identifier
             content: Full article content
+            priority: Request priority ("high" or "low")
 
         Returns:
             Tuple of (summary text, metadata dict)
         """
         start_time = time.time()
+        is_high_priority = priority == "high"
 
         chunk_size = self.config.hierarchical_single_article_chunk_size
         chunks = []
@@ -633,7 +642,9 @@ class SummarizeUsecase:
 
             try:
                 # Use hold_slot + generate_raw so DistributingGateway can dispatch to remote
-                async with self.llm_provider.hold_slot(is_high_priority=False) as (
+                async with self.llm_provider.hold_slot(
+                    is_high_priority=is_high_priority
+                ) as (
                     _wait_time,
                     cancel_event,
                     task_id,
@@ -660,6 +671,8 @@ class SummarizeUsecase:
                 if chunk_resp.eval_count:
                     total_completion_tokens += chunk_resp.eval_count
 
+            except PreemptedException:
+                raise
             except Exception as e:
                 logger.error(
                     f"Failed to summarize chunk {i}",
@@ -698,7 +711,7 @@ class SummarizeUsecase:
         }
 
         # Reduce phase also uses hold_slot + generate_raw (BE path)
-        async with self.llm_provider.hold_slot(is_high_priority=False) as (
+        async with self.llm_provider.hold_slot(is_high_priority=is_high_priority) as (
             _wait_time,
             cancel_event,
             task_id,
@@ -1061,10 +1074,8 @@ class SummarizeUsecase:
                 },
             )
 
-        # Strip Gemma 4 thinking blocks (<|channel>thought\n...<channel|>)
-        cleaned = re.sub(
-            r"<\|channel>thought.*?<channel\|>", "", cleaned, flags=re.DOTALL
-        )
+        # Strip Gemma 4 thinking blocks (<|channel>thought\n...<channel|> or unterminated)
+        cleaned = _THINKING_BLOCK_RE.sub("", cleaned)
 
         # Remove markdown code blocks (```...```)
         # Remove code blocks with triple backticks
