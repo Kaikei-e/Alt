@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 
-from tag_generator.exceptions import BatchProcessingError
+from tag_generator.exceptions import BatchProcessingError, ModelLoadError
 
 logger = structlog.get_logger(__name__)
 
@@ -203,8 +203,20 @@ class BatchProcessor:
                 if (i + 1) % self.config.memory_cleanup_interval == 0:
                     self._cleanup_memory()
 
+            except ModelLoadError:
+                raise
             except Exception as e:  # noqa: BLE001 - one poisoned article must not abort the whole batch
-                logger.error("Error extracting tags for article", article_id=article.get("id", "unknown"), error=str(e))
+                article_id = article.get("id", "unknown")
+                logger.error("Error extracting tags for article", article_id=article_id, error=str(e))
+                if "id" in article:
+                    count = self._record_empty_extraction(article["id"])
+                    if count == max_retries:
+                        logger.warning(
+                            "Article reached empty-extraction skip threshold",
+                            article_id=article["id"],
+                            failure_count=count,
+                            threshold=max_retries,
+                        )
                 batch_stats["failed"] += 1
                 continue
 
@@ -337,6 +349,8 @@ class BatchProcessor:
                     # If we processed new articles and reached batch limit, return early
                     if cast(int, forward_stats.get("total_processed", 0)) >= self.config.batch_limit:
                         return forward_stats
+            except ModelLoadError:
+                raise
             except Exception as exc:
                 logger.warning("Hybrid mode: failed to process new articles, continuing with backfill", error=str(exc))
 
@@ -427,8 +441,9 @@ class BatchProcessor:
             total_processed = cast(int, batch_stats.get("total_processed", 0))
             failed = cast(int, batch_stats.get("failed", 0))
             successful = cast(int, batch_stats.get("successful", 0))
+            skipped = cast(int, batch_stats.get("skipped", 0))
 
-            if total_processed > 0 and failed == 0:
+            if (total_processed > 0 or skipped > 0) and failed == 0:
                 # Update cursor even if all articles were skipped (no tags extracted)
                 cursor_manager.update_cursor_position(last_created_at, last_id)
                 newest_article = articles_to_process[0]
@@ -573,6 +588,8 @@ class BatchProcessor:
                 if (i + 1) % self.config.memory_cleanup_interval == 0:
                     self._cleanup_memory()
 
+            except ModelLoadError:
+                raise
             except Exception as e:
                 logger.error(
                     "Error extracting tags for article during regeneration",

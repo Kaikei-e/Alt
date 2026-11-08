@@ -295,7 +295,7 @@ class TestTagExtractor:
             assert outcome.tags == ["東京", "日本"]
 
     def test_should_handle_extraction_errors_with_fallback(self):
-        """Should handle extraction errors and use fallback."""
+        """Runtime extraction errors must propagate while empty primary results use fallback."""
         extractor = TagExtractor()
 
         with (
@@ -303,8 +303,17 @@ class TestTagExtractor:
             patch.object(
                 extractor,
                 "_extract_keywords_english",
-                side_effect=Exception("KeyBERT failed"),
+                side_effect=RuntimeError("KeyBERT failed"),
             ),
+            patch.object(extractor, "_fallback_extraction", return_value=["fallback", "keywords"]) as mock_fallback,
+        ):
+            with pytest.raises(RuntimeError, match="KeyBERT failed"):
+                extractor.extract_tags_with_metrics("Test Title", "Test content for fallback")
+            mock_fallback.assert_not_called()
+
+        with (
+            patch.object(extractor, "_detect_language", return_value="en"),
+            patch.object(extractor, "_extract_keywords_english", return_value=([], {})),
             patch.object(extractor, "_fallback_extraction", return_value=["fallback", "keywords"]),
         ):
             outcome = extractor.extract_tags_with_metrics("Test Title", "Test content for fallback")
@@ -312,25 +321,28 @@ class TestTagExtractor:
             assert outcome.tags == ["fallback", "keywords"]
 
     def test_should_return_empty_for_failed_extractions(self):
-        """Should return empty list when all extractions fail."""
+        """Legitimate empty results return [] while runtime faults propagate."""
         extractor = TagExtractor()
+
+        with (
+            patch.object(extractor, "_detect_language", return_value="en"),
+            patch.object(extractor, "_extract_keywords_english", return_value=([], {})),
+            patch.object(extractor, "_fallback_extraction", return_value=[]),
+        ):
+            outcome = extractor.extract_tags_with_metrics("Test Title", "Test content")
+
+            assert outcome.tags == []
 
         with (
             patch.object(extractor, "_detect_language", return_value="en"),
             patch.object(
                 extractor,
                 "_extract_keywords_english",
-                side_effect=Exception("KeyBERT failed"),
-            ),
-            patch.object(
-                extractor,
-                "_fallback_extraction",
-                side_effect=Exception("Fallback failed"),
+                side_effect=RuntimeError("KeyBERT failed"),
             ),
         ):
-            outcome = extractor.extract_tags_with_metrics("Test Title", "Test content")
-
-            assert outcome.tags == []
+            with pytest.raises(RuntimeError, match="KeyBERT failed"):
+                extractor.extract_tags_with_metrics("Test Title", "Test content")
 
     def test_extract_tags_with_metrics_returns_outcome(self):
         """Should return metrics container from extract_tags_with_metrics."""

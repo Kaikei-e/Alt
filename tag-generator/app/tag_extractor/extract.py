@@ -220,74 +220,57 @@ class TagExtractor:
         Returns:
             Tuple of (tag_list, tag_confidences_dict)
         """
+        keywords: list[str]
+        confidences: dict[str, float]
+
+        if lang == "ja":
+            keywords, confidences = self._extract_keywords_japanese(raw_text)
+        else:
+            keywords, confidences = self._extract_keywords_english(raw_text)
+
+        if len(keywords) >= self.config.min_primary_tags:
+            logger.debug("Extraction successful", keywords=keywords)
+            return keywords, confidences
+
+        # Primary returned some tags but below threshold — augment with fallback
+        if keywords:
+            logger.debug(
+                "Primary extraction below minimum threshold, augmenting with fallback",
+                primary_count=len(keywords),
+                min_required=self.config.min_primary_tags,
+            )
+
+        # Fallback (also runs when keywords is empty, preserving existing behavior)
+        logger.debug("Primary extraction yielded insufficient tags, invoking fallback")
         try:
-            keywords: list[str]
-            confidences: dict[str, float]
+            fallback_keywords = self._fallback_extraction(raw_text, lang)
+            fallback_confidences = {tag: max(0.3, 0.7 - (i * 0.1)) for i, tag in enumerate(fallback_keywords)}
+        except Exception as fallback_error:
+            logger.error(
+                "Fallback extraction failed",
+                error=str(fallback_error),
+                exc_info=True,
+            )
+            if not keywords:
+                raise
+            return keywords, confidences  # Return whatever primary gave us
 
-            if lang == "ja":
-                keywords, confidences = self._extract_keywords_japanese(raw_text)
-            else:
-                keywords, confidences = self._extract_keywords_english(raw_text)
+        if fallback_keywords:
+            # Merge: primary tags first (higher confidence), then fallback tags (deduped)
+            merged = list(keywords)
+            merged_confidences = dict(confidences)
+            for tag in fallback_keywords:
+                if tag not in merged_confidences:
+                    merged.append(tag)
+                    merged_confidences[tag] = fallback_confidences[tag]
+            merged = merged[: self.config.top_keywords]
+            merged_confidences = {k: v for k, v in merged_confidences.items() if k in merged}
+            logger.debug("Fallback augmentation succeeded", total_tags=len(merged))
+            return merged, merged_confidences
 
-            if len(keywords) >= self.config.min_primary_tags:
-                logger.debug("Extraction successful", keywords=keywords)
-                return keywords, confidences
-
-            # Primary returned some tags but below threshold — augment with fallback
-            if keywords:
-                logger.debug(
-                    "Primary extraction below minimum threshold, augmenting with fallback",
-                    primary_count=len(keywords),
-                    min_required=self.config.min_primary_tags,
-                )
-
-            # Fallback (also runs when keywords is empty, preserving existing behavior)
-            logger.debug("Primary extraction yielded insufficient tags, invoking fallback")
-            try:
-                fallback_keywords = self._fallback_extraction(raw_text, lang)
-                fallback_confidences = {tag: max(0.3, 0.7 - (i * 0.1)) for i, tag in enumerate(fallback_keywords)}
-            except Exception as fallback_error:
-                logger.error(
-                    "Fallback extraction failed",
-                    error=str(fallback_error),
-                    exc_info=True,
-                )
-                return keywords, confidences  # Return whatever primary gave us
-
-            if fallback_keywords:
-                # Merge: primary tags first (higher confidence), then fallback tags (deduped)
-                merged = list(keywords)
-                merged_confidences = dict(confidences)
-                for tag in fallback_keywords:
-                    if tag not in merged_confidences:
-                        merged.append(tag)
-                        merged_confidences[tag] = fallback_confidences[tag]
-                merged = merged[: self.config.top_keywords]
-                merged_confidences = {k: v for k, v in merged_confidences.items() if k in merged}
-                logger.debug("Fallback augmentation succeeded", total_tags=len(merged))
-                return merged, merged_confidences
-
-            # Fallback produced nothing — keep primary tags even if below threshold
-            if keywords:
-                return keywords, confidences
-
-        except Exception as e:
-            logger.error("Extraction error", error=str(e), exc_info=True)
-            try:
-                fallback_keywords = self._fallback_extraction(raw_text, lang)
-                # For fallback, assign default confidence based on position
-                fallback_confidences = {tag: max(0.3, 0.7 - (i * 0.1)) for i, tag in enumerate(fallback_keywords)}
-            except Exception as fallback_error:
-                logger.error(
-                    "Fallback extraction failed after exception",
-                    error=str(fallback_error),
-                    exc_info=True,
-                )
-                return [], {}
-
-            if fallback_keywords:
-                logger.debug("Emergency fallback successful", keywords=fallback_keywords)
-                return fallback_keywords, fallback_confidences
+        # Fallback produced nothing — keep primary tags even if below threshold
+        if keywords:
+            return keywords, confidences
 
         logger.warning("No tags could be extracted")
         return [], {}

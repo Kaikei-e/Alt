@@ -8,8 +8,11 @@ empty results within the same process lifetime.
 from dataclasses import dataclass, field
 from unittest.mock import MagicMock
 
+import pytest
+
 from tag_generator.batch_processor import BatchProcessor
 from tag_generator.config import TagGeneratorConfig
+from tag_generator.exceptions import ModelLoadError
 
 
 @dataclass
@@ -307,3 +310,51 @@ class TestEmptyExtractionLRU:
         assert "art-0" not in h.processor._empty_extraction_counts
         assert "art-1" in h.processor._empty_extraction_counts
         assert "art-3" in h.processor._empty_extraction_counts
+
+
+class TestExtractionExceptionHandling:
+    """Distinguish infrastructure ModelLoadError from bounded per-article exceptions."""
+
+    def test_model_load_error_aborts_batch_without_counting_toward_per_article_limit(self):
+        """ModelLoadError must abort the batch and not count toward per-article retry limits."""
+        h = _Harness(max_retries=2)
+        h.tag_extractor.extract_tags_with_metrics.side_effect = ModelLoadError("Missing ML dependency")
+
+        articles = [_make_article("art-1"), _make_article("art-2")]
+        with pytest.raises(ModelLoadError, match="Missing ML dependency"):
+            h.processor.process_articles_as_batch(None, articles)
+
+        assert h.processor._empty_extraction_counts.get("art-1", 0) == 0
+        assert h.processor._empty_extraction_counts.get("art-2", 0) == 0
+        assert h.tag_extractor.extract_tags_with_metrics.call_count == 1
+        h.tag_inserter.batch_upsert_tags_no_commit.assert_not_called()
+
+    def test_per_article_exception_counts_toward_retry_limit_and_allows_backfill_cursor_advance(self):
+        """A non-ModelLoadError per-article exception increments the bounded retry counter so the
+        poisoned article is skipped after max_empty_extraction_retries and backfill cursor advances."""
+        h = _Harness(max_retries=2)
+        h.cursor_manager.forward_cursor_created_at = None
+        h.cursor_manager.forward_cursor_id = None
+        h.cursor_manager.get_initial_cursor_position.return_value = ("2026-03-23T00:00:00Z", "init")
+        h.article_fetcher.count_untagged_articles.return_value = 1
+
+        poison = {**_make_article("poison-err"), "created_at": "2026-03-22T10:00:00Z"}
+        h.tag_extractor.extract_tags_with_metrics.side_effect = RuntimeError("deterministic article crash")
+
+        # Attempts 1 and 2: exception is caught, counted as failed and recorded in _empty_extraction_counts
+        for expected_count in (1, 2):
+            h.article_fetcher.fetch_articles.side_effect = [[poison], []]
+            stats = h.processor.process_article_batch_backfill(None, h.cursor_manager)
+            assert stats["failed"] == 1
+            assert h.processor._empty_extraction_counts.get("poison-err", 0) == expected_count
+            h.cursor_manager.update_cursor_position.assert_not_called()
+
+        # Attempt 3: poison-err is skipped, extractor is not called, and backfill cursor advances
+        h.tag_extractor.extract_tags_with_metrics.reset_mock()
+        h.article_fetcher.fetch_articles.side_effect = [[poison], []]
+        stats = h.processor.process_article_batch_backfill(None, h.cursor_manager)
+
+        assert stats["skipped"] == 1
+        assert stats["failed"] == 0
+        h.tag_extractor.extract_tags_with_metrics.assert_not_called()
+        h.cursor_manager.update_cursor_position.assert_called_once_with("2026-03-22T10:00:00Z", "poison-err")

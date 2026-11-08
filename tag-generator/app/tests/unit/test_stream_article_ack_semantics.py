@@ -20,8 +20,10 @@ import redis.asyncio as redis
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 
-from tag_extractor.extract import TagExtractionOutcome
+from tag_extractor.config import TagExtractionConfig
+from tag_extractor.extract import TagExtractionOutcome, TagExtractor
 from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
+from tag_generator.exceptions import ModelLoadError
 from tag_generator.service import TagGeneratorService
 from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer
 from tag_generator.stream_event_handler import TagGeneratorEventHandler
@@ -219,3 +221,23 @@ def test_transient_fetch_error_leaves_article_pending_for_retry() -> None:
     assert extractor.calls == 0
     assert inserter.calls == []
     assert client.acks == []
+
+
+def test_article_whose_extraction_raises_model_load_error_is_left_pending_for_retry() -> None:
+    """A model load fault during extraction is an infrastructure failure, not
+    an untaggable article, so the message must stay in the PEL for retry/DLQ.
+    """
+    failing_manager = MagicMock()
+    failing_manager.get_models.side_effect = ModelLoadError("Missing ML dependency")
+    failing_manager.get_stopwords.return_value = (set(), {"test", "article", "some", "content"})
+    extractor = TagExtractor(
+        config=TagExtractionConfig(use_onnx_runtime=False),
+        model_manager=failing_manager,
+    )
+    inserter = _FakeInserter()
+
+    client = _run(cast(Any, extractor), inserter, "5-0")
+
+    assert failing_manager.get_models.call_count == 1
+    assert client.acks == [], "an extraction raising ModelLoadError must not be ACKed"
+    assert inserter.calls == []
