@@ -64,12 +64,12 @@ func TestMarkSummaryVersionSuperseded_SequentialKeepsExactlyOneLatest(t *testing
 	articleID, userID := uuid.New(), uuid.New()
 
 	v1 := writeSummaryVersionAt(t, repo, articleID, userID, epoch)
-	prev, err := repo.MarkSummaryVersionSuperseded(ctx, articleID, v1)
+	prev, err := repo.MarkSummaryVersionSuperseded(ctx, articleID, v1, userID)
 	require.NoError(t, err)
 	require.Nil(t, prev, "the first version supersedes nothing")
 
 	v2 := writeSummaryVersionAt(t, repo, articleID, userID, epoch.Add(time.Minute))
-	prev, err = repo.MarkSummaryVersionSuperseded(ctx, articleID, v2)
+	prev, err = repo.MarkSummaryVersionSuperseded(ctx, articleID, v2, userID)
 	require.NoError(t, err)
 	require.NotNil(t, prev)
 	require.Equal(t, v1, prev.SummaryVersionID)
