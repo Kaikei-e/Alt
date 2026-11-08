@@ -501,6 +501,38 @@ func TestListSubscriptions_OmitsSubscribedAtForUnfollowedLinks(t *testing.T) {
 	assert.Nil(t, unfollowed.SubscribedAt, "a coalesced now() is not a subscription date")
 }
 
+func TestSubscribe_UnknownFeedLinkReturnsNotFound(t *testing.T) {
+	t.Run("missing feed link returns NotFound", func(t *testing.T) {
+		h, readState, _ := newReadStateHandler(&fakeReadStatePort{
+			err: domain.ErrFeedNotFound,
+		}, nil)
+
+		_, err := h.Subscribe(context.Background(), connect.NewRequest(&datahubv1.SubscribeRequest{
+			UserId:     testUserID,
+			FeedLinkId: testFeedLinkID,
+		}))
+
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+		assert.Equal(t, 1, readState.calls)
+	})
+
+	t.Run("database failure stays Internal", func(t *testing.T) {
+		h, readState, _ := newReadStateHandler(&fakeReadStatePort{
+			err: errors.New("connection refused"),
+		}, nil)
+
+		_, err := h.Subscribe(context.Background(), connect.NewRequest(&datahubv1.SubscribeRequest{
+			UserId:     testUserID,
+			FeedLinkId: testFeedLinkID,
+		}))
+
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+		assert.Equal(t, 1, readState.calls)
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Tag reads
 // ---------------------------------------------------------------------------
