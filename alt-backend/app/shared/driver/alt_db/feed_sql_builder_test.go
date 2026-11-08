@@ -19,7 +19,7 @@ func TestBuildUnreadFeedsCursorQuery_NilCursor(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			WHERE NOT EXISTS (
@@ -47,7 +47,7 @@ func TestBuildUnreadFeedsCursorQuery_NilCursor(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			WHERE NOT EXISTS (
@@ -81,7 +81,7 @@ func TestBuildUnreadFeedsCursorQuery_WithCursor(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			WHERE NOT EXISTS (
@@ -111,7 +111,7 @@ func TestBuildUnreadFeedsCursorQuery_WithCursor(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			WHERE NOT EXISTS (
@@ -146,7 +146,7 @@ func TestBuildAllFeedsCursorQuery_NilCursor(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
 			       %s
 			FROM feeds f
@@ -169,7 +169,7 @@ func TestBuildAllFeedsCursorQuery_NilCursor(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
 			       %s
 			FROM feeds f
@@ -198,7 +198,7 @@ func TestBuildAllFeedsCursorQuery_WithCursor(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
 			       %s
 			FROM feeds f
@@ -223,7 +223,7 @@ func TestBuildAllFeedsCursorQuery_WithCursor(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read,
 			       %s
 			FROM feeds f
@@ -253,7 +253,7 @@ func TestBuildReadFeedsCursorQuery(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, rs.read_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
@@ -276,7 +276,7 @@ func TestBuildReadFeedsCursorQuery(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, rs.read_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       %s
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
@@ -305,7 +305,7 @@ func TestBuildFavoriteFeedsCursorQuery(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
                        SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, ff.created_at,
-                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               %s
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
@@ -327,7 +327,7 @@ func TestBuildFavoriteFeedsCursorQuery(t *testing.T) {
 
 		wantSQL := fmt.Sprintf(`
                        SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, ff.created_at,
-                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
                               %s
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id

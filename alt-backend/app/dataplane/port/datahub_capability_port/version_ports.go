@@ -40,8 +40,8 @@ type SummaryVersionPort interface {
 	// own new id, so the two UPDATEs never touch the same row.
 	MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID, userID uuid.UUID) (*domain.SummaryVersion, error)
 	// GetSummaryVersionByID is the reproject-safe read: the version an old
-	// event named, not whichever is current now.
-	GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error)
+	// event named, not whichever is current now, scoped to userID.
+	GetSummaryVersionByID(ctx context.Context, summaryVersionID, userID uuid.UUID) (domain.SummaryVersion, error)
 	// GetLatestSummaryVersion is the current version — the one nothing has
 	// superseded.
 	GetLatestSummaryVersion(ctx context.Context, articleID, userID uuid.UUID) (domain.SummaryVersion, error)

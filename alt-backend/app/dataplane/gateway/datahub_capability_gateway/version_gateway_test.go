@@ -15,9 +15,12 @@ type mockSummaryVersionDriver struct {
 	gotSupersedeArticleID uuid.UUID
 	gotSupersedeNewID     uuid.UUID
 	gotSupersedeUserID    uuid.UUID
+	gotByIDVersionID      uuid.UUID
+	gotByIDUserID         uuid.UUID
 	gotLatestArticleID    uuid.UUID
 	gotLatestUserID       *uuid.UUID
 	prev                  *domain.SummaryVersion
+	byID                  domain.SummaryVersion
 	latest                domain.SummaryVersion
 }
 
@@ -32,8 +35,10 @@ func (m *mockSummaryVersionDriver) MarkSummaryVersionSuperseded(_ context.Contex
 	return m.prev, nil
 }
 
-func (m *mockSummaryVersionDriver) GetSummaryVersionByID(_ context.Context, _ uuid.UUID) (domain.SummaryVersion, error) {
-	return domain.SummaryVersion{}, nil
+func (m *mockSummaryVersionDriver) GetSummaryVersionByID(_ context.Context, summaryVersionID, userID uuid.UUID) (domain.SummaryVersion, error) {
+	m.gotByIDVersionID = summaryVersionID
+	m.gotByIDUserID = userID
+	return m.byID, nil
 }
 
 func (m *mockSummaryVersionDriver) GetLatestSummaryVersionForUser(_ context.Context, articleID uuid.UUID, userID *uuid.UUID) (domain.SummaryVersion, error) {
@@ -60,6 +65,23 @@ func TestSummaryVersionGateway_MarkSummaryVersionSuperseded_PassesUserScope(t *t
 	assert.Equal(t, articleID, drv.gotSupersedeArticleID)
 	assert.Equal(t, newVersionID, drv.gotSupersedeNewID)
 	assert.Equal(t, userID, drv.gotSupersedeUserID)
+}
+
+func TestSummaryVersionGateway_GetSummaryVersionByID_PassesUserScope(t *testing.T) {
+	versionID := uuid.New()
+	articleID := uuid.New()
+	userID := uuid.New()
+
+	drv := &mockSummaryVersionDriver{
+		byID: domain.SummaryVersion{SummaryVersionID: versionID, ArticleID: articleID, UserID: userID},
+	}
+	gw := &SummaryVersionGateway{db: drv}
+
+	got, err := gw.GetSummaryVersionByID(context.Background(), versionID, userID)
+	require.NoError(t, err)
+	assert.Equal(t, versionID, got.SummaryVersionID)
+	assert.Equal(t, versionID, drv.gotByIDVersionID)
+	assert.Equal(t, userID, drv.gotByIDUserID)
 }
 
 func TestSummaryVersionGateway_GetLatestSummaryVersion_PassesUserScope(t *testing.T) {

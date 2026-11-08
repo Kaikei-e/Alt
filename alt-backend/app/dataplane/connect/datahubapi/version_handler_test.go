@@ -31,6 +31,7 @@ type fakeSummaryVersionPort struct {
 	err           error
 	notFound      bool
 	supersedes    [][3]uuid.UUID
+	sawByIDUser   uuid.UUID
 	sawLatestUser uuid.UUID
 }
 
@@ -50,7 +51,8 @@ func (f *fakeSummaryVersionPort) MarkSummaryVersionSuperseded(_ context.Context,
 	return f.prev, nil
 }
 
-func (f *fakeSummaryVersionPort) GetSummaryVersionByID(_ context.Context, _ uuid.UUID) (domain.SummaryVersion, error) {
+func (f *fakeSummaryVersionPort) GetSummaryVersionByID(_ context.Context, _ uuid.UUID, userID uuid.UUID) (domain.SummaryVersion, error) {
+	f.sawByIDUser = userID
 	if f.notFound {
 		return domain.SummaryVersion{}, errors.New("no summary version found for id x")
 	}
@@ -400,19 +402,48 @@ func TestMarkSummaryVersionSupersededRejectsBadIDs(t *testing.T) {
 // old event impossible.
 func TestGetSummaryVersionByIDReturnsSupersededVersion(t *testing.T) {
 	supersededBy := uuid.MustParse(testVersionID)
-	h := versionHandler(t, &fakeSummaryVersionPort{byID: domain.SummaryVersion{
+	svPort := &fakeSummaryVersionPort{byID: domain.SummaryVersion{
 		SummaryVersionID: uuid.MustParse(testPrevID),
 		ArticleID:        uuid.MustParse(testArticleID),
 		UserID:           uuid.MustParse(testStatsUser),
 		SummaryText:      "the older summary",
 		SupersededBy:     &supersededBy,
-	}}, nil, nil)
+	}}
+	h := versionHandler(t, svPort, nil, nil)
 
 	resp, err := h.GetSummaryVersionByID(context.Background(),
-		connect.NewRequest(&datahubv1.GetSummaryVersionByIDRequest{SummaryVersionId: testPrevID}))
+		connect.NewRequest(&datahubv1.GetSummaryVersionByIDRequest{SummaryVersionId: testPrevID, UserId: testStatsUser}))
 	require.NoError(t, err)
 	require.NotNil(t, resp.Msg.GetVersion().SupersededBy)
 	assert.Equal(t, testVersionID, resp.Msg.GetVersion().GetSupersededBy())
+	assert.Equal(t, uuid.MustParse(testStatsUser), svPort.sawByIDUser)
+}
+
+func TestGetSummaryVersionByIDRejectsBadIDs(t *testing.T) {
+	h := versionHandler(t, &fakeSummaryVersionPort{}, nil, nil)
+
+	tests := []struct {
+		name             string
+		summaryVersionID string
+		userID           string
+	}{
+		{name: "no summary version id", userID: testStatsUser},
+		{name: "non-uuid summary version id", summaryVersionID: "nope", userID: testStatsUser},
+		{name: "no user id", summaryVersionID: testPrevID},
+		{name: "non-uuid user id", summaryVersionID: testPrevID, userID: "nope"},
+		{name: "nil user id", summaryVersionID: testPrevID, userID: uuid.Nil.String()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := h.GetSummaryVersionByID(context.Background(),
+				connect.NewRequest(&datahubv1.GetSummaryVersionByIDRequest{
+					SummaryVersionId: tt.summaryVersionID,
+					UserId:           tt.userID,
+				}))
+			assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		})
+	}
 }
 
 // TestGetSummaryVersionNotFound pins that an absent version is NotFound rather
@@ -424,7 +455,7 @@ func TestGetSummaryVersionNotFound(t *testing.T) {
 	h := versionHandler(t, &fakeSummaryVersionPort{notFound: true}, nil, nil)
 
 	_, err := h.GetSummaryVersionByID(context.Background(),
-		connect.NewRequest(&datahubv1.GetSummaryVersionByIDRequest{SummaryVersionId: testPrevID}))
+		connect.NewRequest(&datahubv1.GetSummaryVersionByIDRequest{SummaryVersionId: testPrevID, UserId: testStatsUser}))
 	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 
 	_, err = h.GetLatestSummaryVersion(context.Background(),

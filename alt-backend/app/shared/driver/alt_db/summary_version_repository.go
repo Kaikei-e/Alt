@@ -153,7 +153,7 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 
 // GetSummaryVersionByID returns a specific summary version by its ID.
 // This is reproject-safe: replaying an old event will always fetch the correct version.
-func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error) {
+func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVersionID, _ uuid.UUID) (domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetSummaryVersionByID")
 	defer span.End()
 

@@ -8,12 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"alt/dataplane/gateway/datahub_capability_gateway"
 	"alt/dataplane/port/datahub_capability_port"
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/shared/driver/alt_db"
+	"alt/utils/logger"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	pgxmock "github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -526,6 +530,60 @@ func TestFeedReadsSurfaceAsInternalRatherThanAsAnEmptyList(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+}
+
+func TestListFeedsCursor_UserBFeedListingNeverCarriesUserAArticleID(t *testing.T) {
+	logger.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	feedGW := datahub_capability_gateway.NewFeedGateway(alt_db.NewAltDBRepository(mock))
+	h := &Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	WithFeedCapabilities(&fakeFeedLinkPort{}, &fakeFeedLinkAvailabilityPort{}, feedGW)(h)
+
+	userA := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	userB := uuid.MustParse("22222222-2222-4222-8222-222222222222")
+	feedID := uuid.MustParse("ffffffff-ffff-4fff-8fff-ffffffffffff").String()
+	articleA := uuid.MustParse("aaaaaaaa-1111-4111-8111-111111111111").String()
+	now := time.Date(2026, 11, 8, 0, 0, 0, 0, time.UTC)
+
+	// User A's feed listing resolves User A's article_id.
+	mock.ExpectQuery(`SELECT a\.id FROM articles a WHERE a\.feed_id = f\.id AND a\.user_id = \$2 AND a\.deleted_at IS NULL ORDER BY a\.created_at DESC LIMIT 1`).
+		WithArgs(20, userA).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url",
+		}).AddRow(feedID, "Shared Feed", "Desc", "https://example.com/shared", now, now, now, &articleA, (*string)(nil)))
+
+	respA, err := h.ListFeedsCursor(context.Background(), connect.NewRequest(&datahubv1.ListFeedsCursorRequest{
+		Scope:  datahubv1.FeedScope_FEED_SCOPE_UNREAD,
+		UserId: userA.String(),
+		Limit:  20,
+	}))
+	require.NoError(t, err)
+	require.Len(t, respA.Msg.GetFeeds(), 1)
+	require.NotNil(t, respA.Msg.GetFeeds()[0].ArticleId)
+	assert.Equal(t, articleA, respA.Msg.GetFeeds()[0].GetArticleId())
+
+	// User B's feed listing on the same shared feed scopes the article_id
+	// subquery to User B and never leaks User A's article_id.
+	mock.ExpectQuery(`SELECT a\.id FROM articles a WHERE a\.feed_id = f\.id AND a\.user_id = \$2 AND a\.deleted_at IS NULL ORDER BY a\.created_at DESC LIMIT 1`).
+		WithArgs(20, userB).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url",
+		}).AddRow(feedID, "Shared Feed", "Desc", "https://example.com/shared", now, now, now, (*string)(nil), (*string)(nil)))
+
+	respB, err := h.ListFeedsCursor(context.Background(), connect.NewRequest(&datahubv1.ListFeedsCursorRequest{
+		Scope:  datahubv1.FeedScope_FEED_SCOPE_UNREAD,
+		UserId: userB.String(),
+		Limit:  20,
+	}))
+	require.NoError(t, err)
+	require.Len(t, respB.Msg.GetFeeds(), 1)
+	assert.Nil(t, respB.Msg.GetFeeds()[0].ArticleId, "user B's feed listing must never carry user A's article_id")
+	assert.NotEqual(t, articleA, respB.Msg.GetFeeds()[0].GetArticleId())
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func strPtr(s string) *string { return &s }
