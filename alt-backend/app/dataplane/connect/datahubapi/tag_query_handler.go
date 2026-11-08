@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/utils/safeconv"
 
@@ -22,8 +23,12 @@ func (h *Handler) ListArticlesByTagID(ctx context.Context, req *connect.Request[
 	if tagID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_id is required"))
 	}
+	userID, err := requiredUserID(req.Msg.GetUserId())
+	if err != nil {
+		return nil, err
+	}
 
-	articles, err := h.tagTrail.ArticlesByTagID(ctx, tagID, cursorFromProto(req.Msg.GetCursor()), clampTagLimit(req.Msg.GetLimit()))
+	articles, err := h.tagTrail.ArticlesByTagID(ctx, tagID, &userID, cursorFromProto(req.Msg.GetCursor()), clampTagLimit(req.Msg.GetLimit()))
 	if err != nil {
 		h.logger.ErrorContext(ctx, "ListArticlesByTagID failed", "error", err, "tag_id", tagID)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list articles by tag id"))
@@ -38,8 +43,12 @@ func (h *Handler) ListArticlesByTagName(ctx context.Context, req *connect.Reques
 	if tagName == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_name is required"))
 	}
+	userID, err := requiredUserID(req.Msg.GetUserId())
+	if err != nil {
+		return nil, err
+	}
 
-	articles, err := h.tagTrail.ArticlesByTagName(ctx, tagName, cursorFromProto(req.Msg.GetCursor()), clampTagLimit(req.Msg.GetLimit()))
+	articles, err := h.tagTrail.ArticlesByTagName(ctx, tagName, &userID, cursorFromProto(req.Msg.GetCursor()), clampTagLimit(req.Msg.GetLimit()))
 	if err != nil {
 		h.logger.ErrorContext(ctx, "ListArticlesByTagName failed", "error", err, "tag_name", tagName)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list articles by tag name"))
@@ -311,6 +320,15 @@ func (h *Handler) FetchArticlesByTag(ctx context.Context, req *connect.Request[d
 	if tagName == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_name is required"))
 	}
+	userID, err := requiredUserID(req.Msg.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	ctx = domain.SetUserContext(ctx, &domain.UserContext{
+		UserID:    userID,
+		Email:     "datahub@internal",
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
 
 	limit := int(req.Msg.Limit)
 	if limit <= 0 {

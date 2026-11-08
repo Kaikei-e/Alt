@@ -40,13 +40,8 @@ const fetchArticleByURLWithUserQuery = `
 	WHERE url = $1 AND user_id = $2 AND deleted_at IS NULL
 `
 
-// FetchArticleByURL retrieves article content from database by URL.
-// Scopes to the authenticated user when user context is available.
-func (r *ArticleRepository) FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error) {
-	return r.FetchArticleByURLForUser(ctx, articleURL, userIDFromContext(ctx))
-}
-
-// FetchArticleByURLForUser is the same read with the owner named explicitly.
+// FetchArticleByURLForUser retrieves article content from database by URL with
+// the owner named explicitly.
 //
 // A nil userID keeps the unscoped query the anonymous path already used; the
 // two are different SQL statements and the caller picks one, rather than the
@@ -109,17 +104,10 @@ const fetchArticlesByURLsWithUserQuery = `
 	WHERE url = ANY($1) AND user_id = $2 AND deleted_at IS NULL
 `
 
-// FetchArticlesByURLs retrieves article content for a batch of URLs in a
-// single query (replacing the N+1 pattern of calling FetchArticleByURL once
-// per URL). Missing URLs are simply absent from the returned map. Scopes to
-// the authenticated user when user context is available, mirroring
-// FetchArticleByURL.
-func (r *ArticleRepository) FetchArticlesByURLs(ctx context.Context, urls []string) (map[string]*domain.ArticleContent, error) {
-	return r.FetchArticlesByURLsForUser(ctx, urls, userIDFromContext(ctx))
-}
-
-// FetchArticlesByURLsForUser is the batch read with the owner named
-// explicitly. See FetchArticleByURLForUser for why the scope is an argument.
+// FetchArticlesByURLsForUser retrieves article content for a batch of URLs in a
+// single query with the owner named explicitly. Missing URLs are simply absent
+// from the returned map. See FetchArticleByURLForUser for why the scope is an
+// argument.
 func (r *ArticleRepository) FetchArticlesByURLsForUser(ctx context.Context, urls []string, userID *uuid.UUID) (map[string]*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
@@ -161,13 +149,8 @@ const fetchArticleByIDWithUserQuery = `
 	WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 `
 
-// FetchArticleByID retrieves article content from database by ID for the
-// authenticated user in ctx.
-func (r *ArticleRepository) FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error) {
-	return r.FetchArticleByIDForUser(ctx, articleID, userIDFromContext(ctx))
-}
-
-// FetchArticleByIDForUser is the same read with the owner named explicitly.
+// FetchArticleByIDForUser retrieves article content from database by ID with
+// the required owner named explicitly.
 func (r *ArticleRepository) FetchArticleByIDForUser(ctx context.Context, articleID string, userID *uuid.UUID) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
@@ -178,9 +161,6 @@ func (r *ArticleRepository) FetchArticleByIDForUser(ctx context.Context, article
 		return nil, errors.New("article id cannot be empty")
 	}
 
-	if userID == nil {
-		userID = userIDFromContext(ctx)
-	}
 	if userID == nil || *userID == uuid.Nil {
 		return nil, errors.New("user id is required")
 	}

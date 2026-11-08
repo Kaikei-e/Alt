@@ -448,6 +448,8 @@ message TagCloudItem {
 message FetchArticlesByTagRequest {
   string tag_name = 1;
   int32 limit = 2;
+  // Required. Scopes the lookup to articles owned by this user.
+  string user_id = 3;
 }
 
 // FetchArticlesByTagResponse contains articles matching the tag.
@@ -1098,9 +1100,7 @@ message BatchGetArticlesByURLsResponse {
 
 message GetArticleContentByIDRequest {
   string article_id = 1;
-  // Optional. When set the lookup is scoped to that user; when empty it
-  // matches any owner, which is the unauthenticated path the driver already
-  // had. The two are different queries and the caller chooses deliberately.
+  // Required. Scopes the lookup to that user's articles.
   string user_id = 2;
 }
 
@@ -1879,6 +1879,8 @@ message ListArticlesByTagIDRequest {
   // Exclusive upper bound on published_at. Unset is the first page.
   google.protobuf.Timestamp cursor = 2;
   int32 limit = 3;
+  // Required. Scopes the lookup to articles owned by this user.
+  string user_id = 4;
 }
 
 message ListArticlesByTagIDResponse {
@@ -1891,6 +1893,8 @@ message ListArticlesByTagNameRequest {
   // Exclusive upper bound on published_at. Unset is the first page.
   google.protobuf.Timestamp cursor = 2;
   int32 limit = 3;
+  // Required. Scopes the lookup to articles owned by this user.
+  string user_id = 4;
 }
 
 message ListArticlesByTagNameResponse {
@@ -1964,6 +1968,7 @@ message CreateSummaryVersionResponse {}
 message MarkSummaryVersionSupersededRequest {
   string article_id = 1;
   string new_version_id = 2;
+  string user_id = 3;
 }
 
 message MarkSummaryVersionSupersededResponse {
@@ -1984,6 +1989,7 @@ message GetSummaryVersionByIDResponse {
 
 message GetLatestSummaryVersionRequest {
   string article_id = 1;
+  string user_id = 2;
 }
 
 message GetLatestSummaryVersionResponse {

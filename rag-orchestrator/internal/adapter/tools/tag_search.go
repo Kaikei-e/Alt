@@ -27,10 +27,7 @@ func (t *TagSearchTool) Execute(ctx context.Context, params map[string]string) (
 		return &domain.ToolResult{Success: false, Error: "query is required"}, nil
 	}
 
-	userID := domain.UserIDFromContext(ctx)
-	if userID == "" {
-		userID = params["user_id"]
-	}
+	userID := strings.TrimSpace(domain.UserIDFromContext(ctx))
 	if userID == "" {
 		return &domain.ToolResult{Success: false, Error: "user_id is required"}, fmt.Errorf("user_id is required")
 	}

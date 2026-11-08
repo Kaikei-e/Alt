@@ -261,6 +261,9 @@ func requiredUserID(raw string) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("user_id must be a uuid: %w", err))
 	}
+	if id == uuid.Nil {
+		return uuid.Nil, connect.NewError(connect.CodeInvalidArgument, errors.New("user_id must not be nil uuid"))
+	}
 	return id, nil
 }
 

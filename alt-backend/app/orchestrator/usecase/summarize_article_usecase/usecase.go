@@ -120,20 +120,20 @@ func (u *Usecase) ResolveStreamArticle(ctx context.Context, articleID, feedURL, 
 	}
 
 	if articleID != "" {
+		article, err := u.repo.FetchArticleByID(ctx, articleID)
+		if err != nil {
+			return "", "", "", fmt.Errorf("fetch article by id: %w", err)
+		}
+		if article == nil {
+			logger.Logger.WarnContext(ctx, "Article ID provided but not found in DB", "article_id", articleID)
+			return "", "", "", domain.ErrArticleNotFound
+		}
 		if content == "" {
-			article, err := u.repo.FetchArticleByID(ctx, articleID)
-			if err != nil {
-				return "", "", "", fmt.Errorf("fetch article by id: %w", err)
-			}
-			if article != nil {
-				logger.Logger.InfoContext(ctx, "Fetched article content from DB", "article_id", articleID, "content_length", len(article.Content))
-				content = article.Content
-				if title == "" {
-					title = article.Title
-				}
-			} else {
-				logger.Logger.WarnContext(ctx, "Article ID provided but not found in DB", "article_id", articleID)
-			}
+			logger.Logger.InfoContext(ctx, "Fetched article content from DB", "article_id", articleID, "content_length", len(article.Content))
+			content = article.Content
+		}
+		if title == "" {
+			title = article.Title
 		}
 		return articleID, title, content, nil
 	}

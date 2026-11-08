@@ -72,6 +72,7 @@ func TestListArticlesByTagIDContract(t *testing.T) {
 				"tagId":  testTrailTagID,
 				"cursor": testTrailCursorAt,
 				"limit":  20,
+				"userId": testUserID,
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -90,7 +91,7 @@ func TestListArticlesByTagIDContract(t *testing.T) {
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewTagGateway(newDataHubServiceClient(config))
-			articles, err := gw.FetchArticlesByTag(context.Background(), testTrailTagID, trailCursor(t), 20)
+			articles, err := gw.FetchArticlesByTag(authedContext(testUserID), testTrailTagID, trailCursor(t), 20)
 			if err != nil {
 				return fmt.Errorf("FetchArticlesByTag failed: %w", err)
 			}
@@ -121,8 +122,9 @@ func TestListArticlesByTagIDFirstPageContract(t *testing.T) {
 			Path:    matchers.String("/services.datahub.v1.DataHubService/ListArticlesByTagID"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
-				"tagId": testTrailTagID,
-				"limit": 20,
+				"tagId":  testTrailTagID,
+				"limit":  20,
+				"userId": testUserID,
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -132,7 +134,7 @@ func TestListArticlesByTagIDFirstPageContract(t *testing.T) {
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewTagGateway(newDataHubServiceClient(config))
-			articles, err := gw.FetchArticlesByTag(context.Background(), testTrailTagID, nil, 20)
+			articles, err := gw.FetchArticlesByTag(authedContext(testUserID), testTrailTagID, nil, 20)
 			if err != nil {
 				return fmt.Errorf("FetchArticlesByTag failed: %w", err)
 			}
@@ -160,6 +162,7 @@ func TestListArticlesByTagNameContract(t *testing.T) {
 				"tagName": "golang",
 				"cursor":  testTrailCursorAt,
 				"limit":   20,
+				"userId":  testUserID,
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -176,7 +179,7 @@ func TestListArticlesByTagNameContract(t *testing.T) {
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewTagGateway(newDataHubServiceClient(config))
-			articles, err := gw.FetchArticlesByTagName(context.Background(), "golang", trailCursor(t), 20)
+			articles, err := gw.FetchArticlesByTagName(authedContext(testUserID), "golang", trailCursor(t), 20)
 			if err != nil {
 				return fmt.Errorf("FetchArticlesByTagName failed: %w", err)
 			}

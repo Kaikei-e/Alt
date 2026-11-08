@@ -15,37 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFetchArticleByID_ScopesByUserContextWhenPresent(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	defer mock.Close()
-
-	repo := &ArticleRepository{pool: mock}
-	userID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
-	articleID := "22222222-2222-4222-8222-222222222222"
-
-	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
-		UserID:    userID,
-		Email:     "u@example.com",
-		Role:      domain.UserRoleUser,
-		TenantID:  userID,
-		LoginAt:   time.Now(),
-		ExpiresAt: time.Now().Add(time.Hour),
-	})
-
-	mock.ExpectQuery(regexp.QuoteMeta(fetchArticleByIDWithUserQuery)).
-		WithArgs(articleID, userID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url", "feed_id"}).
-			AddRow(articleID, "Title", "Content", "https://example.com/a", "f1"))
-
-	article, err := repo.FetchArticleByID(ctx, articleID)
-	require.NoError(t, err)
-	require.NotNil(t, article)
-	assert.Equal(t, articleID, article.ID)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestFetchArticleByID_RejectsMissingUser(t *testing.T) {
+func TestFetchArticleByIDForUser_RejectsMissingUser(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	defer mock.Close()
@@ -53,12 +23,13 @@ func TestFetchArticleByID_RejectsMissingUser(t *testing.T) {
 	repo := &ArticleRepository{pool: mock}
 	articleID := "22222222-2222-4222-8222-222222222222"
 
-	article, err := repo.FetchArticleByID(context.Background(), articleID)
+	article, err := repo.FetchArticleByIDForUser(context.Background(), articleID, nil)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "user")
 	assert.Nil(t, article)
 
-	article, err = repo.FetchArticleByIDForUser(context.Background(), articleID, nil)
+	nilUUID := uuid.Nil
+	article, err = repo.FetchArticleByIDForUser(context.Background(), articleID, &nilUUID)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "user")
 	assert.Nil(t, article)

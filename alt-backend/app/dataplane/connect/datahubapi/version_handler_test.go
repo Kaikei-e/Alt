@@ -24,13 +24,14 @@ import (
 // ---------------------------------------------------------------------------
 
 type fakeSummaryVersionPort struct {
-	created    []domain.SummaryVersion
-	prev       *domain.SummaryVersion
-	byID       domain.SummaryVersion
-	latest     domain.SummaryVersion
-	err        error
-	notFound   bool
-	supersedes [][2]uuid.UUID
+	created       []domain.SummaryVersion
+	prev          *domain.SummaryVersion
+	byID          domain.SummaryVersion
+	latest        domain.SummaryVersion
+	err           error
+	notFound      bool
+	supersedes    [][3]uuid.UUID
+	sawLatestUser uuid.UUID
 }
 
 func (f *fakeSummaryVersionPort) CreateSummaryVersion(_ context.Context, sv domain.SummaryVersion) error {
@@ -41,11 +42,11 @@ func (f *fakeSummaryVersionPort) CreateSummaryVersion(_ context.Context, sv doma
 	return nil
 }
 
-func (f *fakeSummaryVersionPort) MarkSummaryVersionSuperseded(_ context.Context, articleID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
+func (f *fakeSummaryVersionPort) MarkSummaryVersionSuperseded(_ context.Context, articleID, newVersionID, userID uuid.UUID) (*domain.SummaryVersion, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	f.supersedes = append(f.supersedes, [2]uuid.UUID{articleID, newVersionID})
+	f.supersedes = append(f.supersedes, [3]uuid.UUID{articleID, newVersionID, userID})
 	return f.prev, nil
 }
 
@@ -59,7 +60,8 @@ func (f *fakeSummaryVersionPort) GetSummaryVersionByID(_ context.Context, _ uuid
 	return f.byID, nil
 }
 
-func (f *fakeSummaryVersionPort) GetLatestSummaryVersion(_ context.Context, _ uuid.UUID) (domain.SummaryVersion, error) {
+func (f *fakeSummaryVersionPort) GetLatestSummaryVersion(_ context.Context, _ uuid.UUID, userID uuid.UUID) (domain.SummaryVersion, error) {
+	f.sawLatestUser = userID
 	if f.notFound {
 		return domain.SummaryVersion{}, errors.New("no summary version found for article x")
 	}
@@ -333,17 +335,19 @@ func TestMarkSummaryVersionSupersededReportsPrevious(t *testing.T) {
 		connect.NewRequest(&datahubv1.MarkSummaryVersionSupersededRequest{
 			ArticleId:    testArticleID,
 			NewVersionId: testVersionID,
+			UserId:       testStatsUser,
 		}))
 	require.NoError(t, err)
 	require.NotNil(t, resp.Msg.PreviousVersion)
 	assert.Equal(t, testPrevID, resp.Msg.GetPreviousVersion().GetSummaryVersionId())
 	assert.Equal(t, "the older summary", resp.Msg.GetPreviousVersion().GetSummaryText())
 
-	// The article and the new version travel together into one port call, which
-	// is what keeps the advisory lock and the update inside one transaction.
+	// The article, the new version and the user travel together into one port call,
+	// which keeps the advisory lock and the user-scoped update inside one transaction.
 	require.Len(t, sv.supersedes, 1)
 	assert.Equal(t, articleID, sv.supersedes[0][0])
 	assert.Equal(t, uuid.MustParse(testVersionID), sv.supersedes[0][1])
+	assert.Equal(t, uuid.MustParse(testStatsUser), sv.supersedes[0][2])
 }
 
 func TestMarkSummaryVersionSupersededFirstVersion(t *testing.T) {
@@ -353,6 +357,7 @@ func TestMarkSummaryVersionSupersededFirstVersion(t *testing.T) {
 		connect.NewRequest(&datahubv1.MarkSummaryVersionSupersededRequest{
 			ArticleId:    testArticleID,
 			NewVersionId: testVersionID,
+			UserId:       testStatsUser,
 		}))
 	require.NoError(t, err)
 	assert.Nil(t, resp.Msg.PreviousVersion,
@@ -366,10 +371,14 @@ func TestMarkSummaryVersionSupersededRejectsBadIDs(t *testing.T) {
 		name         string
 		articleID    string
 		newVersionID string
+		userID       string
 	}{
-		{name: "no article id", newVersionID: testVersionID},
-		{name: "no new version id", articleID: testArticleID},
-		{name: "non-uuid article id", articleID: "nope", newVersionID: testVersionID},
+		{name: "no article id", newVersionID: testVersionID, userID: testStatsUser},
+		{name: "no new version id", articleID: testArticleID, userID: testStatsUser},
+		{name: "no user id", articleID: testArticleID, newVersionID: testVersionID},
+		{name: "non-uuid article id", articleID: "nope", newVersionID: testVersionID, userID: testStatsUser},
+		{name: "non-uuid user id", articleID: testArticleID, newVersionID: testVersionID, userID: "nope"},
+		{name: "nil user id", articleID: testArticleID, newVersionID: testVersionID, userID: uuid.Nil.String()},
 	}
 
 	for _, tt := range tests {
@@ -378,6 +387,7 @@ func TestMarkSummaryVersionSupersededRejectsBadIDs(t *testing.T) {
 				connect.NewRequest(&datahubv1.MarkSummaryVersionSupersededRequest{
 					ArticleId:    tt.articleID,
 					NewVersionId: tt.newVersionID,
+					UserId:       tt.userID,
 				}))
 			assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 		})
@@ -418,23 +428,51 @@ func TestGetSummaryVersionNotFound(t *testing.T) {
 	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 
 	_, err = h.GetLatestSummaryVersion(context.Background(),
-		connect.NewRequest(&datahubv1.GetLatestSummaryVersionRequest{ArticleId: testArticleID}))
+		connect.NewRequest(&datahubv1.GetLatestSummaryVersionRequest{ArticleId: testArticleID, UserId: testStatsUser}))
 	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }
 
 func TestGetLatestSummaryVersionCarriesNoSupersededBy(t *testing.T) {
-	h := versionHandler(t, &fakeSummaryVersionPort{latest: domain.SummaryVersion{
+	svPort := &fakeSummaryVersionPort{latest: domain.SummaryVersion{
 		SummaryVersionID: uuid.MustParse(testVersionID),
 		ArticleID:        uuid.MustParse(testArticleID),
 		UserID:           uuid.MustParse(testStatsUser),
 		SummaryText:      "a summary",
-	}}, nil, nil)
+	}}
+	h := versionHandler(t, svPort, nil, nil)
 
 	resp, err := h.GetLatestSummaryVersion(context.Background(),
-		connect.NewRequest(&datahubv1.GetLatestSummaryVersionRequest{ArticleId: testArticleID}))
+		connect.NewRequest(&datahubv1.GetLatestSummaryVersionRequest{ArticleId: testArticleID, UserId: testStatsUser}))
 	require.NoError(t, err)
 	assert.Nil(t, resp.Msg.GetVersion().SupersededBy,
 		"'latest' means nothing has replaced it, so a supersededBy here is a contradiction")
+	assert.Equal(t, uuid.MustParse(testStatsUser), svPort.sawLatestUser)
+}
+
+func TestGetLatestSummaryVersionRejectsBadIDs(t *testing.T) {
+	h := versionHandler(t, nil, nil, nil)
+
+	tests := []struct {
+		name      string
+		articleID string
+		userID    string
+	}{
+		{name: "no article id", userID: testStatsUser},
+		{name: "no user id", articleID: testArticleID},
+		{name: "non-uuid user id", articleID: testArticleID, userID: "nope"},
+		{name: "nil user id", articleID: testArticleID, userID: uuid.Nil.String()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := h.GetLatestSummaryVersion(context.Background(),
+				connect.NewRequest(&datahubv1.GetLatestSummaryVersionRequest{
+					ArticleId: tt.articleID,
+					UserId:    tt.userID,
+				}))
+			assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		})
+	}
 }
 
 // TestCreateTagSetVersionPassesTagsJSONThrough pins that the jsonb payload is
