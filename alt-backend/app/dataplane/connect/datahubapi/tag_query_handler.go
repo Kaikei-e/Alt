@@ -58,7 +58,7 @@ func (h *Handler) GetArticleTags(ctx context.Context, req *connect.Request[datah
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
 
-	tags, err := h.tagRead.ArticleTags(ctx, req.Msg.GetArticleId())
+	tags, err := h.tagRead.ArticleTags(ctx, req.Msg.GetArticleId(), nil)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "GetArticleTags failed", "error", err, "article_id", req.Msg.GetArticleId())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get article tags"))

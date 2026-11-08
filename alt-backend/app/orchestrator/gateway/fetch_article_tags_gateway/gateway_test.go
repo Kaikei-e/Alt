@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestMain(m *testing.M) {
@@ -433,6 +435,112 @@ func TestFetchArticleTags_ConcurrentSameArticle_SingleGeneration(t *testing.T) {
 	calls := int(tagger.callCount.Load())
 	if calls != 1 {
 		t.Errorf("expected GenerateTagsForArticle to be called exactly 1 time, got %d", calls)
+	}
+}
+
+type userScopedArticleReader struct {
+	ownerID uuid.UUID
+	article *domain.ArticleContent
+}
+
+func (r *userScopedArticleReader) FetchArticleByID(ctx context.Context, _ string) (*domain.ArticleContent, error) {
+	u, err := domain.GetUserFromContext(ctx)
+	if err != nil || u.UserID != r.ownerID {
+		return nil, nil
+	}
+	return r.article, nil
+}
+
+type blockingTagger struct {
+	entered  chan struct{}
+	release  chan struct{}
+	once     sync.Once
+	response *mqhub_connect.GenerateTagsResponse
+}
+
+func (t *blockingTagger) IsEnabled() bool { return true }
+
+func (t *blockingTagger) GenerateTagsForArticle(_ context.Context, _ mqhub_connect.GenerateTagsRequest) (*mqhub_connect.GenerateTagsResponse, error) {
+	t.once.Do(func() { close(t.entered) })
+	<-t.release
+	return t.response, nil
+}
+
+func TestFetchArticleTags_ConcurrentCrossUser_DoesNotShareSingleflightResult(t *testing.T) {
+	userA := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	userB := uuid.MustParse("99999999-9999-4999-8999-999999999999")
+	articleID := "article-owned-by-a"
+
+	ctxA := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID: userA, Email: "a@example.com", Role: domain.UserRoleUser, TenantID: userA, ExpiresAt: time.Now().Add(time.Hour),
+	})
+	ctxB := domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID: userB, Email: "b@example.com", Role: domain.UserRoleUser, TenantID: userB, ExpiresAt: time.Now().Add(time.Hour),
+	})
+
+	db := &stubDB{
+		fetchTagsResult: []*domain.FeedTag{},
+		upsertResult:    1,
+	}
+	reader := &userScopedArticleReader{
+		ownerID: userA,
+		article: &domain.ArticleContent{
+			ID:      articleID,
+			Title:   "Private Article",
+			Content: "Private Content",
+			FeedID:  "feed-a",
+		},
+	}
+	tagger := &blockingTagger{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+		response: &mqhub_connect.GenerateTagsResponse{
+			Success:   true,
+			ArticleID: articleID,
+			Tags: []mqhub_connect.GeneratedTag{
+				{ID: "t1", Name: "owner-secret-tag", Confidence: 0.95},
+			},
+		},
+	}
+
+	cfg := DefaultConfig()
+	cfg.MaxRetries = 0
+	gw := newGateway(db, reader, tagger, cfg)
+
+	var (
+		tagsA, tagsB []*domain.FeedTag
+		errA, errB   error
+		wg           sync.WaitGroup
+	)
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		tagsA, errA = gw.FetchArticleTags(ctxA, articleID)
+	}()
+
+	<-tagger.entered
+
+	go func() {
+		defer wg.Done()
+		tagsB, errB = gw.FetchArticleTags(ctxB, articleID)
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	close(tagger.release)
+	wg.Wait()
+
+	if errA != nil {
+		t.Fatalf("userA error: %v", errA)
+	}
+	if errB != nil {
+		t.Fatalf("userB error: %v", errB)
+	}
+	if len(tagsA) != 1 || tagsA[0].TagName != "owner-secret-tag" {
+		t.Fatalf("expected userA to receive generated tag, got %+v", tagsA)
+	}
+	if len(tagsB) != 0 {
+		t.Fatalf("expected userB to receive 0 tags for userA's article, got %+v", tagsB)
 	}
 }
 

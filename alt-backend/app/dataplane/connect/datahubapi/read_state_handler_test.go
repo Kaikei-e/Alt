@@ -112,19 +112,33 @@ func (f *fakeReadStatePort) RemoveFavorite(_ context.Context, feedURL string, us
 type fakeTagReadPort struct {
 	err          error
 	tags         []*domain.FeedTag
+	tagsByUser   map[uuid.UUID][]*domain.FeedTag
 	cooccurrence []*domain.TagCooccurrence
 	hits         []domain.GlobalTagHit
 	counts       []domain.TagArticleCount
 
-	gotLimit  int
-	gotCursor *time.Time
-	gotSince  time.Time
-	gotUserID uuid.UUID
-	calls     int
+	gotArticleID string
+	gotUser      *uuid.UUID
+	gotLimit     int
+	gotCursor    *time.Time
+	gotSince     time.Time
+	gotUserID    uuid.UUID
+	calls        int
 }
 
-func (f *fakeTagReadPort) ArticleTags(context.Context, string) ([]*domain.FeedTag, error) {
+func (f *fakeTagReadPort) ArticleTags(_ context.Context, articleID string, userID *uuid.UUID) ([]*domain.FeedTag, error) {
 	f.calls++
+	f.gotArticleID, f.gotUser = articleID, userID
+	if f.tagsByUser != nil {
+		if userID == nil {
+			var all []*domain.FeedTag
+			for _, tags := range f.tagsByUser {
+				all = append(all, tags...)
+			}
+			return all, f.err
+		}
+		return f.tagsByUser[*userID], f.err
+	}
 	return f.tags, f.err
 }
 
@@ -308,6 +322,12 @@ func TestReadState_RequiresUserID(t *testing.T) {
 		{"GetTagArticleCounts", func(h *Handler, ctx context.Context) error {
 			_, err := h.GetTagArticleCounts(ctx, connect.NewRequest(&datahubv1.GetTagArticleCountsRequest{
 				Since: timestamppb.New(time.Now().Add(-24 * time.Hour)),
+			}))
+			return err
+		}},
+		{"GetArticleTags", func(h *Handler, ctx context.Context) error {
+			_, err := h.GetArticleTags(ctx, connect.NewRequest(&datahubv1.GetArticleTagsRequest{
+				ArticleId: "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
 			}))
 			return err
 		}},
@@ -509,13 +529,62 @@ func TestListSubscriptions_OmitsSubscribedAtForUnfollowedLinks(t *testing.T) {
 // generation path depends on. If an untagged article were NotFound, the caller
 // would treat it as a fault and never ask mq-hub to generate anything.
 func TestGetArticleTags_UntaggedIsEmptyNotNotFound(t *testing.T) {
-	h, _, _ := newReadStateHandler(nil, &fakeTagReadPort{tags: nil})
+	h, _, tagRead := newReadStateHandler(nil, &fakeTagReadPort{tags: nil})
 
 	resp, err := h.GetArticleTags(context.Background(),
-		connect.NewRequest(&datahubv1.GetArticleTagsRequest{ArticleId: "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"}))
+		connect.NewRequest(&datahubv1.GetArticleTagsRequest{
+			ArticleId: "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+			UserId:    testUserID,
+		}))
 
 	require.NoError(t, err)
 	assert.Empty(t, resp.Msg.GetTags())
+	require.NotNil(t, tagRead.gotUser)
+	assert.Equal(t, uuid.MustParse(testUserID), *tagRead.gotUser)
+}
+
+func TestGetArticleTags_CrossUserReturnsEmpty(t *testing.T) {
+	ownerID := uuid.MustParse(testUserID)
+	otherID := uuid.MustParse("99999999-9999-4999-8999-999999999999")
+	articleID := "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
+	created := time.Date(2026, 7, 31, 9, 0, 0, 0, time.UTC)
+
+	h, _, _ := newReadStateHandler(nil, &fakeTagReadPort{
+		tagsByUser: map[uuid.UUID][]*domain.FeedTag{
+			ownerID: {{ID: "tag-1", TagName: "PrivateTag", CreatedAt: created}},
+		},
+	})
+
+	ownerResp, err := h.GetArticleTags(context.Background(),
+		connect.NewRequest(&datahubv1.GetArticleTagsRequest{
+			ArticleId: articleID,
+			UserId:    ownerID.String(),
+		}))
+	require.NoError(t, err)
+	require.Len(t, ownerResp.Msg.GetTags(), 1)
+	assert.Equal(t, "PrivateTag", ownerResp.Msg.GetTags()[0].GetTagName())
+
+	otherResp, err := h.GetArticleTags(context.Background(),
+		connect.NewRequest(&datahubv1.GetArticleTagsRequest{
+			ArticleId: articleID,
+			UserId:    otherID.String(),
+		}))
+	require.NoError(t, err)
+	assert.Empty(t, otherResp.Msg.GetTags())
+}
+
+func TestGetArticleTags_RejectsMalformedUserID(t *testing.T) {
+	h, _, tagRead := newReadStateHandler(nil, nil)
+
+	_, err := h.GetArticleTags(context.Background(),
+		connect.NewRequest(&datahubv1.GetArticleTagsRequest{
+			ArticleId: "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+			UserId:    "not-a-uuid",
+		}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	assert.Zero(t, tagRead.calls)
 }
 
 // TestFeedTagsToProto_LeavesUnsetTimestampsAbsent guards the shape of the row
@@ -523,14 +592,19 @@ func TestGetArticleTags_UntaggedIsEmptyNotNotFound(t *testing.T) {
 // a zero time must not become 1970 on the wire — a consumer would sort on it.
 func TestFeedTagsToProto_LeavesUnsetTimestampsAbsent(t *testing.T) {
 	created := time.Date(2026, 7, 31, 9, 0, 0, 0, time.UTC)
-	h, _, _ := newReadStateHandler(nil, &fakeTagReadPort{
+	h, _, tagRead := newReadStateHandler(nil, &fakeTagReadPort{
 		tags: []*domain.FeedTag{{ID: "tag-1", TagName: "AI", CreatedAt: created}},
 	})
 
 	resp, err := h.GetArticleTags(context.Background(),
-		connect.NewRequest(&datahubv1.GetArticleTagsRequest{ArticleId: "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"}))
+		connect.NewRequest(&datahubv1.GetArticleTagsRequest{
+			ArticleId: "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+			UserId:    testUserID,
+		}))
 
 	require.NoError(t, err)
+	require.NotNil(t, tagRead.gotUser)
+	assert.Equal(t, uuid.MustParse(testUserID), *tagRead.gotUser)
 	require.Len(t, resp.Msg.GetTags(), 1)
 	tag := resp.Msg.GetTags()[0]
 	assert.Equal(t, "AI", tag.GetTagName())

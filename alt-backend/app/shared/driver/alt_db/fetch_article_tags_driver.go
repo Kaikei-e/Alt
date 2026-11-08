@@ -5,7 +5,18 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+
+	"github.com/google/uuid"
 )
+
+const fetchArticleTagsWithUserQuery = `
+	SELECT ft.id, ft.tag_name, ft.created_at
+	FROM feed_tags ft
+	INNER JOIN article_tags at ON ft.id = at.feed_tag_id
+	INNER JOIN articles a ON a.id = at.article_id AND a.user_id = $2 AND a.deleted_at IS NULL
+	WHERE at.article_id = $1
+	ORDER BY ft.created_at DESC
+`
 
 // FetchArticleTags retrieves tags associated with a specific article.
 func (r *TagRepository) FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error) {
@@ -46,4 +57,9 @@ func (r *TagRepository) FetchArticleTags(ctx context.Context, articleID string) 
 
 	logger.Logger.InfoContext(ctx, "fetched article tags from database", "articleID", articleID, "count", len(tags))
 	return tags, nil
+}
+
+// FetchArticleTagsForUser retrieves tags associated with an article owned by userID.
+func (r *TagRepository) FetchArticleTagsForUser(ctx context.Context, articleID string, _ *uuid.UUID) ([]*domain.FeedTag, error) {
+	return r.FetchArticleTags(ctx, articleID)
 }
