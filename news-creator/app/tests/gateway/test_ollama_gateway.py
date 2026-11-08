@@ -1346,4 +1346,50 @@ async def test_streaming_aclose_closes_inner_driver_stream_without_gc(
         finally:
             if gc_was_enabled:
                 gc.enable()
+
+
+@pytest.mark.asyncio
+async def test_generate_raw_retries_on_oom_exception_and_reraises_non_oom(
+    mock_config, mock_driver
+):
+    """generate_raw catches OOM exceptions, switches to 2-model mode, retries once with the routed model, and re-raises non-OOM errors."""
+    mock_config.oom_detection_enabled = True
+    mock_config.model_routing_enabled = True
+
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+        try:
+            gateway.model_router.select_model = Mock(
+                side_effect=[("gemma4-e4b-60k", 61440), ("gemma4-e4b-12k", 8192)]
+            )
+            mock_driver.generate = AsyncMock(
+                side_effect=[
+                    RuntimeError("Ollama API error: HTTP 500 - CUDA out of memory"),
+                    {
+                        "response": "ok",
+                        "model": "gemma4-e4b-12k",
+                        "done": True,
+                    },
+                ]
+            )
+
+            result = await gateway.generate_raw("Test prompt")
+
+            assert result.response == "ok"
+            assert result.model == "gemma4-e4b-12k"
+            assert gateway.oom_detector.two_model_mode is True
+            assert mock_driver.generate.call_count == 2
+
+            gateway.model_router.select_model = Mock(
+                return_value=("gemma4-e4b-12k", 8192)
+            )
+            mock_driver.generate = AsyncMock(
+                side_effect=RuntimeError("Ollama API error: HTTP 500 - internal error")
+            )
+            with pytest.raises(RuntimeError, match="internal error"):
+                await gateway.generate_raw("Test prompt")
+        finally:
             await gateway.cleanup()
