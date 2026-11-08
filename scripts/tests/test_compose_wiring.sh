@@ -231,6 +231,18 @@ atm_secrets = work["services"]["auth-token-manager"].get("secrets", [])
 check("rask_ingest_token" in atm_secrets,
       "auth-token-manager secrets include rask_ingest_token")
 
+# ── 2p2. acolyte-orchestrator OTEL/RASK enrollment ───────────────────────────
+acol_env_str = " ".join(str(e) for e in acol_env)
+check("OTEL_ENABLED=true" in acol_env_str,
+      "acolyte-orchestrator OTEL_ENABLED=true")
+check("rask-log-aggregator:4318" in acol_env_str,
+      "acolyte-orchestrator OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318")
+check("RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token" in acol_env_str,
+      "acolyte-orchestrator RASK_INGEST_TOKEN_FILE set")
+acol_secrets = acol["services"]["acolyte-orchestrator"].get("secrets", [])
+check("rask_ingest_token" in acol_secrets,
+      "acolyte-orchestrator secrets include rask_ingest_token")
+
 # ── 2q. Six stable sovereign roles untouched ─────────────────────────────────
 sov_secrets = sov["services"]["knowledge-sovereign"].get("secrets", [])
 for role in ["sovereign_backend_token", "sovereign_operator_token",
