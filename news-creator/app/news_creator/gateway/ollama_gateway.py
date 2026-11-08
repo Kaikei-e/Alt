@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 import weakref
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from typing import Any, AsyncIterator
 
 from news_creator.config.config import NewsCreatorConfig
@@ -290,20 +290,23 @@ class OllamaGateway(LLMProviderPort):
                     # Use stream driver for streaming requests
                     stream_iterator = self.stream_driver.generate_stream(payload)
                     # Handle streaming response
-                    async for chunk in stream_iterator:
-                        # Map chunk to LLMGenerateResponse
-                        yield LLMGenerateResponse(
-                            response=chunk.get("response", ""),
-                            model=str(chunk.get("model", payload["model"])),
-                            done=chunk.get("done", False),
-                            done_reason=chunk.get("done_reason"),
-                            prompt_eval_count=chunk.get("prompt_eval_count"),
-                            eval_count=chunk.get("eval_count"),
-                            total_duration=chunk.get("total_duration"),
-                            load_duration=chunk.get("load_duration"),
-                            prompt_eval_duration=chunk.get("prompt_eval_duration"),
-                            eval_duration=chunk.get("eval_duration"),
-                        )
+                    async with aclosing(  # pyrefly: ignore[bad-specialization]
+                        stream_iterator
+                    ):
+                        async for chunk in stream_iterator:
+                            # Map chunk to LLMGenerateResponse
+                            yield LLMGenerateResponse(
+                                response=chunk.get("response", ""),
+                                model=str(chunk.get("model", payload["model"])),
+                                done=chunk.get("done", False),
+                                done_reason=chunk.get("done_reason"),
+                                prompt_eval_count=chunk.get("prompt_eval_count"),
+                                eval_count=chunk.get("eval_count"),
+                                total_duration=chunk.get("total_duration"),
+                                load_duration=chunk.get("load_duration"),
+                                prompt_eval_duration=chunk.get("prompt_eval_duration"),
+                                eval_duration=chunk.get("eval_duration"),
+                            )
                 except GeneratorExit:
                     logger.info(
                         "Stream generator closed by client disconnect or explicit aclose()",
@@ -846,34 +849,36 @@ class OllamaGateway(LLMProviderPort):
         generate_task = asyncio.create_task(self.driver.generate(payload))
         cancel_task = asyncio.create_task(cancel_event.wait())
 
-        done, _pending = await asyncio.wait(
-            {generate_task, cancel_task},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        if cancel_task in done:
-            # Preempted — cancel the HTTP request.
-            # task.cancel() raises CancelledError inside aiohttp's session.post(),
-            # which closes the HTTP connection. Ollama detects the disconnect
-            # and stops inference, freeing GPU resources immediately.
-            generate_task.cancel()
-            try:
-                await generate_task
-            except asyncio.CancelledError:
-                pass
-            logger.warning(
-                f"Request {task_id} preempted during generation — HTTP connection cancelled",
-                extra={"task_id": task_id},
-            )
-            raise PreemptedException(f"Request {task_id} preempted during generation")
-
-        # Generation completed normally — clean up cancel waiter
-        cancel_task.cancel()
         try:
-            await cancel_task
-        except asyncio.CancelledError:
-            pass
-        return generate_task.result()
+            done, _pending = await asyncio.wait(
+                {generate_task, cancel_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if cancel_task in done:
+                # Preempted — cancel the HTTP request.
+                # task.cancel() raises CancelledError inside aiohttp's session.post(),
+                # which closes the HTTP connection. Ollama detects the disconnect
+                # and stops inference, freeing GPU resources immediately.
+                generate_task.cancel()
+                try:
+                    await generate_task
+                except asyncio.CancelledError:
+                    pass
+                logger.warning(
+                    f"Request {task_id} preempted during generation — HTTP connection cancelled",
+                    extra={"task_id": task_id},
+                )
+                raise PreemptedException(
+                    f"Request {task_id} preempted during generation"
+                )
+
+            return generate_task.result()
+        finally:
+            for task in (generate_task, cancel_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(generate_task, cancel_task, return_exceptions=True)
 
     def queue_status(self) -> dict[str, Any]:
         """Current semaphore queue depth/availability for monitoring."""

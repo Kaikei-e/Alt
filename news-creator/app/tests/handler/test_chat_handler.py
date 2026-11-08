@@ -3,10 +3,15 @@
 import json
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from news_creator.handler.chat_handler import create_chat_router
+from news_creator.handler.chat_handler import (
+    ChatMessage,
+    ChatRequest,
+    create_chat_router,
+)
 
 
 def make_app(gateway: MagicMock, config: MagicMock | None = None) -> FastAPI:
@@ -151,6 +156,60 @@ class TestChatEndpointStreaming:
         )
 
         assert resp.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_streaming_chat_aclose_closes_inner_stream_without_gc(self):
+        """Closing ndjson_generator early must immediately close gateway.chat_stream generator without GC."""
+        import gc
+
+        gateway = AsyncMock()
+        inner_closed = False
+
+        async def fake_chunks():
+            nonlocal inner_closed
+            try:
+                yield {
+                    "message": {"role": "assistant", "content": "Hello"},
+                    "done": False,
+                }
+                yield {
+                    "message": {"role": "assistant", "content": " world"},
+                    "done": True,
+                }
+            finally:
+                inner_closed = True
+
+        inner_gen = fake_chunks()
+        gateway.chat_stream.return_value = inner_gen
+
+        config = MagicMock()
+        config.model_routing_enabled = False
+        router = create_chat_router(gateway, config)
+        chat_route = next(
+            r for r in router.routes if getattr(r, "path", None) == "/api/chat"
+        )
+
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            resp = await chat_route.endpoint(
+                ChatRequest(
+                    model="gemma4-e4b-12k",
+                    messages=[ChatMessage(role="user", content="hi")],
+                    stream=True,
+                )
+            )
+            first_line = await anext(resp.body_iterator)
+            assert json.loads(first_line)["message"]["content"] == "Hello"
+            assert not inner_closed
+            await resp.body_iterator.aclose()
+            assert inner_closed, (
+                "Inner gateway.chat_stream generator must be closed immediately when ndjson_generator is closed"
+            )
+        finally:
+            if gc_was_enabled:
+                gc.enable()
+            await inner_gen.aclose()
 
 
 class TestChatEndpointValidation:
