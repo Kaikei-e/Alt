@@ -20,7 +20,8 @@ func (r *TagRepository) CreateTagSetVersion(ctx context.Context, tsv domain.TagS
 	query := `INSERT INTO tag_set_versions
 		(tag_set_version_id, article_id, user_id, generated_at,
 		 generator, input_hash, tags_json, superseded_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (tag_set_version_id) DO NOTHING`
 
 	_, err := r.pool.Exec(ctx, query,
 		tsv.TagSetVersionID, tsv.ArticleID, tsv.UserID, tsv.GeneratedAt,
@@ -102,7 +103,7 @@ func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, article
 		return nil, fmt.Errorf("MarkTagSetVersionSuperseded select newer: %w", err)
 	}
 
-	const olderThanNew = `article_id = $1 AND superseded_by IS NULL
+	const olderThanNew = `article_id = $1 AND (superseded_by IS NULL OR superseded_by = $3)
 		AND (generated_at, tag_set_version_id) < ($2, $3)`
 
 	var prev domain.TagSetVersion
@@ -168,4 +169,33 @@ func (r *TagRepository) GetTagSetVersionByID(ctx context.Context, tagSetVersionI
 	}
 
 	return tsv, nil
+}
+
+// GetLatestTagSetVersion reads the article's current (newest non-superseded)
+// tag set version, ordered consistently with MarkTagSetVersionSuperseded.
+// Returns (nil, nil) when the article has no current version yet.
+func (r *TagRepository) GetLatestTagSetVersion(ctx context.Context, articleID uuid.UUID) (*domain.TagSetVersion, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetLatestTagSetVersion")
+	defer span.End()
+
+	query := `SELECT tag_set_version_id, article_id, user_id, generated_at,
+		generator, input_hash, tags_json, superseded_by
+		FROM tag_set_versions
+		WHERE article_id = $1 AND superseded_by IS NULL
+		ORDER BY generated_at DESC, tag_set_version_id DESC
+		LIMIT 1`
+
+	var tsv domain.TagSetVersion
+	err := r.pool.QueryRow(ctx, query, articleID).Scan(
+		&tsv.TagSetVersionID, &tsv.ArticleID, &tsv.UserID, &tsv.GeneratedAt,
+		&tsv.Generator, &tsv.InputHash, &tsv.TagsJSON, &tsv.SupersededBy,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetLatestTagSetVersion: %w", err)
+	}
+
+	return &tsv, nil
 }

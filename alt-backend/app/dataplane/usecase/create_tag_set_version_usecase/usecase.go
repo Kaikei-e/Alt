@@ -5,7 +5,10 @@ import (
 	"alt/domain"
 	"alt/shared/port/knowledge_event_port"
 	"alt/utils/logger"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,9 +31,9 @@ func NewCreateTagSetVersionUsecase(
 	markSupersededPort datahub_capability_port.MarkTagSetVersionSupersededPort,
 ) *CreateTagSetVersionUsecase {
 	// All three ports are required and wired unconditionally at composition root
-	// (di/datahub/container.go, di/knowledge_module.go). A nil is a DI wiring bug,
-	// not a disabled feature — panic instead of a defensive nil guard that would
-	// silently skip the supersede fact (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
+	// (di/datahub/container.go). A nil is a DI wiring bug, not a disabled feature —
+	// panic instead of a defensive nil guard that would silently skip the supersede
+	// fact (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
 	if tagSetPort == nil {
 		panic("create_tag_set_version_usecase: CreateTagSetVersionPort is nil — wire it at composition root")
 	}
@@ -47,28 +50,77 @@ func NewCreateTagSetVersionUsecase(
 	}
 }
 
+var (
+	// ErrMissingArticleID is returned when a tag set version has a nil article ID.
+	ErrMissingArticleID = errors.New("article_id is required")
+	// ErrMissingUserID is returned when a tag set version has a nil tenant owner.
+	ErrMissingUserID = errors.New("user_id is required")
+	// ErrEmptyTagsJSON is returned when a tag set version has empty tags JSON.
+	ErrEmptyTagsJSON = errors.New("tags_json is required")
+)
+
 // Execute creates a tag set version and appends a TagSetVersionCreated event.
 // If a previous version exists, it also marks the old versions as superseded
 // and emits a TagSetSuperseded event.
+//
+// Retry and replay convergence is derived entirely from durable state in alt-db
+// and knowledge-sovereign (no in-process version cache):
+//  1. Read the article's current non-superseded version from alt-db.
+//  2. If the current row's canonical tags match the incoming tags, reuse its
+//     version ID (retry after partial failure or replay after completion).
+//     Otherwise derive a deterministic version ID from (article_id, current.id
+//     or uuid.Nil, canonical tags hash) and insert the row with ON CONFLICT DO
+//     NOTHING before appending the created event so an interleaved tag set
+//     cannot leave an orphan TagSetVersionCreated event.
+//  3. Append TagSetVersionCreated (idempotent via dedupe_key).
+//  4. Mark older versions superseded in alt-db (idempotent; returns predecessor
+//     even if already marked superseded by this version ID).
+//  5. If a predecessor was superseded, append TagSetSuperseded (idempotent via
+//     dedupe_key).
 func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.TagSetVersion) error {
 	if tsv.ArticleID == uuid.Nil {
-		return errors.New("article_id is required")
+		return ErrMissingArticleID
+	}
+	if tsv.UserID == uuid.Nil {
+		return ErrMissingUserID
 	}
 	if len(tsv.TagsJSON) == 0 {
-		return errors.New("tags_json is required")
+		return ErrEmptyTagsJSON
 	}
 
-	// Generate ID if not set
-	if tsv.TagSetVersionID == uuid.Nil {
-		tsv.TagSetVersionID = uuid.New()
-	}
-	if tsv.GeneratedAt.IsZero() {
-		tsv.GeneratedAt = time.Now()
+	tagsHash := canonicalTagsHash(tsv.TagsJSON)
+
+	current, err := u.tagSetPort.GetLatestTagSetVersion(ctx, tsv.ArticleID)
+	if err != nil {
+		return fmt.Errorf("get latest tag set version: %w", err)
 	}
 
-	// Create the version
-	if err := u.tagSetPort.CreateTagSetVersion(ctx, tsv); err != nil {
-		return fmt.Errorf("create tag set version: %w", err)
+	if current != nil && canonicalTagsHash(current.TagsJSON) == tagsHash &&
+		(tsv.TagSetVersionID == uuid.Nil || tsv.TagSetVersionID == current.TagSetVersionID) {
+		tsv.TagSetVersionID = current.TagSetVersionID
+		if tsv.GeneratedAt.IsZero() {
+			tsv.GeneratedAt = current.GeneratedAt
+		}
+	} else {
+		if tsv.TagSetVersionID == uuid.Nil {
+			var prevID uuid.UUID
+			if current != nil {
+				prevID = current.TagSetVersionID
+			}
+			tsv.TagSetVersionID = deriveTagSetVersionID(tsv.ArticleID, prevID, tagsHash)
+		}
+		if tsv.GeneratedAt.IsZero() {
+			now := time.Now()
+			if current != nil {
+				if minNext := current.GeneratedAt.Add(time.Microsecond); now.Before(minNext) {
+					now = minNext
+				}
+			}
+			tsv.GeneratedAt = now
+		}
+		if err := u.tagSetPort.CreateTagSetVersion(ctx, tsv); err != nil {
+			return fmt.Errorf("create tag set version: %w", err)
+		}
 	}
 
 	// Extract canonical tag names from the version being created so the
@@ -77,7 +129,6 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 	// version's payload, never a latest-state lookup.
 	tagNames := tagNamesFromJSON(tsv.TagsJSON)
 
-	// Emit event
 	payload, _ := json.Marshal(map[string]any{
 		"tag_set_version_id": tsv.TagSetVersionID.String(),
 		"article_id":         tsv.ArticleID.String(),
@@ -108,7 +159,10 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to mark tag set version superseded",
 			"error", err, "article_id", tsv.ArticleID)
-	} else if prev != nil {
+		return fmt.Errorf("mark tag set version superseded: %w", err)
+	}
+
+	if prev != nil {
 		prevTagNames := tagNamesFromJSON(prev.TagsJSON)
 
 		supersedePayload, _ := json.Marshal(map[string]interface{}{
@@ -143,6 +197,28 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 	}
 
 	return nil
+}
+
+func deriveTagSetVersionID(articleID, prevVersionID uuid.UUID, tagsHash string) uuid.UUID {
+	data := fmt.Sprintf("tag_set_version:%s:%s:%s", articleID, prevVersionID, tagsHash)
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(data))
+}
+
+func canonicalTagsHash(tagsJSON json.RawMessage) string {
+	raw := []byte(tagsJSON)
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err == nil {
+		if canonical, err := json.Marshal(decoded); err == nil {
+			raw = canonical
+		}
+	} else {
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, raw); err == nil {
+			raw = compact.Bytes()
+		}
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 // tagNamesFromJSON extracts the canonical tag-name list from a TagSetVersion's

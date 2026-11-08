@@ -67,6 +67,8 @@ func SetupConnectHandlers(mux *http.ServeMux, container *datahubdi.DataHubCompon
 		panic("datahub: DataHubComponents.FetchRecentArticlesUsecase is nil — DataHubService.ListRecentArticles has no read behind it")
 	case container.SovereignClient == nil:
 		panic("datahub: DataHubComponents.SovereignClient is nil — DataHubService.CreateArticle has nowhere to append ArticleCreated")
+	case container.CreateTagSetVersionUsecase == nil:
+		panic("datahub: DataHubComponents.CreateTagSetVersionUsecase is nil — DataHubService tag writes have no version producer")
 	}
 
 	articleGw := container.ArticleCatalogGateway

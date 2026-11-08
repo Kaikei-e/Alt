@@ -2,7 +2,6 @@ package di
 
 import (
 	"alt/config"
-	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/orchestrator/driver/health_checker"
 	"alt/orchestrator/gateway/feature_flag_gateway"
 	"alt/orchestrator/gateway/knowledge_backfill_gateway"
@@ -53,7 +52,6 @@ type KnowledgeModule struct {
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
-	CreateTagSetVersionUsecase       *create_tag_set_version_usecase.CreateTagSetVersionUsecase
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
 	KnowledgeURLBackfillUsecase      *knowledge_url_backfill_usecase.Usecase
 	KnowledgeProjectionHealthUsecase *knowledge_projection_health_usecase.Usecase
@@ -139,7 +137,6 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	slog.Info("track_home_action_article_status_sync_enabled")
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
 	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(versionGw, sovereignCli, versionGw)
-	createTagSetVersionUC := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(versionGw, sovereignCli, versionGw)
 	knowledgeBackfillUC := knowledge_backfill_usecase.NewUsecase(
 		sovereignOperatorCli,
 		sovereignOperatorCli,
@@ -244,7 +241,6 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		TrackHomeActionUsecase:           trackHomeActionUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,
 		CreateSummaryVersionUsecase:      createSummaryVersionUC,
-		CreateTagSetVersionUsecase:       createTagSetVersionUC,
 		KnowledgeBackfillUsecase:         knowledgeBackfillUC,
 		KnowledgeURLBackfillUsecase:      knowledgeURLBackfillUC,
 		KnowledgeProjectionHealthUsecase: knowledgeProjectionHealthUC,

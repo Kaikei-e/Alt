@@ -80,8 +80,26 @@ func (f *fakeTagSetVersionPort) CreateTagSetVersion(_ context.Context, tsv domai
 	if f.err != nil {
 		return f.err
 	}
+	for _, existing := range f.created {
+		if existing.TagSetVersionID == tsv.TagSetVersionID && tsv.TagSetVersionID != uuid.Nil {
+			return nil
+		}
+	}
 	f.created = append(f.created, tsv)
 	return nil
+}
+
+func (f *fakeTagSetVersionPort) GetLatestTagSetVersion(_ context.Context, articleID uuid.UUID) (*domain.TagSetVersion, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	for i := len(f.created) - 1; i >= 0; i-- {
+		if f.created[i].ArticleID == articleID && f.created[i].SupersededBy == nil {
+			cp := f.created[i]
+			return &cp, nil
+		}
+	}
+	return nil, nil
 }
 
 func (f *fakeTagSetVersionPort) MarkTagSetVersionSuperseded(_ context.Context, _, _ uuid.UUID) (*domain.TagSetVersion, error) {

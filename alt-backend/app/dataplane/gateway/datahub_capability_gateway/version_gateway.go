@@ -80,6 +80,7 @@ func (g *SummaryVersionGateway) GetLatestSummaryVersion(ctx context.Context, art
 // summaryVersionDriver.
 type tagSetVersionDriver interface {
 	CreateTagSetVersion(ctx context.Context, tsv domain.TagSetVersion) error
+	GetLatestTagSetVersion(ctx context.Context, articleID uuid.UUID) (*domain.TagSetVersion, error)
 	MarkTagSetVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.TagSetVersion, error)
 	GetTagSetVersionByID(ctx context.Context, tagSetVersionID uuid.UUID) (domain.TagSetVersion, error)
 }
@@ -98,6 +99,14 @@ func (g *TagSetVersionGateway) CreateTagSetVersion(ctx context.Context, tsv doma
 		return fmt.Errorf("create tag set version %s: %w", tsv.TagSetVersionID, err)
 	}
 	return nil
+}
+
+func (g *TagSetVersionGateway) GetLatestTagSetVersion(ctx context.Context, articleID uuid.UUID) (*domain.TagSetVersion, error) {
+	tsv, err := g.db.GetLatestTagSetVersion(ctx, articleID)
+	if err != nil {
+		return nil, fmt.Errorf("get latest tag set version for article %s: %w", articleID, err)
+	}
+	return tsv, nil
 }
 
 func (g *TagSetVersionGateway) MarkTagSetVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.TagSetVersion, error) {
