@@ -92,6 +92,11 @@ impl ServiceParser for PythonStructlogParser {
                             _ => LogLevel::Info,
                         };
 
+                        let timestamp = obj
+                            .get("timestamp")
+                            .and_then(|v| v.as_str())
+                            .and_then(super::parse_rfc3339_utc);
+
                         // Collect all fields except "event" and "level"
                         let mut fields = std::collections::HashMap::new();
                         for (key, value) in obj {
@@ -105,7 +110,7 @@ impl ServiceParser for PythonStructlogParser {
                             log_type: "structured".to_string(),
                             message,
                             level: Some(level),
-                            timestamp: None,
+                            timestamp,
                             stream: "stdout".to_string(),
                             method: None,
                             path: None,

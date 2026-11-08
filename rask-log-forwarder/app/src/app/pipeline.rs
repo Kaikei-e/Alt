@@ -74,14 +74,11 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
     // Start log collection in background with cancellation support
     let collector_clone = collector.clone();
     let collector_cancel_token = cancel_token.clone();
-    tokio::spawn(async move {
+    let collector_handle = tokio::spawn(async move {
         let mut collector_guard = collector_clone.lock().await;
-        if let Err(e) = collector_guard
+        collector_guard
             .start_collection(log_tx, collector_cancel_token)
             .await
-        {
-            error!("Log collection failed: {}", e);
-        }
     });
 
     // Buffer for batching logs - directly collect EnrichedLogEntry (no double conversion)
@@ -118,12 +115,43 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
     loop {
         tokio::select! {
             // Process incoming log entries
-            Some(log_entry) = log_rx.recv() => {
-                log_batch.push(enrich_log_entry(&parser, log_entry).await);
+            maybe_entry = log_rx.recv() => {
+                match maybe_entry {
+                    Some(log_entry) => {
+                        log_batch.push(enrich_log_entry(&parser, log_entry).await);
 
-                // Send batch when it reaches the configured size
-                if log_batch.len() >= batch_size {
-                    flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
+                        // Send batch when it reaches the configured size
+                        if log_batch.len() >= batch_size {
+                            flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
+                        }
+                    }
+                    None => {
+                        match collector_handle.await {
+                            Ok(Ok(())) => {
+                                error!(
+                                    "Log collector for service '{}' stopped unexpectedly; stopping processing loop",
+                                    target_service
+                                );
+                            }
+                            Ok(Err(e)) => {
+                                error!(
+                                    "Log collection failed for service '{}': {}; stopping processing loop",
+                                    target_service, e
+                                );
+                            }
+                            Err(join_err) => {
+                                error!(
+                                    "Log collector task panicked for service '{}': {}; stopping processing loop",
+                                    target_service, join_err
+                                );
+                            }
+                        }
+                        cancel_token.cancel();
+                        if !log_batch.is_empty() {
+                            flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
+                        }
+                        break;
+                    }
                 }
             }
 
@@ -172,11 +200,7 @@ async fn enrich_log_entry(
     log_entry: crate::collector::LogEntry,
 ) -> EnrichedLogEntry {
     let container = &log_entry.container;
-    match parser.parse_docker_log_with_stream(
-        log_entry.raw_bytes.as_ref(),
-        container,
-        log_entry.stream,
-    ) {
+    match parser.parse_log_entry(&log_entry) {
         Ok(enriched_entry) => enriched_entry,
         Err(e) => {
             error!("Failed to parse log entry: {}", e);
@@ -188,12 +212,22 @@ async fn enrich_log_entry(
                 log_entry.raw_bytes.as_ref()
             };
             let sanitized_message = String::from_utf8_lossy(raw_slice).replace('\0', "");
+            let mut fields = std::collections::HashMap::new();
+            let timestamp = if let Some(ts) = log_entry.timestamp {
+                ts.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+            } else {
+                fields.insert(
+                    "timestamp_fallback".to_string(),
+                    "processing_time".to_string(),
+                );
+                chrono::Utc::now().to_rfc3339()
+            };
             EnrichedLogEntry {
                 service_type: container.service_name.clone(),
                 log_type: "plain".to_string(),
                 message: sanitized_message,
                 level: Some(crate::domain::LogLevel::Info),
-                timestamp: chrono::Utc::now().to_rfc3339(),
+                timestamp,
                 stream: log_entry.stream.as_str().to_string(),
                 method: None,
                 path: None,
@@ -206,7 +240,7 @@ async fn enrich_log_entry(
                 service_group: container.group.clone(),
                 trace_id: None,
                 span_id: None,
-                fields: std::collections::HashMap::new(),
+                fields,
             }
         }
     }
@@ -463,6 +497,7 @@ mod tests {
         let collected = crate::collector::LogEntry {
             container: discovered_container(),
             stream: crate::collector::LogStream::Stdout,
+            timestamp: None,
             raw_bytes: bytes::Bytes::from_static(b"backend is up\n"),
         };
 
@@ -491,6 +526,7 @@ mod tests {
         let collected = crate::collector::LogEntry {
             container: discovered_container(),
             stream: crate::collector::LogStream::from_log_output(&frame),
+            timestamp: None,
             raw_bytes: frame.into_bytes(),
         };
 
@@ -538,5 +574,173 @@ mod tests {
         let snapshot = reliability_manager.get_metrics_snapshot().await;
         assert_eq!(snapshot.successful_batches, 1);
         assert_eq!(snapshot.disk_fallback_count, 0);
+    }
+
+    #[tokio::test]
+    async fn enrich_log_entry_fallback_preserves_docker_timestamp_on_oversized_line() {
+        let parser = UniversalParser::new();
+        let parsed_ts = chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00.123456789Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::Stderr,
+            timestamp: Some(parsed_ts),
+            raw_bytes: bytes::Bytes::from(vec![b'x'; 65 * 1024]),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        assert_eq!(
+            enriched.timestamp, "2020-01-01T00:00:00.123456789Z",
+            "parse-failure fallback must preserve the Docker frame timestamp when present, got {}",
+            enriched.timestamp
+        );
+        assert!(!enriched.fields.contains_key("timestamp_fallback"));
+    }
+
+    #[tokio::test]
+    async fn enrich_log_entry_fallback_marks_processing_time_when_docker_timestamp_missing() {
+        let parser = UniversalParser::new();
+
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::Stderr,
+            timestamp: None,
+            raw_bytes: bytes::Bytes::from(vec![b'x'; 65 * 1024]),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        assert_eq!(
+            enriched.fields.get("timestamp_fallback"),
+            Some(&"processing_time".to_string()),
+            "parse-failure fallback without a Docker timestamp must record timestamp_fallback"
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn run_processing_loop_flushes_pending_batch_and_exits_when_collector_stops() {
+        use crate::collector::{CollectorConfig, LogCollector};
+        use wiremock::matchers::{method, path, path_regex};
+        use wiremock::{Request, Respond};
+
+        struct OneShotLogStreamResponder;
+
+        impl Respond for OneShotLogStreamResponder {
+            fn respond(&self, _request: &Request) -> ResponseTemplate {
+                // Remove DOCKER_HOST once the first stream is served so the
+                // collector's subsequent reconnect hits a fatal EndpointError
+                // and exits, dropping log_tx without a shutdown signal.
+                unsafe {
+                    std::env::remove_var("DOCKER_HOST");
+                }
+                let line = b"2024-01-01T00:00:00.000000000Z {\"level\":\"info\",\"msg\":\"pending before collector exit\"}\n";
+                let mut frame = Vec::with_capacity(8 + line.len());
+                frame.extend_from_slice(&[1, 0, 0, 0]);
+                frame.extend_from_slice(&(line.len() as u32).to_be_bytes());
+                frame.extend_from_slice(line);
+                ResponseTemplate::new(200).set_body_bytes(frame)
+            }
+        }
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/aggregate"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/containers/json$"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"[{"Id":"abc123def456","Names":["/alt-backend"],"Labels":{"com.docker.compose.service":"alt-backend","rask.group":"alt-backend"}}]"#,
+            ))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/containers/abc123def456/logs$"))
+            .respond_with(OneShotLogStreamResponder)
+            .mount(&mock_server)
+            .await;
+
+        unsafe {
+            std::env::set_var("DOCKER_HOST", mock_server.uri());
+        }
+
+        let collector = LogCollector::new(CollectorConfig {
+            auto_discover: false,
+            target_service: Some("alt-backend".to_string()),
+            follow_rotations: true,
+            buffer_size: 8192,
+        })
+        .await
+        .expect("LogCollector::new should succeed with mock DOCKER_HOST");
+
+        let aggregate_endpoint = format!("{}/v1/aggregate", mock_server.uri());
+        let storage_dir = tempfile::tempdir().unwrap();
+        let reliability_manager = Arc::new(
+            build_reliability_manager(aggregate_endpoint.clone(), storage_dir.path().to_path_buf())
+                .await,
+        );
+        let sender = Arc::new(
+            LogSender::new(ClientConfig {
+                endpoint: aggregate_endpoint,
+                ingest_token: "test-token-valid".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap(),
+        );
+
+        let running = Arc::new(RwLock::new(true));
+        let (_shutdown_tx, shutdown_rx) = mpsc::unbounded_channel();
+        let cancel_token = CancellationToken::new();
+
+        let params = ProcessingLoopParams {
+            collector: Arc::new(tokio::sync::Mutex::new(collector)),
+            parser: Arc::new(UniversalParser::new()),
+            reliability_manager: Arc::clone(&reliability_manager),
+            sender,
+            running: Arc::clone(&running),
+            shutdown_rx,
+            target_service: "alt-backend".to_string(),
+            sender_config: test_sender_config(),
+            // Keep batch_size > 1 and flush_interval long so the single
+            // entry stays buffered in log_batch until the collector exits.
+            batch_size: 10,
+            flush_interval: Duration::from_secs(60),
+            channel_capacity: 16,
+            cancel_token: cancel_token.clone(),
+        };
+
+        let loop_result =
+            tokio::time::timeout(Duration::from_secs(2), run_processing_loop(params)).await;
+
+        unsafe {
+            std::env::remove_var("DOCKER_HOST");
+        }
+
+        assert!(
+            loop_result.is_ok(),
+            "run_processing_loop must terminate when the collector task exits and closes log_tx"
+        );
+        assert!(
+            !*running.read().await,
+            "running flag must be set to false when run_processing_loop exits"
+        );
+        assert!(
+            cancel_token.is_cancelled(),
+            "cancel_token must be cancelled when run_processing_loop exits"
+        );
+        let snapshot = reliability_manager.get_metrics_snapshot().await;
+        assert_eq!(
+            snapshot.successful_batches, 1,
+            "pending log_batch must be flushed before run_processing_loop exits"
+        );
     }
 }

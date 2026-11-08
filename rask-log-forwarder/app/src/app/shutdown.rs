@@ -67,10 +67,28 @@ impl ShutdownHandle {
         }
     }
 
-    pub async fn wait_for_shutdown(self) {
-        self.signal_handler.wait().await;
-        if let Err(e) = self.shutdown().await {
-            error!("Shutdown error: {}", e);
+    pub async fn wait_for_shutdown(mut self) -> Result<(), ServiceError> {
+        tokio::select! {
+            () = self.signal_handler.wait() => {
+                let result = self.shutdown().await;
+                if let Err(ref e) = result {
+                    error!("Shutdown error: {}", e);
+                }
+                result
+            }
+            join_result = &mut self.processing_loop => {
+                match join_result {
+                    Ok(()) => {
+                        error!("Processing loop exited unexpectedly without shutdown signal");
+                    }
+                    Err(e) => {
+                        error!("Processing loop task panicked: {e}");
+                    }
+                }
+                Err(ServiceError::CollectorError(
+                    crate::collector::CollectorError::CollectionStopped,
+                ))
+            }
         }
     }
 }
@@ -325,6 +343,51 @@ mod tests {
             declared[0],
             "STOP_GRACE_PERIOD disagrees with compose/logging.yaml; the deadline derived from it \
              would let Docker SIGKILL the forwarder mid-flush"
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_for_shutdown_returns_when_processing_loop_exits_without_signal() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let processing_loop = tokio::spawn(async {});
+
+        let result = timeout(
+            TokioDuration::from_millis(200),
+            ShutdownHandle::new(tx, test_handler(), processing_loop).wait_for_shutdown(),
+        )
+        .await
+        .expect(
+            "wait_for_shutdown must return promptly when the processing loop finishes on its own \
+             instead of hanging until SIGTERM",
+        );
+
+        assert!(
+            matches!(
+                result,
+                Err(ServiceError::CollectorError(
+                    crate::collector::CollectorError::CollectionStopped
+                ))
+            ),
+            "unexpected processing-loop exit must return an error so the binary exits non-zero, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_for_shutdown_succeeds_when_signal_arrives() {
+        let (tx, processing_loop) = fake_processing_loop(Duration::from_millis(10));
+        let handler = test_handler();
+        handler.shutdown_token.cancel();
+
+        let result = timeout(
+            TokioDuration::from_millis(500),
+            ShutdownHandle::new(tx, handler, processing_loop).wait_for_shutdown(),
+        )
+        .await
+        .expect("wait_for_shutdown must complete once a signal is observed");
+
+        assert!(
+            result.is_ok(),
+            "signal-triggered graceful shutdown must return Ok(()), got {result:?}"
         );
     }
 }
