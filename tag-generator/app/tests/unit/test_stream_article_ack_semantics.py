@@ -201,16 +201,17 @@ def test_missing_article_is_acked() -> None:
     assert client.acks == ["4-0"]
 
 
-def test_transient_fetch_error_leaves_article_pending_for_retry() -> None:
-    """A transient GetArticleContent RPC failure must not be ACKed as not-found."""
+def test_transient_connect_error_on_fetch_article_is_not_acked() -> None:
+    """A transient ConnectError from GetArticleContent must leave the message
+    unacked in the PEL for redelivery, while Code.NOT_FOUND still ACKs.
+    """
     extractor = _FakeExtractor(tags=["technology"])
     inserter = _FakeInserter()
     rpc_client = MagicMock()
-    rpc_client.get_article_content.side_effect = ConnectError(Code.UNAVAILABLE, "Datahub unavailable")
+    rpc_client.get_article_content.side_effect = ConnectError(Code.UNAVAILABLE, "upstream unavailable")
 
     service = _service(extractor, inserter)
     service.article_fetcher = ConnectArticleFetcher(rpc_client, {})
-
     consumer = StreamConsumer(ConsumerConfig(enabled=True), handler=cast(Any, None))
     consumer.handler = TagGeneratorEventHandler(service, consumer)
     client = _ScriptedReadClient([_delivery("5-0")])
@@ -220,7 +221,7 @@ def test_transient_fetch_error_leaves_article_pending_for_retry() -> None:
 
     assert extractor.calls == 0
     assert inserter.calls == []
-    assert client.acks == []
+    assert client.acks == [], "transient ConnectError must not ACK the ArticleCreated message"
 
 
 def test_article_whose_extraction_raises_model_load_error_is_left_pending_for_retry() -> None:
@@ -241,3 +242,23 @@ def test_article_whose_extraction_raises_model_load_error_is_left_pending_for_re
     assert failing_manager.get_models.call_count == 1
     assert client.acks == [], "an extraction raising ModelLoadError must not be ACKed"
     assert inserter.calls == []
+
+
+def test_not_found_connect_error_on_fetch_article_is_acked() -> None:
+    extractor = _FakeExtractor(tags=["technology"])
+    inserter = _FakeInserter()
+    rpc_client = MagicMock()
+    rpc_client.get_article_content.side_effect = ConnectError(Code.NOT_FOUND, "article not found")
+
+    service = _service(extractor, inserter)
+    service.article_fetcher = ConnectArticleFetcher(rpc_client, {})
+    consumer = StreamConsumer(ConsumerConfig(enabled=True), handler=cast(Any, None))
+    consumer.handler = TagGeneratorEventHandler(service, consumer)
+    client = _ScriptedReadClient([_delivery("6-0")])
+    consumer.client = cast(redis.Redis, client)
+
+    asyncio.run(consumer._read_and_process())
+
+    assert extractor.calls == 0
+    assert inserter.calls == []
+    assert client.acks == ["6-0"]

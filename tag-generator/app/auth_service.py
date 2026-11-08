@@ -286,6 +286,9 @@ tag_service = AuthenticatedTagGeneratorService()
 # Background tag generation service
 _background_tag_service = None
 _background_thread = None
+_CONSUMER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
+_stream_consumers: list[Any] = []
+_consumer_threads: list[threading.Thread] = []
 
 # Liveness flags surfaced via /health. Set to False when the background
 # batch-processing service or a stream consumer thread dies unexpectedly, so
@@ -346,7 +349,7 @@ def _run_background_tag_generation():
             def run_consumer() -> None:
                 supervise(
                     "articles",
-                    lambda: asyncio.run(consumer.start()),
+                    lambda: None if consumer.is_stopped else asyncio.run(consumer.start()),
                     on_health=_mark_consumer_health,
                 )
 
@@ -355,6 +358,8 @@ def _run_background_tag_generation():
                 daemon=True,
                 name="redis-streams-consumer",
             )
+            _stream_consumers.append(consumer)
+            _consumer_threads.append(consumer_thread)
             consumer_thread.start()
             logger.info("redis_streams_consumer_started")
         else:
@@ -376,7 +381,7 @@ def _run_background_tag_generation():
             def run_tags_consumer() -> None:
                 supervise(
                     "tags",
-                    lambda: asyncio.run(tags_consumer.start()),
+                    lambda: None if tags_consumer.is_stopped else asyncio.run(tags_consumer.start()),
                     on_health=_mark_consumer_health,
                 )
 
@@ -385,6 +390,8 @@ def _run_background_tag_generation():
                 daemon=True,
                 name="redis-streams-tags-consumer",
             )
+            _stream_consumers.append(tags_consumer)
+            _consumer_threads.append(tags_consumer_thread)
             tags_consumer_thread.start()
             logger.info("tags_stream_consumer_started")
         else:
@@ -438,6 +445,13 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     logger.info("FastAPI lifespan: shutdown phase")
+    for consumer in list(_stream_consumers):
+        consumer.stop()
+    for consumer_thread in list(_consumer_threads):
+        if consumer_thread.is_alive():
+            await asyncio.to_thread(consumer_thread.join, _CONSUMER_SHUTDOWN_TIMEOUT_SECONDS)
+    _stream_consumers.clear()
+    _consumer_threads.clear()
     if inbound_tls_runtime is not None:
         await inbound_tls_runtime.aclose()
     if pki_handle is not None:

@@ -101,6 +101,8 @@ def main() -> int:
             )
             tags_consumer_thread.start()
             logger.info("tags_stream_consumer_started")
+        else:
+            logger.info("tags_stream_consumer_disabled")
 
         # Run service (blocking)
         service.run_service()

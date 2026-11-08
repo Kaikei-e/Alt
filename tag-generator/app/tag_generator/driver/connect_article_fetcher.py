@@ -141,8 +141,9 @@ class ConnectArticleFetcher:
                 "created_at": "",
                 "feed_id": None,
             }
-        except ConnectError as exc:
-            if exc.code == Code.NOT_FOUND:
-                logger.warning("Failed to fetch article by ID via API", article_id=article_id)
+        except ConnectError as e:
+            if e.code == Code.NOT_FOUND:
+                logger.warning("Article not found via API", article_id=article_id)
                 return None
+            logger.error("Failed to fetch article by ID via API", article_id=article_id, error=str(e))
             raise

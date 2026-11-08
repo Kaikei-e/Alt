@@ -188,7 +188,7 @@ class TagGeneratorEventHandler(EventHandler):
                 "stream_consumer_not_configured_for_reply",
                 event_id=event.event_id,
             )
-            return
+            raise RuntimeError("stream_consumer is not configured for reply publishing")
 
         # Validate payload with size limits
         try:
@@ -229,18 +229,6 @@ class TagGeneratorEventHandler(EventHandler):
         try:
             # Generate tags inline using title and content from the request
             tags, inference_ms = await self._generate_tags_inline(article_id, title, content, feed_id)
-
-            # Publish success reply
-            await self._publish_reply(
-                reply_to,
-                correlation_id,
-                {
-                    "success": True,
-                    "article_id": article_id,
-                    "tags": tags,
-                    "inference_ms": inference_ms,
-                },
-            )
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.error(
@@ -260,6 +248,19 @@ class TagGeneratorEventHandler(EventHandler):
                     "inference_ms": elapsed_ms,
                 },
             )
+            return
+
+        # Publish success reply
+        await self._publish_reply(
+            reply_to,
+            correlation_id,
+            {
+                "success": True,
+                "article_id": article_id,
+                "tags": tags,
+                "inference_ms": inference_ms,
+            },
+        )
 
     async def _generate_tags_inline(
         self, article_id: str, title: str, content: str, feed_id: str
@@ -306,7 +307,7 @@ class TagGeneratorEventHandler(EventHandler):
         """Publish a reply event to the reply stream."""
         if not self.stream_consumer:
             logger.error("cannot_publish_reply_no_consumer")
-            return
+            raise RuntimeError("stream_consumer is not configured for reply publishing")
 
         event_data = {
             "event_id": str(uuid.uuid4()),
@@ -315,7 +316,9 @@ class TagGeneratorEventHandler(EventHandler):
             "metadata": {"correlation_id": correlation_id or ""},
         }
 
-        await self.stream_consumer.publish_reply(reply_to, event_data)
+        message_id = await self.stream_consumer.publish_reply(reply_to, event_data)
+        if not message_id:
+            raise RuntimeError(f"reply publish failed for stream {reply_to}")
 
         logger.info(
             "tag_generation_reply_published",
