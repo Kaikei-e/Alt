@@ -55,6 +55,12 @@ const (
 	EventTypeTagGenerationCompleted = "TagGenerationCompleted"
 )
 
+const (
+	defaultRPCTimeout                 = 30 * time.Second
+	defaultTagGenerationTimeoutMs     = 60_000
+	defaultTagGenerationTimeoutMargin = 10 * time.Second
+)
+
 // Client provides Connect-RPC client for mq-hub.
 type Client struct {
 	client  mqhubv1connect.MQHubServiceClient
@@ -98,9 +104,9 @@ func NewClient(baseURL string, enabled bool, authToken ...string) *Client {
 		}
 	}
 
+	// Leave http.Client.Timeout unset so it cannot cut off GenerateTagsForArticle at 30s; per-RPC context deadlines bound every call.
 	httpClient := &http.Client{
 		Transport: transport,
-		Timeout:   30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -166,7 +172,10 @@ func (c *Client) PublishArticleCreated(ctx context.Context, payload ArticleCreat
 		Metadata:  traceMetadata(ctx),
 	}
 
-	resp, err := c.client.Publish(ctx, connect.NewRequest(&mqhubv1.PublishRequest{
+	callCtx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
+	defer cancel()
+
+	resp, err := c.client.Publish(callCtx, connect.NewRequest(&mqhubv1.PublishRequest{
 		Stream: StreamKeyArticles,
 		Event:  event,
 	}))
@@ -194,7 +203,10 @@ func (c *Client) PublishArticleUpdated(ctx context.Context, payload ArticleCreat
 		Metadata:  traceMetadata(ctx),
 	}
 
-	resp, err := c.client.Publish(ctx, connect.NewRequest(&mqhubv1.PublishRequest{
+	callCtx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
+	defer cancel()
+
+	resp, err := c.client.Publish(callCtx, connect.NewRequest(&mqhubv1.PublishRequest{
 		Stream: StreamKeyArticles,
 		Event:  event,
 	}))
@@ -222,7 +234,10 @@ func (c *Client) PublishSummarizeRequested(ctx context.Context, payload Summariz
 		Metadata:  traceMetadata(ctx),
 	}
 
-	resp, err := c.client.Publish(ctx, connect.NewRequest(&mqhubv1.PublishRequest{
+	callCtx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
+	defer cancel()
+
+	resp, err := c.client.Publish(callCtx, connect.NewRequest(&mqhubv1.PublishRequest{
 		Stream: StreamKeyArticles,
 		Event:  event,
 	}))
@@ -250,7 +265,10 @@ func (c *Client) PublishIndexArticle(ctx context.Context, payload IndexArticlePa
 		Metadata:  traceMetadata(ctx),
 	}
 
-	resp, err := c.client.Publish(ctx, connect.NewRequest(&mqhubv1.PublishRequest{
+	callCtx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
+	defer cancel()
+
+	resp, err := c.client.Publish(callCtx, connect.NewRequest(&mqhubv1.PublishRequest{
 		Stream: StreamKeyIndex,
 		Event:  event,
 	}))
@@ -305,7 +323,10 @@ func (c *Client) GenerateTagsForArticle(ctx context.Context, req GenerateTagsReq
 		TimeoutMs: req.TimeoutMs,
 	}
 
-	resp, err := c.client.GenerateTagsForArticle(ctx, connect.NewRequest(protoReq))
+	callCtx, cancel := context.WithTimeout(ctx, tagGenerationCallTimeout(req.TimeoutMs))
+	defer cancel()
+
+	resp, err := c.client.GenerateTagsForArticle(callCtx, connect.NewRequest(protoReq))
 	if err != nil {
 		return &GenerateTagsResponse{
 			Success:      false,
@@ -331,4 +352,11 @@ func (c *Client) GenerateTagsForArticle(ctx context.Context, req GenerateTagsReq
 		InferenceMs:  resp.Msg.InferenceMs,
 		ErrorMessage: resp.Msg.ErrorMessage,
 	}, nil
+}
+
+func tagGenerationCallTimeout(timeoutMs int32) time.Duration {
+	if timeoutMs <= 0 {
+		timeoutMs = defaultTagGenerationTimeoutMs
+	}
+	return time.Duration(timeoutMs)*time.Millisecond + defaultTagGenerationTimeoutMargin
 }
