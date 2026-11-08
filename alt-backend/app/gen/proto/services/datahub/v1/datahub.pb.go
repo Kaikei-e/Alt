@@ -14589,6 +14589,7 @@ func (x *MarkSummaryVersionSupersededResponse) GetPreviousVersion() *SummaryVers
 type GetSummaryVersionByIDRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	SummaryVersionId string                 `protobuf:"bytes,1,opt,name=summary_version_id,json=summaryVersionId,proto3" json:"summary_version_id,omitempty"`
+	UserId           string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -14626,6 +14627,13 @@ func (*GetSummaryVersionByIDRequest) Descriptor() ([]byte, []int) {
 func (x *GetSummaryVersionByIDRequest) GetSummaryVersionId() string {
 	if x != nil {
 		return x.SummaryVersionId
+	}
+	return ""
+}
+
+func (x *GetSummaryVersionByIDRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
 	}
 	return ""
 }
@@ -18344,9 +18352,10 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\auser_id\x18\x03 \x01(\tR\x06userId\"\x90\x01\n" +
 	"$MarkSummaryVersionSupersededResponse\x12S\n" +
 	"\x10previous_version\x18\x01 \x01(\v2#.services.datahub.v1.SummaryVersionH\x00R\x0fpreviousVersion\x88\x01\x01B\x13\n" +
-	"\x11_previous_version\"L\n" +
+	"\x11_previous_version\"e\n" +
 	"\x1cGetSummaryVersionByIDRequest\x12,\n" +
-	"\x12summary_version_id\x18\x01 \x01(\tR\x10summaryVersionId\"^\n" +
+	"\x12summary_version_id\x18\x01 \x01(\tR\x10summaryVersionId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"^\n" +
 	"\x1dGetSummaryVersionByIDResponse\x12=\n" +
 	"\aversion\x18\x01 \x01(\v2#.services.datahub.v1.SummaryVersionR\aversion\"X\n" +
 	"\x1eGetLatestSummaryVersionRequest\x12\x1d\n" +
