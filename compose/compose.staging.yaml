@@ -363,20 +363,12 @@ services:
       # The binary refuses an unset mode. Staging runs no step-ca and gives
       # sovereign no outbound mTLS peer, so it mints nothing.
       - PKI_ENROLLMENT=disabled
-      # Tighten cron cadence so the E2E suite's surface-planner scenario
-      # can observe a SurfacePlanRecomputed emission within its 45 s
-      # retry budget (30 retries × 1.5 s). Production defaults stay at
-      # 60 s / 5 s.
-      - KNOWLEDGE_SOVEREIGN_PLANNER_TICK_INTERVAL=2s
+      # Tighten projector tick cadence (production default 5s) and keep Trail/Home batch caps smaller for bounded E2E fixtures.
       - KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL=2s
-      - KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE=1024
-      - KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK=4
-      # ADR-000914 §Δ5: loop projector throughput. Staging keeps the cap
-      # low since the E2E suite seeds bounded fixtures; the production
-      # default lives in compose/sovereign.yaml with a ${VAR:-default}
-      # substitution so a reproject run can bump it without a redeploy.
-      - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE=200
-      - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_MAX_BATCHES_PER_TICK=2
+      - KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_BATCH_SIZE=200
+      - KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK=2
+      - KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE=200
+      - KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK=2
     ports:
       - "127.0.0.1:19510:9500"
       - "127.0.0.1:19511:9501"

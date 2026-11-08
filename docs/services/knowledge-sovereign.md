@@ -119,10 +119,10 @@ _Last reviewed: September 5, 2026_
 | `KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL` | `5s` | プロジェクター実行間隔 |
 | `KNOWLEDGE_SOVEREIGN_BRANCH_PLANNER_TICK_INTERVAL` | `30s` | Trail Planner 実行間隔 |
 | `KNOWLEDGE_SOVEREIGN_PROJECTION_HEALTH_TICK_INTERVAL` | `60s` | ヘルス監視実行間隔 |
-| `KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_BATCH_SIZE` | `500` | Trail プロジェクターのバッチサイズ |
-| `KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK` | `4` | 1 tick あたりの最大バッチ数 |
-| `KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE` | `500` | Home プロジェクターのバッチサイズ |
-| `KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK` | `4` | 1 tick あたりの最大バッチ数 |
+| `KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_BATCH_SIZE` | `500` | Trail プロジェクターのバッチサイズ (`compose/sovereign.yaml` で `${VAR:-500}` として公開) |
+| `KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK` | `4` | Trail プロジェクターの 1 tick あたり最大バッチ数 (reproject 時は `~20` 等へ一時引き上げ、完了後に戻す) |
+| `KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE` | `500` | Home プロジェクターのバッチサイズ (`compose/sovereign.yaml` で `${VAR:-500}` として公開) |
+| `KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK` | `4` | Home プロジェクターの 1 tick あたり最大バッチ数 (reproject 時は `~20` 等へ一時引き上げ、完了後に戻す) |
 | `KNOWLEDGE_SOVEREIGN_TRAIL_MAX_BRANCHES_PER_USER` | `5` | ユーザーごとの最大アクティブブランチ数 |
 | `ADMIN_TOKEN_FILE` | - | Admin / Metrics API の Bearer トークンファイル |
 | `EVENT_TOKEN_FILE` | - | Connect-RPC API の Bearer トークンファイル |
