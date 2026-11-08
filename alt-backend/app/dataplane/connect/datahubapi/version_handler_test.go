@@ -360,6 +360,7 @@ func TestMarkSummaryVersionSupersededRejectsBadIDs(t *testing.T) {
 		{name: "no user id", articleID: testArticleID, newVersionID: testVersionID},
 		{name: "non-uuid article id", articleID: "nope", newVersionID: testVersionID, userID: testStatsUser},
 		{name: "non-uuid user id", articleID: testArticleID, newVersionID: testVersionID, userID: "nope"},
+		{name: "nil user id", articleID: testArticleID, newVersionID: testVersionID, userID: uuid.Nil.String()},
 	}
 
 	for _, tt := range tests {
@@ -441,6 +442,7 @@ func TestGetLatestSummaryVersionRejectsBadIDs(t *testing.T) {
 		{name: "no article id", userID: testStatsUser},
 		{name: "no user id", articleID: testArticleID},
 		{name: "non-uuid user id", articleID: testArticleID, userID: "nope"},
+		{name: "nil user id", articleID: testArticleID, userID: uuid.Nil.String()},
 	}
 
 	for _, tt := range tests {
