@@ -19,7 +19,10 @@ const BATCH_MINUTE: u32 = 0;
 /// is the precondition the persist stage checks before emitting
 /// `recap.topic_snapshotted.v1`. With no owner the context stays scopeless and
 /// emission is left off — the legitimate "intentionally disabled" path.
-fn apply_knowledge_owner(ctx: JobContext, owner: Option<KnowledgeOwnerIds>) -> JobContext {
+pub(crate) fn apply_knowledge_owner(
+    ctx: JobContext,
+    owner: Option<KnowledgeOwnerIds>,
+) -> JobContext {
     match owner {
         Some(owner) => ctx.with_user_scope(owner.user_id, owner.tenant_id),
         None => ctx,

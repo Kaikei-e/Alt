@@ -115,10 +115,9 @@ comment.
   by the Hurl README; every validation and miss branch is now pinned.
 - **The whole `/v1/dashboard/*` surface** — seven hand-written SQL queries the
   compiler cannot see and the mock DAO hides, now schema-checked live.
-- **The `since` asymmetry** — `/v1/recaps/genres/indexable` silently ignores an
-  unparseable cursor (`.ok()`, full-corpus scan, no signal) while
-  `/v1/morning/updates` rejects one with 400. Same parameter name, opposite
-  behaviour; written down rather than rediscovered.
+- **`since` validation** — both `/v1/recaps/genres/indexable` and
+  `/v1/morning/updates` reject an unparseable `since` cursor with 400 rather
+  than silently falling back to an unfiltered scan.
 
 ## Out of scope
 

@@ -1,6 +1,6 @@
 import { test, expect } from "../src/fixtures.js";
 import { expectHeaderContains, expectJsonStatus, expectStatus } from "../../_shared/http.js";
-import { indexableGenresSchema, morningUpdatesSchema } from "../src/schemas.js";
+import { errorSchema, indexableGenresSchema, morningUpdatesSchema } from "../src/schemas.js";
 
 /**
  * The read surface other services poll — entirely new coverage.
@@ -92,46 +92,18 @@ test.describe("indexable genres (the search-indexer contract)", () => {
 		expect(body.has_more).toBe(false);
 	});
 
-	test("an unparseable `since` is silently ignored rather than rejected @contract", async ({
-		api,
-	}) => {
-		// This pins a behaviour rather than endorsing it. `since` is
-		// `Option<String>` parsed by hand with
-		// `chrono::DateTime::parse_from_rfc3339(s).ok()` (api/fetch.rs:325-330),
-		// and `.ok()` turns a malformed cursor into `None` — i.e. "no lower
-		// bound", i.e. a full-corpus scan — with no signal to the caller.
-		//
-		// It is asserted because it is load-bearing in the wrong direction: a
-		// search-indexer bug that corrupted its stored cursor would present as
-		// a slow full reindex rather than an error, and this test is where the
-		// decision to change it to a 400 would have to be made deliberately.
-		// The neighbouring /v1/morning/updates test asserts the opposite choice
-		// on the same kind of parameter.
-		//
-		// A status alone would pass just as happily if the malformed cursor were
-		// coerced to "now" and filtered everything out — which is the one thing
-		// that changes if somebody "fixes" the `.ok()`. So the malformed call is
-		// compared with the unfiltered one: "no lower bound" means it must serve
-		// at least what a call with no `since` at all serves. Issued in this
-		// order deliberately — the `pipeline` project may commit a row between
-		// the two requests, and a row that lands in between can only widen the
-		// second result, never the first.
-		const good = await expectJsonStatus(
-			await api.get("/v1/recaps/genres/indexable"),
-			200,
-			indexableGenresSchema,
-		);
-		const bad = await expectJsonStatus(
+	test("an unparseable `since` is rejected @contract", async ({ api }) => {
+		// `since` is `Option<String>` parsed in `get_indexable_genres` with
+		// `chrono::DateTime::parse_from_rfc3339(s)` (api/fetch.rs:342-356).
+		// A malformed or offset-less cursor is rejected with 400 and
+		// `ErrorResponse` rather than silently degrading to `None` (a
+		// full-corpus backfill), matching `/v1/morning/updates`.
+		const body = await expectJsonStatus(
 			await api.get("/v1/recaps/genres/indexable?since=not-a-timestamp"),
-			200,
-			indexableGenresSchema,
+			400,
+			errorSchema,
 		);
-		const key = (hit: { job_id: string; genre: string }): string =>
-			`${hit.job_id}:${hit.genre}`;
-		expect(
-			bad.results.map(key),
-			"a malformed `since` must mean no lower bound, not a cursor at now",
-		).toEqual(expect.arrayContaining(good.results.map(key)));
+		expect(body.error).toContain("Invalid since timestamp");
 	});
 
 	test("limit is clamped rather than trusted @contract", async ({ api }) => {
@@ -170,20 +142,12 @@ test.describe("morning updates", () => {
 		expect(body).toEqual([]);
 	});
 
-	test("an unparseable `since` is rejected, unlike the indexable feed @contract", async ({
-		api,
-	}) => {
+	test("an unparseable `since` is rejected @contract", async ({ api }) => {
 		// `MorningUpdatesQuery.since` is a typed
-		// `Option<chrono::DateTime<Utc>>` (api/fetch.rs:644-647), so serde
+		// `Option<chrono::DateTime<Utc>>` (api/fetch.rs:762-764), so serde
 		// fails the whole query struct and axum's `Query` extractor answers 400
-		// before the handler runs.
-		//
-		// The point of this test is the contrast with
-		// `/v1/recaps/genres/indexable?since=not-a-timestamp`, three tests up,
-		// which answers 200 and quietly scans everything. Same parameter name,
-		// same semantics, opposite failure behaviour — a genuine inconsistency
-		// in the API that is now written down instead of being rediscovered by
-		// whoever next writes a client.
+		// before the handler runs. Both `/v1/morning/updates` and
+		// `/v1/recaps/genres/indexable` now reject an invalid `since` with 400.
 		await expectStatus(await api.get("/v1/morning/updates?since=not-a-timestamp"), 400);
 	});
 
