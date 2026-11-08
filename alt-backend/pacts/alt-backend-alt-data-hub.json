@@ -2082,7 +2082,8 @@
       ],
       "request": {
         "body": {
-          "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d"
+          "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -5013,7 +5014,8 @@
       "request": {
         "body": {
           "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
-          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
         },
         "headers": {
           "Content-Type": "application/json"
@@ -5111,7 +5113,8 @@
       "request": {
         "body": {
           "articleId": "00000000-0000-4000-8000-000000000000",
-          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
         },
         "headers": {
           "Content-Type": "application/json"
