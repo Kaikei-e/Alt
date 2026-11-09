@@ -374,6 +374,7 @@ pub struct CardsPipeline {
     card_verifier: Option<Arc<dyn CardVerifier>>,
     genre_tagger: Arc<dyn GenreTagger>,
     user_id: Option<Uuid>,
+    metrics: Option<Arc<crate::observability::metrics::Metrics>>,
 }
 
 impl CardsPipeline {
@@ -392,6 +393,7 @@ impl CardsPipeline {
             card_verifier: None,
             genre_tagger,
             user_id: None,
+            metrics: None,
         }
     }
 
@@ -413,12 +415,19 @@ impl CardsPipeline {
             card_verifier: Some(card_verifier),
             genre_tagger,
             user_id: None,
+            metrics: None,
         }
     }
 
     #[must_use]
     pub fn with_user_id(mut self, user_id: Uuid) -> Self {
         self.user_id = Some(user_id);
+        self
+    }
+
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Arc<crate::observability::metrics::Metrics>) -> Self {
+        self.metrics = Some(metrics);
         self
     }
 
@@ -2015,10 +2024,27 @@ impl super::ports::CardsJobRunner for CardsPipeline {
         to: DateTime<Utc>,
     ) -> anyhow::Result<()> {
         let params = CardsParams::default();
-        self.run(job_id, from, to, &params)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        Ok(())
+        match self.run(job_id, from, to, &params).await {
+            Ok(_) => {
+                if let Some(ref metrics) = self.metrics {
+                    crate::observability::surface_health::record_success(
+                        metrics,
+                        crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
+                        Utc::now(),
+                    );
+                }
+                Ok(())
+            }
+            Err(e) => {
+                if let Some(ref metrics) = self.metrics {
+                    crate::observability::surface_health::record_failure(
+                        metrics,
+                        crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
+                    );
+                }
+                Err(anyhow::anyhow!("{e:?}"))
+            }
+        }
     }
 }
 

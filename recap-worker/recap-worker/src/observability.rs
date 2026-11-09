@@ -1,5 +1,6 @@
 pub(crate) mod metrics;
 pub(crate) mod structured_log;
+pub mod surface_health;
 pub(crate) mod tracing;
 
 use std::sync::Arc;

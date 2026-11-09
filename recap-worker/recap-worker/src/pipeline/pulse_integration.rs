@@ -83,17 +83,24 @@ impl PipelineOrchestrator {
                     .knowledge_owner()
                     .map(|o| (o.user_id, o.tenant_id));
 
-                record_pulse_generation(
+                record_pulse_generation_with_metrics(
                     self.recap_dao().as_ref(),
                     self.sovereign_client.as_deref(),
                     owner_scope,
                     job.job_id,
                     &result,
                     target_date,
+                    Some(self.metrics().as_ref()),
                 )
                 .await;
             }
             Err(e) => {
+                self.metrics().pulse_generations_total.inc();
+                self.metrics().pulse_generations_failed.inc();
+                crate::observability::surface_health::record_failure(
+                    self.metrics(),
+                    crate::observability::surface_health::SurfaceHealthTarget::EveningPulse,
+                );
                 tracing::warn!(
                     job_id = %job.job_id,
                     error = ?e,
@@ -193,6 +200,7 @@ impl<T: RecapDao + ?Sized> PulseGenerationSink for T {
     }
 }
 
+#[cfg(test)]
 pub(crate) async fn record_pulse_generation<D: PulseGenerationSink + ?Sized>(
     dao: &D,
     client: Option<&KnowledgeSovereignClient>,
@@ -201,9 +209,48 @@ pub(crate) async fn record_pulse_generation<D: PulseGenerationSink + ?Sized>(
     result: &pulse::PulseResult,
     target_date: NaiveDate,
 ) -> Option<(i64, DateTime<Utc>)> {
+    record_pulse_generation_with_metrics(
+        dao,
+        client,
+        owner_scope,
+        job_id,
+        result,
+        target_date,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn record_pulse_generation_with_metrics<D: PulseGenerationSink + ?Sized>(
+    dao: &D,
+    client: Option<&KnowledgeSovereignClient>,
+    owner_scope: Option<(Uuid, Uuid)>,
+    job_id: Uuid,
+    result: &pulse::PulseResult,
+    target_date: NaiveDate,
+    metrics: Option<&crate::observability::metrics::Metrics>,
+) -> Option<(i64, DateTime<Utc>)> {
+    if let Some(m) = metrics {
+        m.pulse_generations_total.inc();
+    }
     let topic_count = result.topic_count();
     match dao.save_pulse_generation(result, target_date).await {
         Ok((generation_id, finished_at)) => {
+            if let Some(m) = metrics {
+                if result.is_success() {
+                    crate::observability::surface_health::record_success(
+                        m,
+                        crate::observability::surface_health::SurfaceHealthTarget::EveningPulse,
+                        finished_at,
+                    );
+                } else {
+                    m.pulse_generations_failed.inc();
+                    crate::observability::surface_health::record_failure(
+                        m,
+                        crate::observability::surface_health::SurfaceHealthTarget::EveningPulse,
+                    );
+                }
+            }
             tracing::info!(
                 job_id = %job_id,
                 generation_id = generation_id,
@@ -229,6 +276,13 @@ pub(crate) async fn record_pulse_generation<D: PulseGenerationSink + ?Sized>(
             Some((generation_id, finished_at))
         }
         Err(e) => {
+            if let Some(m) = metrics {
+                m.pulse_generations_failed.inc();
+                crate::observability::surface_health::record_failure(
+                    m,
+                    crate::observability::surface_health::SurfaceHealthTarget::EveningPulse,
+                );
+            }
             tracing::warn!(
                 job_id = %job_id,
                 error = ?e,
@@ -473,6 +527,86 @@ mod tests {
             saved_unwired,
             Some((42, finished_at)),
             "pulse generation must be saved even when client is unwired"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_pulse_generation_with_metrics_updates_counters_and_evening_pulse_gauges() {
+        let registry = std::sync::Arc::new(prometheus::Registry::new());
+        let metrics = crate::observability::metrics::Metrics::new(registry).expect("metrics");
+        let job_id = Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
+        let target_date = NaiveDate::from_ymd_opt(2026, 11, 9).unwrap();
+        let finished_at = Utc.with_ymd_and_hms(2026, 11, 9, 18, 34, 56).unwrap();
+        let dao = FixedFinishedAtDao { finished_at };
+
+        let failed = PulseResult {
+            job_id,
+            version: PulseVersion::V4,
+            topics: vec![],
+            generated_at: finished_at,
+            diagnostics: PulseDiagnostics::default(),
+        };
+        record_pulse_generation_with_metrics(
+            &dao,
+            None,
+            None,
+            job_id,
+            &failed,
+            target_date,
+            Some(&metrics),
+        )
+        .await;
+
+        assert_eq!(metrics.pulse_generations_total.get(), 1.0);
+        assert_eq!(metrics.pulse_generations_failed.get(), 1.0);
+        assert_eq!(
+            metrics
+                .surface_consecutive_failures
+                .with_label_values(&["evening_pulse"])
+                .get(),
+            1.0
+        );
+        assert_eq!(
+            metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&["evening_pulse"])
+                .get(),
+            0.0
+        );
+
+        let succeeded = PulseResult {
+            job_id,
+            version: PulseVersion::V4,
+            topics: vec![sample_topic()],
+            generated_at: finished_at,
+            diagnostics: PulseDiagnostics::default(),
+        };
+        record_pulse_generation_with_metrics(
+            &dao,
+            None,
+            None,
+            job_id,
+            &succeeded,
+            target_date,
+            Some(&metrics),
+        )
+        .await;
+
+        assert_eq!(metrics.pulse_generations_total.get(), 2.0);
+        assert_eq!(metrics.pulse_generations_failed.get(), 1.0);
+        assert_eq!(
+            metrics
+                .surface_consecutive_failures
+                .with_label_values(&["evening_pulse"])
+                .get(),
+            0.0
+        );
+        assert_eq!(
+            metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&["evening_pulse"])
+                .get(),
+            finished_at.timestamp() as f64
         );
     }
 }

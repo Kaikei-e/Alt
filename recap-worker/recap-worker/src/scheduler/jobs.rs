@@ -339,6 +339,22 @@ impl Scheduler {
                             )
                             .await?;
 
+                        self.pipeline.metrics().jobs_completed.inc();
+                        if context.window_days() == 3 {
+                            let completed_at = self
+                                .recap_dao
+                                .get_latest_completed_job(3)
+                                .await
+                                .ok()
+                                .flatten()
+                                .map_or_else(chrono::Utc::now, |j| j.window_end);
+                            crate::observability::surface_health::record_success(
+                                self.pipeline.metrics(),
+                                crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                                completed_at,
+                            );
+                        }
+
                         // Run classification evaluation after successful job completion
                         if self.config.classification_eval_enabled() {
                             if let Err(e) = self.run_classification_evaluation(context.job_id).await
@@ -395,6 +411,14 @@ impl Scheduler {
                             tracing::error!(job_id = %context.job_id, error = %log_err, "failed to insert failed task log");
                         }
 
+                        self.pipeline.metrics().jobs_failed.inc();
+                        if context.window_days() == 3 {
+                            crate::observability::surface_health::record_failure(
+                                self.pipeline.metrics(),
+                                crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                            );
+                        }
+
                         Err(anyhow!(reason))
                     }
                 }
@@ -429,6 +453,14 @@ impl Scheduler {
                     .await
                 {
                     tracing::error!(job_id = %context.job_id, error = %log_err, "failed to insert failed task log");
+                }
+
+                self.pipeline.metrics().jobs_failed.inc();
+                if context.window_days() == 3 {
+                    crate::observability::surface_health::record_failure(
+                        self.pipeline.metrics(),
+                        crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                    );
                 }
 
                 Err(e)
@@ -514,7 +546,31 @@ impl Scheduler {
         // morning pipeline never advances that row — so close it out here, or it
         // leaks one orphaned `pending` row every 30-min tick.
         let outcome = self.morning_pipeline.execute_update(&context).await;
-        finalize_morning_job(self.recap_dao.as_ref(), context.job_id, outcome).await
+        let finalized =
+            finalize_morning_job(self.recap_dao.as_ref(), context.job_id, outcome).await;
+        match &finalized {
+            Ok(()) => {
+                let completed_at = self
+                    .recap_dao
+                    .get_latest_morning_letter()
+                    .await
+                    .ok()
+                    .flatten()
+                    .map_or_else(chrono::Utc::now, |l| l.created_at);
+                crate::observability::surface_health::record_success(
+                    self.pipeline.metrics(),
+                    crate::observability::surface_health::SurfaceHealthTarget::MorningLetter,
+                    completed_at,
+                );
+            }
+            Err(_) => {
+                crate::observability::surface_health::record_failure(
+                    self.pipeline.metrics(),
+                    crate::observability::surface_health::SurfaceHealthTarget::MorningLetter,
+                );
+            }
+        }
+        finalized
     }
 
     /// Boot-time hygiene (CLAUDE.md rule 8): resolve the one resumable job

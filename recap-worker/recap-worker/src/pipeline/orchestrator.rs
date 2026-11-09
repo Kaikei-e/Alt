@@ -41,6 +41,7 @@ pub(crate) struct PipelineOrchestrator {
     pub(super) pulse_stage: Arc<dyn PulseStage>,
     pub(super) pulse_rollout: PulseRollout,
     pub(super) sovereign_client: Option<Arc<KnowledgeSovereignClient>>,
+    pub(super) metrics: Arc<Metrics>,
 }
 
 impl PipelineOrchestrator {
@@ -50,6 +51,10 @@ impl PipelineOrchestrator {
 
     pub(crate) fn recap_dao(&self) -> &Arc<dyn RecapDao> {
         &self.recap_dao
+    }
+
+    pub(crate) fn metrics(&self) -> &Arc<Metrics> {
+        &self.metrics
     }
 
     /// The classification job queue's background workers, so callers
@@ -84,6 +89,7 @@ pub(crate) struct PipelineBuilder {
     pulse_stage: Option<Arc<dyn PulseStage>>,
     pulse_rollout: Option<PulseRollout>,
     sovereign_client: Option<Arc<KnowledgeSovereignClient>>,
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl PipelineOrchestrator {
@@ -337,6 +343,7 @@ impl PipelineOrchestrator {
             .with_pulse_stage(pulse_stage)
             .with_pulse_rollout(pulse_rollout)
             .with_sovereign_client(sovereign_client)
+            .with_metrics(metrics)
             .build(
                 Arc::clone(&recap_dao),
                 subworker_client,
@@ -488,7 +495,13 @@ impl PipelineBuilder {
             pulse_stage: None,
             pulse_rollout: None,
             sovereign_client: None,
+            metrics: None,
         }
+    }
+
+    pub(crate) fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     pub(crate) fn with_fetch_stage(mut self, stage: Arc<dyn FetchStage>) -> Self {
@@ -597,6 +610,13 @@ impl PipelineBuilder {
             ))
         });
 
+        let metrics = self.metrics.unwrap_or_else(|| {
+            Arc::new(
+                Metrics::new(Arc::new(prometheus::Registry::new()))
+                    .expect("default pipeline metrics"),
+            )
+        });
+
         Ok(PipelineOrchestrator {
             config: self.config,
             stages,
@@ -606,6 +626,7 @@ impl PipelineBuilder {
             pulse_stage,
             pulse_rollout,
             sovereign_client: self.sovereign_client,
+            metrics,
         })
     }
 }

@@ -1,3 +1,4 @@
+use crate::observability::surface_health::{SurfaceHealthSeed, SurfaceHealthTarget};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use sqlx::{PgPool, Row};
@@ -193,6 +194,167 @@ impl SurfaceDaoOps {
             .transpose()
             .context("failed to decode recap job updated_at")
     }
+
+    pub async fn get_three_day_recap_health_seed(pool: &PgPool) -> Result<SurfaceHealthSeed> {
+        let row = sqlx::query(
+            r"
+            WITH latest_success AS (
+                SELECT updated_at
+                FROM recap_jobs
+                WHERE window_days = 3
+                  AND status = 'completed'
+                  AND trigger_source NOT IN ('cards', 'cards_replay', 'morning')
+                ORDER BY kicked_at DESC, updated_at DESC
+                LIMIT 1
+            )
+            SELECT
+                (SELECT updated_at FROM latest_success) AS last_success_at,
+                (
+                    SELECT COUNT(*)
+                    FROM recap_jobs
+                    WHERE window_days = 3
+                      AND status = 'failed'
+                      AND trigger_source NOT IN ('cards', 'cards_replay', 'morning')
+                      AND (
+                          (SELECT updated_at FROM latest_success) IS NULL
+                          OR updated_at > (SELECT updated_at FROM latest_success)
+                      )
+                ) AS consecutive_failures
+            ",
+        )
+        .fetch_one(pool)
+        .await
+        .context("failed to query three_day_recap health seed")?;
+
+        let last_success_at: Option<DateTime<Utc>> = row.try_get("last_success_at")?;
+        let consecutive_failures: i64 = row.try_get("consecutive_failures")?;
+        Ok(SurfaceHealthSeed {
+            last_success_at,
+            consecutive_failures: u64::try_from(consecutive_failures).unwrap_or(0),
+        })
+    }
+
+    pub async fn get_topic_cards_health_seed(pool: &PgPool) -> Result<SurfaceHealthSeed> {
+        let row = sqlx::query(
+            r"
+            WITH latest_success AS (
+                SELECT updated_at
+                FROM recap_jobs
+                WHERE trigger_source = 'cards'
+                  AND status = 'completed'
+                ORDER BY kicked_at DESC, updated_at DESC
+                LIMIT 1
+            )
+            SELECT
+                (SELECT updated_at FROM latest_success) AS last_success_at,
+                (
+                    SELECT COUNT(*)
+                    FROM recap_jobs
+                    WHERE trigger_source = 'cards'
+                      AND status = 'failed'
+                      AND (
+                          (SELECT updated_at FROM latest_success) IS NULL
+                          OR updated_at > (SELECT updated_at FROM latest_success)
+                      )
+                ) AS consecutive_failures
+            ",
+        )
+        .fetch_one(pool)
+        .await
+        .context("failed to query topic_cards health seed")?;
+
+        let last_success_at: Option<DateTime<Utc>> = row.try_get("last_success_at")?;
+        let consecutive_failures: i64 = row.try_get("consecutive_failures")?;
+        Ok(SurfaceHealthSeed {
+            last_success_at,
+            consecutive_failures: u64::try_from(consecutive_failures).unwrap_or(0),
+        })
+    }
+
+    pub async fn get_evening_pulse_health_seed(pool: &PgPool) -> Result<SurfaceHealthSeed> {
+        let row = sqlx::query(
+            r"
+            WITH latest_success AS (
+                SELECT COALESCE(finished_at, started_at) AS completed_at
+                FROM pulse_generations
+                WHERE status = 'succeeded'
+                ORDER BY COALESCE(finished_at, started_at) DESC, id DESC
+                LIMIT 1
+            )
+            SELECT
+                (SELECT completed_at FROM latest_success) AS last_success_at,
+                (
+                    SELECT COUNT(*)
+                    FROM pulse_generations
+                    WHERE status = 'failed'
+                      AND (
+                          (SELECT completed_at FROM latest_success) IS NULL
+                          OR COALESCE(finished_at, started_at) > (SELECT completed_at FROM latest_success)
+                      )
+                ) AS consecutive_failures
+            ",
+        )
+        .fetch_one(pool)
+        .await
+        .context("failed to query evening_pulse health seed")?;
+
+        let last_success_at: Option<DateTime<Utc>> = row.try_get("last_success_at")?;
+        let consecutive_failures: i64 = row.try_get("consecutive_failures")?;
+        Ok(SurfaceHealthSeed {
+            last_success_at,
+            consecutive_failures: u64::try_from(consecutive_failures).unwrap_or(0),
+        })
+    }
+
+    pub async fn get_morning_letter_health_seed(pool: &PgPool) -> Result<SurfaceHealthSeed> {
+        let row = sqlx::query(
+            r"
+            WITH latest_success AS (
+                SELECT created_at
+                FROM morning_letters
+                ORDER BY created_at DESC, generation_revision DESC
+                LIMIT 1
+            )
+            SELECT
+                (SELECT created_at FROM latest_success) AS last_success_at,
+                (
+                    SELECT COUNT(*)
+                    FROM recap_jobs
+                    WHERE trigger_source = 'morning'
+                      AND status = 'failed'
+                      AND (
+                          (SELECT created_at FROM latest_success) IS NULL
+                          OR updated_at > (SELECT created_at FROM latest_success)
+                      )
+                ) AS consecutive_failures
+            ",
+        )
+        .fetch_one(pool)
+        .await
+        .context("failed to query morning_letter health seed")?;
+
+        let last_success_at: Option<DateTime<Utc>> = row.try_get("last_success_at")?;
+        let consecutive_failures: i64 = row.try_get("consecutive_failures")?;
+        Ok(SurfaceHealthSeed {
+            last_success_at,
+            consecutive_failures: u64::try_from(consecutive_failures).unwrap_or(0),
+        })
+    }
+
+    pub async fn get_all_surface_health_seeds(
+        pool: &PgPool,
+    ) -> Result<[(SurfaceHealthTarget, SurfaceHealthSeed); 4]> {
+        let three_day = Self::get_three_day_recap_health_seed(pool).await?;
+        let topic_cards = Self::get_topic_cards_health_seed(pool).await?;
+        let evening_pulse = Self::get_evening_pulse_health_seed(pool).await?;
+        let morning_letter = Self::get_morning_letter_health_seed(pool).await?;
+        Ok([
+            (SurfaceHealthTarget::ThreeDayRecap, three_day),
+            (SurfaceHealthTarget::TopicCards, topic_cards),
+            (SurfaceHealthTarget::EveningPulse, evening_pulse),
+            (SurfaceHealthTarget::MorningLetter, morning_letter),
+        ])
+    }
 }
 
 #[cfg(test)]
@@ -262,6 +424,185 @@ mod tests {
             .await?
             .expect("3-day recap run should be returned");
         assert_eq!(latest.job_id, three_day_job_id);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn surface_health_seeds_compute_last_success_and_newer_failures() -> Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await?;
+
+        sqlx::query(
+            r"
+            CREATE TEMP TABLE recap_jobs (
+                job_id UUID PRIMARY KEY,
+                kicked_at TIMESTAMPTZ NOT NULL,
+                status TEXT NOT NULL,
+                window_days INTEGER NOT NULL,
+                trigger_source TEXT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+            ",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            r"
+            CREATE TEMP TABLE pulse_generations (
+                id BIGSERIAL PRIMARY KEY,
+                job_id UUID NOT NULL,
+                target_date DATE NOT NULL,
+                status TEXT NOT NULL,
+                started_at TIMESTAMPTZ NOT NULL,
+                finished_at TIMESTAMPTZ
+            )
+            ",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            r"
+            CREATE TEMP TABLE morning_letters (
+                id UUID PRIMARY KEY,
+                target_date DATE NOT NULL,
+                generation_revision INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            ",
+        )
+        .execute(&pool)
+        .await?;
+
+        let empty_seeds = SurfaceDaoOps::get_all_surface_health_seeds(&pool).await?;
+        for (_surface, seed) in empty_seeds {
+            assert_eq!(seed.last_success_at, None);
+            assert_eq!(seed.consecutive_failures, 0);
+        }
+
+        let t0 = DateTime::parse_from_rfc3339("2026-11-09T01:00:00Z")?.with_timezone(&Utc);
+        let t1 = DateTime::parse_from_rfc3339("2026-11-09T02:00:00Z")?.with_timezone(&Utc);
+        let t2 = DateTime::parse_from_rfc3339("2026-11-09T03:00:00Z")?.with_timezone(&Utc);
+        let t3 = DateTime::parse_from_rfc3339("2026-11-09T04:00:00Z")?.with_timezone(&Utc);
+
+        // three_day_recap: failed at t0, completed at t1, failed at t2 & t3 -> last_success=t1, failures=2
+        for (ts, status) in [
+            (t0, "failed"),
+            (t1, "completed"),
+            (t2, "failed"),
+            (t3, "failed"),
+        ] {
+            sqlx::query(
+                r"
+                INSERT INTO recap_jobs (job_id, kicked_at, status, window_days, trigger_source, updated_at)
+                VALUES ($1, $2, $3, 3, 'system', $2)
+                ",
+            )
+            .bind(Uuid::new_v4())
+            .bind(ts)
+            .bind(status)
+            .execute(&pool)
+            .await?;
+        }
+
+        // topic_cards: never succeeded, 1 failed run -> last_success=None, failures=1
+        sqlx::query(
+            r"
+            INSERT INTO recap_jobs (job_id, kicked_at, status, window_days, trigger_source, updated_at)
+            VALUES ($1, $2, 'failed', 3, 'cards', $2)
+            ",
+        )
+        .bind(Uuid::new_v4())
+        .bind(t2)
+        .execute(&pool)
+        .await?;
+
+        // evening_pulse: succeeded at t2, no newer failures -> last_success=t2, failures=0
+        sqlx::query(
+            r"
+            INSERT INTO pulse_generations (job_id, target_date, status, started_at, finished_at)
+            VALUES ($1, '2026-11-09', 'failed', $2, $2),
+                   ($3, '2026-11-09', 'succeeded', $4, $4)
+            ",
+        )
+        .bind(Uuid::new_v4())
+        .bind(t0)
+        .bind(Uuid::new_v4())
+        .bind(t2)
+        .execute(&pool)
+        .await?;
+
+        // morning_letter: letter created at t1, failed morning job at t3 -> last_success=t1, failures=1
+        sqlx::query(
+            r"
+            INSERT INTO morning_letters (id, target_date, generation_revision, created_at)
+            VALUES ($1, '2026-11-09', 1, $2)
+            ",
+        )
+        .bind(Uuid::new_v4())
+        .bind(t1)
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            r"
+            INSERT INTO recap_jobs (job_id, kicked_at, status, window_days, trigger_source, updated_at)
+            VALUES ($1, $2, 'failed', 1, 'morning', $2)
+            ",
+        )
+        .bind(Uuid::new_v4())
+        .bind(t3)
+        .execute(&pool)
+        .await?;
+
+        let seeds = SurfaceDaoOps::get_all_surface_health_seeds(&pool).await?;
+        assert_eq!(
+            seeds[0],
+            (
+                SurfaceHealthTarget::ThreeDayRecap,
+                SurfaceHealthSeed {
+                    last_success_at: Some(t1),
+                    consecutive_failures: 2,
+                }
+            )
+        );
+        assert_eq!(
+            seeds[1],
+            (
+                SurfaceHealthTarget::TopicCards,
+                SurfaceHealthSeed {
+                    last_success_at: None,
+                    consecutive_failures: 1,
+                }
+            )
+        );
+        assert_eq!(
+            seeds[2],
+            (
+                SurfaceHealthTarget::EveningPulse,
+                SurfaceHealthSeed {
+                    last_success_at: Some(t2),
+                    consecutive_failures: 0,
+                }
+            )
+        );
+        assert_eq!(
+            seeds[3],
+            (
+                SurfaceHealthTarget::MorningLetter,
+                SurfaceHealthSeed {
+                    last_success_at: Some(t1),
+                    consecutive_failures: 1,
+                }
+            )
+        );
 
         Ok(())
     }

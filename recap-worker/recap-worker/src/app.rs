@@ -168,7 +168,8 @@ impl ComponentRegistry {
             telemetry.metrics_arc(),
         )?;
 
-        let cards_runner = build_cards_runner(&config, &recap_pool).await?;
+        let cards_runner =
+            build_cards_runner(&config, &recap_pool, telemetry.metrics_arc()).await?;
         let cards_run_in_flight = Arc::new(std::sync::Mutex::new(None));
 
         Ok(Self {
@@ -263,6 +264,7 @@ impl ComponentRegistry {
 async fn build_cards_runner(
     config: &Config,
     pool: &sqlx::PgPool,
+    metrics: Arc<crate::observability::metrics::Metrics>,
 ) -> Result<Option<Arc<dyn crate::pipeline::cards::CardsJobRunner>>> {
     match config.cards_user_id() {
         Some(user_id) => {
@@ -271,7 +273,8 @@ async fn build_cards_runner(
                 crate::eval::build_production_cards_pipeline(pool, config, &default_params)
                     .await
                     .context("failed to build cards pipeline")?
-                    .with_user_id(user_id);
+                    .with_user_id(user_id)
+                    .with_metrics(metrics);
             Ok(Some(Arc::new(pipeline)))
         }
         None => Ok(None),
