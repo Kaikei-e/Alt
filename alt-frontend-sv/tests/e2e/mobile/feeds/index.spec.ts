@@ -40,7 +40,7 @@ test.describe("mobile feeds routes", () => {
 
 		// Verify mark as read button exists and is clickable
 		const markAsReadButton = firstCard.getByRole("button", {
-			name: /mark .* as read/i,
+			name: /^mark as read:/i,
 		});
 		await expect(markAsReadButton).toBeVisible();
 		await expect(markAsReadButton).toBeEnabled();

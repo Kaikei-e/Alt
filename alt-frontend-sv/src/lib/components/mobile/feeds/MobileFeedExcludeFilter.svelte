@@ -110,7 +110,7 @@ function openSheet() {
 			type="button"
 			class="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-dashed border-[var(--surface-border)] text-sm text-[var(--text-secondary)] active:bg-[var(--surface-hover)] transition-colors min-h-[44px]"
 			onclick={openSheet}
-			aria-label="Exclude a feed source"
+			aria-label="Exclude source"
 			data-testid="exclude-chip-inactive"
 		>
 			<Ban class="h-4 w-4 shrink-0" />
