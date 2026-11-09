@@ -101,10 +101,6 @@ impl ClassificationJobQueue {
                 max_retries: self.max_retries,
             };
             let queued_job_id = self.store.enqueue(job).await?;
-            self.auth_failures
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .remove(&job_id);
             return Ok(vec![queued_job_id]);
         }
 
@@ -135,11 +131,6 @@ impl ClassificationJobQueue {
             let queued_job_id = self.store.enqueue(job).await?;
             job_ids.push(queued_job_id);
         }
-
-        self.auth_failures
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .remove(&job_id);
 
         debug!(
             job_id = %job_id,
