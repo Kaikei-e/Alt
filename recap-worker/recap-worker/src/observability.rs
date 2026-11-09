@@ -92,7 +92,7 @@ mod tests {
     /// is cheap to reconsider. The two relay gauges are read from outside this
     /// service altogether — push-delivery-alerts.yml names recap-worker as a
     /// source, and an alert guard over an absent series does not fire.
-    const PUBLISHED_FAMILIES: [&str; 8] = [
+    const PUBLISHED_FAMILIES: [&str; 10] = [
         "notification_outbox_last_tick_timestamp_seconds",
         "notification_outbox_oldest_pending_age_seconds",
         "recap_jobs_completed_total",
@@ -101,6 +101,15 @@ mod tests {
         "recap_clusters_created_total",
         "recap_summaries_generated_total",
         "recap_active_jobs",
+        "recap_surface_last_success_timestamp_seconds",
+        "recap_surface_consecutive_failures",
+    ];
+
+    const SURFACES: [&str; 4] = [
+        "three_day_recap",
+        "topic_cards",
+        "evening_pulse",
+        "morning_letter",
     ];
 
     /// The instruments are registered into a registry this struct owns, so
@@ -124,6 +133,20 @@ mod tests {
             assert!(
                 rendered.contains(family),
                 "{family} is named by the E2E metrics contract but is not in the exposition:\n{rendered}"
+            );
+        }
+        for surface in SURFACES {
+            let ts_series =
+                format!("recap_surface_last_success_timestamp_seconds{{surface=\"{surface}\"}}");
+            let fail_series =
+                format!("recap_surface_consecutive_failures{{surface=\"{surface}\"}}");
+            assert!(
+                rendered.contains(&ts_series),
+                "missing surface last-success series `{ts_series}`:\n{rendered}"
+            );
+            assert!(
+                rendered.contains(&fail_series),
+                "missing surface consecutive-failures series `{fail_series}`:\n{rendered}"
             );
         }
     }
