@@ -50,11 +50,16 @@ let isLoading = $state(false);
 let inputValue = $state("");
 let threadContainer: HTMLDivElement;
 let currentAbortController: AbortController | null = null;
+let scrollTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function scrollToBottom() {
 	await tick();
 	if (threadContainer) {
-		setTimeout(() => {
+		if (scrollTimer !== null) {
+			clearTimeout(scrollTimer);
+		}
+		scrollTimer = setTimeout(() => {
+			scrollTimer = null;
 			threadContainer.scrollTop = threadContainer.scrollHeight;
 		}, 100);
 	}
@@ -193,6 +198,10 @@ function handleKeydown(event: KeyboardEvent) {
 onMount(() => {
 	scrollToBottom();
 	return () => {
+		if (scrollTimer !== null) {
+			clearTimeout(scrollTimer);
+			scrollTimer = null;
+		}
 		if (currentAbortController) {
 			currentAbortController.abort();
 		}
