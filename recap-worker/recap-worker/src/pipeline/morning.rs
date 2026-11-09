@@ -23,22 +23,23 @@ struct RecapContext {
     summaries: Option<Vec<MorningLetterRecapInput>>,
     source_job_id: Option<Uuid>,
     is_degraded: bool,
+    degradation_reason: Option<&'static str>,
     window_days: Option<u32>,
 }
 
 impl RecapContext {
-    fn degraded() -> Self {
+    fn degraded(reason: &'static str) -> Self {
         Self {
             summaries: None,
             source_job_id: None,
             is_degraded: true,
+            degradation_reason: Some(reason),
             window_days: None,
         }
     }
 }
 
 pub struct MorningPipeline {
-    #[allow(dead_code)]
     config: Arc<Config>,
     fetch: Arc<dyn FetchStage>,
     preprocess: Arc<dyn PreprocessStage>,
@@ -134,6 +135,14 @@ impl MorningPipeline {
     }
 
     pub(crate) async fn execute_update_returning_id(&self, job: &JobContext) -> Result<Uuid> {
+        self.execute_update_at(job, chrono::Utc::now()).await
+    }
+
+    pub(crate) async fn execute_update_at(
+        &self,
+        job: &JobContext,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Uuid> {
         tracing::info!(job_id = %job.job_id, "starting morning update pipeline");
 
         let fetched = self.fetch.fetch(job).await?;
@@ -188,7 +197,7 @@ impl MorningPipeline {
             tracing::info!(job_id = %job.job_id, groups_count = groups.len(), "persisted morning article groups");
         }
 
-        let recap_ctx = self.load_recap_context(job).await;
+        let recap_ctx = self.load_recap_context(job, now).await;
 
         let overnight_groups: Vec<MorningLetterGroupInput> = group_articles
             .into_iter()
@@ -196,7 +205,7 @@ impl MorningPipeline {
             .collect();
         let overnight_groups = cap_overnight_groups_for_prompt(overnight_groups);
 
-        let target_date = edition_target_date(chrono::Utc::now());
+        let target_date = edition_target_date(now);
         let edition_timezone = "Asia/Tokyo".to_string();
 
         // Cap recap context to fit the LLM prompt budget — once the
@@ -228,8 +237,10 @@ impl MorningPipeline {
                 recap_ctx.source_job_id,
                 recap_ctx.window_days,
                 final_is_degraded,
+                recap_ctx.degradation_reason,
                 &ml_response,
                 &groups,
+                now,
             )
             .await?;
 
@@ -241,10 +252,15 @@ impl MorningPipeline {
         Ok(letter_id)
     }
 
-    async fn load_recap_context(&self, job: &JobContext) -> RecapContext {
+    async fn load_recap_context(
+        &self,
+        job: &JobContext,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> RecapContext {
         // Morning Letter now grounds on the **3-day** recap window
         // (previously 7). The 3-day window is produced by the 3days
         // recap job and reflects fresher editorial signals.
+        let freshness_budget = self.config.surface_freshness().three_day_recap_budget();
         let recap_result = self.recap_dao.get_latest_completed_job(3).await;
         match recap_result {
             Ok(Some(recap_job)) => {
@@ -255,6 +271,7 @@ impl MorningPipeline {
                         duration.num_days().max(1) as u32
                     }
                 };
+                let is_stale_input = now > recap_job.window_end + freshness_budget;
                 match self.recap_dao.get_genres_by_job(recap_job.job_id).await {
                     Ok(genres) => {
                         // news-creator requires each recap to have at least
@@ -281,17 +298,32 @@ impl MorningPipeline {
                             .collect();
                         tracing::info!(
                             job_id = %job.job_id, recap_job_id = %recap_job.job_id,
-                            genre_count = genres.len(), "loaded recap summaries for morning letter"
+                            genre_count = genres.len(), is_stale_input, "loaded recap summaries for morning letter"
                         );
-                        RecapContext {
-                            summaries: if inputs.is_empty() {
-                                None
-                            } else {
-                                Some(inputs)
-                            },
-                            source_job_id: Some(recap_job.job_id),
-                            is_degraded: false,
-                            window_days: Some(window_days),
+                        if inputs.is_empty() {
+                            RecapContext {
+                                summaries: None,
+                                source_job_id: Some(recap_job.job_id),
+                                is_degraded: true,
+                                degradation_reason: Some("recap_unavailable"),
+                                window_days: Some(window_days),
+                            }
+                        } else if is_stale_input {
+                            RecapContext {
+                                summaries: Some(inputs),
+                                source_job_id: Some(recap_job.job_id),
+                                is_degraded: true,
+                                degradation_reason: Some("stale_recap_input"),
+                                window_days: Some(window_days),
+                            }
+                        } else {
+                            RecapContext {
+                                summaries: Some(inputs),
+                                source_job_id: Some(recap_job.job_id),
+                                is_degraded: false,
+                                degradation_reason: None,
+                                window_days: Some(window_days),
+                            }
                         }
                     }
                     Err(e) => {
@@ -300,6 +332,7 @@ impl MorningPipeline {
                             summaries: None,
                             source_job_id: Some(recap_job.job_id),
                             is_degraded: true,
+                            degradation_reason: Some("recap_unavailable"),
                             window_days: Some(window_days),
                         }
                     }
@@ -307,11 +340,11 @@ impl MorningPipeline {
             }
             Ok(None) => {
                 tracing::info!(job_id = %job.job_id, "no completed recap found, morning letter will be degraded");
-                RecapContext::degraded()
+                RecapContext::degraded("recap_unavailable")
             }
             Err(e) => {
                 tracing::warn!(job_id = %job.job_id, error = %e, "failed to query recap jobs, degraded mode");
-                RecapContext::degraded()
+                RecapContext::degraded("recap_unavailable")
             }
         }
     }
@@ -324,13 +357,15 @@ impl MorningPipeline {
         source_recap_job_id: Option<Uuid>,
         recap_window_days: Option<u32>,
         is_degraded: bool,
+        recap_degradation_reason: Option<&str>,
         ml_response: &crate::clients::news_creator::models::MorningLetterGenerateResponse,
         groups: &[(Uuid, Uuid, bool)],
+        now: chrono::DateTime<chrono::Utc>,
     ) -> Result<Uuid> {
         use chrono::SubsecRound;
 
         let letter_id = Uuid::new_v4();
-        let created_at = chrono::Utc::now().trunc_subsecs(6);
+        let created_at = now.trunc_subsecs(6);
 
         let previous = self
             .load_previous_letter_ref(edition_timezone, target_date)
@@ -343,6 +378,7 @@ impl MorningPipeline {
             source_recap_job_id,
             recap_window_days,
             is_degraded,
+            recap_degradation_reason,
             ml_response,
             groups,
             previous,
@@ -388,6 +424,7 @@ fn build_morning_letter_from_response(
     source_recap_job_id: Option<Uuid>,
     recap_window_days: Option<u32>,
     is_degraded: bool,
+    recap_degradation_reason: Option<&str>,
     ml_response: &crate::clients::news_creator::models::MorningLetterGenerateResponse,
     groups: &[(Uuid, Uuid, bool)],
     previous: Option<serde_json::Value>,
@@ -449,10 +486,19 @@ fn build_morning_letter_from_response(
         "through_line": through_line,
         "previous_letter_ref": previous,
     });
+    let degradation_reason = recap_degradation_reason
+        .map(str::to_string)
+        .or_else(|| {
+            if ml_response.metadata.is_degraded {
+                ml_response.metadata.degradation_reason.clone()
+            } else {
+                None
+            }
+        });
     let generation_metadata_jsonb = serde_json::json!({
         "model": ml_response.metadata.model,
         "is_degraded": is_degraded,
-        "degradation_reason": ml_response.metadata.degradation_reason,
+        "degradation_reason": degradation_reason,
         "processing_time_ms": ml_response.metadata.processing_time_ms,
     });
     let target_date_parsed = chrono::NaiveDate::parse_from_str(target_date, "%Y-%m-%d")
@@ -1230,6 +1276,7 @@ mod tests {
             None,
             Some(3),
             false,
+            None,
             &response,
             &[],
             None,
