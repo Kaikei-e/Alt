@@ -38,6 +38,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 SUITES_YAML = ROOT / "e2e" / "playwright" / "suites.yaml"
+DEFAULT_WORKFLOW = "e2e-playwright.yml"
 
 
 def main() -> int:
@@ -61,7 +62,10 @@ def main() -> int:
     sharded_run: list[dict[str, str]] = []
 
     for name in sorted(suites):
-        shards = (suites[name] or {}).get("shards")
+        entry = suites[name] or {}
+        if entry.get("workflow", DEFAULT_WORKFLOW) != DEFAULT_WORKFLOW:
+            continue
+        shards = entry.get("shards")
         if shards is None or int(shards) <= 1:
             single.append(name)
             continue
