@@ -68,6 +68,9 @@ on:
       - 'scripts/ci/**'
       - 'playbooks/publish-manual-verifications.yml'
       - 'playbooks/_publish-bridge.yml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   pull_request:
     branches: [main]
     paths:
@@ -109,6 +112,9 @@ on:
       - 'scripts/ci/**'
       - 'playbooks/publish-manual-verifications.yml'
       - 'playbooks/_publish-bridge.yml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
 
 # Superseded PR runs are cancelled; main-branch runs are not, because they
 # publish pacts and a half-cancelled publish leaves the broker inconsistent.
@@ -204,7 +210,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2.2.0
         with:
-          bun-version: latest
+          bun-version: "1.3.12"
 
       - name: Install dependencies
         working-directory: alt-frontend-sv
@@ -323,7 +329,7 @@ jobs:
     needs: [pact-cdc-go, pact-cdc-rust, pact-cdc-python-consumer]
     services:
       pact-db:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
         env:
           POSTGRES_USER: pact
           POSTGRES_PASSWORD: pact
@@ -334,7 +340,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       pact-broker:
-        image: pactfoundation/pact-broker:latest
+        image: pactfoundation/pact-broker:3.0.0-pactbroker2.121.2@sha256:420341d4fbfb00a621c313f47e530ad75703f969bbc7520d0d72bc71bb53cef9
         env:
           PACT_BROKER_DATABASE_URL: postgres://pact:pact@pact-db/pact
           PACT_BROKER_BASIC_AUTH_USERNAME: pact
@@ -350,20 +356,6 @@ jobs:
           --health-retries 30
           --health-start-period 60s
     steps:
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6  # v2.0.0
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          # large-packages runs an apt-get purge sweep (~2min, over half this
-          # job); android/dotnet/haskell are plain rm -rf and free most of the
-          # space in seconds. These jobs verify contracts, they don't build images.
-          large-packages: false
-          docker-images: true
-          swap-storage: true
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -538,7 +530,7 @@ jobs:
             lock: tag-generator/app/uv.lock
     services:
       pact-db:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
         env:
           POSTGRES_USER: pact
           POSTGRES_PASSWORD: pact
@@ -549,7 +541,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       pact-broker:
-        image: pactfoundation/pact-broker:latest
+        image: pactfoundation/pact-broker:3.0.0-pactbroker2.121.2@sha256:420341d4fbfb00a621c313f47e530ad75703f969bbc7520d0d72bc71bb53cef9
         env:
           PACT_BROKER_DATABASE_URL: postgres://pact:pact@pact-db/pact
           PACT_BROKER_BASIC_AUTH_USERNAME: pact
@@ -565,20 +557,6 @@ jobs:
           --health-retries 30
           --health-start-period 60s
     steps:
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6  # v2.0.0
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          # large-packages runs an apt-get purge sweep (~2min, over half this
-          # job); android/dotnet/haskell are plain rm -rf and free most of the
-          # space in seconds. These jobs verify contracts, they don't build images.
-          large-packages: false
-          docker-images: true
-          swap-storage: true
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -656,14 +634,24 @@ jobs:
 
   pact-publish-and-verify:
     # Aggregator that preserves the existing required-status-check name.
-    # Actual work happens in pact-verify-go and pact-verify-python (matrix).
+    # Actual work happens in pact-verify-go and pact-verify-python (matrix);
+    # if: always() ensures upstream failures fail this check instead of skipping it.
     name: Pact Publish & Provider Verification
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: [pact-verify-go, pact-verify-python]
+    if: always()
     steps:
       - name: All provider verifications passed
-        run: echo "Go + Python provider verifications succeeded."
+        env:
+          GO_RESULT: ${{ needs.pact-verify-go.result }}
+          PYTHON_RESULT: ${{ needs.pact-verify-python.result }}
+        run: |
+          if [[ "${GO_RESULT}" != "success" ]] || [[ "${PYTHON_RESULT}" != "success" ]]; then
+            echo "::error::Provider verification failed (pact-verify-go=${GO_RESULT}, pact-verify-python=${PYTHON_RESULT})"
+            exit 1
+          fi
+          echo "Go + Python provider verifications succeeded."
 
   pact-cdc-rust:
     name: Pact CDC Consumer Tests (Rust)
@@ -679,9 +667,11 @@ jobs:
             scripts
           sparse-checkout-cone-mode: true
 
+      # Keep toolchain and components in lockstep with recap-worker/rust-toolchain.toml.
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable branch head, 2026-07-31
         with:
-          toolchain: stable
+          toolchain: "1.99.1"
+          components: rustfmt, clippy
 
       - name: Cache Rust build
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -714,6 +704,12 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: |
+            recap-evaluator/uv.lock
+            acolyte-orchestrator/uv.lock
 
       - name: Install Python
         run: uv python install 3.14
@@ -732,9 +728,6 @@ jobs:
           name: pacts-recap-evaluator
           path: pacts/recap-evaluator-recap-worker.json
           if-no-files-found: error
-
-      - name: Install Python 3.14
-        run: uv python install 3.14
 
       - name: Install acolyte-orchestrator dependencies
         working-directory: acolyte-orchestrator
