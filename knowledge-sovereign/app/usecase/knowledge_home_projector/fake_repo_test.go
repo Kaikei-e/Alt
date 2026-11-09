@@ -287,9 +287,8 @@ func (f *fakeRepo) UpsertTodayDigest(_ context.Context, payload json.RawMessage)
 			w.TopTags = existing.TopTags
 		}
 		w.EveningPulseAvailable = existing.EveningPulseAvailable || w.EveningPulseAvailable
-		if existing.UpdatedAt.After(w.UpdatedAt) {
-			w.UpdatedAt = existing.UpdatedAt
-		}
+	} else if w.UnsummarizedArticles < 0 {
+		w.UnsummarizedArticles = 0
 	}
 	f.digests[w.UserID.String()] = w
 	return nil

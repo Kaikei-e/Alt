@@ -234,7 +234,7 @@ func TestProjector_FoldsSummaryVersionCreated_UsesPayloadSummaryTextDirectly(t *
 	digest, ok := repo.digests[user.String()]
 	require.True(t, ok, "SummaryVersionCreated must upsert today_digest_view")
 	assert.Equal(t, 1, digest.SummarizedArticles)
-	assert.Equal(t, -1, digest.UnsummarizedArticles)
+	assert.Equal(t, 0, digest.UnsummarizedArticles, "insert path floors negative unsummarized_articles delta at 0 via GREATEST(0, $5)")
 }
 
 func TestProjector_FoldsSummaryVersionCreated_EmptyTextStaysPending(t *testing.T) {
