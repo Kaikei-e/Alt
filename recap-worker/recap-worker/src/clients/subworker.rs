@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use reqwest::{Client, Url};
 use std::time::Duration;
 
@@ -14,6 +15,26 @@ pub(crate) use types::*;
 
 use types::{DEFAULT_COARSE_CLASSIFY_TIMEOUT_SECS, SUBWORKER_TIMEOUT_SECS};
 
+pub(crate) fn build_default_headers(token: Option<&str>) -> Result<HeaderMap> {
+    let mut headers = HeaderMap::new();
+    if let Some(token) = token {
+        let mut value = HeaderValue::from_str(&format!("Bearer {token}"))
+            .context("invalid subworker admin auth token for Authorization header")?;
+        value.set_sensitive(true);
+        headers.insert(AUTHORIZATION, value);
+    }
+    Ok(headers)
+}
+
+fn build_http_client(timeout: Duration, token: Option<&str>) -> Result<Client> {
+    let headers = build_default_headers(token)?;
+    Client::builder()
+        .timeout(timeout)
+        .default_headers(headers)
+        .build()
+        .context("failed to build subworker client")
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct SubworkerClient {
     pub(crate) client: Client,
@@ -26,18 +47,11 @@ pub(crate) struct SubworkerClient {
     /// `DEFAULT_COARSE_CLASSIFY_TIMEOUT_SECS` for the ~20 call sites that
     /// don't opt into a config-driven override.
     coarse_classify_timeout: Duration,
-    /// Bearer token sent on `/admin/*` and `/v1/runs` requests to
-    /// recap-subworker. `None` exactly when `RECAP_ADMIN_AUTH=disabled` was
-    /// set explicitly — see `with_admin_token`.
-    admin_token: Option<String>,
 }
 
 impl SubworkerClient {
     pub(crate) fn new(endpoint: impl Into<String>, min_documents_per_genre: usize) -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(SUBWORKER_TIMEOUT_SECS))
-            .build()
-            .context("failed to build subworker client")?;
+        let client = build_http_client(Duration::from_secs(SUBWORKER_TIMEOUT_SECS), None)?;
         Self::new_with_client(endpoint, min_documents_per_genre, client)
     }
 
@@ -54,7 +68,6 @@ impl SubworkerClient {
             base_url,
             min_documents_per_genre,
             coarse_classify_timeout: Duration::from_secs(DEFAULT_COARSE_CLASSIFY_TIMEOUT_SECS),
-            admin_token: None,
         })
     }
 
@@ -66,26 +79,38 @@ impl SubworkerClient {
         self
     }
 
-    /// Sets the bearer token sent on `/admin/*` and `/v1/runs` requests to
-    /// recap-subworker. Used by `app.rs` to wire in
-    /// `Config::admin_auth_token` — the same secret recap-worker requires
-    /// on its own `/admin/*` routes (see the `AdminAuth` doc comment in
-    /// `config.rs`). `None` sends no `Authorization` header, matching
-    /// `RECAP_ADMIN_AUTH=disabled`.
+    /// Rebuilds the underlying `reqwest::Client` with `ClientBuilder::default_headers`
+    /// carrying `Authorization: Bearer <token>` marked sensitive when `token` is `Some`.
+    /// When `token` is `None` (`RECAP_ADMIN_AUTH=disabled`), no default `Authorization`
+    /// header is set.
     #[must_use]
     pub(crate) fn with_admin_token(mut self, token: Option<String>) -> Self {
-        self.admin_token = token;
+        self.client = build_http_client(
+            Duration::from_secs(SUBWORKER_TIMEOUT_SECS),
+            token.as_deref(),
+        )
+        .expect("failed to build subworker client with default headers");
         self
     }
+}
 
-    /// Applies the `Authorization: Bearer <token>` header when an admin
-    /// token is configured, so every `/admin/*` and `/v1/runs` call site
-    /// stays in sync with `with_admin_token` instead of reimplementing the
-    /// header format.
-    pub(crate) fn authorize(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match &self.admin_token {
-            Some(token) => builder.bearer_auth(token),
-            None => builder,
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_default_headers_marks_authorization_sensitive() {
+        let headers = build_default_headers(Some("secret-token-value")).unwrap();
+        let auth = headers
+            .get(AUTHORIZATION)
+            .expect("Authorization header must be set");
+        assert_eq!(auth.to_str().unwrap(), "Bearer secret-token-value");
+        assert!(auth.is_sensitive());
+    }
+
+    #[test]
+    fn build_default_headers_omits_authorization_when_none() {
+        let headers = build_default_headers(None).unwrap();
+        assert!(headers.get(AUTHORIZATION).is_none());
     }
 }

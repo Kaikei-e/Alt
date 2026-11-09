@@ -112,27 +112,7 @@ impl ComponentRegistry {
         let news_creator_client =
             Arc::new(build_news_creator_client(&config, mtls_paths.as_ref()).await?);
 
-        let subworker_client = Arc::new(
-            if let Some(paths) = mtls_paths.as_ref() {
-                let client = crate::clients::mtls::build_mtls_client(
-                    paths,
-                    std::time::Duration::from_secs(5),
-                    std::time::Duration::from_hours(1),
-                )?;
-                SubworkerClient::new_with_client(
-                    config.subworker_base_url(),
-                    config.min_documents_per_genre(),
-                    client,
-                )?
-            } else {
-                SubworkerClient::new(
-                    config.subworker_base_url(),
-                    config.min_documents_per_genre(),
-                )?
-            }
-            .with_coarse_classify_timeout(config.subworker_coarse_classify_timeout())
-            .with_admin_token(config.admin_auth_token().map(str::to_string)),
-        );
+        let subworker_client = Arc::new(build_subworker_client(&config, mtls_paths.as_ref())?);
         let recap_pool = PgPoolOptions::new()
             .max_connections(config.recap_db_max_connections())
             .min_connections(config.recap_db_min_connections())
@@ -320,6 +300,38 @@ async fn build_news_creator_client(
         client,
     )
     .await?)
+}
+
+fn build_subworker_client(
+    config: &Config,
+    mtls_paths: Option<&crate::clients::mtls::MtlsPaths>,
+) -> Result<SubworkerClient> {
+    let admin_token = config.admin_auth_token().map(str::to_string);
+    if admin_token.is_some() {
+        tracing::info!("subworker_auth_enabled");
+    } else {
+        tracing::warn!("subworker_auth_disabled");
+    }
+    let client = if let Some(paths) = mtls_paths {
+        let http = crate::clients::mtls::build_mtls_client(
+            paths,
+            std::time::Duration::from_secs(5),
+            std::time::Duration::from_hours(1),
+        )?;
+        SubworkerClient::new_with_client(
+            config.subworker_base_url(),
+            config.min_documents_per_genre(),
+            http,
+        )?
+    } else {
+        SubworkerClient::new(
+            config.subworker_base_url(),
+            config.min_documents_per_genre(),
+        )?
+    };
+    Ok(client
+        .with_coarse_classify_timeout(config.subworker_coarse_classify_timeout())
+        .with_admin_token(admin_token))
 }
 
 /// Env flag deciding whether the outbox relay runs. Read strictly: an

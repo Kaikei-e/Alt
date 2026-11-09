@@ -1,13 +1,17 @@
 use anyhow::Result;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 use super::store::QueueStore;
 use super::types::QueuedJob;
-use crate::clients::subworker::SubworkerClient;
+use crate::clients::subworker::{SubworkerAuthError, SubworkerClient, is_subworker_auth_error};
+
+pub(crate) type AuthFailureMap = Arc<Mutex<HashMap<Uuid, (usize, SubworkerAuthError)>>>;
 
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const MAX_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -24,6 +28,7 @@ pub(crate) struct QueueWorker {
     store: Arc<QueueStore>,
     client: Arc<SubworkerClient>,
     retry_delay_ms: u64,
+    auth_failures: AuthFailureMap,
 }
 
 impl QueueWorker {
@@ -31,11 +36,13 @@ impl QueueWorker {
         store: Arc<QueueStore>,
         client: Arc<SubworkerClient>,
         retry_delay_ms: u64,
+        auth_failures: AuthFailureMap,
     ) -> Self {
         Self {
             store,
             client,
             retry_delay_ms,
+            auth_failures,
         }
     }
 
@@ -95,6 +102,7 @@ impl QueueWorker {
                 self.client.clone(),
                 job,
                 self.retry_delay_ms,
+                self.auth_failures.clone(),
             )
             .await
             {
@@ -111,6 +119,7 @@ impl QueueWorker {
         client: Arc<SubworkerClient>,
         job: QueuedJob,
         retry_delay_ms: u64,
+        auth_failures: AuthFailureMap,
     ) -> Result<()> {
         let job_id = job.id;
         let recap_job_id = job.recap_job_id;
@@ -165,8 +174,16 @@ impl QueueWorker {
                 Ok(())
             }
             Err(e) => {
-                let error_str = e.to_string();
-                let should_retry = job.retry_count < job.max_retries;
+                let error_str = format!("{e:#}");
+                if let Some(auth_err) = e.downcast_ref::<SubworkerAuthError>().cloned() {
+                    auth_failures
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .entry(recap_job_id)
+                        .or_insert((chunk_idx, auth_err));
+                }
+                let should_retry =
+                    !is_subworker_auth_error(&e) && job.retry_count < job.max_retries;
 
                 if should_retry {
                     // Exponential backoff, enforced by `next_retry_at` in the

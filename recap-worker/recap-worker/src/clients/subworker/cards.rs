@@ -221,25 +221,33 @@ pub struct VerifyCardResponse {
     pub embedding: VerifyEmbeddingInfo,
 }
 
+fn build_cards_http_client(timeout: Duration, token: Option<&str>) -> Result<Client> {
+    let headers = super::build_default_headers(token).map_err(|e| {
+        RecapError::Clustering(format!("failed to build subworker cards auth headers: {e}"))
+    })?;
+    Client::builder()
+        .timeout(timeout)
+        .default_headers(headers)
+        .build()
+        .map_err(|e| {
+            RecapError::Clustering(format!("failed to build subworker cards HTTP client: {e}"))
+        })
+}
+
 #[derive(Debug, Clone)]
 pub struct SubworkerCardsClient {
     client: Client,
     base_url: Url,
     embed_timeout: Duration,
     cluster_timeout: Duration,
-    admin_token: Option<String>,
     batch_size: usize,
     retry_config: RetryConfig,
 }
 
 impl SubworkerCardsClient {
     pub(crate) fn new(endpoint: impl Into<String>) -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(DEFAULT_CLUSTER_TIMEOUT_SECS))
-            .build()
-            .map_err(|e| {
-                RecapError::Clustering(format!("failed to build subworker cards HTTP client: {e}"))
-            })?;
+        let client =
+            build_cards_http_client(Duration::from_secs(DEFAULT_CLUSTER_TIMEOUT_SECS), None)?;
         Self::new_with_client(endpoint, client)
     }
 
@@ -257,7 +265,6 @@ impl SubworkerCardsClient {
             base_url,
             embed_timeout: Duration::from_secs(DEFAULT_EMBED_TIMEOUT_SECS),
             cluster_timeout: Duration::from_secs(DEFAULT_CLUSTER_TIMEOUT_SECS),
-            admin_token: None,
             batch_size: DEFAULT_EMBED_BATCH_SIZE,
             retry_config: RetryConfig::new(
                 DEFAULT_RETRY_ATTEMPTS,
@@ -269,7 +276,8 @@ impl SubworkerCardsClient {
 
     #[must_use]
     pub(crate) fn with_admin_token(mut self, token: Option<String>) -> Self {
-        self.admin_token = token;
+        self.client = build_cards_http_client(self.cluster_timeout, token.as_deref())
+            .expect("failed to build subworker cards HTTP client with default headers");
         self
     }
 
@@ -278,13 +286,6 @@ impl SubworkerCardsClient {
     pub(crate) fn with_batch_size(mut self, batch_size: usize) -> Self {
         self.batch_size = batch_size;
         self
-    }
-
-    fn apply_auth(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match &self.admin_token {
-            Some(token) => builder.bearer_auth(token),
-            None => builder,
-        }
     }
 
     fn build_endpoint_url(&self, segments: &[&str]) -> Result<Url> {
@@ -356,7 +357,8 @@ impl SubworkerCardsClient {
 
         loop {
             let send_result = self
-                .apply_auth(self.client.post(url.clone()))
+                .client
+                .post(url.clone())
                 .timeout(self.embed_timeout)
                 .json(&request_body)
                 .send()
@@ -427,7 +429,8 @@ impl SubworkerCardsClient {
 
         loop {
             let send_result = self
-                .apply_auth(self.client.post(url.clone()))
+                .client
+                .post(url.clone())
                 .timeout(self.cluster_timeout)
                 .json(req)
                 .send()
@@ -495,7 +498,8 @@ impl SubworkerCardsClient {
 
         loop {
             let send_result = self
-                .apply_auth(self.client.post(url.clone()))
+                .client
+                .post(url.clone())
                 .timeout(self.embed_timeout)
                 .json(req)
                 .send()

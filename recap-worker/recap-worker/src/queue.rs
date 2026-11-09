@@ -14,7 +14,7 @@ mod worker;
 
 pub(crate) use store::QueueStore;
 pub(crate) use types::{ClassificationResult, NewQueuedJob, QueuedJobId, QueuedJobStatus};
-use worker::QueueWorker;
+use worker::{AuthFailureMap, QueueWorker};
 
 /// Queue for managing classification jobs with persistent storage and retry logic
 pub(crate) struct ClassificationJobQueue {
@@ -25,6 +25,7 @@ pub(crate) struct ClassificationJobQueue {
     chunk_size: usize,
     max_retries: i32,
     shutdown: CancellationToken,
+    auth_failures: AuthFailureMap,
 }
 
 impl ClassificationJobQueue {
@@ -40,6 +41,7 @@ impl ClassificationJobQueue {
         let store = Arc::new(store);
         let client = Arc::new(client);
         let shutdown = CancellationToken::new();
+        let auth_failures: AuthFailureMap = Arc::new(Mutex::new(std::collections::HashMap::new()));
 
         // Start worker tasks (one per concurrency slot)
         let mut workers = Vec::new();
@@ -47,7 +49,13 @@ impl ClassificationJobQueue {
             let store_clone = store.clone();
             let client_clone = client.clone();
             let worker_shutdown = shutdown.clone();
-            let worker = QueueWorker::new(store_clone, client_clone, retry_delay_ms);
+            let worker_auth_failures = auth_failures.clone();
+            let worker = QueueWorker::new(
+                store_clone,
+                client_clone,
+                retry_delay_ms,
+                worker_auth_failures,
+            );
             let handle = tokio::spawn(async move {
                 info!(worker_id = i, "starting queue worker");
                 worker.run(worker_shutdown).await
@@ -67,6 +75,7 @@ impl ClassificationJobQueue {
             chunk_size,
             max_retries,
             shutdown,
+            auth_failures,
         }
     }
 
@@ -137,6 +146,18 @@ impl ClassificationJobQueue {
         let poll_interval = Duration::from_millis(500);
 
         loop {
+            if let Some((chunk_idx, auth_err)) = self
+                .auth_failures
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&recap_job_id)
+            {
+                return Err(anyhow::Error::from(auth_err).context(format!(
+                    "classify-runs request rejected for job {} chunk {}",
+                    recap_job_id, chunk_idx
+                )));
+            }
+
             // Check if all jobs are completed
             let all_completed = self
                 .store
@@ -145,6 +166,18 @@ impl ClassificationJobQueue {
                 .context("failed to check job completion")?;
 
             if all_completed {
+                if let Some((chunk_idx, auth_err)) = self
+                    .auth_failures
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .remove(&recap_job_id)
+                {
+                    return Err(anyhow::Error::from(auth_err).context(format!(
+                        "classify-runs request rejected for job {} chunk {}",
+                        recap_job_id, chunk_idx
+                    )));
+                }
+
                 // `all_jobs_completed` treats 'failed' as "no longer pending",
                 // so completion alone does not mean every chunk succeeded.
                 // Check for failed chunks explicitly and fail closed instead

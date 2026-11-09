@@ -389,6 +389,12 @@ impl CoarseGenreStage {
         // On error, fallback to "other" genre
         let scores = match self.subworker.classify_coarse(&combined_text).await {
             Ok(s) => s,
+            Err(e) if crate::clients::subworker::is_subworker_auth_error(&e) => {
+                return Err(e.context(format!(
+                    "subworker classify_coarse failed for article {}",
+                    article.id
+                )));
+            }
             Err(e) => {
                 tracing::warn!(
                     article_id = %article.id,
@@ -862,7 +868,7 @@ mod tests {
 
     #[tokio::test]
     async fn assigns_genres_based_on_keywords() {
-        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
         let stage = CoarseGenreStage::with_defaults(subworker);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
@@ -927,7 +933,7 @@ mod tests {
 
     #[tokio::test]
     async fn assigns_at_least_one_genre() {
-        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
         let stage = CoarseGenreStage::with_defaults(subworker);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
@@ -955,7 +961,7 @@ mod tests {
 
     #[tokio::test]
     async fn respects_max_genres_limit() {
-        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
         let stage = CoarseGenreStage::new(1, 2, None, subworker, 0.0);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
@@ -973,5 +979,80 @@ mod tests {
         assert_eq!(bundle.assignments.len(), 1);
         // 最大2ジャンル
         assert!(bundle.assignments[0].candidates.len() <= 2);
+    }
+
+    #[tokio::test]
+    async fn assign_fails_on_subworker_401_without_falling_back_to_other() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify/coarse"))
+            .respond_with(
+                ResponseTemplate::new(401).set_body_string(r#"{"detail":"Unauthorized"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10).unwrap());
+        let stage = CoarseGenreStage::with_defaults(subworker);
+        let job = JobContext::new(Uuid::new_v4(), vec![]);
+        let corpus = DeduplicatedCorpus {
+            job_id: job.job_id,
+            articles: vec![article(
+                "art-1",
+                Some("Breaking AI News"),
+                vec!["A new artificial intelligence model was announced today."],
+            )],
+            stats: DedupStats::default(),
+        };
+
+        let err = stage.assign(&job, corpus).await.expect_err(
+            "401 from classify_coarse must fail the stage instead of falling back to other",
+        );
+
+        assert!(crate::clients::subworker::is_subworker_auth_error(&err));
+        let chain = format!("{err:#}");
+        assert!(chain.contains("401"));
+        assert!(chain.contains("Unauthorized"));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn assign_falls_back_to_other_on_non_auth_subworker_error() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify/coarse"))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_string(r#"{"detail":"Server Error"}"#),
+            )
+            .mount(&server)
+            .await;
+
+        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10).unwrap());
+        let stage = CoarseGenreStage::with_defaults(subworker);
+        let job = JobContext::new(Uuid::new_v4(), vec![]);
+        let corpus = DeduplicatedCorpus {
+            job_id: job.job_id,
+            articles: vec![article(
+                "art-1",
+                Some("Breaking AI News"),
+                vec!["A new artificial intelligence model was announced today."],
+            )],
+            stats: DedupStats::default(),
+        };
+
+        let bundle = stage
+            .assign(&job, corpus)
+            .await
+            .expect("non-auth subworker error must still fall back to 'other'");
+
+        assert_eq!(bundle.assignments.len(), 1);
+        assert_eq!(bundle.assignments[0].genres, vec!["other".to_string()]);
     }
 }

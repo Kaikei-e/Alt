@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use super::types::{
     ADMIN_JOB_INITIAL_BACKOFF_MS, ADMIN_JOB_MAX_BACKOFF_MS, ADMIN_JOB_TIMEOUT_SECS,
-    AdminJobKickResponse, AdminJobStatusResponse, POLL_REQUEST_TIMEOUT_SECS,
+    AdminJobKickResponse, AdminJobStatusResponse, POLL_REQUEST_TIMEOUT_SECS, SubworkerAuthError,
 };
 use super::utils::truncate_error_message;
 use crate::clients::subworker::SubworkerClient;
@@ -21,7 +21,8 @@ impl SubworkerClient {
 
         tracing::info!("triggering tag_label_graph rebuild");
         let response = self
-            .authorize(self.client.post(url))
+            .client
+            .post(url)
             .send()
             .await
             .context("subworker build-graph request failed")?;
@@ -32,6 +33,14 @@ impl SubworkerClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "unknown error".to_string());
+            if SubworkerAuthError::is_auth_status(status) {
+                return Err(SubworkerAuthError {
+                    endpoint: "admin/build-graph",
+                    status: status.as_u16(),
+                    body: error_text,
+                }
+                .into());
+            }
             return Err(anyhow!(
                 "subworker build-graph endpoint returned error status {}: {}",
                 status,
@@ -62,7 +71,8 @@ impl SubworkerClient {
 
         tracing::info!("triggering genre learning");
         let response = self
-            .authorize(self.client.post(url))
+            .client
+            .post(url)
             .send()
             .await
             .context("subworker learning request failed")?;
@@ -73,6 +83,14 @@ impl SubworkerClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "unknown error".to_string());
+            if SubworkerAuthError::is_auth_status(status) {
+                return Err(SubworkerAuthError {
+                    endpoint: "admin/learning",
+                    status: status.as_u16(),
+                    body: error_text,
+                }
+                .into());
+            }
             return Err(anyhow!(
                 "subworker learning endpoint returned error status {}: {}",
                 status,
@@ -117,7 +135,8 @@ impl SubworkerClient {
 
         tracing::info!(endpoint = %url, "starting admin job");
         let response = self
-            .authorize(self.client.post(url.clone()))
+            .client
+            .post(url.clone())
             .send()
             .await
             .with_context(|| format!("admin job POST request failed for {}", endpoint))?;
@@ -128,6 +147,14 @@ impl SubworkerClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "unknown error".to_string());
+            if SubworkerAuthError::is_auth_status(status) {
+                return Err(SubworkerAuthError {
+                    endpoint: "admin/jobs",
+                    status: status.as_u16(),
+                    body: truncate_error_message(&error_text),
+                }
+                .into());
+            }
             return Err(anyhow!(
                 "admin job endpoint {} returned error status {}: {}",
                 endpoint,
@@ -156,11 +183,7 @@ impl SubworkerClient {
             .join(&format!("{}/{}", endpoint, job_id))
             .with_context(|| format!("failed to build admin job status URL for {}", job_id))?;
 
-        tracing::info!(
-            job_id = %job_id,
-            endpoint = %url,
-            "starting admin job polling"
-        );
+        tracing::info!(job_id = %job_id, endpoint = %url, "starting admin job polling");
 
         let mut poll_count = 0u32;
         loop {
@@ -174,33 +197,34 @@ impl SubworkerClient {
             }
 
             let response = self
-                .authorize(self.client.get(url.clone()))
+                .client
+                .get(url.clone())
                 .timeout(Duration::from_secs(POLL_REQUEST_TIMEOUT_SECS))
                 .send()
                 .await
                 .with_context(|| {
-                    format!(
-                        "admin job polling request failed for job_id {} at {}",
-                        job_id, endpoint
-                    )
+                    format!("admin job polling request failed for job_id {job_id} at {endpoint}")
                 })?;
 
             let status = response.status();
             if !status.is_success() {
                 let body = response.text().await.unwrap_or_default();
+                let truncated = truncate_error_message(&body);
+                if SubworkerAuthError::is_auth_status(status) {
+                    return Err(SubworkerAuthError {
+                        endpoint: "admin/jobs poll",
+                        status: status.as_u16(),
+                        body: truncated,
+                    }
+                    .into());
+                }
                 return Err(anyhow!(
-                    "admin job polling endpoint returned error status {} for job_id {}: {}",
-                    status,
-                    job_id,
-                    truncate_error_message(&body)
+                    "admin job polling endpoint returned error status {status} for job_id {job_id}: {truncated}"
                 ));
             }
 
             let body: AdminJobStatusResponse = response.json().await.with_context(|| {
-                format!(
-                    "failed to deserialize admin job status for job_id {}",
-                    job_id
-                )
+                format!("failed to deserialize admin job status for job_id {job_id}")
             })?;
 
             poll_count += 1;

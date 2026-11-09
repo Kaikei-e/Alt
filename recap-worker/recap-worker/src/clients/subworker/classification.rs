@@ -10,7 +10,7 @@ use super::types::{
     COARSE_CLASSIFY_BACKOFF_CAP_MS, COARSE_CLASSIFY_MAX_ATTEMPTS, ClassificationJobResponse,
     ClassificationRequest, ClassificationResult, INITIAL_POLL_INTERVAL_MS, MAX_POLL_ATTEMPTS,
     MAX_POLL_INTERVAL_MS, POLL_REQUEST_RETRIES, POLL_REQUEST_RETRY_DELAY_MS,
-    POLL_REQUEST_TIMEOUT_SECS, SUBWORKER_TIMEOUT_SECS,
+    POLL_REQUEST_TIMEOUT_SECS, SUBWORKER_TIMEOUT_SECS, SubworkerAuthError, is_subworker_auth_error,
 };
 use super::utils::truncate_error_message;
 use crate::clients::subworker::SubworkerClient;
@@ -77,11 +77,18 @@ impl SubworkerClient {
         let body = self
             .parse_classify_response(job_id, response)
             .await
-            .with_context(|| {
-                format!(
-                    "failed to parse classify-runs response for job {} chunk {}",
-                    job_id, chunk_idx
-                )
+            .map_err(|err| {
+                if is_subworker_auth_error(&err) {
+                    err.context(format!(
+                        "classify-runs request rejected for job {} chunk {}",
+                        job_id, chunk_idx
+                    ))
+                } else {
+                    err.context(format!(
+                        "failed to parse classify-runs response for job {} chunk {}",
+                        job_id, chunk_idx
+                    ))
+                }
             })?;
 
         let results = self
@@ -164,9 +171,17 @@ impl SubworkerClient {
 
             if !response.status().is_success() {
                 let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                if SubworkerAuthError::is_auth_status(status) {
+                    return Err(SubworkerAuthError {
+                        endpoint: "classify_coarse",
+                        status: status.as_u16(),
+                        body,
+                    }
+                    .into());
+                }
                 let retryable =
                     status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
-                let body = response.text().await.unwrap_or_default();
 
                 attempt += 1;
                 if !retryable || !retry_config.can_retry(attempt) {
@@ -282,6 +297,14 @@ impl SubworkerClient {
                 error_body = %truncated_body,
                 "classify-runs endpoint returned error status"
             );
+            if SubworkerAuthError::is_auth_status(status) {
+                return Err(SubworkerAuthError {
+                    endpoint: "classify-runs",
+                    status: status.as_u16(),
+                    body: truncated_body,
+                }
+                .into());
+            }
             return Err(anyhow!(
                 "classify-runs endpoint returned error status {}: {}",
                 status,
@@ -365,6 +388,14 @@ impl SubworkerClient {
             if !status.is_success() {
                 let body = response.text().await.unwrap_or_default();
                 let truncated_body = truncate_error_message(&body);
+                if SubworkerAuthError::is_auth_status(status) {
+                    return Err(SubworkerAuthError {
+                        endpoint: "classify-runs poll",
+                        status: status.as_u16(),
+                        body: truncated_body,
+                    }
+                    .into());
+                }
                 return Err(anyhow!(
                     "classification run polling endpoint returned error status {} for run_id {}: {}",
                     status,
@@ -591,6 +622,55 @@ mod tests {
             result.is_err(),
             "permanently failing subworker should still error out after retries"
         );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn classify_coarse_does_not_retry_on_401() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify/coarse"))
+            .respond_with(
+                ResponseTemplate::new(401).set_body_string(r#"{"detail":"Unauthorized"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
+
+        let err = client
+            .classify_coarse("some article text")
+            .await
+            .expect_err("401 must fail immediately");
+
+        assert!(is_subworker_auth_error(&err));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn classify_chunk_401_returns_typed_auth_error_without_parse_error_wrapper() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(
+                ResponseTemplate::new(401).set_body_string(r#"{"detail":"Unauthorized"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
+
+        let err = client
+            .classify_chunk(Uuid::new_v4(), vec!["article text".to_string()], 0)
+            .await
+            .expect_err("401 must fail classify_chunk");
+
+        assert!(is_subworker_auth_error(&err));
+        let chain = format!("{err:#}");
+        assert!(chain.contains("401"));
+        assert!(!chain.contains("failed to parse classify-runs response"));
         server.verify().await;
     }
 }

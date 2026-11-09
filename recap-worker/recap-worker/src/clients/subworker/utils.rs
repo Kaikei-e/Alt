@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use super::types::{
     EXTRACTION_TIMEOUT_SECS, ExtractRequest, ExtractResponse, MAX_ERROR_MESSAGE_LENGTH,
+    SubworkerAuthError,
 };
 use crate::clients::subworker::SubworkerClient;
 
@@ -64,6 +65,14 @@ impl SubworkerClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            if SubworkerAuthError::is_auth_status(status) {
+                return Err(SubworkerAuthError {
+                    endpoint: "extract",
+                    status: status.as_u16(),
+                    body,
+                }
+                .into());
+            }
             return Err(anyhow::anyhow!(
                 "extract endpoint error {}: {}",
                 status,

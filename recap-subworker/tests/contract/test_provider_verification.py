@@ -34,7 +34,7 @@ import pytest
 import uvicorn
 from fastapi import Depends, FastAPI
 from pact import Verifier
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.testclient import TestClient
 
 from recap_subworker.app import deps
@@ -227,7 +227,7 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
     class ClassifyRunsRequest(BaseModel):
         texts: list[str]
 
-    @app.post("/v1/classify-runs")
+    @app.post("/v1/classify-runs", dependencies=[Depends(require_admin_token)])
     async def create_classification_run(payload: ClassifyRunsRequest) -> dict:
         return {
             "run_id": 1,
@@ -237,7 +237,7 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
         }
 
     # ---- GET /v1/classify-runs/{run_id} ----
-    @app.get("/v1/classify-runs/{run_id}")
+    @app.get("/v1/classify-runs/{run_id}", dependencies=[Depends(require_admin_token)])
     async def get_classification_run(run_id: int) -> dict:
         return {
             "run_id": run_id,
@@ -257,10 +257,54 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
     class CoarseClassifyRequest(BaseModel):
         text: str
 
-    @app.post("/v1/classify/coarse")
+    @app.post("/v1/classify/coarse", dependencies=[Depends(require_admin_token)])
     async def classify_coarse(request: CoarseClassifyRequest) -> dict:
         return {
             "scores": {"technology": 0.8, "science": 0.15},
+        }
+
+    # ---- POST /v1/extract ----
+    class ExtractRequest(BaseModel):
+        html: str
+        include_comments: bool = False
+
+    @app.post("/v1/extract", dependencies=[Depends(require_admin_token)])
+    async def extract_content(request: ExtractRequest) -> dict:
+        return {
+            "text": "The body paragraph extracted from HTML.",
+        }
+
+    # ---- POST /v1/evaluation/genres ----
+    class EvaluateGenresRequest(BaseModel):
+        golden_data_path: str | None = None
+        use_bootstrap: bool = True
+        n_bootstrap: int = 1000
+        use_cross_validation: bool = False
+        n_folds: int = 5
+        save_active: bool = Field(default=True, alias="save_Active")
+
+    @app.post("/v1/evaluation/genres", dependencies=[Depends(require_admin_token)])
+    async def evaluate_genres(request: EvaluateGenresRequest) -> dict:
+        return {
+            "accuracy": 0.91,
+            "macro_precision": 0.88,
+            "macro_recall": 0.86,
+            "macro_f1": 0.87,
+            "micro_precision": 0.90,
+            "micro_recall": 0.89,
+            "micro_f1": 0.895,
+            "per_genre_metrics": {
+                "technology": {
+                    "tp": 10,
+                    "fp": 2,
+                    "fn": 1,
+                    "support": 11,
+                    "precision": 0.83,
+                    "recall": 0.91,
+                    "f1": 0.87,
+                }
+            },
+            "total_samples": 100,
         }
 
     # ---- POST /v1/clustering/{run_id} ----
@@ -311,6 +355,9 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
         # Topic card verification provider states:
         "the card verifier is ready": _set_state,
         "ready to verify cards": _set_state,
+        # Extraction and evaluation provider states:
+        "the content extractor is ready": _set_state,
+        "the evaluation service is ready": _set_state,
     }
 
     @app.post("/_pact/provider-states")
@@ -571,9 +618,39 @@ def test_provider_app_endpoints_reject_unauthenticated():
     )
     assert res_verify.status_code == 401
 
+    # 4. /v1/classify-runs (POST and GET)
+    res_classify_post = client.post(
+        "/v1/classify-runs",
+        json={"texts": ["Example"]},
+    )
+    assert res_classify_post.status_code == 401
+    res_classify_get = client.get("/v1/classify-runs/42")
+    assert res_classify_get.status_code == 401
+
+    # 5. /v1/classify/coarse
+    res_coarse = client.post(
+        "/v1/classify/coarse",
+        json={"text": "Example"},
+    )
+    assert res_coarse.status_code == 401
+
+    # 6. /v1/extract
+    res_extract = client.post(
+        "/v1/extract",
+        json={"html": "<p>Body</p>", "include_comments": False},
+    )
+    assert res_extract.status_code == 401
+
+    # 7. /v1/evaluation/genres
+    res_eval = client.post(
+        "/v1/evaluation/genres",
+        json={"use_bootstrap": True, "n_bootstrap": 1000},
+    )
+    assert res_eval.status_code == 401
+
 
 def test_provider_states_card_pipeline_states_registered():
-    """Verify that provider states endpoint accepts embedding, clustering, and verification states."""
+    """Verify that provider states endpoint accepts embedding, clustering, verification, extract, and evaluation states."""
     app = _create_provider_app()
     client = TestClient(app)
     for state in [
@@ -583,6 +660,8 @@ def test_provider_states_card_pipeline_states_registered():
         "ready to cluster stories",
         "the card verifier is ready",
         "ready to verify cards",
+        "the content extractor is ready",
+        "the evaluation service is ready",
     ]:
         res = client.post("/_pact/provider-states", json={"state": state, "action": "setup"})
         assert res.status_code == 200
