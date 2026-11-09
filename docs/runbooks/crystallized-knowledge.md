@@ -199,6 +199,14 @@ ADR-000001〜000940 (940 本) と PM-2026-001〜046 (46 本) を全件解析し�
   curl -fsS http://127.0.0.1:9005/v1/morning/letters/latest \
     | jq -e '.is_degraded == false and .model != null and .model != "extractive-fallback"'
   ```
+  同様に 3-day recap summary についても、同じ `recap-worker` (`127.0.0.1:9005`) → `news-creator` (`POST /v1/summary/generate` / `POST /v1/summary/generate/batch`, `news-creator/app/news_creator/handler/recap_summary_handler.py`) 経路で 1 件トリガまたは最新ジョブを検査する（`POST /v1/generate/recaps/3days` は `recap-worker/recap-worker/src/api/generate.rs` の非同期ジョブ起動、`GET /v1/recaps/3days` は `recap-worker/recap-worker/src/api/fetch.rs` の結果取得であり、いずれも `recap-worker/recap-worker/src/api.rs` の `require_admin_token` 対象外）。`news-creator/app/news_creator/usecase/recap_summary_usecase.py` はプレースホルダ文字列 (`... [1]` 等)、重複 bullet (`detect_repetition`)、日本語比率低下 (`recap_ja_ratio_threshold < 0.6`)、Gemma チャットテンプレート／構造化出力崩れを検知すると repair 後に extractive fallback (`metadata.is_degraded = true`, `model = "extractive-fallback"` / `"cluster-fallback"`) へ降格させ、`recap-worker/recap-worker/src/api/surface_status.rs` (`three_day_recap_reasons`) が `surface_status.degradation_reasons` に `code == "extractive_genres"` を付与する。正常時は `surface_status.latest_run.status == "completed"`・`surface_status.is_stale == false`・`surface_status.degradation_reasons == []` であり、各ジャンルの `bullets` にプレースホルダ・重複 bullet・低日本語比率・Gemma テンプレートトークン混入がないことを確認する:
+  ```bash
+  # 1 ジャンル指定で 3-day recap ジョブを起動し (202 Accepted)、完了後に GET /v1/recaps/3days で健全性を検証
+  curl -fsS -X POST http://127.0.0.1:9005/v1/generate/recaps/3days \
+    -H 'Content-Type: application/json' -d '{"genres":["ai_data"]}'
+  curl -fsS http://127.0.0.1:9005/v1/recaps/3days \
+    | jq -e '.surface_status.latest_run.status == "completed" and .surface_status.is_stale == false and (.surface_status.degradation_reasons | length == 0) and (.genres | length > 0) and all(.genres[]; (.bullets | length > 0) and (.bullets | length == (.bullets | unique | length)))'
+  ```
 - Ollama の JSON Schema→GBNF 翻訳は `\d` `\w` `\s` を拒否 — 渡す全 schema の pattern を CI で sweep ([[000887]])
 - embedder は SPOF にしない — BM25-only degraded mode を設計 (PM-2026-020 [[000693]])。retrieval 系の変更は単独で eval を回す ([[000696]])
 
