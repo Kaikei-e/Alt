@@ -318,8 +318,6 @@ mod tests {
                 next_retry_at TIMESTAMPTZ,
                 UNIQUE(recap_job_id, chunk_idx)
             );
-            ALTER TABLE classification_job_queue
-                ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMPTZ;
             ",
         )
         .await?;
@@ -428,22 +426,22 @@ mod tests {
         let Ok(database_url) = std::env::var("DATABASE_URL") else {
             return Ok(());
         };
+        let schema = format!("test_queue_auth_{}", Uuid::new_v4().simple());
+        let schema_for_conn = schema.clone();
         let pool = PgPoolOptions::new()
             .max_connections(5)
-            .after_connect(|conn, _meta| {
+            .after_connect(move |conn, _meta| {
+                let schema_sql = format!(
+                    "CREATE SCHEMA IF NOT EXISTS {schema_for_conn}; SET search_path TO {schema_for_conn};"
+                );
                 Box::pin(async move {
-                    conn.execute(
-                        "CREATE SCHEMA IF NOT EXISTS test_queue_auth; SET search_path TO test_queue_auth;",
-                    )
-                    .await?;
+                    conn.execute(sqlx::AssertSqlSafe(schema_sql)).await?;
                     Ok(())
                 })
             })
             .connect(&database_url)
             .await?;
         setup_classification_queue_table(&pool).await?;
-        pool.execute("TRUNCATE TABLE classification_job_queue;")
-            .await?;
 
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -458,23 +456,26 @@ mod tests {
         let recap_job_id = Uuid::new_v4();
         let store = QueueStore::new(pool.clone());
         let client = SubworkerClient::new(server.uri(), 10, None)?;
-        let queue = ClassificationJobQueue::new(store.clone(), client.clone(), 1, 1, 3, 5000);
-
-        let err = client
-            .classify_texts_queued(
-                &queue,
+        let staging_queue =
+            ClassificationJobQueue::new(store.clone(), client.clone(), 0, 1, 3, 5000);
+        staging_queue
+            .enqueue_classification(
                 recap_job_id,
                 vec!["first article".to_string(), "second article".to_string()],
             )
+            .await?;
+
+        let queue = ClassificationJobQueue::new(store.clone(), client.clone(), 1, 1, 3, 5000);
+        let err = queue
+            .wait_for_completion(recap_job_id, Duration::from_secs(10))
             .await
-            .expect_err("401 from /v1/classify-runs must fail classify_texts_queued");
+            .expect_err("401 from /v1/classify-runs must fail wait_for_completion");
 
         queue.shutdown().await;
 
         let jobs = store.get_jobs_by_recap_job(recap_job_id).await?;
-        let _ = pool
-            .execute("DROP SCHEMA IF EXISTS test_queue_auth CASCADE;")
-            .await;
+        let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
+        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
 
         assert!(
             crate::clients::subworker::is_subworker_auth_error(&err),
@@ -499,6 +500,157 @@ mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .is_empty(),
             "auth_failures map must not leak entries after wait_for_completion"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn late_in_flight_401_after_waiter_returns_does_not_reinsert_auth_failure() -> Result<()>
+    {
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let schema = format!("test_queue_auth_late_{}", Uuid::new_v4().simple());
+        let schema_for_conn = schema.clone();
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .after_connect(move |conn, _meta| {
+                let schema_sql = format!(
+                    "CREATE SCHEMA IF NOT EXISTS {schema_for_conn}; SET search_path TO {schema_for_conn};"
+                );
+                Box::pin(async move {
+                    conn.execute(sqlx::AssertSqlSafe(schema_sql)).await?;
+                    Ok(())
+                })
+            })
+            .connect(&database_url)
+            .await?;
+        setup_classification_queue_table(&pool).await?;
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .and(body_string_contains("fast article"))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_string(r#"{"detail":"unauthenticated peer"}"#)
+                    .set_delay(Duration::from_millis(60)),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .and(body_string_contains("slow article"))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_string(r#"{"detail":"unauthenticated peer"}"#)
+                    .set_delay(Duration::from_millis(250)),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let recap_job_id = Uuid::new_v4();
+        let store = QueueStore::new(pool.clone());
+        let client = SubworkerClient::new(server.uri(), 10, None)?;
+        let staging_queue =
+            ClassificationJobQueue::new(store.clone(), client.clone(), 0, 1, 3, 5000);
+        staging_queue
+            .enqueue_classification(
+                recap_job_id,
+                vec!["fast article".to_string(), "slow article".to_string()],
+            )
+            .await?;
+
+        let queue = ClassificationJobQueue::new(store.clone(), client.clone(), 2, 1, 3, 5000);
+        tokio::time::sleep(Duration::from_millis(120)).await;
+
+        let err = queue
+            .wait_for_completion(recap_job_id, Duration::from_secs(5))
+            .await
+            .expect_err("401 from /v1/classify-runs must fail wait_for_completion");
+        assert!(crate::clients::subworker::is_subworker_auth_error(&err));
+
+        queue.shutdown().await;
+
+        let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
+        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
+
+        assert!(
+            queue
+                .auth_failures
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty(),
+            "late in-flight 401 on an already-failed chunk must not re-insert into auth_failures"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn wait_for_completion_timeout_drops_auth_failure_entry() -> Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let schema = format!("test_queue_auth_timeout_{}", Uuid::new_v4().simple());
+        let schema_for_conn = schema.clone();
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .after_connect(move |conn, _meta| {
+                let schema_sql = format!(
+                    "CREATE SCHEMA IF NOT EXISTS {schema_for_conn}; SET search_path TO {schema_for_conn};"
+                );
+                Box::pin(async move {
+                    conn.execute(sqlx::AssertSqlSafe(schema_sql)).await?;
+                    Ok(())
+                })
+            })
+            .connect(&database_url)
+            .await?;
+        setup_classification_queue_table(&pool).await?;
+
+        let recap_job_id = Uuid::new_v4();
+        let store = QueueStore::new(pool.clone());
+        let client = SubworkerClient::new("http://localhost:8002", 10, None)?;
+        let queue = ClassificationJobQueue::new(store, client, 0, 1, 3, 5000);
+        queue
+            .enqueue_classification(recap_job_id, vec!["article".to_string()])
+            .await?;
+        queue
+            .auth_failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(
+                recap_job_id,
+                (
+                    0,
+                    crate::clients::subworker::SubworkerAuthError::new(
+                        "classify-runs",
+                        reqwest::StatusCode::UNAUTHORIZED,
+                        "unauthorized",
+                    ),
+                ),
+            );
+
+        let _err = queue
+            .wait_for_completion(recap_job_id, Duration::from_millis(20))
+            .await
+            .expect_err("pending chunk must time out");
+
+        let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
+        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
+
+        assert!(
+            queue
+                .auth_failures
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty(),
+            "timeout branch must drop any stale auth_failures entry for the job"
         );
         Ok(())
     }
