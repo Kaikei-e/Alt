@@ -139,7 +139,6 @@ def _make_valid_morning_letter_llm_response() -> LLMGenerateResponse:
                 "genre": "ai",
             },
         ],
-        "generated_at": "2026-04-07T06:00:00+09:00",
         "source_recap_window_days": 3,
     }
     return LLMGenerateResponse(
@@ -644,7 +643,6 @@ async def test_morning_letter_retries_once_on_placeholder_and_succeeds():
                 "genre": None,
             }
         ],
-        "generated_at": "...",
         "source_recap_window_days": 3,
     }
     placeholder_response = LLMGenerateResponse(
@@ -736,7 +734,6 @@ async def test_morning_letter_placeholder_or_short_output_falls_back_after_retry
                 "genre": None,
             }
         ],
-        "generated_at": "2026-04-07T06:00:00+09:00",
         "source_recap_window_days": 3,
     }
     bad_response = LLMGenerateResponse(
@@ -786,7 +783,6 @@ async def test_morning_letter_duplicate_bullets_across_sections_falls_back_after
                 "genre": None,
             },
         ],
-        "generated_at": "2026-04-07T06:00:00+09:00",
         "source_recap_window_days": 3,
     }
     bad_response = LLMGenerateResponse(
@@ -834,7 +830,6 @@ async def test_morning_letter_low_japanese_ratio_falls_back_after_retry():
                 "genre": None,
             },
         ],
-        "generated_at": "2026-04-07T06:00:00+09:00",
         "source_recap_window_days": 3,
     }
     bad_response = LLMGenerateResponse(
@@ -877,7 +872,6 @@ async def test_morning_letter_accepts_fullwidth_alphanumeric_short_bullet_and_ex
                 "genre": None,
             }
         ],
-        "generated_at": "2026-04-07T06:00:00+09:00",
         "source_recap_window_days": 3,
     }
     valid_response = LLMGenerateResponse(
@@ -927,7 +921,6 @@ async def test_morning_letter_retry_parse_failure_preserves_first_attempt_valida
                 "genre": None,
             }
         ],
-        "generated_at": "...",
         "source_recap_window_days": 3,
     }
     attempt1_response = LLMGenerateResponse(
@@ -956,3 +949,32 @@ async def test_morning_letter_retry_parse_failure_preserves_first_attempt_valida
     assert llm_provider.generate.await_count == 2
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason == "placeholder_output"
+
+
+@pytest.mark.asyncio
+async def test_morning_letter_omits_generated_at_from_schema_prompt_and_response():
+    from news_creator.domain.models import MorningLetterContent
+
+    schema = MorningLetterContent.model_json_schema()
+    assert "generated_at" not in schema.get("properties", {})
+
+    config = _make_morning_letter_config()
+    llm_provider = AsyncMock()
+    llm_provider.generate = AsyncMock(
+        return_value=_make_valid_morning_letter_llm_response()
+    )
+    usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
+    req = _make_morning_letter_request()
+
+    assert "generated_at" not in usecase._build_prompt(req, is_degraded=False)
+    usecase.template = None
+    assert "generated_at" not in usecase._build_prompt(req, is_degraded=False)
+
+    response = await usecase.generate_letter(req)
+    dumped = response.model_dump()
+    assert dumped["target_date"] == "2026-04-07"
+    assert dumped["edition_timezone"] == "Asia/Tokyo"
+    assert "generated_at" not in dumped["content"]
+
+    fallback_content = usecase._build_extractive_fallback(req)
+    assert "generated_at" not in fallback_content.model_dump()

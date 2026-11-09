@@ -78,7 +78,6 @@ def _make_llm_response_full() -> LLMGenerateResponse:
                 "narrative": "大規模モデルの競争が買収戦略へ波及している。",
             },
         ],
-        "generated_at": "2026-04-07T06:00:00Z",
         "source_recap_window_days": 3,
     }
     return LLMGenerateResponse(
@@ -106,7 +105,6 @@ def _make_llm_response_degraded() -> LLMGenerateResponse:
                 ],
             },
         ],
-        "generated_at": "2026-04-07T06:00:00Z",
         "source_recap_window_days": None,
     }
     return LLMGenerateResponse(
@@ -203,7 +201,6 @@ async def test_generate_letter_preserves_section_key_contract():
                 "bullets": ["別の記事に関する要約テキストです [1]"],
             },
         ],
-        "generated_at": "2026-04-07T06:00:00Z",
     }
     llm_provider.generate.return_value = LLMGenerateResponse(
         response=json.dumps(bad_content, ensure_ascii=False),
@@ -454,7 +451,6 @@ def test_parse_content_guards_every_user_visible_field():
                     "narrative": '背景は <a href="javascript:alert(2)">ここ</a>',
                 }
             ],
-            "generated_at": "2026-04-07T06:00:00Z",
         },
         ensure_ascii=False,
     )

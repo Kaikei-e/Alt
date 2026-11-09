@@ -318,7 +318,6 @@ export const morningLetterContentSchema = z
 		schema_version: z.literal(1),
 		lead: z.string().min(1),
 		sections: z.array(morningLetterSectionSchema).min(1),
-		generated_at: z.string().min(1),
 		source_recap_window_days: z.number().int().nullable().optional(),
 	})
 	.passthrough();
