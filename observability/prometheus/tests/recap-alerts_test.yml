@@ -7,15 +7,16 @@
 #       - Pending (<5m) when up{job="recap-subworker"} == 0
 #       - Firing when up{job="recap-subworker"} is absent (via absent())
 #   - RecapSurfaceStale:
-#       - Non-firing at the 36h boundary and while pending (<15m past 36h), firing once >36h for 15m
-#       - Non-firing when daily surfaces have a fresh success or sit at the 36h boundary (and morning_letter is excluded)
+#       - Non-firing at the 36h boundary and while pending (<15m past 36h), firing at 36h16m (for: 15m) and 37h
+#       - Non-firing when a surface is held at exact 36h age throughout (-129600+60x2220) or fresh (and morning_letter is excluded)
 #   - RecapSurfaceConsecutiveFailures:
 #       - Firing when consecutive failures >= 2 for 5m
 #       - Non-firing when consecutive failures < 2 (and morning_letter is excluded)
 #   - RecapSurfaceMetricsAbsent:
-#       - Firing when recap-worker is up but a daily surface gauge is missing for 30m
+#       - Firing when recap-worker-ops is up but a daily surface gauge is missing for 30m
+#       - Firing all 3 surface alerts when recap-worker (:9005) is down/unscraped (no gauges) while recap-worker-ops (:9110) is up
 #       - Non-firing when all three daily surface gauges are present
-#       - Non-firing when recap-worker itself is down (up == 0)
+#       - Non-firing when recap-worker-ops itself is down (up == 0)
 
 rule_files:
   - ../rules/recap-alerts.yml
@@ -90,7 +91,7 @@ tests:
               runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
 
   # RecapSurfaceStale: last success frozen at t=0. At 36h age is exactly 36*3600 (boundary, not >36h);
-  # at 36h15m it has exceeded 36h for 14m (pending <15m); at 37h it fires.
+  # at 36h15m it has exceeded 36h for 14m (pending <15m); at 36h16m (15m past 36h1m) and 37h it fires.
   - interval: 1m
     input_series:
       - series: 'recap_surface_last_success_timestamp_seconds{job="recap-worker",service="recap-worker",instance="recap-worker:9005",surface="three_day_recap"}'
@@ -102,6 +103,25 @@ tests:
       - eval_time: 36h15m
         alertname: RecapSurfaceStale
         exp_alerts: []
+      - eval_time: 36h16m
+        alertname: RecapSurfaceStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: recap-worker
+              stack: recap
+              job: recap-worker
+              instance: recap-worker:9005
+              surface: three_day_recap
+            exp_annotations:
+              summary: "Recap surface three_day_recap has not succeeded in over 36h (age 1d 12h 16m 0s)"
+              description: |
+                recap_surface_last_success_timestamp_seconds{surface="three_day_recap"}
+                is 1d 12h 16m 0s old (>36h threshold, one daily cycle plus margin).
+                Daily generation for three_day_recap is overdue and users may see stale output.
+                Check: docker compose -f compose/compose.yaml -p alt logs recap-worker
+                Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+              runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
       - eval_time: 37h
         alertname: RecapSurfaceStale
         exp_alerts:
@@ -122,12 +142,12 @@ tests:
                 Runbook: docs/runbooks/3days-recap-artefact-recovery.md
               runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
 
-  # RecapSurfaceStale: fresh daily surfaces and a surface at the exact 36h boundary (age == 36*3600 at 37h)
-  # stay quiet; morning_letter is excluded even when stale.
+  # RecapSurfaceStale: surface held at exact 36h age throughout (-129600+60x2220 so time()-v == 36*3600 at every step)
+  # and fresh daily surfaces stay quiet; morning_letter is excluded even when stale.
   - interval: 1m
     input_series:
       - series: 'recap_surface_last_success_timestamp_seconds{job="recap-worker",service="recap-worker",instance="recap-worker:9005",surface="three_day_recap"}'
-        values: '3600x2220'
+        values: '-129600+60x2220'
       - series: 'recap_surface_last_success_timestamp_seconds{job="recap-worker",service="recap-worker",instance="recap-worker:9005",surface="topic_cards"}'
         values: '0+60x2220'
       - series: 'recap_surface_last_success_timestamp_seconds{job="recap-worker",service="recap-worker",instance="recap-worker:9005",surface="evening_pulse"}'
@@ -184,9 +204,11 @@ tests:
         alertname: RecapSurfaceConsecutiveFailures
         exp_alerts: []
 
-  # RecapSurfaceMetricsAbsent: recap-worker is up, but evening_pulse gauge is missing for 30m.
+  # RecapSurfaceMetricsAbsent: recap-worker-ops is up, but evening_pulse gauge is missing for 30m.
   - interval: 1m
     input_series:
+      - series: 'up{job="recap-worker-ops",service="recap-worker",instance="recap-worker:9110"}'
+        values: '1x40'
       - series: 'up{job="recap-worker",service="recap-worker",instance="recap-worker:9005"}'
         values: '1x40'
       - series: 'recap_surface_last_success_timestamp_seconds{job="recap-worker",service="recap-worker",instance="recap-worker:9005",surface="three_day_recap"}'
@@ -209,17 +231,77 @@ tests:
             exp_annotations:
               summary: "Recap surface evening_pulse freshness metric is absent while recap-worker is up"
               description: |
-                up{job="recap-worker"} is 1, but recap_surface_last_success_timestamp_seconds{surface="evening_pulse"}
+                up{job="recap-worker-ops"} is 1, but recap_surface_last_success_timestamp_seconds{surface="evening_pulse"}
                 has been absent for 30m. This gauge is seeded from the database at startup, so its absence
                 means recap-worker is not exporting surface freshness metrics and RecapSurfaceStale cannot fire.
                 Check: docker compose -f compose/compose.yaml -p alt logs recap-worker
                 Runbook: docs/runbooks/3days-recap-artefact-recovery.md
               runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
 
-  # RecapSurfaceMetricsAbsent: all three daily surface gauges present while recap-worker is up -> does not fire;
-  # recap-worker down (up == 0) with gauges missing -> does not fire.
+  # RecapSurfaceMetricsAbsent: recap-worker (:9005) scrape is down (up=0) and no gauges exist while
+  # recap-worker-ops (:9110) is up (up=1) -> all 3 daily surfaces fire.
   - interval: 1m
     input_series:
+      - series: 'up{job="recap-worker",service="recap-worker",instance="recap-worker:9005"}'
+        values: '0x40'
+      - series: 'up{job="recap-worker-ops",service="recap-worker",instance="recap-worker:9110"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: RecapSurfaceMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: recap-worker
+              stack: recap
+              job: recap-worker
+              surface: three_day_recap
+            exp_annotations:
+              summary: "Recap surface three_day_recap freshness metric is absent while recap-worker is up"
+              description: |
+                up{job="recap-worker-ops"} is 1, but recap_surface_last_success_timestamp_seconds{surface="three_day_recap"}
+                has been absent for 30m. This gauge is seeded from the database at startup, so its absence
+                means recap-worker is not exporting surface freshness metrics and RecapSurfaceStale cannot fire.
+                Check: docker compose -f compose/compose.yaml -p alt logs recap-worker
+                Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+              runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
+          - exp_labels:
+              severity: warning
+              service: recap-worker
+              stack: recap
+              job: recap-worker
+              surface: topic_cards
+            exp_annotations:
+              summary: "Recap surface topic_cards freshness metric is absent while recap-worker is up"
+              description: |
+                up{job="recap-worker-ops"} is 1, but recap_surface_last_success_timestamp_seconds{surface="topic_cards"}
+                has been absent for 30m. This gauge is seeded from the database at startup, so its absence
+                means recap-worker is not exporting surface freshness metrics and RecapSurfaceStale cannot fire.
+                Check: docker compose -f compose/compose.yaml -p alt logs recap-worker
+                Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+              runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
+          - exp_labels:
+              severity: warning
+              service: recap-worker
+              stack: recap
+              job: recap-worker
+              surface: evening_pulse
+            exp_annotations:
+              summary: "Recap surface evening_pulse freshness metric is absent while recap-worker is up"
+              description: |
+                up{job="recap-worker-ops"} is 1, but recap_surface_last_success_timestamp_seconds{surface="evening_pulse"}
+                has been absent for 30m. This gauge is seeded from the database at startup, so its absence
+                means recap-worker is not exporting surface freshness metrics and RecapSurfaceStale cannot fire.
+                Check: docker compose -f compose/compose.yaml -p alt logs recap-worker
+                Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+              runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
+
+  # RecapSurfaceMetricsAbsent: all three daily surface gauges present while recap-worker-ops is up -> does not fire;
+  # recap-worker-ops down (up == 0) with gauges missing -> does not fire.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="recap-worker-ops",service="recap-worker",instance="recap-worker:9110"}'
+        values: '1x40'
       - series: 'up{job="recap-worker",service="recap-worker",instance="recap-worker:9005"}'
         values: '1x40'
       - series: 'recap_surface_last_success_timestamp_seconds{job="recap-worker",service="recap-worker",instance="recap-worker:9005",surface="three_day_recap"}'
@@ -235,7 +317,7 @@ tests:
 
   - interval: 1m
     input_series:
-      - series: 'up{job="recap-worker",service="recap-worker",instance="recap-worker:9005"}'
+      - series: 'up{job="recap-worker-ops",service="recap-worker",instance="recap-worker:9110"}'
         values: '0x40'
     alert_rule_test:
       - eval_time: 35m
