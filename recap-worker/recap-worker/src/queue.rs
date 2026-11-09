@@ -755,4 +755,134 @@ mod tests {
         assert_eq!(results[0].top_genre, "ai");
         Ok(())
     }
+
+    #[tokio::test]
+    async fn auth_failure_recorded_before_enqueue_classification_returns_is_preserved() -> Result<()>
+    {
+        use sqlx::postgres::PgListener;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let suffix = Uuid::new_v4().simple().to_string();
+        let schema = format!("test_queue_auth_enqueue_race_{suffix}");
+        let channel = format!("auth_race_failed_{suffix}");
+        let schema_for_conn = schema.clone();
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .after_connect(move |conn, _meta| {
+                let schema_sql = format!(
+                    "CREATE SCHEMA IF NOT EXISTS {schema_for_conn}; SET search_path TO {schema_for_conn};"
+                );
+                Box::pin(async move {
+                    conn.execute(sqlx::AssertSqlSafe(schema_sql)).await?;
+                    Ok(())
+                })
+            })
+            .connect(&database_url)
+            .await?;
+        setup_classification_queue_table(&pool).await?;
+
+        let trigger_sql = format!(
+            "CREATE OR REPLACE FUNCTION {schema}.notify_chunk_failed() RETURNS trigger LANGUAGE plpgsql AS $$ \
+             BEGIN \
+                 PERFORM pg_notify('{channel}', NEW.chunk_idx::text); \
+                 RETURN NEW; \
+             END; \
+             $$; \
+             CREATE TRIGGER trg_notify_chunk_failed \
+             AFTER UPDATE OF status ON {schema}.classification_job_queue \
+             FOR EACH ROW WHEN (NEW.status = 'failed') \
+             EXECUTE FUNCTION {schema}.notify_chunk_failed();"
+        );
+        pool.execute(sqlx::AssertSqlSafe(trigger_sql)).await?;
+
+        let mut listener = PgListener::connect_with(&pool).await?;
+        listener.listen(&channel).await?;
+
+        let recap_job_id = Uuid::new_v4();
+        let store = QueueStore::new(pool.clone());
+        let pre_chunk1_id = store
+            .enqueue(NewQueuedJob {
+                recap_job_id,
+                chunk_idx: 1,
+                texts: vec!["second article".to_string()],
+                max_retries: 3,
+            })
+            .await?;
+        store
+            .mark_completed(
+                pre_chunk1_id,
+                vec![ClassificationResult {
+                    top_genre: "tech".to_string(),
+                    confidence: 0.9,
+                    scores: HashMap::new(),
+                }],
+            )
+            .await?;
+
+        // Hold a row lock on chunk 1 so enqueue_classification commits chunk 0 and pauses before returning.
+        let mut tx = pool.begin().await?;
+        sqlx::query("SELECT id FROM classification_job_queue WHERE id = $1 FOR UPDATE")
+            .bind(pre_chunk1_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(
+                ResponseTemplate::new(401).set_body_string(r#"{"detail":"unauthenticated peer"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None)?;
+        let queue = Arc::new(ClassificationJobQueue::new(
+            store.clone(),
+            client,
+            1,
+            1,
+            3,
+            5000,
+        ));
+
+        let queue_for_enqueue = Arc::clone(&queue);
+        let enqueue_handle = tokio::spawn(async move {
+            queue_for_enqueue
+                .enqueue_classification(
+                    recap_job_id,
+                    vec!["first article".to_string(), "second article".to_string()],
+                )
+                .await
+        });
+
+        tokio::time::timeout(Duration::from_secs(5), listener.recv())
+            .await
+            .context("timed out waiting for chunk 0 auth failure notification")??;
+
+        tx.commit().await?;
+        let queued_ids = enqueue_handle.await.context("enqueue task panicked")??;
+        assert_eq!(queued_ids.len(), 2);
+
+        let err = queue
+            .wait_for_completion(recap_job_id, Duration::from_secs(5))
+            .await
+            .expect_err("401 during enqueue must fail wait_for_completion");
+
+        queue.shutdown().await;
+        drop(listener);
+
+        let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
+        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
+
+        assert!(
+            crate::clients::subworker::is_subworker_auth_error(&err),
+            "expected SubworkerAuthError to survive enqueue_classification return, got: {err:#}"
+        );
+        Ok(())
+    }
 }
