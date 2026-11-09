@@ -177,6 +177,139 @@ class TestWorkflowSafetyCheckHardening(unittest.TestCase):
         )
         self.assertEqual(self.mod.check_workflow_doc("sample.yaml", reusable_caller), [])
 
+    def test_paths_filter_must_match_own_workflow_and_called_reusable_workflows(
+        self,
+    ) -> None:
+        wf_path = ".github/workflows/backend-go.yaml"
+        reusable_go = "./.github/workflows/reusable-test-go.yaml"
+        reusable_gates = "./.github/workflows/reusable-go-quality-gates.yaml"
+
+        # 1) Missing own file and called reusable workflows in on.push.paths / on.pull_request.paths
+        missing_all = {
+            "name": "backend-go",
+            "on": {
+                "push": {"paths": ["alt-backend/**"]},
+                "pull_request": {"paths": ["alt-backend/**"]},
+            },
+            "permissions": {"contents": "read"},
+            "jobs": {
+                "unit": {"uses": reusable_go},
+                "gates": {"uses": reusable_gates},
+            },
+        }
+        errors_missing = self.mod.check_workflow_doc(wf_path, missing_all)
+        self.assertTrue(
+            any("backend-go.yaml" in err and "on.push.paths" in err for err in errors_missing),
+            f"Expected missing own path error on push, got: {errors_missing}",
+        )
+        self.assertTrue(
+            any("reusable-test-go.yaml" in err and "on.push.paths" in err for err in errors_missing),
+            f"Expected missing reusable-test-go.yaml error on push, got: {errors_missing}",
+        )
+        self.assertTrue(
+            any(
+                "reusable-go-quality-gates.yaml" in err and "on.pull_request.paths" in err
+                for err in errors_missing
+            ),
+            f"Expected missing reusable-go-quality-gates.yaml error on pull_request, got: {errors_missing}",
+        )
+
+        # 2) Explicit literal entries before '!' negations satisfy the rule
+        valid_explicit = {
+            "name": "backend-go",
+            "on": {
+                "push": {
+                    "paths": [
+                        "alt-backend/**",
+                        ".github/workflows/backend-go.yaml",
+                        ".github/workflows/reusable-test-go.yaml",
+                        ".github/workflows/reusable-go-quality-gates.yaml",
+                        "!**/CLAUDE.md",
+                    ]
+                },
+                "pull_request": {
+                    "paths": [
+                        "alt-backend/**",
+                        ".github/workflows/backend-go.yaml",
+                        ".github/workflows/reusable-test-go.yaml",
+                        ".github/workflows/reusable-go-quality-gates.yaml",
+                        "!**/CLAUDE.md",
+                    ]
+                },
+            },
+            "permissions": {"contents": "read"},
+            "jobs": {
+                "unit": {"uses": reusable_go},
+                "gates": {"uses": reusable_gates},
+            },
+        }
+        self.assertEqual(self.mod.check_workflow_doc(wf_path, valid_explicit), [])
+
+        # 3) Glob patterns (** and *) also satisfy the rule
+        valid_glob = {
+            "name": "backend-go",
+            "on": {
+                "push": {"paths": ["**", "!docs/**"]},
+                "pull_request": {"paths": [".github/workflows/*.yaml", "alt-backend/**"]},
+            },
+            "permissions": {"contents": "read"},
+            "jobs": {
+                "unit": {"uses": reusable_go},
+            },
+        }
+        self.assertEqual(self.mod.check_workflow_doc(wf_path, valid_glob), [])
+
+        # 4) Later '!' negation that excludes own or reusable workflow fails
+        excluded_by_negation = {
+            "name": "backend-go",
+            "on": {
+                "push": {
+                    "paths": [
+                        "**",
+                        "!.github/workflows/**",
+                    ]
+                },
+                "pull_request": {
+                    "paths": [
+                        "alt-backend/**",
+                        ".github/workflows/backend-go.yaml",
+                        ".github/workflows/reusable-test-go.yaml",
+                        "!.github/workflows/reusable-*.yaml",
+                    ]
+                },
+            },
+            "permissions": {"contents": "read"},
+            "jobs": {
+                "unit": {"uses": reusable_go},
+            },
+        }
+        errors_negated = self.mod.check_workflow_doc(wf_path, excluded_by_negation)
+        self.assertTrue(
+            any("backend-go.yaml" in err and "on.push.paths" in err for err in errors_negated),
+            f"Expected negated own path error on push, got: {errors_negated}",
+        )
+        self.assertTrue(
+            any(
+                "reusable-test-go.yaml" in err and "on.pull_request.paths" in err
+                for err in errors_negated
+            ),
+            f"Expected negated reusable path error on pull_request, got: {errors_negated}",
+        )
+
+        # 5) paths-ignore and unfiltered triggers are not subject to paths rule
+        paths_ignore_wf = {
+            "name": "backend-go",
+            "on": {
+                "push": {"paths-ignore": ["docs/**"]},
+                "pull_request": {"branches": ["main"]},
+            },
+            "permissions": {"contents": "read"},
+            "jobs": {
+                "unit": {"uses": reusable_go},
+            },
+        }
+        self.assertEqual(self.mod.check_workflow_doc(wf_path, paths_ignore_wf), [])
+
 
 if __name__ == "__main__":
     unittest.main()
