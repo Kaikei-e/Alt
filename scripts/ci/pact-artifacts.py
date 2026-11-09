@@ -1,4 +1,5 @@
 import hashlib
+import http.client
 import os
 import re
 import sys
@@ -19,7 +20,7 @@ LIBPACT_FFI_URL = "https://github.com/pact-foundation/pact-reference/releases/do
 LIBPACT_FFI_SHA256 = "73053bd1b3219e7012ec1f7ee0cc7bbb94a07bb44249d8f4002be0ba4bddbd4e"
 
 MAX_DOWNLOAD_ATTEMPTS = 3
-INITIAL_BACKOFF_SECONDS = 1.0
+INITIAL_BACKOFF_SECONDS = 5.0
 
 
 def _fetch_bytes_with_retry(req, max_attempts=MAX_DOWNLOAD_ATTEMPTS, initial_backoff=INITIAL_BACKOFF_SECONDS):
@@ -44,7 +45,7 @@ def _fetch_bytes_with_retry(req, max_attempts=MAX_DOWNLOAD_ATTEMPTS, initial_bac
                 time.sleep(delay)
                 continue
             raise
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead) as e:
             if attempt < max_attempts:
                 delay = initial_backoff * (2 ** (attempt - 1))
                 print(f"Transient download error ({e}) on attempt {attempt}/{max_attempts}, retrying in {delay}s...")
@@ -65,7 +66,7 @@ def download_and_verify(url, expected_hash, dest_path):
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     try:
         data = _fetch_bytes_with_retry(req)
-    except (urllib.error.URLError, TimeoutError) as e:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead) as e:
         print(f"Failed to download: {e}")
         sys.exit(1)
 
