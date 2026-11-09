@@ -129,6 +129,11 @@ impl MorningPipeline {
     }
 
     pub(crate) async fn execute_update(&self, job: &JobContext) -> Result<()> {
+        let _letter_id = self.execute_update_returning_id(job).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn execute_update_returning_id(&self, job: &JobContext) -> Result<Uuid> {
         tracing::info!(job_id = %job.job_id, "starting morning update pipeline");
 
         let fetched = self.fetch.fetch(job).await?;
@@ -233,7 +238,7 @@ impl MorningPipeline {
             is_degraded = final_is_degraded,
             "morning letter generated and saved"
         );
-        Ok(())
+        Ok(letter_id)
     }
 
     async fn load_recap_context(&self, job: &JobContext) -> RecapContext {
@@ -322,7 +327,10 @@ impl MorningPipeline {
         ml_response: &crate::clients::news_creator::models::MorningLetterGenerateResponse,
         groups: &[(Uuid, Uuid, bool)],
     ) -> Result<Uuid> {
+        use chrono::SubsecRound;
+
         let letter_id = Uuid::new_v4();
+        let created_at = chrono::Utc::now().trunc_subsecs(6);
 
         let previous = self
             .load_previous_letter_ref(edition_timezone, target_date)
@@ -338,8 +346,9 @@ impl MorningPipeline {
             ml_response,
             groups,
             previous,
+            created_at,
         );
-        let effective_letter_id = self.recap_dao.save_morning_letter(&letter).await?;
+        let persisted_letter_id = self.recap_dao.save_morning_letter(&letter).await?;
 
         // morning_letter_sources typically has a uniqueness constraint on
         // (letter_id, section_key, article_id). The same article_id can
@@ -353,7 +362,7 @@ impl MorningPipeline {
             }
             #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
             sources.push(MorningLetterSource {
-                letter_id: effective_letter_id,
+                letter_id: persisted_letter_id,
                 section_key: "overnight".to_string(),
                 article_id: *article_id,
                 source_type: "overnight_group".to_string(),
@@ -363,9 +372,13 @@ impl MorningPipeline {
         if !sources.is_empty() {
             self.recap_dao.save_morning_letter_sources(&sources).await?;
         }
-        Ok(effective_letter_id)
+        Ok(persisted_letter_id)
     }
 }
+
+/// Sentinel revision value used on the in-memory `MorningLetter` before persistence;
+/// the database assigns the authoritative `generation_revision` on `INSERT`.
+const DB_ASSIGNED_GENERATION_REVISION: i32 = 0;
 
 #[allow(clippy::too_many_arguments)]
 fn build_morning_letter_from_response(
@@ -378,6 +391,7 @@ fn build_morning_letter_from_response(
     ml_response: &crate::clients::news_creator::models::MorningLetterGenerateResponse,
     groups: &[(Uuid, Uuid, bool)],
     previous: Option<serde_json::Value>,
+    created_at: chrono::DateTime<chrono::Utc>,
 ) -> MorningLetter {
     let content = &ml_response.content;
 
@@ -395,8 +409,6 @@ fn build_morning_letter_from_response(
     let labels = editorial_labels_for(&content.sections, 2);
     let genres = dominant_genres_for(&content.sections, 2);
     let through_line = build_through_line(&labels, &genres, overnight_count);
-    let _ = is_degraded; // kept in persisted metadata, not in the through-line
-    let _ = recap_window_days;
 
     let sections_json = content
         .sections
@@ -427,8 +439,6 @@ fn build_morning_letter_from_response(
         })
         .collect::<Vec<_>>();
 
-    let created_at = chrono::DateTime::from_timestamp_micros(chrono::Utc::now().timestamp_micros())
-        .unwrap_or_else(chrono::Utc::now);
     let generated_at = created_at.to_rfc3339();
 
     let result_jsonb = serde_json::json!({
@@ -455,7 +465,7 @@ fn build_morning_letter_from_response(
         source_recap_job_id,
         is_degraded,
         schema_version: content.schema_version,
-        generation_revision: 1,
+        generation_revision: DB_ASSIGNED_GENERATION_REVISION,
         result_jsonb,
         model: Some(ml_response.metadata.model.clone()),
         generation_metadata_jsonb,
@@ -1205,8 +1215,9 @@ mod tests {
             },
         };
 
-        let before = chrono::DateTime::from_timestamp_micros(chrono::Utc::now().timestamp_micros())
-            .expect("valid timestamp");
+        let created_at = chrono::DateTime::parse_from_rfc3339("2026-04-17T21:00:00.123456Z")
+            .expect("valid timestamp")
+            .with_timezone(&chrono::Utc);
         let letter = build_morning_letter_from_response(
             Uuid::new_v4(),
             "2026-04-17",
@@ -1217,15 +1228,11 @@ mod tests {
             &response,
             &[],
             None,
+            created_at,
         );
-        let after = chrono::DateTime::from_timestamp_micros(chrono::Utc::now().timestamp_micros())
-            .expect("valid timestamp");
 
-        assert!(
-            letter.created_at >= before && letter.created_at <= after,
-            "created_at must be assigned from server clock at save time: before={before}, created_at={}, after={after}",
-            letter.created_at
-        );
+        assert_eq!(letter.created_at, created_at);
+        assert_eq!(letter.generation_revision, DB_ASSIGNED_GENERATION_REVISION);
 
         let body_generated_at = letter
             .result_jsonb

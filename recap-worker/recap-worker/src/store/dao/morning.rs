@@ -182,6 +182,33 @@ impl RecapDao {
         Ok(())
     }
 
+    /// Fetch a specific Morning Letter version row by its primary-key `id`.
+    #[allow(dead_code)]
+    pub(crate) async fn get_morning_letter_by_id(
+        pool: &PgPool,
+        id: Uuid,
+    ) -> Result<Option<MorningLetter>> {
+        let row = sqlx::query(
+            r"
+            SELECT
+                id, target_date, edition_timezone, source_recap_job_id,
+                is_degraded, schema_version, generation_revision,
+                result_jsonb, model, generation_metadata_jsonb, created_at
+            FROM morning_letters
+            WHERE id = $1
+            ",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to fetch morning letter by id: {e}")))?;
+
+        match row {
+            Some(row) => Ok(Some(map_row_to_morning_letter(row)?)),
+            None => Ok(None),
+        }
+    }
+
     /// Fetch the highest-revision Morning Letter for the specified date.
     pub(crate) async fn get_morning_letter_by_date(
         pool: &PgPool,
