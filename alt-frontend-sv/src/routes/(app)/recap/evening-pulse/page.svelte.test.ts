@@ -140,4 +140,24 @@ describe("Evening Pulse recap navigation targets", () => {
 		const target = String(vi.mocked(goto).mock.calls[0]?.[0] ?? "");
 		expect(target.startsWith("/recap?")).toBe(true);
 	});
+
+	it("renders the Evening Pulse page heading once on desktop and mobile", async () => {
+		const desktop = render(Page);
+		await settle();
+
+		const desktopHeadings = desktop.container.querySelectorAll("h1");
+		expect(desktopHeadings).toHaveLength(1);
+		expect(desktopHeadings[0]?.textContent?.trim()).toBe("Evening Pulse");
+		expect(desktop.container.textContent).toContain("Today's key topics");
+		desktop.unmount();
+
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		const mobile = render(Page);
+		await settle();
+
+		const mobileHeadings = mobile.container.querySelectorAll("h1");
+		expect(mobileHeadings).toHaveLength(1);
+		expect(mobileHeadings[0]?.textContent?.trim()).toBe("Evening Pulse");
+		expect(mobile.container.textContent).toContain("Today's key topics");
+	});
 });
