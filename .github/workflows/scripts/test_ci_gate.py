@@ -214,6 +214,69 @@ class TestEvaluateWorkflowRuns(unittest.TestCase):
         self.assertEqual(verdict, "SUCCESS")
         self.assertEqual(offending, [])
 
+    def test_keeps_only_newest_run_per_workflow_id_and_event(self) -> None:
+        # Superseded cancelled/failed run with lower id for same (workflow_id, event) is ignored
+        for order in ("older_first", "newer_first"):
+            older_cancelled = {
+                "id": 5001,
+                "workflow_id": 60,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "e2e",
+                "status": "completed",
+                "conclusion": "cancelled",
+                "html_url": "https://github.com/Kaikei-e/Alt/actions/runs/5001",
+            }
+            newer_success = {
+                "id": 5002,
+                "workflow_id": 60,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "e2e",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/Kaikei-e/Alt/actions/runs/5002",
+            }
+            runs = (
+                [older_cancelled, newer_success]
+                if order == "older_first"
+                else [newer_success, older_cancelled]
+            )
+            with self.subTest(order=order):
+                verdict, offending = self.mod.evaluate_workflow_runs(runs, self_run_id=999)
+                self.assertEqual(verdict, "SUCCESS")
+                self.assertEqual(offending, [])
+
+        # Different event for the same workflow_id is kept separately
+        different_event_runs = [
+            {
+                "id": 5001,
+                "workflow_id": 60,
+                "event": "push",
+                "run_attempt": 1,
+                "name": "e2e-push",
+                "status": "completed",
+                "conclusion": "cancelled",
+                "html_url": "https://github.com/Kaikei-e/Alt/actions/runs/5001",
+            },
+            {
+                "id": 5002,
+                "workflow_id": 60,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "e2e-pr",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/Kaikei-e/Alt/actions/runs/5002",
+            },
+        ]
+        verdict_diff, offending_diff = self.mod.evaluate_workflow_runs(
+            different_event_runs, self_run_id=999
+        )
+        self.assertEqual(verdict_diff, "FAILURE")
+        self.assertEqual(len(offending_diff), 1)
+        self.assertIn("5001", offending_diff[0])
+
 
 class TestPollingStabilityAndRateLimits(unittest.TestCase):
     def setUp(self) -> None:
