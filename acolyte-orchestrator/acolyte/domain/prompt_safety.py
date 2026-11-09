@@ -95,7 +95,7 @@ _NEWLINE_RUN_RE = re.compile(r"[\r\n]+")
 
 # Chat-turn and reasoning control tokens across ChatML, Gemma, and Qwen templates.
 _CONTROL_TOKEN_RE = re.compile(
-    r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
+    r"<\|(?:im_start|im_end|system|user|assistant|endoftext|think)\|>"
     r"|</?think>"
     r"|<\|turn>|<turn\|>"
     r"|<start_of_turn>|<end_of_turn>",
@@ -189,3 +189,15 @@ def escape_xml_delimiters(text: str) -> str:
         return text
     escaped = _XML_DELIMITER_TAG_RE.sub(_escape_angle_brackets, text)
     return neutralize_evidence_text(escaped)
+
+
+def wrap_gemma_prompt(
+    user_prompt: str,
+    system_prompt: str = "",
+) -> str:
+    """Wrap system and user prompts in Gemma 4 turn tokens after stripping control tokens from user_prompt."""
+    user = _CONTROL_TOKEN_RE.sub("", user_prompt).strip()
+    sys = system_prompt.strip()
+    if sys:
+        return f"<|turn>system\n{sys}\n<turn|>\n<|turn>user\n{user}\n<turn|>\n<|turn>model\n"
+    return f"<|turn>user\n{user}\n<turn|>\n<|turn>model\n"

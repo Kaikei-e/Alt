@@ -12,22 +12,22 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.eval import EvalDimension
+from acolyte.domain.prompt_safety import wrap_gemma_prompt
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
 
 logger = structlog.get_logger(__name__)
 
-CLAIM_EXTRACTION_PROMPT = """Analyze the following report text and extract atomic factual claims.
+CLAIM_EXTRACTION_SYSTEM_PROMPT = """Analyze the following report text and extract atomic factual claims.
 For each claim, determine if it is supported by any of the provided evidence sources.
+Return JSON with "claims" array. Each claim: {"claim": "text", "supported": true/false, "source_id": "id or empty"}"""
 
-Report text:
+CLAIM_EXTRACTION_PROMPT = """Report text:
 {text}
 
 Evidence sources:
-{evidence}
-
-Return JSON with "claims" array. Each claim: {{"claim": "text", "supported": true/false, "source_id": "id or empty"}}"""
+{evidence}"""
 
 
 class RubricEvaluator:
@@ -45,7 +45,8 @@ class RubricEvaluator:
         text = "\n\n".join(f"## {k}\n{v}" for k, v in sections.items())
         evidence_text = json.dumps([{"id": e.get("id", ""), "title": e.get("title", "")} for e in evidence])
 
-        prompt = CLAIM_EXTRACTION_PROMPT.format(text=text[:3000], evidence=evidence_text)
+        user_prompt = CLAIM_EXTRACTION_PROMPT.format(text=text[:3000], evidence=evidence_text)
+        prompt = wrap_gemma_prompt(user_prompt, CLAIM_EXTRACTION_SYSTEM_PROMPT)
         response = await self._llm.generate(prompt, temperature=0, num_predict=1024, think=False)
 
         try:

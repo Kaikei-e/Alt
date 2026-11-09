@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import structlog
 
+from acolyte.domain.prompt_safety import wrap_gemma_prompt
 from acolyte.port.llm_provider import (
     LLMMode,
     LLMProviderError,
@@ -251,9 +252,10 @@ class OllamaGateway:
         think: bool | None = None,
     ) -> LLMResponse:
         """Free-text generation via /api/generate. Thinking mode allowed."""
+        templated_prompt = prompt if prompt.startswith("<|turn>") else wrap_gemma_prompt(prompt)
         payload: dict = {
             "model": model,
-            "prompt": prompt,
+            "prompt": templated_prompt,
             "stream": False,
             "options": options,
         }
@@ -263,7 +265,7 @@ class OllamaGateway:
         logger.info(
             "Ollama generate (freetext)",
             model=model,
-            prompt_len=len(prompt),
+            prompt_len=len(templated_prompt),
             num_predict=options["num_predict"],
             temperature=options["temperature"],
         )
