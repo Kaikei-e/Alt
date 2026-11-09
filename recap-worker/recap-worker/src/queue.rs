@@ -579,7 +579,16 @@ mod tests {
             .await?;
 
         let queue = ClassificationJobQueue::new(store.clone(), client.clone(), 2, 1, 3, 5000);
-        tokio::time::sleep(Duration::from_millis(120)).await;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if store.all_jobs_completed(recap_job_id).await? {
+                    break Ok::<(), anyhow::Error>(());
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .context("timed out waiting for fast chunk 401 to mark job failed")??;
 
         let err = queue
             .wait_for_completion(recap_job_id, Duration::from_secs(5))
