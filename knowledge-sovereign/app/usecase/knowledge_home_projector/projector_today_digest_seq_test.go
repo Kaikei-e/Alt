@@ -60,6 +60,18 @@ func TestProjector_DigestWritesCarryTheirEventSeq(t *testing.T) {
 				"tags":       []string{"rust", "async"},
 			},
 		},
+		{
+			name:      "recap.evening_pulse_generated.v1 sets evening_pulse_available",
+			eventType: "recap.evening_pulse_generated.v1",
+			seq:       8080,
+			payload: map[string]any{
+				"job_id":         uuid.New().String(),
+				"target_date":    "2026-11-09",
+				"version":        "v4",
+				"topic_count":    3,
+				"fallback_level": 0,
+			},
+		},
 	}
 
 	for _, tt := range tests {

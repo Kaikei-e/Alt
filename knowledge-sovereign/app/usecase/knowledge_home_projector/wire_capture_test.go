@@ -66,13 +66,14 @@ type capturedClearSupersede struct {
 }
 
 type capturedDigest struct {
-	UserID               uuid.UUID `json:"user_id"`
-	DigestDate           string    `json:"digest_date"`
-	NewArticles          int       `json:"new_articles"`
-	SummarizedArticles   int       `json:"summarized_articles"`
-	UnsummarizedArticles int       `json:"unsummarized_articles"`
-	TopTags              []string  `json:"top_tags"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	UserID                uuid.UUID `json:"user_id"`
+	DigestDate            string    `json:"digest_date"`
+	NewArticles           int       `json:"new_articles"`
+	SummarizedArticles    int       `json:"summarized_articles"`
+	UnsummarizedArticles  int       `json:"unsummarized_articles"`
+	TopTags               []string  `json:"top_tags"`
+	EveningPulseAvailable bool      `json:"evening_pulse_available"`
+	UpdatedAt             time.Time `json:"updated_at"`
 	// LastEventSeq is a pointer for the same reason the driver's unmarshal
 	// target is: a payload that omits the key must be distinguishable from
 	// one that sends an explicit 0, because the driver rejects both and the
