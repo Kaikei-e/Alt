@@ -512,7 +512,19 @@ impl CardsBatchDaemon {
             "starting automatic cards batch"
         );
 
-        runner.run_cards(job_id, from, to).await?;
+        if let Err(err) = runner.run_cards(job_id, from, to).await {
+            if crate::clients::subworker::is_subworker_auth_error(&err) {
+                error!(
+                    %job_id,
+                    from = %from.to_rfc3339(),
+                    to = %to.to_rfc3339(),
+                    window_days,
+                    error = %format!("{err:#}"),
+                    "automatic cards batch failed due to subworker authentication error"
+                );
+            }
+            return Err(err);
+        }
 
         Ok(Some(job_id))
     }
@@ -558,6 +570,16 @@ impl CardsBatchDaemon {
                     break;
                 }
                 Err(err) => {
+                    if crate::clients::subworker::is_subworker_auth_error(&err) {
+                        error!(
+                            attempt,
+                            max_attempts,
+                            window_days,
+                            error = %format!("{err:#}"),
+                            "subworker authentication error is fatal; aborting cards batch retry"
+                        );
+                        break;
+                    }
                     error!(attempt, error = %err, "automatic cards batch failed");
                     match decide_next_attempt(attempt, max_attempts, retry_delay_minutes) {
                         RetryDecision::Retry {
