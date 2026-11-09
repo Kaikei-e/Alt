@@ -1,6 +1,7 @@
 <script lang="ts">
 import { AlertTriangle } from "@lucide/svelte";
 import { SurfaceStatusBanner } from "#lib/components/recap/index.js";
+import { convertProtoSurfaceStatus } from "#lib/connect/recap.js";
 import type {
 	MorningLetterBulletEnrichment,
 	MorningLetterDocument,
@@ -32,15 +33,14 @@ let {
 }: Props = $props();
 
 const orderedSections = $derived(orderSections(letter.body?.sections ?? []));
-const isCurrent = $derived(
-	evaluateSurfaceStatus(letter.surfaceStatus).isCurrent,
-);
+const surfaceStatus = $derived(convertProtoSurfaceStatus(letter.surfaceStatus));
+const isCurrent = $derived(evaluateSurfaceStatus(surfaceStatus).isCurrent);
 const throughLine = $derived(letter.body?.throughLine ?? "");
 const previousRef = $derived(letter.body?.previousLetterRef);
 </script>
 
 <article class="letter-document">
-	<SurfaceStatusBanner surfaceStatus={letter.surfaceStatus} />
+	<SurfaceStatusBanner {surfaceStatus} />
 
 	{#if throughLine}
 		<ThroughLineHero

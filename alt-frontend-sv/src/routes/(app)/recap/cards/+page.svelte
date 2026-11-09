@@ -15,13 +15,15 @@ import {
 } from "#lib/connect/index.js";
 import { getLoadingStore } from "#lib/stores/loading.svelte.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
-import { evaluateSurfaceStatus } from "#lib/utils/surface-status.js";
+import {
+	evaluateSurfaceStatus,
+	formatSurfaceTimestamp,
+} from "#lib/utils/surface-status.js";
 import { browser } from "$app/env";
 import { goto } from "$app/navigation";
 import {
 	computeWindowLabel,
 	determineCardsPageState,
-	formatCardTimestamp,
 	formatJobWindow,
 	getCardsEmptyMessage,
 } from "./cards-state";
@@ -51,15 +53,9 @@ const windowLabel = $derived(
 const surfaceEvaluation = $derived(
 	evaluateSurfaceStatus(recapCardsData?.surfaceStatus),
 );
-const fallbackDegradedNotice = $derived(
-	recapCardsData?.job?.degraded
-		? "Degraded generation: fewer topic cards than usual met the quality threshold."
-		: null,
-);
 const hasStatusBanner = $derived(
 	Boolean(surfaceEvaluation.statusNotice) ||
-		surfaceEvaluation.degradationNotices.length > 0 ||
-		Boolean(fallbackDegradedNotice),
+		surfaceEvaluation.degradationNotices.length > 0,
 );
 
 async function fetchCards() {
@@ -161,7 +157,6 @@ onMount(() => {
 	{#snippet statusBanner()}
 		<SurfaceStatusBanner
 			surfaceStatus={recapCardsData?.surfaceStatus}
-			{fallbackDegradedNotice}
 			degradedTestId="recap-cards-degraded"
 		/>
 	{/snippet}
@@ -261,7 +256,7 @@ onMount(() => {
 						data-testid="recap-cards-freshness"
 						class="text-xs sm:text-sm text-[var(--text-muted)]"
 					>
-						Updated {formatCardTimestamp(recapCardsData.surfaceStatus?.generatedAt || recapCardsData.job.kickedAt)}
+						Updated {formatSurfaceTimestamp(recapCardsData.surfaceStatus?.generatedAt || recapCardsData.job.kickedAt)}
 					</div>
 				</div>
 			{/if}

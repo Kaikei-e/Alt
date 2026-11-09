@@ -94,7 +94,7 @@ onMount(() => {
 			/>
 		{:else}
 			<DesktopPulseQuietDay
-				date={new Date().toISOString()}
+				date=""
 				quietDay={{ message: "Evening Pulse is not yet available", weeklyHighlights: [] }}
 				onNavigateToRecap={navigateToRecap}
 			/>
@@ -124,7 +124,7 @@ onMount(() => {
 			<MobilePulseView pulse={pulse.data} onTopicClick={handleTopicClick} />
 		{:else}
 			<MobilePulseQuietDay
-				date={new Date().toISOString()}
+				date=""
 				quietDay={{ message: "Evening Pulse is not yet available", weeklyHighlights: [] }}
 				onNavigateToRecap={navigateToRecap}
 			/>

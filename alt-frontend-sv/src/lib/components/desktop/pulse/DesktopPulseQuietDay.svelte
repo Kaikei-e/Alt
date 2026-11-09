@@ -44,7 +44,7 @@ const isCurrent = $derived(evaluateSurfaceStatus(surfaceStatus).isCurrent);
 			class="text-sm mb-6 max-w-md mx-auto"
 			style="color: var(--text-secondary);"
 		>
-			{quietDay?.message ?? "Today was a quiet day. No notable news was found."}
+			{quietDay?.message || "A quiet day. No notable news was found."}
 		</p>
 
 		{#if onNavigateToRecap}

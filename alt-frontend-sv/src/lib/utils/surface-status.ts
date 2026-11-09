@@ -19,15 +19,18 @@ export interface SurfaceStatusEvaluation {
 const DEGRADATION_CODE_MESSAGES: Record<string, string> = {
 	extractive_genres:
 		"Some genres use extractive excerpts instead of AI summaries.",
-	few_cards:
-		"Degraded generation: fewer topic cards than usual met the quality threshold.",
-	pulse_fallback: "Some topics were selected using fallback criteria.",
-	placeholder_output: "Some sections contain placeholder content.",
-	duplicate_bullets: "Some bullet points were repeated across sections.",
-	low_japanese_ratio: "Some sections could not be fully translated.",
-	stale_recap_input: "Built from an older recap snapshot.",
-	recap_unavailable: "Generated without a 3-day recap snapshot.",
-	generation_failed: "The latest generation did not complete cleanly.",
+	few_cards: "Fewer topic cards than usual met the quality threshold.",
+	pulse_fallback: "Topics were chosen with relaxed selection criteria.",
+	placeholder_output:
+		"The AI draft had empty or placeholder sections, so this letter shows extracted excerpts instead.",
+	duplicate_bullets:
+		"The AI draft repeated points across sections, so this letter shows extracted excerpts instead.",
+	low_japanese_ratio:
+		"The AI draft was not mostly in Japanese, so this letter shows extracted excerpts instead.",
+	stale_recap_input:
+		"Built from a 3-day recap older than the freshness window.",
+	recap_unavailable: "Built without a 3-day recap.",
+	generation_failed: "This edition was produced in degraded mode.",
 };
 
 export function formatSurfaceTimestamp(iso: string): string {
@@ -47,14 +50,19 @@ export function formatSurfaceTimestamp(iso: string): string {
 }
 
 export function getDegradationNoticeText(reason: DegradationReason): string {
-	const detail = reason.detail?.trim();
-	if (detail) {
+	const detail = reason.detail?.trim() ?? "";
+	if (reason.code === "extractive_genres" && detail) {
 		return detail;
 	}
-	return (
+	const base =
 		DEGRADATION_CODE_MESSAGES[reason.code] ??
-		"Some results were generated in degraded mode."
-	);
+		"Some results were generated in degraded mode.";
+	if (!detail) {
+		return base;
+	}
+	return base.endsWith(".")
+		? `${base.slice(0, -1)} (${detail}).`
+		: `${base} (${detail})`;
 }
 
 function buildStatusNotice(
@@ -92,16 +100,6 @@ function buildStatusNotice(
 		};
 	}
 
-	if (
-		(latestRun?.status === "pending" || latestRun?.status === "running") &&
-		(!surfaceStatus.isStale || !surfaceStatus.generatedAt)
-	) {
-		return {
-			tone: "info",
-			text: "Update in progress…",
-		};
-	}
-
 	if (surfaceStatus.isStale) {
 		const generatedTime = formatSurfaceTimestamp(surfaceStatus.generatedAt);
 		return {
@@ -109,6 +107,13 @@ function buildStatusNotice(
 			text: generatedTime
 				? `This was last updated ${generatedTime}; a newer update has not completed.`
 				: "This edition is out of date; a newer update has not completed.",
+		};
+	}
+
+	if (latestRun?.status === "pending" || latestRun?.status === "running") {
+		return {
+			tone: "info",
+			text: "Update in progress…",
 		};
 	}
 

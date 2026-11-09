@@ -161,7 +161,6 @@ describe("PulseHeader", () => {
 		const { container } = render(PulseHeader, {
 			props: {
 				date: "2026-10-08",
-				status: "normal",
 				isCurrent: false,
 				onNavigateToRecap: onNavigate,
 			},
@@ -206,6 +205,7 @@ describe("DesktopPulseDetailPanel", () => {
 				topic,
 				open: true,
 				onClose: vi.fn(),
+				onNavigateToRecap: vi.fn(),
 			},
 		});
 

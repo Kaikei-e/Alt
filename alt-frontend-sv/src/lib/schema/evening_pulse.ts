@@ -1,3 +1,4 @@
+// Re-export from domain layer
 export type {
 	Confidence,
 	EveningPulse,

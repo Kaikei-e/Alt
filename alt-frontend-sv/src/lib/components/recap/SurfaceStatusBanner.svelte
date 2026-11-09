@@ -4,25 +4,14 @@ import { evaluateSurfaceStatus } from "#lib/utils/surface-status.js";
 
 interface Props {
 	surfaceStatus?: SurfaceStatus | null;
-	fallbackDegradedNotice?: string | null;
 	degradedTestId?: string;
 }
 
-const {
-	surfaceStatus = null,
-	fallbackDegradedNotice = null,
-	degradedTestId,
-}: Props = $props();
+const { surfaceStatus = null, degradedTestId }: Props = $props();
 
 const evaluation = $derived(evaluateSurfaceStatus(surfaceStatus));
 const statusNotice = $derived(evaluation.statusNotice);
-const degradationNotices = $derived(
-	evaluation.degradationNotices.length > 0
-		? evaluation.degradationNotices
-		: fallbackDegradedNotice
-			? [fallbackDegradedNotice]
-			: [],
-);
+const degradationNotices = $derived(evaluation.degradationNotices);
 const infoNotice = $derived(
 	statusNotice?.tone === "info" ? statusNotice : null,
 );

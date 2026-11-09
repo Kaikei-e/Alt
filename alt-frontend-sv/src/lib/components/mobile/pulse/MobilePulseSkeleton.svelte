@@ -2,6 +2,7 @@
 </script>
 
 <div class="p-4 max-w-2xl mx-auto" data-testid="pulse-skeleton">
+	<h1 class="sr-only">Evening Pulse</h1>
 	<div
 		class="pb-4 mb-6 border-b"
 		style="border-color: var(--surface-border);"

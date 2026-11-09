@@ -31,7 +31,7 @@ const formattedSourceNames = $derived.by(() => {
 <Sheet.Root bind:open onOpenChange={(value) => !value && onClose()}>
 	<Sheet.Content
 		side="right"
-		class="w-[420px] max-w-[90vw] border-l p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
+		class="w-[420px] max-w-[90vw] border-l p-0 gap-0 flex flex-col overflow-hidden shadow-none [&>button.ring-offset-background]:hidden"
 		style="background: var(--surface-bg); border-color: var(--surface-border);"
 		data-testid="desktop-pulse-detail-panel"
 	>
@@ -228,7 +228,7 @@ const formattedSourceNames = $derived.by(() => {
 		</div>
 
 		<Sheet.Close
-			class="absolute right-4 top-4 h-8 w-8 border transition-colors inline-flex shrink-0 items-center justify-center focus-visible:outline-none"
+			class="absolute right-4 top-4 h-8 w-8 border transition-colors inline-flex shrink-0 items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--alt-primary)]"
 			style="background: var(--surface-bg); border-color: var(--surface-border); color: var(--text-primary);"
 			aria-label="Close"
 		>

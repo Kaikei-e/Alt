@@ -52,9 +52,10 @@ const formattedSources = $derived.by(() => {
 
 <button
 	type="button"
-	class="w-full text-left p-5 border transition-colors duration-150 cursor-pointer group focus:outline-2 focus:outline-[var(--alt-primary)]"
+	class="w-full text-left p-5 border transition-colors duration-150 cursor-pointer group bg-[var(--surface-bg)] hover:bg-[var(--surface-hover)] data-[focused=true]:bg-[var(--surface-hover)] focus:outline-2 focus:outline-[var(--alt-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--alt-primary)]"
 	class:bg-[var(--surface-hover)]={isFocused}
-	style="background: var(--surface-bg); border-color: var(--surface-border); border-left: 3px solid {cardBorderColor};"
+	data-focused={isFocused ? "true" : undefined}
+	style="border-color: var(--surface-border); border-left: 3px solid {cardBorderColor};"
 	aria-label="Topic {index + 1}: {primaryTitle} — {topic.title}"
 	aria-describedby="rationale-{index}"
 	{tabindex}
@@ -89,8 +90,8 @@ const formattedSources = $derived.by(() => {
 
 	<h3
 		id="topic-title-{index}"
-		class="text-lg font-bold mb-2 leading-snug group-hover:text-[var(--interactive-text)] transition-colors"
-		style="color: var(--text-primary); font-family: var(--font-display);"
+		class="text-lg font-bold mb-2 leading-snug text-[var(--text-primary)] group-hover:text-[var(--interactive-text)] transition-colors"
+		style="font-family: var(--font-display);"
 	>
 		{primaryTitle}
 	</h3>

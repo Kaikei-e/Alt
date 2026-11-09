@@ -6,10 +6,6 @@
  * (MorningLetterSection, MorningLetterSourceProto, Timestamp).
  */
 
-import type { SurfaceStatus } from "#lib/domain/recap/types.js";
-
-export type { SurfaceStatus };
-
 interface Section {
 	key: string;
 	title: string;
@@ -70,8 +66,8 @@ export function formatLetterDate(
 	if (parts.length !== 3) return targetDate;
 
 	const year = parts[0];
-	const month = parseInt(parts[1] ?? "0", 10);
-	const day = parseInt(parts[2] ?? "0", 10);
+	const month = parseInt(parts[1]!, 10);
+	const day = parseInt(parts[2]!, 10);
 
 	return `${year}-${month}-${day}`;
 }
@@ -85,13 +81,15 @@ export function formatEditionDateline({
 	editionTimezone?: string;
 	isCurrent: boolean;
 }): string {
+	const formattedDate = targetDate
+		? formatLetterDate(targetDate, editionTimezone)
+		: "";
 	if (isCurrent) {
-		return "Today's Edition";
+		return formattedDate
+			? `Today's Edition · ${formattedDate}`
+			: "Today's Edition";
 	}
-	if (targetDate) {
-		return formatLetterDate(targetDate, editionTimezone);
-	}
-	return "Latest Edition";
+	return formattedDate || "Latest Edition";
 }
 
 export function getSectionDisplayTitle(
@@ -140,9 +138,9 @@ export function deriveWithinHours(targetDate: string | undefined): number {
 	const parts = targetDate.split("-");
 	if (parts.length !== 3) return 24;
 
-	const year = parseInt(parts[0] ?? "0", 10);
-	const month = parseInt(parts[1] ?? "1", 10) - 1; // JS months are 0-based
-	const day = parseInt(parts[2] ?? "1", 10);
+	const year = parseInt(parts[0]!, 10);
+	const month = parseInt(parts[1]!, 10) - 1; // JS months are 0-based
+	const day = parseInt(parts[2]!, 10);
 
 	// Create date at start of day in local timezone
 	const targetStart = new Date(year, month, day, 6, 0, 0); // 6 AM

@@ -131,6 +131,7 @@ describe("MobilePulseTopicSheet", () => {
 				topic,
 				open: true,
 				onClose: vi.fn(),
+				onNavigateToRecap: vi.fn(),
 			},
 		});
 

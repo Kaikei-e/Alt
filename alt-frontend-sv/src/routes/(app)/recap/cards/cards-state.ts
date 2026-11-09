@@ -86,26 +86,6 @@ export function computeWindowLabel(from: string, to: string): string {
 }
 
 /**
- * Formats ISO timestamp into readable date and time.
- * Example: "Sep 22, 5:00 PM"
- */
-export function formatCardTimestamp(iso: string): string {
-	if (!iso) return "";
-
-	const date = new Date(iso);
-	if (Number.isNaN(date.getTime())) {
-		return "";
-	}
-
-	return date.toLocaleString("en-US", {
-		month: "short",
-		day: "numeric",
-		hour: "numeric",
-		minute: "2-digit",
-	});
-}
-
-/**
  * Returns the empty state description text depending on whether a job has run.
  */
 export function getCardsEmptyMessage(hasJob: boolean): string {

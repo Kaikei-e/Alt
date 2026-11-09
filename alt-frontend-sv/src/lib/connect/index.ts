@@ -162,7 +162,6 @@ export {
 	getLetterByDate,
 	getLetterEnrichment,
 	getLetterSources,
-	getMorningLetterSurfaceStatus,
 	type MorningLetterChatMessage,
 	type MorningLetterCitation,
 	type MorningLetterMeta,
@@ -175,7 +174,6 @@ export {
 } from "./morning_letter";
 // RecapService client
 export {
-	convertProtoSurfaceStatus,
 	createRecapClient,
 	type DegradationReason,
 	getSevenDayRecap,

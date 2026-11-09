@@ -12,6 +12,7 @@ import {
 	deriveWithinHours,
 	formatEditionDateline,
 } from "#lib/components/morning-letter/morning-letter-document.js";
+import { convertProtoSurfaceStatus } from "#lib/connect/recap.js";
 import { useMorningLetter } from "#lib/hooks/useMorningLetter.svelte.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
 import { evaluateSurfaceStatus } from "#lib/utils/surface-status.js";
@@ -25,7 +26,8 @@ const targetDate = $derived(
 );
 const withinHours = $derived(deriveWithinHours(targetDate));
 const isCurrent = $derived(
-	evaluateSurfaceStatus(ml.letter?.surfaceStatus).isCurrent,
+	evaluateSurfaceStatus(convertProtoSurfaceStatus(ml.letter?.surfaceStatus))
+		.isCurrent,
 );
 const dateDisplay = $derived(
 	formatEditionDateline({

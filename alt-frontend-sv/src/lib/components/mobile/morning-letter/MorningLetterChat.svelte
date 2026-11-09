@@ -40,7 +40,7 @@ let chatOpen = $state(false);
 let messages = $state<Message[]>([
 	{
 		id: "welcome",
-		message: `Ask follow-up questions about today's edition.`,
+		message: `Ask follow-up questions about this edition.`,
 		role: "assistant",
 		timestamp: new Date().toLocaleTimeString(),
 	},

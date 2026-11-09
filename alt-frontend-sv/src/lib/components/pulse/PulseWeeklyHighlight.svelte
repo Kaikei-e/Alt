@@ -36,14 +36,14 @@ const roleColor = $derived.by(() => {
 
 <button
 	type="button"
-	class="w-full text-left p-4 border transition-colors cursor-pointer"
-	style="background: var(--surface-bg); border-color: var(--surface-border); border-left: 3px solid {roleColor};"
+	class="w-full text-left p-4 border transition-colors cursor-pointer group bg-[var(--surface-bg)] hover:bg-[var(--surface-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--alt-primary)]"
+	style="border-color: var(--surface-border); border-left: 3px solid {roleColor};"
 	{onclick}
 	aria-label="View highlight: {highlight.title}"
 >
 	<h4
-		class="text-sm font-semibold mb-1 line-clamp-2"
-		style="color: var(--text-primary); font-family: var(--font-display);"
+		class="text-sm font-semibold mb-1 line-clamp-2 text-[var(--text-primary)] group-hover:text-[var(--interactive-text)] transition-colors"
+		style="font-family: var(--font-display);"
 	>
 		{highlight.title}
 	</h4>

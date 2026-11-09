@@ -1,9 +1,4 @@
-export type SurfaceRunStatus =
-	| "pending"
-	| "running"
-	| "completed"
-	| "failed"
-	| string;
+export type SurfaceRunStatus = "pending" | "running" | "completed" | "failed";
 
 export type SurfaceRun = {
 	jobId: string;

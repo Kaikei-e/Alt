@@ -35,7 +35,7 @@ type Props = {
 
 let { withinHours = 24, targetDate }: Props = $props();
 
-const welcomeMessage = `Ask follow-up questions about today's edition.`;
+const welcomeMessage = `Ask follow-up questions about this edition.`;
 
 let messages = $state<Message[]>([
 	{
@@ -122,21 +122,16 @@ async function handleSend() {
 				bufferedContent += text;
 				const now = Date.now();
 				if (now - lastUpdateTime > THROTTLE_MS) {
-					const current = messages[currentAssistantMessageIndex];
-					if (current) {
-						messages[currentAssistantMessageIndex] = {
-							...current,
-							message: bufferedContent,
-						};
-					}
+					messages[currentAssistantMessageIndex] = {
+						...messages[currentAssistantMessageIndex]!,
+						message: bufferedContent,
+					};
 					lastUpdateTime = now;
 				}
 			},
 			(meta: MorningLetterMeta) => {
-				const current = messages[currentAssistantMessageIndex];
-				if (!current) return;
 				messages[currentAssistantMessageIndex] = {
-					...current,
+					...messages[currentAssistantMessageIndex]!,
 					citations: convertCitations(meta.citations),
 					meta: {
 						timeWindow: meta.timeWindow,
@@ -145,43 +140,34 @@ async function handleSend() {
 				};
 			},
 			(result) => {
-				const current = messages[currentAssistantMessageIndex];
-				if (current) {
-					messages[currentAssistantMessageIndex] = {
-						...current,
-						message: result.answer || bufferedContent,
-						citations:
-							result.citations.length > 0
-								? convertCitations(result.citations)
-								: current.citations,
-					};
-				}
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex]!,
+					message: result.answer || bufferedContent,
+					citations:
+						result.citations.length > 0
+							? convertCitations(result.citations)
+							: messages[currentAssistantMessageIndex]!.citations,
+				};
 				isLoading = false;
 				currentAbortController = null;
 				scrollToBottom();
 			},
 			(_code) => {
-				const current = messages[currentAssistantMessageIndex];
-				if (current) {
-					messages[currentAssistantMessageIndex] = {
-						...current,
-						message:
-							"I couldn't find enough recent news to answer that. Try asking about a different topic from today's news.",
-					};
-				}
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex]!,
+					message:
+						"I couldn't find enough recent news to answer that. Try asking about a different topic from today's news.",
+				};
 				isLoading = false;
 				currentAbortController = null;
 				scrollToBottom();
 			},
 			(error) => {
 				console.error("Chat error:", error);
-				const current = messages[currentAssistantMessageIndex];
-				if (current) {
-					messages[currentAssistantMessageIndex] = {
-						...current,
-						message: `Error: ${error.message}. Please try again.`,
-					};
-				}
+				messages[currentAssistantMessageIndex] = {
+					...messages[currentAssistantMessageIndex]!,
+					message: `Error: ${error.message}. Please try again.`,
+				};
 				isLoading = false;
 				currentAbortController = null;
 				scrollToBottom();
@@ -189,13 +175,10 @@ async function handleSend() {
 		);
 	} catch (error) {
 		console.error("Chat error:", error);
-		const current = messages[currentAssistantMessageIndex];
-		if (current) {
-			messages[currentAssistantMessageIndex] = {
-				...current,
-				message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
-			};
-		}
+		messages[currentAssistantMessageIndex] = {
+			...messages[currentAssistantMessageIndex]!,
+			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
+		};
 		isLoading = false;
 		await scrollToBottom();
 	}
@@ -286,7 +269,7 @@ onMount(() => {
 			<textarea
 				bind:value={inputValue}
 				onkeydown={handleKeydown}
-				placeholder="Ask about today's edition..."
+				placeholder="Ask about this edition..."
 				disabled={isLoading}
 				rows={1}
 				class="input-field"

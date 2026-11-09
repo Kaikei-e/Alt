@@ -22,10 +22,11 @@ import type {
 	RecapGenre,
 	RecapSummary,
 	SurfaceRun,
+	SurfaceRunStatus,
 	SurfaceStatus,
 } from "#lib/schema/recap.js";
 
-export type { DegradationReason, SurfaceRun, SurfaceStatus };
+export type { DegradationReason, SurfaceRun, SurfaceRunStatus, SurfaceStatus };
 
 /** Type-safe RecapService client */
 type RecapClient = Client<typeof RecapService>;
@@ -116,27 +117,38 @@ export async function getThreeDayRecap(
 	};
 }
 
+function isSurfaceRunStatus(status: string): status is SurfaceRunStatus {
+	return (
+		status === "pending" ||
+		status === "running" ||
+		status === "completed" ||
+		status === "failed"
+	);
+}
+
 /**
  * Convert proto RecapSurfaceStatus to frontend SurfaceStatus type.
  */
 export function convertProtoSurfaceStatus(
-	proto?: ProtoRecapSurfaceStatus | SurfaceStatus | null,
+	proto?: ProtoRecapSurfaceStatus | null,
 ): SurfaceStatus | null {
 	if (!proto) return null;
-	return {
-		generatedAt: proto.generatedAt,
-		windowStart: proto.windowStart,
-		windowEnd: proto.windowEnd,
-		isStale: proto.isStale,
-		staleAfter: proto.staleAfter,
-		latestRun: proto.latestRun
+	const latestRun =
+		proto.latestRun && isSurfaceRunStatus(proto.latestRun.status)
 			? {
 					jobId: proto.latestRun.jobId,
 					status: proto.latestRun.status,
 					kickedAt: proto.latestRun.kickedAt,
 					updatedAt: proto.latestRun.updatedAt,
 				}
-			: null,
+			: null;
+	return {
+		generatedAt: proto.generatedAt,
+		windowStart: proto.windowStart,
+		windowEnd: proto.windowEnd,
+		isStale: proto.isStale,
+		staleAfter: proto.staleAfter,
+		latestRun,
 		degradationReasons: proto.degradationReasons.map((r) => ({
 			code: r.code,
 			detail: r.detail,

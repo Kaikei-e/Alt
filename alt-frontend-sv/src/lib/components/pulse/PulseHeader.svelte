@@ -29,9 +29,7 @@ const formattedDate = $derived.by(() => {
 const subtitle = $derived(
 	isCurrent
 		? "Today's key topics curated for you"
-		: formattedDate
-			? `Key topics from ${formattedDate}`
-			: "Key topics curated for you",
+		: "Key topics curated for you",
 );
 </script>
 
@@ -72,11 +70,11 @@ const subtitle = $derived(
 		{#if onNavigateToRecap}
 			<button
 				type="button"
-				class="text-xs font-semibold uppercase tracking-wider px-4 py-2 border transition-colors cursor-pointer"
+				class="text-xs font-semibold uppercase tracking-wider px-4 py-2 border transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--alt-primary)]"
 				style="background: var(--surface-bg); border-color: var(--surface-border); color: var(--text-primary);"
 				onclick={onNavigateToRecap}
 			>
-				View 7-Day Recap
+				View 3-Day Recap
 			</button>
 		{/if}
 	</div>
