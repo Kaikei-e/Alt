@@ -597,7 +597,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wait_for_completion_timeout_drops_auth_failure_entry() -> Result<()> {
+    async fn wait_for_completion_timeout_returns_and_removes_auth_failure_entry() -> Result<()> {
         let Ok(database_url) = std::env::var("DATABASE_URL") else {
             return Ok(());
         };
@@ -625,6 +625,77 @@ mod tests {
         queue
             .enqueue_classification(recap_job_id, vec!["article".to_string()])
             .await?;
+        let auth_failures = queue.auth_failures.clone();
+        let writer = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            auth_failures
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(
+                    recap_job_id,
+                    (
+                        0,
+                        crate::clients::subworker::SubworkerAuthError::new(
+                            "classify-runs",
+                            reqwest::StatusCode::UNAUTHORIZED,
+                            "unauthorized",
+                        ),
+                    ),
+                );
+        });
+
+        let err = queue
+            .wait_for_completion(recap_job_id, Duration::from_millis(40))
+            .await
+            .expect_err("pending chunk must fail on timeout");
+        writer.await.expect("writer task");
+
+        let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
+        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
+
+        assert!(
+            crate::clients::subworker::is_subworker_auth_error(&err),
+            "timeout branch must return the recorded SubworkerAuthError when present, got: {err:#}"
+        );
+        assert!(
+            queue
+                .auth_failures
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty(),
+            "timeout branch must drop any stale auth_failures entry for the job"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stale_auth_failure_is_cleared_on_fresh_enqueue_and_completion_succeeds() -> Result<()>
+    {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let schema = format!("test_queue_auth_stale_{}", Uuid::new_v4().simple());
+        let schema_for_conn = schema.clone();
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .after_connect(move |conn, _meta| {
+                let schema_sql = format!(
+                    "CREATE SCHEMA IF NOT EXISTS {schema_for_conn}; SET search_path TO {schema_for_conn};"
+                );
+                Box::pin(async move {
+                    conn.execute(sqlx::AssertSqlSafe(schema_sql)).await?;
+                    Ok(())
+                })
+            })
+            .connect(&database_url)
+            .await?;
+        setup_classification_queue_table(&pool).await?;
+
+        let recap_job_id = Uuid::new_v4();
+        let store = QueueStore::new(pool.clone());
+        let client = SubworkerClient::new("http://localhost:8002", 10, None)?;
+        let queue = ClassificationJobQueue::new(store.clone(), client, 0, 1, 3, 5000);
+
         queue
             .auth_failures
             .lock()
@@ -636,27 +707,36 @@ mod tests {
                     crate::clients::subworker::SubworkerAuthError::new(
                         "classify-runs",
                         reqwest::StatusCode::UNAUTHORIZED,
-                        "unauthorized",
+                        "stale unauthorized from prior attempt",
                     ),
                 ),
             );
 
-        let _err = queue
-            .wait_for_completion(recap_job_id, Duration::from_millis(20))
-            .await
-            .expect_err("pending chunk must time out");
+        let chunk_ids = queue
+            .enqueue_classification(recap_job_id, vec!["fresh article".to_string()])
+            .await?;
+        assert_eq!(chunk_ids.len(), 1);
+        store
+            .mark_completed(
+                chunk_ids[0],
+                vec![ClassificationResult {
+                    top_genre: "ai".to_string(),
+                    confidence: 0.95,
+                    scores: HashMap::new(),
+                }],
+            )
+            .await?;
+
+        let results = queue
+            .wait_for_completion(recap_job_id, Duration::from_secs(5))
+            .await;
 
         let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
         let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
 
-        assert!(
-            queue
-                .auth_failures
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .is_empty(),
-            "timeout branch must drop any stale auth_failures entry for the job"
-        );
+        let results = results.expect("fresh enqueue must clear stale auth_failures and succeed");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].top_genre, "ai");
         Ok(())
     }
 }
