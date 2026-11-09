@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -389,7 +388,6 @@ class MorningLetterUsecase:
                 "  - `by_genre:<ジャンル英小文字名>`: ジャンル別要約。`genre` フィールドにも同じジャンル名を入れる（英小文字・数字・アンダースコア・ハイフンのみ）",
                 "- `bullets`: 配列。各要素は具体的な事実・固有名詞・数値を含む日本語の文",
                 "- `narrative`: 任意の地の文 (1〜3 文)。不要なら省略可",
-                "- `generated_at`: 生成時刻の RFC3339 形式タイムスタンプ（UTC, `YYYY-MM-DDThh:mm:ssZ`）",
                 f"- `source_recap_window_days`: {window_days_value}",
                 "",
                 "### ルール",
@@ -551,7 +549,6 @@ class MorningLetterUsecase:
             schema_version=1,
             lead=lead,
             sections=sections,
-            generated_at=datetime.now(timezone.utc).isoformat(),
             source_recap_window_days=3 if request.recap_summaries else None,
         )
 

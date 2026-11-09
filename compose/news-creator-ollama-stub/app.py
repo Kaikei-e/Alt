@@ -91,7 +91,6 @@ MORNING_LETTER_PAYLOAD = {
             "narrative": None,
         }
     ],
-    "generated_at": "2026-04-18T06:00:00+09:00",
     "source_recap_window_days": 3,
 }
 
