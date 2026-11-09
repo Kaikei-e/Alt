@@ -70,7 +70,10 @@ function readJsonBody(
 				resolve({});
 			}
 		});
-		req.on("error", () => resolve({}));
+		req.on("error", (err) => {
+			log(`ERROR reading body (${req.method} ${req.url}): ${String(err)}`);
+			resolve({});
+		});
 	});
 }
 
@@ -87,7 +90,10 @@ function encodeConnectEnvelope(message: unknown, flags = 0x00): Buffer {
  * Create the Backend mock server
  */
 export function createBackendServer(): http.Server {
-	return http.createServer(async (req, res) => {
+	async function handle(
+		req: http.IncomingMessage,
+		res: http.ServerResponse,
+	): Promise<void> {
 		const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
 		const path = url.pathname;
 
@@ -100,10 +106,7 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
-		// Drain and parse the request body before any handler writes a response
-		// so HTTP/1.1 keep-alive connections never respond while request chunks
-		// are still in flight (which leaves unparsed body bytes on the socket
-		// and causes Node's HTTP parser to reject the next request with 400).
+		// The client may reuse the keep-alive socket before it finishes sending a chunked body if the mock answers first, so read the whole body before answering.
 		const body = await readJsonBody(req);
 
 		res.setHeader("Content-Type", "application/json");
@@ -623,5 +626,15 @@ export function createBackendServer(): http.Server {
 		// Default response for unknown endpoints
 		res.writeHead(200);
 		res.end(JSON.stringify({}));
+	}
+
+	return http.createServer((req, res) => {
+		handle(req, res).catch((err: unknown) => {
+			log(`ERROR ${req.method} ${req.url}: ${String(err)}`);
+			if (!res.headersSent) {
+				res.writeHead(500);
+			}
+			res.end();
+		});
 	});
 }
