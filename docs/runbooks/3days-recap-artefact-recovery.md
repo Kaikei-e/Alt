@@ -172,6 +172,27 @@ Settings validator + classifier `is_file()` guard + compose directory-scoped bin
 | recap-subworker 起動するが classify-runs タイムアウト | recap-worker 側 dispatch の real-timeout (LLM 側の issue 等) | recap-worker の `recap_failed_tasks.error` |
 | 上記以外で `classification returned 0 results ...` 発生 | mTLS 証明書や peer identity 不整合の可能性 | recap-worker / recap-subworker ログ照合（[[000978]]） |
 
+## 日次サーフェスアラート (`RecapSurfaceStale` / `RecapSurfaceConsecutiveFailures` / `RecapSurfaceMetricsAbsent`)
+
+対象サーフェスは `three_day_recap`・`topic_cards`・`evening_pulse` の 3 系統。`morning_letter` は 30 分周期で再生成され独自の劣化信号を持つため、これら 3 アラートの対象外である。
+
+| アラート | 発火条件と意味 |
+|---|---|
+| `RecapSurfaceStale` | `time() - recap_surface_last_success_timestamp_seconds{surface} > 36 * 3600` が 15 分継続。対象サーフェスの最終成功から 36 時間（日次 1 周期 + 余裕分）を超過し、古い成果物が返されている状態 |
+| `RecapSurfaceConsecutiveFailures` | `recap_surface_consecutive_failures{surface} >= 2` が 5 分継続。対象サーフェスが直近の成功以降に 2 回以上連続で失敗している状態 |
+| `RecapSurfaceMetricsAbsent` | `up{job="recap-worker-ops"} == 1`（プロセス稼働中）にもかかわらず、3 サーフェスのいずれかの `recap_surface_last_success_timestamp_seconds` が 30 分間欠落。起動時 DB シードの未配線または `:9005` `/metrics` スクレイプ断を示す |
+
+### 初動確認
+
+1. **`:9005` `/metrics` でのゲージ出力確認**（特に `RecapSurfaceMetricsAbsent` 発火時）:
+   - `recap-worker:9005` の `/metrics` に `recap_surface_last_success_timestamp_seconds` と `recap_surface_consecutive_failures` が 3 サーフェス分出力されているか、および Prometheus の `recap-worker` ターゲットが UP かを確認する。
+2. **対象サーフェスのジョブ履歴確認**:
+   - 上記「デプロイ後の検証」と同じ `recap_jobs` / `recap_failed_tasks` クエリで、該当サーフェスの直近の `status`・`last_stage`・エラー内容を確認する。
+3. **`recap-worker` ログの確認**:
+   - `docker compose -f compose/compose.yaml -p alt logs recap-worker`（および `docker compose -f compose/compose.yaml -p alt logs recap-subworker`）で、`recap-subworker` からの `401` / `403` 応答や `news-creator` 呼び出しエラーが出ていないか確認する。
+4. **サーフェス API レスポンスの `surface_status` 確認**:
+   - 該当サーフェスの API / RPC レスポンスに含まれる `surface_status` フィールド（生成時刻・最新ジョブ状態・劣化理由）を確認し、画面へ返っている鮮度・失敗状態を照合する。
+
 ## 緊急時連絡・エスカレーション
 
 - recap 関連の障害対応は [[deploy]] / [[runner-setup]] を参照

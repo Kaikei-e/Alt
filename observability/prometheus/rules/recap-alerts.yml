@@ -10,7 +10,8 @@
 #
 # Scrape targets & metrics:
 #   - up{job="recap-subworker"} — Python/FastAPI clustering/classification subworker (:8002)
-#   - up{job="recap-worker"} — Rust/Axum recap pipeline worker (:9005)
+#   - up{job="recap-worker"} — Rust/Axum recap pipeline application metrics (:9005)
+#   - up{job="recap-worker-ops"} — Rust/Axum PKI ops listener (:9110, watched by PkiEnrollmentOpsDown)
 #   - recap_surface_last_success_timestamp_seconds{surface} — Unix timestamp of last successful generation, seeded from DB at startup
 #   - recap_surface_consecutive_failures{surface} — failed runs since last success, seeded from DB at startup
 #
@@ -71,8 +72,9 @@ groups:
 
       # WARNING: a daily recap surface has failed at least twice in a row since its last success.
       #
-      # Catches repeated batch failures (such as upstream auth or schema mismatches)
-      # without waiting for the 36h staleness window to elapse.
+      # Fires before the 36h staleness window for surfaces that retry within a daily cycle
+      # (Topic Cards), and after the second daily failure (~48h after last success) for
+      # once-a-day jobs (3-day Recap, Evening Pulse).
       - alert: RecapSurfaceConsecutiveFailures
         expr: recap_surface_consecutive_failures{surface=~"three_day_recap|topic_cards|evening_pulse"} >= 2
         for: 5m
@@ -89,12 +91,14 @@ groups:
             Runbook: docs/runbooks/3days-recap-artefact-recovery.md
           runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
 
-      # WARNING: recap-worker is up, but the freshness gauge for any of the three daily surfaces is missing.
+      # WARNING: recap-worker is up (:9110 ops scrape alive), but the freshness gauge for any of the three daily surfaces is missing.
       #
       # recap_surface_last_success_timestamp_seconds is seeded from the database at
-      # startup, so an absent series while up{job="recap-worker"} == 1 indicates a
-      # metric wiring gap that would leave RecapSurfaceStale blind. Gating on
-      # up{job="recap-worker"} == 1 prevents duplicate firing when recap-worker itself is down.
+      # startup, so an absent series while up{job="recap-worker-ops"} == 1 indicates a
+      # metric wiring gap or a broken :9005 scrape that would leave RecapSurfaceStale
+      # and RecapSurfaceConsecutiveFailures blind. Gating on up{job="recap-worker-ops"} == 1
+      # (watched by PkiEnrollmentOpsDown) rather than up{job="recap-worker"} ensures a :9005
+      # scrape failure still alerts while suppressing duplicate firing when the process is down.
       - alert: RecapSurfaceMetricsAbsent
         expr: |
           (
@@ -102,7 +106,7 @@ groups:
             or absent(recap_surface_last_success_timestamp_seconds{job="recap-worker",surface="topic_cards"})
             or absent(recap_surface_last_success_timestamp_seconds{job="recap-worker",surface="evening_pulse"})
           )
-          and on() up{job="recap-worker"} == 1
+          and on() up{job="recap-worker-ops"} == 1
         for: 30m
         labels:
           severity: warning
@@ -111,7 +115,7 @@ groups:
         annotations:
           summary: "Recap surface {{ $labels.surface }} freshness metric is absent while recap-worker is up"
           description: |
-            up{job="recap-worker"} is 1, but recap_surface_last_success_timestamp_seconds{surface="{{ $labels.surface }}"}
+            up{job="recap-worker-ops"} is 1, but recap_surface_last_success_timestamp_seconds{surface="{{ $labels.surface }}"}
             has been absent for 30m. This gauge is seeded from the database at startup, so its absence
             means recap-worker is not exporting surface freshness metrics and RecapSurfaceStale cannot fire.
             Check: docker compose -f compose/compose.yaml -p alt logs recap-worker
