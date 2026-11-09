@@ -96,7 +96,8 @@ INLINE_ENV_RE = re.compile(r"\b([A-Z_][A-Z0-9_]*)=(\S+)")
 PROJECT_FLAG_RE = re.compile(r"--project(?:=|\s+)([A-Za-z0-9:_.-]+)")
 # Shell separators that start a fresh command within one `run:` block.
 COMMAND_SPLIT_RE = re.compile(r"&&|\|\||;|\n|\|")
-GLOB_CHAR_RE = re.compile(r"[*?[]")
+GLOB_CHAR_RE = re.compile(r"[*?+[]")
+UNSUPPORTED_PATH_GLOB_RE = re.compile(r"[?+\[]")
 
 
 def resolve_path_filter_target(entry: str) -> str:
@@ -115,8 +116,10 @@ def resolve_path_filter_target(entry: str) -> str:
 
 def github_glob_matches(pattern: str, candidate: str) -> bool:
     """Match a single positive GitHub Actions path pattern against `candidate`."""
-    pat = pattern.strip().lstrip("./")
-    cand = candidate.strip().lstrip("./")
+    pat = pattern.strip().removeprefix("./")
+    cand = candidate.strip().removeprefix("./")
+    if UNSUPPORTED_PATH_GLOB_RE.search(pat) is not None:
+        return False
     if GLOB_CHAR_RE.search(pat) is None:
         return pat.rstrip("/") == cand.rstrip("/")
 
@@ -135,9 +138,6 @@ def github_glob_matches(pattern: str, candidate: str) -> bool:
             i += 2
         elif pat[i] == "*":
             parts.append("[^/]*")
-            i += 1
-        elif pat[i] == "?":
-            parts.append("[^/]")
             i += 1
         else:
             parts.append(re.escape(pat[i]))
@@ -385,6 +385,14 @@ def _check_workflow_doc_details(
             for raw_entry in paths_list:
                 if not isinstance(raw_entry, str):
                     continue
+                if UNSUPPORTED_PATH_GLOB_RE.search(raw_entry) is not None:
+                    errors.append(
+                        f"::error file={path}::on.{trig_name}.paths "
+                        f"entry {raw_entry!r} uses unsupported glob "
+                        f"pattern character ('?', '+', or '['); use "
+                        f"only literal paths, '*', and '**'."
+                    )
+                    bad += 1
                 target = resolve_path_filter_target(raw_entry)
                 if not os.path.exists(target):
                     errors.append(
@@ -636,8 +644,9 @@ def main() -> int:
     print(
         "OK: no forbidden triggers, GitHub-hosted labels only, permissions "
         "declared, checkouts credential-free, no untrusted context in run "
-        "bodies, every action SHA-pinned, every container/service image "
-        "digest-pinned, and job timeouts declared."
+        "bodies, every action SHA-pinned, path filters resolve (rule 8) and "
+        "match own and called reusable workflows (rule 11), every "
+        "container/service image digest-pinned, and job timeouts declared."
     )
     print(
         "OK: client vitest project is run by "

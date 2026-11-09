@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Mapping, Sequence
+import http.client
 import json
 import os
 import sys
@@ -19,6 +20,15 @@ FAILURE = "FAILURE"
 
 DEFAULT_POLL_INTERVAL = 60.0
 DEFAULT_TIMEOUT_SECONDS = 85 * 60.0
+GATE_WORKFLOW_PATH = ".github/workflows/ci-gate.yaml"
+
+TRANSIENT_FETCH_EXCEPTIONS = (
+    urllib.error.URLError,
+    TimeoutError,
+    ConnectionError,
+    http.client.HTTPException,
+    json.JSONDecodeError,
+)
 
 FAILURE_CONCLUSIONS = frozenset(
     {
@@ -45,6 +55,42 @@ def _is_self_run(run: Mapping[str, Any], self_run_id: int | str | None) -> bool:
     return str(run.get("id")) == str(self_run_id)
 
 
+def _is_gate_path(path: Any) -> bool:
+    if not isinstance(path, str):
+        return False
+    clean = path.split("@", 1)[0].strip().removeprefix("./")
+    return clean == GATE_WORKFLOW_PATH
+
+
+def _resolve_self_workflow_id(
+    workflow_runs: Sequence[Mapping[str, Any]],
+    self_run_id: int | str | None,
+) -> Any:
+    for run in workflow_runs:
+        if _is_self_run(run, self_run_id):
+            wf_id = run.get("workflow_id")
+            if wf_id is not None:
+                return wf_id
+    for run in workflow_runs:
+        if _is_gate_path(run.get("path")):
+            wf_id = run.get("workflow_id")
+            if wf_id is not None:
+                return wf_id
+    return None
+
+
+def _is_gate_run(
+    run: Mapping[str, Any],
+    self_run_id: int | str | None,
+    self_workflow_id: Any,
+) -> bool:
+    if _is_self_run(run, self_run_id):
+        return True
+    if self_workflow_id is not None and run.get("workflow_id") == self_workflow_id:
+        return True
+    return _is_gate_path(run.get("path"))
+
+
 def _format_run(run: Mapping[str, Any]) -> str:
     name = str(run.get("name") or run.get("display_title") or "<unnamed>")
     html_url = run.get("html_url")
@@ -64,10 +110,11 @@ def _latest_runs_per_workflow_event(
     workflow_runs: Sequence[Mapping[str, Any]],
     self_run_id: int | str | None,
 ) -> list[Mapping[str, Any]]:
-    """Keep only the newest run (highest run id) per (workflow_id, event)."""
+    """Keep only the newest run (highest run id) per (workflow_id, event), skipping gate runs."""
+    self_workflow_id = _resolve_self_workflow_id(workflow_runs, self_run_id)
     newest_by_key: dict[tuple[Any, Any], Mapping[str, Any]] = {}
     for run in workflow_runs:
-        if _is_self_run(run, self_run_id):
+        if _is_gate_run(run, self_run_id, self_workflow_id):
             continue
         key = (run.get("workflow_id"), run.get("event"))
         existing = newest_by_key.get(key)
@@ -82,6 +129,8 @@ def evaluate_workflow_runs(
 ) -> tuple[str, list[str]]:
     """Return (PENDING|SUCCESS|FAILURE, offending_runs) for a commit's workflow runs."""
     other_runs = _latest_runs_per_workflow_event(workflow_runs, self_run_id)
+    if not other_runs:
+        return PENDING, []
 
     pending_runs = [
         _format_run(r) for r in other_runs if r.get("status") != "completed"
@@ -195,7 +244,7 @@ def fetch_workflow_runs(
                     sleep_fn(2.0 * transient_attempts)
                     continue
                 raise
-            except urllib.error.URLError:
+            except TRANSIENT_FETCH_EXCEPTIONS:
                 transient_attempts += 1
                 if transient_attempts < 3:
                     sleep_fn(2.0 * transient_attempts)
@@ -225,56 +274,80 @@ def poll_until_settled(
     sleep_fn: Callable[[float], None] = time.sleep,
     clock_fn: Callable[[], float] = time.monotonic,
 ) -> tuple[str, list[str]]:
-    """Poll workflow runs until failure, two consecutive identical complete sets, or timeout."""
+    """Poll workflow runs until two consecutive identical complete sets, FAILURE once nothing is pending, or timeout."""
     deadline = clock_fn() + timeout_seconds
     prev_complete_set: frozenset[tuple[Any, Any, Any]] | None = None
+    last_fetch_error: str | None = None
     poll_num = 0
 
     while True:
         poll_num += 1
+        offending: list[str] = []
         try:
             runs = fetch_runs()
+            last_fetch_error = None
         except RuntimeError as exc:
             print(f"::error::ci-gate aborted: {exc}", file=sys.stderr)
             return FAILURE, []
-
-        verdict, offending = evaluate_workflow_runs(runs, self_run_id)
-
-        if verdict == FAILURE:
-            print(
-                f"::error::ci-gate failed on poll #{poll_num}; failing workflow runs: "
-                f"{', '.join(offending)}",
-                file=sys.stderr,
-            )
-            return FAILURE, offending
-
-        if verdict == SUCCESS:
-            current_set = _complete_set_signature(runs, self_run_id)
-            if prev_complete_set is not None and current_set == prev_complete_set:
+        except urllib.error.HTTPError as exc:
+            if exc.code < 500:
                 print(
-                    f"ci-gate: SUCCESS after {poll_num} polls "
-                    f"({len(current_set)} workflow run(s) verified across two consecutive polls)."
+                    f"::error::ci-gate aborted on fatal HTTP {exc.code}: {exc}",
+                    file=sys.stderr,
                 )
-                return SUCCESS, []
-            prev_complete_set = current_set
-            print(
-                f"ci-gate: poll #{poll_num} saw {len(current_set)} completed workflow run(s); "
-                f"waiting {poll_interval:.0f}s to confirm stability."
-            )
-        else:
+                return FAILURE, []
+            last_fetch_error = f"HTTP {exc.code}: {exc}"
             prev_complete_set = None
             print(
-                f"ci-gate: poll #{poll_num} PENDING on {len(offending)} workflow run(s): "
-                f"{', '.join(offending)}"
+                f"::warning::ci-gate poll #{poll_num} transient fetch error ({last_fetch_error}); retrying.",
+                file=sys.stderr,
             )
+        except TRANSIENT_FETCH_EXCEPTIONS as exc:
+            last_fetch_error = f"{type(exc).__name__}: {exc}"
+            prev_complete_set = None
+            print(
+                f"::warning::ci-gate poll #{poll_num} transient fetch error ({last_fetch_error}); retrying.",
+                file=sys.stderr,
+            )
+        else:
+            verdict, offending = evaluate_workflow_runs(runs, self_run_id)
+
+            if verdict == FAILURE:
+                print(
+                    f"::error::ci-gate failed on poll #{poll_num}; failing workflow runs: "
+                    f"{', '.join(offending)}",
+                    file=sys.stderr,
+                )
+                return FAILURE, offending
+
+            if verdict == SUCCESS:
+                current_set = _complete_set_signature(runs, self_run_id)
+                if prev_complete_set is not None and current_set == prev_complete_set:
+                    print(
+                        f"ci-gate: SUCCESS after {poll_num} polls "
+                        f"({len(current_set)} workflow run(s) verified across two consecutive polls)."
+                    )
+                    return SUCCESS, []
+                prev_complete_set = current_set
+                print(
+                    f"ci-gate: poll #{poll_num} saw {len(current_set)} completed workflow run(s); "
+                    f"waiting {poll_interval:.0f}s to confirm stability."
+                )
+            else:
+                prev_complete_set = None
+                print(
+                    f"ci-gate: poll #{poll_num} PENDING on {len(offending)} workflow run(s): "
+                    f"{', '.join(offending)}"
+                )
 
         now = clock_fn()
         if now + poll_interval > deadline:
-            reason = (
-                f"still pending: {', '.join(offending)}"
-                if offending
-                else "workflow run set did not stabilize across two consecutive polls"
-            )
+            if last_fetch_error is not None:
+                reason = f"last fetch error: {last_fetch_error}"
+            elif offending:
+                reason = f"still pending: {', '.join(offending)}"
+            else:
+                reason = "workflow run set did not stabilize across two consecutive polls"
             print(
                 f"::error::ci-gate timed out after {timeout_seconds:.0f}s ({reason}).",
                 file=sys.stderr,
