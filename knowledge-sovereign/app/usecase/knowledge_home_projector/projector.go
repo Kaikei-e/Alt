@@ -267,6 +267,8 @@ func (p *Projector) foldEvent(ctx context.Context, evt sovereign_db.KnowledgeEve
 		return p.foldRecallSnoozed(ctx, evt)
 	case "RecallDismissed":
 		return p.foldRecallDismissed(ctx, evt)
+	case "recap.evening_pulse_generated.v1":
+		return p.foldEveningPulseGenerated(ctx, evt)
 	default:
 		// Unknown event types are silently skipped but still advance the
 		// checkpoint (handled by the caller).

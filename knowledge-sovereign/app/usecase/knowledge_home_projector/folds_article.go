@@ -289,3 +289,30 @@ func (p *Projector) foldTagSetVersionCreated(ctx context.Context, evt sovereign_
 	}
 	return nil
 }
+
+// ── recap.evening_pulse_generated.v1 ──
+
+func buildEveningPulseGeneratedWrite(evt sovereign_db.KnowledgeEvent) (digestWrite, error) {
+	var payload eveningPulseGeneratedPayload
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		return digestWrite{}, fmt.Errorf("unmarshal recap.evening_pulse_generated.v1 payload: %w", err)
+	}
+	if _, err := time.Parse(time.DateOnly, payload.TargetDate); err != nil {
+		return digestWrite{}, fmt.Errorf("parse target_date %q: %w", payload.TargetDate, err)
+	}
+	return digestWrite{
+		UserID:                resolveUserID(evt),
+		DigestDate:            payload.TargetDate,
+		EveningPulseAvailable: true,
+		UpdatedAt:             evt.OccurredAt,
+		LastEventSeq:          evt.EventSeq,
+	}, nil
+}
+
+func (p *Projector) foldEveningPulseGenerated(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+	digest, err := buildEveningPulseGeneratedWrite(evt)
+	if err != nil {
+		return err
+	}
+	return p.upsertDigest(ctx, digest)
+}
