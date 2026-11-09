@@ -72,9 +72,9 @@ class CiMatrixTests(unittest.TestCase):
                         "shards": 3,
                         "workflow": "alt-frontend-sv.yml",
                     },
-                    "custom-single": {
-                        "images": ["custom-single"],
-                        "workflow": "custom.yml",
+                    "proto-suite": {
+                        "images": ["proto-suite"],
+                        "workflow": "proto-contract.yaml",
                     },
                 }
             }
@@ -92,6 +92,73 @@ class CiMatrixTests(unittest.TestCase):
         )
         self.assertIs(outputs["hasSingle"], True)
         self.assertIs(outputs["hasSharded"], True)
+        self.assertIn("alt-frontend-sv", err)
+        self.assertIn("alt-frontend-sv.yml", err)
+        self.assertIn("proto-suite", err)
+        self.assertIn("proto-contract.yaml", err)
+
+    def test_workflow_option_emits_matrices_for_selected_workflow(self) -> None:
+        rc, out, err = self._run_with_suites(
+            {
+                "suites": {
+                    "mq-hub": {"images": ["mq-hub"]},
+                    "alt-backend": {"images": ["alt-backend"], "shards": 4},
+                    "alt-frontend-sv": {
+                        "images": ["alt-frontend-sv"],
+                        "shards": 3,
+                        "workflow": "alt-frontend-sv.yml",
+                    },
+                }
+            },
+            argv=["--workflow", "alt-frontend-sv.yml"],
+        )
+        self.assertEqual(rc, 0, msg=err)
+        outputs = parse_kv_lines(out)
+        self.assertEqual(outputs["single"], [])
+        self.assertEqual(outputs["shardedBuild"], ["alt-frontend-sv"])
+        self.assertEqual(
+            outputs["shardedRun"],
+            [
+                {"suite": "alt-frontend-sv", "shard": "1/3", "index": "1"},
+                {"suite": "alt-frontend-sv", "shard": "2/3", "index": "2"},
+                {"suite": "alt-frontend-sv", "shard": "3/3", "index": "3"},
+            ],
+        )
+        self.assertIs(outputs["hasSingle"], False)
+        self.assertIs(outputs["hasSharded"], True)
+        self.assertIn("mq-hub", err)
+        self.assertIn("e2e-playwright.yml", err)
+
+    def test_fails_when_suite_workflow_does_not_exist(self) -> None:
+        rc, _out, err = self._run_with_suites(
+            {
+                "suites": {
+                    "mq-hub": {"images": ["mq-hub"]},
+                    "typo-suite": {
+                        "images": ["typo-suite"],
+                        "workflow": "nonexistent-workflow.yml",
+                    },
+                }
+            }
+        )
+        self.assertEqual(rc, 1)
+        self.assertIn("typo-suite", err)
+        self.assertIn("nonexistent-workflow.yml", err)
+
+    def test_fails_when_suite_workflow_is_not_bare_filename(self) -> None:
+        rc, _out, err = self._run_with_suites(
+            {
+                "suites": {
+                    "alt-frontend-sv": {
+                        "images": ["alt-frontend-sv"],
+                        "workflow": ".github/workflows/alt-frontend-sv.yml",
+                    },
+                }
+            }
+        )
+        self.assertEqual(rc, 1)
+        self.assertIn("alt-frontend-sv", err)
+        self.assertIn(".github/workflows/alt-frontend-sv.yml", err)
 
     def test_has_sharded_false_when_only_sharded_suite_has_external_workflow(self) -> None:
         rc, out, err = self._run_with_suites(
