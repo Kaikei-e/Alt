@@ -21,11 +21,16 @@
 #       non-glob directory prefix does not resolve to an existing file or
 #       directory,
 #   (9) a `jobs.<id>.container(.image)` or `jobs.<id>.services.<name>.image`
-#       is not pinned by an `@sha256:` digest, or
-#  (10) a job that is not a reusable-workflow call lacks `timeout-minutes`.
+#       is not pinned by an `@sha256:` digest,
+#  (10) a job that is not a reusable-workflow call lacks `timeout-minutes`, or
+#  (11) an `on.push.paths` / `on.pull_request.paths` filter does not match the
+#       workflow's own file and every local reusable workflow it calls via
+#       `uses: ./.github/workflows/<file>` at job level (or excludes them via a
+#       subsequent `!` negation).
 #   (4)-(7) and (9)-(10) are the GitHub Actions hardening guide's baseline,
-#   and (8) prevents dead trigger path filters — all made structural so a new
-#   workflow or directory deletion cannot quietly regress them.
+#   and (8) and (11) prevent dead or non-self-triggering path filters — all
+#   made structural so a new workflow or directory deletion cannot quietly
+#   regress them.
 #
 # Scope boundary: this lint inspects `.github/workflows/**` and runs on every
 # pull_request and push to main so any commit that deletes a file or directory

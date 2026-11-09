@@ -373,11 +373,14 @@ jobs:
       - name: pact-check.sh leg-selection guard
         run: ./scripts/tests/test-pact-check-filter.sh
 
-      - name: Install PyYAML
-        run: pip install --quiet 'pyyaml==6.*'
+      - name: Install PyYAML and pytest
+        run: pip install --quiet 'pyyaml==6.*' 'pytest==8.*'
 
       - name: Manual verification bridge helper guard
         run: python3 scripts/tests/test-publish-pact-bridge.py
+
+      - name: Pact artifact helper guard
+        run: python3 -m pytest -q scripts/tests/test-pact-artifacts.py
 
       - name: Download all pact artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
@@ -668,7 +671,7 @@ jobs:
           sparse-checkout-cone-mode: true
 
       # Keep toolchain and components in lockstep with recap-worker/rust-toolchain.toml.
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable branch head, 2026-07-31
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # 2026-07-16
         with:
           toolchain: "1.99.1"
           components: rustfmt, clippy
