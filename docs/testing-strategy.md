@@ -558,7 +558,7 @@ proto/
 |----------|---------|-----------|
 | `proto-contract.yaml` | proto/ + contract/ 変更 | Buf lint/breaking + FE conformance + Pact CDC (Go x3 + Python) |
 | `backend-go.yaml` | alt-backend/ 変更 | Go unit tests (`go test ./...`、CDC は build tag で除外) |
-| `alt-frontend-sv.yml` | alt-frontend-sv/ 変更 | Playwright E2E (3 shards) |
+| `alt-frontend-sv.yml` | `.github/workflows/alt-frontend-sv.yml`, `alt-frontend-sv/**`, `e2e/playwright/alt-frontend-sv/**`, `e2e/playwright/_lib/**`, `e2e/playwright/package*.json`, `e2e/playwright/suites.yaml`, `e2e/playwright/merge.config.ts`, `services.yaml` 変更 | Playwright E2E against production image (3 shards, incl. a11y) |
 | `alt-frontend-sv-unit-test.yaml` | alt-frontend-sv/ 変更 | Vitest unit tests |
 | `alt-perf.yaml` | alt-perf/ 変更 | alt-perf Deno unit tests |
 | `search-indexer.yaml` | search-indexer/ 変更 | Go unit tests |

@@ -1,3 +1,19 @@
+# End-to-end Playwright browser suite for alt-frontend-sv against the
+# production container image.
+#
+# Shape
+# -----
+#
+#   plan  ──┐
+#           ├──> sharded (matrix from suites.yaml: auth, desktop-chromium, mobile-chrome, a11y-desktop, a11y-mobile) ──> merge ──> verdict
+#   build ──┘
+#
+# Builds the production alt-frontend-sv image once via build-images.py, exports
+# it as a zstd-compressed artifact, and runs e2e/playwright/alt-frontend-sv/run.sh
+# across the shards derived from e2e/playwright/suites.yaml with the
+# accessibility projects enabled alongside the default auth/desktop/mobile
+# projects.
+
 name: Alt Frontend SV Tests
 
 permissions:
@@ -5,166 +21,320 @@ permissions:
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'alt-frontend-sv/**'
       - '.github/workflows/alt-frontend-sv.yml'
+      - 'alt-frontend-sv/**'
+      - 'e2e/playwright/alt-frontend-sv/**'
+      - 'e2e/playwright/_lib/**'
+      - 'e2e/playwright/package.json'
+      - 'e2e/playwright/package-lock.json'
+      - 'e2e/playwright/suites.yaml'
+      - 'e2e/playwright/merge.config.ts'
+      - 'services.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'alt-frontend-sv/**'
       - '.github/workflows/alt-frontend-sv.yml'
+      - 'alt-frontend-sv/**'
+      - 'e2e/playwright/alt-frontend-sv/**'
+      - 'e2e/playwright/_lib/**'
+      - 'e2e/playwright/package.json'
+      - 'e2e/playwright/package-lock.json'
+      - 'e2e/playwright/suites.yaml'
+      - 'e2e/playwright/merge.config.ts'
+      - 'services.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'
-  workflow_call:
-    inputs:
-      working-directory:
-        required: true
-        type: string
-      test-type:
-        required: false
-        type: string
-        default: "playwright"
   workflow_dispatch:
-    inputs:
-      working-directory:
-        description: "Working directory for the test"
-        required: true
-        type: string
-        default: "alt-frontend-sv"
-      test-type:
-        description: "Type of test to run"
-        required: false
-        type: string
-        default: "playwright"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch') && github.run_id || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
+env:
+  SUITE: alt-frontend-sv
+  IMAGE_TAG: ci
+  GHCR_OWNER: kaikei-e
+  NODE_IMAGE: node:26-bookworm-slim
+
 jobs:
-  test:
-    timeout-minutes: 15
+  plan:
+    name: Plan matrices
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      shardedRun: ${{ steps.matrix.outputs.shardedRun }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Derive matrices from e2e/playwright/suites.yaml
+        id: matrix
+        run: python3 e2e/playwright/_lib/ci-matrix.py --workflow alt-frontend-sv.yml --github
+
+  # ---------------------------------------------------------------------------
+  # Build the production alt-frontend-sv image once and hand it to all shards.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build alt-frontend-sv image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build images
+        run: python3 e2e/playwright/_lib/build-images.py "$SUITE"
+
+      - name: Export images
+        run: |
+          images="$(python3 e2e/playwright/_lib/build-images.py "$SUITE" --print-images)"
+          echo "exporting: $images"
+          # shellcheck disable=SC2086  # splitting the list into args is the point
+          docker save $images | zstd -T0 -3 -o "/tmp/${SUITE}-images.tar.zst"
+
+      - name: Upload images
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: images-alt-frontend-sv
+          path: /tmp/alt-frontend-sv-images.tar.zst
+          retention-days: 1
+          compression-level: 0  # already zstd-compressed
+          overwrite: true
+
+  # ---------------------------------------------------------------------------
+  # Run each shard against the pre-built production image via run.sh.
+  # ---------------------------------------------------------------------------
+  sharded:
+    name: alt-frontend-sv shard ${{ matrix.shard }}
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1/3, 2/3, 3/3]
-
-    container:
-      # Must track the @playwright/test version in alt-frontend-sv/package.json:
-      # the image ships the browser build that release pins, and a mismatch makes
-      # every run re-download browsers (or fail closed on a locked-down runner).
-      # Refresh the @sha256 digest together with the tag (Dependabot github-actions does not bump container images).
-      image: mcr.microsoft.com/playwright:v1.62.1-jammy@sha256:b3251f7ff1a9fa559a28d1c67eaa15fc1a9800f7845e82756caea7842967f615
-
+        include: ${{ fromJSON(needs.plan.outputs.shardedRun) }}
     env:
-      CI: true
-      FORCE_COLOR: "1"
-      PLAYWRIGHT_SKIP_GIT_INFO: "1"
-      BUN_VERSION: "1.3.12"
-
+      PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.62.1-jammy@sha256:b3251f7ff1a9fa559a28d1c67eaa15fc1a9800f7845e82756caea7842967f615
+      PW_BLOB: 1
+      SHARD: ${{ matrix.shard }}
+      PROJECTS: "--project=auth --project=desktop-chromium --project=mobile-chrome --project=a11y-desktop --project=a11y-mobile"
+      RUN_ID: alt-frontend-sv-shard-${{ matrix.index }}
+      REPORT_DIR: ${{ github.workspace }}/e2e/reports/alt-frontend-sv-shard-${{ matrix.index }}
     steps:
-      - name: Pre-checkout cleanup
-        run: |
-          if [ -d "$GITHUB_WORKSPACE" ]; then
-            rm -rf "${GITHUB_WORKSPACE:?}"/* "${GITHUB_WORKSPACE:?}"/.[!.]* 2>/dev/null || true
-          fi
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-          clean: false
 
-      - name: Mask sensitive paths and git information
-        run: |
-          echo "::group::Masking Configuration"
-
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(whoami)"
-
-          [ -n "$HOME" ] && echo "::add-mask::$HOME"
-          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
-          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
-
-          if command -v git >/dev/null 2>&1; then
-            GIT_AN="$(git log -1 --pretty=format:'%an' 2>/dev/null || true)"
-            GIT_AE="$(git log -1 --pretty=format:'%ae' 2>/dev/null || true)"
-            GIT_CN="$(git log -1 --pretty=format:'%cn' 2>/dev/null || true)"
-            GIT_CE="$(git log -1 --pretty=format:'%ce' 2>/dev/null || true)"
-            [ -n "$GIT_AN" ] && echo "::add-mask::$GIT_AN"
-            [ -n "$GIT_AE" ] && echo "::add-mask::$GIT_AE"
-            [ -n "$GIT_CN" ] && echo "::add-mask::$GIT_CN"
-            [ -n "$GIT_CE" ] && echo "::add-mask::$GIT_CE"
-          fi
-
-          echo "::endgroup::"
-
-      - name: Install Bun
-        run: |
-          set -eu
-          ARCH=$(uname -m)
-          if [ "$ARCH" = "aarch64" ]; then
-            BUN_ARCH="bun-linux-aarch64"
-          else
-            BUN_ARCH="bun-linux-x64"
-          fi
-          BUN_BASE="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}"
-          curl -fsSL --retry 5 --retry-all-errors --connect-timeout 10 "${BUN_BASE}/${BUN_ARCH}.zip" -o "/tmp/${BUN_ARCH}.zip"
-          curl -fsSL --retry 5 --retry-all-errors --connect-timeout 10 "${BUN_BASE}/SHASUMS256.txt" -o /tmp/bun-sha256.txt
-          EXPECTED_SHA="$(grep "  ${BUN_ARCH}\.zip$" /tmp/bun-sha256.txt | awk '{print $1}')"
-          [ -n "$EXPECTED_SHA" ] || { echo "no checksum entry for ${BUN_ARCH}.zip"; exit 1; }
-          echo "${EXPECTED_SHA}  /tmp/${BUN_ARCH}.zip" | sha256sum -c -
-          python3 - "$BUN_ARCH" <<'PYEOF'
-          import sys, zipfile
-          arch = sys.argv[1]
-          entry = f"{arch}/bun"
-          with zipfile.ZipFile(f"/tmp/{arch}.zip") as z:
-              if entry not in z.namelist():
-                  sys.exit(f"expected entry {entry!r} not found in zip")
-              data = z.read(entry)
-          with open("/usr/local/bin/bun", "wb") as f:
-              f.write(data)
-          PYEOF
-          chmod +x /usr/local/bin/bun
-          # `bunx` is the same binary dispatched via argv[0]; the zip
-          # only carries `bun-linux-x64/bun`, so create the launcher
-          # ourselves instead of pulling a second entry. Without this,
-          # later steps that invoke `bunx playwright test` fail with
-          # "bunx: not found" inside the playwright container.
-          ln -sf /usr/local/bin/bun /usr/local/bin/bunx
-          bun --version
-          bunx --version
-
-      - name: Cache bun dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      - name: Download images
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}
-          restore-keys: |
-            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
+          name: images-alt-frontend-sv
+          path: /tmp
 
-      - name: Install dependencies
-        run: bun install
-        working-directory: ${{ inputs.working-directory || 'alt-frontend-sv' }}
+      - name: Load images
+        run: zstd -dc "/tmp/${SUITE}-images.tar.zst" | docker load
 
-      - name: Run Playwright tests
-        # a11y-desktop / a11y-mobile were unreachable until they were given
-        # projects of their own; CI selects projects by name, so the
-        # accessibility audits had never actually run here.
-        run: bunx playwright test --project=auth --project=desktop-chromium --project=mobile-chrome --project=a11y-desktop --project=a11y-mobile --shard=${{ matrix.shard }}
-        working-directory: ${{ inputs.working-directory || 'alt-frontend-sv' }}
+      - name: Pre-pull Playwright image
+        run: |
+          for attempt in 1 2 3; do
+            if docker pull "$PLAYWRIGHT_IMAGE"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "docker pull $PLAYWRIGHT_IMAGE attempt ${attempt}/3 failed; retrying in $((attempt * 5))s" >&2
+              sleep "$((attempt * 5))"
+            fi
+          done
+          echo "docker pull $PLAYWRIGHT_IMAGE failed after 3 attempts" >&2
+          exit 1
 
-      - name: Upload test report
+      - name: Run shard
+        run: bash e2e/playwright/alt-frontend-sv/run.sh
+
+      - name: Upload blob report
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        if: ${{ !cancelled() }}
         with:
-          name: playwright-report-${{ strategy.job-index }}
+          name: blob-alt-frontend-sv-${{ matrix.index }}
+          path: e2e/reports/alt-frontend-sv-shard-${{ matrix.index }}/blob
+          retention-days: 3
+          compression-level: 0
+          overwrite: true
+          if-no-files-found: warn
+
+      - name: Upload app container log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: app-log-alt-frontend-sv-${{ matrix.index }}
+          path: e2e/reports/alt-frontend-sv-shard-${{ matrix.index }}/app-container.log
+          retention-days: 3
+          overwrite: true
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Merge shard blob reports into one HTML + JUnit report.
+  # ---------------------------------------------------------------------------
+  merge:
+    name: Merge reports
+    if: ${{ !cancelled() }}
+    needs: [sharded]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download every blob report
+        # Degrades to a warning on download error because a report-merge failure must not mask passing shards.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p all-blob-reports-raw
+          if ! gh run download "$GITHUB_RUN_ID" --pattern 'blob-*' --dir all-blob-reports-raw; then
+            echo "::warning::Failed to download blob-* artifacts via gh run download; skipping HTML/JUnit report merge."
+            echo "- :warning: **Report merge**: Failed to download \`blob-*\` artifacts; HTML/JUnit report was not generated." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+      - name: Merge into one HTML + JUnit report
+        run: |
+          mkdir -p all-blob-reports
+          if [ -d all-blob-reports-raw ]; then
+            idx=0
+            while IFS= read -r archive; do
+              [ -n "$archive" ] || continue
+              idx=$((idx + 1))
+              parent="$(basename "$(dirname "$archive")")"
+              if [ "$parent" = "all-blob-reports-raw" ]; then
+                prefix="blob-single"
+              else
+                prefix="$parent"
+              fi
+              cp "$archive" "all-blob-reports/${prefix}-${idx}-$(basename "$archive")"
+            done < <(find all-blob-reports-raw -type f -name '*.zip' | sort)
+          fi
+          if [ -z "$(ls -A all-blob-reports 2>/dev/null)" ]; then
+            echo "::warning::No Playwright blob reports found to merge."
+            echo "- :warning: **Report merge**: No Playwright blob reports found to merge." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            if docker pull "$NODE_IMAGE"; then
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "docker pull $NODE_IMAGE attempt ${attempt}/3 failed; retrying in $((attempt * 5))s" >&2
+              sleep "$((attempt * 5))"
+            else
+              echo "::warning::Failed to pull $NODE_IMAGE after 3 attempts; skipping HTML/JUnit report merge."
+              echo "- :warning: **Report merge**: Failed to pull \`$NODE_IMAGE\` after 3 attempts; HTML/JUnit report was not generated." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          done
+          if ! docker run --rm \
+            -v "$PWD:$PWD" -w "$PWD/e2e/playwright" \
+            -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+            -e PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report \
+            -e PLAYWRIGHT_HTML_OPEN=never \
+            -e PLAYWRIGHT_JUNIT_OUTPUT_NAME=results.xml \
+            -e PLAYWRIGHT_JUNIT_STRIP_ANSI=1 \
+            "$NODE_IMAGE" \
+            sh -euc '
+              npm ci --no-audit --no-fund
+              npx playwright merge-reports \
+                -c merge.config.ts \
+                --reporter html,junit,github \
+                ../../all-blob-reports
+            '; then
+            echo "::warning::playwright merge-reports failed; HTML/JUnit report could not be built."
+            echo "- :warning: **Report merge**: \`playwright merge-reports\` failed; HTML/JUnit report was not generated." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+      - name: Upload merged report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: playwright-report
           path: |
-            ${{ inputs.working-directory || 'alt-frontend-sv' }}/playwright-report/
-            ${{ inputs.working-directory || 'alt-frontend-sv' }}/test-results/
-          retention-days: 30
+            e2e/playwright/playwright-report
+            e2e/playwright/results.xml
+          retention-days: 3
+          overwrite: true
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Final gate: fails the workflow if `plan`, `build`, or any shard failed or was cancelled.
+  # ---------------------------------------------------------------------------
+  verdict:
+    name: Verdict
+    if: ${{ !cancelled() }}
+    needs: [plan, build, sharded, merge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PLAN_RESULT: ${{ needs.plan.result }}
+      BUILD_RESULT: ${{ needs.build.result }}
+      SHARDED_RESULT: ${{ needs.sharded.result }}
+      MERGE_RESULT: ${{ needs.merge.result }}
+    steps:
+      - name: Evaluate build and shard results
+        run: |
+          {
+            echo "### Alt Frontend SV E2E Verdict"
+            echo ""
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "| plan | \`${PLAN_RESULT}\` |"
+            echo "| build | \`${BUILD_RESULT}\` |"
+            echo "| sharded | \`${SHARDED_RESULT}\` |"
+            echo "| merge | \`${MERGE_RESULT}\` |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$MERGE_RESULT" != "success" ]; then
+            echo "::warning::Playwright report merge job ended with status '${MERGE_RESULT}'."
+            echo "- :warning: **Report merge (\`${MERGE_RESULT}\`)**: Merge job did not succeed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          failed=0
+
+          if [ "$PLAN_RESULT" != "success" ]; then
+            echo "::error::plan job did not succeed (result: ${PLAN_RESULT})"
+            failed=1
+          fi
+
+          if [ "$BUILD_RESULT" != "success" ]; then
+            echo "::error::image build job did not succeed (result: ${BUILD_RESULT})"
+            failed=1
+          fi
+
+          if [ "$SHARDED_RESULT" != "success" ]; then
+            echo "::error::sharded suite job did not succeed (result: ${SHARDED_RESULT})"
+            failed=1
+          fi
+
+          if [ "$failed" -ne 0 ]; then
+            echo "- :x: **Verdict**: Plan, image build, or one or more E2E shards failed or were cancelled." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "- :white_check_mark: **Verdict**: Image build and all E2E shards passed." >> "$GITHUB_STEP_SUMMARY"
