@@ -23,6 +23,6 @@ message RecapSurfaceRun {
 }
 
 message RecapDegradationReason {
-  string code = 1;    // machine-readable, see C3
+  string code = 1;    // machine-readable degradation code
   string detail = 2;  // short English text for display, may be empty
 }

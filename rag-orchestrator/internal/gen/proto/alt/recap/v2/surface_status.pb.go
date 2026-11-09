@@ -184,7 +184,7 @@ func (x *RecapSurfaceRun) GetUpdatedAt() string {
 
 type RecapDegradationReason struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`     // machine-readable, see C3
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`     // machine-readable degradation code
 	Detail        string                 `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"` // short English text for display, may be empty
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -116,7 +116,7 @@ export const RecapSurfaceRunSchema: GenMessage<RecapSurfaceRun> = /*@__PURE__*/
  */
 export type RecapDegradationReason = Message<"alt.recap.v2.RecapDegradationReason"> & {
   /**
-   * machine-readable, see C3
+   * machine-readable degradation code
    *
    * @generated from field: string code = 1;
    */

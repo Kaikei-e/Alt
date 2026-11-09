@@ -242,7 +242,7 @@ func TestProductionPolicy_DataHubMayAppendArticleCreated(t *testing.T) {
 }
 
 // recap-worker appends recap.evening_pulse_generated.v1 after saving a
-// succeeded pulse generation (ADR-001003 Decision 6/8).
+// succeeded pulse generation.
 func TestProductionPolicy_RecapWorkerMayAppendEveningPulseGenerated(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "config", "event-auth-policy.json"))
 	require.NoError(t, err)

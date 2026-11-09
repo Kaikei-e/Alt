@@ -13,9 +13,7 @@
 //!
 //! For Evening Pulse, [`publish_evening_pulse_generated`] emits
 //! `recap.evening_pulse_generated.v1` after a `succeeded` generation is saved,
-//! using the persisted `finished_at` as `occurred_at` (ADR-001003 Decision 6/8).
-//!
-//! Knowledge Loop Completion Phase 1 §2 (ADR-000853 follow-up) and ADR-001003.
+//! using the persisted `finished_at` as `occurred_at`.
 
 use anyhow::anyhow;
 use chrono::{DateTime, NaiveDate, Utc};
