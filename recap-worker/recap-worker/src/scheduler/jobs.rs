@@ -1576,21 +1576,15 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn run_job_three_day_does_not_substitute_wall_clock_and_records_completion_write_failure()
-    {
+    fn build_three_day_test_scheduler(
+        dao: Arc<crate::store::dao::mock::MockRecapDao>,
+        metrics: Arc<crate::observability::metrics::Metrics>,
+    ) -> Scheduler {
         use crate::{
             clients::NewsCreatorClient,
             config::ENV_MUTEX,
-            observability::{
-                metrics::Metrics,
-                surface_health::{SurfaceHealthTarget, record_success},
-            },
             queue::{ClassificationJobQueue, QueueStore},
-            store::{dao::mock::MockRecapDao, models::RecapJob},
         };
-        use chrono::{DateTime, Duration, Utc};
-        use prometheus::Registry;
         use sqlx::postgres::PgPoolOptions;
 
         let config = {
@@ -1623,19 +1617,7 @@ mod tests {
             )
         };
 
-        let dao = Arc::new(MockRecapDao::new());
-        let unrelated_window_end = DateTime::parse_from_rfc3339("2026-01-20T00:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        dao.set_latest_completed_job(Some(RecapJob {
-            job_id: Uuid::new_v4(),
-            started_at: unrelated_window_end - Duration::days(3),
-            window_start: unrelated_window_end - Duration::days(3),
-            window_end: unrelated_window_end,
-            total_articles: Some(10),
-        }));
-
-        let recap_dao: Arc<dyn RecapDao> = Arc::clone(&dao) as Arc<dyn RecapDao>;
+        let recap_dao: Arc<dyn RecapDao> = dao;
         let subworker = Arc::new(
             SubworkerClient::new(
                 config.subworker_base_url(),
@@ -1644,32 +1626,9 @@ mod tests {
             )
             .expect("subworker client"),
         );
-        let news_creator = {
-            let _lock = ENV_MUTEX
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            Arc::new(
-                temp_env::async_with_vars(
-                    [
-                        (
-                            "HUGGING_FACE_TOKEN_PATH",
-                            Some("/tmp/test-token-which-does-not-exist"),
-                        ),
-                        ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
-                        ("MTLS_ENFORCE", None),
-                    ],
-                    async {
-                        NewsCreatorClient::new(
-                            config.news_creator_base_url(),
-                            config.llm_summary_timeout(),
-                        )
-                        .await
-                        .expect("news creator client")
-                    },
-                )
-                .await,
-            )
-        };
+        let news_creator = Arc::new(NewsCreatorClient::new_for_test(
+            config.news_creator_base_url(),
+        ));
         let pool = PgPoolOptions::new()
             .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")
             .expect("lazy pool");
@@ -1681,11 +1640,6 @@ mod tests {
             3,
             1000,
         ));
-        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
-        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-25T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        record_success(&metrics, SurfaceHealthTarget::ThreeDayRecap, seeded_ts);
 
         let pipeline = Arc::new(
             PipelineOrchestrator::builder(Arc::clone(&config))
@@ -1696,7 +1650,7 @@ mod tests {
                 .with_select_stage(Arc::new(UnreachableSelect))
                 .with_dispatch_stage(Arc::new(UnreachableDispatch))
                 .with_persist_stage(Arc::new(StubSuccessPersist))
-                .with_metrics(Arc::clone(&metrics))
+                .with_metrics(metrics)
                 .build(
                     Arc::clone(&recap_dao),
                     Arc::clone(&subworker),
@@ -1721,11 +1675,12 @@ mod tests {
                 )
             })
         };
-        let scheduler = Scheduler::new(pipeline, morning_pipeline, config, recap_dao, subworker);
+        Scheduler::new(pipeline, morning_pipeline, config, recap_dao, subworker)
+    }
 
-        let job_id_1 = Uuid::new_v4();
-        let dispatch_state_1 = crate::pipeline::dispatch::DispatchResult {
-            job_id: job_id_1,
+    async fn save_stub_dispatch_state(dao: &crate::store::dao::mock::MockRecapDao, job_id: Uuid) {
+        let dispatch_state = crate::pipeline::dispatch::DispatchResult {
+            job_id,
             genre_results: std::collections::HashMap::new(),
             success_count: 1,
             failure_count: 0,
@@ -1733,12 +1688,49 @@ mod tests {
         }
         .to_lightweight();
         dao.save_stage_state(
-            job_id_1,
+            job_id,
             "dispatch",
-            &serde_json::to_value(&dispatch_state_1).expect("serialize dispatch state"),
+            &serde_json::to_value(&dispatch_state).expect("serialize dispatch state"),
         )
         .await
         .expect("save dispatch state");
+    }
+
+    #[tokio::test]
+    async fn run_job_three_day_does_not_substitute_wall_clock_and_records_completion_write_failure()
+    {
+        use crate::{
+            observability::{
+                metrics::Metrics,
+                surface_health::{SurfaceHealthTarget, record_success},
+            },
+            store::{dao::mock::MockRecapDao, models::RecapJob},
+        };
+        use chrono::{DateTime, Duration, Utc};
+        use prometheus::Registry;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let unrelated_window_end = DateTime::parse_from_rfc3339("2026-01-20T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        dao.set_latest_completed_job(Some(RecapJob {
+            job_id: Uuid::new_v4(),
+            started_at: unrelated_window_end - Duration::days(3),
+            window_start: unrelated_window_end - Duration::days(3),
+            window_end: unrelated_window_end,
+            total_articles: Some(10),
+        }));
+
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        record_success(&metrics, SurfaceHealthTarget::ThreeDayRecap, seeded_ts);
+
+        let scheduler = build_three_day_test_scheduler(Arc::clone(&dao), Arc::clone(&metrics));
+
+        let job_id_1 = Uuid::new_v4();
+        save_stub_dispatch_state(&dao, job_id_1).await;
         let ctx_1 = JobContext::new_with_window(job_id_1, vec!["ai".to_string()], 3)
             .with_stage("dispatch".to_string());
         scheduler
@@ -1756,22 +1748,29 @@ mod tests {
             "when this job has no recap_outputs.created_at, last_success must stay unchanged and never use latest_completed_job.window_end or Utc::now()"
         );
 
+        let job_id_ok = Uuid::new_v4();
+        let completed_at = DateTime::parse_from_rfc3339("2026-01-26T04:15:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        dao.set_job_completed_at(job_id_ok, Ok(Some(completed_at)));
+        save_stub_dispatch_state(&dao, job_id_ok).await;
+        let ctx_ok = JobContext::new_with_window(job_id_ok, vec!["ai".to_string()], 3)
+            .with_stage("dispatch".to_string());
+        scheduler
+            .run_job(ctx_ok)
+            .await
+            .expect("3-day job with output timestamp should succeed");
+        assert_eq!(
+            metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+                .get(),
+            completed_at.timestamp() as f64,
+            "3-day job must record MAX(recap_outputs.created_at) of this job"
+        );
+
         let job_id_2 = Uuid::new_v4();
-        let dispatch_state_2 = crate::pipeline::dispatch::DispatchResult {
-            job_id: job_id_2,
-            genre_results: std::collections::HashMap::new(),
-            success_count: 1,
-            failure_count: 0,
-            all_genres: vec!["ai".to_string()],
-        }
-        .to_lightweight();
-        dao.save_stage_state(
-            job_id_2,
-            "dispatch",
-            &serde_json::to_value(&dispatch_state_2).expect("serialize dispatch state"),
-        )
-        .await
-        .expect("save dispatch state");
+        save_stub_dispatch_state(&dao, job_id_2).await;
         dao.set_update_job_status_with_history_error("simulated status write failure");
         let ctx_2 = JobContext::new_with_window(job_id_2, vec!["ai".to_string()], 3)
             .with_stage("dispatch".to_string());

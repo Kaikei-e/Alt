@@ -1088,9 +1088,8 @@ mod new_tests {
             .with_persist_stage(Arc::new(UnreachablePersist))
             .build(recap_dao, subworker, classification_queue, None);
 
-        let err = match build_res {
-            Ok(_) => panic!("PipelineBuilder::build must fail when with_metrics is not configured"),
-            Err(e) => e,
+        let Err(err) = build_res else {
+            panic!("PipelineBuilder::build must fail when with_metrics is not configured");
         };
         assert!(
             format!("{err:#}").contains("metrics must be configured"),

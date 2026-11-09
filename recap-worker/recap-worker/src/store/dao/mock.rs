@@ -65,6 +65,10 @@ type SentenceIdsByArticle = std::collections::HashMap<String, Vec<i64>>;
 type SentenceIdsByRun = std::collections::HashMap<i64, SentenceIdsByArticle>;
 
 #[cfg(test)]
+type JobCompletedAtMap =
+    std::collections::HashMap<Uuid, Result<Option<chrono::DateTime<chrono::Utc>>>>;
+
+#[cfg(test)]
 /// テスト用のモックRecapDao（DB接続なしで動作）
 #[allow(dead_code)]
 #[derive(Clone, Default)]
@@ -95,6 +99,7 @@ pub(crate) struct MockRecapDao {
     latest_worker_config: Arc<Mutex<std::collections::HashMap<String, serde_json::Value>>>,
     update_job_status_with_history_error: Arc<Mutex<Option<String>>>,
     stage_states: Arc<Mutex<std::collections::HashMap<(Uuid, String), serde_json::Value>>>,
+    job_completed_at: Arc<Mutex<JobCompletedAtMap>>,
 }
 
 #[cfg(test)]
@@ -225,6 +230,17 @@ impl MockRecapDao {
             .update_job_status_with_history_error
             .lock()
             .expect("update_job_status_with_history_error mutex poisoned") = Some(err.to_string());
+    }
+
+    pub(crate) fn set_job_completed_at(
+        &self,
+        job_id: Uuid,
+        result: Result<Option<chrono::DateTime<chrono::Utc>>>,
+    ) {
+        self.job_completed_at
+            .lock()
+            .expect("job_completed_at mutex poisoned")
+            .insert(job_id, result);
     }
 }
 
@@ -640,9 +656,13 @@ impl RecapDao for MockRecapDao {
 
     async fn get_job_completed_at(
         &self,
-        _job_id: Uuid,
+        job_id: Uuid,
     ) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
-        Ok(None)
+        self.job_completed_at
+            .lock()
+            .expect("job_completed_at mutex poisoned")
+            .remove(&job_id)
+            .unwrap_or(Ok(None))
     }
 
     async fn get_genres_by_job(&self, _job_id: Uuid) -> Result<Vec<GenreWithSummary>> {

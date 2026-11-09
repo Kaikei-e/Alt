@@ -4484,7 +4484,7 @@ mod tests {
         let pipeline = CardsPipeline::full(
             feed_source,
             ml_port,
-            dao,
+            Arc::clone(&dao) as Arc<dyn CardsPipelineDao>,
             generator,
             verifier,
             Arc::new(FakeGenreTagger::new()),
@@ -4505,6 +4505,26 @@ mod tests {
             gauge,
             seeded_ts.timestamp() as f64,
             "run_cards must not substitute Utc::now() when completed job updated_at is absent"
+        );
+
+        let job_id_2 = Uuid::new_v4();
+        let completed_updated_at = DateTime::parse_from_rfc3339("2026-01-26T03:30:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        dao.job_updated_at
+            .lock()
+            .unwrap()
+            .insert(job_id_2, completed_updated_at);
+        CardsJobRunner::run_cards(&pipeline, job_id_2, from, to)
+            .await
+            .expect("run_cards with updated_at succeeds");
+        assert_eq!(
+            metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&[SurfaceHealthTarget::TopicCards.as_str()])
+                .get(),
+            completed_updated_at.timestamp() as f64,
+            "run_cards must record the completed job's updated_at timestamp"
         );
     }
 }

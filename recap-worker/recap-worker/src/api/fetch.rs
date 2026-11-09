@@ -1523,88 +1523,56 @@ mod tests {
         assert_eq!(body["body"]["lead"], json!("Regenerated on-demand lead"));
     }
 
-    #[tokio::test]
     #[allow(clippy::await_holding_lock)]
-    async fn get_latest_morning_letter_uses_state_pool_when_dao_pool_is_none() {
+    async fn build_test_registry_with_dsn(dsn: &str) -> crate::app::ComponentRegistry {
         use crate::{
             app::ComponentRegistry,
             config::{Config, ENV_MUTEX},
         };
-        use chrono::{DateTime, Duration, Utc};
-        use serde_json::json;
-        use uuid::Uuid;
 
-        let build_registry_with_dsn = |dsn: String| async move {
-            let env_lock = ENV_MUTEX
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let registry = temp_env::async_with_vars(
-                [
-                    ("RECAP_DB_DSN", Some(dsn.as_str())),
-                    ("RECAP_DB_MAX_CONNECTIONS", Some("1")),
-                    ("RECAP_DB_MIN_CONNECTIONS", Some("0")),
-                    ("CLASSIFICATION_QUEUE_CONCURRENCY", Some("0")),
-                    ("NEWS_CREATOR_BASE_URL", Some("http://127.0.0.1:18001/")),
-                    ("SUBWORKER_BASE_URL", Some("http://127.0.0.1:18002/")),
-                    ("ALT_BACKEND_BASE_URL", Some("http://127.0.0.1:19000/")),
-                    ("RECAP_KNOWLEDGE_EMIT", Some("false")),
-                    ("RECAP_ADMIN_AUTH", Some("disabled")),
-                    ("RECAP_EVAL_LISTENER", Some("disabled")),
-                    ("RECAP_CARDS_JOB", Some("disabled")),
-                    ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
-                    ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                    ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
-                    ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
-                    ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
-                    ("RECAP_GENRES", Some("ai")),
-                    (
-                        "HUGGING_FACE_TOKEN_PATH",
-                        Some("/tmp/test-token-which-does-not-exist"),
-                    ),
-                    ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
-                    ("MTLS_ENFORCE", None),
-                ],
-                async {
-                    let config = Config::from_env().expect("config loads");
-                    ComponentRegistry::build(config)
-                        .await
-                        .expect("registry builds")
-                },
-            )
-            .await;
-            drop(env_lock);
-            registry
-        };
+        let env_lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                ("RECAP_DB_DSN", Some(dsn)),
+                ("RECAP_DB_MAX_CONNECTIONS", Some("1")),
+                ("RECAP_DB_MIN_CONNECTIONS", Some("0")),
+                ("RECAP_DB_ACQUIRE_TIMEOUT_SECS", Some("1")),
+                ("CLASSIFICATION_QUEUE_CONCURRENCY", Some("0")),
+                ("NEWS_CREATOR_BASE_URL", Some("http://127.0.0.1:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://127.0.0.1:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://127.0.0.1:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                ("RECAP_GENRES", Some("ai")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+                ("MTLS_ENFORCE", None),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+        drop(env_lock);
+        registry
+    }
 
-        let unreachable_state = AppState::new(
-            build_registry_with_dsn("postgres://recap:recap@127.0.0.1:1/recap".to_string()).await,
-        );
-        assert!(
-            unreachable_state.dao().pool().is_none(),
-            "production RecapDaoImpl must return None from compat::RecapDao::pool()"
-        );
-        let run_res = MorningLetterReadDao::get_latest_morning_run(&unreachable_state).await;
-        assert!(
-            run_res.is_err(),
-            "get_latest_morning_run must query state.pool() instead of returning Ok(None) when dao.pool() is None, got: {run_res:?}"
-        );
-        let win_res =
-            MorningLetterReadDao::get_recap_job_window(&unreachable_state, Uuid::new_v4()).await;
-        assert!(
-            win_res.is_err(),
-            "get_recap_job_window must query state.pool() instead of returning Ok(None) when dao.pool() is None, got: {win_res:?}"
-        );
-
-        let Ok(database_url) = std::env::var("DATABASE_URL") else {
-            return;
-        };
-
-        let state = AppState::new(build_registry_with_dsn(database_url).await);
-        assert!(
-            state.dao().pool().is_none(),
-            "production RecapDaoImpl must return None from compat::RecapDao::pool()"
-        );
-        let pool = state.pool();
+    async fn create_morning_letter_temp_tables(pool: &sqlx::PgPool) {
         for ddl in [
             r"
             CREATE TEMP TABLE recap_jobs (
@@ -1616,6 +1584,13 @@ mod tests {
                 trigger_source TEXT NOT NULL DEFAULT 'system',
                 note TEXT,
                 updated_at TIMESTAMPTZ NOT NULL
+            )
+            ",
+            r"
+            CREATE TEMP TABLE recap_outputs (
+                job_id UUID NOT NULL,
+                genre TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
             )
             ",
             r"
@@ -1639,6 +1614,44 @@ mod tests {
                 .await
                 .expect("create temp table");
         }
+    }
+
+    #[tokio::test]
+    async fn get_latest_morning_letter_uses_state_pool_when_dao_pool_is_none() {
+        use chrono::{DateTime, Duration, Utc};
+        use serde_json::json;
+        use uuid::Uuid;
+
+        let unreachable_state = AppState::new(
+            build_test_registry_with_dsn("postgres://recap:recap@127.0.0.1:1/recap").await,
+        );
+        assert!(
+            unreachable_state.dao().pool().is_none(),
+            "production RecapDaoImpl must return None from compat::RecapDao::pool()"
+        );
+        let run_res = MorningLetterReadDao::get_latest_morning_run(&unreachable_state).await;
+        assert!(
+            run_res.is_err(),
+            "get_latest_morning_run must query state.pool() instead of returning Ok(None) when dao.pool() is None, got: {run_res:?}"
+        );
+        let win_res =
+            MorningLetterReadDao::get_recap_job_window(&unreachable_state, Uuid::new_v4()).await;
+        assert!(
+            win_res.is_err(),
+            "get_recap_job_window must query state.pool() instead of returning Ok(None) when dao.pool() is None, got: {win_res:?}"
+        );
+
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return;
+        };
+
+        let state = AppState::new(build_test_registry_with_dsn(&database_url).await);
+        assert!(
+            state.dao().pool().is_none(),
+            "production RecapDaoImpl must return None from compat::RecapDao::pool()"
+        );
+        let pool = state.pool();
+        create_morning_letter_temp_tables(pool).await;
 
         let now = Utc::now();
         let recap_job_id = Uuid::new_v4();
@@ -1701,7 +1714,7 @@ mod tests {
         );
         assert_eq!(
             body["surface_status"]["window_end"],
-            json!("2026-01-26T00:00:00+00:00"),
+            json!("2026-01-26T00:00:00Z"),
             "recap job window must come from state.pool() even when dao.pool() is None"
         );
     }
