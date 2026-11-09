@@ -1,0 +1,34 @@
+# Always-reporting PR merge gate. Note: after re-running a failed workflow/job, re-run ci-gate too.
+name: ci-gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            .github/workflows/scripts/ci-gate.py
+          sparse-checkout-cone-mode: false
+
+      - name: Wait for commit workflow runs to settle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 .github/workflows/scripts/ci-gate.py --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$RUN_ID"

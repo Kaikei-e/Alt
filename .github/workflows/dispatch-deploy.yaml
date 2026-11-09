@@ -1,5 +1,6 @@
-# Cross-repo dispatch: when main advances, notify the private alt-deploy repo
-# to kick off build / gate / E2E / deploy against the new HEAD. This is the
+# Cross-repo dispatch: when main advances on non-docs changes, notify the
+# private alt-deploy repo to kick off build / gate / E2E / deploy against the
+# new HEAD (docs-only pushes are skipped via paths-ignore). This is the
 # only public-repo workflow that talks to the deploy side, and it does so
 # only on `push: branches: [main]` — fork PRs cannot reach this job.
 #
@@ -28,6 +29,13 @@ name: dispatch-deploy
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '.claude/**'
+      - '.agents/**'
+      - '**/CLAUDE.md'
+      - '**/AGENTS.md'
+      - '**/README.md'
 
 permissions:
   contents: read
@@ -65,7 +73,7 @@ jobs:
           RUNBOOK: docs/runbooks/runner-setup.md step 4
         run: |
           set -euo pipefail
-          headers="$(curl -sS -D - -o /dev/null \
+          headers="$(curl -sS --retry 3 --retry-delay 2 --max-time 10 -D - -o /dev/null \
             -H "Authorization: Bearer $PAT" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
