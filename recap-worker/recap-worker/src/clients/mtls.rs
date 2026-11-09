@@ -224,11 +224,11 @@ impl ResolvesServerCert for ReloadingCertResolver {
 /// The identity is resolved via a `ReloadingCertResolver`, so cert rotations
 /// on disk (pki-agent atomic replace) are picked up on the next handshake
 /// without restarting the process.
-pub(crate) fn build_mtls_client(
+pub(crate) fn build_mtls_client_builder(
     paths: &MtlsPaths,
     connect_timeout: Duration,
     total_timeout: Duration,
-) -> Result<Client> {
+) -> Result<reqwest::ClientBuilder> {
     // Installing the default crypto provider is idempotent; callers that
     // already installed one (e.g. `main`) will see this as a no-op.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
@@ -247,11 +247,19 @@ pub(crate) fn build_mtls_client(
         .with_root_certificates(roots)
         .with_client_cert_resolver(resolver);
 
-    Client::builder()
+    Ok(Client::builder()
         .use_preconfigured_tls(tls_config)
         .https_only(true)
         .connect_timeout(connect_timeout)
-        .timeout(total_timeout)
+        .timeout(total_timeout))
+}
+
+pub(crate) fn build_mtls_client(
+    paths: &MtlsPaths,
+    connect_timeout: Duration,
+    total_timeout: Duration,
+) -> Result<Client> {
+    build_mtls_client_builder(paths, connect_timeout, total_timeout)?
         .build()
         .context("failed to build mTLS reqwest Client")
 }

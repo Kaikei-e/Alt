@@ -34,12 +34,9 @@ impl SubworkerClient {
                 .await
                 .unwrap_or_else(|_| "unknown error".to_string());
             if SubworkerAuthError::is_auth_status(status) {
-                return Err(SubworkerAuthError {
-                    endpoint: "admin/build-graph",
-                    status: status.as_u16(),
-                    body: error_text,
-                }
-                .into());
+                return Err(
+                    SubworkerAuthError::new("admin/build-graph", status, &error_text).into(),
+                );
             }
             return Err(anyhow!(
                 "subworker build-graph endpoint returned error status {}: {}",
@@ -84,12 +81,7 @@ impl SubworkerClient {
                 .await
                 .unwrap_or_else(|_| "unknown error".to_string());
             if SubworkerAuthError::is_auth_status(status) {
-                return Err(SubworkerAuthError {
-                    endpoint: "admin/learning",
-                    status: status.as_u16(),
-                    body: error_text,
-                }
-                .into());
+                return Err(SubworkerAuthError::new("admin/learning", status, &error_text).into());
             }
             return Err(anyhow!(
                 "subworker learning endpoint returned error status {}: {}",
@@ -148,12 +140,7 @@ impl SubworkerClient {
                 .await
                 .unwrap_or_else(|_| "unknown error".to_string());
             if SubworkerAuthError::is_auth_status(status) {
-                return Err(SubworkerAuthError {
-                    endpoint: "admin/jobs",
-                    status: status.as_u16(),
-                    body: truncate_error_message(&error_text),
-                }
-                .into());
+                return Err(SubworkerAuthError::new("admin/jobs", status, &error_text).into());
             }
             return Err(anyhow!(
                 "admin job endpoint {} returned error status {}: {}",
@@ -183,7 +170,11 @@ impl SubworkerClient {
             .join(&format!("{}/{}", endpoint, job_id))
             .with_context(|| format!("failed to build admin job status URL for {}", job_id))?;
 
-        tracing::info!(job_id = %job_id, endpoint = %url, "starting admin job polling");
+        tracing::info!(
+            job_id = %job_id,
+            endpoint = %url,
+            "starting admin job polling"
+        );
 
         let mut poll_count = 0u32;
         loop {
@@ -203,28 +194,31 @@ impl SubworkerClient {
                 .send()
                 .await
                 .with_context(|| {
-                    format!("admin job polling request failed for job_id {job_id} at {endpoint}")
+                    format!(
+                        "admin job polling request failed for job_id {} at {}",
+                        job_id, endpoint
+                    )
                 })?;
 
             let status = response.status();
             if !status.is_success() {
                 let body = response.text().await.unwrap_or_default();
-                let truncated = truncate_error_message(&body);
                 if SubworkerAuthError::is_auth_status(status) {
-                    return Err(SubworkerAuthError {
-                        endpoint: "admin/jobs poll",
-                        status: status.as_u16(),
-                        body: truncated,
-                    }
-                    .into());
+                    return Err(SubworkerAuthError::new("admin/jobs poll", status, &body).into());
                 }
                 return Err(anyhow!(
-                    "admin job polling endpoint returned error status {status} for job_id {job_id}: {truncated}"
+                    "admin job polling endpoint returned error status {} for job_id {}: {}",
+                    status,
+                    job_id,
+                    truncate_error_message(&body)
                 ));
             }
 
             let body: AdminJobStatusResponse = response.json().await.with_context(|| {
-                format!("failed to deserialize admin job status for job_id {job_id}")
+                format!(
+                    "failed to deserialize admin job status for job_id {}",
+                    job_id
+                )
             })?;
 
             poll_count += 1;

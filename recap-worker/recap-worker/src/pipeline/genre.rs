@@ -868,7 +868,7 @@ mod tests {
 
     #[tokio::test]
     async fn assigns_genres_based_on_keywords() {
-        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let stage = CoarseGenreStage::with_defaults(subworker);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
@@ -933,7 +933,7 @@ mod tests {
 
     #[tokio::test]
     async fn assigns_at_least_one_genre() {
-        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let stage = CoarseGenreStage::with_defaults(subworker);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
@@ -961,7 +961,7 @@ mod tests {
 
     #[tokio::test]
     async fn respects_max_genres_limit() {
-        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let stage = CoarseGenreStage::new(1, 2, None, subworker, 0.0);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
@@ -996,7 +996,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10, None).unwrap());
         let stage = CoarseGenreStage::with_defaults(subworker);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {
@@ -1034,7 +1034,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10, None).unwrap());
         let stage = CoarseGenreStage::with_defaults(subworker);
         let job = JobContext::new(Uuid::new_v4(), vec![]);
         let corpus = DeduplicatedCorpus {

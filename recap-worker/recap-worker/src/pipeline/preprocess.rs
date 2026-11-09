@@ -485,7 +485,7 @@ mod tests {
     async fn preprocess_article_trims_and_detects_language_case_1() {
         let body = "  正規化テキストの処理を実行します。これは日本語のテストです。  ";
         let language = Some("ja");
-        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let fetched = article("art-1", body, Some("Title"), language);
         let result = preprocess_article(fetched, subworker)
             .await
@@ -504,7 +504,7 @@ mod tests {
     async fn preprocess_article_trims_and_detects_language_case_2() {
         let body = "This is a longer text with spaces that meets the minimum length requirement for English content.";
         let language = None;
-        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let fetched = article("art-2", body, Some("Title"), language);
         let result = preprocess_article(fetched, subworker)
             .await
@@ -517,7 +517,7 @@ mod tests {
 
     #[tokio::test]
     async fn preprocess_article_drops_empty() {
-        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let result = preprocess_article(article("art-1", "   ", None, None), subworker)
             .await
             .expect("preprocessing should succeed");
@@ -526,7 +526,7 @@ mod tests {
 
     #[tokio::test]
     async fn preprocess_article_tokenizes_japanese() {
-        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let fetched = article(
             "art-ja",
             "東京大学で量子コンピューターの研究が進んでいます。",
@@ -641,7 +641,7 @@ mod tests {
         use crate::store::dao::mock::MockRecapDao;
 
         let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
-        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let stage = TextPreprocessStage::new(4, dao, subworker);
 
         let job_id = Uuid::new_v4();
@@ -684,7 +684,7 @@ mod tests {
         // Unreachable subworker forces the local ammonia/html2text fallback
         // path in `preprocess_article`, exercising the same branch other
         // preprocess_article_* tests rely on.
-        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let stage = TextPreprocessStage::new(4, dao, subworker);
 
         let job_id = Uuid::new_v4();
@@ -742,7 +742,7 @@ mod tests {
             .await;
 
         let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
-        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10, None).unwrap());
         let stage = TextPreprocessStage::new(4, dao, subworker);
 
         let job_id = Uuid::new_v4();
@@ -785,7 +785,7 @@ mod tests {
             .await;
 
         let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
-        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10, None).unwrap());
         let stage = TextPreprocessStage::new(4, dao, subworker);
 
         let job_id = Uuid::new_v4();

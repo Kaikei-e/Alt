@@ -343,11 +343,19 @@ impl Scheduler {
                         if self.config.classification_eval_enabled() {
                             if let Err(e) = self.run_classification_evaluation(context.job_id).await
                             {
-                                warn!(
-                                    job_id = %context.job_id,
-                                    error = %e,
-                                    "failed to run classification evaluation (job still marked as completed)"
-                                );
+                                if crate::clients::subworker::is_subworker_auth_error(&e) {
+                                    tracing::error!(
+                                        job_id = %context.job_id,
+                                        error = %format!("{e:#}"),
+                                        "failed to run classification evaluation due to subworker authentication error"
+                                    );
+                                } else {
+                                    warn!(
+                                        job_id = %context.job_id,
+                                        error = %format!("{e:#}"),
+                                        "failed to run classification evaluation (job still marked as completed)"
+                                    );
+                                }
                             }
                         }
 

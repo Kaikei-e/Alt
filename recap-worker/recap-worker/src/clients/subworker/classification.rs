@@ -50,11 +50,6 @@ impl SubworkerClient {
         texts: Vec<String>,
         chunk_idx: usize,
     ) -> Result<Vec<ClassificationResult>> {
-        let request = ClassificationRequest {
-            texts: texts.clone(),
-        };
-        let url = self.build_classify_url()?;
-
         info!(
             job_id = %job_id,
             chunk_idx,
@@ -62,34 +57,9 @@ impl SubworkerClient {
             "processing classification chunk"
         );
 
-        // Generate unique idempotency key for this chunk
-        let idempotency_key = format!("{}-chunk-{}", job_id, chunk_idx);
-
-        let response = self
-            .send_classify_request(job_id, &request, &url, Some(&idempotency_key))
-            .await
-            .with_context(|| {
-                format!(
-                    "classify-runs POST request failed for job {} chunk {}",
-                    job_id, chunk_idx
-                )
-            })?;
         let body = self
-            .parse_classify_response(job_id, response)
-            .await
-            .map_err(|err| {
-                if is_subworker_auth_error(&err) {
-                    err.context(format!(
-                        "classify-runs request rejected for job {} chunk {}",
-                        job_id, chunk_idx
-                    ))
-                } else {
-                    err.context(format!(
-                        "failed to parse classify-runs response for job {} chunk {}",
-                        job_id, chunk_idx
-                    ))
-                }
-            })?;
+            .submit_classification_run(job_id, texts, chunk_idx)
+            .await?;
 
         let results = self
             .process_classify_body(job_id, body)
@@ -109,6 +79,42 @@ impl SubworkerClient {
         );
 
         Ok(results)
+    }
+
+    pub(crate) async fn submit_classification_run(
+        &self,
+        job_id: Uuid,
+        texts: Vec<String>,
+        chunk_idx: usize,
+    ) -> Result<ClassificationJobResponse> {
+        let request = ClassificationRequest { texts };
+        let url = self.build_classify_url()?;
+        let idempotency_key = format!("{}-chunk-{}", job_id, chunk_idx);
+
+        let response = self
+            .send_classify_request(job_id, &request, &url, Some(&idempotency_key))
+            .await
+            .with_context(|| {
+                format!(
+                    "classify-runs POST request failed for job {} chunk {}",
+                    job_id, chunk_idx
+                )
+            })?;
+        self.parse_classify_response(job_id, response)
+            .await
+            .map_err(|err| {
+                if is_subworker_auth_error(&err) {
+                    err.context(format!(
+                        "classify-runs request rejected for job {} chunk {}",
+                        job_id, chunk_idx
+                    ))
+                } else {
+                    err.context(format!(
+                        "failed to parse classify-runs response for job {} chunk {}",
+                        job_id, chunk_idx
+                    ))
+                }
+            })
     }
 
     /// Coarse classification (single text).
@@ -173,12 +179,7 @@ impl SubworkerClient {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
                 if SubworkerAuthError::is_auth_status(status) {
-                    return Err(SubworkerAuthError {
-                        endpoint: "classify_coarse",
-                        status: status.as_u16(),
-                        body,
-                    }
-                    .into());
+                    return Err(SubworkerAuthError::new("classify_coarse", status, &body).into());
                 }
                 let retryable =
                     status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
@@ -298,12 +299,7 @@ impl SubworkerClient {
                 "classify-runs endpoint returned error status"
             );
             if SubworkerAuthError::is_auth_status(status) {
-                return Err(SubworkerAuthError {
-                    endpoint: "classify-runs",
-                    status: status.as_u16(),
-                    body: truncated_body,
-                }
-                .into());
+                return Err(SubworkerAuthError::new("classify-runs", status, &body).into());
             }
             return Err(anyhow!(
                 "classify-runs endpoint returned error status {}: {}",
@@ -369,7 +365,10 @@ impl SubworkerClient {
         }
     }
 
-    async fn poll_classification_run(&self, run_id: i64) -> Result<Vec<ClassificationResult>> {
+    pub(crate) async fn poll_classification_run(
+        &self,
+        run_id: i64,
+    ) -> Result<Vec<ClassificationResult>> {
         let run_url = self
             .base_url
             .join(&format!("v1/classify-runs/{}", run_id))
@@ -389,12 +388,7 @@ impl SubworkerClient {
                 let body = response.text().await.unwrap_or_default();
                 let truncated_body = truncate_error_message(&body);
                 if SubworkerAuthError::is_auth_status(status) {
-                    return Err(SubworkerAuthError {
-                        endpoint: "classify-runs poll",
-                        status: status.as_u16(),
-                        body: truncated_body,
-                    }
-                    .into());
+                    return Err(SubworkerAuthError::new("classify-runs poll", status, &body).into());
                 }
                 return Err(anyhow!(
                     "classification run polling endpoint returned error status {} for run_id {}: {}",
@@ -584,7 +578,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerClient::new(server.uri(), 10)
+        let client = SubworkerClient::new(server.uri(), 10, None)
             .expect("client should build")
             .with_coarse_classify_timeout(Duration::from_millis(100));
 
@@ -614,7 +608,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
 
         let result = client.classify_coarse("some article text").await;
 
@@ -628,16 +622,15 @@ mod tests {
     #[tokio::test]
     async fn classify_coarse_does_not_retry_on_401() {
         let server = MockServer::start().await;
+        let long_body = "x".repeat(600);
         Mock::given(method("POST"))
             .and(path("/v1/classify/coarse"))
-            .respond_with(
-                ResponseTemplate::new(401).set_body_string(r#"{"detail":"Unauthorized"}"#),
-            )
+            .respond_with(ResponseTemplate::new(401).set_body_string(long_body))
             .expect(1)
             .mount(&server)
             .await;
 
-        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
 
         let err = client
             .classify_coarse("some article text")
@@ -645,6 +638,9 @@ mod tests {
             .expect_err("401 must fail immediately");
 
         assert!(is_subworker_auth_error(&err));
+        let chain = format!("{err:#}");
+        assert!(chain.contains("401 Unauthorized"));
+        assert!(chain.contains("truncated, 600 chars"));
         server.verify().await;
     }
 
@@ -660,7 +656,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
 
         let err = client
             .classify_chunk(Uuid::new_v4(), vec!["article text".to_string()], 0)
@@ -669,7 +665,7 @@ mod tests {
 
         assert!(is_subworker_auth_error(&err));
         let chain = format!("{err:#}");
-        assert!(chain.contains("401"));
+        assert!(chain.contains("401 Unauthorized"));
         assert!(!chain.contains("failed to parse classify-runs response"));
         server.verify().await;
     }

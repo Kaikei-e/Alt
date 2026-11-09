@@ -85,6 +85,11 @@ impl ClassificationJobQueue {
         job_id: Uuid,
         texts: Vec<String>,
     ) -> Result<Vec<QueuedJobId>> {
+        self.auth_failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&job_id);
+
         let total_texts = texts.len();
 
         // If texts count is small, process in a single chunk
@@ -146,18 +151,6 @@ impl ClassificationJobQueue {
         let poll_interval = Duration::from_millis(500);
 
         loop {
-            if let Some((chunk_idx, auth_err)) = self
-                .auth_failures
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .remove(&recap_job_id)
-            {
-                return Err(anyhow::Error::from(auth_err).context(format!(
-                    "classify-runs request rejected for job {} chunk {}",
-                    recap_job_id, chunk_idx
-                )));
-            }
-
             // Check if all jobs are completed
             let all_completed = self
                 .store
@@ -402,7 +395,7 @@ mod tests {
 
         // concurrency=0: no background workers, so nothing else mutates
         // these rows while we assert on wait_for_completion.
-        let client = SubworkerClient::new("http://localhost:8002", 10)?;
+        let client = SubworkerClient::new("http://localhost:8002", 10, None)?;
         let queue = ClassificationJobQueue::new(store, client, 0, 200, 3, 5000);
 
         let err = queue
@@ -456,8 +449,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/classify-runs"))
             .respond_with(
-                ResponseTemplate::new(401)
-                    .set_body_string(r#"{"detail":"unauthenticated peer"}"#),
+                ResponseTemplate::new(401).set_body_string(r#"{"detail":"unauthenticated peer"}"#),
             )
             .expect(1)
             .mount(&server)
@@ -465,7 +457,7 @@ mod tests {
 
         let recap_job_id = Uuid::new_v4();
         let store = QueueStore::new(pool.clone());
-        let client = SubworkerClient::new(server.uri(), 10)?;
+        let client = SubworkerClient::new(server.uri(), 10, None)?;
         let queue = ClassificationJobQueue::new(store.clone(), client.clone(), 1, 1, 3, 5000);
 
         let err = client

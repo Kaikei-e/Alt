@@ -832,6 +832,7 @@ mod tests {
                 SubworkerClient::new(
                     config.subworker_base_url(),
                     config.min_documents_per_genre(),
+                    None,
                 )
                 .expect("subworker client builds without network I/O"),
             );

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::clients::alt_backend::{AltBackendClient, AltBackendConfig};
-use crate::clients::mtls::{MtlsPaths, build_mtls_client};
+use crate::clients::mtls::{MtlsPaths, build_mtls_client, build_mtls_client_builder};
 use crate::clients::news_creator::NewsCreatorClient;
 use crate::clients::subworker::SubworkerClient;
 use crate::clients::subworker::cards::SubworkerCardsClient;
@@ -60,20 +60,24 @@ fn build_subworker_cards_client(
     config: &Config,
     mtls_paths: Option<&MtlsPaths>,
 ) -> Result<Arc<SubworkerCardsClient>> {
+    let admin_token = config.admin_auth_token().map(str::to_string);
     let client = Arc::new(
         if let Some(paths) = mtls_paths {
-            let mtls_client = build_mtls_client(
+            let mtls_builder = build_mtls_client_builder(
                 paths,
                 std::time::Duration::from_secs(5),
                 std::time::Duration::from_mins(2),
             )
             .context("failed to build subworker mTLS client")?;
-            SubworkerCardsClient::new_with_client(config.subworker_base_url(), mtls_client)
+            SubworkerCardsClient::new_with_client(
+                config.subworker_base_url(),
+                mtls_builder,
+                admin_token,
+            )
         } else {
-            SubworkerCardsClient::new(config.subworker_base_url())
+            SubworkerCardsClient::new(config.subworker_base_url(), admin_token)
         }
-        .context("failed to create subworker cards client")?
-        .with_admin_token(config.admin_auth_token().map(str::to_string)),
+        .context("failed to create subworker cards client")?,
     );
     Ok(client)
 }
@@ -109,9 +113,10 @@ fn build_subworker_genre_tagger(
     config: &Config,
     mtls_paths: Option<&MtlsPaths>,
 ) -> Result<Arc<SubworkerGenreTagger>> {
+    let admin_token = config.admin_auth_token().map(str::to_string);
     let subworker_client = Arc::new(
         if let Some(paths) = mtls_paths {
-            let client = build_mtls_client(
+            let mtls_builder = build_mtls_client_builder(
                 paths,
                 std::time::Duration::from_secs(5),
                 std::time::Duration::from_mins(2),
@@ -120,16 +125,17 @@ fn build_subworker_genre_tagger(
             SubworkerClient::new_with_client(
                 config.subworker_base_url(),
                 config.min_documents_per_genre(),
-                client,
+                mtls_builder,
+                admin_token,
             )
         } else {
             SubworkerClient::new(
                 config.subworker_base_url(),
                 config.min_documents_per_genre(),
+                admin_token,
             )
         }
-        .context("failed to create subworker general client")?
-        .with_admin_token(config.admin_auth_token().map(str::to_string)),
+        .context("failed to create subworker general client")?,
     );
     Ok(Arc::new(SubworkerGenreTagger::new(subworker_client)))
 }

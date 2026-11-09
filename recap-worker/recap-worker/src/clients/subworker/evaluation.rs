@@ -104,12 +104,9 @@ impl SubworkerClient {
                 "evaluation API returned error status"
             );
             if SubworkerAuthError::is_auth_status(status) {
-                return Err(SubworkerAuthError {
-                    endpoint: "evaluation/genres",
-                    status: status.as_u16(),
-                    body: error_text,
-                }
-                .into());
+                return Err(
+                    SubworkerAuthError::new("evaluation/genres", status, &error_text).into(),
+                );
             }
             return Err(anyhow::anyhow!(
                 "evaluation API returned status {}: {}",

@@ -222,10 +222,10 @@ pub fn preprocess_documents(bodies: &[String]) -> (usize, Vec<ProcessedDocument>
         // Create a dummy subworker client for analysis/testing
         // Using a dummy URL since this is for analysis only
         let subworker = std::sync::Arc::new(
-            crate::clients::SubworkerClient::new("http://localhost:18002", 3).unwrap_or_else(
+            crate::clients::SubworkerClient::new("http://127.0.0.1:9", 3, None).unwrap_or_else(
                 |_| {
                     // Fallback: create with minimal config if URL parsing fails
-                    crate::clients::SubworkerClient::new("http://127.0.0.1:18002", 3)
+                    crate::clients::SubworkerClient::new("http://127.0.0.1:9", 3, None)
                         .expect("failed to create subworker client")
                 },
             ),

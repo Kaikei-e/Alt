@@ -13,12 +13,6 @@ use super::subworker::cards::SubworkerCardsClient;
 use super::subworker::evaluation::EvaluateRequest;
 
 #[derive(Debug, Deserialize)]
-struct ClassificationJobResponse {
-    run_id: i64,
-    status: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct ClusterRunResponse {
     run_id: i64,
     status: String,
@@ -37,8 +31,10 @@ async fn contract_subworker_classify_submit() {
             i.request.method("POST");
             i.request.path("/v1/classify-runs");
             i.request.content_type("application/json");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.request.json_body(json_pattern!({
                 "texts": each_like!(like!("Article text to classify")),
             }));
@@ -55,22 +51,19 @@ async fn contract_subworker_classify_submit() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
-        .expect("client creation should succeed")
-        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
-    let url = pact.path("/v1/classify-runs");
-    let body = json!({"texts": ["Article text to classify"]});
+    let client = SubworkerClient::new(
+        pact.path("/").as_str(),
+        10,
+        Some(TEST_ADMIN_TOKEN.to_string()),
+    )
+    .expect("client creation should succeed");
+    let job_id = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
 
-    let resp = client
-        .client
-        .post(url)
-        .json(&body)
-        .send()
+    let parsed = client
+        .submit_classification_run(job_id, vec!["Article text to classify".to_string()], 0)
         .await
         .expect("request should succeed");
 
-    assert_eq!(resp.status(), 200);
-    let parsed: ClassificationJobResponse = resp.json().await.expect("should parse response");
     assert_eq!(parsed.status, "running");
     assert!(parsed.run_id > 0);
 }
@@ -84,8 +77,10 @@ async fn contract_subworker_classify_poll_succeeded() {
             i.given("classification job 42 has succeeded");
             i.request.method("GET");
             i.request.path("/v1/classify-runs/42");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.response.status(200);
             i.response.content_type("application/json");
             i.response.json_body(json_pattern!({
@@ -107,19 +102,20 @@ async fn contract_subworker_classify_poll_succeeded() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
-        .expect("client creation should succeed")
-        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
-    let url = pact.path("/v1/classify-runs/42");
+    let client = SubworkerClient::new(
+        pact.path("/").as_str(),
+        10,
+        Some(TEST_ADMIN_TOKEN.to_string()),
+    )
+    .expect("client creation should succeed");
 
-    let resp = client
-        .client
-        .get(url)
-        .send()
+    let results = client
+        .poll_classification_run(42)
         .await
         .expect("request should succeed");
 
-    assert_eq!(resp.status(), 200);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].top_genre, "technology");
 }
 
 /// Coarse genre classification: POST /v1/classify/coarse → 200 OK
@@ -132,8 +128,10 @@ async fn contract_subworker_coarse_classify() {
             i.request.method("POST");
             i.request.path("/v1/classify/coarse");
             i.request.content_type("application/json");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.request.json_body(json_pattern!({
                 "text": like!("Breaking news about AI technology"),
             }));
@@ -150,9 +148,12 @@ async fn contract_subworker_coarse_classify() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
-        .expect("client creation should succeed")
-        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
+    let client = SubworkerClient::new(
+        pact.path("/").as_str(),
+        10,
+        Some(TEST_ADMIN_TOKEN.to_string()),
+    )
+    .expect("client creation should succeed");
 
     let scores = client
         .classify_coarse("Breaking news about AI technology")
@@ -172,8 +173,10 @@ async fn contract_subworker_extract() {
             i.request.method("POST");
             i.request.path("/v1/extract");
             i.request.content_type("application/json");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.request.json_body(json_pattern!({
                 "html": like!("<html><body><p>Extracted article body text.</p></body></html>"),
                 "include_comments": like!(false),
@@ -188,9 +191,12 @@ async fn contract_subworker_extract() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
-        .expect("client creation should succeed")
-        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
+    let client = SubworkerClient::new(
+        pact.path("/").as_str(),
+        10,
+        Some(TEST_ADMIN_TOKEN.to_string()),
+    )
+    .expect("client creation should succeed");
 
     let extracted = client
         .extract_content("<html><body><p>Extracted article body text.</p></body></html>")
@@ -210,8 +216,10 @@ async fn contract_subworker_evaluate_genres() {
             i.request.method("POST");
             i.request.path("/v1/evaluation/genres");
             i.request.content_type("application/json");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.request.json_body(json_pattern!({
                 "use_bootstrap": like!(true),
                 "n_bootstrap": like!(1000i64),
@@ -247,9 +255,12 @@ async fn contract_subworker_evaluate_genres() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
-        .expect("client creation should succeed")
-        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
+    let client = SubworkerClient::new(
+        pact.path("/").as_str(),
+        10,
+        Some(TEST_ADMIN_TOKEN.to_string()),
+    )
+    .expect("client creation should succeed");
 
     let request = EvaluateRequest {
         golden_data_path: None,
@@ -291,8 +302,10 @@ async fn contract_subworker_clustering_submit() {
             i.request
                 .header("X-Alt-Job-Id", "00000000-0000-0000-0000-000000000001");
             i.request.header("X-Alt-Genre", "technology");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.request.json_body(json_pattern!({
                 "params": json_pattern!({
                     "max_sentences_total": like!(2000i64),
@@ -390,8 +403,10 @@ async fn contract_subworker_clustering_poll_succeeded() {
             i.given("clustering run 42 has succeeded");
             i.request.method("GET");
             i.request.path("/v1/runs/42");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.response.status(200);
             i.response.content_type("application/json");
             i.response.json_body(json_pattern!({
@@ -450,8 +465,10 @@ async fn contract_subworker_embed() {
             i.request.method("POST");
             i.request.path("/v1/embed");
             i.request.content_type("application/json");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.request.json_body(json_pattern!({
                 "texts": each_like!(like!("Example headline")),
                 "normalize": like!(true),
@@ -468,9 +485,11 @@ async fn contract_subworker_embed() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let client = SubworkerCardsClient::new(pact.path("/").as_str())
-        .expect("client creation should succeed")
-        .with_admin_token(Some("test-recap-subworker-token-42".to_string()));
+    let client = SubworkerCardsClient::new(
+        pact.path("/").as_str(),
+        Some("test-recap-subworker-token-42".to_string()),
+    )
+    .expect("client creation should succeed");
 
     let resp = client
         .embed(&["Example headline".to_string()], true)
@@ -495,8 +514,10 @@ async fn contract_subworker_cluster_stories() {
             i.request.method("POST");
             i.request.path("/v1/cluster-stories");
             i.request.content_type("application/json");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.request.json_body(json_pattern!({
                 "items": each_like!(json_pattern!({
                     "id": like!(id1),
@@ -530,9 +551,11 @@ async fn contract_subworker_cluster_stories() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let client = SubworkerCardsClient::new(pact.path("/").as_str())
-        .expect("client creation should succeed")
-        .with_admin_token(Some("test-recap-subworker-token-42".to_string()));
+    let client = SubworkerCardsClient::new(
+        pact.path("/").as_str(),
+        Some("test-recap-subworker-token-42".to_string()),
+    )
+    .expect("client creation should succeed");
 
     let req = crate::clients::subworker::cards::ClusterStoriesRequest {
         items: vec![
@@ -575,8 +598,10 @@ fn build_cluster_stories_per_lang_interaction(
     i.request.method("POST");
     i.request.path("/v1/cluster-stories");
     i.request.content_type("application/json");
-    i.request
-        .header("Authorization", "Bearer test-recap-subworker-token-42");
+    i.request.header(
+        "Authorization",
+        term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+    );
     i.request.json_body(json_pattern!({
         "items": each_like!(json_pattern!({
             "id": like!(id1),
@@ -631,9 +656,11 @@ async fn contract_subworker_cluster_stories_with_per_language_min_size() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let client = SubworkerCardsClient::new(pact.path("/").as_str())
-        .expect("client creation should succeed")
-        .with_admin_token(Some("test-recap-subworker-token-42".to_string()));
+    let client = SubworkerCardsClient::new(
+        pact.path("/").as_str(),
+        Some("test-recap-subworker-token-42".to_string()),
+    )
+    .expect("client creation should succeed");
 
     let mut min_by_lang = std::collections::HashMap::new();
     min_by_lang.insert("ja".to_string(), 1);
@@ -698,8 +725,10 @@ async fn contract_subworker_verify_card() {
             i.request.method("POST");
             i.request.path("/v1/verify");
             i.request.content_type("application/json");
-            i.request
-                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
             i.request.json_body(json_pattern!({
                 "job_id": like!(job_id),
                 "card_id": like!(card_id),
@@ -751,9 +780,11 @@ async fn contract_subworker_verify_card() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let client = SubworkerCardsClient::new(pact.path("/").as_str())
-        .expect("client creation should succeed")
-        .with_admin_token(Some("test-recap-subworker-token-42".to_string()));
+    let client = SubworkerCardsClient::new(
+        pact.path("/").as_str(),
+        Some("test-recap-subworker-token-42".to_string()),
+    )
+    .expect("client creation should succeed");
 
     let req = crate::clients::subworker::cards::VerifyCardRequest {
         job_id: uuid::Uuid::parse_str(job_id).unwrap(),

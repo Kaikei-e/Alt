@@ -221,19 +221,6 @@ pub struct VerifyCardResponse {
     pub embedding: VerifyEmbeddingInfo,
 }
 
-fn build_cards_http_client(timeout: Duration, token: Option<&str>) -> Result<Client> {
-    let headers = super::build_default_headers(token).map_err(|e| {
-        RecapError::Clustering(format!("failed to build subworker cards auth headers: {e}"))
-    })?;
-    Client::builder()
-        .timeout(timeout)
-        .default_headers(headers)
-        .build()
-        .map_err(|e| {
-            RecapError::Clustering(format!("failed to build subworker cards HTTP client: {e}"))
-        })
-}
-
 #[derive(Debug, Clone)]
 pub struct SubworkerCardsClient {
     client: Client,
@@ -245,17 +232,29 @@ pub struct SubworkerCardsClient {
 }
 
 impl SubworkerCardsClient {
-    pub(crate) fn new(endpoint: impl Into<String>) -> Result<Self> {
-        let client =
-            build_cards_http_client(Duration::from_secs(DEFAULT_CLUSTER_TIMEOUT_SECS), None)?;
-        Self::new_with_client(endpoint, client)
+    pub(crate) fn new(endpoint: impl Into<String>, admin_token: Option<String>) -> Result<Self> {
+        let builder = Client::builder().timeout(Duration::from_secs(DEFAULT_CLUSTER_TIMEOUT_SECS));
+        Self::new_with_client(endpoint, builder, admin_token)
     }
 
-    pub(crate) fn new_with_client(endpoint: impl Into<String>, client: Client) -> Result<Self> {
+    pub(crate) fn new_with_client(
+        endpoint: impl Into<String>,
+        client_builder: reqwest::ClientBuilder,
+        admin_token: Option<String>,
+    ) -> Result<Self> {
         let endpoint_str = endpoint.into();
         let base_url = Url::parse(&endpoint_str).map_err(|e| {
             RecapError::Clustering(format!("invalid subworker base URL '{endpoint_str}': {e}"))
         })?;
+        let headers = super::build_default_headers(admin_token.as_deref()).map_err(|e| {
+            RecapError::Clustering(format!("failed to build subworker cards auth headers: {e}"))
+        })?;
+        let client = client_builder
+            .default_headers(headers)
+            .build()
+            .map_err(|e| {
+                RecapError::Clustering(format!("failed to build subworker cards HTTP client: {e}"))
+            })?;
         Ok(Self::new_with_url(base_url, client))
     }
 
@@ -272,13 +271,6 @@ impl SubworkerCardsClient {
                 DEFAULT_RETRY_BACKOFF_CAP_MS,
             ),
         }
-    }
-
-    #[must_use]
-    pub(crate) fn with_admin_token(mut self, token: Option<String>) -> Self {
-        self.client = build_cards_http_client(self.cluster_timeout, token.as_deref())
-            .expect("failed to build subworker cards HTTP client with default headers");
-        self
     }
 
     #[cfg(test)]
@@ -592,7 +584,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let texts = vec!["Headline 1".to_string(), "Headline 2".to_string()];
         let resp = client
             .embed(&texts, true)
@@ -608,7 +601,8 @@ mod tests {
     #[tokio::test]
     async fn test_embed_empty_input_no_request() {
         let server = MockServer::start().await;
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let err = client
             .embed(&[], true)
             .await
@@ -640,7 +634,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let texts: Vec<String> = (0..300).map(|i| format!("Text {i}")).collect();
         let resp = client
             .embed(&texts, true)
@@ -677,7 +672,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri())
+        let client = SubworkerCardsClient::new(server.uri(), None)
             .expect("client creation succeeds")
             .with_batch_size(1);
         let texts = vec!["Text 1".to_string(), "Text 2".to_string()];
@@ -714,7 +709,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri())
+        let client = SubworkerCardsClient::new(server.uri(), None)
             .expect("client creation succeeds")
             .with_batch_size(1);
         let texts = vec!["Text 1".to_string(), "Text 2".to_string()];
@@ -740,7 +735,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let err = client
             .embed(&["   ".to_string()], true)
             .await
@@ -785,7 +781,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let req = ClusterStoriesRequest {
             items: vec![
                 ClusterStoryItem {
@@ -826,7 +823,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let req = ClusterStoriesRequest {
             items: vec![],
             params: StoryClusterParams::default(),
@@ -951,7 +949,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let req = VerifyCardRequest {
             job_id,
             card_id,
@@ -996,7 +995,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let req = VerifyCardRequest {
             job_id: Uuid::new_v4(),
             card_id: Uuid::new_v4(),
@@ -1100,9 +1100,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri())
-            .expect("client creation succeeds")
-            .with_admin_token(Some(token.to_string()));
+        let client = SubworkerCardsClient::new(server.uri(), Some(token.to_string()))
+            .expect("client creation succeeds");
 
         let embed_resp = client
             .embed(&["Headline 1".to_string()], true)
@@ -1156,14 +1155,14 @@ mod tests {
             reqwest::header::HeaderName::from_static("x-mtls-probe"),
             reqwest::header::HeaderValue::from_static("mtls-identity-present"),
         );
-        let injected = Client::builder()
-            .default_headers(probe_headers)
-            .build()
-            .unwrap();
+        let builder = Client::builder().default_headers(probe_headers);
 
-        let client = SubworkerCardsClient::new_with_client(server.uri(), injected)
-            .unwrap()
-            .with_admin_token(Some("test-injected-cards-token".to_string()));
+        let client = SubworkerCardsClient::new_with_client(
+            server.uri(),
+            builder,
+            Some("test-injected-cards-token".to_string()),
+        )
+        .unwrap();
 
         let resp = client
             .embed(&["Headline 1".to_string()], true)

@@ -26,15 +26,6 @@ pub(crate) fn build_default_headers(token: Option<&str>) -> Result<HeaderMap> {
     Ok(headers)
 }
 
-fn build_http_client(timeout: Duration, token: Option<&str>) -> Result<Client> {
-    let headers = build_default_headers(token)?;
-    Client::builder()
-        .timeout(timeout)
-        .default_headers(headers)
-        .build()
-        .context("failed to build subworker client")
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct SubworkerClient {
     pub(crate) client: Client,
@@ -50,19 +41,31 @@ pub(crate) struct SubworkerClient {
 }
 
 impl SubworkerClient {
-    pub(crate) fn new(endpoint: impl Into<String>, min_documents_per_genre: usize) -> Result<Self> {
-        let client = build_http_client(Duration::from_secs(SUBWORKER_TIMEOUT_SECS), None)?;
-        Self::new_with_client(endpoint, min_documents_per_genre, client)
+    pub(crate) fn new(
+        endpoint: impl Into<String>,
+        min_documents_per_genre: usize,
+        admin_token: Option<String>,
+    ) -> Result<Self> {
+        let builder = Client::builder().timeout(Duration::from_secs(SUBWORKER_TIMEOUT_SECS));
+        Self::new_with_client(endpoint, min_documents_per_genre, builder, admin_token)
     }
 
-    /// Construct with an externally-built `reqwest::Client`. Used by the
-    /// mTLS wiring in `app.rs` to inject an identity-presenting client.
+    /// Construct with an externally-built `reqwest::ClientBuilder`. Used by
+    /// the mTLS wiring in `app.rs` and `eval/replay.rs` to inject an
+    /// identity-presenting client while building the `reqwest::Client` once
+    /// with default headers included.
     pub(crate) fn new_with_client(
         endpoint: impl Into<String>,
         min_documents_per_genre: usize,
-        client: Client,
+        client_builder: reqwest::ClientBuilder,
+        admin_token: Option<String>,
     ) -> Result<Self> {
         let base_url = Url::parse(&endpoint.into()).context("invalid subworker base URL")?;
+        let headers = build_default_headers(admin_token.as_deref())?;
+        let client = client_builder
+            .default_headers(headers)
+            .build()
+            .context("failed to build subworker client")?;
         Ok(Self {
             client,
             base_url,
@@ -76,20 +79,6 @@ impl SubworkerClient {
     #[must_use]
     pub(crate) fn with_coarse_classify_timeout(mut self, timeout: Duration) -> Self {
         self.coarse_classify_timeout = timeout;
-        self
-    }
-
-    /// Rebuilds the underlying `reqwest::Client` with `ClientBuilder::default_headers`
-    /// carrying `Authorization: Bearer <token>` marked sensitive when `token` is `Some`.
-    /// When `token` is `None` (`RECAP_ADMIN_AUTH=disabled`), no default `Authorization`
-    /// header is set.
-    #[must_use]
-    pub(crate) fn with_admin_token(mut self, token: Option<String>) -> Self {
-        self.client = build_http_client(
-            Duration::from_secs(SUBWORKER_TIMEOUT_SECS),
-            token.as_deref(),
-        )
-        .expect("failed to build subworker client with default headers");
         self
     }
 }
@@ -136,19 +125,41 @@ mod tests {
             HeaderName::from_static("x-mtls-probe"),
             HeaderValue::from_static("mtls-identity-present"),
         );
-        let injected = Client::builder()
-            .default_headers(probe_headers)
-            .build()
-            .unwrap();
+        let builder = Client::builder().default_headers(probe_headers);
 
-        let client = SubworkerClient::new_with_client(server.uri(), 10, injected)
-            .unwrap()
-            .with_admin_token(Some("test-injected-token".to_string()));
+        let client = SubworkerClient::new_with_client(
+            server.uri(),
+            10,
+            builder,
+            Some("test-injected-token".to_string()),
+        )
+        .unwrap();
 
         let text = client
             .extract_content("<p>hello</p>")
             .await
             .expect("injected client must preserve probe header and send Authorization");
         assert_eq!(text, "extracted body");
+    }
+
+    #[tokio::test]
+    async fn plain_constructor_sends_authorization() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/extract"))
+            .and(header("authorization", "Bearer test-plain-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"text":"plain body"}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client =
+            SubworkerClient::new(server.uri(), 10, Some("test-plain-token".to_string())).unwrap();
+
+        let text = client
+            .extract_content("<p>hello</p>")
+            .await
+            .expect("plain constructor must send Authorization");
+        assert_eq!(text, "plain body");
     }
 }

@@ -173,6 +173,30 @@ impl QueueStore {
         Ok(())
     }
 
+    pub(crate) async fn mark_recap_job_failed(
+        &self,
+        recap_job_id: Uuid,
+        error: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r"
+            UPDATE classification_job_queue
+            SET status = 'failed',
+                error_message = $2,
+                completed_at = NOW()
+            WHERE recap_job_id = $1
+              AND status IN ('pending', 'retrying', 'running')
+            ",
+        )
+        .bind(recap_job_id)
+        .bind(error)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to mark recap job chunks as failed: {e}")))?;
+
+        Ok(())
+    }
+
     /// Mark a job as retrying (increment retry_count) and defer its next
     /// pick until `retry_delay_ms` from now. The delay lives in
     /// `next_retry_at` rather than in the worker holding its semaphore

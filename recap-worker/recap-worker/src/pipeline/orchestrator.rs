@@ -654,6 +654,7 @@ mod new_tests {
             let subworker = SubworkerClient::new(
                 config.subworker_base_url(),
                 config.min_documents_per_genre(),
+                None,
             )
             .expect("subworker client builds without network I/O");
             let news_creator = Arc::new(NewsCreatorClient::new_for_test("http://localhost:8001"));
@@ -828,6 +829,7 @@ mod new_tests {
             SubworkerClient::new(
                 config.subworker_base_url(),
                 config.min_documents_per_genre(),
+                None,
             )
             .expect("subworker client builds"),
         );

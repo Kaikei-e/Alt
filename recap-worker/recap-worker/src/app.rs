@@ -313,7 +313,7 @@ fn build_subworker_client(
         tracing::warn!("subworker_auth_disabled");
     }
     let client = if let Some(paths) = mtls_paths {
-        let http = crate::clients::mtls::build_mtls_client(
+        let http = crate::clients::mtls::build_mtls_client_builder(
             paths,
             std::time::Duration::from_secs(5),
             std::time::Duration::from_hours(1),
@@ -322,16 +322,16 @@ fn build_subworker_client(
             config.subworker_base_url(),
             config.min_documents_per_genre(),
             http,
+            admin_token,
         )?
     } else {
         SubworkerClient::new(
             config.subworker_base_url(),
             config.min_documents_per_genre(),
+            admin_token,
         )?
     };
-    Ok(client
-        .with_coarse_classify_timeout(config.subworker_coarse_classify_timeout())
-        .with_admin_token(admin_token))
+    Ok(client.with_coarse_classify_timeout(config.subworker_coarse_classify_timeout()))
 }
 
 /// Env flag deciding whether the outbox relay runs. Read strictly: an

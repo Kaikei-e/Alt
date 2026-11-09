@@ -85,7 +85,7 @@ mod tests {
 
         // テスト用のダミーSubworkerClientを作成
         let subworker_client = Arc::new(
-            SubworkerClient::new("http://localhost:8002/", 10)
+            SubworkerClient::new("http://localhost:8002/", 10, None)
                 .expect("failed to create test subworker client"),
         );
 
