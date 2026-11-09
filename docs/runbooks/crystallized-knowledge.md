@@ -190,21 +190,14 @@ ADR-000001〜000940 (940 本) と PM-2026-001〜046 (46 本) を全件解析し�
 - Gemma 4 の thinking は CJK 入力で暗黙発動し num_predict を食い潰す — free-text 生成の全箇所で `think=false` を明示 pin ([[000801]])。thinking tokens は num_predict に含まれる / `format` は GBNF 構文保証のみで意味は見ていない ([[000632]] [[000665]])
 - 「LLM を直そうとしすぎない」— deterministic 主経路 + LLM 副経路 + fallback の 3 層。「LLM が成功しないと困る層」を作らない ([[000675]] [[000677]] [[000698]])
 - few-shot 例は内容をコピーされる — 抽象プレースホルダ化 ([[000648]] [[000650]])。reasoning フィールドを decision より前に置く reasoning-first 順序 ([[000632]] [[000665]])
-- モデル移行チェックリスト: チャットテンプレートトークン差異を一次ソースで確認 ([[000640]])、モデル名を env 参照する全コンテナを `--build` (PM-2026-016)、embedding モデル切替は timeout/retry も見直す ([[000899]])、Ollama またはモデル更新後は `news-creator` コンテナへ合成入力を送り、`POST /v1/morning-letter/generate` と `POST /v1/summary/generate` の両方で `metadata.is_degraded == false`・`metadata.model != "extractive-fallback"`・`metadata.degradation_reason == null` を確認する（プレースホルダ出力は extractive fallback に置換されるため、`content` 文字列の目視だけでは検知できない）:
+- モデル移行チェックリスト: チャットテンプレートトークン差異を一次ソースで確認 ([[000640]])、モデル名を env 参照する全コンテナを `--build` (PM-2026-016)、embedding モデル切替は timeout/retry も見直す ([[000899]])、Ollama またはモデル更新後は `news-creator:9443` と mTLS 接続済みの `recap-worker` (`127.0.0.1:9005`) 経由で `POST /v1/morning/letters/regenerate` を実行し、`GET /v1/morning/letters/latest` で `is_degraded == false` かつ `model != "extractive-fallback"` を確認する（本番 `compose/ai.yaml` は `PEER_IDENTITY_STRICT=true` / `PEER_IDENTITY_TRUSTED=off` のため `:11434` への `X-Alt-Peer-Identity` 直叩きは 401 になる。またプレースホルダ出力は extractive fallback に置換されるため、`body` 文字列の目視だけでは検知できない）:
   ```bash
-  # 1. Morning Letter 合成スモーク (PeerIdentity ヘッダ付きで news-creator :11434 へ送信)
-  curl -sS -X POST http://127.0.0.1:11434/v1/morning-letter/generate \
-    -H "Content-Type: application/json" \
-    -H "X-Alt-Peer-Identity: recap-worker" \
-    -d '{"target_date":"2026-04-07","edition_timezone":"Asia/Tokyo","recap_summaries":[{"genre":"ai","title":"AI動向","bullets":["米TechFusion社はAIスタートアップNova Labsを12億ドルで買収した [1]"],"window_days":3}],"overnight_groups":[{"group_id":"00000000-0000-0000-0000-000000000001","articles":[{"text":"TechFusion社がNova Labsを12億ドルで買収と発表。","is_centroid":true}]}]}' \
-    | jq -e '.metadata.is_degraded == false and .metadata.model != "extractive-fallback" and .metadata.degradation_reason == null'
-
-  # 2. Recap Summary 合成スモーク
-  curl -sS -X POST http://127.0.0.1:11434/v1/summary/generate \
-    -H "Content-Type: application/json" \
-    -H "X-Alt-Peer-Identity: recap-worker" \
-    -d '{"job_id":"00000000-0000-0000-0000-000000000002","genre":"ai","clusters":[{"cluster_id":0,"representative_sentences":[{"text":"米TechFusion社はAIスタートアップNova Labsを12億ドルで買収し、推論基盤を統合すると発表した。"}],"top_terms":["AI","Nova Labs"]}]}' \
-    | jq -e '.metadata.is_degraded == false and .metadata.model != "extractive-fallback" and .metadata.degradation_reason == null'
+  # recap-worker (127.0.0.1:9005) 経由で Morning Letter を同期再生成し、最新レターが非 degraded かつ実モデル出力であることを検証
+  # (/v1/morning/letters/regenerate と /v1/morning/letters/latest は recap-worker/src/api.rs の require_admin_token 対象外のため認証ヘッダ不要)
+  curl -fsS -X POST http://127.0.0.1:9005/v1/morning/letters/regenerate \
+    -H 'Content-Type: application/json' -d '{}' >/dev/null
+  curl -fsS http://127.0.0.1:9005/v1/morning/letters/latest \
+    | jq -e '.is_degraded == false and .model != null and .model != "extractive-fallback"'
   ```
 - Ollama の JSON Schema→GBNF 翻訳は `\d` `\w` `\s` を拒否 — 渡す全 schema の pattern を CI で sweep ([[000887]])
 - embedder は SPOF にしない — BM25-only degraded mode を設計 (PM-2026-020 [[000693]])。retrieval 系の変更は単独で eval を回す ([[000696]])

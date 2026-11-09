@@ -142,7 +142,7 @@ test.describe("generate pass-through", () => {
 		await expectStatus(response, 200);
 	});
 
-	test("accepts an already-templated Gemma prompt without double-wrapping @contract", async ({
+	test("accepts an already-templated Gemma prompt @contract", async ({
 		api,
 		seed,
 	}) => {
