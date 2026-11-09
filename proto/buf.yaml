@@ -28,10 +28,13 @@ breaking:
     - alt/datahub/v1/datahub.proto
     - alt/preprocessor/v2/preprocessor.proto
   # Intentional, coordinated rename of the topic cards RPC and request/response
-  # messages in RecapService. Every consumer ships in the same deploy through
-  # Compose (no compat aliases). Delete this entry in the first PR after the
-  # rename reaches main.
+  # messages in RecapService, and deletion of GetTopicCardsResponse.latest_run
+  # (now carried on surface_status). Every consumer ships in the same deploy
+  # through Compose (no compat aliases). Delete these entries in the first PR
+  # after this reaches main.
   ignore_only:
+    FIELD_NO_DELETE:
+      - alt/recap/v2/recap.proto
     MESSAGE_NO_DELETE:
       - alt/recap/v2/recap.proto
     RPC_NO_DELETE:
