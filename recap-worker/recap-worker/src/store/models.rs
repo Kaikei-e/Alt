@@ -5,21 +5,21 @@ use uuid::Uuid;
 
 // Job model for completed recap jobs
 #[derive(Debug, Clone)]
-pub(crate) struct RecapJob {
-    pub(crate) job_id: Uuid,
-    pub(crate) started_at: DateTime<Utc>,
-    pub(crate) window_start: DateTime<Utc>,
-    pub(crate) window_end: DateTime<Utc>,
-    pub(crate) total_articles: Option<i32>,
+pub struct RecapJob {
+    pub job_id: Uuid,
+    pub started_at: DateTime<Utc>,
+    pub window_start: DateTime<Utc>,
+    pub window_end: DateTime<Utc>,
+    pub total_articles: Option<i32>,
 }
 
 // Genre with summary
 #[derive(Debug, Clone)]
-pub(crate) struct GenreWithSummary {
-    pub(crate) genre_name: String,
-    pub(crate) summary_ja: Option<String>,
-    pub(crate) title_ja: Option<String>,
-    pub(crate) bullets_ja: Option<Value>,
+pub struct GenreWithSummary {
+    pub genre_name: String,
+    pub summary_ja: Option<String>,
+    pub title_ja: Option<String>,
+    pub bullets_ja: Option<Value>,
 }
 
 /// Recap search hit — a genre from a completed job matching a search term.
@@ -36,20 +36,20 @@ pub(crate) struct RecapSearchHit {
 
 // Cluster with evidence
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct ClusterWithEvidence {
-    pub(crate) cluster_id: i32,
-    pub(crate) top_terms: Option<Vec<String>>,
-    pub(crate) evidence: Vec<ClusterEvidence>,
+pub struct ClusterWithEvidence {
+    pub cluster_id: i32,
+    pub top_terms: Option<Vec<String>>,
+    pub evidence: Vec<ClusterEvidence>,
 }
 
 // Evidence link
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct ClusterEvidence {
-    pub(crate) article_id: String,
-    pub(crate) title: String,
-    pub(crate) source_url: String,
-    pub(crate) published_at: DateTime<Utc>,
-    pub(crate) lang: Option<String>,
+pub struct ClusterEvidence {
+    pub article_id: String,
+    pub title: String,
+    pub source_url: String,
+    pub published_at: DateTime<Utc>,
+    pub lang: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -805,18 +805,18 @@ pub struct PulseGenerationRow {
 
 /// Morning Letter document row.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct MorningLetter {
-    pub(crate) id: Uuid,
-    pub(crate) target_date: chrono::NaiveDate,
-    pub(crate) edition_timezone: String,
-    pub(crate) source_recap_job_id: Option<Uuid>,
-    pub(crate) is_degraded: bool,
-    pub(crate) schema_version: i32,
-    pub(crate) generation_revision: i32,
-    pub(crate) result_jsonb: Value,
-    pub(crate) model: Option<String>,
-    pub(crate) generation_metadata_jsonb: Value,
-    pub(crate) created_at: DateTime<Utc>,
+pub struct MorningLetter {
+    pub id: Uuid,
+    pub target_date: chrono::NaiveDate,
+    pub edition_timezone: String,
+    pub source_recap_job_id: Option<Uuid>,
+    pub is_degraded: bool,
+    pub schema_version: i32,
+    pub generation_revision: i32,
+    pub result_jsonb: Value,
+    pub model: Option<String>,
+    pub generation_metadata_jsonb: Value,
+    pub created_at: DateTime<Utc>,
 }
 
 /// Morning Letter source provenance.

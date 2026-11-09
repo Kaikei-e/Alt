@@ -24,11 +24,12 @@ use axum::{
 use chrono::{DateTime, NaiveDate, Utc};
 use recap_worker::api::cards::{
     CardsDao, LatestCardsRun, PreviousCardsJobMeta, RecapCard, RecapCardJobStats,
-    get_topic_cards_impl,
+    get_topic_cards_with_clock,
 };
 use recap_worker::api::fetch::{
-    MorningLetterFixtureDao, ThreeDayRecapFixtureDao, ThreeDayRecapGenreFixture,
-    get_3days_recap_from_fixture, get_latest_morning_letter_from_fixture,
+    ClusterEvidence, ClusterWithEvidence, GenreWithSummary, MorningLetter, MorningLetterReadDao,
+    RecapJob, ThreeDayRecapReadDao, get_3days_recap_impl, get_latest_morning_letter_impl,
+    get_morning_letter_by_date_impl,
 };
 use recap_worker::api::pulse::{
     PulseGenerationRow, PulseProvenance, PulseReadDao, get_latest_pulse_impl,
@@ -306,6 +307,26 @@ impl CardsDao for VerificationCardsDao {
             None => panic!("missing provider state in VerificationCardsDao"),
         }
     }
+
+    async fn get_job_updated_at(&self, _job_id: Uuid) -> Result<Option<DateTime<Utc>>, String> {
+        let current = self.provider_state.read().unwrap().clone();
+        match current.as_deref() {
+            Some("no cards job exists") => Ok(None),
+            Some(
+                "a completed cards job with cards exists"
+                | "a completed cards job whose card has no genre and no why"
+                | "a failed topic cards run is newer than the latest completed run",
+            ) => Ok(Some(
+                DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            )),
+            Some(unknown) => {
+                panic!("unrecognised provider state in VerificationCardsDao: {unknown}")
+            }
+            None => panic!("missing provider state in VerificationCardsDao"),
+        }
+    }
 }
 
 struct VerificationPulseDao {
@@ -417,6 +438,161 @@ impl PulseReadDao for VerificationPulseDao {
             .unwrap()
             .with_timezone(&Utc);
         Ok(Some((finished_at, Some((win_start, win_end)))))
+    }
+}
+
+struct ThreeDayRecapGenreFixture {
+    genre_name: String,
+    summary_ja: String,
+    top_terms: Vec<String>,
+    article_id: String,
+    title: String,
+    source_url: String,
+    published_at: DateTime<Utc>,
+    lang: String,
+    is_degraded: bool,
+}
+
+struct ThreeDayRecapFixtureDao {
+    job_id: Uuid,
+    started_at: DateTime<Utc>,
+    window_start: DateTime<Utc>,
+    window_end: DateTime<Utc>,
+    total_articles: i32,
+    genres: Vec<ThreeDayRecapGenreFixture>,
+    latest_run: Option<SurfaceRun>,
+}
+
+#[async_trait::async_trait]
+impl ThreeDayRecapReadDao for ThreeDayRecapFixtureDao {
+    async fn get_latest_completed_job(
+        &self,
+        _window_days: i32,
+    ) -> Result<Option<RecapJob>, String> {
+        Ok(Some(RecapJob {
+            job_id: self.job_id,
+            started_at: self.started_at,
+            window_start: self.window_start,
+            window_end: self.window_end,
+            total_articles: Some(self.total_articles),
+        }))
+    }
+
+    async fn get_genres_by_job(&self, _job_id: Uuid) -> Result<Vec<GenreWithSummary>, String> {
+        Ok(self
+            .genres
+            .iter()
+            .map(|g| GenreWithSummary {
+                genre_name: g.genre_name.clone(),
+                summary_ja: Some(g.summary_ja.clone()),
+                title_ja: None,
+                bullets_ja: None,
+            })
+            .collect())
+    }
+
+    async fn get_clusters_by_job(
+        &self,
+        _job_id: Uuid,
+    ) -> Result<std::collections::HashMap<String, Vec<ClusterWithEvidence>>, String> {
+        let mut map = std::collections::HashMap::new();
+        for (idx, g) in self.genres.iter().enumerate() {
+            map.insert(
+                g.genre_name.clone(),
+                vec![ClusterWithEvidence {
+                    cluster_id: i32::try_from(idx + 1).unwrap_or(1),
+                    top_terms: Some(g.top_terms.clone()),
+                    evidence: vec![ClusterEvidence {
+                        article_id: g.article_id.clone(),
+                        title: g.title.clone(),
+                        source_url: g.source_url.clone(),
+                        published_at: g.published_at,
+                        lang: Some(g.lang.clone()),
+                    }],
+                }],
+            );
+        }
+        Ok(map)
+    }
+
+    async fn get_recap_output_body_json(
+        &self,
+        _job_id: Uuid,
+        genre: &str,
+    ) -> Result<Option<Value>, String> {
+        let is_degraded = self
+            .genres
+            .iter()
+            .find(|g| g.genre_name == genre)
+            .is_some_and(|g| g.is_degraded);
+        Ok(Some(json!({
+            "metadata": {
+                "is_degraded": is_degraded
+            }
+        })))
+    }
+
+    async fn get_latest_three_day_recap_run(&self) -> Result<Option<SurfaceRun>, String> {
+        Ok(self.latest_run.clone())
+    }
+}
+
+struct MorningLetterFixtureDao {
+    id: Uuid,
+    target_date: NaiveDate,
+    edition_timezone: String,
+    source_recap_job_id: Option<Uuid>,
+    is_degraded: bool,
+    schema_version: i32,
+    generation_revision: i32,
+    result_jsonb: Value,
+    model: Option<String>,
+    generation_metadata_jsonb: Value,
+    created_at: DateTime<Utc>,
+    latest_run: Option<SurfaceRun>,
+    window: Option<(DateTime<Utc>, DateTime<Utc>)>,
+}
+
+impl MorningLetterFixtureDao {
+    fn to_model(&self) -> MorningLetter {
+        MorningLetter {
+            id: self.id,
+            target_date: self.target_date,
+            edition_timezone: self.edition_timezone.clone(),
+            source_recap_job_id: self.source_recap_job_id,
+            is_degraded: self.is_degraded,
+            schema_version: self.schema_version,
+            generation_revision: self.generation_revision,
+            result_jsonb: self.result_jsonb.clone(),
+            model: self.model.clone(),
+            generation_metadata_jsonb: self.generation_metadata_jsonb.clone(),
+            created_at: self.created_at,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl MorningLetterReadDao for MorningLetterFixtureDao {
+    async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>, String> {
+        Ok(Some(self.to_model()))
+    }
+
+    async fn get_morning_letter_by_date(
+        &self,
+        _date: NaiveDate,
+    ) -> Result<Option<MorningLetter>, String> {
+        Ok(Some(self.to_model()))
+    }
+
+    async fn get_latest_morning_run(&self) -> Result<Option<SurfaceRun>, String> {
+        Ok(self.latest_run.clone())
+    }
+
+    async fn get_recap_job_window(
+        &self,
+        _job_id: Uuid,
+    ) -> Result<Option<(DateTime<Utc>, DateTime<Utc>)>, String> {
+        Ok(self.window)
     }
 }
 
@@ -627,12 +803,8 @@ fn stub_router_with_state(state: StubState) -> Router {
                         let now = DateTime::parse_from_rfc3339("2026-09-22T07:00:00Z")
                             .unwrap()
                             .with_timezone(&Utc);
-                        get_latest_morning_letter_from_fixture(
-                            &fixture,
-                            chrono::Duration::hours(3),
-                            now,
-                        )
-                        .await
+                        get_latest_morning_letter_impl(&fixture, chrono::Duration::hours(3), now)
+                            .await
                     }
                 }
             }),
@@ -651,8 +823,9 @@ fn stub_router_with_state(state: StubState) -> Router {
                         let now = DateTime::parse_from_rfc3339("2026-09-22T07:00:00Z")
                             .unwrap()
                             .with_timezone(&Utc);
-                        get_latest_morning_letter_from_fixture(
+                        get_morning_letter_by_date_impl(
                             &fixture,
+                            &date,
                             chrono::Duration::hours(3),
                             now,
                         )
@@ -674,8 +847,7 @@ fn stub_router_with_state(state: StubState) -> Router {
                         let now = DateTime::parse_from_rfc3339("2026-09-22T18:00:00Z")
                             .unwrap()
                             .with_timezone(&Utc);
-                        get_3days_recap_from_fixture(&fixture, chrono::Duration::hours(30), now)
-                            .await
+                        get_3days_recap_impl(&fixture, chrono::Duration::hours(30), now).await
                     }
                 }
             }),
@@ -708,7 +880,10 @@ fn stub_router_with_state(state: StubState) -> Router {
                         let dao = VerificationCardsDao {
                             provider_state: state.provider_state.clone(),
                         };
-                        get_topic_cards_impl(&dao).await
+                        let now = DateTime::parse_from_rfc3339("2026-09-22T18:00:00Z")
+                            .unwrap()
+                            .with_timezone(&Utc);
+                        get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), now).await
                     }
                 }
             }),
@@ -1221,8 +1396,8 @@ async fn verify_alt_backend_pact() {
                     "top-level latest_run must not exist for state: {state_name}"
                 );
                 assert!(
-                    body["surface_status"]["latest_run"].is_null(),
-                    "expected null surface_status.latest_run for state: {state_name}"
+                    body["surface_status"].is_null(),
+                    "expected null surface_status for state: {state_name}"
                 );
             }
             "a failed topic cards run is newer than the latest completed run" => {

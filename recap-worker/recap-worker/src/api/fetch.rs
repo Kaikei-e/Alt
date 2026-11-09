@@ -14,6 +14,9 @@ use crate::api::surface_status::{
 use crate::app::AppState;
 use crate::store::dao::surface::SurfaceDaoOps;
 use crate::store::models::MorningLetterContent;
+pub use crate::store::models::{
+    ClusterEvidence, ClusterWithEvidence, GenreWithSummary, MorningLetter, RecapJob,
+};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct RecapGenreResponse {
@@ -422,49 +425,34 @@ pub(crate) async fn get_indexable_genres(
 }
 
 #[async_trait::async_trait]
-#[allow(dead_code)]
-pub(crate) trait ThreeDayRecapReadDao: Send + Sync {
-    async fn get_latest_completed_job(
-        &self,
-        window_days: i32,
-    ) -> Result<Option<crate::store::models::RecapJob>, String>;
-    async fn get_genres_by_job(
-        &self,
-        job_id: uuid::Uuid,
-    ) -> Result<Vec<crate::store::models::GenreWithSummary>, String>;
+pub trait ThreeDayRecapReadDao: Send + Sync {
+    async fn get_latest_completed_job(&self, window_days: i32) -> Result<Option<RecapJob>, String>;
+    async fn get_genres_by_job(&self, job_id: uuid::Uuid) -> Result<Vec<GenreWithSummary>, String>;
     async fn get_clusters_by_job(
         &self,
         job_id: uuid::Uuid,
-    ) -> Result<
-        std::collections::HashMap<String, Vec<crate::store::models::ClusterWithEvidence>>,
-        String,
-    >;
+    ) -> Result<std::collections::HashMap<String, Vec<ClusterWithEvidence>>, String>;
     async fn get_recap_output_body_json(
         &self,
         job_id: uuid::Uuid,
         genre: &str,
     ) -> Result<Option<Value>, String>;
-    async fn get_latest_three_day_recap_run(
-        &self,
-    ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String>;
+    async fn get_latest_three_day_recap_run(&self) -> Result<Option<SurfaceRun>, String>;
+    fn observe_cluster_query_duration(&self, _duration_secs: f64) {}
+    fn inc_evidence_duplicates(&self, _removed: usize) {}
+    fn observe_latest_fetch_duration(&self, _duration_secs: f64) {}
 }
 
 #[async_trait::async_trait]
 impl ThreeDayRecapReadDao for AppState {
-    async fn get_latest_completed_job(
-        &self,
-        window_days: i32,
-    ) -> Result<Option<crate::store::models::RecapJob>, String> {
+    async fn get_latest_completed_job(&self, window_days: i32) -> Result<Option<RecapJob>, String> {
         self.dao()
             .get_latest_completed_job(window_days)
             .await
             .map_err(|e| e.to_string())
     }
 
-    async fn get_genres_by_job(
-        &self,
-        job_id: uuid::Uuid,
-    ) -> Result<Vec<crate::store::models::GenreWithSummary>, String> {
+    async fn get_genres_by_job(&self, job_id: uuid::Uuid) -> Result<Vec<GenreWithSummary>, String> {
         self.dao()
             .get_genres_by_job(job_id)
             .await
@@ -474,10 +462,7 @@ impl ThreeDayRecapReadDao for AppState {
     async fn get_clusters_by_job(
         &self,
         job_id: uuid::Uuid,
-    ) -> Result<
-        std::collections::HashMap<String, Vec<crate::store::models::ClusterWithEvidence>>,
-        String,
-    > {
+    ) -> Result<std::collections::HashMap<String, Vec<ClusterWithEvidence>>, String> {
         self.dao()
             .get_clusters_by_job(job_id)
             .await
@@ -501,298 +486,63 @@ impl ThreeDayRecapReadDao for AppState {
             .map(|opt| opt.map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at)))
             .map_err(|e| e.to_string())
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct ThreeDayRecapGenreFixture {
-    pub genre_name: String,
-    pub summary_ja: String,
-    pub top_terms: Vec<String>,
-    pub article_id: String,
-    pub title: String,
-    pub source_url: String,
-    pub published_at: chrono::DateTime<chrono::Utc>,
-    pub lang: String,
-    pub is_degraded: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct ThreeDayRecapFixtureDao {
-    pub job_id: uuid::Uuid,
-    pub started_at: chrono::DateTime<chrono::Utc>,
-    pub window_start: chrono::DateTime<chrono::Utc>,
-    pub window_end: chrono::DateTime<chrono::Utc>,
-    pub total_articles: i32,
-    pub genres: Vec<ThreeDayRecapGenreFixture>,
-    pub latest_run: Option<SurfaceRun>,
-}
-
-#[async_trait::async_trait]
-impl ThreeDayRecapReadDao for ThreeDayRecapFixtureDao {
-    async fn get_latest_completed_job(
-        &self,
-        _window_days: i32,
-    ) -> Result<Option<crate::store::models::RecapJob>, String> {
-        Ok(Some(crate::store::models::RecapJob {
-            job_id: self.job_id,
-            started_at: self.started_at,
-            window_start: self.window_start,
-            window_end: self.window_end,
-            total_articles: Some(self.total_articles),
-        }))
+    fn observe_cluster_query_duration(&self, duration_secs: f64) {
+        self.telemetry()
+            .metrics()
+            .api_cluster_query_duration
+            .observe(duration_secs);
     }
 
-    async fn get_genres_by_job(
-        &self,
-        _job_id: uuid::Uuid,
-    ) -> Result<Vec<crate::store::models::GenreWithSummary>, String> {
-        Ok(self
-            .genres
-            .iter()
-            .map(|g| crate::store::models::GenreWithSummary {
-                genre_name: g.genre_name.clone(),
-                summary_ja: Some(g.summary_ja.clone()),
-                title_ja: None,
-                bullets_ja: None,
-            })
-            .collect())
-    }
-
-    async fn get_clusters_by_job(
-        &self,
-        _job_id: uuid::Uuid,
-    ) -> Result<
-        std::collections::HashMap<String, Vec<crate::store::models::ClusterWithEvidence>>,
-        String,
-    > {
-        let mut map = std::collections::HashMap::new();
-        for (idx, g) in self.genres.iter().enumerate() {
-            map.insert(
-                g.genre_name.clone(),
-                vec![crate::store::models::ClusterWithEvidence {
-                    cluster_id: i32::try_from(idx + 1).unwrap_or(1),
-                    top_terms: Some(g.top_terms.clone()),
-                    evidence: vec![crate::store::models::ClusterEvidence {
-                        article_id: g.article_id.clone(),
-                        title: g.title.clone(),
-                        source_url: g.source_url.clone(),
-                        published_at: g.published_at,
-                        lang: Some(g.lang.clone()),
-                    }],
-                }],
-            );
+    fn inc_evidence_duplicates(&self, removed: usize) {
+        #[allow(clippy::cast_precision_loss)]
+        {
+            self.telemetry()
+                .metrics()
+                .api_evidence_duplicates
+                .inc_by(removed as f64);
         }
-        Ok(map)
     }
 
-    async fn get_recap_output_body_json(
-        &self,
-        _job_id: uuid::Uuid,
-        genre: &str,
-    ) -> Result<Option<Value>, String> {
-        let is_degraded = self
-            .genres
-            .iter()
-            .find(|g| g.genre_name == genre)
-            .is_some_and(|g| g.is_degraded);
-        Ok(Some(serde_json::json!({
-            "metadata": {
-                "is_degraded": is_degraded
-            }
-        })))
-    }
-
-    async fn get_latest_three_day_recap_run(&self) -> Result<Option<SurfaceRun>, String> {
-        Ok(self.latest_run.clone())
+    fn observe_latest_fetch_duration(&self, duration_secs: f64) {
+        self.telemetry()
+            .metrics()
+            .api_latest_fetch_duration
+            .observe(duration_secs);
     }
 }
 
-pub async fn get_3days_recap_from_fixture(
-    dao: &ThreeDayRecapFixtureDao,
-    freshness_budget: chrono::Duration,
-    now: chrono::DateTime<chrono::Utc>,
-) -> axum::response::Response {
-    get_3days_recap_impl(dao, freshness_budget, now).await
-}
-
-#[allow(clippy::too_many_lines)]
-pub(crate) async fn get_3days_recap_impl(
+pub async fn get_3days_recap_impl(
     dao: &impl ThreeDayRecapReadDao,
     freshness_budget: chrono::Duration,
     now: chrono::DateTime<chrono::Utc>,
 ) -> axum::response::Response {
-    let job = match dao.get_latest_completed_job(3).await {
-        Ok(Some(job)) => job,
-        Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "No 3-day recap found".to_string(),
-                }),
-            )
-                .into_response();
-        }
-        Err(e) => {
-            error!("Failed to fetch latest job: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch recap data".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
-    let genres = match dao.get_genres_by_job(job.job_id).await {
-        Ok(genres) => genres,
-        Err(e) => {
-            error!("Failed to fetch genres for job {}: {}", job.job_id, e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch genre data".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
-    let mut clusters_by_genre = match dao.get_clusters_by_job(job.job_id).await {
-        Ok(map) => map,
-        Err(e) => {
-            error!("Failed to fetch clusters for job {}: {}", job.job_id, e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch cluster data".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
-    let latest_run = match dao.get_latest_three_day_recap_run().await {
-        Ok(run) => run,
-        Err(e) => {
-            error!("Failed to fetch latest 3-day recap run: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch recap data".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
-    let total_genres = genres.len();
-    let mut degraded_genres = 0usize;
-    let mut genre_responses = Vec::new();
-    for genre in genres {
-        let clusters = clusters_by_genre
-            .remove(&genre.genre_name)
-            .unwrap_or_default();
-
-        let mut all_top_terms = Vec::new();
-        let mut total_article_count = 0;
-        let mut evidence_links = Vec::new();
-
-        for cluster in &clusters {
-            if let Some(terms) = &cluster.top_terms {
-                all_top_terms.extend(terms.iter().cloned());
-            }
-            total_article_count += cluster.evidence.len() as i32;
-            for evidence in cluster.evidence.iter().take(5) {
-                evidence_links.push(EvidenceLinkResponse {
-                    article_id: evidence.article_id.clone(),
-                    title: evidence.title.clone(),
-                    source_url: evidence.source_url.clone(),
-                    published_at: evidence.published_at.to_rfc3339(),
-                    lang: evidence
-                        .lang
-                        .clone()
-                        .unwrap_or_else(|| "unknown".to_string()),
-                });
-            }
-        }
-
-        all_top_terms.sort();
-        all_top_terms.dedup();
-        all_top_terms.truncate(10);
-
-        let deduped_links = dedupe_evidence_links(evidence_links);
-        let references = match dao
-            .get_recap_output_body_json(job.job_id, &genre.genre_name)
-            .await
-        {
-            Ok(Some(body_json)) => {
-                if is_body_json_degraded(&body_json) {
-                    degraded_genres += 1;
-                }
-                extract_references_from_body_json(&body_json)
-            }
-            _ => None,
-        };
-
-        genre_responses.push(RecapGenreResponse {
-            genre: genre.genre_name.clone(),
-            summary: normalize_summary_text(genre.summary_ja.as_deref().unwrap_or_default()),
-            top_terms: all_top_terms,
-            article_count: total_article_count,
-            cluster_count: clusters.len() as i32,
-            evidence_links: deduped_links,
-            bullets: extract_bullets_from_payload(genre.summary_ja.as_deref().unwrap_or_default()),
-            references,
-        });
-    }
-
-    let surface_status = build_surface_status(
-        job.window_end,
-        Some((job.window_start, job.window_end)),
-        latest_run,
-        three_day_recap_reasons(degraded_genres, total_genres),
-        freshness_budget,
-        now,
-    );
-
-    let response = RecapSummaryResponse {
-        job_id: job.job_id.to_string(),
-        executed_at: job.started_at.to_rfc3339(),
-        window_start: job.window_start.to_rfc3339(),
-        window_end: job.window_end.to_rfc3339(),
-        total_articles: job.total_articles.unwrap_or(0),
-        genres: genre_responses,
-        surface_status: Some(surface_status),
-    };
-    (StatusCode::OK, Json(response)).into_response()
+    get_recap_by_window(dao, 3, "3-day", Some((freshness_budget, now))).await
 }
 
 /// GET /v1/recaps/7days
 /// 最新の7日間Recapデータを取得する
 pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoResponse {
-    get_recap_by_window(state, 7, "7-day").await
+    get_recap_by_window(&state, 7, "7-day", None).await
 }
 
 /// GET /v1/recaps/3days
 /// 最新の3日間Recapデータを取得する
 pub(crate) async fn get_3days_recap(State(state): State<AppState>) -> impl IntoResponse {
-    get_recap_by_window(state, 3, "3-day").await
+    let budget = state.config().surface_freshness().three_day_recap_budget();
+    get_3days_recap_impl(&state, budget, chrono::Utc::now()).await
 }
 
 /// 指定されたウィンドウ日数のRecapデータを取得する
 #[allow(clippy::too_many_lines)]
 async fn get_recap_by_window(
-    state: AppState,
+    dao: &impl ThreeDayRecapReadDao,
     window_days: i32,
     label: &str,
+    surface_clock: Option<(chrono::Duration, chrono::DateTime<chrono::Utc>)>,
 ) -> axum::response::Response {
     info!("Fetching latest {} recap", label);
-    let metrics = state.telemetry().metrics();
     let handler_start = Instant::now();
-
-    // 最新のジョブを取得
-    let dao = state.dao();
 
     let job = match dao.get_latest_completed_job(window_days).await {
         Ok(Some(job)) => job,
@@ -847,9 +597,7 @@ async fn get_recap_by_window(
                 .into_response();
         }
     };
-    metrics
-        .api_cluster_query_duration
-        .observe(cluster_query_start.elapsed().as_secs_f64());
+    dao.observe_cluster_query_duration(cluster_query_start.elapsed().as_secs_f64());
 
     // レスポンス構築
     let total_genres = genres.len();
@@ -902,10 +650,7 @@ async fn get_recap_by_window(
             let deduped = dedupe_evidence_links(evidence_links);
             let removed = before.saturating_sub(deduped.len());
             if removed > 0 {
-                #[allow(clippy::cast_precision_loss)]
-                {
-                    metrics.api_evidence_duplicates.inc_by(removed as f64);
-                }
+                dao.inc_evidence_duplicates(removed);
             }
             deduped
         };
@@ -946,8 +691,8 @@ async fn get_recap_by_window(
         });
     }
 
-    let surface_status = if window_days == 3 {
-        let latest_run = match state.get_latest_three_day_recap_run().await {
+    let surface_status = if let Some((budget, now)) = surface_clock {
+        let latest_run = match dao.get_latest_three_day_recap_run().await {
             Ok(run) => run,
             Err(e) => {
                 error!("Failed to fetch latest 3-day recap run: {}", e);
@@ -960,14 +705,13 @@ async fn get_recap_by_window(
                     .into_response();
             }
         };
-        let budget = state.config().surface_freshness().three_day_recap_budget();
         Some(build_surface_status(
             job.window_end,
             Some((job.window_start, job.window_end)),
             latest_run,
             three_day_recap_reasons(degraded_genres, total_genres),
             budget,
-            chrono::Utc::now(),
+            now,
         ))
     } else {
         None
@@ -987,9 +731,7 @@ async fn get_recap_by_window(
         "Successfully fetched {} recap for job {}",
         label, job.job_id
     );
-    metrics
-        .api_latest_fetch_duration
-        .observe(handler_start.elapsed().as_secs_f64());
+    dao.observe_latest_fetch_duration(handler_start.elapsed().as_secs_f64());
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -1809,15 +1551,12 @@ fn map_morning_letter_response(
 }
 
 #[async_trait::async_trait]
-#[allow(dead_code)]
-pub(crate) trait MorningLetterReadDao: Send + Sync {
-    async fn get_latest_morning_letter(
-        &self,
-    ) -> Result<Option<crate::store::models::MorningLetter>, String>;
+pub trait MorningLetterReadDao: Send + Sync {
+    async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>, String>;
     async fn get_morning_letter_by_date(
         &self,
         date: chrono::NaiveDate,
-    ) -> Result<Option<crate::store::models::MorningLetter>, String>;
+    ) -> Result<Option<MorningLetter>, String>;
     async fn get_latest_morning_run(&self) -> Result<Option<SurfaceRun>, String>;
     async fn get_recap_job_window(
         &self,
@@ -1827,9 +1566,7 @@ pub(crate) trait MorningLetterReadDao: Send + Sync {
 
 #[async_trait::async_trait]
 impl MorningLetterReadDao for AppState {
-    async fn get_latest_morning_letter(
-        &self,
-    ) -> Result<Option<crate::store::models::MorningLetter>, String> {
+    async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>, String> {
         self.dao()
             .get_latest_morning_letter()
             .await
@@ -1839,7 +1576,7 @@ impl MorningLetterReadDao for AppState {
     async fn get_morning_letter_by_date(
         &self,
         date: chrono::NaiveDate,
-    ) -> Result<Option<crate::store::models::MorningLetter>, String> {
+    ) -> Result<Option<MorningLetter>, String> {
         self.dao()
             .get_morning_letter_by_date(date)
             .await
@@ -1864,80 +1601,9 @@ impl MorningLetterReadDao for AppState {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct MorningLetterFixtureDao {
-    pub id: uuid::Uuid,
-    pub target_date: chrono::NaiveDate,
-    pub edition_timezone: String,
-    pub source_recap_job_id: Option<uuid::Uuid>,
-    pub is_degraded: bool,
-    pub schema_version: i32,
-    pub generation_revision: i32,
-    pub result_jsonb: Value,
-    pub model: Option<String>,
-    pub generation_metadata_jsonb: Value,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub latest_run: Option<SurfaceRun>,
-    pub window: Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>,
-}
-
-impl MorningLetterFixtureDao {
-    fn to_model(&self) -> crate::store::models::MorningLetter {
-        crate::store::models::MorningLetter {
-            id: self.id,
-            target_date: self.target_date,
-            edition_timezone: self.edition_timezone.clone(),
-            source_recap_job_id: self.source_recap_job_id,
-            is_degraded: self.is_degraded,
-            schema_version: self.schema_version,
-            generation_revision: self.generation_revision,
-            result_jsonb: self.result_jsonb.clone(),
-            model: self.model.clone(),
-            generation_metadata_jsonb: self.generation_metadata_jsonb.clone(),
-            created_at: self.created_at,
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl MorningLetterReadDao for MorningLetterFixtureDao {
-    async fn get_latest_morning_letter(
-        &self,
-    ) -> Result<Option<crate::store::models::MorningLetter>, String> {
-        Ok(Some(self.to_model()))
-    }
-
-    async fn get_morning_letter_by_date(
-        &self,
-        _date: chrono::NaiveDate,
-    ) -> Result<Option<crate::store::models::MorningLetter>, String> {
-        Ok(Some(self.to_model()))
-    }
-
-    async fn get_latest_morning_run(&self) -> Result<Option<SurfaceRun>, String> {
-        Ok(self.latest_run.clone())
-    }
-
-    async fn get_recap_job_window(
-        &self,
-        _job_id: uuid::Uuid,
-    ) -> Result<Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>, String>
-    {
-        Ok(self.window)
-    }
-}
-
-pub async fn get_latest_morning_letter_from_fixture(
-    dao: &MorningLetterFixtureDao,
-    freshness_budget: chrono::Duration,
-    now: chrono::DateTime<chrono::Utc>,
-) -> axum::response::Response {
-    get_latest_morning_letter_impl(dao, freshness_budget, now).await
-}
-
 async fn build_morning_letter_surface_status(
     dao: &impl MorningLetterReadDao,
-    letter: &crate::store::models::MorningLetter,
+    letter: &MorningLetter,
     freshness_budget: chrono::Duration,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<SurfaceStatus, String> {
@@ -1957,7 +1623,7 @@ async fn build_morning_letter_surface_status(
     ))
 }
 
-pub(crate) async fn get_latest_morning_letter_impl(
+pub async fn get_latest_morning_letter_impl(
     dao: &impl MorningLetterReadDao,
     freshness_budget: chrono::Duration,
     now: chrono::DateTime<chrono::Utc>,
@@ -2016,13 +1682,13 @@ pub(crate) async fn get_latest_morning_letter(State(state): State<AppState>) -> 
     get_latest_morning_letter_impl(&state, budget, chrono::Utc::now()).await
 }
 
-/// GET /v1/morning/letters/{target_date}
-/// 指定日の Morning Letter を返す。日付形式: YYYY-MM-DD (edition timezone)。
-pub(crate) async fn get_morning_letter_by_date(
-    State(state): State<AppState>,
-    Path(target_date): Path<String>,
-) -> impl IntoResponse {
-    let Ok(date) = chrono::NaiveDate::parse_from_str(&target_date, "%Y-%m-%d") else {
+pub async fn get_morning_letter_by_date_impl(
+    dao: &impl MorningLetterReadDao,
+    target_date: &str,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
+    let Ok(date) = chrono::NaiveDate::parse_from_str(target_date, "%Y-%m-%d") else {
         return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -2035,28 +1701,31 @@ pub(crate) async fn get_morning_letter_by_date(
             .into_response();
     };
 
-    let budget = state.config().surface_freshness().morning_letter_budget();
-    let now = chrono::Utc::now();
-
-    match state.get_morning_letter_by_date(date).await {
+    match dao.get_morning_letter_by_date(date).await {
         Ok(Some(letter)) => {
-            let surface_status =
-                match build_morning_letter_surface_status(&state, &letter, budget, now).await {
-                    Ok(status) => status,
-                    Err(e) => {
-                        error!(
-                            target_date = %target_date,
-                            "Failed to build morning letter surface status: {}", e
-                        );
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(ErrorResponse {
-                                error: "Failed to fetch morning letter".to_string(),
-                            }),
-                        )
-                            .into_response();
-                    }
-                };
+            let surface_status = match build_morning_letter_surface_status(
+                dao,
+                &letter,
+                freshness_budget,
+                now,
+            )
+            .await
+            {
+                Ok(status) => status,
+                Err(e) => {
+                    error!(
+                        target_date = %target_date,
+                        "Failed to build morning letter surface status: {}", e
+                    );
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: "Failed to fetch morning letter".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+            };
             match map_morning_letter_response(&letter, surface_status) {
                 Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
                 Err((status, json)) => (status, json).into_response(),
@@ -2083,6 +1752,16 @@ pub(crate) async fn get_morning_letter_by_date(
                 .into_response()
         }
     }
+}
+
+/// GET /v1/morning/letters/{target_date}
+/// 指定日の Morning Letter を返す。日付形式: YYYY-MM-DD (edition timezone)。
+pub(crate) async fn get_morning_letter_by_date(
+    State(state): State<AppState>,
+    Path(target_date): Path<String>,
+) -> impl IntoResponse {
+    let budget = state.config().surface_freshness().morning_letter_budget();
+    get_morning_letter_by_date_impl(&state, &target_date, budget, chrono::Utc::now()).await
 }
 
 #[derive(Debug, serde::Deserialize, Default)]

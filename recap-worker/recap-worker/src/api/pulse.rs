@@ -231,7 +231,17 @@ pub async fn get_latest_pulse_impl(
     };
 
     let provenance = match dao.get_pulse_provenance(row.job_id).await {
-        Ok(prov) => prov,
+        Ok(Some(prov)) => prov,
+        Ok(None) => {
+            error!("Missing pulse provenance for job {}", row.job_id);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Missing pulse provenance".to_string(),
+                }),
+            )
+                .into_response();
+        }
         Err(e) => {
             error!(
                 "Failed to fetch pulse provenance for job {}: {}",
@@ -280,7 +290,7 @@ pub(crate) async fn get_latest(
 
 fn build_response(
     row: &crate::store::models::PulseGenerationRow,
-    provenance: Option<PulseProvenance>,
+    provenance: PulseProvenance,
     latest_run: Option<SurfaceRun>,
     freshness_budget: chrono::Duration,
     now: chrono::DateTime<chrono::Utc>,
@@ -297,10 +307,7 @@ fn build_response(
     let quiet_day = build_quiet_day(&pulse_result);
     let diagnostics = build_diagnostics(&pulse_result.diagnostics);
 
-    let (generated_at, window) = match provenance {
-        Some((finished_at, win)) => (finished_at, win),
-        None => (pulse_result.generated_at, None),
-    };
+    let (generated_at, window) = provenance;
     let surface_status = build_surface_status(
         generated_at,
         window,

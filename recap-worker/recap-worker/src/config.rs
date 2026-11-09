@@ -6,21 +6,7 @@ use crate::clients::subworker::CLASSIFY_CHUNK_SIZE;
 
 #[cfg(test)]
 pub(crate) static ENV_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
-    std::sync::LazyLock::new(|| {
-        for (k, v) in [
-            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", "30"),
-            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", "30"),
-            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", "30"),
-            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", "3"),
-        ] {
-            if std::env::var_os(k).is_none() {
-                unsafe {
-                    std::env::set_var(k, v);
-                }
-            }
-        }
-        std::sync::Mutex::new(())
-    });
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
 
 /// boolの組み合わせ爆発を避けるための2値トグル。
 ///

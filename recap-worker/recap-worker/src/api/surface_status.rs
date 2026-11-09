@@ -55,21 +55,6 @@ pub struct SurfaceStatus {
     pub degradation_reasons: Vec<DegradationReason>,
 }
 
-impl SurfaceStatus {
-    #[must_use]
-    pub fn without_artifact(latest_run: Option<SurfaceRun>) -> Self {
-        Self {
-            generated_at: String::new(),
-            window_start: String::new(),
-            window_end: String::new(),
-            is_stale: false,
-            stale_after: String::new(),
-            latest_run,
-            degradation_reasons: Vec::new(),
-        }
-    }
-}
-
 #[must_use]
 pub fn format_rfc3339(dt: DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(SecondsFormat::Secs, true)

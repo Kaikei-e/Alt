@@ -26,6 +26,7 @@ impl SurfaceDaoOps {
             SELECT job_id, status, kicked_at, updated_at
             FROM recap_jobs
             WHERE window_days = 3
+              AND trigger_source NOT IN ('cards', 'cards_replay', 'morning')
             ORDER BY kicked_at DESC
             LIMIT 1
             ",
@@ -34,12 +35,16 @@ impl SurfaceDaoOps {
         .await
         .context("failed to fetch latest 3-day recap run")?;
 
-        Ok(row.map(|r| SurfaceRunRecord {
-            job_id: r.get("job_id"),
-            status: r.get("status"),
-            kicked_at: r.get("kicked_at"),
-            updated_at: r.get("updated_at"),
-        }))
+        row.map(|r| -> Result<SurfaceRunRecord> {
+            Ok(SurfaceRunRecord {
+                job_id: r.try_get("job_id")?,
+                status: r.try_get("status")?,
+                kicked_at: r.try_get("kicked_at")?,
+                updated_at: r.try_get("updated_at")?,
+            })
+        })
+        .transpose()
+        .context("failed to decode latest 3-day recap run")
     }
 
     pub async fn get_latest_morning_run(pool: &PgPool) -> Result<Option<SurfaceRunRecord>> {
@@ -56,12 +61,16 @@ impl SurfaceDaoOps {
         .await
         .context("failed to fetch latest morning recap run")?;
 
-        Ok(row.map(|r| SurfaceRunRecord {
-            job_id: r.get("job_id"),
-            status: r.get("status"),
-            kicked_at: r.get("kicked_at"),
-            updated_at: r.get("updated_at"),
-        }))
+        row.map(|r| -> Result<SurfaceRunRecord> {
+            Ok(SurfaceRunRecord {
+                job_id: r.try_get("job_id")?,
+                status: r.try_get("status")?,
+                kicked_at: r.try_get("kicked_at")?,
+                updated_at: r.try_get("updated_at")?,
+            })
+        })
+        .transpose()
+        .context("failed to decode latest morning recap run")
     }
 
     pub async fn get_latest_pulse_run(pool: &PgPool) -> Result<Option<SurfaceRunRecord>> {
@@ -81,12 +90,16 @@ impl SurfaceDaoOps {
         .await
         .context("failed to fetch latest pulse generation run")?;
 
-        Ok(row.map(|r| SurfaceRunRecord {
-            job_id: r.get("job_id"),
-            status: r.get("status"),
-            kicked_at: r.get("started_at"),
-            updated_at: r.get("updated_at"),
-        }))
+        row.map(|r| -> Result<SurfaceRunRecord> {
+            Ok(SurfaceRunRecord {
+                job_id: r.try_get("job_id")?,
+                status: r.try_get("status")?,
+                kicked_at: r.try_get("started_at")?,
+                updated_at: r.try_get("updated_at")?,
+            })
+        })
+        .transpose()
+        .context("failed to decode latest pulse generation run")
     }
 
     pub async fn get_pulse_provenance(
@@ -113,10 +126,10 @@ impl SurfaceDaoOps {
         .await
         .context("failed to fetch pulse provenance")?;
 
-        Ok(row.map(|r| {
-            let finished_at: DateTime<Utc> = r.get("finished_at");
-            let window_days: Option<i32> = r.get("window_days");
-            let window_end: Option<DateTime<Utc>> = r.get("window_end");
+        row.map(|r| -> Result<PulseSurfaceProvenance> {
+            let finished_at: DateTime<Utc> = r.try_get("finished_at")?;
+            let window_days: Option<i32> = r.try_get("window_days")?;
+            let window_end: Option<DateTime<Utc>> = r.try_get("window_end")?;
             let window = match (window_days, window_end) {
                 (Some(days), Some(end)) => {
                     let start = end - Duration::days(i64::from(days));
@@ -124,11 +137,13 @@ impl SurfaceDaoOps {
                 }
                 _ => None,
             };
-            PulseSurfaceProvenance {
+            Ok(PulseSurfaceProvenance {
                 finished_at,
                 window,
-            }
-        }))
+            })
+        })
+        .transpose()
+        .context("failed to decode pulse provenance")
     }
 
     pub async fn get_recap_job_window(
@@ -151,12 +166,14 @@ impl SurfaceDaoOps {
         .await
         .context("failed to fetch recap job window")?;
 
-        Ok(row.map(|r| {
-            let window_days: i32 = r.get("window_days");
-            let window_end: DateTime<Utc> = r.get("window_end");
+        row.map(|r| -> Result<(DateTime<Utc>, DateTime<Utc>)> {
+            let window_days: i32 = r.try_get("window_days")?;
+            let window_end: DateTime<Utc> = r.try_get("window_end")?;
             let window_start = window_end - Duration::days(i64::from(window_days));
-            (window_start, window_end)
-        }))
+            Ok((window_start, window_end))
+        })
+        .transpose()
+        .context("failed to decode recap job window")
     }
 
     pub async fn get_job_updated_at(pool: &PgPool, job_id: Uuid) -> Result<Option<DateTime<Utc>>> {
@@ -172,7 +189,9 @@ impl SurfaceDaoOps {
         .await
         .context("failed to fetch recap job updated_at")?;
 
-        Ok(row.map(|r| r.get("updated_at")))
+        row.map(|r| r.try_get("updated_at"))
+            .transpose()
+            .context("failed to decode recap job updated_at")
     }
 }
 
