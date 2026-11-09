@@ -7,12 +7,18 @@ on:
       - "alt-perf/**"
       - ".github/workflows/alt-perf.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main]
     paths:
       - "alt-perf/**"
       - ".github/workflows/alt-perf.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -35,5 +41,7 @@ jobs:
     uses: ./.github/workflows/reusable-test-deno.yaml
     with:
       working-directory: "alt-perf"
+      # Must match the Deno version in alt-perf/Dockerfile FROM line.
+      deno-version: "v2.4.0"
       sparse-checkout: "alt-perf"
       test-command: "deno test --allow-all tests/"

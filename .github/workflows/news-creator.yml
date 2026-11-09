@@ -9,12 +9,18 @@ on:
       - "news-creator/**"
       - "compose/ai.yaml"
       - ".github/workflows/news-creator.yml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main, develop]
     paths:
       - "news-creator/**"
       - "compose/ai.yaml"
       - ".github/workflows/news-creator.yml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -31,12 +37,10 @@ jobs:
         news-creator
         compose
       coverage-flags: "news-creator"
-      upload-coverage: true
       job-type: "test"
       test-command: "pytest -v --cov=news_creator --cov-report=xml --junit-xml=tests/results.xml"
     permissions:
       contents: read
-    secrets: inherit
 
   lint:
     uses: ./.github/workflows/reusable-test-python.yaml

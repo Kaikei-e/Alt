@@ -13,9 +13,8 @@ on:
         required: true
         type: string
       deno-version:
-        required: false
+        required: true
         type: string
-        default: "v2.x"
       sparse-checkout:
         required: true
         type: string
@@ -70,7 +69,9 @@ jobs:
           ls -la
 
       - name: Test
-        run: ${{ inputs.test-command }}
+        env:
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: eval "$TEST_COMMAND"
 
       - name: Format check
         if: ${{ inputs.check-fmt }}
