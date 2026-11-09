@@ -78,34 +78,14 @@ impl PipelineOrchestrator {
         match self.pulse_stage().generate(pulse_input).await {
             Ok(result) => {
                 let target_date = chrono::Utc::now().date_naive();
-                let owner_scope = match (job.user_id, job.tenant_id) {
-                    (Some(user_id), Some(tenant_id)) => Some((user_id, tenant_id)),
-                    _ => self
-                        .config
-                        .knowledge_owner()
-                        .map(|o| (o.user_id, o.tenant_id)),
-                };
-                let client = match self.config.knowledge_sovereign_url() {
-                    Some(url) => match KnowledgeSovereignClient::new(
-                        url,
-                        self.config.knowledge_sovereign_token().map(str::to_owned),
-                    ) {
-                        Ok(c) => Some(c),
-                        Err(e) => {
-                            tracing::error!(
-                                job_id = %job.job_id,
-                                error = ?e,
-                                "failed to construct knowledge-sovereign client for evening pulse event"
-                            );
-                            return;
-                        }
-                    },
-                    None => None,
-                };
+                let owner_scope = self
+                    .config
+                    .knowledge_owner()
+                    .map(|o| (o.user_id, o.tenant_id));
 
                 record_pulse_generation(
                     self.recap_dao().as_ref(),
-                    client.as_ref(),
+                    self.sovereign_client.as_deref(),
                     owner_scope,
                     job.job_id,
                     &result,
@@ -195,7 +175,7 @@ pub(super) fn build_pulse_input(
 
 #[async_trait::async_trait]
 pub(crate) trait PulseGenerationSink: Send + Sync {
-    async fn save_pulse_generation_with_finished_at(
+    async fn save_pulse_generation(
         &self,
         result: &pulse::PulseResult,
         target_date: NaiveDate,
@@ -204,12 +184,12 @@ pub(crate) trait PulseGenerationSink: Send + Sync {
 
 #[async_trait::async_trait]
 impl<T: RecapDao + ?Sized> PulseGenerationSink for T {
-    async fn save_pulse_generation_with_finished_at(
+    async fn save_pulse_generation(
         &self,
         result: &pulse::PulseResult,
         target_date: NaiveDate,
     ) -> crate::error::Result<(i64, DateTime<Utc>)> {
-        RecapDao::save_pulse_generation_with_finished_at(self, result, target_date).await
+        RecapDao::save_pulse_generation(self, result, target_date).await
     }
 }
 
@@ -222,10 +202,7 @@ pub(crate) async fn record_pulse_generation<D: PulseGenerationSink + ?Sized>(
     target_date: NaiveDate,
 ) -> Option<(i64, DateTime<Utc>)> {
     let topic_count = result.topic_count();
-    match dao
-        .save_pulse_generation_with_finished_at(result, target_date)
-        .await
-    {
+    match dao.save_pulse_generation(result, target_date).await {
         Ok((generation_id, finished_at)) => {
             tracing::info!(
                 job_id = %job_id,
@@ -281,7 +258,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl PulseGenerationSink for FixedFinishedAtDao {
-        async fn save_pulse_generation_with_finished_at(
+        async fn save_pulse_generation(
             &self,
             _result: &PulseResult,
             _target_date: NaiveDate,

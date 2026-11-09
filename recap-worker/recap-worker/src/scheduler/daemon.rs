@@ -40,16 +40,40 @@ fn log_topic_snapshot_emit_wiring(owner: Option<KnowledgeOwnerIds>, daemon: &'st
             owner_user_id = %owner.user_id,
             "recap_topic_snapshot_emit_enabled"
         );
-        info!(
-            daemon,
-            owner_user_id = %owner.user_id,
-            "evening_pulse_event_enabled"
-        );
     } else {
         warn!(
             daemon,
             "recap_topic_snapshot_emit_disabled: RECAP_KNOWLEDGE_EMIT=false — recap.topic_snapshotted.v1 will not be emitted"
         );
+    }
+}
+
+pub(crate) fn is_evening_pulse_event_enabled(
+    owner: Option<KnowledgeOwnerIds>,
+    pulse_enabled: bool,
+) -> bool {
+    owner.is_some() && pulse_enabled
+}
+
+fn log_evening_pulse_event_wiring(
+    owner: Option<KnowledgeOwnerIds>,
+    pulse_enabled: bool,
+    daemon: &'static str,
+) {
+    if is_evening_pulse_event_enabled(owner, pulse_enabled) {
+        if let Some(owner) = owner {
+            info!(
+                daemon,
+                owner_user_id = %owner.user_id,
+                "evening_pulse_event_enabled"
+            );
+        }
+    } else if !pulse_enabled {
+        warn!(
+            daemon,
+            "evening_pulse_event_disabled: PULSE_ENABLED=false — recap.evening_pulse_generated.v1 will not be emitted"
+        );
+    } else {
         warn!(
             daemon,
             "evening_pulse_event_disabled: RECAP_KNOWLEDGE_EMIT=false — recap.evening_pulse_generated.v1 will not be emitted"
@@ -65,6 +89,11 @@ pub fn spawn_jst_batch_daemon(
     shutdown: CancellationToken,
 ) -> JoinHandle<()> {
     log_topic_snapshot_emit_wiring(owner, "jst_batch");
+    log_evening_pulse_event_wiring(
+        owner,
+        crate::pipeline::pulse::PulseConfig::from_env().is_enabled(),
+        "jst_batch",
+    );
     let tz = FixedOffset::east_opt(JST_OFFSET_HOURS * 3600).expect("valid JST offset");
     let cadence = DailyCadence::new(tz, BATCH_HOUR, BATCH_MINUTE)
         .unwrap_or_else(|e| panic!("batch cadence: {e}"));
@@ -698,6 +727,18 @@ mod tests {
 
         assert_eq!(ctx.user_id(), None);
         assert_eq!(ctx.tenant_id(), None);
+    }
+
+    #[test]
+    fn evening_pulse_event_enabled_requires_both_owner_and_pulse_enabled() {
+        let owner = Some(KnowledgeOwnerIds {
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+        });
+        assert!(is_evening_pulse_event_enabled(owner, true));
+        assert!(!is_evening_pulse_event_enabled(owner, false));
+        assert!(!is_evening_pulse_event_enabled(None, true));
+        assert!(!is_evening_pulse_event_enabled(None, false));
     }
 
     type RecordedRun = (Uuid, chrono::DateTime<Utc>, chrono::DateTime<Utc>);

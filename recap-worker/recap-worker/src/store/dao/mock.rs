@@ -783,14 +783,6 @@ impl RecapDao for MockRecapDao {
 
     async fn save_pulse_generation(
         &self,
-        _result: &PulseResult,
-        _target_date: chrono::NaiveDate,
-    ) -> Result<i64> {
-        Ok(1) // Return mock generation ID
-    }
-
-    async fn save_pulse_generation_with_finished_at(
-        &self,
         result: &PulseResult,
         _target_date: chrono::NaiveDate,
     ) -> Result<(i64, chrono::DateTime<chrono::Utc>)> {

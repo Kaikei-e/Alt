@@ -1,7 +1,7 @@
-//! `recap.topic_snapshotted.v1` publish helper.
+//! `recap.topic_snapshotted.v1` and `recap.evening_pulse_generated.v1` publish helpers.
 //!
-//! The persist stage hands this helper a list of confirmed clusters per
-//! recap cycle. The helper:
+//! For topic snapshots, the persist stage hands [`publish_topic_snapshots`] a list of
+//! confirmed clusters per recap cycle. The helper:
 //!
 //!   - derives a stable snapshot id (UUIDv5 via [`deterministic_snapshot_id`])
 //!     so retries are idempotent against the sovereign dedupe index;
@@ -11,7 +11,11 @@
 //!   - skips clusters whose `top_terms` are empty (no-op signal — would only
 //!     contribute zeros to Surface Planner v2's `topic_overlap_count`).
 //!
-//! Knowledge Loop Completion Phase 1 §2 (ADR-000853 follow-up).
+//! For Evening Pulse, [`publish_evening_pulse_generated`] emits
+//! `recap.evening_pulse_generated.v1` after a `succeeded` generation is saved,
+//! using the persisted `finished_at` as `occurred_at` (ADR-001003 Decision 6/8).
+//!
+//! Knowledge Loop Completion Phase 1 §2 (ADR-000853 follow-up) and ADR-001003.
 
 use anyhow::anyhow;
 use chrono::{DateTime, NaiveDate, Utc};

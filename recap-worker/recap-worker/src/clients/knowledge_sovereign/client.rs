@@ -7,7 +7,6 @@ use serde_json::json;
 use tracing::{debug, error, warn};
 use uuid::Uuid;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct EveningPulseGeneratedInput {
     pub(crate) user_id: Uuid,
@@ -242,8 +241,8 @@ impl KnowledgeSovereignClient {
                 occurred_at: input.finished_at.to_rfc3339(),
                 tenant_id: input.tenant_id.to_string(),
                 user_id: input.user_id.to_string(),
-                actor_type: "service".to_string(),
-                actor_id: "recap-worker".to_string(),
+                actor_type: "service:recap-worker".to_string(),
+                actor_id: "pulse-stage".to_string(),
                 event_type: "recap.evening_pulse_generated.v1".to_string(),
                 aggregate_type: "evening_pulse".to_string(),
                 aggregate_id: format!("evening-pulse:{target_date}"),
@@ -277,21 +276,6 @@ impl KnowledgeSovereignClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            if status == reqwest::StatusCode::UNAUTHORIZED
-                || status == reqwest::StatusCode::FORBIDDEN
-            {
-                error!(
-                    status = %status,
-                    body = %body,
-                    "AppendKnowledgeEvent unauthenticated or forbidden; check RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE"
-                );
-            } else {
-                warn!(
-                    status = %status,
-                    body = %body,
-                    "AppendKnowledgeEvent returned non-2xx (continuing)"
-                );
-            }
             return Err(anyhow!(
                 "AppendKnowledgeEvent returned status {status}: {body}"
             ));

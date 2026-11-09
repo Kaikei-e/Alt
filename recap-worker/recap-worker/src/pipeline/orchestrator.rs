@@ -40,6 +40,7 @@ pub(crate) struct PipelineOrchestrator {
     pub(super) classification_queue: Arc<ClassificationJobQueue>,
     pub(super) pulse_stage: Arc<dyn PulseStage>,
     pub(super) pulse_rollout: PulseRollout,
+    pub(super) sovereign_client: Option<Arc<KnowledgeSovereignClient>>,
 }
 
 impl PipelineOrchestrator {
@@ -82,6 +83,7 @@ pub(crate) struct PipelineBuilder {
     persist: Option<Arc<dyn PersistStage>>,
     pulse_stage: Option<Arc<dyn PulseStage>>,
     pulse_rollout: Option<PulseRollout>,
+    sovereign_client: Option<Arc<KnowledgeSovereignClient>>,
 }
 
 impl PipelineOrchestrator {
@@ -330,10 +332,11 @@ impl PipelineOrchestrator {
                     Arc::clone(&recap_dao),
                     tag_generator_for_persist,
                 )
-                .with_sovereign(sovereign_client),
+                .with_sovereign(sovereign_client.clone()),
             ))
             .with_pulse_stage(pulse_stage)
             .with_pulse_rollout(pulse_rollout)
+            .with_sovereign_client(sovereign_client)
             .build(
                 Arc::clone(&recap_dao),
                 subworker_client,
@@ -484,6 +487,7 @@ impl PipelineBuilder {
             persist: None,
             pulse_stage: None,
             pulse_rollout: None,
+            sovereign_client: None,
         }
     }
 
@@ -529,6 +533,14 @@ impl PipelineBuilder {
 
     pub(crate) fn with_pulse_rollout(mut self, rollout: PulseRollout) -> Self {
         self.pulse_rollout = Some(rollout);
+        self
+    }
+
+    pub(crate) fn with_sovereign_client(
+        mut self,
+        client: Option<Arc<KnowledgeSovereignClient>>,
+    ) -> Self {
+        self.sovereign_client = client;
         self
     }
 
@@ -593,6 +605,7 @@ impl PipelineBuilder {
             classification_queue,
             pulse_stage,
             pulse_rollout,
+            sovereign_client: self.sovereign_client,
         })
     }
 }

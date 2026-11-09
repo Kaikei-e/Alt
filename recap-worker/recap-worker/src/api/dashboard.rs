@@ -1290,7 +1290,7 @@ mod tests {
             &self,
             result: &crate::pipeline::pulse::PulseResult,
             target_date: chrono::NaiveDate,
-        ) -> crate::error::Result<i64> {
+        ) -> crate::error::Result<(i64, chrono::DateTime<chrono::Utc>)> {
             self.inner.save_pulse_generation(result, target_date).await
         }
     }
