@@ -372,6 +372,15 @@ pub(crate) trait RecapDao: Send + Sync {
         result: &PulseResult,
         target_date: NaiveDate,
     ) -> Result<i64>;
+
+    async fn save_pulse_generation_with_finished_at(
+        &self,
+        result: &PulseResult,
+        target_date: NaiveDate,
+    ) -> Result<(i64, DateTime<Utc>)> {
+        let id = self.save_pulse_generation(result, target_date).await?;
+        Ok((id, result.generated_at))
+    }
 }
 
 // Blanket implementation: any type implementing all focused traits also implements RecapDao
@@ -836,6 +845,16 @@ where
         result: &PulseResult,
         target_date: NaiveDate,
     ) -> Result<i64> {
+        PulseDao::save_pulse_generation(self, result, target_date)
+            .await
+            .map(|(id, _)| id)
+    }
+
+    async fn save_pulse_generation_with_finished_at(
+        &self,
+        result: &PulseResult,
+        target_date: NaiveDate,
+    ) -> Result<(i64, DateTime<Utc>)> {
         PulseDao::save_pulse_generation(self, result, target_date).await
     }
 }

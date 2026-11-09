@@ -13,12 +13,15 @@
 //!
 //! Knowledge Loop Completion Phase 1 §2 (ADR-000853 follow-up).
 
-use chrono::{DateTime, Utc};
+use anyhow::anyhow;
+use chrono::{DateTime, NaiveDate, Utc};
 use tracing::{debug, error, warn};
 use uuid::Uuid;
 
+use crate::pipeline::pulse::PulseResult;
+
 use super::snapshot_id::deterministic_snapshot_id;
-use super::{KnowledgeSovereignClient, TopicSnapshottedInput};
+use super::{EveningPulseGeneratedInput, KnowledgeSovereignClient, TopicSnapshottedInput};
 
 /// One cluster the persist stage has confirmed during a recap cycle. Held by
 /// reference so the helper can stay independent of the heavyweight
@@ -137,6 +140,42 @@ pub(crate) async fn publish_topic_snapshots(
     }
 
     outcome
+}
+
+pub(crate) async fn publish_evening_pulse_generated(
+    client: Option<&KnowledgeSovereignClient>,
+    owner_scope: Option<(Uuid, Uuid)>,
+    result: &PulseResult,
+    target_date: NaiveDate,
+    finished_at: DateTime<Utc>,
+) -> anyhow::Result<bool> {
+    if !result.is_success() {
+        return Ok(false);
+    }
+
+    let Some((user_id, tenant_id)) = owner_scope else {
+        return Ok(false);
+    };
+
+    let Some(client) = client else {
+        return Err(anyhow!(
+            "knowledge-sovereign client is unwired while evening pulse event emission is enabled"
+        ));
+    };
+
+    let input = EveningPulseGeneratedInput {
+        user_id,
+        tenant_id,
+        job_id: result.job_id,
+        target_date,
+        version: result.version.to_string(),
+        topic_count: result.topic_count(),
+        fallback_level: result.diagnostics.fallback_level,
+        finished_at,
+    };
+
+    client.emit_evening_pulse_generated(&input).await?;
+    Ok(true)
 }
 
 #[cfg(test)]

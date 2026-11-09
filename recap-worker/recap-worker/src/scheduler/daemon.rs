@@ -40,10 +40,19 @@ fn log_topic_snapshot_emit_wiring(owner: Option<KnowledgeOwnerIds>, daemon: &'st
             owner_user_id = %owner.user_id,
             "recap_topic_snapshot_emit_enabled"
         );
+        info!(
+            daemon,
+            owner_user_id = %owner.user_id,
+            "evening_pulse_event_enabled"
+        );
     } else {
         warn!(
             daemon,
             "recap_topic_snapshot_emit_disabled: RECAP_KNOWLEDGE_EMIT=false — recap.topic_snapshotted.v1 will not be emitted"
+        );
+        warn!(
+            daemon,
+            "evening_pulse_event_disabled: RECAP_KNOWLEDGE_EMIT=false — recap.evening_pulse_generated.v1 will not be emitted"
         );
     }
 }

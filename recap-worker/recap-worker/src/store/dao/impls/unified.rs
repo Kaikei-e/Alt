@@ -656,7 +656,7 @@ impl PulseDao for UnifiedDao {
         &self,
         result: &PulseResult,
         target_date: NaiveDate,
-    ) -> Result<i64> {
+    ) -> Result<(i64, DateTime<Utc>)> {
         crate::store::dao::pulse::RecapDao::save_pulse_generation(&self.pool, result, target_date)
             .await
     }

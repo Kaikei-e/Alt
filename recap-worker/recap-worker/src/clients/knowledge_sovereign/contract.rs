@@ -17,7 +17,7 @@ use chrono::Utc;
 use pact_consumer::prelude::*;
 use uuid::Uuid;
 
-use super::client::{KnowledgeSovereignClient, TopicSnapshottedInput};
+use super::client::{EveningPulseGeneratedInput, KnowledgeSovereignClient, TopicSnapshottedInput};
 
 const PACT_DIR: &str = "../../pacts";
 
@@ -185,9 +185,24 @@ async fn contract_recap_evening_pulse_generated_v1() {
         .start_mock_server(None, None);
 
     let url = pact.url();
-    let _client = KnowledgeSovereignClient::new(
+    let client = KnowledgeSovereignClient::new(
         url.to_string(),
         Some("test-sovereign-event-token".to_string()),
     )
     .expect("client should build");
+    let input = EveningPulseGeneratedInput {
+        user_id,
+        tenant_id,
+        job_id,
+        target_date,
+        version: "v4".to_string(),
+        topic_count: 3,
+        fallback_level: 0,
+        finished_at,
+    };
+
+    client
+        .emit_evening_pulse_generated(&input)
+        .await
+        .expect("emit should succeed against mock provider");
 }

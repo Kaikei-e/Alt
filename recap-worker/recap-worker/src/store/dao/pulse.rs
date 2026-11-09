@@ -4,7 +4,7 @@
 //! including retrieving and saving pulse generation results.
 
 use crate::error::{RecapError, Result};
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
@@ -85,7 +85,7 @@ impl RecapDao {
         pool: &PgPool,
         result: &PulseResult,
         target_date: NaiveDate,
-    ) -> Result<i64> {
+    ) -> Result<(i64, DateTime<Utc>)> {
         let version = result.version.to_string();
         let status = if result.is_success() {
             "succeeded"
@@ -119,7 +119,7 @@ impl RecapDao {
                 '{}'::JSONB,
                 $7
             )
-            RETURNING id
+            RETURNING id, finished_at
             ",
         )
         .bind(result.job_id)
@@ -134,7 +134,8 @@ impl RecapDao {
         .map_err(|e| RecapError::Db(format!("failed to insert pulse generation: {e}")))?;
 
         let id: i64 = row.try_get("id")?;
-        Ok(id)
+        let finished_at: DateTime<Utc> = row.try_get("finished_at")?;
+        Ok((id, finished_at))
     }
 }
 
