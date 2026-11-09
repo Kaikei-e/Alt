@@ -68,11 +68,10 @@ def test_multi_turn_maps_model_role_to_assistant():
     ]
 
 
-def test_prompt_without_turn_markers_becomes_single_user_message():
-    """A plain prompt with no Gemma turn markers becomes a single user message."""
-    messages = _convert("  Plain article text to summarize.  \n")
-
-    assert messages == [{"role": "user", "content": "Plain article text to summarize."}]
+def test_prompt_without_turn_markers_raises_value_error():
+    """A plain prompt with no Gemma turn markers is rejected."""
+    with pytest.raises(ValueError, match="Unexpected text outside"):
+        _convert("  Plain article text to summarize.  \n")
 
 
 def test_renders_real_summary_prompt_template_with_sample_article():

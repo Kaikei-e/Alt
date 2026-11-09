@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 import json
+import logging
 from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
@@ -867,7 +868,7 @@ async def test_morning_letter_accepts_fullwidth_alphanumeric_short_bullet_and_ex
                 "title": "ＡＩ２０２６",
                 "bullets": [
                     "円安が加速 [2]",
-                    "AIが普及 [1][2][3][4][5][6][7][8]",
+                    "AIが普及 [1][2][3][4][5][6][7][8][9][10][11][12][13][14][15][16]",
                 ],
                 "genre": None,
             }
@@ -908,7 +909,9 @@ def test_morning_letter_prompt_includes_narrative_guidance_in_jinja_and_inline()
 
 
 @pytest.mark.asyncio
-async def test_morning_letter_retry_parse_failure_preserves_first_attempt_validation_reason():
+async def test_morning_letter_retry_parse_failure_preserves_first_attempt_validation_reason(
+    caplog,
+):
     config = _make_morning_letter_config()
     placeholder_content = {
         "schema_version": 1,
@@ -944,11 +947,19 @@ async def test_morning_letter_retry_parse_failure_preserves_first_attempt_valida
     )
 
     usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
-    response = await usecase.generate_letter(_make_morning_letter_request())
+    with caplog.at_level(logging.WARNING):
+        response = await usecase.generate_letter(_make_morning_letter_request())
 
     assert llm_provider.generate.await_count == 2
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason == "placeholder_output"
+    retry_warnings = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING and getattr(r, "retry_error", None) is not None
+    ]
+    assert len(retry_warnings) == 1
+    assert getattr(retry_warnings[0], "prior_reason", None) == "placeholder_output"
 
 
 @pytest.mark.asyncio
