@@ -217,6 +217,11 @@ impl ClassificationJobQueue {
 
             // Check timeout
             if start.elapsed() >= timeout {
+                self.auth_failures
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .remove(&recap_job_id);
+
                 // Get jobs to check for failures
                 let jobs = self
                     .store

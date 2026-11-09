@@ -258,7 +258,7 @@ impl SubworkerCardsClient {
         Ok(Self::new_with_url(base_url, client))
     }
 
-    pub(crate) fn new_with_url(base_url: Url, client: Client) -> Self {
+    fn new_with_url(base_url: Url, client: Client) -> Self {
         Self {
             client,
             base_url,

@@ -8,7 +8,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use super::store::QueueStore;
-use super::types::QueuedJob;
+use super::types::{QueuedJob, QueuedJobStatus};
 use crate::clients::subworker::{SubworkerAuthError, SubworkerClient};
 
 pub(crate) type AuthFailureMap = Arc<Mutex<HashMap<Uuid, (usize, SubworkerAuthError)>>>;
@@ -197,20 +197,40 @@ impl QueueWorker {
                 error = %error_str,
                 "classification job failed with subworker authentication error"
             );
-            if let Err(store_err) = store.mark_recap_job_failed(recap_job_id, &error_str).await {
-                error!(
-                    job_id,
-                    recap_job_id = %recap_job_id,
-                    error = %store_err,
-                    "failed to mark recap job chunks as failed"
-                );
-                return Err(store_err.into());
+            let is_running = match store.get_job(job_id).await {
+                Ok(Some(current)) => current.status == QueuedJobStatus::Running,
+                Ok(None) => false,
+                Err(store_err) => {
+                    error!(
+                        job_id,
+                        recap_job_id = %recap_job_id,
+                        error = %store_err,
+                        "failed to inspect chunk status before recording auth failure"
+                    );
+                    return Err(store_err.into());
+                }
+            };
+            if is_running {
+                auth_failures
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .entry(recap_job_id)
+                    .or_insert((chunk_idx, auth_err));
+                if let Err(store_err) = store.mark_recap_job_failed(recap_job_id, &error_str).await
+                {
+                    auth_failures
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .remove(&recap_job_id);
+                    error!(
+                        job_id,
+                        recap_job_id = %recap_job_id,
+                        error = %store_err,
+                        "failed to mark recap job chunks as failed"
+                    );
+                    return Err(store_err.into());
+                }
             }
-            auth_failures
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .entry(recap_job_id)
-                .or_insert((chunk_idx, auth_err));
             return Err(e);
         }
 
