@@ -1256,4 +1256,268 @@ mod tests {
             .with_timezone(&chrono::Utc);
         assert_eq!(parsed_generated_at, letter.created_at);
     }
+
+    struct EmptyFetchStage;
+
+    #[async_trait::async_trait]
+    impl FetchStage for EmptyFetchStage {
+        async fn fetch(
+            &self,
+            job: &JobContext,
+        ) -> crate::error::Result<crate::pipeline::fetch::FetchedCorpus> {
+            Ok(crate::pipeline::fetch::FetchedCorpus {
+                job_id: job.job_id,
+                articles: Vec::new(),
+            })
+        }
+    }
+
+    struct EmptyPreprocessStage;
+
+    #[async_trait::async_trait]
+    impl PreprocessStage for EmptyPreprocessStage {
+        async fn preprocess(
+            &self,
+            job: &JobContext,
+            _corpus: crate::pipeline::fetch::FetchedCorpus,
+        ) -> anyhow::Result<crate::pipeline::preprocess::PreprocessedCorpus> {
+            Ok(crate::pipeline::preprocess::PreprocessedCorpus {
+                job_id: job.job_id,
+                articles: Vec::new(),
+            })
+        }
+    }
+
+    struct EmptyDedupStage;
+
+    #[async_trait::async_trait]
+    impl DedupStage for EmptyDedupStage {
+        async fn deduplicate(
+            &self,
+            job: &JobContext,
+            _corpus: crate::pipeline::preprocess::PreprocessedCorpus,
+        ) -> anyhow::Result<crate::pipeline::dedup::DeduplicatedCorpus> {
+            Ok(crate::pipeline::dedup::DeduplicatedCorpus {
+                job_id: job.job_id,
+                articles: Vec::new(),
+                stats: crate::pipeline::dedup::DedupStats::default(),
+            })
+        }
+    }
+
+    fn test_config_for_morning() -> Arc<Config> {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let vars = [
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000")),
+            ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+            ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("RECAP_EVAL_LISTENER", Some("disabled")),
+            ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+            ("MTLS_ENFORCE", None),
+        ];
+        temp_env::with_vars(vars, || {
+            Arc::new(Config::from_env().expect("config should load"))
+        })
+    }
+
+    fn build_test_morning_pipeline(
+        dao: Arc<MockRecapDao>,
+        news_creator_url: &str,
+    ) -> MorningPipeline {
+        let config = test_config_for_morning();
+        let recap_dao: Arc<dyn RecapDao> = dao;
+        MorningPipeline {
+            config,
+            fetch: Arc::new(EmptyFetchStage),
+            preprocess: Arc::new(EmptyPreprocessStage),
+            dedup: Arc::new(EmptyDedupStage),
+            recap_dao,
+            news_creator_client: Arc::new(NewsCreatorClient::new_for_test(news_creator_url)),
+        }
+    }
+
+    fn sample_recap_job_with_age(age: chrono::Duration) -> crate::store::models::RecapJob {
+        let window_end = chrono::Utc::now() - age;
+        crate::store::models::RecapJob {
+            job_id: Uuid::new_v4(),
+            started_at: window_end,
+            window_start: window_end - chrono::Duration::days(3),
+            window_end,
+            total_articles: Some(10),
+        }
+    }
+
+    fn sample_valid_genres() -> Vec<GenreWithSummary> {
+        vec![GenreWithSummary {
+            genre_name: "ai_data".to_string(),
+            summary_ja: None,
+            title_ja: Some("AI動向".to_string()),
+            bullets_ja: Some(serde_json::json!(["新しいモデルが公開された"])),
+        }]
+    }
+
+    fn mock_news_creator_response_body(
+        is_degraded: bool,
+        degradation_reason: Option<&str>,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "target_date": "2026-11-09",
+            "edition_timezone": "Asia/Tokyo",
+            "content": {
+                "schema_version": 1,
+                "lead": "Morning lead",
+                "sections": [
+                    {
+                        "key": "top3",
+                        "title": "AI Tooling",
+                        "bullets": ["New release shipped."],
+                        "genre": "ai_data",
+                        "narrative": "Momentum continued."
+                    }
+                ],
+                "source_recap_window_days": 3
+            },
+            "metadata": {
+                "model": "gemma4-e4b-12k",
+                "is_degraded": is_degraded,
+                "degradation_reason": degradation_reason,
+                "processing_time_ms": 500
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn execute_update_marks_stale_recap_input_when_three_day_recap_exceeds_freshness_budget()
+    {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(mock_news_creator_response_body(false, None)),
+            )
+            .mount(&server)
+            .await;
+
+        let dao = Arc::new(MockRecapDao::new());
+        dao.set_latest_completed_job(Some(sample_recap_job_with_age(chrono::Duration::hours(40))));
+        dao.set_genres_by_job(sample_valid_genres());
+
+        let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
+        let job = JobContext::new_morning_update(Uuid::new_v4());
+        pipeline
+            .execute_update(&job)
+            .await
+            .expect("pipeline succeeds");
+
+        let letters = dao.morning_letters();
+        assert_eq!(letters.len(), 1);
+        assert!(
+            letters[0].is_degraded,
+            "morning letter must be marked degraded when 3-day recap exceeds freshness budget"
+        );
+        assert_eq!(
+            letters[0].generation_metadata_jsonb["degradation_reason"],
+            serde_json::json!("stale_recap_input")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_update_marks_recap_unavailable_when_no_three_day_recap_exists() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(mock_news_creator_response_body(false, None)),
+            )
+            .mount(&server)
+            .await;
+
+        let dao = Arc::new(MockRecapDao::new());
+        dao.set_latest_completed_job(None);
+
+        let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
+        let job = JobContext::new_morning_update(Uuid::new_v4());
+        pipeline
+            .execute_update(&job)
+            .await
+            .expect("pipeline succeeds");
+
+        let letters = dao.morning_letters();
+        assert_eq!(letters.len(), 1);
+        assert!(letters[0].is_degraded);
+        assert_eq!(
+            letters[0].generation_metadata_jsonb["degradation_reason"],
+            serde_json::json!("recap_unavailable")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_update_gives_input_reason_precedence_over_news_creator_and_preserves_news_creator_reason_when_fresh()
+     {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                mock_news_creator_response_body(true, Some("placeholder_output")),
+            ))
+            .mount(&server)
+            .await;
+
+        // Case 1: stale recap input + news-creator placeholder_output -> stale_recap_input wins
+        let stale_dao = Arc::new(MockRecapDao::new());
+        stale_dao
+            .set_latest_completed_job(Some(sample_recap_job_with_age(chrono::Duration::hours(40))));
+        stale_dao.set_genres_by_job(sample_valid_genres());
+        let stale_pipeline = build_test_morning_pipeline(Arc::clone(&stale_dao), &server.uri());
+        stale_pipeline
+            .execute_update(&JobContext::new_morning_update(Uuid::new_v4()))
+            .await
+            .expect("stale pipeline succeeds");
+        let stale_letters = stale_dao.morning_letters();
+        assert_eq!(stale_letters.len(), 1);
+        assert!(stale_letters[0].is_degraded);
+        assert_eq!(
+            stale_letters[0].generation_metadata_jsonb["degradation_reason"],
+            serde_json::json!("stale_recap_input")
+        );
+
+        // Case 2: fresh recap input + news-creator placeholder_output -> placeholder_output kept
+        let fresh_dao = Arc::new(MockRecapDao::new());
+        fresh_dao
+            .set_latest_completed_job(Some(sample_recap_job_with_age(chrono::Duration::hours(2))));
+        fresh_dao.set_genres_by_job(sample_valid_genres());
+        let fresh_pipeline = build_test_morning_pipeline(Arc::clone(&fresh_dao), &server.uri());
+        fresh_pipeline
+            .execute_update(&JobContext::new_morning_update(Uuid::new_v4()))
+            .await
+            .expect("fresh pipeline succeeds");
+        let fresh_letters = fresh_dao.morning_letters();
+        assert_eq!(fresh_letters.len(), 1);
+        assert!(fresh_letters[0].is_degraded);
+        assert_eq!(
+            fresh_letters[0].generation_metadata_jsonb["degradation_reason"],
+            serde_json::json!("placeholder_output")
+        );
+    }
 }

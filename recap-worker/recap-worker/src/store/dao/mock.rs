@@ -88,6 +88,9 @@ pub(crate) struct MockRecapDao {
     running_cards_job: Arc<Mutex<Option<Uuid>>>,
     /// `search_recaps_by_term` の応答。
     search_recaps_hits: Arc<Mutex<Vec<RecapSearchHit>>>,
+    latest_completed_job: Arc<Mutex<Option<RecapJob>>>,
+    genres_by_job: Arc<Mutex<Vec<GenreWithSummary>>>,
+    morning_letters: Arc<Mutex<Vec<MorningLetter>>>,
 }
 
 #[cfg(test)]
@@ -184,6 +187,30 @@ impl MockRecapDao {
         self.mark_abandoned_jobs_calls
             .lock()
             .expect("mark_abandoned_jobs_calls mutex poisoned")
+            .clone()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn set_latest_completed_job(&self, job: Option<RecapJob>) {
+        *self
+            .latest_completed_job
+            .lock()
+            .expect("latest_completed_job mutex poisoned") = job;
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn set_genres_by_job(&self, genres: Vec<GenreWithSummary>) {
+        *self
+            .genres_by_job
+            .lock()
+            .expect("genres_by_job mutex poisoned") = genres;
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn morning_letters(&self) -> Vec<MorningLetter> {
+        self.morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned")
             .clone()
     }
 }
@@ -567,11 +594,19 @@ impl RecapDao for MockRecapDao {
     }
 
     async fn get_latest_completed_job(&self, _window_days: i32) -> Result<Option<RecapJob>> {
-        Ok(None)
+        Ok(self
+            .latest_completed_job
+            .lock()
+            .expect("latest_completed_job mutex poisoned")
+            .clone())
     }
 
     async fn get_genres_by_job(&self, _job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
-        Ok(vec![])
+        Ok(self
+            .genres_by_job
+            .lock()
+            .expect("genres_by_job mutex poisoned")
+            .clone())
     }
 
     async fn get_clusters_by_job(
@@ -672,6 +707,22 @@ impl RecapDao for MockRecapDao {
     }
 
     async fn save_morning_letter(&self, letter: &MorningLetter) -> Result<Uuid> {
+        let mut letters = self
+            .morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned");
+        let next_rev = letters
+            .iter()
+            .filter(|l| {
+                l.target_date == letter.target_date && l.edition_timezone == letter.edition_timezone
+            })
+            .map(|l| l.generation_revision)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let mut stored = letter.clone();
+        stored.generation_revision = next_rev;
+        letters.push(stored);
         Ok(letter.id)
     }
 
@@ -681,13 +732,28 @@ impl RecapDao for MockRecapDao {
 
     async fn get_morning_letter_by_date(
         &self,
-        _date: chrono::NaiveDate,
+        date: chrono::NaiveDate,
     ) -> Result<Option<MorningLetter>> {
-        Ok(None)
+        let letters = self
+            .morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned");
+        Ok(letters
+            .iter()
+            .filter(|l| l.target_date == date)
+            .max_by_key(|l| l.generation_revision)
+            .cloned())
     }
 
     async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>> {
-        Ok(None)
+        let letters = self
+            .morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned");
+        Ok(letters
+            .iter()
+            .max_by_key(|l| (l.target_date, l.generation_revision))
+            .cloned())
     }
 
     async fn get_morning_letter_sources(
