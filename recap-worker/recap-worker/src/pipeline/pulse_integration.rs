@@ -393,8 +393,8 @@ mod tests {
         assert_eq!(event["occurredAt"], finished_at.to_rfc3339());
         assert_eq!(event["userId"], user_id.to_string());
         assert_eq!(event["tenantId"], tenant_id.to_string());
-        assert_eq!(event["actorType"], "service");
-        assert_eq!(event["actorId"], "recap-worker");
+        assert_eq!(event["actorType"], "service:recap-worker");
+        assert_eq!(event["actorId"], "pulse-stage");
         assert_eq!(event["aggregateType"], "evening_pulse");
         assert_eq!(event["aggregateId"], "evening-pulse:2026-11-09");
         assert_eq!(
@@ -438,5 +438,64 @@ mod tests {
         )
         .await;
         assert!(res.is_err(), "unwired client must not silently return Ok");
+    }
+
+    #[tokio::test]
+    async fn saves_generation_even_when_emission_fails() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+            ))
+            .respond_with(ResponseTemplate::new(500).set_body_string("sovereign down"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = KnowledgeSovereignClient::new_for_test(server.uri());
+        let user_id = Uuid::parse_str("44444444-4444-4444-4444-444444444444").unwrap();
+        let tenant_id = Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
+        let job_id = Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
+        let target_date = NaiveDate::from_ymd_opt(2026, 11, 9).unwrap();
+        let finished_at = Utc.with_ymd_and_hms(2026, 11, 9, 18, 34, 56).unwrap();
+
+        let dao = FixedFinishedAtDao { finished_at };
+        let succeeded = PulseResult {
+            job_id,
+            version: PulseVersion::V4,
+            topics: vec![sample_topic()],
+            generated_at: finished_at,
+            diagnostics: PulseDiagnostics::default(),
+        };
+
+        let saved = record_pulse_generation(
+            &dao,
+            Some(&client),
+            Some((user_id, tenant_id)),
+            job_id,
+            &succeeded,
+            target_date,
+        )
+        .await;
+        assert_eq!(
+            saved,
+            Some((42, finished_at)),
+            "pulse generation must be saved even when event emission fails"
+        );
+
+        let saved_unwired = record_pulse_generation(
+            &dao,
+            None,
+            Some((user_id, tenant_id)),
+            job_id,
+            &succeeded,
+            target_date,
+        )
+        .await;
+        assert_eq!(
+            saved_unwired,
+            Some((42, finished_at)),
+            "pulse generation must be saved even when client is unwired"
+        );
     }
 }

@@ -164,12 +164,15 @@ async fn contract_recap_evening_pulse_generated_v1() {
                         "occurredAt": like!(finished_at.to_rfc3339()),
                         "tenantId": like!(tenant_id.to_string()),
                         "userId": like!(user_id.to_string()),
-                        "actorType": like!("service"),
-                        "actorId": like!("recap-worker"),
-                        "eventType": like!("recap.evening_pulse_generated.v1"),
-                        "aggregateType": like!("evening_pulse"),
+                        "actorType": "service:recap-worker",
+                        "actorId": "pulse-stage",
+                        "eventType": "recap.evening_pulse_generated.v1",
+                        "aggregateType": "evening_pulse",
                         "aggregateId": like!(aggregate_id.clone()),
-                        "dedupeKey": like!(expected_dedupe_key.clone()),
+                        "dedupeKey": term!(
+                            r"^recap\.evening_pulse_generated\.v1:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            expected_dedupe_key.clone()
+                        ),
                         "payload": like!(expected_payload_b64.clone()),
                     }),
                 }));
