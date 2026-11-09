@@ -9,16 +9,35 @@ import httpx
 import structlog
 
 from recap_evaluator.config import Settings
+from recap_evaluator.domain.prompts import wrap_gemma_prompt
 
 logger = structlog.get_logger()
 
 _CONTROL_TOKEN_RE = re.compile(
-    r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
+    r"<\|(?:im_start|im_end|system|user|assistant|endoftext|think)\|>"
     r"|</?think>"
     r"|<\|turn>|<turn\|>"
     r"|<start_of_turn>|<end_of_turn>",
     re.IGNORECASE,
 )
+
+_GEVAL_SYSTEM_PROMPT = """以下の要約を4つの観点で1-5点で評価してください。
+必ずJSON形式のみで回答してください。説明文は不要です。
+
+フォーマット:
+{"coherence": X, "consistency": X, "fluency": X, "relevance": X, "reasoning": "評価理由を1-2文で"}
+
+評価基準:
+1. Coherence (論理性, 1-5): 要約は論理的で構造化されているか？
+2. Consistency (整合性, 1-5): 要約の事実は元記事に裏付けられているか？
+3. Fluency (流暢さ, 1-5): 文法的に正しく読みやすいか？
+4. Relevance (関連性, 1-5): 最も重要な情報をカバーしているか？"""
+
+_READABILITY_SYSTEM_PROMPT = """以下の要約を「朝刊として読みやすいか」という観点で1-5点で評価してください。
+必ずJSON形式のみで回答してください。説明文は不要です。
+
+フォーマット:
+{"score": X}"""
 
 
 def _sanitize_prompt_input(text: str) -> str:
@@ -102,25 +121,14 @@ class OllamaGateway:
         safe_source = _sanitize_prompt_input(source_articles)
         safe_summary = _sanitize_prompt_input(summary)
 
-        return f"""以下の要約を4つの観点で1-5点で評価してください。
-必ずJSON形式のみで回答してください。説明文は不要です。
-
-フォーマット:
-{{"coherence": X, "consistency": X, "fluency": X, "relevance": X, "reasoning": "評価理由を1-2文で"}}
-
-評価基準:
-1. Coherence (論理性, 1-5): 要約は論理的で構造化されているか？
-2. Consistency (整合性, 1-5): 要約の事実は元記事に裏付けられているか？
-3. Fluency (流暢さ, 1-5): 文法的に正しく読みやすいか？
-4. Relevance (関連性, 1-5): 最も重要な情報をカバーしているか？
-
-元記事:
+        user_prompt = f"""元記事:
 {safe_source}
 
 要約:
 {safe_summary}
 
 JSON評価結果:"""
+        return wrap_gemma_prompt(user_prompt=user_prompt, system_prompt=_GEVAL_SYSTEM_PROMPT)
 
     def _parse_geval_response(self, response_text: str) -> GEvalResult:
         try:
@@ -200,16 +208,14 @@ JSON評価結果:"""
 
     def _build_readability_prompt(self, summary: str) -> str:
         safe_summary = _sanitize_prompt_input(summary)
-        return f"""以下の要約を「朝刊として読みやすいか」という観点で1-5点で評価してください。
-必ずJSON形式のみで回答してください。説明文は不要です。
-
-フォーマット:
-{{"score": X}}
-
-要約:
+        user_prompt = f"""要約:
 {safe_summary}
 
 JSON評価結果:"""
+        return wrap_gemma_prompt(
+            user_prompt=user_prompt,
+            system_prompt=_READABILITY_SYSTEM_PROMPT,
+        )
 
     def _parse_readability_response(self, response_text: str) -> float:
         json_match = re.search(r"\{[^{}]*\}", response_text, re.DOTALL)
