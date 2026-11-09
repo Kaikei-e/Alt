@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import * as morningLetterDoc from "./morning-letter-document";
 import {
 	deriveWithinHours,
+	formatEditionDateline,
 	formatLetterDate,
 	getSectionDisplayTitle,
 	getSourcesForSection,
-	isLetterStale,
 	orderSections,
 } from "./morning-letter-document";
 
@@ -45,7 +46,6 @@ describe("formatLetterDate", () => {
 	it("formats a civil date string for display", () => {
 		const result = formatLetterDate("2026-04-07", "Asia/Tokyo");
 
-		// Should contain year, month, day in some human-readable form
 		expect(result).toContain("2026");
 		expect(result).toContain("4");
 		expect(result).toContain("7");
@@ -58,11 +58,41 @@ describe("formatLetterDate", () => {
 	});
 
 	it("does not use Date constructor for civil date (no off-by-one)", () => {
-		// Decompose string directly, not via new Date()
 		const result = formatLetterDate("2026-01-01", "Asia/Tokyo");
 
-		expect(result).toContain("1"); // month
-		expect(result).toContain("1"); // day
+		expect(result).toContain("1");
+		expect(result).toContain("1");
+	});
+});
+
+describe("formatEditionDateline", () => {
+	it("returns Today's Edition only when isCurrent is true", () => {
+		expect(
+			formatEditionDateline({
+				targetDate: "2026-04-07",
+				editionTimezone: "Asia/Tokyo",
+				isCurrent: true,
+			}),
+		).toBe("Today's Edition");
+	});
+
+	it("returns formatted date without 'Today' when isCurrent is false and targetDate is present", () => {
+		const result = formatEditionDateline({
+			targetDate: "2026-04-07",
+			editionTimezone: "Asia/Tokyo",
+			isCurrent: false,
+		});
+		expect(result).toBe("2026-4-7");
+		expect(result.toLowerCase()).not.toContain("today");
+	});
+
+	it("returns non-today fallback when isCurrent is false and targetDate is absent", () => {
+		const result = formatEditionDateline({
+			targetDate: undefined,
+			isCurrent: false,
+		});
+		expect(result).toBe("Latest Edition");
+		expect(result.toLowerCase()).not.toContain("today");
 	});
 });
 
@@ -177,27 +207,9 @@ describe("getSourcesForSection", () => {
 	});
 });
 
-describe("isLetterStale", () => {
-	it("returns false for recent letter", () => {
-		const recentTimestamp = {
-			seconds: BigInt(Math.floor(Date.now() / 1000) - 3600),
-			nanos: 0,
-		};
-
-		expect(isLetterStale(recentTimestamp, 12)).toBe(false);
-	});
-
-	it("returns true for old letter", () => {
-		const oldTimestamp = {
-			seconds: BigInt(Math.floor(Date.now() / 1000) - 50000),
-			nanos: 0,
-		};
-
-		expect(isLetterStale(oldTimestamp, 12)).toBe(true);
-	});
-
-	it("returns false for undefined timestamp", () => {
-		expect(isLetterStale(undefined, 12)).toBe(false);
+describe("isLetterStale removal", () => {
+	it("does not export local isLetterStale helper", () => {
+		expect("isLetterStale" in morningLetterDoc).toBe(false);
 	});
 });
 
@@ -213,14 +225,12 @@ describe("deriveWithinHours", () => {
 	});
 
 	it("returns hours since the target date morning for past dates", () => {
-		// A date from 2 days ago
 		const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
 			.toISOString()
 			.split("T")[0];
 
 		const hours = deriveWithinHours(twoDaysAgo);
 
-		// Should be roughly 48 + some hours, capped at 168 (7 days max)
 		expect(hours).toBeGreaterThanOrEqual(24);
 		expect(hours).toBeLessThanOrEqual(168);
 	});

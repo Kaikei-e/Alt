@@ -35,12 +35,14 @@ describe("Desktop Sidebar", () => {
 		pageState.data = { userRole: "user" };
 	});
 
-	it("renders primary navigation links including /search", async () => {
-		render(Sidebar);
+	it("renders primary navigation links including /search without a static Today badge", async () => {
+		pageState.url = new URL("http://localhost/dashboard");
+		const { container } = render(Sidebar);
 
-		const homeLink = page.getByRole("link", { name: /Knowledge Home/i });
+		const homeLink = page.getByRole("link", { name: "Knowledge Home" });
 		await expect.element(homeLink).toBeInTheDocument();
 		await expect.element(homeLink).toHaveAttribute("href", "/home");
+		expect(container.textContent).not.toContain("Today");
 
 		const trailLink = page.getByRole("link", { name: "Your Trail" });
 		await expect.element(trailLink).toBeInTheDocument();

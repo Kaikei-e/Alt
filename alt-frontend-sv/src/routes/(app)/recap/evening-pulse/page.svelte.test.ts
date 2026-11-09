@@ -23,6 +23,33 @@ const mockPulseData = {
 	status: "normal" as const,
 	generatedAt: "2026-10-08T00:00:00Z",
 	topics: [mockTopic],
+	surfaceStatus: {
+		generatedAt: "2026-10-08T00:00:00Z",
+		windowStart: "2026-10-05T00:00:00Z",
+		windowEnd: "2026-10-08T00:00:00Z",
+		isStale: false,
+		staleAfter: "2026-10-09T06:00:00Z",
+		degradationReasons: [],
+	},
+} as unknown as EveningPulse;
+
+const mockStalePulseData = {
+	status: "normal" as const,
+	generatedAt: "2026-10-08T00:00:00Z",
+	topics: [mockTopic],
+	surfaceStatus: {
+		generatedAt: "2026-10-08T00:00:00Z",
+		windowStart: "2026-10-05T00:00:00Z",
+		windowEnd: "2026-10-08T00:00:00Z",
+		isStale: true,
+		staleAfter: "2026-10-09T06:00:00Z",
+		degradationReasons: [
+			{
+				code: "pulse_fallback",
+				detail: "fallback level 2",
+			},
+		],
+	},
 } as unknown as EveningPulse;
 
 const mockQuietDayData = {
@@ -40,6 +67,14 @@ const mockQuietDayData = {
 		],
 	},
 	topics: [],
+	surfaceStatus: {
+		generatedAt: "2026-10-08T00:00:00Z",
+		windowStart: "2026-10-05T00:00:00Z",
+		windowEnd: "2026-10-08T00:00:00Z",
+		isStale: false,
+		staleAfter: "2026-10-09T06:00:00Z",
+		degradationReasons: [],
+	},
 } as unknown as EveningPulse;
 
 let currentPulseState = $state({
@@ -141,7 +176,7 @@ describe("Evening Pulse recap navigation targets", () => {
 		expect(target.startsWith("/recap?")).toBe(true);
 	});
 
-	it("renders the Evening Pulse page heading once on desktop and mobile", async () => {
+	it("renders the Evening Pulse page heading once on desktop and mobile when current", async () => {
 		const desktop = render(Page);
 		await settle();
 
@@ -159,5 +194,28 @@ describe("Evening Pulse recap navigation targets", () => {
 		expect(mobileHeadings).toHaveLength(1);
 		expect(mobileHeadings[0]?.textContent?.trim()).toBe("Evening Pulse");
 		expect(mobile.container.textContent).toContain("Today's key topics");
+	});
+
+	it("replaces 'Today's key topics' with dated subtitle and renders SurfaceStatusBanner when stale", async () => {
+		currentPulseState.data = mockStalePulseData;
+		const desktop = render(Page);
+		await settle();
+
+		expect(desktop.container.textContent).not.toContain("Today's key topics");
+		expect(desktop.container.textContent).toContain("Key topics from");
+		await expect
+			.element(page.getByRole("alert"))
+			.toHaveTextContent("This was last updated");
+		await expect
+			.element(page.getByRole("alert"))
+			.toHaveTextContent("fallback level 2");
+		desktop.unmount();
+
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		const mobile = render(Page);
+		await settle();
+
+		expect(mobile.container.textContent).not.toContain("Today's key topics");
+		expect(mobile.container.textContent).toContain("Key topics from");
 	});
 });

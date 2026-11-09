@@ -50,7 +50,8 @@ describe("MobilePulseCard", () => {
 
 		const kicker = container.querySelector('[data-testid="pulse-card-kicker"]');
 		expect(kicker).not.toBeNull();
-		expect(kicker?.textContent).toContain("Today's Key");
+		expect(kicker?.textContent).toContain("Need to know");
+		expect(kicker?.textContent).not.toContain("Today's Key");
 		expect(kicker?.textContent).toContain("Key News (Cluster 3)");
 	});
 
