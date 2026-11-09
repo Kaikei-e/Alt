@@ -129,15 +129,11 @@ impl MorningPipeline {
         })
     }
 
-    pub(crate) async fn execute_update(&self, job: &JobContext) -> Result<Uuid> {
-        self.execute_update_at(job, chrono::Utc::now()).await
-    }
-
-    pub(crate) async fn execute_update_at(
+    pub(crate) async fn execute_update(
         &self,
         job: &JobContext,
         now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<Uuid> {
+    ) -> Result<(Uuid, chrono::DateTime<chrono::Utc>)> {
         tracing::info!(job_id = %job.job_id, "starting morning update pipeline");
 
         let fetched = self.fetch.fetch(job).await?;
@@ -225,7 +221,7 @@ impl MorningPipeline {
             .await?;
         let final_is_degraded = recap_ctx.is_degraded || ml_response.metadata.is_degraded;
 
-        let letter_id = self
+        let (letter_id, created_at) = self
             .persist_morning_letter(
                 &target_date,
                 &edition_timezone,
@@ -235,7 +231,6 @@ impl MorningPipeline {
                 recap_ctx.degradation_reason,
                 &ml_response,
                 &groups,
-                now,
             )
             .await?;
 
@@ -244,7 +239,7 @@ impl MorningPipeline {
             is_degraded = final_is_degraded,
             "morning letter generated and saved"
         );
-        Ok(letter_id)
+        Ok((letter_id, created_at))
     }
 
     async fn load_recap_context(
@@ -355,17 +350,16 @@ impl MorningPipeline {
         recap_degradation_reason: Option<&str>,
         ml_response: &crate::clients::news_creator::models::MorningLetterGenerateResponse,
         groups: &[(Uuid, Uuid, bool)],
-        now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<Uuid> {
+    ) -> Result<(Uuid, chrono::DateTime<chrono::Utc>)> {
         use chrono::SubsecRound;
 
         let letter_id = Uuid::new_v4();
-        let created_at = now.trunc_subsecs(6);
 
         let previous = self
             .load_previous_letter_ref(edition_timezone, target_date)
             .await;
 
+        let created_at = chrono::Utc::now().trunc_subsecs(6);
         let letter = build_morning_letter_from_response(
             letter_id,
             target_date,
@@ -403,7 +397,7 @@ impl MorningPipeline {
         if !sources.is_empty() {
             self.recap_dao.save_morning_letter_sources(&sources).await?;
         }
-        Ok(persisted_letter_id)
+        Ok((persisted_letter_id, created_at))
     }
 }
 
@@ -1388,8 +1382,9 @@ mod tests {
         }
     }
 
-    fn sample_recap_job_with_age(age: chrono::Duration) -> crate::store::models::RecapJob {
-        let window_end = chrono::Utc::now() - age;
+    fn sample_recap_job(
+        window_end: chrono::DateTime<chrono::Utc>,
+    ) -> crate::store::models::RecapJob {
         crate::store::models::RecapJob {
             job_id: Uuid::new_v4(),
             started_at: window_end,
@@ -1454,14 +1449,18 @@ mod tests {
             .mount(&server)
             .await;
 
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-09T06:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let stale_window_end = now - chrono::Duration::hours(30) - chrono::Duration::seconds(1);
         let dao = Arc::new(MockRecapDao::new());
-        dao.set_latest_completed_job(Some(sample_recap_job_with_age(chrono::Duration::hours(40))));
+        dao.set_latest_completed_job(Some(sample_recap_job(stale_window_end)));
         dao.set_genres_by_job(sample_valid_genres());
 
         let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
         let job = JobContext::new_morning_update(Uuid::new_v4());
         pipeline
-            .execute_update(&job)
+            .execute_update(&job, now)
             .await
             .expect("pipeline succeeds");
 
@@ -1492,13 +1491,16 @@ mod tests {
             .mount(&server)
             .await;
 
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-09T06:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
         let dao = Arc::new(MockRecapDao::new());
         dao.set_latest_completed_job(None);
 
         let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
         let job = JobContext::new_morning_update(Uuid::new_v4());
         pipeline
-            .execute_update(&job)
+            .execute_update(&job, now)
             .await
             .expect("pipeline succeeds");
 
@@ -1526,14 +1528,19 @@ mod tests {
             .mount(&server)
             .await;
 
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-09T06:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let stale_window_end = now - chrono::Duration::hours(30) - chrono::Duration::seconds(1);
+        let fresh_window_end = now - chrono::Duration::hours(30);
+
         // Case 1: stale recap input + news-creator placeholder_output -> stale_recap_input wins
         let stale_dao = Arc::new(MockRecapDao::new());
-        stale_dao
-            .set_latest_completed_job(Some(sample_recap_job_with_age(chrono::Duration::hours(40))));
+        stale_dao.set_latest_completed_job(Some(sample_recap_job(stale_window_end)));
         stale_dao.set_genres_by_job(sample_valid_genres());
         let stale_pipeline = build_test_morning_pipeline(Arc::clone(&stale_dao), &server.uri());
         stale_pipeline
-            .execute_update(&JobContext::new_morning_update(Uuid::new_v4()))
+            .execute_update(&JobContext::new_morning_update(Uuid::new_v4()), now)
             .await
             .expect("stale pipeline succeeds");
         let stale_letters = stale_dao.morning_letters();
@@ -1546,12 +1553,11 @@ mod tests {
 
         // Case 2: fresh recap input + news-creator placeholder_output -> placeholder_output kept
         let fresh_dao = Arc::new(MockRecapDao::new());
-        fresh_dao
-            .set_latest_completed_job(Some(sample_recap_job_with_age(chrono::Duration::hours(2))));
+        fresh_dao.set_latest_completed_job(Some(sample_recap_job(fresh_window_end)));
         fresh_dao.set_genres_by_job(sample_valid_genres());
         let fresh_pipeline = build_test_morning_pipeline(Arc::clone(&fresh_dao), &server.uri());
         fresh_pipeline
-            .execute_update(&JobContext::new_morning_update(Uuid::new_v4()))
+            .execute_update(&JobContext::new_morning_update(Uuid::new_v4()), now)
             .await
             .expect("fresh pipeline succeeds");
         let fresh_letters = fresh_dao.morning_letters();
@@ -1587,8 +1593,8 @@ mod tests {
 
         let before_save = chrono::Utc::now().trunc_subsecs(6);
         let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
-        pipeline
-            .execute_update_at(
+        let (returned_id, returned_created_at) = pipeline
+            .execute_update(
                 &JobContext::new_morning_update(Uuid::new_v4()),
                 run_start_now,
             )
@@ -1598,6 +1604,8 @@ mod tests {
 
         let letters = dao.morning_letters();
         assert_eq!(letters.len(), 1);
+        assert_eq!(returned_id, letters[0].id);
+        assert_eq!(returned_created_at, letters[0].created_at);
         assert!(
             letters[0].created_at >= before_save && letters[0].created_at <= after_save,
             "created_at must be assigned at save time (between {before_save} and {after_save}), not run start ({run_start_now}), got {}",

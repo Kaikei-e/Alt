@@ -426,12 +426,8 @@ impl PipelineOrchestrator {
         }
 
         // 設定を再読み込みしてGenreStageを更新
-        let overrides_result = if let Some(pool) = self.recap_dao.pool() {
-            GraphOverrideSettings::load_with_fallback(pool).await
-        } else {
-            // モックの場合、環境変数から読み込む
-            GraphOverrideSettings::load_from_env()
-        };
+        let overrides_result =
+            GraphOverrideSettings::load_with_fallback(self.recap_dao.as_ref()).await;
         match overrides_result {
             Ok(overrides) => {
                 self.stages.genre.update_config(&overrides).await;
@@ -610,12 +606,9 @@ impl PipelineBuilder {
             ))
         });
 
-        let metrics = self.metrics.unwrap_or_else(|| {
-            Arc::new(
-                Metrics::new(Arc::new(prometheus::Registry::new()))
-                    .expect("default pipeline metrics"),
-            )
-        });
+        let metrics = self
+            .metrics
+            .context("metrics must be configured before build")?;
 
         Ok(PipelineOrchestrator {
             config: self.config,

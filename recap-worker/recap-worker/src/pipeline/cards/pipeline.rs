@@ -105,6 +105,8 @@ pub trait CardsPipelineDao: Send + Sync {
     ) -> Result<()>;
 
     async fn insert_card_rejection(&self, rejection: &RejectionRecord) -> Result<()>;
+
+    async fn get_job_updated_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>>;
 }
 
 #[allow(clippy::too_many_lines)]
@@ -314,6 +316,10 @@ impl CardsPipelineDao for UnifiedDao {
         crate::store::dao::cards::insert_card_rejection(self.pool(), rejection)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
+    }
+
+    async fn get_job_updated_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>> {
+        crate::store::dao::surface::SurfaceDaoOps::get_job_updated_at(self.pool(), job_id).await
     }
 }
 
@@ -2027,11 +2033,28 @@ impl super::ports::CardsJobRunner for CardsPipeline {
         match self.run(job_id, from, to, &params).await {
             Ok(_) => {
                 if let Some(ref metrics) = self.metrics {
-                    crate::observability::surface_health::record_success(
-                        metrics,
-                        crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
-                        Utc::now(),
-                    );
+                    match self.dao.get_job_updated_at(job_id).await {
+                        Ok(Some(updated_at)) => {
+                            crate::observability::surface_health::record_success(
+                                metrics,
+                                crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
+                                updated_at,
+                            );
+                        }
+                        Ok(None) => {
+                            tracing::error!(
+                                %job_id,
+                                "completed topic cards job has no updated_at timestamp; leaving surface_last_success unchanged"
+                            );
+                        }
+                        Err(err) => {
+                            tracing::error!(
+                                %job_id,
+                                error = ?err,
+                                "failed to read updated_at for topic cards job; leaving surface_last_success unchanged"
+                            );
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -2085,6 +2108,7 @@ mod tests {
         pub cache: MockEmbeddingCache,
         pub rejections: Mutex<Vec<RejectionRecord>>,
         pub fail_insert_rejection: Mutex<bool>,
+        pub job_updated_at: Mutex<HashMap<Uuid, DateTime<Utc>>>,
     }
 
     #[async_trait::async_trait]
@@ -2195,6 +2219,10 @@ mod tests {
             }
             self.rejections.lock().unwrap().push(rejection.clone());
             Ok(())
+        }
+
+        async fn get_job_updated_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>> {
+            Ok(self.job_updated_at.lock().unwrap().get(&job_id).copied())
         }
     }
 

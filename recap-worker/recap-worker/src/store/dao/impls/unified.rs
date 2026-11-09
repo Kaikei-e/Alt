@@ -380,6 +380,10 @@ impl OutputDao for UnifiedDao {
         crate::store::dao::output::RecapDao::get_latest_completed_job(&self.pool, window_days).await
     }
 
+    async fn get_job_completed_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>> {
+        crate::store::dao::output::RecapDao::get_job_completed_at(&self.pool, job_id).await
+    }
+
     async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
         crate::store::dao::output::RecapDao::get_genres_by_job(&self.pool, job_id).await
     }

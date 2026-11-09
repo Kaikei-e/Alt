@@ -342,29 +342,50 @@ impl Scheduler {
 
                 match job_outcome {
                     JobOutcome::Success => {
-                        self.recap_dao
+                        if let Err(err) = self
+                            .recap_dao
                             .update_job_status_with_history(
                                 context.job_id,
                                 JobStatus::Completed,
                                 None,
                                 None,
                             )
-                            .await?;
+                            .await
+                        {
+                            self.pipeline.metrics().jobs_failed.inc();
+                            if context.window_days() == 3 {
+                                crate::observability::surface_health::record_failure(
+                                    self.pipeline.metrics(),
+                                    crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                                );
+                            }
+                            return Err(err.into());
+                        }
 
                         self.pipeline.metrics().jobs_completed.inc();
                         if context.window_days() == 3 {
-                            let completed_at = self
-                                .recap_dao
-                                .get_latest_completed_job(3)
-                                .await
-                                .ok()
-                                .flatten()
-                                .map_or_else(chrono::Utc::now, |j| j.window_end);
-                            crate::observability::surface_health::record_success(
-                                self.pipeline.metrics(),
-                                crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
-                                completed_at,
-                            );
+                            match self.recap_dao.get_job_completed_at(context.job_id).await {
+                                Ok(Some(completed_at)) => {
+                                    crate::observability::surface_health::record_success(
+                                        self.pipeline.metrics(),
+                                        crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                                        completed_at,
+                                    );
+                                }
+                                Ok(None) => {
+                                    tracing::error!(
+                                        job_id = %context.job_id,
+                                        "completed 3-day recap job has no recap_outputs.created_at; leaving surface_last_success_timestamp_seconds unchanged"
+                                    );
+                                }
+                                Err(err) => {
+                                    tracing::error!(
+                                        job_id = %context.job_id,
+                                        error = %err,
+                                        "failed to load completed 3-day recap output timestamp; leaving surface_last_success_timestamp_seconds unchanged"
+                                    );
+                                }
+                            }
                         }
 
                         // Run classification evaluation after successful job completion
@@ -557,32 +578,27 @@ impl Scheduler {
         // schema default `status='pending'`. Unlike the batch pipeline, the
         // morning pipeline never advances that row — so close it out here, or it
         // leaks one orphaned `pending` row every 30-min tick.
-        let outcome = self.morning_pipeline.execute_update(&context).await;
+        let now = chrono::Utc::now();
+        let outcome = self.morning_pipeline.execute_update(&context, now).await;
         let finalized =
             finalize_morning_job(self.recap_dao.as_ref(), context.job_id, outcome).await;
-        match &finalized {
-            Ok(letter_id) => {
-                let completed_at = self
-                    .recap_dao
-                    .get_morning_letter_by_id(*letter_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map_or_else(chrono::Utc::now, |l| l.created_at);
+        match finalized {
+            Ok((letter_id, completed_at)) => {
                 crate::observability::surface_health::record_success(
                     self.pipeline.metrics(),
                     crate::observability::surface_health::SurfaceHealthTarget::MorningLetter,
                     completed_at,
                 );
+                Ok(letter_id)
             }
-            Err(_) => {
+            Err(err) => {
                 crate::observability::surface_health::record_failure(
                     self.pipeline.metrics(),
                     crate::observability::surface_health::SurfaceHealthTarget::MorningLetter,
                 );
+                Err(err)
             }
         }
-        finalized
     }
 
     /// Boot-time hygiene (CLAUDE.md rule 8): resolve the one resumable job
@@ -676,13 +692,13 @@ impl Scheduler {
 /// [`Scheduler::run_job`] seals batch jobs: success → [`JobStatus::MorningCompleted`],
 /// failure → [`JobStatus::Failed`] (with the error chain as the reason). A DAO
 /// write failure here is logged but never masks the pipeline's own result.
-async fn finalize_morning_job(
+async fn finalize_morning_job<T>(
     recap_dao: &dyn RecapDao,
     job_id: Uuid,
-    outcome: Result<Uuid>,
-) -> Result<Uuid> {
+    outcome: Result<T>,
+) -> Result<T> {
     match outcome {
-        Ok(letter_id) => {
+        Ok(value) => {
             if let Err(dao_err) = recap_dao
                 .update_job_status_with_history(
                     job_id,
@@ -694,7 +710,7 @@ async fn finalize_morning_job(
             {
                 tracing::error!(%job_id, error = %dao_err, "failed to mark morning update job completed");
             }
-            Ok(letter_id)
+            Ok(value)
         }
         Err(e) => {
             let reason = format!("{:#}", e);
@@ -1111,7 +1127,7 @@ mod tests {
         let job_id = Uuid::new_v4();
         let err = anyhow!("news-creator unreachable");
 
-        let result = finalize_morning_job(&dao, job_id, Err(err)).await;
+        let result = finalize_morning_job::<Uuid>(&dao, job_id, Err(err)).await;
         assert!(result.is_err(), "pipeline error must propagate");
         assert!(
             format!("{:#}", result.unwrap_err()).contains("news-creator unreachable"),

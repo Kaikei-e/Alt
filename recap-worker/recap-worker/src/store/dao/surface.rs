@@ -149,16 +149,18 @@ impl SurfaceDaoOps {
         let row = sqlx::query(
             r"
             WITH latest_success AS (
-                SELECT updated_at
-                FROM recap_jobs
-                WHERE window_days = 3
-                  AND status = 'completed'
-                  AND trigger_source NOT IN ('cards', 'cards_replay', 'morning')
-                ORDER BY kicked_at DESC, updated_at DESC
+                SELECT MAX(ro.created_at) AS completed_at
+                FROM recap_jobs rj
+                JOIN recap_outputs ro ON ro.job_id = rj.job_id
+                WHERE rj.window_days = 3
+                  AND rj.status = 'completed'
+                  AND rj.trigger_source NOT IN ('cards', 'cards_replay', 'morning')
+                GROUP BY rj.job_id, rj.kicked_at, rj.updated_at
+                ORDER BY MAX(ro.created_at) DESC, rj.kicked_at DESC, rj.updated_at DESC
                 LIMIT 1
             )
             SELECT
-                (SELECT updated_at FROM latest_success) AS last_success_at,
+                (SELECT completed_at FROM latest_success) AS last_success_at,
                 (
                     SELECT COUNT(*)
                     FROM recap_jobs
@@ -166,8 +168,8 @@ impl SurfaceDaoOps {
                       AND status = 'failed'
                       AND trigger_source NOT IN ('cards', 'cards_replay', 'morning')
                       AND (
-                          (SELECT updated_at FROM latest_success) IS NULL
-                          OR updated_at > (SELECT updated_at FROM latest_success)
+                          (SELECT completed_at FROM latest_success) IS NULL
+                          OR updated_at > (SELECT completed_at FROM latest_success)
                       )
                 ) AS consecutive_failures
             ",

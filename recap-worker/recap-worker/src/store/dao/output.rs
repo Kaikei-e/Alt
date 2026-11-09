@@ -191,6 +191,24 @@ impl RecapDao {
         }
     }
 
+    pub(crate) async fn get_job_completed_at(
+        pool: &PgPool,
+        job_id: Uuid,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+        let row = sqlx::query(
+            r"
+            SELECT MAX(created_at) AS completed_at
+            FROM recap_outputs
+            WHERE job_id = $1
+            ",
+        )
+        .bind(job_id)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(row.try_get("completed_at")?)
+    }
+
     /// Get all genres for a job with their summaries.
     ///
     /// Selects the structured `title_ja` / `bullets_ja` columns alongside

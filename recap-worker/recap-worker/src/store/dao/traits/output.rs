@@ -37,6 +37,11 @@ pub(crate) trait OutputDao: Send + Sync {
         window_days: i32,
     ) -> impl Future<Output = Result<Option<RecapJob>>> + Send;
 
+    fn get_job_completed_at(
+        &self,
+        job_id: Uuid,
+    ) -> impl Future<Output = Result<Option<chrono::DateTime<chrono::Utc>>>> + Send;
+
     /// ジョブごとのジャンルを取得する
     fn get_genres_by_job(
         &self,

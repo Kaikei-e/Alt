@@ -1036,6 +1036,13 @@ mod tests {
             self.inner.get_latest_completed_job(window_days).await
         }
 
+        async fn get_job_completed_at(
+            &self,
+            job_id: Uuid,
+        ) -> crate::error::Result<Option<DateTime<Utc>>> {
+            self.inner.get_job_completed_at(job_id).await
+        }
+
         async fn get_genres_by_job(
             &self,
             job_id: Uuid,

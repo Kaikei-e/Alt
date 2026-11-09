@@ -244,6 +244,8 @@ pub(crate) trait RecapDao: Send + Sync {
 
     async fn get_latest_completed_job(&self, window_days: i32) -> Result<Option<RecapJob>>;
 
+    async fn get_job_completed_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>>;
+
     async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>>;
 
     async fn get_clusters_by_job(
@@ -644,6 +646,10 @@ where
 
     async fn get_latest_completed_job(&self, window_days: i32) -> Result<Option<RecapJob>> {
         OutputDao::get_latest_completed_job(self, window_days).await
+    }
+
+    async fn get_job_completed_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>> {
+        OutputDao::get_job_completed_at(self, job_id).await
     }
 
     async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>> {

@@ -638,6 +638,13 @@ impl RecapDao for MockRecapDao {
             .clone())
     }
 
+    async fn get_job_completed_at(
+        &self,
+        _job_id: Uuid,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+        Ok(None)
+    }
+
     async fn get_genres_by_job(&self, _job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
         Ok(self
             .genres_by_job
