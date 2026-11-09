@@ -53,12 +53,35 @@ def _format_run(run: Mapping[str, Any]) -> str:
     return name
 
 
+def _run_id_key(run: Mapping[str, Any]) -> int:
+    try:
+        return int(run.get("id", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _latest_runs_per_workflow_event(
+    workflow_runs: Sequence[Mapping[str, Any]],
+    self_run_id: int | str | None,
+) -> list[Mapping[str, Any]]:
+    """Keep only the newest run (highest run id) per (workflow_id, event)."""
+    newest_by_key: dict[tuple[Any, Any], Mapping[str, Any]] = {}
+    for run in workflow_runs:
+        if _is_self_run(run, self_run_id):
+            continue
+        key = (run.get("workflow_id"), run.get("event"))
+        existing = newest_by_key.get(key)
+        if existing is None or _run_id_key(run) > _run_id_key(existing):
+            newest_by_key[key] = run
+    return list(newest_by_key.values())
+
+
 def evaluate_workflow_runs(
     workflow_runs: Sequence[Mapping[str, Any]],
     self_run_id: int | str | None = None,
 ) -> tuple[str, list[str]]:
     """Return (PENDING|SUCCESS|FAILURE, offending_runs) for a commit's workflow runs."""
-    other_runs = [r for r in workflow_runs if not _is_self_run(r, self_run_id)]
+    other_runs = _latest_runs_per_workflow_event(workflow_runs, self_run_id)
 
     pending_runs = [
         _format_run(r) for r in other_runs if r.get("status") != "completed"
@@ -84,8 +107,7 @@ def _complete_set_signature(
 ) -> frozenset[tuple[Any, Any, Any]]:
     return frozenset(
         (r.get("workflow_id"), r.get("id"), r.get("run_attempt", 1))
-        for r in workflow_runs
-        if not _is_self_run(r, self_run_id)
+        for r in _latest_runs_per_workflow_event(workflow_runs, self_run_id)
     )
 
 
