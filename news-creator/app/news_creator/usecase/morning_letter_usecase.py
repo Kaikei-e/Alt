@@ -198,6 +198,15 @@ class MorningLetterUsecase:
                 candidate = self._parse_content(result.response)
             except Exception as exc:
                 if last_error is not None:
+                    logger.warning(
+                        "Morning Letter retry attempt failed after prior validation error",
+                        extra={
+                            "attempt": attempt + 1,
+                            "prior_reason": last_error.reason,
+                            "retry_error_type": type(exc).__name__,
+                            "retry_error": str(exc)[:200],
+                        },
+                    )
                     raise last_error from exc
                 raise
             rejection = self._validate_letter_content(candidate)

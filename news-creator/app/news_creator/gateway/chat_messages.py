@@ -18,9 +18,6 @@ def gemma_prompt_to_messages(prompt: str) -> list[dict[str, str]]:
     if not stripped:
         raise ValueError("Prompt must not be empty")
 
-    if _TURN_START not in stripped and _TURN_END not in stripped:
-        return [{"role": "user", "content": stripped}]
-
     if stripped.endswith(_TRAILING_MODEL_HEADER):
         body = stripped[: -len(_TRAILING_MODEL_HEADER)].strip()
     else:
