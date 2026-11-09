@@ -130,6 +130,37 @@ async def test_freetext_does_not_rewrap_already_templated_prompt() -> None:
 
 
 @pytest.mark.asyncio
+async def test_freetext_wraps_prompt_starting_with_turn_but_missing_model_suffix() -> None:
+    """A prompt starting with <|turn> but not ending with <|turn>model\\n is not fully templated and must be wrapped."""
+    captured_requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "response": "Wrapped content.",
+                "model": "gemma4:26b",
+                "eval_count": 20,
+                "prompt_eval_count": 10,
+            },
+        )
+
+    client = _mock_transport(handler)
+    gw = OllamaGateway(client, _make_settings())
+
+    await gw.generate("<|turn>user\nincomplete prompt without model suffix", temperature=0.0)
+
+    assert len(captured_requests) == 1
+    body = json.loads(captured_requests[0].content)
+    prompt = body["prompt"]
+    assert prompt.startswith("<|turn>user\n")
+    assert prompt.endswith("<|turn>model\n")
+    assert prompt.count("<|turn>") == 2
+    assert prompt.count("<turn|>") == 1
+
+
+@pytest.mark.asyncio
 async def test_freetext_strips_injected_turn_tokens_from_unwrapped_prompt() -> None:
     """Unwrapped prompt passed to /api/generate must have injected turn/think tokens stripped."""
     captured_requests: list[httpx.Request] = []
