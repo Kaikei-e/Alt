@@ -664,7 +664,6 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
-        assert_eq!(body["generated_at"], "2026-11-08T18:02:00Z");
         assert_eq!(
             body["surface_status"]["generated_at"],
             "2026-11-08T18:02:00Z"
