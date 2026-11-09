@@ -256,6 +256,16 @@ impl ComponentRegistry {
     #[cfg(test)]
     #[must_use]
     pub(crate) fn with_recap_dao(mut self, dao: Arc<dyn RecapDao>) -> Self {
+        if let Ok(morning_pipeline) = crate::pipeline::morning::MorningPipeline::new(
+            Arc::clone(&self.config),
+            Arc::clone(&dao),
+            Arc::clone(&self.news_creator_client),
+            Arc::clone(&self.subworker_client),
+        ) {
+            self.scheduler = self
+                .scheduler
+                .with_morning_dao(Arc::new(morning_pipeline), Arc::clone(&dao));
+        }
         self.recap_dao = dao;
         self
     }

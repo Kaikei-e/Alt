@@ -91,6 +91,7 @@ pub(crate) struct MockRecapDao {
     latest_completed_job: Arc<Mutex<Option<RecapJob>>>,
     genres_by_job: Arc<Mutex<Vec<GenreWithSummary>>>,
     morning_letters: Arc<Mutex<Vec<MorningLetter>>>,
+    concurrent_morning_letter_on_save: Arc<Mutex<Option<MorningLetter>>>,
 }
 
 #[cfg(test)]
@@ -213,6 +214,14 @@ impl MockRecapDao {
             .expect("morning_letters mutex poisoned")
             .clone()
     }
+
+    #[allow(dead_code)]
+    pub(crate) fn set_concurrent_morning_letter_on_save(&self, letter: MorningLetter) {
+        *self
+            .concurrent_morning_letter_on_save
+            .lock()
+            .expect("concurrent_morning_letter_on_save mutex poisoned") = Some(letter);
+    }
 }
 
 #[cfg(test)]
@@ -236,12 +245,12 @@ impl RecapDao for MockRecapDao {
     #[allow(dead_code)]
     async fn create_job_with_lock_and_window(
         &self,
-        _job_id: Uuid,
+        job_id: Uuid,
         _note: Option<&str>,
         _window_days: u32,
         _trigger_source: &str,
     ) -> Result<Option<Uuid>> {
-        Ok(None)
+        Ok(Some(job_id))
     }
 
     #[allow(dead_code)]
@@ -722,7 +731,20 @@ impl RecapDao for MockRecapDao {
             + 1;
         let mut stored = letter.clone();
         stored.generation_revision = next_rev;
-        letters.push(stored);
+        letters.push(stored.clone());
+
+        if let Some(mut concurrent) = self
+            .concurrent_morning_letter_on_save
+            .lock()
+            .expect("concurrent_morning_letter_on_save mutex poisoned")
+            .take()
+        {
+            concurrent.target_date = stored.target_date;
+            concurrent.edition_timezone = stored.edition_timezone;
+            concurrent.generation_revision = next_rev + 1;
+            letters.push(concurrent);
+        }
+
         Ok(letter.id)
     }
 

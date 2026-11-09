@@ -221,6 +221,18 @@ impl Scheduler {
         }
     }
 
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_morning_dao(
+        mut self,
+        morning_pipeline: Arc<MorningPipeline>,
+        recap_dao: Arc<dyn RecapDao>,
+    ) -> Self {
+        self.morning_pipeline = morning_pipeline;
+        self.recap_dao = recap_dao;
+        self
+    }
+
     /// Gracefully stop the classification job queue's background worker
     /// tasks. Called from `main.rs`'s SIGTERM/SIGINT path so in-flight
     /// classification chunks are drained (or aborted) deliberately instead

@@ -1306,6 +1306,150 @@ mod tests {
             ])
         );
     }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn regenerate_morning_letter_returns_its_own_written_revision_when_newer_revision_exists()
+    {
+        use crate::{
+            app::ComponentRegistry,
+            config::{Config, ENV_MUTEX},
+            store::dao::mock::MockRecapDao,
+        };
+        use chrono::{DateTime, NaiveDate, Utc};
+        use serde_json::json;
+        use std::sync::Arc;
+        use uuid::Uuid;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/services.datahub.v1.DataHubService/ListRecapArticles"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "articles": [],
+                "hasMore": false
+            })))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "target_date": "2026-11-09",
+                "edition_timezone": "Asia/Tokyo",
+                "content": {
+                    "schema_version": 1,
+                    "lead": "Regenerated on-demand lead",
+                    "sections": [
+                        {
+                            "key": "top3",
+                            "title": "Top Stories",
+                            "bullets": ["Regenerated bullet"]
+                        }
+                    ],
+                    "source_recap_window_days": 3
+                },
+                "metadata": {
+                    "model": "gemma4-e4b-12k",
+                    "is_degraded": false,
+                    "degradation_reason": null,
+                    "processing_time_ms": 420
+                }
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let concurrent_letter = crate::store::models::MorningLetter {
+            id: Uuid::parse_str("99999999-8888-7777-6666-555555555555").unwrap(),
+            target_date: NaiveDate::from_ymd_opt(2026, 11, 9).unwrap(),
+            edition_timezone: "Asia/Tokyo".to_string(),
+            source_recap_job_id: None,
+            is_degraded: false,
+            schema_version: 1,
+            generation_revision: 2,
+            result_jsonb: json!({
+                "lead": "Concurrent scheduled lead",
+                "sections": [
+                    {
+                        "key": "top3",
+                        "title": "Concurrent Stories",
+                        "bullets": ["Concurrent bullet"]
+                    }
+                ],
+                "generated_at": "2026-11-09T06:05:00Z"
+            }),
+            model: Some("gemma4-e4b-12k".to_string()),
+            generation_metadata_jsonb: json!({}),
+            created_at: DateTime::parse_from_rfc3339("2026-11-09T06:05:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        };
+
+        let dao = Arc::new(MockRecapDao::new());
+        dao.set_concurrent_morning_letter_on_save(concurrent_letter);
+
+        let dsn = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://recap:recap@localhost:5432/recap".to_string());
+        let server_uri = mock_server.uri();
+
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                ("RECAP_DB_DSN", Some(dsn.as_str())),
+                ("NEWS_CREATOR_BASE_URL", Some(server_uri.as_str())),
+                ("SUBWORKER_BASE_URL", Some(server_uri.as_str())),
+                ("ALT_BACKEND_BASE_URL", Some(server_uri.as_str())),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                ("RECAP_GENRES", Some("ai")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+                ("MTLS_ENFORCE", None),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await
+        .with_recap_dao(dao.clone());
+        drop(_lock);
+
+        let state = AppState::new(registry);
+        let response = regenerate_morning_letter(State(state), Json(RegenerateLatestRequest::default()))
+            .await
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let body: Value = serde_json::from_slice(&body_bytes).expect("valid json");
+
+        let persisted = dao.morning_letters();
+        assert_eq!(
+            persisted.len(),
+            2,
+            "two revisions must be present for the same date"
+        );
+        assert_eq!(body["id"], json!(persisted[0].id.to_string()));
+        assert_eq!(body["generation_revision"], json!(1));
+        assert_eq!(body["body"]["lead"], json!("Regenerated on-demand lead"));
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]
