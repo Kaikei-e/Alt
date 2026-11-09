@@ -7,7 +7,12 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use tracing::{error, info, warn};
 
+use crate::api::surface_status::{
+    SurfaceRun, SurfaceStatus, build_surface_status, is_body_json_degraded, morning_letter_reasons,
+    three_day_recap_reasons,
+};
 use crate::app::AppState;
+use crate::store::dao::surface::SurfaceDaoOps;
 use crate::store::models::MorningLetterContent;
 
 #[derive(Debug, Serialize)]
@@ -203,6 +208,8 @@ pub(crate) struct RecapSummaryResponse {
     window_end: String,
     total_articles: i32,
     genres: Vec<RecapGenreResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    surface_status: Option<SurfaceStatus>,
 }
 
 #[derive(Debug, Serialize)]
@@ -442,10 +449,177 @@ pub(crate) trait ThreeDayRecapReadDao: Send + Sync {
     ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String>;
 }
 
+#[async_trait::async_trait]
+impl ThreeDayRecapReadDao for AppState {
+    async fn get_latest_completed_job(
+        &self,
+        window_days: i32,
+    ) -> Result<Option<crate::store::models::RecapJob>, String> {
+        self.dao()
+            .get_latest_completed_job(window_days)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_genres_by_job(
+        &self,
+        job_id: uuid::Uuid,
+    ) -> Result<Vec<crate::store::models::GenreWithSummary>, String> {
+        self.dao()
+            .get_genres_by_job(job_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_clusters_by_job(
+        &self,
+        job_id: uuid::Uuid,
+    ) -> Result<
+        std::collections::HashMap<String, Vec<crate::store::models::ClusterWithEvidence>>,
+        String,
+    > {
+        self.dao()
+            .get_clusters_by_job(job_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_recap_output_body_json(
+        &self,
+        job_id: uuid::Uuid,
+        genre: &str,
+    ) -> Result<Option<Value>, String> {
+        self.dao()
+            .get_recap_output_body_json(job_id, genre)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_latest_three_day_recap_run(&self) -> Result<Option<SurfaceRun>, String> {
+        SurfaceDaoOps::get_latest_three_day_recap_run(self.pool())
+            .await
+            .map(|opt| opt.map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at)))
+            .map_err(|e| e.to_string())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ThreeDayRecapGenreFixture {
+    pub genre_name: String,
+    pub summary_ja: String,
+    pub top_terms: Vec<String>,
+    pub article_id: String,
+    pub title: String,
+    pub source_url: String,
+    pub published_at: chrono::DateTime<chrono::Utc>,
+    pub lang: String,
+    pub is_degraded: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ThreeDayRecapFixtureDao {
+    pub job_id: uuid::Uuid,
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    pub window_start: chrono::DateTime<chrono::Utc>,
+    pub window_end: chrono::DateTime<chrono::Utc>,
+    pub total_articles: i32,
+    pub genres: Vec<ThreeDayRecapGenreFixture>,
+    pub latest_run: Option<SurfaceRun>,
+}
+
+#[async_trait::async_trait]
+impl ThreeDayRecapReadDao for ThreeDayRecapFixtureDao {
+    async fn get_latest_completed_job(
+        &self,
+        _window_days: i32,
+    ) -> Result<Option<crate::store::models::RecapJob>, String> {
+        Ok(Some(crate::store::models::RecapJob {
+            job_id: self.job_id,
+            started_at: self.started_at,
+            window_start: self.window_start,
+            window_end: self.window_end,
+            total_articles: Some(self.total_articles),
+        }))
+    }
+
+    async fn get_genres_by_job(
+        &self,
+        _job_id: uuid::Uuid,
+    ) -> Result<Vec<crate::store::models::GenreWithSummary>, String> {
+        Ok(self
+            .genres
+            .iter()
+            .map(|g| crate::store::models::GenreWithSummary {
+                genre_name: g.genre_name.clone(),
+                summary_ja: Some(g.summary_ja.clone()),
+                title_ja: None,
+                bullets_ja: None,
+            })
+            .collect())
+    }
+
+    async fn get_clusters_by_job(
+        &self,
+        _job_id: uuid::Uuid,
+    ) -> Result<
+        std::collections::HashMap<String, Vec<crate::store::models::ClusterWithEvidence>>,
+        String,
+    > {
+        let mut map = std::collections::HashMap::new();
+        for (idx, g) in self.genres.iter().enumerate() {
+            map.insert(
+                g.genre_name.clone(),
+                vec![crate::store::models::ClusterWithEvidence {
+                    cluster_id: i32::try_from(idx + 1).unwrap_or(1),
+                    top_terms: Some(g.top_terms.clone()),
+                    evidence: vec![crate::store::models::ClusterEvidence {
+                        article_id: g.article_id.clone(),
+                        title: g.title.clone(),
+                        source_url: g.source_url.clone(),
+                        published_at: g.published_at,
+                        lang: Some(g.lang.clone()),
+                    }],
+                }],
+            );
+        }
+        Ok(map)
+    }
+
+    async fn get_recap_output_body_json(
+        &self,
+        _job_id: uuid::Uuid,
+        genre: &str,
+    ) -> Result<Option<Value>, String> {
+        let is_degraded = self
+            .genres
+            .iter()
+            .find(|g| g.genre_name == genre)
+            .is_some_and(|g| g.is_degraded);
+        Ok(Some(serde_json::json!({
+            "metadata": {
+                "is_degraded": is_degraded
+            }
+        })))
+    }
+
+    async fn get_latest_three_day_recap_run(&self) -> Result<Option<SurfaceRun>, String> {
+        Ok(self.latest_run.clone())
+    }
+}
+
+pub async fn get_3days_recap_from_fixture(
+    dao: &ThreeDayRecapFixtureDao,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
+    get_3days_recap_impl(dao, freshness_budget, now).await
+}
+
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn get_3days_recap_impl(
     dao: &impl ThreeDayRecapReadDao,
-    _freshness_budget: chrono::Duration,
-    _now: chrono::DateTime<chrono::Utc>,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> axum::response::Response {
     let job = match dao.get_latest_completed_job(3).await {
         Ok(Some(job)) => job,
@@ -498,6 +672,22 @@ pub(crate) async fn get_3days_recap_impl(
         }
     };
 
+    let latest_run = match dao.get_latest_three_day_recap_run().await {
+        Ok(run) => run,
+        Err(e) => {
+            error!("Failed to fetch latest 3-day recap run: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch recap data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let total_genres = genres.len();
+    let mut degraded_genres = 0usize;
     let mut genre_responses = Vec::new();
     for genre in genres {
         let clusters = clusters_by_genre
@@ -536,7 +726,12 @@ pub(crate) async fn get_3days_recap_impl(
             .get_recap_output_body_json(job.job_id, &genre.genre_name)
             .await
         {
-            Ok(Some(body_json)) => extract_references_from_body_json(&body_json),
+            Ok(Some(body_json)) => {
+                if is_body_json_degraded(&body_json) {
+                    degraded_genres += 1;
+                }
+                extract_references_from_body_json(&body_json)
+            }
             _ => None,
         };
 
@@ -552,6 +747,15 @@ pub(crate) async fn get_3days_recap_impl(
         });
     }
 
+    let surface_status = build_surface_status(
+        job.window_end,
+        Some((job.window_start, job.window_end)),
+        latest_run,
+        three_day_recap_reasons(degraded_genres, total_genres),
+        freshness_budget,
+        now,
+    );
+
     let response = RecapSummaryResponse {
         job_id: job.job_id.to_string(),
         executed_at: job.started_at.to_rfc3339(),
@@ -559,6 +763,7 @@ pub(crate) async fn get_3days_recap_impl(
         window_end: job.window_end.to_rfc3339(),
         total_articles: job.total_articles.unwrap_or(0),
         genres: genre_responses,
+        surface_status: Some(surface_status),
     };
     (StatusCode::OK, Json(response)).into_response()
 }
@@ -647,6 +852,8 @@ async fn get_recap_by_window(
         .observe(cluster_query_start.elapsed().as_secs_f64());
 
     // レスポンス構築
+    let total_genres = genres.len();
+    let mut degraded_genres = 0usize;
     let mut genre_responses = Vec::new();
     for genre in genres {
         let clusters = clusters_by_genre
@@ -708,7 +915,12 @@ async fn get_recap_by_window(
             .get_recap_output_body_json(job.job_id, &genre.genre_name)
             .await
         {
-            Ok(Some(body_json)) => extract_references_from_body_json(&body_json),
+            Ok(Some(body_json)) => {
+                if is_body_json_degraded(&body_json) {
+                    degraded_genres += 1;
+                }
+                extract_references_from_body_json(&body_json)
+            }
             Ok(None) => None,
             Err(e) => {
                 // Log warning but don't fail the request
@@ -734,6 +946,33 @@ async fn get_recap_by_window(
         });
     }
 
+    let surface_status = if window_days == 3 {
+        let latest_run = match state.get_latest_three_day_recap_run().await {
+            Ok(run) => run,
+            Err(e) => {
+                error!("Failed to fetch latest 3-day recap run: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "Failed to fetch recap data".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
+        };
+        let budget = state.config().surface_freshness().three_day_recap_budget();
+        Some(build_surface_status(
+            job.window_end,
+            Some((job.window_start, job.window_end)),
+            latest_run,
+            three_day_recap_reasons(degraded_genres, total_genres),
+            budget,
+            chrono::Utc::now(),
+        ))
+    } else {
+        None
+    };
+
     let response = RecapSummaryResponse {
         job_id: job.job_id.to_string(),
         executed_at: job.started_at.to_rfc3339(),
@@ -741,6 +980,7 @@ async fn get_recap_by_window(
         window_end: job.window_end.to_rfc3339(),
         total_articles: job.total_articles.unwrap_or(0),
         genres: genre_responses,
+        surface_status,
     };
 
     info!(
@@ -874,6 +1114,10 @@ mod tests {
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
@@ -992,6 +1236,10 @@ mod tests {
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 (
@@ -1386,6 +1634,7 @@ pub(crate) struct MorningLetterResponse {
     created_at: String,
     etag: String,
     body: MorningLetterBodyResponse,
+    surface_status: SurfaceStatus,
 }
 
 #[derive(Debug, Serialize)]
@@ -1507,6 +1756,7 @@ fn parse_morning_letter_body(
 /// Map a MorningLetter model to the REST response, including ETag/Last-Modified headers.
 fn map_morning_letter_response(
     letter: &crate::store::models::MorningLetter,
+    surface_status: SurfaceStatus,
 ) -> Result<(HeaderMap, Json<MorningLetterResponse>), (StatusCode, Json<ErrorResponse>)> {
     let letter_id_str = letter.id.to_string();
     let body = parse_morning_letter_body(
@@ -1553,6 +1803,7 @@ fn map_morning_letter_response(
             created_at: letter.created_at.to_rfc3339(),
             etag: etag.clone(),
             body,
+            surface_status,
         }),
     ))
 }
@@ -1567,25 +1818,177 @@ pub(crate) trait MorningLetterReadDao: Send + Sync {
         &self,
         date: chrono::NaiveDate,
     ) -> Result<Option<crate::store::models::MorningLetter>, String>;
-    async fn get_latest_morning_run(
-        &self,
-    ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String>;
+    async fn get_latest_morning_run(&self) -> Result<Option<SurfaceRun>, String>;
     async fn get_recap_job_window(
         &self,
         job_id: uuid::Uuid,
     ) -> Result<Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>, String>;
 }
 
+#[async_trait::async_trait]
+impl MorningLetterReadDao for AppState {
+    async fn get_latest_morning_letter(
+        &self,
+    ) -> Result<Option<crate::store::models::MorningLetter>, String> {
+        self.dao()
+            .get_latest_morning_letter()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_morning_letter_by_date(
+        &self,
+        date: chrono::NaiveDate,
+    ) -> Result<Option<crate::store::models::MorningLetter>, String> {
+        self.dao()
+            .get_morning_letter_by_date(date)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_latest_morning_run(&self) -> Result<Option<SurfaceRun>, String> {
+        SurfaceDaoOps::get_latest_morning_run(self.pool())
+            .await
+            .map(|opt| opt.map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at)))
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_recap_job_window(
+        &self,
+        job_id: uuid::Uuid,
+    ) -> Result<Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>, String>
+    {
+        SurfaceDaoOps::get_recap_job_window(self.pool(), job_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MorningLetterFixtureDao {
+    pub id: uuid::Uuid,
+    pub target_date: chrono::NaiveDate,
+    pub edition_timezone: String,
+    pub source_recap_job_id: Option<uuid::Uuid>,
+    pub is_degraded: bool,
+    pub schema_version: i32,
+    pub generation_revision: i32,
+    pub result_jsonb: Value,
+    pub model: Option<String>,
+    pub generation_metadata_jsonb: Value,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub latest_run: Option<SurfaceRun>,
+    pub window: Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>,
+}
+
+impl MorningLetterFixtureDao {
+    fn to_model(&self) -> crate::store::models::MorningLetter {
+        crate::store::models::MorningLetter {
+            id: self.id,
+            target_date: self.target_date,
+            edition_timezone: self.edition_timezone.clone(),
+            source_recap_job_id: self.source_recap_job_id,
+            is_degraded: self.is_degraded,
+            schema_version: self.schema_version,
+            generation_revision: self.generation_revision,
+            result_jsonb: self.result_jsonb.clone(),
+            model: self.model.clone(),
+            generation_metadata_jsonb: self.generation_metadata_jsonb.clone(),
+            created_at: self.created_at,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl MorningLetterReadDao for MorningLetterFixtureDao {
+    async fn get_latest_morning_letter(
+        &self,
+    ) -> Result<Option<crate::store::models::MorningLetter>, String> {
+        Ok(Some(self.to_model()))
+    }
+
+    async fn get_morning_letter_by_date(
+        &self,
+        _date: chrono::NaiveDate,
+    ) -> Result<Option<crate::store::models::MorningLetter>, String> {
+        Ok(Some(self.to_model()))
+    }
+
+    async fn get_latest_morning_run(&self) -> Result<Option<SurfaceRun>, String> {
+        Ok(self.latest_run.clone())
+    }
+
+    async fn get_recap_job_window(
+        &self,
+        _job_id: uuid::Uuid,
+    ) -> Result<Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>, String>
+    {
+        Ok(self.window)
+    }
+}
+
+pub async fn get_latest_morning_letter_from_fixture(
+    dao: &MorningLetterFixtureDao,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
+    get_latest_morning_letter_impl(dao, freshness_budget, now).await
+}
+
+async fn build_morning_letter_surface_status(
+    dao: &impl MorningLetterReadDao,
+    letter: &crate::store::models::MorningLetter,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<SurfaceStatus, String> {
+    let latest_run = dao.get_latest_morning_run().await?;
+    let window = match letter.source_recap_job_id {
+        Some(job_id) => dao.get_recap_job_window(job_id).await?,
+        None => None,
+    };
+    let reasons = morning_letter_reasons(letter.is_degraded, &letter.generation_metadata_jsonb);
+    Ok(build_surface_status(
+        letter.created_at,
+        window,
+        latest_run,
+        reasons,
+        freshness_budget,
+        now,
+    ))
+}
+
 pub(crate) async fn get_latest_morning_letter_impl(
     dao: &impl MorningLetterReadDao,
-    _freshness_budget: chrono::Duration,
-    _now: chrono::DateTime<chrono::Utc>,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> axum::response::Response {
     match dao.get_latest_morning_letter().await {
-        Ok(Some(letter)) => match map_morning_letter_response(&letter) {
-            Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
+        Ok(Some(letter)) => {
+            let surface_status = match build_morning_letter_surface_status(
+                dao,
+                &letter,
+                freshness_budget,
+                now,
+            )
+            .await
+            {
+                Ok(status) => status,
+                Err(e) => {
+                    error!("Failed to build morning letter surface status: {}", e);
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: "Failed to fetch latest morning letter".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+            };
+            match map_morning_letter_response(&letter, surface_status) {
+                Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -1609,31 +2012,8 @@ pub(crate) async fn get_latest_morning_letter_impl(
 /// GET /v1/morning/letters/latest
 /// Edition timezone 基準での最新の Morning Letter を返す。
 pub(crate) async fn get_latest_morning_letter(State(state): State<AppState>) -> impl IntoResponse {
-    let dao = state.dao();
-
-    match dao.get_latest_morning_letter().await {
-        Ok(Some(letter)) => match map_morning_letter_response(&letter) {
-            Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "No morning letter found".to_string(),
-            }),
-        )
-            .into_response(),
-        Err(e) => {
-            error!("Failed to fetch latest morning letter: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch latest morning letter".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    }
+    let budget = state.config().surface_freshness().morning_letter_budget();
+    get_latest_morning_letter_impl(&state, budget, chrono::Utc::now()).await
 }
 
 /// GET /v1/morning/letters/{target_date}
@@ -1655,13 +2035,33 @@ pub(crate) async fn get_morning_letter_by_date(
             .into_response();
     };
 
-    let dao = state.dao();
+    let budget = state.config().surface_freshness().morning_letter_budget();
+    let now = chrono::Utc::now();
 
-    match dao.get_morning_letter_by_date(date).await {
-        Ok(Some(letter)) => match map_morning_letter_response(&letter) {
-            Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
+    match state.get_morning_letter_by_date(date).await {
+        Ok(Some(letter)) => {
+            let surface_status =
+                match build_morning_letter_surface_status(&state, &letter, budget, now).await {
+                    Ok(status) => status,
+                    Err(e) => {
+                        error!(
+                            target_date = %target_date,
+                            "Failed to build morning letter surface status: {}", e
+                        );
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ErrorResponse {
+                                error: "Failed to fetch morning letter".to_string(),
+                            }),
+                        )
+                            .into_response();
+                    }
+                };
+            match map_morning_letter_response(&letter, surface_status) {
+                Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -1718,12 +2118,32 @@ pub(crate) async fn regenerate_morning_letter(
             .into_response();
     }
 
-    let dao = state.dao();
-    match dao.get_latest_morning_letter().await {
-        Ok(Some(letter)) => match map_morning_letter_response(&letter) {
-            Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
+    let budget = state.config().surface_freshness().morning_letter_budget();
+    let now = chrono::Utc::now();
+    match state.get_latest_morning_letter().await {
+        Ok(Some(letter)) => {
+            let surface_status =
+                match build_morning_letter_surface_status(&state, &letter, budget, now).await {
+                    Ok(status) => status,
+                    Err(e) => {
+                        error!(
+                            "Failed to build regenerated morning letter surface status: {}",
+                            e
+                        );
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ErrorResponse {
+                                error: "Failed to fetch regenerated letter".to_string(),
+                            }),
+                        )
+                            .into_response();
+                    }
+                };
+            match map_morning_letter_response(&letter, surface_status) {
+                Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
         Ok(None) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {

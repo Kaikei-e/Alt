@@ -14,16 +14,16 @@ pub struct SurfaceRun {
 impl SurfaceRun {
     #[must_use]
     pub fn new(
-        _job_id: Uuid,
-        _status: &str,
-        _kicked_at: DateTime<Utc>,
-        _updated_at: DateTime<Utc>,
+        job_id: Uuid,
+        status: &str,
+        kicked_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
     ) -> Self {
         Self {
-            job_id: String::new(),
-            status: String::new(),
-            kicked_at: String::new(),
-            updated_at: String::new(),
+            job_id: job_id.to_string(),
+            status: normalize_run_status(status).to_string(),
+            kicked_at: format_rfc3339(kicked_at),
+            updated_at: format_rfc3339(updated_at),
         }
     }
 }
@@ -57,14 +57,14 @@ pub struct SurfaceStatus {
 
 impl SurfaceStatus {
     #[must_use]
-    pub fn without_artifact(_latest_run: Option<SurfaceRun>) -> Self {
+    pub fn without_artifact(latest_run: Option<SurfaceRun>) -> Self {
         Self {
             generated_at: String::new(),
             window_start: String::new(),
             window_end: String::new(),
-            is_stale: true,
+            is_stale: false,
             stale_after: String::new(),
-            latest_run: None,
+            latest_run,
             degradation_reasons: Vec::new(),
         }
     }
@@ -76,51 +76,112 @@ pub fn format_rfc3339(dt: DateTime<Utc>) -> String {
 }
 
 #[must_use]
-pub fn normalize_run_status(_raw: &str) -> &'static str {
-    ""
+pub fn normalize_run_status(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "pending" => "pending",
+        "running" => "running",
+        "completed" | "succeeded" | "morning_completed" => "completed",
+        _ => "failed",
+    }
 }
 
 #[must_use]
 pub fn build_surface_status(
-    _generated_at: DateTime<Utc>,
-    _window: Option<(DateTime<Utc>, DateTime<Utc>)>,
-    _latest_run: Option<SurfaceRun>,
-    _degradation_reasons: Vec<DegradationReason>,
-    _freshness_budget: Duration,
-    _now: DateTime<Utc>,
+    generated_at: DateTime<Utc>,
+    window: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    latest_run: Option<SurfaceRun>,
+    degradation_reasons: Vec<DegradationReason>,
+    freshness_budget: Duration,
+    now: DateTime<Utc>,
 ) -> SurfaceStatus {
-    SurfaceStatus::without_artifact(None)
+    let stale_after_dt = generated_at + freshness_budget;
+    let (window_start, window_end) = match window {
+        Some((start, end)) => (format_rfc3339(start), format_rfc3339(end)),
+        None => (String::new(), String::new()),
+    };
+
+    SurfaceStatus {
+        generated_at: format_rfc3339(generated_at),
+        window_start,
+        window_end,
+        is_stale: now > stale_after_dt,
+        stale_after: format_rfc3339(stale_after_dt),
+        latest_run,
+        degradation_reasons,
+    }
 }
 
 #[must_use]
-pub fn is_body_json_degraded(_body_json: &Value) -> bool {
-    false
+pub fn is_body_json_degraded(body_json: &Value) -> bool {
+    body_json
+        .get("metadata")
+        .and_then(|m| m.get("is_degraded"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 #[must_use]
 pub fn three_day_recap_reasons(
-    _degraded_genres: usize,
-    _total_genres: usize,
+    degraded_genres: usize,
+    total_genres: usize,
 ) -> Vec<DegradationReason> {
-    Vec::new()
+    if degraded_genres == 0 {
+        return Vec::new();
+    }
+    vec![DegradationReason::new(
+        "extractive_genres",
+        format!(
+            "{degraded_genres} of {total_genres} genres are extractive excerpts, not AI summaries"
+        ),
+    )]
 }
 
 #[must_use]
-pub fn topic_cards_reasons(_cards_selected: i32, _degraded: bool) -> Vec<DegradationReason> {
-    Vec::new()
+pub fn topic_cards_reasons(cards_selected: i32, degraded: bool) -> Vec<DegradationReason> {
+    if !degraded {
+        return Vec::new();
+    }
+    vec![DegradationReason::new(
+        "few_cards",
+        format!("{cards_selected} cards selected"),
+    )]
 }
 
 #[must_use]
-pub fn evening_pulse_reasons(_fallback_level: i32) -> Vec<DegradationReason> {
-    Vec::new()
+pub fn evening_pulse_reasons(fallback_level: i32) -> Vec<DegradationReason> {
+    if fallback_level <= 0 {
+        return Vec::new();
+    }
+    vec![DegradationReason::new(
+        "pulse_fallback",
+        format!("fallback level {fallback_level}"),
+    )]
 }
 
 #[must_use]
 pub fn morning_letter_reasons(
-    _is_degraded: bool,
-    _generation_metadata_jsonb: &Value,
+    is_degraded: bool,
+    generation_metadata_jsonb: &Value,
 ) -> Vec<DegradationReason> {
-    Vec::new()
+    if !is_degraded {
+        return Vec::new();
+    }
+    let stored = generation_metadata_jsonb
+        .get("degradation_reason")
+        .and_then(Value::as_str);
+    let code = stored
+        .filter(|reason| {
+            matches!(
+                *reason,
+                "placeholder_output"
+                    | "duplicate_bullets"
+                    | "low_japanese_ratio"
+                    | "stale_recap_input"
+                    | "recap_unavailable"
+            )
+        })
+        .unwrap_or("generation_failed");
+    vec![DegradationReason::new(code, "")]
 }
 
 #[cfg(test)]

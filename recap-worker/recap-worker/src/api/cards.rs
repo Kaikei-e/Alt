@@ -10,12 +10,16 @@ use sqlx::PgPool;
 use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::api::surface_status::{
+    SurfaceRun, SurfaceStatus, build_surface_status, topic_cards_reasons,
+};
 use crate::app::AppState;
 use crate::pipeline::cards::CARDS_DEGRADED_MIN_CARDS;
 use crate::store::dao::cards::CardsDaoOps;
 pub use crate::store::dao::cards::{
     LatestCardsRun, PreviousCardsJobMeta, RecapCard, RecapCardJobStats,
 };
+use crate::store::dao::surface::SurfaceDaoOps;
 
 /// Information about a single source article cited in a topic card.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -69,7 +73,7 @@ pub struct LatestCardsRunResponse {
 pub struct GetCardsResponse {
     pub cards: Vec<CardResponse>,
     pub job: Option<CardsJobResponse>,
-    pub latest_run: Option<LatestCardsRunResponse>,
+    pub surface_status: SurfaceStatus,
 }
 
 #[derive(Debug, Serialize)]
@@ -84,6 +88,12 @@ pub trait CardsDao: Send + Sync {
     async fn get_cards_for_job(&self, job_id: Uuid) -> Result<Vec<RecapCard>, String>;
     async fn get_job_stats(&self, job_id: Uuid) -> Result<Option<RecapCardJobStats>, String>;
     async fn get_latest_cards_run(&self) -> Result<Option<LatestCardsRun>, String>;
+    async fn get_job_updated_at(
+        &self,
+        _job_id: Uuid,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+        Ok(None)
+    }
 }
 
 #[async_trait::async_trait]
@@ -111,6 +121,15 @@ impl CardsDao for PgPool {
             .await
             .map_err(|e| e.to_string())
     }
+
+    async fn get_job_updated_at(
+        &self,
+        job_id: Uuid,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+        SurfaceDaoOps::get_job_updated_at(self, job_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
 }
 
 /// Deserialize source citations once from JSONB Value with serde.
@@ -126,8 +145,17 @@ fn parse_sources(job_id: Uuid, card_id: Uuid, val: &Value) -> Result<Vec<CardSou
 }
 
 /// Core implementation for `GET /v1/topic-cards` over any `CardsDao`.
-#[allow(clippy::too_many_lines)]
 pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Response {
+    get_topic_cards_with_clock(dao, chrono::Duration::hours(30), chrono::Utc::now()).await
+}
+
+/// Core implementation for `GET /v1/topic-cards` with explicit freshness budget and clock.
+#[allow(clippy::too_many_lines)]
+pub async fn get_topic_cards_with_clock(
+    dao: &impl CardsDao,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
     info!("Fetching latest topic cards");
 
     let latest_run_record = match dao.get_latest_cards_run().await {
@@ -144,16 +172,9 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
         }
     };
 
-    let latest_run = latest_run_record.map(|r| LatestCardsRunResponse {
-        job_id: r.job_id,
-        status: r.status,
-        kicked_at: r
-            .kicked_at
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        updated_at: r
-            .updated_at
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-    });
+    let latest_run = latest_run_record
+        .as_ref()
+        .map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at));
 
     let latest_job = match dao.get_latest_completed_cards_job().await {
         Ok(job) => job,
@@ -176,7 +197,7 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
             Json(GetCardsResponse {
                 cards: Vec::new(),
                 job: None,
-                latest_run,
+                surface_status: SurfaceStatus::without_artifact(latest_run),
             }),
         )
             .into_response();
@@ -236,6 +257,32 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
     let cards_selected = stats.cards_selected;
     let degraded = usize::try_from(cards_selected).map_or(true, |c| c < CARDS_DEGRADED_MIN_CARDS);
 
+    let generated_at = if let Some(run) = latest_run_record
+        .as_ref()
+        .filter(|r| r.job_id == job_record.job_id)
+    {
+        run.updated_at
+    } else {
+        match dao.get_job_updated_at(job_record.job_id).await {
+            Ok(Some(updated_at)) => updated_at,
+            Ok(None) => stats.created_at,
+            Err(e) => {
+                error!(
+                    job_id = %job_record.job_id,
+                    error = %e,
+                    "Failed to fetch updated_at for completed cards job"
+                );
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "Failed to fetch recap cards".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
+        }
+    };
+
     let mut cards = Vec::with_capacity(raw_cards.len());
     for c in raw_cards {
         let Ok(sources) = parse_sources(job_record.job_id, c.id, &c.sources) else {
@@ -263,6 +310,7 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
         });
     }
 
+    let window = (job_record.from_ts, job_record.to_ts);
     let job = CardsJobResponse {
         cards_selected,
         degraded,
@@ -279,12 +327,21 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     };
 
+    let surface_status = build_surface_status(
+        generated_at,
+        Some(window),
+        latest_run,
+        topic_cards_reasons(cards_selected, degraded),
+        freshness_budget,
+        now,
+    );
+
     (
         StatusCode::OK,
         Json(GetCardsResponse {
             cards,
             job: Some(job),
-            latest_run,
+            surface_status,
         }),
     )
         .into_response()
@@ -293,7 +350,8 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
 /// GET /v1/topic-cards
 /// Latest topic cards recap endpoint.
 pub(crate) async fn get_topic_cards(State(state): State<AppState>) -> impl IntoResponse {
-    get_topic_cards_impl(state.pool()).await
+    let budget = state.config().surface_freshness().topic_cards_budget();
+    get_topic_cards_with_clock(state.pool(), budget, chrono::Utc::now()).await
 }
 
 #[cfg(test)]

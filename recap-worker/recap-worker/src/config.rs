@@ -6,7 +6,21 @@ use crate::clients::subworker::CLASSIFY_CHUNK_SIZE;
 
 #[cfg(test)]
 pub(crate) static ENV_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
+    std::sync::LazyLock::new(|| {
+        for (k, v) in [
+            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", "30"),
+            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", "30"),
+            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", "30"),
+            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", "3"),
+        ] {
+            if std::env::var_os(k).is_none() {
+                unsafe {
+                    std::env::set_var(k, v);
+                }
+            }
+        }
+        std::sync::Mutex::new(())
+    });
 
 /// boolの組み合わせ爆発を避けるための2値トグル。
 ///
@@ -205,6 +219,7 @@ pub struct Config {
     cards_retry_delay_minutes: u64,
     cards_max_attempts: u32,
     cards_catchup: CardsCatchupConfig,
+    surface_freshness: SurfaceFreshnessConfig,
 }
 
 /// Resolved knowledge-loop owner ids sourced from
@@ -439,6 +454,7 @@ impl Config {
         let cards_window_days = parse_cards_window_days()?;
         let cards_retry_delay_minutes = parse_cards_retry_delay_minutes()?;
         let cards_max_attempts = parse_cards_max_attempts()?;
+        let surface_freshness = load_surface_freshness()?;
 
         Ok(Self::from_components(
             basic,
@@ -468,6 +484,7 @@ impl Config {
             cards_retry_delay_minutes,
             cards_max_attempts,
             cards_catchup,
+            surface_freshness,
         ))
     }
 
@@ -500,6 +517,7 @@ impl Config {
         cards_retry_delay_minutes: u64,
         cards_max_attempts: u32,
         cards_catchup: CardsCatchupConfig,
+        surface_freshness: SurfaceFreshnessConfig,
     ) -> Self {
         Self {
             http_bind: basic.http_bind,
@@ -573,6 +591,7 @@ impl Config {
             cards_retry_delay_minutes,
             cards_max_attempts,
             cards_catchup,
+            surface_freshness,
         }
     }
 
@@ -1049,12 +1068,7 @@ impl Config {
 
     #[must_use]
     pub const fn surface_freshness(&self) -> SurfaceFreshnessConfig {
-        SurfaceFreshnessConfig {
-            three_day_recap_hours: 0,
-            topic_cards_hours: 0,
-            evening_pulse_hours: 0,
-            morning_letter_hours: 0,
-        }
+        self.surface_freshness
     }
 }
 
@@ -1626,6 +1640,34 @@ fn parse_cards_catchup_str(
     }
 }
 
+fn parse_required_positive_hours(name: &'static str) -> Result<i64, ConfigError> {
+    let raw = env_var(name)?;
+    let hours = raw
+        .trim()
+        .parse::<i64>()
+        .map_err(|error| ConfigError::Invalid {
+            name,
+            source: Box::new(error),
+        })?;
+    if hours <= 0 {
+        return Err(invalid_config(name, "must be a positive integer"));
+    }
+    Ok(hours)
+}
+
+fn load_surface_freshness() -> Result<SurfaceFreshnessConfig, ConfigError> {
+    Ok(SurfaceFreshnessConfig {
+        three_day_recap_hours: parse_required_positive_hours(
+            "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
+        )?,
+        topic_cards_hours: parse_required_positive_hours("RECAP_FRESHNESS_TOPIC_CARDS_HOURS")?,
+        evening_pulse_hours: parse_required_positive_hours("RECAP_FRESHNESS_EVENING_PULSE_HOURS")?,
+        morning_letter_hours: parse_required_positive_hours(
+            "RECAP_FRESHNESS_MORNING_LETTER_HOURS",
+        )?,
+    })
+}
+
 /// Resolve the knowledge-loop owner from the two owner env vars.
 ///
 /// Returns `Some` only when BOTH `RECAP_KNOWLEDGE_OWNER_USER_ID` and
@@ -1878,6 +1920,10 @@ mod tests {
             ("RECAP_CARDS_RETRY_DELAY_MINUTES", None),
             ("RECAP_CARDS_MAX_ATTEMPTS", None),
             ("RECAP_CARDS_CATCHUP", None),
+            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
         ]
     }
 
@@ -3444,7 +3490,9 @@ mod tests {
 
     #[test]
     fn from_env_fails_when_surface_freshness_vars_missing() {
-        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         for missing_var in [
             "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
             "RECAP_FRESHNESS_TOPIC_CARDS_HOURS",
@@ -3468,7 +3516,9 @@ mod tests {
 
     #[test]
     fn from_env_fails_when_surface_freshness_vars_non_positive() {
-        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         for var in [
             "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
             "RECAP_FRESHNESS_TOPIC_CARDS_HOURS",
@@ -3494,7 +3544,9 @@ mod tests {
 
     #[test]
     fn from_env_loads_surface_freshness_hours() {
-        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut vars = required_base();
         vars.extend([
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),

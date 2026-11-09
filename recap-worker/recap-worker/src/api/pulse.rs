@@ -13,8 +13,12 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
+use crate::api::surface_status::{
+    SurfaceRun, SurfaceStatus, build_surface_status, evening_pulse_reasons,
+};
 use crate::app::AppState;
 use crate::pipeline::pulse::{PulseDiagnostics, PulseResult, PulseTopic, TopicRole};
+use crate::store::dao::surface::SurfaceDaoOps;
 pub use crate::store::models::PulseGenerationRow;
 
 /// Query parameters for GET /v1/pulse/latest
@@ -35,6 +39,7 @@ pub(crate) struct PulseLatestResponse {
     topics: Vec<PulseTopicResponse>,
     quiet_day: Option<QuietDayResponse>,
     diagnostics: Option<PulseDiagnosticsResponse>,
+    surface_status: SurfaceStatus,
 }
 
 /// Topic in the API response
@@ -104,6 +109,9 @@ struct ErrorResponse {
     error: String,
 }
 
+pub type PulseWindow = (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>);
+pub type PulseProvenance = (chrono::DateTime<chrono::Utc>, Option<PulseWindow>);
+
 #[async_trait::async_trait]
 pub trait PulseReadDao: Send + Sync {
     async fn get_latest_pulse(
@@ -119,20 +127,53 @@ pub trait PulseReadDao: Send + Sync {
     async fn get_pulse_provenance(
         &self,
         job_id: uuid::Uuid,
-    ) -> Result<
-        Option<(
-            chrono::DateTime<chrono::Utc>,
-            Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>,
-        )>,
-        String,
-    >;
+    ) -> Result<Option<PulseProvenance>, String>;
+}
+
+#[async_trait::async_trait]
+impl PulseReadDao for AppState {
+    async fn get_latest_pulse(
+        &self,
+    ) -> Result<Option<crate::store::models::PulseGenerationRow>, String> {
+        self.dao()
+            .get_latest_pulse()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_pulse_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Option<crate::store::models::PulseGenerationRow>, String> {
+        self.dao()
+            .get_pulse_by_date(date)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_latest_pulse_run(&self) -> Result<Option<SurfaceRun>, String> {
+        SurfaceDaoOps::get_latest_pulse_run(self.pool())
+            .await
+            .map(|opt| opt.map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at)))
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_pulse_provenance(
+        &self,
+        job_id: uuid::Uuid,
+    ) -> Result<Option<PulseProvenance>, String> {
+        SurfaceDaoOps::get_pulse_provenance(self.pool(), job_id)
+            .await
+            .map(|opt| opt.map(|p| (p.finished_at, p.window)))
+            .map_err(|e| e.to_string())
+    }
 }
 
 pub async fn get_latest_pulse_impl(
     dao: &impl PulseReadDao,
     date_query: Option<&str>,
-    _freshness_budget: chrono::Duration,
-    _now: chrono::DateTime<chrono::Utc>,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> axum::response::Response {
     let result = match date_query {
         Some(date_str) => {
@@ -150,36 +191,73 @@ pub async fn get_latest_pulse_impl(
         None => dao.get_latest_pulse().await,
     };
 
-    match result {
-        Ok(Some(row)) => match build_response(&row) {
-            Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-            Err(e) => {
-                error!("Failed to build pulse response: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to build response".to_string(),
-                    }),
-                )
-                    .into_response()
-            }
-        },
+    let row = match result {
+        Ok(Some(row)) => row,
         Ok(None) => {
             let date_msg = date_query.map_or_else(|| "today".to_string(), str::to_string);
-            (
+            info!("No evening pulse found for date {}", date_msg);
+            return (
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
                     error: format!("No evening pulse found for date {date_msg}"),
                 }),
             )
-                .into_response()
+                .into_response();
         }
         Err(e) => {
             error!("Failed to fetch pulse: {}", e);
-            (
+            return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: "Failed to fetch pulse data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let latest_run = match dao.get_latest_pulse_run().await {
+        Ok(run) => run,
+        Err(e) => {
+            error!("Failed to fetch latest pulse run: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch pulse data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let provenance = match dao.get_pulse_provenance(row.job_id).await {
+        Ok(prov) => prov,
+        Err(e) => {
+            error!(
+                "Failed to fetch pulse provenance for job {}: {}",
+                row.job_id, e
+            );
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch pulse data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    match build_response(&row, provenance, latest_run, freshness_budget, now) {
+        Ok(response) => {
+            info!("Successfully fetched evening pulse for job {}", row.job_id);
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => {
+            error!("Failed to build pulse response: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to build response".to_string(),
                 }),
             )
                 .into_response()
@@ -196,71 +274,16 @@ pub(crate) async fn get_latest(
     Query(query): Query<PulseLatestQuery>,
 ) -> impl IntoResponse {
     info!("Fetching latest evening pulse, date={:?}", query.date);
-
-    let dao = state.dao();
-
-    let result = match &query.date {
-        Some(date_str) => {
-            let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") else {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse {
-                        error: format!("Invalid date format: {date_str}. Expected YYYY-MM-DD"),
-                    }),
-                )
-                    .into_response();
-            };
-            dao.get_pulse_by_date(date).await
-        }
-        None => dao.get_latest_pulse().await,
-    };
-
-    match result {
-        Ok(Some(row)) => match build_response(&row) {
-            Ok(response) => {
-                info!("Successfully fetched evening pulse for job {}", row.job_id);
-                (StatusCode::OK, Json(response)).into_response()
-            }
-            Err(e) => {
-                error!("Failed to build pulse response: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to build response".to_string(),
-                    }),
-                )
-                    .into_response()
-            }
-        },
-        Ok(None) => {
-            let date_msg = query
-                .date
-                .as_ref()
-                .map_or_else(|| "today".to_string(), Clone::clone);
-            info!("No evening pulse found for date {}", date_msg);
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("No evening pulse found for date {date_msg}"),
-                }),
-            )
-                .into_response()
-        }
-        Err(e) => {
-            error!("Failed to fetch pulse: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch pulse data".to_string(),
-                }),
-            )
-                .into_response()
-        }
-    }
+    let budget = state.config().surface_freshness().evening_pulse_budget();
+    get_latest_pulse_impl(&state, query.date.as_deref(), budget, chrono::Utc::now()).await
 }
 
 fn build_response(
     row: &crate::store::models::PulseGenerationRow,
+    provenance: Option<PulseProvenance>,
+    latest_run: Option<SurfaceRun>,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> anyhow::Result<PulseLatestResponse> {
     // Deserialize result_payload to PulseResult
     let pulse_result: PulseResult = serde_json::from_value(
@@ -274,6 +297,19 @@ fn build_response(
     let quiet_day = build_quiet_day(&pulse_result);
     let diagnostics = build_diagnostics(&pulse_result.diagnostics);
 
+    let (generated_at, window) = match provenance {
+        Some((finished_at, win)) => (finished_at, win),
+        None => (pulse_result.generated_at, None),
+    };
+    let surface_status = build_surface_status(
+        generated_at,
+        window,
+        latest_run,
+        evening_pulse_reasons(diagnostics.fallback_level),
+        freshness_budget,
+        now,
+    );
+
     Ok(PulseLatestResponse {
         job_id: row.job_id.to_string(),
         version: row.version.clone(),
@@ -283,6 +319,7 @@ fn build_response(
         topics,
         quiet_day,
         diagnostics: Some(diagnostics),
+        surface_status,
     })
 }
 
@@ -551,10 +588,7 @@ mod tests {
     struct MockPulseReadDao {
         row: Option<crate::store::models::PulseGenerationRow>,
         latest_run: Option<crate::api::surface_status::SurfaceRun>,
-        provenance: Option<(
-            chrono::DateTime<Utc>,
-            Option<(chrono::DateTime<Utc>, chrono::DateTime<Utc>)>,
-        )>,
+        provenance: Option<PulseProvenance>,
     }
 
     #[async_trait::async_trait]
@@ -581,13 +615,7 @@ mod tests {
         async fn get_pulse_provenance(
             &self,
             _job_id: Uuid,
-        ) -> Result<
-            Option<(
-                chrono::DateTime<Utc>,
-                Option<(chrono::DateTime<Utc>, chrono::DateTime<Utc>)>,
-            )>,
-            String,
-        > {
+        ) -> Result<Option<PulseProvenance>, String> {
             Ok(self.provenance)
         }
     }
