@@ -252,7 +252,8 @@ class OllamaGateway:
         think: bool | None = None,
     ) -> LLMResponse:
         """Free-text generation via /api/generate. Thinking mode allowed."""
-        templated_prompt = prompt if prompt.startswith("<|turn>") else wrap_gemma_prompt(prompt)
+        is_templated = prompt.startswith("<|turn>") and prompt.endswith("<|turn>model\n")
+        templated_prompt = prompt if is_templated else wrap_gemma_prompt(prompt)
         payload: dict = {
             "model": model,
             "prompt": templated_prompt,

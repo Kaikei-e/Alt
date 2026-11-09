@@ -23,7 +23,7 @@ CLAIM_EXTRACTION_SYSTEM_PROMPT = """Analyze the following report text and extrac
 For each claim, determine if it is supported by any of the provided evidence sources.
 Return JSON with "claims" array. Each claim: {"claim": "text", "supported": true/false, "source_id": "id or empty"}"""
 
-CLAIM_EXTRACTION_PROMPT = """Report text:
+CLAIM_EXTRACTION_USER_TEMPLATE = """Report text:
 {text}
 
 Evidence sources:
@@ -45,7 +45,7 @@ class RubricEvaluator:
         text = "\n\n".join(f"## {k}\n{v}" for k, v in sections.items())
         evidence_text = json.dumps([{"id": e.get("id", ""), "title": e.get("title", "")} for e in evidence])
 
-        user_prompt = CLAIM_EXTRACTION_PROMPT.format(text=text[:3000], evidence=evidence_text)
+        user_prompt = CLAIM_EXTRACTION_USER_TEMPLATE.format(text=text[:3000], evidence=evidence_text)
         prompt = wrap_gemma_prompt(user_prompt, CLAIM_EXTRACTION_SYSTEM_PROMPT)
         response = await self._llm.generate(prompt, temperature=0, num_predict=1024, think=False)
 
