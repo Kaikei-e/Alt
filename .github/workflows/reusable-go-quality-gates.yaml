@@ -38,34 +38,6 @@ jobs:
         shell: bash
 
     steps:
-      # --- Mask sensitive information ---
-      - name: Mask sensitive paths and user info
-        run: |
-          echo "::group::Masking Configuration"
-
-          # Mask Runner Identity
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(whoami)"
-
-          # Mask Absolute Paths
-          [ -n "$HOME" ] && echo "::add-mask::$HOME"
-          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
-          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
-
-          # Mask Git PII
-          if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce')"
-          fi
-
-          # Store paths in environment for later use (preserving original logic)
-          echo "GITHUB_WORKSPACE=${{ github.workspace }}" >> $GITHUB_ENV
-          echo "RUNNER_TEMP=${{ runner.temp }}" >> $GITHUB_ENV
-
-          echo "::endgroup::"
-
       # --- Checkout & Go setup ---
       - name: Checkout (sparse)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -76,7 +48,42 @@ jobs:
           sparse-checkout-cone-mode: true
           fetch-depth: 2 # 変更差分だけで十分 (workflow_dispatch での HEAD~1 参照にも対応)
 
+      # --- Mask sensitive information ---
+      - name: Mask sensitive paths and user info
+        run: |
+          echo "::group::Masking Configuration"
+
+          mask_if_nonempty() {
+            if [ -n "$1" ]; then
+              echo "::add-mask::$1"
+            fi
+          }
+
+          # Mask Runner Identity
+          mask_if_nonempty "$(hostname)"
+          mask_if_nonempty "$(whoami)"
+
+          # Mask Absolute Paths
+          mask_if_nonempty "$HOME"
+          mask_if_nonempty "$GITHUB_WORKSPACE"
+          mask_if_nonempty "$RUNNER_TEMP"
+
+          # Mask Git PII
+          if command -v git >/dev/null 2>&1; then
+            mask_if_nonempty "$(git log -1 --pretty=format:'%an')"
+            mask_if_nonempty "$(git log -1 --pretty=format:'%ae')"
+            mask_if_nonempty "$(git log -1 --pretty=format:'%cn')"
+            mask_if_nonempty "$(git log -1 --pretty=format:'%ce')"
+          fi
+
+          # Store paths in environment for later use (preserving original logic)
+          echo "GITHUB_WORKSPACE=${{ github.workspace }}" >> "$GITHUB_ENV"
+          echo "RUNNER_TEMP=${{ runner.temp }}" >> "$GITHUB_ENV"
+
+          echo "::endgroup::"
+
       - name: Set up Go
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: ${{ inputs.go-version }}
@@ -99,7 +106,7 @@ jobs:
         run: |
           files=$(gofmt -l . | grep -v '^gen/' | grep -v '^$' || true)
           if [ -n "$files" ]; then
-            echo "::error title=gofmt::Run 'gofmt -w' on these files:\n$files"
+            printf '::error title=gofmt::Run gofmt -w on these files:%%0A%s\n' "${files//$'\n'/%0A}"
             exit 1
           fi
 
@@ -140,7 +147,8 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/go/bin
-          key: go-tools-${{ runner.os }}-gosec-v2.28.0-govulncheck-v1.6.0
+          # Tools using go/packages must be built by the same Go toolchain that loads the packages.
+          key: go-tools-${{ runner.os }}-go-${{ steps.setup-go.outputs.go-version }}-gosec-v2.28.0-govulncheck-v1.6.0
 
       - name: Install gosec
         if: steps.cache-go-tools.outputs.cache-hit != 'true'
@@ -205,22 +213,30 @@ jobs:
         run: |
           # Ensure _reports directory exists (defensive check)
           mkdir -p ./_reports
-          # Run govulncheck and save SARIF output to file
-          # Capture stderr separately for logging (masked), stdout goes to SARIF file
-          # Use -format=sarif (with equals sign) as per govulncheck documentation
-          govulncheck -format=sarif ./... > ./_reports/govulncheck.sarif 2>./_reports/govulncheck.stderr || true
+          # In -format=sarif mode govulncheck exits 0 regardless of finding count and
+          # only exits non-zero on a tool or build error.
+          if ! govulncheck -format=sarif ./... > ./_reports/govulncheck.sarif 2>./_reports/govulncheck.stderr; then
+            if [ -s ./_reports/govulncheck.stderr ]; then
+              sed -e "s|${GITHUB_WORKSPACE}|***|g" \
+                -e "s|${RUNNER_TEMP}|***|g" \
+                -e "s|/home/runner|***|g" \
+                -e "s|${USER}|***|g" \
+                -e "s|$(whoami)|***|g" ./_reports/govulncheck.stderr >&2
+            fi
+            echo "::error title=govulncheck::govulncheck execution failed"
+            exit 1
+          fi
           # Mask paths in stderr output for logs
           if [ -s ./_reports/govulncheck.stderr ]; then
-            cat ./_reports/govulncheck.stderr | \
-              sed "s|${GITHUB_WORKSPACE}|***|g" | \
-              sed "s|${RUNNER_TEMP}|***|g" | \
-              sed "s|/home/runner|***|g" | \
-              sed "s|${USER}|***|g" | \
-              sed "s|$(whoami)|***|g" || true
+            sed -e "s|${GITHUB_WORKSPACE}|***|g" \
+              -e "s|${RUNNER_TEMP}|***|g" \
+              -e "s|/home/runner|***|g" \
+              -e "s|${USER}|***|g" \
+              -e "s|$(whoami)|***|g" ./_reports/govulncheck.stderr
           fi
-          # Ensure SARIF file exists even if no vulnerabilities found or command failed
-          if [ ! -f ./_reports/govulncheck.sarif ] || [ ! -s ./_reports/govulncheck.sarif ]; then
-            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"govulncheck","version":"latest"}},"results":[]}]}' > ./_reports/govulncheck.sarif
+          if [ ! -s ./_reports/govulncheck.sarif ]; then
+            echo "::error title=govulncheck::govulncheck did not produce a non-empty ./_reports/govulncheck.sarif"
+            exit 1
           fi
           # Deduplicate stacks in SARIF results (govulncheck can emit duplicate stack objects,
           # violating SARIF 2.1.0 uniqueItems on runs[].results[].stacks during upload-sarif validation)

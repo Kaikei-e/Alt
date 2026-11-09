@@ -12,6 +12,9 @@ on:
       - 'docker/otel-relay/**'
       - 'docker/inference-proxy/**'
       - '.github/workflows/sidecar-proxies-go.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   pull_request:
     branches: [ main, master ]
     paths:
@@ -20,6 +23,9 @@ on:
       - 'docker/otel-relay/**'
       - 'docker/inference-proxy/**'
       - '.github/workflows/sidecar-proxies-go.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   workflow_dispatch:
 
 concurrency:

@@ -4,10 +4,16 @@ on:
     branches: [main, master]
     paths:
       - "pre-processor-sidecar/**"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main, master]
     paths:
       - "pre-processor-sidecar/**"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -23,6 +29,5 @@ jobs:
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: "pre-processor-sidecar/app"
-      go-version: "1.27.1"
       coverage-flags: "pre-processor-sidecar"
       sparse-checkout: "pre-processor-sidecar"

@@ -3,10 +3,10 @@ name: Auth Hub Tests
 on:
   push:
     branches: [main]
-    paths: ['auth-hub/**', '.github/workflows/auth-hub-go.yaml']
+    paths: ['auth-hub/**', '.github/workflows/auth-hub-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   pull_request:
     branches: [main]
-    paths: ['auth-hub/**', '.github/workflows/auth-hub-go.yaml']
+    paths: ['auth-hub/**', '.github/workflows/auth-hub-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   workflow_dispatch:
 
 concurrency:
@@ -29,4 +29,3 @@ jobs:
       coverage-flags: 'auth-hub'
       use-oidc: false
       sparse-checkout: 'auth-hub'
-    secrets: inherit

@@ -13,10 +13,16 @@ on:
     branches: [main, master]
     paths:
       - "pki-agent/**"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main, master]
     paths:
       - "pki-agent/**"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -32,11 +38,8 @@ jobs:
       working-directory: "pki-agent"
       coverage-flags: "pki-agent"
       use-local-persistent-cache: false
-      # Evaluate the real provisioner templates with x509util using auth-hub's
-      # existing dependency graph; no production PKI dependency is added.
       sparse-checkout: |
         pki-agent
-        auth-hub
 
   quality:
     permissions:

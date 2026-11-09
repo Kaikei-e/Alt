@@ -3,10 +3,10 @@ name: BFF Tests
 on:
   push:
     branches: [main]
-    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml']
+    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   pull_request:
     branches: [main]
-    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml']
+    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   workflow_dispatch:
 
 concurrency:
@@ -27,4 +27,3 @@ jobs:
       coverage-flags: 'alt-butterfly-facade'
       use-oidc: false
       sparse-checkout: 'alt-butterfly-facade'
-    secrets: inherit

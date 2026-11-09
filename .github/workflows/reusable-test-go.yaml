@@ -58,13 +58,16 @@ jobs:
           sparse-checkout-cone-mode: true
         # このアクションは $GITHUB_WORKSPACE (= ${{ github.workspace }}) 配下にチェックアウトする
 
-      - name: Set up Go (with built-in cache)
+      - name: Set up Go
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: ${{ inputs.go-version }}
           go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
           check-latest: true
-          cache: true # go modules とビルド出力を標準機能でキャッシュ
+          # Disabled because setup-go's cache key is shared with the quality job,
+          # which saves first without -race build artifacts.
+          cache: false
 
       # ===== キャッシュ戦略 =====
       # 1) ローカル永続キャッシュ（sudo不要でHOME配下に固定）
@@ -76,14 +79,34 @@ jobs:
           echo "GOMODCACHE=$HOME/go/pkg/mod"   >> "$GITHUB_ENV"
 
       - name: Go env (diagnostics)
+        id: go-env
         env:
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: |
+          gocache="$(go env GOCACHE)"
+          gomodcache="$(go env GOMODCACHE)"
+          workdir_slug="${WORKING_DIRECTORY//\//-}"
+          {
+            echo "gocache=${gocache}"
+            echo "gomodcache=${gomodcache}"
+            echo "workdir-slug=${workdir_slug}"
+          } >> "$GITHUB_OUTPUT"
           go env
-          echo "GOCACHE=${GOCACHE:-$(go env GOCACHE)}"
-          echo "GOMODCACHE=${GOMODCACHE:-$(go env GOMODCACHE)}"
+          echo "GOCACHE=${gocache}"
+          echo "GOMODCACHE=${gomodcache}"
           echo "github.workspace=${{ github.workspace }}"
           ls -la "$GITHUB_WORKSPACE/$WORKING_DIRECTORY" || true
+
+      - name: Restore Go test cache
+        id: cache-go-test
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ${{ steps.go-env.outputs.gocache }}
+            ${{ steps.go-env.outputs.gomodcache }}
+          key: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ steps.go-env.outputs.workdir-slug }}-race-${{ hashFiles(format('{0}/go.mod', inputs.working-directory), format('{0}/go.sum', inputs.working-directory)) }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ steps.go-env.outputs.workdir-slug }}-race-
 
       # -race is what makes the repo's race-detection tests mean anything: the
       # detector is off by default, so a test written to catch a race passes
@@ -94,6 +117,15 @@ jobs:
           CGO_ENABLED: "1"
         run: |
           go test -race ./... -coverprofile=coverage.out
+
+      - name: Save Go test cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ${{ steps.go-env.outputs.gocache }}
+            ${{ steps.go-env.outputs.gomodcache }}
+          key: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ steps.go-env.outputs.workdir-slug }}-race-${{ hashFiles(format('{0}/go.mod', inputs.working-directory), format('{0}/go.sum', inputs.working-directory)) }}
 
       # === Codecov: OIDC か token を選択 ===
       # - name: Upload coverage to Codecov (OIDC)

@@ -10,6 +10,9 @@ on:
       - "pre-processor-sidecar/**"
       - "search-indexer/**"
       - "auth-hub/**"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main, master]
     paths:
@@ -18,6 +21,9 @@ on:
       - "pre-processor-sidecar/**"
       - "search-indexer/**"
       - "auth-hub/**"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   schedule:
     - cron: "0 18 * * 5"
 
@@ -70,39 +76,13 @@ jobs:
 
           echo "::endgroup::"
 
-      # CodeQL 実行前にディスクの空きを増やす
-      - name: Free disk space before CodeQL
-        run: |
-          echo "Before cleanup:"
-          df -h
-
-          # 重いツール類があれば削除（存在チェック付き）
-          if [ -d "/usr/share/dotnet" ]; then
-            sudo rm -rf /usr/share/dotnet &
-          fi
-
-          if [ -d "/usr/local/lib/android" ]; then
-            sudo rm -rf /usr/local/lib/android &
-          fi
-
-          if [ -d "/usr/local/share/boost" ]; then
-            sudo rm -rf /usr/local/share/boost &
-          fi
-
-          # Deleted in parallel: /usr/local/lib/android alone is ~9GB and
-          # dominates, so serialising these cost ~2min per run. Docker image
-          # pruning was dropped — no image is built in a language-scoped
-          # CodeQL analysis, so it freed nothing.
-          wait
-
-          echo "After cleanup:"
-          df -h
-
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version-file: "alt-backend/app/go.mod"
           check-latest: true
+          cache: true
+          cache-dependency-path: "alt-backend/app/go.sum"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1

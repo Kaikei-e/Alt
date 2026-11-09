@@ -3,10 +3,10 @@ name: Search Indexer Tests
 on:
   push:
     branches: [ main ]
-    paths: [ 'search-indexer/**' ]
+    paths: [ 'search-indexer/**', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md' ]
   pull_request:
     branches: [ main ]
-    paths: [ 'search-indexer/**' ]
+    paths: [ 'search-indexer/**', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md' ]
   workflow_dispatch:
 
 concurrency:
@@ -24,4 +24,3 @@ jobs:
       coverage-flags: 'search-indexer'
       use-oidc: false
       sparse-checkout: 'search-indexer'
-    secrets: inherit
