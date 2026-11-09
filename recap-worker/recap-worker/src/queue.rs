@@ -100,8 +100,12 @@ impl ClassificationJobQueue {
                 texts,
                 max_retries: self.max_retries,
             };
-            let job_id = self.store.enqueue(job).await?;
-            return Ok(vec![job_id]);
+            let queued_job_id = self.store.enqueue(job).await?;
+            self.auth_failures
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&job_id);
+            return Ok(vec![queued_job_id]);
         }
 
         // Split into chunks
@@ -131,6 +135,11 @@ impl ClassificationJobQueue {
             let queued_job_id = self.store.enqueue(job).await?;
             job_ids.push(queued_job_id);
         }
+
+        self.auth_failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&job_id);
 
         debug!(
             job_id = %job_id,
@@ -217,10 +226,17 @@ impl ClassificationJobQueue {
 
             // Check timeout
             if start.elapsed() >= timeout {
-                self.auth_failures
+                if let Some((chunk_idx, auth_err)) = self
+                    .auth_failures
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .remove(&recap_job_id);
+                    .remove(&recap_job_id)
+                {
+                    return Err(anyhow::Error::from(auth_err).context(format!(
+                        "classify-runs request rejected for job {} chunk {}",
+                        recap_job_id, chunk_idx
+                    )));
+                }
 
                 // Get jobs to check for failures
                 let jobs = self
