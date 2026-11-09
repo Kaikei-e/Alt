@@ -45,6 +45,10 @@ Checks:
      `jobs.<id>.services.<name>.image` is pinned by an `@sha256:` digest.
  10. Every job that is not a reusable-workflow call declares a positive
      `timeout-minutes`.
+ 11. Every workflow whose `on.push` or `on.pull_request` uses `paths:` matches
+     its own workflow file and every local reusable workflow it calls via
+     `uses: ./.github/workflows/<file>` at job level, without a later `!`
+     negation excluding them.
 """
 from __future__ import annotations
 
@@ -107,6 +111,77 @@ def resolve_path_filter_target(entry: str) -> str:
     if "/" in prefix:
         return prefix.rsplit("/", 1)[0] or "."
     return "."
+
+
+def github_glob_matches(pattern: str, candidate: str) -> bool:
+    """Match a single positive GitHub Actions path pattern against `candidate`."""
+    pat = pattern.strip().lstrip("./")
+    cand = candidate.strip().lstrip("./")
+    if GLOB_CHAR_RE.search(pat) is None:
+        return pat.rstrip("/") == cand.rstrip("/")
+
+    parts: list[str] = ["^"]
+    i = 0
+    n = len(pat)
+    while i < n:
+        if pat[i : i + 3] == "**/":
+            parts.append("(?:.+/)?")
+            i += 3
+        elif pat[i : i + 3] == "/**" and i + 3 == n:
+            parts.append("/.+")
+            i += 3
+        elif pat[i : i + 2] == "**":
+            parts.append(".*")
+            i += 2
+        elif pat[i] == "*":
+            parts.append("[^/]*")
+            i += 1
+        elif pat[i] == "?":
+            parts.append("[^/]")
+            i += 1
+        else:
+            parts.append(re.escape(pat[i]))
+            i += 1
+    parts.append("$")
+    return bool(re.match("".join(parts), cand))
+
+
+def paths_filter_matches(paths_list: list[Any], candidate: str) -> bool:
+    """Return True if a GitHub Actions `paths:` filter list matches `candidate`."""
+    matched = False
+    for raw_entry in paths_list:
+        if not isinstance(raw_entry, str):
+            continue
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        if entry.startswith("!"):
+            neg_pattern = entry.lstrip("!").strip()
+            if neg_pattern and github_glob_matches(neg_pattern, candidate):
+                matched = False
+        elif github_glob_matches(entry, candidate):
+            matched = True
+    return matched
+
+
+def required_workflow_paths(path: str, doc: Mapping[str, Any]) -> list[str]:
+    """Return [own_workflow_path, *called_local_reusable_workflow_paths]."""
+    own = path.strip()
+    if own.startswith("./"):
+        own = own[2:]
+    if "/" not in own:
+        own = f".github/workflows/{own}"
+
+    required: list[str] = [own]
+    for job in (doc.get("jobs") or {}).values():
+        if not isinstance(job, dict):
+            continue
+        uses = job.get("uses")
+        if isinstance(uses, str) and uses.startswith("./.github/workflows/"):
+            reusable_path = uses[2:]
+            if reusable_path not in required:
+                required.append(reusable_path)
+    return required
 
 
 def extract_labels(runs_on):
@@ -294,9 +369,11 @@ def _check_workflow_doc_details(
             )
         bad += 1
 
-    # Rule 8 — every literal (or non-glob prefix) entry in
+    # Rule 8 & Rule 11 — every literal (or non-glob prefix) entry in
     # on.push.paths / on.pull_request.paths resolves to an existing
-    # file or directory.
+    # file or directory, and every paths: filter matches the workflow's
+    # own file and every local reusable workflow it calls at job level.
+    required_paths = required_workflow_paths(path, doc)
     if isinstance(triggers, dict):
         for trig_name in ("push", "pull_request"):
             trig_cfg = triggers.get(trig_name)
@@ -314,6 +391,15 @@ def _check_workflow_doc_details(
                         f"::error file={path}::on.{trig_name}.paths "
                         f"entry {raw_entry!r} resolves to missing "
                         f"path {target!r}."
+                    )
+                    bad += 1
+            for req_path in required_paths:
+                if not paths_filter_matches(paths_list, req_path):
+                    errors.append(
+                        f"::error file={path}::on.{trig_name}.paths "
+                        f"does not match {req_path!r} (workflows using "
+                        f"`paths:` must trigger on their own file and "
+                        f"every local reusable workflow they call)."
                     )
                     bad += 1
 
