@@ -67,6 +67,7 @@ APP_CONTAINER="alt-e2e-frontend-sv-${SAFE_RUN_ID}-$$"
 
 cleanup() {
   local rc=$?
+  docker logs "$APP_CONTAINER" >"$REPORT_DIR/app-container.log" 2>&1 || true
   if [[ $rc -ne 0 ]]; then
     echo "::group::alt-frontend-sv container logs" >&2
     docker logs --tail 200 "$APP_CONTAINER" >&2 || true

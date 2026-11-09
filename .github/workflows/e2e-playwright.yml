@@ -224,6 +224,19 @@ jobs:
           # reporting "no blob reports to merge".
           if-no-files-found: warn
 
+      - name: Upload app container log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: app-log-${{ matrix.suite }}
+          path: e2e/reports/${{ matrix.suite }}/app-container.log
+          retention-days: 3
+          overwrite: true
+          # Only alt-frontend-sv/run.sh writes app-container.log today; warn if
+          # it is missing there, and ignore on compose-backed suites that do not
+          # produce this file.
+          if-no-files-found: ${{ matrix.suite == 'alt-frontend-sv' && 'warn' || 'ignore' }}
+
       - name: Wipe throwaway mTLS fixtures
         # run.sh's own trap skips this under KEEP_STACK=1 (the certificates are
         # still bind-mounted into a live container). The runner is ephemeral,
@@ -348,6 +361,19 @@ jobs:
           # nine of them green, and the only symptom was a merge job cheerfully
           # reporting "no blob reports to merge".
           if-no-files-found: warn
+
+      - name: Upload app container log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: app-log-${{ matrix.suite }}-${{ matrix.index }}
+          path: e2e/reports/${{ matrix.suite }}-shard-${{ matrix.index }}/app-container.log
+          retention-days: 3
+          overwrite: true
+          # Only alt-frontend-sv/run.sh writes app-container.log today; warn if
+          # it is missing there, and ignore on compose-backed suites that do not
+          # produce this file.
+          if-no-files-found: ${{ matrix.suite == 'alt-frontend-sv' && 'warn' || 'ignore' }}
 
       - name: Wipe throwaway mTLS fixtures
         if: always()
