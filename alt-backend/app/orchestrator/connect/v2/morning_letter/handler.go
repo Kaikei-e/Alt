@@ -11,7 +11,7 @@ import (
 	"alt/domain"
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
-	"alt/orchestrator/connect/v2/recap"
+	"alt/orchestrator/connect/v2/surfacestatus"
 	"alt/orchestrator/port/morning_letter_port"
 	"alt/utils/safeconv"
 )
@@ -343,7 +343,7 @@ func domainToProto(doc *domain.MorningLetterDocument) *morningletterv2.MorningLe
 			ThroughLine:           throughLine,
 			PreviousLetterRef:     prev,
 		},
-		SurfaceStatus: recap.SurfaceStatusToProto(doc.SurfaceStatus),
+		SurfaceStatus: surfacestatus.ToProto(doc.SurfaceStatus),
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	recapv2 "alt/gen/proto/alt/recap/v2"
 
 	"alt/domain"
+	"alt/orchestrator/connect/v2/surfacestatus"
 	"alt/utils/safeconv"
 )
 
@@ -44,7 +45,7 @@ func eveningPulseDomainToProto(pulse *domain.EveningPulse) *recapv2.GetEveningPu
 		GeneratedAt:   pulse.GeneratedAt.Format(time.RFC3339),
 		Status:        pulseStatusToProto(pulse.Status),
 		Topics:        topics,
-		SurfaceStatus: SurfaceStatusToProto(pulse.SurfaceStatus),
+		SurfaceStatus: surfacestatus.ToProto(pulse.SurfaceStatus),
 	}
 
 	if pulse.QuietDay != nil {

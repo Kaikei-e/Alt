@@ -6,6 +6,7 @@ import (
 	recapv2 "alt/gen/proto/alt/recap/v2"
 
 	"alt/domain"
+	"alt/orchestrator/connect/v2/surfacestatus"
 	"alt/utils/safeconv"
 )
 
@@ -58,7 +59,7 @@ func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayReca
 		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
 		TotalArticles: safeconv.Int32(recap.TotalArticles),
 		Genres:        genres,
-		SurfaceStatus: SurfaceStatusToProto(recap.SurfaceStatus),
+		SurfaceStatus: surfacestatus.ToProto(recap.SurfaceStatus),
 	}
 }
 
@@ -72,7 +73,7 @@ func domainToProtoTopicCards(resp *domain.RecapCardsResponse) *recapv2.GetTopicC
 
 	protoResp := &recapv2.GetTopicCardsResponse{
 		Cards:         make([]*recapv2.RecapCard, 0, len(resp.Cards)),
-		SurfaceStatus: SurfaceStatusToProto(resp.SurfaceStatus),
+		SurfaceStatus: surfacestatus.ToProto(resp.SurfaceStatus),
 	}
 
 	if resp.Job != nil {
@@ -228,36 +229,4 @@ func recapSearchResultsToProto(results []*domain.RecapSearchResult) []*recapv2.R
 		}
 	}
 	return protoResults
-}
-
-// SurfaceStatusToProto converts domain.RecapSurfaceStatus to the shared proto message.
-func SurfaceStatusToProto(s *domain.RecapSurfaceStatus) *recapv2.RecapSurfaceStatus {
-	if s == nil {
-		return nil
-	}
-	var latestRun *recapv2.RecapSurfaceRun
-	if s.LatestRun != nil {
-		latestRun = &recapv2.RecapSurfaceRun{
-			JobId:     s.LatestRun.JobID,
-			Status:    s.LatestRun.Status,
-			KickedAt:  s.LatestRun.KickedAt,
-			UpdatedAt: s.LatestRun.UpdatedAt,
-		}
-	}
-	reasons := make([]*recapv2.RecapDegradationReason, len(s.DegradationReasons))
-	for i, r := range s.DegradationReasons {
-		reasons[i] = &recapv2.RecapDegradationReason{
-			Code:   r.Code,
-			Detail: r.Detail,
-		}
-	}
-	return &recapv2.RecapSurfaceStatus{
-		GeneratedAt:        s.GeneratedAt,
-		WindowStart:        s.WindowStart,
-		WindowEnd:          s.WindowEnd,
-		IsStale:            s.IsStale,
-		StaleAfter:         s.StaleAfter,
-		LatestRun:          latestRun,
-		DegradationReasons: reasons,
-	}
 }
