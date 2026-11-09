@@ -1,8 +1,7 @@
 <script lang="ts">
-const PULSE_SUBTITLE = "Today's key topics curated for you";
-
 interface Props {
 	date: string;
+	isCurrent?: boolean;
 	statusLabel?: string;
 	showKeyboardHint?: boolean;
 	onNavigateToRecap?: () => void;
@@ -10,6 +9,7 @@ interface Props {
 
 const {
 	date,
+	isCurrent = false,
 	statusLabel = "",
 	showKeyboardHint = false,
 	onNavigateToRecap,
@@ -25,6 +25,14 @@ const formattedDate = $derived.by(() => {
 		weekday: "long",
 	});
 });
+
+const subtitle = $derived(
+	isCurrent
+		? "Today's key topics curated for you"
+		: formattedDate
+			? `Key topics from ${formattedDate}`
+			: "Key topics curated for you",
+);
 </script>
 
 <header
@@ -58,7 +66,7 @@ const formattedDate = $derived.by(() => {
 				Evening Pulse
 			</h1>
 			<p class="text-sm mt-1" style="color: var(--text-secondary);">
-				{PULSE_SUBTITLE}
+				{subtitle}
 			</p>
 		</div>
 		{#if onNavigateToRecap}

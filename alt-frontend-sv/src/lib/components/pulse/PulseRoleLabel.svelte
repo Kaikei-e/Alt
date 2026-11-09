@@ -11,7 +11,7 @@ const roleConfig = $derived.by(() => {
 	switch (role) {
 		case "need_to_know":
 			return {
-				label: "Today's Key",
+				label: "Need to know",
 				bgColor: "var(--accent-emphasis-bg)",
 				textColor: "var(--accent-emphasis-text)",
 				borderColor: "var(--accent-emphasis-border)",

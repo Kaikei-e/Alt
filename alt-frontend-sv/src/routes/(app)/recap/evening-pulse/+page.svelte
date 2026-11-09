@@ -82,6 +82,7 @@ onMount(() => {
 			<DesktopPulseQuietDay
 				date={pulse.data.generatedAt}
 				quietDay={pulse.data.quietDay}
+				surfaceStatus={pulse.data.surfaceStatus}
 				onNavigateToRecap={navigateToRecap}
 				onHighlightClick={handleHighlightClick}
 			/>
@@ -116,6 +117,7 @@ onMount(() => {
 			<MobilePulseQuietDay
 				date={pulse.data.generatedAt}
 				quietDay={pulse.data.quietDay}
+				surfaceStatus={pulse.data.surfaceStatus}
 				onNavigateToRecap={navigateToRecap}
 			/>
 		{:else if pulse.data}

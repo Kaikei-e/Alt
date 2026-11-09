@@ -3,7 +3,10 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { AlertTriangle, ArrowLeft, Calendar, RefreshCw } from "@lucide/svelte";
 import { onMount } from "svelte";
 import PageHeader from "#lib/components/desktop/layout/PageHeader.svelte";
-import { RecapTopicCard } from "#lib/components/recap/index.js";
+import {
+	RecapTopicCard,
+	SurfaceStatusBanner,
+} from "#lib/components/recap/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import {
 	createClientTransport,
@@ -12,6 +15,7 @@ import {
 } from "#lib/connect/index.js";
 import { getLoadingStore } from "#lib/stores/loading.svelte.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { evaluateSurfaceStatus } from "#lib/utils/surface-status.js";
 import { browser } from "$app/env";
 import { goto } from "$app/navigation";
 import {
@@ -20,7 +24,6 @@ import {
 	formatCardTimestamp,
 	formatJobWindow,
 	getCardsEmptyMessage,
-	getTopicCardsNotice,
 } from "./cards-state";
 
 const loadingStore = getLoadingStore();
@@ -45,12 +48,18 @@ const windowLabel = $derived(
 		: "",
 );
 
-const statusNotice = $derived(
-	getTopicCardsNotice({
-		job: recapCardsData?.job,
-		cards: recapCardsData?.cards,
-		latestRun: recapCardsData?.latestRun,
-	}),
+const surfaceEvaluation = $derived(
+	evaluateSurfaceStatus(recapCardsData?.surfaceStatus),
+);
+const fallbackDegradedNotice = $derived(
+	recapCardsData?.job?.degraded
+		? "Degraded generation: fewer topic cards than usual met the quality threshold."
+		: null,
+);
+const hasStatusBanner = $derived(
+	Boolean(surfaceEvaluation.statusNotice) ||
+		surfaceEvaluation.degradationNotices.length > 0 ||
+		Boolean(fallbackDegradedNotice),
 );
 
 async function fetchCards() {
@@ -150,20 +159,11 @@ onMount(() => {
 	{/if}
 
 	{#snippet statusBanner()}
-		{#if statusNotice}
-			<div
-				data-testid="recap-cards-status-notice"
-				class="flex items-start gap-3 rounded-lg border {statusNotice.tone === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300' : 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300'} p-3.5 text-xs sm:text-sm"
-				role={statusNotice.tone === 'error' ? 'alert' : 'status'}
-			>
-				{#if statusNotice.tone === 'error'}
-					<AlertTriangle class="h-4 w-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
-				{:else}
-					<RefreshCw class="h-4 w-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400 animate-spin" />
-				{/if}
-				<p class="leading-relaxed">{statusNotice.text}</p>
-			</div>
-		{/if}
+		<SurfaceStatusBanner
+			surfaceStatus={recapCardsData?.surfaceStatus}
+			{fallbackDegradedNotice}
+			degradedTestId="recap-cards-degraded"
+		/>
 	{/snippet}
 
 	<!-- Content State Machine -->
@@ -217,7 +217,7 @@ onMount(() => {
 	{:else if pageState === "empty"}
 		<!-- Empty / Notice State -->
 		<div class="space-y-6 max-w-3xl">
-			{#if statusNotice}
+			{#if hasStatusBanner}
 				{@render statusBanner()}
 			{:else}
 				<div
@@ -261,26 +261,9 @@ onMount(() => {
 						data-testid="recap-cards-freshness"
 						class="text-xs sm:text-sm text-[var(--text-muted)]"
 					>
-						Updated {formatCardTimestamp(recapCardsData.job.kickedAt)}
+						Updated {formatCardTimestamp(recapCardsData.surfaceStatus?.generatedAt || recapCardsData.job.kickedAt)}
 					</div>
 				</div>
-
-				<!-- Degraded notice -->
-				{#if recapCardsData.job.degraded}
-					<div
-						data-testid="recap-cards-degraded"
-						class="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs sm:text-sm text-amber-700 dark:text-amber-300"
-						role="alert"
-					>
-						<AlertTriangle class="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-						<div class="space-y-0.5">
-							<p class="font-semibold">Degraded generation</p>
-							<p class="text-amber-800/80 dark:text-amber-200/80">
-								Fewer than the minimum expected topic cards were produced for this window.
-							</p>
-						</div>
-					</div>
-				{/if}
 			{/if}
 
 			<!-- Cards list -->

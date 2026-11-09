@@ -1,19 +1,31 @@
 <script lang="ts">
 import PulseHeader from "#lib/components/pulse/PulseHeader.svelte";
+import { SurfaceStatusBanner } from "#lib/components/recap/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
-import type { QuietDayInfo } from "#lib/schema/evening_pulse.js";
+import type { QuietDayInfo, SurfaceStatus } from "#lib/schema/evening_pulse.js";
+import { evaluateSurfaceStatus } from "#lib/utils/surface-status.js";
 
 interface Props {
 	date: string;
 	quietDay?: QuietDayInfo;
+	surfaceStatus?: SurfaceStatus | null;
 	onNavigateToRecap?: () => void;
 }
 
-const { date, quietDay, onNavigateToRecap }: Props = $props();
+const {
+	date,
+	quietDay,
+	surfaceStatus = null,
+	onNavigateToRecap,
+}: Props = $props();
+
+const isCurrent = $derived(evaluateSurfaceStatus(surfaceStatus).isCurrent);
 </script>
 
 <div class="p-4 max-w-2xl mx-auto pb-24">
-	<PulseHeader {date} />
+	<PulseHeader {date} {isCurrent} />
+
+	<SurfaceStatusBanner {surfaceStatus} />
 
 	<div
 		class="p-6 border text-center"

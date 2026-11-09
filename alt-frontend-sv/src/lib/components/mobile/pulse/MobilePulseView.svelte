@@ -1,6 +1,8 @@
 <script lang="ts">
 import PulseHeader from "#lib/components/pulse/PulseHeader.svelte";
+import { SurfaceStatusBanner } from "#lib/components/recap/index.js";
 import type { EveningPulse } from "#lib/schema/evening_pulse.js";
+import { evaluateSurfaceStatus } from "#lib/utils/surface-status.js";
 import MobilePulseCard from "./MobilePulseCard.svelte";
 
 interface Props {
@@ -9,6 +11,10 @@ interface Props {
 }
 
 const { pulse, onTopicClick }: Props = $props();
+
+const isCurrent = $derived(
+	evaluateSurfaceStatus(pulse.surfaceStatus).isCurrent,
+);
 
 const statusLabel = $derived.by(() => {
 	switch (pulse.status) {
@@ -23,7 +29,9 @@ const statusLabel = $derived.by(() => {
 </script>
 
 <div class="p-4 max-w-2xl mx-auto pb-24">
-	<PulseHeader date={pulse.generatedAt} {statusLabel} />
+	<PulseHeader date={pulse.generatedAt} {isCurrent} {statusLabel} />
+
+	<SurfaceStatusBanner surfaceStatus={pulse.surfaceStatus} />
 
 	<div class="flex flex-col gap-4">
 		{#each pulse.topics as topic, index (topic.clusterId)}

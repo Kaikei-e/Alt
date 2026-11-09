@@ -78,7 +78,9 @@ describe("SurfaceStatusBanner", () => {
 		});
 
 		const alertEl = page.getByRole("alert");
-		await expect.element(alertEl).toHaveTextContent("The latest update failed at");
+		await expect
+			.element(alertEl)
+			.toHaveTextContent("The latest update failed at");
 		await expect.element(alertEl).toHaveTextContent("Showing results from");
 	});
 
@@ -121,7 +123,8 @@ describe("SurfaceStatusBanner", () => {
 					degradationReasons: [
 						{
 							code: "extractive_genres",
-							detail: "9 of 19 genres are extractive excerpts, not AI summaries",
+							detail:
+								"9 of 19 genres are extractive excerpts, not AI summaries",
 						},
 					],
 				},

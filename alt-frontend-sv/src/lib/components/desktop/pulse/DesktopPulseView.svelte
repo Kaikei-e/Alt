@@ -1,6 +1,8 @@
 <script lang="ts">
 import PulseHeader from "#lib/components/pulse/PulseHeader.svelte";
+import { SurfaceStatusBanner } from "#lib/components/recap/index.js";
 import type { EveningPulse } from "#lib/schema/evening_pulse.js";
+import { evaluateSurfaceStatus } from "#lib/utils/surface-status.js";
 import DesktopPulseCard from "./DesktopPulseCard.svelte";
 
 interface Props {
@@ -13,6 +15,10 @@ const { pulse, onTopicClick, onNavigateToRecap }: Props = $props();
 
 let focusedIndex = $state<number | null>(null);
 let containerRef = $state<HTMLElement | null>(null);
+
+const isCurrent = $derived(
+	evaluateSurfaceStatus(pulse.surfaceStatus).isCurrent,
+);
 
 const statusLabel = $derived.by(() => {
 	switch (pulse.status) {
@@ -74,10 +80,13 @@ const handleCardFocus = (index: number) => {
 >
 	<PulseHeader
 		date={pulse.generatedAt}
+		{isCurrent}
 		{statusLabel}
 		showKeyboardHint={pulse.topics.length > 0}
 		{onNavigateToRecap}
 	/>
+
+	<SurfaceStatusBanner surfaceStatus={pulse.surfaceStatus} />
 
 	{#if pulse.topics.length > 0}
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

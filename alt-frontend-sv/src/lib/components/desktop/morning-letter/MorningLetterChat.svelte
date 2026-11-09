@@ -53,9 +53,10 @@ let currentAbortController: AbortController | null = null;
 
 async function scrollToBottom() {
 	await tick();
-	if (threadContainer) {
+	const el = threadContainer;
+	if (el) {
 		setTimeout(() => {
-			threadContainer.scrollTop = threadContainer.scrollHeight;
+			el.scrollTop = el.scrollHeight;
 		}, 100);
 	}
 }
@@ -121,16 +122,21 @@ async function handleSend() {
 				bufferedContent += text;
 				const now = Date.now();
 				if (now - lastUpdateTime > THROTTLE_MS) {
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex]!,
-						message: bufferedContent,
-					};
+					const current = messages[currentAssistantMessageIndex];
+					if (current) {
+						messages[currentAssistantMessageIndex] = {
+							...current,
+							message: bufferedContent,
+						};
+					}
 					lastUpdateTime = now;
 				}
 			},
 			(meta: MorningLetterMeta) => {
+				const current = messages[currentAssistantMessageIndex];
+				if (!current) return;
 				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
+					...current,
 					citations: convertCitations(meta.citations),
 					meta: {
 						timeWindow: meta.timeWindow,
@@ -139,34 +145,43 @@ async function handleSend() {
 				};
 			},
 			(result) => {
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
-					message: result.answer || bufferedContent,
-					citations:
-						result.citations.length > 0
-							? convertCitations(result.citations)
-							: messages[currentAssistantMessageIndex]!.citations,
-				};
+				const current = messages[currentAssistantMessageIndex];
+				if (current) {
+					messages[currentAssistantMessageIndex] = {
+						...current,
+						message: result.answer || bufferedContent,
+						citations:
+							result.citations.length > 0
+								? convertCitations(result.citations)
+								: current.citations,
+					};
+				}
 				isLoading = false;
 				currentAbortController = null;
 				scrollToBottom();
 			},
 			(_code) => {
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
-					message:
-						"I couldn't find enough recent news to answer that. Try asking about a different topic from today's news.",
-				};
+				const current = messages[currentAssistantMessageIndex];
+				if (current) {
+					messages[currentAssistantMessageIndex] = {
+						...current,
+						message:
+							"I couldn't find enough recent news to answer that. Try asking about a different topic from today's news.",
+					};
+				}
 				isLoading = false;
 				currentAbortController = null;
 				scrollToBottom();
 			},
 			(error) => {
 				console.error("Chat error:", error);
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
-					message: `Error: ${error.message}. Please try again.`,
-				};
+				const current = messages[currentAssistantMessageIndex];
+				if (current) {
+					messages[currentAssistantMessageIndex] = {
+						...current,
+						message: `Error: ${error.message}. Please try again.`,
+					};
+				}
 				isLoading = false;
 				currentAbortController = null;
 				scrollToBottom();
@@ -174,10 +189,13 @@ async function handleSend() {
 		);
 	} catch (error) {
 		console.error("Chat error:", error);
-		messages[currentAssistantMessageIndex] = {
-			...messages[currentAssistantMessageIndex]!,
-			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
-		};
+		const current = messages[currentAssistantMessageIndex];
+		if (current) {
+			messages[currentAssistantMessageIndex] = {
+				...current,
+				message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
+			};
+		}
 		isLoading = false;
 		await scrollToBottom();
 	}

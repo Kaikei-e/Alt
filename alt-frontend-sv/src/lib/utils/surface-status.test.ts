@@ -144,31 +144,31 @@ describe("evaluateSurfaceStatus", () => {
 		});
 	});
 
-	it.each(["running", "pending"] as const)(
-		"returns info notice when latestRun.status is %s",
-		(status) => {
-			const result = evaluateSurfaceStatus({
-				generatedAt: "2026-09-22T17:00:00Z",
-				windowStart: "2026-09-19T17:00:00Z",
-				windowEnd: "2026-09-22T17:00:00Z",
-				isStale: false,
-				staleAfter: "2026-09-23T23:00:00Z",
-				latestRun: {
-					jobId: `run-${status}`,
-					status,
-					kickedAt: "2026-09-22T19:00:00Z",
-					updatedAt: "2026-09-22T19:01:00Z",
-				},
-				degradationReasons: [],
-			});
+	it.each([
+		"running",
+		"pending",
+	] as const)("returns info notice when latestRun.status is %s", (status) => {
+		const result = evaluateSurfaceStatus({
+			generatedAt: "2026-09-22T17:00:00Z",
+			windowStart: "2026-09-19T17:00:00Z",
+			windowEnd: "2026-09-22T17:00:00Z",
+			isStale: false,
+			staleAfter: "2026-09-23T23:00:00Z",
+			latestRun: {
+				jobId: `run-${status}`,
+				status,
+				kickedAt: "2026-09-22T19:00:00Z",
+				updatedAt: "2026-09-22T19:01:00Z",
+			},
+			degradationReasons: [],
+		});
 
-			expect(result.isCurrent).toBe(true);
-			expect(result.statusNotice).toEqual({
-				tone: "info",
-				text: "Update in progress…",
-			});
-		},
-	);
+		expect(result.isCurrent).toBe(true);
+		expect(result.statusNotice).toEqual({
+			tone: "info",
+			text: "Update in progress…",
+		});
+	});
 
 	it("maps degradationReasons using detail when present and fallback text per code when detail is empty", () => {
 		const result = evaluateSurfaceStatus({

@@ -74,6 +74,20 @@ export const CONNECT_RECAP_RESPONSE = {
 		...g,
 		references: [], // Connect-RPC requires this field
 	})),
+	surfaceStatus: {
+		generatedAt: "2025-12-20T12:00:00Z",
+		windowStart: "2025-12-17T00:00:00Z",
+		windowEnd: "2025-12-20T00:00:00Z",
+		isStale: false,
+		staleAfter: "2025-12-21T18:00:00Z",
+		latestRun: {
+			jobId: "test-job-123",
+			status: "completed",
+			kickedAt: "2025-12-20T11:55:00Z",
+			updatedAt: "2025-12-20T12:00:00Z",
+		},
+		degradationReasons: [],
+	},
 };
 
 /**
@@ -161,6 +175,20 @@ export const CONNECT_MORNING_LETTER_DOCUMENT = {
 				],
 			},
 		],
+	},
+	surfaceStatus: {
+		generatedAt: "2026-04-07T06:00:00Z",
+		windowStart: "2026-04-04T06:00:00Z",
+		windowEnd: "2026-04-07T06:00:00Z",
+		isStale: false,
+		staleAfter: "2026-04-07T09:00:00Z",
+		latestRun: {
+			jobId: "morning-job-001",
+			status: "completed",
+			kickedAt: "2026-04-07T05:55:00Z",
+			updatedAt: "2026-04-07T06:00:00Z",
+		},
+		degradationReasons: [],
 	},
 };
 
@@ -339,4 +367,18 @@ export const CONNECT_RECAP_CARDS_RESPONSE = {
 			createdAt: "2026-09-22T17:06:00Z",
 		},
 	],
+	surfaceStatus: {
+		generatedAt: "2026-09-22T17:06:00Z",
+		windowStart: "2026-09-19T17:00:00Z",
+		windowEnd: "2026-09-22T17:00:00Z",
+		isStale: false,
+		staleAfter: "2026-09-23T23:06:00Z",
+		latestRun: {
+			jobId: "11111111-2222-3333-4444-555555555555",
+			status: "completed",
+			kickedAt: "2026-09-22T17:00:00Z",
+			updatedAt: "2026-09-22T17:06:00Z",
+		},
+		degradationReasons: [],
+	},
 };

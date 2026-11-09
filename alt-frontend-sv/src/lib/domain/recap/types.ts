@@ -1,3 +1,32 @@
+export type SurfaceRunStatus =
+	| "pending"
+	| "running"
+	| "completed"
+	| "failed"
+	| string;
+
+export type SurfaceRun = {
+	jobId: string;
+	status: SurfaceRunStatus;
+	kickedAt: string;
+	updatedAt: string;
+};
+
+export type DegradationReason = {
+	code: string;
+	detail: string;
+};
+
+export type SurfaceStatus = {
+	generatedAt: string;
+	windowStart: string;
+	windowEnd: string;
+	isStale: boolean;
+	staleAfter: string;
+	latestRun?: SurfaceRun | null;
+	degradationReasons: DegradationReason[];
+};
+
 export type RecapGenre = {
 	genre: string;
 	summary: string;
@@ -23,4 +52,5 @@ export type RecapSummary = {
 	windowEnd: string;
 	totalArticles: number;
 	genres: RecapGenre[];
+	surfaceStatus?: SurfaceStatus | null;
 };

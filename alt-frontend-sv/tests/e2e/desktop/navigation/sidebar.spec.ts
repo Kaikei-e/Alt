@@ -36,7 +36,7 @@ test.describe("desktop sidebar navigation", () => {
 		await page.goto("./feeds");
 
 		await expect(sidebar.brandTitle).toBeVisible();
-		await expect(sidebar.getLink("Knowledge Home Today")).toBeVisible();
+		await expect(sidebar.getLink("Knowledge Home")).toBeVisible();
 		await expect(sidebar.getLink("Your Trail")).toBeVisible();
 		await expect(sidebar.getLink("Dashboard")).toBeVisible();
 	});

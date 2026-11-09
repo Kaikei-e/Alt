@@ -34,7 +34,7 @@ describe("orderSections", () => {
 		const ordered = orderSections(sections);
 
 		expect(ordered).toHaveLength(1);
-		expect(ordered[0]!.key).toBe("by_genre:ai");
+		expect(ordered[0]?.key).toBe("by_genre:ai");
 	});
 
 	it("returns empty array for empty input", () => {
@@ -195,7 +195,7 @@ describe("getSourcesForSection", () => {
 		const result = getSourcesForSection(sources, "top3");
 
 		expect(result).toHaveLength(2);
-		expect(result[0]!.articleId).toBe("a1");
+		expect(result[0]?.articleId).toBe("a1");
 	});
 
 	it("returns empty array for unmatched section", () => {

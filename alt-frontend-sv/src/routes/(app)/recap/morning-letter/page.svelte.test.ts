@@ -64,7 +64,9 @@ vi.mock("#lib/hooks/useMorningLetter.svelte.js", () => ({
 
 import Page from "./+page.svelte";
 
-function makeLetter(overrides: Record<string, unknown> = {}): MorningLetterDocument {
+function makeLetter(
+	overrides: Record<string, unknown> = {},
+): MorningLetterDocument {
 	return {
 		$typeName: "alt.morning_letter.v2.MorningLetterDocument",
 		id: "letter-001",

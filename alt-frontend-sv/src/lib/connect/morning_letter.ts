@@ -15,6 +15,16 @@ import {
 	type Citation as ProtoCitation,
 	type StreamChatResponse,
 } from "#lib/gen/alt/morning_letter/v2/morning_letter_pb.js";
+import type { SurfaceStatus } from "#lib/schema/recap.js";
+import { convertProtoSurfaceStatus } from "./recap.js";
+
+export type { SurfaceStatus };
+
+export function getMorningLetterSurfaceStatus(
+	doc?: MorningLetterDocument | null,
+): SurfaceStatus | null {
+	return convertProtoSurfaceStatus(doc?.surfaceStatus);
+}
 
 /** Type-safe MorningLetterService client */
 type MorningLetterClient = Client<typeof MorningLetterService>;

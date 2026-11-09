@@ -1,4 +1,3 @@
-// Re-export from domain layer
 export type {
 	Confidence,
 	EveningPulse,
@@ -7,6 +6,7 @@ export type {
 	PulseTopic,
 	QuietDayInfo,
 	RepresentativeArticle,
+	SurfaceStatus,
 	TopicRole,
 	WeeklyHighlight,
 } from "#lib/domain/pulse/types.js";
