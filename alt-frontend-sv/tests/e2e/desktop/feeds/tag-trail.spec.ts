@@ -47,13 +47,12 @@ test.describe("Desktop Tag Trail", () => {
 		);
 	});
 
-	test("renders feed card after loading", async ({
-		page,
-		desktopTagTrailPage,
-	}) => {
+	test("renders feed card after loading", async ({ desktopTagTrailPage }) => {
 		await desktopTagTrailPage.goto();
 		await desktopTagTrailPage.waitForFeedLoaded();
-		await expect(page.getByText("Random Trail Feed")).toBeVisible();
+		await expect(desktopTagTrailPage.feedTitle).toContainText(
+			"Random Trail Feed",
+		);
 	});
 
 	test("shows tag buttons after tags stream", async ({

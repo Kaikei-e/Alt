@@ -33,7 +33,7 @@ export class DesktopTagTrailPage extends BasePage {
 		super(page);
 
 		this.pageTitle = page.getByRole("heading", { name: /tag trail/i }).first();
-		this.feedTitle = page.locator("aside").getByRole("heading").first();
+		this.feedTitle = page.locator("aside .feed-title").first();
 		this.refreshButton = page.getByRole("button", {
 			name: /new random feed/i,
 		});
@@ -67,9 +67,11 @@ export class DesktopTagTrailPage extends BasePage {
 	 * Wait for the tag trail to load (feed card visible).
 	 */
 	async waitForFeedLoaded(): Promise<void> {
-		await expect(
-			this.feedTitle.or(this.welcomeState).or(this.errorMessage).first(),
-		).toBeVisible({ timeout: 15000 });
+		// Wait on the aside feed title (or error state) rather than `welcomeState`
+		// in `<main>`, which renders even while the aside has no feed loaded.
+		await expect(this.feedTitle.or(this.errorMessage).first()).toBeVisible({
+			timeout: 15000,
+		});
 	}
 
 	/**

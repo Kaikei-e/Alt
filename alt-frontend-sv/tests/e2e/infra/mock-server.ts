@@ -46,6 +46,12 @@ export async function startMockServers(): Promise<void> {
 		authHubServer = createAuthHubServer();
 		backendServer = createBackendServer();
 
+		// Keep idle sockets open past the SvelteKit server's fetch pool timeout (Node http.Server defaults to 5s keepAliveTimeout, racing client reuse after ~5s idle gaps).
+		for (const srv of [kratosServer, authHubServer, backendServer]) {
+			srv.keepAliveTimeout = 65_000;
+			srv.headersTimeout = 66_000;
+		}
+
 		kratosServer.listen(KRATOS_PORT, "0.0.0.0", () => {
 			console.log(`Mock Kratos running on port ${KRATOS_PORT}`);
 			onStart();
