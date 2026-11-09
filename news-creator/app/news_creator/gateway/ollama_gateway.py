@@ -100,8 +100,7 @@ class OllamaGateway(LLMProviderPort):
             ValueError: If prompt is empty
             RuntimeError: If Ollama service fails
         """
-        if not prompt or not prompt.strip():
-            raise ValueError("prompt cannot be empty")
+        prepared_prompt = prepare_raw_prompt(prompt)
 
         # Select model using router
         # - If routing enabled and model is None: use router
@@ -202,7 +201,7 @@ class OllamaGateway(LLMProviderPort):
         # This bypasses Ollama's built-in RENDERER/PARSER which enables Gemma4 thinking by default.
         payload: dict[str, Any] = {
             "model": model,
-            "prompt": prepare_raw_prompt(prompt),
+            "prompt": prepared_prompt,
             "stream": stream,
             "raw": True,
             "keep_alive": final_keep_alive,
@@ -667,8 +666,7 @@ class OllamaGateway(LLMProviderPort):
         Returns:
             LLMGenerateResponse with generated text
         """
-        if not prompt or not prompt.strip():
-            raise ValueError("prompt cannot be empty")
+        prepared_prompt = prepare_raw_prompt(prompt)
 
         # Model routing
         if self.config.model_routing_enabled:
@@ -703,7 +701,7 @@ class OllamaGateway(LLMProviderPort):
 
         payload: dict[str, Any] = {
             "model": model,
-            "prompt": prepare_raw_prompt(prompt),
+            "prompt": prepared_prompt,
             "stream": False,
             "raw": True,
             "keep_alive": final_keep_alive,

@@ -36,7 +36,9 @@ from news_creator.usecase.summarize_usecase import SummarizeUsecase
 
 def _assert_gemma_raw_prompt(prompt: str) -> None:
     assert isinstance(prompt, str)
-    assert prompt.startswith("<|turn>"), f"Prompt must start with <|turn>: {prompt[:60]!r}"
+    assert prompt.startswith("<|turn>"), (
+        f"Prompt must start with <|turn>: {prompt[:60]!r}"
+    )
     assert prompt.endswith("<|turn>model\n"), (
         f"Prompt must end with <|turn>model\\n: {prompt[-60:]!r}"
     )
@@ -591,9 +593,7 @@ async def test_ollama_gateway_generate_and_generate_raw_reject_untemplated_promp
     driver.cleanup = AsyncMock()
     driver.generate = AsyncMock()
 
-    with patch(
-        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=driver
-    ):
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=driver):
         gateway = OllamaGateway(config)
         await gateway.initialize()
         try:

@@ -151,9 +151,9 @@ async def test_semaphore_allows_concurrent_requests_when_configured(
         # Send 3 concurrent requests with concurrency=2
         start_time = asyncio.get_event_loop().time()
         results = await asyncio.gather(
-            gateway.generate("Prompt 1"),
-            gateway.generate("Prompt 2"),
-            gateway.generate("Prompt 3"),
+            gateway.generate("<|turn>user\nPrompt 1<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 2<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 3<turn|>\n<|turn>model\n"),
         )
         end_time = asyncio.get_event_loop().time()
 
@@ -288,7 +288,9 @@ async def test_high_priority_bypasses_low_priority_queue(mock_config, mock_drive
         await gateway.initialize()
 
         # Verify high priority parameter is handled
-        result = await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n", priority="high")
+        result = await gateway.generate(
+            "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", priority="high"
+        )
 
         assert isinstance(result, LLMGenerateResponse)
         assert result.response == "Test response"
@@ -308,7 +310,9 @@ async def test_low_priority_default(mock_config, mock_driver):
         await gateway.initialize()
 
         # Default priority should be low
-        result = await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n")
+        result = await gateway.generate(
+            "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
+        )
 
         assert isinstance(result, LLMGenerateResponse)
         assert result.response == "Test response"
@@ -556,7 +560,9 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
 
             # Call generate with stream=True
             # This should acquire the semaphore IMMEDIATELY (before iteration)
-            result = await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True)
+            result = await gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True
+            )
 
             # Narrow union type: streaming returns AsyncIterator
             assert not isinstance(result, LLMGenerateResponse)
@@ -620,7 +626,9 @@ async def test_streaming_semaphore_released_on_early_termination(
             initial_rt_available = gateway._semaphore._rt_available
 
             # Call generate with stream=True
-            result = await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True)
+            result = await gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True
+            )
 
             # Narrow union type: streaming returns AsyncIterator
             assert not isinstance(result, LLMGenerateResponse)
@@ -682,7 +690,9 @@ async def test_streaming_high_priority_immediate_acquisition(
             await gateway.initialize()
 
             # Call generate with stream=True
-            result = await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True)
+            result = await gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True
+            )
 
             # Narrow union type: streaming returns AsyncIterator
             assert not isinstance(result, LLMGenerateResponse)
@@ -1050,7 +1060,9 @@ async def test_generate_keeps_pinned_num_gpu(mock_config, mock_driver):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
-        await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n", options={"num_gpu": 0})
+        await gateway.generate(
+            "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", options={"num_gpu": 0}
+        )
 
         sent_options = mock_driver.generate.call_args.args[0]["options"]
         assert sent_options["num_gpu"] == 99
@@ -1192,7 +1204,9 @@ async def test_caller_cancellation_cancels_children_in_generate_with_cancellatio
 
         baseline_tasks = set(asyncio.all_tasks())
         outer_task = asyncio.create_task(
-            gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n", priority="low")
+            gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", priority="low"
+            )
         )
 
         await generate_started.wait()
@@ -1332,7 +1346,9 @@ async def test_streaming_aclose_closes_inner_driver_stream_without_gc(
         gc_was_enabled = gc.isenabled()
         gc.disable()
         try:
-            result = await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True)
+            result = await gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True
+            )
             assert not isinstance(result, LLMGenerateResponse)
             first = await anext(result)
             assert first.response == "chunk0"
