@@ -530,17 +530,36 @@ def test_prepare_raw_prompt_and_payload_builder_reject_untemplated_prompt(
 
     builder = PayloadBuilder()
     with pytest.raises(UntemplatedRawPromptError):
-        builder.build(prompt=untemplated_prompt, model="gemma4-e4b-12k", raw=True)
+        builder.build(
+            prompt=untemplated_prompt,
+            model="gemma4-e4b-12k",
+            options={},
+            keep_alive="24h",
+            raw=True,
+        )
 
     with pytest.raises(UntemplatedRawPromptError):
         GeneratePayload(
             model="gemma4-e4b-12k",
             prompt=untemplated_prompt,
+            options={},
+            keep_alive="24h",
             stream=False,
             raw=True,
-            keep_alive=None,
-            options={},
         )
+
+
+def test_payload_builder_requires_options_and_keep_alive():
+    builder = PayloadBuilder()
+    templated = "<|turn>user\nHello<turn|>\n<|turn>model\n"
+    with pytest.raises(TypeError):
+        builder.build(prompt=templated, model="gemma4-e4b-12k")  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        GeneratePayload(
+            model="gemma4-e4b-12k",
+            prompt=templated,
+            options={},
+        )  # type: ignore[call-arg]
 
 
 @pytest.mark.asyncio
@@ -672,6 +691,22 @@ async def test_morning_letter_retries_once_on_placeholder_and_succeeds():
         (
             "本日のトップはTechFusion社によるNova Labsの大型買収です。",
             "・・・",
+        ),
+        (
+            "本日のトップはTechFusion社によるNova Labsの大型買収です。",
+            "ーーーーーー",
+        ),
+        (
+            "本日のトップはTechFusion社によるNova Labsの大型買収です。",
+            "——————",
+        ),
+        (
+            "本日のトップはTechFusion社によるNova Labsの大型買収です。",
+            "――――――",
+        ),
+        (
+            "本日のトップはTechFusion社によるNova Labsの大型買収です。",
+            "‥‥‥‥‥",
         ),
         (
             "短い",
@@ -819,3 +854,105 @@ async def test_morning_letter_low_japanese_ratio_falls_back_after_retry():
     assert llm_provider.generate.await_count == 2
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason == "low_japanese_ratio"
+
+
+@pytest.mark.asyncio
+async def test_morning_letter_accepts_fullwidth_alphanumeric_short_bullet_and_excludes_citations_from_ratio():
+    from news_creator.usecase.morning_letter_usecase import MIN_BULLET_LENGTH
+
+    assert MIN_BULLET_LENGTH == 4
+
+    config = _make_morning_letter_config()
+    content = {
+        "schema_version": 1,
+        "lead": "ＡＩ２０２６年の主要ニュースまとめ",
+        "sections": [
+            {
+                "key": "top3",
+                "title": "ＡＩ２０２６",
+                "bullets": [
+                    "円安が加速 [2]",
+                    "AIが普及 [1][2][3][4][5][6][7][8]",
+                ],
+                "genre": None,
+            }
+        ],
+        "generated_at": "2026-04-07T06:00:00+09:00",
+        "source_recap_window_days": 3,
+    }
+    valid_response = LLMGenerateResponse(
+        response=json.dumps(content, ensure_ascii=False),
+        model="gemma4-e4b-12k",
+        prompt_eval_count=400,
+        eval_count=80,
+        total_duration=400_000_000,
+    )
+
+    llm_provider = AsyncMock()
+    llm_provider.generate = AsyncMock(return_value=valid_response)
+
+    usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_letter(_make_morning_letter_request())
+
+    llm_provider.generate.assert_awaited_once()
+    assert response.metadata.is_degraded is False
+    assert response.metadata.degradation_reason is None
+    assert response.content.lead == "ＡＩ２０２６年の主要ニュースまとめ"
+
+
+def test_morning_letter_prompt_includes_narrative_guidance_in_jinja_and_inline():
+    config = _make_morning_letter_config()
+    usecase = MorningLetterUsecase(config=config, llm_provider=AsyncMock())
+    req = _make_morning_letter_request()
+
+    jinja_prompt = usecase._build_prompt(req, is_degraded=False)
+    assert "narrative" in jinja_prompt
+
+    usecase.template = None
+    inline_prompt = usecase._build_prompt(req, is_degraded=False)
+    assert "narrative" in inline_prompt
+
+
+@pytest.mark.asyncio
+async def test_morning_letter_retry_parse_failure_preserves_first_attempt_validation_reason():
+    config = _make_morning_letter_config()
+    placeholder_content = {
+        "schema_version": 1,
+        "lead": "...",
+        "sections": [
+            {
+                "key": "top3",
+                "title": "...",
+                "bullets": ["..."],
+                "genre": None,
+            }
+        ],
+        "generated_at": "...",
+        "source_recap_window_days": 3,
+    }
+    attempt1_response = LLMGenerateResponse(
+        response=json.dumps(placeholder_content, ensure_ascii=False),
+        model="gemma4-e4b-12k",
+        prompt_eval_count=400,
+        eval_count=30,
+        total_duration=300_000_000,
+    )
+    attempt2_unparseable = LLMGenerateResponse(
+        response="not valid json at all",
+        model="gemma4-e4b-12k",
+        prompt_eval_count=400,
+        eval_count=10,
+        total_duration=200_000_000,
+    )
+
+    llm_provider = AsyncMock()
+    llm_provider.generate = AsyncMock(
+        side_effect=[attempt1_response, attempt2_unparseable]
+    )
+
+    usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_letter(_make_morning_letter_request())
+
+    assert llm_provider.generate.await_count == 2
+    assert response.metadata.is_degraded is True
+    assert response.metadata.degradation_reason == "placeholder_output"

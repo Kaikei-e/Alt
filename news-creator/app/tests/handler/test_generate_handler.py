@@ -1,11 +1,13 @@
-"""Tests for generate handler - HTTP 429 queue full behavior."""
+"""Tests for generate handler - HTTP 429 queue full behavior and Gemma prompt boundary."""
 
+import logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 
 from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import LLMGenerateResponse
+from news_creator.gateway.payload_builder import prepare_raw_prompt
 from news_creator.handler.generate_handler import create_generate_router
 from news_creator.port.llm_provider_port import LLMProviderPort
 
@@ -119,3 +121,61 @@ def test_generate_timeout_does_not_leak_exception_text():
     assert response.status_code == 502
     assert response.json()["detail"] == "Upstream service error"
     assert secret not in response.text
+
+
+def test_generate_wraps_untemplated_prompt_and_logs_wrapped_true(caplog):
+    mock_provider = _make_mock_provider()
+    client = _make_client(mock_provider)
+
+    with caplog.at_level(logging.INFO):
+        response = client.post("/api/generate", json={"prompt": "hello world"})
+
+    assert response.status_code == 200
+    mock_provider.generate.assert_awaited_once()
+    sent_prompt = mock_provider.generate.call_args.kwargs["prompt"]
+    assert sent_prompt == "<|turn>user\nhello world<turn|>\n<|turn>model\n"
+    assert "generate_prompt_wrapped=true" in caplog.text
+
+
+def test_generate_passes_already_templated_prompt_unchanged_and_logs_wrapped_false(
+    caplog,
+):
+    mock_provider = _make_mock_provider()
+    client = _make_client(mock_provider)
+    templated_prompt = "<|turn>user\nhello world<turn|>\n<|turn>model\n"
+
+    with caplog.at_level(logging.INFO):
+        response = client.post("/api/generate", json={"prompt": templated_prompt})
+
+    assert response.status_code == 200
+    mock_provider.generate.assert_awaited_once()
+    sent_prompt = mock_provider.generate.call_args.kwargs["prompt"]
+    assert sent_prompt == templated_prompt
+    assert "generate_prompt_wrapped=false" in caplog.text
+
+
+def test_generate_rejects_malformed_templated_prompt_missing_model_turn_with_400(
+    caplog,
+):
+    async def _guarding_generate(**kwargs):
+        prepare_raw_prompt(kwargs["prompt"])
+        return LLMGenerateResponse(
+            response="ok",
+            model="test-model",
+            done=True,
+            done_reason="stop",
+        )
+
+    mock_provider = _make_mock_provider(side_effect=_guarding_generate)
+    client = _make_client(mock_provider)
+    malformed_prompt = "<|turn>user\nhello world<turn|>"
+
+    with caplog.at_level(logging.INFO):
+        response = client.post("/api/generate", json={"prompt": malformed_prompt})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid request"
+    mock_provider.generate.assert_awaited_once()
+    sent_prompt = mock_provider.generate.call_args.kwargs["prompt"]
+    assert sent_prompt == malformed_prompt
+    assert "generate_prompt_wrapped=false" in caplog.text

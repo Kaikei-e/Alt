@@ -779,3 +779,22 @@ async def test_generate_raw_after_deferred_slot_exits_via_captured_context_raise
     local.generate_raw.assert_not_awaited()
     hc.acquire_idle_target.assert_not_called()
     driver.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_generate_raw_rejects_untemplated_prompt_before_remote_dispatch():
+    from news_creator.domain.errors import UntemplatedRawPromptError
+
+    target_a = _target_a()
+    gw, local, hc, driver = _make_gateway(
+        enabled=True,
+        targets=[(target_a, True, False)],
+    )
+
+    with pytest.raises(UntemplatedRawPromptError):
+        async with gw.hold_slot(is_high_priority=False):
+            await gw.generate_raw("Plain untemplated prompt")
+
+    hc.acquire_idle_target.assert_not_called()
+    driver.chat.assert_not_awaited()
+    local.generate_raw.assert_not_awaited()

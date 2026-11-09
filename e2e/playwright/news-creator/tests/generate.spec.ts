@@ -142,6 +142,30 @@ test.describe("generate pass-through", () => {
 		await expectStatus(response, 200);
 	});
 
+	test("accepts an already-templated Gemma prompt without double-wrapping @contract", async ({
+		api,
+		seed,
+	}) => {
+		const templatedPrompt = `<|turn>user\n次のテキストを 1 行で要約してください。 (${seed.token})<turn|>\n<|turn>model\n`;
+		const response = await api.post("/api/generate", {
+			data: generateBody(templatedPrompt),
+		});
+		const body = await expectJsonStatus(response, 200, generateResponseSchema);
+		expect(body.model).toBe(env.stubModel);
+	});
+
+	test("rejects a prompt starting with <|turn> but missing <|turn>model\\n with 400 @contract", async ({
+		api,
+		seed,
+	}) => {
+		const malformedPrompt = `<|turn>user\nモデルターン開始が欠落しているプロンプト (${seed.token})<turn|>`;
+		const response = await api.post("/api/generate", {
+			data: generateBody(malformedPrompt),
+		});
+		const body = await expectJsonStatus(response, 400, fastapiErrorSchema);
+		expect(typeof body.detail === "string" ? body.detail : "").toMatch(/invalid request/i);
+	});
+
 	test("GET is not allowed on the generate endpoint @contract", async ({ api }) => {
 		// 405 rather than 404: the path resolves, so the generation router is
 		// mounted (main.py `create_generate_router`).
