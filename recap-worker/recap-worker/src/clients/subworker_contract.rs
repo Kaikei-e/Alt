@@ -7,19 +7,15 @@ use pact_consumer::prelude::*;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashMap;
 
+use super::subworker::SubworkerClient;
 use super::subworker::cards::SubworkerCardsClient;
+use super::subworker::evaluation::EvaluateRequest;
 
 #[derive(Debug, Deserialize)]
 struct ClassificationJobResponse {
     run_id: i64,
     status: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CoarseClassifyResponse {
-    scores: HashMap<String, f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +25,7 @@ struct ClusterRunResponse {
 }
 
 const PACT_DIR: &str = "../../pacts";
+const TEST_ADMIN_TOKEN: &str = "test-recap-subworker-token-42";
 
 /// Submit classification job: POST /v1/classify-runs → 200 OK
 #[tokio::test]
@@ -40,6 +37,8 @@ async fn contract_subworker_classify_submit() {
             i.request.method("POST");
             i.request.path("/v1/classify-runs");
             i.request.content_type("application/json");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
             i.request.json_body(json_pattern!({
                 "texts": each_like!(like!("Article text to classify")),
             }));
@@ -56,10 +55,14 @@ async fn contract_subworker_classify_submit() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
+    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
+        .expect("client creation should succeed")
+        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
     let url = pact.path("/v1/classify-runs");
     let body = json!({"texts": ["Article text to classify"]});
 
-    let resp = Client::new()
+    let resp = client
+        .client
         .post(url)
         .json(&body)
         .send()
@@ -81,6 +84,8 @@ async fn contract_subworker_classify_poll_succeeded() {
             i.given("classification job 42 has succeeded");
             i.request.method("GET");
             i.request.path("/v1/classify-runs/42");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
             i.response.status(200);
             i.response.content_type("application/json");
             i.response.json_body(json_pattern!({
@@ -102,9 +107,13 @@ async fn contract_subworker_classify_poll_succeeded() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
+    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
+        .expect("client creation should succeed")
+        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
     let url = pact.path("/v1/classify-runs/42");
 
-    let resp = Client::new()
+    let resp = client
+        .client
         .get(url)
         .send()
         .await
@@ -123,6 +132,8 @@ async fn contract_subworker_coarse_classify() {
             i.request.method("POST");
             i.request.path("/v1/classify/coarse");
             i.request.content_type("application/json");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
             i.request.json_body(json_pattern!({
                 "text": like!("Breaking news about AI technology"),
             }));
@@ -139,19 +150,125 @@ async fn contract_subworker_coarse_classify() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let url = pact.path("/v1/classify/coarse");
-    let body = json!({"text": "Breaking news about AI technology"});
+    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
+        .expect("client creation should succeed")
+        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
 
-    let resp = Client::new()
-        .post(url)
-        .json(&body)
-        .send()
+    let scores = client
+        .classify_coarse("Breaking news about AI technology")
         .await
         .expect("request should succeed");
 
-    assert_eq!(resp.status(), 200);
-    let parsed: CoarseClassifyResponse = resp.json().await.expect("should parse response");
-    assert!(parsed.scores.contains_key("technology"));
+    assert!(scores.contains_key("technology"));
+}
+
+/// HTML body extraction: POST /v1/extract → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_subworker_extract() {
+    let pact = PactBuilder::new("recap-worker", "recap-subworker")
+        .interaction("a content extraction request", "", |mut i| {
+            i.given("the content extractor is ready");
+            i.request.method("POST");
+            i.request.path("/v1/extract");
+            i.request.content_type("application/json");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.json_body(json_pattern!({
+                "html": like!("<html><body><p>Extracted article body text.</p></body></html>"),
+                "include_comments": like!(false),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "text": like!("Extracted article body text."),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
+        .expect("client creation should succeed")
+        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
+
+    let extracted = client
+        .extract_content("<html><body><p>Extracted article body text.</p></body></html>")
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(extracted, "Extracted article body text.");
+}
+
+/// Genre classification evaluation: POST /v1/evaluation/genres → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_subworker_evaluate_genres() {
+    let pact = PactBuilder::new("recap-worker", "recap-subworker")
+        .interaction("a genre evaluation request", "", |mut i| {
+            i.given("the evaluation service is ready");
+            i.request.method("POST");
+            i.request.path("/v1/evaluation/genres");
+            i.request.content_type("application/json");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.json_body(json_pattern!({
+                "use_bootstrap": like!(true),
+                "n_bootstrap": like!(1000i64),
+                "use_cross_validation": like!(false),
+                "n_folds": like!(5i64),
+                "save_to_db": like!(false),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "accuracy": like!(0.85f64),
+                "macro_precision": like!(0.82f64),
+                "macro_recall": like!(0.80f64),
+                "macro_f1": like!(0.81f64),
+                "micro_precision": like!(0.85f64),
+                "micro_recall": like!(0.85f64),
+                "micro_f1": like!(0.85f64),
+                "per_genre_metrics": json_pattern!({
+                    "technology": json_pattern!({
+                        "tp": like!(10i64),
+                        "fp": like!(2i64),
+                        "fn": like!(1i64),
+                        "support": like!(11i64),
+                        "precision": like!(0.83f64),
+                        "recall": like!(0.91f64),
+                        "f1": like!(0.87f64),
+                    }),
+                }),
+                "total_samples": like!(50i64),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = SubworkerClient::new(pact.path("/").as_str(), 10)
+        .expect("client creation should succeed")
+        .with_admin_token(Some(TEST_ADMIN_TOKEN.to_string()));
+
+    let request = EvaluateRequest {
+        golden_data_path: None,
+        weights_path: None,
+        use_bootstrap: true,
+        n_bootstrap: 1000,
+        use_cross_validation: false,
+        n_folds: 5,
+        save_to_db: false,
+    };
+
+    let response = client
+        .evaluate_genres(&request)
+        .await
+        .expect("request should succeed");
+
+    assert!((response.accuracy - 0.85).abs() < f64::EPSILON);
+    assert_eq!(response.total_samples, 50);
+    assert!(response.per_genre_metrics.contains_key("technology"));
 }
 
 /// Clustering run submission: POST /v1/runs → 202 Accepted
