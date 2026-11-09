@@ -1075,4 +1075,134 @@ mod tests {
             "search_recaps_by_term must not re-sort by executed_at without a tie-break"
         );
     }
+
+    const RECAP_SUBWORKER_MIGRATION_SQL: &str = include_str!(
+        "../../../../../recap-migration-atlas/migrations/20240101000000_create_recap_subworker_tables.sql"
+    );
+    const RECAP_JOB_MIGRATION_SQL: &str = include_str!(
+        "../../../../../recap-migration-atlas/migrations/20240101000100_create_recap_job_tables.sql"
+    );
+    const RECAP_OUTPUTS_MIGRATION_SQL: &str = include_str!(
+        "../../../../../recap-migration-atlas/migrations/20240101000300_enhance_recap_schema.sql"
+    );
+
+    async fn with_isolated_output_schema<F, Fut>(f: F) -> anyhow::Result<()>
+    where
+        F: FnOnce(sqlx::PgPool) -> Fut,
+        Fut: std::future::Future<Output = anyhow::Result<()>>,
+    {
+        use futures::FutureExt;
+        use sqlx::Executor;
+
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let admin_pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await?;
+
+        let schema = format!("output_test_{}", Uuid::new_v4().simple());
+        admin_pool
+            .execute(sqlx::AssertSqlSafe(format!("CREATE SCHEMA {schema}")))
+            .await?;
+
+        let search_path_sql = format!("SET search_path TO {schema}, public");
+        let outcome = std::panic::AssertUnwindSafe(async {
+            let pool = PgPoolOptions::new()
+                .max_connections(1)
+                .after_connect(move |conn, _meta| {
+                    let sql = search_path_sql.clone();
+                    Box::pin(async move {
+                        conn.execute(sqlx::AssertSqlSafe(sql)).await?;
+                        Ok(())
+                    })
+                })
+                .connect(&database_url)
+                .await?;
+
+            pool.execute(RECAP_SUBWORKER_MIGRATION_SQL).await?;
+            pool.execute(RECAP_JOB_MIGRATION_SQL).await?;
+            pool.execute(RECAP_OUTPUTS_MIGRATION_SQL).await?;
+
+            let res = f(pool.clone()).await;
+            pool.close().await;
+            res
+        })
+        .catch_unwind()
+        .await;
+
+        let cleanup_res = admin_pool
+            .execute(sqlx::AssertSqlSafe(format!(
+                "DROP SCHEMA IF EXISTS {schema} CASCADE"
+            )))
+            .await;
+        admin_pool.close().await;
+
+        match outcome {
+            Ok(test_res) => {
+                test_res?;
+                cleanup_res?;
+                Ok(())
+            }
+            Err(panic_payload) => std::panic::resume_unwind(panic_payload),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_job_completed_at_returns_max_for_requested_job_and_none_when_absent()
+    -> anyhow::Result<()> {
+        with_isolated_output_schema(|pool| async move {
+            let job_a = Uuid::new_v4();
+            let job_b = Uuid::new_v4();
+            let job_empty = Uuid::new_v4();
+
+            for job_id in [job_a, job_b, job_empty] {
+                sqlx::query("INSERT INTO recap_jobs (job_id, kicked_at) VALUES ($1, NOW())")
+                    .bind(job_id)
+                    .execute(&pool)
+                    .await?;
+            }
+
+            let a_t1 = DateTime::parse_from_rfc3339("2026-01-26T01:00:00Z")?.with_timezone(&Utc);
+            let a_max = DateTime::parse_from_rfc3339("2026-01-26T01:25:00Z")?.with_timezone(&Utc);
+            let a_t2 = DateTime::parse_from_rfc3339("2026-01-26T01:10:00Z")?.with_timezone(&Utc);
+            let b_t1 = DateTime::parse_from_rfc3339("2026-01-26T03:00:00Z")?.with_timezone(&Utc);
+            let b_max = DateTime::parse_from_rfc3339("2026-01-26T04:45:00Z")?.with_timezone(&Utc);
+
+            for (job_id, genre, created_at) in [
+                (job_a, "ai", a_t1),
+                (job_a, "space", a_max),
+                (job_a, "tech", a_t2),
+                (job_b, "ai", b_t1),
+                (job_b, "world", b_max),
+            ] {
+                sqlx::query(
+                    r"
+                    INSERT INTO recap_outputs (
+                        job_id, genre, response_id, title_ja, summary_ja, bullets_ja, body_json, created_at
+                    )
+                    VALUES ($1, $2, 'resp', 't', 's', '[]'::jsonb, '{}'::jsonb, $3)
+                    ",
+                )
+                .bind(job_id)
+                .bind(genre)
+                .bind(created_at)
+                .execute(&pool)
+                .await?;
+            }
+
+            assert_eq!(
+                RecapDao::get_job_completed_at(&pool, job_a).await?,
+                Some(a_max)
+            );
+            assert_eq!(
+                RecapDao::get_job_completed_at(&pool, job_b).await?,
+                Some(b_max)
+            );
+            assert_eq!(RecapDao::get_job_completed_at(&pool, job_empty).await?, None);
+            Ok(())
+        })
+        .await
+    }
 }

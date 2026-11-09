@@ -4527,4 +4527,29 @@ mod tests {
             "run_cards must record the completed job's updated_at timestamp"
         );
     }
+
+    #[tokio::test]
+    async fn test_run_cards_fails_when_metrics_not_configured() {
+        use crate::scheduler::daemon::CardsJobRunner;
+
+        let pipeline = CardsPipeline::full(
+            Arc::new(FakeFeedSource::new(vec![])),
+            Arc::new(FakeEmbedCluster::new()),
+            Arc::new(MockCardsPipelineDao::default()) as Arc<dyn CardsPipelineDao>,
+            Arc::new(FakeCardGenerator::new()),
+            Arc::new(FakeCardVerifier::new()),
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        let (from, to) = test_window_3d();
+        let res = CardsJobRunner::run_cards(&pipeline, Uuid::new_v4(), from, to).await;
+        let err = res
+            .expect_err("running cards job runner without metrics must fail loudly")
+            .to_string();
+        assert!(
+            err.contains("metrics must be configured"),
+            "error must name missing metrics configuration, got: {err}"
+        );
+    }
 }

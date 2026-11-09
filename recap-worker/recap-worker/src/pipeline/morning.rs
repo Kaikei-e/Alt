@@ -1571,7 +1571,6 @@ mod tests {
 
     #[tokio::test]
     async fn execute_update_assigns_created_at_and_generated_at_at_save_time() {
-        use chrono::SubsecRound;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1588,10 +1587,14 @@ mod tests {
         let run_start_now = chrono::DateTime::parse_from_rfc3339("2026-01-26T06:00:00Z")
             .unwrap()
             .with_timezone(&chrono::Utc);
+        let save_now = chrono::DateTime::parse_from_rfc3339("2026-01-26T06:02:34.567890Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_ne!(run_start_now, save_now);
+
         let dao = Arc::new(MockRecapDao::new());
         dao.set_latest_completed_job(None);
 
-        let before_save = chrono::Utc::now().trunc_subsecs(6);
         let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
         let (returned_id, returned_created_at) = pipeline
             .execute_update(
@@ -1600,16 +1603,14 @@ mod tests {
             )
             .await
             .expect("pipeline succeeds");
-        let after_save = chrono::Utc::now().trunc_subsecs(6);
 
         let letters = dao.morning_letters();
         assert_eq!(letters.len(), 1);
         assert_eq!(returned_id, letters[0].id);
-        assert_eq!(returned_created_at, letters[0].created_at);
-        assert!(
-            letters[0].created_at >= before_save && letters[0].created_at <= after_save,
-            "created_at must be assigned at save time (between {before_save} and {after_save}), not run start ({run_start_now}), got {}",
-            letters[0].created_at
+        assert_eq!(returned_created_at, save_now);
+        assert_eq!(
+            letters[0].created_at, save_now,
+            "created_at must equal the injected save-time clock ({save_now}), not run start ({run_start_now})"
         );
         let generated_at = chrono::DateTime::parse_from_rfc3339(
             letters[0].result_jsonb["generated_at"]
@@ -1619,8 +1620,8 @@ mod tests {
         .expect("rfc3339 generated_at")
         .with_timezone(&chrono::Utc);
         assert_eq!(
-            generated_at, letters[0].created_at,
-            "generated_at must match the save-time created_at"
+            generated_at, save_now,
+            "generated_at must match the save-time clock ({save_now})"
         );
     }
 }
