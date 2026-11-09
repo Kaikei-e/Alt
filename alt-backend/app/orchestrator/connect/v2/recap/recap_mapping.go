@@ -58,7 +58,7 @@ func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayReca
 		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
 		TotalArticles: safeconv.Int32(recap.TotalArticles),
 		Genres:        genres,
-		SurfaceStatus: surfaceStatusToProto(recap.SurfaceStatus),
+		SurfaceStatus: SurfaceStatusToProto(recap.SurfaceStatus),
 	}
 }
 
@@ -72,7 +72,7 @@ func domainToProtoTopicCards(resp *domain.RecapCardsResponse) *recapv2.GetTopicC
 
 	protoResp := &recapv2.GetTopicCardsResponse{
 		Cards:         make([]*recapv2.RecapCard, 0, len(resp.Cards)),
-		SurfaceStatus: surfaceStatusToProto(resp.SurfaceStatus),
+		SurfaceStatus: SurfaceStatusToProto(resp.SurfaceStatus),
 	}
 
 	if resp.Job != nil {
@@ -230,7 +230,8 @@ func recapSearchResultsToProto(results []*domain.RecapSearchResult) []*recapv2.R
 	return protoResults
 }
 
-func surfaceStatusToProto(s *domain.RecapSurfaceStatus) *recapv2.RecapSurfaceStatus {
+// SurfaceStatusToProto converts domain.RecapSurfaceStatus to the shared proto message.
+func SurfaceStatusToProto(s *domain.RecapSurfaceStatus) *recapv2.RecapSurfaceStatus {
 	if s == nil {
 		return nil
 	}

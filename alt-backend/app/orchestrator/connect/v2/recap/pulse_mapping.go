@@ -44,7 +44,7 @@ func eveningPulseDomainToProto(pulse *domain.EveningPulse) *recapv2.GetEveningPu
 		GeneratedAt:   pulse.GeneratedAt.Format(time.RFC3339),
 		Status:        pulseStatusToProto(pulse.Status),
 		Topics:        topics,
-		SurfaceStatus: surfaceStatusToProto(pulse.SurfaceStatus),
+		SurfaceStatus: SurfaceStatusToProto(pulse.SurfaceStatus),
 	}
 
 	if pulse.QuietDay != nil {
