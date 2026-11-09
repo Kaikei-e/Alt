@@ -1170,6 +1170,13 @@ mod tests {
             self.inner.save_morning_letter_sources(sources).await
         }
 
+        async fn get_morning_letter_by_id(
+            &self,
+            id: Uuid,
+        ) -> crate::error::Result<Option<crate::store::models::MorningLetter>> {
+            self.inner.get_morning_letter_by_id(id).await
+        }
+
         async fn get_morning_letter_by_date(
             &self,
             date: chrono::NaiveDate,

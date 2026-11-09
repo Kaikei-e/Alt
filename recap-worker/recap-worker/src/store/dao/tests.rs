@@ -1710,7 +1710,8 @@ async fn morning_letter_saves_are_append_only_and_readers_return_highest_revisio
             ts_target_rev2
         );
 
-        let by_id_rev1 = super::morning::RecapDao::get_morning_letter_by_id(&pool, rev1_id)
+        let by_id_rev1 = dao
+            .get_morning_letter_by_id(rev1_id)
             .await?
             .expect("rev1 letter must be addressable by id");
         assert_eq!(by_id_rev1.id, rev1_id);
@@ -1800,7 +1801,8 @@ async fn morning_letter_save_retries_once_on_revision_conflict_and_surfaces_repe
         let rev2_id = dao.save_morning_letter(&rev2).await?;
         assert_eq!(rev2_id, rev2.id);
 
-        let persisted_rev2 = super::morning::RecapDao::get_morning_letter_by_id(&pool, rev2_id)
+        let persisted_rev2 = dao
+            .get_morning_letter_by_id(rev2_id)
             .await?
             .expect("rev2 must be persisted after single retry");
         assert_eq!(

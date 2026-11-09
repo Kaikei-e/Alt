@@ -525,6 +525,13 @@ impl MorningDao for UnifiedDao {
         crate::store::dao::morning::RecapDao::save_morning_letter_sources(&self.pool, sources).await
     }
 
+    async fn get_morning_letter_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<crate::store::models::MorningLetter>> {
+        crate::store::dao::morning::RecapDao::get_morning_letter_by_id(&self.pool, id).await
+    }
+
     async fn get_morning_letter_by_date(
         &self,
         date: NaiveDate,

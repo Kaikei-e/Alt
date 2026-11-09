@@ -183,7 +183,6 @@ impl RecapDao {
     }
 
     /// Fetch a specific Morning Letter version row by its primary-key `id`.
-    #[allow(dead_code)]
     pub(crate) async fn get_morning_letter_by_id(
         pool: &PgPool,
         id: Uuid,

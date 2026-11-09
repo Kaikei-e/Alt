@@ -279,7 +279,7 @@ impl MorningUpdateDaemon {
             // find_resumable_job never picks this up as a batch Recap.
             let job = apply_knowledge_owner(JobContext::new_morning_update(job_id), self.owner);
             match self.scheduler.run_morning_update(job).await {
-                Ok(()) => info!(%job_id, "morning update job completed"),
+                Ok(letter_id) => info!(%job_id, %letter_id, "morning update job completed"),
                 Err(err) => error!(%job_id, error = %err, "morning update job failed"),
             }
         }

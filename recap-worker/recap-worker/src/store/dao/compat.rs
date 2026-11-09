@@ -314,6 +314,8 @@ pub(crate) trait RecapDao: Send + Sync {
 
     async fn save_morning_letter_sources(&self, sources: &[MorningLetterSource]) -> Result<()>;
 
+    async fn get_morning_letter_by_id(&self, id: Uuid) -> Result<Option<MorningLetter>>;
+
     async fn get_morning_letter_by_date(&self, date: NaiveDate) -> Result<Option<MorningLetter>>;
 
     async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>>;
@@ -744,6 +746,10 @@ where
 
     async fn save_morning_letter_sources(&self, sources: &[MorningLetterSource]) -> Result<()> {
         MorningDao::save_morning_letter_sources(self, sources).await
+    }
+
+    async fn get_morning_letter_by_id(&self, id: Uuid) -> Result<Option<MorningLetter>> {
+        MorningDao::get_morning_letter_by_id(self, id).await
     }
 
     async fn get_morning_letter_by_date(&self, date: NaiveDate) -> Result<Option<MorningLetter>> {

@@ -752,6 +752,14 @@ impl RecapDao for MockRecapDao {
         Ok(())
     }
 
+    async fn get_morning_letter_by_id(&self, id: Uuid) -> Result<Option<MorningLetter>> {
+        let letters = self
+            .morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned");
+        Ok(letters.iter().find(|l| l.id == id).cloned())
+    }
+
     async fn get_morning_letter_by_date(
         &self,
         date: chrono::NaiveDate,

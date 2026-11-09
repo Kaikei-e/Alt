@@ -551,7 +551,7 @@ impl Scheduler {
         ))
     }
 
-    pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<()> {
+    pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<Uuid> {
         tracing::info!(job_id = %context.job_id, "running morning update job");
         // `execute_update`'s fetch stage creates the `recap_jobs` row with the
         // schema default `status='pending'`. Unlike the batch pipeline, the
@@ -561,10 +561,10 @@ impl Scheduler {
         let finalized =
             finalize_morning_job(self.recap_dao.as_ref(), context.job_id, outcome).await;
         match &finalized {
-            Ok(()) => {
+            Ok(letter_id) => {
                 let completed_at = self
                     .recap_dao
-                    .get_latest_morning_letter()
+                    .get_morning_letter_by_id(*letter_id)
                     .await
                     .ok()
                     .flatten()
@@ -679,10 +679,10 @@ impl Scheduler {
 async fn finalize_morning_job(
     recap_dao: &dyn RecapDao,
     job_id: Uuid,
-    outcome: Result<()>,
-) -> Result<()> {
+    outcome: Result<Uuid>,
+) -> Result<Uuid> {
     match outcome {
-        Ok(()) => {
+        Ok(letter_id) => {
             if let Err(dao_err) = recap_dao
                 .update_job_status_with_history(
                     job_id,
@@ -694,7 +694,7 @@ async fn finalize_morning_job(
             {
                 tracing::error!(%job_id, error = %dao_err, "failed to mark morning update job completed");
             }
-            Ok(())
+            Ok(letter_id)
         }
         Err(e) => {
             let reason = format!("{:#}", e);
@@ -1085,8 +1085,12 @@ mod tests {
 
         let dao = MockRecapDao::new();
         let job_id = Uuid::new_v4();
+        let letter_id = Uuid::new_v4();
 
-        finalize_morning_job(&dao, job_id, Ok(())).await.unwrap();
+        let returned = finalize_morning_job(&dao, job_id, Ok(letter_id))
+            .await
+            .unwrap();
+        assert_eq!(returned, letter_id);
 
         let transitions = dao.status_transitions();
         assert_eq!(transitions.len(), 1, "exactly one terminal transition");

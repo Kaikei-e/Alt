@@ -577,6 +577,10 @@ impl MorningLetterReadDao for MorningLetterFixtureDao {
         Ok(Some(self.to_model()))
     }
 
+    async fn get_morning_letter_by_id(&self, id: Uuid) -> Result<Option<MorningLetter>, String> {
+        Ok((self.id == id).then(|| self.to_model()))
+    }
+
     async fn get_morning_letter_by_date(
         &self,
         _date: NaiveDate,

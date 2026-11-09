@@ -1193,6 +1193,13 @@ mod tests {
             Ok(self.letter.clone())
         }
 
+        async fn get_morning_letter_by_id(
+            &self,
+            id: uuid::Uuid,
+        ) -> Result<Option<crate::store::models::MorningLetter>, String> {
+            Ok(self.letter.as_ref().filter(|l| l.id == id).cloned())
+        }
+
         async fn get_morning_letter_by_date(
             &self,
             _date: chrono::NaiveDate,
@@ -1388,8 +1395,6 @@ mod tests {
         let dao = Arc::new(MockRecapDao::new());
         dao.set_concurrent_morning_letter_on_save(concurrent_letter);
 
-        let dsn = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://recap:recap@localhost:5432/recap".to_string());
         let server_uri = mock_server.uri();
 
         let _lock = ENV_MUTEX
@@ -1397,7 +1402,10 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let registry = temp_env::async_with_vars(
             [
-                ("RECAP_DB_DSN", Some(dsn.as_str())),
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
                 ("NEWS_CREATOR_BASE_URL", Some(server_uri.as_str())),
                 ("SUBWORKER_BASE_URL", Some(server_uri.as_str())),
                 ("ALT_BACKEND_BASE_URL", Some(server_uri.as_str())),
@@ -1697,6 +1705,10 @@ fn map_morning_letter_response(
 #[async_trait::async_trait]
 pub trait MorningLetterReadDao: Send + Sync {
     async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>, String>;
+    async fn get_morning_letter_by_id(
+        &self,
+        id: uuid::Uuid,
+    ) -> Result<Option<MorningLetter>, String>;
     async fn get_morning_letter_by_date(
         &self,
         date: chrono::NaiveDate,
@@ -1717,6 +1729,16 @@ impl MorningLetterReadDao for AppState {
             .map_err(|e| e.to_string())
     }
 
+    async fn get_morning_letter_by_id(
+        &self,
+        id: uuid::Uuid,
+    ) -> Result<Option<MorningLetter>, String> {
+        self.dao()
+            .get_morning_letter_by_id(id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     async fn get_morning_letter_by_date(
         &self,
         date: chrono::NaiveDate,
@@ -1728,7 +1750,11 @@ impl MorningLetterReadDao for AppState {
     }
 
     async fn get_latest_morning_run(&self) -> Result<Option<SurfaceRun>, String> {
-        SurfaceDaoOps::get_latest_morning_run(self.pool())
+        let dao = self.dao();
+        let Some(pool) = dao.pool() else {
+            return Ok(None);
+        };
+        SurfaceDaoOps::get_latest_morning_run(pool)
             .await
             .map(|opt| opt.map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at)))
             .map_err(|e| e.to_string())
@@ -1739,7 +1765,11 @@ impl MorningLetterReadDao for AppState {
         job_id: uuid::Uuid,
     ) -> Result<Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>, String>
     {
-        SurfaceDaoOps::get_recap_job_window(self.pool(), job_id)
+        let dao = self.dao();
+        let Some(pool) = dao.pool() else {
+            return Ok(None);
+        };
+        SurfaceDaoOps::get_recap_job_window(pool, job_id)
             .await
             .map_err(|e| e.to_string())
     }
@@ -1930,20 +1960,23 @@ pub(crate) async fn regenerate_morning_letter(
     // this as a full batch Recap pipeline.
     let context = JobContext::new_morning_update(job_id);
 
-    if let Err(e) = state.scheduler().run_morning_update(context).await {
-        error!(job_id = %job_id, "morning regenerate pipeline failed: {}", e);
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Morning Letter regeneration failed".to_string(),
-            }),
-        )
-            .into_response();
-    }
+    let letter_id = match state.scheduler().run_morning_update(context).await {
+        Ok(id) => id,
+        Err(e) => {
+            error!(job_id = %job_id, "morning regenerate pipeline failed: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Morning Letter regeneration failed".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
 
     let budget = state.config().surface_freshness().morning_letter_budget();
     let now = chrono::Utc::now();
-    match state.get_latest_morning_letter().await {
+    match state.get_morning_letter_by_id(letter_id).await {
         Ok(Some(letter)) => {
             let surface_status =
                 match build_morning_letter_surface_status(&state, &letter, budget, now).await {

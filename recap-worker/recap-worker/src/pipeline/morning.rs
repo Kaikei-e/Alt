@@ -129,12 +129,7 @@ impl MorningPipeline {
         })
     }
 
-    pub(crate) async fn execute_update(&self, job: &JobContext) -> Result<()> {
-        let _letter_id = self.execute_update_returning_id(job).await?;
-        Ok(())
-    }
-
-    pub(crate) async fn execute_update_returning_id(&self, job: &JobContext) -> Result<Uuid> {
+    pub(crate) async fn execute_update(&self, job: &JobContext) -> Result<Uuid> {
         self.execute_update_at(job, chrono::Utc::now()).await
     }
 
