@@ -92,17 +92,18 @@ pub(crate) struct MockRecapDao {
     genres_by_job: Arc<Mutex<Vec<GenreWithSummary>>>,
     morning_letters: Arc<Mutex<Vec<MorningLetter>>>,
     concurrent_morning_letter_on_save: Arc<Mutex<Option<MorningLetter>>>,
+    latest_worker_config: Arc<Mutex<std::collections::HashMap<String, serde_json::Value>>>,
+    update_job_status_with_history_error: Arc<Mutex<Option<String>>>,
+    stage_states: Arc<Mutex<std::collections::HashMap<(Uuid, String), serde_json::Value>>>,
 }
 
 #[cfg(test)]
 impl MockRecapDao {
-    #[allow(dead_code)]
     pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// 記録された `insert_failed_task` 呼び出しのスナップショットを取得する。
-    #[allow(dead_code)]
     pub(crate) fn failed_tasks(&self) -> Vec<RecordedFailedTask> {
         self.failed_tasks
             .lock()
@@ -111,7 +112,6 @@ impl MockRecapDao {
     }
 
     /// 記録された status 遷移呼び出しのスナップショットを取得する。
-    #[allow(dead_code)]
     pub(crate) fn status_transitions(&self) -> Vec<RecordedStatusTransition> {
         self.status_transitions
             .lock()
@@ -120,13 +120,11 @@ impl MockRecapDao {
     }
 
     /// 記録された `upsert_recap_output` 呼び出しのスナップショットを取得する。
-    #[allow(dead_code)]
     pub(crate) fn outputs(&self) -> Vec<crate::store::models::RecapOutput> {
         self.outputs.lock().expect("outputs mutex poisoned").clone()
     }
 
     /// テスト用に `get_article_metadata` の応答をセットする。
-    #[allow(dead_code)]
     pub(crate) fn set_article_metadata(&self, metadata: ArticleMetadataMap) {
         *self
             .article_metadata
@@ -135,7 +133,6 @@ impl MockRecapDao {
     }
 
     /// テスト用に `get_sentence_ids_by_run` の応答をセットする。
-    #[allow(dead_code)]
     pub(crate) fn set_sentence_ids(&self, run_id: i64, ids: SentenceIdsByArticle) {
         self.sentence_ids
             .lock()
@@ -145,7 +142,6 @@ impl MockRecapDao {
 
     /// テスト用に次回の `find_resumable_job` 呼び出しの応答をセットする
     /// （`Err` を注入して DB 障害を再現するのに使う）。
-    #[allow(dead_code)]
     pub(crate) fn set_find_resumable_job_result(&self, result: Result<Option<ResumableJob>>) {
         *self
             .find_resumable_job_result
@@ -155,7 +151,6 @@ impl MockRecapDao {
 
     /// テスト用に次回の `find_most_recent_failed_job` 呼び出しの応答をセットする
     /// （`Err` を注入して DB 障害を再現するのに使う）。
-    #[allow(dead_code)]
     pub(crate) fn set_find_most_recent_failed_job_result(
         &self,
         result: Result<Option<ResumableJob>>,
@@ -183,7 +178,6 @@ impl MockRecapDao {
     }
 
     /// 記録された `mark_abandoned_jobs` 呼び出し（`keep_job_id` 引数）のスナップショットを取得する。
-    #[allow(dead_code)]
     pub(crate) fn mark_abandoned_jobs_calls(&self) -> Vec<Option<Uuid>> {
         self.mark_abandoned_jobs_calls
             .lock()
@@ -191,7 +185,6 @@ impl MockRecapDao {
             .clone()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn set_latest_completed_job(&self, job: Option<RecapJob>) {
         *self
             .latest_completed_job
@@ -199,7 +192,6 @@ impl MockRecapDao {
             .expect("latest_completed_job mutex poisoned") = job;
     }
 
-    #[allow(dead_code)]
     pub(crate) fn set_genres_by_job(&self, genres: Vec<GenreWithSummary>) {
         *self
             .genres_by_job
@@ -207,7 +199,6 @@ impl MockRecapDao {
             .expect("genres_by_job mutex poisoned") = genres;
     }
 
-    #[allow(dead_code)]
     pub(crate) fn morning_letters(&self) -> Vec<MorningLetter> {
         self.morning_letters
             .lock()
@@ -215,12 +206,25 @@ impl MockRecapDao {
             .clone()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn set_concurrent_morning_letter_on_save(&self, letter: MorningLetter) {
         *self
             .concurrent_morning_letter_on_save
             .lock()
             .expect("concurrent_morning_letter_on_save mutex poisoned") = Some(letter);
+    }
+
+    pub(crate) fn set_latest_worker_config(&self, config_type: &str, payload: serde_json::Value) {
+        self.latest_worker_config
+            .lock()
+            .expect("latest_worker_config mutex poisoned")
+            .insert(config_type.to_string(), payload);
+    }
+
+    pub(crate) fn set_update_job_status_with_history_error(&self, err: &str) {
+        *self
+            .update_job_status_with_history_error
+            .lock()
+            .expect("update_job_status_with_history_error mutex poisoned") = Some(err.to_string());
     }
 }
 
@@ -345,6 +349,16 @@ impl RecapDao for MockRecapDao {
         last_stage: Option<&str>,
         reason: Option<&str>,
     ) -> Result<()> {
+        if matches!(status, JobStatus::Completed) {
+            if let Some(err) = self
+                .update_job_status_with_history_error
+                .lock()
+                .expect("update_job_status_with_history_error mutex poisoned")
+                .take()
+            {
+                return Err(crate::error::RecapError::Db(err));
+            }
+        }
         self.status_transitions
             .lock()
             .expect("status_transitions mutex poisoned")
@@ -374,19 +388,28 @@ impl RecapDao for MockRecapDao {
 
     async fn save_stage_state(
         &self,
-        _job_id: Uuid,
-        _stage: &str,
-        _state_data: &serde_json::Value,
+        job_id: Uuid,
+        stage: &str,
+        state_data: &serde_json::Value,
     ) -> Result<()> {
+        self.stage_states
+            .lock()
+            .expect("stage_states mutex poisoned")
+            .insert((job_id, stage.to_string()), state_data.clone());
         Ok(())
     }
 
     async fn load_stage_state(
         &self,
-        _job_id: Uuid,
-        _stage: &str,
+        job_id: Uuid,
+        stage: &str,
     ) -> Result<Option<serde_json::Value>> {
-        Ok(None)
+        Ok(self
+            .stage_states
+            .lock()
+            .expect("stage_states mutex poisoned")
+            .get(&(job_id, stage.to_string()))
+            .cloned())
     }
 
     async fn insert_failed_task(
@@ -462,9 +485,14 @@ impl RecapDao for MockRecapDao {
     // Config
     async fn get_latest_worker_config(
         &self,
-        _config_type: &str,
+        config_type: &str,
     ) -> Result<Option<serde_json::Value>> {
-        Ok(None)
+        Ok(self
+            .latest_worker_config
+            .lock()
+            .expect("latest_worker_config mutex poisoned")
+            .get(config_type)
+            .cloned())
     }
 
     async fn insert_worker_config(

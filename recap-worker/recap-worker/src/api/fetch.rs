@@ -1522,6 +1522,189 @@ mod tests {
         assert_eq!(body["generation_revision"], json!(1));
         assert_eq!(body["body"]["lead"], json!("Regenerated on-demand lead"));
     }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn get_latest_morning_letter_uses_state_pool_when_dao_pool_is_none() {
+        use crate::{
+            app::ComponentRegistry,
+            config::{Config, ENV_MUTEX},
+        };
+        use chrono::{DateTime, Duration, Utc};
+        use serde_json::json;
+        use uuid::Uuid;
+
+        let build_registry_with_dsn = |dsn: String| async move {
+            let env_lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let registry = temp_env::async_with_vars(
+                [
+                    ("RECAP_DB_DSN", Some(dsn.as_str())),
+                    ("RECAP_DB_MAX_CONNECTIONS", Some("1")),
+                    ("RECAP_DB_MIN_CONNECTIONS", Some("0")),
+                    ("CLASSIFICATION_QUEUE_CONCURRENCY", Some("0")),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://127.0.0.1:18001/")),
+                    ("SUBWORKER_BASE_URL", Some("http://127.0.0.1:18002/")),
+                    ("ALT_BACKEND_BASE_URL", Some("http://127.0.0.1:19000/")),
+                    ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                    ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("RECAP_EVAL_LISTENER", Some("disabled")),
+                    ("RECAP_CARDS_JOB", Some("disabled")),
+                    ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                    ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                    ("RECAP_GENRES", Some("ai")),
+                    (
+                        "HUGGING_FACE_TOKEN_PATH",
+                        Some("/tmp/test-token-which-does-not-exist"),
+                    ),
+                    ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+                    ("MTLS_ENFORCE", None),
+                ],
+                async {
+                    let config = Config::from_env().expect("config loads");
+                    ComponentRegistry::build(config)
+                        .await
+                        .expect("registry builds")
+                },
+            )
+            .await;
+            drop(env_lock);
+            registry
+        };
+
+        let unreachable_state = AppState::new(
+            build_registry_with_dsn("postgres://recap:recap@127.0.0.1:1/recap".to_string()).await,
+        );
+        assert!(
+            unreachable_state.dao().pool().is_none(),
+            "production RecapDaoImpl must return None from compat::RecapDao::pool()"
+        );
+        let run_res = MorningLetterReadDao::get_latest_morning_run(&unreachable_state).await;
+        assert!(
+            run_res.is_err(),
+            "get_latest_morning_run must query state.pool() instead of returning Ok(None) when dao.pool() is None, got: {run_res:?}"
+        );
+        let win_res =
+            MorningLetterReadDao::get_recap_job_window(&unreachable_state, Uuid::new_v4()).await;
+        assert!(
+            win_res.is_err(),
+            "get_recap_job_window must query state.pool() instead of returning Ok(None) when dao.pool() is None, got: {win_res:?}"
+        );
+
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return;
+        };
+
+        let state = AppState::new(build_registry_with_dsn(database_url).await);
+        assert!(
+            state.dao().pool().is_none(),
+            "production RecapDaoImpl must return None from compat::RecapDao::pool()"
+        );
+        let pool = state.pool();
+        for ddl in [
+            r"
+            CREATE TEMP TABLE recap_jobs (
+                job_id UUID PRIMARY KEY,
+                kicked_at TIMESTAMPTZ NOT NULL,
+                status TEXT NOT NULL,
+                last_stage TEXT,
+                window_days INTEGER NOT NULL DEFAULT 3,
+                trigger_source TEXT NOT NULL DEFAULT 'system',
+                note TEXT,
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+            ",
+            r"
+            CREATE TEMP TABLE morning_letters (
+                id UUID PRIMARY KEY,
+                target_date DATE NOT NULL,
+                edition_timezone TEXT NOT NULL,
+                source_recap_job_id UUID,
+                is_degraded BOOLEAN NOT NULL DEFAULT FALSE,
+                schema_version INTEGER NOT NULL DEFAULT 1,
+                generation_revision INTEGER NOT NULL DEFAULT 1,
+                result_jsonb JSONB NOT NULL,
+                model TEXT,
+                generation_metadata_jsonb JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            ",
+        ] {
+            sqlx::query(ddl)
+                .execute(pool)
+                .await
+                .expect("create temp table");
+        }
+
+        let now = Utc::now();
+        let recap_job_id = Uuid::new_v4();
+        let morning_job_id = Uuid::new_v4();
+        let letter_id = Uuid::new_v4();
+        let recap_kicked_at = DateTime::parse_from_rfc3339("2026-01-26T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let morning_kicked_at = now - Duration::minutes(10);
+
+        sqlx::query(
+            r"
+            INSERT INTO recap_jobs (job_id, kicked_at, status, window_days, trigger_source, updated_at)
+            VALUES ($1, $2, 'completed', 3, 'system', $2),
+                   ($3, $4, 'morning_completed', 1, 'morning', $4)
+            ",
+        )
+        .bind(recap_job_id)
+        .bind(recap_kicked_at)
+        .bind(morning_job_id)
+        .bind(morning_kicked_at)
+        .execute(pool)
+        .await
+        .expect("insert recap_jobs");
+
+        sqlx::query(
+            r"
+            INSERT INTO morning_letters (
+                id, target_date, edition_timezone, source_recap_job_id, is_degraded,
+                schema_version, generation_revision, result_jsonb, model,
+                generation_metadata_jsonb, created_at
+            )
+            VALUES ($1, '2026-01-26', 'Asia/Tokyo', $2, FALSE, 1, 1, $3, 'gemma4-e4b-12k', '{}'::jsonb, $4)
+            ",
+        )
+        .bind(letter_id)
+        .bind(recap_job_id)
+        .bind(json!({
+            "lead": "Production DAO morning lead",
+            "sections": [{"key": "top3", "title": "Top Stories", "bullets": ["Bullet 1"]}],
+            "generated_at": now.to_rfc3339()
+        }))
+        .bind(now)
+        .execute(pool)
+        .await
+        .expect("insert morning_letter");
+
+        let response = get_latest_morning_letter(State(state))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let body: Value = serde_json::from_slice(&body_bytes).expect("valid json");
+        assert_eq!(
+            body["surface_status"]["latest_run"]["job_id"],
+            json!(morning_job_id.to_string()),
+            "latest_run must come from state.pool() even when dao.pool() is None"
+        );
+        assert_eq!(
+            body["surface_status"]["window_end"],
+            json!("2026-01-26T00:00:00+00:00"),
+            "recap job window must come from state.pool() even when dao.pool() is None"
+        );
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]

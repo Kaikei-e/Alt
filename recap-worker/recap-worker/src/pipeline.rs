@@ -113,6 +113,10 @@ mod tests {
             5000,
         ));
 
+        let metrics = Arc::new(
+            crate::observability::metrics::Metrics::new(prometheus::Registry::new().into())
+                .expect("metrics should build"),
+        );
         let pipeline = PipelineOrchestrator::builder(Arc::clone(&config))
             .with_fetch_stage(Arc::new(RecordingFetch::new(Arc::clone(&order))))
             .with_preprocess_stage(Arc::new(RecordingPreprocess::new(Arc::clone(&order))))
@@ -121,6 +125,7 @@ mod tests {
             .with_select_stage(Arc::new(RecordingSelect::new(Arc::clone(&order))))
             .with_dispatch_stage(Arc::new(RecordingDispatch::new(Arc::clone(&order))))
             .with_persist_stage(Arc::new(RecordingPersist::new(Arc::clone(&order))))
+            .with_metrics(metrics)
             .build(recap_dao, subworker_client, classification_queue, None)
             .expect("all stages configured, build should succeed");
 

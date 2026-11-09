@@ -4430,4 +4430,53 @@ mod tests {
             "no job row inserted on negative span"
         );
     }
+
+    #[tokio::test]
+    async fn test_run_cards_does_not_substitute_wall_clock_for_last_success() {
+        use crate::{
+            observability::{
+                metrics::Metrics,
+                surface_health::{SurfaceHealthTarget, record_success},
+            },
+            scheduler::daemon::CardsJobRunner,
+        };
+        use prometheus::Registry;
+
+        let feed_source = Arc::new(FakeFeedSource::new(vec![]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        let generator = Arc::new(FakeCardGenerator::new());
+        let verifier = Arc::new(FakeCardVerifier::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        record_success(&metrics, SurfaceHealthTarget::TopicCards, seeded_ts);
+
+        let pipeline = CardsPipeline::full(
+            feed_source,
+            ml_port,
+            dao,
+            generator,
+            verifier,
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4())
+        .with_metrics(Arc::clone(&metrics));
+
+        let (from, to) = test_window_3d();
+        CardsJobRunner::run_cards(&pipeline, Uuid::new_v4(), from, to)
+            .await
+            .expect("run_cards succeeds");
+
+        let gauge = metrics
+            .surface_last_success_timestamp_seconds
+            .with_label_values(&[SurfaceHealthTarget::TopicCards.as_str()])
+            .get();
+        assert_eq!(
+            gauge,
+            seeded_ts.timestamp() as f64,
+            "run_cards must not substitute Utc::now() when completed job updated_at is absent"
+        );
+    }
 }

@@ -762,6 +762,7 @@ mod new_tests {
 
     struct UnreachableGenre {
         prepare_called: Arc<std::sync::atomic::AtomicBool>,
+        observed_margin: Arc<std::sync::Mutex<Option<f32>>>,
     }
 
     #[async_trait::async_trait]
@@ -776,10 +777,11 @@ mod new_tests {
 
         async fn update_config(
             &self,
-            _overrides: &crate::pipeline::graph_override::GraphOverrideSettings,
+            overrides: &crate::pipeline::graph_override::GraphOverrideSettings,
         ) {
             self.prepare_called
                 .store(true, std::sync::atomic::Ordering::SeqCst);
+            *self.observed_margin.lock().expect("observed_margin lock") = overrides.graph_margin;
         }
     }
 
@@ -878,6 +880,8 @@ mod new_tests {
 
         let fetch_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let prepare_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed_margin = Arc::new(std::sync::Mutex::new(None));
+        let metrics = Arc::new(Metrics::new(prometheus::Registry::new().into()).expect("metrics"));
         let pipeline = PipelineOrchestrator::builder(config)
             .with_fetch_stage(Arc::new(PanicIfCalledFetch {
                 called: Arc::clone(&fetch_called),
@@ -886,10 +890,12 @@ mod new_tests {
             .with_dedup_stage(Arc::new(UnreachableDedup))
             .with_genre_stage(Arc::new(UnreachableGenre {
                 prepare_called: Arc::clone(&prepare_called),
+                observed_margin: Arc::clone(&observed_margin),
             }))
             .with_select_stage(Arc::new(UnreachableSelect))
             .with_dispatch_stage(Arc::new(UnreachableDispatch))
             .with_persist_stage(Arc::new(UnreachablePersist))
+            .with_metrics(metrics)
             .build(recap_dao, subworker, classification_queue, None)
             .expect("pipeline builds");
 
@@ -928,6 +934,174 @@ mod new_tests {
         assert!(
             format!("{unknown_err:#}").contains("bogus_stage"),
             "error should name the unknown stage, got: {unknown_err:#}"
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_pipeline_loads_graph_override_from_dao_when_pool_is_none() {
+        let config = {
+            let _lock = ENV_MUTEX.lock().expect("env mutex");
+            temp_env::with_vars(
+                [
+                    (
+                        "RECAP_DB_DSN",
+                        Some("postgres://recap:recap@localhost:5555/recap_db"),
+                    ),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                    ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                    ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                    ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("RECAP_EVAL_LISTENER", Some("disabled")),
+                    ("RECAP_CARDS_JOB", Some("disabled")),
+                    ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                    ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                    ("MTLS_ENFORCE", None),
+                ],
+                || Arc::new(crate::config::Config::from_env().expect("config should load")),
+            )
+        };
+
+        let subworker = Arc::new(
+            SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+                None,
+            )
+            .expect("subworker client builds"),
+        );
+        let mock_dao = Arc::new(MockRecapDao::new());
+        mock_dao
+            .set_latest_worker_config("graph_override", serde_json::json!({"graph_margin": 0.42}));
+        let recap_dao: Arc<dyn RecapDao> = mock_dao;
+        assert!(recap_dao.pool().is_none());
+
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")
+            .expect("lazy pool");
+        let queue_store = QueueStore::new(pool);
+        let classification_queue = Arc::new(ClassificationJobQueue::new(
+            queue_store,
+            (*subworker).clone(),
+            0,
+            10,
+            3,
+            1000,
+        ));
+
+        let fetch_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let prepare_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed_margin = Arc::new(std::sync::Mutex::new(None));
+        let metrics = Arc::new(Metrics::new(prometheus::Registry::new().into()).expect("metrics"));
+        let pipeline = PipelineOrchestrator::builder(config)
+            .with_fetch_stage(Arc::new(PanicIfCalledFetch {
+                called: Arc::clone(&fetch_called),
+            }))
+            .with_preprocess_stage(Arc::new(UnreachablePreprocess))
+            .with_dedup_stage(Arc::new(UnreachableDedup))
+            .with_genre_stage(Arc::new(UnreachableGenre {
+                prepare_called: Arc::clone(&prepare_called),
+                observed_margin: Arc::clone(&observed_margin),
+            }))
+            .with_select_stage(Arc::new(UnreachableSelect))
+            .with_dispatch_stage(Arc::new(UnreachableDispatch))
+            .with_persist_stage(Arc::new(UnreachablePersist))
+            .with_metrics(metrics)
+            .build(recap_dao, subworker, classification_queue, None)
+            .expect("pipeline builds");
+
+        let job = JobContext::new(uuid::Uuid::new_v4(), vec!["ai".to_string()])
+            .with_stage("evidence".to_string());
+        let _ = pipeline.execute(&job).await;
+
+        assert!(prepare_called.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(
+            *observed_margin.lock().expect("observed_margin lock"),
+            Some(0.42),
+            "prepare_pipeline must load graph_override from dao even when dao.pool() is None"
+        );
+    }
+
+    #[test]
+    fn pipeline_builder_fails_when_metrics_not_configured() {
+        let config = {
+            let _lock = ENV_MUTEX.lock().expect("env mutex");
+            temp_env::with_vars(
+                [
+                    (
+                        "RECAP_DB_DSN",
+                        Some("postgres://recap:recap@localhost:5555/recap_db"),
+                    ),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                    ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                    ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                    ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("RECAP_EVAL_LISTENER", Some("disabled")),
+                    ("RECAP_CARDS_JOB", Some("disabled")),
+                    ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                    ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                    ("MTLS_ENFORCE", None),
+                ],
+                || Arc::new(crate::config::Config::from_env().expect("config should load")),
+            )
+        };
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let _guard = rt.enter();
+        let subworker = Arc::new(
+            SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+                None,
+            )
+            .expect("subworker client builds"),
+        );
+        let recap_dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")
+            .expect("lazy pool");
+        let queue_store = QueueStore::new(pool);
+        let classification_queue = Arc::new(ClassificationJobQueue::new(
+            queue_store,
+            (*subworker).clone(),
+            0,
+            10,
+            3,
+            1000,
+        ));
+
+        let fetch_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let prepare_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed_margin = Arc::new(std::sync::Mutex::new(None));
+        let build_res = PipelineOrchestrator::builder(config)
+            .with_fetch_stage(Arc::new(PanicIfCalledFetch {
+                called: fetch_called,
+            }))
+            .with_preprocess_stage(Arc::new(UnreachablePreprocess))
+            .with_dedup_stage(Arc::new(UnreachableDedup))
+            .with_genre_stage(Arc::new(UnreachableGenre {
+                prepare_called,
+                observed_margin,
+            }))
+            .with_select_stage(Arc::new(UnreachableSelect))
+            .with_dispatch_stage(Arc::new(UnreachableDispatch))
+            .with_persist_stage(Arc::new(UnreachablePersist))
+            .build(recap_dao, subworker, classification_queue, None);
+
+        let err = match build_res {
+            Ok(_) => panic!("PipelineBuilder::build must fail when with_metrics is not configured"),
+            Err(e) => e,
+        };
+        assert!(
+            format!("{err:#}").contains("metrics must be configured"),
+            "unexpected error: {err:#}"
         );
     }
 }

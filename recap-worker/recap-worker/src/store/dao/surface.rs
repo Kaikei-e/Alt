@@ -388,6 +388,13 @@ mod tests {
             )
             ",
             r"
+            CREATE TEMP TABLE recap_outputs (
+                job_id UUID NOT NULL,
+                genre TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            ",
+            r"
             CREATE TEMP TABLE pulse_generations (
                 id BIGSERIAL PRIMARY KEY,
                 job_id UUID NOT NULL,
@@ -418,11 +425,13 @@ mod tests {
         t2: DateTime<Utc>,
         t3: DateTime<Utc>,
     ) -> Result<()> {
-        for (ts, status) in [
-            (t0, "failed"),
-            (t1, "completed"),
-            (t2, "failed"),
-            (t3, "failed"),
+        let completed_job_id = Uuid::new_v4();
+        for (job_id, ts, status) in [
+            (Uuid::new_v4(), t0, "failed"),
+            (completed_job_id, t1, "completed"),
+            (Uuid::new_v4(), t1 + Duration::minutes(15), "failed"),
+            (Uuid::new_v4(), t2, "failed"),
+            (Uuid::new_v4(), t3, "failed"),
         ] {
             sqlx::query(
                 r"
@@ -430,12 +439,25 @@ mod tests {
                 VALUES ($1, $2, $3, 3, 'system', $2)
                 ",
             )
-            .bind(Uuid::new_v4())
+            .bind(job_id)
             .bind(ts)
             .bind(status)
             .execute(pool)
             .await?;
         }
+
+        sqlx::query(
+            r"
+            INSERT INTO recap_outputs (job_id, genre, created_at)
+            VALUES ($1, 'ai', $2),
+                   ($1, 'space', $3)
+            ",
+        )
+        .bind(completed_job_id)
+        .bind(t1 + Duration::minutes(10))
+        .bind(t1 + Duration::minutes(25))
+        .execute(pool)
+        .await?;
 
         sqlx::query(
             r"
@@ -511,7 +533,7 @@ mod tests {
             (
                 SurfaceHealthTarget::ThreeDayRecap,
                 SurfaceHealthSeed {
-                    last_success_at: Some(t1),
+                    last_success_at: Some(t1 + Duration::minutes(25)),
                     consecutive_failures: 2,
                 }
             )

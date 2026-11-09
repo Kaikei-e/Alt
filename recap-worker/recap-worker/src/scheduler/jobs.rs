@@ -1463,4 +1463,319 @@ mod tests {
             }
         }
     }
+
+    struct UnreachableFetch;
+    #[async_trait::async_trait]
+    impl crate::pipeline::fetch::FetchStage for UnreachableFetch {
+        async fn fetch(
+            &self,
+            _job: &JobContext,
+        ) -> crate::error::Result<crate::pipeline::fetch::FetchedCorpus> {
+            unreachable!()
+        }
+    }
+
+    struct UnreachablePreprocess;
+    #[async_trait::async_trait]
+    impl crate::pipeline::preprocess::PreprocessStage for UnreachablePreprocess {
+        async fn preprocess(
+            &self,
+            _job: &JobContext,
+            _corpus: crate::pipeline::fetch::FetchedCorpus,
+        ) -> Result<crate::pipeline::preprocess::PreprocessedCorpus> {
+            unreachable!()
+        }
+    }
+
+    struct UnreachableDedup;
+    #[async_trait::async_trait]
+    impl crate::pipeline::dedup::DedupStage for UnreachableDedup {
+        async fn deduplicate(
+            &self,
+            _job: &JobContext,
+            _corpus: crate::pipeline::preprocess::PreprocessedCorpus,
+        ) -> Result<crate::pipeline::dedup::DeduplicatedCorpus> {
+            unreachable!()
+        }
+    }
+
+    struct NoopGenre;
+    #[async_trait::async_trait]
+    impl crate::pipeline::genre::GenreStage for NoopGenre {
+        async fn assign(
+            &self,
+            _job: &JobContext,
+            _corpus: crate::pipeline::dedup::DeduplicatedCorpus,
+        ) -> Result<crate::pipeline::genre::GenreBundle> {
+            unreachable!()
+        }
+
+        async fn update_config(
+            &self,
+            _overrides: &crate::pipeline::graph_override::GraphOverrideSettings,
+        ) {
+        }
+    }
+
+    struct UnreachableSelect;
+    #[async_trait::async_trait]
+    impl crate::pipeline::select::SelectStage for UnreachableSelect {
+        async fn select(
+            &self,
+            _job: &JobContext,
+            _bundle: crate::pipeline::genre::GenreBundle,
+        ) -> Result<crate::pipeline::select::SelectedSummary> {
+            unreachable!()
+        }
+    }
+
+    struct UnreachableDispatch;
+    #[async_trait::async_trait]
+    impl crate::pipeline::dispatch::DispatchStage for UnreachableDispatch {
+        async fn dispatch(
+            &self,
+            _job: &JobContext,
+            _evidence: crate::pipeline::evidence::EvidenceBundle,
+        ) -> crate::error::Result<crate::pipeline::dispatch::DispatchResult> {
+            unreachable!()
+        }
+    }
+
+    struct StubSuccessPersist;
+    #[async_trait::async_trait]
+    impl crate::pipeline::persist::PersistStage for StubSuccessPersist {
+        async fn persist(
+            &self,
+            job: &JobContext,
+            _result: crate::pipeline::dispatch::DispatchResult,
+        ) -> crate::error::Result<PersistResult> {
+            Ok(PersistResult {
+                job_id: job.job_id,
+                genres_stored: 1,
+                genres_failed: 0,
+                genres_skipped: 0,
+                genres_no_evidence: 0,
+                total_genres: 1,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn run_job_three_day_does_not_substitute_wall_clock_and_records_completion_write_failure()
+    {
+        use crate::{
+            clients::NewsCreatorClient,
+            config::ENV_MUTEX,
+            observability::{
+                metrics::Metrics,
+                surface_health::{SurfaceHealthTarget, record_success},
+            },
+            queue::{ClassificationJobQueue, QueueStore},
+            store::{dao::mock::MockRecapDao, models::RecapJob},
+        };
+        use chrono::{DateTime, Duration, Utc};
+        use prometheus::Registry;
+        use sqlx::postgres::PgPoolOptions;
+
+        let config = {
+            let _lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            temp_env::with_vars(
+                [
+                    (
+                        "RECAP_DB_DSN",
+                        Some("postgres://recap:recap@localhost:5555/recap_db"),
+                    ),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                    ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                    ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                    ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("RECAP_EVAL_LISTENER", Some("disabled")),
+                    ("RECAP_CARDS_JOB", Some("disabled")),
+                    ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                    ("CLASSIFICATION_EVAL_ENABLED", Some("false")),
+                    ("EVENING_PULSE_ENABLED", Some("false")),
+                    ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                    ("MTLS_ENFORCE", None),
+                ],
+                || Arc::new(Config::from_env().expect("config loads")),
+            )
+        };
+
+        let dao = Arc::new(MockRecapDao::new());
+        let unrelated_window_end = DateTime::parse_from_rfc3339("2026-01-20T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        dao.set_latest_completed_job(Some(RecapJob {
+            job_id: Uuid::new_v4(),
+            started_at: unrelated_window_end - Duration::days(3),
+            window_start: unrelated_window_end - Duration::days(3),
+            window_end: unrelated_window_end,
+            total_articles: Some(10),
+        }));
+
+        let recap_dao: Arc<dyn RecapDao> = Arc::clone(&dao) as Arc<dyn RecapDao>;
+        let subworker = Arc::new(
+            SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+                None,
+            )
+            .expect("subworker client"),
+        );
+        let news_creator = {
+            let _lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            Arc::new(
+                temp_env::async_with_vars(
+                    [
+                        (
+                            "HUGGING_FACE_TOKEN_PATH",
+                            Some("/tmp/test-token-which-does-not-exist"),
+                        ),
+                        ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+                        ("MTLS_ENFORCE", None),
+                    ],
+                    async {
+                        NewsCreatorClient::new(
+                            config.news_creator_base_url(),
+                            config.llm_summary_timeout(),
+                        )
+                        .await
+                        .expect("news creator client")
+                    },
+                )
+                .await,
+            )
+        };
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")
+            .expect("lazy pool");
+        let classification_queue = Arc::new(ClassificationJobQueue::new(
+            QueueStore::new(pool),
+            (*subworker).clone(),
+            0,
+            10,
+            3,
+            1000,
+        ));
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        record_success(&metrics, SurfaceHealthTarget::ThreeDayRecap, seeded_ts);
+
+        let pipeline = Arc::new(
+            PipelineOrchestrator::builder(Arc::clone(&config))
+                .with_fetch_stage(Arc::new(UnreachableFetch))
+                .with_preprocess_stage(Arc::new(UnreachablePreprocess))
+                .with_dedup_stage(Arc::new(UnreachableDedup))
+                .with_genre_stage(Arc::new(NoopGenre))
+                .with_select_stage(Arc::new(UnreachableSelect))
+                .with_dispatch_stage(Arc::new(UnreachableDispatch))
+                .with_persist_stage(Arc::new(StubSuccessPersist))
+                .with_metrics(Arc::clone(&metrics))
+                .build(
+                    Arc::clone(&recap_dao),
+                    Arc::clone(&subworker),
+                    classification_queue,
+                    None,
+                )
+                .expect("pipeline builds"),
+        );
+        let morning_pipeline = {
+            let _lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            temp_env::with_vars([("MTLS_ENFORCE", None::<&str>)], || {
+                Arc::new(
+                    MorningPipeline::new(
+                        Arc::clone(&config),
+                        Arc::clone(&recap_dao),
+                        news_creator,
+                        Arc::clone(&subworker),
+                    )
+                    .expect("morning pipeline builds"),
+                )
+            })
+        };
+        let scheduler = Scheduler::new(pipeline, morning_pipeline, config, recap_dao, subworker);
+
+        let job_id_1 = Uuid::new_v4();
+        let dispatch_state_1 = crate::pipeline::dispatch::DispatchResult {
+            job_id: job_id_1,
+            genre_results: std::collections::HashMap::new(),
+            success_count: 1,
+            failure_count: 0,
+            all_genres: vec!["ai".to_string()],
+        }
+        .to_lightweight();
+        dao.save_stage_state(
+            job_id_1,
+            "dispatch",
+            &serde_json::to_value(&dispatch_state_1).expect("serialize dispatch state"),
+        )
+        .await
+        .expect("save dispatch state");
+        let ctx_1 = JobContext::new_with_window(job_id_1, vec!["ai".to_string()], 3)
+            .with_stage("dispatch".to_string());
+        scheduler
+            .run_job(ctx_1)
+            .await
+            .expect("3-day job should succeed");
+
+        let gauge_after_missing_output_ts = metrics
+            .surface_last_success_timestamp_seconds
+            .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+            .get();
+        assert_eq!(
+            gauge_after_missing_output_ts,
+            seeded_ts.timestamp() as f64,
+            "when this job has no recap_outputs.created_at, last_success must stay unchanged and never use latest_completed_job.window_end or Utc::now()"
+        );
+
+        let job_id_2 = Uuid::new_v4();
+        let dispatch_state_2 = crate::pipeline::dispatch::DispatchResult {
+            job_id: job_id_2,
+            genre_results: std::collections::HashMap::new(),
+            success_count: 1,
+            failure_count: 0,
+            all_genres: vec!["ai".to_string()],
+        }
+        .to_lightweight();
+        dao.save_stage_state(
+            job_id_2,
+            "dispatch",
+            &serde_json::to_value(&dispatch_state_2).expect("serialize dispatch state"),
+        )
+        .await
+        .expect("save dispatch state");
+        dao.set_update_job_status_with_history_error("simulated status write failure");
+        let ctx_2 = JobContext::new_with_window(job_id_2, vec!["ai".to_string()], 3)
+            .with_stage("dispatch".to_string());
+        let err = scheduler
+            .run_job(ctx_2)
+            .await
+            .expect_err("status write failure must propagate");
+        assert!(format!("{err:#}").contains("simulated status write failure"));
+        assert_eq!(
+            metrics.jobs_failed.get(),
+            1.0,
+            "jobs_failed must increment when update_job_status_with_history(Completed) fails"
+        );
+        assert_eq!(
+            metrics
+                .surface_consecutive_failures
+                .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+                .get(),
+            1.0,
+            "surface_consecutive_failures must increment when update_job_status_with_history(Completed) fails"
+        );
+    }
 }

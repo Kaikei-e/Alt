@@ -1562,4 +1562,57 @@ mod tests {
             serde_json::json!("placeholder_output")
         );
     }
+
+    #[tokio::test]
+    async fn execute_update_assigns_created_at_and_generated_at_at_save_time() {
+        use chrono::SubsecRound;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(mock_news_creator_response_body(false, None)),
+            )
+            .mount(&server)
+            .await;
+
+        let run_start_now = chrono::DateTime::parse_from_rfc3339("2026-01-26T06:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let dao = Arc::new(MockRecapDao::new());
+        dao.set_latest_completed_job(None);
+
+        let before_save = chrono::Utc::now().trunc_subsecs(6);
+        let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
+        pipeline
+            .execute_update_at(
+                &JobContext::new_morning_update(Uuid::new_v4()),
+                run_start_now,
+            )
+            .await
+            .expect("pipeline succeeds");
+        let after_save = chrono::Utc::now().trunc_subsecs(6);
+
+        let letters = dao.morning_letters();
+        assert_eq!(letters.len(), 1);
+        assert!(
+            letters[0].created_at >= before_save && letters[0].created_at <= after_save,
+            "created_at must be assigned at save time (between {before_save} and {after_save}), not run start ({run_start_now}), got {}",
+            letters[0].created_at
+        );
+        let generated_at = chrono::DateTime::parse_from_rfc3339(
+            letters[0].result_jsonb["generated_at"]
+                .as_str()
+                .expect("generated_at string"),
+        )
+        .expect("rfc3339 generated_at")
+        .with_timezone(&chrono::Utc);
+        assert_eq!(
+            generated_at, letters[0].created_at,
+            "generated_at must match the save-time created_at"
+        );
+    }
 }
