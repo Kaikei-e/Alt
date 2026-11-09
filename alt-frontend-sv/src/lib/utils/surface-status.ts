@@ -52,7 +52,7 @@ export function formatSurfaceTimestamp(iso: string): string {
 export function getDegradationNoticeText(reason: DegradationReason): string {
 	const detail = reason.detail?.trim() ?? "";
 	if (reason.code === "extractive_genres" && detail) {
-		return detail;
+		return detail.endsWith(".") ? detail : `${detail}.`;
 	}
 	const base =
 		DEGRADATION_CODE_MESSAGES[reason.code] ??

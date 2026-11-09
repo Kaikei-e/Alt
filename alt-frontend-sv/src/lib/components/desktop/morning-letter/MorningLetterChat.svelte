@@ -53,10 +53,9 @@ let currentAbortController: AbortController | null = null;
 
 async function scrollToBottom() {
 	await tick();
-	const el = threadContainer;
-	if (el) {
+	if (threadContainer) {
 		setTimeout(() => {
-			el.scrollTop = el.scrollHeight;
+			threadContainer.scrollTop = threadContainer.scrollHeight;
 		}, 100);
 	}
 }
@@ -156,7 +155,7 @@ async function handleSend() {
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex]!,
 					message:
-						"I couldn't find enough recent news to answer that. Try asking about a different topic from today's news.",
+						"I couldn't find enough recent news to answer that. Try asking about a different topic from this edition's news.",
 				};
 				isLoading = false;
 				currentAbortController = null;

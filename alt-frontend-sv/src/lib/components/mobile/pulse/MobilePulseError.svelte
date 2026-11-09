@@ -13,7 +13,7 @@ const { error, onRetry, isRetrying = false }: Props = $props();
 </script>
 
 <div class="p-4 max-w-2xl mx-auto">
-	<PulseHeader date="" />
+	<PulseHeader date="" showSubtitle={false} />
 
 	<div class="flex flex-col items-center justify-center min-h-[40dvh]">
 		<div

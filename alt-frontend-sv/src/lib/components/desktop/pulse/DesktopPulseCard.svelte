@@ -52,8 +52,7 @@ const formattedSources = $derived.by(() => {
 
 <button
 	type="button"
-	class="w-full text-left p-5 border transition-colors duration-150 cursor-pointer group bg-[var(--surface-bg)] hover:bg-[var(--surface-hover)] data-[focused=true]:bg-[var(--surface-hover)] focus:outline-2 focus:outline-[var(--alt-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--alt-primary)]"
-	class:bg-[var(--surface-hover)]={isFocused}
+	class="w-full text-left p-5 border transition-colors duration-150 cursor-pointer group bg-[var(--surface-bg)] hover:bg-[var(--surface-hover)] data-[focused=true]:bg-[var(--surface-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--alt-primary)]"
 	data-focused={isFocused ? "true" : undefined}
 	style="border-color: var(--surface-border); border-left: 3px solid {cardBorderColor};"
 	aria-label="Topic {index + 1}: {primaryTitle} — {topic.title}"

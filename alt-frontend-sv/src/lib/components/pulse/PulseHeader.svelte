@@ -3,6 +3,7 @@ interface Props {
 	date: string;
 	isCurrent?: boolean;
 	statusLabel?: string;
+	showSubtitle?: boolean;
 	showKeyboardHint?: boolean;
 	onNavigateToRecap?: () => void;
 }
@@ -11,6 +12,7 @@ const {
 	date,
 	isCurrent = false,
 	statusLabel = "",
+	showSubtitle = true,
 	showKeyboardHint = false,
 	onNavigateToRecap,
 }: Props = $props();
@@ -63,9 +65,11 @@ const subtitle = $derived(
 			>
 				Evening Pulse
 			</h1>
-			<p class="text-sm mt-1" style="color: var(--text-secondary);">
-				{subtitle}
-			</p>
+			{#if showSubtitle}
+				<p class="text-sm mt-1" style="color: var(--text-secondary);">
+					{subtitle}
+				</p>
+			{/if}
 		</div>
 		{#if onNavigateToRecap}
 			<button
