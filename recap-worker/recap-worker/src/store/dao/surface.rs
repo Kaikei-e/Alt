@@ -175,3 +175,75 @@ impl SurfaceDaoOps {
         Ok(row.map(|r| r.get("updated_at")))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    #[tokio::test]
+    async fn get_latest_three_day_recap_run_excludes_cards_and_morning_triggers() -> Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+
+        let Ok(pool) = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await
+        else {
+            return Ok(());
+        };
+
+        sqlx::query(
+            r"
+            CREATE TEMP TABLE recap_jobs (
+                job_id UUID PRIMARY KEY,
+                kicked_at TIMESTAMPTZ NOT NULL,
+                status TEXT NOT NULL,
+                window_days INTEGER NOT NULL,
+                trigger_source TEXT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+            ",
+        )
+        .execute(&pool)
+        .await?;
+
+        let three_day_job_id = Uuid::new_v4();
+        let cards_job_id = Uuid::new_v4();
+        let cards_replay_job_id = Uuid::new_v4();
+        let morning_job_id = Uuid::new_v4();
+
+        let base_time = DateTime::parse_from_rfc3339("2026-01-26T00:00:00Z")?.with_timezone(&Utc);
+
+        for (job_id, trigger_source, offset_hours) in [
+            (three_day_job_id, "system", 0),
+            (cards_job_id, "cards", 1),
+            (cards_replay_job_id, "cards_replay", 2),
+            (morning_job_id, "morning", 3),
+        ] {
+            let kicked_at = base_time + Duration::hours(offset_hours);
+            let updated_at = kicked_at + Duration::minutes(5);
+            sqlx::query(
+                r"
+                INSERT INTO recap_jobs (job_id, kicked_at, status, window_days, trigger_source, updated_at)
+                VALUES ($1, $2, 'completed', 3, $3, $4)
+                ",
+            )
+            .bind(job_id)
+            .bind(kicked_at)
+            .bind(trigger_source)
+            .bind(updated_at)
+            .execute(&pool)
+            .await?;
+        }
+
+        let latest = SurfaceDaoOps::get_latest_three_day_recap_run(&pool)
+            .await?
+            .expect("3-day recap run should be returned");
+        assert_eq!(latest.job_id, three_day_job_id);
+
+        Ok(())
+    }
+}

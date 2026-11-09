@@ -698,4 +698,37 @@ mod tests {
             ])
         );
     }
+
+    #[tokio::test]
+    async fn test_get_latest_pulse_returns_500_when_provenance_missing() {
+        use chrono::DateTime;
+
+        let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
+        let finished_at = DateTime::parse_from_rfc3339("2026-11-08T18:02:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let mut pulse_result = create_test_pulse_result();
+        pulse_result.job_id = job_id;
+        pulse_result.generated_at = finished_at;
+
+        let row = crate::store::models::PulseGenerationRow {
+            job_id,
+            target_date: NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(),
+            version: "v4".to_string(),
+            result_payload: Some(serde_json::to_value(&pulse_result).unwrap()),
+        };
+
+        let dao = MockPulseReadDao {
+            row: Some(row),
+            latest_run: None,
+            provenance: None,
+        };
+
+        let now = DateTime::parse_from_rfc3339("2026-11-09T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let response = get_latest_pulse_impl(&dao, None, chrono::Duration::hours(30), now).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

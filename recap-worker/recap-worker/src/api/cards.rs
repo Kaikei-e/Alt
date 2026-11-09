@@ -367,11 +367,13 @@ mod tests {
         latest_run: Mutex<Option<LatestCardsRun>>,
         cards: Mutex<Vec<RecapCard>>,
         stats: Mutex<Option<RecapCardJobStats>>,
+        job_updated_at: Mutex<Option<DateTime<Utc>>>,
         should_fail_latest: bool,
         should_fail_cards: bool,
         should_fail_stats: bool,
         should_fail_latest_run: bool,
         stats_is_none: bool,
+        job_updated_at_is_none: bool,
     }
 
     #[async_trait::async_trait]
@@ -414,12 +416,33 @@ mod tests {
             }
             Ok(self.latest_run.lock().unwrap().clone())
         }
+
+        async fn get_job_updated_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>, String> {
+            if self.job_updated_at_is_none {
+                return Ok(None);
+            }
+            if let Some(ts) = *self.job_updated_at.lock().unwrap() {
+                return Ok(Some(ts));
+            }
+            let stats = self.stats.lock().unwrap();
+            Ok(stats
+                .as_ref()
+                .filter(|s| s.job_id == job_id)
+                .map(|s| s.created_at))
+        }
+    }
+
+    fn fixed_now() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-09-23T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc)
     }
 
     #[tokio::test]
     async fn test_empty_case_when_no_job_exists() {
         let dao = MockCardsDao::default();
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
 
         assert_eq!(response.status(), StatusCode::OK);
 
@@ -431,12 +454,7 @@ mod tests {
         assert_eq!(body["cards"], serde_json::json!([]));
         assert!(body["job"].is_null());
         assert!(!body.as_object().unwrap().contains_key("latest_run"));
-        assert!(body["surface_status"].is_object());
-        assert!(body["surface_status"]["latest_run"].is_null());
-        assert_eq!(
-            body["surface_status"]["degradation_reasons"],
-            serde_json::json!([])
-        );
+        assert!(body["surface_status"].is_null());
     }
 
     #[tokio::test]
@@ -526,7 +544,8 @@ mod tests {
             created_at: card_created_at,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
@@ -668,7 +687,8 @@ mod tests {
             created_at: now,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
@@ -742,7 +762,8 @@ mod tests {
             created_at: now,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -763,7 +784,8 @@ mod tests {
             params_version: "cards-v0.2".to_string(),
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -784,7 +806,8 @@ mod tests {
             params_version: "cards-v0.2".to_string(),
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -821,7 +844,8 @@ mod tests {
             created_at: now,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
             .await
@@ -858,7 +882,8 @@ mod tests {
             created_at: now,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
             .await
@@ -877,7 +902,8 @@ mod tests {
             should_fail_latest: true,
             ..Default::default()
         };
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -887,7 +913,8 @@ mod tests {
             should_fail_latest_run: true,
             ..Default::default()
         };
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -938,7 +965,8 @@ mod tests {
             updated_at: failed_updated_at,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
@@ -982,7 +1010,8 @@ mod tests {
             updated_at: failed_updated_at,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
@@ -993,18 +1022,52 @@ mod tests {
         assert!(body["job"].is_null());
         assert_eq!(body["cards"], serde_json::json!([]));
         assert!(!body.as_object().unwrap().contains_key("latest_run"));
-        assert_eq!(
-            body["surface_status"]["latest_run"]["job_id"],
-            failed_job_id.to_string()
-        );
-        assert_eq!(body["surface_status"]["latest_run"]["status"], "failed");
-        assert_eq!(
-            body["surface_status"]["latest_run"]["kicked_at"],
-            "2026-09-23T17:00:00Z"
-        );
-        assert_eq!(
-            body["surface_status"]["latest_run"]["updated_at"],
-            "2026-09-23T17:02:00Z"
-        );
+        assert!(body["surface_status"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_job_updated_at_none_returns_500() {
+        let completed_job_id = Uuid::new_v4();
+        let failed_job_id = Uuid::new_v4();
+        let now = fixed_now();
+
+        let dao = MockCardsDao {
+            job_updated_at_is_none: true,
+            ..Default::default()
+        };
+        *dao.latest_job.lock().unwrap() = Some(PreviousCardsJobMeta {
+            job_id: completed_job_id,
+            kicked_at: now,
+            from_ts: now - chrono::Duration::days(3),
+            to_ts: now,
+            params_version: "cards-v0.2".to_string(),
+        });
+        *dao.stats.lock().unwrap() = Some(RecapCardJobStats {
+            job_id: completed_job_id,
+            items_fetched: 10,
+            items_after_noise: 10,
+            items_after_dedup: 10,
+            clusters: 5,
+            candidates: 5,
+            cards_selected: 5,
+            cards_dropped: serde_json::json!({}),
+            embed_ms: 10,
+            cluster_ms: 10,
+            llm_ms: 10,
+            total_ms: 30,
+            params_version: "cards-v0.2".to_string(),
+            embed_cache_hits: 0,
+            embed_cache_misses: 0,
+            created_at: now,
+        });
+        *dao.latest_run.lock().unwrap() = Some(LatestCardsRun {
+            job_id: failed_job_id,
+            status: "failed".to_string(),
+            kicked_at: now,
+            updated_at: now,
+        });
+
+        let response = get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), now).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }
