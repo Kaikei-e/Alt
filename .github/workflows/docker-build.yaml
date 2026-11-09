@@ -4,8 +4,22 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    paths-ignore:
+      - 'docs/**'
+      - '.claude/**'
+      - '.agents/**'
+      - '**/CLAUDE.md'
+      - '**/AGENTS.md'
+      - '**/README.md'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '.claude/**'
+      - '.agents/**'
+      - '**/CLAUDE.md'
+      - '**/AGENTS.md'
+      - '**/README.md'
 
 # Superseded PR runs are cancelled. Main-branch runs are not: dispatch-deploy
 # fires on the same push and alt-deploy expects the sha-tagged images to land.
@@ -267,12 +281,12 @@ jobs:
           # every key exposed as matrix.<key>.
           if [ -n "$CHANGED" ]; then
             MATRIX="{\"include\":[${CHANGED%,}]}"
-            echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
-            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "Changed services: ${CHANGED%,}"
           else
-            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
-            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
             echo "No service changes detected"
           fi
 
@@ -291,7 +305,7 @@ jobs:
     steps:
       - name: Set lowercase owner
         id: repo
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -347,15 +361,15 @@ jobs:
               echo "::error::services.yaml declares $DECLARED for $SERVICE but it does not exist"
               exit 1
             fi
-            echo "path=$DECLARED" >> $GITHUB_OUTPUT
+            echo "path=$DECLARED" >> "$GITHUB_OUTPUT"
           elif [ -f "$DIR/Dockerfile" ]; then
-            echo "path=$DIR/Dockerfile" >> $GITHUB_OUTPUT
+            echo "path=$DIR/Dockerfile" >> "$GITHUB_OUTPUT"
           elif [ -f "$DIR/Dockerfile.$SERVICE" ]; then
-            echo "path=$DIR/Dockerfile.$SERVICE" >> $GITHUB_OUTPUT
+            echo "path=$DIR/Dockerfile.$SERVICE" >> "$GITHUB_OUTPUT"
           else
             DOCKERFILE=$(find "$DIR" -maxdepth 1 -name 'Dockerfile*' | head -1)
             if [ -n "$DOCKERFILE" ]; then
-              echo "path=$DOCKERFILE" >> $GITHUB_OUTPUT
+              echo "path=$DOCKERFILE" >> "$GITHUB_OUTPUT"
             else
               echo "::error::No Dockerfile found for $SERVICE (dir: $DIR)"
               exit 1

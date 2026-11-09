@@ -15,6 +15,7 @@ import { describe, it } from "@std/testing/bdd";
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { Buffer } from "node:buffer";
 
 const authPath = fileURLToPath(new URL("../../k6/helpers/auth.js", import.meta.url));
 const jwtPath = fileURLToPath(new URL("../../k6/helpers/jwt.js", import.meta.url));

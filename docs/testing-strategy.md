@@ -482,7 +482,7 @@ flowchart TD
 - **Location**: `tests/e2e/visual/`
 
 ### Performance Tests
-- **K6**: Weekly CI smoke test (`.github/workflows/performance-smoke.yaml`)
+- **alt-perf**: Deno unit tests (`.github/workflows/alt-perf.yaml`); the scheduled k6 smoke workflow was removed because it ran against a backend that was never started
 - **Go benchmarks**: `go test -bench=. ./app/performance_tests/`
 
 ---
@@ -560,7 +560,7 @@ proto/
 | `backend-go.yaml` | alt-backend/ 変更 | Go unit tests (`go test ./...`、CDC は build tag で除外) |
 | `alt-frontend-sv.yml` | alt-frontend-sv/ 変更 | Playwright E2E (3 shards) |
 | `alt-frontend-sv-unit-test.yaml` | alt-frontend-sv/ 変更 | Vitest unit tests |
-| `performance-smoke.yaml` | Weekly | K6 API smoke test |
+| `alt-perf.yaml` | alt-perf/ 変更 | alt-perf Deno unit tests |
 | `search-indexer.yaml` | search-indexer/ 変更 | Go unit tests |
 | `tag-generator.yaml` | tag-generator/ 変更 | Python tests |
 

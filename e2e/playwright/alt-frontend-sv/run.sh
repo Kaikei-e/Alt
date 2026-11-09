@@ -27,6 +27,7 @@
 #   PROJECTS                  — space-separated --project flags
 #   RUN_ID                    — unique run identifier for report dir
 #   REPORT_DIR                — override report output path
+#   PW_BLOB=1                 — emit a blob report into $REPORT_DIR/blob for merge-reports
 #   KEEP_STACK=1              — leave the app container up on exit for inspection
 set -euo pipefail
 
@@ -165,6 +166,7 @@ docker run --rm \
   -e PROJECTS="$PROJECTS" \
   -e SHARD="$SHARD" \
   -e REPORT_DIR="$REPORT_DIR" \
+  -e PW_BLOB="${PW_BLOB:-}" \
   "$PLAYWRIGHT_IMAGE" \
   bash -euxo pipefail -c '
     cp /work/repo/e2e/playwright/package.json /work/repo/e2e/playwright/package-lock.json /work/

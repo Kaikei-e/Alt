@@ -65,6 +65,8 @@ suites:
 
   alt-frontend-sv:
     images: [alt-frontend-sv]
+    # ~398s unsharded on the critical path; 3 shards amortise the ~1.7GB Playwright image pull.
+    shards: 3
     notes: >-
       Browser-driven SvelteKit E2E suite. Runs outside compose.staging.yaml:
       run.sh starts the pre-built alt-alt-frontend-sv image on --network host

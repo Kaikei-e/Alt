@@ -7,10 +7,22 @@ on:
     branches: [main, develop]
     paths:
       - "pre-processor/**"
+      - ".github/workflows/pre-processor-quality.yml"
+      - ".github/workflows/reusable-test-go.yaml"
+      - ".github/workflows/reusable-go-quality-gates.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main, develop]
     paths:
       - "pre-processor/**"
+      - ".github/workflows/pre-processor-quality.yml"
+      - ".github/workflows/reusable-test-go.yaml"
+      - ".github/workflows/reusable-go-quality-gates.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -22,7 +34,6 @@ jobs:
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: "pre-processor/app"
-      go-version: "1.27.1"
       coverage-flags: "pre-processor"
       sparse-checkout: "pre-processor"
       upload-coverage: true
@@ -33,7 +44,6 @@ jobs:
     uses: ./.github/workflows/reusable-go-quality-gates.yaml
     with:
       working-directory: "pre-processor/app"
-      go-version: "1.27.1"
       upload-sarif: false
     permissions:
       contents: read

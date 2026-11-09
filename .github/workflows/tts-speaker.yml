@@ -8,11 +8,19 @@ on:
     paths:
       - "tts-speaker/**"
       - ".github/workflows/tts-speaker.yml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main, develop]
     paths:
       - "tts-speaker/**"
       - ".github/workflows/tts-speaker.yml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -27,12 +35,10 @@ jobs:
       python-version: "3.14"
       sparse-checkout: "tts-speaker"
       coverage-flags: "tts-speaker"
-      upload-coverage: true
       job-type: "test"
       test-command: "pytest -v --cov=tts_speaker --cov-report=xml --junit-xml=tests/results.xml"
     permissions:
       contents: read
-    secrets: inherit
 
   lint:
     uses: ./.github/workflows/reusable-test-python.yaml

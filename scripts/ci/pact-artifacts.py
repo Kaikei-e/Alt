@@ -1,8 +1,10 @@
 import hashlib
+import http.client
 import os
 import re
 import sys
 import tarfile
+import time
 import urllib.request
 import urllib.error
 import gzip
@@ -17,6 +19,41 @@ LIBPACT_FFI_URL = "https://github.com/pact-foundation/pact-reference/releases/do
 # Official SHA256 from https://github.com/pact-foundation/pact-reference/releases/expanded_assets/libpact_ffi-v0.4.28
 LIBPACT_FFI_SHA256 = "73053bd1b3219e7012ec1f7ee0cc7bbb94a07bb44249d8f4002be0ba4bddbd4e"
 
+MAX_DOWNLOAD_ATTEMPTS = 3
+INITIAL_BACKOFF_SECONDS = 5.0
+
+
+def _fetch_bytes_with_retry(req, max_attempts=MAX_DOWNLOAD_ATTEMPTS, initial_backoff=INITIAL_BACKOFF_SECONDS):
+    for attempt in range(1, max_attempts + 1):
+        try:
+            # bounded network read
+            with urllib.request.urlopen(req, timeout=30) as response:
+                data = b""
+                while True:
+                    chunk = response.read(8192)
+                    if not chunk:
+                        break
+                    data += chunk
+                    if len(data) > 50 * 1024 * 1024:
+                        print("File too large! Max 50MB allowed.")
+                        sys.exit(1)
+                return data
+        except urllib.error.HTTPError as e:
+            if 500 <= e.code < 600 and attempt < max_attempts:
+                delay = initial_backoff * (2 ** (attempt - 1))
+                print(f"Transient HTTP {e.code} on attempt {attempt}/{max_attempts}, retrying in {delay}s...")
+                time.sleep(delay)
+                continue
+            raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead) as e:
+            if attempt < max_attempts:
+                delay = initial_backoff * (2 ** (attempt - 1))
+                print(f"Transient download error ({e}) on attempt {attempt}/{max_attempts}, retrying in {delay}s...")
+                time.sleep(delay)
+                continue
+            raise
+
+
 def download_and_verify(url, expected_hash, dest_path):
     if not url.startswith("https://github.com/pact-foundation/"):
         print("Invalid URL domain!")
@@ -28,18 +65,8 @@ def download_and_verify(url, expected_hash, dest_path):
     print(f"Downloading {url}...")
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     try:
-        # bounded network read
-        with urllib.request.urlopen(req, timeout=30) as response:
-            data = b""
-            while True:
-                chunk = response.read(8192)
-                if not chunk:
-                    break
-                data += chunk
-                if len(data) > 50 * 1024 * 1024:
-                    print("File too large! Max 50MB allowed.")
-                    sys.exit(1)
-    except urllib.error.URLError as e:
+        data = _fetch_bytes_with_retry(req)
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead) as e:
         print(f"Failed to download: {e}")
         sys.exit(1)
 

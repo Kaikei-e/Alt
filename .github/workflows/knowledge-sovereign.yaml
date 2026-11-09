@@ -8,14 +8,26 @@ on:
     branches: [ main, master ]
     paths:
       - 'knowledge-sovereign/**'
-      - 'docs/features/knowledge-loop/**'
       - '.github/workflows/knowledge-sovereign.yaml'
+      - '.github/workflows/reusable-test-go.yaml'
+      - '.github/workflows/reusable-go-quality-gates.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
+      # Placed after the markdown negations because a later paths pattern overrides earlier ones.
+      - 'docs/features/knowledge-loop/**'
   pull_request:
     branches: [ main, master ]
     paths:
       - 'knowledge-sovereign/**'
-      - 'docs/features/knowledge-loop/**'
       - '.github/workflows/knowledge-sovereign.yaml'
+      - '.github/workflows/reusable-test-go.yaml'
+      - '.github/workflows/reusable-go-quality-gates.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
+      # Placed after the markdown negations because a later paths pattern overrides earlier ones.
+      - 'docs/features/knowledge-loop/**'
   workflow_dispatch:
 
 concurrency:
@@ -26,7 +38,6 @@ jobs:
   test:
     permissions:
       contents: read
-      id-token: write
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: 'knowledge-sovereign/app'
@@ -57,6 +68,7 @@ jobs:
           go-version-file: 'knowledge-sovereign/app/go.mod'
           check-latest: true
           cache: true
+          cache-dependency-path: 'knowledge-sovereign/app/go.sum'
 
       - name: Integration tests (real PostgreSQL + Atlas migrations)
         working-directory: knowledge-sovereign/app

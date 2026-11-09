@@ -1,10 +1,22 @@
 import { expect, test } from "../../fixtures/pomFixtures";
 import { fulfillJson } from "../../utils/mockHelpers";
 
+const TRAIL_PATHS = {
+	getTrail: "**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail",
+	resolveBranch:
+		"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/ResolveBranch",
+	emitTrailOutcome:
+		"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/EmitTrailOutcome",
+};
+
 // E2E for the Knowledge Trail spine (Wave 2, read-only). Pull-only: the page
 // loads on navigation and refreshes only on explicit action — there is no live
 // channel to wait on (the deliberate PM-2026-039 / PM-2026-045 lesson).
 test.describe("Knowledge Trail spine", () => {
+	test.beforeEach(async ({ page }) => {
+		await page.route(TRAIL_PATHS.getTrail, (route) => fulfillJson(route, {}));
+	});
+
 	test("loads the trail page with an editorial header", async ({ page }) => {
 		await page.goto("./knowledge/trail");
 		await expect(page.getByRole("heading", { name: "Your Trail" })).toBeVisible(
@@ -58,14 +70,6 @@ test.describe("Trail entry points", () => {
 		).toBeVisible();
 	});
 });
-
-const TRAIL_PATHS = {
-	getTrail: "**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail",
-	resolveBranch:
-		"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/ResolveBranch",
-	emitTrailOutcome:
-		"**/api/v2/alt.knowledge_trail.v1.KnowledgeTrailService/EmitTrailOutcome",
-};
 
 const BRANCH_KEY = "cluster:u1:article:b2";
 

@@ -12,23 +12,15 @@ on:
       python-version:
         required: false
         type: string
-        default: "3.13"
+        default: "3.14"
       test-command:
         required: false
         type: string
         default: "pytest -v --cov=. --cov-report=xml --junit-xml=tests/results.xml"
-      use-oidc:
-        required: false
-        type: boolean
-        default: false
       use-local-persistent-cache:
         required: false
         type: boolean
         default: false
-      upload-coverage:
-        required: false
-        type: boolean
-        default: true
       coverage-flags:
         required: false
         type: string
@@ -91,8 +83,9 @@ jobs:
           echo "UV_TOOL_DIR=$TOOL_BASE" >> "$GITHUB_ENV"
 
       # 2) ランナーがエフェメラル等でHOME永続化できない場合は、GitHub Cacheを併用
+      # Skip restoring/saving the multi-hundred-MB ML/PyTorch cache on lint and security jobs, which only install the lightweight dev tool group.
       - name: Restore uv cache (GitHub Cache)
-        if: ${{ !inputs.use-local-persistent-cache }}
+        if: ${{ !inputs.use-local-persistent-cache && inputs.job-type != 'lint' && inputs.job-type != 'security' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
@@ -109,9 +102,16 @@ jobs:
           echo "UV_TOOL_DIR=$HOME/.local/share/uv" >> "$GITHUB_ENV"
 
       - name: Sync project dependencies
+        if: ${{ inputs.job-type != 'lint' && inputs.job-type != 'security' }}
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: |
           uv sync --all-extras --dev
+
+      - name: Sync lint/security tool dependencies
+        if: ${{ inputs.job-type == 'lint' || inputs.job-type == 'security' }}
+        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
+        run: |
+          uv sync --frozen --only-group dev
 
       - name: Python env (diagnostics)
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
@@ -128,20 +128,21 @@ jobs:
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         env:
           SERVICE_NAME: ${{ inputs.coverage-flags }}-test
-        run: uv run ${{ inputs.test-command }}
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: eval "uv run $TEST_COMMAND"
 
       - name: Run linting (ruff check)
         if: ${{ inputs.job-type == 'lint' }}
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: |
-          uv run ruff check .
-          uv run ruff format --check .
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
 
       # bandit's built-in default excludes do not include .venv, so it must be excluded explicitly to avoid scanning installed third-party packages.
       - name: Run security scan (bandit)
         if: ${{ inputs.job-type == 'security' }}
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
-        run: uv run bandit -r . -ll -ii -f json -o bandit-report.json -x ./.venv,./node_modules,./.mypy_cache,./.pytest_cache,./.ruff_cache,./build,./dist
+        run: uv run --no-sync bandit -r . -ll -ii -f json -o bandit-report.json -x ./.venv,./node_modules,./.mypy_cache,./.pytest_cache,./.ruff_cache,./build,./dist
 
       - name: Run type checking
         if: ${{ inputs.job-type == 'typecheck' }}

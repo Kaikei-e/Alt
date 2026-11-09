@@ -8,10 +8,18 @@ on:
     branches: [ main ]
     paths:
       - 'alt-frontend-sv/**'
+      - '.github/workflows/alt-frontend-sv.yml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   pull_request:
     branches: [ main ]
     paths:
       - 'alt-frontend-sv/**'
+      - '.github/workflows/alt-frontend-sv.yml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   workflow_call:
     inputs:
       working-directory:
@@ -51,18 +59,20 @@ jobs:
       # Must track the @playwright/test version in alt-frontend-sv/package.json:
       # the image ships the browser build that release pins, and a mismatch makes
       # every run re-download browsers (or fail closed on a locked-down runner).
-      image: mcr.microsoft.com/playwright:v1.62.1-jammy
+      # Refresh the @sha256 digest together with the tag (Dependabot github-actions does not bump container images).
+      image: mcr.microsoft.com/playwright:v1.62.1-jammy@sha256:b3251f7ff1a9fa559a28d1c67eaa15fc1a9800f7845e82756caea7842967f615
 
     env:
       CI: true
       FORCE_COLOR: "1"
       PLAYWRIGHT_SKIP_GIT_INFO: "1"
+      BUN_VERSION: "1.3.12"
 
     steps:
       - name: Pre-checkout cleanup
         run: |
           if [ -d "$GITHUB_WORKSPACE" ]; then
-            rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
+            rm -rf "${GITHUB_WORKSPACE:?}"/* "${GITHUB_WORKSPACE:?}"/.[!.]* 2>/dev/null || true
           fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -95,8 +105,6 @@ jobs:
           echo "::endgroup::"
 
       - name: Install Bun
-        env:
-          BUN_VERSION: "1.2.14"
         run: |
           set -eu
           ARCH=$(uname -m)
@@ -106,8 +114,8 @@ jobs:
             BUN_ARCH="bun-linux-x64"
           fi
           BUN_BASE="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}"
-          curl -fsSL "${BUN_BASE}/${BUN_ARCH}.zip" -o "/tmp/${BUN_ARCH}.zip"
-          curl -fsSL "${BUN_BASE}/SHASUMS256.txt"  -o /tmp/bun-sha256.txt
+          curl -fsSL --retry 5 --retry-all-errors --connect-timeout 10 "${BUN_BASE}/${BUN_ARCH}.zip" -o "/tmp/${BUN_ARCH}.zip"
+          curl -fsSL --retry 5 --retry-all-errors --connect-timeout 10 "${BUN_BASE}/SHASUMS256.txt" -o /tmp/bun-sha256.txt
           EXPECTED_SHA="$(grep "  ${BUN_ARCH}\.zip$" /tmp/bun-sha256.txt | awk '{print $1}')"
           [ -n "$EXPECTED_SHA" ] || { echo "no checksum entry for ${BUN_ARCH}.zip"; exit 1; }
           echo "${EXPECTED_SHA}  /tmp/${BUN_ARCH}.zip" | sha256sum -c -
@@ -136,9 +144,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}
           restore-keys: |
-            bun-${{ runner.os }}-
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
 
       - name: Install dependencies
         run: bun install

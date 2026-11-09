@@ -4,10 +4,22 @@ on:
     branches: [ main, master ]
     paths:
       - 'rask-log-forwarder/**'
+      - 'compose/logging.yaml'
+      - '.github/workflows/rask-log-forwarder.yml'
+      - '.github/workflows/reusable-test-rust.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   pull_request:
     branches: [ main, master ]
     paths:
       - 'rask-log-forwarder/**'
+      - 'compose/logging.yaml'
+      - '.github/workflows/rask-log-forwarder.yml'
+      - '.github/workflows/reusable-test-rust.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   workflow_dispatch:
 
 concurrency:
@@ -23,5 +35,4 @@ jobs:
     uses: ./.github/workflows/reusable-test-rust.yaml
     with:
       working-directory: 'rask-log-forwarder/app'
-      toolchain: 'stable'
       coverage-flags: 'rask-log-forwarder'

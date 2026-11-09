@@ -16,20 +16,32 @@
 #   (4) a workflow lacks a top-level `permissions:` block,
 #   (5) an `actions/checkout` step keeps `persist-credentials`,
 #   (6) a `run:` body interpolates `github.event.*` / `github.head_ref`,
-#   (7) a `uses:` reference is not pinned to a commit SHA / image digest, or
+#   (7) a `uses:` reference is not pinned to a commit SHA / image digest,
 #   (8) an `on.push.paths` / `on.pull_request.paths` entry's literal path or
 #       non-glob directory prefix does not resolve to an existing file or
-#       directory.
-#   (4)-(7) are the GitHub Actions hardening guide's baseline, made
-#   structural so a new workflow cannot quietly regress them.
+#       directory,
+#   (9) a `jobs.<id>.container(.image)` or `jobs.<id>.services.<name>.image`
+#       is not pinned by an `@sha256:` digest,
+#  (10) a job that is not a reusable-workflow call lacks `timeout-minutes`, or
+#  (11) an `on.push.paths` / `on.pull_request.paths` filter does not match the
+#       workflow's own file and every local reusable workflow it calls via
+#       `uses: ./.github/workflows/<file>` at job level (or excludes them via a
+#       subsequent `!` negation).
+#   (4)-(7) and (9)-(10) are the GitHub Actions hardening guide's baseline,
+#   and (8) and (11) prevent dead or non-self-triggering path filters — all
+#   made structural so a new workflow or directory deletion cannot quietly
+#   regress them.
 #
-# Scope boundary: this lint only inspects `.github/workflows/**`. Composite
+# Scope boundary: this lint inspects `.github/workflows/**` and runs on every
+# pull_request and push to main so any commit that deletes a file or directory
+# referenced by a workflow `paths:` filter (including docs files) is caught by
+# check (8). Composite
 # actions under `.github/actions/**` cannot declare their own triggers or
 # runners, so they are out of scope here; guard them separately if the trust
 # model ever requires it. Check (3) additionally reads
 # `alt-frontend-sv/package.json`, because a workflow step reaches vitest
 # through an npm script and gutting the script is as effective a way to stop
-# the suite as deleting the job — hence that file is in the trigger paths too.
+# the suite as deleting the job.
 #
 # Implementation note: the structural check lives in a sibling script file
 # (scripts/workflow-safety-check.py) rather than an inline heredoc, because
@@ -44,16 +56,8 @@ name: workflow-safety-lint
 
 on:
   pull_request:
-    paths:
-      - '.github/workflows/**'
-      - 'alt-frontend-sv/package.json'
-      - 'alt-frontend-sv/vitest.config.ts'
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/**'
-      - 'alt-frontend-sv/package.json'
-      - 'alt-frontend-sv/vitest.config.ts'
 
 permissions:
   contents: read
@@ -77,6 +81,9 @@ jobs:
         # ubuntu-latest ships python3 but not PyYAML. Pin to the 6.x line so
         # supply-chain drift is bounded.
         run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Run workflow script unit tests
+        run: python3 -m unittest discover -s .github/workflows/scripts -p "test_*.py"
 
       - name: Reject pull_request_target and workflow_run (grep, defence in depth)
         shell: bash
@@ -105,3 +112,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/workflows/scripts/workflow-safety-check.py
+
+      - name: Run actionlint (without shellcheck)
+        uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+        with:
+          args: -shellcheck=

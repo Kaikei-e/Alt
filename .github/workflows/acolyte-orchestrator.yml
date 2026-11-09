@@ -7,10 +7,20 @@ on:
     branches: [main, develop]
     paths:
       - "acolyte-orchestrator/**"
+      - ".github/workflows/acolyte-orchestrator.yml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main, develop]
     paths:
       - "acolyte-orchestrator/**"
+      - ".github/workflows/acolyte-orchestrator.yml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -25,12 +35,10 @@ jobs:
       python-version: "3.14"
       sparse-checkout: "acolyte-orchestrator"
       coverage-flags: "acolyte-orchestrator"
-      upload-coverage: true
       job-type: "test"
       test-command: "pytest -v --cov=acolyte --cov-report=xml --junit-xml=tests/results.xml"
     permissions:
       contents: read
-    secrets: inherit
 
   lint:
     uses: ./.github/workflows/reusable-test-python.yaml
