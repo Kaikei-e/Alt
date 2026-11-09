@@ -206,7 +206,10 @@ export default mergeConfig(
 					test: {
 						name: "server",
 						environment: "node",
-						include: ["src/**/*.{test,spec}.{ts,tsx}"],
+						include: [
+							"src/**/*.{test,spec}.{ts,tsx}",
+							"tests/e2e/infra/**/*.test.ts",
+						],
 						exclude: ["src/**/*.svelte.{test,spec}.{ts,tsx}"],
 					},
 				},
