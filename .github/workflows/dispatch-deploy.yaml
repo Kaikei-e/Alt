@@ -1,24 +1,27 @@
-# Cross-repo dispatch: when main advances on non-docs changes, notify the
-# private alt-deploy repo to kick off build / gate / E2E / deploy against the
-# new HEAD (docs-only pushes are skipped via paths-ignore). This is the
-# only public-repo workflow that talks to the deploy side, and it does so
-# only on `push: branches: [main]` — fork PRs cannot reach this job.
+# Cross-repo dispatch: when main advances on non-docs changes, send a
+# repository_dispatch event to the dispatch target repository with the new
+# HEAD SHA, ref, and changed path prefixes (docs-only pushes are skipped via
+# paths-ignore). This workflow runs only on `push: branches: [main]` — fork
+# PRs cannot reach this job.
 #
-# The fine-grained PAT `ALT_DEPLOY_DISPATCH_PAT` is scoped to
-# repository_dispatch on `Kaikei-e/alt-deploy` and nothing else. It is not
-# accessible from fork-PR contexts (GitHub withholds secrets there on push
-# events by construction), so a malicious PR cannot exfiltrate it even if it
-# modifies this file — the attacker's version never runs on `main`.
+# The target repository (`owner/repo`) is read from the `DISPATCH_TARGET_REPO`
+# secret and the fine-grained PAT from `DISPATCH_TOKEN` (scoped to
+# repository_dispatch on the dispatch target repository and nothing else).
+# Neither secret is accessible from fork-PR contexts (GitHub withholds
+# secrets on fork pull_request events by construction), so a malicious PR
+# cannot exfiltrate them even if it modifies this file — the attacker's
+# version never runs on `main`.
 #
-# When the PAT is missing (pre-bootstrap state), the workflow logs a warning
-# and exits successfully instead of failing — the deploy pipeline isn't
-# production-gating the mainline build, it's an additive notifier.
+# Both secrets are required configuration: if either is missing or
+# `DISPATCH_TARGET_REPO` is not of the form `owner/repo`, the job fails
+# loudly with an `::error::` annotation pointing to the setup runbook.
 #
-# Before dispatching, the PAT is probed against a read-only endpoint on
-# alt-deploy and GitHub's `github-authentication-token-expiration` response
-# header is turned into a countdown (warning at 30 days, error at 7), so an
-# approaching expiry surfaces on the run page instead of as a 401 on the day
-# production stops rolling. The probe never fails the job.
+# Before dispatching, `DISPATCH_TOKEN` is probed against a read-only metadata
+# endpoint on the dispatch target repository and GitHub's
+# `github-authentication-token-expiration` response header is turned into a
+# countdown (warning at 30 days, error at 7), so an approaching expiry
+# surfaces on the run page instead of as a 401 on the day downstream
+# dispatches stop succeeding. The probe never fails the job.
 #
 # Every action here is pinned to a commit SHA — the repository setting
 # requires it — and Dependabot (.github/dependabot.yml) keeps those pins
@@ -49,47 +52,59 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check PAT availability
-        id: check
+      - name: Check required dispatch secrets
         env:
-          PAT: ${{ secrets.ALT_DEPLOY_DISPATCH_PAT }}
-        run: |
-          if [[ -z "${PAT}" ]]; then
-            echo "::warning::ALT_DEPLOY_DISPATCH_PAT is not configured yet. Skipping dispatch — see docs/runbooks/runner-setup.md step 4."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Probe dispatch PAT expiry
-        # GET on the dispatch target is the cheapest call this PAT is scoped
-        # for, and every authenticated response carries the expiration header
-        # for a token that expires. Warnings only: a stale token must be loud,
-        # but an expiry check must never be the reason a deploy fails to go out.
-        if: steps.check.outputs.ready == 'true'
-        env:
-          PAT: ${{ secrets.ALT_DEPLOY_DISPATCH_PAT }}
-          PROBE_URL: https://api.github.com/repos/Kaikei-e/alt-deploy
+          DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          DISPATCH_TARGET_REPO: ${{ secrets.DISPATCH_TARGET_REPO }}
           RUNBOOK: docs/runbooks/runner-setup.md step 4
         run: |
           set -euo pipefail
+          failed=0
+          if [[ -z "${DISPATCH_TOKEN}" ]]; then
+            echo "::error::Required secret DISPATCH_TOKEN is missing — configure it per ${RUNBOOK}."
+            failed=1
+          fi
+          if [[ -z "${DISPATCH_TARGET_REPO}" ]]; then
+            echo "::error::Required secret DISPATCH_TARGET_REPO is missing — configure it as owner/repo per ${RUNBOOK}."
+            failed=1
+          elif [[ ! "${DISPATCH_TARGET_REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Secret DISPATCH_TARGET_REPO must be of the form owner/repo — see ${RUNBOOK}."
+            failed=1
+          fi
+          if (( failed != 0 )); then
+            exit 1
+          fi
+
+      - name: Probe dispatch token expiry
+        # GET on the dispatch target repository is the cheapest call this token
+        # is scoped for, and every authenticated response carries the expiration
+        # header for a token that expires. Warnings only: a stale token must be
+        # loud, but an expiry check must never be the reason a dispatch fails to
+        # go out.
+        env:
+          DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          DISPATCH_TARGET_REPO: ${{ secrets.DISPATCH_TARGET_REPO }}
+          RUNBOOK: docs/runbooks/runner-setup.md step 4
+        run: |
+          set -euo pipefail
+          probe_url="https://api.github.com/repos/${DISPATCH_TARGET_REPO}"
           headers="$(curl -sS --retry 3 --retry-delay 2 --max-time 10 -D - -o /dev/null \
-            -H "Authorization: Bearer $PAT" \
+            -H "Authorization: Bearer $DISPATCH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$PROBE_URL")" || headers=""
+            "$probe_url")" || headers=""
           headers="$(printf '%s\n' "$headers" | tr -d '\r')"
           status="$(printf '%s\n' "$headers" \
             | sed -n 's|^HTTP/[0-9.]* \([0-9]\{3\}\).*|\1|p' | tail -n1)"
 
           if [[ "$status" == "401" || "$status" == "403" ]]; then
-            echo "::warning::Expiry probe rejected with HTTP ${status}: ALT_DEPLOY_DISPATCH_PAT is expired, revoked, or no longer scoped to Kaikei-e/alt-deploy. Rotate it per ${RUNBOOK}; the dispatch step below prints the authoritative diagnostic."
-            echo "- dispatch PAT expiry: probe rejected (HTTP ${status})" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Expiry probe rejected with HTTP ${status}: DISPATCH_TOKEN is expired, revoked, or no longer scoped to the dispatch target repository. Rotate it per ${RUNBOOK}; the dispatch step below prints the authoritative diagnostic."
+            echo "- dispatch token expiry: probe rejected (HTTP ${status})" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [[ "$status" != 2* ]]; then
-            echo "::warning::Expiry probe could not reach the GitHub API (HTTP ${status:-none}); PAT expiry unknown for this run."
-            echo "- dispatch PAT expiry: unknown (probe HTTP ${status:-none})" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Expiry probe could not reach the GitHub API (HTTP ${status:-none}); token expiry unknown for this run."
+            echo "- dispatch token expiry: unknown (probe HTTP ${status:-none})" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -97,49 +112,41 @@ jobs:
             | grep -i -m1 '^github-authentication-token-expiration:' \
             | cut -d: -f2- | sed 's/^[[:space:]]*//')" || expiry=""
           if [[ -z "$expiry" ]]; then
-            echo "::warning::GitHub returned no github-authentication-token-expiration header, so ALT_DEPLOY_DISPATCH_PAT never expires. Policy caps this token at 90 days — replace it with an expiring one per ${RUNBOOK}."
-            echo "- dispatch PAT expiry: none — non-expiring token, against policy" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::GitHub returned no github-authentication-token-expiration header, so DISPATCH_TOKEN never expires. Policy caps this token at 90 days — replace it with an expiring one per ${RUNBOOK}."
+            echo "- dispatch token expiry: none — non-expiring token, against policy" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if ! expiry_epoch="$(date -u -d "$expiry" +%s 2>/dev/null)"; then
             echo "::warning::Could not parse the token expiration header value ${expiry}; check it by hand per ${RUNBOOK}."
-            echo "- dispatch PAT expiry: unparseable (${expiry})" >> "$GITHUB_STEP_SUMMARY"
+            echo "- dispatch token expiry: unparseable (${expiry})" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           now_epoch="$(date -u +%s)"
           days=$(( (expiry_epoch - now_epoch) / 86400 ))
-          echo "- dispatch PAT (\`ALT_DEPLOY_DISPATCH_PAT\`) expires ${expiry} — ${days} day(s) left" >> "$GITHUB_STEP_SUMMARY"
+          echo "- dispatch token (\`DISPATCH_TOKEN\`) expires ${expiry} — ${days} day(s) left" >> "$GITHUB_STEP_SUMMARY"
           if (( days < 0 )); then
-            echo "::error::ALT_DEPLOY_DISPATCH_PAT expired on ${expiry}. Cross-repo dispatch to alt-deploy stays broken until it is rotated — ${RUNBOOK}."
+            echo "::error::DISPATCH_TOKEN expired on ${expiry}. Cross-repo dispatch to the dispatch target repository stays broken until it is rotated — ${RUNBOOK}."
           elif (( days < 7 )); then
-            echo "::error::ALT_DEPLOY_DISPATCH_PAT expires ${expiry} (${days} day(s) left). Rotate it now, before production silently stops rolling — ${RUNBOOK}."
+            echo "::error::DISPATCH_TOKEN expires ${expiry} (${days} day(s) left). Rotate it now, before downstream dispatches silently stop — ${RUNBOOK}."
           elif (( days < 30 )); then
-            echo "::warning::ALT_DEPLOY_DISPATCH_PAT expires ${expiry} (${days} days left). Schedule the rotation — ${RUNBOOK}."
+            echo "::warning::DISPATCH_TOKEN expires ${expiry} (${days} days left). Schedule the rotation — ${RUNBOOK}."
           else
-            echo "::notice::ALT_DEPLOY_DISPATCH_PAT expires ${expiry} (${days} days left)."
+            echo "::notice::DISPATCH_TOKEN expires ${expiry} (${days} days left)."
           fi
 
       - name: Checkout HEAD (shallow, for diff enumeration)
-        if: steps.check.outputs.ready == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
       - name: Enumerate changed paths via git (no 300-file API cap)
-        # The Compare Commits API caps `files` at 300 per response. Run
-        # 30666223031 (alt-deploy) received exactly 300 entries for the
-        # ADR-000954 merge (400+ files): recap-worker / search-indexer /
-        # tag-generator / rag-orchestrator sorted past the cap, silently
-        # dropped out of the release matrix, and production would have
-        # rolled a provider without its migrated consumers. git diff has
-        # no such cap. The list is then compacted to unique <=3-segment
-        # prefixes (deeper paths keep a trailing slash) so the
-        # client_payload stays far below the dispatch size limit while
-        # alt-deploy's SERVICE_PATHS prefix matching — whose deepest
-        # prefixes are 3 segments (`e2e/fixtures/<svc>/`) — still matches
-        # exactly the same set of services.
-        if: steps.check.outputs.ready == 'true'
+        # The Compare Commits API caps `files` at 300 per response, which
+        # truncates large merges. `git diff` has no such cap. The list is
+        # compacted to unique <=3-segment prefixes (deeper paths keep a
+        # trailing slash) so `client_payload` stays far below the dispatch
+        # payload size limit while preserving <=3-segment directory prefix
+        # granularity for the downstream receiver.
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.event.after }}
@@ -160,12 +167,22 @@ jobs:
             | sort -u > changed.txt
           echo "changed prefixes: $(wc -l < changed.txt)"
 
-      - name: Fire repository_dispatch at alt-deploy
-        if: steps.check.outputs.ready == 'true'
+      - name: Fire repository_dispatch
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          DISPATCH_TARGET_REPO: ${{ secrets.DISPATCH_TARGET_REPO }}
         with:
-          github-token: ${{ secrets.ALT_DEPLOY_DISPATCH_PAT }}
+          github-token: ${{ secrets.DISPATCH_TOKEN }}
           script: |
+            const target = (process.env.DISPATCH_TARGET_REPO || '').trim();
+            const parts = target.split('/');
+            if (parts.length !== 2 || !parts[0] || !parts[1]) {
+              core.setFailed(
+                'Secret DISPATCH_TARGET_REPO must be of the form owner/repo — see docs/runbooks/runner-setup.md step 4.'
+              );
+              return;
+            }
+            const [owner, repo] = parts;
             const sha = context.sha;
             const ref = context.ref;
             // The git step above enumerates the push diff without the
@@ -173,8 +190,7 @@ jobs:
             // payload when before/after were unusable (first push,
             // force-push that collapses branch history) — webhooks
             // sometimes deliver `commits[].{added,modified,removed}`
-            // empty even for real diffs, which alt-deploy's resolve job
-            // treats as "nothing moved", so this is last resort only.
+            // empty even for real diffs, so this is last resort only.
             const fs = require('fs');
             let changed = [];
             try {
@@ -189,27 +205,36 @@ jobs:
             }
             try {
               await github.rest.repos.createDispatchEvent({
-                owner: 'Kaikei-e',
-                repo: 'alt-deploy',
+                owner,
+                repo,
                 event_type: 'deploy',
                 client_payload: { sha, ref, changed },
               });
               core.info(`Dispatched deploy event for ${sha} on ${ref} (changed=${changed.length})`);
             } catch (err) {
+              if (err.status === 401) {
+                core.setFailed(
+                  'Dispatch rejected with 401 "Bad credentials". ' +
+                  'The fine-grained PAT stored as DISPATCH_TOKEN is expired or revoked. ' +
+                  'Rotate the token per docs/runbooks/runner-setup.md step 4 and overwrite the repo secret.'
+                );
+                return;
+              }
               if (err.status === 403) {
                 core.setFailed(
                   'Dispatch rejected with 403 "Resource not accessible by personal access token". ' +
-                  'The fine-grained PAT stored as ALT_DEPLOY_DISPATCH_PAT needs Contents: Read and write ' +
-                  'on Kaikei-e/alt-deploy — Contents: Read alone returns exactly this error. ' +
+                  'The fine-grained PAT stored as DISPATCH_TOKEN needs Contents: Read and write ' +
+                  'on the dispatch target repository — Contents: Read alone returns exactly this error. ' +
                   'Regenerate the PAT per docs/runbooks/runner-setup.md step 4 and overwrite the repo secret.'
                 );
                 return;
               }
               if (err.status === 404) {
                 core.setFailed(
-                  'Dispatch rejected with 404 from Kaikei-e/alt-deploy. ' +
-                  'Either the PAT is not scoped to that repository (Fine-grained PATs only expose the ' +
-                  'repos listed under "Only select repositories"), or the repository name is typoed.'
+                  'Dispatch rejected with 404 from the dispatch target repository. ' +
+                  'Either DISPATCH_TOKEN is not scoped to the dispatch target repository ' +
+                  '(Fine-grained PATs only expose the repos listed under "Only select repositories"), ' +
+                  'or DISPATCH_TARGET_REPO is misconfigured — see docs/runbooks/runner-setup.md step 4.'
                 );
                 return;
               }
