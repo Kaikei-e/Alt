@@ -1,4 +1,5 @@
 <script lang="ts">
+import PulseHeader from "#lib/components/pulse/PulseHeader.svelte";
 import type { EveningPulse } from "#lib/schema/evening_pulse.js";
 import DesktopPulseCard from "./DesktopPulseCard.svelte";
 
@@ -28,7 +29,6 @@ const handleKeydown = (e: KeyboardEvent) => {
 	const topicCount = pulse.topics.length;
 	if (topicCount === 0) return;
 
-	// Handle number keys 1-3 for direct navigation
 	if (e.key >= "1" && e.key <= "3") {
 		const index = Number.parseInt(e.key, 10) - 1;
 		if (index < topicCount) {
@@ -39,7 +39,6 @@ const handleKeydown = (e: KeyboardEvent) => {
 		return;
 	}
 
-	// Handle Tab navigation
 	if (e.key === "Tab") {
 		if (focusedIndex === null) {
 			focusedIndex = e.shiftKey ? topicCount - 1 : 0;
@@ -73,42 +72,12 @@ const handleCardFocus = (index: number) => {
 	role="region"
 	aria-label="Evening Pulse topics"
 >
-	<header class="mb-8">
-		<div class="flex items-end justify-between gap-4 mb-2">
-			<div>
-				<h1 class="text-3xl font-bold" style="color: var(--text-primary);">
-					Evening Pulse
-				</h1>
-				<p class="text-sm mt-1" style="color: var(--text-secondary);">
-					{#if pulse.generatedAt}
-						{@const d = new Date(pulse.generatedAt)}
-						{d.toLocaleDateString("en-US", {
-							month: "long",
-							day: "numeric",
-							weekday: "long",
-						})}
-					{/if}
-					{#if statusLabel}
-						<span class="ml-2 px-2 py-0.5 text-xs" style="background: var(--surface-hover);">
-							{statusLabel}
-						</span>
-					{/if}
-				</p>
-			</div>
-			{#if onNavigateToRecap}
-				<button
-					type="button"
-					class="text-sm px-4 py-2 border border-[var(--surface-border)] hover:bg-[var(--surface-hover)] transition-colors"
-					onclick={onNavigateToRecap}
-				>
-					View 7-Day Recap
-				</button>
-			{/if}
-		</div>
-		<p class="text-xs" style="color: var(--text-muted);">
-			Press 1, 2, or 3 to quickly navigate to topics
-		</p>
-	</header>
+	<PulseHeader
+		date={pulse.generatedAt}
+		{statusLabel}
+		showKeyboardHint={pulse.topics.length > 0}
+		{onNavigateToRecap}
+	/>
 
 	{#if pulse.topics.length > 0}
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -125,8 +94,8 @@ const handleCardFocus = (index: number) => {
 		</div>
 	{:else}
 		<div
-			class="p-8 border-2 border-[var(--surface-border)] text-center"
-			style="background: var(--surface-bg);"
+			class="p-8 border text-center"
+			style="background: var(--surface-bg); border-color: var(--surface-border);"
 		>
 			<p style="color: var(--text-secondary);">No topics available</p>
 		</div>

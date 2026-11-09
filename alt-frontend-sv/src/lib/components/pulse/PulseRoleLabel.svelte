@@ -12,41 +12,38 @@ const roleConfig = $derived.by(() => {
 		case "need_to_know":
 			return {
 				label: "Today's Key",
-				bgColor: "var(--pulse-need-to-know-bg, hsl(0 84% 60% / 0.15))",
-				textColor: "var(--pulse-need-to-know-text, hsl(0 84% 60%))",
-				icon: "!",
+				bgColor: "var(--accent-emphasis-bg)",
+				textColor: "var(--accent-emphasis-text)",
+				borderColor: "var(--accent-emphasis-border)",
 			};
 		case "trend":
 			return {
 				label: "Trending",
-				bgColor: "var(--pulse-trend-bg, hsl(45 93% 47% / 0.15))",
-				textColor: "var(--pulse-trend-text, hsl(45 93% 47%))",
-				icon: "\u2191",
+				bgColor: "var(--accent-muted-bg)",
+				textColor: "var(--accent-muted-text)",
+				borderColor: "var(--accent-muted-border)",
 			};
 		case "serendipity":
 			return {
 				label: "Discovery",
-				bgColor: "var(--pulse-serendipity-bg, hsl(262 83% 58% / 0.15))",
-				textColor: "var(--pulse-serendipity-text, hsl(262 83% 58%))",
-				icon: "\u2605",
+				bgColor: "var(--accent-info-bg)",
+				textColor: "var(--accent-info-text)",
+				borderColor: "var(--accent-info-border)",
 			};
 		default:
 			return {
 				label: "Topic",
-				bgColor: "var(--surface-bg)",
+				bgColor: "var(--surface-2)",
 				textColor: "var(--text-secondary)",
-				icon: "",
+				borderColor: "var(--surface-border)",
 			};
 	}
 });
 </script>
 
 <span
-	class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-	style="background: {roleConfig.bgColor}; color: {roleConfig.textColor};"
+	class="inline-flex items-center px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider border font-mono"
+	style="background: {roleConfig.bgColor}; color: {roleConfig.textColor}; border-color: {roleConfig.borderColor};"
 >
-	{#if roleConfig.icon}
-		<span class="text-[10px]">{roleConfig.icon}</span>
-	{/if}
 	{roleConfig.label}
 </span>

@@ -23,11 +23,11 @@ const formattedDate = $derived.by(() => {
 const roleColor = $derived.by(() => {
 	switch (highlight.role) {
 		case "need_to_know":
-			return "var(--pulse-need-to-know-text, hsl(0 84% 60%))";
+			return "var(--accent-emphasis-text)";
 		case "trend":
-			return "var(--pulse-trend-text, hsl(45 93% 47%))";
+			return "var(--accent-muted-text)";
 		case "serendipity":
-			return "var(--pulse-serendipity-text, hsl(262 83% 58%))";
+			return "var(--accent-info-text)";
 		default:
 			return "var(--text-secondary)";
 	}
@@ -36,18 +36,18 @@ const roleColor = $derived.by(() => {
 
 <button
 	type="button"
-	class="w-full text-left p-4 border-2 border-[var(--surface-border)] bg-white transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
-	style="border-left: 4px solid {roleColor};"
+	class="w-full text-left p-4 border transition-colors cursor-pointer"
+	style="background: var(--surface-bg); border-color: var(--surface-border); border-left: 3px solid {roleColor};"
 	{onclick}
 	aria-label="View highlight: {highlight.title}"
 >
 	<h4
 		class="text-sm font-semibold mb-1 line-clamp-2"
-		style="color: var(--text-primary);"
+		style="color: var(--text-primary); font-family: var(--font-display);"
 	>
 		{highlight.title}
 	</h4>
-	<p class="text-xs" style="color: var(--text-muted);">
+	<p class="text-xs font-mono" style="color: var(--text-muted);">
 		{formattedDate}
 	</p>
 </button>

@@ -1,4 +1,5 @@
 <script lang="ts">
+import PulseHeader from "#lib/components/pulse/PulseHeader.svelte";
 import type { EveningPulse } from "#lib/schema/evening_pulse.js";
 import MobilePulseCard from "./MobilePulseCard.svelte";
 
@@ -8,15 +9,6 @@ interface Props {
 }
 
 const { pulse, onTopicClick }: Props = $props();
-
-const formattedDate = $derived.by(() => {
-	const date = new Date(pulse.generatedAt);
-	return date.toLocaleDateString("en-US", {
-		month: "short",
-		day: "numeric",
-		weekday: "short",
-	});
-});
 
 const statusLabel = $derived.by(() => {
 	switch (pulse.status) {
@@ -31,22 +23,7 @@ const statusLabel = $derived.by(() => {
 </script>
 
 <div class="p-4 max-w-2xl mx-auto pb-24">
-	<header class="mb-6">
-		<h1
-			class="text-2xl font-bold mb-1"
-			style="color: var(--text-primary);"
-		>
-			Evening Pulse
-		</h1>
-		<p class="text-sm" style="color: var(--text-secondary);">
-			{formattedDate}
-			{#if statusLabel}
-				<span class="ml-2 px-2 py-0.5 rounded-full text-xs" style="background: var(--surface-hover);">
-					{statusLabel}
-				</span>
-			{/if}
-		</p>
-	</header>
+	<PulseHeader date={pulse.generatedAt} {statusLabel} />
 
 	<div class="flex flex-col gap-4">
 		{#each pulse.topics as topic, index (topic.clusterId)}
@@ -60,8 +37,8 @@ const statusLabel = $derived.by(() => {
 
 	{#if pulse.topics.length === 0 && pulse.status !== "quiet_day"}
 		<div
-			class="p-6 rounded-2xl text-center"
-			style="background: var(--surface-bg);"
+			class="p-6 border text-center"
+			style="background: var(--surface-bg); border-color: var(--surface-border);"
 		>
 			<p style="color: var(--text-secondary);">No topics available</p>
 		</div>

@@ -1,7 +1,5 @@
 <script lang="ts">
 import { onMount } from "svelte";
-// Desktop components
-import PageHeader from "#lib/components/desktop/layout/PageHeader.svelte";
 import DesktopPulseDetailPanel from "#lib/components/desktop/pulse/DesktopPulseDetailPanel.svelte";
 import DesktopPulseError from "#lib/components/desktop/pulse/DesktopPulseError.svelte";
 import DesktopPulseQuietDay from "#lib/components/desktop/pulse/DesktopPulseQuietDay.svelte";
@@ -11,7 +9,6 @@ import MobilePulseError from "#lib/components/mobile/pulse/MobilePulseError.svel
 import MobilePulseQuietDay from "#lib/components/mobile/pulse/MobilePulseQuietDay.svelte";
 import MobilePulseSkeleton from "#lib/components/mobile/pulse/MobilePulseSkeleton.svelte";
 import MobilePulseTopicSheet from "#lib/components/mobile/pulse/MobilePulseTopicSheet.svelte";
-// Mobile components
 import MobilePulseView from "#lib/components/mobile/pulse/MobilePulseView.svelte";
 import { usePulse } from "#lib/hooks/usePulse.svelte.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
@@ -20,10 +17,7 @@ import { goto } from "$app/navigation";
 
 const pulse = usePulse();
 
-// Desktop state
 let isPanelOpen = $state(false);
-
-// Mobile state
 let isSheetOpen = $state(false);
 
 const navigateToRecap = () => {
@@ -40,7 +34,6 @@ const handleTopicClick = (clusterId: number) => {
 	}
 };
 
-// Desktop handlers
 const handleClosePanel = () => {
 	isPanelOpen = false;
 };
@@ -58,7 +51,6 @@ const handleHighlightClick = (id: string) => {
 	goto(`/recap?highlight=${id}`);
 };
 
-// Mobile handlers
 const handleCloseSheet = () => {
 	isSheetOpen = false;
 	pulse.clearSelectedTopic();
@@ -81,12 +73,7 @@ onMount(() => {
 </svelte:head>
 
 {#if isDesktop()}
-	<PageHeader
-		title="Evening Pulse"
-		description="Today's key topics curated for you"
-	/>
-
-	<div class="min-h-[calc(100dvh-12rem)]">
+	<div class="min-h-[calc(100dvh-12rem)]" style="background: var(--surface-bg);">
 		{#if pulse.isLoading}
 			<DesktopPulseSkeleton />
 		{:else if pulse.error}
@@ -120,7 +107,7 @@ onMount(() => {
 		onNavigateToRecap={handleNavigateToRecap}
 	/>
 {:else}
-	<div class="min-h-[100dvh] relative" style="background: var(--app-bg);">
+	<div class="min-h-[100dvh] relative" style="background: var(--surface-bg);">
 		{#if pulse.isLoading}
 			<MobilePulseSkeleton />
 		{:else if pulse.error}

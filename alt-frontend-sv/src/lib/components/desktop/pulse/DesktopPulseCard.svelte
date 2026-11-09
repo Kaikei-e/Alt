@@ -24,17 +24,24 @@ const {
 const cardBorderColor = $derived.by(() => {
 	switch (topic.role) {
 		case "need_to_know":
-			return "var(--pulse-need-to-know-text, hsl(0 84% 60%))";
+			return "var(--accent-emphasis-text)";
 		case "trend":
-			return "var(--pulse-trend-text, hsl(45 93% 47%))";
+			return "var(--accent-muted-text)";
 		case "serendipity":
-			return "var(--pulse-serendipity-text, hsl(262 83% 58%))";
+			return "var(--accent-info-text)";
 		default:
-			return "var(--border)";
+			return "var(--surface-border)";
 	}
 });
 
-// Format source names for display (e.g., "Reuters, BBC, +3 more")
+const leadArticle = $derived(topic.representativeArticles?.[0] ?? null);
+
+const primaryTitle = $derived(leadArticle?.title?.trim() || topic.title);
+
+const secondaryArticles = $derived(
+	(topic.representativeArticles ?? []).slice(1, 3),
+);
+
 const formattedSources = $derived.by(() => {
 	const sources = topic.sourceNames ?? [];
 	if (sources.length === 0) return "";
@@ -45,47 +52,61 @@ const formattedSources = $derived.by(() => {
 
 <button
 	type="button"
-	class="w-full text-left p-5 border-2 border-[var(--surface-border)] bg-white transition-all duration-200 cursor-pointer group focus:outline-2 focus:outline-[var(--alt-primary)]"
-	class:shadow-md={isFocused}
-	class:-translate-y-0.5={isFocused}
-	style="border-left: 4px solid {cardBorderColor};"
-	aria-label="Topic {index + 1}: {topic.title}"
+	class="w-full text-left p-5 border transition-colors duration-150 cursor-pointer group focus:outline-2 focus:outline-[var(--alt-primary)]"
+	class:bg-[var(--surface-hover)]={isFocused}
+	style="background: var(--surface-bg); border-color: var(--surface-border); border-left: 3px solid {cardBorderColor};"
+	aria-label="Topic {index + 1}: {primaryTitle} — {topic.title}"
 	aria-describedby="rationale-{index}"
 	{tabindex}
-	onclick={onclick}
-	onfocus={onfocus}
+	{onclick}
+	{onfocus}
 >
 	<header class="flex items-start justify-between gap-2 mb-3">
-		<div class="flex items-center gap-2">
+		<div
+			class="flex flex-wrap items-center gap-2 min-w-0"
+			data-testid="pulse-card-kicker"
+		>
 			<span
-				class="text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full"
-				style="background: {cardBorderColor}; color: white;"
+				class="text-xs font-bold px-1.5 py-0.5 border font-mono"
+				style="background: var(--surface-2); border-color: var(--surface-border); color: var(--text-primary);"
 				aria-hidden="true"
 			>
-				{index + 1}
+				#{index + 1}
 			</span>
 			<PulseRoleLabel role={topic.role} />
+			<span
+				class="text-xs uppercase tracking-wider font-mono truncate"
+				style="color: var(--text-muted);"
+				data-testid="pulse-cluster-kicker"
+			>
+				{topic.title}
+			</span>
 		</div>
-		<span class="text-xs" style="color: var(--text-muted);">
+		<span class="text-xs font-mono shrink-0" style="color: var(--text-muted);">
 			{topic.timeAgo}
 		</span>
 	</header>
 
 	<h3
 		id="topic-title-{index}"
-		class="text-lg font-bold mb-2 leading-tight group-hover:text-[var(--alt-primary)] transition-colors"
-		style="color: var(--text-primary);"
+		class="text-lg font-bold mb-2 leading-snug group-hover:text-[var(--interactive-text)] transition-colors"
+		style="color: var(--text-primary); font-family: var(--font-display);"
 	>
-		{topic.title}
+		{primaryTitle}
 	</h3>
 
-	<!-- Top Entities -->
+	{#if leadArticle?.sourceName}
+		<p class="text-xs font-mono mb-3" style="color: var(--text-muted);">
+			{leadArticle.sourceName}
+		</p>
+	{/if}
+
 	{#if topic.topEntities && topic.topEntities.length > 0}
 		<div class="flex flex-wrap gap-1.5 mb-3">
 			{#each topic.topEntities.slice(0, 5) as entity}
 				<span
-					class="text-xs px-2 py-0.5 rounded-full"
-					style="background: var(--surface-hover); color: var(--text-secondary);"
+					class="text-xs px-2 py-0.5 border font-mono"
+					style="background: var(--chip-bg); border-color: var(--chip-border); color: var(--chip-text);"
 				>
 					{entity}
 				</span>
@@ -93,16 +114,18 @@ const formattedSources = $derived.by(() => {
 		</div>
 	{/if}
 
-	<!-- Representative Articles -->
-	{#if topic.representativeArticles && topic.representativeArticles.length > 0}
-		<ul class="space-y-1.5 mb-3 text-sm" style="color: var(--text-secondary);">
-			{#each topic.representativeArticles.slice(0, 3) as article}
+	{#if secondaryArticles.length > 0}
+		<ul
+			class="space-y-1.5 mb-3 pt-2 border-t text-sm"
+			style="color: var(--text-secondary); border-color: var(--surface-border);"
+		>
+			{#each secondaryArticles as article}
 				<li class="flex items-start gap-2">
-					<span class="text-[10px] mt-1" style="color: var(--text-muted);">-</span>
+					<span class="text-xs font-mono mt-0.5" style="color: var(--text-muted);">—</span>
 					<span class="flex-1 line-clamp-1">
-						"{article.title}"
-						<span class="text-xs" style="color: var(--text-muted);">
-							- {article.sourceName}
+						{article.title}
+						<span class="text-xs font-mono" style="color: var(--text-muted);">
+							({article.sourceName})
 						</span>
 					</span>
 				</li>
@@ -114,43 +137,33 @@ const formattedSources = $derived.by(() => {
 		<PulseRationale rationale={topic.rationale} />
 	</div>
 
-	<footer class="flex items-center flex-wrap gap-3 text-xs" style="color: var(--text-muted);">
+	<footer
+		class="flex items-center flex-wrap gap-3 pt-3 border-t text-xs font-mono"
+		style="color: var(--text-muted); border-color: var(--surface-border);"
+	>
 		<span>{topic.articleCount} articles</span>
 		<span>{topic.sourceCount} sources</span>
 		{#if topic.tier1Count}
-			<span class="font-medium" style="color: var(--pulse-need-to-know-text, hsl(0 84% 60%));">
+			<span class="font-semibold" style="color: var(--accent-emphasis-text);">
 				Tier1: {topic.tier1Count}
 			</span>
 		{/if}
 		{#if topic.trendMultiplier}
-			<span class="font-medium" style="color: var(--pulse-trend-text, hsl(45 93% 47%));">
+			<span class="font-semibold" style="color: var(--accent-muted-text);">
 				{topic.trendMultiplier.toFixed(1)}x
 			</span>
 		{/if}
 		{#if formattedSources}
-			<span class="ml-auto" style="color: var(--text-tertiary);">
+			<span class="ml-auto" style="color: var(--text-muted);">
 				{formattedSources}
 			</span>
 		{:else if topic.genre}
-			<span class="ml-auto px-2 py-0.5" style="background: var(--surface-hover);">
+			<span
+				class="ml-auto px-2 py-0.5 border"
+				style="background: var(--surface-2); border-color: var(--surface-border); color: var(--text-secondary);"
+			>
 				{topic.genre}
 			</span>
 		{/if}
 	</footer>
 </button>
-
-<style>
-	button:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		button {
-			transition: none;
-		}
-		button:hover {
-			transform: none;
-		}
-	}
-</style>
