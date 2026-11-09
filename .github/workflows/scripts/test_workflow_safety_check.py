@@ -11,7 +11,7 @@ import yaml
 SCRIPT_PATH = Path(__file__).resolve().parent / "workflow-safety-check.py"
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
-ACTION_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1"
+GHA_OPEN = "$" + "{{"
 
 
 def load_checker():
@@ -120,7 +120,7 @@ class TestWorkflowSafetyCheckHardening(unittest.TestCase):
         )
         self.assertEqual(self.mod.check_workflow_doc("sample.yaml", pinned), [])
 
-    def test_non_reusable_job_requires_timeout_minutes(self) -> None:
+    def test_non_reusable_job_requires_numeric_or_expression_timeout_minutes(self) -> None:
         missing_timeout = base_workflow(
             {
                 "runs-on": "ubuntu-latest",
@@ -145,6 +145,28 @@ class TestWorkflowSafetyCheckHardening(unittest.TestCase):
             any("timeout-minutes" in err for err in errors_zero),
             f"Expected timeout-minutes error for 0, got: {errors_zero}",
         )
+
+        literal_str_timeout = base_workflow(
+            {
+                "runs-on": "ubuntu-latest",
+                "timeout-minutes": "ten",
+                "steps": [{"run": "true"}],
+            }
+        )
+        errors_str = self.mod.check_workflow_doc("sample.yaml", literal_str_timeout)
+        self.assertTrue(
+            any("timeout-minutes" in err for err in errors_str),
+            f"Expected timeout-minutes error for literal string, got: {errors_str}",
+        )
+
+        expr_timeout = base_workflow(
+            {
+                "runs-on": "ubuntu-latest",
+                "timeout-minutes": f"{GHA_OPEN} inputs.timeout-minutes }}",
+                "steps": [{"run": "true"}],
+            }
+        )
+        self.assertEqual(self.mod.check_workflow_doc("sample.yaml", expr_timeout), [])
 
     def test_reusable_workflow_caller_exempt_from_timeout_minutes(self) -> None:
         reusable_caller = base_workflow(
