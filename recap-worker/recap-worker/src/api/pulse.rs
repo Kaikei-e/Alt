@@ -110,7 +110,6 @@ struct ErrorResponse {
 }
 
 pub type PulseWindow = (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>);
-pub type PulseProvenance = (chrono::DateTime<chrono::Utc>, Option<PulseWindow>);
 
 #[async_trait::async_trait]
 pub trait PulseReadDao: Send + Sync {
@@ -124,10 +123,8 @@ pub trait PulseReadDao: Send + Sync {
     async fn get_latest_pulse_run(
         &self,
     ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String>;
-    async fn get_pulse_provenance(
-        &self,
-        job_id: uuid::Uuid,
-    ) -> Result<Option<PulseProvenance>, String>;
+    async fn get_recap_job_window(&self, job_id: uuid::Uuid)
+    -> Result<Option<PulseWindow>, String>;
 }
 
 #[async_trait::async_trait]
@@ -158,13 +155,12 @@ impl PulseReadDao for AppState {
             .map_err(|e| e.to_string())
     }
 
-    async fn get_pulse_provenance(
+    async fn get_recap_job_window(
         &self,
         job_id: uuid::Uuid,
-    ) -> Result<Option<PulseProvenance>, String> {
-        SurfaceDaoOps::get_pulse_provenance(self.pool(), job_id)
+    ) -> Result<Option<PulseWindow>, String> {
+        SurfaceDaoOps::get_recap_job_window(self.pool(), job_id)
             .await
-            .map(|opt| opt.map(|p| (p.finished_at, p.window)))
             .map_err(|e| e.to_string())
     }
 }
@@ -230,21 +226,11 @@ pub async fn get_latest_pulse_impl(
         }
     };
 
-    let provenance = match dao.get_pulse_provenance(row.job_id).await {
-        Ok(Some(prov)) => prov,
-        Ok(None) => {
-            error!("Missing pulse provenance for job {}", row.job_id);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Missing pulse provenance".to_string(),
-                }),
-            )
-                .into_response();
-        }
+    let window = match dao.get_recap_job_window(row.job_id).await {
+        Ok(window) => window,
         Err(e) => {
             error!(
-                "Failed to fetch pulse provenance for job {}: {}",
+                "Failed to fetch recap job window for job {}: {}",
                 row.job_id, e
             );
             return (
@@ -257,7 +243,7 @@ pub async fn get_latest_pulse_impl(
         }
     };
 
-    match build_response(&row, provenance, latest_run, freshness_budget, now) {
+    match build_response(&row, window, latest_run, freshness_budget, now) {
         Ok(response) => {
             info!("Successfully fetched evening pulse for job {}", row.job_id);
             (StatusCode::OK, Json(response)).into_response()
@@ -290,7 +276,7 @@ pub(crate) async fn get_latest(
 
 fn build_response(
     row: &crate::store::models::PulseGenerationRow,
-    provenance: PulseProvenance,
+    window: Option<PulseWindow>,
     latest_run: Option<SurfaceRun>,
     freshness_budget: chrono::Duration,
     now: chrono::DateTime<chrono::Utc>,
@@ -307,9 +293,8 @@ fn build_response(
     let quiet_day = build_quiet_day(&pulse_result);
     let diagnostics = build_diagnostics(&pulse_result.diagnostics);
 
-    let (generated_at, window) = provenance;
     let surface_status = build_surface_status(
-        generated_at,
+        row.finished_at,
         window,
         latest_run,
         evening_pulse_reasons(diagnostics.fallback_level),
@@ -595,7 +580,7 @@ mod tests {
     struct MockPulseReadDao {
         row: Option<crate::store::models::PulseGenerationRow>,
         latest_run: Option<crate::api::surface_status::SurfaceRun>,
-        provenance: Option<PulseProvenance>,
+        window: Result<Option<PulseWindow>, String>,
     }
 
     #[async_trait::async_trait]
@@ -619,11 +604,8 @@ mod tests {
             Ok(self.latest_run.clone())
         }
 
-        async fn get_pulse_provenance(
-            &self,
-            _job_id: Uuid,
-        ) -> Result<Option<PulseProvenance>, String> {
-            Ok(self.provenance)
+        async fn get_recap_job_window(&self, _job_id: Uuid) -> Result<Option<PulseWindow>, String> {
+            self.window.clone()
         }
     }
 
@@ -656,6 +638,7 @@ mod tests {
             target_date: NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(),
             version: "v4".to_string(),
             result_payload: Some(serde_json::to_value(&pulse_result).unwrap()),
+            finished_at,
         };
 
         let dao = MockPulseReadDao {
@@ -666,7 +649,7 @@ mod tests {
                 kicked_at: "2026-11-08T18:00:00Z".to_string(),
                 updated_at: "2026-11-08T18:02:00Z".to_string(),
             }),
-            provenance: Some((finished_at, Some((win_start, win_end)))),
+            window: Ok(Some((win_start, win_end))),
         };
 
         let now = DateTime::parse_from_rfc3339("2026-11-09T12:00:00Z")
@@ -707,7 +690,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_latest_pulse_returns_500_when_provenance_missing() {
+    async fn test_get_latest_pulse_returns_500_when_job_window_query_fails() {
         use chrono::DateTime;
 
         let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
@@ -724,12 +707,13 @@ mod tests {
             target_date: NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(),
             version: "v4".to_string(),
             result_payload: Some(serde_json::to_value(&pulse_result).unwrap()),
+            finished_at,
         };
 
         let dao = MockPulseReadDao {
             row: Some(row),
             latest_run: None,
-            provenance: None,
+            window: Err("simulated db error".to_string()),
         };
 
         let now = DateTime::parse_from_rfc3339("2026-11-09T12:00:00Z")

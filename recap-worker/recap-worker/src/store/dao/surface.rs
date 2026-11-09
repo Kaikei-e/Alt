@@ -12,12 +12,6 @@ pub struct SurfaceRunRecord {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PulseSurfaceProvenance {
-    pub finished_at: DateTime<Utc>,
-    pub window: Option<(DateTime<Utc>, DateTime<Utc>)>,
-}
-
 pub struct SurfaceDaoOps;
 
 impl SurfaceDaoOps {
@@ -101,50 +95,6 @@ impl SurfaceDaoOps {
         })
         .transpose()
         .context("failed to decode latest pulse generation run")
-    }
-
-    pub async fn get_pulse_provenance(
-        pool: &PgPool,
-        job_id: Uuid,
-    ) -> Result<Option<PulseSurfaceProvenance>> {
-        let row = sqlx::query(
-            r"
-            SELECT
-                COALESCE(pg.finished_at, pg.started_at) AS finished_at,
-                rj.window_days,
-                COALESCE(MAX(ro.created_at), rj.kicked_at) AS window_end
-            FROM pulse_generations pg
-            LEFT JOIN recap_jobs rj ON rj.job_id = pg.job_id
-            LEFT JOIN recap_outputs ro ON ro.job_id = rj.job_id
-            WHERE pg.job_id = $1 AND pg.status = 'succeeded'
-            GROUP BY pg.id, pg.finished_at, pg.started_at, rj.window_days, rj.kicked_at
-            ORDER BY pg.finished_at DESC NULLS LAST, pg.id DESC
-            LIMIT 1
-            ",
-        )
-        .bind(job_id)
-        .fetch_optional(pool)
-        .await
-        .context("failed to fetch pulse provenance")?;
-
-        row.map(|r| -> Result<PulseSurfaceProvenance> {
-            let finished_at: DateTime<Utc> = r.try_get("finished_at")?;
-            let window_days: Option<i32> = r.try_get("window_days")?;
-            let window_end: Option<DateTime<Utc>> = r.try_get("window_end")?;
-            let window = match (window_days, window_end) {
-                (Some(days), Some(end)) => {
-                    let start = end - Duration::days(i64::from(days));
-                    Some((start, end))
-                }
-                _ => None,
-            };
-            Ok(PulseSurfaceProvenance {
-                finished_at,
-                window,
-            })
-        })
-        .transpose()
-        .context("failed to decode pulse provenance")
     }
 
     pub async fn get_recap_job_window(

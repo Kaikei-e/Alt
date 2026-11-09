@@ -481,15 +481,13 @@ fn build_morning_letter_from_response(
         "through_line": through_line,
         "previous_letter_ref": previous,
     });
-    let degradation_reason = recap_degradation_reason
-        .map(str::to_string)
-        .or_else(|| {
-            if ml_response.metadata.is_degraded {
-                ml_response.metadata.degradation_reason.clone()
-            } else {
-                None
-            }
-        });
+    let degradation_reason = recap_degradation_reason.map(str::to_string).or_else(|| {
+        if ml_response.metadata.is_degraded {
+            ml_response.metadata.degradation_reason.clone()
+        } else {
+            None
+        }
+    });
     let generation_metadata_jsonb = serde_json::json!({
         "model": ml_response.metadata.model,
         "is_degraded": is_degraded,
@@ -1450,7 +1448,8 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/morning-letter/generate"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_json(mock_news_creator_response_body(false, None)),
+                ResponseTemplate::new(200)
+                    .set_body_json(mock_news_creator_response_body(false, None)),
             )
             .mount(&server)
             .await;
@@ -1487,7 +1486,8 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/morning-letter/generate"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_json(mock_news_creator_response_body(false, None)),
+                ResponseTemplate::new(200)
+                    .set_body_json(mock_news_creator_response_body(false, None)),
             )
             .mount(&server)
             .await;

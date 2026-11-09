@@ -135,24 +135,6 @@ pub async fn get_topic_cards_with_clock(
 ) -> axum::response::Response {
     info!("Fetching latest topic cards");
 
-    let latest_run_record = match dao.get_latest_cards_run().await {
-        Ok(run) => run,
-        Err(e) => {
-            error!("Failed to fetch latest cards run: {e}");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch recap cards".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
-    let latest_run = latest_run_record
-        .as_ref()
-        .map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at));
-
     let latest_job = match dao.get_latest_completed_cards_job().await {
         Ok(job) => job,
         Err(e) => {
@@ -179,6 +161,24 @@ pub async fn get_topic_cards_with_clock(
         )
             .into_response();
     };
+
+    let latest_run_record = match dao.get_latest_cards_run().await {
+        Ok(run) => run,
+        Err(e) => {
+            error!("Failed to fetch latest cards run: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch recap cards".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let latest_run = latest_run_record
+        .as_ref()
+        .map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at));
 
     let mut raw_cards = match dao.get_cards_for_job(job_record.job_id).await {
         Ok(cards) => cards,

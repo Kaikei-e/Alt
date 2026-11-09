@@ -425,7 +425,7 @@ pub(crate) async fn get_indexable_genres(
 }
 
 #[async_trait::async_trait]
-pub trait ThreeDayRecapReadDao: Send + Sync {
+pub trait RecapReadDao: Send + Sync {
     async fn get_latest_completed_job(&self, window_days: i32) -> Result<Option<RecapJob>, String>;
     async fn get_genres_by_job(&self, job_id: uuid::Uuid) -> Result<Vec<GenreWithSummary>, String>;
     async fn get_clusters_by_job(
@@ -438,13 +438,13 @@ pub trait ThreeDayRecapReadDao: Send + Sync {
         genre: &str,
     ) -> Result<Option<Value>, String>;
     async fn get_latest_three_day_recap_run(&self) -> Result<Option<SurfaceRun>, String>;
-    fn observe_cluster_query_duration(&self, _duration_secs: f64) {}
-    fn inc_evidence_duplicates(&self, _removed: usize) {}
-    fn observe_latest_fetch_duration(&self, _duration_secs: f64) {}
+    fn observe_cluster_query_duration(&self, duration_secs: f64);
+    fn inc_evidence_duplicates(&self, removed: usize);
+    fn observe_latest_fetch_duration(&self, duration_secs: f64);
 }
 
 #[async_trait::async_trait]
-impl ThreeDayRecapReadDao for AppState {
+impl RecapReadDao for AppState {
     async fn get_latest_completed_job(&self, window_days: i32) -> Result<Option<RecapJob>, String> {
         self.dao()
             .get_latest_completed_job(window_days)
@@ -513,7 +513,7 @@ impl ThreeDayRecapReadDao for AppState {
 }
 
 pub async fn get_3days_recap_impl(
-    dao: &impl ThreeDayRecapReadDao,
+    dao: &impl RecapReadDao,
     freshness_budget: chrono::Duration,
     now: chrono::DateTime<chrono::Utc>,
 ) -> axum::response::Response {
@@ -536,7 +536,7 @@ pub(crate) async fn get_3days_recap(State(state): State<AppState>) -> impl IntoR
 /// 指定されたウィンドウ日数のRecapデータを取得する
 #[allow(clippy::too_many_lines)]
 async fn get_recap_by_window(
-    dao: &impl ThreeDayRecapReadDao,
+    dao: &impl RecapReadDao,
     window_days: i32,
     label: &str,
     surface_clock: Option<(chrono::Duration, chrono::DateTime<chrono::Utc>)>,
@@ -1028,8 +1028,7 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
-    struct MockThreeDayDao {
+    struct MockRecapReadDao {
         job: Option<crate::store::models::RecapJob>,
         genres: Vec<crate::store::models::GenreWithSummary>,
         body_jsons: std::collections::HashMap<String, Value>,
@@ -1037,7 +1036,7 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl ThreeDayRecapReadDao for MockThreeDayDao {
+    impl RecapReadDao for MockRecapReadDao {
         async fn get_latest_completed_job(
             &self,
             _window_days: i32,
@@ -1075,6 +1074,12 @@ mod tests {
         ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String> {
             Ok(self.latest_run.clone())
         }
+
+        fn observe_cluster_query_duration(&self, _duration_secs: f64) {}
+
+        fn inc_evidence_duplicates(&self, _removed: usize) {}
+
+        fn observe_latest_fetch_duration(&self, _duration_secs: f64) {}
     }
 
     #[tokio::test]
@@ -1110,7 +1115,7 @@ mod tests {
             }),
         );
 
-        let dao = MockThreeDayDao {
+        let dao = MockRecapReadDao {
             job: Some(crate::store::models::RecapJob {
                 job_id,
                 started_at,
@@ -1194,7 +1199,7 @@ mod tests {
             .unwrap()
             .with_timezone(&Utc);
 
-        let dao = MockThreeDayDao {
+        let dao = MockRecapReadDao {
             job: Some(crate::store::models::RecapJob {
                 job_id,
                 started_at,
@@ -1228,7 +1233,6 @@ mod tests {
         );
     }
 
-    #[allow(dead_code)]
     struct MockMorningDao {
         letter: Option<crate::store::models::MorningLetter>,
         latest_run: Option<crate::api::surface_status::SurfaceRun>,

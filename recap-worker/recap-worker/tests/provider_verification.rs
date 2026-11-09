@@ -28,11 +28,11 @@ use recap_worker::api::cards::{
 };
 use recap_worker::api::fetch::{
     ClusterEvidence, ClusterWithEvidence, GenreWithSummary, MorningLetter, MorningLetterReadDao,
-    RecapJob, ThreeDayRecapReadDao, get_3days_recap_impl, get_latest_morning_letter_impl,
+    RecapJob, RecapReadDao, get_3days_recap_impl, get_latest_morning_letter_impl,
     get_morning_letter_by_date_impl,
 };
 use recap_worker::api::pulse::{
-    PulseGenerationRow, PulseProvenance, PulseReadDao, get_latest_pulse_impl,
+    PulseGenerationRow, PulseReadDao, PulseWindow, get_latest_pulse_impl,
 };
 use recap_worker::api::surface_status::SurfaceRun;
 use recap_worker::pipeline::pulse::{
@@ -403,6 +403,7 @@ impl PulseReadDao for VerificationPulseDao {
                     target_date: NaiveDate::from_ymd_opt(2026, 9, 22).unwrap(),
                     version: "v4".to_string(),
                     result_payload: Some(serde_json::to_value(&result).unwrap()),
+                    finished_at: generated_at,
                 }))
             }
             Some(unknown) => {
@@ -427,17 +428,14 @@ impl PulseReadDao for VerificationPulseDao {
         }))
     }
 
-    async fn get_pulse_provenance(&self, _job_id: Uuid) -> Result<Option<PulseProvenance>, String> {
-        let finished_at = DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+    async fn get_recap_job_window(&self, _job_id: Uuid) -> Result<Option<PulseWindow>, String> {
         let win_start = DateTime::parse_from_rfc3339("2026-09-19T17:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
         let win_end = DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        Ok(Some((finished_at, Some((win_start, win_end)))))
+        Ok(Some((win_start, win_end)))
     }
 }
 
@@ -464,7 +462,7 @@ struct ThreeDayRecapFixtureDao {
 }
 
 #[async_trait::async_trait]
-impl ThreeDayRecapReadDao for ThreeDayRecapFixtureDao {
+impl RecapReadDao for ThreeDayRecapFixtureDao {
     async fn get_latest_completed_job(
         &self,
         _window_days: i32,
@@ -535,6 +533,12 @@ impl ThreeDayRecapReadDao for ThreeDayRecapFixtureDao {
     async fn get_latest_three_day_recap_run(&self) -> Result<Option<SurfaceRun>, String> {
         Ok(self.latest_run.clone())
     }
+
+    fn observe_cluster_query_duration(&self, _duration_secs: f64) {}
+
+    fn inc_evidence_duplicates(&self, _removed: usize) {}
+
+    fn observe_latest_fetch_duration(&self, _duration_secs: f64) {}
 }
 
 struct MorningLetterFixtureDao {
