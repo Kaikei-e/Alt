@@ -284,8 +284,7 @@ async fn build_cards_runner(
                     .await
                     .context("failed to build cards pipeline")?
                     .with_user_id(user_id)
-                    .with_metrics(metrics)
-                    .into_runner()?;
+                    .into_runner(metrics);
             Ok(Some(Arc::new(runner)))
         }
         None => Ok(None),

@@ -386,7 +386,6 @@ pub struct CardsPipeline {
     card_verifier: Option<Arc<dyn CardVerifier>>,
     genre_tagger: Arc<dyn GenreTagger>,
     user_id: Option<Uuid>,
-    metrics: Option<Arc<crate::observability::metrics::Metrics>>,
 }
 
 impl CardsPipeline {
@@ -405,7 +404,6 @@ impl CardsPipeline {
             card_verifier: None,
             genre_tagger,
             user_id: None,
-            metrics: None,
         }
     }
 
@@ -427,7 +425,6 @@ impl CardsPipeline {
             card_verifier: Some(card_verifier),
             genre_tagger,
             user_id: None,
-            metrics: None,
         }
     }
 
@@ -438,63 +435,10 @@ impl CardsPipeline {
     }
 
     #[must_use]
-    pub fn with_metrics(mut self, metrics: Arc<crate::observability::metrics::Metrics>) -> Self {
-        self.metrics = Some(metrics);
-        self
-    }
-
-    pub fn into_runner(mut self) -> Result<CardsRunner> {
-        let metrics = self
-            .metrics
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("metrics must be configured before build"))?;
-        Ok(CardsRunner {
+    pub fn into_runner(self, metrics: Arc<crate::observability::metrics::Metrics>) -> CardsRunner {
+        CardsRunner {
             pipeline: self,
             metrics,
-        })
-    }
-
-    async fn run_cards_with_metrics(
-        &self,
-        metrics: &crate::observability::metrics::Metrics,
-        job_id: Uuid,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> anyhow::Result<()> {
-        let params = CardsParams::default();
-        match self.run(job_id, from, to, &params).await {
-            Ok(_) => {
-                match self.dao.get_job_updated_at(job_id).await {
-                    Ok(Some(updated_at)) => {
-                        crate::observability::surface_health::record_success(
-                            metrics,
-                            crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
-                            updated_at,
-                        );
-                    }
-                    Ok(None) => {
-                        tracing::error!(
-                            %job_id,
-                            "completed topic cards job has no updated_at timestamp; leaving surface_last_success unchanged"
-                        );
-                    }
-                    Err(err) => {
-                        tracing::error!(
-                            %job_id,
-                            error = ?err,
-                            "failed to read updated_at for topic cards job; leaving surface_last_success unchanged"
-                        );
-                    }
-                }
-                Ok(())
-            }
-            Err(e) => {
-                crate::observability::surface_health::record_failure(
-                    metrics,
-                    crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
-                );
-                Err(anyhow::anyhow!("{e:?}"))
-            }
         }
     }
 
@@ -2090,25 +2034,41 @@ impl super::ports::CardsJobRunner for CardsRunner {
         from: DateTime<Utc>,
         to: DateTime<Utc>,
     ) -> anyhow::Result<()> {
-        self.pipeline
-            .run_cards_with_metrics(&self.metrics, job_id, from, to)
-            .await
-    }
-}
-
-#[async_trait::async_trait]
-impl super::ports::CardsJobRunner for CardsPipeline {
-    async fn run_cards(
-        &self,
-        job_id: Uuid,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> anyhow::Result<()> {
-        let metrics = self
-            .metrics
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("metrics must be configured before build"))?;
-        self.run_cards_with_metrics(metrics, job_id, from, to).await
+        let params = CardsParams::default();
+        match self.pipeline.run(job_id, from, to, &params).await {
+            Ok(_) => {
+                match self.pipeline.dao.get_job_updated_at(job_id).await {
+                    Ok(Some(updated_at)) => {
+                        crate::observability::surface_health::record_success(
+                            &self.metrics,
+                            crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
+                            updated_at,
+                        );
+                    }
+                    Ok(None) => {
+                        tracing::error!(
+                            %job_id,
+                            "completed topic cards job has no updated_at timestamp; leaving surface_last_success unchanged"
+                        );
+                    }
+                    Err(err) => {
+                        tracing::error!(
+                            %job_id,
+                            error = ?err,
+                            "failed to read updated_at for topic cards job; leaving surface_last_success unchanged"
+                        );
+                    }
+                }
+                Ok(())
+            }
+            Err(e) => {
+                crate::observability::surface_health::record_failure(
+                    &self.metrics,
+                    crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
+                );
+                Err(anyhow::anyhow!("{e:?}"))
+            }
+        }
     }
 }
 
@@ -4522,7 +4482,7 @@ mod tests {
             .with_timezone(&Utc);
         record_success(&metrics, SurfaceHealthTarget::TopicCards, seeded_ts);
 
-        let pipeline = CardsPipeline::full(
+        let runner = CardsPipeline::full(
             feed_source,
             ml_port,
             Arc::clone(&dao) as Arc<dyn CardsPipelineDao>,
@@ -4531,10 +4491,10 @@ mod tests {
             Arc::new(FakeGenreTagger::new()),
         )
         .with_user_id(Uuid::new_v4())
-        .with_metrics(Arc::clone(&metrics));
+        .into_runner(Arc::clone(&metrics));
 
         let (from, to) = test_window_3d();
-        CardsJobRunner::run_cards(&pipeline, Uuid::new_v4(), from, to)
+        CardsJobRunner::run_cards(&runner, Uuid::new_v4(), from, to)
             .await
             .expect("run_cards succeeds");
 
@@ -4556,7 +4516,7 @@ mod tests {
             .lock()
             .unwrap()
             .insert(job_id_2, completed_updated_at);
-        CardsJobRunner::run_cards(&pipeline, job_id_2, from, to)
+        CardsJobRunner::run_cards(&runner, job_id_2, from, to)
             .await
             .expect("run_cards with updated_at succeeds");
         assert_eq!(
@@ -4566,40 +4526,6 @@ mod tests {
                 .get(),
             completed_updated_at.timestamp() as f64,
             "run_cards must record the completed job's updated_at timestamp"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_run_cards_fails_when_metrics_not_configured() {
-        use crate::scheduler::daemon::CardsJobRunner;
-
-        let pipeline = CardsPipeline::full(
-            Arc::new(FakeFeedSource::new(vec![])),
-            Arc::new(FakeEmbedCluster::new()),
-            Arc::new(MockCardsPipelineDao::default()) as Arc<dyn CardsPipelineDao>,
-            Arc::new(FakeCardGenerator::new()),
-            Arc::new(FakeCardVerifier::new()),
-            Arc::new(FakeGenreTagger::new()),
-        )
-        .with_user_id(Uuid::new_v4());
-
-        let (from, to) = test_window_3d();
-        let res = CardsJobRunner::run_cards(&pipeline, Uuid::new_v4(), from, to).await;
-        let err = res
-            .expect_err("running cards job runner without metrics must fail loudly")
-            .to_string();
-        assert!(
-            err.contains("metrics must be configured"),
-            "error must name missing metrics configuration, got: {err}"
-        );
-        let build_err = pipeline
-            .into_runner()
-            .err()
-            .expect("building cards runner without metrics must fail")
-            .to_string();
-        assert!(
-            build_err.contains("metrics must be configured before build"),
-            "build error must name missing metrics configuration, got: {build_err}"
         );
     }
 }

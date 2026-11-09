@@ -133,13 +133,6 @@ impl MorningPipeline {
         })
     }
 
-    #[allow(dead_code)]
-    #[must_use]
-    pub(crate) fn with_save_clock(mut self, save_clock: SaveClock) -> Self {
-        self.save_clock = save_clock;
-        self
-    }
-
     pub(crate) async fn execute_update(
         &self,
         job: &JobContext,
@@ -1607,8 +1600,8 @@ mod tests {
         let dao = Arc::new(MockRecapDao::new());
         dao.set_latest_completed_job(None);
 
-        let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri())
-            .with_save_clock(Arc::new(move || save_now));
+        let mut pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
+        pipeline.save_clock = Arc::new(move || save_now);
         let (returned_id, returned_created_at) = pipeline
             .execute_update(
                 &JobContext::new_morning_update(Uuid::new_v4()),
