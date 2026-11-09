@@ -97,6 +97,9 @@ impl SubworkerClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reqwest::header::HeaderName;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn build_default_headers_marks_authorization_sensitive() {
@@ -112,5 +115,40 @@ mod tests {
     fn build_default_headers_omits_authorization_when_none() {
         let headers = build_default_headers(None).unwrap();
         assert!(headers.get(AUTHORIZATION).is_none());
+    }
+
+    #[tokio::test]
+    async fn injected_client_preserves_probe_header_and_sends_authorization() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/extract"))
+            .and(header("x-mtls-probe", "mtls-identity-present"))
+            .and(header("authorization", "Bearer test-injected-token"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(r#"{"text":"extracted body"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut probe_headers = HeaderMap::new();
+        probe_headers.insert(
+            HeaderName::from_static("x-mtls-probe"),
+            HeaderValue::from_static("mtls-identity-present"),
+        );
+        let injected = Client::builder()
+            .default_headers(probe_headers)
+            .build()
+            .unwrap();
+
+        let client = SubworkerClient::new_with_client(server.uri(), 10, injected)
+            .unwrap()
+            .with_admin_token(Some("test-injected-token".to_string()));
+
+        let text = client
+            .extract_content("<p>hello</p>")
+            .await
+            .expect("injected client must preserve probe header and send Authorization");
+        assert_eq!(text, "extracted body");
     }
 }

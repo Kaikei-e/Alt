@@ -1134,4 +1134,41 @@ mod tests {
             .expect("verify_card should send auth header and succeed");
         assert!(verify_resp.why_hint_present);
     }
+
+    #[tokio::test]
+    async fn injected_cards_client_preserves_probe_header_and_sends_authorization() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/embed"))
+            .and(header("x-mtls-probe", "mtls-identity-present"))
+            .and(header("authorization", "Bearer test-injected-cards-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "bge-m3",
+                "dim": 4,
+                "embeddings": [[0.1, 0.2, 0.3, 0.4]],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut probe_headers = reqwest::header::HeaderMap::new();
+        probe_headers.insert(
+            reqwest::header::HeaderName::from_static("x-mtls-probe"),
+            reqwest::header::HeaderValue::from_static("mtls-identity-present"),
+        );
+        let injected = Client::builder()
+            .default_headers(probe_headers)
+            .build()
+            .unwrap();
+
+        let client = SubworkerCardsClient::new_with_client(server.uri(), injected)
+            .unwrap()
+            .with_admin_token(Some("test-injected-cards-token".to_string()));
+
+        let resp = client
+            .embed(&["Headline 1".to_string()], true)
+            .await
+            .expect("injected cards client must preserve probe header and send Authorization");
+        assert_eq!(resp.dim, 4);
+    }
 }

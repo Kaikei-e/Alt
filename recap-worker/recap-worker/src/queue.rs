@@ -322,8 +322,11 @@ mod tests {
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 started_at TIMESTAMPTZ,
                 completed_at TIMESTAMPTZ,
+                next_retry_at TIMESTAMPTZ,
                 UNIQUE(recap_job_id, chunk_idx)
             );
+            ALTER TABLE classification_job_queue
+                ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMPTZ;
             ",
         )
         .await?;
@@ -421,6 +424,90 @@ mod tests {
             .bind(recap_job_id)
             .execute(&pool)
             .await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn classify_texts_queued_fails_immediately_on_401_without_retrying() -> Result<()> {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    conn.execute(
+                        "CREATE SCHEMA IF NOT EXISTS test_queue_auth; SET search_path TO test_queue_auth;",
+                    )
+                    .await?;
+                    Ok(())
+                })
+            })
+            .connect(&database_url)
+            .await?;
+        setup_classification_queue_table(&pool).await?;
+        pool.execute("TRUNCATE TABLE classification_job_queue;")
+            .await?;
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_string(r#"{"detail":"unauthenticated peer"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let recap_job_id = Uuid::new_v4();
+        let store = QueueStore::new(pool.clone());
+        let client = SubworkerClient::new(server.uri(), 10)?;
+        let queue = ClassificationJobQueue::new(store.clone(), client.clone(), 1, 1, 3, 5000);
+
+        let err = client
+            .classify_texts_queued(
+                &queue,
+                recap_job_id,
+                vec!["first article".to_string(), "second article".to_string()],
+            )
+            .await
+            .expect_err("401 from /v1/classify-runs must fail classify_texts_queued");
+
+        queue.shutdown().await;
+
+        let jobs = store.get_jobs_by_recap_job(recap_job_id).await?;
+        let _ = pool
+            .execute("DROP SCHEMA IF EXISTS test_queue_auth CASCADE;")
+            .await;
+
+        assert!(
+            crate::clients::subworker::is_subworker_auth_error(&err),
+            "expected SubworkerAuthError in cause chain, got: {err:#}"
+        );
+        let chain = format!("{err:#}");
+        assert!(
+            chain.contains("401 Unauthorized"),
+            "expected '401 Unauthorized' in error chain, got: {chain}"
+        );
+
+        assert_eq!(jobs.len(), 2);
+        for job in &jobs {
+            assert_eq!(job.status, QueuedJobStatus::Failed);
+            assert_eq!(job.retry_count, 0);
+        }
+
+        assert!(
+            queue
+                .auth_failures
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty(),
+            "auth_failures map must not leak entries after wait_for_completion"
+        );
         Ok(())
     }
 }
