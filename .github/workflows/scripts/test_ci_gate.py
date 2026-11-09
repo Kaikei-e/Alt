@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import contextlib
 from email.message import Message
+import http.client
 import importlib.util
 import io
 import json
@@ -276,6 +278,138 @@ class TestEvaluateWorkflowRuns(unittest.TestCase):
         self.assertEqual(verdict_diff, "FAILURE")
         self.assertEqual(len(offending_diff), 1)
         self.assertIn("5001", offending_diff[0])
+
+    def test_skips_all_runs_of_gate_workflow_on_reopen_concurrent_dispatch_and_path_fallback(
+        self,
+    ) -> None:
+        # 1) Reopen: older cancelled ci-gate run (990) + current ci-gate run (999) on same SHA.
+        # Even though 999 is self_run_id, 990 shares workflow_id=10 and must also be skipped.
+        reopen_runs = [
+            {
+                "id": 990,
+                "workflow_id": 10,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "ci-gate",
+                "path": ".github/workflows/ci-gate.yaml@refs/pull/1/merge",
+                "status": "completed",
+                "conclusion": "cancelled",
+                "html_url": "https://github.com/Kaikei-e/Alt/actions/runs/990",
+            },
+            {
+                "id": 999,
+                "workflow_id": 10,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "ci-gate",
+                "path": ".github/workflows/ci-gate.yaml@refs/pull/1/merge",
+                "status": "in_progress",
+                "conclusion": None,
+                "html_url": "https://github.com/Kaikei-e/Alt/actions/runs/999",
+            },
+            {
+                "id": 1000,
+                "workflow_id": 20,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "unit-test",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/Kaikei-e/Alt/actions/runs/1000",
+            },
+        ]
+        verdict_reopen, offending_reopen = self.mod.evaluate_workflow_runs(
+            reopen_runs, self_run_id=999
+        )
+        self.assertEqual(verdict_reopen, "SUCCESS")
+        self.assertEqual(offending_reopen, [])
+
+        # 2) Concurrent workflow_dispatch ci-gate run in_progress alongside pull_request ci-gate
+        concurrent_dispatch_runs = [
+            {
+                "id": 999,
+                "workflow_id": 10,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "ci-gate",
+                "status": "in_progress",
+                "conclusion": None,
+            },
+            {
+                "id": 1005,
+                "workflow_id": 10,
+                "event": "workflow_dispatch",
+                "run_attempt": 1,
+                "name": "ci-gate",
+                "status": "in_progress",
+                "conclusion": None,
+            },
+            {
+                "id": 1000,
+                "workflow_id": 20,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "unit-test",
+                "status": "completed",
+                "conclusion": "success",
+            },
+        ]
+        verdict_disp, offending_disp = self.mod.evaluate_workflow_runs(
+            concurrent_dispatch_runs, self_run_id=999
+        )
+        self.assertEqual(verdict_disp, "SUCCESS")
+        self.assertEqual(offending_disp, [])
+
+        # 3) Fallback to run["path"] (stripping @ref) when own run is not in listing yet
+        fallback_runs = [
+            {
+                "id": 990,
+                "workflow_id": 10,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "ci-gate",
+                "path": ".github/workflows/ci-gate.yaml@refs/heads/ci/hardening",
+                "status": "completed",
+                "conclusion": "failure",
+            },
+            {
+                "id": 1000,
+                "workflow_id": 20,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "unit-test",
+                "path": ".github/workflows/workflow-safety-lint.yaml@refs/heads/ci/hardening",
+                "status": "completed",
+                "conclusion": "success",
+            },
+        ]
+        verdict_fb, offending_fb = self.mod.evaluate_workflow_runs(
+            fallback_runs, self_run_id=999
+        )
+        self.assertEqual(verdict_fb, "SUCCESS")
+        self.assertEqual(offending_fb, [])
+
+    def test_requires_at_least_one_non_gate_workflow_run_before_success(self) -> None:
+        self.assertEqual(
+            self.mod.evaluate_workflow_runs([], self_run_id=999)[0],
+            "PENDING",
+        )
+        only_gate = [
+            {
+                "id": 999,
+                "workflow_id": 10,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "ci-gate",
+                "path": ".github/workflows/ci-gate.yaml@refs/pull/1/merge",
+                "status": "in_progress",
+                "conclusion": None,
+            }
+        ]
+        self.assertEqual(
+            self.mod.evaluate_workflow_runs(only_gate, self_run_id=999)[0],
+            "PENDING",
+        )
 
 
 class TestPollingStabilityAndRateLimits(unittest.TestCase):
@@ -698,6 +832,106 @@ class TestPollingStabilityAndRateLimits(unittest.TestCase):
                 sleep_fn=sleeps_4xx.append,
             )
         self.assertEqual(sleeps_4xx, [])
+
+    def test_transient_fetch_errors_treated_as_pending_and_fail_at_deadline_with_last_error(
+        self,
+    ) -> None:
+        ok_runs = [
+            {
+                "id": 100,
+                "workflow_id": 20,
+                "event": "pull_request",
+                "run_attempt": 1,
+                "name": "wf-a",
+                "status": "completed",
+                "conclusion": "success",
+            }
+        ]
+        transient_errors = [
+            urllib.error.URLError("temporary DNS failure"),
+            TimeoutError("read timed out"),
+            http.client.RemoteDisconnected("Remote end closed connection"),
+            http.client.IncompleteRead(b"partial", 10),
+            ConnectionResetError("connection reset by peer"),
+            json.JSONDecodeError("Expecting value", "", 0),
+            make_http_error("https://api.github.com/repos/x/y/actions/runs", 502, {}),
+        ]
+
+        # 1) Transient errors reset stability window and emit ::warning:: without crashing
+        for exc in transient_errors:
+            with self.subTest(exc_type=type(exc).__name__):
+                seq = [ok_runs, exc, ok_runs, ok_runs]
+                idx = 0
+                sleeps: list[float] = []
+
+                def fetch_with_transient():
+                    nonlocal idx
+                    item = seq[idx]
+                    idx += 1
+                    if isinstance(item, BaseException):
+                        raise item
+                    return item
+
+                err_buf = io.StringIO()
+                with contextlib.redirect_stderr(err_buf):
+                    verdict, offending = self.mod.poll_until_settled(
+                        fetch_with_transient,
+                        self_run_id=999,
+                        poll_interval=60.0,
+                        timeout_seconds=600.0,
+                        sleep_fn=sleeps.append,
+                        clock_fn=lambda: sum(sleeps),
+                    )
+                self.assertEqual(verdict, "SUCCESS")
+                self.assertEqual(offending, [])
+                self.assertEqual(idx, 4)
+                self.assertIn("::warning::", err_buf.getvalue())
+
+        # 2) Persistent transient error until deadline fails with ::error:: naming the last error
+        sleeps_timeout: list[float] = []
+        err_timeout = io.StringIO()
+        with contextlib.redirect_stderr(err_timeout):
+            verdict_to, _ = self.mod.poll_until_settled(
+                lambda: (_ for _ in ()).throw(
+                    http.client.RemoteDisconnected("upstream closed socket")
+                ),
+                self_run_id=999,
+                poll_interval=60.0,
+                timeout_seconds=120.0,
+                sleep_fn=sleeps_timeout.append,
+                clock_fn=lambda: sum(sleeps_timeout),
+            )
+        self.assertEqual(verdict_to, "FAILURE")
+        self.assertEqual(sleeps_timeout, [60.0, 60.0])
+        self.assertIn("::error::", err_timeout.getvalue())
+        self.assertIn("upstream closed socket", err_timeout.getvalue())
+
+    def test_non_rate_limit_401_403_404_are_fatal_immediately_with_error_annotation(
+        self,
+    ) -> None:
+        for code in (401, 403, 404):
+            with self.subTest(code=code):
+                sleeps: list[float] = []
+                err_buf = io.StringIO()
+                with contextlib.redirect_stderr(err_buf):
+                    verdict, _ = self.mod.poll_until_settled(
+                        lambda c=code: (_ for _ in ()).throw(
+                            make_http_error(
+                                "https://api.github.com/repos/x/y/actions/runs",
+                                c,
+                                {"x-ratelimit-remaining": "50"},
+                            )
+                        ),
+                        self_run_id=999,
+                        poll_interval=60.0,
+                        timeout_seconds=600.0,
+                        sleep_fn=sleeps.append,
+                        clock_fn=lambda: sum(sleeps),
+                    )
+                self.assertEqual(verdict, "FAILURE")
+                self.assertEqual(sleeps, [])
+                self.assertIn("::error::", err_buf.getvalue())
+                self.assertIn(str(code), err_buf.getvalue())
 
 
 if __name__ == "__main__":

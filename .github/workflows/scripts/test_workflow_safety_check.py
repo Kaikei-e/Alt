@@ -310,6 +310,58 @@ class TestWorkflowSafetyCheckHardening(unittest.TestCase):
         }
         self.assertEqual(self.mod.check_workflow_doc(wf_path, paths_ignore_wf), [])
 
+        # 6) Leading dot in .github/workflows/... must not be stripped (removeprefix("./"), not lstrip("./"))
+        missing_leading_dot = {
+            "name": "backend-go",
+            "on": {
+                "push": {
+                    "paths": [
+                        "alt-backend/**",
+                        "github/workflows/backend-go.yaml",
+                        "github/workflows/reusable-test-go.yaml",
+                    ]
+                },
+            },
+            "permissions": {"contents": "read"},
+            "jobs": {
+                "unit": {"uses": reusable_go},
+            },
+        }
+        errors_dot = self.mod.check_workflow_doc(wf_path, missing_leading_dot)
+        self.assertTrue(
+            any("on.push.paths does not match '.github/workflows/backend-go.yaml'" in err for err in errors_dot),
+            f"Expected missing leading dot to fail self-trigger match, got: {errors_dot}",
+        )
+
+        # 7) Patterns containing '?', '+', or '[' are rejected with a clear error
+        for bad_pat in (
+            ".github/workflows/backend-go.y?ml",
+            ".github/workflows/backend-go.+",
+            ".github/workflows/[b]ackend-go.yaml",
+        ):
+            with self.subTest(bad_pat=bad_pat):
+                unsupported_glob_wf = {
+                    "name": "backend-go",
+                    "on": {
+                        "push": {
+                            "paths": [
+                                bad_pat,
+                                ".github/workflows/backend-go.yaml",
+                                ".github/workflows/reusable-test-go.yaml",
+                            ]
+                        }
+                    },
+                    "permissions": {"contents": "read"},
+                    "jobs": {
+                        "unit": {"uses": reusable_go},
+                    },
+                }
+                errs = self.mod.check_workflow_doc(wf_path, unsupported_glob_wf)
+                self.assertTrue(
+                    any(bad_pat in err and "unsupported" in err.lower() for err in errs),
+                    f"Expected unsupported glob error for {bad_pat!r}, got: {errs}",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
