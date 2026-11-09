@@ -139,9 +139,7 @@ type Score struct {
 	Overall int `json:"overall"`
 }
 
-const JudgeTemplate = `
-<|turn>user
-You are an expert Japanese news editor and quality evaluator. Your task is to rigorously assess the quality of a Japanese news summary against its source article.
+const JudgeSystemPrompt = `You are an expert Japanese news editor and quality evaluator. Your task is to rigorously assess the quality of a Japanese news summary against its source article.
 
 ROLE:
 You are a strict, objective quality grader specializing in Japanese news summarization. You evaluate summaries based on factual accuracy, completeness, readability, style, and information coverage.
@@ -188,26 +186,67 @@ OUTPUT FORMAT:
 - X must be an integer 1-10 (no decimals, no fractions)
 - Do not output anything else: no explanations, no quotes, no extra tags, no preamble
 - No leading/trailing spaces or newlines
-- Do not output control tokens (e.g., <turn|>)
+- Do not output control tokens
 
 CRITICAL RULES:
 - Base your score on objective evaluation of all five criteria
 - Be strict but fair: high scores (9-10) require excellence across all dimensions
 - Low scores (1-3) indicate serious quality issues that would mislead readers
-- Output ONLY the XML tag, nothing else
+- Output ONLY the XML tag, nothing else`
 
-Article:
+const JudgeTemplate = `Article:
 %s
 
 Summary:
 %s
 
 Respond with only:
-<score>X</score>
-<turn|>
-<|turn>model
+<score>X</score>`
 
-`
+var gemmaTurnTokens = []string{
+	"<|think|>",
+	"<|turn>",
+	"<turn|>",
+}
+
+func stripGemmaTurnTokens(s string) string {
+	if !strings.Contains(s, "<") {
+		return s
+	}
+	buf := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		buf = append(buf, b)
+		if b != '>' {
+			continue
+		}
+		for _, tok := range gemmaTurnTokens {
+			if len(buf) >= len(tok) && string(buf[len(buf)-len(tok):]) == tok {
+				buf = buf[:len(buf)-len(tok)]
+				break
+			}
+		}
+	}
+	return string(buf)
+}
+
+func wrapGemmaPrompt(systemPrompt, userPrompt string) string {
+	sys := strings.TrimSpace(stripGemmaTurnTokens(systemPrompt))
+	user := strings.TrimSpace(stripGemmaTurnTokens(userPrompt))
+	if sys != "" {
+		return "<|turn>system\n" + sys + "\n<turn|>\n<|turn>user\n" + user + "\n<turn|>\n<|turn>model\n"
+	}
+	return "<|turn>user\n" + user + "\n<turn|>\n<|turn>model\n"
+}
+
+func buildJudgePrompt(articleContent, summaryJapanese string) string {
+	userPrompt := fmt.Sprintf(
+		JudgeTemplate,
+		stripGemmaTurnTokens(articleContent),
+		stripGemmaTurnTokens(summaryJapanese),
+	)
+	return wrapGemmaPrompt(JudgeSystemPrompt, userPrompt)
+}
 
 func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 	// Use more restrictive parameters to encourage format compliance
@@ -466,7 +505,7 @@ func JudgeArticleQuality(ctx context.Context, summaryRepo repository.SummaryRepo
 		return nil
 	}
 
-	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
+	prompt := buildJudgePrompt(articleWithSummary.Content, articleWithSummary.SummaryJapanese)
 	score, err := scoreSummaryWithRetry(ctx, prompt, 3)
 	if err != nil {
 		if isConnectionError(err) {
