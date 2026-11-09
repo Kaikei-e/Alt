@@ -1617,7 +1617,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_latest_morning_letter_uses_state_pool_when_dao_pool_is_none() {
+    async fn get_latest_morning_letter_reads_surface_data_from_state_pool() {
         use chrono::{DateTime, Duration, Utc};
         use serde_json::json;
         use uuid::Uuid;
@@ -1628,13 +1628,13 @@ mod tests {
         let run_res = MorningLetterReadDao::get_latest_morning_run(&unreachable_state).await;
         assert!(
             run_res.is_err(),
-            "get_latest_morning_run must query state.pool() instead of returning Ok(None) when dao.pool() is None, got: {run_res:?}"
+            "get_latest_morning_run must query state.pool(), got: {run_res:?}"
         );
         let win_res =
             MorningLetterReadDao::get_recap_job_window(&unreachable_state, Uuid::new_v4()).await;
         assert!(
             win_res.is_err(),
-            "get_recap_job_window must query state.pool() instead of returning Ok(None) when dao.pool() is None, got: {win_res:?}"
+            "get_recap_job_window must query state.pool(), got: {win_res:?}"
         );
 
         let Ok(database_url) = std::env::var("DATABASE_URL") else {
@@ -1702,12 +1702,12 @@ mod tests {
         assert_eq!(
             body["surface_status"]["latest_run"]["job_id"],
             json!(morning_job_id.to_string()),
-            "latest_run must come from state.pool() even when dao.pool() is None"
+            "latest_run must be read from state.pool()"
         );
         assert_eq!(
             body["surface_status"]["window_end"],
             json!("2026-01-26T00:00:00Z"),
-            "recap job window must come from state.pool() even when dao.pool() is None"
+            "recap job window must be read from state.pool()"
         );
     }
 }

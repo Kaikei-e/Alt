@@ -931,7 +931,7 @@ mod new_tests {
     }
 
     #[tokio::test]
-    async fn prepare_pipeline_loads_graph_override_from_dao_when_pool_is_none() {
+    async fn prepare_pipeline_loads_graph_override_from_dao() {
         let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
             temp_env::with_vars(
@@ -1013,7 +1013,7 @@ mod new_tests {
         assert_eq!(
             *observed_margin.lock().expect("observed_margin lock"),
             Some(0.42),
-            "prepare_pipeline must load graph_override from dao even when dao.pool() is None"
+            "prepare_pipeline must load graph_override through the DAO"
         );
     }
 
