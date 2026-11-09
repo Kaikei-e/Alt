@@ -795,24 +795,13 @@ mod tests {
 
         let recap_job_id = Uuid::new_v4();
         let store = QueueStore::new(pool.clone());
-        let pre_chunk1_id = store
-            .enqueue(NewQueuedJob {
-                recap_job_id,
-                chunk_idx: 1,
-                texts: vec!["second article".to_string()],
-                max_retries: 3,
-            })
-            .await?;
-        store
-            .mark_completed(
-                pre_chunk1_id,
-                vec![ClassificationResult {
-                    top_genre: "tech".to_string(),
-                    confidence: 0.9,
-                    scores: HashMap::new(),
-                }],
-            )
-            .await?;
+        let pre_chunk1_id: i32 = sqlx::query_scalar(
+            "INSERT INTO classification_job_queue (recap_job_id, chunk_idx, status, texts, result) \
+             VALUES ($1, 1, 'completed', '[\"second article\"]'::jsonb, '[]'::jsonb) RETURNING id",
+        )
+        .bind(recap_job_id)
+        .fetch_one(&pool)
+        .await?;
 
         // Hold a row lock on chunk 1 so enqueue_classification commits chunk 0 and pauses before returning.
         let mut tx = pool.begin().await?;
