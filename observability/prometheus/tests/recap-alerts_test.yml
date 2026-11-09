@@ -122,12 +122,12 @@ tests:
                 Runbook: docs/runbooks/3days-recap-artefact-recovery.md
               runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
 
-  # RecapSurfaceStale: fresh daily surfaces and a surface sustained at the exact 36h boundary stay quiet;
-  # morning_letter is excluded even when stale.
+  # RecapSurfaceStale: fresh daily surfaces and a surface at the exact 36h boundary (age == 36*3600 at 37h)
+  # stay quiet; morning_letter is excluded even when stale.
   - interval: 1m
     input_series:
       - series: 'recap_surface_last_success_timestamp_seconds{job="recap-worker",service="recap-worker",instance="recap-worker:9005",surface="three_day_recap"}'
-        values: '0x2160 0+60x60'
+        values: '3600x2220'
       - series: 'recap_surface_last_success_timestamp_seconds{job="recap-worker",service="recap-worker",instance="recap-worker:9005",surface="topic_cards"}'
         values: '0+60x2220'
       - series: 'recap_surface_last_success_timestamp_seconds{job="recap-worker",service="recap-worker",instance="recap-worker:9005",surface="evening_pulse"}'
