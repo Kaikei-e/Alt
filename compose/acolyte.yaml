@@ -195,12 +195,15 @@ services:
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_VERIFICATION=enabled
       # OpenTelemetry
+      - OTEL_ENABLED=true
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=acolyte-orchestrator
+      - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     secrets:
       - acolyte_db_password
       - pki-agent-acolyte-orchestrator-jwk
       - backend_token_secret
+      - rask_ingest_token
     extra_hosts:
       - "llm-external:${ACOLYTE_LLM_HOST:-127.0.0.1}"
     ports:
