@@ -3,17 +3,9 @@ package domain
 // RecapCardsResponse represents the JSON response returned by recap-worker
 // for GET /v1/topic-cards.
 type RecapCardsResponse struct {
-	Job       *RecapCardsJob `json:"job"`
-	Cards     []*RecapCard   `json:"cards"`
-	LatestRun *RecapCardsRun `json:"latest_run"`
-}
-
-// RecapCardsRun represents metadata of a topic cards generation run.
-type RecapCardsRun struct {
-	JobID     string `json:"job_id"`
-	Status    string `json:"status"` // pending | running | completed | failed
-	KickedAt  string `json:"kicked_at"`
-	UpdatedAt string `json:"updated_at"`
+	Job           *RecapCardsJob      `json:"job"`
+	Cards         []*RecapCard        `json:"cards"`
+	SurfaceStatus *RecapSurfaceStatus `json:"surface_status"`
 }
 
 // RecapCardsJob represents metadata of the topic cards generation job.

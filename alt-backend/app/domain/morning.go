@@ -35,6 +35,7 @@ type MorningLetterDocument struct {
 	CreatedAt          time.Time
 	Etag               string
 	Body               MorningLetterBody
+	SurfaceStatus      *RecapSurfaceStatus
 }
 
 // MorningLetterBody is the editorial content of the letter.

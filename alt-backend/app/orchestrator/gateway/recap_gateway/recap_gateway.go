@@ -163,12 +163,13 @@ func (g *RecapGateway) GetEveningPulse(ctx context.Context, date string) (*domai
 
 // eveningPulseResponse represents the JSON response from recap-worker
 type eveningPulseResponse struct {
-	JobID       string               `json:"job_id"`
-	Date        string               `json:"date"`
-	GeneratedAt string               `json:"generated_at"`
-	Status      string               `json:"status"`
-	Topics      []pulseTopicResponse `json:"topics"`
-	QuietDay    *quietDayResponse    `json:"quiet_day,omitempty"`
+	JobID         string                     `json:"job_id"`
+	Date          string                     `json:"date"`
+	GeneratedAt   string                     `json:"generated_at"`
+	Status        string                     `json:"status"`
+	Topics        []pulseTopicResponse       `json:"topics"`
+	QuietDay      *quietDayResponse          `json:"quiet_day,omitempty"`
+	SurfaceStatus *domain.RecapSurfaceStatus `json:"surface_status"`
 }
 
 type pulseTopicResponse struct {
@@ -272,12 +273,13 @@ func mapEveningPulseResponseToDomain(r *eveningPulseResponse) (*domain.EveningPu
 	}
 
 	return &domain.EveningPulse{
-		JobID:       r.JobID,
-		Date:        r.Date,
-		GeneratedAt: generatedAt,
-		Status:      parsePulseStatus(r.Status),
-		Topics:      topics,
-		QuietDay:    quietDay,
+		JobID:         r.JobID,
+		Date:          r.Date,
+		GeneratedAt:   generatedAt,
+		Status:        parsePulseStatus(r.Status),
+		Topics:        topics,
+		QuietDay:      quietDay,
+		SurfaceStatus: r.SurfaceStatus,
 	}, nil
 }
 

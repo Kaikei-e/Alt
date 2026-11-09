@@ -54,6 +54,20 @@ func TestDomainToProto_TableDriven(t *testing.T) {
 						},
 					},
 				},
+				SurfaceStatus: &domain.RecapSurfaceStatus{
+					GeneratedAt: "2026-02-01T12:00:00Z",
+					IsStale:     false,
+					StaleAfter:  "2026-02-02T18:00:00Z",
+					LatestRun: &domain.RecapSurfaceRun{
+						JobID:     "job-7d",
+						Status:    "completed",
+						KickedAt:  "2026-02-01T11:55:00Z",
+						UpdatedAt: "2026-02-01T12:00:00Z",
+					},
+					DegradationReasons: []domain.RecapDegradationReason{
+						{Code: "extractive_genres", Detail: "1 of 1 genres are extractive excerpts, not AI summaries"},
+					},
+				},
 			},
 			expected: 1,
 		},
@@ -80,28 +94,36 @@ func TestDomainToProto_TableDriven(t *testing.T) {
 			require.NotNil(t, res3)
 			assert.Equal(t, tt.input.JobID, res3.JobId)
 			assert.Len(t, res3.Genres, tt.expected)
+			if tt.input.SurfaceStatus != nil {
+				require.NotNil(t, res3.SurfaceStatus)
+				assert.Equal(t, tt.input.SurfaceStatus.GeneratedAt, res3.SurfaceStatus.GeneratedAt)
+				require.Len(t, res3.SurfaceStatus.DegradationReasons, 1)
+				assert.Equal(t, "extractive_genres", res3.SurfaceStatus.DegradationReasons[0].Code)
+			} else {
+				assert.Nil(t, res3.SurfaceStatus)
+			}
 		})
 	}
 }
 
 func TestDomainToProtoTopicCards_TableDriven(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         *domain.RecapCardsResponse
-		expectedCards int
-		hasJob        bool
-		hasLatestRun  bool
-		runStatus     string
+		name             string
+		input            *domain.RecapCardsResponse
+		expectedCards    int
+		hasJob           bool
+		hasSurfaceStatus bool
+		runStatus        string
 	}{
 		{
-			name:          "nil response returns empty cards and nil latest_run",
-			input:         nil,
-			expectedCards: 0,
-			hasJob:        false,
-			hasLatestRun:  false,
+			name:             "nil response returns empty cards and nil surface_status",
+			input:            nil,
+			expectedCards:    0,
+			hasJob:           false,
+			hasSurfaceStatus: false,
 		},
 		{
-			name: "response with cards, sources, and completed latest_run",
+			name: "response with cards, sources, and completed surface_status",
 			input: &domain.RecapCardsResponse{
 				Job: &domain.RecapCardsJob{
 					JobID:         "job-cards",
@@ -122,17 +144,27 @@ func TestDomainToProtoTopicCards_TableDriven(t *testing.T) {
 					},
 					nil,
 				},
-				LatestRun: &domain.RecapCardsRun{
-					JobID:     "job-cards",
-					Status:    "completed",
-					KickedAt:  "2026-09-22T17:00:00Z",
-					UpdatedAt: "2026-09-22T17:05:00Z",
+				SurfaceStatus: &domain.RecapSurfaceStatus{
+					GeneratedAt: "2026-09-22T17:05:00Z",
+					WindowStart: "2026-09-19T17:00:00Z",
+					WindowEnd:   "2026-09-22T17:00:00Z",
+					IsStale:     false,
+					StaleAfter:  "2026-09-23T23:05:00Z",
+					LatestRun: &domain.RecapSurfaceRun{
+						JobID:     "job-cards",
+						Status:    "completed",
+						KickedAt:  "2026-09-22T17:00:00Z",
+						UpdatedAt: "2026-09-22T17:05:00Z",
+					},
+					DegradationReasons: []domain.RecapDegradationReason{
+						{Code: "few_cards", Detail: "2 cards selected"},
+					},
 				},
 			},
-			expectedCards: 1,
-			hasJob:        true,
-			hasLatestRun:  true,
-			runStatus:     "completed",
+			expectedCards:    1,
+			hasJob:           true,
+			hasSurfaceStatus: true,
+			runStatus:        "completed",
 		},
 		{
 			name: "response with failed latest_run",
@@ -141,28 +173,31 @@ func TestDomainToProtoTopicCards_TableDriven(t *testing.T) {
 					JobID: "job-completed",
 				},
 				Cards: []*domain.RecapCard{},
-				LatestRun: &domain.RecapCardsRun{
-					JobID:     "job-failed",
-					Status:    "failed",
-					KickedAt:  "2026-09-22T18:00:00Z",
-					UpdatedAt: "2026-09-22T18:02:00Z",
+				SurfaceStatus: &domain.RecapSurfaceStatus{
+					GeneratedAt: "2026-09-22T17:05:00Z",
+					LatestRun: &domain.RecapSurfaceRun{
+						JobID:     "job-failed",
+						Status:    "failed",
+						KickedAt:  "2026-09-22T18:00:00Z",
+						UpdatedAt: "2026-09-22T18:02:00Z",
+					},
 				},
 			},
-			expectedCards: 0,
-			hasJob:        true,
-			hasLatestRun:  true,
-			runStatus:     "failed",
+			expectedCards:    0,
+			hasJob:           true,
+			hasSurfaceStatus: true,
+			runStatus:        "failed",
 		},
 		{
-			name: "response with nil latest_run",
+			name: "response with nil surface_status",
 			input: &domain.RecapCardsResponse{
-				Job:       nil,
-				Cards:     []*domain.RecapCard{},
-				LatestRun: nil,
+				Job:           nil,
+				Cards:         []*domain.RecapCard{},
+				SurfaceStatus: nil,
 			},
-			expectedCards: 0,
-			hasJob:        false,
-			hasLatestRun:  false,
+			expectedCards:    0,
+			hasJob:           false,
+			hasSurfaceStatus: false,
 		},
 	}
 
@@ -177,14 +212,17 @@ func TestDomainToProtoTopicCards_TableDriven(t *testing.T) {
 			} else {
 				assert.Nil(t, protoResp.Job)
 			}
-			if tt.hasLatestRun {
-				require.NotNil(t, protoResp.LatestRun)
-				assert.Equal(t, tt.input.LatestRun.JobID, protoResp.LatestRun.JobId)
-				assert.Equal(t, tt.runStatus, protoResp.LatestRun.Status)
-				assert.Equal(t, tt.input.LatestRun.KickedAt, protoResp.LatestRun.KickedAt)
-				assert.Equal(t, tt.input.LatestRun.UpdatedAt, protoResp.LatestRun.UpdatedAt)
+			if tt.hasSurfaceStatus {
+				require.NotNil(t, protoResp.SurfaceStatus)
+				assert.Equal(t, tt.input.SurfaceStatus.GeneratedAt, protoResp.SurfaceStatus.GeneratedAt)
+				require.NotNil(t, protoResp.SurfaceStatus.LatestRun)
+				assert.Equal(t, tt.input.SurfaceStatus.LatestRun.JobID, protoResp.SurfaceStatus.LatestRun.JobId)
+				assert.Equal(t, tt.runStatus, protoResp.SurfaceStatus.LatestRun.Status)
+				assert.Equal(t, tt.input.SurfaceStatus.LatestRun.KickedAt, protoResp.SurfaceStatus.LatestRun.KickedAt)
+				assert.Equal(t, tt.input.SurfaceStatus.LatestRun.UpdatedAt, protoResp.SurfaceStatus.LatestRun.UpdatedAt)
+				assert.Len(t, protoResp.SurfaceStatus.DegradationReasons, len(tt.input.SurfaceStatus.DegradationReasons))
 			} else {
-				assert.Nil(t, protoResp.LatestRun)
+				assert.Nil(t, protoResp.SurfaceStatus)
 			}
 		})
 	}

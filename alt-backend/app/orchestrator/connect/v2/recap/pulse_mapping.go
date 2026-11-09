@@ -39,11 +39,12 @@ func eveningPulseDomainToProto(pulse *domain.EveningPulse) *recapv2.GetEveningPu
 	}
 
 	resp := &recapv2.GetEveningPulseResponse{
-		JobId:       pulse.JobID,
-		Date:        pulse.Date,
-		GeneratedAt: pulse.GeneratedAt.Format(time.RFC3339),
-		Status:      pulseStatusToProto(pulse.Status),
-		Topics:      topics,
+		JobId:         pulse.JobID,
+		Date:          pulse.Date,
+		GeneratedAt:   pulse.GeneratedAt.Format(time.RFC3339),
+		Status:        pulseStatusToProto(pulse.Status),
+		Topics:        topics,
+		SurfaceStatus: surfaceStatusToProto(pulse.SurfaceStatus),
 	}
 
 	if pulse.QuietDay != nil {

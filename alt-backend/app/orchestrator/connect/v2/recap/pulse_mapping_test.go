@@ -114,6 +114,20 @@ func TestEveningPulseDomainToProto_TableDriven(t *testing.T) {
 						},
 					},
 				},
+				SurfaceStatus: &domain.RecapSurfaceStatus{
+					GeneratedAt: "2026-02-01T18:00:00Z",
+					IsStale:     false,
+					StaleAfter:  "2026-02-03T00:00:00Z",
+					LatestRun: &domain.RecapSurfaceRun{
+						JobID:     "pulse-1",
+						Status:    "completed",
+						KickedAt:  "2026-02-01T17:58:00Z",
+						UpdatedAt: "2026-02-01T18:00:00Z",
+					},
+					DegradationReasons: []domain.RecapDegradationReason{
+						{Code: "pulse_fallback", Detail: "fallback level 1"},
+					},
+				},
 			},
 			expectedTopics: 1,
 			hasQuietDay:    false,
@@ -152,6 +166,14 @@ func TestEveningPulseDomainToProto_TableDriven(t *testing.T) {
 				assert.NotNil(t, resp.QuietDay)
 				assert.Equal(t, tt.input.QuietDay.Message, resp.QuietDay.Message)
 				assert.Len(t, resp.QuietDay.WeeklyHighlights, len(tt.input.QuietDay.WeeklyHighlights))
+			}
+			if tt.input.SurfaceStatus != nil {
+				require.NotNil(t, resp.SurfaceStatus)
+				assert.Equal(t, tt.input.SurfaceStatus.GeneratedAt, resp.SurfaceStatus.GeneratedAt)
+				require.Len(t, resp.SurfaceStatus.DegradationReasons, 1)
+				assert.Equal(t, "pulse_fallback", resp.SurfaceStatus.DegradationReasons[0].Code)
+			} else {
+				assert.Nil(t, resp.SurfaceStatus)
 			}
 		})
 	}

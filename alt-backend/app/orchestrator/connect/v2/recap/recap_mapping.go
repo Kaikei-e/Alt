@@ -58,6 +58,7 @@ func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayReca
 		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
 		TotalArticles: safeconv.Int32(recap.TotalArticles),
 		Genres:        genres,
+		SurfaceStatus: surfaceStatusToProto(recap.SurfaceStatus),
 	}
 }
 
@@ -70,7 +71,8 @@ func domainToProtoTopicCards(resp *domain.RecapCardsResponse) *recapv2.GetTopicC
 	}
 
 	protoResp := &recapv2.GetTopicCardsResponse{
-		Cards: make([]*recapv2.RecapCard, 0, len(resp.Cards)),
+		Cards:         make([]*recapv2.RecapCard, 0, len(resp.Cards)),
+		SurfaceStatus: surfaceStatusToProto(resp.SurfaceStatus),
 	}
 
 	if resp.Job != nil {
@@ -82,15 +84,6 @@ func domainToProtoTopicCards(resp *domain.RecapCardsResponse) *recapv2.GetTopicC
 			ParamsVersion: resp.Job.ParamsVersion,
 			CardsSelected: safeconv.Int32(resp.Job.CardsSelected),
 			Degraded:      resp.Job.Degraded,
-		}
-	}
-
-	if resp.LatestRun != nil {
-		protoResp.LatestRun = &recapv2.RecapCardsRun{
-			JobId:     resp.LatestRun.JobID,
-			Status:    resp.LatestRun.Status,
-			KickedAt:  resp.LatestRun.KickedAt,
-			UpdatedAt: resp.LatestRun.UpdatedAt,
 		}
 	}
 
@@ -235,4 +228,35 @@ func recapSearchResultsToProto(results []*domain.RecapSearchResult) []*recapv2.R
 		}
 	}
 	return protoResults
+}
+
+func surfaceStatusToProto(s *domain.RecapSurfaceStatus) *recapv2.RecapSurfaceStatus {
+	if s == nil {
+		return nil
+	}
+	var latestRun *recapv2.RecapSurfaceRun
+	if s.LatestRun != nil {
+		latestRun = &recapv2.RecapSurfaceRun{
+			JobId:     s.LatestRun.JobID,
+			Status:    s.LatestRun.Status,
+			KickedAt:  s.LatestRun.KickedAt,
+			UpdatedAt: s.LatestRun.UpdatedAt,
+		}
+	}
+	reasons := make([]*recapv2.RecapDegradationReason, len(s.DegradationReasons))
+	for i, r := range s.DegradationReasons {
+		reasons[i] = &recapv2.RecapDegradationReason{
+			Code:   r.Code,
+			Detail: r.Detail,
+		}
+	}
+	return &recapv2.RecapSurfaceStatus{
+		GeneratedAt:        s.GeneratedAt,
+		WindowStart:        s.WindowStart,
+		WindowEnd:          s.WindowEnd,
+		IsStale:            s.IsStale,
+		StaleAfter:         s.StaleAfter,
+		LatestRun:          latestRun,
+		DegradationReasons: reasons,
+	}
 }

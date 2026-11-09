@@ -47,6 +47,20 @@ func TestGetLatestLetter_ReturnsLetter(t *testing.T) {
 				{Key: "top3", Title: "Top Stories", Bullets: []string{"Bullet 1"}, Genre: ""},
 			},
 		},
+		SurfaceStatus: &domain.RecapSurfaceStatus{
+			GeneratedAt: "2026-04-07T06:00:00Z",
+			IsStale:     false,
+			StaleAfter:  "2026-04-07T09:00:00Z",
+			LatestRun: &domain.RecapSurfaceRun{
+				JobID:     "job-1",
+				Status:    "completed",
+				KickedAt:  "2026-04-07T05:55:00Z",
+				UpdatedAt: "2026-04-07T06:00:00Z",
+			},
+			DegradationReasons: []domain.RecapDegradationReason{
+				{Code: "placeholder_output", Detail: ""},
+			},
+		},
 	}
 	mockUC.EXPECT().GetLatestLetter(gomock.Any()).Return(doc, nil)
 
@@ -59,6 +73,12 @@ func TestGetLatestLetter_ReturnsLetter(t *testing.T) {
 	assert.Equal(t, "Today's briefing", letter.Body.Lead)
 	assert.Len(t, letter.Body.Sections, 1)
 	assert.Equal(t, "\"test:1\"", letter.Etag)
+	require.NotNil(t, letter.SurfaceStatus)
+	assert.Equal(t, "2026-04-07T06:00:00Z", letter.SurfaceStatus.GeneratedAt)
+	require.NotNil(t, letter.SurfaceStatus.LatestRun)
+	assert.Equal(t, "completed", letter.SurfaceStatus.LatestRun.Status)
+	require.Len(t, letter.SurfaceStatus.DegradationReasons, 1)
+	assert.Equal(t, "placeholder_output", letter.SurfaceStatus.DegradationReasons[0].Code)
 }
 
 func TestGetLatestLetter_NotFound(t *testing.T) {
