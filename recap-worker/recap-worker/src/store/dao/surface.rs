@@ -375,18 +375,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn surface_health_seeds_compute_last_success_and_newer_failures() -> Result<()> {
-        let Ok(database_url) = std::env::var("DATABASE_URL") else {
-            return Ok(());
-        };
-
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&database_url)
-            .await?;
-
-        sqlx::query(
+    async fn create_surface_health_temp_tables(pool: &PgPool) -> Result<()> {
+        for ddl in [
             r"
             CREATE TEMP TABLE recap_jobs (
                 job_id UUID PRIMARY KEY,
@@ -397,11 +387,6 @@ mod tests {
                 updated_at TIMESTAMPTZ NOT NULL
             )
             ",
-        )
-        .execute(&pool)
-        .await?;
-
-        sqlx::query(
             r"
             CREATE TEMP TABLE pulse_generations (
                 id BIGSERIAL PRIMARY KEY,
@@ -412,11 +397,6 @@ mod tests {
                 finished_at TIMESTAMPTZ
             )
             ",
-        )
-        .execute(&pool)
-        .await?;
-
-        sqlx::query(
             r"
             CREATE TEMP TABLE morning_letters (
                 id UUID PRIMARY KEY,
@@ -425,22 +405,19 @@ mod tests {
                 created_at TIMESTAMPTZ NOT NULL
             )
             ",
-        )
-        .execute(&pool)
-        .await?;
-
-        let empty_seeds = SurfaceDaoOps::get_all_surface_health_seeds(&pool).await?;
-        for (_surface, seed) in empty_seeds {
-            assert_eq!(seed.last_success_at, None);
-            assert_eq!(seed.consecutive_failures, 0);
+        ] {
+            sqlx::query(ddl).execute(pool).await?;
         }
+        Ok(())
+    }
 
-        let t0 = DateTime::parse_from_rfc3339("2026-11-09T01:00:00Z")?.with_timezone(&Utc);
-        let t1 = DateTime::parse_from_rfc3339("2026-11-09T02:00:00Z")?.with_timezone(&Utc);
-        let t2 = DateTime::parse_from_rfc3339("2026-11-09T03:00:00Z")?.with_timezone(&Utc);
-        let t3 = DateTime::parse_from_rfc3339("2026-11-09T04:00:00Z")?.with_timezone(&Utc);
-
-        // three_day_recap: failed at t0, completed at t1, failed at t2 & t3 -> last_success=t1, failures=2
+    async fn seed_surface_health_rows(
+        pool: &PgPool,
+        t0: DateTime<Utc>,
+        t1: DateTime<Utc>,
+        t2: DateTime<Utc>,
+        t3: DateTime<Utc>,
+    ) -> Result<()> {
         for (ts, status) in [
             (t0, "failed"),
             (t1, "completed"),
@@ -456,23 +433,24 @@ mod tests {
             .bind(Uuid::new_v4())
             .bind(ts)
             .bind(status)
-            .execute(&pool)
+            .execute(pool)
             .await?;
         }
 
-        // topic_cards: never succeeded, 1 failed run -> last_success=None, failures=1
         sqlx::query(
             r"
             INSERT INTO recap_jobs (job_id, kicked_at, status, window_days, trigger_source, updated_at)
-            VALUES ($1, $2, 'failed', 3, 'cards', $2)
+            VALUES ($1, $2, 'failed', 3, 'cards', $2),
+                   ($3, $4, 'failed', 1, 'morning', $4)
             ",
         )
         .bind(Uuid::new_v4())
         .bind(t2)
-        .execute(&pool)
+        .bind(Uuid::new_v4())
+        .bind(t3)
+        .execute(pool)
         .await?;
 
-        // evening_pulse: succeeded at t2, no newer failures -> last_success=t2, failures=0
         sqlx::query(
             r"
             INSERT INTO pulse_generations (job_id, target_date, status, started_at, finished_at)
@@ -484,10 +462,9 @@ mod tests {
         .bind(t0)
         .bind(Uuid::new_v4())
         .bind(t2)
-        .execute(&pool)
+        .execute(pool)
         .await?;
 
-        // morning_letter: letter created at t1, failed morning job at t3 -> last_success=t1, failures=1
         sqlx::query(
             r"
             INSERT INTO morning_letters (id, target_date, generation_revision, created_at)
@@ -496,18 +473,37 @@ mod tests {
         )
         .bind(Uuid::new_v4())
         .bind(t1)
-        .execute(&pool)
+        .execute(pool)
         .await?;
-        sqlx::query(
-            r"
-            INSERT INTO recap_jobs (job_id, kicked_at, status, window_days, trigger_source, updated_at)
-            VALUES ($1, $2, 'failed', 1, 'morning', $2)
-            ",
-        )
-        .bind(Uuid::new_v4())
-        .bind(t3)
-        .execute(&pool)
-        .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn surface_health_seeds_compute_last_success_and_newer_failures() -> Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await?;
+
+        create_surface_health_temp_tables(&pool).await?;
+
+        let empty_seeds = SurfaceDaoOps::get_all_surface_health_seeds(&pool).await?;
+        for (_surface, seed) in empty_seeds {
+            assert_eq!(seed.last_success_at, None);
+            assert_eq!(seed.consecutive_failures, 0);
+        }
+
+        let t0 = DateTime::parse_from_rfc3339("2026-11-09T01:00:00Z")?.with_timezone(&Utc);
+        let t1 = DateTime::parse_from_rfc3339("2026-11-09T02:00:00Z")?.with_timezone(&Utc);
+        let t2 = DateTime::parse_from_rfc3339("2026-11-09T03:00:00Z")?.with_timezone(&Utc);
+        let t3 = DateTime::parse_from_rfc3339("2026-11-09T04:00:00Z")?.with_timezone(&Utc);
+
+        seed_surface_health_rows(&pool, t0, t1, t2, t3).await?;
 
         let seeds = SurfaceDaoOps::get_all_surface_health_seeds(&pool).await?;
         assert_eq!(

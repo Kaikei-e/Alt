@@ -1368,19 +1368,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    #[allow(clippy::await_holding_lock)]
-    async fn regenerate_morning_letter_returns_its_own_written_revision_when_newer_revision_exists()
-    {
-        use crate::{
-            app::ComponentRegistry,
-            config::{Config, ENV_MUTEX},
-            store::dao::mock::MockRecapDao,
-        };
-        use chrono::{DateTime, NaiveDate, Utc};
+    async fn start_regenerate_mock_server() -> wiremock::MockServer {
         use serde_json::json;
-        use std::sync::Arc;
-        use uuid::Uuid;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1421,6 +1410,24 @@ mod tests {
             })))
             .mount(&mock_server)
             .await;
+        mock_server
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn regenerate_morning_letter_returns_its_own_written_revision_when_newer_revision_exists()
+    {
+        use crate::{
+            app::ComponentRegistry,
+            config::{Config, ENV_MUTEX},
+            store::dao::mock::MockRecapDao,
+        };
+        use chrono::{DateTime, NaiveDate, Utc};
+        use serde_json::json;
+        use std::sync::Arc;
+        use uuid::Uuid;
+
+        let mock_server = start_regenerate_mock_server().await;
 
         let concurrent_letter = crate::store::models::MorningLetter {
             id: Uuid::parse_str("99999999-8888-7777-6666-555555555555").unwrap(),
@@ -1453,7 +1460,7 @@ mod tests {
 
         let server_uri = mock_server.uri();
 
-        let _lock = ENV_MUTEX
+        let env_lock = ENV_MUTEX
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let registry = temp_env::async_with_vars(
@@ -1491,7 +1498,7 @@ mod tests {
         )
         .await
         .with_recap_dao(dao.clone());
-        drop(_lock);
+        drop(env_lock);
 
         let state = AppState::new(registry);
         let response =
