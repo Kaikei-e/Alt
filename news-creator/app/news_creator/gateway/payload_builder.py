@@ -66,7 +66,7 @@ class GeneratePayload:
     model: str
     prompt: str
     options: dict[str, Any]
-    keep_alive: int | str | None = None
+    keep_alive: int | str
     stream: bool = False
     raw: bool = True  # Default True for Gemma 4 compatibility
     format: str | dict[str, Any] | None = None
@@ -107,8 +107,8 @@ class PayloadBuilderProtocol(Protocol):
         self,
         prompt: str,
         model: str,
-        options: dict[str, Any] | None = None,
-        keep_alive: int | str | None = None,
+        options: dict[str, Any],
+        keep_alive: int | str,
         stream: bool = False,
         raw: bool = True,
         format: str | dict[str, Any] | None = None,
@@ -132,8 +132,8 @@ class PayloadBuilder:
         self,
         prompt: str,
         model: str,
-        options: dict[str, Any] | None = None,
-        keep_alive: int | str | None = None,
+        options: dict[str, Any],
+        keep_alive: int | str,
         stream: bool = False,
         raw: bool = True,
         format: str | dict[str, Any] | None = None,
@@ -156,7 +156,7 @@ class PayloadBuilder:
         return GeneratePayload(
             model=model,
             prompt=prepared_prompt,
-            options=options if options is not None else {},
+            options=options,
             keep_alive=keep_alive,
             stream=stream,
             raw=raw,

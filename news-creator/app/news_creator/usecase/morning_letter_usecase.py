@@ -44,12 +44,18 @@ else:
 SECTION_KEY_PATTERN = re.compile(r"^(lead|top3|what_changed|by_genre:[a-z0-9_\-]+)$")
 
 MIN_LEAD_LENGTH: int = 8
-MIN_BULLET_LENGTH: int = 8
+MIN_BULLET_LENGTH: int = 4
 MIN_JAPANESE_CHAR_RATIO: float = 0.3
 MAX_GENERATION_ATTEMPTS: int = 2
 
+_VALIDATION_REASONS: frozenset[str] = frozenset(
+    {"placeholder_output", "duplicate_bullets", "low_japanese_ratio"}
+)
 _PLACEHOLDER_FIELD_RE = re.compile(
-    r"^[\s\.\u2026\u22ef\u30fb\u3000-\u303f\uff01-\uff65!\"#$%&'()*+,\-/:;<=>?@\[\\\]^_`{|}~]+$"
+    r"^[\s!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~"
+    r"\u2010-\u2015\u2025\u2026\u22ef\u2500\u2501"
+    r"\u3000-\u303f\u30fb\u30fc"
+    r"\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]+$"
 )
 _CITATION_REF_RE = re.compile(r"\[\d+\]")
 _JAPANESE_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")
@@ -139,7 +145,6 @@ class MorningLetterUsecase:
                 e.reason,
                 e.detail,
                 response_head=e.response_head,
-                degradation_reason_override=e.reason,
             )
         except RuntimeError as e:
             # _parse_content raises RuntimeError for shape issues (non-dict,
@@ -181,16 +186,21 @@ class MorningLetterUsecase:
         last_error: MorningLetterValidationError | None = None
 
         for attempt in range(MAX_GENERATION_ATTEMPTS):
-            raw_result = await self.llm_provider.generate(
-                prompt,
-                num_predict=self.config.summary_num_predict,
-                format=json_schema,
-                options=llm_options,
-            )
-            if not isinstance(raw_result, LLMGenerateResponse):
-                raise TypeError("Expected specific type")
-            result = raw_result
-            candidate = self._parse_content(result.response)
+            try:
+                raw_result = await self.llm_provider.generate(
+                    prompt,
+                    num_predict=self.config.summary_num_predict,
+                    format=json_schema,
+                    options=llm_options,
+                )
+                if not isinstance(raw_result, LLMGenerateResponse):
+                    raise TypeError("Expected specific type")
+                result = raw_result
+                candidate = self._parse_content(result.response)
+            except Exception as exc:
+                if last_error is not None:
+                    raise last_error from exc
+                raise
             rejection = self._validate_letter_content(candidate)
             if rejection is None:
                 content = candidate
@@ -337,7 +347,8 @@ class MorningLetterUsecase:
             seen_bullets.update(normalized_in_section)
 
         all_bullets = [b for s in content.sections for b in s.bullets]
-        combined_text = re.sub(r"\s+", "", content.lead + "".join(all_bullets))
+        raw_combined = _CITATION_REF_RE.sub("", content.lead + "".join(all_bullets))
+        combined_text = re.sub(r"\s+", "", raw_combined)
         if not combined_text:
             return ("placeholder_output", "Combined lead and bullets are empty")
         ja_count = len(_JAPANESE_CHAR_RE.findall(combined_text))
@@ -377,6 +388,7 @@ class MorningLetterUsecase:
             [
                 "  - `by_genre:<ジャンル英小文字名>`: ジャンル別要約。`genre` フィールドにも同じジャンル名を入れる（英小文字・数字・アンダースコア・ハイフンのみ）",
                 "- `bullets`: 配列。各要素は具体的な事実・固有名詞・数値を含む日本語の文",
+                "- `narrative`: 任意の地の文 (1〜3 文)。不要なら省略可",
                 "- `generated_at`: 生成時刻の RFC3339 形式タイムスタンプ（UTC, `YYYY-MM-DDThh:mm:ssZ`）",
                 f"- `source_recap_window_days`: {window_days_value}",
                 "",
@@ -426,7 +438,6 @@ class MorningLetterUsecase:
         system_prompt = self._build_system_prompt(is_degraded)
         render_kwargs: dict[str, Any] = {
             "target_date": request.target_date,
-            "is_degraded": is_degraded,
             "input_data": input_data,
         }
         user_prompt = self.template.render(**render_kwargs)
@@ -550,7 +561,6 @@ class MorningLetterUsecase:
         error_type: str,
         error_detail: str,
         response_head: str | None,
-        degradation_reason_override: str | None = None,
     ) -> tuple:
         """Return (extractive_content, metadata) and emit a structured log
         that identifies the actual failure mode — so ops can see whether
@@ -574,8 +584,8 @@ class MorningLetterUsecase:
         )
         content = self._build_extractive_fallback(request)
         reason_str = (
-            degradation_reason_override
-            if degradation_reason_override is not None
+            error_type
+            if error_type in _VALIDATION_REASONS
             else f"{error_type}: {error_detail[:180]}"
         )
         metadata = RecapSummaryMetadata(

@@ -9,6 +9,7 @@ from typing import Any
 
 from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import GenerateRequest, LLMGenerateResponse
+from news_creator.domain.prompts import wrap_gemma_prompt
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
@@ -84,9 +85,22 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                     ),
                 )
 
+            stripped_prompt = request.prompt.strip()
+            if stripped_prompt.startswith("<|turn>"):
+                prompt_to_send = request.prompt
+                prompt_wrapped = False
+            else:
+                prompt_to_send = wrap_gemma_prompt(stripped_prompt)
+                prompt_wrapped = True
+            logger.info(
+                "generate_prompt_wrapped=%s",
+                "true" if prompt_wrapped else "false",
+                extra={"generate_prompt_wrapped": prompt_wrapped},
+            )
+
             # Call LLM provider
             result = await llm_provider.generate(
-                prompt=request.prompt.strip(),
+                prompt=prompt_to_send,
                 model=request.model,
                 num_predict=num_predict_override,
                 stream=request.stream,

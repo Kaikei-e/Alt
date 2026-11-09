@@ -133,7 +133,7 @@ def test_generate_wraps_untemplated_prompt_and_logs_wrapped_true(caplog):
     assert response.status_code == 200
     mock_provider.generate.assert_awaited_once()
     sent_prompt = mock_provider.generate.call_args.kwargs["prompt"]
-    assert sent_prompt == "<|turn>user\nhello world<turn|>\n<|turn>model\n"
+    assert sent_prompt == "<|turn>user\nhello world\n<turn|>\n<|turn>model\n"
     assert "generate_prompt_wrapped=true" in caplog.text
 
 
