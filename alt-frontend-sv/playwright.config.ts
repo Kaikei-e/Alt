@@ -17,6 +17,8 @@ import { defineConfig, devices } from "@playwright/test";
  */
 
 const isCI = !!process.env.CI;
+const useBlob = process.env.PW_BLOB === "1";
+const reportDir = process.env.REPORT_DIR ?? "playwright-report";
 
 /**
  * Preview-server port. Defaults to 4174 so CI and every existing invocation
@@ -62,17 +64,25 @@ export default defineConfig({
 	snapshotPathTemplate:
 		"{testDir}/{testFileDir}/__screenshots__/{testFileName}/{projectName}/{arg}{ext}",
 
-	// Enhanced reporters
-	reporter: [
-		["list"],
-		["html", { open: "never" }],
-		...(isCI
-			? [
-					["github"] as const,
-					["json", { outputFile: "test-results/results.json" }] as const,
-				]
-			: []),
-	],
+	// Enhanced reporters; under PW_BLOB in CI, emit a blob report to
+	// REPORT_DIR/blob so the workflow merge job includes every shard.
+	reporter: useBlob
+		? [
+				["list"],
+				["blob", { outputDir: `${reportDir}/blob` }],
+			]
+		: [
+				["list"],
+				["html", { open: "never" }],
+				...(isCI
+					? [
+							["github"] as const,
+							["json", { outputFile: "test-results/results.json" }] as const,
+						]
+					: []),
+			],
+
+	...(useBlob ? { tag: "@alt-frontend-sv" } : {}),
 
 	globalSetup: "./tests/e2e/global-setup",
 	globalTeardown: "./tests/e2e/global-teardown",

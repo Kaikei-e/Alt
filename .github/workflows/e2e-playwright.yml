@@ -7,33 +7,52 @@
 # Shape
 # -----
 #
-#   plan ──┬── single    (matrix over the unsharded suites: build + run)   ──┐
-#          │                                                                │
-#          └── build ──> sharded (matrix over suite × shard)              ──┴─> merge
+#   check ──────────────────────────────────────────────────────────────────┐
+#                                                                           ▼
+#   plan ──┬── single    (matrix over the unsharded suites: build + run) ──┬─> merge ──> verdict
+#          │                                                               │
+#          └── build ──> sharded (matrix over suite × shard)             ──┘
 #
 # `plan` derives all three matrices from e2e/playwright/suites.yaml, so the
 # shard count lives next to the suite it describes rather than being duplicated
-# here where it would drift.
+# here where it would drift. `plan` runs in parallel with `check` so image
+# builds and suite execution do not wait on `npm ci` + static checks; `verdict`
+# gates the workflow on `check` alongside the suite results.
 #
 # A suite that fans out gets its images built once and handed to its shards as
 # an artifact; an unsharded suite builds in the job that runs it. Without that
 # split a four-shard suite repeats the same three image builds four times —
 # the dominant cost of the job, and one that does not parallelise away.
 #
-# No path filtering, deliberately
-# -------------------------------
-# Every suite runs on every PR and every push to main. Selective skipping by
-# touched path lets a shared-wiring regression (compose.staging.yaml, a
+# No per-service path filtering, deliberately
+# -------------------------------------------
+# Every suite runs on every non-docs PR and push to main. Selective skipping by
+# touched service path lets a shared-wiring regression (compose.staging.yaml, a
 # fixture, an upstream Go package, proto) land green because it matched no
-# service path. Cost is bounded by importing the registry layer cache, not by
-# skipping suites.
+# service path. The single exception is the `paths-ignore` list on the triggers
+# below for documentation and agent-config files, which never reach an image,
+# fixture or test.
 
 name: E2E Playwright
 
 on:
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '.claude/**'
+      - '.agents/**'
+      - '**/CLAUDE.md'
+      - '**/AGENTS.md'
+      - '**/README.md'
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '.claude/**'
+      - '.agents/**'
+      - '**/CLAUDE.md'
+      - '**/AGENTS.md'
+      - '**/README.md'
   workflow_dispatch:
 
 permissions:
@@ -53,10 +72,11 @@ env:
   NODE_IMAGE: node:26-bookworm-slim
 
 jobs:
-  # A typo should cost one minute of CI, not twenty. This needs no Docker
-  # daemon, no compose slice and no stack startup: it typechecks every suite
-  # and runs `playwright test --list`, which loads each config, imports every
-  # spec, resolves every fixture and reports the test tree. That catches a bad
+  # Fast static check across every suite. Runs in parallel with `plan` and the
+  # suite jobs (and gates `verdict`): it needs no Docker daemon, no compose
+  # slice and no stack startup. It typechecks every suite and runs
+  # `playwright test --list`, which loads each config, imports every spec,
+  # resolves every fixture and reports the test tree. That catches a bad
   # import, an invalid project matcher, a missing fixture and a duplicate
   # title — everything except whether the assertions are true.
   check:
@@ -94,7 +114,6 @@ jobs:
 
   plan:
     name: Plan matrices
-    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -127,6 +146,7 @@ jobs:
       matrix:
         suite: ${{ fromJSON(needs.plan.outputs.single) }}
     env:
+      SUITE: ${{ matrix.suite }}
       # A distinct compose project per suite: the network is named after the
       # project, so this is what stops two jobs from fighting over a network
       # name if they ever share a daemon.
@@ -150,7 +170,7 @@ jobs:
         # Reads suites.yaml for which images, services.yaml for how to build
         # each. The same command reproduces a CI build locally, which is the
         # point of it being a script rather than a workflow step.
-        run: python3 e2e/playwright/_lib/build-images.py "${{ matrix.suite }}"
+        run: python3 e2e/playwright/_lib/build-images.py "$SUITE"
 
       - name: Warm the rust-bert model cache
         # recap-worker only. The staging stack runs on an `internal: true`
@@ -168,10 +188,21 @@ jobs:
             "ghcr.io/${GHCR_OWNER}/alt-recap-worker:${IMAGE_TAG}" warmup
 
       - name: Pre-pull node image
-        run: docker pull "$NODE_IMAGE"
+        run: |
+          for attempt in 1 2 3; do
+            if docker pull "$NODE_IMAGE"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "docker pull $NODE_IMAGE attempt ${attempt}/3 failed; retrying in $((attempt * 5))s" >&2
+              sleep "$((attempt * 5))"
+            fi
+          done
+          echo "docker pull $NODE_IMAGE failed after 3 attempts" >&2
+          exit 1
 
       - name: Run suite
-        run: bash "e2e/playwright/${{ matrix.suite }}/run.sh"
+        run: bash "e2e/playwright/${SUITE}/run.sh"
 
       - name: Dump staging logs on failure
         if: failure()
@@ -184,6 +215,8 @@ jobs:
           name: blob-${{ matrix.suite }}
           path: e2e/reports/${{ matrix.suite }}/blob
           retention-days: 3
+          compression-level: 0
+          overwrite: true
           # `warn`, not `ignore`. A suite that ran and produced no blob is a
           # broken report pipeline, and `ignore` is what let exactly that stay
           # invisible: every suite wrote to a path the upload did not look at,
@@ -197,7 +230,7 @@ jobs:
         # but private keys under the workspace would otherwise be in scope for
         # the artifact upload step of any later job.
         if: always()
-        run: rm -rf "e2e/fixtures/${{ matrix.suite }}/pki"
+        run: rm -rf "e2e/fixtures/${SUITE}/pki"
 
       - name: Tear down staging stack
         if: always()
@@ -216,6 +249,8 @@ jobs:
       fail-fast: false
       matrix:
         suite: ${{ fromJSON(needs.plan.outputs.shardedBuild) }}
+    env:
+      SUITE: ${{ matrix.suite }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -223,17 +258,17 @@ jobs:
           persist-credentials: false
 
       - name: Build images
-        run: python3 e2e/playwright/_lib/build-images.py "${{ matrix.suite }}"
+        run: python3 e2e/playwright/_lib/build-images.py "$SUITE"
 
       - name: Export images
         run: |
           # The image list comes back out of the same manifest that drove the
           # build, so a suite that grows a fourth image needs no edit here for
           # that image to reach its shards.
-          images="$(python3 e2e/playwright/_lib/build-images.py "${{ matrix.suite }}" --print-images)"
+          images="$(python3 e2e/playwright/_lib/build-images.py "$SUITE" --print-images)"
           echo "exporting: $images"
           # shellcheck disable=SC2086  # splitting the list into args is the point
-          docker save $images | zstd -T0 -3 -o "/tmp/${{ matrix.suite }}-images.tar.zst"
+          docker save $images | zstd -T0 -3 -o "/tmp/${SUITE}-images.tar.zst"
 
       - name: Upload images
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -242,6 +277,7 @@ jobs:
           path: /tmp/${{ matrix.suite }}-images.tar.zst
           retention-days: 1
           compression-level: 0  # already zstd-compressed
+          overwrite: true
 
   sharded:
     name: ${{ matrix.suite }} shard ${{ matrix.shard }}
@@ -254,6 +290,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.shardedRun) }}
     env:
+      SUITE: ${{ matrix.suite }}
       STAGING_PROJECT_NAME: alt-staging-${{ matrix.suite }}-${{ matrix.index }}
       KEEP_STACK: 1
       PW_BLOB: 1
@@ -273,13 +310,24 @@ jobs:
           path: /tmp
 
       - name: Load images
-        run: zstd -dc "/tmp/${{ matrix.suite }}-images.tar.zst" | docker load
+        run: zstd -dc "/tmp/${SUITE}-images.tar.zst" | docker load
 
       - name: Pre-pull node image
-        run: docker pull "$NODE_IMAGE"
+        run: |
+          for attempt in 1 2 3; do
+            if docker pull "$NODE_IMAGE"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "docker pull $NODE_IMAGE attempt ${attempt}/3 failed; retrying in $((attempt * 5))s" >&2
+              sleep "$((attempt * 5))"
+            fi
+          done
+          echo "docker pull $NODE_IMAGE failed after 3 attempts" >&2
+          exit 1
 
       - name: Run shard
-        run: bash "e2e/playwright/${{ matrix.suite }}/run.sh"
+        run: bash "e2e/playwright/${SUITE}/run.sh"
 
       - name: Dump staging logs on failure
         if: failure()
@@ -292,6 +340,8 @@ jobs:
           name: blob-${{ matrix.suite }}-${{ matrix.index }}
           path: e2e/reports/${{ matrix.suite }}-shard-${{ matrix.index }}/blob
           retention-days: 3
+          compression-level: 0
+          overwrite: true
           # `warn`, not `ignore`. A suite that ran and produced no blob is a
           # broken report pipeline, and `ignore` is what let exactly that stay
           # invisible: every suite wrote to a path the upload did not look at,
@@ -301,7 +351,7 @@ jobs:
 
       - name: Wipe throwaway mTLS fixtures
         if: always()
-        run: rm -rf "e2e/fixtures/${{ matrix.suite }}/pki"
+        run: rm -rf "e2e/fixtures/${SUITE}/pki"
 
       - name: Tear down staging stack
         if: always()
@@ -319,6 +369,9 @@ jobs:
     needs: [single, sharded]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -326,27 +379,62 @@ jobs:
           persist-credentials: false
 
       - name: Download every blob report
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
-        with:
-          pattern: blob-*
-          path: all-blob-reports
-          merge-multiple: true
+        # Degrades to a warning on download error because a report-merge failure must not mask passing suites.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p all-blob-reports-raw
+          if ! gh run download "$GITHUB_RUN_ID" --pattern 'blob-*' --dir all-blob-reports-raw; then
+            echo "::warning::Failed to download blob-* artifacts via gh run download; skipping HTML/JUnit report merge."
+            echo "- :warning: **Report merge**: Failed to download \`blob-*\` artifacts; HTML/JUnit report was not generated." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
       - name: Merge into one HTML + JUnit report
         run: |
+          mkdir -p all-blob-reports
+          if [ -d all-blob-reports-raw ]; then
+            idx=0
+            while IFS= read -r archive; do
+              [ -n "$archive" ] || continue
+              idx=$((idx + 1))
+              parent="$(basename "$(dirname "$archive")")"
+              if [ "$parent" = "all-blob-reports-raw" ]; then
+                prefix="blob-single"
+              else
+                prefix="$parent"
+              fi
+              cp "$archive" "all-blob-reports/${prefix}-${idx}-$(basename "$archive")"
+            done < <(find all-blob-reports-raw -type f -name '*.zip' | sort)
+          fi
           if [ -z "$(ls -A all-blob-reports 2>/dev/null)" ]; then
-            echo "no blob reports to merge (every suite failed before running)" >&2
+            echo "::warning::No Playwright blob reports found to merge."
+            echo "- :warning: **Report merge**: No Playwright blob reports found to merge." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          # Two separate things make a twelve-suite merge work.
+          for attempt in 1 2 3; do
+            if docker pull "$NODE_IMAGE"; then
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "docker pull $NODE_IMAGE attempt ${attempt}/3 failed; retrying in $((attempt * 5))s" >&2
+              sleep "$((attempt * 5))"
+            else
+              echo "::warning::Failed to pull $NODE_IMAGE after 3 attempts; skipping HTML/JUnit report merge."
+              echo "- :warning: **Report merge**: Failed to pull \`$NODE_IMAGE\` after 3 attempts; HTML/JUnit report was not generated." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          done
+          # Two separate things make a fleet-wide merge work.
           #
-          # `tag: '@<service>'` in each suite's config (Playwright 1.57+) feeds
-          # the blob filename hash, so twelve artifacts flattened into one
-          # directory by `merge-multiple: true` do not overwrite each other.
+          # `tag: '@<service>'` in each suite's config (Playwright 1.57+) plus
+          # the `<prefix>-<idx>-` prefix staged above keep every blob filename
+          # distinct when flattened into `all-blob-reports/`.
           #
           # `-c merge.config.ts` handles the other half: merge-reports refuses
           # blobs "recorded with different test directories", which assumes
-          # blobs from shards of ONE config. Twelve suites have twelve
+          # blobs from shards of ONE config. Multiple suites have distinct
           # testDirs, so the merge needs a config naming where the tests really
           # live. Without it this job fails outright — as it did the first time
           # the blob uploads actually worked.
@@ -360,7 +448,7 @@ jobs:
           # Output locations go through the reporters' own env vars rather than
           # a config file: merge-reports does not load a config unless passed
           # `-c`, so relying on one here would silently write to the defaults.
-          docker run --rm \
+          if ! docker run --rm \
             -v "$PWD:$PWD" -w "$PWD/e2e/playwright" \
             -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
             -e PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report \
@@ -374,7 +462,11 @@ jobs:
                 -c merge.config.ts \
                 --reporter html,junit,github \
                 ../../all-blob-reports
-            '
+            '; then
+            echo "::warning::playwright merge-reports failed; HTML/JUnit report could not be built."
+            echo "- :warning: **Report merge**: \`playwright merge-reports\` failed; HTML/JUnit report was not generated." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
       - name: Upload merged report
         if: always()
@@ -384,5 +476,96 @@ jobs:
           path: |
             e2e/playwright/playwright-report
             e2e/playwright/results.xml
-          retention-days: 7
-          if-no-files-found: ignore
+          retention-days: 3
+          overwrite: true
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Final gate: fails the workflow if `check`, `plan`, or any suite/shard
+  # failed or was cancelled.
+  # ---------------------------------------------------------------------------
+  verdict:
+    name: Verdict
+    if: ${{ !cancelled() }}
+    needs: [check, plan, single, build, sharded, merge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CHECK_RESULT: ${{ needs.check.result }}
+      PLAN_RESULT: ${{ needs.plan.result }}
+      SINGLE_RESULT: ${{ needs.single.result }}
+      BUILD_RESULT: ${{ needs.build.result }}
+      SHARDED_RESULT: ${{ needs.sharded.result }}
+      MERGE_RESULT: ${{ needs.merge.result }}
+      HAS_SINGLE: ${{ needs.plan.outputs.hasSingle }}
+      HAS_SHARDED: ${{ needs.plan.outputs.hasSharded }}
+    steps:
+      - name: Evaluate suite and check results
+        run: |
+          {
+            echo "### E2E Playwright Verdict"
+            echo ""
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "| check | \`${CHECK_RESULT}\` |"
+            echo "| plan | \`${PLAN_RESULT}\` |"
+            echo "| single | \`${SINGLE_RESULT}\` |"
+            echo "| build | \`${BUILD_RESULT}\` |"
+            echo "| sharded | \`${SHARDED_RESULT}\` |"
+            echo "| merge | \`${MERGE_RESULT}\` |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$MERGE_RESULT" != "success" ]; then
+            echo "::warning::Playwright report merge job ended with status '${MERGE_RESULT}'."
+            echo "- :warning: **Report merge (\`${MERGE_RESULT}\`)**: Merge job did not succeed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          failed=0
+
+          if [ "$CHECK_RESULT" != "success" ]; then
+            echo "::error::check job did not succeed (result: ${CHECK_RESULT})"
+            failed=1
+          fi
+
+          if [ "$PLAN_RESULT" != "success" ]; then
+            echo "::error::plan job did not succeed (result: ${PLAN_RESULT})"
+            failed=1
+          fi
+
+          if [ "$HAS_SINGLE" = "true" ]; then
+            if [ "$SINGLE_RESULT" != "success" ]; then
+              echo "::error::single suites job did not succeed (result: ${SINGLE_RESULT})"
+              failed=1
+            fi
+          elif [ "$SINGLE_RESULT" != "skipped" ] && [ "$SINGLE_RESULT" != "success" ]; then
+            echo "::error::single suites job ended with unexpected result: ${SINGLE_RESULT}"
+            failed=1
+          fi
+
+          if [ "$HAS_SHARDED" = "true" ]; then
+            if [ "$BUILD_RESULT" != "success" ]; then
+              echo "::error::sharded image build job did not succeed (result: ${BUILD_RESULT})"
+              failed=1
+            fi
+            if [ "$SHARDED_RESULT" != "success" ]; then
+              echo "::error::sharded suites job did not succeed (result: ${SHARDED_RESULT})"
+              failed=1
+            fi
+          else
+            if [ "$BUILD_RESULT" != "skipped" ] && [ "$BUILD_RESULT" != "success" ]; then
+              echo "::error::sharded image build job ended with unexpected result: ${BUILD_RESULT}"
+              failed=1
+            fi
+            if [ "$SHARDED_RESULT" != "skipped" ] && [ "$SHARDED_RESULT" != "success" ]; then
+              echo "::error::sharded suites job ended with unexpected result: ${SHARDED_RESULT}"
+              failed=1
+            fi
+          fi
+
+          if [ "$failed" -ne 0 ]; then
+            echo "- :x: **Verdict**: One or more E2E suites, builds, or static checks failed or were cancelled." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "- :white_check_mark: **Verdict**: All E2E suites and static checks passed." >> "$GITHUB_STEP_SUMMARY"
