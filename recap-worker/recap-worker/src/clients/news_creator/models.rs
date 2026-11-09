@@ -225,7 +225,6 @@ pub(crate) struct MorningLetterResponseContent {
     pub(crate) schema_version: i32,
     pub(crate) lead: String,
     pub(crate) sections: Vec<MorningLetterResponseSection>,
-    pub(crate) generated_at: String,
     pub(crate) source_recap_window_days: Option<u32>,
 }
 

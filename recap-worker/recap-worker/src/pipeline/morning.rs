@@ -323,92 +323,22 @@ impl MorningPipeline {
         groups: &[(Uuid, Uuid, bool)],
     ) -> Result<Uuid> {
         let letter_id = Uuid::new_v4();
-        let content = &ml_response.content;
-
-        // Event-sourced editorial enrichment: through-line, previous-letter
-        // link, and per-bullet why_reasons — produced deterministically from
-        // the signals we already have (recap summaries + overnight groups).
-        let unique_groups: std::collections::HashSet<Uuid> =
-            groups.iter().map(|(gid, _, _)| *gid).collect();
-        let overnight_count = unique_groups.len();
-
-        // Deterministic editorial through-line: prefer concrete section
-        // labels the LLM chose, fall back to dominant genres, then to a
-        // count sentence. The degraded flag is surfaced visually by the
-        // UI badge, so we no longer prefix the prose with "Partial".
-        let labels = editorial_labels_for(&content.sections, 2);
-        let genres = dominant_genres_for(&content.sections, 2);
-        let through_line = build_through_line(&labels, &genres, overnight_count);
-        let _ = is_degraded; // kept in persisted metadata, not in the through-line
-        let _ = recap_window_days;
 
         let previous = self
             .load_previous_letter_ref(edition_timezone, target_date)
             .await;
 
-        let sections_json = content
-            .sections
-            .iter()
-            .map(|s| {
-                let whys: Vec<serde_json::Value> = s
-                    .bullets
-                    .iter()
-                    .map(|_| {
-                        let code = if s.genre.as_deref().is_some_and(|g| !g.is_empty()) {
-                            "in_weekly_recap"
-                        } else if s.key == "top3" || s.key == "what_changed" {
-                            "pulse_need_to_know"
-                        } else {
-                            "new_unread"
-                        };
-                        serde_json::json!({ "code": code })
-                    })
-                    .collect();
-                serde_json::json!({
-                    "key": s.key,
-                    "title": s.title,
-                    "bullets": s.bullets,
-                    "genre": s.genre,
-                    "narrative": s.narrative,
-                    "why_reasons": whys,
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let result_jsonb = serde_json::json!({
-            "lead": content.lead,
-            "sections": sections_json,
-            "generated_at": content.generated_at,
-            "source_recap_window_days": recap_window_days,
-            "through_line": through_line,
-            "previous_letter_ref": previous,
-        });
-        let generation_metadata_jsonb = serde_json::json!({
-            "model": ml_response.metadata.model,
-            "is_degraded": is_degraded,
-            "degradation_reason": ml_response.metadata.degradation_reason,
-            "processing_time_ms": ml_response.metadata.processing_time_ms,
-        });
-        let target_date_parsed = chrono::NaiveDate::parse_from_str(target_date, "%Y-%m-%d")
-            .unwrap_or_else(|_| chrono::Utc::now().date_naive());
-
-        let letter = MorningLetter {
-            id: letter_id,
-            target_date: target_date_parsed,
-            edition_timezone: edition_timezone.to_string(),
+        let letter = build_morning_letter_from_response(
+            letter_id,
+            target_date,
+            edition_timezone,
             source_recap_job_id,
+            recap_window_days,
             is_degraded,
-            schema_version: content.schema_version,
-            generation_revision: 1,
-            result_jsonb,
-            model: Some(ml_response.metadata.model.clone()),
-            generation_metadata_jsonb,
-            created_at: chrono::Utc::now(),
-        };
-        // UPSERT returns the *effective* letter id: on CONFLICT the
-        // existing row's id is preserved, so the in-memory `letter_id`
-        // we generated is discarded. Use the returned id for sources
-        // (they FK-reference morning_letters.id).
+            ml_response,
+            groups,
+            previous,
+        );
         let effective_letter_id = self.recap_dao.save_morning_letter(&letter).await?;
 
         // morning_letter_sources typically has a uniqueness constraint on
@@ -434,6 +364,102 @@ impl MorningPipeline {
             self.recap_dao.save_morning_letter_sources(&sources).await?;
         }
         Ok(effective_letter_id)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_morning_letter_from_response(
+    letter_id: Uuid,
+    target_date: &str,
+    edition_timezone: &str,
+    source_recap_job_id: Option<Uuid>,
+    recap_window_days: Option<u32>,
+    is_degraded: bool,
+    ml_response: &crate::clients::news_creator::models::MorningLetterGenerateResponse,
+    groups: &[(Uuid, Uuid, bool)],
+    previous: Option<serde_json::Value>,
+) -> MorningLetter {
+    let content = &ml_response.content;
+
+    // Event-sourced editorial enrichment: through-line, previous-letter
+    // link, and per-bullet why_reasons — produced deterministically from
+    // the signals we already have (recap summaries + overnight groups).
+    let unique_groups: std::collections::HashSet<Uuid> =
+        groups.iter().map(|(gid, _, _)| *gid).collect();
+    let overnight_count = unique_groups.len();
+
+    // Deterministic editorial through-line: prefer concrete section
+    // labels the LLM chose, fall back to dominant genres, then to a
+    // count sentence. The degraded flag is surfaced visually by the
+    // UI badge, so we no longer prefix the prose with "Partial".
+    let labels = editorial_labels_for(&content.sections, 2);
+    let genres = dominant_genres_for(&content.sections, 2);
+    let through_line = build_through_line(&labels, &genres, overnight_count);
+    let _ = is_degraded; // kept in persisted metadata, not in the through-line
+    let _ = recap_window_days;
+
+    let sections_json = content
+        .sections
+        .iter()
+        .map(|s| {
+            let whys: Vec<serde_json::Value> = s
+                .bullets
+                .iter()
+                .map(|_| {
+                    let code = if s.genre.as_deref().is_some_and(|g| !g.is_empty()) {
+                        "in_weekly_recap"
+                    } else if s.key == "top3" || s.key == "what_changed" {
+                        "pulse_need_to_know"
+                    } else {
+                        "new_unread"
+                    };
+                    serde_json::json!({ "code": code })
+                })
+                .collect();
+            serde_json::json!({
+                "key": s.key,
+                "title": s.title,
+                "bullets": s.bullets,
+                "genre": s.genre,
+                "narrative": s.narrative,
+                "why_reasons": whys,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let created_at = chrono::DateTime::from_timestamp_micros(chrono::Utc::now().timestamp_micros())
+        .unwrap_or_else(chrono::Utc::now);
+    let generated_at = created_at.to_rfc3339();
+
+    let result_jsonb = serde_json::json!({
+        "lead": content.lead,
+        "sections": sections_json,
+        "generated_at": generated_at,
+        "source_recap_window_days": recap_window_days,
+        "through_line": through_line,
+        "previous_letter_ref": previous,
+    });
+    let generation_metadata_jsonb = serde_json::json!({
+        "model": ml_response.metadata.model,
+        "is_degraded": is_degraded,
+        "degradation_reason": ml_response.metadata.degradation_reason,
+        "processing_time_ms": ml_response.metadata.processing_time_ms,
+    });
+    let target_date_parsed = chrono::NaiveDate::parse_from_str(target_date, "%Y-%m-%d")
+        .unwrap_or_else(|_| created_at.date_naive());
+
+    MorningLetter {
+        id: letter_id,
+        target_date: target_date_parsed,
+        edition_timezone: edition_timezone.to_string(),
+        source_recap_job_id,
+        is_degraded,
+        schema_version: content.schema_version,
+        generation_revision: 1,
+        result_jsonb,
+        model: Some(ml_response.metadata.model.clone()),
+        generation_metadata_jsonb,
+        created_at,
     }
 }
 
@@ -1147,5 +1173,75 @@ mod tests {
             .expect("valid timestamp")
             .with_timezone(&chrono::Utc);
         assert_eq!(edition_target_date(before_midnight_jst), "2026-11-07");
+    }
+
+    #[test]
+    fn build_morning_letter_from_response_assigns_server_generated_at_equal_to_created_at() {
+        use crate::clients::news_creator::models::{
+            MorningLetterGenerateResponse, MorningLetterResponseContent,
+            MorningLetterResponseMetadata, MorningLetterResponseSection,
+        };
+
+        let response = MorningLetterGenerateResponse {
+            target_date: "2026-04-17".to_string(),
+            edition_timezone: "Asia/Tokyo".to_string(),
+            content: MorningLetterResponseContent {
+                schema_version: 1,
+                lead: "A busy night in AI and data.".to_string(),
+                sections: vec![MorningLetterResponseSection {
+                    key: "top3".to_string(),
+                    title: "AI Tooling".to_string(),
+                    bullets: vec!["New release shipped.".to_string()],
+                    genre: Some("ai_data".to_string()),
+                    narrative: Some("Momentum continued.".to_string()),
+                }],
+                source_recap_window_days: Some(3),
+            },
+            metadata: MorningLetterResponseMetadata {
+                model: "gemma4-e4b-12k".to_string(),
+                is_degraded: false,
+                degradation_reason: None,
+                processing_time_ms: Some(1200),
+            },
+        };
+
+        let before = chrono::DateTime::from_timestamp_micros(chrono::Utc::now().timestamp_micros())
+            .expect("valid timestamp");
+        let letter = build_morning_letter_from_response(
+            Uuid::new_v4(),
+            "2026-04-17",
+            "Asia/Tokyo",
+            None,
+            Some(3),
+            false,
+            &response,
+            &[],
+            None,
+        );
+        let after = chrono::DateTime::from_timestamp_micros(chrono::Utc::now().timestamp_micros())
+            .expect("valid timestamp");
+
+        assert!(
+            letter.created_at >= before && letter.created_at <= after,
+            "created_at must be assigned from server clock at save time: before={before}, created_at={}, after={after}",
+            letter.created_at
+        );
+
+        let body_generated_at = letter
+            .result_jsonb
+            .get("generated_at")
+            .and_then(serde_json::Value::as_str)
+            .expect("result_jsonb.generated_at must be a string");
+
+        assert_eq!(
+            body_generated_at,
+            letter.created_at.to_rfc3339(),
+            "body generated_at must equal row created_at"
+        );
+
+        let parsed_generated_at = chrono::DateTime::parse_from_rfc3339(body_generated_at)
+            .expect("generated_at must be valid RFC3339")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(parsed_generated_at, letter.created_at);
     }
 }

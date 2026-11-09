@@ -79,24 +79,50 @@ impl RecapDao {
         Ok(results)
     }
 
-    /// Morning Letter を保存する (UPSERT on target_date + edition_timezone)。
-    /// 競合時は既存の id を残して update するため、**実際の id を返す**。
-    /// 呼び出し側は返ってきた id を morning_letter_sources の外部キーに使うこと
-    /// (ON CONFLICT 時のメモリ上の `letter.id` は DB 上の id と一致しない)。
+    /// Append a new Morning Letter version row with the next `generation_revision`
+    /// for `(target_date, edition_timezone)` and return its `id`.
+    /// Retries once on a unique constraint violation from a concurrent writer.
     pub(crate) async fn save_morning_letter(pool: &PgPool, letter: &MorningLetter) -> Result<Uuid> {
+        match Self::insert_morning_letter_once(pool, letter).await {
+            Ok(id) => Ok(id),
+            Err(err) if is_unique_violation(&err) => Self::insert_morning_letter_once(pool, letter)
+                .await
+                .map_err(|e| {
+                    RecapError::Db(format!("failed to insert morning letter on retry: {e}"))
+                }),
+            Err(e) => Err(RecapError::Db(format!(
+                "failed to insert morning letter: {e}"
+            ))),
+        }
+    }
+
+    async fn insert_morning_letter_once(
+        pool: &PgPool,
+        letter: &MorningLetter,
+    ) -> std::result::Result<Uuid, sqlx::Error> {
         let row = sqlx::query(
             r"
             INSERT INTO morning_letters (
                 id, target_date, edition_timezone, source_recap_job_id,
                 is_degraded, schema_version, generation_revision,
-                result_jsonb, model, generation_metadata_jsonb
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            ON CONFLICT (target_date, edition_timezone) DO UPDATE SET
-                result_jsonb = EXCLUDED.result_jsonb,
-                is_degraded = EXCLUDED.is_degraded,
-                model = EXCLUDED.model,
-                generation_metadata_jsonb = EXCLUDED.generation_metadata_jsonb,
-                generation_revision = morning_letters.generation_revision + 1
+                result_jsonb, model, generation_metadata_jsonb, created_at
+            ) VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                (
+                    SELECT COALESCE(MAX(generation_revision), 0) + 1
+                    FROM morning_letters
+                    WHERE target_date = $2 AND edition_timezone = $3
+                ),
+                $7,
+                $8,
+                $9,
+                $10
+            )
             RETURNING id
             ",
         )
@@ -106,19 +132,17 @@ impl RecapDao {
         .bind(letter.source_recap_job_id)
         .bind(letter.is_degraded)
         .bind(letter.schema_version)
-        .bind(letter.generation_revision)
         .bind(Json(&letter.result_jsonb))
         .bind(&letter.model)
         .bind(Json(&letter.generation_metadata_jsonb))
+        .bind(letter.created_at)
         .fetch_one(pool)
-        .await
-        .map_err(|e| RecapError::Db(format!("failed to upsert morning letter: {e}")))?;
+        .await?;
 
-        Ok(row.try_get::<Uuid, _>("id")?)
+        row.try_get::<Uuid, _>("id")
     }
 
-    /// Morning Letter のソース (provenance) を保存する。
-    /// 既存のソースを削除してから一括 INSERT する。
+    /// Persist provenance sources for a newly inserted Morning Letter version.
     pub(crate) async fn save_morning_letter_sources(
         pool: &PgPool,
         sources: &[MorningLetterSource],
@@ -127,23 +151,11 @@ impl RecapDao {
             return Ok(());
         }
 
-        let letter_id = sources[0].letter_id;
-
         let mut tx = pool.begin().await.map_err(|e| {
             RecapError::Db(format!(
                 "failed to begin transaction for morning letter sources: {e}"
             ))
         })?;
-
-        sqlx::query("DELETE FROM morning_letter_sources WHERE letter_id = $1")
-            .bind(letter_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| {
-                RecapError::Db(format!(
-                    "failed to delete existing morning letter sources: {e}"
-                ))
-            })?;
 
         for source in sources {
             sqlx::query(
@@ -170,7 +182,7 @@ impl RecapDao {
         Ok(())
     }
 
-    /// 指定日の Morning Letter を取得する。
+    /// Fetch the highest-revision Morning Letter for the specified date.
     pub(crate) async fn get_morning_letter_by_date(
         pool: &PgPool,
         date: NaiveDate,
@@ -183,6 +195,7 @@ impl RecapDao {
                 result_jsonb, model, generation_metadata_jsonb, created_at
             FROM morning_letters
             WHERE target_date = $1
+            ORDER BY generation_revision DESC
             LIMIT 1
             ",
         )
@@ -228,8 +241,8 @@ impl RecapDao {
         Ok(sources)
     }
 
-    /// Since-yesterday band 用: `before` 日より前で最新の同一 timezone の
-    /// Morning Letter を返す。存在しなければ `None`。
+    /// Fetch the highest revision of the newest Morning Letter before `before`
+    /// in the same edition timezone, or `None` when none exists.
     pub(crate) async fn get_previous_morning_letter(
         pool: &PgPool,
         edition_timezone: &str,
@@ -243,7 +256,7 @@ impl RecapDao {
                 result_jsonb, model, generation_metadata_jsonb, created_at
             FROM morning_letters
             WHERE edition_timezone = $1 AND target_date < $2
-            ORDER BY target_date DESC
+            ORDER BY target_date DESC, generation_revision DESC
             LIMIT 1
             ",
         )
@@ -259,7 +272,7 @@ impl RecapDao {
         }
     }
 
-    /// 最新の Morning Letter を取得する。
+    /// Fetch the highest revision of the newest Morning Letter.
     pub(crate) async fn get_latest_morning_letter(pool: &PgPool) -> Result<Option<MorningLetter>> {
         let row = sqlx::query(
             r"
@@ -268,7 +281,7 @@ impl RecapDao {
                 is_degraded, schema_version, generation_revision,
                 result_jsonb, model, generation_metadata_jsonb, created_at
             FROM morning_letters
-            ORDER BY target_date DESC
+            ORDER BY target_date DESC, generation_revision DESC
             LIMIT 1
             ",
         )
@@ -281,6 +294,13 @@ impl RecapDao {
             None => Ok(None),
         }
     }
+}
+
+fn is_unique_violation(err: &sqlx::Error) -> bool {
+    matches!(
+        err,
+        sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some("23505")
+    )
 }
 
 fn map_row_to_morning_letter(row: sqlx::postgres::PgRow) -> Result<MorningLetter> {

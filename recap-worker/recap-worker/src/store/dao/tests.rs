@@ -1502,3 +1502,237 @@ fn test_delete_old_jobs_sql_excludes_all_non_cascading_references() {
         );
     }
 }
+
+static MORNING_LETTER_TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn setup_morning_letter_tables(pool: &PgPool) -> anyhow::Result<()> {
+    pool.execute(
+        r"
+        DROP TABLE IF EXISTS morning_letter_sources;
+        DROP TABLE IF EXISTS morning_letters;
+
+        CREATE TABLE morning_letters (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            target_date DATE NOT NULL,
+            edition_timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Tokyo',
+            source_recap_job_id UUID,
+            is_degraded BOOLEAN NOT NULL DEFAULT FALSE,
+            schema_version INTEGER NOT NULL DEFAULT 1,
+            generation_revision INTEGER NOT NULL DEFAULT 1,
+            result_jsonb JSONB NOT NULL,
+            model VARCHAR(100),
+            generation_metadata_jsonb JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE UNIQUE INDEX idx_morning_letters_target_date_tz_revision
+            ON morning_letters (target_date, edition_timezone, generation_revision);
+
+        CREATE INDEX idx_morning_letters_latest_revision
+            ON morning_letters (target_date DESC, generation_revision DESC);
+
+        CREATE TABLE morning_letter_sources (
+            letter_id UUID NOT NULL REFERENCES morning_letters(id),
+            section_key VARCHAR(100) NOT NULL,
+            article_id UUID NOT NULL,
+            source_type VARCHAR(20) NOT NULL DEFAULT 'overnight',
+            position INTEGER NOT NULL,
+            PRIMARY KEY (letter_id, section_key, article_id)
+        );
+        ",
+    )
+    .await?;
+    Ok(())
+}
+
+fn sample_morning_letter(
+    id: Uuid,
+    target_date: chrono::NaiveDate,
+    edition_timezone: &str,
+    lead: &str,
+    created_at: chrono::DateTime<Utc>,
+) -> crate::store::models::MorningLetter {
+    let generated_at = created_at.to_rfc3339();
+    crate::store::models::MorningLetter {
+        id,
+        target_date,
+        edition_timezone: edition_timezone.to_string(),
+        source_recap_job_id: None,
+        is_degraded: false,
+        schema_version: 1,
+        generation_revision: 1,
+        result_jsonb: serde_json::json!({
+            "lead": lead,
+            "sections": [],
+            "generated_at": generated_at,
+        }),
+        model: Some("gemma4-e4b-12k".to_string()),
+        generation_metadata_jsonb: serde_json::json!({
+            "model": "gemma4-e4b-12k",
+            "is_degraded": false,
+        }),
+        created_at,
+    }
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn morning_letter_saves_are_append_only_and_readers_return_highest_revision()
+-> anyhow::Result<()> {
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let _guard = MORNING_LETTER_TEST_MUTEX.lock().await;
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&database_url)
+        .await?;
+    setup_morning_letter_tables(&pool).await?;
+    let dao = UnifiedDao::new(pool.clone());
+
+    let earlier_date = chrono::NaiveDate::from_ymd_opt(2099, 11, 8).expect("valid date");
+    let target_date = chrono::NaiveDate::from_ymd_opt(2099, 11, 9).expect("valid date");
+    let tz = "Asia/Tokyo";
+
+    let ts_earlier_rev1 =
+        chrono::DateTime::parse_from_rfc3339("2026-11-08T06:00:00Z")?.with_timezone(&Utc);
+    let ts_earlier_rev2 =
+        chrono::DateTime::parse_from_rfc3339("2026-11-08T06:30:00Z")?.with_timezone(&Utc);
+    let ts_target_rev1 =
+        chrono::DateTime::parse_from_rfc3339("2026-11-09T06:00:00Z")?.with_timezone(&Utc);
+    let ts_target_rev2 =
+        chrono::DateTime::parse_from_rfc3339("2026-11-09T06:30:00Z")?.with_timezone(&Utc);
+
+    // Save two versions for earlier_date (revisions 1 and 2)
+    let earlier_rev1 = sample_morning_letter(
+        Uuid::new_v4(),
+        earlier_date,
+        tz,
+        "Earlier rev 1",
+        ts_earlier_rev1,
+    );
+    let earlier_rev1_id = dao.save_morning_letter(&earlier_rev1).await?;
+    assert_eq!(earlier_rev1_id, earlier_rev1.id);
+
+    let earlier_rev2 = sample_morning_letter(
+        Uuid::new_v4(),
+        earlier_date,
+        tz,
+        "Earlier rev 2",
+        ts_earlier_rev2,
+    );
+    let earlier_rev2_id = dao.save_morning_letter(&earlier_rev2).await?;
+    assert_eq!(earlier_rev2_id, earlier_rev2.id);
+
+    // Save two versions for target_date (revisions 1 and 2)
+    let rev1 = sample_morning_letter(
+        Uuid::new_v4(),
+        target_date,
+        tz,
+        "Target rev 1",
+        ts_target_rev1,
+    );
+    let rev1_id = dao.save_morning_letter(&rev1).await?;
+    assert_eq!(rev1_id, rev1.id);
+
+    let rev1_article = Uuid::new_v4();
+    dao.save_morning_letter_sources(&[crate::store::models::MorningLetterSource {
+        letter_id: rev1_id,
+        section_key: "overnight".to_string(),
+        article_id: rev1_article,
+        source_type: "overnight_group".to_string(),
+        position: 0,
+    }])
+    .await?;
+
+    let rev2 = sample_morning_letter(
+        Uuid::new_v4(),
+        target_date,
+        tz,
+        "Target rev 2",
+        ts_target_rev2,
+    );
+    let rev2_id = dao.save_morning_letter(&rev2).await?;
+    assert_eq!(rev2_id, rev2.id);
+    assert_ne!(rev1_id, rev2_id, "second save must insert a distinct row");
+
+    let rev2_article = Uuid::new_v4();
+    dao.save_morning_letter_sources(&[crate::store::models::MorningLetterSource {
+        letter_id: rev2_id,
+        section_key: "overnight".to_string(),
+        article_id: rev2_article,
+        source_type: "overnight_group".to_string(),
+        position: 0,
+    }])
+    .await?;
+
+    // Verify both rows for target_date remain in morning_letters with revisions 1 and 2
+    let persisted_rows = sqlx::query(
+        r"
+        SELECT id, generation_revision, created_at
+        FROM morning_letters
+        WHERE target_date = $1 AND edition_timezone = $2
+        ORDER BY generation_revision ASC
+        ",
+    )
+    .bind(target_date)
+    .bind(tz)
+    .fetch_all(&pool)
+    .await?;
+
+    assert_eq!(persisted_rows.len(), 2, "both revision rows must remain");
+    assert_eq!(persisted_rows[0].get::<Uuid, _>("id"), rev1_id);
+    assert_eq!(persisted_rows[0].get::<i32, _>("generation_revision"), 1);
+    assert_eq!(
+        persisted_rows[0].get::<chrono::DateTime<Utc>, _>("created_at"),
+        ts_target_rev1
+    );
+    assert_eq!(persisted_rows[1].get::<Uuid, _>("id"), rev2_id);
+    assert_eq!(persisted_rows[1].get::<i32, _>("generation_revision"), 2);
+    assert_eq!(
+        persisted_rows[1].get::<chrono::DateTime<Utc>, _>("created_at"),
+        ts_target_rev2
+    );
+
+    // Verify readers return the highest revision
+    let by_date = dao
+        .get_morning_letter_by_date(target_date)
+        .await?
+        .expect("letter for target_date must exist");
+    assert_eq!(by_date.id, rev2_id);
+    assert_eq!(by_date.generation_revision, 2);
+    assert_eq!(by_date.created_at, ts_target_rev2);
+    assert_eq!(
+        by_date.result_jsonb["generated_at"].as_str(),
+        Some(by_date.created_at.to_rfc3339().as_str())
+    );
+
+    let latest = dao
+        .get_latest_morning_letter()
+        .await?
+        .expect("latest letter must exist");
+    assert_eq!(latest.id, rev2_id);
+    assert_eq!(latest.target_date, target_date);
+    assert_eq!(latest.generation_revision, 2);
+
+    let previous = dao
+        .get_previous_morning_letter(tz, target_date)
+        .await?
+        .expect("previous letter must exist");
+    assert_eq!(previous.id, earlier_rev2_id);
+    assert_eq!(previous.target_date, earlier_date);
+    assert_eq!(previous.generation_revision, 2);
+
+    // Verify sources of revision 1 are untouched after saving sources for revision 2
+    let rev1_sources = dao.get_morning_letter_sources(rev1_id).await?;
+    assert_eq!(rev1_sources.len(), 1);
+    assert_eq!(rev1_sources[0].letter_id, rev1_id);
+    assert_eq!(rev1_sources[0].article_id, rev1_article);
+
+    let rev2_sources = dao.get_morning_letter_sources(rev2_id).await?;
+    assert_eq!(rev2_sources.len(), 1);
+    assert_eq!(rev2_sources[0].letter_id, rev2_id);
+    assert_eq!(rev2_sources[0].article_id, rev2_article);
+
+    Ok(())
+}
