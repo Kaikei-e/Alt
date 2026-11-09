@@ -41,14 +41,20 @@ Checks:
      at run time; this check surfaces it at PR time.
   8. Every literal (non-glob prefix) entry in `on.push.paths` and
      `on.pull_request.paths` resolves to an existing file or directory.
+  9. Every image in `jobs.<id>.container(.image)` and
+     `jobs.<id>.services.<name>.image` is pinned by an `@sha256:` digest.
+ 10. Every job that is not a reusable-workflow call declares a positive
+     `timeout-minutes`.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 import glob
 import json
 import os
 import re
 import sys
+from typing import Any
 
 import yaml
 
@@ -87,13 +93,6 @@ PROJECT_FLAG_RE = re.compile(r"--project(?:=|\s+)([A-Za-z0-9:_.-]+)")
 # Shell separators that start a fresh command within one `run:` block.
 COMMAND_SPLIT_RE = re.compile(r"&&|\|\||;|\n|\|")
 GLOB_CHAR_RE = re.compile(r"[*?[]")
-
-# Pre-existing dead trigger paths in helm-validation.yml (legacy Kubernetes assets moved under stopped-using-k8s/).
-ALLOWLISTED_DEAD_PATHS: set[tuple[str, str]] = {
-    (".github/workflows/helm-validation.yml", "charts/**"),
-    (".github/workflows/helm-validation.yml", "k8s-manifests/deploy-helm.sh"),
-    (".github/workflows/helm-validation.yml", "k8s-manifests/validate-helm.sh"),
-}
 
 
 def resolve_path_filter_target(entry: str) -> str:
@@ -149,6 +148,26 @@ def is_pinned(uses):
     if uses.startswith("docker://"):
         return bool(DOCKER_DIGEST_RE.search(uses))
     return bool(SHA_PIN_RE.search(uses))
+
+
+def is_image_digest_pinned(image: object) -> bool:
+    """True if a container/service image string is pinned by @sha256: digest."""
+    if not isinstance(image, str):
+        return False
+    stripped = image.strip()
+    return bool(stripped) and not stripped.startswith("@") and bool(
+        DOCKER_DIGEST_RE.search(stripped)
+    )
+
+
+def has_valid_timeout(job: Mapping[str, Any]) -> bool:
+    """True if job declares a positive numeric or expression timeout-minutes."""
+    timeout = job.get("timeout-minutes")
+    if isinstance(timeout, str):
+        return GHA_EXPR_OPEN in timeout
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+        return False
+    return timeout > 0
 
 
 def load_frontend_scripts():
@@ -246,6 +265,202 @@ def iter_run_steps(doc):
             )
 
 
+def _check_workflow_doc_details(
+    path: str, doc: Mapping[str, Any]
+) -> tuple[list[str], int]:
+    """Return (errors, failure_count) for a parsed workflow dict."""
+    errors: list[str] = []
+    bad = 0
+
+    triggers = doc.get(True)
+    if triggers is None:
+        triggers = doc.get("on", {})
+
+    trigger_names: set[str] = set()
+    if isinstance(triggers, dict):
+        trigger_names = set(triggers.keys())
+    elif isinstance(triggers, list):
+        trigger_names = set(triggers)
+    elif isinstance(triggers, str):
+        trigger_names = {triggers}
+
+    # Rule 1 (authoritative) — forbidden trigger names.
+    used = trigger_names & FORBIDDEN_TRIGGERS
+    if used:
+        for t in sorted(used):
+            errors.append(
+                f"::error file={path}::workflow uses forbidden trigger "
+                f"{t!r} (ADR-000763 security hardening)."
+            )
+        bad += 1
+
+    # Rule 8 — every literal (or non-glob prefix) entry in
+    # on.push.paths / on.pull_request.paths resolves to an existing
+    # file or directory.
+    if isinstance(triggers, dict):
+        for trig_name in ("push", "pull_request"):
+            trig_cfg = triggers.get(trig_name)
+            if not isinstance(trig_cfg, dict):
+                continue
+            paths_list = trig_cfg.get("paths")
+            if not isinstance(paths_list, list):
+                continue
+            for raw_entry in paths_list:
+                if not isinstance(raw_entry, str):
+                    continue
+                target = resolve_path_filter_target(raw_entry)
+                if not os.path.exists(target):
+                    errors.append(
+                        f"::error file={path}::on.{trig_name}.paths "
+                        f"entry {raw_entry!r} resolves to missing "
+                        f"path {target!r}."
+                    )
+                    bad += 1
+
+    # Rule 2, Rule 9, Rule 10 — runner labels, job timeouts, and container/service digests.
+    for job_name, job in (doc.get("jobs") or {}).items():
+        if not isinstance(job, dict):
+            continue
+        if "uses" in job and "runs-on" not in job:
+            continue  # caller of a reusable workflow; checked there
+        labels, had_expr = extract_labels(job.get("runs-on"))
+        if had_expr:
+            errors.append(
+                f"::error file={path}::job {job_name!r} has an "
+                f"expression-derived runs-on value. Static analysis "
+                f"cannot confirm it is GitHub-hosted — pin the runner "
+                f"literal (ADR-000763: this repo registers no "
+                f"self-hosted runner)."
+            )
+            bad += 1
+        elif not labels or not all(
+            GITHUB_HOSTED_LABEL_RE.match(label) for label in labels
+        ):
+            errors.append(
+                f"::error file={path}::job {job_name!r} runs on "
+                f"{labels!r}. Only static GitHub-hosted labels are "
+                f"allowed here; self-hosted runners live in the private "
+                f"deploy repo (ADR-000763 security hardening)."
+            )
+            bad += 1
+
+        # Rule 10 — every non-reusable job declares timeout-minutes.
+        if not has_valid_timeout(job):
+            errors.append(
+                f"::error file={path}::job {job_name!r} has no valid "
+                f"`timeout-minutes` (must be a positive number so hung jobs "
+                f"do not burn the 360-minute GitHub default)."
+            )
+            bad += 1
+
+        # Rule 9a — jobs.<id>.container(.image) must be pinned by @sha256: digest.
+        if "container" in job and job.get("container") is not None:
+            container = job.get("container")
+            container_img = (
+                container
+                if isinstance(container, str)
+                else (
+                    container.get("image")
+                    if isinstance(container, dict)
+                    else None
+                )
+            )
+            if not is_image_digest_pinned(container_img):
+                errors.append(
+                    f"::error file={path}::job {job_name!r} container image "
+                    f"{container_img!r} is not pinned by @sha256: digest."
+                )
+                bad += 1
+
+        # Rule 9b — jobs.<id>.services.<name>.image must be pinned by @sha256: digest.
+        services = job.get("services")
+        if isinstance(services, dict):
+            for svc_name, svc_cfg in services.items():
+                svc_img = (
+                    svc_cfg
+                    if isinstance(svc_cfg, str)
+                    else (
+                        svc_cfg.get("image")
+                        if isinstance(svc_cfg, dict)
+                        else None
+                    )
+                )
+                if not is_image_digest_pinned(svc_img):
+                    errors.append(
+                        f"::error file={path}::job {job_name!r} service "
+                        f"{svc_name!r} image {svc_img!r} is not pinned by "
+                        f"@sha256: digest."
+                    )
+                    bad += 1
+
+    # Rule 4 — GITHUB_TOKEN scope declared in the file.
+    if "permissions" not in doc:
+        errors.append(
+            f"::error file={path}::workflow has no top-level "
+            f"`permissions:` block. Declare it (`contents: read` unless "
+            f"a job needs more) so the token scope does not depend on "
+            f"the repository default."
+        )
+        bad += 1
+
+    for job_name, job in (doc.get("jobs") or {}).items():
+        if not isinstance(job, dict):
+            continue
+        for step in job.get("steps") or []:
+            if not isinstance(step, dict):
+                continue
+            uses = step.get("uses")
+            if isinstance(uses, str):
+                # Rule 5 — checkout must not leave the token behind.
+                if uses.startswith("actions/checkout@"):
+                    with_ = step.get("with")
+                    persist = (
+                        with_.get("persist-credentials")
+                        if isinstance(with_, dict)
+                        else None
+                    )
+                    if persist is not False:
+                        errors.append(
+                            f"::error file={path}::job {job_name!r} checks "
+                            f"out without `persist-credentials: false`. "
+                            f"Nothing in this repo pushes from CI, so the "
+                            f"GITHUB_TOKEN must not be written into "
+                            f".git/config."
+                        )
+                        bad += 1
+                # Rule 7 — immutable action references.
+                if not is_pinned(uses):
+                    errors.append(
+                        f"::error file={path}::job {job_name!r} uses "
+                        f"{uses!r}, which is not pinned to a commit SHA "
+                        f"(or @sha256 digest for docker://). Tags and "
+                        f"branches are mutable supply-chain inputs."
+                    )
+                    bad += 1
+            # Rule 6 — no untrusted context expanded into a shell body.
+            run = step.get("run")
+            if isinstance(run, str):
+                for expr in TEMPLATE_EXPR_RE.findall(run):
+                    if UNTRUSTED_CONTEXT_RE.search(expr):
+                        errors.append(
+                            f"::error file={path}::job {job_name!r} "
+                            f"interpolates {expr.strip()!r} into a `run:` "
+                            f"body. github.event.* and github.head_ref are "
+                            f"attacker-controlled on pull_request; pass "
+                            f"them through `env:` and read the variable "
+                            f"in the shell."
+                        )
+                        bad += 1
+
+    return errors, bad
+
+
+def check_workflow_doc(path: str, doc: Mapping[str, Any]) -> list[str]:
+    """Return error annotations for a single parsed workflow dict."""
+    errors, _ = _check_workflow_doc_details(path, doc)
+    return errors
+
+
 def main() -> int:
     files = sorted(
         glob.glob(".github/workflows/*.yml")
@@ -299,142 +514,10 @@ def main() -> int:
                 if collects_client_project(resolved, env):
                     client_project_runners.append(f"{path}::{job_name}")
 
-        # Rule 1 (authoritative) — forbidden trigger names.
-        used = trigger_names & FORBIDDEN_TRIGGERS
-        if used:
-            for t in sorted(used):
-                print(
-                    f"::error file={path}::workflow uses forbidden trigger "
-                    f"{t!r} (ADR-000763 security hardening).",
-                    file=sys.stderr,
-                )
-            bad += 1
-
-        # Rule 8 — every literal (or non-glob prefix) entry in
-        # on.push.paths / on.pull_request.paths resolves to an existing
-        # file or directory.
-        if isinstance(triggers, dict):
-            for trig_name in ("push", "pull_request"):
-                trig_cfg = triggers.get(trig_name)
-                if not isinstance(trig_cfg, dict):
-                    continue
-                paths_list = trig_cfg.get("paths")
-                if not isinstance(paths_list, list):
-                    continue
-                for raw_entry in paths_list:
-                    if not isinstance(raw_entry, str):
-                        continue
-                    target = resolve_path_filter_target(raw_entry)
-                    if not os.path.exists(target):
-                        if (path, raw_entry) in ALLOWLISTED_DEAD_PATHS:
-                            print(
-                                f"::warning file={path}::on.{trig_name}.paths "
-                                f"entry {raw_entry!r} resolves to missing "
-                                f"path {target!r} (allowlisted legacy entry).",
-                                file=sys.stderr,
-                            )
-                        else:
-                            print(
-                                f"::error file={path}::on.{trig_name}.paths "
-                                f"entry {raw_entry!r} resolves to missing "
-                                f"path {target!r}.",
-                                file=sys.stderr,
-                            )
-                            bad += 1
-
-        # Rule 2 — every job on a static GitHub-hosted label. Applies to all
-        # triggers: a reusable workflow has no pull_request trigger of its
-        # own, yet its jobs run in the caller's (possibly PR) context.
-        for job_name, job in (doc.get("jobs") or {}).items():
-            if not isinstance(job, dict):
-                continue
-            if "uses" in job and "runs-on" not in job:
-                continue  # caller of a reusable workflow; checked there
-            labels, had_expr = extract_labels(job.get("runs-on"))
-            if had_expr:
-                print(
-                    f"::error file={path}::job {job_name!r} has an "
-                    f"expression-derived runs-on value. Static analysis "
-                    f"cannot confirm it is GitHub-hosted — pin the runner "
-                    f"literal (ADR-000763: this repo registers no "
-                    f"self-hosted runner).",
-                    file=sys.stderr,
-                )
-                bad += 1
-            elif not labels or not all(
-                GITHUB_HOSTED_LABEL_RE.match(label) for label in labels
-            ):
-                print(
-                    f"::error file={path}::job {job_name!r} runs on "
-                    f"{labels!r}. Only static GitHub-hosted labels are "
-                    f"allowed here; self-hosted runners live in the private "
-                    f"deploy repo (ADR-000763 security hardening).",
-                    file=sys.stderr,
-                )
-                bad += 1
-
-        # Rule 4 — GITHUB_TOKEN scope declared in the file.
-        if "permissions" not in doc:
-            print(
-                f"::error file={path}::workflow has no top-level "
-                f"`permissions:` block. Declare it (`contents: read` unless "
-                f"a job needs more) so the token scope does not depend on "
-                f"the repository default.",
-                file=sys.stderr,
-            )
-            bad += 1
-
-        for job_name, job in (doc.get("jobs") or {}).items():
-            if not isinstance(job, dict):
-                continue
-            for step in job.get("steps") or []:
-                if not isinstance(step, dict):
-                    continue
-                uses = step.get("uses")
-                if isinstance(uses, str):
-                    # Rule 5 — checkout must not leave the token behind.
-                    if uses.startswith("actions/checkout@"):
-                        with_ = step.get("with")
-                        persist = (
-                            with_.get("persist-credentials")
-                            if isinstance(with_, dict)
-                            else None
-                        )
-                        if persist is not False:
-                            print(
-                                f"::error file={path}::job {job_name!r} checks "
-                                f"out without `persist-credentials: false`. "
-                                f"Nothing in this repo pushes from CI, so the "
-                                f"GITHUB_TOKEN must not be written into "
-                                f".git/config.",
-                                file=sys.stderr,
-                            )
-                            bad += 1
-                    # Rule 7 — immutable action references.
-                    if not is_pinned(uses):
-                        print(
-                            f"::error file={path}::job {job_name!r} uses "
-                            f"{uses!r}, which is not pinned to a commit SHA "
-                            f"(or @sha256 digest for docker://). Tags and "
-                            f"branches are mutable supply-chain inputs.",
-                            file=sys.stderr,
-                        )
-                        bad += 1
-                # Rule 6 — no untrusted context expanded into a shell body.
-                run = step.get("run")
-                if isinstance(run, str):
-                    for expr in TEMPLATE_EXPR_RE.findall(run):
-                        if UNTRUSTED_CONTEXT_RE.search(expr):
-                            print(
-                                f"::error file={path}::job {job_name!r} "
-                                f"interpolates {expr.strip()!r} into a `run:` "
-                                f"body. github.event.* and github.head_ref are "
-                                f"attacker-controlled on pull_request; pass "
-                                f"them through `env:` and read the variable "
-                                f"in the shell.",
-                                file=sys.stderr,
-                            )
-                            bad += 1
+        errors, file_bad = _check_workflow_doc_details(path, doc)
+        for error in errors:
+            print(error, file=sys.stderr)
+        bad += file_bad
 
     # Rule 3 (assertion pass) — repo-wide, so it runs after every file.
     if frontend_scripts is None:
@@ -467,7 +550,8 @@ def main() -> int:
     print(
         "OK: no forbidden triggers, GitHub-hosted labels only, permissions "
         "declared, checkouts credential-free, no untrusted context in run "
-        "bodies, every action SHA-pinned."
+        "bodies, every action SHA-pinned, every container/service image "
+        "digest-pinned, and job timeouts declared."
     )
     print(
         "OK: client vitest project is run by "

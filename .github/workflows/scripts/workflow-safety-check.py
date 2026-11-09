@@ -94,13 +94,6 @@ PROJECT_FLAG_RE = re.compile(r"--project(?:=|\s+)([A-Za-z0-9:_.-]+)")
 COMMAND_SPLIT_RE = re.compile(r"&&|\|\||;|\n|\|")
 GLOB_CHAR_RE = re.compile(r"[*?[]")
 
-# Pre-existing dead trigger paths in helm-validation.yml (legacy Kubernetes assets moved under stopped-using-k8s/).
-ALLOWLISTED_DEAD_PATHS: set[tuple[str, str]] = {
-    (".github/workflows/helm-validation.yml", "charts/**"),
-    (".github/workflows/helm-validation.yml", "k8s-manifests/deploy-helm.sh"),
-    (".github/workflows/helm-validation.yml", "k8s-manifests/validate-helm.sh"),
-}
-
 
 def resolve_path_filter_target(entry: str) -> str:
     """Return the literal path or non-glob directory prefix for a paths entry."""
@@ -168,8 +161,10 @@ def is_image_digest_pinned(image: object) -> bool:
 
 
 def has_valid_timeout(job: Mapping[str, Any]) -> bool:
-    """True if job declares a positive numeric timeout-minutes."""
+    """True if job declares a positive numeric or expression timeout-minutes."""
     timeout = job.get("timeout-minutes")
+    if isinstance(timeout, str):
+        return GHA_EXPR_OPEN in timeout
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
         return False
     return timeout > 0
@@ -272,10 +267,9 @@ def iter_run_steps(doc):
 
 def _check_workflow_doc_details(
     path: str, doc: Mapping[str, Any]
-) -> tuple[list[str], list[str], int]:
-    """Return (errors, warnings, failure_count) for a parsed workflow dict."""
+) -> tuple[list[str], int]:
+    """Return (errors, failure_count) for a parsed workflow dict."""
     errors: list[str] = []
-    warnings: list[str] = []
     bad = 0
 
     triggers = doc.get(True)
@@ -316,19 +310,12 @@ def _check_workflow_doc_details(
                     continue
                 target = resolve_path_filter_target(raw_entry)
                 if not os.path.exists(target):
-                    if (path, raw_entry) in ALLOWLISTED_DEAD_PATHS:
-                        warnings.append(
-                            f"::warning file={path}::on.{trig_name}.paths "
-                            f"entry {raw_entry!r} resolves to missing "
-                            f"path {target!r} (allowlisted legacy entry)."
-                        )
-                    else:
-                        errors.append(
-                            f"::error file={path}::on.{trig_name}.paths "
-                            f"entry {raw_entry!r} resolves to missing "
-                            f"path {target!r}."
-                        )
-                        bad += 1
+                    errors.append(
+                        f"::error file={path}::on.{trig_name}.paths "
+                        f"entry {raw_entry!r} resolves to missing "
+                        f"path {target!r}."
+                    )
+                    bad += 1
 
     # Rule 2, Rule 9, Rule 10 — runner labels, job timeouts, and container/service digests.
     for job_name, job in (doc.get("jobs") or {}).items():
@@ -465,12 +452,12 @@ def _check_workflow_doc_details(
                         )
                         bad += 1
 
-    return errors, warnings, bad
+    return errors, bad
 
 
 def check_workflow_doc(path: str, doc: Mapping[str, Any]) -> list[str]:
     """Return error annotations for a single parsed workflow dict."""
-    errors, _, _ = _check_workflow_doc_details(path, doc)
+    errors, _ = _check_workflow_doc_details(path, doc)
     return errors
 
 
@@ -527,9 +514,7 @@ def main() -> int:
                 if collects_client_project(resolved, env):
                     client_project_runners.append(f"{path}::{job_name}")
 
-        errors, warnings, file_bad = _check_workflow_doc_details(path, doc)
-        for warning in warnings:
-            print(warning, file=sys.stderr)
+        errors, file_bad = _check_workflow_doc_details(path, doc)
         for error in errors:
             print(error, file=sys.stderr)
         bad += file_bad
@@ -565,7 +550,8 @@ def main() -> int:
     print(
         "OK: no forbidden triggers, GitHub-hosted labels only, permissions "
         "declared, checkouts credential-free, no untrusted context in run "
-        "bodies, every action SHA-pinned."
+        "bodies, every action SHA-pinned, every container/service image "
+        "digest-pinned, and job timeouts declared."
     )
     print(
         "OK: client vitest project is run by "

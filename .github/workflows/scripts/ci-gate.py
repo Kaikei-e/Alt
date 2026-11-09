@@ -17,8 +17,7 @@ PENDING = "PENDING"
 SUCCESS = "SUCCESS"
 FAILURE = "FAILURE"
 
-DEFAULT_GATE_NAME = "ci-gate"
-DEFAULT_POLL_INTERVAL = 30.0
+DEFAULT_POLL_INTERVAL = 60.0
 DEFAULT_TIMEOUT_SECONDS = 85 * 60.0
 
 FAILURE_CONCLUSIONS = frozenset(
@@ -40,58 +39,83 @@ SUCCESS_CONCLUSIONS = frozenset(
 )
 
 
-def evaluate_check_runs(
-    check_runs: Sequence[Mapping[str, Any]],
-    gate_name: str = DEFAULT_GATE_NAME,
+def _is_self_run(run: Mapping[str, Any], self_run_id: int | str | None) -> bool:
+    if self_run_id is None or str(self_run_id) == "":
+        return False
+    return str(run.get("id")) == str(self_run_id)
+
+
+def _format_run(run: Mapping[str, Any]) -> str:
+    name = str(run.get("name") or run.get("display_title") or "<unnamed>")
+    html_url = run.get("html_url")
+    if isinstance(html_url, str) and html_url:
+        return f"{name} ({html_url})"
+    return name
+
+
+def evaluate_workflow_runs(
+    workflow_runs: Sequence[Mapping[str, Any]],
+    self_run_id: int | str | None = None,
 ) -> tuple[str, list[str]]:
-    """Return (PENDING|SUCCESS|FAILURE, offending_names) for a commit's check runs."""
-    other_runs = [r for r in check_runs if r.get("name") != gate_name]
+    """Return (PENDING|SUCCESS|FAILURE, offending_runs) for a commit's workflow runs."""
+    other_runs = [r for r in workflow_runs if not _is_self_run(r, self_run_id)]
 
-    pending_names = [
-        str(r.get("name", "<unnamed>"))
-        for r in other_runs
-        if r.get("status") != "completed"
+    pending_runs = [
+        _format_run(r) for r in other_runs if r.get("status") != "completed"
     ]
-    if pending_names:
-        return PENDING, pending_names
+    if pending_runs:
+        return PENDING, pending_runs
 
-    failed_names = [
-        str(r.get("name", "<unnamed>"))
+    failed_runs = [
+        _format_run(r)
         for r in other_runs
         if r.get("conclusion") in FAILURE_CONCLUSIONS
         or r.get("conclusion") not in SUCCESS_CONCLUSIONS
     ]
-    if failed_names:
-        return FAILURE, failed_names
+    if failed_runs:
+        return FAILURE, failed_runs
 
     return SUCCESS, []
 
 
 def _complete_set_signature(
-    check_runs: Sequence[Mapping[str, Any]],
-    gate_name: str,
-) -> frozenset[tuple[str, Any]]:
+    workflow_runs: Sequence[Mapping[str, Any]],
+    self_run_id: int | str | None,
+) -> frozenset[tuple[Any, Any, Any]]:
     return frozenset(
-        (str(r.get("name", "")), r.get("id"))
-        for r in check_runs
-        if r.get("name") != gate_name
+        (r.get("workflow_id"), r.get("id"), r.get("run_attempt", 1))
+        for r in workflow_runs
+        if not _is_self_run(r, self_run_id)
     )
 
 
-class _EndpointUrl(str):
-    """URL string whose `in` operator matches `page=N` as a whole query parameter."""
+def _rate_limit_wait_seconds(
+    exc: urllib.error.HTTPError,
+    time_fn: Callable[[], float],
+) -> float | None:
+    if exc.code not in (403, 429) or exc.headers is None:
+        return None
+    retry_after = exc.headers.get("retry-after")
+    if retry_after is not None:
+        try:
+            return max(1.0, float(retry_after.strip()))
+        except ValueError:
+            return DEFAULT_POLL_INTERVAL
 
-    def strip(self, chars: str | None = None) -> _EndpointUrl:
-        return _EndpointUrl(super().strip(chars))
+    remaining = exc.headers.get("x-ratelimit-remaining")
+    if remaining is not None and remaining.strip() == "0":
+        reset = exc.headers.get("x-ratelimit-reset")
+        if reset is not None:
+            try:
+                return max(1.0, float(reset.strip()) - time_fn())
+            except ValueError:
+                return DEFAULT_POLL_INTERVAL
+        return DEFAULT_POLL_INTERVAL
 
-    def __contains__(self, item: object) -> bool:
-        if isinstance(item, str) and item.startswith("page="):
-            _, _, query = self.partition("?")
-            return item in query.split("&")
-        return super().__contains__(item)
+    return None
 
 
-def fetch_check_runs(
+def fetch_workflow_runs(
     repo: str,
     sha: str,
     token: str,
@@ -99,15 +123,19 @@ def fetch_check_runs(
     api_base: str = "https://api.github.com",
     per_page: int = 100,
     opener: Callable[..., Any] = urllib.request.urlopen,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    time_fn: Callable[[], float] = time.time,
+    clock_fn: Callable[[], float] = time.monotonic,
+    deadline: float | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch all check runs for a commit SHA, paginating at per_page=100."""
+    """Fetch workflow runs for head_sha, paginating only when total_count exceeds a page."""
     all_runs: list[dict[str, Any]] = []
     page = 1
 
     while True:
-        url = _EndpointUrl(
-            f"{api_base.rstrip('/')}/repos/{repo}/commits/{sha}/check-runs"
-            f"?per_page={per_page}&page={page}"
+        url = (
+            f"{api_base.rstrip('/')}/repos/{repo}/actions/runs"
+            f"?head_sha={sha}&per_page={per_page}&page={page}"
         )
         req = urllib.request.Request(
             url,
@@ -119,27 +147,41 @@ def fetch_check_runs(
             },
             method="GET",
         )
-        req._full_url = url
 
         payload: dict[str, Any] | None = None
-        for attempt in range(1, 4):
+        transient_attempts = 0
+        while True:
             try:
                 with opener(req, timeout=30) as resp:
                     payload = json.loads(resp.read().decode("utf-8"))
                 break
             except urllib.error.HTTPError as exc:
-                if exc.code >= 500 and attempt < 3:
-                    time.sleep(2 * attempt)
+                wait_sec = _rate_limit_wait_seconds(exc, time_fn)
+                if wait_sec is not None:
+                    if deadline is not None and clock_fn() + wait_sec > deadline:
+                        raise RuntimeError(
+                            f"GitHub API rate limit reset in {wait_sec:.0f}s exceeds gate deadline."
+                        ) from exc
+                    print(
+                        f"ci-gate: rate limited (HTTP {exc.code}); waiting {wait_sec:.0f}s for reset.",
+                        file=sys.stderr,
+                    )
+                    sleep_fn(wait_sec)
+                    continue
+                transient_attempts += 1
+                if exc.code >= 500 and transient_attempts < 3:
+                    sleep_fn(2.0 * transient_attempts)
                     continue
                 raise
             except urllib.error.URLError:
-                if attempt < 3:
-                    time.sleep(2 * attempt)
+                transient_attempts += 1
+                if transient_attempts < 3:
+                    sleep_fn(2.0 * transient_attempts)
                     continue
                 raise
 
         assert payload is not None
-        page_runs = payload.get("check_runs") or []
+        page_runs = payload.get("workflow_runs") or []
         all_runs.extend(page_runs)
 
         total_count = payload.get("total_count")
@@ -155,47 +197,52 @@ def fetch_check_runs(
 def poll_until_settled(
     fetch_runs: Callable[[], Sequence[Mapping[str, Any]]],
     *,
-    gate_name: str = DEFAULT_GATE_NAME,
+    self_run_id: int | str | None = None,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     sleep_fn: Callable[[float], None] = time.sleep,
     clock_fn: Callable[[], float] = time.monotonic,
 ) -> tuple[str, list[str]]:
-    """Poll check runs until failure, two consecutive identical complete sets, or timeout."""
+    """Poll workflow runs until failure, two consecutive identical complete sets, or timeout."""
     deadline = clock_fn() + timeout_seconds
-    prev_complete_set: frozenset[tuple[str, Any]] | None = None
+    prev_complete_set: frozenset[tuple[Any, Any, Any]] | None = None
     poll_num = 0
 
     while True:
         poll_num += 1
-        runs = fetch_runs()
-        verdict, offending = evaluate_check_runs(runs, gate_name)
+        try:
+            runs = fetch_runs()
+        except RuntimeError as exc:
+            print(f"::error::ci-gate aborted: {exc}", file=sys.stderr)
+            return FAILURE, []
+
+        verdict, offending = evaluate_workflow_runs(runs, self_run_id)
 
         if verdict == FAILURE:
             print(
-                f"::error::ci-gate failed on poll #{poll_num}; failing check runs: "
+                f"::error::ci-gate failed on poll #{poll_num}; failing workflow runs: "
                 f"{', '.join(offending)}",
                 file=sys.stderr,
             )
             return FAILURE, offending
 
         if verdict == SUCCESS:
-            current_set = _complete_set_signature(runs, gate_name)
+            current_set = _complete_set_signature(runs, self_run_id)
             if prev_complete_set is not None and current_set == prev_complete_set:
                 print(
                     f"ci-gate: SUCCESS after {poll_num} polls "
-                    f"({len(current_set)} check run(s) verified across two consecutive polls)."
+                    f"({len(current_set)} workflow run(s) verified across two consecutive polls)."
                 )
                 return SUCCESS, []
             prev_complete_set = current_set
             print(
-                f"ci-gate: poll #{poll_num} saw {len(current_set)} completed check run(s); "
+                f"ci-gate: poll #{poll_num} saw {len(current_set)} completed workflow run(s); "
                 f"waiting {poll_interval:.0f}s to confirm stability."
             )
         else:
             prev_complete_set = None
             print(
-                f"ci-gate: poll #{poll_num} PENDING on {len(offending)} check run(s): "
+                f"ci-gate: poll #{poll_num} PENDING on {len(offending)} workflow run(s): "
                 f"{', '.join(offending)}"
             )
 
@@ -204,7 +251,7 @@ def poll_until_settled(
             reason = (
                 f"still pending: {', '.join(offending)}"
                 if offending
-                else "check run set did not stabilize across two consecutive polls"
+                else "workflow run set did not stabilize across two consecutive polls"
             )
             print(
                 f"::error::ci-gate timed out after {timeout_seconds:.0f}s ({reason}).",
@@ -228,15 +275,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Commit SHA to inspect (default: $HEAD_SHA or $GITHUB_SHA).",
     )
     parser.add_argument(
-        "--gate-name",
-        default=os.environ.get("CI_GATE_NAME", DEFAULT_GATE_NAME),
-        help="Check run name of this gate to ignore (default: ci-gate).",
+        "--run-id",
+        default=os.environ.get("GITHUB_RUN_ID", ""),
+        help="Workflow run ID of this gate to exclude (default: $GITHUB_RUN_ID).",
     )
     parser.add_argument(
         "--poll-interval",
         type=float,
         default=DEFAULT_POLL_INTERVAL,
-        help="Seconds between polls (default: 30).",
+        help="Seconds between polls (default: 60).",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -257,9 +304,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("::error::Missing GITHUB_TOKEN environment variable.", file=sys.stderr)
         return 1
 
+    deadline = time.monotonic() + args.timeout_seconds
     verdict, _ = poll_until_settled(
-        lambda: fetch_check_runs(args.repo, args.sha, token),
-        gate_name=args.gate_name,
+        lambda: fetch_workflow_runs(
+            args.repo,
+            args.sha,
+            token,
+            deadline=deadline,
+        ),
+        self_run_id=args.run_id or None,
         poll_interval=args.poll_interval,
         timeout_seconds=args.timeout_seconds,
     )
