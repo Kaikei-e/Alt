@@ -54,6 +54,7 @@ from recap_subworker.app.routers.story_clustering import router as story_cluster
 from recap_subworker.app.routers.verify import router as verify_router
 from recap_subworker.db.dao import RunRecord
 from recap_subworker.infra.config import Settings
+from recap_subworker.infra.path_validation import require_existing_path
 from recap_subworker.port.embedder import EmbedderPort
 from recap_subworker.services.card_verifier import CardVerifierService
 from recap_subworker.services.embed_service import EmbedService
@@ -287,7 +288,6 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
     )
     app.dependency_overrides[deps.get_session] = lambda: None
     app.dependency_overrides[deps.get_container] = _FakeContainer
-    evaluation_mod.require_existing_path = lambda user_path, base_dirs=None: Path(user_path)
 
     fake_embedder = embedder or HashEmbedder(dim=1024)
     embed_svc = EmbedService(embedder=fake_embedder)
@@ -390,6 +390,16 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
         return {"status": "ok"}
 
     return app
+
+
+@pytest.fixture(autouse=True)
+def _patch_evaluation_path_validator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub evaluation router path existence check for the duration of each test only."""
+    monkeypatch.setattr(
+        evaluation_mod,
+        "require_existing_path",
+        lambda user_path, base_dirs=None: Path(user_path),
+    )
 
 
 @pytest.fixture(scope="module")
@@ -690,3 +700,13 @@ def test_provider_states_card_pipeline_states_registered():
         res = client.post("/_pact/provider-states", json={"state": state, "action": "setup"})
         assert res.status_code == 200
         assert res.json() == {"status": "ok"}
+
+
+def test_create_provider_app_does_not_permanently_replace_require_existing_path(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Verify _create_provider_app does not mutate evaluation_mod.require_existing_path."""
+    monkeypatch.undo()
+    assert evaluation_mod.require_existing_path is require_existing_path
+    _create_provider_app()
+    assert evaluation_mod.require_existing_path is require_existing_path
