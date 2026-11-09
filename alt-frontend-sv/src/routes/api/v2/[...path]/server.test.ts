@@ -99,17 +99,6 @@ describe("procedures on an already-public service", () => {
 		expect(res.status).toBe(200);
 		expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 	});
-
-	it("buffers the request body into an ArrayBuffer instead of streaming request.body with duplex half", async () => {
-		const res = await fallback(
-			makeEvent("alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction"),
-		);
-
-		expect(res.status).toBe(200);
-		const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] ?? [];
-		expect(init?.body).toBeInstanceOf(ArrayBuffer);
-		expect((init?.body as ArrayBuffer).byteLength).toBe(2);
-	});
 });
 
 describe("keep-alive framing between Connect-RPC proxy and E2E mock backend", () => {

@@ -87,7 +87,7 @@ function encodeConnectEnvelope(message: unknown, flags = 0x00): Buffer {
  * Create the Backend mock server
  */
 export function createBackendServer(): http.Server {
-	return http.createServer((req, res) => {
+	return http.createServer(async (req, res) => {
 		const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
 		const path = url.pathname;
 
@@ -99,6 +99,12 @@ export function createBackendServer(): http.Server {
 			res.end("OK");
 			return;
 		}
+
+		// Drain and parse the request body before any handler writes a response
+		// so HTTP/1.1 keep-alive connections never respond while request chunks
+		// are still in flight (which leaves unparsed body bytes on the socket
+		// and causes Node's HTTP parser to reject the next request with 400).
+		const body = await readJsonBody(req);
 
 		res.setHeader("Content-Type", "application/json");
 
@@ -242,37 +248,33 @@ export function createBackendServer(): http.Server {
 			path === "/alt.feeds.v2.FeedService/GetAllFeeds" ||
 			path === "/alt.feeds.v2.FeedService/GetUnreadFeeds"
 		) {
-			readJsonBody(req).then((body) => {
-				const cursor = typeof body.cursor === "string" ? body.cursor : "";
-				res.setHeader("Content-Type", "application/json");
-				res.writeHead(200);
-				res.end(
-					JSON.stringify(
-						cursor ? CONNECT_FEEDS_LAST_PAGE_RESPONSE : CONNECT_FEEDS_RESPONSE,
-					),
-				);
-			});
+			const cursor = typeof body.cursor === "string" ? body.cursor : "";
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify(
+					cursor ? CONNECT_FEEDS_LAST_PAGE_RESPONSE : CONNECT_FEEDS_RESPONSE,
+				),
+			);
 			return;
 		}
 
 		// ResolveOgImages — on-demand og:image resolution.
 		if (path === "/alt.feeds.v2.FeedService/ResolveOgImages") {
-			readJsonBody(req).then((body) => {
-				const feedIds = Array.isArray(body.feedIds)
-					? (body.feedIds as string[])
-					: [];
-				res.setHeader("Content-Type", "application/json");
-				res.writeHead(200);
-				res.end(
-					JSON.stringify({
-						images: [],
-						unresolved: feedIds.map((feedId) => ({
-							feedId,
-							retryAfterSeconds: "0",
-						})),
-					}),
-				);
-			});
+			const feedIds = Array.isArray(body.feedIds)
+				? (body.feedIds as string[])
+				: [];
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					images: [],
+					unresolved: feedIds.map((feedId) => ({
+						feedId,
+						retryAfterSeconds: "0",
+					})),
+				}),
+			);
 			return;
 		}
 
@@ -583,43 +585,27 @@ export function createBackendServer(): http.Server {
 		if (
 			path === "/alt.knowledge.loop.v1.KnowledgeLoopService/GetKnowledgeLoop"
 		) {
-			const chunks: Buffer[] = [];
-			req.on("data", (chunk: Buffer) => {
-				chunks.push(chunk);
-			});
-			req.on("end", () => {
-				let lensModeId = "default";
-				try {
-					const raw = Buffer.concat(chunks).toString("utf-8");
-					if (raw) {
-						const body = JSON.parse(raw) as { lensModeId?: string };
-						if (typeof body.lensModeId === "string") {
-							lensModeId = body.lensModeId;
-						}
-					}
-				} catch {
-					// Tolerate non-JSON or empty bodies — fall back to default fixture.
-				}
-				let payload: unknown = CONNECT_KNOWLEDGE_LOOP_RESPONSE;
-				if (lensModeId === "e2e-act") {
-					payload = CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE;
-				} else if (lensModeId === "e2e-no-source") {
-					payload = CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE;
-				} else if (lensModeId === "e2e-decide") {
-					payload = CONNECT_KNOWLEDGE_LOOP_DECIDE_RESPONSE;
-				} else if (lensModeId === "e2e-recap") {
-					payload = CONNECT_KNOWLEDGE_LOOP_RECAP_RESPONSE;
-				} else if (lensModeId === "e2e-internalized") {
-					payload = CONNECT_KNOWLEDGE_LOOP_INTERNALIZED_RESPONSE;
-				} else if (lensModeId === "e2e-continuation") {
-					payload = CONNECT_KNOWLEDGE_LOOP_CONTINUATION_RESPONSE;
-				} else if (lensModeId === "e2e-continuation-advanced") {
-					payload = CONNECT_KNOWLEDGE_LOOP_CONTINUATION_ADVANCED_RESPONSE;
-				}
-				res.setHeader("Content-Type", "application/json");
-				res.writeHead(200);
-				res.end(JSON.stringify(payload));
-			});
+			const lensModeId =
+				typeof body.lensModeId === "string" ? body.lensModeId : "default";
+			let payload: unknown = CONNECT_KNOWLEDGE_LOOP_RESPONSE;
+			if (lensModeId === "e2e-act") {
+				payload = CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE;
+			} else if (lensModeId === "e2e-no-source") {
+				payload = CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE;
+			} else if (lensModeId === "e2e-decide") {
+				payload = CONNECT_KNOWLEDGE_LOOP_DECIDE_RESPONSE;
+			} else if (lensModeId === "e2e-recap") {
+				payload = CONNECT_KNOWLEDGE_LOOP_RECAP_RESPONSE;
+			} else if (lensModeId === "e2e-internalized") {
+				payload = CONNECT_KNOWLEDGE_LOOP_INTERNALIZED_RESPONSE;
+			} else if (lensModeId === "e2e-continuation") {
+				payload = CONNECT_KNOWLEDGE_LOOP_CONTINUATION_RESPONSE;
+			} else if (lensModeId === "e2e-continuation-advanced") {
+				payload = CONNECT_KNOWLEDGE_LOOP_CONTINUATION_ADVANCED_RESPONSE;
+			}
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(payload));
 			return;
 		}
 
