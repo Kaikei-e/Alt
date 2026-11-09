@@ -912,6 +912,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_run_with_retry_does_not_retry_subworker_auth_error() {
+        struct AuthFailingCardsRunner {
+            runs: std::sync::Mutex<Vec<RecordedRun>>,
+        }
+
+        #[async_trait::async_trait]
+        impl CardsJobRunner for AuthFailingCardsRunner {
+            async fn run_cards(
+                &self,
+                job_id: Uuid,
+                from: chrono::DateTime<Utc>,
+                to: chrono::DateTime<Utc>,
+            ) -> anyhow::Result<()> {
+                self.runs.lock().unwrap().push((job_id, from, to));
+                Err(crate::clients::subworker::SubworkerAuthError::new(
+                    "classify_coarse",
+                    reqwest::StatusCode::UNAUTHORIZED,
+                    "unauthorized",
+                )
+                .into())
+            }
+        }
+
+        let once_runner = AuthFailingCardsRunner {
+            runs: std::sync::Mutex::new(Vec::new()),
+        };
+        let in_flight = std::sync::Mutex::new(None);
+        let err = CardsBatchDaemon::run_once(&once_runner, &in_flight, 3)
+            .await
+            .expect_err("run_once must return subworker auth error");
+        assert!(
+            crate::clients::subworker::is_subworker_auth_error(&err),
+            "returned error must be recognized as a subworker auth error: {err:#}"
+        );
+        assert_eq!(once_runner.runs.lock().unwrap().len(), 1);
+
+        let retry_runner = AuthFailingCardsRunner {
+            runs: std::sync::Mutex::new(Vec::new()),
+        };
+        let shutdown = CancellationToken::new();
+        CardsBatchDaemon::run_with_retry(&retry_runner, &in_flight, 3, 0, 3, &shutdown).await;
+
+        let runs = retry_runner.runs.lock().unwrap().clone();
+        assert_eq!(
+            runs.len(),
+            1,
+            "subworker auth error is fatal and must not be retried"
+        );
+    }
+
+    #[tokio::test]
     async fn test_run_with_retry_skip_when_in_flight() {
         let runner = MockFailingCardsRunner::new(2);
         let in_flight = std::sync::Mutex::new(Some(Uuid::new_v4()));
