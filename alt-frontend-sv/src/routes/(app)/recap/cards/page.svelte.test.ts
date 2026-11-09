@@ -150,7 +150,7 @@ describe("Topic Cards Page (+page.svelte)", () => {
 				generatedAt: "",
 				windowStart: "",
 				windowEnd: "",
-				isStale: true,
+				isStale: false,
 				staleAfter: "",
 				latestRun: {
 					jobId: "run-pending-no-job",
@@ -183,7 +183,11 @@ describe("Topic Cards Page (+page.svelte)", () => {
 			.element(page.getByTestId("recap-cards-degraded"))
 			.toBeInTheDocument();
 		await expect
-			.element(page.getByText(/Degraded generation/i))
+			.element(
+				page.getByText(
+					"Fewer topic cards than usual met the quality threshold (1 cards selected).",
+				),
+			)
 			.toBeInTheDocument();
 		await expect
 			.element(page.getByTestId("recap-topic-card"))

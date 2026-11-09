@@ -8,7 +8,6 @@ import * as cardsState from "./cards-state";
 import {
 	computeWindowLabel,
 	determineCardsPageState,
-	formatCardTimestamp,
 	formatJobWindow,
 	getCardsEmptyMessage,
 } from "./cards-state";
@@ -143,19 +142,6 @@ describe("computeWindowLabel", () => {
 	});
 });
 
-describe("formatCardTimestamp", () => {
-	it("formats valid ISO timestamp to locale date/time string", () => {
-		const formatted = formatCardTimestamp("2026-09-22T17:00:00Z");
-		expect(formatted).toBeTruthy();
-		expect(formatted).toMatch(/[A-Za-z]{3}\s+\d+/);
-	});
-
-	it("returns empty string on empty or invalid timestamp", () => {
-		expect(formatCardTimestamp("")).toBe("");
-		expect(formatCardTimestamp("invalid")).toBe("");
-	});
-});
-
 describe("getCardsEmptyMessage", () => {
 	it("returns 'No topic cards were selected in the latest run.' when hasJob is true", () => {
 		expect(getCardsEmptyMessage(true)).toBe(
@@ -170,8 +156,9 @@ describe("getCardsEmptyMessage", () => {
 	});
 });
 
-describe("getTopicCardsNotice removal", () => {
-	it("does not export getTopicCardsNotice (replaced by evaluateSurfaceStatus)", () => {
+describe("removed duplicate helpers", () => {
+	it("does not export getTopicCardsNotice or formatCardTimestamp (unified in surface-status)", () => {
 		expect("getTopicCardsNotice" in cardsState).toBe(false);
+		expect("formatCardTimestamp" in cardsState).toBe(false);
 	});
 });

@@ -3,6 +3,9 @@ import { render } from "vitest-browser-svelte";
 import type { PulseTopic } from "#lib/schema/evening_pulse.js";
 import MobilePulseCard from "./MobilePulseCard.svelte";
 import MobilePulseError from "./MobilePulseError.svelte";
+import MobilePulseQuietDay from "./MobilePulseQuietDay.svelte";
+import MobilePulseSkeleton from "./MobilePulseSkeleton.svelte";
+import MobilePulseTopicSheet from "./MobilePulseTopicSheet.svelte";
 
 function makeTopic(overrides: Partial<PulseTopic> = {}): PulseTopic {
 	return {
@@ -67,7 +70,7 @@ describe("MobilePulseCard", () => {
 });
 
 describe("MobilePulseError", () => {
-	it("renders an SVG icon instead of the literal warning character and uses high-contrast button tokens", () => {
+	it("renders an SVG icon instead of the literal warning character, uses high-contrast button tokens, and includes one h1", () => {
 		const onRetry = vi.fn();
 		const { container } = render(MobilePulseError, {
 			props: {
@@ -85,5 +88,57 @@ describe("MobilePulseError", () => {
 		expect(retryButton).not.toBeNull();
 		const buttonStyle = retryButton?.getAttribute("style") ?? "";
 		expect(buttonStyle).not.toContain("color: var(--text-primary)");
+
+		const headings = container.querySelectorAll("h1");
+		expect(headings).toHaveLength(1);
+		expect(headings[0]?.textContent?.trim()).toBe("Evening Pulse");
+	});
+});
+
+describe("MobilePulseSkeleton", () => {
+	it("renders a single Evening Pulse h1 in loading state", () => {
+		const { container } = render(MobilePulseSkeleton);
+		const headings = container.querySelectorAll("h1");
+		expect(headings).toHaveLength(1);
+		expect(headings[0]?.textContent?.trim()).toBe("Evening Pulse");
+	});
+});
+
+describe("MobilePulseQuietDay", () => {
+	it("uses neutral default message without Today", () => {
+		const { container } = render(MobilePulseQuietDay, {
+			props: {
+				date: "2026-10-08",
+				quietDay: {
+					message: "",
+					weeklyHighlights: [],
+				},
+			},
+		});
+
+		expect(container.textContent).toContain(
+			"A quiet day. No notable news was found.",
+		);
+		expect(container.textContent).not.toContain("Today was a quiet day");
+	});
+});
+
+describe("MobilePulseTopicSheet", () => {
+	it("applies shadow-none to Sheet.Content and visible focus outline to Sheet.Close", () => {
+		const topic = makeTopic();
+		render(MobilePulseTopicSheet, {
+			props: {
+				topic,
+				open: true,
+				onClose: vi.fn(),
+			},
+		});
+
+		const dialog = document.querySelector('[data-slot="sheet-content"]');
+		expect(dialog?.className).toContain("shadow-none");
+
+		const closeBtn = document.querySelector('[data-slot="sheet-close"]');
+		expect(closeBtn?.className).toContain("focus-visible:outline-2");
+		expect(closeBtn?.className).not.toContain("focus-visible:outline-none");
 	});
 });

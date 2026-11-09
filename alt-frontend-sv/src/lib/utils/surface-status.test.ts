@@ -5,6 +5,27 @@ import {
 	getDegradationNoticeText,
 } from "./surface-status";
 
+function expectedLocaleTimestamp(iso: string): string {
+	return new Date(iso).toLocaleString("en-US", {
+		month: "short",
+		day: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+	});
+}
+
+describe("formatSurfaceTimestamp", () => {
+	it("formats valid ISO timestamp to locale date/time string", () => {
+		const iso = "2026-09-22T17:00:00Z";
+		expect(formatSurfaceTimestamp(iso)).toBe(expectedLocaleTimestamp(iso));
+	});
+
+	it("returns empty string on empty or invalid timestamp", () => {
+		expect(formatSurfaceTimestamp("")).toBe("");
+		expect(formatSurfaceTimestamp("invalid")).toBe("");
+	});
+});
+
 describe("evaluateSurfaceStatus", () => {
 	it("returns isCurrent false and no notices when surfaceStatus is absent", () => {
 		expect(evaluateSurfaceStatus(undefined)).toEqual({
@@ -45,8 +66,8 @@ describe("evaluateSurfaceStatus", () => {
 	it("returns failed notice with fail time and generatedAt when latestRun failed", () => {
 		const failIso = "2026-09-22T18:02:00Z";
 		const generatedIso = "2026-09-22T12:00:00Z";
-		const expectedFail = formatSurfaceTimestamp(failIso);
-		const expectedGenerated = formatSurfaceTimestamp(generatedIso);
+		const expectedFail = expectedLocaleTimestamp(failIso);
+		const expectedGenerated = expectedLocaleTimestamp(generatedIso);
 
 		const result = evaluateSurfaceStatus({
 			generatedAt: generatedIso,
@@ -72,7 +93,7 @@ describe("evaluateSurfaceStatus", () => {
 
 	it("omits Showing results sentence when latestRun failed and generatedAt is empty", () => {
 		const failIso = "2026-09-22T18:02:00Z";
-		const expectedFail = formatSurfaceTimestamp(failIso);
+		const expectedFail = expectedLocaleTimestamp(failIso);
 
 		const result = evaluateSurfaceStatus({
 			generatedAt: "",
@@ -120,7 +141,7 @@ describe("evaluateSurfaceStatus", () => {
 
 	it("returns stale notice when isStale is true and latestRun is not failed", () => {
 		const generatedIso = "2026-09-20T12:00:00Z";
-		const expectedGenerated = formatSurfaceTimestamp(generatedIso);
+		const expectedGenerated = expectedLocaleTimestamp(generatedIso);
 
 		const result = evaluateSurfaceStatus({
 			generatedAt: generatedIso,
@@ -147,7 +168,55 @@ describe("evaluateSurfaceStatus", () => {
 	it.each([
 		"running",
 		"pending",
-	] as const)("returns info notice when latestRun.status is %s", (status) => {
+	] as const)("prioritises stale warning over %s status even when generatedAt is empty", (status) => {
+		const generatedIso = "2026-09-20T12:00:00Z";
+		const expectedGenerated = expectedLocaleTimestamp(generatedIso);
+
+		const withGenerated = evaluateSurfaceStatus({
+			generatedAt: generatedIso,
+			windowStart: "2026-09-17T12:00:00Z",
+			windowEnd: "2026-09-20T12:00:00Z",
+			isStale: true,
+			staleAfter: "2026-09-21T18:00:00Z",
+			latestRun: {
+				jobId: `run-stale-${status}`,
+				status,
+				kickedAt: "2026-09-22T19:00:00Z",
+				updatedAt: "2026-09-22T19:01:00Z",
+			},
+			degradationReasons: [],
+		});
+
+		expect(withGenerated.statusNotice).toEqual({
+			tone: "warning",
+			text: `This was last updated ${expectedGenerated}; a newer update has not completed.`,
+		});
+
+		const withoutGenerated = evaluateSurfaceStatus({
+			generatedAt: "",
+			windowStart: "",
+			windowEnd: "",
+			isStale: true,
+			staleAfter: "",
+			latestRun: {
+				jobId: `run-stale-empty-${status}`,
+				status,
+				kickedAt: "2026-09-22T19:00:00Z",
+				updatedAt: "2026-09-22T19:01:00Z",
+			},
+			degradationReasons: [],
+		});
+
+		expect(withoutGenerated.statusNotice).toEqual({
+			tone: "warning",
+			text: "This edition is out of date; a newer update has not completed.",
+		});
+	});
+
+	it.each([
+		"running",
+		"pending",
+	] as const)("returns info notice when latestRun.status is %s and surface is not stale", (status) => {
 		const result = evaluateSurfaceStatus({
 			generatedAt: "2026-09-22T17:00:00Z",
 			windowStart: "2026-09-19T17:00:00Z",
@@ -170,7 +239,7 @@ describe("evaluateSurfaceStatus", () => {
 		});
 	});
 
-	it("maps degradationReasons using detail when present and fallback text per code when detail is empty", () => {
+	it("maps degradationReasons using detail alone for extractive_genres and per-code sentence with parenthesised detail for other codes", () => {
 		const result = evaluateSurfaceStatus({
 			generatedAt: "2026-09-22T17:00:00Z",
 			windowStart: "",
@@ -183,6 +252,10 @@ describe("evaluateSurfaceStatus", () => {
 					detail: "9 of 19 genres are extractive excerpts, not AI summaries",
 				},
 				{
+					code: "few_cards",
+					detail: "3 cards selected",
+				},
+				{
 					code: "placeholder_output",
 					detail: "",
 				},
@@ -191,35 +264,68 @@ describe("evaluateSurfaceStatus", () => {
 
 		expect(result.degradationNotices).toEqual([
 			"9 of 19 genres are extractive excerpts, not AI summaries",
-			getDegradationNoticeText({ code: "placeholder_output", detail: "" }),
+			"Fewer topic cards than usual met the quality threshold (3 cards selected).",
+			"The AI draft had empty or placeholder sections, so this letter shows extracted excerpts instead.",
 		]);
-		expect(result.degradationNotices[1]?.length).toBeGreaterThan(0);
 	});
 });
 
 describe("getDegradationNoticeText", () => {
 	it.each([
-		"extractive_genres",
-		"few_cards",
-		"pulse_fallback",
-		"placeholder_output",
-		"duplicate_bullets",
-		"low_japanese_ratio",
-		"stale_recap_input",
-		"recap_unavailable",
-		"generation_failed",
-	])("returns non-empty English fallback text for code %s when detail is empty", (code) => {
-		const text = getDegradationNoticeText({ code, detail: "" });
-		expect(text.length).toBeGreaterThan(5);
-		expect(text).not.toBe(code);
+		[
+			"extractive_genres",
+			"Some genres use extractive excerpts instead of AI summaries.",
+		],
+		["few_cards", "Fewer topic cards than usual met the quality threshold."],
+		["pulse_fallback", "Topics were chosen with relaxed selection criteria."],
+		[
+			"placeholder_output",
+			"The AI draft had empty or placeholder sections, so this letter shows extracted excerpts instead.",
+		],
+		[
+			"duplicate_bullets",
+			"The AI draft repeated points across sections, so this letter shows extracted excerpts instead.",
+		],
+		[
+			"low_japanese_ratio",
+			"The AI draft was not mostly in Japanese, so this letter shows extracted excerpts instead.",
+		],
+		[
+			"stale_recap_input",
+			"Built from a 3-day recap older than the freshness window.",
+		],
+		["recap_unavailable", "Built without a 3-day recap."],
+		["generation_failed", "This edition was produced in degraded mode."],
+	] as const)("returns exact text for code %s when detail is empty", (code, expected) => {
+		expect(getDegradationNoticeText({ code, detail: "" })).toBe(expected);
 	});
 
-	it("prefers detail when provided", () => {
+	it("returns detail sentence alone for extractive_genres when detail is non-empty", () => {
+		expect(
+			getDegradationNoticeText({
+				code: "extractive_genres",
+				detail: "9 of 19 genres are extractive excerpts, not AI summaries",
+			}),
+		).toBe("9 of 19 genres are extractive excerpts, not AI summaries");
+	});
+
+	it("appends detail in parentheses after per-code text for other codes when detail is non-empty", () => {
 		expect(
 			getDegradationNoticeText({
 				code: "few_cards",
-				detail: "1 cards selected",
+				detail: "3 cards selected",
 			}),
-		).toBe("1 cards selected");
+		).toBe(
+			"Fewer topic cards than usual met the quality threshold (3 cards selected).",
+		);
+
+		expect(
+			getDegradationNoticeText({
+				code: "pulse_fallback",
+				detail: "fallback level 2",
+			}),
+		).toBe(
+			"Topics were chosen with relaxed selection criteria (fallback level 2).",
+		);
 	});
 });

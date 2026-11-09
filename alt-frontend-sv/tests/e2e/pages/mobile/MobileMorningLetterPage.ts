@@ -21,12 +21,12 @@ export class MobileMorningLetterPage extends BasePage {
 		this.pageHeader = page.locator(".mobile-edition-dateline").first();
 		this.chatToggle = page.getByRole("button", { name: /follow-up/i });
 		this.chatInput = page.getByPlaceholder(
-			/ask about the briefing|ask about today/i,
+			/ask about the briefing|ask about this edition/i,
 		);
 		this.sendButton = page.getByLabel("Send");
 		this.welcomeMessage = page
 			.locator(".entry-prose")
-			.getByText(/follow-up questions about today/i);
+			.getByText(/follow-up questions about this edition/i);
 		this.thinkingIndicator = page.getByText(/searching/i);
 		this.messageList = page.locator('[role="log"]');
 	}

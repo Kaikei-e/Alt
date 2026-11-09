@@ -37,7 +37,7 @@ export class DesktopMorningLetterPage extends BasePage {
 		// Messages — scope to .entry-prose to avoid matching the h1 dateline
 		this.welcomeMessage = page
 			.locator(".entry-prose")
-			.getByText(/follow-up questions about today/i);
+			.getByText(/follow-up questions about this edition/i);
 		this.thinkingIndicator = page.getByText(
 			/searching recent news|searching\.\.\./i,
 		);

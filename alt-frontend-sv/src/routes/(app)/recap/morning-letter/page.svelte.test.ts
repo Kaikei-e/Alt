@@ -114,7 +114,7 @@ describe("Morning Letter page freshness and wording", () => {
 		currentLetterState.letter = makeLetter();
 	});
 
-	it("shows Today's Edition in the dateline when surfaceStatus is current", async () => {
+	it("shows Today's Edition alongside the target date in the dateline when surfaceStatus is current", async () => {
 		currentLetterState.letter = makeLetter({
 			surfaceStatus: {
 				$typeName: "alt.recap.v2.RecapSurfaceStatus",
@@ -130,8 +130,14 @@ describe("Morning Letter page freshness and wording", () => {
 		const { container } = render(Page);
 
 		const dateline = container.querySelector(".edition-dateline");
-		expect(dateline?.textContent?.trim()).toBe("Today's Edition");
+		expect(dateline?.textContent?.trim()).toBe("Today's Edition · 2026-4-7");
 		expect(container.querySelector(".edition-badge--stale")).toBeNull();
+		expect(container.textContent).toContain(
+			"Ask follow-up questions about this edition.",
+		);
+		expect(container.textContent).not.toContain(
+			"Ask follow-up questions about today's edition.",
+		);
 	});
 
 	it("replaces Today's Edition with dated heading and renders SurfaceStatusBanner when stale", async () => {
@@ -165,5 +171,10 @@ describe("Morning Letter page freshness and wording", () => {
 		await expect
 			.element(alertEl)
 			.toHaveTextContent("a newer update has not completed.");
+		await expect
+			.element(alertEl)
+			.toHaveTextContent(
+				"The AI draft had empty or placeholder sections, so this letter shows extracted excerpts instead.",
+			);
 	});
 });

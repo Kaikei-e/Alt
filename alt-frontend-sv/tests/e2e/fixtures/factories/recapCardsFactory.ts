@@ -37,8 +37,7 @@ export interface MockRecapCardsJob {
 
 export interface MockRecapSurfaceRun {
 	jobId: string;
-	/** Known values: "pending" | "running" | "completed" | "failed" */
-	status: string;
+	status: "pending" | "running" | "completed" | "failed";
 	kickedAt: string;
 	updatedAt: string;
 }
@@ -223,7 +222,7 @@ export function buildMockDegradedRecapCardsResponse(): MockRecapCardsResponse {
 				kickedAt: "2026-09-22T17:00:00Z",
 				updatedAt: "2026-09-22T17:05:00Z",
 			},
-			degradationReasons: [{ code: "few_cards", detail: "" }],
+			degradationReasons: [{ code: "few_cards", detail: "1 cards selected" }],
 		},
 	};
 }

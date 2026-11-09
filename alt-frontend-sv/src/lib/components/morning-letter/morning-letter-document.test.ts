@@ -34,7 +34,7 @@ describe("orderSections", () => {
 		const ordered = orderSections(sections);
 
 		expect(ordered).toHaveLength(1);
-		expect(ordered[0]?.key).toBe("by_genre:ai");
+		expect(ordered[0]!.key).toBe("by_genre:ai");
 	});
 
 	it("returns empty array for empty input", () => {
@@ -46,6 +46,7 @@ describe("formatLetterDate", () => {
 	it("formats a civil date string for display", () => {
 		const result = formatLetterDate("2026-04-07", "Asia/Tokyo");
 
+		// Should contain year, month, day in some human-readable form
 		expect(result).toContain("2026");
 		expect(result).toContain("4");
 		expect(result).toContain("7");
@@ -58,19 +59,26 @@ describe("formatLetterDate", () => {
 	});
 
 	it("does not use Date constructor for civil date (no off-by-one)", () => {
+		// Decompose string directly, not via new Date()
 		const result = formatLetterDate("2026-01-01", "Asia/Tokyo");
 
-		expect(result).toContain("1");
-		expect(result).toContain("1");
+		expect(result).toContain("1"); // month
+		expect(result).toContain("1"); // day
 	});
 });
 
 describe("formatEditionDateline", () => {
-	it("returns Today's Edition only when isCurrent is true", () => {
+	it("shows Today's Edition alongside the target date when isCurrent is true", () => {
 		expect(
 			formatEditionDateline({
 				targetDate: "2026-04-07",
 				editionTimezone: "Asia/Tokyo",
+				isCurrent: true,
+			}),
+		).toBe("Today's Edition · 2026-4-7");
+		expect(
+			formatEditionDateline({
+				targetDate: undefined,
 				isCurrent: true,
 			}),
 		).toBe("Today's Edition");
@@ -195,7 +203,7 @@ describe("getSourcesForSection", () => {
 		const result = getSourcesForSection(sources, "top3");
 
 		expect(result).toHaveLength(2);
-		expect(result[0]?.articleId).toBe("a1");
+		expect(result[0]!.articleId).toBe("a1");
 	});
 
 	it("returns empty array for unmatched section", () => {
@@ -225,12 +233,14 @@ describe("deriveWithinHours", () => {
 	});
 
 	it("returns hours since the target date morning for past dates", () => {
+		// A date from 2 days ago
 		const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
 			.toISOString()
 			.split("T")[0];
 
 		const hours = deriveWithinHours(twoDaysAgo);
 
+		// Should be roughly 48 + some hours, capped at 168 (7 days max)
 		expect(hours).toBeGreaterThanOrEqual(24);
 		expect(hours).toBeLessThanOrEqual(168);
 	});
