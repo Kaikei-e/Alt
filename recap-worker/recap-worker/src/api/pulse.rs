@@ -615,12 +615,13 @@ mod tests {
         use serde_json::{Value, json};
 
         let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
-        let _started_at = DateTime::parse_from_rfc3339("2026-11-08T18:00:00Z")
+        let started_at = DateTime::parse_from_rfc3339("2026-11-08T18:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
         let finished_at = DateTime::parse_from_rfc3339("2026-11-08T18:02:00Z")
             .unwrap()
             .with_timezone(&Utc);
+        assert_ne!(started_at, finished_at);
         let win_start = DateTime::parse_from_rfc3339("2026-11-05T18:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
@@ -630,7 +631,7 @@ mod tests {
 
         let mut pulse_result = create_test_pulse_result();
         pulse_result.job_id = job_id;
-        pulse_result.generated_at = finished_at;
+        pulse_result.generated_at = started_at;
         pulse_result.diagnostics.fallback_level = 1;
 
         let row = crate::store::models::PulseGenerationRow {
@@ -663,6 +664,7 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
+        assert_eq!(body["generated_at"], "2026-11-08T18:02:00Z");
         assert_eq!(
             body["surface_status"]["generated_at"],
             "2026-11-08T18:02:00Z"

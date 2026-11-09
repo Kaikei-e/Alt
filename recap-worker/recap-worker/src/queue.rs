@@ -440,7 +440,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn classify_texts_queued_fails_immediately_on_401_without_retrying() -> Result<()> {
+    async fn wait_for_completion_fails_immediately_on_401_without_retrying() -> Result<()> {
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
