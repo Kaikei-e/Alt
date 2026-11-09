@@ -25,7 +25,8 @@ pub use fakes::{
 };
 pub use params::{CardsParams, DEFAULT_PARAMS_VERSION};
 pub use pipeline::{
-    CardsPipeline, CardsPipelineDao, CardsPipelineResult, ReplayResult, compute_embedding_text_hash,
+    CardsPipeline, CardsPipelineDao, CardsPipelineResult, CardsRunner, ReplayResult,
+    compute_embedding_text_hash,
 };
 pub use ports::{
     CardGenerator, CardVerifier, CardsJobRunner, EmbedCluster, FeedSource, GenreTagger,

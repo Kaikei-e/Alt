@@ -1625,10 +1625,6 @@ mod tests {
         let unreachable_state = AppState::new(
             build_test_registry_with_dsn("postgres://recap:recap@127.0.0.1:1/recap").await,
         );
-        assert!(
-            unreachable_state.dao().pool().is_none(),
-            "production RecapDaoImpl must return None from compat::RecapDao::pool()"
-        );
         let run_res = MorningLetterReadDao::get_latest_morning_run(&unreachable_state).await;
         assert!(
             run_res.is_err(),
@@ -1646,10 +1642,6 @@ mod tests {
         };
 
         let state = AppState::new(build_test_registry_with_dsn(&database_url).await);
-        assert!(
-            state.dao().pool().is_none(),
-            "production RecapDaoImpl must return None from compat::RecapDao::pool()"
-        );
         let pool = state.pool();
         create_morning_letter_temp_tables(pool).await;
 

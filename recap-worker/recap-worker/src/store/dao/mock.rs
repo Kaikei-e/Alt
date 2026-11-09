@@ -6,8 +6,6 @@ use crate::error::Result;
 #[cfg(test)]
 use async_trait::async_trait;
 #[cfg(test)]
-use sqlx::PgPool;
-#[cfg(test)]
 use std::sync::{Arc, Mutex};
 #[cfg(test)]
 use uuid::Uuid;
@@ -247,11 +245,6 @@ impl MockRecapDao {
 #[cfg(test)]
 #[async_trait]
 impl RecapDao for MockRecapDao {
-    fn pool(&self) -> Option<&PgPool> {
-        // モックではデータベース接続プールは不要
-        None
-    }
-
     // Job management
     #[allow(dead_code)]
     async fn create_job_with_lock(

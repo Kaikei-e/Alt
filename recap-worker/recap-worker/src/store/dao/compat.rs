@@ -6,7 +6,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
-use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -43,23 +42,6 @@ use crate::store::models::{
 #[allow(dead_code)]
 #[async_trait]
 pub(crate) trait RecapDao: Send + Sync {
-    /// Get the underlying connection pool (if available).
-    ///
-    /// # Returns
-    ///
-    /// - `Some(&PgPool)` - If the implementation has a direct connection pool reference
-    /// - `None` - For mock implementations or blanket impl (default behavior)
-    ///
-    /// # Note (LSP Compliance)
-    ///
-    /// The blanket implementation returns `None` by default. This is intentional:
-    /// - Mock DAOs for testing don't have a real database connection
-    /// - Code that needs pool access should handle the `None` case gracefully
-    /// - For direct pool access, use `RecapDaoImpl::new(pool).pool()` pattern
-    ///
-    /// Callers should provide fallback behavior when `pool()` returns `None`.
-    fn pool(&self) -> Option<&PgPool>;
-
     // === JobDao methods ===
     async fn create_job_with_lock(&self, job_id: Uuid, note: Option<&str>) -> Result<Option<Uuid>>;
 
@@ -397,13 +379,6 @@ where
         + Send
         + Sync,
 {
-    fn pool(&self) -> Option<&PgPool> {
-        // Default implementation returns None.
-        // This is intentional for the blanket impl - see trait documentation.
-        // For direct pool access, instantiate RecapDaoImpl directly.
-        None
-    }
-
     async fn create_job_with_lock(&self, job_id: Uuid, note: Option<&str>) -> Result<Option<Uuid>> {
         JobDao::create_job_with_lock(self, job_id, note).await
     }

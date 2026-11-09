@@ -279,13 +279,14 @@ async fn build_cards_runner(
     match config.cards_user_id() {
         Some(user_id) => {
             let default_params = crate::pipeline::cards::CardsParams::default();
-            let pipeline =
+            let runner =
                 crate::eval::build_production_cards_pipeline(pool, config, &default_params)
                     .await
                     .context("failed to build cards pipeline")?
                     .with_user_id(user_id)
-                    .with_metrics(metrics);
-            Ok(Some(Arc::new(pipeline)))
+                    .with_metrics(metrics)
+                    .into_runner()?;
+            Ok(Some(Arc::new(runner)))
         }
         None => Ok(None),
     }

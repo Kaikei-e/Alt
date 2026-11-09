@@ -39,6 +39,8 @@ impl RecapContext {
     }
 }
 
+pub(crate) type SaveClock = Arc<dyn Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync>;
+
 pub struct MorningPipeline {
     config: Arc<Config>,
     fetch: Arc<dyn FetchStage>,
@@ -46,6 +48,7 @@ pub struct MorningPipeline {
     dedup: Arc<dyn DedupStage>,
     recap_dao: Arc<dyn RecapDao>,
     news_creator_client: Arc<NewsCreatorClient>,
+    save_clock: SaveClock,
 }
 
 impl MorningPipeline {
@@ -126,7 +129,15 @@ impl MorningPipeline {
             dedup,
             recap_dao,
             news_creator_client,
+            save_clock: Arc::new(chrono::Utc::now),
         })
+    }
+
+    #[allow(dead_code)]
+    #[must_use]
+    pub(crate) fn with_save_clock(mut self, save_clock: SaveClock) -> Self {
+        self.save_clock = save_clock;
+        self
     }
 
     pub(crate) async fn execute_update(
@@ -359,7 +370,7 @@ impl MorningPipeline {
             .load_previous_letter_ref(edition_timezone, target_date)
             .await;
 
-        let created_at = chrono::Utc::now().trunc_subsecs(6);
+        let created_at = (self.save_clock)().trunc_subsecs(6);
         let letter = build_morning_letter_from_response(
             letter_id,
             target_date,
@@ -1379,6 +1390,7 @@ mod tests {
             dedup: Arc::new(EmptyDedupStage),
             recap_dao,
             news_creator_client: Arc::new(NewsCreatorClient::new_for_test(news_creator_url)),
+            save_clock: Arc::new(chrono::Utc::now),
         }
     }
 
@@ -1595,7 +1607,8 @@ mod tests {
         let dao = Arc::new(MockRecapDao::new());
         dao.set_latest_completed_job(None);
 
-        let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
+        let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri())
+            .with_save_clock(Arc::new(move || save_now));
         let (returned_id, returned_created_at) = pipeline
             .execute_update(
                 &JobContext::new_morning_update(Uuid::new_v4()),

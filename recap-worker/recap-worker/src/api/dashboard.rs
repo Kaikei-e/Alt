@@ -695,10 +695,6 @@ mod tests {
 
     #[async_trait::async_trait]
     impl RecapDao for WindowRecordingDao {
-        fn pool(&self) -> Option<&sqlx::PgPool> {
-            self.inner.pool()
-        }
-
         async fn create_job_with_lock(
             &self,
             job_id: Uuid,

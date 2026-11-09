@@ -970,7 +970,6 @@ mod new_tests {
         mock_dao
             .set_latest_worker_config("graph_override", serde_json::json!({"graph_margin": 0.42}));
         let recap_dao: Arc<dyn RecapDao> = mock_dao;
-        assert!(recap_dao.pool().is_none());
 
         let pool = PgPoolOptions::new()
             .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")

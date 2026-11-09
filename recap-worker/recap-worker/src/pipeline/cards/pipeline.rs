@@ -370,6 +370,12 @@ impl PipelineMode {
     }
 }
 
+/// Topic-cards scheduled job runner holding a required `Arc<Metrics>`.
+pub struct CardsRunner {
+    pipeline: CardsPipeline,
+    metrics: Arc<crate::observability::metrics::Metrics>,
+}
+
 /// Standalone CardsPipeline runner.
 pub struct CardsPipeline {
     feed_source: Arc<dyn FeedSource>,
@@ -435,6 +441,61 @@ impl CardsPipeline {
     pub fn with_metrics(mut self, metrics: Arc<crate::observability::metrics::Metrics>) -> Self {
         self.metrics = Some(metrics);
         self
+    }
+
+    pub fn into_runner(mut self) -> Result<CardsRunner> {
+        let metrics = self
+            .metrics
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("metrics must be configured before build"))?;
+        Ok(CardsRunner {
+            pipeline: self,
+            metrics,
+        })
+    }
+
+    async fn run_cards_with_metrics(
+        &self,
+        metrics: &crate::observability::metrics::Metrics,
+        job_id: Uuid,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        let params = CardsParams::default();
+        match self.run(job_id, from, to, &params).await {
+            Ok(_) => {
+                match self.dao.get_job_updated_at(job_id).await {
+                    Ok(Some(updated_at)) => {
+                        crate::observability::surface_health::record_success(
+                            metrics,
+                            crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
+                            updated_at,
+                        );
+                    }
+                    Ok(None) => {
+                        tracing::error!(
+                            %job_id,
+                            "completed topic cards job has no updated_at timestamp; leaving surface_last_success unchanged"
+                        );
+                    }
+                    Err(err) => {
+                        tracing::error!(
+                            %job_id,
+                            error = ?err,
+                            "failed to read updated_at for topic cards job; leaving surface_last_success unchanged"
+                        );
+                    }
+                }
+                Ok(())
+            }
+            Err(e) => {
+                crate::observability::surface_health::record_failure(
+                    metrics,
+                    crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
+                );
+                Err(anyhow::anyhow!("{e:?}"))
+            }
+        }
     }
 
     /// Execute the CardsPipeline for a given job.
@@ -2022,6 +2083,20 @@ fn filter_valid_citations(card: &mut CardContent, item_count: usize) {
 }
 
 #[async_trait::async_trait]
+impl super::ports::CardsJobRunner for CardsRunner {
+    async fn run_cards(
+        &self,
+        job_id: Uuid,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        self.pipeline
+            .run_cards_with_metrics(&self.metrics, job_id, from, to)
+            .await
+    }
+}
+
+#[async_trait::async_trait]
 impl super::ports::CardsJobRunner for CardsPipeline {
     async fn run_cards(
         &self,
@@ -2029,45 +2104,11 @@ impl super::ports::CardsJobRunner for CardsPipeline {
         from: DateTime<Utc>,
         to: DateTime<Utc>,
     ) -> anyhow::Result<()> {
-        let params = CardsParams::default();
-        match self.run(job_id, from, to, &params).await {
-            Ok(_) => {
-                if let Some(ref metrics) = self.metrics {
-                    match self.dao.get_job_updated_at(job_id).await {
-                        Ok(Some(updated_at)) => {
-                            crate::observability::surface_health::record_success(
-                                metrics,
-                                crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
-                                updated_at,
-                            );
-                        }
-                        Ok(None) => {
-                            tracing::error!(
-                                %job_id,
-                                "completed topic cards job has no updated_at timestamp; leaving surface_last_success unchanged"
-                            );
-                        }
-                        Err(err) => {
-                            tracing::error!(
-                                %job_id,
-                                error = ?err,
-                                "failed to read updated_at for topic cards job; leaving surface_last_success unchanged"
-                            );
-                        }
-                    }
-                }
-                Ok(())
-            }
-            Err(e) => {
-                if let Some(ref metrics) = self.metrics {
-                    crate::observability::surface_health::record_failure(
-                        metrics,
-                        crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
-                    );
-                }
-                Err(anyhow::anyhow!("{e:?}"))
-            }
-        }
+        let metrics = self
+            .metrics
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("metrics must be configured before build"))?;
+        self.run_cards_with_metrics(metrics, job_id, from, to).await
     }
 }
 
@@ -4550,6 +4591,15 @@ mod tests {
         assert!(
             err.contains("metrics must be configured"),
             "error must name missing metrics configuration, got: {err}"
+        );
+        let build_err = pipeline
+            .into_runner()
+            .err()
+            .expect("building cards runner without metrics must fail")
+            .to_string();
+        assert!(
+            build_err.contains("metrics must be configured before build"),
+            "build error must name missing metrics configuration, got: {build_err}"
         );
     }
 }
