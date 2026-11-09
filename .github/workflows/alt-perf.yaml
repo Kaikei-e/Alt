@@ -30,7 +30,8 @@ permissions:
 
 jobs:
   # tests/unit only — the perf tasks themselves drive a real browser against a
-  # running stack and belong to performance-smoke.yaml, not to this gate.
+  # running stack (not started in this gate; the scheduled k6 smoke workflow
+  # was removed because it ran against a backend that was never started).
   #
   # NOTE: `check-fmt` and `check-lint` stay off. `deno fmt --check` reports 41
   # of 58 files unformatted, `deno lint` 13 findings, and `deno check main.ts`
