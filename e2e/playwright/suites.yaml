@@ -43,6 +43,11 @@
 #            past roughly eight minutes of wall clock — each shard pays the
 #            full compose-slice startup cost, so over-sharding makes a suite
 #            slower, not faster. Absent means one job.
+#   workflow optional. Workflow under .github/workflows/ that runs this suite
+#            in PR CI (default: e2e-playwright.yml). Suites owned by a dedicated
+#            path-filtered workflow remain registered here for build-images.py
+#            and audit-suite-wiring.py while ci-matrix.py omits them from
+#            e2e-playwright.yml's matrices.
 #   notes    why the image list is what it is, where that is not obvious.
 
 suites:
@@ -67,8 +72,10 @@ suites:
     images: [alt-frontend-sv]
     # ~398s unsharded on the critical path; 3 shards amortise the ~1.7GB Playwright image pull.
     shards: 3
+    workflow: alt-frontend-sv.yml
     notes: >-
-      Browser-driven SvelteKit E2E suite. Runs outside compose.staging.yaml:
+      Browser-driven SvelteKit E2E suite. Runs outside compose.staging.yaml in
+      its own path-filtered workflow (.github/workflows/alt-frontend-sv.yml):
       run.sh starts the pre-built alt-alt-frontend-sv image on --network host
       against in-process mock servers (127.0.0.1:4001-4003) and drives the
       specs with the Playwright browser container.

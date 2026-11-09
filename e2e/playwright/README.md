@@ -10,10 +10,12 @@ Playwright image.
 The browser-driven suite for the SPA is the one exception. Its specs stay where
 they are (`alt-frontend-sv/tests/e2e/`) with their own config, because they
 need a real browser engine and a self-contained stack rather than a compose
-slice; `alt-frontend-sv/` here is only the dispatch shim that satisfies
-ADR-000766's `e2e/<framework>/<svc>/run.sh` contract. It is deliberately absent
-from `suites.yaml` — it builds no images and runs under the Playwright browser
-image, so none of the machinery below applies to it.
+slice; `alt-frontend-sv/` here is the dispatch shim that satisfies
+ADR-000766's `e2e/<framework>/<svc>/run.sh` contract. It is registered in
+`suites.yaml` for `build-images.py` and `audit-suite-wiring.py`, with
+`workflow: alt-frontend-sv.yml` so `ci-matrix.py` omits it from
+`e2e-playwright.yml` and `.github/workflows/alt-frontend-sv.yml` runs it as the
+single PR CI owner.
 
 ## Layout
 
@@ -94,10 +96,12 @@ laptop run the same command.
 
 ## CI
 
-`.github/workflows/e2e-playwright.yml` runs every suite on every PR and every
-push to main, with no path filtering: skipping by touched path lets a
-shared-wiring regression (a compose change, a fixture, an upstream Go package,
-proto) land green because it matched no service path.
+`.github/workflows/e2e-playwright.yml` runs every cross-service suite on every
+PR and every push to main, with no path filtering: skipping by touched path
+lets a shared-wiring regression (a compose change, a fixture, an upstream Go
+package, proto) land green because it matched no service path. (`alt-frontend-sv`
+declares `workflow: alt-frontend-sv.yml` in `suites.yaml` and runs in
+`.github/workflows/alt-frontend-sv.yml`.)
 
 ```
 plan ──┬── single    (matrix over the unsharded suites: build + run)   ──┐

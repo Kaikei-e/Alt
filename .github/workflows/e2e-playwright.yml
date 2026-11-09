@@ -1,8 +1,9 @@
 # End-to-end Playwright suites, one job per service.
 #
 # Replaces e2e-hurl.yml (nine hand-written per-service jobs) and
-# e2e-playwright-alt-backend.yml (the pilot's own file). Every suite under
-# e2e/playwright/ now runs here.
+# e2e-playwright-alt-backend.yml (the pilot's own file). Every cross-service
+# suite under e2e/playwright/ runs here; alt-frontend-sv's browser suite runs
+# in alt-frontend-sv.yml.
 #
 # Shape
 # -----
@@ -26,33 +27,43 @@
 #
 # No per-service path filtering, deliberately
 # -------------------------------------------
-# Every suite runs on every non-docs PR and push to main. Selective skipping by
+# Every cross-service suite owned by this workflow (suites declaring a dedicated
+# `workflow:` in `suites.yaml`, such as `alt-frontend-sv`, run in their own
+# workflow) runs on every qualifying PR and push to main. Selective skipping by
 # touched service path lets a shared-wiring regression (compose.staging.yaml, a
 # fixture, an upstream Go package, proto) land green because it matched no
-# service path. The single exception is the `paths-ignore` list on the triggers
-# below for documentation and agent-config files, which never reach an image,
-# fixture or test.
+# service path. The only exceptions in the `paths` list on the triggers below
+# are documentation/agent-config files and changes confined to
+# `.github/workflows/**` (including its scripts, with
+# `.github/workflows/e2e-playwright.yml` re-included), which never reach an
+# image, fixture or test.
 
 name: E2E Playwright
 
 on:
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '.claude/**'
-      - '.agents/**'
-      - '**/CLAUDE.md'
-      - '**/AGENTS.md'
-      - '**/README.md'
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!.claude/**'
+      - '!.agents/**'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
+      - '!.github/workflows/**'
+      - '.github/workflows/e2e-playwright.yml'
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '.claude/**'
-      - '.agents/**'
-      - '**/CLAUDE.md'
-      - '**/AGENTS.md'
-      - '**/README.md'
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!.claude/**'
+      - '!.agents/**'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
+      - '!.github/workflows/**'
+      - '.github/workflows/e2e-playwright.yml'
   workflow_dispatch:
 
 permissions:
@@ -107,6 +118,7 @@ jobs:
 
       - name: Check staging authentication fixtures offline
         run: |
+          python3 e2e/playwright/_lib/ci-matrix.test.py
           python3 e2e/playwright/_lib/security-wiring.test.py
           python3 e2e/playwright/_lib/auth-introspection.test.py
           node e2e/playwright/_lib/search-auth.test.cjs
@@ -223,20 +235,6 @@ jobs:
           # nine of them green, and the only symptom was a merge job cheerfully
           # reporting "no blob reports to merge".
           if-no-files-found: warn
-
-      - name: Upload app container log
-        # Unused today because alt-frontend-sv is sharded; kept to cover the suite if it is ever run unsharded.
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        with:
-          name: app-log-${{ matrix.suite }}
-          path: e2e/reports/${{ matrix.suite }}/app-container.log
-          retention-days: 3
-          overwrite: true
-          # Only alt-frontend-sv/run.sh writes app-container.log today; warn if
-          # it is missing there, and ignore on compose-backed suites that do not
-          # produce this file.
-          if-no-files-found: ${{ matrix.suite == 'alt-frontend-sv' && 'warn' || 'ignore' }}
 
       - name: Wipe throwaway mTLS fixtures
         # run.sh's own trap skips this under KEEP_STACK=1 (the certificates are
@@ -363,19 +361,6 @@ jobs:
           # reporting "no blob reports to merge".
           if-no-files-found: warn
 
-      - name: Upload app container log
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        with:
-          name: app-log-${{ matrix.suite }}-${{ matrix.index }}
-          path: e2e/reports/${{ matrix.suite }}-shard-${{ matrix.index }}/app-container.log
-          retention-days: 3
-          overwrite: true
-          # Only alt-frontend-sv/run.sh writes app-container.log today; warn if
-          # it is missing there, and ignore on compose-backed suites that do not
-          # produce this file.
-          if-no-files-found: ${{ matrix.suite == 'alt-frontend-sv' && 'warn' || 'ignore' }}
-
       - name: Wipe throwaway mTLS fixtures
         if: always()
         run: rm -rf "e2e/fixtures/${SUITE}/pki"
@@ -389,10 +374,10 @@ jobs:
   # ---------------------------------------------------------------------------
   merge:
     name: Merge reports
-    # `always()` so a failing suite still produces a merged report — that
+    # `!cancelled()` so a failing suite still produces a merged report — that
     # report is the primary debugging artifact, and it is needed exactly when
-    # the run is red.
-    if: always()
+    # the run is red — while cancelled runs do not spend time on `npm ci`.
+    if: ${{ !cancelled() }}
     needs: [single, sharded]
     runs-on: ubuntu-latest
     timeout-minutes: 10
