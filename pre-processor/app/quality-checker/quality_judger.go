@@ -20,7 +20,7 @@ import (
 	logger "pre-processor/utils/logger"
 )
 
-// minValidScore/maxValidScore are the scale JudgeTemplate asks the model for
+// minValidScore/maxValidScore are the scale JudgeSystemPrompt asks the model for
 // ("a single integer score from 1 to 10"), and the scale lowScoreThreshold is
 // compared against. A score outside it is a broken response, not a verdict.
 const (
@@ -240,11 +240,7 @@ func wrapGemmaPrompt(systemPrompt, userPrompt string) string {
 }
 
 func buildJudgePrompt(articleContent, summaryJapanese string) string {
-	userPrompt := fmt.Sprintf(
-		JudgeTemplate,
-		stripGemmaTurnTokens(articleContent),
-		stripGemmaTurnTokens(summaryJapanese),
-	)
+	userPrompt := fmt.Sprintf(JudgeTemplate, articleContent, summaryJapanese)
 	return wrapGemmaPrompt(JudgeSystemPrompt, userPrompt)
 }
 
@@ -263,7 +259,7 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 		Prompt:  prompt,
 		Stream:  false,
 		Options: opts,
-		Raw:     true, // JudgeTemplate contains Gemma chat template tokens; prevent Ollama from double-applying them
+		Raw:     true, // buildJudgePrompt wraps the prompt in Gemma chat template tokens; prevent Ollama from double-applying them
 	}
 
 	jsonPayload, err := json.Marshal(payload)
@@ -378,7 +374,7 @@ func parseScore(response string) (Score, error) {
 	// good summary and clamping up passes a bad one, both silently, when what
 	// actually happened is that the model ignored the output contract.
 	if score < minValidScore || score > maxValidScore {
-		logger.Logger.Error("Score outside the scale requested by JudgeTemplate",
+		logger.Logger.Error("Score outside the scale requested by JudgeSystemPrompt",
 			"score", score, "min", minValidScore, "max", maxValidScore)
 		return Score{}, fmt.Errorf("score %d outside valid range %d-%d", score, minValidScore, maxValidScore)
 	}

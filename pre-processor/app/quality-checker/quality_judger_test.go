@@ -530,7 +530,7 @@ func TestScoreSummaryContextCancellation(t *testing.T) {
 	require.Error(t, err, "Should error when context is cancelled")
 }
 
-// TestScoreBoundaryConditions pins the edges of the 1-10 scale JudgeTemplate
+// TestScoreBoundaryConditions pins the edges of the 1-10 scale JudgeSystemPrompt
 // asks for. Values outside it are rejected rather than clamped: a clamped-down
 // value deletes a good summary and a clamped-up one passes a bad summary, both
 // without any signal that the model broke the output contract.
@@ -856,7 +856,7 @@ func TestJudgeArticleQualityContentBoundary(t *testing.T) {
 }
 
 // TestScoreSummaryRequestIncludesRawTrue verifies that the Ollama request includes raw:true
-// to prevent double-templating when JudgeTemplate already contains Gemma chat template tokens.
+// to prevent double-templating when buildJudgePrompt already wraps the prompt in Gemma chat template tokens.
 func TestScoreSummaryRequestIncludesRawTrue(t *testing.T) {
 	var receivedPayload judgePrompt
 
