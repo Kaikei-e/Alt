@@ -1178,6 +1178,56 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn get_7days_recap_omits_surface_status_key() {
+        use chrono::{DateTime, Utc};
+        use uuid::Uuid;
+
+        let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
+        let started_at = DateTime::parse_from_rfc3339("2026-11-08T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let window_start = DateTime::parse_from_rfc3339("2026-11-01T12:05:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let window_end = DateTime::parse_from_rfc3339("2026-11-08T12:05:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let dao = MockThreeDayDao {
+            job: Some(crate::store::models::RecapJob {
+                job_id,
+                started_at,
+                window_start,
+                window_end,
+                total_articles: Some(25),
+            }),
+            genres: vec![crate::store::models::GenreWithSummary {
+                genre_name: "ai_data".to_string(),
+                summary_ja: Some("7-day AI summary".to_string()),
+                title_ja: None,
+                bullets_ja: None,
+            }],
+            body_jsons: std::collections::HashMap::new(),
+            latest_run: None,
+        };
+
+        let response = get_recap_by_window(&dao, 7, "7-day", None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let body: Value = serde_json::from_slice(&body_bytes).expect("valid json");
+
+        assert!(
+            !body
+                .as_object()
+                .expect("response is object")
+                .contains_key("surface_status")
+        );
+    }
+
     #[allow(dead_code)]
     struct MockMorningDao {
         letter: Option<crate::store::models::MorningLetter>,
@@ -1332,7 +1382,9 @@ mod tests {
 
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/services.datahub.v1.DataHubService/ListRecapArticles"))
+            .and(path(
+                "/services.datahub.v1.DataHubService/ListRecapArticles",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "articles": [],
                 "hasMore": false
@@ -1438,9 +1490,10 @@ mod tests {
         drop(_lock);
 
         let state = AppState::new(registry);
-        let response = regenerate_morning_letter(State(state), Json(RegenerateLatestRequest::default()))
-            .await
-            .into_response();
+        let response =
+            regenerate_morning_letter(State(state), Json(RegenerateLatestRequest::default()))
+                .await
+                .into_response();
 
         assert_eq!(response.status(), StatusCode::OK);
         let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)

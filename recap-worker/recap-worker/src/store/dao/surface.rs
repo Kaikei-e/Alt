@@ -368,13 +368,10 @@ mod tests {
             return Ok(());
         };
 
-        let Ok(pool) = PgPoolOptions::new()
+        let pool = PgPoolOptions::new()
             .max_connections(1)
             .connect(&database_url)
-            .await
-        else {
-            return Ok(());
-        };
+            .await?;
 
         sqlx::query(
             r"

@@ -438,9 +438,12 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
+        let obj = body.as_object().expect("response is object");
         assert_eq!(body["cards"], serde_json::json!([]));
+        assert!(obj.contains_key("job"));
         assert!(body["job"].is_null());
-        assert!(!body.as_object().unwrap().contains_key("latest_run"));
+        assert!(!obj.contains_key("latest_run"));
+        assert!(obj.contains_key("surface_status"));
         assert!(body["surface_status"].is_null());
     }
 
@@ -584,6 +587,11 @@ mod tests {
         assert_eq!(card["id"], card_id.to_string());
         assert_eq!(card["rank"], 1);
         assert_eq!(card["story_id"], story_id.to_string());
+        assert!(
+            card.as_object()
+                .expect("card is object")
+                .contains_key("continues_card_id")
+        );
         assert!(card["continues_card_id"].is_null());
         assert_eq!(
             card["headline_ja"],
@@ -682,7 +690,14 @@ mod tests {
             .await
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
-        assert!(body["cards"][0]["sources"][0]["pub_date"].is_null());
+        let source = &body["cards"][0]["sources"][0];
+        assert!(
+            source
+                .as_object()
+                .expect("source is object")
+                .contains_key("pub_date")
+        );
+        assert!(source["pub_date"].is_null());
     }
 
     #[tokio::test]
@@ -896,13 +911,44 @@ mod tests {
 
     #[tokio::test]
     async fn test_latest_run_db_failure_returns_500() {
+        let now = fixed_now();
+        let dao = MockCardsDao {
+            should_fail_latest_run: true,
+            ..Default::default()
+        };
+        *dao.latest_job.lock().unwrap() = Some(PreviousCardsJobMeta {
+            job_id: Uuid::new_v4(),
+            kicked_at: now,
+            from_ts: now - chrono::Duration::days(3),
+            to_ts: now,
+            params_version: "cards-v0.2".to_string(),
+        });
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_no_completed_job_does_not_query_latest_cards_run() {
         let dao = MockCardsDao {
             should_fail_latest_run: true,
             ..Default::default()
         };
         let response =
             get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
+        let obj = body.as_object().expect("response is object");
+
+        assert_eq!(body["cards"], serde_json::json!([]));
+        assert!(obj.contains_key("job"));
+        assert!(body["job"].is_null());
+        assert!(obj.contains_key("surface_status"));
+        assert!(body["surface_status"].is_null());
     }
 
     #[tokio::test]
@@ -1006,9 +1052,12 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
+        let obj = body.as_object().expect("response is object");
+        assert!(obj.contains_key("job"));
         assert!(body["job"].is_null());
         assert_eq!(body["cards"], serde_json::json!([]));
-        assert!(!body.as_object().unwrap().contains_key("latest_run"));
+        assert!(!obj.contains_key("latest_run"));
+        assert!(obj.contains_key("surface_status"));
         assert!(body["surface_status"].is_null());
     }
 
