@@ -225,6 +225,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload app container log
+        # Unused today because alt-frontend-sv is sharded; kept to cover the suite if it is ever run unsharded.
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
