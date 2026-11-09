@@ -29,10 +29,10 @@ impl RecapDao {
                 target_date,
                 version,
                 result_payload,
-                COALESCE(finished_at, started_at) AS finished_at
+                COALESCE(finished_at, started_at) AS shown_at
             FROM pulse_generations
             WHERE target_date = $1 AND status = 'succeeded'
-            ORDER BY finished_at DESC NULLS LAST
+            ORDER BY COALESCE(finished_at, started_at) DESC, id DESC
             LIMIT 1
             ",
         )
@@ -58,10 +58,10 @@ impl RecapDao {
                 target_date,
                 version,
                 result_payload,
-                COALESCE(finished_at, started_at) AS finished_at
+                COALESCE(finished_at, started_at) AS shown_at
             FROM pulse_generations
             WHERE status = 'succeeded'
-            ORDER BY finished_at DESC NULLS LAST
+            ORDER BY COALESCE(finished_at, started_at) DESC, id DESC
             LIMIT 1
             ",
         )
@@ -151,7 +151,7 @@ fn map_row_to_pulse_generation(row: sqlx::postgres::PgRow) -> Result<PulseGenera
         target_date: row.try_get("target_date")?,
         version: row.try_get("version")?,
         result_payload,
-        finished_at: row.try_get("finished_at")?,
+        finished_at: row.try_get("shown_at")?,
     })
 }
 
@@ -191,6 +191,7 @@ mod tests {
         .await?;
 
         let shared_job_id = Uuid::new_v4();
+        let tie_winner_job_id = Uuid::new_v4();
         let day1 = NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
         let day2 = NaiveDate::from_ymd_opt(2026, 11, 9).unwrap();
         let day1_started =
@@ -206,7 +207,8 @@ mod tests {
                 job_id, target_date, version, status, started_at, finished_at, result_payload
             ) VALUES
                 ($1, $2, 'v4', 'succeeded', $3, NULL, '{}'::JSONB),
-                ($1, $4, 'v4', 'succeeded', $5, $6, '{}'::JSONB)
+                ($1, $4, 'v4', 'succeeded', $5, $6, '{}'::JSONB),
+                ($7, $4, 'v4', 'succeeded', $5, $6, '{}'::JSONB)
             ",
         )
         .bind(shared_job_id)
@@ -215,6 +217,7 @@ mod tests {
         .bind(day2)
         .bind(day2_started)
         .bind(day2_finished)
+        .bind(tie_winner_job_id)
         .execute(&pool)
         .await?;
 
@@ -224,9 +227,16 @@ mod tests {
         assert_eq!(day1_row.target_date, day1);
         assert_eq!(day1_row.finished_at, day1_started);
 
+        let day2_row = RecapDao::get_pulse_by_date(&pool, day2)
+            .await?
+            .expect("day2 pulse row");
+        assert_eq!(day2_row.job_id, tie_winner_job_id);
+        assert_eq!(day2_row.finished_at, day2_finished);
+
         let latest_row = RecapDao::get_latest_pulse(&pool)
             .await?
             .expect("latest pulse row");
+        assert_eq!(latest_row.job_id, tie_winner_job_id);
         assert_eq!(latest_row.target_date, day2);
         assert_eq!(latest_row.finished_at, day2_finished);
 
