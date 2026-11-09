@@ -102,6 +102,36 @@ impl CardsCatchupConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SurfaceFreshnessConfig {
+    pub three_day_recap_hours: i64,
+    pub topic_cards_hours: i64,
+    pub evening_pulse_hours: i64,
+    pub morning_letter_hours: i64,
+}
+
+impl SurfaceFreshnessConfig {
+    #[must_use]
+    pub const fn three_day_recap_budget(self) -> chrono::Duration {
+        chrono::Duration::hours(self.three_day_recap_hours)
+    }
+
+    #[must_use]
+    pub const fn topic_cards_budget(self) -> chrono::Duration {
+        chrono::Duration::hours(self.topic_cards_hours)
+    }
+
+    #[must_use]
+    pub const fn evening_pulse_budget(self) -> chrono::Duration {
+        chrono::Duration::hours(self.evening_pulse_hours)
+    }
+
+    #[must_use]
+    pub const fn morning_letter_budget(self) -> chrono::Duration {
+        chrono::Duration::hours(self.morning_letter_hours)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     http_bind: SocketAddr,
@@ -1015,6 +1045,16 @@ impl Config {
     #[must_use]
     pub fn cards_catchup_enabled(&self) -> bool {
         self.cards_catchup.is_enabled()
+    }
+
+    #[must_use]
+    pub const fn surface_freshness(&self) -> SurfaceFreshnessConfig {
+        SurfaceFreshnessConfig {
+            three_day_recap_hours: 0,
+            topic_cards_hours: 0,
+            evening_pulse_hours: 0,
+            morning_letter_hours: 0,
+        }
     }
 }
 
@@ -3400,5 +3440,79 @@ mod tests {
             ),
             "RECAP_BATCH_SUMMARY_CHUNK_SIZE=0 must be rejected as ConfigError::Invalid, got: {res:?}"
         );
+    }
+
+    #[test]
+    fn from_env_fails_when_surface_freshness_vars_missing() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        for missing_var in [
+            "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
+            "RECAP_FRESHNESS_TOPIC_CARDS_HOURS",
+            "RECAP_FRESHNESS_EVENING_PULSE_HOURS",
+            "RECAP_FRESHNESS_MORNING_LETTER_HOURS",
+        ] {
+            let mut vars: Vec<_> = required_base()
+                .into_iter()
+                .filter(|(name, _)| *name != missing_var)
+                .collect();
+            vars.push((missing_var, None));
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(res, Err(ConfigError::Missing(name)) if name == missing_var),
+                    "{missing_var} must be required, got: {res:?}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_fails_when_surface_freshness_vars_non_positive() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        for var in [
+            "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
+            "RECAP_FRESHNESS_TOPIC_CARDS_HOURS",
+            "RECAP_FRESHNESS_EVENING_PULSE_HOURS",
+            "RECAP_FRESHNESS_MORNING_LETTER_HOURS",
+        ] {
+            for bad in ["0", "-5", "abc"] {
+                let mut vars: Vec<_> = required_base()
+                    .into_iter()
+                    .filter(|(name, _)| *name != var)
+                    .collect();
+                vars.push((var, Some(bad)));
+                temp_env::with_vars(vars, || {
+                    let res = Config::from_env();
+                    assert!(
+                        matches!(res, Err(ConfigError::Invalid { name, .. }) if name == var),
+                        "{var}={bad} must be rejected as ConfigError::Invalid, got: {res:?}"
+                    );
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn from_env_loads_surface_freshness_hours() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config loads");
+            assert_eq!(
+                config.surface_freshness(),
+                SurfaceFreshnessConfig {
+                    three_day_recap_hours: 30,
+                    topic_cards_hours: 30,
+                    evening_pulse_hours: 30,
+                    morning_letter_hours: 3,
+                }
+            );
+        });
     }
 }

@@ -414,6 +414,155 @@ pub(crate) async fn get_indexable_genres(
     }
 }
 
+#[async_trait::async_trait]
+#[allow(dead_code)]
+pub(crate) trait ThreeDayRecapReadDao: Send + Sync {
+    async fn get_latest_completed_job(
+        &self,
+        window_days: i32,
+    ) -> Result<Option<crate::store::models::RecapJob>, String>;
+    async fn get_genres_by_job(
+        &self,
+        job_id: uuid::Uuid,
+    ) -> Result<Vec<crate::store::models::GenreWithSummary>, String>;
+    async fn get_clusters_by_job(
+        &self,
+        job_id: uuid::Uuid,
+    ) -> Result<
+        std::collections::HashMap<String, Vec<crate::store::models::ClusterWithEvidence>>,
+        String,
+    >;
+    async fn get_recap_output_body_json(
+        &self,
+        job_id: uuid::Uuid,
+        genre: &str,
+    ) -> Result<Option<Value>, String>;
+    async fn get_latest_three_day_recap_run(
+        &self,
+    ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String>;
+}
+
+pub(crate) async fn get_3days_recap_impl(
+    dao: &impl ThreeDayRecapReadDao,
+    _freshness_budget: chrono::Duration,
+    _now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
+    let job = match dao.get_latest_completed_job(3).await {
+        Ok(Some(job)) => job,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "No 3-day recap found".to_string(),
+                }),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            error!("Failed to fetch latest job: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch recap data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let genres = match dao.get_genres_by_job(job.job_id).await {
+        Ok(genres) => genres,
+        Err(e) => {
+            error!("Failed to fetch genres for job {}: {}", job.job_id, e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch genre data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let mut clusters_by_genre = match dao.get_clusters_by_job(job.job_id).await {
+        Ok(map) => map,
+        Err(e) => {
+            error!("Failed to fetch clusters for job {}: {}", job.job_id, e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch cluster data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let mut genre_responses = Vec::new();
+    for genre in genres {
+        let clusters = clusters_by_genre
+            .remove(&genre.genre_name)
+            .unwrap_or_default();
+
+        let mut all_top_terms = Vec::new();
+        let mut total_article_count = 0;
+        let mut evidence_links = Vec::new();
+
+        for cluster in &clusters {
+            if let Some(terms) = &cluster.top_terms {
+                all_top_terms.extend(terms.iter().cloned());
+            }
+            total_article_count += cluster.evidence.len() as i32;
+            for evidence in cluster.evidence.iter().take(5) {
+                evidence_links.push(EvidenceLinkResponse {
+                    article_id: evidence.article_id.clone(),
+                    title: evidence.title.clone(),
+                    source_url: evidence.source_url.clone(),
+                    published_at: evidence.published_at.to_rfc3339(),
+                    lang: evidence
+                        .lang
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string()),
+                });
+            }
+        }
+
+        all_top_terms.sort();
+        all_top_terms.dedup();
+        all_top_terms.truncate(10);
+
+        let deduped_links = dedupe_evidence_links(evidence_links);
+        let references = match dao
+            .get_recap_output_body_json(job.job_id, &genre.genre_name)
+            .await
+        {
+            Ok(Some(body_json)) => extract_references_from_body_json(&body_json),
+            _ => None,
+        };
+
+        genre_responses.push(RecapGenreResponse {
+            genre: genre.genre_name.clone(),
+            summary: normalize_summary_text(genre.summary_ja.as_deref().unwrap_or_default()),
+            top_terms: all_top_terms,
+            article_count: total_article_count,
+            cluster_count: clusters.len() as i32,
+            evidence_links: deduped_links,
+            bullets: extract_bullets_from_payload(genre.summary_ja.as_deref().unwrap_or_default()),
+            references,
+        });
+    }
+
+    let response = RecapSummaryResponse {
+        job_id: job.job_id.to_string(),
+        executed_at: job.started_at.to_rfc3339(),
+        window_start: job.window_start.to_rfc3339(),
+        window_end: job.window_end.to_rfc3339(),
+        total_articles: job.total_articles.unwrap_or(0),
+        genres: genre_responses,
+    };
+    (StatusCode::OK, Json(response)).into_response()
+}
+
 /// GET /v1/recaps/7days
 /// 最新の7日間Recapデータを取得する
 pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoResponse {
@@ -888,6 +1037,285 @@ mod tests {
             );
         }
     }
+
+    #[allow(dead_code)]
+    struct MockThreeDayDao {
+        job: Option<crate::store::models::RecapJob>,
+        genres: Vec<crate::store::models::GenreWithSummary>,
+        body_jsons: std::collections::HashMap<String, Value>,
+        latest_run: Option<crate::api::surface_status::SurfaceRun>,
+    }
+
+    #[async_trait::async_trait]
+    impl ThreeDayRecapReadDao for MockThreeDayDao {
+        async fn get_latest_completed_job(
+            &self,
+            _window_days: i32,
+        ) -> Result<Option<crate::store::models::RecapJob>, String> {
+            Ok(self.job.clone())
+        }
+
+        async fn get_genres_by_job(
+            &self,
+            _job_id: uuid::Uuid,
+        ) -> Result<Vec<crate::store::models::GenreWithSummary>, String> {
+            Ok(self.genres.clone())
+        }
+
+        async fn get_clusters_by_job(
+            &self,
+            _job_id: uuid::Uuid,
+        ) -> Result<
+            std::collections::HashMap<String, Vec<crate::store::models::ClusterWithEvidence>>,
+            String,
+        > {
+            Ok(std::collections::HashMap::new())
+        }
+
+        async fn get_recap_output_body_json(
+            &self,
+            _job_id: uuid::Uuid,
+            genre: &str,
+        ) -> Result<Option<Value>, String> {
+            Ok(self.body_jsons.get(genre).cloned())
+        }
+
+        async fn get_latest_three_day_recap_run(
+            &self,
+        ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String> {
+            Ok(self.latest_run.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn get_3days_recap_serves_surface_status_and_extractive_genres_reason() {
+        use chrono::{DateTime, Utc};
+        use serde_json::json;
+        use uuid::Uuid;
+
+        let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
+        let started_at = DateTime::parse_from_rfc3339("2026-11-08T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let window_start = DateTime::parse_from_rfc3339("2026-11-05T12:05:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let window_end = DateTime::parse_from_rfc3339("2026-11-08T12:05:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let mut body_jsons = std::collections::HashMap::new();
+        body_jsons.insert(
+            "ai_data".to_string(),
+            json!({
+                "summary": { "title": "AI", "bullets": ["a"] },
+                "metadata": { "is_degraded": true }
+            }),
+        );
+        body_jsons.insert(
+            "space_astronomy".to_string(),
+            json!({
+                "summary": { "title": "Space", "bullets": ["b"] },
+                "metadata": { "is_degraded": false }
+            }),
+        );
+
+        let dao = MockThreeDayDao {
+            job: Some(crate::store::models::RecapJob {
+                job_id,
+                started_at,
+                window_start,
+                window_end,
+                total_articles: Some(12),
+            }),
+            genres: vec![
+                crate::store::models::GenreWithSummary {
+                    genre_name: "ai_data".to_string(),
+                    summary_ja: Some("AI summary".to_string()),
+                    title_ja: None,
+                    bullets_ja: None,
+                },
+                crate::store::models::GenreWithSummary {
+                    genre_name: "space_astronomy".to_string(),
+                    summary_ja: Some("Space summary".to_string()),
+                    title_ja: None,
+                    bullets_ja: None,
+                },
+            ],
+            body_jsons,
+            latest_run: Some(crate::api::surface_status::SurfaceRun {
+                job_id: job_id.to_string(),
+                status: "completed".to_string(),
+                kicked_at: "2026-11-08T12:00:00Z".to_string(),
+                updated_at: "2026-11-08T12:05:00Z".to_string(),
+            }),
+        };
+
+        let now = DateTime::parse_from_rfc3339("2026-11-09T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let response = get_3days_recap_impl(&dao, chrono::Duration::hours(30), now).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let body: Value = serde_json::from_slice(&body_bytes).expect("valid json");
+
+        assert_eq!(
+            body["surface_status"]["generated_at"],
+            "2026-11-08T12:05:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["window_start"],
+            "2026-11-05T12:05:00Z"
+        );
+        assert_eq!(body["surface_status"]["window_end"], "2026-11-08T12:05:00Z");
+        assert_eq!(body["surface_status"]["is_stale"], false);
+        assert_eq!(
+            body["surface_status"]["stale_after"],
+            "2026-11-09T18:05:00Z"
+        );
+        assert_eq!(body["surface_status"]["latest_run"]["status"], "completed");
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            json!([
+                {
+                    "code": "extractive_genres",
+                    "detail": "1 of 2 genres are extractive excerpts, not AI summaries"
+                }
+            ])
+        );
+    }
+
+    #[allow(dead_code)]
+    struct MockMorningDao {
+        letter: Option<crate::store::models::MorningLetter>,
+        latest_run: Option<crate::api::surface_status::SurfaceRun>,
+        window: Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>,
+    }
+
+    #[async_trait::async_trait]
+    impl MorningLetterReadDao for MockMorningDao {
+        async fn get_latest_morning_letter(
+            &self,
+        ) -> Result<Option<crate::store::models::MorningLetter>, String> {
+            Ok(self.letter.clone())
+        }
+
+        async fn get_morning_letter_by_date(
+            &self,
+            _date: chrono::NaiveDate,
+        ) -> Result<Option<crate::store::models::MorningLetter>, String> {
+            Ok(self.letter.clone())
+        }
+
+        async fn get_latest_morning_run(
+            &self,
+        ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String> {
+            Ok(self.latest_run.clone())
+        }
+
+        async fn get_recap_job_window(
+            &self,
+            _job_id: uuid::Uuid,
+        ) -> Result<Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>, String>
+        {
+            Ok(self.window)
+        }
+    }
+
+    #[tokio::test]
+    async fn morning_letter_serves_surface_status_and_degradation_reason() {
+        use chrono::{DateTime, NaiveDate, Utc};
+        use serde_json::json;
+        use uuid::Uuid;
+
+        let letter_id = Uuid::parse_str("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").unwrap();
+        let recap_job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
+        let created_at = DateTime::parse_from_rfc3339("2026-11-09T06:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let win_start = DateTime::parse_from_rfc3339("2026-11-06T06:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let win_end = DateTime::parse_from_rfc3339("2026-11-09T06:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let letter = crate::store::models::MorningLetter {
+            id: letter_id,
+            target_date: NaiveDate::from_ymd_opt(2026, 11, 9).unwrap(),
+            edition_timezone: "Asia/Tokyo".to_string(),
+            source_recap_job_id: Some(recap_job_id),
+            is_degraded: true,
+            schema_version: 1,
+            generation_revision: 1,
+            result_jsonb: json!({
+                "lead": "Morning lead",
+                "sections": [
+                    {
+                        "key": "top3",
+                        "title": "Top Stories",
+                        "bullets": ["Bullet 1"]
+                    }
+                ],
+                "generated_at": "2026-11-09T06:00:00Z"
+            }),
+            model: Some("gemma4-e4b-12k".to_string()),
+            generation_metadata_jsonb: json!({
+                "degradation_reason": "placeholder_output"
+            }),
+            created_at,
+        };
+
+        let dao = MockMorningDao {
+            letter: Some(letter),
+            latest_run: Some(crate::api::surface_status::SurfaceRun {
+                job_id: recap_job_id.to_string(),
+                status: "completed".to_string(),
+                kicked_at: "2026-11-09T05:59:00Z".to_string(),
+                updated_at: "2026-11-09T06:00:00Z".to_string(),
+            }),
+            window: Some((win_start, win_end)),
+        };
+
+        let now = DateTime::parse_from_rfc3339("2026-11-09T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let response = get_latest_morning_letter_impl(&dao, chrono::Duration::hours(3), now).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let body: Value = serde_json::from_slice(&body_bytes).expect("valid json");
+
+        assert_eq!(
+            body["surface_status"]["generated_at"],
+            "2026-11-09T06:00:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["window_start"],
+            "2026-11-06T06:00:00Z"
+        );
+        assert_eq!(body["surface_status"]["window_end"], "2026-11-09T06:00:00Z");
+        assert_eq!(body["surface_status"]["is_stale"], true);
+        assert_eq!(
+            body["surface_status"]["stale_after"],
+            "2026-11-09T09:00:00Z"
+        );
+        assert_eq!(body["surface_status"]["latest_run"]["status"], "completed");
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            json!([
+                {
+                    "code": "placeholder_output",
+                    "detail": ""
+                }
+            ])
+        );
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -1127,6 +1555,55 @@ fn map_morning_letter_response(
             body,
         }),
     ))
+}
+
+#[async_trait::async_trait]
+#[allow(dead_code)]
+pub(crate) trait MorningLetterReadDao: Send + Sync {
+    async fn get_latest_morning_letter(
+        &self,
+    ) -> Result<Option<crate::store::models::MorningLetter>, String>;
+    async fn get_morning_letter_by_date(
+        &self,
+        date: chrono::NaiveDate,
+    ) -> Result<Option<crate::store::models::MorningLetter>, String>;
+    async fn get_latest_morning_run(
+        &self,
+    ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String>;
+    async fn get_recap_job_window(
+        &self,
+        job_id: uuid::Uuid,
+    ) -> Result<Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>, String>;
+}
+
+pub(crate) async fn get_latest_morning_letter_impl(
+    dao: &impl MorningLetterReadDao,
+    _freshness_budget: chrono::Duration,
+    _now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
+    match dao.get_latest_morning_letter().await {
+        Ok(Some(letter)) => match map_morning_letter_response(&letter) {
+            Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "No morning letter found".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            error!("Failed to fetch latest morning letter: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch latest morning letter".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// GET /v1/morning/letters/latest

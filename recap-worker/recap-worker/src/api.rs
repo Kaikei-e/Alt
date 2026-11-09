@@ -3,12 +3,13 @@ pub(crate) mod auth;
 pub mod cards;
 pub(crate) mod dashboard;
 pub(crate) mod evaluation;
-pub(crate) mod fetch;
+pub mod fetch;
 pub(crate) mod generate;
 pub(crate) mod health;
 pub(crate) mod learning;
 pub(crate) mod metrics;
-pub(crate) mod pulse;
+pub mod pulse;
+pub mod surface_status;
 
 use axum::{
     Extension, Router, middleware,

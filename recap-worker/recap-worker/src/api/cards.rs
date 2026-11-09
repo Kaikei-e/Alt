@@ -372,8 +372,13 @@ mod tests {
 
         assert_eq!(body["cards"], serde_json::json!([]));
         assert!(body["job"].is_null());
-        assert!(body.as_object().unwrap().contains_key("latest_run"));
-        assert!(body["latest_run"].is_null());
+        assert!(!body.as_object().unwrap().contains_key("latest_run"));
+        assert!(body["surface_status"].is_object());
+        assert!(body["surface_status"]["latest_run"].is_null());
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            serde_json::json!([])
+        );
     }
 
     #[tokio::test]
@@ -471,10 +476,33 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
-        assert_eq!(body["latest_run"]["job_id"], job_id.to_string());
-        assert_eq!(body["latest_run"]["status"], "completed");
-        assert_eq!(body["latest_run"]["kicked_at"], "2026-09-22T17:00:00Z");
-        assert_eq!(body["latest_run"]["updated_at"], "2026-09-22T17:05:00Z");
+        assert!(!body.as_object().unwrap().contains_key("latest_run"));
+        assert_eq!(
+            body["surface_status"]["generated_at"],
+            "2026-09-22T17:05:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["window_start"],
+            "2026-09-19T17:00:00Z"
+        );
+        assert_eq!(body["surface_status"]["window_end"], "2026-09-22T17:00:00Z");
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            body["surface_status"]["latest_run"]["job_id"],
+            job_id.to_string()
+        );
+        assert_eq!(body["surface_status"]["latest_run"]["status"], "completed");
+        assert_eq!(
+            body["surface_status"]["latest_run"]["kicked_at"],
+            "2026-09-22T17:00:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["latest_run"]["updated_at"],
+            "2026-09-22T17:05:00Z"
+        );
 
         // Verify job structure
         assert_eq!(body["job"]["job_id"], job_id.to_string());
@@ -742,6 +770,15 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
         assert_eq!(body["job"]["degraded"], true);
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            serde_json::json!([
+                {
+                    "code": "few_cards",
+                    "detail": format!("{} cards selected", CARDS_DEGRADED_MIN_CARDS - 1),
+                }
+            ])
+        );
 
         // Test cards_selected = CARDS_DEGRADED_MIN_CARDS (5) => degraded: false
         *dao.stats.lock().unwrap() = Some(RecapCardJobStats {
@@ -770,6 +807,10 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
         assert_eq!(body["job"]["degraded"], false);
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            serde_json::json!([])
+        );
     }
 
     #[tokio::test]
@@ -848,10 +889,20 @@ mod tests {
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
         assert_eq!(body["job"]["job_id"], completed_job_id.to_string());
-        assert_eq!(body["latest_run"]["job_id"], failed_job_id.to_string());
-        assert_eq!(body["latest_run"]["status"], "failed");
-        assert_eq!(body["latest_run"]["kicked_at"], "2026-09-23T17:00:00Z");
-        assert_eq!(body["latest_run"]["updated_at"], "2026-09-23T17:02:00Z");
+        assert!(!body.as_object().unwrap().contains_key("latest_run"));
+        assert_eq!(
+            body["surface_status"]["latest_run"]["job_id"],
+            failed_job_id.to_string()
+        );
+        assert_eq!(body["surface_status"]["latest_run"]["status"], "failed");
+        assert_eq!(
+            body["surface_status"]["latest_run"]["kicked_at"],
+            "2026-09-23T17:00:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["latest_run"]["updated_at"],
+            "2026-09-23T17:02:00Z"
+        );
     }
 
     #[tokio::test]
@@ -883,9 +934,19 @@ mod tests {
 
         assert!(body["job"].is_null());
         assert_eq!(body["cards"], serde_json::json!([]));
-        assert_eq!(body["latest_run"]["job_id"], failed_job_id.to_string());
-        assert_eq!(body["latest_run"]["status"], "failed");
-        assert_eq!(body["latest_run"]["kicked_at"], "2026-09-23T17:00:00Z");
-        assert_eq!(body["latest_run"]["updated_at"], "2026-09-23T17:02:00Z");
+        assert!(!body.as_object().unwrap().contains_key("latest_run"));
+        assert_eq!(
+            body["surface_status"]["latest_run"]["job_id"],
+            failed_job_id.to_string()
+        );
+        assert_eq!(body["surface_status"]["latest_run"]["status"], "failed");
+        assert_eq!(
+            body["surface_status"]["latest_run"]["kicked_at"],
+            "2026-09-23T17:00:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["latest_run"]["updated_at"],
+            "2026-09-23T17:02:00Z"
+        );
     }
 }
