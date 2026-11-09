@@ -5,10 +5,20 @@ on:
     branches: [main, master]
     paths:
       - "recap-worker/**"
+      - "compose/recap.yaml"
+      - ".github/workflows/recap-worker.yml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main, master]
     paths:
       - "recap-worker/**"
+      - "compose/recap.yaml"
+      - ".github/workflows/recap-worker.yml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -28,28 +38,27 @@ jobs:
         shell: bash
 
     steps:
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6  # v2.0.0
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          # large-packages does an apt-get remove/purge sweep (~2min); android/dotnet/haskell rm -rf already free most of the space
-          large-packages: false
-          docker-images: true
-          swap-storage: false
-
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
+      - name: Read Rust toolchain channel
+        id: toolchain
+        working-directory: recap-worker
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+          if [ -z "$channel" ]; then
+            echo "Failed to read channel from rust-toolchain.toml" >&2
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
       # GitHub-hosted runner: dtolnay/rust-toolchain を使用
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable branch head, 2026-07-31
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # dtolnay/rust-toolchain stable-branch commit, 2026-07-31
         with:
-          toolchain: stable
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           components: clippy
 
       # GitHub-hosted runner: Swatinem/rust-cache を使用

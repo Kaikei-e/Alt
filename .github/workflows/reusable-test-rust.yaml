@@ -7,14 +7,6 @@ on:
       working-directory:
         required: true
         type: string
-      toolchain:
-        required: false
-        type: string
-        default: "stable"
-      upload-coverage:
-        required: false
-        type: boolean
-        default: true
       coverage-flags:
         required: false
         type: string
@@ -28,11 +20,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Read Rust toolchain channel
+        id: toolchain
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+          if [ -z "$channel" ]; then
+            echo "Failed to read channel from rust-toolchain.toml" >&2
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
       # GitHub-hosted runner: dtolnay/rust-toolchain を使用
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable branch head, 2026-07-31
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # dtolnay/rust-toolchain stable-branch commit, 2026-07-31
         with:
-          toolchain: ${{ inputs.toolchain }}
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           components: clippy
 
       - name: Rust version info
@@ -68,27 +71,3 @@ jobs:
           cargo test --all --verbose -- --nocapture
         env:
           RUST_BACKTRACE: full
-
-      - name: Install cargo-tarpaulin
-        if: inputs.upload-coverage && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          # tarpaulinのインストール（キャッシュ済みかチェック）
-          if ! command -v cargo-tarpaulin &> /dev/null; then
-            cargo install cargo-tarpaulin
-          fi
-
-      - name: Generate coverage report
-        if: inputs.upload-coverage && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          cargo tarpaulin --out Xml --verbose
-        continue-on-error: true # カバレッジが失敗してもビルドは成功とする
-
-      - name: Upload coverage to Codecov
-        if: inputs.upload-coverage && github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
-        with:
-          files: ${{ inputs.working-directory }}/tarpaulin-report.xml
-          flags: ${{ inputs.coverage-flags }}
-          name: ${{ inputs.coverage-flags }}-coverage
-          verbose: false

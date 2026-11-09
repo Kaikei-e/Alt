@@ -6,11 +6,19 @@ on:
     paths:
       - 'rask-log-aggregator/**'
       - '.github/workflows/rask-log-aggregator.yaml'
+      - '.github/workflows/reusable-test-rust.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   pull_request:
     branches: [main]
     paths:
       - 'rask-log-aggregator/**'
       - '.github/workflows/rask-log-aggregator.yaml'
+      - '.github/workflows/reusable-test-rust.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,9 +36,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable branch head, 2026-07-31
+      - name: Read Rust toolchain channel
+        id: toolchain
+        working-directory: rask-log-aggregator/app
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+          if [ -z "$channel" ]; then
+            echo "Failed to read channel from rust-toolchain.toml" >&2
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # dtolnay/rust-toolchain stable-branch commit, 2026-07-31
         with:
-          toolchain: stable
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustfmt
 
       - name: Check formatting
@@ -38,9 +57,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   test:
-    needs: fmt
     uses: ./.github/workflows/reusable-test-rust.yaml
     with:
       working-directory: 'rask-log-aggregator/app'
-      toolchain: 'stable'
       coverage-flags: 'rask-log-aggregator'
