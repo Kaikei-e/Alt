@@ -94,6 +94,11 @@ describe("DesktopPulseCard", () => {
 		expect(unfocusedButton?.className).toContain(
 			"hover:bg-[var(--surface-hover)]",
 		);
+		expect(unfocusedButton?.className).toContain(
+			"data-[focused=true]:bg-[var(--surface-hover)]",
+		);
+		expect(unfocusedButton?.className).toContain("focus-visible:outline-2");
+		expect(unfocusedButton?.className).not.toContain("focus:outline-2");
 		expect(unfocusedButton?.getAttribute("data-focused")).toBeNull();
 		unfocused.unmount();
 
@@ -102,12 +107,14 @@ describe("DesktopPulseCard", () => {
 		});
 		const focusedButton = focused.container.querySelector("button");
 		expect(focusedButton?.getAttribute("data-focused")).toBe("true");
-		expect(focusedButton?.className).toContain("bg-[var(--surface-hover)]");
+		expect(focusedButton?.className.split(/\s+/)).not.toContain(
+			"bg-[var(--surface-hover)]",
+		);
 	});
 });
 
 describe("DesktopPulseError", () => {
-	it("renders an SVG icon instead of the literal warning character and includes exactly one h1", () => {
+	it("renders an SVG icon instead of the literal warning character and includes exactly one h1 without subtitle", () => {
 		const onRetry = vi.fn();
 		const { container } = render(DesktopPulseError, {
 			props: {
@@ -124,6 +131,7 @@ describe("DesktopPulseError", () => {
 		const headings = container.querySelectorAll("h1");
 		expect(headings).toHaveLength(1);
 		expect(headings[0]?.textContent?.trim()).toBe("Evening Pulse");
+		expect(container.textContent).not.toContain("Key topics curated for you");
 	});
 });
 
@@ -145,6 +153,7 @@ describe("DesktopPulseQuietDay", () => {
 					message: "",
 					weeklyHighlights: [],
 				},
+				onNavigateToRecap: vi.fn(),
 			},
 		});
 
@@ -152,6 +161,9 @@ describe("DesktopPulseQuietDay", () => {
 			"A quiet day. No notable news was found.",
 		);
 		expect(container.textContent).not.toContain("Today was a quiet day");
+		expect(container.querySelector("button")?.textContent?.trim()).toBe(
+			"View 3-Day Recap",
+		);
 	});
 });
 
@@ -171,6 +183,20 @@ describe("PulseHeader", () => {
 		expect(button?.className).toContain("focus-visible:outline-2");
 		expect(container.textContent).toContain("Key topics curated for you");
 		expect(container.textContent).not.toContain("Key topics from");
+	});
+
+	it("omits the subtitle when showSubtitle is false", () => {
+		const { container } = render(PulseHeader, {
+			props: {
+				date: "",
+				showSubtitle: false,
+			},
+		});
+
+		expect(container.querySelector("h1")?.textContent?.trim()).toBe(
+			"Evening Pulse",
+		);
+		expect(container.textContent).not.toContain("Key topics curated for you");
 	});
 });
 

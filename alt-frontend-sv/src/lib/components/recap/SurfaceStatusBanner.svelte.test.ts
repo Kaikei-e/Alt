@@ -135,7 +135,7 @@ describe("SurfaceStatusBanner", () => {
 		await expect
 			.element(alertEl)
 			.toHaveTextContent(
-				"9 of 19 genres are extractive excerpts, not AI summaries",
+				"9 of 19 genres are extractive excerpts, not AI summaries.",
 			);
 	});
 });

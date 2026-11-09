@@ -172,7 +172,7 @@ describe("Topic Cards Page (+page.svelte)", () => {
 			.not.toBeInTheDocument();
 	});
 
-	it("renders degraded notice when job.degraded is true", async () => {
+	it("renders few_cards degradation notice from surfaceStatus.degradationReasons", async () => {
 		mockGetTopicCards.mockResolvedValueOnce(
 			buildMockDegradedRecapCardsResponse(),
 		);

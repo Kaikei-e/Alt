@@ -138,6 +138,7 @@ describe("Morning Letter page freshness and wording", () => {
 		expect(container.textContent).not.toContain(
 			"Ask follow-up questions about today's edition.",
 		);
+		await new Promise((resolve) => setTimeout(resolve, 120));
 	});
 
 	it("replaces Today's Edition with dated heading and renders SurfaceStatusBanner when stale", async () => {
@@ -176,5 +177,6 @@ describe("Morning Letter page freshness and wording", () => {
 			.toHaveTextContent(
 				"The AI draft had empty or placeholder sections, so this letter shows extracted excerpts instead.",
 			);
+		await new Promise((resolve) => setTimeout(resolve, 120));
 	});
 });

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { convertProtoSurfaceStatus } from "#lib/connect/recap.js";
+import type { RecapSurfaceStatus as ProtoRecapSurfaceStatus } from "#lib/gen/alt/recap/v2/surface_status_pb.js";
 import {
 	evaluateSurfaceStatus,
 	formatSurfaceTimestamp,
@@ -263,7 +265,7 @@ describe("evaluateSurfaceStatus", () => {
 		});
 
 		expect(result.degradationNotices).toEqual([
-			"9 of 19 genres are extractive excerpts, not AI summaries",
+			"9 of 19 genres are extractive excerpts, not AI summaries.",
 			"Fewer topic cards than usual met the quality threshold (3 cards selected).",
 			"The AI draft had empty or placeholder sections, so this letter shows extracted excerpts instead.",
 		]);
@@ -300,13 +302,20 @@ describe("getDegradationNoticeText", () => {
 		expect(getDegradationNoticeText({ code, detail: "" })).toBe(expected);
 	});
 
-	it("returns detail sentence alone for extractive_genres when detail is non-empty", () => {
+	it("returns detail sentence alone with a trailing period for extractive_genres when detail is non-empty", () => {
 		expect(
 			getDegradationNoticeText({
 				code: "extractive_genres",
 				detail: "9 of 19 genres are extractive excerpts, not AI summaries",
 			}),
-		).toBe("9 of 19 genres are extractive excerpts, not AI summaries");
+		).toBe("9 of 19 genres are extractive excerpts, not AI summaries.");
+
+		expect(
+			getDegradationNoticeText({
+				code: "extractive_genres",
+				detail: "9 of 19 genres are extractive excerpts, not AI summaries.",
+			}),
+		).toBe("9 of 19 genres are extractive excerpts, not AI summaries.");
 	});
 
 	it("appends detail in parentheses after per-code text for other codes when detail is non-empty", () => {
@@ -327,5 +336,47 @@ describe("getDegradationNoticeText", () => {
 		).toBe(
 			"Topics were chosen with relaxed selection criteria (fallback level 2).",
 		);
+	});
+});
+
+describe("convertProtoSurfaceStatus", () => {
+	it("maps an unknown latestRun.status to latestRun: null and keeps the rest of the status", () => {
+		const proto = {
+			$typeName: "alt.recap.v2.RecapSurfaceStatus",
+			generatedAt: "2026-09-22T17:00:00Z",
+			windowStart: "2026-09-19T17:00:00Z",
+			windowEnd: "2026-09-22T17:00:00Z",
+			isStale: true,
+			staleAfter: "2026-09-23T05:00:00Z",
+			latestRun: {
+				$typeName: "alt.recap.v2.SurfaceRun",
+				jobId: "run-unknown",
+				status: "unknown_status",
+				kickedAt: "2026-09-22T17:01:00Z",
+				updatedAt: "2026-09-22T17:02:00Z",
+			},
+			degradationReasons: [
+				{
+					$typeName: "alt.recap.v2.DegradationReason",
+					code: "few_cards",
+					detail: "3 cards selected",
+				},
+			],
+		} as unknown as ProtoRecapSurfaceStatus;
+
+		expect(convertProtoSurfaceStatus(proto)).toEqual({
+			generatedAt: "2026-09-22T17:00:00Z",
+			windowStart: "2026-09-19T17:00:00Z",
+			windowEnd: "2026-09-22T17:00:00Z",
+			isStale: true,
+			staleAfter: "2026-09-23T05:00:00Z",
+			latestRun: null,
+			degradationReasons: [
+				{
+					code: "few_cards",
+					detail: "3 cards selected",
+				},
+			],
+		});
 	});
 });

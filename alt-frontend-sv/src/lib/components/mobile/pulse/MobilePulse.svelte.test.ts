@@ -70,7 +70,7 @@ describe("MobilePulseCard", () => {
 });
 
 describe("MobilePulseError", () => {
-	it("renders an SVG icon instead of the literal warning character, uses high-contrast button tokens, and includes one h1", () => {
+	it("renders an SVG icon instead of the literal warning character, uses high-contrast button tokens, and includes one h1 without subtitle", () => {
 		const onRetry = vi.fn();
 		const { container } = render(MobilePulseError, {
 			props: {
@@ -92,6 +92,7 @@ describe("MobilePulseError", () => {
 		const headings = container.querySelectorAll("h1");
 		expect(headings).toHaveLength(1);
 		expect(headings[0]?.textContent?.trim()).toBe("Evening Pulse");
+		expect(container.textContent).not.toContain("Key topics curated for you");
 	});
 });
 
