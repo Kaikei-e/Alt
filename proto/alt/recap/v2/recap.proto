@@ -3,6 +3,7 @@ syntax = "proto3";
 package alt.recap.v2;
 
 import "alt/api/v1/visibility.proto";
+import "alt/recap/v2/surface_status.proto";
 
 option go_package = "alt/gen/proto/alt/recap/v2;recapv2";
 
@@ -84,6 +85,7 @@ message GetThreeDayRecapResponse {
   repeated RecapGenre genres = 6;
   // Optional cluster draft (populated if genre_draft_id provided)
   optional ClusterDraft cluster_draft = 7;
+  optional RecapSurfaceStatus surface_status = 8;
 }
 
 // GetTopicCardsRequest is the request for getting topic cards
@@ -91,24 +93,14 @@ message GetTopicCardsRequest {}
 
 // GetTopicCardsResponse contains the latest topic cards
 message GetTopicCardsResponse {
+  reserved 3;
+  reserved "latest_run";
+
   // Recap cards job metadata (null/omitted when no completed job exists)
   optional RecapCardsJob job = 1;
   // Selected topic cards for the job's window
   repeated RecapCard cards = 2;
-  // Most recent topic cards run of any status (omitted when none exists)
-  optional RecapCardsRun latest_run = 3;
-}
-
-// RecapCardsRun represents a topic cards generation run
-message RecapCardsRun {
-  // UUID
-  string job_id = 1;
-  // pending | running | completed | failed
-  string status = 2;
-  // RFC3339
-  string kicked_at = 3;
-  // RFC3339
-  string updated_at = 4;
+  optional RecapSurfaceStatus surface_status = 4;
 }
 
 // RecapCardsJob represents metadata of the topic cards generation job
@@ -319,6 +311,7 @@ message GetEveningPulseResponse {
   repeated PulseTopic topics = 5;
   // Quiet day info (only present when status is QUIET_DAY)
   optional QuietDayInfo quiet_day = 6;
+  optional RecapSurfaceStatus surface_status = 7;
 }
 
 // PulseStatus represents the status of Evening Pulse generation

@@ -3,6 +3,7 @@ syntax = "proto3";
 package alt.morning_letter.v2;
 
 import "alt/api/v1/visibility.proto";
+import "alt/recap/v2/surface_status.proto";
 import "google/protobuf/timestamp.proto";
 
 option go_package = "alt/gen/proto/alt/morning_letter/v2;morningletterv2";
@@ -160,6 +161,7 @@ message MorningLetterDocument {
   MorningLetterBody body = 9;
   // Opaque tag for cache validation (AIP-154). Derived from generation_revision.
   string etag = 10;
+  optional alt.recap.v2.RecapSurfaceStatus surface_status = 11;
 }
 
 message MorningLetterBody {
