@@ -11,6 +11,7 @@ on:
       - "news-creator/**"
       - "dashboard/**"
       - "tts-speaker/**"
+      - ".github/workflows/codeql-python.yaml"
   pull_request:
     branches: [main, master]
     paths:
@@ -20,6 +21,7 @@ on:
       - "news-creator/**"
       - "dashboard/**"
       - "tts-speaker/**"
+      - ".github/workflows/codeql-python.yaml"
 
 permissions:
   actions: read

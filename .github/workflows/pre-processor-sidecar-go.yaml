@@ -4,6 +4,8 @@ on:
     branches: [main, master]
     paths:
       - "pre-processor-sidecar/**"
+      - ".github/workflows/pre-processor-sidecar-go.yaml"
+      - ".github/workflows/reusable-test-go.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -11,6 +13,8 @@ on:
     branches: [main, master]
     paths:
       - "pre-processor-sidecar/**"
+      - ".github/workflows/pre-processor-sidecar-go.yaml"
+      - ".github/workflows/reusable-test-go.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"

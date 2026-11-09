@@ -8,6 +8,7 @@ on:
     branches: [ main ]
     paths:
       - 'alt-frontend-sv/**'
+      - '.github/workflows/alt-frontend-sv.yml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'
@@ -15,6 +16,7 @@ on:
     branches: [ main ]
     paths:
       - 'alt-frontend-sv/**'
+      - '.github/workflows/alt-frontend-sv.yml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'

@@ -9,6 +9,8 @@ on:
     paths:
       - 'knowledge-sovereign/**'
       - '.github/workflows/knowledge-sovereign.yaml'
+      - '.github/workflows/reusable-test-go.yaml'
+      - '.github/workflows/reusable-go-quality-gates.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'
@@ -19,6 +21,8 @@ on:
     paths:
       - 'knowledge-sovereign/**'
       - '.github/workflows/knowledge-sovereign.yaml'
+      - '.github/workflows/reusable-test-go.yaml'
+      - '.github/workflows/reusable-go-quality-gates.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'

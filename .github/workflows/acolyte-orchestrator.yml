@@ -7,6 +7,8 @@ on:
     branches: [main, develop]
     paths:
       - "acolyte-orchestrator/**"
+      - ".github/workflows/acolyte-orchestrator.yml"
+      - ".github/workflows/reusable-test-python.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -14,6 +16,8 @@ on:
     branches: [main, develop]
     paths:
       - "acolyte-orchestrator/**"
+      - ".github/workflows/acolyte-orchestrator.yml"
+      - ".github/workflows/reusable-test-python.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"

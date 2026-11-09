@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'alt-frontend-sv/**'
+      - '.github/workflows/alt-frontend-sv-unit-test.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'
@@ -12,6 +13,7 @@ on:
     branches: [main]
     paths:
       - 'alt-frontend-sv/**'
+      - '.github/workflows/alt-frontend-sv-unit-test.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'

@@ -6,6 +6,7 @@ on:
     branches: [main, master]
     paths:
       - "alt-frontend-sv/**"
+      - ".github/workflows/codeql-ts.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -13,6 +14,7 @@ on:
     branches: [main, master]
     paths:
       - "alt-frontend-sv/**"
+      - ".github/workflows/codeql-ts.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"

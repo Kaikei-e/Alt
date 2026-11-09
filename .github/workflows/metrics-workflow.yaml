@@ -7,6 +7,7 @@ on:
     paths:
       - "metrics/**"
       - ".github/workflows/metrics-workflow.yaml"
+      - ".github/workflows/reusable-test-python.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -16,6 +17,7 @@ on:
     paths:
       - "metrics/**"
       - ".github/workflows/metrics-workflow.yaml"
+      - ".github/workflows/reusable-test-python.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"

@@ -3,10 +3,10 @@ name: BFF Tests
 on:
   push:
     branches: [main]
-    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
+    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '.github/workflows/reusable-test-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   pull_request:
     branches: [main]
-    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
+    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '.github/workflows/reusable-test-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   workflow_dispatch:
 
 concurrency:

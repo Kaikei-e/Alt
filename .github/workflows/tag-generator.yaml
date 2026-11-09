@@ -4,6 +4,8 @@ on:
     branches: [ main, master ]
     paths:
       - 'tag-generator/**'
+      - '.github/workflows/tag-generator.yaml'
+      - '.github/workflows/reusable-test-python.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'
@@ -11,6 +13,8 @@ on:
     branches: [ main, master ]
     paths:
       - 'tag-generator/**'
+      - '.github/workflows/tag-generator.yaml'
+      - '.github/workflows/reusable-test-python.yaml'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'
