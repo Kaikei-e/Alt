@@ -7,7 +7,7 @@ import TagIndexPanel from "./TagIndexPanel.svelte";
 const TAGS: TagCloudItem[] = [
 	{
 		tagName: "svelte",
-		articleCount: 12,
+		articleCount: 1,
 		positionX: 0,
 		positionY: 0,
 		positionZ: 0,
@@ -29,9 +29,9 @@ const TAGS: TagCloudItem[] = [
 ];
 
 describe("TagIndexPanel", () => {
-	it("filters tags by case-insensitive substring via 'Find a tag' search box and calls onSelectTag", async () => {
+	it("renders tag buttons inside ul/li with accessible names including article count and filters via search box", async () => {
 		const onSelectTag = vi.fn();
-		render(TagIndexPanel, {
+		const { container } = render(TagIndexPanel, {
 			props: {
 				tags: TAGS,
 				selectedTag: "rust",
@@ -42,23 +42,52 @@ describe("TagIndexPanel", () => {
 		const searchInput = page.getByLabelText("Find a tag");
 		await expect.element(searchInput).toBeInTheDocument();
 
-		const rustButton = page.getByRole("button", { name: /rust/i });
-		await expect.element(rustButton).toHaveAttribute("aria-current", "true");
+		expect(container.querySelectorAll("ul > li").length).toBe(3);
+
+		const rustButton = page.getByRole("button", { name: "rust, 45 articles" });
+		await expect
+			.element(rustButton, { timeout: 1000 })
+			.toHaveAttribute("aria-current", "true");
+
+		const svelteButton = page.getByRole("button", {
+			name: "svelte, 1 article",
+		});
+		await expect.element(svelteButton, { timeout: 1000 }).toBeInTheDocument();
 
 		await searchInput.fill("SVE");
+		await expect.element(svelteButton, { timeout: 1000 }).toBeInTheDocument();
 		await expect
-			.element(page.getByRole("button", { name: /svelte/i }))
-			.toBeInTheDocument();
-		await expect
-			.element(page.getByRole("button", { name: /rust/i }))
+			.element(rustButton, { timeout: 1000 })
 			.not.toBeInTheDocument();
 
-		await page.getByRole("button", { name: /svelte/i }).click();
+		await svelteButton.click();
 		expect(onSelectTag).toHaveBeenCalledWith("svelte");
 	});
 
-	it("toggles index visibility with Hide index / Show index button carrying aria-expanded and aria-controls", async () => {
-		render(TagIndexPanel, {
+	it("shows 'No matching tags.' only when a non-empty search filters everything out, not when tags list is empty", async () => {
+		const { container, rerender } = render(TagIndexPanel, {
+			props: {
+				tags: [],
+				selectedTag: null,
+				onSelectTag: vi.fn(),
+			},
+		});
+
+		expect(container.textContent).not.toContain("No matching tags.");
+
+		await rerender({
+			tags: TAGS,
+			selectedTag: null,
+			onSelectTag: vi.fn(),
+		});
+
+		const searchInput = page.getByLabelText("Find a tag");
+		await searchInput.fill("nonexistent-tag");
+		expect(container.textContent).toContain("No matching tags.");
+	});
+
+	it("toggles index visibility with Hide index / Show index button carrying aria-expanded and matching aria-controls", async () => {
+		const { container } = render(TagIndexPanel, {
 			props: {
 				tags: TAGS,
 				selectedTag: null,
@@ -68,9 +97,10 @@ describe("TagIndexPanel", () => {
 
 		const hideBtn = page.getByRole("button", { name: "Hide index" });
 		await expect.element(hideBtn).toHaveAttribute("aria-expanded", "true");
-		await expect
-			.element(hideBtn)
-			.toHaveAttribute("aria-controls", "tag-verse-index-panel");
+		const hideEl = await hideBtn.element();
+		const controlsId = hideEl.getAttribute("aria-controls");
+		expect(controlsId).toBeTruthy();
+		expect(container.querySelector(`#${controlsId}`)).not.toBeNull();
 
 		await hideBtn.click();
 

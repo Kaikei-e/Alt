@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TagCloudItem } from "#lib/connect/index.js";
+import * as tagIndexModule from "./tagIndex.js";
 import {
 	filterTagsForIndex,
 	sortTagsForIndex,
@@ -74,5 +75,18 @@ describe("tagIndex pure helpers", () => {
 	it("sums total articleCount across all tags", () => {
 		expect(sumTagArticleCounts(SAMPLE_TAGS)).toBe(122);
 		expect(sumTagArticleCounts([])).toBe(0);
+	});
+
+	it("pluralizes tag and article counts", () => {
+		const formatCount = (
+			tagIndexModule as {
+				formatCountLabel?: (count: number, singular: string) => string;
+			}
+		).formatCountLabel;
+		expect(formatCount?.(1, "tag")).toBe("1 tag");
+		expect(formatCount?.(0, "tag")).toBe("0 tags");
+		expect(formatCount?.(2, "tag")).toBe("2 tags");
+		expect(formatCount?.(1, "article")).toBe("1 article");
+		expect(formatCount?.(45, "article")).toBe("45 articles");
 	});
 });
