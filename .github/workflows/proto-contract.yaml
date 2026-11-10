@@ -668,6 +668,7 @@ jobs:
             recap-worker
             compose
             scripts
+            recap-migration-atlas
           sparse-checkout-cone-mode: true
 
       # Keep toolchain and components in lockstep with recap-worker/rust-toolchain.toml.
