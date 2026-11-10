@@ -4,21 +4,29 @@ on:
     branches: [ main, master ]
     paths:
       - 'tag-generator/**'
+      - '.github/workflows/tag-generator.yaml'
+      - '.github/workflows/reusable-test-python.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   pull_request:
     branches: [ main, master ]
     paths:
       - 'tag-generator/**'
+      - '.github/workflows/tag-generator.yaml'
+      - '.github/workflows/reusable-test-python.yaml'
+      - '!**/CLAUDE.md'
+      - '!**/AGENTS.md'
+      - '!**/README.md'
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# OIDC権限（Codecov用）
 permissions:
   contents: read
   actions: read
-  id-token: write  # OIDC用
 
 jobs:
   test:
@@ -31,8 +39,6 @@ jobs:
       job-type: 'test'
       sparse-checkout: 'tag-generator'
       coverage-flags: 'tag-generator'
-      upload-coverage: true
-      use-oidc: true
       use-local-persistent-cache: false
 
   lint:
@@ -43,7 +49,6 @@ jobs:
       python-version: '3.14'
       job-type: 'lint'
       sparse-checkout: 'tag-generator'
-      upload-coverage: false
       use-local-persistent-cache: false
 
   security:
@@ -54,7 +59,6 @@ jobs:
       python-version: '3.14'
       job-type: 'security'
       sparse-checkout: 'tag-generator'
-      upload-coverage: false
       use-local-persistent-cache: false
 
   typecheck:
@@ -65,5 +69,4 @@ jobs:
       python-version: '3.14'
       job-type: 'typecheck'
       sparse-checkout: 'tag-generator'
-      upload-coverage: false
       use-local-persistent-cache: false

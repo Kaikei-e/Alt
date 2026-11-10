@@ -8,11 +8,19 @@ on:
     paths:
       - "recap-evaluator/**"
       - ".github/workflows/recap-evaluator.yml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main, develop]
     paths:
       - "recap-evaluator/**"
       - ".github/workflows/recap-evaluator.yml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -30,12 +38,10 @@ jobs:
       python-version: "3.14"
       sparse-checkout: "recap-evaluator"
       coverage-flags: "recap-evaluator"
-      upload-coverage: true
       job-type: "test"
       test-command: "pytest -v tests/unit tests/integration --cov-report=xml --junit-xml=tests/results.xml"
     permissions:
       contents: read
-    secrets: inherit
 
   lint:
     uses: ./.github/workflows/reusable-test-python.yaml

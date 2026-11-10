@@ -3,10 +3,10 @@ name: MQ Hub Tests
 on:
   push:
     branches: [main]
-    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml']
+    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml', '.github/workflows/reusable-test-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   pull_request:
     branches: [main]
-    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml']
+    paths: ['mq-hub/**', '.github/workflows/mq-hub-go.yaml', '.github/workflows/reusable-test-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   workflow_dispatch:
 
 concurrency:
@@ -27,4 +27,3 @@ jobs:
       coverage-flags: 'mq-hub'
       use-oidc: false
       sparse-checkout: 'mq-hub'
-    secrets: inherit

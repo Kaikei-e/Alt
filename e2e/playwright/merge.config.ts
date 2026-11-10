@@ -15,9 +15,9 @@ import { defineConfig } from "@playwright/test";
  * whose `testDir` points at the real location of the tests, which here is the
  * directory every suite sits under.
  *
- * `TestConfig.tag` in each suite's own config is what keeps the blob FILENAMES
- * from colliding when `merge-multiple: true` flattens twelve artifacts into
- * one directory; it does not address testDir, which is a separate check.
+ * `TestConfig.tag` in each suite's own config labels every test with its
+ * service and keeps default blob filenames distinct when staged into
+ * `all-blob-reports/`; it does not address testDir, which is a separate check.
  */
 export default defineConfig({
 	testDir: ".",

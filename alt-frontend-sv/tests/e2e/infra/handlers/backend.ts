@@ -70,7 +70,10 @@ function readJsonBody(
 				resolve({});
 			}
 		});
-		req.on("error", () => resolve({}));
+		req.on("error", (err) => {
+			log(`ERROR reading body (${req.method} ${req.url}): ${String(err)}`);
+			resolve({});
+		});
 	});
 }
 
@@ -87,7 +90,10 @@ function encodeConnectEnvelope(message: unknown, flags = 0x00): Buffer {
  * Create the Backend mock server
  */
 export function createBackendServer(): http.Server {
-	return http.createServer((req, res) => {
+	async function handle(
+		req: http.IncomingMessage,
+		res: http.ServerResponse,
+	): Promise<void> {
 		const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
 		const path = url.pathname;
 
@@ -99,6 +105,9 @@ export function createBackendServer(): http.Server {
 			res.end("OK");
 			return;
 		}
+
+		// The client may reuse the keep-alive socket before it finishes sending a chunked body if the mock answers first, so read the whole body before answering.
+		const body = await readJsonBody(req);
 
 		res.setHeader("Content-Type", "application/json");
 
@@ -242,37 +251,33 @@ export function createBackendServer(): http.Server {
 			path === "/alt.feeds.v2.FeedService/GetAllFeeds" ||
 			path === "/alt.feeds.v2.FeedService/GetUnreadFeeds"
 		) {
-			readJsonBody(req).then((body) => {
-				const cursor = typeof body.cursor === "string" ? body.cursor : "";
-				res.setHeader("Content-Type", "application/json");
-				res.writeHead(200);
-				res.end(
-					JSON.stringify(
-						cursor ? CONNECT_FEEDS_LAST_PAGE_RESPONSE : CONNECT_FEEDS_RESPONSE,
-					),
-				);
-			});
+			const cursor = typeof body.cursor === "string" ? body.cursor : "";
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify(
+					cursor ? CONNECT_FEEDS_LAST_PAGE_RESPONSE : CONNECT_FEEDS_RESPONSE,
+				),
+			);
 			return;
 		}
 
 		// ResolveOgImages — on-demand og:image resolution.
 		if (path === "/alt.feeds.v2.FeedService/ResolveOgImages") {
-			readJsonBody(req).then((body) => {
-				const feedIds = Array.isArray(body.feedIds)
-					? (body.feedIds as string[])
-					: [];
-				res.setHeader("Content-Type", "application/json");
-				res.writeHead(200);
-				res.end(
-					JSON.stringify({
-						images: [],
-						unresolved: feedIds.map((feedId) => ({
-							feedId,
-							retryAfterSeconds: "0",
-						})),
-					}),
-				);
-			});
+			const feedIds = Array.isArray(body.feedIds)
+				? (body.feedIds as string[])
+				: [];
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					images: [],
+					unresolved: feedIds.map((feedId) => ({
+						feedId,
+						retryAfterSeconds: "0",
+					})),
+				}),
+			);
 			return;
 		}
 
@@ -585,43 +590,27 @@ export function createBackendServer(): http.Server {
 		if (
 			path === "/alt.knowledge.loop.v1.KnowledgeLoopService/GetKnowledgeLoop"
 		) {
-			const chunks: Buffer[] = [];
-			req.on("data", (chunk: Buffer) => {
-				chunks.push(chunk);
-			});
-			req.on("end", () => {
-				let lensModeId = "default";
-				try {
-					const raw = Buffer.concat(chunks).toString("utf-8");
-					if (raw) {
-						const body = JSON.parse(raw) as { lensModeId?: string };
-						if (typeof body.lensModeId === "string") {
-							lensModeId = body.lensModeId;
-						}
-					}
-				} catch {
-					// Tolerate non-JSON or empty bodies — fall back to default fixture.
-				}
-				let payload: unknown = CONNECT_KNOWLEDGE_LOOP_RESPONSE;
-				if (lensModeId === "e2e-act") {
-					payload = CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE;
-				} else if (lensModeId === "e2e-no-source") {
-					payload = CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE;
-				} else if (lensModeId === "e2e-decide") {
-					payload = CONNECT_KNOWLEDGE_LOOP_DECIDE_RESPONSE;
-				} else if (lensModeId === "e2e-recap") {
-					payload = CONNECT_KNOWLEDGE_LOOP_RECAP_RESPONSE;
-				} else if (lensModeId === "e2e-internalized") {
-					payload = CONNECT_KNOWLEDGE_LOOP_INTERNALIZED_RESPONSE;
-				} else if (lensModeId === "e2e-continuation") {
-					payload = CONNECT_KNOWLEDGE_LOOP_CONTINUATION_RESPONSE;
-				} else if (lensModeId === "e2e-continuation-advanced") {
-					payload = CONNECT_KNOWLEDGE_LOOP_CONTINUATION_ADVANCED_RESPONSE;
-				}
-				res.setHeader("Content-Type", "application/json");
-				res.writeHead(200);
-				res.end(JSON.stringify(payload));
-			});
+			const lensModeId =
+				typeof body.lensModeId === "string" ? body.lensModeId : "default";
+			let payload: unknown = CONNECT_KNOWLEDGE_LOOP_RESPONSE;
+			if (lensModeId === "e2e-act") {
+				payload = CONNECT_KNOWLEDGE_LOOP_ACT_RESPONSE;
+			} else if (lensModeId === "e2e-no-source") {
+				payload = CONNECT_KNOWLEDGE_LOOP_NO_SOURCE_RESPONSE;
+			} else if (lensModeId === "e2e-decide") {
+				payload = CONNECT_KNOWLEDGE_LOOP_DECIDE_RESPONSE;
+			} else if (lensModeId === "e2e-recap") {
+				payload = CONNECT_KNOWLEDGE_LOOP_RECAP_RESPONSE;
+			} else if (lensModeId === "e2e-internalized") {
+				payload = CONNECT_KNOWLEDGE_LOOP_INTERNALIZED_RESPONSE;
+			} else if (lensModeId === "e2e-continuation") {
+				payload = CONNECT_KNOWLEDGE_LOOP_CONTINUATION_RESPONSE;
+			} else if (lensModeId === "e2e-continuation-advanced") {
+				payload = CONNECT_KNOWLEDGE_LOOP_CONTINUATION_ADVANCED_RESPONSE;
+			}
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(payload));
 			return;
 		}
 
@@ -639,5 +628,15 @@ export function createBackendServer(): http.Server {
 		// Default response for unknown endpoints
 		res.writeHead(200);
 		res.end(JSON.stringify({}));
+	}
+
+	return http.createServer((req, res) => {
+		handle(req, res).catch((err: unknown) => {
+			log(`ERROR ${req.method} ${req.url}: ${String(err)}`);
+			if (!res.headersSent) {
+				res.writeHead(500);
+			}
+			res.end();
+		});
 	});
 }

@@ -7,12 +7,20 @@ on:
     paths:
       - "metrics/**"
       - ".github/workflows/metrics-workflow.yaml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches:
       - main
     paths:
       - "metrics/**"
       - ".github/workflows/metrics-workflow.yaml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 permissions:
@@ -28,7 +36,7 @@ jobs:
     uses: ./.github/workflows/reusable-test-python.yaml
     with:
       working-directory: metrics
-      python-version: "3.13"
+      python-version: "3.14"
       sparse-checkout: metrics
       job-type: test
       test-command: "pytest -v --cov=alt_metrics --cov-report=xml --cov-report=term-missing --junit-xml=tests/results.xml"
@@ -39,7 +47,7 @@ jobs:
     uses: ./.github/workflows/reusable-test-python.yaml
     with:
       working-directory: metrics
-      python-version: "3.13"
+      python-version: "3.14"
       sparse-checkout: metrics
       job-type: lint
 
@@ -48,7 +56,7 @@ jobs:
     uses: ./.github/workflows/reusable-test-python.yaml
     with:
       working-directory: metrics
-      python-version: "3.13"
+      python-version: "3.14"
       sparse-checkout: metrics
       job-type: typecheck
 

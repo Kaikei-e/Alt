@@ -91,7 +91,10 @@ describe("Feeds page continuity across a rotation", () => {
 		expect(cardTitles()).toHaveLength(WIRE.length);
 
 		await page
-			.getByRole("button", { name: `Mark ${FIRST.title} as read` })
+			.getByRole("button", {
+				name: `Mark as Read: ${FIRST.title}`,
+				exact: true,
+			})
 			.click();
 		await settle(400);
 
@@ -115,7 +118,10 @@ describe("Feeds page continuity across a rotation", () => {
 		await settle(400);
 
 		await page
-			.getByRole("button", { name: `Mark ${FIRST.title} as read` })
+			.getByRole("button", {
+				name: `Mark as Read: ${FIRST.title}`,
+				exact: true,
+			})
 			.click();
 		await settle(200);
 

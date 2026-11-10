@@ -7,12 +7,18 @@ on:
       - "auth-token-manager/**"
       - ".github/workflows/auth-token-manager.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   pull_request:
     branches: [main]
     paths:
       - "auth-token-manager/**"
       - ".github/workflows/auth-token-manager.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
+      - "!**/README.md"
   workflow_dispatch:
 
 concurrency:
@@ -34,5 +40,7 @@ jobs:
     uses: ./.github/workflows/reusable-test-deno.yaml
     with:
       working-directory: "auth-token-manager"
+      # Must match the Deno version in auth-token-manager/Dockerfile FROM line.
+      deno-version: "v2.6.3"
       sparse-checkout: "auth-token-manager"
       check-fmt: true

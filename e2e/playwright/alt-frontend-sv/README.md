@@ -1,8 +1,9 @@
 # alt-frontend-sv — Playwright E2E dispatch
 
 End-to-end suite for the SvelteKit frontend (`alt-frontend-sv`). Drives
-43 spec files across the `auth`, `desktop-chromium`, and `mobile-chrome`
-projects defined in [`alt-frontend-sv/playwright.config.ts`](../../../alt-frontend-sv/playwright.config.ts).
+the `auth`, `desktop-chromium`, and `mobile-chrome` projects by default
+(plus `a11y-desktop` and `a11y-mobile` in PR CI) as defined in
+[`alt-frontend-sv/playwright.config.ts`](../../../alt-frontend-sv/playwright.config.ts).
 
 This directory follows the common E2E dispatch convention established in
 [ADR-000766](../../../docs/ADR/000766.md) (`bash e2e/<framework>/<svc>/run.sh`).
@@ -32,16 +33,19 @@ Unlike the staging-profile suites, this runner **does not bring up
   mock backend on `4003` inside the Playwright runner container.
 
 Both containers run with `--network host` so the frontend container and
-the mock listeners share loopback. Whereas PR CI
-(`.github/workflows/alt-frontend-sv.yml`) builds from source and runs on
-Node, `run.sh` tests the production container image (`bun build/index.js`).
+the mock listeners share loopback. `run.sh` is the suite's single entry
+point against the production container image (`bun build/index.js`),
+with its default project set (`auth`, `desktop-chromium`,
+`mobile-chrome`) unchanged; PR CI (`.github/workflows/alt-frontend-sv.yml`)
+invokes `run.sh` across 3 shards and opts into `a11y-desktop` and
+`a11y-mobile` via `PROJECTS`.
 
 ## Running
 
 Build or pull the frontend image first when running locally:
 
 ```bash
-docker build -t ghcr.io/kaikei-e/alt-alt-frontend-sv:ci alt-frontend-sv
+python3 e2e/playwright/_lib/build-images.py alt-frontend-sv
 
 # Full default suite (auth + desktop-chromium + mobile-chrome, no shard split)
 bash e2e/playwright/alt-frontend-sv/run.sh
@@ -69,9 +73,9 @@ ls alt-frontend-sv/playwright-report/ alt-frontend-sv/test-results/
 | `ALT_E2E_PORT` | `4174` | loopback port for the frontend container |
 | `PLAYWRIGHT_IMAGE` | `mcr.microsoft.com/playwright:v<version>-jammy` | browser runner container image, derived from `@playwright/test` in `e2e/playwright/package.json` |
 | `SHARD` | `1/1` | Playwright `--shard` value; matrix sets `1/3`, `2/3`, `3/3` |
-| `PROJECTS` | `--project=auth --project=desktop-chromium --project=mobile-chrome` | space-separated `--project` flags |
+| `PROJECTS` | `--project=auth --project=desktop-chromium --project=mobile-chrome` | space-separated `--project` flags (PR CI adds `--project=a11y-desktop --project=a11y-mobile`) |
 | `RUN_ID` | `$(date +%s)` | unique run identifier used in the report directory and container name |
-| `REPORT_DIR` | `e2e/reports/alt-frontend-sv-<RUN_ID>` | created and mounted at `/work/reports` for dispatch-caller compatibility (Playwright itself currently writes reports to `alt-frontend-sv/playwright-report/` and `alt-frontend-sv/test-results/`) |
+| `REPORT_DIR` | `e2e/reports/alt-frontend-sv-<RUN_ID>` | report output directory (`app-container.log`, plus `blob/` when `PW_BLOB=1`) |
 | `KEEP_STACK` | `0` | when `1`, leaves the frontend container running on exit for inspection |
 
 ## Out of scope

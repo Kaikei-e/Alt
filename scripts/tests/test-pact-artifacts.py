@@ -1,3 +1,4 @@
+import http.client
 import os
 import sys
 import pytest
@@ -50,7 +51,8 @@ def test_download_and_verify_hash_mismatch(tmp_path):
 def test_download_and_verify_http_error(tmp_path):
     dest_path = str(tmp_path / "test.file")
 
-    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Not found")):
+    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Not found")), \
+         patch("time.sleep"):
         with pytest.raises(SystemExit) as exc:
             pact_artifacts.download_and_verify("https://github.com/pact-foundation/file", "a"*64, dest_path)
         assert exc.value.code == 1
@@ -159,3 +161,170 @@ def test_download_and_verify_max_size(tmp_path):
         with pytest.raises(SystemExit) as exc:
             pact_artifacts.download_and_verify("https://github.com/pact-foundation/file", "a"*64, dest_path)
         assert exc.value.code == 1
+
+
+def _make_mock_response(data: bytes) -> MagicMock:
+    mock_response = MagicMock()
+    mock_response.read.side_effect = [data, b""]
+    mock_response.__enter__.return_value = mock_response
+    return mock_response
+
+
+def test_download_and_verify_retries_transient_url_error_with_backoff(tmp_path):
+    url = "https://github.com/pact-foundation/file"
+    data = b"recovered-after-urlerror"
+    expected_hash = hashlib.sha256(data).hexdigest()
+    dest_path = str(tmp_path / "test.file")
+
+    side_effects = [
+        urllib.error.URLError("connection reset"),
+        urllib.error.URLError("temporary DNS failure"),
+        _make_mock_response(data),
+    ]
+
+    with patch("urllib.request.urlopen", side_effect=side_effects) as mock_urlopen, \
+         patch("time.sleep") as mock_sleep:
+        pact_artifacts.download_and_verify(url, expected_hash, dest_path)
+
+    assert mock_urlopen.call_count == 3
+    assert [call.args[0] for call in mock_sleep.call_args_list] == [5.0, 10.0]
+    with open(dest_path, "rb") as f:
+        assert f.read() == data
+
+
+def test_download_and_verify_retries_http_5xx_with_backoff(tmp_path):
+    url = "https://github.com/pact-foundation/file"
+    data = b"recovered-after-5xx"
+    expected_hash = hashlib.sha256(data).hexdigest()
+    dest_path = str(tmp_path / "test.file")
+
+    side_effects = [
+        urllib.error.HTTPError(url, 502, "Bad Gateway", hdrs=None, fp=None),
+        urllib.error.HTTPError(url, 503, "Service Unavailable", hdrs=None, fp=None),
+        _make_mock_response(data),
+    ]
+
+    with patch("urllib.request.urlopen", side_effect=side_effects) as mock_urlopen, \
+         patch("time.sleep") as mock_sleep:
+        pact_artifacts.download_and_verify(url, expected_hash, dest_path)
+
+    assert mock_urlopen.call_count == 3
+    assert [call.args[0] for call in mock_sleep.call_args_list] == [5.0, 10.0]
+    with open(dest_path, "rb") as f:
+        assert f.read() == data
+
+
+def test_download_and_verify_retries_timeout_with_backoff(tmp_path):
+    url = "https://github.com/pact-foundation/file"
+    data = b"recovered-after-timeout"
+    expected_hash = hashlib.sha256(data).hexdigest()
+    dest_path = str(tmp_path / "test.file")
+
+    side_effects = [
+        TimeoutError("read timed out"),
+        _make_mock_response(data),
+    ]
+
+    with patch("urllib.request.urlopen", side_effect=side_effects) as mock_urlopen, \
+         patch("time.sleep") as mock_sleep:
+        pact_artifacts.download_and_verify(url, expected_hash, dest_path)
+
+    assert mock_urlopen.call_count == 2
+    assert [call.args[0] for call in mock_sleep.call_args_list] == [5.0]
+    with open(dest_path, "rb") as f:
+        assert f.read() == data
+
+
+def test_download_and_verify_exhausts_retries_and_fails(tmp_path):
+    url = "https://github.com/pact-foundation/file"
+    dest_path = str(tmp_path / "test.file")
+
+    err = urllib.error.HTTPError(url, 503, "Service Unavailable", hdrs=None, fp=None)
+
+    with patch("urllib.request.urlopen", side_effect=err) as mock_urlopen, \
+         patch("time.sleep") as mock_sleep:
+        with pytest.raises(SystemExit) as exc:
+            pact_artifacts.download_and_verify(url, "a" * 64, dest_path)
+        assert exc.value.code == 1
+
+    assert mock_urlopen.call_count == 3
+    assert [call.args[0] for call in mock_sleep.call_args_list] == [5.0, 10.0]
+    assert not os.path.exists(dest_path)
+
+
+def test_download_and_verify_does_not_retry_http_4xx(tmp_path):
+    url = "https://github.com/pact-foundation/file"
+    data = b"should-not-be-reached"
+    expected_hash = hashlib.sha256(data).hexdigest()
+    dest_path = str(tmp_path / "test.file")
+
+    side_effects = [
+        urllib.error.HTTPError(url, 503, "Service Unavailable", hdrs=None, fp=None),
+        urllib.error.HTTPError(url, 404, "Not Found", hdrs=None, fp=None),
+        _make_mock_response(data),
+    ]
+
+    with patch("urllib.request.urlopen", side_effect=side_effects) as mock_urlopen, \
+         patch("time.sleep") as mock_sleep:
+        with pytest.raises(SystemExit) as exc:
+            pact_artifacts.download_and_verify(url, expected_hash, dest_path)
+        assert exc.value.code == 1
+
+    assert mock_urlopen.call_count == 2
+    assert [call.args[0] for call in mock_sleep.call_args_list] == [5.0]
+    assert not os.path.exists(dest_path)
+
+
+def test_download_and_verify_retries_mid_read_connection_reset(tmp_path):
+    url = "https://github.com/pact-foundation/file"
+    data = b"recovered-after-connection-reset"
+    expected_hash = hashlib.sha256(data).hexdigest()
+    dest_path = str(tmp_path / "test.file")
+
+    broken_response = MagicMock()
+    broken_response.read.side_effect = [b"partial-", ConnectionResetError("Connection reset by peer")]
+    broken_response.__enter__.return_value = broken_response
+
+    side_effects = [
+        broken_response,
+        _make_mock_response(data),
+    ]
+
+    with patch("urllib.request.urlopen", side_effect=side_effects) as mock_urlopen, \
+         patch("time.sleep") as mock_sleep:
+        pact_artifacts.download_and_verify(url, expected_hash, dest_path)
+
+    assert mock_urlopen.call_count == 2
+    assert [call.args[0] for call in mock_sleep.call_args_list] == [5.0]
+    with open(dest_path, "rb") as f:
+        assert f.read() == data
+
+
+def test_download_and_verify_retries_mid_read_incomplete_read(tmp_path):
+    url = "https://github.com/pact-foundation/file"
+    data = b"recovered-after-incomplete-read"
+    expected_hash = hashlib.sha256(data).hexdigest()
+    dest_path = str(tmp_path / "test.file")
+
+    broken_response_1 = MagicMock()
+    broken_response_1.read.side_effect = [b"part1", http.client.IncompleteRead(b"part2", 128)]
+    broken_response_1.__enter__.return_value = broken_response_1
+
+    broken_response_2 = MagicMock()
+    broken_response_2.read.side_effect = [http.client.IncompleteRead(b"part1", 64)]
+    broken_response_2.__enter__.return_value = broken_response_2
+
+    side_effects = [
+        broken_response_1,
+        broken_response_2,
+        _make_mock_response(data),
+    ]
+
+    with patch("urllib.request.urlopen", side_effect=side_effects) as mock_urlopen, \
+         patch("time.sleep") as mock_sleep:
+        pact_artifacts.download_and_verify(url, expected_hash, dest_path)
+
+    assert mock_urlopen.call_count == 3
+    assert [call.args[0] for call in mock_sleep.call_args_list] == [5.0, 10.0]
+    with open(dest_path, "rb") as f:
+        assert f.read() == data

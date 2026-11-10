@@ -172,17 +172,22 @@ release-deploy の `build` / `pact-publish` / `gate` / `e2e` jobs が走る。�
 
 alt-builder pool は **ephemeral runner (just-in-time 登録、1 job ごとに登録を破棄し work tree を wipe)** 構成を採る。provisioning・cut-over・PAT の scope とローテーションは deploy 側 private repo の runner-setup runbook が正本で、public repo には手順を持ち込まない。上記のホスト常駐キャッシュ (libtorch / cargo target / Go / broker 認証ファイル) は job 間 wipe の対象外として維持される。
 
-## 4. dispatch-deploy 用 PAT (`ALT_DEPLOY_DISPATCH_PAT`)
+## 4. dispatch-deploy 用シークレット (`DISPATCH_TOKEN` / `DISPATCH_TARGET_REPO`)
 
-`Kaikei-e/Alt` の `main` が進むと `.github/workflows/dispatch-deploy.yaml` が
-`Kaikei-e/alt-deploy` に `repository_dispatch` を撃つ。その認証に使う fine-grained
-PAT を **`Kaikei-e/Alt` の repo secret `ALT_DEPLOY_DISPATCH_PAT`** に置く。
+`<owner>/<source-repo>` の `main` が進むと `.github/workflows/dispatch-deploy.yaml` が
+dispatch 先リポジトリ (`<owner>/<target-repo>`) に `repository_dispatch` を撃つ。
+以下の 2 つの repository secret を **`<owner>/<source-repo>` の repo secret** に置く:
 
-### スコープ (これ以上でも以下でもない)
+- `DISPATCH_TARGET_REPO`: dispatch 先リポジトリの `owner/repo` (公開ログ上でマスクされるよう variable ではなく secret として保持する)
+- `DISPATCH_TOKEN`: dispatch 先リポジトリにスコープした認証用 fine-grained PAT
+
+いずれかが未設定、または `DISPATCH_TARGET_REPO` が `owner/repo` 形式でない場合、job は `::error::` を出して即座に失敗する。
+
+### `DISPATCH_TOKEN` のスコープ (これ以上でも以下でもない)
 
 | 項目 | 値 |
 |------|-----|
-| Repository access | Only select repositories → **`Kaikei-e/alt-deploy` のみ** |
+| Repository access | Only select repositories → **dispatch 先リポジトリ (`<owner>/<target-repo>`) のみ** |
 | Permissions | **Contents: Read and write** の 1 つだけ (Metadata: Read は fine-grained PAT に自動付与) |
 | Expiration | **90 日以内** (無期限は禁止) |
 
@@ -191,38 +196,42 @@ PAT を **`Kaikei-e/Alt` の repo secret `ALT_DEPLOY_DISPATCH_PAT`** に置く�
   で落ちる — `dispatch-deploy.yaml` の 403 診断がこの文言と対処をそのまま出す。
   Actions 権限では通らない。
 - 対象 repo を絞り忘れると、public repo の secret 1 本でその repo 全部に書けることになる。
-  逆に alt-deploy を選び忘れた token は 404 になり、workflow の 404 診断が
-  「scope されていない or repo 名 typo」と指摘する。
+  逆に dispatch 先リポジトリを選び忘れた token は 404 になり、workflow の 404 診断が
+  「scope されていない or `DISPATCH_TARGET_REPO` の設定誤り」と指摘する。
 - 期限は GitHub UI 上 1 年まで選べるが、**Alt では 90 日を上限**とする。public repo の
   secret は触れる面 (workflow / fork PR 誤設定 / 第三者 action) が広く、漏洩時の
   blast radius は「気づいて revoke するまでの残存期間」そのものなので、期限自体を
   封じ込めに使う。
 
-### ローテーション (90 日ごと / 漏洩疑いは即時)
+### 初期設定・ローテーション (90 日ごと / 漏洩疑いは即時)
 
 1. GitHub Settings → Developer settings → Fine-grained tokens → Generate new token。
-   上表のスコープ + 90 日で新規発行する (**旧 PAT はまだ revoke しない**)。
-2. secret を上書きする。値は標準入力で渡す (引数に書くと shell history に残る):
+   上表のスコープ + 90 日で新規発行する (**ローテーション時は旧 PAT をまだ revoke しない**)。
+2. secret を登録・上書きする。値は標準入力で渡す (引数に書くと shell history に残る):
 
    ```bash
-   gh secret set ALT_DEPLOY_DISPATCH_PAT -R Kaikei-e/Alt
+   # dispatch 先リポジトリ (値: <owner>/<target-repo>)
+   gh secret set DISPATCH_TARGET_REPO -R <owner>/<source-repo>
+
+   # fine-grained PAT
+   gh secret set DISPATCH_TOKEN -R <owner>/<source-repo>
    ```
 
-3. 次の `main` への push で `dispatch-deploy` run を開き、`Probe dispatch PAT expiry`
+3. 次の `main` への push で `dispatch-deploy` run を開き、`Probe dispatch token expiry`
    step の `::notice::` と job summary が **新しい期限日**になっていること、
-   `Fire repository_dispatch at alt-deploy` が green であることを確認する。
+   `Fire repository_dispatch` が green であることを確認する。
 4. 確認できてから **旧 PAT を revoke** する。順序を逆にすると、secret 反映前の push が
-   401 で落ちて deploy が止まる。
+   401 で落ちて dispatch が止まる。
 
 ### 期限切れの検知は workflow 側でやる (カレンダー不要)
 
-`dispatch-deploy.yaml` は dispatch の前に `GET /repos/Kaikei-e/alt-deploy` を叩き、
+`dispatch-deploy.yaml` は dispatch の前に `GET /repos/<owner>/<target-repo>` (`DISPATCH_TARGET_REPO` から組み立て) を叩き、
 レスポンスヘッダ `github-authentication-token-expiration` から残日数を出す:
 
 | 残り | 出力 |
 |------|------|
 | 30 日未満 | `::warning::` (期限日 + 本節へのポインタ) |
-| 7 日未満 / 期限切れ | `::error::`。ただし **job は落とさない** — deploy は出す |
+| 7 日未満 / 期限切れ | `::error::`。ただし **job は落とさない** — dispatch は出す |
 | それ以外 | `::notice::` に期限日 |
 | ヘッダなし (無期限 token) | `::warning::` — 上記ポリシー違反 |
 

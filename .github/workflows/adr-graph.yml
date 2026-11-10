@@ -5,6 +5,7 @@ permissions:
 
 on:
   push:
+    branches: [main]
     paths:
       - "docs/ADR/**"
       - "docdag.yaml"
@@ -20,6 +21,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+env:
+  DOCDAG_VERSION: v0.5.0
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -30,11 +34,22 @@ jobs:
           # The append-only check diffs against the merge base, so it needs history.
           fetch-depth: 0
           persist-credentials: false
+      - name: Cache DocDag binary
+        id: cache-docdag
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/go/bin/docdag
+          key: docdag-${{ runner.os }}-${{ env.DOCDAG_VERSION }}
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        if: steps.cache-docdag.outputs.cache-hit != 'true'
         with:
           go-version: "1.27.1"  # DocDag v0.4.0+ declares go 1.27
       - name: Install DocDag
-        run: go install github.com/Kaikei-e/DocDag/cmd/docdag@v0.5.0
+        run: |
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+          if [ ! -x "$HOME/go/bin/docdag" ]; then
+            go install "github.com/Kaikei-e/DocDag/cmd/docdag@${DOCDAG_VERSION}"
+          fi
       - name: Fetch base branch
         env:
           BASE_REF: ${{ github.base_ref || 'main' }}

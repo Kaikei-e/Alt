@@ -22,7 +22,7 @@ describe("FeedCard", () => {
 			.element(page.getByText(renderFeedFixture.excerpt))
 			.toBeInTheDocument();
 		await expect
-			.element(page.getByRole("button", { name: /mark .* as read/i }))
+			.element(page.getByRole("button", { name: /^mark as read:/i }))
 			.toBeInTheDocument();
 	});
 
@@ -37,7 +37,7 @@ describe("FeedCard", () => {
 		});
 
 		const actionButton = page.getByRole("button", {
-			name: /mark .* as read/i,
+			name: /^mark as read:/i,
 		});
 		await actionButton.click();
 

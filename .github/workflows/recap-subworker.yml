@@ -9,12 +9,18 @@ on:
       - "recap-subworker/**"
       - "compose/recap.yaml"
       - ".github/workflows/recap-subworker.yml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
   pull_request:
     branches: [main, develop]
     paths:
       - "recap-subworker/**"
       - "compose/recap.yaml"
       - ".github/workflows/recap-subworker.yml"
+      - ".github/workflows/reusable-test-python.yaml"
+      - "!**/CLAUDE.md"
+      - "!**/AGENTS.md"
   workflow_dispatch:
 
 concurrency:
@@ -33,12 +39,10 @@ jobs:
         recap-subworker
         compose
       coverage-flags: "recap-subworker"
-      upload-coverage: true
       job-type: "test"
       test-command: 'pytest -v tests/unit tests/services tests/integration -m "not slow" --cov=recap_subworker --cov-report=xml --junit-xml=tests/results.xml'
     permissions:
       contents: read
-    secrets: inherit
 
   lint:
     uses: ./.github/workflows/reusable-test-python.yaml

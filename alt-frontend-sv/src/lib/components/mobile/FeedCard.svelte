@@ -44,7 +44,7 @@ const handleReadStatus = () => {
 				<button
 					onclick={handleReadStatus}
 					class="action-btn"
-					aria-label="Mark {feed.title} as read"
+					aria-label="Mark as Read: {feed.title}"
 				>
 					Mark as Read
 				</button>
