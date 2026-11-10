@@ -7,6 +7,7 @@ import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import CameraRig from "./scene/CameraRig.svelte";
 import LabelOverlay from "./scene/LabelOverlay.svelte";
 import type { TagVersePalette } from "./scene/palette.js";
+import { paintPaper } from "./scene/paperBackground.js";
 import {
 	buildEdgeBuffers,
 	buildSceneModel,
@@ -103,22 +104,8 @@ edgeSegments.frustumCulled = false;
 
 $effect.pre(() => {
 	const paperHex = palette.paper;
-	const { near, far } = initialFog;
-
-	if (scene.background instanceof THREE.Color) {
-		scene.background.set(paperHex);
-	} else {
-		scene.background = new THREE.Color(paperHex);
-	}
-
-	if (scene.fog instanceof THREE.Fog) {
-		scene.fog.color.set(paperHex);
-	} else {
-		scene.fog = new THREE.Fog(paperHex, near, far);
-	}
-
+	paintPaper(scene, renderer, paperHex, initialFog);
 	hemiLight.groundColor.set(paperHex);
-	renderer.setClearColor(paperHex, 1);
 	invalidate();
 });
 
