@@ -117,23 +117,12 @@ class RemoteHealthChecker:
         state = self._states.get(target)
         if state is None:
             return
-        now = time.monotonic()
-        was_unhealthy = not state["healthy"]
         self.release_target(target)
-        state["healthy"] = True
-        state["last_completed"] = now
-        state["last_healthy"] = now
+        state["last_completed"] = time.monotonic()
         state["dispatch_failures"] = 0
         state["probe_failures"] = 0
         state["consecutive_failures"] = 0
         state["cooldown_until"] = 0.0
-        state["logged_unhealthy"] = False
-        if was_unhealthy:
-            logger.info(
-                "Remote target %s (%s) recovered via successful dispatch",
-                target.base_url,
-                target.model,
-            )
 
     def mark_failure(self, target: RemoteTarget) -> None:
         """Immediately mark a target unhealthy after a dispatch failure."""
@@ -178,7 +167,9 @@ class RemoteHealthChecker:
 
     def _effective_cooldown(self, target: RemoteTarget) -> float:
         state = self._states[target]
-        failures = max(1, int(state.get("probe_failures", 0)))
+        failures = max(
+            1, int(state.get("probe_failures", 0)) - self._unhealthy_threshold + 1
+        )
         backoff = self._cooldown_seconds * (2 ** (failures - 1))
         return float(min(backoff, self._max_cooldown_seconds))
 
@@ -191,29 +182,39 @@ class RemoteHealthChecker:
             return elapsed >= self._interval_seconds
         return elapsed >= self._effective_cooldown(target)
 
-    def _mark_target_unhealthy(
-        self, target: RemoteTarget, now: float, *, always_warn: bool = False
+    def _record_probe_failure(
+        self,
+        target: RemoteTarget,
+        now: float,
+        reason: str,
+        *,
+        always_warn: bool = False,
     ) -> Callable[..., None]:
         state = self._states[target]
         if state["in_flight_count"] > 0 or state["busy"]:
             # Bifrost queues /v1/models behind in-flight chat completions with a 5s deadline.
             state["last_checked"] = now
             logger.debug(
-                "Remote health check probe result ignored for busy target %s (%s)",
+                "Remote health check probe result ignored for busy target %s (%s): %s",
                 target.base_url,
                 target.model,
-                extra={"remote_url": target.base_url, "model": target.model},
+                reason,
+                extra={
+                    "remote_url": target.base_url,
+                    "model": target.model,
+                    "reason": reason,
+                },
             )
             return _noop_log
         state["probe_failures"] += 1
         state["consecutive_failures"] += 1
         state["last_checked"] = now
-        if state["probe_failures"] < self._unhealthy_threshold:
-            if not state["healthy"] and always_warn:
-                state["logged_unhealthy"] = True
-                return logger.warning
+        if state["healthy"] and state["probe_failures"] < self._unhealthy_threshold:
             return logger.debug
         state["healthy"] = False
+        state["probe_failures"] = max(
+            state["probe_failures"], self._unhealthy_threshold
+        )
         if always_warn:
             state["logged_unhealthy"] = True
             return logger.warning
@@ -237,7 +238,9 @@ class RemoteHealthChecker:
             async with self._session.get(models_url, allow_redirects=False) as response:
                 if response.status != 200:
                     for target in probed_targets:
-                        log_fn = self._mark_target_unhealthy(target, now)
+                        log_fn = self._record_probe_failure(
+                            target, now, f"http {response.status}"
+                        )
                         log_fn(
                             "Remote health check failed: HTTP %d from %s",
                             response.status,
@@ -255,8 +258,8 @@ class RemoteHealthChecker:
                     payload = json.loads(text)
                 except json.JSONDecodeError as err:
                     for target in probed_targets:
-                        log_fn = self._mark_target_unhealthy(
-                            target, now, always_warn=True
+                        log_fn = self._record_probe_failure(
+                            target, now, "non-json", always_warn=True
                         )
                         log_fn(
                             "Remote health check received non-JSON 200 response from %s: %s",
@@ -269,8 +272,8 @@ class RemoteHealthChecker:
                 data_list = payload.get("data") if isinstance(payload, dict) else None
                 if not isinstance(data_list, list):
                     for target in probed_targets:
-                        log_fn = self._mark_target_unhealthy(
-                            target, now, always_warn=True
+                        log_fn = self._record_probe_failure(
+                            target, now, "missing data list", always_warn=True
                         )
                         log_fn(
                             "Remote health check response from %s missing 'data' list",
@@ -311,7 +314,9 @@ class RemoteHealthChecker:
                                 target.model,
                             )
                     else:
-                        log_fn = self._mark_target_unhealthy(target, now)
+                        log_fn = self._record_probe_failure(
+                            target, now, "missing model"
+                        )
                         log_fn(
                             "Remote %s missing required model %s (has: %s)",
                             base_url,
@@ -326,7 +331,7 @@ class RemoteHealthChecker:
 
         except Exception as err:
             for target in probed_targets:
-                log_fn = self._mark_target_unhealthy(target, now)
+                log_fn = self._record_probe_failure(target, now, type(err).__name__)
                 log_fn(
                     "Remote health check error for %s: %s",
                     base_url,
