@@ -109,61 +109,85 @@ func (w *SummarizeQueueWorker) RecoverStuckJobs(ctx context.Context) {
 	}
 }
 
-// ProcessQueue processes pending jobs from the queue
-func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
+// ProcessQueue dispatches pending jobs continuously across worker goroutines
+// and invokes onDrained when a worker sees no pending job.
+func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context, onDrained func(context.Context) (bool, error)) error {
 	// Recover stuck running jobs (throttled to once per 5 minutes)
 	w.RecoverStuckJobs(ctx)
-
-	// Atomically dequeue pending jobs → running in a single transaction
-	jobs, err := w.jobRepo.DequeueJobs(ctx, w.batchSize)
-	if err != nil {
-		w.logger.ErrorContext(ctx, "failed to dequeue jobs", "error", err)
-		return fmt.Errorf("failed to dequeue jobs: %w", err)
-	}
-
-	if len(jobs) == 0 {
-		w.logger.DebugContext(ctx, "no pending jobs to process")
-		return nil
-	}
-
-	w.logger.InfoContext(ctx, "processing queued summarization jobs", "count", len(jobs))
 
 	workerCount := w.concurrency
 	if workerCount <= 0 {
 		workerCount = 1
 	}
-	if workerCount > len(jobs) {
-		workerCount = len(jobs)
-	}
 
-	jobCh := make(chan int)
-	processed := make([]bool, len(jobs))
 	var wg sync.WaitGroup
 	var overloadOnce sync.Once
 	var overloaded atomic.Bool
+	var errOnce sync.Once
+	var aborted atomic.Bool
+	var firstErr error
+
+	recordErr := func(err error) {
+		errOnce.Do(func() {
+			firstErr = err
+			aborted.Store(true)
+		})
+	}
 
 	workerFn := func() {
 		defer wg.Done()
-		for idx := range jobCh {
-			if ctx.Err() != nil || overloaded.Load() {
+		for {
+			if overloaded.Load() || aborted.Load() {
+				return
+			}
+
+			jobs, err := w.jobRepo.DequeueJobs(ctx, 1)
+			if err != nil {
+				w.logger.ErrorContext(ctx, "failed to dequeue jobs", "error", err)
+				recordErr(fmt.Errorf("failed to dequeue jobs: %w", err))
+				return
+			}
+
+			if len(jobs) == 0 {
+				if ctx.Err() != nil || overloaded.Load() || aborted.Load() {
+					return
+				}
+				refilled, err := onDrained(ctx)
+				if err != nil {
+					recordErr(err)
+					return
+				}
+				if !refilled {
+					w.logger.DebugContext(ctx, "no pending jobs to process")
+					return
+				}
 				continue
 			}
 
-			job := jobs[idx]
-			processed[idx] = true
-			if err := w.processJob(ctx, job); err != nil {
-				if errors.Is(err, domain.ErrServiceOverloaded) || errors.Is(err, domain.ErrUpstreamBusy) {
-					overloadOnce.Do(func() {
-						overloaded.Store(true)
-						w.logger.WarnContext(ctx, "downstream service busy, backing off queue worker",
-							"job_id", job.JobID,
-							"article_id", job.ArticleID,
-							"error", err)
-					})
+			for _, job := range jobs {
+				if ctx.Err() != nil || overloaded.Load() || aborted.Load() {
+					w.releaseJob(ctx, job)
 					continue
 				}
 
-				w.logger.ErrorContext(ctx, "failed to process job", "error", err, "job_id", job.JobID, "article_id", job.ArticleID)
+				if err := w.processJob(ctx, job); err != nil {
+					if errors.Is(err, domain.ErrServiceOverloaded) || errors.Is(err, domain.ErrUpstreamBusy) {
+						overloaded.Store(true)
+						overloadOnce.Do(func() {
+							w.logger.WarnContext(ctx, "downstream service busy, backing off queue worker",
+								"job_id", job.JobID,
+								"article_id", job.ArticleID,
+								"error", err)
+						})
+						continue
+					}
+
+					w.logger.ErrorContext(ctx, "failed to process job", "error", err, "job_id", job.JobID, "article_id", job.ArticleID)
+				}
+			}
+
+			if ctx.Err() != nil || overloaded.Load() || aborted.Load() {
+				return
 			}
 		}
 	}
@@ -173,28 +197,7 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 		go workerFn()
 	}
 
-	for i := range jobs {
-		if ctx.Err() != nil {
-			w.logger.WarnContext(ctx, "context canceled, skipping remaining jobs",
-				"remaining", len(jobs)-i)
-			break
-		}
-		if overloaded.Load() {
-			w.logger.WarnContext(ctx, "downstream service overloaded, skipping remaining queued jobs",
-				"remaining", len(jobs)-i)
-			break
-		}
-		jobCh <- i
-	}
-
-	close(jobCh)
 	wg.Wait()
-
-	for i, job := range jobs {
-		if !processed[i] {
-			w.releaseJob(ctx, job)
-		}
-	}
 
 	if overloaded.Load() {
 		// Returning ErrServiceOverloaded keeps the existing ticker backoff path;
@@ -202,6 +205,9 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 		// can rely on a single sentinel while retaining the distinct driver-
 		// level diagnostic in logs.
 		return domain.ErrServiceOverloaded
+	}
+	if firstErr != nil {
+		return firstErr
 	}
 
 	return nil
