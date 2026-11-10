@@ -560,7 +560,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		// or all 10 entered FetchTagCloud (uncoalesced).
 		nowCount := 0
 		fetchCount := 0
-		for !(fetchCount >= 1 && nowCount >= callers) && fetchCount < callers {
+		for (fetchCount < 1 || nowCount < callers) && fetchCount < callers {
 			select {
 			case <-enteredNow:
 				nowCount++

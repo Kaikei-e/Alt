@@ -14,23 +14,24 @@ import (
 )
 
 const (
-	defaultMaxStale          = 24 * time.Hour
-	backgroundRefreshTimeout = 30 * time.Second
+	defaultMaxStale = 24 * time.Hour
+	computeTimeout  = 30 * time.Second
 )
 
 type cacheState string
 
 const (
-	cacheStateFresh cacheState = "fresh"
-	cacheStateStale cacheState = "stale"
-	cacheStateMiss  cacheState = "miss"
+	cacheStateFresh   cacheState = "fresh"
+	cacheStateStale   cacheState = "stale"
+	cacheStateMiss    cacheState = "miss"
+	cacheStateRefresh cacheState = "refresh"
 )
 
 // FetchTagCloudUsecase orchestrates fetching tag cloud data with in-memory caching.
 type FetchTagCloudUsecase struct {
 	fetchTagCloudPort fetch_tag_cloud_port.FetchTagCloudPort
 
-	mu          sync.RWMutex
+	mu          sync.Mutex
 	cachedItems []*domain.TagCloudItem
 	cachedLimit int
 	cachedAt    time.Time
@@ -104,35 +105,52 @@ func (u *FetchTagCloudUsecase) execute(ctx context.Context, limit int, forceRefr
 		}
 	}
 
-	return u.computeCoalesced(ctx, limit, forceRefresh)
+	state := cacheStateMiss
+	if forceRefresh {
+		state = cacheStateRefresh
+	}
+	items, err := u.computeCoalesced(ctx, limit, forceRefresh, state)
+	if err != nil {
+		return nil, err
+	}
+	return deepCopyItems(items), nil
 }
 
 func (u *FetchTagCloudUsecase) refreshInBackground(reqCtx context.Context, limit int) {
-	// Detach from caller cancellation so client disconnects do not abort revalidation.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), backgroundRefreshTimeout)
-	defer cancel()
+	defer func() {
+		if r := recover(); r != nil {
+			u.mu.Lock()
+			u.refreshing = false
+			u.mu.Unlock()
+			logger.Logger.ErrorContext(reqCtx, "panic during background tag cloud refresh", "limit", limit, "panic", r)
+		}
+	}()
 
-	if _, err := u.computeCoalesced(ctx, limit, false); err != nil {
+	if _, err := u.computeCoalesced(reqCtx, limit, false, cacheStateRefresh); err != nil {
 		u.mu.Lock()
 		u.refreshing = false
 		u.mu.Unlock()
-		logger.Logger.WarnContext(ctx, "failed to refresh tag cloud in background", "limit", limit, "error", err)
+		logger.Logger.WarnContext(reqCtx, "failed to refresh tag cloud in background", "limit", limit, "error", err)
 	}
 }
 
-func (u *FetchTagCloudUsecase) computeCoalesced(ctx context.Context, limit int, forceRefresh bool) ([]*domain.TagCloudItem, error) {
+func (u *FetchTagCloudUsecase) computeCoalesced(ctx context.Context, limit int, forceRefresh bool, state cacheState) ([]*domain.TagCloudItem, error) {
 	key := strconv.Itoa(limit)
 	val, err, _ := u.sf.Do(key, func() (any, error) {
-		return u.compute(ctx, limit, forceRefresh)
+		// Detach from the first caller's cancellation so one client disconnect
+		// does not abort coalesced cold callers or background revalidation.
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), computeTimeout)
+		defer cancel()
+		return u.compute(cctx, limit, forceRefresh, state)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return deepCopyItems(val.([]*domain.TagCloudItem)), nil
+	return val.([]*domain.TagCloudItem), nil
 }
 
-func (u *FetchTagCloudUsecase) compute(ctx context.Context, limit int, forceRefresh bool) ([]*domain.TagCloudItem, error) {
-	logger.Logger.InfoContext(ctx, "fetching tag cloud", "limit", limit, "forceRefresh", forceRefresh, "cache_state", string(cacheStateMiss))
+func (u *FetchTagCloudUsecase) compute(ctx context.Context, limit int, forceRefresh bool, state cacheState) ([]*domain.TagCloudItem, error) {
+	logger.Logger.InfoContext(ctx, "fetching tag cloud", "limit", limit, "forceRefresh", forceRefresh, "cache_state", string(state))
 
 	items, err := u.fetchTagCloudPort.FetchTagCloud(ctx, limit)
 	if err != nil {
@@ -174,7 +192,8 @@ func (u *FetchTagCloudUsecase) compute(ctx context.Context, limit int, forceRefr
 	return items, nil
 }
 
-// getCached returns a deep copy of cached items if valid, nil otherwise.
+// getCached returns a deep copy of cached items if within maxStale, the cache state,
+// and whether the caller should start a background refresh.
 func (u *FetchTagCloudUsecase) getCached(limit int) ([]*domain.TagCloudItem, cacheState, bool) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
