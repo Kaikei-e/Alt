@@ -117,7 +117,7 @@ func TestGetLatestLetter_InvalidGeneratedAt(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(body)
+		_ = json.NewEncoder(w).Encode(body)
 	}))
 	defer server.Close()
 
@@ -142,7 +142,7 @@ func TestGetLatestLetter_InvalidCreatedAt(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(body)
+		_ = json.NewEncoder(w).Encode(body)
 	}))
 	defer server.Close()
 
