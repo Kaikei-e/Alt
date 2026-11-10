@@ -6,19 +6,41 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
+)
+
+const (
+	defaultMaxStale = 24 * time.Hour
+	computeTimeout  = 30 * time.Second
+)
+
+type cacheState string
+
+const (
+	cacheStateFresh   cacheState = "fresh"
+	cacheStateStale   cacheState = "stale"
+	cacheStateMiss    cacheState = "miss"
+	cacheStateRefresh cacheState = "refresh"
 )
 
 // FetchTagCloudUsecase orchestrates fetching tag cloud data with in-memory caching.
 type FetchTagCloudUsecase struct {
 	fetchTagCloudPort fetch_tag_cloud_port.FetchTagCloudPort
 
-	mu          sync.RWMutex
+	mu          sync.Mutex
 	cachedItems []*domain.TagCloudItem
 	cachedLimit int
 	cachedAt    time.Time
 	cacheTTL    time.Duration
+	maxStale    time.Duration
+	refreshing  bool
+	now         func() time.Time
+
+	sf singleflight.Group
 }
 
 // NewFetchTagCloudUsecase creates a new FetchTagCloudUsecase with the given cache TTL.
@@ -26,6 +48,8 @@ func NewFetchTagCloudUsecase(port fetch_tag_cloud_port.FetchTagCloudPort, cacheT
 	return &FetchTagCloudUsecase{
 		fetchTagCloudPort: port,
 		cacheTTL:          cacheTTL,
+		maxStale:          defaultMaxStale,
+		now:               time.Now,
 	}
 }
 
@@ -72,13 +96,61 @@ func (u *FetchTagCloudUsecase) execute(ctx context.Context, limit int, forceRefr
 
 	// Check cache (skip when force-refreshing)
 	if !forceRefresh {
-		if cached := u.getCached(limit); cached != nil {
-			logger.Logger.InfoContext(ctx, "tag cloud cache hit", "limit", limit)
+		if cached, state, startRefresh := u.getCached(limit); cached != nil {
+			logger.Logger.InfoContext(ctx, "tag cloud cache hit", "limit", limit, "cache_state", string(state))
+			if startRefresh {
+				go u.refreshInBackground(ctx, limit)
+			}
 			return cached, nil
 		}
 	}
 
-	logger.Logger.InfoContext(ctx, "fetching tag cloud", "limit", limit, "forceRefresh", forceRefresh)
+	state := cacheStateMiss
+	if forceRefresh {
+		state = cacheStateRefresh
+	}
+	items, err := u.computeCoalesced(ctx, limit, forceRefresh, state)
+	if err != nil {
+		return nil, err
+	}
+	return deepCopyItems(items), nil
+}
+
+func (u *FetchTagCloudUsecase) refreshInBackground(reqCtx context.Context, limit int) {
+	defer func() {
+		if r := recover(); r != nil {
+			u.mu.Lock()
+			u.refreshing = false
+			u.mu.Unlock()
+			logger.Logger.ErrorContext(reqCtx, "panic during background tag cloud refresh", "limit", limit, "panic", r)
+		}
+	}()
+
+	if _, err := u.computeCoalesced(reqCtx, limit, false, cacheStateRefresh); err != nil {
+		u.mu.Lock()
+		u.refreshing = false
+		u.mu.Unlock()
+		logger.Logger.WarnContext(reqCtx, "failed to refresh tag cloud in background", "limit", limit, "error", err)
+	}
+}
+
+func (u *FetchTagCloudUsecase) computeCoalesced(ctx context.Context, limit int, forceRefresh bool, state cacheState) ([]*domain.TagCloudItem, error) {
+	key := strconv.Itoa(limit)
+	val, err, _ := u.sf.Do(key, func() (any, error) {
+		// Detach from the first caller's cancellation so one client disconnect
+		// does not abort coalesced cold callers or background revalidation.
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), computeTimeout)
+		defer cancel()
+		return u.compute(cctx, limit, forceRefresh, state)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return val.([]*domain.TagCloudItem), nil
+}
+
+func (u *FetchTagCloudUsecase) compute(ctx context.Context, limit int, forceRefresh bool, state cacheState) ([]*domain.TagCloudItem, error) {
+	logger.Logger.InfoContext(ctx, "fetching tag cloud", "limit", limit, "forceRefresh", forceRefresh, "cache_state", string(state))
 
 	items, err := u.fetchTagCloudPort.FetchTagCloud(ctx, limit)
 	if err != nil {
@@ -117,19 +189,32 @@ func (u *FetchTagCloudUsecase) execute(ctx context.Context, limit int, forceRefr
 	// Store in cache
 	u.setCache(limit, items)
 
-	// Return deep copy
-	return deepCopyItems(items), nil
+	return items, nil
 }
 
-// getCached returns a deep copy of cached items if cache is valid, nil otherwise.
-func (u *FetchTagCloudUsecase) getCached(limit int) []*domain.TagCloudItem {
-	u.mu.RLock()
-	defer u.mu.RUnlock()
+// getCached returns a deep copy of cached items if within maxStale, the cache state,
+// and whether the caller should start a background refresh.
+func (u *FetchTagCloudUsecase) getCached(limit int) ([]*domain.TagCloudItem, cacheState, bool) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 
-	if u.cachedItems == nil || u.cachedLimit != limit || time.Since(u.cachedAt) > u.cacheTTL {
-		return nil
+	now := u.now()
+	if u.cachedItems == nil || u.cachedLimit != limit {
+		return nil, cacheStateMiss, false
 	}
-	return deepCopyItems(u.cachedItems)
+
+	age := now.Sub(u.cachedAt)
+	if age <= u.cacheTTL {
+		return deepCopyItems(u.cachedItems), cacheStateFresh, false
+	}
+	if age <= u.maxStale {
+		startRefresh := !u.refreshing
+		if startRefresh {
+			u.refreshing = true
+		}
+		return deepCopyItems(u.cachedItems), cacheStateStale, startRefresh
+	}
+	return nil, cacheStateMiss, false
 }
 
 // setCache stores the items in the cache.
@@ -139,7 +224,8 @@ func (u *FetchTagCloudUsecase) setCache(limit int, items []*domain.TagCloudItem)
 
 	u.cachedItems = items
 	u.cachedLimit = limit
-	u.cachedAt = time.Now()
+	u.refreshing = false
+	u.cachedAt = u.now()
 }
 
 // deepCopyItems creates a deep copy of TagCloudItem slice.

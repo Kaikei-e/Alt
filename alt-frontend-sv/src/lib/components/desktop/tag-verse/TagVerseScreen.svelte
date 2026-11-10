@@ -1,41 +1,69 @@
 <script lang="ts">
-import { AlertCircle, Loader2, MonitorX } from "@lucide/svelte";
 import { onMount } from "svelte";
+import { MediaQuery } from "svelte/reactivity";
 import {
 	createClientTransport,
 	fetchTagCloud,
 	type TagCloudItem,
 } from "#lib/connect/index.js";
-import { detectGPUBackend } from "#lib/utils/gpuCapability.js";
-import { browser } from "$app/env";
+import { isWebGL2Available } from "#lib/utils/gpuCapability.js";
+import TagIndexPanel from "./TagIndexPanel.svelte";
 import TagVerseHUD from "./TagVerseHUD.svelte";
-import TagVerseScene from "./TagVerseScene.svelte";
+import TagVerseToolbar from "./TagVerseToolbar.svelte";
+import { sumTagArticleCounts } from "./tagIndex.js";
+
+type TagVerseSceneComponent = typeof import("./TagVerseScene.svelte").default;
 
 let tags = $state<TagCloudItem[]>([]);
+let SceneComponent = $state<TagVerseSceneComponent | null>(null);
 let isLoading = $state(true);
 let error = $state<string | null>(null);
 let gpuUnsupported = $state(false);
 let selectedTag = $state<string | null>(null);
+let autoRotate = $state(true);
+let resetViewNonce = $state(0);
+
+const reducedMotionQuery = new MediaQuery(
+	"prefers-reduced-motion: reduce",
+	false,
+);
+const reducedMotion = $derived(reducedMotionQuery.current);
+const effectiveAutoRotate = $derived(reducedMotion ? false : autoRotate);
 
 const selectedTagData = $derived(
 	selectedTag ? tags.find((t) => t.tagName === selectedTag) : null,
 );
+const totalArticles = $derived(sumTagArticleCounts(tags));
 
-onMount(() => {
-	if (!browser) return;
-	if (detectGPUBackend() === "none") {
+let cancelCurrentLoad: (() => void) | null = null;
+
+function loadTagVerse() {
+	cancelCurrentLoad?.();
+	if (!isWebGL2Available()) {
 		gpuUnsupported = true;
 		isLoading = false;
 		return;
 	}
 
+	gpuUnsupported = false;
+	isLoading = true;
+	error = null;
+
 	let cancelled = false;
+	cancelCurrentLoad = () => {
+		cancelled = true;
+	};
+
 	(async () => {
 		try {
 			const transport = createClientTransport();
-			const result = await fetchTagCloud(transport, 300);
+			const [fetchedTags, sceneModule] = await Promise.all([
+				fetchTagCloud(transport, 300),
+				import("./TagVerseScene.svelte"),
+			]);
 			if (!cancelled) {
-				tags = result;
+				tags = fetchedTags;
+				SceneComponent = sceneModule.default;
 			}
 		} catch (e) {
 			if (!cancelled) {
@@ -47,70 +75,121 @@ onMount(() => {
 			}
 		}
 	})();
+}
 
+onMount(() => {
+	loadTagVerse();
 	return () => {
-		cancelled = true;
+		cancelCurrentLoad?.();
 	};
 });
 </script>
 
-<div class="relative w-full h-[100dvh] bg-black overflow-hidden">
-	{#if isLoading}
-		<!-- Loading Screen -->
-		<div class="flex flex-col items-center justify-center h-full gap-4">
-			<Loader2 class="h-8 w-8 animate-spin text-cyan-400" />
-			<p class="text-white/60 text-sm">Loading Tag Verse...</p>
-		</div>
-	{:else if gpuUnsupported}
-		<!-- GPU Unsupported Screen -->
-		<div class="flex flex-col items-center justify-center h-full gap-4 max-w-md mx-auto text-center">
-			<MonitorX class="h-10 w-10 text-amber-400" />
-			<p class="text-white/70 text-sm">
-				Tag Verse requires WebGPU or WebGL2, which are not available in this browser.
-			</p>
-			<p class="text-white/40 text-xs">
-				Try updating your browser or GPU drivers. On Windows ARM devices, enable
-				<code class="bg-white/10 px-1 rounded">chrome://flags/#enable-unsafe-webgpu</code>.
-			</p>
-		</div>
-	{:else if error}
-		<!-- Error Screen -->
-		<div class="flex flex-col items-center justify-center h-full gap-4">
-			<AlertCircle class="h-8 w-8 text-red-400" />
-			<p class="text-white/60 text-sm">{error}</p>
-			<button
-				type="button"
-				onclick={() => window.location.reload()}
-				class="rounded-lg border border-white/20 px-4 py-2 text-sm text-white/70 hover:bg-white/10 transition-colors"
-			>
-				Retry
-			</button>
-		</div>
-	{:else if tags.length === 0}
-		<!-- Empty State -->
-		<div class="flex flex-col items-center justify-center h-full gap-4">
-			<p class="text-white/40 text-sm">No tags found. Start adding articles to populate the tag cloud.</p>
-		</div>
-	{:else}
-		<!-- 3D Scene -->
+<div
+	class="flex h-[100dvh] w-full flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)]"
+>
+	<TagVerseToolbar
+		tagCount={tags.length}
+		{totalArticles}
+		autoRotate={effectiveAutoRotate}
+		{reducedMotion}
+		onToggleRotate={() => {
+			if (!reducedMotion) {
+				autoRotate = !autoRotate;
+			}
+		}}
+		onResetView={() => {
+			resetViewNonce += 1;
+		}}
+	/>
 
-		<TagVerseScene
-			tags={tags}
-			onTagSelect={(name) => selectedTag = name}
+	<div class="relative flex min-h-0 flex-1 overflow-hidden">
+		<TagIndexPanel
+			{tags}
+			{selectedTag}
+			onSelectTag={(name) => {
+				selectedTag = name;
+			}}
 		/>
 
-		<!-- Instructions overlay -->
-		<div class="absolute bottom-6 left-6 text-white/30 text-xs select-none pointer-events-none">
-			<p>Scroll to zoom · Drag to orbit · Click sphere to explore</p>
+		<div class="relative h-full min-w-0 flex-1 bg-[var(--app-bg)]">
+			{#if isLoading}
+				<div
+					role="status"
+					class="flex h-full items-center justify-center gap-2.5"
+				>
+					<span
+						aria-hidden="true"
+						class="h-2 w-2 bg-[var(--interactive-text)] {reducedMotion
+							? ''
+							: 'animate-pulse'}"
+					></span>
+					<p
+						class="text-xs text-[var(--text-secondary)]"
+						style="font-family: var(--font-mono);"
+					>
+						Loading tags
+					</p>
+				</div>
+			{:else if gpuUnsupported}
+				<div
+					class="mx-auto flex h-full max-w-md items-center justify-center px-6 text-center"
+				>
+					<p class="text-sm text-[var(--text-secondary)]">
+						Tag Verse needs WebGL 2, which this browser does not provide.
+					</p>
+				</div>
+			{:else if error}
+				<div
+					role="alert"
+					class="flex h-full flex-col items-center justify-center gap-3 px-6"
+				>
+					<p class="text-sm text-[var(--alt-error)]">{error}</p>
+					<button
+						type="button"
+						onclick={loadTagVerse}
+						class="rounded-none border border-[var(--surface-border)] bg-[var(--action-surface)] px-4 py-1.5 text-xs font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--action-surface-hover)]"
+					>
+						Retry
+					</button>
+				</div>
+			{:else if tags.length === 0}
+				<div class="flex h-full items-center justify-center px-6 text-center">
+					<p class="text-sm text-[var(--text-muted)]">
+						No tags yet. Tags appear here once articles are tagged.
+					</p>
+				</div>
+			{:else}
+				{#if SceneComponent}
+					<SceneComponent
+						{tags}
+						onTagSelect={(name) => {
+							selectedTag = name;
+						}}
+						{selectedTag}
+						autoRotate={effectiveAutoRotate}
+						{reducedMotion}
+						{resetViewNonce}
+					/>
+				{/if}
+
+				<div
+					class="pointer-events-none absolute bottom-4 left-4 select-none text-[12px] text-[var(--text-muted)]"
+				>
+					<p>Drag to orbit · Scroll to zoom · Click a tag to open details</p>
+				</div>
+			{/if}
 		</div>
 
-		<!-- HUD Panel -->
 		{#if selectedTag && selectedTagData}
 			<TagVerseHUD
 				tagName={selectedTag}
 				articleCount={selectedTagData.articleCount}
-				onClose={() => selectedTag = null}
+				{reducedMotion}
+				onClose={() => {
+					selectedTag = null;
+				}}
 			/>
 		{/if}
-	{/if}
+	</div>
 </div>

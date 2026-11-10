@@ -1,6 +1,4 @@
 <script lang="ts">
-import { Loader2 } from "@lucide/svelte";
-import { onMount } from "svelte";
 import {
 	createClientTransport,
 	type RecapSearchResultItem,
@@ -25,7 +23,7 @@ interface DateGroup {
 	items: RecapSearchResultItem[];
 }
 
-let groupedResults = $derived<DateGroup[]>(groupByDate(results));
+const groupedResults = $derived<DateGroup[]>(groupByDate(results));
 
 function groupByDate(items: RecapSearchResultItem[]): DateGroup[] {
 	const groups = new Map<string, RecapSearchResultItem[]>();
@@ -36,12 +34,15 @@ function groupByDate(items: RecapSearchResultItem[]): DateGroup[] {
 		}
 		groups.get(date)?.push(item);
 	}
-	return Array.from(groups.entries()).map(([date, items]) => ({ date, items }));
+	return Array.from(groups.entries()).map(([date, groupItems]) => ({
+		date,
+		items: groupItems,
+	}));
 }
 
 function formatDateKey(dateStr: string): string {
 	try {
-		return new Date(dateStr).toLocaleDateString("ja-JP", {
+		return new Date(dateStr).toLocaleDateString("en-CA", {
 			year: "numeric",
 			month: "2-digit",
 			day: "2-digit",
@@ -51,89 +52,144 @@ function formatDateKey(dateStr: string): string {
 	}
 }
 
-async function loadRecaps() {
+let lastTag: string | null = null;
+let requestSeq = 0;
+
+$effect(() => {
+	const currentTag = tagName;
+	if (currentTag === lastTag) {
+		return;
+	}
+	lastTag = currentTag;
+	const seq = ++requestSeq;
+	results = [];
 	isLoading = true;
 	error = null;
-	try {
-		const transport = createClientTransport();
-		results = await searchRecapsByTag(transport, tagName, 50);
-	} catch (e) {
-		error = e instanceof Error ? e.message : "Failed to search recaps";
-	} finally {
-		isLoading = false;
-	}
-}
 
-onMount(() => {
-	loadRecaps();
-});
-
-// Reload when tag changes
-$effect(() => {
-	tagName; // track dependency
-	results = [];
-	loadRecaps();
+	const transport = createClientTransport();
+	searchRecapsByTag(transport, currentTag, 50)
+		.then((items) => {
+			if (seq !== requestSeq) return;
+			results = items;
+		})
+		.catch((e) => {
+			if (seq !== requestSeq) return;
+			error = e instanceof Error ? e.message : "Failed to search recaps";
+		})
+		.finally(() => {
+			if (seq === requestSeq) {
+				isLoading = false;
+			}
+		});
 });
 </script>
 
-<div class="flex flex-col gap-3 overflow-y-auto flex-1 pr-1">
+<div class="flex flex-1 flex-col overflow-y-auto">
 	{#if error}
-		<div class="text-red-400 text-sm py-4 text-center">{error}</div>
+		<div class="px-4 py-4 text-center text-sm text-[var(--alt-error)]">
+			{error}
+		</div>
 	{/if}
 
 	{#if isLoading}
-		<div class="flex items-center justify-center py-8">
-			<Loader2 class="h-5 w-5 animate-spin text-cyan-400" />
+		<div
+			class="flex items-center justify-center py-8 text-xs text-[var(--text-muted)]"
+			style="font-family: var(--font-mono);"
+		>
+			Loading recaps...
 		</div>
 	{:else if groupedResults.length === 0 && !error}
-		<div class="text-white/40 text-sm py-8 text-center">
+		<div class="px-4 py-8 text-center text-sm text-[var(--text-muted)]">
 			<p>No related recaps found for "{tagName}"</p>
-			<p class="mt-1 text-xs">This tag may not appear in any recap's top terms</p>
+			<p class="mt-1 text-xs">
+				This tag may not appear in any recap's top terms
+			</p>
 		</div>
 	{:else}
 		{#each groupedResults as group (group.date)}
-			<!-- Date header -->
-			<div class="sticky top-0 z-10 bg-[rgba(10,10,30,0.95)] py-1.5">
-				<span class="text-xs font-semibold text-cyan-400/80 tracking-wide">{group.date}</span>
+			<div
+				class="sticky top-0 z-10 border-b border-[var(--surface-border)] bg-[var(--surface-2)] px-4 py-1.5"
+			>
+				<span
+					class="text-xs text-[var(--text-muted)]"
+					style="font-family: var(--font-mono);"
+				>
+					{group.date}
+				</span>
 			</div>
 
-			{#each group.items as item (item.jobId + item.genre)}
-				<button
-					type="button"
-					class="rounded-lg border border-white/10 bg-white/5 p-4 text-left w-full cursor-pointer transition-colors hover:bg-white/10 hover:border-white/20"
-					onclick={() => { selectedRecap = item; modalOpen = true; }}
-				>
-					<h4 class="text-sm font-semibold text-cyan-300 mb-2">
-						{item.genre}
-					</h4>
-
-					{#if item.bullets.length > 0}
-						<ul class="space-y-1 mb-2">
-							{#each item.bullets as bullet}
-								<li class="text-xs text-white/60 pl-3 relative before:content-['•'] before:absolute before:left-0 before:text-cyan-500/60">
-									{bullet}
-								</li>
-							{/each}
-						</ul>
-					{:else if item.summary}
-						<p class="text-sm text-white/70 mb-2 leading-relaxed line-clamp-3">
-							{item.summary}
-						</p>
-					{/if}
-
-					{#if item.topTerms.length > 0}
-						<div class="flex flex-wrap gap-1 mt-2">
-							{#each item.topTerms.slice(0, 6) as term}
-								<span class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/50">
-									{term}
-								</span>
-							{/each}
+			<div
+				class="divide-y divide-[var(--surface-border)] border-b border-[var(--surface-border)]"
+			>
+				{#each group.items as item (item.jobId + item.genre)}
+					<article
+						class="relative px-4 py-3 transition-colors hover:bg-[var(--surface-hover)]"
+					>
+						<div class="mb-1.5 flex items-baseline justify-between gap-2">
+							<h3
+								class="text-sm font-semibold text-[var(--text-primary)]"
+								style="font-family: var(--font-body);"
+							>
+								<button
+									type="button"
+									class="cursor-pointer text-left before:absolute before:inset-0 focus:outline-none focus-visible:underline"
+									onclick={() => {
+										selectedRecap = item;
+										modalOpen = true;
+									}}
+								>
+									{item.genre}
+								</button>
+							</h3>
+							<span
+								class="text-xs text-[var(--text-muted)]"
+								style="font-family: var(--font-mono);"
+							>
+								{group.date}
+							</span>
 						</div>
-					{/if}
-				</button>
-			{/each}
+
+						{#if item.bullets.length > 0}
+							<ul class="mb-2 space-y-1">
+								{#each item.bullets as bullet}
+									<li
+										class="relative pl-3 text-xs text-[var(--text-secondary)] before:absolute before:left-0 before:text-[var(--text-muted)] before:content-['•']"
+									>
+										{bullet}
+									</li>
+								{/each}
+							</ul>
+						{:else if item.summary}
+							<p
+								class="mb-2 line-clamp-3 text-sm leading-relaxed text-[var(--text-secondary)]"
+							>
+								{item.summary}
+							</p>
+						{/if}
+
+						{#if item.topTerms.length > 0}
+							<div class="mt-2 flex flex-wrap gap-1">
+								{#each item.topTerms.slice(0, 6) as term}
+									<span
+										class="rounded-none border border-[var(--chip-border)] bg-[var(--chip-bg)] px-1.5 py-0.5 text-[10px] text-[var(--chip-text)]"
+										style="font-family: var(--font-mono);"
+									>
+										{term}
+									</span>
+								{/each}
+							</div>
+						{/if}
+					</article>
+				{/each}
+			</div>
 		{/each}
 	{/if}
 </div>
 
-<RecapDetailModal recap={selectedRecap} open={modalOpen} onOpenChange={(v) => { modalOpen = v; }} />
+<RecapDetailModal
+	recap={selectedRecap}
+	open={modalOpen}
+	onOpenChange={(v) => {
+		modalOpen = v;
+	}}
+/>

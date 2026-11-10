@@ -1,15 +1,16 @@
-/**
- * Detects the best available GPU rendering backend.
- * Used by Tag Verse to determine WebGPU vs WebGL2 fallback.
- */
-export function detectGPUBackend(): "webgpu" | "webgl2" | "none" {
-	if (typeof navigator !== "undefined" && "gpu" in navigator && navigator.gpu) {
-		return "webgpu";
+export function isWebGL2Available(): boolean {
+	if (typeof document === "undefined") {
+		return false;
 	}
-	if (typeof document !== "undefined") {
+	try {
 		const canvas = document.createElement("canvas");
 		const gl = canvas.getContext("webgl2");
-		if (gl) return "webgl2";
+		if (!gl) {
+			return false;
+		}
+		gl.getExtension?.("WEBGL_lose_context")?.loseContext?.();
+		return true;
+	} catch {
+		return false;
 	}
-	return "none";
 }

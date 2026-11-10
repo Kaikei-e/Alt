@@ -1,39 +1,61 @@
 <script lang="ts">
 import { Canvas } from "@threlte/core";
-import WebGPURenderer from "three/src/renderers/webgpu/WebGPURenderer.js";
+import { onMount } from "svelte";
+import { NoToneMapping } from "three";
 import type { TagCloudItem } from "#lib/connect/index.js";
 import SceneContent from "./SceneContent.svelte";
+import {
+	buildPalette,
+	readPaletteFromElement,
+	type TagVersePalette,
+} from "./scene/palette.js";
 
 interface Props {
 	tags: TagCloudItem[];
 	onTagSelect: (tagName: string) => void;
+	selectedTag?: string | null;
+	autoRotate?: boolean;
+	reducedMotion?: boolean;
+	resetViewNonce?: number;
 }
 
-let { tags, onTagSelect }: Props = $props();
+let {
+	tags,
+	onTagSelect,
+	selectedTag = null,
+	autoRotate = false,
+	reducedMotion = false,
+	resetViewNonce = 0,
+}: Props = $props();
 
-function createRenderer(canvas: HTMLCanvasElement) {
-	// Fall back to WebGL2 backend when WebGPU API is unavailable
-	// (e.g. Windows ARM64 / Qualcomm Adreno where WebGPU is not enabled by default)
-	const forceWebGL = !navigator.gpu;
-	const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL });
-	// Bind dispose so Threlte's unbound `const dispose = renderer.dispose; dispose()` works.
-	// WebGPURenderer.dispose is a prototype method that needs `this`.
-	const boundDispose = renderer.dispose.bind(renderer);
-	// Guard against Three.js WebGPU NodeManager cleanup race condition where
-	// internal node references are cleared before material disposal completes.
-	renderer.dispose = () => {
-		try {
-			boundDispose();
-		} catch {
-			// WebGPURenderer teardown order bug — safe to ignore
-		}
-	};
-	return renderer;
-}
+let containerRef = $state<HTMLDivElement | undefined>(undefined);
+let palette = $state<TagVersePalette>(buildPalette());
+
+onMount(() => {
+	palette = readPaletteFromElement(containerRef);
+});
 </script>
 
-<div class="w-full h-full" role="presentation">
-	<Canvas {createRenderer}>
-		<SceneContent {tags} {onTagSelect} />
+<div
+	bind:this={containerRef}
+	class="relative w-full h-full"
+	style:background-color={palette.paper}
+	role="presentation"
+>
+	<Canvas
+		dpr={[1, 2]}
+		renderMode="on-demand"
+		toneMapping={NoToneMapping}
+		shadows={false}
+	>
+		<SceneContent
+			{tags}
+			{onTagSelect}
+			{selectedTag}
+			{autoRotate}
+			{reducedMotion}
+			{resetViewNonce}
+			{palette}
+		/>
 	</Canvas>
 </div>
