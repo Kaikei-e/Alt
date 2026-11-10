@@ -395,6 +395,7 @@ services:
       - CONSUMER_NAME=pre-processor-1
       - NEWS_CREATOR_HOST=https://news-creator:9443
       - NEWS_CREATOR_TIMEOUT=600s
+      - NEWS_CREATOR_MIN_INTERVAL=${NEWS_CREATOR_MIN_INTERVAL:-1s}
       - NEWS_CREATOR_CLIENT_CERT_FILE=/certs/svc-cert.pem
       - NEWS_CREATOR_CLIENT_KEY_FILE=/certs/svc-key.pem
       - NEWS_CREATOR_CA_FILE=/trust/ca-bundle.pem

@@ -33,11 +33,15 @@ func NewHostRateLimiter(interval time.Duration) *HostRateLimiter {
 // Wait blocks until the next call to host is allowed. It honours ctx so
 // caller cancellation takes precedence over the interval.
 func (h *HostRateLimiter) Wait(ctx context.Context, host string) error {
-	if h == nil || h.interval <= 0 {
+	if h == nil {
 		return nil
 	}
 
 	h.mu.Lock()
+	if h.interval <= 0 {
+		h.mu.Unlock()
+		return nil
+	}
 	last, ok := h.lastCall[host]
 	now := h.now()
 	var wait time.Duration
@@ -100,4 +104,22 @@ func DefaultHostRateLimiter(interval time.Duration) *HostRateLimiter {
 		hostRateLimiter = NewHostRateLimiter(interval)
 	})
 	return hostRateLimiter
+}
+
+var (
+	newsCreatorRateLimiterOnce sync.Once
+	newsCreatorRateLimiter     *HostRateLimiter
+)
+
+// NewsCreatorHostRateLimiter returns the process-wide limiter dedicated to the
+// internal news-creator service, shared by the summarizer driver and the
+// quality checker while keeping the external-host limiter separate.
+func NewsCreatorHostRateLimiter(interval time.Duration) *HostRateLimiter {
+	newsCreatorRateLimiterOnce.Do(func() {
+		newsCreatorRateLimiter = NewHostRateLimiter(interval)
+	})
+	newsCreatorRateLimiter.mu.Lock()
+	newsCreatorRateLimiter.interval = interval
+	newsCreatorRateLimiter.mu.Unlock()
+	return newsCreatorRateLimiter
 }

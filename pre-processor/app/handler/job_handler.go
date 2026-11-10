@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"pre-processor/domain"
@@ -22,8 +23,10 @@ type jobHandler struct {
 	logger                  *slog.Logger
 	jobGroup                *orchestrator.JobGroup
 	batchSize               int
+	sweepMu                 sync.Mutex
 	lastBatchSweep          time.Time
 	batchSweepForceInterval time.Duration
+	refillNeeded            bool
 }
 
 // NewJobHandler creates a new job handler.
@@ -182,9 +185,71 @@ func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
 			MaxBackoff:      5 * time.Minute,
 			BackoffOnErrors: []error{domain.ErrServiceOverloaded, domain.ErrUpstreamBusy},
 		}, func(ctx context.Context) error {
-			return h.queueWorker.ProcessQueue(ctx)
+			return h.ProcessQueueTick(ctx)
 		}, h.logger))
 	})
+
+	return nil
+}
+
+// ProcessQueueTick runs one queue-worker iteration and triggers a refill
+// enqueue sweep if the previous sweep came back full and no pending jobs remain.
+func (h *jobHandler) ProcessQueueTick(ctx context.Context) error {
+	if h.queueWorker == nil {
+		return nil
+	}
+	if err := h.queueWorker.ProcessQueue(ctx); err != nil {
+		return err
+	}
+	return h.maybeRefillSummarizationBatch(ctx)
+}
+
+func (h *jobHandler) maybeRefillSummarizationBatch(ctx context.Context) error {
+	if h.queueWorker == nil {
+		return nil
+	}
+
+	h.sweepMu.Lock()
+	defer h.sweepMu.Unlock()
+
+	if !h.refillNeeded {
+		return nil
+	}
+
+	hasPending, err := h.queueWorker.HasPendingJobs(ctx)
+	if err != nil {
+		h.logger.WarnContext(ctx, "failed to check pending jobs, deferring refill sweep", "error", err)
+		return nil
+	}
+	if hasPending {
+		return nil
+	}
+
+	return h.runEnqueueSweepLocked(ctx, true)
+}
+
+func (h *jobHandler) runEnqueueSweepLocked(ctx context.Context, isRefill bool) error {
+	enqueueResult, err := h.queueWorker.EnqueueUnsummarizedBatch(ctx, h.batchSize)
+	if err != nil {
+		h.refillNeeded = false
+		h.logger.ErrorContext(ctx, "failed to enqueue unsummarized batch", "error", err)
+		return err
+	}
+
+	h.lastBatchSweep = time.Now()
+	h.refillNeeded = enqueueResult.HasMore && enqueueResult.Enqueued > 0
+
+	if isRefill {
+		h.logger.InfoContext(ctx, "summarization refill sweep",
+			"enqueued", enqueueResult.Enqueued,
+			"has_more", enqueueResult.HasMore,
+		)
+	}
+
+	if !enqueueResult.HasMore {
+		h.logger.InfoContext(ctx, "reached end of unsummarized articles, resetting enqueue cursor")
+		h.queueWorker.ResetEnqueueCursor()
+	}
 
 	return nil
 }
@@ -202,6 +267,9 @@ func (h *jobHandler) Stop() error {
 // overwhelming the queue. A periodic force sweep prevents indefinite deferral.
 // Fallback: if queueWorker is nil, falls back to direct LLM summarization.
 func (h *jobHandler) processSummarizationBatch(ctx context.Context) error {
+	h.sweepMu.Lock()
+	defer h.sweepMu.Unlock()
+
 	if h.queueWorker != nil && h.batchSweepForceInterval > 0 {
 		forceSweep := !h.lastBatchSweep.IsZero() &&
 			time.Since(h.lastBatchSweep) >= h.batchSweepForceInterval
@@ -222,20 +290,7 @@ func (h *jobHandler) processSummarizationBatch(ctx context.Context) error {
 
 	// Primary path: enqueue unsummarized articles via guard + CreateJob
 	if h.queueWorker != nil {
-		enqueueResult, err := h.queueWorker.EnqueueUnsummarizedBatch(ctx, h.batchSize)
-		if err != nil {
-			h.logger.ErrorContext(ctx, "failed to enqueue unsummarized batch", "error", err)
-			return err
-		}
-
-		h.lastBatchSweep = time.Now()
-
-		if !enqueueResult.HasMore {
-			h.logger.InfoContext(ctx, "reached end of unsummarized articles, resetting enqueue cursor")
-			h.queueWorker.ResetEnqueueCursor()
-		}
-
-		return nil
+		return h.runEnqueueSweepLocked(ctx, false)
 	}
 
 	// Fallback: direct LLM summarization when queueWorker is nil

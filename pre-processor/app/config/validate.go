@@ -46,6 +46,10 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("news creator timeout must be positive: %v", config.NewsCreator.Timeout)
 	}
 
+	if config.NewsCreator.MinInterval < 0 {
+		return fmt.Errorf("news creator min interval must be non-negative: %v", config.NewsCreator.MinInterval)
+	}
+
 	if config.SummarizeQueue.WorkerInterval <= 0 {
 		return fmt.Errorf("summarize queue worker interval must be positive: %v", config.SummarizeQueue.WorkerInterval)
 	}
