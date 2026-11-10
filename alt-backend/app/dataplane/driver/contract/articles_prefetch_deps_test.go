@@ -5,12 +5,14 @@ package contract
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"time"
 
 	"alt/domain"
 	"alt/orchestrator/connect/v2/articles"
 	"alt/orchestrator/usecase/fetch_article_usecase"
+	"alt/shared/usecase/fetch_tag_cloud_usecase"
 )
 
 // pactPrefetchUsecase is the third-class (prefetch) ArticleUsecase the handler
@@ -57,15 +59,59 @@ func (pactUnwiredArticleUsecase) FetchCompliantArticleWithRefresh(_ context.Cont
 	return "", "", "", errors.New("the interactive article usecase is not wired into this verification")
 }
 
-// newPactArticleDeps builds the dependency set the prefetch procedure needs.
-//
-// Only the prefetch quartet is populated. The handler's other dependencies are
-// left nil deliberately: this file is mounted for exactly one procedure, and a
-// nil that panics if some future pact reaches a different one is a better
-// outcome than a stub that answers it with something invented here.
+type pactTagCloudPort struct{}
+
+func (pactTagCloudPort) FetchTagCloud(_ context.Context, _ int) ([]*domain.TagCloudItem, error) {
+	const clusters = 8
+	const clusterSize = 32
+	items := make([]*domain.TagCloudItem, 0, clusters*clusterSize)
+	for c := range clusters {
+		for m := range clusterSize {
+			items = append(items, &domain.TagCloudItem{
+				TagName:      fmt.Sprintf("cluster-%02d-tag-%02d", c, m),
+				ArticleCount: 1000,
+			})
+		}
+	}
+	return items, nil
+}
+
+func (pactTagCloudPort) FetchTagCooccurrences(_ context.Context, _ []string) ([]*domain.TagCooccurrence, error) {
+	const clusters = 8
+	const clusterSize = 32
+	coocs := make([]*domain.TagCooccurrence, 0, 720)
+	// Tag 0 joins cluster 0 via label propagation over all pairs, while the 600
+	// strongest kept edges all have sourceIndex >= 1 so protojson never omits
+	// sourceIndex as a proto3 zero value.
+	coocs = append(coocs, &domain.TagCooccurrence{
+		TagNameA:    "cluster-00-tag-00",
+		TagNameB:    "cluster-00-tag-01",
+		SharedCount: 10,
+	})
+	for c := range clusters {
+		start := 0
+		if c == 0 {
+			start = 1
+		}
+		for i := start; i < clusterSize; i++ {
+			for step := 1; step <= 3 && i+step < clusterSize; step++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    fmt.Sprintf("cluster-%02d-tag-%02d", c, i),
+					TagNameB:    fmt.Sprintf("cluster-%02d-tag-%02d", c, i+step),
+					SharedCount: 900 - 10*i - step,
+				})
+			}
+		}
+	}
+	return coocs, nil
+}
+
+// newPactArticleDeps builds the dependency set the prefetch and tag-cloud
+// procedures need.
 func newPactArticleDeps() articles.ArticleHandlerDeps {
 	return articles.ArticleHandlerDeps{
 		Article:           pactUnwiredArticleUsecase{},
+		FetchTagCloud:     fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(pactTagCloudPort{}, 30*time.Minute),
 		PrefetchArticle:   pactPrefetchUsecase{},
 		PrefetchHostSlots: pactHostSlots{},
 		PrefetchProbe:     pactStoredArticles{},

@@ -73,8 +73,13 @@ func mountArticleServiceProcedures(mux *http.ServeMux) {
 	)
 
 	_, connectHandler := articlesv2connect.NewArticleServiceHandler(handler)
+	authedHandler := withPactUserContext(connectHandler)
 	mux.Handle(
 		"/alt.articles.v2.ArticleService/BatchPrefetchArticleContent",
-		withPactUserContext(connectHandler),
+		authedHandler,
+	)
+	mux.Handle(
+		"/alt.articles.v2.ArticleService/FetchTagCloud",
+		authedHandler,
 	)
 }

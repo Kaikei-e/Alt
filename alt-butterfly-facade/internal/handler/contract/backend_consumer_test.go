@@ -302,3 +302,64 @@ func TestBFFProxyBatchPrefetchArticleContent(t *testing.T) {
 		})
 	require.NoError(t, err)
 }
+
+func TestBFFProxyFetchTagCloud(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("tag cloud data is available").
+		UponReceiving("a FetchTagCloud unary Connect-RPC request proxied by BFF").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.articles.v2.ArticleService/FetchTagCloud"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"tags": matchers.EachLike(map[string]interface{}{
+					"tagName":      matchers.Like("rust"),
+					"articleCount": matchers.Like(42),
+					"positionX":    matchers.Like(12.5),
+					"positionY":    matchers.Like(-8.3),
+					"positionZ":    matchers.Like(4.1),
+					"clusterId":    matchers.Like(1),
+				}, 1),
+				"edges": matchers.EachLike(map[string]interface{}{
+					"sourceIndex": matchers.Like(1),
+					"targetIndex": matchers.Like(2),
+					"weight":      matchers.Like(0.85),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.articles.v2.ArticleService/FetchTagCloud",
+				strings.NewReader("{}"),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			body := recorder.Body.String()
+			assert.Contains(t, body, "clusterId")
+			assert.Contains(t, body, "edges")
+			return nil
+		})
+	require.NoError(t, err)
+}
