@@ -75,11 +75,11 @@ python3 scripts/tests/test-kisage-env.py --audit-host-config
 
 ## Staged Read-Only Preflight & Explicit Scope Limits
 
-`python3 scripts/kisage-env.py preflight --env-file <path>` is a **read-only preflight gate** invoked via `make kisage-preflight` and wired as step `[2/6]` in `scripts/deploy.sh` right after `check-compose-variables.sh` (it performs no automatic host apply).
+`python3 scripts/kisage-env.py preflight --env-file <path>` is a **read-only preflight gate** invoked via `make kisage-preflight` and wired as step `[2/6]` in `scripts/deploy.sh` right after `check-compose-variables.sh` (it performs no automatic host apply). A managed key that is present in `.env` with a value different from the declaration (for example values copied from an older template) stops `scripts/deploy.sh` at the preflight step, so run `make kisage-preflight ENV_FILE=.env` before relying on the deploy script.
 
 1. **Managed-Subset Comparison Only**:
-   - Compares only repository-managed keys declared under `/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`, `/mtls_policy`, and `/llm_budgets` in `deploy/desired-env.lkal`.
-   - `verify` classifies every managed key from production Compose (`compose/compose.yaml` `include:` chain) into four classes: `defaulted` (interpolated via `${KEY:-default}` with identical defaults matching the declaration), `pinned` (literal container variable assignment matching the declaration), `required` (interpolated without a default), or `passthrough` (not referenced in production Compose; must be set uncommented in `.env.template` with the declared value). Any managed key set uncommented in `.env.template` or `.env.example` must match the declaration. In `preflight`, absent `defaulted` and `pinned` keys in `.env` are accepted because Compose supplies them, whereas absent `passthrough` or `required` keys and any present managed key whose value differs from the declaration are rejected.
+   - Compares only repository-managed keys declared under `/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`, `/mtls_policy`, and `/llm_budgets` in `deploy/desired-env.lkal` (service-prefixed mTLS policy flags only; unprefixed `MTLS_LISTEN`, `MTLS_PORT`, `MTLS_CLIENT_AUTH`, and `MTLS_ALLOWED_PEERS` are rejected by `verify` with `dotenv-forbidden-key` because `alt-backend` receives `../.env` via `env_file` and exits at startup if any of them is set).
+   - `verify` classifies every managed key from production Compose (`compose/compose.yaml` `include:` chain) into four classes: `defaulted` (interpolated via `${KEY:-default}` with identical defaults matching the declaration and no bare/required reference), `pinned` (literal container variable assignment matching the declaration), `required` (interpolated via `${KEY}`, `${KEY:?...}`, or bare `$KEY`, taking precedence over `defaulted`), or `passthrough` (not referenced in production Compose; must be set uncommented in `.env.template` with the declared value). Any managed key set uncommented in `.env.template` or `.env.example` must match the declaration. In `preflight`, absent `defaulted` and `pinned` keys in `.env` are accepted because Compose supplies them, whereas absent `passthrough` or `required` keys and any present managed key whose value differs from the declaration are rejected (`mtls_allowlists` values are compared as peer sets without duplicates, matching `verify`).
    - Unmanaged host secrets and `/local/*` operator keys in `.env` are preserved and ignored unless a line is syntactically malformed or duplicated.
 2. **Raw Dotenv File Scope & Managed-vs-Unmanaged Interpolation Policy**:
    - Parses the raw `.env` file on disk: supports unquoted values (including apostrophes `'`), single-quoted literal values (`'...'`), and double-quoted values (`"..."`) with standard backslash escapes (`\"`, `\\`, `\$`, `\n`, `\r`, `\t`).
@@ -122,7 +122,7 @@ During staged evaluation, run `make kisage-preflight` alongside the existing bas
 4. **Manual Recovery Operations**: Count of host operator interventions (`explain` / `adopt` / state backup restores) required to recover from drift or rollback.
 5. **Live Raw `.env` Observation**:
    - Read-only `python3 scripts/kisage-env.py preflight --env-file .env` inspects raw `.env` lines on disk alongside the Compose binding classification from `verify`.
-   - The `23` managed keys that are absent from a typical host `.env` are `defaulted` or `pinned` in production Compose (`compose/*.yaml`), so `preflight` accepts their absence while still rejecting any absent `passthrough`/`required` key or any present managed key whose value drifts from `deploy/desired-env.lkal`. This check still does not inspect running-container state (`docker inspect`).
+   - The `22` managed keys that are absent from a typical host `.env` are `defaulted` or `pinned` in production Compose (`compose/*.yaml`), so `preflight` accepts their absence while still rejecting any absent `passthrough`/`required` key or any present managed key whose value drifts from `deploy/desired-env.lkal`. This check still does not inspect running-container state (`docker inspect`).
 
 ---
 
@@ -147,7 +147,7 @@ chmod 600 "$BACKUP_DIR/.env.bak" "$BACKUP_DIR/kisage-state.tar"
 
 ### 2. Inspect Plan & Apply (Host Operator)
 
-> **Scope Extension Note**: If a host's existing `host.json` `scope` list predates `/mtls_policy` and `/llm_budgets`, the host operator must extend `scope` in `host.json` to include `/mtls_policy` and `/llm_budgets` before `kisage plan` or `kisage apply` will accept those sections.
+> **Scope Extension Note**: If an existing sandbox's `host.json` `scope` list predates `/mtls_policy` and `/llm_budgets`, re-running `python3 scripts/kisage-env.py init` safely regenerates `host.json` with `scope` entries for all `MANAGED_SECTIONS` while preserving existing `host-env.lkal` and `state/ownership.json` without re-running `kisage init-store` (pass `--actor` if a non-default actor was configured), or the host operator can extend `scope` in `host.json` directly to include `/mtls_policy` and `/llm_budgets` before running `kisage plan` or `kisage apply`.
 
 ```bash
 export KISAGE_HOST_CONFIG="$PWD/.kisage/host.json"

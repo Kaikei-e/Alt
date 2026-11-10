@@ -2,10 +2,12 @@
 # Tests for scripts/deploy.sh — c2quay-backed thin wrapper.
 #
 # The wrapper chains:
-#   1. scripts/check-compose-variables.sh (env render gate)
-#   2. scripts/pact-check.sh --broker     (publishes pacts; c2quay does not)
-#   3. leftover pki-agent stop/rm + zero gate (project=alt, before parent up)
-#   4. c2quay deploy --env <env> --config ./c2quay.yml
+#   1. scripts/check-compose-variables.sh        (env render gate)
+#   2. scripts/kisage-env.py preflight           (read-only managed env lockstep gate)
+#   3. scripts/check-apparmor-profile.sh --probe (host policy + signal delivery)
+#   4. scripts/pact-check.sh --broker            (publishes pacts; c2quay does not)
+#   5. leftover pki-agent stop/rm + zero gate    (project=alt, before parent up)
+#   6. c2quay deploy --env <env> --config ./c2quay.yml
 #
 # Wave 4 retired scripts/cascade-pki-sidecars.sh. There is no netns-sharing
 # pki sidecar left to cascade; deploy must not invoke that tombstone.

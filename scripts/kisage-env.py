@@ -11,9 +11,10 @@ and host-local settings (`/local/*` in `.kisage/host-env.lkal`) with the officia
     `/rate_limits`, `/feature_flags`, `/mtls_policy`, and `/llm_budgets`
     (preserving `/local/*` as undeclared unowned siblings), and initializes
     the `kisage` ownership store.
-  * `verify`: Checks that `deploy/desired-env.lkal` parses via official `lkal`
-    and stays in lockstep with `deploy/host-prereqs.yaml` and ADR-000982's 5s
-    rate-limit floor.
+  * `verify`: Checks that `deploy/desired-env.lkal` parses via official `lkal`,
+    is in canonical `lkal fmt` format, and stays in lockstep with
+    `deploy/host-prereqs.yaml`, production Compose bindings, `.env.template` /
+    `.env.example`, and ADR-000982's 5s rate-limit floor.
   * `render-dotenv`: Projects a converged `host-env.lkal` into deterministic,
     escaped `KEY=VALUE` dotenv lines (rejecting unrepresentable values)
     validated against `scripts/check-env-overrides.py`.
@@ -67,6 +68,13 @@ MANAGED_SECTIONS = (
     "feature_flags",
     "mtls_policy",
     "llm_budgets",
+)
+# alt-backend receives the host dotenv via env_file and exits at startup when any of these variables is set.
+DOTENV_FORBIDDEN_KEYS = (
+    "MTLS_LISTEN",
+    "MTLS_PORT",
+    "MTLS_CLIENT_AUTH",
+    "MTLS_ALLOWED_PEERS",
 )
 ALL_SECTIONS = (*MANAGED_SECTIONS, "local")
 MIN_EXTERNAL_API_INTERVAL_SECONDS = 5.0
@@ -568,16 +576,16 @@ def resolve_compose_bindings(
 
     bindings: dict[str, dict[str, Any]] = {}
     for key in sorted(managed_set):
-        if defaults_by_key[key]:
-            bindings[key] = {
-                "class": "defaulted",
-                "defaults": defaults_by_key[key],
-                "literals": [],
-            }
-        elif required_by_key[key]:
+        if required_by_key[key]:
             bindings[key] = {
                 "class": "required",
                 "defaults": [],
+                "literals": [],
+            }
+        elif defaults_by_key[key]:
+            bindings[key] = {
+                "class": "defaulted",
+                "defaults": defaults_by_key[key],
                 "literals": [],
             }
         elif literals_by_key[key]:
@@ -694,6 +702,11 @@ def verify_declaration(
     except ValueError as exc:
         errors.append(str(exc))
         return errors
+
+    for forbidden_key in sorted(set(env_map) & set(DOTENV_FORBIDDEN_KEYS)):
+        errors.append(
+            f"dotenv-forbidden-key: {forbidden_key} cannot be managed in the host dotenv because alt-backend rejects it at startup"
+        )
 
     findings = overrides.evaluate(env_map, rules)
     for finding in findings:
@@ -1021,13 +1034,16 @@ def preflight_dotenv(
         raw_env_text, managed_keys=set(expected_managed)
     )
     errors = list(parse_errors)
+    decl_allowlists = sections.get("mtls_allowlists") or {}
 
     for key in sorted(expected_managed):
         b_class = bindings[key]["class"]
         if key not in actual_env:
             if b_class in ("passthrough", "required"):
                 errors.append(f"missing managed key in dotenv: {key}")
-        elif actual_env[key] != expected_managed[key]:
+        elif not _value_matches_declaration(
+            key, actual_env[key], expected_managed, decl_allowlists
+        ):
             errors.append(f"managed key drift (value mismatch) in dotenv: {key}")
 
     return errors
@@ -1288,13 +1304,23 @@ def main(argv: list[str] | None = None) -> int:
     p_init.add_argument("--actor", type=str, default="alt-operator")
 
     p_verify = sub.add_parser(
-        "verify", help="Verify deploy/desired-env.lkal against deploy/host-prereqs.yaml"
+        "verify",
+        help="Verify deploy/desired-env.lkal canonical format and lockstep with deploy/host-prereqs.yaml, compose, and env templates",
     )
     p_verify.add_argument(
         "--declaration", type=pathlib.Path, default=DEFAULT_DECLARATION
     )
     p_verify.add_argument("--manifest", type=pathlib.Path, default=DEFAULT_MANIFEST)
     p_verify.add_argument("--lkal-bin", type=str, default=None)
+    p_verify.add_argument(
+        "--compose-root", type=pathlib.Path, default=DEFAULT_COMPOSE_ROOT
+    )
+    p_verify.add_argument(
+        "--env-template", type=pathlib.Path, default=DEFAULT_ENV_TEMPLATE
+    )
+    p_verify.add_argument(
+        "--env-example", type=pathlib.Path, default=DEFAULT_ENV_EXAMPLE
+    )
 
     p_render = sub.add_parser(
         "render-dotenv",
@@ -1343,7 +1369,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "verify":
         errs = verify_declaration(
-            args.declaration, args.manifest, lkal_bin=args.lkal_bin
+            args.declaration,
+            args.manifest,
+            lkal_bin=args.lkal_bin,
+            compose_root=args.compose_root,
+            env_template_path=args.env_template,
+            env_example_path=args.env_example,
         )
         errs.extend(check_lkal_format(args.declaration, lkal_bin=args.lkal_bin))
         if errs:
@@ -1351,7 +1382,7 @@ def main(argv: list[str] | None = None) -> int:
                 sys.stderr.write(f"ERROR: {err}\n")
             return 1
         print(
-            "OK: deploy/desired-env.lkal is in lockstep with deploy/host-prereqs.yaml"
+            "OK: deploy/desired-env.lkal is in canonical lkal fmt format and in lockstep with deploy/host-prereqs.yaml, production compose, .env.template, and .env.example"
         )
         return 0
 
