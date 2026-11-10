@@ -73,13 +73,8 @@ function loadTagVerse() {
 				import("./TagVerseScene.svelte"),
 			]);
 			if (!cancelled) {
-				if (Array.isArray(fetchedCloud)) {
-					tags = fetchedCloud;
-					edges = [];
-				} else {
-					tags = fetchedCloud.tags;
-					edges = fetchedCloud.edges;
-				}
+				tags = fetchedCloud.tags;
+				edges = fetchedCloud.edges;
 				SceneComponent = sceneModule.default;
 			}
 		} catch (e) {
@@ -192,6 +187,7 @@ onMount(() => {
 						{selectedTag}
 						{selectionSource}
 						{focusedClusterId}
+						occludedRightPx={selectedTag !== null ? 400 : 0}
 						autoRotate={effectiveAutoRotate}
 						{reducedMotion}
 						{resetViewNonce}

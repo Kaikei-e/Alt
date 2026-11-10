@@ -1,7 +1,7 @@
 <script lang="ts">
 import { T, useThrelte } from "@threlte/core";
 import { interactivity } from "@threlte/extras";
-import { onDestroy, onMount } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import * as THREE from "three";
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import CameraRig from "./scene/CameraRig.svelte";
@@ -12,8 +12,12 @@ import {
 	buildSceneModel,
 	buildTopicClusters,
 	computeFocusEmphasis,
+	DIR_LIGHT_INTENSITY,
 	fogWindow,
+	HEMI_LIGHT_INTENSITY,
+	KEY_LIGHT_DIRECTION,
 	type SelectionSource,
+	updateEdgeBufferAlphas,
 } from "./scene/sceneModel.js";
 import TagNodes from "./scene/TagNodes.svelte";
 
@@ -25,10 +29,10 @@ interface Props {
 	selectedTag?: string | null;
 	selectionSource?: SelectionSource;
 	focusedClusterId?: number | null;
+	occludedRightPx?: number;
 	autoRotate?: boolean;
 	reducedMotion?: boolean;
 	resetViewNonce?: number;
-	onSceneCreated?: (scene: THREE.Scene) => void;
 }
 
 let {
@@ -39,23 +43,19 @@ let {
 	selectedTag = null,
 	selectionSource = "canvas",
 	focusedClusterId = null,
+	occludedRightPx = 0,
 	autoRotate = false,
 	reducedMotion = false,
 	resetViewNonce = 0,
-	onSceneCreated,
 }: Props = $props();
 
 const { scene, renderer, invalidate } = useThrelte();
-
-onMount(() => {
-	onSceneCreated?.(scene);
-});
 
 interactivity();
 
 let hoveredIndex = $state<number | null>(null);
 
-const model = $derived(buildSceneModel(tags));
+const model = $derived(buildSceneModel(tags, palette));
 const topicClusters = $derived(buildTopicClusters(model.nodes, palette));
 
 const selectedIndex = $derived(
@@ -79,10 +79,17 @@ const initialFog = $derived(
 	fogWindow(model.cloudRadius * 1.5, model.cloudRadius),
 );
 
-// WHY: Under NoToneMapping, a 0.7 hemisphere + 0.3 directional light sum to 1.0 diffuse irradiance on the lit mid-tone, preserving each topic ink hex and its >= 3:1 WCAG contrast on #faf9f7 while shading the dark terminator toward paper.
-const hemiLight = new THREE.HemisphereLight("#ffffff", "#faf9f7", 0.7);
-const dirLight = new THREE.DirectionalLight("#ffffff", 0.3);
-dirLight.position.set(1, 1.5, 1);
+const hemiLight = new THREE.HemisphereLight(
+	"#ffffff",
+	"#faf9f7",
+	HEMI_LIGHT_INTENSITY,
+);
+const dirLight = new THREE.DirectionalLight("#ffffff", DIR_LIGHT_INTENSITY);
+dirLight.position.set(
+	KEY_LIGHT_DIRECTION[0],
+	KEY_LIGHT_DIRECTION[1],
+	KEY_LIGHT_DIRECTION[2],
+);
 
 const edgeGeometry = new THREE.BufferGeometry();
 const edgeMaterial = new THREE.LineBasicMaterial({
@@ -119,13 +126,13 @@ $effect(() => {
 	const currentNodes = model.nodes;
 	const currentEdges = edges;
 	const currentPalette = palette;
-	const alphas = focusEmphasis.edgeAlphas;
+	const initialAlphas = untrack(() => focusEmphasis.edgeAlphas);
 
 	const { positions, colors } = buildEdgeBuffers(
 		currentNodes,
 		currentEdges,
 		currentPalette,
-		alphas,
+		initialAlphas,
 	);
 	edgeGeometry.setAttribute(
 		"position",
@@ -136,7 +143,24 @@ $effect(() => {
 	invalidate();
 });
 
+$effect(() => {
+	const alphas = focusEmphasis.edgeAlphas;
+	const colorAttr = edgeGeometry.getAttribute("color");
+	if (colorAttr instanceof THREE.BufferAttribute) {
+		const changed = updateEdgeBufferAlphas(
+			colorAttr.array as Float32Array,
+			alphas,
+		);
+		if (changed.length > 0) {
+			colorAttr.needsUpdate = true;
+			invalidate();
+		}
+	}
+});
+
 onDestroy(() => {
+	hemiLight.dispose();
+	dirLight.dispose();
 	edgeGeometry.dispose();
 	edgeMaterial.dispose();
 });
@@ -150,6 +174,7 @@ function handleHoverChange(index: number | null) {
 	cloudRadius={model.cloudRadius}
 	{selectedNode}
 	{selectionSource}
+	{occludedRightPx}
 	{autoRotate}
 	{reducedMotion}
 	{resetViewNonce}

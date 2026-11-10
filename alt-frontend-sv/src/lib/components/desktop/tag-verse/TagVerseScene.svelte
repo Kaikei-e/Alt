@@ -1,7 +1,7 @@
 <script lang="ts">
 import { Canvas } from "@threlte/core";
-import { onMount } from "svelte";
-import { NoToneMapping, type Scene } from "three";
+import { onMount, type Snippet } from "svelte";
+import { NoToneMapping } from "three";
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import SceneContent from "./SceneContent.svelte";
 import {
@@ -18,10 +18,11 @@ interface Props {
 	selectedTag?: string | null;
 	selectionSource?: SelectionSource;
 	focusedClusterId?: number | null;
+	occludedRightPx?: number;
 	autoRotate?: boolean;
 	reducedMotion?: boolean;
 	resetViewNonce?: number;
-	onSceneCreated?: (scene: Scene) => void;
+	children?: Snippet;
 }
 
 let {
@@ -31,10 +32,11 @@ let {
 	selectedTag = null,
 	selectionSource = "canvas",
 	focusedClusterId = null,
+	occludedRightPx = 0,
 	autoRotate = false,
 	reducedMotion = false,
 	resetViewNonce = 0,
-	onSceneCreated,
+	children,
 }: Props = $props();
 
 let containerRef = $state<HTMLDivElement | undefined>(undefined);
@@ -67,12 +69,13 @@ onMount(() => {
 			{selectedTag}
 			{selectionSource}
 			{focusedClusterId}
+			{occludedRightPx}
 			{autoRotate}
 			{reducedMotion}
 			{resetViewNonce}
 			{palette}
-			{onSceneCreated}
 		/>
+		{@render children?.()}
 	</Canvas>
 	<div
 		aria-hidden="true"

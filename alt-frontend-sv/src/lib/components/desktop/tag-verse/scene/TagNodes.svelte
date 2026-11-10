@@ -3,12 +3,12 @@ import { T, useThrelte } from "@threlte/core";
 import type { IntersectionEvent } from "@threlte/extras";
 import { onDestroy, untrack } from "svelte";
 import * as THREE from "three";
+import type { TagVersePalette } from "./palette.js";
 import {
-	clusterInkForTag,
-	mixTowardPaper,
-	type TagVersePalette,
-} from "./palette.js";
-import type { SceneNode } from "./sceneModel.js";
+	applyIncrementalNodeColors,
+	applyIncrementalNodeScales,
+	type SceneNode,
+} from "./sceneModel.js";
 
 interface Props {
 	nodes: readonly SceneNode[];
@@ -32,8 +32,6 @@ let {
 
 const { invalidate } = useThrelte();
 
-const HIGHLIGHT_SCALE = 1.15;
-
 const geometry = new THREE.SphereGeometry(1, 24, 16);
 const material = new THREE.MeshLambertMaterial({ color: "#ffffff" });
 
@@ -55,38 +53,21 @@ const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _color = new THREE.Color();
 
+let currentNodesRef: readonly SceneNode[] | null = null;
+let currentHexes: string[] = [];
+let currentScales = new Float32Array(0);
+
 function applyInstanceTransform(
 	targetMesh: THREE.InstancedMesh,
 	index: number,
-	isHighlighted: boolean,
+	scaleValue: number,
 ) {
 	const node = nodes[index];
 	if (!node) return;
-	const s = node.radius * (isHighlighted ? HIGHLIGHT_SCALE : 1);
 	_pos.set(node.position[0], node.position[1], node.position[2]);
-	_scale.set(s, s, s);
+	_scale.set(scaleValue, scaleValue, scaleValue);
 	_matrix.compose(_pos, _quat, _scale);
 	targetMesh.setMatrixAt(index, _matrix);
-}
-
-function applyInstanceColor(
-	targetMesh: THREE.InstancedMesh,
-	index: number,
-	isHighlighted: boolean,
-	currentPalette: TagVersePalette,
-	paperMix: number,
-) {
-	const node = nodes[index];
-	if (!node) return;
-	const baseHex = isHighlighted
-		? currentPalette.accent
-		: clusterInkForTag(node.clusterId, node.colorBucket, currentPalette);
-	const hex =
-		paperMix > 0
-			? mixTowardPaper(baseHex, currentPalette.paper, paperMix)
-			: baseHex;
-	_color.set(hex);
-	targetMesh.setColorAt(index, _color);
 }
 
 $effect(() => {
@@ -99,6 +80,8 @@ $effect(() => {
 	const requiredCapacity = Math.max(1, count);
 
 	let activeMesh = untrack(() => mesh);
+	const nodesChanged = currentNodes !== currentNodesRef;
+
 	if (activeMesh.instanceMatrix.count !== requiredCapacity) {
 		activeMesh.dispose();
 		activeMesh = createInstancedMesh(count);
@@ -107,22 +90,50 @@ $effect(() => {
 		activeMesh.count = count;
 	}
 
-	for (let i = 0; i < count; i++) {
-		const isHighlighted = i === h || i === s;
-		const paperMix = mixArr && i < mixArr.length ? (mixArr[i] ?? 0) : 0;
-		applyInstanceTransform(activeMesh, i, isHighlighted);
-		applyInstanceColor(activeMesh, i, isHighlighted, currentPalette, paperMix);
+	if (nodesChanged || currentScales.length !== count) {
+		currentNodesRef = currentNodes;
+		currentScales = new Float32Array(count);
+		currentHexes = new Array<string>(count).fill("");
 	}
 
-	activeMesh.instanceMatrix.needsUpdate = true;
-	if (activeMesh.instanceColor) {
-		activeMesh.instanceColor.needsUpdate = true;
-	}
-	if (count > 0) {
-		activeMesh.computeBoundingSphere();
+	const changedScaleIndices = applyIncrementalNodeScales(
+		currentScales,
+		currentNodes,
+		s,
+		h,
+	);
+	if (changedScaleIndices.length > 0) {
+		for (const idx of changedScaleIndices) {
+			applyInstanceTransform(activeMesh, idx, currentScales[idx] ?? 1);
+		}
+		activeMesh.instanceMatrix.needsUpdate = true;
+		if (count > 0) {
+			activeMesh.computeBoundingSphere();
+		}
 	}
 
-	invalidate();
+	const changedColorIndices = applyIncrementalNodeColors(
+		currentHexes,
+		currentNodes,
+		currentPalette,
+		s,
+		mixArr,
+	);
+	if (changedColorIndices.length > 0) {
+		for (const idx of changedColorIndices) {
+			const hex = currentHexes[idx];
+			if (!hex) continue;
+			_color.set(hex);
+			activeMesh.setColorAt(idx, _color);
+		}
+		if (activeMesh.instanceColor) {
+			activeMesh.instanceColor.needsUpdate = true;
+		}
+	}
+
+	if (changedScaleIndices.length > 0 || changedColorIndices.length > 0) {
+		invalidate();
+	}
 });
 
 function handlePointerMove(event: IntersectionEvent<PointerEvent>) {

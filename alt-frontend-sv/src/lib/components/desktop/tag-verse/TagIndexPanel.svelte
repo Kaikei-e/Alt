@@ -90,7 +90,7 @@ const hasNonEmptyQuery = $derived(searchQuery.trim().length > 0);
 									aria-hidden="true"
 									class="h-2.5 w-2.5 shrink-0"
 									style:background-color={clusterBaseInk(
-										item.clusterId ?? 0,
+										item.clusterId,
 										palette,
 									)}
 								></span>

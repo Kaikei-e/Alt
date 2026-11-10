@@ -15,6 +15,7 @@ interface Props {
 	cloudRadius: number;
 	selectedNode: SceneNode | null;
 	selectionSource?: SelectionSource;
+	occludedRightPx?: number;
 	autoRotate: boolean;
 	reducedMotion: boolean;
 	resetViewNonce: number;
@@ -24,14 +25,20 @@ let {
 	cloudRadius,
 	selectedNode,
 	selectionSource = "canvas",
+	occludedRightPx = 0,
 	autoRotate,
 	reducedMotion,
 	resetViewNonce,
 }: Props = $props();
 
-const { scene, invalidate } = useThrelte();
+const { scene, size, invalidate } = useThrelte();
 
 const ANIMATION_DURATION = 0.9;
+const initialCameraPosition: [number, number, number] = [
+	0,
+	0,
+	untrack(() => cloudRadius) * 1.5,
+];
 
 let cameraRef = $state<THREE.PerspectiveCamera | undefined>(undefined);
 let controlsRef = $state<ThreeOrbitControls | undefined>(undefined);
@@ -122,6 +129,7 @@ let lastSelectedTag: string | null = null;
 $effect(() => {
 	const node = selectedNode;
 	const source = selectionSource;
+	const rightInset = occludedRightPx;
 	const nextName = node?.tagName ?? null;
 	if (nextName === lastSelectedTag) return;
 	lastSelectedTag = nextName;
@@ -149,6 +157,8 @@ $effect(() => {
 			ndcX: _ndc.x,
 			ndcY: _ndc.y,
 			isBehindCamera,
+			canvasWidth: untrack(() => size.current.width),
+			occludedRightPx: rightInset,
 		})
 	) {
 		return;
@@ -185,7 +195,7 @@ $effect(() => {
 <T.PerspectiveCamera
 	makeDefault
 	bind:ref={cameraRef}
-	position={[0, 0, cloudRadius * 1.5]}
+	position={initialCameraPosition}
 	fov={50}
 >
 	<OrbitControls
@@ -193,7 +203,7 @@ $effect(() => {
 		enableDamping
 		dampingFactor={0.08}
 		enablePan={false}
-		{autoRotate}
+		autoRotate={autoRotate && !isAnimating}
 		autoRotateSpeed={0.4}
 		minDistance={cloudRadius * 0.3}
 		maxDistance={cloudRadius * 5}

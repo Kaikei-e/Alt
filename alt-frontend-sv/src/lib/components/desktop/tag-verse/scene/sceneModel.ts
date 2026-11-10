@@ -1,7 +1,10 @@
+import { Color, LinearSRGBColorSpace } from "three";
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import {
 	buildPalette,
 	clusterBaseInk,
+	clusterInkForTag,
+	mixTowardPaper,
 	type TagVersePalette,
 } from "./palette.js";
 
@@ -203,7 +206,7 @@ export function computeLabelOpacity(depth: number, window: FogWindow): number {
 
 export function buildSceneModel(
 	tags: readonly TagCloudItem[],
-	_palette?: TagVersePalette,
+	palette: TagVersePalette = buildPalette(),
 ): SceneModel {
 	const serverPos = hasServerPositions(tags);
 	const cloudRadius = computeCloudRadius(tags, serverPos);
@@ -235,17 +238,18 @@ export function buildSceneModel(
 		const labelFontSize = isDisplayTier
 			? 18 + normalized * 8
 			: 11 + normalized * 3;
+		const colorBucket = computeColorBucket(tag.articleCount, maxCount);
 
 		nodes[i] = {
 			tagName: tag.tagName,
 			articleCount: tag.articleCount,
 			position,
 			radius: computeRadius(tag.articleCount, maxCount),
-			colorBucket: computeColorBucket(tag.articleCount, maxCount),
+			colorBucket,
 			labelFontSize,
 			clusterId: tag.clusterId,
 			isDisplayTier,
-			baseInk: "",
+			baseInk: clusterInkForTag(tag.clusterId, colorBucket, palette),
 		};
 		indexByName.set(tag.tagName, i);
 	}
@@ -384,16 +388,7 @@ export function computeFocusEmphasis(
 	};
 }
 
-function hexToNormalizedRgb(hex: string): [number, number, number] {
-	const cleaned = hex.trim().replace(/^#/, "");
-	if (cleaned.length < 6) {
-		return [0.1, 0.1, 0.1];
-	}
-	const r = Number.parseInt(cleaned.slice(0, 2), 16) / 255;
-	const g = Number.parseInt(cleaned.slice(2, 4), 16) / 255;
-	const b = Number.parseInt(cleaned.slice(4, 6), 16) / 255;
-	return [r, g, b];
-}
+const _edgeColor = new Color();
 
 export function buildEdgeBuffers(
 	nodes: readonly SceneNode[],
@@ -404,7 +399,10 @@ export function buildEdgeBuffers(
 	const validCount = edges.length;
 	const positions = new Float32Array(validCount * 6);
 	const colors = new Float32Array(validCount * 8);
-	const neutralRgb = hexToNormalizedRgb(palette.labelInk);
+	_edgeColor.set(palette.labelInk);
+	const neutralR = _edgeColor.r;
+	const neutralG = _edgeColor.g;
+	const neutralB = _edgeColor.b;
 
 	for (let i = 0; i < validCount; i++) {
 		const edge = edges[i];
@@ -423,9 +421,15 @@ export function buildEdgeBuffers(
 
 		const isSameCluster =
 			source.clusterId > 0 && source.clusterId === target.clusterId;
-		const [r, g, b] = isSameCluster
-			? hexToNormalizedRgb(clusterBaseInk(source.clusterId, palette))
-			: neutralRgb;
+		let r = neutralR;
+		let g = neutralG;
+		let b = neutralB;
+		if (isSameCluster) {
+			_edgeColor.set(clusterBaseInk(source.clusterId, palette));
+			r = _edgeColor.r;
+			g = _edgeColor.g;
+			b = _edgeColor.b;
+		}
 		const w = Math.max(0, Math.min(1, edge.weight));
 		const alpha =
 			edgeAlphas && i < edgeAlphas.length
@@ -516,41 +520,153 @@ export function needsFraming(params: {
 	if (params.isBehindCamera) {
 		return true;
 	}
-	return Math.abs(params.ndcX) > 0.6 || Math.abs(params.ndcY) > 0.6;
+	let effectiveNdcX = params.ndcX;
+	const canvasWidth = params.canvasWidth ?? 0;
+	const occludedRightPx = Math.max(0, params.occludedRightPx ?? 0);
+	if (canvasWidth > 0 && occludedRightPx > 0) {
+		const visibleWidth = Math.max(1, canvasWidth - occludedRightPx);
+		const screenX = (params.ndcX * 0.5 + 0.5) * canvasWidth;
+		effectiveNdcX = (screenX / visibleWidth) * 2 - 1;
+	}
+	return Math.abs(effectiveNdcX) > 0.6 || Math.abs(params.ndcY) > 0.6;
 }
 
 export function computeLambertLitColor(
-	_inkHex: string,
-	_normal: readonly [number, number, number],
-	_paperHex = "#faf9f7",
+	inkHex: string,
+	normal: readonly [number, number, number],
+	paperHex = "#faf9f7",
 ): LambertLitColor {
-	return { linear: [0, 0, 0], hex: "#000000" };
+	const inkColor = new Color(inkHex);
+	const skyColor = new Color("#ffffff");
+	const groundColor = new Color(paperHex);
+	const dirColor = new Color("#ffffff");
+
+	const nLen = Math.hypot(normal[0], normal[1], normal[2]) || 1;
+	const nx = normal[0] / nLen;
+	const ny = normal[1] / nLen;
+	const nz = normal[2] / nLen;
+
+	const kLen = Math.hypot(
+		KEY_LIGHT_DIRECTION[0],
+		KEY_LIGHT_DIRECTION[1],
+		KEY_LIGHT_DIRECTION[2],
+	);
+	const kx = KEY_LIGHT_DIRECTION[0] / kLen;
+	const ky = KEY_LIGHT_DIRECTION[1] / kLen;
+	const kz = KEY_LIGHT_DIRECTION[2] / kLen;
+
+	const hemiWeight = 0.5 * ny + 0.5;
+	const dotNL = Math.max(0, Math.min(1, nx * kx + ny * ky + nz * kz));
+
+	const hemiR =
+		(groundColor.r * (1 - hemiWeight) + skyColor.r * hemiWeight) *
+		HEMI_LIGHT_INTENSITY;
+	const hemiG =
+		(groundColor.g * (1 - hemiWeight) + skyColor.g * hemiWeight) *
+		HEMI_LIGHT_INTENSITY;
+	const hemiB =
+		(groundColor.b * (1 - hemiWeight) + skyColor.b * hemiWeight) *
+		HEMI_LIGHT_INTENSITY;
+
+	const dirR = dirColor.r * DIR_LIGHT_INTENSITY * dotNL;
+	const dirG = dirColor.g * DIR_LIGHT_INTENSITY * dotNL;
+	const dirB = dirColor.b * DIR_LIGHT_INTENSITY * dotNL;
+
+	const invPi = 1 / Math.PI;
+	const outR = Math.min(1, Math.max(0, (hemiR + dirR) * invPi * inkColor.r));
+	const outG = Math.min(1, Math.max(0, (hemiG + dirG) * invPi * inkColor.g));
+	const outB = Math.min(1, Math.max(0, (hemiB + dirB) * invPi * inkColor.b));
+
+	const outColor = new Color().setRGB(outR, outG, outB, LinearSRGBColorSpace);
+	return {
+		linear: [outR, outG, outB],
+		hex: `#${outColor.getHexString()}`,
+	};
 }
 
 export function applyIncrementalNodeColors(
-	_currentHexes: string[],
-	_nodes: readonly SceneNode[],
-	_palette: TagVersePalette,
-	_selectedIndex: number | null,
-	_nodePaperMix?: Float32Array,
+	currentHexes: string[],
+	nodes: readonly SceneNode[],
+	palette: TagVersePalette,
+	selectedIndex: number | null,
+	nodePaperMix?: Float32Array,
 ): number[] {
-	return [];
+	const changed: number[] = [];
+	const count = nodes.length;
+	if (currentHexes.length !== count) {
+		currentHexes.length = count;
+	}
+	for (let i = 0; i < count; i++) {
+		const node = nodes[i];
+		if (!node) continue;
+		const isSelected = i === selectedIndex;
+		const paperMix =
+			nodePaperMix && i < nodePaperMix.length ? (nodePaperMix[i] ?? 0) : 0;
+		let nextHex: string;
+		if (isSelected) {
+			nextHex = palette.labelInk;
+		} else if (paperMix > 0) {
+			nextHex = mixTowardPaper(node.baseInk, palette.paper, paperMix);
+		} else {
+			nextHex = node.baseInk;
+		}
+		if (currentHexes[i] !== nextHex) {
+			currentHexes[i] = nextHex;
+			changed.push(i);
+		}
+	}
+	return changed;
 }
 
 export function applyIncrementalNodeScales(
-	_currentScales: Float32Array,
-	_nodes: readonly SceneNode[],
-	_selectedIndex: number | null,
-	_hoveredIndex: number | null,
+	currentScales: Float32Array,
+	nodes: readonly SceneNode[],
+	selectedIndex: number | null,
+	hoveredIndex: number | null,
 ): number[] {
-	return [];
+	const changed: number[] = [];
+	const count = nodes.length;
+	for (let i = 0; i < count; i++) {
+		const node = nodes[i];
+		if (!node) continue;
+		const factor =
+			i === selectedIndex
+				? SELECTED_NODE_SCALE
+				: i === hoveredIndex
+					? HOVERED_NODE_SCALE
+					: 1;
+		const nextScale = node.radius * factor;
+		if (Math.abs((currentScales[i] ?? 0) - nextScale) > 1e-6) {
+			currentScales[i] = nextScale;
+			changed.push(i);
+		}
+	}
+	return changed;
 }
 
 export function updateEdgeBufferAlphas(
-	_colors: Float32Array,
-	_edgeAlphas: Float32Array,
+	colors: Float32Array,
+	edgeAlphas: Float32Array,
 ): number[] {
-	return [];
+	const changed: number[] = [];
+	const edgeCount = Math.min(
+		edgeAlphas.length,
+		Math.floor(colors.length / 8),
+	);
+	for (let i = 0; i < edgeCount; i++) {
+		const nextAlpha = edgeAlphas[i] ?? 0;
+		const a0Idx = i * 8 + 3;
+		const a1Idx = i * 8 + 7;
+		if (
+			Math.abs((colors[a0Idx] ?? 0) - nextAlpha) > 1e-6 ||
+			Math.abs((colors[a1Idx] ?? 0) - nextAlpha) > 1e-6
+		) {
+			colors[a0Idx] = nextAlpha;
+			colors[a1Idx] = nextAlpha;
+			changed.push(i);
+		}
+	}
+	return changed;
 }
 
 export function resolveNodeLabelTypography(
