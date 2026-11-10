@@ -4,6 +4,7 @@ package config
 
 import (
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -371,4 +372,76 @@ func TestLoadFromEnv(t *testing.T) {
 		assert.Equal(t, 9202, config.Metrics.Port)
 		assert.Equal(t, 5*time.Second, config.Metrics.UpdateInterval)
 	})
+}
+
+func newsCreatorMinIntervalField(cfg *Config) (time.Duration, bool) {
+	v := reflect.ValueOf(cfg.NewsCreator).FieldByName("MinInterval")
+	if !v.IsValid() {
+		return 0, false
+	}
+	d, ok := v.Interface().(time.Duration)
+	return d, ok
+}
+
+func TestNewsCreatorMinInterval(t *testing.T) {
+	tests := []struct {
+		name         string
+		envVars      map[string]string
+		wantErr      bool
+		errSubstring string
+		wantInterval time.Duration
+	}{
+		{
+			name:         "default 1s when unset",
+			envVars:      map[string]string{},
+			wantErr:      false,
+			wantInterval: 1 * time.Second,
+		},
+		{
+			name: "0s accepted to disable pacing",
+			envVars: map[string]string{
+				"NEWS_CREATOR_MIN_INTERVAL": "0s",
+			},
+			wantErr:      false,
+			wantInterval: 0,
+		},
+		{
+			name: "negative duration rejected",
+			envVars: map[string]string{
+				"NEWS_CREATOR_MIN_INTERVAL": "-1s",
+			},
+			wantErr: true,
+		},
+		{
+			name: "RateLimit.DefaultInterval below 5s still rejected",
+			envVars: map[string]string{
+				"NEWS_CREATOR_MIN_INTERVAL":   "1s",
+				"RATE_LIMIT_DEFAULT_INTERVAL": "1s",
+			},
+			wantErr:      true,
+			errSubstring: "rate limit default interval must be at least 5s",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.envVars {
+				t.Setenv(k, v)
+			}
+
+			cfg, err := LoadConfig()
+			if tc.wantErr {
+				require.Error(t, err)
+				if tc.errSubstring != "" {
+					assert.Contains(t, err.Error(), tc.errSubstring)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			got, ok := newsCreatorMinIntervalField(cfg)
+			require.True(t, ok, "NewsCreatorConfig.MinInterval field must exist")
+			assert.Equal(t, tc.wantInterval, got)
+		})
+	}
 }

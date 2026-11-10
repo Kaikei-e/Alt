@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"pre-processor/service"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func testJobHandlerLogger() *slog.Logger {
@@ -531,4 +534,199 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, mock.summarizeCalled, "SummarizeArticles should be called when queueWorker is nil (fallback)")
 	})
+}
+
+type scriptedFindCall struct {
+	articles []*domain.Article
+	cursor   *domain.Cursor
+	err      error
+}
+
+type stubArticleRepoForRefill struct {
+	repository.ArticleRepository
+	calls []scriptedFindCall
+	idx   int
+}
+
+func (m *stubArticleRepoForRefill) FindForSummarization(_ context.Context, _ *domain.Cursor, _ int) ([]*domain.Article, *domain.Cursor, error) {
+	i := m.idx
+	m.idx++
+	if i >= len(m.calls) {
+		return nil, nil, nil
+	}
+	c := m.calls[i]
+	return c.articles, c.cursor, c.err
+}
+
+func (m *stubArticleRepoForRefill) FindByID(_ context.Context, id string) (*domain.Article, error) {
+	return &domain.Article{ID: id, Content: "content"}, nil
+}
+
+type stubJobRepoForRefill struct {
+	repository.SummarizeJobRepository
+	pendingJobs    []*domain.SummarizeJob
+	createJobToken string
+	createJobCalls int
+}
+
+func (m *stubJobRepoForRefill) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	return m.pendingJobs, nil
+}
+
+func (m *stubJobRepoForRefill) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	return nil, nil
+}
+
+func (m *stubJobRepoForRefill) RecoverStuckJobs(_ context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (m *stubJobRepoForRefill) HasRecentSuccessfulJob(_ context.Context, _ string, _ time.Time) (bool, error) {
+	return false, nil
+}
+
+func (m *stubJobRepoForRefill) HasInFlightJob(_ context.Context, _ string, _ time.Time) (bool, error) {
+	return false, nil
+}
+
+func (m *stubJobRepoForRefill) HasDeadLetterJob(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (m *stubJobRepoForRefill) HasRecentFailedJob(_ context.Context, _ string, _ time.Time) (bool, error) {
+	return false, nil
+}
+
+func (m *stubJobRepoForRefill) CreateJob(_ context.Context, _ string) (string, error) {
+	m.createJobCalls++
+	return m.createJobToken, nil
+}
+
+func makeArticles(n int) []*domain.Article {
+	out := make([]*domain.Article, n)
+	for i := range n {
+		out[i] = &domain.Article{ID: fmt.Sprintf("article-%d", i+1), Title: "Title"}
+	}
+	return out
+}
+
+func runQueueTickForTest(h *jobHandler, ctx context.Context) error {
+	if ticker, ok := any(h).(interface{ ProcessQueueTick(context.Context) error }); ok {
+		return ticker.ProcessQueueTick(ctx)
+	}
+	return h.queueWorker.ProcessQueue(ctx)
+}
+
+func TestProcessSummarizationBatch_RefillStateMachine(t *testing.T) {
+	tests := []struct {
+		name              string
+		findCalls         []scriptedFindCall
+		createJobToken    string
+		pendingOnTick     []*domain.SummarizeJob
+		wantFirstSweepErr bool
+		wantTotalSweeps   int
+		wantRefillLogged  bool
+	}{
+		{
+			name: "{HasMore true, Enqueued 10, nil} then empty queue tick runs refill sweep",
+			findCalls: []scriptedFindCall{
+				{articles: makeArticles(10), cursor: &domain.Cursor{LastID: "article-10"}},
+				{articles: makeArticles(3), cursor: nil},
+			},
+			createJobToken:    "job-id",
+			pendingOnTick:     nil,
+			wantFirstSweepErr: false,
+			wantTotalSweeps:   2,
+			wantRefillLogged:  true,
+		},
+		{
+			name: "{HasMore true, Enqueued 0} does not refill",
+			findCalls: []scriptedFindCall{
+				{articles: makeArticles(10), cursor: &domain.Cursor{LastID: "article-10"}},
+				{articles: makeArticles(3), cursor: nil},
+			},
+			createJobToken:    "",
+			pendingOnTick:     nil,
+			wantFirstSweepErr: false,
+			wantTotalSweeps:   1,
+			wantRefillLogged:  false,
+		},
+		{
+			name: "sweep error does not refill",
+			findCalls: []scriptedFindCall{
+				{articles: nil, cursor: nil, err: errors.New("backend failure")},
+				{articles: makeArticles(3), cursor: nil},
+			},
+			createJobToken:    "job-id",
+			pendingOnTick:     nil,
+			wantFirstSweepErr: true,
+			wantTotalSweeps:   1,
+			wantRefillLogged:  false,
+		},
+		{
+			name: "{HasMore false} does not refill",
+			findCalls: []scriptedFindCall{
+				{articles: makeArticles(10), cursor: nil},
+				{articles: makeArticles(3), cursor: nil},
+			},
+			createJobToken:    "job-id",
+			pendingOnTick:     nil,
+			wantFirstSweepErr: false,
+			wantTotalSweeps:   1,
+			wantRefillLogged:  false,
+		},
+		{
+			name: "refill mode but pending jobs present does not sweep",
+			findCalls: []scriptedFindCall{
+				{articles: makeArticles(10), cursor: &domain.Cursor{LastID: "article-10"}},
+				{articles: makeArticles(3), cursor: nil},
+			},
+			createJobToken:    "job-id",
+			pendingOnTick:     []*domain.SummarizeJob{{ArticleID: "pending-1"}},
+			wantFirstSweepErr: false,
+			wantTotalSweeps:   1,
+			wantRefillLogged:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			var logBuf bytes.Buffer
+			log := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+			jobRepo := &stubJobRepoForRefill{createJobToken: tc.createJobToken}
+			articleRepo := &stubArticleRepoForRefill{calls: tc.findCalls}
+			summaryRepo := &stubSummaryRepoForEnqueue{}
+			worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, log, 10)
+
+			h := &jobHandler{
+				queueWorker:             worker,
+				logger:                  log,
+				jobGroup:                orchestrator.NewJobGroup(ctx, log),
+				batchSize:               10,
+				lastBatchSweep:          time.Now(),
+				batchSweepForceInterval: 30 * time.Minute,
+			}
+
+			err := h.processSummarizationBatch(ctx)
+			if tc.wantFirstSweepErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			jobRepo.pendingJobs = tc.pendingOnTick
+			require.NoError(t, runQueueTickForTest(h, ctx))
+
+			assert.Equal(t, tc.wantTotalSweeps, articleRepo.idx, "unexpected number of FindForSummarization sweeps")
+			if tc.wantRefillLogged {
+				assert.Contains(t, logBuf.String(), "summarization refill sweep")
+				assert.Contains(t, logBuf.String(), "enqueued=3")
+				assert.Contains(t, logBuf.String(), "has_more=false")
+			} else {
+				assert.NotContains(t, logBuf.String(), "summarization refill sweep")
+			}
+		})
+	}
 }
