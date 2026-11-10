@@ -336,6 +336,21 @@ message TagCloudItem {
   float position_x = 3;
   float position_y = 4;
   float position_z = 5;
+  // Community of the tag in the co-occurrence graph. 1..N are communities
+  // ordered by total article count; 0 means the tag belongs to no community
+  // (no co-occurrence edges, or a community too small to show).
+  int32 cluster_id = 6;
+}
+
+// TagCloudEdge links two tags of FetchTagCloudResponse.tags that appear
+// together in articles.
+message TagCloudEdge {
+  // Index into FetchTagCloudResponse.tags
+  int32 source_index = 1;
+  // Index into FetchTagCloudResponse.tags
+  int32 target_index = 2;
+  // Association strength normalised to (0, 1]
+  float weight = 3;
 }
 
 // FetchTagCloudResponse contains tag cloud data
@@ -344,6 +359,8 @@ message FetchTagCloudResponse {
   repeated TagCloudItem tags = 1;
   // Total number of tags in the system
   int32 total_tags = 2;
+  // Strongest co-occurrence links between the returned tags
+  repeated TagCloudEdge edges = 3;
 }
 
 // GetArticleSourceURLRequest looks up the canonical external HTTPS URL for an
