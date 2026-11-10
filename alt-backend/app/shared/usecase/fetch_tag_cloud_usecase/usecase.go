@@ -186,13 +186,18 @@ func (u *FetchTagCloudUsecase) compute(ctx context.Context, limit int, forceRefr
 
 		layoutStart := time.Now()
 		ComputeLayout(items, cooccurrences)
+		layoutMs := time.Since(layoutStart).Milliseconds()
+
+		graphStart := time.Now()
 		ComputeClusters(items, cooccurrences)
 		edges = ComputeEdges(items, cooccurrences)
-		layoutMs := time.Since(layoutStart).Milliseconds()
+		graphMs := time.Since(graphStart).Milliseconds()
 
 		logger.Logger.InfoContext(ctx, "tag cloud computation complete",
 			"cooccurrence_ms", cooccMs,
 			"layout_ms", layoutMs,
+			"graph_ms", graphMs,
+			"cooccurrence_count", len(cooccurrences),
 			"edge_count", len(edges),
 		)
 	}

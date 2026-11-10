@@ -30,19 +30,25 @@ type rawEdge struct {
 	ochiai      float64
 }
 
-// ComputeEdges selects each tag's 3 strongest partners by Ochiai coefficient,
-// takes the deduplicated undirected union (source_index < target_index), caps
-// at the 600 strongest, normalises weights to (0, 1] by the maximum kept
-// Ochiai, and sorts by weight descending, then source_index, then target_index.
-func ComputeEdges(items []*domain.TagCloudItem, cooccurrences []*domain.TagCooccurrence) []*domain.TagCloudEdge {
+// buildAssociationGraph ranks tags in the fixed order (article count
+// descending, then tag name ascending) and returns fixedOrder (rank -> item
+// index) together with the undirected Ochiai adjacency list indexed by rank.
+func buildAssociationGraph(items []*domain.TagCloudItem, cooccurrences []*domain.TagCooccurrence) ([]int, [][]partnerEdge) {
 	n := len(items)
-	if n < 2 || len(cooccurrences) == 0 {
-		return nil
+	fixedOrder := make([]int, n)
+	for i := range n {
+		fixedOrder[i] = i
 	}
+	slices.SortFunc(fixedOrder, func(i, j int) int {
+		if c := cmp.Compare(items[j].ArticleCount, items[i].ArticleCount); c != 0 {
+			return c
+		}
+		return cmp.Compare(items[i].TagName, items[j].TagName)
+	})
 
-	nameToIdx := make(map[string]int, n)
-	for i, item := range items {
-		nameToIdx[item.TagName] = i
+	nameToRank := make(map[string]int, n)
+	for rank, itemIdx := range fixedOrder {
+		nameToRank[items[itemIdx].TagName] = rank
 	}
 
 	pairOchiai := make(map[indexPair]float64, len(cooccurrences))
@@ -50,21 +56,18 @@ func ComputeEdges(items []*domain.TagCloudItem, cooccurrences []*domain.TagCoocc
 		if c.SharedCount <= 0 {
 			continue
 		}
-		idxA, okA := nameToIdx[c.TagNameA]
-		idxB, okB := nameToIdx[c.TagNameB]
-		if !okA || !okB || idxA == idxB {
+		rankA, okA := nameToRank[c.TagNameA]
+		rankB, okB := nameToRank[c.TagNameB]
+		if !okA || !okB || rankA == rankB {
 			continue
 		}
-		countA := items[idxA].ArticleCount
-		countB := items[idxB].ArticleCount
+		countA := items[fixedOrder[rankA]].ArticleCount
+		countB := items[fixedOrder[rankB]].ArticleCount
 		if countA <= 0 || countB <= 0 {
 			continue
 		}
 		ochiai := float64(c.SharedCount) / math.Sqrt(float64(countA)*float64(countB))
-		if ochiai <= 0 {
-			continue
-		}
-		u, v := idxA, idxB
+		u, v := rankA, rankB
 		if u > v {
 			u, v = v, u
 		}
@@ -75,7 +78,7 @@ func ComputeEdges(items []*domain.TagCloudItem, cooccurrences []*domain.TagCoocc
 	}
 
 	if len(pairOchiai) == 0 {
-		return nil
+		return fixedOrder, nil
 	}
 
 	adj := make([][]partnerEdge, n)
@@ -83,31 +86,54 @@ func ComputeEdges(items []*domain.TagCloudItem, cooccurrences []*domain.TagCoocc
 		adj[pair.u] = append(adj[pair.u], partnerEdge{partner: pair.v, ochiai: w})
 		adj[pair.v] = append(adj[pair.v], partnerEdge{partner: pair.u, ochiai: w})
 	}
+	// Sort neighbour lists by fixed-order rank so floating-point summation and
+	// tie-breaking are independent of map iteration or input slice order.
+	for r := range n {
+		slices.SortFunc(adj[r], func(a, b partnerEdge) int {
+			return cmp.Compare(a.partner, b.partner)
+		})
+	}
+
+	return fixedOrder, adj
+}
+
+// ComputeEdges selects each tag's 3 strongest partners by Ochiai coefficient,
+// takes the deduplicated undirected union (source_index < target_index), caps
+// at the 600 strongest, normalises weights to (0, 1] by the maximum kept
+// Ochiai, and sorts by weight descending, then source_index, then target_index.
+func ComputeEdges(items []*domain.TagCloudItem, cooccurrences []*domain.TagCooccurrence) []*domain.TagCloudEdge {
+	if len(items) < 2 || len(cooccurrences) == 0 {
+		return nil
+	}
+
+	fixedOrder, adj := buildAssociationGraph(items, cooccurrences)
+	if adj == nil {
+		return nil
+	}
 
 	keptMap := make(map[indexPair]float64)
-	for i := range n {
-		partners := adj[i]
+	for r, partners := range adj {
 		if len(partners) == 0 {
 			continue
 		}
-		slices.SortFunc(partners, func(a, b partnerEdge) int {
+		sorted := slices.Clone(partners)
+		// Break equal-Ochiai partner ties by fixed rank (article count desc,
+		// tag name asc) so kept partners do not depend on input slice order.
+		slices.SortFunc(sorted, func(a, b partnerEdge) int {
 			if c := cmp.Compare(b.ochiai, a.ochiai); c != 0 {
 				return c
 			}
 			return cmp.Compare(a.partner, b.partner)
 		})
-		limit := min(len(partners), maxPartnersPerTag)
-		for _, p := range partners[:limit] {
-			u, v := i, p.partner
+		limit := min(len(sorted), maxPartnersPerTag)
+		itemIdx := fixedOrder[r]
+		for _, p := range sorted[:limit] {
+			u, v := itemIdx, fixedOrder[p.partner]
 			if u > v {
 				u, v = v, u
 			}
 			keptMap[indexPair{u: u, v: v}] = p.ochiai
 		}
-	}
-
-	if len(keptMap) == 0 {
-		return nil
 	}
 
 	kept := make([]rawEdge, 0, len(keptMap))
@@ -169,68 +195,9 @@ func ComputeClusters(items []*domain.TagCloudItem, cooccurrences []*domain.TagCo
 		return
 	}
 
-	// Rank tags in the fixed order (article count descending, then tag name
-	// ascending) so label propagation is invariant to input slice order.
-	fixedOrder := make([]int, n)
-	for i := range n {
-		fixedOrder[i] = i
-	}
-	slices.SortFunc(fixedOrder, func(i, j int) int {
-		if c := cmp.Compare(items[j].ArticleCount, items[i].ArticleCount); c != 0 {
-			return c
-		}
-		return cmp.Compare(items[i].TagName, items[j].TagName)
-	})
-
-	nameToRank := make(map[string]int, n)
-	for rank, itemIdx := range fixedOrder {
-		nameToRank[items[itemIdx].TagName] = rank
-	}
-
-	pairOchiai := make(map[indexPair]float64, len(cooccurrences))
-	for _, c := range cooccurrences {
-		if c.SharedCount <= 0 {
-			continue
-		}
-		rankA, okA := nameToRank[c.TagNameA]
-		rankB, okB := nameToRank[c.TagNameB]
-		if !okA || !okB || rankA == rankB {
-			continue
-		}
-		countA := items[fixedOrder[rankA]].ArticleCount
-		countB := items[fixedOrder[rankB]].ArticleCount
-		if countA <= 0 || countB <= 0 {
-			continue
-		}
-		ochiai := float64(c.SharedCount) / math.Sqrt(float64(countA)*float64(countB))
-		if ochiai <= 0 {
-			continue
-		}
-		u, v := rankA, rankB
-		if u > v {
-			u, v = v, u
-		}
-		key := indexPair{u: u, v: v}
-		if prev, exists := pairOchiai[key]; !exists || ochiai > prev {
-			pairOchiai[key] = ochiai
-		}
-	}
-
-	if len(pairOchiai) == 0 {
+	fixedOrder, adj := buildAssociationGraph(items, cooccurrences)
+	if adj == nil {
 		return
-	}
-
-	adj := make([][]partnerEdge, n)
-	for pair, w := range pairOchiai {
-		adj[pair.u] = append(adj[pair.u], partnerEdge{partner: pair.v, ochiai: w})
-		adj[pair.v] = append(adj[pair.v], partnerEdge{partner: pair.u, ochiai: w})
-	}
-	// Sort neighbour lists by fixed-order rank so floating-point summation is
-	// independent of map iteration order.
-	for r := range n {
-		slices.SortFunc(adj[r], func(a, b partnerEdge) int {
-			return cmp.Compare(a.partner, b.partner)
-		})
 	}
 
 	labels := make([]int, n)
@@ -240,8 +207,7 @@ func ComputeClusters(items []*domain.TagCloudItem, cooccurrences []*domain.TagCo
 
 	for range maxLPARounds {
 		changed := false
-		for r := range n {
-			neighbours := adj[r]
+		for r, neighbours := range adj {
 			if len(neighbours) == 0 {
 				continue
 			}
@@ -260,7 +226,7 @@ func ComputeClusters(items []*domain.TagCloudItem, cooccurrences []*domain.TagCo
 				}
 			}
 
-			if bestLabel >= 0 && bestLabel != labels[r] {
+			if bestLabel != labels[r] {
 				labels[r] = bestLabel
 				changed = true
 			}

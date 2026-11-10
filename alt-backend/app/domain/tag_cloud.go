@@ -14,9 +14,9 @@ type TagCloudItem struct {
 // TagCloudEdge represents a normalised co-occurrence link between two tags
 // indexed by their position in the returned TagCloudItem slice.
 type TagCloudEdge struct {
-	SourceIndex int
-	TargetIndex int
-	Weight      float64
+	SourceIndex int     `json:"source_index"`
+	TargetIndex int     `json:"target_index"`
+	Weight      float64 `json:"weight"`
 }
 
 // TagCooccurrence represents a pair of tags that share articles.

@@ -16,11 +16,7 @@ func TestComputeEdges_SelectionNormalisationAndOrdering(t *testing.T) {
 		{TagName: "e", ArticleCount: 100},
 	}
 
-	// Tag "a" (idx 0) has 4 partners: b(80), c(60), d(40), e(20).
-	// Its 3 strongest partners are b, c, d — e(20) is dropped because e has no other edges?
-	// Wait: for tag "e" (idx 4), if "a" is one of e's 3 strongest partners, the union keeps (a, e).
-	// To test that a 4th partner is dropped when it is in neither endpoint's top 3,
-	// give "e" 3 stronger partners (b, c, d) with count 50 so (a, e) with count 20 is 4th for both "a" and "e".
+	// Give "a" and "e" three stronger partners each so (a, e) is 4th for both and dropped from the union.
 	cooccurrences := []*domain.TagCooccurrence{
 		{TagNameA: "a", TagNameB: "b", SharedCount: 80},
 		{TagNameA: "a", TagNameB: "c", SharedCount: 60},
@@ -37,13 +33,6 @@ func TestComputeEdges_SelectionNormalisationAndOrdering(t *testing.T) {
 		t.Fatalf("want 6 kept edges in union, got %d: %+v", len(edges), edges)
 	}
 
-	// Maximum kept ochiai is (a, b) = 80 / 100 = 0.8, so normalised weights are:
-	// (0, 1): 80/80 = 1.0
-	// (0, 2): 60/80 = 0.75
-	// (1, 4): 50/80 = 0.625
-	// (2, 4): 50/80 = 0.625
-	// (3, 4): 50/80 = 0.625
-	// (0, 3): 40/80 = 0.5
 	want := []domain.TagCloudEdge{
 		{SourceIndex: 0, TargetIndex: 1, Weight: 1.0},
 		{SourceIndex: 0, TargetIndex: 2, Weight: 0.75},
@@ -60,6 +49,81 @@ func TestComputeEdges_SelectionNormalisationAndOrdering(t *testing.T) {
 		}
 		if got.SourceIndex < 0 || got.SourceIndex >= got.TargetIndex || got.TargetIndex >= len(items) {
 			t.Errorf("edge[%d] indices (%d, %d) out of valid range [0, %d)", i, got.SourceIndex, got.TargetIndex, len(items))
+		}
+	}
+}
+
+func TestComputeEdges_PartnerTiesStabilisedByFixedRank(t *testing.T) {
+	// "hub" has 4 equal-Ochiai partners ("alpha", "beta", "gamma", "delta") all with ArticleCount=100,
+	// and each partner has 3 stronger edges to "p1", "p2", "p3" so only hub's top-3 selection decides
+	// which 3 of the 4 hub edges enter the union.
+	baseItems := []*domain.TagCloudItem{
+		{TagName: "hub", ArticleCount: 100},
+		{TagName: "delta", ArticleCount: 100},
+		{TagName: "gamma", ArticleCount: 100},
+		{TagName: "beta", ArticleCount: 100},
+		{TagName: "alpha", ArticleCount: 100},
+		{TagName: "p1", ArticleCount: 100},
+		{TagName: "p2", ArticleCount: 100},
+		{TagName: "p3", ArticleCount: 100},
+	}
+	coocs := []*domain.TagCooccurrence{
+		{TagNameA: "hub", TagNameB: "delta", SharedCount: 30},
+		{TagNameA: "hub", TagNameB: "gamma", SharedCount: 30},
+		{TagNameA: "hub", TagNameB: "beta", SharedCount: 30},
+		{TagNameA: "hub", TagNameB: "alpha", SharedCount: 30},
+	}
+	for _, partner := range []string{"delta", "gamma", "beta", "alpha"} {
+		for _, p := range []string{"p1", "p2", "p3"} {
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    partner,
+				TagNameB:    p,
+				SharedCount: 80,
+			})
+		}
+	}
+
+	edgesPerm1 := ComputeEdges(baseItems, coocs)
+
+	reorderedItems := []*domain.TagCloudItem{
+		{TagName: "p3", ArticleCount: 100},
+		{TagName: "alpha", ArticleCount: 100},
+		{TagName: "beta", ArticleCount: 100},
+		{TagName: "hub", ArticleCount: 100},
+		{TagName: "gamma", ArticleCount: 100},
+		{TagName: "delta", ArticleCount: 100},
+		{TagName: "p1", ArticleCount: 100},
+		{TagName: "p2", ArticleCount: 100},
+	}
+	edgesPerm2 := ComputeEdges(reorderedItems, coocs)
+
+	hubPartners := func(items []*domain.TagCloudItem, edges []*domain.TagCloudEdge) map[string]bool {
+		got := make(map[string]bool)
+		for _, e := range edges {
+			a := items[e.SourceIndex].TagName
+			b := items[e.TargetIndex].TagName
+			if a == "hub" {
+				got[b] = true
+			} else if b == "hub" {
+				got[a] = true
+			}
+		}
+		return got
+	}
+
+	p1 := hubPartners(baseItems, edgesPerm1)
+	p2 := hubPartners(reorderedItems, edgesPerm2)
+
+	// Fixed rank orders equal-count partners by TagName ascending: alpha, beta, delta (dropping gamma).
+	wantHubPartners := map[string]bool{"alpha": true, "beta": true, "delta": true}
+	for _, got := range []map[string]bool{p1, p2} {
+		if len(got) != len(wantHubPartners) {
+			t.Fatalf("hub partners = %v, want %v", got, wantHubPartners)
+		}
+		for k := range wantHubPartners {
+			if !got[k] {
+				t.Errorf("hub partners = %v, missing %q", got, k)
+			}
 		}
 	}
 }
@@ -92,6 +156,8 @@ func TestComputeEdges_CapsAt600Strongest(t *testing.T) {
 	if math.Abs(edges[0].Weight-1.0) > 1e-9 {
 		t.Errorf("strongest edge weight = %f, want 1.0", edges[0].Weight)
 	}
+
+	keptPairs := make(map[indexPair]bool, len(edges))
 	for i, e := range edges {
 		if e.SourceIndex < 0 || e.SourceIndex >= e.TargetIndex || e.TargetIndex >= len(items) {
 			t.Fatalf("edge[%d] indices (%d, %d) out of range [0, %d)", i, e.SourceIndex, e.TargetIndex, len(items))
@@ -107,6 +173,27 @@ func TestComputeEdges_CapsAt600Strongest(t *testing.T) {
 			if prev.Weight == e.Weight && (prev.SourceIndex > e.SourceIndex || (prev.SourceIndex == e.SourceIndex && prev.TargetIndex >= e.TargetIndex)) {
 				t.Fatalf("equal-weight edges not sorted by index at %d: %+v before %+v", i, *prev, *e)
 			}
+		}
+		keptPairs[indexPair{u: e.SourceIndex, v: e.TargetIndex}] = true
+	}
+
+	nameToIdx := make(map[string]int, n)
+	for i, it := range items {
+		nameToIdx[it.TagName] = i
+	}
+	maxKeptOchiai := 899.0 / 1000.0
+	weakestKeptOchiai := edges[len(edges)-1].Weight * maxKeptOchiai
+	for _, c := range coocs {
+		u, v := nameToIdx[c.TagNameA], nameToIdx[c.TagNameB]
+		if u > v {
+			u, v = v, u
+		}
+		if keptPairs[indexPair{u: u, v: v}] {
+			continue
+		}
+		droppedOchiai := float64(c.SharedCount) / 1000.0
+		if droppedOchiai > weakestKeptOchiai+1e-12 {
+			t.Errorf("dropped edge (%d, %d) has ochiai %f > weakest kept ochiai %f", u, v, droppedOchiai, weakestKeptOchiai)
 		}
 	}
 }
@@ -162,7 +249,6 @@ func TestComputeClusters_DeterminismAcrossInputOrders(t *testing.T) {
 		t.Fatalf("expected orphan tag to have cluster 0, got %d", wantByTag["orphan"])
 	}
 
-	// Reverse both items and co-occurrences (and swap TagNameA/TagNameB).
 	itemsReversed := make([]*domain.TagCloudItem, len(baseItems))
 	for i := range baseItems {
 		cp := *baseItems[len(baseItems)-1-i]
@@ -188,11 +274,9 @@ func TestComputeClusters_DeterminismAcrossInputOrders(t *testing.T) {
 
 func TestComputeClusters_SizeThreshold(t *testing.T) {
 	items := []*domain.TagCloudItem{
-		// 3-tag community (below threshold of 4 -> must get cluster 0)
 		{TagName: "small1", ArticleCount: 200},
 		{TagName: "small2", ArticleCount: 200},
 		{TagName: "small3", ArticleCount: 200},
-		// 4-tag community (meets threshold of 4 -> gets cluster 1)
 		{TagName: "valid1", ArticleCount: 50},
 		{TagName: "valid2", ArticleCount: 50},
 		{TagName: "valid3", ArticleCount: 50},
@@ -228,9 +312,6 @@ func TestComputeClusters_EightClusterCapAndOrdering(t *testing.T) {
 	items := make([]*domain.TagCloudItem, 0, numCommunities*communitySize)
 	var coocs []*domain.TagCooccurrence
 
-	// Community c has per-tag ArticleCount = (c + 1) * 10, so community 9 has the
-	// largest total article count (cluster 1), down to community 2 (cluster 8),
-	// and communities 1 and 0 are capped out (cluster 0).
 	for c := range numCommunities {
 		count := (c + 1) * 10
 		names := make([]string, communitySize)
