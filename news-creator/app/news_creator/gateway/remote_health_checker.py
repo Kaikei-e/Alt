@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 MAX_MODELS_RESPONSE_BYTES = 1 * 1024 * 1024
 
 
+def _noop_log(*_args: Any, **_kwargs: Any) -> None:
+    return None
+
+
 class RemoteHealthChecker:
     """Periodic `/v1/models` health checker and in-flight slot tracker for remote targets."""
 
@@ -31,14 +35,20 @@ class RemoteHealthChecker:
         interval_seconds: int = 30,
         cooldown_seconds: int = 60,
         timeout_seconds: int = 10,
+        unhealthy_threshold: int = 2,
         *,
         max_cooldown_seconds: int = MAX_COOLDOWN_SECONDS,
     ):
+        if unhealthy_threshold < 1:
+            raise ValueError(
+                f"unhealthy_threshold must be >= 1, got {unhealthy_threshold}"
+            )
         self._targets = list(targets)
         self._interval_seconds = interval_seconds
         self._cooldown_seconds = cooldown_seconds
         self._max_cooldown_seconds = max(cooldown_seconds, max_cooldown_seconds)
         self._timeout_seconds = timeout_seconds
+        self._unhealthy_threshold = unhealthy_threshold
         self._session: aiohttp.ClientSession | None = None
         self._task: asyncio.Task[None] | None = None
 
@@ -107,12 +117,23 @@ class RemoteHealthChecker:
         state = self._states.get(target)
         if state is None:
             return
+        now = time.monotonic()
+        was_unhealthy = not state["healthy"]
         self.release_target(target)
-        state["last_completed"] = time.monotonic()
+        state["healthy"] = True
+        state["last_completed"] = now
+        state["last_healthy"] = now
         state["dispatch_failures"] = 0
         state["probe_failures"] = 0
         state["consecutive_failures"] = 0
         state["cooldown_until"] = 0.0
+        state["logged_unhealthy"] = False
+        if was_unhealthy:
+            logger.info(
+                "Remote target %s (%s) recovered via successful dispatch",
+                target.base_url,
+                target.model,
+            )
 
     def mark_failure(self, target: RemoteTarget) -> None:
         """Immediately mark a target unhealthy after a dispatch failure."""
@@ -174,10 +195,25 @@ class RemoteHealthChecker:
         self, target: RemoteTarget, now: float, *, always_warn: bool = False
     ) -> Callable[..., None]:
         state = self._states[target]
-        state["healthy"] = False
+        if state["in_flight_count"] > 0 or state["busy"]:
+            # Bifrost queues /v1/models behind in-flight chat completions with a 5s deadline.
+            state["last_checked"] = now
+            logger.debug(
+                "Remote health check probe result ignored for busy target %s (%s)",
+                target.base_url,
+                target.model,
+                extra={"remote_url": target.base_url, "model": target.model},
+            )
+            return _noop_log
         state["probe_failures"] += 1
         state["consecutive_failures"] += 1
         state["last_checked"] = now
+        if state["probe_failures"] < self._unhealthy_threshold:
+            if not state["healthy"] and always_warn:
+                state["logged_unhealthy"] = True
+                return logger.warning
+            return logger.debug
+        state["healthy"] = False
         if always_warn:
             state["logged_unhealthy"] = True
             return logger.warning
@@ -219,24 +255,28 @@ class RemoteHealthChecker:
                     payload = json.loads(text)
                 except json.JSONDecodeError as err:
                     for target in probed_targets:
-                        self._mark_target_unhealthy(target, now, always_warn=True)
-                    logger.warning(
-                        "Remote health check received non-JSON 200 response from %s: %s",
-                        base_url,
-                        err,
-                        extra={"remote_url": base_url},
-                    )
+                        log_fn = self._mark_target_unhealthy(
+                            target, now, always_warn=True
+                        )
+                        log_fn(
+                            "Remote health check received non-JSON 200 response from %s: %s",
+                            base_url,
+                            err,
+                            extra={"remote_url": base_url, "model": target.model},
+                        )
                     return
 
                 data_list = payload.get("data") if isinstance(payload, dict) else None
                 if not isinstance(data_list, list):
                     for target in probed_targets:
-                        self._mark_target_unhealthy(target, now, always_warn=True)
-                    logger.warning(
-                        "Remote health check response from %s missing 'data' list",
-                        base_url,
-                        extra={"remote_url": base_url},
-                    )
+                        log_fn = self._mark_target_unhealthy(
+                            target, now, always_warn=True
+                        )
+                        log_fn(
+                            "Remote health check response from %s missing 'data' list",
+                            base_url,
+                            extra={"remote_url": base_url, "model": target.model},
+                        )
                     return
 
                 available_ids = {
@@ -249,9 +289,10 @@ class RemoteHealthChecker:
                     state = self._states[target]
                     if target.model in available_ids:
                         state["last_checked"] = now
-                        had_failures = state.get(
-                            "consecutive_failures", 0
-                        ) > 0 or state.get("logged_unhealthy", False)
+                        had_failures = not state["healthy"] and (
+                            state.get("consecutive_failures", 0) > 0
+                            or state.get("logged_unhealthy", False)
+                        )
                         state["healthy"] = True
                         state["last_healthy"] = now
                         state["probe_failures"] = 0
@@ -334,6 +375,7 @@ class RemoteHealthChecker:
                 "targets": [t.key for t in self._targets],
                 "interval": self._interval_seconds,
                 "cooldown": self._cooldown_seconds,
+                "unhealthy_threshold": self._unhealthy_threshold,
             },
         )
 

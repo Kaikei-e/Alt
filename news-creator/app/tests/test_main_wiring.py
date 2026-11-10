@@ -122,11 +122,13 @@ class _DummyRemoteHealthChecker:
         interval_seconds: int = 30,
         cooldown_seconds: int = 60,
         timeout_seconds: int = 10,
+        unhealthy_threshold: int = 2,
     ):
         self.targets = targets
         self.interval_seconds = interval_seconds
         self.cooldown_seconds = cooldown_seconds
         self.timeout_seconds = timeout_seconds
+        self.unhealthy_threshold = unhealthy_threshold
         self.start_count = 0
         self.stop_count = 0
 
@@ -216,6 +218,7 @@ def test_dependency_container_routes_only_summarize_usecase_through_distributing
                 distributed_be_health_interval_seconds=15,
                 distributed_be_timeout_seconds=120,
                 distributed_be_cooldown_seconds=45,
+                distributed_be_unhealthy_threshold=2,
                 cache_enabled=False,
                 cache_redis_url="redis://localhost:6379/0",
                 cache_redis_password=None,
@@ -340,6 +343,7 @@ async def test_dependency_container_initializes_and_cleans_up_local_gateway_exac
                 distributed_be_health_interval_seconds=30,
                 distributed_be_timeout_seconds=120,
                 distributed_be_cooldown_seconds=60,
+                distributed_be_unhealthy_threshold=2,
                 cache_enabled=False,
                 cache_redis_url="redis://localhost:6379/0",
                 cache_redis_password=None,

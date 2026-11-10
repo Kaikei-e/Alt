@@ -116,6 +116,7 @@ class DependencyContainer:
                     self.config.distributed_be_health_interval_seconds,
                     self.config.distributed_be_timeout_seconds,
                 ),
+                unhealthy_threshold=self.config.distributed_be_unhealthy_threshold,
             )
             self.llm_provider = DistributingGateway(
                 local_gateway=self.ollama_gateway,
