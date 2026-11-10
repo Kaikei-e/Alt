@@ -50,7 +50,7 @@ curl http://localhost:7700/health       # Meilisearch
 ### LKAL (`lkal`)
 - **What**: Declarative configuration format (`@lkal "0.1"`) and official CLI parser/normalizer (`~/.local/bin/lkal`, installed via `make install-lkal`) backing `deploy/desired-env.lkal`.
 - **Use when / Commands**:
-  - Editing repository-managed host environment settings (`/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`) in `deploy/desired-env.lkal` to stay in lockstep with `deploy/host-prereqs.yaml` and ADR-000982 (`RATE_LIMIT_EXTERNAL_API_INTERVAL >= 5s`); never declare `/local/*` in `deploy/desired-env.lkal`.
+  - Editing repository-managed host environment settings (`/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`, `/mtls_policy`, `/llm_budgets`) in `deploy/desired-env.lkal` to stay in lockstep with `deploy/host-prereqs.yaml` and ADR-000982 (`RATE_LIMIT_EXTERNAL_API_INTERVAL >= 5s`); never declare `/local/*` in `deploy/desired-env.lkal`.
   - Check or format syntax with `~/.local/bin/lkal check deploy/desired-env.lkal` and `~/.local/bin/lkal fmt -w deploy/desired-env.lkal` (`scripts/kisage-env.py` normalizes via `lkal json -plain` with no regex fallback).
 - **Verify**: `python3 scripts/kisage-env.py verify` (or `make kisage-verify`).
 

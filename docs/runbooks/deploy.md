@@ -69,11 +69,13 @@ pipefail` により即中断、以降のステップは実行しない):
 1. **`scripts/check-compose-variables.sh`** — `.env` の未設定変数を
    `docker compose config` の警告ではなく非ゼロ exit にして deploy 前に検知する
    (PM-2026-048: 空文字設定のまま 24h 稼働した事故の再発防止)
-2. **`scripts/check-apparmor-profile.sh --probe`** — DB 用プロファイルの導入状態とシグナル到達を確認。失敗時は配備を中断する。
-3. **`scripts/pact-check.sh --broker`** — pact を Broker に publish
-4. **`scripts/retire-alt-pki-agent-leftovers.sh`** — project=`alt` の
+2. **`scripts/kisage-env.py preflight --env-file .env`** — `deploy/desired-env.lkal`
+   で管理される環境変数とホスト `.env` の整合性を read-only で検証する ([[kisage-env]])
+3. **`scripts/check-apparmor-profile.sh --probe`** — DB 用プロファイルの導入状態とシグナル到達を確認。失敗時は配備を中断する。
+4. **`scripts/pact-check.sh --broker`** — pact を Broker に publish
+5. **`scripts/retire-alt-pki-agent-leftovers.sh`** — project=`alt` の
    leftover `pki-agent-*` を stop/rm してゼロを確認 ([[pki-agent-recovery]])
-5. **`c2quay deploy --env production --config c2quay.yml`** — `c2quay.yml`
+6. **`c2quay deploy --env production --config c2quay.yml`** — `c2quay.yml`
    に登録された 14 pacticipant ぶんの can-i-deploy gate → `docker compose up -d
    --wait --remove-orphans` → `scripts/smoke.sh` → record-deployment
    (`scripts/deploy.sh` 冒頭コメントは「13 pacticipants」のままだが、
@@ -88,6 +90,7 @@ pipefail` により即中断、以降のステップは実行しない):
 |------|---|
 | `pact-broker-cli` が PATH | `pact-broker-cli --version` (v0.6.3+、`pact-check.sh --broker` の publish に使う) |
 | `c2quay` が PATH | `c2quay --version` (`C2QUAY_BIN` 環境変数で上書き可) |
+| `lkal` バイナリと Python `PyYAML` が導入済 | `make install-lkal` (`lkal json -plain` / `lkal fmt -l`) および `python3 -c 'import yaml'` (`scripts/kisage-env.py preflight` ステップが `deploy/desired-env.lkal` と本番 Compose を検証するために必須) |
 | Pact Broker が healthy | `curl -fsS -u pact:$(cat secrets/pact_broker_basic_auth_password.txt) http://localhost:9292/diagnostic/status/heartbeat` |
 | secrets 配置 | `ls secrets/pact_broker_basic_auth_password.txt` |
 | mTLS step-ca 稼働 | `docker compose -f compose/compose.yaml ps step-ca` → healthy |

@@ -109,7 +109,7 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      - MTLS_ALLOWED_PEERS=alt-butterfly-facade
+      - MTLS_ALLOWED_PEERS=${TTS_SPEAKER_MTLS_ALLOWED_PEERS:-alt-butterfly-facade}
       - PEER_IDENTITY_STRICT=true
       - PEER_IDENTITY_TRUSTED=off
       - PKI_ENROLLMENT=enabled

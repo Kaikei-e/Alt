@@ -33,6 +33,7 @@ import unittest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 TRACKED_PREFIXES = (
+    "compose/",
     "deploy/",
     "scripts/",
     "tests/scripts/",
@@ -43,6 +44,8 @@ TRACKED_EXACT = {
     "Makefile",
     ".gitignore",
     ".env.template",
+    ".env.example",
+    "alt-backend/app/config/binary_backend.go",
 }
 FORBIDDEN_LOCAL_PATHS = (
     ".claude",

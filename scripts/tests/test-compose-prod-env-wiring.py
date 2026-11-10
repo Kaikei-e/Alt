@@ -158,6 +158,25 @@ check(
     == {k for k, ds in defaults.items() if any(d.startswith("https://") for d in ds)},
 )
 check(
+    "every production service that sets MTLS_ALLOWED_PEERS uses an interpolated, manifest-declared key",
+    lambda: not [
+        name
+        for name, svc in services.items()
+        if "MTLS_ALLOWED_PEERS" in env_map(svc)
+        # alt-butterfly-facade's :9443 listener is closed by default, so its
+        # allowlist default (${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}) is
+        # intentionally empty and not declared in env_allowlists.
+        and not (
+            name == "alt-butterfly-facade"
+            and env_map(svc)["MTLS_ALLOWED_PEERS"] == "${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}"
+        )
+        and (
+            (m := INTERP_DEFAULT.match(env_map(svc)["MTLS_ALLOWED_PEERS"])) is None
+            or m.group("var") not in rules.allowlists
+        )
+    ],
+)
+check(
     "env_allowlists require exactly the peers of every non-empty compose allowlist default",
     lambda: {k: set(v) for k, v in rules.allowlists.items()}
     == {

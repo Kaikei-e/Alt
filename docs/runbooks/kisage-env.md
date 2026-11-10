@@ -40,7 +40,7 @@ make install-lkal install-kisage
 make install-lkal LKAL_SRC_DIR=/path/to/LKAL
 make install-kisage KISAGE_SRC_DIR=/path/to/kisage LKAL_SRC_DIR=/path/to/LKAL
 
-# 3. Verify deploy/desired-env.lkal lockstep with deploy/host-prereqs.yaml & ADR-000982 (>= 5s floor)
+# 3. Verify deploy/desired-env.lkal canonical lkal fmt formatting, lockstep with deploy/host-prereqs.yaml & ADR-000982 (>= 5s floor)
 make kisage-verify
 # or directly:
 python3 scripts/kisage-env.py verify
@@ -75,15 +75,16 @@ python3 scripts/tests/test-kisage-env.py --audit-host-config
 
 ## Staged Read-Only Preflight & Explicit Scope Limits
 
-`python3 scripts/kisage-env.py preflight --env-file <path>` is a **read-only shadow gate** invoked explicitly via `make kisage-preflight` (it is **not** wired into `scripts/deploy.sh` and performs no automatic host apply).
+`python3 scripts/kisage-env.py preflight --env-file <path>` is a **read-only preflight gate** invoked via `make kisage-preflight` and wired as step `[2/6]` in `scripts/deploy.sh` right after `check-compose-variables.sh` (it performs no automatic host apply). A managed key that is present in `.env` with a value different from the declaration (for example values copied from an older template) stops `scripts/deploy.sh` at the preflight step, so run `make kisage-preflight ENV_FILE=.env` before relying on the deploy script.
 
 1. **Managed-Subset Comparison Only**:
-   - Compares only repository-managed keys declared under `/upstreams`, `/mtls_allowlists`, `/rate_limits`, and `/feature_flags` in `deploy/desired-env.lkal`.
+   - Compares only repository-managed keys declared under `/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`, `/mtls_policy`, and `/llm_budgets` in `deploy/desired-env.lkal` (service-prefixed mTLS policy flags only; unprefixed `MTLS_LISTEN`, `MTLS_PORT`, `MTLS_CLIENT_AUTH`, and `MTLS_ALLOWED_PEERS` are rejected by `verify` with `dotenv-forbidden-key` because `alt-backend` receives `../.env` via `env_file` and exits at startup if any of them is set).
+   - `verify` classifies every managed key from production Compose (`compose/compose.yaml` `include:` chain) into four classes: `defaulted` (interpolated via `${KEY:-default}` with identical defaults matching the declaration and no bare/required reference), `pinned` (literal container variable assignment matching the declaration), `required` (interpolated via `${KEY}`, `${KEY:?...}`, or bare `$KEY`, taking precedence over `defaulted`), or `passthrough` (not referenced in production Compose; must be set uncommented in `.env.template` with the declared value). Any managed key set uncommented in `.env.template` or `.env.example` must match the declaration. In `preflight`, absent `defaulted` and `pinned` keys in `.env` are accepted because Compose supplies them, whereas absent `passthrough` or `required` keys and any present managed key whose value differs from the declaration are rejected (`mtls_allowlists` values are compared as peer sets without duplicates, matching `verify`).
    - Unmanaged host secrets and `/local/*` operator keys in `.env` are preserved and ignored unless a line is syntactically malformed or duplicated.
 2. **Raw Dotenv File Scope & Managed-vs-Unmanaged Interpolation Policy**:
    - Parses the raw `.env` file on disk: supports unquoted values (including apostrophes `'`), single-quoted literal values (`'...'`), and double-quoted values (`"..."`) with standard backslash escapes (`\"`, `\\`, `\$`, `\n`, `\r`, `\t`).
    - Validates all key names, duplicate keys across all entries, missing `=`, unclosed quotes, and control characters across the entire file.
-   - **Managed keys** (`/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`): explicitly rejects unescaped `$` variable interpolation (`$VAR` / `${VAR}`) so repository-managed literals are never ambiguously misparsed.
+   - **Managed keys** (`/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`, `/mtls_policy`, `/llm_budgets`): explicitly rejects unescaped `$` variable interpolation (`$VAR` / `${VAR}`) so repository-managed literals are never ambiguously misparsed.
    - **Unmanaged keys** (host secrets and `/local/*` entries such as `APP_CLICKHOUSE_USER`, `APP_CLICKHOUSE_PASSWORD`, `APP_CLICKHOUSE_DATABASE`, `RECAP_DB_DSN`, `TAG_GENERATOR_SERVICE_TOKEN`): permits valid Compose variable reference syntax (`$VAR`, `${VAR}`, `${VAR:-default}`, `$$`) without attempting shell/Compose evaluation or emitting values, while still rejecting malformed `$` tokens or command substitution.
    - Does **not** evaluate shell environment overrides or Docker Compose effective interpolation.
 3. **Does Not Inspect Running Containers (`[[PM-2026-050]]`)**:
@@ -101,13 +102,13 @@ python3 scripts/tests/test-kisage-env.py --audit-host-config
 
 | Case | Scenario | Expected Behavior | Verified By |
 | :--- | :--- | :--- | :--- |
-| **1** | Official `lkal json -plain` normalization & `Quantity` literals (`7.5s`, `250ms`) | Block and labeled syntax normalize identically; duplicate keys (`L201`), bare words (`L103`), and missing/untrusted binaries fail closed without regex fallback. | `test-kisage-env.py` §2 |
+| **1** | Official `lkal json -plain` normalization & `Quantity` literals (`7.5s`, `250ms`) | Block and labeled syntax normalize identically; canonical `lkal fmt` formatting is enforced by `verify`; duplicate keys (`L201`), bare words (`L102`), and missing/untrusted binaries fail closed without regex fallback. | `test-kisage-env.py` §2 |
 | **2** | Isolated `init` -> `plan` (exit `2`) -> `apply` (`Converged`) -> second `plan` (exit `0` `NoOp`) -> `render-dotenv` | Converges managed sections in temp sandbox, renders deterministic escaped dotenv lines, rejects newline/control-char injection, and performs zero writes to repo `.kisage/`. | `test-kisage-env.py` §3, §4 |
 | **3** | External managed drift (`K203 ModifiedExternally`) | Hand-editing a managed leaf in `host-env.lkal` causes `kisage apply` to halt `Blocked` with `K203`; resolved only after `kisage explain` + explicit `kisage adopt` with `conditionToken` and `ownerRevision`. | `test-kisage-env.py` §6 |
 | **4** | Sibling `/local/*` & `###` comment preservation + Scope boundary | `/local/*` leaves and `###` doc comments survive `apply` and `prune`; any attempt to declare `/local/*` in `desired-env.lkal` is blocked by `verify` and by `kisage` with `K206` / `K401`. | `test-kisage-env.py` §4, §6 |
 | **5** | Conservative deletion boundary (`apply` vs. `prune`) | Removing a key from `desired-env.lkal` causes `kisage apply` to report `NotConverged` (`K604`) without deleting it; only explicit `kisage prune` removes `Origin=Created` leaves. | `test-kisage-env.py` §6 |
-| **6** | Alt semantic & schema invariants (`ADR-000982`) | `RATE_LIMIT_EXTERNAL_API_INTERVAL < 5s` (e.g. `1s`) and mTLS peer allowlist mismatches against `deploy/host-prereqs.yaml` fail `verify` and `preflight`. | `test-kisage-env.py` §3 |
-| **7** | Read-only dotenv `preflight` | Detects missing managed keys, value drift, managed-key `$` interpolation, duplicate keys, malformed lines, and invalid declarations while preserving unmanaged secrets (including apostrophes, escaped quotes, and valid Compose `${VAR}` references) and emitting key names only. | `test-kisage-env.py` §5 |
+| **6** | Alt semantic, Compose & template lockstep invariants (`ADR-000982`) | `RATE_LIMIT_EXTERNAL_API_INTERVAL < 5s` (e.g. `1s`), mTLS peer allowlist mismatches against `deploy/host-prereqs.yaml`, production Compose default/pinned mismatches, and `.env.template`/`.env.example` drift fail `verify` and `preflight`. | `test-kisage-env.py` §3, §9 |
+| **7** | Read-only dotenv `preflight` | Accepts absent `defaulted` and `pinned` managed keys, rejects missing `passthrough`/`required` managed keys, value drift on any present managed key, managed-key `$` interpolation, duplicate keys, malformed lines, and invalid declarations while preserving unmanaged secrets (including apostrophes, escaped quotes, and valid Compose `${VAR}` references) and emitting key names only. | `test-kisage-env.py` §5, §9 |
 
 ---
 
@@ -119,9 +120,9 @@ During staged evaluation, run `make kisage-preflight` alongside the existing bas
 2. **False Stops**: Count of valid operator `.env` configurations (unmanaged secrets, `/local/*` overrides, valid quoted/apostrophe syntax, or valid unmanaged Compose `${VAR}` references) erroneously rejected by `preflight` (target: `0`).
 3. **Elapsed Time**: Wall-clock execution time of `make kisage-verify` and `make kisage-preflight` (target: `< 2s`).
 4. **Manual Recovery Operations**: Count of host operator interventions (`explain` / `adopt` / state backup restores) required to recover from drift or rollback.
-5. **Live Raw `.env` Shadow Observation (2026-11-06 JST)**:
-   - Read-only `python3 scripts/kisage-env.py preflight --env-file .env` inspects only raw `.env` lines on disk, not Docker Compose effective runtime interpolation (`${VAR:-default}` fallbacks in `compose/*.yaml`).
-   - After repairing unmanaged variable reference handling (`0` false stops on unmanaged `APP_CLICKHOUSE_USER`, `APP_CLICKHOUSE_PASSWORD`, `APP_CLICKHOUSE_DATABASE`, `RECAP_DB_DSN`, and `TAG_GENERATOR_SERVICE_TOKEN`), live read-only preflight exits `1` reporting only the `23` absent repository-managed keys in raw `.env` (emitted by key name only, with no values emitted). These keys may be supplied by Compose defaults; this raw-file check does not verify effective Compose or running-container settings and does not establish a live outage.
+5. **Live Raw `.env` Observation**:
+   - Read-only `python3 scripts/kisage-env.py preflight --env-file .env` inspects raw `.env` lines on disk alongside the Compose binding classification from `verify`.
+   - The `22` managed keys that are absent from a typical host `.env` are `defaulted` or `pinned` in production Compose (`compose/*.yaml`), so `preflight` accepts their absence while still rejecting any absent `passthrough`/`required` key or any present managed key whose value drifts from `deploy/desired-env.lkal`. This check still does not inspect running-container state (`docker inspect`).
 
 ---
 
@@ -146,13 +147,15 @@ chmod 600 "$BACKUP_DIR/.env.bak" "$BACKUP_DIR/kisage-state.tar"
 
 ### 2. Inspect Plan & Apply (Host Operator)
 
+> **Scope Extension Note**: If an existing sandbox's `host.json` `scope` list predates `/mtls_policy` and `/llm_budgets`, re-running `python3 scripts/kisage-env.py init` safely regenerates `host.json` with `scope` entries for all `MANAGED_SECTIONS` while preserving existing `host-env.lkal` and `state/ownership.json` without re-running `kisage init-store` (pass `--actor` if a non-default actor was configured), or the host operator can extend `scope` in `host.json` directly to include `/mtls_policy` and `/llm_budgets` before running `kisage plan` or `kisage apply`.
+
 ```bash
 export KISAGE_HOST_CONFIG="$PWD/.kisage/host.json"
 
 # Inspect diff (exit 0 = NoOp, exit 2 = diff present, exit 1 = blocked/error)
 kisage plan deploy/desired-env.lkal -detailed-exitcode
 
-# Apply managed sections (/upstreams, /mtls_allowlists, /rate_limits, /feature_flags)
+# Apply managed sections (/upstreams, /mtls_allowlists, /rate_limits, /feature_flags, /mtls_policy, /llm_budgets)
 kisage apply deploy/desired-env.lkal
 
 # Render managed + /local/* projection to a staging file (NOTE: render-dotenv outputs only

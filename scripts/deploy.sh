@@ -6,10 +6,11 @@
 #
 # Pipeline:
 #   1. scripts/check-compose-variables.sh         (env render gate, touches nothing)
-#   2. scripts/check-apparmor-profile.sh --probe (host policy + signal delivery)
-#   3. scripts/pact-check.sh --broker            (publishes pacts to the Broker)
-#   4. scripts/retire-alt-pki-agent-leftovers.sh (project=alt pki-agent stop/rm + zero gate)
-#   5. c2quay deploy --env <env> --config c2quay.yml
+#   2. scripts/kisage-env.py preflight            (read-only managed env lockstep gate)
+#   3. scripts/check-apparmor-profile.sh --probe  (host policy + signal delivery)
+#   4. scripts/pact-check.sh --broker             (publishes pacts to the Broker)
+#   5. scripts/retire-alt-pki-agent-leftovers.sh  (project=alt pki-agent stop/rm + zero gate)
+#   6. c2quay deploy --env <env> --config c2quay.yml
 #        → can-i-deploy gate × 13 pacticipants (parallel, HAL)
 #        → docker compose up -d --wait
 #        → scripts/smoke.sh
@@ -38,10 +39,11 @@ Usage: scripts/deploy.sh [production|staging]
 
 Pipeline (aborts on the first failure):
   1. check-compose-variables
-  2. check-apparmor-profile.sh --probe
-  3. pact-check.sh --broker
-  4. retire leftover pki-agent-* (project=alt exact labels, before parent up)
-  5. c2quay deploy
+  2. kisage-env.py preflight --env-file .env
+  3. check-apparmor-profile.sh --probe
+  4. pact-check.sh --broker
+  5. retire leftover pki-agent-* (project=alt exact labels, before parent up)
+  6. c2quay deploy
 
 Environment:
   ALT_ACK_FRESH_INSTALL=1
@@ -75,27 +77,32 @@ PACT_CHECK_SCRIPT="${PACT_CHECK_SCRIPT:-$REPO_ROOT/scripts/pact-check.sh}"
 C2QUAY_BIN="${C2QUAY_BIN:-c2quay}"
 C2QUAY_CONFIG="${C2QUAY_CONFIG:-$REPO_ROOT/c2quay.yml}"
 COMPOSE_VARS_SCRIPT="${COMPOSE_VARS_SCRIPT:-$REPO_ROOT/scripts/check-compose-variables.sh}"
+KISAGE_PREFLIGHT_SCRIPT="${KISAGE_PREFLIGHT_SCRIPT:-$REPO_ROOT/scripts/kisage-env.py}"
+KISAGE_ENV_FILE="${KISAGE_ENV_FILE:-$REPO_ROOT/.env}"
 APPARMOR_CHECK_SCRIPT="${APPARMOR_CHECK_SCRIPT:-$REPO_ROOT/scripts/check-apparmor-profile.sh}"
 LEFTOVER_SWEEP_SCRIPT="${LEFTOVER_SWEEP_SCRIPT:-$REPO_ROOT/scripts/retire-alt-pki-agent-leftovers.sh}"
 
 # First, because an incomplete .env renders services with empty-string config
 # and c2quay would happily deploy that (PM-2026-048).
-echo "==> [1/5] check-compose-variables"
+echo "==> [1/6] check-compose-variables"
 "$COMPOSE_VARS_SCRIPT"
 
-echo "==> [2/5] check-apparmor-profile --probe"
+echo "==> [2/6] kisage-env.py preflight"
+"$KISAGE_PREFLIGHT_SCRIPT" preflight --env-file "$KISAGE_ENV_FILE"
+
+echo "==> [3/6] check-apparmor-profile --probe"
 "$APPARMOR_CHECK_SCRIPT" --probe
 
-echo "==> [3/5] pact-check.sh --broker"
+echo "==> [4/6] pact-check.sh --broker"
 "$PACT_CHECK_SCRIPT" --broker
 
 # Before any PKI_ENROLLMENT=enabled parent up. Visible project anchors
 # with zero pki-agent sidecars are a steady no-op. An empty listing
 # aborts unless ALT_ACK_FRESH_INSTALL=1. Fail-closed if leftovers remain.
-echo "==> [4/5] retire leftover pki-agent sidecars (project=alt, before parent up)"
+echo "==> [5/6] retire leftover pki-agent sidecars (project=alt, before parent up)"
 "$LEFTOVER_SWEEP_SCRIPT"
 
-echo "==> [5/5] c2quay deploy --env ${TARGET_ENV}"
+echo "==> [6/6] c2quay deploy --env ${TARGET_ENV}"
 "$C2QUAY_BIN" deploy --env "$TARGET_ENV" --config "$C2QUAY_CONFIG"
 
 echo ""

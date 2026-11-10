@@ -444,3 +444,5 @@ env_allowlists:
     required: [alt-backend, rag-orchestrator, acolyte-orchestrator]
   - key: TAG_GENERATOR_MTLS_ALLOWED_PEERS
     required: [alt-butterfly-facade, alt-backend, search-indexer, recap-worker]
+  - key: TTS_SPEAKER_MTLS_ALLOWED_PEERS
+    required: [alt-butterfly-facade]
