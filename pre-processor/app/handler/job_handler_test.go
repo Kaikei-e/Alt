@@ -911,11 +911,20 @@ func TestProcessQueueTick_RefillsAndProcessesWhileStragglerInFlight(t *testing.T
 	}).AnyTimes()
 
 	apiRepo.EXPECT().SummarizeArticle(gomock.Any(), gomock.Any(), "low").DoAndReturn(func(_ context.Context, a *domain.Article, _ string) (*domain.SummarizedContent, error) {
-		if a.ID == "straggler-1" {
+		switch a.ID {
+		case "straggler-1":
 			close(stragglerStarted)
-			<-releaseStraggler
-		} else if a.ID == "fast-2" {
-			<-stragglerStarted
+			select {
+			case <-releaseStraggler:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out waiting to release straggler-1")
+			}
+		case "fast-2":
+			select {
+			case <-stragglerStarted:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out waiting for straggler-1 to start")
+			}
 		}
 		return &domain.SummarizedContent{SummaryJapanese: "要約:" + a.ID}, nil
 	}).AnyTimes()
@@ -952,7 +961,13 @@ func TestProcessQueueTick_RefillsAndProcessesWhileStragglerInFlight(t *testing.T
 	}()
 
 	// refill-3 must be enqueued and completed by the free worker while straggler-1 is still blocked.
-	<-refill3Completed
+	select {
+	case <-refill3Completed:
+	case <-time.After(5 * time.Second):
+		close(releaseStraggler)
+		<-tickDone
+		t.Fatal("timed out waiting for refill-3 to complete while straggler-1 was in flight")
+	}
 	select {
 	case err := <-tickDone:
 		t.Fatalf("processQueueTick returned before straggler finished: %v", err)
@@ -960,7 +975,12 @@ func TestProcessQueueTick_RefillsAndProcessesWhileStragglerInFlight(t *testing.T
 	}
 
 	close(releaseStraggler)
-	require.NoError(t, <-tickDone)
+	select {
+	case err := <-tickDone:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for processQueueTick to finish")
+	}
 	assert.Contains(t, logBuf.String(), "summarization refill sweep")
 	assert.False(t, h.refillNeeded)
 }
@@ -1045,7 +1065,11 @@ func TestProcessQueueTick_ConcurrentDrainedWorkersDoNotTriggerDuplicateSweeps(t 
 			if firstDrainCount.Load() == 3 {
 				closeDrainedOnce.Do(func() { close(allThreeDrained) })
 			}
-			<-allThreeDrained
+			select {
+			case <-allThreeDrained:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out waiting for all three workers to drain")
+			}
 		}
 		return nil, nil
 	}).AnyTimes()
@@ -1111,4 +1135,288 @@ func TestProcessQueueTick_PropagatesRefillError(t *testing.T) {
 	err := h.processQueueTick(ctx)
 	require.ErrorIs(t, err, refillErr)
 	assert.False(t, h.refillNeeded)
+}
+
+func TestProcessQueueTick_WorkerDoesNotExitWhileRefillStillNeeded(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	jobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+	articleRepo := mocks.NewMockArticleRepository(ctrl)
+	apiRepo := mocks.NewMockExternalAPIRepository(ctrl)
+	summaryRepo := mocks.NewMockSummaryRepository(ctrl)
+
+	var mu sync.Mutex
+	var pending []*domain.SummarizeJob
+	var emptyDequeues atomic.Int32
+	secondEmpty := make(chan struct{})
+	var secondEmptyOnce sync.Once
+	r1Dequeued := make(chan struct{})
+	var r1DequeuedOnce sync.Once
+	var afterSweep2 atomic.Bool
+
+	var sweepCall atomic.Int32
+	articleRepo.EXPECT().FindForSummarization(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *domain.Cursor, _ int) ([]*domain.Article, *domain.Cursor, error) {
+			switch sweepCall.Add(1) {
+			case 1:
+				return []*domain.Article{{ID: "straggler"}, {ID: "fast-2"}}, &domain.Cursor{LastID: "x"}, nil
+			case 2:
+				select {
+				case <-secondEmpty:
+				case <-time.After(5 * time.Second):
+					t.Error("timed out waiting for second empty dequeue")
+				}
+				time.Sleep(100 * time.Millisecond) // let the second drained worker block on sweepMu
+				return []*domain.Article{{ID: "r1"}}, &domain.Cursor{LastID: "y"}, nil
+			case 3:
+				return []*domain.Article{{ID: "r2"}, {ID: "r3"}}, nil, nil
+			default:
+				return nil, nil, nil
+			}
+		}).AnyTimes()
+	summaryRepo.EXPECT().Exists(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().HasInFlightJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id string) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: id, MaxRetries: 3}
+		pending = append(pending, j)
+		if id == "r1" {
+			afterSweep2.Store(true)
+		}
+		return j.JobID.String(), nil
+	}).AnyTimes()
+	jobRepo.EXPECT().GetPendingJobs(gomock.Any(), 1).DoAndReturn(func(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+		if afterSweep2.Load() {
+			select {
+			case <-r1Dequeued:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out waiting for r1 to be dequeued")
+			}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if len(pending) == 0 {
+			return nil, nil
+		}
+		return []*domain.SummarizeJob{pending[0]}, nil
+	}).AnyTimes()
+	jobRepo.EXPECT().RecoverStuckJobs(gomock.Any()).Return(int64(0), nil).AnyTimes()
+	jobRepo.EXPECT().DequeueJobs(gomock.Any(), 1).DoAndReturn(func(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if len(pending) == 0 {
+			if emptyDequeues.Add(1) == 2 {
+				secondEmptyOnce.Do(func() { close(secondEmpty) })
+			}
+			return nil, nil
+		}
+		j := pending[0]
+		pending = pending[1:]
+		if j.ArticleID == "r1" {
+			r1DequeuedOnce.Do(func() { close(r1Dequeued) })
+		}
+		return []*domain.SummarizeJob{j}, nil
+	}).AnyTimes()
+	articleRepo.EXPECT().FindByID(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id string) (*domain.Article, error) {
+		return &domain.Article{ID: id, UserID: "u1", Title: "T", Content: "Body"}, nil
+	}).AnyTimes()
+
+	stragglerStarted := make(chan struct{})
+	releaseStraggler := make(chan struct{})
+	var releaseStragglerOnce sync.Once
+	closeReleaseStraggler := func() {
+		releaseStragglerOnce.Do(func() { close(releaseStraggler) })
+	}
+	r3Started := make(chan struct{})
+	var r3StartedOnce sync.Once
+	apiRepo.EXPECT().SummarizeArticle(gomock.Any(), gomock.Any(), "low").DoAndReturn(func(_ context.Context, a *domain.Article, _ string) (*domain.SummarizedContent, error) {
+		switch a.ID {
+		case "straggler":
+			close(stragglerStarted)
+			select {
+			case <-releaseStraggler:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out waiting to release straggler")
+			}
+		case "fast-2":
+			select {
+			case <-stragglerStarted:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out waiting for straggler to start")
+			}
+		case "r1":
+			time.Sleep(200 * time.Millisecond)
+		case "r2":
+			select {
+			case <-r3Started:
+			case <-releaseStraggler:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out waiting for r3 to start while r2 was in flight")
+			}
+		case "r3":
+			r3StartedOnce.Do(func() { close(r3Started) })
+		}
+		return &domain.SummarizedContent{SummaryJapanese: "s"}, nil
+	}).AnyTimes()
+	summaryRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	r3Done := make(chan struct{})
+	var r3DoneOnce sync.Once
+	jobRepo.EXPECT().CompleteJobWithNotification(gomock.Any(), gomock.Any(), gomock.Any(), "u1", gomock.Any()).DoAndReturn(func(_ context.Context, _, _, _, id string) error {
+		if id == "r3" {
+			r3DoneOnce.Do(func() { close(r3Done) })
+		}
+		return nil
+	}).AnyTimes()
+
+	log := testJobHandlerLogger()
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, 3)
+	worker.SetConcurrency(3)
+	h := &jobHandler{queueWorker: worker, logger: log, jobGroup: orchestrator.NewJobGroup(ctx, log), batchSize: 3, lastBatchSweep: time.Now(), batchSweepForceInterval: 30 * time.Minute}
+	require.NoError(t, h.processSummarizationBatch(ctx))
+
+	done := make(chan error, 1)
+	go func() { done <- h.processQueueTick(ctx) }()
+
+	select {
+	case <-r3Started:
+	case <-time.After(1500 * time.Millisecond):
+		closeReleaseStraggler()
+		<-done
+		t.Fatal("r3 did not start while straggler and r2 were in flight: a drained worker exited although refillNeeded was still true")
+	}
+
+	select {
+	case <-r3Done:
+	case <-time.After(5 * time.Second):
+		closeReleaseStraggler()
+		<-done
+		t.Fatal("timed out waiting for r3 to complete")
+	}
+
+	closeReleaseStraggler()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for processQueueTick to finish")
+	}
+}
+
+func TestProcessQueueTick_PendingJobMissedByDequeuePickedUpWhileStragglerInFlight(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	jobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+	articleRepo := mocks.NewMockArticleRepository(ctrl)
+	apiRepo := mocks.NewMockExternalAPIRepository(ctrl)
+	summaryRepo := mocks.NewMockSummaryRepository(ctrl)
+
+	var mu sync.Mutex
+	var pending []*domain.SummarizeJob
+
+	var sweepCall atomic.Int32
+	articleRepo.EXPECT().FindForSummarization(gomock.Any(), gomock.Any(), 2).DoAndReturn(
+		func(_ context.Context, _ *domain.Cursor, _ int) ([]*domain.Article, *domain.Cursor, error) {
+			switch sweepCall.Add(1) {
+			case 1:
+				return []*domain.Article{{ID: "straggler-1"}, {ID: "missed-2"}}, &domain.Cursor{LastID: "missed-2"}, nil
+			case 2:
+				return nil, nil, nil
+			default:
+				t.Errorf("unexpected extra FindForSummarization sweep")
+				return nil, nil, nil
+			}
+		}).AnyTimes()
+	summaryRepo.EXPECT().Exists(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().HasInFlightJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id string) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: id, MaxRetries: 3}
+		pending = append(pending, j)
+		return j.JobID.String(), nil
+	}).Times(2)
+
+	jobRepo.EXPECT().GetPendingJobs(gomock.Any(), 1).DoAndReturn(func(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if len(pending) == 0 {
+			return nil, nil
+		}
+		return []*domain.SummarizeJob{pending[0]}, nil
+	}).AnyTimes()
+	jobRepo.EXPECT().RecoverStuckJobs(gomock.Any()).Return(int64(0), nil)
+
+	var dequeueCalls atomic.Int32
+	jobRepo.EXPECT().DequeueJobs(gomock.Any(), 1).DoAndReturn(func(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+		call := dequeueCalls.Add(1)
+		mu.Lock()
+		defer mu.Unlock()
+		// Call 2 simulates a racing dequeue / SKIP LOCKED that misses the pending row.
+		if call == 2 || len(pending) == 0 {
+			return nil, nil
+		}
+		j := pending[0]
+		pending = pending[1:]
+		return []*domain.SummarizeJob{j}, nil
+	}).AnyTimes()
+
+	articleRepo.EXPECT().FindByID(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id string) (*domain.Article, error) {
+		return &domain.Article{ID: id, UserID: "u1", Title: "T", Content: "Body"}, nil
+	}).AnyTimes()
+
+	releaseStraggler := make(chan struct{})
+	var releaseOnce sync.Once
+	closeRelease := func() { releaseOnce.Do(func() { close(releaseStraggler) }) }
+	missed2Done := make(chan struct{})
+	var missed2DoneOnce sync.Once
+
+	apiRepo.EXPECT().SummarizeArticle(gomock.Any(), gomock.Any(), "low").DoAndReturn(func(_ context.Context, a *domain.Article, _ string) (*domain.SummarizedContent, error) {
+		if a.ID == "straggler-1" {
+			select {
+			case <-releaseStraggler:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out waiting to release straggler-1")
+			}
+		}
+		return &domain.SummarizedContent{SummaryJapanese: "s"}, nil
+	}).AnyTimes()
+	summaryRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	jobRepo.EXPECT().CompleteJobWithNotification(gomock.Any(), gomock.Any(), gomock.Any(), "u1", gomock.Any()).DoAndReturn(func(_ context.Context, _, _, _, id string) error {
+		if id == "missed-2" {
+			missed2DoneOnce.Do(func() { close(missed2Done) })
+		}
+		return nil
+	}).AnyTimes()
+
+	log := testJobHandlerLogger()
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, 2)
+	worker.SetConcurrency(2)
+	h := &jobHandler{queueWorker: worker, logger: log, jobGroup: orchestrator.NewJobGroup(ctx, log), batchSize: 2, lastBatchSweep: time.Now(), batchSweepForceInterval: 30 * time.Minute}
+	require.NoError(t, h.processSummarizationBatch(ctx))
+
+	done := make(chan error, 1)
+	go func() { done <- h.processQueueTick(ctx) }()
+
+	select {
+	case <-missed2Done:
+	case <-time.After(1500 * time.Millisecond):
+		closeRelease()
+		<-done
+		t.Fatal("missed-2 was not processed while straggler-1 was in flight: worker exited despite pending rows")
+	}
+
+	closeRelease()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for processQueueTick to finish")
+	}
 }
