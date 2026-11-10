@@ -343,7 +343,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	// would accept wrong-CA responses.
 	healthCheckerService := service.NewHealthCheckerServiceWithClient(newsHTTPClient, cfg.NewsCreator.Host, log)
 	articleSyncService := service.NewArticleSyncService(articleRepo, apiRepo, log)
-	summarizeQueueWorker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, batchSize)
+	summarizeQueueWorker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
 	summarizeQueueWorker.SetConcurrency(cfg.SummarizeQueue.Concurrency)
 
 	// Initialize health metrics collector

@@ -249,7 +249,6 @@ func newQueueWorkerWithJobs(jobs []*domain.SummarizeJob) *service.SummarizeQueue
 		&stubJobRepoForHandler{jobs: jobs},
 		nil, nil, nil,
 		testJobHandlerLogger(),
-		10,
 	)
 }
 
@@ -258,7 +257,6 @@ func newQueueWorkerWithError(err error) *service.SummarizeQueueWorker {
 		&stubJobRepoForHandler{getErr: err},
 		nil, nil, nil,
 		testJobHandlerLogger(),
-		10,
 	)
 }
 
@@ -340,7 +338,7 @@ func newQueueWorkerForEnqueue(articles []*domain.Article, pendingJobs []*domain.
 	jobRepo := &stubJobRepoForEnqueue{jobs: pendingJobs}
 	articleRepo := &stubArticleRepoForEnqueue{articles: articles}
 	summaryRepo := &stubSummaryRepoForEnqueue{}
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testJobHandlerLogger(), 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testJobHandlerLogger())
 	return worker, jobRepo, articleRepo
 }
 
@@ -348,7 +346,7 @@ func newQueueWorkerForEnqueueWithError(err error) *service.SummarizeQueueWorker 
 	jobRepo := &stubJobRepoForEnqueue{getErr: err}
 	articleRepo := &stubArticleRepoForEnqueue{}
 	summaryRepo := &stubSummaryRepoForEnqueue{}
-	return service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testJobHandlerLogger(), 10)
+	return service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testJobHandlerLogger())
 }
 
 func TestProcessQualityCheckBatch_SkipsWhenSummarizationPending(t *testing.T) {
@@ -716,7 +714,7 @@ func TestProcessSummarizationBatch_RefillStateMachine(t *testing.T) {
 			jobRepo := &stubJobRepoForRefill{createJobToken: tc.createJobToken}
 			articleRepo := &stubArticleRepoForRefill{calls: tc.findCalls}
 			summaryRepo := &stubSummaryRepoForEnqueue{}
-			worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, log, 10)
+			worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, log)
 
 			h := &jobHandler{
 				queueWorker:             worker,
@@ -762,7 +760,7 @@ func TestProcessSummarizationBatch_RefillStateMachine(t *testing.T) {
 		}
 		apiRepo := &stubExternalAPIRepoForRefill{summarizeErr: domain.ErrServiceOverloaded}
 		summaryRepo := &stubSummaryRepoForEnqueue{}
-		worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, 10)
+		worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
 
 		h := &jobHandler{
 			queueWorker:             worker,
@@ -797,7 +795,7 @@ func TestProcessSummarizationBatch_RefillStateMachine(t *testing.T) {
 			},
 		}
 		summaryRepo := &stubSummaryRepoForEnqueue{}
-		worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, log, 10)
+		worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, log)
 
 		h := &jobHandler{
 			queueWorker:             worker,
@@ -940,7 +938,7 @@ func TestProcessQueueTick_RefillsAndProcessesWhileStragglerInFlight(t *testing.T
 
 	var logBuf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, 2)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
 	worker.SetConcurrency(2)
 
 	h := &jobHandler{
@@ -1082,7 +1080,7 @@ func TestProcessQueueTick_ConcurrentDrainedWorkersDoNotTriggerDuplicateSweeps(t 
 	jobRepo.EXPECT().CompleteJobWithNotification(gomock.Any(), gomock.Any(), gomock.Any(), "u1", gomock.Any()).Return(nil).AnyTimes()
 
 	log := testJobHandlerLogger()
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, 3)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
 	worker.SetConcurrency(3)
 
 	h := &jobHandler{
@@ -1118,7 +1116,7 @@ func TestProcessQueueTick_PropagatesRefillError(t *testing.T) {
 	}
 	summaryRepo := &stubSummaryRepoForEnqueue{}
 	log := testJobHandlerLogger()
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, log, 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, log)
 
 	h := &jobHandler{
 		queueWorker:             worker,
@@ -1273,7 +1271,7 @@ func TestProcessQueueTick_WorkerDoesNotExitWhileRefillStillNeeded(t *testing.T) 
 	}).AnyTimes()
 
 	log := testJobHandlerLogger()
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, 3)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
 	worker.SetConcurrency(3)
 	h := &jobHandler{queueWorker: worker, logger: log, jobGroup: orchestrator.NewJobGroup(ctx, log), batchSize: 3, lastBatchSweep: time.Now(), batchSweepForceInterval: 30 * time.Minute}
 	require.NoError(t, h.processSummarizationBatch(ctx))
@@ -1396,7 +1394,7 @@ func TestProcessQueueTick_PendingJobMissedByDequeuePickedUpWhileStragglerInFligh
 	}).AnyTimes()
 
 	log := testJobHandlerLogger()
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, 2)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
 	worker.SetConcurrency(2)
 	h := &jobHandler{queueWorker: worker, logger: log, jobGroup: orchestrator.NewJobGroup(ctx, log), batchSize: 2, lastBatchSweep: time.Now(), batchSweepForceInterval: 30 * time.Minute}
 	require.NoError(t, h.processSummarizationBatch(ctx))

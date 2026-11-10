@@ -145,7 +145,8 @@ func TestSummarizeQueueWorker_ProcessQueue_ContinuousDispatchWithoutBatchBarrier
 			return nil
 		}).Times(5)
 
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger(), 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger())
+	service.SetIdlePollIntervalForTest(worker, 10*time.Millisecond)
 	worker.SetConcurrency(3)
 
 	doneCh := make(chan error, 1)
@@ -257,7 +258,8 @@ func TestSummarizeQueueWorker_ProcessQueue_RefillOnDrainedWhileStragglerRuns(t *
 		return refilled, nil
 	}
 
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger(), 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger())
+	service.SetIdlePollIntervalForTest(worker, 10*time.Millisecond)
 	worker.SetConcurrency(2)
 
 	doneCh := make(chan error, 1)
@@ -344,7 +346,8 @@ func TestSummarizeQueueWorker_ProcessQueue_OverloadStopsAndReleasesUnstartedJob(
 	log := newSignalLogger("downstream service busy, backing off queue worker", func() {
 		overloadedSetOnce.Do(func() { close(overloadedSet) })
 	})
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
+	service.SetIdlePollIntervalForTest(worker, 10*time.Millisecond)
 	worker.SetConcurrency(2)
 
 	err := worker.ProcessQueue(ctx, noRefill)
@@ -410,7 +413,8 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCancelStopsAndReleasesUnstarte
 			return nil
 		}).Times(1)
 
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger(), 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger())
+	service.SetIdlePollIntervalForTest(worker, 10*time.Millisecond)
 	worker.SetConcurrency(2)
 
 	err := worker.ProcessQueue(ctx, noRefill)
@@ -430,7 +434,8 @@ func TestSummarizeQueueWorker_ProcessQueue_RefillErrorStopsWorkersAndPropagates(
 	jobRepo.EXPECT().DequeueJobs(gomock.Any(), 1).Return(nil, nil).Times(1)
 
 	refillErr := errors.New("refill sweep failed")
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger(), 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger())
+	service.SetIdlePollIntervalForTest(worker, 10*time.Millisecond)
 	worker.SetConcurrency(1)
 
 	err := worker.ProcessQueue(ctx, func(_ context.Context) (bool, error) {
@@ -510,7 +515,8 @@ func TestSummarizeQueueWorker_ProcessQueue_PendingReportedByOnDrainedPickedUpOnL
 		return onDrainedCalls.Add(1) == 1, nil
 	}
 
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger(), 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger())
+	service.SetIdlePollIntervalForTest(worker, 10*time.Millisecond)
 	worker.SetConcurrency(2)
 
 	doneCh := make(chan error, 1)
@@ -605,7 +611,8 @@ func TestSummarizeQueueWorker_ProcessQueue_OutOfBandEnqueueProcessedWhileStraggl
 		return false, nil
 	}
 
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger(), 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger())
+	service.SetIdlePollIntervalForTest(worker, 10*time.Millisecond)
 	worker.SetConcurrency(2)
 
 	doneCh := make(chan error, 1)
@@ -704,7 +711,8 @@ func TestSummarizeQueueWorker_ProcessQueue_DequeueErrorStopsWorkersAndWaitsForIn
 			return nil
 		}).Times(1)
 
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger(), 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger())
+	service.SetIdlePollIntervalForTest(worker, 10*time.Millisecond)
 	worker.SetConcurrency(2)
 
 	doneCh := make(chan error, 1)
@@ -756,7 +764,8 @@ func TestSummarizeQueueWorker_ProcessQueue_TerminatesWhenOnDrainedAlwaysTrueAndQ
 		return nil, nil
 	}).AnyTimes()
 
-	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger(), 10)
+	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, discardLogger())
+	service.SetIdlePollIntervalForTest(worker, 10*time.Millisecond)
 	worker.SetConcurrency(1)
 
 	doneCh := make(chan error, 1)

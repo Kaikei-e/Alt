@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"pre-processor/domain"
@@ -25,7 +24,6 @@ type jobHandler struct {
 	jobGroup                *orchestrator.JobGroup
 	batchSize               int
 	sweepMu                 sync.Mutex
-	sweepSeq                atomic.Uint64
 	lastBatchSweep          time.Time
 	batchSweepForceInterval time.Duration
 	refillNeeded            bool
@@ -201,22 +199,8 @@ func (h *jobHandler) processQueueTick(ctx context.Context) error {
 }
 
 func (h *jobHandler) maybeRefillSummarizationBatch(ctx context.Context) (bool, error) {
-	seqBefore := h.sweepSeq.Load()
 	h.sweepMu.Lock()
 	defer h.sweepMu.Unlock()
-
-	if h.sweepSeq.Load() != seqBefore {
-		hasPending, err := h.queueWorker.HasPendingJobs(ctx)
-		if err != nil {
-			h.logger.WarnContext(ctx, "failed to check pending jobs, deferring refill sweep", "error", err)
-			return false, nil
-		}
-		return hasPending, nil
-	}
-
-	if !h.refillNeeded {
-		return false, nil
-	}
 
 	hasPending, err := h.queueWorker.HasPendingJobs(ctx)
 	if err != nil {
@@ -224,6 +208,10 @@ func (h *jobHandler) maybeRefillSummarizationBatch(ctx context.Context) (bool, e
 		return false, nil
 	}
 	if hasPending {
+		return true, nil
+	}
+
+	if !h.refillNeeded {
 		return false, nil
 	}
 
@@ -240,9 +228,6 @@ func (h *jobHandler) runEnqueueSweepLocked(ctx context.Context, isRefill bool) (
 
 	h.lastBatchSweep = time.Now()
 	h.refillNeeded = enqueueResult.HasMore && enqueueResult.Enqueued > 0
-	if enqueueResult.Enqueued > 0 {
-		h.sweepSeq.Add(1)
-	}
 
 	if isRefill {
 		h.logger.InfoContext(ctx, "summarization refill sweep",

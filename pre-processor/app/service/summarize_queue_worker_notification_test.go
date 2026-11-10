@@ -83,7 +83,6 @@ func TestSummarizeQueueWorker_CompletesThroughTheOutbox(t *testing.T) {
 		&stubAPIRepoForWorker{},
 		&stubSummaryRepoForWorker{},
 		testLogger(),
-		10,
 	)
 
 	require.NoError(t, worker.ProcessQueue(context.Background(), noRefill))

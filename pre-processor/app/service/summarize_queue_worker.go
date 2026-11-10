@@ -19,8 +19,9 @@ import (
 // These must match the knownPlaceholders in quality-checker/quality_judger.go
 // so that the quality checker does not attempt to delete them.
 const (
-	placeholderTooShort = "本文が短すぎるため要約できませんでした。"
-	placeholderTooLong  = "本文が長すぎるため要約できませんでした。"
+	placeholderTooShort     = "本文が短すぎるため要約できませんでした。"
+	placeholderTooLong      = "本文が長すぎるため要約できませんでした。"
+	defaultIdlePollInterval = 1 * time.Second
 )
 
 // EnqueueResult represents the result of enqueuing unsummarized articles.
@@ -34,13 +35,13 @@ type EnqueueResult struct {
 
 // SummarizeQueueWorker handles processing of queued summarization jobs
 type SummarizeQueueWorker struct {
-	jobRepo     repository.SummarizeJobRepository
-	articleRepo repository.ArticleRepository
-	apiRepo     repository.ExternalAPIRepository
-	summaryRepo repository.SummaryRepository
-	logger      *slog.Logger
-	batchSize   int
-	concurrency int
+	jobRepo          repository.SummarizeJobRepository
+	articleRepo      repository.ArticleRepository
+	apiRepo          repository.ExternalAPIRepository
+	summaryRepo      repository.SummaryRepository
+	logger           *slog.Logger
+	concurrency      int
+	idlePollInterval time.Duration
 
 	// mu guards lastRecoveryRun and enqueueCursor: ProcessQueue (queue-worker
 	// job, 10s ticker) and EnqueueUnsummarizedBatch/ResetEnqueueCursor
@@ -58,16 +59,15 @@ func NewSummarizeQueueWorker(
 	apiRepo repository.ExternalAPIRepository,
 	summaryRepo repository.SummaryRepository,
 	logger *slog.Logger,
-	batchSize int,
 ) *SummarizeQueueWorker {
 	return &SummarizeQueueWorker{
-		jobRepo:     jobRepo,
-		articleRepo: articleRepo,
-		apiRepo:     apiRepo,
-		summaryRepo: summaryRepo,
-		logger:      logger,
-		batchSize:   batchSize,
-		concurrency: 1,
+		jobRepo:          jobRepo,
+		articleRepo:      articleRepo,
+		apiRepo:          apiRepo,
+		summaryRepo:      summaryRepo,
+		logger:           logger,
+		concurrency:      1,
+		idlePollInterval: defaultIdlePollInterval,
 	}
 }
 
@@ -120,7 +120,19 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context, onDrained func(
 		workerCount = 1
 	}
 
+	pollInterval := w.idlePollInterval
+	if pollInterval <= 0 {
+		pollInterval = defaultIdlePollInterval
+	}
+
 	var wg sync.WaitGroup
+	var inFlight atomic.Int32
+	var draining atomic.Int32
+	doneIdle := make(chan struct{})
+	var doneIdleOnce sync.Once
+	closeDoneIdle := func() {
+		doneIdleOnce.Do(func() { close(doneIdle) })
+	}
 	var overloadOnce sync.Once
 	var overloaded atomic.Bool
 	var errOnce sync.Once
@@ -131,20 +143,56 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context, onDrained func(
 		errOnce.Do(func() {
 			firstErr = err
 			aborted.Store(true)
+			closeDoneIdle()
 		})
+	}
+
+	// Incrementing inFlight before DequeueJobs and decrementing on empty/error
+	// or after processing ensures two drained workers cannot both see each
+	// other as busy forever, while preventing a worker from exiting during the
+	// window in which another worker is claiming a job.
+	dequeue := func() ([]*domain.SummarizeJob, bool) {
+		inFlight.Add(1)
+		jobs, err := w.jobRepo.DequeueJobs(ctx, 1)
+		if err != nil {
+			inFlight.Add(-1)
+			w.logger.ErrorContext(ctx, "failed to dequeue jobs", "error", err)
+			recordErr(fmt.Errorf("failed to dequeue jobs: %w", err))
+			return nil, false
+		}
+		if len(jobs) == 0 {
+			inFlight.Add(-1)
+		}
+		return jobs, true
+	}
+
+	waitIdle := func() bool {
+		if inFlight.Load() <= 0 && draining.Load() <= 0 {
+			w.logger.DebugContext(ctx, "no pending jobs to process")
+			closeDoneIdle()
+			return false
+		}
+		timer := time.NewTimer(pollInterval)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return false
+		case <-doneIdle:
+			return false
+		case <-timer.C:
+			return true
+		}
 	}
 
 	workerFn := func() {
 		defer wg.Done()
 		for {
-			if overloaded.Load() || aborted.Load() {
+			if ctx.Err() != nil || overloaded.Load() || aborted.Load() {
 				return
 			}
 
-			jobs, err := w.jobRepo.DequeueJobs(ctx, 1)
-			if err != nil {
-				w.logger.ErrorContext(ctx, "failed to dequeue jobs", "error", err)
-				recordErr(fmt.Errorf("failed to dequeue jobs: %w", err))
+			jobs, ok := dequeue()
+			if !ok {
 				return
 			}
 
@@ -152,16 +200,31 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context, onDrained func(
 				if ctx.Err() != nil || overloaded.Load() || aborted.Load() {
 					return
 				}
+				draining.Add(1)
 				refilled, err := onDrained(ctx)
 				if err != nil {
+					draining.Add(-1)
 					recordErr(err)
 					return
 				}
-				if !refilled {
-					w.logger.DebugContext(ctx, "no pending jobs to process")
-					return
+				if refilled {
+					if ctx.Err() != nil || overloaded.Load() || aborted.Load() {
+						draining.Add(-1)
+						return
+					}
+					jobs, ok = dequeue()
+					if !ok {
+						draining.Add(-1)
+						return
+					}
 				}
-				continue
+				draining.Add(-1)
+				if len(jobs) == 0 {
+					if !waitIdle() {
+						return
+					}
+					continue
+				}
 			}
 
 			for _, job := range jobs {
@@ -173,6 +236,7 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context, onDrained func(
 				if err := w.processJob(ctx, job); err != nil {
 					if errors.Is(err, domain.ErrServiceOverloaded) || errors.Is(err, domain.ErrUpstreamBusy) {
 						overloaded.Store(true)
+						closeDoneIdle()
 						overloadOnce.Do(func() {
 							w.logger.WarnContext(ctx, "downstream service busy, backing off queue worker",
 								"job_id", job.JobID,
@@ -185,6 +249,7 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context, onDrained func(
 					w.logger.ErrorContext(ctx, "failed to process job", "error", err, "job_id", job.JobID, "article_id", job.ArticleID)
 				}
 			}
+			inFlight.Add(-1)
 
 			if ctx.Err() != nil || overloaded.Load() || aborted.Load() {
 				return
