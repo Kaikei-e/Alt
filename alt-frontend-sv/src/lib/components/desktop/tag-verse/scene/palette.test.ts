@@ -59,4 +59,41 @@ describe("palette", () => {
 		expect(palette.labelInk).toBe(ALT_PAPER_DEFAULTS.ink);
 		expect(palette.accent).toBe(ALT_PAPER_DEFAULTS.accent);
 	});
+
+	it("pins WCAG contrast ratio maths to known reference values and throws on invalid colours", () => {
+		expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 5);
+		expect(contrastRatio("#ffffff", "#000000")).toBeCloseTo(21, 5);
+		expect(contrastRatio("#faf9f7", "#faf9f7")).toBeCloseTo(1, 5);
+		expect(contrastRatio("#2f4f4f", "#2f4f4f")).toBeCloseTo(1, 5);
+
+		expect(() => relativeLuminance("not-a-color")).toThrow();
+		expect(() => contrastRatio("not-a-color", "#faf9f7")).toThrow();
+	});
+
+	it("falls back to Alt-Paper defaults when resolved accent (< 3:1) or labelInk (< 4.5:1) fails contrast against paper", () => {
+		// Light/neon tokens against light paper
+		const lowContrastOnPaper = buildPalette("#faf9f7", "#999999", "#7fe5f0");
+		expect(lowContrastOnPaper.labelInk).toBe(ALT_PAPER_DEFAULTS.ink);
+		expect(lowContrastOnPaper.accent).toBe(ALT_PAPER_DEFAULTS.accent);
+		expect(
+			contrastRatio(lowContrastOnPaper.labelInk, lowContrastOnPaper.paper),
+		).toBeGreaterThanOrEqual(4.5);
+		expect(
+			contrastRatio(lowContrastOnPaper.accent, lowContrastOnPaper.paper),
+		).toBeGreaterThanOrEqual(3.0);
+
+		// Dark surface tokens where dark ink fails against dark background
+		const darkSurface = buildPalette("#0a0a0f", "#1a1a1a", "#2f4f4f");
+		expect(
+			contrastRatio(darkSurface.labelInk, darkSurface.paper),
+		).toBeGreaterThanOrEqual(4.5);
+		expect(
+			contrastRatio(darkSurface.accent, darkSurface.paper),
+		).toBeGreaterThanOrEqual(3.0);
+		for (const step of darkSurface.ramp) {
+			expect(contrastRatio(step, darkSurface.paper)).toBeGreaterThanOrEqual(
+				3.0,
+			);
+		}
+	});
 });

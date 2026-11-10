@@ -4,9 +4,12 @@ import {
 	buildSceneModel,
 	computeCloudRadius,
 	computeColorBucket,
+	computeFogFactor,
 	computeLabelFontSize,
+	computeLabelOpacity,
 	computeRadius,
 	fibonacciSphere,
+	fogWindow,
 	hasServerPositions,
 } from "./sceneModel.js";
 
@@ -103,5 +106,41 @@ describe("sceneModel", () => {
 		expect(model.nodes).toHaveLength(1);
 		expect(model.nodes[0]?.position).toEqual([60, 80, 0]);
 		expect(model.indexByName.get("a")).toBe(0);
+	});
+
+	it("keeps the nearest cloud node visibly inked (fog factor < 0.6) across [minDistance, maxDistance]", () => {
+		const cloudRadius = 100;
+		const minDistance = cloudRadius * 0.3;
+		const maxDistance = cloudRadius * 5;
+
+		for (const d of [
+			minDistance,
+			cloudRadius * 0.5,
+			cloudRadius * 1.5,
+			cloudRadius * 3,
+			cloudRadius * 4.2,
+			maxDistance,
+		]) {
+			const win = fogWindow(d, cloudRadius);
+			expect(win.near).toBeCloseTo(Math.max(0, d - 0.2 * cloudRadius), 6);
+			expect(win.far).toBeCloseTo(d + 1.6 * cloudRadius, 6);
+
+			const nearestNodeDepth = Math.max(0, d - cloudRadius);
+			expect(computeFogFactor(nearestNodeDepth, win)).toBeLessThan(0.6);
+			expect(computeFogFactor(d, win)).toBeLessThan(0.6);
+		}
+	});
+
+	it("fades label opacity with the fog window, clamps visible nodes to 0.35, and skips vanished nodes", () => {
+		const win = fogWindow(150, 100); // near = 130, far = 310 (span = 180)
+
+		expect(computeLabelOpacity(130, win)).toBeCloseTo(1.0, 6);
+		// mid-depth: depth = 220 => fogFactor = 0.5 => opacity = 0.5
+		expect(computeLabelOpacity(220, win)).toBeCloseTo(0.5, 6);
+		// deep but still visible: depth = 274 => fogFactor = 144/180 = 0.8 => clamped to 0.35
+		expect(computeLabelOpacity(274, win)).toBeCloseTo(0.35, 6);
+		// vanished node (fogFactor ~ 1): skipped (opacity = 0)
+		expect(computeLabelOpacity(309, win)).toBe(0);
+		expect(computeLabelOpacity(350, win)).toBe(0);
 	});
 });

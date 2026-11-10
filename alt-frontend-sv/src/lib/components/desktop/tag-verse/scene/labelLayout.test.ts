@@ -34,7 +34,7 @@ describe("labelLayout", () => {
 			{ x: 25, y: 22, w: 80, h: 20, forced: true },
 			{ x: 30, y: 24, w: 80, h: 20 },
 		];
-		expect(layoutLabels(boxes, { forcedIndices: [0, 1] })).toEqual([0, 1]);
+		expect(layoutLabels(boxes)).toEqual([0, 1]);
 	});
 
 	it("places 1000 random boxes without error and with zero pairwise overlap among accepted boxes", () => {

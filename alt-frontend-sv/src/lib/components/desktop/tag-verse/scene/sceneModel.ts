@@ -97,6 +97,29 @@ export function computeCloudRadius(
 	return Math.max(15, Math.sqrt(tags.length) * 3);
 }
 
+export interface FogWindow {
+	near: number;
+	far: number;
+}
+
+export function fogWindow(
+	_distance: number,
+	_cloudRadius: number,
+): FogWindow {
+	return { near: 0, far: 0 };
+}
+
+export function computeFogFactor(_depth: number, _window: FogWindow): number {
+	return 1;
+}
+
+export function computeLabelOpacity(
+	_depth: number,
+	_window: FogWindow,
+): number {
+	return 0;
+}
+
 export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
 	const serverPos = hasServerPositions(tags);
 	const cloudRadius = computeCloudRadius(tags, serverPos);
