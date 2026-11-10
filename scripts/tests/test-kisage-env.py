@@ -109,6 +109,296 @@ def run_cli_capture(kisage_env_mod, argv: list[str]) -> tuple[int, str, str]:
     return rc, out_buf.getvalue(), err_buf.getvalue()
 
 
+def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
+    print("9. Compose Lockstep & Absent-Default Preflight Contracts")
+
+    def _verify(*args, **kwargs):
+        try:
+            return kisage_env.verify_declaration(*args, **kwargs)
+        except TypeError as exc:
+            return [f"__type_error__:{exc}"]
+
+    def _preflight(*args, **kwargs):
+        try:
+            return kisage_env.preflight_dotenv(*args, **kwargs)
+        except TypeError as exc:
+            return [f"__type_error__:{exc}"]
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp = pathlib.Path(tmp_dir)
+        fx_manifest = tmp / "host-prereqs.yaml"
+        fx_manifest.write_text(
+            MANIFEST_PATH.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        sections = kisage_env.parse_lkal_sections(
+            DECL_PATH.read_text(encoding="utf-8")
+        )
+        allowlists = sections["mtls_allowlists"]
+        allowlist_lkal_lines = [
+            f"  {k} = [{', '.join(json.dumps(p) for p in peers)}]"
+            for k, peers in sorted(allowlists.items())
+        ]
+        allowlist_compose_lines = [
+            f"      - {k}=${{{k}:-{','.join(peers)}}}"
+            for k, peers in sorted(allowlists.items())
+        ]
+
+        fx_compose_dir = tmp / "compose"
+        fx_compose_dir.mkdir()
+        fx_compose_root = fx_compose_dir / "compose.yaml"
+        fx_compose_root.write_text(
+            "include:\n  - sub.yaml\n",
+            encoding="utf-8",
+        )
+        fx_sub_yaml = fx_compose_dir / "sub.yaml"
+
+        def write_sub_compose(
+            auth_default: str = "https://auth-hub:8443",
+            second_auth_default: str | None = None,
+            pinned_search: str = "https://search-indexer:9443",
+        ) -> None:
+            extra_svc = ""
+            if second_auth_default is not None:
+                extra_svc = (
+                    "  second-svc:\n"
+                    "    image: example/second:latest\n"
+                    "    environment:\n"
+                    f"      - AUTH_HUB_INTERNAL_URL=${{AUTH_HUB_INTERNAL_URL:-{second_auth_default}}}\n"
+                )
+            fx_sub_yaml.write_text(
+                "services:\n"
+                "  app:\n"
+                "    image: example/app:latest\n"
+                "    environment:\n"
+                f"      - AUTH_HUB_INTERNAL_URL=${{AUTH_HUB_INTERNAL_URL:-{auth_default}}}\n"
+                f"      - SEARCH_INDEXER_CONNECT_URL={pinned_search}\n"
+                "      - RATE_LIMIT_EXTERNAL_API_INTERVAL=${RATE_LIMIT_EXTERNAL_API_INTERVAL:-7.5s}\n"
+                + "\n".join(allowlist_compose_lines)
+                + "\n"
+                + extra_svc,
+                encoding="utf-8",
+            )
+
+        fx_decl = tmp / "desired-env.lkal"
+        fx_decl.write_text(
+            '@lkal "0.1"\n'
+            "upstreams {\n"
+            '  AUTH_HUB_INTERNAL_URL = "https://auth-hub:8443"\n'
+            '  SEARCH_INDEXER_CONNECT_URL = "https://search-indexer:9443"\n'
+            "}\n"
+            "mtls_allowlists {\n"
+            + "\n".join(allowlist_lkal_lines)
+            + "\n}\n"
+            "rate_limits {\n"
+            "  RATE_LIMIT_EXTERNAL_API_INTERVAL = 7.5s\n"
+            "}\n"
+            "feature_flags {\n"
+            "  KNOWLEDGE_HOME_ENABLE_PAGE = true\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        fx_template = tmp / ".env.template"
+
+        # 1. Defaulted key with equal default passes; differing default fails naming the key
+        write_sub_compose()
+        fx_template.write_text("KNOWLEDGE_HOME_ENABLE_PAGE=true\n", encoding="utf-8")
+        errs_ok = _verify(
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        check(
+            "fixture verify_declaration passes when defaulted, pinned, and passthrough keys match",
+            errs_ok == [],
+            repr(errs_ok),
+        )
+
+        diff_default_sentinel = "https://auth-hub:9999/DIFF_DEFAULT_SENTINEL"
+        write_sub_compose(auth_default=diff_default_sentinel)
+        errs_diff_default = _verify(
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        joined_diff_default = "\n".join(errs_diff_default)
+        check(
+            "verify_declaration fails on differing compose default naming the key without leaking values",
+            bool(errs_diff_default)
+            and "AUTH_HUB_INTERNAL_URL" in joined_diff_default
+            and diff_default_sentinel not in joined_diff_default
+            and "https://auth-hub:8443" not in joined_diff_default,
+            repr(errs_diff_default),
+        )
+
+        # 2. Two interpolations of one key with different defaults fail
+        second_default_sentinel = "https://auth-hub:7777/SECOND_DEFAULT_SENTINEL"
+        write_sub_compose(
+            auth_default="https://auth-hub:8443",
+            second_auth_default=second_default_sentinel,
+        )
+        errs_two_defaults = _verify(
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        joined_two_defaults = "\n".join(errs_two_defaults)
+        check(
+            "verify_declaration fails when two interpolations of one key have different defaults",
+            bool(errs_two_defaults)
+            and "AUTH_HUB_INTERNAL_URL" in joined_two_defaults
+            and second_default_sentinel not in joined_two_defaults
+            and "https://auth-hub:8443" not in joined_two_defaults,
+            repr(errs_two_defaults),
+        )
+
+        # 3. Pinned literal equal passes (covered above); pinned literal mismatch fails
+        pinned_mismatch_sentinel = "https://search-indexer:9999/PINNED_SENTINEL"
+        write_sub_compose(pinned_search=pinned_mismatch_sentinel)
+        errs_pinned_mismatch = _verify(
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        joined_pinned_mismatch = "\n".join(errs_pinned_mismatch)
+        check(
+            "verify_declaration fails on pinned literal mismatch naming the key without leaking values",
+            bool(errs_pinned_mismatch)
+            and "SEARCH_INDEXER_CONNECT_URL" in joined_pinned_mismatch
+            and pinned_mismatch_sentinel not in joined_pinned_mismatch
+            and "https://search-indexer:9443" not in joined_pinned_mismatch,
+            repr(errs_pinned_mismatch),
+        )
+
+        # 4. Passthrough key missing from template fails; template value mismatch fails
+        write_sub_compose()
+        fx_template.write_text("# KNOWLEDGE_HOME_ENABLE_PAGE=true\n", encoding="utf-8")
+        errs_pt_missing = _verify(
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        check(
+            "verify_declaration fails when passthrough key is missing or commented out in .env.template",
+            bool(errs_pt_missing)
+            and "KNOWLEDGE_HOME_ENABLE_PAGE" in "\n".join(errs_pt_missing),
+            repr(errs_pt_missing),
+        )
+
+        pt_mismatch_sentinel = "PT_TEMPLATE_MISMATCH_SENTINEL"
+        fx_template.write_text(
+            f"KNOWLEDGE_HOME_ENABLE_PAGE={pt_mismatch_sentinel}\n", encoding="utf-8"
+        )
+        errs_pt_mismatch = _verify(
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        joined_pt_mismatch = "\n".join(errs_pt_mismatch)
+        check(
+            "verify_declaration fails when passthrough key in .env.template mismatches declaration",
+            bool(errs_pt_mismatch)
+            and "KNOWLEDGE_HOME_ENABLE_PAGE" in joined_pt_mismatch
+            and pt_mismatch_sentinel not in joined_pt_mismatch,
+            repr(errs_pt_mismatch),
+        )
+
+        # 5. Defaulted key that the template sets to a different value fails
+        tpl_defaulted_mismatch = "https://auth-hub:6666/TPL_MISMATCH_SENTINEL"
+        fx_template.write_text(
+            "KNOWLEDGE_HOME_ENABLE_PAGE=true\n"
+            f"AUTH_HUB_INTERNAL_URL={tpl_defaulted_mismatch}\n",
+            encoding="utf-8",
+        )
+        errs_tpl_defaulted = _verify(
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        joined_tpl_defaulted = "\n".join(errs_tpl_defaulted)
+        check(
+            "verify_declaration fails when .env.template sets a defaulted key to a different value",
+            bool(errs_tpl_defaulted)
+            and "AUTH_HUB_INTERNAL_URL" in joined_tpl_defaulted
+            and tpl_defaulted_mismatch not in joined_tpl_defaulted
+            and "https://auth-hub:8443" not in joined_tpl_defaulted,
+            repr(errs_tpl_defaulted),
+        )
+
+        # 6. Preflight: absent defaulted accepted, absent pinned accepted, absent passthrough rejected,
+        # present-but-different managed key rejected, no declared or dotenv VALUE in any error string
+        fx_template.write_text("KNOWLEDGE_HOME_ENABLE_PAGE=true\n", encoding="utf-8")
+        fx_dotenv = tmp / ".env"
+        fx_dotenv.write_text("KNOWLEDGE_HOME_ENABLE_PAGE=true\n", encoding="utf-8")
+        pf_ok = _preflight(
+            fx_dotenv,
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        check(
+            "preflight_dotenv accepts absent defaulted and absent pinned keys when passthrough keys match",
+            pf_ok == [],
+            repr(pf_ok),
+        )
+
+        fx_dotenv.write_text("", encoding="utf-8")
+        pf_missing_pt = _preflight(
+            fx_dotenv,
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        joined_pf_missing_pt = "\n".join(pf_missing_pt)
+        check(
+            "preflight_dotenv rejects absent passthrough key and names only the key",
+            bool(pf_missing_pt)
+            and "KNOWLEDGE_HOME_ENABLE_PAGE" in joined_pf_missing_pt
+            and "AUTH_HUB_INTERNAL_URL" not in joined_pf_missing_pt
+            and "SEARCH_INDEXER_CONNECT_URL" not in joined_pf_missing_pt,
+            repr(pf_missing_pt),
+        )
+
+        dotenv_bad_val = "https://auth-hub:5555/DOTENV_DRIFT_SENTINEL"
+        fx_dotenv.write_text(
+            "KNOWLEDGE_HOME_ENABLE_PAGE=true\n"
+            f"AUTH_HUB_INTERNAL_URL={dotenv_bad_val}\n",
+            encoding="utf-8",
+        )
+        pf_drift = _preflight(
+            fx_dotenv,
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+        )
+        joined_pf_drift = "\n".join(pf_drift)
+        check(
+            "preflight_dotenv rejects present-but-different managed key without leaking declared or dotenv value",
+            bool(pf_drift)
+            and "AUTH_HUB_INTERNAL_URL" in joined_pf_drift
+            and dotenv_bad_val not in joined_pf_drift
+            and "https://auth-hub:8443" not in joined_pf_drift,
+            repr(pf_drift),
+        )
+
+    # 7. Real repository verify_declaration() returns no errors
+    repo_verify_errs = kisage_env.verify_declaration(DECL_PATH, MANIFEST_PATH)
+    check(
+        "real repository verify_declaration() returns no compose or template lockstep errors",
+        repo_verify_errs == [],
+        repr(repo_verify_errs),
+    )
+
+
 def mcp_call(
     kisage_bin: str, host_config: pathlib.Path, requests: list[dict]
 ) -> list[dict]:
@@ -472,9 +762,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         flag_change_out = flag_change_stdout + flag_change_err
         check(
-            "kisage-env.py verify exits 0 and reports no mtls_allowlists error when only /feature_flags changes",
+            "kisage-env.py verify reports no mtls_allowlists error when only /feature_flags changes (and flags template drift for KNOWLEDGE_HOME_ENABLE_PAGE)",
             flag_change_text != decl_raw_text
-            and flag_change_rc == 0
+            and flag_change_rc == 1
+            and "KNOWLEDGE_HOME_ENABLE_PAGE" in flag_change_out
             and "mtls_allowlists" not in flag_change_out,
             flag_change_out,
         )
@@ -711,11 +1002,11 @@ def main(argv: list[str] | None = None) -> int:
             repr(combined_drift_diag),
         )
 
-        # Missing managed key
+        # Missing managed key (passthrough key required in dotenv)
         missing_key_text = "\n".join(
             line
             for line in converged_with_local_secrets.splitlines()
-            if not line.startswith("SEARCH_INDEXER_CONNECT_URL=")
+            if not line.startswith("KNOWLEDGE_HOME_ENABLE_PAGE=")
         ) + "\n"
         actual_env_path.write_text(missing_key_text, encoding="utf-8")
         rc_miss, out_miss, err_miss = run_cli_capture(
@@ -730,7 +1021,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         check(
             "preflight fails nonzero on missing managed key and names the key",
-            rc_miss != 0 and "SEARCH_INDEXER_CONNECT_URL" in (out_miss + err_miss),
+            rc_miss != 0 and "KNOWLEDGE_HOME_ENABLE_PAGE" in (out_miss + err_miss),
             f"rc={rc_miss}",
         )
 
@@ -1438,6 +1729,8 @@ def main(argv: list[str] | None = None) -> int:
         and "python3 scripts/tests/test-kisage-env.py" in wf_text
         and "test_kisage_clean_checkout.py" in wf_text,
     )
+
+    run_compose_lockstep_and_preflight_checks(kisage_env)
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0
