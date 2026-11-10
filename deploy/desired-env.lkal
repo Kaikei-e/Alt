@@ -57,6 +57,7 @@ mtls_allowlists {
     "search-indexer",
     "recap-worker",
   ]
+  TTS_SPEAKER_MTLS_ALLOWED_PEERS = ["alt-butterfly-facade"]
 }
 
 rate_limits {
