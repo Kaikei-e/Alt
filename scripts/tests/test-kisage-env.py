@@ -373,6 +373,8 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             encoding="utf-8",
         )
         fx_template = tmp / ".env.template"
+        fx_example = tmp / ".env.example"
+        fx_example.write_text("", encoding="utf-8")
 
         # 1. Defaulted key with equal default passes; differing default fails naming the key
         write_sub_compose()
@@ -382,6 +384,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         check(
             "fixture verify_declaration passes when defaulted, pinned, and passthrough keys match",
@@ -396,6 +399,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         joined_diff_default = "\n".join(errs_diff_default)
         check(
@@ -418,6 +422,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         joined_two_defaults = "\n".join(errs_two_defaults)
         check(
@@ -437,6 +442,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         joined_pinned_mismatch = "\n".join(errs_pinned_mismatch)
         check(
@@ -456,6 +462,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         check(
             "verify_declaration fails when passthrough key is missing or commented out in .env.template",
@@ -473,6 +480,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         joined_pt_mismatch = "\n".join(errs_pt_mismatch)
         check(
@@ -495,6 +503,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         joined_tpl_defaulted = "\n".join(errs_tpl_defaulted)
         check(
@@ -517,6 +526,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         check(
             "preflight_dotenv accepts absent defaulted and absent pinned keys when passthrough keys match",
@@ -531,6 +541,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         joined_pf_missing_pt = "\n".join(pf_missing_pt)
         check(
@@ -554,6 +565,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             fx_manifest,
             compose_root=fx_compose_root,
             env_template_path=fx_template,
+            env_example_path=fx_example,
         )
         joined_pf_drift = "\n".join(pf_drift)
         check(

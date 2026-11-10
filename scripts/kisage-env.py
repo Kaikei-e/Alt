@@ -520,7 +520,7 @@ def resolve_compose_bindings(
     try:
         compose_mod = _load_compose_include_module()
         services = compose_mod.production_services(compose_root)
-    except (SystemExit, OSError, Exception):
+    except (SystemExit, Exception):
         return None, [
             f"compose-parse-error: cannot load production compose services from {compose_root.name}"
         ]
@@ -608,7 +608,7 @@ def verify_declaration(
     lkal_bin: str | None = None,
     compose_root: pathlib.Path = DEFAULT_COMPOSE_ROOT,
     env_template_path: pathlib.Path = DEFAULT_ENV_TEMPLATE,
-    env_example_path: pathlib.Path | None = None,
+    env_example_path: pathlib.Path = DEFAULT_ENV_EXAMPLE,
 ) -> list[str]:
     errors: list[str] = []
     try:
@@ -714,38 +714,19 @@ def verify_declaration(
         return errors
     tpl_env = overrides.parse_env_file(tpl_raw)
 
-    resolved_example_path: pathlib.Path | None
-    require_example: bool
-    if env_example_path is not None:
-        resolved_example_path = env_example_path
-        require_example = True
-    elif env_template_path == DEFAULT_ENV_TEMPLATE:
-        resolved_example_path = DEFAULT_ENV_EXAMPLE
-        require_example = True
-    else:
-        candidate_example = env_template_path.parent / ".env.example"
-        resolved_example_path = (
-            candidate_example if candidate_example.exists() else None
+    try:
+        ex_raw = env_example_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            f"env-example-unreadable: cannot read {env_example_path.name} ({exc.strerror})"
         )
-        require_example = False
-
-    example_env: dict[str, str] = {}
-    if resolved_example_path is not None:
-        try:
-            ex_raw = resolved_example_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            if require_example:
-                errors.append(
-                    f"env-example-unreadable: cannot read {resolved_example_path.name} ({exc.strerror})"
-                )
-                return errors
-        except UnicodeDecodeError:
-            errors.append(
-                f"env-example-encoding: {resolved_example_path.name} is not valid UTF-8"
-            )
-            return errors
-        else:
-            example_env = overrides.parse_env_file(ex_raw)
+        return errors
+    except UnicodeDecodeError:
+        errors.append(
+            f"env-example-encoding: {env_example_path.name} is not valid UTF-8"
+        )
+        return errors
+    example_env = overrides.parse_env_file(ex_raw)
 
     for key in sorted(env_map):
         b = bindings[key]
@@ -794,7 +775,7 @@ def verify_declaration(
                 key, example_env[key], env_map, decl_allowlists
             ):
                 errors.append(
-                    f"env-example-mismatch: {key} in {resolved_example_path.name if resolved_example_path else '.env.example'} differs from declaration"
+                    f"env-example-mismatch: {key} in {env_example_path.name} differs from declaration"
                 )
 
     return errors
@@ -986,7 +967,7 @@ def preflight_dotenv(
     lkal_bin: str | None = None,
     compose_root: pathlib.Path = DEFAULT_COMPOSE_ROOT,
     env_template_path: pathlib.Path = DEFAULT_ENV_TEMPLATE,
-    env_example_path: pathlib.Path | None = None,
+    env_example_path: pathlib.Path = DEFAULT_ENV_EXAMPLE,
 ) -> list[str]:
     """Read-only comparison of repository-managed keys against an actual dotenv file.
 
