@@ -1,9 +1,4 @@
-import {
-	Color,
-	LinearSRGBColorSpace,
-	PerspectiveCamera,
-	Vector3,
-} from "three";
+import { Color, LinearSRGBColorSpace, PerspectiveCamera, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import { buildPalette, contrastRatio, TOPIC_INKS } from "./palette.js";

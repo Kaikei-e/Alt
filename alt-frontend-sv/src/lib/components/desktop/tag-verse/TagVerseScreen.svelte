@@ -8,7 +8,10 @@ import {
 	type TagCloudItem,
 } from "#lib/connect/index.js";
 import { isWebGL2Available } from "#lib/utils/gpuCapability.js";
-import { buildTopicClusters, type SelectionSource } from "./scene/sceneModel.js";
+import {
+	buildTopicClusters,
+	type SelectionSource,
+} from "./scene/sceneModel.js";
 import TagIndexPanel from "./TagIndexPanel.svelte";
 import TagVerseHUD from "./TagVerseHUD.svelte";
 import TagVerseToolbar from "./TagVerseToolbar.svelte";

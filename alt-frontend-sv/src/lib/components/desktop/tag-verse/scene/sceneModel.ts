@@ -636,10 +636,7 @@ export function updateEdgeBufferAlphas(
 	edgeAlphas: Float32Array,
 ): number[] {
 	const changed: number[] = [];
-	const edgeCount = Math.min(
-		edgeAlphas.length,
-		Math.floor(colors.length / 8),
-	);
+	const edgeCount = Math.min(edgeAlphas.length, Math.floor(colors.length / 8));
 	for (let i = 0; i < edgeCount; i++) {
 		const nextAlpha = edgeAlphas[i] ?? 0;
 		const a0Idx = i * 8 + 3;
