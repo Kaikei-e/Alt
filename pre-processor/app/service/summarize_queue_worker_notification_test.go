@@ -32,8 +32,18 @@ type stubJobRepoCompletion struct {
 	updates     []domain.SummarizeJobStatus
 }
 
-func (m *stubJobRepoCompletion) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
-	return m.jobs, nil
+func (m *stubJobRepoCompletion) DequeueJobs(_ context.Context, limit int) ([]*domain.SummarizeJob, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.jobs) == 0 {
+		return nil, nil
+	}
+	if limit <= 0 || limit > len(m.jobs) {
+		limit = len(m.jobs)
+	}
+	out := m.jobs[:limit]
+	m.jobs = m.jobs[limit:]
+	return out, nil
 }
 
 func (m *stubJobRepoCompletion) RecoverStuckJobs(_ context.Context) (int64, error) { return 0, nil }
@@ -76,7 +86,7 @@ func TestSummarizeQueueWorker_CompletesThroughTheOutbox(t *testing.T) {
 		10,
 	)
 
-	require.NoError(t, worker.ProcessQueue(context.Background()))
+	require.NoError(t, worker.ProcessQueue(context.Background(), noRefill))
 
 	require.Len(t, jobRepo.completions, 1)
 	assert.Equal(t, jobID.String(), jobRepo.completions[0].jobID)

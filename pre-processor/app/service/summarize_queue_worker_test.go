@@ -16,11 +16,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func noRefill(context.Context) (bool, error) {
+	return false, nil
+}
+
 // --- Local mocks for queue worker context cancellation tests ---
 
 // stubJobRepo returns a fixed set of pending jobs.
 type stubJobRepo struct {
 	repository.SummarizeJobRepository
+	mu              sync.Mutex
 	jobs            []*domain.SummarizeJob
 	cancelOnDequeue bool // cancel context after returning jobs
 	cancelFunc      context.CancelFunc
@@ -30,6 +35,8 @@ type stubJobRepo struct {
 }
 
 func (m *stubJobRepo) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.getErr != nil {
 		return nil, m.getErr
 	}
@@ -37,6 +44,8 @@ func (m *stubJobRepo) GetPendingJobs(_ context.Context, _ int) ([]*domain.Summar
 }
 
 func (m *stubJobRepo) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.dequeueCalls++
 	if m.getErr != nil {
 		return nil, m.getErr
@@ -44,10 +53,14 @@ func (m *stubJobRepo) DequeueJobs(_ context.Context, _ int) ([]*domain.Summarize
 	if m.cancelOnDequeue && m.cancelFunc != nil {
 		m.cancelFunc()
 	}
-	return m.jobs, nil
+	jobs := m.jobs
+	m.jobs = nil
+	return jobs, nil
 }
 
 func (m *stubJobRepo) UpdateJobStatus(_ context.Context, _ string, _ domain.SummarizeJobStatus, _ string, _ string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.updateCalls++
 	return nil
 }
@@ -156,6 +169,7 @@ func (m *stubAPIRepoContentNotProcessable) SummarizeArticle(_ context.Context, _
 type stubJobRepoTracking struct {
 	repository.SummarizeJobRepository
 	jobs         []*domain.SummarizeJob
+	ignoreLimit  bool
 	mu           sync.Mutex
 	updateCalls  []updateJobStatusCall
 	recoverCalls int
@@ -170,11 +184,23 @@ type updateJobStatusCall struct {
 }
 
 func (m *stubJobRepoTracking) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.jobs, nil
 }
 
-func (m *stubJobRepoTracking) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
-	return m.jobs, nil
+func (m *stubJobRepoTracking) DequeueJobs(_ context.Context, limit int) ([]*domain.SummarizeJob, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.jobs) == 0 {
+		return nil, nil
+	}
+	if m.ignoreLimit || limit <= 0 || limit > len(m.jobs) {
+		limit = len(m.jobs)
+	}
+	out := m.jobs[:limit]
+	m.jobs = m.jobs[limit:]
+	return out, nil
 }
 
 func (m *stubJobRepoTracking) UpdateJobStatus(ctx context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMsg string) error {
@@ -233,7 +259,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ServiceOverloaded(t *testing.T) {
 			10,
 		)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		// Should return ErrServiceOverloaded
 		assert.Error(t, err)
@@ -255,7 +281,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ServiceOverloaded(t *testing.T) {
 		job3 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "article-3", MaxRetries: 3}
 		jobs := []*domain.SummarizeJob{job1, job2, job3}
 
-		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		jobRepo := &stubJobRepoTracking{jobs: jobs, ignoreLimit: true}
 		articleRepo := &stubArticleRepoForWorker{}
 		apiRepo := &stubAPIRepoOverloaded{}
 		summaryRepo := &stubSummaryRepoForWorker{}
@@ -269,7 +295,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ServiceOverloaded(t *testing.T) {
 			10,
 		)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 		assert.ErrorIs(t, err, domain.ErrServiceOverloaded)
 		assert.Equal(t, 1, apiRepo.summarizeCalls)
 
@@ -309,7 +335,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort(t *testing.T) {
 			10,
 		)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		assert.NoError(t, err, "should not return error for short content skip")
 		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
@@ -349,7 +375,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort(t *testing.T) {
 			10,
 		)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		assert.NoError(t, err)
 		assert.Equal(t, 2, apiRepo.summarizeCalls, "should attempt both jobs")
@@ -426,7 +452,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 			10,
 		)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 		assert.NoError(t, err)
 
 		// No jobs should be processed because context was canceled after DequeueJobs,
@@ -446,7 +472,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 			{JobID: uuid.New(), ArticleID: "article-2", MaxRetries: 3},
 		}
 
-		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		jobRepo := &stubJobRepoTracking{jobs: jobs, ignoreLimit: true}
 		articleRepo := &stubArticleRepoForWorker{}
 		apiRepo := &stubAPIRepoForWorker{}
 		summaryRepo := &stubSummaryRepoForWorker{}
@@ -460,7 +486,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 			10,
 		)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 		assert.NoError(t, err)
 		assert.Equal(t, 0, articleRepo.findCalls)
 
@@ -495,7 +521,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 			10,
 		)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 		assert.NoError(t, err)
 
 		assert.Equal(t, 0, articleRepo.findCalls,
@@ -544,7 +570,7 @@ func TestSummarizeQueueWorker_RecoverStuckJobs(t *testing.T) {
 		}
 		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger(), 10)
 
-		err := worker.ProcessQueue(context.Background())
+		err := worker.ProcessQueue(context.Background(), noRefill)
 		assert.NoError(t, err)
 		assert.Equal(t, 1, jobRepo.recoverCalls, "should call RecoverStuckJobs on first invocation")
 	})
@@ -557,11 +583,11 @@ func TestSummarizeQueueWorker_RecoverStuckJobs(t *testing.T) {
 		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger(), 10)
 
 		// First call should trigger recovery
-		_ = worker.ProcessQueue(context.Background())
+		_ = worker.ProcessQueue(context.Background(), noRefill)
 		assert.Equal(t, 1, jobRepo.recoverCalls)
 
 		// Second call immediately after should be throttled
-		_ = worker.ProcessQueue(context.Background())
+		_ = worker.ProcessQueue(context.Background(), noRefill)
 		assert.Equal(t, 1, jobRepo.recoverCalls, "should not call RecoverStuckJobs again within 5 minutes")
 	})
 
@@ -572,7 +598,7 @@ func TestSummarizeQueueWorker_RecoverStuckJobs(t *testing.T) {
 		}
 		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger(), 10)
 
-		err := worker.ProcessQueue(context.Background())
+		err := worker.ProcessQueue(context.Background(), noRefill)
 		assert.NoError(t, err, "ProcessQueue should succeed even if recovery fails")
 		assert.Equal(t, 1, jobRepo.recoverCalls)
 	})
@@ -638,7 +664,7 @@ func TestSummarizeQueueWorker_ProcessQueue_SummarySaveFailure(t *testing.T) {
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		// ProcessQueue does not propagate individual job errors (only ErrServiceOverloaded)
 		assert.NoError(t, err)
@@ -670,7 +696,7 @@ func TestSummarizeQueueWorker_ProcessQueue_SummarySaveFailure(t *testing.T) {
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		assert.NoError(t, err)
 		assert.Equal(t, 1, summaryRepo.createCalls, "should save summary")
@@ -699,7 +725,7 @@ func TestSummarizeQueueWorker_ProcessQueue_AtomicDequeue(t *testing.T) {
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 		assert.NoError(t, err)
 
 		// Verify no UpdateJobStatus call with "running" status — dequeue handles that atomically
@@ -716,7 +742,7 @@ func TestSummarizeQueueWorker_ProcessQueue_AtomicDequeue(t *testing.T) {
 
 		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger(), 10)
 
-		_ = worker.ProcessQueue(ctx)
+		_ = worker.ProcessQueue(ctx, noRefill)
 		assert.Equal(t, 1, jobRepo.dequeueCalls, "ProcessQueue should call DequeueJobs")
 	})
 }
@@ -1021,7 +1047,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort_SavesPlaceholder(t *t
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		assert.NoError(t, err)
 		assert.Equal(t, 1, summaryRepo.createCalls, "should save placeholder summary")
@@ -1047,7 +1073,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort_SavesPlaceholder(t *t
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		assert.NoError(t, err, "should not propagate placeholder save error")
 		assert.Equal(t, 1, summaryRepo.createCalls, "should attempt to save placeholder")
@@ -1073,7 +1099,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooLong_SavesPlaceholder(t *te
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		assert.NoError(t, err, "should not return error for long content")
 		assert.Equal(t, 1, summaryRepo.createCalls, "should save placeholder summary")
@@ -1105,7 +1131,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooLong_SavesPlaceholder(t *te
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		assert.NoError(t, err)
 		assert.Equal(t, 2, apiRepo.summarizeCalls, "should attempt both jobs")
@@ -1174,7 +1200,7 @@ func TestSummarizeQueueWorker_ProcessQueue_UpstreamBusy_TriggersBackoff(t *testi
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		err := worker.ProcessQueue(ctx)
+		err := worker.ProcessQueue(ctx, noRefill)
 
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, domain.ErrServiceOverloaded) || errors.Is(err, domain.ErrUpstreamBusy),
@@ -1201,7 +1227,7 @@ func TestSummarizeQueueWorker_ProcessQueue_DeadLetterRechecksSummaryExists(t *te
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		_ = worker.ProcessQueue(ctx)
+		_ = worker.ProcessQueue(ctx, noRefill)
 
 		assert.GreaterOrEqual(t, summaryRepo.existsCalls, 1, "should recheck summaryRepo.Exists before dead_letter")
 		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
@@ -1224,7 +1250,7 @@ func TestSummarizeQueueWorker_ProcessQueue_DeadLetterRechecksSummaryExists(t *te
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		_ = worker.ProcessQueue(ctx)
+		_ = worker.ProcessQueue(ctx, noRefill)
 
 		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusFailed, jobRepo.updateCalls[0].status,
@@ -1248,7 +1274,7 @@ func TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency(t *testing.
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 		worker.SetConcurrency(3)
 
-		err := worker.ProcessQueue(context.Background())
+		err := worker.ProcessQueue(context.Background(), noRefill)
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(3), atomic.LoadInt32(&apiRepo.calls))
@@ -1274,7 +1300,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		_ = worker.ProcessQueue(ctx)
+		_ = worker.ProcessQueue(ctx, noRefill)
 
 		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
 		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
@@ -1298,7 +1324,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		_ = worker.ProcessQueue(ctx)
+		_ = worker.ProcessQueue(ctx, noRefill)
 
 		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
 		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
@@ -1322,7 +1348,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
 
-		_ = worker.ProcessQueue(ctx)
+		_ = worker.ProcessQueue(ctx, noRefill)
 
 		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
 		assert.GreaterOrEqual(t, summaryRepo.existsCalls, 1, "should recheck summaryRepo.Exists before dead_letter")
