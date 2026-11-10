@@ -29,7 +29,7 @@ describe("palette", () => {
 
 		const luminances = palette.ramp.map((c) => relativeLuminance(c));
 		for (let i = 1; i < luminances.length; i++) {
-			expect(luminances[i]).toBeLessThan(luminances[i - 1]);
+			expect(luminances[i]).toBeLessThan(luminances[i - 1] as number);
 		}
 	});
 
