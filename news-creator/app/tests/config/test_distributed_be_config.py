@@ -331,3 +331,22 @@ def test_parse_distributed_be_reasoning_effort_has_no_strict_parameter():
         parse_distributed_be_reasoning_effort("turbo")
     with pytest.raises(TypeError):
         parse_distributed_be_reasoning_effort("turbo", strict=False)  # type: ignore[call-arg]
+
+
+def test_distributed_be_unhealthy_threshold_default_override_and_invalid(monkeypatch):
+    """(g) DISTRIBUTED_BE_UNHEALTHY_THRESHOLD defaults to 2, accepts positive int override, and rejects < 1."""
+    monkeypatch.delenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", raising=False)
+    default_config = NewsCreatorConfig()
+    assert default_config.distributed_be_unhealthy_threshold == 2
+
+    monkeypatch.setenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", "4")
+    override_config = NewsCreatorConfig()
+    assert override_config.distributed_be_unhealthy_threshold == 4
+
+    monkeypatch.setenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", "0")
+    with pytest.raises(ValueError, match="DISTRIBUTED_BE_UNHEALTHY_THRESHOLD"):
+        NewsCreatorConfig()
+
+    monkeypatch.setenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", "-2")
+    with pytest.raises(ValueError, match="DISTRIBUTED_BE_UNHEALTHY_THRESHOLD"):
+        NewsCreatorConfig()
