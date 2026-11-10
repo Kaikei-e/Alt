@@ -45,6 +45,7 @@ TRACKED_EXACT = {
     ".gitignore",
     ".env.template",
     ".env.example",
+    "alt-backend/app/config/binary_backend.go",
 }
 FORBIDDEN_LOCAL_PATHS = (
     ".claude",

@@ -330,16 +330,30 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
         def write_sub_compose(
             auth_default: str = "https://auth-hub:8443",
             second_auth_default: str | None = None,
+            second_auth_raw: str | None = None,
             pinned_search: str = "https://search-indexer:9443",
+            extra_app_env_lines: list[str] | None = None,
         ) -> None:
             extra_svc = ""
-            if second_auth_default is not None:
+            if second_auth_raw is not None:
+                extra_svc = (
+                    "  second-svc:\n"
+                    "    image: example/second:latest\n"
+                    "    environment:\n"
+                    f"      - {second_auth_raw}\n"
+                )
+            elif second_auth_default is not None:
                 extra_svc = (
                     "  second-svc:\n"
                     "    image: example/second:latest\n"
                     "    environment:\n"
                     f"      - AUTH_HUB_INTERNAL_URL=${{AUTH_HUB_INTERNAL_URL:-{second_auth_default}}}\n"
                 )
+            extra_app = (
+                "".join(f"      - {line}\n" for line in extra_app_env_lines)
+                if extra_app_env_lines
+                else ""
+            )
             fx_sub_yaml.write_text(
                 "services:\n"
                 "  app:\n"
@@ -348,6 +362,7 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
                 f"      - AUTH_HUB_INTERNAL_URL=${{AUTH_HUB_INTERNAL_URL:-{auth_default}}}\n"
                 f"      - SEARCH_INDEXER_CONNECT_URL={pinned_search}\n"
                 "      - RATE_LIMIT_EXTERNAL_API_INTERVAL=${RATE_LIMIT_EXTERNAL_API_INTERVAL:-7.5s}\n"
+                + extra_app
                 + "\n".join(allowlist_compose_lines)
                 + "\n"
                 + extra_svc,
@@ -577,6 +592,199 @@ def run_compose_lockstep_and_preflight_checks(kisage_env) -> None:
             repr(pf_drift),
         )
 
+        # 6b. Required class bindings: brace ${KEY}, ${KEY:?...}, bare $KEY, and mixed default+required precedence
+        write_sub_compose(
+            auth_default="https://auth-hub:8443",
+            second_auth_raw="AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:?required in second-svc}",
+            extra_app_env_lines=[
+                "REQ_BRACE_KEY=${REQ_BRACE_KEY}",
+                "REQ_COLON_Q_KEY=${REQ_COLON_Q_KEY:?must be set}",
+                "REQ_BARE_KEY=$REQ_BARE_KEY",
+            ],
+        )
+        req_bindings, req_binding_errs = kisage_env.resolve_compose_bindings(
+            {
+                "REQ_BRACE_KEY",
+                "REQ_COLON_Q_KEY",
+                "REQ_BARE_KEY",
+                "AUTH_HUB_INTERNAL_URL",
+            },
+            compose_root=fx_compose_root,
+        )
+        check(
+            "resolve_compose_bindings classifies ${KEY}, ${KEY:?...}, bare $KEY, and mixed ${KEY:-default}+required as required",
+            req_binding_errs == []
+            and req_bindings is not None
+            and req_bindings.get("REQ_BRACE_KEY", {}).get("class") == "required"
+            and req_bindings.get("REQ_COLON_Q_KEY", {}).get("class") == "required"
+            and req_bindings.get("REQ_BARE_KEY", {}).get("class") == "required"
+            and req_bindings.get("AUTH_HUB_INTERNAL_URL", {}).get("class")
+            == "required",
+            repr((req_bindings, req_binding_errs)),
+        )
+
+        fx_dotenv.write_text("KNOWLEDGE_HOME_ENABLE_PAGE=true\n", encoding="utf-8")
+        pf_missing_req = _preflight(
+            fx_dotenv,
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+            env_example_path=fx_example,
+        )
+        joined_pf_missing_req = "\n".join(pf_missing_req)
+        fx_dotenv.write_text(
+            "KNOWLEDGE_HOME_ENABLE_PAGE=true\n"
+            "AUTH_HUB_INTERNAL_URL=https://auth-hub:8443\n",
+            encoding="utf-8",
+        )
+        pf_present_req = _preflight(
+            fx_dotenv,
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+            env_example_path=fx_example,
+        )
+        check(
+            "preflight_dotenv rejects absent required key (including mixed default+required) and accepts when present",
+            bool(pf_missing_req)
+            and "AUTH_HUB_INTERNAL_URL" in joined_pf_missing_req
+            and "https://auth-hub:8443" not in joined_pf_missing_req
+            and pf_present_req == [],
+            repr((pf_missing_req, pf_present_req)),
+        )
+
+        # 6c. Allowlist set comparison in preflight_dotenv: reordered peers accepted; missing, extra, and duplicate peers rejected
+        write_sub_compose()
+        fx_dotenv.write_text(
+            "KNOWLEDGE_HOME_ENABLE_PAGE=true\n"
+            "SEARCH_INDEXER_MTLS_ALLOWED_PEERS=acolyte-orchestrator,rag-orchestrator,alt-backend\n",
+            encoding="utf-8",
+        )
+        pf_allowlist_reordered = _preflight(
+            fx_dotenv,
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+            env_example_path=fx_example,
+        )
+        check(
+            "preflight_dotenv accepts mtls_allowlists key with same peers in a different order",
+            pf_allowlist_reordered == [],
+            repr(pf_allowlist_reordered),
+        )
+
+        fx_dotenv.write_text(
+            "KNOWLEDGE_HOME_ENABLE_PAGE=true\n"
+            "SEARCH_INDEXER_MTLS_ALLOWED_PEERS=alt-backend,rag-orchestrator\n",
+            encoding="utf-8",
+        )
+        pf_allowlist_missing = _preflight(
+            fx_dotenv,
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+            env_example_path=fx_example,
+        )
+        extra_allowlist_sentinel = "rogue-dotenv-peer-sentinel-7788"
+        fx_dotenv.write_text(
+            "KNOWLEDGE_HOME_ENABLE_PAGE=true\n"
+            f"SEARCH_INDEXER_MTLS_ALLOWED_PEERS=alt-backend,rag-orchestrator,acolyte-orchestrator,{extra_allowlist_sentinel}\n",
+            encoding="utf-8",
+        )
+        pf_allowlist_extra = _preflight(
+            fx_dotenv,
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+            env_example_path=fx_example,
+        )
+        fx_dotenv.write_text(
+            "KNOWLEDGE_HOME_ENABLE_PAGE=true\n"
+            "SEARCH_INDEXER_MTLS_ALLOWED_PEERS=alt-backend,rag-orchestrator,acolyte-orchestrator,alt-backend\n",
+            encoding="utf-8",
+        )
+        pf_allowlist_dup = _preflight(
+            fx_dotenv,
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+            env_example_path=fx_example,
+        )
+        joined_allowlist_neg = "\n".join(
+            [*pf_allowlist_missing, *pf_allowlist_extra, *pf_allowlist_dup]
+        )
+        check(
+            "preflight_dotenv rejects mtls_allowlists missing peer, extra peer, and duplicate peer without leaking values",
+            bool(pf_allowlist_missing)
+            and "SEARCH_INDEXER_MTLS_ALLOWED_PEERS"
+            in "\n".join(pf_allowlist_missing)
+            and bool(pf_allowlist_extra)
+            and "SEARCH_INDEXER_MTLS_ALLOWED_PEERS"
+            in "\n".join(pf_allowlist_extra)
+            and bool(pf_allowlist_dup)
+            and "SEARCH_INDEXER_MTLS_ALLOWED_PEERS" in "\n".join(pf_allowlist_dup)
+            and extra_allowlist_sentinel not in joined_allowlist_neg
+            and "alt-backend" not in joined_allowlist_neg,
+            repr((pf_allowlist_missing, pf_allowlist_extra, pf_allowlist_dup)),
+        )
+
+        # 6d. CLI positive control: changed-but-consistent declaration, compose fixture, and template exit 0 via verify CLI
+        consistent_url = "https://auth-hub:8444"
+        write_sub_compose(auth_default=consistent_url)
+        fx_template.write_text("KNOWLEDGE_HOME_ENABLE_PAGE=false\n", encoding="utf-8")
+        raw_changed_decl = (
+            fx_decl.read_text(encoding="utf-8")
+            .replace(
+                '  AUTH_HUB_INTERNAL_URL = "https://auth-hub:8443"',
+                f'  AUTH_HUB_INTERNAL_URL = "{consistent_url}"',
+            )
+            .replace(
+                "  KNOWLEDGE_HOME_ENABLE_PAGE = true",
+                "  KNOWLEDGE_HOME_ENABLE_PAGE = false",
+            )
+        )
+        fmt_changed_proc = subprocess.run(
+            [find_lkal_bin(), "fmt", "-"],
+            input=raw_changed_decl,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        fx_decl_changed = tmp / "changed-consistent.lkal"
+        fx_decl_changed.write_text(fmt_changed_proc.stdout, encoding="utf-8")
+        os.chmod(fx_decl_changed, 0o600)
+        cli_cons_rc, cli_cons_out, cli_cons_err = run_cli_capture(
+            kisage_env,
+            [
+                "verify",
+                "--declaration",
+                str(fx_decl_changed),
+                "--manifest",
+                str(fx_manifest),
+                "--compose-root",
+                str(fx_compose_root),
+                "--env-template",
+                str(fx_template),
+                "--env-example",
+                str(fx_example),
+            ],
+        )
+        check(
+            "kisage-env.py verify CLI exits 0 when declaration, compose fixture, and .env.template change consistently",
+            cli_cons_rc == 0
+            and cli_cons_err == ""
+            and "canonical lkal fmt" in cli_cons_out
+            and "compose" in cli_cons_out.lower()
+            and ".env.template" in cli_cons_out,
+            f"rc={cli_cons_rc} out={cli_cons_out!r} err={cli_cons_err!r}",
+        )
+
     # 7. Real repository verify_declaration() returns no errors
     repo_verify_errs = kisage_env.verify_declaration(DECL_PATH, MANIFEST_PATH)
     check(
@@ -619,7 +827,6 @@ def run_mtls_policy_and_llm_budgets_checks(
         "ALT_BUTTERFLY_FACADE_MTLS_ENFORCE": False,
         "ALT_BUTTERFLY_FACADE_MTLS_LISTEN": False,
         "AUTH_HUB_MTLS_CLIENT_AUTH": "require_and_verify",
-        "MTLS_LISTEN": True,
         "NEWS_CREATOR_PEER_IDENTITY_STRICT": True,
         "PRE_PROCESSOR_MTLS_CLIENT_AUTH": "require_and_verify",
         "PRE_PROCESSOR_MTLS_ENFORCE": True,
@@ -641,6 +848,34 @@ def run_mtls_policy_and_llm_budgets_checks(
         for k, v in {**expected_mtls_policy, **expected_llm_budgets}.items()
     }
 
+    go_backend_cfg = ROOT / "alt-backend" / "app" / "config" / "binary_backend.go"
+    go_text = (
+        go_backend_cfg.read_text(encoding="utf-8")
+        if go_backend_cfg.is_file()
+        else ""
+    )
+    slice_match = re.search(
+        r"\bvar\s+backendRejectedMTLSEnv\s*=\s*\[\]string\s*\{([^}]*)\}",
+        go_text,
+        re.S,
+    )
+    go_rejected_keys = (
+        re.findall(r'"([^"]+)"', slice_match.group(1))
+        if slice_match is not None
+        else []
+    )
+    forbidden_const = getattr(kisage_env, "DOTENV_FORBIDDEN_KEYS", None)
+    check(
+        "DOTENV_FORBIDDEN_KEYS is in lockstep with backendRejectedMTLSEnv in alt-backend/app/config/binary_backend.go",
+        go_backend_cfg.is_file()
+        and slice_match is not None
+        and bool(go_rejected_keys)
+        and isinstance(forbidden_const, tuple)
+        and set(forbidden_const) == set(go_rejected_keys)
+        and len(forbidden_const) == len(go_rejected_keys),
+        f"file={go_backend_cfg.is_file()} slice={slice_match is not None} go={go_rejected_keys!r} const={forbidden_const!r}",
+    )
+
     sections = kisage_env.parse_lkal_sections(
         DECL_PATH.read_text(encoding="utf-8")
     )
@@ -648,9 +883,9 @@ def run_mtls_policy_and_llm_budgets_checks(
     llm_budgets_sec = sections.get("llm_budgets") or {}
     verify_errs = kisage_env.verify_declaration(DECL_PATH, MANIFEST_PATH)
     check(
-        "repository declaration contains mtls_policy (16 keys) and llm_budgets (3 keys) and verify_declaration() returns no errors",
+        "repository declaration contains mtls_policy (15 keys) and llm_budgets (3 keys) and verify_declaration() returns no errors",
         mtls_policy_sec == expected_mtls_policy
-        and len(mtls_policy_sec) == 16
+        and len(mtls_policy_sec) == 15
         and llm_budgets_sec == expected_llm_budgets
         and len(llm_budgets_sec) == 3
         and verify_errs == [],
@@ -661,7 +896,7 @@ def run_mtls_policy_and_llm_budgets_checks(
     bindings, binding_errs = kisage_env.resolve_compose_bindings(declared_new_keys)
     check(
         "every declared key of mtls_policy and llm_budgets is classified defaulted by resolve_compose_bindings on the real repository",
-        len(declared_new_keys) == 19
+        len(declared_new_keys) == 18
         and binding_errs == []
         and bindings is not None
         and all(
@@ -698,7 +933,7 @@ def run_mtls_policy_and_llm_budgets_checks(
             "    image: example/app:latest\n"
             "    environment:\n"
             "      - RATE_LIMIT_EXTERNAL_API_INTERVAL=${RATE_LIMIT_EXTERNAL_API_INTERVAL:-7.5s}\n"
-            f"      - MTLS_LISTEN=${{MTLS_LISTEN:-{mtls_policy_sentinel}}}\n"
+            f"      - ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE=${{ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE:-{mtls_policy_sentinel}}}\n"
             + "\n".join(allowlist_compose_lines)
             + "\n",
             encoding="utf-8",
@@ -713,7 +948,7 @@ def run_mtls_policy_and_llm_budgets_checks(
             "  RATE_LIMIT_EXTERNAL_API_INTERVAL = 7.5s\n"
             "}\n"
             "mtls_policy {\n"
-            "  MTLS_LISTEN = true\n"
+            "  ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE = true\n"
             "}\n",
             encoding="utf-8",
         )
@@ -732,10 +967,52 @@ def run_mtls_policy_and_llm_budgets_checks(
         check(
             "fixture verify_declaration fails when an mtls_policy compose default differs from declaration, naming the key without leaking values",
             bool(errs_mtls_diff)
-            and "MTLS_LISTEN" in joined_mtls_diff
+            and "ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE" in joined_mtls_diff
             and mtls_policy_sentinel not in joined_mtls_diff
             and "true" not in joined_mtls_diff,
             repr(errs_mtls_diff),
+        )
+
+        fx_sub_yaml.write_text(
+            "services:\n"
+            "  app:\n"
+            "    image: example/app:latest\n"
+            "    environment:\n"
+            "      - RATE_LIMIT_EXTERNAL_API_INTERVAL=${RATE_LIMIT_EXTERNAL_API_INTERVAL:-7.5s}\n"
+            "      - MTLS_LISTEN=${MTLS_LISTEN:-true}\n"
+            + "\n".join(allowlist_compose_lines)
+            + "\n",
+            encoding="utf-8",
+        )
+        fx_decl_forbidden = tmp / "forbidden-mtls-listen.lkal"
+        fx_decl_forbidden.write_text(
+            '@lkal "0.1"\n'
+            "mtls_allowlists {\n"
+            + "\n".join(allowlist_lkal_lines)
+            + "\n}\n"
+            "rate_limits {\n"
+            "  RATE_LIMIT_EXTERNAL_API_INTERVAL = 7.5s\n"
+            "}\n"
+            "mtls_policy {\n"
+            "  MTLS_LISTEN = true\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        errs_forbidden = kisage_env.verify_declaration(
+            fx_decl_forbidden,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+            env_example_path=fx_example,
+        )
+        joined_forbidden = "\n".join(errs_forbidden)
+        check(
+            "fixture verify_declaration rejects MTLS_LISTEN with rule id dotenv-forbidden-key naming the key without leaking values",
+            bool(errs_forbidden)
+            and "dotenv-forbidden-key" in joined_forbidden
+            and "MTLS_LISTEN" in joined_forbidden
+            and "true" not in joined_forbidden,
+            repr(errs_forbidden),
         )
 
     tpl_env = overrides.parse_env_file(
@@ -752,7 +1029,7 @@ def run_mtls_policy_and_llm_budgets_checks(
     )
     check(
         ".env.template and .env.example do not set any mtls_policy or llm_budgets key to a value differing from the declaration",
-        len(declared_new_keys) == 19 and tpl_or_ex_mismatches == [],
+        len(declared_new_keys) == 18 and tpl_or_ex_mismatches == [],
         f"mismatched_keys={tpl_or_ex_mismatches}",
     )
 
@@ -837,8 +1114,9 @@ def run_mtls_policy_and_llm_budgets_checks(
             "render-dotenv output of converged sandbox contains mtls_policy and llm_budgets keys with booleans as true/false and integers bare",
             "# [mtls_policy]" in dotenv_lines
             and "# [llm_budgets]" in dotenv_lines
-            and "MTLS_LISTEN=true" in dotenv_lines
+            and "ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE=true" in dotenv_lines
             and "ACOLYTE_ORCHESTRATOR_PEER_IDENTITY_STRICT=false" in dotenv_lines
+            and "MTLS_LISTEN=true" not in dotenv_lines
             and "LLM_NUM_CTX=12288" in dotenv_lines
             and "LLM_NUM_PREDICT=1200" in dotenv_lines
             and "SUMMARY_NUM_PREDICT=1200" in dotenv_lines
