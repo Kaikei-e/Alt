@@ -28,20 +28,20 @@ mtls_allowlists {
     "tag-generator",
     "recap-worker",
     "rag-orchestrator",
-    "acolyte-orchestrator"
+    "acolyte-orchestrator",
   ]
   AUTH_HUB_MTLS_ALLOWED_PEERS = [
     "alt-backend",
     "alt-data-hub",
     "search-indexer",
-    "knowledge-sovereign"
+    "knowledge-sovereign",
   ]
   NEWS_CREATOR_MTLS_ALLOWED_PEERS = [
     "recap-worker",
     "acolyte-orchestrator",
     "rag-orchestrator",
     "recap-evaluator",
-    "pre-processor"
+    "pre-processor",
   ]
   PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend"]
   RAG_ORCHESTRATOR_ALLOWED_PEERS = ["alt-backend"]
@@ -49,13 +49,13 @@ mtls_allowlists {
   SEARCH_INDEXER_MTLS_ALLOWED_PEERS = [
     "alt-backend",
     "rag-orchestrator",
-    "acolyte-orchestrator"
+    "acolyte-orchestrator",
   ]
   TAG_GENERATOR_MTLS_ALLOWED_PEERS = [
     "alt-butterfly-facade",
     "alt-backend",
     "search-indexer",
-    "recap-worker"
+    "recap-worker",
   ]
 }
 

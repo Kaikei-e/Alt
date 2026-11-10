@@ -40,7 +40,7 @@ make install-lkal install-kisage
 make install-lkal LKAL_SRC_DIR=/path/to/LKAL
 make install-kisage KISAGE_SRC_DIR=/path/to/kisage LKAL_SRC_DIR=/path/to/LKAL
 
-# 3. Verify deploy/desired-env.lkal lockstep with deploy/host-prereqs.yaml & ADR-000982 (>= 5s floor)
+# 3. Verify deploy/desired-env.lkal canonical lkal fmt formatting, lockstep with deploy/host-prereqs.yaml & ADR-000982 (>= 5s floor)
 make kisage-verify
 # or directly:
 python3 scripts/kisage-env.py verify
@@ -102,7 +102,7 @@ python3 scripts/tests/test-kisage-env.py --audit-host-config
 
 | Case | Scenario | Expected Behavior | Verified By |
 | :--- | :--- | :--- | :--- |
-| **1** | Official `lkal json -plain` normalization & `Quantity` literals (`7.5s`, `250ms`) | Block and labeled syntax normalize identically; duplicate keys (`L201`), bare words (`L103`), and missing/untrusted binaries fail closed without regex fallback. | `test-kisage-env.py` §2 |
+| **1** | Official `lkal json -plain` normalization & `Quantity` literals (`7.5s`, `250ms`) | Block and labeled syntax normalize identically; canonical `lkal fmt` formatting is enforced by `verify`; duplicate keys (`L201`), bare words (`L102`), and missing/untrusted binaries fail closed without regex fallback. | `test-kisage-env.py` §2 |
 | **2** | Isolated `init` -> `plan` (exit `2`) -> `apply` (`Converged`) -> second `plan` (exit `0` `NoOp`) -> `render-dotenv` | Converges managed sections in temp sandbox, renders deterministic escaped dotenv lines, rejects newline/control-char injection, and performs zero writes to repo `.kisage/`. | `test-kisage-env.py` §3, §4 |
 | **3** | External managed drift (`K203 ModifiedExternally`) | Hand-editing a managed leaf in `host-env.lkal` causes `kisage apply` to halt `Blocked` with `K203`; resolved only after `kisage explain` + explicit `kisage adopt` with `conditionToken` and `ownerRevision`. | `test-kisage-env.py` §6 |
 | **4** | Sibling `/local/*` & `###` comment preservation + Scope boundary | `/local/*` leaves and `###` doc comments survive `apply` and `prune`; any attempt to declare `/local/*` in `desired-env.lkal` is blocked by `verify` and by `kisage` with `K206` / `K401`. | `test-kisage-env.py` §4, §6 |

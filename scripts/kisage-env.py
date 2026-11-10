@@ -226,32 +226,11 @@ def _validate_normalized_leaf_value(sec_name: str, key: str, val: Any) -> Any:
     )
 
 
-_LKAL_DIAG_CODE_RE = re.compile(r"\bL[0-9]{3}\b")
-_LKAL_DIAG_LOC_RE = re.compile(r":([0-9]+:[0-9]+):")
-
-
-def _sanitize_lkal_cli_error(raw_output: str) -> str:
-    """Extract only LKAL diagnostic codes (L001-L403) and line:col positions.
-
-    Never echoes raw source lines, tokens, or values from LKAL CLI stderr/stdout.
-    """
-    codes = sorted(set(_LKAL_DIAG_CODE_RE.findall(raw_output)))
-    locs = _LKAL_DIAG_LOC_RE.findall(raw_output)
-    parts: list[str] = []
-    if codes:
-        parts.append(f"codes={','.join(codes)}")
-    if locs:
-        parts.append(f"locations={','.join(locs[:5])}")
-    if not parts:
-        return "syntax_or_structural_error"
-    return " ".join(parts)
-
-
 def parse_lkal_sections(
     text: str, *, lkal_bin: str | None = None
 ) -> dict[str, dict[str, Any]]:
     """Parse a 2-level LKAL v0.1 configuration document into {section: {key: value}}
-    using the official `lkal json -plain` CLI normalizer (no regex fallback).
+    using the official `lkal json -plain --json` CLI normalizer (no regex fallback).
 
     Both block syntax (`section { KEY = VALUE }`) and LKAL labeled-entry syntax
     (`section "KEY" = VALUE`) normalize to the same Record structure, and LKAL
@@ -259,15 +238,51 @@ def parse_lkal_sections(
     """
     resolved_lkal = _validate_lkal_binary(lkal_bin)
     proc = subprocess.run(
-        [resolved_lkal, "json", "-plain", "-"],
+        [resolved_lkal, "json", "-plain", "--json", "-"],
         input=text,
         capture_output=True,
         text=True,
         check=False,
     )
     if proc.returncode != 0:
-        sanitized = _sanitize_lkal_cli_error(proc.stderr or proc.stdout)
-        raise ValueError(f"lkal json -plain failed ({sanitized})")
+        try:
+            raw_diags = json.loads(proc.stderr)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "lkal json -plain --json failed (lkal reported an unparseable diagnostic)"
+            ) from exc
+        if not isinstance(raw_diags, list) or not raw_diags:
+            raise ValueError(
+                "lkal json -plain --json failed (lkal reported an unparseable diagnostic)"
+            )
+        formatted_entries: list[str] = []
+        for entry in raw_diags:
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    "lkal json -plain --json failed (lkal reported an unparseable diagnostic)"
+                )
+            code = entry.get("code")
+            line = entry.get("line")
+            col = entry.get("col")
+            if (
+                not isinstance(code, str)
+                or len(code) != 4
+                or code[0] != "L"
+                or not code[1:].isdigit()
+                or isinstance(line, bool)
+                or not isinstance(line, int)
+                or line < 0
+                or isinstance(col, bool)
+                or not isinstance(col, int)
+                or col < 0
+            ):
+                raise ValueError(
+                    "lkal json -plain --json failed (lkal reported an unparseable diagnostic)"
+                )
+            formatted_entries.append(f"{code} at {line}:{col}")
+        raise ValueError(
+            f"lkal json -plain --json failed ({', '.join(formatted_entries)})"
+        )
 
     try:
         raw_doc = json.loads(proc.stdout)
@@ -297,6 +312,44 @@ def parse_lkal_sections(
         sections[sec_name] = sec_map
 
     return sections
+
+
+def check_lkal_format(
+    decl_path: pathlib.Path = DEFAULT_DECLARATION,
+    *,
+    lkal_bin: str | None = None,
+) -> list[str]:
+    """Verify that `decl_path` is in canonical `lkal fmt` form via `lkal fmt -l`.
+
+    `lkal fmt -l` exits 0 when a valid file differs from canonical form and
+    prints the file path to stdout. Decide by stdout content while failing
+    closed on non-zero exit status or unexpected output.
+    """
+    try:
+        resolved_lkal = _validate_lkal_binary(lkal_bin)
+    except ValueError as exc:
+        return [f"cannot check format of {decl_path.name}: {exc}"]
+
+    target = str(decl_path)
+    proc = subprocess.run(
+        [resolved_lkal, "fmt", "-l", target],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return [
+            f"{decl_path.name}: lkal fmt -l failed with exit code {proc.returncode}"
+        ]
+    if proc.stderr:
+        return [
+            f"{decl_path.name}: lkal fmt -l produced unexpected stderr output"
+        ]
+    if proc.stdout == "":
+        return []
+    if proc.stdout.splitlines() == [target]:
+        return [f"{decl_path.name} is not in canonical lkal fmt format"]
+    return [f"{decl_path.name}: lkal fmt -l produced unexpected stdout output"]
 
 
 def _parse_duration_seconds(raw: str) -> float:
@@ -1303,6 +1356,7 @@ def main(argv: list[str] | None = None) -> int:
         errs = verify_declaration(
             args.declaration, args.manifest, lkal_bin=args.lkal_bin
         )
+        errs.extend(check_lkal_format(args.declaration, lkal_bin=args.lkal_bin))
         if errs:
             for err in errs:
                 sys.stderr.write(f"ERROR: {err}\n")

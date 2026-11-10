@@ -630,6 +630,9 @@ jobs:
           test -x "$HOME/.local/bin/lkal"
           test -x "$HOME/.local/bin/kisage"
 
+      - name: Check deploy/desired-env.lkal syntax with official lkal CLI
+        run: lkal check --json deploy/desired-env.lkal
+
       - name: Verify deploy/desired-env.lkal lockstep and ADR-000982 floor
         run: python3 scripts/kisage-env.py verify
 
