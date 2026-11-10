@@ -76,3 +76,29 @@ feature_flags {
   KNOWLEDGE_HOME_ENABLE_STREAM_UPDATES = true
   KNOWLEDGE_HOME_ENABLE_SUPERSEDE_UX = true
 }
+
+mtls_policy {
+  ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE = true
+  ACOLYTE_ORCHESTRATOR_PEER_IDENTITY_STRICT = false
+  ALT_BUTTERFLY_FACADE_MTLS_ENFORCE = false
+  ALT_BUTTERFLY_FACADE_MTLS_LISTEN = false
+  AUTH_HUB_MTLS_CLIENT_AUTH = "require_and_verify"
+  MTLS_LISTEN = true
+  NEWS_CREATOR_PEER_IDENTITY_STRICT = true
+  PRE_PROCESSOR_MTLS_CLIENT_AUTH = "require_and_verify"
+  PRE_PROCESSOR_MTLS_ENFORCE = true
+  RAG_ORCHESTRATOR_PEER_IDENTITY_MODE = "mtls"
+  RECAP_SUBWORKER_PEER_IDENTITY_STRICT = true
+  RECAP_WORKER_MTLS_ENFORCE = true
+  SEARCH_INDEXER_MTLS_CLIENT_AUTH = "require_and_verify"
+  SEARCH_INDEXER_MTLS_ENFORCE = true
+  TAG_GENERATOR_MTLS_ENFORCE = true
+  TAG_GENERATOR_PEER_IDENTITY_STRICT = true
+}
+
+llm_budgets {
+  ### Context window must match the shared Ollama runner (compose/ai.yaml) so alternating acolyte and news-creator calls do not reload the model.
+  LLM_NUM_CTX = 12288
+  LLM_NUM_PREDICT = 1200
+  SUMMARY_NUM_PREDICT = 1200
+}

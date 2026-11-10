@@ -78,13 +78,13 @@ python3 scripts/tests/test-kisage-env.py --audit-host-config
 `python3 scripts/kisage-env.py preflight --env-file <path>` is a **read-only preflight gate** invoked via `make kisage-preflight` and wired as step `[2/6]` in `scripts/deploy.sh` right after `check-compose-variables.sh` (it performs no automatic host apply).
 
 1. **Managed-Subset Comparison Only**:
-   - Compares only repository-managed keys declared under `/upstreams`, `/mtls_allowlists`, `/rate_limits`, and `/feature_flags` in `deploy/desired-env.lkal`.
+   - Compares only repository-managed keys declared under `/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`, `/mtls_policy`, and `/llm_budgets` in `deploy/desired-env.lkal`.
    - `verify` classifies every managed key from production Compose (`compose/compose.yaml` `include:` chain) into four classes: `defaulted` (interpolated via `${KEY:-default}` with identical defaults matching the declaration), `pinned` (literal container variable assignment matching the declaration), `required` (interpolated without a default), or `passthrough` (not referenced in production Compose; must be set uncommented in `.env.template` with the declared value). Any managed key set uncommented in `.env.template` or `.env.example` must match the declaration. In `preflight`, absent `defaulted` and `pinned` keys in `.env` are accepted because Compose supplies them, whereas absent `passthrough` or `required` keys and any present managed key whose value differs from the declaration are rejected.
    - Unmanaged host secrets and `/local/*` operator keys in `.env` are preserved and ignored unless a line is syntactically malformed or duplicated.
 2. **Raw Dotenv File Scope & Managed-vs-Unmanaged Interpolation Policy**:
    - Parses the raw `.env` file on disk: supports unquoted values (including apostrophes `'`), single-quoted literal values (`'...'`), and double-quoted values (`"..."`) with standard backslash escapes (`\"`, `\\`, `\$`, `\n`, `\r`, `\t`).
    - Validates all key names, duplicate keys across all entries, missing `=`, unclosed quotes, and control characters across the entire file.
-   - **Managed keys** (`/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`): explicitly rejects unescaped `$` variable interpolation (`$VAR` / `${VAR}`) so repository-managed literals are never ambiguously misparsed.
+   - **Managed keys** (`/upstreams`, `/mtls_allowlists`, `/rate_limits`, `/feature_flags`, `/mtls_policy`, `/llm_budgets`): explicitly rejects unescaped `$` variable interpolation (`$VAR` / `${VAR}`) so repository-managed literals are never ambiguously misparsed.
    - **Unmanaged keys** (host secrets and `/local/*` entries such as `APP_CLICKHOUSE_USER`, `APP_CLICKHOUSE_PASSWORD`, `APP_CLICKHOUSE_DATABASE`, `RECAP_DB_DSN`, `TAG_GENERATOR_SERVICE_TOKEN`): permits valid Compose variable reference syntax (`$VAR`, `${VAR}`, `${VAR:-default}`, `$$`) without attempting shell/Compose evaluation or emitting values, while still rejecting malformed `$` tokens or command substitution.
    - Does **not** evaluate shell environment overrides or Docker Compose effective interpolation.
 3. **Does Not Inspect Running Containers (`[[PM-2026-050]]`)**:
@@ -147,13 +147,15 @@ chmod 600 "$BACKUP_DIR/.env.bak" "$BACKUP_DIR/kisage-state.tar"
 
 ### 2. Inspect Plan & Apply (Host Operator)
 
+> **Scope Extension Note**: If a host's existing `host.json` `scope` list predates `/mtls_policy` and `/llm_budgets`, the host operator must extend `scope` in `host.json` to include `/mtls_policy` and `/llm_budgets` before `kisage plan` or `kisage apply` will accept those sections.
+
 ```bash
 export KISAGE_HOST_CONFIG="$PWD/.kisage/host.json"
 
 # Inspect diff (exit 0 = NoOp, exit 2 = diff present, exit 1 = blocked/error)
 kisage plan deploy/desired-env.lkal -detailed-exitcode
 
-# Apply managed sections (/upstreams, /mtls_allowlists, /rate_limits, /feature_flags)
+# Apply managed sections (/upstreams, /mtls_allowlists, /rate_limits, /feature_flags, /mtls_policy, /llm_budgets)
 kisage apply deploy/desired-env.lkal
 
 # Render managed + /local/* projection to a staging file (NOTE: render-dotenv outputs only

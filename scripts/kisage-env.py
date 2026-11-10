@@ -8,8 +8,9 @@ and host-local settings (`/local/*` in `.kisage/host-env.lkal`) with the officia
   * `init`: Provisions a protected `.kisage/` sandbox (`0700` directories,
     `0600` `host.json` and `host-env.lkal`), binds the target file's physical
     `deviceId`, grants `Scope` only to `/upstreams`, `/mtls_allowlists`,
-    `/rate_limits`, and `/feature_flags` (preserving `/local/*` as undeclared
-    unowned siblings), and initializes the `kisage` ownership store.
+    `/rate_limits`, `/feature_flags`, `/mtls_policy`, and `/llm_budgets`
+    (preserving `/local/*` as undeclared unowned siblings), and initializes
+    the `kisage` ownership store.
   * `verify`: Checks that `deploy/desired-env.lkal` parses via official `lkal`
     and stays in lockstep with `deploy/host-prereqs.yaml` and ADR-000982's 5s
     rate-limit floor.
@@ -59,7 +60,14 @@ COMPOSE_INCLUDE_PATH = ROOT / "scripts" / "compose_include.py"
 EXPECTED_KISAGE_VERSION = "0.1.2"
 EXPECTED_LKAL_SPEC_VERSION = "0.1"
 
-MANAGED_SECTIONS = ("upstreams", "mtls_allowlists", "rate_limits", "feature_flags")
+MANAGED_SECTIONS = (
+    "upstreams",
+    "mtls_allowlists",
+    "rate_limits",
+    "feature_flags",
+    "mtls_policy",
+    "llm_budgets",
+)
 ALL_SECTIONS = (*MANAGED_SECTIONS, "local")
 MIN_EXTERNAL_API_INTERVAL_SECONDS = 5.0
 
@@ -455,7 +463,7 @@ def render_dotenv(
 
     out_lines = [
         "# Generated from kisage-reconciled LKAL configuration.",
-        "# Managed sections: upstreams, mtls_allowlists, rate_limits, feature_flags.",
+        "# Managed sections: upstreams, mtls_allowlists, rate_limits, feature_flags, mtls_policy, llm_budgets.",
         "# Preserved sibling section: local.",
     ]
     for sec in ALL_SECTIONS:
