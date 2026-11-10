@@ -1327,7 +1327,6 @@ func TestQualityChecker_SharesNewsCreatorLimiterWithSummarizerAtMinInterval(t *t
 	}))
 	defer server.Close()
 
-	t.Setenv("NEWS_CREATOR_MIN_INTERVAL", "50ms")
 	t.Setenv("RATE_LIMIT_DEFAULT_INTERVAL", "5s")
 	cfg, err := config.LoadConfig()
 	require.NoError(t, err)
@@ -1336,7 +1335,13 @@ func TestQualityChecker_SharesNewsCreatorLimiterWithSummarizerAtMinInterval(t *t
 	cfg.NewsCreator.Timeout = 5 * time.Second
 	cfg.QualityChecker.APIPath = "/api/generate"
 	cfg.QualityChecker.Timeout = 5 * time.Second
-	cfg.RateLimit.DefaultInterval = 200 * time.Millisecond
+	cfg.RateLimit.DefaultInterval = 2 * time.Second
+
+	utils.DefaultHostRateLimiter(2 * time.Second).SetInterval(2 * time.Second)
+	utils.NewsCreatorRateLimiter().SetInterval(50 * time.Millisecond)
+	t.Cleanup(func() {
+		utils.NewsCreatorRateLimiter().SetInterval(0)
+	})
 
 	Configure(cfg, server.Client())
 	t.Cleanup(func() {
@@ -1346,13 +1351,6 @@ func TestQualityChecker_SharesNewsCreatorLimiterWithSummarizerAtMinInterval(t *t
 			},
 		}, &http.Client{})
 	})
-
-	extLimiter := utils.NewHostRateLimiter(cfg.RateLimit.DefaultInterval)
-	extStart := time.Now()
-	require.NoError(t, extLimiter.Wait(context.Background(), "https://external.example.com"))
-	require.NoError(t, extLimiter.Wait(context.Background(), "https://external.example.com"))
-	extElapsed := time.Since(extStart)
-	assert.GreaterOrEqual(t, extElapsed, 180*time.Millisecond, "external host limiter must keep its 200ms interval")
 
 	sumLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	payload := driver.ArticlePayload{
@@ -1373,5 +1371,5 @@ func TestQualityChecker_SharesNewsCreatorLimiterWithSummarizerAtMinInterval(t *t
 	elapsed := time.Since(start)
 
 	assert.GreaterOrEqual(t, elapsed, 45*time.Millisecond, "summarizer and quality checker must share the news-creator limiter and wait MinInterval")
-	assert.Less(t, elapsed, 150*time.Millisecond, "news-creator calls must use NewsCreator.MinInterval (50ms), not RateLimit.DefaultInterval (200ms)")
+	assert.Less(t, elapsed, 1*time.Second, "news-creator calls must use NewsCreator.MinInterval (50ms), not the 2s external interval")
 }

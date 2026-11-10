@@ -8,9 +8,9 @@ import (
 
 // HostRateLimiter enforces a minimum interval between successive calls to the
 // same host. It is deliberately simple: a per-host last-call timestamp gated
-// by a mutex. Internal callers (driver/summarizer_api.go) invoke Wait before
-// issuing the outbound request so the CLAUDE.md "5 second floor between
-// external API calls" rule is enforced centrally instead of scattered.
+// by a mutex. External hosts must use DefaultHostRateLimiter so the CLAUDE.md
+// "5 second floor between external API calls" rule is enforced centrally, while
+// calls to the internal news-creator service use NewsCreatorRateLimiter.
 type HostRateLimiter struct {
 	mu       sync.Mutex
 	interval time.Duration
@@ -28,6 +28,29 @@ func NewHostRateLimiter(interval time.Duration) *HostRateLimiter {
 		now:      time.Now,
 		sleep:    ctxSleep,
 	}
+}
+
+// SetInterval updates the minimum interval between calls to the same host.
+// An interval of zero or less disables rate limiting.
+func (h *HostRateLimiter) SetInterval(d time.Duration) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	h.interval = d
+	h.mu.Unlock()
+}
+
+// Interval returns the currently configured minimum interval between calls to
+// the same host.
+func (h *HostRateLimiter) Interval() time.Duration {
+	if h == nil {
+		return 0
+	}
+	h.mu.Lock()
+	d := h.interval
+	h.mu.Unlock()
+	return d
 }
 
 // Wait blocks until the next call to host is allowed. It honours ctx so
@@ -87,18 +110,19 @@ func ctxSleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// hostRateLimiter is the process-wide default used by driver-layer callers so
-// there is a single limiter per pre-processor instance regardless of how many
-// clients are constructed.
+// hostRateLimiter is the process-wide limiter that external hosts must use
+// (5 s floor) so there is a single limiter per pre-processor instance
+// regardless of how many clients are constructed. Calls to the internal
+// news-creator service use NewsCreatorRateLimiter instead.
 var (
 	hostRateLimiterOnce sync.Once
 	hostRateLimiter     *HostRateLimiter
 )
 
-// DefaultHostRateLimiter returns the process-wide limiter, initialising it on
-// first use with the supplied interval. Subsequent calls ignore the interval
-// argument; callers pass the configured RateLimit.DefaultInterval at wire
-// time from bootstrap.
+// DefaultHostRateLimiter returns the process-wide limiter that external hosts
+// must use (5 s floor), with the interval fixed by the first caller.
+// Subsequent calls ignore the interval argument. Internal news-creator traffic
+// uses NewsCreatorRateLimiter instead.
 func DefaultHostRateLimiter(interval time.Duration) *HostRateLimiter {
 	hostRateLimiterOnce.Do(func() {
 		hostRateLimiter = NewHostRateLimiter(interval)
@@ -106,20 +130,12 @@ func DefaultHostRateLimiter(interval time.Duration) *HostRateLimiter {
 	return hostRateLimiter
 }
 
-var (
-	newsCreatorRateLimiterOnce sync.Once
-	newsCreatorRateLimiter     *HostRateLimiter
-)
+var newsCreatorRateLimiter = NewHostRateLimiter(0)
 
-// NewsCreatorHostRateLimiter returns the process-wide limiter dedicated to the
+// NewsCreatorRateLimiter returns the process-wide limiter dedicated to the
 // internal news-creator service, shared by the summarizer driver and the
-// quality checker while keeping the external-host limiter separate.
-func NewsCreatorHostRateLimiter(interval time.Duration) *HostRateLimiter {
-	newsCreatorRateLimiterOnce.Do(func() {
-		newsCreatorRateLimiter = NewHostRateLimiter(interval)
-	})
-	newsCreatorRateLimiter.mu.Lock()
-	newsCreatorRateLimiter.interval = interval
-	newsCreatorRateLimiter.mu.Unlock()
+// quality checker while keeping DefaultHostRateLimiter reserved for external
+// hosts.
+func NewsCreatorRateLimiter() *HostRateLimiter {
 	return newsCreatorRateLimiter
 }

@@ -41,12 +41,11 @@ var (
 
 	httpClient = &http.Client{Timeout: qualityCheckerHTTPTimeout}
 
-	// rateLimitHost/rateLimitInterval feed utils.NewsCreatorHostRateLimiter,
+	// rateLimitHost is the host key passed to utils.NewsCreatorRateLimiter,
 	// shared with the summarizer driver. news-creator is an internal service
-	// protected by its own admission control; concurrency is bounded by the
-	// summarize worker pool; the 5 s floor remains for external sites.
-	rateLimitHost     = "http://news-creator:11434"
-	rateLimitInterval = time.Duration(0)
+	// with its own admission control and concurrency is bounded by the
+	// summarize worker pool.
+	rateLimitHost = "http://news-creator:11434"
 
 	// knownPlaceholders are placeholder summaries saved when content is too short/long.
 	// These must NOT be quality-checked: deleting them causes an infinite summarize→delete loop.
@@ -92,7 +91,6 @@ func Configure(cfg *config.Config, client *http.Client) {
 	if cfg.QualityChecker.Timeout > 0 {
 		qualityCheckerHTTPTimeout = cfg.QualityChecker.Timeout
 	}
-	rateLimitInterval = cfg.NewsCreator.MinInterval
 }
 
 // isPlaceholderSummary returns true if the summary is a known placeholder message.
@@ -264,10 +262,9 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 		return nil, err
 	}
 
-	// news-creator is an internal service protected by its own admission
-	// control; concurrency is bounded by the summarize worker pool; the 5 s
-	// floor remains for external sites.
-	if err := utils.NewsCreatorHostRateLimiter(rateLimitInterval).Wait(ctx, rateLimitHost); err != nil {
+	// news-creator is an internal service with its own admission control and
+	// concurrency is bounded by the summarize worker pool.
+	if err := utils.NewsCreatorRateLimiter().Wait(ctx, rateLimitHost); err != nil {
 		logger.Logger.ErrorContext(ctx, "rate limiter wait failed", "error", err)
 		return nil, fmt.Errorf("rate limiter: %w", err)
 	}

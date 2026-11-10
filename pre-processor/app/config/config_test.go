@@ -4,7 +4,6 @@ package config
 
 import (
 	"os"
-	"reflect"
 	"testing"
 	"time"
 
@@ -374,15 +373,6 @@ func TestLoadFromEnv(t *testing.T) {
 	})
 }
 
-func newsCreatorMinIntervalField(cfg *Config) (time.Duration, bool) {
-	v := reflect.ValueOf(cfg.NewsCreator).FieldByName("MinInterval")
-	if !v.IsValid() {
-		return 0, false
-	}
-	d, ok := v.Interface().(time.Duration)
-	return d, ok
-}
-
 func TestNewsCreatorMinInterval(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -439,9 +429,7 @@ func TestNewsCreatorMinInterval(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			got, ok := newsCreatorMinIntervalField(cfg)
-			require.True(t, ok, "NewsCreatorConfig.MinInterval field must exist")
-			assert.Equal(t, tc.wantInterval, got)
+			assert.Equal(t, tc.wantInterval, cfg.NewsCreator.MinInterval)
 		})
 	}
 }

@@ -320,15 +320,15 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		return nil, nil, err
 	}
 	qualitychecker.Configure(cfg, newsHTTPClient)
-	utils.NewsCreatorHostRateLimiter(cfg.NewsCreator.MinInterval)
-	if cfg.NewsCreator.MinInterval > 0 {
+	utils.NewsCreatorRateLimiter().SetInterval(cfg.NewsCreator.MinInterval)
+	if minInterval := utils.NewsCreatorRateLimiter().Interval(); minInterval > 0 {
 		log.Info("news_creator_pacing_enabled",
-			"min_interval", cfg.NewsCreator.MinInterval,
+			"min_interval", minInterval,
 			"summarize_queue_concurrency", cfg.SummarizeQueue.Concurrency,
 		)
 	} else {
 		log.Info("news_creator_pacing_disabled",
-			"min_interval", cfg.NewsCreator.MinInterval,
+			"min_interval", minInterval,
 			"summarize_queue_concurrency", cfg.SummarizeQueue.Concurrency,
 		)
 	}

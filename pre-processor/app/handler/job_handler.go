@@ -185,19 +185,16 @@ func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
 			MaxBackoff:      5 * time.Minute,
 			BackoffOnErrors: []error{domain.ErrServiceOverloaded, domain.ErrUpstreamBusy},
 		}, func(ctx context.Context) error {
-			return h.ProcessQueueTick(ctx)
+			return h.processQueueTick(ctx)
 		}, h.logger))
 	})
 
 	return nil
 }
 
-// ProcessQueueTick runs one queue-worker iteration and triggers a refill
+// processQueueTick runs one queue-worker iteration and triggers a refill
 // enqueue sweep if the previous sweep came back full and no pending jobs remain.
-func (h *jobHandler) ProcessQueueTick(ctx context.Context) error {
-	if h.queueWorker == nil {
-		return nil
-	}
+func (h *jobHandler) processQueueTick(ctx context.Context) error {
 	if err := h.queueWorker.ProcessQueue(ctx); err != nil {
 		return err
 	}
@@ -205,10 +202,6 @@ func (h *jobHandler) ProcessQueueTick(ctx context.Context) error {
 }
 
 func (h *jobHandler) maybeRefillSummarizationBatch(ctx context.Context) error {
-	if h.queueWorker == nil {
-		return nil
-	}
-
 	h.sweepMu.Lock()
 	defer h.sweepMu.Unlock()
 

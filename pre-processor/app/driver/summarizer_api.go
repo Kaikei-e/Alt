@@ -200,10 +200,9 @@ func ArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg
 	// Construct API URL from config
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
 
-	// news-creator is an internal service protected by its own admission
-	// control; concurrency is bounded by the summarize worker pool; the 5 s
-	// floor remains for external sites.
-	if err := utils.NewsCreatorHostRateLimiter(cfg.NewsCreator.MinInterval).Wait(ctx, cfg.NewsCreator.Host); err != nil {
+	// news-creator is an internal service with its own admission control and
+	// concurrency is bounded by the summarize worker pool.
+	if err := utils.NewsCreatorRateLimiter().Wait(ctx, cfg.NewsCreator.Host); err != nil {
 		return nil, fmt.Errorf("rate limiter: %w", err)
 	}
 
@@ -322,10 +321,9 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article ArticlePayloa
 
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
 
-	// news-creator is an internal service protected by its own admission
-	// control; concurrency is bounded by the summarize worker pool; the 5 s
-	// floor remains for external sites.
-	if err := utils.NewsCreatorHostRateLimiter(cfg.NewsCreator.MinInterval).Wait(ctx, cfg.NewsCreator.Host); err != nil {
+	// news-creator is an internal service with its own admission control and
+	// concurrency is bounded by the summarize worker pool.
+	if err := utils.NewsCreatorRateLimiter().Wait(ctx, cfg.NewsCreator.Host); err != nil {
 		return nil, fmt.Errorf("rate limiter: %w", err)
 	}
 

@@ -565,16 +565,27 @@ func (m *stubArticleRepoForRefill) FindByID(_ context.Context, id string) (*doma
 type stubJobRepoForRefill struct {
 	repository.SummarizeJobRepository
 	pendingJobs    []*domain.SummarizeJob
+	getPendingErr  error
+	dequeueJobs    []*domain.SummarizeJob
 	createJobToken string
 	createJobCalls int
 }
 
 func (m *stubJobRepoForRefill) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	if m.getPendingErr != nil {
+		return nil, m.getPendingErr
+	}
 	return m.pendingJobs, nil
 }
 
 func (m *stubJobRepoForRefill) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
-	return nil, nil
+	jobs := m.dequeueJobs
+	m.dequeueJobs = nil
+	return jobs, nil
+}
+
+func (m *stubJobRepoForRefill) UpdateJobStatus(_ context.Context, _ string, _ domain.SummarizeJobStatus, _, _ string) error {
+	return nil
 }
 
 func (m *stubJobRepoForRefill) RecoverStuckJobs(_ context.Context) (int64, error) {
@@ -602,19 +613,21 @@ func (m *stubJobRepoForRefill) CreateJob(_ context.Context, _ string) (string, e
 	return m.createJobToken, nil
 }
 
+type stubExternalAPIRepoForRefill struct {
+	repository.ExternalAPIRepository
+	summarizeErr error
+}
+
+func (m *stubExternalAPIRepoForRefill) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
+	return nil, m.summarizeErr
+}
+
 func makeArticles(n int) []*domain.Article {
 	out := make([]*domain.Article, n)
 	for i := range n {
 		out[i] = &domain.Article{ID: fmt.Sprintf("article-%d", i+1), Title: "Title"}
 	}
 	return out
-}
-
-func runQueueTickForTest(h *jobHandler, ctx context.Context) error {
-	if ticker, ok := any(h).(interface{ ProcessQueueTick(context.Context) error }); ok {
-		return ticker.ProcessQueueTick(ctx)
-	}
-	return h.queueWorker.ProcessQueue(ctx)
 }
 
 func TestProcessSummarizationBatch_RefillStateMachine(t *testing.T) {
@@ -717,7 +730,7 @@ func TestProcessSummarizationBatch_RefillStateMachine(t *testing.T) {
 			}
 
 			jobRepo.pendingJobs = tc.pendingOnTick
-			require.NoError(t, runQueueTickForTest(h, ctx))
+			require.NoError(t, h.processQueueTick(ctx))
 
 			assert.Equal(t, tc.wantTotalSweeps, articleRepo.idx, "unexpected number of FindForSummarization sweeps")
 			if tc.wantRefillLogged {
@@ -729,4 +742,81 @@ func TestProcessSummarizationBatch_RefillStateMachine(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("ProcessQueue returns ErrServiceOverloaded skips refill sweep and keeps refill flag", func(t *testing.T) {
+		ctx := context.Background()
+		var logBuf bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		jobRepo := &stubJobRepoForRefill{createJobToken: "job-id"}
+		articleRepo := &stubArticleRepoForRefill{
+			calls: []scriptedFindCall{
+				{articles: makeArticles(10), cursor: &domain.Cursor{LastID: "article-10"}},
+				{articles: makeArticles(3), cursor: nil},
+			},
+		}
+		apiRepo := &stubExternalAPIRepoForRefill{summarizeErr: domain.ErrServiceOverloaded}
+		summaryRepo := &stubSummaryRepoForEnqueue{}
+		worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, 10)
+
+		h := &jobHandler{
+			queueWorker:             worker,
+			logger:                  log,
+			jobGroup:                orchestrator.NewJobGroup(ctx, log),
+			batchSize:               10,
+			lastBatchSweep:          time.Now(),
+			batchSweepForceInterval: 30 * time.Minute,
+		}
+
+		require.NoError(t, h.processSummarizationBatch(ctx))
+		require.True(t, h.refillNeeded)
+
+		jobRepo.dequeueJobs = []*domain.SummarizeJob{{ArticleID: "article-1", MaxRetries: 3}}
+		err := h.processQueueTick(ctx)
+		require.ErrorIs(t, err, domain.ErrServiceOverloaded)
+		assert.Equal(t, 1, articleRepo.idx, "refill sweep must not run when ProcessQueue fails")
+		assert.True(t, h.refillNeeded, "refill flag must be kept when ProcessQueue returns ErrServiceOverloaded")
+		assert.NotContains(t, logBuf.String(), "summarization refill sweep")
+	})
+
+	t.Run("HasPendingJobs error defers refill sweep and keeps flag for next tick", func(t *testing.T) {
+		ctx := context.Background()
+		var logBuf bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		jobRepo := &stubJobRepoForRefill{createJobToken: "job-id"}
+		articleRepo := &stubArticleRepoForRefill{
+			calls: []scriptedFindCall{
+				{articles: makeArticles(10), cursor: &domain.Cursor{LastID: "article-10"}},
+				{articles: makeArticles(3), cursor: nil},
+			},
+		}
+		summaryRepo := &stubSummaryRepoForEnqueue{}
+		worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, log, 10)
+
+		h := &jobHandler{
+			queueWorker:             worker,
+			logger:                  log,
+			jobGroup:                orchestrator.NewJobGroup(ctx, log),
+			batchSize:               10,
+			lastBatchSweep:          time.Now(),
+			batchSweepForceInterval: 30 * time.Minute,
+		}
+
+		require.NoError(t, h.processSummarizationBatch(ctx))
+		require.True(t, h.refillNeeded)
+
+		jobRepo.getPendingErr = errors.New("db transient error")
+		require.NoError(t, h.processQueueTick(ctx))
+		assert.Equal(t, 1, articleRepo.idx, "refill sweep must not run when HasPendingJobs fails")
+		assert.True(t, h.refillNeeded, "refill flag must be kept when HasPendingJobs fails")
+		assert.NotContains(t, logBuf.String(), "summarization refill sweep")
+
+		jobRepo.getPendingErr = nil
+		jobRepo.pendingJobs = nil
+		require.NoError(t, h.processQueueTick(ctx))
+		assert.Equal(t, 2, articleRepo.idx, "next tick with no pending jobs must run refill sweep")
+		assert.False(t, h.refillNeeded, "refill flag cleared when refill sweep reaches end")
+		assert.Contains(t, logBuf.String(), "summarization refill sweep")
+	})
 }

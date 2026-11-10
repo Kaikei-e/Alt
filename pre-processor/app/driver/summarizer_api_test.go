@@ -433,7 +433,6 @@ func TestArticleSummarizerAPIClient_NewsCreatorPacingSeparatedFromExternalLimite
 	}))
 	defer server.Close()
 
-	t.Setenv("NEWS_CREATOR_MIN_INTERVAL", "50ms")
 	t.Setenv("RATE_LIMIT_DEFAULT_INTERVAL", "5s")
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -442,25 +441,18 @@ func TestArticleSummarizerAPIClient_NewsCreatorPacingSeparatedFromExternalLimite
 	cfg.NewsCreator.Host = server.URL
 	cfg.NewsCreator.APIPath = "/api/v1/summarize"
 	cfg.NewsCreator.Timeout = 5 * time.Second
-	cfg.RateLimit.DefaultInterval = 200 * time.Millisecond
+	cfg.RateLimit.DefaultInterval = 2 * time.Second
+
+	utils.DefaultHostRateLimiter(2 * time.Second).SetInterval(2 * time.Second)
+	utils.NewsCreatorRateLimiter().SetInterval(50 * time.Millisecond)
+	t.Cleanup(func() {
+		utils.NewsCreatorRateLimiter().SetInterval(0)
+	})
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	article := ArticlePayload{
 		ID:      "test-pacing",
 		Content: strings.Repeat("Valid content for pacing test. ", 10),
-	}
-
-	extLimiter := utils.NewHostRateLimiter(cfg.RateLimit.DefaultInterval)
-	extStart := time.Now()
-	if err := extLimiter.Wait(context.Background(), "https://external.example.com"); err != nil {
-		t.Fatalf("first external Wait failed: %v", err)
-	}
-	if err := extLimiter.Wait(context.Background(), "https://external.example.com"); err != nil {
-		t.Fatalf("second external Wait failed: %v", err)
-	}
-	extElapsed := time.Since(extStart)
-	if extElapsed < 180*time.Millisecond {
-		t.Fatalf("external host limiter must enforce its 200ms interval, got %v", extElapsed)
 	}
 
 	ncStart := time.Now()
@@ -474,7 +466,7 @@ func TestArticleSummarizerAPIClient_NewsCreatorPacingSeparatedFromExternalLimite
 	_ = streamBody.Close()
 	ncElapsed := time.Since(ncStart)
 
-	if ncElapsed < 45*time.Millisecond || ncElapsed >= 150*time.Millisecond {
-		t.Fatalf("news-creator calls must be spaced by NewsCreator.MinInterval (~50ms), got %v", ncElapsed)
+	if ncElapsed < 45*time.Millisecond || ncElapsed >= 1*time.Second {
+		t.Fatalf("news-creator calls must be spaced by NewsCreator.MinInterval (~50ms) and not the 2s external interval, got %v", ncElapsed)
 	}
 }
