@@ -680,6 +680,157 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 			t.Fatalf("post-refresh Execute: want ArticleCount=400, got %+v", got2)
 		}
 	})
+
+	t.Run("coalesced cold Execute succeeds for all callers when first caller cancels context", func(t *testing.T) {
+		leaderInFetch := make(chan struct{})
+		secondCheckedCache := make(chan struct{}, 2)
+		releaseFetch := make(chan struct{})
+
+		var fetchCalls atomic.Int32
+		port := &mockFetchTagCloudPort{
+			fetchFn: func(fetchCtx context.Context, _ int) ([]*domain.TagCloudItem, error) {
+				if fetchCalls.Add(1) == 1 {
+					close(leaderInFetch)
+				}
+				<-releaseFetch
+				if err := fetchCtx.Err(); err != nil {
+					return nil, err
+				}
+				return []*domain.TagCloudItem{
+					{TagName: "AI", ArticleCount: 100},
+				}, nil
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+		var nowCalls atomic.Int32
+		usecase.now = func() time.Time {
+			if nowCalls.Add(1) == 2 {
+				secondCheckedCache <- struct{}{}
+			}
+			return time.Now()
+		}
+
+		ctx1, cancel1 := context.WithCancel(ctx)
+		defer cancel1()
+
+		var (
+			got1, got2 []*domain.TagCloudItem
+			err1, err2 error
+			wg         sync.WaitGroup
+		)
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			got1, err1 = usecase.Execute(ctx1, 300)
+		}()
+
+		select {
+		case <-leaderInFetch:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for first caller to enter FetchTagCloud")
+		}
+
+		go func() {
+			defer wg.Done()
+			got2, err2 = usecase.Execute(ctx, 300)
+		}()
+
+		select {
+		case <-secondCheckedCache:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for second caller to check cache")
+		}
+
+		// Cancel the first caller's context before releasing the port
+		cancel1()
+		close(releaseFetch)
+		wg.Wait()
+
+		if err1 != nil {
+			t.Fatalf("first caller Execute error: %v", err1)
+		}
+		if err2 != nil {
+			t.Fatalf("second caller Execute error: %v", err2)
+		}
+		if len(got1) != 1 || got1[0].ArticleCount != 100 {
+			t.Fatalf("first caller got %+v, want ArticleCount=100", got1)
+		}
+		if len(got2) != 1 || got2[0].ArticleCount != 100 {
+			t.Fatalf("second caller got %+v, want ArticleCount=100", got2)
+		}
+		if got := port.callCount.Load(); got != 1 {
+			t.Errorf("want 1 FetchTagCloud call, got %d", got)
+		}
+	})
+
+	t.Run("getCached in-flight guard and refreshInBackground error reset", func(t *testing.T) {
+		currentTime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		port := &mockFetchTagCloudPort{
+			items: []*domain.TagCloudItem{
+				{TagName: "AI", ArticleCount: 100},
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+		usecase.now = func() time.Time { return currentTime }
+
+		if _, err := usecase.Execute(ctx, 300); err != nil {
+			t.Fatalf("initial Execute: %v", err)
+		}
+
+		// Advance into stale window
+		currentTime = currentTime.Add(31 * time.Minute)
+
+		items1, state1, start1 := usecase.getCached(300)
+		if len(items1) != 1 || state1 != cacheStateStale || !start1 {
+			t.Fatalf("first stale getCached = (%v, %q, %v), want (len 1, %q, true)", items1, state1, start1, cacheStateStale)
+		}
+
+		items2, state2, start2 := usecase.getCached(300)
+		if len(items2) != 1 || state2 != cacheStateStale || start2 {
+			t.Fatalf("second stale getCached = (%v, %q, %v), want (len 1, %q, false)", items2, state2, start2, cacheStateStale)
+		}
+
+		// Failed synchronous refreshInBackground must reset u.refreshing to false
+		port.items = nil
+		port.err = errors.New("upstream failure")
+		usecase.mu.Lock()
+		usecase.refreshing = true
+		usecase.mu.Unlock()
+
+		usecase.refreshInBackground(ctx, 300)
+
+		usecase.mu.Lock()
+		refreshing := usecase.refreshing
+		usecase.mu.Unlock()
+		if refreshing {
+			t.Fatal("expected u.refreshing to be false after failed refreshInBackground")
+		}
+	})
+
+	t.Run("refreshInBackground recovers panic and resets refreshing flag", func(t *testing.T) {
+		port := &mockFetchTagCloudPort{
+			fetchFn: func(_ context.Context, _ int) ([]*domain.TagCloudItem, error) {
+				panic("unexpected driver panic")
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+		usecase.mu.Lock()
+		usecase.refreshing = true
+		usecase.mu.Unlock()
+
+		usecase.refreshInBackground(ctx, 300)
+
+		usecase.mu.Lock()
+		refreshing := usecase.refreshing
+		usecase.mu.Unlock()
+		if refreshing {
+			t.Fatal("expected u.refreshing to be false after panic in refreshInBackground")
+		}
+	})
 }
 
 func TestFetchTagCloudUsecase_Refresh(t *testing.T) {
