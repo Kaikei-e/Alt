@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use super::types::{
     EXTRACTION_TIMEOUT_SECS, ExtractRequest, ExtractResponse, MAX_ERROR_MESSAGE_LENGTH,
+    SubworkerAuthError,
 };
 use crate::clients::subworker::SubworkerClient;
 
@@ -64,6 +65,9 @@ impl SubworkerClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            if SubworkerAuthError::is_auth_status(status) {
+                return Err(SubworkerAuthError::new("extract", status, &body).into());
+            }
             return Err(anyhow::anyhow!(
                 "extract endpoint error {}: {}",
                 status,
@@ -96,7 +100,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
 
         client.ping().await.expect("ping should succeed");
     }
@@ -110,7 +114,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerClient::new(server.uri(), 10).expect("client should build");
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
 
         let error = client.ping().await.expect_err("ping should fail");
         assert!(error.to_string().contains("error status"));

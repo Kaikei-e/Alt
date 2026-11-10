@@ -152,6 +152,9 @@ impl PreprocessStage for TextPreprocessStage {
                 Ok(Ok(None)) => {
                     dropped_count += 1;
                 }
+                Ok(Err(e)) if crate::clients::subworker::is_subworker_auth_error(&e) => {
+                    return Err(e.context("text preprocessing failed"));
+                }
                 Ok(Err(e)) => {
                     warn!(error = ?e, "article preprocessing failed, dropping");
                     dropped_count += 1;
@@ -214,6 +217,12 @@ pub(crate) async fn preprocess_article(
             let body = std::mem::take(&mut article.body);
             let (text, cleaned) = tokio::task::spawn_blocking(move || clean_html(&body)).await??;
             (text, cleaned)
+        }
+        Err(e) if crate::clients::subworker::is_subworker_auth_error(&e) => {
+            return Err(e.context(format!(
+                "subworker content extraction failed for article {}",
+                article.id
+            )));
         }
         Err(e) => {
             // Surface subworker extraction failures — silently falling back
@@ -476,7 +485,7 @@ mod tests {
     async fn preprocess_article_trims_and_detects_language_case_1() {
         let body = "  正規化テキストの処理を実行します。これは日本語のテストです。  ";
         let language = Some("ja");
-        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let fetched = article("art-1", body, Some("Title"), language);
         let result = preprocess_article(fetched, subworker)
             .await
@@ -495,7 +504,7 @@ mod tests {
     async fn preprocess_article_trims_and_detects_language_case_2() {
         let body = "This is a longer text with spaces that meets the minimum length requirement for English content.";
         let language = None;
-        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let fetched = article("art-2", body, Some("Title"), language);
         let result = preprocess_article(fetched, subworker)
             .await
@@ -508,7 +517,7 @@ mod tests {
 
     #[tokio::test]
     async fn preprocess_article_drops_empty() {
-        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let result = preprocess_article(article("art-1", "   ", None, None), subworker)
             .await
             .expect("preprocessing should succeed");
@@ -517,7 +526,7 @@ mod tests {
 
     #[tokio::test]
     async fn preprocess_article_tokenizes_japanese() {
-        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let fetched = article(
             "art-ja",
             "東京大学で量子コンピューターの研究が進んでいます。",
@@ -632,7 +641,7 @@ mod tests {
         use crate::store::dao::mock::MockRecapDao;
 
         let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
-        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let stage = TextPreprocessStage::new(4, dao, subworker);
 
         let job_id = Uuid::new_v4();
@@ -675,7 +684,7 @@ mod tests {
         // Unreachable subworker forces the local ammonia/html2text fallback
         // path in `preprocess_article`, exercising the same branch other
         // preprocess_article_* tests rely on.
-        let subworker = Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap());
+        let subworker = Arc::new(SubworkerClient::new("http://127.0.0.1:9", 10, None).unwrap());
         let stage = TextPreprocessStage::new(4, dao, subworker);
 
         let job_id = Uuid::new_v4();
@@ -714,5 +723,90 @@ mod tests {
             processed.body.contains("bold"),
             "plain text content must survive sanitization"
         );
+    }
+
+    #[tokio::test]
+    async fn preprocess_fails_on_subworker_401_without_local_cleaning_fallback() {
+        use crate::store::dao::mock::MockRecapDao;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/extract"))
+            .respond_with(
+                ResponseTemplate::new(401).set_body_string(r#"{"detail":"Unauthorized"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10, None).unwrap());
+        let stage = TextPreprocessStage::new(4, dao, subworker);
+
+        let job_id = Uuid::new_v4();
+        let job = JobContext::new(job_id, vec!["general".to_string()]);
+        let corpus = FetchedCorpus {
+            job_id,
+            articles: vec![article(
+                "html-art",
+                "<p>This is <strong>bold</strong> article content with enough length.</p>",
+                Some("Title"),
+                Some("en"),
+            )],
+        };
+
+        let err = stage.preprocess(&job, corpus).await.expect_err(
+            "401 from subworker extract must fail preprocessing instead of falling back",
+        );
+
+        assert!(crate::clients::subworker::is_subworker_auth_error(&err));
+        let chain = format!("{err:#}");
+        assert!(chain.contains("401"));
+        assert!(chain.contains("Unauthorized"));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn preprocess_falls_back_to_local_cleaning_on_non_auth_error() {
+        use crate::store::dao::mock::MockRecapDao;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/extract"))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_string(r#"{"detail":"Internal Server Error"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dao: Arc<dyn RecapDao> = Arc::new(MockRecapDao::new());
+        let subworker = Arc::new(SubworkerClient::new(server.uri(), 10, None).unwrap());
+        let stage = TextPreprocessStage::new(4, dao, subworker);
+
+        let job_id = Uuid::new_v4();
+        let job = JobContext::new(job_id, vec!["general".to_string()]);
+        let corpus = FetchedCorpus {
+            job_id,
+            articles: vec![article(
+                "html-art",
+                "<p>This is <strong>bold</strong> article content with enough length.</p>",
+                Some("Title"),
+                Some("en"),
+            )],
+        };
+
+        let result = stage
+            .preprocess(&job, corpus)
+            .await
+            .expect("non-auth subworker error must still fall back to local cleaning");
+
+        assert_eq!(result.articles.len(), 1);
+        assert!(result.articles[0].is_html_cleaned);
+        server.verify().await;
     }
 }

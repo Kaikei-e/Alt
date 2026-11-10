@@ -77,21 +77,20 @@ RECAP_PAYLOAD = {
 
 MORNING_LETTER_PAYLOAD = {
     "schema_version": 1,
-    "lead": "Stub morning letter lead summarizing the day in a single sentence.",
+    "lead": "本日の朝刊ブリーフィングでは、AI基盤モデルの刷新と分散ストレージ基盤の性能改善が主要トピックです。",
     "sections": [
         {
             "key": "top3",
             "title": "Top 3 Stories",
             "bullets": [
-                "Stub top story alpha with distinct vocabulary.",
-                "Stub top story beta with distinct vocabulary.",
-                "Stub top story gamma with distinct vocabulary.",
+                "次世代マルチモーダル基盤モデルが公開され、推論レイテンシが40%短縮された [1]",
+                "分散オブジェクトストレージの暗号化レプリケーションが標準機能として導入された [2]",
+                "クラウドネイティブ観測基盤のメモリ消費量が刷新により25%削減された [3]",
             ],
             "genre": None,
             "narrative": None,
         }
     ],
-    "generated_at": "2026-04-18T06:00:00+09:00",
     "source_recap_window_days": 3,
 }
 

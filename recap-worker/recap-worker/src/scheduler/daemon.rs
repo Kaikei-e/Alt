@@ -48,6 +48,39 @@ fn log_topic_snapshot_emit_wiring(owner: Option<KnowledgeOwnerIds>, daemon: &'st
     }
 }
 
+pub(crate) fn is_evening_pulse_event_enabled(
+    owner: Option<KnowledgeOwnerIds>,
+    pulse_enabled: bool,
+) -> bool {
+    owner.is_some() && pulse_enabled
+}
+
+fn log_evening_pulse_event_wiring(
+    owner: Option<KnowledgeOwnerIds>,
+    pulse_enabled: bool,
+    daemon: &'static str,
+) {
+    if is_evening_pulse_event_enabled(owner, pulse_enabled) {
+        if let Some(owner) = owner {
+            info!(
+                daemon,
+                owner_user_id = %owner.user_id,
+                "evening_pulse_event_enabled"
+            );
+        }
+    } else if !pulse_enabled {
+        warn!(
+            daemon,
+            "evening_pulse_event_disabled: PULSE_ENABLED=false — recap.evening_pulse_generated.v1 will not be emitted"
+        );
+    } else {
+        warn!(
+            daemon,
+            "evening_pulse_event_disabled: RECAP_KNOWLEDGE_EMIT=false — recap.evening_pulse_generated.v1 will not be emitted"
+        );
+    }
+}
+
 pub fn spawn_jst_batch_daemon(
     scheduler: Scheduler,
     genres: Vec<String>,
@@ -56,6 +89,11 @@ pub fn spawn_jst_batch_daemon(
     shutdown: CancellationToken,
 ) -> JoinHandle<()> {
     log_topic_snapshot_emit_wiring(owner, "jst_batch");
+    log_evening_pulse_event_wiring(
+        owner,
+        crate::pipeline::pulse::PulseConfig::from_env().is_enabled(),
+        "jst_batch",
+    );
     let tz = FixedOffset::east_opt(JST_OFFSET_HOURS * 3600).expect("valid JST offset");
     let cadence = DailyCadence::new(tz, BATCH_HOUR, BATCH_MINUTE)
         .unwrap_or_else(|e| panic!("batch cadence: {e}"));
@@ -241,7 +279,7 @@ impl MorningUpdateDaemon {
             // find_resumable_job never picks this up as a batch Recap.
             let job = apply_knowledge_owner(JobContext::new_morning_update(job_id), self.owner);
             match self.scheduler.run_morning_update(job).await {
-                Ok(()) => info!(%job_id, "morning update job completed"),
+                Ok(letter_id) => info!(%job_id, %letter_id, "morning update job completed"),
                 Err(err) => error!(%job_id, error = %err, "morning update job failed"),
             }
         }
@@ -474,7 +512,19 @@ impl CardsBatchDaemon {
             "starting automatic cards batch"
         );
 
-        runner.run_cards(job_id, from, to).await?;
+        if let Err(err) = runner.run_cards(job_id, from, to).await {
+            if crate::clients::subworker::is_subworker_auth_error(&err) {
+                error!(
+                    %job_id,
+                    from = %from.to_rfc3339(),
+                    to = %to.to_rfc3339(),
+                    window_days,
+                    error = %format!("{err:#}"),
+                    "automatic cards batch failed due to subworker authentication error"
+                );
+            }
+            return Err(err);
+        }
 
         Ok(Some(job_id))
     }
@@ -520,6 +570,16 @@ impl CardsBatchDaemon {
                     break;
                 }
                 Err(err) => {
+                    if crate::clients::subworker::is_subworker_auth_error(&err) {
+                        error!(
+                            attempt,
+                            max_attempts,
+                            window_days,
+                            error = %format!("{err:#}"),
+                            "subworker authentication error is fatal; aborting cards batch retry"
+                        );
+                        break;
+                    }
                     error!(attempt, error = %err, "automatic cards batch failed");
                     match decide_next_attempt(attempt, max_attempts, retry_delay_minutes) {
                         RetryDecision::Retry {
@@ -691,6 +751,18 @@ mod tests {
         assert_eq!(ctx.tenant_id(), None);
     }
 
+    #[test]
+    fn evening_pulse_event_enabled_requires_both_owner_and_pulse_enabled() {
+        let owner = Some(KnowledgeOwnerIds {
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+        });
+        assert!(is_evening_pulse_event_enabled(owner, true));
+        assert!(!is_evening_pulse_event_enabled(owner, false));
+        assert!(!is_evening_pulse_event_enabled(None, true));
+        assert!(!is_evening_pulse_event_enabled(None, false));
+    }
+
     type RecordedRun = (Uuid, chrono::DateTime<Utc>, chrono::DateTime<Utc>);
 
     #[derive(Default)]
@@ -859,6 +931,57 @@ mod tests {
 
         let runs = runner.runs.lock().unwrap().clone();
         assert_eq!(runs.len(), 2, "must exhaust after max_attempts");
+    }
+
+    #[tokio::test]
+    async fn test_run_with_retry_does_not_retry_subworker_auth_error() {
+        struct AuthFailingCardsRunner {
+            runs: std::sync::Mutex<Vec<RecordedRun>>,
+        }
+
+        #[async_trait::async_trait]
+        impl CardsJobRunner for AuthFailingCardsRunner {
+            async fn run_cards(
+                &self,
+                job_id: Uuid,
+                from: chrono::DateTime<Utc>,
+                to: chrono::DateTime<Utc>,
+            ) -> anyhow::Result<()> {
+                self.runs.lock().unwrap().push((job_id, from, to));
+                Err(crate::clients::subworker::SubworkerAuthError::new(
+                    "classify_coarse",
+                    reqwest::StatusCode::UNAUTHORIZED,
+                    "unauthorized",
+                )
+                .into())
+            }
+        }
+
+        let once_runner = AuthFailingCardsRunner {
+            runs: std::sync::Mutex::new(Vec::new()),
+        };
+        let in_flight = std::sync::Mutex::new(None);
+        let err = CardsBatchDaemon::run_once(&once_runner, &in_flight, 3)
+            .await
+            .expect_err("run_once must return subworker auth error");
+        assert!(
+            crate::clients::subworker::is_subworker_auth_error(&err),
+            "returned error must be recognized as a subworker auth error: {err:#}"
+        );
+        assert_eq!(once_runner.runs.lock().unwrap().len(), 1);
+
+        let retry_runner = AuthFailingCardsRunner {
+            runs: std::sync::Mutex::new(Vec::new()),
+        };
+        let shutdown = CancellationToken::new();
+        CardsBatchDaemon::run_with_retry(&retry_runner, &in_flight, 3, 0, 3, &shutdown).await;
+
+        let runs = retry_runner.runs.lock().unwrap().clone();
+        assert_eq!(
+            runs.len(),
+            1,
+            "subworker auth error is fatal and must not be retried"
+        );
     }
 
     #[tokio::test]

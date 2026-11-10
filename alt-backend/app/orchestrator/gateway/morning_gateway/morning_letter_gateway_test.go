@@ -82,8 +82,10 @@ func TestGetLetterByDate_Success(t *testing.T) {
 	body := MorningLetterAPIResponse{
 		ID:         uuid.New().String(),
 		TargetDate: "2026-04-07",
+		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
 		Body: MorningLetterBodyAPI{
-			Lead: "Date-specific letter",
+			Lead:        "Date-specific letter",
+			GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		},
 	}
 
@@ -100,6 +102,56 @@ func TestGetLetterByDate_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, "Date-specific letter", result.Body.Lead)
+}
+
+func TestGetLatestLetter_InvalidGeneratedAt(t *testing.T) {
+	body := MorningLetterAPIResponse{
+		ID:         uuid.New().String(),
+		TargetDate: "2026-04-07",
+		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+		Body: MorningLetterBodyAPI{
+			Lead:        "Today's top story",
+			GeneratedAt: "not-a-timestamp",
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	defer server.Close()
+
+	gw := newTestGateway(t, server.URL)
+	result, err := gw.GetLatestLetter(context.Background())
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "generated_at")
+}
+
+func TestGetLatestLetter_InvalidCreatedAt(t *testing.T) {
+	body := MorningLetterAPIResponse{
+		ID:         uuid.New().String(),
+		TargetDate: "2026-04-07",
+		CreatedAt:  "not-a-timestamp",
+		Body: MorningLetterBodyAPI{
+			Lead:        "Today's top story",
+			GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	defer server.Close()
+
+	gw := newTestGateway(t, server.URL)
+	result, err := gw.GetLatestLetter(context.Background())
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "created_at")
 }
 
 func TestGetLetterSources_WithSources(t *testing.T) {

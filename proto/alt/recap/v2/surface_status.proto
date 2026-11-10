@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package alt.recap.v2;
+
+option go_package = "alt/gen/proto/alt/recap/v2;recapv2";
+
+// Freshness and degradation of the artifact a Recap surface is showing, judged by recap-worker.
+message RecapSurfaceStatus {
+  string generated_at = 1;                              // RFC3339, server-assigned time the shown artifact was produced
+  string window_start = 2;                              // RFC3339 input window start; empty when unknown
+  string window_end = 3;                                // RFC3339 input window end; empty when unknown
+  bool is_stale = 4;                                    // now > stale_after
+  string stale_after = 5;                               // RFC3339, generated_at + configured freshness budget
+  optional RecapSurfaceRun latest_run = 6;              // most recent run of the producing job, any status; absent if none
+  repeated RecapDegradationReason degradation_reasons = 7;
+}
+
+message RecapSurfaceRun {
+  string job_id = 1;
+  string status = 2;      // pending | running | completed | failed
+  string kicked_at = 3;   // RFC3339
+  string updated_at = 4;  // RFC3339
+}
+
+message RecapDegradationReason {
+  string code = 1;    // machine-readable degradation code
+  string detail = 2;  // short English text for display, may be empty
+}

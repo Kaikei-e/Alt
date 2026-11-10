@@ -251,3 +251,32 @@ pub(crate) struct CoarseClassifyRequest<'a> {
 pub(crate) struct CoarseClassifyResponse {
     pub(crate) scores: HashMap<String, f32>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{endpoint} endpoint returned authentication error status {status}: {body}")]
+pub(crate) struct SubworkerAuthError {
+    pub(crate) endpoint: &'static str,
+    pub(crate) status: reqwest::StatusCode,
+    pub(crate) body: String,
+}
+
+impl SubworkerAuthError {
+    pub(crate) fn new(endpoint: &'static str, status: reqwest::StatusCode, body: &str) -> Self {
+        Self {
+            endpoint,
+            status,
+            body: super::utils::truncate_error_message(body),
+        }
+    }
+
+    pub(crate) fn is_auth_status(status: reqwest::StatusCode) -> bool {
+        matches!(
+            status,
+            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+        )
+    }
+}
+
+pub(crate) fn is_subworker_auth_error(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<SubworkerAuthError>().is_some()
+}

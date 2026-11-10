@@ -10,10 +10,12 @@ import MorningLetterEmpty from "#lib/components/morning-letter/MorningLetterEmpt
 import MorningLetterSkeleton from "#lib/components/morning-letter/MorningLetterSkeleton.svelte";
 import {
 	deriveWithinHours,
-	formatLetterDate,
+	formatEditionDateline,
 } from "#lib/components/morning-letter/morning-letter-document.js";
+import { convertProtoSurfaceStatus } from "#lib/connect/recap.js";
 import { useMorningLetter } from "#lib/hooks/useMorningLetter.svelte.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
+import { evaluateSurfaceStatus } from "#lib/utils/surface-status.js";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 
@@ -23,10 +25,16 @@ const targetDate = $derived(
 	ml.letter?.targetDate ?? page.data.requestedDate ?? undefined,
 );
 const withinHours = $derived(deriveWithinHours(targetDate));
+const isCurrent = $derived(
+	evaluateSurfaceStatus(convertProtoSurfaceStatus(ml.letter?.surfaceStatus))
+		.isCurrent,
+);
 const dateDisplay = $derived(
-	targetDate
-		? formatLetterDate(targetDate, ml.letter?.editionTimezone)
-		: "Today's Edition",
+	formatEditionDateline({
+		targetDate,
+		editionTimezone: ml.letter?.editionTimezone,
+		isCurrent,
+	}),
 );
 
 let revealed = $state(false);

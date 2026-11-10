@@ -13,8 +13,13 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
+use crate::api::surface_status::{
+    SurfaceRun, SurfaceStatus, build_surface_status, evening_pulse_reasons,
+};
 use crate::app::AppState;
 use crate::pipeline::pulse::{PulseDiagnostics, PulseResult, PulseTopic, TopicRole};
+use crate::store::dao::surface::SurfaceDaoOps;
+pub use crate::store::models::PulseGenerationRow;
 
 /// Query parameters for GET /v1/pulse/latest
 #[derive(Debug, Deserialize)]
@@ -34,6 +39,7 @@ pub(crate) struct PulseLatestResponse {
     topics: Vec<PulseTopicResponse>,
     quiet_day: Option<QuietDayResponse>,
     diagnostics: Option<PulseDiagnosticsResponse>,
+    surface_status: SurfaceStatus,
 }
 
 /// Topic in the API response
@@ -103,19 +109,69 @@ struct ErrorResponse {
     error: String,
 }
 
-/// GET /v1/pulse/latest
-///
-/// Returns the latest Evening Pulse data.
-/// Optionally accepts a `date` query parameter in YYYY-MM-DD format.
-pub(crate) async fn get_latest(
-    State(state): State<AppState>,
-    Query(query): Query<PulseLatestQuery>,
-) -> impl IntoResponse {
-    info!("Fetching latest evening pulse, date={:?}", query.date);
+pub type PulseWindow = (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>);
 
-    let dao = state.dao();
+#[async_trait::async_trait]
+pub trait PulseReadDao: Send + Sync {
+    async fn get_latest_pulse(
+        &self,
+    ) -> Result<Option<crate::store::models::PulseGenerationRow>, String>;
+    async fn get_pulse_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Option<crate::store::models::PulseGenerationRow>, String>;
+    async fn get_latest_pulse_run(
+        &self,
+    ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String>;
+    async fn get_recap_job_window(&self, job_id: uuid::Uuid)
+    -> Result<Option<PulseWindow>, String>;
+}
 
-    let result = match &query.date {
+#[async_trait::async_trait]
+impl PulseReadDao for AppState {
+    async fn get_latest_pulse(
+        &self,
+    ) -> Result<Option<crate::store::models::PulseGenerationRow>, String> {
+        self.dao()
+            .get_latest_pulse()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_pulse_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Option<crate::store::models::PulseGenerationRow>, String> {
+        self.dao()
+            .get_pulse_by_date(date)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_latest_pulse_run(&self) -> Result<Option<SurfaceRun>, String> {
+        SurfaceDaoOps::get_latest_pulse_run(self.pool())
+            .await
+            .map(|opt| opt.map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at)))
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_recap_job_window(
+        &self,
+        job_id: uuid::Uuid,
+    ) -> Result<Option<PulseWindow>, String> {
+        SurfaceDaoOps::get_recap_job_window(self.pool(), job_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+pub async fn get_latest_pulse_impl(
+    dao: &impl PulseReadDao,
+    date_query: Option<&str>,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
+    let result = match date_query {
         Some(date_str) => {
             let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") else {
                 return (
@@ -131,43 +187,73 @@ pub(crate) async fn get_latest(
         None => dao.get_latest_pulse().await,
     };
 
-    match result {
-        Ok(Some(row)) => match build_response(&row) {
-            Ok(response) => {
-                info!("Successfully fetched evening pulse for job {}", row.job_id);
-                (StatusCode::OK, Json(response)).into_response()
-            }
-            Err(e) => {
-                error!("Failed to build pulse response: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to build response".to_string(),
-                    }),
-                )
-                    .into_response()
-            }
-        },
+    let row = match result {
+        Ok(Some(row)) => row,
         Ok(None) => {
-            let date_msg = query
-                .date
-                .as_ref()
-                .map_or_else(|| "today".to_string(), Clone::clone);
+            let date_msg = date_query.map_or_else(|| "today".to_string(), str::to_string);
             info!("No evening pulse found for date {}", date_msg);
-            (
+            return (
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
                     error: format!("No evening pulse found for date {date_msg}"),
                 }),
             )
-                .into_response()
+                .into_response();
         }
         Err(e) => {
             error!("Failed to fetch pulse: {}", e);
-            (
+            return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: "Failed to fetch pulse data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let latest_run = match dao.get_latest_pulse_run().await {
+        Ok(run) => run,
+        Err(e) => {
+            error!("Failed to fetch latest pulse run: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch pulse data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let window = match dao.get_recap_job_window(row.job_id).await {
+        Ok(window) => window,
+        Err(e) => {
+            error!(
+                "Failed to fetch recap job window for job {}: {}",
+                row.job_id, e
+            );
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch pulse data".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    match build_response(&row, window, latest_run, freshness_budget, now) {
+        Ok(response) => {
+            info!("Successfully fetched evening pulse for job {}", row.job_id);
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => {
+            error!("Failed to build pulse response: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to build response".to_string(),
                 }),
             )
                 .into_response()
@@ -175,8 +261,25 @@ pub(crate) async fn get_latest(
     }
 }
 
+/// GET /v1/pulse/latest
+///
+/// Returns the latest Evening Pulse data.
+/// Optionally accepts a `date` query parameter in YYYY-MM-DD format.
+pub(crate) async fn get_latest(
+    State(state): State<AppState>,
+    Query(query): Query<PulseLatestQuery>,
+) -> impl IntoResponse {
+    info!("Fetching latest evening pulse, date={:?}", query.date);
+    let budget = state.config().surface_freshness().evening_pulse_budget();
+    get_latest_pulse_impl(&state, query.date.as_deref(), budget, chrono::Utc::now()).await
+}
+
 fn build_response(
     row: &crate::store::models::PulseGenerationRow,
+    window: Option<PulseWindow>,
+    latest_run: Option<SurfaceRun>,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> anyhow::Result<PulseLatestResponse> {
     // Deserialize result_payload to PulseResult
     let pulse_result: PulseResult = serde_json::from_value(
@@ -190,6 +293,15 @@ fn build_response(
     let quiet_day = build_quiet_day(&pulse_result);
     let diagnostics = build_diagnostics(&pulse_result.diagnostics);
 
+    let surface_status = build_surface_status(
+        row.finished_at,
+        window,
+        latest_run,
+        evening_pulse_reasons(diagnostics.fallback_level),
+        freshness_budget,
+        now,
+    );
+
     Ok(PulseLatestResponse {
         job_id: row.job_id.to_string(),
         version: row.version.clone(),
@@ -199,6 +311,7 @@ fn build_response(
         topics,
         quiet_day,
         diagnostics: Some(diagnostics),
+        surface_status,
     })
 }
 
@@ -462,5 +575,153 @@ mod tests {
         assert_eq!(response.clusters_evaluated, 42);
         assert_eq!(response.fallback_level, 1);
         assert_eq!(response.duration_ms, 1250);
+    }
+
+    struct MockPulseReadDao {
+        row: Option<crate::store::models::PulseGenerationRow>,
+        latest_run: Option<crate::api::surface_status::SurfaceRun>,
+        window: Result<Option<PulseWindow>, String>,
+    }
+
+    #[async_trait::async_trait]
+    impl PulseReadDao for MockPulseReadDao {
+        async fn get_latest_pulse(
+            &self,
+        ) -> Result<Option<crate::store::models::PulseGenerationRow>, String> {
+            Ok(self.row.clone())
+        }
+
+        async fn get_pulse_by_date(
+            &self,
+            _date: NaiveDate,
+        ) -> Result<Option<crate::store::models::PulseGenerationRow>, String> {
+            Ok(self.row.clone())
+        }
+
+        async fn get_latest_pulse_run(
+            &self,
+        ) -> Result<Option<crate::api::surface_status::SurfaceRun>, String> {
+            Ok(self.latest_run.clone())
+        }
+
+        async fn get_recap_job_window(&self, _job_id: Uuid) -> Result<Option<PulseWindow>, String> {
+            self.window.clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_pulse_serves_surface_status_and_fallback_reason() {
+        use chrono::DateTime;
+        use serde_json::{Value, json};
+
+        let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
+        let started_at = DateTime::parse_from_rfc3339("2026-11-08T18:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let finished_at = DateTime::parse_from_rfc3339("2026-11-08T18:02:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_ne!(started_at, finished_at);
+        let win_start = DateTime::parse_from_rfc3339("2026-11-05T18:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let win_end = DateTime::parse_from_rfc3339("2026-11-08T18:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let mut pulse_result = create_test_pulse_result();
+        pulse_result.job_id = job_id;
+        pulse_result.generated_at = started_at;
+        pulse_result.diagnostics.fallback_level = 1;
+
+        let row = crate::store::models::PulseGenerationRow {
+            job_id,
+            target_date: NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(),
+            version: "v4".to_string(),
+            result_payload: Some(serde_json::to_value(&pulse_result).unwrap()),
+            finished_at,
+        };
+
+        let dao = MockPulseReadDao {
+            row: Some(row),
+            latest_run: Some(crate::api::surface_status::SurfaceRun {
+                job_id: job_id.to_string(),
+                status: "completed".to_string(),
+                kicked_at: "2026-11-08T18:00:00Z".to_string(),
+                updated_at: "2026-11-08T18:02:00Z".to_string(),
+            }),
+            window: Ok(Some((win_start, win_end))),
+        };
+
+        let now = DateTime::parse_from_rfc3339("2026-11-09T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let response = get_latest_pulse_impl(&dao, None, chrono::Duration::hours(30), now).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
+
+        assert_eq!(body["generated_at"], "2026-11-08T18:00:00+00:00");
+        assert_eq!(
+            body["surface_status"]["generated_at"],
+            "2026-11-08T18:02:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["window_start"],
+            "2026-11-05T18:00:00Z"
+        );
+        assert_eq!(body["surface_status"]["window_end"], "2026-11-08T18:00:00Z");
+        assert_eq!(body["surface_status"]["is_stale"], false);
+        assert_eq!(
+            body["surface_status"]["stale_after"],
+            "2026-11-10T00:02:00Z"
+        );
+        assert_eq!(body["surface_status"]["latest_run"]["status"], "completed");
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            json!([
+                {
+                    "code": "pulse_fallback",
+                    "detail": "fallback level 1"
+                }
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_pulse_returns_500_when_job_window_query_fails() {
+        use chrono::DateTime;
+
+        let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
+        let finished_at = DateTime::parse_from_rfc3339("2026-11-08T18:02:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let mut pulse_result = create_test_pulse_result();
+        pulse_result.job_id = job_id;
+        pulse_result.generated_at = finished_at;
+
+        let row = crate::store::models::PulseGenerationRow {
+            job_id,
+            target_date: NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(),
+            version: "v4".to_string(),
+            result_payload: Some(serde_json::to_value(&pulse_result).unwrap()),
+            finished_at,
+        };
+
+        let dao = MockPulseReadDao {
+            row: Some(row),
+            latest_run: None,
+            window: Err("simulated db error".to_string()),
+        };
+
+        let now = DateTime::parse_from_rfc3339("2026-11-09T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let response = get_latest_pulse_impl(&dao, None, chrono::Duration::hours(30), now).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

@@ -95,12 +95,21 @@ _NEWLINE_RUN_RE = re.compile(r"[\r\n]+")
 
 # Chat-turn and reasoning control tokens across ChatML, Gemma, and Qwen templates.
 _CONTROL_TOKEN_RE = re.compile(
-    r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
+    r"<\|(?:im_start|im_end|system|user|assistant|endoftext|think)\|>"
     r"|</?think>"
     r"|<\|turn>|<turn\|>"
     r"|<start_of_turn>|<end_of_turn>",
     re.IGNORECASE,
 )
+
+
+def _strip_control_tokens(text: str) -> str:
+    while True:
+        cleaned = _CONTROL_TOKEN_RE.sub("", text)
+        if cleaned == text:
+            return text
+        text = cleaned
+
 
 # Zero-width spaces/joiners and Unicode BiDi override/isolate control characters.
 _ZERO_WIDTH_BIDI_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]")
@@ -121,7 +130,7 @@ def neutralize_evidence_text(text: str) -> str:
     """
     if not text:
         return text
-    stripped = _ZERO_WIDTH_BIDI_RE.sub("", _CONTROL_TOKEN_RE.sub("", text))
+    stripped = _strip_control_tokens(_ZERO_WIDTH_BIDI_RE.sub("", text))
     escaped = _STRUCTURAL_TAG_RE.sub(_escape_angle_brackets, stripped)
     return _SCAFFOLD_HEADER_RE.sub(r"\1：", escaped)
 
@@ -170,7 +179,7 @@ def sanitize_evidence_excerpt(text: str, *, max_chars: int = 600) -> str:
     """Remove XML/HTML tags and cap length before insertion into the prompt."""
     if not text:
         return ""
-    cleaned = _ZERO_WIDTH_BIDI_RE.sub("", _CONTROL_TOKEN_RE.sub("", text))
+    cleaned = _strip_control_tokens(_ZERO_WIDTH_BIDI_RE.sub("", text))
     cleaned = _XML_TAG_RE.sub("", cleaned).strip()
     if len(cleaned) > max_chars:
         cleaned = cleaned[:max_chars] + "…"
@@ -189,3 +198,15 @@ def escape_xml_delimiters(text: str) -> str:
         return text
     escaped = _XML_DELIMITER_TAG_RE.sub(_escape_angle_brackets, text)
     return neutralize_evidence_text(escaped)
+
+
+def wrap_gemma_prompt(
+    user_prompt: str,
+    system_prompt: str = "",
+) -> str:
+    """Wrap system and user prompts in Gemma 4 turn tokens after stripping control tokens from user_prompt."""
+    user = _strip_control_tokens(user_prompt).strip()
+    sys = system_prompt.strip()
+    if sys:
+        return f"<|turn>system\n{sys}\n<turn|>\n<|turn>user\n{user}\n<turn|>\n<|turn>model\n"
+    return f"<|turn>user\n{user}\n<turn|>\n<|turn>model\n"

@@ -1,11 +1,23 @@
 use anyhow::{Context, Result, anyhow};
 use base64::Engine;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use reqwest::{Client, Url};
 use serde::Serialize;
 use serde_json::json;
 use tracing::{debug, error, warn};
 use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub(crate) struct EveningPulseGeneratedInput {
+    pub(crate) user_id: Uuid,
+    pub(crate) tenant_id: Uuid,
+    pub(crate) job_id: Uuid,
+    pub(crate) target_date: NaiveDate,
+    pub(crate) version: String,
+    pub(crate) topic_count: usize,
+    pub(crate) fallback_level: u8,
+    pub(crate) finished_at: DateTime<Utc>,
+}
 
 /// Input for [`KnowledgeSovereignClient::emit_recap_topic_snapshotted`].
 ///
@@ -181,6 +193,89 @@ impl KnowledgeSovereignClient {
                     "AppendKnowledgeEvent returned non-2xx (continuing)"
                 );
             }
+            return Err(anyhow!(
+                "AppendKnowledgeEvent returned status {status}: {body}"
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn emit_evening_pulse_generated(
+        &self,
+        input: &EveningPulseGeneratedInput,
+    ) -> Result<()> {
+        if input.user_id.is_nil() {
+            return Err(anyhow!(
+                "EveningPulseGeneratedInput.user_id required (cross-user isolation)"
+            ));
+        }
+        if input.tenant_id.is_nil() {
+            return Err(anyhow!("EveningPulseGeneratedInput.tenant_id required"));
+        }
+
+        let url = self
+            .base_url
+            .join("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent")
+            .context("failed to build AppendKnowledgeEvent URL")?;
+
+        let target_date = input.target_date.to_string();
+        let payload_bytes = serde_json::to_vec(&json!({
+            "job_id": input.job_id.to_string(),
+            "target_date": target_date,
+            "version": input.version,
+            "topic_count": input.topic_count,
+            "fallback_level": input.fallback_level,
+        }))
+        .context("failed to serialize recap.evening_pulse_generated payload")?;
+        let payload_b64 = base64::engine::general_purpose::STANDARD.encode(&payload_bytes);
+
+        let dedupe_key = format!(
+            "recap.evening_pulse_generated.v1:{}:{}",
+            input.user_id, input.job_id
+        );
+
+        let body = AppendKnowledgeEventRequest {
+            event: KnowledgeEventWire {
+                event_id: Uuid::new_v4().to_string(),
+                occurred_at: input.finished_at.to_rfc3339(),
+                tenant_id: input.tenant_id.to_string(),
+                user_id: input.user_id.to_string(),
+                actor_type: "service:recap-worker".to_string(),
+                actor_id: "pulse-stage".to_string(),
+                event_type: "recap.evening_pulse_generated.v1".to_string(),
+                aggregate_type: "evening_pulse".to_string(),
+                aggregate_id: format!("evening-pulse:{target_date}"),
+                dedupe_key,
+                payload: payload_b64,
+            },
+        };
+
+        debug!(
+            user_id = %input.user_id,
+            job_id = %input.job_id,
+            target_date = %target_date,
+            "emitting recap.evening_pulse_generated.v1 to knowledge-sovereign"
+        );
+
+        let mut request = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/json");
+
+        if let Some(ref token) = self.token {
+            request = request.header("Authorization", format!("Bearer {token}"));
+        }
+
+        let response = request
+            .json(&body)
+            .send()
+            .await
+            .context("AppendKnowledgeEvent request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
             return Err(anyhow!(
                 "AppendKnowledgeEvent returned status {status}: {body}"
             ));

@@ -23,28 +23,32 @@ struct RecapContext {
     summaries: Option<Vec<MorningLetterRecapInput>>,
     source_job_id: Option<Uuid>,
     is_degraded: bool,
+    degradation_reason: Option<&'static str>,
     window_days: Option<u32>,
 }
 
 impl RecapContext {
-    fn degraded() -> Self {
+    fn degraded(reason: &'static str) -> Self {
         Self {
             summaries: None,
             source_job_id: None,
             is_degraded: true,
+            degradation_reason: Some(reason),
             window_days: None,
         }
     }
 }
 
+pub(crate) type SaveClock = Arc<dyn Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync>;
+
 pub struct MorningPipeline {
-    #[allow(dead_code)]
     config: Arc<Config>,
     fetch: Arc<dyn FetchStage>,
     preprocess: Arc<dyn PreprocessStage>,
     dedup: Arc<dyn DedupStage>,
     recap_dao: Arc<dyn RecapDao>,
     news_creator_client: Arc<NewsCreatorClient>,
+    save_clock: SaveClock,
 }
 
 impl MorningPipeline {
@@ -125,10 +129,15 @@ impl MorningPipeline {
             dedup,
             recap_dao,
             news_creator_client,
+            save_clock: Arc::new(chrono::Utc::now),
         })
     }
 
-    pub(crate) async fn execute_update(&self, job: &JobContext) -> Result<()> {
+    pub(crate) async fn execute_update(
+        &self,
+        job: &JobContext,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(Uuid, chrono::DateTime<chrono::Utc>)> {
         tracing::info!(job_id = %job.job_id, "starting morning update pipeline");
 
         let fetched = self.fetch.fetch(job).await?;
@@ -183,7 +192,7 @@ impl MorningPipeline {
             tracing::info!(job_id = %job.job_id, groups_count = groups.len(), "persisted morning article groups");
         }
 
-        let recap_ctx = self.load_recap_context(job).await;
+        let recap_ctx = self.load_recap_context(job, now).await;
 
         let overnight_groups: Vec<MorningLetterGroupInput> = group_articles
             .into_iter()
@@ -191,7 +200,7 @@ impl MorningPipeline {
             .collect();
         let overnight_groups = cap_overnight_groups_for_prompt(overnight_groups);
 
-        let target_date = edition_target_date(chrono::Utc::now());
+        let target_date = edition_target_date(now);
         let edition_timezone = "Asia/Tokyo".to_string();
 
         // Cap recap context to fit the LLM prompt budget — once the
@@ -216,13 +225,14 @@ impl MorningPipeline {
             .await?;
         let final_is_degraded = recap_ctx.is_degraded || ml_response.metadata.is_degraded;
 
-        let letter_id = self
+        let (letter_id, created_at) = self
             .persist_morning_letter(
                 &target_date,
                 &edition_timezone,
                 recap_ctx.source_job_id,
                 recap_ctx.window_days,
                 final_is_degraded,
+                recap_ctx.degradation_reason,
                 &ml_response,
                 &groups,
             )
@@ -233,13 +243,18 @@ impl MorningPipeline {
             is_degraded = final_is_degraded,
             "morning letter generated and saved"
         );
-        Ok(())
+        Ok((letter_id, created_at))
     }
 
-    async fn load_recap_context(&self, job: &JobContext) -> RecapContext {
+    async fn load_recap_context(
+        &self,
+        job: &JobContext,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> RecapContext {
         // Morning Letter now grounds on the **3-day** recap window
         // (previously 7). The 3-day window is produced by the 3days
         // recap job and reflects fresher editorial signals.
+        let freshness_budget = self.config.surface_freshness().three_day_recap_budget();
         let recap_result = self.recap_dao.get_latest_completed_job(3).await;
         match recap_result {
             Ok(Some(recap_job)) => {
@@ -250,6 +265,7 @@ impl MorningPipeline {
                         duration.num_days().max(1) as u32
                     }
                 };
+                let is_stale_input = now > recap_job.window_end + freshness_budget;
                 match self.recap_dao.get_genres_by_job(recap_job.job_id).await {
                     Ok(genres) => {
                         // news-creator requires each recap to have at least
@@ -276,17 +292,32 @@ impl MorningPipeline {
                             .collect();
                         tracing::info!(
                             job_id = %job.job_id, recap_job_id = %recap_job.job_id,
-                            genre_count = genres.len(), "loaded recap summaries for morning letter"
+                            genre_count = genres.len(), is_stale_input, "loaded recap summaries for morning letter"
                         );
-                        RecapContext {
-                            summaries: if inputs.is_empty() {
-                                None
-                            } else {
-                                Some(inputs)
-                            },
-                            source_job_id: Some(recap_job.job_id),
-                            is_degraded: false,
-                            window_days: Some(window_days),
+                        if inputs.is_empty() {
+                            RecapContext {
+                                summaries: None,
+                                source_job_id: Some(recap_job.job_id),
+                                is_degraded: true,
+                                degradation_reason: Some("recap_unavailable"),
+                                window_days: Some(window_days),
+                            }
+                        } else if is_stale_input {
+                            RecapContext {
+                                summaries: Some(inputs),
+                                source_job_id: Some(recap_job.job_id),
+                                is_degraded: true,
+                                degradation_reason: Some("stale_recap_input"),
+                                window_days: Some(window_days),
+                            }
+                        } else {
+                            RecapContext {
+                                summaries: Some(inputs),
+                                source_job_id: Some(recap_job.job_id),
+                                is_degraded: false,
+                                degradation_reason: None,
+                                window_days: Some(window_days),
+                            }
                         }
                     }
                     Err(e) => {
@@ -295,6 +326,7 @@ impl MorningPipeline {
                             summaries: None,
                             source_job_id: Some(recap_job.job_id),
                             is_degraded: true,
+                            degradation_reason: Some("recap_unavailable"),
                             window_days: Some(window_days),
                         }
                     }
@@ -302,11 +334,11 @@ impl MorningPipeline {
             }
             Ok(None) => {
                 tracing::info!(job_id = %job.job_id, "no completed recap found, morning letter will be degraded");
-                RecapContext::degraded()
+                RecapContext::degraded("recap_unavailable")
             }
             Err(e) => {
                 tracing::warn!(job_id = %job.job_id, error = %e, "failed to query recap jobs, degraded mode");
-                RecapContext::degraded()
+                RecapContext::degraded("recap_unavailable")
             }
         }
     }
@@ -319,97 +351,33 @@ impl MorningPipeline {
         source_recap_job_id: Option<Uuid>,
         recap_window_days: Option<u32>,
         is_degraded: bool,
+        recap_degradation_reason: Option<&str>,
         ml_response: &crate::clients::news_creator::models::MorningLetterGenerateResponse,
         groups: &[(Uuid, Uuid, bool)],
-    ) -> Result<Uuid> {
+    ) -> Result<(Uuid, chrono::DateTime<chrono::Utc>)> {
+        use chrono::SubsecRound;
+
         let letter_id = Uuid::new_v4();
-        let content = &ml_response.content;
-
-        // Event-sourced editorial enrichment: through-line, previous-letter
-        // link, and per-bullet why_reasons — produced deterministically from
-        // the signals we already have (recap summaries + overnight groups).
-        let unique_groups: std::collections::HashSet<Uuid> =
-            groups.iter().map(|(gid, _, _)| *gid).collect();
-        let overnight_count = unique_groups.len();
-
-        // Deterministic editorial through-line: prefer concrete section
-        // labels the LLM chose, fall back to dominant genres, then to a
-        // count sentence. The degraded flag is surfaced visually by the
-        // UI badge, so we no longer prefix the prose with "Partial".
-        let labels = editorial_labels_for(&content.sections, 2);
-        let genres = dominant_genres_for(&content.sections, 2);
-        let through_line = build_through_line(&labels, &genres, overnight_count);
-        let _ = is_degraded; // kept in persisted metadata, not in the through-line
-        let _ = recap_window_days;
 
         let previous = self
             .load_previous_letter_ref(edition_timezone, target_date)
             .await;
 
-        let sections_json = content
-            .sections
-            .iter()
-            .map(|s| {
-                let whys: Vec<serde_json::Value> = s
-                    .bullets
-                    .iter()
-                    .map(|_| {
-                        let code = if s.genre.as_deref().is_some_and(|g| !g.is_empty()) {
-                            "in_weekly_recap"
-                        } else if s.key == "top3" || s.key == "what_changed" {
-                            "pulse_need_to_know"
-                        } else {
-                            "new_unread"
-                        };
-                        serde_json::json!({ "code": code })
-                    })
-                    .collect();
-                serde_json::json!({
-                    "key": s.key,
-                    "title": s.title,
-                    "bullets": s.bullets,
-                    "genre": s.genre,
-                    "narrative": s.narrative,
-                    "why_reasons": whys,
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let result_jsonb = serde_json::json!({
-            "lead": content.lead,
-            "sections": sections_json,
-            "generated_at": content.generated_at,
-            "source_recap_window_days": recap_window_days,
-            "through_line": through_line,
-            "previous_letter_ref": previous,
-        });
-        let generation_metadata_jsonb = serde_json::json!({
-            "model": ml_response.metadata.model,
-            "is_degraded": is_degraded,
-            "degradation_reason": ml_response.metadata.degradation_reason,
-            "processing_time_ms": ml_response.metadata.processing_time_ms,
-        });
-        let target_date_parsed = chrono::NaiveDate::parse_from_str(target_date, "%Y-%m-%d")
-            .unwrap_or_else(|_| chrono::Utc::now().date_naive());
-
-        let letter = MorningLetter {
-            id: letter_id,
-            target_date: target_date_parsed,
-            edition_timezone: edition_timezone.to_string(),
+        let created_at = (self.save_clock)().trunc_subsecs(6);
+        let letter = build_morning_letter_from_response(
+            letter_id,
+            target_date,
+            edition_timezone,
             source_recap_job_id,
+            recap_window_days,
             is_degraded,
-            schema_version: content.schema_version,
-            generation_revision: 1,
-            result_jsonb,
-            model: Some(ml_response.metadata.model.clone()),
-            generation_metadata_jsonb,
-            created_at: chrono::Utc::now(),
-        };
-        // UPSERT returns the *effective* letter id: on CONFLICT the
-        // existing row's id is preserved, so the in-memory `letter_id`
-        // we generated is discarded. Use the returned id for sources
-        // (they FK-reference morning_letters.id).
-        let effective_letter_id = self.recap_dao.save_morning_letter(&letter).await?;
+            recap_degradation_reason,
+            ml_response,
+            groups,
+            previous,
+            created_at,
+        );
+        let persisted_letter_id = self.recap_dao.save_morning_letter(&letter).await?;
 
         // morning_letter_sources typically has a uniqueness constraint on
         // (letter_id, section_key, article_id). The same article_id can
@@ -423,7 +391,7 @@ impl MorningPipeline {
             }
             #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
             sources.push(MorningLetterSource {
-                letter_id: effective_letter_id,
+                letter_id: persisted_letter_id,
                 section_key: "overnight".to_string(),
                 article_id: *article_id,
                 source_type: "overnight_group".to_string(),
@@ -433,7 +401,112 @@ impl MorningPipeline {
         if !sources.is_empty() {
             self.recap_dao.save_morning_letter_sources(&sources).await?;
         }
-        Ok(effective_letter_id)
+        Ok((persisted_letter_id, created_at))
+    }
+}
+
+/// Sentinel revision value used on the in-memory `MorningLetter` before persistence;
+/// the database assigns the authoritative `generation_revision` on `INSERT`.
+const DB_ASSIGNED_GENERATION_REVISION: i32 = 0;
+
+#[allow(clippy::too_many_arguments)]
+fn build_morning_letter_from_response(
+    letter_id: Uuid,
+    target_date: &str,
+    edition_timezone: &str,
+    source_recap_job_id: Option<Uuid>,
+    recap_window_days: Option<u32>,
+    is_degraded: bool,
+    recap_degradation_reason: Option<&str>,
+    ml_response: &crate::clients::news_creator::models::MorningLetterGenerateResponse,
+    groups: &[(Uuid, Uuid, bool)],
+    previous: Option<serde_json::Value>,
+    created_at: chrono::DateTime<chrono::Utc>,
+) -> MorningLetter {
+    let content = &ml_response.content;
+
+    // Event-sourced editorial enrichment: through-line, previous-letter
+    // link, and per-bullet why_reasons — produced deterministically from
+    // the signals we already have (recap summaries + overnight groups).
+    let unique_groups: std::collections::HashSet<Uuid> =
+        groups.iter().map(|(gid, _, _)| *gid).collect();
+    let overnight_count = unique_groups.len();
+
+    // Deterministic editorial through-line: prefer concrete section
+    // labels the LLM chose, fall back to dominant genres, then to a
+    // count sentence. The degraded flag is surfaced visually by the
+    // UI badge, so we no longer prefix the prose with "Partial".
+    let labels = editorial_labels_for(&content.sections, 2);
+    let genres = dominant_genres_for(&content.sections, 2);
+    let through_line = build_through_line(&labels, &genres, overnight_count);
+
+    let sections_json = content
+        .sections
+        .iter()
+        .map(|s| {
+            let whys: Vec<serde_json::Value> = s
+                .bullets
+                .iter()
+                .map(|_| {
+                    let code = if s.genre.as_deref().is_some_and(|g| !g.is_empty()) {
+                        "in_weekly_recap"
+                    } else if s.key == "top3" || s.key == "what_changed" {
+                        "pulse_need_to_know"
+                    } else {
+                        "new_unread"
+                    };
+                    serde_json::json!({ "code": code })
+                })
+                .collect();
+            serde_json::json!({
+                "key": s.key,
+                "title": s.title,
+                "bullets": s.bullets,
+                "genre": s.genre,
+                "narrative": s.narrative,
+                "why_reasons": whys,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let generated_at = created_at.to_rfc3339();
+
+    let result_jsonb = serde_json::json!({
+        "lead": content.lead,
+        "sections": sections_json,
+        "generated_at": generated_at,
+        "source_recap_window_days": recap_window_days,
+        "through_line": through_line,
+        "previous_letter_ref": previous,
+    });
+    let degradation_reason = recap_degradation_reason.map(str::to_string).or_else(|| {
+        if ml_response.metadata.is_degraded {
+            ml_response.metadata.degradation_reason.clone()
+        } else {
+            None
+        }
+    });
+    let generation_metadata_jsonb = serde_json::json!({
+        "model": ml_response.metadata.model,
+        "is_degraded": is_degraded,
+        "degradation_reason": degradation_reason,
+        "processing_time_ms": ml_response.metadata.processing_time_ms,
+    });
+    let target_date_parsed = chrono::NaiveDate::parse_from_str(target_date, "%Y-%m-%d")
+        .unwrap_or_else(|_| created_at.date_naive());
+
+    MorningLetter {
+        id: letter_id,
+        target_date: target_date_parsed,
+        edition_timezone: edition_timezone.to_string(),
+        source_recap_job_id,
+        is_degraded,
+        schema_version: content.schema_version,
+        generation_revision: DB_ASSIGNED_GENERATION_REVISION,
+        result_jsonb,
+        model: Some(ml_response.metadata.model.clone()),
+        generation_metadata_jsonb,
+        created_at,
     }
 }
 
@@ -781,6 +854,10 @@ mod tests {
             ("RECAP_ADMIN_AUTH", Some("disabled")),
             ("RECAP_EVAL_LISTENER", Some("disabled")),
             ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
             ("MTLS_ENFORCE", Some("true")),
             ("MTLS_CERT_FILE", None),
             ("MTLS_KEY_FILE", None),
@@ -796,6 +873,7 @@ mod tests {
                 SubworkerClient::new(
                     config.subworker_base_url(),
                     config.min_documents_per_genre(),
+                    None,
                 )
                 .expect("subworker client builds without network I/O"),
             );
@@ -1147,5 +1225,409 @@ mod tests {
             .expect("valid timestamp")
             .with_timezone(&chrono::Utc);
         assert_eq!(edition_target_date(before_midnight_jst), "2026-11-07");
+    }
+
+    #[test]
+    fn build_morning_letter_from_response_assigns_server_generated_at_equal_to_created_at() {
+        use crate::clients::news_creator::models::{
+            MorningLetterGenerateResponse, MorningLetterResponseContent,
+            MorningLetterResponseMetadata, MorningLetterResponseSection,
+        };
+
+        let response = MorningLetterGenerateResponse {
+            target_date: "2026-04-17".to_string(),
+            edition_timezone: "Asia/Tokyo".to_string(),
+            content: MorningLetterResponseContent {
+                schema_version: 1,
+                lead: "A busy night in AI and data.".to_string(),
+                sections: vec![MorningLetterResponseSection {
+                    key: "top3".to_string(),
+                    title: "AI Tooling".to_string(),
+                    bullets: vec!["New release shipped.".to_string()],
+                    genre: Some("ai_data".to_string()),
+                    narrative: Some("Momentum continued.".to_string()),
+                }],
+                source_recap_window_days: Some(3),
+            },
+            metadata: MorningLetterResponseMetadata {
+                model: "gemma4-e4b-12k".to_string(),
+                is_degraded: false,
+                degradation_reason: None,
+                processing_time_ms: Some(1200),
+            },
+        };
+
+        let created_at = chrono::DateTime::parse_from_rfc3339("2026-04-17T21:00:00.123456Z")
+            .expect("valid timestamp")
+            .with_timezone(&chrono::Utc);
+        let letter = build_morning_letter_from_response(
+            Uuid::new_v4(),
+            "2026-04-17",
+            "Asia/Tokyo",
+            None,
+            Some(3),
+            false,
+            None,
+            &response,
+            &[],
+            None,
+            created_at,
+        );
+
+        assert_eq!(letter.created_at, created_at);
+        assert_eq!(letter.generation_revision, DB_ASSIGNED_GENERATION_REVISION);
+
+        let body_generated_at = letter
+            .result_jsonb
+            .get("generated_at")
+            .and_then(serde_json::Value::as_str)
+            .expect("result_jsonb.generated_at must be a string");
+
+        assert_eq!(
+            body_generated_at,
+            letter.created_at.to_rfc3339(),
+            "body generated_at must equal row created_at"
+        );
+
+        let parsed_generated_at = chrono::DateTime::parse_from_rfc3339(body_generated_at)
+            .expect("generated_at must be valid RFC3339")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(parsed_generated_at, letter.created_at);
+    }
+
+    struct EmptyFetchStage;
+
+    #[async_trait::async_trait]
+    impl FetchStage for EmptyFetchStage {
+        async fn fetch(
+            &self,
+            job: &JobContext,
+        ) -> crate::error::Result<crate::pipeline::fetch::FetchedCorpus> {
+            Ok(crate::pipeline::fetch::FetchedCorpus {
+                job_id: job.job_id,
+                articles: Vec::new(),
+            })
+        }
+    }
+
+    struct EmptyPreprocessStage;
+
+    #[async_trait::async_trait]
+    impl PreprocessStage for EmptyPreprocessStage {
+        async fn preprocess(
+            &self,
+            job: &JobContext,
+            _corpus: crate::pipeline::fetch::FetchedCorpus,
+        ) -> anyhow::Result<crate::pipeline::preprocess::PreprocessedCorpus> {
+            Ok(crate::pipeline::preprocess::PreprocessedCorpus {
+                job_id: job.job_id,
+                articles: Vec::new(),
+            })
+        }
+    }
+
+    struct EmptyDedupStage;
+
+    #[async_trait::async_trait]
+    impl DedupStage for EmptyDedupStage {
+        async fn deduplicate(
+            &self,
+            job: &JobContext,
+            _corpus: crate::pipeline::preprocess::PreprocessedCorpus,
+        ) -> anyhow::Result<crate::pipeline::dedup::DeduplicatedCorpus> {
+            Ok(crate::pipeline::dedup::DeduplicatedCorpus {
+                job_id: job.job_id,
+                articles: Vec::new(),
+                stats: crate::pipeline::dedup::DedupStats::default(),
+            })
+        }
+    }
+
+    fn test_config_for_morning() -> Arc<Config> {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let vars = [
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000")),
+            ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+            ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("RECAP_EVAL_LISTENER", Some("disabled")),
+            ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+            ("MTLS_ENFORCE", None),
+        ];
+        temp_env::with_vars(vars, || {
+            Arc::new(Config::from_env().expect("config should load"))
+        })
+    }
+
+    fn build_test_morning_pipeline(
+        dao: Arc<MockRecapDao>,
+        news_creator_url: &str,
+    ) -> MorningPipeline {
+        let config = test_config_for_morning();
+        let recap_dao: Arc<dyn RecapDao> = dao;
+        MorningPipeline {
+            config,
+            fetch: Arc::new(EmptyFetchStage),
+            preprocess: Arc::new(EmptyPreprocessStage),
+            dedup: Arc::new(EmptyDedupStage),
+            recap_dao,
+            news_creator_client: Arc::new(NewsCreatorClient::new_for_test(news_creator_url)),
+            save_clock: Arc::new(chrono::Utc::now),
+        }
+    }
+
+    fn sample_recap_job(
+        window_end: chrono::DateTime<chrono::Utc>,
+    ) -> crate::store::models::RecapJob {
+        crate::store::models::RecapJob {
+            job_id: Uuid::new_v4(),
+            started_at: window_end,
+            window_start: window_end - chrono::Duration::days(3),
+            window_end,
+            total_articles: Some(10),
+        }
+    }
+
+    fn sample_valid_genres() -> Vec<GenreWithSummary> {
+        vec![GenreWithSummary {
+            genre_name: "ai_data".to_string(),
+            summary_ja: None,
+            title_ja: Some("AI動向".to_string()),
+            bullets_ja: Some(serde_json::json!(["新しいモデルが公開された"])),
+        }]
+    }
+
+    fn mock_news_creator_response_body(
+        is_degraded: bool,
+        degradation_reason: Option<&str>,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "target_date": "2026-11-09",
+            "edition_timezone": "Asia/Tokyo",
+            "content": {
+                "schema_version": 1,
+                "lead": "Morning lead",
+                "sections": [
+                    {
+                        "key": "top3",
+                        "title": "AI Tooling",
+                        "bullets": ["New release shipped."],
+                        "genre": "ai_data",
+                        "narrative": "Momentum continued."
+                    }
+                ],
+                "source_recap_window_days": 3
+            },
+            "metadata": {
+                "model": "gemma4-e4b-12k",
+                "is_degraded": is_degraded,
+                "degradation_reason": degradation_reason,
+                "processing_time_ms": 500
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn execute_update_marks_stale_recap_input_when_three_day_recap_exceeds_freshness_budget()
+    {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(mock_news_creator_response_body(false, None)),
+            )
+            .mount(&server)
+            .await;
+
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-09T06:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let stale_window_end = now - chrono::Duration::hours(30) - chrono::Duration::seconds(1);
+        let dao = Arc::new(MockRecapDao::new());
+        dao.set_latest_completed_job(Some(sample_recap_job(stale_window_end)));
+        dao.set_genres_by_job(sample_valid_genres());
+
+        let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
+        let job = JobContext::new_morning_update(Uuid::new_v4());
+        pipeline
+            .execute_update(&job, now)
+            .await
+            .expect("pipeline succeeds");
+
+        let letters = dao.morning_letters();
+        assert_eq!(letters.len(), 1);
+        assert!(
+            letters[0].is_degraded,
+            "morning letter must be marked degraded when 3-day recap exceeds freshness budget"
+        );
+        assert_eq!(
+            letters[0].generation_metadata_jsonb["degradation_reason"],
+            serde_json::json!("stale_recap_input")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_update_marks_recap_unavailable_when_no_three_day_recap_exists() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(mock_news_creator_response_body(false, None)),
+            )
+            .mount(&server)
+            .await;
+
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-09T06:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let dao = Arc::new(MockRecapDao::new());
+        dao.set_latest_completed_job(None);
+
+        let pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
+        let job = JobContext::new_morning_update(Uuid::new_v4());
+        pipeline
+            .execute_update(&job, now)
+            .await
+            .expect("pipeline succeeds");
+
+        let letters = dao.morning_letters();
+        assert_eq!(letters.len(), 1);
+        assert!(letters[0].is_degraded);
+        assert_eq!(
+            letters[0].generation_metadata_jsonb["degradation_reason"],
+            serde_json::json!("recap_unavailable")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_update_gives_input_reason_precedence_over_news_creator_and_preserves_news_creator_reason_when_fresh()
+     {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                mock_news_creator_response_body(true, Some("placeholder_output")),
+            ))
+            .mount(&server)
+            .await;
+
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-09T06:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let stale_window_end = now - chrono::Duration::hours(30) - chrono::Duration::seconds(1);
+        let fresh_window_end = now - chrono::Duration::hours(30);
+
+        // Case 1: stale recap input + news-creator placeholder_output -> stale_recap_input wins
+        let stale_dao = Arc::new(MockRecapDao::new());
+        stale_dao.set_latest_completed_job(Some(sample_recap_job(stale_window_end)));
+        stale_dao.set_genres_by_job(sample_valid_genres());
+        let stale_pipeline = build_test_morning_pipeline(Arc::clone(&stale_dao), &server.uri());
+        stale_pipeline
+            .execute_update(&JobContext::new_morning_update(Uuid::new_v4()), now)
+            .await
+            .expect("stale pipeline succeeds");
+        let stale_letters = stale_dao.morning_letters();
+        assert_eq!(stale_letters.len(), 1);
+        assert!(stale_letters[0].is_degraded);
+        assert_eq!(
+            stale_letters[0].generation_metadata_jsonb["degradation_reason"],
+            serde_json::json!("stale_recap_input")
+        );
+
+        // Case 2: fresh recap input + news-creator placeholder_output -> placeholder_output kept
+        let fresh_dao = Arc::new(MockRecapDao::new());
+        fresh_dao.set_latest_completed_job(Some(sample_recap_job(fresh_window_end)));
+        fresh_dao.set_genres_by_job(sample_valid_genres());
+        let fresh_pipeline = build_test_morning_pipeline(Arc::clone(&fresh_dao), &server.uri());
+        fresh_pipeline
+            .execute_update(&JobContext::new_morning_update(Uuid::new_v4()), now)
+            .await
+            .expect("fresh pipeline succeeds");
+        let fresh_letters = fresh_dao.morning_letters();
+        assert_eq!(fresh_letters.len(), 1);
+        assert!(fresh_letters[0].is_degraded);
+        assert_eq!(
+            fresh_letters[0].generation_metadata_jsonb["degradation_reason"],
+            serde_json::json!("placeholder_output")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_update_assigns_created_at_and_generated_at_at_save_time() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(mock_news_creator_response_body(false, None)),
+            )
+            .mount(&server)
+            .await;
+
+        let run_start_now = chrono::DateTime::parse_from_rfc3339("2026-01-26T06:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let save_now = chrono::DateTime::parse_from_rfc3339("2026-01-26T06:02:34.567890Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_ne!(run_start_now, save_now);
+
+        let dao = Arc::new(MockRecapDao::new());
+        dao.set_latest_completed_job(None);
+
+        let mut pipeline = build_test_morning_pipeline(Arc::clone(&dao), &server.uri());
+        pipeline.save_clock = Arc::new(move || save_now);
+        let (returned_id, returned_created_at) = pipeline
+            .execute_update(
+                &JobContext::new_morning_update(Uuid::new_v4()),
+                run_start_now,
+            )
+            .await
+            .expect("pipeline succeeds");
+
+        let letters = dao.morning_letters();
+        assert_eq!(letters.len(), 1);
+        assert_eq!(returned_id, letters[0].id);
+        assert_eq!(returned_created_at, save_now);
+        assert_eq!(
+            letters[0].created_at, save_now,
+            "created_at must equal the injected save-time clock ({save_now}), not run start ({run_start_now})"
+        );
+        let generated_at = chrono::DateTime::parse_from_rfc3339(
+            letters[0].result_jsonb["generated_at"]
+                .as_str()
+                .expect("generated_at string"),
+        )
+        .expect("rfc3339 generated_at")
+        .with_timezone(&chrono::Utc);
+        assert_eq!(
+            generated_at, save_now,
+            "generated_at must match the save-time clock ({save_now})"
+        );
     }
 }

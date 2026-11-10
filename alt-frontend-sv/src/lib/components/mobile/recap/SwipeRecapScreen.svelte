@@ -1,5 +1,6 @@
 <script lang="ts">
 import { fly } from "svelte/transition";
+import { SurfaceStatusBanner } from "#lib/components/recap/index.js";
 import type { RecapGenre, RecapSummary } from "#lib/schema/recap.js";
 import SwipeRecapCard from "./SwipeRecapCard.svelte";
 
@@ -57,6 +58,11 @@ async function handleSwipe(direction: number) {
             })} · {summaryData.totalArticles.toLocaleString()} articles
           </p>
         </div>
+        {#if window === 3}
+          <div class="mt-2">
+            <SurfaceStatusBanner surfaceStatus={summaryData.surfaceStatus} />
+          </div>
+        {/if}
       </div>
     {/if}
 

@@ -380,6 +380,10 @@ impl OutputDao for UnifiedDao {
         crate::store::dao::output::RecapDao::get_latest_completed_job(&self.pool, window_days).await
     }
 
+    async fn get_job_completed_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>> {
+        crate::store::dao::output::RecapDao::get_job_completed_at(&self.pool, job_id).await
+    }
+
     async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
         crate::store::dao::output::RecapDao::get_genres_by_job(&self.pool, job_id).await
     }
@@ -525,6 +529,13 @@ impl MorningDao for UnifiedDao {
         crate::store::dao::morning::RecapDao::save_morning_letter_sources(&self.pool, sources).await
     }
 
+    async fn get_morning_letter_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<crate::store::models::MorningLetter>> {
+        crate::store::dao::morning::RecapDao::get_morning_letter_by_id(&self.pool, id).await
+    }
+
     async fn get_morning_letter_by_date(
         &self,
         date: NaiveDate,
@@ -656,7 +667,7 @@ impl PulseDao for UnifiedDao {
         &self,
         result: &PulseResult,
         target_date: NaiveDate,
-    ) -> Result<i64> {
+    ) -> Result<(i64, DateTime<Utc>)> {
         crate::store::dao::pulse::RecapDao::save_pulse_generation(&self.pool, result, target_date)
             .await
     }

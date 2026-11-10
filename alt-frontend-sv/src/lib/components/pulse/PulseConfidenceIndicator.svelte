@@ -37,14 +37,14 @@ const dots = $derived(
 	{#each dots as dot (dot.index)}
 		{#if dot.filled}
 			<span
-				class="w-1.5 h-1.5 rounded-full"
+				class="w-1.5 h-1.5"
 				style="background-color: var(--text-secondary);"
 				data-testid="confidence-dot-filled"
 				aria-hidden="true"
 			></span>
 		{:else}
 			<span
-				class="w-1.5 h-1.5 rounded-full"
+				class="w-1.5 h-1.5"
 				style="background-color: var(--surface-border);"
 				data-testid="confidence-dot-empty"
 				aria-hidden="true"

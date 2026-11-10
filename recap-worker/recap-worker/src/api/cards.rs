@@ -10,14 +10,17 @@ use sqlx::PgPool;
 use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::api::surface_status::{
+    SurfaceRun, SurfaceStatus, build_surface_status, topic_cards_reasons,
+};
 use crate::app::AppState;
 use crate::pipeline::cards::CARDS_DEGRADED_MIN_CARDS;
 use crate::store::dao::cards::CardsDaoOps;
 pub use crate::store::dao::cards::{
     LatestCardsRun, PreviousCardsJobMeta, RecapCard, RecapCardJobStats,
 };
+use crate::store::dao::surface::SurfaceDaoOps;
 
-/// Information about a single source article cited in a topic card.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardSourceResponse {
     pub feed_id: Uuid,
@@ -28,7 +31,6 @@ pub struct CardSourceResponse {
     pub url: String,
 }
 
-/// A generated topic card.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardResponse {
     pub continues_card_id: Option<Uuid>,
@@ -43,7 +45,6 @@ pub struct CardResponse {
     pub why_ja: Option<String>,
 }
 
-/// Metadata about the completed cards job.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardsJobResponse {
     pub cards_selected: i32,
@@ -55,21 +56,11 @@ pub struct CardsJobResponse {
     pub to: String,
 }
 
-/// Information about the latest topic cards run of any status.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LatestCardsRunResponse {
-    pub job_id: Uuid,
-    pub status: String,
-    pub kicked_at: String,
-    pub updated_at: String,
-}
-
-/// Top-level response for `GET /v1/topic-cards`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GetCardsResponse {
     pub cards: Vec<CardResponse>,
     pub job: Option<CardsJobResponse>,
-    pub latest_run: Option<LatestCardsRunResponse>,
+    pub surface_status: Option<SurfaceStatus>,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,13 +68,16 @@ pub(crate) struct ErrorResponse {
     pub error: String,
 }
 
-/// Trait abstracting cards DAO read operations for testability.
 #[async_trait::async_trait]
 pub trait CardsDao: Send + Sync {
     async fn get_latest_completed_cards_job(&self) -> Result<Option<PreviousCardsJobMeta>, String>;
     async fn get_cards_for_job(&self, job_id: Uuid) -> Result<Vec<RecapCard>, String>;
     async fn get_job_stats(&self, job_id: Uuid) -> Result<Option<RecapCardJobStats>, String>;
     async fn get_latest_cards_run(&self) -> Result<Option<LatestCardsRun>, String>;
+    async fn get_job_updated_at(
+        &self,
+        job_id: Uuid,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, String>;
 }
 
 #[async_trait::async_trait]
@@ -111,9 +105,17 @@ impl CardsDao for PgPool {
             .await
             .map_err(|e| e.to_string())
     }
+
+    async fn get_job_updated_at(
+        &self,
+        job_id: Uuid,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+        SurfaceDaoOps::get_job_updated_at(self, job_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
 }
 
-/// Deserialize source citations once from JSONB Value with serde.
 fn parse_sources(job_id: Uuid, card_id: Uuid, val: &Value) -> Result<Vec<CardSourceResponse>, ()> {
     serde_json::from_value::<Vec<CardSourceResponse>>(val.clone()).map_err(|e| {
         error!(
@@ -125,35 +127,13 @@ fn parse_sources(job_id: Uuid, card_id: Uuid, val: &Value) -> Result<Vec<CardSou
     })
 }
 
-/// Core implementation for `GET /v1/topic-cards` over any `CardsDao`.
 #[allow(clippy::too_many_lines)]
-pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Response {
+pub async fn get_topic_cards_with_clock(
+    dao: &impl CardsDao,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
     info!("Fetching latest topic cards");
-
-    let latest_run_record = match dao.get_latest_cards_run().await {
-        Ok(run) => run,
-        Err(e) => {
-            error!("Failed to fetch latest cards run: {e}");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch recap cards".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
-    let latest_run = latest_run_record.map(|r| LatestCardsRunResponse {
-        job_id: r.job_id,
-        status: r.status,
-        kicked_at: r
-            .kicked_at
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        updated_at: r
-            .updated_at
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-    });
 
     let latest_job = match dao.get_latest_completed_cards_job().await {
         Ok(job) => job,
@@ -176,11 +156,29 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
             Json(GetCardsResponse {
                 cards: Vec::new(),
                 job: None,
-                latest_run,
+                surface_status: None,
             }),
         )
             .into_response();
     };
+
+    let latest_run_record = match dao.get_latest_cards_run().await {
+        Ok(run) => run,
+        Err(e) => {
+            error!("Failed to fetch latest cards run: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch recap cards".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let latest_run = latest_run_record
+        .as_ref()
+        .map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at));
 
     let mut raw_cards = match dao.get_cards_for_job(job_record.job_id).await {
         Ok(cards) => cards,
@@ -236,6 +234,44 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
     let cards_selected = stats.cards_selected;
     let degraded = usize::try_from(cards_selected).map_or(true, |c| c < CARDS_DEGRADED_MIN_CARDS);
 
+    let generated_at = if let Some(run) = latest_run_record
+        .as_ref()
+        .filter(|r| r.job_id == job_record.job_id)
+    {
+        run.updated_at
+    } else {
+        match dao.get_job_updated_at(job_record.job_id).await {
+            Ok(Some(updated_at)) => updated_at,
+            Ok(None) => {
+                error!(
+                    job_id = %job_record.job_id,
+                    "missing updated_at for completed cards job"
+                );
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "Missing updated_at for completed cards job".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
+            Err(e) => {
+                error!(
+                    job_id = %job_record.job_id,
+                    error = %e,
+                    "Failed to fetch updated_at for completed cards job"
+                );
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "Failed to fetch recap cards".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
+        }
+    };
+
     let mut cards = Vec::with_capacity(raw_cards.len());
     for c in raw_cards {
         let Ok(sources) = parse_sources(job_record.job_id, c.id, &c.sources) else {
@@ -263,6 +299,7 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
         });
     }
 
+    let window = (job_record.from_ts, job_record.to_ts);
     let job = CardsJobResponse {
         cards_selected,
         degraded,
@@ -279,21 +316,29 @@ pub async fn get_topic_cards_impl(dao: &impl CardsDao) -> axum::response::Respon
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     };
 
+    let surface_status = build_surface_status(
+        generated_at,
+        Some(window),
+        latest_run,
+        topic_cards_reasons(cards_selected, degraded),
+        freshness_budget,
+        now,
+    );
+
     (
         StatusCode::OK,
         Json(GetCardsResponse {
             cards,
             job: Some(job),
-            latest_run,
+            surface_status: Some(surface_status),
         }),
     )
         .into_response()
 }
 
-/// GET /v1/topic-cards
-/// Latest topic cards recap endpoint.
 pub(crate) async fn get_topic_cards(State(state): State<AppState>) -> impl IntoResponse {
-    get_topic_cards_impl(state.pool()).await
+    let budget = state.config().surface_freshness().topic_cards_budget();
+    get_topic_cards_with_clock(state.pool(), budget, chrono::Utc::now()).await
 }
 
 #[cfg(test)]
@@ -309,11 +354,13 @@ mod tests {
         latest_run: Mutex<Option<LatestCardsRun>>,
         cards: Mutex<Vec<RecapCard>>,
         stats: Mutex<Option<RecapCardJobStats>>,
+        job_updated_at: Mutex<Option<DateTime<Utc>>>,
         should_fail_latest: bool,
         should_fail_cards: bool,
         should_fail_stats: bool,
         should_fail_latest_run: bool,
         stats_is_none: bool,
+        job_updated_at_is_none: bool,
     }
 
     #[async_trait::async_trait]
@@ -356,12 +403,33 @@ mod tests {
             }
             Ok(self.latest_run.lock().unwrap().clone())
         }
+
+        async fn get_job_updated_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>, String> {
+            if self.job_updated_at_is_none {
+                return Ok(None);
+            }
+            if let Some(ts) = *self.job_updated_at.lock().unwrap() {
+                return Ok(Some(ts));
+            }
+            let stats = self.stats.lock().unwrap();
+            Ok(stats
+                .as_ref()
+                .filter(|s| s.job_id == job_id)
+                .map(|s| s.created_at))
+        }
+    }
+
+    fn fixed_now() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-09-23T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc)
     }
 
     #[tokio::test]
     async fn test_empty_case_when_no_job_exists() {
         let dao = MockCardsDao::default();
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
 
         assert_eq!(response.status(), StatusCode::OK);
 
@@ -370,10 +438,13 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
+        let obj = body.as_object().expect("response is object");
         assert_eq!(body["cards"], serde_json::json!([]));
+        assert!(obj.contains_key("job"));
         assert!(body["job"].is_null());
-        assert!(body.as_object().unwrap().contains_key("latest_run"));
-        assert!(body["latest_run"].is_null());
+        assert!(!obj.contains_key("latest_run"));
+        assert!(obj.contains_key("surface_status"));
+        assert!(body["surface_status"].is_null());
     }
 
     #[tokio::test]
@@ -463,7 +534,8 @@ mod tests {
             created_at: card_created_at,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
@@ -471,10 +543,33 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
-        assert_eq!(body["latest_run"]["job_id"], job_id.to_string());
-        assert_eq!(body["latest_run"]["status"], "completed");
-        assert_eq!(body["latest_run"]["kicked_at"], "2026-09-22T17:00:00Z");
-        assert_eq!(body["latest_run"]["updated_at"], "2026-09-22T17:05:00Z");
+        assert!(!body.as_object().unwrap().contains_key("latest_run"));
+        assert_eq!(
+            body["surface_status"]["generated_at"],
+            "2026-09-22T17:05:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["window_start"],
+            "2026-09-19T17:00:00Z"
+        );
+        assert_eq!(body["surface_status"]["window_end"], "2026-09-22T17:00:00Z");
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            body["surface_status"]["latest_run"]["job_id"],
+            job_id.to_string()
+        );
+        assert_eq!(body["surface_status"]["latest_run"]["status"], "completed");
+        assert_eq!(
+            body["surface_status"]["latest_run"]["kicked_at"],
+            "2026-09-22T17:00:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["latest_run"]["updated_at"],
+            "2026-09-22T17:05:00Z"
+        );
 
         // Verify job structure
         assert_eq!(body["job"]["job_id"], job_id.to_string());
@@ -492,6 +587,11 @@ mod tests {
         assert_eq!(card["id"], card_id.to_string());
         assert_eq!(card["rank"], 1);
         assert_eq!(card["story_id"], story_id.to_string());
+        assert!(
+            card.as_object()
+                .expect("card is object")
+                .contains_key("continues_card_id")
+        );
         assert!(card["continues_card_id"].is_null());
         assert_eq!(
             card["headline_ja"],
@@ -582,14 +682,22 @@ mod tests {
             created_at: now,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
-        assert!(body["cards"][0]["sources"][0]["pub_date"].is_null());
+        let source = &body["cards"][0]["sources"][0];
+        assert!(
+            source
+                .as_object()
+                .expect("source is object")
+                .contains_key("pub_date")
+        );
+        assert!(source["pub_date"].is_null());
     }
 
     #[tokio::test]
@@ -656,7 +764,8 @@ mod tests {
             created_at: now,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -677,7 +786,8 @@ mod tests {
             params_version: "cards-v0.2".to_string(),
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -698,7 +808,8 @@ mod tests {
             params_version: "cards-v0.2".to_string(),
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -735,13 +846,23 @@ mod tests {
             created_at: now,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
         assert_eq!(body["job"]["degraded"], true);
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            serde_json::json!([
+                {
+                    "code": "few_cards",
+                    "detail": format!("{} cards selected", CARDS_DEGRADED_MIN_CARDS - 1),
+                }
+            ])
+        );
 
         // Test cards_selected = CARDS_DEGRADED_MIN_CARDS (5) => degraded: false
         *dao.stats.lock().unwrap() = Some(RecapCardJobStats {
@@ -763,13 +884,18 @@ mod tests {
             created_at: now,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
         assert_eq!(body["job"]["degraded"], false);
+        assert_eq!(
+            body["surface_status"]["degradation_reasons"],
+            serde_json::json!([])
+        );
     }
 
     #[tokio::test]
@@ -778,18 +904,51 @@ mod tests {
             should_fail_latest: true,
             ..Default::default()
         };
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
     async fn test_latest_run_db_failure_returns_500() {
+        let now = fixed_now();
         let dao = MockCardsDao {
             should_fail_latest_run: true,
             ..Default::default()
         };
-        let response = get_topic_cards_impl(&dao).await;
+        *dao.latest_job.lock().unwrap() = Some(PreviousCardsJobMeta {
+            job_id: Uuid::new_v4(),
+            kicked_at: now,
+            from_ts: now - chrono::Duration::days(3),
+            to_ts: now,
+            params_version: "cards-v0.2".to_string(),
+        });
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_no_completed_job_does_not_query_latest_cards_run() {
+        let dao = MockCardsDao {
+            should_fail_latest_run: true,
+            ..Default::default()
+        };
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
+        let obj = body.as_object().expect("response is object");
+
+        assert_eq!(body["cards"], serde_json::json!([]));
+        assert!(obj.contains_key("job"));
+        assert!(body["job"].is_null());
+        assert!(obj.contains_key("surface_status"));
+        assert!(body["surface_status"].is_null());
     }
 
     #[tokio::test]
@@ -839,7 +998,8 @@ mod tests {
             updated_at: failed_updated_at,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
@@ -848,10 +1008,20 @@ mod tests {
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
         assert_eq!(body["job"]["job_id"], completed_job_id.to_string());
-        assert_eq!(body["latest_run"]["job_id"], failed_job_id.to_string());
-        assert_eq!(body["latest_run"]["status"], "failed");
-        assert_eq!(body["latest_run"]["kicked_at"], "2026-09-23T17:00:00Z");
-        assert_eq!(body["latest_run"]["updated_at"], "2026-09-23T17:02:00Z");
+        assert!(!body.as_object().unwrap().contains_key("latest_run"));
+        assert_eq!(
+            body["surface_status"]["latest_run"]["job_id"],
+            failed_job_id.to_string()
+        );
+        assert_eq!(body["surface_status"]["latest_run"]["status"], "failed");
+        assert_eq!(
+            body["surface_status"]["latest_run"]["kicked_at"],
+            "2026-09-23T17:00:00Z"
+        );
+        assert_eq!(
+            body["surface_status"]["latest_run"]["updated_at"],
+            "2026-09-23T17:02:00Z"
+        );
     }
 
     #[tokio::test]
@@ -873,7 +1043,8 @@ mod tests {
             updated_at: failed_updated_at,
         });
 
-        let response = get_topic_cards_impl(&dao).await;
+        let response =
+            get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), fixed_now()).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
@@ -881,11 +1052,58 @@ mod tests {
             .expect("read body");
         let body: Value = serde_json::from_slice(&body_bytes).expect("parse json");
 
+        let obj = body.as_object().expect("response is object");
+        assert!(obj.contains_key("job"));
         assert!(body["job"].is_null());
         assert_eq!(body["cards"], serde_json::json!([]));
-        assert_eq!(body["latest_run"]["job_id"], failed_job_id.to_string());
-        assert_eq!(body["latest_run"]["status"], "failed");
-        assert_eq!(body["latest_run"]["kicked_at"], "2026-09-23T17:00:00Z");
-        assert_eq!(body["latest_run"]["updated_at"], "2026-09-23T17:02:00Z");
+        assert!(!obj.contains_key("latest_run"));
+        assert!(obj.contains_key("surface_status"));
+        assert!(body["surface_status"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_job_updated_at_none_returns_500() {
+        let completed_job_id = Uuid::new_v4();
+        let failed_job_id = Uuid::new_v4();
+        let now = fixed_now();
+
+        let dao = MockCardsDao {
+            job_updated_at_is_none: true,
+            ..Default::default()
+        };
+        *dao.latest_job.lock().unwrap() = Some(PreviousCardsJobMeta {
+            job_id: completed_job_id,
+            kicked_at: now,
+            from_ts: now - chrono::Duration::days(3),
+            to_ts: now,
+            params_version: "cards-v0.2".to_string(),
+        });
+        *dao.stats.lock().unwrap() = Some(RecapCardJobStats {
+            job_id: completed_job_id,
+            items_fetched: 10,
+            items_after_noise: 10,
+            items_after_dedup: 10,
+            clusters: 5,
+            candidates: 5,
+            cards_selected: 5,
+            cards_dropped: serde_json::json!({}),
+            embed_ms: 10,
+            cluster_ms: 10,
+            llm_ms: 10,
+            total_ms: 30,
+            params_version: "cards-v0.2".to_string(),
+            embed_cache_hits: 0,
+            embed_cache_misses: 0,
+            created_at: now,
+        });
+        *dao.latest_run.lock().unwrap() = Some(LatestCardsRun {
+            job_id: failed_job_id,
+            status: "failed".to_string(),
+            kicked_at: now,
+            updated_at: now,
+        });
+
+        let response = get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), now).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

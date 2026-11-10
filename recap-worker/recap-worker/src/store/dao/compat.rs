@@ -6,7 +6,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
-use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -43,23 +42,6 @@ use crate::store::models::{
 #[allow(dead_code)]
 #[async_trait]
 pub(crate) trait RecapDao: Send + Sync {
-    /// Get the underlying connection pool (if available).
-    ///
-    /// # Returns
-    ///
-    /// - `Some(&PgPool)` - If the implementation has a direct connection pool reference
-    /// - `None` - For mock implementations or blanket impl (default behavior)
-    ///
-    /// # Note (LSP Compliance)
-    ///
-    /// The blanket implementation returns `None` by default. This is intentional:
-    /// - Mock DAOs for testing don't have a real database connection
-    /// - Code that needs pool access should handle the `None` case gracefully
-    /// - For direct pool access, use `RecapDaoImpl::new(pool).pool()` pattern
-    ///
-    /// Callers should provide fallback behavior when `pool()` returns `None`.
-    fn pool(&self) -> Option<&PgPool>;
-
     // === JobDao methods ===
     async fn create_job_with_lock(&self, job_id: Uuid, note: Option<&str>) -> Result<Option<Uuid>>;
 
@@ -244,6 +226,8 @@ pub(crate) trait RecapDao: Send + Sync {
 
     async fn get_latest_completed_job(&self, window_days: i32) -> Result<Option<RecapJob>>;
 
+    async fn get_job_completed_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>>;
+
     async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>>;
 
     async fn get_clusters_by_job(
@@ -314,6 +298,8 @@ pub(crate) trait RecapDao: Send + Sync {
 
     async fn save_morning_letter_sources(&self, sources: &[MorningLetterSource]) -> Result<()>;
 
+    async fn get_morning_letter_by_id(&self, id: Uuid) -> Result<Option<MorningLetter>>;
+
     async fn get_morning_letter_by_date(&self, date: NaiveDate) -> Result<Option<MorningLetter>>;
 
     async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>>;
@@ -371,7 +357,7 @@ pub(crate) trait RecapDao: Send + Sync {
         &self,
         result: &PulseResult,
         target_date: NaiveDate,
-    ) -> Result<i64>;
+    ) -> Result<(i64, DateTime<Utc>)>;
 }
 
 // Blanket implementation: any type implementing all focused traits also implements RecapDao
@@ -393,13 +379,6 @@ where
         + Send
         + Sync,
 {
-    fn pool(&self) -> Option<&PgPool> {
-        // Default implementation returns None.
-        // This is intentional for the blanket impl - see trait documentation.
-        // For direct pool access, instantiate RecapDaoImpl directly.
-        None
-    }
-
     async fn create_job_with_lock(&self, job_id: Uuid, note: Option<&str>) -> Result<Option<Uuid>> {
         JobDao::create_job_with_lock(self, job_id, note).await
     }
@@ -644,6 +623,10 @@ where
         OutputDao::get_latest_completed_job(self, window_days).await
     }
 
+    async fn get_job_completed_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>> {
+        OutputDao::get_job_completed_at(self, job_id).await
+    }
+
     async fn get_genres_by_job(&self, job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
         OutputDao::get_genres_by_job(self, job_id).await
     }
@@ -746,6 +729,10 @@ where
         MorningDao::save_morning_letter_sources(self, sources).await
     }
 
+    async fn get_morning_letter_by_id(&self, id: Uuid) -> Result<Option<MorningLetter>> {
+        MorningDao::get_morning_letter_by_id(self, id).await
+    }
+
     async fn get_morning_letter_by_date(&self, date: NaiveDate) -> Result<Option<MorningLetter>> {
         MorningDao::get_morning_letter_by_date(self, date).await
     }
@@ -835,7 +822,7 @@ where
         &self,
         result: &PulseResult,
         target_date: NaiveDate,
-    ) -> Result<i64> {
+    ) -> Result<(i64, DateTime<Utc>)> {
         PulseDao::save_pulse_generation(self, result, target_date).await
     }
 }

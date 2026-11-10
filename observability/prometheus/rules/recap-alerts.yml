@@ -1,12 +1,19 @@
-# Prometheus alerting rules for recap pipeline (recap-subworker).
+# Prometheus alerting rules for recap pipeline (recap-subworker and recap-worker).
 #
 # Context:
 # On 2026-09-25 the recap-subworker process froze for 5.5 days with no alert:
 # Prometheus scraped it on port 8002 (observability/prometheus/prometheus.yml)
 # but no rule fired on it.
+# On 2026-11-04..09 the 3-day Recap, Topic Cards, and Evening Pulse daily jobs
+# failed for 6 days with no alert because recap-subworker stayed healthy while
+# rejecting unauthenticated calls with HTTP 401.
 #
 # Scrape targets & metrics:
 #   - up{job="recap-subworker"} — Python/FastAPI clustering/classification subworker (:8002)
+#   - up{job="recap-worker"} — Rust/Axum recap pipeline application metrics (:9005)
+#   - up{job="recap-worker-ops"} — Rust/Axum PKI ops listener (:9110, watched by PkiEnrollmentOpsDown)
+#   - recap_surface_last_success_timestamp_seconds{surface} — Unix timestamp of last successful generation, seeded from DB at startup
+#   - recap_surface_consecutive_failures{surface} — failed runs since last success, seeded from DB at startup
 #
 # Delivery routing:
 #   - severity: warning -> Alertmanager pushover-ticket receiver (Normal priority 0, quiet hours respected)
@@ -38,5 +45,79 @@ groups:
             scrape, so this covers both a crashed and a frozen process.
             Recap and topic-cards jobs cannot classify or cluster without it.
             Check: docker compose -f compose/compose.yaml -p alt logs recap-subworker
+            Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+          runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
+
+      # WARNING: a daily recap surface has not produced a fresh success in over 36h.
+      #
+      # 36h is one 24h daily batch cycle plus a 12h margin for slow or retried runs.
+      # Morning Letter is excluded because it regenerates every 30m and has its own
+      # degradation signals.
+      - alert: RecapSurfaceStale
+        expr: time() - recap_surface_last_success_timestamp_seconds{surface=~"three_day_recap|topic_cards|evening_pulse"} > 36 * 3600
+        for: 15m
+        labels:
+          severity: warning
+          service: recap-worker
+          stack: recap
+        annotations:
+          summary: "Recap surface {{ $labels.surface }} has not succeeded in over 36h (age {{ $value | humanizeDuration }})"
+          description: |
+            recap_surface_last_success_timestamp_seconds{surface="{{ $labels.surface }}"}
+            is {{ $value | humanizeDuration }} old (>36h threshold, one daily cycle plus margin).
+            Daily generation for {{ $labels.surface }} is overdue and users may see stale output.
+            Check: docker compose -f compose/compose.yaml -p alt logs recap-worker
+            Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+          runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
+
+      # WARNING: a daily recap surface has failed at least twice in a row since its last success.
+      #
+      # Fires before the 36h staleness window for surfaces that retry within a daily cycle
+      # (Topic Cards), and after the second daily failure (~48h after last success) for
+      # once-a-day jobs (3-day Recap, Evening Pulse).
+      - alert: RecapSurfaceConsecutiveFailures
+        expr: recap_surface_consecutive_failures{surface=~"three_day_recap|topic_cards|evening_pulse"} >= 2
+        for: 5m
+        labels:
+          severity: warning
+          service: recap-worker
+          stack: recap
+        annotations:
+          summary: "Recap surface {{ $labels.surface }} has {{ $value }} consecutive failures"
+          description: |
+            recap_surface_consecutive_failures{surface="{{ $labels.surface }}"} is {{ $value }} (>= 2).
+            Daily generation for {{ $labels.surface }} has failed repeatedly since the last success.
+            Check: docker compose -f compose/compose.yaml -p alt logs recap-worker
+            Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+          runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"
+
+      # WARNING: recap-worker is up (:9110 ops scrape alive), but the freshness gauge for any of the three daily surfaces is missing.
+      #
+      # recap_surface_last_success_timestamp_seconds is seeded from the database at
+      # startup, so an absent series while up{job="recap-worker-ops"} == 1 indicates a
+      # metric wiring gap or a broken :9005 scrape that would leave RecapSurfaceStale
+      # and RecapSurfaceConsecutiveFailures blind. Gating on up{job="recap-worker-ops"} == 1
+      # (watched by PkiEnrollmentOpsDown) rather than up{job="recap-worker"} ensures a :9005
+      # scrape failure still alerts while suppressing duplicate firing when the process is down.
+      - alert: RecapSurfaceMetricsAbsent
+        expr: |
+          (
+            absent(recap_surface_last_success_timestamp_seconds{job="recap-worker",surface="three_day_recap"})
+            or absent(recap_surface_last_success_timestamp_seconds{job="recap-worker",surface="topic_cards"})
+            or absent(recap_surface_last_success_timestamp_seconds{job="recap-worker",surface="evening_pulse"})
+          )
+          and on() up{job="recap-worker-ops"} == 1
+        for: 30m
+        labels:
+          severity: warning
+          service: recap-worker
+          stack: recap
+        annotations:
+          summary: "Recap surface {{ $labels.surface }} freshness metric is absent while recap-worker is up"
+          description: |
+            up{job="recap-worker-ops"} is 1, but recap_surface_last_success_timestamp_seconds{surface="{{ $labels.surface }}"}
+            has been absent for 30m. This gauge is seeded from the database at startup, so its absence
+            means recap-worker is not exporting surface freshness metrics and RecapSurfaceStale cannot fire.
+            Check: docker compose -f compose/compose.yaml -p alt logs recap-worker
             Runbook: docs/runbooks/3days-recap-artefact-recovery.md
           runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"

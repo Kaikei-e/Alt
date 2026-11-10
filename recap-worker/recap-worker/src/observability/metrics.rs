@@ -1,7 +1,8 @@
 /// Prometheusメトリクス定義。
 use prometheus::{
-    Counter, Gauge, Histogram, Registry, register_counter_with_registry,
-    register_gauge_with_registry, register_histogram_with_registry,
+    Counter, Gauge, GaugeVec, Histogram, Registry, register_counter_with_registry,
+    register_gauge_vec_with_registry, register_gauge_with_registry,
+    register_histogram_with_registry,
 };
 use std::sync::Arc;
 
@@ -66,6 +67,8 @@ pub struct Metrics {
     // alert covers all of them.
     pub notification_outbox_oldest_pending_age: Gauge,
     pub notification_outbox_last_tick_timestamp: Gauge,
+    pub surface_last_success_timestamp_seconds: GaugeVec,
+    pub surface_consecutive_failures: GaugeVec,
 }
 
 impl Metrics {
@@ -304,6 +307,30 @@ impl Metrics {
                 "Unix time of the last notification outbox relay tick",
                 registry
             )?,
+            surface_last_success_timestamp_seconds: {
+                let gauge = register_gauge_vec_with_registry!(
+                    "recap_surface_last_success_timestamp_seconds",
+                    "Unix timestamp of the latest successful run per Recap surface",
+                    &["surface"],
+                    registry
+                )?;
+                for surface in super::surface_health::SurfaceHealthTarget::ALL {
+                    gauge.with_label_values(&[surface.as_str()]).set(0.0);
+                }
+                gauge
+            },
+            surface_consecutive_failures: {
+                let gauge = register_gauge_vec_with_registry!(
+                    "recap_surface_consecutive_failures",
+                    "Consecutive failed runs newer than the latest success per Recap surface",
+                    &["surface"],
+                    registry
+                )?;
+                for surface in super::surface_health::SurfaceHealthTarget::ALL {
+                    gauge.with_label_values(&[surface.as_str()]).set(0.0);
+                }
+                gauge
+            },
         })
     }
 }

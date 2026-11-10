@@ -14,7 +14,9 @@ use uuid::Uuid;
 
 use super::client::NewsCreatorClient;
 use super::models::{
-    BatchSummaryResponse, CardGenerateOutcome, CardGenerateRequest, CardItemInput, SummaryResponse,
+    BatchSummaryResponse, CardGenerateOutcome, CardGenerateRequest, CardItemInput,
+    MorningLetterGenerateRequest, MorningLetterGroupInput, MorningLetterRecapInput,
+    RepresentativeSentence, SummaryResponse,
 };
 
 const PACT_DIR: &str = "../../pacts";
@@ -396,4 +398,97 @@ async fn contract_news_creator_card_generate_rejected() {
             panic!("expected Rejected, got Success: {success:?}");
         }
     }
+}
+
+/// Morning Letter generation: POST /v1/morning-letter/generate → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test — run with `cargo test contract -- --ignored`"]
+async fn contract_news_creator_morning_letter_generate() {
+    let pact = PactBuilder::new("recap-worker", "news-creator")
+        .interaction("a morning letter generate request", "", |mut i| {
+            i.given("the LLM model is loaded and ready");
+            i.request.method("POST");
+            i.request.path("/v1/morning-letter/generate");
+            i.request.content_type("application/json");
+            i.request.json_body(json_pattern!({
+                "target_date": like!("2026-11-09"),
+                "edition_timezone": like!("Asia/Tokyo"),
+                "recap_summaries": each_like!(json_pattern!({
+                    "genre": like!("tech"),
+                    "title": like!("テクノロジー週間要約"),
+                    "bullets": each_like!(like!("AI関連の進展が報告された。")),
+                    "window_days": like!(3i64),
+                })),
+                "overnight_groups": each_like!(json_pattern!({
+                    "group_id": like!("00000000-0000-0000-0000-000000000007"),
+                    "articles": each_like!(json_pattern!({
+                        "text": like!("AI advances in 2026"),
+                        "published_at": like!("2026-11-09T00:00:00Z"),
+                        "source_url": like!("https://example.com/article-1"),
+                        "article_id": like!("00000000-0000-0000-0000-000000000008"),
+                        "is_centroid": like!(true),
+                    })),
+                })),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "target_date": like!("2026-11-09"),
+                "edition_timezone": like!("Asia/Tokyo"),
+                "content": json_pattern!({
+                    "schema_version": like!(1i64),
+                    "lead": like!("本日の主要トピックです。"),
+                    "sections": each_like!(json_pattern!({
+                        "key": like!("top3"),
+                        "title": like!("Top Stories"),
+                        "bullets": each_like!(like!("AI関連の進展が報告された。")),
+                    })),
+                    "source_recap_window_days": like!(3i64),
+                }),
+                "metadata": json_pattern!({
+                    "model": like!("gemma4-e4b-12k"),
+                    "is_degraded": like!(false),
+                    "degradation_reason": null,
+                }),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = NewsCreatorClient::new_for_test(pact.url().to_string());
+    let request = MorningLetterGenerateRequest {
+        target_date: "2026-11-09".to_string(),
+        edition_timezone: "Asia/Tokyo".to_string(),
+        recap_summaries: Some(vec![MorningLetterRecapInput {
+            genre: "tech".to_string(),
+            title: "テクノロジー週間要約".to_string(),
+            bullets: vec!["AI関連の進展が報告された。".to_string()],
+            window_days: 3,
+        }]),
+        overnight_groups: vec![MorningLetterGroupInput {
+            group_id: Uuid::parse_str("00000000-0000-0000-0000-000000000007").unwrap(),
+            articles: vec![RepresentativeSentence {
+                text: "AI advances in 2026".to_string(),
+                published_at: Some("2026-11-09T00:00:00Z".to_string()),
+                source_url: Some("https://example.com/article-1".to_string()),
+                article_id: Some("00000000-0000-0000-0000-000000000008".to_string()),
+                is_centroid: true,
+            }],
+        }],
+    };
+
+    let parsed = client
+        .generate_morning_letter(&request)
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(parsed.target_date, "2026-11-09");
+    assert_eq!(parsed.edition_timezone, "Asia/Tokyo");
+    assert_eq!(parsed.content.schema_version, 1);
+    assert!(!parsed.content.lead.is_empty());
+    assert!(!parsed.content.sections.is_empty());
+    assert_eq!(parsed.content.source_recap_window_days, Some(3));
+    assert!(!parsed.metadata.is_degraded);
+    assert!(parsed.metadata.degradation_reason.is_none());
 }

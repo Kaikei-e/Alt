@@ -32,4 +32,6 @@ mod snapshot_id;
 #[cfg(test)]
 mod contract;
 
-pub(crate) use client::{KnowledgeSovereignClient, TopicSnapshottedInput};
+pub(crate) use client::{
+    EveningPulseGeneratedInput, KnowledgeSovereignClient, TopicSnapshottedInput,
+};

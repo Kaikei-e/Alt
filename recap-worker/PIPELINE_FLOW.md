@@ -241,7 +241,7 @@ flowchart TB
 
     GenLetter --> EnrichEditorial["Editorial Enrichment<br/>Deterministic through-line<br/>Section why_reasons (in_weekly_recap, pulse_need_to_know, new_unread)"]
 
-    EnrichEditorial --> PersistLetter["Persist Morning Letter<br/>Upsert into morning_letters table<br/>Insert sources into morning_letter_sources"]
+    EnrichEditorial --> PersistLetter["Persist Morning Letter<br/>Append new revision row into morning_letters table<br/>Insert sources into morning_letter_sources"]
 
     PersistLetter --> MorningEnd(["Morning Update Complete"])
 
@@ -365,7 +365,7 @@ flowchart LR
 - **Article Groups**: Centroid-based grouping with duplicate mapping saved to `morning_article_groups`
 - **Recap Grounding**: Grounds on latest completed 3-day recap context from DB (falls back to degraded mode if unavailable)
 - **Generation & Enrichment**: Calls `news-creator` `/v1/morning-letter/generate`, attaches deterministic through-line and per-bullet `why_reasons` codes (`in_weekly_recap`, `pulse_need_to_know`, `new_unread`)
-- **Persistence**: Saved to `morning_letters` with source references in `morning_letter_sources`
+- **Persistence**: Appends a new version row (`generation_revision`) to `morning_letters` with server-assigned `generated_at`/`created_at` and inserts source references into `morning_letter_sources`
 
 ### Topic Cards (daily routine)
 - **Triggers**: Scheduled daily daemon (`CardsBatchDaemon` via `spawn_cards_batch_daemon` at `RECAP_CARDS_JOB_UTC_TIME`, active only when `RECAP_CARDS_JOB=enabled` and `RECAP_CARDS_USER_ID` is set) and manual endpoint (`POST /v1/generate/topic-cards`)

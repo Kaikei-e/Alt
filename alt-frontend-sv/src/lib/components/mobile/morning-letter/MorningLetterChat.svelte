@@ -40,7 +40,7 @@ let chatOpen = $state(false);
 let messages = $state<Message[]>([
 	{
 		id: "welcome",
-		message: `Ask follow-up questions about today's edition.`,
+		message: `Ask follow-up questions about this edition.`,
 		role: "assistant",
 		timestamp: new Date().toLocaleTimeString(),
 	},
@@ -50,12 +50,17 @@ let isLoading = $state(false);
 let inputValue = $state("");
 let chatContainer = $state<HTMLDivElement | undefined>(undefined);
 let currentAbortController: AbortController | null = null;
+let scrollTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function scrollToBottom() {
 	await tick();
 	const el = chatContainer;
 	if (el) {
-		setTimeout(() => {
+		if (scrollTimer !== null) {
+			clearTimeout(scrollTimer);
+		}
+		scrollTimer = setTimeout(() => {
+			scrollTimer = null;
 			el.scrollTop = el.scrollHeight;
 		}, 100);
 	}
@@ -193,6 +198,10 @@ function handleKeydown(event: KeyboardEvent) {
 onMount(() => {
 	scrollToBottom();
 	return () => {
+		if (scrollTimer !== null) {
+			clearTimeout(scrollTimer);
+			scrollTimer = null;
+		}
 		if (currentAbortController) {
 			currentAbortController.abort();
 		}

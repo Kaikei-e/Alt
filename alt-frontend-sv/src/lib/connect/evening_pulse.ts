@@ -23,6 +23,7 @@ import type {
 	TopicRole,
 	WeeklyHighlight,
 } from "#lib/schema/evening_pulse.js";
+import { convertProtoSurfaceStatus } from "./recap.js";
 
 /**
  * Gets Evening Pulse data via Connect-RPC.
@@ -56,6 +57,7 @@ function convertProtoToEveningPulse(
 		status: convertProtoStatus(proto.status),
 		topics: proto.topics.map(convertProtoTopic),
 		quietDay: proto.quietDay ? convertProtoQuietDay(proto.quietDay) : undefined,
+		surfaceStatus: convertProtoSurfaceStatus(proto.surfaceStatus),
 	};
 }
 

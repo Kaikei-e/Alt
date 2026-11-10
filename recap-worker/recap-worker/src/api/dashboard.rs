@@ -695,10 +695,6 @@ mod tests {
 
     #[async_trait::async_trait]
     impl RecapDao for WindowRecordingDao {
-        fn pool(&self) -> Option<&sqlx::PgPool> {
-            self.inner.pool()
-        }
-
         async fn create_job_with_lock(
             &self,
             job_id: Uuid,
@@ -1036,6 +1032,13 @@ mod tests {
             self.inner.get_latest_completed_job(window_days).await
         }
 
+        async fn get_job_completed_at(
+            &self,
+            job_id: Uuid,
+        ) -> crate::error::Result<Option<DateTime<Utc>>> {
+            self.inner.get_job_completed_at(job_id).await
+        }
+
         async fn get_genres_by_job(
             &self,
             job_id: Uuid,
@@ -1170,6 +1173,13 @@ mod tests {
             self.inner.save_morning_letter_sources(sources).await
         }
 
+        async fn get_morning_letter_by_id(
+            &self,
+            id: Uuid,
+        ) -> crate::error::Result<Option<crate::store::models::MorningLetter>> {
+            self.inner.get_morning_letter_by_id(id).await
+        }
+
         async fn get_morning_letter_by_date(
             &self,
             date: chrono::NaiveDate,
@@ -1290,7 +1300,7 @@ mod tests {
             &self,
             result: &crate::pipeline::pulse::PulseResult,
             target_date: chrono::NaiveDate,
-        ) -> crate::error::Result<i64> {
+        ) -> crate::error::Result<(i64, chrono::DateTime<chrono::Utc>)> {
             self.inner.save_pulse_generation(result, target_date).await
         }
     }
@@ -1323,6 +1333,10 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_GENRES", Some("ai,space")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
                     Some("/tmp/test-token-which-does-not-exist"),

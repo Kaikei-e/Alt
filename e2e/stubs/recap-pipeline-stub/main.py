@@ -9,6 +9,7 @@ subworker}/...). Drift between this stub and those types will surface
 as deserialisation errors in the recap-worker logs and as Hurl
 scenario 05/06 failures.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -136,7 +137,7 @@ async def classify_runs_post(req: Request) -> dict[str, Any]:
     payload = await req.json()
     texts = payload.get("texts") or []
     job_id = req.headers.get("X-Alt-Job-Id") or str(uuid.uuid4())
-    run_id = abs(hash(job_id)) % (10 ** 9)
+    run_id = abs(hash(job_id)) % (10**9)
     # recap-worker accepts only "running" or "succeeded"
     # (subworker/classification.rs:256-270); "completed" is treated as
     # a terminal-failure by `non-success status` branch.
@@ -162,7 +163,9 @@ async def classify_runs_get(run_id: int) -> dict[str, Any]:
     }
 
 
-def _clustering_response(run_id: int, job_id: str, documents: list[Any]) -> dict[str, Any]:
+def _clustering_response(
+    run_id: int, job_id: str, documents: list[Any]
+) -> dict[str, Any]:
     # Mirrors schema_accepts_valid_response in
     # recap-worker/recap-worker/src/schema/subworker.rs (the
     # CLUSTERING_RESPONSE_SCHEMA test). `sentence_text` must be >= 20
@@ -218,7 +221,7 @@ async def clustering_submit(req: Request) -> dict[str, Any]:
         uuid.UUID(job_id)
     except ValueError:
         job_id = str(uuid.uuid4())
-    run_id = abs(hash(job_id)) % (10 ** 9)
+    run_id = abs(hash(job_id)) % (10**9)
     return _clustering_response(run_id, job_id, documents)
 
 
@@ -421,7 +424,6 @@ async def morning_letter_generate(req: Request) -> dict[str, Any]:
                     "narrative": "スタブによるナラティブ。",
                 }
             ],
-            "generated_at": _now_iso(),
             "source_recap_window_days": 7,
         },
         "metadata": {

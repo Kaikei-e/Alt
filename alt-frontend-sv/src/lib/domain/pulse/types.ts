@@ -1,3 +1,7 @@
+import type { SurfaceStatus } from "#lib/domain/recap/types.js";
+
+export type { SurfaceStatus };
+
 export type PulseStatus = "normal" | "partial" | "quiet_day" | "error";
 
 export type TopicRole = "need_to_know" | "trend" | "serendipity";
@@ -53,4 +57,5 @@ export type EveningPulse = {
 	status: PulseStatus;
 	topics: PulseTopic[];
 	quietDay?: QuietDayInfo;
+	surfaceStatus?: SurfaceStatus | null;
 };

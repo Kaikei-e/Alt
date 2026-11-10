@@ -24,12 +24,6 @@ interface Source {
 	[key: string]: unknown;
 }
 
-interface ProtoTimestamp {
-	seconds: bigint;
-	nanos: number;
-	[key: string]: unknown;
-}
-
 const SECTION_ORDER: Record<string, number> = {
 	top3: 0,
 	what_changed: 1,
@@ -78,6 +72,26 @@ export function formatLetterDate(
 	return `${year}-${month}-${day}`;
 }
 
+export function formatEditionDateline({
+	targetDate,
+	editionTimezone,
+	isCurrent,
+}: {
+	targetDate?: string;
+	editionTimezone?: string;
+	isCurrent: boolean;
+}): string {
+	const formattedDate = targetDate
+		? formatLetterDate(targetDate, editionTimezone)
+		: "";
+	if (isCurrent) {
+		return formattedDate
+			? `Today's Edition · ${formattedDate}`
+			: "Today's Edition";
+	}
+	return formattedDate || "Latest Edition";
+}
+
 export function getSectionDisplayTitle(
 	section: Pick<Section, "key" | "title">,
 ): string {
@@ -115,19 +129,6 @@ export function getSourcesForSection(
 	sectionKey: string,
 ): Source[] {
 	return sources.filter((s) => s.sectionKey === sectionKey);
-}
-
-export function isLetterStale(
-	createdAt: ProtoTimestamp | undefined,
-	thresholdHours: number,
-): boolean {
-	if (!createdAt) return false;
-
-	const createdMs = Number(createdAt.seconds) * 1000;
-	const ageMs = Date.now() - createdMs;
-	const ageHours = ageMs / (1000 * 60 * 60);
-
-	return ageHours > thresholdHours;
 }
 
 export function deriveWithinHours(targetDate: string | undefined): number {

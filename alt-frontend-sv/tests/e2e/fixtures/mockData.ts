@@ -701,6 +701,20 @@ export const CONNECT_RECAP_RESPONSE = {
 			references: [],
 		},
 	],
+	surfaceStatus: {
+		generatedAt: "2025-12-20T12:00:00Z",
+		windowStart: "2025-12-17T00:00:00Z",
+		windowEnd: "2025-12-20T00:00:00Z",
+		isStale: false,
+		staleAfter: "2025-12-21T18:00:00Z",
+		latestRun: {
+			jobId: "test-job-123",
+			status: "completed",
+			kickedAt: "2025-12-20T11:55:00Z",
+			updatedAt: "2025-12-20T12:00:00Z",
+		},
+		degradationReasons: [],
+	},
 };
 
 /**
@@ -1072,6 +1086,20 @@ export const CONNECT_EVENING_PULSE_RESPONSE = {
 			sourceNames: ["WebDev"],
 		},
 	],
+	surfaceStatus: {
+		generatedAt: new Date().toISOString(),
+		windowStart: "2026-01-12T00:00:00Z",
+		windowEnd: "2026-01-15T00:00:00Z",
+		isStale: false,
+		staleAfter: new Date(Date.now() + 30 * 60 * 60 * 1000).toISOString(),
+		latestRun: {
+			jobId: "pulse-job-123",
+			status: "completed",
+			kickedAt: "2026-01-15T12:00:00Z",
+			updatedAt: "2026-01-15T12:05:00Z",
+		},
+		degradationReasons: [],
+	},
 };
 
 /**
@@ -1086,6 +1114,20 @@ export const CONNECT_EVENING_PULSE_QUIET_RESPONSE = {
 	quietDay: {
 		message: "It's a quiet news day. Here are some highlights from this week.",
 		weeklyHighlights: [],
+	},
+	surfaceStatus: {
+		generatedAt: new Date().toISOString(),
+		windowStart: "2026-01-12T00:00:00Z",
+		windowEnd: "2026-01-15T00:00:00Z",
+		isStale: false,
+		staleAfter: new Date(Date.now() + 30 * 60 * 60 * 1000).toISOString(),
+		latestRun: {
+			jobId: "pulse-job-quiet",
+			status: "completed",
+			kickedAt: "2026-01-15T12:00:00Z",
+			updatedAt: "2026-01-15T12:05:00Z",
+		},
+		degradationReasons: [],
 	},
 };
 

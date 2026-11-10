@@ -24,9 +24,10 @@ class TestPayloadBuilder:
         """PayloadBuilder should create basic Ollama API payload."""
         from news_creator.gateway.payload_builder import PayloadBuilder, GeneratePayload
 
+        templated = "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
         builder = PayloadBuilder()
         payload = builder.build(
-            prompt="Test prompt",
+            prompt=templated,
             model="test-model",
             options={"temperature": 0.7},
             keep_alive="24h",
@@ -34,25 +35,28 @@ class TestPayloadBuilder:
 
         assert isinstance(payload, GeneratePayload)
         assert payload.model == "test-model"
-        assert payload.prompt == "Test prompt"
+        assert payload.prompt == templated
         assert payload.options == {"temperature": 0.7}
         assert payload.keep_alive == "24h"
         assert payload.raw is True  # Default for Gemma 4 compatibility
         assert payload.stream is False  # Default
 
     def test_payload_builder_strips_prompt_whitespace(self):
-        """PayloadBuilder should strip whitespace from prompt."""
+        """PayloadBuilder should strip surrounding whitespace while preserving model turn newline."""
         from news_creator.gateway.payload_builder import PayloadBuilder
 
         builder = PayloadBuilder()
         payload = builder.build(
-            prompt="  Test prompt with whitespace  \n",
+            prompt="  <|turn>user\nTest prompt with whitespace<turn|>\n<|turn>model\n  \n",
             model="test-model",
             options={},
             keep_alive="24h",
         )
 
-        assert payload.prompt == "Test prompt with whitespace"
+        assert (
+            payload.prompt
+            == "<|turn>user\nTest prompt with whitespace<turn|>\n<|turn>model\n"
+        )
 
     def test_payload_builder_handles_streaming(self):
         """PayloadBuilder should set stream flag correctly."""
@@ -60,7 +64,7 @@ class TestPayloadBuilder:
 
         builder = PayloadBuilder()
         payload = builder.build(
-            prompt="Test",
+            prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
             model="test-model",
             options={},
             keep_alive="24h",
@@ -73,11 +77,12 @@ class TestPayloadBuilder:
         """PayloadBuilder should include format parameter when provided."""
         from news_creator.gateway.payload_builder import PayloadBuilder
 
+        templated = "<|turn>user\nTest<turn|>\n<|turn>model\n"
         builder = PayloadBuilder()
 
         # String format
         payload = builder.build(
-            prompt="Test",
+            prompt=templated,
             model="test-model",
             options={},
             keep_alive="24h",
@@ -88,7 +93,7 @@ class TestPayloadBuilder:
         # Dict format (structured output schema)
         schema = {"type": "object", "properties": {"name": {"type": "string"}}}
         payload2 = builder.build(
-            prompt="Test",
+            prompt=templated,
             model="test-model",
             options={},
             keep_alive="24h",
@@ -102,7 +107,7 @@ class TestPayloadBuilder:
 
         builder = PayloadBuilder()
         payload = builder.build(
-            prompt="Test",
+            prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
             model="test-model",
             options={},
             keep_alive="24h",
@@ -116,7 +121,7 @@ class TestPayloadBuilder:
 
         builder = PayloadBuilder()
         payload = builder.build(
-            prompt="Test",
+            prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
             model="test-model",
             options={},
             keep_alive="24h",
@@ -154,14 +159,10 @@ class TestPayloadBuilder:
                 "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
                 "<|turn>user\nHello world<turn|>\n<|turn>model\n",
             ),
-            (
-                "  hello  ",
-                "hello",
-            ),
         ],
     )
     def test_payload_builder_raw_prompt_handling(self, input_prompt, expected_prompt):
-        """PayloadBuilder should preserve model-turn trailing newline or strip plain prompt."""
+        """PayloadBuilder should preserve model-turn trailing newline for templated raw prompts."""
         from news_creator.gateway.payload_builder import PayloadBuilder
 
         builder = PayloadBuilder()
@@ -181,9 +182,10 @@ class TestGeneratePayload:
         """GeneratePayload should convert to dict for API call."""
         from news_creator.gateway.payload_builder import GeneratePayload
 
+        templated = "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
         payload = GeneratePayload(
             model="test-model",
-            prompt="Test prompt",
+            prompt=templated,
             options={"temperature": 0.7},
             keep_alive="24h",
             stream=False,
@@ -194,7 +196,7 @@ class TestGeneratePayload:
         result = payload.to_dict()
 
         assert result["model"] == "test-model"
-        assert result["prompt"] == "Test prompt"
+        assert result["prompt"] == templated
         assert result["options"] == {"temperature": 0.7}
         assert result["keep_alive"] == "24h"
         assert result["stream"] is False
@@ -207,7 +209,7 @@ class TestGeneratePayload:
 
         payload = GeneratePayload(
             model="test-model",
-            prompt="Test",
+            prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
             options={},
             keep_alive="24h",
             stream=False,
@@ -225,7 +227,7 @@ class TestGeneratePayload:
 
         payload = GeneratePayload(
             model="test-model",
-            prompt="Test",
+            prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
             options={},
             keep_alive="24h",
             stream=False,
@@ -253,7 +255,7 @@ class TestPayloadBuilderProtocol:
 
         # Runtime check: can call the method
         payload = builder.build(
-            prompt="Test",
+            prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
             model="model",
             options={},
             keep_alive="24h",
@@ -279,14 +281,10 @@ class TestPrepareRawPrompt:
                 "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
                 "<|turn>user\nHello world<turn|>\n<|turn>model\n",
             ),
-            (
-                "  hello  ",
-                "hello",
-            ),
         ],
     )
     def test_prepare_raw_prompt(self, input_prompt, expected_prompt):
-        """prepare_raw_prompt should preserve model-turn trailing newline or strip plain prompt."""
+        """prepare_raw_prompt should preserve model-turn trailing newline for templated prompts."""
         from news_creator.gateway.payload_builder import prepare_raw_prompt
 
         assert prepare_raw_prompt(input_prompt) == expected_prompt
@@ -333,9 +331,15 @@ class TestPrepareRawPrompt:
         assert prepared.endswith("<|turn>model\n")
         assert not prepared.endswith("\n\n")
 
-    def test_prepare_raw_prompt_prefill_unchanged(self) -> None:
-        """A prompt with prefill after the model-turn header must be returned unchanged."""
+    def test_prepare_raw_prompt_rejects_untemplated_or_non_model_turn_suffix(
+        self,
+    ) -> None:
+        """Prompts not starting with <|turn> and ending with <|turn>model\\n must be rejected."""
+        from news_creator.domain.errors import UntemplatedRawPromptError
         from news_creator.gateway.payload_builder import prepare_raw_prompt
 
-        prefill = "<|turn>user\nHello<turn|>\n<|turn>model\n{"
-        assert prepare_raw_prompt(prefill) == prefill
+        with pytest.raises(UntemplatedRawPromptError):
+            prepare_raw_prompt("  hello  ")
+
+        with pytest.raises(UntemplatedRawPromptError):
+            prepare_raw_prompt("<|turn>user\nHello<turn|>\n<|turn>model\n{")

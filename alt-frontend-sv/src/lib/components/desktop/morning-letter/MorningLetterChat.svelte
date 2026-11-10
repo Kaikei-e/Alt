@@ -35,7 +35,7 @@ type Props = {
 
 let { withinHours = 24, targetDate }: Props = $props();
 
-const welcomeMessage = `Ask follow-up questions about today's edition.`;
+const welcomeMessage = `Ask follow-up questions about this edition.`;
 
 let messages = $state<Message[]>([
 	{
@@ -50,11 +50,16 @@ let isLoading = $state(false);
 let inputValue = $state("");
 let threadContainer: HTMLDivElement;
 let currentAbortController: AbortController | null = null;
+let scrollTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function scrollToBottom() {
 	await tick();
 	if (threadContainer) {
-		setTimeout(() => {
+		if (scrollTimer !== null) {
+			clearTimeout(scrollTimer);
+		}
+		scrollTimer = setTimeout(() => {
+			scrollTimer = null;
 			threadContainer.scrollTop = threadContainer.scrollHeight;
 		}, 100);
 	}
@@ -155,7 +160,7 @@ async function handleSend() {
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex]!,
 					message:
-						"I couldn't find enough recent news to answer that. Try asking about a different topic from today's news.",
+						"I couldn't find enough recent news to answer that. Try asking about a different topic from this edition's news.",
 				};
 				isLoading = false;
 				currentAbortController = null;
@@ -193,6 +198,10 @@ function handleKeydown(event: KeyboardEvent) {
 onMount(() => {
 	scrollToBottom();
 	return () => {
+		if (scrollTimer !== null) {
+			clearTimeout(scrollTimer);
+			scrollTimer = null;
+		}
 		if (currentAbortController) {
 			currentAbortController.abort();
 		}
@@ -268,7 +277,7 @@ onMount(() => {
 			<textarea
 				bind:value={inputValue}
 				onkeydown={handleKeydown}
-				placeholder="Ask about today's edition..."
+				placeholder="Ask about this edition..."
 				disabled={isLoading}
 				rows={1}
 				class="input-field"

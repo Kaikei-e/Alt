@@ -105,6 +105,8 @@ pub trait CardsPipelineDao: Send + Sync {
     ) -> Result<()>;
 
     async fn insert_card_rejection(&self, rejection: &RejectionRecord) -> Result<()>;
+
+    async fn get_job_updated_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>>;
 }
 
 #[allow(clippy::too_many_lines)]
@@ -315,6 +317,10 @@ impl CardsPipelineDao for UnifiedDao {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
+
+    async fn get_job_updated_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>> {
+        crate::store::dao::surface::SurfaceDaoOps::get_job_updated_at(self.pool(), job_id).await
+    }
 }
 
 struct StageCounts {
@@ -362,6 +368,12 @@ impl PipelineMode {
             Self::Full => "full",
         }
     }
+}
+
+/// Topic-cards scheduled job runner holding a required `Arc<Metrics>`.
+pub struct CardsRunner {
+    pipeline: CardsPipeline,
+    metrics: Arc<crate::observability::metrics::Metrics>,
 }
 
 /// Standalone CardsPipeline runner.
@@ -420,6 +432,14 @@ impl CardsPipeline {
     pub fn with_user_id(mut self, user_id: Uuid) -> Self {
         self.user_id = Some(user_id);
         self
+    }
+
+    #[must_use]
+    pub fn into_runner(self, metrics: Arc<crate::observability::metrics::Metrics>) -> CardsRunner {
+        CardsRunner {
+            pipeline: self,
+            metrics,
+        }
     }
 
     /// Execute the CardsPipeline for a given job.
@@ -2007,7 +2027,7 @@ fn filter_valid_citations(card: &mut CardContent, item_count: usize) {
 }
 
 #[async_trait::async_trait]
-impl super::ports::CardsJobRunner for CardsPipeline {
+impl super::ports::CardsJobRunner for CardsRunner {
     async fn run_cards(
         &self,
         job_id: Uuid,
@@ -2015,10 +2035,40 @@ impl super::ports::CardsJobRunner for CardsPipeline {
         to: DateTime<Utc>,
     ) -> anyhow::Result<()> {
         let params = CardsParams::default();
-        self.run(job_id, from, to, &params)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        Ok(())
+        match self.pipeline.run(job_id, from, to, &params).await {
+            Ok(_) => {
+                match self.pipeline.dao.get_job_updated_at(job_id).await {
+                    Ok(Some(updated_at)) => {
+                        crate::observability::surface_health::record_success(
+                            &self.metrics,
+                            crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
+                            updated_at,
+                        );
+                    }
+                    Ok(None) => {
+                        tracing::error!(
+                            %job_id,
+                            "completed topic cards job has no updated_at timestamp; leaving surface_last_success unchanged"
+                        );
+                    }
+                    Err(err) => {
+                        tracing::error!(
+                            %job_id,
+                            error = ?err,
+                            "failed to read updated_at for topic cards job; leaving surface_last_success unchanged"
+                        );
+                    }
+                }
+                Ok(())
+            }
+            Err(e) => {
+                crate::observability::surface_health::record_failure(
+                    &self.metrics,
+                    crate::observability::surface_health::SurfaceHealthTarget::TopicCards,
+                );
+                Err(anyhow::anyhow!("{e:?}"))
+            }
+        }
     }
 }
 
@@ -2059,6 +2109,7 @@ mod tests {
         pub cache: MockEmbeddingCache,
         pub rejections: Mutex<Vec<RejectionRecord>>,
         pub fail_insert_rejection: Mutex<bool>,
+        pub job_updated_at: Mutex<HashMap<Uuid, DateTime<Utc>>>,
     }
 
     #[async_trait::async_trait]
@@ -2169,6 +2220,10 @@ mod tests {
             }
             self.rejections.lock().unwrap().push(rejection.clone());
             Ok(())
+        }
+
+        async fn get_job_updated_at(&self, job_id: Uuid) -> Result<Option<DateTime<Utc>>> {
+            Ok(self.job_updated_at.lock().unwrap().get(&job_id).copied())
         }
     }
 
@@ -4402,6 +4457,75 @@ mod tests {
         assert!(
             dao.jobs.lock().unwrap().is_empty(),
             "no job row inserted on negative span"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_cards_does_not_substitute_wall_clock_for_last_success() {
+        use crate::{
+            observability::{
+                metrics::Metrics,
+                surface_health::{SurfaceHealthTarget, record_success},
+            },
+            scheduler::daemon::CardsJobRunner,
+        };
+        use prometheus::Registry;
+
+        let feed_source = Arc::new(FakeFeedSource::new(vec![]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        let generator = Arc::new(FakeCardGenerator::new());
+        let verifier = Arc::new(FakeCardVerifier::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        record_success(&metrics, SurfaceHealthTarget::TopicCards, seeded_ts);
+
+        let runner = CardsPipeline::full(
+            feed_source,
+            ml_port,
+            Arc::clone(&dao) as Arc<dyn CardsPipelineDao>,
+            generator,
+            verifier,
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4())
+        .into_runner(Arc::clone(&metrics));
+
+        let (from, to) = test_window_3d();
+        CardsJobRunner::run_cards(&runner, Uuid::new_v4(), from, to)
+            .await
+            .expect("run_cards succeeds");
+
+        let gauge = metrics
+            .surface_last_success_timestamp_seconds
+            .with_label_values(&[SurfaceHealthTarget::TopicCards.as_str()])
+            .get();
+        assert_eq!(
+            gauge,
+            seeded_ts.timestamp() as f64,
+            "run_cards must not substitute Utc::now() when completed job updated_at is absent"
+        );
+
+        let job_id_2 = Uuid::new_v4();
+        let completed_updated_at = DateTime::parse_from_rfc3339("2026-01-26T03:30:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        dao.job_updated_at
+            .lock()
+            .unwrap()
+            .insert(job_id_2, completed_updated_at);
+        CardsJobRunner::run_cards(&runner, job_id_2, from, to)
+            .await
+            .expect("run_cards with updated_at succeeds");
+        assert_eq!(
+            metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&[SurfaceHealthTarget::TopicCards.as_str()])
+                .get(),
+            completed_updated_at.timestamp() as f64,
+            "run_cards must record the completed job's updated_at timestamp"
         );
     }
 }

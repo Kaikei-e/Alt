@@ -325,7 +325,11 @@ function isParentActive(children?: { href: string }[]): boolean {
 							<item.icon class="h-4 w-4" />
 							<span>{item.label}</span>
 							{#if item.label === "Knowledge Home" && !isActive(item.href)}
-								<span class="ml-auto text-xs text-[var(--accent-primary)]/60 font-normal">Today</span>
+								<span
+									class="ml-auto text-xs text-[var(--accent-primary)]/60 font-normal"
+								>
+									Today
+								</span>
 							{/if}
 						</a>
 					</li>

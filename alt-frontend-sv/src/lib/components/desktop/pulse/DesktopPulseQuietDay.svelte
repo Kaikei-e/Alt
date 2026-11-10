@@ -1,49 +1,42 @@
 <script lang="ts">
+import PulseHeader from "#lib/components/pulse/PulseHeader.svelte";
 import PulseWeeklyHighlight from "#lib/components/pulse/PulseWeeklyHighlight.svelte";
+import { SurfaceStatusBanner } from "#lib/components/recap/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
-import type { QuietDayInfo } from "#lib/schema/evening_pulse.js";
+import type { QuietDayInfo, SurfaceStatus } from "#lib/schema/evening_pulse.js";
+import { evaluateSurfaceStatus } from "#lib/utils/surface-status.js";
 
 interface Props {
 	date: string;
 	quietDay?: QuietDayInfo;
+	surfaceStatus?: SurfaceStatus | null;
 	onNavigateToRecap?: () => void;
 	onHighlightClick?: (id: string) => void;
 }
 
-const { date, quietDay, onNavigateToRecap, onHighlightClick }: Props = $props();
+const {
+	date,
+	quietDay,
+	surfaceStatus = null,
+	onNavigateToRecap,
+	onHighlightClick,
+}: Props = $props();
 
-const formattedDate = $derived.by(() => {
-	try {
-		const d = new Date(date);
-		return d.toLocaleDateString("en-US", {
-			month: "long",
-			day: "numeric",
-			weekday: "long",
-		});
-	} catch {
-		return date;
-	}
-});
+const isCurrent = $derived(evaluateSurfaceStatus(surfaceStatus).isCurrent);
 </script>
 
 <div class="p-6 max-w-7xl mx-auto">
-	<header class="mb-8">
-		<h1 class="text-3xl font-bold" style="color: var(--text-primary);">
-			Evening Pulse
-		</h1>
-		<p class="text-sm mt-1" style="color: var(--text-secondary);">
-			{formattedDate}
-		</p>
-	</header>
+	<PulseHeader {date} {isCurrent} />
+
+	<SurfaceStatusBanner {surfaceStatus} />
 
 	<div
-		class="p-8 border-2 border-[var(--surface-border)] text-center max-w-2xl mx-auto mb-8"
-		style="background: white;"
+		class="p-8 border text-center max-w-2xl mx-auto mb-8"
+		style="background: var(--surface-bg); border-color: var(--surface-border);"
 	>
-		<div class="text-5xl mb-4" aria-hidden="true">&#9790;</div>
 		<h2
-			class="text-2xl font-semibold mb-3"
-			style="color: var(--text-primary);"
+			class="text-2xl font-bold mb-3"
+			style="color: var(--text-primary); font-family: var(--font-display);"
 		>
 			Quiet Day
 		</h2>
@@ -51,14 +44,14 @@ const formattedDate = $derived.by(() => {
 			class="text-sm mb-6 max-w-md mx-auto"
 			style="color: var(--text-secondary);"
 		>
-			{quietDay?.message ?? "Today was a quiet day. No notable news was found."}
+			{quietDay?.message || "A quiet day. No notable news was found."}
 		</p>
 
 		{#if onNavigateToRecap}
 			<Button
 				onclick={onNavigateToRecap}
-				class="px-6 py-2"
-				style="background: var(--alt-primary); color: white;"
+				class="px-6 py-2 rounded-none font-mono uppercase tracking-wider text-xs"
+				style="background: var(--alt-charcoal); color: var(--surface-bg); border: 1px solid var(--alt-charcoal);"
 			>
 				View 3-Day Recap
 			</Button>
@@ -68,8 +61,8 @@ const formattedDate = $derived.by(() => {
 	{#if quietDay?.weeklyHighlights && quietDay.weeklyHighlights.length > 0}
 		<section class="mt-8">
 			<h3
-				class="text-lg font-semibold mb-4"
-				style="color: var(--text-primary);"
+				class="text-lg font-bold mb-4"
+				style="color: var(--text-primary); font-family: var(--font-display);"
 			>
 				This Week's Highlights
 			</h3>

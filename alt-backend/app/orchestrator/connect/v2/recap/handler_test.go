@@ -263,7 +263,7 @@ func TestHandler_GetTopicCards(t *testing.T) {
 		assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 	})
 
-	t.Run("success - returns job, cards, and latest_run", func(t *testing.T) {
+	t.Run("success - returns job, cards, and surface_status", func(t *testing.T) {
 		mockUsecase := new(MockRecapUsecase)
 		handler := NewHandler(mockUsecase, nil, logger)
 		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
@@ -306,11 +306,14 @@ func TestHandler_GetTopicCards(t *testing.T) {
 					CreatedAt: "2026-09-22T17:05:00Z",
 				},
 			},
-			LatestRun: &domain.RecapCardsRun{
-				JobID:     "11111111-1111-1111-1111-111111111111",
-				Status:    "completed",
-				KickedAt:  "2026-09-22T17:00:00Z",
-				UpdatedAt: "2026-09-22T17:05:00Z",
+			SurfaceStatus: &domain.RecapSurfaceStatus{
+				GeneratedAt: "2026-09-22T17:05:00Z",
+				LatestRun: &domain.RecapSurfaceRun{
+					JobID:     "11111111-1111-1111-1111-111111111111",
+					Status:    "completed",
+					KickedAt:  "2026-09-22T17:00:00Z",
+					UpdatedAt: "2026-09-22T17:05:00Z",
+				},
 			},
 		}
 
@@ -341,11 +344,12 @@ func TestHandler_GetTopicCards(t *testing.T) {
 		assert.Equal(t, "example.com", card.Sources[0].Host)
 		require.NotNil(t, card.Sources[0].PubDate)
 		assert.Equal(t, pubDate, *card.Sources[0].PubDate)
-		require.NotNil(t, resp.Msg.LatestRun)
-		assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.Msg.LatestRun.JobId)
-		assert.Equal(t, "completed", resp.Msg.LatestRun.Status)
-		assert.Equal(t, "2026-09-22T17:00:00Z", resp.Msg.LatestRun.KickedAt)
-		assert.Equal(t, "2026-09-22T17:05:00Z", resp.Msg.LatestRun.UpdatedAt)
+		require.NotNil(t, resp.Msg.SurfaceStatus)
+		require.NotNil(t, resp.Msg.SurfaceStatus.LatestRun)
+		assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.Msg.SurfaceStatus.LatestRun.JobId)
+		assert.Equal(t, "completed", resp.Msg.SurfaceStatus.LatestRun.Status)
+		assert.Equal(t, "2026-09-22T17:00:00Z", resp.Msg.SurfaceStatus.LatestRun.KickedAt)
+		assert.Equal(t, "2026-09-22T17:05:00Z", resp.Msg.SurfaceStatus.LatestRun.UpdatedAt)
 
 		mockUsecase.AssertExpectations(t)
 	})
@@ -356,9 +360,9 @@ func TestHandler_GetTopicCards(t *testing.T) {
 		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
 
 		emptyResp := &domain.RecapCardsResponse{
-			Job:       nil,
-			Cards:     []*domain.RecapCard{},
-			LatestRun: nil,
+			Job:           nil,
+			Cards:         []*domain.RecapCard{},
+			SurfaceStatus: nil,
 		}
 		mockUsecase.On("GetTopicCards", mock.Anything).Return(emptyResp, nil)
 
@@ -369,7 +373,7 @@ func TestHandler_GetTopicCards(t *testing.T) {
 		require.NotNil(t, resp)
 		assert.Nil(t, resp.Msg.Job)
 		assert.Empty(t, resp.Msg.Cards)
-		assert.Nil(t, resp.Msg.LatestRun)
+		assert.Nil(t, resp.Msg.SurfaceStatus)
 
 		mockUsecase.AssertExpectations(t)
 	})

@@ -272,6 +272,24 @@ func (f *fakeRepo) UpsertTodayDigest(_ context.Context, payload json.RawMessage)
 	if f.todayDigestErr != nil {
 		return f.todayDigestErr
 	}
+	if existing, ok := f.digests[w.UserID.String()]; ok && existing.DigestDate == w.DigestDate {
+		if existing.LastEventSeq != nil && *w.LastEventSeq <= *existing.LastEventSeq {
+			return nil
+		}
+		w.NewArticles = existing.NewArticles + w.NewArticles
+		w.SummarizedArticles = existing.SummarizedArticles + w.SummarizedArticles
+		unsummarized := existing.UnsummarizedArticles + w.UnsummarizedArticles
+		if unsummarized < 0 {
+			unsummarized = 0
+		}
+		w.UnsummarizedArticles = unsummarized
+		if len(w.TopTags) == 0 {
+			w.TopTags = existing.TopTags
+		}
+		w.EveningPulseAvailable = existing.EveningPulseAvailable || w.EveningPulseAvailable
+	} else if w.UnsummarizedArticles < 0 {
+		w.UnsummarizedArticles = 0
+	}
 	f.digests[w.UserID.String()] = w
 	return nil
 }

@@ -113,12 +113,22 @@ def test_neutralize_leaves_benign_text_untouched(benign_article):
     assert removed == 0
 
 
-def test_neutralize_repeats_until_no_token_can_reform():
-    """A single removal pass would let "<|tur<|turn>n>" collapse into a token."""
-    text, removed = neutralize_control_tokens("<|tur<|turn>n>")
+@pytest.mark.parametrize(
+    ("nested_payload", "expected_removed"),
+    [
+        ("<|tur<|turn>n>", 2),
+        ("<tu<turn|>rn|>", 2),
+        ("<|thi<|think|>nk|>", 2),
+    ],
+)
+def test_neutralize_repeats_until_no_token_can_reform(
+    nested_payload: str, expected_removed: int
+):
+    """A single removal pass would let nested tokens collapse into a control token."""
+    text, removed = neutralize_control_tokens(nested_payload)
 
     assert text == ""
-    assert removed == 2
+    assert removed == expected_removed
 
 
 def test_neutralize_handles_empty_text():

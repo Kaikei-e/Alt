@@ -6,8 +6,6 @@ use crate::error::Result;
 #[cfg(test)]
 use async_trait::async_trait;
 #[cfg(test)]
-use sqlx::PgPool;
-#[cfg(test)]
 use std::sync::{Arc, Mutex};
 #[cfg(test)]
 use uuid::Uuid;
@@ -65,6 +63,10 @@ type SentenceIdsByArticle = std::collections::HashMap<String, Vec<i64>>;
 type SentenceIdsByRun = std::collections::HashMap<i64, SentenceIdsByArticle>;
 
 #[cfg(test)]
+type JobCompletedAtMap =
+    std::collections::HashMap<Uuid, Result<Option<chrono::DateTime<chrono::Utc>>>>;
+
+#[cfg(test)]
 /// テスト用のモックRecapDao（DB接続なしで動作）
 #[allow(dead_code)]
 #[derive(Clone, Default)]
@@ -88,17 +90,23 @@ pub(crate) struct MockRecapDao {
     running_cards_job: Arc<Mutex<Option<Uuid>>>,
     /// `search_recaps_by_term` の応答。
     search_recaps_hits: Arc<Mutex<Vec<RecapSearchHit>>>,
+    latest_completed_job: Arc<Mutex<Option<RecapJob>>>,
+    genres_by_job: Arc<Mutex<Vec<GenreWithSummary>>>,
+    morning_letters: Arc<Mutex<Vec<MorningLetter>>>,
+    concurrent_morning_letter_on_save: Arc<Mutex<Option<MorningLetter>>>,
+    latest_worker_config: Arc<Mutex<std::collections::HashMap<String, serde_json::Value>>>,
+    update_job_status_with_history_error: Arc<Mutex<Option<String>>>,
+    stage_states: Arc<Mutex<std::collections::HashMap<(Uuid, String), serde_json::Value>>>,
+    job_completed_at: Arc<Mutex<JobCompletedAtMap>>,
 }
 
 #[cfg(test)]
 impl MockRecapDao {
-    #[allow(dead_code)]
     pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// 記録された `insert_failed_task` 呼び出しのスナップショットを取得する。
-    #[allow(dead_code)]
     pub(crate) fn failed_tasks(&self) -> Vec<RecordedFailedTask> {
         self.failed_tasks
             .lock()
@@ -107,7 +115,6 @@ impl MockRecapDao {
     }
 
     /// 記録された status 遷移呼び出しのスナップショットを取得する。
-    #[allow(dead_code)]
     pub(crate) fn status_transitions(&self) -> Vec<RecordedStatusTransition> {
         self.status_transitions
             .lock()
@@ -116,13 +123,11 @@ impl MockRecapDao {
     }
 
     /// 記録された `upsert_recap_output` 呼び出しのスナップショットを取得する。
-    #[allow(dead_code)]
     pub(crate) fn outputs(&self) -> Vec<crate::store::models::RecapOutput> {
         self.outputs.lock().expect("outputs mutex poisoned").clone()
     }
 
     /// テスト用に `get_article_metadata` の応答をセットする。
-    #[allow(dead_code)]
     pub(crate) fn set_article_metadata(&self, metadata: ArticleMetadataMap) {
         *self
             .article_metadata
@@ -131,7 +136,6 @@ impl MockRecapDao {
     }
 
     /// テスト用に `get_sentence_ids_by_run` の応答をセットする。
-    #[allow(dead_code)]
     pub(crate) fn set_sentence_ids(&self, run_id: i64, ids: SentenceIdsByArticle) {
         self.sentence_ids
             .lock()
@@ -141,7 +145,6 @@ impl MockRecapDao {
 
     /// テスト用に次回の `find_resumable_job` 呼び出しの応答をセットする
     /// （`Err` を注入して DB 障害を再現するのに使う）。
-    #[allow(dead_code)]
     pub(crate) fn set_find_resumable_job_result(&self, result: Result<Option<ResumableJob>>) {
         *self
             .find_resumable_job_result
@@ -151,7 +154,6 @@ impl MockRecapDao {
 
     /// テスト用に次回の `find_most_recent_failed_job` 呼び出しの応答をセットする
     /// （`Err` を注入して DB 障害を再現するのに使う）。
-    #[allow(dead_code)]
     pub(crate) fn set_find_most_recent_failed_job_result(
         &self,
         result: Result<Option<ResumableJob>>,
@@ -179,23 +181,70 @@ impl MockRecapDao {
     }
 
     /// 記録された `mark_abandoned_jobs` 呼び出し（`keep_job_id` 引数）のスナップショットを取得する。
-    #[allow(dead_code)]
     pub(crate) fn mark_abandoned_jobs_calls(&self) -> Vec<Option<Uuid>> {
         self.mark_abandoned_jobs_calls
             .lock()
             .expect("mark_abandoned_jobs_calls mutex poisoned")
             .clone()
     }
+
+    pub(crate) fn set_latest_completed_job(&self, job: Option<RecapJob>) {
+        *self
+            .latest_completed_job
+            .lock()
+            .expect("latest_completed_job mutex poisoned") = job;
+    }
+
+    pub(crate) fn set_genres_by_job(&self, genres: Vec<GenreWithSummary>) {
+        *self
+            .genres_by_job
+            .lock()
+            .expect("genres_by_job mutex poisoned") = genres;
+    }
+
+    pub(crate) fn morning_letters(&self) -> Vec<MorningLetter> {
+        self.morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned")
+            .clone()
+    }
+
+    pub(crate) fn set_concurrent_morning_letter_on_save(&self, letter: MorningLetter) {
+        *self
+            .concurrent_morning_letter_on_save
+            .lock()
+            .expect("concurrent_morning_letter_on_save mutex poisoned") = Some(letter);
+    }
+
+    pub(crate) fn set_latest_worker_config(&self, config_type: &str, payload: serde_json::Value) {
+        self.latest_worker_config
+            .lock()
+            .expect("latest_worker_config mutex poisoned")
+            .insert(config_type.to_string(), payload);
+    }
+
+    pub(crate) fn set_update_job_status_with_history_error(&self, err: &str) {
+        *self
+            .update_job_status_with_history_error
+            .lock()
+            .expect("update_job_status_with_history_error mutex poisoned") = Some(err.to_string());
+    }
+
+    pub(crate) fn set_job_completed_at(
+        &self,
+        job_id: Uuid,
+        result: Result<Option<chrono::DateTime<chrono::Utc>>>,
+    ) {
+        self.job_completed_at
+            .lock()
+            .expect("job_completed_at mutex poisoned")
+            .insert(job_id, result);
+    }
 }
 
 #[cfg(test)]
 #[async_trait]
 impl RecapDao for MockRecapDao {
-    fn pool(&self) -> Option<&PgPool> {
-        // モックではデータベース接続プールは不要
-        None
-    }
-
     // Job management
     #[allow(dead_code)]
     async fn create_job_with_lock(
@@ -209,12 +258,12 @@ impl RecapDao for MockRecapDao {
     #[allow(dead_code)]
     async fn create_job_with_lock_and_window(
         &self,
-        _job_id: Uuid,
+        job_id: Uuid,
         _note: Option<&str>,
         _window_days: u32,
         _trigger_source: &str,
     ) -> Result<Option<Uuid>> {
-        Ok(None)
+        Ok(Some(job_id))
     }
 
     #[allow(dead_code)]
@@ -309,6 +358,16 @@ impl RecapDao for MockRecapDao {
         last_stage: Option<&str>,
         reason: Option<&str>,
     ) -> Result<()> {
+        if matches!(status, JobStatus::Completed) {
+            if let Some(err) = self
+                .update_job_status_with_history_error
+                .lock()
+                .expect("update_job_status_with_history_error mutex poisoned")
+                .take()
+            {
+                return Err(crate::error::RecapError::Db(err));
+            }
+        }
         self.status_transitions
             .lock()
             .expect("status_transitions mutex poisoned")
@@ -338,19 +397,28 @@ impl RecapDao for MockRecapDao {
 
     async fn save_stage_state(
         &self,
-        _job_id: Uuid,
-        _stage: &str,
-        _state_data: &serde_json::Value,
+        job_id: Uuid,
+        stage: &str,
+        state_data: &serde_json::Value,
     ) -> Result<()> {
+        self.stage_states
+            .lock()
+            .expect("stage_states mutex poisoned")
+            .insert((job_id, stage.to_string()), state_data.clone());
         Ok(())
     }
 
     async fn load_stage_state(
         &self,
-        _job_id: Uuid,
-        _stage: &str,
+        job_id: Uuid,
+        stage: &str,
     ) -> Result<Option<serde_json::Value>> {
-        Ok(None)
+        Ok(self
+            .stage_states
+            .lock()
+            .expect("stage_states mutex poisoned")
+            .get(&(job_id, stage.to_string()))
+            .cloned())
     }
 
     async fn insert_failed_task(
@@ -426,9 +494,14 @@ impl RecapDao for MockRecapDao {
     // Config
     async fn get_latest_worker_config(
         &self,
-        _config_type: &str,
+        config_type: &str,
     ) -> Result<Option<serde_json::Value>> {
-        Ok(None)
+        Ok(self
+            .latest_worker_config
+            .lock()
+            .expect("latest_worker_config mutex poisoned")
+            .get(config_type)
+            .cloned())
     }
 
     async fn insert_worker_config(
@@ -567,11 +640,30 @@ impl RecapDao for MockRecapDao {
     }
 
     async fn get_latest_completed_job(&self, _window_days: i32) -> Result<Option<RecapJob>> {
-        Ok(None)
+        Ok(self
+            .latest_completed_job
+            .lock()
+            .expect("latest_completed_job mutex poisoned")
+            .clone())
+    }
+
+    async fn get_job_completed_at(
+        &self,
+        job_id: Uuid,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+        self.job_completed_at
+            .lock()
+            .expect("job_completed_at mutex poisoned")
+            .remove(&job_id)
+            .unwrap_or(Ok(None))
     }
 
     async fn get_genres_by_job(&self, _job_id: Uuid) -> Result<Vec<GenreWithSummary>> {
-        Ok(vec![])
+        Ok(self
+            .genres_by_job
+            .lock()
+            .expect("genres_by_job mutex poisoned")
+            .clone())
     }
 
     async fn get_clusters_by_job(
@@ -672,6 +764,35 @@ impl RecapDao for MockRecapDao {
     }
 
     async fn save_morning_letter(&self, letter: &MorningLetter) -> Result<Uuid> {
+        let mut letters = self
+            .morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned");
+        let next_rev = letters
+            .iter()
+            .filter(|l| {
+                l.target_date == letter.target_date && l.edition_timezone == letter.edition_timezone
+            })
+            .map(|l| l.generation_revision)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let mut stored = letter.clone();
+        stored.generation_revision = next_rev;
+        letters.push(stored.clone());
+
+        if let Some(mut concurrent) = self
+            .concurrent_morning_letter_on_save
+            .lock()
+            .expect("concurrent_morning_letter_on_save mutex poisoned")
+            .take()
+        {
+            concurrent.target_date = stored.target_date;
+            concurrent.edition_timezone = stored.edition_timezone;
+            concurrent.generation_revision = next_rev + 1;
+            letters.push(concurrent);
+        }
+
         Ok(letter.id)
     }
 
@@ -679,15 +800,38 @@ impl RecapDao for MockRecapDao {
         Ok(())
     }
 
+    async fn get_morning_letter_by_id(&self, id: Uuid) -> Result<Option<MorningLetter>> {
+        let letters = self
+            .morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned");
+        Ok(letters.iter().find(|l| l.id == id).cloned())
+    }
+
     async fn get_morning_letter_by_date(
         &self,
-        _date: chrono::NaiveDate,
+        date: chrono::NaiveDate,
     ) -> Result<Option<MorningLetter>> {
-        Ok(None)
+        let letters = self
+            .morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned");
+        Ok(letters
+            .iter()
+            .filter(|l| l.target_date == date)
+            .max_by_key(|l| l.generation_revision)
+            .cloned())
     }
 
     async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>> {
-        Ok(None)
+        let letters = self
+            .morning_letters
+            .lock()
+            .expect("morning_letters mutex poisoned");
+        Ok(letters
+            .iter()
+            .max_by_key(|l| (l.target_date, l.generation_revision))
+            .cloned())
     }
 
     async fn get_morning_letter_sources(
@@ -783,10 +927,10 @@ impl RecapDao for MockRecapDao {
 
     async fn save_pulse_generation(
         &self,
-        _result: &PulseResult,
+        result: &PulseResult,
         _target_date: chrono::NaiveDate,
-    ) -> Result<i64> {
-        Ok(1) // Return mock generation ID
+    ) -> Result<(i64, chrono::DateTime<chrono::Utc>)> {
+        Ok((1, result.generated_at))
     }
 }
 

@@ -83,14 +83,22 @@ describe("Topic Cards Page (+page.svelte)", () => {
 			.toBeInTheDocument();
 	});
 
-	it("renders running status notice when latestRun is running", async () => {
+	it("renders running status notice when surfaceStatus.latestRun is running", async () => {
 		const mockData = {
 			...buildMockRecapCardsResponse(),
-			latestRun: {
-				jobId: "run-running",
-				status: "running",
-				kickedAt: "2026-09-22T19:00:00Z",
-				updatedAt: "2026-09-22T19:01:00Z",
+			surfaceStatus: {
+				generatedAt: "2026-09-22T17:00:00Z",
+				windowStart: "2026-09-19T17:00:00Z",
+				windowEnd: "2026-09-22T17:00:00Z",
+				isStale: false,
+				staleAfter: "2026-09-23T23:00:00Z",
+				latestRun: {
+					jobId: "run-running",
+					status: "running",
+					kickedAt: "2026-09-22T19:00:00Z",
+					updatedAt: "2026-09-22T19:01:00Z",
+				},
+				degradationReasons: [],
 			},
 		};
 		mockGetTopicCards.mockResolvedValueOnce(mockData);
@@ -98,21 +106,26 @@ describe("Topic Cards Page (+page.svelte)", () => {
 		render(TopicCardsPage);
 
 		await expect
-			.element(page.getByText(/Update in progress \(started /))
-			.toBeInTheDocument();
-		await expect
 			.element(page.getByRole("status"))
-			.toHaveTextContent("Update in progress");
+			.toHaveTextContent("Update in progress…");
 	});
 
-	it("renders failed status notice when latestRun is failed", async () => {
+	it("renders failed status notice when surfaceStatus.latestRun is failed", async () => {
 		const mockData = {
 			...buildMockRecapCardsResponse(),
-			latestRun: {
-				jobId: "run-failed",
-				status: "failed",
-				kickedAt: "2026-09-22T19:00:00Z",
-				updatedAt: "2026-09-22T19:02:00Z",
+			surfaceStatus: {
+				generatedAt: "2026-09-22T17:00:00Z",
+				windowStart: "2026-09-19T17:00:00Z",
+				windowEnd: "2026-09-22T17:00:00Z",
+				isStale: false,
+				staleAfter: "2026-09-23T23:00:00Z",
+				latestRun: {
+					jobId: "run-failed",
+					status: "failed",
+					kickedAt: "2026-09-22T19:00:00Z",
+					updatedAt: "2026-09-22T19:02:00Z",
+				},
+				degradationReasons: [],
 			},
 		};
 		mockGetTopicCards.mockResolvedValueOnce(mockData);
@@ -121,7 +134,7 @@ describe("Topic Cards Page (+page.svelte)", () => {
 
 		await expect
 			.element(
-				page.getByText(/The latest update failed at .* Showing cards from /),
+				page.getByText(/The latest update failed at .* Showing results from /),
 			)
 			.toBeInTheDocument();
 		await expect
@@ -129,15 +142,23 @@ describe("Topic Cards Page (+page.svelte)", () => {
 			.toHaveTextContent("The latest update failed");
 	});
 
-	it("renders status banner and does not render empty state when job is null and latestRun is pending", async () => {
+	it("renders status banner and does not render empty state when job is null and surfaceStatus.latestRun is pending", async () => {
 		mockGetTopicCards.mockResolvedValueOnce({
 			job: null,
 			cards: [],
-			latestRun: {
-				jobId: "run-pending-no-job",
-				status: "pending",
-				kickedAt: "2026-09-22T19:00:00Z",
-				updatedAt: "2026-09-22T19:00:10Z",
+			surfaceStatus: {
+				generatedAt: "",
+				windowStart: "",
+				windowEnd: "",
+				isStale: false,
+				staleAfter: "",
+				latestRun: {
+					jobId: "run-pending-no-job",
+					status: "pending",
+					kickedAt: "2026-09-22T19:00:00Z",
+					updatedAt: "2026-09-22T19:00:10Z",
+				},
+				degradationReasons: [],
 			},
 		});
 
@@ -145,13 +166,13 @@ describe("Topic Cards Page (+page.svelte)", () => {
 
 		await expect
 			.element(page.getByRole("status"))
-			.toHaveTextContent("Update in progress");
+			.toHaveTextContent("Update in progress…");
 		await expect
 			.element(page.getByTestId("recap-cards-empty"))
 			.not.toBeInTheDocument();
 	});
 
-	it("renders degraded notice when job.degraded is true", async () => {
+	it("renders few_cards degradation notice from surfaceStatus.degradationReasons", async () => {
 		mockGetTopicCards.mockResolvedValueOnce(
 			buildMockDegradedRecapCardsResponse(),
 		);
@@ -162,7 +183,11 @@ describe("Topic Cards Page (+page.svelte)", () => {
 			.element(page.getByTestId("recap-cards-degraded"))
 			.toBeInTheDocument();
 		await expect
-			.element(page.getByText(/Degraded generation/i))
+			.element(
+				page.getByText(
+					"Fewer topic cards than usual met the quality threshold (1 cards selected).",
+				),
+			)
 			.toBeInTheDocument();
 		await expect
 			.element(page.getByTestId("recap-topic-card"))

@@ -31,14 +31,37 @@ type Reference struct {
 	ArticleID *string `json:"article_id,omitempty"`
 }
 
+type RecapSurfaceStatus struct {
+	GeneratedAt        string                   `json:"generated_at"`
+	WindowStart        string                   `json:"window_start"`
+	WindowEnd          string                   `json:"window_end"`
+	IsStale            bool                     `json:"is_stale"`
+	StaleAfter         string                   `json:"stale_after"`
+	LatestRun          *RecapSurfaceRun         `json:"latest_run"`
+	DegradationReasons []RecapDegradationReason `json:"degradation_reasons"`
+}
+
+type RecapSurfaceRun struct {
+	JobID     string `json:"job_id"`
+	Status    string `json:"status"`
+	KickedAt  string `json:"kicked_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type RecapDegradationReason struct {
+	Code   string `json:"code"`
+	Detail string `json:"detail"`
+}
+
 type RecapSummary struct {
-	JobID         string        `json:"job_id"`
-	ExecutedAt    time.Time     `json:"executed_at"`
-	WindowStart   time.Time     `json:"window_start"`
-	WindowEnd     time.Time     `json:"window_end"`
-	TotalArticles int           `json:"total_articles"`
-	Genres        []RecapGenre  `json:"genres"`
-	ClusterDraft  *ClusterDraft `json:"cluster_draft,omitempty"`
+	JobID         string              `json:"job_id"`
+	ExecutedAt    time.Time           `json:"executed_at"`
+	WindowStart   time.Time           `json:"window_start"`
+	WindowEnd     time.Time           `json:"window_end"`
+	TotalArticles int                 `json:"total_articles"`
+	Genres        []RecapGenre        `json:"genres"`
+	ClusterDraft  *ClusterDraft       `json:"cluster_draft,omitempty"`
+	SurfaceStatus *RecapSurfaceStatus `json:"surface_status"`
 }
 
 type ClusterDraft struct {

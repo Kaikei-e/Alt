@@ -37,6 +37,11 @@ pub(crate) trait MorningDao: Send + Sync {
         sources: &[MorningLetterSource],
     ) -> impl Future<Output = Result<()>> + Send;
 
+    fn get_morning_letter_by_id(
+        &self,
+        id: Uuid,
+    ) -> impl Future<Output = Result<Option<MorningLetter>>> + Send;
+
     /// 指定日の Morning Letter を取得する
     fn get_morning_letter_by_date(
         &self,

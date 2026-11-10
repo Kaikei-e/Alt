@@ -35,7 +35,6 @@ def test_morning_letter_handler_success_200():
                     bullets=["トピック1の要約です。"],
                 )
             ],
-            generated_at="2026-04-17T06:00:00Z",
             source_recap_window_days=3,
         ),
         metadata=RecapSummaryMetadata(
@@ -55,6 +54,7 @@ def test_morning_letter_handler_success_200():
     assert body["target_date"] == "2026-04-17"
     assert body["edition_timezone"] == "Asia/Tokyo"
     assert body["content"]["lead"] == "本日の主要トピックです。"
+    assert "generated_at" not in body["content"]
     assert body["metadata"]["is_degraded"] is False
     usecase.generate_letter.assert_awaited_once()
 

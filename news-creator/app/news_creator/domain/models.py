@@ -528,7 +528,6 @@ class MorningLetterContent(StrictFrozenModel):
     schema_version: int = Field(default=1, ge=1)
     lead: str = Field(min_length=1)
     sections: list[MorningLetterSection] = Field(min_length=1)
-    generated_at: str = Field(min_length=1)
     source_recap_window_days: int | None = None
 
 

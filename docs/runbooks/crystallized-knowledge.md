@@ -190,7 +190,26 @@ ADR-000001〜000940 (940 本) と PM-2026-001〜046 (46 本) を全件解析し�
 - Gemma 4 の thinking は CJK 入力で暗黙発動し num_predict を食い潰す — free-text 生成の全箇所で `think=false` を明示 pin ([[000801]])。thinking tokens は num_predict に含まれる / `format` は GBNF 構文保証のみで意味は見ていない ([[000632]] [[000665]])
 - 「LLM を直そうとしすぎない」— deterministic 主経路 + LLM 副経路 + fallback の 3 層。「LLM が成功しないと困る層」を作らない ([[000675]] [[000677]] [[000698]])
 - few-shot 例は内容をコピーされる — 抽象プレースホルダ化 ([[000648]] [[000650]])。reasoning フィールドを decision より前に置く reasoning-first 順序 ([[000632]] [[000665]])
-- モデル移行チェックリスト: チャットテンプレートトークン差異を一次ソースで確認 ([[000640]])、モデル名を env 参照する全コンテナを `--build` (PM-2026-016)、embedding モデル切替は timeout/retry も見直す ([[000899]])
+- モデル移行チェックリスト: チャットテンプレートトークン差異を一次ソースで確認 ([[000640]])、モデル名を env 参照する全コンテナを `--build` (PM-2026-016)、embedding モデル切替は timeout/retry も見直す ([[000899]])、Ollama またはモデル更新後は `news-creator:9443` と mTLS 接続済みの `recap-worker` (`127.0.0.1:9005`) 経由で `POST /v1/morning/letters/regenerate` を実行し、`GET /v1/morning/letters/latest` で `is_degraded == false` かつ `model != "extractive-fallback"` を確認する（本番 `compose/ai.yaml` は `PEER_IDENTITY_STRICT=true` / `PEER_IDENTITY_TRUSTED=off` のため `:11434` への `X-Alt-Peer-Identity` 直叩きは 401 になる。またプレースホルダ出力は extractive fallback に置換されるため、`body` 文字列の目視だけでは検知できない）:
+  ```bash
+  # recap-worker (127.0.0.1:9005) 経由で Morning Letter を同期再生成し、最新レターが非 degraded かつ実モデル出力であることを検証
+  # (/v1/morning/letters/regenerate と /v1/morning/letters/latest は recap-worker/src/api.rs の require_admin_token 対象外のため認証ヘッダ不要)
+  curl -fsS -X POST http://127.0.0.1:9005/v1/morning/letters/regenerate \
+    -H 'Content-Type: application/json' -d '{}' >/dev/null
+  curl -fsS http://127.0.0.1:9005/v1/morning/letters/latest \
+    | jq -e '.is_degraded == false and .model != null and .model != "extractive-fallback"'
+  ```
+  同様に 3-day recap summary（`recap-worker` → `news-creator` `POST /v1/summary/generate` / `POST /v1/summary/generate/batch`, `news-creator/app/news_creator/handler/recap_summary_handler.py`）も検査する。`RecapDao::get_latest_completed_job` (`recap-worker/recap-worker/src/store/dao/output.rs`) は `trigger_source` を区別せず `window_days = 3` かつ `status = 'completed'` の最新完了ジョブを `GET /v1/recaps/3days` (`recap-worker/recap-worker/src/api/fetch.rs`) として返すため、手動ジョブが完了すると次回スケジュール実行までユーザに表示される最新 3-day recap が置き換わる（`genres` を絞って起動すると単一ジャンルの recap で上書きされる）。そのため原則は読み取り専用とし、更新時刻 (`UPDATED_AT`) 以降に完了した次回スケジュール実行（または更新後に完了済みの最新実行）を `GET /v1/recaps/3days` で検査する。`news-creator/app/news_creator/usecase/recap_summary_usecase.py` はプレースホルダ文字列 (`... [1]` 等)、重複 bullet (`detect_repetition`)、日本語比率低下 (`recap_ja_ratio_threshold < 0.6`)、Gemma チャットテンプレート／構造化出力崩れを検知すると repair 後に extractive fallback (`metadata.is_degraded = true`, `model = "extractive-fallback"` / `"cluster-fallback"`) へ降格させ、`recap-worker/recap-worker/src/api/surface_status.rs` (`three_day_recap_reasons`) が `surface_status.degradation_reasons` に `code == "extractive_genres"` を付与する。正常時は `surface_status.generated_at` が更新時刻より後であり、`surface_status.latest_run.status == "completed"`・`surface_status.is_stale == false`・`surface_status.degradation_reasons == []`、かつ各ジャンルの `bullets` にプレースホルダ・重複 bullet・低日本語比率・Gemma テンプレートトークン混入がないことを確認する（即時確認が必要で次回スケジュール実行を待てない場合のみ、`genres` フィルタなしの `-d '{}'` で `POST /v1/generate/recaps/3days` (`recap-worker/recap-worker/src/api/generate.rs`) を全ジャンル実行として起動する。完了すると最新 recap を置き換え、所要時間も通常のスケジュール実行と同等かかる）:
+  ```bash
+  # 原則 (read-only): 更新時刻 (UPDATED_AT, RFC3339 UTC) 以降の最新 3-day recap を GET /v1/recaps/3days で検証
+  UPDATED_AT="2026-04-20T00:00:00Z"
+  curl -fsS http://127.0.0.1:9005/v1/recaps/3days \
+    | jq -e --arg updated_at "$UPDATED_AT" '.surface_status.generated_at > $updated_at and .surface_status.latest_run.status == "completed" and .surface_status.is_stale == false and (.surface_status.degradation_reasons | length == 0) and (.genres | length > 0) and all(.genres[]; (.bullets | length > 0) and (.bullets | length == (.bullets | unique | length)))'
+
+  # 即時確認が必要な場合のみ: genres 指定なしで全ジャンル実行を起動 (最新 3-day recap を置換し、スケジュール実行と同等の時間がかかる)
+  curl -fsS -X POST http://127.0.0.1:9005/v1/generate/recaps/3days \
+    -H 'Content-Type: application/json' -d '{}'
+  ```
 - Ollama の JSON Schema→GBNF 翻訳は `\d` `\w` `\s` を拒否 — 渡す全 schema の pattern を CI で sweep ([[000887]])
 - embedder は SPOF にしない — BM25-only degraded mode を設計 (PM-2026-020 [[000693]])。retrieval 系の変更は単独で eval を回す ([[000696]])
 

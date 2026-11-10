@@ -15,11 +15,18 @@ import {
 	RecapService,
 	type SearchRecapsByTagResponse,
 } from "#lib/gen/alt/recap/v2/recap_pb.js";
+import type { RecapSurfaceStatus as ProtoRecapSurfaceStatus } from "#lib/gen/alt/recap/v2/surface_status_pb.js";
 import type {
+	DegradationReason,
 	EvidenceLink,
 	RecapGenre,
 	RecapSummary,
+	SurfaceRun,
+	SurfaceRunStatus,
+	SurfaceStatus,
 } from "#lib/schema/recap.js";
+
+export type { DegradationReason, SurfaceRun, SurfaceRunStatus, SurfaceStatus };
 
 /** Type-safe RecapService client */
 type RecapClient = Client<typeof RecapService>;
@@ -106,6 +113,46 @@ export async function getThreeDayRecap(
 		windowEnd: response.windowEnd,
 		totalArticles: response.totalArticles,
 		genres: response.genres.map(convertProtoGenre),
+		surfaceStatus: convertProtoSurfaceStatus(response.surfaceStatus),
+	};
+}
+
+function isSurfaceRunStatus(status: string): status is SurfaceRunStatus {
+	return (
+		status === "pending" ||
+		status === "running" ||
+		status === "completed" ||
+		status === "failed"
+	);
+}
+
+/**
+ * Convert proto RecapSurfaceStatus to frontend SurfaceStatus type.
+ */
+export function convertProtoSurfaceStatus(
+	proto?: ProtoRecapSurfaceStatus | null,
+): SurfaceStatus | null {
+	if (!proto) return null;
+	const latestRun =
+		proto.latestRun && isSurfaceRunStatus(proto.latestRun.status)
+			? {
+					jobId: proto.latestRun.jobId,
+					status: proto.latestRun.status,
+					kickedAt: proto.latestRun.kickedAt,
+					updatedAt: proto.latestRun.updatedAt,
+				}
+			: null;
+	return {
+		generatedAt: proto.generatedAt,
+		windowStart: proto.windowStart,
+		windowEnd: proto.windowEnd,
+		isStale: proto.isStale,
+		staleAfter: proto.staleAfter,
+		latestRun,
+		degradationReasons: proto.degradationReasons.map((r) => ({
+			code: r.code,
+			detail: r.detail,
+		})),
 	};
 }
 
@@ -299,25 +346,17 @@ export interface RecapCardsJob {
 	degraded: boolean;
 }
 
-export interface RecapCardsRun {
-	jobId: string;
-	/** Known values: "pending" | "running" | "completed" | "failed" */
-	status: string;
-	kickedAt: string;
-	updatedAt: string;
-}
-
 export interface TopicCardsResponse {
 	job: RecapCardsJob | null;
 	cards: RecapCard[];
-	latestRun: RecapCardsRun | null;
+	surfaceStatus?: SurfaceStatus | null;
 }
 
 /**
  * Gets daily topic recap cards via Connect-RPC.
  *
  * @param transport - The Connect transport to use (must include auth)
- * @returns Topic cards with job metadata and latest run status
+ * @returns Topic cards with job metadata and surface status
  */
 export async function getTopicCards(
 	transport: Transport,
@@ -356,13 +395,6 @@ export async function getTopicCards(
 				pubDate: s.pubDate || undefined,
 			})),
 		})),
-		latestRun: response.latestRun
-			? {
-					jobId: response.latestRun.jobId,
-					status: response.latestRun.status,
-					kickedAt: response.latestRun.kickedAt,
-					updatedAt: response.latestRun.updatedAt,
-				}
-			: null,
+		surfaceStatus: convertProtoSurfaceStatus(response.surfaceStatus),
 	};
 }

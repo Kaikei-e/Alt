@@ -102,6 +102,36 @@ impl CardsCatchupConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SurfaceFreshnessConfig {
+    pub three_day_recap_hours: i64,
+    pub topic_cards_hours: i64,
+    pub evening_pulse_hours: i64,
+    pub morning_letter_hours: i64,
+}
+
+impl SurfaceFreshnessConfig {
+    #[must_use]
+    pub const fn three_day_recap_budget(self) -> chrono::Duration {
+        chrono::Duration::hours(self.three_day_recap_hours)
+    }
+
+    #[must_use]
+    pub const fn topic_cards_budget(self) -> chrono::Duration {
+        chrono::Duration::hours(self.topic_cards_hours)
+    }
+
+    #[must_use]
+    pub const fn evening_pulse_budget(self) -> chrono::Duration {
+        chrono::Duration::hours(self.evening_pulse_hours)
+    }
+
+    #[must_use]
+    pub const fn morning_letter_budget(self) -> chrono::Duration {
+        chrono::Duration::hours(self.morning_letter_hours)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     http_bind: SocketAddr,
@@ -175,6 +205,7 @@ pub struct Config {
     cards_retry_delay_minutes: u64,
     cards_max_attempts: u32,
     cards_catchup: CardsCatchupConfig,
+    surface_freshness: SurfaceFreshnessConfig,
 }
 
 /// Resolved knowledge-loop owner ids sourced from
@@ -409,6 +440,7 @@ impl Config {
         let cards_window_days = parse_cards_window_days()?;
         let cards_retry_delay_minutes = parse_cards_retry_delay_minutes()?;
         let cards_max_attempts = parse_cards_max_attempts()?;
+        let surface_freshness = load_surface_freshness()?;
 
         Ok(Self::from_components(
             basic,
@@ -438,6 +470,7 @@ impl Config {
             cards_retry_delay_minutes,
             cards_max_attempts,
             cards_catchup,
+            surface_freshness,
         ))
     }
 
@@ -470,6 +503,7 @@ impl Config {
         cards_retry_delay_minutes: u64,
         cards_max_attempts: u32,
         cards_catchup: CardsCatchupConfig,
+        surface_freshness: SurfaceFreshnessConfig,
     ) -> Self {
         Self {
             http_bind: basic.http_bind,
@@ -543,6 +577,7 @@ impl Config {
             cards_retry_delay_minutes,
             cards_max_attempts,
             cards_catchup,
+            surface_freshness,
         }
     }
 
@@ -1015,6 +1050,11 @@ impl Config {
     #[must_use]
     pub fn cards_catchup_enabled(&self) -> bool {
         self.cards_catchup.is_enabled()
+    }
+
+    #[must_use]
+    pub const fn surface_freshness(&self) -> SurfaceFreshnessConfig {
+        self.surface_freshness
     }
 }
 
@@ -1586,6 +1626,34 @@ fn parse_cards_catchup_str(
     }
 }
 
+fn parse_required_positive_hours(name: &'static str) -> Result<i64, ConfigError> {
+    let raw = env_var(name)?;
+    let hours = raw
+        .trim()
+        .parse::<i64>()
+        .map_err(|error| ConfigError::Invalid {
+            name,
+            source: Box::new(error),
+        })?;
+    if hours <= 0 {
+        return Err(invalid_config(name, "must be a positive integer"));
+    }
+    Ok(hours)
+}
+
+fn load_surface_freshness() -> Result<SurfaceFreshnessConfig, ConfigError> {
+    Ok(SurfaceFreshnessConfig {
+        three_day_recap_hours: parse_required_positive_hours(
+            "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
+        )?,
+        topic_cards_hours: parse_required_positive_hours("RECAP_FRESHNESS_TOPIC_CARDS_HOURS")?,
+        evening_pulse_hours: parse_required_positive_hours("RECAP_FRESHNESS_EVENING_PULSE_HOURS")?,
+        morning_letter_hours: parse_required_positive_hours(
+            "RECAP_FRESHNESS_MORNING_LETTER_HOURS",
+        )?,
+    })
+}
+
 /// Resolve the knowledge-loop owner from the two owner env vars.
 ///
 /// Returns `Some` only when BOTH `RECAP_KNOWLEDGE_OWNER_USER_ID` and
@@ -1838,6 +1906,10 @@ mod tests {
             ("RECAP_CARDS_RETRY_DELAY_MINUTES", None),
             ("RECAP_CARDS_MAX_ATTEMPTS", None),
             ("RECAP_CARDS_CATCHUP", None),
+            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
         ]
     }
 
@@ -3400,5 +3472,85 @@ mod tests {
             ),
             "RECAP_BATCH_SUMMARY_CHUNK_SIZE=0 must be rejected as ConfigError::Invalid, got: {res:?}"
         );
+    }
+
+    #[test]
+    fn from_env_fails_when_surface_freshness_vars_missing() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for missing_var in [
+            "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
+            "RECAP_FRESHNESS_TOPIC_CARDS_HOURS",
+            "RECAP_FRESHNESS_EVENING_PULSE_HOURS",
+            "RECAP_FRESHNESS_MORNING_LETTER_HOURS",
+        ] {
+            let mut vars: Vec<_> = required_base()
+                .into_iter()
+                .filter(|(name, _)| *name != missing_var)
+                .collect();
+            vars.push((missing_var, None));
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(res, Err(ConfigError::Missing(name)) if name == missing_var),
+                    "{missing_var} must be required, got: {res:?}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_fails_when_surface_freshness_vars_non_positive() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for var in [
+            "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
+            "RECAP_FRESHNESS_TOPIC_CARDS_HOURS",
+            "RECAP_FRESHNESS_EVENING_PULSE_HOURS",
+            "RECAP_FRESHNESS_MORNING_LETTER_HOURS",
+        ] {
+            for bad in ["0", "-5", "abc"] {
+                let mut vars: Vec<_> = required_base()
+                    .into_iter()
+                    .filter(|(name, _)| *name != var)
+                    .collect();
+                vars.push((var, Some(bad)));
+                temp_env::with_vars(vars, || {
+                    let res = Config::from_env();
+                    assert!(
+                        matches!(res, Err(ConfigError::Invalid { name, .. }) if name == var),
+                        "{var}={bad} must be rejected as ConfigError::Invalid, got: {res:?}"
+                    );
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn from_env_loads_surface_freshness_hours() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config loads");
+            assert_eq!(
+                config.surface_freshness(),
+                SurfaceFreshnessConfig {
+                    three_day_recap_hours: 30,
+                    topic_cards_hours: 30,
+                    evening_pulse_hours: 30,
+                    morning_letter_hours: 3,
+                }
+            );
+        });
     }
 }

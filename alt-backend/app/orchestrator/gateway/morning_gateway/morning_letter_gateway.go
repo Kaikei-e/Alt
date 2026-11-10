@@ -48,16 +48,17 @@ func NewMorningLetterGateway(articles articleBatchReader) morning_letter_port.Mo
 // --- REST response DTOs ---
 
 type MorningLetterAPIResponse struct {
-	ID                 string               `json:"id"`
-	TargetDate         string               `json:"target_date"`
-	EditionTimezone    string               `json:"edition_timezone"`
-	IsDegraded         bool                 `json:"is_degraded"`
-	SchemaVersion      int                  `json:"schema_version"`
-	GenerationRevision int                  `json:"generation_revision"`
-	Model              *string              `json:"model"`
-	CreatedAt          string               `json:"created_at"`
-	Etag               string               `json:"etag"`
-	Body               MorningLetterBodyAPI `json:"body"`
+	ID                 string                     `json:"id"`
+	TargetDate         string                     `json:"target_date"`
+	EditionTimezone    string                     `json:"edition_timezone"`
+	IsDegraded         bool                       `json:"is_degraded"`
+	SchemaVersion      int                        `json:"schema_version"`
+	GenerationRevision int                        `json:"generation_revision"`
+	Model              *string                    `json:"model"`
+	CreatedAt          string                     `json:"created_at"`
+	Etag               string                     `json:"etag"`
+	Body               MorningLetterBodyAPI       `json:"body"`
+	SurfaceStatus      *domain.RecapSurfaceStatus `json:"surface_status"`
 }
 
 type MorningLetterBodyAPI struct {
@@ -135,7 +136,7 @@ func (g *MorningLetterGateway) fetchLetter(ctx context.Context, url string) (*do
 		return nil, fmt.Errorf("failed to decode morning letter response: %w", err)
 	}
 
-	return mapAPIToDomain(&apiResp), nil
+	return mapAPIToDomain(&apiResp)
 }
 
 func (g *MorningLetterGateway) GetLetterSources(ctx context.Context, letterID string) ([]*domain.MorningLetterSourceEntry, error) {
@@ -191,7 +192,7 @@ func (g *MorningLetterGateway) GetLetterSources(ctx context.Context, letterID st
 	return result, nil
 }
 
-func mapAPIToDomain(api *MorningLetterAPIResponse) *domain.MorningLetterDocument {
+func mapAPIToDomain(api *MorningLetterAPIResponse) (*domain.MorningLetterDocument, error) {
 	sections := make([]domain.MorningLetterSection, len(api.Body.Sections))
 	for i, s := range api.Body.Sections {
 		genre := ""
@@ -217,8 +218,14 @@ func mapAPIToDomain(api *MorningLetterAPIResponse) *domain.MorningLetterDocument
 		model = *api.Model
 	}
 
-	generatedAt, _ := time.Parse(time.RFC3339, api.Body.GeneratedAt)
-	createdAt, _ := time.Parse(time.RFC3339, api.CreatedAt)
+	generatedAt, err := time.Parse(time.RFC3339, api.Body.GeneratedAt)
+	if err != nil {
+		return nil, fmt.Errorf("invalid morning letter generated_at: %w", err)
+	}
+	createdAt, err := time.Parse(time.RFC3339, api.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("invalid morning letter created_at: %w", err)
+	}
 
 	var prev *domain.PreviousLetterRef
 	if p := api.Body.PreviousLetterRef; p != nil {
@@ -247,7 +254,8 @@ func mapAPIToDomain(api *MorningLetterAPIResponse) *domain.MorningLetterDocument
 			ThroughLine:           api.Body.ThroughLine,
 			PreviousLetterRef:     prev,
 		},
-	}
+		SurfaceStatus: api.SurfaceStatus,
+	}, nil
 }
 
 // RegenerateLatest POSTs to recap-worker to trigger on-demand projection.
@@ -278,7 +286,7 @@ func (g *MorningLetterGateway) RegenerateLatest(ctx context.Context, editionTime
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, fmt.Errorf("failed to decode regenerate response: %w", err)
 	}
-	return mapAPIToDomain(&apiResp), nil
+	return mapAPIToDomain(&apiResp)
 }
 
 func extractSourceArticleIDs(apiSources []MorningLetterSourceAPI) []uuid.UUID {

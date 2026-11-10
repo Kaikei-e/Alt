@@ -21,10 +21,23 @@ use axum::{
     response::Json,
     routing::{get, post},
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use recap_worker::api::cards::{
     CardsDao, LatestCardsRun, PreviousCardsJobMeta, RecapCard, RecapCardJobStats,
-    get_topic_cards_impl,
+    get_topic_cards_with_clock,
+};
+use recap_worker::api::fetch::{
+    ClusterEvidence, ClusterWithEvidence, GenreWithSummary, MorningLetter, MorningLetterReadDao,
+    RecapJob, RecapReadDao, get_3days_recap_impl, get_latest_morning_letter_impl,
+    get_morning_letter_by_date_impl,
+};
+use recap_worker::api::pulse::{
+    PulseGenerationRow, PulseReadDao, PulseWindow, get_latest_pulse_impl,
+};
+use recap_worker::api::surface_status::SurfaceRun;
+use recap_worker::pipeline::pulse::{
+    ClusterQualityMetrics, PulseDiagnostics, PulseResult, PulseTopic, PulseVersion, QualityTier,
+    ScoreBreakdown, TopicRole, types::RepresentativeArticle,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -294,6 +307,422 @@ impl CardsDao for VerificationCardsDao {
             None => panic!("missing provider state in VerificationCardsDao"),
         }
     }
+
+    async fn get_job_updated_at(&self, _job_id: Uuid) -> Result<Option<DateTime<Utc>>, String> {
+        let current = self.provider_state.read().unwrap().clone();
+        match current.as_deref() {
+            Some("no cards job exists") => Ok(None),
+            Some(
+                "a completed cards job with cards exists"
+                | "a completed cards job whose card has no genre and no why"
+                | "a failed topic cards run is newer than the latest completed run",
+            ) => Ok(Some(
+                DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            )),
+            Some(unknown) => {
+                panic!("unrecognised provider state in VerificationCardsDao: {unknown}")
+            }
+            None => panic!("missing provider state in VerificationCardsDao"),
+        }
+    }
+}
+
+struct VerificationPulseDao {
+    provider_state: Arc<RwLock<Option<String>>>,
+}
+
+impl VerificationPulseDao {
+    fn build_topic(role: TopicRole, cluster_id: i64) -> PulseTopic {
+        PulseTopic {
+            cluster_id,
+            role,
+            score: 0.85,
+            rationale: "High impact news with multiple sources".to_string(),
+            articles: vec![
+                "44444444-5555-6666-7777-888888888888".to_string(),
+                "55555555-6666-7777-8888-999999999999".to_string(),
+                "66666666-7777-8888-9999-aaaaaaaaaaaa".to_string(),
+            ],
+            quality_metrics: ClusterQualityMetrics {
+                cohesion: 0.8,
+                ambiguity: 0.2,
+                entity_consistency: 0.9,
+                tier: QualityTier::Ok,
+            },
+            score_breakdown: ScoreBreakdown {
+                impact_score: 0.5,
+                burst_score: 0.15,
+                novelty_score: 0.1,
+                recency_score: 0.1,
+            },
+            representative_articles: vec![RepresentativeArticle {
+                article_id: "44444444-5555-6666-7777-888888888888".to_string(),
+                title: "Breaking news article".to_string(),
+                source_url: "https://example.com/article/1".to_string(),
+                source_name: "Example".to_string(),
+                published_at: "2026-09-22T12:00:00Z".to_string(),
+            }],
+            top_entities: vec!["Entity1".to_string(), "Entity2".to_string()],
+            source_names: vec!["Example".to_string()],
+            genre: Some("Tech".to_string()),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl PulseReadDao for VerificationPulseDao {
+    async fn get_latest_pulse(&self) -> Result<Option<PulseGenerationRow>, String> {
+        let current = self.provider_state.read().unwrap().clone();
+        match current.as_deref() {
+            Some("a succeeded evening pulse generation with fallback exists") | None => {
+                let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
+                let generated_at = DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc);
+                let result = PulseResult {
+                    job_id,
+                    version: PulseVersion::V4,
+                    topics: vec![
+                        Self::build_topic(TopicRole::NeedToKnow, 42),
+                        Self::build_topic(TopicRole::Trend, 43),
+                        Self::build_topic(TopicRole::Serendipity, 44),
+                    ],
+                    generated_at,
+                    diagnostics: PulseDiagnostics {
+                        syndication_removed: 2,
+                        clusters_evaluated: 12,
+                        fallback_level: 1,
+                        duration_ms: 250,
+                        ..Default::default()
+                    },
+                };
+                Ok(Some(PulseGenerationRow {
+                    job_id,
+                    target_date: NaiveDate::from_ymd_opt(2026, 9, 22).unwrap(),
+                    version: "v4".to_string(),
+                    result_payload: Some(serde_json::to_value(&result).unwrap()),
+                    finished_at: generated_at,
+                }))
+            }
+            Some(unknown) => {
+                panic!("unrecognised provider state in VerificationPulseDao: {unknown}")
+            }
+        }
+    }
+
+    async fn get_pulse_by_date(
+        &self,
+        _date: NaiveDate,
+    ) -> Result<Option<PulseGenerationRow>, String> {
+        self.get_latest_pulse().await
+    }
+
+    async fn get_latest_pulse_run(&self) -> Result<Option<SurfaceRun>, String> {
+        Ok(Some(SurfaceRun {
+            job_id: "11111111-2222-3333-4444-555555555555".to_string(),
+            status: "completed".to_string(),
+            kicked_at: "2026-09-22T17:00:00Z".to_string(),
+            updated_at: "2026-09-22T17:05:00Z".to_string(),
+        }))
+    }
+
+    async fn get_recap_job_window(&self, _job_id: Uuid) -> Result<Option<PulseWindow>, String> {
+        let win_start = DateTime::parse_from_rfc3339("2026-09-19T17:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let win_end = DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        Ok(Some((win_start, win_end)))
+    }
+}
+
+struct ThreeDayRecapGenreFixture {
+    genre_name: String,
+    summary_ja: String,
+    top_terms: Vec<String>,
+    article_id: String,
+    title: String,
+    source_url: String,
+    published_at: DateTime<Utc>,
+    lang: String,
+    is_degraded: bool,
+}
+
+struct ThreeDayRecapFixtureDao {
+    job_id: Uuid,
+    started_at: DateTime<Utc>,
+    window_start: DateTime<Utc>,
+    window_end: DateTime<Utc>,
+    total_articles: i32,
+    genres: Vec<ThreeDayRecapGenreFixture>,
+    latest_run: Option<SurfaceRun>,
+}
+
+#[async_trait::async_trait]
+impl RecapReadDao for ThreeDayRecapFixtureDao {
+    async fn get_latest_completed_job(
+        &self,
+        _window_days: i32,
+    ) -> Result<Option<RecapJob>, String> {
+        Ok(Some(RecapJob {
+            job_id: self.job_id,
+            started_at: self.started_at,
+            window_start: self.window_start,
+            window_end: self.window_end,
+            total_articles: Some(self.total_articles),
+        }))
+    }
+
+    async fn get_genres_by_job(&self, _job_id: Uuid) -> Result<Vec<GenreWithSummary>, String> {
+        Ok(self
+            .genres
+            .iter()
+            .map(|g| GenreWithSummary {
+                genre_name: g.genre_name.clone(),
+                summary_ja: Some(g.summary_ja.clone()),
+                title_ja: None,
+                bullets_ja: None,
+            })
+            .collect())
+    }
+
+    async fn get_clusters_by_job(
+        &self,
+        _job_id: Uuid,
+    ) -> Result<std::collections::HashMap<String, Vec<ClusterWithEvidence>>, String> {
+        let mut map = std::collections::HashMap::new();
+        for (idx, g) in self.genres.iter().enumerate() {
+            map.insert(
+                g.genre_name.clone(),
+                vec![ClusterWithEvidence {
+                    cluster_id: i32::try_from(idx + 1).unwrap_or(1),
+                    top_terms: Some(g.top_terms.clone()),
+                    evidence: vec![ClusterEvidence {
+                        article_id: g.article_id.clone(),
+                        title: g.title.clone(),
+                        source_url: g.source_url.clone(),
+                        published_at: g.published_at,
+                        lang: Some(g.lang.clone()),
+                    }],
+                }],
+            );
+        }
+        Ok(map)
+    }
+
+    async fn get_recap_output_body_json(
+        &self,
+        _job_id: Uuid,
+        genre: &str,
+    ) -> Result<Option<Value>, String> {
+        let is_degraded = self
+            .genres
+            .iter()
+            .find(|g| g.genre_name == genre)
+            .is_some_and(|g| g.is_degraded);
+        Ok(Some(json!({
+            "metadata": {
+                "is_degraded": is_degraded
+            }
+        })))
+    }
+
+    async fn get_latest_three_day_recap_run(&self) -> Result<Option<SurfaceRun>, String> {
+        Ok(self.latest_run.clone())
+    }
+
+    fn observe_cluster_query_duration(&self, _duration_secs: f64) {}
+
+    fn inc_evidence_duplicates(&self, _removed: usize) {}
+
+    fn observe_latest_fetch_duration(&self, _duration_secs: f64) {}
+}
+
+struct MorningLetterFixtureDao {
+    id: Uuid,
+    target_date: NaiveDate,
+    edition_timezone: String,
+    source_recap_job_id: Option<Uuid>,
+    is_degraded: bool,
+    schema_version: i32,
+    generation_revision: i32,
+    result_jsonb: Value,
+    model: Option<String>,
+    generation_metadata_jsonb: Value,
+    created_at: DateTime<Utc>,
+    latest_run: Option<SurfaceRun>,
+    window: Option<(DateTime<Utc>, DateTime<Utc>)>,
+}
+
+impl MorningLetterFixtureDao {
+    fn to_model(&self) -> MorningLetter {
+        MorningLetter {
+            id: self.id,
+            target_date: self.target_date,
+            edition_timezone: self.edition_timezone.clone(),
+            source_recap_job_id: self.source_recap_job_id,
+            is_degraded: self.is_degraded,
+            schema_version: self.schema_version,
+            generation_revision: self.generation_revision,
+            result_jsonb: self.result_jsonb.clone(),
+            model: self.model.clone(),
+            generation_metadata_jsonb: self.generation_metadata_jsonb.clone(),
+            created_at: self.created_at,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl MorningLetterReadDao for MorningLetterFixtureDao {
+    async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>, String> {
+        Ok(Some(self.to_model()))
+    }
+
+    async fn get_morning_letter_by_id(&self, id: Uuid) -> Result<Option<MorningLetter>, String> {
+        Ok((self.id == id).then(|| self.to_model()))
+    }
+
+    async fn get_morning_letter_by_date(
+        &self,
+        _date: NaiveDate,
+    ) -> Result<Option<MorningLetter>, String> {
+        Ok(Some(self.to_model()))
+    }
+
+    async fn get_latest_morning_run(&self) -> Result<Option<SurfaceRun>, String> {
+        Ok(self.latest_run.clone())
+    }
+
+    async fn get_recap_job_window(
+        &self,
+        _job_id: Uuid,
+    ) -> Result<Option<(DateTime<Utc>, DateTime<Utc>)>, String> {
+        Ok(self.window)
+    }
+}
+
+fn three_day_recap_fixture_for_state(state_name: Option<&str>) -> ThreeDayRecapFixtureDao {
+    match state_name {
+        Some("a completed 3-day recap job with one extractive genre exists") | None => {
+            let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
+            let started_at = DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc);
+            let window_start = DateTime::parse_from_rfc3339("2026-09-19T17:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc);
+            let window_end = DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
+                .unwrap()
+                .with_timezone(&Utc);
+            let published_at = DateTime::parse_from_rfc3339("2026-09-22T10:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc);
+            ThreeDayRecapFixtureDao {
+                job_id,
+                started_at,
+                window_start,
+                window_end,
+                total_articles: 12,
+                genres: vec![
+                    ThreeDayRecapGenreFixture {
+                        genre_name: "ai".to_string(),
+                        summary_ja: r#"{"title":"AI開発の動向","bullets":["新しい大規模言語モデルが公開された"]}"#
+                            .to_string(),
+                        top_terms: vec!["AI".to_string(), "LLM".to_string()],
+                        article_id: "44444444-5555-6666-7777-888888888888".to_string(),
+                        title: "AI article".to_string(),
+                        source_url: "https://example.com/ai".to_string(),
+                        published_at,
+                        lang: "ja".to_string(),
+                        is_degraded: false,
+                    },
+                    ThreeDayRecapGenreFixture {
+                        genre_name: "space".to_string(),
+                        summary_ja: r#"{"title":"宇宙開発","bullets":["新型ロケットの打ち上げ試験が実施された"]}"#
+                            .to_string(),
+                        top_terms: vec!["rocket".to_string(), "space".to_string()],
+                        article_id: "55555555-6666-7777-8888-999999999999".to_string(),
+                        title: "Space article".to_string(),
+                        source_url: "https://example.com/space".to_string(),
+                        published_at,
+                        lang: "en".to_string(),
+                        is_degraded: true,
+                    },
+                ],
+                latest_run: Some(SurfaceRun {
+                    job_id: job_id.to_string(),
+                    status: "completed".to_string(),
+                    kicked_at: "2026-09-22T17:00:00Z".to_string(),
+                    updated_at: "2026-09-22T17:05:00Z".to_string(),
+                }),
+            }
+        }
+        Some(unknown) => {
+            panic!("unrecognised provider state in three_day_recap_fixture_for_state: {unknown}")
+        }
+    }
+}
+
+fn morning_letter_fixture_for_state(
+    state_name: Option<&str>,
+    target_date_override: Option<NaiveDate>,
+) -> MorningLetterFixtureDao {
+    let is_degraded = matches!(state_name, Some("a degraded morning letter version exists"));
+    let generation_metadata_jsonb = if is_degraded {
+        json!({ "degradation_reason": "placeholder_output" })
+    } else {
+        json!({})
+    };
+    let recap_job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
+    let created_at = DateTime::parse_from_rfc3339("2026-09-22T06:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let win_start = DateTime::parse_from_rfc3339("2026-09-19T06:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let win_end = DateTime::parse_from_rfc3339("2026-09-22T06:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let target_date =
+        target_date_override.unwrap_or_else(|| NaiveDate::from_ymd_opt(2026, 4, 15).unwrap());
+
+    MorningLetterFixtureDao {
+        id: Uuid::parse_str("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").unwrap(),
+        target_date,
+        edition_timezone: "Asia/Tokyo".to_string(),
+        source_recap_job_id: Some(recap_job_id),
+        is_degraded,
+        schema_version: 1,
+        generation_revision: 1,
+        result_jsonb: json!({
+            "lead": "Today's key developments...",
+            "sections": [
+                {
+                    "key": "top3",
+                    "title": "Top Stories",
+                    "bullets": ["Story A"],
+                    "genre": "ai",
+                    "narrative": "Summary of top developments."
+                }
+            ],
+            "generated_at": "2026-09-22T06:00:00Z",
+            "source_recap_window_days": 3,
+            "through_line": "Daily briefing"
+        }),
+        model: Some("gemma4-e4b-12k".to_string()),
+        generation_metadata_jsonb,
+        created_at,
+        latest_run: Some(SurfaceRun {
+            job_id: recap_job_id.to_string(),
+            status: "completed".to_string(),
+            kicked_at: "2026-09-22T05:55:00Z".to_string(),
+            updated_at: "2026-09-22T06:00:00Z".to_string(),
+        }),
+        window: Some((win_start, win_end)),
+    }
 }
 
 /// Build a stub Router that matches the endpoints asserted by
@@ -369,46 +798,86 @@ fn stub_router_with_state(state: StubState) -> Router {
                 }))
             }),
         )
-        // rag-orchestrator-recap-worker.json
+        // rag-orchestrator-recap-worker.json & alt-backend-recap-worker.json
         .route(
             "/v1/morning/letters/latest",
-            get(|| async {
-                Json(json!({
-                    "id": "letter-001",
-                    "target_date": "2026-04-15",
-                    "body": {
-                        "lead": "Today's key developments...",
-                        "sections": [
-                            {
-                                "key": "top3",
-                                "title": "Top Stories",
-                                "bullets": ["Story A"]
-                            }
-                        ]
+            get({
+                let state = state.clone();
+                move || {
+                    let state = state.clone();
+                    async move {
+                        let current = state.provider_state.read().unwrap().clone();
+                        let fixture = morning_letter_fixture_for_state(current.as_deref(), None);
+                        let now = DateTime::parse_from_rfc3339("2026-09-22T07:00:00Z")
+                            .unwrap()
+                            .with_timezone(&Utc);
+                        get_latest_morning_letter_impl(&fixture, chrono::Duration::hours(3), now)
+                            .await
                     }
-                }))
+                }
             }),
         )
         .route(
             "/v1/morning/letters/{date}",
-            get(|Path(date): Path<String>| async move {
-                Json(json!({
-                    "id": "letter-001",
-                    "target_date": date,
-                    "body": {
-                        "lead": "Today's key developments...",
-                        "sections": [
-                            {
-                                "key": "top3",
-                                "title": "Top Stories",
-                                "bullets": ["Story A"]
-                            }
-                        ]
+            get({
+                let state = state.clone();
+                move |Path(date): Path<String>| {
+                    let state = state.clone();
+                    async move {
+                        let current = state.provider_state.read().unwrap().clone();
+                        let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok();
+                        let fixture =
+                            morning_letter_fixture_for_state(current.as_deref(), parsed_date);
+                        let now = DateTime::parse_from_rfc3339("2026-09-22T07:00:00Z")
+                            .unwrap()
+                            .with_timezone(&Utc);
+                        get_morning_letter_by_date_impl(
+                            &fixture,
+                            &date,
+                            chrono::Duration::hours(3),
+                            now,
+                        )
+                        .await
                     }
-                }))
+                }
             }),
         )
         // alt-backend-recap-worker.json
+        .route(
+            "/v1/recaps/3days",
+            get({
+                let state = state.clone();
+                move || {
+                    let state = state.clone();
+                    async move {
+                        let current = state.provider_state.read().unwrap().clone();
+                        let fixture = three_day_recap_fixture_for_state(current.as_deref());
+                        let now = DateTime::parse_from_rfc3339("2026-09-22T18:00:00Z")
+                            .unwrap()
+                            .with_timezone(&Utc);
+                        get_3days_recap_impl(&fixture, chrono::Duration::hours(30), now).await
+                    }
+                }
+            }),
+        )
+        .route(
+            "/v1/pulse/latest",
+            get({
+                let state = state.clone();
+                move || {
+                    let state = state.clone();
+                    async move {
+                        let dao = VerificationPulseDao {
+                            provider_state: state.provider_state.clone(),
+                        };
+                        let now = DateTime::parse_from_rfc3339("2026-09-22T18:00:00Z")
+                            .unwrap()
+                            .with_timezone(&Utc);
+                        get_latest_pulse_impl(&dao, None, chrono::Duration::hours(30), now).await
+                    }
+                }
+            }),
+        )
         .route(
             "/v1/topic-cards",
             get({
@@ -419,7 +888,10 @@ fn stub_router_with_state(state: StubState) -> Router {
                         let dao = VerificationCardsDao {
                             provider_state: state.provider_state.clone(),
                         };
-                        get_topic_cards_impl(&dao).await
+                        let now = DateTime::parse_from_rfc3339("2026-09-22T18:00:00Z")
+                            .unwrap()
+                            .with_timezone(&Utc);
+                        get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), now).await
                     }
                 }
             }),
@@ -683,6 +1155,56 @@ mod evidence_tests {
         let actual = json!({ "count": "10" });
         assert_shape_matches(&actual, &expected, "$");
     }
+
+    #[tokio::test]
+    async fn provider_states_serve_surface_status_and_c6_degradation_reasons() {
+        let addr = start_stub_server().await;
+
+        set_provider_state(
+            addr,
+            "a completed 3-day recap job with one extractive genre exists",
+        )
+        .await;
+        let recap_body = verify_interaction(addr, "GET", "/v1/recaps/3days", 200, None).await;
+        assert_eq!(
+            recap_body["surface_status"]["degradation_reasons"][0]["code"],
+            "extractive_genres"
+        );
+
+        set_provider_state(
+            addr,
+            "a succeeded evening pulse generation with fallback exists",
+        )
+        .await;
+        let pulse_body = verify_interaction(addr, "GET", "/v1/pulse/latest", 200, None).await;
+        assert_eq!(
+            pulse_body["surface_status"]["degradation_reasons"][0]["code"],
+            "pulse_fallback"
+        );
+
+        set_provider_state(addr, "a degraded morning letter version exists").await;
+        let morning_body =
+            verify_interaction(addr, "GET", "/v1/morning/letters/latest", 200, None).await;
+        assert_eq!(
+            morning_body["surface_status"]["degradation_reasons"][0]["code"],
+            "placeholder_output"
+        );
+
+        set_provider_state(
+            addr,
+            "a failed topic cards run is newer than the latest completed run",
+        )
+        .await;
+        let cards_body = verify_interaction(addr, "GET", "/v1/topic-cards", 200, None).await;
+        assert!(
+            !cards_body.as_object().unwrap().contains_key("latest_run"),
+            "top-level latest_run must not be present on /v1/topic-cards"
+        );
+        assert_eq!(
+            cards_body["surface_status"]["latest_run"]["status"],
+            "failed"
+        );
+    }
 }
 
 #[tokio::test]
@@ -828,6 +1350,14 @@ async fn verify_alt_backend_pact() {
                     body["cards"][0]["why_ja"].is_string(),
                     "expected why_ja string for state: {state_name}"
                 );
+                assert!(
+                    !body.as_object().unwrap().contains_key("latest_run"),
+                    "top-level latest_run must not exist for state: {state_name}"
+                );
+                assert!(
+                    body["surface_status"]["latest_run"].is_object(),
+                    "expected surface_status.latest_run object for state: {state_name}"
+                );
             }
             "a completed cards job whose card has no genre and no why" => {
                 assert!(
@@ -850,6 +1380,14 @@ async fn verify_alt_backend_pact() {
                     body["cards"][0]["continues_card_id"].is_null(),
                     "expected null continues_card_id for state: {state_name}"
                 );
+                assert!(
+                    !body.as_object().unwrap().contains_key("latest_run"),
+                    "top-level latest_run must not exist for state: {state_name}"
+                );
+                assert!(
+                    body["surface_status"]["latest_run"].is_object(),
+                    "expected surface_status.latest_run object for state: {state_name}"
+                );
             }
             "no cards job exists" => {
                 assert!(
@@ -860,6 +1398,14 @@ async fn verify_alt_backend_pact() {
                     body["cards"],
                     json!([]),
                     "expected empty cards for state: {state_name}"
+                );
+                assert!(
+                    !body.as_object().unwrap().contains_key("latest_run"),
+                    "top-level latest_run must not exist for state: {state_name}"
+                );
+                assert!(
+                    body["surface_status"].is_null(),
+                    "expected null surface_status for state: {state_name}"
                 );
             }
             "a failed topic cards run is newer than the latest completed run" => {
@@ -872,12 +1418,46 @@ async fn verify_alt_backend_pact() {
                     "expected non-empty cards for state: {state_name}"
                 );
                 assert!(
-                    body["latest_run"].is_object(),
-                    "expected latest_run object for state: {state_name}"
+                    !body.as_object().unwrap().contains_key("latest_run"),
+                    "top-level latest_run must not exist for state: {state_name}"
+                );
+                assert!(
+                    body["surface_status"]["latest_run"].is_object(),
+                    "expected surface_status.latest_run object for state: {state_name}"
                 );
                 assert_eq!(
-                    body["latest_run"]["status"], "failed",
-                    "expected latest_run status to be failed for state: {state_name}"
+                    body["surface_status"]["latest_run"]["status"], "failed",
+                    "expected surface_status.latest_run status to be failed for state: {state_name}"
+                );
+            }
+            "a completed 3-day recap job with one extractive genre exists" => {
+                assert!(
+                    body["surface_status"].is_object(),
+                    "expected surface_status object for state: {state_name}"
+                );
+                assert_eq!(
+                    body["surface_status"]["degradation_reasons"][0]["code"], "extractive_genres",
+                    "expected extractive_genres reason for state: {state_name}"
+                );
+            }
+            "a succeeded evening pulse generation with fallback exists" => {
+                assert!(
+                    body["surface_status"].is_object(),
+                    "expected surface_status object for state: {state_name}"
+                );
+                assert_eq!(
+                    body["surface_status"]["degradation_reasons"][0]["code"], "pulse_fallback",
+                    "expected pulse_fallback reason for state: {state_name}"
+                );
+            }
+            "a degraded morning letter version exists" => {
+                assert!(
+                    body["surface_status"].is_object(),
+                    "expected surface_status object for state: {state_name}"
+                );
+                assert_eq!(
+                    body["surface_status"]["degradation_reasons"][0]["code"], "placeholder_output",
+                    "expected placeholder_output reason for state: {state_name}"
                 );
             }
             unknown => panic!("unrecognised provider state in verify_alt_backend_pact: {unknown}"),

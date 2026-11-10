@@ -202,6 +202,20 @@ export const CONNECT_EVENING_PULSE = {
 			sourceNames: ["TechNews", "AIDaily"],
 		},
 	],
+	surfaceStatus: {
+		generatedAt: new Date().toISOString(),
+		windowStart: "2026-01-12T00:00:00Z",
+		windowEnd: "2026-01-15T00:00:00Z",
+		isStale: false,
+		staleAfter: new Date(Date.now() + 30 * 60 * 60 * 1000).toISOString(),
+		latestRun: {
+			jobId: "pulse-job-123",
+			status: "completed",
+			kickedAt: "2026-01-15T12:00:00Z",
+			updatedAt: "2026-01-15T12:05:00Z",
+		},
+		degradationReasons: [],
+	},
 };
 
 // =============================================================================

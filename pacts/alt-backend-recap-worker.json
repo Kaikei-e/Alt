@@ -4,6 +4,780 @@
   },
   "interactions": [
     {
+      "description": "a request for 3-day recap with an extractive genre",
+      "providerStates": [
+        {
+          "name": "a completed 3-day recap job with one extractive genre exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/v1/recaps/3days"
+      },
+      "response": {
+        "body": {
+          "executed_at": "2026-09-22T17:05:00Z",
+          "genres": [
+            {
+              "article_count": 10,
+              "bullets": [
+                "Extractive bullet."
+              ],
+              "cluster_count": 2,
+              "genre": "technology",
+              "summary": "Extractive summary excerpt.",
+              "top_terms": [
+                "ai"
+              ]
+            }
+          ],
+          "job_id": "11111111-2222-3333-4444-555555555555",
+          "surface_status": {
+            "degradation_reasons": [
+              {
+                "code": "extractive_genres",
+                "detail": "1 of 1 genres are extractive excerpts, not AI summaries"
+              }
+            ],
+            "generated_at": "2026-09-22T17:05:00Z",
+            "is_stale": false,
+            "latest_run": {
+              "job_id": "11111111-2222-3333-4444-555555555555",
+              "kicked_at": "2026-09-22T17:00:00Z",
+              "status": "completed",
+              "updated_at": "2026-09-22T17:05:00Z"
+            },
+            "stale_after": "2026-09-23T23:05:00Z",
+            "window_end": "2026-09-22T17:00:00Z",
+            "window_start": "2026-09-19T17:00:00Z"
+          },
+          "total_articles": 42,
+          "window_end": "2026-09-22T17:00:00Z",
+          "window_start": "2026-09-19T17:00:00Z"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=UTF-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.executed_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.genres": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.genres[*].article_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.genres[*].bullets": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.genres[*].cluster_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.genres[*].genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.genres[*].summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.genres[*].top_terms": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.degradation_reasons[0].detail": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.generated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.is_stale": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.kicked_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.updated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.stale_after": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_end": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_start": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.total_articles": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.window_end": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.window_start": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request for latest evening pulse with fallback",
+      "providerStates": [
+        {
+          "name": "a succeeded evening pulse generation with fallback exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/v1/pulse/latest"
+      },
+      "response": {
+        "body": {
+          "date": "2026-09-22",
+          "generated_at": "2026-09-22T17:05:00Z",
+          "job_id": "11111111-2222-3333-4444-555555555555",
+          "status": "partial",
+          "surface_status": {
+            "degradation_reasons": [
+              {
+                "code": "pulse_fallback",
+                "detail": "fallback level 1"
+              }
+            ],
+            "generated_at": "2026-09-22T17:05:00Z",
+            "is_stale": false,
+            "latest_run": {
+              "job_id": "11111111-2222-3333-4444-555555555555",
+              "kicked_at": "2026-09-22T17:00:00Z",
+              "status": "completed",
+              "updated_at": "2026-09-22T17:05:00Z"
+            },
+            "stale_after": "2026-09-23T23:05:00Z",
+            "window_end": "2026-09-22T17:00:00Z",
+            "window_start": "2026-09-19T17:00:00Z"
+          },
+          "topics": [
+            {
+              "article_count": 5,
+              "article_ids": [
+                "44444444-5555-6666-7777-888888888888"
+              ],
+              "cluster_id": 1,
+              "rationale": {
+                "confidence": "medium",
+                "text": "Fallback selection"
+              },
+              "role": "need_to_know",
+              "source_count": 3,
+              "time_ago": "2h ago",
+              "title": "Top cluster headline"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=UTF-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.date": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.generated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.degradation_reasons[0].detail": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.generated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.is_stale": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.kicked_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.updated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.stale_after": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_end": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_start": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.topics": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.topics[*].article_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.topics[*].article_ids": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.topics[*].cluster_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.topics[*].rationale": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.topics[*].rationale.confidence": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.topics[*].rationale.text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.topics[*].role": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.topics[*].source_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.topics[*].time_ago": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.topics[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request for latest morning letter when degraded",
+      "providerStates": [
+        {
+          "name": "a degraded morning letter version exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/v1/morning/letters/latest"
+      },
+      "response": {
+        "body": {
+          "body": {
+            "generated_at": "2026-09-22T06:00:00Z",
+            "lead": "Degraded morning letter lead.",
+            "sections": [
+              {
+                "bullets": [
+                  "Story A"
+                ],
+                "key": "top3",
+                "title": "Top Stories"
+              }
+            ]
+          },
+          "created_at": "2026-09-22T06:00:00Z",
+          "edition_timezone": "Asia/Tokyo",
+          "etag": "\"11111111-2222-3333-4444-555555555555:1\"",
+          "generation_revision": 1,
+          "id": "11111111-2222-3333-4444-555555555555",
+          "is_degraded": true,
+          "schema_version": 1,
+          "surface_status": {
+            "degradation_reasons": [
+              {
+                "code": "placeholder_output",
+                "detail": ""
+              }
+            ],
+            "generated_at": "2026-09-22T06:00:00Z",
+            "is_stale": false,
+            "latest_run": {
+              "job_id": "11111111-2222-3333-4444-555555555555",
+              "kicked_at": "2026-09-22T05:55:00Z",
+              "status": "completed",
+              "updated_at": "2026-09-22T06:00:00Z"
+            },
+            "stale_after": "2026-09-22T09:00:00Z",
+            "window_end": "2026-09-22T06:00:00Z",
+            "window_start": "2026-09-19T06:00:00Z"
+          },
+          "target_date": "2026-09-22"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=UTF-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.body.generated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.body.lead": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.body.sections": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.body.sections[*].bullets": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.body.sections[*].key": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.body.sections[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.created_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.edition_timezone": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.etag": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.generation_revision": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.is_degraded": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.schema_version": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.degradation_reasons[0].detail": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.generated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.is_stale": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.kicked_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.updated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.stale_after": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_end": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_start": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.target_date": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a request for topic cards",
       "providerStates": [
         {
@@ -48,11 +822,19 @@
             "params_version": "cards-v0.2",
             "to": "2026-09-22T17:00:00Z"
           },
-          "latest_run": {
-            "job_id": "11111111-2222-3333-4444-555555555555",
-            "kicked_at": "2026-09-22T17:00:00Z",
-            "status": "completed",
-            "updated_at": "2026-09-22T17:05:00Z"
+          "surface_status": {
+            "degradation_reasons": [],
+            "generated_at": "2026-09-22T17:05:00Z",
+            "is_stale": false,
+            "latest_run": {
+              "job_id": "11111111-2222-3333-4444-555555555555",
+              "kicked_at": "2026-09-22T17:00:00Z",
+              "status": "completed",
+              "updated_at": "2026-09-22T17:05:00Z"
+            },
+            "stale_after": "2026-09-23T23:05:00Z",
+            "window_end": "2026-09-22T17:00:00Z",
+            "window_start": "2026-09-19T17:00:00Z"
           }
         },
         "headers": {
@@ -258,7 +1040,7 @@
                 }
               ]
             },
-            "$.latest_run": {
+            "$.surface_status.degradation_reasons": {
               "combine": "AND",
               "matchers": [
                 {
@@ -266,16 +1048,7 @@
                 }
               ]
             },
-            "$.latest_run.job_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                }
-              ]
-            },
-            "$.latest_run.kicked_at": {
+            "$.surface_status.generated_at": {
               "combine": "AND",
               "matchers": [
                 {
@@ -283,16 +1056,55 @@
                 }
               ]
             },
-            "$.latest_run.status": {
+            "$.surface_status.is_stale": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "regex",
-                  "regex": "^(pending|running|completed|failed)$"
+                  "match": "type"
                 }
               ]
             },
-            "$.latest_run.updated_at": {
+            "$.surface_status.latest_run.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.kicked_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.updated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.stale_after": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_end": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_start": {
               "combine": "AND",
               "matchers": [
                 {
@@ -331,7 +1143,7 @@
         "body": {
           "cards": [],
           "job": null,
-          "latest_run": null
+          "surface_status": null
         },
         "headers": {
           "Content-Type": "application/json; charset=UTF-8"
@@ -397,11 +1209,19 @@
             "params_version": "cards-v0.2",
             "to": "2026-09-22T17:00:00Z"
           },
-          "latest_run": {
-            "job_id": "11111111-2222-3333-4444-555555555555",
-            "kicked_at": "2026-09-22T17:00:00Z",
-            "status": "completed",
-            "updated_at": "2026-09-22T17:05:00Z"
+          "surface_status": {
+            "degradation_reasons": [],
+            "generated_at": "2026-09-22T17:05:00Z",
+            "is_stale": false,
+            "latest_run": {
+              "job_id": "11111111-2222-3333-4444-555555555555",
+              "kicked_at": "2026-09-22T17:00:00Z",
+              "status": "completed",
+              "updated_at": "2026-09-22T17:05:00Z"
+            },
+            "stale_after": "2026-09-23T23:05:00Z",
+            "window_end": "2026-09-22T17:00:00Z",
+            "window_start": "2026-09-19T17:00:00Z"
           }
         },
         "headers": {
@@ -591,7 +1411,7 @@
                 }
               ]
             },
-            "$.latest_run": {
+            "$.surface_status.degradation_reasons": {
               "combine": "AND",
               "matchers": [
                 {
@@ -599,16 +1419,7 @@
                 }
               ]
             },
-            "$.latest_run.job_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                }
-              ]
-            },
-            "$.latest_run.kicked_at": {
+            "$.surface_status.generated_at": {
               "combine": "AND",
               "matchers": [
                 {
@@ -616,16 +1427,55 @@
                 }
               ]
             },
-            "$.latest_run.status": {
+            "$.surface_status.is_stale": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "regex",
-                  "regex": "^(pending|running|completed|failed)$"
+                  "match": "type"
                 }
               ]
             },
-            "$.latest_run.updated_at": {
+            "$.surface_status.latest_run.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.kicked_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.updated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.stale_after": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_end": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_start": {
               "combine": "AND",
               "matchers": [
                 {
@@ -694,11 +1544,19 @@
             "params_version": "cards-v0.2",
             "to": "2026-09-22T17:00:00Z"
           },
-          "latest_run": {
-            "job_id": "99999999-8888-7777-6666-555555555555",
-            "kicked_at": "2026-09-22T18:00:00Z",
-            "status": "failed",
-            "updated_at": "2026-09-22T18:02:00Z"
+          "surface_status": {
+            "degradation_reasons": [],
+            "generated_at": "2026-09-22T17:05:00Z",
+            "is_stale": false,
+            "latest_run": {
+              "job_id": "99999999-8888-7777-6666-555555555555",
+              "kicked_at": "2026-09-22T18:00:00Z",
+              "status": "failed",
+              "updated_at": "2026-09-22T18:02:00Z"
+            },
+            "stale_after": "2026-09-23T23:05:00Z",
+            "window_end": "2026-09-22T17:00:00Z",
+            "window_start": "2026-09-19T17:00:00Z"
           }
         },
         "headers": {
@@ -904,7 +1762,7 @@
                 }
               ]
             },
-            "$.latest_run": {
+            "$.surface_status.degradation_reasons": {
               "combine": "AND",
               "matchers": [
                 {
@@ -912,16 +1770,7 @@
                 }
               ]
             },
-            "$.latest_run.job_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                }
-              ]
-            },
-            "$.latest_run.kicked_at": {
+            "$.surface_status.generated_at": {
               "combine": "AND",
               "matchers": [
                 {
@@ -929,16 +1778,55 @@
                 }
               ]
             },
-            "$.latest_run.status": {
+            "$.surface_status.is_stale": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "regex",
-                  "regex": "^failed$"
+                  "match": "type"
                 }
               ]
             },
-            "$.latest_run.updated_at": {
+            "$.surface_status.latest_run.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.kicked_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.latest_run.updated_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.stale_after": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_end": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.surface_status.window_start": {
               "combine": "AND",
               "matchers": [
                 {

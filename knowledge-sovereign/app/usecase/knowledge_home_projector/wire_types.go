@@ -116,13 +116,14 @@ type clearSupersedeWrite struct {
 }
 
 type digestWrite struct {
-	UserID               uuid.UUID `json:"user_id"`
-	DigestDate           string    `json:"digest_date"`
-	NewArticles          int       `json:"new_articles"`
-	SummarizedArticles   int       `json:"summarized_articles"`
-	UnsummarizedArticles int       `json:"unsummarized_articles"`
-	TopTags              []string  `json:"top_tags"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	UserID                uuid.UUID `json:"user_id"`
+	DigestDate            string    `json:"digest_date"`
+	NewArticles           int       `json:"new_articles"`
+	SummarizedArticles    int       `json:"summarized_articles"`
+	UnsummarizedArticles  int       `json:"unsummarized_articles"`
+	TopTags               []string  `json:"top_tags"`
+	EveningPulseAvailable bool      `json:"evening_pulse_available"`
+	UpdatedAt             time.Time `json:"updated_at"`
 	// LastEventSeq is the folding event's own knowledge_events.event_seq.
 	// The counters above are additive deltas, so sovereign_db's merge-safe
 	// UPSERT needs a monotonic discriminator to tell "already folded" from
@@ -232,4 +233,12 @@ type recallSnoozedPayload struct {
 
 type recallDismissedPayload struct {
 	ItemKey string `json:"item_key"`
+}
+
+type eveningPulseGeneratedPayload struct {
+	JobID         string `json:"job_id"`
+	TargetDate    string `json:"target_date"`
+	Version       string `json:"version"`
+	TopicCount    int    `json:"topic_count"`
+	FallbackLevel int    `json:"fallback_level"`
 }

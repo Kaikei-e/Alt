@@ -6,6 +6,7 @@ import (
 	recapv2 "alt/gen/proto/alt/recap/v2"
 
 	"alt/domain"
+	"alt/orchestrator/connect/v2/surfacestatus"
 	"alt/utils/safeconv"
 )
 
@@ -58,6 +59,7 @@ func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayReca
 		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
 		TotalArticles: safeconv.Int32(recap.TotalArticles),
 		Genres:        genres,
+		SurfaceStatus: surfacestatus.ToProto(recap.SurfaceStatus),
 	}
 }
 
@@ -70,7 +72,8 @@ func domainToProtoTopicCards(resp *domain.RecapCardsResponse) *recapv2.GetTopicC
 	}
 
 	protoResp := &recapv2.GetTopicCardsResponse{
-		Cards: make([]*recapv2.RecapCard, 0, len(resp.Cards)),
+		Cards:         make([]*recapv2.RecapCard, 0, len(resp.Cards)),
+		SurfaceStatus: surfacestatus.ToProto(resp.SurfaceStatus),
 	}
 
 	if resp.Job != nil {
@@ -82,15 +85,6 @@ func domainToProtoTopicCards(resp *domain.RecapCardsResponse) *recapv2.GetTopicC
 			ParamsVersion: resp.Job.ParamsVersion,
 			CardsSelected: safeconv.Int32(resp.Job.CardsSelected),
 			Degraded:      resp.Job.Degraded,
-		}
-	}
-
-	if resp.LatestRun != nil {
-		protoResp.LatestRun = &recapv2.RecapCardsRun{
-			JobId:     resp.LatestRun.JobID,
-			Status:    resp.LatestRun.Status,
-			KickedAt:  resp.LatestRun.KickedAt,
-			UpdatedAt: resp.LatestRun.UpdatedAt,
 		}
 	}
 

@@ -99,9 +99,9 @@ async def test_semaphore_queues_requests(mock_config, mock_driver):
         # Send 3 concurrent requests
         start_time = asyncio.get_event_loop().time()
         results = await asyncio.gather(
-            gateway.generate("Prompt 1"),
-            gateway.generate("Prompt 2"),
-            gateway.generate("Prompt 3"),
+            gateway.generate("<|turn>user\nPrompt 1<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 2<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 3<turn|>\n<|turn>model\n"),
         )
         end_time = asyncio.get_event_loop().time()
 
@@ -151,9 +151,9 @@ async def test_semaphore_allows_concurrent_requests_when_configured(
         # Send 3 concurrent requests with concurrency=2
         start_time = asyncio.get_event_loop().time()
         results = await asyncio.gather(
-            gateway.generate("Prompt 1"),
-            gateway.generate("Prompt 2"),
-            gateway.generate("Prompt 3"),
+            gateway.generate("<|turn>user\nPrompt 1<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 2<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 3<turn|>\n<|turn>model\n"),
         )
         end_time = asyncio.get_event_loop().time()
 
@@ -232,14 +232,14 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
 
         mock_driver.generate = tracked_generate
 
-        # Submit 5 requests concurrently using gather
+        # Send 5 requests concurrently using gather
         # They will be queued in the order they are created
         tasks = [
-            gateway.generate("Prompt 1"),
-            gateway.generate("Prompt 2"),
-            gateway.generate("Prompt 3"),
-            gateway.generate("Prompt 4"),
-            gateway.generate("Prompt 5"),
+            gateway.generate("<|turn>user\nPrompt 1<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 2<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 3<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 4<turn|>\n<|turn>model\n"),
+            gateway.generate("<|turn>user\nPrompt 5<turn|>\n<|turn>model\n"),
         ]
 
         # Execute all tasks concurrently
@@ -288,7 +288,9 @@ async def test_high_priority_bypasses_low_priority_queue(mock_config, mock_drive
         await gateway.initialize()
 
         # Verify high priority parameter is handled
-        result = await gateway.generate("Test prompt", priority="high")
+        result = await gateway.generate(
+            "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", priority="high"
+        )
 
         assert isinstance(result, LLMGenerateResponse)
         assert result.response == "Test response"
@@ -308,7 +310,9 @@ async def test_low_priority_default(mock_config, mock_driver):
         await gateway.initialize()
 
         # Default priority should be low
-        result = await gateway.generate("Test prompt")
+        result = await gateway.generate(
+            "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
+        )
 
         assert isinstance(result, LLMGenerateResponse)
         assert result.response == "Test response"
@@ -345,7 +349,7 @@ async def test_ttft_metrics_logged_with_cold_start_warning(
         }
         mock_driver.generate = AsyncMock(return_value=cold_start_response)
 
-        await gateway.generate("Test prompt")
+        await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n")
 
         # Verify cold start warning was logged
         warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
@@ -390,7 +394,7 @@ async def test_ttft_metrics_logged_without_cold_start_warning(
         }
         mock_driver.generate = AsyncMock(return_value=hot_response)
 
-        await gateway.generate("Test prompt")
+        await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n")
 
         # Verify no cold start warning was logged
         warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
@@ -438,7 +442,7 @@ async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
         }
         mock_driver.generate = AsyncMock(return_value=response_with_timing)
 
-        await gateway.generate("Test prompt")
+        await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n")
 
         # Verify TTFT breakdown is logged at DEBUG level
         debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
@@ -508,7 +512,7 @@ async def test_generate_non_streaming_info_log_volume_bounded(
         # Only capture logging from the round trip itself, not gateway startup.
         caplog.clear()
         caplog.set_level(logging.INFO)
-        await gateway.generate("Test prompt")
+        await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n")
 
         info_records = [r for r in caplog.records if r.levelno == logging.INFO]
         assert len(info_records) <= 2, (
@@ -556,7 +560,9 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
 
             # Call generate with stream=True
             # This should acquire the semaphore IMMEDIATELY (before iteration)
-            result = await gateway.generate("Test prompt", stream=True)
+            result = await gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True
+            )
 
             # Narrow union type: streaming returns AsyncIterator
             assert not isinstance(result, LLMGenerateResponse)
@@ -620,7 +626,9 @@ async def test_streaming_semaphore_released_on_early_termination(
             initial_rt_available = gateway._semaphore._rt_available
 
             # Call generate with stream=True
-            result = await gateway.generate("Test prompt", stream=True)
+            result = await gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True
+            )
 
             # Narrow union type: streaming returns AsyncIterator
             assert not isinstance(result, LLMGenerateResponse)
@@ -682,7 +690,9 @@ async def test_streaming_high_priority_immediate_acquisition(
             await gateway.initialize()
 
             # Call generate with stream=True
-            result = await gateway.generate("Test prompt", stream=True)
+            result = await gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True
+            )
 
             # Narrow union type: streaming returns AsyncIterator
             assert not isinstance(result, LLMGenerateResponse)
@@ -743,7 +753,7 @@ async def test_slow_generation_warning_uses_decode_speed(
         }
         mock_driver.generate = AsyncMock(return_value=normal_decode_response)
 
-        await gateway.generate("Test prompt")
+        await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n")
 
         # Verify NO slow generation warning was logged
         # Old calculation: 70 tokens / 70 seconds = 1 tok/s -> would warn (WRONG)
@@ -790,7 +800,7 @@ async def test_slow_generation_warning_triggers_on_slow_decode(
         }
         mock_driver.generate = AsyncMock(return_value=slow_decode_response)
 
-        await gateway.generate("Test prompt")
+        await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n")
 
         # Verify slow generation warning WAS logged
         warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
@@ -840,7 +850,7 @@ async def test_slow_generation_warning_skipped_for_short_eval_count(
         }
         mock_driver.generate = AsyncMock(return_value=short_response)
 
-        await gateway.generate("Test prompt")
+        await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n")
 
         # Verify NO slow generation warning was logged
         # Old behavior: would warn because 7 / 2 = 3.5 tok/s < 30
@@ -885,16 +895,20 @@ async def test_generate_propagates_queue_full_error(mock_config, mock_driver):
         mock_driver.generate = slow_generate
 
         # Acquire slot with first request
-        task1 = asyncio.create_task(gateway.generate("Prompt 1"))
+        task1 = asyncio.create_task(
+            gateway.generate("<|turn>user\nPrompt 1<turn|>\n<|turn>model\n")
+        )
         await asyncio.sleep(0.05)
 
         # Queue one request (fills max_queue_depth=1)
-        task2 = asyncio.create_task(gateway.generate("Prompt 2"))
+        task2 = asyncio.create_task(
+            gateway.generate("<|turn>user\nPrompt 2<turn|>\n<|turn>model\n")
+        )
         await asyncio.sleep(0.05)
 
         # Third request should get QueueFullError
         with pytest.raises(QueueFullError):
-            await gateway.generate("Prompt 3")
+            await gateway.generate("<|turn>user\nPrompt 3<turn|>\n<|turn>model\n")
 
         # Cleanup
         task1.cancel()
@@ -985,7 +999,9 @@ async def test_generate_raw_skips_semaphore(mock_config, mock_driver):
         initial_rt = gateway._semaphore._rt_available
 
         # generate_raw should work without acquiring semaphore
-        result = await gateway.generate_raw("Test prompt")
+        result = await gateway.generate_raw(
+            "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
+        )
 
         # Semaphore state should be unchanged
         assert gateway._semaphore._rt_available == initial_rt
@@ -1011,7 +1027,7 @@ async def test_generate_filters_runner_startup_params(mock_config, mock_driver):
         await gateway.initialize()
 
         await gateway.generate(
-            "Test prompt",
+            "<|turn>user\nTest prompt<turn|>\n<|turn>model\n",
             options={
                 "num_ctx": 8192,
                 "num_batch": 999,
@@ -1044,7 +1060,9 @@ async def test_generate_keeps_pinned_num_gpu(mock_config, mock_driver):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
-        await gateway.generate("Test prompt", options={"num_gpu": 0})
+        await gateway.generate(
+            "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", options={"num_gpu": 0}
+        )
 
         sent_options = mock_driver.generate.call_args.args[0]["options"]
         assert sent_options["num_gpu"] == 99
@@ -1062,7 +1080,7 @@ async def test_generate_raw_filters_runner_startup_params(mock_config, mock_driv
         await gateway.initialize()
 
         await gateway.generate_raw(
-            "Test prompt",
+            "<|turn>user\nTest prompt<turn|>\n<|turn>model\n",
             options={
                 "num_ctx": 8192,
                 "num_batch": 999,
@@ -1186,7 +1204,9 @@ async def test_caller_cancellation_cancels_children_in_generate_with_cancellatio
 
         baseline_tasks = set(asyncio.all_tasks())
         outer_task = asyncio.create_task(
-            gateway.generate("Test prompt", priority="low")
+            gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", priority="low"
+            )
         )
 
         await generate_started.wait()
@@ -1227,16 +1247,12 @@ async def test_caller_cancellation_cancels_children_in_generate_with_cancellatio
             "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
             "<|turn>user\nHello world<turn|>\n<|turn>model\n",
         ),
-        (
-            "  hello  ",
-            "hello",
-        ),
     ],
 )
 async def test_generate_streaming_prompt_handling(
     mock_config, input_prompt, expected_prompt
 ):
-    """Test that streaming generate payload preserves model-turn newline or strips plain prompts."""
+    """Test that streaming generate payload preserves model-turn newline."""
     captured_payloads = []
 
     async def mock_stream(payload):
@@ -1272,14 +1288,10 @@ async def test_generate_streaming_prompt_handling(
             "<|turn>user\nHello world<turn|>\n<|turn>model\n\n  ",
             "<|turn>user\nHello world<turn|>\n<|turn>model\n",
         ),
-        (
-            "  hello  ",
-            "hello",
-        ),
     ],
 )
 async def test_generate_raw_prompt_handling(mock_config, input_prompt, expected_prompt):
-    """Test that generate_raw payload preserves model-turn newline or strips plain prompts."""
+    """Test that generate_raw payload preserves model-turn newline."""
     captured_payloads = []
 
     async def mock_generate(payload, *args, **kwargs):
@@ -1334,7 +1346,9 @@ async def test_streaming_aclose_closes_inner_driver_stream_without_gc(
         gc_was_enabled = gc.isenabled()
         gc.disable()
         try:
-            result = await gateway.generate("Test prompt", stream=True)
+            result = await gateway.generate(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n", stream=True
+            )
             assert not isinstance(result, LLMGenerateResponse)
             first = await anext(result)
             assert first.response == "chunk0"
@@ -1376,7 +1390,9 @@ async def test_generate_raw_retries_on_oom_exception_and_reraises_non_oom(
                 ]
             )
 
-            result = await gateway.generate_raw("Test prompt")
+            result = await gateway.generate_raw(
+                "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
+            )
 
             assert result.response == "ok"
             assert result.model == "gemma4-e4b-12k"
@@ -1390,6 +1406,8 @@ async def test_generate_raw_retries_on_oom_exception_and_reraises_non_oom(
                 side_effect=RuntimeError("Ollama API error: HTTP 500 - internal error")
             )
             with pytest.raises(RuntimeError, match="internal error"):
-                await gateway.generate_raw("Test prompt")
+                await gateway.generate_raw(
+                    "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
+                )
         finally:
             await gateway.cleanup()

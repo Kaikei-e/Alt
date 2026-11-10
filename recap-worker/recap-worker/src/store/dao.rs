@@ -12,6 +12,7 @@ pub mod output;
 pub mod pulse;
 pub mod stage;
 pub mod subworker;
+pub mod surface;
 pub mod types;
 
 // New modular architecture

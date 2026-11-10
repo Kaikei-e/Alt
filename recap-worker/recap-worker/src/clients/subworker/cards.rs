@@ -227,37 +227,43 @@ pub struct SubworkerCardsClient {
     base_url: Url,
     embed_timeout: Duration,
     cluster_timeout: Duration,
-    admin_token: Option<String>,
     batch_size: usize,
     retry_config: RetryConfig,
 }
 
 impl SubworkerCardsClient {
-    pub(crate) fn new(endpoint: impl Into<String>) -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(DEFAULT_CLUSTER_TIMEOUT_SECS))
-            .build()
-            .map_err(|e| {
-                RecapError::Clustering(format!("failed to build subworker cards HTTP client: {e}"))
-            })?;
-        Self::new_with_client(endpoint, client)
+    pub(crate) fn new(endpoint: impl Into<String>, admin_token: Option<String>) -> Result<Self> {
+        let builder = Client::builder().timeout(Duration::from_secs(DEFAULT_CLUSTER_TIMEOUT_SECS));
+        Self::new_with_client(endpoint, builder, admin_token)
     }
 
-    pub(crate) fn new_with_client(endpoint: impl Into<String>, client: Client) -> Result<Self> {
+    pub(crate) fn new_with_client(
+        endpoint: impl Into<String>,
+        client_builder: reqwest::ClientBuilder,
+        admin_token: Option<String>,
+    ) -> Result<Self> {
         let endpoint_str = endpoint.into();
         let base_url = Url::parse(&endpoint_str).map_err(|e| {
             RecapError::Clustering(format!("invalid subworker base URL '{endpoint_str}': {e}"))
         })?;
+        let headers = super::build_default_headers(admin_token.as_deref()).map_err(|e| {
+            RecapError::Clustering(format!("failed to build subworker cards auth headers: {e}"))
+        })?;
+        let client = client_builder
+            .default_headers(headers)
+            .build()
+            .map_err(|e| {
+                RecapError::Clustering(format!("failed to build subworker cards HTTP client: {e}"))
+            })?;
         Ok(Self::new_with_url(base_url, client))
     }
 
-    pub(crate) fn new_with_url(base_url: Url, client: Client) -> Self {
+    fn new_with_url(base_url: Url, client: Client) -> Self {
         Self {
             client,
             base_url,
             embed_timeout: Duration::from_secs(DEFAULT_EMBED_TIMEOUT_SECS),
             cluster_timeout: Duration::from_secs(DEFAULT_CLUSTER_TIMEOUT_SECS),
-            admin_token: None,
             batch_size: DEFAULT_EMBED_BATCH_SIZE,
             retry_config: RetryConfig::new(
                 DEFAULT_RETRY_ATTEMPTS,
@@ -267,24 +273,11 @@ impl SubworkerCardsClient {
         }
     }
 
-    #[must_use]
-    pub(crate) fn with_admin_token(mut self, token: Option<String>) -> Self {
-        self.admin_token = token;
-        self
-    }
-
     #[cfg(test)]
     #[must_use]
     pub(crate) fn with_batch_size(mut self, batch_size: usize) -> Self {
         self.batch_size = batch_size;
         self
-    }
-
-    fn apply_auth(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match &self.admin_token {
-            Some(token) => builder.bearer_auth(token),
-            None => builder,
-        }
     }
 
     fn build_endpoint_url(&self, segments: &[&str]) -> Result<Url> {
@@ -356,7 +349,8 @@ impl SubworkerCardsClient {
 
         loop {
             let send_result = self
-                .apply_auth(self.client.post(url.clone()))
+                .client
+                .post(url.clone())
                 .timeout(self.embed_timeout)
                 .json(&request_body)
                 .send()
@@ -427,7 +421,8 @@ impl SubworkerCardsClient {
 
         loop {
             let send_result = self
-                .apply_auth(self.client.post(url.clone()))
+                .client
+                .post(url.clone())
                 .timeout(self.cluster_timeout)
                 .json(req)
                 .send()
@@ -495,7 +490,8 @@ impl SubworkerCardsClient {
 
         loop {
             let send_result = self
-                .apply_auth(self.client.post(url.clone()))
+                .client
+                .post(url.clone())
                 .timeout(self.embed_timeout)
                 .json(req)
                 .send()
@@ -588,7 +584,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let texts = vec!["Headline 1".to_string(), "Headline 2".to_string()];
         let resp = client
             .embed(&texts, true)
@@ -604,7 +601,8 @@ mod tests {
     #[tokio::test]
     async fn test_embed_empty_input_no_request() {
         let server = MockServer::start().await;
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let err = client
             .embed(&[], true)
             .await
@@ -636,7 +634,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let texts: Vec<String> = (0..300).map(|i| format!("Text {i}")).collect();
         let resp = client
             .embed(&texts, true)
@@ -673,7 +672,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri())
+        let client = SubworkerCardsClient::new(server.uri(), None)
             .expect("client creation succeeds")
             .with_batch_size(1);
         let texts = vec!["Text 1".to_string(), "Text 2".to_string()];
@@ -710,7 +709,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri())
+        let client = SubworkerCardsClient::new(server.uri(), None)
             .expect("client creation succeeds")
             .with_batch_size(1);
         let texts = vec!["Text 1".to_string(), "Text 2".to_string()];
@@ -736,7 +735,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let err = client
             .embed(&["   ".to_string()], true)
             .await
@@ -781,7 +781,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let req = ClusterStoriesRequest {
             items: vec![
                 ClusterStoryItem {
@@ -822,7 +823,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let req = ClusterStoriesRequest {
             items: vec![],
             params: StoryClusterParams::default(),
@@ -947,7 +949,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let req = VerifyCardRequest {
             job_id,
             card_id,
@@ -992,7 +995,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri()).expect("client creation succeeds");
+        let client =
+            SubworkerCardsClient::new(server.uri(), None).expect("client creation succeeds");
         let req = VerifyCardRequest {
             job_id: Uuid::new_v4(),
             card_id: Uuid::new_v4(),
@@ -1096,9 +1100,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SubworkerCardsClient::new(server.uri())
-            .expect("client creation succeeds")
-            .with_admin_token(Some(token.to_string()));
+        let client = SubworkerCardsClient::new(server.uri(), Some(token.to_string()))
+            .expect("client creation succeeds");
 
         let embed_resp = client
             .embed(&["Headline 1".to_string()], true)
@@ -1129,5 +1132,42 @@ mod tests {
             .await
             .expect("verify_card should send auth header and succeed");
         assert!(verify_resp.why_hint_present);
+    }
+
+    #[tokio::test]
+    async fn injected_cards_client_preserves_probe_header_and_sends_authorization() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/embed"))
+            .and(header("x-mtls-probe", "mtls-identity-present"))
+            .and(header("authorization", "Bearer test-injected-cards-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "bge-m3",
+                "dim": 4,
+                "embeddings": [[0.1, 0.2, 0.3, 0.4]],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut probe_headers = reqwest::header::HeaderMap::new();
+        probe_headers.insert(
+            reqwest::header::HeaderName::from_static("x-mtls-probe"),
+            reqwest::header::HeaderValue::from_static("mtls-identity-present"),
+        );
+        let builder = Client::builder().default_headers(probe_headers);
+
+        let client = SubworkerCardsClient::new_with_client(
+            server.uri(),
+            builder,
+            Some("test-injected-cards-token".to_string()),
+        )
+        .unwrap();
+
+        let resp = client
+            .embed(&["Headline 1".to_string()], true)
+            .await
+            .expect("injected cards client must preserve probe header and send Authorization");
+        assert_eq!(resp.dim, 4);
     }
 }

@@ -104,7 +104,8 @@
         "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
       ],
       "allowed_events": [
-        "recap.topic_snapshotted.v1"
+        "recap.topic_snapshotted.v1",
+        "recap.evening_pulse_generated.v1"
       ],
       "require_user_token": false,
       "allow_system_scope": false

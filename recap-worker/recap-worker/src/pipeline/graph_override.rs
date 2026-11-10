@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use sqlx::PgPool;
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -21,13 +20,9 @@ pub(crate) struct GraphOverrideSettings {
 
 impl GraphOverrideSettings {
     /// Load from database first, fallback to YAML if not found.
-    pub(crate) async fn load_with_fallback(pool: &PgPool) -> Result<Self, GraphOverrideError> {
-        // Try database first
+    pub(crate) async fn load_with_fallback(dao: &dyn RecapDao) -> Result<Self, GraphOverrideError> {
         tracing::debug!("attempting to load graph override settings from database");
-        match crate::store::dao::RecapDaoImpl::new(pool.clone())
-            .get_latest_worker_config("graph_override")
-            .await
-        {
+        match dao.get_latest_worker_config("graph_override").await {
             Ok(Some(config_json)) => {
                 tracing::debug!("found config in database, parsing JSON");
                 match serde_json::from_value::<GraphOverrideSettings>(config_json) {

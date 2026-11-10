@@ -14,20 +14,45 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from news_creator.domain.errors import UntemplatedRawPromptError
+
 logger = logging.getLogger(__name__)
 
 
+GEMMA_TURN_PREFIX: str = "<|turn>"
+GEMMA_TURN_END: str = "<turn|>"
 GEMMA_MODEL_TURN_HEADER: str = "<|turn>model"
+GEMMA_MODEL_TURN_SUFFIX: str = "<|turn>model\n"
+
+
+def validate_raw_prompt(prompt: str) -> str:
+    """Verify that a raw prompt starts with <|turn> and ends with <|turn>model\\n."""
+    if (
+        not isinstance(prompt, str)
+        or not prompt.startswith(GEMMA_TURN_PREFIX)
+        or not prompt.endswith(GEMMA_MODEL_TURN_SUFFIX)
+        or GEMMA_TURN_END not in prompt
+    ):
+        raise UntemplatedRawPromptError(
+            "Raw Ollama prompts must start with '<|turn>' and end with '<|turn>model\\n'"
+        )
+    return prompt
 
 
 def prepare_raw_prompt(prompt: str) -> str:
     """Strip surrounding whitespace, keeping the newline that ends a Gemma 4 model-turn header."""
+    if not isinstance(prompt, str):
+        raise UntemplatedRawPromptError("prompt cannot be empty")
     stripped = prompt.strip()
+    if not stripped:
+        raise UntemplatedRawPromptError("prompt cannot be empty")
     # Without this newline the model must emit "\n" first; repeat_penalty suppresses it,
     # so <turn|> gets sampled as the first token and the response comes back empty.
     if stripped.endswith(GEMMA_MODEL_TURN_HEADER):
-        return f"{stripped}\n"
-    return stripped
+        candidate = f"{stripped}\n"
+    else:
+        candidate = stripped
+    return validate_raw_prompt(candidate)
 
 
 @dataclass(frozen=True)
@@ -45,6 +70,10 @@ class GeneratePayload:
     stream: bool = False
     raw: bool = True  # Default True for Gemma 4 compatibility
     format: str | dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.raw:
+            validate_raw_prompt(self.prompt)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for Ollama API call.
@@ -123,9 +152,10 @@ class PayloadBuilder:
         Returns:
             Immutable GeneratePayload instance
         """
+        prepared_prompt = prepare_raw_prompt(prompt) if raw else prompt.strip()
         return GeneratePayload(
             model=model,
-            prompt=prepare_raw_prompt(prompt),
+            prompt=prepared_prompt,
             options=options,
             keep_alive=keep_alive,
             stream=stream,

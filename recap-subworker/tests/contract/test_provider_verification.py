@@ -2,24 +2,26 @@
 
 Verifies that recap-subworker fulfills the contracts defined by its consumers:
 - recap-worker (via /v1/classify-runs, /v1/classify-runs/{run_id},
-  /v1/classify/coarse, /v1/runs, /v1/runs/{run_id})
+  /v1/classify/coarse, /v1/extract, /v1/evaluation/genres,
+  /v1/runs, /v1/runs/{run_id}, /v1/embed, /v1/cluster-stories, /v1/verify)
 
 These tests start a real FastAPI app with mocked dependencies
 and verify it against pact contracts. Contracts are loaded from either:
 - Pact Broker (when PACT_BROKER_BASE_URL is set) -- used in CI
 - Local filesystem (fallback) -- used in local development
 
-The clustering run endpoints (/v1/runs, /v1/runs/{run_id}) are mounted
-via the *real* application router (`recap_subworker.app.routers.runs`)
-with its usecase dependencies swapped for in-memory fakes, so verification
-exercises the actual request validation, header requirements, and response
-shape instead of a hand-fabricated stub route.
+The clustering run, preprocessing, evaluation, and topic-card endpoints are
+mounted via the *real* application routers (`recap_subworker.app.routers.*`)
+with their usecase/service dependencies swapped for in-memory fakes, so
+verification exercises the actual request validation, header requirements, and
+response shape instead of hand-fabricated stub routes.
 
 POST /v1/clustering/{run_id} is a temporary legacy-compat stub for the
 frozen pact of recap-worker versions still recorded as deployed in the
 Pact Broker; see the comment at its definition in `_create_provider_app`.
 """
 
+import asyncio
 import logging
 import os
 import socket
@@ -43,11 +45,16 @@ from recap_subworker.app.infra.admin_auth import (
     get_admin_auth_config,
     require_admin_token,
 )
+from recap_subworker.app.routers import evaluation as evaluation_mod
 from recap_subworker.app.routers.embed import router as embed_router
+from recap_subworker.app.routers.evaluation import router as evaluation_router
+from recap_subworker.app.routers.preprocessing import router as preprocessing_router
 from recap_subworker.app.routers.runs import router as runs_router
 from recap_subworker.app.routers.story_clustering import router as story_clustering_router
 from recap_subworker.app.routers.verify import router as verify_router
 from recap_subworker.db.dao import RunRecord
+from recap_subworker.infra.config import Settings
+from recap_subworker.infra.path_validation import require_existing_path
 from recap_subworker.port.embedder import EmbedderPort
 from recap_subworker.services.card_verifier import CardVerifierService
 from recap_subworker.services.embed_service import EmbedService
@@ -170,18 +177,75 @@ class _FakeRunReader:
         )
 
 
+class _FakeContentExtractor:
+    """Stands in for `ContentExtractor` in preprocessing routes."""
+
+    def extract_content(self, html: str, include_comments: bool = False) -> str:
+        return "The body paragraph extracted from HTML."
+
+
+class _FakeCoarseClassifier:
+    """Stands in for `CoarseClassifier` in preprocessing routes."""
+
+    def predict_coarse(self, text: str) -> dict[str, float]:
+        return {"technology": 0.8, "science": 0.15}
+
+
+class _FakeEvaluationService:
+    """Stands in for `EvaluationService` in evaluation routes."""
+
+    def evaluate(
+        self, golden_data_path: Path, language: str | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {
+            "accuracy": 0.91,
+            "accuracy_ci": {"point": 0.91, "lower": 0.85, "upper": 0.95, "width": 0.10},
+            "macro_precision": 0.88,
+            "macro_recall": 0.86,
+            "macro_f1": 0.87,
+            "micro_precision": 0.90,
+            "micro_recall": 0.89,
+            "micro_f1": 0.895,
+            "per_genre_metrics": {
+                "technology": {
+                    "tp": 10,
+                    "fp": 2,
+                    "fn": 1,
+                    "support": 11,
+                    "precision": 0.83,
+                    "recall": 0.91,
+                    "f1": 0.87,
+                }
+            },
+            "confusion_matrix": {},
+            "total_samples": 100,
+            "total_tp": 10,
+            "total_fp": 2,
+            "total_fn": 1,
+        }
+
+
+class _FakeContainer:
+    """Minimal container stand-in exposing `evaluation_service`."""
+
+    def __init__(self) -> None:
+        self.evaluation_service = _FakeEvaluationService()
+
+
 def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
     """Create a FastAPI app with mocked dependencies for provider verification.
 
     Registers lightweight stub endpoints for:
     - POST /v1/classify-runs          (classification job submission)
     - GET  /v1/classify-runs/{run_id} (polling a completed classification job)
-    - POST /v1/classify/coarse        (coarse classification request)
     - POST /v1/clustering/{run_id}    (legacy-compat stub, see below)
 
     and mounts the *real* application routers for:
     - POST /v1/runs                   (clustering run submission)
     - GET  /v1/runs/{run_id}          (clustering run poll)
+    - POST /v1/extract                (HTML content extraction)
+    - POST /v1/classify/coarse        (coarse genre classification)
+    - POST /v1/evaluation/genres      (genre classification evaluation)
     - POST /v1/embed                  (text embedding generation)
     - POST /v1/cluster-stories        (agglomerative story clustering)
     - POST /v1/verify                 (card sentence verification)
@@ -193,6 +257,12 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
     """
     app = FastAPI()
     app.include_router(runs_router, dependencies=[Depends(require_admin_token)])
+    app.include_router(
+        preprocessing_router,
+        prefix="/v1",
+        dependencies=[Depends(require_admin_token)],
+    )
+    app.include_router(evaluation_router, dependencies=[Depends(require_admin_token)])
     app.include_router(embed_router, prefix="/v1", dependencies=[Depends(require_admin_token)])
     app.include_router(
         story_clustering_router,
@@ -210,6 +280,14 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
     app.dependency_overrides[get_admin_auth_config] = lambda: AdminAuthConfig(
         token=_PROVIDER_ADMIN_TOKEN
     )
+    app.dependency_overrides[deps.get_content_extractor_dep] = _FakeContentExtractor
+    app.dependency_overrides[deps.get_extract_semaphore_dep] = lambda: asyncio.Semaphore(10)
+    app.dependency_overrides[deps.get_coarse_classifier_dep] = _FakeCoarseClassifier
+    app.dependency_overrides[deps.get_settings_dep] = lambda: Settings(
+        model_id="fake", allow_embedding_drift=True
+    )
+    app.dependency_overrides[deps.get_session] = lambda: None
+    app.dependency_overrides[deps.get_container] = _FakeContainer
 
     fake_embedder = embedder or HashEmbedder(dim=1024)
     embed_svc = EmbedService(embedder=fake_embedder)
@@ -227,7 +305,7 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
     class ClassifyRunsRequest(BaseModel):
         texts: list[str]
 
-    @app.post("/v1/classify-runs")
+    @app.post("/v1/classify-runs", dependencies=[Depends(require_admin_token)])
     async def create_classification_run(payload: ClassifyRunsRequest) -> dict:
         return {
             "run_id": 1,
@@ -237,7 +315,7 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
         }
 
     # ---- GET /v1/classify-runs/{run_id} ----
-    @app.get("/v1/classify-runs/{run_id}")
+    @app.get("/v1/classify-runs/{run_id}", dependencies=[Depends(require_admin_token)])
     async def get_classification_run(run_id: int) -> dict:
         return {
             "run_id": run_id,
@@ -251,16 +329,6 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
                     "scores": {"technology": 0.85, "science": 0.1},
                 }
             ],
-        }
-
-    # ---- POST /v1/classify/coarse ----
-    class CoarseClassifyRequest(BaseModel):
-        text: str
-
-    @app.post("/v1/classify/coarse")
-    async def classify_coarse(request: CoarseClassifyRequest) -> dict:
-        return {
-            "scores": {"technology": 0.8, "science": 0.15},
         }
 
     # ---- POST /v1/clustering/{run_id} ----
@@ -311,6 +379,9 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
         # Topic card verification provider states:
         "the card verifier is ready": _set_state,
         "ready to verify cards": _set_state,
+        # Extraction and evaluation provider states:
+        "the content extractor is ready": _set_state,
+        "the evaluation service is ready": _set_state,
     }
 
     @app.post("/_pact/provider-states")
@@ -319,6 +390,16 @@ def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
         return {"status": "ok"}
 
     return app
+
+
+@pytest.fixture(autouse=True)
+def _patch_evaluation_path_validator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub evaluation router path existence check for the duration of each test only."""
+    monkeypatch.setattr(
+        evaluation_mod,
+        "require_existing_path",
+        lambda user_path, base_dirs=None: Path(user_path),
+    )
 
 
 @pytest.fixture(scope="module")
@@ -571,9 +652,39 @@ def test_provider_app_endpoints_reject_unauthenticated():
     )
     assert res_verify.status_code == 401
 
+    # 4. /v1/classify-runs (POST and GET)
+    res_classify_post = client.post(
+        "/v1/classify-runs",
+        json={"texts": ["Example"]},
+    )
+    assert res_classify_post.status_code == 401
+    res_classify_get = client.get("/v1/classify-runs/42")
+    assert res_classify_get.status_code == 401
+
+    # 5. /v1/classify/coarse
+    res_coarse = client.post(
+        "/v1/classify/coarse",
+        json={"text": "Example"},
+    )
+    assert res_coarse.status_code == 401
+
+    # 6. /v1/extract
+    res_extract = client.post(
+        "/v1/extract",
+        json={"html": "<p>Body</p>", "include_comments": False},
+    )
+    assert res_extract.status_code == 401
+
+    # 7. /v1/evaluation/genres
+    res_eval = client.post(
+        "/v1/evaluation/genres",
+        json={"use_bootstrap": True, "n_bootstrap": 1000},
+    )
+    assert res_eval.status_code == 401
+
 
 def test_provider_states_card_pipeline_states_registered():
-    """Verify that provider states endpoint accepts embedding, clustering, and verification states."""
+    """Verify that provider states endpoint accepts embedding, clustering, verification, extract, and evaluation states."""
     app = _create_provider_app()
     client = TestClient(app)
     for state in [
@@ -583,7 +694,19 @@ def test_provider_states_card_pipeline_states_registered():
         "ready to cluster stories",
         "the card verifier is ready",
         "ready to verify cards",
+        "the content extractor is ready",
+        "the evaluation service is ready",
     ]:
         res = client.post("/_pact/provider-states", json={"state": state, "action": "setup"})
         assert res.status_code == 200
         assert res.json() == {"status": "ok"}
+
+
+def test_create_provider_app_does_not_permanently_replace_require_existing_path(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Verify _create_provider_app does not mutate evaluation_mod.require_existing_path."""
+    monkeypatch.undo()
+    assert evaluation_mod.require_existing_path is require_existing_path
+    _create_provider_app()
+    assert evaluation_mod.require_existing_path is require_existing_path

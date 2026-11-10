@@ -287,6 +287,51 @@ def _create_provider_app() -> FastAPI:
     recap_card_router = recap_card_mod.create_recap_card_router(mock_recap_card_usecase)
     app.include_router(recap_card_router)
 
+    # --- Mock morning letter handler (real router + Pydantic validation) ---
+    import news_creator.handler.morning_letter_handler as morning_letter_mod
+
+    importlib.reload(morning_letter_mod)
+
+    mock_morning_letter_usecase = Mock()
+
+    async def _mock_generate_letter(request: Any) -> Any:
+        from news_creator.domain.models import (
+            MorningLetterContent,
+            MorningLetterResponse,
+            MorningLetterSection,
+            RecapSummaryMetadata,
+        )
+
+        return MorningLetterResponse(
+            target_date=request.target_date,
+            edition_timezone=request.edition_timezone,
+            content=MorningLetterContent(
+                schema_version=1,
+                lead="本日の主要トピックです。",
+                sections=[
+                    MorningLetterSection(
+                        key="top3",
+                        title="Top Stories",
+                        bullets=["AI関連の進展が報告された。"],
+                    )
+                ],
+                source_recap_window_days=3,
+            ),
+            metadata=RecapSummaryMetadata(
+                model="gemma4-e4b-12k",
+                is_degraded=False,
+                degradation_reason=None,
+            ),
+        )
+
+    mock_morning_letter_usecase.generate_letter = AsyncMock(
+        side_effect=_mock_generate_letter
+    )
+    morning_letter_router = morning_letter_mod.create_morning_letter_router(
+        mock_morning_letter_usecase
+    )
+    app.include_router(morning_letter_router)
+
     # --- Mock plan-query handler ---
     import news_creator.handler.plan_query_handler as plan_query_mod
 
@@ -333,6 +378,7 @@ def _create_provider_app() -> FastAPI:
         "the LLM model is loaded and ready for chat": _set_default,
         "the LLM model is loaded and ready for query planning": _set_default,
         "the LLM model is loaded and ready for card generation": _set_default,
+        "the LLM model is loaded and ready for morning letter generation": _set_default,
         "card generation fails validation and is rejected": _set_card_generation_rejected,
         "the LLM queue is full": _set_queue_full,
         # acolyte-orchestrator's provider state for /api/v1/summarize replay.

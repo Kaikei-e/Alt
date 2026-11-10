@@ -169,7 +169,7 @@ func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 }
 
 func TestRecapUsecase_GetTopicCards(t *testing.T) {
-	t.Run("success - returns cards response with completed latest_run", func(t *testing.T) {
+	t.Run("success - returns cards response with completed surface_status", func(t *testing.T) {
 		mockPort := new(MockRecapPort)
 		expected := &domain.RecapCardsResponse{
 			Job: &domain.RecapCardsJob{
@@ -191,11 +191,14 @@ func TestRecapUsecase_GetTopicCards(t *testing.T) {
 					CreatedAt:  "2026-09-22T17:05:00Z",
 				},
 			},
-			LatestRun: &domain.RecapCardsRun{
-				JobID:     "job-1",
-				Status:    "completed",
-				KickedAt:  "2026-09-22T17:00:00Z",
-				UpdatedAt: "2026-09-22T17:05:00Z",
+			SurfaceStatus: &domain.RecapSurfaceStatus{
+				GeneratedAt: "2026-09-22T17:05:00Z",
+				LatestRun: &domain.RecapSurfaceRun{
+					JobID:     "job-1",
+					Status:    "completed",
+					KickedAt:  "2026-09-22T17:00:00Z",
+					UpdatedAt: "2026-09-22T17:05:00Z",
+				},
 			},
 		}
 
@@ -209,12 +212,12 @@ func TestRecapUsecase_GetTopicCards(t *testing.T) {
 		mockPort.AssertExpectations(t)
 	})
 
-	t.Run("success - empty cards response with nil latest_run", func(t *testing.T) {
+	t.Run("success - empty cards response with nil surface_status", func(t *testing.T) {
 		mockPort := new(MockRecapPort)
 		expected := &domain.RecapCardsResponse{
-			Job:       nil,
-			Cards:     []*domain.RecapCard{},
-			LatestRun: nil,
+			Job:           nil,
+			Cards:         []*domain.RecapCard{},
+			SurfaceStatus: nil,
 		}
 
 		mockPort.On("GetTopicCards", mock.Anything).Return(expected, nil)
@@ -225,7 +228,7 @@ func TestRecapUsecase_GetTopicCards(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, result.Job)
 		assert.Empty(t, result.Cards)
-		assert.Nil(t, result.LatestRun)
+		assert.Nil(t, result.SurfaceStatus)
 		mockPort.AssertExpectations(t)
 	})
 

@@ -1,7 +1,7 @@
-//! `recap.topic_snapshotted.v1` publish helper.
+//! `recap.topic_snapshotted.v1` and `recap.evening_pulse_generated.v1` publish helpers.
 //!
-//! The persist stage hands this helper a list of confirmed clusters per
-//! recap cycle. The helper:
+//! For topic snapshots, the persist stage hands [`publish_topic_snapshots`] a list of
+//! confirmed clusters per recap cycle. The helper:
 //!
 //!   - derives a stable snapshot id (UUIDv5 via [`deterministic_snapshot_id`])
 //!     so retries are idempotent against the sovereign dedupe index;
@@ -11,14 +11,19 @@
 //!   - skips clusters whose `top_terms` are empty (no-op signal — would only
 //!     contribute zeros to Surface Planner v2's `topic_overlap_count`).
 //!
-//! Knowledge Loop Completion Phase 1 §2 (ADR-000853 follow-up).
+//! For Evening Pulse, [`publish_evening_pulse_generated`] emits
+//! `recap.evening_pulse_generated.v1` after a `succeeded` generation is saved,
+//! using the persisted `finished_at` as `occurred_at`.
 
-use chrono::{DateTime, Utc};
+use anyhow::anyhow;
+use chrono::{DateTime, NaiveDate, Utc};
 use tracing::{debug, error, warn};
 use uuid::Uuid;
 
+use crate::pipeline::pulse::PulseResult;
+
 use super::snapshot_id::deterministic_snapshot_id;
-use super::{KnowledgeSovereignClient, TopicSnapshottedInput};
+use super::{EveningPulseGeneratedInput, KnowledgeSovereignClient, TopicSnapshottedInput};
 
 /// One cluster the persist stage has confirmed during a recap cycle. Held by
 /// reference so the helper can stay independent of the heavyweight
@@ -137,6 +142,42 @@ pub(crate) async fn publish_topic_snapshots(
     }
 
     outcome
+}
+
+pub(crate) async fn publish_evening_pulse_generated(
+    client: Option<&KnowledgeSovereignClient>,
+    owner_scope: Option<(Uuid, Uuid)>,
+    result: &PulseResult,
+    target_date: NaiveDate,
+    finished_at: DateTime<Utc>,
+) -> anyhow::Result<bool> {
+    if !result.is_success() {
+        return Ok(false);
+    }
+
+    let Some((user_id, tenant_id)) = owner_scope else {
+        return Ok(false);
+    };
+
+    let Some(client) = client else {
+        return Err(anyhow!(
+            "knowledge-sovereign client is unwired while evening pulse event emission is enabled"
+        ));
+    };
+
+    let input = EveningPulseGeneratedInput {
+        user_id,
+        tenant_id,
+        job_id: result.job_id,
+        target_date,
+        version: result.version.to_string(),
+        topic_count: result.topic_count(),
+        fallback_level: result.diagnostics.fallback_level,
+        finished_at,
+    };
+
+    client.emit_evening_pulse_generated(&input).await?;
+    Ok(true)
 }
 
 #[cfg(test)]

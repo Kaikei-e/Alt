@@ -7,6 +7,7 @@ export type {
 	PulseTopic,
 	QuietDayInfo,
 	RepresentativeArticle,
+	SurfaceStatus,
 	TopicRole,
 	WeeklyHighlight,
 } from "#lib/domain/pulse/types.js";

@@ -310,10 +310,10 @@ mod tests {
         // Use a dummy pool for testing (won't actually connect)
         let pool = sqlx::PgPool::connect_lazy("postgres://test:test@localhost/test").unwrap();
         let stage = RemoteGenreStage::new(
-            Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap()),
+            Arc::new(SubworkerClient::new("http://localhost:8002", 10, None).unwrap()),
             Arc::new(crate::queue::ClassificationJobQueue::new(
                 crate::queue::QueueStore::new(pool),
-                SubworkerClient::new("http://localhost:8002", 10).unwrap(),
+                SubworkerClient::new("http://localhost:8002", 10, None).unwrap(),
                 1,
                 200,
                 3,
@@ -355,10 +355,10 @@ mod tests {
         // Use a dummy pool for testing (won't actually connect)
         let pool = sqlx::PgPool::connect_lazy("postgres://test:test@localhost/test").unwrap();
         let stage = RemoteGenreStage::new(
-            Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap()),
+            Arc::new(SubworkerClient::new("http://localhost:8002", 10, None).unwrap()),
             Arc::new(crate::queue::ClassificationJobQueue::new(
                 crate::queue::QueueStore::new(pool),
-                SubworkerClient::new("http://localhost:8002", 10).unwrap(),
+                SubworkerClient::new("http://localhost:8002", 10, None).unwrap(),
                 1,
                 200,
                 3,
@@ -397,10 +397,10 @@ mod tests {
     fn make_stage() -> RemoteGenreStage {
         let pool = sqlx::PgPool::connect_lazy("postgres://test:test@localhost/test").unwrap();
         RemoteGenreStage::new(
-            Arc::new(SubworkerClient::new("http://localhost:8002", 10).unwrap()),
+            Arc::new(SubworkerClient::new("http://localhost:8002", 10, None).unwrap()),
             Arc::new(crate::queue::ClassificationJobQueue::new(
                 crate::queue::QueueStore::new(pool),
-                SubworkerClient::new("http://localhost:8002", 10).unwrap(),
+                SubworkerClient::new("http://localhost:8002", 10, None).unwrap(),
                 1,
                 200,
                 3,

@@ -35,12 +35,22 @@ describe("Desktop Sidebar", () => {
 		pageState.data = { userRole: "user" };
 	});
 
-	it("renders primary navigation links including /search", async () => {
+	it("renders primary navigation links including /search and keeps Today badge on Knowledge Home when inactive", async () => {
+		pageState.url = new URL("http://localhost/dashboard");
 		render(Sidebar);
 
 		const homeLink = page.getByRole("link", { name: /Knowledge Home/i });
 		await expect.element(homeLink).toBeInTheDocument();
 		await expect.element(homeLink).toHaveAttribute("href", "/home");
+		await expect.element(homeLink).toHaveTextContent("Today");
+
+		const recapToggle = page.getByRole("button", { name: "Recap" });
+		await recapToggle.click();
+		const morningLetterLink = page.getByRole("link", {
+			name: "Morning Letter",
+		});
+		await expect.element(morningLetterLink).toBeInTheDocument();
+		await expect.element(morningLetterLink).not.toHaveTextContent("Today");
 
 		const trailLink = page.getByRole("link", { name: "Your Trail" });
 		await expect.element(trailLink).toBeInTheDocument();

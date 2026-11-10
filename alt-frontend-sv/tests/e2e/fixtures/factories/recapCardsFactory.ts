@@ -35,18 +35,32 @@ export interface MockRecapCardsJob {
 	degraded: boolean;
 }
 
-export interface MockRecapCardsRun {
+export interface MockRecapSurfaceRun {
 	jobId: string;
-	/** Known values: "pending" | "running" | "completed" | "failed" */
-	status: string;
+	status: "pending" | "running" | "completed" | "failed";
 	kickedAt: string;
 	updatedAt: string;
+}
+
+export interface MockRecapDegradationReason {
+	code: string;
+	detail: string;
+}
+
+export interface MockRecapSurfaceStatus {
+	generatedAt: string;
+	windowStart: string;
+	windowEnd: string;
+	isStale: boolean;
+	staleAfter: string;
+	latestRun?: MockRecapSurfaceRun | null;
+	degradationReasons: MockRecapDegradationReason[];
 }
 
 export interface MockRecapCardsResponse {
 	job: MockRecapCardsJob | null;
 	cards: MockRecapCard[];
-	latestRun?: MockRecapCardsRun | null;
+	surfaceStatus?: MockRecapSurfaceStatus | null;
 }
 
 export function buildMockRecapCardSource(
@@ -153,6 +167,20 @@ export function buildMockRecapCardsResponse(
 				],
 			}),
 		],
+		surfaceStatus: {
+			generatedAt: "2026-09-22T17:05:00Z",
+			windowStart: "2026-09-19T17:00:00Z",
+			windowEnd: "2026-09-22T17:00:00Z",
+			isStale: false,
+			staleAfter: "2026-09-23T23:05:00Z",
+			latestRun: {
+				jobId: "33333333-3333-3333-3333-333333333333",
+				status: "completed",
+				kickedAt: "2026-09-22T17:00:00Z",
+				updatedAt: "2026-09-22T17:05:00Z",
+			},
+			degradationReasons: [],
+		},
 		...overrides,
 	};
 }
@@ -163,6 +191,7 @@ export function buildMockEmptyRecapCardsResponse(
 	return {
 		job: null,
 		cards: [],
+		surfaceStatus: null,
 		...overrides,
 	};
 }
@@ -181,5 +210,19 @@ export function buildMockDegradedRecapCardsResponse(): MockRecapCardsResponse {
 				genre: "Notice",
 			}),
 		],
+		surfaceStatus: {
+			generatedAt: "2026-09-22T17:05:00Z",
+			windowStart: "2026-09-19T17:00:00Z",
+			windowEnd: "2026-09-22T17:00:00Z",
+			isStale: false,
+			staleAfter: "2026-09-23T23:05:00Z",
+			latestRun: {
+				jobId: "33333333-3333-3333-3333-333333333333",
+				status: "completed",
+				kickedAt: "2026-09-22T17:00:00Z",
+				updatedAt: "2026-09-22T17:05:00Z",
+			},
+			degradationReasons: [{ code: "few_cards", detail: "1 cards selected" }],
+		},
 	};
 }

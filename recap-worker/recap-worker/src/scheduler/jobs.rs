@@ -221,6 +221,18 @@ impl Scheduler {
         }
     }
 
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_morning_dao(
+        mut self,
+        morning_pipeline: Arc<MorningPipeline>,
+        recap_dao: Arc<dyn RecapDao>,
+    ) -> Self {
+        self.morning_pipeline = morning_pipeline;
+        self.recap_dao = recap_dao;
+        self
+    }
+
     /// Gracefully stop the classification job queue's background worker
     /// tasks. Called from `main.rs`'s SIGTERM/SIGINT path so in-flight
     /// classification chunks are drained (or aborted) deliberately instead
@@ -330,24 +342,69 @@ impl Scheduler {
 
                 match job_outcome {
                     JobOutcome::Success => {
-                        self.recap_dao
+                        if let Err(err) = self
+                            .recap_dao
                             .update_job_status_with_history(
                                 context.job_id,
                                 JobStatus::Completed,
                                 None,
                                 None,
                             )
-                            .await?;
+                            .await
+                        {
+                            self.pipeline.metrics().jobs_failed.inc();
+                            if context.window_days() == 3 {
+                                crate::observability::surface_health::record_failure(
+                                    self.pipeline.metrics(),
+                                    crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                                );
+                            }
+                            return Err(err.into());
+                        }
+
+                        self.pipeline.metrics().jobs_completed.inc();
+                        if context.window_days() == 3 {
+                            match self.recap_dao.get_job_completed_at(context.job_id).await {
+                                Ok(Some(completed_at)) => {
+                                    crate::observability::surface_health::record_success(
+                                        self.pipeline.metrics(),
+                                        crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                                        completed_at,
+                                    );
+                                }
+                                Ok(None) => {
+                                    tracing::error!(
+                                        job_id = %context.job_id,
+                                        "completed 3-day recap job has no recap_outputs.created_at; leaving surface_last_success_timestamp_seconds unchanged"
+                                    );
+                                }
+                                Err(err) => {
+                                    tracing::error!(
+                                        job_id = %context.job_id,
+                                        error = %err,
+                                        "failed to load completed 3-day recap output timestamp; leaving surface_last_success_timestamp_seconds unchanged"
+                                    );
+                                }
+                            }
+                        }
 
                         // Run classification evaluation after successful job completion
                         if self.config.classification_eval_enabled() {
                             if let Err(e) = self.run_classification_evaluation(context.job_id).await
                             {
-                                warn!(
-                                    job_id = %context.job_id,
-                                    error = %e,
-                                    "failed to run classification evaluation (job still marked as completed)"
-                                );
+                                if crate::clients::subworker::is_subworker_auth_error(&e) {
+                                    tracing::error!(
+                                        job_id = %context.job_id,
+                                        error = %format!("{e:#}"),
+                                        "failed to run classification evaluation due to subworker authentication error"
+                                    );
+                                } else {
+                                    warn!(
+                                        job_id = %context.job_id,
+                                        error = %format!("{e:#}"),
+                                        "failed to run classification evaluation (job still marked as completed)"
+                                    );
+                                }
                             }
                         }
 
@@ -387,6 +444,14 @@ impl Scheduler {
                             tracing::error!(job_id = %context.job_id, error = %log_err, "failed to insert failed task log");
                         }
 
+                        self.pipeline.metrics().jobs_failed.inc();
+                        if context.window_days() == 3 {
+                            crate::observability::surface_health::record_failure(
+                                self.pipeline.metrics(),
+                                crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                            );
+                        }
+
                         Err(anyhow!(reason))
                     }
                 }
@@ -421,6 +486,14 @@ impl Scheduler {
                     .await
                 {
                     tracing::error!(job_id = %context.job_id, error = %log_err, "failed to insert failed task log");
+                }
+
+                self.pipeline.metrics().jobs_failed.inc();
+                if context.window_days() == 3 {
+                    crate::observability::surface_health::record_failure(
+                        self.pipeline.metrics(),
+                        crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                    );
                 }
 
                 Err(e)
@@ -499,14 +572,33 @@ impl Scheduler {
         ))
     }
 
-    pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<()> {
+    pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<Uuid> {
         tracing::info!(job_id = %context.job_id, "running morning update job");
         // `execute_update`'s fetch stage creates the `recap_jobs` row with the
         // schema default `status='pending'`. Unlike the batch pipeline, the
         // morning pipeline never advances that row — so close it out here, or it
         // leaks one orphaned `pending` row every 30-min tick.
-        let outcome = self.morning_pipeline.execute_update(&context).await;
-        finalize_morning_job(self.recap_dao.as_ref(), context.job_id, outcome).await
+        let now = chrono::Utc::now();
+        let outcome = self.morning_pipeline.execute_update(&context, now).await;
+        let finalized =
+            finalize_morning_job(self.recap_dao.as_ref(), context.job_id, outcome).await;
+        match finalized {
+            Ok((letter_id, completed_at)) => {
+                crate::observability::surface_health::record_success(
+                    self.pipeline.metrics(),
+                    crate::observability::surface_health::SurfaceHealthTarget::MorningLetter,
+                    completed_at,
+                );
+                Ok(letter_id)
+            }
+            Err(err) => {
+                crate::observability::surface_health::record_failure(
+                    self.pipeline.metrics(),
+                    crate::observability::surface_health::SurfaceHealthTarget::MorningLetter,
+                );
+                Err(err)
+            }
+        }
     }
 
     /// Boot-time hygiene (CLAUDE.md rule 8): resolve the one resumable job
@@ -600,13 +692,13 @@ impl Scheduler {
 /// [`Scheduler::run_job`] seals batch jobs: success → [`JobStatus::MorningCompleted`],
 /// failure → [`JobStatus::Failed`] (with the error chain as the reason). A DAO
 /// write failure here is logged but never masks the pipeline's own result.
-async fn finalize_morning_job(
+async fn finalize_morning_job<T>(
     recap_dao: &dyn RecapDao,
     job_id: Uuid,
-    outcome: Result<()>,
-) -> Result<()> {
+    outcome: Result<T>,
+) -> Result<T> {
     match outcome {
-        Ok(()) => {
+        Ok(value) => {
             if let Err(dao_err) = recap_dao
                 .update_job_status_with_history(
                     job_id,
@@ -618,7 +710,7 @@ async fn finalize_morning_job(
             {
                 tracing::error!(%job_id, error = %dao_err, "failed to mark morning update job completed");
             }
-            Ok(())
+            Ok(value)
         }
         Err(e) => {
             let reason = format!("{:#}", e);
@@ -749,6 +841,10 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_GENRES", Some("ai,space")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
             ],
             || Config::from_env().expect("config loads"),
         );
@@ -1005,8 +1101,12 @@ mod tests {
 
         let dao = MockRecapDao::new();
         let job_id = Uuid::new_v4();
+        let letter_id = Uuid::new_v4();
 
-        finalize_morning_job(&dao, job_id, Ok(())).await.unwrap();
+        let returned = finalize_morning_job(&dao, job_id, Ok(letter_id))
+            .await
+            .unwrap();
+        assert_eq!(returned, letter_id);
 
         let transitions = dao.status_transitions();
         assert_eq!(transitions.len(), 1, "exactly one terminal transition");
@@ -1027,7 +1127,7 @@ mod tests {
         let job_id = Uuid::new_v4();
         let err = anyhow!("news-creator unreachable");
 
-        let result = finalize_morning_job(&dao, job_id, Err(err)).await;
+        let result = finalize_morning_job::<Uuid>(&dao, job_id, Err(err)).await;
         assert!(result.is_err(), "pipeline error must propagate");
         assert!(
             format!("{:#}", result.unwrap_err()).contains("news-creator unreachable"),
@@ -1378,5 +1478,319 @@ mod tests {
                 );
             }
         }
+    }
+
+    struct UnreachableFetch;
+    #[async_trait::async_trait]
+    impl crate::pipeline::fetch::FetchStage for UnreachableFetch {
+        async fn fetch(
+            &self,
+            _job: &JobContext,
+        ) -> crate::error::Result<crate::pipeline::fetch::FetchedCorpus> {
+            unreachable!()
+        }
+    }
+
+    struct UnreachablePreprocess;
+    #[async_trait::async_trait]
+    impl crate::pipeline::preprocess::PreprocessStage for UnreachablePreprocess {
+        async fn preprocess(
+            &self,
+            _job: &JobContext,
+            _corpus: crate::pipeline::fetch::FetchedCorpus,
+        ) -> Result<crate::pipeline::preprocess::PreprocessedCorpus> {
+            unreachable!()
+        }
+    }
+
+    struct UnreachableDedup;
+    #[async_trait::async_trait]
+    impl crate::pipeline::dedup::DedupStage for UnreachableDedup {
+        async fn deduplicate(
+            &self,
+            _job: &JobContext,
+            _corpus: crate::pipeline::preprocess::PreprocessedCorpus,
+        ) -> Result<crate::pipeline::dedup::DeduplicatedCorpus> {
+            unreachable!()
+        }
+    }
+
+    struct NoopGenre;
+    #[async_trait::async_trait]
+    impl crate::pipeline::genre::GenreStage for NoopGenre {
+        async fn assign(
+            &self,
+            _job: &JobContext,
+            _corpus: crate::pipeline::dedup::DeduplicatedCorpus,
+        ) -> Result<crate::pipeline::genre::GenreBundle> {
+            unreachable!()
+        }
+
+        async fn update_config(
+            &self,
+            _overrides: &crate::pipeline::graph_override::GraphOverrideSettings,
+        ) {
+        }
+    }
+
+    struct UnreachableSelect;
+    #[async_trait::async_trait]
+    impl crate::pipeline::select::SelectStage for UnreachableSelect {
+        async fn select(
+            &self,
+            _job: &JobContext,
+            _bundle: crate::pipeline::genre::GenreBundle,
+        ) -> Result<crate::pipeline::select::SelectedSummary> {
+            unreachable!()
+        }
+    }
+
+    struct UnreachableDispatch;
+    #[async_trait::async_trait]
+    impl crate::pipeline::dispatch::DispatchStage for UnreachableDispatch {
+        async fn dispatch(
+            &self,
+            _job: &JobContext,
+            _evidence: crate::pipeline::evidence::EvidenceBundle,
+        ) -> crate::error::Result<crate::pipeline::dispatch::DispatchResult> {
+            unreachable!()
+        }
+    }
+
+    struct StubSuccessPersist;
+    #[async_trait::async_trait]
+    impl crate::pipeline::persist::PersistStage for StubSuccessPersist {
+        async fn persist(
+            &self,
+            job: &JobContext,
+            _result: crate::pipeline::dispatch::DispatchResult,
+        ) -> crate::error::Result<PersistResult> {
+            Ok(PersistResult {
+                job_id: job.job_id,
+                genres_stored: 1,
+                genres_failed: 0,
+                genres_skipped: 0,
+                genres_no_evidence: 0,
+                total_genres: 1,
+            })
+        }
+    }
+
+    fn build_three_day_test_scheduler(
+        dao: Arc<crate::store::dao::mock::MockRecapDao>,
+        metrics: Arc<crate::observability::metrics::Metrics>,
+    ) -> Scheduler {
+        use crate::{
+            clients::NewsCreatorClient,
+            config::ENV_MUTEX,
+            queue::{ClassificationJobQueue, QueueStore},
+        };
+        use sqlx::postgres::PgPoolOptions;
+
+        let config = {
+            let _lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            temp_env::with_vars(
+                [
+                    (
+                        "RECAP_DB_DSN",
+                        Some("postgres://recap:recap@localhost:5555/recap_db"),
+                    ),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                    ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                    ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                    ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("RECAP_EVAL_LISTENER", Some("disabled")),
+                    ("RECAP_CARDS_JOB", Some("disabled")),
+                    ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                    ("CLASSIFICATION_EVAL_ENABLED", Some("false")),
+                    ("EVENING_PULSE_ENABLED", Some("false")),
+                    ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                    ("MTLS_ENFORCE", None),
+                ],
+                || Arc::new(Config::from_env().expect("config loads")),
+            )
+        };
+
+        let recap_dao: Arc<dyn RecapDao> = dao;
+        let subworker = Arc::new(
+            SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+                None,
+            )
+            .expect("subworker client"),
+        );
+        let news_creator = Arc::new(NewsCreatorClient::new_for_test(
+            config.news_creator_base_url(),
+        ));
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")
+            .expect("lazy pool");
+        let classification_queue = Arc::new(ClassificationJobQueue::new(
+            QueueStore::new(pool),
+            (*subworker).clone(),
+            0,
+            10,
+            3,
+            1000,
+        ));
+
+        let pipeline = Arc::new(
+            PipelineOrchestrator::builder(Arc::clone(&config))
+                .with_fetch_stage(Arc::new(UnreachableFetch))
+                .with_preprocess_stage(Arc::new(UnreachablePreprocess))
+                .with_dedup_stage(Arc::new(UnreachableDedup))
+                .with_genre_stage(Arc::new(NoopGenre))
+                .with_select_stage(Arc::new(UnreachableSelect))
+                .with_dispatch_stage(Arc::new(UnreachableDispatch))
+                .with_persist_stage(Arc::new(StubSuccessPersist))
+                .with_metrics(metrics)
+                .build(
+                    Arc::clone(&recap_dao),
+                    Arc::clone(&subworker),
+                    classification_queue,
+                    None,
+                )
+                .expect("pipeline builds"),
+        );
+        let morning_pipeline = {
+            let _lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            temp_env::with_vars([("MTLS_ENFORCE", None::<&str>)], || {
+                Arc::new(
+                    MorningPipeline::new(
+                        Arc::clone(&config),
+                        Arc::clone(&recap_dao),
+                        news_creator,
+                        Arc::clone(&subworker),
+                    )
+                    .expect("morning pipeline builds"),
+                )
+            })
+        };
+        Scheduler::new(pipeline, morning_pipeline, config, recap_dao, subworker)
+    }
+
+    async fn save_stub_dispatch_state(dao: &crate::store::dao::mock::MockRecapDao, job_id: Uuid) {
+        let dispatch_state = crate::pipeline::dispatch::DispatchResult {
+            job_id,
+            genre_results: std::collections::HashMap::new(),
+            success_count: 1,
+            failure_count: 0,
+            all_genres: vec!["ai".to_string()],
+        }
+        .to_lightweight();
+        dao.save_stage_state(
+            job_id,
+            "dispatch",
+            &serde_json::to_value(&dispatch_state).expect("serialize dispatch state"),
+        )
+        .await
+        .expect("save dispatch state");
+    }
+
+    #[tokio::test]
+    async fn run_job_three_day_does_not_substitute_wall_clock_and_records_completion_write_failure()
+    {
+        use crate::{
+            observability::{
+                metrics::Metrics,
+                surface_health::{SurfaceHealthTarget, record_success},
+            },
+            store::{dao::mock::MockRecapDao, models::RecapJob},
+        };
+        use chrono::{DateTime, Duration, Utc};
+        use prometheus::Registry;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let unrelated_window_end = DateTime::parse_from_rfc3339("2026-01-20T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        dao.set_latest_completed_job(Some(RecapJob {
+            job_id: Uuid::new_v4(),
+            started_at: unrelated_window_end - Duration::days(3),
+            window_start: unrelated_window_end - Duration::days(3),
+            window_end: unrelated_window_end,
+            total_articles: Some(10),
+        }));
+
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        record_success(&metrics, SurfaceHealthTarget::ThreeDayRecap, seeded_ts);
+
+        let scheduler = build_three_day_test_scheduler(Arc::clone(&dao), Arc::clone(&metrics));
+
+        let job_id_1 = Uuid::new_v4();
+        save_stub_dispatch_state(&dao, job_id_1).await;
+        let ctx_1 = JobContext::new_with_window(job_id_1, vec!["ai".to_string()], 3)
+            .with_stage("dispatch".to_string());
+        scheduler
+            .run_job(ctx_1)
+            .await
+            .expect("3-day job should succeed");
+
+        let gauge_after_missing_output_ts = metrics
+            .surface_last_success_timestamp_seconds
+            .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+            .get();
+        assert_eq!(
+            gauge_after_missing_output_ts,
+            seeded_ts.timestamp() as f64,
+            "when this job has no recap_outputs.created_at, last_success must stay unchanged and never use latest_completed_job.window_end or Utc::now()"
+        );
+
+        let job_id_ok = Uuid::new_v4();
+        let completed_at = DateTime::parse_from_rfc3339("2026-01-26T04:15:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        dao.set_job_completed_at(job_id_ok, Ok(Some(completed_at)));
+        save_stub_dispatch_state(&dao, job_id_ok).await;
+        let ctx_ok = JobContext::new_with_window(job_id_ok, vec!["ai".to_string()], 3)
+            .with_stage("dispatch".to_string());
+        scheduler
+            .run_job(ctx_ok)
+            .await
+            .expect("3-day job with output timestamp should succeed");
+        assert_eq!(
+            metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+                .get(),
+            completed_at.timestamp() as f64,
+            "3-day job must record MAX(recap_outputs.created_at) of this job"
+        );
+
+        let job_id_2 = Uuid::new_v4();
+        save_stub_dispatch_state(&dao, job_id_2).await;
+        dao.set_update_job_status_with_history_error("simulated status write failure");
+        let ctx_2 = JobContext::new_with_window(job_id_2, vec!["ai".to_string()], 3)
+            .with_stage("dispatch".to_string());
+        let err = scheduler
+            .run_job(ctx_2)
+            .await
+            .expect_err("status write failure must propagate");
+        assert!(format!("{err:#}").contains("simulated status write failure"));
+        assert_eq!(
+            metrics.jobs_failed.get(),
+            1.0,
+            "jobs_failed must increment when update_job_status_with_history(Completed) fails"
+        );
+        assert_eq!(
+            metrics
+                .surface_consecutive_failures
+                .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+                .get(),
+            1.0,
+            "surface_consecutive_failures must increment when update_job_status_with_history(Completed) fails"
+        );
     }
 }

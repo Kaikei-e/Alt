@@ -13,6 +13,7 @@ import {
 	fromRecapSearchResult,
 	type RecapModalData,
 	RecapPreviewModal,
+	SurfaceStatusBanner,
 } from "#lib/components/recap/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import {
@@ -357,6 +358,9 @@ onMount(() => {
 				<span class="text-[var(--text-muted)]">·</span>
 				<span>{formatArticleCount(recapData.totalArticles)} articles</span>
 			</div>
+			{#if selectedWindow === 3}
+				<SurfaceStatusBanner surfaceStatus={recapData.surfaceStatus} />
+			{/if}
 		{/if}
 
 		{#if isLoading}

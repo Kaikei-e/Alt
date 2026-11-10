@@ -17,3 +17,9 @@ class CardGenerationInvariantError(RuntimeError):
     """Raised when an internal invariant in card generation is violated."""
 
     pass
+
+
+class UntemplatedRawPromptError(ValueError):
+    """Raised when a raw Ollama prompt lacks required Gemma 4 turn tokens."""
+
+    pass

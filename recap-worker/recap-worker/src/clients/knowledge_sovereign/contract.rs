@@ -17,7 +17,7 @@ use chrono::Utc;
 use pact_consumer::prelude::*;
 use uuid::Uuid;
 
-use super::client::{KnowledgeSovereignClient, TopicSnapshottedInput};
+use super::client::{EveningPulseGeneratedInput, KnowledgeSovereignClient, TopicSnapshottedInput};
 
 const PACT_DIR: &str = "../../pacts";
 
@@ -116,6 +116,96 @@ async fn contract_recap_topic_snapshotted_v1() {
 
     client
         .emit_recap_topic_snapshotted(&input)
+        .await
+        .expect("emit should succeed against mock provider");
+}
+
+#[tokio::test]
+#[ignore = "CDC contract test — run with `cargo test contract -- --ignored`"]
+async fn contract_recap_evening_pulse_generated_v1() {
+    let user_id = Uuid::parse_str("44444444-4444-4444-4444-444444444444").unwrap();
+    let tenant_id = Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
+    let job_id = Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
+    let target_date = chrono::NaiveDate::from_ymd_opt(2026, 11, 9).unwrap();
+    let finished_at = Utc.with_ymd_and_hms(2026, 11, 9, 18, 0, 0).unwrap();
+    let aggregate_id = format!("evening-pulse:{target_date}");
+
+    let expected_payload_bytes = serde_json::to_vec(&serde_json::json!({
+        "job_id": job_id.to_string(),
+        "target_date": target_date.to_string(),
+        "version": "v4",
+        "topic_count": 3usize,
+        "fallback_level": 0u8,
+    }))
+    .unwrap();
+    let expected_payload_b64 =
+        base64::engine::general_purpose::STANDARD.encode(&expected_payload_bytes);
+
+    let expected_dedupe_key = format!("recap.evening_pulse_generated.v1:{user_id}:{job_id}");
+
+    let pact = PactBuilder::new("recap-worker", "knowledge-sovereign")
+        .interaction(
+            "an AppendKnowledgeEvent request for recap.evening_pulse_generated.v1",
+            "",
+            |mut i| {
+                i.given("sovereign accepts append-only Loop transition events");
+                i.request.method("POST");
+                i.request
+                    .path("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent");
+                i.request.content_type("application/json");
+                i.request
+                    .header("Authorization", term!(r"^Bearer .+$", "Bearer test-sovereign-event-token"));
+                i.request.json_body(json_pattern!({
+                    "event": json_pattern!({
+                        "eventId": term!(
+                            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "00000000-0000-0000-0000-000000000000"
+                        ),
+                        "occurredAt": like!(finished_at.to_rfc3339()),
+                        "tenantId": like!(tenant_id.to_string()),
+                        "userId": like!(user_id.to_string()),
+                        "actorType": "service:recap-worker",
+                        "actorId": "pulse-stage",
+                        "eventType": "recap.evening_pulse_generated.v1",
+                        "aggregateType": "evening_pulse",
+                        "aggregateId": like!(aggregate_id.clone()),
+                        "dedupeKey": term!(
+                            r"^recap\.evening_pulse_generated\.v1:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            expected_dedupe_key.clone()
+                        ),
+                        "payload": like!(expected_payload_b64.clone()),
+                    }),
+                }));
+                i.response.status(200);
+                i.response.content_type("application/json");
+                i.response.json_body(json_pattern!({
+                    "eventSeq": like!("123"),
+                }));
+                i
+            },
+        )
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let url = pact.url();
+    let client = KnowledgeSovereignClient::new(
+        url.to_string(),
+        Some("test-sovereign-event-token".to_string()),
+    )
+    .expect("client should build");
+    let input = EveningPulseGeneratedInput {
+        user_id,
+        tenant_id,
+        job_id,
+        target_date,
+        version: "v4".to_string(),
+        topic_count: 3,
+        fallback_level: 0,
+        finished_at,
+    };
+
+    client
+        .emit_evening_pulse_generated(&input)
         .await
         .expect("emit should succeed against mock provider");
 }

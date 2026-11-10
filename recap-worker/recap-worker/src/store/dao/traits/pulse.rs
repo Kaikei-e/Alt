@@ -5,7 +5,7 @@
 use std::future::Future;
 
 use crate::error::Result;
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 
 use crate::pipeline::pulse::PulseResult;
 use crate::store::models::PulseGenerationRow;
@@ -40,5 +40,5 @@ pub(crate) trait PulseDao: Send + Sync {
         &self,
         result: &PulseResult,
         target_date: NaiveDate,
-    ) -> impl Future<Output = Result<i64>> + Send;
+    ) -> impl Future<Output = Result<(i64, DateTime<Utc>)>> + Send;
 }

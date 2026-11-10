@@ -274,6 +274,12 @@ async fn main() -> anyhow::Result<()> {
     let registry = ComponentRegistry::build(config.clone())
         .await
         .context("failed to build component registry")?;
+    recap_worker::observability::surface_health::seed_all_surfaces(
+        registry.pool(),
+        registry.telemetry().metrics(),
+    )
+    .await
+    .context("failed to seed surface health gauges")?;
     cli::install_panic_hook();
     info!(
         deadline_secs = deadline.as_secs(),

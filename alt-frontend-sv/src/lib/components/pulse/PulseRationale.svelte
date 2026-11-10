@@ -16,7 +16,7 @@ const { rationale, id }: Props = $props();
 	</p>
 	<div class="flex items-center gap-2">
 		<PulseConfidenceIndicator confidence={rationale.confidence} />
-		<span class="text-xs capitalize" style="color: var(--text-muted);">
+		<span class="text-xs capitalize font-mono" style="color: var(--text-muted);">
 			{rationale.confidence} confidence
 		</span>
 	</div>

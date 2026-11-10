@@ -554,9 +554,11 @@ export function createBackendServer(): http.Server {
 
 		// GetSevenDayRecap (Connect-RPC)
 		if (path === "/alt.recap.v2.RecapService/GetSevenDayRecap") {
+			const { surfaceStatus: _surfaceStatus, ...sevenDayRecap } =
+				CONNECT_RECAP_RESPONSE;
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
-			res.end(JSON.stringify(CONNECT_RECAP_RESPONSE));
+			res.end(JSON.stringify(sevenDayRecap));
 			return;
 		}
 

@@ -3,12 +3,13 @@ pub(crate) mod auth;
 pub mod cards;
 pub(crate) mod dashboard;
 pub(crate) mod evaluation;
-pub(crate) mod fetch;
+pub mod fetch;
 pub(crate) mod generate;
 pub(crate) mod health;
 pub(crate) mod learning;
 pub(crate) mod metrics;
-pub(crate) mod pulse;
+pub mod pulse;
+pub mod surface_status;
 
 use axum::{
     Extension, Router, middleware,
@@ -139,6 +140,10 @@ mod tests {
                 ),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
@@ -236,6 +241,10 @@ mod tests {
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",

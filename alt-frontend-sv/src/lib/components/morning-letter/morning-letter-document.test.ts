@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import * as morningLetterDoc from "./morning-letter-document";
 import {
 	deriveWithinHours,
+	formatEditionDateline,
 	formatLetterDate,
 	getSectionDisplayTitle,
 	getSourcesForSection,
-	isLetterStale,
 	orderSections,
 } from "./morning-letter-document";
 
@@ -63,6 +64,43 @@ describe("formatLetterDate", () => {
 
 		expect(result).toContain("1"); // month
 		expect(result).toContain("1"); // day
+	});
+});
+
+describe("formatEditionDateline", () => {
+	it("shows Today's Edition alongside the target date when isCurrent is true", () => {
+		expect(
+			formatEditionDateline({
+				targetDate: "2026-04-07",
+				editionTimezone: "Asia/Tokyo",
+				isCurrent: true,
+			}),
+		).toBe("Today's Edition · 2026-4-7");
+		expect(
+			formatEditionDateline({
+				targetDate: undefined,
+				isCurrent: true,
+			}),
+		).toBe("Today's Edition");
+	});
+
+	it("returns formatted date without 'Today' when isCurrent is false and targetDate is present", () => {
+		const result = formatEditionDateline({
+			targetDate: "2026-04-07",
+			editionTimezone: "Asia/Tokyo",
+			isCurrent: false,
+		});
+		expect(result).toBe("2026-4-7");
+		expect(result.toLowerCase()).not.toContain("today");
+	});
+
+	it("returns non-today fallback when isCurrent is false and targetDate is absent", () => {
+		const result = formatEditionDateline({
+			targetDate: undefined,
+			isCurrent: false,
+		});
+		expect(result).toBe("Latest Edition");
+		expect(result.toLowerCase()).not.toContain("today");
 	});
 });
 
@@ -177,27 +215,9 @@ describe("getSourcesForSection", () => {
 	});
 });
 
-describe("isLetterStale", () => {
-	it("returns false for recent letter", () => {
-		const recentTimestamp = {
-			seconds: BigInt(Math.floor(Date.now() / 1000) - 3600),
-			nanos: 0,
-		};
-
-		expect(isLetterStale(recentTimestamp, 12)).toBe(false);
-	});
-
-	it("returns true for old letter", () => {
-		const oldTimestamp = {
-			seconds: BigInt(Math.floor(Date.now() / 1000) - 50000),
-			nanos: 0,
-		};
-
-		expect(isLetterStale(oldTimestamp, 12)).toBe(true);
-	});
-
-	it("returns false for undefined timestamp", () => {
-		expect(isLetterStale(undefined, 12)).toBe(false);
+describe("isLetterStale removal", () => {
+	it("does not export local isLetterStale helper", () => {
+		expect("isLetterStale" in morningLetterDoc).toBe(false);
 	});
 });
 

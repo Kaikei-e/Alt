@@ -1,13 +1,17 @@
 use anyhow::Result;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 use super::store::QueueStore;
-use super::types::QueuedJob;
-use crate::clients::subworker::SubworkerClient;
+use super::types::{QueuedJob, QueuedJobStatus};
+use crate::clients::subworker::{SubworkerAuthError, SubworkerClient};
+
+pub(crate) type AuthFailureMap = Arc<Mutex<HashMap<Uuid, (usize, SubworkerAuthError)>>>;
 
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const MAX_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -24,6 +28,7 @@ pub(crate) struct QueueWorker {
     store: Arc<QueueStore>,
     client: Arc<SubworkerClient>,
     retry_delay_ms: u64,
+    auth_failures: AuthFailureMap,
 }
 
 impl QueueWorker {
@@ -31,11 +36,13 @@ impl QueueWorker {
         store: Arc<QueueStore>,
         client: Arc<SubworkerClient>,
         retry_delay_ms: u64,
+        auth_failures: AuthFailureMap,
     ) -> Self {
         Self {
             store,
             client,
             retry_delay_ms,
+            auth_failures,
         }
     }
 
@@ -95,6 +102,7 @@ impl QueueWorker {
                 self.client.clone(),
                 job,
                 self.retry_delay_ms,
+                self.auth_failures.clone(),
             )
             .await
             {
@@ -111,6 +119,7 @@ impl QueueWorker {
         client: Arc<SubworkerClient>,
         job: QueuedJob,
         retry_delay_ms: u64,
+        auth_failures: AuthFailureMap,
     ) -> Result<()> {
         let job_id = job.id;
         let recap_job_id = job.recap_job_id;
@@ -164,61 +173,115 @@ impl QueueWorker {
                 );
                 Ok(())
             }
-            Err(e) => {
-                let error_str = e.to_string();
-                let should_retry = job.retry_count < job.max_retries;
+            Err(e) => Self::handle_job_error(&store, &job, retry_delay_ms, &auth_failures, e).await,
+        }
+    }
 
-                if should_retry {
-                    // Exponential backoff, enforced by `next_retry_at` in the
-                    // store rather than a `sleep()` here: sleeping would
-                    // block this worker slot for the whole backoff window
-                    // while the row is already re-pickable.
-                    let delay_ms = retry_delay_ms * (1_u64 << job.retry_count.min(3));
-                    warn!(
-                        job_id,
-                        recap_job_id = %recap_job_id,
-                        chunk_idx,
-                        retry_count = job.retry_count + 1,
-                        max_retries = job.max_retries,
-                        delay_ms,
-                        error = %error_str,
-                        "classification job failed, will retry"
-                    );
+    async fn handle_job_error(
+        store: &QueueStore,
+        job: &QueuedJob,
+        retry_delay_ms: u64,
+        auth_failures: &AuthFailureMap,
+        e: anyhow::Error,
+    ) -> Result<()> {
+        let job_id = job.id;
+        let recap_job_id = job.recap_job_id;
+        let chunk_idx = job.chunk_idx;
+        let error_str = format!("{e:#}");
 
-                    if let Err(store_err) = store.mark_retrying(job_id, &error_str, delay_ms).await
-                    {
-                        error!(
-                            job_id,
-                            error = %store_err,
-                            "failed to mark job as retrying"
-                        );
-                        return Err(store_err.into());
-                    }
-                } else {
-                    // Mark as failed (max retries exceeded)
+        if let Some(auth_err) = e.downcast_ref::<SubworkerAuthError>().cloned() {
+            error!(
+                job_id,
+                recap_job_id = %recap_job_id,
+                chunk_idx,
+                error = %error_str,
+                "classification job failed with subworker authentication error"
+            );
+            let is_running = match store.get_job(job_id).await {
+                Ok(Some(current)) => current.status == QueuedJobStatus::Running,
+                Ok(None) => false,
+                Err(store_err) => {
                     error!(
                         job_id,
                         recap_job_id = %recap_job_id,
-                        chunk_idx,
-                        retry_count = job.retry_count,
-                        max_retries = job.max_retries,
-                        error = %error_str,
-                        "classification job failed after max retries"
+                        error = %store_err,
+                        "failed to inspect chunk status before recording auth failure"
                     );
-
-                    if let Err(store_err) = store.mark_failed(job_id, &error_str).await {
-                        error!(
-                            job_id,
-                            error = %store_err,
-                            "failed to mark job as failed"
-                        );
-                        return Err(store_err.into());
-                    }
+                    return Err(store_err.into());
                 }
+            };
+            if is_running {
+                auth_failures
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .entry(recap_job_id)
+                    .or_insert((chunk_idx, auth_err));
+                if let Err(store_err) = store.mark_recap_job_failed(recap_job_id, &error_str).await
+                {
+                    auth_failures
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .remove(&recap_job_id);
+                    error!(
+                        job_id,
+                        recap_job_id = %recap_job_id,
+                        error = %store_err,
+                        "failed to mark recap job chunks as failed"
+                    );
+                    return Err(store_err.into());
+                }
+            }
+            return Err(e);
+        }
 
-                Err(e)
+        if job.retry_count < job.max_retries {
+            // Exponential backoff, enforced by `next_retry_at` in the
+            // store rather than a `sleep()` here: sleeping would
+            // block this worker slot for the whole backoff window
+            // while the row is already re-pickable.
+            let delay_ms = retry_delay_ms * (1_u64 << job.retry_count.min(3));
+            warn!(
+                job_id,
+                recap_job_id = %recap_job_id,
+                chunk_idx,
+                retry_count = job.retry_count + 1,
+                max_retries = job.max_retries,
+                delay_ms,
+                error = %error_str,
+                "classification job failed, will retry"
+            );
+
+            if let Err(store_err) = store.mark_retrying(job_id, &error_str, delay_ms).await {
+                error!(
+                    job_id,
+                    error = %store_err,
+                    "failed to mark job as retrying"
+                );
+                return Err(store_err.into());
+            }
+        } else {
+            // Mark as failed (max retries exceeded)
+            error!(
+                job_id,
+                recap_job_id = %recap_job_id,
+                chunk_idx,
+                retry_count = job.retry_count,
+                max_retries = job.max_retries,
+                error = %error_str,
+                "classification job failed after max retries"
+            );
+
+            if let Err(store_err) = store.mark_failed(job_id, &error_str).await {
+                error!(
+                    job_id,
+                    error = %store_err,
+                    "failed to mark job as failed"
+                );
+                return Err(store_err.into());
             }
         }
+
+        Err(e)
     }
 }
 

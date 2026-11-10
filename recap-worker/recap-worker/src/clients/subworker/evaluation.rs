@@ -4,6 +4,7 @@ use tracing::{debug, warn};
 use uuid::Uuid;
 
 use super::SubworkerClient;
+use super::types::SubworkerAuthError;
 
 /// 評価リクエスト
 #[derive(Debug, Clone, Serialize)]
@@ -102,6 +103,11 @@ impl SubworkerClient {
                 error = %error_text,
                 "evaluation API returned error status"
             );
+            if SubworkerAuthError::is_auth_status(status) {
+                return Err(
+                    SubworkerAuthError::new("evaluation/genres", status, &error_text).into(),
+                );
+            }
             return Err(anyhow::anyhow!(
                 "evaluation API returned status {}: {}",
                 status,

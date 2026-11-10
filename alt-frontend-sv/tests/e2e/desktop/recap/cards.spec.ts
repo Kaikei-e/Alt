@@ -124,11 +124,19 @@ test.describe("Desktop Topic Cards", () => {
 			desktopRecapCardsPage,
 		}) => {
 			const mockData = buildMockRecapCardsResponse({
-				latestRun: {
-					jobId: `run-${status}-001`,
-					status,
-					kickedAt: "2026-09-22T19:00:00Z",
-					updatedAt: "2026-09-22T19:01:00Z",
+				surfaceStatus: {
+					generatedAt: "2026-09-22T17:05:00Z",
+					windowStart: "2026-09-19T17:00:00Z",
+					windowEnd: "2026-09-22T17:00:00Z",
+					isStale: false,
+					staleAfter: "2026-09-23T23:05:00Z",
+					latestRun: {
+						jobId: `run-${status}-001`,
+						status,
+						kickedAt: "2026-09-22T19:00:00Z",
+						updatedAt: "2026-09-22T19:01:00Z",
+					},
+					degradationReasons: [],
 				},
 			});
 			await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
@@ -138,9 +146,7 @@ test.describe("Desktop Topic Cards", () => {
 			await desktopRecapCardsPage.goto();
 			await desktopRecapCardsPage.waitForLoaded();
 
-			await expect(
-				page.getByText(/Update in progress \(started /),
-			).toBeVisible();
+			await expect(page.getByText("Update in progress…")).toBeVisible();
 			await expect(page.getByRole("status")).toContainText(
 				"Update in progress",
 			);
@@ -153,11 +159,19 @@ test.describe("Desktop Topic Cards", () => {
 		desktopRecapCardsPage,
 	}) => {
 		const mockData = buildMockRecapCardsResponse({
-			latestRun: {
-				jobId: "run-failed-001",
-				status: "failed",
-				kickedAt: "2026-09-22T19:00:00Z",
-				updatedAt: "2026-09-22T19:02:00Z",
+			surfaceStatus: {
+				generatedAt: "2026-09-22T17:00:00Z",
+				windowStart: "2026-09-19T17:00:00Z",
+				windowEnd: "2026-09-22T17:00:00Z",
+				isStale: false,
+				staleAfter: "2026-09-23T23:00:00Z",
+				latestRun: {
+					jobId: "run-failed-001",
+					status: "failed",
+					kickedAt: "2026-09-22T19:00:00Z",
+					updatedAt: "2026-09-22T19:02:00Z",
+				},
+				degradationReasons: [],
 			},
 		});
 		await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
@@ -168,7 +182,7 @@ test.describe("Desktop Topic Cards", () => {
 		await desktopRecapCardsPage.waitForLoaded();
 
 		await expect(
-			page.getByText(/The latest update failed at .* Showing cards from /),
+			page.getByText(/The latest update failed at .* Showing results from /),
 		).toBeVisible();
 		await expect(page.getByRole("alert")).toContainText(
 			"The latest update failed",
@@ -181,11 +195,19 @@ test.describe("Desktop Topic Cards", () => {
 		desktopRecapCardsPage,
 	}) => {
 		const mockData = buildMockEmptyRecapCardsResponse({
-			latestRun: {
-				jobId: "run-failed-002",
-				status: "failed",
-				kickedAt: "2026-09-22T19:00:00Z",
-				updatedAt: "2026-09-22T19:02:00Z",
+			surfaceStatus: {
+				generatedAt: "",
+				windowStart: "",
+				windowEnd: "",
+				isStale: true,
+				staleAfter: "",
+				latestRun: {
+					jobId: "run-failed-002",
+					status: "failed",
+					kickedAt: "2026-09-22T19:00:00Z",
+					updatedAt: "2026-09-22T19:02:00Z",
+				},
+				degradationReasons: [],
 			},
 		});
 		await page.route(CONNECT_RPC_PATHS.getTopicCards, (route) =>
@@ -199,7 +221,7 @@ test.describe("Desktop Topic Cards", () => {
 		await expect(page.getByRole("alert")).toContainText(
 			"The latest update failed",
 		);
-		await expect(page.getByText(/Showing cards from/)).not.toBeVisible();
+		await expect(page.getByText(/Showing results from/)).not.toBeVisible();
 		await expect(desktopRecapCardsPage.cards).toHaveCount(0);
 	});
 
@@ -217,7 +239,7 @@ test.describe("Desktop Topic Cards", () => {
 
 		await expect(desktopRecapCardsPage.degradedNotice).toBeVisible();
 		await expect(desktopRecapCardsPage.degradedNotice).toContainText(
-			/degraded/i,
+			/Fewer topic cards than usual/i,
 		);
 		await expect(desktopRecapCardsPage.cards).toHaveCount(1);
 	});

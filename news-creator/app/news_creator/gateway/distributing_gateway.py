@@ -15,6 +15,7 @@ from news_creator.config.distributed_be_config import RemoteTarget
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.gateway import dispatch_metrics
 from news_creator.gateway.chat_messages import gemma_prompt_to_messages
+from news_creator.gateway.payload_builder import prepare_raw_prompt
 from news_creator.gateway.remote_chat_driver import (
     RemoteChatDriver,
     RemoteRequestRejectedError,
@@ -158,6 +159,8 @@ class DistributingGateway(LLMProviderPort):
             raise ValueError(
                 "Structured output format is not supported on remote BE chat dispatch"
             )
+
+        prompt = prepare_raw_prompt(prompt)
 
         if not slot_state.local_acquired:
             messages = gemma_prompt_to_messages(prompt)

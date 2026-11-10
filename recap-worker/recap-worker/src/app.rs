@@ -112,27 +112,7 @@ impl ComponentRegistry {
         let news_creator_client =
             Arc::new(build_news_creator_client(&config, mtls_paths.as_ref()).await?);
 
-        let subworker_client = Arc::new(
-            if let Some(paths) = mtls_paths.as_ref() {
-                let client = crate::clients::mtls::build_mtls_client(
-                    paths,
-                    std::time::Duration::from_secs(5),
-                    std::time::Duration::from_hours(1),
-                )?;
-                SubworkerClient::new_with_client(
-                    config.subworker_base_url(),
-                    config.min_documents_per_genre(),
-                    client,
-                )?
-            } else {
-                SubworkerClient::new(
-                    config.subworker_base_url(),
-                    config.min_documents_per_genre(),
-                )?
-            }
-            .with_coarse_classify_timeout(config.subworker_coarse_classify_timeout())
-            .with_admin_token(config.admin_auth_token().map(str::to_string)),
-        );
+        let subworker_client = Arc::new(build_subworker_client(&config, mtls_paths.as_ref())?);
         let recap_pool = PgPoolOptions::new()
             .max_connections(config.recap_db_max_connections())
             .min_connections(config.recap_db_min_connections())
@@ -188,7 +168,8 @@ impl ComponentRegistry {
             telemetry.metrics_arc(),
         )?;
 
-        let cards_runner = build_cards_runner(&config, &recap_pool).await?;
+        let cards_runner =
+            build_cards_runner(&config, &recap_pool, telemetry.metrics_arc()).await?;
         let cards_run_in_flight = Arc::new(std::sync::Mutex::new(None));
 
         Ok(Self {
@@ -275,6 +256,16 @@ impl ComponentRegistry {
     #[cfg(test)]
     #[must_use]
     pub(crate) fn with_recap_dao(mut self, dao: Arc<dyn RecapDao>) -> Self {
+        let morning_pipeline = crate::pipeline::morning::MorningPipeline::new(
+            Arc::clone(&self.config),
+            Arc::clone(&dao),
+            Arc::clone(&self.news_creator_client),
+            Arc::clone(&self.subworker_client),
+        )
+        .expect("morning pipeline must build when rewiring recap_dao in tests");
+        self.scheduler = self
+            .scheduler
+            .with_morning_dao(Arc::new(morning_pipeline), Arc::clone(&dao));
         self.recap_dao = dao;
         self
     }
@@ -283,16 +274,18 @@ impl ComponentRegistry {
 async fn build_cards_runner(
     config: &Config,
     pool: &sqlx::PgPool,
+    metrics: Arc<crate::observability::metrics::Metrics>,
 ) -> Result<Option<Arc<dyn crate::pipeline::cards::CardsJobRunner>>> {
     match config.cards_user_id() {
         Some(user_id) => {
             let default_params = crate::pipeline::cards::CardsParams::default();
-            let pipeline =
+            let runner =
                 crate::eval::build_production_cards_pipeline(pool, config, &default_params)
                     .await
                     .context("failed to build cards pipeline")?
-                    .with_user_id(user_id);
-            Ok(Some(Arc::new(pipeline)))
+                    .with_user_id(user_id)
+                    .into_runner(metrics);
+            Ok(Some(Arc::new(runner)))
         }
         None => Ok(None),
     }
@@ -320,6 +313,38 @@ async fn build_news_creator_client(
         client,
     )
     .await?)
+}
+
+fn build_subworker_client(
+    config: &Config,
+    mtls_paths: Option<&crate::clients::mtls::MtlsPaths>,
+) -> Result<SubworkerClient> {
+    let admin_token = config.admin_auth_token().map(str::to_string);
+    if admin_token.is_some() {
+        tracing::info!("subworker_auth_enabled");
+    } else {
+        tracing::warn!("subworker_auth_disabled");
+    }
+    let client = if let Some(paths) = mtls_paths {
+        let http = crate::clients::mtls::build_mtls_client_builder(
+            paths,
+            std::time::Duration::from_secs(5),
+            std::time::Duration::from_hours(1),
+        )?;
+        SubworkerClient::new_with_client(
+            config.subworker_base_url(),
+            config.min_documents_per_genre(),
+            http,
+            admin_token,
+        )?
+    } else {
+        SubworkerClient::new(
+            config.subworker_base_url(),
+            config.min_documents_per_genre(),
+            admin_token,
+        )?
+    };
+    Ok(client.with_coarse_classify_timeout(config.subworker_coarse_classify_timeout()))
 }
 
 /// Env flag deciding whether the outbox relay runs. Read strictly: an
@@ -438,6 +463,10 @@ mod tests {
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
