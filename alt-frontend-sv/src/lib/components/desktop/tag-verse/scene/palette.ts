@@ -215,13 +215,14 @@ export const TOPIC_INKS: readonly [
 
 export function clusterBaseInk(
 	clusterId: number,
-	palette: TagVersePalette = buildPalette(),
+	palette?: TagVersePalette,
 ): string {
+	const fallbackInk = palette?.ramp[4] ?? ALT_PAPER_DEFAULTS.ink;
 	if (!Number.isFinite(clusterId) || clusterId <= 0) {
-		return palette.ramp[4];
+		return fallbackInk;
 	}
 	const index = (Math.floor(clusterId) - 1) % TOPIC_INKS.length;
-	return TOPIC_INKS[index] ?? palette.ramp[4];
+	return TOPIC_INKS[index] ?? fallbackInk;
 }
 
 function findMinInkRatioForContrast(

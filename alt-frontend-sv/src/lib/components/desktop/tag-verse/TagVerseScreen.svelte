@@ -8,16 +8,12 @@ import {
 	type TagCloudItem,
 } from "#lib/connect/index.js";
 import { isWebGL2Available } from "#lib/utils/gpuCapability.js";
-import {
-	buildSceneModel,
-	buildTopicClusters,
-	type SelectionSource,
-} from "./scene/sceneModel.js";
+import { buildTopicClusters, type SelectionSource } from "./scene/sceneModel.js";
 import TagIndexPanel from "./TagIndexPanel.svelte";
 import TagVerseHUD from "./TagVerseHUD.svelte";
 import TagVerseToolbar from "./TagVerseToolbar.svelte";
 import TopicsKey from "./TopicsKey.svelte";
-import { sumTagArticleCounts } from "./tagIndex.js";
+import { DETAIL_PANEL_WIDTH_PX, sumTagArticleCounts } from "./tagIndex.js";
 
 type TagVerseSceneComponent = typeof import("./TagVerseScene.svelte").default;
 
@@ -44,7 +40,7 @@ const selectedTagData = $derived(
 	selectedTag ? tags.find((t) => t.tagName === selectedTag) : null,
 );
 const totalArticles = $derived(sumTagArticleCounts(tags));
-const topicClusters = $derived(buildTopicClusters(buildSceneModel(tags).nodes));
+const topicClusters = $derived(buildTopicClusters(tags));
 
 let cancelCurrentLoad: (() => void) | null = null;
 
@@ -121,6 +117,7 @@ onMount(() => {
 			{selectedTag}
 			onSelectTag={(name) => {
 				selectionSource = "index";
+				focusedClusterId = null;
 				selectedTag = name;
 			}}
 		/>
@@ -182,25 +179,28 @@ onMount(() => {
 						{edges}
 						onTagSelect={(name) => {
 							selectionSource = "canvas";
+							focusedClusterId = null;
 							selectedTag = name;
 						}}
 						{selectedTag}
 						{selectionSource}
 						{focusedClusterId}
-						occludedRightPx={selectedTag !== null ? 400 : 0}
+						occludedRightPx={selectedTag !== null ? DETAIL_PANEL_WIDTH_PX : 0}
 						autoRotate={effectiveAutoRotate}
 						{reducedMotion}
 						{resetViewNonce}
 					/>
 				{/if}
 
-				<TopicsKey
-					clusters={topicClusters}
-					{focusedClusterId}
-					onFocusCluster={(clusterId) => {
-						focusedClusterId = clusterId;
-					}}
-				/>
+				{#if selectedTag === null}
+					<TopicsKey
+						clusters={topicClusters}
+						{focusedClusterId}
+						onFocusCluster={(clusterId) => {
+							focusedClusterId = clusterId;
+						}}
+					/>
+				{/if}
 
 				<div
 					class="pointer-events-none absolute bottom-4 left-4 select-none text-[12px] text-[var(--text-muted)]"

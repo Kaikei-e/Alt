@@ -39,7 +39,13 @@ const { dom, scene, camera, size, dpr, renderStage, invalidate } = useThrelte();
 
 let canvasEl: HTMLCanvasElement | undefined;
 let fontsReady = typeof document === "undefined" || !document.fonts;
-const widthCache = new Map<string, number>();
+let normalWidths = new Float32Array(0);
+let selectedWidths = new Float32Array(0);
+let regionWidths = new Float32Array(0);
+const priorityIndices: number[] = [];
+const seen = new Set<number>();
+const boxes: LabelBox[] = [];
+const candidates: CandidateEntry[] = [];
 const _projVec = new THREE.Vector3();
 const _camForward = new THREE.Vector3();
 
@@ -52,6 +58,21 @@ const sortedIndicesByCount = $derived.by(() => {
 	return indices;
 });
 
+const regionCandidates = $derived(
+	buildRegionLabelCandidates(topicClusters, selectedIndex),
+);
+
+$effect.pre(() => {
+	const n = nodes.length;
+	normalWidths = new Float32Array(n).fill(-1);
+	selectedWidths = new Float32Array(n).fill(-1);
+});
+
+$effect.pre(() => {
+	const r = regionCandidates.length;
+	regionWidths = new Float32Array(r).fill(-1);
+});
+
 function portalToDom(el: HTMLCanvasElement) {
 	dom.append(el);
 	return {
@@ -61,21 +82,45 @@ function portalToDom(el: HTMLCanvasElement) {
 	};
 }
 
-function measureLabelWidth(
+function measureNodeWidth(
 	ctx: CanvasRenderingContext2D,
+	nodeIndex: number,
 	text: string,
 	fontSize: number,
 	weight: 600 | 700,
 	fontFamily: string,
-	letterSpacingEm = 0,
+	isSelected: boolean,
 ): number {
-	const roundedSize = Math.round(fontSize * 10) / 10;
-	const key = `${fontFamily}|${weight}|${roundedSize}|${letterSpacingEm}|${text}`;
-	const cached = widthCache.get(key);
-	if (cached !== undefined) {
+	const cache = isSelected ? selectedWidths : normalWidths;
+	const cached = cache[nodeIndex];
+	if (cached !== undefined && cached >= 0) {
 		return cached;
 	}
-	ctx.font = `${weight} ${roundedSize}px ${fontFamily}`;
+	ctx.font = `${weight} ${fontSize}px ${fontFamily}`;
+	if ("letterSpacing" in ctx) {
+		ctx.letterSpacing = "0px";
+	}
+	const measured = ctx.measureText(text).width;
+	if (nodeIndex < cache.length) {
+		cache[nodeIndex] = measured;
+	}
+	return measured;
+}
+
+function measureRegionWidth(
+	ctx: CanvasRenderingContext2D,
+	regionIndex: number,
+	text: string,
+	fontSize: number,
+	weight: 600 | 700,
+	fontFamily: string,
+	letterSpacingEm: number,
+): number {
+	const cached = regionWidths[regionIndex];
+	if (cached !== undefined && cached >= 0) {
+		return cached;
+	}
+	ctx.font = `${weight} ${fontSize}px ${fontFamily}`;
 	if ("letterSpacing" in ctx) {
 		ctx.letterSpacing = letterSpacingEm > 0 ? `${letterSpacingEm}em` : "0px";
 	}
@@ -83,7 +128,9 @@ function measureLabelWidth(
 	if ("letterSpacing" in ctx) {
 		ctx.letterSpacing = "0px";
 	}
-	widthCache.set(key, measured);
+	if (regionIndex < regionWidths.length) {
+		regionWidths[regionIndex] = measured;
+	}
 	return measured;
 }
 
@@ -142,8 +189,8 @@ function drawLabels() {
 			? { near: scene.fog.near, far: scene.fog.far }
 			: fogWindow(Math.hypot(camX, camY, camZ), cloudRadius);
 
-	const priorityIndices: number[] = [];
-	const seen = new Set<number>();
+	priorityIndices.length = 0;
+	seen.clear();
 
 	if (
 		selectedIndex !== null &&
@@ -179,8 +226,8 @@ function drawLabels() {
 		}
 	}
 
-	const candidates: CandidateEntry[] = [];
-	const boxes: LabelBox[] = [];
+	candidates.length = 0;
+	boxes.length = 0;
 
 	for (let i = 0; i < priorityIndices.length; i++) {
 		const idx = priorityIndices[i] as number;
@@ -225,12 +272,14 @@ function drawLabels() {
 		const weight = typo.fontWeight;
 		const fontFamily = typo.fontFamily;
 		const fontSize = Math.round(typo.fontSize * 10) / 10;
-		const textWidth = measureLabelWidth(
+		const textWidth = measureNodeWidth(
 			ctx,
+			idx,
 			node.tagName,
 			fontSize,
 			weight,
 			fontFamily,
+			isSelected,
 		);
 
 		const boxW = textWidth + 6;
@@ -258,11 +307,9 @@ function drawLabels() {
 		});
 	}
 
-	const regionCandidates = buildRegionLabelCandidates(
-		topicClusters,
-		selectedIndex,
-	);
-	for (const region of regionCandidates) {
+	for (let rIdx = 0; rIdx < regionCandidates.length; rIdx++) {
+		const region = regionCandidates[rIdx];
+		if (!region) continue;
 		const cx = region.centroid[0];
 		const cy = region.centroid[1];
 		const cz = region.centroid[2];
@@ -283,8 +330,9 @@ function drawLabels() {
 			continue;
 		}
 
-		const textWidth = measureLabelWidth(
+		const textWidth = measureRegionWidth(
 			ctx,
+			rIdx,
 			region.text,
 			region.fontSize,
 			region.fontWeight,
@@ -390,7 +438,9 @@ onMount(() => {
 		Promise.all(fontPromises)
 			.then(() => {
 				if (active) {
-					widthCache.clear();
+					normalWidths.fill(-1);
+					selectedWidths.fill(-1);
+					regionWidths.fill(-1);
 					fontsReady = true;
 					invalidate();
 				}

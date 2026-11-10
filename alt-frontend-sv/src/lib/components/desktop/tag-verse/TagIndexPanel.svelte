@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { TagCloudItem } from "#lib/connect/index.js";
-import { buildPalette, clusterBaseInk } from "./scene/palette.js";
+import { clusterBaseInk } from "./scene/palette.js";
 import { filterTagsForIndex, formatCountLabel } from "./tagIndex.js";
 
 interface Props {
@@ -10,8 +10,6 @@ interface Props {
 }
 
 let { tags, selectedTag, onSelectTag }: Props = $props();
-
-const palette = buildPalette();
 
 const uid = $props.id();
 const panelId = `${uid}-index-panel`;
@@ -89,10 +87,7 @@ const hasNonEmptyQuery = $derived(searchQuery.trim().length > 0);
 								<span
 									aria-hidden="true"
 									class="h-2.5 w-2.5 shrink-0"
-									style:background-color={clusterBaseInk(
-										item.clusterId,
-										palette,
-									)}
+									style:background-color={clusterBaseInk(item.clusterId)}
 								></span>
 								<span class="truncate">{item.tagName}</span>
 							</span>

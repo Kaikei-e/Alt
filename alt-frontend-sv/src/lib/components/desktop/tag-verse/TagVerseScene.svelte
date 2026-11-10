@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Canvas } from "@threlte/core";
-import { onMount, type Snippet } from "svelte";
+import { onMount } from "svelte";
 import { NoToneMapping } from "three";
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import SceneContent from "./SceneContent.svelte";
@@ -22,7 +22,6 @@ interface Props {
 	autoRotate?: boolean;
 	reducedMotion?: boolean;
 	resetViewNonce?: number;
-	children?: Snippet;
 }
 
 let {
@@ -36,7 +35,6 @@ let {
 	autoRotate = false,
 	reducedMotion = false,
 	resetViewNonce = 0,
-	children,
 }: Props = $props();
 
 let containerRef = $state<HTMLDivElement | undefined>(undefined);
@@ -75,7 +73,6 @@ onMount(() => {
 			{resetViewNonce}
 			{palette}
 		/>
-		{@render children?.()}
 	</Canvas>
 	<div
 		aria-hidden="true"

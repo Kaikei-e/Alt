@@ -12,26 +12,13 @@ interface Props {
 
 let { clusters, focusedClusterId = null, onFocusCluster }: Props = $props();
 
-let activeClusterId = $state<number | null>(null);
-
 const rows = $derived(buildTopicsKeyRows(clusters));
-const effectiveFocusedId = $derived(focusedClusterId ?? activeClusterId);
 
-function handleEnter(clusterId: number, event: FocusEvent | MouseEvent) {
-	activeClusterId = clusterId;
-	if (event.currentTarget instanceof HTMLElement) {
-		event.currentTarget.setAttribute("data-emphasized", "true");
-	}
+function handleEnter(clusterId: number) {
 	onFocusCluster(clusterId);
 }
 
-function handleLeave(clusterId: number, event: FocusEvent | MouseEvent) {
-	if (activeClusterId === clusterId) {
-		activeClusterId = null;
-	}
-	if (event.currentTarget instanceof HTMLElement) {
-		event.currentTarget.setAttribute("data-emphasized", "false");
-	}
+function handleLeave() {
 	onFocusCluster(null);
 }
 </script>
@@ -40,7 +27,7 @@ function handleLeave(clusterId: number, event: FocusEvent | MouseEvent) {
 	<section
 		aria-label="Topics"
 		class="
-			absolute right-4 bottom-4 z-10 rounded-none border
+			absolute right-4 bottom-4 z-10 max-w-[220px] rounded-none border
 			border-[var(--surface-border)] bg-[var(--surface-bg)] px-3 py-2
 			text-[var(--text-primary)]
 		"
@@ -55,16 +42,16 @@ function handleLeave(clusterId: number, event: FocusEvent | MouseEvent) {
 		</h2>
 		<ul class="flex flex-col gap-1">
 			{#each rows as row (row.clusterId)}
-				{@const isEmphasized = effectiveFocusedId === row.clusterId}
+				{@const isEmphasized = focusedClusterId === row.clusterId}
 				<li>
 					<button
 						type="button"
 						aria-label={row.ariaLabel}
 						data-emphasized={isEmphasized ? "true" : "false"}
-						onmouseenter={(e) => handleEnter(row.clusterId, e)}
-						onmouseleave={(e) => handleLeave(row.clusterId, e)}
-						onfocus={(e) => handleEnter(row.clusterId, e)}
-						onblur={(e) => handleLeave(row.clusterId, e)}
+						onmouseenter={() => handleEnter(row.clusterId)}
+						onmouseleave={() => handleLeave()}
+						onfocus={() => handleEnter(row.clusterId)}
+						onblur={() => handleLeave()}
 						class="
 							flex w-full items-center gap-2 rounded-none px-1.5 py-0.5
 							text-left text-xs text-[var(--text-primary)] transition-colors

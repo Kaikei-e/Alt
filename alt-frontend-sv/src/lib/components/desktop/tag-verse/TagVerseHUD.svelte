@@ -3,7 +3,7 @@ import { X } from "@lucide/svelte";
 import { onMount } from "svelte";
 import HUDArticlesTab from "./HUDArticlesTab.svelte";
 import HUDRecapsTab from "./HUDRecapsTab.svelte";
-import { formatCountLabel } from "./tagIndex.js";
+import { DETAIL_PANEL_WIDTH_PX, formatCountLabel } from "./tagIndex.js";
 
 interface Props {
 	tagName: string;
@@ -153,8 +153,9 @@ function handleWindowKeydown(e: KeyboardEvent) {
 <aside
 	bind:this={panelEl}
 	aria-labelledby={headingId}
+	style:width="{DETAIL_PANEL_WIDTH_PX}px"
 	class="
-		absolute right-0 top-0 bottom-0 z-20 flex h-full w-[400px] shrink-0 flex-col border-l border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)] {reducedMotion
+		absolute right-0 top-0 bottom-0 z-20 flex h-full shrink-0 flex-col border-l border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)] {reducedMotion
 		? ''
 		: 'animate-slide-in-panel'}"
 >

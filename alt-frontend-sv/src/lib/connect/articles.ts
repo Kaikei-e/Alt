@@ -670,7 +670,7 @@ export interface TagCloudData {
  *
  * @param transport - The Connect transport to use
  * @param limit - Maximum number of tags to return (default: 300, max: 500)
- * @returns Tag cloud items sorted by article count (descending)
+ * @returns Tag cloud tags (sorted by article count descending) and co-occurrence edges
  */
 export async function fetchTagCloud(
 	transport: Transport,

@@ -1,4 +1,4 @@
-import { Color, LinearSRGBColorSpace } from "three";
+import { Color } from "three";
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import {
 	buildPalette,
@@ -107,8 +107,6 @@ export interface TopicsKeyRow {
 
 const MIN_RADIUS = 0.3;
 const MAX_RADIUS = 3.0;
-const MIN_LABEL_FONT_SIZE = 11;
-const MAX_LABEL_FONT_SIZE = 16;
 const MIN_LABEL_OPACITY = 0.35;
 const FOG_VANISH_THRESHOLD = 0.98;
 
@@ -134,14 +132,11 @@ export function computeRadius(articleCount: number, maxCount: number): number {
 export function computeLabelFontSize(
 	articleCount: number,
 	maxCount: number,
-	_isDisplayTier = false,
+	isDisplayTier = false,
 ): number {
 	const normalized =
 		Math.min(1, Math.max(0, articleCount) / Math.max(maxCount, 1)) ** 0.4;
-	return (
-		MIN_LABEL_FONT_SIZE +
-		normalized * (MAX_LABEL_FONT_SIZE - MIN_LABEL_FONT_SIZE)
-	);
+	return isDisplayTier ? 18 + normalized * 8 : 11 + normalized * 3;
 }
 
 export function hasServerPositions(tags: readonly TagCloudItem[]): boolean {
@@ -236,11 +231,11 @@ export function buildSceneModel(
 			? [tag.positionX, tag.positionY, tag.positionZ]
 			: (fallback?.[i] ?? [0, 0, 0]);
 		const isDisplayTier = displaySet.has(i);
-		const normalized =
-			Math.min(1, Math.max(0, tag.articleCount) / Math.max(maxCount, 1)) ** 0.4;
-		const labelFontSize = isDisplayTier
-			? 18 + normalized * 8
-			: 11 + normalized * 3;
+		const labelFontSize = computeLabelFontSize(
+			tag.articleCount,
+			maxCount,
+			isDisplayTier,
+		);
 		const colorBucket = computeColorBucket(tag.articleCount, maxCount);
 
 		nodes[i] = {
@@ -540,7 +535,7 @@ export function needsFraming(params: {
 	return Math.abs(effectiveNdcX) > 0.6 || Math.abs(params.ndcY) > 0.6;
 }
 
-export function computeFramingDestinations(_params: {
+export function computeFramingDestinations(params: {
 	nodePosition: readonly [number, number, number];
 	viewOffset: readonly [number, number, number];
 	cameraRight: readonly [number, number, number];
@@ -548,10 +543,31 @@ export function computeFramingDestinations(_params: {
 	canvasHeight: number;
 	occludedRightPx?: number;
 }): FramingDestinations {
+	const [nx, ny, nz] = params.nodePosition;
+	const [ox, oy, oz] = params.viewOffset;
+	const [rx, ry, rz] = params.cameraRight;
+	const rightLen = Math.hypot(rx, ry, rz);
+	const unitRx = rightLen > 1e-6 ? rx / rightLen : 1;
+	const unitRy = rightLen > 1e-6 ? ry / rightLen : 0;
+	const unitRz = rightLen > 1e-6 ? rz / rightLen : 0;
+
+	const distance = Math.hypot(ox, oy, oz);
+	const occludedRightPx = Math.max(0, params.occludedRightPx ?? 0);
+	const halfFovRad = (params.fovDeg * Math.PI) / 360;
+	const rightShiftWorld =
+		params.canvasHeight > 0 && occludedRightPx > 0
+			? ((2 * distance * Math.tan(halfFovRad)) / params.canvasHeight) *
+				(occludedRightPx * 0.5)
+			: 0;
+
+	const targetX = nx + unitRx * rightShiftWorld;
+	const targetY = ny + unitRy * rightShiftWorld;
+	const targetZ = nz + unitRz * rightShiftWorld;
+
 	return {
-		target: [0, 0, 0],
-		cameraPosition: [0, 0, 0],
-		rightShiftWorld: 0,
+		target: [targetX, targetY, targetZ],
+		cameraPosition: [targetX + ox, targetY + oy, targetZ + oz],
+		rightShiftWorld,
 	};
 }
 

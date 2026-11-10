@@ -5,6 +5,7 @@ import { untrack } from "svelte";
 import * as THREE from "three";
 import type { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
+	computeFramingDestinations,
 	fogWindow,
 	needsFraming,
 	type SceneNode,
@@ -170,7 +171,21 @@ $effect(() => {
 		_viewOffset.set(0, 0, radius * 1.5);
 	}
 
-	const camDest = target.clone().add(_viewOffset);
+	const te = cameraRef.matrixWorld.elements;
+	const dest = computeFramingDestinations({
+		nodePosition: node.position,
+		viewOffset: [_viewOffset.x, _viewOffset.y, _viewOffset.z],
+		cameraRight: [te[0] ?? 1, te[1] ?? 0, te[2] ?? 0],
+		fovDeg: cameraRef.fov,
+		canvasHeight: untrack(() => size.current.height),
+		occludedRightPx: rightInset,
+	});
+	target.set(dest.target[0], dest.target[1], dest.target[2]);
+	const camDest = new THREE.Vector3(
+		dest.cameraPosition[0],
+		dest.cameraPosition[1],
+		dest.cameraPosition[2],
+	);
 	transitionCamera(target, camDest);
 });
 
