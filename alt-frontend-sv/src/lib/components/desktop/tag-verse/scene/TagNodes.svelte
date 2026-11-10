@@ -26,13 +26,22 @@ let {
 
 const { invalidate } = useThrelte();
 
-const MAX_INSTANCES = 512;
-const HOVER_SCALE = 1.15;
+const HIGHLIGHT_SCALE = 1.15;
 
 const geometry = new THREE.SphereGeometry(1, 24, 16);
 const material = new THREE.MeshBasicMaterial({ color: "#ffffff" });
-const mesh = new THREE.InstancedMesh(geometry, material, MAX_INSTANCES);
-mesh.setColorAt(0, new THREE.Color("#ffffff"));
+
+function createInstancedMesh(count: number): THREE.InstancedMesh {
+	const capacity = Math.max(1, count);
+	const instanced = new THREE.InstancedMesh(geometry, material, capacity);
+	instanced.count = count;
+	instanced.setColorAt(0, new THREE.Color("#ffffff"));
+	return instanced;
+}
+
+let mesh = $state.raw<THREE.InstancedMesh>(
+	createInstancedMesh(untrack(() => nodes.length)),
+);
 
 const _matrix = new THREE.Matrix4();
 const _pos = new THREE.Vector3();
@@ -40,30 +49,33 @@ const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _color = new THREE.Color();
 
-function applyInstanceTransform(index: number, isHovered: boolean) {
+function applyInstanceTransform(
+	targetMesh: THREE.InstancedMesh,
+	index: number,
+	isHighlighted: boolean,
+) {
 	const node = nodes[index];
 	if (!node) return;
-	const s = node.radius * (isHovered ? HOVER_SCALE : 1);
+	const s = node.radius * (isHighlighted ? HIGHLIGHT_SCALE : 1);
 	_pos.set(node.position[0], node.position[1], node.position[2]);
 	_scale.set(s, s, s);
 	_matrix.compose(_pos, _quat, _scale);
-	mesh.setMatrixAt(index, _matrix);
+	targetMesh.setMatrixAt(index, _matrix);
 }
 
 function applyInstanceColor(
+	targetMesh: THREE.InstancedMesh,
 	index: number,
-	isHovered: boolean,
-	isSelected: boolean,
+	isHighlighted: boolean,
 	currentPalette: TagVersePalette,
 ) {
 	const node = nodes[index];
 	if (!node) return;
-	const hex =
-		isSelected || isHovered
-			? currentPalette.accent
-			: currentPalette.ramp[node.colorBucket];
+	const hex = isHighlighted
+		? currentPalette.accent
+		: currentPalette.ramp[node.colorBucket];
 	_color.set(hex);
-	mesh.setColorAt(index, _color);
+	targetMesh.setColorAt(index, _color);
 }
 
 let prevHovered: number | null = null;
@@ -74,20 +86,30 @@ $effect(() => {
 	const currentPalette = palette;
 	const h = untrack(() => hoveredIndex);
 	const s = untrack(() => selectedIndex);
-	const count = Math.min(currentNodes.length, MAX_INSTANCES);
-	mesh.count = count;
+	const count = currentNodes.length;
+	const requiredCapacity = Math.max(1, count);
+
+	let activeMesh = untrack(() => mesh);
+	if (activeMesh.instanceMatrix.count !== requiredCapacity) {
+		activeMesh.dispose();
+		activeMesh = createInstancedMesh(count);
+		mesh = activeMesh;
+	} else {
+		activeMesh.count = count;
+	}
 
 	for (let i = 0; i < count; i++) {
-		applyInstanceTransform(i, i === h);
-		applyInstanceColor(i, i === h, i === s, currentPalette);
+		const isHighlighted = i === h || i === s;
+		applyInstanceTransform(activeMesh, i, isHighlighted);
+		applyInstanceColor(activeMesh, i, isHighlighted, currentPalette);
 	}
 
-	mesh.instanceMatrix.needsUpdate = true;
-	if (mesh.instanceColor) {
-		mesh.instanceColor.needsUpdate = true;
+	activeMesh.instanceMatrix.needsUpdate = true;
+	if (activeMesh.instanceColor) {
+		activeMesh.instanceColor.needsUpdate = true;
 	}
 	if (count > 0) {
-		mesh.computeBoundingSphere();
+		activeMesh.computeBoundingSphere();
 	}
 
 	prevHovered = h;
@@ -102,8 +124,9 @@ $effect(() => {
 		return;
 	}
 
+	const activeMesh = untrack(() => mesh);
 	const currentPalette = untrack(() => palette);
-	const count = mesh.count;
+	const count = activeMesh.count;
 	const dirty = new Set<number>();
 
 	if (prevHovered !== null && prevHovered < count) dirty.add(prevHovered);
@@ -111,25 +134,20 @@ $effect(() => {
 	if (prevSelected !== null && prevSelected < count) dirty.add(prevSelected);
 	if (nextSelected !== null && nextSelected < count) dirty.add(nextSelected);
 
-	const hoverChanged = nextHovered !== prevHovered;
-
 	for (const idx of dirty) {
-		if (hoverChanged) {
-			applyInstanceTransform(idx, idx === nextHovered);
-		}
-		applyInstanceColor(
-			idx,
-			idx === nextHovered,
-			idx === nextSelected,
-			currentPalette,
-		);
+		const isHighlighted = idx === nextHovered || idx === nextSelected;
+		applyInstanceTransform(activeMesh, idx, isHighlighted);
+		applyInstanceColor(activeMesh, idx, isHighlighted, currentPalette);
 	}
 
-	if (hoverChanged && dirty.size > 0) {
-		mesh.instanceMatrix.needsUpdate = true;
-	}
-	if (dirty.size > 0 && mesh.instanceColor) {
-		mesh.instanceColor.needsUpdate = true;
+	if (dirty.size > 0) {
+		activeMesh.instanceMatrix.needsUpdate = true;
+		if (activeMesh.instanceColor) {
+			activeMesh.instanceColor.needsUpdate = true;
+		}
+		if (count > 0) {
+			activeMesh.computeBoundingSphere();
+		}
 	}
 
 	prevHovered = nextHovered;

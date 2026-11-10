@@ -17,6 +17,10 @@ const RAMP_RATIOS: readonly [number, number, number, number, number] = [
 	0.5, 0.625, 0.75, 0.875, 1.0,
 ];
 
+const DEFAULT_PAPER_RGB: RgbTuple = [250, 249, 247];
+const DEFAULT_INK_RGB: RgbTuple = [26, 26, 26];
+const DEFAULT_ACCENT_RGB: RgbTuple = [47, 79, 79];
+
 const HEX_SHORT_RE = /^#([0-9a-f]{3}|[0-9a-f]{4})$/i;
 const HEX_LONG_RE = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i;
 const RGB_FN_RE =
@@ -90,12 +94,26 @@ function channelToLinear(byteValue: number): number {
 	return cs <= 0.04045 ? cs / 12.92 : ((cs + 0.055) / 1.055) ** 2.4;
 }
 
+function luminanceFromRgb([r, g, b]: RgbTuple): number {
+	return (
+		0.2126 * channelToLinear(r) +
+		0.7152 * channelToLinear(g) +
+		0.0722 * channelToLinear(b)
+	);
+}
+
+function contrastFromRgb(a: RgbTuple, b: RgbTuple): number {
+	const l1 = luminanceFromRgb(a);
+	const l2 = luminanceFromRgb(b);
+	return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
 export function relativeLuminance(hexOrCss: string): number {
-	const rgb = parseRgb(hexOrCss) ?? [0, 0, 0];
-	const r = channelToLinear(rgb[0]);
-	const g = channelToLinear(rgb[1]);
-	const b = channelToLinear(rgb[2]);
-	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+	const rgb = parseRgb(hexOrCss);
+	if (!rgb) {
+		throw new Error(`Unparseable CSS colour: "${hexOrCss}"`);
+	}
+	return luminanceFromRgb(rgb);
 }
 
 export function contrastRatio(colorA: string, colorB: string): number {
@@ -106,31 +124,54 @@ export function contrastRatio(colorA: string, colorB: string): number {
 	return (lighter + 0.05) / (darker + 0.05);
 }
 
-export function buildPalette(
-	paper?: string | null,
-	ink?: string | null,
-	accent?: string | null,
-): TagVersePalette {
-	const paperRgb =
-		parseRgb(paper) ?? (parseRgb(ALT_PAPER_DEFAULTS.paper) as RgbTuple);
-	const inkRgb =
-		parseRgb(ink) ?? (parseRgb(ALT_PAPER_DEFAULTS.ink) as RgbTuple);
-	const accentRgb =
-		parseRgb(accent) ?? (parseRgb(ALT_PAPER_DEFAULTS.accent) as RgbTuple);
-
-	const ramp: [string, string, string, string, string] = [
+function buildRamp(
+	paperRgb: RgbTuple,
+	inkRgb: RgbTuple,
+): [string, string, string, string, string] {
+	return [
 		rgbToHex(mixRgb(paperRgb, inkRgb, RAMP_RATIOS[0])),
 		rgbToHex(mixRgb(paperRgb, inkRgb, RAMP_RATIOS[1])),
 		rgbToHex(mixRgb(paperRgb, inkRgb, RAMP_RATIOS[2])),
 		rgbToHex(mixRgb(paperRgb, inkRgb, RAMP_RATIOS[3])),
 		rgbToHex(mixRgb(paperRgb, inkRgb, RAMP_RATIOS[4])),
 	];
+}
+
+export function buildPalette(
+	paper?: string | null,
+	ink?: string | null,
+	accent?: string | null,
+): TagVersePalette {
+	let paperRgb = parseRgb(paper) ?? DEFAULT_PAPER_RGB;
+	let inkRgb = parseRgb(ink) ?? DEFAULT_INK_RGB;
+	let accentRgb = parseRgb(accent) ?? DEFAULT_ACCENT_RGB;
+
+	if (contrastFromRgb(inkRgb, paperRgb) < 4.5) {
+		inkRgb = DEFAULT_INK_RGB;
+		if (contrastFromRgb(inkRgb, paperRgb) < 4.5) {
+			paperRgb = DEFAULT_PAPER_RGB;
+		}
+	}
+
+	const lightestNodeRgb = mixRgb(paperRgb, inkRgb, RAMP_RATIOS[0]);
+	if (contrastFromRgb(lightestNodeRgb, paperRgb) < 3.0) {
+		paperRgb = DEFAULT_PAPER_RGB;
+		inkRgb = DEFAULT_INK_RGB;
+	}
+
+	if (contrastFromRgb(accentRgb, paperRgb) < 3.0) {
+		accentRgb = DEFAULT_ACCENT_RGB;
+		if (contrastFromRgb(accentRgb, paperRgb) < 3.0) {
+			paperRgb = DEFAULT_PAPER_RGB;
+			inkRgb = DEFAULT_INK_RGB;
+		}
+	}
 
 	return {
 		paper: rgbToHex(paperRgb),
 		labelInk: rgbToHex(inkRgb),
 		accent: rgbToHex(accentRgb),
-		ramp,
+		ramp: buildRamp(paperRgb, inkRgb),
 	};
 }
 

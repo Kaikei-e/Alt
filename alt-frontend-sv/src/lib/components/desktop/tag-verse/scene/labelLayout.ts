@@ -6,11 +6,6 @@ export interface LabelBox {
 	forced?: boolean;
 }
 
-export interface LayoutLabelsOptions {
-	cellSize?: number;
-	forcedIndices?: ReadonlySet<number> | readonly number[];
-}
-
 const DEFAULT_CELL_SIZE = 64;
 
 export function boxesOverlap(a: LabelBox, b: LabelBox): boolean {
@@ -23,43 +18,14 @@ function cellKey(cx: number, cy: number): number {
 	return ((cx + 32768) << 16) ^ ((cy + 32768) & 0xffff);
 }
 
-function resolveOptions(
-	options?: LayoutLabelsOptions | ReadonlySet<number> | readonly number[],
-): { cellSize: number; forcedSet: Set<number> } {
-	const forcedSet = new Set<number>();
-	let cellSize = DEFAULT_CELL_SIZE;
-
-	if (!options) {
-		return { cellSize, forcedSet };
-	}
-
-	if (options instanceof Set || Array.isArray(options)) {
-		for (const idx of options) {
-			forcedSet.add(idx);
-		}
-		return { cellSize, forcedSet };
-	}
-
-	const opts = options as LayoutLabelsOptions;
-	if (opts.cellSize && opts.cellSize > 0) {
-		cellSize = opts.cellSize;
-	}
-	if (opts.forcedIndices) {
-		for (const idx of opts.forcedIndices) {
-			forcedSet.add(idx);
-		}
-	}
-	return { cellSize, forcedSet };
-}
-
 export function layoutLabels(
 	boxes: readonly LabelBox[],
-	options?: LayoutLabelsOptions | ReadonlySet<number> | readonly number[],
+	cellSize = DEFAULT_CELL_SIZE,
 ): number[] {
 	if (boxes.length === 0) return [];
 
-	const { cellSize, forcedSet } = resolveOptions(options);
-	const invCell = 1 / cellSize;
+	const resolvedCellSize = cellSize > 0 ? cellSize : DEFAULT_CELL_SIZE;
+	const invCell = 1 / resolvedCellSize;
 	const grid = new Map<number, number[]>();
 	const accepted: number[] = [];
 
@@ -108,8 +74,7 @@ export function layoutLabels(
 		const box = boxes[i] as LabelBox;
 		if (box.w <= 0 || box.h <= 0) continue;
 
-		const isForced = box.forced === true || forcedSet.has(i);
-		if (isForced || !collidesInGrid(box)) {
+		if (box.forced === true || !collidesInGrid(box)) {
 			accepted.push(i);
 			insertBox(i, box);
 		}

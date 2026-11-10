@@ -3,7 +3,6 @@ import type { TagCloudItem } from "#lib/connect/index.js";
 export type ColorBucket = 0 | 1 | 2 | 3 | 4;
 
 export interface SceneNode {
-	index: number;
 	tagName: string;
 	articleCount: number;
 	position: [number, number, number];
@@ -15,15 +14,20 @@ export interface SceneNode {
 export interface SceneModel {
 	nodes: SceneNode[];
 	cloudRadius: number;
-	maxCount: number;
-	hasServerPositions: boolean;
 	indexByName: Map<string, number>;
+}
+
+export interface FogWindow {
+	near: number;
+	far: number;
 }
 
 const MIN_RADIUS = 0.3;
 const MAX_RADIUS = 3.0;
 const MIN_LABEL_FONT_SIZE = 11;
 const MAX_LABEL_FONT_SIZE = 16;
+const MIN_LABEL_OPACITY = 0.35;
+const FOG_VANISH_THRESHOLD = 0.98;
 
 export function computeColorBucket(
 	articleCount: number,
@@ -97,27 +101,25 @@ export function computeCloudRadius(
 	return Math.max(15, Math.sqrt(tags.length) * 3);
 }
 
-export interface FogWindow {
-	near: number;
-	far: number;
+export function fogWindow(distance: number, cloudRadius: number): FogWindow {
+	const r = Math.max(0, cloudRadius);
+	const d = Math.max(0, distance);
+	const near = Math.max(0, d - 0.2 * r);
+	const far = Math.max(near + 1e-3, d + 1.6 * r);
+	return { near, far };
 }
 
-export function fogWindow(
-	_distance: number,
-	_cloudRadius: number,
-): FogWindow {
-	return { near: 0, far: 0 };
+export function computeFogFactor(depth: number, window: FogWindow): number {
+	const span = Math.max(1e-6, window.far - window.near);
+	return Math.max(0, Math.min(1, (depth - window.near) / span));
 }
 
-export function computeFogFactor(_depth: number, _window: FogWindow): number {
-	return 1;
-}
-
-export function computeLabelOpacity(
-	_depth: number,
-	_window: FogWindow,
-): number {
-	return 0;
+export function computeLabelOpacity(depth: number, window: FogWindow): number {
+	const fogFactor = computeFogFactor(depth, window);
+	if (fogFactor >= FOG_VANISH_THRESHOLD) {
+		return 0;
+	}
+	return Math.max(MIN_LABEL_OPACITY, 1 - fogFactor);
 }
 
 export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
@@ -141,7 +143,6 @@ export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
 			: (fallback?.[i] ?? [0, 0, 0]);
 
 		nodes[i] = {
-			index: i,
 			tagName: tag.tagName,
 			articleCount: tag.articleCount,
 			position,
@@ -155,8 +156,6 @@ export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
 	return {
 		nodes,
 		cloudRadius,
-		maxCount,
-		hasServerPositions: serverPos,
 		indexByName,
 	};
 }

@@ -4,28 +4,28 @@ import { interactivity } from "@threlte/extras";
 import type { TagCloudItem } from "#lib/connect/index.js";
 import CameraRig from "./scene/CameraRig.svelte";
 import LabelOverlay from "./scene/LabelOverlay.svelte";
-import { buildPalette, type TagVersePalette } from "./scene/palette.js";
-import { buildSceneModel } from "./scene/sceneModel.js";
+import type { TagVersePalette } from "./scene/palette.js";
+import { buildSceneModel, fogWindow } from "./scene/sceneModel.js";
 import TagNodes from "./scene/TagNodes.svelte";
 
 interface Props {
 	tags: TagCloudItem[];
 	onTagSelect: (tagName: string) => void;
+	palette: TagVersePalette;
 	selectedTag?: string | null;
 	autoRotate?: boolean;
 	reducedMotion?: boolean;
 	resetViewNonce?: number;
-	palette?: TagVersePalette;
 }
 
 let {
 	tags,
 	onTagSelect,
+	palette,
 	selectedTag = null,
 	autoRotate = false,
 	reducedMotion = false,
 	resetViewNonce = 0,
-	palette = buildPalette(),
 }: Props = $props();
 
 interactivity();
@@ -42,8 +42,9 @@ const selectedNode = $derived(
 	selectedIndex !== null ? (model.nodes[selectedIndex] ?? null) : null,
 );
 
-const fogNear = $derived(model.cloudRadius * 0.8);
-const fogFar = $derived(model.cloudRadius * 3.2);
+const initialFog = $derived(
+	fogWindow(model.cloudRadius * 1.5, model.cloudRadius),
+);
 
 function handleHoverChange(index: number | null) {
 	hoveredIndex = index;
@@ -59,7 +60,7 @@ function handleHoverChange(index: number | null) {
 />
 
 <T.Color attach="background" args={[palette.paper]} />
-<T.Fog attach="fog" args={[palette.paper, fogNear, fogFar]} />
+<T.Fog attach="fog" args={[palette.paper, initialFog.near, initialFog.far]} />
 
 <TagNodes
 	nodes={model.nodes}

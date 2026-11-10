@@ -4,7 +4,12 @@ import { onMount } from "svelte";
 import * as THREE from "three";
 import { type LabelBox, layoutLabels } from "./labelLayout.js";
 import type { TagVersePalette } from "./palette.js";
-import type { SceneNode } from "./sceneModel.js";
+import {
+	computeLabelOpacity,
+	type FogWindow,
+	fogWindow,
+	type SceneNode,
+} from "./sceneModel.js";
 
 interface Props {
 	nodes: readonly SceneNode[];
@@ -17,11 +22,12 @@ interface Props {
 let { nodes, cloudRadius, palette, selectedIndex, hoveredIndex }: Props =
 	$props();
 
-const { dom, camera, size, dpr, renderStage, invalidate } = useThrelte();
+const { dom, scene, camera, size, dpr, renderStage, invalidate } = useThrelte();
 
 let canvasEl: HTMLCanvasElement | undefined;
 const widthCache = new Map<string, number>();
 const _projVec = new THREE.Vector3();
+const _camForward = new THREE.Vector3();
 
 const sortedIndicesByCount = $derived.by(() => {
 	const indices = Array.from({ length: nodes.length }, (_, i) => i);
@@ -97,13 +103,18 @@ function drawLabels() {
 	if (nodes.length === 0) return;
 
 	cam.updateMatrixWorld();
+	cam.getWorldDirection(_camForward);
 	const camX = cam.position.x;
 	const camY = cam.position.y;
 	const camZ = cam.position.z;
-	const camDistOrigin = Math.hypot(camX, camY, camZ);
-	const nearDepth = Math.max(1, camDistOrigin - cloudRadius);
-	const farDepth = Math.max(nearDepth + 1, camDistOrigin + cloudRadius);
-	const invDepthSpan = 1 / (farDepth - nearDepth);
+	const fwdX = _camForward.x;
+	const fwdY = _camForward.y;
+	const fwdZ = _camForward.z;
+
+	const activeFog: FogWindow =
+		scene.fog instanceof THREE.Fog
+			? { near: scene.fog.near, far: scene.fog.far }
+			: fogWindow(Math.hypot(camX, camY, camZ), cloudRadius);
 
 	const priorityIndices: number[] = [];
 	if (
@@ -136,11 +147,24 @@ function drawLabels() {
 		const node = nodes[idx];
 		if (!node) continue;
 
-		const anchorX = node.position[0];
-		const anchorY = node.position[1] + node.radius;
-		const anchorZ = node.position[2];
+		const nodeX = node.position[0];
+		const nodeY = node.position[1];
+		const nodeZ = node.position[2];
 
-		const dist = Math.hypot(anchorX - camX, anchorY - camY, anchorZ - camZ);
+		const viewDepth =
+			(nodeX - camX) * fwdX + (nodeY - camY) * fwdY + (nodeZ - camZ) * fwdZ;
+		if (viewDepth <= 0) continue;
+
+		const isSelected = idx === selectedIndex;
+		const isHovered = idx === hoveredIndex;
+		const isForced = isSelected || isHovered;
+
+		const opacity = isForced ? 1 : computeLabelOpacity(viewDepth, activeFog);
+		if (opacity <= 0) continue;
+
+		const anchorX = nodeX;
+		const anchorY = nodeY + node.radius;
+		const anchorZ = nodeZ;
 
 		_projVec.set(anchorX, anchorY, anchorZ).project(cam);
 		if (_projVec.z < -1 || _projVec.z > 1) continue;
@@ -151,18 +175,9 @@ function drawLabels() {
 			continue;
 		}
 
-		const isSelected = idx === selectedIndex;
-		const isHovered = idx === hoveredIndex;
-		const isForced = isSelected || isHovered;
 		const weight: 600 | 700 = isSelected ? 700 : 600;
 		const fontSize = Math.round(node.labelFontSize * 10) / 10;
 		const textWidth = measureLabelWidth(ctx, node.tagName, fontSize, weight);
-
-		const depthNorm = Math.max(
-			0,
-			Math.min(1, (dist - nearDepth) * invDepthSpan),
-		);
-		const opacity = isForced ? 1 : 1 - depthNorm * 0.65;
 
 		const boxW = textWidth + 6;
 		const boxH = fontSize + 4;
@@ -194,7 +209,6 @@ function drawLabels() {
 	ctx.lineWidth = 3;
 	ctx.strokeStyle = palette.paper;
 
-	// Draw in reverse accepted order so higher-priority labels (selected/hovered) render on top
 	for (let i = accepted.length - 1; i >= 0; i--) {
 		const candIdx = accepted[i] as number;
 		const entry = candidates[candIdx];
@@ -234,13 +248,25 @@ $effect(() => {
 
 onMount(() => {
 	let active = true;
-	if (typeof document !== "undefined" && document.fonts?.ready) {
-		document.fonts.ready.then(() => {
-			if (active) {
-				widthCache.clear();
-				invalidate();
-			}
-		});
+	if (typeof document !== "undefined" && document.fonts) {
+		const fontPromises: Promise<unknown>[] = [];
+		if (typeof document.fonts.load === "function") {
+			fontPromises.push(
+				document.fonts.load('600 12px "Source Sans 3"'),
+				document.fonts.load('700 12px "Source Sans 3"'),
+			);
+		}
+		if (document.fonts.ready) {
+			fontPromises.push(document.fonts.ready);
+		}
+		Promise.all(fontPromises)
+			.then(() => {
+				if (active) {
+					widthCache.clear();
+					invalidate();
+				}
+			})
+			.catch(() => {});
 	}
 	return () => {
 		active = false;

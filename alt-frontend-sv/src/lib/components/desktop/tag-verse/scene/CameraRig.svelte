@@ -4,7 +4,7 @@ import { OrbitControls } from "@threlte/extras";
 import { untrack } from "svelte";
 import * as THREE from "three";
 import type { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { SceneNode } from "./sceneModel.js";
+import { fogWindow, type SceneNode } from "./sceneModel.js";
 
 interface Props {
 	cloudRadius: number;
@@ -22,7 +22,7 @@ let {
 	resetViewNonce,
 }: Props = $props();
 
-const { invalidate } = useThrelte();
+const { scene, invalidate } = useThrelte();
 
 const ANIMATION_DURATION = 0.6;
 
@@ -41,6 +41,26 @@ function easeOutCubic(t: number): number {
 	return 1 - (1 - t) ** 3;
 }
 
+function syncFog() {
+	if (!cameraRef) return;
+	const target = controlsRef?.target;
+	const distance = target
+		? cameraRef.position.distanceTo(target)
+		: cameraRef.position.length();
+	const { near, far } = fogWindow(distance, cloudRadius);
+	if (scene.fog instanceof THREE.Fog) {
+		scene.fog.near = near;
+		scene.fog.far = far;
+	}
+}
+
+$effect(() => {
+	void cloudRadius;
+	void cameraRef;
+	void controlsRef;
+	syncFog();
+});
+
 function transitionCamera(targetPos: THREE.Vector3, camPos: THREE.Vector3) {
 	if (!cameraRef || !controlsRef) return;
 
@@ -49,6 +69,7 @@ function transitionCamera(targetPos: THREE.Vector3, camPos: THREE.Vector3) {
 		cameraRef.position.copy(camPos);
 		controlsRef.target.copy(targetPos);
 		controlsRef.update();
+		syncFog();
 		invalidate();
 		return;
 	}
@@ -75,6 +96,7 @@ useTask(
 		cameraRef.position.lerpVectors(startCamPos, endCamPos, eased);
 		controlsRef.target.lerpVectors(startTarget, endTarget, eased);
 		controlsRef.update();
+		syncFog();
 		invalidate();
 
 		if (t >= 1) {
@@ -148,5 +170,6 @@ $effect(() => {
 		autoRotateSpeed={0.4}
 		minDistance={cloudRadius * 0.3}
 		maxDistance={cloudRadius * 5}
+		onchange={syncFog}
 	/>
 </T.PerspectiveCamera>
