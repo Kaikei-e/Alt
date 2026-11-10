@@ -75,10 +75,11 @@ python3 scripts/tests/test-kisage-env.py --audit-host-config
 
 ## Staged Read-Only Preflight & Explicit Scope Limits
 
-`python3 scripts/kisage-env.py preflight --env-file <path>` is a **read-only shadow gate** invoked explicitly via `make kisage-preflight` (it is **not** wired into `scripts/deploy.sh` and performs no automatic host apply).
+`python3 scripts/kisage-env.py preflight --env-file <path>` is a **read-only preflight gate** invoked via `make kisage-preflight` and wired as step `[2/6]` in `scripts/deploy.sh` right after `check-compose-variables.sh` (it performs no automatic host apply).
 
 1. **Managed-Subset Comparison Only**:
    - Compares only repository-managed keys declared under `/upstreams`, `/mtls_allowlists`, `/rate_limits`, and `/feature_flags` in `deploy/desired-env.lkal`.
+   - `verify` classifies every managed key from production Compose (`compose/compose.yaml` `include:` chain) into four classes: `defaulted` (interpolated via `${KEY:-default}` with identical defaults matching the declaration), `pinned` (literal container variable assignment matching the declaration), `required` (interpolated without a default), or `passthrough` (not referenced in production Compose; must be set uncommented in `.env.template` with the declared value). Any managed key set uncommented in `.env.template` or `.env.example` must match the declaration. In `preflight`, absent `defaulted` and `pinned` keys in `.env` are accepted because Compose supplies them, whereas absent `passthrough` or `required` keys and any present managed key whose value differs from the declaration are rejected.
    - Unmanaged host secrets and `/local/*` operator keys in `.env` are preserved and ignored unless a line is syntactically malformed or duplicated.
 2. **Raw Dotenv File Scope & Managed-vs-Unmanaged Interpolation Policy**:
    - Parses the raw `.env` file on disk: supports unquoted values (including apostrophes `'`), single-quoted literal values (`'...'`), and double-quoted values (`"..."`) with standard backslash escapes (`\"`, `\\`, `\$`, `\n`, `\r`, `\t`).
@@ -106,8 +107,8 @@ python3 scripts/tests/test-kisage-env.py --audit-host-config
 | **3** | External managed drift (`K203 ModifiedExternally`) | Hand-editing a managed leaf in `host-env.lkal` causes `kisage apply` to halt `Blocked` with `K203`; resolved only after `kisage explain` + explicit `kisage adopt` with `conditionToken` and `ownerRevision`. | `test-kisage-env.py` §6 |
 | **4** | Sibling `/local/*` & `###` comment preservation + Scope boundary | `/local/*` leaves and `###` doc comments survive `apply` and `prune`; any attempt to declare `/local/*` in `desired-env.lkal` is blocked by `verify` and by `kisage` with `K206` / `K401`. | `test-kisage-env.py` §4, §6 |
 | **5** | Conservative deletion boundary (`apply` vs. `prune`) | Removing a key from `desired-env.lkal` causes `kisage apply` to report `NotConverged` (`K604`) without deleting it; only explicit `kisage prune` removes `Origin=Created` leaves. | `test-kisage-env.py` §6 |
-| **6** | Alt semantic & schema invariants (`ADR-000982`) | `RATE_LIMIT_EXTERNAL_API_INTERVAL < 5s` (e.g. `1s`) and mTLS peer allowlist mismatches against `deploy/host-prereqs.yaml` fail `verify` and `preflight`. | `test-kisage-env.py` §3 |
-| **7** | Read-only dotenv `preflight` | Detects missing managed keys, value drift, managed-key `$` interpolation, duplicate keys, malformed lines, and invalid declarations while preserving unmanaged secrets (including apostrophes, escaped quotes, and valid Compose `${VAR}` references) and emitting key names only. | `test-kisage-env.py` §5 |
+| **6** | Alt semantic, Compose & template lockstep invariants (`ADR-000982`) | `RATE_LIMIT_EXTERNAL_API_INTERVAL < 5s` (e.g. `1s`), mTLS peer allowlist mismatches against `deploy/host-prereqs.yaml`, production Compose default/pinned mismatches, and `.env.template`/`.env.example` drift fail `verify` and `preflight`. | `test-kisage-env.py` §3, §9 |
+| **7** | Read-only dotenv `preflight` | Accepts absent `defaulted` and `pinned` managed keys, rejects missing `passthrough`/`required` managed keys, value drift on any present managed key, managed-key `$` interpolation, duplicate keys, malformed lines, and invalid declarations while preserving unmanaged secrets (including apostrophes, escaped quotes, and valid Compose `${VAR}` references) and emitting key names only. | `test-kisage-env.py` §5, §9 |
 
 ---
 
@@ -119,9 +120,9 @@ During staged evaluation, run `make kisage-preflight` alongside the existing bas
 2. **False Stops**: Count of valid operator `.env` configurations (unmanaged secrets, `/local/*` overrides, valid quoted/apostrophe syntax, or valid unmanaged Compose `${VAR}` references) erroneously rejected by `preflight` (target: `0`).
 3. **Elapsed Time**: Wall-clock execution time of `make kisage-verify` and `make kisage-preflight` (target: `< 2s`).
 4. **Manual Recovery Operations**: Count of host operator interventions (`explain` / `adopt` / state backup restores) required to recover from drift or rollback.
-5. **Live Raw `.env` Shadow Observation (2026-11-06 JST)**:
-   - Read-only `python3 scripts/kisage-env.py preflight --env-file .env` inspects only raw `.env` lines on disk, not Docker Compose effective runtime interpolation (`${VAR:-default}` fallbacks in `compose/*.yaml`).
-   - After repairing unmanaged variable reference handling (`0` false stops on unmanaged `APP_CLICKHOUSE_USER`, `APP_CLICKHOUSE_PASSWORD`, `APP_CLICKHOUSE_DATABASE`, `RECAP_DB_DSN`, and `TAG_GENERATOR_SERVICE_TOKEN`), live read-only preflight exits `1` reporting only the `23` absent repository-managed keys in raw `.env` (emitted by key name only, with no values emitted). These keys may be supplied by Compose defaults; this raw-file check does not verify effective Compose or running-container settings and does not establish a live outage.
+5. **Live Raw `.env` Observation**:
+   - Read-only `python3 scripts/kisage-env.py preflight --env-file .env` inspects raw `.env` lines on disk alongside the Compose binding classification from `verify`.
+   - The `23` managed keys that are absent from a typical host `.env` are `defaulted` or `pinned` in production Compose (`compose/*.yaml`), so `preflight` accepts their absence while still rejecting any absent `passthrough`/`required` key or any present managed key whose value drifts from `deploy/desired-env.lkal`. This check still does not inspect running-container state (`docker inspect`).
 
 ---
 

@@ -50,7 +50,11 @@ DEFAULT_DECLARATION = ROOT / "deploy" / "desired-env.lkal"
 DEFAULT_MANIFEST = ROOT / "deploy" / "host-prereqs.yaml"
 DEFAULT_CLAUDE_SETTINGS = ROOT / ".claude" / "settings.json"
 DEFAULT_MCP_CONFIG = ROOT / ".mcp.json"
+DEFAULT_COMPOSE_ROOT = ROOT / "compose" / "compose.yaml"
+DEFAULT_ENV_TEMPLATE = ROOT / ".env.template"
+DEFAULT_ENV_EXAMPLE = ROOT / ".env.example"
 CHECK_OVERRIDES_PATH = ROOT / "scripts" / "check-env-overrides.py"
+COMPOSE_INCLUDE_PATH = ROOT / "scripts" / "compose_include.py"
 
 EXPECTED_KISAGE_VERSION = "0.1.2"
 EXPECTED_LKAL_SPEC_VERSION = "0.1"
@@ -415,11 +419,143 @@ def render_dotenv(
     return "\n".join(out_lines) + "\n"
 
 
+_COMPOSE_DEFAULTED_INTERP_RE = re.compile(
+    r"(?<!\$)\$\{([A-Z_][A-Z0-9_]*):?-(.*?)\}"
+)
+_COMPOSE_REQUIRED_BRACE_RE = re.compile(
+    r"(?<!\$)\$\{([A-Z_][A-Z0-9_]*)(?::?\?[^}]*)?\}"
+)
+_COMPOSE_REQUIRED_BARE_RE = re.compile(r"(?<!\$)\$([A-Z_][A-Z0-9_]*)\b")
+
+
+def _load_compose_include_module():
+    spec = importlib.util.spec_from_file_location(
+        "compose_include", COMPOSE_INCLUDE_PATH
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {COMPOSE_INCLUDE_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _iter_service_env_entries(svc: dict[str, Any]) -> list[tuple[str, str]]:
+    env = svc.get("environment")
+    out: list[tuple[str, str]] = []
+    if isinstance(env, dict):
+        for k, v in env.items():
+            if v is None:
+                continue
+            out.append((str(k).strip(), str(v)))
+    elif isinstance(env, list):
+        for item in env:
+            if isinstance(item, str) and "=" in item:
+                k, v = item.split("=", 1)
+                out.append((k.strip(), v))
+    return out
+
+
+def resolve_compose_bindings(
+    managed_keys: set[str] | list[str] | tuple[str, ...],
+    compose_root: pathlib.Path = DEFAULT_COMPOSE_ROOT,
+) -> tuple[dict[str, dict[str, Any]] | None, list[str]]:
+    """Classify each managed key from production compose services' environment entries."""
+    if not compose_root.is_file():
+        return None, [
+            f"compose-root-missing: cannot read compose root {compose_root.name}"
+        ]
+    try:
+        compose_mod = _load_compose_include_module()
+        services = compose_mod.production_services(compose_root)
+    except (SystemExit, OSError, Exception):
+        return None, [
+            f"compose-parse-error: cannot load production compose services from {compose_root.name}"
+        ]
+    if not isinstance(services, dict) or not services:
+        return None, [
+            f"compose-empty-services: no production compose services found in {compose_root.name}"
+        ]
+
+    managed_set = set(managed_keys)
+    defaults_by_key: dict[str, list[str]] = {k: [] for k in managed_set}
+    required_by_key: dict[str, bool] = {k: False for k in managed_set}
+    literals_by_key: dict[str, list[str]] = {k: [] for k in managed_set}
+
+    for svc in services.values():
+        if not isinstance(svc, dict):
+            continue
+        for var_name, raw_val in _iter_service_env_entries(svc):
+            interpolated_in_val: set[str] = set()
+            for match in _COMPOSE_DEFAULTED_INTERP_RE.finditer(raw_val):
+                ref_key, default_val = match.group(1), match.group(2)
+                interpolated_in_val.add(ref_key)
+                if ref_key in managed_set:
+                    defaults_by_key[ref_key].append(default_val)
+            for match in _COMPOSE_REQUIRED_BRACE_RE.finditer(raw_val):
+                ref_key = match.group(1)
+                interpolated_in_val.add(ref_key)
+                if ref_key in managed_set:
+                    required_by_key[ref_key] = True
+            for match in _COMPOSE_REQUIRED_BARE_RE.finditer(raw_val):
+                ref_key = match.group(1)
+                interpolated_in_val.add(ref_key)
+                if ref_key in managed_set:
+                    required_by_key[ref_key] = True
+
+            if var_name in managed_set and var_name not in interpolated_in_val:
+                literals_by_key[var_name].append(raw_val)
+
+    bindings: dict[str, dict[str, Any]] = {}
+    for key in sorted(managed_set):
+        if defaults_by_key[key]:
+            bindings[key] = {
+                "class": "defaulted",
+                "defaults": defaults_by_key[key],
+                "literals": [],
+            }
+        elif required_by_key[key]:
+            bindings[key] = {
+                "class": "required",
+                "defaults": [],
+                "literals": [],
+            }
+        elif literals_by_key[key]:
+            bindings[key] = {
+                "class": "pinned",
+                "defaults": [],
+                "literals": literals_by_key[key],
+            }
+        else:
+            bindings[key] = {
+                "class": "passthrough",
+                "defaults": [],
+                "literals": [],
+            }
+
+    return bindings, []
+
+
+def _value_matches_declaration(
+    key: str,
+    candidate: str,
+    env_map: dict[str, str],
+    decl_allowlists: dict[str, Any],
+) -> bool:
+    if key in decl_allowlists and isinstance(decl_allowlists[key], list):
+        peers = [p.strip() for p in candidate.split(",") if p.strip()]
+        decl_peers = decl_allowlists[key]
+        return len(peers) == len(set(peers)) and set(peers) == set(decl_peers)
+    return candidate == env_map.get(key)
+
+
 def verify_declaration(
     decl_path: pathlib.Path = DEFAULT_DECLARATION,
     manifest_path: pathlib.Path = DEFAULT_MANIFEST,
     *,
     lkal_bin: str | None = None,
+    compose_root: pathlib.Path = DEFAULT_COMPOSE_ROOT,
+    env_template_path: pathlib.Path = DEFAULT_ENV_TEMPLATE,
+    env_example_path: pathlib.Path | None = None,
 ) -> list[str]:
     errors: list[str] = []
     try:
@@ -503,6 +639,110 @@ def verify_declaration(
         errors.append(
             f"check-env-overrides {finding.severity}: {finding.key}"
         )
+
+    bindings, binding_errors = resolve_compose_bindings(
+        set(env_map.keys()), compose_root=compose_root
+    )
+    if binding_errors or bindings is None:
+        errors.extend(binding_errors)
+        return errors
+
+    try:
+        tpl_raw = env_template_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            f"env-template-unreadable: cannot read {env_template_path.name} ({exc.strerror})"
+        )
+        return errors
+    except UnicodeDecodeError:
+        errors.append(
+            f"env-template-encoding: {env_template_path.name} is not valid UTF-8"
+        )
+        return errors
+    tpl_env = overrides.parse_env_file(tpl_raw)
+
+    resolved_example_path: pathlib.Path | None
+    require_example: bool
+    if env_example_path is not None:
+        resolved_example_path = env_example_path
+        require_example = True
+    elif env_template_path == DEFAULT_ENV_TEMPLATE:
+        resolved_example_path = DEFAULT_ENV_EXAMPLE
+        require_example = True
+    else:
+        candidate_example = env_template_path.parent / ".env.example"
+        resolved_example_path = (
+            candidate_example if candidate_example.exists() else None
+        )
+        require_example = False
+
+    example_env: dict[str, str] = {}
+    if resolved_example_path is not None:
+        try:
+            ex_raw = resolved_example_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            if require_example:
+                errors.append(
+                    f"env-example-unreadable: cannot read {resolved_example_path.name} ({exc.strerror})"
+                )
+                return errors
+        except UnicodeDecodeError:
+            errors.append(
+                f"env-example-encoding: {resolved_example_path.name} is not valid UTF-8"
+            )
+            return errors
+        else:
+            example_env = overrides.parse_env_file(ex_raw)
+
+    for key in sorted(env_map):
+        b = bindings[key]
+        b_class = b["class"]
+        if b_class == "defaulted":
+            defaults = b["defaults"]
+            if len(set(defaults)) > 1:
+                errors.append(
+                    f"compose-default-inconsistent: {key} has conflicting defaults across production compose services"
+                )
+            elif not _value_matches_declaration(
+                key, defaults[0], env_map, decl_allowlists
+            ):
+                errors.append(
+                    f"compose-default-mismatch: {key} compose default differs from declaration"
+                )
+        elif b_class == "pinned":
+            literals = b["literals"]
+            if len(set(literals)) > 1 or not _value_matches_declaration(
+                key, literals[0], env_map, decl_allowlists
+            ):
+                errors.append(
+                    f"compose-pinned-mismatch: {key} compose pinned literal differs from declaration"
+                )
+        elif b_class == "passthrough":
+            if key not in tpl_env:
+                errors.append(
+                    f"passthrough-missing-in-template: {key} is not referenced in production compose and is missing from {env_template_path.name}"
+                )
+            elif not _value_matches_declaration(
+                key, tpl_env[key], env_map, decl_allowlists
+            ):
+                errors.append(
+                    f"passthrough-template-mismatch: {key} in {env_template_path.name} differs from declaration"
+                )
+
+        if b_class != "passthrough" and key in tpl_env:
+            if not _value_matches_declaration(
+                key, tpl_env[key], env_map, decl_allowlists
+            ):
+                errors.append(
+                    f"env-template-mismatch: {key} in {env_template_path.name} differs from declaration"
+                )
+        if key in example_env:
+            if not _value_matches_declaration(
+                key, example_env[key], env_map, decl_allowlists
+            ):
+                errors.append(
+                    f"env-example-mismatch: {key} in {resolved_example_path.name if resolved_example_path else '.env.example'} differs from declaration"
+                )
 
     return errors
 
@@ -691,14 +931,25 @@ def preflight_dotenv(
     manifest_path: pathlib.Path = DEFAULT_MANIFEST,
     *,
     lkal_bin: str | None = None,
+    compose_root: pathlib.Path = DEFAULT_COMPOSE_ROOT,
+    env_template_path: pathlib.Path = DEFAULT_ENV_TEMPLATE,
+    env_example_path: pathlib.Path | None = None,
 ) -> list[str]:
     """Read-only comparison of repository-managed keys against an actual dotenv file.
 
-    Preserves local/unmanaged keys in `env_file`, fails closed on missing managed
-    keys, value mismatches, duplicate keys, or malformed dotenv syntax, and reports
-    KEY names only (never actual values or secrets).
+    Preserves local/unmanaged keys in `env_file`, accepts absent `defaulted` and
+    `pinned` keys, fails closed on absent `passthrough` or `required` keys, value
+    mismatches, duplicate keys, or malformed dotenv syntax, and reports KEY names
+    only (never actual values or secrets).
     """
-    decl_errors = verify_declaration(decl_path, manifest_path, lkal_bin=lkal_bin)
+    decl_errors = verify_declaration(
+        decl_path,
+        manifest_path,
+        lkal_bin=lkal_bin,
+        compose_root=compose_root,
+        env_template_path=env_template_path,
+        env_example_path=env_example_path,
+    )
     if decl_errors:
         return [f"declaration verification failed: {e}" for e in decl_errors]
 
@@ -710,6 +961,12 @@ def preflight_dotenv(
         MANAGED_SECTIONS,
         quote_for_file=False,
     )
+
+    bindings, binding_errors = resolve_compose_bindings(
+        set(expected_managed), compose_root=compose_root
+    )
+    if binding_errors or bindings is None:
+        return [f"declaration verification failed: {e}" for e in binding_errors]
 
     try:
         raw_env_text = env_file.read_text(encoding="utf-8")
@@ -724,8 +981,10 @@ def preflight_dotenv(
     errors = list(parse_errors)
 
     for key in sorted(expected_managed):
+        b_class = bindings[key]["class"]
         if key not in actual_env:
-            errors.append(f"missing managed key in dotenv: {key}")
+            if b_class in ("passthrough", "required"):
+                errors.append(f"missing managed key in dotenv: {key}")
         elif actual_env[key] != expected_managed[key]:
             errors.append(f"managed key drift (value mismatch) in dotenv: {key}")
 

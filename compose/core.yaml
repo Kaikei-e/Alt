@@ -375,6 +375,9 @@ services:
       # loudly at startup as a per-process-only guarantee.
       - HOST_RATE_LIMITER_REDIS_URL=redis://limiter@redis-streams:6379/3
       - HOST_RATE_LIMITER_REDIS_PASSWORD_FILE=/run/secrets/redis_limiter_password
+      - RATE_LIMIT_EXTERNAL_API_INTERVAL=${RATE_LIMIT_EXTERNAL_API_INTERVAL:-7.5s}
+      - RATE_LIMIT_EXTERNAL_API_BURST=${RATE_LIMIT_EXTERNAL_API_BURST:-3}
+      - RATE_LIMIT_PREFETCH_SLOT_WAIT=${RATE_LIMIT_PREFETCH_SLOT_WAIT:-250ms}
       # alt-data-hub is reachable over mTLS only; there is no plaintext
       # east-west port to fall back to (see alt-data-hub below).
       #
@@ -577,6 +580,9 @@ services:
       # of once each (CLAUDE.md rule 2). See the comment there.
       HOST_RATE_LIMITER_REDIS_URL: redis://limiter@redis-streams:6379/3
       HOST_RATE_LIMITER_REDIS_PASSWORD_FILE: /run/secrets/redis_limiter_password
+      RATE_LIMIT_EXTERNAL_API_INTERVAL: ${RATE_LIMIT_EXTERNAL_API_INTERVAL:-7.5s}
+      RATE_LIMIT_EXTERNAL_API_BURST: ${RATE_LIMIT_EXTERNAL_API_BURST:-3}
+      RATE_LIMIT_PREFETCH_SLOT_WAIT: ${RATE_LIMIT_PREFETCH_SLOT_WAIT:-250ms}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
       OTEL_SERVICE_NAME: alt-harvester
       RASK_INGEST_TOKEN_FILE: /run/secrets/rask_ingest_token
