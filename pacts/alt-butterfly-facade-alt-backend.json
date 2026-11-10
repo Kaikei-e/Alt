@@ -137,7 +137,7 @@
       "description": "a FetchTagCloud unary Connect-RPC request proxied by BFF",
       "providerStates": [
         {
-          "name": "tag cloud data is available"
+          "name": "tag cloud data with co-occurring tags is available"
         }
       ],
       "request": {
@@ -166,18 +166,13 @@
         "body": {
           "edges": [
             {
-              "sourceIndex": 1,
-              "targetIndex": 2,
+              "targetIndex": 1,
               "weight": 0.85
             }
           ],
           "tags": [
             {
               "articleCount": 42,
-              "clusterId": 1,
-              "positionX": 12.5,
-              "positionY": -8.3,
-              "positionZ": 4.1,
               "tagName": "rust"
             }
           ]
@@ -193,14 +188,6 @@
                 {
                   "match": "type",
                   "min": 1
-                }
-              ]
-            },
-            "$.edges[*].sourceIndex": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
                 }
               ]
             },
@@ -230,38 +217,6 @@
               ]
             },
             "$.tags[*].articleCount": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.tags[*].clusterId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.tags[*].positionX": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.tags[*].positionY": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.tags[*].positionZ": {
               "combine": "AND",
               "matchers": [
                 {

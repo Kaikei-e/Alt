@@ -15,10 +15,10 @@ import (
 	"alt/orchestrator/connect/v2/articles"
 )
 
-// This file mounts the *real* ArticleService Connect handler for the one
-// procedure alt-butterfly-facade's pact names on it —
-// BatchPrefetchArticleContent — rather than a hand-written JSON stub like the
-// FeedService routes in provider_test.go.
+// This file mounts the *real* ArticleService Connect handler for the
+// procedures alt-butterfly-facade's pact names on it —
+// BatchPrefetchArticleContent and FetchTagCloud — rather than a hand-written
+// JSON stub like the FeedService routes in provider_test.go.
 //
 // The difference is the whole point of CLAUDE.md rule 7. A stub route proves
 // that somebody wrote a stub route; it stays green whether or not the shipped

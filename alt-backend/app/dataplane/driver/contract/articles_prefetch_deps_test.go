@@ -80,20 +80,8 @@ func (pactTagCloudPort) FetchTagCooccurrences(_ context.Context, _ []string) ([]
 	const clusters = 8
 	const clusterSize = 32
 	coocs := make([]*domain.TagCooccurrence, 0, 720)
-	// Tag 0 joins cluster 0 via label propagation over all pairs, while the 600
-	// strongest kept edges all have sourceIndex >= 1 so protojson never omits
-	// sourceIndex as a proto3 zero value.
-	coocs = append(coocs, &domain.TagCooccurrence{
-		TagNameA:    "cluster-00-tag-00",
-		TagNameB:    "cluster-00-tag-01",
-		SharedCount: 10,
-	})
 	for c := range clusters {
-		start := 0
-		if c == 0 {
-			start = 1
-		}
-		for i := start; i < clusterSize; i++ {
+		for i := 0; i < clusterSize; i++ {
 			for step := 1; step <= 3 && i+step < clusterSize; step++ {
 				coocs = append(coocs, &domain.TagCooccurrence{
 					TagNameA:    fmt.Sprintf("cluster-%02d-tag-%02d", c, i),
