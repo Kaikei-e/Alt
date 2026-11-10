@@ -1,12 +1,14 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { MediaQuery } from "svelte/reactivity";
+import type { TagCloudEdge } from "#lib/connect/articles.js";
 import {
 	createClientTransport,
 	fetchTagCloud,
 	type TagCloudItem,
 } from "#lib/connect/index.js";
 import { isWebGL2Available } from "#lib/utils/gpuCapability.js";
+import type { SelectionSource } from "./scene/sceneModel.js";
 import TagIndexPanel from "./TagIndexPanel.svelte";
 import TagVerseHUD from "./TagVerseHUD.svelte";
 import TagVerseToolbar from "./TagVerseToolbar.svelte";
@@ -15,11 +17,13 @@ import { sumTagArticleCounts } from "./tagIndex.js";
 type TagVerseSceneComponent = typeof import("./TagVerseScene.svelte").default;
 
 let tags = $state<TagCloudItem[]>([]);
+let edges = $state<TagCloudEdge[]>([]);
 let SceneComponent = $state<TagVerseSceneComponent | null>(null);
 let isLoading = $state(true);
 let error = $state<string | null>(null);
 let gpuUnsupported = $state(false);
 let selectedTag = $state<string | null>(null);
+let selectionSource = $state<SelectionSource>("canvas");
 let autoRotate = $state(true);
 let resetViewNonce = $state(0);
 
@@ -57,12 +61,18 @@ function loadTagVerse() {
 	(async () => {
 		try {
 			const transport = createClientTransport();
-			const [fetchedTags, sceneModule] = await Promise.all([
+			const [fetchedCloud, sceneModule] = await Promise.all([
 				fetchTagCloud(transport, 300),
 				import("./TagVerseScene.svelte"),
 			]);
 			if (!cancelled) {
-				tags = fetchedTags;
+				if (Array.isArray(fetchedCloud)) {
+					tags = fetchedCloud;
+					edges = [];
+				} else {
+					tags = fetchedCloud.tags;
+					edges = fetchedCloud.edges;
+				}
 				SceneComponent = sceneModule.default;
 			}
 		} catch (e) {
@@ -108,11 +118,15 @@ onMount(() => {
 			{tags}
 			{selectedTag}
 			onSelectTag={(name) => {
+				selectionSource = "index";
 				selectedTag = name;
 			}}
 		/>
 
-		<div class="relative h-full min-w-0 flex-1 bg-[var(--app-bg)]">
+		<div
+			data-testid="tag-verse-canvas-region"
+			class="relative h-full min-w-0 flex-1 bg-[var(--app-bg)]"
+		>
 			{#if isLoading}
 				<div
 					role="status"
@@ -163,10 +177,13 @@ onMount(() => {
 				{#if SceneComponent}
 					<SceneComponent
 						{tags}
+						{edges}
 						onTagSelect={(name) => {
+							selectionSource = "canvas";
 							selectedTag = name;
 						}}
 						{selectedTag}
+						{selectionSource}
 						autoRotate={effectiveAutoRotate}
 						{reducedMotion}
 						{resetViewNonce}

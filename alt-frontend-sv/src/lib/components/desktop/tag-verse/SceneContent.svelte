@@ -1,8 +1,8 @@
 <script lang="ts">
-import { T, useThrelte } from "@threlte/core";
+import { useThrelte } from "@threlte/core";
 import { interactivity } from "@threlte/extras";
 import { onMount } from "svelte";
-import type { Scene } from "three";
+import * as THREE from "three";
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import CameraRig from "./scene/CameraRig.svelte";
 import LabelOverlay from "./scene/LabelOverlay.svelte";
@@ -25,7 +25,7 @@ interface Props {
 	autoRotate?: boolean;
 	reducedMotion?: boolean;
 	resetViewNonce?: number;
-	onSceneCreated?: (scene: Scene) => void;
+	onSceneCreated?: (scene: THREE.Scene) => void;
 }
 
 let {
@@ -34,7 +34,7 @@ let {
 	onTagSelect,
 	palette,
 	selectedTag = null,
-	selectionSource: _selectionSource = "canvas",
+	selectionSource = "canvas",
 	focusedClusterId: _focusedClusterId = null,
 	autoRotate = false,
 	reducedMotion = false,
@@ -42,7 +42,7 @@ let {
 	onSceneCreated,
 }: Props = $props();
 
-const { scene } = useThrelte();
+const { scene, renderer, invalidate } = useThrelte();
 
 onMount(() => {
 	onSceneCreated?.(scene);
@@ -66,6 +66,26 @@ const initialFog = $derived(
 	fogWindow(model.cloudRadius * 1.5, model.cloudRadius),
 );
 
+$effect.pre(() => {
+	const paperHex = palette.paper;
+	const { near, far } = initialFog;
+
+	if (scene.background instanceof THREE.Color) {
+		scene.background.set(paperHex);
+	} else {
+		scene.background = new THREE.Color(paperHex);
+	}
+
+	if (scene.fog instanceof THREE.Fog) {
+		scene.fog.color.set(paperHex);
+	} else {
+		scene.fog = new THREE.Fog(paperHex, near, far);
+	}
+
+	renderer.setClearColor(paperHex, 1);
+	invalidate();
+});
+
 function handleHoverChange(index: number | null) {
 	hoveredIndex = index;
 }
@@ -74,13 +94,11 @@ function handleHoverChange(index: number | null) {
 <CameraRig
 	cloudRadius={model.cloudRadius}
 	{selectedNode}
+	{selectionSource}
 	{autoRotate}
 	{reducedMotion}
 	{resetViewNonce}
 />
-
-<T.Color attach="background" args={[palette.paper]} />
-<T.Fog attach="fog" args={[palette.paper, initialFog.near, initialFog.far]} />
 
 <TagNodes
 	nodes={model.nodes}

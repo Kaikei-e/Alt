@@ -235,11 +235,17 @@ export function buildTopicClusters(
 	return [];
 }
 
-export function needsFraming(_params: {
+export function needsFraming(params: {
 	source: SelectionSource;
 	ndcX: number;
 	ndcY: number;
 	isBehindCamera: boolean;
 }): boolean {
-	return true;
+	if (params.source !== "index") {
+		return false;
+	}
+	if (params.isBehindCamera) {
+		return true;
+	}
+	return Math.abs(params.ndcX) > 0.6 || Math.abs(params.ndcY) > 0.6;
 }

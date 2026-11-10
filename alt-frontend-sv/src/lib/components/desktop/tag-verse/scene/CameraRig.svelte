@@ -4,11 +4,17 @@ import { OrbitControls } from "@threlte/extras";
 import { untrack } from "svelte";
 import * as THREE from "three";
 import type { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { fogWindow, type SceneNode } from "./sceneModel.js";
+import {
+	fogWindow,
+	needsFraming,
+	type SceneNode,
+	type SelectionSource,
+} from "./sceneModel.js";
 
 interface Props {
 	cloudRadius: number;
 	selectedNode: SceneNode | null;
+	selectionSource?: SelectionSource;
 	autoRotate: boolean;
 	reducedMotion: boolean;
 	resetViewNonce: number;
@@ -17,6 +23,7 @@ interface Props {
 let {
 	cloudRadius,
 	selectedNode,
+	selectionSource = "canvas",
 	autoRotate,
 	reducedMotion,
 	resetViewNonce,
@@ -24,7 +31,7 @@ let {
 
 const { scene, invalidate } = useThrelte();
 
-const ANIMATION_DURATION = 0.6;
+const ANIMATION_DURATION = 0.9;
 
 let cameraRef = $state<THREE.PerspectiveCamera | undefined>(undefined);
 let controlsRef = $state<ThreeOrbitControls | undefined>(undefined);
@@ -35,10 +42,12 @@ const startCamPos = new THREE.Vector3();
 const endCamPos = new THREE.Vector3();
 const startTarget = new THREE.Vector3();
 const endTarget = new THREE.Vector3();
-const _viewDir = new THREE.Vector3();
+const _viewOffset = new THREE.Vector3();
+const _camForward = new THREE.Vector3();
+const _ndc = new THREE.Vector3();
 
-function easeOutCubic(t: number): number {
-	return 1 - (1 - t) ** 3;
+function easeInOutCubic(t: number): number {
+	return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 }
 
 function syncFog() {
@@ -91,7 +100,7 @@ useTask(
 		}
 		animElapsed += delta;
 		const t = Math.min(1, animElapsed / ANIMATION_DURATION);
-		const eased = easeOutCubic(t);
+		const eased = easeInOutCubic(t);
 
 		cameraRef.position.lerpVectors(startCamPos, endCamPos, eased);
 		controlsRef.target.lerpVectors(startTarget, endTarget, eased);
@@ -112,28 +121,46 @@ let lastSelectedTag: string | null = null;
 
 $effect(() => {
 	const node = selectedNode;
+	const source = selectionSource;
 	const nextName = node?.tagName ?? null;
 	if (nextName === lastSelectedTag) return;
 	lastSelectedTag = nextName;
 
 	if (!node || !cameraRef || !controlsRef) return;
 
-	const radius = untrack(() => cloudRadius);
 	const target = new THREE.Vector3(
 		node.position[0],
 		node.position[1],
 		node.position[2],
 	);
 
-	_viewDir.subVectors(cameraRef.position, controlsRef.target);
-	if (_viewDir.lengthSq() < 1e-6) {
-		_viewDir.set(0, 0, 1);
-	} else {
-		_viewDir.normalize();
+	cameraRef.updateMatrixWorld();
+	cameraRef.getWorldDirection(_camForward);
+	const viewDepth =
+		(target.x - cameraRef.position.x) * _camForward.x +
+		(target.y - cameraRef.position.y) * _camForward.y +
+		(target.z - cameraRef.position.z) * _camForward.z;
+	_ndc.copy(target).project(cameraRef);
+	const isBehindCamera = viewDepth <= 0 || _ndc.z < -1 || _ndc.z > 1;
+
+	if (
+		!needsFraming({
+			source,
+			ndcX: _ndc.x,
+			ndcY: _ndc.y,
+			isBehindCamera,
+		})
+	) {
+		return;
 	}
 
-	const dist = Math.max(node.radius * 8, radius * 0.35);
-	const camDest = target.clone().addScaledVector(_viewDir, dist);
+	_viewOffset.subVectors(cameraRef.position, controlsRef.target);
+	if (_viewOffset.lengthSq() < 1e-6) {
+		const radius = untrack(() => cloudRadius);
+		_viewOffset.set(0, 0, radius * 1.5);
+	}
+
+	const camDest = target.clone().add(_viewOffset);
 	transitionCamera(target, camDest);
 });
 

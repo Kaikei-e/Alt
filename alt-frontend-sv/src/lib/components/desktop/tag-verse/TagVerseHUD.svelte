@@ -153,7 +153,8 @@ function handleWindowKeydown(e: KeyboardEvent) {
 <aside
 	bind:this={panelEl}
 	aria-labelledby={headingId}
-	class="flex h-full w-[400px] shrink-0 flex-col border-l border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)] {reducedMotion
+	class="
+		absolute right-0 top-0 bottom-0 z-20 flex h-full w-[400px] shrink-0 flex-col border-l border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)] {reducedMotion
 		? ''
 		: 'animate-slide-in-panel'}"
 >
