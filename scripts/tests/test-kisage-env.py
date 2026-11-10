@@ -608,6 +608,247 @@ def mcp_call(
     return responses
 
 
+def run_mtls_policy_and_llm_budgets_checks(
+    kisage_env, overrides, kisage_bin: str
+) -> None:
+    print("10. mTLS Policy & LLM Budget Managed Sections")
+
+    expected_mtls_policy: dict[str, object] = {
+        "ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE": True,
+        "ACOLYTE_ORCHESTRATOR_PEER_IDENTITY_STRICT": False,
+        "ALT_BUTTERFLY_FACADE_MTLS_ENFORCE": False,
+        "ALT_BUTTERFLY_FACADE_MTLS_LISTEN": False,
+        "AUTH_HUB_MTLS_CLIENT_AUTH": "require_and_verify",
+        "MTLS_LISTEN": True,
+        "NEWS_CREATOR_PEER_IDENTITY_STRICT": True,
+        "PRE_PROCESSOR_MTLS_CLIENT_AUTH": "require_and_verify",
+        "PRE_PROCESSOR_MTLS_ENFORCE": True,
+        "RAG_ORCHESTRATOR_PEER_IDENTITY_MODE": "mtls",
+        "RECAP_SUBWORKER_PEER_IDENTITY_STRICT": True,
+        "RECAP_WORKER_MTLS_ENFORCE": True,
+        "SEARCH_INDEXER_MTLS_CLIENT_AUTH": "require_and_verify",
+        "SEARCH_INDEXER_MTLS_ENFORCE": True,
+        "TAG_GENERATOR_MTLS_ENFORCE": True,
+        "TAG_GENERATOR_PEER_IDENTITY_STRICT": True,
+    }
+    expected_llm_budgets: dict[str, object] = {
+        "LLM_NUM_CTX": 12288,
+        "LLM_NUM_PREDICT": 1200,
+        "SUMMARY_NUM_PREDICT": 1200,
+    }
+    expected_str_map = {
+        k: ("true" if v else "false") if isinstance(v, bool) else str(v)
+        for k, v in {**expected_mtls_policy, **expected_llm_budgets}.items()
+    }
+
+    sections = kisage_env.parse_lkal_sections(
+        DECL_PATH.read_text(encoding="utf-8")
+    )
+    mtls_policy_sec = sections.get("mtls_policy") or {}
+    llm_budgets_sec = sections.get("llm_budgets") or {}
+    verify_errs = kisage_env.verify_declaration(DECL_PATH, MANIFEST_PATH)
+    check(
+        "repository declaration contains mtls_policy (16 keys) and llm_budgets (3 keys) and verify_declaration() returns no errors",
+        mtls_policy_sec == expected_mtls_policy
+        and len(mtls_policy_sec) == 16
+        and llm_budgets_sec == expected_llm_budgets
+        and len(llm_budgets_sec) == 3
+        and verify_errs == [],
+        f"mtls_policy={len(mtls_policy_sec)} llm_budgets={len(llm_budgets_sec)} errs={verify_errs!r}",
+    )
+
+    declared_new_keys = set(mtls_policy_sec) | set(llm_budgets_sec)
+    bindings, binding_errs = kisage_env.resolve_compose_bindings(declared_new_keys)
+    check(
+        "every declared key of mtls_policy and llm_budgets is classified defaulted by resolve_compose_bindings on the real repository",
+        len(declared_new_keys) == 19
+        and binding_errs == []
+        and bindings is not None
+        and all(
+            bindings.get(k, {}).get("class") == "defaulted"
+            for k in declared_new_keys
+        ),
+        f"count={len(declared_new_keys)} errs={binding_errs!r}",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp = pathlib.Path(tmp_dir)
+        fx_manifest = tmp / "host-prereqs.yaml"
+        fx_manifest.write_text(
+            MANIFEST_PATH.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        allowlists = sections["mtls_allowlists"]
+        allowlist_lkal_lines = [
+            f"  {k} = [{', '.join(json.dumps(p) for p in peers)}]"
+            for k, peers in sorted(allowlists.items())
+        ]
+        allowlist_compose_lines = [
+            f"      - {k}=${{{k}:-{','.join(peers)}}}"
+            for k, peers in sorted(allowlists.items())
+        ]
+        fx_compose_dir = tmp / "compose"
+        fx_compose_dir.mkdir()
+        fx_compose_root = fx_compose_dir / "compose.yaml"
+        fx_compose_root.write_text("include:\n  - sub.yaml\n", encoding="utf-8")
+        fx_sub_yaml = fx_compose_dir / "sub.yaml"
+        mtls_policy_sentinel = "DIFF_MTLS_POLICY_SENTINEL"
+        fx_sub_yaml.write_text(
+            "services:\n"
+            "  app:\n"
+            "    image: example/app:latest\n"
+            "    environment:\n"
+            "      - RATE_LIMIT_EXTERNAL_API_INTERVAL=${RATE_LIMIT_EXTERNAL_API_INTERVAL:-7.5s}\n"
+            f"      - MTLS_LISTEN=${{MTLS_LISTEN:-{mtls_policy_sentinel}}}\n"
+            + "\n".join(allowlist_compose_lines)
+            + "\n",
+            encoding="utf-8",
+        )
+        fx_decl = tmp / "desired-env.lkal"
+        fx_decl.write_text(
+            '@lkal "0.1"\n'
+            "mtls_allowlists {\n"
+            + "\n".join(allowlist_lkal_lines)
+            + "\n}\n"
+            "rate_limits {\n"
+            "  RATE_LIMIT_EXTERNAL_API_INTERVAL = 7.5s\n"
+            "}\n"
+            "mtls_policy {\n"
+            "  MTLS_LISTEN = true\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        fx_template = tmp / ".env.template"
+        fx_template.write_text("", encoding="utf-8")
+        fx_example = tmp / ".env.example"
+        fx_example.write_text("", encoding="utf-8")
+        errs_mtls_diff = kisage_env.verify_declaration(
+            fx_decl,
+            fx_manifest,
+            compose_root=fx_compose_root,
+            env_template_path=fx_template,
+            env_example_path=fx_example,
+        )
+        joined_mtls_diff = "\n".join(errs_mtls_diff)
+        check(
+            "fixture verify_declaration fails when an mtls_policy compose default differs from declaration, naming the key without leaking values",
+            bool(errs_mtls_diff)
+            and "MTLS_LISTEN" in joined_mtls_diff
+            and mtls_policy_sentinel not in joined_mtls_diff
+            and "true" not in joined_mtls_diff,
+            repr(errs_mtls_diff),
+        )
+
+    tpl_env = overrides.parse_env_file(
+        (ROOT / ".env.template").read_text(encoding="utf-8")
+    )
+    ex_env = overrides.parse_env_file(
+        (ROOT / ".env.example").read_text(encoding="utf-8")
+    )
+    tpl_or_ex_mismatches = sorted(
+        k
+        for k, exp_v in expected_str_map.items()
+        if (k in tpl_env and tpl_env[k] != exp_v)
+        or (k in ex_env and ex_env[k] != exp_v)
+    )
+    check(
+        ".env.template and .env.example do not set any mtls_policy or llm_budgets key to a value differing from the declaration",
+        len(declared_new_keys) == 19 and tpl_or_ex_mismatches == [],
+        f"mismatched_keys={tpl_or_ex_mismatches}",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_parent:
+        os.chmod(tmp_parent, 0o700)
+        sandbox = pathlib.Path(tmp_parent) / "kisage-sandbox"
+        decl_copy = pathlib.Path(tmp_parent) / "desired-env.lkal"
+        shutil.copyfile(DECL_PATH, decl_copy)
+        os.chmod(decl_copy, 0o600)
+
+        rc_init = kisage_env.main(
+            [
+                "init",
+                "--sandbox-dir",
+                str(sandbox),
+                "--declaration",
+                str(decl_copy),
+                "--kisage-bin",
+                kisage_bin,
+            ]
+        )
+        host_json = sandbox / "host.json"
+        target_lkal = sandbox / "host-env.lkal"
+        host_doc = (
+            json.loads(host_json.read_text(encoding="utf-8"))
+            if host_json.is_file()
+            else {}
+        )
+        scope_paths = [
+            entry.get("path")
+            for res in host_doc.get("resources", [])
+            for entry in res.get("scope", [])
+        ]
+        env = {**os.environ, "KISAGE_HOST_CONFIG": str(host_json)}
+        plan_pre = subprocess.run(
+            [kisage_bin, "plan", str(decl_copy), "-detailed-exitcode", "-json"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        apply_res = subprocess.run(
+            [kisage_bin, "apply", str(decl_copy), "-json"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        apply_doc = json.loads(apply_res.stdout) if apply_res.stdout.strip() else {}
+        plan_post = subprocess.run(
+            [kisage_bin, "plan", str(decl_copy), "-detailed-exitcode", "-json"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        converged_sections = (
+            kisage_env.parse_lkal_sections(target_lkal.read_text(encoding="utf-8"))
+            if target_lkal.is_file()
+            else {}
+        )
+        check(
+            "sandbox host.json grants Scope to /mtls_policy and /llm_budgets and init -> plan -> apply -> second plan converges both sections",
+            rc_init == 0
+            and "/mtls_policy" in scope_paths
+            and "/llm_budgets" in scope_paths
+            and plan_pre.returncode == 2
+            and apply_res.returncode == 0
+            and apply_doc.get("summary", {}).get("execution") == "Completed"
+            and apply_doc.get("summary", {}).get("convergence") == "Converged"
+            and plan_post.returncode == 0
+            and converged_sections.get("mtls_policy") == expected_mtls_policy
+            and converged_sections.get("llm_budgets") == expected_llm_budgets,
+            f"scope={scope_paths} pre={plan_pre.returncode} apply={apply_res.returncode} post={plan_post.returncode}",
+        )
+
+        dotenv_text = (
+            kisage_env.render_dotenv(target_lkal) if target_lkal.is_file() else ""
+        )
+        dotenv_lines = set(dotenv_text.splitlines())
+        check(
+            "render-dotenv output of converged sandbox contains mtls_policy and llm_budgets keys with booleans as true/false and integers bare",
+            "# [mtls_policy]" in dotenv_lines
+            and "# [llm_budgets]" in dotenv_lines
+            and "MTLS_LISTEN=true" in dotenv_lines
+            and "ACOLYTE_ORCHESTRATOR_PEER_IDENTITY_STRICT=false" in dotenv_lines
+            and "LLM_NUM_CTX=12288" in dotenv_lines
+            and "LLM_NUM_PREDICT=1200" in dotenv_lines
+            and "SUMMARY_NUM_PREDICT=1200" in dotenv_lines
+            and all(
+                f"{k}={v}" in dotenv_lines for k, v in expected_str_map.items()
+            ),
+            f"missing={[k for k, v in expected_str_map.items() if f'{k}={v}' not in dotenv_lines]}",
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Portable kisage/LKAL acceptance suite (pass --audit-host-config to inspect live host .claude/settings.json and .mcp.json)"
@@ -1923,6 +2164,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     run_compose_lockstep_and_preflight_checks(kisage_env)
+    run_mtls_policy_and_llm_budgets_checks(kisage_env, overrides, kisage_bin)
 
     print(f"\n{PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0
