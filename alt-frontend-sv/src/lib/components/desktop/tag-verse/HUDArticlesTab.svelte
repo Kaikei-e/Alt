@@ -14,15 +14,19 @@ interface Props {
 let { tagName }: Props = $props();
 
 let articles = $state<TagTrailArticle[]>([]);
-let isLoading = $state(false);
+let isLoading = $state(true);
 let nextCursor = $state<string | null>(null);
 let hasMore = $state(false);
 let error = $state<string | null>(null);
+
+let lastTag: string | null = null;
+let requestSeq = 0;
 
 async function loadMoreArticles() {
 	if (!nextCursor || isLoading) return;
 	const cursor = nextCursor;
 	const currentTag = tagName;
+	const seq = ++requestSeq;
 	isLoading = true;
 	error = null;
 	try {
@@ -34,22 +38,19 @@ async function loadMoreArticles() {
 			cursor,
 			20,
 		);
-		if (currentTag !== tagName) return;
+		if (seq !== requestSeq) return;
 		articles = [...articles, ...result.articles];
 		nextCursor = result.nextCursor;
 		hasMore = result.hasMore;
 	} catch (e) {
-		if (currentTag !== tagName) return;
+		if (seq !== requestSeq) return;
 		error = e instanceof Error ? e.message : "Failed to load articles";
 	} finally {
-		if (currentTag === tagName) {
+		if (seq === requestSeq) {
 			isLoading = false;
 		}
 	}
 }
-
-let lastTag: string | null = null;
-let requestSeq = 0;
 
 $effect(() => {
 	const currentTag = tagName;
@@ -112,12 +113,12 @@ function formatDate(dateStr: string): string {
 				class="group flex flex-col gap-1 px-4 py-3 transition-colors hover:bg-[var(--surface-hover)]"
 			>
 				<div class="flex items-start justify-between gap-2">
-					<h4
+					<h3
 						class="line-clamp-2 text-sm font-medium text-[var(--text-primary)] group-hover:text-[var(--interactive-text)]"
 						style="font-family: var(--font-body);"
 					>
 						{article.title}
-					</h4>
+					</h3>
 					<ExternalLink
 						class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)] group-hover:text-[var(--interactive-text)]"
 					/>

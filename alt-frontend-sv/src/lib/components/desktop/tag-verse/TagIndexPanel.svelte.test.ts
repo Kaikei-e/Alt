@@ -56,9 +56,7 @@ describe("TagIndexPanel", () => {
 
 		await searchInput.fill("SVE");
 		await expect.element(svelteButton, { timeout: 1000 }).toBeInTheDocument();
-		await expect
-			.element(rustButton, { timeout: 1000 })
-			.not.toBeInTheDocument();
+		await expect.element(rustButton, { timeout: 1000 }).not.toBeInTheDocument();
 
 		await svelteButton.click();
 		expect(onSelectTag).toHaveBeenCalledWith("svelte");

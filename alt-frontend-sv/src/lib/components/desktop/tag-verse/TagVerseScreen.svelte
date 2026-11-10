@@ -7,7 +7,6 @@ import {
 	type TagCloudItem,
 } from "#lib/connect/index.js";
 import { isWebGL2Available } from "#lib/utils/gpuCapability.js";
-import { browser } from "$app/env";
 import TagIndexPanel from "./TagIndexPanel.svelte";
 import TagVerseHUD from "./TagVerseHUD.svelte";
 import TagVerseToolbar from "./TagVerseToolbar.svelte";
@@ -30,12 +29,6 @@ const reducedMotionQuery = new MediaQuery(
 );
 const reducedMotion = $derived(reducedMotionQuery.current);
 const effectiveAutoRotate = $derived(reducedMotion ? false : autoRotate);
-
-$effect(() => {
-	if (reducedMotion && autoRotate) {
-		autoRotate = false;
-	}
-});
 
 const selectedTagData = $derived(
 	selectedTag ? tags.find((t) => t.tagName === selectedTag) : null,
@@ -85,7 +78,6 @@ function loadTagVerse() {
 }
 
 onMount(() => {
-	if (!browser) return;
 	loadTagVerse();
 	return () => {
 		cancelCurrentLoad?.();
@@ -122,7 +114,10 @@ onMount(() => {
 
 		<div class="relative h-full min-w-0 flex-1 bg-[var(--app-bg)]">
 			{#if isLoading}
-				<div class="flex h-full items-center justify-center gap-2.5">
+				<div
+					role="status"
+					class="flex h-full items-center justify-center gap-2.5"
+				>
 					<span
 						aria-hidden="true"
 						class="h-2 w-2 bg-[var(--interactive-text)] {reducedMotion
@@ -145,7 +140,10 @@ onMount(() => {
 					</p>
 				</div>
 			{:else if error}
-				<div class="flex h-full flex-col items-center justify-center gap-3 px-6">
+				<div
+					role="alert"
+					class="flex h-full flex-col items-center justify-center gap-3 px-6"
+				>
 					<p class="text-sm text-[var(--alt-error)]">{error}</p>
 					<button
 						type="button"

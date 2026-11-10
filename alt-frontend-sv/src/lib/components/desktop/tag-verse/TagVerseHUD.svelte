@@ -1,9 +1,9 @@
 <script lang="ts">
 import { X } from "@lucide/svelte";
 import { onMount } from "svelte";
-import { MediaQuery } from "svelte/reactivity";
 import HUDArticlesTab from "./HUDArticlesTab.svelte";
 import HUDRecapsTab from "./HUDRecapsTab.svelte";
+import { formatCountLabel } from "./tagIndex.js";
 
 interface Props {
 	tagName: string;
@@ -15,35 +15,57 @@ interface Props {
 let {
 	tagName,
 	articleCount = 0,
-	reducedMotion: reducedMotionProp,
+	reducedMotion = false,
 	onClose,
 }: Props = $props();
 
-const reducedMotionQuery = new MediaQuery(
-	"prefers-reduced-motion: reduce",
-	false,
-);
-const isReducedMotion = $derived(
-	reducedMotionProp ?? reducedMotionQuery.current,
-);
+const uid = $props.id();
+const headingId = `${uid}-detail-heading`;
+const articlesTabId = `${uid}-tab-articles`;
+const recapsTabId = `${uid}-tab-recaps`;
+const articlesPanelId = `${uid}-panel-articles`;
+const recapsPanelId = `${uid}-panel-recaps`;
 
 let activeTab = $state<"articles" | "recaps">("articles");
 let recapsActivated = $state(false);
+let panelEl = $state<HTMLElement | null>(null);
 let headingEl = $state<HTMLHeadingElement | null>(null);
 let articlesTabEl = $state<HTMLButtonElement | null>(null);
 let recapsTabEl = $state<HTMLButtonElement | null>(null);
 
 let previouslyFocused: HTMLElement | null = null;
 let focusRestored = false;
+let lastFocusedTag: string | null = null;
+
+function isElementFocusableAndVisible(
+	el: HTMLElement | null,
+): el is HTMLElement {
+	if (!el || !document.contains(el)) return false;
+	if (el.closest("[hidden]")) return false;
+	const style = window.getComputedStyle(el);
+	return style.display !== "none" && style.visibility !== "hidden";
+}
 
 function restoreFocus() {
-	if (
-		!focusRestored &&
-		previouslyFocused &&
-		document.contains(previouslyFocused)
-	) {
-		focusRestored = true;
+	if (focusRestored) return;
+	focusRestored = true;
+
+	if (isElementFocusableAndVisible(previouslyFocused)) {
 		previouslyFocused.focus();
+		return;
+	}
+
+	const searchInput = document.querySelector<HTMLElement>(
+		'input[type="search"]',
+	);
+	if (isElementFocusableAndVisible(searchInput)) {
+		searchInput.focus();
+		return;
+	}
+
+	const mainHeading = document.querySelector<HTMLElement>("h1");
+	if (isElementFocusableAndVisible(mainHeading)) {
+		mainHeading.focus();
 	}
 }
 
@@ -52,13 +74,22 @@ function closePanel() {
 	onClose();
 }
 
-onMount(() => {
-	previouslyFocused =
-		document.activeElement instanceof HTMLElement
-			? document.activeElement
-			: null;
-	headingEl?.focus();
+$effect(() => {
+	const currentTag = tagName;
+	if (!headingEl || currentTag === lastFocusedTag) return;
+	lastFocusedTag = currentTag;
+	focusRestored = false;
 
+	if (
+		document.activeElement instanceof HTMLElement &&
+		(!panelEl || !panelEl.contains(document.activeElement))
+	) {
+		previouslyFocused = document.activeElement;
+	}
+	headingEl.focus();
+});
+
+onMount(() => {
 	return () => {
 		restoreFocus();
 	};
@@ -92,18 +123,37 @@ function handleTabKeydown(e: KeyboardEvent, current: "articles" | "recaps") {
 	}
 }
 
-function handleWindowKeydown(e: KeyboardEvent) {
-	if (e.key === "Escape" && !e.defaultPrevented) {
-		closePanel();
+function isEditableTarget(target: EventTarget | null): boolean {
+	if (!(target instanceof HTMLElement)) return false;
+	const tag = target.tagName;
+	if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+		return true;
 	}
+	return (
+		target.isContentEditable ||
+		target.getAttribute("contenteditable") === "true"
+	);
+}
+
+function handleWindowKeydown(e: KeyboardEvent) {
+	if (e.key !== "Escape") return;
+	if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+	if (
+		isEditableTarget(e.target) &&
+		(!panelEl || !(e.target instanceof Node) || !panelEl.contains(e.target))
+	) {
+		return;
+	}
+	closePanel();
 }
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
 <aside
-	aria-labelledby="tag-verse-detail-heading"
-	class="flex h-full w-[400px] shrink-0 flex-col border-l border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)] {isReducedMotion
+	bind:this={panelEl}
+	aria-labelledby={headingId}
+	class="flex h-full w-[400px] shrink-0 flex-col border-l border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)] {reducedMotion
 		? ''
 		: 'animate-slide-in-panel'}"
 >
@@ -118,7 +168,7 @@ function handleWindowKeydown(e: KeyboardEvent) {
 				Tag
 			</span>
 			<h2
-				id="tag-verse-detail-heading"
+				id={headingId}
 				bind:this={headingEl}
 				tabindex="-1"
 				class="text-lg font-bold text-[var(--text-primary)] focus:outline-none"
@@ -130,7 +180,7 @@ function handleWindowKeydown(e: KeyboardEvent) {
 				class="text-xs text-[var(--text-muted)]"
 				style="font-family: var(--font-mono);"
 			>
-				{articleCount} articles
+				{formatCountLabel(articleCount, "article")}
 			</span>
 		</div>
 		<button
@@ -150,11 +200,11 @@ function handleWindowKeydown(e: KeyboardEvent) {
 	>
 		<button
 			bind:this={articlesTabEl}
-			id="tag-verse-tab-articles"
+			id={articlesTabId}
 			type="button"
 			role="tab"
 			aria-selected={activeTab === "articles"}
-			aria-controls="tag-verse-panel-articles"
+			aria-controls={articlesPanelId}
 			tabindex={activeTab === "articles" ? 0 : -1}
 			onclick={() => selectTab("articles")}
 			onkeydown={(e) => handleTabKeydown(e, "articles")}
@@ -167,11 +217,11 @@ function handleWindowKeydown(e: KeyboardEvent) {
 		</button>
 		<button
 			bind:this={recapsTabEl}
-			id="tag-verse-tab-recaps"
+			id={recapsTabId}
 			type="button"
 			role="tab"
 			aria-selected={activeTab === "recaps"}
-			aria-controls="tag-verse-panel-recaps"
+			aria-controls={recapsPanelId}
 			tabindex={activeTab === "recaps" ? 0 : -1}
 			onclick={() => selectTab("recaps")}
 			onkeydown={(e) => handleTabKeydown(e, "recaps")}
@@ -185,9 +235,9 @@ function handleWindowKeydown(e: KeyboardEvent) {
 	</div>
 
 	<div
-		id="tag-verse-panel-articles"
+		id={articlesPanelId}
 		role="tabpanel"
-		aria-labelledby="tag-verse-tab-articles"
+		aria-labelledby={articlesTabId}
 		hidden={activeTab !== "articles"}
 		class="flex min-h-0 flex-1 flex-col overflow-hidden"
 	>
@@ -195,9 +245,9 @@ function handleWindowKeydown(e: KeyboardEvent) {
 	</div>
 
 	<div
-		id="tag-verse-panel-recaps"
+		id={recapsPanelId}
 		role="tabpanel"
-		aria-labelledby="tag-verse-tab-recaps"
+		aria-labelledby={recapsTabId}
 		hidden={activeTab !== "recaps"}
 		class="flex min-h-0 flex-1 flex-col overflow-hidden"
 	>
@@ -219,11 +269,5 @@ function handleWindowKeydown(e: KeyboardEvent) {
 
 	.animate-slide-in-panel {
 		animation: slide-in-panel 0.2s ease-out;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.animate-slide-in-panel {
-			animation: none;
-		}
 	}
 </style>

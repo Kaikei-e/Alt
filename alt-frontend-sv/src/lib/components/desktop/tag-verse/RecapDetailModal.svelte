@@ -25,7 +25,7 @@ function formatDate(dateStr: string): string {
 
 <Dialog.Root {open} {onOpenChange}>
 	<Dialog.Content
-		class="max-h-[80dvh] overflow-y-auto rounded-none border border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)] shadow-[var(--shadow-sm)] sm:max-w-2xl"
+		class="max-h-[80dvh] overflow-y-auto rounded-none border border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)] shadow-none motion-reduce:animate-none [[data-slot=dialog-overlay]:has(+&)]:bg-[var(--text-primary)]/20 [[data-slot=dialog-overlay]:has(+&)]:motion-reduce:animate-none sm:max-w-2xl"
 		showCloseButton={true}
 	>
 		{#if recap}

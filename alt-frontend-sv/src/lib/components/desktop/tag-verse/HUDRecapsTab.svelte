@@ -118,23 +118,29 @@ $effect(() => {
 				</span>
 			</div>
 
-			<div class="divide-y divide-[var(--surface-border)] border-b border-[var(--surface-border)]">
+			<div
+				class="divide-y divide-[var(--surface-border)] border-b border-[var(--surface-border)]"
+			>
 				{#each group.items as item (item.jobId + item.genre)}
-					<button
-						type="button"
-						class="w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-[var(--surface-hover)]"
-						onclick={() => {
-							selectedRecap = item;
-							modalOpen = true;
-						}}
+					<article
+						class="relative px-4 py-3 transition-colors hover:bg-[var(--surface-hover)]"
 					>
 						<div class="mb-1.5 flex items-baseline justify-between gap-2">
-							<h4
+							<h3
 								class="text-sm font-semibold text-[var(--text-primary)]"
 								style="font-family: var(--font-body);"
 							>
-								{item.genre}
-							</h4>
+								<button
+									type="button"
+									class="cursor-pointer text-left before:absolute before:inset-0 focus:outline-none focus-visible:underline"
+									onclick={() => {
+										selectedRecap = item;
+										modalOpen = true;
+									}}
+								>
+									{item.genre}
+								</button>
+							</h3>
 							<span
 								class="text-xs text-[var(--text-muted)]"
 								style="font-family: var(--font-mono);"
@@ -173,7 +179,7 @@ $effect(() => {
 								{/each}
 							</div>
 						{/if}
-					</button>
+					</article>
 				{/each}
 			</div>
 		{/each}

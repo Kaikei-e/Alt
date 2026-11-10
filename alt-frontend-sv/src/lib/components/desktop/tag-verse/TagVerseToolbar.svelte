@@ -1,4 +1,6 @@
 <script lang="ts">
+import { formatCountLabel } from "./tagIndex.js";
+
 interface Props {
 	tagCount: number;
 	totalArticles: number;
@@ -23,7 +25,8 @@ let {
 >
 	<div class="flex items-baseline gap-3">
 		<h1
-			class="text-[1.25rem] font-bold leading-tight text-[var(--text-primary)]"
+			tabindex="-1"
+			class="text-[1.25rem] font-bold leading-tight text-[var(--text-primary)] focus:outline-none"
 			style="font-family: var(--font-display);"
 		>
 			Tag Verse
@@ -32,7 +35,7 @@ let {
 			class="text-xs text-[var(--text-muted)]"
 			style="font-family: var(--font-mono);"
 		>
-			{tagCount} tags · {totalArticles} articles
+			{formatCountLabel(tagCount, "tag")} · {formatCountLabel(totalArticles, "article")}
 		</p>
 	</div>
 
