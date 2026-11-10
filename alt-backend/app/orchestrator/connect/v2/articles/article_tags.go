@@ -192,16 +192,18 @@ func (h *Handler) FetchTagCloud(
 
 	limit := clampPageLimit(req.Msg.Limit, 300, 500)
 
-	items, err := h.deps.FetchTagCloud.Execute(ctx, limit)
+	items, edges, err := h.deps.FetchTagCloud.Execute(ctx, limit)
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchTagCloud")
 	}
 
 	protoItems := convertTagCloudItemsToProto(items)
+	protoEdges := convertTagCloudEdgesToProto(edges)
 
 	return connect.NewResponse(&articlesv2.FetchTagCloudResponse{
 		Tags:      protoItems,
 		TotalTags: safeconv.Int32(len(protoItems)),
+		Edges:     protoEdges,
 	}), nil
 }
 
