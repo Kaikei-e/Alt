@@ -50,12 +50,8 @@ describe("TagVerseHUD and HUDArticlesTab", () => {
 		const articlesTab = page.getByRole("tab", { name: "Articles" });
 		const recapsTab = page.getByRole("tab", { name: "Recaps" });
 
-		await expect
-			.element(articlesTab)
-			.toHaveAttribute("aria-selected", "true");
-		await expect
-			.element(recapsTab)
-			.toHaveAttribute("aria-selected", "false");
+		await expect.element(articlesTab).toHaveAttribute("aria-selected", "true");
+		await expect.element(recapsTab).toHaveAttribute("aria-selected", "false");
 
 		const articlesEl = await articlesTab.element();
 		(articlesEl as HTMLElement).focus();
@@ -63,21 +59,15 @@ describe("TagVerseHUD and HUDArticlesTab", () => {
 			new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
 		);
 
-		await expect
-			.element(recapsTab)
-			.toHaveAttribute("aria-selected", "true");
-		await expect
-			.element(articlesTab)
-			.toHaveAttribute("aria-selected", "false");
+		await expect.element(recapsTab).toHaveAttribute("aria-selected", "true");
+		await expect.element(articlesTab).toHaveAttribute("aria-selected", "false");
 
 		const recapsEl = await recapsTab.element();
 		recapsEl.dispatchEvent(
 			new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }),
 		);
 
-		await expect
-			.element(articlesTab)
-			.toHaveAttribute("aria-selected", "true");
+		await expect.element(articlesTab).toHaveAttribute("aria-selected", "true");
 		expect(mockFetchArticlesByTag).toHaveBeenCalledTimes(1);
 	});
 

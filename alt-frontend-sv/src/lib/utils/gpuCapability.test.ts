@@ -34,4 +34,3 @@ describe("isWebGL2Available", () => {
 		expect(mockCanvas.getContext).toHaveBeenCalledWith("webgl2");
 	});
 });
-

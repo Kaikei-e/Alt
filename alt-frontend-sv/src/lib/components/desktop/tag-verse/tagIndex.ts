@@ -1,18 +1,32 @@
 import type { TagCloudItem } from "#lib/connect/index.js";
 
 export function sortTagsForIndex(
-	_tags: readonly TagCloudItem[],
+	tags: readonly TagCloudItem[],
 ): TagCloudItem[] {
-	return [];
+	return [...tags].sort((a, b) => {
+		if (b.articleCount !== a.articleCount) {
+			return b.articleCount - a.articleCount;
+		}
+		return a.tagName.localeCompare(b.tagName);
+	});
 }
 
 export function filterTagsForIndex(
-	_tags: readonly TagCloudItem[],
-	_query: string,
+	tags: readonly TagCloudItem[],
+	query: string,
 ): TagCloudItem[] {
-	return [];
+	const sorted = sortTagsForIndex(tags);
+	const normalized = query.trim().toLowerCase();
+	if (!normalized) {
+		return sorted;
+	}
+	return sorted.filter((tag) => tag.tagName.toLowerCase().includes(normalized));
 }
 
-export function sumTagArticleCounts(_tags: readonly TagCloudItem[]): number {
-	return -1;
+export function sumTagArticleCounts(tags: readonly TagCloudItem[]): number {
+	let sum = 0;
+	for (const tag of tags) {
+		sum += tag.articleCount;
+	}
+	return sum;
 }

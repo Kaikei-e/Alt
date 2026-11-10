@@ -63,9 +63,10 @@ describe("tagIndex pure helpers", () => {
 			filterTagsForIndex(SAMPLE_TAGS, "  gol ").map((t) => t.tagName),
 		).toEqual(["GoLang"]);
 
-		expect(
-			filterTagsForIndex(SAMPLE_TAGS, "S").map((t) => t.tagName),
-		).toEqual(["rust", "svelte"]);
+		expect(filterTagsForIndex(SAMPLE_TAGS, "S").map((t) => t.tagName)).toEqual([
+			"rust",
+			"svelte",
+		]);
 
 		expect(filterTagsForIndex(SAMPLE_TAGS, "nonexistent")).toEqual([]);
 	});
