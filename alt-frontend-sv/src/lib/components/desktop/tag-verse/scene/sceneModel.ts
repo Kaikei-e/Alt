@@ -1,6 +1,8 @@
-import type { TagCloudItem } from "#lib/connect/index.js";
+import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
+import type { TagVersePalette } from "./palette.js";
 
 export type ColorBucket = 0 | 1 | 2 | 3 | 4;
+export type SelectionSource = "canvas" | "index";
 
 export interface SceneNode {
 	tagName: string;
@@ -9,6 +11,32 @@ export interface SceneNode {
 	radius: number;
 	colorBucket: ColorBucket;
 	labelFontSize: number;
+	clusterId: number;
+	isDisplayTier: boolean;
+}
+
+export interface TopicClusterSummary {
+	clusterId: number;
+	tagCount: number;
+	topTags: string[];
+	label: string;
+	regionText: string;
+	ink: string;
+	centroid: [number, number, number];
+	showRegionLabel: boolean;
+}
+
+export interface FocusEmphasis {
+	activeFocus: boolean;
+	fullStrengthNodes: Set<number>;
+	neighborIndices: Set<number>;
+	nodePaperMix: Float32Array;
+	edgeAlphas: Float32Array;
+}
+
+export interface EdgeBuffers {
+	positions: Float32Array;
+	colors: Float32Array;
 }
 
 export interface SceneModel {
@@ -150,6 +178,8 @@ export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
 			radius: computeRadius(tag.articleCount, maxCount),
 			colorBucket: computeColorBucket(tag.articleCount, maxCount),
 			labelFontSize: computeLabelFontSize(tag.articleCount, maxCount),
+			clusterId: tag.clusterId ?? 0,
+			isDisplayTier: false,
 		};
 		indexByName.set(tag.tagName, i);
 	}
@@ -159,4 +189,57 @@ export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
 		cloudRadius,
 		indexByName,
 	};
+}
+
+export function computeNeighbourSet(
+	_nodeCount: number,
+	_edges: readonly TagCloudEdge[],
+	_focusIndex: number | null,
+): Set<number> {
+	return new Set();
+}
+
+export function computeFocusEmphasis(
+	nodes: readonly SceneNode[],
+	edges: readonly TagCloudEdge[],
+	_options: {
+		focusIndex?: number | null;
+		focusClusterId?: number | null;
+	} = {},
+): FocusEmphasis {
+	return {
+		activeFocus: false,
+		fullStrengthNodes: new Set(),
+		neighborIndices: new Set(),
+		nodePaperMix: new Float32Array(nodes.length),
+		edgeAlphas: new Float32Array(edges.length),
+	};
+}
+
+export function buildEdgeBuffers(
+	_nodes: readonly SceneNode[],
+	_edges: readonly TagCloudEdge[],
+	_palette: TagVersePalette,
+	_edgeAlphas?: Float32Array,
+): EdgeBuffers {
+	return {
+		positions: new Float32Array(0),
+		colors: new Float32Array(0),
+	};
+}
+
+export function buildTopicClusters(
+	_nodes: readonly SceneNode[],
+	_palette?: TagVersePalette,
+): TopicClusterSummary[] {
+	return [];
+}
+
+export function needsFraming(_params: {
+	source: SelectionSource;
+	ndcX: number;
+	ndcY: number;
+	isBehindCamera: boolean;
+}): boolean {
+	return true;
 }

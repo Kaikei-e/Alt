@@ -192,3 +192,46 @@ export function readPaletteFromElement(
 		styles.getPropertyValue("--interactive-text"),
 	);
 }
+
+export const TOPIC_INKS: readonly [
+	string,
+	string,
+	string,
+	string,
+	string,
+	string,
+	string,
+	string,
+] = [
+	"#2b3a67",
+	"#8c1d1d",
+	"#2f6b3a",
+	"#8a5a00",
+	"#5b3a5e",
+	"#2f4f4f",
+	"#8b4a2b",
+	"#3f5f7f",
+];
+
+export function clusterBaseInk(
+	_clusterId: number,
+	palette: TagVersePalette = buildPalette(),
+): string {
+	return palette.labelInk;
+}
+
+export function clusterInkForTag(
+	_clusterId: number,
+	_colorBucket: 0 | 1 | 2 | 3 | 4,
+	palette: TagVersePalette = buildPalette(),
+): string {
+	return palette.paper;
+}
+
+export function mixTowardPaper(
+	colorHex: string,
+	_paperHex: string,
+	_paperWeight = 0.75,
+): string {
+	return colorHex;
+}

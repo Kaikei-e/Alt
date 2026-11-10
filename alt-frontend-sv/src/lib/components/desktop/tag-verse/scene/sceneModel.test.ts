@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vitest";
-import type { TagCloudItem } from "#lib/connect/index.js";
+import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
+import { buildPalette, TOPIC_INKS } from "./palette.js";
 import {
+	buildEdgeBuffers,
 	buildSceneModel,
+	buildTopicClusters,
 	computeCloudRadius,
 	computeColorBucket,
+	computeFocusEmphasis,
 	computeFogFactor,
 	computeLabelFontSize,
 	computeLabelOpacity,
+	computeNeighbourSet,
 	computeRadius,
 	fibonacciSphere,
 	fogWindow,
 	hasServerPositions,
+	needsFraming,
 } from "./sceneModel.js";
 
 function makeTag(
@@ -19,6 +25,7 @@ function makeTag(
 	x = 0,
 	y = 0,
 	z = 0,
+	clusterId = 0,
 ): TagCloudItem {
 	return {
 		tagName,
@@ -26,6 +33,7 @@ function makeTag(
 		positionX: x,
 		positionY: y,
 		positionZ: z,
+		clusterId,
 	};
 }
 
@@ -146,5 +154,185 @@ describe("sceneModel", () => {
 		// vanished node (fogFactor ~ 1): skipped (opacity = 0)
 		expect(computeLabelOpacity(309, win)).toBe(0);
 		expect(computeLabelOpacity(350, win)).toBe(0);
+	});
+
+	it("computes neighbour set and per-instance focus emphasis for node or cluster selection", () => {
+		const tags = [
+			makeTag("rust", 50, 0, 0, 0, 1),
+			makeTag("tokio", 30, 5, 0, 0, 1),
+			makeTag("svelte", 40, -5, 0, 0, 2),
+			makeTag("css", 10, 0, 5, 0, 0),
+		];
+		const edges: TagCloudEdge[] = [
+			{ sourceIndex: 0, targetIndex: 1, weight: 0.8 },
+			{ sourceIndex: 1, targetIndex: 2, weight: 0.4 },
+		];
+		const model = buildSceneModel(tags);
+
+		expect([...computeNeighbourSet(model.nodes.length, edges, 1)]).toEqual([
+			0, 2,
+		]);
+		expect([...computeNeighbourSet(model.nodes.length, edges, null)]).toEqual(
+			[],
+		);
+
+		const idle = computeFocusEmphasis(model.nodes, edges);
+		expect(idle.activeFocus).toBe(false);
+		expect([...idle.nodePaperMix]).toEqual([0, 0, 0, 0]);
+		expect(idle.edgeAlphas[0]).toBeCloseTo(0.1 + 0.35 * 0.8, 5);
+		expect(idle.edgeAlphas[1]).toBeCloseTo(0.1 + 0.35 * 0.4, 5);
+
+		const focused = computeFocusEmphasis(model.nodes, edges, {
+			focusIndex: 0,
+		});
+		expect(focused.activeFocus).toBe(true);
+		expect([...focused.neighborIndices]).toEqual([1]);
+		expect([...focused.nodePaperMix]).toEqual([0, 0, 0.75, 0.75]);
+		expect(focused.edgeAlphas[0]).toBeCloseTo(0.1 + 0.35 * 0.8, 5);
+		expect(focused.edgeAlphas[1]).toBeCloseTo(0.04, 5);
+
+		const clusterFocused = computeFocusEmphasis(model.nodes, edges, {
+			focusClusterId: 1,
+		});
+		expect(clusterFocused.activeFocus).toBe(true);
+		expect([...clusterFocused.nodePaperMix]).toEqual([0, 0, 0.75, 0.75]);
+		expect(clusterFocused.edgeAlphas[0]).toBeCloseTo(0.1 + 0.35 * 0.8, 5);
+		expect(clusterFocused.edgeAlphas[1]).toBeCloseTo(0.04, 5);
+	});
+
+	it("builds single-buffer LineSegments positions and RGBA vertex colours for intra- and cross-cluster edges", () => {
+		const palette = buildPalette();
+		const tags = [
+			makeTag("rust", 50, 1, 2, 3, 1),
+			makeTag("tokio", 30, 4, 5, 6, 1),
+			makeTag("svelte", 40, 7, 8, 9, 2),
+		];
+		const edges: TagCloudEdge[] = [
+			{ sourceIndex: 0, targetIndex: 1, weight: 1.0 },
+			{ sourceIndex: 1, targetIndex: 2, weight: 0.2 },
+		];
+		const model = buildSceneModel(tags);
+		const buffers = buildEdgeBuffers(model.nodes, edges, palette);
+
+		expect(buffers.positions).toHaveLength(12);
+		expect([...buffers.positions]).toEqual([
+			1, 2, 3, 4, 5, 6, 4, 5, 6, 7, 8, 9,
+		]);
+		expect(buffers.colors).toHaveLength(16);
+
+		// Edge 0 is intra-cluster 1 (indigo #2b3a67 -> 0x2b/255, 0x3a/255, 0x67/255) with alpha 0.45
+		expect(buffers.colors[0]).toBeCloseTo(0x2b / 255, 3);
+		expect(buffers.colors[1]).toBeCloseTo(0x3a / 255, 3);
+		expect(buffers.colors[2]).toBeCloseTo(0x67 / 255, 3);
+		expect(buffers.colors[3]).toBeCloseTo(0.45, 5);
+		expect(buffers.colors[7]).toBeCloseTo(0.45, 5);
+
+		// Edge 1 is cross-cluster -> neutral ink (R == G == B) with alpha 0.10 + 0.35 * 0.2 = 0.17
+		expect(buffers.colors[8]).toBeCloseTo(buffers.colors[9] as number, 4);
+		expect(buffers.colors[9]).toBeCloseTo(buffers.colors[10] as number, 4);
+		expect(buffers.colors[11]).toBeCloseTo(0.17, 5);
+	});
+
+	it("assigns display tier [18..26]px to top 12 tags and body tier [11..14]px to remaining tags, and marks region labels only for clusters with >= 6 tags", () => {
+		const tags: TagCloudItem[] = [];
+		for (let i = 0; i < 6; i++) {
+			tags.push(makeTag(`c1_${i}`, 100 - i, i * 2, 0, 0, 1));
+		}
+		for (let i = 0; i < 5; i++) {
+			tags.push(makeTag(`c2_${i}`, 80 - i, 0, i * 2, 0, 2));
+		}
+		for (let i = 0; i < 4; i++) {
+			tags.push(makeTag(`c0_${i}`, 20 - i, 0, 0, i * 2, 0));
+		}
+
+		const model = buildSceneModel(tags);
+		const displayNodes = model.nodes.filter((n) => n.isDisplayTier);
+		const bodyNodes = model.nodes.filter((n) => !n.isDisplayTier);
+
+		expect(displayNodes).toHaveLength(12);
+		expect(bodyNodes).toHaveLength(3);
+
+		for (const n of displayNodes) {
+			expect(n.labelFontSize).toBeGreaterThanOrEqual(18);
+			expect(n.labelFontSize).toBeLessThanOrEqual(26);
+		}
+		for (const n of bodyNodes) {
+			expect(n.labelFontSize).toBeGreaterThanOrEqual(11);
+			expect(n.labelFontSize).toBeLessThanOrEqual(14);
+		}
+
+		const clusters = buildTopicClusters(model.nodes, buildPalette());
+		expect(clusters).toHaveLength(2);
+		expect(clusters[0]).toMatchObject({
+			clusterId: 1,
+			tagCount: 6,
+			topTags: ["c1_0", "c1_1"],
+			label: "c1_0 · c1_1",
+			regionText: "C1_0 · C1_1",
+			ink: TOPIC_INKS[0],
+			centroid: [5, 0, 0],
+			showRegionLabel: true,
+		});
+		expect(clusters[1]).toMatchObject({
+			clusterId: 2,
+			tagCount: 5,
+			topTags: ["c2_0", "c2_1"],
+			label: "c2_0 · c2_1",
+			regionText: "C2_0 · C2_1",
+			ink: TOPIC_INKS[1],
+			centroid: [0, 4, 0],
+			showRegionLabel: false,
+		});
+	});
+
+	it("decides camera framing only for index selections that are behind the camera or outside the central 60% viewport", () => {
+		expect(
+			needsFraming({
+				source: "canvas",
+				ndcX: 0.95,
+				ndcY: 0.95,
+				isBehindCamera: true,
+			}),
+		).toBe(false);
+		expect(
+			needsFraming({
+				source: "index",
+				ndcX: 0.2,
+				ndcY: -0.5,
+				isBehindCamera: false,
+			}),
+		).toBe(false);
+		expect(
+			needsFraming({
+				source: "index",
+				ndcX: 0.6,
+				ndcY: -0.6,
+				isBehindCamera: false,
+			}),
+		).toBe(false);
+		expect(
+			needsFraming({
+				source: "index",
+				ndcX: 0.65,
+				ndcY: 0,
+				isBehindCamera: false,
+			}),
+		).toBe(true);
+		expect(
+			needsFraming({
+				source: "index",
+				ndcX: 0,
+				ndcY: -0.75,
+				isBehindCamera: false,
+			}),
+		).toBe(true);
+		expect(
+			needsFraming({
+				source: "index",
+				ndcX: 0,
+				ndcY: 0,
+				isBehindCamera: true,
+			}),
+		).toBe(true);
 	});
 });

@@ -650,6 +650,18 @@ export interface TagCloudItem {
 	positionX: number;
 	positionY: number;
 	positionZ: number;
+	clusterId?: number;
+}
+
+export interface TagCloudEdge {
+	sourceIndex: number;
+	targetIndex: number;
+	weight: number;
+}
+
+export interface TagCloudData {
+	tags: TagCloudItem[];
+	edges: TagCloudEdge[];
 }
 
 /**

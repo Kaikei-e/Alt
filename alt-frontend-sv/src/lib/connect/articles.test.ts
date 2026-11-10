@@ -1,7 +1,11 @@
 import type { Transport } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 
-import { batchPrefetchArticleContent, fetchArticleContent } from "./articles";
+import {
+	batchPrefetchArticleContent,
+	fetchArticleContent,
+	fetchTagCloud,
+} from "./articles";
 
 interface RecordedCall {
 	method: string;
@@ -128,5 +132,73 @@ describe("fetchArticleContent", () => {
 		await fetchArticleContent(recordingTransport(calls), "https://a.example/1");
 
 		expect(calls[0]?.header.get("x-alt-fetch-priority")).toBeNull();
+	});
+});
+
+describe("fetchTagCloud", () => {
+	it("maps tags with clusterId and filters out-of-range or self-loop edges at the boundary", async () => {
+		const transport = {
+			unary: async (method: { name: string; parent: unknown }) => ({
+				stream: false as const,
+				service: method.parent,
+				method,
+				header: new Headers(),
+				message: {
+					tags: [
+						{
+							tagName: "rust",
+							articleCount: 40,
+							positionX: 1,
+							positionY: 2,
+							positionZ: 3,
+							clusterId: 2,
+						},
+						{
+							tagName: "svelte",
+							articleCount: 25,
+							positionX: -1,
+							positionY: 0,
+							positionZ: 4,
+							clusterId: 0,
+						},
+					],
+					totalTags: 2,
+					edges: [
+						{ sourceIndex: 0, targetIndex: 1, weight: 0.75 },
+						{ sourceIndex: -1, targetIndex: 1, weight: 0.5 },
+						{ sourceIndex: 0, targetIndex: 2, weight: 0.5 },
+						{ sourceIndex: 1, targetIndex: 99, weight: 0.9 },
+						{ sourceIndex: 0, targetIndex: 0, weight: 1.0 },
+					],
+				},
+				trailer: new Headers(),
+			}),
+			stream: () => {
+				throw new Error("not used");
+			},
+		} as unknown as Transport;
+
+		const result = await fetchTagCloud(transport, 200);
+		expect(result).toEqual({
+			tags: [
+				{
+					tagName: "rust",
+					articleCount: 40,
+					positionX: 1,
+					positionY: 2,
+					positionZ: 3,
+					clusterId: 2,
+				},
+				{
+					tagName: "svelte",
+					articleCount: 25,
+					positionX: -1,
+					positionY: 0,
+					positionZ: 4,
+					clusterId: 0,
+				},
+			],
+			edges: [{ sourceIndex: 0, targetIndex: 1, weight: 0.75 }],
+		});
 	});
 });

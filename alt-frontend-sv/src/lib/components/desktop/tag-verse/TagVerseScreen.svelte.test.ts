@@ -160,4 +160,79 @@ describe("TagVerseScreen", () => {
 		const rustHeadingEl = await rustHeading.element();
 		expect(document.activeElement).toBe(rustHeadingEl);
 	});
+
+	it("overlays the detail panel without changing the canvas container width and renders Topics key buttons that emphasise clusters on hover/focus", async () => {
+		mockFetchTagCloud.mockResolvedValue({
+			tags: [
+				{
+					tagName: "rust",
+					articleCount: 50,
+					positionX: 1,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 1,
+				},
+				{
+					tagName: "tokio",
+					articleCount: 30,
+					positionX: 2,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 1,
+				},
+				{
+					tagName: "svelte",
+					articleCount: 40,
+					positionX: -1,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 2,
+				},
+				{
+					tagName: "vite",
+					articleCount: 20,
+					positionX: -2,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 2,
+				},
+			],
+			edges: [{ sourceIndex: 0, targetIndex: 1, weight: 0.9 }],
+		});
+
+		const { container } = render(TagVerseScreen);
+
+		const rustBtn = page.getByRole("button", { name: "rust, 50 articles" });
+		await expect.element(rustBtn, { timeout: 1000 }).toBeInTheDocument();
+
+		const canvasRegion = container.querySelector<HTMLElement>(
+			'[data-testid="tag-verse-canvas-region"]',
+		);
+		expect(canvasRegion).not.toBeNull();
+		const widthBeforeOpen = canvasRegion?.getBoundingClientRect().width ?? 0;
+		expect(widthBeforeOpen).toBeGreaterThan(0);
+
+		// Topics key panel has button rows for each cluster
+		const topicsRegion = page.getByRole("region", { name: /topics/i });
+		await expect.element(topicsRegion).toBeInTheDocument();
+		const cluster1Btn = page.getByRole("button", {
+			name: /rust\s*·\s*tokio/i,
+		});
+		await expect.element(cluster1Btn).toBeInTheDocument();
+		const cluster1El = (await cluster1Btn.element()) as HTMLButtonElement;
+		cluster1El.focus();
+		expect(cluster1El.getAttribute("data-emphasized")).toBe("true");
+
+		// Opening the detail panel must not shrink the canvas container width
+		await rustBtn.click();
+		const rustHeading = page.getByRole("heading", {
+			name: "rust",
+			exact: true,
+			level: 2,
+		});
+		await expect.element(rustHeading).toBeInTheDocument();
+
+		const widthAfterOpen = canvasRegion?.getBoundingClientRect().width ?? 0;
+		expect(widthAfterOpen).toBe(widthBeforeOpen);
+	});
 });
