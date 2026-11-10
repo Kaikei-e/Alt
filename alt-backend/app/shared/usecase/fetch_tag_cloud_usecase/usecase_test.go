@@ -106,7 +106,7 @@ func TestFetchTagCloudUsecase_Execute(t *testing.T) {
 			}
 
 			usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
-			got, err := usecase.Execute(ctx, tt.limit)
+			got, _, err := usecase.Execute(ctx, tt.limit)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
@@ -135,7 +135,7 @@ func TestFetchTagCloudUsecase_Cache(t *testing.T) {
 		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
 
 		// First call: fetches from port
-		got1, err := usecase.Execute(ctx, 300)
+		got1, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("first call: %v", err)
 		}
@@ -147,7 +147,7 @@ func TestFetchTagCloudUsecase_Cache(t *testing.T) {
 		}
 
 		// Second call: should use cache (same limit)
-		got2, err := usecase.Execute(ctx, 300)
+		got2, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("second call: %v", err)
 		}
@@ -163,17 +163,31 @@ func TestFetchTagCloudUsecase_Cache(t *testing.T) {
 		port := &mockFetchTagCloudPort{
 			items: []*domain.TagCloudItem{
 				{TagName: "AI", ArticleCount: 100},
+				{TagName: "Go", ArticleCount: 80},
+				{TagName: "Rust", ArticleCount: 60},
+				{TagName: "Wasm", ArticleCount: 40},
+			},
+			cooccurrences: []*domain.TagCooccurrence{
+				{TagNameA: "AI", TagNameB: "Go", SharedCount: 30},
+				{TagNameA: "Go", TagNameB: "Rust", SharedCount: 25},
+				{TagNameA: "Rust", TagNameB: "Wasm", SharedCount: 20},
+				{TagNameA: "AI", TagNameB: "Wasm", SharedCount: 15},
 			},
 		}
 
 		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
 
-		got1, _ := usecase.Execute(ctx, 300)
+		got1, edges1, _ := usecase.Execute(ctx, 300)
 		got1[0].ArticleCount = 999 // Mutate returned copy
+		got1[0].ClusterID = 99
+		edges1[0].Weight = 0.01
 
-		got2, _ := usecase.Execute(ctx, 300)
-		if got2[0].ArticleCount == 999 {
-			t.Error("cache should return deep copy, mutation leaked through")
+		got2, edges2, _ := usecase.Execute(ctx, 300)
+		if got2[0].ArticleCount == 999 || got2[0].ClusterID != 1 {
+			t.Errorf("cache should return deep copy of items, got %+v", got2[0])
+		}
+		if edges2[0].Weight != 1.0 {
+			t.Errorf("cache should return deep copy of edges, got %+v", edges2[0])
 		}
 	})
 
@@ -195,6 +209,7 @@ func TestFetchTagCloudUsecase_Cache(t *testing.T) {
 	})
 
 	t.Run("expired cache refetches", func(t *testing.T) {
+		currentTime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		port := &mockFetchTagCloudPort{
 			items: []*domain.TagCloudItem{
 				{TagName: "AI", ArticleCount: 100},
@@ -203,9 +218,10 @@ func TestFetchTagCloudUsecase_Cache(t *testing.T) {
 
 		usecase := NewFetchTagCloudUsecase(port, 1*time.Millisecond)
 		usecase.maxStale = 1 * time.Millisecond
+		usecase.now = func() time.Time { return currentTime }
 
 		usecase.Execute(ctx, 300)
-		time.Sleep(5 * time.Millisecond) // Wait for cache expiry
+		currentTime = currentTime.Add(5 * time.Millisecond)
 		usecase.Execute(ctx, 300)
 
 		if port.callCount.Load() != 2 {
@@ -260,7 +276,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		}
 
 		// Cold read populates cache
-		got1, err := usecase.Execute(ctx, 300)
+		got1, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("initial Execute: %v", err)
 		}
@@ -274,7 +290,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		nowMu.Unlock()
 
 		// Stale read must return old items immediately while background refresh is blocked on releaseBg
-		got2, err := usecase.Execute(ctx, 300)
+		got2, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("stale Execute: %v", err)
 		}
@@ -302,7 +318,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		}
 
 		// Subsequent read returns the refreshed items from cache without another port call
-		got3, err := usecase.Execute(ctx, 300)
+		got3, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("post-refresh Execute: %v", err)
 		}
@@ -355,7 +371,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 			return now
 		}
 
-		if _, err := usecase.Execute(ctx, 300); err != nil {
+		if _, _, err := usecase.Execute(ctx, 300); err != nil {
 			t.Fatalf("initial Execute: %v", err)
 		}
 
@@ -364,7 +380,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		nowMu.Unlock()
 
 		// First stale read starts background refresh
-		got1, err := usecase.Execute(ctx, 300)
+		got1, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("first stale Execute: %v", err)
 		}
@@ -379,7 +395,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		}
 
 		// Second stale read while refresh is still blocked in flight
-		got2, err := usecase.Execute(ctx, 300)
+		got2, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("second stale Execute: %v", err)
 		}
@@ -432,7 +448,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 			return currentTime
 		}
 
-		if _, err := usecase.Execute(ctx, 300); err != nil {
+		if _, _, err := usecase.Execute(ctx, 300); err != nil {
 			t.Fatalf("initial Execute: %v", err)
 		}
 
@@ -440,7 +456,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		currentTime = currentTime.Add(31 * time.Minute)
 		nowMu.Unlock()
 
-		got1, err := usecase.Execute(ctx, 300)
+		got1, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("stale Execute: %v", err)
 		}
@@ -455,7 +471,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		}
 
 		// Subsequent read still serves the stale items
-		got2, err := usecase.Execute(ctx, 300)
+		got2, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("Execute after failed refresh returned error: %v", err)
 		}
@@ -490,7 +506,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 			return currentTime
 		}
 
-		if _, err := usecase.Execute(ctx, 300); err != nil {
+		if _, _, err := usecase.Execute(ctx, 300); err != nil {
 			t.Fatalf("initial Execute: %v", err)
 		}
 
@@ -499,7 +515,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		currentTime = currentTime.Add(24*time.Hour + time.Minute)
 		nowMu.Unlock()
 
-		got, err := usecase.Execute(ctx, 300)
+		got, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("expired Execute: %v", err)
 		}
@@ -549,7 +565,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 				defer doneWg.Done()
 				startReady.Done()
 				<-startGate
-				results[idx], errs[idx] = usecase.Execute(ctx, 300)
+				results[idx], _, errs[idx] = usecase.Execute(ctx, 300)
 			}(i)
 		}
 
@@ -639,7 +655,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 			return now
 		}
 
-		if _, err := usecase.Execute(ctx, 300); err != nil {
+		if _, _, err := usecase.Execute(ctx, 300); err != nil {
 			t.Fatalf("initial Execute: %v", err)
 		}
 
@@ -648,7 +664,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		nowMu.Unlock()
 
 		reqCtx, reqCancel := context.WithCancel(ctx)
-		got1, err := usecase.Execute(reqCtx, 300)
+		got1, _, err := usecase.Execute(reqCtx, 300)
 		reqCancel()
 		close(reqCancelled)
 
@@ -672,7 +688,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		}
 		notifyOnSetCache.Store(false)
 
-		got2, err := usecase.Execute(ctx, 300)
+		got2, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("post-refresh Execute: %v", err)
 		}
@@ -723,7 +739,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 
 		go func() {
 			defer wg.Done()
-			got1, err1 = usecase.Execute(ctx1, 300)
+			got1, _, err1 = usecase.Execute(ctx1, 300)
 		}()
 
 		select {
@@ -734,7 +750,7 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 
 		go func() {
 			defer wg.Done()
-			got2, err2 = usecase.Execute(ctx, 300)
+			got2, _, err2 = usecase.Execute(ctx, 300)
 		}()
 
 		select {
@@ -776,19 +792,19 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
 		usecase.now = func() time.Time { return currentTime }
 
-		if _, err := usecase.Execute(ctx, 300); err != nil {
+		if _, _, err := usecase.Execute(ctx, 300); err != nil {
 			t.Fatalf("initial Execute: %v", err)
 		}
 
 		// Advance into stale window
 		currentTime = currentTime.Add(31 * time.Minute)
 
-		items1, state1, start1 := usecase.getCached(300)
+		items1, _, state1, start1 := usecase.getCached(300)
 		if len(items1) != 1 || state1 != cacheStateStale || !start1 {
 			t.Fatalf("first stale getCached = (%v, %q, %v), want (len 1, %q, true)", items1, state1, start1, cacheStateStale)
 		}
 
-		items2, state2, start2 := usecase.getCached(300)
+		items2, _, state2, start2 := usecase.getCached(300)
 		if len(items2) != 1 || state2 != cacheStateStale || start2 {
 			t.Fatalf("second stale getCached = (%v, %q, %v), want (len 1, %q, false)", items2, state2, start2, cacheStateStale)
 		}
@@ -831,6 +847,135 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 			t.Fatal("expected u.refreshing to be false after panic in refreshInBackground")
 		}
 	})
+
+	t.Run("stale-while-revalidate preserves and updates clusters and edges", func(t *testing.T) {
+		var nowMu sync.Mutex
+		currentTime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+		bgStarted := make(chan struct{}, 1)
+		releaseBg := make(chan struct{})
+		cacheUpdated := make(chan struct{}, 1)
+		var notifyOnSetCache atomic.Bool
+
+		var callNum atomic.Int32
+		port := &mockFetchTagCloudPort{
+			fetchFn: func(_ context.Context, _ int) ([]*domain.TagCloudItem, error) {
+				n := callNum.Add(1)
+				if n == 1 {
+					return []*domain.TagCloudItem{
+						{TagName: "t1", ArticleCount: 100},
+						{TagName: "t2", ArticleCount: 90},
+						{TagName: "t3", ArticleCount: 80},
+						{TagName: "t4", ArticleCount: 70},
+					}, nil
+				}
+				bgStarted <- struct{}{}
+				<-releaseBg
+				notifyOnSetCache.Store(true)
+				return []*domain.TagCloudItem{
+					{TagName: "t1", ArticleCount: 100},
+					{TagName: "t2", ArticleCount: 90},
+					{TagName: "t3", ArticleCount: 80},
+					{TagName: "t4", ArticleCount: 70},
+					{TagName: "t5", ArticleCount: 60},
+				}, nil
+			},
+			cooccurrences: []*domain.TagCooccurrence{
+				{TagNameA: "t1", TagNameB: "t2", SharedCount: 40},
+				{TagNameA: "t2", TagNameB: "t3", SharedCount: 35},
+				{TagNameA: "t3", TagNameB: "t4", SharedCount: 30},
+				{TagNameA: "t1", TagNameB: "t4", SharedCount: 25},
+				{TagNameA: "t4", TagNameB: "t5", SharedCount: 20},
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+		usecase.now = func() time.Time {
+			nowMu.Lock()
+			now := currentTime
+			nowMu.Unlock()
+			if notifyOnSetCache.Load() {
+				select {
+				case cacheUpdated <- struct{}{}:
+				default:
+				}
+			}
+			return now
+		}
+
+		items1, edges1, err := usecase.Execute(ctx, 300)
+		if err != nil {
+			t.Fatalf("initial Execute: %v", err)
+		}
+		if len(items1) != 4 || items1[0].ClusterID != 1 || len(edges1) != 4 {
+			t.Fatalf("initial Execute: want 4 items in cluster 1 and 4 edges, got items=%+v edges=%+v", items1, edges1)
+		}
+
+		nowMu.Lock()
+		currentTime = currentTime.Add(31 * time.Minute)
+		nowMu.Unlock()
+
+		staleItems, staleEdges, err := usecase.Execute(ctx, 300)
+		if err != nil {
+			t.Fatalf("stale Execute: %v", err)
+		}
+		if len(staleItems) != 4 || staleItems[0].ClusterID != 1 || len(staleEdges) != 4 {
+			t.Fatalf("stale Execute: want cached 4 items/edges, got items=%+v edges=%+v", staleItems, staleEdges)
+		}
+
+		select {
+		case <-bgStarted:
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("expected background refresh to start")
+		}
+		close(releaseBg)
+
+		select {
+		case <-cacheUpdated:
+		case <-time.After(time.Second):
+			t.Fatal("expected background refresh to update cache")
+		}
+		notifyOnSetCache.Store(false)
+
+		freshItems, freshEdges, err := usecase.Execute(ctx, 300)
+		if err != nil {
+			t.Fatalf("post-refresh Execute: %v", err)
+		}
+		if len(freshItems) != 5 || len(freshEdges) != 5 {
+			t.Fatalf("post-refresh Execute: want 5 items and 5 edges, got %d items and %d edges", len(freshItems), len(freshEdges))
+		}
+		for _, it := range freshItems {
+			if it.ClusterID != 1 {
+				t.Errorf("post-refresh item %q ClusterID = %d, want 1", it.TagName, it.ClusterID)
+			}
+		}
+	})
+
+	t.Run("cooccurrence failure degrades to empty edges and cluster 0", func(t *testing.T) {
+		port := &mockFetchTagCloudPort{
+			items: []*domain.TagCloudItem{
+				{TagName: "t1", ArticleCount: 100},
+				{TagName: "t2", ArticleCount: 90},
+				{TagName: "t3", ArticleCount: 80},
+				{TagName: "t4", ArticleCount: 70},
+			},
+			cooccErr: errors.New("cooccurrence rpc failed"),
+		}
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+
+		items, edges, err := usecase.Execute(ctx, 300)
+		if err != nil {
+			t.Fatalf("Execute on cooccurrence failure: %v", err)
+		}
+		if len(edges) != 0 {
+			t.Errorf("want no edges on cooccurrence failure, got %+v", edges)
+		}
+		for _, it := range items {
+			if it.ClusterID != 0 {
+				t.Errorf("item %q ClusterID = %d, want 0 on cooccurrence failure", it.TagName, it.ClusterID)
+			}
+		}
+	})
 }
 
 func TestFetchTagCloudUsecase_Refresh(t *testing.T) {
@@ -848,7 +993,7 @@ func TestFetchTagCloudUsecase_Refresh(t *testing.T) {
 		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
 
 		// First call populates cache
-		_, err := usecase.Execute(ctx, 300)
+		_, _, err := usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
@@ -885,7 +1030,7 @@ func TestFetchTagCloudUsecase_Refresh(t *testing.T) {
 		}
 
 		// Execute should use the cache populated by Refresh
-		_, err = usecase.Execute(ctx, 300)
+		_, _, err = usecase.Execute(ctx, 300)
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
