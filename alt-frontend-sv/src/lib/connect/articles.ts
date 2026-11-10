@@ -651,7 +651,7 @@ export interface TagCloudItem {
 	positionX: number;
 	positionY: number;
 	positionZ: number;
-	clusterId?: number;
+	clusterId: number;
 }
 
 export interface TagCloudEdge {
@@ -688,12 +688,12 @@ export async function fetchTagCloud(
 			positionX: item.positionX,
 			positionY: item.positionY,
 			positionZ: item.positionZ,
-			clusterId: item.clusterId ?? 0,
+			clusterId: item.clusterId,
 		}),
 	);
 
 	const count = tags.length;
-	const edges: TagCloudEdge[] = (response.edges ?? [])
+	const edges: TagCloudEdge[] = response.edges
 		.filter(
 			(edge: ProtoTagCloudEdge) =>
 				Number.isInteger(edge.sourceIndex) &&

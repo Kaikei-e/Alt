@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { TagCloudItem } from "#lib/connect/index.js";
+import type { TagCloudData } from "#lib/connect/articles.js";
 
 const { mockFetchTagCloud, mockIsWebGL2Available } = vi.hoisted(() => ({
 	mockFetchTagCloud: vi.fn(),
@@ -38,15 +38,19 @@ describe("TagVerseScreen", () => {
 	it("renders Alt-Paper top bar, role='alert' on error, and retries load without page reload", async () => {
 		mockFetchTagCloud
 			.mockRejectedValueOnce(new Error("Network failure"))
-			.mockResolvedValueOnce([
-				{
-					tagName: "svelte",
-					articleCount: 1,
-					positionX: 0,
-					positionY: 0,
-					positionZ: 0,
-				},
-			]);
+			.mockResolvedValueOnce({
+				tags: [
+					{
+						tagName: "svelte",
+						articleCount: 1,
+						positionX: 0,
+						positionY: 0,
+						positionZ: 0,
+						clusterId: 0,
+					},
+				],
+				edges: [],
+			});
 
 		render(TagVerseScreen);
 
@@ -69,10 +73,10 @@ describe("TagVerseScreen", () => {
 	});
 
 	it("renders loading with role='status', empty state text, and WebGL-unavailable state text", async () => {
-		let resolveTags: ((tags: TagCloudItem[]) => void) | undefined;
+		let resolveCloud: ((data: TagCloudData) => void) | undefined;
 		mockFetchTagCloud.mockReturnValueOnce(
-			new Promise<TagCloudItem[]>((resolve) => {
-				resolveTags = resolve;
+			new Promise<TagCloudData>((resolve) => {
+				resolveCloud = resolve;
 			}),
 		);
 
@@ -83,7 +87,7 @@ describe("TagVerseScreen", () => {
 			.element(statusRegion, { timeout: 1000 })
 			.toHaveTextContent("Loading tags");
 
-		resolveTags?.([]);
+		resolveCloud?.({ tags: [], edges: [] });
 		await expect
 			.element(
 				page.getByText(
@@ -107,22 +111,27 @@ describe("TagVerseScreen", () => {
 	});
 
 	it("keeps detail panel open when Escape is pressed in 'Find a tag' search box and moves focus to new heading when switching tags", async () => {
-		mockFetchTagCloud.mockResolvedValue([
-			{
-				tagName: "svelte",
-				articleCount: 10,
-				positionX: 0,
-				positionY: 0,
-				positionZ: 0,
-			},
-			{
-				tagName: "rust",
-				articleCount: 20,
-				positionX: 1,
-				positionY: 1,
-				positionZ: 1,
-			},
-		]);
+		mockFetchTagCloud.mockResolvedValue({
+			tags: [
+				{
+					tagName: "svelte",
+					articleCount: 10,
+					positionX: 0,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 0,
+				},
+				{
+					tagName: "rust",
+					articleCount: 20,
+					positionX: 1,
+					positionY: 1,
+					positionZ: 1,
+					clusterId: 0,
+				},
+			],
+			edges: [],
+		});
 
 		render(TagVerseScreen);
 

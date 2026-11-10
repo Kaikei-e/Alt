@@ -14,6 +14,7 @@ const SAMPLE_TAGS: TagCloudItem[] = [
 		positionX: 1,
 		positionY: 2,
 		positionZ: 3,
+		clusterId: 1,
 	},
 	{
 		tagName: "rust",
@@ -21,6 +22,7 @@ const SAMPLE_TAGS: TagCloudItem[] = [
 		positionX: -1,
 		positionY: 0,
 		positionZ: 2,
+		clusterId: 1,
 	},
 	{
 		tagName: "ai",
@@ -28,6 +30,7 @@ const SAMPLE_TAGS: TagCloudItem[] = [
 		positionX: 0,
 		positionY: 1,
 		positionZ: -1,
+		clusterId: 2,
 	},
 	{
 		tagName: "GoLang",
@@ -35,6 +38,7 @@ const SAMPLE_TAGS: TagCloudItem[] = [
 		positionX: 2,
 		positionY: -2,
 		positionZ: 0,
+		clusterId: 0,
 	},
 ];
 

@@ -17,6 +17,7 @@ export interface SceneNode {
 	labelFontSize: number;
 	clusterId: number;
 	isDisplayTier: boolean;
+	baseInk: string;
 }
 
 export interface TopicClusterSummary {
@@ -59,6 +60,18 @@ export const BODY_FONT_STACK = '"Source Sans 3", system-ui, sans-serif';
 export const REGION_LABEL_FONT_SIZE = 10;
 export const REGION_LABEL_LETTER_SPACING_EM = 0.12;
 export const REGION_LABEL_ALPHA = 0.55;
+export const HEMI_LIGHT_INTENSITY = 0.7 * Math.PI;
+export const DIR_LIGHT_INTENSITY = 0.3 * Math.PI;
+export const KEY_LIGHT_DIRECTION: readonly [number, number, number] = [
+	1, 1.5, 1,
+];
+export const SELECTED_NODE_SCALE = 1.2;
+export const HOVERED_NODE_SCALE = 1.15;
+
+export interface LambertLitColor {
+	linear: [number, number, number];
+	hex: string;
+}
 
 export interface NodeLabelTypography {
 	fontFamily: string;
@@ -188,7 +201,10 @@ export function computeLabelOpacity(depth: number, window: FogWindow): number {
 	return Math.max(MIN_LABEL_OPACITY, 1 - fogFactor);
 }
 
-export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
+export function buildSceneModel(
+	tags: readonly TagCloudItem[],
+	_palette?: TagVersePalette,
+): SceneModel {
 	const serverPos = hasServerPositions(tags);
 	const cloudRadius = computeCloudRadius(tags, serverPos);
 	let maxCount = 1;
@@ -227,8 +243,9 @@ export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
 			radius: computeRadius(tag.articleCount, maxCount),
 			colorBucket: computeColorBucket(tag.articleCount, maxCount),
 			labelFontSize,
-			clusterId: tag.clusterId ?? 0,
+			clusterId: tag.clusterId,
 			isDisplayTier,
+			baseInk: "",
 		};
 		indexByName.set(tag.tagName, i);
 	}
@@ -490,6 +507,8 @@ export function needsFraming(params: {
 	ndcX: number;
 	ndcY: number;
 	isBehindCamera: boolean;
+	canvasWidth?: number;
+	occludedRightPx?: number;
 }): boolean {
 	if (params.source !== "index") {
 		return false;
@@ -498,6 +517,40 @@ export function needsFraming(params: {
 		return true;
 	}
 	return Math.abs(params.ndcX) > 0.6 || Math.abs(params.ndcY) > 0.6;
+}
+
+export function computeLambertLitColor(
+	_inkHex: string,
+	_normal: readonly [number, number, number],
+	_paperHex = "#faf9f7",
+): LambertLitColor {
+	return { linear: [0, 0, 0], hex: "#000000" };
+}
+
+export function applyIncrementalNodeColors(
+	_currentHexes: string[],
+	_nodes: readonly SceneNode[],
+	_palette: TagVersePalette,
+	_selectedIndex: number | null,
+	_nodePaperMix?: Float32Array,
+): number[] {
+	return [];
+}
+
+export function applyIncrementalNodeScales(
+	_currentScales: Float32Array,
+	_nodes: readonly SceneNode[],
+	_selectedIndex: number | null,
+	_hoveredIndex: number | null,
+): number[] {
+	return [];
+}
+
+export function updateEdgeBufferAlphas(
+	_colors: Float32Array,
+	_edgeAlphas: Float32Array,
+): number[] {
+	return [];
 }
 
 export function resolveNodeLabelTypography(
