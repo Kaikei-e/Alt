@@ -222,6 +222,11 @@ async def test_200_non_json_html_marks_all_targets_of_base_url_unhealthy_with_wa
             lambda: base_now,
         )
         await checker._check_all()
+        mp.setattr(
+            "news_creator.gateway.remote_health_checker.time.monotonic",
+            lambda: base_now + 61.0,
+        )
+        await checker._check_all()
 
     status = checker.status()
     assert status[0]["healthy"] is False
@@ -597,6 +602,8 @@ async def test_probe_non_utf8_200_body_marks_targets_unhealthy_without_raising()
     )
 
     await checker._probe_base_url("http://router-a.example:8080", targets[:2])
+    await checker._probe_base_url("http://router-a.example:8080", targets[:2])
+    await checker._probe_base_url("http://router-b.example:8080", targets[2:])
     await checker._probe_base_url("http://router-b.example:8080", targets[2:])
 
     status = checker.status()
@@ -700,6 +707,7 @@ async def test_probe_response_body_over_1_mib_marks_targets_unhealthy(
         }
     )
 
+    await checker._probe_base_url("http://router-a.example:8080", targets[:2])
     await checker._probe_base_url("http://router-a.example:8080", targets[:2])
 
     status = checker.status()
@@ -834,3 +842,573 @@ async def test_sibling_probe_failure_does_not_reset_last_checked_or_inflate_back
     assert hc._should_probe_target(target_a, 161.0) is True
     assert hc._states[target_a]["probe_failures"] == 0
     assert hc._states[target_a]["last_checked"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_busy_target_ignored_by_failing_or_missing_probe(monkeypatch, caplog):
+    """(a) A busy target (in_flight_count > 0 or busy True) stays healthy and keeps counters unchanged when a probe omits its model, returns malformed body, or errors."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+    )
+    clock = 100.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target.model}]}),
+            ),
+        }
+    )
+    await hc._check_all()
+    acquired = hc.acquire_idle_target(lambda _: True)
+    assert acquired == target
+
+    # Probe omits the model while target is busy
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": "other/model:latest"}]}),
+            ),
+        }
+    )
+    clock = 135.0
+    caplog.clear()
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await hc._check_all()
+
+    state = hc._states[target]
+    assert state["healthy"] is True
+    assert state["probe_failures"] == 0
+    assert state["consecutive_failures"] == 0
+    assert state["cooldown_until"] == 0.0
+    assert state["last_checked"] == 135.0
+    assert any(
+        r.levelno == logging.DEBUG
+        and "probe result ignored for busy target" in r.getMessage()
+        and "missing model" in r.getMessage()
+        for r in caplog.records
+    )
+    assert not any(r.levelno >= logging.WARNING for r in caplog.records)
+
+    # Non-JSON 200 body while busy leaves healthy/counters untouched and logs reason
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200, "not-valid-json"
+            ),
+        }
+    )
+    clock = 170.0
+    caplog.clear()
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await hc._check_all()
+    assert state["healthy"] is True
+    assert state["probe_failures"] == 0
+    assert state["consecutive_failures"] == 0
+    assert state["last_checked"] == 170.0
+    assert any(
+        r.levelno == logging.DEBUG
+        and "probe result ignored for busy target" in r.getMessage()
+        and "non-json" in r.getMessage()
+        for r in caplog.records
+    )
+    assert not any(r.levelno >= logging.WARNING for r in caplog.records)
+
+    # Missing 'data' list in 200 JSON while busy leaves healthy/counters untouched and logs reason
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200, json.dumps({"models": []})
+            ),
+        }
+    )
+    clock = 205.0
+    caplog.clear()
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await hc._check_all()
+    assert state["healthy"] is True
+    assert state["probe_failures"] == 0
+    assert state["consecutive_failures"] == 0
+    assert state["last_checked"] == 205.0
+    assert any(
+        r.levelno == logging.DEBUG
+        and "probe result ignored for busy target" in r.getMessage()
+        and "missing data list" in r.getMessage()
+        for r in caplog.records
+    )
+    assert not any(r.levelno >= logging.WARNING for r in caplog.records)
+
+    # Connection error while busy also leaves healthy/counters untouched and logs exception type
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": aiohttp.ClientConnectorError(
+                connection_key=MagicMock(), os_error=OSError("Connection refused")
+            ),
+        }
+    )
+    clock = 240.0
+    caplog.clear()
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await hc._check_all()
+    assert state["healthy"] is True
+    assert state["probe_failures"] == 0
+    assert state["consecutive_failures"] == 0
+    assert state["last_checked"] == 240.0
+    assert any(
+        r.levelno == logging.DEBUG
+        and "probe result ignored for busy target" in r.getMessage()
+        and "ClientConnectorError" in r.getMessage()
+        for r in caplog.records
+    )
+    assert not any(r.levelno >= logging.WARNING for r in caplog.records)
+
+    # in_flight_count > 0 while busy is False is also treated as busy
+    state["busy"] = False
+    state["in_flight_count"] = 1
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": []}),
+            ),
+        }
+    )
+    clock = 275.0
+    caplog.clear()
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await hc._check_all()
+    assert state["healthy"] is True
+    assert state["probe_failures"] == 0
+    assert state["consecutive_failures"] == 0
+    assert state["last_checked"] == 275.0
+    assert any(
+        r.levelno == logging.DEBUG
+        and "probe result ignored for busy target" in r.getMessage()
+        and "missing model" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_idle_target_requires_unhealthy_threshold_consecutive_failed_probes(
+    monkeypatch, caplog
+):
+    """(b) Idle target with threshold 2 stays healthy on 1st missing probe (DEBUG), flips unhealthy on 2nd consecutive (one WARNING), and logs once thereafter."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+    )
+    clock = 100.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target.model}]}),
+            ),
+        }
+    )
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+
+    # Missing model on subsequent probes
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": []}),
+            ),
+        }
+    )
+
+    # 1st failed probe: below threshold -> stays healthy, DEBUG only, no WARNING
+    clock = 135.0
+    caplog.clear()
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await hc._check_all()
+
+    assert hc.status()[0]["healthy"] is True
+    assert hc._states[target]["probe_failures"] == 1
+    assert hc._states[target]["consecutive_failures"] == 1
+    assert not any(r.levelno >= logging.WARNING for r in caplog.records)
+    assert any(r.levelno == logging.DEBUG for r in caplog.records)
+
+    # 2nd consecutive failed probe: reaches threshold -> healthy False + one WARNING
+    clock = 170.0
+    caplog.clear()
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await hc._check_all()
+
+    assert hc.status()[0]["healthy"] is False
+    assert hc._states[target]["probe_failures"] == 2
+    assert hc._states[target]["consecutive_failures"] == 2
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "missing required model" in warnings[0].getMessage()
+
+    # 3rd consecutive failed probe: stays unhealthy, log-once keeps it at DEBUG
+    clock = 300.0
+    caplog.clear()
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await hc._check_all()
+
+    assert hc.status()[0]["healthy"] is False
+    assert not any(r.levelno >= logging.WARNING for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_successful_probe_between_failures_resets_probe_failure_count(
+    monkeypatch,
+):
+    """(c) A successful probe between failed probes resets probe_failures so a single subsequent failure does not eject."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+    )
+    clock = 100.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    healthy_session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target.model}]}),
+            ),
+        }
+    )
+    missing_session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": []}),
+            ),
+        }
+    )
+
+    hc._session = healthy_session
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+
+    # 1st failure
+    clock = 135.0
+    hc._session = missing_session
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+    assert hc._states[target]["probe_failures"] == 1
+
+    # Intervening success resets count
+    clock = 170.0
+    hc._session = healthy_session
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+    assert hc._states[target]["probe_failures"] == 0
+    assert hc._states[target]["consecutive_failures"] == 0
+
+    # Single failure again stays healthy
+    clock = 205.0
+    hc._session = missing_session
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+    assert hc._states[target]["probe_failures"] == 1
+
+
+@pytest.mark.asyncio
+async def test_ejected_idle_target_initial_reprobe_uses_base_cooldown_with_threshold(
+    monkeypatch,
+):
+    """When an idle target is ejected at unhealthy_threshold, the first re-probe waits cooldown_seconds (60s), not 60 * 2^(N-1)."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+        unhealthy_threshold=2,
+    )
+    clock = 100.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target.model}]}),
+            ),
+        }
+    )
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+
+    failing_session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": []}),
+            ),
+        }
+    )
+    hc._session = failing_session
+
+    # 1st failed probe at t=135 -> still healthy
+    clock = 135.0
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+    assert failing_session.get.call_count == 1
+
+    # 2nd failed probe at t=170 -> ejected (healthy=False, probe_failures=2)
+    clock = 170.0
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is False
+    assert failing_session.get.call_count == 2
+
+    # At t + 59 (229.0): still in initial 60s cooldown, no re-probe
+    clock = 170.0 + 59.0
+    await hc._check_all()
+    assert failing_session.get.call_count == 2
+
+    # At t + 61 (231.0): initial 60s cooldown elapsed, re-probe fires (and fails again)
+    clock = 170.0 + 61.0
+    await hc._check_all()
+    assert failing_session.get.call_count == 3
+
+    # After 2nd post-ejection failure, cooldown doubles to 120s: no re-probe at +119, re-probe at +121
+    clock = 231.0 + 119.0
+    await hc._check_all()
+    assert failing_session.get.call_count == 3
+
+    clock = 231.0 + 121.0
+    await hc._check_all()
+    assert failing_session.get.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_startup_unhealthy_target_warns_on_first_failed_probe(caplog):
+    """A target that starts unhealthy (never healthy yet) emits one WARNING on its first failed probe even with unhealthy_threshold > 1."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+        unhealthy_threshold=2,
+    )
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": []}),
+            ),
+        }
+    )
+
+    with caplog.at_level(
+        logging.DEBUG, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await hc._check_all()
+
+    assert hc.status()[0]["healthy"] is False
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "missing required model" in warnings[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_mark_success_resets_probe_failures(monkeypatch):
+    """mark_success resets probe_failures and consecutive_failures after a sub-threshold probe failure."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+        unhealthy_threshold=2,
+    )
+    clock = 100.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target.model}]}),
+            ),
+        }
+    )
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+
+    # 1st failed probe while idle -> probe_failures=1, still healthy
+    hc._session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": []}),
+            ),
+        }
+    )
+    clock = 135.0
+    await hc._check_all()
+    assert hc.status()[0]["healthy"] is True
+    assert hc._states[target]["probe_failures"] == 1
+    assert hc._states[target]["consecutive_failures"] == 1
+
+    # Acquire and complete a successful dispatch -> resets probe_failures to 0
+    acquired = hc.acquire_idle_target(lambda _: True)
+    assert acquired == target
+    clock = 150.0
+    hc.mark_success(target)
+
+    assert hc._states[target]["probe_failures"] == 0
+    assert hc._states[target]["consecutive_failures"] == 0
+    assert hc.status()[0]["healthy"] is True
+
+
+@pytest.mark.asyncio
+async def test_mark_failure_still_ejects_immediately_regardless_of_unhealthy_threshold(
+    monkeypatch,
+):
+    """(e) mark_failure marks target unhealthy immediately with cooldown even when unhealthy_threshold > 1."""
+    from news_creator.config.distributed_be_config import RemoteTarget
+
+    target = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    hc = RemoteHealthChecker(
+        targets=[target],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+        unhealthy_threshold=3,
+    )
+    clock = 100.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+    hc._states[target]["healthy"] = True
+
+    acquired = hc.acquire_idle_target(lambda _: True)
+    assert acquired == target
+
+    hc.mark_failure(target)
+
+    assert hc.status()[0]["healthy"] is False
+    assert hc._states[target]["cooldown_until"] == 160.0
+    assert hc.acquire_idle_target(lambda _: True) is None
+
+
+@pytest.mark.parametrize("invalid_threshold", [0, -1])
+def test_unhealthy_threshold_below_one_raises_value_error(invalid_threshold: int):
+    """(f) RemoteHealthChecker rejects unhealthy_threshold < 1 with ValueError."""
+    targets = _make_targets()
+    with pytest.raises(ValueError, match="unhealthy_threshold"):
+        RemoteHealthChecker(
+            targets=targets,
+            unhealthy_threshold=invalid_threshold,
+        )
+
+
+@pytest.mark.asyncio
+async def test_start_logs_unhealthy_threshold(caplog):
+    """Startup INFO log 'Remote health checker started' includes unhealthy_threshold."""
+    targets = _make_targets()
+    checker = RemoteHealthChecker(
+        targets=targets,
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+        unhealthy_threshold=3,
+    )
+    checker._check_all = AsyncMock()
+
+    with caplog.at_level(
+        logging.INFO, logger="news_creator.gateway.remote_health_checker"
+    ):
+        await checker.start()
+        try:
+            started_records = [
+                r
+                for r in caplog.records
+                if "Remote health checker started" in r.getMessage()
+            ]
+            assert len(started_records) == 1
+            assert getattr(started_records[0], "unhealthy_threshold", None) == 3
+        finally:
+            await checker.stop()

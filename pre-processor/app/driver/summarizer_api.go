@@ -200,10 +200,9 @@ func ArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg
 	// Construct API URL from config
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
 
-	// CLAUDE.md critical rule: enforce the configured minimum interval between
-	// outbound calls to the same host. Uses the process-wide limiter so it
-	// covers both the blocking and streaming paths.
-	if err := utils.DefaultHostRateLimiter(cfg.RateLimit.DefaultInterval).Wait(ctx, cfg.NewsCreator.Host); err != nil {
+	// news-creator is an internal service with its own admission control and
+	// concurrency is bounded by the summarize worker pool.
+	if err := utils.NewsCreatorRateLimiter().Wait(ctx, cfg.NewsCreator.Host); err != nil {
 		return nil, fmt.Errorf("rate limiter: %w", err)
 	}
 
@@ -322,8 +321,9 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article ArticlePayloa
 
 	apiURL := cfg.NewsCreator.Host + cfg.NewsCreator.APIPath
 
-	// Same 5-second floor as the blocking path above.
-	if err := utils.DefaultHostRateLimiter(cfg.RateLimit.DefaultInterval).Wait(ctx, cfg.NewsCreator.Host); err != nil {
+	// news-creator is an internal service with its own admission control and
+	// concurrency is bounded by the summarize worker pool.
+	if err := utils.NewsCreatorRateLimiter().Wait(ctx, cfg.NewsCreator.Host); err != nil {
 		return nil, fmt.Errorf("rate limiter: %w", err)
 	}
 

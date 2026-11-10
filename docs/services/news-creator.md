@@ -256,6 +256,7 @@ and news-creator has no env var to flip it, unlike acolyte-orchestrator's `PEER_
 | `DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS` | `30` | Remote `/v1/models` health-poll interval |
 | `DISTRIBUTED_BE_TIMEOUT_SECONDS` | `300` | Per-request timeout on a remote target |
 | `DISTRIBUTED_BE_COOLDOWN_SECONDS` | `60` | Initial cooldown before re-probing an unhealthy target |
+| `DISTRIBUTED_BE_UNHEALTHY_THRESHOLD` | `2` | Consecutive failed `/v1/models` probes before an idle target is marked unhealthy; failed probes are ignored while a target serves a request |
 
 ### Generation Parameters
 | Variable | Default | Description |

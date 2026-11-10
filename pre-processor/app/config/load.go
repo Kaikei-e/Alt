@@ -296,6 +296,10 @@ func loadNewsCreatorConfig(cfg *NewsCreatorConfig) error {
 		return err
 	}
 
+	if cfg.MinInterval, err = parseDurationEnv("NEWS_CREATOR_MIN_INTERVAL", cfg.MinInterval); err != nil {
+		return err
+	}
+
 	return nil
 }
 

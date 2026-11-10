@@ -129,3 +129,26 @@ func TestHostRateLimiter_SleepFailureRollsBackReservation(t *testing.T) {
 		t.Fatalf("after cancelled wait, next Wait should sleep full interval, slept=%s", slept)
 	}
 }
+
+func TestHostRateLimiter_SetIntervalAndInterval(t *testing.T) {
+	lim := NewsCreatorRateLimiter()
+	t.Cleanup(func() {
+		lim.SetInterval(0)
+	})
+
+	lim.SetInterval(0)
+	if got := lim.Interval(); got != 0 {
+		t.Fatalf("expected initial interval 0, got %s", got)
+	}
+
+	lim.SetInterval(75 * time.Millisecond)
+	if got := lim.Interval(); got != 75*time.Millisecond {
+		t.Fatalf("expected interval 75ms after SetInterval, got %s", got)
+	}
+
+	var nilLim *HostRateLimiter
+	nilLim.SetInterval(time.Second)
+	if got := nilLim.Interval(); got != 0 {
+		t.Fatalf("expected 0 from nil limiter Interval(), got %s", got)
+	}
+}

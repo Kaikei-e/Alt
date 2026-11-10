@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -15,8 +17,10 @@ import (
 	"testing"
 	"time"
 
+	"pre-processor/config"
 	"pre-processor/domain"
 	"pre-processor/driver"
+	"pre-processor/utils"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1309,4 +1313,63 @@ func TestWrapGemmaPrompt(t *testing.T) {
 		assert.Equal(t, 2, strings.Count(got, "<turn|>"))
 		assert.NotContains(t, got, "<|think|>")
 	})
+}
+
+func TestQualityChecker_SharesNewsCreatorLimiterWithSummarizerAtMinInterval(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if r.URL.Path == "/api/v1/summarize" {
+			_, _ = w.Write([]byte(`{"success":true,"article_id":"test-qc-pacing","summary":"要約","model":"test"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"done":true,"response":"<score>9</score>"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("RATE_LIMIT_DEFAULT_INTERVAL", "5s")
+	cfg, err := config.LoadConfig()
+	require.NoError(t, err)
+	cfg.NewsCreator.Host = server.URL
+	cfg.NewsCreator.APIPath = "/api/v1/summarize"
+	cfg.NewsCreator.Timeout = 5 * time.Second
+	cfg.QualityChecker.APIPath = "/api/generate"
+	cfg.QualityChecker.Timeout = 5 * time.Second
+	cfg.RateLimit.DefaultInterval = 2 * time.Second
+
+	utils.DefaultHostRateLimiter(2 * time.Second).SetInterval(2 * time.Second)
+	utils.NewsCreatorRateLimiter().SetInterval(50 * time.Millisecond)
+	t.Cleanup(func() {
+		utils.NewsCreatorRateLimiter().SetInterval(0)
+	})
+
+	Configure(cfg, server.Client())
+	t.Cleanup(func() {
+		Configure(&config.Config{
+			NewsCreator: config.NewsCreatorConfig{
+				Host: "http://news-creator:11434",
+			},
+		}, &http.Client{})
+	})
+
+	sumLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	payload := driver.ArticlePayload{
+		ID:      "test-qc-pacing",
+		Content: strings.Repeat("Valid content for shared limiter test. ", 10),
+	}
+	articleWithSummary := &driver.ArticleWithSummary{
+		ArticleID:       "test-qc-pacing",
+		Content:         "English source article body.",
+		SummaryJapanese: "日本語の要約テキスト。",
+	}
+
+	start := time.Now()
+	_, err = driver.ArticleSummarizerAPIClient(context.Background(), payload, cfg, sumLogger, "low", server.Client())
+	require.NoError(t, err)
+	err = JudgeArticleQuality(context.Background(), nil, nil, articleWithSummary)
+	require.NoError(t, err)
+	elapsed := time.Since(start)
+
+	assert.GreaterOrEqual(t, elapsed, 45*time.Millisecond, "summarizer and quality checker must share the news-creator limiter and wait MinInterval")
+	assert.Less(t, elapsed, 1*time.Second, "news-creator calls must use NewsCreator.MinInterval (50ms), not the 2s external interval")
 }

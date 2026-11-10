@@ -41,14 +41,11 @@ var (
 
 	httpClient = &http.Client{Timeout: qualityCheckerHTTPTimeout}
 
-	// rateLimitHost/rateLimitInterval feed utils.DefaultHostRateLimiter, the
-	// same process-wide limiter the summarizer driver uses — sharing it
-	// ensures scoreSummary's calls to news-creator also honour the
-	// CLAUDE.md 5-second floor between external calls, instead of only the
-	// summarizer path enforcing it. interval defaults to 0 (no-op) so unit
-	// tests that never call Configure aren't serialized behind a real wait.
-	rateLimitHost     = "http://news-creator:11434"
-	rateLimitInterval = time.Duration(0)
+	// rateLimitHost is the host key passed to utils.NewsCreatorRateLimiter,
+	// shared with the summarizer driver. news-creator is an internal service
+	// with its own admission control and concurrency is bounded by the
+	// summarize worker pool.
+	rateLimitHost = "http://news-creator:11434"
 
 	// knownPlaceholders are placeholder summaries saved when content is too short/long.
 	// These must NOT be quality-checked: deleting them causes an infinite summarize→delete loop.
@@ -93,9 +90,6 @@ func Configure(cfg *config.Config, client *http.Client) {
 	}
 	if cfg.QualityChecker.Timeout > 0 {
 		qualityCheckerHTTPTimeout = cfg.QualityChecker.Timeout
-	}
-	if cfg.RateLimit.DefaultInterval > 0 {
-		rateLimitInterval = cfg.RateLimit.DefaultInterval
 	}
 }
 
@@ -268,10 +262,9 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 		return nil, err
 	}
 
-	// CLAUDE.md critical rule: enforce the configured minimum interval between
-	// outbound calls to the news-creator host — shared with the summarizer
-	// driver's limiter so both paths serialize against the same host.
-	if err := utils.DefaultHostRateLimiter(rateLimitInterval).Wait(ctx, rateLimitHost); err != nil {
+	// news-creator is an internal service with its own admission control and
+	// concurrency is bounded by the summarize worker pool.
+	if err := utils.NewsCreatorRateLimiter().Wait(ctx, rateLimitHost); err != nil {
 		logger.Logger.ErrorContext(ctx, "rate limiter wait failed", "error", err)
 		return nil, fmt.Errorf("rate limiter: %w", err)
 	}

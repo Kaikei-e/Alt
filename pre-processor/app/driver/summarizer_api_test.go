@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"pre-processor/config"
+	"pre-processor/utils"
 )
 
 // TestContentLengthMeasurement verifies that we use rune count (character count)
@@ -423,4 +424,49 @@ func TestStreamArticleSummarizerAPIClient_StreamingAndPolicyPreservation(t *test
 			t.Errorf("expected 0 hits on separate redirect destination, got %d", h)
 		}
 	})
+}
+
+func TestArticleSummarizerAPIClient_NewsCreatorPacingSeparatedFromExternalLimiter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true,"article_id":"test-pacing","summary":"要約","model":"test"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("RATE_LIMIT_DEFAULT_INTERVAL", "5s")
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	cfg.NewsCreator.Host = server.URL
+	cfg.NewsCreator.APIPath = "/api/v1/summarize"
+	cfg.NewsCreator.Timeout = 5 * time.Second
+	cfg.RateLimit.DefaultInterval = 2 * time.Second
+
+	utils.DefaultHostRateLimiter(2 * time.Second).SetInterval(2 * time.Second)
+	utils.NewsCreatorRateLimiter().SetInterval(50 * time.Millisecond)
+	t.Cleanup(func() {
+		utils.NewsCreatorRateLimiter().SetInterval(0)
+	})
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	article := ArticlePayload{
+		ID:      "test-pacing",
+		Content: strings.Repeat("Valid content for pacing test. ", 10),
+	}
+
+	ncStart := time.Now()
+	if _, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", server.Client()); err != nil {
+		t.Fatalf("ArticleSummarizerAPIClient failed: %v", err)
+	}
+	streamBody, err := StreamArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", server.Client())
+	if err != nil {
+		t.Fatalf("StreamArticleSummarizerAPIClient failed: %v", err)
+	}
+	_ = streamBody.Close()
+	ncElapsed := time.Since(ncStart)
+
+	if ncElapsed < 45*time.Millisecond || ncElapsed >= 1*time.Second {
+		t.Fatalf("news-creator calls must be spaced by NewsCreator.MinInterval (~50ms) and not the 2s external interval, got %v", ncElapsed)
+	}
 }

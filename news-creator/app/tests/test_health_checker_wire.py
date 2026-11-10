@@ -170,3 +170,45 @@ async def test_remote_health_checker_wire_rejects_chunked_models_body_without_co
                 await checker.stop()
     finally:
         await runner.cleanup()
+
+
+def test_dependency_container_passes_unhealthy_threshold_to_remote_health_checker(
+    monkeypatch, tmp_path
+):
+    """(h) DependencyContainer passes config.distributed_be_unhealthy_threshold to RemoteHealthChecker."""
+    secret_file = tmp_path / "redis_secret.txt"
+    secret_file.write_text("test-wiring-redis-password")
+    monkeypatch.setenv("REDIS_PASSWORD_FILE", str(secret_file))
+    monkeypatch.setenv("OTEL_ENABLED", "false")
+    monkeypatch.setenv("INFERENCE_AUTH", "disabled")
+    monkeypatch.setenv("CACHE_ENABLED", "false")
+    monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
+    monkeypatch.setenv(
+        "DISTRIBUTED_BE_TARGETS",
+        "http://router.example:8080|provider-a/model-a:latest|32768",
+    )
+    monkeypatch.setenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", "4")
+
+    import main as main_module
+
+    class _DummyGateway:
+        def __init__(self, config):
+            self.config = config
+            self.driver = object()
+
+    class _DummyWarmupService:
+        def __init__(self, config, driver):
+            pass
+
+    class _DummyRerankUsecase:
+        def __init__(self):
+            pass
+
+    monkeypatch.setattr(main_module, "OllamaGateway", _DummyGateway)
+    monkeypatch.setattr(main_module, "ModelWarmupService", _DummyWarmupService)
+    monkeypatch.setattr(main_module, "RerankUsecase", _DummyRerankUsecase)
+
+    container = main_module.DependencyContainer()
+    checker = container.llm_provider._health_checker
+    assert isinstance(checker, RemoteHealthChecker)
+    assert checker._unhealthy_threshold == 4

@@ -85,10 +85,11 @@ type MetricsConfig struct {
 }
 
 type NewsCreatorConfig struct {
-	Host    string        `json:"host" env:"NEWS_CREATOR_HOST" default:"https://news-creator:9443"`
-	APIPath string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/v1/summarize"`
-	Model   string        `json:"model" env:"NEWS_CREATOR_MODEL" default:"gemma4-e4b-q4km"`
-	Timeout time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"600s"`
+	Host        string        `json:"host" env:"NEWS_CREATOR_HOST" default:"https://news-creator:9443"`
+	APIPath     string        `json:"api_path" env:"NEWS_CREATOR_API_PATH" default:"/api/v1/summarize"`
+	Model       string        `json:"model" env:"NEWS_CREATOR_MODEL" default:"gemma4-e4b-q4km"`
+	Timeout     time.Duration `json:"timeout" env:"NEWS_CREATOR_TIMEOUT" default:"600s"`
+	MinInterval time.Duration `json:"min_interval" env:"NEWS_CREATOR_MIN_INTERVAL" default:"1s"`
 }
 
 // QualityCheckerConfig configures the LLM-based quality judge that scores
@@ -166,10 +167,11 @@ func defaultConfig() *Config {
 			IdleTimeout:       120 * time.Second,
 		},
 		NewsCreator: NewsCreatorConfig{
-			Host:    "https://news-creator:9443",
-			APIPath: "/api/v1/summarize",
-			Model:   "gemma4-e4b-q4km",
-			Timeout: 600 * time.Second,
+			Host:        "https://news-creator:9443",
+			APIPath:     "/api/v1/summarize",
+			Model:       "gemma4-e4b-q4km",
+			Timeout:     600 * time.Second,
+			MinInterval: 1 * time.Second,
 		},
 		QualityChecker: QualityCheckerConfig{
 			APIPath:           "/api/generate",

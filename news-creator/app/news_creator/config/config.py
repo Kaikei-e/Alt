@@ -61,6 +61,14 @@ class NewsCreatorConfig:
         self.distributed_be_cooldown_seconds = self._get_int(
             "DISTRIBUTED_BE_COOLDOWN_SECONDS", 60
         )
+        self.distributed_be_unhealthy_threshold = self._get_int(
+            "DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", 2
+        )
+        if self.distributed_be_unhealthy_threshold < 1:
+            raise ValueError(
+                "DISTRIBUTED_BE_UNHEALTHY_THRESHOLD must be >= 1, "
+                f"got {self.distributed_be_unhealthy_threshold}"
+            )
 
         self.distributed_be_targets: list[RemoteTarget]
         self.distributed_be_reasoning_effort: str | None
