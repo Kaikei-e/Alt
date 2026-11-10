@@ -111,7 +111,8 @@ export function fogWindow(distance: number, cloudRadius: number): FogWindow {
 
 export function computeFogFactor(depth: number, window: FogWindow): number {
 	const span = Math.max(1e-6, window.far - window.near);
-	return Math.max(0, Math.min(1, (depth - window.near) / span));
+	const t = Math.max(0, Math.min(1, (depth - window.near) / span));
+	return t * t * (3 - 2 * t);
 }
 
 export function computeLabelOpacity(depth: number, window: FogWindow): number {

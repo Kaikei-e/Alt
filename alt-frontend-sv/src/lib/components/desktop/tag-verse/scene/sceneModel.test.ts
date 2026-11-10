@@ -131,13 +131,17 @@ describe("sceneModel", () => {
 		}
 	});
 
-	it("fades label opacity with the fog window, clamps visible nodes to 0.35, and skips vanished nodes", () => {
+	it("fades label opacity with the smoothstep fog window, clamps visible nodes to 0.35, and skips vanished nodes", () => {
 		const win = fogWindow(150, 100); // near = 130, far = 310 (span = 180)
 
-		expect(computeLabelOpacity(130, win)).toBeCloseTo(1.0, 6);
-		// mid-depth: depth = 220 => fogFactor = 0.5 => opacity = 0.5
+		expect(computeFogFactor(130, win)).toBe(0);
+		// t = 0.25 => depth = 130 + 0.25 * 180 = 175 => smoothstep = 0.15625
+		expect(computeFogFactor(175, win)).toBeCloseTo(0.15625, 6);
+		expect(computeLabelOpacity(175, win)).toBeCloseTo(1 - 0.15625, 6);
+		// midpoint: t = 0.5 => depth = 220 => smoothstep = 0.5 => opacity = 0.5
+		expect(computeFogFactor(220, win)).toBeCloseTo(0.5, 6);
 		expect(computeLabelOpacity(220, win)).toBeCloseTo(0.5, 6);
-		// deep but still visible: depth = 274 => fogFactor = 144/180 = 0.8 => clamped to 0.35
+		// deep but still visible: t = 0.8 => depth = 274 => smoothstep = 0.896 => 1 - 0.896 = 0.104 => clamped to 0.35
 		expect(computeLabelOpacity(274, win)).toBeCloseTo(0.35, 6);
 		// vanished node (fogFactor ~ 1): skipped (opacity = 0)
 		expect(computeLabelOpacity(309, win)).toBe(0);
