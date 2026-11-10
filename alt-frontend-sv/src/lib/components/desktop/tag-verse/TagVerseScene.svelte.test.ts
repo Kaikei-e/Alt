@@ -1,4 +1,3 @@
-import { createRawSnippet, mount, unmount } from "svelte";
 import { Color, Fog, type Scene } from "three";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
@@ -10,33 +9,19 @@ vi.mock("three-viewport-gizmo", () => ({
 	ViewportGizmo: class {},
 }));
 
-import TagVerseScene from "./TagVerseScene.svelte";
-import TagVerseSceneTestFixture from "./TagVerseSceneTestFixture.svelte";
+import TagVerseSceneTestHarness from "./TagVerseSceneTestHarness.svelte";
 
 describe("TagVerseScene", () => {
 	it("sets scene.background and scene.fog colour to Alt-Paper #faf9f7 after mount", async () => {
 		let capturedScene = null as Scene | null;
 		let frameCount = 0;
 
-		const probeSnippet = createRawSnippet(() => ({
-			render: () => "<span></span>",
-			setup: (target) => {
-				const instance = mount(TagVerseSceneTestFixture, {
-					target,
-					props: {
-						onRenderedFrame: (scene: Scene) => {
-							capturedScene = scene;
-							frameCount += 1;
-						},
-					},
-				});
-				return () => {
-					unmount(instance);
-				};
-			},
-		}));
+		const handleRenderedFrame = (scene: Scene) => {
+			capturedScene = scene;
+			frameCount += 1;
+		};
 
-		const view = render(TagVerseScene, {
+		const view = render(TagVerseSceneTestHarness, {
 			props: {
 				tags: [
 					{
@@ -50,7 +35,7 @@ describe("TagVerseScene", () => {
 				],
 				edges: [],
 				onTagSelect: vi.fn(),
-				children: probeSnippet,
+				onRenderedFrame: handleRenderedFrame,
 			},
 		});
 
@@ -81,7 +66,7 @@ describe("TagVerseScene", () => {
 			],
 			edges: [],
 			onTagSelect: vi.fn(),
-			children: probeSnippet,
+			onRenderedFrame: handleRenderedFrame,
 		});
 
 		await vi.waitFor(() => {

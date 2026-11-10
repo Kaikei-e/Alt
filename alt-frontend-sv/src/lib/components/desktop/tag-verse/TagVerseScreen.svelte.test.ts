@@ -209,7 +209,7 @@ describe("TagVerseScreen", () => {
 		expect(widthAfterOpen).toBe(widthBeforeOpen);
 	});
 
-	it("renders Topics key buttons that emphasise clusters on hover/focus", async () => {
+	it("renders Topics key buttons that emphasise clusters on hover/focus and hides the key while a tag is selected", async () => {
 		mockFetchTagCloud.mockResolvedValue({
 			tags: [
 				{
@@ -255,9 +255,29 @@ describe("TagVerseScreen", () => {
 		const cluster1Btn = page.getByRole("button", {
 			name: /rust\s*·\s*tokio/i,
 		});
+		const cluster2Btn = page.getByRole("button", {
+			name: /svelte\s*·\s*vite/i,
+		});
 		await expect.element(cluster1Btn).toBeInTheDocument();
+
+		await cluster2Btn.hover();
+		await expect
+			.element(cluster2Btn)
+			.toHaveAttribute("data-emphasized", "true");
+
 		const cluster1El = (await cluster1Btn.element()) as HTMLButtonElement;
 		cluster1El.focus();
-		expect(cluster1El.getAttribute("data-emphasized")).toBe("true");
+		await expect
+			.element(cluster1Btn)
+			.toHaveAttribute("data-emphasized", "true");
+		await expect
+			.element(cluster2Btn)
+			.toHaveAttribute("data-emphasized", "false");
+
+		const rustIndexBtn = page.getByRole("button", {
+			name: "rust, 50 articles",
+		});
+		await rustIndexBtn.click();
+		await expect.element(topicsRegion).not.toBeInTheDocument();
 	});
 });

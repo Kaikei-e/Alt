@@ -63,6 +63,7 @@ export const BODY_FONT_STACK = '"Source Sans 3", system-ui, sans-serif';
 export const REGION_LABEL_FONT_SIZE = 10;
 export const REGION_LABEL_LETTER_SPACING_EM = 0.12;
 export const REGION_LABEL_ALPHA = 0.55;
+// WHY: Three.js MeshLambertMaterial multiplies irradiance by RECIPROCAL_PI (1/π) in BRDF_Lambert, so scaling the 0.7 hemisphere fill and 0.3 directional key intensities by Math.PI cancels the 1/π factor and reproduces the topic ink on a key-lit face.
 export const HEMI_LIGHT_INTENSITY = 0.7 * Math.PI;
 export const DIR_LIGHT_INTENSITY = 0.3 * Math.PI;
 export const KEY_LIGHT_DIRECTION: readonly [number, number, number] = [
@@ -71,9 +72,10 @@ export const KEY_LIGHT_DIRECTION: readonly [number, number, number] = [
 export const SELECTED_NODE_SCALE = 1.2;
 export const HOVERED_NODE_SCALE = 1.15;
 
-export interface LambertLitColor {
-	linear: [number, number, number];
-	hex: string;
+export interface FramingDestinations {
+	target: [number, number, number];
+	cameraPosition: [number, number, number];
+	rightShiftWorld: number;
 }
 
 export interface NodeLabelTypography {
@@ -132,6 +134,7 @@ export function computeRadius(articleCount: number, maxCount: number): number {
 export function computeLabelFontSize(
 	articleCount: number,
 	maxCount: number,
+	_isDisplayTier = false,
 ): number {
 	const normalized =
 		Math.min(1, Math.max(0, articleCount) / Math.max(maxCount, 1)) ** 0.4;
@@ -451,10 +454,10 @@ export function buildEdgeBuffers(
 }
 
 export function buildTopicClusters(
-	nodes: readonly SceneNode[],
+	nodes: readonly (SceneNode | TagCloudItem)[],
 	palette: TagVersePalette = buildPalette(),
 ): TopicClusterSummary[] {
-	const byCluster = new Map<number, SceneNode[]>();
+	const byCluster = new Map<number, (SceneNode | TagCloudItem)[]>();
 	for (const node of nodes) {
 		if (node.clusterId > 0) {
 			const group = byCluster.get(node.clusterId);
@@ -485,9 +488,15 @@ export function buildTopicClusters(
 		let sumY = 0;
 		let sumZ = 0;
 		for (const m of members) {
-			sumX += m.position[0];
-			sumY += m.position[1];
-			sumZ += m.position[2];
+			if ("position" in m) {
+				sumX += m.position[0];
+				sumY += m.position[1];
+				sumZ += m.position[2];
+			} else {
+				sumX += m.positionX;
+				sumY += m.positionY;
+				sumZ += m.positionZ;
+			}
 		}
 		const n = members.length;
 
@@ -531,56 +540,18 @@ export function needsFraming(params: {
 	return Math.abs(effectiveNdcX) > 0.6 || Math.abs(params.ndcY) > 0.6;
 }
 
-export function computeLambertLitColor(
-	inkHex: string,
-	normal: readonly [number, number, number],
-	paperHex = "#faf9f7",
-): LambertLitColor {
-	const inkColor = new Color(inkHex);
-	const skyColor = new Color("#ffffff");
-	const groundColor = new Color(paperHex);
-	const dirColor = new Color("#ffffff");
-
-	const nLen = Math.hypot(normal[0], normal[1], normal[2]) || 1;
-	const nx = normal[0] / nLen;
-	const ny = normal[1] / nLen;
-	const nz = normal[2] / nLen;
-
-	const kLen = Math.hypot(
-		KEY_LIGHT_DIRECTION[0],
-		KEY_LIGHT_DIRECTION[1],
-		KEY_LIGHT_DIRECTION[2],
-	);
-	const kx = KEY_LIGHT_DIRECTION[0] / kLen;
-	const ky = KEY_LIGHT_DIRECTION[1] / kLen;
-	const kz = KEY_LIGHT_DIRECTION[2] / kLen;
-
-	const hemiWeight = 0.5 * ny + 0.5;
-	const dotNL = Math.max(0, Math.min(1, nx * kx + ny * ky + nz * kz));
-
-	const hemiR =
-		(groundColor.r * (1 - hemiWeight) + skyColor.r * hemiWeight) *
-		HEMI_LIGHT_INTENSITY;
-	const hemiG =
-		(groundColor.g * (1 - hemiWeight) + skyColor.g * hemiWeight) *
-		HEMI_LIGHT_INTENSITY;
-	const hemiB =
-		(groundColor.b * (1 - hemiWeight) + skyColor.b * hemiWeight) *
-		HEMI_LIGHT_INTENSITY;
-
-	const dirR = dirColor.r * DIR_LIGHT_INTENSITY * dotNL;
-	const dirG = dirColor.g * DIR_LIGHT_INTENSITY * dotNL;
-	const dirB = dirColor.b * DIR_LIGHT_INTENSITY * dotNL;
-
-	const invPi = 1 / Math.PI;
-	const outR = Math.min(1, Math.max(0, (hemiR + dirR) * invPi * inkColor.r));
-	const outG = Math.min(1, Math.max(0, (hemiG + dirG) * invPi * inkColor.g));
-	const outB = Math.min(1, Math.max(0, (hemiB + dirB) * invPi * inkColor.b));
-
-	const outColor = new Color().setRGB(outR, outG, outB, LinearSRGBColorSpace);
+export function computeFramingDestinations(_params: {
+	nodePosition: readonly [number, number, number];
+	viewOffset: readonly [number, number, number];
+	cameraRight: readonly [number, number, number];
+	fovDeg: number;
+	canvasHeight: number;
+	occludedRightPx?: number;
+}): FramingDestinations {
 	return {
-		linear: [outR, outG, outB],
-		hex: `#${outColor.getHexString()}`,
+		target: [0, 0, 0],
+		cameraPosition: [0, 0, 0],
+		rightShiftWorld: 0,
 	};
 }
 

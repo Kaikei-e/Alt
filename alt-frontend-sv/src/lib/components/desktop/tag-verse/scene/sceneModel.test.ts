@@ -1,4 +1,9 @@
-import { Color } from "three";
+import {
+	Color,
+	LinearSRGBColorSpace,
+	PerspectiveCamera,
+	Vector3,
+} from "three";
 import { describe, expect, it } from "vitest";
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import { buildPalette, contrastRatio, TOPIC_INKS } from "./palette.js";
@@ -15,14 +20,16 @@ import {
 	computeColorBucket,
 	computeFocusEmphasis,
 	computeFogFactor,
+	computeFramingDestinations,
 	computeLabelFontSize,
 	computeLabelOpacity,
-	computeLambertLitColor,
 	computeNeighbourSet,
 	computeRadius,
+	DIR_LIGHT_INTENSITY,
 	DISPLAY_FONT_STACK,
 	fibonacciSphere,
 	fogWindow,
+	HEMI_LIGHT_INTENSITY,
 	hasServerPositions,
 	KEY_LIGHT_DIRECTION,
 	needsFraming,
@@ -30,6 +37,59 @@ import {
 	SELECTED_NODE_SCALE,
 	updateEdgeBufferAlphas,
 } from "./sceneModel.js";
+
+function computeLambertLitColor(
+	inkHex: string,
+	normal: readonly [number, number, number],
+	paperHex = "#faf9f7",
+): { linear: [number, number, number]; hex: string } {
+	const inkColor = new Color(inkHex);
+	const skyColor = new Color("#ffffff");
+	const groundColor = new Color(paperHex);
+	const dirColor = new Color("#ffffff");
+
+	const nLen = Math.hypot(normal[0], normal[1], normal[2]) || 1;
+	const nx = normal[0] / nLen;
+	const ny = normal[1] / nLen;
+	const nz = normal[2] / nLen;
+
+	const kLen = Math.hypot(
+		KEY_LIGHT_DIRECTION[0],
+		KEY_LIGHT_DIRECTION[1],
+		KEY_LIGHT_DIRECTION[2],
+	);
+	const kx = KEY_LIGHT_DIRECTION[0] / kLen;
+	const ky = KEY_LIGHT_DIRECTION[1] / kLen;
+	const kz = KEY_LIGHT_DIRECTION[2] / kLen;
+
+	const hemiWeight = 0.5 * ny + 0.5;
+	const dotNL = Math.max(0, Math.min(1, nx * kx + ny * ky + nz * kz));
+
+	const hemiR =
+		(groundColor.r * (1 - hemiWeight) + skyColor.r * hemiWeight) *
+		HEMI_LIGHT_INTENSITY;
+	const hemiG =
+		(groundColor.g * (1 - hemiWeight) + skyColor.g * hemiWeight) *
+		HEMI_LIGHT_INTENSITY;
+	const hemiB =
+		(groundColor.b * (1 - hemiWeight) + skyColor.b * hemiWeight) *
+		HEMI_LIGHT_INTENSITY;
+
+	const dirR = dirColor.r * DIR_LIGHT_INTENSITY * dotNL;
+	const dirG = dirColor.g * DIR_LIGHT_INTENSITY * dotNL;
+	const dirB = dirColor.b * DIR_LIGHT_INTENSITY * dotNL;
+
+	const invPi = 1 / Math.PI;
+	const outR = Math.min(1, Math.max(0, (hemiR + dirR) * invPi * inkColor.r));
+	const outG = Math.min(1, Math.max(0, (hemiG + dirG) * invPi * inkColor.g));
+	const outB = Math.min(1, Math.max(0, (hemiB + dirB) * invPi * inkColor.b));
+
+	const outColor = new Color().setRGB(outR, outG, outB, LinearSRGBColorSpace);
+	return {
+		linear: [outR, outG, outB],
+		hex: `#${outColor.getHexString()}`,
+	};
+}
 
 function makeTag(
 	tagName: string,
@@ -76,13 +136,16 @@ describe("sceneModel", () => {
 		expect(mid).toBeLessThan(3.0);
 	});
 
-	it("computes label font size in [11, 16] with ^0.4 power scale", () => {
-		expect(computeLabelFontSize(0, 100)).toBeCloseTo(11, 6);
-		expect(computeLabelFontSize(100, 100)).toBeCloseTo(16, 6);
-		const mid = computeLabelFontSize(25, 100);
-		expect(mid).toBeCloseTo(11 + 0.25 ** 0.4 * 5, 6);
-		expect(mid).toBeGreaterThan(11);
-		expect(mid).toBeLessThan(16);
+	it("computes tiered label font size in [11, 14] for body tier and [18, 26] for display tier with ^0.4 power scale", () => {
+		expect(computeLabelFontSize(0, 100, false)).toBeCloseTo(11, 6);
+		expect(computeLabelFontSize(100, 100, false)).toBeCloseTo(14, 6);
+		const bodyMid = computeLabelFontSize(25, 100, false);
+		expect(bodyMid).toBeCloseTo(11 + 0.25 ** 0.4 * 3, 6);
+
+		expect(computeLabelFontSize(0, 100, true)).toBeCloseTo(18, 6);
+		expect(computeLabelFontSize(100, 100, true)).toBeCloseTo(26, 6);
+		const displayMid = computeLabelFontSize(25, 100, true);
+		expect(displayMid).toBeCloseTo(18 + 0.25 ** 0.4 * 8, 6);
 	});
 
 	it("generates count points on a Fibonacci sphere of the requested radius", () => {
@@ -371,6 +434,57 @@ describe("sceneModel", () => {
 				occludedRightPx: 400,
 			}),
 		).toBe(false);
+
+		const canvasHeight = 720;
+		const occludedRightPx = 400;
+		const fovDeg = 50;
+		const nodePosition: [number, number, number] = [30, -12, 18];
+		const viewOffset: [number, number, number] = [0, 0, 120];
+		const cameraRight: [number, number, number] = [1, 0, 0];
+
+		const dest = computeFramingDestinations({
+			nodePosition,
+			viewOffset,
+			cameraRight,
+			fovDeg,
+			canvasHeight,
+			occludedRightPx,
+		});
+
+		for (const canvasWidth of [800, 1000, 1280, 1600]) {
+			const cam = new PerspectiveCamera(
+				fovDeg,
+				canvasWidth / canvasHeight,
+				0.1,
+				2000,
+			);
+			cam.position.set(
+				dest.cameraPosition[0],
+				dest.cameraPosition[1],
+				dest.cameraPosition[2],
+			);
+			cam.lookAt(dest.target[0], dest.target[1], dest.target[2]);
+			cam.updateMatrixWorld();
+
+			const projected = new Vector3(
+				nodePosition[0],
+				nodePosition[1],
+				nodePosition[2],
+			).project(cam);
+			const screenX = (projected.x * 0.5 + 0.5) * canvasWidth;
+			const visibleCenter = (canvasWidth - occludedRightPx) * 0.5;
+			expect(Math.abs(screenX - visibleCenter)).toBeLessThan(0.5);
+			expect(
+				needsFraming({
+					source: "index",
+					ndcX: projected.x,
+					ndcY: projected.y,
+					isBehindCamera: false,
+					canvasWidth,
+					occludedRightPx,
+				}),
+			).toBe(false);
+		}
 	});
 
 	it("reproduces topic ink on the key-lit face under PI-scaled Lambert lights and keeps mid-tone >= 3:1 on paper", () => {
