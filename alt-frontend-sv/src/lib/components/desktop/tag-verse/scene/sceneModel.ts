@@ -54,6 +54,39 @@ export interface FogWindow {
 	far: number;
 }
 
+export const DISPLAY_FONT_STACK = '"Playfair Display", Georgia, serif';
+export const BODY_FONT_STACK = '"Source Sans 3", system-ui, sans-serif';
+export const REGION_LABEL_FONT_SIZE = 10;
+export const REGION_LABEL_LETTER_SPACING_EM = 0.12;
+export const REGION_LABEL_ALPHA = 0.55;
+
+export interface NodeLabelTypography {
+	fontFamily: string;
+	fontSize: number;
+	fontWeight: 600 | 700;
+	isDisplayTier: boolean;
+}
+
+export interface RegionLabelCandidate {
+	clusterId: number;
+	text: string;
+	fontFamily: string;
+	fontSize: number;
+	fontWeight: 700;
+	letterSpacingEm: number;
+	alpha: number;
+	ink: string;
+	centroid: [number, number, number];
+}
+
+export interface TopicsKeyRow {
+	clusterId: number;
+	ink: string;
+	topTags: string[];
+	label: string;
+	ariaLabel: string;
+}
+
 const MIN_RADIUS = 0.3;
 const MAX_RADIUS = 3.0;
 const MIN_LABEL_FONT_SIZE = 11;
@@ -463,4 +496,29 @@ export function needsFraming(params: {
 		return true;
 	}
 	return Math.abs(params.ndcX) > 0.6 || Math.abs(params.ndcY) > 0.6;
+}
+
+export function resolveNodeLabelTypography(
+	_node: SceneNode,
+	_isSelected = false,
+): NodeLabelTypography {
+	return {
+		fontFamily: "",
+		fontSize: 0,
+		fontWeight: 600,
+		isDisplayTier: false,
+	};
+}
+
+export function buildRegionLabelCandidates(
+	_clusters: readonly TopicClusterSummary[],
+	_selectedIndex: number | null = null,
+): RegionLabelCandidate[] {
+	return [];
+}
+
+export function buildTopicsKeyRows(
+	_clusters: readonly TopicClusterSummary[],
+): TopicsKeyRow[] {
+	return [];
 }

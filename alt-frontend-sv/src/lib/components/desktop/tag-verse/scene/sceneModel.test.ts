@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
 import { buildPalette, TOPIC_INKS } from "./palette.js";
 import {
+	BODY_FONT_STACK,
 	buildEdgeBuffers,
+	buildRegionLabelCandidates,
 	buildSceneModel,
 	buildTopicClusters,
+	buildTopicsKeyRows,
 	computeCloudRadius,
 	computeColorBucket,
 	computeFocusEmphasis,
@@ -13,10 +16,12 @@ import {
 	computeLabelOpacity,
 	computeNeighbourSet,
 	computeRadius,
+	DISPLAY_FONT_STACK,
 	fibonacciSphere,
 	fogWindow,
 	hasServerPositions,
 	needsFraming,
+	resolveNodeLabelTypography,
 } from "./sceneModel.js";
 
 function makeTag(
@@ -334,5 +339,98 @@ describe("sceneModel", () => {
 				isBehindCamera: true,
 			}),
 		).toBe(true);
+	});
+
+	it("resolves Playfair Display [18..26]px for top-12 tags, Source Sans 3 [11..14]px for others, region label candidates only for clusters >= 6 when unselected, and topics key rows", () => {
+		const tags: TagCloudItem[] = [];
+		for (let i = 0; i < 6; i++) {
+			tags.push(makeTag(`ai_${i}`, 120 - i * 5, i * 2, 0, 0, 1));
+		}
+		for (let i = 0; i < 6; i++) {
+			tags.push(makeTag(`web_${i}`, 80 - i * 5, 0, i * 2, 0, 2));
+		}
+		for (let i = 0; i < 3; i++) {
+			tags.push(makeTag(`misc_${i}`, 20 - i, 0, 0, i * 2, 3));
+		}
+
+		const palette = buildPalette();
+		const model = buildSceneModel(tags);
+
+		for (let i = 0; i < model.nodes.length; i++) {
+			const node = model.nodes[i]!;
+			const typo = resolveNodeLabelTypography(node, i === 0);
+			if (i < 12) {
+				expect(typo.isDisplayTier).toBe(true);
+				expect(typo.fontFamily).toBe(DISPLAY_FONT_STACK);
+				expect(typo.fontSize).toBeGreaterThanOrEqual(18);
+				expect(typo.fontSize).toBeLessThanOrEqual(26);
+				expect(typo.fontWeight).toBe(i === 0 ? 700 : 600);
+			} else {
+				expect(typo.isDisplayTier).toBe(false);
+				expect(typo.fontFamily).toBe(BODY_FONT_STACK);
+				expect(typo.fontSize).toBeGreaterThanOrEqual(11);
+				expect(typo.fontSize).toBeLessThanOrEqual(14);
+				expect(typo.fontWeight).toBe(600);
+			}
+		}
+
+		const clusters = buildTopicClusters(model.nodes, palette);
+		const regionCandidates = buildRegionLabelCandidates(clusters, null);
+		expect(regionCandidates).toHaveLength(2);
+		expect(regionCandidates[0]).toMatchObject({
+			clusterId: 1,
+			text: "AI_0 · AI_1",
+			fontFamily: BODY_FONT_STACK,
+			fontSize: 10,
+			fontWeight: 700,
+			letterSpacingEm: 0.12,
+			alpha: 0.55,
+			ink: TOPIC_INKS[0],
+			centroid: [5, 0, 0],
+		});
+		expect(regionCandidates[1]).toMatchObject({
+			clusterId: 2,
+			text: "WEB_0 · WEB_1",
+			fontFamily: BODY_FONT_STACK,
+			fontSize: 10,
+			fontWeight: 700,
+			letterSpacingEm: 0.12,
+			alpha: 0.55,
+			ink: TOPIC_INKS[1],
+			centroid: [0, 5, 0],
+		});
+		expect(buildRegionLabelCandidates(clusters, 0)).toEqual([]);
+
+		const keyRows = buildTopicsKeyRows(clusters);
+		expect(keyRows).toEqual([
+			{
+				clusterId: 1,
+				ink: TOPIC_INKS[0],
+				topTags: ["ai_0", "ai_1"],
+				label: "ai_0 · ai_1",
+				ariaLabel: "Highlight topic: ai_0 · ai_1",
+			},
+			{
+				clusterId: 2,
+				ink: TOPIC_INKS[1],
+				topTags: ["web_0", "web_1"],
+				label: "web_0 · web_1",
+				ariaLabel: "Highlight topic: web_0 · web_1",
+			},
+			{
+				clusterId: 3,
+				ink: TOPIC_INKS[2],
+				topTags: ["misc_0", "misc_1"],
+				label: "misc_0 · misc_1",
+				ariaLabel: "Highlight topic: misc_0 · misc_1",
+			},
+		]);
+
+		const unclusteredNodes = buildSceneModel([
+			makeTag("solo", 10, 0, 0, 0, 0),
+		]).nodes;
+		expect(
+			buildTopicsKeyRows(buildTopicClusters(unclusteredNodes, palette)),
+		).toEqual([]);
 	});
 });
