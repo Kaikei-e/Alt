@@ -88,6 +88,181 @@ def find_lkal_bin() -> str:
     )
 
 
+def check_lkal_cli_gates(kisage_env) -> None:
+    from unittest import mock
+
+    check(
+        "_sanitize_lkal_cli_error and stderr regex scrapers are removed",
+        not hasattr(kisage_env, "_sanitize_lkal_cli_error")
+        and not hasattr(kisage_env, "_LKAL_DIAG_CODE_RE")
+        and not hasattr(kisage_env, "_LKAL_DIAG_LOC_RE"),
+    )
+
+    secret_token = "SECRET_BARE_TOKEN_887766"
+    broken_lkal = (
+        '@lkal "0.1"\n'
+        "upstreams {\n"
+        f"  BROKEN_KEY = {secret_token}\n"
+        "}\n"
+    )
+    broken_err = ""
+    try:
+        kisage_env.parse_lkal_sections(broken_lkal)
+    except ValueError as exc:
+        broken_err = str(exc)
+    check(
+        "parse_lkal_sections extracts L102 and 3:16 from --json diagnostics without leaking token or message/hint",
+        "--json" in broken_err
+        and "L102" in broken_err
+        and "3:16" in broken_err
+        and secret_token not in broken_err
+        and "bare word" not in broken_err.lower()
+        and "enum" not in broken_err.lower(),
+        repr(broken_err),
+    )
+
+    raw_stderr_sentinel = "RAW_STDERR_SECRET_SENTINEL_334455"
+    unparseable_cases = [
+        f"-:3:16: L102 bare word {raw_stderr_sentinel}\n",
+        "",
+        "not-json",
+        "[]",
+        '{"code": "L102", "line": 3, "col": 16}',
+        '[{"code": "BAD", "line": 3, "col": 16}]',
+        '[{"code": "L102", "line": "3", "col": 16}]',
+    ]
+    unparseable_ok = True
+    unparseable_detail = ""
+    for bad_stderr in unparseable_cases:
+        fake_proc = subprocess.CompletedProcess(
+            args=["lkal", "json", "-plain", "--json", "-"],
+            returncode=1,
+            stdout="",
+            stderr=bad_stderr,
+        )
+        with mock.patch.object(
+            kisage_env.subprocess, "run", return_value=fake_proc
+        ) as run_mock:
+            got_err = ""
+            try:
+                kisage_env.parse_lkal_sections('@lkal "0.1"\n')
+            except ValueError as exc:
+                got_err = str(exc)
+            called_args = run_mock.call_args[0][0] if run_mock.call_args else []
+            if (
+                "--json" not in called_args
+                or "-plain" not in called_args
+                or "unparseable diagnostic" not in got_err
+                or "L102" in got_err
+                or "3:16" in got_err
+                or raw_stderr_sentinel in got_err
+            ):
+                unparseable_ok = False
+                unparseable_detail = f"args={called_args!r} err={got_err!r}"
+                break
+    check(
+        "parse_lkal_sections invokes lkal with --json and -plain and fails closed without regex fallback on non-JSON or malformed stderr",
+        unparseable_ok,
+        unparseable_detail,
+    )
+
+    fmt_fn = getattr(kisage_env, "check_lkal_format", None)
+    decl_fmt_errs = fmt_fn(DECL_PATH) if callable(fmt_fn) else ["missing check_lkal_format"]
+    check(
+        "deploy/desired-env.lkal is in canonical lkal fmt format",
+        callable(fmt_fn) and decl_fmt_errs == [],
+        repr(decl_fmt_errs),
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_fmt_dir:
+        os.chmod(tmp_fmt_dir, 0o700)
+        tmp_fmt_path = pathlib.Path(tmp_fmt_dir)
+
+        lkal_bin = find_lkal_bin()
+        fmt_proc = subprocess.run(
+            [lkal_bin, "fmt", str(DECL_PATH)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        canonical_text = fmt_proc.stdout
+        canonical_file = tmp_fmt_path / "canonical-desired-env.lkal"
+        canonical_file.write_text(canonical_text, encoding="utf-8")
+        os.chmod(canonical_file, 0o600)
+
+        non_canonical_text = canonical_text.replace(
+            '    "acolyte-orchestrator",\n',
+            '    "acolyte-orchestrator"\n',
+            1,
+        )
+        non_canonical_file = tmp_fmt_path / "non-canonical-desired-env.lkal"
+        non_canonical_file.write_text(non_canonical_text, encoding="utf-8")
+        os.chmod(non_canonical_file, 0o600)
+
+        canon_fmt_errs = (
+            fmt_fn(canonical_file) if callable(fmt_fn) else ["missing check_lkal_format"]
+        )
+        canon_rc, _canon_out, canon_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(canonical_file)]
+        )
+        check(
+            "canonical declaration copy passes format gate and kisage-env.py verify",
+            callable(fmt_fn) and canon_fmt_errs == [] and canon_rc == 0,
+            f"fmt_errs={canon_fmt_errs!r} rc={canon_rc} err={canon_err!r}",
+        )
+
+        non_canon_fmt_errs = (
+            fmt_fn(non_canonical_file) if callable(fmt_fn) else []
+        )
+        non_canon_rc, _non_canon_out, non_canon_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(non_canonical_file)]
+        )
+        check(
+            "non-canonical declaration copy fails format gate and kisage-env.py verify naming the file",
+            callable(fmt_fn)
+            and len(non_canon_fmt_errs) == 1
+            and non_canonical_file.name in non_canon_fmt_errs[0]
+            and non_canon_rc == 1
+            and non_canonical_file.name in non_canon_err,
+            f"fmt_errs={non_canon_fmt_errs!r} rc={non_canon_rc} err={non_canon_err!r}",
+        )
+
+        broken_decl_file = tmp_fmt_path / "broken-desired-env.lkal"
+        broken_decl_file.write_text(broken_lkal, encoding="utf-8")
+        os.chmod(broken_decl_file, 0o600)
+        broken_fmt_errs = fmt_fn(broken_decl_file) if callable(fmt_fn) else []
+        unexpected_fmt_proc = subprocess.CompletedProcess(
+            args=["lkal", "fmt", "-l", str(canonical_file)],
+            returncode=0,
+            stdout=f"unexpected-output-{raw_stderr_sentinel}\n",
+            stderr="",
+        )
+        with mock.patch.object(
+            kisage_env.subprocess, "run", return_value=unexpected_fmt_proc
+        ):
+            unexpected_fmt_errs = fmt_fn(canonical_file) if callable(fmt_fn) else []
+        broken_rc, broken_out, broken_verify_err = run_cli_capture(
+            kisage_env, ["verify", "--declaration", str(broken_decl_file)]
+        )
+        broken_combined = broken_out + broken_verify_err
+        check(
+            "syntactically broken declaration temp file and unexpected lkal fmt -l output fail closed without leaking tokens",
+            callable(fmt_fn)
+            and len(broken_fmt_errs) == 1
+            and broken_decl_file.name in broken_fmt_errs[0]
+            and secret_token not in broken_fmt_errs[0]
+            and len(unexpected_fmt_errs) == 1
+            and canonical_file.name in unexpected_fmt_errs[0]
+            and raw_stderr_sentinel not in unexpected_fmt_errs[0]
+            and broken_rc == 1
+            and "--json" in broken_verify_err
+            and "L102" in broken_verify_err
+            and "3:16" in broken_verify_err
+            and secret_token not in broken_combined,
+            repr((broken_fmt_errs, unexpected_fmt_errs, broken_combined)),
+        )
+
+
 def snapshot_tree_state(path: pathlib.Path) -> dict[str, tuple[int, int]] | None:
     if not path.exists():
         return None
@@ -573,6 +748,8 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError:
         malformed_rejected = True
     check("malformed LKAL bare word is rejected", malformed_rejected)
+
+    check_lkal_cli_gates(kisage_env)
 
     decl_raw_text = DECL_PATH.read_text(encoding="utf-8")
 
@@ -1722,10 +1899,13 @@ def main(argv: list[str] | None = None) -> int:
         repr({p: wf_text.count(p) for p in required_wf_paths}),
     )
     check(
-        "compose-audit.yaml defines kisage-env-invariant job running verify, test-kisage-env.py, and clean-checkout regression with setup-go",
+        "compose-audit.yaml defines kisage-env-invariant job running lkal check, verify, test-kisage-env.py, and clean-checkout regression with setup-go",
         "kisage-env-invariant:" in wf_text
         and "actions/setup-go@" in wf_text
+        and "lkal check --json deploy/desired-env.lkal" in wf_text
         and "python3 scripts/kisage-env.py verify" in wf_text
+        and wf_text.find("lkal check --json deploy/desired-env.lkal")
+        < wf_text.find("python3 scripts/kisage-env.py verify")
         and "python3 scripts/tests/test-kisage-env.py" in wf_text
         and "test_kisage_clean_checkout.py" in wf_text,
     )
