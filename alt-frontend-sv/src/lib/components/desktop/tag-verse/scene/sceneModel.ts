@@ -1,5 +1,9 @@
 import type { TagCloudEdge, TagCloudItem } from "#lib/connect/articles.js";
-import type { TagVersePalette } from "./palette.js";
+import {
+	buildPalette,
+	clusterBaseInk,
+	type TagVersePalette,
+} from "./palette.js";
 
 export type ColorBucket = 0 | 1 | 2 | 3 | 4;
 export type SelectionSource = "canvas" | "index";
@@ -165,11 +169,23 @@ export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
 	const nodes: SceneNode[] = new Array(tags.length);
 	const indexByName = new Map<string, number>();
 
+	const rankedIndices = Array.from({ length: tags.length }, (_, i) => i).sort(
+		(a, b) =>
+			(tags[b]?.articleCount ?? 0) - (tags[a]?.articleCount ?? 0) || a - b,
+	);
+	const displaySet = new Set(rankedIndices.slice(0, 12));
+
 	for (let i = 0; i < tags.length; i++) {
 		const tag = tags[i] as TagCloudItem;
 		const position: [number, number, number] = serverPos
 			? [tag.positionX, tag.positionY, tag.positionZ]
 			: (fallback?.[i] ?? [0, 0, 0]);
+		const isDisplayTier = displaySet.has(i);
+		const normalized =
+			Math.min(1, Math.max(0, tag.articleCount) / Math.max(maxCount, 1)) ** 0.4;
+		const labelFontSize = isDisplayTier
+			? 18 + normalized * 8
+			: 11 + normalized * 3;
 
 		nodes[i] = {
 			tagName: tag.tagName,
@@ -177,9 +193,9 @@ export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
 			position,
 			radius: computeRadius(tag.articleCount, maxCount),
 			colorBucket: computeColorBucket(tag.articleCount, maxCount),
-			labelFontSize: computeLabelFontSize(tag.articleCount, maxCount),
+			labelFontSize,
 			clusterId: tag.clusterId ?? 0,
-			isDisplayTier: false,
+			isDisplayTier,
 		};
 		indexByName.set(tag.tagName, i);
 	}
@@ -192,47 +208,246 @@ export function buildSceneModel(tags: readonly TagCloudItem[]): SceneModel {
 }
 
 export function computeNeighbourSet(
-	_nodeCount: number,
-	_edges: readonly TagCloudEdge[],
-	_focusIndex: number | null,
+	nodeCount: number,
+	edges: readonly TagCloudEdge[],
+	focusIndex: number | null,
 ): Set<number> {
-	return new Set();
+	const neighbours = new Set<number>();
+	if (focusIndex === null || focusIndex < 0 || focusIndex >= nodeCount) {
+		return neighbours;
+	}
+	for (const edge of edges) {
+		if (
+			edge.sourceIndex < 0 ||
+			edge.targetIndex < 0 ||
+			edge.sourceIndex >= nodeCount ||
+			edge.targetIndex >= nodeCount ||
+			edge.sourceIndex === edge.targetIndex
+		) {
+			continue;
+		}
+		if (edge.sourceIndex === focusIndex) {
+			neighbours.add(edge.targetIndex);
+		} else if (edge.targetIndex === focusIndex) {
+			neighbours.add(edge.sourceIndex);
+		}
+	}
+	return neighbours;
 }
 
 export function computeFocusEmphasis(
 	nodes: readonly SceneNode[],
 	edges: readonly TagCloudEdge[],
-	_options: {
+	options: {
 		focusIndex?: number | null;
 		focusClusterId?: number | null;
 	} = {},
 ): FocusEmphasis {
+	const nodeCount = nodes.length;
+	const edgeCount = edges.length;
+	const nodePaperMix = new Float32Array(nodeCount);
+	const edgeAlphas = new Float32Array(edgeCount);
+	const fullStrengthNodes = new Set<number>();
+	let neighborIndices = new Set<number>();
+
+	const focusIndex =
+		options.focusIndex !== undefined &&
+		options.focusIndex !== null &&
+		options.focusIndex >= 0 &&
+		options.focusIndex < nodeCount
+			? options.focusIndex
+			: null;
+	const focusClusterId =
+		options.focusClusterId !== undefined &&
+		options.focusClusterId !== null &&
+		options.focusClusterId > 0
+			? options.focusClusterId
+			: null;
+
+	const activeFocus = focusIndex !== null || focusClusterId !== null;
+
+	if (!activeFocus) {
+		for (let i = 0; i < edgeCount; i++) {
+			const w = Math.max(0, Math.min(1, edges[i]?.weight ?? 0));
+			edgeAlphas[i] = 0.1 + 0.35 * w;
+		}
+		return {
+			activeFocus: false,
+			fullStrengthNodes,
+			neighborIndices,
+			nodePaperMix,
+			edgeAlphas,
+		};
+	}
+
+	if (focusIndex !== null) {
+		neighborIndices = computeNeighbourSet(nodeCount, edges, focusIndex);
+		fullStrengthNodes.add(focusIndex);
+		for (const n of neighborIndices) {
+			fullStrengthNodes.add(n);
+		}
+		for (let i = 0; i < nodeCount; i++) {
+			nodePaperMix[i] = fullStrengthNodes.has(i) ? 0 : 0.75;
+		}
+		for (let i = 0; i < edgeCount; i++) {
+			const edge = edges[i];
+			if (!edge) continue;
+			const isIncident =
+				edge.sourceIndex === focusIndex || edge.targetIndex === focusIndex;
+			if (isIncident) {
+				const w = Math.max(0, Math.min(1, edge.weight));
+				edgeAlphas[i] = 0.1 + 0.35 * w;
+			} else {
+				edgeAlphas[i] = 0.04;
+			}
+		}
+	} else if (focusClusterId !== null) {
+		for (let i = 0; i < nodeCount; i++) {
+			if (nodes[i]?.clusterId === focusClusterId) {
+				fullStrengthNodes.add(i);
+				nodePaperMix[i] = 0;
+			} else {
+				nodePaperMix[i] = 0.75;
+			}
+		}
+		for (let i = 0; i < edgeCount; i++) {
+			const edge = edges[i];
+			if (!edge) continue;
+			const isInternal =
+				fullStrengthNodes.has(edge.sourceIndex) &&
+				fullStrengthNodes.has(edge.targetIndex);
+			if (isInternal) {
+				const w = Math.max(0, Math.min(1, edge.weight));
+				edgeAlphas[i] = 0.1 + 0.35 * w;
+			} else {
+				edgeAlphas[i] = 0.04;
+			}
+		}
+	}
+
 	return {
-		activeFocus: false,
-		fullStrengthNodes: new Set(),
-		neighborIndices: new Set(),
-		nodePaperMix: new Float32Array(nodes.length),
-		edgeAlphas: new Float32Array(edges.length),
+		activeFocus: true,
+		fullStrengthNodes,
+		neighborIndices,
+		nodePaperMix,
+		edgeAlphas,
 	};
+}
+
+function hexToNormalizedRgb(hex: string): [number, number, number] {
+	const cleaned = hex.trim().replace(/^#/, "");
+	if (cleaned.length < 6) {
+		return [0.1, 0.1, 0.1];
+	}
+	const r = Number.parseInt(cleaned.slice(0, 2), 16) / 255;
+	const g = Number.parseInt(cleaned.slice(2, 4), 16) / 255;
+	const b = Number.parseInt(cleaned.slice(4, 6), 16) / 255;
+	return [r, g, b];
 }
 
 export function buildEdgeBuffers(
-	_nodes: readonly SceneNode[],
-	_edges: readonly TagCloudEdge[],
-	_palette: TagVersePalette,
-	_edgeAlphas?: Float32Array,
+	nodes: readonly SceneNode[],
+	edges: readonly TagCloudEdge[],
+	palette: TagVersePalette,
+	edgeAlphas?: Float32Array,
 ): EdgeBuffers {
-	return {
-		positions: new Float32Array(0),
-		colors: new Float32Array(0),
-	};
+	const validCount = edges.length;
+	const positions = new Float32Array(validCount * 6);
+	const colors = new Float32Array(validCount * 8);
+	const neutralRgb = hexToNormalizedRgb(palette.labelInk);
+
+	for (let i = 0; i < validCount; i++) {
+		const edge = edges[i];
+		if (!edge) continue;
+		const source = nodes[edge.sourceIndex];
+		const target = nodes[edge.targetIndex];
+		if (!source || !target) continue;
+
+		const pOffset = i * 6;
+		positions[pOffset] = source.position[0];
+		positions[pOffset + 1] = source.position[1];
+		positions[pOffset + 2] = source.position[2];
+		positions[pOffset + 3] = target.position[0];
+		positions[pOffset + 4] = target.position[1];
+		positions[pOffset + 5] = target.position[2];
+
+		const isSameCluster =
+			source.clusterId > 0 && source.clusterId === target.clusterId;
+		const [r, g, b] = isSameCluster
+			? hexToNormalizedRgb(clusterBaseInk(source.clusterId, palette))
+			: neutralRgb;
+		const w = Math.max(0, Math.min(1, edge.weight));
+		const alpha =
+			edgeAlphas && i < edgeAlphas.length ? (edgeAlphas[i] ?? 0) : 0.1 + 0.35 * w;
+
+		const cOffset = i * 8;
+		colors[cOffset] = r;
+		colors[cOffset + 1] = g;
+		colors[cOffset + 2] = b;
+		colors[cOffset + 3] = alpha;
+		colors[cOffset + 4] = r;
+		colors[cOffset + 5] = g;
+		colors[cOffset + 6] = b;
+		colors[cOffset + 7] = alpha;
+	}
+
+	return { positions, colors };
 }
 
 export function buildTopicClusters(
-	_nodes: readonly SceneNode[],
-	_palette?: TagVersePalette,
+	nodes: readonly SceneNode[],
+	palette: TagVersePalette = buildPalette(),
 ): TopicClusterSummary[] {
-	return [];
+	const byCluster = new Map<number, SceneNode[]>();
+	for (const node of nodes) {
+		if (node.clusterId > 0) {
+			const group = byCluster.get(node.clusterId);
+			if (group) {
+				group.push(node);
+			} else {
+				byCluster.set(node.clusterId, [node]);
+			}
+		}
+	}
+
+	const clusterIds = [...byCluster.keys()].sort((a, b) => a - b);
+	const summaries: TopicClusterSummary[] = [];
+
+	for (const clusterId of clusterIds) {
+		const members = byCluster.get(clusterId) ?? [];
+		if (members.length === 0) continue;
+
+		const sorted = [...members].sort(
+			(a, b) =>
+				b.articleCount - a.articleCount || a.tagName.localeCompare(b.tagName),
+		);
+		const topTags = sorted.slice(0, 2).map((n) => n.tagName);
+		const label = topTags.join(" · ");
+		const regionText = label.toUpperCase();
+
+		let sumX = 0;
+		let sumY = 0;
+		let sumZ = 0;
+		for (const m of members) {
+			sumX += m.position[0];
+			sumY += m.position[1];
+			sumZ += m.position[2];
+		}
+		const n = members.length;
+
+		summaries.push({
+			clusterId,
+			tagCount: n,
+			topTags,
+			label,
+			regionText,
+			ink: clusterBaseInk(clusterId, palette),
+			centroid: [sumX / n, sumY / n, sumZ / n],
+			showRegionLabel: n >= 6,
+		});
+	}
+
+	return summaries;
 }
 
 export function needsFraming(params: {

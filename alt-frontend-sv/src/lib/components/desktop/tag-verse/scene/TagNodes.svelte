@@ -3,7 +3,11 @@ import { T, useThrelte } from "@threlte/core";
 import type { IntersectionEvent } from "@threlte/extras";
 import { onDestroy, untrack } from "svelte";
 import * as THREE from "three";
-import type { TagVersePalette } from "./palette.js";
+import {
+	clusterInkForTag,
+	mixTowardPaper,
+	type TagVersePalette,
+} from "./palette.js";
 import type { SceneNode } from "./sceneModel.js";
 
 interface Props {
@@ -11,6 +15,7 @@ interface Props {
 	palette: TagVersePalette;
 	selectedIndex: number | null;
 	hoveredIndex: number | null;
+	nodePaperMix?: Float32Array;
 	onHoverChange: (index: number | null) => void;
 	onNodeClick: (tagName: string) => void;
 }
@@ -20,6 +25,7 @@ let {
 	palette,
 	selectedIndex,
 	hoveredIndex,
+	nodePaperMix,
 	onHoverChange,
 	onNodeClick,
 }: Props = $props();
@@ -29,7 +35,7 @@ const { invalidate } = useThrelte();
 const HIGHLIGHT_SCALE = 1.15;
 
 const geometry = new THREE.SphereGeometry(1, 24, 16);
-const material = new THREE.MeshBasicMaterial({ color: "#ffffff" });
+const material = new THREE.MeshLambertMaterial({ color: "#ffffff" });
 
 function createInstancedMesh(count: number): THREE.InstancedMesh {
 	const capacity = Math.max(1, count);
@@ -68,24 +74,27 @@ function applyInstanceColor(
 	index: number,
 	isHighlighted: boolean,
 	currentPalette: TagVersePalette,
+	paperMix: number,
 ) {
 	const node = nodes[index];
 	if (!node) return;
-	const hex = isHighlighted
+	const baseHex = isHighlighted
 		? currentPalette.accent
-		: currentPalette.ramp[node.colorBucket];
+		: clusterInkForTag(node.clusterId, node.colorBucket, currentPalette);
+	const hex =
+		paperMix > 0
+			? mixTowardPaper(baseHex, currentPalette.paper, paperMix)
+			: baseHex;
 	_color.set(hex);
 	targetMesh.setColorAt(index, _color);
 }
 
-let prevHovered: number | null = null;
-let prevSelected: number | null = null;
-
 $effect(() => {
 	const currentNodes = nodes;
 	const currentPalette = palette;
-	const h = untrack(() => hoveredIndex);
-	const s = untrack(() => selectedIndex);
+	const h = hoveredIndex;
+	const s = selectedIndex;
+	const mixArr = nodePaperMix;
 	const count = currentNodes.length;
 	const requiredCapacity = Math.max(1, count);
 
@@ -100,8 +109,9 @@ $effect(() => {
 
 	for (let i = 0; i < count; i++) {
 		const isHighlighted = i === h || i === s;
+		const paperMix = mixArr && i < mixArr.length ? (mixArr[i] ?? 0) : 0;
 		applyInstanceTransform(activeMesh, i, isHighlighted);
-		applyInstanceColor(activeMesh, i, isHighlighted, currentPalette);
+		applyInstanceColor(activeMesh, i, isHighlighted, currentPalette, paperMix);
 	}
 
 	activeMesh.instanceMatrix.needsUpdate = true;
@@ -112,46 +122,6 @@ $effect(() => {
 		activeMesh.computeBoundingSphere();
 	}
 
-	prevHovered = h;
-	prevSelected = s;
-	invalidate();
-});
-
-$effect(() => {
-	const nextHovered = hoveredIndex;
-	const nextSelected = selectedIndex;
-	if (nextHovered === prevHovered && nextSelected === prevSelected) {
-		return;
-	}
-
-	const activeMesh = untrack(() => mesh);
-	const currentPalette = untrack(() => palette);
-	const count = activeMesh.count;
-	const dirty = new Set<number>();
-
-	if (prevHovered !== null && prevHovered < count) dirty.add(prevHovered);
-	if (nextHovered !== null && nextHovered < count) dirty.add(nextHovered);
-	if (prevSelected !== null && prevSelected < count) dirty.add(prevSelected);
-	if (nextSelected !== null && nextSelected < count) dirty.add(nextSelected);
-
-	for (const idx of dirty) {
-		const isHighlighted = idx === nextHovered || idx === nextSelected;
-		applyInstanceTransform(activeMesh, idx, isHighlighted);
-		applyInstanceColor(activeMesh, idx, isHighlighted, currentPalette);
-	}
-
-	if (dirty.size > 0) {
-		activeMesh.instanceMatrix.needsUpdate = true;
-		if (activeMesh.instanceColor) {
-			activeMesh.instanceColor.needsUpdate = true;
-		}
-		if (count > 0) {
-			activeMesh.computeBoundingSphere();
-		}
-	}
-
-	prevHovered = nextHovered;
-	prevSelected = nextSelected;
 	invalidate();
 });
 

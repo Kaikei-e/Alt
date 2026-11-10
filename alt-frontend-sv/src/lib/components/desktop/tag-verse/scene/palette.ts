@@ -214,24 +214,64 @@ export const TOPIC_INKS: readonly [
 ];
 
 export function clusterBaseInk(
-	_clusterId: number,
+	clusterId: number,
 	palette: TagVersePalette = buildPalette(),
 ): string {
-	return palette.labelInk;
+	if (!Number.isFinite(clusterId) || clusterId <= 0) {
+		return palette.ramp[4];
+	}
+	const index = (Math.floor(clusterId) - 1) % TOPIC_INKS.length;
+	return TOPIC_INKS[index] ?? palette.ramp[4];
+}
+
+function findMinInkRatioForContrast(
+	paperRgb: RgbTuple,
+	inkRgb: RgbTuple,
+	minContrast = 3.05,
+): number {
+	if (contrastFromRgb(inkRgb, paperRgb) <= minContrast) {
+		return 1.0;
+	}
+	let lo = 0.45;
+	let hi = 1.0;
+	for (let i = 0; i < 16; i++) {
+		const mid = (lo + hi) * 0.5;
+		const candidate = mixRgb(paperRgb, inkRgb, mid);
+		if (contrastFromRgb(candidate, paperRgb) >= minContrast) {
+			hi = mid;
+		} else {
+			lo = mid;
+		}
+	}
+	return Math.max(0.55, hi);
 }
 
 export function clusterInkForTag(
-	_clusterId: number,
-	_colorBucket: 0 | 1 | 2 | 3 | 4,
+	clusterId: number,
+	colorBucket: 0 | 1 | 2 | 3 | 4,
 	palette: TagVersePalette = buildPalette(),
 ): string {
-	return palette.paper;
+	if (!Number.isFinite(clusterId) || clusterId <= 0) {
+		return palette.ramp[colorBucket];
+	}
+	const baseHex = clusterBaseInk(clusterId, palette);
+	if (colorBucket === 4) {
+		return baseHex;
+	}
+	const paperRgb = parseRgb(palette.paper) ?? DEFAULT_PAPER_RGB;
+	const baseRgb = parseRgb(baseHex) ?? DEFAULT_INK_RGB;
+	const minRatio = findMinInkRatioForContrast(paperRgb, baseRgb, 3.05);
+	const ratio = minRatio + (colorBucket / 4) * (1 - minRatio);
+	return rgbToHex(mixRgb(paperRgb, baseRgb, ratio));
 }
 
 export function mixTowardPaper(
 	colorHex: string,
-	_paperHex: string,
-	_paperWeight = 0.75,
+	paperHex: string,
+	paperWeight = 0.75,
 ): string {
-	return colorHex;
+	const colorRgb = parseRgb(colorHex) ?? DEFAULT_INK_RGB;
+	const paperRgb = parseRgb(paperHex) ?? DEFAULT_PAPER_RGB;
+	const inkRatio = 1 - Math.max(0, Math.min(1, paperWeight));
+	return rgbToHex(mixRgb(paperRgb, colorRgb, inkRatio));
 }
