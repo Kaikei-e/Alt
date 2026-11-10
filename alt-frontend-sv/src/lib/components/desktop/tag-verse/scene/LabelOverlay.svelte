@@ -5,10 +5,14 @@ import * as THREE from "three";
 import { type LabelBox, layoutLabels } from "./labelLayout.js";
 import type { TagVersePalette } from "./palette.js";
 import {
+	buildRegionLabelCandidates,
 	computeLabelOpacity,
+	type FocusEmphasis,
 	type FogWindow,
 	fogWindow,
+	resolveNodeLabelTypography,
 	type SceneNode,
+	type TopicClusterSummary,
 } from "./sceneModel.js";
 
 interface Props {
@@ -17,14 +21,24 @@ interface Props {
 	palette: TagVersePalette;
 	selectedIndex: number | null;
 	hoveredIndex: number | null;
+	focusEmphasis?: FocusEmphasis;
+	topicClusters?: readonly TopicClusterSummary[];
 }
 
-let { nodes, cloudRadius, palette, selectedIndex, hoveredIndex }: Props =
-	$props();
+let {
+	nodes,
+	cloudRadius,
+	palette,
+	selectedIndex,
+	hoveredIndex,
+	focusEmphasis,
+	topicClusters = [],
+}: Props = $props();
 
 const { dom, scene, camera, size, dpr, renderStage, invalidate } = useThrelte();
 
 let canvasEl: HTMLCanvasElement | undefined;
+let fontsReady = typeof document === "undefined" || !document.fonts;
 const widthCache = new Map<string, number>();
 const _projVec = new THREE.Vector3();
 const _camForward = new THREE.Vector3();
@@ -49,30 +63,42 @@ function portalToDom(el: HTMLCanvasElement) {
 
 function measureLabelWidth(
 	ctx: CanvasRenderingContext2D,
-	tagName: string,
+	text: string,
 	fontSize: number,
 	weight: 600 | 700,
+	fontFamily: string,
+	letterSpacingEm = 0,
 ): number {
 	const roundedSize = Math.round(fontSize * 10) / 10;
-	const key = `${weight}|${roundedSize}|${tagName}`;
+	const key = `${fontFamily}|${weight}|${roundedSize}|${letterSpacingEm}|${text}`;
 	const cached = widthCache.get(key);
 	if (cached !== undefined) {
 		return cached;
 	}
-	ctx.font = `${weight} ${roundedSize}px "Source Sans 3", system-ui, sans-serif`;
-	const measured = ctx.measureText(tagName).width;
+	ctx.font = `${weight} ${roundedSize}px ${fontFamily}`;
+	if ("letterSpacing" in ctx) {
+		ctx.letterSpacing = letterSpacingEm > 0 ? `${letterSpacingEm}em` : "0px";
+	}
+	const measured = ctx.measureText(text).width;
+	if ("letterSpacing" in ctx) {
+		ctx.letterSpacing = "0px";
+	}
 	widthCache.set(key, measured);
 	return measured;
 }
 
 interface CandidateEntry {
-	node: SceneNode;
+	kind: "node" | "region";
+	text: string;
 	screenX: number;
 	screenY: number;
 	textWidth: number;
 	fontSize: number;
 	weight: 600 | 700;
+	fontFamily: string;
+	letterSpacingEm: number;
 	opacity: number;
+	color: string;
 	isSelected: boolean;
 }
 
@@ -100,7 +126,7 @@ function drawLabels() {
 	ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
 	ctx.clearRect(0, 0, cssW, cssH);
 
-	if (nodes.length === 0) return;
+	if (!fontsReady || nodes.length === 0) return;
 
 	cam.updateMatrixWorld();
 	cam.getWorldDirection(_camForward);
@@ -117,25 +143,39 @@ function drawLabels() {
 			: fogWindow(Math.hypot(camX, camY, camZ), cloudRadius);
 
 	const priorityIndices: number[] = [];
+	const seen = new Set<number>();
+
 	if (
 		selectedIndex !== null &&
 		selectedIndex >= 0 &&
 		selectedIndex < nodes.length
 	) {
 		priorityIndices.push(selectedIndex);
+		seen.add(selectedIndex);
 	}
 	if (
 		hoveredIndex !== null &&
 		hoveredIndex >= 0 &&
 		hoveredIndex < nodes.length &&
-		hoveredIndex !== selectedIndex
+		!seen.has(hoveredIndex)
 	) {
 		priorityIndices.push(hoveredIndex);
+		seen.add(hoveredIndex);
+	}
+	if (focusEmphasis && focusEmphasis.neighborIndices.size > 0) {
+		for (let i = 0; i < sortedIndicesByCount.length; i++) {
+			const idx = sortedIndicesByCount[i] as number;
+			if (focusEmphasis.neighborIndices.has(idx) && !seen.has(idx)) {
+				priorityIndices.push(idx);
+				seen.add(idx);
+			}
+		}
 	}
 	for (let i = 0; i < sortedIndicesByCount.length; i++) {
 		const idx = sortedIndicesByCount[i] as number;
-		if (idx !== selectedIndex && idx !== hoveredIndex) {
+		if (!seen.has(idx)) {
 			priorityIndices.push(idx);
+			seen.add(idx);
 		}
 	}
 
@@ -157,10 +197,16 @@ function drawLabels() {
 
 		const isSelected = idx === selectedIndex;
 		const isHovered = idx === hoveredIndex;
+		const isNeighbor = focusEmphasis?.neighborIndices.has(idx) ?? false;
 		const isForced = isSelected || isHovered;
 
-		const opacity = isForced ? 1 : computeLabelOpacity(viewDepth, activeFog);
-		if (opacity <= 0) continue;
+		const baseOpacity =
+			isForced || isNeighbor ? 1 : computeLabelOpacity(viewDepth, activeFog);
+		if (baseOpacity <= 0) continue;
+
+		const paperMix = focusEmphasis?.nodePaperMix[idx] ?? 0;
+		const opacity = paperMix > 0 ? baseOpacity * (1 - paperMix) : baseOpacity;
+		if (opacity <= 0.02) continue;
 
 		const anchorX = nodeX;
 		const anchorY = nodeY + node.radius;
@@ -175,9 +221,17 @@ function drawLabels() {
 			continue;
 		}
 
-		const weight: 600 | 700 = isSelected ? 700 : 600;
-		const fontSize = Math.round(node.labelFontSize * 10) / 10;
-		const textWidth = measureLabelWidth(ctx, node.tagName, fontSize, weight);
+		const typo = resolveNodeLabelTypography(node, isSelected);
+		const weight = typo.fontWeight;
+		const fontFamily = typo.fontFamily;
+		const fontSize = Math.round(typo.fontSize * 10) / 10;
+		const textWidth = measureLabelWidth(
+			ctx,
+			node.tagName,
+			fontSize,
+			weight,
+			fontFamily,
+		);
 
 		const boxW = textWidth + 6;
 		const boxH = fontSize + 4;
@@ -189,14 +243,77 @@ function drawLabels() {
 			forced: isForced,
 		});
 		candidates.push({
-			node,
+			kind: "node",
+			text: node.tagName,
 			screenX,
 			screenY,
 			textWidth,
 			fontSize,
 			weight,
+			fontFamily,
+			letterSpacingEm: 0,
 			opacity,
+			color: isSelected ? palette.accent : palette.labelInk,
 			isSelected,
+		});
+	}
+
+	const regionCandidates = buildRegionLabelCandidates(
+		topicClusters,
+		selectedIndex,
+	);
+	for (const region of regionCandidates) {
+		const cx = region.centroid[0];
+		const cy = region.centroid[1];
+		const cz = region.centroid[2];
+
+		const viewDepth =
+			(cx - camX) * fwdX + (cy - camY) * fwdY + (cz - camZ) * fwdZ;
+		if (viewDepth <= 0) continue;
+
+		const fogOp = computeLabelOpacity(viewDepth, activeFog);
+		if (fogOp <= 0) continue;
+
+		_projVec.set(cx, cy, cz).project(cam);
+		if (_projVec.z < -1 || _projVec.z > 1) continue;
+
+		const screenX = (_projVec.x * 0.5 + 0.5) * cssW;
+		const screenY = (-_projVec.y * 0.5 + 0.5) * cssH;
+		if (screenX < 0 || screenX > cssW || screenY < 0 || screenY > cssH) {
+			continue;
+		}
+
+		const textWidth = measureLabelWidth(
+			ctx,
+			region.text,
+			region.fontSize,
+			region.fontWeight,
+			region.fontFamily,
+			region.letterSpacingEm,
+		);
+
+		const boxW = textWidth + 8;
+		const boxH = region.fontSize + 6;
+		boxes.push({
+			x: screenX - boxW * 0.5,
+			y: screenY - boxH - 2,
+			w: boxW,
+			h: boxH,
+			forced: false,
+		});
+		candidates.push({
+			kind: "region",
+			text: region.text,
+			screenX,
+			screenY,
+			textWidth,
+			fontSize: region.fontSize,
+			weight: region.fontWeight,
+			fontFamily: region.fontFamily,
+			letterSpacingEm: region.letterSpacingEm,
+			opacity: region.alpha * fogOp,
+			color: region.ink,
+			isSelected: false,
 		});
 	}
 
@@ -216,10 +333,17 @@ function drawLabels() {
 
 		const textY = entry.screenY - 3;
 		ctx.globalAlpha = entry.opacity;
-		ctx.font = `${entry.weight} ${entry.fontSize}px "Source Sans 3", system-ui, sans-serif`;
-		ctx.strokeText(entry.node.tagName, entry.screenX, textY);
-		ctx.fillStyle = entry.isSelected ? palette.accent : palette.labelInk;
-		ctx.fillText(entry.node.tagName, entry.screenX, textY);
+		ctx.font = `${entry.weight} ${entry.fontSize}px ${entry.fontFamily}`;
+		if ("letterSpacing" in ctx) {
+			ctx.letterSpacing =
+				entry.letterSpacingEm > 0 ? `${entry.letterSpacingEm}em` : "0px";
+		}
+		ctx.strokeText(entry.text, entry.screenX, textY);
+		ctx.fillStyle = entry.color;
+		ctx.fillText(entry.text, entry.screenX, textY);
+		if ("letterSpacing" in ctx) {
+			ctx.letterSpacing = "0px";
+		}
 
 		if (entry.isSelected) {
 			ctx.fillRect(
@@ -243,6 +367,8 @@ $effect(() => {
 	void nodes;
 	void selectedIndex;
 	void hoveredIndex;
+	void focusEmphasis;
+	void topicClusters;
 	invalidate();
 });
 
@@ -252,8 +378,10 @@ onMount(() => {
 		const fontPromises: Promise<unknown>[] = [];
 		if (typeof document.fonts.load === "function") {
 			fontPromises.push(
+				document.fonts.load('600 20px "Playfair Display"'),
+				document.fonts.load('700 20px "Playfair Display"'),
 				document.fonts.load('600 12px "Source Sans 3"'),
-				document.fonts.load('700 12px "Source Sans 3"'),
+				document.fonts.load('700 10px "Source Sans 3"'),
 			);
 		}
 		if (document.fonts.ready) {
@@ -263,10 +391,18 @@ onMount(() => {
 			.then(() => {
 				if (active) {
 					widthCache.clear();
+					fontsReady = true;
 					invalidate();
 				}
 			})
-			.catch(() => {});
+			.catch(() => {
+				if (active) {
+					fontsReady = true;
+					invalidate();
+				}
+			});
+	} else {
+		fontsReady = true;
 	}
 	return () => {
 		active = false;

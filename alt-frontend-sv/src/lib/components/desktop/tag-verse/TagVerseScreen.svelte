@@ -8,10 +8,15 @@ import {
 	type TagCloudItem,
 } from "#lib/connect/index.js";
 import { isWebGL2Available } from "#lib/utils/gpuCapability.js";
-import type { SelectionSource } from "./scene/sceneModel.js";
+import {
+	buildSceneModel,
+	buildTopicClusters,
+	type SelectionSource,
+} from "./scene/sceneModel.js";
 import TagIndexPanel from "./TagIndexPanel.svelte";
 import TagVerseHUD from "./TagVerseHUD.svelte";
 import TagVerseToolbar from "./TagVerseToolbar.svelte";
+import TopicsKey from "./TopicsKey.svelte";
 import { sumTagArticleCounts } from "./tagIndex.js";
 
 type TagVerseSceneComponent = typeof import("./TagVerseScene.svelte").default;
@@ -24,6 +29,7 @@ let error = $state<string | null>(null);
 let gpuUnsupported = $state(false);
 let selectedTag = $state<string | null>(null);
 let selectionSource = $state<SelectionSource>("canvas");
+let focusedClusterId = $state<number | null>(null);
 let autoRotate = $state(true);
 let resetViewNonce = $state(0);
 
@@ -38,6 +44,7 @@ const selectedTagData = $derived(
 	selectedTag ? tags.find((t) => t.tagName === selectedTag) : null,
 );
 const totalArticles = $derived(sumTagArticleCounts(tags));
+const topicClusters = $derived(buildTopicClusters(buildSceneModel(tags).nodes));
 
 let cancelCurrentLoad: (() => void) | null = null;
 
@@ -184,11 +191,20 @@ onMount(() => {
 						}}
 						{selectedTag}
 						{selectionSource}
+						{focusedClusterId}
 						autoRotate={effectiveAutoRotate}
 						{reducedMotion}
 						{resetViewNonce}
 					/>
 				{/if}
+
+				<TopicsKey
+					clusters={topicClusters}
+					{focusedClusterId}
+					onFocusCluster={(clusterId) => {
+						focusedClusterId = clusterId;
+					}}
+				/>
 
 				<div
 					class="pointer-events-none absolute bottom-4 left-4 select-none text-[12px] text-[var(--text-muted)]"

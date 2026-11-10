@@ -357,7 +357,8 @@ describe("sceneModel", () => {
 		const model = buildSceneModel(tags);
 
 		for (let i = 0; i < model.nodes.length; i++) {
-			const node = model.nodes[i]!;
+			const node = model.nodes[i];
+			if (!node) continue;
 			const typo = resolveNodeLabelTypography(node, i === 0);
 			if (i < 12) {
 				expect(typo.isDisplayTier).toBe(true);

@@ -411,7 +411,9 @@ export function buildEdgeBuffers(
 			: neutralRgb;
 		const w = Math.max(0, Math.min(1, edge.weight));
 		const alpha =
-			edgeAlphas && i < edgeAlphas.length ? (edgeAlphas[i] ?? 0) : 0.1 + 0.35 * w;
+			edgeAlphas && i < edgeAlphas.length
+				? (edgeAlphas[i] ?? 0)
+				: 0.1 + 0.35 * w;
 
 		const cOffset = i * 8;
 		colors[cOffset] = r;
@@ -499,26 +501,54 @@ export function needsFraming(params: {
 }
 
 export function resolveNodeLabelTypography(
-	_node: SceneNode,
-	_isSelected = false,
+	node: SceneNode,
+	isSelected = false,
 ): NodeLabelTypography {
 	return {
-		fontFamily: "",
-		fontSize: 0,
-		fontWeight: 600,
-		isDisplayTier: false,
+		fontFamily: node.isDisplayTier ? DISPLAY_FONT_STACK : BODY_FONT_STACK,
+		fontSize: node.labelFontSize,
+		fontWeight: isSelected ? 700 : 600,
+		isDisplayTier: node.isDisplayTier,
 	};
 }
 
 export function buildRegionLabelCandidates(
-	_clusters: readonly TopicClusterSummary[],
-	_selectedIndex: number | null = null,
+	clusters: readonly TopicClusterSummary[],
+	selectedIndex: number | null = null,
 ): RegionLabelCandidate[] {
-	return [];
+	if (selectedIndex !== null) {
+		return [];
+	}
+	const candidates: RegionLabelCandidate[] = [];
+	for (const cluster of clusters) {
+		if (!cluster.showRegionLabel || !cluster.regionText) {
+			continue;
+		}
+		candidates.push({
+			clusterId: cluster.clusterId,
+			text: cluster.regionText,
+			fontFamily: BODY_FONT_STACK,
+			fontSize: REGION_LABEL_FONT_SIZE,
+			fontWeight: 700,
+			letterSpacingEm: REGION_LABEL_LETTER_SPACING_EM,
+			alpha: REGION_LABEL_ALPHA,
+			ink: cluster.ink,
+			centroid: cluster.centroid,
+		});
+	}
+	return candidates;
 }
 
 export function buildTopicsKeyRows(
-	_clusters: readonly TopicClusterSummary[],
+	clusters: readonly TopicClusterSummary[],
 ): TopicsKeyRow[] {
-	return [];
+	return clusters
+		.filter((cluster) => cluster.clusterId > 0 && cluster.topTags.length > 0)
+		.map((cluster) => ({
+			clusterId: cluster.clusterId,
+			ink: cluster.ink,
+			topTags: cluster.topTags,
+			label: cluster.label,
+			ariaLabel: `Highlight topic: ${cluster.label}`,
+		}));
 }

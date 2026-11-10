@@ -10,6 +10,7 @@ import type { TagVersePalette } from "./scene/palette.js";
 import {
 	buildEdgeBuffers,
 	buildSceneModel,
+	buildTopicClusters,
 	computeFocusEmphasis,
 	fogWindow,
 	type SelectionSource,
@@ -55,6 +56,7 @@ interactivity();
 let hoveredIndex = $state<number | null>(null);
 
 const model = $derived(buildSceneModel(tags));
+const topicClusters = $derived(buildTopicClusters(model.nodes, palette));
 
 const selectedIndex = $derived(
 	selectedTag !== null ? (model.indexByName.get(selectedTag) ?? null) : null,
@@ -173,4 +175,6 @@ function handleHoverChange(index: number | null) {
 	{palette}
 	{selectedIndex}
 	{hoveredIndex}
+	{focusEmphasis}
+	{topicClusters}
 />

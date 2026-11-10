@@ -13,7 +13,7 @@ import TagVerseScene from "./TagVerseScene.svelte";
 
 describe("TagVerseScene", () => {
 	it("sets scene.background and scene.fog colour to Alt-Paper #faf9f7 after mount", async () => {
-		let capturedScene: Scene | null = null;
+		let capturedScene = null as Scene | null;
 
 		const view = render(TagVerseScene, {
 			props: {

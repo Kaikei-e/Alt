@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { TagCloudItem } from "#lib/connect/index.js";
+import { buildPalette, clusterBaseInk } from "./scene/palette.js";
 import { filterTagsForIndex, formatCountLabel } from "./tagIndex.js";
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
 }
 
 let { tags, selectedTag, onSelectTag }: Props = $props();
+
+const palette = buildPalette();
 
 const uid = $props.id();
 const panelId = `${uid}-index-panel`;
@@ -82,7 +85,17 @@ const hasNonEmptyQuery = $derived(searchQuery.trim().length > 0);
 								? 'border-l-[var(--interactive-text)] bg-[var(--surface-hover)] font-semibold text-[var(--text-primary)]'
 								: 'border-l-transparent text-[var(--text-primary)] hover:bg-[var(--surface-hover)]'}"
 						>
-							<span class="truncate">{item.tagName}</span>
+							<span class="flex min-w-0 items-center gap-2">
+								<span
+									aria-hidden="true"
+									class="h-2.5 w-2.5 shrink-0"
+									style:background-color={clusterBaseInk(
+										item.clusterId ?? 0,
+										palette,
+									)}
+								></span>
+								<span class="truncate">{item.tagName}</span>
+							</span>
 							<span
 								aria-hidden="true"
 								class="shrink-0 text-right text-xs text-[var(--text-muted)]"
