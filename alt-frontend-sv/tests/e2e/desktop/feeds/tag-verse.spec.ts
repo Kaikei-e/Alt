@@ -16,5 +16,6 @@ test.describe("Desktop Tag Verse", () => {
 		// Desktop viewport should show the TagVerseScreen component
 		// Not redirected to /home
 		expect(page.url()).toContain("tag-verse");
+		await expect(page.getByLabel("Find a tag")).toBeVisible();
 	});
 });

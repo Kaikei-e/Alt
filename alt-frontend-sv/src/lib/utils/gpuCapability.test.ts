@@ -1,31 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { detectGPUBackend } from "./gpuCapability";
+import { isWebGL2Available } from "./gpuCapability.js";
 
-describe("detectGPUBackend", () => {
+describe("isWebGL2Available", () => {
 	beforeEach(() => {
 		vi.unstubAllGlobals();
 	});
 
-	it("returns 'webgpu' when navigator.gpu is available", () => {
-		vi.stubGlobal("navigator", { gpu: {} });
-		expect(detectGPUBackend()).toBe("webgpu");
-	});
-
-	it("returns 'webgl2' when WebGPU is unavailable but WebGL2 works", () => {
-		vi.stubGlobal("navigator", {});
+	it("returns true and releases the probe context via WEBGL_lose_context when WebGL2 is available", () => {
+		const loseContext = vi.fn();
+		const getExtension = vi.fn().mockReturnValue({ loseContext });
 		const mockCanvas = {
-			getContext: vi.fn().mockReturnValue({}),
+			getContext: vi.fn().mockReturnValue({ getExtension }),
 		};
 		vi.stubGlobal("document", {
 			createElement: vi.fn().mockReturnValue(mockCanvas),
 		});
 
-		expect(detectGPUBackend()).toBe("webgl2");
+		expect(isWebGL2Available()).toBe(true);
 		expect(mockCanvas.getContext).toHaveBeenCalledWith("webgl2");
+		expect(getExtension).toHaveBeenCalledWith("WEBGL_lose_context");
+		expect(loseContext).toHaveBeenCalledTimes(1);
 	});
 
-	it("returns 'none' when neither WebGPU nor WebGL2 is available", () => {
-		vi.stubGlobal("navigator", {});
+	it("returns false when WebGL2 context is unavailable", () => {
 		const mockCanvas = {
 			getContext: vi.fn().mockReturnValue(null),
 		};
@@ -33,6 +30,8 @@ describe("detectGPUBackend", () => {
 			createElement: vi.fn().mockReturnValue(mockCanvas),
 		});
 
-		expect(detectGPUBackend()).toBe("none");
+		expect(isWebGL2Available()).toBe(false);
+		expect(mockCanvas.getContext).toHaveBeenCalledWith("webgl2");
 	});
 });
+
