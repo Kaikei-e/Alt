@@ -235,29 +235,16 @@ class TestModelManager:
         # en stopwords merge the (mocked) file content, lower-cased, with NLTK words.
         assert en_stopwords == {"testword", "the", "a", "an"}
 
-    @patch("pathlib.Path.open", side_effect=FileNotFoundError())
-    @patch("nltk.corpus.stopwords.words", side_effect=Exception("NLTK not available"))
-    def test_get_stopwords_handles_file_errors(self, mock_nltk_stopwords, mock_path_open):
-        """Both stopword files missing and NLTK unavailable must fail closed to
-        empty sets rather than raising or crashing.
+    @patch("pathlib.Path.open", side_effect=FileNotFoundError("missing stopwords"))
+    def test_get_stopwords_raises_on_missing_file(self, mock_path_open):
+        """Missing stopword files must fail fast with ModelLoadError rather than
+        silently returning empty sets that disable stopword filtering."""
+        from tag_generator.domain.errors import ModelLoadError
 
-        Regression note: `_load_stopwords` reads via `Path.open(...)`, not the
-        `builtins.open` builtin -- `pathlib.Path.open` doesn't dispatch through
-        the patched `builtins.open` name, so patching `builtins.open` here
-        never actually engages and the real on-disk stopwords files (which
-        exist in this repo) were read instead. That silently turned this into
-        a happy-path test that didn't exercise the error handling it claims
-        to cover -- patching `pathlib.Path.open` (the real call site) instead.
-        """
         manager = ModelManager()
 
-        ja_stopwords, en_stopwords = manager.get_stopwords()
-
-        # Every source failed, so both sets must actually be empty -- not
-        # just "some set object", which would pass even if a stray default
-        # word leaked in from a partially-failed load path.
-        assert ja_stopwords == set()
-        assert en_stopwords == set()
+        with pytest.raises(ModelLoadError):
+            manager.get_stopwords()
 
     def test_clear_models_resets_state(self):
         """Test that clear_models resets all model state."""
