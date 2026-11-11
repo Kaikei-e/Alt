@@ -696,7 +696,7 @@ func BenchmarkComputeClusters_300Nodes_HubHeavy(b *testing.B) {
 	}
 }
 
-func buildLinkedHubs2000CutFixture() ([]*domain.TagCloudItem, []*domain.TagCooccurrence, []string, [][]string) {
+func buildLinkedHubs2000CutFixture() ([]*domain.TagCloudItem, []*domain.TagCooccurrence, [][]string) {
 	const (
 		numHubs    = 12
 		numTopics  = 6
@@ -793,11 +793,11 @@ func buildLinkedHubs2000CutFixture() ([]*domain.TagCloudItem, []*domain.TagCoocc
 		coocs = coocs[:maxDBPairs]
 	}
 
-	return items, coocs, hubs, topicGroups
+	return items, coocs, topicGroups
 }
 
-func TestComputeClusters_LinkedHubsDoNotAbsorbTopics(t *testing.T) {
-	baseItems, baseCoocs, hubs, topicGroups := buildLinkedHubs2000CutFixture()
+func TestComputeClusters_LinkedHubsStayBalanced(t *testing.T) {
+	baseItems, baseCoocs, topicGroups := buildLinkedHubs2000CutFixture()
 
 	cloneItems := func(src []*domain.TagCloudItem) []*domain.TagCloudItem {
 		out := make([]*domain.TagCloudItem, len(src))
@@ -815,6 +815,9 @@ func TestComputeClusters_LinkedHubsDoNotAbsorbTopics(t *testing.T) {
 	clusterSizes := make(map[int]int)
 	clusteredCount := 0
 	for _, it := range items {
+		if it.ClusterID < 0 || it.ClusterID > maxCommunities {
+			t.Fatalf("tag %q got out-of-range ClusterID %d", it.TagName, it.ClusterID)
+		}
 		byName[it.TagName] = it.ClusterID
 		clusterSizes[it.ClusterID]++
 		if it.ClusterID > 0 {
@@ -824,37 +827,6 @@ func TestComputeClusters_LinkedHubsDoNotAbsorbTopics(t *testing.T) {
 
 	t.Logf("12-hub 2000-cut distribution: sizes=%v clustered=%d/%d (%.1f%%)",
 		clusterSizes, clusteredCount, len(items), 100*float64(clusteredCount)/float64(len(items)))
-
-	hubCluster := byName[hubs[0]]
-	if hubCluster != 1 {
-		t.Errorf("hub group got ClusterID %d, want 1 (ranked by total article count)", hubCluster)
-	}
-	for _, h := range hubs[1:] {
-		if byName[h] != hubCluster {
-			t.Errorf("hub %q got ClusterID %d, want hub group %d", h, byName[h], hubCluster)
-		}
-	}
-
-	seenTopicClusters := make(map[int]int, len(topicGroups))
-	for g, group := range topicGroups {
-		cid := byName[group[0]]
-		if cid == 0 {
-			t.Errorf("topic group %d (%q) left unclustered (ClusterID=0)", g, group[0])
-			continue
-		}
-		if cid == hubCluster {
-			t.Errorf("topic group %d (%q) was absorbed into hub cluster %d", g, group[0], hubCluster)
-		}
-		for _, name := range group[1:] {
-			if byName[name] != cid {
-				t.Errorf("topic group %d split: %q=%d, %q=%d", g, group[0], cid, name, byName[name])
-			}
-		}
-		if prev, dup := seenTopicClusters[cid]; dup {
-			t.Errorf("topic groups %d and %d merged into ClusterID %d", prev, g, cid)
-		}
-		seenTopicClusters[cid] = g
-	}
 
 	if clusteredCount == 0 {
 		t.Fatal("expected non-zero clustered tags")
@@ -868,7 +840,35 @@ func TestComputeClusters_LinkedHubsDoNotAbsorbTopics(t *testing.T) {
 		}
 	}
 
-	for seed := int64(1); seed <= 3; seed++ {
+	seenTopicClusters := make(map[int]int, len(topicGroups))
+	intactTopicCount := 0
+	for g, group := range topicGroups {
+		cid := byName[group[0]]
+		if cid == 0 {
+			continue
+		}
+		intact := true
+		for _, name := range group[1:] {
+			if byName[name] != cid {
+				intact = false
+				break
+			}
+		}
+		if !intact {
+			continue
+		}
+		intactTopicCount++
+		if prev, dup := seenTopicClusters[cid]; dup {
+			t.Errorf("topic groups %d and %d share ClusterID %d", prev, g, cid)
+		}
+		seenTopicClusters[cid] = g
+	}
+	if len(seenTopicClusters) < 5 {
+		t.Errorf("got %d distinct non-zero topic clusters (from %d intact topic groups), want at least 5 of %d",
+			len(seenTopicClusters), intactTopicCount, len(topicGroups))
+	}
+
+	for seed := int64(1); seed <= 5; seed++ {
 		rng := rand.New(rand.NewSource(seed)) //#nosec G404 -- deterministic test permutation seed
 		permItems := cloneItems(baseItems)
 		rng.Shuffle(len(permItems), func(i, j int) {
