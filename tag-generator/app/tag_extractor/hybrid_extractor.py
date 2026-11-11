@@ -26,6 +26,7 @@ from typing import Any
 import structlog
 
 from .ginza_extractor import GinzaConfig, GinzaExtractor, get_ginza_extractor
+from .japanese_extractor import is_topical_japanese_noun
 from .tag_validator import clean_noun_phrase, is_valid_japanese_tag
 
 logger = structlog.get_logger(__name__)
@@ -158,8 +159,11 @@ class HybridExtractor:
                     if line and not line.startswith("#"):
                         self._stopwords.add(line)
             logger.debug("Loaded stopwords", count=len(self._stopwords))
-        except FileNotFoundError:
-            logger.warning("Stopwords file not found", path=stopwords_path)
+        except OSError as e:
+            from tag_generator.exceptions import ModelLoadError
+
+            logger.error("Stopwords file could not be loaded", path=stopwords_path, error=str(e))
+            raise ModelLoadError(f"Failed to load stopwords: {e}") from e
 
     def _extract_candidates_ginza(self, text: str) -> list[CandidateTag]:
         """Extract candidate tags using GiNZA."""
@@ -254,10 +258,9 @@ class HybridExtractor:
         position = 0
 
         for token in parsed:
-            pos = token.feature.pos1
             surface = token.surface
 
-            is_noun = pos in noun_pos or pos.startswith("名詞")
+            is_noun = is_topical_japanese_noun(token, noun_pos)
 
             if is_noun and surface not in self._stopwords:
                 current_compound.append(surface)

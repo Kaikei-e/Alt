@@ -25,10 +25,16 @@ VERB_ENDINGS_PATTERN = re.compile(
 PARTICLE_ENDINGS_PATTERN = re.compile(r"[はがをにでとのへやもかな]$")
 
 # URL/HTML fragments that should not be tags
-URL_HTML_FRAGMENTS_PATTERN = re.compile(r"^(https?|www|com|org|net|html|gt|lt|amp|nbsp)$", re.IGNORECASE)
+URL_HTML_FRAGMENTS_PATTERN = re.compile(
+    r"^(https?|ftp|mailto|www|com|org|net|edu|gov|html?|gt|lt|amp|nbsp|quot|apos|copy|reg|mdash|ndash|hellip)$",
+    re.IGNORECASE,
+)
 
-# Number-only pattern
-NUMBER_ONLY_PATTERN = re.compile(r"^\d+$")
+# Number-only pattern (ASCII/Unicode digits, formatted numbers, or kanji-only numerals)
+NUMBER_ONLY_PATTERN = re.compile(r"^\d+(?:[.,:/\-_]\d+)*%?$|^[〇零一二三四五六七八九十百千万億兆]+$")
+
+# Bare date, time, or quantity counter expressions (e.g. 2026年, 10月, 10時, 0件)
+NUMERIC_COUNTER_PATTERN = re.compile(r"^(?:\d+[年月日週時分秒回件人個つ度倍割%]+)+\d*$")
 
 
 def is_valid_japanese_tag(tag: str, max_length: int = DEFAULT_MAX_TAG_LENGTH) -> bool:
@@ -61,12 +67,55 @@ def is_valid_japanese_tag(tag: str, max_length: int = DEFAULT_MAX_TAG_LENGTH) ->
     if PARTICLE_ENDINGS_PATTERN.search(tag):
         return False
 
-    # Number-only tags
-    if NUMBER_ONLY_PATTERN.fullmatch(tag):
+    # Number-only or bare date/counter tags
+    if NUMBER_ONLY_PATTERN.fullmatch(tag) or NUMERIC_COUNTER_PATTERN.fullmatch(tag):
         return False
 
     # URL/HTML fragments
     if URL_HTML_FRAGMENTS_PATTERN.fullmatch(tag):
+        return False
+
+    return True
+
+
+def is_valid_english_tag(
+    tag: str,
+    stopwords: set[str] | None = None,
+    min_length: int = 2,
+    max_length: int = 50,
+) -> bool:
+    """Validate an English single-word or phrase tag candidate."""
+    cleaned = tag.strip()
+    if not (min_length <= len(cleaned) <= max_length):
+        return False
+
+    if not any(ch.isalpha() for ch in cleaned):
+        return False
+
+    if NUMBER_ONLY_PATTERN.fullmatch(cleaned):
+        return False
+
+    if URL_HTML_FRAGMENTS_PATTERN.fullmatch(cleaned):
+        return False
+
+    words = cleaned.lower().split()
+    if not words:
+        return False
+
+    if any(URL_HTML_FRAGMENTS_PATTERN.fullmatch(word) for word in words):
+        return False
+
+    active_stopwords = stopwords or set()
+    if len(words) == 1:
+        word = words[0]
+        if word in active_stopwords or NUMBER_ONLY_PATTERN.fullmatch(word):
+            return False
+        return True
+
+    # Reject multi-word phrases bounded by stopwords/reporting verbs or composed solely of stopwords/numbers
+    if words[0] in active_stopwords or words[-1] in active_stopwords:
+        return False
+    if all(word in active_stopwords or NUMBER_ONLY_PATTERN.fullmatch(word) for word in words):
         return False
 
     return True

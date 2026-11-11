@@ -53,7 +53,7 @@ from .english_extractor import (
     get_candidate_tokens,
     tokenize_english,
 )
-from .input_sanitizer import InputSanitizer, SanitizationConfig
+from .input_sanitizer import INLINE_URL_PATTERN, InputSanitizer, SanitizationConfig
 from .japanese_extractor import (
     extract_compound_japanese_words,
     extract_compound_nouns_fugashi,
@@ -97,7 +97,10 @@ class TagExtractor:
         self.config = config or TagExtractionConfig()
         self._model_manager = model_manager or get_model_manager()
         self._models_loaded = False
-        self._input_sanitizer = InputSanitizer(sanitizer_config)
+        effective_sanitizer_config = (
+            sanitizer_config if sanitizer_config is not None else SanitizationConfig(strip_urls=True)
+        )
+        self._input_sanitizer = InputSanitizer(effective_sanitizer_config)
         self._embedding_backend: str = "unknown"
         self._embedding_metadata: dict[str, Any] = {}
         # Lazily populated model handles (set by _lazy_load_models via ModelManager)
@@ -149,7 +152,9 @@ class TagExtractor:
             )
 
         sanitized_input = sanitization_result.sanitized_input
-        raw_text = f"{sanitized_input.title}\n{sanitized_input.content}".strip()
+        cleaned_title = INLINE_URL_PATTERN.sub(" ", sanitized_input.title).strip()
+        cleaned_content = INLINE_URL_PATTERN.sub(" ", sanitized_input.content).strip()
+        raw_text = f"{cleaned_title}\n{cleaned_content}".strip()
         sanitized_length = sanitized_input.sanitized_length
 
         if len(raw_text) < self.config.min_text_length:
@@ -398,7 +403,8 @@ class TagExtractor:
     def _extract_keywords_english(self, text: str) -> tuple[list[str], dict[str, float]]:
         """Extract keywords specifically for English text using KeyBERT."""
         self._lazy_load_models()
-        return extract_keywords_english(text, self._keybert, self.config)
+        self._load_stopwords()
+        return extract_keywords_english(text, self._keybert, self.config, en_stopwords=self._en_stopwords)
 
     def _tokenize_english(self, text: str) -> list[str]:
         """Tokenize English text using NLTK."""

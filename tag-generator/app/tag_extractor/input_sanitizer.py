@@ -1,5 +1,6 @@
 """Input sanitization utilities for tag extraction."""
 
+import html
 import re
 import unicodedata
 from urllib.parse import urlparse
@@ -15,6 +16,10 @@ _CODE_BLOCK_PATTERN = re.compile(
 )
 
 WHITESPACE_PATTERN = re.compile(r"\s+")
+INLINE_URL_PATTERN = re.compile(
+    r"(?:https?://|(?<![A-Za-z0-9])www\.)[\x21\x23-\x26\x28-\x3b\x3d\x3f-\x7e]+",
+    re.IGNORECASE,
+)
 DANGEROUS_ELEMENT_PATTERN = re.compile(
     r"<(script|style|iframe|object|embed)\b[^>]*>.*?(?:</\1\s*>|$)",
     re.IGNORECASE | re.DOTALL,
@@ -280,10 +285,27 @@ class InputSanitizer:
                 warnings=warnings,
             )
 
+    @staticmethod
+    def _unescape_entities(text: str, max_passes: int = 5) -> str:
+        """Decode single- or multi-encoded HTML entities until fixed point."""
+        current = text
+        for _ in range(max_passes):
+            decoded = html.unescape(current)
+            if decoded == current:
+                break
+            current = decoded
+        return current
+
     def _sanitize_text(self, text: str) -> str:
         """Sanitize text content."""
         if not text:
             return ""
+
+        if not self.config.allow_html:
+            # Decode entities before tag stripping so entity-encoded script/tag
+            # payloads are parsed and removed as markup rather than left as text,
+            # and feed-encoded &nbsp;/&amp;nbsp; become whitespace instead of tokens.
+            text = self._unescape_entities(text)
 
         # Drop high-risk embedded content before invoking ``nh3`` so payloads from
         # script-like tags never reach downstream consumers as plain text.
@@ -297,6 +319,15 @@ class InputSanitizer:
             clean_content_tags=self._nh3_clean_content_tags,
             strip_comments=True,
         )
+
+        if not self.config.allow_html:
+            # ``nh3.clean`` serialises HTML and re-encodes literal ``&`` as ``&amp;``;
+            # decode after all markup has already been stripped so downstream tokenisers
+            # do not split ``&amp;`` into ``amp``.
+            text = html.unescape(text)
+
+        if self.config.strip_urls:
+            text = INLINE_URL_PATTERN.sub(" ", text)
 
         # Normalize excessive whitespace post-cleaning
         text = WHITESPACE_PATTERN.sub(" ", text).strip()

@@ -21,9 +21,12 @@ NOUN_POS_TAGS = {
     "名詞-固有名詞-人名",
     "名詞-固有名詞-組織",
     "名詞-固有名詞-地域",
-    "名詞-数詞",
     "名詞-接尾辞-名詞的",
 }
+
+_EXCLUDED_NOUN_POS1_PREFIXES = ("名詞-数詞", "名詞-副詞可能", "名詞-代名詞", "名詞-非自立")
+_EXCLUDED_UNIDIC_POS2 = frozenset({"数詞", "代名詞", "非自立可能", "助動詞語幹"})
+_EXCLUDED_UNIDIC_POS3 = frozenset({"副詞可能", "助数詞可能"})
 
 # Tags that can connect nouns (e.g., の between nouns)
 CONNECTOR_SURFACES = {"の", "・", "＝", "－", "-"}
@@ -33,6 +36,9 @@ COMPOUND_PATTERNS = [
     # Tech terms with mixed scripts
     r"[A-Za-z][A-Za-z0-9]*[ァ-ヶー]+(?:[A-Za-z0-9]*)?",  # e.g., "GitHubリポジトリ"
     r"[ァ-ヶー]+[A-Za-z][A-Za-z0-9]*",  # e.g., "データセットID"
+    r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*(?:\+\+|#)",  # Symbolic languages (e.g., "C++", "C#")
+    r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*(?:[.-]\d+(?:\.\d+)*|/\d+)",  # e.g., "GPT-4", "HTTP/3"
+    r"(?<![A-Za-z0-9])[a-z]+[A-Z][A-Za-z0-9]*",  # Mixed-case brands (e.g., "iOS17", "macOS")
     r"[A-Z][A-Za-z0-9]*(?:\.[A-Za-z]+)?",  # CamelCase and dotted (e.g., "TensorFlow", "Next.js")
     r"[A-Z]{2,}(?:[a-z]+)?",  # Acronyms like "AWS", "API", "CEO"
     r"[一-龥]{2,}[ァ-ヶー]+",  # Kanji + Katakana compounds
@@ -42,11 +48,40 @@ COMPOUND_PATTERNS = [
     # Tech-specific patterns
     r"[ァ-ヶー]{3,}(?:システム|サービス|プラットフォーム|フレームワーク|ライブラリ)",
     r"[ァ-ヶー]{2,}(?:アーキテクチャ|インフラ|ネットワーク|セキュリティ)",
-    # Alphanumeric + Japanese
-    r"[A-Za-z0-9]+[一-龥ァ-ヶー]{2,}",  # e.g., "IoT機器", "Web技術", "AI技術"
-    r"[一-龥ァ-ヶー]{2,}[A-Za-z0-9]+",  # e.g., "機械学習API"
-    r"\d+[A-Za-zァ-ヶー一-龥]+",  # Number + Word (e.g., "5G通信", "3Dプリンター")
+    # Alphanumeric (requiring at least one ASCII letter) + Japanese
+    r"[A-Za-z][A-Za-z0-9]*[一-龥ァ-ヶー]{2,}",  # e.g., "IoT機器", "Web技術", "AI技術"
+    r"[一-龥ァ-ヶー]{2,}[A-Za-z][A-Za-z0-9]*",  # e.g., "機械学習API"
+    r"\d+[A-Za-z][A-Za-z0-9ァ-ヶー一-龥]*",  # Number + Alpha-prefixed word (e.g., "5G通信", "3Dプリンター")
 ]
+
+
+def is_topical_japanese_noun(
+    token: Any,
+    allowed_pos_tags: set[str] | tuple[str, ...] | None = None,
+) -> bool:
+    """Return True when a Fugashi token represents a topical noun rather than a numeral, pronoun, counter, or temporal noun."""
+    feature = getattr(token, "feature", None)
+    pos1 = getattr(feature, "pos1", "")
+    if not isinstance(pos1, str) or not pos1:
+        return False
+    if pos1.startswith(_EXCLUDED_NOUN_POS1_PREFIXES):
+        return False
+
+    if allowed_pos_tags is not None:
+        if pos1 not in allowed_pos_tags and not pos1.startswith("名詞"):
+            return False
+    elif pos1 not in NOUN_POS_TAGS and not pos1.startswith("名詞"):
+        return False
+
+    pos2 = getattr(feature, "pos2", "")
+    if isinstance(pos2, str) and pos2 in _EXCLUDED_UNIDIC_POS2:
+        return False
+
+    pos3 = getattr(feature, "pos3", "")
+    if isinstance(pos3, str) and pos3 in _EXCLUDED_UNIDIC_POS3:
+        return False
+
+    return True
 
 
 def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 15) -> list[str]:
@@ -68,49 +103,47 @@ def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 
     if ja_tagger is None:
         raise RuntimeError("Japanese tagger not initialized")
 
-    parsed = list(ja_tagger(text))
+    # Split on line breaks before invoking MeCab because MeCab discards whitespace
+    # tokens and would otherwise glue the last noun of a title/paragraph onto the
+    # first noun of the next line.
+    segments = [seg for seg in re.split(r"[\r\n]+", text) if seg] or [text]
     compounds: list[str] = []
-    current_compound: list[str] = []
 
-    for i, token in enumerate(parsed):
-        pos1 = token.feature.pos1
-        surface = token.surface
+    for segment in segments:
+        parsed = list(ja_tagger(segment))
+        current_compound: list[str] = []
 
-        # Check if token is a noun
-        is_noun = pos1 in NOUN_POS_TAGS or pos1.startswith("名詞")
+        for i, token in enumerate(parsed):
+            surface = token.surface
+            is_noun = is_topical_japanese_noun(token)
+            is_connector = surface in CONNECTOR_SURFACES
 
-        # Check if it's a connector that might join nouns
-        is_connector = surface in CONNECTOR_SURFACES
-
-        if is_noun:
-            current_compound.append(surface)
-        elif is_connector and current_compound:
-            # Check if next token is also a noun
-            if i + 1 < len(parsed):
-                next_pos = parsed[i + 1].feature.pos1
-                next_is_noun = next_pos in NOUN_POS_TAGS or next_pos.startswith("名詞")
-                if next_is_noun:
+            if is_noun:
+                current_compound.append(surface)
+            elif is_connector and current_compound:
+                if i + 1 < len(parsed) and is_topical_japanese_noun(parsed[i + 1]):
                     current_compound.append(surface)
                     continue
-            # Not followed by noun, finalize current compound
-            if len(current_compound) >= 2:
-                compound = "".join(current_compound)
-                if 3 <= len(compound) <= max_length:
-                    compounds.append(compound)
-            current_compound = []
-        else:
-            # Non-noun token, finalize current compound
-            if len(current_compound) >= 2:
-                compound = "".join(current_compound)
-                if 3 <= len(compound) <= max_length:
-                    compounds.append(compound)
-            current_compound = []
+                if len(current_compound) >= 2:
+                    compound = "".join(current_compound)
+                    if 3 <= len(compound) <= max_length and _shared_is_valid_japanese_tag(
+                        compound, max_length=max_length
+                    ):
+                        compounds.append(compound)
+                current_compound = []
+            else:
+                if len(current_compound) >= 2:
+                    compound = "".join(current_compound)
+                    if 3 <= len(compound) <= max_length and _shared_is_valid_japanese_tag(
+                        compound, max_length=max_length
+                    ):
+                        compounds.append(compound)
+                current_compound = []
 
-    # Handle remaining compound at end of text
-    if len(current_compound) >= 2:
-        compound = "".join(current_compound)
-        if 3 <= len(compound) <= max_length:
-            compounds.append(compound)
+        if len(current_compound) >= 2:
+            compound = "".join(current_compound)
+            if 3 <= len(compound) <= max_length and _shared_is_valid_japanese_tag(compound, max_length=max_length):
+                compounds.append(compound)
 
     return compounds
 
@@ -186,7 +219,9 @@ def extract_compound_japanese_words(text: str, ja_tagger: Any, config: TagExtrac
     unique_compounds: list[str] = []
     for word in compound_words:
         word_normalized = word.strip()
-        if word_normalized not in seen and 2 <= len(word_normalized) <= config.max_tag_length:
+        if word_normalized not in seen and _shared_is_valid_japanese_tag(
+            word_normalized, max_length=config.max_tag_length
+        ):
             seen.add(word_normalized)
             unique_compounds.append(word_normalized)
 
@@ -216,8 +251,8 @@ def make_japanese_analyzer(ja_tagger: Any):
 
         tokens = []
         for word in tagger(text):
-            # Extract nouns (名詞) for matching candidates
-            if word.feature.pos1.startswith("名詞"):
+            # Extract topical nouns for matching candidates
+            if is_topical_japanese_noun(word):
                 tokens.append(word.surface)
             # Also preserve English words (ASCII alphabetic)
             elif word.surface.isascii() and word.surface.isalpha():
@@ -357,7 +392,7 @@ def fallback_japanese(
     single_nouns: list[str] = []
     for word in ja_tagger(text):
         if (
-            word.feature.pos1 in config.japanese_pos_tags
+            is_topical_japanese_noun(word, config.japanese_pos_tags)
             and 2 <= len(word.surface) <= 10
             and word.surface not in ja_stopwords
         ):
@@ -420,7 +455,7 @@ def extract_keywords_japanese(
     single_nouns = []
     for word in ja_tagger(text):
         if (
-            word.feature.pos1 in config.japanese_pos_tags
+            is_topical_japanese_noun(word, config.japanese_pos_tags)
             and 2 <= len(word.surface) <= 10
             and word.surface not in ja_stopwords
         ):
