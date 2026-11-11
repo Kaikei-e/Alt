@@ -559,7 +559,7 @@ func TestComputeClusters_HubHeavyGraphRecoversBalancedTopics(t *testing.T) {
 	}
 }
 
-func BenchmarkComputeClusters_300Nodes_HubHeavy(b *testing.B) {
+func buildBenchmarkHubFixture() ([]*domain.TagCloudItem, []*domain.TagCooccurrence) {
 	const (
 		numHubs   = 20
 		numTopics = 7
@@ -609,6 +609,83 @@ func BenchmarkComputeClusters_300Nodes_HubHeavy(b *testing.B) {
 	for i := range numTail {
 		items = append(items, &domain.TagCloudItem{TagName: fmt.Sprintf("tail-%02d", i), ArticleCount: 15})
 	}
+
+	return items, coocs
+}
+
+func TestRunLeiden_NodeLevelLocalOptimality(t *testing.T) {
+	items, coocs := buildBenchmarkHubFixture()
+	_, adj := buildAssociationGraph(items, coocs)
+	n := len(items)
+
+	strength := make([]float64, n)
+	seedRank := make([]int, n)
+	twoM := 0.0
+	for r := range n {
+		seedRank[r] = r
+		for _, nb := range adj[r] {
+			strength[r] += nb.ochiai
+		}
+		twoM += strength[r]
+	}
+
+	g := &leidenGraph{
+		n:        n,
+		adj:      adj,
+		strength: strength,
+		seedRank: seedRank,
+		twoM:     twoM,
+	}
+	labels := runLeiden(g, leidenResolution)
+
+	sigmaTot := make(map[int]float64)
+	commSize := make(map[int]int)
+	for u, c := range labels {
+		sigmaTot[c] += strength[u]
+		commSize[c]++
+	}
+
+	scale := leidenResolution / twoM
+	improvingNodes := 0
+	maxGain := 0.0
+	for u := range n {
+		oldComm := labels[u]
+		ku := strength[u]
+		commWeights := make(map[int]float64)
+		for _, nb := range adj[u] {
+			commWeights[labels[nb.partner]] += nb.ochiai
+		}
+		stayScore := commWeights[oldComm] - scale*ku*(sigmaTot[oldComm]-ku)
+
+		bestGain := 0.0
+		if commSize[oldComm] > 1 && -stayScore > bestGain {
+			bestGain = -stayScore
+		}
+		for c, w := range commWeights {
+			if c == oldComm {
+				continue
+			}
+			gain := (w - scale*ku*sigmaTot[c]) - stayScore
+			if gain > bestGain {
+				bestGain = gain
+			}
+		}
+		if bestGain > qualityEps {
+			improvingNodes++
+			if bestGain > maxGain {
+				maxGain = bestGain
+			}
+		}
+	}
+
+	if improvingNodes > 0 {
+		t.Fatalf("partition is not locally optimal at node level: %d nodes have strictly positive move gain (max delta = %.6g)",
+			improvingNodes, maxGain)
+	}
+}
+
+func BenchmarkComputeClusters_300Nodes_HubHeavy(b *testing.B) {
+	items, coocs := buildBenchmarkHubFixture()
 
 	b.ResetTimer()
 	for b.Loop() {
