@@ -14,22 +14,39 @@ func (r *TagRepository) FetchTagCooccurrences(ctx context.Context, tagNames []st
 		return nil, nil
 	}
 
-	// CTE-based query: filter feed_tags first to reduce self-join scope.
-	// This avoids scanning the full article_tags table when the target tag set is small.
+	// Filter feed_tags first to bound the self-join scope, then rank pairs by
+	// Ochiai association so high-frequency hub pairs do not crowd out strongly
+	// associated smaller-topic pairs within the 2,000-pair cutoff.
 	query := `
 		WITH target_tags AS (
 			SELECT id, tag_name FROM feed_tags WHERE tag_name = ANY($1)
+		),
+		tag_counts AS (
+			SELECT tt.tag_name, COUNT(DISTINCT at.article_id) AS article_count
+			FROM target_tags tt
+			INNER JOIN article_tags at ON at.feed_tag_id = tt.id
+			GROUP BY tt.tag_name
+		),
+		pair_counts AS (
+			SELECT tt1.tag_name AS tag_a,
+			       tt2.tag_name AS tag_b,
+			       COUNT(DISTINCT at1.article_id) AS shared_count
+			FROM article_tags at1
+			INNER JOIN target_tags tt1 ON at1.feed_tag_id = tt1.id
+			INNER JOIN article_tags at2
+			  ON at1.article_id = at2.article_id AND tt1.tag_name < tt2.tag_name
+			INNER JOIN target_tags tt2 ON at2.feed_tag_id = tt2.id
+			GROUP BY tt1.tag_name, tt2.tag_name
+			HAVING COUNT(DISTINCT at1.article_id) >= 2
 		)
-		SELECT tt1.tag_name AS tag_a, tt2.tag_name AS tag_b,
-		       COUNT(DISTINCT at1.article_id) AS shared_count
-		FROM article_tags at1
-		INNER JOIN target_tags tt1 ON at1.feed_tag_id = tt1.id
-		INNER JOIN article_tags at2
-		  ON at1.article_id = at2.article_id AND at1.feed_tag_id < at2.feed_tag_id
-		INNER JOIN target_tags tt2 ON at2.feed_tag_id = tt2.id
-		GROUP BY tt1.tag_name, tt2.tag_name
-		HAVING COUNT(DISTINCT at1.article_id) >= 2
-		ORDER BY shared_count DESC
+		SELECT pc.tag_a, pc.tag_b, pc.shared_count
+		FROM pair_counts pc
+		INNER JOIN tag_counts tc1 ON pc.tag_a = tc1.tag_name
+		INNER JOIN tag_counts tc2 ON pc.tag_b = tc2.tag_name
+		ORDER BY pc.shared_count::float8 / SQRT(tc1.article_count::float8 * tc2.article_count::float8) DESC,
+		         pc.shared_count DESC,
+		         pc.tag_a ASC,
+		         pc.tag_b ASC
 		LIMIT 2000
 	`
 
