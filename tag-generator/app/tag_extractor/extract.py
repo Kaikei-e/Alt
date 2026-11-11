@@ -53,7 +53,7 @@ from .english_extractor import (
     get_candidate_tokens,
     tokenize_english,
 )
-from .input_sanitizer import INLINE_URL_PATTERN, InputSanitizer, SanitizationConfig
+from .input_sanitizer import InputSanitizer, SanitizationConfig
 from .japanese_extractor import (
     extract_compound_japanese_words,
     extract_compound_nouns_fugashi,
@@ -97,10 +97,9 @@ class TagExtractor:
         self.config = config or TagExtractionConfig()
         self._model_manager = model_manager or get_model_manager()
         self._models_loaded = False
-        effective_sanitizer_config = (
-            sanitizer_config if sanitizer_config is not None else SanitizationConfig(strip_urls=True)
+        self._input_sanitizer = InputSanitizer(
+            sanitizer_config if sanitizer_config is not None else SanitizationConfig()
         )
-        self._input_sanitizer = InputSanitizer(effective_sanitizer_config)
         self._embedding_backend: str = "unknown"
         self._embedding_metadata: dict[str, Any] = {}
         # Lazily populated model handles (set by _lazy_load_models via ModelManager)
@@ -152,9 +151,7 @@ class TagExtractor:
             )
 
         sanitized_input = sanitization_result.sanitized_input
-        cleaned_title = INLINE_URL_PATTERN.sub(" ", sanitized_input.title).strip()
-        cleaned_content = INLINE_URL_PATTERN.sub(" ", sanitized_input.content).strip()
-        raw_text = f"{cleaned_title}\n{cleaned_content}".strip()
+        raw_text = f"{sanitized_input.title}\n{sanitized_input.content}".strip()
         sanitized_length = sanitized_input.sanitized_length
 
         if len(raw_text) < self.config.min_text_length:

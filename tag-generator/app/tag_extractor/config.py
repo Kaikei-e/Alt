@@ -39,7 +39,11 @@ class TagExtractionConfig(BaseModel):
         "名詞-固有名詞-人名",
         "名詞-固有名詞-組織",
         "名詞-固有名詞-地域",
+        "名詞-数詞",
+        "名詞-副詞可能",
+        "名詞-代名詞",
         "名詞-接尾辞-名詞的",
+        "名詞-非自立",
     )
     extract_compound_words: bool = True
     use_frequency_boost: bool = True

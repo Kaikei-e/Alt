@@ -83,8 +83,10 @@ RUN set -eux; \
     find "$SITE" -name "*.pyc" -delete
 
 # Verification (stays in builder, does not bloat runtime).
-RUN /app/.venv/bin/python -c "\
+RUN NLTK_DATA=/opt/model-cache/nltk /app/.venv/bin/python -c "\
 import torch, sentence_transformers, keybert, transformers, onnxruntime, fugashi, nltk; \
+nltk.data.find('corpora/stopwords'); \
+nltk.data.find('tokenizers/punkt_tab/english'); \
 print(f'torch {torch.__version__}'); \
 print(f'sentence-transformers {sentence_transformers.__version__}'); \
 print(f'transformers {transformers.__version__}'); \

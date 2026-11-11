@@ -255,8 +255,6 @@ class ModelManager:
 
             en_stopwords.update(word.lower() for word in nltk.corpus.stopwords.words("english"))
         except Exception as e:
-            self._ja_stopwords = None
-            self._en_stopwords = None
             logger.error("Failed to load required stopword resources", error=str(e), error_type=type(e).__name__)
             raise ModelLoadError(f"Failed to load stopwords: {e}") from e
 

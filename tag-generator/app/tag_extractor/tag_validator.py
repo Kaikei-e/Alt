@@ -33,8 +33,10 @@ URL_HTML_FRAGMENTS_PATTERN = re.compile(
 # Number-only pattern (ASCII/Unicode digits, formatted numbers, or kanji-only numerals)
 NUMBER_ONLY_PATTERN = re.compile(r"^\d+(?:[.,:/\-_]\d+)*%?$|^[〇零一二三四五六七八九十百千万億兆]+$")
 
-# Bare date, time, or quantity counter expressions (e.g. 2026年, 10月, 10時, 0件)
-NUMERIC_COUNTER_PATTERN = re.compile(r"^(?:\d+[年月日週時分秒回件人個つ度倍割%]+)+\d*$")
+# Bare date, time, or quantity counter expressions (e.g. 2026年, 10月, 午前10時, 0件)
+NUMERIC_COUNTER_PATTERN = re.compile(
+    r"^(?:(?:午前|午後)?[\d〇零一二三四五六七八九十百千万億兆]+[年月日週時分秒回件人個つ度倍割%間半前後目]+)+[\d〇零一二三四五六七八九十百千万億兆]*$"
+)
 
 
 def is_valid_japanese_tag(tag: str, max_length: int = DEFAULT_MAX_TAG_LENGTH) -> bool:
@@ -102,9 +104,6 @@ def is_valid_english_tag(
     if not words:
         return False
 
-    if any(URL_HTML_FRAGMENTS_PATTERN.fullmatch(word) for word in words):
-        return False
-
     active_stopwords = stopwords or set()
     if len(words) == 1:
         word = words[0]
@@ -112,10 +111,13 @@ def is_valid_english_tag(
             return False
         return True
 
-    # Reject multi-word phrases bounded by stopwords/reporting verbs or composed solely of stopwords/numbers
+    # Reject multi-word phrases bounded by stopwords/reporting verbs or composed solely of stopwords/numbers/fragments
     if words[0] in active_stopwords or words[-1] in active_stopwords:
         return False
-    if all(word in active_stopwords or NUMBER_ONLY_PATTERN.fullmatch(word) for word in words):
+    if all(
+        word in active_stopwords or NUMBER_ONLY_PATTERN.fullmatch(word) or URL_HTML_FRAGMENTS_PATTERN.fullmatch(word)
+        for word in words
+    ):
         return False
 
     return True

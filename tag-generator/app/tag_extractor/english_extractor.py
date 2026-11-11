@@ -12,20 +12,66 @@ from .tag_validator import is_valid_english_tag
 
 logger = structlog.get_logger(__name__)
 
+# Canonical 318-word Glasgow IR stopword set distributed as
+# sklearn.feature_extraction.text.ENGLISH_STOP_WORDS (BSD-3-Clause; primary
+# source: https://ir.dcs.gla.ac.uk/resources/linguistic_utils/stop_words).
+# Loaded from scikit-learn when the `ml` dependency group is installed, with an
+# identical constant for minimal `dev` unit-test environments without sklearn.
+_GLASGOW_IR_ENGLISH_STOP_WORDS: frozenset[str] = frozenset(
+    """
+    a about above across after afterwards again against all almost alone along
+    already also although always am among amongst amoungst amount an and another
+    any anyhow anyone anything anyway anywhere are around as at back be became
+    because become becomes becoming been before beforehand behind being below
+    beside besides between beyond bill both bottom but by call can cannot cant
+    co con could couldnt cry de describe detail do done down due during each eg
+    eight either eleven else elsewhere empty enough etc even ever every everyone
+    everything everywhere except few fifteen fifty fill find fire first five for
+    former formerly forty found four from front full further get give go had has
+    hasnt have he hence her here hereafter hereby herein hereof hereto herewith
+    hers herself him himself his how however hundred i ie if in inc indeed
+    interest into is it its itself keep last latter latterly least less ltd made
+    many may me meanwhile might mill mine more moreover most mostly move much
+    must my myself name namely neither never nevertheless next nine no nobody
+    none noone nor not nothing now nowhere of off often on once one only onto or
+    other others otherwise our ours ourselves out over own part per perhaps
+    please put rather re same see seem seemed seeming seems serious several she
+    should show side since sincere six sixty so some somehow someone something
+    sometime sometimes somewhere still such system take ten than that the their
+    them themselves then thence there thereafter thereby therefore therein
+    thereupon these they thick thin third this those though three through
+    throughout thru thus to together too top toward towards twelve twenty two un
+    under until up upon us very via was we well were what whatever when whence
+    whenever where whereafter whereas whereby wherein whereupon wherever whether
+    which while whither who whoever whole whom whose why will with within
+    without would yet you your yours yourself yourselves
+    """.split()
+)
+
+try:
+    from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS as _SKLEARN_STOP_WORDS
+
+    ENGLISH_STOP_WORDS: frozenset[str] = (
+        _SKLEARN_STOP_WORDS if isinstance(_SKLEARN_STOP_WORDS, frozenset) else _GLASGOW_IR_ENGLISH_STOP_WORDS
+    )
+except ImportError:
+    ENGLISH_STOP_WORDS = _GLASGOW_IR_ENGLISH_STOP_WORDS
+
 _ENGLISH_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:[+#._/-][A-Za-z0-9+#]+)*|[A-Za-z][A-Za-z0-9]*(?:\+\+|#)")
 
 
 def _is_allowed_short_english_term(word: str, source_text: str) -> bool:
-    """Reject ambiguous 2-letter lowercase prose words unless capitalized in source text."""
-    if word == "go":
-        return bool(re.search(r"\b(?:Go|GO)\b", source_text))
-    if word == "us":
-        return bool(re.search(r"\bUS\b", source_text))
-    return True
+    """Allow 2-character single words only when they contain a digit or appear all-caps in source text."""
+    if len(word) != 2:
+        return True
+    if any(ch.isdigit() for ch in word):
+        return True
+    pattern = rf"(?<![A-Za-z0-9]){re.escape(word.upper())}(?![A-Za-z0-9])"
+    return bool(re.search(pattern, source_text))
 
 
 def _is_duplicate_english_keyword(candidate: str, existing: str) -> bool:
-    """Check phrase-token or stem duplication without conflating short tags like 'go'/'google' or 'ai'/'containers'."""
+    """Check phrase-token or inflection duplication without merging distinct prefix-sharing entities."""
     if candidate == existing:
         return True
     shorter, longer = (candidate, existing) if len(candidate) <= len(existing) else (existing, candidate)
@@ -35,9 +81,12 @@ def _is_duplicate_english_keyword(candidate: str, existing: str) -> bool:
         width = len(shorter_words)
         if any(longer_words[i : i + width] == shorter_words for i in range(len(longer_words) - width + 1)):
             return True
-    if len(shorter) >= 3 and longer in (f"{shorter}s", f"{shorter}es"):
-        return True
-    if len(shorter) >= 5 and longer.startswith(shorter):
+    if len(shorter) >= 3 and longer in (
+        f"{shorter}s",
+        f"{shorter}es",
+        f"{shorter}ed",
+        f"{shorter}ing",
+    ):
         return True
     return False
 
@@ -46,7 +95,7 @@ def extract_keywords_english(
     text: str,
     keybert: Any,
     config: TagExtractionConfig,
-    en_stopwords: set[str] | None = None,
+    en_stopwords: set[str],
 ) -> tuple[list[str], dict[str, float]]:
     """Extract keywords specifically for English text using KeyBERT.
 
@@ -54,7 +103,7 @@ def extract_keywords_english(
         text: Input English text
         keybert: KeyBERT instance
         config: Tag extraction configuration
-        en_stopwords: Optional English stopword set
+        en_stopwords: English stopword set
 
     Returns:
         Tuple of (tag_list, tag_confidences_dict)
@@ -62,8 +111,8 @@ def extract_keywords_english(
     if keybert is None:
         raise RuntimeError("KeyBERT not initialized")
 
-    active_stopwords = {w.lower() for w in en_stopwords} if en_stopwords else set()
-    stop_words_arg: str | list[str] = sorted(active_stopwords) if active_stopwords else "english"
+    active_stopwords = set(ENGLISH_STOP_WORDS) | {w.lower() for w in en_stopwords}
+    stop_words_arg = sorted(active_stopwords)
 
     # Single call covering both single words and phrases (1-3 ngrams)
     all_raw = keybert.extract_keywords(
@@ -161,6 +210,7 @@ def tokenize_english(
     Returns:
         List of filtered and normalized tokens
     """
+    active_stopwords = set(ENGLISH_STOP_WORDS) | {w.lower() for w in en_stopwords}
     raw_tokens = nltk.word_tokenize(text)
     merged_tokens: list[str] = []
     idx = 0
@@ -179,12 +229,11 @@ def tokenize_english(
     for token in merged_tokens:
         if not _ENGLISH_TOKEN_PATTERN.fullmatch(token):
             continue
-        is_short_tech_token = len(token) == 2 and any(ch.isupper() or ch.isdigit() or ch in "+#" for ch in token)
-        if len(token) > config.min_token_length or is_short_tech_token:
+        is_short_tech_token = len(token) == 2 and (token.isupper() or any(ch.isdigit() or ch in "+#" for ch in token))
+        if len(token) > min_length or (is_short_tech_token and config.min_token_length <= 2):
             normalized = _normalize_text_english(token)
-            if is_valid_english_tag(normalized, stopwords=en_stopwords, min_length=min_length) and (
-                _is_allowed_short_english_term(normalized, text)
-            ):
+            effective_min = 2 if is_short_tech_token else min_length
+            if is_valid_english_tag(normalized, stopwords=active_stopwords, min_length=effective_min):
                 result.append(normalized)
 
     return result

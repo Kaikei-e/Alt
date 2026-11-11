@@ -45,7 +45,7 @@ class SanitizationConfig(BaseModel):
     min_title_length: int = 1
     min_content_length: int = 1
     allow_html: bool = False
-    strip_urls: bool = False
+    strip_urls: bool = True
     max_url_length: int = 2048
 
 
@@ -285,27 +285,10 @@ class InputSanitizer:
                 warnings=warnings,
             )
 
-    @staticmethod
-    def _unescape_entities(text: str, max_passes: int = 5) -> str:
-        """Decode single- or multi-encoded HTML entities until fixed point."""
-        current = text
-        for _ in range(max_passes):
-            decoded = html.unescape(current)
-            if decoded == current:
-                break
-            current = decoded
-        return current
-
     def _sanitize_text(self, text: str) -> str:
         """Sanitize text content."""
         if not text:
             return ""
-
-        if not self.config.allow_html:
-            # Decode entities before tag stripping so entity-encoded script/tag
-            # payloads are parsed and removed as markup rather than left as text,
-            # and feed-encoded &nbsp;/&amp;nbsp; become whitespace instead of tokens.
-            text = self._unescape_entities(text)
 
         # Drop high-risk embedded content before invoking ``nh3`` so payloads from
         # script-like tags never reach downstream consumers as plain text.
@@ -321,9 +304,9 @@ class InputSanitizer:
         )
 
         if not self.config.allow_html:
-            # ``nh3.clean`` serialises HTML and re-encodes literal ``&`` as ``&amp;``;
-            # decode after all markup has already been stripped so downstream tokenisers
-            # do not split ``&amp;`` into ``amp``.
+            # Decode entities once after nh3 cleaning so escaped angle brackets in plain
+            # text (e.g. ``x&lt;y and z&gt;w``) are not parsed as markup and stripped,
+            # while entities such as ``&nbsp;`` and ``&amp;`` become plain characters.
             text = html.unescape(text)
 
         if self.config.strip_urls:
