@@ -13,10 +13,11 @@ const (
 	minCommunityTagCount = 4
 	maxCommunities       = 8
 
-	// Resolution parameter γ > 1 for the Reichardt-Bornholdt configuration null
-	// model discounts high-strength hub tags and prevents cross-topic merges
-	// while keeping sparse intra-topic clusters cohesive.
-	leidenResolution    = 1.25
+	// Resolution parameter γ = 1.15 (> 1) for Reichardt-Bornholdt configuration
+	// modularity on the association-strength graph keeps generic hubs out of
+	// topic clusters (γ <= 1.10 merges hubs into topics) while staying below the
+	// split threshold of sparse 4-tag rings alongside high-count tags (γ_c ≈ 1.176).
+	leidenResolution    = 1.15
 	maxLeidenIterations = 10
 	maxLeidenLevels     = 10
 	maxMovePasses       = 30
@@ -30,7 +31,7 @@ type indexPair struct {
 
 type partnerEdge struct {
 	partner int
-	ochiai  float64
+	weight  float64
 }
 
 type rawEdge struct {
@@ -39,10 +40,27 @@ type rawEdge struct {
 	ochiai      float64
 }
 
-// buildAssociationGraph ranks tags in the fixed order (article count
-// descending, then tag name ascending) and returns fixedOrder (rank -> item
-// index) together with the undirected Ochiai adjacency list indexed by rank.
-func buildAssociationGraph(items []*domain.TagCloudItem, cooccurrences []*domain.TagCooccurrence) ([]int, [][]partnerEdge) {
+func ochiaiWeight(shared, countA, countB int) float64 {
+	return float64(shared) / math.Sqrt(float64(countA)*float64(countB))
+}
+
+// associationStrengthWeight normalises co-occurrence counts by the product of
+// marginal tag article counts, w_ij = c_ij / (n_i * n_j), following
+// van Eck & Waltman (2009), JASIST 60(8):1635-1651 (https://doi.org/10.1002/asi.21075),
+// Eq. (6). The corpus-size factor cancels in Reichardt-Bornholdt modularity
+// because W_C / 2m and (Sigma_C / 2m)^2 are invariant to positive weight scaling.
+func associationStrengthWeight(shared, countA, countB int) float64 {
+	return float64(shared) / (float64(countA) * float64(countB))
+}
+
+// buildWeightedGraph ranks tags in the fixed order (article count descending,
+// then tag name ascending) and returns fixedOrder (rank -> item index) together
+// with the undirected weighted adjacency list indexed by rank.
+func buildWeightedGraph(
+	items []*domain.TagCloudItem,
+	cooccurrences []*domain.TagCooccurrence,
+	weightFn func(shared, countA, countB int) float64,
+) ([]int, [][]partnerEdge) {
 	n := len(items)
 	fixedOrder := make([]int, n)
 	for i := range n {
@@ -60,7 +78,7 @@ func buildAssociationGraph(items []*domain.TagCloudItem, cooccurrences []*domain
 		nameToRank[items[itemIdx].TagName] = rank
 	}
 
-	pairOchiai := make(map[indexPair]float64, len(cooccurrences))
+	pairWeight := make(map[indexPair]float64, len(cooccurrences))
 	for _, c := range cooccurrences {
 		if c.SharedCount <= 0 {
 			continue
@@ -75,25 +93,25 @@ func buildAssociationGraph(items []*domain.TagCloudItem, cooccurrences []*domain
 		if countA <= 0 || countB <= 0 {
 			continue
 		}
-		ochiai := float64(c.SharedCount) / math.Sqrt(float64(countA)*float64(countB))
+		w := weightFn(c.SharedCount, countA, countB)
 		u, v := rankA, rankB
 		if u > v {
 			u, v = v, u
 		}
 		key := indexPair{u: u, v: v}
-		if prev, exists := pairOchiai[key]; !exists || ochiai > prev {
-			pairOchiai[key] = ochiai
+		if prev, exists := pairWeight[key]; !exists || w > prev {
+			pairWeight[key] = w
 		}
 	}
 
-	if len(pairOchiai) == 0 {
+	if len(pairWeight) == 0 {
 		return fixedOrder, nil
 	}
 
 	adj := make([][]partnerEdge, n)
-	for pair, w := range pairOchiai {
-		adj[pair.u] = append(adj[pair.u], partnerEdge{partner: pair.v, ochiai: w})
-		adj[pair.v] = append(adj[pair.v], partnerEdge{partner: pair.u, ochiai: w})
+	for pair, w := range pairWeight {
+		adj[pair.u] = append(adj[pair.u], partnerEdge{partner: pair.v, weight: w})
+		adj[pair.v] = append(adj[pair.v], partnerEdge{partner: pair.u, weight: w})
 	}
 	// Sort neighbour lists by fixed-order rank so floating-point summation and
 	// tie-breaking are independent of map iteration or input slice order.
@@ -106,6 +124,10 @@ func buildAssociationGraph(items []*domain.TagCloudItem, cooccurrences []*domain
 	return fixedOrder, adj
 }
 
+func buildAssociationGraph(items []*domain.TagCloudItem, cooccurrences []*domain.TagCooccurrence) ([]int, [][]partnerEdge) {
+	return buildWeightedGraph(items, cooccurrences, associationStrengthWeight)
+}
+
 // ComputeEdges selects each tag's 3 strongest partners by Ochiai coefficient,
 // takes the deduplicated undirected union (source_index < target_index), caps
 // at the 600 strongest, normalises weights to (0, 1] by the maximum kept
@@ -115,7 +137,7 @@ func ComputeEdges(items []*domain.TagCloudItem, cooccurrences []*domain.TagCoocc
 		return nil
 	}
 
-	fixedOrder, adj := buildAssociationGraph(items, cooccurrences)
+	fixedOrder, adj := buildWeightedGraph(items, cooccurrences, ochiaiWeight)
 	if adj == nil {
 		return nil
 	}
@@ -129,7 +151,7 @@ func ComputeEdges(items []*domain.TagCloudItem, cooccurrences []*domain.TagCoocc
 		// Break equal-Ochiai partner ties by fixed rank (article count desc,
 		// tag name asc) so kept partners do not depend on input slice order.
 		slices.SortFunc(sorted, func(a, b partnerEdge) int {
-			if c := cmp.Compare(b.ochiai, a.ochiai); c != 0 {
+			if c := cmp.Compare(b.weight, a.weight); c != 0 {
 				return c
 			}
 			return cmp.Compare(a.partner, b.partner)
@@ -141,7 +163,7 @@ func ComputeEdges(items []*domain.TagCloudItem, cooccurrences []*domain.TagCoocc
 			if u > v {
 				u, v = v, u
 			}
-			keptMap[indexPair{u: u, v: v}] = p.ochiai
+			keptMap[indexPair{u: u, v: v}] = p.weight
 		}
 	}
 
@@ -201,9 +223,9 @@ type leidenGraph struct {
 
 // ComputeClusters assigns topic communities via the deterministic Leiden
 // algorithm optimising Reichardt-Bornholdt configuration modularity over the
-// full Ochiai association graph. Communities with fewer than 4 tags receive
-// cluster 0, and up to the 8 largest communities by total article count
-// receive clusters 1..8.
+// association-strength graph (w_ij = c_ij / (n_i * n_j)). Communities with
+// fewer than 4 tags receive cluster 0, and up to the 8 largest communities by
+// total article count receive clusters 1..8.
 func ComputeClusters(items []*domain.TagCloudItem, cooccurrences []*domain.TagCooccurrence) {
 	n := len(items)
 	for _, item := range items {
@@ -225,7 +247,7 @@ func ComputeClusters(items []*domain.TagCloudItem, cooccurrences []*domain.TagCo
 		seedRank[r] = r
 		s := 0.0
 		for _, nb := range adj[r] {
-			s += nb.ochiai
+			s += nb.weight
 		}
 		strength[r] = s
 		twoM += s
@@ -358,6 +380,8 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) {
 	touched := make([]int, 0, 16)
 
 	scale := gamma / g.twoM
+	moveEps := qualityEps * g.twoM
+	tol := floatTol * g.twoM
 	maxSteps := m * maxMovePasses
 
 	for head := 0; head < len(queue) && head < maxSteps; head++ {
@@ -376,7 +400,7 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) {
 				commSeen[c] = true
 				touched = append(touched, c)
 			}
-			commWeights[c] += nb.ochiai
+			commWeights[c] += nb.weight
 		}
 
 		ku := g.strength[u]
@@ -388,7 +412,7 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) {
 		isolateSelected := false
 		if commSize[oldComm] > 1 {
 			isolateDelta := -stayScore
-			if isolateDelta > qualityEps {
+			if isolateDelta > moveEps {
 				bestDelta = isolateDelta
 				isolateSelected = true
 			}
@@ -401,10 +425,10 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) {
 			}
 			candScore := commWeights[c] - scale*ku*sigmaTot[c]
 			delta := candScore - stayScore
-			if delta <= qualityEps {
+			if delta <= moveEps {
 				continue
 			}
-			if delta > bestDelta+floatTol {
+			if delta > bestDelta+tol {
 				bestDelta = delta
 				bestComm = c
 				isolateSelected = false
@@ -498,7 +522,7 @@ func leidenRefine(g *leidenGraph, parentComm []int, numParent int, gamma float64
 		wInP := 0.0
 		for _, nb := range g.adj[u] {
 			if parentComm[nb.partner] == p {
-				wInP += nb.ochiai
+				wInP += nb.weight
 			}
 		}
 		nodeWeightInParent[u] = wInP
@@ -509,6 +533,8 @@ func leidenRefine(g *leidenGraph, parentComm []int, numParent int, gamma float64
 	refSeen := make([]bool, m)
 	touched := make([]int, 0, 16)
 	scale := gamma / g.twoM
+	moveEps := qualityEps * g.twoM
+	tol := floatTol * g.twoM
 
 	for p := range numParent {
 		members := parentMembers[p]
@@ -522,7 +548,7 @@ func leidenRefine(g *leidenGraph, parentComm []int, numParent int, gamma float64
 				continue
 			}
 			ku := g.strength[u]
-			if nodeWeightInParent[u]+floatTol < scale*ku*(pTot-ku) {
+			if nodeWeightInParent[u]+tol < scale*ku*(pTot-ku) {
 				continue
 			}
 
@@ -537,22 +563,22 @@ func leidenRefine(g *leidenGraph, parentComm []int, numParent int, gamma float64
 					refSeen[r] = true
 					touched = append(touched, r)
 				}
-				refWeights[r] += nb.ochiai
+				refWeights[r] += nb.weight
 			}
 
 			bestRef := -1
-			bestDelta := qualityEps
+			bestDelta := moveEps
 			slices.Sort(touched)
 			for _, r := range touched {
 				if r == refComm[u] {
 					continue
 				}
 				rTot := refSigmaTot[r]
-				if refCutToParent[r]+floatTol < scale*rTot*(pTot-rTot) {
+				if refCutToParent[r]+tol < scale*rTot*(pTot-rTot) {
 					continue
 				}
 				delta := refWeights[r] - scale*ku*rTot
-				if delta > bestDelta+floatTol {
+				if delta > bestDelta+tol {
 					bestDelta = delta
 					bestRef = r
 				}
@@ -613,14 +639,14 @@ func leidenAggregate(g *leidenGraph, parentComm []int, refComm []int, numRefined
 			if a > b {
 				a, b = b, a
 			}
-			pairWeights[indexPair{u: a, v: b}] += nb.ochiai
+			pairWeights[indexPair{u: a, v: b}] += nb.weight
 		}
 	}
 
 	adj := make([][]partnerEdge, numRefined)
 	for pair, w := range pairWeights {
-		adj[pair.u] = append(adj[pair.u], partnerEdge{partner: pair.v, ochiai: w})
-		adj[pair.v] = append(adj[pair.v], partnerEdge{partner: pair.u, ochiai: w})
+		adj[pair.u] = append(adj[pair.u], partnerEdge{partner: pair.v, weight: w})
+		adj[pair.v] = append(adj[pair.v], partnerEdge{partner: pair.u, weight: w})
 	}
 	for r := range numRefined {
 		slices.SortFunc(adj[r], func(a, b partnerEdge) int {

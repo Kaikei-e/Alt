@@ -626,7 +626,7 @@ func TestRunLeiden_NodeLevelLocalOptimality(t *testing.T) {
 	for r := range n {
 		seedRank[r] = r
 		for _, nb := range adj[r] {
-			strength[r] += nb.ochiai
+			strength[r] += nb.weight
 		}
 		twoM += strength[r]
 	}
@@ -648,6 +648,7 @@ func TestRunLeiden_NodeLevelLocalOptimality(t *testing.T) {
 	}
 
 	scale := leidenResolution / twoM
+	moveEps := qualityEps * twoM
 	improvingNodes := 0
 	maxGain := 0.0
 	for u := range n {
@@ -655,7 +656,7 @@ func TestRunLeiden_NodeLevelLocalOptimality(t *testing.T) {
 		ku := strength[u]
 		commWeights := make(map[int]float64)
 		for _, nb := range adj[u] {
-			commWeights[labels[nb.partner]] += nb.ochiai
+			commWeights[labels[nb.partner]] += nb.weight
 		}
 		stayScore := commWeights[oldComm] - scale*ku*(sigmaTot[oldComm]-ku)
 
@@ -672,7 +673,7 @@ func TestRunLeiden_NodeLevelLocalOptimality(t *testing.T) {
 				bestGain = gain
 			}
 		}
-		if bestGain > qualityEps {
+		if bestGain > moveEps {
 			improvingNodes++
 			if bestGain > maxGain {
 				maxGain = bestGain
@@ -896,9 +897,10 @@ func TestComputeClusters_LinkedHubsDoNotAbsorbTopics(t *testing.T) {
 }
 
 func TestComputeClusters_SingleCommunityGraph(t *testing.T) {
-	// With γ > 1, a whole-graph single community scores 1 - γ < 0 under the
-	// configuration null model, so standalone single-topic graphs split below
-	// minCommunityTagCount and receive ClusterID 0.
+	// Under Reichardt-Bornholdt configuration modularity with γ = 1.15 (> 1), a
+	// standalone uniform k-clique stays singletons iff γ >= k/(k-1): lone 4-cycles
+	// and k >= 8 cliques split below minCommunityTagCount (ClusterID 0), while a
+	// lone 6-clique (6/5 = 1.20 > 1.15) remains a single community (ClusterID 1).
 	t.Run("lone 4-cycle splits into pairs and receives cluster 0", func(t *testing.T) {
 		items := []*domain.TagCloudItem{
 			{TagName: "a", ArticleCount: 100},
@@ -921,7 +923,7 @@ func TestComputeClusters_SingleCommunityGraph(t *testing.T) {
 		}
 	})
 
-	t.Run("lone 6-clique stays singletons and receives cluster 0", func(t *testing.T) {
+	t.Run("lone 6-clique stays together under gamma 1.15 and receives cluster 1", func(t *testing.T) {
 		items := make([]*domain.TagCloudItem, 6)
 		for i := range items {
 			items[i] = &domain.TagCloudItem{
@@ -942,8 +944,35 @@ func TestComputeClusters_SingleCommunityGraph(t *testing.T) {
 
 		ComputeClusters(items, coocs)
 		for _, it := range items {
+			if it.ClusterID != 1 {
+				t.Errorf("tag %q in lone 6-clique got ClusterID %d, want 1", it.TagName, it.ClusterID)
+			}
+		}
+	})
+
+	t.Run("lone 8-clique stays singletons and receives cluster 0", func(t *testing.T) {
+		items := make([]*domain.TagCloudItem, 8)
+		for i := range items {
+			items[i] = &domain.TagCloudItem{
+				TagName:      fmt.Sprintf("k8-%d", i),
+				ArticleCount: 100,
+			}
+		}
+		var coocs []*domain.TagCooccurrence
+		for i := 0; i < len(items); i++ {
+			for j := i + 1; j < len(items); j++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    items[i].TagName,
+					TagNameB:    items[j].TagName,
+					SharedCount: 50,
+				})
+			}
+		}
+
+		ComputeClusters(items, coocs)
+		for _, it := range items {
 			if it.ClusterID != 0 {
-				t.Errorf("tag %q in lone 6-clique got ClusterID %d, want 0", it.TagName, it.ClusterID)
+				t.Errorf("tag %q in lone 8-clique got ClusterID %d, want 0", it.TagName, it.ClusterID)
 			}
 		}
 	})
