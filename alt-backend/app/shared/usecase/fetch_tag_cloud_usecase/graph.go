@@ -16,10 +16,12 @@ const (
 	// Resolution parameter γ > 1 for the Reichardt-Bornholdt configuration null
 	// model discounts high-strength hub tags and prevents cross-topic merges
 	// while keeping sparse intra-topic clusters cohesive.
-	leidenResolution = 1.25
-	maxLeidenLevels  = 10
-	maxMovePasses    = 30
-	qualityEps       = 1e-12
+	leidenResolution    = 1.25
+	maxLeidenIterations = 10
+	maxLeidenLevels     = 10
+	maxMovePasses       = 30
+	qualityEps          = 1e-12
+	floatTol            = 1e-15
 )
 
 type indexPair struct {
@@ -228,9 +230,6 @@ func ComputeClusters(items []*domain.TagCloudItem, cooccurrences []*domain.TagCo
 		strength[r] = s
 		twoM += s
 	}
-	if twoM <= 0 {
-		return
-	}
 
 	labels := runLeiden(&leidenGraph{
 		n:        n,
@@ -252,8 +251,6 @@ func ComputeClusters(items []*domain.TagCloudItem, cooccurrences []*domain.TagCo
 		if !ok {
 			comm = &community{seedRank: r}
 			byLabel[lbl] = comm
-		} else if r < comm.seedRank {
-			comm.seedRank = r
 		}
 		comm.memberRanks = append(comm.memberRanks, r)
 		comm.totalArticle += items[fixedOrder[r]].ArticleCount
@@ -286,48 +283,53 @@ func ComputeClusters(items []*domain.TagCloudItem, cooccurrences []*domain.TagCo
 }
 
 func runLeiden(g0 *leidenGraph, gamma float64) []int {
-	g := g0
-	comm := make([]int, g.n)
+	partition := make([]int, g0.n)
+	for i := range g0.n {
+		partition[i] = i
+	}
+	partition, _ = canonicalisePartition(g0, partition)
+
 	origToNode := make([]int, g0.n)
-	for i := range g.n {
-		comm[i] = i
-		origToNode[i] = i
-	}
-
-	for range maxLeidenLevels {
-		moved := leidenMoveNodes(g, comm, gamma)
-		parentComm, numParent := canonicalisePartition(g, comm)
-
-		if !moved && numParent == g.n {
-			comm = parentComm
-			break
+	for range maxLeidenIterations {
+		g := g0
+		comm := slices.Clone(partition)
+		for i := range g0.n {
+			origToNode[i] = i
 		}
 
-		refComm, numRefined := leidenRefine(g, parentComm, numParent, gamma)
-		if numRefined == g.n {
-			comm = parentComm
-			break
+		for range maxLeidenLevels {
+			leidenMoveNodes(g, comm, gamma)
+			parentComm, numParent := canonicalisePartition(g, comm)
+
+			refComm, numRefined := leidenRefine(g, parentComm, numParent, gamma)
+			if numRefined == g.n {
+				comm = parentComm
+				break
+			}
+
+			gNext, nextInitComm, nodeToNext := leidenAggregate(g, parentComm, refComm, numRefined)
+			for r, cur := range origToNode {
+				origToNode[r] = nodeToNext[cur]
+			}
+			g = gNext
+			comm = nextInitComm
 		}
 
-		gNext, nextInitComm, nodeToNext := leidenAggregate(g, parentComm, refComm, numRefined)
-		for r, cur := range origToNode {
-			origToNode[r] = nodeToNext[cur]
+		finalComm, _ := canonicalisePartition(g, comm)
+		next := make([]int, g0.n)
+		for r, superIdx := range origToNode {
+			next[r] = finalComm[superIdx]
 		}
-		g = gNext
-		comm = nextInitComm
+		if slices.Equal(next, partition) {
+			return next
+		}
+		partition = next
 	}
 
-	finalComm, _ := canonicalisePartition(g, comm)
-	result := make([]int, g0.n)
-	for r, superIdx := range origToNode {
-		result[r] = finalComm[superIdx]
-	}
-	return result
+	return partition
 }
 
-// leidenMoveNodes runs Leiden's fast queue-based local moving phase in
-// canonical node order, returning true if at least one node changed community.
-func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) bool {
+func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) {
 	m := g.n
 	sigmaTot := make([]float64, m)
 	commSize := make([]int, m)
@@ -344,16 +346,6 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) bool {
 		}
 	}
 
-	minSeedOfComm := func(target int) int {
-		best := math.MaxInt
-		for v := range m {
-			if comm[v] == target && g.seedRank[v] < best {
-				best = g.seedRank[v]
-			}
-		}
-		return best
-	}
-
 	queue := make([]int, m, m*(maxMovePasses+1))
 	inQueue := make([]bool, m)
 	for u := range m {
@@ -366,7 +358,6 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) bool {
 	touched := make([]int, 0, 16)
 
 	scale := gamma / g.twoM
-	anyMoved := false
 	maxSteps := m * maxMovePasses
 
 	for head := 0; head < len(queue) && head < maxSteps; head++ {
@@ -394,15 +385,11 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) bool {
 
 		bestComm := oldComm
 		bestDelta := 0.0
-		bestSeed := -1
-
-		// Consider isolating u into its own singleton community when oldComm has >1 members.
 		isolateSelected := false
 		if commSize[oldComm] > 1 {
 			isolateDelta := -stayScore
 			if isolateDelta > qualityEps {
 				bestDelta = isolateDelta
-				bestSeed = g.seedRank[u]
 				isolateSelected = true
 			}
 		}
@@ -417,22 +404,10 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) bool {
 			if delta <= qualityEps {
 				continue
 			}
-			if delta > bestDelta+1e-15 {
+			if delta > bestDelta+floatTol {
 				bestDelta = delta
 				bestComm = c
-				bestSeed = -1
 				isolateSelected = false
-			} else if math.Abs(delta-bestDelta) <= 1e-15 {
-				if bestSeed < 0 {
-					bestSeed = minSeedOfComm(bestComm)
-				}
-				candSeed := minSeedOfComm(c)
-				if candSeed < bestSeed {
-					bestDelta = delta
-					bestComm = c
-					bestSeed = candSeed
-					isolateSelected = false
-				}
 			}
 		}
 
@@ -448,7 +423,6 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) bool {
 			continue
 		}
 
-		anyMoved = true
 		comm[u] = bestComm
 		sigmaTot[oldComm] -= ku
 		commSize[oldComm]--
@@ -466,12 +440,8 @@ func leidenMoveNodes(g *leidenGraph, comm []int, gamma float64) bool {
 			}
 		}
 	}
-
-	return anyMoved
 }
 
-// canonicalisePartition remaps community IDs to 0..k-1 ordered by each
-// community's minimum seedRank.
 func canonicalisePartition(g *leidenGraph, comm []int) ([]int, int) {
 	minSeed := make(map[int]int)
 	for u, c := range comm {
@@ -504,8 +474,6 @@ func canonicalisePartition(g *leidenGraph, comm []int) ([]int, int) {
 	return out, len(infos)
 }
 
-// leidenRefine splits or regroups each parent community from singletons so
-// every aggregated super-node is guaranteed to be internally well-connected.
 func leidenRefine(g *leidenGraph, parentComm []int, numParent int, gamma float64) ([]int, int) {
 	m := g.n
 	parentSigmaTot := make([]float64, numParent)
@@ -554,8 +522,7 @@ func leidenRefine(g *leidenGraph, parentComm []int, numParent int, gamma float64
 				continue
 			}
 			ku := g.strength[u]
-			// Node u must be well-connected to P \ {u}.
-			if nodeWeightInParent[u]+1e-15 < scale*ku*(pTot-ku) {
+			if nodeWeightInParent[u]+floatTol < scale*ku*(pTot-ku) {
 				continue
 			}
 
@@ -581,12 +548,11 @@ func leidenRefine(g *leidenGraph, parentComm []int, numParent int, gamma float64
 					continue
 				}
 				rTot := refSigmaTot[r]
-				// Candidate refined sub-community R must also be well-connected to P \ R.
-				if refCutToParent[r]+1e-15 < scale*rTot*(pTot-rTot) {
+				if refCutToParent[r]+floatTol < scale*rTot*(pTot-rTot) {
 					continue
 				}
 				delta := refWeights[r] - scale*ku*rTot
-				if delta > bestDelta+1e-15 {
+				if delta > bestDelta+floatTol {
 					bestDelta = delta
 					bestRef = r
 				}

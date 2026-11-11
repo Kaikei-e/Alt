@@ -692,3 +692,57 @@ func BenchmarkComputeClusters_300Nodes_HubHeavy(b *testing.B) {
 		ComputeClusters(items, coocs)
 	}
 }
+
+func TestComputeClusters_SingleCommunityGraph(t *testing.T) {
+	// With γ > 1, a whole-graph single community scores 1 - γ < 0 under the
+	// configuration null model, so standalone single-topic graphs split below
+	// minCommunityTagCount and receive ClusterID 0.
+	t.Run("lone 4-cycle splits into pairs and receives cluster 0", func(t *testing.T) {
+		items := []*domain.TagCloudItem{
+			{TagName: "a", ArticleCount: 100},
+			{TagName: "b", ArticleCount: 90},
+			{TagName: "c", ArticleCount: 80},
+			{TagName: "d", ArticleCount: 70},
+		}
+		coocs := []*domain.TagCooccurrence{
+			{TagNameA: "a", TagNameB: "b", SharedCount: 40},
+			{TagNameA: "b", TagNameB: "c", SharedCount: 35},
+			{TagNameA: "c", TagNameB: "d", SharedCount: 30},
+			{TagNameA: "a", TagNameB: "d", SharedCount: 25},
+		}
+
+		ComputeClusters(items, coocs)
+		for _, it := range items {
+			if it.ClusterID != 0 {
+				t.Errorf("tag %q in lone 4-cycle got ClusterID %d, want 0", it.TagName, it.ClusterID)
+			}
+		}
+	})
+
+	t.Run("lone 6-clique stays singletons and receives cluster 0", func(t *testing.T) {
+		items := make([]*domain.TagCloudItem, 6)
+		for i := range items {
+			items[i] = &domain.TagCloudItem{
+				TagName:      fmt.Sprintf("k-%d", i),
+				ArticleCount: 100,
+			}
+		}
+		var coocs []*domain.TagCooccurrence
+		for i := 0; i < len(items); i++ {
+			for j := i + 1; j < len(items); j++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    items[i].TagName,
+					TagNameB:    items[j].TagName,
+					SharedCount: 50,
+				})
+			}
+		}
+
+		ComputeClusters(items, coocs)
+		for _, it := range items {
+			if it.ClusterID != 0 {
+				t.Errorf("tag %q in lone 6-clique got ClusterID %d, want 0", it.TagName, it.ClusterID)
+			}
+		}
+	})
+}
