@@ -977,3 +977,160 @@ func TestComputeClusters_SingleCommunityGraph(t *testing.T) {
 		}
 	})
 }
+
+func TestComputeClusters_SeparatesModeratelyCoupledDenseTopics(t *testing.T) {
+	const (
+		coupledSize      = 10
+		numOtherTopics   = 4
+		otherTopicSize   = 10
+		numHubs          = 4
+		numTailTags      = 3
+		crossPartnerStep = 5
+	)
+
+	var items []*domain.TagCloudItem
+	var coocs []*domain.TagCooccurrence
+
+	addDenseGroup := func(prefix string, size, baseCount int) ([]string, []int) {
+		names := make([]string, size)
+		counts := make([]int, size)
+		for m := range size {
+			name := fmt.Sprintf("%s-%d", prefix, m)
+			count := baseCount - m*2
+			names[m] = name
+			counts[m] = count
+			items = append(items, &domain.TagCloudItem{
+				TagName:      name,
+				ArticleCount: count,
+			})
+		}
+		for i := 0; i < size; i++ {
+			for j := i + 1; j < size; j++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    names[i],
+					TagNameB:    names[j],
+					SharedCount: (counts[i] + counts[j]) / 3,
+				})
+			}
+		}
+		return names, counts
+	}
+
+	// Two dense 10-tag topic groups (intra-group Ochiai ~ 0.67) linked by
+	// moderate cross-group co-occurrence (half the cross-pairs at Ochiai ~ 0.35):
+	// strong enough to merge at low resolution (gamma = 1.15), weak enough
+	// relative to intra-group density that gamma = 2.0 keeps them separate.
+	webGroup, _ := addDenseGroup("web", coupledSize, 112)
+	agentGroup, _ := addDenseGroup("agent", coupledSize, 104)
+	for i := range coupledSize {
+		for step := range crossPartnerStep {
+			j := (i + step) % coupledSize
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    webGroup[i],
+				TagNameB:    agentGroup[j],
+				SharedCount: 35,
+			})
+		}
+	}
+
+	// Embed inside a realistic multi-topic graph so total graph weight 2m
+	// reflects a full tag cloud rather than a two-community toy graph.
+	otherGroups := make([][]string, numOtherTopics)
+	for g := range numOtherTopics {
+		otherGroups[g], _ = addDenseGroup(fmt.Sprintf("other-%d", g), otherTopicSize, 110-g*8)
+	}
+	for g := range numOtherTopics {
+		next := (g + 1) % numOtherTopics
+		coocs = append(coocs, &domain.TagCooccurrence{
+			TagNameA:    otherGroups[g][0],
+			TagNameB:    otherGroups[next][0],
+			SharedCount: 5,
+		})
+	}
+
+	hubNames := make([]string, numHubs)
+	for h := range numHubs {
+		name := fmt.Sprintf("hub-%d", h)
+		hubNames[h] = name
+		items = append(items, &domain.TagCloudItem{
+			TagName:      name,
+			ArticleCount: 400 - h*25,
+		})
+	}
+	for i := 0; i < numHubs; i++ {
+		for j := i + 1; j < numHubs; j++ {
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    hubNames[i],
+				TagNameB:    hubNames[j],
+				SharedCount: 95,
+			})
+		}
+		for _, grp := range append([][]string{webGroup, agentGroup}, otherGroups...) {
+			for m := i; m < len(grp); m += numHubs {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    hubNames[i],
+					TagNameB:    grp[m],
+					SharedCount: 22,
+				})
+			}
+		}
+	}
+
+	for i := range numTailTags {
+		items = append(items, &domain.TagCloudItem{
+			TagName:      fmt.Sprintf("tail-%d", i),
+			ArticleCount: 18 - i*2,
+		})
+	}
+
+	ComputeClusters(items, coocs)
+
+	byName := make(map[string]int, len(items))
+	for _, it := range items {
+		byName[it.TagName] = it.ClusterID
+	}
+
+	webCluster := byName[webGroup[0]]
+	if webCluster == 0 {
+		t.Fatalf("web topic group left unclustered (ClusterID=0)")
+	}
+	for _, name := range webGroup[1:] {
+		if byName[name] != webCluster {
+			t.Fatalf("web topic group split: %q=%d, %q=%d", webGroup[0], webCluster, name, byName[name])
+		}
+	}
+
+	agentCluster := byName[agentGroup[0]]
+	if agentCluster == 0 {
+		t.Fatalf("agent topic group left unclustered (ClusterID=0)")
+	}
+	for _, name := range agentGroup[1:] {
+		if byName[name] != agentCluster {
+			t.Fatalf("agent topic group split: %q=%d, %q=%d", agentGroup[0], agentCluster, name, byName[name])
+		}
+	}
+
+	if webCluster == agentCluster {
+		t.Fatalf("moderately coupled web and agent topic groups merged into ClusterID %d; want distinct non-zero ClusterIDs", webCluster)
+	}
+
+	seenTopicClusters := map[int]string{
+		webCluster:   "web",
+		agentCluster: "agent",
+	}
+	for g, grp := range otherGroups {
+		cid := byName[grp[0]]
+		if cid == 0 {
+			t.Fatalf("other topic group %d left unclustered (ClusterID=0)", g)
+		}
+		for _, name := range grp[1:] {
+			if byName[name] != cid {
+				t.Fatalf("other topic group %d split: %q=%d, %q=%d", g, grp[0], cid, name, byName[name])
+			}
+		}
+		if prev, dup := seenTopicClusters[cid]; dup {
+			t.Fatalf("other topic group %d merged with %q into ClusterID %d", g, prev, cid)
+		}
+		seenTopicClusters[cid] = fmt.Sprintf("other-%d", g)
+	}
+}
