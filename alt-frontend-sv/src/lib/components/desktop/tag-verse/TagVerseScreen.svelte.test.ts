@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { TagCloudItem } from "#lib/connect/index.js";
+import type { TagCloudData } from "#lib/connect/articles.js";
 
 const { mockFetchTagCloud, mockIsWebGL2Available } = vi.hoisted(() => ({
 	mockFetchTagCloud: vi.fn(),
@@ -38,15 +38,19 @@ describe("TagVerseScreen", () => {
 	it("renders Alt-Paper top bar, role='alert' on error, and retries load without page reload", async () => {
 		mockFetchTagCloud
 			.mockRejectedValueOnce(new Error("Network failure"))
-			.mockResolvedValueOnce([
-				{
-					tagName: "svelte",
-					articleCount: 1,
-					positionX: 0,
-					positionY: 0,
-					positionZ: 0,
-				},
-			]);
+			.mockResolvedValueOnce({
+				tags: [
+					{
+						tagName: "svelte",
+						articleCount: 1,
+						positionX: 0,
+						positionY: 0,
+						positionZ: 0,
+						clusterId: 0,
+					},
+				],
+				edges: [],
+			});
 
 		render(TagVerseScreen);
 
@@ -69,10 +73,10 @@ describe("TagVerseScreen", () => {
 	});
 
 	it("renders loading with role='status', empty state text, and WebGL-unavailable state text", async () => {
-		let resolveTags: ((tags: TagCloudItem[]) => void) | undefined;
+		let resolveCloud: ((data: TagCloudData) => void) | undefined;
 		mockFetchTagCloud.mockReturnValueOnce(
-			new Promise<TagCloudItem[]>((resolve) => {
-				resolveTags = resolve;
+			new Promise<TagCloudData>((resolve) => {
+				resolveCloud = resolve;
 			}),
 		);
 
@@ -83,7 +87,7 @@ describe("TagVerseScreen", () => {
 			.element(statusRegion, { timeout: 1000 })
 			.toHaveTextContent("Loading tags");
 
-		resolveTags?.([]);
+		resolveCloud?.({ tags: [], edges: [] });
 		await expect
 			.element(
 				page.getByText(
@@ -107,22 +111,27 @@ describe("TagVerseScreen", () => {
 	});
 
 	it("keeps detail panel open when Escape is pressed in 'Find a tag' search box and moves focus to new heading when switching tags", async () => {
-		mockFetchTagCloud.mockResolvedValue([
-			{
-				tagName: "svelte",
-				articleCount: 10,
-				positionX: 0,
-				positionY: 0,
-				positionZ: 0,
-			},
-			{
-				tagName: "rust",
-				articleCount: 20,
-				positionX: 1,
-				positionY: 1,
-				positionZ: 1,
-			},
-		]);
+		mockFetchTagCloud.mockResolvedValue({
+			tags: [
+				{
+					tagName: "svelte",
+					articleCount: 10,
+					positionX: 0,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 0,
+				},
+				{
+					tagName: "rust",
+					articleCount: 20,
+					positionX: 1,
+					positionY: 1,
+					positionZ: 1,
+					clusterId: 0,
+				},
+			],
+			edges: [],
+		});
 
 		render(TagVerseScreen);
 
@@ -159,5 +168,116 @@ describe("TagVerseScreen", () => {
 		await expect.element(rustHeading).toBeInTheDocument();
 		const rustHeadingEl = await rustHeading.element();
 		expect(document.activeElement).toBe(rustHeadingEl);
+	});
+
+	it("overlays the detail panel without changing the canvas container width", async () => {
+		mockFetchTagCloud.mockResolvedValue({
+			tags: [
+				{
+					tagName: "rust",
+					articleCount: 50,
+					positionX: 1,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 1,
+				},
+			],
+			edges: [],
+		});
+
+		const { container } = render(TagVerseScreen);
+
+		const rustBtn = page.getByRole("button", { name: "rust, 50 articles" });
+		await expect.element(rustBtn, { timeout: 1000 }).toBeInTheDocument();
+
+		const canvasRegion = container.querySelector<HTMLElement>(
+			'[data-testid="tag-verse-canvas-region"]',
+		);
+		expect(canvasRegion).not.toBeNull();
+		const widthBeforeOpen = canvasRegion?.getBoundingClientRect().width ?? 0;
+		expect(widthBeforeOpen).toBeGreaterThan(0);
+
+		await rustBtn.click();
+		const rustHeading = page.getByRole("heading", {
+			name: "rust",
+			exact: true,
+			level: 2,
+		});
+		await expect.element(rustHeading).toBeInTheDocument();
+
+		const widthAfterOpen = canvasRegion?.getBoundingClientRect().width ?? 0;
+		expect(widthAfterOpen).toBe(widthBeforeOpen);
+	});
+
+	it("renders Topics key buttons that emphasise clusters on hover/focus and hides the key while a tag is selected", async () => {
+		mockFetchTagCloud.mockResolvedValue({
+			tags: [
+				{
+					tagName: "rust",
+					articleCount: 50,
+					positionX: 1,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 1,
+				},
+				{
+					tagName: "tokio",
+					articleCount: 30,
+					positionX: 2,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 1,
+				},
+				{
+					tagName: "svelte",
+					articleCount: 40,
+					positionX: -1,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 2,
+				},
+				{
+					tagName: "vite",
+					articleCount: 20,
+					positionX: -2,
+					positionY: 0,
+					positionZ: 0,
+					clusterId: 2,
+				},
+			],
+			edges: [{ sourceIndex: 0, targetIndex: 1, weight: 0.9 }],
+		});
+
+		render(TagVerseScreen);
+
+		const topicsRegion = page.getByRole("region", { name: /topics/i });
+		await expect.element(topicsRegion, { timeout: 1000 }).toBeInTheDocument();
+		const cluster1Btn = page.getByRole("button", {
+			name: /rust\s*·\s*tokio/i,
+		});
+		const cluster2Btn = page.getByRole("button", {
+			name: /svelte\s*·\s*vite/i,
+		});
+		await expect.element(cluster1Btn).toBeInTheDocument();
+
+		await cluster2Btn.hover();
+		await expect
+			.element(cluster2Btn)
+			.toHaveAttribute("data-emphasized", "true");
+
+		const cluster1El = (await cluster1Btn.element()) as HTMLButtonElement;
+		cluster1El.focus();
+		await expect
+			.element(cluster1Btn)
+			.toHaveAttribute("data-emphasized", "true");
+		await expect
+			.element(cluster2Btn)
+			.toHaveAttribute("data-emphasized", "false");
+
+		const rustIndexBtn = page.getByRole("button", {
+			name: "rust, 50 articles",
+		});
+		await rustIndexBtn.click();
+		await expect.element(topicsRegion).not.toBeInTheDocument();
 	});
 });

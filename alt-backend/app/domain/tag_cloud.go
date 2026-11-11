@@ -1,13 +1,22 @@
 package domain
 
-// TagCloudItem represents a tag with its associated article count
-// and 3D position for the Tag Verse visualization.
+// TagCloudItem represents a tag with its associated article count,
+// 3D position, and community cluster for the Tag Verse visualization.
 type TagCloudItem struct {
 	TagName      string  `json:"tag_name"`
 	ArticleCount int     `json:"article_count"`
 	PositionX    float64 `json:"position_x"`
 	PositionY    float64 `json:"position_y"`
 	PositionZ    float64 `json:"position_z"`
+	ClusterID    int     `json:"cluster_id"`
+}
+
+// TagCloudEdge represents a normalised co-occurrence link between two tags
+// indexed by their position in the returned TagCloudItem slice.
+type TagCloudEdge struct {
+	SourceIndex int     `json:"source_index"`
+	TargetIndex int     `json:"target_index"`
+	Weight      float64 `json:"weight"`
 }
 
 // TagCooccurrence represents a pair of tags that share articles.

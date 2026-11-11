@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
 	ALT_PAPER_DEFAULTS,
 	buildPalette,
+	clusterBaseInk,
+	clusterInkForTag,
 	contrastRatio,
+	mixTowardPaper,
 	relativeLuminance,
+	TOPIC_INKS,
 } from "./palette.js";
 
 describe("palette", () => {
@@ -95,5 +99,61 @@ describe("palette", () => {
 				3.0,
 			);
 		}
+	});
+
+	it("maps clusterId 1..8 deterministically to the eight muted print inks and keeps every bucket >= 3:1 against #faf9f7", () => {
+		const palette = buildPalette(
+			ALT_PAPER_DEFAULTS.paper,
+			ALT_PAPER_DEFAULTS.ink,
+			ALT_PAPER_DEFAULTS.accent,
+		);
+
+		expect(TOPIC_INKS).toEqual([
+			"#2b3a67",
+			"#8c1d1d",
+			"#2f6b3a",
+			"#8a5a00",
+			"#5b3a5e",
+			"#2f4f4f",
+			"#8b4a2b",
+			"#3f5f7f",
+		]);
+
+		for (let clusterId = 1; clusterId <= 8; clusterId++) {
+			const expectedBase = TOPIC_INKS[clusterId - 1] as string;
+			expect(clusterBaseInk(clusterId, palette)).toBe(expectedBase);
+			expect(clusterBaseInk(clusterId + 8, palette)).toBe(expectedBase);
+			expect(
+				contrastRatio(expectedBase, ALT_PAPER_DEFAULTS.paper),
+			).toBeGreaterThanOrEqual(3.0);
+
+			const lightest = clusterInkForTag(clusterId, 0, palette);
+			const darkest = clusterInkForTag(clusterId, 4, palette);
+			expect(darkest).toBe(expectedBase);
+			expect(relativeLuminance(lightest)).toBeGreaterThan(
+				relativeLuminance(darkest),
+			);
+
+			for (const bucket of [0, 1, 2, 3, 4] as const) {
+				const variant = clusterInkForTag(clusterId, bucket, palette);
+				expect(
+					contrastRatio(variant, ALT_PAPER_DEFAULTS.paper),
+				).toBeGreaterThanOrEqual(3.0);
+			}
+		}
+
+		// clusterId 0 uses the existing neutral ink ramp
+		for (const bucket of [0, 1, 2, 3, 4] as const) {
+			expect(clusterInkForTag(0, bucket, palette)).toBe(palette.ramp[bucket]);
+		}
+
+		// 75% mix toward paper for de-emphasised nodes
+		const faded = mixTowardPaper("#2b3a67", ALT_PAPER_DEFAULTS.paper, 0.75);
+		expect(relativeLuminance(faded)).toBeGreaterThan(
+			relativeLuminance("#2b3a67"),
+		);
+		expect(relativeLuminance(faded)).toBeLessThan(
+			relativeLuminance(ALT_PAPER_DEFAULTS.paper),
+		);
 	});
 });

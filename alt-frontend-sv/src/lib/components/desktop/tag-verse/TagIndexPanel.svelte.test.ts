@@ -11,6 +11,7 @@ const TAGS: TagCloudItem[] = [
 		positionX: 0,
 		positionY: 0,
 		positionZ: 0,
+		clusterId: 1,
 	},
 	{
 		tagName: "rust",
@@ -18,6 +19,7 @@ const TAGS: TagCloudItem[] = [
 		positionX: 1,
 		positionY: 1,
 		positionZ: 1,
+		clusterId: 2,
 	},
 	{
 		tagName: "golang",
@@ -25,6 +27,7 @@ const TAGS: TagCloudItem[] = [
 		positionX: -1,
 		positionY: 2,
 		positionZ: 0,
+		clusterId: 0,
 	},
 ];
 

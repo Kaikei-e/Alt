@@ -21,6 +21,7 @@ import {
 	type ArticleSummaryItem as ProtoArticleSummaryItem,
 	type ArticleTagItem as ProtoArticleTagItem,
 	type ImageProxyInfo as ProtoImageProxyInfo,
+	type TagCloudEdge as ProtoTagCloudEdge,
 	type TagCloudItem as ProtoTagCloudItem,
 	type TagTrailArticleItem as ProtoTagTrailArticleItem,
 	type StreamArticleTagsResponse,
@@ -650,6 +651,18 @@ export interface TagCloudItem {
 	positionX: number;
 	positionY: number;
 	positionZ: number;
+	clusterId: number;
+}
+
+export interface TagCloudEdge {
+	sourceIndex: number;
+	targetIndex: number;
+	weight: number;
+}
+
+export interface TagCloudData {
+	tags: TagCloudItem[];
+	edges: TagCloudEdge[];
 }
 
 /**
@@ -657,26 +670,49 @@ export interface TagCloudItem {
  *
  * @param transport - The Connect transport to use
  * @param limit - Maximum number of tags to return (default: 300, max: 500)
- * @returns Tag cloud items sorted by article count (descending)
+ * @returns Tag cloud tags (sorted by article count descending) and co-occurrence edges
  */
 export async function fetchTagCloud(
 	transport: Transport,
 	limit = 300,
-): Promise<TagCloudItem[]> {
+): Promise<TagCloudData> {
 	const client = createArticleClient(transport);
 	const response = (await client.fetchTagCloud({
 		limit,
 	})) as FetchTagCloudResponse;
 
-	return response.tags.map(
+	const tags = response.tags.map(
 		(item: ProtoTagCloudItem): TagCloudItem => ({
 			tagName: item.tagName,
 			articleCount: item.articleCount,
 			positionX: item.positionX,
 			positionY: item.positionY,
 			positionZ: item.positionZ,
+			clusterId: item.clusterId,
 		}),
 	);
+
+	const count = tags.length;
+	const edges: TagCloudEdge[] = response.edges
+		.filter(
+			(edge: ProtoTagCloudEdge) =>
+				Number.isInteger(edge.sourceIndex) &&
+				Number.isInteger(edge.targetIndex) &&
+				edge.sourceIndex >= 0 &&
+				edge.targetIndex >= 0 &&
+				edge.sourceIndex < count &&
+				edge.targetIndex < count &&
+				edge.sourceIndex !== edge.targetIndex,
+		)
+		.map(
+			(edge: ProtoTagCloudEdge): TagCloudEdge => ({
+				sourceIndex: edge.sourceIndex,
+				targetIndex: edge.targetIndex,
+				weight: edge.weight,
+			}),
+		);
+
+	return { tags, edges };
 }
 
 /**

@@ -1,15 +1,22 @@
 package articles
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/url"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"alt/config"
 	"alt/domain"
+	articlesv2 "alt/gen/proto/alt/articles/v2"
+	"alt/shared/usecase/fetch_tag_cloud_usecase"
+	"alt/utils/logger"
 )
 
 func TestClampPageLimit(t *testing.T) {
@@ -186,6 +193,7 @@ func TestConvertTagCloudItemsToProto(t *testing.T) {
 			PositionX:    1.5,
 			PositionY:    2.5,
 			PositionZ:    3.5,
+			ClusterID:    2,
 		},
 	}
 
@@ -196,6 +204,72 @@ func TestConvertTagCloudItemsToProto(t *testing.T) {
 	assert.Equal(t, float32(1.5), proto[0].PositionX)
 	assert.Equal(t, float32(2.5), proto[0].PositionY)
 	assert.Equal(t, float32(3.5), proto[0].PositionZ)
+	assert.Equal(t, int32(2), proto[0].ClusterId)
+}
+
+func TestConvertTagCloudEdgesToProto(t *testing.T) {
+	edges := []*domain.TagCloudEdge{
+		{
+			SourceIndex: 0,
+			TargetIndex: 2,
+			Weight:      0.75,
+		},
+	}
+
+	proto := convertTagCloudEdgesToProto(edges)
+	require.Len(t, proto, 1)
+	assert.Equal(t, int32(0), proto[0].SourceIndex)
+	assert.Equal(t, int32(2), proto[0].TargetIndex)
+	assert.InDelta(t, float32(0.75), proto[0].Weight, 1e-6)
+}
+
+type stubTagCloudPort struct {
+	items         []*domain.TagCloudItem
+	cooccurrences []*domain.TagCooccurrence
+}
+
+func (s *stubTagCloudPort) FetchTagCloud(_ context.Context, _ int) ([]*domain.TagCloudItem, error) {
+	return s.items, nil
+}
+
+func (s *stubTagCloudPort) FetchTagCooccurrences(_ context.Context, _ []string) ([]*domain.TagCooccurrence, error) {
+	return s.cooccurrences, nil
+}
+
+func TestFetchTagCloudHandler_ReturnsClustersAndEdges(t *testing.T) {
+	logger.InitLogger()
+	port := &stubTagCloudPort{
+		items: []*domain.TagCloudItem{
+			{TagName: "rust", ArticleCount: 100},
+			{TagName: "tokio", ArticleCount: 90},
+			{TagName: "async", ArticleCount: 80},
+			{TagName: "wasm", ArticleCount: 70},
+		},
+		cooccurrences: []*domain.TagCooccurrence{
+			{TagNameA: "rust", TagNameB: "tokio", SharedCount: 50},
+			{TagNameA: "tokio", TagNameB: "async", SharedCount: 40},
+			{TagNameA: "async", TagNameB: "wasm", SharedCount: 30},
+			{TagNameA: "rust", TagNameB: "wasm", SharedCount: 25},
+		},
+	}
+
+	handler := NewHandler(ArticleHandlerDeps{
+		FetchTagCloud: fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(port, 30*time.Minute),
+	}, &config.Config{}, slog.Default())
+
+	resp, err := handler.FetchTagCloud(createAuthContext(), connect.NewRequest(&articlesv2.FetchTagCloudRequest{Limit: 300}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Tags, 4)
+	for _, tag := range resp.Msg.Tags {
+		assert.Equal(t, int32(1), tag.ClusterId)
+	}
+	require.Len(t, resp.Msg.Edges, 4)
+	assert.InDelta(t, float32(1.0), resp.Msg.Edges[0].Weight, 1e-6)
+	for _, e := range resp.Msg.Edges {
+		assert.GreaterOrEqual(t, e.SourceIndex, int32(0))
+		assert.Less(t, e.SourceIndex, e.TargetIndex)
+		assert.Less(t, int(e.TargetIndex), len(resp.Msg.Tags))
+	}
 }
 
 func TestConvertInoreaderSummariesToProto(t *testing.T) {

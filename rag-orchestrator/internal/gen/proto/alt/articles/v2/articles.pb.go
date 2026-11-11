@@ -1738,9 +1738,13 @@ type TagCloudItem struct {
 	// Number of articles associated with this tag
 	ArticleCount int32 `protobuf:"varint,2,opt,name=article_count,json=articleCount,proto3" json:"article_count,omitempty"`
 	// 3D position computed by server-side force-directed graph layout
-	PositionX     float32 `protobuf:"fixed32,3,opt,name=position_x,json=positionX,proto3" json:"position_x,omitempty"`
-	PositionY     float32 `protobuf:"fixed32,4,opt,name=position_y,json=positionY,proto3" json:"position_y,omitempty"`
-	PositionZ     float32 `protobuf:"fixed32,5,opt,name=position_z,json=positionZ,proto3" json:"position_z,omitempty"`
+	PositionX float32 `protobuf:"fixed32,3,opt,name=position_x,json=positionX,proto3" json:"position_x,omitempty"`
+	PositionY float32 `protobuf:"fixed32,4,opt,name=position_y,json=positionY,proto3" json:"position_y,omitempty"`
+	PositionZ float32 `protobuf:"fixed32,5,opt,name=position_z,json=positionZ,proto3" json:"position_z,omitempty"`
+	// Community of the tag in the co-occurrence graph. 1..N are communities
+	// ordered by total article count; 0 means the tag belongs to no community
+	// (no co-occurrence edges, or a community too small to show).
+	ClusterId     int32 `protobuf:"varint,6,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1810,20 +1814,94 @@ func (x *TagCloudItem) GetPositionZ() float32 {
 	return 0
 }
 
+func (x *TagCloudItem) GetClusterId() int32 {
+	if x != nil {
+		return x.ClusterId
+	}
+	return 0
+}
+
+// TagCloudEdge links two tags of FetchTagCloudResponse.tags that appear
+// together in articles.
+type TagCloudEdge struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Index into FetchTagCloudResponse.tags
+	SourceIndex int32 `protobuf:"varint,1,opt,name=source_index,json=sourceIndex,proto3" json:"source_index,omitempty"`
+	// Index into FetchTagCloudResponse.tags
+	TargetIndex int32 `protobuf:"varint,2,opt,name=target_index,json=targetIndex,proto3" json:"target_index,omitempty"`
+	// Association strength normalised to (0, 1]
+	Weight        float32 `protobuf:"fixed32,3,opt,name=weight,proto3" json:"weight,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TagCloudEdge) Reset() {
+	*x = TagCloudEdge{}
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TagCloudEdge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TagCloudEdge) ProtoMessage() {}
+
+func (x *TagCloudEdge) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TagCloudEdge.ProtoReflect.Descriptor instead.
+func (*TagCloudEdge) Descriptor() ([]byte, []int) {
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *TagCloudEdge) GetSourceIndex() int32 {
+	if x != nil {
+		return x.SourceIndex
+	}
+	return 0
+}
+
+func (x *TagCloudEdge) GetTargetIndex() int32 {
+	if x != nil {
+		return x.TargetIndex
+	}
+	return 0
+}
+
+func (x *TagCloudEdge) GetWeight() float32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
 // FetchTagCloudResponse contains tag cloud data
 type FetchTagCloudResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Tag cloud items sorted by article count (descending)
 	Tags []*TagCloudItem `protobuf:"bytes,1,rep,name=tags,proto3" json:"tags,omitempty"`
 	// Total number of tags in the system
-	TotalTags     int32 `protobuf:"varint,2,opt,name=total_tags,json=totalTags,proto3" json:"total_tags,omitempty"`
+	TotalTags int32 `protobuf:"varint,2,opt,name=total_tags,json=totalTags,proto3" json:"total_tags,omitempty"`
+	// Strongest co-occurrence links between the returned tags
+	Edges         []*TagCloudEdge `protobuf:"bytes,3,rep,name=edges,proto3" json:"edges,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FetchTagCloudResponse) Reset() {
 	*x = FetchTagCloudResponse{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[27]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1835,7 +1913,7 @@ func (x *FetchTagCloudResponse) String() string {
 func (*FetchTagCloudResponse) ProtoMessage() {}
 
 func (x *FetchTagCloudResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[27]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1848,7 +1926,7 @@ func (x *FetchTagCloudResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchTagCloudResponse.ProtoReflect.Descriptor instead.
 func (*FetchTagCloudResponse) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{27}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *FetchTagCloudResponse) GetTags() []*TagCloudItem {
@@ -1863,6 +1941,13 @@ func (x *FetchTagCloudResponse) GetTotalTags() int32 {
 		return x.TotalTags
 	}
 	return 0
+}
+
+func (x *FetchTagCloudResponse) GetEdges() []*TagCloudEdge {
+	if x != nil {
+		return x.Edges
+	}
+	return nil
 }
 
 // GetArticleSourceURLRequest looks up the canonical external HTTPS URL for an
@@ -1881,7 +1966,7 @@ type GetArticleSourceURLRequest struct {
 
 func (x *GetArticleSourceURLRequest) Reset() {
 	*x = GetArticleSourceURLRequest{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[28]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1893,7 +1978,7 @@ func (x *GetArticleSourceURLRequest) String() string {
 func (*GetArticleSourceURLRequest) ProtoMessage() {}
 
 func (x *GetArticleSourceURLRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[28]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1906,7 +1991,7 @@ func (x *GetArticleSourceURLRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleSourceURLRequest.ProtoReflect.Descriptor instead.
 func (*GetArticleSourceURLRequest) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{28}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetArticleSourceURLRequest) GetArticleId() string {
@@ -1934,7 +2019,7 @@ type GetArticleSourceURLResponse struct {
 
 func (x *GetArticleSourceURLResponse) Reset() {
 	*x = GetArticleSourceURLResponse{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[29]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1946,7 +2031,7 @@ func (x *GetArticleSourceURLResponse) String() string {
 func (*GetArticleSourceURLResponse) ProtoMessage() {}
 
 func (x *GetArticleSourceURLResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[29]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1959,7 +2044,7 @@ func (x *GetArticleSourceURLResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleSourceURLResponse.ProtoReflect.Descriptor instead.
 func (*GetArticleSourceURLResponse) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{29}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GetArticleSourceURLResponse) GetSourceUrl() string {
@@ -2116,7 +2201,7 @@ const file_alt_articles_v2_articles_proto_rawDesc = "" +
 	"\n" +
 	"\b_message\",\n" +
 	"\x14FetchTagCloudRequest\x12\x14\n" +
-	"\x05limit\x18\x01 \x01(\x05R\x05limit\"\xab\x01\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\"\xca\x01\n" +
 	"\fTagCloudItem\x12\x19\n" +
 	"\btag_name\x18\x01 \x01(\tR\atagName\x12#\n" +
 	"\rarticle_count\x18\x02 \x01(\x05R\farticleCount\x12\x1d\n" +
@@ -2125,11 +2210,18 @@ const file_alt_articles_v2_articles_proto_rawDesc = "" +
 	"\n" +
 	"position_y\x18\x04 \x01(\x02R\tpositionY\x12\x1d\n" +
 	"\n" +
-	"position_z\x18\x05 \x01(\x02R\tpositionZ\"i\n" +
+	"position_z\x18\x05 \x01(\x02R\tpositionZ\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x06 \x01(\x05R\tclusterId\"l\n" +
+	"\fTagCloudEdge\x12!\n" +
+	"\fsource_index\x18\x01 \x01(\x05R\vsourceIndex\x12!\n" +
+	"\ftarget_index\x18\x02 \x01(\x05R\vtargetIndex\x12\x16\n" +
+	"\x06weight\x18\x03 \x01(\x02R\x06weight\"\x9e\x01\n" +
 	"\x15FetchTagCloudResponse\x121\n" +
 	"\x04tags\x18\x01 \x03(\v2\x1d.alt.articles.v2.TagCloudItemR\x04tags\x12\x1d\n" +
 	"\n" +
-	"total_tags\x18\x02 \x01(\x05R\ttotalTags\";\n" +
+	"total_tags\x18\x02 \x01(\x05R\ttotalTags\x123\n" +
+	"\x05edges\x18\x03 \x03(\v2\x1d.alt.articles.v2.TagCloudEdgeR\x05edges\";\n" +
 	"\x1aGetArticleSourceURLRequest\x12\x1d\n" +
 	"\n" +
 	"article_id\x18\x01 \x01(\tR\tarticleId\"R\n" +
@@ -2165,7 +2257,7 @@ func file_alt_articles_v2_articles_proto_rawDescGZIP() []byte {
 }
 
 var file_alt_articles_v2_articles_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_alt_articles_v2_articles_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_alt_articles_v2_articles_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_alt_articles_v2_articles_proto_goTypes = []any{
 	(StreamArticleTagsResponse_EventType)(0),    // 0: alt.articles.v2.StreamArticleTagsResponse.EventType
 	(*FetchArticleContentRequest)(nil),          // 1: alt.articles.v2.FetchArticleContentRequest
@@ -2195,9 +2287,10 @@ var file_alt_articles_v2_articles_proto_goTypes = []any{
 	(*StreamArticleTagsResponse)(nil),           // 25: alt.articles.v2.StreamArticleTagsResponse
 	(*FetchTagCloudRequest)(nil),                // 26: alt.articles.v2.FetchTagCloudRequest
 	(*TagCloudItem)(nil),                        // 27: alt.articles.v2.TagCloudItem
-	(*FetchTagCloudResponse)(nil),               // 28: alt.articles.v2.FetchTagCloudResponse
-	(*GetArticleSourceURLRequest)(nil),          // 29: alt.articles.v2.GetArticleSourceURLRequest
-	(*GetArticleSourceURLResponse)(nil),         // 30: alt.articles.v2.GetArticleSourceURLResponse
+	(*TagCloudEdge)(nil),                        // 28: alt.articles.v2.TagCloudEdge
+	(*FetchTagCloudResponse)(nil),               // 29: alt.articles.v2.FetchTagCloudResponse
+	(*GetArticleSourceURLRequest)(nil),          // 30: alt.articles.v2.GetArticleSourceURLRequest
+	(*GetArticleSourceURLResponse)(nil),         // 31: alt.articles.v2.GetArticleSourceURLResponse
 }
 var file_alt_articles_v2_articles_proto_depIdxs = []int32{
 	6,  // 0: alt.articles.v2.FetchArticlesCursorResponse.data:type_name -> alt.articles.v2.ArticleItem
@@ -2209,35 +2302,36 @@ var file_alt_articles_v2_articles_proto_depIdxs = []int32{
 	20, // 6: alt.articles.v2.StreamArticleTagsResponse.tags:type_name -> alt.articles.v2.ArticleTagItem
 	0,  // 7: alt.articles.v2.StreamArticleTagsResponse.event_type:type_name -> alt.articles.v2.StreamArticleTagsResponse.EventType
 	27, // 8: alt.articles.v2.FetchTagCloudResponse.tags:type_name -> alt.articles.v2.TagCloudItem
-	1,  // 9: alt.articles.v2.ArticleService.FetchArticleContent:input_type -> alt.articles.v2.FetchArticleContentRequest
-	3,  // 10: alt.articles.v2.ArticleService.ArchiveArticle:input_type -> alt.articles.v2.ArchiveArticleRequest
-	5,  // 11: alt.articles.v2.ArticleService.FetchArticlesCursor:input_type -> alt.articles.v2.FetchArticlesCursorRequest
-	8,  // 12: alt.articles.v2.ArticleService.FetchArticleSummary:input_type -> alt.articles.v2.FetchArticleSummaryRequest
-	16, // 13: alt.articles.v2.ArticleService.FetchArticlesByTag:input_type -> alt.articles.v2.FetchArticlesByTagRequest
-	19, // 14: alt.articles.v2.ArticleService.FetchArticleTags:input_type -> alt.articles.v2.FetchArticleTagsRequest
-	22, // 15: alt.articles.v2.ArticleService.FetchRandomFeed:input_type -> alt.articles.v2.FetchRandomFeedRequest
-	24, // 16: alt.articles.v2.ArticleService.StreamArticleTags:input_type -> alt.articles.v2.StreamArticleTagsRequest
-	11, // 17: alt.articles.v2.ArticleService.BatchPrefetchImages:input_type -> alt.articles.v2.BatchPrefetchImagesRequest
-	14, // 18: alt.articles.v2.ArticleService.BatchPrefetchArticleContent:input_type -> alt.articles.v2.BatchPrefetchArticleContentRequest
-	26, // 19: alt.articles.v2.ArticleService.FetchTagCloud:input_type -> alt.articles.v2.FetchTagCloudRequest
-	29, // 20: alt.articles.v2.ArticleService.GetArticleSourceURL:input_type -> alt.articles.v2.GetArticleSourceURLRequest
-	2,  // 21: alt.articles.v2.ArticleService.FetchArticleContent:output_type -> alt.articles.v2.FetchArticleContentResponse
-	4,  // 22: alt.articles.v2.ArticleService.ArchiveArticle:output_type -> alt.articles.v2.ArchiveArticleResponse
-	7,  // 23: alt.articles.v2.ArticleService.FetchArticlesCursor:output_type -> alt.articles.v2.FetchArticlesCursorResponse
-	10, // 24: alt.articles.v2.ArticleService.FetchArticleSummary:output_type -> alt.articles.v2.FetchArticleSummaryResponse
-	18, // 25: alt.articles.v2.ArticleService.FetchArticlesByTag:output_type -> alt.articles.v2.FetchArticlesByTagResponse
-	21, // 26: alt.articles.v2.ArticleService.FetchArticleTags:output_type -> alt.articles.v2.FetchArticleTagsResponse
-	23, // 27: alt.articles.v2.ArticleService.FetchRandomFeed:output_type -> alt.articles.v2.FetchRandomFeedResponse
-	25, // 28: alt.articles.v2.ArticleService.StreamArticleTags:output_type -> alt.articles.v2.StreamArticleTagsResponse
-	13, // 29: alt.articles.v2.ArticleService.BatchPrefetchImages:output_type -> alt.articles.v2.BatchPrefetchImagesResponse
-	15, // 30: alt.articles.v2.ArticleService.BatchPrefetchArticleContent:output_type -> alt.articles.v2.BatchPrefetchArticleContentResponse
-	28, // 31: alt.articles.v2.ArticleService.FetchTagCloud:output_type -> alt.articles.v2.FetchTagCloudResponse
-	30, // 32: alt.articles.v2.ArticleService.GetArticleSourceURL:output_type -> alt.articles.v2.GetArticleSourceURLResponse
-	21, // [21:33] is the sub-list for method output_type
-	9,  // [9:21] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	28, // 9: alt.articles.v2.FetchTagCloudResponse.edges:type_name -> alt.articles.v2.TagCloudEdge
+	1,  // 10: alt.articles.v2.ArticleService.FetchArticleContent:input_type -> alt.articles.v2.FetchArticleContentRequest
+	3,  // 11: alt.articles.v2.ArticleService.ArchiveArticle:input_type -> alt.articles.v2.ArchiveArticleRequest
+	5,  // 12: alt.articles.v2.ArticleService.FetchArticlesCursor:input_type -> alt.articles.v2.FetchArticlesCursorRequest
+	8,  // 13: alt.articles.v2.ArticleService.FetchArticleSummary:input_type -> alt.articles.v2.FetchArticleSummaryRequest
+	16, // 14: alt.articles.v2.ArticleService.FetchArticlesByTag:input_type -> alt.articles.v2.FetchArticlesByTagRequest
+	19, // 15: alt.articles.v2.ArticleService.FetchArticleTags:input_type -> alt.articles.v2.FetchArticleTagsRequest
+	22, // 16: alt.articles.v2.ArticleService.FetchRandomFeed:input_type -> alt.articles.v2.FetchRandomFeedRequest
+	24, // 17: alt.articles.v2.ArticleService.StreamArticleTags:input_type -> alt.articles.v2.StreamArticleTagsRequest
+	11, // 18: alt.articles.v2.ArticleService.BatchPrefetchImages:input_type -> alt.articles.v2.BatchPrefetchImagesRequest
+	14, // 19: alt.articles.v2.ArticleService.BatchPrefetchArticleContent:input_type -> alt.articles.v2.BatchPrefetchArticleContentRequest
+	26, // 20: alt.articles.v2.ArticleService.FetchTagCloud:input_type -> alt.articles.v2.FetchTagCloudRequest
+	30, // 21: alt.articles.v2.ArticleService.GetArticleSourceURL:input_type -> alt.articles.v2.GetArticleSourceURLRequest
+	2,  // 22: alt.articles.v2.ArticleService.FetchArticleContent:output_type -> alt.articles.v2.FetchArticleContentResponse
+	4,  // 23: alt.articles.v2.ArticleService.ArchiveArticle:output_type -> alt.articles.v2.ArchiveArticleResponse
+	7,  // 24: alt.articles.v2.ArticleService.FetchArticlesCursor:output_type -> alt.articles.v2.FetchArticlesCursorResponse
+	10, // 25: alt.articles.v2.ArticleService.FetchArticleSummary:output_type -> alt.articles.v2.FetchArticleSummaryResponse
+	18, // 26: alt.articles.v2.ArticleService.FetchArticlesByTag:output_type -> alt.articles.v2.FetchArticlesByTagResponse
+	21, // 27: alt.articles.v2.ArticleService.FetchArticleTags:output_type -> alt.articles.v2.FetchArticleTagsResponse
+	23, // 28: alt.articles.v2.ArticleService.FetchRandomFeed:output_type -> alt.articles.v2.FetchRandomFeedResponse
+	25, // 29: alt.articles.v2.ArticleService.StreamArticleTags:output_type -> alt.articles.v2.StreamArticleTagsResponse
+	13, // 30: alt.articles.v2.ArticleService.BatchPrefetchImages:output_type -> alt.articles.v2.BatchPrefetchImagesResponse
+	15, // 31: alt.articles.v2.ArticleService.BatchPrefetchArticleContent:output_type -> alt.articles.v2.BatchPrefetchArticleContentResponse
+	29, // 32: alt.articles.v2.ArticleService.FetchTagCloud:output_type -> alt.articles.v2.FetchTagCloudResponse
+	31, // 33: alt.articles.v2.ArticleService.GetArticleSourceURL:output_type -> alt.articles.v2.GetArticleSourceURLResponse
+	22, // [22:34] is the sub-list for method output_type
+	10, // [10:22] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_alt_articles_v2_articles_proto_init() }
@@ -2259,7 +2353,7 @@ func file_alt_articles_v2_articles_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_alt_articles_v2_articles_proto_rawDesc), len(file_alt_articles_v2_articles_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   30,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

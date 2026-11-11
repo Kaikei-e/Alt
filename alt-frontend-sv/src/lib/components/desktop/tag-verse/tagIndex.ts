@@ -1,5 +1,7 @@
 import type { TagCloudItem } from "#lib/connect/index.js";
 
+export const DETAIL_PANEL_WIDTH_PX = 400;
+
 export function sortTagsForIndex(
 	tags: readonly TagCloudItem[],
 ): TagCloudItem[] {

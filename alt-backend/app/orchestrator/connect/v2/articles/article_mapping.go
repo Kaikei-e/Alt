@@ -145,6 +145,20 @@ func convertTagCloudItemsToProto(items []*domain.TagCloudItem) []*articlesv2.Tag
 			PositionX:    float32(item.PositionX),
 			PositionY:    float32(item.PositionY),
 			PositionZ:    float32(item.PositionZ),
+			ClusterId:    safeconv.Int32(item.ClusterID),
+		})
+	}
+	return result
+}
+
+// convertTagCloudEdgesToProto converts domain tag cloud edges to proto format.
+func convertTagCloudEdgesToProto(edges []*domain.TagCloudEdge) []*articlesv2.TagCloudEdge {
+	result := make([]*articlesv2.TagCloudEdge, 0, len(edges))
+	for _, edge := range edges {
+		result = append(result, &articlesv2.TagCloudEdge{
+			SourceIndex: safeconv.Int32(edge.SourceIndex),
+			TargetIndex: safeconv.Int32(edge.TargetIndex),
+			Weight:      float32(edge.Weight),
 		})
 	}
 	return result

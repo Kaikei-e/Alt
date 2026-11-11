@@ -4,13 +4,18 @@ import type { IntersectionEvent } from "@threlte/extras";
 import { onDestroy, untrack } from "svelte";
 import * as THREE from "three";
 import type { TagVersePalette } from "./palette.js";
-import type { SceneNode } from "./sceneModel.js";
+import {
+	applyIncrementalNodeColors,
+	applyIncrementalNodeScales,
+	type SceneNode,
+} from "./sceneModel.js";
 
 interface Props {
 	nodes: readonly SceneNode[];
 	palette: TagVersePalette;
 	selectedIndex: number | null;
 	hoveredIndex: number | null;
+	nodePaperMix?: Float32Array;
 	onHoverChange: (index: number | null) => void;
 	onNodeClick: (tagName: string) => void;
 }
@@ -20,16 +25,15 @@ let {
 	palette,
 	selectedIndex,
 	hoveredIndex,
+	nodePaperMix,
 	onHoverChange,
 	onNodeClick,
 }: Props = $props();
 
 const { invalidate } = useThrelte();
 
-const HIGHLIGHT_SCALE = 1.15;
-
 const geometry = new THREE.SphereGeometry(1, 24, 16);
-const material = new THREE.MeshBasicMaterial({ color: "#ffffff" });
+const material = new THREE.MeshLambertMaterial({ color: "#ffffff" });
 
 function createInstancedMesh(count: number): THREE.InstancedMesh {
 	const capacity = Math.max(1, count);
@@ -49,47 +53,35 @@ const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _color = new THREE.Color();
 
+let currentNodesRef: readonly SceneNode[] | null = null;
+let currentHexes: string[] = [];
+let currentScales = new Float32Array(0);
+
 function applyInstanceTransform(
 	targetMesh: THREE.InstancedMesh,
 	index: number,
-	isHighlighted: boolean,
+	scaleValue: number,
 ) {
 	const node = nodes[index];
 	if (!node) return;
-	const s = node.radius * (isHighlighted ? HIGHLIGHT_SCALE : 1);
 	_pos.set(node.position[0], node.position[1], node.position[2]);
-	_scale.set(s, s, s);
+	_scale.set(scaleValue, scaleValue, scaleValue);
 	_matrix.compose(_pos, _quat, _scale);
 	targetMesh.setMatrixAt(index, _matrix);
 }
 
-function applyInstanceColor(
-	targetMesh: THREE.InstancedMesh,
-	index: number,
-	isHighlighted: boolean,
-	currentPalette: TagVersePalette,
-) {
-	const node = nodes[index];
-	if (!node) return;
-	const hex = isHighlighted
-		? currentPalette.accent
-		: currentPalette.ramp[node.colorBucket];
-	_color.set(hex);
-	targetMesh.setColorAt(index, _color);
-}
-
-let prevHovered: number | null = null;
-let prevSelected: number | null = null;
-
 $effect(() => {
 	const currentNodes = nodes;
 	const currentPalette = palette;
-	const h = untrack(() => hoveredIndex);
-	const s = untrack(() => selectedIndex);
+	const h = hoveredIndex;
+	const s = selectedIndex;
+	const mixArr = nodePaperMix;
 	const count = currentNodes.length;
 	const requiredCapacity = Math.max(1, count);
 
 	let activeMesh = untrack(() => mesh);
+	const nodesChanged = currentNodes !== currentNodesRef;
+
 	if (activeMesh.instanceMatrix.count !== requiredCapacity) {
 		activeMesh.dispose();
 		activeMesh = createInstancedMesh(count);
@@ -98,61 +90,50 @@ $effect(() => {
 		activeMesh.count = count;
 	}
 
-	for (let i = 0; i < count; i++) {
-		const isHighlighted = i === h || i === s;
-		applyInstanceTransform(activeMesh, i, isHighlighted);
-		applyInstanceColor(activeMesh, i, isHighlighted, currentPalette);
+	if (nodesChanged || currentScales.length !== count) {
+		currentNodesRef = currentNodes;
+		currentScales = new Float32Array(count);
+		currentHexes = new Array<string>(count).fill("");
 	}
 
-	activeMesh.instanceMatrix.needsUpdate = true;
-	if (activeMesh.instanceColor) {
-		activeMesh.instanceColor.needsUpdate = true;
-	}
-	if (count > 0) {
-		activeMesh.computeBoundingSphere();
-	}
-
-	prevHovered = h;
-	prevSelected = s;
-	invalidate();
-});
-
-$effect(() => {
-	const nextHovered = hoveredIndex;
-	const nextSelected = selectedIndex;
-	if (nextHovered === prevHovered && nextSelected === prevSelected) {
-		return;
-	}
-
-	const activeMesh = untrack(() => mesh);
-	const currentPalette = untrack(() => palette);
-	const count = activeMesh.count;
-	const dirty = new Set<number>();
-
-	if (prevHovered !== null && prevHovered < count) dirty.add(prevHovered);
-	if (nextHovered !== null && nextHovered < count) dirty.add(nextHovered);
-	if (prevSelected !== null && prevSelected < count) dirty.add(prevSelected);
-	if (nextSelected !== null && nextSelected < count) dirty.add(nextSelected);
-
-	for (const idx of dirty) {
-		const isHighlighted = idx === nextHovered || idx === nextSelected;
-		applyInstanceTransform(activeMesh, idx, isHighlighted);
-		applyInstanceColor(activeMesh, idx, isHighlighted, currentPalette);
-	}
-
-	if (dirty.size > 0) {
-		activeMesh.instanceMatrix.needsUpdate = true;
-		if (activeMesh.instanceColor) {
-			activeMesh.instanceColor.needsUpdate = true;
+	const changedScaleIndices = applyIncrementalNodeScales(
+		currentScales,
+		currentNodes,
+		s,
+		h,
+	);
+	if (changedScaleIndices.length > 0) {
+		for (const idx of changedScaleIndices) {
+			applyInstanceTransform(activeMesh, idx, currentScales[idx] ?? 1);
 		}
+		activeMesh.instanceMatrix.needsUpdate = true;
 		if (count > 0) {
 			activeMesh.computeBoundingSphere();
 		}
 	}
 
-	prevHovered = nextHovered;
-	prevSelected = nextSelected;
-	invalidate();
+	const changedColorIndices = applyIncrementalNodeColors(
+		currentHexes,
+		currentNodes,
+		currentPalette,
+		s,
+		mixArr,
+	);
+	if (changedColorIndices.length > 0) {
+		for (const idx of changedColorIndices) {
+			const hex = currentHexes[idx];
+			if (!hex) continue;
+			_color.set(hex);
+			activeMesh.setColorAt(idx, _color);
+		}
+		if (activeMesh.instanceColor) {
+			activeMesh.instanceColor.needsUpdate = true;
+		}
+	}
+
+	if (changedScaleIndices.length > 0 || changedColorIndices.length > 0) {
+		invalidate();
+	}
 });
 
 function handlePointerMove(event: IntersectionEvent<PointerEvent>) {

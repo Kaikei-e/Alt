@@ -134,6 +134,110 @@
       }
     },
     {
+      "description": "a FetchTagCloud unary Connect-RPC request proxied by BFF",
+      "providerStates": [
+        {
+          "name": "tag cloud data with co-occurring tags is available"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Alt-Backend-Token": "header.payload.signature"
+        },
+        "matchingRules": {
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.articles.v2.ArticleService/FetchTagCloud"
+      },
+      "response": {
+        "body": {
+          "edges": [
+            {
+              "targetIndex": 1,
+              "weight": 0.85
+            }
+          ],
+          "tags": [
+            {
+              "articleCount": 42,
+              "tagName": "rust"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.edges": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.edges[*].targetIndex": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.edges[*].weight": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.tags": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.tags[*].articleCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.tags[*].tagName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetFeedStats unary Connect-RPC request proxied by BFF",
       "providerStates": [
         {

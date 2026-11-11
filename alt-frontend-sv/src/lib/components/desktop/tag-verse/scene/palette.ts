@@ -192,3 +192,87 @@ export function readPaletteFromElement(
 		styles.getPropertyValue("--interactive-text"),
 	);
 }
+
+export const TOPIC_INKS: readonly [
+	string,
+	string,
+	string,
+	string,
+	string,
+	string,
+	string,
+	string,
+] = [
+	"#2b3a67",
+	"#8c1d1d",
+	"#2f6b3a",
+	"#8a5a00",
+	"#5b3a5e",
+	"#2f4f4f",
+	"#8b4a2b",
+	"#3f5f7f",
+];
+
+export function clusterBaseInk(
+	clusterId: number,
+	palette?: TagVersePalette,
+): string {
+	const fallbackInk = palette?.ramp[4] ?? ALT_PAPER_DEFAULTS.ink;
+	if (!Number.isFinite(clusterId) || clusterId <= 0) {
+		return fallbackInk;
+	}
+	const index = (Math.floor(clusterId) - 1) % TOPIC_INKS.length;
+	return TOPIC_INKS[index] ?? fallbackInk;
+}
+
+function findMinInkRatioForContrast(
+	paperRgb: RgbTuple,
+	inkRgb: RgbTuple,
+	minContrast = 3.05,
+): number {
+	if (contrastFromRgb(inkRgb, paperRgb) <= minContrast) {
+		return 1.0;
+	}
+	let lo = 0.45;
+	let hi = 1.0;
+	for (let i = 0; i < 16; i++) {
+		const mid = (lo + hi) * 0.5;
+		const candidate = mixRgb(paperRgb, inkRgb, mid);
+		if (contrastFromRgb(candidate, paperRgb) >= minContrast) {
+			hi = mid;
+		} else {
+			lo = mid;
+		}
+	}
+	return Math.max(0.55, hi);
+}
+
+export function clusterInkForTag(
+	clusterId: number,
+	colorBucket: 0 | 1 | 2 | 3 | 4,
+	palette: TagVersePalette = buildPalette(),
+): string {
+	if (!Number.isFinite(clusterId) || clusterId <= 0) {
+		return palette.ramp[colorBucket];
+	}
+	const baseHex = clusterBaseInk(clusterId, palette);
+	if (colorBucket === 4) {
+		return baseHex;
+	}
+	const paperRgb = parseRgb(palette.paper) ?? DEFAULT_PAPER_RGB;
+	const baseRgb = parseRgb(baseHex) ?? DEFAULT_INK_RGB;
+	const minRatio = findMinInkRatioForContrast(paperRgb, baseRgb, 3.05);
+	const ratio = minRatio + (colorBucket / 4) * (1 - minRatio);
+	return rgbToHex(mixRgb(paperRgb, baseRgb, ratio));
+}
+
+export function mixTowardPaper(
+	colorHex: string,
+	paperHex: string,
+	paperWeight = 0.75,
+): string {
+	const colorRgb = parseRgb(colorHex) ?? DEFAULT_INK_RGB;
+	const paperRgb = parseRgb(paperHex) ?? DEFAULT_PAPER_RGB;
+	const inkRatio = 1 - Math.max(0, Math.min(1, paperWeight));
+	return rgbToHex(mixRgb(paperRgb, colorRgb, inkRatio));
+}

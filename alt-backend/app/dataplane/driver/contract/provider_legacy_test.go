@@ -148,6 +148,9 @@ func TestVerifyAltButterflyFacadeContract(t *testing.T) {
 			"article content prefetch is enabled": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
+			"tag cloud data with co-occurring tags is available": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
 		},
 	}
 

@@ -302,3 +302,59 @@ func TestBFFProxyBatchPrefetchArticleContent(t *testing.T) {
 		})
 	require.NoError(t, err)
 }
+
+// clusterId, sourceIndex and positions are proto3 scalars that protojson
+// omits at 0, so the contract does not pin them.
+func TestBFFProxyFetchTagCloud(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("tag cloud data with co-occurring tags is available").
+		UponReceiving("a FetchTagCloud unary Connect-RPC request proxied by BFF").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.articles.v2.ArticleService/FetchTagCloud"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"tags": matchers.EachLike(map[string]interface{}{
+					"tagName":      matchers.Like("rust"),
+					"articleCount": matchers.Like(42),
+				}, 1),
+				"edges": matchers.EachLike(map[string]interface{}{
+					"targetIndex": matchers.Like(1),
+					"weight":      matchers.Like(0.85),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.articles.v2.ArticleService/FetchTagCloud",
+				strings.NewReader("{}"),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "edges")
+			return nil
+		})
+	require.NoError(t, err)
+}
