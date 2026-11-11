@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"fmt"
 	"math"
+	"math/rand"
 	"testing"
 )
 
@@ -345,6 +346,214 @@ func TestComputeClusters_EightClusterCapAndOrdering(t *testing.T) {
 			idx := c*communitySize + m
 			if items[idx].ClusterID != wantCluster {
 				t.Errorf("community %d tag %q got ClusterID %d, want %d", c, items[idx].TagName, items[idx].ClusterID, wantCluster)
+			}
+		}
+	}
+}
+
+func buildHubHeavyFixture() ([]*domain.TagCloudItem, []*domain.TagCooccurrence, [][]string) {
+	const (
+		numTopics   = 5
+		topicSize   = 8
+		numHubs     = 5
+		numTailTags = 3
+	)
+
+	var items []*domain.TagCloudItem
+	var coocs []*domain.TagCooccurrence
+
+	hubNames := make([]string, numHubs)
+	for h := range numHubs {
+		name := fmt.Sprintf("hub-%d", h)
+		hubNames[h] = name
+		items = append(items, &domain.TagCloudItem{
+			TagName:      name,
+			ArticleCount: 480 - h*30,
+		})
+	}
+
+	topicGroups := make([][]string, numTopics)
+	for g := range numTopics {
+		baseCount := 130 - g*15
+		group := make([]string, topicSize)
+		for m := range topicSize {
+			name := fmt.Sprintf("topic-%c-%d", 'a'+g, m)
+			group[m] = name
+			items = append(items, &domain.TagCloudItem{
+				TagName:      name,
+				ArticleCount: baseCount - m*2,
+			})
+		}
+		topicGroups[g] = group
+
+		for i := 0; i < topicSize; i++ {
+			countI := baseCount - i*2
+			for j := i + 1; j < topicSize; j++ {
+				countJ := baseCount - j*2
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    group[i],
+					TagNameB:    group[j],
+					SharedCount: (countI + countJ) / 4,
+				})
+			}
+		}
+	}
+
+	// Generic hubs co-occur strongly with one another and moderately with every topic tag.
+	for i := 0; i < numHubs; i++ {
+		for j := i + 1; j < numHubs; j++ {
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    hubNames[i],
+				TagNameB:    hubNames[j],
+				SharedCount: 140,
+			})
+		}
+		for g := range numTopics {
+			for m := range topicSize {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    hubNames[i],
+					TagNameB:    topicGroups[g][m],
+					SharedCount: 38,
+				})
+			}
+		}
+	}
+
+	// Sparse cross-topic bridges between adjacent topics.
+	for g := range numTopics {
+		next := (g + 1) % numTopics
+		coocs = append(coocs, &domain.TagCooccurrence{
+			TagNameA:    topicGroups[g][0],
+			TagNameB:    topicGroups[next][0],
+			SharedCount: 5,
+		})
+	}
+
+	// Small 3-tag tail component (< minCommunityTagCount) that must remain unclustered.
+	tailNames := make([]string, numTailTags)
+	for i := range numTailTags {
+		name := fmt.Sprintf("tail-%d", i)
+		tailNames[i] = name
+		items = append(items, &domain.TagCloudItem{
+			TagName:      name,
+			ArticleCount: 25 - i*2,
+		})
+	}
+	for i := 0; i < numTailTags; i++ {
+		for j := i + 1; j < numTailTags; j++ {
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    tailNames[i],
+				TagNameB:    tailNames[j],
+				SharedCount: 12,
+			})
+		}
+	}
+
+	return items, coocs, topicGroups
+}
+
+func TestComputeClusters_HubHeavyGraphRecoversBalancedTopics(t *testing.T) {
+	baseItems, baseCoocs, topicGroups := buildHubHeavyFixture()
+
+	cloneItems := func(src []*domain.TagCloudItem) []*domain.TagCloudItem {
+		out := make([]*domain.TagCloudItem, len(src))
+		for i, it := range src {
+			cp := *it
+			out[i] = &cp
+		}
+		return out
+	}
+
+	items := cloneItems(baseItems)
+	ComputeClusters(items, baseCoocs)
+
+	byName := make(map[string]int, len(items))
+	clusterSizes := make(map[int]int)
+	clusteredCount := 0
+	for _, it := range items {
+		if it.ClusterID < 0 || it.ClusterID > maxCommunities {
+			t.Fatalf("tag %q got out-of-range ClusterID %d", it.TagName, it.ClusterID)
+		}
+		byName[it.TagName] = it.ClusterID
+		clusterSizes[it.ClusterID]++
+		if it.ClusterID > 0 {
+			clusteredCount++
+		}
+	}
+
+	t.Logf("cluster distribution: sizes=%v clustered=%d/%d (%.1f%%)",
+		clusterSizes, clusteredCount, len(items), 100*float64(clusteredCount)/float64(len(items)))
+
+	// (a) Each genuine topic group is recovered as its own distinct non-zero cluster.
+	seenGroupCluster := make(map[int]int, len(topicGroups))
+	for g, group := range topicGroups {
+		cid := byName[group[0]]
+		if cid == 0 {
+			t.Errorf("topic group %d (%q) left unclustered (ClusterID=0)", g, group[0])
+			continue
+		}
+		for _, tagName := range group[1:] {
+			if byName[tagName] != cid {
+				t.Errorf("topic group %d split across clusters: %q=%d, %q=%d",
+					g, group[0], cid, tagName, byName[tagName])
+			}
+		}
+		if prevGroup, dup := seenGroupCluster[cid]; dup {
+			t.Errorf("topic groups %d and %d collapsed into the same ClusterID %d", prevGroup, g, cid)
+		}
+		seenGroupCluster[cid] = g
+	}
+
+	// (b) No single cluster holds more than 40% of the clustered tags.
+	if clusteredCount == 0 {
+		t.Fatal("expected non-zero clustered tags")
+	}
+	for cid, sz := range clusterSizes {
+		if cid == 0 {
+			continue
+		}
+		share := float64(sz) / float64(clusteredCount)
+		if share > 0.40 {
+			t.Errorf("cluster %d holds %d/%d (%.1f%%) of clustered tags, exceeding 40%% cap",
+				cid, sz, clusteredCount, share*100)
+		}
+	}
+
+	// (c) Identical result across repeated runs and input permutations.
+	for run := range 5 {
+		repeatItems := cloneItems(baseItems)
+		ComputeClusters(repeatItems, baseCoocs)
+		for _, it := range repeatItems {
+			if it.ClusterID != byName[it.TagName] {
+				t.Fatalf("repeat run %d changed ClusterID of %q: got %d, want %d",
+					run, it.TagName, it.ClusterID, byName[it.TagName])
+			}
+		}
+	}
+
+	for seed := int64(1); seed <= 5; seed++ {
+		rng := rand.New(rand.NewSource(seed))
+		permItems := cloneItems(baseItems)
+		rng.Shuffle(len(permItems), func(i, j int) {
+			permItems[i], permItems[j] = permItems[j], permItems[i]
+		})
+		permCoocs := make([]*domain.TagCooccurrence, len(baseCoocs))
+		for i, c := range baseCoocs {
+			cp := *c
+			if rng.Intn(2) == 1 {
+				cp.TagNameA, cp.TagNameB = cp.TagNameB, cp.TagNameA
+			}
+			permCoocs[i] = &cp
+		}
+		rng.Shuffle(len(permCoocs), func(i, j int) {
+			permCoocs[i], permCoocs[j] = permCoocs[j], permCoocs[i]
+		})
+
+		ComputeClusters(permItems, permCoocs)
+		for _, it := range permItems {
+			if it.ClusterID != byName[it.TagName] {
+				t.Fatalf("permutation seed %d changed ClusterID of %q: got %d, want %d",
+					seed, it.TagName, it.ClusterID, byName[it.TagName])
 			}
 		}
 	}
