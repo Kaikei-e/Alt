@@ -532,7 +532,7 @@ func TestComputeClusters_HubHeavyGraphRecoversBalancedTopics(t *testing.T) {
 	}
 
 	for seed := int64(1); seed <= 5; seed++ {
-		rng := rand.New(rand.NewSource(seed))
+		rng := rand.New(rand.NewSource(seed)) //#nosec G404 -- deterministic test permutation seed
 		permItems := cloneItems(baseItems)
 		rng.Shuffle(len(permItems), func(i, j int) {
 			permItems[i], permItems[j] = permItems[j], permItems[i]
@@ -556,5 +556,62 @@ func TestComputeClusters_HubHeavyGraphRecoversBalancedTopics(t *testing.T) {
 					seed, it.TagName, it.ClusterID, byName[it.TagName])
 			}
 		}
+	}
+}
+
+func BenchmarkComputeClusters_300Nodes_HubHeavy(b *testing.B) {
+	const (
+		numHubs   = 20
+		numTopics = 7
+		topicSize = 35
+		numTail   = 35
+	)
+	items := make([]*domain.TagCloudItem, 0, 300)
+	var coocs []*domain.TagCooccurrence
+
+	hubs := make([]string, numHubs)
+	for h := range numHubs {
+		name := fmt.Sprintf("hub-%02d", h)
+		hubs[h] = name
+		items = append(items, &domain.TagCloudItem{TagName: name, ArticleCount: 600 - h*15})
+	}
+	for i := 0; i < numHubs; i++ {
+		for j := i + 1; j < numHubs; j++ {
+			coocs = append(coocs, &domain.TagCooccurrence{TagNameA: hubs[i], TagNameB: hubs[j], SharedCount: 90})
+		}
+	}
+
+	for g := range numTopics {
+		group := make([]string, topicSize)
+		for m := range topicSize {
+			name := fmt.Sprintf("topic-%d-%02d", g, m)
+			group[m] = name
+			items = append(items, &domain.TagCloudItem{TagName: name, ArticleCount: 150 - g*8 - m})
+		}
+		for i := 0; i < topicSize; i++ {
+			for step := 1; step <= 5 && i+step < topicSize; step++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    group[i],
+					TagNameB:    group[i+step],
+					SharedCount: 42 - step*3,
+				})
+			}
+			for h := (i + g) % 5; h < numHubs; h += 5 {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    hubs[h],
+					TagNameB:    group[i],
+					SharedCount: 25,
+				})
+			}
+		}
+	}
+
+	for i := range numTail {
+		items = append(items, &domain.TagCloudItem{TagName: fmt.Sprintf("tail-%02d", i), ArticleCount: 15})
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		ComputeClusters(items, coocs)
 	}
 }
