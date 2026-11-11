@@ -34,8 +34,9 @@ func (r *TagRepository) FetchTagCooccurrences(ctx context.Context, tagNames []st
 			FROM article_tags at1
 			INNER JOIN target_tags tt1 ON at1.feed_tag_id = tt1.id
 			INNER JOIN article_tags at2
-			  ON at1.article_id = at2.article_id AND tt1.tag_name < tt2.tag_name
-			INNER JOIN target_tags tt2 ON at2.feed_tag_id = tt2.id
+			  ON at1.article_id = at2.article_id AND at1.feed_tag_id <> at2.feed_tag_id
+			INNER JOIN target_tags tt2
+			  ON at2.feed_tag_id = tt2.id AND tt1.tag_name < tt2.tag_name
 			GROUP BY tt1.tag_name, tt2.tag_name
 			HAVING COUNT(DISTINCT at1.article_id) >= 2
 		)
