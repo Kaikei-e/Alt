@@ -67,14 +67,24 @@ class _MinimalCountVectorizer:
         return list(self._vocabulary)
 
 
-if isinstance(sys.modules.get("sklearn"), MagicMock):
-    cast(Any, sys.modules["sklearn.feature_extraction.text"]).CountVectorizer = _MinimalCountVectorizer
-elif importlib.util.find_spec("sklearn") is None:
-    _mock_sklearn = MagicMock()
-    _mock_sklearn.feature_extraction.text.CountVectorizer = _MinimalCountVectorizer
-    sys.modules["sklearn"] = _mock_sklearn
-    sys.modules["sklearn.feature_extraction"] = _mock_sklearn.feature_extraction
-    sys.modules["sklearn.feature_extraction.text"] = _mock_sklearn.feature_extraction.text
+@pytest.fixture
+def minimal_sklearn_vectorizer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scope _MinimalCountVectorizer to tests that exercise CountVectorizer without mutating global import state."""
+    existing = sys.modules.get("sklearn")
+    if isinstance(existing, MagicMock):
+        monkeypatch.setattr(
+            sys.modules["sklearn.feature_extraction.text"],
+            "CountVectorizer",
+            _MinimalCountVectorizer,
+            raising=False,
+        )
+    elif importlib.util.find_spec("sklearn") is None:
+        mock_sklearn = MagicMock()
+        mock_sklearn.feature_extraction.text.CountVectorizer = _MinimalCountVectorizer
+        monkeypatch.setitem(sys.modules, "sklearn", mock_sklearn)
+        monkeypatch.setitem(sys.modules, "sklearn.feature_extraction", mock_sklearn.feature_extraction)
+        monkeypatch.setitem(sys.modules, "sklearn.feature_extraction.text", mock_sklearn.feature_extraction.text)
+
 
 _NLTK_REALISTIC_ENGLISH_STOPWORDS = [
     "the",
@@ -311,9 +321,6 @@ class TestInputNormalisationBeforeExtraction:
         assert html_result.is_valid is True
         assert html_result.sanitized_input is not None
         assert "<script>" not in html_result.sanitized_input.content
-
-        doc = (InputSanitizer._sanitize_text.__doc__ or "").lower()
-        assert "tokenisation" in doc or "tokenization" in doc
 
     def test_extractor_respects_explicit_strip_urls_false_without_duplicate_strip(self) -> None:
         extractor = TagExtractor(sanitizer_config=SanitizationConfig(strip_urls=False))
@@ -635,7 +642,10 @@ class TestJapaneseNoiseFilteringEndToEnd:
             f"Topical tag 'セキュリティ' missing from {outcome.tags}"
         )
 
-    def test_japanese_semantic_path_excludes_temporal_numeric_counter_and_stopword_noise(self) -> None:
+    def test_japanese_semantic_path_excludes_temporal_numeric_counter_and_stopword_noise(
+        self,
+        minimal_sklearn_vectorizer: None,
+    ) -> None:
         manager = ModelManager()
         real_tagger = FugashiTagger()
         fake_keybert = _CandidateGeneratingKeyBERT()
@@ -652,6 +662,10 @@ class TestJapaneseNoiseFilteringEndToEnd:
             )
             outcome = extractor.extract_tags_with_metrics(SYNTHETIC_JAPANESE_TITLE, SYNTHETIC_JAPANESE_CONTENT)
 
+        sanitized = InputSanitizer().sanitize(SYNTHETIC_JAPANESE_TITLE, SYNTHETIC_JAPANESE_CONTENT).sanitized_input
+        assert sanitized is not None
+        analyzer_vocab = set(make_japanese_analyzer(real_tagger)(f"{sanitized.title}\n{sanitized.content}"))
+
         tag_set = set(outcome.tags)
         forbidden_semantic_noise = NOISE_JAPANESE_TAGS | {
             "年",
@@ -667,8 +681,10 @@ class TestJapaneseNoiseFilteringEndToEnd:
         }
         leaked = tag_set & forbidden_semantic_noise
         assert not leaked, f"Semantic Japanese path leaked noise/stopwords: {leaked} (tags={outcome.tags})"
+        assert tag_set <= analyzer_vocab, f"Semantic path emitted token outside unigram analyzer: {outcome.tags}"
+        assert all(len(list(real_tagger(tag))) == 1 for tag in outcome.tags)
         assert {"セキュリティ", "データベース", "Android"} <= tag_set, (
-            f"Expected topical tags missing from semantic Japanese output: {outcome.tags}"
+            f"Expected unigram topical tags missing from semantic Japanese output: {outcome.tags}"
         )
 
     def test_make_japanese_analyzer_excludes_numerals_counters_and_temporal_nouns(self) -> None:
@@ -685,25 +701,17 @@ class TestJapaneseNoiseFilteringEndToEnd:
         assert not leaked, f"Analyzer leaked numeral/counter/temporal tokens into KeyBERT vocabulary: {leaked}"
         assert {"Android", "セキュリティ", "検証"} <= tokens
 
-    def test_score_japanese_candidates_with_keybert_filters_unvalidated_keybert_output(self) -> None:
+    def test_score_japanese_candidates_with_keybert_filters_unvalidated_keybert_output(
+        self,
+        minimal_sklearn_vectorizer: None,
+    ) -> None:
         manager = ModelManager()
         real_tagger = FugashiTagger()
-        noisy_keybert = MagicMock()
-        noisy_keybert.extract_keywords.return_value = [
-            ("午前", 0.96),
-            ("2026", 0.95),
-            ("10", 0.94),
-            ("件", 0.93),
-            ("開発", 0.92),
-            ("https", 0.91),
-            ("nbsp", 0.90),
-            ("未候補語", 0.89),
-            ("セキュリティ", 0.85),
-            ("データベース開発", 0.82),
-        ]
+        fake_keybert = _CandidateGeneratingKeyBERT()
+        text = "2026年午前10時に同日10件の開発とhttps検証を実施し、Androidとデータベース開発のセキュリティを確認した。"
 
         with (
-            patch.object(manager, "get_models", return_value=(MagicMock(), noisy_keybert, real_tagger)),
+            patch.object(manager, "get_models", return_value=(MagicMock(), fake_keybert, real_tagger)),
             patch("nltk.corpus.stopwords.words", return_value=_NLTK_REALISTIC_ENGLISH_STOPWORDS),
         ):
             extractor = TagExtractor(
@@ -712,11 +720,12 @@ class TestJapaneseNoiseFilteringEndToEnd:
             )
             extractor.warmup()
             tags, _ = extractor._score_japanese_candidates_with_keybert(
-                "2026年午前10時にデータベース開発とセキュリティを検証",
-                candidates=["データベース開発", "セキュリティ", "Android", "開発", "2026", "https"],
+                text,
+                candidates=["データベース開発", "データベース", "セキュリティ", "Android", "開発", "2026", "https"],
                 freq_counter=Counter(
                     {
                         "データベース開発": 2,
+                        "データベース": 1,
                         "セキュリティ": 2,
                         "Android": 1,
                         "開発": 2,
@@ -726,7 +735,13 @@ class TestJapaneseNoiseFilteringEndToEnd:
                 ),
             )
 
-        assert tags == ["セキュリティ", "データベース開発"]
+        analyzer_vocab = set(make_japanese_analyzer(real_tagger)(text))
+        tag_set = set(tags)
+        assert not (tag_set & {"午前", "2026", "10", "件", "同日", "年", "時", "開発", "検証", "https", "実施", "確認"})
+        assert tag_set <= analyzer_vocab
+        assert all(len(list(real_tagger(tag))) == 1 for tag in tags)
+        assert "データベース開発" not in tag_set
+        assert tag_set == {"データベース", "セキュリティ", "Android"}
 
     def test_generic_kaihatsu_stopword_blocks_standalone_but_keeps_compounds(self) -> None:
         manager = ModelManager()

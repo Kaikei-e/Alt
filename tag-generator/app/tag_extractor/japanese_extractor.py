@@ -284,10 +284,11 @@ def score_japanese_candidates_with_keybert(
     """
     Score Japanese keyword candidates using KeyBERT semantic similarity.
 
-    Because passing a custom ``vectorizer`` causes KeyBERT to build its candidate
-    vocabulary from the vectorizer rather than ``candidates``, KeyBERT output is
-    explicitly filtered against ``candidates``, ``is_valid_japanese_tag``, and
-    ``ja_stopwords`` before combining semantic relevance with frequency scores.
+    Passing a custom ``vectorizer`` causes KeyBERT to ignore ``candidates`` and
+    score only the unigram tokens emitted by ``make_japanese_analyzer``, so
+    multi-morpheme compound candidates are not reachable on this semantic path.
+    KeyBERT output is filtered against ``candidates``, ``is_valid_japanese_tag``,
+    and ``ja_stopwords`` before combining semantic and frequency scores.
 
     Args:
         text: Original document text
