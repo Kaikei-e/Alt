@@ -2,8 +2,11 @@ package fetch_tag_cloud_usecase
 
 import (
 	"alt/domain"
+	"cmp"
 	"fmt"
 	"math"
+	"math/rand"
+	"slices"
 	"testing"
 )
 
@@ -216,10 +219,14 @@ func TestComputeClusters_DeterminismAcrossInputOrders(t *testing.T) {
 		{TagNameA: "rust", TagNameB: "async", SharedCount: 35},
 		{TagNameA: "tokio", TagNameB: "async", SharedCount: 38},
 		{TagNameA: "wasm", TagNameB: "rust", SharedCount: 30},
+		{TagNameA: "tokio", TagNameB: "wasm", SharedCount: 28},
+		{TagNameA: "async", TagNameB: "wasm", SharedCount: 25},
 		{TagNameA: "python", TagNameB: "pytorch", SharedCount: 30},
 		{TagNameA: "pytorch", TagNameB: "llm", SharedCount: 28},
 		{TagNameA: "llm", TagNameB: "transformer", SharedCount: 25},
 		{TagNameA: "python", TagNameB: "llm", SharedCount: 22},
+		{TagNameA: "python", TagNameB: "transformer", SharedCount: 20},
+		{TagNameA: "pytorch", TagNameB: "transformer", SharedCount: 22},
 	}
 
 	cloneItems := func(src []*domain.TagCloudItem) []*domain.TagCloudItem {
@@ -286,10 +293,12 @@ func TestComputeClusters_SizeThreshold(t *testing.T) {
 		{TagNameA: "small1", TagNameB: "small2", SharedCount: 150},
 		{TagNameA: "small2", TagNameB: "small3", SharedCount: 150},
 		{TagNameA: "small1", TagNameB: "small3", SharedCount: 150},
-		{TagNameA: "valid1", TagNameB: "valid2", SharedCount: 40},
-		{TagNameA: "valid2", TagNameB: "valid3", SharedCount: 40},
-		{TagNameA: "valid3", TagNameB: "valid4", SharedCount: 40},
-		{TagNameA: "valid1", TagNameB: "valid4", SharedCount: 40},
+		{TagNameA: "valid1", TagNameB: "valid2", SharedCount: 30},
+		{TagNameA: "valid2", TagNameB: "valid3", SharedCount: 30},
+		{TagNameA: "valid3", TagNameB: "valid4", SharedCount: 30},
+		{TagNameA: "valid1", TagNameB: "valid4", SharedCount: 30},
+		{TagNameA: "valid1", TagNameB: "valid3", SharedCount: 30},
+		{TagNameA: "valid2", TagNameB: "valid4", SharedCount: 30},
 	}
 
 	ComputeClusters(items, coocs)
@@ -347,5 +356,751 @@ func TestComputeClusters_EightClusterCapAndOrdering(t *testing.T) {
 				t.Errorf("community %d tag %q got ClusterID %d, want %d", c, items[idx].TagName, items[idx].ClusterID, wantCluster)
 			}
 		}
+	}
+}
+
+func buildHubHeavyFixture() ([]*domain.TagCloudItem, []*domain.TagCooccurrence, [][]string) {
+	const (
+		numTopics   = 5
+		topicSize   = 8
+		numHubs     = 5
+		numTailTags = 3
+	)
+
+	var items []*domain.TagCloudItem
+	var coocs []*domain.TagCooccurrence
+
+	hubNames := make([]string, numHubs)
+	for h := range numHubs {
+		name := fmt.Sprintf("hub-%d", h)
+		hubNames[h] = name
+		items = append(items, &domain.TagCloudItem{
+			TagName:      name,
+			ArticleCount: 480 - h*30,
+		})
+	}
+
+	topicGroups := make([][]string, numTopics)
+	for g := range numTopics {
+		baseCount := 130 - g*15
+		group := make([]string, topicSize)
+		for m := range topicSize {
+			name := fmt.Sprintf("topic-%c-%d", 'a'+g, m)
+			group[m] = name
+			items = append(items, &domain.TagCloudItem{
+				TagName:      name,
+				ArticleCount: baseCount - m*2,
+			})
+		}
+		topicGroups[g] = group
+
+		for i := 0; i < topicSize; i++ {
+			countI := baseCount - i*2
+			for j := i + 1; j < topicSize; j++ {
+				countJ := baseCount - j*2
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    group[i],
+					TagNameB:    group[j],
+					SharedCount: (countI + countJ) / 4,
+				})
+			}
+		}
+	}
+
+	// Generic hubs co-occur strongly with one another and moderately with every topic tag.
+	for i := 0; i < numHubs; i++ {
+		for j := i + 1; j < numHubs; j++ {
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    hubNames[i],
+				TagNameB:    hubNames[j],
+				SharedCount: 140,
+			})
+		}
+		for g := range numTopics {
+			for m := range topicSize {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    hubNames[i],
+					TagNameB:    topicGroups[g][m],
+					SharedCount: 38,
+				})
+			}
+		}
+	}
+
+	// Sparse cross-topic bridges between adjacent topics.
+	for g := range numTopics {
+		next := (g + 1) % numTopics
+		coocs = append(coocs, &domain.TagCooccurrence{
+			TagNameA:    topicGroups[g][0],
+			TagNameB:    topicGroups[next][0],
+			SharedCount: 5,
+		})
+	}
+
+	// Small 3-tag tail component (< minCommunityTagCount) that must remain unclustered.
+	tailNames := make([]string, numTailTags)
+	for i := range numTailTags {
+		name := fmt.Sprintf("tail-%d", i)
+		tailNames[i] = name
+		items = append(items, &domain.TagCloudItem{
+			TagName:      name,
+			ArticleCount: 25 - i*2,
+		})
+	}
+	for i := 0; i < numTailTags; i++ {
+		for j := i + 1; j < numTailTags; j++ {
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    tailNames[i],
+				TagNameB:    tailNames[j],
+				SharedCount: 12,
+			})
+		}
+	}
+
+	return items, coocs, topicGroups
+}
+
+func TestComputeClusters_HubHeavyGraphRecoversBalancedTopics(t *testing.T) {
+	baseItems, baseCoocs, topicGroups := buildHubHeavyFixture()
+
+	cloneItems := func(src []*domain.TagCloudItem) []*domain.TagCloudItem {
+		out := make([]*domain.TagCloudItem, len(src))
+		for i, it := range src {
+			cp := *it
+			out[i] = &cp
+		}
+		return out
+	}
+
+	items := cloneItems(baseItems)
+	ComputeClusters(items, baseCoocs)
+
+	byName := make(map[string]int, len(items))
+	clusterSizes := make(map[int]int)
+	clusteredCount := 0
+	for _, it := range items {
+		if it.ClusterID < 0 || it.ClusterID > maxCommunities {
+			t.Fatalf("tag %q got out-of-range ClusterID %d", it.TagName, it.ClusterID)
+		}
+		byName[it.TagName] = it.ClusterID
+		clusterSizes[it.ClusterID]++
+		if it.ClusterID > 0 {
+			clusteredCount++
+		}
+	}
+
+	t.Logf("cluster distribution: sizes=%v clustered=%d/%d (%.1f%%)",
+		clusterSizes, clusteredCount, len(items), 100*float64(clusteredCount)/float64(len(items)))
+
+	// (a) Each genuine topic group is recovered as its own distinct non-zero cluster.
+	seenGroupCluster := make(map[int]int, len(topicGroups))
+	for g, group := range topicGroups {
+		cid := byName[group[0]]
+		if cid == 0 {
+			t.Errorf("topic group %d (%q) left unclustered (ClusterID=0)", g, group[0])
+			continue
+		}
+		for _, tagName := range group[1:] {
+			if byName[tagName] != cid {
+				t.Errorf("topic group %d split across clusters: %q=%d, %q=%d",
+					g, group[0], cid, tagName, byName[tagName])
+			}
+		}
+		if prevGroup, dup := seenGroupCluster[cid]; dup {
+			t.Errorf("topic groups %d and %d collapsed into the same ClusterID %d", prevGroup, g, cid)
+		}
+		seenGroupCluster[cid] = g
+	}
+
+	// (b) No single cluster holds more than 40% of the clustered tags.
+	if clusteredCount == 0 {
+		t.Fatal("expected non-zero clustered tags")
+	}
+	for cid, sz := range clusterSizes {
+		if cid == 0 {
+			continue
+		}
+		share := float64(sz) / float64(clusteredCount)
+		if share > 0.40 {
+			t.Errorf("cluster %d holds %d/%d (%.1f%%) of clustered tags, exceeding 40%% cap",
+				cid, sz, clusteredCount, share*100)
+		}
+	}
+
+	// (c) Identical result across repeated runs and input permutations.
+	for run := range 5 {
+		repeatItems := cloneItems(baseItems)
+		ComputeClusters(repeatItems, baseCoocs)
+		for _, it := range repeatItems {
+			if it.ClusterID != byName[it.TagName] {
+				t.Fatalf("repeat run %d changed ClusterID of %q: got %d, want %d",
+					run, it.TagName, it.ClusterID, byName[it.TagName])
+			}
+		}
+	}
+
+	for seed := int64(1); seed <= 5; seed++ {
+		rng := rand.New(rand.NewSource(seed)) //#nosec G404 -- deterministic test permutation seed
+		permItems := cloneItems(baseItems)
+		rng.Shuffle(len(permItems), func(i, j int) {
+			permItems[i], permItems[j] = permItems[j], permItems[i]
+		})
+		permCoocs := make([]*domain.TagCooccurrence, len(baseCoocs))
+		for i, c := range baseCoocs {
+			cp := *c
+			if rng.Intn(2) == 1 {
+				cp.TagNameA, cp.TagNameB = cp.TagNameB, cp.TagNameA
+			}
+			permCoocs[i] = &cp
+		}
+		rng.Shuffle(len(permCoocs), func(i, j int) {
+			permCoocs[i], permCoocs[j] = permCoocs[j], permCoocs[i]
+		})
+
+		ComputeClusters(permItems, permCoocs)
+		for _, it := range permItems {
+			if it.ClusterID != byName[it.TagName] {
+				t.Fatalf("permutation seed %d changed ClusterID of %q: got %d, want %d",
+					seed, it.TagName, it.ClusterID, byName[it.TagName])
+			}
+		}
+	}
+}
+
+func buildBenchmarkHubFixture() ([]*domain.TagCloudItem, []*domain.TagCooccurrence) {
+	const (
+		numHubs   = 20
+		numTopics = 7
+		topicSize = 35
+		numTail   = 35
+	)
+	items := make([]*domain.TagCloudItem, 0, 300)
+	var coocs []*domain.TagCooccurrence
+
+	hubs := make([]string, numHubs)
+	for h := range numHubs {
+		name := fmt.Sprintf("hub-%02d", h)
+		hubs[h] = name
+		items = append(items, &domain.TagCloudItem{TagName: name, ArticleCount: 600 - h*15})
+	}
+	for i := 0; i < numHubs; i++ {
+		for j := i + 1; j < numHubs; j++ {
+			coocs = append(coocs, &domain.TagCooccurrence{TagNameA: hubs[i], TagNameB: hubs[j], SharedCount: 90})
+		}
+	}
+
+	for g := range numTopics {
+		group := make([]string, topicSize)
+		for m := range topicSize {
+			name := fmt.Sprintf("topic-%d-%02d", g, m)
+			group[m] = name
+			items = append(items, &domain.TagCloudItem{TagName: name, ArticleCount: 150 - g*8 - m})
+		}
+		for i := 0; i < topicSize; i++ {
+			for step := 1; step <= 5 && i+step < topicSize; step++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    group[i],
+					TagNameB:    group[i+step],
+					SharedCount: 42 - step*3,
+				})
+			}
+			for h := (i + g) % 5; h < numHubs; h += 5 {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    hubs[h],
+					TagNameB:    group[i],
+					SharedCount: 25,
+				})
+			}
+		}
+	}
+
+	for i := range numTail {
+		items = append(items, &domain.TagCloudItem{TagName: fmt.Sprintf("tail-%02d", i), ArticleCount: 15})
+	}
+
+	return items, coocs
+}
+
+func TestRunLeiden_NodeLevelLocalOptimality(t *testing.T) {
+	items, coocs := buildBenchmarkHubFixture()
+	_, adj := buildAssociationGraph(items, coocs)
+	n := len(items)
+
+	strength := make([]float64, n)
+	seedRank := make([]int, n)
+	twoM := 0.0
+	for r := range n {
+		seedRank[r] = r
+		for _, nb := range adj[r] {
+			strength[r] += nb.weight
+		}
+		twoM += strength[r]
+	}
+
+	g := &leidenGraph{
+		n:        n,
+		adj:      adj,
+		strength: strength,
+		seedRank: seedRank,
+		twoM:     twoM,
+	}
+	labels := runLeiden(g, leidenResolution)
+
+	sigmaTot := make(map[int]float64)
+	commSize := make(map[int]int)
+	for u, c := range labels {
+		sigmaTot[c] += strength[u]
+		commSize[c]++
+	}
+
+	scale := leidenResolution / twoM
+	moveEps := qualityEps * twoM
+	improvingNodes := 0
+	maxGain := 0.0
+	for u := range n {
+		oldComm := labels[u]
+		ku := strength[u]
+		commWeights := make(map[int]float64)
+		for _, nb := range adj[u] {
+			commWeights[labels[nb.partner]] += nb.weight
+		}
+		stayScore := commWeights[oldComm] - scale*ku*(sigmaTot[oldComm]-ku)
+
+		bestGain := 0.0
+		if commSize[oldComm] > 1 && -stayScore > bestGain {
+			bestGain = -stayScore
+		}
+		for c, w := range commWeights {
+			if c == oldComm {
+				continue
+			}
+			gain := (w - scale*ku*sigmaTot[c]) - stayScore
+			if gain > bestGain {
+				bestGain = gain
+			}
+		}
+		if bestGain > moveEps {
+			improvingNodes++
+			if bestGain > maxGain {
+				maxGain = bestGain
+			}
+		}
+	}
+
+	if improvingNodes > 0 {
+		t.Fatalf("partition is not locally optimal at node level: %d nodes have strictly positive move gain (max delta = %.6g)",
+			improvingNodes, maxGain)
+	}
+
+	ComputeClusters(items, coocs)
+	benchSizes := make(map[int]int)
+	benchClustered := 0
+	for _, it := range items {
+		benchSizes[it.ClusterID]++
+		if it.ClusterID > 0 {
+			benchClustered++
+		}
+	}
+	t.Logf("benchmark 300-node distribution: sizes=%v clustered=%d/%d (%.1f%%)",
+		benchSizes, benchClustered, len(items), 100*float64(benchClustered)/float64(len(items)))
+}
+
+func BenchmarkComputeClusters_300Nodes_HubHeavy(b *testing.B) {
+	items, coocs := buildBenchmarkHubFixture()
+
+	b.ResetTimer()
+	for b.Loop() {
+		ComputeClusters(items, coocs)
+	}
+}
+
+func buildLinkedHubs2000CutFixture() ([]*domain.TagCloudItem, []*domain.TagCooccurrence, [][]string) {
+	const (
+		numHubs    = 12
+		numTopics  = 6
+		topicSize  = 20
+		numTail    = 48
+		maxDBPairs = 2000
+	)
+
+	items := make([]*domain.TagCloudItem, 0, numHubs+numTopics*topicSize+numTail)
+	var coocs []*domain.TagCooccurrence
+
+	hubs := make([]string, numHubs)
+	hubCounts := make([]int, numHubs)
+	for h := range numHubs {
+		name := fmt.Sprintf("hub-%02d", h)
+		count := 600 - h*15
+		hubs[h] = name
+		hubCounts[h] = count
+		items = append(items, &domain.TagCloudItem{TagName: name, ArticleCount: count})
+	}
+	for i := 0; i < numHubs; i++ {
+		for j := i + 1; j < numHubs; j++ {
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    hubs[i],
+				TagNameB:    hubs[j],
+				SharedCount: 90,
+			})
+		}
+	}
+
+	topicGroups := make([][]string, numTopics)
+	for g := range numTopics {
+		group := make([]string, topicSize)
+		counts := make([]int, topicSize)
+		for m := range topicSize {
+			name := fmt.Sprintf("topic-%d-%02d", g, m)
+			count := 160 - g*16 - m
+			group[m] = name
+			counts[m] = count
+			items = append(items, &domain.TagCloudItem{TagName: name, ArticleCount: count})
+		}
+		topicGroups[g] = group
+
+		for i := 0; i < topicSize; i++ {
+			for j := i + 1; j < topicSize; j++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    group[i],
+					TagNameB:    group[j],
+					SharedCount: (counts[i]+counts[j])/6 + 8,
+				})
+			}
+			for h := range numHubs {
+				// Co-occurrence count scales with both hub and topic-tag frequency;
+				// ranking the 2,000-pair SQL cutoff by Ochiai association instead of
+				// raw shared_count prevents large-count hub pairs from crowding out
+				// higher-association topic pairs.
+				shared := (hubCounts[h]*counts[i])/2200 + 6
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    hubs[h],
+					TagNameB:    group[i],
+					SharedCount: shared,
+				})
+			}
+		}
+	}
+
+	for i := range numTail {
+		items = append(items, &domain.TagCloudItem{TagName: fmt.Sprintf("tail-%02d", i), ArticleCount: 15})
+	}
+
+	countByName := make(map[string]int, len(items))
+	for _, it := range items {
+		countByName[it.TagName] = it.ArticleCount
+	}
+	ochiaiOf := func(c *domain.TagCooccurrence) float64 {
+		ca := countByName[c.TagNameA]
+		cb := countByName[c.TagNameB]
+		return float64(c.SharedCount) / math.Sqrt(float64(ca)*float64(cb))
+	}
+
+	slices.SortFunc(coocs, func(a, b *domain.TagCooccurrence) int {
+		if c := cmp.Compare(ochiaiOf(b), ochiaiOf(a)); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(b.SharedCount, a.SharedCount); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.TagNameA, b.TagNameA); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.TagNameB, b.TagNameB)
+	})
+	if len(coocs) > maxDBPairs {
+		coocs = coocs[:maxDBPairs]
+	}
+
+	return items, coocs, topicGroups
+}
+
+func TestComputeClusters_LinkedHubsStayBalanced(t *testing.T) {
+	baseItems, baseCoocs, topicGroups := buildLinkedHubs2000CutFixture()
+
+	cloneItems := func(src []*domain.TagCloudItem) []*domain.TagCloudItem {
+		out := make([]*domain.TagCloudItem, len(src))
+		for i, it := range src {
+			cp := *it
+			out[i] = &cp
+		}
+		return out
+	}
+
+	items := cloneItems(baseItems)
+	ComputeClusters(items, baseCoocs)
+
+	byName := make(map[string]int, len(items))
+	clusterSizes := make(map[int]int)
+	clusteredCount := 0
+	for _, it := range items {
+		if it.ClusterID < 0 || it.ClusterID > maxCommunities {
+			t.Fatalf("tag %q got out-of-range ClusterID %d", it.TagName, it.ClusterID)
+		}
+		byName[it.TagName] = it.ClusterID
+		clusterSizes[it.ClusterID]++
+		if it.ClusterID > 0 {
+			clusteredCount++
+		}
+	}
+
+	t.Logf("12-hub 2000-cut distribution: sizes=%v clustered=%d/%d (%.1f%%)",
+		clusterSizes, clusteredCount, len(items), 100*float64(clusteredCount)/float64(len(items)))
+
+	if clusteredCount == 0 {
+		t.Fatal("expected non-zero clustered tags")
+	}
+	for cid, sz := range clusterSizes {
+		if cid == 0 {
+			continue
+		}
+		if share := float64(sz) / float64(clusteredCount); share > 0.40 {
+			t.Errorf("cluster %d holds %d/%d (%.1f%%) > 40%% of clustered tags", cid, sz, clusteredCount, share*100)
+		}
+	}
+
+	seenTopicClusters := make(map[int]int, len(topicGroups))
+	intactTopicCount := 0
+	for g, group := range topicGroups {
+		cid := byName[group[0]]
+		if cid == 0 {
+			continue
+		}
+		intact := true
+		for _, name := range group[1:] {
+			if byName[name] != cid {
+				intact = false
+				break
+			}
+		}
+		if !intact {
+			continue
+		}
+		intactTopicCount++
+		if prev, dup := seenTopicClusters[cid]; dup {
+			t.Errorf("topic groups %d and %d share ClusterID %d", prev, g, cid)
+		}
+		seenTopicClusters[cid] = g
+	}
+	if len(seenTopicClusters) < 5 {
+		t.Errorf("got %d distinct non-zero topic clusters (from %d intact topic groups), want at least 5 of %d",
+			len(seenTopicClusters), intactTopicCount, len(topicGroups))
+	}
+
+	for seed := int64(1); seed <= 5; seed++ {
+		rng := rand.New(rand.NewSource(seed)) //#nosec G404 -- deterministic test permutation seed
+		permItems := cloneItems(baseItems)
+		rng.Shuffle(len(permItems), func(i, j int) {
+			permItems[i], permItems[j] = permItems[j], permItems[i]
+		})
+		permCoocs := make([]*domain.TagCooccurrence, len(baseCoocs))
+		for i, c := range baseCoocs {
+			cp := *c
+			if rng.Intn(2) == 1 {
+				cp.TagNameA, cp.TagNameB = cp.TagNameB, cp.TagNameA
+			}
+			permCoocs[i] = &cp
+		}
+		rng.Shuffle(len(permCoocs), func(i, j int) {
+			permCoocs[i], permCoocs[j] = permCoocs[j], permCoocs[i]
+		})
+
+		ComputeClusters(permItems, permCoocs)
+		for _, it := range permItems {
+			if it.ClusterID != byName[it.TagName] {
+				t.Fatalf("permutation seed %d changed ClusterID of %q: got %d, want %d",
+					seed, it.TagName, it.ClusterID, byName[it.TagName])
+			}
+		}
+	}
+}
+
+func TestComputeClusters_SingleCommunityGraph(t *testing.T) {
+	// Under Reichardt-Bornholdt configuration modularity, when a single uniform
+	// k-clique is the entire graph (Sigma_C = 2m), merging nodes has non-positive
+	// gain whenever gamma >= k/(k-1). At gamma = 2.0 this holds for all k >= 2,
+	// so a standalone clique without surrounding graph mass stays singletons and
+	// receives ClusterID 0.
+	t.Run("lone 4-clique stays singletons when it is the entire graph", func(t *testing.T) {
+		items := make([]*domain.TagCloudItem, 4)
+		for i := range items {
+			items[i] = &domain.TagCloudItem{
+				TagName:      fmt.Sprintf("k4-%d", i),
+				ArticleCount: 100,
+			}
+		}
+		var coocs []*domain.TagCooccurrence
+		for i := 0; i < len(items); i++ {
+			for j := i + 1; j < len(items); j++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    items[i].TagName,
+					TagNameB:    items[j].TagName,
+					SharedCount: 50,
+				})
+			}
+		}
+
+		ComputeClusters(items, coocs)
+		for _, it := range items {
+			if it.ClusterID != 0 {
+				t.Errorf("tag %q in lone 4-clique got ClusterID %d, want 0", it.TagName, it.ClusterID)
+			}
+		}
+	})
+}
+
+func TestComputeClusters_SeparatesModeratelyCoupledDenseTopics(t *testing.T) {
+	const (
+		coupledSize      = 10
+		numOtherTopics   = 4
+		otherTopicSize   = 10
+		numHubs          = 4
+		numTailTags      = 3
+		crossPartnerStep = 5
+	)
+
+	var items []*domain.TagCloudItem
+	var coocs []*domain.TagCooccurrence
+
+	addDenseGroup := func(prefix string, size, baseCount int) ([]string, []int) {
+		names := make([]string, size)
+		counts := make([]int, size)
+		for m := range size {
+			name := fmt.Sprintf("%s-%d", prefix, m)
+			count := baseCount - m*2
+			names[m] = name
+			counts[m] = count
+			items = append(items, &domain.TagCloudItem{
+				TagName:      name,
+				ArticleCount: count,
+			})
+		}
+		for i := 0; i < size; i++ {
+			for j := i + 1; j < size; j++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    names[i],
+					TagNameB:    names[j],
+					SharedCount: (counts[i] + counts[j]) / 3,
+				})
+			}
+		}
+		return names, counts
+	}
+
+	// Two dense 10-tag topic groups (intra-group Ochiai ~ 0.67) linked by
+	// moderate cross-group co-occurrence (half the cross-pairs at Ochiai ~ 0.35):
+	// strong enough to merge at low resolution (gamma = 1.15), weak enough
+	// relative to intra-group density that gamma = 2.0 keeps them separate.
+	webGroup, _ := addDenseGroup("web", coupledSize, 112)
+	agentGroup, _ := addDenseGroup("agent", coupledSize, 104)
+	for i := range coupledSize {
+		for step := range crossPartnerStep {
+			j := (i + step) % coupledSize
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    webGroup[i],
+				TagNameB:    agentGroup[j],
+				SharedCount: 35,
+			})
+		}
+	}
+
+	// Embed inside a realistic multi-topic graph so total graph weight 2m
+	// reflects a full tag cloud rather than a two-community toy graph.
+	otherGroups := make([][]string, numOtherTopics)
+	for g := range numOtherTopics {
+		otherGroups[g], _ = addDenseGroup(fmt.Sprintf("other-%d", g), otherTopicSize, 110-g*8)
+	}
+	for g := range numOtherTopics {
+		next := (g + 1) % numOtherTopics
+		coocs = append(coocs, &domain.TagCooccurrence{
+			TagNameA:    otherGroups[g][0],
+			TagNameB:    otherGroups[next][0],
+			SharedCount: 5,
+		})
+	}
+
+	hubNames := make([]string, numHubs)
+	for h := range numHubs {
+		name := fmt.Sprintf("hub-%d", h)
+		hubNames[h] = name
+		items = append(items, &domain.TagCloudItem{
+			TagName:      name,
+			ArticleCount: 400 - h*25,
+		})
+	}
+	for i := 0; i < numHubs; i++ {
+		for j := i + 1; j < numHubs; j++ {
+			coocs = append(coocs, &domain.TagCooccurrence{
+				TagNameA:    hubNames[i],
+				TagNameB:    hubNames[j],
+				SharedCount: 95,
+			})
+		}
+		for _, grp := range append([][]string{webGroup, agentGroup}, otherGroups...) {
+			for m := i; m < len(grp); m += numHubs {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    hubNames[i],
+					TagNameB:    grp[m],
+					SharedCount: 22,
+				})
+			}
+		}
+	}
+
+	for i := range numTailTags {
+		items = append(items, &domain.TagCloudItem{
+			TagName:      fmt.Sprintf("tail-%d", i),
+			ArticleCount: 18 - i*2,
+		})
+	}
+
+	ComputeClusters(items, coocs)
+
+	byName := make(map[string]int, len(items))
+	for _, it := range items {
+		byName[it.TagName] = it.ClusterID
+	}
+
+	webCluster := byName[webGroup[0]]
+	if webCluster == 0 {
+		t.Fatalf("web topic group left unclustered (ClusterID=0)")
+	}
+	for _, name := range webGroup[1:] {
+		if byName[name] != webCluster {
+			t.Fatalf("web topic group split: %q=%d, %q=%d", webGroup[0], webCluster, name, byName[name])
+		}
+	}
+
+	agentCluster := byName[agentGroup[0]]
+	if agentCluster == 0 {
+		t.Fatalf("agent topic group left unclustered (ClusterID=0)")
+	}
+	for _, name := range agentGroup[1:] {
+		if byName[name] != agentCluster {
+			t.Fatalf("agent topic group split: %q=%d, %q=%d", agentGroup[0], agentCluster, name, byName[name])
+		}
+	}
+
+	if webCluster == agentCluster {
+		t.Fatalf("moderately coupled web and agent topic groups merged into ClusterID %d; want distinct non-zero ClusterIDs", webCluster)
+	}
+
+	seenTopicClusters := map[int]string{
+		webCluster:   "web",
+		agentCluster: "agent",
+	}
+	for g, grp := range otherGroups {
+		cid := byName[grp[0]]
+		if cid == 0 {
+			t.Fatalf("other topic group %d left unclustered (ClusterID=0)", g)
+		}
+		for _, name := range grp[1:] {
+			if byName[name] != cid {
+				t.Fatalf("other topic group %d split: %q=%d, %q=%d", g, grp[0], cid, name, byName[name])
+			}
+		}
+		if prev, dup := seenTopicClusters[cid]; dup {
+			t.Fatalf("other topic group %d merged with %q into ClusterID %d", g, prev, cid)
+		}
+		seenTopicClusters[cid] = fmt.Sprintf("other-%d", g)
 	}
 }

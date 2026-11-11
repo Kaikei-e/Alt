@@ -238,19 +238,40 @@ func (s *stubTagCloudPort) FetchTagCooccurrences(_ context.Context, _ []string) 
 
 func TestFetchTagCloudHandler_ReturnsClustersAndEdges(t *testing.T) {
 	logger.InitLogger()
+
+	cliques := []struct {
+		tags   []string
+		base   int
+		shared int
+	}{
+		{tags: []string{"rust", "tokio", "async", "wasm"}, base: 100, shared: 60},
+		{tags: []string{"python", "pytorch", "llm", "transformer"}, base: 80, shared: 50},
+		{tags: []string{"postgres", "sql", "index", "mvcc"}, base: 60, shared: 40},
+	}
+
+	var items []*domain.TagCloudItem
+	var coocs []*domain.TagCooccurrence
+	for _, c := range cliques {
+		for i, name := range c.tags {
+			items = append(items, &domain.TagCloudItem{
+				TagName:      name,
+				ArticleCount: c.base - i*5,
+			})
+		}
+		for i := 0; i < len(c.tags); i++ {
+			for j := i + 1; j < len(c.tags); j++ {
+				coocs = append(coocs, &domain.TagCooccurrence{
+					TagNameA:    c.tags[i],
+					TagNameB:    c.tags[j],
+					SharedCount: c.shared,
+				})
+			}
+		}
+	}
+
 	port := &stubTagCloudPort{
-		items: []*domain.TagCloudItem{
-			{TagName: "rust", ArticleCount: 100},
-			{TagName: "tokio", ArticleCount: 90},
-			{TagName: "async", ArticleCount: 80},
-			{TagName: "wasm", ArticleCount: 70},
-		},
-		cooccurrences: []*domain.TagCooccurrence{
-			{TagNameA: "rust", TagNameB: "tokio", SharedCount: 50},
-			{TagNameA: "tokio", TagNameB: "async", SharedCount: 40},
-			{TagNameA: "async", TagNameB: "wasm", SharedCount: 30},
-			{TagNameA: "rust", TagNameB: "wasm", SharedCount: 25},
-		},
+		items:         items,
+		cooccurrences: coocs,
 	}
 
 	handler := NewHandler(ArticleHandlerDeps{
@@ -259,16 +280,34 @@ func TestFetchTagCloudHandler_ReturnsClustersAndEdges(t *testing.T) {
 
 	resp, err := handler.FetchTagCloud(createAuthContext(), connect.NewRequest(&articlesv2.FetchTagCloudRequest{Limit: 300}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Tags, 4)
+	require.Len(t, resp.Msg.Tags, 12)
+
+	clusterByTag := make(map[string]int32, len(resp.Msg.Tags))
 	for _, tag := range resp.Msg.Tags {
-		assert.Equal(t, int32(1), tag.ClusterId)
+		assert.GreaterOrEqual(t, tag.ClusterId, int32(1))
+		assert.LessOrEqual(t, tag.ClusterId, int32(8))
+		clusterByTag[tag.TagName] = tag.ClusterId
 	}
-	require.Len(t, resp.Msg.Edges, 4)
+
+	distinctClusters := make(map[int32]struct{}, len(cliques))
+	for _, c := range cliques {
+		cid := clusterByTag[c.tags[0]]
+		require.NotZero(t, cid)
+		distinctClusters[cid] = struct{}{}
+		for _, name := range c.tags[1:] {
+			assert.Equal(t, cid, clusterByTag[name], "tags %q and %q in same clique must share ClusterId", c.tags[0], name)
+		}
+	}
+	assert.Len(t, distinctClusters, 3)
+
+	require.Len(t, resp.Msg.Edges, 18)
 	assert.InDelta(t, float32(1.0), resp.Msg.Edges[0].Weight, 1e-6)
 	for _, e := range resp.Msg.Edges {
 		assert.GreaterOrEqual(t, e.SourceIndex, int32(0))
 		assert.Less(t, e.SourceIndex, e.TargetIndex)
 		assert.Less(t, int(e.TargetIndex), len(resp.Msg.Tags))
+		assert.Greater(t, e.Weight, float32(0))
+		assert.LessOrEqual(t, e.Weight, float32(1.0))
 	}
 }
 

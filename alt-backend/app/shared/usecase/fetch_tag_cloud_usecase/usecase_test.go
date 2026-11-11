@@ -166,12 +166,18 @@ func TestFetchTagCloudUsecase_Cache(t *testing.T) {
 				{TagName: "Go", ArticleCount: 80},
 				{TagName: "Rust", ArticleCount: 60},
 				{TagName: "Wasm", ArticleCount: 40},
+				{TagName: "s1", ArticleCount: 30},
+				{TagName: "s2", ArticleCount: 30},
+				{TagName: "s3", ArticleCount: 30},
 			},
 			cooccurrences: []*domain.TagCooccurrence{
 				{TagNameA: "AI", TagNameB: "Go", SharedCount: 30},
 				{TagNameA: "Go", TagNameB: "Rust", SharedCount: 25},
 				{TagNameA: "Rust", TagNameB: "Wasm", SharedCount: 20},
 				{TagNameA: "AI", TagNameB: "Wasm", SharedCount: 15},
+				{TagNameA: "s1", TagNameB: "s2", SharedCount: 20},
+				{TagNameA: "s2", TagNameB: "s3", SharedCount: 20},
+				{TagNameA: "s1", TagNameB: "s3", SharedCount: 20},
 			},
 		}
 
@@ -867,6 +873,9 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 						{TagName: "t2", ArticleCount: 90},
 						{TagName: "t3", ArticleCount: 80},
 						{TagName: "t4", ArticleCount: 70},
+						{TagName: "s1", ArticleCount: 30},
+						{TagName: "s2", ArticleCount: 30},
+						{TagName: "s3", ArticleCount: 30},
 					}, nil
 				}
 				bgStarted <- struct{}{}
@@ -878,14 +887,25 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 					{TagName: "t3", ArticleCount: 80},
 					{TagName: "t4", ArticleCount: 70},
 					{TagName: "t5", ArticleCount: 60},
+					{TagName: "s1", ArticleCount: 30},
+					{TagName: "s2", ArticleCount: 30},
+					{TagName: "s3", ArticleCount: 30},
 				}, nil
 			},
 			cooccurrences: []*domain.TagCooccurrence{
-				{TagNameA: "t1", TagNameB: "t2", SharedCount: 40},
-				{TagNameA: "t2", TagNameB: "t3", SharedCount: 35},
-				{TagNameA: "t3", TagNameB: "t4", SharedCount: 30},
+				{TagNameA: "t1", TagNameB: "t2", SharedCount: 25},
+				{TagNameA: "t1", TagNameB: "t3", SharedCount: 25},
 				{TagNameA: "t1", TagNameB: "t4", SharedCount: 25},
-				{TagNameA: "t4", TagNameB: "t5", SharedCount: 20},
+				{TagNameA: "t2", TagNameB: "t3", SharedCount: 25},
+				{TagNameA: "t2", TagNameB: "t4", SharedCount: 25},
+				{TagNameA: "t3", TagNameB: "t4", SharedCount: 25},
+				{TagNameA: "t1", TagNameB: "t5", SharedCount: 25},
+				{TagNameA: "t2", TagNameB: "t5", SharedCount: 25},
+				{TagNameA: "t3", TagNameB: "t5", SharedCount: 25},
+				{TagNameA: "t4", TagNameB: "t5", SharedCount: 25},
+				{TagNameA: "s1", TagNameB: "s2", SharedCount: 28},
+				{TagNameA: "s2", TagNameB: "s3", SharedCount: 28},
+				{TagNameA: "s1", TagNameB: "s3", SharedCount: 28},
 			},
 		}
 
@@ -907,8 +927,8 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("initial Execute: %v", err)
 		}
-		if len(items1) != 4 || items1[0].ClusterID != 1 || len(edges1) != 4 {
-			t.Fatalf("initial Execute: want 4 items in cluster 1 and 4 edges, got items=%+v edges=%+v", items1, edges1)
+		if len(items1) != 7 || items1[0].ClusterID != 1 || len(edges1) != 9 {
+			t.Fatalf("initial Execute: want 7 items (t1 in cluster 1) and 9 edges, got items=%+v edges=%+v", items1, edges1)
 		}
 
 		nowMu.Lock()
@@ -919,8 +939,8 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("stale Execute: %v", err)
 		}
-		if len(staleItems) != 4 || staleItems[0].ClusterID != 1 || len(staleEdges) != 4 {
-			t.Fatalf("stale Execute: want cached 4 items/edges, got items=%+v edges=%+v", staleItems, staleEdges)
+		if len(staleItems) != 7 || staleItems[0].ClusterID != 1 || len(staleEdges) != 9 {
+			t.Fatalf("stale Execute: want cached 7 items/9 edges, got items=%+v edges=%+v", staleItems, staleEdges)
 		}
 
 		select {
@@ -941,12 +961,17 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("post-refresh Execute: %v", err)
 		}
-		if len(freshItems) != 5 || len(freshEdges) != 5 {
-			t.Fatalf("post-refresh Execute: want 5 items and 5 edges, got %d items and %d edges", len(freshItems), len(freshEdges))
+		if len(freshItems) != 8 || len(freshEdges) != 12 {
+			t.Fatalf("post-refresh Execute: want 8 items and 12 edges, got %d items and %d edges", len(freshItems), len(freshEdges))
 		}
-		for _, it := range freshItems {
+		for _, it := range freshItems[:5] {
 			if it.ClusterID != 1 {
 				t.Errorf("post-refresh item %q ClusterID = %d, want 1", it.TagName, it.ClusterID)
+			}
+		}
+		for _, it := range freshItems[5:] {
+			if it.ClusterID != 0 {
+				t.Errorf("post-refresh small-group item %q ClusterID = %d, want 0", it.TagName, it.ClusterID)
 			}
 		}
 	})
