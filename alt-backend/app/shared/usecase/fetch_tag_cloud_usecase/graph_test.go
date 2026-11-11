@@ -219,10 +219,14 @@ func TestComputeClusters_DeterminismAcrossInputOrders(t *testing.T) {
 		{TagNameA: "rust", TagNameB: "async", SharedCount: 35},
 		{TagNameA: "tokio", TagNameB: "async", SharedCount: 38},
 		{TagNameA: "wasm", TagNameB: "rust", SharedCount: 30},
+		{TagNameA: "tokio", TagNameB: "wasm", SharedCount: 28},
+		{TagNameA: "async", TagNameB: "wasm", SharedCount: 25},
 		{TagNameA: "python", TagNameB: "pytorch", SharedCount: 30},
 		{TagNameA: "pytorch", TagNameB: "llm", SharedCount: 28},
 		{TagNameA: "llm", TagNameB: "transformer", SharedCount: 25},
 		{TagNameA: "python", TagNameB: "llm", SharedCount: 22},
+		{TagNameA: "python", TagNameB: "transformer", SharedCount: 20},
+		{TagNameA: "pytorch", TagNameB: "transformer", SharedCount: 22},
 	}
 
 	cloneItems := func(src []*domain.TagCloudItem) []*domain.TagCloudItem {
@@ -289,10 +293,12 @@ func TestComputeClusters_SizeThreshold(t *testing.T) {
 		{TagNameA: "small1", TagNameB: "small2", SharedCount: 150},
 		{TagNameA: "small2", TagNameB: "small3", SharedCount: 150},
 		{TagNameA: "small1", TagNameB: "small3", SharedCount: 150},
-		{TagNameA: "valid1", TagNameB: "valid2", SharedCount: 40},
-		{TagNameA: "valid2", TagNameB: "valid3", SharedCount: 40},
-		{TagNameA: "valid3", TagNameB: "valid4", SharedCount: 40},
-		{TagNameA: "valid1", TagNameB: "valid4", SharedCount: 40},
+		{TagNameA: "valid1", TagNameB: "valid2", SharedCount: 30},
+		{TagNameA: "valid2", TagNameB: "valid3", SharedCount: 30},
+		{TagNameA: "valid3", TagNameB: "valid4", SharedCount: 30},
+		{TagNameA: "valid1", TagNameB: "valid4", SharedCount: 30},
+		{TagNameA: "valid1", TagNameB: "valid3", SharedCount: 30},
+		{TagNameA: "valid2", TagNameB: "valid4", SharedCount: 30},
 	}
 
 	ComputeClusters(items, coocs)
@@ -685,6 +691,18 @@ func TestRunLeiden_NodeLevelLocalOptimality(t *testing.T) {
 		t.Fatalf("partition is not locally optimal at node level: %d nodes have strictly positive move gain (max delta = %.6g)",
 			improvingNodes, maxGain)
 	}
+
+	ComputeClusters(items, coocs)
+	benchSizes := make(map[int]int)
+	benchClustered := 0
+	for _, it := range items {
+		benchSizes[it.ClusterID]++
+		if it.ClusterID > 0 {
+			benchClustered++
+		}
+	}
+	t.Logf("benchmark 300-node distribution: sizes=%v clustered=%d/%d (%.1f%%)",
+		benchSizes, benchClustered, len(items), 100*float64(benchClustered)/float64(len(items)))
 }
 
 func BenchmarkComputeClusters_300Nodes_HubHeavy(b *testing.B) {
@@ -897,64 +915,16 @@ func TestComputeClusters_LinkedHubsStayBalanced(t *testing.T) {
 }
 
 func TestComputeClusters_SingleCommunityGraph(t *testing.T) {
-	// Under Reichardt-Bornholdt configuration modularity with γ = 1.15 (> 1), a
-	// standalone uniform k-clique stays singletons iff γ >= k/(k-1): lone 4-cycles
-	// and k >= 8 cliques split below minCommunityTagCount (ClusterID 0), while a
-	// lone 6-clique (6/5 = 1.20 > 1.15) remains a single community (ClusterID 1).
-	t.Run("lone 4-cycle splits into pairs and receives cluster 0", func(t *testing.T) {
-		items := []*domain.TagCloudItem{
-			{TagName: "a", ArticleCount: 100},
-			{TagName: "b", ArticleCount: 90},
-			{TagName: "c", ArticleCount: 80},
-			{TagName: "d", ArticleCount: 70},
-		}
-		coocs := []*domain.TagCooccurrence{
-			{TagNameA: "a", TagNameB: "b", SharedCount: 40},
-			{TagNameA: "b", TagNameB: "c", SharedCount: 35},
-			{TagNameA: "c", TagNameB: "d", SharedCount: 30},
-			{TagNameA: "a", TagNameB: "d", SharedCount: 25},
-		}
-
-		ComputeClusters(items, coocs)
-		for _, it := range items {
-			if it.ClusterID != 0 {
-				t.Errorf("tag %q in lone 4-cycle got ClusterID %d, want 0", it.TagName, it.ClusterID)
-			}
-		}
-	})
-
-	t.Run("lone 6-clique stays together under gamma 1.15 and receives cluster 1", func(t *testing.T) {
-		items := make([]*domain.TagCloudItem, 6)
+	// Under Reichardt-Bornholdt configuration modularity, when a single uniform
+	// k-clique is the entire graph (Sigma_C = 2m), merging nodes has non-positive
+	// gain whenever gamma >= k/(k-1). At gamma = 2.0 this holds for all k >= 2,
+	// so a standalone clique without surrounding graph mass stays singletons and
+	// receives ClusterID 0.
+	t.Run("lone 4-clique stays singletons when it is the entire graph", func(t *testing.T) {
+		items := make([]*domain.TagCloudItem, 4)
 		for i := range items {
 			items[i] = &domain.TagCloudItem{
-				TagName:      fmt.Sprintf("k-%d", i),
-				ArticleCount: 100,
-			}
-		}
-		var coocs []*domain.TagCooccurrence
-		for i := 0; i < len(items); i++ {
-			for j := i + 1; j < len(items); j++ {
-				coocs = append(coocs, &domain.TagCooccurrence{
-					TagNameA:    items[i].TagName,
-					TagNameB:    items[j].TagName,
-					SharedCount: 50,
-				})
-			}
-		}
-
-		ComputeClusters(items, coocs)
-		for _, it := range items {
-			if it.ClusterID != 1 {
-				t.Errorf("tag %q in lone 6-clique got ClusterID %d, want 1", it.TagName, it.ClusterID)
-			}
-		}
-	})
-
-	t.Run("lone 8-clique stays singletons and receives cluster 0", func(t *testing.T) {
-		items := make([]*domain.TagCloudItem, 8)
-		for i := range items {
-			items[i] = &domain.TagCloudItem{
-				TagName:      fmt.Sprintf("k8-%d", i),
+				TagName:      fmt.Sprintf("k4-%d", i),
 				ArticleCount: 100,
 			}
 		}
@@ -972,7 +942,7 @@ func TestComputeClusters_SingleCommunityGraph(t *testing.T) {
 		ComputeClusters(items, coocs)
 		for _, it := range items {
 			if it.ClusterID != 0 {
-				t.Errorf("tag %q in lone 8-clique got ClusterID %d, want 0", it.TagName, it.ClusterID)
+				t.Errorf("tag %q in lone 4-clique got ClusterID %d, want 0", it.TagName, it.ClusterID)
 			}
 		}
 	})

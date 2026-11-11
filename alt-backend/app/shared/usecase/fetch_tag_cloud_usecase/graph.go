@@ -13,11 +13,8 @@ const (
 	minCommunityTagCount = 4
 	maxCommunities       = 8
 
-	// Resolution parameter γ = 1.15 (> 1) for Reichardt-Bornholdt configuration
-	// modularity on the association-strength graph keeps generic hubs out of
-	// topic clusters (γ <= 1.10 merges hubs into topics) while staying below the
-	// split threshold of sparse 4-tag rings alongside high-count tags (γ_c ≈ 1.176).
-	leidenResolution    = 1.15
+	// γ = 2.0 splits moderately cross-linked dense topic groups instead of merging them into one dominant cluster.
+	leidenResolution    = 2.0
 	maxLeidenIterations = 10
 	maxLeidenLevels     = 10
 	maxMovePasses       = 30
@@ -40,26 +37,12 @@ type rawEdge struct {
 	ochiai      float64
 }
 
-func ochiaiWeight(shared, countA, countB int) float64 {
-	return float64(shared) / math.Sqrt(float64(countA)*float64(countB))
-}
-
-// associationStrengthWeight normalises co-occurrence counts by the product of
-// marginal tag article counts, w_ij = c_ij / (n_i * n_j), following
-// van Eck & Waltman (2009), JASIST 60(8):1635-1651 (https://doi.org/10.1002/asi.21075),
-// Eq. (6). The corpus-size factor cancels in Reichardt-Bornholdt modularity
-// because W_C / 2m and (Sigma_C / 2m)^2 are invariant to positive weight scaling.
-func associationStrengthWeight(shared, countA, countB int) float64 {
-	return float64(shared) / (float64(countA) * float64(countB))
-}
-
-// buildWeightedGraph ranks tags in the fixed order (article count descending,
-// then tag name ascending) and returns fixedOrder (rank -> item index) together
-// with the undirected weighted adjacency list indexed by rank.
-func buildWeightedGraph(
+// buildAssociationGraph ranks tags in the fixed order (article count
+// descending, then tag name ascending) and returns fixedOrder (rank -> item
+// index) together with the undirected Ochiai-weighted adjacency list indexed by rank.
+func buildAssociationGraph(
 	items []*domain.TagCloudItem,
 	cooccurrences []*domain.TagCooccurrence,
-	weightFn func(shared, countA, countB int) float64,
 ) ([]int, [][]partnerEdge) {
 	n := len(items)
 	fixedOrder := make([]int, n)
@@ -93,7 +76,7 @@ func buildWeightedGraph(
 		if countA <= 0 || countB <= 0 {
 			continue
 		}
-		w := weightFn(c.SharedCount, countA, countB)
+		w := float64(c.SharedCount) / math.Sqrt(float64(countA)*float64(countB))
 		u, v := rankA, rankB
 		if u > v {
 			u, v = v, u
@@ -124,10 +107,6 @@ func buildWeightedGraph(
 	return fixedOrder, adj
 }
 
-func buildAssociationGraph(items []*domain.TagCloudItem, cooccurrences []*domain.TagCooccurrence) ([]int, [][]partnerEdge) {
-	return buildWeightedGraph(items, cooccurrences, associationStrengthWeight)
-}
-
 // ComputeEdges selects each tag's 3 strongest partners by Ochiai coefficient,
 // takes the deduplicated undirected union (source_index < target_index), caps
 // at the 600 strongest, normalises weights to (0, 1] by the maximum kept
@@ -137,7 +116,7 @@ func ComputeEdges(items []*domain.TagCloudItem, cooccurrences []*domain.TagCoocc
 		return nil
 	}
 
-	fixedOrder, adj := buildWeightedGraph(items, cooccurrences, ochiaiWeight)
+	fixedOrder, adj := buildAssociationGraph(items, cooccurrences)
 	if adj == nil {
 		return nil
 	}
@@ -223,7 +202,7 @@ type leidenGraph struct {
 
 // ComputeClusters assigns topic communities via the deterministic Leiden
 // algorithm optimising Reichardt-Bornholdt configuration modularity over the
-// association-strength graph (w_ij = c_ij / (n_i * n_j)). Communities with
+// Ochiai co-occurrence graph (w_ij = c_ij / sqrt(n_i * n_j)). Communities with
 // fewer than 4 tags receive cluster 0, and up to the 8 largest communities by
 // total article count receive clusters 1..8.
 func ComputeClusters(items []*domain.TagCloudItem, cooccurrences []*domain.TagCooccurrence) {

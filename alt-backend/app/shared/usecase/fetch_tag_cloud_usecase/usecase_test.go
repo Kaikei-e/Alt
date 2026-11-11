@@ -893,14 +893,19 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 				}, nil
 			},
 			cooccurrences: []*domain.TagCooccurrence{
-				{TagNameA: "t1", TagNameB: "t2", SharedCount: 40},
-				{TagNameA: "t2", TagNameB: "t3", SharedCount: 35},
-				{TagNameA: "t3", TagNameB: "t4", SharedCount: 30},
+				{TagNameA: "t1", TagNameB: "t2", SharedCount: 25},
+				{TagNameA: "t1", TagNameB: "t3", SharedCount: 25},
 				{TagNameA: "t1", TagNameB: "t4", SharedCount: 25},
-				{TagNameA: "t4", TagNameB: "t5", SharedCount: 20},
-				{TagNameA: "s1", TagNameB: "s2", SharedCount: 25},
-				{TagNameA: "s2", TagNameB: "s3", SharedCount: 25},
-				{TagNameA: "s1", TagNameB: "s3", SharedCount: 25},
+				{TagNameA: "t2", TagNameB: "t3", SharedCount: 25},
+				{TagNameA: "t2", TagNameB: "t4", SharedCount: 25},
+				{TagNameA: "t3", TagNameB: "t4", SharedCount: 25},
+				{TagNameA: "t1", TagNameB: "t5", SharedCount: 25},
+				{TagNameA: "t2", TagNameB: "t5", SharedCount: 25},
+				{TagNameA: "t3", TagNameB: "t5", SharedCount: 25},
+				{TagNameA: "t4", TagNameB: "t5", SharedCount: 25},
+				{TagNameA: "s1", TagNameB: "s2", SharedCount: 28},
+				{TagNameA: "s2", TagNameB: "s3", SharedCount: 28},
+				{TagNameA: "s1", TagNameB: "s3", SharedCount: 28},
 			},
 		}
 
@@ -922,8 +927,8 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("initial Execute: %v", err)
 		}
-		if len(items1) != 7 || items1[0].ClusterID != 1 || len(edges1) != 7 {
-			t.Fatalf("initial Execute: want 7 items (t1 in cluster 1) and 7 edges, got items=%+v edges=%+v", items1, edges1)
+		if len(items1) != 7 || items1[0].ClusterID != 1 || len(edges1) != 9 {
+			t.Fatalf("initial Execute: want 7 items (t1 in cluster 1) and 9 edges, got items=%+v edges=%+v", items1, edges1)
 		}
 
 		nowMu.Lock()
@@ -934,8 +939,8 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("stale Execute: %v", err)
 		}
-		if len(staleItems) != 7 || staleItems[0].ClusterID != 1 || len(staleEdges) != 7 {
-			t.Fatalf("stale Execute: want cached 7 items/edges, got items=%+v edges=%+v", staleItems, staleEdges)
+		if len(staleItems) != 7 || staleItems[0].ClusterID != 1 || len(staleEdges) != 9 {
+			t.Fatalf("stale Execute: want cached 7 items/9 edges, got items=%+v edges=%+v", staleItems, staleEdges)
 		}
 
 		select {
@@ -956,8 +961,8 @@ func TestFetchTagCloudUsecase_StaleWhileRevalidate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("post-refresh Execute: %v", err)
 		}
-		if len(freshItems) != 8 || len(freshEdges) != 8 {
-			t.Fatalf("post-refresh Execute: want 8 items and 8 edges, got %d items and %d edges", len(freshItems), len(freshEdges))
+		if len(freshItems) != 8 || len(freshEdges) != 12 {
+			t.Fatalf("post-refresh Execute: want 8 items and 12 edges, got %d items and %d edges", len(freshItems), len(freshEdges))
 		}
 		for _, it := range freshItems[:5] {
 			if it.ClusterID != 1 {
