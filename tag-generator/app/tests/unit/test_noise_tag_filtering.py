@@ -1,8 +1,9 @@
 """Regression and root-cause tests for noise-free tag extraction."""
 
+import inspect
 import re
 from collections import Counter
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,47 +11,61 @@ from fugashi import Tagger as FugashiTagger
 from nltk.tokenize import wordpunct_tokenize
 
 from tag_extractor.config import TagExtractionConfig
+from tag_extractor.english_extractor import extract_keywords_english, tokenize_english
 from tag_extractor.extract import TagExtractor
 from tag_extractor.input_sanitizer import InputSanitizer, SanitizationConfig
+from tag_extractor.japanese_extractor import (
+    extract_compound_japanese_words,
+    is_topical_japanese_noun,
+)
 from tag_extractor.model_manager import ModelManager, reset_model_manager
+from tag_extractor.tag_validator import is_valid_english_tag
 from tag_generator.exceptions import ModelLoadError
 
-_BASIC_SKLEARN_LIKE_STOPWORDS = frozenset(
-    {
-        "a",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "by",
-        "for",
-        "from",
-        "has",
-        "have",
-        "he",
-        "in",
-        "is",
-        "it",
-        "its",
-        "of",
-        "on",
-        "or",
-        "she",
-        "that",
-        "the",
-        "their",
-        "they",
-        "this",
-        "to",
-        "was",
-        "we",
-        "were",
-        "will",
-        "with",
-    }
+# Canonical 318-word Glasgow IR stopword set shipped as
+# sklearn.feature_extraction.text.ENGLISH_STOP_WORDS (BSD-3-Clause; primary
+# list: https://ir.dcs.gla.ac.uk/resources/linguistic_utils/stop_words).
+# Imported from scikit-learn when the optional `ml` dependency group is
+# installed, and kept identical in `dev`-only unit test environments.
+_GLASGOW_IR_ENGLISH_STOP_WORDS: frozenset[str] = frozenset(
+    """
+    a about above across after afterwards again against all almost alone along
+    already also although always am among amongst amoungst amount an and another
+    any anyhow anyone anything anyway anywhere are around as at back be became
+    because become becomes becoming been before beforehand behind being below
+    beside besides between beyond bill both bottom but by call can cannot cant
+    co con could couldnt cry de describe detail do done down due during each eg
+    eight either eleven else elsewhere empty enough etc even ever every everyone
+    everything everywhere except few fifteen fifty fill find fire first five for
+    former formerly forty found four from front full further get give go had has
+    hasnt have he hence her here hereafter hereby herein hereof hereto herewith
+    hers herself him himself his how however hundred i ie if in inc indeed
+    interest into is it its itself keep last latter latterly least less ltd made
+    many may me meanwhile might mill mine more moreover most mostly move much
+    must my myself name namely neither never nevertheless next nine no nobody
+    none noone nor not nothing now nowhere of off often on once one only onto or
+    other others otherwise our ours ourselves out over own part per perhaps
+    please put rather re same see seem seemed seeming seems serious several she
+    should show side since sincere six sixty so some somehow someone something
+    sometime sometimes somewhere still such system take ten than that the their
+    them themselves then thence there thereafter thereby therefore therein
+    thereupon these they thick thin third this those though three through
+    throughout thru thus to together too top toward towards twelve twenty two un
+    under until up upon us very via was we well were what whatever when whence
+    whenever where whereafter whereas whereby wherein whereupon wherever whether
+    which while whither who whoever whole whom whose why will with within
+    without would yet you your yours yourself yourselves
+    """.split()
 )
+
+try:
+    from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS as _SKLEARN_STOP_WORDS
+
+    ENGLISH_STOP_WORDS: frozenset[str] = (
+        _SKLEARN_STOP_WORDS if isinstance(_SKLEARN_STOP_WORDS, frozenset) else _GLASGOW_IR_ENGLISH_STOP_WORDS
+    )
+except ImportError:
+    ENGLISH_STOP_WORDS = _GLASGOW_IR_ENGLISH_STOP_WORDS
 
 _NLTK_REALISTIC_ENGLISH_STOPWORDS = [
     "the",
@@ -178,7 +193,7 @@ class _CandidateGeneratingKeyBERT:
             return scored
 
         if stop_words == "english":
-            active_stopwords: set[str] = set(_BASIC_SKLEARN_LIKE_STOPWORDS)
+            active_stopwords: set[str] = set(ENGLISH_STOP_WORDS)
         elif isinstance(stop_words, list | set | tuple):
             active_stopwords = {w.lower() for w in stop_words}
         else:
@@ -205,12 +220,12 @@ class TestInputNormalisationBeforeExtraction:
     """Verify HTML entities and URLs are normalised before keyword tokenisation."""
 
     def test_sanitizer_decodes_html_entities_and_preserves_xss_stripping(self) -> None:
-        sanitizer = InputSanitizer(SanitizationConfig(strip_urls=True))
+        sanitizer = InputSanitizer()
         result = sanitizer.sanitize(
-            title="Claude &amp; Android&nbsp;Security &lt;script&gt;alert(1)&lt;/script&gt;",
+            title="Claude &amp; Android&nbsp;Security <script>alert(1)</script>",
             content=(
                 "<p>Read&nbsp;more at https://security.example.org/2026/report "
-                "and&amp;nbsp;compare Google &amp; Claude defences.</p>"
+                "and&nbsp;compare Google &amp; Claude defences.</p>"
             ),
         )
 
@@ -226,6 +241,33 @@ class TestInputNormalisationBeforeExtraction:
         assert "claude" in combined
         assert "android" in combined
         assert "google" in combined
+
+    def test_sanitizer_decodes_entities_once_after_nh3_preserving_angle_bracket_comparisons(self) -> None:
+        sanitizer = InputSanitizer()
+        result = sanitizer.sanitize(
+            title="Bounds Check",
+            content="Verify x&lt;y and z&gt;w hold across all policy assertions.",
+        )
+
+        assert result.is_valid is True
+        assert result.sanitized_input is not None
+        assert "x<y and z>w" in result.sanitized_input.content
+
+    def test_extractor_respects_explicit_strip_urls_false_without_duplicate_strip(self) -> None:
+        extractor = TagExtractor(sanitizer_config=SanitizationConfig(strip_urls=False))
+        with patch.object(
+            extractor,
+            "_extract_keywords_english",
+            return_value=(["security", "android", "claude"], {"security": 0.9, "android": 0.8, "claude": 0.7}),
+        ) as mock_extract:
+            extractor.extract_tags_with_metrics(
+                "Security Audit https://audit.example.org/spec",
+                "Reference https://docs.example.org/guide for Android and Claude verification.",
+            )
+
+        passed_text = mock_extract.call_args[0][0]
+        assert "https://audit.example.org/spec" in passed_text
+        assert "https://docs.example.org/guide" in passed_text
 
 
 class TestEnglishNoiseFilteringEndToEnd:
@@ -257,25 +299,73 @@ class TestEnglishNoiseFilteringEndToEnd:
             f"Expected topical tags missing from {outcome.tags}"
         )
 
+    def test_primary_english_merges_sklearn_stopwords_and_enforces_two_char_caps_or_digit_rule(self) -> None:
+        manager = ModelManager()
+        fake_keybert = _CandidateGeneratingKeyBERT()
+        title = "AI and 5G Architecture Review"
+        content = (
+            "Something was done across three or five clusters, and several teams at Acme Inc "
+            "and Beta Ltd noted something due upon ten checks (eg ie co). "
+            "Mr Smith and Dr Patel watched Go benchmarks while AI and 5G systems scaled; "
+            "something across three or several nodes used AI and 5G."
+        )
+
+        with (
+            patch.object(manager, "get_models", return_value=(MagicMock(), fake_keybert, MagicMock())),
+            patch("nltk.corpus.stopwords.words", return_value=_NLTK_REALISTIC_ENGLISH_STOPWORDS),
+            patch("nltk.word_tokenize", side_effect=wordpunct_tokenize),
+            patch("tag_extractor.extract.detect", return_value="en"),
+        ):
+            extractor = TagExtractor(
+                config=TagExtractionConfig(top_keywords=12),
+                model_manager=manager,
+            )
+            outcome = extractor.extract_tags_with_metrics(title, content)
+
+        lowered_tags = {tag.lower() for tag in outcome.tags}
+        forbidden = {
+            "something",
+            "three",
+            "five",
+            "ten",
+            "done",
+            "due",
+            "several",
+            "upon",
+            "inc",
+            "ltd",
+            "co",
+            "eg",
+            "ie",
+            "mr",
+            "dr",
+            "go",
+        }
+        leaked = lowered_tags & forbidden
+        assert not leaked, f"sklearn stopwords or non-all-caps 2-char words leaked: {leaked} (tags={outcome.tags})"
+        assert {"ai", "5g"} <= lowered_tags, f"Expected AI and 5G to be preserved, got {outcome.tags}"
+
     def test_primary_english_post_filter_blocks_noisy_keybert_phrases_and_tokens(self) -> None:
         manager = ModelManager()
         noisy_keybert = MagicMock()
         noisy_keybert.extract_keywords.return_value = [
-            ("Would Like", 0.91),
-            ("He Said", 0.89),
+            ("would like", 0.91),
+            ("he said", 0.89),
             ("https", 0.88),
             ("nbsp", 0.87),
             ("amp", 0.86),
             ("like", 0.85),
             ("said", 0.84),
             ("would", 0.83),
+            ("something", 0.825),
+            ("several", 0.822),
             ("2026", 0.82),
             ("10", 0.81),
             ("0", 0.80),
-            ("Android", 0.78),
+            ("android", 0.78),
             ("security", 0.76),
-            ("Google", 0.74),
-            ("Claude", 0.72),
+            ("google", 0.74),
+            ("claude", 0.72),
         ]
 
         with (
@@ -291,7 +381,7 @@ class TestEnglishNoiseFilteringEndToEnd:
             outcome = extractor.extract_tags_with_metrics(SYNTHETIC_ENGLISH_TITLE, SYNTHETIC_ENGLISH_CONTENT)
 
         lowered_tags = {tag.lower() for tag in outcome.tags}
-        leaked_noise = lowered_tags & NOISE_ENGLISH_TAGS
+        leaked_noise = lowered_tags & (NOISE_ENGLISH_TAGS | {"something", "several"})
         assert not leaked_noise, f"Noisy KeyBERT candidates survived filtering: {leaked_noise} (tags={outcome.tags})"
         assert {"android", "security", "google", "claude"} <= lowered_tags
 
@@ -318,6 +408,84 @@ class TestEnglishNoiseFilteringEndToEnd:
         assert {"android", "security", "google", "claude"} & lowered_tags, (
             f"Expected topical tags in fallback output, got {outcome.tags}"
         )
+
+    def test_fallback_tokenizer_rejects_title_case_short_tokens_and_keeps_all_caps_digit_or_symbol(self) -> None:
+        with patch("nltk.word_tokenize", return_value=["Mr", "Dr", "St", "Go", "AI", "5G", "C", "#", "C", "++"]):
+            tokens = tokenize_english(
+                "Mr Dr St Go AI 5G C# C++",
+                en_stopwords=set(),
+                config=TagExtractionConfig(min_token_length=2),
+            )
+
+        assert "mr" not in tokens
+        assert "dr" not in tokens
+        assert "st" not in tokens
+        assert "go" not in tokens
+        assert {"ai", "5g", "c#", "c++"} <= set(tokens)
+
+    def test_english_dedup_keeps_distinct_prefix_entities_and_collapses_only_inflections(self) -> None:
+        mock_kb = MagicMock()
+        mock_kb.extract_keywords.return_value = [
+            ("intel", 0.95),
+            ("intelligence", 0.93),
+            ("space", 0.91),
+            ("spacex", 0.89),
+            ("graph", 0.87),
+            ("graphql", 0.85),
+            ("cloud", 0.83),
+            ("cloudflare", 0.81),
+            ("india", 0.79),
+            ("indiana", 0.77),
+            ("model", 0.75),
+            ("models", 0.74),
+            ("patch", 0.73),
+            ("patches", 0.72),
+            ("deploy", 0.71),
+            ("deployed", 0.70),
+            ("train", 0.69),
+            ("training", 0.68),
+        ]
+        tags, _ = extract_keywords_english(
+            "Intel intelligence Space SpaceX graph GraphQL cloud Cloudflare India Indiana",
+            mock_kb,
+            TagExtractionConfig(top_keywords=20),
+            en_stopwords=set(),
+        )
+
+        tag_set = set(tags)
+        assert {
+            "intel",
+            "intelligence",
+            "space",
+            "spacex",
+            "graph",
+            "graphql",
+            "cloud",
+            "cloudflare",
+            "india",
+            "indiana",
+        } <= tag_set
+        assert {"model", "patch", "deploy", "train"} <= tag_set
+        assert not ({"models", "patches", "deployed", "training"} & tag_set)
+
+    def test_extract_keywords_english_requires_en_stopwords_parameter(self) -> None:
+        sig = inspect.signature(extract_keywords_english)
+        assert sig.parameters["en_stopwords"].default is inspect.Parameter.empty
+        with pytest.raises(TypeError):
+            cast(Any, extract_keywords_english)("Sample text", MagicMock(), TagExtractionConfig())
+
+    def test_english_validator_and_stopwords_preserve_legitimate_phrases_and_gerund_topics(self) -> None:
+        manager = ModelManager()
+        with patch("nltk.corpus.stopwords.words", return_value=_NLTK_REALISTIC_ENGLISH_STOPWORDS):
+            _, en_stopwords = manager.get_stopwords()
+
+        assert is_valid_english_tag("net neutrality", stopwords=en_stopwords) is True
+        assert is_valid_english_tag("HTTP API", stopwords=en_stopwords) is True
+        assert is_valid_english_tag("net", stopwords=en_stopwords) is False
+        assert is_valid_english_tag("http", stopwords=en_stopwords) is False
+        assert is_valid_english_tag("decision making", stopwords=en_stopwords) is True
+        assert is_valid_english_tag("critical thinking", stopwords=en_stopwords) is True
+        assert is_valid_english_tag("financial reporting", stopwords=en_stopwords) is True
 
 
 class TestJapaneseNoiseFilteringEndToEnd:
@@ -351,17 +519,13 @@ class TestJapaneseNoiseFilteringEndToEnd:
         assert not any("午前" in tag or "午後" in tag for tag in outcome.tags), (
             f"Temporal expression leaked into Japanese tags: {outcome.tags}"
         )
-        assert "開発" in tag_set or any("開発" in tag for tag in tag_set), (
-            f"Topical tag '開発' missing from {outcome.tags}"
-        )
-        assert "データベース" in tag_set or any("データベース" in tag for tag in tag_set), (
-            f"Topical tag 'データベース' missing from {outcome.tags}"
-        )
+        assert "開発" not in tag_set, f"Generic standalone stopword '開発' must be filtered: {outcome.tags}"
+        assert "データベース開発" in tag_set, f"Compound 'データベース開発' missing from {outcome.tags}"
         assert "セキュリティ" in tag_set or any("セキュリティ" in tag for tag in tag_set), (
             f"Topical tag 'セキュリティ' missing from {outcome.tags}"
         )
 
-    def test_standalone_kaihatsu_is_not_blocked_as_stopword(self) -> None:
+    def test_generic_kaihatsu_stopword_blocks_standalone_but_keeps_compounds(self) -> None:
         manager = ModelManager()
         real_tagger = FugashiTagger()
 
@@ -375,14 +539,73 @@ class TestJapaneseNoiseFilteringEndToEnd:
                 model_manager=manager,
             )
             outcome = extractor.extract_tags_with_metrics(
-                "午前10時の開発とデータベース",
-                "午前10時に開発を開始し、同日午前に開発の品質とデータベースを確認した。",
+                "午前10時の開発とデータベース開発",
+                "午前10時に開発を開始し、同日午前にデータベース開発とデータベースの品質を確認した。",
             )
 
-        assert "開発" in outcome.tags, f"Standalone '開発' must be extractable, got {outcome.tags}"
+        assert "開発" not in outcome.tags, f"Standalone '開発' is a generic stopword, got {outcome.tags}"
+        assert "データベース開発" in outcome.tags, f"Compound 'データベース開発' must be kept, got {outcome.tags}"
         assert "データベース" in outcome.tags, f"Standalone 'データベース' must be extractable, got {outcome.tags}"
         assert "午前" not in outcome.tags
         assert not any("午前" in tag for tag in outcome.tags)
+
+    def test_japanese_compounds_keep_internal_numerals_counters_and_temporal_modifiers_without_fragments(
+        self,
+    ) -> None:
+        real_tagger = FugashiTagger()
+        config = TagExtractionConfig(top_keywords=20, use_japanese_semantic=False)
+        text = (
+            "2026年午前10時、同日午前に10件の報告で二酸化炭素の削減と二要素認証、"
+            "ドル円相場、3Dプリンター、5G通信および5G通信網、第3世代の製品、"
+            "2026年問題、四半期決算、年末商戦、二重価格を検証した。"
+            "二酸化炭素と二要素認証、ドル円相場、3Dプリンター、5G通信、5G通信網、"
+            "第3世代、2026年問題、四半期決算、年末商戦、二重価格が焦点となった。"
+        )
+
+        compounds = set(extract_compound_japanese_words(text, real_tagger, config))
+
+        expected_compounds = {
+            "二酸化炭素",
+            "二要素認証",
+            "ドル円相場",
+            "3Dプリンター",
+            "5G通信",
+            "5G通信網",
+            "第3世代",
+            "2026年問題",
+            "四半期決算",
+            "年末商戦",
+            "二重価格",
+        }
+        forbidden_fragments_and_noise = {
+            "酸化炭素",
+            "要素認証",
+            "円相場",
+            "Dプリンター",
+            "G通信",
+            "G通信網",
+            "世代の製品",
+            "2026年",
+            "10件",
+            "午前10時",
+            "同日午前",
+            "午前",
+        }
+
+        missing = expected_compounds - compounds
+        leaked = forbidden_fragments_and_noise & compounds
+        assert not missing, f"Expected intact Japanese compounds missing: {missing} (compounds={sorted(compounds)})"
+        assert not leaked, f"Fragmented or noise compounds leaked: {leaked} (compounds={sorted(compounds)})"
+
+    def test_is_topical_japanese_noun_respects_allowed_pos_tags(self) -> None:
+        token = MagicMock()
+        token.feature = MagicMock()
+        token.feature.pos1 = "名詞"
+        token.feature.pos2 = "普通名詞"
+        token.feature.pos3 = "一般"
+
+        assert is_topical_japanese_noun(token, allowed_pos_tags={"固有名詞"}) is False
+        assert is_topical_japanese_noun(token, allowed_pos_tags={"名詞"}) is True
 
 
 class TestStopwordLoadingFailFast:
