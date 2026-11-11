@@ -12,12 +12,13 @@ from .tag_validator import is_valid_english_tag
 
 logger = structlog.get_logger(__name__)
 
-# Canonical 318-word Glasgow IR stopword set distributed as
-# sklearn.feature_extraction.text.ENGLISH_STOP_WORDS (BSD-3-Clause; primary
-# source: https://ir.dcs.gla.ac.uk/resources/linguistic_utils/stop_words).
-# Loaded from scikit-learn when the `ml` dependency group is installed, with an
-# identical constant for minimal `dev` unit-test environments without sklearn.
-_GLASGOW_IR_ENGLISH_STOP_WORDS: frozenset[str] = frozenset(
+# Canonical 318-word Glasgow IR stopword set (primary source:
+# https://ir.dcs.gla.ac.uk/resources/linguistic_utils/stop_words; also distributed
+# as scikit-learn's ENGLISH_STOP_WORDS under BSD-3-Clause:
+# https://scikit-learn.org/stable/modules/feature_extraction.html#stop-words).
+# Vendored directly because scikit-learn belongs to the optional `ml` group rather
+# than core runtime dependencies.
+ENGLISH_STOP_WORDS: frozenset[str] = frozenset(
     """
     a about above across after afterwards again against all almost alone along
     already also although always am among amongst amoungst amount an and another
@@ -28,12 +29,12 @@ _GLASGOW_IR_ENGLISH_STOP_WORDS: frozenset[str] = frozenset(
     eight either eleven else elsewhere empty enough etc even ever every everyone
     everything everywhere except few fifteen fifty fill find fire first five for
     former formerly forty found four from front full further get give go had has
-    hasnt have he hence her here hereafter hereby herein hereof hereto herewith
-    hers herself him himself his how however hundred i ie if in inc indeed
-    interest into is it its itself keep last latter latterly least less ltd made
-    many may me meanwhile might mill mine more moreover most mostly move much
-    must my myself name namely neither never nevertheless next nine no nobody
-    none noone nor not nothing now nowhere of off often on once one only onto or
+    hasnt have he hence her here hereafter hereby herein hereupon hers herself
+    him himself his how however hundred i ie if in inc indeed interest into is
+    it its itself keep last latter latterly least less ltd made many may me
+    meanwhile might mill mine more moreover most mostly move much must my
+    myself name namely neither never nevertheless next nine no nobody none
+    noone nor not nothing now nowhere of off often on once one only onto or
     other others otherwise our ours ourselves out over own part per perhaps
     please put rather re same see seem seemed seeming seems serious several she
     should show side since sincere six sixty so some somehow someone something
@@ -47,15 +48,6 @@ _GLASGOW_IR_ENGLISH_STOP_WORDS: frozenset[str] = frozenset(
     without would yet you your yours yourself yourselves
     """.split()
 )
-
-try:
-    from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS as _SKLEARN_STOP_WORDS
-
-    ENGLISH_STOP_WORDS: frozenset[str] = (
-        _SKLEARN_STOP_WORDS if isinstance(_SKLEARN_STOP_WORDS, frozenset) else _GLASGOW_IR_ENGLISH_STOP_WORDS
-    )
-except ImportError:
-    ENGLISH_STOP_WORDS = _GLASGOW_IR_ENGLISH_STOP_WORDS
 
 _ENGLISH_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:[+#._/-][A-Za-z0-9+#]+)*|[A-Za-z][A-Za-z0-9]*(?:\+\+|#)")
 
@@ -71,7 +63,7 @@ def _is_allowed_short_english_term(word: str, source_text: str) -> bool:
 
 
 def _is_duplicate_english_keyword(candidate: str, existing: str) -> bool:
-    """Check phrase-token or inflection duplication without merging distinct prefix-sharing entities."""
+    """Check phrase-token or plural duplication without merging distinct prefix or gerund entities."""
     if candidate == existing:
         return True
     shorter, longer = (candidate, existing) if len(candidate) <= len(existing) else (existing, candidate)
@@ -81,13 +73,11 @@ def _is_duplicate_english_keyword(candidate: str, existing: str) -> bool:
         width = len(shorter_words)
         if any(longer_words[i : i + width] == shorter_words for i in range(len(longer_words) - width + 1)):
             return True
-    if len(shorter) >= 3 and longer in (
-        f"{shorter}s",
-        f"{shorter}es",
-        f"{shorter}ed",
-        f"{shorter}ing",
-    ):
-        return True
+    if len(shorter) >= 3:
+        if longer == f"{shorter}s":
+            return True
+        if shorter.endswith(("s", "x", "z", "ch", "sh")) and longer == f"{shorter}es":
+            return True
     return False
 
 

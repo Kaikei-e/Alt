@@ -387,8 +387,15 @@ class TagExtractor:
         self, text: str, candidates: list[str], freq_counter: Counter[str]
     ) -> tuple[list[str], dict[str, float]]:
         """Score Japanese keyword candidates using KeyBERT semantic similarity."""
+        self._load_stopwords()
         return score_japanese_candidates_with_keybert(
-            text, candidates, freq_counter, self._keybert, self._ja_tagger, self.config
+            text,
+            candidates,
+            freq_counter,
+            self._keybert,
+            self._ja_tagger,
+            self.config,
+            self._ja_stopwords,
         )
 
     def _score_candidates_by_frequency(

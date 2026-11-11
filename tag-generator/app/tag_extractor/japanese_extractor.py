@@ -11,20 +11,6 @@ from .tag_validator import is_valid_japanese_tag as _shared_is_valid_japanese_ta
 
 logger = structlog.get_logger(__name__)
 
-# POS tags that should be included in compound nouns
-NOUN_POS_TAGS = {
-    "名詞",
-    "名詞-普通名詞-一般",
-    "名詞-普通名詞-サ変可能",
-    "名詞-普通名詞-形状詞可能",
-    "名詞-固有名詞-一般",
-    "名詞-固有名詞-人名",
-    "名詞-固有名詞-組織",
-    "名詞-固有名詞-地域",
-    "名詞-数詞",
-    "名詞-接尾辞-名詞的",
-}
-
 _EXCLUDED_UNIDIC_POS2 = frozenset({"数詞", "助動詞語幹"})
 _EXCLUDED_UNIDIC_POS3 = frozenset({"副詞可能", "助数詞可能"})
 
@@ -67,7 +53,7 @@ def is_japanese_noun(
         return False
     if allowed_pos_tags is not None:
         return pos1 in allowed_pos_tags
-    return pos1 in NOUN_POS_TAGS or pos1.startswith("名詞")
+    return pos1.startswith("名詞")
 
 
 def is_topical_japanese_noun(
@@ -273,10 +259,11 @@ def make_japanese_analyzer(ja_tagger: Any):
 
         tokens = []
         for word in tagger(text):
-            # Include all Japanese nouns so numeral/counter/temporal-prefixed compound
-            # candidates (e.g. 二酸化炭素, 2026年問題, 年末商戦) match tokenized text.
+            # Exclude single-token numerals, counters, and temporal/adverbial nouns
+            # (数詞, 助動詞語幹, 副詞可能, 助数詞可能) from the KeyBERT vectorizer vocabulary.
             if is_japanese_noun(word):
-                tokens.append(word.surface)
+                if is_topical_japanese_noun(word):
+                    tokens.append(word.surface)
             # Also preserve English words (ASCII alphabetic)
             elif word.surface.isascii() and word.surface.isalpha():
                 tokens.append(word.surface)
@@ -292,21 +279,24 @@ def score_japanese_candidates_with_keybert(
     keybert: Any,
     ja_tagger: Any,
     config: TagExtractionConfig,
+    ja_stopwords: set[str],
 ) -> tuple[list[str], dict[str, float]]:
     """
     Score Japanese keyword candidates using KeyBERT semantic similarity.
 
-    Uses KeyBERT's candidates parameter to score pre-extracted
-    noun phrases against the document embedding, combining semantic
-    relevance with frequency information.
+    Because passing a custom ``vectorizer`` causes KeyBERT to build its candidate
+    vocabulary from the vectorizer rather than ``candidates``, KeyBERT output is
+    explicitly filtered against ``candidates``, ``is_valid_japanese_tag``, and
+    ``ja_stopwords`` before combining semantic relevance with frequency scores.
 
     Args:
         text: Original document text
-        candidates: List of candidate keywords from morphological analysis
+        candidates: List of pre-validated candidate keywords from morphological analysis
         freq_counter: Frequency counts for each candidate
         keybert: KeyBERT instance
         ja_tagger: Fugashi tagger instance
         config: Tag extraction configuration
+        ja_stopwords: Japanese stopword set
 
     Returns:
         Tuple of (tag_list, tag_confidences_dict)
@@ -325,17 +315,17 @@ def score_japanese_candidates_with_keybert(
         lowercase=False,  # Preserve case to match uppercase candidates
     )
 
-    # Use KeyBERT with candidate list for semantic scoring
     keywords = keybert.extract_keywords(
         text,
         candidates=candidates,
-        top_n=min(len(candidates), config.top_keywords * 2),
+        top_n=max(len(candidates), config.top_keywords * 2),
         use_mmr=config.use_mmr,
         diversity=config.japanese_mmr_diversity,
         vectorizer=vectorizer,
     )
 
-    # Build result with combined scores
+    # Build result with combined scores after validating against candidate set and stopwords
+    candidate_set = set(candidates)
     result: list[str] = []
     tag_confidences: dict[str, float] = {}
 
@@ -343,7 +333,12 @@ def score_japanese_candidates_with_keybert(
     max_freq = max(freq_counter.values()) if freq_counter else 1
 
     for keyword, semantic_score in keywords:
-        if keyword in result:
+        if (
+            keyword in result
+            or keyword not in candidate_set
+            or keyword in ja_stopwords
+            or not _shared_is_valid_japanese_tag(keyword, max_length=config.max_tag_length)
+        ):
             continue
 
         # Combine semantic score (0-1) with normalized frequency
@@ -509,7 +504,9 @@ def extract_keywords_japanese(
 
     # Try semantic scoring with KeyBERT
     if config.use_japanese_semantic and keybert is not None and len(candidates) >= 2:
-        return score_japanese_candidates_with_keybert(text, candidates, combined_freq, keybert, ja_tagger, config)
+        return score_japanese_candidates_with_keybert(
+            text, candidates, combined_freq, keybert, ja_tagger, config, ja_stopwords
+        )
 
     # Fallback: frequency-based scoring
     return score_candidates_by_frequency(candidates, combined_freq, config.top_keywords)

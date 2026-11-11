@@ -68,7 +68,7 @@ class _MinimalCountVectorizer:
 
 
 if isinstance(sys.modules.get("sklearn"), MagicMock):
-    sys.modules["sklearn.feature_extraction.text"].CountVectorizer = _MinimalCountVectorizer
+    cast(Any, sys.modules["sklearn.feature_extraction.text"]).CountVectorizer = _MinimalCountVectorizer
 elif importlib.util.find_spec("sklearn") is None:
     _mock_sklearn = MagicMock()
     _mock_sklearn.feature_extraction.text.CountVectorizer = _MinimalCountVectorizer
@@ -205,13 +205,13 @@ class _CandidateGeneratingKeyBERT:
             doc_list = [docs] if isinstance(docs, str) else list(docs)
             vocab: set[str] | None = None
             if callable(getattr(vectorizer, "fit", None)):
-                fitted = vectorizer.fit(doc_list)
+                fitted = cast(Any, vectorizer).fit(doc_list)
                 if callable(getattr(fitted, "get_feature_names_out", None)):
                     vocab = set(fitted.get_feature_names_out())
             counts: Counter[str] = Counter()
             build_analyzer = getattr(vectorizer, "build_analyzer", None)
             if callable(build_analyzer):
-                analyze = build_analyzer()
+                analyze = cast(Any, build_analyzer)()
                 for doc in doc_list:
                     tokens = analyze(doc)
                     counts.update(tok for tok in tokens if vocab is None or tok in vocab)

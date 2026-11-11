@@ -286,7 +286,7 @@ class InputSanitizer:
             )
 
     def _sanitize_text(self, text: str) -> str:
-        """Sanitize text content."""
+        """Sanitize text content; output is for tokenisation only and must not be rendered as HTML."""
         if not text:
             return ""
 
