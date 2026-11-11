@@ -11,19 +11,8 @@ from .tag_validator import is_valid_japanese_tag as _shared_is_valid_japanese_ta
 
 logger = structlog.get_logger(__name__)
 
-# POS tags that should be included in compound nouns
-NOUN_POS_TAGS = {
-    "名詞",
-    "名詞-普通名詞-一般",
-    "名詞-普通名詞-サ変可能",
-    "名詞-普通名詞-形状詞可能",
-    "名詞-固有名詞-一般",
-    "名詞-固有名詞-人名",
-    "名詞-固有名詞-組織",
-    "名詞-固有名詞-地域",
-    "名詞-数詞",
-    "名詞-接尾辞-名詞的",
-}
+_EXCLUDED_UNIDIC_POS2 = frozenset({"数詞", "助動詞語幹"})
+_EXCLUDED_UNIDIC_POS3 = frozenset({"副詞可能", "助数詞可能"})
 
 # Tags that can connect nouns (e.g., の between nouns)
 CONNECTOR_SURFACES = {"の", "・", "＝", "－", "-"}
@@ -31,10 +20,13 @@ CONNECTOR_SURFACES = {"の", "・", "＝", "－", "-"}
 # Regex patterns for mixed-script and special compounds
 COMPOUND_PATTERNS = [
     # Tech terms with mixed scripts
-    r"[A-Za-z][A-Za-z0-9]*[ァ-ヶー]+(?:[A-Za-z0-9]*)?",  # e.g., "GitHubリポジトリ"
+    r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*[ァ-ヶー]+(?:[A-Za-z0-9]*)?",  # e.g., "GitHubリポジトリ"
     r"[ァ-ヶー]+[A-Za-z][A-Za-z0-9]*",  # e.g., "データセットID"
-    r"[A-Z][A-Za-z0-9]*(?:\.[A-Za-z]+)?",  # CamelCase and dotted (e.g., "TensorFlow", "Next.js")
-    r"[A-Z]{2,}(?:[a-z]+)?",  # Acronyms like "AWS", "API", "CEO"
+    r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*(?:\+\+|#)",  # Symbolic languages (e.g., "C++", "C#")
+    r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*(?:[.-]\d+(?:\.\d+)*|/\d+)",  # e.g., "GPT-4", "HTTP/3"
+    r"(?<![A-Za-z0-9])[a-z]+[A-Z][A-Za-z0-9]*",  # Mixed-case brands (e.g., "iOS17", "macOS")
+    r"(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]*(?:\.[A-Za-z]+)?",  # CamelCase and dotted (e.g., "TensorFlow", "Next.js")
+    r"(?<![A-Za-z0-9])[A-Z]{2,}(?:[a-z]+)?",  # Acronyms like "AWS", "API", "CEO"
     r"[一-龥]{2,}[ァ-ヶー]+",  # Kanji + Katakana compounds
     # Important proper nouns with titles
     r"[一-龥ァ-ヶー]{2,}(?:大統領|首相|総理|議員|知事|市長|社長|CEO)",
@@ -42,20 +34,81 @@ COMPOUND_PATTERNS = [
     # Tech-specific patterns
     r"[ァ-ヶー]{3,}(?:システム|サービス|プラットフォーム|フレームワーク|ライブラリ)",
     r"[ァ-ヶー]{2,}(?:アーキテクチャ|インフラ|ネットワーク|セキュリティ)",
-    # Alphanumeric + Japanese
-    r"[A-Za-z0-9]+[一-龥ァ-ヶー]{2,}",  # e.g., "IoT機器", "Web技術", "AI技術"
-    r"[一-龥ァ-ヶー]{2,}[A-Za-z0-9]+",  # e.g., "機械学習API"
-    r"\d+[A-Za-zァ-ヶー一-龥]+",  # Number + Word (e.g., "5G通信", "3Dプリンター")
+    # Alphanumeric (requiring at least one ASCII letter) + Japanese
+    r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*[一-龥ァ-ヶー]{2,}",  # e.g., "IoT機器", "Web技術", "AI技術"
+    r"[一-龥ァ-ヶー]{2,}[A-Za-z][A-Za-z0-9]*",  # e.g., "機械学習API"
+    r"\d+[A-Za-z][A-Za-z0-9ァ-ヶー一-龥]*",  # Number + Alpha-prefixed word (e.g., "5G通信", "3Dプリンター")
+    r"第[0-9〇零一二三四五六七八九十百]+[一-龥ァ-ヶー]{1,6}",  # Ordinal compounds (e.g., "第3世代")
 ]
+
+
+def is_japanese_noun(
+    token: Any,
+    allowed_pos_tags: set[str] | tuple[str, ...] | None = None,
+) -> bool:
+    """Return True when a Fugashi token is a noun (including numerals/counters for compound chaining)."""
+    feature = getattr(token, "feature", None)
+    pos1 = getattr(feature, "pos1", "")
+    if not isinstance(pos1, str) or not pos1:
+        return False
+    if allowed_pos_tags is not None:
+        return pos1 in allowed_pos_tags
+    return pos1.startswith("名詞")
+
+
+def is_topical_japanese_noun(
+    token: Any,
+    allowed_pos_tags: set[str] | tuple[str, ...] | None = None,
+) -> bool:
+    """Return True when a Fugashi token represents a topical noun rather than a numeral, counter, or temporal noun."""
+    if not is_japanese_noun(token, allowed_pos_tags):
+        return False
+
+    feature = getattr(token, "feature", None)
+    pos2 = getattr(feature, "pos2", "")
+    if isinstance(pos2, str) and pos2 in _EXCLUDED_UNIDIC_POS2:
+        return False
+
+    pos3 = getattr(feature, "pos3", "")
+    if isinstance(pos3, str) and pos3 in _EXCLUDED_UNIDIC_POS3:
+        return False
+
+    return True
+
+
+def _is_compound_chain_token(token: Any, next_token: Any | None, has_preceding: bool) -> bool:
+    """Check if token belongs in a contiguous Japanese noun compound chain."""
+    if is_japanese_noun(token):
+        return True
+    feature = getattr(token, "feature", None)
+    pos1 = getattr(feature, "pos1", "")
+    pos2 = getattr(feature, "pos2", "")
+    if pos1 == "接頭辞" and getattr(token, "surface", "") == "第":
+        return next_token is not None and is_japanese_noun(next_token)
+    if has_preceding and pos1 == "接尾辞" and pos2 == "名詞的":
+        return True
+    return False
+
+
+def _finalize_compound(tokens: list[Any], compounds: list[str], max_length: int) -> None:
+    """Append joined compound if it has >=2 tokens, contains a topical noun, and passes tag validation."""
+    if len(tokens) < 2:
+        return
+    if not any(is_topical_japanese_noun(tok) for tok in tokens):
+        return
+    compound = "".join(tok.surface for tok in tokens)
+    if 3 <= len(compound) <= max_length and _shared_is_valid_japanese_tag(compound, max_length=max_length):
+        compounds.append(compound)
 
 
 def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 15) -> list[str]:
     """
     Extract compound nouns by chaining consecutive noun tokens.
 
-    Identifies sequences of consecutive nouns and joins them
-    to form compound nouns, which are more meaningful as tags than
-    individual morphemes.
+    Identifies sequences of consecutive nouns (including internal numerals,
+    counters, and nominal suffixes) and joins them to form compound nouns,
+    rejecting compounds that lack any topical noun or match pure numeric+counter
+    expressions.
 
     Args:
         text: Input Japanese text
@@ -63,54 +116,42 @@ def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 
         max_length: Maximum allowed character length for compound nouns
 
     Returns:
-        List of compound nouns (2+ consecutive nouns joined)
+        List of compound nouns (2+ consecutive tokens joined)
     """
     if ja_tagger is None:
         raise RuntimeError("Japanese tagger not initialized")
 
-    parsed = list(ja_tagger(text))
+    # Split on line breaks before invoking MeCab because MeCab discards whitespace
+    # tokens and would otherwise glue the last noun of a title/paragraph onto the
+    # first noun of the next line.
+    segments = [seg for seg in re.split(r"[\r\n]+", text) if seg] or [text]
     compounds: list[str] = []
-    current_compound: list[str] = []
 
-    for i, token in enumerate(parsed):
-        pos1 = token.feature.pos1
-        surface = token.surface
+    for segment in segments:
+        parsed = list(ja_tagger(segment))
+        current_tokens: list[Any] = []
 
-        # Check if token is a noun
-        is_noun = pos1 in NOUN_POS_TAGS or pos1.startswith("名詞")
+        for i, token in enumerate(parsed):
+            surface = token.surface
+            next_tok = parsed[i + 1] if i + 1 < len(parsed) else None
+            is_chainable = _is_compound_chain_token(token, next_tok, bool(current_tokens))
+            is_connector = surface in CONNECTOR_SURFACES
 
-        # Check if it's a connector that might join nouns
-        is_connector = surface in CONNECTOR_SURFACES
+            if is_chainable:
+                current_tokens.append(token)
+            elif (
+                is_connector
+                and current_tokens
+                and any(is_topical_japanese_noun(tok) for tok in current_tokens)
+                and next_tok is not None
+                and _is_compound_chain_token(next_tok, parsed[i + 2] if i + 2 < len(parsed) else None, False)
+            ):
+                current_tokens.append(token)
+            else:
+                _finalize_compound(current_tokens, compounds, max_length)
+                current_tokens = []
 
-        if is_noun:
-            current_compound.append(surface)
-        elif is_connector and current_compound:
-            # Check if next token is also a noun
-            if i + 1 < len(parsed):
-                next_pos = parsed[i + 1].feature.pos1
-                next_is_noun = next_pos in NOUN_POS_TAGS or next_pos.startswith("名詞")
-                if next_is_noun:
-                    current_compound.append(surface)
-                    continue
-            # Not followed by noun, finalize current compound
-            if len(current_compound) >= 2:
-                compound = "".join(current_compound)
-                if 3 <= len(compound) <= max_length:
-                    compounds.append(compound)
-            current_compound = []
-        else:
-            # Non-noun token, finalize current compound
-            if len(current_compound) >= 2:
-                compound = "".join(current_compound)
-                if 3 <= len(compound) <= max_length:
-                    compounds.append(compound)
-            current_compound = []
-
-    # Handle remaining compound at end of text
-    if len(current_compound) >= 2:
-        compound = "".join(current_compound)
-        if 3 <= len(compound) <= max_length:
-            compounds.append(compound)
+        _finalize_compound(current_tokens, compounds, max_length)
 
     return compounds
 
@@ -186,7 +227,9 @@ def extract_compound_japanese_words(text: str, ja_tagger: Any, config: TagExtrac
     unique_compounds: list[str] = []
     for word in compound_words:
         word_normalized = word.strip()
-        if word_normalized not in seen and 2 <= len(word_normalized) <= config.max_tag_length:
+        if word_normalized not in seen and _shared_is_valid_japanese_tag(
+            word_normalized, max_length=config.max_tag_length
+        ):
             seen.add(word_normalized)
             unique_compounds.append(word_normalized)
 
@@ -216,9 +259,11 @@ def make_japanese_analyzer(ja_tagger: Any):
 
         tokens = []
         for word in tagger(text):
-            # Extract nouns (名詞) for matching candidates
-            if word.feature.pos1.startswith("名詞"):
-                tokens.append(word.surface)
+            # Exclude single-token numerals, counters, and temporal/adverbial nouns
+            # (数詞, 助動詞語幹, 副詞可能, 助数詞可能) from the KeyBERT vectorizer vocabulary.
+            if is_japanese_noun(word):
+                if is_topical_japanese_noun(word):
+                    tokens.append(word.surface)
             # Also preserve English words (ASCII alphabetic)
             elif word.surface.isascii() and word.surface.isalpha():
                 tokens.append(word.surface)
@@ -234,21 +279,25 @@ def score_japanese_candidates_with_keybert(
     keybert: Any,
     ja_tagger: Any,
     config: TagExtractionConfig,
+    ja_stopwords: set[str],
 ) -> tuple[list[str], dict[str, float]]:
     """
     Score Japanese keyword candidates using KeyBERT semantic similarity.
 
-    Uses KeyBERT's candidates parameter to score pre-extracted
-    noun phrases against the document embedding, combining semantic
-    relevance with frequency information.
+    Passing a custom ``vectorizer`` causes KeyBERT to ignore ``candidates`` and
+    score only the unigram tokens emitted by ``make_japanese_analyzer``, so
+    multi-morpheme compound candidates are not reachable on this semantic path.
+    KeyBERT output is filtered against ``candidates``, ``is_valid_japanese_tag``,
+    and ``ja_stopwords`` before combining semantic and frequency scores.
 
     Args:
         text: Original document text
-        candidates: List of candidate keywords from morphological analysis
+        candidates: List of pre-validated candidate keywords from morphological analysis
         freq_counter: Frequency counts for each candidate
         keybert: KeyBERT instance
         ja_tagger: Fugashi tagger instance
         config: Tag extraction configuration
+        ja_stopwords: Japanese stopword set
 
     Returns:
         Tuple of (tag_list, tag_confidences_dict)
@@ -267,17 +316,17 @@ def score_japanese_candidates_with_keybert(
         lowercase=False,  # Preserve case to match uppercase candidates
     )
 
-    # Use KeyBERT with candidate list for semantic scoring
     keywords = keybert.extract_keywords(
         text,
         candidates=candidates,
-        top_n=min(len(candidates), config.top_keywords * 2),
+        top_n=max(len(candidates), config.top_keywords * 2),
         use_mmr=config.use_mmr,
         diversity=config.japanese_mmr_diversity,
         vectorizer=vectorizer,
     )
 
-    # Build result with combined scores
+    # Build result with combined scores after validating against candidate set and stopwords
+    candidate_set = set(candidates)
     result: list[str] = []
     tag_confidences: dict[str, float] = {}
 
@@ -285,7 +334,12 @@ def score_japanese_candidates_with_keybert(
     max_freq = max(freq_counter.values()) if freq_counter else 1
 
     for keyword, semantic_score in keywords:
-        if keyword in result:
+        if (
+            keyword in result
+            or keyword not in candidate_set
+            or keyword in ja_stopwords
+            or not _shared_is_valid_japanese_tag(keyword, max_length=config.max_tag_length)
+        ):
             continue
 
         # Combine semantic score (0-1) with normalized frequency
@@ -357,7 +411,7 @@ def fallback_japanese(
     single_nouns: list[str] = []
     for word in ja_tagger(text):
         if (
-            word.feature.pos1 in config.japanese_pos_tags
+            is_topical_japanese_noun(word, config.japanese_pos_tags)
             and 2 <= len(word.surface) <= 10
             and word.surface not in ja_stopwords
         ):
@@ -420,7 +474,7 @@ def extract_keywords_japanese(
     single_nouns = []
     for word in ja_tagger(text):
         if (
-            word.feature.pos1 in config.japanese_pos_tags
+            is_topical_japanese_noun(word, config.japanese_pos_tags)
             and 2 <= len(word.surface) <= 10
             and word.surface not in ja_stopwords
         ):
@@ -451,7 +505,9 @@ def extract_keywords_japanese(
 
     # Try semantic scoring with KeyBERT
     if config.use_japanese_semantic and keybert is not None and len(candidates) >= 2:
-        return score_japanese_candidates_with_keybert(text, candidates, combined_freq, keybert, ja_tagger, config)
+        return score_japanese_candidates_with_keybert(
+            text, candidates, combined_freq, keybert, ja_tagger, config, ja_stopwords
+        )
 
     # Fallback: frequency-based scoring
     return score_candidates_by_frequency(candidates, combined_freq, config.top_keywords)

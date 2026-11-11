@@ -673,6 +673,7 @@ URL
 去年
 昨年
 来年
+夜間
 
 # Quantity and degree words
 数

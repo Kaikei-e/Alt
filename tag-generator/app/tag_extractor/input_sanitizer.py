@@ -1,5 +1,6 @@
 """Input sanitization utilities for tag extraction."""
 
+import html
 import re
 import unicodedata
 from urllib.parse import urlparse
@@ -15,6 +16,10 @@ _CODE_BLOCK_PATTERN = re.compile(
 )
 
 WHITESPACE_PATTERN = re.compile(r"\s+")
+INLINE_URL_PATTERN = re.compile(
+    r"(?:https?://|(?<![A-Za-z0-9])www\.)[\x21\x23-\x26\x28-\x3b\x3d\x3f-\x7e]+",
+    re.IGNORECASE,
+)
 DANGEROUS_ELEMENT_PATTERN = re.compile(
     r"<(script|style|iframe|object|embed)\b[^>]*>.*?(?:</\1\s*>|$)",
     re.IGNORECASE | re.DOTALL,
@@ -40,7 +45,7 @@ class SanitizationConfig(BaseModel):
     min_title_length: int = 1
     min_content_length: int = 1
     allow_html: bool = False
-    strip_urls: bool = False
+    strip_urls: bool = True
     max_url_length: int = 2048
 
 
@@ -281,7 +286,7 @@ class InputSanitizer:
             )
 
     def _sanitize_text(self, text: str) -> str:
-        """Sanitize text content."""
+        """Sanitize text content; output is for tokenisation only and must not be rendered as HTML."""
         if not text:
             return ""
 
@@ -297,6 +302,15 @@ class InputSanitizer:
             clean_content_tags=self._nh3_clean_content_tags,
             strip_comments=True,
         )
+
+        if not self.config.allow_html:
+            # Decode entities once after nh3 cleaning so escaped angle brackets in plain
+            # text (e.g. ``x&lt;y and z&gt;w``) are not parsed as markup and stripped,
+            # while entities such as ``&nbsp;`` and ``&amp;`` become plain characters.
+            text = html.unescape(text)
+
+        if self.config.strip_urls:
+            text = INLINE_URL_PATTERN.sub(" ", text)
 
         # Normalize excessive whitespace post-cleaning
         text = WHITESPACE_PATTERN.sub(" ", text).strip()

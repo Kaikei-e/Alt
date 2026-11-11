@@ -239,36 +239,32 @@ class ModelManager:
             raise ModelLoadError(f"Failed to load models: {e}") from e
 
     def _load_stopwords(self) -> None:
-        """Load stopwords files (called within lock)."""
+        """Load stopwords files and NLTK stopwords corpus (fail-fast within lock)."""
         current_dir = Path(__file__).resolve().parent.parent
         ja_stopwords_path = current_dir / "tag_extractor" / "stopwords_ja.txt"
         en_stopwords_path = current_dir / "tag_extractor" / "stopwords_en.txt"
 
-        # Load Japanese stopwords
         try:
             with ja_stopwords_path.open(encoding="utf-8") as f:
-                self._ja_stopwords = {line.strip() for line in f if line.strip()}
-            logger.info("Loaded Japanese stopwords", count=len(self._ja_stopwords))
-        except FileNotFoundError:
-            logger.warning("Japanese stopwords file not found", path=str(ja_stopwords_path))
-            self._ja_stopwords = set()
+                ja_stopwords = {stripped for line in f if (stripped := line.strip()) and not stripped.startswith("#")}
 
-        # Load English stopwords
-        try:
             with en_stopwords_path.open(encoding="utf-8") as f:
-                self._en_stopwords = {line.strip().lower() for line in f if line.strip()}
-        except FileNotFoundError:
-            logger.warning("English stopwords file not found", path=str(en_stopwords_path))
-            self._en_stopwords = set()
+                en_stopwords = {
+                    stripped.lower() for line in f if (stripped := line.strip()) and not stripped.startswith("#")
+                }
 
-        # Add NLTK English stopwords
-        if self._en_stopwords is None:
-            self._en_stopwords = set()
-        try:
-            self._en_stopwords.update(set(nltk.corpus.stopwords.words("english")))
-            logger.info("Loaded English stopwords", count=len(self._en_stopwords))
+            en_stopwords.update(word.lower() for word in nltk.corpus.stopwords.words("english"))
         except Exception as e:
-            logger.warning("Could not load NLTK English stopwords", error=str(e), exc_info=True)
+            logger.error("Failed to load required stopword resources", error=str(e), error_type=type(e).__name__)
+            raise ModelLoadError(f"Failed to load stopwords: {e}") from e
+
+        self._ja_stopwords = ja_stopwords
+        self._en_stopwords = en_stopwords
+        logger.info(
+            "Loaded stopwords",
+            ja_count=len(self._ja_stopwords),
+            en_count=len(self._en_stopwords),
+        )
 
     def _load_ginza(self, model_name: str) -> None:
         """Load GiNZA spaCy model for Japanese NLP."""

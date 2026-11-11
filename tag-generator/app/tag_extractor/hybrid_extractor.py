@@ -18,6 +18,7 @@ Usage:
     tags = extractor.extract_tags(title, content)
 """
 
+import os
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -25,7 +26,10 @@ from typing import Any
 
 import structlog
 
+from tag_generator.exceptions import ModelLoadError
+
 from .ginza_extractor import GinzaConfig, GinzaExtractor, get_ginza_extractor
+from .japanese_extractor import is_japanese_noun, is_topical_japanese_noun
 from .tag_validator import clean_noun_phrase, is_valid_japanese_tag
 
 logger = structlog.get_logger(__name__)
@@ -146,8 +150,6 @@ class HybridExtractor:
 
     def _load_stopwords(self) -> None:
         """Load Japanese stopwords."""
-        import os
-
         current_dir = os.path.dirname(__file__)
         stopwords_path = os.path.join(current_dir, "stopwords_ja.txt")
 
@@ -158,8 +160,9 @@ class HybridExtractor:
                     if line and not line.startswith("#"):
                         self._stopwords.add(line)
             logger.debug("Loaded stopwords", count=len(self._stopwords))
-        except FileNotFoundError:
-            logger.warning("Stopwords file not found", path=stopwords_path)
+        except OSError as e:
+            logger.error("Stopwords file could not be loaded", path=stopwords_path, error=str(e))
+            raise ModelLoadError(f"Failed to load stopwords: {e}") from e
 
     def _extract_candidates_ginza(self, text: str) -> list[CandidateTag]:
         """Extract candidate tags using GiNZA."""
@@ -250,42 +253,41 @@ class HybridExtractor:
 
         # Extract compound nouns by chaining consecutive nouns
         parsed = list(self._fugashi_tagger(text))
-        current_compound: list[str] = []
+        current_tokens: list[Any] = []
         position = 0
 
         for token in parsed:
-            pos = token.feature.pos1
             surface = token.surface
 
-            is_noun = pos in noun_pos or pos.startswith("名詞")
+            is_noun = is_japanese_noun(token, noun_pos)
 
             if is_noun and surface not in self._stopwords:
-                current_compound.append(surface)
+                current_tokens.append(token)
             else:
-                if len(current_compound) >= 2:
-                    compound = "".join(current_compound)
+                if len(current_tokens) >= 2 and any(is_topical_japanese_noun(t, noun_pos) for t in current_tokens):
+                    compound = "".join(t.surface for t in current_tokens)
                     if self.config.min_phrase_length <= len(compound) <= self.config.max_phrase_length:
                         term_freq[compound] += 1
                         if compound not in term_positions:
                             term_positions[compound] = position
-                elif len(current_compound) == 1:
-                    single = current_compound[0]
+                elif len(current_tokens) == 1 and is_topical_japanese_noun(current_tokens[0], noun_pos):
+                    single = current_tokens[0].surface
                     if self.config.min_phrase_length <= len(single) <= self.config.max_phrase_length:
                         term_freq[single] += 1
                         if single not in term_positions:
                             term_positions[single] = position
-                current_compound = []
+                current_tokens = []
                 position += 1
 
         # Handle remaining compound
-        if len(current_compound) >= 2:
-            compound = "".join(current_compound)
+        if len(current_tokens) >= 2 and any(is_topical_japanese_noun(t, noun_pos) for t in current_tokens):
+            compound = "".join(t.surface for t in current_tokens)
             if self.config.min_phrase_length <= len(compound) <= self.config.max_phrase_length:
                 term_freq[compound] += 1
                 if compound not in term_positions:
                     term_positions[compound] = position
-        elif len(current_compound) == 1:
-            single = current_compound[0]
+        elif len(current_tokens) == 1 and is_topical_japanese_noun(current_tokens[0], noun_pos):
+            single = current_tokens[0].surface
             if self.config.min_phrase_length <= len(single) <= self.config.max_phrase_length:
                 term_freq[single] += 1
                 if single not in term_positions:

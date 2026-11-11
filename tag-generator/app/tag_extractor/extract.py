@@ -97,7 +97,9 @@ class TagExtractor:
         self.config = config or TagExtractionConfig()
         self._model_manager = model_manager or get_model_manager()
         self._models_loaded = False
-        self._input_sanitizer = InputSanitizer(sanitizer_config)
+        self._input_sanitizer = InputSanitizer(
+            sanitizer_config if sanitizer_config is not None else SanitizationConfig()
+        )
         self._embedding_backend: str = "unknown"
         self._embedding_metadata: dict[str, Any] = {}
         # Lazily populated model handles (set by _lazy_load_models via ModelManager)
@@ -385,8 +387,15 @@ class TagExtractor:
         self, text: str, candidates: list[str], freq_counter: Counter[str]
     ) -> tuple[list[str], dict[str, float]]:
         """Score Japanese keyword candidates using KeyBERT semantic similarity."""
+        self._load_stopwords()
         return score_japanese_candidates_with_keybert(
-            text, candidates, freq_counter, self._keybert, self._ja_tagger, self.config
+            text,
+            candidates,
+            freq_counter,
+            self._keybert,
+            self._ja_tagger,
+            self.config,
+            self._ja_stopwords,
         )
 
     def _score_candidates_by_frequency(
@@ -398,7 +407,8 @@ class TagExtractor:
     def _extract_keywords_english(self, text: str) -> tuple[list[str], dict[str, float]]:
         """Extract keywords specifically for English text using KeyBERT."""
         self._lazy_load_models()
-        return extract_keywords_english(text, self._keybert, self.config)
+        self._load_stopwords()
+        return extract_keywords_english(text, self._keybert, self.config, en_stopwords=self._en_stopwords)
 
     def _tokenize_english(self, text: str) -> list[str]:
         """Tokenize English text using NLTK."""

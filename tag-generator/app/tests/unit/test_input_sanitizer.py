@@ -105,7 +105,7 @@ class TestSanitizationConfig:
         assert config.min_title_length == 1
         assert config.min_content_length == 1
         assert config.allow_html is False
-        assert config.strip_urls is False
+        assert config.strip_urls is True
         assert config.max_url_length == 2048
 
     def test_custom_config(self):
@@ -114,12 +114,12 @@ class TestSanitizationConfig:
             max_title_length=500,
             max_content_length=10000,
             allow_html=True,
-            strip_urls=True,
+            strip_urls=False,
         )
         assert config.max_title_length == 500
         assert config.max_content_length == 10000
         assert config.allow_html is True
-        assert config.strip_urls is True
+        assert config.strip_urls is False
 
 
 class TestInputSanitizer:
