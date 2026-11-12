@@ -668,7 +668,7 @@ func createTestBFFHandlerWithBackend(t *testing.T, backendURL string, key ed2551
 
 	return NewBFFHandler(
 		backendClient,
-		testPublicKey,
+		key,
 		"auth-hub",
 		"alt-backend",
 		nil,
