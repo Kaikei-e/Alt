@@ -256,10 +256,7 @@ func verifyConsumer(t *testing.T, consumer, providerPacticipant, pactPath string
 		verifyRequest.BrokerURL = brokerURL
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
-		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: consumer, MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: consumer, DeployedOrReleased: true},
-		}
+		verifyRequest.ConsumerVersionSelectors = brokerSelectors(t, consumer)
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
 		}
@@ -275,4 +272,22 @@ func verifyConsumer(t *testing.T, consumer, providerPacticipant, pactPath string
 	}
 
 	require.NoError(t, provider.NewVerifier().VerifyProvider(t, verifyRequest))
+}
+
+func brokerSelectors(t *testing.T, consumer string) []provider.Selector {
+	t.Helper()
+
+	lockstep := lockstepConsumers(os.Getenv("PACT_LOCKSTEP_CONSUMERS"))
+	if lockstep[consumer] {
+		t.Logf("lockstep: not verifying the production-deployed pact of %s (PACT_LOCKSTEP_CONSUMERS)", consumer)
+	}
+	var selectors []provider.Selector
+	for _, s := range consumerSelectors(consumer, lockstep) {
+		selectors = append(selectors, &provider.ConsumerVersionSelector{
+			Consumer:           s.Consumer,
+			MainBranch:         s.MainBranch,
+			DeployedOrReleased: s.DeployedOrReleased,
+		})
+	}
+	return selectors
 }

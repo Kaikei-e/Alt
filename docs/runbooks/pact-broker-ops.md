@@ -580,7 +580,7 @@ A08 Integrity Failure そのものになる。
   する。新しい consumer が同じリリースの infra 変更を前提にしていて先に出せない
   ときに限る。provider の roll から consumer の roll までの窓の非互換は消えない
   ので、計画的な劣化として受け入れる場合だけ使う。現在この変数を読むのは
-  search-indexer の provider 検証だけ。
+  search-indexer と alt-backend / alt-data-hub の provider 検証だけ。
 - **force-override (section 9 Secondary) で gate を通しても、デプロイ窓の非互換は
   消えない。** override が動かすのは CI の判定だけで、実際の 401 / 400 を防ぐのは
   ロール順序だけである。override したからといって順序を飛ばすと本番で落ちる。
