@@ -50,8 +50,19 @@ check "producer cannot read through groups" '! echo "$producer" | grep -q "+xrea
 check "consumer cannot trim" '! echo "$consumer" | grep -q "+xtrim"'
 check "consumer cannot delete" '! echo "$consumer" | grep -Eq "\+del( |$)"'
 check "consumer root permissions carry no xadd" '! echo "$consumer_root" | grep -q "+xadd"'
-check "consumer reads, acks, claims, and manages its group" \
-    'for c in +xreadgroup +xack +xautoclaim +xpending +xgroup\|create; do echo "$consumer" | grep -q -- "$c" || exit 1; done'
+for c in '+xreadgroup' '+xack' '+xautoclaim' '+xpending' '+xgroup|create' '+xinfo|groups'; do
+    check "consumer grants $c" 'echo "$consumer" | grep -qF -- "$c"'
+done
+check "consumer has no xinfo|stream" '! echo "$consumer" | grep -qF "+xinfo|stream"'
+producer_root=${producer%%(*}
+producer_sel=${producer#*(}
+for c in '+xadd' '+xtrim' '+xgroup|create' '+xinfo|stream' '+xinfo|groups' '+ping' '+scan'; do
+    check "producer root grants $c" 'echo "$producer_root" | grep -qF -- "$c"'
+done
+for c in '+del' '+expire' '+ttl' '+xread'; do
+    check "producer root does not grant $c" '! echo "$producer_root" | grep -Eq -- "\\$c( |$)"'
+    check "producer selector grants $c on reply keys" 'echo "$producer" | grep -qF -- "(~alt:replies:tags:*" && echo "$producer_sel" | grep -qF -- "$c"'
+done
 check "consumer xadd limited to dead-letter and reply keys" \
     'echo "$consumer" | grep -q "(~alt:events:\*:dlq +xadd)" && echo "$consumer" | grep -q "(~alt:replies:tags:\* +xadd)"'
 check "consumer is key-restricted" 'echo "$consumer" | grep -q "resetkeys ~alt:events:\* ~alt:replies:tags:\*"'

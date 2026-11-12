@@ -83,7 +83,7 @@ func hasPair(args []string, flag, value string) bool {
 	return false
 }
 
-// redis-streams disables the default user; only the `streams` ACL user can
+// redis-streams disables the default user; only the `streams_consumer` ACL user can
 // create the consumer group, and its password must never be echoed or put on
 // redis-cli's command line.
 func assertAuthenticatedAsStreams(t *testing.T, run provisionRun, password string) {
@@ -94,8 +94,8 @@ func assertAuthenticatedAsStreams(t *testing.T, run provisionRun, password strin
 	if !run.called {
 		t.Fatalf("redis-cli was never invoked:\n%s", run.output)
 	}
-	if !hasPair(run.args, "--user", "streams") {
-		t.Errorf("redis-cli must authenticate as the streams ACL user, got args %q", run.args)
+	if !hasPair(run.args, "--user", "streams_consumer") {
+		t.Errorf("redis-cli must authenticate as the streams_consumer ACL user, got args %q", run.args)
 	}
 	if run.auth != password {
 		t.Errorf("REDISCLI_AUTH must carry the password file's content")
@@ -122,14 +122,14 @@ func TestProvisionScript_AuthenticatesAsStreamsUser(t *testing.T) {
 	}
 }
 
-// compose writes the user into the URL (redis://streams@redis-streams:6379).
+// compose writes the user into the URL (redis://streams_consumer@redis-streams:6379).
 // redis-cli -u reads a bare userinfo as the password, so the script must not
 // hand that URL to redis-cli as-is.
 func TestProvisionScript_UserInURLIsNotAPassword(t *testing.T) {
 	password := "streams-password-value"
 
 	run := runProvisionScript(t, map[string]string{
-		"REDIS_URL":           "redis://streams@redis-streams:6379",
+		"REDIS_URL":           "redis://streams_consumer@redis-streams:6379",
 		"REDIS_PASSWORD_FILE": writePasswordFile(t, password),
 	})
 
