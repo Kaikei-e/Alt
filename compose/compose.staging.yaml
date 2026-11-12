@@ -1516,6 +1516,7 @@ services:
       - DB_USER=alt_db_user
       - DB_PASSWORD=alt-staging-test-postgres-password
       - DB_NAME=alt
+      - DB_SSL_MODE=disable
       # --- the only east-west listener (config.LoadDataHubConfig) ---------
       # Client auth is not a knob: cmd/datahub always requires and verifies a
       # peer certificate, so DATAHUB_ALLOWED_PEERS is the whole authorisation
