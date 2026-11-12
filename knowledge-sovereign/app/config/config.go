@@ -130,10 +130,22 @@ func Load() (*Config, error) {
 	}
 
 	var userVerifier TokenVerifier
-	if authPolicy != nil || os.Getenv("USER_JWT_INTROSPECTION_URL") != "" || mTLSCertsConfigured() {
+	if strings.TrimSpace(os.Getenv("BACKEND_TOKEN_VERIFY_KEY_FILE")) != "" {
+		uv, err := LoadLocalUserJWTVerifier()
+		if err != nil {
+			return nil, fmt.Errorf("load local JWT verifier: %w", err)
+		}
+		userVerifier = uv
+	} else if os.Getenv("USER_JWT_INTROSPECTION_URL") != "" || mTLSCertsConfigured() {
 		uv, err := LoadRemoteUserJWTVerifier("")
 		if err != nil {
 			return nil, fmt.Errorf("load remote JWT verifier: %w", err)
+		}
+		userVerifier = uv
+	} else if authPolicy != nil && eventAuthEnabled {
+		uv, err := LoadLocalUserJWTVerifier()
+		if err != nil {
+			return nil, fmt.Errorf("load local JWT verifier: %w", err)
 		}
 		userVerifier = uv
 	}
