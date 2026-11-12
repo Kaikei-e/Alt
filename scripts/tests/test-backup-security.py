@@ -1165,6 +1165,10 @@ exit 1
             # Mock restic
             (mock_bin / "restic").write_text(f"""#!/bin/bash
 echo "restic $*" >> "{mock_log}"
+if [[ "$*" =~ "--stdin" ]]; then
+    cat > /dev/null
+    exit 0
+fi
 if [[ "$*" =~ "snapshots" ]]; then
     echo '[]'
     exit 0
@@ -1179,7 +1183,7 @@ exit 0
 
             # Mock pg_dump
             (mock_bin / "pg_dump").write_text(f"""#!/bin/bash
-echo "pg_dump PGPASSWORD=$PGPASSWORD $*" >> "{mock_log}"
+echo "pg_dump PGPASS=$(cat "$PGPASSFILE") $*" >> "{mock_log}"
 echo "fake dump payload"
 exit 0
 """)
@@ -1187,7 +1191,7 @@ exit 0
 
             # Mock psql
             (mock_bin / "psql").write_text(f"""#!/bin/bash
-echo "psql PGPASSWORD=$PGPASSWORD $*" >> "{mock_log}"
+echo "psql PGPASS=$(cat "$PGPASSFILE") $*" >> "{mock_log}"
 exit 0
 """)
             (mock_bin / "psql").chmod(0o755)
@@ -1277,8 +1281,8 @@ fi
             log_content = mock_log.read_text()
 
             # Verify PostgreSQL argv and exact credentials pairing
-            self.assertIn("pg_dump PGPASSWORD=secret_alt_postgres_pass -h alt-db -U alt_db_user -d alt", log_content)
-            self.assertIn("pg_dump PGPASSWORD=secret_kratos_pass -h kratos-db -U kratos_user -d kratos", log_content)
+            self.assertIn("pg_dump PGPASS=alt-db:*:alt:alt_db_user:secret_alt_postgres_pass -h alt-db -U alt_db_user -d alt", log_content)
+            self.assertIn("pg_dump PGPASS=kratos-db:*:kratos:kratos_user:secret_kratos_pass -h kratos-db -U kratos_user -d kratos", log_content)
 
             # Verify ClickHouse HTTP POST native BACKUP with DB=rask_logs
             self.assertIn("BACKUP DATABASE rask_logs TO Disk('backups'", log_content)
@@ -1616,6 +1620,10 @@ exit 1
 
             # Restic fails
             (mock_bin / "restic").write_text("""#!/bin/bash
+if [[ "$*" =~ "--stdin" ]]; then
+    cat > /dev/null
+    exit 0
+fi
 echo "Fatal: repository locked" >&2
 exit 1
 """)
@@ -1638,6 +1646,196 @@ exit 1
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("Restic volume backup failed", res.stdout)
             self.assertIn("Backup FAILED", res.stdout)
+
+
+class TestBackupAllNoPlaintextNoArgvSecrets(unittest.TestCase):
+    """Credentials stay off command lines and dumps never reach disk unencrypted."""
+
+    SECRETS = {
+        "postgres_password": "secret_alt_postgres_pass",
+        "kratos_db_password": "secret_kratos_pass",
+        "clickhouse_password": "secret_ch_pass",
+        "meili_master_key": "secret_meili_key",
+        "restic_password": "secret_restic_pass",
+    }
+
+    def setUp(self):
+        self.script_path = REPO_ROOT / "scripts/backup/backup-all.sh"
+
+    def _run(self, tmpdir, extra_args=(), restic_script=None, drop_restic_password=False):
+        mock_bin = Path(tmpdir) / "bin"
+        mock_bin.mkdir()
+        mock_log = Path(tmpdir) / "commands.log"
+        secrets_dir = Path(tmpdir) / "secrets"
+        secrets_dir.mkdir()
+        backup_dir = Path(tmpdir) / "backups"
+        backup_dir.mkdir()
+        for name, value in self.SECRETS.items():
+            if drop_restic_password and name == "restic_password":
+                continue
+            (secrets_dir / name).write_text(value)
+
+        scripts = {
+            "restic": restic_script
+            or f"""#!/bin/bash
+echo "restic $*" >> "{mock_log}"
+if [[ "$*" =~ "--stdin" ]]; then
+    cat > /dev/null
+    exit 0
+fi
+if [[ "$*" =~ "snapshots" ]]; then echo '[]'; fi
+if [[ "$*" =~ "stats" ]]; then echo '{{"total_size": 1}}'; fi
+exit 0
+""",
+            "pg_dump": f"""#!/bin/bash
+echo "pg_dump env_has_PGPASSWORD=${{PGPASSWORD:+yes}} file=$PGPASSFILE mode=$(stat -c %a "$PGPASSFILE") args=$*" >> "{mock_log}"
+echo "fake dump payload"
+""",
+            "psql": f"""#!/bin/bash
+echo "psql env_has_PGPASSWORD=${{PGPASSWORD:+yes}} args=$*" >> "{mock_log}"
+""",
+            "getent": '#!/bin/bash\n[[ "$2" == "alt-db" || "$2" == "kratos-db" || "$2" == "clickhouse" || "$2" == "meilisearch" ]]\n',
+            "curl": f"""#!/bin/bash
+echo "curl argv: $*" >> "{mock_log}"
+out_file=""; cfg=""
+args=("$@")
+for ((i=0; i<${{#args[@]}}; i++)); do
+    case "${{args[i]}}" in
+        -o) out_file="${{args[i+1]}}" ;;
+        -K|--config) cfg="${{args[i+1]}}" ;;
+    esac
+done
+if [[ -n "$cfg" && "$cfg" != "-" ]]; then
+    echo "curl cfg mode=$(stat -c %a "$cfg") body=$(cat "$cfg")" >> "{mock_log}"
+fi
+if [[ "$*" =~ "/snapshots" ]]; then
+    [[ -n "$out_file" ]] && echo '{{"taskUid": 42}}' > "$out_file"
+    echo -n 202
+elif [[ "$*" =~ "/tasks/42" ]]; then
+    [[ -n "$out_file" ]] && echo '{{"status": "succeeded"}}' > "$out_file"
+    echo -n 200
+else
+    echo -n 200
+fi
+""",
+            "jq": """#!/bin/bash
+if [[ "$*" =~ "taskUid" ]]; then echo 42
+elif [[ "$*" =~ "status" ]]; then echo succeeded
+else echo 0; fi
+""",
+        }
+        for name, body in scripts.items():
+            f = mock_bin / name
+            f.write_text(body)
+            f.chmod(0o755)
+
+        env = {
+            "PATH": f"{mock_bin}:{os.environ['PATH']}",
+            "IN_CONTAINER": "1",
+            "BACKUP_ROOT": str(backup_dir),
+            "LOG_FILE": str(backup_dir / "logs" / "backup.log"),
+            "METRICS_DIR": str(backup_dir / "metrics"),
+            "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
+            "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
+            "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
+            "ALT_DB_PASSWORD_FILE": str(secrets_dir / "postgres_password"),
+            "KRATOS_DB_PASSWORD_FILE": str(secrets_dir / "kratos_db_password"),
+            "CLICKHOUSE_PASSWORD_FILE": str(secrets_dir / "clickhouse_password"),
+            "MEILI_MASTER_KEY_FILE": str(secrets_dir / "meili_master_key"),
+            "MEILI_POLL_INTERVAL": "1",
+            "MEILI_POLL_TIMEOUT": "5",
+        }
+        res = subprocess.run(
+            ["bash", str(self.script_path), *extra_args],
+            env=env, capture_output=True, text=True, timeout=30,
+        )
+        log = mock_log.read_text() if mock_log.exists() else ""
+        return res, log, backup_dir
+
+    def test_no_secret_value_on_any_command_line(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log, _ = self._run(tmpdir)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            for line in log.splitlines():
+                if line.startswith("curl cfg"):
+                    continue
+                for value in self.SECRETS.values():
+                    self.assertNotIn(value, line, f"secret leaked on command line: {line}")
+            self.assertNotIn("env_has_PGPASSWORD=yes", log)
+
+    def test_curl_credentials_come_from_private_config_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log, _ = self._run(tmpdir)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            cfg_lines = [l for l in log.splitlines() if l.startswith("curl cfg")]
+            self.assertTrue(any("secret_ch_pass" in l for l in cfg_lines))
+            self.assertTrue(any("secret_meili_key" in l for l in cfg_lines))
+            for l in cfg_lines:
+                self.assertIn("mode=600", l)
+
+    def test_pg_dump_uses_private_passfile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log, _ = self._run(tmpdir)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            dump_lines = [l for l in log.splitlines() if l.startswith("pg_dump")]
+            self.assertEqual(len(dump_lines), 2)
+            for l in dump_lines:
+                self.assertIn("mode=600", l)
+
+    def test_dumps_stream_into_restic_and_never_touch_disk(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log, backup_dir = self._run(tmpdir, ("--pg-only",))
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(list(backup_dir.rglob("*.dump")), [])
+            stdin_lines = [l for l in log.splitlines() if l.startswith("restic") and "--stdin" in l]
+            self.assertEqual(len(stdin_lines), 2)
+            self.assertTrue(any("--stdin-filename postgres/alt-db.dump" in l for l in stdin_lines))
+            self.assertTrue(any("--stdin-filename postgres/kratos-db.dump" in l for l in stdin_lines))
+
+    def test_dry_run_creates_no_dump_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log, backup_dir = self._run(tmpdir, ("--dry-run",))
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(list(backup_dir.rglob("*.dump")), [])
+            self.assertFalse((backup_dir / "postgres").exists())
+
+    def test_missing_restic_password_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log, backup_dir = self._run(tmpdir, drop_restic_password=True)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("restic password file", (res.stdout + res.stderr).lower())
+            self.assertNotIn("pg_dump", log)
+            self.assertEqual(list(backup_dir.rglob("*.dump")), [])
+
+    def test_failed_dump_stream_fails_backup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            restic = f"""#!/bin/bash
+echo "restic $*" >> "{Path(tmpdir) / 'commands.log'}"
+if [[ "$*" =~ "--stdin" ]]; then cat > /dev/null; exit 1; fi
+exit 0
+"""
+            res, log, _ = self._run(tmpdir, ("--pg-only",), restic_script=restic)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Backup FAILED", res.stdout)
+
+    def test_scripts_have_no_inline_credentials(self):
+        for name in ("backup-all.sh", "sync-offsite.sh", "restore-verify.sh", "backup-metrics.sh"):
+            content = (REPO_ROOT / "scripts/backup" / name).read_text()
+            self.assertNotIn("PGPASSWORD", content, name)
+            self.assertNotIn("Bearer $", content, name)
+            self.assertNotIn('-u "${', content, name)
+
+
+class TestRestoreVerifyStreamedDumps(unittest.TestCase):
+    def test_restore_verify_finds_undated_streamed_dump_names(self):
+        content = (REPO_ROOT / "scripts/backup/restore-verify.sh").read_text()
+        self.assertIn('-name "${db}*.dump"', content)
+        self.assertNotIn('-name "${db}-*.dump"', content)
+
+    def test_metrics_read_dump_status_from_snapshots_not_plaintext_dir(self):
+        content = (REPO_ROOT / "scripts/backup/backup-metrics.sh").read_text()
+        self.assertNotIn("POSTGRES_BACKUP_DIR", content)
+        self.assertIn("pg-${db}", content)
 
 
 if __name__ == "__main__":
