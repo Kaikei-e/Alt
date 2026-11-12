@@ -444,7 +444,7 @@ func ensureEd25519KeyPair(privPath, pubPath string) (bool, error) {
 }
 
 func fileExists(path string) (bool, error) {
-	_, err := os.Stat(path)
+	_, err := os.Lstat(path)
 	switch {
 	case err == nil:
 		return true, nil
@@ -455,12 +455,21 @@ func fileExists(path string) (bool, error) {
 	}
 }
 
+// writeSecretFile creates path exclusively (an existing path, including a
+// symlink, is an error and is left alone) and removes the file again if it
+// cannot finish writing it.
 func writeSecretFile(path string, content []byte) error {
-	if err := os.WriteFile(path, content, secretFileMode); err != nil {
-		return fmt.Errorf("writing secret %s: %w", filepath.Base(path), err)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, secretFileMode)
+	if err != nil {
+		return fmt.Errorf("creating secret %s: %w", filepath.Base(path), err)
 	}
-	if err := os.Chmod(path, secretFileMode); err != nil {
-		return fmt.Errorf("setting mode on secret %s: %w", filepath.Base(path), err)
+	_, werr := f.Write(content)
+	cerr := f.Close()
+	// OpenFile's perm is masked by the process umask; Chmod makes it exact.
+	merr := os.Chmod(path, secretFileMode)
+	if err := errors.Join(werr, cerr, merr); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("writing secret %s: %w", filepath.Base(path), err)
 	}
 	return nil
 }
