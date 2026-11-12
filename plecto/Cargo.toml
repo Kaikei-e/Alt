@@ -14,7 +14,7 @@ license = "Apache-2.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-wit-bindgen = "0.60"
+wit-bindgen = "0.63"
 
 [dev-dependencies]
 toml = "1"
