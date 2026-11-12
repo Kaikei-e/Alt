@@ -1065,6 +1065,25 @@ class TestGroup1Security(unittest.TestCase):
         self.assertNotIn("BACKEND_TOKEN_VERIFY_KEY_FILE", env_map(sov))
         self.assertIn("USER_JWT_INTROSPECTION_URL", env_map(sov))
 
+    def test_trusted_proxy_cidrs_only_on_gateway_and_user_facing_backend(self):
+        holders = []
+        for fname, name, svc in self._all_stack_services():
+            if fname in ("dev.yaml", "compose.dev.yaml") or "staging" in fname:
+                continue
+            env = svc.get("environment") or []
+            items = env if isinstance(env, list) else [f"{k}={v}" for k, v in env.items()]
+            if any(str(e).startswith("TRUSTED_PROXY_CIDRS=") for e in items):
+                holders.append(name)
+                self.assertTrue(
+                    any(str(e).startswith("TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:?") for e in items),
+                    f"{name} must require TRUSTED_PROXY_CIDRS without a default",
+                )
+            self.assertFalse(
+                any(str(e).startswith("NOTIFICATION_USER_ID") for e in items),
+                f"{name} still sets NOTIFICATION_USER_ID",
+            )
+        self.assertEqual(sorted(holders), ["alt-backend", "auth-hub"])
+
     def test_registration_closed_by_default(self):
         import re
         text = (REPO_ROOT / "kratos" / "kratos_template.yml").read_text()

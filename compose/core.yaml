@@ -348,6 +348,7 @@ services:
       # configure nothing: there is no code in this image that reads them.
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
       - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
+      - TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:?set TRUSTED_PROXY_CIDRS in .env (comma-separated CIDRs of the hops that forward to this service)}
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - AUTH_HUB_URL=https://auth-hub:9443

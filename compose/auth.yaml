@@ -181,6 +181,7 @@ services:
       - CACHE_TTL=5m
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
       - BACKEND_TOKEN_SIGNING_KEY_FILE=/run/secrets/backend_token_signing_key
+      - TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:?set TRUSTED_PROXY_CIDRS in .env (comma-separated CIDRs of the hops that forward to this service)}
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_TTL=5m

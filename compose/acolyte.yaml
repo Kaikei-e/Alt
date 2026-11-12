@@ -165,10 +165,8 @@ services:
       - ACOLYTE_LEGACY_REPORT_MAPPING_FILE=${ACOLYTE_LEGACY_REPORT_MAPPING_FILE:-}
 
       # --- notification outbox relay ---------------------------------------
-      # reports now carries a user_id column; NOTIFICATION_USER_ID serves as
-      # fallback recipient when deriving user from run is not available.
+      # Notifications go to the report's owner (reports.user_id).
       - NOTIFICATIONS_ENABLED=${ACOLYTE_NOTIFICATIONS_ENABLED:-false}
-      - NOTIFICATION_USER_ID=${ALT_NOTIFICATION_USER_ID:-}
       - DATAHUB_URL=https://alt-data-hub:9443
 
       # Wave 4: inbound TLS is in-process. Identity comes from the verified
