@@ -128,19 +128,20 @@ func prepareSummarizeContent(ctx context.Context, article ArticlePayload, cfg *c
 	if runeCount < minContentRunes {
 		// Fallback: if content is too short but title is long enough, use title as content
 		titleRuneCount := utf8.RuneCountInString(article.Title)
-		if titleRuneCount >= minContentRunes {
-			logger.InfoContext(ctx, "Content too short, falling back to title-based summarization",
+		if titleRuneCount < minContentRunes {
+			logger.InfoContext(ctx, "Skipping summarization: content too short after extraction",
 				"article_id", article.ID,
-				"content_rune_count", runeCount,
-				"title_rune_count", titleRuneCount)
-			return article.Title, nil
+				"original_length", originalLength,
+				"extracted_length_chars", runeCount,
+				"min_required", minContentRunes)
+			return "", ErrContentTooShort
 		}
-		logger.InfoContext(ctx, "Skipping summarization: content too short after extraction",
+		logger.InfoContext(ctx, "Content too short, falling back to title-based summarization",
 			"article_id", article.ID,
-			"original_length", originalLength,
-			"extracted_length_chars", runeCount,
-			"min_required", minContentRunes)
-		return "", ErrContentTooShort
+			"content_rune_count", runeCount,
+			"title_rune_count", titleRuneCount)
+		extractedContent = article.Title
+		runeCount = titleRuneCount
 	}
 	if runeCount > maxContentRunes {
 		logger.InfoContext(ctx, "Skipping summarization: content too long after extraction",

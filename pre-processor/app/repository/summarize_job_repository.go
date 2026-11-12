@@ -786,3 +786,31 @@ func (r *summarizeJobRepository) InvalidateCompletedJobSummary(ctx context.Conte
 
 	return nil
 }
+
+func (r *summarizeJobRepository) CountInvalidatedCompletedJobs(ctx context.Context, articleID string) (int, error) {
+	if articleID == "" {
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
+		return 0, fmt.Errorf("article ID cannot be empty")
+	}
+
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return 0, fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		SELECT COUNT(*)
+		FROM summarize_job_queue
+		WHERE article_id = $1
+		  AND status = 'completed'
+		  AND summary IS NULL
+	`
+
+	var count int
+	if err := r.db.QueryRow(ctx, query, articleID).Scan(&count); err != nil {
+		r.logger.ErrorContext(ctx, "failed to count invalidated completed jobs", "error", err, "article_id", articleID)
+		return 0, fmt.Errorf("failed to count invalidated completed jobs: %w", err)
+	}
+
+	return count, nil
+}

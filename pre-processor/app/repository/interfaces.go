@@ -91,4 +91,5 @@ type SummarizeJobRepository interface {
 	// for the given article, so HasRecentSuccessfulJob no longer blocks re-enqueue.
 	// This is the compensating transaction for quality-check deletion.
 	InvalidateCompletedJobSummary(ctx context.Context, articleID string) error
+	CountInvalidatedCompletedJobs(ctx context.Context, articleID string) (int, error)
 }
