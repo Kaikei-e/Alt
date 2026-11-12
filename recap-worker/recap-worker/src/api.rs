@@ -325,20 +325,50 @@ mod tests {
         cert.der().clone()
     }
 
+    fn write_test_mtls_files(dir: &std::path::Path) -> (String, String, String) {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).expect("ca");
+        let ca_key = rcgen::KeyPair::generate().expect("ca key");
+        let ca_cert = ca_params.self_signed(&ca_key).expect("ca cert");
+
+        let leaf_params =
+            rcgen::CertificateParams::new(vec!["recap-worker".to_string()]).expect("leaf");
+        let leaf_key = rcgen::KeyPair::generate().expect("leaf key");
+        let leaf_cert = leaf_params.self_signed(&leaf_key).expect("leaf cert");
+
+        let cert_path = dir.join("cert.pem");
+        let key_path = dir.join("key.pem");
+        let ca_path = dir.join("ca.pem");
+        std::fs::write(&cert_path, leaf_cert.pem()).expect("write cert");
+        std::fs::write(&key_path, leaf_key.serialize_pem()).expect("write key");
+        std::fs::write(&ca_path, ca_cert.pem()).expect("write ca");
+        (
+            cert_path.to_str().expect("utf8").to_string(),
+            key_path.to_str().expect("utf8").to_string(),
+            ca_path.to_str().expect("utf8").to_string(),
+        )
+    }
+
     #[tokio::test]
     #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
     async fn non_health_routes_require_verified_allowed_peer_while_health_and_metrics_stay_open() {
         let _lock = ENV_MUTEX
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mtls_dir = tempfile::tempdir().expect("tempdir");
+        let (cert_path, key_path, ca_path) = write_test_mtls_files(mtls_dir.path());
         let registry = temp_env::async_with_vars(
             [
                 (
                     "RECAP_DB_DSN",
                     Some("postgres://recap:recap@localhost:5432/recap"),
                 ),
-                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18021/")),
-                ("SUBWORKER_BASE_URL", Some("http://localhost:18022/")),
+                ("MTLS_ENFORCE", Some("true")),
+                ("MTLS_CERT_FILE", Some(cert_path.as_str())),
+                ("MTLS_KEY_FILE", Some(key_path.as_str())),
+                ("MTLS_CA_FILE", Some(ca_path.as_str())),
+                ("NEWS_CREATOR_BASE_URL", Some("https://localhost:18021/")),
+                ("SUBWORKER_BASE_URL", Some("https://localhost:18022/")),
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
                 ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                 ("RECAP_ADMIN_AUTH", Some("disabled")),

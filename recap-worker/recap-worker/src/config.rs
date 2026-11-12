@@ -3669,19 +3669,77 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        let mut disabled_vars = required_base();
-        disabled_vars.push(("MTLS_ALLOWED_PEERS", Some("disabled")));
-        temp_env::with_vars(disabled_vars, || {
-            Config::from_env().expect("explicit MTLS_ALLOWED_PEERS=disabled must load");
+        for enforce in [None, Some("false")] {
+            let mut disabled_vars = required_base();
+            disabled_vars.extend([
+                ("MTLS_ENFORCE", enforce),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
+            ]);
+            temp_env::with_vars(disabled_vars, || {
+                let cfg =
+                    Config::from_env().expect("explicit MTLS_ALLOWED_PEERS=disabled must load");
+                assert_eq!(cfg.peer_identity(), &PeerIdentityConfig::Disabled);
+            });
+        }
+
+        let mut disabled_mtls_vars = required_base();
+        disabled_mtls_vars.extend([
+            ("MTLS_ENFORCE", Some("true")),
+            ("NEWS_CREATOR_BASE_URL", Some("https://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("https://localhost:8002/")),
+            ("MTLS_ALLOWED_PEERS", Some("Disabled")),
+        ]);
+        temp_env::with_vars(disabled_mtls_vars, || {
+            let cfg = Config::from_env()
+                .expect("case-insensitive MTLS_ALLOWED_PEERS=Disabled with MTLS_ENFORCE=true must load");
+            assert_eq!(cfg.peer_identity(), &PeerIdentityConfig::Disabled);
         });
 
         let mut enabled_vars = required_base();
-        enabled_vars.push((
-            "MTLS_ALLOWED_PEERS",
-            Some(" alt-backend , alt-frontend-sv "),
-        ));
+        enabled_vars.extend([
+            ("MTLS_ENFORCE", Some("true")),
+            ("NEWS_CREATOR_BASE_URL", Some("https://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("https://localhost:8002/")),
+            (
+                "MTLS_ALLOWED_PEERS",
+                Some(" alt-backend , alt-frontend-sv "),
+            ),
+        ]);
         temp_env::with_vars(enabled_vars, || {
-            Config::from_env().expect("non-empty MTLS_ALLOWED_PEERS CSV must load");
+            let cfg = Config::from_env().expect("non-empty MTLS_ALLOWED_PEERS CSV must load");
+            assert_eq!(
+                cfg.peer_identity(),
+                &PeerIdentityConfig::Enabled {
+                    allowed_peers: vec![
+                        "alt-backend".to_string(),
+                        "alt-frontend-sv".to_string()
+                    ],
+                }
+            );
         });
+    }
+
+    #[test]
+    fn from_env_rejects_enabled_peer_list_when_mtls_not_enforced() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        for enforce in [None, Some("false"), Some("0")] {
+            let mut vars = required_base();
+            vars.extend([
+                ("MTLS_ENFORCE", enforce),
+                ("MTLS_ALLOWED_PEERS", Some("alt-backend,alt-frontend-sv")),
+            ]);
+            temp_env::with_vars(vars, || {
+                let err = Config::from_env()
+                    .expect_err("enabled MTLS_ALLOWED_PEERS without MTLS_ENFORCE=true must fail");
+                let msg = err.to_string();
+                assert!(
+                    msg.contains("MTLS_ALLOWED_PEERS") && msg.contains("MTLS_ENFORCE"),
+                    "error must name both MTLS_ALLOWED_PEERS and MTLS_ENFORCE, got: {msg}"
+                );
+            });
+        }
     }
 }
