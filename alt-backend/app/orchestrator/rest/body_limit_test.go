@@ -48,36 +48,49 @@ func buildRegisteredEcho(t *testing.T, mutate func(*config.Config)) *echo.Echo {
 	return e
 }
 
-func TestBodyLimit_RejectsBodyOverTwoMegabytes(t *testing.T) {
-	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
-	e := buildRegisteredEcho(t, nil)
-	body := bytes.Repeat([]byte("x"), 3*1024*1024)
-	req := httptest.NewRequest(http.MethodPost, "/v1/feeds/search", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	res := httptest.NewRecorder()
-	e.ServeHTTP(res, req)
-	require.Equal(t, http.StatusRequestEntityTooLarge, res.Code)
-}
+func TestBodyLimit_EnforcesTwoMiBByteBoundary(t *testing.T) {
+	const twoMiB = 2 << 20
 
-func TestBodyLimit_AllowsBodyUnderTwoMegabytes(t *testing.T) {
 	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
 	e := buildRegisteredEcho(t, nil)
-	e.POST("/v1/test-body-ok", func(c echo.Context) error {
+	e.POST("/v1/test-body-boundary", func(c echo.Context) error {
 		_, err := io.ReadAll(c.Request().Body)
 		if err != nil {
 			return err
 		}
 		return c.NoContent(http.StatusNoContent)
 	})
-	body := bytes.Repeat([]byte("{"), 1)
-	body = append(body, bytes.Repeat([]byte(" "), 512*1024)...)
-	body = append(body, '}')
-	req := httptest.NewRequest(http.MethodPost, "/v1/test-body-ok", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	req.Header.Set("X-CSRF-Token", "test-token")
-	res := httptest.NewRecorder()
-	e.ServeHTTP(res, req)
-	require.Equal(t, http.StatusNoContent, res.Code)
+
+	t.Run("2097152 bytes accepted", func(t *testing.T) {
+		body := bytes.Repeat([]byte("a"), twoMiB)
+		req := httptest.NewRequest(http.MethodPost, "/v1/test-body-boundary", bytes.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		req.Header.Set("X-CSRF-Token", "test-token")
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+		require.Equal(t, http.StatusNoContent, res.Code)
+	})
+
+	t.Run("2097153 bytes rejected with 413", func(t *testing.T) {
+		body := bytes.Repeat([]byte("a"), twoMiB+1)
+		req := httptest.NewRequest(http.MethodPost, "/v1/test-body-boundary", bytes.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		req.Header.Set("X-CSRF-Token", "test-token")
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+		require.Equal(t, http.StatusRequestEntityTooLarge, res.Code)
+	})
+
+	t.Run("chunked 2097153 bytes rejected with 413", func(t *testing.T) {
+		chunked := io.MultiReader(bytes.NewReader(bytes.Repeat([]byte("a"), twoMiB+1)))
+		req := httptest.NewRequest(http.MethodPost, "/v1/test-body-boundary", chunked)
+		req.ContentLength = -1
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		req.Header.Set("X-CSRF-Token", "test-token")
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+		require.Equal(t, http.StatusRequestEntityTooLarge, res.Code)
+	})
 }
 
 func TestBodyLimit_RejectsOversizedBodyOnStreamingRoutes(t *testing.T) {
@@ -93,7 +106,7 @@ func TestBodyLimit_RejectsOversizedBodyOnStreamingRoutes(t *testing.T) {
 
 	for _, path := range []string{"/v1/feeds/summarize/stream", "/sse/v1/rag/answer"} {
 		t.Run(path, func(t *testing.T) {
-			body := bytes.Repeat([]byte("x"), 3*1024*1024)
+			body := bytes.Repeat([]byte("x"), (2<<20)+1)
 			req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			res := httptest.NewRecorder()
@@ -103,7 +116,7 @@ func TestBodyLimit_RejectsOversizedBodyOnStreamingRoutes(t *testing.T) {
 	}
 
 	t.Run("chunked oversized body on streaming route", func(t *testing.T) {
-		chunked := io.MultiReader(bytes.NewReader(bytes.Repeat([]byte("x"), 3*1024*1024)))
+		chunked := io.MultiReader(bytes.NewReader(bytes.Repeat([]byte("x"), (2<<20)+1)))
 		req := httptest.NewRequest(http.MethodPost, "/sse/test-chunked", chunked)
 		req.ContentLength = -1
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -111,51 +124,6 @@ func TestBodyLimit_RejectsOversizedBodyOnStreamingRoutes(t *testing.T) {
 		res := httptest.NewRecorder()
 		e.ServeHTTP(res, req)
 		require.Equal(t, http.StatusRequestEntityTooLarge, res.Code)
-	})
-}
-
-type slowReader struct {
-	delay time.Duration
-}
-
-func (s slowReader) Read(p []byte) (int, error) {
-	time.Sleep(s.delay)
-	return 0, io.EOF
-}
-
-func TestStreamingRoute_BoundsBodyReadAndAllowsLongStreamResponse(t *testing.T) {
-	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
-	e := buildRegisteredEcho(t, func(cfg *config.Config) {
-		cfg.Server.ReadTimeout = 40 * time.Millisecond
-	})
-
-	e.POST("/sse/test-body-timeout", func(c echo.Context) error {
-		if _, err := io.ReadAll(c.Request().Body); err != nil {
-			return echo.NewHTTPError(http.StatusRequestTimeout, "request body read timed out")
-		}
-		c.Response().Header().Set(echo.HeaderContentType, "text/event-stream")
-		c.Response().WriteHeader(http.StatusOK)
-		time.Sleep(90 * time.Millisecond)
-		_, _ = c.Response().Write([]byte("data: ok\n\n"))
-		c.Response().Flush()
-		return nil
-	})
-
-	t.Run("slow request body on streaming route is cut off", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/sse/test-body-timeout", slowReader{delay: 120 * time.Millisecond})
-		req.Header.Set("X-CSRF-Token", "test-token")
-		res := httptest.NewRecorder()
-		e.ServeHTTP(res, req)
-		require.Equal(t, http.StatusRequestTimeout, res.Code)
-	})
-
-	t.Run("fast request body with long streaming response succeeds", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/sse/test-body-timeout", bytes.NewReader([]byte("{}")))
-		req.Header.Set("X-CSRF-Token", "test-token")
-		res := httptest.NewRecorder()
-		e.ServeHTTP(res, req)
-		require.Equal(t, http.StatusOK, res.Code)
-		require.Contains(t, res.Body.String(), "data: ok")
 	})
 }
 

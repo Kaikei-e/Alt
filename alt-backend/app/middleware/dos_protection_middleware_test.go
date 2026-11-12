@@ -576,23 +576,6 @@ func TestCheckRateLimit_StampsLastSeen(t *testing.T) {
 	assert.False(t, limiter.lastSeen.Before(before), "lastSeen must be stamped on every request, not just on block")
 }
 
-// M-007: getClientIP must NOT trust X-Forwarded-For / X-Real-IP coming from
-// non-trusted hops. With trustProxies=false, the function falls back to the
-// connection RemoteAddr. With trustProxies=true (set by edge proxy config),
-// the leftmost non-trusted hop in XFF is used.
-func TestGetClientIPWithTrust_UntrustedHeadersIgnored(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.RemoteAddr = "10.0.0.1:12345"
-	req.Header.Set("X-Forwarded-For", "1.2.3.4")
-	req.Header.Set("X-Real-IP", "5.6.7.8")
-	res := httptest.NewRecorder()
-	c := e.NewContext(req, res)
-
-	require.Equal(t, "10.0.0.1", getClientIPWithTrust(c, false),
-		"untrusted forwarders must be ignored — the connection peer is the source of truth")
-}
-
 func TestDOSProtectionMiddleware_DirectPeerOutsideTrustedListIgnoresHeaders(t *testing.T) {
 	cfg := DOSProtectionConfig{
 		Enabled:       true,

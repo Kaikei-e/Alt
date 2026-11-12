@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 )
@@ -62,10 +63,16 @@ func TestValidateBackendListeners_TrustedProxyCIDRs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("TRUSTED_PROXY_CIDRS", "")
 			if tt.setEnv {
 				t.Setenv("TRUSTED_PROXY_CIDRS", tt.env)
 			} else {
-				t.Setenv("TRUSTED_PROXY_CIDRS", "")
+				if err := os.Unsetenv("TRUSTED_PROXY_CIDRS"); err != nil {
+					t.Fatalf("Unsetenv failed: %v", err)
+				}
+				if _, ok := os.LookupEnv("TRUSTED_PROXY_CIDRS"); ok {
+					t.Fatal("expected TRUSTED_PROXY_CIDRS to be unset")
+				}
 			}
 
 			var logBuf bytes.Buffer

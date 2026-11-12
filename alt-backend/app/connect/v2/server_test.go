@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"log/slog"
@@ -16,8 +17,10 @@ import (
 	"alt/config"
 	"alt/connect/v2/middleware"
 	"alt/di"
+	"alt/domain"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/usecase/resolve_article_usecase"
+	"alt/orchestrator/usecase/search_feed_usecase"
 	"alt/shared/gateway/datahub_gateway"
 )
 
@@ -312,15 +315,31 @@ func TestSetupConnectHandlers_RequiresUserJWTOnAllPublicServices(t *testing.T) {
 	}
 }
 
+type stubSearchFeedPort struct{}
+
+func (stubSearchFeedPort) SearchFeeds(context.Context, string) ([]domain.SearchArticleHit, error) {
+	return nil, nil
+}
+
+func (stubSearchFeedPort) SearchFeedsWithPagination(context.Context, string, int, int) ([]domain.SearchArticleHit, int, error) {
+	return nil, 0, nil
+}
+
+type stubFeedURLLinkPort struct{}
+
+func (stubFeedURLLinkPort) GetFeedURLsByArticleIDs(context.Context, []string) ([]domain.FeedAndArticle, error) {
+	return nil, nil
+}
+
 func TestCreateConnectServer_RejectsOversizedRequestMessage(t *testing.T) {
 	container, cfg, logger := testDeps()
+	container.FeedSearchUsecase = search_feed_usecase.NewSearchFeedMeilisearchUsecase(stubSearchFeedPort{}, stubFeedURLLinkPort{})
 	srv := CreateConnectServer(container, cfg, logger)
 	validToken := issueTestBackendToken(t)
 
 	oversized := `{"content":"` + strings.Repeat("a", 3*1024*1024) + `"}`
 
 	t.Run("streaming RPC rejects oversized message with resource_exhausted", func(t *testing.T) {
-		// Connect streaming protocol frames each message with 1-byte flags + 4-byte big-endian length.
 		payload := []byte(oversized)
 		frame := make([]byte, 5+len(payload))
 		frame[1] = byte(len(payload) >> 24)
@@ -354,15 +373,30 @@ func TestCreateConnectServer_RejectsOversizedRequestMessage(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Alt-Backend-Token", validToken)
 		rec := httptest.NewRecorder()
-		func() {
-			defer func() {
-				_ = recover()
-			}()
-			srv.ServeHTTP(rec, req)
-		}()
+		srv.ServeHTTP(rec, req)
 
 		if !strings.Contains(rec.Body.String(), "resource_exhausted") {
 			t.Fatalf("expected resource_exhausted in unary error response, got status=%d body=%q", rec.Code, rec.Body.String())
 		}
 	})
+}
+
+func TestCreateOperatorConnectServer_RejectsOversizedRequestMessage(t *testing.T) {
+	container, cfg, logger := testDeps()
+	srv := CreateOperatorConnectServer(container, cfg, logger, "test-operator-token", true)
+
+	body := "{" + strings.Repeat(" ", 3*1024*1024) + "}"
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetFeatureFlags",
+		strings.NewReader(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-operator-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), "resource_exhausted") {
+		t.Fatalf("expected resource_exhausted from operator Connect server, got status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }
