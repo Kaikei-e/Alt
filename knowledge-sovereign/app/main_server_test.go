@@ -1,10 +1,20 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"knowledge-sovereign/config"
 )
@@ -50,4 +60,52 @@ func TestBuildRPCMux_HealthEndpoint(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 for health endpoint, got %d", rec.Code)
 	}
+}
+
+func TestLogUserTokenVerifierStatus(t *testing.T) {
+	for _, mode := range []string{"introspection", "local", "none"} {
+		t.Run(mode, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			logUserTokenVerifierStatus(&config.Config{UserTokenVerifierMode: mode})
+
+			lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+			require.Len(t, lines, 1)
+
+			var rec map[string]any
+			require.NoError(t, json.Unmarshal([]byte(lines[0]), &rec))
+			assert.Equal(t, "INFO", rec["level"])
+			assert.Equal(t, "user_token_verifier", rec["msg"])
+			assert.Equal(t, mode, rec["mode"])
+		})
+	}
+}
+
+func TestStartServers_LogsUserTokenVerifierOnce(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "main_server.go", nil, 0)
+	require.NoError(t, err)
+
+	var startFn *ast.FuncDecl
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == "startServers" && fn.Recv == nil {
+			startFn = fn
+			break
+		}
+	}
+	require.NotNil(t, startFn)
+
+	calls := 0
+	ast.Inspect(startFn.Body, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok {
+			if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "logUserTokenVerifierStatus" {
+				calls++
+			}
+		}
+		return true
+	})
+	assert.Equal(t, 1, calls, "startServers must call logUserTokenVerifierStatus exactly once")
 }

@@ -163,6 +163,7 @@ func TestLoad_VerifyKeyStartupBehaviour(t *testing.T) {
 		}`
 		policyFile := writeTempTokenFile(t, "policy.json", policyJSON)
 
+		t.Setenv("APP_ENV", "test")
 		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
 		t.Setenv("ADMIN_AUTH", "disabled")
 		t.Setenv("EVENT_AUTH", "")
@@ -176,6 +177,7 @@ func TestLoad_VerifyKeyStartupBehaviour(t *testing.T) {
 		_, err := Load()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "BACKEND_TOKEN_VERIFY_KEY_FILE")
+		assert.Contains(t, err.Error(), "USER_JWT_INTROSPECTION_URL")
 	})
 
 	t.Run("loads local Ed25519 verifier when BACKEND_TOKEN_VERIFY_KEY_FILE is configured", func(t *testing.T) {
@@ -193,17 +195,117 @@ func TestLoad_VerifyKeyStartupBehaviour(t *testing.T) {
 		}`
 		policyFile := writeTempTokenFile(t, "policy.json", policyJSON)
 
+		t.Setenv("APP_ENV", "test")
 		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
 		t.Setenv("ADMIN_AUTH", "disabled")
 		t.Setenv("EVENT_AUTH", "")
 		t.Setenv("EVENT_AUTH_POLICY_FILE", policyFile)
+		t.Setenv("USER_JWT_INTROSPECTION_URL", "")
 		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", keyPath)
 
 		cfg, err := Load()
 		require.NoError(t, err)
+		assert.Equal(t, UserTokenVerifierModeLocal, cfg.UserTokenVerifierMode)
 		localVerifier, ok := cfg.UserJWTVerifier.(*LocalUserJWTVerifier)
 		require.True(t, ok)
 		assert.Equal(t, pub, localVerifier.PublicKey)
+	})
+}
+
+func TestLoad_UserTokenVerifierSelection(t *testing.T) {
+	t.Run("both BACKEND_TOKEN_VERIFY_KEY_FILE and USER_JWT_INTROSPECTION_URL set returns error naming both", func(t *testing.T) {
+		setupTempMTLSCerts(t)
+		_, _, spkiPEM := generateTestEd25519KeyPair(t)
+		keyPath := writeTestVerifyKeyFile(t, spkiPEM)
+
+		t.Setenv("APP_ENV", "test")
+		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+		t.Setenv("ADMIN_AUTH", "disabled")
+		t.Setenv("EVENT_AUTH", "disabled")
+		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "  "+keyPath+"  ")
+		t.Setenv("USER_JWT_INTROSPECTION_URL", "  https://auth-hub:9443/internal/token/introspect  ")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "BACKEND_TOKEN_VERIFY_KEY_FILE")
+		assert.Contains(t, err.Error(), "USER_JWT_INTROSPECTION_URL")
+	})
+
+	t.Run("key file only selects local mode", func(t *testing.T) {
+		_, _, spkiPEM := generateTestEd25519KeyPair(t)
+		keyPath := writeTestVerifyKeyFile(t, spkiPEM)
+
+		t.Setenv("APP_ENV", "test")
+		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+		t.Setenv("ADMIN_AUTH", "disabled")
+		t.Setenv("EVENT_AUTH", "disabled")
+		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", keyPath)
+		t.Setenv("USER_JWT_INTROSPECTION_URL", "   ")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, "local", cfg.UserTokenVerifierMode)
+		require.NotNil(t, cfg.UserJWTVerifier)
+	})
+
+	t.Run("introspection URL only selects introspection mode", func(t *testing.T) {
+		setupTempMTLSCerts(t)
+
+		t.Setenv("APP_ENV", "test")
+		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+		t.Setenv("ADMIN_AUTH", "disabled")
+		t.Setenv("EVENT_AUTH", "disabled")
+		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "   ")
+		t.Setenv("USER_JWT_INTROSPECTION_URL", "https://auth-hub:9443/internal/token/introspect")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, "introspection", cfg.UserTokenVerifierMode)
+		require.NotNil(t, cfg.UserJWTVerifier)
+	})
+
+	t.Run("neither set with policy requiring user tokens returns error naming both", func(t *testing.T) {
+		setupTempMTLSCerts(t)
+		tok := writeTempTokenFile(t, "tok", "service-token-that-is-long-enough-12345")
+		policyJSON := `{
+			"version": 1,
+			"services": [{
+				"name": "alt-backend",
+				"token_file": "` + tok + `",
+				"allowed_methods": ["/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"],
+				"require_user_token": true
+			}]
+		}`
+		policyFile := writeTempTokenFile(t, "policy.json", policyJSON)
+
+		t.Setenv("APP_ENV", "test")
+		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+		t.Setenv("ADMIN_AUTH", "disabled")
+		t.Setenv("EVENT_AUTH", "")
+		t.Setenv("EVENT_AUTH_POLICY_FILE", policyFile)
+		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "")
+		t.Setenv("USER_JWT_INTROSPECTION_URL", "")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "BACKEND_TOKEN_VERIFY_KEY_FILE")
+		assert.Contains(t, err.Error(), "USER_JWT_INTROSPECTION_URL")
+	})
+
+	t.Run("neither set without user-token principal selects none even if mTLS certs exist", func(t *testing.T) {
+		setupTempMTLSCerts(t)
+
+		t.Setenv("APP_ENV", "test")
+		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+		t.Setenv("ADMIN_AUTH", "disabled")
+		t.Setenv("EVENT_AUTH", "disabled")
+		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "")
+		t.Setenv("USER_JWT_INTROSPECTION_URL", "")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, "none", cfg.UserTokenVerifierMode)
+		assert.Nil(t, cfg.UserJWTVerifier)
 	})
 }
 
