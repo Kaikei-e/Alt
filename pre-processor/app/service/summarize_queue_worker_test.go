@@ -823,6 +823,10 @@ func (m *stubJobRepoWithEnqueue) HasRecentFailedJob(_ context.Context, _ string,
 	return false, nil
 }
 
+func (m *stubJobRepoWithEnqueue) CountInvalidatedCompletedJobs(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
 func (m *stubJobRepoWithEnqueue) CreateJob(_ context.Context, articleID string) (string, error) {
 	m.createJobCalls = append(m.createJobCalls, articleID)
 	return uuid.New().String(), nil

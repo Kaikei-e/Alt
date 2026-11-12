@@ -182,6 +182,47 @@ func TestTitleFallback(t *testing.T) {
 			t.Errorf("expected ErrContentTooShort when HTML extraction yields empty text, got: %v", err)
 		}
 	})
+
+	t.Run("short content with title exceeding maxContentRunes returns ErrContentTooLong", func(t *testing.T) {
+		var serverHits atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			serverHits.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		cfg := &config.Config{
+			NewsCreator: config.NewsCreatorConfig{
+				Host:    server.URL,
+				APIPath: "/api/v1/summarize",
+				Timeout: 5 * time.Second,
+			},
+		}
+
+		article := ArticlePayload{
+			ID:      "test-oversized-title",
+			Title:   strings.Repeat("あ", maxContentRunes+1),
+			Content: "Short content",
+		}
+
+		_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", server.Client())
+		if !errors.Is(err, ErrContentTooLong) {
+			t.Fatalf("expected ErrContentTooLong for oversized title fallback, got: %v", err)
+		}
+
+		streamBody, streamErr := StreamArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low", server.Client())
+		if streamBody != nil {
+			_ = streamBody.Close()
+		}
+		if !errors.Is(streamErr, ErrContentTooLong) {
+			t.Fatalf("expected ErrContentTooLong for streaming oversized title fallback, got: %v", streamErr)
+		}
+
+		if hits := serverHits.Load(); hits != 0 {
+			t.Fatalf("expected 0 upstream calls when title exceeds maxContentRunes, got %d", hits)
+		}
+	})
 }
 
 func TestArticleSummarizerAPIClient_BadRequestMapping(t *testing.T) {

@@ -329,6 +329,10 @@ func (m *stubJobRepoForEnqueue) HasRecentFailedJob(_ context.Context, _ string, 
 	return false, nil
 }
 
+func (m *stubJobRepoForEnqueue) CountInvalidatedCompletedJobs(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
 func (m *stubJobRepoForEnqueue) CreateJob(_ context.Context, _ string) (string, error) {
 	m.createJobCalls++
 	return "new-job-id", nil
@@ -611,6 +615,10 @@ func (m *stubJobRepoForRefill) HasRecentFailedJob(_ context.Context, _ string, _
 	return false, nil
 }
 
+func (m *stubJobRepoForRefill) CountInvalidatedCompletedJobs(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
 func (m *stubJobRepoForRefill) CreateJob(_ context.Context, _ string) (string, error) {
 	m.createJobCalls++
 	return m.createJobToken, nil
@@ -868,6 +876,7 @@ func TestProcessQueueTick_RefillsAndProcessesWhileStragglerInFlight(t *testing.T
 	jobRepo.EXPECT().HasInFlightJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 
 	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, articleID string) (string, error) {
 		return enqueueJob(articleID), nil
@@ -1021,6 +1030,7 @@ func TestProcessQueueTick_ConcurrentDrainedWorkersDoNotTriggerDuplicateSweeps(t 
 	jobRepo.EXPECT().HasInFlightJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 
 	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, articleID string) (string, error) {
 		queueMu.Lock()
@@ -1177,6 +1187,7 @@ func TestProcessQueueTick_WorkerDoesNotExitWhileRefillStillNeeded(t *testing.T) 
 	jobRepo.EXPECT().HasInFlightJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id string) (string, error) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -1333,6 +1344,7 @@ func TestProcessQueueTick_PendingJobMissedByDequeuePickedUpWhileStragglerInFligh
 	jobRepo.EXPECT().HasInFlightJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	jobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id string) (string, error) {
 		mu.Lock()
 		defer mu.Unlock()

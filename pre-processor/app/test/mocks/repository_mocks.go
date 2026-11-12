@@ -437,6 +437,21 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) CompleteJobWithNotification(ct
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteJobWithNotification", reflect.TypeOf((*MockSummarizeJobRepository)(nil).CompleteJobWithNotification), ctx, jobID, summary, userID, articleID)
 }
 
+// CountInvalidatedCompletedJobs mocks base method.
+func (m *MockSummarizeJobRepository) CountInvalidatedCompletedJobs(ctx context.Context, articleID string) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountInvalidatedCompletedJobs", ctx, articleID)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountInvalidatedCompletedJobs indicates an expected call of CountInvalidatedCompletedJobs.
+func (mr *MockSummarizeJobRepositoryMockRecorder) CountInvalidatedCompletedJobs(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountInvalidatedCompletedJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).CountInvalidatedCompletedJobs), ctx, articleID)
+}
+
 // CreateJob mocks base method.
 func (m *MockSummarizeJobRepository) CreateJob(ctx context.Context, articleID string) (string, error) {
 	m.ctrl.T.Helper()

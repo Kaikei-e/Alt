@@ -379,6 +379,7 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 				j.EXPECT().HasInFlightJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
 				j.EXPECT().HasDeadLetterJob(gomock.Any(), "article-1").Return(false, nil)
 				j.EXPECT().HasRecentFailedJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
+				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-1").Return(0, nil)
 				j.EXPECT().CreateJob(gomock.Any(), "article-1").Return("job-123", nil)
 			},
 			requestBody:  map[string]interface{}{"article_id": "article-1"},
@@ -440,6 +441,7 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 				j.EXPECT().HasInFlightJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
 				j.EXPECT().HasDeadLetterJob(gomock.Any(), "article-1").Return(false, nil)
 				j.EXPECT().HasRecentFailedJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
+				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-1").Return(0, nil)
 				j.EXPECT().CreateJob(gomock.Any(), "article-1").Return("", assert.AnError)
 			},
 			requestBody:  map[string]interface{}{"article_id": "article-1"},
