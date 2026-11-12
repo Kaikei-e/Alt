@@ -98,7 +98,7 @@ fi
 # See: https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf
 BASE_MODEL="${OLLAMA_BASE_MODEL:-gemma4-e4b-q4km}"
 VARIANT_MODELS=("gemma4-e4b-8k" "gemma4-e4b-12k")
-GGUF_URL="https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf"
+GGUF_URL="https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/4b4a2c1d584be7264f87aac328a1bc739ce81b6c/gemma-4-E4B_q4_0-it.gguf"
 GGUF_DIR="/tmp/gguf"
 GGUF_FILE="${GGUF_DIR}/gemma-4-E4B_q4_0-it.gguf"
 # Multi-token prediction draft head. Ollama hands it to llama-server as
@@ -107,7 +107,7 @@ GGUF_FILE="${GGUF_DIR}/gemma-4-E4B_q4_0-it.gguf"
 # rejected drafts from the base model, so the distribution is unchanged.
 # Google's QAT repo ships no MTP head, so the draft comes from ggml-org.
 # The variant tags inherit the draft layer through FROM.
-MTP_GGUF_URL="https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/mtp-gemma-4-E4B-it-Q4_0.gguf"
+MTP_GGUF_URL="https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/27cd6836f8e2a6e5e6b57ea0e77fa72490706985/mtp-gemma-4-E4B-it-Q4_0.gguf"
 MTP_GGUF_FILE="${GGUF_DIR}/mtp-gemma-4-E4B-it-Q4_0.gguf"
 FORCE_MODEL_REFRESH="${FORCE_MODEL_REFRESH:-0}"
 # Optional integrity pins: when set, a downloaded GGUF must match or startup fails.
