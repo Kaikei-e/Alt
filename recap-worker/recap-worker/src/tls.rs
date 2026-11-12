@@ -519,4 +519,67 @@ mod tests {
             "certificate with several SANs where one matches must be accepted"
         );
     }
+
+    #[test]
+    fn verify_client_cert_logs_presented_names_when_peer_is_unlisted() {
+        use std::sync::Mutex;
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+        let mut ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).unwrap();
+        ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        let ca_key = rcgen::KeyPair::generate().unwrap();
+        let ca_cert = ca_params.self_signed(&ca_key).unwrap();
+
+        let mut store = RootCertStore::empty();
+        store.add(ca_cert.der().clone()).unwrap();
+        let inner = rustls::server::WebPkiClientVerifier::builder(Arc::new(store))
+            .build()
+            .unwrap();
+        let verifier = AllowedNamesVerifier::new(inner, vec!["alt-backend".to_string()]);
+
+        let mut leaf_params =
+            rcgen::CertificateParams::new(vec!["unlisted-san".to_string()]).unwrap();
+        let mut dn = rcgen::DistinguishedName::new();
+        dn.push(rcgen::DnType::CommonName, "unlisted-cn");
+        leaf_params.distinguished_name = dn;
+        let leaf_key = rcgen::KeyPair::generate().unwrap();
+        let issuer = rcgen::Issuer::new(ca_params, ca_key);
+        let leaf_cert = leaf_params.signed_by(&leaf_key, &issuer).unwrap();
+
+        let buf = BufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        let result = tracing::subscriber::with_default(subscriber, || {
+            verifier.verify_client_cert(leaf_cert.der(), &[], UnixTime::now())
+        });
+        assert!(result.is_err(), "unlisted peer must be rejected");
+
+        let captured = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+        assert_eq!(
+            captured.lines().count(),
+            1,
+            "expected one WARN line, got: {captured}"
+        );
+        assert!(captured.contains("WARN"));
+        assert!(captured.contains("unlisted-cn"));
+        assert!(captured.contains("unlisted-san"));
+    }
 }
