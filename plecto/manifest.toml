@@ -58,6 +58,11 @@ addresses = ["kratos:4433"]
 [upstream.health]
 path = "/health/alive"
 
+# Every route below runs the "stale-chunk-heal" filter: its on-request hook removes
+# client-supplied x-alt-* / x-internal-* headers before any upstream sees them. The
+# manifest has no global chain (a non-empty [chain] is rejected), so each route lists it;
+# plecto/tests/route_filters.rs fails when one does not.
+#
 # Every route below repeats the same five baseline security headers, the ones
 # nginx applied via `include conf.d/snippets/security-headers.conf` plus
 # strict-transport-security. They were a WASM filter until 0.7.0 gave routes a native
@@ -69,6 +74,7 @@ path = "/health/alive"
 
 # 1. Browser-direct SSE
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-backend"
 strip_prefix = "/api"
 [route.match]
@@ -81,6 +87,7 @@ set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", refe
 # (localhost / the production origin) and allow_credentials: true — nginx's handling was
 # redundant, not load-bearing.
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "kratos"
 strip_prefix = "/ory"
 [route.match]
@@ -106,6 +113,7 @@ request_timeout_ms = 10000
 # 4. OGP image proxy. No Plecto equivalent to nginx's disk-backed proxy_cache — every
 # request now round-trips to alt-backend (accepted regression, see review doc).
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-backend"
 [route.match]
 path_prefix = "/v1/images/proxy/"
@@ -148,6 +156,7 @@ min_length = 256
 
 # 7. Enumerated Connect-RPC streaming routes (regex -> explicit path_prefix).
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.augur.v2."
@@ -155,6 +164,7 @@ path_prefix = "/api/v2/alt.augur.v2."
 set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.morning_letter.v2."
@@ -162,6 +172,7 @@ path_prefix = "/api/v2/alt.morning_letter.v2."
 set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.feeds.v2."
@@ -169,6 +180,7 @@ path_prefix = "/api/v2/alt.feeds.v2."
 set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.knowledge.loop.v1."
@@ -176,6 +188,7 @@ path_prefix = "/api/v2/alt.knowledge.loop.v1."
 set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.knowledge_home.v1."
@@ -183,6 +196,7 @@ path_prefix = "/api/v2/alt.knowledge_home.v1."
 set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.admin_monitor.v1."
@@ -191,6 +205,7 @@ set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", refe
 
 # 8. SvelteKit API catch-all (non-streaming Connect-RPC / REST).
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/"
@@ -203,6 +218,7 @@ protocols = ["websocket"]
 # SSR's measured tail reaches 17.8 s, so any bound tighter than the upstream's 30 s
 # default would turn a slow page into a 504 for a request that was going to succeed.
 [[route]]
+filters = ["stale-chunk-heal"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/"
