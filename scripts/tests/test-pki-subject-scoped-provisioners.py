@@ -409,6 +409,24 @@ check(
     ".db.type" in bootstrap and "revocation" in bootstrap,
 )
 
+jq_step = bootstrap.find("command -v jq")
+db_call = bootstrap.find("\ncheck_certificate_database\n")
+check(
+    "certificate database check runs after jq is installed in the CA container",
+    0 <= jq_step < db_call,
+    f"jq_step={jq_step} db_call={db_call}",
+)
+db_fn = shell_function(bootstrap, "check_certificate_database")
+for label, rc, expect_msg in (("db present", 0, False), ("db absent", 1, True)):
+    fake = f'docker() {{ return {rc}; }}\nSTEP_CA=x CA_CONFIG=/c.json'
+    res = run_shell_function(f"{fake}\n{db_fn}", "check_certificate_database")
+    msg = res.stderr.decode("utf-8", "replace")
+    check(
+        f"check_certificate_database ({label}) reports no db section only when absent",
+        (res.returncode == rc) and (("no db section" in msg) == expect_msg),
+        f"rc={res.returncode} stderr={msg!r}",
+    )
+
 print("compose-audit path coverage for provisioner scripts")
 from compose_include import load_yaml  # noqa: E402
 
