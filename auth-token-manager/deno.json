@@ -20,7 +20,7 @@
     "@std/testing/mock": "jsr:@std/testing@^1.0.17/mock",
     "@opentelemetry/api": "npm:@opentelemetry/api@1.9.0",
     "@opentelemetry/api-logs": "npm:@opentelemetry/api-logs@0.221.0",
-    "@opentelemetry/sdk-logs": "npm:@opentelemetry/sdk-logs@0.221.0",
+    "@opentelemetry/sdk-logs": "npm:@opentelemetry/sdk-logs@3.0.0",
     "@opentelemetry/exporter-logs-otlp-proto": "npm:@opentelemetry/exporter-logs-otlp-proto@0.221.0",
     "@opentelemetry/exporter-trace-otlp-proto": "npm:@opentelemetry/exporter-trace-otlp-proto@0.221.0",
     "@opentelemetry/sdk-trace-base": "npm:@opentelemetry/sdk-trace-base@^2.10.0",
