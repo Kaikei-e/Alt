@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -150,7 +152,7 @@ func (m *ctxInjectMiddleware) wrap(next http.Handler) http.Handler {
 }
 
 func TestUserQuotaInterceptor_PerUserTokenBucketAndIsolation(t *testing.T) {
-	limiter, err := NewUserQuotaLimiter(testQuotaConfig(2, 4, 100))
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(2, 4, 100), time.Now, discardLogger())
 	require.NoError(t, err)
 
 	userA := uuid.New()
@@ -290,7 +292,7 @@ func TestUserQuotaInterceptor_PerUserTokenBucketAndIsolation(t *testing.T) {
 }
 
 func TestUserQuotaInterceptor_PerUserConcurrencyCapIsolatesUsersAndReleases(t *testing.T) {
-	limiter, err := NewUserQuotaLimiter(testQuotaConfig(10, 2, 100))
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(10, 2, 100), time.Now, discardLogger())
 	require.NoError(t, err)
 
 	userABlockCh := make(chan struct{})
@@ -425,7 +427,7 @@ func (f *perUserBlockingFeedService) StreamSummarize(
 }
 
 func TestUserQuotaInterceptor_RejectsUnauthenticated(t *testing.T) {
-	limiter, err := NewUserQuotaLimiter(testQuotaConfig(5, 2, 100))
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(5, 2, 100), time.Now, discardLogger())
 	require.NoError(t, err)
 
 	feedSvc := &fakeFeedSummarizeService{}
@@ -455,7 +457,7 @@ func TestUserQuotaInterceptor_RejectsUnauthenticated(t *testing.T) {
 }
 
 func TestEchoUserQuotaMiddleware_RateConcurrencyAndUnauthenticated(t *testing.T) {
-	limiter, err := NewUserQuotaLimiter(testQuotaConfig(1, 1, 100))
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(1, 1, 100), time.Now, discardLogger())
 	require.NoError(t, err)
 
 	e := echo.New()
@@ -505,7 +507,7 @@ func TestEchoUserQuotaMiddleware_RateConcurrencyAndUnauthenticated(t *testing.T)
 }
 
 func TestUserQuotaLimiter_BoundedMemoryEvictsLRU(t *testing.T) {
-	limiter, err := NewUserQuotaLimiter(testQuotaConfig(5, 5, 3))
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(5, 5, 3), time.Now, discardLogger())
 	require.NoError(t, err)
 
 	for i := 0; i < 5; i++ {
@@ -518,7 +520,7 @@ func TestUserQuotaLimiter_BoundedMemoryEvictsLRU(t *testing.T) {
 }
 
 func TestUserQuotaLimiter_InFlightEntryNeverEvicted(t *testing.T) {
-	limiter, err := NewUserQuotaLimiter(testQuotaConfig(10, 1, 2))
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(10, 1, 2), time.Now, discardLogger())
 	require.NoError(t, err)
 
 	userA := uuid.New()
@@ -548,7 +550,7 @@ func TestUserQuotaLimiter_InFlightEntryNeverEvicted(t *testing.T) {
 }
 
 func TestUserQuotaInterceptor_ReleasesOnPanicAndStreamCancel(t *testing.T) {
-	limiter, err := NewUserQuotaLimiter(testQuotaConfig(10, 1, 16))
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(10, 1, 16), time.Now, discardLogger())
 	require.NoError(t, err)
 
 	userA := uuid.New()
@@ -652,13 +654,131 @@ func (f *cancelTestFeedService) StreamSummarize(
 	}
 }
 
-func TestUserQuota_NilLimiterPanicsInBusinessPath(t *testing.T) {
-	assert.Panics(t, func() {
-		mw := EchoUserQuotaMiddleware(nil, OpSummarize)
-		e := echo.New()
-		req := httptest.NewRequest(http.MethodPost, "/v1/feeds/summarize/stream", strings.NewReader("{}"))
-		req = req.WithContext(testUserCtx(uuid.New()))
-		c := e.NewContext(req, httptest.NewRecorder())
-		_ = mw(func(c echo.Context) error { return nil })(c)
-	})
+func discardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
+
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func newFakeClock() *fakeClock {
+	return &fakeClock{now: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)}
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+func TestUserQuota_NilLimiterPanicsAtConstruction(t *testing.T) {
+	assert.Panics(t, func() { NewUserQuotaInterceptor(nil) })
+	assert.Panics(t, func() { EchoUserQuotaMiddleware(nil, OpSummarize) })
+}
+
+func TestUserQuotaLimiter_NilLimiterPanicsOnAcquire(t *testing.T) {
+	var limiter *UserQuotaLimiter
+	assert.Panics(t, func() { _, _ = limiter.Acquire(testUserCtx(uuid.New()), OpSummarize) })
+}
+
+func TestNewUserQuotaLimiter_RequiresClockAndLogger(t *testing.T) {
+	_, err := NewUserQuotaLimiter(testQuotaConfig(1, 1, 1), nil, discardLogger())
+	require.Error(t, err)
+	_, err = NewUserQuotaLimiter(testQuotaConfig(1, 1, 1), time.Now, nil)
+	require.Error(t, err)
+}
+
+func TestUserQuotaLimiter_RefillAndRetryAfterFollowInjectedClock(t *testing.T) {
+	clock := newFakeClock()
+	cfg := testQuotaConfig(2, 5, 16)
+	cfg.Summarize = config.OperationQuotaConfig{Rate: 1, Burst: 2, Window: time.Minute, MaxInFlight: 5}
+	limiter, err := NewUserQuotaLimiter(cfg, clock.Now, discardLogger())
+	require.NoError(t, err)
+
+	ctx := testUserCtx(uuid.New())
+	for i := 0; i < 2; i++ {
+		rel, acqErr := limiter.Acquire(ctx, OpSummarize)
+		require.NoError(t, acqErr)
+		rel()
+	}
+
+	_, err = limiter.Acquire(ctx, OpSummarize)
+	var qErr *QuotaExceededError
+	require.ErrorAs(t, err, &qErr)
+	assert.Equal(t, 60*time.Second, qErr.RetryAfter)
+	assert.Equal(t, QuotaReasonRate, qErr.Reason)
+
+	clock.Advance(45 * time.Second)
+	_, err = limiter.Acquire(ctx, OpSummarize)
+	require.ErrorAs(t, err, &qErr)
+	assert.Equal(t, 15*time.Second, qErr.RetryAfter)
+
+	clock.Advance(15 * time.Second)
+	rel, err := limiter.Acquire(ctx, OpSummarize)
+	require.NoError(t, err)
+	rel()
+
+	_, err = limiter.Acquire(ctx, OpSummarize)
+	require.ErrorAs(t, err, &qErr)
+	assert.Equal(t, 60*time.Second, qErr.RetryAfter)
+}
+
+func TestUserQuotaLimiter_RejectionLogsOneWarnWithUserClassAndReason(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	cfg := testQuotaConfig(1, 1, 16)
+	limiter, err := NewUserQuotaLimiter(cfg, newFakeClock().Now, logger)
+	require.NoError(t, err)
+
+	user := uuid.New()
+	ctx := testUserCtx(user)
+	rel, err := limiter.Acquire(ctx, OpAugurChat)
+	require.NoError(t, err)
+	assert.Empty(t, buf.String(), "accepted calls must not log")
+
+	_, err = limiter.Acquire(ctx, OpAugurChat)
+	var qErr *QuotaExceededError
+	require.ErrorAs(t, err, &qErr)
+	assert.Equal(t, QuotaReasonInFlight, qErr.Reason)
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 1)
+	assert.Contains(t, lines[0], `"level":"WARN"`)
+	assert.Contains(t, lines[0], `"user_id":"`+user.String()+`"`)
+	assert.Contains(t, lines[0], `"class":"augur_chat"`)
+	assert.Contains(t, lines[0], `"reason":"in_flight"`)
+	assert.NotContains(t, lines[0], "reader@example.com")
+
+	rel()
+	buf.Reset()
+	// A drained bucket with a free slot is a rate rejection.
+	limiter2, err := NewUserQuotaLimiter(testQuotaConfig(1, 4, 16), newFakeClock().Now, logger)
+	require.NoError(t, err)
+	r2, err := limiter2.Acquire(ctx, OpSummarize)
+	require.NoError(t, err)
+	r2()
+	_, err = limiter2.Acquire(ctx, OpSummarize)
+	require.ErrorAs(t, err, &qErr)
+	assert.Equal(t, QuotaReasonRate, qErr.Reason)
+	assert.Contains(t, buf.String(), `"reason":"rate"`)
+	assert.Contains(t, buf.String(), `"class":"summarize"`)
+}
+
+func TestUserQuotaLimiter_MissingUserIsAuthenticationError(t *testing.T) {
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(5, 5, 16), time.Now, discardLogger())
+	require.NoError(t, err)
+
+	_, err = limiter.Acquire(context.Background(), OpSummarize)
+	assert.ErrorIs(t, err, ErrQuotaUnauthenticated)
+
+	nilUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.Nil})
+	_, err = limiter.Acquire(nilUser, OpSummarize)
+	assert.ErrorIs(t, err, ErrQuotaUnauthenticated)
 }

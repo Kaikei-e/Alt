@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -75,7 +76,7 @@ func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 		Summarize:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 		AugurChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 		MorningChat:     config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
-	})
+	}, time.Now, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
 	answerUC := &stubQuotaAnswerUsecase{}
@@ -292,7 +293,7 @@ func TestNonStreamingSummarizeRoutes_EnforcePerUserQuotaAndIsolateUsers(t *testi
 				Summarize:       config.OperationQuotaConfig{Rate: 2, Burst: 2, Window: time.Hour, MaxInFlight: 2},
 				AugurChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 				MorningChat:     config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
-			})
+			}, time.Now, slog.New(slog.DiscardHandler))
 			require.NoError(t, err)
 
 			e, preproc, batchSummarizer := newSummarizeQuotaTestServer(t, pub, limiter)
@@ -337,7 +338,7 @@ func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(
 		Summarize:       config.OperationQuotaConfig{Rate: 2, Burst: 2, Window: time.Hour, MaxInFlight: 2},
 		AugurChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 		MorningChat:     config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
-	})
+	}, time.Now, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
 	e, preproc, batchSummarizer := newSummarizeQuotaTestServer(t, pub, limiter)

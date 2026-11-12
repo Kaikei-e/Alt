@@ -87,7 +87,7 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 	cfg.Auth.BackendTokenIssuer = testBackendTokenIssuer
 	cfg.Auth.BackendTokenAudience = testBackendTokenAudience
 
-	limiter, err := middleware.NewUserQuotaLimiter(config.DefaultUserQuotaConfig())
+	limiter, err := middleware.NewUserQuotaLimiter(config.DefaultUserQuotaConfig(), time.Now, slog.New(slog.DiscardHandler))
 	if err != nil {
 		panic(err)
 	}

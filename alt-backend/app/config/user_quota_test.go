@@ -85,3 +85,24 @@ func TestLogUserQuotaConfig_EmitsStructuredValues(t *testing.T) {
 	assert.NotContains(t, out, `morning_regenerate`)
 	assert.NotContains(t, out, `max_concurrent`)
 }
+
+func TestLoadUserQuotaConfig_RejectsSetButEmptyValues(t *testing.T) {
+	for _, name := range []string{
+		UserQuotaMaxTrackedUsersEnv,
+		UserQuotaSummarizeRateEnv,
+		UserQuotaSummarizeBurstEnv,
+		UserQuotaSummarizeWindowEnv,
+		UserQuotaSummarizeMaxInFlightEnv,
+		UserQuotaAugurChatRateEnv,
+		UserQuotaMorningChatWindowEnv,
+	} {
+		for _, value := range []string{"", "   "} {
+			t.Run(name+"="+value, func(t *testing.T) {
+				t.Setenv(name, value)
+				_, err := LoadUserQuotaConfig()
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), name)
+			})
+		}
+	}
+}
