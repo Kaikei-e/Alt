@@ -244,10 +244,7 @@ mod tests {
     fn peer_guarded_app() -> Router {
         let allowed = vec!["alt-backend".to_string()];
         Router::new()
-            .route(
-                "/v1/recaps/7days",
-                get(|| async { StatusCode::OK }),
-            )
+            .route("/v1/recaps/7days", get(|| async { StatusCode::OK }))
             .route(
                 "/v1/morning/letters/regenerate",
                 axum::routing::post(|| async { StatusCode::OK }),

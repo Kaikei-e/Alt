@@ -119,8 +119,8 @@ fn spawn_mtls_listener(
     peer_identity: &recap_worker::config::PeerIdentityConfig,
     handle: axum_server::Handle<std::net::SocketAddr>,
 ) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
-    let Some(server_config) =
-        recap_worker::tls::load_server_tls_config(peer_identity).inspect_err(|e| {
+    let Some(server_config) = recap_worker::tls::load_server_tls_config(peer_identity)
+        .inspect_err(|e| {
             error!(error = %e, "failed to load mTLS config (fail-closed); refusing to start");
         })?
     else {

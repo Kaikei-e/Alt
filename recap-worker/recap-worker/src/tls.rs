@@ -13,7 +13,8 @@
 //!   - `MTLS_ENFORCE=true` enables mTLS; any other value keeps plaintext.
 //!   - `MTLS_CERT_FILE` / `MTLS_KEY_FILE`: leaf cert + private key (PEM).
 //!   - `MTLS_CA_FILE`: trust anchor for client-cert verification.
-//!   - `MTLS_ALLOWED_PEERS`: CSV of CNs permitted to reach the server.
+//!   - `MTLS_ALLOWED_PEERS`: required; CSV of client-certificate CNs / DNS
+//!     SANs permitted to reach the server, or `disabled` (parsed in `config`).
 
 use std::fs;
 use std::io;

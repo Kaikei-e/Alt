@@ -1498,8 +1498,8 @@ fn load_admin_auth() -> Result<AdminAuth, ConfigError> {
 }
 
 pub(crate) fn load_peer_identity_from_env() -> Result<PeerIdentityConfig, ConfigError> {
-    let raw = env::var("MTLS_ALLOWED_PEERS")
-        .map_err(|_| ConfigError::Missing("MTLS_ALLOWED_PEERS"))?;
+    let raw =
+        env::var("MTLS_ALLOWED_PEERS").map_err(|_| ConfigError::Missing("MTLS_ALLOWED_PEERS"))?;
     let trimmed = raw.trim();
     if trimmed.eq_ignore_ascii_case("disabled") {
         return Ok(PeerIdentityConfig::Disabled);
@@ -3709,8 +3709,9 @@ mod tests {
             ("MTLS_ALLOWED_PEERS", Some("Disabled")),
         ]);
         temp_env::with_vars(disabled_mtls_vars, || {
-            let cfg = Config::from_env()
-                .expect("case-insensitive MTLS_ALLOWED_PEERS=Disabled with MTLS_ENFORCE=true must load");
+            let cfg = Config::from_env().expect(
+                "case-insensitive MTLS_ALLOWED_PEERS=Disabled with MTLS_ENFORCE=true must load",
+            );
             assert_eq!(cfg.peer_identity(), &PeerIdentityConfig::Disabled);
         });
 
@@ -3729,10 +3730,7 @@ mod tests {
             assert_eq!(
                 cfg.peer_identity(),
                 &PeerIdentityConfig::Enabled {
-                    allowed_peers: vec![
-                        "alt-backend".to_string(),
-                        "alt-frontend-sv".to_string()
-                    ],
+                    allowed_peers: vec!["alt-backend".to_string(), "alt-frontend-sv".to_string()],
                 }
             );
         });
@@ -3768,7 +3766,11 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        for bad in ["localhost", "alt-backend,localhost", "LOCALHOST , search-indexer"] {
+        for bad in [
+            "localhost",
+            "alt-backend,localhost",
+            "LOCALHOST , search-indexer",
+        ] {
             let mut vars = required_base();
             vars.extend([
                 ("MTLS_ENFORCE", Some("true")),
