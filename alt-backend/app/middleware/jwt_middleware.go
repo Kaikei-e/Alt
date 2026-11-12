@@ -66,12 +66,10 @@ type JWTAuthMiddleware struct {
 
 // NewJWTAuthMiddleware creates a new JWT authentication middleware
 func NewJWTAuthMiddleware(logger *slog.Logger, cfg config.AuthConfig) *JWTAuthMiddleware {
-	var publicKey ed25519.PublicKey
-	if len(cfg.BackendTokenPublicKey) == ed25519.PublicKeySize {
-		publicKey = append(ed25519.PublicKey(nil), cfg.BackendTokenPublicKey...)
-	} else if logger != nil {
-		logger.Warn("BACKEND_TOKEN_VERIFY_KEY_FILE not loaded, JWT auth will deny all requests")
+	if len(cfg.BackendTokenPublicKey) != ed25519.PublicKeySize {
+		panic(fmt.Sprintf("middleware: BackendTokenPublicKey must be %d bytes, got %d", ed25519.PublicKeySize, len(cfg.BackendTokenPublicKey)))
 	}
+	publicKey := append(ed25519.PublicKey(nil), cfg.BackendTokenPublicKey...)
 
 	return &JWTAuthMiddleware{
 		logger:    logger,
@@ -119,10 +117,6 @@ func (m *JWTAuthMiddleware) validateJWT(c echo.Context) (*UserContext, error) {
 	tokenStr := c.Request().Header.Get(backendTokenHeader)
 	if tokenStr == "" {
 		return nil, errMissingToken
-	}
-
-	if len(m.publicKey) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("JWT verify key not configured")
 	}
 
 	// Parse and validate token

@@ -53,12 +53,14 @@ type AuthInterceptor struct {
 
 // NewAuthInterceptor creates a new authentication interceptor
 func NewAuthInterceptor(logger *slog.Logger, cfg *config.Config) *AuthInterceptor {
-	var publicKey ed25519.PublicKey
-	if len(cfg.Auth.BackendTokenPublicKey) == ed25519.PublicKeySize {
-		publicKey = append(ed25519.PublicKey(nil), cfg.Auth.BackendTokenPublicKey...)
-	} else if logger != nil {
-		logger.Warn("BACKEND_TOKEN_VERIFY_KEY_FILE not loaded, JWT auth will deny all requests")
+	if cfg == nil || len(cfg.Auth.BackendTokenPublicKey) != ed25519.PublicKeySize {
+		var got int
+		if cfg != nil {
+			got = len(cfg.Auth.BackendTokenPublicKey)
+		}
+		panic(fmt.Sprintf("middleware: BackendTokenPublicKey must be %d bytes, got %d", ed25519.PublicKeySize, got))
 	}
+	publicKey := append(ed25519.PublicKey(nil), cfg.Auth.BackendTokenPublicKey...)
 
 	return &AuthInterceptor{
 		logger:    logger,
@@ -124,10 +126,6 @@ func (i *authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc
 func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, error) {
 	if tokenStr == "" {
 		return nil, errMissingToken
-	}
-
-	if len(a.publicKey) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("JWT verify key not configured")
 	}
 
 	// Parse and validate token

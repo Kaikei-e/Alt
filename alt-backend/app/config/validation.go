@@ -1,7 +1,6 @@
 package config
 
 import (
-	"crypto/ed25519"
 	"fmt"
 	"net"
 	"os"
@@ -303,13 +302,6 @@ func validateCircuitBreakerConfig(config *CircuitBreakerConfig) error {
 			config.RecoveryTimeout, config.TimeoutDuration)
 	}
 
-	return nil
-}
-
-func validateAuthConfig(config *AuthConfig, _ string) error {
-	if len(config.BackendTokenPublicKey) > 0 && len(config.BackendTokenPublicKey) != ed25519.PublicKeySize {
-		return fmt.Errorf("backend token verify key must be %d bytes, got %d", ed25519.PublicKeySize, len(config.BackendTokenPublicKey))
-	}
 	return nil
 }
 

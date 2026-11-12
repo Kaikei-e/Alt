@@ -82,15 +82,9 @@ func parseEd25519VerifyKeyPEM(raw []byte) (ed25519.PublicKey, error) {
 // BACKEND_TOKEN_VERIFY_KEY_FILE. Called only by ValidateBackendConfig so
 // binaries that never verify user tokens neither require nor read the key.
 func loadBackendTokenVerifyKey(cfg *AuthConfig, readFile FileReader) error {
-	path := strings.TrimSpace(cfg.BackendTokenVerifyKeyFile)
+	path := strings.TrimSpace(os.Getenv(backendTokenVerifyKeyFileEnv))
 	if path == "" {
-		path = strings.TrimSpace(os.Getenv(backendTokenVerifyKeyFileEnv))
-	}
-	if path == "" {
-		if len(cfg.BackendTokenPublicKey) > 0 && len(cfg.BackendTokenPublicKey) != ed25519.PublicKeySize {
-			return fmt.Errorf("%s: invalid Ed25519 public key length %d", backendTokenVerifyKeyFileEnv, len(cfg.BackendTokenPublicKey))
-		}
-		return nil
+		return fmt.Errorf("%s is required", backendTokenVerifyKeyFileEnv)
 	}
 	cleanPath := filepath.Clean(path)
 	content, err := readFile(cleanPath)

@@ -44,12 +44,6 @@ func NewConfig() (*Config, error) {
 		return nil, fmt.Errorf("image proxy config validation failed: %w", err)
 	}
 
-	// Validate auth configuration after secrets are loaded
-	// This ensures fail-fast behavior for misconfigured production deployments
-	if err := validateAuthConfig(&config.Auth, config.AppEnv); err != nil {
-		return nil, fmt.Errorf("auth config validation failed: %w", err)
-	}
-
 	if config.AppEnv == "production" && config.AuthHub.URL != "" && !strings.HasPrefix(config.AuthHub.URL, "https://") {
 		return nil, fmt.Errorf("auth-hub config: AUTH_HUB_URL must use https:// in production, got %q", config.AuthHub.URL)
 	}

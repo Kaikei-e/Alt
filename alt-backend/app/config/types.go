@@ -192,10 +192,9 @@ type AdminMonitorConfig struct {
 type InternalAPIConfig struct{}
 
 type AuthConfig struct {
-	BackendTokenPublicKey     ed25519.PublicKey `json:"-"`
-	BackendTokenVerifyKeyFile string            `json:"-"`
-	BackendTokenIssuer        string            `json:"backend_token_issuer" env:"BACKEND_TOKEN_ISSUER"`
-	BackendTokenAudience      string            `json:"backend_token_audience" env:"BACKEND_TOKEN_AUDIENCE"`
+	BackendTokenPublicKey ed25519.PublicKey `json:"-"`
+	BackendTokenIssuer    string            `json:"backend_token_issuer" env:"BACKEND_TOKEN_ISSUER"`
+	BackendTokenAudience  string            `json:"backend_token_audience" env:"BACKEND_TOKEN_AUDIENCE"`
 
 	// InternalAuthSecret is the shared bearer cmd/datahub puts in the
 	// X-Internal-Auth header of every auth-hub /internal/system-user call.
