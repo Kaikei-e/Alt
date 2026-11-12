@@ -96,13 +96,5 @@ func validateConfig(config *Config) error {
 		}
 	}
 
-	if config.ArticleSync.OwnerUserID != "" {
-		normalized, err := parseArticleSyncOwnerUserID(config.ArticleSync.OwnerUserID)
-		if err != nil {
-			return err
-		}
-		config.ArticleSync.OwnerUserID = normalized
-	}
-
 	return nil
 }

@@ -48,7 +48,7 @@ func parseArticleSyncOwnerUserID(raw string) (string, error) {
 // ARTICLE_SYNC_OWNER_USER_ID (required when enabled; optional when disabled, validated if non-empty).
 func ResolveArticleSyncConfig(logger *slog.Logger) (SyncMode, string, error) {
 	if logger == nil {
-		logger = slog.Default()
+		panic("ResolveArticleSyncConfig: logger must not be nil")
 	}
 
 	rawMode, modeSet := os.LookupEnv("INOREADER_SYNC")

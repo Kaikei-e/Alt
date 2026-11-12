@@ -67,15 +67,7 @@ func loadFromEnv(config *Config) error {
 		return fmt.Errorf("failed to load summarize queue config: %w", err)
 	}
 
-	loadArticleSyncConfig(&config.ArticleSync)
-
 	return nil
-}
-
-func loadArticleSyncConfig(cfg *ArticleSyncConfig) {
-	if ownerID := os.Getenv("ARTICLE_SYNC_OWNER_USER_ID"); ownerID != "" {
-		cfg.OwnerUserID = ownerID
-	}
 }
 
 // loadServerConfig loads server configuration from environment variables

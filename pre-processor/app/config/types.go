@@ -17,11 +17,6 @@ type Config struct {
 	QualityChecker QualityCheckerConfig `json:"quality_checker"`
 	SummarizeQueue SummarizeQueueConfig `json:"summarize_queue"`
 	AltService     AltServiceConfig     `json:"alt_service"`
-	ArticleSync    ArticleSyncConfig    `json:"article_sync"`
-}
-
-type ArticleSyncConfig struct {
-	OwnerUserID string `json:"owner_user_id" env:"ARTICLE_SYNC_OWNER_USER_ID"`
 }
 
 type AltServiceConfig struct {
