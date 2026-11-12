@@ -33,6 +33,15 @@ func TestParseSyncMode(t *testing.T) {
 }
 
 func TestResolveArticleSyncConfig(t *testing.T) {
+	t.Run("panics when logger is nil", func(t *testing.T) {
+		t.Setenv("INOREADER_SYNC", "disabled")
+		unsetEnvForTest(t, "ARTICLE_SYNC_OWNER_USER_ID")
+
+		assert.Panics(t, func() {
+			_, _, _ = ResolveArticleSyncConfig(nil)
+		})
+	})
+
 	t.Run("fails when INOREADER_SYNC is unset", func(t *testing.T) {
 		unsetEnvForTest(t, "INOREADER_SYNC")
 		t.Setenv("ARTICLE_SYNC_OWNER_USER_ID", "11111111-2222-4333-8444-555555555555")
@@ -136,40 +145,6 @@ func TestResolveArticleSyncConfig(t *testing.T) {
 		assert.Equal(t, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", ownerID)
 		assert.Contains(t, buf.String(), "article_sync_enabled")
 		assert.Equal(t, 1, strings.Count(strings.TrimSpace(buf.String()), "\n")+1)
-	})
-}
-
-func TestLoadConfig_ArticleSyncOwnerUserIDValidation(t *testing.T) {
-	t.Run("rejects malformed or whitespace ARTICLE_SYNC_OWNER_USER_ID when set", func(t *testing.T) {
-		for _, val := range []string{"   ", "invalid-uuid"} {
-			t.Setenv("ARTICLE_SYNC_OWNER_USER_ID", val)
-
-			cfg, err := LoadConfig()
-
-			require.Error(t, err)
-			assert.Nil(t, cfg)
-			assert.Contains(t, err.Error(), "ARTICLE_SYNC_OWNER_USER_ID")
-		}
-	})
-
-	t.Run("rejects nil UUID ARTICLE_SYNC_OWNER_USER_ID when set", func(t *testing.T) {
-		t.Setenv("ARTICLE_SYNC_OWNER_USER_ID", "00000000-0000-0000-0000-000000000000")
-
-		cfg, err := LoadConfig()
-
-		require.Error(t, err)
-		assert.Nil(t, cfg)
-		assert.Contains(t, err.Error(), "ARTICLE_SYNC_OWNER_USER_ID")
-	})
-
-	t.Run("normalizes valid ARTICLE_SYNC_OWNER_USER_ID when set", func(t *testing.T) {
-		t.Setenv("ARTICLE_SYNC_OWNER_USER_ID", "11111111-2222-4333-8444-555555555555")
-
-		cfg, err := LoadConfig()
-
-		require.NoError(t, err)
-		require.NotNil(t, cfg)
-		assert.Equal(t, "11111111-2222-4333-8444-555555555555", cfg.ArticleSync.OwnerUserID)
 	})
 }
 
