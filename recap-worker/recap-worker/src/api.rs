@@ -582,4 +582,250 @@ mod tests {
             );
         }
     }
+
+    struct LoopbackPki {
+        ca_der: rustls::pki_types::CertificateDer<'static>,
+        ca_pem: String,
+        server_cert_pem: String,
+        server_key_pem: String,
+        client_cert_der: rustls::pki_types::CertificateDer<'static>,
+        client_key_der: rustls::pki_types::PrivateKeyDer<'static>,
+    }
+
+    fn generate_loopback_pki(allowed_client_cn: &str) -> LoopbackPki {
+        use rcgen::{
+            BasicConstraints, CertificateParams, DistinguishedName, DnType,
+            ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose, SanType,
+        };
+
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let mut ca_params = CertificateParams::new(Vec::<String>::new()).expect("ca params");
+        ca_params.distinguished_name = DistinguishedName::new();
+        ca_params
+            .distinguished_name
+            .push(DnType::CommonName, "test-loopback-ca");
+        ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        ca_params.key_usages = vec![
+            KeyUsagePurpose::DigitalSignature,
+            KeyUsagePurpose::KeyCertSign,
+            KeyUsagePurpose::CrlSign,
+        ];
+        let ca_key = KeyPair::generate().expect("ca key");
+        let ca_cert = ca_params.self_signed(&ca_key).expect("ca cert");
+        let ca_pem = ca_cert.pem();
+        let issuer = Issuer::from_ca_cert_pem(
+            &ca_pem,
+            KeyPair::from_pem(&ca_key.serialize_pem()).expect("ca key pem"),
+        )
+        .expect("issuer");
+
+        let mut srv_params = CertificateParams::new(vec!["localhost".to_string()]).expect("srv");
+        srv_params.distinguished_name = DistinguishedName::new();
+        srv_params
+            .distinguished_name
+            .push(DnType::CommonName, "recap-worker");
+        srv_params.subject_alt_names = vec![
+            SanType::DnsName("localhost".try_into().expect("dns")),
+            SanType::IpAddress(std::net::IpAddr::from([127, 0, 0, 1])),
+        ];
+        srv_params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+        let srv_key = KeyPair::generate().expect("srv key");
+        let srv_cert = srv_params.signed_by(&srv_key, &issuer).expect("srv signed");
+
+        let mut cli_params =
+            CertificateParams::new(vec![allowed_client_cn.to_string()]).expect("cli");
+        cli_params.distinguished_name = DistinguishedName::new();
+        cli_params
+            .distinguished_name
+            .push(DnType::CommonName, allowed_client_cn);
+        cli_params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ClientAuth];
+        let cli_key = KeyPair::generate().expect("cli key");
+        let cli_cert = cli_params.signed_by(&cli_key, &issuer).expect("cli signed");
+
+        let client_key_der =
+            rustls::pki_types::PrivateKeyDer::try_from(cli_key.serialize_der()).expect("key der");
+
+        LoopbackPki {
+            ca_der: ca_cert.der().clone(),
+            ca_pem,
+            server_cert_pem: srv_cert.pem(),
+            server_key_pem: srv_key.serialize_pem(),
+            client_cert_der: cli_cert.der().clone(),
+            client_key_der,
+        }
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
+    async fn loopback_mtls_acceptor_reaches_guarded_route_strips_header_and_plaintext_returns_401()
+    {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+
+        let pki = generate_loopback_pki("alt-frontend-sv");
+        let mtls_dir = tempfile::tempdir().expect("tempdir");
+        let cert_path = mtls_dir.path().join("server.pem");
+        let key_path = mtls_dir.path().join("server-key.pem");
+        let ca_path = mtls_dir.path().join("ca.pem");
+        std::fs::write(&cert_path, &pki.server_cert_pem).expect("write server cert");
+        std::fs::write(&key_path, &pki.server_key_pem).expect("write server key");
+        std::fs::write(&ca_path, &pki.ca_pem).expect("write ca");
+
+        let env_lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (registry, server_tls_config) = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@127.0.0.1:15432/recap"),
+                ),
+                ("CLASSIFICATION_QUEUE_CONCURRENCY", Some("0")),
+                ("MTLS_ENFORCE", Some("true")),
+                ("MTLS_CERT_FILE", Some(cert_path.to_str().expect("utf8"))),
+                ("MTLS_KEY_FILE", Some(key_path.to_str().expect("utf8"))),
+                ("MTLS_CA_FILE", Some(ca_path.to_str().expect("utf8"))),
+                ("NEWS_CREATOR_BASE_URL", Some("https://localhost:18021/")),
+                ("SUBWORKER_BASE_URL", Some("https://localhost:18022/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ALLOWED_PEERS", Some("alt-frontend-sv")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_GENRES", Some("ai")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                let server_tls = crate::tls::load_server_tls_config(config.peer_identity())
+                    .expect("tls config loads")
+                    .expect("mtls enforced");
+                let reg = ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+                    .with_recap_dao(Arc::new(crate::store::dao::mock::MockRecapDao::new()));
+                (reg, server_tls)
+            },
+        )
+        .await;
+        drop(env_lock);
+
+        let saw_peer_header = Arc::new(AtomicBool::new(false));
+        let saw_header_probe = Arc::clone(&saw_peer_header);
+        let probe_reached = Arc::new(AtomicBool::new(false));
+        let probe_reached_flag = Arc::clone(&probe_reached);
+
+        let base_router = router(AppState::new(registry));
+        let plain_app = base_router.clone();
+        let mtls_app = base_router.layer(axum::middleware::from_fn(
+            move |req: Request<Body>, next: axum::middleware::Next| {
+                let saw_header_probe = Arc::clone(&saw_header_probe);
+                let probe_reached_flag = Arc::clone(&probe_reached_flag);
+                async move {
+                    probe_reached_flag.store(true, Ordering::SeqCst);
+                    if req.headers().contains_key("x-alt-peer-identity") {
+                        saw_header_probe.store(true, Ordering::SeqCst);
+                    }
+                    next.run(req).await
+                }
+            },
+        ));
+
+        let std_listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind mtls");
+        std_listener
+            .set_nonblocking(true)
+            .expect("set_nonblocking mtls");
+        let mtls_addr = std_listener.local_addr().expect("mtls local_addr");
+        let mtls_handle = axum_server::Handle::new();
+        let mtls_handle_srv = mtls_handle.clone();
+        let tls_cfg = axum_server::tls_rustls::RustlsConfig::from_config(server_tls_config);
+        let mtls_task = tokio::spawn(async move {
+            axum_server::from_tcp(std_listener)
+                .expect("from_tcp")
+                .acceptor(crate::tls::PeerIdentityAcceptor::new(tls_cfg))
+                .handle(mtls_handle_srv)
+                .serve(mtls_app.into_make_service())
+                .await
+                .expect("mtls serve");
+        });
+
+        let plain_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind plain");
+        let plain_addr = plain_listener.local_addr().expect("plain local_addr");
+        let plain_task = tokio::spawn(async move {
+            let _ = axum::serve(plain_listener, plain_app).await;
+        });
+
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.add(pki.ca_der).expect("add ca");
+        let client_tls = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_client_auth_cert(vec![pki.client_cert_der], pki.client_key_der)
+            .expect("client auth cert");
+        let mtls_client = reqwest::Client::builder()
+            .use_preconfigured_tls(client_tls)
+            .no_proxy()
+            .build()
+            .expect("mtls reqwest client");
+
+        let mtls_resp = mtls_client
+            .post(format!(
+                "https://127.0.0.1:{}/v1/generate/recaps/7days",
+                mtls_addr.port()
+            ))
+            .header("content-type", "application/json")
+            .header("x-alt-peer-identity", "spoofed-header-value")
+            .body("{}")
+            .send()
+            .await
+            .expect("mtls request succeeds");
+        assert_eq!(
+            mtls_resp.status(),
+            reqwest::StatusCode::ACCEPTED,
+            "allow-listed client cert over PeerIdentityAcceptor must reach guarded route"
+        );
+        assert!(probe_reached.load(Ordering::SeqCst));
+        assert!(
+            !saw_peer_header.load(Ordering::SeqCst),
+            "PeerCertExtensionService::call must strip x-alt-peer-identity before handlers/router see the request"
+        );
+
+        let plain_client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("plain reqwest client");
+        let plain_resp = plain_client
+            .post(format!(
+                "http://127.0.0.1:{}/v1/generate/recaps/7days",
+                plain_addr.port()
+            ))
+            .header("content-type", "application/json")
+            .header("x-alt-peer-identity", "alt-frontend-sv")
+            .body("{}")
+            .send()
+            .await
+            .expect("plain request succeeds");
+        assert_eq!(
+            plain_resp.status(),
+            reqwest::StatusCode::UNAUTHORIZED,
+            "plaintext listener without client certificate must return 401"
+        );
+
+        mtls_handle.shutdown();
+        plain_task.abort();
+        let _ = mtls_task.await;
+    }
 }
