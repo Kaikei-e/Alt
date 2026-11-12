@@ -300,52 +300,63 @@ describe("parseMarkdown", () => {
 		});
 	});
 
-	describe("links", () => {
-		it("converts [text](url) to <a> tag", () => {
-			const result = parseMarkdown(
-				"Visit [Example](https://example.com) today",
-			);
-			expect(result).toContain('<a href="https://example.com"');
-			expect(result).toContain(">Example</a>");
+	describe("links are never rendered as anchors", () => {
+		it("keeps the label of [text](url) as plain text", () => {
+			const result = parseMarkdown("Visit [Example](https://example.com) today");
+			expect(result).not.toContain("<a");
+			expect(result).not.toContain("href");
+			expect(result).toContain("Visit Example today");
+			expect(result).not.toContain("https://example.com");
 		});
 
-		it("link opens in new tab with rel=noopener noreferrer nofollow ugc and external-link class", () => {
-			const result = parseMarkdown("[Link](https://example.com)");
-			expect(result).toContain('target="_blank"');
-			expect(result).toContain('rel="noopener noreferrer nofollow ugc"');
-			expect(result).toContain('class="external-link"');
-		});
-
-		it("allows mailto: scheme links", () => {
+		it("does not emit an anchor for mailto: links", () => {
 			const result = parseMarkdown("[Contact](mailto:info@example.com)");
-			expect(result).toContain('<a href="mailto:info@example.com"');
-			expect(result).toContain('rel="noopener noreferrer nofollow ugc"');
+			expect(result).not.toContain("<a");
+			expect(result).not.toContain("href");
+			expect(result).toContain("Contact");
 		});
 
 		it("handles multiple links in one line", () => {
 			const result = parseMarkdown(
 				"[A](https://example.com/a) and [B](https://example.com/b)",
 			);
-			const linkCount = (result.match(/<a href/g) || []).length;
-			expect(linkCount).toBe(2);
+			expect(result).not.toContain("<a");
+			expect(result).toContain("A and B");
 		});
 
-		it("handles link inside bold text", () => {
+		it("keeps surrounding formatting for a link inside bold text", () => {
 			const result = parseMarkdown("**[Bold Link](https://example.com)**");
-			expect(result).toContain("<strong>");
-			expect(result).toContain('<a href="https://example.com"');
+			expect(result).toContain("<strong>Bold Link</strong>");
+			expect(result).not.toContain("<a");
 		});
 
-		it("does not convert javascript: URLs", () => {
+		it("escapes raw <a href> HTML", () => {
+			const result = parseMarkdown('<a href="https://example.com">x</a>');
+			expect(result).not.toContain("<a");
+			expect(result).toContain("&lt;a");
+		});
+
+		it("leaves autolink-looking text as plain text", () => {
+			const result = parseMarkdown(
+				"See https://example.com and <https://example.com> or me@example.com",
+			);
+			expect(result).not.toContain("<a");
+			expect(result).not.toContain("href");
+		});
+
+		it("does not emit anchors for javascript: URLs", () => {
 			const result = parseMarkdown("[click](javascript:alert(1))");
-			expect(result).not.toContain("<a href");
+			expect(result).not.toContain("<a");
+			expect(result).not.toContain("href");
 		});
 
-		it("does not convert data: URLs", () => {
+		it("does not emit anchors for data: URLs", () => {
 			const result = parseMarkdown(
 				"[click](data:text/html,<script>alert(1)</script>)",
 			);
-			expect(result).not.toContain("<a href");
+			expect(result).not.toContain("<a");
+			expect(result).not.toContain("href");
+			expect(result).not.toContain("<script>");
 		});
 	});
 
@@ -410,7 +421,8 @@ Final paragraph.`;
 			expect(result).toContain("<ul");
 			expect(result).toContain("<em>Transformer</em>");
 			expect(result).toContain("<hr");
-			expect(result).toContain('<a href="https://example.com"');
+			expect(result).toContain("詳細は公式サイトを参照してください。");
+			expect(result).not.toContain("<a");
 		});
 	});
 });
