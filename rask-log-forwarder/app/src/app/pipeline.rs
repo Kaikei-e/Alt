@@ -586,6 +586,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn enrich_log_entry_redacts_credentials_in_parsed_entries() {
+        let parser = UniversalParser::new();
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::Stdout,
+            timestamp: None,
+            raw_bytes: bytes::Bytes::from_static(
+                b"GET /cb?access_token=PARSED-SECRET&page=2 Authorization: Bearer PARSED-BEARER\n",
+            ),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        let rendered = serde_json::to_string(&enriched).unwrap();
+        assert!(!rendered.contains("PARSED-SECRET"), "{rendered}");
+        assert!(!rendered.contains("PARSED-BEARER"), "{rendered}");
+        assert!(rendered.contains("page=2"));
+    }
+
+    #[tokio::test]
+    async fn enrich_log_entry_redacts_credentials_in_fallback_entries() {
+        let parser = UniversalParser::new();
+        let mut raw = b"Authorization: Bearer FALLBACK-BEARER ?token=FALLBACK-SECRET ".to_vec();
+        raw.extend(vec![b'x'; 65 * 1024]);
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::Stdout,
+            timestamp: None,
+            raw_bytes: bytes::Bytes::from(raw),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        assert_eq!(enriched.log_type, "plain");
+        assert!(!enriched.message.contains("FALLBACK-BEARER"));
+        assert!(!enriched.message.contains("FALLBACK-SECRET"));
+    }
+
+    #[tokio::test]
     async fn enrich_log_entry_fallback_preserves_docker_timestamp_on_oversized_line() {
         let parser = UniversalParser::new();
         let parsed_ts = chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00.123456789Z")

@@ -215,4 +215,109 @@ mod tests {
         assert_eq!(e.message, before.message);
         assert_eq!(e.path, before.path);
     }
+
+    #[test]
+    fn json_array_and_object_values_for_sensitive_keys_are_redacted() {
+        let mut e = entry(
+            r#"{"authorization":["Bearer abc","Basic def"],"cookie":{"sid":"ghi"},"ok":["keep"]}"#,
+            None,
+        );
+        e.redact_sensitive();
+        for secret in ["abc", "def", "ghi"] {
+            assert!(
+                !e.message.contains(secret),
+                "leaked {secret}: {}",
+                e.message
+            );
+        }
+        assert!(e.message.contains(r#""ok":["keep"]"#));
+    }
+
+    #[test]
+    fn escaped_quotes_do_not_end_a_redacted_value_early() {
+        let mut e = entry(
+            r#"{"client_secret":"abc\"TAIL-SECRET","status":"200"}"#,
+            None,
+        );
+        e.redact_sensitive();
+        assert!(!e.message.contains("TAIL-SECRET"), "{}", e.message);
+        assert!(e.message.contains(r#""status":"200""#));
+
+        let mut h = entry(
+            r#"{"msg":"Authorization: Bearer abc\"TAIL-SECRET","n":"1"}"#,
+            None,
+        );
+        h.redact_sensitive();
+        assert!(!h.message.contains("TAIL-SECRET"), "{}", h.message);
+    }
+
+    #[test]
+    fn plain_key_value_text_is_redacted_without_a_query_delimiter() {
+        for (input, secret) in [
+            ("password=hunter2 user=bob", "hunter2"),
+            ("login failed, passwd=hunter2, retrying", "hunter2"),
+            ("secret=s3 token=t0k", "s3"),
+            ("api_key=k-1 other=1", "k-1"),
+            ("got access_token=at-1 refresh_token=rt-1", "at-1"),
+            ("got access_token=at-1 refresh_token=rt-1", "rt-1"),
+            ("authorization=Bearer abc.def", "abc.def"),
+        ] {
+            let mut e = entry(input, None);
+            e.redact_sensitive();
+            assert!(!e.message.contains(secret), "leaked in {:?}", e.message);
+        }
+        let mut e = entry("password=hunter2 user=bob", None);
+        e.redact_sensitive();
+        assert!(e.message.contains("user=bob"));
+    }
+
+    #[test]
+    fn x_api_key_header_is_redacted() {
+        let mut e = entry("X-Api-Key: key-123 accept: */*", None);
+        e.redact_sensitive();
+        assert!(!e.message.contains("key-123"));
+        assert!(e.message.contains("accept: */*"));
+        let mut j = entry(r#"{"x-api-key":"key-123"}"#, None);
+        j.redact_sensitive();
+        assert!(!j.message.contains("key-123"));
+    }
+
+    #[test]
+    fn single_token_header_values_stop_at_the_value_boundary() {
+        let mut e = entry("X-Alt-Backend-Token: tok-9 status=200", None);
+        e.redact_sensitive();
+        assert!(!e.message.contains("tok-9"));
+        assert!(e.message.contains("status=200"), "{}", e.message);
+        let mut a = entry("Authorization: Bearer abc.def next=1", None);
+        a.redact_sensitive();
+        assert!(!a.message.contains("abc.def"));
+        assert!(a.message.contains("next=1"), "{}", a.message);
+    }
+
+    #[test]
+    fn ordinary_numeric_and_named_fields_stay_readable() {
+        let mut e = entry(
+            r#"{"max_tokens":512,"prompt_tokens":10,"msg":"max_tokens=512 prompt_tokens=10 author=bob"}"#,
+            None,
+        );
+        e.fields.insert("max_tokens".to_string(), "512".to_string());
+        e.fields
+            .insert("prompt_tokens".to_string(), "10".to_string());
+        e.fields
+            .insert("completion_tokens".to_string(), "7".to_string());
+        e.fields.insert("author".to_string(), "bob".to_string());
+        let before = e.clone();
+        e.redact_sensitive();
+        assert_eq!(e.message, before.message);
+        assert_eq!(e.fields, before.fields);
+    }
+
+    #[test]
+    fn next_page_token_is_knowingly_redacted() {
+        let mut e = entry("ok", None);
+        e.fields
+            .insert("next_page_token".to_string(), "p2".to_string());
+        e.redact_sensitive();
+        assert_eq!(e.fields["next_page_token"], "[REDACTED]");
+    }
 }
