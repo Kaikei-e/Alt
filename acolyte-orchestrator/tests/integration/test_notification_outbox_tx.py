@@ -36,7 +36,7 @@ pytestmark = pytest.mark.skipif(
     reason="ACOLYTE_TEST_DB_DSN not set (needs a disposable Postgres with the acolyte schema)",
 )
 
-_NOTIFY_USER = uuid4()
+_OWNER = uuid4()
 
 
 class _SingleConnectionPool:
@@ -83,13 +83,13 @@ async def test_completion_and_notification_commit_or_vanish_together() -> None:
     dedupe_key = f"acolyte:{run_id}"
 
     async with await psycopg.AsyncConnection.connect(_DSN, autocommit=False) as conn:
-        gw = PostgresJobGateway(_SingleConnectionPool(conn), notification_user_id=_NOTIFY_USER)  # type: ignore[arg-type]
+        gw = PostgresJobGateway(_SingleConnectionPool(conn), notifications_enabled=True)  # type: ignore[arg-type]
 
         with pytest.raises(_RollbackError):
             async with conn.transaction():
                 await conn.execute(
-                    "INSERT INTO reports (report_id, title, report_type) VALUES (%s, %s, %s)",
-                    [report_id, "tx proof", "weekly_briefing"],
+                    "INSERT INTO reports (report_id, title, report_type, user_id) VALUES (%s, %s, %s, %s)",
+                    [report_id, "tx proof", "weekly_briefing", _OWNER],
                 )
                 await conn.execute(
                     "INSERT INTO report_runs (run_id, report_id, target_version_no, run_status) "

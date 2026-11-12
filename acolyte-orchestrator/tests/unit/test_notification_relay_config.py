@@ -1,6 +1,6 @@
 """Startup configuration for the relay is fail-fast, never warn-and-limp.
 
-A relay that starts without a target, without an identity to notify, or without
+A relay that starts without a target or without
 a client certificate cannot forward anything — and the failure would only show
 up as a silently growing outbox. So it refuses to boot instead.
 """
@@ -8,13 +8,10 @@ up as a silently growing outbox. So it refuses to boot instead.
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import UUID
 
 import pytest
 
 from acolyte.config.settings import Settings
-
-_USER = "66666666-6666-6666-6666-666666666666"
 
 
 @pytest.fixture(autouse=True)
@@ -39,28 +36,20 @@ def test_disabled_is_an_explicit_answer_not_an_error(monkeypatch: pytest.MonkeyP
     assert Settings().resolve_notification_relay_config() is None
 
 
-def test_enabled_without_a_user_refuses_to_start(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_the_relay_config_carries_no_fixed_recipient(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("NOTIFICATIONS_ENABLED", "true")
     monkeypatch.setenv("DATAHUB_URL", "https://alt-data-hub:9443")
     _write_mtls_material(tmp_path, monkeypatch)
 
-    with pytest.raises(RuntimeError, match="NOTIFICATION_USER_ID"):
-        Settings().resolve_notification_relay_config()
+    cfg = Settings().resolve_notification_relay_config()
 
-
-def test_a_malformed_user_id_is_rejected_at_startup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("NOTIFICATIONS_ENABLED", "true")
-    monkeypatch.setenv("NOTIFICATION_USER_ID", "not-a-uuid")
-    monkeypatch.setenv("DATAHUB_URL", "https://alt-data-hub:9443")
-    _write_mtls_material(tmp_path, monkeypatch)
-
-    with pytest.raises(RuntimeError, match="NOTIFICATION_USER_ID"):
-        Settings().resolve_notification_relay_config()
+    assert cfg is not None
+    assert not hasattr(cfg, "user_id")
+    assert "notification_user_id" not in Settings.model_fields
 
 
 def test_enabled_without_a_target_refuses_to_start(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("NOTIFICATIONS_ENABLED", "true")
-    monkeypatch.setenv("NOTIFICATION_USER_ID", _USER)
     monkeypatch.setenv("DATAHUB_URL", "")
     _write_mtls_material(tmp_path, monkeypatch)
 
@@ -70,7 +59,6 @@ def test_enabled_without_a_target_refuses_to_start(monkeypatch: pytest.MonkeyPat
 
 def test_enabled_without_mtls_refuses_to_start(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("NOTIFICATIONS_ENABLED", "true")
-    monkeypatch.setenv("NOTIFICATION_USER_ID", _USER)
     monkeypatch.setenv("DATAHUB_URL", "https://alt-data-hub:9443")
     _write_mtls_material(tmp_path, monkeypatch)
     monkeypatch.setenv("MTLS_ENFORCE", "false")
@@ -86,7 +74,6 @@ def test_enabled_with_unreadable_client_cert_refuses_to_start(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("NOTIFICATIONS_ENABLED", "true")
-    monkeypatch.setenv("NOTIFICATION_USER_ID", _USER)
     monkeypatch.setenv("DATAHUB_URL", "https://alt-data-hub:9443")
     _write_mtls_material(tmp_path, monkeypatch)
     monkeypatch.setenv("MTLS_CERT_FILE", str(tmp_path / "missing.pem"))
@@ -97,7 +84,6 @@ def test_enabled_with_unreadable_client_cert_refuses_to_start(
 
 def test_a_fully_configured_relay_resolves(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("NOTIFICATIONS_ENABLED", "true")
-    monkeypatch.setenv("NOTIFICATION_USER_ID", _USER)
     monkeypatch.setenv("DATAHUB_URL", "https://alt-data-hub:9443/")
     monkeypatch.setenv("NOTIFICATION_RELAY_BATCH_SIZE", "50")
     monkeypatch.setenv("NOTIFICATION_RELAY_INTERVAL_SECONDS", "2.5")
@@ -107,7 +93,6 @@ def test_a_fully_configured_relay_resolves(monkeypatch: pytest.MonkeyPatch, tmp_
     cfg = Settings().resolve_notification_relay_config()
 
     assert cfg is not None
-    assert cfg.user_id == UUID(_USER)
     assert cfg.datahub_url == "https://alt-data-hub:9443"
     assert cfg.batch_size == 50
     assert cfg.interval_seconds == 2.5

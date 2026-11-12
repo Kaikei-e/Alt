@@ -25,7 +25,7 @@ import pytest
 from acolyte.domain.notification import REPORT_READY_KIND
 from acolyte.gateway.postgres_job_gw import PostgresJobGateway
 
-_NOTIFY_USER = UUID("33333333-3333-3333-3333-333333333333")
+_OWNER = UUID("33333333-3333-3333-3333-333333333333")
 
 
 class _FakeCursor:
@@ -95,9 +95,9 @@ async def test_complete_run_enqueues_the_notification_in_the_same_transaction() 
     run_id = uuid4()
     report_id = uuid4()
     finished_at = datetime(2026, 8, 8, 9, 30, tzinfo=UTC)
-    conn = _FakeConnection(rows=[(report_id, finished_at), None, None])
+    conn = _FakeConnection(rows=[(report_id, finished_at), (_OWNER,), None])
     pool = _FakePool(conn)
-    gw = PostgresJobGateway(pool, notification_user_id=_NOTIFY_USER)  # type: ignore[arg-type]
+    gw = PostgresJobGateway(pool, notifications_enabled=True)  # type: ignore[arg-type]
 
     await gw.complete_run(run_id)
 
@@ -114,8 +114,8 @@ async def test_outbox_row_is_keyed_by_run_and_points_at_the_report() -> None:
     run_id = uuid4()
     report_id = uuid4()
     finished_at = datetime(2026, 8, 8, 9, 30, tzinfo=UTC)
-    conn = _FakeConnection(rows=[(report_id, finished_at), None, None])
-    gw = PostgresJobGateway(_FakePool(conn), notification_user_id=_NOTIFY_USER)  # type: ignore[arg-type]
+    conn = _FakeConnection(rows=[(report_id, finished_at), (_OWNER,), None])
+    gw = PostgresJobGateway(_FakePool(conn), notifications_enabled=True)  # type: ignore[arg-type]
 
     await gw.complete_run(run_id)
 
@@ -123,7 +123,7 @@ async def test_outbox_row_is_keyed_by_run_and_points_at_the_report() -> None:
     assert outbox.params is not None
     dedupe_key, user_id, kind, payload_json, occurred_at = outbox.params
     assert dedupe_key == f"acolyte:{run_id}"
-    assert user_id == _NOTIFY_USER
+    assert user_id == _OWNER
     assert kind == REPORT_READY_KIND
     assert json.loads(payload_json) == {
         "kind": REPORT_READY_KIND,
@@ -136,8 +136,8 @@ async def test_outbox_row_is_keyed_by_run_and_points_at_the_report() -> None:
 
 @pytest.mark.asyncio
 async def test_payload_carries_no_report_content() -> None:
-    conn = _FakeConnection(rows=[(uuid4(), datetime(2026, 8, 8, tzinfo=UTC)), None, None])
-    gw = PostgresJobGateway(_FakePool(conn), notification_user_id=_NOTIFY_USER)  # type: ignore[arg-type]
+    conn = _FakeConnection(rows=[(uuid4(), datetime(2026, 8, 8, tzinfo=UTC)), (_OWNER,), None])
+    gw = PostgresJobGateway(_FakePool(conn), notifications_enabled=True)  # type: ignore[arg-type]
 
     await gw.complete_run(uuid4())
 
@@ -149,8 +149,8 @@ async def test_payload_carries_no_report_content() -> None:
 
 @pytest.mark.asyncio
 async def test_reenqueue_of_the_same_run_is_absorbed_by_the_unique_key() -> None:
-    conn = _FakeConnection(rows=[(uuid4(), datetime(2026, 8, 8, tzinfo=UTC)), None, None])
-    gw = PostgresJobGateway(_FakePool(conn), notification_user_id=_NOTIFY_USER)  # type: ignore[arg-type]
+    conn = _FakeConnection(rows=[(uuid4(), datetime(2026, 8, 8, tzinfo=UTC)), (_OWNER,), None])
+    gw = PostgresJobGateway(_FakePool(conn), notifications_enabled=True)  # type: ignore[arg-type]
 
     await gw.complete_run(uuid4())
 
@@ -162,7 +162,7 @@ async def test_reenqueue_of_the_same_run_is_absorbed_by_the_unique_key() -> None
 @pytest.mark.asyncio
 async def test_no_notification_when_the_run_does_not_exist() -> None:
     conn = _FakeConnection(rows=[None])
-    gw = PostgresJobGateway(_FakePool(conn), notification_user_id=_NOTIFY_USER)  # type: ignore[arg-type]
+    gw = PostgresJobGateway(_FakePool(conn), notifications_enabled=True)  # type: ignore[arg-type]
 
     await gw.complete_run(uuid4())
 
@@ -171,12 +171,37 @@ async def test_no_notification_when_the_run_does_not_exist() -> None:
 
 @pytest.mark.asyncio
 async def test_notifications_off_is_an_explicit_decision_not_a_missing_argument() -> None:
-    # `notification_user_id` is keyword-required: a caller cannot forget to
-    # decide, and None means the composition root decided "off" (and logged it).
+    # `notifications_enabled` is keyword-required: a caller cannot forget to
+    # decide, and False means the composition root decided "off" (and logged it).
     with pytest.raises(TypeError):
         PostgresJobGateway(_FakePool(_FakeConnection(rows=[])))  # type: ignore[call-arg, arg-type]
 
-    conn = _FakeConnection(rows=[(uuid4(), datetime(2026, 8, 8, tzinfo=UTC)), None])
-    gw = PostgresJobGateway(_FakePool(conn), notification_user_id=None)  # type: ignore[arg-type]
+    conn = _FakeConnection(rows=[(uuid4(), datetime(2026, 8, 8, tzinfo=UTC)), (_OWNER,)])
+    gw = PostgresJobGateway(_FakePool(conn), notifications_enabled=False)  # type: ignore[arg-type]
     await gw.complete_run(uuid4())
+    assert [e for e in conn.executed if "notification_outbox" in e.query] == []
+
+
+@pytest.mark.asyncio
+async def test_the_recipient_is_the_owner_read_from_the_completed_report() -> None:
+    other_owner = uuid4()
+    conn = _FakeConnection(rows=[(uuid4(), datetime(2026, 8, 8, tzinfo=UTC)), (other_owner,), None])
+    gw = PostgresJobGateway(_FakePool(conn), notifications_enabled=True)  # type: ignore[arg-type]
+
+    await gw.complete_run(uuid4())
+
+    reports_update = next(e for e in conn.executed if "UPDATE reports" in e.query)
+    assert "RETURNING user_id" in reports_update.query
+    outbox = _outbox_statement(conn)
+    assert outbox.params is not None
+    assert outbox.params[1] == other_owner
+
+
+@pytest.mark.asyncio
+async def test_no_notification_is_enqueued_for_a_report_without_an_owner() -> None:
+    conn = _FakeConnection(rows=[(uuid4(), datetime(2026, 8, 8, tzinfo=UTC)), (None,), None])
+    gw = PostgresJobGateway(_FakePool(conn), notifications_enabled=True)  # type: ignore[arg-type]
+
+    await gw.complete_run(uuid4())
+
     assert [e for e in conn.executed if "notification_outbox" in e.query] == []
