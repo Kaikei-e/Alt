@@ -37,12 +37,12 @@ func testUserCtx(id uuid.UUID) context.Context {
 	})
 }
 
-func testQuotaConfig(burst, maxConcurrent, maxUsers int) config.UserQuotaConfig {
+func testQuotaConfig(burst, maxInFlight, maxUsers int) config.UserQuotaConfig {
 	opCfg := config.OperationQuotaConfig{
-		Rate:          burst,
-		Burst:         burst,
-		Window:        time.Minute,
-		MaxConcurrent: maxConcurrent,
+		Rate:        burst,
+		Burst:       burst,
+		Window:      time.Minute,
+		MaxInFlight: maxInFlight,
 	}
 	return config.UserQuotaConfig{
 		MaxTrackedUsers:   maxUsers,
@@ -288,14 +288,22 @@ func TestUserQuotaInterceptor_PerUserTokenBucketAndIsolation(t *testing.T) {
 	assert.Equal(t, int32(2), morningSvc.regenCalls.Load())
 }
 
-func TestUserQuotaInterceptor_GlobalConcurrencyCapAndRelease(t *testing.T) {
+func TestUserQuotaInterceptor_PerUserConcurrencyCapIsolatesUsersAndReleases(t *testing.T) {
 	limiter, err := NewUserQuotaLimiter(testQuotaConfig(10, 2, 100))
 	require.NoError(t, err)
 
-	feedSvc := &fakeFeedSummarizeService{
-		blockCh:   make(chan struct{}),
-		enteredCh: make(chan struct{}, 4),
+	userABlockCh := make(chan struct{})
+	enteredCh := make(chan uuid.UUID, 8)
+	var summarizeCalls atomic.Int32
+
+	feedSvc := &perUserBlockingFeedService{
+		calls:     &summarizeCalls,
+		enteredCh: enteredCh,
+		blockUser: uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+		blockCh:   userABlockCh,
 	}
+	userA := feedSvc.blockUser
+	userB := uuid.MustParse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 
 	inject := &ctxInjectMiddleware{
 		ctx: func(r *http.Request) context.Context {
@@ -333,41 +341,87 @@ func TestUserQuotaInterceptor_GlobalConcurrencyCapAndRelease(t *testing.T) {
 		}()
 	}
 
-	startStream(uuid.New())
-	startStream(uuid.New())
+	startStream(userA)
+	startStream(userA)
 
-	<-feedSvc.enteredCh
-	<-feedSvc.enteredCh
+	assert.Equal(t, userA, <-enteredCh)
+	assert.Equal(t, userA, <-enteredCh)
 
-	// Cap+1th concurrent stream (3rd) must be rejected without entering handler.
-	thirdReq := connect.NewRequest(&feedsv2.StreamSummarizeRequest{})
-	thirdReq.Header().Set("X-Test-UID", uuid.New().String())
-	thirdStream, thirdErr := client.StreamSummarize(context.Background(), thirdReq)
-	if thirdErr == nil {
-		for thirdStream.Receive() {
+	// User A's 3rd concurrent stream exceeds user A's per-user cap of 2 and is rejected.
+	overReq := connect.NewRequest(&feedsv2.StreamSummarizeRequest{})
+	overReq.Header().Set("X-Test-UID", userA.String())
+	overStream, overErr := client.StreamSummarize(context.Background(), overReq)
+	if overErr == nil {
+		for overStream.Receive() {
 		}
-		thirdErr = thirdStream.Err()
-		_ = thirdStream.Close()
+		overErr = overStream.Err()
+		_ = overStream.Close()
 	}
-	require.Error(t, thirdErr)
-	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(thirdErr))
-	assert.Equal(t, int32(2), feedSvc.summarizeCalls.Load())
+	require.Error(t, overErr)
+	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(overErr))
+	assert.Equal(t, int32(2), summarizeCalls.Load())
 
-	// Release active streams and wait for them to finish.
-	close(feedSvc.blockCh)
+	// User B is admitted concurrently while User A holds 2 in-flight slots.
+	userBReq := connect.NewRequest(&feedsv2.StreamSummarizeRequest{})
+	userBReq.Header().Set("X-Test-UID", userB.String())
+	userBStream, userBErr := client.StreamSummarize(context.Background(), userBReq)
+	require.NoError(t, userBErr)
+	for userBStream.Receive() {
+	}
+	require.NoError(t, userBStream.Err())
+	_ = userBStream.Close()
+	assert.Equal(t, userB, <-enteredCh)
+	assert.Equal(t, int32(3), summarizeCalls.Load())
+
+	// Release User A's active streams and verify User A is admitted again afterwards.
+	close(userABlockCh)
 	wg.Wait()
 
-	// Slot is now free; subsequent stream succeeds.
 	feedSvc.blockCh = nil
-	fourthReq := connect.NewRequest(&feedsv2.StreamSummarizeRequest{})
-	fourthReq.Header().Set("X-Test-UID", uuid.New().String())
-	fourthStream, fourthErr := client.StreamSummarize(context.Background(), fourthReq)
-	require.NoError(t, fourthErr)
-	for fourthStream.Receive() {
+	afterReq := connect.NewRequest(&feedsv2.StreamSummarizeRequest{})
+	afterReq.Header().Set("X-Test-UID", userA.String())
+	afterStream, afterErr := client.StreamSummarize(context.Background(), afterReq)
+	require.NoError(t, afterErr)
+	for afterStream.Receive() {
 	}
-	require.NoError(t, fourthStream.Err())
-	_ = fourthStream.Close()
-	assert.Equal(t, int32(3), feedSvc.summarizeCalls.Load())
+	require.NoError(t, afterStream.Err())
+	_ = afterStream.Close()
+	assert.Equal(t, int32(4), summarizeCalls.Load())
+}
+
+type perUserBlockingFeedService struct {
+	feedsv2connect.UnimplementedFeedServiceHandler
+	calls     *atomic.Int32
+	enteredCh chan uuid.UUID
+	blockUser uuid.UUID
+	blockCh   chan struct{}
+}
+
+func (f *perUserBlockingFeedService) StreamSummarize(
+	ctx context.Context,
+	req *connect.Request[feedsv2.StreamSummarizeRequest],
+	stream *connect.ServerStream[feedsv2.StreamSummarizeResponse],
+) error {
+	f.calls.Add(1)
+	u, _ := domain.GetUserFromContext(ctx)
+	var uid uuid.UUID
+	if u != nil {
+		uid = u.UserID
+	}
+	if f.enteredCh != nil {
+		f.enteredCh <- uid
+	}
+	if f.blockCh != nil && uid == f.blockUser {
+		select {
+		case <-f.blockCh:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return stream.Send(&feedsv2.StreamSummarizeResponse{
+		ArticleId: req.Msg.GetArticleId(),
+		IsFinal:   true,
+	})
 }
 
 func TestUserQuotaInterceptor_RejectsUnauthenticated(t *testing.T) {
@@ -467,6 +521,112 @@ func TestUserQuotaLimiter_BoundedMemoryEvictsLRU(t *testing.T) {
 	}
 
 	assert.Equal(t, 3, limiter.TrackedUsers(OpSummarize))
+}
+
+func TestUserQuotaLimiter_InFlightEntryNeverEvicted(t *testing.T) {
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(10, 1, 2))
+	require.NoError(t, err)
+
+	userA := uuid.New()
+	relA, err := limiter.Acquire(testUserCtx(userA), OpSummarize)
+	require.NoError(t, err)
+
+	// Push 4 idle users through the bounded map (capacity 2) while userA is in-flight.
+	for i := 0; i < 4; i++ {
+		relOther, otherErr := limiter.Acquire(testUserCtx(uuid.New()), OpSummarize)
+		require.NoError(t, otherErr)
+		relOther()
+	}
+
+	// userA's entry must still be present with inFlight == 1, so a 2nd concurrent acquire fails.
+	_, secondErr := limiter.Acquire(testUserCtx(userA), OpSummarize)
+	require.Error(t, secondErr)
+
+	// Calling release multiple times is idempotent and restores userA's slot exactly once.
+	relA()
+	relA()
+
+	relAAfter, afterErr := limiter.Acquire(testUserCtx(userA), OpSummarize)
+	require.NoError(t, afterErr)
+	_, thirdErr := limiter.Acquire(testUserCtx(userA), OpSummarize)
+	require.Error(t, thirdErr)
+	relAAfter()
+}
+
+func TestUserQuotaInterceptor_ReleasesOnPanicAndStreamCancel(t *testing.T) {
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(10, 1, 16))
+	require.NoError(t, err)
+
+	userA := uuid.New()
+
+	// 1. Panic inside Echo handler releases the per-user in-flight slot.
+	e := echo.New()
+	mw := EchoUserQuotaMiddleware(limiter, OpAugurChat)
+	shouldPanic := true
+	e.POST("/sse/v1/rag/answer", func(c echo.Context) error {
+		if shouldPanic {
+			panic("boom")
+		}
+		return c.String(http.StatusOK, "ok")
+	}, mw)
+
+	assert.Panics(t, func() {
+		req := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
+		req = req.WithContext(testUserCtx(userA))
+		e.ServeHTTP(httptest.NewRecorder(), req)
+	})
+
+	shouldPanic = false
+	reqAfterPanic := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
+	reqAfterPanic = reqAfterPanic.WithContext(testUserCtx(userA))
+	recAfterPanic := httptest.NewRecorder()
+	e.ServeHTTP(recAfterPanic, reqAfterPanic)
+	assert.Equal(t, http.StatusOK, recAfterPanic.Code)
+
+	// 2. Client cancellation of a Connect stream releases the per-user in-flight slot.
+	blockCh := make(chan struct{})
+	enteredCh := make(chan struct{}, 2)
+	feedSvc := &fakeFeedSummarizeService{blockCh: blockCh, enteredCh: enteredCh}
+	inject := &ctxInjectMiddleware{
+		ctx: func(_ *http.Request) context.Context { return testUserCtx(userA) },
+	}
+	opts := connect.WithInterceptors(NewUserQuotaInterceptor(limiter).Interceptor())
+	mux := http.NewServeMux()
+	p, h := feedsv2connect.NewFeedServiceHandler(feedSvc, opts)
+	mux.Handle(p, h)
+	srv := httptest.NewServer(inject.wrap(mux))
+	defer srv.Close()
+
+	client := feedsv2connect.NewFeedServiceClient(srv.Client(), srv.URL)
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		st, sErr := client.StreamSummarize(cancelCtx, connect.NewRequest(&feedsv2.StreamSummarizeRequest{}))
+		if sErr == nil {
+			for st.Receive() {
+			}
+			_ = st.Close()
+		}
+	}()
+
+	<-enteredCh
+	cancel()
+	<-done
+
+	feedSvc.blockCh = nil
+	// Wait briefly for server handler goroutine to unwind after client cancel.
+	require.Eventually(t, func() bool {
+		st, sErr := client.StreamSummarize(context.Background(), connect.NewRequest(&feedsv2.StreamSummarizeRequest{}))
+		if sErr != nil {
+			return false
+		}
+		for st.Receive() {
+		}
+		err := st.Err()
+		_ = st.Close()
+		return err == nil
+	}, 2*time.Second, 10*time.Millisecond)
 }
 
 func TestUserQuota_NilLimiterPanicsInBusinessPath(t *testing.T) {

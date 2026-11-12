@@ -72,10 +72,10 @@ func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 	pub, priv := newRESTTestKeyPair(t)
 	limiter, err := connectmiddleware.NewUserQuotaLimiter(config.UserQuotaConfig{
 		MaxTrackedUsers:   32,
-		Summarize:         config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxConcurrent: 1},
-		AugurChat:         config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxConcurrent: 1},
-		MorningChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxConcurrent: 1},
-		MorningRegenerate: config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Hour, MaxConcurrent: 1},
+		Summarize:         config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
+		AugurChat:         config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
+		MorningChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
+		MorningRegenerate: config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Hour, MaxInFlight: 1},
 	})
 	require.NoError(t, err)
 
@@ -290,10 +290,10 @@ func TestNonStreamingSummarizeRoutes_EnforcePerUserQuotaAndIsolateUsers(t *testi
 		t.Run(tc.name, func(t *testing.T) {
 			limiter, err := connectmiddleware.NewUserQuotaLimiter(config.UserQuotaConfig{
 				MaxTrackedUsers:   32,
-				Summarize:         config.OperationQuotaConfig{Rate: 2, Burst: 2, Window: time.Hour, MaxConcurrent: 2},
-				AugurChat:         config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxConcurrent: 1},
-				MorningChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxConcurrent: 1},
-				MorningRegenerate: config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Hour, MaxConcurrent: 1},
+				Summarize:         config.OperationQuotaConfig{Rate: 2, Burst: 2, Window: time.Hour, MaxInFlight: 2},
+				AugurChat:         config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
+				MorningChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
+				MorningRegenerate: config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Hour, MaxInFlight: 1},
 			})
 			require.NoError(t, err)
 
@@ -336,10 +336,10 @@ func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(
 
 	limiter, err := connectmiddleware.NewUserQuotaLimiter(config.UserQuotaConfig{
 		MaxTrackedUsers:   32,
-		Summarize:         config.OperationQuotaConfig{Rate: 2, Burst: 2, Window: time.Hour, MaxConcurrent: 2},
-		AugurChat:         config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxConcurrent: 1},
-		MorningChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxConcurrent: 1},
-		MorningRegenerate: config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Hour, MaxConcurrent: 1},
+		Summarize:         config.OperationQuotaConfig{Rate: 2, Burst: 2, Window: time.Hour, MaxInFlight: 2},
+		AugurChat:         config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
+		MorningChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
+		MorningRegenerate: config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Hour, MaxInFlight: 1},
 	})
 	require.NoError(t, err)
 
