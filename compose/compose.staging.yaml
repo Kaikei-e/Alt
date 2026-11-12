@@ -1512,11 +1512,11 @@ services:
       - DATAHUB_TLS_CERT_FILE=/certs/svc-cert.pem
       - DATAHUB_TLS_KEY_FILE=/certs/svc-key.pem
       - DATAHUB_TLS_CA_FILE=/trust/ca-bundle.pem
-      # ALLOWED_PEER is the alt-data-hub suite's positive identity (run.sh mints
-      # a leaf for it and one for DENIED_PEER, which stays off this list).
-      # alt-backend and alt-harvester are appended unconditionally because the
-      # same container serves their slices, where they are the callers.
-      - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-pre-processor},pre-processor,alt-backend,alt-harvester
+      # ALLOWED_PEER is the alt-data-hub suite's default positive identity;
+      # DENIED_PEER stays off this list. The fixed names are the peers the suite
+      # presents per procedure (and the callers in the alt-backend and
+      # alt-harvester slices, which share this container).
+      - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-alt-backend},alt-backend,alt-harvester,alt-notifier,pre-processor,search-indexer,tag-generator,recap-worker,rag-orchestrator
       # --- ops listener ---------------------------------------------------
       # Plaintext, unauthenticated, /health + /metrics only — the surface
       # tests/topology.spec.ts pins. It exists so the probe and Prometheus do

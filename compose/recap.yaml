@@ -250,13 +250,13 @@ services:
         reservations:
           memory: 768M
     ports:
-      # Same router as the mTLS listener, minus the transport. /admin/jobs/retry
-      # and /admin/genre-learning require RECAP_ADMIN_TOKEN_FILE's bearer token;
-      # /v1/generate/* and /v1/morning/letters/regenerate still carry no auth
-      # extractor (their callers — alt-frontend-sv, alt-backend — are outside
-      # this change). Loopback bind.
+      # Same router as the mTLS listener, minus the transport. While
+      # MTLS_ALLOWED_PEERS=disabled every non-health route is open to any caller
+      # on the network; with a peer list they require an allow-listed client
+      # certificate on the mTLS listener. /admin/* also requires the admin bearer
+      # token (RECAP_ADMIN_TOKEN_FILE). Loopback bind.
       - "127.0.0.1:9005:9005"
-      # Dedicated evaluation listener: 127.0.0.1 limits the host only; the bearer token is the real gate.
+      # Dedicated evaluation listener (/v1/eval/*): 127.0.0.1 limits the host only; the admin bearer token is its only authentication.
       - "127.0.0.1:9006:9006"
     healthcheck:
       test: ["CMD", "/usr/local/bin/recap-worker", "healthcheck"]
