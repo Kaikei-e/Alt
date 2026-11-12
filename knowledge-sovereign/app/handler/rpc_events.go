@@ -1,10 +1,14 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
+	"unicode/utf8"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -13,6 +17,9 @@ import (
 	"knowledge-sovereign/driver/sovereign_db"
 	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 )
+
+// MaxKnowledgeEventPayloadBytes bounds AppendKnowledgeEvent JSON payloads (64 KiB).
+const MaxKnowledgeEventPayloadBytes = 64 * 1024
 
 // === Knowledge Events RPCs ===
 
@@ -90,6 +97,9 @@ func (h *SovereignHandler) AppendKnowledgeEvent(
 
 	seq, err := h.readDB.AppendKnowledgeEvent(ctx, event)
 	if err != nil {
+		if errors.Is(err, sovereign_db.ErrDedupeKeyTenantMismatch) {
+			return nil, connect.NewError(connect.CodePermissionDenied, err)
+		}
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("AppendKnowledgeEvent: %w", err))
 	}
 	return connect.NewResponse(&sovereignv1.AppendKnowledgeEventResponse{EventSeq: seq}), nil
@@ -125,9 +135,15 @@ func validateAndBuildKnowledgeEvent(pe *sovereignv1.KnowledgeEvent) (sovereign_d
 	if err != nil {
 		return sovereign_db.KnowledgeEvent{}, err
 	}
+	if tenantID == uuid.Nil {
+		return sovereign_db.KnowledgeEvent{}, fmt.Errorf("tenant_id must not be nil UUID")
+	}
 	userID, err := parseUUIDPtrField("user_id", pe.UserId)
 	if err != nil {
 		return sovereign_db.KnowledgeEvent{}, err
+	}
+	if userID != nil && *userID == uuid.Nil {
+		return sovereign_db.KnowledgeEvent{}, fmt.Errorf("user_id must not be nil UUID")
 	}
 	correlationID, err := parseUUIDPtrField("correlation_id", pe.CorrelationId)
 	if err != nil {
@@ -140,6 +156,12 @@ func validateAndBuildKnowledgeEvent(pe *sovereignv1.KnowledgeEvent) (sovereign_d
 
 	if pe.OccurredAt == nil {
 		return sovereign_db.KnowledgeEvent{}, fmt.Errorf("occurred_at is required")
+	}
+	if strings.TrimSpace(pe.DedupeKey) == "" {
+		return sovereign_db.KnowledgeEvent{}, fmt.Errorf("dedupe_key is required")
+	}
+	if err := validateKnowledgeEventPayload(pe.Payload); err != nil {
+		return sovereign_db.KnowledgeEvent{}, err
 	}
 
 	return sovereign_db.KnowledgeEvent{
@@ -157,6 +179,32 @@ func validateAndBuildKnowledgeEvent(pe *sovereignv1.KnowledgeEvent) (sovereign_d
 		CausationID:   causationID,
 		OccurredAt:    pe.OccurredAt.AsTime(),
 	}, nil
+}
+
+func validateKnowledgeEventPayload(raw []byte) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("payload is required")
+	}
+	if len(raw) > MaxKnowledgeEventPayloadBytes {
+		return fmt.Errorf("payload exceeds maximum size of %d bytes", MaxKnowledgeEventPayloadBytes)
+	}
+	if !utf8.Valid(raw) {
+		return fmt.Errorf("payload must be valid UTF-8")
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' || !json.Valid(trimmed) {
+		return fmt.Errorf("payload must be a valid JSON object")
+	}
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	var obj map[string]json.RawMessage
+	if err := dec.Decode(&obj); err != nil || obj == nil {
+		return fmt.Errorf("payload must be a valid JSON object")
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		return fmt.Errorf("payload must contain a single JSON object")
+	}
+	return nil
 }
 
 func validateAndBuildKnowledgeUserEvent(pe *sovereignv1.KnowledgeUserEvent) (sovereign_db.KnowledgeUserEvent, error) {
