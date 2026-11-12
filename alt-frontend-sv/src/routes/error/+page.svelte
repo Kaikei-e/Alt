@@ -13,6 +13,7 @@ import type { PageData } from "./$types";
 
 const { data }: { data: PageData } = $props();
 const errorId = $derived(data.errorId);
+const registrationClosed = $derived(data.registrationClosed);
 const loginPath = resolve("login");
 const homePath = resolve("/");
 </script>
@@ -23,24 +24,33 @@ const homePath = resolve("/");
 
 <div class="flex items-center justify-center min-h-screen" style="background: var(--app-bg);">
 	<Card class="w-[350px]">
-		<CardHeader>
-			<CardTitle>Error Occurred</CardTitle>
-			<CardDescription>
-				An error occurred during authentication. Please try again.
-			</CardDescription>
-		</CardHeader>
-		<CardContent>
-			{#if errorId}
-				<div class="p-3 text-sm font-medium text-center" style="color: var(--text-muted);">
-					Error ID: {errorId}
+		{#if registrationClosed}
+			<CardHeader>
+				<CardTitle>Registration Closed</CardTitle>
+				<CardDescription>
+					New account registration is closed on this instance.
+				</CardDescription>
+			</CardHeader>
+		{:else}
+			<CardHeader>
+				<CardTitle>Error Occurred</CardTitle>
+				<CardDescription>
+					An error occurred during authentication. Please try again.
+				</CardDescription>
+			</CardHeader>
+			<CardContent>
+				{#if errorId}
+					<div class="p-3 text-sm font-medium text-center" style="color: var(--text-muted);">
+						Error ID: {errorId}
+					</div>
+				{/if}
+				<div class="p-3 text-sm font-medium text-center" style="color: #dc2626;">
+					Sorry, an error occurred during authentication. Please try again.
+					<br />
+					Please try logging in again.
 				</div>
-			{/if}
-			<div class="p-3 text-sm font-medium text-center" style="color: #dc2626;">
-				Sorry, an error occurred during authentication. Please try again.
-				<br />
-				Please try logging in again.
-			</div>
-		</CardContent>
+			</CardContent>
+		{/if}
 		<CardFooter class="flex flex-col gap-2">
 			<Button href={loginPath} class="w-full">
 				Go to Login Page
