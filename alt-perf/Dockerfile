@@ -4,7 +4,7 @@
 # Chrome が必要なため distroless 使用不可
 # ==============================================================================
 
-FROM denoland/deno:debian-2.4.0
+FROM denoland/deno:debian-2.9.8
 
 WORKDIR /app
 
