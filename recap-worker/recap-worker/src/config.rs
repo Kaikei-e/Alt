@@ -1534,6 +1534,12 @@ pub(crate) fn load_peer_identity_from_env() -> Result<PeerIdentityConfig, Config
             "'localhost' is not permitted in MTLS_ALLOWED_PEERS",
         ));
     }
+    if allowed_peers.iter().any(|peer| peer.contains('*')) {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "wildcards are not supported; list exact peer names",
+        ));
+    }
 
     Ok(PeerIdentityConfig::Enabled { allowed_peers })
 }

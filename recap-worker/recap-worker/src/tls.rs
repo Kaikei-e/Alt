@@ -13,8 +13,9 @@
 //!   - `MTLS_ENFORCE=true` enables mTLS; any other value keeps plaintext.
 //!   - `MTLS_CERT_FILE` / `MTLS_KEY_FILE`: leaf cert + private key (PEM).
 //!   - `MTLS_CA_FILE`: trust anchor for client-cert verification.
-//!   - `MTLS_ALLOWED_PEERS`: required; CSV of client-certificate CNs / DNS
-//!     SANs permitted to reach the server, or `disabled` (parsed in `config`).
+//!   - `MTLS_ALLOWED_PEERS`: required; CSV of exact names permitted to reach the
+//!     server, or `disabled` (parsed in `config`). A client certificate is
+//!     matched on its DNS SANs, or on its Subject CN when it has none.
 
 use std::fs;
 use std::io;
@@ -31,8 +32,8 @@ use x509_parser::prelude::{FromDer, GeneralName, X509Certificate};
 
 /// Client-certificate verifier that delegates cryptographic chain validation to
 /// an inner [`ClientCertVerifier`] (typically `WebPkiClientVerifier`) and then
-/// enforces that the leaf certificate's Common Name or DNS SAN matches one of
-/// the configured `allowed_peers`.
+/// enforces that the leaf certificate's DNS SAN (or its Common Name when it has
+/// no DNS SAN) matches one of the configured `allowed_peers`.
 #[derive(Debug)]
 pub struct AllowedNamesVerifier {
     inner: Arc<dyn ClientCertVerifier>,
@@ -90,16 +91,14 @@ pub(crate) fn verify_cert_peer_identity(
     }
 
     let names = extract_cert_peer_names(end_entity)?;
-    let cn_matches = names
-        .common_names
-        .iter()
-        .any(|cn| allowed_peers.iter().any(|allowed| allowed == cn));
-    let san_matches = names
-        .dns_sans
-        .iter()
-        .any(|dns| allowed_peers.iter().any(|allowed| allowed == dns));
+    let is_allowed = |candidate: &String| allowed_peers.iter().any(|allowed| allowed == candidate);
+    let matches = if names.dns_sans.is_empty() {
+        names.common_names.iter().any(is_allowed)
+    } else {
+        names.dns_sans.iter().any(is_allowed)
+    };
 
-    if cn_matches || san_matches {
+    if matches {
         Ok(())
     } else {
         Err(rustls::Error::General(
