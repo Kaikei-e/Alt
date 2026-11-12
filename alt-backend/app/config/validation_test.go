@@ -1,64 +1,17 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"testing"
 )
 
-func TestValidateAuthConfig_ProductionRequiresSecrets(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  AuthConfig
-		env     string
-		wantErr bool
-		errMsg  string
-	}{
-		{
-			name: "production without backend token secret fails",
-			config: AuthConfig{
-				BackendTokenSecret: "",
-			},
-			env:     "production",
-			wantErr: true,
-			errMsg:  "BACKEND_TOKEN_SECRET is required in production",
-		},
-		{
-			name: "production with short backend token secret fails",
-			config: AuthConfig{
-				BackendTokenSecret: "short",
-			},
-			env:     "production",
-			wantErr: true,
-			errMsg:  "BACKEND_TOKEN_SECRET must be at least 32 characters",
-		},
-		{
-			name: "production with valid secret passes",
-			config: AuthConfig{
-				BackendTokenSecret: "this-is-another-very-long-secret-for-testing-12",
-			},
-			env:     "production",
-			wantErr: false,
-		},
+func TestValidateAuthConfig(t *testing.T) {
+	validPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate ed25519 key: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateAuthConfig(&tt.config, tt.env)
-			if tt.wantErr {
-				if err == nil {
-					t.Error("validateAuthConfig() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
-					t.Errorf("validateAuthConfig() error = %v, want to contain %s", err, tt.errMsg)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("validateAuthConfig() unexpected error: %v", err)
-				}
-			}
-		})
-	}
-}
-
-func TestValidateAuthConfig_DevelopmentAllowsEmptySecrets(t *testing.T) {
 	tests := []struct {
 		name    string
 		config  AuthConfig
@@ -66,79 +19,40 @@ func TestValidateAuthConfig_DevelopmentAllowsEmptySecrets(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "development without secrets is OK",
-			config: AuthConfig{
-				BackendTokenSecret: "",
-			},
+			name:    "shared config loader allows unset verify key in production for non-verifying binaries",
+			config:  AuthConfig{},
+			env:     "production",
+			wantErr: false,
+		},
+		{
+			name:    "shared config loader allows unset verify key in development",
+			config:  AuthConfig{},
 			env:     "development",
 			wantErr: false,
 		},
 		{
-			name: "empty env (defaults to development) without secrets is OK",
+			name: "valid Ed25519 public key passes",
 			config: AuthConfig{
-				BackendTokenSecret: "",
+				BackendTokenPublicKey: validPub,
 			},
-			env:     "",
+			env:     "production",
 			wantErr: false,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateAuthConfig(&tt.config, tt.env)
-			if tt.wantErr {
-				if err == nil {
-					t.Error("validateAuthConfig() expected error but got none")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("validateAuthConfig() unexpected error: %v", err)
-				}
-			}
-		})
-	}
-}
-
-func TestValidateAuthConfig_ShortSecretInDevelopment(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  AuthConfig
-		env     string
-		wantErr bool
-		errMsg  string
-	}{
 		{
-			name: "development with too short backend token secret fails",
+			name: "malformed public key length fails",
 			config: AuthConfig{
-				BackendTokenSecret: "tooshort",
+				BackendTokenPublicKey: ed25519.PublicKey("short"),
 			},
 			env:     "development",
 			wantErr: true,
-			errMsg:  "BACKEND_TOKEN_SECRET is too short",
-		},
-		{
-			name: "development with 16+ char secret passes",
-			config: AuthConfig{
-				BackendTokenSecret: "exactly-16-chars!",
-			},
-			env:     "development",
-			wantErr: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateAuthConfig(&tt.config, tt.env)
-			if tt.wantErr {
-				if err == nil {
-					t.Error("validateAuthConfig() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
-					t.Errorf("validateAuthConfig() error = %v, want to contain %s", err, tt.errMsg)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("validateAuthConfig() unexpected error: %v", err)
-				}
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateAuthConfig() error = %v, wantErr = %v", err, tt.wantErr)
 			}
 		})
 	}

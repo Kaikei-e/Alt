@@ -1,6 +1,8 @@
 package v2
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -20,10 +22,17 @@ import (
 )
 
 const (
-	testBackendTokenSecret   = "test-backend-token-secret-32bytes!"
 	testBackendTokenIssuer   = "auth-hub"
 	testBackendTokenAudience = "alt-backend"
 )
+
+var testServerVerifyPubKey, testServerSigningPrivKey = func() (ed25519.PublicKey, ed25519.PrivateKey) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return pub, priv
+}()
 
 // dataHubServicePaths are the service-to-service surfaces. They carry no
 // user-JWT interceptor and now live on their own binary behind mTLS.
@@ -71,7 +80,7 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 
 	cfg := &config.Config{}
 	cfg.WebPush.PublicKey = "a-vapid-public-key-value"
-	cfg.Auth.BackendTokenSecret = testBackendTokenSecret
+	cfg.Auth.BackendTokenPublicKey = testServerVerifyPubKey
 	cfg.Auth.BackendTokenIssuer = testBackendTokenIssuer
 	cfg.Auth.BackendTokenAudience = testBackendTokenAudience
 
@@ -257,8 +266,8 @@ func issueTestBackendToken(t *testing.T) string {
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testBackendTokenSecret))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := token.SignedString(testServerSigningPrivKey)
 	if err != nil {
 		t.Fatalf("failed to sign test JWT: %v", err)
 	}

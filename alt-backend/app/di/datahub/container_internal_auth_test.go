@@ -106,10 +106,7 @@ func writeTestPKIWithHosts(t *testing.T, dir string, cn string, dnsNames []strin
 }
 
 func TestDataHubComponents_KratosClientPresentsInternalAuthSecret(t *testing.T) {
-	const (
-		backendTokenSecret = "hs256-signing-key-that-must-not-reach-a-plaintext-header"
-		internalAuthSecret = "the-separate-internal-shared-bearer-value"
-	)
+	const internalAuthSecret = "the-separate-internal-shared-bearer-value"
 
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestPKI(t, dir, "DataHub")
@@ -140,7 +137,7 @@ func TestDataHubComponents_KratosClientPresentsInternalAuthSecret(t *testing.T) 
 	cfg := &config.Config{
 		AppEnv:    "development",
 		AuthHub:   config.AuthHubConfig{URL: "https://" + ln.Addr().String()},
-		Auth:      config.AuthConfig{BackendTokenSecret: backendTokenSecret, InternalAuthSecret: internalAuthSecret},
+		Auth:      config.AuthConfig{InternalAuthSecret: internalAuthSecret},
 		MQHub:     config.MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
 		Sovereign: config.SovereignConfig{URL: "http://knowledge-sovereign:9500"},
 		Recap:     config.RecapConfig{DefaultPageSize: 500, MaxPageSize: 2000, MaxRangeDays: 8},
@@ -159,10 +156,6 @@ func TestDataHubComponents_KratosClientPresentsInternalAuthSecret(t *testing.T) 
 
 	if presented != internalAuthSecret {
 		t.Errorf("X-Internal-Auth = %q, want INTERNAL_AUTH_SECRET %q", presented, internalAuthSecret)
-	}
-
-	if presented == backendTokenSecret {
-		t.Errorf("X-Internal-Auth must not equal backend token secret (HMAC)")
 	}
 }
 
@@ -197,7 +190,7 @@ func TestDataHubComponents_MTLSClientValidWire(t *testing.T) {
 	cfg := &config.Config{
 		AppEnv:    "development",
 		AuthHub:   config.AuthHubConfig{URL: "https://" + ln.Addr().String()},
-		Auth:      config.AuthConfig{BackendTokenSecret: "a", InternalAuthSecret: "test-internal-secret"},
+		Auth:      config.AuthConfig{InternalAuthSecret: "test-internal-secret"},
 		MQHub:     config.MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
 		Sovereign: config.SovereignConfig{URL: "http://knowledge-sovereign:9500"},
 		Recap:     config.RecapConfig{DefaultPageSize: 500, MaxPageSize: 2000, MaxRangeDays: 8},
@@ -253,7 +246,7 @@ func TestDataHubComponents_MTLSClientRejectsWrongCA(t *testing.T) {
 	cfg := &config.Config{
 		AppEnv:    "development",
 		AuthHub:   config.AuthHubConfig{URL: "https://" + ln.Addr().String()},
-		Auth:      config.AuthConfig{BackendTokenSecret: "a", InternalAuthSecret: "b"},
+		Auth:      config.AuthConfig{InternalAuthSecret: "b"},
 		MQHub:     config.MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
 		Sovereign: config.SovereignConfig{URL: "http://knowledge-sovereign:9500"},
 		Recap:     config.RecapConfig{DefaultPageSize: 500, MaxPageSize: 2000, MaxRangeDays: 8},
@@ -299,7 +292,7 @@ func TestDataHubComponents_MTLSClientRejectsWrongHostname(t *testing.T) {
 	cfg := &config.Config{
 		AppEnv:    "development",
 		AuthHub:   config.AuthHubConfig{URL: "https://" + ln.Addr().String()},
-		Auth:      config.AuthConfig{BackendTokenSecret: "a", InternalAuthSecret: "b"},
+		Auth:      config.AuthConfig{InternalAuthSecret: "b"},
 		MQHub:     config.MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
 		Sovereign: config.SovereignConfig{URL: "http://knowledge-sovereign:9500"},
 		Recap:     config.RecapConfig{DefaultPageSize: 500, MaxPageSize: 2000, MaxRangeDays: 8},
@@ -358,7 +351,7 @@ func TestDataHubComponents_MTLSClientRejectsMissingClientCert(t *testing.T) {
 	cfg := &config.Config{
 		AppEnv:    "development",
 		AuthHub:   config.AuthHubConfig{URL: "https://" + ln.Addr().String()},
-		Auth:      config.AuthConfig{BackendTokenSecret: "a", InternalAuthSecret: "b"},
+		Auth:      config.AuthConfig{InternalAuthSecret: "b"},
 		MQHub:     config.MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
 		Sovereign: config.SovereignConfig{URL: "http://knowledge-sovereign:9500"},
 		Recap:     config.RecapConfig{DefaultPageSize: 500, MaxPageSize: 2000, MaxRangeDays: 8},
@@ -376,7 +369,7 @@ func TestDataHubComponents_ProductionConstructorFailsClosed(t *testing.T) {
 		cfg := &config.Config{
 			AppEnv:    "development",
 			AuthHub:   config.AuthHubConfig{URL: "http://auth-hub:8888"},
-			Auth:      config.AuthConfig{BackendTokenSecret: "a", InternalAuthSecret: "b"},
+			Auth:      config.AuthConfig{InternalAuthSecret: "b"},
 			MQHub:     config.MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
 			Sovereign: config.SovereignConfig{URL: "http://knowledge-sovereign:9500"},
 			Recap:     config.RecapConfig{DefaultPageSize: 500, MaxPageSize: 2000, MaxRangeDays: 8},
@@ -395,7 +388,7 @@ func TestDataHubComponents_ProductionConstructorFailsClosed(t *testing.T) {
 		cfg := &config.Config{
 			AppEnv:    "development",
 			AuthHub:   config.AuthHubConfig{URL: "https://auth-hub:9443"},
-			Auth:      config.AuthConfig{BackendTokenSecret: "a", InternalAuthSecret: "b"},
+			Auth:      config.AuthConfig{InternalAuthSecret: "b"},
 			MQHub:     config.MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
 			Sovereign: config.SovereignConfig{URL: "http://knowledge-sovereign:9500"},
 			Recap:     config.RecapConfig{DefaultPageSize: 500, MaxPageSize: 2000, MaxRangeDays: 8},

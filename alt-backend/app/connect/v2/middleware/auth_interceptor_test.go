@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"testing"
 	"time"
@@ -16,25 +18,32 @@ import (
 )
 
 const (
-	testSecret   = "test-secret-please-change-in-production"
 	testIssuer   = "auth-hub"
 	testAudience = "alt-backend"
 )
 
+var testVerifyPublicKey, testSigningPrivateKey = func() (ed25519.PublicKey, ed25519.PrivateKey) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return pub, priv
+}()
+
 func newTestInterceptor() *AuthInterceptor {
 	return NewAuthInterceptor(nil, &config.Config{
 		Auth: config.AuthConfig{
-			BackendTokenSecret:   testSecret,
-			BackendTokenIssuer:   testIssuer,
-			BackendTokenAudience: testAudience,
+			BackendTokenPublicKey: testVerifyPublicKey,
+			BackendTokenIssuer:    testIssuer,
+			BackendTokenAudience:  testAudience,
 		},
 	})
 }
 
 func signTestToken(t *testing.T, claims *BackendClaims) string {
 	t.Helper()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testSecret))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := token.SignedString(testSigningPrivateKey)
 	require.NoError(t, err)
 	return signed
 }
@@ -135,22 +144,118 @@ func TestValidateToken_MissingExpClaim_Fails(t *testing.T) {
 		"missing exp claim must be rejected; got %v", err)
 }
 
-func TestValidateToken_UnexpectedAlgorithm_Fails(t *testing.T) {
+func TestAuthInterceptor_EdDSAContract(t *testing.T) {
+	_, otherPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
 	userID := uuid.MustParse("77777777-7777-7777-7777-777777777777")
 	tenantID := uuid.MustParse("88888888-8888-8888-8888-888888888888")
 
-	claims := baseClaims(userID)
-	claims.TenantID = tenantID.String()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS384, claims)
-	tokenStr, err := token.SignedString([]byte(testSecret))
-	require.NoError(t, err)
+	t.Run("valid EdDSA token accepted", func(t *testing.T) {
+		claims := baseClaims(userID)
+		claims.TenantID = tenantID.String()
+		tokenStr := signTestToken(t, claims)
 
-	a := newTestInterceptor()
-	_, err = a.validateToken(tokenStr)
+		a := newTestInterceptor()
+		called := false
+		unary := a.Interceptor().WrapUnary(func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			called = true
+			u, err := GetUserContext(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, userID, u.UserID)
+			assert.Equal(t, tenantID, u.TenantID)
+			return connect.NewResponse(&struct{}{}), nil
+		})
+		req := connect.NewRequest(&struct{}{})
+		req.Header().Set(backendTokenHeader, tokenStr)
+		_, unaryErr := unary(context.Background(), req)
+		require.NoError(t, unaryErr)
+		require.True(t, called)
+	})
 
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, errInvalidToken),
-		"HS384 token must be rejected when only HS256 is permitted; got %v", err)
+	rejectCases := []struct {
+		name      string
+		makeToken func(t *testing.T) string
+	}{
+		{
+			name: "HS256 signed with public-key bytes as HMAC secret rejected",
+			makeToken: func(t *testing.T) string {
+				claims := baseClaims(userID)
+				claims.TenantID = tenantID.String()
+				tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+				s, err := tok.SignedString([]byte(testVerifyPublicKey))
+				require.NoError(t, err)
+				return s
+			},
+		},
+		{
+			name: "alg none rejected",
+			makeToken: func(t *testing.T) string {
+				claims := baseClaims(userID)
+				claims.TenantID = tenantID.String()
+				tok := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
+				s, err := tok.SignedString(jwt.UnsafeAllowNoneSignatureType)
+				require.NoError(t, err)
+				return s
+			},
+		},
+		{
+			name: "token signed by a different Ed25519 key rejected",
+			makeToken: func(t *testing.T) string {
+				claims := baseClaims(userID)
+				claims.TenantID = tenantID.String()
+				tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+				s, err := tok.SignedString(otherPriv)
+				require.NoError(t, err)
+				return s
+			},
+		},
+		{
+			name: "wrong issuer rejected",
+			makeToken: func(t *testing.T) string {
+				claims := baseClaims(userID)
+				claims.TenantID = tenantID.String()
+				claims.Issuer = "other-issuer"
+				return signTestToken(t, claims)
+			},
+		},
+		{
+			name: "wrong audience rejected",
+			makeToken: func(t *testing.T) string {
+				claims := baseClaims(userID)
+				claims.TenantID = tenantID.String()
+				claims.Audience = jwt.ClaimStrings{"other-audience"}
+				return signTestToken(t, claims)
+			},
+		},
+		{
+			name: "expired token rejected",
+			makeToken: func(t *testing.T) string {
+				claims := baseClaims(userID)
+				claims.TenantID = tenantID.String()
+				claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(-1 * time.Minute))
+				return signTestToken(t, claims)
+			},
+		},
+	}
+
+	for _, tc := range rejectCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokenStr := tc.makeToken(t)
+			a := newTestInterceptor()
+			_, err := a.validateToken(tokenStr)
+			require.Error(t, err)
+
+			unary := a.Interceptor().WrapUnary(func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+				return connect.NewResponse(&struct{}{}), nil
+			})
+			req := connect.NewRequest(&struct{}{})
+			req.Header().Set(backendTokenHeader, tokenStr)
+			_, unaryErr := unary(context.Background(), req)
+			require.Error(t, unaryErr)
+			assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(unaryErr))
+		})
+	}
 }
 
 func TestAuthInterceptor_RejectsNilUUIDClaims(t *testing.T) {

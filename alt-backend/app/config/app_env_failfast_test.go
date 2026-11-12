@@ -13,8 +13,6 @@ var imageProxyEnvKeys = []string{
 	"IMAGE_PROXY_ENABLED",
 	"IMAGE_PROXY_SECRET",
 	"IMAGE_PROXY_SECRET_FILE",
-	"BACKEND_TOKEN_SECRET",
-	"BACKEND_TOKEN_SECRET_FILE",
 }
 
 // applyEnv clears the image-proxy / app-env variables and then applies the
@@ -166,9 +164,8 @@ func TestNewConfig_AppEnvMustBeAKnownValue(t *testing.T) {
 		{
 			name: "production is accepted",
 			envVars: map[string]string{
-				"APP_ENV":              "production",
-				"IMAGE_PROXY_ENABLED":  "false",
-				"BACKEND_TOKEN_SECRET": "this-is-a-long-enough-backend-token-secret",
+				"APP_ENV":             "production",
+				"IMAGE_PROXY_ENABLED": "false",
 			},
 			wantAppEnv: "production",
 		},

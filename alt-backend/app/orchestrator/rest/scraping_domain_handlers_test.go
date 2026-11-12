@@ -3,6 +3,8 @@ package rest
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -26,10 +28,17 @@ import (
 )
 
 const (
-	testAdminAuthSecret   = "test-admin-jwt-secret-32-bytes!!"
 	testAdminAuthIssuer   = "auth-hub"
 	testAdminAuthAudience = "alt-backend"
 )
+
+var testAdminAuthPubKey, testAdminAuthPrivKey = func() (ed25519.PublicKey, ed25519.PrivateKey) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return pub, priv
+}()
 
 type stubScrapingDomainPort struct {
 	domains       []*domain.ScrapingDomain
@@ -80,9 +89,9 @@ func (s *stubRobotsTxtFetcherPort) FetchRobotsTxt(_ context.Context, _, _ string
 
 func testAuthCfg() config.AuthConfig {
 	return config.AuthConfig{
-		BackendTokenSecret:   testAdminAuthSecret,
-		BackendTokenIssuer:   testAdminAuthIssuer,
-		BackendTokenAudience: testAdminAuthAudience,
+		BackendTokenPublicKey: testAdminAuthPubKey,
+		BackendTokenIssuer:    testAdminAuthIssuer,
+		BackendTokenAudience:  testAdminAuthAudience,
 	}
 }
 
@@ -102,8 +111,8 @@ func signRESTTestToken(t *testing.T, role domain.UserRole) string {
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := tok.SignedString([]byte(testAdminAuthSecret))
+	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := tok.SignedString(testAdminAuthPrivKey)
 	require.NoError(t, err)
 	return signed
 }

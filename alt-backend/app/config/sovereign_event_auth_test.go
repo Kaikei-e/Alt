@@ -10,7 +10,6 @@ import (
 var sovereignAuthEnvKeys = []string{
 	"APP_ENV",
 	"IMAGE_PROXY_ENABLED",
-	"BACKEND_TOKEN_SECRET",
 	"SOVEREIGN_URL",
 	"SOVEREIGN_EVENT_TOKEN",
 	"SOVEREIGN_EVENT_TOKEN_FILE",
@@ -28,7 +27,6 @@ func applySovereignAuthEnv(t *testing.T, envVars map[string]string) {
 		t.Setenv(key, "")
 	}
 	t.Setenv("IMAGE_PROXY_ENABLED", "false")
-	t.Setenv("BACKEND_TOKEN_SECRET", "dev-backend-token-secret-sufficient-length")
 	for key, value := range envVars {
 		t.Setenv(key, value)
 	}

@@ -4,6 +4,8 @@ import (
 	"alt/config"
 	"alt/middleware"
 	"alt/shared/domain/authcontext"
+	"crypto/ed25519"
+	"crypto/rand"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,7 +19,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const reproTestSecret = "test-backend-token-secret-minimum-32!"
+var reproTestPubKey, reproTestPrivKey = func() (ed25519.PublicKey, ed25519.PrivateKey) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return pub, priv
+}()
 
 func issueReproTestJWT(t *testing.T, userID, email string) string {
 	t.Helper()
@@ -33,8 +41,8 @@ func issueReproTestJWT(t *testing.T, userID, email string) string {
 		"iat":       now.Unix(),
 		"exp":       now.Add(5 * time.Minute).Unix(),
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(reproTestSecret))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := token.SignedString(reproTestPrivKey)
 	require.NoError(t, err)
 	return signed
 }
@@ -44,9 +52,9 @@ func TestAuthMiddleware_Bypass(t *testing.T) {
 	e := echo.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := config.AuthConfig{
-		BackendTokenSecret:   reproTestSecret,
-		BackendTokenIssuer:   "auth-hub",
-		BackendTokenAudience: "alt-backend",
+		BackendTokenPublicKey: reproTestPubKey,
+		BackendTokenIssuer:    "auth-hub",
+		BackendTokenAudience:  "alt-backend",
 	}
 	authMiddleware := middleware.NewAuthMiddleware(logger, cfg)
 
@@ -99,9 +107,9 @@ func TestAuthMiddleware_PropagatesJWTToAuthContext(t *testing.T) {
 	e := echo.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := config.AuthConfig{
-		BackendTokenSecret:   reproTestSecret,
-		BackendTokenIssuer:   "auth-hub",
-		BackendTokenAudience: "alt-backend",
+		BackendTokenPublicKey: reproTestPubKey,
+		BackendTokenIssuer:    "auth-hub",
+		BackendTokenAudience:  "alt-backend",
 	}
 	authMiddleware := middleware.NewAuthMiddleware(logger, cfg)
 
