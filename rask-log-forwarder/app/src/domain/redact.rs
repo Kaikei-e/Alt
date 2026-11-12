@@ -1,7 +1,114 @@
 use super::log_entry::EnrichedLogEntry;
+use regex::{Captures, Regex};
+use std::borrow::Cow;
+use std::sync::LazyLock;
+
+const REDACTED: &str = "[REDACTED]";
+
+static QUERY_PARAM: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"([?&;])([A-Za-z0-9_.\-]+)=([^&\s"'#]*)"#).unwrap());
+
+static HEADER_TEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)\b((?:proxy-)?authorization|set-cookie|cookie|x-[a-z0-9-]*-(?:token|secret))(\s*[:=]\s*)[^\r\n"]*"#,
+    )
+    .unwrap()
+});
+
+static JSON_STRING_PAIR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#""([A-Za-z0-9_.\-]+)"(\s*:\s*)"[^"]*""#).unwrap());
+
+fn is_sensitive_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase().replace('-', "_");
+    const EXACT: &[&str] = &[
+        "authorization",
+        "proxy_authorization",
+        "cookie",
+        "set_cookie",
+        "token",
+        "secret",
+        "password",
+        "passwd",
+        "pwd",
+        "apikey",
+        "api_key",
+        "session",
+        "session_id",
+        "credential",
+        "credentials",
+    ];
+    const SUFFIXES: &[&str] = &[
+        "_token",
+        "_secret",
+        "_password",
+        "_passwd",
+        "_api_key",
+        "_apikey",
+        "_credential",
+    ];
+    EXACT.contains(&n.as_str())
+        || SUFFIXES.iter().any(|s| n.ends_with(s))
+        || (n.starts_with("x_") && (n.contains("token") || n.contains("secret")))
+}
+
+fn is_sensitive_query_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    is_sensitive_name(&n)
+        || matches!(
+            n.as_str(),
+            "auth" | "key" | "sig" | "signature" | "code" | "sid"
+        )
+}
+
+fn redact_text(input: &str) -> Cow<'_, str> {
+    let mut text = Cow::Borrowed(input);
+    if text.contains('=') {
+        let replaced = QUERY_PARAM.replace_all(&text, |c: &Captures| {
+            if is_sensitive_query_name(&c[2]) {
+                format!("{}{}={REDACTED}", &c[1], &c[2])
+            } else {
+                c[0].to_string()
+            }
+        });
+        if let Cow::Owned(s) = replaced {
+            text = Cow::Owned(s);
+        }
+    }
+    if let Cow::Owned(s) = HEADER_TEXT.replace_all(&text, format!("${{1}}${{2}}{REDACTED}")) {
+        text = Cow::Owned(s);
+    }
+    if text.contains('"') {
+        let replaced = JSON_STRING_PAIR.replace_all(&text, |c: &Captures| {
+            if is_sensitive_name(&c[1]) {
+                format!("\"{}\"{}\"{REDACTED}\"", &c[1], &c[2])
+            } else {
+                c[0].to_string()
+            }
+        });
+        if let Cow::Owned(s) = replaced {
+            text = Cow::Owned(s);
+        }
+    }
+    text
+}
 
 impl EnrichedLogEntry {
-    pub fn redact_sensitive(&mut self) {}
+    /// Masks credentials that HTTP access logs and application logs can carry:
+    /// sensitive query parameters, auth/cookie header text, and sensitive
+    /// JSON/field names. Runs before the entry leaves the forwarder.
+    pub fn redact_sensitive(&mut self) {
+        self.message = redact_text(&self.message).into_owned();
+        if let Some(path) = &self.path {
+            self.path = Some(redact_text(path).into_owned());
+        }
+        for (key, value) in &mut self.fields {
+            if is_sensitive_name(key) {
+                *value = REDACTED.to_string();
+            } else {
+                *value = redact_text(value).into_owned();
+            }
+        }
+    }
 }
 
 #[cfg(test)]
