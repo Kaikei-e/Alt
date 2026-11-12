@@ -70,7 +70,7 @@ type Config struct {
 
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
-	appEnv, err := loadAppEnv()
+	appEnv, appEnvExplicit, err := loadAppEnv()
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func Load() (*Config, error) {
 		schemaVersion = "00032"
 	}
 
-	adminToken, adminAuthEnabled, err := loadAdminAuth(appEnv)
+	adminToken, adminAuthEnabled, err := loadAdminAuth(appEnv, appEnvExplicit)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +129,8 @@ func Load() (*Config, error) {
 	var eventToken string
 	var eventAuthEnabled bool
 	if os.Getenv("EVENT_AUTH") == "disabled" {
-		if appEnv == "production" {
-			return nil, fmt.Errorf("EVENT_AUTH=disabled is not allowed when APP_ENV=production")
+		if !allowDisabledAuth(appEnv, appEnvExplicit) {
+			return nil, fmt.Errorf("EVENT_AUTH=disabled requires APP_ENV to be explicitly set to development, test, or staging")
 		}
 		slog.Warn("EVENT_AUTH is disabled; event-log RPC listener is unauthenticated", "app_env", appEnv)
 		eventAuthEnabled = false
@@ -139,7 +139,7 @@ func Load() (*Config, error) {
 		eventAuthEnabled = true
 		eventToken = ""
 	} else {
-		tok, enabled, err := loadEventAuth(appEnv)
+		tok, enabled, err := loadEventAuth()
 		if err != nil {
 			return nil, err
 		}
@@ -202,18 +202,22 @@ func Load() (*Config, error) {
 	}, nil
 }
 
-func loadAppEnv() (string, error) {
+func loadAppEnv() (string, bool, error) {
 	raw := strings.TrimSpace(os.Getenv("APP_ENV"))
 	if raw == "" {
-		return "development", nil
+		return "development", false, nil
 	}
 	normalized := strings.ToLower(raw)
 	switch normalized {
 	case "development", "test", "staging", "production":
-		return normalized, nil
+		return normalized, true, nil
 	default:
-		return "", fmt.Errorf("invalid APP_ENV %q: must be development, test, staging, or production", raw)
+		return "", false, fmt.Errorf("invalid APP_ENV %q: must be development, test, staging, or production", raw)
 	}
+}
+
+func allowDisabledAuth(appEnv string, appEnvExplicit bool) bool {
+	return appEnvExplicit && (appEnv == "development" || appEnv == "test" || appEnv == "staging")
 }
 
 // minAdminTokenLen keeps the Bearer token out of guessable range; the admin
@@ -227,10 +231,10 @@ const minEventTokenLen = 24
 // loadAdminAuth resolves the admin Bearer token from ADMIN_TOKEN_FILE (docker
 // secret) or ADMIN_TOKEN. Absence is a startup failure: the only way to run
 // without the gate is ADMIN_AUTH=disabled, spelled out by an operator.
-func loadAdminAuth(appEnv string) (string, bool, error) {
+func loadAdminAuth(appEnv string, appEnvExplicit bool) (string, bool, error) {
 	if os.Getenv("ADMIN_AUTH") == "disabled" {
-		if appEnv == "production" {
-			return "", false, fmt.Errorf("ADMIN_AUTH=disabled is not allowed when APP_ENV=production")
+		if !allowDisabledAuth(appEnv, appEnvExplicit) {
+			return "", false, fmt.Errorf("ADMIN_AUTH=disabled requires APP_ENV to be explicitly set to development, test, or staging")
 		}
 		slog.Warn("ADMIN_AUTH is disabled; /admin/* endpoints are unauthenticated", "app_env", appEnv)
 		return "", false, nil
@@ -261,16 +265,8 @@ func loadAdminAuth(appEnv string) (string, bool, error) {
 
 // loadEventAuth resolves the event-log Bearer token from EVENT_TOKEN_FILE
 // (docker secret) or EVENT_TOKEN. Absence is a startup failure: the only way to run
-// without the gate is EVENT_AUTH=disabled, spelled out by an operator.
-func loadEventAuth(appEnv string) (string, bool, error) {
-	if os.Getenv("EVENT_AUTH") == "disabled" {
-		if appEnv == "production" {
-			return "", false, fmt.Errorf("EVENT_AUTH=disabled is not allowed when APP_ENV=production")
-		}
-		slog.Warn("EVENT_AUTH is disabled; event-log RPC listener is unauthenticated", "app_env", appEnv)
-		return "", false, nil
-	}
-
+// without the gate is EVENT_AUTH=disabled, spelled out by an operator in Load.
+func loadEventAuth() (string, bool, error) {
 	if path := os.Getenv("EVENT_TOKEN_FILE"); path != "" {
 		data, err := readSecretFile(path)
 		if err != nil {
