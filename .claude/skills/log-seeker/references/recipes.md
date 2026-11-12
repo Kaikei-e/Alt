@@ -119,13 +119,15 @@ SELECT * FROM pg_locks WHERE NOT granted;
 
 ```bash
 $C logs --since=30m --timestamps mq-hub | grep -iE 'error|stuck|retry|deadletter|lag'
-# ACL: default user is off (NOAUTH) — authenticate as `streams` from the container's secret file
-rs() { $C exec -T redis-streams sh -c \
-  'REDISCLI_AUTH="$(cat /run/secrets/redis_streams_password)" redis-cli --user streams "$@"' rs "$@"; }
-rs --scan --pattern 'alt:events:*' | head
-rs XINFO STREAM <stream-key>        # `length` here — XLEN / INFO are NOPERM
-rs XINFO GROUPS <stream-key>        # pending + lag per consumer group
-rs XPENDING <stream-key> <group>
+# ACL: default user is off (NOAUTH) — `streams_producer` runs SCAN/XINFO STREAM, `streams_consumer` runs XPENDING
+rsp() { $C exec -T redis-streams sh -c \
+  'REDISCLI_AUTH="$(cat /run/secrets/redis_streams_producer_password)" redis-cli --user streams_producer "$@"' rsp "$@"; }
+rsc() { $C exec -T redis-streams sh -c \
+  'REDISCLI_AUTH="$(cat /run/secrets/redis_streams_consumer_password)" redis-cli --user streams_consumer "$@"' rsc "$@"; }
+rsp --scan --pattern 'alt:events:*' | head
+rsp XINFO STREAM <stream-key>       # `length` here — XLEN / INFO are NOPERM
+rsp XINFO GROUPS <stream-key>       # pending + lag per consumer group
+rsc XPENDING <stream-key> <group>
 ```
 Allowed / NOPERM commands per role: [targets.md → Redis Streams](targets.md#redis-streams-mq-hub-queue).
 Cross-check the queue-saturation notes before recommending a knob change.

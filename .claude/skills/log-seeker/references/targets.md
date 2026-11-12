@@ -192,7 +192,8 @@ container's own secret file; `REDISCLI_AUTH` keeps it off argv and out of the ou
 
 | Role | Keys | Read-only commands that work |
 | --- | --- | --- |
-| `streams` (`/run/secrets/redis_streams_password`) | `alt:events:*`, `alt:replies:tags:*` | `PING`, `SCAN` (`--scan`), `XINFO STREAM`, `XINFO GROUPS`, `XPENDING`, `TTL` |
+| `streams_producer` (`/run/secrets/redis_streams_producer_password`) | `alt:events:*`, `alt:replies:tags:*` | `PING`, `SCAN` (`--scan`), `XINFO STREAM`, `XINFO GROUPS`, `TTL` (`alt:replies:tags:*` only) |
+| `streams_consumer` (`/run/secrets/redis_streams_consumer_password`) | `alt:events:*`, `alt:replies:tags:*` | `PING`, `XINFO GROUPS`, `XPENDING` |
 | `limiter` (`/run/secrets/redis_limiter_password`, DB 3) | `host_rate_limiter:v1:*` | `PING`, `PTTL` |
 
 `INFO`, `XLEN`, `XRANGE`, `TYPE`, `DBSIZE` and `XINFO CONSUMERS` are `NOPERM` for every role:
@@ -201,16 +202,18 @@ from `XINFO GROUPS` (`pending`, `lag`). The roles also hold write commands (`XAD
 `XTRIM`, `DEL`, `SET`, …) — never run them.
 
 ```bash
-rs() { docker compose -f compose/compose.yaml -p alt exec -T redis-streams sh -c \
-  'REDISCLI_AUTH="$(cat /run/secrets/redis_streams_password)" redis-cli --user streams "$@"' rs "$@"; }
-rs ping
-rs --scan --pattern 'alt:events:*' | head
-rs XINFO STREAM <stream-key>        # length, groups, last-generated-id (then entry payloads)
-rs XINFO GROUPS <stream-key>        # per group: pending, last-delivered-id, lag
-rs XPENDING <stream-key> <group>    # pending summary; append `- + 10` for the oldest entries
+rsp() { docker compose -f compose/compose.yaml -p alt exec -T redis-streams sh -c \
+  'REDISCLI_AUTH="$(cat /run/secrets/redis_streams_producer_password)" redis-cli --user streams_producer "$@"' rsp "$@"; }
+rsc() { docker compose -f compose/compose.yaml -p alt exec -T redis-streams sh -c \
+  'REDISCLI_AUTH="$(cat /run/secrets/redis_streams_consumer_password)" redis-cli --user streams_consumer "$@"' rsc "$@"; }
+rsp ping
+rsp --scan --pattern 'alt:events:*' | head
+rsp XINFO STREAM <stream-key>       # length, groups, last-generated-id (then entry payloads)
+rsp XINFO GROUPS <stream-key>       # per group: pending, last-delivered-id, lag
+rsc XPENDING <stream-key> <group>   # pending summary; append `- + 10` for the oldest entries
 ```
 
-(`mq-hub` reads `REDIS_URL=redis://streams@redis-streams:6379` + `REDIS_PASSWORD_FILE`; check
+(`mq-hub` reads `REDIS_URL=redis://streams_producer@redis-streams:6379` + `REDIS_PASSWORD_FILE=/run/secrets/redis_streams_producer_password`; check
 `compose/mq.yaml` for stream/group names.)
 
 `redis-cache` (news-creator LLM cache, `alt-network` only) has a single `cache` role
