@@ -186,7 +186,6 @@ export const kratosHandlers = [
 // AuthHub Handlers
 // =============================================================================
 
-// Note: JWT generation requires dynamic import for jsonwebtoken
 // For MSW handlers, we return a static token for simplicity
 const STATIC_DEV_TOKEN =
 	"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImRldkBsb2NhbGhvc3QiLCJyb2xlIjoiYWRtaW4iLCJzaWQiOiJkZXYtc2Vzc2lvbiIsInN1YiI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsImlzcyI6ImF1dGgtaHViIiwiYXVkIjoiYWx0LWJhY2tlbmQiLCJleHAiOjk5OTk5OTk5OTl9.mock-signature";

@@ -280,7 +280,7 @@ def main() -> int:
                 )
 
         # (6) run.sh must use the shared lockfile-managed e2e/playwright manifest
-        #     with `npm ci ... --ignore-scripts`, and the three E2E runner package
+        #     with `npm ci ... --ignore-scripts`, and the two E2E runner package
         #     versions in e2e/playwright/package.json must match alt-frontend-sv/bun.lock.
         if not re.search(r"npm\s+ci\b[^\n]*--ignore-scripts\b", fe_code):
             problems.append(
@@ -296,7 +296,7 @@ def main() -> int:
                 **(pw_pkg.get("devDependencies") or {}),
             }
             bun_lock_text = bun_lock_path.read_text()
-            for pkg_name in ("@playwright/test", "axe-playwright", "jsonwebtoken"):
+            for pkg_name in ("@playwright/test", "axe-playwright"):
                 pinned = pw_deps.get(pkg_name)
                 m = re.search(
                     rf'^\s*"{re.escape(pkg_name)}"\s*:\s*\["{re.escape(pkg_name)}@([^"]+)"',
