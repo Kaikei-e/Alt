@@ -347,7 +347,10 @@ check(env("rerank-local").get("INFERENCE_SERVICE_TOKEN_FILE") == TOKEN
       "rerank-local enforces the mounted inference_service_token")
 
 # ── 3c. Redis clients authenticate as the ACL users the entrypoint defines ───
-ACL_USERS = {"redis-streams": {"streams", "limiter"}, "redis-cache": {"cache"}}
+ACL_USERS = {
+    "redis-streams": {"streams_producer", "streams_consumer", "limiter"},
+    "redis-cache": {"cache"},
+}
 for name, svc in sorted(services.items()):
     for variable, value in sorted((svc.get("environment") or {}).items()):
         if not isinstance(value, str) or not value.startswith(("redis://", "rediss://")):
