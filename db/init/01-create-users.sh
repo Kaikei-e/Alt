@@ -127,6 +127,11 @@ if [[ -n "$APP_DB_USER" && "$APP_DB_USER" != "$POSTGRES_USER" && -n "$APP_DB_PAS
             EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', target_db, target_role);
             EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', target_role);
             EXECUTE format('GRANT CREATE, TEMP ON DATABASE %I TO %I', target_db, target_role);
+            -- Migrations run as the superuser, so the application role gets DML on everything they create.
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I', target_role);
+            EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', target_role);
+            EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I', current_user, target_role);
+            EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO %I', current_user, target_role);
         END;
         \$\$;
 EOSQL
