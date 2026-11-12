@@ -452,6 +452,7 @@ impl Config {
         let max_degraded_genre_ratio = parse_f64("RECAP_MAX_DEGRADED_GENRE_RATIO", 0.5)?;
         let admin_auth = load_admin_auth()?;
         let peer_identity = load_peer_identity_from_env()?;
+        validate_peer_identity_mtls_enforcement(&peer_identity)?;
         let eval_listener = load_eval_listener(&admin_auth)?;
         let cards_user_id = load_cards_user_id()?;
         let cards_job = load_cards_job(cards_user_id)?;
@@ -1107,7 +1108,7 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
 }
 
 fn validate_mtls_url_schemes(external: &ExternalServiceConfig) -> Result<(), ConfigError> {
-    if std::env::var("MTLS_ENFORCE").unwrap_or_default() != "true" {
+    if !crate::tls::enforced() {
         return Ok(());
     }
     for (name, url) in [
@@ -1123,6 +1124,18 @@ fn validate_mtls_url_schemes(external: &ExternalServiceConfig) -> Result<(), Con
                 format!("MTLS_ENFORCE=true requires https:// scheme, got: {url}"),
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_peer_identity_mtls_enforcement(
+    peer_identity: &PeerIdentityConfig,
+) -> Result<(), ConfigError> {
+    if matches!(peer_identity, PeerIdentityConfig::Enabled { .. }) && !crate::tls::enforced() {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "enabled peer allow-list requires MTLS_ENFORCE=true (or set MTLS_ALLOWED_PEERS=disabled)",
+        ));
     }
     Ok(())
 }
