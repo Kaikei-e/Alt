@@ -1756,9 +1756,9 @@ secrets:
   meili_master_key:
     file: ../e2e/fixtures/staging-secrets/meili_master_key.txt
   backend_token_signing_key:
-    file: ${STAGING_TOKEN_KEY_DIR:-../e2e/fixtures/auth-hub/token-keys}/backend_token_signing_key.txt
+    file: ${STAGING_TOKEN_KEY_DIR:?set STAGING_TOKEN_KEY_DIR to the suite's minted key directory}/backend_token_signing_key.txt
   backend_token_verify_key:
-    file: ${STAGING_TOKEN_KEY_DIR:-../e2e/fixtures/auth-hub/token-keys}/backend_token_verify_key.txt
+    file: ${STAGING_TOKEN_KEY_DIR:?set STAGING_TOKEN_KEY_DIR to the suite's minted key directory}/backend_token_verify_key.txt
   auth_hub_csrf_secret:
     file: ../e2e/fixtures/staging-secrets/auth_hub_csrf_secret.txt
   # Mounted as /run/secrets/kratos_cookie_secret so the reused

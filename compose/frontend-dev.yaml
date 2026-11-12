@@ -23,7 +23,9 @@ services:
         apk add --no-cache openssl >/dev/null;
         openssl genpkey -algorithm ed25519 -out /secrets/dev_backend_token_signing_key.pem;
         openssl pkey -in /secrets/dev_backend_token_signing_key.pem -pubout -out /secrets/dev_backend_token_verify_key.pem;
-        chmod 0644 /secrets/dev_backend_token_signing_key.pem /secrets/dev_backend_token_verify_key.pem;
+        chown 1000:1000 /secrets/dev_backend_token_signing_key.pem;
+        chmod 0400 /secrets/dev_backend_token_signing_key.pem;
+        chmod 0444 /secrets/dev_backend_token_verify_key.pem;
         echo "Generated dev backend token key pair"; fi'
     volumes:
       - dev_secrets:/secrets

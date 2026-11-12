@@ -960,6 +960,27 @@ class TestGroup1Security(unittest.TestCase):
         )
         self.assertIn("inference_service_token", service["secrets"])
 
+    def test_dev_stacks_never_use_real_token_keys(self):
+        """Dev stacks mint and verify tokens with their own volume-held key pair, never the real secrets/."""
+        for name in ("dev.yaml", "frontend-dev.yaml"):
+            data = self._load_yaml(REPO_ROOT / "compose" / name)
+            text = (REPO_ROOT / "compose" / name).read_text()
+            self.assertNotIn("../secrets/", text, f"{name} must not read or write ../secrets/")
+            for svc_name, svc in data["services"].items():
+                for sec in svc.get("secrets", []) or []:
+                    sec_name = sec if isinstance(sec, str) else sec.get("source")
+                    self.assertNotIn(
+                        sec_name,
+                        ("backend_token_signing_key", "backend_token_verify_key"),
+                        f"{name}:{svc_name} mounts the real token secret {sec_name}",
+                    )
+                for env in svc.get("environment", []) or []:
+                    if isinstance(env, str) and env.split("=", 1)[0] in ("BACKEND_TOKEN_SIGNING_KEY_FILE", "BACKEND_TOKEN_VERIFY_KEY_FILE"):
+                        self.assertTrue(
+                            env.split("=", 1)[-1].startswith("/secrets/dev_"),
+                            f"{name}:{svc_name} token key must come from the dev secrets volume: {env}",
+                        )
+
     def test_base_yaml_secrets_declarations(self):
         """compose/base.yaml declares new named role passwords and tokens."""
         secrets = self.compose_base.get("secrets", {})
