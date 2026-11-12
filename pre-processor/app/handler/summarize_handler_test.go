@@ -365,6 +365,8 @@ func httpStatusOf(t *testing.T, err error) int {
 // including every branch of the idempotency guard (service.ShouldQueueSummarizeJob)
 // and both repository error paths.
 func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
+	const testArticleID = "11111111-2222-4333-8444-555555555555"
+
 	tests := map[string]struct {
 		setupMock    func(*mocks.MockSummaryRepository, *mocks.MockSummarizeJobRepository)
 		requestBody  map[string]interface{}
@@ -374,26 +376,44 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 	}{
 		"should queue job successfully": {
 			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
-				s.EXPECT().Exists(gomock.Any(), "article-1").Return(false, nil)
-				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
-				j.EXPECT().HasInFlightJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
-				j.EXPECT().HasDeadLetterJob(gomock.Any(), "article-1").Return(false, nil)
-				j.EXPECT().HasRecentFailedJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
-				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-1").Return(0, nil)
-				j.EXPECT().CreateJob(gomock.Any(), "article-1").Return("job-123", nil)
+				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(false, nil)
+				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().HasInFlightJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().HasDeadLetterJob(gomock.Any(), testArticleID).Return(false, nil)
+				j.EXPECT().HasRecentFailedJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), testArticleID).Return(0, nil)
+				j.EXPECT().CreateJob(gomock.Any(), testArticleID).Return("job-123", nil)
 			},
-			requestBody:  map[string]interface{}{"article_id": "article-1"},
+			requestBody:  map[string]interface{}{"article_id": testArticleID},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
 				assert.Equal(t, "job-123", resp["job_id"])
 				assert.Equal(t, "pending", resp["status"])
 			},
 		},
+		"should canonicalize upper-case article_id before guard and enqueue": {
+			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
+				const canonical = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+				s.EXPECT().Exists(gomock.Any(), canonical).Return(false, nil)
+				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), canonical, gomock.Any()).Return(false, nil)
+				j.EXPECT().HasInFlightJob(gomock.Any(), canonical, gomock.Any()).Return(false, nil)
+				j.EXPECT().HasDeadLetterJob(gomock.Any(), canonical).Return(false, nil)
+				j.EXPECT().HasRecentFailedJob(gomock.Any(), canonical, gomock.Any()).Return(false, nil)
+				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), canonical).Return(0, nil)
+				j.EXPECT().CreateJob(gomock.Any(), canonical).Return("job-upper", nil)
+			},
+			requestBody:  map[string]interface{}{"article_id": "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE"},
+			expectedCode: http.StatusAccepted,
+			validateResp: func(t *testing.T, resp map[string]interface{}) {
+				assert.Equal(t, "job-upper", resp["job_id"])
+				assert.Equal(t, "pending", resp["status"])
+			},
+		},
 		"should skip when a summary already exists": {
 			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
-				s.EXPECT().Exists(gomock.Any(), "article-1").Return(true, nil)
+				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(true, nil)
 			},
-			requestBody:  map[string]interface{}{"article_id": "article-1"},
+			requestBody:  map[string]interface{}{"article_id": testArticleID},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
 				assert.Equal(t, "", resp["job_id"])
@@ -403,10 +423,10 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 		},
 		"should skip when a recent successful job exists": {
 			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
-				s.EXPECT().Exists(gomock.Any(), "article-1").Return(false, nil)
-				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-1", gomock.Any()).Return(true, nil)
+				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(false, nil)
+				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), testArticleID, gomock.Any()).Return(true, nil)
 			},
-			requestBody:  map[string]interface{}{"article_id": "article-1"},
+			requestBody:  map[string]interface{}{"article_id": testArticleID},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
 				assert.Equal(t, "skipped", resp["status"])
@@ -415,11 +435,11 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 		},
 		"should skip when an in-flight job exists": {
 			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
-				s.EXPECT().Exists(gomock.Any(), "article-1").Return(false, nil)
-				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
-				j.EXPECT().HasInFlightJob(gomock.Any(), "article-1", gomock.Any()).Return(true, nil)
+				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(false, nil)
+				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().HasInFlightJob(gomock.Any(), testArticleID, gomock.Any()).Return(true, nil)
 			},
-			requestBody:  map[string]interface{}{"article_id": "article-1"},
+			requestBody:  map[string]interface{}{"article_id": testArticleID},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
 				assert.Equal(t, "skipped", resp["status"])
@@ -428,29 +448,35 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 		},
 		"should return 500 when the idempotency guard fails": {
 			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
-				s.EXPECT().Exists(gomock.Any(), "article-1").Return(false, assert.AnError)
+				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(false, assert.AnError)
 			},
-			requestBody:  map[string]interface{}{"article_id": "article-1"},
+			requestBody:  map[string]interface{}{"article_id": testArticleID},
 			expectedCode: http.StatusInternalServerError,
 			wantErr:      true,
 		},
 		"should return 500 when CreateJob fails": {
 			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
-				s.EXPECT().Exists(gomock.Any(), "article-1").Return(false, nil)
-				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
-				j.EXPECT().HasInFlightJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
-				j.EXPECT().HasDeadLetterJob(gomock.Any(), "article-1").Return(false, nil)
-				j.EXPECT().HasRecentFailedJob(gomock.Any(), "article-1", gomock.Any()).Return(false, nil)
-				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-1").Return(0, nil)
-				j.EXPECT().CreateJob(gomock.Any(), "article-1").Return("", assert.AnError)
+				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(false, nil)
+				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().HasInFlightJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().HasDeadLetterJob(gomock.Any(), testArticleID).Return(false, nil)
+				j.EXPECT().HasRecentFailedJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), testArticleID).Return(0, nil)
+				j.EXPECT().CreateJob(gomock.Any(), testArticleID).Return("", assert.AnError)
 			},
-			requestBody:  map[string]interface{}{"article_id": "article-1"},
+			requestBody:  map[string]interface{}{"article_id": testArticleID},
 			expectedCode: http.StatusInternalServerError,
 			wantErr:      true,
 		},
 		"should return 400 for missing article_id": {
 			setupMock:    func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {},
 			requestBody:  map[string]interface{}{},
+			expectedCode: http.StatusBadRequest,
+			wantErr:      true,
+		},
+		"should return 400 for non-UUID article_id": {
+			setupMock:    func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {},
+			requestBody:  map[string]interface{}{"article_id": "not-a-uuid"},
 			expectedCode: http.StatusBadRequest,
 			wantErr:      true,
 		},
