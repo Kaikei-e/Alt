@@ -156,7 +156,8 @@ type tagReadDriver interface {
 	FetchArticleTagsForUser(ctx context.Context, articleID string, userID *uuid.UUID) ([]*domain.FeedTag, error)
 	FetchFeedTags(ctx context.Context, feedID string, cursor *time.Time, limit int) ([]*domain.FeedTag, error)
 	FetchTagCooccurrences(ctx context.Context, tagNames []string) ([]*domain.TagCooccurrence, error)
-	SearchTagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.GlobalTagHit, error)
+	SearchTagsByPrefix(ctx context.Context, prefix string, userID uuid.UUID, limit int) ([]domain.GlobalTagHit, error)
+	FetchTagCloudForUser(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error)
 	FetchTagArticleCounts(ctx context.Context, userID uuid.UUID, since time.Time) ([]domain.TagArticleCount, error)
 }
 
@@ -193,12 +194,20 @@ func (g *TagReadGateway) Cooccurrences(ctx context.Context, tagNames []string) (
 	return items, nil
 }
 
-func (g *TagReadGateway) SearchByPrefix(ctx context.Context, prefix string, limit int) ([]domain.GlobalTagHit, error) {
-	hits, err := g.db.SearchTagsByPrefix(ctx, prefix, limit)
+func (g *TagReadGateway) SearchByPrefix(ctx context.Context, prefix string, userID uuid.UUID, limit int) ([]domain.GlobalTagHit, error) {
+	hits, err := g.db.SearchTagsByPrefix(ctx, prefix, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search tags by prefix %q: %w", prefix, err)
 	}
 	return hits, nil
+}
+
+func (g *TagReadGateway) TagCloud(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
+	items, err := g.db.FetchTagCloudForUser(ctx, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get tag cloud for user %s: %w", userID, err)
+	}
+	return items, nil
 }
 
 func (g *TagReadGateway) ArticleCounts(ctx context.Context, userID uuid.UUID, since time.Time) ([]domain.TagArticleCount, error) {

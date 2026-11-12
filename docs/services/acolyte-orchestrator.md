@@ -220,12 +220,12 @@ listed below so this table works as a reference for either.
 One switch drives both halves: `complete_run` writes a `notification_outbox` row
 (acolyte-db) inside the completion transaction, and a relay task forwards it to
 `DataHubService/EnqueueNotification` over mTLS. Fail-fast when half-configured —
-see `acolyte-orchestrator/CLAUDE.md`.
+see `acolyte-orchestrator/CLAUDE.md`. Each notification is addressed to the
+owner recorded on the completed report; reports without an owner are skipped.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NOTIFICATIONS_ENABLED` | `false` | Enable the outbox producer + relay |
-| `NOTIFICATION_USER_ID` | - | Recipient UUID; required when enabled (acolyte-db has no owner column) |
 | `DATAHUB_URL` | - | `alt-data-hub` mTLS endpoint (e.g. `https://alt-data-hub:9443`); required when enabled |
 
 #### Legacy Report Ownership Backfill & Startup Gate

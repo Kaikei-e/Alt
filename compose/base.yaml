@@ -5,14 +5,15 @@
 name: alt
 
 secrets:
-  backend_token_secret:
-    file: ../secrets/backend_token_secret.txt
+  # Ed25519 key pair for the backend token: auth-hub signs with the private
+  # key (PKCS#8 PEM); every verifier gets only the public key (SPKI PEM).
+  backend_token_signing_key:
+    file: ../secrets/backend_token_signing_key.txt
+  backend_token_verify_key:
+    file: ../secrets/backend_token_verify_key.txt
   # The shared bearer auth-hub's /internal group compares X-Internal-Auth
-  # against. Deliberately a different value from backend_token_secret: that one
-  # is the HS256 key auth-hub signs browser tokens with, and it used to do both
-  # jobs — which put the signing key in a plaintext header on every
-  # alt-data-hub GetSystemUser call, and from there into nginx access logs and
-  # OTel span attributes. auth-hub refuses to start when the two match.
+  # against. It travels in a plaintext header on every alt-data-hub
+  # GetSystemUser call, so it is a separate value from the token signing key.
   # Unrelated to internal_auth_token below, which is auth-token-manager's.
   auth_hub_internal_secret:
     file: ../secrets/auth_hub_internal_secret.txt
@@ -177,8 +178,10 @@ secrets:
     file: ../secrets/pushover_token.txt
   redis_password:
     file: ../secrets/redis_password.txt
-  redis_streams_password:
-    file: ../secrets/redis_streams_password.txt
+  redis_streams_producer_password:
+    file: ../secrets/redis_streams_producer_password.txt
+  redis_streams_consumer_password:
+    file: ../secrets/redis_streams_consumer_password.txt
   redis_cache_password:
     file: ../secrets/redis_cache_password.txt
   redis_limiter_password:

@@ -22,9 +22,10 @@ The Alt platform uses a 3-2-1 backup strategy:
 
 | Tier | Location | Retention | Purpose |
 |------|----------|-----------|---------|
-| Hot | `/backups/postgres/` | 7 days | Quick point-in-time recovery |
-| Warm | `/backups/restic-repo/` | 30 days | Local disaster recovery |
+| Warm | `/backups/restic-repo/` | 24 hourly, 7 daily, 4 weekly, 3 monthly | Local disaster recovery, including the PostgreSQL dumps |
 | Cold | Remote server (via `REMOTE_REPO`) | Configurable (default: 30 daily, 12 weekly, 6 monthly) | Offsite disaster recovery |
+
+PostgreSQL dumps are piped from `pg_dump` into `restic backup --stdin` (snapshot path `postgres/<name>.dump`; each run is first tagged `pgdump-<name>-<timestamp>`, and the selectable tags `pg-dump` and `pg-<name>` are added only after both `pg_dump` and restic succeeded, so restore and metrics never see a failed dump), so no plaintext dump file exists on the host. Dump files left in `/backups/postgres/` by earlier runs are plaintext; once a streamed snapshot has been verified with `restore-verify.sh`, remove that directory. The backup run requires a non-empty Restic password file and fails otherwise.
 
 ### Data Priority
 
@@ -63,8 +64,8 @@ volume is present.
 # Check latest Restic snapshots
 restic -r /backups/restic-repo snapshots --latest 5
 
-# Check PostgreSQL backups
-ls -lth /backups/postgres/*.dump | head -10
+# Check PostgreSQL dump snapshots (dumps are streamed into the encrypted repository, never written as files)
+restic -r /backups/restic-repo snapshots --tag pg-dump --latest 5
 
 # Check backup metrics
 cat /backups/metrics/backup_metrics.prom
@@ -111,19 +112,19 @@ restic -r sftp:backup-server:/backups/alt/restic-repo snapshots
 Use this when you need to restore a specific database without affecting others.
 
 ```bash
-# 1. List available PostgreSQL backups
-ls -lth /backups/postgres/alt-db-*.dump
+# 1. List available PostgreSQL dump snapshots
+restic -r /backups/restic-repo snapshots --tag pg-alt-db
 
 # 2. Stop the application (optional but recommended)
 docker compose -f compose/compose.yaml -p alt stop alt-backend
 
-# 3. Restore from pg_dump
-docker exec -i alt-db pg_restore \
-    -U postgres \
-    -d alt \
-    --clean \
-    --if-exists \
-    < /backups/postgres/alt-db-20260131_030000.dump
+# 3. Restore from pg_dump (streamed straight from the repository; use a snapshot ID instead of "latest" for an older dump)
+restic -r /backups/restic-repo dump latest /postgres/alt-db.dump --tag pg-alt-db \
+    | docker exec -i alt-db pg_restore \
+        -U postgres \
+        -d alt \
+        --clean \
+        --if-exists
 
 # 4. Restart application
 docker compose -f compose/compose.yaml -p alt start alt-backend
@@ -277,8 +278,8 @@ The platform includes automated restore verification that runs weekly (Sunday at
 
 ### What It Verifies
 
-1. **Restic Snapshot**: Restores the latest snapshot to a temporary directory
-2. **PostgreSQL Dumps**: Spins up temporary PostgreSQL containers and attempts `pg_restore`
+1. **Restic Snapshot**: Restores the latest volume snapshot (tag `scheduled`, or the one given with `--snapshot`) to a temporary directory
+2. **PostgreSQL Dumps**: Fetches `postgres/<name>.dump` from the latest `pg-<name>` snapshot of each database into a private temporary directory, spins up temporary PostgreSQL containers and attempts `pg_restore`
 3. **Volume Data**: Checks that restored volume directories contain data
 4. **Metrics**: Writes Prometheus metrics for monitoring
 
@@ -379,9 +380,6 @@ ps aux | grep restic
 ```bash
 # Check disk usage
 df -h /backups
-
-# Remove old PostgreSQL backups
-find /backups/postgres -name "*.dump" -mtime +3 -delete
 
 # Prune Restic repository
 restic -r /backups/restic-repo forget \
@@ -499,7 +497,6 @@ mv /backups/restic-repo-new /backups/restic-repo
 
 | Path | Purpose |
 |------|---------|
-| `/backups/postgres/` | PostgreSQL dump files |
 | `/backups/restic-repo/` | Local Restic repository |
 | `/backups/logs/` | Backup operation logs |
 | `/backups/metrics/` | Prometheus metrics |

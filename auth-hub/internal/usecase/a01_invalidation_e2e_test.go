@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"log/slog"
 	"testing"
@@ -24,26 +26,33 @@ import (
 // These are unit tests — no network, no real Kratos — but every domain
 // collaboration is the production wiring minus the IO.
 
-const testJWTSecret = "test-backend-jwt-secret-at-least-32-chars-long"
+func generateA01KeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	return pub, priv
+}
 
 // newRealJWTIssuer returns an infrastructure-layer JWTIssuer with the
 // production token bounds (5 min TTL, auth-hub issuer, alt-backend audience).
-func newRealJWTIssuer() *token.JWTIssuer {
+func newRealJWTIssuer(t *testing.T) (*token.JWTIssuer, ed25519.PublicKey) {
+	t.Helper()
+	pub, priv := generateA01KeyPair(t)
 	return token.NewJWTIssuer(token.JWTConfig{
-		Secret:   testJWTSecret,
-		Issuer:   "auth-hub",
-		Audience: "alt-backend",
-		TTL:      5 * time.Minute,
-	})
+		PrivateKey: priv,
+		Issuer:     "auth-hub",
+		Audience:   "alt-backend",
+		TTL:        5 * time.Minute,
+	}), pub
 }
 
-// parseAndValidateJWT verifies a token string with the test secret and returns
+// parseAndValidateJWT verifies a token string with the test public key and returns
 // the parsed claims map.
-func parseAndValidateJWT(t *testing.T, tokenStr string) jwt.MapClaims {
+func parseAndValidateJWT(t *testing.T, tokenStr string, pub ed25519.PublicKey) jwt.MapClaims {
 	t.Helper()
 	parsed, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-		return []byte(testJWTSecret), nil
-	})
+		return pub, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}))
 	require.NoError(t, err)
 	require.True(t, parsed.Valid)
 	claims, ok := parsed.Claims.(jwt.MapClaims)
@@ -75,7 +84,7 @@ func TestA01_InvalidateViaUsecasePreventsReissuance(t *testing.T) {
 	validator.identities[fullCookie] = victimIdentity
 
 	cache := newMockCache()
-	realIssuer := newRealJWTIssuer()
+	realIssuer, pub := newRealJWTIssuer(t)
 	getUC := NewGetSession(validator, cache, realIssuer, logger)
 	invalidateUC := NewInvalidateSession(cache, logger)
 
@@ -85,7 +94,7 @@ func TestA01_InvalidateViaUsecasePreventsReissuance(t *testing.T) {
 	require.NotEmpty(t, res.BackendToken)
 
 	// The JWT is real: verify it parses, has correct claims, and ≤5m expiry.
-	claims := parseAndValidateJWT(t, res.BackendToken)
+	claims := parseAndValidateJWT(t, res.BackendToken, pub)
 	assert.Equal(t, "victim-001", claims["sub"])
 	assert.Equal(t, "kratos-sess-a01", claims["sid"])
 	exp := claims["exp"].(float64)
@@ -127,7 +136,7 @@ func TestA01_CacheRefillResidual(t *testing.T) {
 	}
 
 	cache := newMockCache()
-	realIssuer := newRealJWTIssuer()
+	realIssuer, _ := newRealJWTIssuer(t)
 	getUC := NewGetSession(validator, cache, realIssuer, logger)
 
 	// Step 1: Populate cache with legitimate session.
@@ -160,11 +169,12 @@ func TestA01_CacheRefillResidual(t *testing.T) {
 // configuration invariants hold at the config layer: cache ≤ 60s, JWT ≤ 5m.
 func TestA01_RealIssuer_CacheTTLAndTokenTTLBounds(t *testing.T) {
 	t.Run("JWT_TTL_at_max_boundary", func(t *testing.T) {
+		pub, priv := generateA01KeyPair(t)
 		issuer := token.NewJWTIssuer(token.JWTConfig{
-			Secret:   testJWTSecret,
-			Issuer:   "auth-hub",
-			Audience: "alt-backend",
-			TTL:      5 * time.Minute,
+			PrivateKey: priv,
+			Issuer:     "auth-hub",
+			Audience:   "alt-backend",
+			TTL:        5 * time.Minute,
 		})
 
 		ident := &domain.Identity{
@@ -177,7 +187,7 @@ func TestA01_RealIssuer_CacheTTLAndTokenTTLBounds(t *testing.T) {
 		tokStr, err := issuer.IssueBackendToken(ident, "sess-ttl")
 		require.NoError(t, err)
 
-		claims := parseAndValidateJWT(t, tokStr)
+		claims := parseAndValidateJWT(t, tokStr, pub)
 		exp := claims["exp"].(float64)
 		iat := claims["iat"].(float64)
 		ttl := time.Duration(exp-iat) * time.Second
@@ -186,18 +196,19 @@ func TestA01_RealIssuer_CacheTTLAndTokenTTLBounds(t *testing.T) {
 	})
 
 	t.Run("JWT_TTL_under_max", func(t *testing.T) {
+		pub, priv := generateA01KeyPair(t)
 		issuer := token.NewJWTIssuer(token.JWTConfig{
-			Secret:   testJWTSecret,
-			Issuer:   "auth-hub",
-			Audience: "alt-backend",
-			TTL:      2 * time.Minute,
+			PrivateKey: priv,
+			Issuer:     "auth-hub",
+			Audience:   "alt-backend",
+			TTL:        2 * time.Minute,
 		})
 
 		ident := &domain.Identity{UserID: "u", TenantID: "u"}
 		tokStr, err := issuer.IssueBackendToken(ident, "s")
 		require.NoError(t, err)
 
-		claims := parseAndValidateJWT(t, tokStr)
+		claims := parseAndValidateJWT(t, tokStr, pub)
 		exp := claims["exp"].(float64)
 		iat := claims["iat"].(float64)
 		ttl := time.Duration(exp-iat) * time.Second

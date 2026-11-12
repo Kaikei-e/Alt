@@ -12,6 +12,7 @@ include:
 x-pki-cert-volume-chown: &pki-cert-volume-chown
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c
@@ -19,6 +20,10 @@ x-pki-cert-volume-chown: &pki-cert-volume-chown
 
 services:
   alt-butterfly-facade:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-butterfly-facade:${IMAGE_TAG:-main}
     build:
       context: ../alt-butterfly-facade
@@ -33,7 +38,7 @@ services:
       # secret as alt-backend's OPERATOR_TOKEN_FILE in compose/core.yaml.
       - BACKEND_OPERATOR_TOKEN_FILE=/run/secrets/backend_operator_token
       - BACKEND_REST_URL=http://alt-backend:9000
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BFF_REQUEST_TIMEOUT=30s
@@ -95,7 +100,7 @@ services:
       - RENEW_AT_FRACTION=0.66
       - OPS_LISTEN=:9110
     secrets:
-      - backend_token_secret
+      - backend_token_verify_key
       - pki-agent-alt-butterfly-facade-jwk
       - backend_operator_token
     ports:

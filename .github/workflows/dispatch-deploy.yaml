@@ -43,9 +43,10 @@ on:
 permissions:
   contents: read
 
+# Each run enumerates only its own push's changes, so a cancelled run would lose them.
 concurrency:
   group: dispatch-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   dispatch:

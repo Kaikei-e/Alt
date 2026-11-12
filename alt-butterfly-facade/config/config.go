@@ -2,6 +2,9 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -20,10 +23,9 @@ type Config struct {
 	BackendInternalConnectURL string
 	// BackendRESTURL is the URL of the alt-backend REST API service
 	BackendRESTURL string
-	// BackendTokenSecretFile is the path to the backend token secret file
-	BackendTokenSecretFile string
-	// BackendTokenSecret is the backend token secret (alternative to file)
-	BackendTokenSecret string
+	// BackendTokenVerifyKeyFile is the path to the PEM-encoded Ed25519 public
+	// key (SPKI) that verifies backend tokens
+	BackendTokenVerifyKeyFile string
 	// BackendTokenIssuer is the expected issuer of backend tokens
 	BackendTokenIssuer string
 	// BackendTokenAudience is the expected audience of backend tokens
@@ -87,8 +89,7 @@ func NewConfig() *Config {
 		BackendConnectURL:         getEnv("BACKEND_CONNECT_URL", "http://alt-backend:9101"),
 		BackendInternalConnectURL: getEnv("BACKEND_INTERNAL_CONNECT_URL", "http://alt-backend:9102"),
 		BackendRESTURL:            getEnv("BACKEND_REST_URL", "http://alt-backend:9000"),
-		BackendTokenSecretFile:    getEnv("BACKEND_TOKEN_SECRET_FILE", ""),
-		BackendTokenSecret:        getEnv("BACKEND_TOKEN_SECRET", ""),
+		BackendTokenVerifyKeyFile: getEnv("BACKEND_TOKEN_VERIFY_KEY_FILE", ""),
 		BackendTokenIssuer:        getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
 		BackendTokenAudience:      getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
 		RequestTimeout:            getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
@@ -129,35 +130,28 @@ func NewConfig() *Config {
 	}
 }
 
-// minBackendTokenSecretLen mirrors auth-hub's BACKEND_TOKEN_SECRET validation
-// (auth-hub/config/config.go): both services sign/verify the same JWT, so
-// their minimum key strength must match.
-const minBackendTokenSecretLen = 32
-
-// LoadBackendTokenSecret loads the backend token secret from file or environment.
-func (c *Config) LoadBackendTokenSecret() ([]byte, error) {
-	// Try to load from file first
-	if c.BackendTokenSecretFile != "" {
-		data, err := os.ReadFile(c.BackendTokenSecretFile)
-		if err != nil {
-			return nil, err
-		}
-		secret := strings.TrimSpace(string(data))
-		if len(secret) < minBackendTokenSecretLen {
-			return nil, errors.New("backend token secret from BACKEND_TOKEN_SECRET_FILE must be at least 32 characters")
-		}
-		return []byte(secret), nil
+// LoadBackendTokenVerifyKey loads the Ed25519 public key used to verify backend tokens.
+func (c *Config) LoadBackendTokenVerifyKey() (ed25519.PublicKey, error) {
+	if c.BackendTokenVerifyKeyFile == "" {
+		return nil, errors.New("backend token verify key not configured: set BACKEND_TOKEN_VERIFY_KEY_FILE")
 	}
-
-	// Fall back to environment variable
-	if c.BackendTokenSecret != "" {
-		if len(c.BackendTokenSecret) < minBackendTokenSecretLen {
-			return nil, errors.New("BACKEND_TOKEN_SECRET must be at least 32 characters")
-		}
-		return []byte(c.BackendTokenSecret), nil
+	data, err := os.ReadFile(c.BackendTokenVerifyKeyFile)
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, errors.New("backend token secret not configured: set BACKEND_TOKEN_SECRET_FILE or BACKEND_TOKEN_SECRET")
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		return nil, errors.New("BACKEND_TOKEN_VERIFY_KEY_FILE must contain a PEM \"PUBLIC KEY\" block")
+	}
+	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse backend token verify key: %w", err)
+	}
+	key, ok := parsed.(ed25519.PublicKey)
+	if !ok {
+		return nil, errors.New("backend token verify key must be an Ed25519 public key")
+	}
+	return key, nil
 }
 
 // minOperatorTokenLen matches alt-backend's minimum so a truncated secret fails

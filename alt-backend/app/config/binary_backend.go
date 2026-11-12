@@ -20,7 +20,7 @@ func ValidateBackendListeners(cfg *Config) error {
 	if cfg.Server.Port == cfg.Server.ConnectPort {
 		return fmt.Errorf("SERVER_PORT and CONNECT_PORT must differ, both are %d", cfg.Server.Port)
 	}
-	return nil
+	return ValidateEdgeTrust()
 }
 
 // operatorListenAddrEnv names the backend's operator listener bind address.
@@ -77,7 +77,7 @@ func ValidateBackendConfig(cfg *Config) error {
 		env   string
 		value string
 	}{
-		{"BACKEND_TOKEN_SECRET", cfg.Auth.BackendTokenSecret},
+		{backendTokenVerifyKeyFileEnv, os.Getenv(backendTokenVerifyKeyFileEnv)},
 		{"SOVEREIGN_URL", cfg.Sovereign.URL},
 		{"SEARCH_INDEXER_CONNECT_URL", cfg.SearchIndexer.ConnectURL},
 		{"MQHUB_CONNECT_URL", cfg.MQHub.ConnectURL},
@@ -89,6 +89,9 @@ func ValidateBackendConfig(cfg *Config) error {
 	}
 	if err := requireAll("backend", required); err != nil {
 		return err
+	}
+	if err := loadBackendTokenVerifyKey(&cfg.Auth, os.ReadFile); err != nil {
+		return fmt.Errorf("backend config: %w", err)
 	}
 	if strings.EqualFold(strings.TrimSpace(cfg.Sovereign.URL), "disabled") && cfg.AppEnv == "production" {
 		return fmt.Errorf("backend config: SOVEREIGN_URL=disabled is not permitted in production")

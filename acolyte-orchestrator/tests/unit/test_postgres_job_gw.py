@@ -74,7 +74,7 @@ async def _conn_cm(conn: _FakeConnection) -> AsyncIterator[_FakeConnection]:
 def _gw(conn: _FakeConnection) -> PostgresJobGateway:
     # Notifications off — the outbox producer has its own module,
     # tests/unit/test_notification_outbox_producer.py.
-    return PostgresJobGateway(_FakePool(conn), notification_user_id=None)  # type: ignore[arg-type]
+    return PostgresJobGateway(_FakePool(conn), notifications_enabled=False)  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,10 @@ include:
 
 services:
   alt-perf:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ../alt-perf
       dockerfile: Dockerfile

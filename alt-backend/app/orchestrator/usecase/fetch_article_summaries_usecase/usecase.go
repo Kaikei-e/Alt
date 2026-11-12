@@ -7,9 +7,11 @@ package fetch_article_summaries_usecase
 
 import (
 	"alt/domain"
+	"alt/orchestrator/port/summarize_quota_port"
 	"alt/utils/batch_article_fetcher"
 	"alt/utils/logger"
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 )
@@ -32,6 +34,7 @@ type ArticleBatchFetcher interface {
 // article, generating and saving one if it is not already cached.
 // Satisfied structurally by *summarize_article_usecase.Usecase.
 type ArticleSummarizer interface {
+	GetCachedSummary(ctx context.Context, articleID string) (summary string, ok bool)
 	EnsureSummary(ctx context.Context, articleID, userID, title string) (summary string, fromCache bool, err error)
 }
 
@@ -49,11 +52,16 @@ type Usecase struct {
 	repo       ArticleRepository
 	fetcher    ArticleBatchFetcher
 	summarizer ArticleSummarizer
+	quota      summarize_quota_port.SummarizeQuotaPort
 }
 
-// NewUsecase creates a Usecase.
-func NewUsecase(repo ArticleRepository, fetcher ArticleBatchFetcher, summarizer ArticleSummarizer) *Usecase {
-	return &Usecase{repo: repo, fetcher: fetcher, summarizer: summarizer}
+// NewUsecase creates a Usecase. Every summary that has to be generated is
+// charged to quota.
+func NewUsecase(repo ArticleRepository, fetcher ArticleBatchFetcher, summarizer ArticleSummarizer, quota summarize_quota_port.SummarizeQuotaPort) *Usecase {
+	if quota == nil {
+		panic("fetch_article_summaries_usecase: summarize quota port is not wired")
+	}
+	return &Usecase{repo: repo, fetcher: fetcher, summarizer: summarizer, quota: quota}
 }
 
 type articleInfo struct {
@@ -66,11 +74,15 @@ type articleInfo struct {
 // Execute resolves feedURLs and returns the summary for each one that could
 // be resolved. URLs that fail to resolve (fetch error, save error, missing
 // article) are logged and skipped, matching the legacy handler's
-// continue-on-error behavior.
+// continue-on-error behavior. Cached summaries are always returned. Each
+// summary that has to be generated costs one quota token; once the budget is
+// exhausted the remaining uncached articles are skipped like any other
+// article whose summary is not available.
 func (u *Usecase) Execute(ctx context.Context, userID string, feedURLs []string) []Result {
 	articles := u.resolveArticles(ctx, feedURLs)
 
 	results := make([]Result, 0, len(feedURLs))
+	budgetExhausted := false
 	for _, feedURL := range feedURLs {
 		info, ok := articles[feedURL]
 		if !ok || info.err != nil || !info.exists || info.id == "" {
@@ -80,10 +92,24 @@ func (u *Usecase) Execute(ctx context.Context, userID string, feedURLs []string)
 			continue
 		}
 
-		summary, fromCache, err := u.summarizer.EnsureSummary(ctx, info.id, userID, info.title)
-		if err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to summarize article", "error", err, "url", feedURL, "article_id", info.id)
-			continue
+		summary, fromCache := u.summarizer.GetCachedSummary(ctx, info.id)
+		if !fromCache {
+			if budgetExhausted {
+				continue
+			}
+			if err := u.quota.ChargeSummarization(ctx); err != nil {
+				if !errors.Is(err, summarize_quota_port.ErrBudgetExhausted) {
+					logger.Logger.ErrorContext(ctx, "summarization budget check failed", "error", err)
+				}
+				budgetExhausted = true
+				continue
+			}
+			var err error
+			summary, fromCache, err = u.summarizer.EnsureSummary(ctx, info.id, userID, info.title)
+			if err != nil {
+				logger.Logger.ErrorContext(ctx, "failed to summarize article", "error", err, "url", feedURL, "article_id", info.id)
+				continue
+			}
 		}
 
 		results = append(results, Result{

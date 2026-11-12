@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"io"
 	"log/slog"
 	"net/http"
@@ -24,9 +25,8 @@ func TestNewProxyHandler(t *testing.T) {
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	secret := []byte("test-secret")
 
-	handler := NewProxyHandler(backendClient, secret, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	assert.NotNil(t, handler)
 }
@@ -38,7 +38,7 @@ func TestProxyHandler_ApplyConnectTimeout_WithHeader(t *testing.T) {
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Set("Connect-Timeout-Ms", "120000")
@@ -61,7 +61,7 @@ func TestProxyHandler_ApplyConnectTimeout_WithoutHeader(t *testing.T) {
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 
@@ -83,7 +83,7 @@ func TestProxyHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Set("Connect-Timeout-Ms", "999999999") // ~277 hours
@@ -106,7 +106,7 @@ func TestProxyHandler_ApplyConnectTimeout_StreamingUsesStreamingTimeout(t *testi
 		40*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.augur.v2.AugurService/StreamChat", nil)
 
@@ -128,7 +128,7 @@ func TestProxyHandler_ApplyConnectTimeout_StreamingNotCappedAtUnaryMax(t *testin
 		40*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
 
 	// Streaming request with Connect-Timeout-Ms = 10 minutes (exceeds unary 5 min cap)
 	req := httptest.NewRequest(http.MethodPost, "/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates", nil)
@@ -152,7 +152,7 @@ func TestProxyHandler_ApplyConnectTimeout_StreamingCappedAtStreamingMax(t *testi
 		40*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
 
 	// Streaming request with absurdly large Connect-Timeout-Ms
 	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/StreamFeedStats", nil)
@@ -176,7 +176,7 @@ func TestProxyHandler_ApplyConnectTimeout_UnaryUsesDefaultTimeout(t *testing.T) 
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", nil)
 
@@ -210,7 +210,7 @@ func TestProxyHandler_ServeHTTP_Success(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	// Create request with valid token
 	req := httptest.NewRequest(
@@ -219,7 +219,7 @@ func TestProxyHandler_ServeHTTP_Success(t *testing.T) {
 		strings.NewReader("request"),
 	)
 	req.Header.Set("Content-Type", "application/proto")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -236,7 +236,7 @@ func TestProxyHandler_ServeHTTP_MissingToken(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	recorder := httptest.NewRecorder()
@@ -254,7 +254,7 @@ func TestProxyHandler_ServeHTTP_InvalidToken(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Set("X-Alt-Backend-Token", "invalid-token")
@@ -279,10 +279,10 @@ func TestProxyHandler_ServeHTTP_BackendError(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	recorder := httptest.NewRecorder()
 
 	handler.ServeHTTP(recorder, req)
@@ -312,14 +312,14 @@ func TestProxyHandler_ServeHTTP_StreamingRequest(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/alt.feeds.v2.FeedService/StreamFeedStats",
 		nil,
 	)
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -355,7 +355,7 @@ func TestProxyHandler_ServeHTTP_LogsAccess(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", logger, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", logger, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -363,7 +363,7 @@ func TestProxyHandler_ServeHTTP_LogsAccess(t *testing.T) {
 		strings.NewReader(`{}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -378,7 +378,7 @@ func TestProxyHandler_ServeHTTP_LogsAccess(t *testing.T) {
 }
 
 // createValidToken creates a valid JWT for testing
-func createValidToken(t *testing.T, secret []byte) string {
+func createValidToken(t *testing.T, key ed25519.PrivateKey) string {
 	t.Helper()
 
 	claims := jwt.MapClaims{
@@ -392,8 +392,8 @@ func createValidToken(t *testing.T, secret []byte) string {
 		"iat":   time.Now().Unix(),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenStr, err := token.SignedString(secret)
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	tokenStr, err := token.SignedString(key)
 	if err != nil {
 		t.Fatalf("failed to create test token: %v", err)
 	}
@@ -413,8 +413,8 @@ func TestProxyHandler_ServeHTTP_RejectsOversizedUnaryRequestBody(t *testing.T) {
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
-	token := createValidToken(t, []byte("test-secret"))
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	token := createValidToken(t, testPrivateKey)
 
 	t.Run("known Content-Length exceeding maxRequestBodyBytes", func(t *testing.T) {
 		oversized := bytes.NewReader(make([]byte, maxRequestBodyBytes+1))
@@ -475,11 +475,11 @@ func TestProxyHandler_ServeHTTP_BoundsUnaryResponseBody(t *testing.T) {
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader("req"))
 	req.Header.Set("Content-Type", "application/proto")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)

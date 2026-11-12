@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -20,25 +22,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const a01TestJWTSecret = "a01-handler-jwt-secret-at-least-32-chars-long"
-
-// TestA01_Handler_InvalidateThenSession exercises the production HTTP path:
-//
-//  1. GET /session → real JWT issued, cache populated.
-//  2. POST /session/invalidate → cache purged via handler.
-//  3. GET /session → must fail (simulated Kratos revoked).
-//
-// The JWT is minted by the real token.JWTIssuer, not a mock.
 func TestA01_Handler_InvalidateThenSession(t *testing.T) {
 	e := echo.New()
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 
 	// Build real infrastructure components.
 	sessionCache := cache.NewSessionCache(60 * time.Second)
 	realIssuer := token.NewJWTIssuer(token.JWTConfig{
-		Secret:   a01TestJWTSecret,
-		Issuer:   "auth-hub",
-		Audience: "alt-backend",
-		TTL:      5 * time.Minute,
+		PrivateKey: priv,
+		Issuer:     "auth-hub",
+		Audience:   "alt-backend",
+		TTL:        5 * time.Minute,
 	})
 
 	// A validator that can be revoked mid-test.
@@ -78,8 +74,8 @@ func TestA01_Handler_InvalidateThenSession(t *testing.T) {
 
 		// Parse and validate the JWT is real and well-formed.
 		parsed, err := jwtlib.Parse(backendToken, func(t *jwtlib.Token) (interface{}, error) {
-			return []byte(a01TestJWTSecret), nil
-		})
+			return pub, nil
+		}, jwtlib.WithValidMethods([]string{jwtlib.SigningMethodEdDSA.Alg()}))
 		require.NoError(t, err)
 		require.True(t, parsed.Valid)
 

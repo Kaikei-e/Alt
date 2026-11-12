@@ -3,11 +3,20 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
+
+// ErrDedupeKeyTenantMismatch indicates that a dedupe_key already exists for a different tenant.
+var ErrDedupeKeyTenantMismatch = errors.New("dedupe_key belongs to another tenant")
+
+// ErrDedupeOwnerUnresolved indicates that a dedupe_key exists in knowledge_event_dedupes
+// but its backing knowledge_events row could not be read.
+var ErrDedupeOwnerUnresolved = errors.New("dedupe_key owner unresolved")
 
 // KnowledgeEvent represents a single event in the knowledge event store.
 type KnowledgeEvent struct {
@@ -205,6 +214,21 @@ func (r *Repository) AppendKnowledgeEventIfNew(ctx context.Context, event Knowle
 		return 0, false, fmt.Errorf("AppendKnowledgeEvent dedupe check: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		const ownerQuery = `SELECT e.tenant_id
+			FROM knowledge_event_dedupes d
+			JOIN knowledge_events e
+			  ON e.event_id = d.event_id AND e.occurred_at = d.occurred_at
+			WHERE d.dedupe_key = $1`
+		var existingTenantID uuid.UUID
+		if err := tx.QueryRow(ctx, ownerQuery, event.DedupeKey).Scan(&existingTenantID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return 0, false, fmt.Errorf("AppendKnowledgeEvent dedupe ownership unresolved: %w", ErrDedupeOwnerUnresolved)
+			}
+			return 0, false, fmt.Errorf("AppendKnowledgeEvent dedupe tenant lookup: %w", err)
+		}
+		if existingTenantID != event.TenantID {
+			return 0, false, ErrDedupeKeyTenantMismatch
+		}
 		return 0, false, nil // duplicate, idempotent — nothing to commit
 	}
 

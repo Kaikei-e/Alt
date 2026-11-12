@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"os"
@@ -95,12 +96,63 @@ func TestShouldQueueSummarizeJob(t *testing.T) {
 		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-3", gomock.Any()).Return(false, nil)
 		mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-3").Return(false, nil)
 		mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-3", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-3").Return(0, nil)
 
 		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-3", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
 
 		require.NoError(t, err)
 		require.True(t, shouldQueue)
 		require.Empty(t, reason)
+	})
+
+	t.Run("allows re-summarization when invalidated completed jobs are fewer than limit", func(t *testing.T) {
+		for _, invalidatedCount := range []int{1, 2} {
+			ctrl := gomock.NewController(t)
+
+			mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+			mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+			mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-retry").Return(false, nil)
+			mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-retry", gomock.Any()).Return(false, nil)
+			mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-retry", gomock.Any()).Return(false, nil)
+			mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-retry").Return(false, nil)
+			mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-retry", gomock.Any()).Return(false, nil)
+			mockJobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-retry").Return(invalidatedCount, nil)
+
+			shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-retry", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
+
+			require.NoError(t, err)
+			require.True(t, shouldQueue, "invalidatedCount=%d should still allow re-summarization", invalidatedCount)
+			require.Empty(t, reason)
+			ctrl.Finish()
+		}
+	})
+
+	t.Run("skips permanently and logs info when invalidated completed jobs reach limit", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-low-score").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-low-score", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-low-score", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-low-score").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-low-score", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-low-score").Return(3, nil)
+
+		var logBuf bytes.Buffer
+		infoLogger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-low-score", mockSummaryRepo, mockJobRepo, infoLogger)
+
+		require.NoError(t, err)
+		require.False(t, shouldQueue)
+		require.Equal(t, "low_quality_retries_exhausted", reason)
+		assert.Contains(t, logBuf.String(), "level=INFO")
+		assert.Contains(t, logBuf.String(), "article-low-score")
+		assert.Contains(t, logBuf.String(), "low_quality_retries_exhausted")
 	})
 
 	// DEFECT: an article whose model call the LLM can never process
@@ -247,6 +299,27 @@ func TestShouldQueueSummarizeJob(t *testing.T) {
 		mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-err-5", gomock.Any()).Return(false, assert.AnError)
 
 		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-err-5", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
+
+		require.ErrorIs(t, err, assert.AnError)
+		require.False(t, shouldQueue)
+		require.Empty(t, reason)
+	})
+
+	t.Run("propagates the underlying error when CountInvalidatedCompletedJobs fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-err-6").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-err-6", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-err-6", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-err-6").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-err-6", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-err-6").Return(0, assert.AnError)
+
+		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-err-6", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
 
 		require.ErrorIs(t, err, assert.AnError)
 		require.False(t, shouldQueue)

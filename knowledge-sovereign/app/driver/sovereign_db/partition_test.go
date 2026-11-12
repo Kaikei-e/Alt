@@ -69,24 +69,6 @@ func TestAppendKnowledgeEvent_DedupeRegistryInsert(t *testing.T) {
 	})
 
 	t.Run("duplicate event returns 0 without inserting into events", func(t *testing.T) {
-		mock := &mockPgx{}
-		eventInserted := false
-
-		mock.execFunc = func(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
-			if containsSQL(sql, "knowledge_event_dedupes") {
-				// Simulate ON CONFLICT DO NOTHING (0 rows affected)
-				return pgconn.NewCommandTag("INSERT 0 0"), nil
-			}
-			return pgconn.NewCommandTag("INSERT 0 1"), nil
-		}
-		mock.queryRowFunc = func(_ context.Context, sql string, _ ...interface{}) pgx.Row {
-			if containsSQL(sql, "knowledge_events") {
-				eventInserted = true
-			}
-			return &mockRow{}
-		}
-
-		repo := NewRepository(mock)
 		event := KnowledgeEvent{
 			EventID:       uuid.New(),
 			OccurredAt:    time.Now(),
@@ -98,7 +80,32 @@ func TestAppendKnowledgeEvent_DedupeRegistryInsert(t *testing.T) {
 			DedupeKey:     "ArticleCreated:" + uuid.New().String(),
 			Payload:       json.RawMessage(`{}`),
 		}
+		mock := &mockPgx{}
+		eventInserted := false
 
+		mock.execFunc = func(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
+			if containsSQL(sql, "knowledge_event_dedupes") {
+				// Simulate ON CONFLICT DO NOTHING (0 rows affected)
+				return pgconn.NewCommandTag("INSERT 0 0"), nil
+			}
+			return pgconn.NewCommandTag("INSERT 0 1"), nil
+		}
+		mock.queryRowFunc = func(_ context.Context, sql string, _ ...interface{}) pgx.Row {
+			if containsSQL(sql, "INSERT INTO knowledge_events") {
+				eventInserted = true
+				return &mockRow{}
+			}
+			return &mockRow{scanFunc: func(dest ...interface{}) error {
+				if len(dest) > 0 {
+					if p, ok := dest[0].(*uuid.UUID); ok {
+						*p = event.TenantID
+					}
+				}
+				return nil
+			}}
+		}
+
+		repo := NewRepository(mock)
 		seq, err := repo.AppendKnowledgeEvent(context.Background(), event)
 		require.NoError(t, err)
 		assert.Equal(t, int64(0), seq, "duplicate should return 0")

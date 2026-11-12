@@ -70,10 +70,11 @@ test.describe("job status", () => {
  * `/v1/feeds/summarize/stream` — entirely new coverage.
  *
  * The Hurl suite excluded it with "NDJSON chunked-transfer framing is out of
- * scope", which left three pieces of hand-written middleware configuration
- * untested, each of which exists *only* for this route:
+ * scope", which left the middleware configuration around this route
+ * untested:
  *
- *   1. `BodyLimitWithConfig`'s Skipper (`/stream`) — H-005.
+ *   1. The request body limit, which applies here as on every other route:
+ *      only the response streams, the request is an ordinary JSON body.
  *   2. `TimeoutWithConfig`'s Skipper (`/stream`).
  *   3. The DoS whitelist entry `/v1/feeds/summarize/stream` — M-005 made that
  *      an exact match rather than a substring, so a route rename silently
@@ -113,12 +114,10 @@ test.describe("streaming summarisation", () => {
 		await expectStatus(response, 401);
 	});
 
-	test("is exempt from the 2MB body limit", async ({ rest, csrf }) => {
-		// H-005's Skipper. The same payload on a non-streaming route is a 413
-		// (asserted in tests/security-headers.spec.ts); here it must get past
-		// the limiter and be answered by the handler instead. Any status other
-		// than 413 proves the skipper fired — what it then answers depends on
-		// the upstream, which is not what this test is about.
+	test("is bound by the 2 MiB body limit", async ({ rest, csrf }) => {
+		// Being on the DoS whitelist exempts the route from rate limiting, not
+		// from the body limit: the same payload is a 413 on a non-streaming
+		// route too (asserted in tests/security-headers.spec.ts).
 		const oversize = "x".repeat(3 * 1024 * 1024);
 		const response = await rest.post("/v1/feeds/summarize/stream", {
 			headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
@@ -126,8 +125,8 @@ test.describe("streaming summarisation", () => {
 		});
 		expect(
 			response.status(),
-			"413 means the /stream skipper stopped matching — check BodyLimitConfig.Skipper",
-		).not.toBe(413);
+			"anything but 413 means the body limit stopped covering the streaming route",
+		).toBe(413);
 	});
 
 	test("resolving a stub article fails in the SSRF guard, not in a panic", async ({

@@ -321,9 +321,14 @@ func mountReadStateAndTagProcedures(mux *http.ServeMux) {
 			"sharedCount": 4,
 		}},
 	}))
-	dataHubProcedure(mux, "SearchTagsByPrefix", jsonPost(map[string]interface{}{
-		"hits": []map[string]interface{}{{"tagName": "AI", "articleCount": 42}},
-	}))
+	dataHubProcedure(mux, "SearchTagsByPrefix", connect.NewUnaryHandler(
+		"/services.datahub.v1.DataHubService/SearchTagsByPrefix",
+		readStateDHHandler.SearchTagsByPrefix,
+	).ServeHTTP)
+	dataHubProcedure(mux, "FetchTagCloud", connect.NewUnaryHandler(
+		"/services.datahub.v1.DataHubService/FetchTagCloud",
+		readStateDHHandler.FetchTagCloud,
+	).ServeHTTP)
 	dataHubProcedure(mux, "GetTagArticleCounts", jsonPost(map[string]interface{}{
 		"counts": []map[string]interface{}{{"tagName": "AI", "articleCount": 10}},
 	}))

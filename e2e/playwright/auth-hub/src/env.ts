@@ -41,20 +41,14 @@ export const env = {
 	mtlsURL: requiredEnv("MTLS_URL"),
 
 	/**
-	 * The HS256 secret auth-hub signs backend JWTs with — and nothing else.
+	 * The Ed25519 public key (SPKI PEM) that matches the key auth-hub signs
+	 * backend JWTs with.
 	 *
-	 * It used to do two jobs: `main.go` keyed the /internal group on this same
-	 * value. It no longer does (`wireInternalAuth(cfg)` reads
-	 * `INTERNAL_AUTH_SECRET`), because the /internal bearer crosses the network
-	 * in a plaintext header and lands in nginx access logs and OTel span
-	 * attributes, which is no place for a signing key. auth-hub now refuses to
-	 * start when the two are equal, so sending this one to /internal is a 403.
-	 * See `internalAuthSecret` below.
-	 *
-	 * Arrives as a path rather than a value so it never lands in `docker
-	 * inspect` output, a rendered compose slice, or a CI environment dump.
+	 * Verification only: the suite never holds the private key. Arrives as a
+	 * path so it follows the same file-read + non-empty check as every other
+	 * fixture input. Minted per run by `suite_token_keys`; nothing is committed.
 	 */
-	backendTokenSecret: requiredSecretFile("BACKEND_TOKEN_SECRET_FILE"),
+	backendTokenVerifyKey: requiredSecretFile("BACKEND_TOKEN_VERIFY_KEY_FILE"),
 
 	/**
 	 * The shared bearer auth-hub's /internal group compares `X-Internal-Auth`

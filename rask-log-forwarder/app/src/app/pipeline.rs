@@ -199,6 +199,15 @@ async fn enrich_log_entry(
     parser: &UniversalParser,
     log_entry: crate::collector::LogEntry,
 ) -> EnrichedLogEntry {
+    let mut entry = enrich_unredacted(parser, log_entry);
+    entry.redact_sensitive();
+    entry
+}
+
+fn enrich_unredacted(
+    parser: &UniversalParser,
+    log_entry: crate::collector::LogEntry,
+) -> EnrichedLogEntry {
     let container = &log_entry.container;
     match parser.parse_log_entry(&log_entry) {
         Ok(enriched_entry) => enriched_entry,
@@ -574,6 +583,45 @@ mod tests {
         let snapshot = reliability_manager.get_metrics_snapshot().await;
         assert_eq!(snapshot.successful_batches, 1);
         assert_eq!(snapshot.disk_fallback_count, 0);
+    }
+
+    #[tokio::test]
+    async fn enrich_log_entry_redacts_credentials_in_parsed_entries() {
+        let parser = UniversalParser::new();
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::Stdout,
+            timestamp: None,
+            raw_bytes: bytes::Bytes::from_static(
+                b"GET /cb?access_token=PARSED-SECRET&page=2 Authorization: Bearer PARSED-BEARER\n",
+            ),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        let rendered = serde_json::to_string(&enriched).unwrap();
+        assert!(!rendered.contains("PARSED-SECRET"), "{rendered}");
+        assert!(!rendered.contains("PARSED-BEARER"), "{rendered}");
+        assert!(rendered.contains("page=2"));
+    }
+
+    #[tokio::test]
+    async fn enrich_log_entry_redacts_credentials_in_fallback_entries() {
+        let parser = UniversalParser::new();
+        let mut raw = b"Authorization: Bearer FALLBACK-BEARER ?token=FALLBACK-SECRET ".to_vec();
+        raw.extend(vec![b'x'; 65 * 1024]);
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::Stdout,
+            timestamp: None,
+            raw_bytes: bytes::Bytes::from(raw),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        assert_eq!(enriched.log_type, "plain");
+        assert!(!enriched.message.contains("FALLBACK-BEARER"));
+        assert!(!enriched.message.contains("FALLBACK-SECRET"));
     }
 
     #[tokio::test]

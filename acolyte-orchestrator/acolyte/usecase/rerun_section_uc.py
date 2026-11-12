@@ -13,6 +13,8 @@ from acolyte.domain.writer_prompt import WRITER_PROMPT, format_evidence
 from acolyte.port.llm_provider import LLMMode
 
 if TYPE_CHECKING:
+    from contextlib import AbstractAsyncContextManager
+
     from acolyte.domain.report import Report, ReportSection
     from acolyte.port.llm_provider import LLMProviderPort
     from acolyte.port.report_repository import ReportRepositoryPort
@@ -33,9 +35,17 @@ class RerunRejectedError(RuntimeError):
 class RerunSectionUsecase:
     """Regenerate a single section using the existing brief and outline."""
 
-    def __init__(self, repo: ReportRepositoryPort, llm: LLMProviderPort) -> None:
+    def __init__(
+        self,
+        repo: ReportRepositoryPort,
+        llm: LLMProviderPort,
+        generation_slot: AbstractAsyncContextManager[object],
+    ) -> None:
+        """*generation_slot* is required and brackets only the writer call, so
+        ownership and active-run rejections are answered without queueing."""
         self._repo = repo
         self._llm = llm
+        self._generation_slot = generation_slot
 
     async def execute(self, report_id: UUID, section_key: str, user_id: UUID) -> int:
         """Rerun a single section. Returns new report version number."""
@@ -74,7 +84,8 @@ class RerunSectionUsecase:
             evidence_block=format_evidence(evidence_items),
             revision_note="",
         )
-        response = await self._llm.generate(prompt, num_predict=2000, think=False, mode=LLMMode.LONGFORM)
+        async with self._generation_slot:
+            response = await self._llm.generate(prompt, num_predict=2000, think=False, mode=LLMMode.LONGFORM)
 
         # The writer call above takes tens of seconds; the report version read
         # before it is what a concurrent writer has since moved, so re-read it

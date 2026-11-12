@@ -8,6 +8,7 @@ include:
 x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c
@@ -15,6 +16,10 @@ x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
 
 services:
   irodori-tts:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     profiles:
       - tts
     image: alt-irodori-tts:local
@@ -89,6 +94,10 @@ services:
         max-file: "3"
 
   tts-speaker:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     profiles:
       - tts
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-tts-speaker:${IMAGE_TAG:-main}

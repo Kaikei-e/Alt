@@ -89,8 +89,7 @@ flowchart LR
 | `TTS_PROXY` | - (必須) | TTS プロキシモード (`enabled` または `disabled`; 未設定は起動時エラー) |
 | `TTS_CONNECT_URL` | - | tts-speaker の Connect-RPC `https://` URL (例: `https://tts-speaker:9443`; `TTS_PROXY=enabled` 時に必須)。`MTLS_ENFORCE` の影響を受けず、常に専用 HTTP/1.1 mTLS トランスポートで接続する |
 | `ACOLYTE_CONNECT_URL` | - (空なら Acolyte ルーティング無効) | acolyte-orchestrator の Connect-RPC URL |
-| `BACKEND_TOKEN_SECRET_FILE` | - | JWT シークレットファイルパス |
-| `BACKEND_TOKEN_SECRET` | - | JWT シークレット (フォールバック) |
+| `BACKEND_TOKEN_VERIFY_KEY_FILE` | - (必須) | Ed25519 SPKI PEM 公開鍵ファイルへのパス。未設定・読み込み不可・Ed25519 以外は起動時エラー |
 | `BACKEND_TOKEN_ISSUER` | auth-hub | 期待する JWT issuer |
 | `BACKEND_TOKEN_AUDIENCE` | alt-backend | 期待する JWT audience |
 | `BFF_REQUEST_TIMEOUT` | 30s | 単発リクエストタイムアウト |

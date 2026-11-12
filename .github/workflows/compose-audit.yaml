@@ -255,10 +255,12 @@ jobs:
           # DOCKER_GROUP_ID was historically required by logging.yaml before the
           # socket proxy migration; kept here as placeholder for environment compatibility.
           # KRATOS_COOKIE_DOMAIN uses `${VAR?}`: empty is a valid value, unset
-          # fails the render.
+          # fails the render. TRUSTED_PROXY_CIDRS uses `${VAR:?}`: unset or
+          # empty fails the render, `none` is its explicit "trust no hop".
           {
             echo 'DOCKER_GROUP_ID=0'
             echo 'KRATOS_COOKIE_DOMAIN='
+            echo 'TRUSTED_PROXY_CIDRS=none'
           } > .env
 
       - name: Assert every service_healthy target has a healthcheck
@@ -329,7 +331,7 @@ jobs:
         # refuses to resolve when the file is absent. On a developer host
         # .env is a symlink to the canonical config, which a public runner
         # has no equivalent of — same dummy as the job above.
-        run: printf 'DOCKER_GROUP_ID=0\nKRATOS_COOKIE_DOMAIN=\n' > .env
+        run: printf 'DOCKER_GROUP_ID=0\nKRATOS_COOKIE_DOMAIN=\nTRUSTED_PROXY_CIDRS=none\n' > .env
 
       - name: Assert every published port is loopback-bound
         run: python3 scripts/compose-port-audit.py --overlays

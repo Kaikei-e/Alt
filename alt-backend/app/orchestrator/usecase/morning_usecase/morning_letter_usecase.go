@@ -18,6 +18,8 @@ import (
 // best-effort client-side guard in addition to recap-worker's own checks.
 const regenerateCooldown = time.Hour
 
+const maxRegenCooldownEntries = 10000
+
 type morningLetterUsecase struct {
 	repo         morning_letter_port.MorningLetterRepository
 	userFeedPort user_feed_port.UserFeedPort
@@ -86,6 +88,9 @@ func (u *morningLetterUsecase) RegenerateLatest(
 		}
 		return doc, false, remaining, nil
 	}
+	if _, exists := u.regenLast[userID]; !exists && len(u.regenLast) >= maxRegenCooldownEntries {
+		evictRegenCooldownLocked(u.regenLast, now)
+	}
 	u.regenLast[userID] = now
 	u.regenMu.Unlock()
 
@@ -98,6 +103,24 @@ func (u *morningLetterUsecase) RegenerateLatest(
 		return nil, false, 0, fmt.Errorf("regenerate failed: %w", err)
 	}
 	return doc, true, 0, nil
+}
+
+func evictRegenCooldownLocked(entries map[string]time.Time, now time.Time) {
+	var oldestKey string
+	var oldestTime time.Time
+	for k, t := range entries {
+		if now.Sub(t) >= regenerateCooldown {
+			delete(entries, k)
+			continue
+		}
+		if oldestKey == "" || t.Before(oldestTime) {
+			oldestKey = k
+			oldestTime = t
+		}
+	}
+	if len(entries) >= maxRegenCooldownEntries && oldestKey != "" {
+		delete(entries, oldestKey)
+	}
 }
 
 func (u *morningLetterUsecase) GetLatestLetter(ctx context.Context) (*domain.MorningLetterDocument, error) {

@@ -65,6 +65,7 @@ mod tests {
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
                 ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),

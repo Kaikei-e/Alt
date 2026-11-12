@@ -23,7 +23,7 @@ export const env = {
 	/** Hostname alt-backend's SSRF allowlist (FEED_ALLOWED_HOSTS) admits. */
 	stubHost: optionalEnv("STUB_HOST", "stub.invalid"),
 	/**
-	 * Pre-minted HS256 token: role=admin, exp=2099-01-01.
+	 * EdDSA token minted by run.sh with the per-run key: role=admin, exp=2099-01-01.
 	 *
 	 * Arrives as a path rather than a value so it never lands in `docker
 	 * inspect` output or a compose slice.
@@ -37,7 +37,7 @@ export const env = {
 
 /** A JWT that parses but was signed with a different secret. */
 export const WRONG_SIGNATURE_JWT =
-	"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+	"eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9." +
 	"eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0ZW5hbnRfaWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJpc3MiOiJhbHQtc3RhZ2luZy1hdXRoLWh1YiIsImF1ZCI6ImFsdC1iYWNrZW5kIiwiZXhwIjo0MDcwOTA4ODAwfQ." +
 	"WRONG_SIGNATURE_xxxx";
 

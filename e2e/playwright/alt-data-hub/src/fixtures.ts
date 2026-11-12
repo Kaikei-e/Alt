@@ -1,7 +1,8 @@
 import { test as base } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
 import { testToken } from "../../_shared/ids.js";
-import { env } from "./env.js";
+import { SUITE_PEERS, env, peerLeafPaths, requireLeafFiles } from "./env.js";
+import type { SuitePeer } from "./env.js";
 
 /**
  * Suite-wide fixtures.
@@ -31,6 +32,12 @@ type WorkerFixtures = {
 	 * verification on.
 	 */
 	dataHub: APIRequestContext;
+
+	/**
+	 * Per-peer mTLS clients keyed by certificate CN/SAN, matching the per-peer
+	 * allowlist in `alt-backend/app/middleware/require_peer_procedure.go`.
+	 */
+	peers: Readonly<Record<SuitePeer, APIRequestContext>>;
 
 	/**
 	 * The same listener with no client certificate at all.
@@ -71,6 +78,7 @@ type TestFixtures = {
 export const test = base.extend<TestFixtures, WorkerFixtures>({
 	dataHub: [
 		async ({ playwright }, use) => {
+			requireLeafFiles(env.allowedPeer, env.allowedCertPath, env.allowedKeyPath);
 			const context = await playwright.request.newContext({
 				baseURL: env.dataHubURL,
 				ignoreHTTPSErrors: true,
@@ -85,6 +93,35 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 			});
 			await use(context);
 			await context.dispose();
+		},
+		{ scope: "worker" },
+	],
+
+	peers: [
+		async ({ playwright }, use) => {
+			const entries: Array<[SuitePeer, APIRequestContext]> = [];
+			try {
+				for (const peer of SUITE_PEERS) {
+					const { certPath, keyPath } = peerLeafPaths(peer);
+					requireLeafFiles(peer, certPath, keyPath);
+					const context = await playwright.request.newContext({
+						baseURL: env.dataHubURL,
+						ignoreHTTPSErrors: true,
+						clientCertificates: [
+							{
+								origin: env.dataHubOrigin,
+								certPath,
+								keyPath,
+							},
+						],
+						extraHTTPHeaders: { "Content-Type": "application/json" },
+					});
+					entries.push([peer, context]);
+				}
+				await use(Object.fromEntries(entries) as Record<SuitePeer, APIRequestContext>);
+			} finally {
+				await Promise.all(entries.map(([, context]) => context.dispose()));
+			}
 		},
 		{ scope: "worker" },
 	],

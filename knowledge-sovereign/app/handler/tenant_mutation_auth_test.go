@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -62,7 +64,7 @@ func setupTenantAuthTest(t *testing.T) (
 	repo *capturedRepo,
 	client sovereignv1connect.KnowledgeSovereignServiceClient,
 	backendToken string,
-	jwtSecret []byte,
+	jwtSigningKey ed25519.PrivateKey,
 	targetUserID string,
 	targetTenantID string,
 	otherTenantID string,
@@ -70,8 +72,9 @@ func setupTenantAuthTest(t *testing.T) (
 ) {
 	t.Helper()
 	backendToken = "auth-backend-test-token-long-enough-1234"
-	jwtSecretStr := "auth-jwt-secret-key-long-enough-5678"
-	jwtSecret = []byte(jwtSecretStr)
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	jwtSigningKey = privKey
 
 	targetUserID = uuid.New().String()
 	targetTenantID = uuid.New().String()
@@ -94,9 +97,9 @@ func setupTenantAuthTest(t *testing.T) (
 	}
 
 	verifier := &config.LocalUserJWTVerifier{
-		Secret:   jwtSecretStr,
-		Issuer:   "auth-hub",
-		Audience: "alt-backend",
+		PublicKey: pubKey,
+		Issuer:    "auth-hub",
+		Audience:  "alt-backend",
 	}
 
 	repo = &capturedRepo{}
@@ -455,8 +458,8 @@ func (f *fakePgx) Begin(ctx context.Context) (pgx.Tx, error) {
 
 func TestApplyMutation_EndToEnd_CapturedDriverSQLIsolation(t *testing.T) {
 	backendToken := "auth-backend-test-token-long-enough-1234"
-	jwtSecretStr := "auth-jwt-secret-key-long-enough-5678"
-	jwtSecret := []byte(jwtSecretStr)
+	pubKey, jwtSigningKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 
 	targetUserID := uuid.New().String()
 	targetTenantID := uuid.New().String()
@@ -478,9 +481,9 @@ func TestApplyMutation_EndToEnd_CapturedDriverSQLIsolation(t *testing.T) {
 	}
 
 	verifier := &config.LocalUserJWTVerifier{
-		Secret:   jwtSecretStr,
-		Issuer:   "auth-hub",
-		Audience: "alt-backend",
+		PublicKey: pubKey,
+		Issuer:    "auth-hub",
+		Audience:  "alt-backend",
 	}
 
 	execCalls := []struct {
@@ -509,7 +512,7 @@ func TestApplyMutation_EndToEnd_CapturedDriverSQLIsolation(t *testing.T) {
 	defer srv.Close()
 
 	client := sovereignv1connect.NewKnowledgeSovereignServiceClient(srv.Client(), srv.URL)
-	validJWT := makeJWT(t, jwtSecret, targetUserID, targetTenantID, "auth-hub", "alt-backend", time.Hour)
+	validJWT := makeJWT(t, jwtSigningKey, targetUserID, targetTenantID, "auth-hub", "alt-backend", time.Hour)
 
 	// Call ApplyProjectionMutation (DismissHomeItem) with NO tenant in payload
 	req := connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{

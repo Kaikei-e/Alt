@@ -84,16 +84,16 @@ func TestDOSProtectionIntegration(t *testing.T) {
 				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0, forceError: true},
 				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0, forceError: true},
 				{ip: "192.168.1.1", path: "/v1/feeds", method: "GET", delay: 0}, // Should be blocked by circuit breaker
-				{ip: "192.168.1.2", path: "/v1/feeds", method: "GET", delay: 0}, // Different IP, should also be blocked
+				{ip: "192.168.1.2", path: "/v1/feeds", method: "GET", delay: 0}, // Different IP remains unaffected
 			},
 			expectedResponses: []IntegrationResponse{
 				{statusCode: 500, body: "Internal Server Error"},
 				{statusCode: 500, body: "Internal Server Error"},
 				{statusCode: 500, body: "Internal Server Error"},
 				{statusCode: 503, body: "Service temporarily unavailable"},
-				{statusCode: 503, body: "Service temporarily unavailable"},
+				{statusCode: 200, body: "OK"},
 			},
-			description: "Should activate circuit breaker after 3 failures and block all requests",
+			description: "Should activate circuit breaker after 3 failures for that client without blocking other clients",
 		},
 		{
 			name: "disabled_dos_protection",
@@ -151,7 +151,7 @@ func TestDOSProtectionIntegration(t *testing.T) {
 				}
 
 				httpReq := httptest.NewRequest(req.method, req.path, nil)
-				httpReq.Header.Set("X-Real-IP", req.ip)
+				httpReq.RemoteAddr = req.ip + ":12345"
 				httpReq.Header.Set("X-Request-Index", fmt.Sprintf("%d", i))
 
 				rec := httptest.NewRecorder()
@@ -317,7 +317,7 @@ func TestDOSProtectionPerformance(t *testing.T) {
 
 	for i := 0; i < numRequests; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-		req.Header.Set("X-Real-IP", fmt.Sprintf("192.168.1.%d", i%100)) // Simulate 100 different IPs
+		req.RemoteAddr = fmt.Sprintf("192.168.1.%d:12345", i%100)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 

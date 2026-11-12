@@ -23,11 +23,7 @@ func baseConfig() *Config {
 		Rag:           RAGConfig{OrchestratorURL: "http://rag-orchestrator:9010", OrchestratorConnectURL: "http://rag-orchestrator:9011", APIToken: "test-rag-api-token-minimum-24-characters"},
 		MQHub:         MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500", AuthToken: "test-mqhub-auth-token"},
 		AuthHub:       AuthHubConfig{URL: "http://auth-hub:8888"},
-		// Two distinct secrets, as every environment must supply: the /internal
-		// shared bearer travels in a plaintext header and the signing key must
-		// not be reachable from there.
 		Auth: AuthConfig{
-			BackendTokenSecret: "a-backend-token-secret-value",
 			InternalAuthSecret: "a-distinct-internal-auth-secret-value",
 		},
 		Sovereign: SovereignConfig{URL: "http://knowledge-sovereign:9500"},
@@ -52,6 +48,7 @@ func TestValidateBackendListeners(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("TRUSTED_PROXY_CIDRS", "127.0.0.1/32")
 			cfg := baseConfig()
 			tt.mutate(cfg)
 			err := ValidateBackendListeners(cfg)
@@ -382,15 +379,20 @@ func TestLoadDataHubConfig(t *testing.T) {
 // they carry evaporate, which is why the check is not keyed on APP_ENV the way
 // the backend's is.
 func TestValidateBinaryConfig(t *testing.T) {
+	verifyPub, verifyPEM := marshalTestEd25519SPKIPEM(t)
+	verifyKeyFile := writeBackendVerifyKeyFile(t, verifyPEM)
 	tests := []struct {
-		name     string
-		validate func(*Config) error
-		mutate   func(*Config)
-		wantErr  string
+		name           string
+		validate       func(*Config) error
+		verifyKeyValue *string
+		mutate         func(*Config)
+		wantErr        string
 	}{
 		{name: "backend accepts a complete config", validate: ValidateBackendConfig, mutate: func(*Config) {}},
-		{name: "backend needs the backend token secret", validate: ValidateBackendConfig,
-			mutate: func(c *Config) { c.Auth.BackendTokenSecret = "" }, wantErr: "BACKEND_TOKEN_SECRET"},
+		{name: "backend needs the backend token verify key", validate: ValidateBackendConfig,
+			verifyKeyValue: new(string), mutate: func(*Config) {}, wantErr: "BACKEND_TOKEN_VERIFY_KEY_FILE"},
+		{name: "backend rejects unset verify key file even when key field is pre-populated", validate: ValidateBackendConfig,
+			verifyKeyValue: new(string), mutate: func(c *Config) { c.Auth.BackendTokenPublicKey = verifyPub }, wantErr: "BACKEND_TOKEN_VERIFY_KEY_FILE"},
 		{name: "backend needs sovereign", validate: ValidateBackendConfig,
 			mutate: func(c *Config) { c.Sovereign.URL = "" }, wantErr: "SOVEREIGN_URL"},
 		{name: "backend accepts disabled sovereign in dev", validate: ValidateBackendConfig,
@@ -415,7 +417,8 @@ func TestValidateBinaryConfig(t *testing.T) {
 		{name: "backend refuses disabled rag auth in prod", validate: ValidateBackendConfig,
 			mutate: func(c *Config) { c.AppEnv = "production"; c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: "RAG_API_AUTH=disabled is not permitted in production"},
 
-		{name: "harvester accepts a complete config", validate: ValidateHarvesterConfig, mutate: func(*Config) {}},
+		{name: "harvester accepts a complete config without backend token key", validate: ValidateHarvesterConfig,
+			verifyKeyValue: new(string), mutate: func(*Config) {}},
 		{name: "harvester needs sovereign in every environment", validate: ValidateHarvesterConfig,
 			mutate: func(c *Config) { c.Sovereign.URL = "" }, wantErr: "SOVEREIGN_URL"},
 		{name: "harvester needs the rag orchestrator", validate: ValidateHarvesterConfig,
@@ -427,21 +430,21 @@ func TestValidateBinaryConfig(t *testing.T) {
 		{name: "harvester refuses disabled rag auth in prod", validate: ValidateHarvesterConfig,
 			mutate: func(c *Config) { c.AppEnv = "production"; c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: "RAG_API_AUTH=disabled is not permitted in production"},
 
-		{name: "datahub accepts a complete config", validate: ValidateDataHubConfig, mutate: func(*Config) {}},
+		{name: "datahub accepts a complete config without backend token key", validate: ValidateDataHubConfig,
+			verifyKeyValue: new(string), mutate: func(*Config) {}},
 		{name: "datahub needs auth-hub", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.AuthHub.URL = "" }, wantErr: "AUTH_HUB_URL"},
 		{name: "datahub refuses plaintext auth-hub in prod", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.AppEnv = "production"; c.AuthHub.URL = "http://auth-hub:8888" }, wantErr: "AUTH_HUB_URL"},
 		{name: "datahub accepts https auth-hub in prod", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.AppEnv = "production"; c.AuthHub.URL = "https://auth-hub:9443" }, wantErr: ""},
-		{name: "datahub needs the backend token secret", validate: ValidateDataHubConfig,
-			mutate: func(c *Config) { c.Auth.BackendTokenSecret = "" }, wantErr: "BACKEND_TOKEN_SECRET"},
 		{name: "datahub needs sovereign in every environment", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.Sovereign.URL = "" }, wantErr: "SOVEREIGN_URL"},
 		{name: "datahub needs mq-hub", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.MQHub.ConnectURL = "" }, wantErr: "MQHUB_CONNECT_URL"},
 
-		{name: "notifier accepts a complete mailto config", validate: ValidateNotifierConfig, mutate: func(*Config) {}},
+		{name: "notifier accepts a complete mailto config without backend token key", validate: ValidateNotifierConfig,
+			verifyKeyValue: new(string), mutate: func(*Config) {}},
 		{name: "notifier accepts an https subject", validate: ValidateNotifierConfig,
 			mutate: func(c *Config) { c.WebPush.Subject = "https://alt.example/contact" }, wantErr: ""},
 		{name: "notifier needs the vapid private key", validate: ValidateNotifierConfig,
@@ -456,6 +459,11 @@ func TestValidateBinaryConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.verifyKeyValue != nil {
+				t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", *tt.verifyKeyValue)
+			} else {
+				t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", verifyKeyFile)
+			}
 			cfg := baseConfig()
 			tt.mutate(cfg)
 			err := tt.validate(cfg)

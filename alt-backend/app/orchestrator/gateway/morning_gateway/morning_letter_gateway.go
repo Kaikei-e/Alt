@@ -277,6 +277,9 @@ func (g *MorningLetterGateway) RegenerateLatest(ctx context.Context, editionTime
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusConflict {
+		return nil, domain.ErrMorningRegenerationInFlight
+	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		b, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("recap-worker regenerate returned %d: %s", resp.StatusCode, string(b))

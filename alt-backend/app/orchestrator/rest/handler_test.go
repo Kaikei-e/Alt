@@ -24,8 +24,8 @@ func TestCSPReportEndpoint(t *testing.T) {
 	e := echo.New()
 
 	// Create minimal container and config for testing
-	container := &di.ApplicationComponents{}
-	cfg := &config.Config{}
+	container := &di.ApplicationComponents{UserQuotaLimiter: newTestQuotaLimiter(t)}
+	cfg := &config.Config{Auth: testAuthCfg()}
 
 	// Register routes
 	RegisterRoutes(context.Background(), e, container, cfg)

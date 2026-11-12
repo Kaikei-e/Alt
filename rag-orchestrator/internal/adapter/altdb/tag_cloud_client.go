@@ -2,6 +2,7 @@ package altdb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -31,9 +32,13 @@ func NewDataHubTagCloudClient(client datahubv1connect.DataHubServiceClient, logg
 	return &DataHubTagCloudClient{client: client, logger: logger}
 }
 
-func (c *DataHubTagCloudClient) FetchTagCloud(ctx context.Context, limit int) ([]domain.TagCloudEntry, error) {
+func (c *DataHubTagCloudClient) FetchTagCloud(ctx context.Context, userID string, limit int) ([]domain.TagCloudEntry, error) {
+	if userID == "" {
+		return nil, errors.New("FetchTagCloud: user id is required")
+	}
 	req := connect.NewRequest(&datahubv1.FetchTagCloudRequest{
-		Limit: int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
+		Limit:  int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
+		UserId: &userID,
 	})
 
 	resp, err := c.client.FetchTagCloud(ctx, req)

@@ -1,8 +1,11 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -96,14 +99,75 @@ func (rl *RateLimiter) cleanupLoop() {
 	}
 }
 
+func containsAddr(cidrs []netip.Prefix, addr netip.Addr) bool {
+	for _, p := range cidrs {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// NewTrustedProxyIPExtractor extracts the client IP from X-Forwarded-For only
+// when the immediate socket peer is inside cidrs, returning the right-most
+// entry outside cidrs and falling back to the socket peer address otherwise.
+func NewTrustedProxyIPExtractor(cidrs []netip.Prefix) echo.IPExtractor {
+	copied := make([]netip.Prefix, len(cidrs))
+	copy(copied, cidrs)
+
+	return func(req *http.Request) string {
+		host, _, err := net.SplitHostPort(req.RemoteAddr)
+		if err != nil {
+			host = strings.TrimSpace(req.RemoteAddr)
+		}
+		peerAddr, err := netip.ParseAddr(host)
+		if err != nil {
+			return host
+		}
+		peerAddr = peerAddr.Unmap()
+		peerStr := peerAddr.String()
+
+		if len(copied) == 0 || !containsAddr(copied, peerAddr) {
+			return peerStr
+		}
+
+		xffValues := req.Header.Values(echo.HeaderXForwardedFor)
+		if len(xffValues) == 0 {
+			return peerStr
+		}
+
+		var entries []string
+		for _, line := range xffValues {
+			entries = append(entries, strings.Split(line, ",")...)
+		}
+
+		for i := len(entries) - 1; i >= 0; i-- {
+			candidate, err := netip.ParseAddr(strings.TrimSpace(entries[i]))
+			if err != nil {
+				return peerStr
+			}
+			candidate = candidate.Unmap()
+			if !containsAddr(copied, candidate) {
+				return candidate.String()
+			}
+		}
+
+		return peerStr
+	}
+}
+
+var directIPExtractor = NewTrustedProxyIPExtractor(nil)
+
 // Middleware returns an Echo middleware that enforces the rate limit.
 func (rl *RateLimiter) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			if c.Echo() != nil && c.Echo().IPExtractor == nil {
-				c.Echo().IPExtractor = echo.ExtractIPFromXFFHeader()
+			var ip string
+			if c.Echo() != nil && c.Echo().IPExtractor != nil {
+				ip = c.RealIP()
+			} else {
+				ip = directIPExtractor(c.Request())
 			}
-			ip := c.RealIP()
 			limiter := rl.getLimiter(ip)
 
 			if !limiter.Allow() {

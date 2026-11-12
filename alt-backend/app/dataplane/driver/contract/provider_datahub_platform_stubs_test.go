@@ -459,8 +459,23 @@ func (pactTagReadPort) FeedTags(context.Context, string, *time.Time, int) ([]*do
 func (pactTagReadPort) Cooccurrences(context.Context, []string) ([]*domain.TagCooccurrence, error) {
 	return nil, nil
 }
-func (pactTagReadPort) SearchByPrefix(context.Context, string, int) ([]domain.GlobalTagHit, error) {
-	return nil, nil
+
+// pactTagUserID is the tenant the consumers' interactions send. The two
+// scoped reads answer only for it, so a provider that dropped user_id on the
+// way to the port would verify red.
+const pactTagUserID = "11111111-1111-4111-8111-111111111111"
+
+func (pactTagReadPort) SearchByPrefix(_ context.Context, _ string, userID uuid.UUID, _ int) ([]domain.GlobalTagHit, error) {
+	if userID != uuid.MustParse(pactTagUserID) {
+		return nil, nil
+	}
+	return []domain.GlobalTagHit{{TagName: "AI", ArticleCount: 42}}, nil
+}
+func (pactTagReadPort) TagCloud(_ context.Context, userID uuid.UUID, _ int) ([]*domain.TagCloudItem, error) {
+	if userID != uuid.MustParse(pactTagUserID) {
+		return nil, nil
+	}
+	return []*domain.TagCloudItem{{TagName: "ai", ArticleCount: 42}}, nil
 }
 func (pactTagReadPort) ArticleCounts(context.Context, uuid.UUID, time.Time) ([]domain.TagArticleCount, error) {
 	return nil, nil

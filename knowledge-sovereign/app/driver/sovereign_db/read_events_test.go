@@ -103,6 +103,7 @@ func TestAppendKnowledgeEventIfNew_ReportsGenuineAppend(t *testing.T) {
 // happened" for a caller that never looks), which is exactly how the trail
 // planner came to log a proposal for every rejected re-proposal.
 func TestAppendKnowledgeEventIfNew_DedupeRejectionIsNotAnAppend(t *testing.T) {
+	ev := newTestEvent()
 	mock := &mockPgx{}
 	eventInserted := false
 	mock.execFunc = func(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
@@ -112,14 +113,20 @@ func TestAppendKnowledgeEventIfNew_DedupeRejectionIsNotAnAppend(t *testing.T) {
 		return pgconn.NewCommandTag("INSERT 0 1"), nil
 	}
 	mock.queryRowFunc = func(_ context.Context, sql string, _ ...interface{}) pgx.Row {
-		if containsSQL(sql, "knowledge_events") {
+		if containsSQL(sql, "INSERT INTO knowledge_events") {
 			eventInserted = true
+			return &mockRow{}
 		}
-		return &mockRow{}
+		return &mockRow{scanFunc: func(dest ...interface{}) error {
+			if p, ok := dest[0].(*uuid.UUID); ok {
+				*p = ev.TenantID
+			}
+			return nil
+		}}
 	}
 
 	repo := NewRepository(mock)
-	seq, appended, err := repo.AppendKnowledgeEventIfNew(context.Background(), newTestEvent())
+	seq, appended, err := repo.AppendKnowledgeEventIfNew(context.Background(), ev)
 
 	require.NoError(t, err, "a dedupe rejection is a normal outcome, not a failure")
 	assert.False(t, appended, "an already-registered dedupe key must not report an append")
@@ -133,6 +140,7 @@ func TestAppendKnowledgeEventIfNew_DedupeRejectionIsNotAnAppend(t *testing.T) {
 // SkippedDuplicate counter reads seq > 0 as "genuinely appended" and seq == 0
 // as a dedupe hit, so the seq-only form must keep returning (0, nil).
 func TestAppendKnowledgeEvent_DuplicateReturnsZero(t *testing.T) {
+	ev := newTestEvent()
 	mock := &mockPgx{}
 	mock.execFunc = func(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
 		if containsSQL(sql, "knowledge_event_dedupes") {
@@ -140,12 +148,88 @@ func TestAppendKnowledgeEvent_DuplicateReturnsZero(t *testing.T) {
 		}
 		return pgconn.NewCommandTag("INSERT 0 1"), nil
 	}
+	mock.queryRowFunc = func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		return &mockRow{scanFunc: func(dest ...interface{}) error {
+			if p, ok := dest[0].(*uuid.UUID); ok {
+				*p = ev.TenantID
+			}
+			return nil
+		}}
+	}
 
 	repo := NewRepository(mock)
-	seq, err := repo.AppendKnowledgeEvent(context.Background(), newTestEvent())
+	seq, err := repo.AppendKnowledgeEvent(context.Background(), ev)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), seq)
+}
+
+func TestAppendKnowledgeEventIfNew_CrossTenantDedupeCollisionRejected(t *testing.T) {
+	t.Run("rejects dedupe key owned by another tenant", func(t *testing.T) {
+		ev := newTestEvent()
+		otherTenantID := uuid.New()
+		eventInserted := false
+
+		mock := &mockPgx{}
+		mock.execFunc = func(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
+			if containsSQL(sql, "knowledge_event_dedupes") {
+				return pgconn.NewCommandTag("INSERT 0 0"), nil
+			}
+			return pgconn.NewCommandTag("INSERT 0 1"), nil
+		}
+		mock.queryRowFunc = func(_ context.Context, sql string, _ ...interface{}) pgx.Row {
+			if containsSQL(sql, "INSERT INTO knowledge_events") {
+				eventInserted = true
+				return &mockRow{}
+			}
+			return &mockRow{scanFunc: func(dest ...interface{}) error {
+				if p, ok := dest[0].(*uuid.UUID); ok {
+					*p = otherTenantID
+				}
+				return nil
+			}}
+		}
+
+		repo := NewRepository(mock)
+		seq, appended, err := repo.AppendKnowledgeEventIfNew(context.Background(), ev)
+		require.ErrorIs(t, err, ErrDedupeKeyTenantMismatch)
+		assert.False(t, appended)
+		assert.Zero(t, seq)
+		assert.False(t, eventInserted)
+		require.NotNil(t, mock.lastTx)
+		assert.False(t, mock.lastTx.committed)
+	})
+
+	t.Run("returns ErrDedupeOwnerUnresolved when dedupe key has no visible backing event row", func(t *testing.T) {
+		ev := newTestEvent()
+		eventInserted := false
+		mock := &mockPgx{}
+		mock.execFunc = func(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
+			if containsSQL(sql, "knowledge_event_dedupes") {
+				return pgconn.NewCommandTag("INSERT 0 0"), nil
+			}
+			return pgconn.NewCommandTag("INSERT 0 1"), nil
+		}
+		mock.queryRowFunc = func(_ context.Context, sql string, _ ...interface{}) pgx.Row {
+			if containsSQL(sql, "INSERT INTO knowledge_events") {
+				eventInserted = true
+				return &mockRow{}
+			}
+			return &mockRow{scanFunc: func(_ ...interface{}) error {
+				return pgx.ErrNoRows
+			}}
+		}
+
+		repo := NewRepository(mock)
+		seq, appended, err := repo.AppendKnowledgeEventIfNew(context.Background(), ev)
+		require.ErrorIs(t, err, ErrDedupeOwnerUnresolved)
+		assert.NotErrorIs(t, err, ErrDedupeKeyTenantMismatch)
+		assert.False(t, appended)
+		assert.Zero(t, seq)
+		assert.False(t, eventInserted)
+		require.NotNil(t, mock.lastTx)
+		assert.False(t, mock.lastTx.committed)
+	})
 }
 
 func TestListKnowledgeEventsSince_DoesNotPruneByOccurredAt(t *testing.T) {

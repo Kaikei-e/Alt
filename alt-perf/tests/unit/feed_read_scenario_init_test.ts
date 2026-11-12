@@ -18,8 +18,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { Buffer } from "node:buffer";
 
-const UUID_REGEX =
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const MAX_JWT_LENGTH = 4096;
 const MAX_TTL_SECONDS = 300;
 const CLOCK_SKEW_SECONDS = 60;
@@ -38,8 +37,11 @@ function decodeJWT(token: string): Record<string, unknown> | null {
   }
 }
 
-function makeJWT(claims: Record<string, unknown>): string {
-  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
+function makeJWT(
+  claims: Record<string, unknown>,
+  alg = "EdDSA",
+): string {
+  const header = btoa(JSON.stringify({ alg, typ: "JWT" }))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
@@ -64,7 +66,6 @@ function validClaims(
     exp: now + expOffset,
   };
 }
-
 
 function runScenarioInit(
   fixtures: Record<string, unknown>[],
@@ -99,7 +100,8 @@ function runScenarioInit(
     .replace(/import\s*\{[^}]*getConfig[^}]*\}\s*from\s*["\x27][^"\x27]+["\x27];?/g, "")
     .replace(/import\s*\{[^}]*decodeJWT[^}]*\}\s*from\s*["\x27][^"\x27]+["\x27];?/g, "")
     .replace(/export\s+function\s+(\w+)/g, "function $1");
-  const authSource = `${jwtSource}\n${authRaw}\nObject.assign(exports, { validateAuthHubToken, validateCohortTokenAtInit, validateFixtureTokenAtInit, getAuthHeaders, getPublicHeaders });`;
+  const authSource =
+    `${jwtSource}\n${authRaw}\nObject.assign(exports, { validateAuthHubToken, validateCohortTokenAtInit, validateFixtureTokenAtInit, getAuthHeaders, getPublicHeaders });`;
 
   const exportsObj: Record<string, unknown> = {};
   const configFn = () => ({
@@ -150,7 +152,11 @@ function runScenarioInit(
         cfg: { testUserId?: string } = {},
         fixtureUserId?: string,
       ) => {
-        const claims = (exportsObj.validateFixtureTokenAtInit as Function)(token, cfg, fixtureUserId);
+        const claims = (exportsObj.validateFixtureTokenAtInit as Function)(
+          token,
+          cfg,
+          fixtureUserId,
+        );
         validatedCount++;
         return claims;
       },
@@ -221,7 +227,9 @@ describe("feed-read-3000vu.js scenario init fixture validation", () => {
       throw new Error("Expected to throw");
     } catch (e: any) {
       if (!e.message || !e.message.includes("exceeds maximum allowed 5 minutes")) {
-        throw new Error(`Expected error message to include "exceeds maximum allowed 5 minutes", got ${e.message}`);
+        throw new Error(
+          `Expected error message to include "exceeds maximum allowed 5 minutes", got ${e.message}`,
+        );
       }
     }
   });
@@ -239,5 +247,28 @@ describe("feed-read-3000vu.js scenario init fixture validation", () => {
         throw new Error(`Expected error message to include "mismatch", got ${e.message}`);
       }
     }
+  });
+
+  it("fails scenario init when neither K6_API_TOKEN nor fixture tokens are provided", () => {
+    const fixtures = [{ user_id: user1 }];
+    let caught = "";
+    try {
+      runScenarioInit(fixtures);
+    } catch (e: unknown) {
+      caught = (e as { message?: string }).message ?? "";
+    }
+    assertEquals(caught.includes("Missing K6_API_TOKEN"), true);
+  });
+
+  it("fails scenario init when a fixture token header alg is not EdDSA", () => {
+    const hs256Token = makeJWT(validClaims(user1, -10, 200), "HS256");
+    const fixtures = [{ user_id: user1, token: hs256Token }];
+    let caught = "";
+    try {
+      runScenarioInit(fixtures);
+    } catch (e: unknown) {
+      caught = (e as { message?: string }).message ?? "";
+    }
+    assertEquals(caught.includes("alg must be EdDSA"), true);
   });
 });

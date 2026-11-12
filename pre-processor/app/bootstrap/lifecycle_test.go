@@ -3,9 +3,15 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"testing"
 
+	"pre-processor/test/mocks"
 	"pre-processor/utils/otel"
+
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 // TestResolveOtelShutdown_NilFallsBackToNoOp reproduces the shutdown panic:
@@ -37,4 +43,53 @@ func TestResolveOtelShutdown_PassesThroughNonNil(t *testing.T) {
 	if !called {
 		t.Fatal("resolveOtelShutdown replaced a non-nil ShutdownFunc instead of passing it through")
 	}
+}
+
+func TestStartJobs_SkipsSyncAndBackfillWhenArticleSyncDisabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobHandler := mocks.NewMockJobHandler(ctrl)
+	healthHandler := mocks.NewMockHealthHandler(ctrl)
+
+	// StartArticleSyncJob and StartBackfillJob must NOT be called when ArticleSyncEnabled is false.
+	jobHandler.EXPECT().StartSummarizationJob(gomock.Any()).Return(nil)
+	jobHandler.EXPECT().StartQualityCheckJob(gomock.Any()).Return(nil)
+	jobHandler.EXPECT().StartSummarizeQueueWorker(gomock.Any()).Return(nil)
+	jobHandler.EXPECT().StartNotificationRelayJob(gomock.Any()).Return(nil)
+	healthHandler.EXPECT().CheckDependencies(gomock.Any()).Return(nil)
+
+	deps := &Dependencies{
+		JobHandler:         jobHandler,
+		HealthHandler:      healthHandler,
+		ArticleSyncEnabled: false,
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	require.NoError(t, startJobs(context.Background(), deps, log))
+}
+
+func TestStartJobs_StartsSyncAndBackfillWhenArticleSyncEnabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobHandler := mocks.NewMockJobHandler(ctrl)
+	healthHandler := mocks.NewMockHealthHandler(ctrl)
+
+	jobHandler.EXPECT().StartArticleSyncJob(gomock.Any()).Return(nil)
+	jobHandler.EXPECT().StartBackfillJob(gomock.Any()).Return(nil)
+	jobHandler.EXPECT().StartSummarizationJob(gomock.Any()).Return(nil)
+	jobHandler.EXPECT().StartQualityCheckJob(gomock.Any()).Return(nil)
+	jobHandler.EXPECT().StartSummarizeQueueWorker(gomock.Any()).Return(nil)
+	jobHandler.EXPECT().StartNotificationRelayJob(gomock.Any()).Return(nil)
+	healthHandler.EXPECT().CheckDependencies(gomock.Any()).Return(nil)
+
+	deps := &Dependencies{
+		JobHandler:         jobHandler,
+		HealthHandler:      healthHandler,
+		ArticleSyncEnabled: true,
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	require.NoError(t, startJobs(context.Background(), deps, log))
 }

@@ -124,6 +124,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 				counts[s.Class]++
 			}
 			printer.Info("[dry-run] Would generate %d random secret files in secrets/", counts[setup.SecretClassRandom])
+			printer.Info("[dry-run] Would generate %d Ed25519 key files in secrets/", counts[setup.SecretClassEd25519SigningKey]+counts[setup.SecretClassEd25519VerifyKey])
 			printer.Info("[dry-run] Would create %d operator-provided placeholder files", counts[setup.SecretClassOperatorProvided])
 			printer.Info("[dry-run] Would leave %d step-ca provisioner secrets to %s", counts[setup.SecretClassPKIProvisioner], setup.PKIBootstrapScript)
 		} else {
@@ -186,7 +187,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	missing := 0
 	for _, spec := range specs {
-		if spec.Class == setup.SecretClassRandom {
+		if spec.Class == setup.SecretClassRandom || spec.Class == setup.SecretClassEd25519SigningKey || spec.Class == setup.SecretClassEd25519VerifyKey {
 			path := filepath.Join(secretsDir, spec.Filename)
 			if _, err := os.Stat(path); err != nil {
 				printer.Error("Missing: secrets/%s", spec.Filename)

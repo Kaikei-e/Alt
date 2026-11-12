@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"alt/config"
+	connectmiddleware "alt/connect/v2/middleware"
 	"alt/orchestrator/driver/preprocessor_connect"
 
 	"github.com/google/uuid"
@@ -54,8 +56,19 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 	// 4. RAG module (depends on feed)
 	rag := newRAGModule(infra, feed)
 
-	// 5. Article module (depends on feed)
-	article, err := newArticleModule(infra, feed)
+	// 5a. Per-user quotas (the article module charges batch summarization to it)
+	quotaCfg, err := config.LoadUserQuotaConfig()
+	if err != nil {
+		return nil, fmt.Errorf("user quota config: %w", err)
+	}
+	config.LogUserQuotaConfig(slog.Default(), quotaCfg)
+	userQuotaLimiter, err := connectmiddleware.NewUserQuotaLimiter(quotaCfg, time.Now, slog.Default())
+	if err != nil {
+		return nil, fmt.Errorf("user quota limiter: %w", err)
+	}
+
+	// 5. Article module (depends on feed and the summarize quota)
+	article, err := newArticleModule(infra, feed, userQuotaLimiter, userQuotaLimiter)
 	if err != nil {
 		return nil, fmt.Errorf("article module: %w", err)
 	}
@@ -229,5 +242,7 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 
 		// Admin observability
 		AdminMonitor: adminMonitor,
+
+		UserQuotaLimiter: userQuotaLimiter,
 	}, nil
 }

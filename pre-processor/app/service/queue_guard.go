@@ -25,6 +25,7 @@ const (
 	// while still giving the article a path back to retry once the outage
 	// clears — a permanent block would not.
 	failedJobCooldownWindow = 1 * time.Hour
+	maxLowQualityReattempts = 2
 )
 
 // ShouldQueueSummarizeJob applies idempotency checks before creating a new job.
@@ -110,6 +111,23 @@ func ShouldQueueSummarizeJob(
 			logger.InfoContext(ctx, "skipping summarize job creation: article recently exhausted retries", "article_id", articleID, "reason", "recent_failure_cooldown")
 		}
 		return false, "recent_failure_cooldown", nil
+	}
+
+	// Counts completed rows whose summary text was cleared (status='completed' AND summary IS NULL);
+	// the bound depends on completed rows of summarize_job_queue being retained rather than pruned.
+	invalidatedCount, err := jobRepo.CountInvalidatedCompletedJobs(ctx, articleID)
+	if err != nil {
+		return false, "", err
+	}
+	if invalidatedCount > maxLowQualityReattempts {
+		if logger != nil {
+			logger.InfoContext(ctx, "skipping summarize job creation: low quality re-attempts exhausted",
+				"article_id", articleID,
+				"invalidated_count", invalidatedCount,
+				"max_reattempts", maxLowQualityReattempts,
+				"reason", "low_quality_retries_exhausted")
+		}
+		return false, "low_quality_retries_exhausted", nil
 	}
 
 	return true, "", nil

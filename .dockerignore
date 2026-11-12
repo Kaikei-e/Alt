@@ -1,6 +1,10 @@
 # Global .dockerignore for monorepo build context
 # This file is used when building from the root directory
 
+# Secrets and backup data
+secrets/
+backups/
+
 # Version control
 .git
 .gitignore

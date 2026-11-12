@@ -1567,7 +1567,7 @@ func TestObserve_StaleContainerDigestAndEnvDrift(t *testing.T) {
         "INBOUND_MTLS=true",
         "MTLS_ALLOWED_PEERS=recap-worker,acolyte-orchestrator",
         "PEER_IDENTITY_STRICT=true",
-        "BACKEND_TOKEN_SECRET=` + sentinelSecretJWT + `"
+        "INTERNAL_AUTH_SECRET=` + sentinelSecretJWT + `"
       ]
     },
     "Mounts": []

@@ -75,7 +75,7 @@ deno task perf -- scan --format md -o reports/scan.md
 
 | Group | Auth | Description |
 |-------|------|-------------|
-| `public` | No | Login, registration, root pages |
+| `public` | No | Login, registration (self-service registration is disabled by default unless `KRATOS_REGISTRATION_ENABLED=true`), root pages |
 | `desktop` | Yes | Desktop layout pages (home, feeds, recap, augur, stats, settings) |
 | `mobile` | Yes | Mobile layout pages (feeds, swipe, search, recap, ask-augur) |
 | `sveltekit` | No | SvelteKit root and login |
@@ -135,7 +135,7 @@ deno task perf -- load -r /api/health
 
 ## K6 Integration
 
-API-level load testing using Grafana K6, running as a Docker Compose service. The five whitelist scenarios below (smoke/load/stress/soak/spike) target `alt-backend` directly on port 9000 (bypassing the edge reverse proxy), authenticating with a short-lived JWT in the `X-Alt-Backend-Token` header (`k6/helpers/auth.js`, signed with `K6_BACKEND_TOKEN_SECRET`). Three additional scenario files exist outside this whitelist with different targets and auth — see "Other K6 Scenarios" below.
+API-level load testing using Grafana K6, running as a Docker Compose service. The five whitelist scenarios below (smoke/load/stress/soak/spike) target `alt-backend` directly on port 9000 (bypassing the edge reverse proxy), authenticating with a pre-minted short-lived `EdDSA` (Ed25519) JWT in the `X-Alt-Backend-Token` header (`k6/helpers/auth.js`, supplied via `K6_API_TOKEN` / `K6_API_TOKEN_FILE` and signed by `auth-hub`, which alone holds the signing key). Three additional scenario files exist outside this whitelist with different targets and auth — see "Other K6 Scenarios" below.
 
 ### Running K6 Scenarios
 
@@ -193,7 +193,8 @@ Weighted random endpoint selection per iteration:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `K6_BASE_URL` | `http://alt-backend:9000` | Backend base URL |
-| `K6_BACKEND_TOKEN_SECRET` | - | JWT signing secret for `X-Alt-Backend-Token` (populated from the `backend_token_secret` Docker secret by `docker-entrypoint.sh`) |
+| `K6_API_TOKEN` | - | Pre-minted short-lived `EdDSA` (Ed25519) JWT for `X-Alt-Backend-Token`; k6 fails fast at init if unset or not `alg: EdDSA` |
+| `K6_API_TOKEN_FILE` | `/run/secrets/k6_api_token` | File path read into `K6_API_TOKEN` by `docker-entrypoint.sh` (from the `k6_api_token` Docker secret) |
 | `K6_TEST_USER_ID` | - | Test user UUID |
 | `K6_TEST_TENANT_ID` | - | Test tenant UUID |
 | `K6_TEST_USER_EMAIL` | - | Test user email |
@@ -210,7 +211,7 @@ Three scenario files exist under `k6/scenarios/` outside the smoke/load/stress/s
 
 | Scenario | Target | Auth | Notes |
 |----------|--------|------|-------|
-| `feed-read-3000vu.js` | `alt-backend:9101` (Connect-RPC v2, JSON body) | JWT via `X-Alt-Backend-Token` (`helpers/jwt.js` + `K6_BACKEND_TOKEN_SECRET`) | `ramping-vus` to 3000 VU over 30 min; run via `alt-perf/scripts/run-feed-read-load-test.sh` |
+| `feed-read-3000vu.js` | `alt-backend:9101` (Connect-RPC v2, JSON body) | Pre-minted `EdDSA` JWT via `X-Alt-Backend-Token` (`helpers/auth.js` + `K6_API_TOKEN` / `K6_API_TOKEN_FILE`) | Bounded 150s `ramping-vus` cohort to 3000 VU; run via `alt-perf/scripts/run-feed-read-load-test.sh` |
 | `sv-connect-composite-10m.js` | SvelteKit SV proxy path (`K6_APP_BASE_URL`, defaults to a hardcoded `http://nginx/sv/api/v2`) | Kratos session cookie (`helpers/kratos-auth.js`) | `ramping-arrival-rate` open model, 10-minute timeline; external calls constrained to the in-repo mock RSS server |
 | `feed-registration.js` | Backend via a hardcoded `http://nginx` base | Kratos session cookie (`helpers/kratos-auth.js`) | Run with `compose/load-test.yaml` + `compose/perf.yaml` overlaid; registers feeds per VU with randomized pacing |
 
@@ -355,7 +356,7 @@ Lessons from Alt's load-testing campaigns (the 3000VU series and later) that gov
 | Flaky metrics | Increase `--runs` (3+ enables outlier discarding), increase `--warmup` |
 | Browser memory leaks | Browser auto-restarts every 20 pages; reduce route count if needed |
 | K6 endpoint safety | Never add external-API-calling endpoints to `k6/helpers/endpoints.js` |
-| K6 auth issues | Verify `K6_BACKEND_TOKEN_SECRET` matches alt-backend's `BACKEND_TOKEN_SECRET` |
+| K6 auth issues | Verify `K6_API_TOKEN` / `K6_API_TOKEN_FILE` contains an unexpired non-admin `EdDSA` JWT signed by `auth-hub` matching `alt-backend`'s `BACKEND_TOKEN_VERIFY_KEY_FILE` |
 
 ## Operational Reality & Cost of Breaking
 

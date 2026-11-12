@@ -56,6 +56,11 @@ func main() {
 		log.ErrorContext(ctx, "backend listener config invalid", "error", err)
 		os.Exit(1)
 	}
+	trustedProxies, err := config.LoadTrustedProxyCIDRs()
+	if err != nil {
+		log.ErrorContext(ctx, "trusted proxy config invalid", "error", err)
+		os.Exit(1)
+	}
 	if err := config.ValidateBackendConfig(cfg); err != nil {
 		log.ErrorContext(ctx, "backend config invalid", "error", err)
 		os.Exit(1)
@@ -102,7 +107,7 @@ func main() {
 
 	// ---- Listener 1: browser-facing REST ----
 	e := newRESTEcho(container, cfg, otelEnabled)
-	rest.RegisterRoutes(ctx, e, container, cfg)
+	rest.RegisterRoutes(ctx, e, container, cfg, trustedProxies...)
 	restSrv := bootstrap.NewRESTServer(fmt.Sprintf(":%d", cfg.Server.Port), e, cfg)
 
 	// ---- Listener 2: browser-facing Connect-RPC ----
@@ -203,9 +208,6 @@ func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEn
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = false
-	// CVE-2026-118653 / CVE-2026-118651: do not fall back to Echo v4's legacy
-	// XFF/X-Real-IP extractor on c.RealIP(); extract the direct peer address.
-	e.IPExtractor = echo.ExtractIPDirect()
 
 	if otelEnabled {
 		e.Use(otelecho.Middleware(serviceName))

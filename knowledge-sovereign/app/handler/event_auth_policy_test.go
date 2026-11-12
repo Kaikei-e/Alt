@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -111,7 +113,7 @@ func (m *mockAuthRepo) ResolveLensFilter(ctx context.Context, userID uuid.UUID, 
 	return nil, nil
 }
 
-func createTestBackendToken(t *testing.T, secret []byte, userID, tenantID, issuer, audience string, expiry time.Duration) string {
+func createTestBackendToken(t *testing.T, signingKey ed25519.PrivateKey, userID, tenantID, issuer, audience string, expiry time.Duration) string {
 	t.Helper()
 	now := time.Now()
 	claims := jwt.MapClaims{
@@ -125,8 +127,8 @@ func createTestBackendToken(t *testing.T, secret []byte, userID, tenantID, issue
 		"iat":       now.Unix(),
 		"exp":       now.Add(expiry).Unix(),
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenStr, err := token.SignedString(secret)
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	tokenStr, err := token.SignedString(signingKey)
 	require.NoError(t, err)
 	return tokenStr
 }
@@ -151,10 +153,11 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 		recapToken       = "recap-secret-token-long-enough-5678"
 		ragToken         = "rag-secret-token-long-enough-9012"
 		replicationToken = "replication-secret-token-long-3456"
-		jwtSecretKey     = "super-secret-jwt-verification-key-32"
 		jwtIssuer        = "auth-hub"
 		jwtAudience      = "alt-backend"
 	)
+	pubKey, jwtSigningKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 
 	pol := &config.AuthPolicy{
 		Services: []config.ServicePolicy{
@@ -211,9 +214,9 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 	}
 
 	verifier := &config.LocalUserJWTVerifier{
-		Secret:   jwtSecretKey,
-		Issuer:   jwtIssuer,
-		Audience: jwtAudience,
+		PublicKey: pubKey,
+		Issuer:    jwtIssuer,
+		Audience:  jwtAudience,
 	}
 
 	client, cleanup := setupPolicyTestServer(t, pol, verifier)
@@ -263,6 +266,8 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 				TenantId:   targetTenantID,
 				UserId:     targetUserID,
 				EventType:  "ArticleCreated",
+				DedupeKey:  "article-created:" + uuid.New().String(),
+				Payload:    []byte("{}"),
 				OccurredAt: timestamppb.New(time.Now()),
 			},
 		})
@@ -332,7 +337,7 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 	})
 
 	t.Run("user-scoped operation with mismatched user ID in JWT returns 403", func(t *testing.T) {
-		userJWT := createTestBackendToken(t, []byte(jwtSecretKey), otherUserID, targetTenantID, jwtIssuer, jwtAudience, time.Hour)
+		userJWT := createTestBackendToken(t, jwtSigningKey, otherUserID, targetTenantID, jwtIssuer, jwtAudience, time.Hour)
 		req := connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
 			UserId: targetUserID, // requesting victim user
 		})
@@ -346,7 +351,7 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 	})
 
 	t.Run("user-scoped operation with mismatched tenant ID in JWT returns 403", func(t *testing.T) {
-		userJWT := createTestBackendToken(t, []byte(jwtSecretKey), targetUserID, otherTenantID, jwtIssuer, jwtAudience, time.Hour)
+		userJWT := createTestBackendToken(t, jwtSigningKey, targetUserID, otherTenantID, jwtIssuer, jwtAudience, time.Hour)
 		req := connect.NewRequest(&sovereignv1.ListKnowledgeEventsRequest{
 			UserId:   targetUserID,
 			TenantId: targetTenantID,
@@ -361,7 +366,7 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 	})
 
 	t.Run("valid user-scoped call with matching JWT succeeds", func(t *testing.T) {
-		userJWT := createTestBackendToken(t, []byte(jwtSecretKey), targetUserID, targetTenantID, jwtIssuer, jwtAudience, time.Hour)
+		userJWT := createTestBackendToken(t, jwtSigningKey, targetUserID, targetTenantID, jwtIssuer, jwtAudience, time.Hour)
 		req := connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
 			UserId: targetUserID,
 		})
@@ -380,6 +385,8 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 				TenantId:   targetTenantID,
 				UserId:     targetUserID,
 				EventType:  "recap.topic_snapshotted.v1",
+				DedupeKey:  "recap.topic_snapshotted.v1:" + targetUserID + ":" + uuid.New().String(),
+				Payload:    []byte("{}"),
 				OccurredAt: timestamppb.New(time.Now()),
 			},
 		})
@@ -397,6 +404,8 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 				TenantId:   targetTenantID,
 				UserId:     targetUserID,
 				EventType:  "augur.conversation_linked.v1",
+				DedupeKey:  "augur.conversation_linked.v1:article:1:" + uuid.New().String(),
+				Payload:    []byte("{}"),
 				OccurredAt: timestamppb.New(time.Now()),
 			},
 		})
@@ -412,10 +421,11 @@ func TestPolicyAuth_InfraReprojectBackfillAndProjectionState(t *testing.T) {
 	const (
 		backendToken  = "backend-secret-token-long-enough-1234"
 		operatorToken = "operator-secret-token-long-enough-5678"
-		jwtSecretKey  = "super-secret-jwt-verification-key-32"
 		jwtIssuer     = "auth-hub"
 		jwtAudience   = "alt-backend"
 	)
+	pubKey, jwtSigningKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 
 	allInfraMethods := map[string]bool{
 		"/services.sovereign.v1.KnowledgeSovereignService/GetActiveProjectionVersion": true,
@@ -459,9 +469,9 @@ func TestPolicyAuth_InfraReprojectBackfillAndProjectionState(t *testing.T) {
 	}
 
 	verifier := &config.LocalUserJWTVerifier{
-		Secret:   jwtSecretKey,
-		Issuer:   jwtIssuer,
-		Audience: jwtAudience,
+		PublicKey: pubKey,
+		Issuer:    jwtIssuer,
+		Audience:  jwtAudience,
 	}
 
 	client, cleanup := setupPolicyTestServer(t, pol, verifier)
@@ -469,7 +479,7 @@ func TestPolicyAuth_InfraReprojectBackfillAndProjectionState(t *testing.T) {
 
 	userID := uuid.New().String()
 	tenantID := uuid.New().String()
-	userJWT := createTestBackendToken(t, []byte(jwtSecretKey), userID, tenantID, jwtIssuer, jwtAudience, time.Hour)
+	userJWT := createTestBackendToken(t, jwtSigningKey, userID, tenantID, jwtIssuer, jwtAudience, time.Hour)
 
 	runID := uuid.New().String()
 	auditID := uuid.New().String()
@@ -745,5 +755,43 @@ func TestPolicyAuth_WrapStreamingHandler_WatchProjectorEvents(t *testing.T) {
 		require.True(t, stream.Receive())
 		assert.Equal(t, int64(200), stream.Msg().LatestEventSeq)
 		cancel()
+	})
+}
+
+func TestNewPolicyAuthInterceptor_PanicsWhenUserTokenRequiredWithoutVerifier(t *testing.T) {
+	polWithUserToken := &config.AuthPolicy{
+		Services: []config.ServicePolicy{
+			{
+				Name:             "alt-backend",
+				Token:            "backend-secret-token-long-enough-1234",
+				RequireUserToken: true,
+			},
+		},
+	}
+	polWithoutUserToken := &config.AuthPolicy{
+		Services: []config.ServicePolicy{
+			{
+				Name:             "recap-worker",
+				Token:            "recap-secret-token-long-enough-5678",
+				RequireUserToken: false,
+			},
+		},
+	}
+
+	assert.Panics(t, func() {
+		NewPolicyAuthInterceptor(polWithUserToken, nil, true)
+	})
+
+	var typedNilVerifier *config.LocalUserJWTVerifier
+	assert.Panics(t, func() {
+		NewPolicyAuthInterceptor(polWithUserToken, typedNilVerifier, true)
+	})
+
+	assert.NotPanics(t, func() {
+		NewPolicyAuthInterceptor(polWithUserToken, nil, false)
+	})
+
+	assert.NotPanics(t, func() {
+		NewPolicyAuthInterceptor(polWithoutUserToken, nil, true)
 	})
 }

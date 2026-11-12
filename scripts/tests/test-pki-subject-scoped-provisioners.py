@@ -391,6 +391,42 @@ with tempfile.TemporaryDirectory() as tmp:
             f"last={lines[-1:]!r} cert={cert.exists()} key={key.exists()}",
         )
 
+print("provisioner claims and revocation prerequisites")
+check(
+    "bootstrap sets explicit default and max leaf durations on every provisioner",
+    "--x509-default-dur" in bootstrap and "--x509-max-dur" in bootstrap,
+)
+check(
+    "bootstrap does not disable renewal or allow renewal after expiry",
+    "--disable-renewal" not in bootstrap and "--allow-renewal-after-expiry" not in bootstrap,
+)
+check(
+    "bootstrap treats a provisioner without the explicit durations as out of date",
+    "defaultTLSCertDuration" in bootstrap and "maxTLSCertDuration" in bootstrap,
+)
+check(
+    "bootstrap fails when ca.json has no certificate database configured",
+    ".db.type" in bootstrap and "revocation" in bootstrap,
+)
+
+jq_step = bootstrap.find("command -v jq")
+db_call = bootstrap.find("\ncheck_certificate_database\n")
+check(
+    "certificate database check runs after jq is installed in the CA container",
+    0 <= jq_step < db_call,
+    f"jq_step={jq_step} db_call={db_call}",
+)
+db_fn = shell_function(bootstrap, "check_certificate_database")
+for label, rc, expect_msg in (("db present", 0, False), ("db absent", 1, True)):
+    fake = f'docker() {{ return {rc}; }}\nSTEP_CA=x CA_CONFIG=/c.json'
+    res = run_shell_function(f"{fake}\n{db_fn}", "check_certificate_database")
+    msg = res.stderr.decode("utf-8", "replace")
+    check(
+        f"check_certificate_database ({label}) reports no db section only when absent",
+        (res.returncode == rc) and (("no db section" in msg) == expect_msg),
+        f"rc={res.returncode} stderr={msg!r}",
+    )
+
 print("compose-audit path coverage for provisioner scripts")
 from compose_include import load_yaml  # noqa: E402
 

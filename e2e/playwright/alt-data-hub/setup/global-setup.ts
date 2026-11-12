@@ -2,7 +2,7 @@ import { request } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
 import { waitForReady, httpOk } from "../../_shared/readiness.js";
 import type { Probe } from "../../_shared/readiness.js";
-import { env } from "../src/env.js";
+import { env, requireSuitePKI } from "../src/env.js";
 import { connectHealthSchema } from "../src/schemas.js";
 
 /**
@@ -24,8 +24,33 @@ import { connectHealthSchema } from "../src/schemas.js";
  * did not close, instead of failing every test with a transport error.
  */
 
-const AN_MTLS_PROBE_PROCEDURE =
-	"/services.datahub.v1.DataHubService/GetLatestArticleTimestamp";
+const SVC = "/services.datahub.v1.DataHubService";
+
+/**
+ * One read-only database probe per allowed peer identity in `defaultPeerProcedures`,
+ * so `globalSetup` probes a procedure `env.allowedPeer` is authorized to call.
+ */
+const READINESS_PROBE_BY_PEER: Readonly<Record<string, string>> = {
+	"alt-backend": `${SVC}/CountBackfillArticles`,
+	"pre-processor": `${SVC}/HasUnsummarizedArticles`,
+	"search-indexer": `${SVC}/GetLatestArticleTimestamp`,
+	"tag-generator": `${SVC}/ListUntaggedArticles`,
+	"recap-worker": `${SVC}/ListFeedsInWindow`,
+	"rag-orchestrator": `${SVC}/ListRecentArticles`,
+	"alt-harvester": `${SVC}/ListScrapingDomains`,
+	"alt-notifier": `${SVC}/GetNotificationBacklogAge`,
+};
+
+function readinessProbeProcedure(peer: string): string {
+	const proc = READINESS_PROBE_BY_PEER[peer];
+	if (!proc) {
+		throw new Error(
+			`No readiness database probe configured for ALLOWED_PEER="${peer}". ` +
+				`Supported peers: ${Object.keys(READINESS_PROBE_BY_PEER).join(", ")}`,
+		);
+	}
+	return proc;
+}
 
 async function mtlsContext(): Promise<APIRequestContext> {
 	return request.newContext({
@@ -44,6 +69,8 @@ async function mtlsContext(): Promise<APIRequestContext> {
 }
 
 export default async function globalSetup(): Promise<void> {
+	requireSuitePKI();
+	const probeProcedure = readinessProbeProcedure(env.allowedPeer);
 	const mtls = await mtlsContext();
 
 	try {
@@ -77,18 +104,17 @@ export default async function globalSetup(): Promise<void> {
 			},
 
 			/**
-			 * 3. A procedure that actually reads `articles` answers. The Atlas
-			 *    migrator is a `service_completed_successfully` dependency, so
-			 *    compose orders it — but the pgx pool opens lazily
+			 * 3. A procedure that actually reads the database answers for
+			 *    `env.allowedPeer` (`CountBackfillArticles` for `alt-backend`).
+			 *    The Atlas migrator is a `service_completed_successfully`
+			 *    dependency, so compose orders it — but the pgx pool opens lazily
 			 *    (internal/bootstrap/dbboot), and the first acquire is where a
-			 *    half-migrated schema shows up. Gating on it means schema drift
-			 *    fails here with one message instead of as forty Connect
-			 *    `internal` 500s that read like handler bugs.
+			 *    half-migrated schema shows up.
 			 */
 			{
-				label: `mTLS ${AN_MTLS_PROBE_PROCEDURE} (database pool)`,
+				label: `mTLS ${probeProcedure} as ${env.allowedPeer} (database pool)`,
 				run: async () => {
-					const response = await mtls.post(AN_MTLS_PROBE_PROCEDURE, {
+					const response = await mtls.post(probeProcedure, {
 						headers: { "Content-Type": "application/json" },
 						data: {},
 						timeout: 10_000,

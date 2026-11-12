@@ -1,12 +1,20 @@
 package config
 
 import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
-const minSovereignEventTokenLen = 24
+const (
+	minSovereignEventTokenLen    = 24
+	backendTokenVerifyKeyFileEnv = "BACKEND_TOKEN_VERIFY_KEY_FILE"
+)
 
 // FileReader defines the file reading signature for secret ingestion.
 type FileReader func(string) ([]byte, error)
@@ -48,36 +56,46 @@ func loadWebPushSecrets(cfg *WebPushConfig, readFile FileReader) error {
 	return nil
 }
 
-// loadBackendTokenSecret loads backend token secret from file if configured (Docker Secrets support).
-//
-// Unlike the two blocks above this one does NOT fall back to the env value
-// on failure. middleware/jwt_middleware.go and
-// connect/v2/middleware/auth_interceptor.go verify every browser token
-// against this secret, and an empty one rejects all of them: the container
-// stays healthy, /health answers 200, and every authenticated REST and
-// Connect call answers 401 with nothing in the log to say why. That cannot
-// be a fallback state, so a mounted-but-unreadable or mounted-but-empty
-// secret exits non-zero here (CLAUDE.md rule 9).
-//
-// The guard is deliberately environment-independent. validateAuthConfig
-// only requires the secret when APP_ENV == "production", and APP_ENV is set
-// in no compose file — the same trap validateImageProxyConfig documents.
-func loadBackendTokenSecret(cfg *AuthConfig, readFile FileReader) error {
-	if cfg.BackendTokenSecretFile != "" {
-		content, err := readFile(cfg.BackendTokenSecretFile)
-		if err != nil {
-			return fmt.Errorf("read BACKEND_TOKEN_SECRET_FILE %s: %w",
-				cfg.BackendTokenSecretFile, err)
-		}
-		secret := strings.TrimSpace(string(content))
-		if secret == "" {
-			return fmt.Errorf("BACKEND_TOKEN_SECRET_FILE=%s resolved to an empty secret: "+
-				"every authenticated request would be rejected with 401 while the container stayed healthy; "+
-				"mount a non-empty secret or set BACKEND_TOKEN_SECRET instead",
-				cfg.BackendTokenSecretFile)
-		}
-		cfg.BackendTokenSecret = secret
+func parseEd25519VerifyKeyPEM(raw []byte) (ed25519.PublicKey, error) {
+	block, rest := pem.Decode(raw)
+	if block == nil {
+		return nil, fmt.Errorf("no PEM block found")
 	}
+	if len(bytes.TrimSpace(rest)) > 0 {
+		return nil, fmt.Errorf("unexpected trailing data after PEM block")
+	}
+	if block.Type != "PUBLIC KEY" {
+		return nil, fmt.Errorf("PEM block type must be PUBLIC KEY, got %q", block.Type)
+	}
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse SPKI public key: %w", err)
+	}
+	edPub, ok := pub.(ed25519.PublicKey)
+	if !ok || len(edPub) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("public key must be Ed25519, got %T", pub)
+	}
+	return edPub, nil
+}
+
+// loadBackendTokenVerifyKey loads the SPKI Ed25519 public key from
+// BACKEND_TOKEN_VERIFY_KEY_FILE. Called only by ValidateBackendConfig so
+// binaries that never verify user tokens neither require nor read the key.
+func loadBackendTokenVerifyKey(cfg *AuthConfig, readFile FileReader) error {
+	path := strings.TrimSpace(os.Getenv(backendTokenVerifyKeyFileEnv))
+	if path == "" {
+		return fmt.Errorf("%s is required", backendTokenVerifyKeyFileEnv)
+	}
+	cleanPath := filepath.Clean(path)
+	content, err := readFile(cleanPath)
+	if err != nil {
+		return fmt.Errorf("read %s %s: %w", backendTokenVerifyKeyFileEnv, cleanPath, err)
+	}
+	pub, err := parseEd25519VerifyKeyPEM(content)
+	if err != nil {
+		return fmt.Errorf("parse %s %s: %w", backendTokenVerifyKeyFileEnv, cleanPath, err)
+	}
+	cfg.BackendTokenPublicKey = pub
 	return nil
 }
 
@@ -174,9 +192,6 @@ func loadSecrets(cfg *Config, readFile FileReader) error {
 		return err
 	}
 	if err := loadWebPushSecrets(&cfg.WebPush, readFile); err != nil {
-		return err
-	}
-	if err := loadBackendTokenSecret(&cfg.Auth, readFile); err != nil {
 		return err
 	}
 	if err := loadInternalAuthSecret(&cfg.Auth, readFile); err != nil {

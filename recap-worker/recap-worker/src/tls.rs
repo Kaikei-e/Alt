@@ -5,17 +5,17 @@
 //!
 //! Primitives:
 //!   - [`load_server_tls_config`]: loads the pair of PEM files into a
-//!     `rustls::ServerConfig` suitable for `axum_server::bind_rustls`. When
+//!     `rustls::ServerConfig` suitable for `PeerIdentityAcceptor`. When
 //!     `MTLS_ENFORCE` is not `true`, returns `None` so the caller can fall
 //!     back to the plaintext `tokio::net::TcpListener`.
-//!   - [`allowed_peers_from_env`]: parses `MTLS_ALLOWED_PEERS` for the
-//!     peer-identity middleware.
 //!
 //! Configuration is env-driven:
 //!   - `MTLS_ENFORCE=true` enables mTLS; any other value keeps plaintext.
 //!   - `MTLS_CERT_FILE` / `MTLS_KEY_FILE`: leaf cert + private key (PEM).
 //!   - `MTLS_CA_FILE`: trust anchor for client-cert verification.
-//!   - `MTLS_ALLOWED_PEERS`: CSV of CNs permitted to reach the server.
+//!   - `MTLS_ALLOWED_PEERS`: required; CSV of exact names permitted to reach the
+//!     server, or `disabled` (parsed in `config`). A client certificate is
+//!     matched on its DNS SANs, or on its Subject CN when it has none.
 
 use std::fs;
 use std::io;
@@ -32,12 +32,79 @@ use x509_parser::prelude::{FromDer, GeneralName, X509Certificate};
 
 /// Client-certificate verifier that delegates cryptographic chain validation to
 /// an inner [`ClientCertVerifier`] (typically `WebPkiClientVerifier`) and then
-/// enforces that the leaf certificate's Common Name or DNS SAN matches one of
-/// the configured `allowed_peers`.
+/// enforces that the leaf certificate's DNS SAN (or its Common Name when it has
+/// no DNS SAN) matches one of the configured `allowed_peers`.
 #[derive(Debug)]
 pub struct AllowedNamesVerifier {
     inner: Arc<dyn ClientCertVerifier>,
     allowed_peers: Vec<String>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct CertPeerNames {
+    pub(crate) common_names: Vec<String>,
+    pub(crate) dns_sans: Vec<String>,
+}
+
+pub(crate) fn extract_cert_peer_names(
+    end_entity: &CertificateDer<'_>,
+) -> std::result::Result<CertPeerNames, rustls::Error> {
+    let (_, cert) = X509Certificate::from_der(end_entity.as_ref())
+        .map_err(|_| rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding))?;
+
+    let common_names = cert
+        .subject()
+        .iter_common_name()
+        .filter_map(|cn| cn.as_str().ok().map(str::to_string))
+        .collect();
+
+    let dns_sans = cert
+        .subject_alternative_name()
+        .ok()
+        .flatten()
+        .map(|ext| {
+            ext.value
+                .general_names
+                .iter()
+                .filter_map(|name| match name {
+                    GeneralName::DNSName(dns) => Some((*dns).to_string()),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(CertPeerNames {
+        common_names,
+        dns_sans,
+    })
+}
+
+pub(crate) fn verify_cert_peer_identity(
+    end_entity: &CertificateDer<'_>,
+    allowed_peers: &[String],
+) -> std::result::Result<(), rustls::Error> {
+    if allowed_peers.is_empty() {
+        return Err(rustls::Error::General(
+            "MTLS_ALLOWED_PEERS allowlist is empty".into(),
+        ));
+    }
+
+    let names = extract_cert_peer_names(end_entity)?;
+    let is_allowed = |candidate: &String| allowed_peers.iter().any(|allowed| allowed == candidate);
+    let matches = if names.dns_sans.is_empty() {
+        names.common_names.iter().any(is_allowed)
+    } else {
+        names.dns_sans.iter().any(is_allowed)
+    };
+
+    if matches {
+        Ok(())
+    } else {
+        Err(rustls::Error::General(
+            "client certificate peer identity not in MTLS_ALLOWED_PEERS".into(),
+        ))
+    }
 }
 
 impl AllowedNamesVerifier {
@@ -52,40 +119,7 @@ impl AllowedNamesVerifier {
         &self,
         end_entity: &CertificateDer<'_>,
     ) -> std::result::Result<(), rustls::Error> {
-        if self.allowed_peers.is_empty() {
-            return Ok(());
-        }
-
-        let (_, cert) = X509Certificate::from_der(end_entity.as_ref()).map_err(|_| {
-            rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding)
-        })?;
-
-        let cn_matches = cert
-            .subject()
-            .iter_common_name()
-            .filter_map(|cn| cn.as_str().ok())
-            .any(|cn| self.allowed_peers.iter().any(|allowed| allowed == cn));
-
-        let san_matches = cert
-            .subject_alternative_name()
-            .ok()
-            .flatten()
-            .is_some_and(|ext| {
-                ext.value.general_names.iter().any(|name| match name {
-                    GeneralName::DNSName(dns) => {
-                        self.allowed_peers.iter().any(|allowed| allowed == dns)
-                    }
-                    _ => false,
-                })
-            });
-
-        if cn_matches || san_matches {
-            Ok(())
-        } else {
-            Err(rustls::Error::General(
-                "client certificate peer identity not in MTLS_ALLOWED_PEERS".into(),
-            ))
-        }
+        verify_cert_peer_identity(end_entity, &self.allowed_peers)
     }
 }
 
@@ -111,7 +145,16 @@ impl ClientCertVerifier for AllowedNamesVerifier {
         let verified = self
             .inner
             .verify_client_cert(end_entity, intermediates, now)?;
-        self.verify_peer_identity(end_entity)?;
+        if let Err(err) = self.verify_peer_identity(end_entity) {
+            let names = extract_cert_peer_names(end_entity).unwrap_or_default();
+            tracing::warn!(
+                reason = "peer_not_allow_listed",
+                cn = ?names.common_names,
+                dns_sans = ?names.dns_sans,
+                "tls_client_certificate_rejected"
+            );
+            return Err(err);
+        }
         Ok(verified)
     }
 
@@ -162,7 +205,9 @@ fn load_pem_certs(path: &str) -> Result<Vec<CertificateDer<'static>>> {
 ///
 /// The leaf cert / key are served via a `ReloadingCertResolver` so the
 /// pki-agent sidecar can rotate them on disk without restarting the process.
-pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
+pub fn load_server_tls_config(
+    peer_identity: &crate::config::PeerIdentityConfig,
+) -> Result<Option<Arc<ServerConfig>>> {
     if !enforced() {
         return Ok(None);
     }
@@ -178,11 +223,23 @@ pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
 
     let webpki_verifier =
         rustls::server::WebPkiClientVerifier::builder(Arc::new(trust_store)).build()?;
-    let allowed_peers = allowed_peers_from_env();
-    let client_verifier: Arc<dyn ClientCertVerifier> = if allowed_peers.is_empty() {
-        webpki_verifier
-    } else {
-        Arc::new(AllowedNamesVerifier::new(webpki_verifier, allowed_peers))
+    let client_verifier: Arc<dyn ClientCertVerifier> = match peer_identity {
+        crate::config::PeerIdentityConfig::Disabled => webpki_verifier,
+        crate::config::PeerIdentityConfig::Enabled { allowed_peers } => {
+            if allowed_peers.is_empty() {
+                anyhow::bail!("MTLS_ALLOWED_PEERS allowlist is empty");
+            }
+            if allowed_peers
+                .iter()
+                .any(|peer| peer.eq_ignore_ascii_case("localhost"))
+            {
+                anyhow::bail!("'localhost' is not permitted in MTLS_ALLOWED_PEERS");
+            }
+            Arc::new(AllowedNamesVerifier::new(
+                webpki_verifier,
+                allowed_peers.clone(),
+            ))
+        }
     };
 
     let resolver = crate::clients::mtls::server_cert_resolver(&cert_file, &key_file)?;
@@ -194,14 +251,78 @@ pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
     Ok(Some(Arc::new(server_config)))
 }
 
-/// Parse `MTLS_ALLOWED_PEERS=csv` into a Vec of CNs. Trim + drop empties.
-pub fn allowed_peers_from_env() -> Vec<String> {
-    std::env::var("MTLS_ALLOWED_PEERS")
-        .unwrap_or_default()
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
+#[derive(Clone)]
+pub struct PeerIdentityAcceptor {
+    inner: axum_server::tls_rustls::RustlsAcceptor,
+}
+
+impl PeerIdentityAcceptor {
+    #[must_use]
+    pub fn new(config: axum_server::tls_rustls::RustlsConfig) -> Self {
+        Self {
+            inner: axum_server::tls_rustls::RustlsAcceptor::new(config),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct PeerCertExtensionService<S> {
+    inner: S,
+    leaf_cert: Option<CertificateDer<'static>>,
+}
+
+impl<S, B> tower::Service<axum::http::Request<B>> for PeerCertExtensionService<S>
+where
+    S: tower::Service<axum::http::Request<B>>,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::result::Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut req: axum::http::Request<B>) -> Self::Future {
+        req.headers_mut().remove("x-alt-peer-identity");
+        if let Some(cert) = self.leaf_cert.as_ref() {
+            req.extensions_mut().insert(cert.clone());
+        }
+        self.inner.call(req)
+    }
+}
+
+impl<I, S> axum_server::accept::Accept<I, S> for PeerIdentityAcceptor
+where
+    I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    S: Send + 'static,
+{
+    type Stream = tokio_rustls::server::TlsStream<I>;
+    type Service = PeerCertExtensionService<S>;
+    type Future = futures::future::BoxFuture<'static, io::Result<(Self::Stream, Self::Service)>>;
+
+    fn accept(&self, stream: I, service: S) -> Self::Future {
+        let inner = self.inner.clone();
+        Box::pin(async move {
+            let (tls_stream, service) = inner.accept(stream, service).await?;
+            let leaf_cert = tls_stream
+                .get_ref()
+                .1
+                .peer_certificates()
+                .and_then(|certs| certs.first())
+                .map(|cert| cert.clone().into_owned());
+            Ok((
+                tls_stream,
+                PeerCertExtensionService {
+                    inner: service,
+                    leaf_cert,
+                },
+            ))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -232,7 +353,11 @@ mod tests {
     #[test]
     fn load_server_config_returns_none_when_not_enforced() {
         temp_env::with_var("MTLS_ENFORCE", Some("false"), || {
-            assert!(load_server_tls_config().unwrap().is_none());
+            assert!(
+                load_server_tls_config(&crate::config::PeerIdentityConfig::Disabled)
+                    .unwrap()
+                    .is_none()
+            );
         });
     }
 
@@ -242,19 +367,70 @@ mod tests {
             "MTLS_ALLOWED_PEERS",
             Some(" alt-backend , search-indexer ,  , acolyte-orchestrator "),
             || {
+                let parsed = crate::config::load_peer_identity_from_env().unwrap();
                 assert_eq!(
-                    allowed_peers_from_env(),
-                    vec!["alt-backend", "search-indexer", "acolyte-orchestrator"]
+                    parsed.allowed_peers(),
+                    Some(
+                        [
+                            "alt-backend".to_string(),
+                            "search-indexer".to_string(),
+                            "acolyte-orchestrator".to_string()
+                        ]
+                        .as_slice()
+                    )
                 );
             },
         );
     }
 
     #[test]
-    fn allowed_peers_empty_when_unset() {
-        temp_env::with_var("MTLS_ALLOWED_PEERS", None::<&str>, || {
-            assert!(allowed_peers_from_env().is_empty());
-        });
+    fn load_server_config_uses_passed_peer_identity_without_re_reading_env_and_rejects_bad_peers() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).unwrap();
+        let ca_key = rcgen::KeyPair::generate().unwrap();
+        let ca_cert = ca_params.self_signed(&ca_key).unwrap();
+
+        let leaf_params = rcgen::CertificateParams::new(vec!["recap-worker".to_string()]).unwrap();
+        let leaf_key = rcgen::KeyPair::generate().unwrap();
+        let leaf_cert = leaf_params.self_signed(&leaf_key).unwrap();
+
+        let cert_path = temp_dir.path().join("cert.pem");
+        let key_path = temp_dir.path().join("key.pem");
+        let ca_path = temp_dir.path().join("ca.pem");
+        std::fs::write(&cert_path, leaf_cert.pem()).unwrap();
+        std::fs::write(&key_path, leaf_key.serialize_pem()).unwrap();
+        std::fs::write(&ca_path, ca_cert.pem()).unwrap();
+
+        temp_env::with_vars(
+            [
+                ("MTLS_ENFORCE", Some("true")),
+                ("MTLS_CERT_FILE", Some(cert_path.to_str().unwrap())),
+                ("MTLS_KEY_FILE", Some(key_path.to_str().unwrap())),
+                ("MTLS_CA_FILE", Some(ca_path.to_str().unwrap())),
+                ("MTLS_ALLOWED_PEERS", None::<&str>),
+            ],
+            || {
+                let valid = crate::config::PeerIdentityConfig::Enabled {
+                    allowed_peers: vec!["alt-backend".to_string()],
+                };
+                assert!(
+                    load_server_tls_config(&valid).unwrap().is_some(),
+                    "load_server_tls_config must use passed PeerIdentityConfig without reading MTLS_ALLOWED_PEERS from env"
+                );
+
+                for bad_peers in [Vec::new(), vec!["localhost".to_string()]] {
+                    let bad = crate::config::PeerIdentityConfig::Enabled {
+                        allowed_peers: bad_peers,
+                    };
+                    let err = load_server_tls_config(&bad).unwrap_err();
+                    assert!(
+                        format!("{err:#}").contains("MTLS_ALLOWED_PEERS"),
+                        "error must name MTLS_ALLOWED_PEERS, got: {err:#}"
+                    );
+                }
+            },
+        );
     }
 
     #[test]
@@ -267,7 +443,9 @@ mod tests {
                 ("MTLS_CA_FILE", None),
             ],
             || {
-                assert!(load_server_tls_config().is_err());
+                assert!(
+                    load_server_tls_config(&crate::config::PeerIdentityConfig::Disabled).is_err()
+                );
             },
         );
     }
@@ -298,6 +476,129 @@ mod tests {
             rcgen::CertificateParams::new(vec!["untrusted-peer".to_string()]).unwrap();
         let denied_key = rcgen::KeyPair::generate().unwrap();
         let denied_cert = denied_params.self_signed(&denied_key).unwrap();
-        assert!(verifier.verify_peer_identity(denied_cert.der()).is_err());
+        let err = verifier
+            .verify_peer_identity(denied_cert.der())
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("MTLS_ALLOWED_PEERS"),
+            "error must name MTLS_ALLOWED_PEERS, got: {err}"
+        );
+    }
+
+    #[test]
+    fn verify_cert_peer_identity_covers_cn_match_case_sensitivity_and_multi_san_match() {
+        let mut cn_only_params =
+            rcgen::CertificateParams::new(vec!["non-matching.internal".to_string()]).unwrap();
+        let mut cn_dn = rcgen::DistinguishedName::new();
+        cn_dn.push(rcgen::DnType::CommonName, "alt-backend");
+        cn_only_params.distinguished_name = cn_dn;
+        let cn_key = rcgen::KeyPair::generate().unwrap();
+        let cn_cert = cn_only_params.self_signed(&cn_key).unwrap();
+        assert!(
+            verify_cert_peer_identity(cn_cert.der(), &["alt-backend".to_string()]).is_err(),
+            "certificate with DNS SANs is matched on SANs only, so a matching CN must not be accepted"
+        );
+
+        let mut no_san_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+        let mut no_san_dn = rcgen::DistinguishedName::new();
+        no_san_dn.push(rcgen::DnType::CommonName, "alt-backend");
+        no_san_params.distinguished_name = no_san_dn;
+        let no_san_key = rcgen::KeyPair::generate().unwrap();
+        let no_san_cert = no_san_params.self_signed(&no_san_key).unwrap();
+        assert!(
+            verify_cert_peer_identity(no_san_cert.der(), &["alt-backend".to_string()]).is_ok(),
+            "certificate without DNS SANs is matched on its Subject CN"
+        );
+
+        let mut wrong_case_params =
+            rcgen::CertificateParams::new(vec!["ALT-BACKEND".to_string()]).unwrap();
+        let mut wrong_case_dn = rcgen::DistinguishedName::new();
+        wrong_case_dn.push(rcgen::DnType::CommonName, "Alt-Backend");
+        wrong_case_params.distinguished_name = wrong_case_dn;
+        let wrong_case_key = rcgen::KeyPair::generate().unwrap();
+        let wrong_case_cert = wrong_case_params.self_signed(&wrong_case_key).unwrap();
+        let case_err =
+            verify_cert_peer_identity(wrong_case_cert.der(), &["alt-backend".to_string()])
+                .unwrap_err();
+        assert!(case_err.to_string().contains("MTLS_ALLOWED_PEERS"));
+
+        let mut multi_san_params = rcgen::CertificateParams::new(vec![
+            "localhost".to_string(),
+            "other-service".to_string(),
+            "search-indexer".to_string(),
+        ])
+        .unwrap();
+        let mut multi_dn = rcgen::DistinguishedName::new();
+        multi_dn.push(rcgen::DnType::CommonName, "unrelated-cn");
+        multi_san_params.distinguished_name = multi_dn;
+        let multi_key = rcgen::KeyPair::generate().unwrap();
+        let multi_cert = multi_san_params.self_signed(&multi_key).unwrap();
+        assert!(
+            verify_cert_peer_identity(multi_cert.der(), &["search-indexer".to_string()]).is_ok(),
+            "certificate with several SANs where one matches must be accepted"
+        );
+    }
+
+    #[test]
+    fn verify_client_cert_logs_presented_names_when_peer_is_unlisted() {
+        use std::sync::Mutex;
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+        let mut ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).unwrap();
+        ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        let ca_key = rcgen::KeyPair::generate().unwrap();
+        let ca_cert = ca_params.self_signed(&ca_key).unwrap();
+
+        let mut store = RootCertStore::empty();
+        store.add(ca_cert.der().clone()).unwrap();
+        let inner = rustls::server::WebPkiClientVerifier::builder(Arc::new(store))
+            .build()
+            .unwrap();
+        let verifier = AllowedNamesVerifier::new(inner, vec!["alt-backend".to_string()]);
+
+        let mut leaf_params =
+            rcgen::CertificateParams::new(vec!["unlisted-san".to_string()]).unwrap();
+        let mut dn = rcgen::DistinguishedName::new();
+        dn.push(rcgen::DnType::CommonName, "unlisted-cn");
+        leaf_params.distinguished_name = dn;
+        let leaf_key = rcgen::KeyPair::generate().unwrap();
+        let issuer = rcgen::Issuer::new(ca_params, ca_key);
+        let leaf_cert = leaf_params.signed_by(&leaf_key, &issuer).unwrap();
+
+        let buf = BufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        let result = tracing::subscriber::with_default(subscriber, || {
+            verifier.verify_client_cert(leaf_cert.der(), &[], UnixTime::now())
+        });
+        assert!(result.is_err(), "unlisted peer must be rejected");
+
+        let captured = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+        assert_eq!(
+            captured.lines().count(),
+            1,
+            "expected one WARN line, got: {captured}"
+        );
+        assert!(captured.contains("WARN"));
+        assert!(captured.contains("unlisted-cn"));
+        assert!(captured.contains("unlisted-san"));
     }
 }

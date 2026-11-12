@@ -1,70 +1,183 @@
 package config
 
 import (
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"strings"
 	"testing"
 )
 
-func TestLoadBackendTokenSecret(t *testing.T) {
+func marshalTestEd25519SPKIPEM(t *testing.T) (ed25519.PublicKey, []byte) {
+	t.Helper()
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate ed25519 key: %v", err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("marshal ed25519 public key: %v", err)
+	}
+	return pub, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
+}
+
+func marshalTestECDSASPKIPEM(t *testing.T) []byte {
+	t.Helper()
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate ecdsa key: %v", err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(&ecKey.PublicKey)
+	if err != nil {
+		t.Fatalf("marshal ecdsa public key: %v", err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
+}
+
+func marshalTestEd25519PKCS8PrivatePEM(t *testing.T) []byte {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate ed25519 key: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		t.Fatalf("marshal ed25519 private key: %v", err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+}
+
+func TestLoadBackendTokenVerifyKey(t *testing.T) {
+	validPub, validPEM := marshalTestEd25519SPKIPEM(t)
+	if !bytes.HasSuffix(validPEM, []byte("\n")) {
+		t.Fatalf("expected pem.EncodeToMemory output to end with newline")
+	}
+	crlfPEM := bytes.ReplaceAll(validPEM, []byte("\n"), []byte("\r\n"))
+	extraBlankLinesPEM := append(append([]byte{}, validPEM...), []byte("\n\n   \r\n\n")...)
+	trailingDataPEM := append(append([]byte{}, validPEM...), []byte("\nnon-whitespace-trailing\n")...)
+	ecdsaPEM := marshalTestECDSASPKIPEM(t)
+	privatePEM := marshalTestEd25519PKCS8PrivatePEM(t)
+
 	tests := []struct {
-		name       string
-		secretFile string
-		readFile   FileReader
-		wantErr    bool
-		errContain string
-		wantSecret string
+		name         string
+		keyFile      string
+		prePopulated ed25519.PublicKey
+		readFile     FileReader
+		wantErr      bool
+		errContain   string
+		wantKey      ed25519.PublicKey
 	}{
 		{
-			name:       "empty path is a no-op",
-			secretFile: "",
+			name:    "unset BACKEND_TOKEN_VERIFY_KEY_FILE fails fast",
+			keyFile: "",
 			readFile: func(string) ([]byte, error) {
 				return nil, errors.New("should not be called")
 			},
-			wantErr:    false,
-			wantSecret: "",
+			wantErr:    true,
+			errContain: "BACKEND_TOKEN_VERIFY_KEY_FILE",
 		},
 		{
-			name:       "file read error fails fast",
-			secretFile: "/run/secrets/backend_secret",
+			name:         "unset BACKEND_TOKEN_VERIFY_KEY_FILE fails even when public key is pre-populated",
+			keyFile:      "",
+			prePopulated: validPub,
+			readFile: func(string) ([]byte, error) {
+				return nil, errors.New("should not be called")
+			},
+			wantErr:    true,
+			errContain: "BACKEND_TOKEN_VERIFY_KEY_FILE",
+		},
+		{
+			name:    "file read error fails fast",
+			keyFile: "/run/secrets/backend_token_verify_key",
 			readFile: func(string) ([]byte, error) {
 				return nil, errors.New("permission denied")
 			},
 			wantErr:    true,
-			errContain: "read BACKEND_TOKEN_SECRET_FILE",
+			errContain: "read BACKEND_TOKEN_VERIFY_KEY_FILE",
 		},
 		{
-			name:       "empty content fails fast",
-			secretFile: "/run/secrets/backend_secret",
+			name:    "empty content fails fast",
+			keyFile: "/run/secrets/backend_token_verify_key",
 			readFile: func(string) ([]byte, error) {
 				return []byte("   \n\t  "), nil
 			},
 			wantErr:    true,
-			errContain: "resolved to an empty secret",
+			errContain: "BACKEND_TOKEN_VERIFY_KEY_FILE",
 		},
 		{
-			name:       "valid secret is trimmed and set",
-			secretFile: "/run/secrets/backend_secret",
+			name:    "non-Ed25519 SPKI public key fails fast",
+			keyFile: "/run/secrets/backend_token_verify_key",
 			readFile: func(string) ([]byte, error) {
-				return []byte("valid-backend-secret-content\n"), nil
+				return ecdsaPEM, nil
 			},
-			wantErr:    false,
-			wantSecret: "valid-backend-secret-content",
+			wantErr:    true,
+			errContain: "Ed25519",
+		},
+		{
+			name:    "PKCS8 private key PEM fails fast",
+			keyFile: "/run/secrets/backend_token_verify_key",
+			readFile: func(string) ([]byte, error) {
+				return privatePEM, nil
+			},
+			wantErr:    true,
+			errContain: "PUBLIC KEY",
+		},
+		{
+			name:    "valid PEM with trailing newline is parsed and set",
+			keyFile: "/run/secrets/backend_token_verify_key",
+			readFile: func(string) ([]byte, error) {
+				return validPEM, nil
+			},
+			wantErr: false,
+			wantKey: validPub,
+		},
+		{
+			name:    "valid PEM with CRLF line endings is parsed and set",
+			keyFile: "/run/secrets/backend_token_verify_key",
+			readFile: func(string) ([]byte, error) {
+				return crlfPEM, nil
+			},
+			wantErr: false,
+			wantKey: validPub,
+		},
+		{
+			name:    "valid PEM with extra blank lines after END line is parsed and set",
+			keyFile: "/run/secrets/backend_token_verify_key",
+			readFile: func(string) ([]byte, error) {
+				return extraBlankLinesPEM, nil
+			},
+			wantErr: false,
+			wantKey: validPub,
+		},
+		{
+			name:    "non-whitespace data after END line is rejected",
+			keyFile: "/run/secrets/backend_token_verify_key",
+			readFile: func(string) ([]byte, error) {
+				return trailingDataPEM, nil
+			},
+			wantErr:    true,
+			errContain: "trailing data",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &AuthConfig{BackendTokenSecretFile: tt.secretFile}
-			err := loadBackendTokenSecret(cfg, tt.readFile)
+			t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", tt.keyFile)
+			cfg := &AuthConfig{BackendTokenPublicKey: tt.prePopulated}
+			err := loadBackendTokenVerifyKey(cfg, tt.readFile)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("loadBackendTokenSecret() error = %v, wantErr = %v", err, tt.wantErr)
+				t.Fatalf("loadBackendTokenVerifyKey() error = %v, wantErr = %v", err, tt.wantErr)
 			}
 			if tt.wantErr && !strings.Contains(err.Error(), tt.errContain) {
-				t.Fatalf("loadBackendTokenSecret() error = %v, want to contain %q", err, tt.errContain)
+				t.Fatalf("loadBackendTokenVerifyKey() error = %v, want to contain %q", err, tt.errContain)
 			}
-			if !tt.wantErr && cfg.BackendTokenSecret != tt.wantSecret {
-				t.Fatalf("cfg.BackendTokenSecret = %q, want %q", cfg.BackendTokenSecret, tt.wantSecret)
+			if !tt.wantErr && !cfg.BackendTokenPublicKey.Equal(tt.wantKey) {
+				t.Fatalf("cfg.BackendTokenPublicKey = %x, want %x", cfg.BackendTokenPublicKey, tt.wantKey)
 			}
 		})
 	}

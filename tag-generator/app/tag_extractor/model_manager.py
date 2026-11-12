@@ -128,6 +128,7 @@ class ModelManager:
                         onnx_config = OnnxEmbeddingConfig(
                             model_path=config.onnx_model_path,
                             tokenizer_name=config.onnx_tokenizer_name,
+                            tokenizer_revision=config.onnx_tokenizer_revision,
                             pooling=config.onnx_pooling,
                             batch_size=config.onnx_batch_size,
                             max_length=config.onnx_max_length,
@@ -151,7 +152,9 @@ class ModelManager:
                     raise ImportError("SentenceTransformer and KeyBERT are required")
 
                 logger.info("Loading SentenceTransformer model", model_name=config.model_name)
-                self._embedder = SentenceTransformer(config.model_name, device=config.device)
+                self._embedder = SentenceTransformer(
+                    config.model_name, device=config.device, revision=config.model_revision
+                )
                 logger.info("SentenceTransformer loaded successfully")
 
                 # Apply FP16 conversion for memory optimization (~50% reduction)

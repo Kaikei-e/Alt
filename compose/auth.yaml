@@ -9,6 +9,7 @@ include:
 x-pki-cert-volume-chown: &pki-cert-volume-chown
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c
@@ -127,6 +128,7 @@ services:
       - KRATOS_ALLOWED_RETURN_URL_3=${KRATOS_ALLOWED_RETURN_URL_3:-http://localhost:4173/sv/auth/login}
       - KRATOS_LOGIN_UI_URL=${KRATOS_LOGIN_UI_URL:-http://localhost:4173/sv/auth/login}
       - KRATOS_REGISTRATION_UI_URL=${KRATOS_REGISTRATION_UI_URL:-http://localhost:4173/sv/register}
+      - SELFSERVICE_FLOWS_REGISTRATION_ENABLED=${KRATOS_REGISTRATION_ENABLED:-false}
       - KRATOS_ERROR_UI_URL=${KRATOS_ERROR_UI_URL:-http://localhost:4173/sv/error}
       - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:4173/sv/settings}
       - KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:4173/sv/recovery}
@@ -164,6 +166,10 @@ services:
           - kratos-admin
 
   auth-hub:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-auth-hub:${IMAGE_TAG:-main}
     build:
       context: ../auth-hub
@@ -174,16 +180,17 @@ services:
       - PORT=8888
       - CACHE_TTL=5m
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_SIGNING_KEY_FILE=/run/secrets/backend_token_signing_key
+      # No hop forwards requests to auth-hub, so forwarding headers are explicitly not trusted.
+      - TRUSTED_PROXY_CIDRS=${AUTH_HUB_TRUSTED_PROXY_CIDRS:-none}
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_TTL=5m
       - JWT_ISSUER_TTL=5m
-      # The /internal group's shared bearer. Required, no default, and rejected
-      # at startup when it equals BACKEND_TOKEN_SECRET: alt-data-hub sends this
-      # value in a plaintext X-Internal-Auth header on every GetSystemUser call,
-      # so it reaches access logs and OTel span attributes — which is why the
-      # HS256 signing key above no longer doubles as it.
+      # The /internal group's shared bearer. Required, no default:
+      # alt-data-hub sends this value in a plaintext X-Internal-Auth header on
+      # every GetSystemUser call, so it reaches access logs and OTel span
+      # attributes.
       - INTERNAL_AUTH_SECRET_FILE=/run/secrets/auth_hub_internal_secret
       - FRONTEND_TLS_LISTEN=true
       - FRONTEND_TLS_PORT=8443
@@ -213,7 +220,7 @@ services:
       - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     secrets:
       - csrf_secret
-      - backend_token_secret
+      - backend_token_signing_key
       - auth_hub_internal_secret
       - pki-agent-auth-hub-jwk
       - rask_ingest_token

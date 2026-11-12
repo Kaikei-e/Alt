@@ -24,18 +24,6 @@ func NewConfig() (*Config, error) {
 		return nil, err
 	}
 
-	// The two secrets exist precisely so the signing key stays inside the
-	// process. Handing both jobs one value again is the exposure this split
-	// removed, so it exits non-zero instead of degrading back to it. The guard
-	// is environment-independent for the same reason the one above is: APP_ENV
-	// is set in no compose file.
-	if config.Auth.InternalAuthSecret != "" &&
-		config.Auth.InternalAuthSecret == config.Auth.BackendTokenSecret {
-		return nil, fmt.Errorf("INTERNAL_AUTH_SECRET must not equal BACKEND_TOKEN_SECRET: " +
-			"the /internal shared bearer travels in a plaintext X-Internal-Auth header and reaches " +
-			"access logs and OTel span attributes, which is no place for the JWT signing key")
-	}
-
 	// Set defaults for JWT issuer and audience if not provided
 	if config.Auth.BackendTokenIssuer == "" {
 		config.Auth.BackendTokenIssuer = "auth-hub"
@@ -54,12 +42,6 @@ func NewConfig() (*Config, error) {
 	// code, because APP_ENV is set in no compose file.
 	if err := validateImageProxyConfig(&config.ImageProxy); err != nil {
 		return nil, fmt.Errorf("image proxy config validation failed: %w", err)
-	}
-
-	// Validate auth configuration after secrets are loaded
-	// This ensures fail-fast behavior for misconfigured production deployments
-	if err := validateAuthConfig(&config.Auth, config.AppEnv); err != nil {
-		return nil, fmt.Errorf("auth config validation failed: %w", err)
 	}
 
 	if config.AppEnv == "production" && config.AuthHub.URL != "" && !strings.HasPrefix(config.AuthHub.URL, "https://") {

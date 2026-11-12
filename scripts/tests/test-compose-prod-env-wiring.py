@@ -73,7 +73,7 @@ def effective(value: str) -> str:
 
 def peers(svc: dict) -> set[str]:
     raw = effective(env_map(svc).get("MTLS_ALLOWED_PEERS", ""))
-    return {p.strip() for p in raw.split(",") if p.strip()}
+    return {p.strip() for p in raw.split(",") if p.strip() and p.strip() != "disabled"}
 
 
 def compose_defaults() -> dict[str, set[str]]:
@@ -166,9 +166,15 @@ check(
         # alt-butterfly-facade's :9443 listener is closed by default, so its
         # allowlist default (${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}) is
         # intentionally empty and not declared in env_allowlists.
+        # recap-worker's list is `disabled` by default for the same reason: its
+        # callers still use the plaintext listener.
         and not (
             name == "alt-butterfly-facade"
             and env_map(svc)["MTLS_ALLOWED_PEERS"] == "${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}"
+        )
+        and not (
+            name == "recap-worker"
+            and env_map(svc)["MTLS_ALLOWED_PEERS"] == "${RECAP_WORKER_MTLS_ALLOWED_PEERS:-disabled}"
         )
         and (
             (m := INTERP_DEFAULT.match(env_map(svc)["MTLS_ALLOWED_PEERS"])) is None
@@ -182,7 +188,7 @@ check(
     == {
         k: {p for d in ds for p in d.split(",") if p}
         for k, ds in defaults.items()
-        if k.endswith("ALLOWED_PEERS") and any(ds)
+        if k.endswith("ALLOWED_PEERS") and any(d not in ("", "disabled") for d in ds)
     },
 )
 check(

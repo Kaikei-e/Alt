@@ -240,40 +240,65 @@ class RedisAclParityTests(unittest.TestCase):
             "or redis-streams fails with exec permission denied in staging and production",
         )
 
-    def test_redis_streams_mounts_both_acl_passwords(self):
+    def test_redis_streams_mounts_both_stream_passwords_and_the_limiter_password(self):
         svc = self.services["redis-streams"]
-        for secret in ("redis_streams_password", "redis_limiter_password"):
+        for secret in ("redis_streams_producer_password", "redis_streams_consumer_password", "redis_limiter_password"):
             with self.subTest(secret=secret):
                 self.assertIn(secret, svc.get("secrets", []))
+        self.assertNotIn("redis_streams_password", svc.get("secrets", []))
 
-    def test_redis_streams_healthcheck_authenticates_as_the_streams_user(self):
+    def test_redis_streams_healthcheck_authenticates_as_the_producer_user(self):
         probe = " ".join(self.services["redis-streams"]["healthcheck"]["test"])
-        self.assertIn("--user streams", probe)
-        self.assertIn("/run/secrets/redis_streams_password", probe)
+        self.assertIn("--user streams_producer", probe)
+        self.assertIn("/run/secrets/redis_streams_producer_password", probe)
 
-    def test_redis_clients_authenticate_as_the_streams_acl_user(self):
-        for name, variable in (("mq-hub", "REDIS_URL"), ("tag-generator", "REDIS_STREAMS_URL")):
-            with self.subTest(service=name):
-                svc = self.services[name]
-                env = environment(svc)
-                url = urlparse(env.get(variable, ""))
-                self.assertEqual((url.scheme, url.username, url.hostname, url.port), ("redis", "streams", "redis-streams", 6379))
-                self.assertIsNone(url.password, "the password belongs in REDIS_PASSWORD_FILE, not the URL")
-                self.assertEqual(env.get("REDIS_PASSWORD_FILE"), "/run/secrets/redis_streams_password")
-                self.assertIn("redis_streams_password", svc.get("secrets", []))
-                self.assertNotIn("redis_password", svc.get("secrets", []))
+    def _client(self, svc, variable, user, password_secret, other_secret):
+        env = environment(svc)
+        url = urlparse(env.get(variable, ""))
+        self.assertEqual((url.scheme, url.username, url.hostname, url.port), ("redis", user, "redis-streams", 6379))
+        self.assertIsNone(url.password, "the password belongs in REDIS_PASSWORD_FILE, not the URL")
+        self.assertEqual(env.get("REDIS_PASSWORD_FILE"), f"/run/secrets/{password_secret}")
+        self.assertIn(password_secret, svc.get("secrets", []))
+        self.assertNotIn(other_secret, svc.get("secrets", []))
+        self.assertNotIn("redis_streams_password", svc.get("secrets", []))
+        self.assertNotIn("redis_password", svc.get("secrets", []))
+
+    def test_mq_hub_authenticates_as_the_producer(self):
+        self._client(self.services["mq-hub"], "REDIS_URL", "streams_producer",
+                     "redis_streams_producer_password", "redis_streams_consumer_password")
+
+    def test_stream_consumers_authenticate_as_the_consumer(self):
+        # Staging runs tag-generator only; the other consumers are checked against
+        # the production files they are defined in.
+        self._client(self.services["tag-generator"], "REDIS_STREAMS_URL", "streams_consumer",
+                     "redis_streams_consumer_password", "redis_streams_producer_password")
+        for path, name in (("compose/ai.yaml", "pre-processor"), ("compose/workers.yaml", "search-indexer"),
+                           ("compose/workers.yaml", "tag-generator")):
+            with self.subTest(service=name, file=path):
+                svc = yaml.safe_load((ROOT / path).read_text())["services"][name]
+                self._client(svc, "REDIS_STREAMS_URL", "streams_consumer",
+                             "redis_streams_consumer_password", "redis_streams_producer_password")
+        mq = yaml.safe_load((ROOT / "compose/mq.yaml").read_text())["services"]["mq-hub"]
+        self._client(mq, "REDIS_URL", "streams_producer",
+                     "redis_streams_producer_password", "redis_streams_consumer_password")
 
     def test_acl_passwords_are_synthetic_fixtures_the_entrypoint_accepts(self):
         self.assertNotIn("redis_password", self.compose["secrets"])
-        for secret in ("redis_streams_password", "redis_limiter_password"):
+        self.assertNotIn("redis_streams_password", self.compose["secrets"])
+        values = {}
+        for secret in ("redis_streams_producer_password", "redis_streams_consumer_password", "redis_limiter_password"):
             with self.subTest(secret=secret):
                 path = (ROOT / "compose" / self.compose["secrets"][secret]["file"]).resolve()
                 self.assertEqual(path.parent, TEST_CREDENTIALS.resolve())
                 value = path.read_bytes().rstrip(b"\r\n")
+                values[secret] = value
                 self.assertTrue(value.startswith(b"staging-only-"))
                 self.assertGreaterEqual(len(value), 24)
                 # docker/redis/entrypoint.sh rejects whitespace and control bytes.
                 self.assertTrue(all(32 < byte < 127 for byte in value))
+        # The entrypoint refuses identical producer and consumer secrets.
+        self.assertNotEqual(values["redis_streams_producer_password"], values["redis_streams_consumer_password"])
+        self.assertFalse((TEST_CREDENTIALS / "redis_streams_password.txt").exists())
 
     def test_host_rate_limiters_authenticate_as_the_limiter_acl_user(self):
         # Production (compose/core.yaml) points both internet-facing binaries at
@@ -309,14 +334,41 @@ class RedisAclParityTests(unittest.TestCase):
                 self.assertIsNotNone(block, "run.sh has no suite_up call")
                 self.assertIn("redis-streams", block.group(1).replace("\\", " ").split())
 
-    def test_mq_hub_suite_resets_streams_as_the_acl_user(self):
+    def test_redis_streams_reset_user_is_enabled_only_in_staging(self):
+        svc = self.services["redis-streams"]
+        self.assertEqual(environment(svc).get("REDIS_STREAMS_RESET_USER"), "enabled")
+        self.assertEqual(environment(svc).get("REDIS_STREAMS_RESET_PASSWORD_FILE"), "/run/secrets/redis_streams_reset_password")
+        self.assertIn("redis_streams_reset_password", svc.get("secrets", []))
+        for name in ("mq-hub", "tag-generator"):
+            with self.subTest(service=name):
+                self.assertNotIn("redis_streams_reset_password", self.services[name].get("secrets", []))
+        prod = yaml.safe_load((ROOT / "compose/mq.yaml").read_text())
+        prod_svc = prod["services"]["redis-streams"]
+        self.assertEqual(environment(prod_svc).get("REDIS_STREAMS_RESET_USER"), "disabled")
+        self.assertNotIn("redis_streams_reset_password", prod_svc.get("secrets", []))
+        self.assertNotIn("redis_streams_reset_password", json.dumps(prod))
+
+    def test_mq_hub_suite_resets_streams_as_the_reset_user(self):
         endpoints = suite_endpoints("mq-hub")
         url = urlparse(endpoints.get("REDIS_URL", ""))
-        self.assertEqual((url.username, url.hostname, url.port), ("streams", "redis-streams", 6379))
+        self.assertEqual((url.username, url.hostname, url.port), ("streams_reset", "redis-streams", 6379))
         self.assertEqual(
             endpoints.get("REDIS_PASSWORD_FILE"),
-            "$ROOT/e2e/playwright/_fixtures/test-credentials/redis_streams_password.txt",
+            "$ROOT/e2e/playwright/_fixtures/test-credentials/redis_streams_reset_password.txt",
         )
+
+    def test_all_redis_fixture_secrets_differ(self):
+        names = ("redis_streams_producer_password", "redis_streams_consumer_password",
+                 "redis_streams_reset_password", "redis_limiter_password")
+        values = []
+        for secret in names:
+            path = (ROOT / "compose" / self.compose["secrets"][secret]["file"]).resolve()
+            self.assertEqual(path.parent, TEST_CREDENTIALS.resolve())
+            value = path.read_bytes().rstrip(b"\r\n")
+            self.assertTrue(value.startswith(b"staging-only-"))
+            self.assertTrue(all(32 < byte < 127 for byte in value))
+            values.append(value)
+        self.assertEqual(len(set(values)), len(values))
 
 
 class ContainerHardeningParityTests(unittest.TestCase):

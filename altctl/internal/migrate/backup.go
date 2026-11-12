@@ -522,6 +522,14 @@ func CompressBackupDir(ctx context.Context, backupDir string) (string, error) {
 	dirName := filepath.Base(backupDir)
 	parentDir := filepath.Dir(backupDir)
 
+	// Create the archive owner-only up front so tar never writes it with a
+	// umask-derived mode; tar truncates and keeps the existing mode.
+	archiveFile, err := os.OpenFile(archivePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return "", fmt.Errorf("creating archive: %w", err)
+	}
+	_ = archiveFile.Close()
+
 	// Create tar.gz using OS tar command for efficiency
 	cmd := exec.CommandContext(ctx,
 		"tar", "czf", archivePath,
@@ -529,6 +537,7 @@ func CompressBackupDir(ctx context.Context, backupDir string) (string, error) {
 		dirName,
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
+		os.Remove(archivePath)
 		return "", fmt.Errorf("tar compression failed: %w\n%s", err, string(output))
 	}
 

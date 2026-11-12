@@ -259,3 +259,31 @@ func TestBuildRegeneratePayload(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(b), `"edition_timezone":"Asia/Tokyo"`)
 }
+
+func TestRegenerateLatest_ConflictMapsToInFlightError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/morning/letters/regenerate", r.URL.Path)
+		w.WriteHeader(http.StatusConflict)
+	}))
+	defer server.Close()
+
+	gw := newTestGateway(t, server.URL)
+	doc, err := gw.RegenerateLatest(context.Background(), "Asia/Tokyo")
+
+	assert.Nil(t, doc)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrMorningRegenerationInFlight)
+}
+
+func TestRegenerateLatest_OtherFailuresAreNotInFlightErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	gw := newTestGateway(t, server.URL)
+	_, err := gw.RegenerateLatest(context.Background(), "Asia/Tokyo")
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, domain.ErrMorningRegenerationInFlight)
+}

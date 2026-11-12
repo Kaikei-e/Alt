@@ -1,6 +1,9 @@
 package setup
 
 import (
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -97,6 +100,10 @@ func TestDefaultSecretSpecs_ContainsAllRequired(t *testing.T) {
 		}
 		want := SecretClassRandom
 		switch {
+		case name == backendTokenSigningKeyFile:
+			want = SecretClassEd25519SigningKey
+		case name == backendTokenVerifyKeyFile:
+			want = SecretClassEd25519VerifyKey
 		case operatorProvided[name]:
 			want = SecretClassOperatorProvided
 		case strings.HasPrefix(name, "pki-agent-") && strings.HasSuffix(name, "-jwk.txt"):
@@ -789,5 +796,211 @@ func TestKratosEntrypoint_RejectsInsecureOrShortSecrets(t *testing.T) {
 				t.Fatalf("expected entrypoint to succeed for %s, got err=%v (output: %s)", tc.name, err, string(out))
 			}
 		})
+	}
+}
+
+const (
+	backendTokenSigningKeyFile = "backend_token_signing_key.txt"
+	backendTokenVerifyKeyFile  = "backend_token_verify_key.txt"
+)
+
+func keyPairSpecs() []SecretSpec {
+	return []SecretSpec{
+		{Filename: backendTokenSigningKeyFile, Class: SecretClassEd25519SigningKey, Partner: backendTokenVerifyKeyFile},
+		{Filename: backendTokenVerifyKeyFile, Class: SecretClassEd25519VerifyKey, Partner: backendTokenSigningKeyFile},
+	}
+}
+
+func readKeyPair(t *testing.T, dir string) (ed25519.PrivateKey, ed25519.PublicKey) {
+	t.Helper()
+	privPEM, err := os.ReadFile(filepath.Join(dir, backendTokenSigningKeyFile))
+	if err != nil {
+		t.Fatalf("read signing key: %v", err)
+	}
+	block, _ := pem.Decode(privPEM)
+	if block == nil || block.Type != "PRIVATE KEY" {
+		t.Fatalf("signing key is not a PKCS#8 PRIVATE KEY PEM block")
+	}
+	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse PKCS#8: %v", err)
+	}
+	priv, ok := parsed.(ed25519.PrivateKey)
+	if !ok {
+		t.Fatalf("signing key is %T, want ed25519.PrivateKey", parsed)
+	}
+	pubPEM, err := os.ReadFile(filepath.Join(dir, backendTokenVerifyKeyFile))
+	if err != nil {
+		t.Fatalf("read verify key: %v", err)
+	}
+	block, _ = pem.Decode(pubPEM)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		t.Fatalf("verify key is not an SPKI PUBLIC KEY PEM block")
+	}
+	pubParsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse SPKI: %v", err)
+	}
+	pub, ok := pubParsed.(ed25519.PublicKey)
+	if !ok {
+		t.Fatalf("verify key is %T, want ed25519.PublicKey", pubParsed)
+	}
+	return priv, pub
+}
+
+func TestDeriveSecretSpecs_BackendTokenKeyPair(t *testing.T) {
+	fakeBase := filepath.Join(t.TempDir(), "base.yaml")
+	body := "secrets:\n  a:\n    file: ../secrets/" + backendTokenSigningKeyFile + "\n  b:\n    file: ../secrets/" + backendTokenVerifyKeyFile + "\n"
+	if err := os.WriteFile(fakeBase, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	specs, err := DeriveSecretSpecs(fakeBase)
+	if err != nil {
+		t.Fatalf("DeriveSecretSpecs: %v", err)
+	}
+	got := map[string]SecretSpec{}
+	for _, s := range specs {
+		got[s.Filename] = s
+	}
+	sign, verify := got[backendTokenSigningKeyFile], got[backendTokenVerifyKeyFile]
+	if sign.Class != SecretClassEd25519SigningKey || sign.Partner != backendTokenVerifyKeyFile {
+		t.Errorf("signing spec = %+v", sign)
+	}
+	if verify.Class != SecretClassEd25519VerifyKey || verify.Partner != backendTokenSigningKeyFile {
+		t.Errorf("verify spec = %+v", verify)
+	}
+}
+
+func TestGenerateSecrets_WritesMatchingEd25519KeyPair(t *testing.T) {
+	old := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(old) })
+
+	dir := t.TempDir()
+	result, err := GenerateSecrets(dir, keyPairSpecs(), false)
+	if err != nil {
+		t.Fatalf("GenerateSecrets: %v", err)
+	}
+	if len(result.Created) != 2 {
+		t.Errorf("Created = %v, want both key files", result.Created)
+	}
+	priv, pub := readKeyPair(t, dir)
+	if !priv.Public().(ed25519.PublicKey).Equal(pub) {
+		t.Error("verify key does not match signing key")
+	}
+	for _, name := range []string{backendTokenSigningKeyFile, backendTokenVerifyKeyFile} {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o644 {
+			t.Errorf("%s mode = %#o, want 0644", name, got)
+		}
+	}
+}
+
+func TestGenerateSecrets_KeepsExistingKeyPair(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := GenerateSecrets(dir, keyPairSpecs(), false); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := readKeyPair(t, dir)
+
+	for _, force := range []bool{false, true} {
+		result, err := GenerateSecrets(dir, keyPairSpecs(), force)
+		if err != nil {
+			t.Fatalf("GenerateSecrets(force=%v): %v", force, err)
+		}
+		if len(result.Created) != 0 || len(result.Skipped) != 2 {
+			t.Errorf("force=%v: Created=%v Skipped=%v, want 0 created and 2 skipped", force, result.Created, result.Skipped)
+		}
+		after, _ := readKeyPair(t, dir)
+		if !before.Equal(after) {
+			t.Errorf("force=%v: key pair was regenerated", force)
+		}
+	}
+}
+
+func TestGenerateSecrets_HalfPresentKeyPairIsAnError(t *testing.T) {
+	for _, present := range []string{backendTokenSigningKeyFile, backendTokenVerifyKeyFile} {
+		t.Run(present, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, present)
+			if err := os.WriteFile(path, []byte("existing"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := GenerateSecrets(dir, keyPairSpecs(), false); err == nil {
+				t.Fatal("GenerateSecrets succeeded with a half-present key pair")
+			}
+			got, _ := os.ReadFile(path)
+			if string(got) != "existing" {
+				t.Errorf("existing key file was modified: %q", got)
+			}
+			for _, name := range []string{backendTokenSigningKeyFile, backendTokenVerifyKeyFile} {
+				if name == present {
+					continue
+				}
+				if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+					t.Errorf("%s was created next to a half-present pair", name)
+				}
+			}
+		})
+	}
+}
+
+func TestFindPendingSecrets_IgnoresKeyPair(t *testing.T) {
+	pending, err := FindPendingSecrets(t.TempDir(), keyPairSpecs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending.OperatorProvided) != 0 || len(pending.PKIProvisioner) != 0 {
+		t.Errorf("key pair reported as pending: %+v", pending)
+	}
+}
+
+func TestMetaFor_RedisStreamsCredentialsAreSplit(t *testing.T) {
+	for _, name := range []string{"redis_streams_producer_password.txt", "redis_streams_consumer_password.txt"} {
+		meta, ok := metaFor(name)
+		if !ok || meta.Class != SecretClassRandom || meta.Length != 32 {
+			t.Errorf("%s = %+v (known=%v), want random with 32 bytes", name, meta, ok)
+		}
+	}
+	if _, ok := metaFor("redis_streams_password.txt"); ok {
+		t.Error("redis_streams_password.txt must no longer be known to altctl")
+	}
+}
+
+func TestEnsureEd25519KeyPair_FailedPublicWriteLeavesNeitherFile(t *testing.T) {
+	dir := t.TempDir()
+	priv := filepath.Join(dir, "signing.txt")
+	pub := filepath.Join(dir, "missing-subdir", "verify.txt")
+
+	if _, err := ensureEd25519KeyPair(priv, pub); err == nil {
+		t.Fatal("expected an error when the public key cannot be written")
+	}
+	if _, err := os.Lstat(priv); !os.IsNotExist(err) {
+		t.Errorf("private key file was left behind (lstat err = %v)", err)
+	}
+}
+
+func TestEnsureEd25519KeyPair_NeverFollowsAPreexistingSymlink(t *testing.T) {
+	for _, linkIsPrivate := range []bool{true, false} {
+		dir := t.TempDir()
+		priv := filepath.Join(dir, "signing.txt")
+		pub := filepath.Join(dir, "verify.txt")
+		target := filepath.Join(dir, "elsewhere.txt")
+		link := pub
+		if linkIsPrivate {
+			link = priv
+		}
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := ensureEd25519KeyPair(priv, pub); err == nil {
+			t.Fatalf("linkIsPrivate=%v: expected an error", linkIsPrivate)
+		}
+		if _, err := os.Lstat(target); !os.IsNotExist(err) {
+			t.Errorf("linkIsPrivate=%v: the symlink target was created (lstat err = %v)", linkIsPrivate, err)
+		}
 	}
 }

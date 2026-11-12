@@ -15,13 +15,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
-import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from acolyte.domain.report import Report
 from acolyte.domain.run import ReportJob, ReportRun
 from acolyte.gateway.memory_job_gw import MemoryJobGateway
 from acolyte.handler.connect_service import AcolyteConnectService
+from tests.backend_token import sign_backend_token
 from tests.conftest import TEST_USER_ID
 
 
@@ -189,10 +190,11 @@ async def test_resume_pipeline_mark_running_failure_does_not_fail_already_succee
     mark_running refuses the transition, the pipeline is not executed, and
     the crash handler must not overwrite the succeeded run with fail_run."""
     report_id = uuid4()
+    signing_key = Ed25519PrivateKey.generate()
     settings = SimpleNamespace(
         checkpoint_enabled=True,
         default_model="gemma4-e4b-12k",
-        resolve_backend_token_secret=lambda: "test-secret",
+        resolve_backend_token_verify_key=signing_key.public_key,
     )
     jobs = MemoryJobGateway()
     run = await jobs.create_run(report_id, 1)
@@ -214,16 +216,7 @@ async def test_resume_pipeline_mark_running_failure_does_not_fail_already_succee
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 1})
 
     service = AcolyteConnectService(settings, repo, job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
-    token = jwt.encode(
-        {
-            "sub": str(TEST_USER_ID),
-            "iss": "auth-hub",
-            "aud": "alt-backend",
-            "exp": datetime.now(UTC).timestamp() + 300,
-        },
-        "test-secret",
-        algorithm="HS256",
-    )
+    token = sign_backend_token(signing_key, TEST_USER_ID)
 
     await service.resume_pipeline(str(report_id), str(run.run_id), {"topic": "AI"}, token=token)
 

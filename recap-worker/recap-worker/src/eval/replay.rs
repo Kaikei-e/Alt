@@ -282,6 +282,7 @@ mod tests {
             ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
             ("RECAP_KNOWLEDGE_EMIT", Some("false")),
             ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("MTLS_ALLOWED_PEERS", Some("disabled")),
             ("RECAP_CARDS_JOB", Some("disabled")),
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
             ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
@@ -329,6 +330,7 @@ mod tests {
             ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
             ("RECAP_KNOWLEDGE_EMIT", Some("false")),
             ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("MTLS_ALLOWED_PEERS", Some("disabled")),
             ("RECAP_CARDS_JOB", Some("disabled")),
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
             ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
@@ -368,6 +370,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_build_cards_embed_cluster_override_model() {
         let _lock = ENV_MUTEX
             .lock()
@@ -411,6 +414,7 @@ mod tests {
             ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
             ("RECAP_KNOWLEDGE_EMIT", Some("false")),
             ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("MTLS_ALLOWED_PEERS", Some("disabled")),
             ("RECAP_CARDS_JOB", Some("disabled")),
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
             ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
@@ -504,6 +508,7 @@ mod tests {
             ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
             ("RECAP_KNOWLEDGE_EMIT", Some("false")),
             ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("MTLS_ALLOWED_PEERS", Some("disabled")),
             ("RECAP_CARDS_JOB", Some("disabled")),
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
             ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),

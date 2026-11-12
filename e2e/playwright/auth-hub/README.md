@@ -36,7 +36,7 @@ cd auth-hub && BASE_URL=… KRATOS_PUBLIC_URL=… … npx playwright test --list
 | `auth-hub-db` | `postgres:16-alpine`, ephemeral. Kratos owns the schema. |
 | `auth-hub-db-migrator` | `oryd/kratos:v1.3.0` running `kratos migrate sql`; exits 0 and gates Kratos. |
 | `kratos` | FrontendAPI :4433 + AdminAPI :4434, `--dev` so self-service flows accept plain HTTP inside the internal network. |
-| `auth-hub` | Echo v4 on :8888. `MTLS_LISTEN=false`. HS256 secret shared with alt-backend. |
+| `auth-hub` | Echo v4 on :8888. `MTLS_LISTEN=false`. Ed25519 key pair; alt-backend holds the public half. |
 
 The staging network is `internal: true`, which silently drops host port
 publishes — the suite runs *inside* the network, which is the only portable way
@@ -50,7 +50,7 @@ that absence rather than assuming it.
 |---|---|
 | `health.spec.ts` | `/health` body, no-auth, no-rate-limit, verb. |
 | `validate.spec.ts` | `/validate` — the nginx `auth_request` target: identity headers, empty body, cache-hit path, and five rejection branches. |
-| `backend-token.spec.ts` | The `X-Alt-Backend-Token` HS256 JWT: signature, every claim, TTL, session binding. |
+| `backend-token.spec.ts` | The `X-Alt-Backend-Token` EdDSA JWT: signature, every claim, TTL, session binding. |
 | `session.spec.ts` | `/session` — the SPA's bootstrap envelope, dates, role, cross-session isolation. |
 | `csrf.spec.ts` | `POST /csrf` — token format, MAC width, session binding, three rejection branches. |
 | `internal.spec.ts` | `/internal/system-user` — the shared-secret boundary, 401-vs-403, identity provenance. |
@@ -129,7 +129,7 @@ Every addition is grounded in a file that was read, named in the spec's own
 comments:
 
 - **The JWT is actually verified** (`backend-token.spec.ts`, from
-  `infrastructure/token/jwt.go` + the shared `alt_backend_token_secret`
+  `infrastructure/token/jwt.go` + the per-run Ed25519 public key
   mount). Hurl could only substring-match the decoded payload and checked no
   signature at all — a token signed with the wrong key passed every one of its
   asserts. Also new: exact `aud` list equality, `tenant_id`, `sid`, `role`,

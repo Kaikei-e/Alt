@@ -41,6 +41,12 @@ pub(crate) enum RetryOutcome {
     AlreadyRunning,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MorningUpdateOutcome {
+    Completed { letter_id: Uuid },
+    SkippedInFlight,
+}
+
 /// `recap_jobs.trigger_source` values created by the multi-genre batch recap
 /// pipeline (`JobContext::new` / `new_with_window` -> `"system"`,
 /// `JobContext::new_manual` -> `"user"`).
@@ -201,6 +207,7 @@ pub struct Scheduler {
     /// nightly batch (or repeated manual triggers) could run the full
     /// LLM/clustering pipeline multiple times at once.
     run_lock: Arc<Semaphore>,
+    morning_run_lock: Arc<Semaphore>,
 }
 
 impl Scheduler {
@@ -218,6 +225,7 @@ impl Scheduler {
             recap_dao,
             subworker_client,
             run_lock: Arc::new(Semaphore::new(1)),
+            morning_run_lock: Arc::new(Semaphore::new(1)),
         }
     }
 
@@ -243,6 +251,10 @@ impl Scheduler {
 
     pub(crate) fn try_acquire_run_permit(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
         Arc::clone(&self.run_lock).try_acquire_owned().ok()
+    }
+
+    pub(crate) fn try_acquire_morning_permit(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        Arc::clone(&self.morning_run_lock).try_acquire_owned().ok()
     }
 
     pub(crate) async fn run_job(&self, context: JobContext) -> Result<()> {
@@ -572,7 +584,23 @@ impl Scheduler {
         ))
     }
 
-    pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<Uuid> {
+    pub(crate) async fn run_morning_update(
+        &self,
+        context: JobContext,
+    ) -> Result<MorningUpdateOutcome> {
+        let Some(permit) = self.try_acquire_morning_permit() else {
+            return Ok(MorningUpdateOutcome::SkippedInFlight);
+        };
+        self.run_morning_update_locked(context, permit)
+            .await
+            .map(|letter_id| MorningUpdateOutcome::Completed { letter_id })
+    }
+
+    pub(crate) async fn run_morning_update_locked(
+        &self,
+        context: JobContext,
+        _permit: tokio::sync::OwnedSemaphorePermit,
+    ) -> Result<Uuid> {
         tracing::info!(job_id = %context.job_id, "running morning update job");
         // `execute_update`'s fetch stage creates the `recap_jobs` row with the
         // schema default `status='pending'`. Unlike the batch pipeline, the
@@ -837,6 +865,7 @@ mod tests {
                     Some(tenant_id_str.as_str()),
                 ),
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_GENRES", Some("ai,space")),
@@ -1602,6 +1631,7 @@ mod tests {
                     ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
                     ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                     ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("MTLS_ALLOWED_PEERS", Some("disabled")),
                     ("RECAP_EVAL_LISTENER", Some("disabled")),
                     ("RECAP_CARDS_JOB", Some("disabled")),
                     ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
@@ -1792,5 +1822,84 @@ mod tests {
             1.0,
             "surface_consecutive_failures must increment when update_job_status_with_history(Completed) fails"
         );
+    }
+
+    #[tokio::test]
+    async fn run_morning_update_returns_skipped_in_flight_without_failure_or_surface_health_mutation()
+     {
+        use crate::{
+            observability::{
+                metrics::Metrics,
+                surface_health::{SurfaceHealthTarget, record_success},
+            },
+            store::dao::mock::MockRecapDao,
+        };
+        use chrono::{DateTime, Utc};
+        use prometheus::Registry;
+        use std::sync::Mutex;
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let dao = Arc::new(MockRecapDao::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-26T01:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        record_success(&metrics, SurfaceHealthTarget::MorningLetter, seeded_ts);
+
+        let scheduler = build_three_day_test_scheduler(Arc::clone(&dao), Arc::clone(&metrics));
+        let _held = scheduler
+            .try_acquire_morning_permit()
+            .expect("initial morning permit should be available");
+
+        let job_id = Uuid::new_v4();
+        let outcome = scheduler
+            .run_morning_update(JobContext::new_morning_update(job_id))
+            .await
+            .expect("in-flight morning tick must return SkippedInFlight, not Err");
+        assert_eq!(outcome, MorningUpdateOutcome::SkippedInFlight);
+        assert_eq!(metrics.jobs_failed.get(), 0.0);
+        assert_eq!(
+            metrics
+                .surface_consecutive_failures
+                .with_label_values(&[SurfaceHealthTarget::MorningLetter.as_str()])
+                .get(),
+            0.0
+        );
+        assert_eq!(
+            metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&[SurfaceHealthTarget::MorningLetter.as_str()])
+                .get(),
+            seeded_ts.timestamp() as f64
+        );
+        assert!(dao.status_transitions().is_empty());
+
+        let buf = BufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            crate::scheduler::daemon::log_morning_update_outcome(job_id, Ok(outcome));
+        });
+
+        let captured = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+        assert_eq!(captured.lines().count(), 1, "got: {captured}");
+        assert!(captured.contains("INFO"));
+        assert!(!captured.contains("ERROR"));
+        assert!(captured.contains("morning_update_skipped_in_flight"));
     }
 }

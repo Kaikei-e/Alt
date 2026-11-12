@@ -9,7 +9,7 @@ import (
 )
 
 // TagCloudExploreTool explores the tag space to find related topic areas.
-// Uses alt-backend FetchTagCloud RPC to discover tags relevant to a topic.
+// Uses the data hub FetchTagCloud RPC, scoped to the asking user, to discover tags relevant to a topic.
 type TagCloudExploreTool struct {
 	client domain.TagCloudClient
 }
@@ -34,7 +34,12 @@ func (t *TagCloudExploreTool) Execute(ctx context.Context, params map[string]str
 		}, nil
 	}
 
-	tags, err := t.client.FetchTagCloud(ctx, 300)
+	userID := strings.TrimSpace(domain.UserIDFromContext(ctx))
+	if userID == "" {
+		return &domain.ToolResult{ToolName: t.Name(), Success: false, Error: "user_id is required"}, fmt.Errorf("user_id is required")
+	}
+
+	tags, err := t.client.FetchTagCloud(ctx, userID, 300)
 	if err != nil {
 		return nil, fmt.Errorf("tag cloud fetch failed: %w", err)
 	}

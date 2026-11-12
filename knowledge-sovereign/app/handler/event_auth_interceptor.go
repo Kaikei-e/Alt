@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -122,10 +123,26 @@ type policyAuthInterceptor struct {
 // per-service credentials, deny-by-default procedure & event permissions, and
 // user delegation token verification (X-Alt-Backend-Token).
 func NewPolicyAuthInterceptor(policy *config.AuthPolicy, verifier config.TokenVerifier, enabled bool) connect.Interceptor {
+	if enabled && policy.RequiresUserToken() && isNilTokenVerifier(verifier) {
+		panic("handler: NewPolicyAuthInterceptor requires non-nil TokenVerifier when policy has RequireUserToken principal")
+	}
 	return &policyAuthInterceptor{
 		policy:       policy,
 		userVerifier: verifier,
 		enabled:      enabled,
+	}
+}
+
+func isNilTokenVerifier(v config.TokenVerifier) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
 	}
 }
 

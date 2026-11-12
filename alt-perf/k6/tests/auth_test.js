@@ -18,7 +18,7 @@ function b64url(obj) {
     .replace(/=+$/, "");
 }
 
-function makeToken(payload, header = { alg: "HS256", typ: "JWT" }, sig = "dummysig") {
+function makeToken(payload, header = { alg: "EdDSA", typ: "JWT" }, sig = "dummysig") {
   return `${b64url(header)}.${b64url(payload)}.${sig}`;
 }
 
@@ -87,7 +87,30 @@ async function run() {
     assert.throws(() => {
       validateAuthHubToken("a.b", validConfig);
     }, /Invalid JWT token format/i);
+
+    assert.throws(() => {
+      validateAuthHubToken(`not-json.${b64url(baseClaims)}.sig`, validConfig);
+    }, /Invalid JWT token format/i);
     console.log("✓ Malformed token format rejected");
+  }
+
+  // 4b. Negative: Non-EdDSA algorithm rejected (HS256, none, missing alg)
+  {
+    const hs256Token = makeToken(baseClaims, { alg: "HS256", typ: "JWT" });
+    assert.throws(() => {
+      validateAuthHubToken(hs256Token, validConfig);
+    }, /alg must be EdDSA/i);
+
+    const noneToken = makeToken(baseClaims, { alg: "none", typ: "JWT" });
+    assert.throws(() => {
+      validateAuthHubToken(noneToken, validConfig);
+    }, /alg must be EdDSA/i);
+
+    const noAlgToken = makeToken(baseClaims, { typ: "JWT" });
+    assert.throws(() => {
+      validateAuthHubToken(noAlgToken, validConfig);
+    }, /alg must be EdDSA/i);
+    console.log("✓ Non-EdDSA algorithms rejected");
   }
 
   // 5. Negative: Oversized token throws
@@ -199,6 +222,17 @@ async function run() {
       "feed-read-3000vu.js must import getAuthHeaders"
     );
     console.log("✓ feed-read-3000vu.js clean of generateJWT and uses getAuthHeaders");
+
+    for (const name of ["smoke.js", "load.js", "stress.js", "soak.js", "spike.js"]) {
+      const p = path.resolve(__dirname, "../scenarios", name);
+      const src = fs.readFileSync(p, "utf-8");
+      const initPart = src.split("export default function")[0];
+      assert.ok(
+        initPart.includes("validateAuthHubToken("),
+        `${name} must validate the pre-minted token at module init time`
+      );
+    }
+    console.log("✓ Whitelist scenarios validate token at init time");
   }
 
   // 16. Valid short token fixture accepted for bounded cohort (<=180s total)

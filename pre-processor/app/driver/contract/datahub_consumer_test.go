@@ -6,9 +6,7 @@
 // pre-processor reads and writes every article / feed / summary row it touches
 // through alt-data-hub's Connect-RPC service. Wave 2-A renamed that contract's
 // namespace from services.backend.v1.BackendInternalService to
-// services.datahub.v1.DataHubService with identical RPC names and fields, and
-// absorbed the last REST route pre-processor called — GET
-// /v1/internal/system-user — as the GetSystemUser RPC.
+// services.datahub.v1.DataHubService with identical RPC names and fields.
 //
 // The interactions below pin the *procedure paths*, which is the only thing
 // this migration changes on the wire. alt-data-hub serves both namespaces
@@ -16,10 +14,10 @@
 // failure until the legacy namespace is retired — the pact is what makes it
 // fail now instead.
 //
-// Six of the thirteen RPCs pre-processor calls get a full interaction, one per
-// driver file plus the newly absorbed GetSystemUser. The remaining seven are
+// Five of the twelve RPCs pre-processor calls get a full interaction, one per
+// driver file. The remaining seven are
 // covered by TestDataHubProcedurePathsAreNamespaced, which pins every
-// procedure constant the generated client routes on; pinning all thirteen as
+// procedure constant the generated client routes on; pinning all twelve as
 // pact interactions would oblige alt-data-hub to keep answering example bodies
 // that add nothing over the path assertion.
 package contract
@@ -316,47 +314,6 @@ func TestDataHubSaveArticleSummaryContract(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestDataHubGetSystemUserContract pins the RPC that replaces
-// GET /v1/internal/system-user (ADR-000954 D6/D7). pre-processor stamps every
-// backfilled article with this id, so an empty user_id is a data-correctness
-// failure, not a cosmetic one — hence the non-empty assertion here and the
-// explicit empty-id rejection in the repository.
-func TestDataHubGetSystemUserContract(t *testing.T) {
-	mockProvider := newDataHubPact(t)
-
-	err := mockProvider.
-		AddInteraction().
-		Given("a Kratos identity exists").
-		UponReceiving("a GetSystemUser request").
-		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String(dataHubProcedure("GetSystemUser")),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
-			Body: matchers.MapMatcher{},
-		}).
-		WithCompleteResponse(consumer.Response{
-			Status: 200,
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
-			Body: matchers.MapMatcher{
-				"userId": matchers.Like("11111111-2222-3333-4444-555555555555"),
-			},
-		}).
-		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			client := newDataHubClient(config)
-			resp, err := client.GetSystemUser(context.Background(), connect.NewRequest(&datahubv1.GetSystemUserRequest{}))
-			if err != nil {
-				return fmt.Errorf("GetSystemUser failed: %w", err)
-			}
-			assert.NotEmpty(t, resp.Msg.UserId, "system user id is stamped onto every backfilled article")
-			return nil
-		})
-	require.NoError(t, err)
-}
-
 // TestDataHubProcedurePathsAreNamespaced covers the seven RPCs that do not get
 // their own interaction above. The pacts pin what alt-data-hub must answer;
 // this pins what pre-processor is allowed to ask for, so a stub regenerated
@@ -382,7 +339,6 @@ func TestDataHubProcedurePathsAreNamespaced(t *testing.T) {
 		{name: "DeleteArticleSummary", procedure: datahubv1connect.DataHubServiceDeleteArticleSummaryProcedure},
 		{name: "CheckArticleSummaryExists", procedure: datahubv1connect.DataHubServiceCheckArticleSummaryExistsProcedure},
 		{name: "FindArticlesWithSummaries", procedure: datahubv1connect.DataHubServiceFindArticlesWithSummariesProcedure},
-		{name: "GetSystemUser", procedure: datahubv1connect.DataHubServiceGetSystemUserProcedure},
 	}
 
 	for _, tt := range tests {

@@ -1,7 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -31,34 +35,41 @@ type localJWTClaims struct {
 type TokenVerifier = authport.TokenVerifier
 
 type LocalUserJWTVerifier struct {
-	Secret   string
-	Issuer   string
-	Audience string
+	PublicKey ed25519.PublicKey
+	Issuer    string
+	Audience  string
 }
 
-// LoadUserJWTVerifier loads JWT verifier credentials from environment variables.
+// LoadLocalUserJWTVerifier loads an Ed25519 SPKI public key from BACKEND_TOKEN_VERIFY_KEY_FILE.
 func LoadLocalUserJWTVerifier() (*LocalUserJWTVerifier, error) {
-	secret := ""
-	if path := os.Getenv("USER_JWT_SECRET_FILE"); path != "" {
-		data, err := readSecretFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("read USER_JWT_SECRET_FILE: %w", err)
-		}
-		secret = strings.TrimSpace(string(data))
-	} else if path := os.Getenv("BACKEND_TOKEN_SECRET_FILE"); path != "" {
-		data, err := readSecretFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("read BACKEND_TOKEN_SECRET_FILE: %w", err)
-		}
-		secret = strings.TrimSpace(string(data))
-	} else if envSecret := os.Getenv("USER_JWT_SECRET"); envSecret != "" {
-		secret = strings.TrimSpace(envSecret)
-	} else if envSecret := os.Getenv("BACKEND_TOKEN_SECRET"); envSecret != "" {
-		secret = strings.TrimSpace(envSecret)
+	path := strings.TrimSpace(os.Getenv("BACKEND_TOKEN_VERIFY_KEY_FILE"))
+	if path == "" {
+		return nil, errors.New("BACKEND_TOKEN_VERIFY_KEY_FILE is required")
 	}
 
-	if secret == "" {
-		return nil, nil
+	data, err := readSecretFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read BACKEND_TOKEN_VERIFY_KEY_FILE: %w", err)
+	}
+
+	trimmed := bytes.TrimSpace(data)
+	if !bytes.HasPrefix(trimmed, []byte("-----BEGIN ")) {
+		return nil, errors.New("BACKEND_TOKEN_VERIFY_KEY_FILE must contain a single SPKI PUBLIC KEY PEM block")
+	}
+
+	block, rest := pem.Decode(trimmed)
+	if block == nil || len(bytes.TrimSpace(rest)) > 0 || block.Type != "PUBLIC KEY" {
+		return nil, errors.New("BACKEND_TOKEN_VERIFY_KEY_FILE must contain a single SPKI PUBLIC KEY PEM block")
+	}
+
+	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse BACKEND_TOKEN_VERIFY_KEY_FILE: %w", err)
+	}
+
+	pubKey, ok := parsed.(ed25519.PublicKey)
+	if !ok || len(pubKey) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("BACKEND_TOKEN_VERIFY_KEY_FILE must contain an Ed25519 public key, got %T", parsed)
 	}
 
 	issuer := os.Getenv("USER_JWT_ISSUER")
@@ -78,9 +89,9 @@ func LoadLocalUserJWTVerifier() (*LocalUserJWTVerifier, error) {
 	}
 
 	return &LocalUserJWTVerifier{
-		Secret:   secret,
-		Issuer:   issuer,
-		Audience: audience,
+		PublicKey: pubKey,
+		Issuer:    issuer,
+		Audience:  audience,
 	}, nil
 }
 
@@ -89,16 +100,16 @@ func (v *LocalUserJWTVerifier) ValidateToken(ctx context.Context, tokenStr strin
 	if tokenStr == "" {
 		return nil, errors.New("missing user delegation token")
 	}
-	if v == nil || v.Secret == "" {
-		return nil, errors.New("user JWT verifier not configured: missing secret")
+	if v == nil || len(v.PublicKey) != ed25519.PublicKeySize {
+		return nil, errors.New("user JWT verifier not configured: missing Ed25519 public key")
 	}
 
-	token, err := jwt.ParseWithClaims(tokenStr, &localJWTClaims{}, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+	token, err := jwt.ParseWithClaims(tokenStr, &localJWTClaims{}, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodEd25519); !ok || t.Method.Alg() != jwt.SigningMethodEdDSA.Alg() {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
-		return []byte(v.Secret), nil
-	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
+		return v.PublicKey, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}), jwt.WithExpirationRequired())
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}

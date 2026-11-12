@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testBackendTokenSecret = "test-backend-token-secret-minimum-32!"
+var testBackendTokenPublicKey, testBackendTokenPrivateKey = func() (ed25519.PublicKey, ed25519.PrivateKey) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return pub, priv
+}()
 
 // issueTestJWT creates a valid JWT for testing. tenant_id defaults to the
 // subject (userID) so that test cases written before tenant_id support
@@ -42,17 +50,17 @@ func issueTestJWTWithTenant(t *testing.T, userID, email, role, sid, tenantID str
 			ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
 		},
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testBackendTokenSecret))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := token.SignedString(testBackendTokenPrivateKey)
 	require.NoError(t, err)
 	return signed
 }
 
 func testAuthConfig() config.AuthConfig {
 	return config.AuthConfig{
-		BackendTokenSecret:   testBackendTokenSecret,
-		BackendTokenIssuer:   "auth-hub",
-		BackendTokenAudience: "alt-backend",
+		BackendTokenPublicKey: testBackendTokenPublicKey,
+		BackendTokenIssuer:    "auth-hub",
+		BackendTokenAudience:  "alt-backend",
 	}
 }
 
@@ -564,8 +572,8 @@ func TestRequireAuth_MissingExpClaimRejectedWith401(t *testing.T) {
 			IssuedAt: jwt.NewNumericDate(time.Now()),
 		},
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testBackendTokenSecret))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := token.SignedString(testBackendTokenPrivateKey)
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
@@ -605,8 +613,8 @@ func TestRequireAuth_UsesTokenExpClaimNot24HourFallback(t *testing.T) {
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testBackendTokenSecret))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := token.SignedString(testBackendTokenPrivateKey)
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)

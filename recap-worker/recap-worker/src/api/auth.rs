@@ -1,16 +1,10 @@
-//! Bearer-token guard for recap-worker's own admin/mutating routes.
+//! Authentication guards for recap-worker's HTTP surface.
 //!
-//! Protects `/admin/jobs/retry` and `/admin/genre-learning` behind
-//! `RECAP_ADMIN_TOKEN_FILE` / `RECAP_ADMIN_AUTH=disabled` (see the
-//! `AdminAuth` config in `config.rs`). The guard token is carried as an
-//! `Extension`, not `AppState`, so this middleware — and its tests — never
-//! need the full `ComponentRegistry` (DB pool, mTLS, pki, LLM clients).
-//!
-//! `/v1/generate/recaps/{7,3}days` and `/v1/morning/letters/regenerate`
-//! stay unauthenticated in this slice: their callers (alt-frontend-sv,
-//! alt-backend) are outside this change's scope, and protecting the route
-//! without updating the caller would 401 real production traffic instead
-//! of closing a hole.
+//! Peer identity (`PeerIdentityGuard` / `require_peer_identity`) gates every
+//! request except the three probe paths (`PEER_EXEMPT_PATHS`) using the
+//! verified client certificate attached by the mTLS acceptor
+//! (`MTLS_ALLOWED_PEERS`), while `AdminAuthGuard` adds the shared bearer check
+//! on `/admin/*`.
 
 use std::sync::Arc;
 
@@ -24,6 +18,56 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use rustls::pki_types::CertificateDer;
+
+#[derive(Clone)]
+pub(crate) struct PeerIdentityGuard(Option<Arc<[String]>>);
+
+impl PeerIdentityGuard {
+    pub(crate) fn new(allowed_peers: Option<&[String]>) -> Self {
+        Self(allowed_peers.map(Arc::from))
+    }
+}
+
+const PEER_EXEMPT_PATHS: [&str; 3] = ["/health/ready", "/health/live", "/metrics"];
+
+pub(crate) async fn require_peer_identity(
+    Extension(guard): Extension<PeerIdentityGuard>,
+    mut request: Request<Body>,
+    next: Next,
+) -> Response {
+    request.headers_mut().remove("x-alt-peer-identity");
+    let Some(allowed_peers) = guard.0.as_deref() else {
+        return next.run(request).await;
+    };
+
+    if PEER_EXEMPT_PATHS.contains(&request.uri().path()) {
+        return next.run(request).await;
+    }
+
+    let Some(cert) = request.extensions().get::<CertificateDer<'static>>() else {
+        tracing::warn!(
+            path = request.uri().path(),
+            reason = "no_client_certificate",
+            "peer_identity_rejected"
+        );
+        return (StatusCode::UNAUTHORIZED, "unauthenticated peer").into_response();
+    };
+
+    if crate::tls::verify_cert_peer_identity(cert, allowed_peers).is_ok() {
+        next.run(request).await
+    } else {
+        let names = crate::tls::extract_cert_peer_names(cert).unwrap_or_default();
+        tracing::warn!(
+            path = request.uri().path(),
+            reason = "peer_not_allow_listed",
+            cn = ?names.common_names,
+            dns_sans = ?names.dns_sans,
+            "peer_identity_rejected"
+        );
+        (StatusCode::FORBIDDEN, "peer not allowlisted").into_response()
+    }
+}
 
 /// Expected bearer token for this recap-worker instance's protected
 /// routes. `None` exactly when `RECAP_ADMIN_AUTH=disabled` was set
@@ -202,5 +246,152 @@ mod tests {
     #[test]
     fn constant_time_eq_rejects_different_lengths() {
         assert!(!constant_time_eq(b"short", b"much-longer-token"));
+    }
+
+    fn peer_guarded_app() -> Router {
+        let allowed = vec!["alt-backend".to_string()];
+        Router::new()
+            .route("/v1/recaps/7days", get(|| async { StatusCode::OK }))
+            .route(
+                "/v1/morning/letters/regenerate",
+                axum::routing::post(|| async { StatusCode::OK }),
+            )
+            .route_layer(middleware::from_fn(require_peer_identity))
+            .layer(Extension(PeerIdentityGuard::new(Some(&allowed))))
+    }
+
+    #[tokio::test]
+    async fn disabled_peer_guard_passes_request_without_client_certificate() {
+        let app = Router::new()
+            .route("/v1/recaps/7days", get(|| async { StatusCode::OK }))
+            .route_layer(middleware::from_fn(require_peer_identity))
+            .layer(Extension(PeerIdentityGuard::new(None)));
+        let req = Request::builder()
+            .method(Method::GET)
+            .uri("/v1/recaps/7days")
+            .body(Body::empty())
+            .expect("request builds");
+        let resp = app.oneshot(req).await.expect("request succeeds");
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn peer_guard_logs_warn_with_path_and_reason_on_missing_client_certificate() {
+        use std::sync::{Arc, Mutex};
+        use tracing::instrument::WithSubscriber;
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let buf = BufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        let req = Request::builder()
+            .method(Method::GET)
+            .uri("/v1/recaps/7days?secret=query-secret-value")
+            .header(AUTHORIZATION, "Bearer header-secret-value")
+            .header("x-alt-peer-identity", "spoofed-peer-header")
+            .body(Body::empty())
+            .expect("request builds");
+
+        let resp = peer_guarded_app()
+            .oneshot(req)
+            .with_subscriber(subscriber)
+            .await
+            .expect("request succeeds");
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let captured = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+        assert_eq!(
+            captured.lines().count(),
+            1,
+            "expected one WARN line for 401 rejection, got: {captured}"
+        );
+        assert!(captured.contains("WARN"));
+        assert!(captured.contains("/v1/recaps/7days"));
+        assert!(captured.contains("no_client_certificate"));
+        assert!(!captured.contains("query-secret-value"));
+        assert!(!captured.contains("header-secret-value"));
+        assert!(!captured.contains("spoofed-peer-header"));
+    }
+
+    #[tokio::test]
+    async fn peer_guard_logs_warn_with_presented_names_on_unlisted_peer() {
+        use std::sync::{Arc, Mutex};
+        use tracing::instrument::WithSubscriber;
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let mut params = rcgen::CertificateParams::new(vec![
+            "untrusted-san-a".to_string(),
+            "untrusted-san-b".to_string(),
+        ])
+        .expect("cert params");
+        let mut dn = rcgen::DistinguishedName::new();
+        dn.push(rcgen::DnType::CommonName, "untrusted-cn");
+        params.distinguished_name = dn;
+        let key = rcgen::KeyPair::generate().expect("keypair");
+        let cert = params.self_signed(&key).expect("self-signed");
+
+        let buf = BufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        let mut req = Request::builder()
+            .method(Method::POST)
+            .uri("/v1/morning/letters/regenerate")
+            .header(AUTHORIZATION, "Bearer header-secret-value")
+            .body(Body::empty())
+            .expect("request builds");
+        req.extensions_mut().insert(cert.der().clone());
+
+        let resp = peer_guarded_app()
+            .oneshot(req)
+            .with_subscriber(subscriber)
+            .await
+            .expect("request succeeds");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let captured = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+        assert_eq!(
+            captured.lines().count(),
+            1,
+            "expected one WARN line for 403 rejection, got: {captured}"
+        );
+        assert!(captured.contains("WARN"));
+        assert!(captured.contains("/v1/morning/letters/regenerate"));
+        assert!(captured.contains("peer_not_allow_listed"));
+        assert!(captured.contains("untrusted-cn"));
+        assert!(captured.contains("untrusted-san-a"));
+        assert!(captured.contains("untrusted-san-b"));
+        assert!(!captured.contains("header-secret-value"));
     }
 }

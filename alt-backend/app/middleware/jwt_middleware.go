@@ -3,6 +3,7 @@ package middleware
 import (
 	"alt/shared/driver/sovereign_client"
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -56,28 +57,26 @@ type UserContext struct {
 
 // JWTAuthMiddleware validates JWT tokens for backend authentication
 type JWTAuthMiddleware struct {
-	logger   *slog.Logger
-	config   config.AuthConfig
-	secret   []byte
-	issuer   string
-	audience string
+	logger    *slog.Logger
+	config    config.AuthConfig
+	publicKey ed25519.PublicKey
+	issuer    string
+	audience  string
 }
 
 // NewJWTAuthMiddleware creates a new JWT authentication middleware
 func NewJWTAuthMiddleware(logger *slog.Logger, cfg config.AuthConfig) *JWTAuthMiddleware {
-	secret := []byte(cfg.BackendTokenSecret)
-	if len(secret) == 0 {
-		if logger != nil {
-			logger.Warn("BACKEND_TOKEN_SECRET not set, JWT auth will deny all requests")
-		}
+	if len(cfg.BackendTokenPublicKey) != ed25519.PublicKeySize {
+		panic(fmt.Sprintf("middleware: BackendTokenPublicKey must be %d bytes, got %d", ed25519.PublicKeySize, len(cfg.BackendTokenPublicKey)))
 	}
+	publicKey := append(ed25519.PublicKey(nil), cfg.BackendTokenPublicKey...)
 
 	return &JWTAuthMiddleware{
-		logger:   logger,
-		config:   cfg,
-		secret:   secret,
-		issuer:   cfg.BackendTokenIssuer,
-		audience: cfg.BackendTokenAudience,
+		logger:    logger,
+		config:    cfg,
+		publicKey: publicKey,
+		issuer:    cfg.BackendTokenIssuer,
+		audience:  cfg.BackendTokenAudience,
 	}
 }
 
@@ -120,18 +119,13 @@ func (m *JWTAuthMiddleware) validateJWT(c echo.Context) (*UserContext, error) {
 		return nil, errMissingToken
 	}
 
-	if len(m.secret) == 0 {
-		return nil, fmt.Errorf("JWT secret not configured")
-	}
-
 	// Parse and validate token
 	parsed, err := jwt.ParseWithClaims(tokenStr, &BackendClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Verify signing method
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if _, ok := token.Method.(*jwt.SigningMethodEd25519); !ok || token.Header["alg"] != jwt.SigningMethodEdDSA.Alg() {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return m.secret, nil
-	}, jwt.WithExpirationRequired(), jwt.WithValidMethods([]string{"HS256"}))
+		return m.publicKey, nil
+	}, jwt.WithExpirationRequired(), jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}))
 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errInvalidToken, err)

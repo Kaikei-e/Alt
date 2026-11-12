@@ -1,0 +1,9 @@
+/.github/ @Kaikei-e
+/compose/ @Kaikei-e
+/deploy/ @Kaikei-e
+/auth-hub/ @Kaikei-e
+/kratos/ @Kaikei-e
+/altctl/internal/setup/ @Kaikei-e
+/altctl/internal/mtlsedge/ @Kaikei-e
+/altctl/cmd/mtls.go @Kaikei-e
+/altctl/cmd/init.go @Kaikei-e

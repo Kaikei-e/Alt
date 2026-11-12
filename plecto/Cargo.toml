@@ -16,6 +16,9 @@ crate-type = ["cdylib"]
 [dependencies]
 wit-bindgen = "0.60"
 
+[dev-dependencies]
+toml = "1"
+
 [workspace]
 
 # 1. 自作コードのデバッグ情報をバックトレースに必要な行番号のみに絞る場合

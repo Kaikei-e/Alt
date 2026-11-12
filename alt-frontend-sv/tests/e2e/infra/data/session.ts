@@ -2,6 +2,7 @@
  * Session & Authentication Mock Data
  */
 
+import { generateKeyPairSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type {
 	AuthHubSessionResponse,
@@ -14,20 +15,33 @@ import type {
 // Constants
 // =============================================================================
 
-function loadSecret(): string {
-	const file = process.env.BACKEND_TOKEN_SECRET_FILE;
+/**
+ * Signing key (Ed25519 PKCS#8 PEM) for the tokens the mock AuthHub issues.
+ *
+ * With a key file configured, that file is the key. Otherwise the mock mints a
+ * throwaway key held in memory, which is correct only when nothing else has to
+ * verify its tokens. The containerised mock-auth sets
+ * MOCK_AUTH_REQUIRE_SIGNING_KEY_FILE so a missing file is a startup error
+ * instead of tokens nobody can verify.
+ */
+export function resolveSigningKey(
+	env: Record<string, string | undefined> = process.env,
+): string {
+	const file = env.BACKEND_TOKEN_SIGNING_KEY_FILE;
 	if (file) {
-		try {
-			return readFileSync(file, "utf-8").trim();
-		} catch {
-			console.warn(`Failed to read secret from ${file}, falling back to env`);
-		}
+		return readFileSync(file, "utf-8");
 	}
-	return process.env.BACKEND_TOKEN_SECRET || "dev-secret-for-local";
+	if (env.MOCK_AUTH_REQUIRE_SIGNING_KEY_FILE === "1") {
+		throw new Error(
+			"BACKEND_TOKEN_SIGNING_KEY_FILE must point at an Ed25519 PKCS#8 PEM private key",
+		);
+	}
+	return generateKeyPairSync("ed25519")
+		.privateKey.export({ type: "pkcs8", format: "pem" })
+		.toString();
 }
 
 export const DEV_USER_ID = "00000000-0000-0000-0000-000000000001";
-export const DEV_JWT_SECRET = loadSecret();
 export const DEV_JWT_ISSUER = "auth-hub";
 export const DEV_JWT_AUDIENCE = "alt-backend";
 

@@ -1,8 +1,11 @@
 package setup
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -30,6 +33,12 @@ const (
 	// them, so altctl never writes one; PKIBootstrapScript creates the file
 	// and registers the provisioner together.
 	SecretClassPKIProvisioner SecretClass = "pki-provisioner"
+	// SecretClassEd25519SigningKey is the PKCS#8 PEM private half of an
+	// Ed25519 key pair; altctl writes it together with its Partner.
+	SecretClassEd25519SigningKey SecretClass = "ed25519-signing-key"
+	// SecretClassEd25519VerifyKey is the SPKI PEM public half, written by
+	// the same step as its signing key Partner.
+	SecretClassEd25519VerifyKey SecretClass = "ed25519-verify-key"
 )
 
 // PKIBootstrapScript is the repo-relative script that provisions every
@@ -41,8 +50,9 @@ type SecretSpec struct {
 	Filename    string
 	Description string
 	Class       SecretClass
-	Length      int // bytes for random generation (default 32)
-	Truncate    int // if > 0, truncate the encoded output to this many characters
+	Length      int    // bytes for random generation (default 32)
+	Truncate    int    // if > 0, truncate the encoded output to this many characters
+	Partner     string // other half of an Ed25519 key pair
 }
 
 // SecretsResult holds the outcome of a secrets generation run
@@ -66,6 +76,7 @@ type secretMeta struct {
 	Class       SecretClass
 	Length      int
 	Truncate    int
+	Partner     string
 }
 
 func randomSecret(description string) secretMeta {
@@ -85,12 +96,10 @@ func operatorSecret(description string) secretMeta {
 // DeriveSecretSpecs fail: a guessed class is how a provisioner password ends
 // up as random bytes step-ca has never seen.
 var knownSecretMeta = map[string]secretMeta{
-	"backend_token_secret.txt": randomSecret("Backend JWT token secret"),
-	// Separate from backend_token_secret so the HS256 signing key stays inside
-	// auth-hub: this one is the /internal shared bearer alt-data-hub puts in a
-	// plaintext X-Internal-Auth header, and auth-hub refuses to start when the
-	// two files hold the same value. Both are generated independently, so a
-	// fresh `altctl init` can never produce the collision.
+	"backend_token_signing_key.txt": {Description: "Backend token Ed25519 signing key (PKCS#8 PEM, auth-hub only)", Class: SecretClassEd25519SigningKey, Partner: "backend_token_verify_key.txt"},
+	"backend_token_verify_key.txt":  {Description: "Backend token Ed25519 verify key (SPKI PEM)", Class: SecretClassEd25519VerifyKey, Partner: "backend_token_signing_key.txt"},
+	// This one is the /internal shared bearer alt-data-hub puts in a plaintext
+	// X-Internal-Auth header; it is independent of the backend token keys.
 	"auth_hub_internal_secret.txt":          randomSecret("auth-hub /internal shared bearer (X-Internal-Auth)"),
 	"postgres_password.txt":                 randomSecret("PostgreSQL superuser password"),
 	"db_password.txt":                       randomSecret("Application database password"),
@@ -129,7 +138,8 @@ var knownSecretMeta = map[string]secretMeta{
 	"pact_db_password.txt":                randomSecret("Pact Broker database password"),
 	"internal_auth_token.txt":             randomSecret("auth-token-manager internal auth token (X-Internal-Auth)"),
 	"redis_password.txt":                  randomSecret("Redis password (staging overlay)"),
-	"redis_streams_password.txt":          randomSecret("Redis Streams role password"),
+	"redis_streams_producer_password.txt": randomSecret("Redis Streams producer role password"),
+	"redis_streams_consumer_password.txt": randomSecret("Redis Streams consumer role password (must differ from producer)"),
 	"redis_cache_password.txt":            randomSecret("Redis Cache role password"),
 	"redis_limiter_password.txt":          randomSecret("Redis Limiter role password"),
 	"rask_ingest_token.txt":               randomSecret("Rask log ingestion token"),
@@ -228,6 +238,7 @@ func specsFromNames(names []string) ([]SecretSpec, error) {
 			Class:       meta.Class,
 			Length:      meta.Length,
 			Truncate:    meta.Truncate,
+			Partner:     meta.Partner,
 		})
 	}
 	if len(unclassified) > 0 {
@@ -334,6 +345,22 @@ func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult
 		}
 		path := filepath.Join(dir, spec.Filename)
 
+		if spec.Class == SecretClassEd25519VerifyKey {
+			continue
+		}
+		if spec.Class == SecretClassEd25519SigningKey {
+			created, err := ensureEd25519KeyPair(path, filepath.Join(dir, spec.Partner))
+			if err != nil {
+				return nil, fmt.Errorf("provisioning key pair %s / %s: %w", spec.Filename, spec.Partner, err)
+			}
+			if created {
+				result.Created = append(result.Created, spec.Filename, spec.Partner)
+			} else {
+				result.Skipped = append(result.Skipped, spec.Filename, spec.Partner)
+			}
+			continue
+		}
+
 		if !force || spec.Class != SecretClassRandom {
 			if _, err := os.Stat(path); err == nil {
 				result.Skipped = append(result.Skipped, spec.Filename)
@@ -375,6 +402,78 @@ func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult
 	return result, nil
 }
 
+// ensureEd25519KeyPair writes a PKCS#8 private key and its SPKI public key
+// unless both files already exist. Exactly one existing file is an error: a
+// regenerated half would silently stop matching the one that stayed.
+func ensureEd25519KeyPair(privPath, pubPath string) (bool, error) {
+	privExists, err := fileExists(privPath)
+	if err != nil {
+		return false, err
+	}
+	pubExists, err := fileExists(pubPath)
+	if err != nil {
+		return false, err
+	}
+	switch {
+	case privExists && pubExists:
+		return false, nil
+	case privExists != pubExists:
+		return false, fmt.Errorf("only one of %s and %s exists; remove it or restore the other", filepath.Base(privPath), filepath.Base(pubPath))
+	}
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return false, fmt.Errorf("generating Ed25519 key: %w", err)
+	}
+	privDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		return false, fmt.Errorf("encoding private key: %w", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return false, fmt.Errorf("encoding public key: %w", err)
+	}
+	if err := writeSecretFile(privPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})); err != nil {
+		return false, err
+	}
+	if err := writeSecretFile(pubPath, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})); err != nil {
+		_ = os.Remove(privPath)
+		return false, err
+	}
+	return true, nil
+}
+
+func fileExists(path string) (bool, error) {
+	_, err := os.Lstat(path)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, os.ErrNotExist):
+		return false, nil
+	default:
+		return false, fmt.Errorf("checking %s: %w", filepath.Base(path), err)
+	}
+}
+
+// writeSecretFile creates path exclusively (an existing path, including a
+// symlink, is an error and is left alone) and removes the file again if it
+// cannot finish writing it.
+func writeSecretFile(path string, content []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, secretFileMode)
+	if err != nil {
+		return fmt.Errorf("creating secret %s: %w", filepath.Base(path), err)
+	}
+	_, werr := f.Write(content)
+	cerr := f.Close()
+	// OpenFile's perm is masked by the process umask; Chmod makes it exact.
+	merr := os.Chmod(path, secretFileMode)
+	if err := errors.Join(werr, cerr, merr); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("writing secret %s: %w", filepath.Base(path), err)
+	}
+	return nil
+}
+
 // ensureSecretsDir creates dir with secretDirMode when it is missing and
 // enforces secretDirMode (0750) even when dir already exists, so a
 // pre-existing 0755 directory does not expose 0644 secret files to world-read.
@@ -393,7 +492,7 @@ func ensureSecretsDir(dir string) error {
 func FindPendingSecrets(dir string, specs []SecretSpec) (PendingSecrets, error) {
 	var pending PendingSecrets
 	for _, spec := range specs {
-		if spec.Class == SecretClassRandom {
+		if spec.Class == SecretClassRandom || spec.Class == SecretClassEd25519SigningKey || spec.Class == SecretClassEd25519VerifyKey {
 			continue
 		}
 		info, err := os.Stat(filepath.Join(dir, spec.Filename))

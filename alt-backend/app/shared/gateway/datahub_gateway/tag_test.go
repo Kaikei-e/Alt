@@ -19,6 +19,8 @@ type fakeTagDataHubClient struct {
 	gotGetArticleTagsReq        *datahubv1.GetArticleTagsRequest
 	gotListArticlesByTagIDReq   *datahubv1.ListArticlesByTagIDRequest
 	gotListArticlesByTagNameReq *datahubv1.ListArticlesByTagNameRequest
+	gotFetchTagCloudReq         *datahubv1.FetchTagCloudRequest
+	gotSearchByPrefixReq        *datahubv1.SearchTagsByPrefixRequest
 	tags                        []*datahubv1.FeedTag
 	trailArticles               []*datahubv1.TagTrailArticle
 }
@@ -36,6 +38,34 @@ func (f *fakeTagDataHubClient) ListArticlesByTagID(_ context.Context, req *conne
 func (f *fakeTagDataHubClient) ListArticlesByTagName(_ context.Context, req *connect.Request[datahubv1.ListArticlesByTagNameRequest]) (*connect.Response[datahubv1.ListArticlesByTagNameResponse], error) {
 	f.gotListArticlesByTagNameReq = req.Msg
 	return connect.NewResponse(&datahubv1.ListArticlesByTagNameResponse{Articles: f.trailArticles}), nil
+}
+
+func (f *fakeTagDataHubClient) FetchTagCloud(_ context.Context, req *connect.Request[datahubv1.FetchTagCloudRequest]) (*connect.Response[datahubv1.FetchTagCloudResponse], error) {
+	f.gotFetchTagCloudReq = req.Msg
+	return connect.NewResponse(&datahubv1.FetchTagCloudResponse{}), nil
+}
+
+func (f *fakeTagDataHubClient) SearchTagsByPrefix(_ context.Context, req *connect.Request[datahubv1.SearchTagsByPrefixRequest]) (*connect.Response[datahubv1.SearchTagsByPrefixResponse], error) {
+	f.gotSearchByPrefixReq = req.Msg
+	return connect.NewResponse(&datahubv1.SearchTagsByPrefixResponse{}), nil
+}
+
+func TestFetchTagCloud_StaysInstanceWide(t *testing.T) {
+	client := &fakeTagDataHubClient{}
+	gw := &TagGateway{client: client}
+
+	_, err := gw.FetchTagCloud(context.Background(), 300)
+	require.NoError(t, err)
+	assert.Nil(t, client.gotFetchTagCloudReq.UserId, "the shared tag cloud must not carry a user scope")
+}
+
+func TestSearchTagsByPrefix_RejectsEmptyUserID(t *testing.T) {
+	client := &fakeTagDataHubClient{}
+	gw := &TagGateway{client: client}
+
+	_, err := gw.SearchTagsByPrefix(context.Background(), "ai", "", 10)
+	require.Error(t, err)
+	assert.Nil(t, client.gotSearchByPrefixReq, "no RPC may be sent without a user id")
 }
 
 func TestFetchArticleTags_SendsUserIDFromContext(t *testing.T) {

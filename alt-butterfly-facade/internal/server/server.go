@@ -4,6 +4,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -33,7 +34,7 @@ type Config struct {
 	// the admin proxies cannot silently degrade to the browser-facing port.
 	BackendInternalURL string
 	BackendRESTURL     string
-	Secret             []byte
+	TokenVerifyKey     ed25519.PublicKey
 	Issuer             string
 	Audience           string
 	RequestTimeout     time.Duration
@@ -94,7 +95,7 @@ func NewServerWithTransports(
 		// Use BFF handler with features enabled
 		bffHandler = handler.NewBFFHandler(
 			backendClient,
-			cfg.Secret,
+			cfg.TokenVerifyKey,
 			cfg.Issuer,
 			cfg.Audience,
 			logger,
@@ -105,7 +106,7 @@ func NewServerWithTransports(
 		// Use simple proxy handler (legacy behavior)
 		mainHandler = handler.NewProxyHandler(
 			backendClient,
-			cfg.Secret,
+			cfg.TokenVerifyKey,
 			cfg.Issuer,
 			cfg.Audience,
 			logger,
@@ -117,7 +118,7 @@ func NewServerWithTransports(
 	// Create aggregation handler
 	aggregationHandler := handler.NewAggregationHandler(
 		createQueryFetcher(backendClient, cfg.RequestTimeout),
-		cfg.Secret,
+		cfg.TokenVerifyKey,
 		cfg.Issuer,
 		cfg.Audience,
 		logger,
@@ -125,7 +126,7 @@ func NewServerWithTransports(
 
 	// Auth for internal-info endpoints (e.g. /v1/bff/stats) that are not
 	// backend proxies and so don't go through a *ProxyHandler's authInterceptor.
-	statsAuth := middleware.NewAuthInterceptor(logger, cfg.Secret, cfg.Issuer, cfg.Audience)
+	statsAuth := middleware.NewAuthInterceptor(logger, cfg.TokenVerifyKey, cfg.Issuer, cfg.Audience)
 
 	journeyMetrics := metrics.Default()
 
@@ -248,7 +249,7 @@ func NewServerWithTransports(
 			effectiveRESTTransport,
 		)
 		restProxy := handler.NewRESTProxyHandler(
-			restClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger, cfg.RequestTimeout,
+			restClient, cfg.TokenVerifyKey, cfg.Issuer, cfg.Audience, logger, cfg.RequestTimeout,
 		)
 		// Only allowlisted /v1/* paths reach the plaintext Echo listener. The
 		// allowlist is the record of what deliberately stayed on REST after
@@ -292,7 +293,7 @@ func NewServerWithTransports(
 		}
 		adminProxy := handler.NewAdminProxyHandler(
 			adminBackendClient,
-			cfg.Secret,
+			cfg.TokenVerifyKey,
 			cfg.Issuer,
 			cfg.Audience,
 			adminOperatorToken,
@@ -306,7 +307,7 @@ func NewServerWithTransports(
 		// a long-lived server stream.
 		adminMonitorProxy := handler.NewAdminMonitorProxyHandler(
 			adminBackendClient,
-			cfg.Secret,
+			cfg.TokenVerifyKey,
 			cfg.Issuer,
 			cfg.Audience,
 			adminOperatorToken,
@@ -348,7 +349,7 @@ func NewServerWithTransports(
 		)
 		acolyteProxy := handler.NewProxyHandler(
 			acolyteClient,
-			cfg.Secret,
+			cfg.TokenVerifyKey,
 			cfg.Issuer,
 			cfg.Audience,
 			logger,
@@ -378,7 +379,7 @@ func NewServerWithTransports(
 	ttsHandler := handler.NewTTSHandler(
 		cfg.TTSProxy == "enabled",
 		ttsClient,
-		cfg.Secret,
+		cfg.TokenVerifyKey,
 		cfg.Issuer,
 		cfg.Audience,
 		logger,

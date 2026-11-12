@@ -52,11 +52,13 @@ type stubTagSearchPort struct {
 	section    *domain.TagSearchSection
 	err        error
 	lastPrefix string
+	lastUserID string
 	lastLimit  int
 }
 
-func (s *stubTagSearchPort) SearchTagsByPrefix(_ context.Context, prefix string, limit int) (*domain.TagSearchSection, error) {
+func (s *stubTagSearchPort) SearchTagsByPrefix(_ context.Context, prefix string, userID string, limit int) (*domain.TagSearchSection, error) {
 	s.lastPrefix = prefix
+	s.lastUserID = userID
 	s.lastLimit = limit
 	return s.section, s.err
 }
@@ -211,6 +213,7 @@ func TestSearchEverything_MapsArticlesRecapsAndTagsSections(t *testing.T) {
 	assert.Equal(t, 7, articlePort.lastLimit)
 	assert.Equal(t, 4, recapPort.lastLimit)
 	assert.Equal(t, 12, tagPort.lastLimit)
+	assert.Equal(t, userID.String(), tagPort.lastUserID)
 
 	// Verify ArticleSection mapping
 	require.NotNil(t, msg.ArticleSection)

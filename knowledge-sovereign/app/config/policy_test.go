@@ -378,6 +378,7 @@ func TestLoadConfig_PolicyPrecedenceNoLegacyEscape(t *testing.T) {
 	}`
 	policyFile := writeTempTokenFile(t, "policy.json", policyJSON)
 
+	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
 	t.Setenv("ADMIN_AUTH", "disabled")
 	t.Setenv("EVENT_AUTH", "")
@@ -394,6 +395,7 @@ func TestLoadConfig_PolicyPrecedenceNoLegacyEscape(t *testing.T) {
 func TestLoadConfig_UserJWTVerifierConfig(t *testing.T) {
 	certPath, keyPath, caPath, _, _ := setupTempMTLSCerts(t)
 
+	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
 	t.Setenv("ADMIN_AUTH", "disabled")
 	t.Setenv("EVENT_AUTH", "disabled")

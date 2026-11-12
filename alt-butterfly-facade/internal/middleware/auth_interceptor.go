@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -41,27 +42,27 @@ type BackendClaims struct {
 // AuthInterceptor provides JWT authentication for Connect-RPC handlers.
 type AuthInterceptor struct {
 	logger   *slog.Logger
-	secret   []byte
+	key      ed25519.PublicKey
 	issuer   string
 	audience string
 }
 
 // NewAuthInterceptor creates a new authentication interceptor.
 //
-// The JWT secret is mandatory: an empty secret is indistinguishable from a
+// The verify key is mandatory: a missing key is indistinguishable from a
 // missing wiring/config step (vs. "auth intentionally disabled"), so this
 // fails closed at startup instead of constructing an interceptor that would
-// silently reject every request with "JWT secret not configured".
-func NewAuthInterceptor(logger *slog.Logger, secret []byte, issuer, audience string) *AuthInterceptor {
-	if len(secret) == 0 {
+// silently reject every request.
+func NewAuthInterceptor(logger *slog.Logger, key ed25519.PublicKey, issuer, audience string) *AuthInterceptor {
+	if len(key) != ed25519.PublicKeySize {
 		if logger != nil {
-			logger.Error("JWT secret is empty; refusing to start (fail-closed)")
+			logger.Error("JWT verify key is missing or not an Ed25519 public key; refusing to start (fail-closed)")
 		}
-		panic("alt-butterfly-facade: JWT backend token secret is empty; refusing to start auth interceptor (fail-closed)")
+		panic("alt-butterfly-facade: JWT backend token verify key is missing or not Ed25519; refusing to start auth interceptor (fail-closed)")
 	}
 	return &AuthInterceptor{
 		logger:   logger,
-		secret:   secret,
+		key:      key,
 		issuer:   issuer,
 		audience: audience,
 	}
@@ -75,22 +76,18 @@ func (a *AuthInterceptor) ValidateToken(tokenStr string) (*domain.UserContext, e
 		return nil, errMissingToken
 	}
 
-	if len(a.secret) == 0 {
-		return nil, fmt.Errorf("JWT secret not configured")
-	}
-
 	// Parse and validate token
 	parsed, err := jwt.ParseWithClaims(
 		tokenStr,
 		&BackendClaims{},
 		func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			if _, ok := token.Method.(*jwt.SigningMethodEd25519); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
-			return a.secret, nil
+			return a.key, nil
 		},
 		jwt.WithExpirationRequired(),
-		jwt.WithValidMethods([]string{"HS256"}),
+		jwt.WithValidMethods([]string{"EdDSA"}),
 	)
 
 	if err != nil {

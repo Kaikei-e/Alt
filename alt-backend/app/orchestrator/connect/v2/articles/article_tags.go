@@ -98,6 +98,9 @@ func (h *Handler) FetchArticleTags(
 	articleID = parsedArticleID.String()
 
 	tags, err := h.deps.FetchArticleTags.Execute(ctx, articleID)
+	if quotaErr := mapTagGenerationQuotaError(err); quotaErr != nil {
+		return nil, quotaErr
+	}
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchArticleTags")
 	}
@@ -147,6 +150,9 @@ func (h *Handler) StreamArticleTags(
 	}
 
 	result, err := h.deps.StreamArticleTags.Execute(ctx, articleID)
+	if quotaErr := mapTagGenerationQuotaError(err); quotaErr != nil {
+		return quotaErr
+	}
 	if err != nil {
 		h.logger.WarnContext(ctx, "tag resolution failed", "articleID", articleID, "error", err)
 		return stream.Send(&articlesv2.StreamArticleTagsResponse{

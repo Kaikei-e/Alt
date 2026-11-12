@@ -44,9 +44,8 @@ func (r *raceArticleRepo) UpsertArticlesWithFeedID(_ context.Context, _ []*domai
 // same *articleSyncService instance in production. Run with -race.
 func TestArticleSyncService_ConcurrentSyncAndBackfill_NoRace(t *testing.T) {
 	articleRepo := &raceArticleRepo{}
-	externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-	svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+	svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {

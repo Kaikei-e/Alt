@@ -51,7 +51,6 @@ export {
 	buildKratosSession,
 	buildLoginFlow,
 	buildRegistrationFlow,
-	DEV_JWT_SECRET,
 	DEV_USER_ID,
 	KRATOS_SESSION_COOKIE_NAME,
 	KRATOS_SESSION_COOKIE_VALUE,

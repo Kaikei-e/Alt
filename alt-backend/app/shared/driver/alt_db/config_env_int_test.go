@@ -10,11 +10,15 @@ import (
 // compose/core.yaml gives alt-data-hub DB_MAX_CONNS=40 / DB_MIN_CONNS=10.
 // プールはその値で作られなければならない - 既定の 20/5 に落ちても起動ログは
 // 実効値を出すので、黙って捨てられたことが誰にも見えない。
-func TestNewDatabaseConfigFromEnv_PoolSizesComeFromEnv(t *testing.T) {
+func TestLoadDatabaseConfigFromEnv_PoolSizesComeFromEnv(t *testing.T) {
+	t.Setenv("DB_PASSWORD", "testpass")
+	t.Setenv("DB_PASSWORD_FILE", "")
+	t.Setenv("DB_SSL_MODE", "disable")
 	t.Setenv("DB_MAX_CONNS", "40")
 	t.Setenv("DB_MIN_CONNS", "10")
 
-	config := NewDatabaseConfigFromEnv()
+	config, err := LoadDatabaseConfigFromEnv()
+	require.NoError(t, err)
 
 	assert.Equal(t, 40, config.MaxConns)
 	assert.Equal(t, 10, config.MinConns)
@@ -29,13 +33,14 @@ func TestBuildConnectionString_ConnectTimeoutComesFromEnv(t *testing.T) {
 		User:     "testuser",
 		Password: "testpass",
 		DBName:   "testdb",
+		SSLMode:  "disable",
 	}
 
 	assert.Contains(t, config.BuildConnectionString(), "connect_timeout=5")
 }
 
 // 設定されているが使えない値は「既定値で続行」ではなく起動失敗（CLAUDE.md rule 9）。
-func TestNewDatabaseConfigFromEnv_RejectsUnusableValue(t *testing.T) {
+func TestLoadDatabaseConfigFromEnv_RejectsUnusableValue(t *testing.T) {
 	tests := []struct {
 		name  string
 		key   string
@@ -47,9 +52,12 @@ func TestNewDatabaseConfigFromEnv_RejectsUnusableValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DB_PASSWORD", "testpass")
+			t.Setenv("DB_PASSWORD_FILE", "")
+			t.Setenv("DB_SSL_MODE", "disable")
 			t.Setenv(tt.key, tt.value)
 
-			err := recoveredError(t, func() { NewDatabaseConfigFromEnv() })
+			_, err := LoadDatabaseConfigFromEnv()
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.key)
@@ -158,23 +166,4 @@ func TestPoolConnsFromEnv_RejectsUnusablePoolSize(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.value)
 		})
 	}
-}
-
-// recoveredError runs fn and returns the error it panicked with, failing the
-// test when fn returns normally instead.
-func recoveredError(t *testing.T, fn func()) (recovered error) {
-	t.Helper()
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatal("expected startup to fail, but it returned normally")
-		}
-		err, ok := r.(error)
-		if !ok {
-			t.Fatalf("expected panic with error, got %T: %v", r, r)
-		}
-		recovered = err
-	}()
-	fn()
-	return nil
 }

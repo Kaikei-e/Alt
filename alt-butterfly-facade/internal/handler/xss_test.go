@@ -64,7 +64,7 @@ func TestBFFHandler_AuthErrorDoesNotWriteHTMLWithRequestBytes(t *testing.T) {
 }
 
 func TestAggregationHandler_ValidationErrorDoesNotReflectRequestBody(t *testing.T) {
-	h := NewAggregationHandler(nil, testAggSecret, "auth-hub", "alt-backend", nil)
+	h := NewAggregationHandler(nil, testPublicKey, "auth-hub", "alt-backend", nil)
 
 	queries := make([]string, MaxQueriesPerRequest+1)
 	for i := range queries {
@@ -74,7 +74,7 @@ func TestAggregationHandler_ValidationErrorDoesNotReflectRequestBody(t *testing.
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/aggregate", bytes.NewReader(reqBody))
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -92,14 +92,14 @@ func TestAggregationHandler_UnknownQueryJSONIsNotHTML(t *testing.T) {
 			t.Fatal("unknown query must not be forwarded")
 			return nil, nil
 		},
-		testAggSecret, "auth-hub", "alt-backend", nil,
+		testPublicKey, "auth-hub", "alt-backend", nil,
 	)
 
 	reqBody, err := json.Marshal(AggregationRequest{Queries: []string{xssPayload}})
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/aggregate", bytes.NewReader(reqBody))
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testAggSecret))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)

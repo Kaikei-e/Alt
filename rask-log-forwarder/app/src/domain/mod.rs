@@ -8,6 +8,7 @@
 pub mod error;
 pub mod log_entry;
 pub mod log_level;
+mod redact;
 
 pub use error::ForwarderError;
 pub use log_entry::EnrichedLogEntry;

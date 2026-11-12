@@ -419,13 +419,12 @@ message GetEmptyFeedIDResponse {
 // =============================================================================
 
 // FetchTagCloudRequest is the request for FetchTagCloud.
-// Wire-identical to
-// services.backend.v1.BackendInternalServiceFetchTagCloudRequest — the legacy
-// name carried the service name because that package already had a
-// FetchTagCloud pair belonging to a different service.
 message FetchTagCloudRequest {
   // Maximum number of tags to return (default: 300, max: 500)
   int32 limit = 1;
+  // When present, restricts the cloud to tags on this user's articles. When
+  // absent, the cloud spans the whole instance (the shared Tag Verse screen).
+  optional string user_id = 2;
 }
 
 // FetchTagCloudResponse contains tag cloud entries.
@@ -1819,6 +1818,8 @@ message TagPrefixHit {
 message SearchTagsByPrefixRequest {
   string prefix = 1;
   int32 limit = 2;
+  // Required: only tags on this user's articles are returned.
+  string user_id = 3;
 }
 
 message SearchTagsByPrefixResponse {

@@ -32,24 +32,12 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// wireInternalAuth is the sole choke point for /internal auth wiring. It takes
-// the whole config rather than a bare string so the caller cannot hand it the
-// wrong secret: the group is keyed on InternalAuthSecret, never on the HS256
-// key that signs backend JWTs. alt-backend puts whatever this group accepts
-// into a plaintext X-Internal-Auth header on every GetSystemUser call, which
-// spreads it to nginx access logs and OTel span attributes — a place the
-// signing key must never reach.
-//
-// Both guards panic instead of degrading. config.Validate() already requires a
-// non-empty InternalAuthSecret distinct from BackendTokenSecret, so reaching
-// either branch means that invariant broke, not that internal auth should be
-// silently disabled or silently keyed on the signing key (CLAUDE.md Rule 8).
+// wireInternalAuth is the sole choke point for /internal auth wiring.
+// config.Validate() already requires a non-empty InternalAuthSecret, so an
+// empty secret here panics instead of degrading.
 func wireInternalAuth(cfg *config.Config) echo.MiddlewareFunc {
 	if cfg.InternalAuthSecret == "" {
 		panic("main: INTERNAL_AUTH_SECRET must be set before wiring internal auth")
-	}
-	if cfg.InternalAuthSecret == cfg.BackendTokenSecret {
-		panic("main: INTERNAL_AUTH_SECRET must not equal BACKEND_TOKEN_SECRET")
 	}
 	return appmiddleware.InternalAuth(cfg.InternalAuthSecret)
 }
@@ -63,6 +51,23 @@ func buildPlaintextHandler(e *echo.Echo, devPlaintextAllowed bool) http.Handler 
 		return e
 	}
 	return appmiddleware.PlaintextHealthOnly(e)
+}
+
+func configureTrustedProxies(ctx context.Context, e *echo.Echo, cfg *config.Config, log *slog.Logger) {
+	if cfg == nil || (cfg.TrustedProxiesDisabled && len(cfg.TrustedProxyCIDRs) > 0) || (!cfg.TrustedProxiesDisabled && len(cfg.TrustedProxyCIDRs) == 0) {
+		panic("main: TRUSTED_PROXY_CIDRS must be configured or explicitly set to none before configuring IP extractor")
+	}
+	if cfg.TrustedProxiesDisabled {
+		e.IPExtractor = appmiddleware.NewTrustedProxyIPExtractor(nil)
+		log.InfoContext(ctx, "trusted_proxy_cidrs_disabled")
+		return
+	}
+	formatted := make([]string, len(cfg.TrustedProxyCIDRs))
+	for i, p := range cfg.TrustedProxyCIDRs {
+		formatted[i] = p.String()
+	}
+	e.IPExtractor = appmiddleware.NewTrustedProxyIPExtractor(cfg.TrustedProxyCIDRs)
+	log.InfoContext(ctx, "trusted_proxy_cidrs_configured", "trusted_proxy_cidrs", formatted)
 }
 
 func main() {
@@ -128,10 +133,10 @@ func main() {
 	sessionCache := infracache.NewSessionCache(cfg.CacheTTL)
 	kratosGateway := gateway.NewKratosGateway(cfg.KratosURL, cfg.KratosAdminURL, 5*time.Second)
 	jwtIssuer := infratoken.NewJWTIssuer(infratoken.JWTConfig{
-		Secret:   cfg.BackendTokenSecret,
-		Issuer:   cfg.BackendTokenIssuer,
-		Audience: cfg.BackendTokenAudience,
-		TTL:      cfg.BackendTokenTTL,
+		PrivateKey: cfg.BackendTokenSigningKey,
+		Issuer:     cfg.BackendTokenIssuer,
+		Audience:   cfg.BackendTokenAudience,
+		TTL:        cfg.BackendTokenTTL,
 	})
 	csrfGenerator := infratoken.NewHMACCSRFGenerator(cfg.CSRFSecret)
 
@@ -155,10 +160,7 @@ func main() {
 	e.HideBanner = true
 	e.HidePort = true
 
-	// Only trust X-Forwarded-For from the internal nginx reverse proxy (private/
-	// link-local ranges); RateLimiter keys on c.RealIP(), so an untrusted XFF
-	// would let a client spoof its own rate-limit bucket.
-	e.IPExtractor = echo.ExtractIPFromXFFHeader()
+	configureTrustedProxies(ctx, e, cfg, slog.Default())
 
 	// Security middleware
 	e.Use(appmiddleware.SecurityHeaders())
@@ -238,8 +240,7 @@ func main() {
 	e.POST("/csrf", csrfHandler.Handle, csrfRL.Middleware())
 	e.GET("/health", healthHandler.Handle)
 
-	// Internal routes (protected by a shared bearer that is deliberately not
-	// the JWT signing key — see wireInternalAuth, and by mTLS).
+	// Internal routes (protected by INTERNAL_AUTH_SECRET — see wireInternalAuth — and by mTLS).
 	internalGroup := e.Group("/internal",
 		internalRL.Middleware(),
 		appmiddleware.RequireMTLS(),
@@ -251,9 +252,7 @@ func main() {
 	// Introspect route: dedicated high-capacity limiter for Search/Sov RPCs, mTLS ONLY (no shared bearer), narrow CN check
 	introspectGroup := e.Group("/internal", introspectRL.Middleware())
 	introspectGroup.POST("/token/introspect", internalHandler.HandleIntrospectToken, appmiddleware.RequireMTLSPeer([]string{"search-indexer", "knowledge-sovereign"}))
-	// Names the secret this group is keyed on, never its value: an operator
-	// reading the log can tell the two secrets apart without a way to learn
-	// either (auth-hub Rule 3).
+	// Names the env source for /internal bearer auth without logging its secret value (auth-hub Rule 2).
 	slog.InfoContext(ctx, "internal_auth_enabled", "secret_source", "INTERNAL_AUTH_SECRET")
 
 	// Start server with errgroup for graceful shutdown

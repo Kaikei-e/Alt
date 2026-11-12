@@ -96,13 +96,12 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	secret := []byte("test-secret-at-least-32-chars-long!")
 	cfg := Config{
 		BackendURL:       "http://127.0.0.1:1",
 		TTSProxy:         "enabled",
 		TTSConnectURL:    upstream.URL,
 		TTSTransport:     http.DefaultTransport,
-		Secret:           secret,
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   50 * time.Millisecond,
@@ -119,7 +118,7 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 	)
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/connect+json")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, secret))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -165,13 +164,12 @@ func TestTTSProxy_AuthRequired(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	secret := []byte("test-secret-at-least-32-chars-long!")
 	cfg := Config{
 		BackendURL:       "http://127.0.0.1:1",
 		TTSProxy:         "enabled",
 		TTSConnectURL:    upstream.URL,
 		TTSTransport:     http.DefaultTransport,
-		Secret:           secret,
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -231,12 +229,11 @@ func TestTTSProxy_DisabledMode(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	secret := []byte("test-secret-at-least-32-chars-long!")
 	cfg := Config{
 		BackendURL:       "http://127.0.0.1:1",
 		TTSProxy:         "disabled",
 		TTSConnectURL:    upstream.URL, // even if URL is configured, disabled mode must not dial it
-		Secret:           secret,
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -253,7 +250,7 @@ func TestTTSProxy_DisabledMode(t *testing.T) {
 	)
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/connect+json")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, secret))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -305,13 +302,12 @@ func TestTTSProxy_UnreachableUpstream(t *testing.T) {
 	unreachableURL := closedUpstream.URL
 	closedUpstream.Close()
 
-	secret := []byte("test-secret-at-least-32-chars-long!")
 	cfg := Config{
 		BackendURL:       "http://127.0.0.1:1",
 		TTSProxy:         "enabled",
 		TTSConnectURL:    unreachableURL,
 		TTSTransport:     http.DefaultTransport,
-		Secret:           secret,
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -328,7 +324,7 @@ func TestTTSProxy_UnreachableUpstream(t *testing.T) {
 	)
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/connect+json")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, secret))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -348,7 +344,7 @@ func TestTTSProxy_EnabledNilTransportPanics(t *testing.T) {
 		TTSProxy:         "enabled",
 		TTSConnectURL:    "https://127.0.0.1:9443",
 		TTSTransport:     nil,
-		Secret:           []byte("test-secret-at-least-32-chars-long!"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -507,13 +503,12 @@ func TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert(t *tes
 		TLSClientConfig: tlsClientCfg,
 	}
 
-	secret := []byte("test-secret-at-least-32-chars-long!")
 	cfg := Config{
 		BackendURL:       "http://127.0.0.1:1",
 		TTSProxy:         "enabled",
 		TTSConnectURL:    upstream.URL,
 		TTSTransport:     ttsTransport,
-		Secret:           secret,
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -530,7 +525,7 @@ func TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert(t *tes
 	)
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/connect+json")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, secret))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

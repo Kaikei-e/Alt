@@ -19,5 +19,5 @@ type SearchRecapsPort interface {
 
 // SearchTagsPort searches tags by prefix for the global search overview.
 type SearchTagsPort interface {
-	SearchTagsByPrefix(ctx context.Context, prefix string, limit int) (*domain.TagSearchSection, error)
+	SearchTagsByPrefix(ctx context.Context, prefix string, userID string, limit int) (*domain.TagSearchSection, error)
 }

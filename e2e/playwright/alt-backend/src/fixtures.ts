@@ -29,23 +29,25 @@ export type SeededFeed = {
 
 type WorkerFixtures = {
 	/**
-	 * Synthetic client address sent as `X-Real-IP` on every REST request.
+	 * Synthetic client address sent as `X-Forwarded-For` on every request.
 	 *
-	 * alt-backend's DoS middleware runs with `trustForwardedHeaders=true`
-	 * (routes.go: it is always deployed behind an nginx that rewrites the
-	 * header), keys its token bucket on the client IP, and blocks an IP for
-	 * five minutes once the bucket empties — 100 req/min sustained, burst 200.
-	 * Six workers sharing the runner container's single source address would
-	 * drain one shared bucket and the whole suite would 429 into a 5-minute
-	 * hole partway through.
+	 * alt-backend's DoS middleware keys its token bucket and circuit breaker on
+	 * the right-most non-trusted `X-Forwarded-For` hop when the immediate peer
+	 * matches `TRUSTED_PROXY_CIDRS` (set to the runner network ranges in the
+	 * staging compose stack), and blocks an IP for five minutes once the bucket
+	 * empties — 100 req/min sustained, burst 200. Six workers sharing the runner
+	 * container's single source address would drain one shared bucket and the
+	 * whole suite would 429 into a 5-minute hole partway through.
 	 *
 	 * Giving each worker its own address is not a workaround for the limiter;
-	 * it is what production actually looks like, where every browser is a
-	 * distinct X-Real-IP. The limiter itself is asserted on purpose, against a
-	 * dedicated address, in tests/rate-limit.spec.ts.
+	 * it is what production actually looks like, where every browser arrives as
+	 * a distinct `X-Forwarded-For` client entry behind the trusted edge proxy.
+	 * The limiter itself is asserted on purpose, against a dedicated address,
+	 * in tests/rate-limit.spec.ts.
 	 *
-	 * 100.64.0.0/10 is RFC 6598 shared address space: routable-looking enough
-	 * for `net.ParseIP`, guaranteed never to be a real client.
+	 * 100.64.0.0/10 is RFC 6598 shared address space: outside RFC 1918 private
+	 * runner ranges so it is treated as the non-trusted client hop, routable-
+	 * looking enough for `netip.ParseAddr`, and never a real client.
 	 */
 	clientIP: string;
 
@@ -103,7 +105,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 				baseURL: env.baseURL,
 				extraHTTPHeaders: {
 					"X-Alt-Backend-Token": env.jwt,
-					"X-Real-IP": clientIP,
+					"X-Forwarded-For": clientIP,
 				},
 			});
 			await use(context);
@@ -116,7 +118,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 		async ({ playwright, clientIP }, use) => {
 			const context = await playwright.request.newContext({
 				baseURL: env.baseURL,
-				extraHTTPHeaders: { "X-Real-IP": clientIP },
+				extraHTTPHeaders: { "X-Forwarded-For": clientIP },
 			});
 			await use(context);
 			await context.dispose();
@@ -130,7 +132,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 				baseURL: env.connectURL,
 				extraHTTPHeaders: {
 					"X-Alt-Backend-Token": env.jwt,
-					"X-Real-IP": clientIP,
+					"X-Forwarded-For": clientIP,
 					"Content-Type": "application/json",
 				},
 			});
@@ -145,7 +147,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 			const context = await playwright.request.newContext({
 				baseURL: env.connectURL,
 				extraHTTPHeaders: {
-					"X-Real-IP": clientIP,
+					"X-Forwarded-For": clientIP,
 					"Content-Type": "application/json",
 				},
 			});
@@ -162,7 +164,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 				extraHTTPHeaders: {
 					Authorization: `Bearer ${env.operatorToken}`,
 					"X-Alt-Backend-Token": env.jwt,
-					"X-Real-IP": clientIP,
+					"X-Forwarded-For": clientIP,
 					"Content-Type": "application/json",
 				},
 			});

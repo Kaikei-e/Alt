@@ -22,7 +22,6 @@ set -euo pipefail
 RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-/backups/restic-repo}"
 RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE:-/run/secrets/restic_password}"
 METRICS_DIR="${METRICS_DIR:-/backups/metrics}"
-POSTGRES_BACKUP_DIR="${POSTGRES_BACKUP_DIR:-/backups/postgres}"
 
 METRICS_FILE="${METRICS_DIR}/backup_metrics.prom"
 TEMP_FILE="${METRICS_FILE}.tmp"
@@ -100,12 +99,12 @@ echo "# PostgreSQL backup metrics" >> "$TEMP_FILE"
 
 DATABASES=("alt-db" "kratos-db" "recap-db" "rag-db")
 for db in "${DATABASES[@]}"; do
-    # Find latest backup for this database
-    LATEST_PG_BACKUP=$(find "$POSTGRES_BACKUP_DIR" -name "${db}-*.dump" -type f 2>/dev/null | sort -r | head -1 || echo "")
+    # Latest streamed dump snapshot for this database
+    PG_SNAPSHOT=$(echo "$SNAPSHOTS_JSON" | jq -c --arg tag "pg-${db}" '[.[] | select((.tags // []) | index($tag))] | sort_by(.time) | last // empty' 2>/dev/null || echo "")
 
-    if [[ -n "$LATEST_PG_BACKUP" && -f "$LATEST_PG_BACKUP" ]]; then
-        PG_BACKUP_TIME=$(stat -c %Y "$LATEST_PG_BACKUP")
-        PG_BACKUP_SIZE=$(stat -c %s "$LATEST_PG_BACKUP")
+    if [[ -n "$PG_SNAPSHOT" ]]; then
+        PG_BACKUP_TIME=$(date -d "$(echo "$PG_SNAPSHOT" | jq -r '.time')" +%s 2>/dev/null || echo 0)
+        PG_BACKUP_SIZE=$(echo "$PG_SNAPSHOT" | jq -r '.summary.total_bytes_processed // 0')
 
         add_metric "backup_postgres_last_success_timestamp" "gauge" "Unix timestamp of last successful PostgreSQL backup" "$PG_BACKUP_TIME" "database=\"${db}\""
         add_metric "backup_postgres_size_bytes" "gauge" "Size of latest PostgreSQL backup in bytes" "$PG_BACKUP_SIZE" "database=\"${db}\""

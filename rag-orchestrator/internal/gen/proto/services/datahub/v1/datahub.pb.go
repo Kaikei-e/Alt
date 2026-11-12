@@ -3244,14 +3244,13 @@ func (x *GetEmptyFeedIDResponse) GetFeedId() string {
 }
 
 // FetchTagCloudRequest is the request for FetchTagCloud.
-// Wire-identical to
-// services.backend.v1.BackendInternalServiceFetchTagCloudRequest — the legacy
-// name carried the service name because that package already had a
-// FetchTagCloud pair belonging to a different service.
 type FetchTagCloudRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Maximum number of tags to return (default: 300, max: 500)
-	Limit         int32 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	Limit int32 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	// When present, restricts the cloud to tags on this user's articles. When
+	// absent, the cloud spans the whole instance (the shared Tag Verse screen).
+	UserId        *string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3,oneof" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3291,6 +3290,13 @@ func (x *FetchTagCloudRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *FetchTagCloudRequest) GetUserId() string {
+	if x != nil && x.UserId != nil {
+		return *x.UserId
+	}
+	return ""
 }
 
 // FetchTagCloudResponse contains tag cloud entries.
@@ -13567,9 +13573,11 @@ func (x *TagPrefixHit) GetArticleCount() int32 {
 }
 
 type SearchTagsByPrefixRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
-	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Prefix string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	Limit  int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Required: only tags on this user's articles are returned.
+	UserId        string `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -13616,6 +13624,13 @@ func (x *SearchTagsByPrefixRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *SearchTagsByPrefixRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
 }
 
 type SearchTagsByPrefixResponse struct {
@@ -14589,6 +14604,7 @@ func (x *MarkSummaryVersionSupersededResponse) GetPreviousVersion() *SummaryVers
 type GetSummaryVersionByIDRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	SummaryVersionId string                 `protobuf:"bytes,1,opt,name=summary_version_id,json=summaryVersionId,proto3" json:"summary_version_id,omitempty"`
+	UserId           string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -14626,6 +14642,13 @@ func (*GetSummaryVersionByIDRequest) Descriptor() ([]byte, []int) {
 func (x *GetSummaryVersionByIDRequest) GetSummaryVersionId() string {
 	if x != nil {
 		return x.SummaryVersionId
+	}
+	return ""
+}
+
+func (x *GetSummaryVersionByIDRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
 	}
 	return ""
 }
@@ -17578,9 +17601,12 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\x15GetEmptyFeedIDRequest\x12\x19\n" +
 	"\bfeed_url\x18\x01 \x01(\tR\afeedUrl\"1\n" +
 	"\x16GetEmptyFeedIDResponse\x12\x17\n" +
-	"\afeed_id\x18\x01 \x01(\tR\x06feedId\",\n" +
+	"\afeed_id\x18\x01 \x01(\tR\x06feedId\"V\n" +
 	"\x14FetchTagCloudRequest\x12\x14\n" +
-	"\x05limit\x18\x01 \x01(\x05R\x05limit\"N\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x1c\n" +
+	"\auser_id\x18\x02 \x01(\tH\x00R\x06userId\x88\x01\x01B\n" +
+	"\n" +
+	"\b_user_id\"N\n" +
 	"\x15FetchTagCloudResponse\x125\n" +
 	"\x04tags\x18\x01 \x03(\v2!.services.datahub.v1.TagCloudItemR\x04tags\"N\n" +
 	"\fTagCloudItem\x12\x19\n" +
@@ -18274,10 +18300,11 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\rcooccurrences\x18\x01 \x03(\v2$.services.datahub.v1.TagCooccurrenceR\rcooccurrences\"N\n" +
 	"\fTagPrefixHit\x12\x19\n" +
 	"\btag_name\x18\x01 \x01(\tR\atagName\x12#\n" +
-	"\rarticle_count\x18\x02 \x01(\x05R\farticleCount\"I\n" +
+	"\rarticle_count\x18\x02 \x01(\x05R\farticleCount\"b\n" +
 	"\x19SearchTagsByPrefixRequest\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"S\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\tR\x06userId\"S\n" +
 	"\x1aSearchTagsByPrefixResponse\x125\n" +
 	"\x04hits\x18\x01 \x03(\v2!.services.datahub.v1.TagPrefixHitR\x04hits\"Q\n" +
 	"\x0fTagArticleCount\x12\x19\n" +
@@ -18344,9 +18371,10 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\auser_id\x18\x03 \x01(\tR\x06userId\"\x90\x01\n" +
 	"$MarkSummaryVersionSupersededResponse\x12S\n" +
 	"\x10previous_version\x18\x01 \x01(\v2#.services.datahub.v1.SummaryVersionH\x00R\x0fpreviousVersion\x88\x01\x01B\x13\n" +
-	"\x11_previous_version\"L\n" +
+	"\x11_previous_version\"e\n" +
 	"\x1cGetSummaryVersionByIDRequest\x12,\n" +
-	"\x12summary_version_id\x18\x01 \x01(\tR\x10summaryVersionId\"^\n" +
+	"\x12summary_version_id\x18\x01 \x01(\tR\x10summaryVersionId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"^\n" +
 	"\x1dGetSummaryVersionByIDResponse\x12=\n" +
 	"\aversion\x18\x01 \x01(\v2#.services.datahub.v1.SummaryVersionR\aversion\"X\n" +
 	"\x1eGetLatestSummaryVersionRequest\x12\x1d\n" +
@@ -19481,6 +19509,7 @@ func file_services_datahub_v1_datahub_proto_init() {
 	file_services_datahub_v1_datahub_proto_msgTypes[42].OneofWrappers = []any{}
 	file_services_datahub_v1_datahub_proto_msgTypes[44].OneofWrappers = []any{}
 	file_services_datahub_v1_datahub_proto_msgTypes[45].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[50].OneofWrappers = []any{}
 	file_services_datahub_v1_datahub_proto_msgTypes[56].OneofWrappers = []any{}
 	file_services_datahub_v1_datahub_proto_msgTypes[58].OneofWrappers = []any{}
 	file_services_datahub_v1_datahub_proto_msgTypes[60].OneofWrappers = []any{}

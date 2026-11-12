@@ -3,6 +3,7 @@ package handler
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"io"
 	"log/slog"
@@ -54,7 +55,7 @@ type ProxyHandler struct {
 // NewProxyHandler creates a new proxy handler.
 func NewProxyHandler(
 	backendClient *client.BackendClient,
-	secret []byte,
+	key ed25519.PublicKey,
 	issuer, audience string,
 	logger *slog.Logger,
 	defaultTimeout time.Duration,
@@ -62,7 +63,7 @@ func NewProxyHandler(
 ) *ProxyHandler {
 	return &ProxyHandler{
 		backendClient:    backendClient,
-		authInterceptor:  middleware.NewAuthInterceptor(logger, secret, issuer, audience),
+		authInterceptor:  middleware.NewAuthInterceptor(logger, key, issuer, audience),
 		logger:           logger,
 		defaultTimeout:   defaultTimeout,
 		streamingTimeout: streamingTimeout,

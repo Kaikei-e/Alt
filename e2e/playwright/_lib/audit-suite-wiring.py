@@ -68,6 +68,19 @@ COMPOSE_BUILD = re.compile(
 )
 
 
+SUITE_INIT_BODY = re.compile(r"^suite_init\(\)\s*\{(.*?)^\}", re.MULTILINE | re.DOTALL)
+
+
+def suite_init_mints_token_keys(suite_lib_text: str) -> bool:
+    """compose.staging.yaml needs STAGING_TOKEN_KEY_DIR on every render, so
+    suite_init (which every suite calls) has to mint the keys."""
+    body = SUITE_INIT_BODY.search(suite_lib_text)
+    if body is None:
+        return False
+    code = "\n".join(l for l in body.group(1).splitlines() if not l.strip().startswith("#"))
+    return re.search(r"^\s*suite_token_keys\b", code, re.MULTILINE) is not None
+
+
 def main() -> int:
     with SUITES_YAML.open() as handle:
         manifest = yaml.safe_load(handle) or {}
@@ -92,6 +105,12 @@ def main() -> int:
             profiles.setdefault(profile, []).append(name)
 
     problems: list[str] = []
+
+    if not suite_init_mints_token_keys((PW_ROOT / "_lib" / "suite.sh").read_text()):
+        problems.append(
+            "_lib/suite.sh: suite_init does not call suite_token_keys, so a suite would render "
+            "compose.staging.yaml without STAGING_TOKEN_KEY_DIR"
+        )
 
     # (3) suites.yaml and the directory tree must agree.
     on_disk = {
@@ -261,7 +280,7 @@ def main() -> int:
                 )
 
         # (6) run.sh must use the shared lockfile-managed e2e/playwright manifest
-        #     with `npm ci ... --ignore-scripts`, and the three E2E runner package
+        #     with `npm ci ... --ignore-scripts`, and the two E2E runner package
         #     versions in e2e/playwright/package.json must match alt-frontend-sv/bun.lock.
         if not re.search(r"npm\s+ci\b[^\n]*--ignore-scripts\b", fe_code):
             problems.append(
@@ -277,7 +296,7 @@ def main() -> int:
                 **(pw_pkg.get("devDependencies") or {}),
             }
             bun_lock_text = bun_lock_path.read_text()
-            for pkg_name in ("@playwright/test", "axe-playwright", "jsonwebtoken"):
+            for pkg_name in ("@playwright/test", "axe-playwright"):
                 pinned = pw_deps.get(pkg_name)
                 m = re.search(
                     rf'^\s*"{re.escape(pkg_name)}"\s*:\s*\["{re.escape(pkg_name)}@([^"]+)"',

@@ -204,8 +204,9 @@ services:
     container_name: alt-staging-redis-streams
     profiles: [mq-hub, tag-generator, alt-backend, alt-harvester]
     # The production entrypoint and ACL users (compose/mq.yaml): `default` is
-    # off and every client is a `streams` user limited to the alt:events:* /
-    # alt:replies:tags:* keys and an explicit command list. With the old
+    # off and every client is either `streams_producer` (mq-hub) or
+    # `streams_consumer` (the pipeline consumers), each limited to the
+    # alt:events:* / alt:replies:tags:* keys and its own command list. With the old
     # `--requirepass`, staging accepted single-argument AUTH and any command,
     # so a client production rejects still passed E2E. No named volume here
     # (--save "" below), so unlike production there is no pre-existing /data
@@ -233,11 +234,19 @@ services:
         mode: 0555
     networks:
       - alt-staging
+    environment:
+      REDIS_STREAMS_PRODUCER_PASSWORD_FILE: /run/secrets/redis_streams_producer_password
+      REDIS_STREAMS_CONSUMER_PASSWORD_FILE: /run/secrets/redis_streams_consumer_password
+      # Lets the mq-hub suite empty stream keys between runs; production keeps it disabled.
+      REDIS_STREAMS_RESET_USER: enabled
+      REDIS_STREAMS_RESET_PASSWORD_FILE: /run/secrets/redis_streams_reset_password
     secrets:
-      - redis_streams_password
+      - redis_streams_producer_password
+      - redis_streams_consumer_password
+      - redis_streams_reset_password
       - redis_limiter_password
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_streams_password)\" redis-cli --user streams ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_streams_producer_password)\" redis-cli --user streams_producer ping | grep -q PONG"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -254,8 +263,8 @@ services:
       redis-streams:
         condition: service_healthy
     environment:
-      - REDIS_URL=redis://streams@redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
+      - REDIS_URL=redis://streams_producer@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_producer_password
       - CONNECT_PORT=9500
       - LOG_LEVEL=info
       - REDIS_POOL_SIZE=20
@@ -269,7 +278,7 @@ services:
     networks:
       - alt-staging
     secrets:
-      - redis_streams_password
+      - redis_streams_producer_password
       - mqhub_auth_token
       - rask_ingest_token
     healthcheck:
@@ -358,6 +367,8 @@ services:
       # ephemeral staging slice runs with the Bearer gate off. Production
       # supplies ADMIN_TOKEN_FILE (compose/sovereign.yaml); an unset token
       # is a startup failure there, never an open surface.
+      # The service refuses disabled auth modes unless the environment is explicitly non-production.
+      - APP_ENV=staging
       - ADMIN_AUTH=disabled
       - EVENT_AUTH=disabled
       # The binary refuses an unset mode. Staging runs no step-ca and gives
@@ -536,8 +547,8 @@ services:
     environment:
       - PORT=9400
       - BACKEND_API_URL=http://stub-backend
-      - REDIS_STREAMS_URL=redis://streams@redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
+      - REDIS_STREAMS_URL=redis://streams_consumer@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_consumer_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=tag-generator-group
       - CONSUMER_NAME=tag-generator-staging
@@ -566,7 +577,7 @@ services:
       - HF_HUB_OFFLINE=1
       - TRANSFORMERS_OFFLINE=1
     secrets:
-      - redis_streams_password
+      - redis_streams_consumer_password
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/trust:ro
@@ -861,6 +872,7 @@ services:
       # talks HTTP/1.1 + JSON to every alias of recap-pipeline-stub on
       # port 80. ALT_BACKEND_BASE_URL drives Connect-RPC over JSON
       # (alt_backend.rs:64-78) which the stub serves at the FQSN path.
+      - MTLS_ALLOWED_PEERS=disabled
       - MTLS_ENFORCE=false
       - MTLS_LISTEN=false
       - PEER_IDENTITY_TRUSTED=off
@@ -999,13 +1011,13 @@ services:
       - MTLS_KEY_FILE=/certs/acolyte-orchestrator-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - PEER_IDENTITY_TRUSTED=off
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_VERIFICATION=enabled
       - OTEL_ENABLED=false
     secrets:
-      - backend_token_secret
+      - backend_token_verify_key
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/acolyte-orchestrator/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/acolyte-orchestrator/pki}:/trust:ro
@@ -1055,7 +1067,7 @@ services:
         condition: service_healthy
     environment:
       - IRODORI_BASE_URL=http://irodori-stub:8088
-      - IRODORI_API_KEY_FILE=/run/secrets/backend_token_secret # Dummy key for stub (stub ignores credentials)
+      - IRODORI_API_KEY_FILE=/run/secrets/irodori_api_key # Dummy key for stub (stub ignores credentials)
       - TTS_VOICE_ID=alt-narrator
       - PEER_IDENTITY_STRICT=false
       - PEER_IDENTITY_TRUSTED=off
@@ -1063,7 +1075,7 @@ services:
       - INBOUND_MTLS=false
       - LOG_LEVEL=info
     secrets:
-      - backend_token_secret # Reused as dummy key for the stub
+      - irodori_api_key
     ports:
       - "127.0.0.1:19700:9700"
     networks:
@@ -1200,6 +1212,7 @@ services:
       - DB_USER=alt_db_user
       - DB_PASSWORD=alt-staging-test-postgres-password
       - DB_NAME=alt
+      - DB_SSL_MODE=disable
       - SERVER_PORT=9000
       - CONNECT_PORT=9101
       # render-slice.sh strips every `ports:` key, so the test container
@@ -1225,12 +1238,23 @@ services:
       # tests/health.spec.ts — and the address the `healthcheck` subcommand
       # self-probes.
       - OPS_LISTEN=:9110
-      # HS256 JWT validation. The secret is read from a file mounted
-      # from e2e/fixtures/staging-secrets/ so the fixture is the single
-      # source of truth for both compose and the pre-minted test JWT
-      # under e2e/fixtures/alt-backend/test-jwt.txt.
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
+      # EdDSA JWT validation. The public key is mounted from
+      # STAGING_TOKEN_KEY_DIR, the throwaway pair the suite generates for each
+      # run; the suite signs its test tokens with the matching private key.
+      - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
+      # Throwaway internal bridge with an unpinned subnet: trust the private ranges.
+      - TRUSTED_PROXY_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
+      # The suites share one user across parallel workers and CI retries, so the
+      # per-user budgets are raised above the production defaults for the
+      # classes those suites hit.
+      - USER_QUOTA_SUMMARIZE_RATE=25
+      - USER_QUOTA_SUMMARIZE_BURST=25
+      - USER_QUOTA_SUMMARIZE_MAX_IN_FLIGHT=8
+      - USER_QUOTA_AUGUR_CHAT_RATE=12
+      - USER_QUOTA_AUGUR_CHAT_BURST=12
+      - USER_QUOTA_AUGUR_CHAT_MAX_IN_FLIGHT=4
+      - USER_QUOTA_AUGUR_RETRIEVE_MAX_IN_FLIGHT=4
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       # ValidateBackendConfig requires this, so its absence stops the process
       # rather than letting GetPushConfig answer with an empty string a browser
@@ -1317,7 +1341,7 @@ services:
       - DB_MAX_CONNS=10
       - DB_MIN_CONNS=2
     secrets:
-      - alt_backend_token_secret
+      - backend_token_verify_key
       - rask_ingest_token
       - sovereign_operator_token
       - backend_operator_token
@@ -1492,6 +1516,7 @@ services:
       - DB_USER=alt_db_user
       - DB_PASSWORD=alt-staging-test-postgres-password
       - DB_NAME=alt
+      - DB_SSL_MODE=disable
       # --- the only east-west listener (config.LoadDataHubConfig) ---------
       # Client auth is not a knob: cmd/datahub always requires and verifies a
       # peer certificate, so DATAHUB_ALLOWED_PEERS is the whole authorisation
@@ -1502,11 +1527,11 @@ services:
       - DATAHUB_TLS_CERT_FILE=/certs/svc-cert.pem
       - DATAHUB_TLS_KEY_FILE=/certs/svc-key.pem
       - DATAHUB_TLS_CA_FILE=/trust/ca-bundle.pem
-      # ALLOWED_PEER is the alt-data-hub suite's positive identity (run.sh mints
-      # a leaf for it and one for DENIED_PEER, which stays off this list).
-      # alt-backend and alt-harvester are appended unconditionally because the
-      # same container serves their slices, where they are the callers.
-      - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-pre-processor},pre-processor,alt-backend,alt-harvester
+      # ALLOWED_PEER is the alt-data-hub suite's default positive identity;
+      # DENIED_PEER stays off this list. The fixed names are the peers the suite
+      # presents per procedure (and the callers in the alt-backend and
+      # alt-harvester slices, which share this container).
+      - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-alt-backend},alt-backend,alt-harvester,alt-notifier,pre-processor,search-indexer,tag-generator,recap-worker,rag-orchestrator
       # --- ops listener ---------------------------------------------------
       # Plaintext, unauthenticated, /health + /metrics only — the surface
       # tests/topology.spec.ts pins. It exists so the probe and Prometheus do
@@ -1517,13 +1542,11 @@ services:
       # absent: the admin Connect services stayed on alt-backend, and run.sh
       # asserts :9000 / :9101 / :9102 are refused from another container.
       # --- upstreams (all required by config.ValidateDataHubConfig) -------
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
       - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - AUTH_HUB_URL=https://auth-hub:9443
       - AUTH_HUB_MTLS_SERVER_NAME=auth-hub
-      # Must match auth-hub's INTERNAL_AUTH_SECRET below, and must differ from
-      # alt_backend_token_secret — see the comment on the auth-hub service.
+      # Must match auth-hub's INTERNAL_AUTH_SECRET below.
       - INTERNAL_AUTH_SECRET=staging-fixture-internal-auth-secret-not-a-real-key
       - SOVEREIGN_URL=http://knowledge-sovereign
       - SOVEREIGN_EVENT_AUTH=disabled
@@ -1539,7 +1562,6 @@ services:
       - DB_MAX_CONNS=10
       - DB_MIN_CONNS=2
     secrets:
-      - alt_backend_token_secret
       - rask_ingest_token
       - mqhub_auth_token
     networks:
@@ -1676,15 +1698,11 @@ services:
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_TTL=5m
-      # config.getEnv() resolves *_FILE -> file content. The HS256 secret
-      # is shared with alt-backend so the JWT auth-hub issues is
-      # verifiable by anyone already trusting alt_backend_token_secret.
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
-      # The /internal group's shared bearer, and deliberately NOT the HS256
-      # secret above: alt-data-hub sends this value in a plaintext
-      # X-Internal-Auth header, so a signing key doing both jobs ends up in
-      # access logs and OTel span attributes. auth-hub exits non-zero when the
-      # two match. Inline rather than a fixture file for the same reason
+      # Throwaway Ed25519 private key; verifiers get the matching public key.
+      - BACKEND_TOKEN_SIGNING_KEY_FILE=/run/secrets/backend_token_signing_key
+      - TRUSTED_PROXY_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      # The /internal group's shared bearer. alt-data-hub sends this value in
+      # a plaintext X-Internal-Auth header, so it is never a token key. Inline rather than a fixture file for the same reason
       # VAPID_PUBLIC_KEY is: this is a throwaway staging value that the suite
       # also needs to send, and one literal keeps the two in step.
       - INTERNAL_AUTH_SECRET=staging-fixture-internal-auth-secret-not-a-real-key
@@ -1704,7 +1722,7 @@ services:
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     secrets:
-      - alt_backend_token_secret
+      - backend_token_signing_key
       - auth_hub_csrf_secret
       - rask_ingest_token
     volumes:
@@ -1726,12 +1744,11 @@ services:
     profiles: [search-indexer, acolyte-orchestrator, alt-backend, alt-harvester, alt-data-hub]
     command: ["python", "/fixtures/auth-introspection.py"]
     environment:
-      STAGING_JWT_KEY_FILE: /run/secrets/alt_backend_token_secret
+      BACKEND_TOKEN_VERIFY_KEY_FILE: /run/secrets/backend_token_verify_key
       STAGING_INTERNAL_AUTH: staging-fixture-internal-auth-secret-not-a-real-key
       STAGING_FORWARD_PREPROCESSOR: "true"
     secrets:
-      - alt_backend_token_secret
-      - backend_token_secret
+      - backend_token_verify_key
     volumes:
       - ../e2e/playwright/_fixtures/auth-introspection.py:/fixtures/auth-introspection.py:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/search-indexer/pki}:/certs:ro
@@ -1761,10 +1778,12 @@ secrets:
     file: ../e2e/playwright/_fixtures/test-credentials/kratos_db_password.txt
   meili_master_key:
     file: ../e2e/fixtures/staging-secrets/meili_master_key.txt
-  alt_backend_token_secret:
-    file: ../e2e/fixtures/staging-secrets/alt_backend_token_secret.txt
-  backend_token_secret:
-    file: ../e2e/fixtures/staging-secrets/backend_token_secret.txt
+  irodori_api_key:
+    file: ../e2e/playwright/_fixtures/test-credentials/irodori_api_key.txt
+  backend_token_signing_key:
+    file: ${STAGING_TOKEN_KEY_DIR:?set STAGING_TOKEN_KEY_DIR to the suite's minted key directory}/backend_token_signing_key.txt
+  backend_token_verify_key:
+    file: ${STAGING_TOKEN_KEY_DIR:?set STAGING_TOKEN_KEY_DIR to the suite's minted key directory}/backend_token_verify_key.txt
   auth_hub_csrf_secret:
     file: ../e2e/fixtures/staging-secrets/auth_hub_csrf_secret.txt
   # Mounted as /run/secrets/kratos_cookie_secret so the reused
@@ -1774,8 +1793,12 @@ secrets:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cookie_secret.txt
   kratos_cipher_secret:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cipher_secret.txt
-  redis_streams_password:
-    file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_password.txt
+  redis_streams_producer_password:
+    file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_producer_password.txt
+  redis_streams_consumer_password:
+    file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_consumer_password.txt
+  redis_streams_reset_password:
+    file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_reset_password.txt
   redis_limiter_password:
     file: ../e2e/playwright/_fixtures/test-credentials/redis_limiter_password.txt
   inference_service_token:

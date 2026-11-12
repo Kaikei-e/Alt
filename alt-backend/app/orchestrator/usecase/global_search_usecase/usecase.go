@@ -181,7 +181,7 @@ func (u *GlobalSearchUsecase) Execute(ctx context.Context, query string, article
 			span.End()
 		}()
 
-		result, err := u.tagSearch.SearchTagsByPrefix(sctx, query, tagLimit)
+		result, err := u.tagSearch.SearchTagsByPrefix(sctx, query, userID, tagLimit)
 		mu.Lock()
 		defer mu.Unlock()
 		if err != nil {

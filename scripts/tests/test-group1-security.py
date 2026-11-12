@@ -584,7 +584,8 @@ class TestGroup1Security(unittest.TestCase):
             tmp = Path(tmpdir)
             sec_dir = tmp / "secrets"
             sec_dir.mkdir()
-            (sec_dir / "streams_pass").write_text("streams_secret_pass\n")
+            (sec_dir / "producer_pass").write_text("producer_secret_pass\n")
+            (sec_dir / "consumer_pass").write_text("consumer_secret_pass\n")
             (sec_dir / "limiter_pass").write_text("limiter_secret_pass\n")
             (sec_dir / "cache_pass").write_text("cache_secret_pass\n")
 
@@ -597,7 +598,9 @@ class TestGroup1Security(unittest.TestCase):
 
             env = {
                 "PATH": f"{tmp}:" + os.environ.get("PATH", ""),
-                "REDIS_STREAMS_PASSWORD_FILE": str(sec_dir / "streams_pass"),
+                "REDIS_STREAMS_PRODUCER_PASSWORD_FILE": str(sec_dir / "producer_pass"),
+                "REDIS_STREAMS_CONSUMER_PASSWORD_FILE": str(sec_dir / "consumer_pass"),
+                "REDIS_STREAMS_RESET_USER": "disabled",
                 "REDIS_LIMITER_PASSWORD_FILE": str(sec_dir / "limiter_pass"),
                 "REDIS_CACHE_PASSWORD_FILE": str(sec_dir / "cache_pass"),
                 "REDIS_ACL_FILE": str(tmp / "test_users.acl"),
@@ -620,11 +623,15 @@ class TestGroup1Security(unittest.TestCase):
             acl_content = (tmp / "test_users.acl").read_text()
             self.assertIn("user default off -@all", acl_content)
 
-            streams_hash = hashlib.sha256(b"streams_secret_pass").hexdigest()
+            producer_hash = hashlib.sha256(b"producer_secret_pass").hexdigest()
+            consumer_hash = hashlib.sha256(b"consumer_secret_pass").hexdigest()
             limiter_hash = hashlib.sha256(b"limiter_secret_pass").hexdigest()
-            self.assertIn(f"user streams on #{streams_hash} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xadd +xread +xreadgroup +xack +xautoclaim +xpending +xgroup|create +xinfo|stream +xinfo|groups +xtrim +expire +ttl +scan +del", acl_content)
+            self.assertIn(f"user streams_producer on #{producer_hash} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xadd +xgroup|create +xinfo|stream +xinfo|groups +xtrim +scan (~alt:replies:tags:* +xread +del +expire +ttl)", acl_content)
+            self.assertIn(f"user streams_consumer on #{consumer_hash} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xreadgroup +xack +xautoclaim +xpending +xgroup|create +xinfo|groups (~alt:events:*:dlq +xadd) (~alt:replies:tags:* +xadd)", acl_content)
+            self.assertNotIn("user streams on", acl_content)
             self.assertIn(f"user limiter on #{limiter_hash} resetkeys ~host_rate_limiter:v1:* -@all +hello +client|setinfo +client|setname +ping +set +pttl +select", acl_content)
-            self.assertNotIn("streams_secret_pass", acl_content)
+            self.assertNotIn("producer_secret_pass", acl_content)
+            self.assertNotIn("consumer_secret_pass", acl_content)
             self.assertNotIn("limiter_secret_pass", acl_content)
 
             # ACL file permissions must be 0600
@@ -651,15 +658,35 @@ class TestGroup1Security(unittest.TestCase):
 
             # 3. Missing secret fails
             env_err = env.copy()
-            env_err["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "nonexistent")
+            env_err["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "nonexistent")
             res_err = subprocess.run(cmd_streams, env=env_err, capture_output=True, text=True)
             self.assertNotEqual(res_err.returncode, 0)
             self.assertIn("is missing", res_err.stderr)
 
+            # 3b. Identical producer and consumer secrets must be denied
+            (sec_dir / "consumer_same").write_text("producer_secret_pass\n")
+            env_same = env.copy()
+            env_same["REDIS_STREAMS_CONSUMER_PASSWORD_FILE"] = str(sec_dir / "consumer_same")
+            res_same = subprocess.run(cmd_streams, env=env_same, capture_output=True, text=True)
+            self.assertNotEqual(res_same.returncode, 0)
+            self.assertIn("must differ", res_same.stderr)
+
+            # 3c. The consumer secret goes through the same validation as the producer's
+            (sec_dir / "consumer_nopass").write_text("fixture nopass\n")
+            (sec_dir / "consumer_tab").write_text("tab\tinjection\n")
+            (sec_dir / "consumer_ctrl").write_bytes(b"ctrl\x01pass\n")
+            (sec_dir / "consumer_blank").write_text("   \t  \n")
+            for bad in ("nonexistent", "consumer_nopass", "consumer_tab", "consumer_ctrl", "consumer_blank"):
+                env_bad = env.copy()
+                env_bad["REDIS_STREAMS_CONSUMER_PASSWORD_FILE"] = str(sec_dir / bad)
+                res_bad = subprocess.run(cmd_streams, env=env_bad, capture_output=True, text=True)
+                self.assertNotEqual(res_bad.returncode, 0, f"consumer secret {bad} must be rejected")
+                self.assertNotIn("fixture nopass", res_bad.stderr)
+
             # 4. Malicious space fixture 'fixture nopass' must be denied (exit non-zero, no nopass directive in ACL)
             (sec_dir / "malicious_nopass").write_text("fixture nopass\n")
             env_nopass = env.copy()
-            env_nopass["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_nopass")
+            env_nopass["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_nopass")
             res_nopass = subprocess.run(cmd_streams, env=env_nopass, capture_output=True, text=True)
             self.assertNotEqual(res_nopass.returncode, 0)
             self.assertNotIn("fixture nopass", res_nopass.stderr)
@@ -670,7 +697,7 @@ class TestGroup1Security(unittest.TestCase):
             # 5. Tab character injection must be denied
             (sec_dir / "malicious_tab").write_text("tab\tinjection\n")
             env_tab = env.copy()
-            env_tab["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_tab")
+            env_tab["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_tab")
             res_tab = subprocess.run(cmd_streams, env=env_tab, capture_output=True, text=True)
             self.assertNotEqual(res_tab.returncode, 0)
             self.assertNotIn("tab\tinjection", res_tab.stderr)
@@ -678,21 +705,21 @@ class TestGroup1Security(unittest.TestCase):
             # 6. Control character injection must be denied
             (sec_dir / "malicious_ctrl").write_bytes(b"ctrl\x01pass\n")
             env_ctrl = env.copy()
-            env_ctrl["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_ctrl")
+            env_ctrl["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_ctrl")
             res_ctrl = subprocess.run(cmd_streams, env=env_ctrl, capture_output=True, text=True)
             self.assertNotEqual(res_ctrl.returncode, 0)
 
             # 7. Malformed UTF-8 must be denied
             (sec_dir / "malicious_utf8").write_bytes(b"\xff\xfe\xfd\n")
             env_utf8 = env.copy()
-            env_utf8["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_utf8")
+            env_utf8["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_utf8")
             res_utf8 = subprocess.run(cmd_streams, env=env_utf8, capture_output=True, text=True)
             self.assertNotEqual(res_utf8.returncode, 0)
 
             # 8. Blank / whitespace-only secret must be denied
             (sec_dir / "malicious_blank").write_text("   \t  \n")
             env_blank = env.copy()
-            env_blank["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_blank")
+            env_blank["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_blank")
             res_blank = subprocess.run(cmd_streams, env=env_blank, capture_output=True, text=True)
             self.assertNotEqual(res_blank.returncode, 0)
 
@@ -700,7 +727,7 @@ class TestGroup1Security(unittest.TestCase):
             # 9a. Overlong 3-byte sequence E0 80 80
             (sec_dir / "malicious_overlong").write_bytes(b"\xe0\x80\x80\n")
             env_overlong = env.copy()
-            env_overlong["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_overlong")
+            env_overlong["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_overlong")
             res_overlong = subprocess.run(cmd_streams, env=env_overlong, capture_output=True, text=True)
             self.assertNotEqual(res_overlong.returncode, 0, "E0 80 80 overlong must be rejected")
             self.assertNotIn("malicious_overlong", res_overlong.stderr)
@@ -709,7 +736,7 @@ class TestGroup1Security(unittest.TestCase):
             # 9b. UTF-16 surrogate ED A0 80
             (sec_dir / "malicious_surrogate").write_bytes(b"\xed\xa0\x80\n")
             env_surrogate = env.copy()
-            env_surrogate["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_surrogate")
+            env_surrogate["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_surrogate")
             res_surrogate = subprocess.run(cmd_streams, env=env_surrogate, capture_output=True, text=True)
             self.assertNotEqual(res_surrogate.returncode, 0, "ED A0 80 surrogate must be rejected")
             self.assertNotIn("malicious_surrogate", res_surrogate.stderr)
@@ -718,7 +745,7 @@ class TestGroup1Security(unittest.TestCase):
             # 9c. Out of Unicode F4 90 80 80
             (sec_dir / "malicious_out_of_unicode").write_bytes(b"\xf4\x90\x80\x80\n")
             env_oou = env.copy()
-            env_oou["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_out_of_unicode")
+            env_oou["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_out_of_unicode")
             res_oou = subprocess.run(cmd_streams, env=env_oou, capture_output=True, text=True)
             self.assertNotEqual(res_oou.returncode, 0, "F4 90 80 80 out-of-Unicode must be rejected")
             self.assertNotIn("malicious_out_of_unicode", res_oou.stderr)
@@ -727,7 +754,7 @@ class TestGroup1Security(unittest.TestCase):
             # 9d. Overlong 4-byte sequence F0 80 80 80
             (sec_dir / "malicious_overlong_4").write_bytes(b"\xf0\x80\x80\x80\n")
             env_ol4 = env.copy()
-            env_ol4["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_overlong_4")
+            env_ol4["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_overlong_4")
             res_ol4 = subprocess.run(cmd_streams, env=env_ol4, capture_output=True, text=True)
             self.assertNotEqual(res_ol4.returncode, 0, "F0 80 80 80 overlong must be rejected")
 
@@ -738,11 +765,11 @@ class TestGroup1Security(unittest.TestCase):
             env_valid_utf8 = env.copy()
             env_valid_utf8["LC_ALL"] = "C.UTF-8"
             env_valid_utf8["LANG"] = "C.UTF-8"
-            env_valid_utf8["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "valid_utf8")
+            env_valid_utf8["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "valid_utf8")
             res_valid_utf8 = subprocess.run(cmd_streams, env=env_valid_utf8, capture_output=True, text=True, check=True)
             valid_utf8_hash = hashlib.sha256(valid_utf8_pw.encode("utf-8")).hexdigest()
             acl_valid_utf8 = (tmp / "test_users.acl").read_text()
-            self.assertIn(f"user streams on #{valid_utf8_hash}", acl_valid_utf8)
+            self.assertIn(f"user streams_producer on #{valid_utf8_hash}", acl_valid_utf8)
             self.assertNotIn(valid_utf8_pw, acl_valid_utf8)
 
             # 10b. Valid boundary UTF-8 sequences: U+0800 (E0 A0 80), U+D7FF (ED 9F BF), U+10FFFF (F4 8F BF BF), emoji (F0 9F 8E 89)
@@ -751,11 +778,11 @@ class TestGroup1Security(unittest.TestCase):
             env_valid_boundary = env.copy()
             env_valid_boundary["LC_ALL"] = "C.UTF-8"
             env_valid_boundary["LANG"] = "C.UTF-8"
-            env_valid_boundary["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "valid_boundary")
+            env_valid_boundary["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "valid_boundary")
             res_valid_boundary = subprocess.run(cmd_streams, env=env_valid_boundary, capture_output=True, text=True, check=True)
             valid_boundary_hash = hashlib.sha256(valid_boundary_pw).hexdigest()
             acl_valid_boundary = (tmp / "test_users.acl").read_text()
-            self.assertIn(f"user streams on #{valid_boundary_hash}", acl_valid_boundary)
+            self.assertIn(f"user streams_producer on #{valid_boundary_hash}", acl_valid_boundary)
 
             # 10c. Native Japanese + emoji combined secret under UTF-8 locale ensures exact raw UTF-8 SHA256 hash in ACL
             valid_jp_emoji_pw = "東京_🗼_富士山_🗻_2026!secret"
@@ -763,17 +790,17 @@ class TestGroup1Security(unittest.TestCase):
             env_valid_jp_emoji = env.copy()
             env_valid_jp_emoji["LC_ALL"] = "C.UTF-8"
             env_valid_jp_emoji["LANG"] = "C.UTF-8"
-            env_valid_jp_emoji["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "valid_jp_emoji")
+            env_valid_jp_emoji["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "valid_jp_emoji")
             res_valid_jp_emoji = subprocess.run(cmd_streams, env=env_valid_jp_emoji, capture_output=True, text=True, check=True)
             valid_jp_emoji_hash = hashlib.sha256(valid_jp_emoji_pw.encode("utf-8")).hexdigest()
             acl_valid_jp_emoji = (tmp / "test_users.acl").read_text()
-            self.assertIn(f"user streams on #{valid_jp_emoji_hash}", acl_valid_jp_emoji)
+            self.assertIn(f"user streams_producer on #{valid_jp_emoji_hash}", acl_valid_jp_emoji)
             self.assertNotIn(valid_jp_emoji_pw, acl_valid_jp_emoji)
 
             # 10d. trimONEallowedtrailinglineend: multiple trailing newlines must be rejected
             (sec_dir / "malicious_multiline_end").write_text("validpass\n\n", encoding="utf-8")
             env_multiline = env.copy()
-            env_multiline["REDIS_STREAMS_PASSWORD_FILE"] = str(sec_dir / "malicious_multiline_end")
+            env_multiline["REDIS_STREAMS_PRODUCER_PASSWORD_FILE"] = str(sec_dir / "malicious_multiline_end")
             res_multiline = subprocess.run(cmd_streams, env=env_multiline, capture_output=True, text=True)
             self.assertNotEqual(res_multiline.returncode, 0, "multiple trailing newlines must be rejected")
 
@@ -792,15 +819,17 @@ class TestGroup1Security(unittest.TestCase):
         # redis-streams
         rs = self.compose_mq["services"]["redis-streams"]
         self.assertEqual(rs["entrypoint"], ["/entrypoint.sh", "streams"])
-        self.assertIn("redis_streams_password", rs["secrets"])
+        self.assertIn("redis_streams_producer_password", rs["secrets"])
+        self.assertIn("redis_streams_consumer_password", rs["secrets"])
         self.assertIn("redis_limiter_password", rs["secrets"])
-        self.assertIn("--user streams", rs["healthcheck"]["test"][1])
+        self.assertIn("--user streams_producer", rs["healthcheck"]["test"][1])
 
         # mq-hub
         mq = self.compose_mq["services"]["mq-hub"]
-        self.assertIn("REDIS_URL=redis://streams@redis-streams:6379", mq["environment"])
-        self.assertIn("REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password", mq["environment"])
-        self.assertIn("redis_streams_password", mq["secrets"])
+        self.assertIn("REDIS_URL=redis://streams_producer@redis-streams:6379", mq["environment"])
+        self.assertIn("REDIS_PASSWORD_FILE=/run/secrets/redis_streams_producer_password", mq["environment"])
+        self.assertIn("redis_streams_producer_password", mq["secrets"])
+        self.assertNotIn("redis_streams_consumer_password", mq["secrets"])
 
         # redis-cache
         rc = self.compose_ai["services"]["redis-cache"]
@@ -816,21 +845,24 @@ class TestGroup1Security(unittest.TestCase):
 
         # pre-processor
         pp = self.compose_ai["services"]["pre-processor"]
-        self.assertIn("REDIS_STREAMS_URL=redis://streams@redis-streams:6379", pp["environment"])
-        self.assertIn("REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password", pp["environment"])
-        self.assertIn("redis_streams_password", pp["secrets"])
+        self.assertIn("REDIS_STREAMS_URL=redis://streams_consumer@redis-streams:6379", pp["environment"])
+        self.assertIn("REDIS_PASSWORD_FILE=/run/secrets/redis_streams_consumer_password", pp["environment"])
+        self.assertIn("redis_streams_consumer_password", pp["secrets"])
+        self.assertNotIn("redis_streams_producer_password", pp["secrets"])
 
         # search-indexer
         si = self.compose_workers["services"]["search-indexer"]
-        self.assertIn("REDIS_STREAMS_URL=redis://streams@redis-streams:6379", si["environment"])
-        self.assertIn("REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password", si["environment"])
-        self.assertIn("redis_streams_password", si["secrets"])
+        self.assertIn("REDIS_STREAMS_URL=redis://streams_consumer@redis-streams:6379", si["environment"])
+        self.assertIn("REDIS_PASSWORD_FILE=/run/secrets/redis_streams_consumer_password", si["environment"])
+        self.assertIn("redis_streams_consumer_password", si["secrets"])
+        self.assertNotIn("redis_streams_producer_password", si["secrets"])
 
         # tag-generator
         tg = self.compose_workers["services"]["tag-generator"]
-        self.assertIn("REDIS_STREAMS_URL=redis://streams@redis-streams:6379", tg["environment"])
-        self.assertIn("REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password", tg["environment"])
-        self.assertIn("redis_streams_password", tg["secrets"])
+        self.assertIn("REDIS_STREAMS_URL=redis://streams_consumer@redis-streams:6379", tg["environment"])
+        self.assertIn("REDIS_PASSWORD_FILE=/run/secrets/redis_streams_consumer_password", tg["environment"])
+        self.assertIn("redis_streams_consumer_password", tg["secrets"])
+        self.assertNotIn("redis_streams_producer_password", tg["secrets"])
 
         # backend limiter
         be = self.compose_core["services"]["alt-backend"]
@@ -942,11 +974,191 @@ class TestGroup1Security(unittest.TestCase):
         )
         self.assertIn("inference_service_token", service["secrets"])
 
+    def test_dev_stacks_never_use_real_token_keys(self):
+        """Dev stacks mint and verify tokens with their own volume-held key pair, never the real secrets/."""
+        for name in ("dev.yaml", "frontend-dev.yaml"):
+            data = self._load_yaml(REPO_ROOT / "compose" / name)
+            text = (REPO_ROOT / "compose" / name).read_text()
+            self.assertNotIn("../secrets/", text, f"{name} must not read or write ../secrets/")
+            for svc_name, svc in data["services"].items():
+                for sec in svc.get("secrets", []) or []:
+                    sec_name = sec if isinstance(sec, str) else sec.get("source")
+                    self.assertNotIn(
+                        sec_name,
+                        ("backend_token_signing_key", "backend_token_verify_key"),
+                        f"{name}:{svc_name} mounts the real token secret {sec_name}",
+                    )
+                for env in svc.get("environment", []) or []:
+                    if isinstance(env, str) and env.split("=", 1)[0] in ("BACKEND_TOKEN_SIGNING_KEY_FILE", "BACKEND_TOKEN_VERIFY_KEY_FILE"):
+                        self.assertTrue(
+                            env.split("=", 1)[-1].startswith("/secrets/dev_"),
+                            f"{name}:{svc_name} token key must come from the dev secrets volume: {env}",
+                        )
+
+    def _load_yaml_lenient(self, path: Path):
+        """Compose-only tags (!override, !reset) load as their plain node value."""
+        class Loader(yaml.SafeLoader):
+            pass
+
+        Loader.add_multi_constructor("!", lambda loader, suffix, node: (
+            loader.construct_sequence(node) if isinstance(node, yaml.SequenceNode)
+            else loader.construct_mapping(node) if isinstance(node, yaml.MappingNode)
+            else loader.construct_scalar(node)))
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.load(f, Loader=Loader)
+
+    def _all_stack_services(self):
+        out = []
+        for path in sorted((REPO_ROOT / "compose").glob("*.yaml")):
+            data = self._load_yaml_lenient(path)
+            for name, svc in (data.get("services") or {}).items():
+                out.append((path.name, name, svc))
+        return out
+
+    def test_cap_dropped_services_have_capable_root_hooks(self):
+        """A pre_start hook inherits the service's cap_drop, so a root chown hook must re-add its capabilities."""
+        needed = {"CHOWN", "DAC_OVERRIDE", "FOWNER"}
+        checked = 0
+        for fname, name, svc in self._all_stack_services():
+            if "ALL" not in (svc.get("cap_drop") or []):
+                continue
+            for key in ("pre_start", "post_start", "pre_stop", "post_stop"):
+                for hook in svc.get(key) or []:
+                    if str(hook.get("user", "")).split(":")[0] not in ("0", "root"):
+                        continue
+                    checked += 1
+                    self.assertTrue(
+                        needed <= set(hook.get("cap_add") or []),
+                        f"{fname}:{name} {key} runs as root under cap_drop ALL without {sorted(needed)}",
+                    )
+        self.assertGreater(checked, 0)
+
+    def test_backend_token_key_distribution(self):
+        """Signing key: identity gateway only. Verify key: user-facing backend, BFF, acolyte; never knowledge-sovereign."""
+        def secret_names(svc):
+            return [x if isinstance(x, str) else x.get("source") for x in (svc.get("secrets") or [])]
+
+        def env_map(svc):
+            env = svc.get("environment") or []
+            if isinstance(env, dict):
+                return {k: str(v) for k, v in env.items()}
+            return dict(e.split("=", 1) for e in env if "=" in e)
+
+        skip = ("dev.yaml", "frontend-dev.yaml", "compose.dev.yaml")
+        prod = [p for p in sorted((REPO_ROOT / "compose").glob("*.yaml")) if "staging" not in p.name and p.name not in skip]
+        signers, verifiers = [], []
+        for path in prod:
+            for name, svc in (self._load_yaml_lenient(path).get("services") or {}).items():
+                names = secret_names(svc)
+                if "backend_token_signing_key" in names:
+                    signers.append(name)
+                    self.assertEqual(env_map(svc).get("BACKEND_TOKEN_SIGNING_KEY_FILE"), "/run/secrets/backend_token_signing_key")
+                if "backend_token_verify_key" in names:
+                    verifiers.append(name)
+                    self.assertEqual(env_map(svc).get("BACKEND_TOKEN_VERIFY_KEY_FILE"), "/run/secrets/backend_token_verify_key")
+        self.assertEqual(signers, ["auth-hub"])
+        self.assertEqual(sorted(verifiers), ["acolyte-orchestrator", "alt-backend", "alt-butterfly-facade"])
+        for name in ("dev.yaml", "frontend-dev.yaml"):
+            for svc in (self._load_yaml_lenient(REPO_ROOT / "compose" / name).get("services") or {}).values():
+                self.assertNotIn("backend_token_signing_key", secret_names(svc))
+        sov = self._load_yaml(REPO_ROOT / "compose" / "sovereign.yaml")["services"]["knowledge-sovereign"]
+        self.assertNotIn("backend_token_verify_key", secret_names(sov))
+        self.assertNotIn("BACKEND_TOKEN_VERIFY_KEY_FILE", env_map(sov))
+        self.assertIn("USER_JWT_INTROSPECTION_URL", env_map(sov))
+
+    def test_trusted_proxy_cidrs_wiring(self):
+        """alt-backend requires an operator value; auth-hub trusts no forwarder unless told otherwise."""
+        holders = {}
+        for fname, name, svc in self._all_stack_services():
+            if fname in ("dev.yaml", "compose.dev.yaml") or "staging" in fname:
+                continue
+            env = svc.get("environment") or []
+            items = env if isinstance(env, list) else [f"{k}={v}" for k, v in env.items()]
+            for e in items:
+                if str(e).startswith("TRUSTED_PROXY_CIDRS="):
+                    holders[name] = str(e).split("=", 1)[1]
+            self.assertFalse(
+                any(str(e).startswith("NOTIFICATION_USER_ID") for e in items),
+                f"{name} still sets NOTIFICATION_USER_ID",
+            )
+        self.assertEqual(sorted(holders), ["alt-backend", "auth-hub"])
+        self.assertTrue(holders["alt-backend"].startswith("${TRUSTED_PROXY_CIDRS:?"))
+        self.assertEqual(holders["auth-hub"], "${AUTH_HUB_TRUSTED_PROXY_CIDRS:-none}")
+
+    # Repo-built services in the production stack set that deliberately keep default capabilities.
+    UNHARDENED = {
+        "dashboard": "GPU device reservation, not verifiable without starting it",
+        "recap-subworker": "GPU device reservation",
+        "knowledge-embedder-local": "image runs as root and drops privilege with gosu; nvidia runtime",
+        "news-creator-backend": "entrypoint re-execs from root with chown/setpriv; nvidia runtime",
+        "rag-db": "upstream postgres entrypoint (gosu) with AppArmor profile",
+        "recap-db": "upstream postgres entrypoint (gosu) with AppArmor profile",
+        "restic-backup": "image has no USER directive and reads host data as root",
+    }
+
+    def test_repo_built_services_drop_capabilities_unless_allow_listed(self):
+        """Covers profile-gated services too: the YAML is read directly, not through a default render."""
+        included = self._load_yaml(REPO_ROOT / "compose" / "compose.yaml")["include"]
+        seen_unhardened = set()
+        for fname, name, svc in self._all_stack_services():
+            if fname not in included or not svc.get("build"):
+                continue
+            hardened = "ALL" in (svc.get("cap_drop") or []) and "no-new-privileges:true" in (svc.get("security_opt") or [])
+            if name in self.UNHARDENED:
+                seen_unhardened.add(name)
+                self.assertFalse(hardened, f"{name} is hardened now; remove it from UNHARDENED")
+            else:
+                self.assertTrue(hardened, f"{fname}:{name} is repo-built but keeps default capabilities")
+        self.assertEqual(seen_unhardened, set(self.UNHARDENED))
+
+    def test_knowledge_sovereign_auth_modes_and_app_env(self):
+        def env_map(svc):
+            env = svc.get("environment") or []
+            if isinstance(env, dict):
+                return {k: str(v) for k, v in env.items()}
+            return dict(e.split("=", 1) for e in env if "=" in e)
+
+        main = self._load_yaml_lenient(REPO_ROOT / "compose" / "sovereign.yaml")["services"]["knowledge-sovereign"]
+        self.assertNotIn("env_file", main)
+        env = env_map(main)
+        self.assertNotEqual(env.get("ADMIN_AUTH"), "disabled")
+        self.assertNotEqual(env.get("EVENT_AUTH"), "disabled")
+        checked = 0
+        for fname, name, svc in self._all_stack_services():
+            if name != "knowledge-sovereign":
+                continue
+            env = env_map(svc)
+            if "disabled" in (env.get("ADMIN_AUTH"), env.get("EVENT_AUTH")):
+                checked += 1
+                self.assertIn(env.get("APP_ENV"), ("development", "test", "staging"), f"{fname}:{name}")
+        self.assertGreater(checked, 0)
+
+    def test_production_redis_streams_has_no_reset_user(self):
+        svc = self._load_yaml_lenient(REPO_ROOT / "compose" / "mq.yaml")["services"]["redis-streams"]
+        env = svc.get("environment") or {}
+        env = env if isinstance(env, dict) else dict(e.split("=", 1) for e in env if "=" in e)
+        self.assertEqual(env.get("REDIS_STREAMS_RESET_USER"), "disabled")
+        names = [x if isinstance(x, str) else x.get("source") for x in (svc.get("secrets") or [])]
+        self.assertNotIn("redis_streams_reset_password", names)
+        for fname, name, other in self._all_stack_services():
+            if fname != "compose.staging.yaml":
+                self.assertNotIn("redis_streams_reset_password", str(other.get("secrets", [])), f"{fname}:{name}")
+
+    def test_registration_closed_by_default(self):
+        import re
+        text = (REPO_ROOT / "kratos" / "kratos_template.yml").read_text()
+        m = re.search(r"^    registration:\n      enabled: (\w+)", text, re.M)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(1), "false")
+        kratos = self.compose_auth["services"]["kratos"]["environment"]
+        self.assertIn("SELFSERVICE_FLOWS_REGISTRATION_ENABLED=${KRATOS_REGISTRATION_ENABLED:-false}", kratos)
+
     def test_base_yaml_secrets_declarations(self):
         """compose/base.yaml declares new named role passwords and tokens."""
         secrets = self.compose_base.get("secrets", {})
         expected_new_secrets = [
-            "redis_streams_password",
+            "redis_streams_producer_password",
+            "redis_streams_consumer_password",
             "redis_cache_password",
             "redis_limiter_password",
             "rask_ingest_token",

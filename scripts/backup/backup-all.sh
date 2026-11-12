@@ -20,7 +20,9 @@
 #   RESTIC_REPOSITORY    Path to Restic repository (default: /backups/restic-repo)
 #   RESTIC_PASSWORD_FILE Path to password file (default: /run/secrets/restic_password)
 #   HEALTHCHECK_URL      Healthchecks.io ping URL (optional)
-#   POSTGRES_BACKUP_DIR  Postgres dump directory (default: /backups/postgres)
+#
+# PostgreSQL dumps are streamed straight into the Restic repository
+# (snapshot path postgres/<name>.dump); no dump file is written to disk.
 #
 
 set -euo pipefail
@@ -34,7 +36,6 @@ BACKUP_ROOT="${BACKUP_ROOT:-/backups}"
 RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-${BACKUP_ROOT}/restic-repo}"
 RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE:-/run/secrets/restic_password}"
 LOG_FILE="${LOG_FILE:-${BACKUP_ROOT}/logs/backup_${TIMESTAMP}.log}"
-POSTGRES_BACKUP_DIR="${POSTGRES_BACKUP_DIR:-${BACKUP_ROOT}/postgres}"
 METRICS_DIR="${METRICS_DIR:-${BACKUP_ROOT}/metrics}"
 
 INIT_REPO=false
@@ -66,6 +67,42 @@ log_success() { log "${GREEN}SUCCESS${NC}" "$*"; }
 
 run_restic() {
     restic "$@"
+}
+
+WORK_DIR=""
+PGPASS_PATH=""
+
+cleanup_work_dir() {
+    if [[ -n "$WORK_DIR" ]]; then
+        rm -rf "$WORK_DIR"
+    fi
+}
+
+cfg_quote() {
+    local v="$1"
+    v="${v//\\/\\\\}"
+    v="${v//\"/\\\"}"
+    printf '%s' "$v"
+}
+
+# Writes a 0600 libpq password file for one connection and sets PGPASS_PATH.
+write_pgpass() {
+    local host="$1" dbname="$2" user="$3" pwd_file="$4"
+    local pw
+    pw="$(<"$pwd_file")"
+    pw="${pw//\\/\\\\}"
+    pw="${pw//:/\\:}"
+    PGPASS_PATH="${WORK_DIR}/pgpass"
+    printf '%s:*:%s:%s:%s\n' "$host" "$dbname" "$user" "$pw" > "$PGPASS_PATH"
+}
+
+# Writes a 0600 curl config file holding the given lines and prints its path.
+write_curl_config() {
+    local name="$1"
+    shift
+    local cfg="${WORK_DIR}/curl-${name}.conf"
+    printf '%s\n' "$@" > "$cfg"
+    printf '%s' "$cfg"
 }
 
 ping_healthcheck() {
@@ -113,7 +150,12 @@ verify_prerequisites() {
         fi
     done
 
-    mkdir -p "$POSTGRES_BACKUP_DIR"
+    if [[ ! -s "$RESTIC_PASSWORD_FILE" ]]; then
+        log_error "Restic password file not found or empty: $RESTIC_PASSWORD_FILE"
+        return 1
+    fi
+    export RESTIC_PASSWORD_FILE
+
     mkdir -p "$(dirname "$LOG_FILE")"
     if [[ "$RESTIC_REPOSITORY" == "${BACKUP_ROOT}"/* || "$RESTIC_REPOSITORY" == /backups/* ]]; then
         mkdir -p "$RESTIC_REPOSITORY" || true
@@ -132,6 +174,21 @@ init_repo() {
             log_success "Repository initialized"
         fi
     fi
+}
+
+# Snapshots only gain the pg-dump / pg-<name> tags that restore and metrics select on
+# after the dump succeeded, so a snapshot left behind here is never picked up as good.
+discard_dump_snapshot() {
+    local tag="$1" ids id
+    if ! ids=$(run_restic -r "$RESTIC_REPOSITORY" snapshots --tag "$tag" --json 2>> "$LOG_FILE" | jq -r '.[].id'); then
+        log_error "Failed to look up incomplete dump snapshot (tag $tag); it carries no selectable tag but needs manual removal"
+        return 1
+    fi
+    for id in $ids; do
+        if ! run_restic -r "$RESTIC_REPOSITORY" forget "$id" >> "$LOG_FILE" 2>&1; then
+            log_error "Failed to remove incomplete dump snapshot $id; it carries no selectable tag but needs manual removal"
+        fi
+    done
 }
 
 backup_postgres() {
@@ -158,10 +215,10 @@ backup_postgres() {
 
     for db_config in "${databases[@]}"; do
         IFS=':' read -r name host user dbname pwd_file required_flag <<< "$db_config"
-        local backup_file="${POSTGRES_BACKUP_DIR}/${name}-${TIMESTAMP}.dump"
+        local stream_name="postgres/${name}.dump"
 
         if [[ "$DRY_RUN" == true ]]; then
-            log_info "[DRY-RUN] Would backup $name to $backup_file"
+            log_info "[DRY-RUN] Would stream $name into the Restic repository as $stream_name"
             pg_verified=$((pg_verified + 1))
             continue
         fi
@@ -199,25 +256,22 @@ backup_postgres() {
             continue
         fi
 
-        export PGPASSWORD
-        PGPASSWORD="$(cat "$pwd_file")"
-        if pg_dump -h "$host" -U "$user" -d "$dbname" --format=custom --compress=6 --verbose > "$backup_file" 2>> "$LOG_FILE"; then
-            local size
-            size=$(ls -lh "$backup_file" 2>/dev/null | awk '{print $5}' || stat -c %s "$backup_file" 2>/dev/null || echo "unknown")
-            log_success "Backed up $name: $backup_file ($size)"
+        write_pgpass "$host" "$dbname" "$user" "$pwd_file"
+        local stream_tag="pgdump-${name}-${TIMESTAMP}"
+        PGPASSFILE="$PGPASS_PATH" pg_dump -h "$host" -U "$user" -d "$dbname" --format=custom --compress=6 --verbose 2>> "$LOG_FILE" \
+            | run_restic -r "$RESTIC_REPOSITORY" backup --stdin --stdin-filename "$stream_name" \
+                --tag "$stream_tag" >> "$LOG_FILE" 2>&1
+        local dump_rc=("${PIPESTATUS[@]}")
+        if [[ ${dump_rc[0]} -eq 0 && ${dump_rc[1]} -eq 0 ]] \
+            && run_restic -r "$RESTIC_REPOSITORY" tag --tag "$stream_tag" --add pg-dump --add "pg-${name}" >> "$LOG_FILE" 2>&1; then
+            log_success "Streamed $name into the Restic repository as $stream_name"
             pg_verified=$((pg_verified + 1))
         else
             log_error "Failed to backup $name"
+            discard_dump_snapshot "$stream_tag"
             pg_failed=$((pg_failed + 1))
         fi
-        unset PGPASSWORD
-    done
-
-    # Clean old PostgreSQL dumps
-    local retention="${PG_RETENTION_DAYS:-7}"
-    for db_config in "${databases[@]}"; do
-        IFS=':' read -r name host user dbname pwd_file required_flag <<< "$db_config"
-        find "$POSTGRES_BACKUP_DIR" -name "${name}-*.dump" -mtime +"$retention" -delete 2>/dev/null || true
+        rm -f "$PGPASS_PATH"
     done
 
     log_info "PostgreSQL backup summary: $pg_verified passed, $pg_failed failed"
@@ -259,14 +313,15 @@ backup_meilisearch() {
         return 1
     fi
     local meili_key
-    meili_key=$(cat "$meili_key_file")
+    meili_key=$(<"$meili_key_file")
+    local meili_cfg
+    meili_cfg=$(write_curl_config meili "header = \"Authorization: Bearer $(cfg_quote "$meili_key")\"")
 
     local snap_out
-    snap_out=$(mktemp 2>/dev/null || echo "/tmp/meili_snap_out")
+    snap_out=$(mktemp -p "$WORK_DIR")
     local http_code
-    http_code=$(curl -s -w "%{http_code}" -o "$snap_out" -X POST \
+    http_code=$(curl -s -w "%{http_code}" -o "$snap_out" -X POST -K "$meili_cfg" \
         "http://${meili_host}:${meili_port}/snapshots" \
-        -H "Authorization: Bearer $meili_key" \
         -H "Content-Type: application/json" 2>&1 || echo "curl_failed")
 
     if [[ "$http_code" != "200" && "$http_code" != "202" ]]; then
@@ -293,11 +348,10 @@ backup_meilisearch() {
         sleep "$poll_interval"
         elapsed=$((elapsed + poll_interval))
         local task_out
-        task_out=$(mktemp 2>/dev/null || echo "/tmp/meili_task_out")
+        task_out=$(mktemp -p "$WORK_DIR")
         local t_code
-        t_code=$(curl -s -w "%{http_code}" -o "$task_out" \
-            "http://${meili_host}:${meili_port}/tasks/${task_uid}" \
-            -H "Authorization: Bearer $meili_key" 2>&1 || echo "curl_failed")
+        t_code=$(curl -s -w "%{http_code}" -o "$task_out" -K "$meili_cfg" \
+            "http://${meili_host}:${meili_port}/tasks/${task_uid}" 2>&1 || echo "curl_failed")
         if [[ "$t_code" == "200" ]]; then
             local status
             status=$(jq -r '.status // empty' "$task_out" 2>/dev/null || echo "unknown")
@@ -360,14 +414,16 @@ backup_clickhouse() {
         return 1
     fi
     local ch_pass
-    ch_pass=$(cat "$ch_pwd_file")
+    ch_pass=$(<"$ch_pwd_file")
+    local ch_cfg
+    ch_cfg=$(write_curl_config clickhouse "user = \"$(cfg_quote "${ch_user}:${ch_pass}")\"")
 
     local query="BACKUP DATABASE ${ch_db} TO Disk('backups', '${backup_name}')"
     local ch_out
-    ch_out=$(mktemp 2>/dev/null || echo "/tmp/ch_backup_out")
+    ch_out=$(mktemp -p "$WORK_DIR")
     local resp_code
     resp_code=$(curl -s -w "%{http_code}" -o "$ch_out" -X POST \
-        -u "${ch_user}:${ch_pass}" \
+        -K "$ch_cfg" \
         --data-binary "$query" \
         "http://${ch_host}:${ch_port}/" 2>&1 || echo "curl_failed")
 
@@ -398,8 +454,7 @@ backup_volumes() {
         "/data/prometheus_data"
         "/data/grafana_data"
         "/data/pact_db_data"
-        "$POSTGRES_BACKUP_DIR"
-        "/backups/clickhouse"
+        "${BACKUP_ROOT}/clickhouse"
     )
 
     if [[ "$DRY_RUN" == true ]]; then
@@ -494,6 +549,8 @@ MEOF
 
 main() {
     parse_args "$@"
+    WORK_DIR="$(mktemp -d)"
+    trap cleanup_work_dir EXIT
     ping_healthcheck "start"
     local backup_failed=false
     set +e
@@ -540,10 +597,9 @@ main() {
                 fi
             fi
             if [[ -f "$pwd_file" ]]; then
-                export PGPASSWORD
-                PGPASSWORD="$(cat "$pwd_file")"
-                psql -h "$host" -U "$user" -d postgres -c "CHECKPOINT;" 2>/dev/null || true
-                unset PGPASSWORD
+                write_pgpass "$host" postgres "$user" "$pwd_file"
+                PGPASSFILE="$PGPASS_PATH" psql -h "$host" -U "$user" -d postgres -c "CHECKPOINT;" 2>/dev/null || true
+                rm -f "$PGPASS_PATH"
             fi
         done
         backup_volumes || backup_failed=true

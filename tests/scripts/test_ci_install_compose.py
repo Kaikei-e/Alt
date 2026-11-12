@@ -81,7 +81,7 @@ class CiInstallComposeTests(unittest.TestCase):
             """#!/usr/bin/env bash
             set -euo pipefail
             printf '%s\\n' "$@" > "${FAKE_STATE_DIR}/docker_args.txt"
-            echo "Docker Compose version v5.5.0"
+            echo "Docker Compose version v5.6.1"
             """,
         )
 
@@ -167,7 +167,7 @@ class CiInstallComposeTests(unittest.TestCase):
         expected_plugin = self.home_dir / ".docker" / "cli-plugins" / "docker-compose"
         self.assertEqual(_extract_option_value(curl_args, "-o"), str(expected_plugin))
         self.assertIn(
-            "https://github.com/docker/compose/releases/download/v5.5.0/docker-compose-linux-x86_64",
+            "https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-linux-x86_64",
             curl_args,
         )
         self.assertTrue(expected_plugin.is_file())

@@ -60,8 +60,8 @@ func createTestToken(t *testing.T, role string) string {
 		"exp":   time.Now().Add(time.Hour).Unix(),
 		"iat":   time.Now().Unix(),
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenStr, err := token.SignedString([]byte("test-secret"))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	tokenStr, err := token.SignedString(testPrivateKey)
 	require.NoError(t, err)
 	return tokenStr
 }
@@ -69,7 +69,7 @@ func createTestToken(t *testing.T, role string) string {
 func createBFFHandler(backendURL string) http.Handler {
 	cfg := server.Config{
 		BackendURL:       backendURL,
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -157,7 +157,7 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 				BackendURL:           backendURL,
 				BackendInternalURL:   backendURL,
 				BackendOperatorToken: "test-operator-token",
-				Secret:               []byte("test-secret"),
+				TokenVerifyKey:       testPublicKey,
 				Issuer:               "auth-hub",
 				Audience:             "alt-backend",
 				RequestTimeout:       30 * time.Second,

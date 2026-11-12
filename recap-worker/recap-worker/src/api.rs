@@ -18,21 +18,61 @@ use axum::{
 
 use crate::app::AppState;
 
+macro_rules! with_non_health_routes {
+    ($macro:ident) => {
+        $macro! {
+            admin: [
+                (POST, post, "/admin/jobs/retry", "/admin/jobs/retry", admin::retry_jobs),
+                (POST, post, "/admin/genre-learning", "/admin/genre-learning", learning::receive_genre_learning),
+            ],
+            v1: [
+                (POST, post, "/v1/generate/recaps/7days", "/v1/generate/recaps/7days", generate::trigger_7days),
+                (GET, get, "/v1/recaps/7days", "/v1/recaps/7days", fetch::get_7days_recap),
+                (POST, post, "/v1/generate/recaps/3days", "/v1/generate/recaps/3days", generate::trigger_3days),
+                (POST, post, "/v1/generate/topic-cards", "/v1/generate/topic-cards", generate::trigger_topic_cards),
+                (GET, get, "/v1/recaps/3days", "/v1/recaps/3days", fetch::get_3days_recap),
+                (GET, get, "/v1/topic-cards", "/v1/topic-cards", cards::get_topic_cards),
+                (GET, get, "/v1/recaps/search", "/v1/recaps/search?q=ai", fetch::search_recaps),
+                (GET, get, "/v1/recaps/genres/indexable", "/v1/recaps/genres/indexable", fetch::get_indexable_genres),
+                (GET, get, "/v1/morning/updates", "/v1/morning/updates?since=2026-01-26T00:00:00Z", fetch::get_morning_updates),
+                (GET, get, "/v1/morning/letters/latest", "/v1/morning/letters/latest", fetch::get_latest_morning_letter),
+                (POST, post, "/v1/morning/letters/regenerate", "/v1/morning/letters/regenerate", fetch::regenerate_morning_letter),
+                (GET, get, "/v1/morning/letters/{target_date}", "/v1/morning/letters/2026-01-26", fetch::get_morning_letter_by_date),
+                (GET, get, "/v1/morning/letters/{letter_id}/sources", "/v1/morning/letters/00000000-0000-0000-0000-000000000001/sources", fetch::get_morning_letter_sources),
+                (POST, post, "/v1/evaluation/genres", "/v1/evaluation/genres", evaluation::evaluate_genres),
+                (GET, get, "/v1/evaluation/genres/latest", "/v1/evaluation/genres/latest", evaluation::get_latest_evaluation_result),
+                (GET, get, "/v1/evaluation/genres/{run_id}", "/v1/evaluation/genres/00000000-0000-0000-0000-000000000001", evaluation::get_evaluation_result),
+                (GET, get, "/v1/dashboard/metrics", "/v1/dashboard/metrics", dashboard::get_metrics),
+                (GET, get, "/v1/dashboard/overview", "/v1/dashboard/overview", dashboard::get_overview),
+                (GET, get, "/v1/dashboard/logs", "/v1/dashboard/logs", dashboard::get_logs),
+                (GET, get, "/v1/dashboard/jobs", "/v1/dashboard/jobs", dashboard::get_jobs),
+                (GET, get, "/v1/dashboard/recap_jobs", "/v1/dashboard/recap_jobs", dashboard::get_recap_jobs),
+                (GET, get, "/v1/dashboard/job-progress", "/v1/dashboard/job-progress", dashboard::get_job_progress),
+                (GET, get, "/v1/dashboard/job-stats", "/v1/dashboard/job-stats", dashboard::get_job_stats),
+                (GET, get, "/v1/pulse/latest", "/v1/pulse/latest", pulse::get_latest),
+            ]
+        }
+    };
+}
+
+macro_rules! build_peer_authenticated_subrouters {
+    (
+        admin: [ $( ($a_method:ident, $a_verb:ident, $a_route:literal, $a_sample:literal, $a_handler:path) ),* $(,)? ],
+        v1: [ $( ($v_method:ident, $v_verb:ident, $v_route:literal, $v_sample:literal, $v_handler:path) ),* $(,)? ]
+    ) => {{
+        let admin_router = Router::new()
+            $( .route($a_route, $a_verb($a_handler)) )*;
+        let v1_router = Router::new()
+            $( .route($v_route, $v_verb($v_handler)) )*;
+        (admin_router, v1_router)
+    }};
+}
+
 pub(crate) fn router(state: AppState) -> Router {
-    // `/admin/jobs/retry` and `/admin/genre-learning` are the only
-    // admin/mutating routes on this surface. `/admin/jobs/retry`'s only
-    // caller is ops curl; `/admin/genre-learning`'s only caller is
-    // recap-subworker's `LearningClient`, which sends this same bearer via
-    // `load_admin_auth_config()` (recap-subworker's
-    // `app/infra/admin_auth.py`) — see `api/auth.rs` for why the
-    // generate/morning-regenerate routes stay open.
     let admin_guard = auth::AdminAuthGuard::new(state.config().admin_auth_token());
-    let protected = Router::new()
-        .route("/admin/jobs/retry", post(admin::retry_jobs))
-        .route(
-            "/admin/genre-learning",
-            post(learning::receive_genre_learning),
-        )
+    let peer_guard = auth::PeerIdentityGuard::new(state.config().peer_identity().allowed_peers());
+    let (admin_router, v1_router) = with_non_health_routes!(build_peer_authenticated_subrouters);
+    let protected = admin_router
         .route_layer(middleware::from_fn(auth::require_admin_token))
         .layer(Extension(admin_guard));
 
@@ -40,58 +80,10 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/health/ready", get(health::ready))
         .route("/health/live", get(health::live))
         .route("/metrics", get(metrics::exporter))
+        .merge(v1_router)
         .merge(protected)
-        .route("/v1/generate/recaps/7days", post(generate::trigger_7days))
-        .route("/v1/recaps/7days", get(fetch::get_7days_recap))
-        .route("/v1/generate/recaps/3days", post(generate::trigger_3days))
-        .route(
-            "/v1/generate/topic-cards",
-            post(generate::trigger_topic_cards),
-        )
-        .route("/v1/recaps/3days", get(fetch::get_3days_recap))
-        .route("/v1/topic-cards", get(cards::get_topic_cards))
-        .route("/v1/recaps/search", get(fetch::search_recaps))
-        .route(
-            "/v1/recaps/genres/indexable",
-            get(fetch::get_indexable_genres),
-        )
-        .route("/v1/morning/updates", get(fetch::get_morning_updates))
-        .route(
-            "/v1/morning/letters/latest",
-            get(fetch::get_latest_morning_letter),
-        )
-        .route(
-            "/v1/morning/letters/regenerate",
-            post(fetch::regenerate_morning_letter),
-        )
-        .route(
-            "/v1/morning/letters/{target_date}",
-            get(fetch::get_morning_letter_by_date),
-        )
-        .route(
-            "/v1/morning/letters/{letter_id}/sources",
-            get(fetch::get_morning_letter_sources),
-        )
-        .route("/v1/evaluation/genres", post(evaluation::evaluate_genres))
-        .route(
-            "/v1/evaluation/genres/latest",
-            get(evaluation::get_latest_evaluation_result),
-        )
-        .route(
-            "/v1/evaluation/genres/{run_id}",
-            get(evaluation::get_evaluation_result),
-        )
-        .route("/v1/dashboard/metrics", get(dashboard::get_metrics))
-        .route("/v1/dashboard/overview", get(dashboard::get_overview))
-        .route("/v1/dashboard/logs", get(dashboard::get_logs))
-        .route("/v1/dashboard/jobs", get(dashboard::get_jobs))
-        .route("/v1/dashboard/recap_jobs", get(dashboard::get_recap_jobs))
-        .route(
-            "/v1/dashboard/job-progress",
-            get(dashboard::get_job_progress),
-        )
-        .route("/v1/dashboard/job-stats", get(dashboard::get_job_stats))
-        .route("/v1/pulse/latest", get(pulse::get_latest))
+        .layer(middleware::from_fn(auth::require_peer_identity))
+        .layer(Extension(peer_guard))
         .with_state(state)
 }
 
@@ -108,6 +100,20 @@ mod tests {
         app::{AppState, ComponentRegistry},
         config::{Config, ENV_MUTEX},
     };
+
+    macro_rules! non_health_route_samples {
+        (
+            admin: [ $( ($a_method:ident, $a_verb:ident, $a_route:literal, $a_sample:literal, $a_handler:path) ),* $(,)? ],
+            v1: [ $( ($v_method:ident, $v_verb:ident, $v_route:literal, $v_sample:literal, $v_handler:path) ),* $(,)? ]
+        ) => {
+            &[
+                $( (Method::$a_method, $a_sample), )*
+                $( (Method::$v_method, $v_sample), )*
+            ]
+        };
+    }
+
+    const NON_HEALTH_ROUTES: &[(Method, &str)] = with_non_health_routes!(non_health_route_samples);
 
     #[tokio::test]
     // Lock held across `ComponentRegistry::build` for the same reason as
@@ -138,6 +144,7 @@ mod tests {
                     "RECAP_ADMIN_TOKEN_FILE",
                     Some(token_path.to_str().expect("utf8 path")),
                 ),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
@@ -223,7 +230,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[allow(clippy::await_holding_lock)]
+    #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
     async fn topic_cards_routes_registered_and_old_routes_return_404() {
         let _lock = ENV_MUTEX
             .lock()
@@ -239,6 +246,7 @@ mod tests {
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
                 ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
@@ -315,5 +323,509 @@ mod tests {
             StatusCode::NOT_FOUND,
             "/v1/generate/topic-cards must be registered"
         );
+
+        assert_eq!(NON_HEALTH_ROUTES.len(), 26);
+        for (_method, uri) in NON_HEALTH_ROUTES {
+            let req = Request::builder()
+                .method(Method::DELETE)
+                .uri(*uri)
+                .body(Body::empty())
+                .expect("request builds");
+            let resp = app.clone().oneshot(req).await.expect("request succeeds");
+            assert_eq!(
+                resp.status(),
+                StatusCode::METHOD_NOT_ALLOWED,
+                "route {uri} must be registered on the router (405 on DELETE, never 404)"
+            );
+        }
+    }
+
+    fn test_peer_cert(name: &str) -> rustls::pki_types::CertificateDer<'static> {
+        let params = rcgen::CertificateParams::new(vec![name.to_string()]).expect("cert params");
+        let key = rcgen::KeyPair::generate().expect("keypair");
+        let cert = params.self_signed(&key).expect("self-signed cert");
+        cert.der().clone()
+    }
+
+    fn write_test_mtls_files(dir: &std::path::Path) -> (String, String, String) {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).expect("ca");
+        let ca_key = rcgen::KeyPair::generate().expect("ca key");
+        let ca_cert = ca_params.self_signed(&ca_key).expect("ca cert");
+
+        let leaf_params =
+            rcgen::CertificateParams::new(vec!["recap-worker".to_string()]).expect("leaf");
+        let leaf_key = rcgen::KeyPair::generate().expect("leaf key");
+        let leaf_cert = leaf_params.self_signed(&leaf_key).expect("leaf cert");
+
+        let cert_path = dir.join("cert.pem");
+        let key_path = dir.join("key.pem");
+        let ca_path = dir.join("ca.pem");
+        std::fs::write(&cert_path, leaf_cert.pem()).expect("write cert");
+        std::fs::write(&key_path, leaf_key.serialize_pem()).expect("write key");
+        std::fs::write(&ca_path, ca_cert.pem()).expect("write ca");
+        (
+            cert_path.to_str().expect("utf8").to_string(),
+            key_path.to_str().expect("utf8").to_string(),
+            ca_path.to_str().expect("utf8").to_string(),
+        )
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn disabled_peer_list_lets_guarded_route_reach_handler_without_certificate() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18021/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18022/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ENFORCE", None),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let app = router(AppState::new(registry));
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/v1/generate/recaps/7days")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .expect("request builds");
+        let response = app.oneshot(request).await.expect("request succeeds");
+        assert_eq!(
+            response.status(),
+            StatusCode::ACCEPTED,
+            "MTLS_ALLOWED_PEERS=disabled must let a certificate-less request reach the handler"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
+    async fn non_health_routes_require_verified_allowed_peer_while_health_and_metrics_stay_open() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mtls_dir = tempfile::tempdir().expect("tempdir");
+        let (cert_path, key_path, ca_path) = write_test_mtls_files(mtls_dir.path());
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("MTLS_ENFORCE", Some("true")),
+                ("MTLS_CERT_FILE", Some(cert_path.as_str())),
+                ("MTLS_KEY_FILE", Some(key_path.as_str())),
+                ("MTLS_CA_FILE", Some(ca_path.as_str())),
+                ("NEWS_CREATOR_BASE_URL", Some("https://localhost:18021/")),
+                ("SUBWORKER_BASE_URL", Some("https://localhost:18022/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                (
+                    "MTLS_ALLOWED_PEERS",
+                    Some("alt-backend,alt-frontend-sv,recap-evaluator,recap-subworker"),
+                ),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let app = router(AppState::new(registry));
+
+        for (method, path) in NON_HEALTH_ROUTES {
+            let unauthenticated = Request::builder()
+                .method(method.clone())
+                .uri(*path)
+                .header("content-type", "application/json")
+                .header("x-alt-peer-identity", "alt-frontend-sv")
+                .body(Body::from("{}"))
+                .expect("request builds");
+            let response = app
+                .clone()
+                .oneshot(unauthenticated)
+                .await
+                .expect("request succeeds");
+            assert_eq!(
+                response.status(),
+                StatusCode::UNAUTHORIZED,
+                "{path} without verified peer certificate must return 401"
+            );
+
+            let mut untrusted = Request::builder()
+                .method(method.clone())
+                .uri(*path)
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .expect("request builds");
+            untrusted
+                .extensions_mut()
+                .insert(test_peer_cert("untrusted-peer"));
+            let forbidden = app
+                .clone()
+                .oneshot(untrusted)
+                .await
+                .expect("request succeeds");
+            assert_eq!(
+                forbidden.status(),
+                StatusCode::FORBIDDEN,
+                "{path} with non-allowlisted peer certificate must return 403"
+            );
+        }
+
+        for (method, path) in [
+            (Method::GET, "/v1/not-a-registered-route"),
+            (Method::GET, "/"),
+            (Method::DELETE, "/v1/topic-cards"),
+            (Method::POST, "/v1/recaps/7days"),
+        ] {
+            let request = Request::builder()
+                .method(method.clone())
+                .uri(path)
+                .body(Body::empty())
+                .expect("request builds");
+            let response = app
+                .clone()
+                .oneshot(request)
+                .await
+                .expect("request succeeds");
+            assert_eq!(
+                response.status(),
+                StatusCode::UNAUTHORIZED,
+                "{method} {path} without a client certificate must return 401, not 404/405"
+            );
+        }
+
+        let mut allowed_generate = Request::builder()
+            .method(Method::POST)
+            .uri("/v1/generate/recaps/7days")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .expect("request builds");
+        allowed_generate
+            .extensions_mut()
+            .insert(test_peer_cert("alt-frontend-sv"));
+        let allowed_resp = app
+            .clone()
+            .oneshot(allowed_generate)
+            .await
+            .expect("request succeeds");
+        assert_eq!(
+            allowed_resp.status(),
+            StatusCode::ACCEPTED,
+            "allowlisted peer must reach /v1/generate/recaps/7days"
+        );
+
+        for path in ["/health/live", "/health/ready", "/metrics"] {
+            let req = Request::builder()
+                .method(Method::GET)
+                .uri(path)
+                .body(Body::empty())
+                .expect("request builds");
+            let resp = app.clone().oneshot(req).await.expect("request succeeds");
+            assert_ne!(
+                resp.status(),
+                StatusCode::UNAUTHORIZED,
+                "{path} must stay open without peer identity"
+            );
+            assert_ne!(
+                resp.status(),
+                StatusCode::FORBIDDEN,
+                "{path} must stay open without peer identity"
+            );
+        }
+    }
+
+    struct LoopbackPki {
+        ca_der: rustls::pki_types::CertificateDer<'static>,
+        ca_pem: String,
+        server_cert_pem: String,
+        server_key_pem: String,
+        client_cert_der: rustls::pki_types::CertificateDer<'static>,
+        client_key_der: rustls::pki_types::PrivateKeyDer<'static>,
+    }
+
+    fn generate_loopback_pki(allowed_client_cn: &str) -> LoopbackPki {
+        use rcgen::{
+            BasicConstraints, CertificateParams, DistinguishedName, DnType,
+            ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose, SanType,
+        };
+
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let mut ca_params = CertificateParams::new(Vec::<String>::new()).expect("ca params");
+        ca_params.distinguished_name = DistinguishedName::new();
+        ca_params
+            .distinguished_name
+            .push(DnType::CommonName, "test-loopback-ca");
+        ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        ca_params.key_usages = vec![
+            KeyUsagePurpose::DigitalSignature,
+            KeyUsagePurpose::KeyCertSign,
+            KeyUsagePurpose::CrlSign,
+        ];
+        let ca_key = KeyPair::generate().expect("ca key");
+        let ca_cert = ca_params.self_signed(&ca_key).expect("ca cert");
+        let ca_pem = ca_cert.pem();
+        let issuer = Issuer::from_ca_cert_pem(
+            &ca_pem,
+            KeyPair::from_pem(&ca_key.serialize_pem()).expect("ca key pem"),
+        )
+        .expect("issuer");
+
+        let mut srv_params = CertificateParams::new(vec!["localhost".to_string()]).expect("srv");
+        srv_params.distinguished_name = DistinguishedName::new();
+        srv_params
+            .distinguished_name
+            .push(DnType::CommonName, "recap-worker");
+        srv_params.subject_alt_names = vec![
+            SanType::DnsName("localhost".try_into().expect("dns")),
+            SanType::IpAddress(std::net::IpAddr::from([127, 0, 0, 1])),
+        ];
+        srv_params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+        let srv_key = KeyPair::generate().expect("srv key");
+        let srv_cert = srv_params.signed_by(&srv_key, &issuer).expect("srv signed");
+
+        let mut cli_params =
+            CertificateParams::new(vec![allowed_client_cn.to_string()]).expect("cli");
+        cli_params.distinguished_name = DistinguishedName::new();
+        cli_params
+            .distinguished_name
+            .push(DnType::CommonName, allowed_client_cn);
+        cli_params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ClientAuth];
+        let cli_key = KeyPair::generate().expect("cli key");
+        let cli_cert = cli_params.signed_by(&cli_key, &issuer).expect("cli signed");
+
+        let client_key_der =
+            rustls::pki_types::PrivateKeyDer::try_from(cli_key.serialize_der()).expect("key der");
+
+        LoopbackPki {
+            ca_der: ca_cert.der().clone(),
+            ca_pem,
+            server_cert_pem: srv_cert.pem(),
+            server_key_pem: srv_key.serialize_pem(),
+            client_cert_der: cli_cert.der().clone(),
+            client_key_der,
+        }
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
+    async fn loopback_mtls_acceptor_reaches_guarded_route_strips_header_and_plaintext_returns_401()
+    {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+
+        let pki = generate_loopback_pki("alt-frontend-sv");
+        let mtls_dir = tempfile::tempdir().expect("tempdir");
+        let cert_path = mtls_dir.path().join("server.pem");
+        let key_path = mtls_dir.path().join("server-key.pem");
+        let ca_path = mtls_dir.path().join("ca.pem");
+        std::fs::write(&cert_path, &pki.server_cert_pem).expect("write server cert");
+        std::fs::write(&key_path, &pki.server_key_pem).expect("write server key");
+        std::fs::write(&ca_path, &pki.ca_pem).expect("write ca");
+
+        let env_lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (registry, server_tls_config) = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@127.0.0.1:15432/recap"),
+                ),
+                ("CLASSIFICATION_QUEUE_CONCURRENCY", Some("0")),
+                ("MTLS_ENFORCE", Some("true")),
+                ("MTLS_CERT_FILE", Some(cert_path.to_str().expect("utf8"))),
+                ("MTLS_KEY_FILE", Some(key_path.to_str().expect("utf8"))),
+                ("MTLS_CA_FILE", Some(ca_path.to_str().expect("utf8"))),
+                ("NEWS_CREATOR_BASE_URL", Some("https://localhost:18021/")),
+                ("SUBWORKER_BASE_URL", Some("https://localhost:18022/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ALLOWED_PEERS", Some("alt-frontend-sv")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_GENRES", Some("ai")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                let server_tls = crate::tls::load_server_tls_config(config.peer_identity())
+                    .expect("tls config loads")
+                    .expect("mtls enforced");
+                let reg = ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+                    .with_recap_dao(Arc::new(crate::store::dao::mock::MockRecapDao::new()));
+                (reg, server_tls)
+            },
+        )
+        .await;
+        drop(env_lock);
+
+        let saw_peer_header = Arc::new(AtomicBool::new(false));
+        let saw_header_probe = Arc::clone(&saw_peer_header);
+        let probe_reached = Arc::new(AtomicBool::new(false));
+        let probe_reached_flag = Arc::clone(&probe_reached);
+
+        let base_router = router(AppState::new(registry));
+        let plain_app = base_router.clone();
+        let mtls_app = base_router.layer(axum::middleware::from_fn(
+            move |req: Request<Body>, next: axum::middleware::Next| {
+                let saw_header_probe = Arc::clone(&saw_header_probe);
+                let probe_reached_flag = Arc::clone(&probe_reached_flag);
+                async move {
+                    probe_reached_flag.store(true, Ordering::SeqCst);
+                    if req.headers().contains_key("x-alt-peer-identity") {
+                        saw_header_probe.store(true, Ordering::SeqCst);
+                    }
+                    next.run(req).await
+                }
+            },
+        ));
+
+        let std_listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind mtls");
+        std_listener
+            .set_nonblocking(true)
+            .expect("set_nonblocking mtls");
+        let mtls_addr = std_listener.local_addr().expect("mtls local_addr");
+        let mtls_handle = axum_server::Handle::new();
+        let mtls_handle_srv = mtls_handle.clone();
+        let tls_cfg = axum_server::tls_rustls::RustlsConfig::from_config(server_tls_config);
+        let mtls_task = tokio::spawn(async move {
+            axum_server::from_tcp(std_listener)
+                .expect("from_tcp")
+                .acceptor(crate::tls::PeerIdentityAcceptor::new(tls_cfg))
+                .handle(mtls_handle_srv)
+                .serve(mtls_app.into_make_service())
+                .await
+                .expect("mtls serve");
+        });
+
+        let plain_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind plain");
+        let plain_addr = plain_listener.local_addr().expect("plain local_addr");
+        let plain_task = tokio::spawn(async move {
+            let _ = axum::serve(plain_listener, plain_app).await;
+        });
+
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.add(pki.ca_der).expect("add ca");
+        let client_tls = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_client_auth_cert(vec![pki.client_cert_der], pki.client_key_der)
+            .expect("client auth cert");
+        let mtls_client = reqwest::Client::builder()
+            .use_preconfigured_tls(client_tls)
+            .no_proxy()
+            .build()
+            .expect("mtls reqwest client");
+
+        let mtls_resp = mtls_client
+            .post(format!(
+                "https://127.0.0.1:{}/v1/generate/recaps/7days",
+                mtls_addr.port()
+            ))
+            .header("content-type", "application/json")
+            .header("x-alt-peer-identity", "spoofed-header-value")
+            .body("{}")
+            .send()
+            .await
+            .expect("mtls request succeeds");
+        assert_eq!(
+            mtls_resp.status(),
+            reqwest::StatusCode::ACCEPTED,
+            "allow-listed client cert over PeerIdentityAcceptor must reach guarded route"
+        );
+        assert!(probe_reached.load(Ordering::SeqCst));
+        assert!(
+            !saw_peer_header.load(Ordering::SeqCst),
+            "PeerCertExtensionService::call must strip x-alt-peer-identity before handlers/router see the request"
+        );
+
+        let plain_client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("plain reqwest client");
+        let plain_resp = plain_client
+            .post(format!(
+                "http://127.0.0.1:{}/v1/generate/recaps/7days",
+                plain_addr.port()
+            ))
+            .header("content-type", "application/json")
+            .header("x-alt-peer-identity", "alt-frontend-sv")
+            .body("{}")
+            .send()
+            .await
+            .expect("plain request succeeds");
+        assert_eq!(
+            plain_resp.status(),
+            reqwest::StatusCode::UNAUTHORIZED,
+            "plaintext listener without client certificate must return 401"
+        );
+
+        mtls_handle.shutdown();
+        plain_task.abort();
+        let _ = mtls_task.await;
     }
 }

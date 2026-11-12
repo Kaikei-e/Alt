@@ -787,3 +787,86 @@ def test_load_model_leaves_state_none_on_failure(
     asyncio.run(rerank_server._load_model(fake_app))
 
     assert fake_app.state.model is None
+
+
+# --------------------------------------------------------------------------
+# Revision pinning
+# --------------------------------------------------------------------------
+
+_FULL_SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+def test_every_supported_model_has_a_pinned_revision() -> None:
+    import re
+
+    assert set(rerank_server.MODEL_REVISIONS) == set(rerank_server.SUPPORTED_MODELS)
+    for sha in rerank_server.MODEL_REVISIONS.values():
+        assert re.fullmatch(r"[0-9a-f]{40}", sha)
+
+
+def test_resolve_model_revision_defaults_to_pinned_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RERANK_MODEL_REVISION", raising=False)
+
+    assert (
+        rerank_server._resolve_model_revision(RURI_MODEL)
+        == rerank_server.MODEL_REVISIONS[RURI_MODEL]
+    )
+
+
+def test_resolve_model_revision_env_overrides_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RERANK_MODEL_REVISION", _FULL_SHA)
+
+    assert rerank_server._resolve_model_revision(RURI_MODEL) == _FULL_SHA
+
+
+@pytest.mark.parametrize("value", ["main", "abc123", _FULL_SHA.upper(), _FULL_SHA + "0"])
+def test_resolve_model_revision_rejects_non_sha(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("RERANK_MODEL_REVISION", value)
+
+    with pytest.raises(ValueError, match="RERANK_MODEL_REVISION"):
+        rerank_server._resolve_model_revision(RURI_MODEL)
+
+
+def test_resolve_model_revision_requires_env_for_unlisted_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RERANK_MODEL_REVISION", raising=False)
+
+    with pytest.raises(ValueError, match="RERANK_MODEL_REVISION"):
+        rerank_server._resolve_model_revision("someorg/unlisted-reranker")
+
+
+def test_export_loads_base_model_at_pinned_revision(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import sys
+    import types
+
+    backend = types.ModuleType("sentence_transformers.backend")
+    backend.export_dynamic_quantized_onnx_model = MagicMock()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "sentence_transformers.backend", backend)
+    monkeypatch.setattr(rerank_server, "RERANK_MODEL_REVISION", _FULL_SHA)
+    monkeypatch.setattr(rerank_server, "RERANK_MODEL_DIR", str(tmp_path))
+    cross_encoder_mock = MagicMock()
+    monkeypatch.setattr(rerank_server, "CrossEncoder", cross_encoder_mock)
+
+    rerank_server._export_quantized_onnx_model(str(tmp_path))
+
+    assert cross_encoder_mock.call_args.kwargs["revision"] == _FULL_SHA
+
+
+def test_torch_loader_uses_pinned_revision(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rerank_server, "RERANK_MODEL_REVISION", _FULL_SHA)
+    cross_encoder_mock = MagicMock()
+    cross_encoder_mock.return_value.model.parameters.return_value = []
+    monkeypatch.setattr(rerank_server, "CrossEncoder", cross_encoder_mock)
+
+    rerank_server._load_torch_model()
+
+    assert cross_encoder_mock.call_args.kwargs["revision"] == _FULL_SHA

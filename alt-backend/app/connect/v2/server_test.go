@@ -1,6 +1,9 @@
 package v2
 
 import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -14,16 +17,25 @@ import (
 	"alt/config"
 	"alt/connect/v2/middleware"
 	"alt/di"
+	"alt/domain"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/usecase/resolve_article_usecase"
+	"alt/orchestrator/usecase/search_feed_usecase"
 	"alt/shared/gateway/datahub_gateway"
 )
 
 const (
-	testBackendTokenSecret   = "test-backend-token-secret-32bytes!"
 	testBackendTokenIssuer   = "auth-hub"
 	testBackendTokenAudience = "alt-backend"
 )
+
+var testServerVerifyPubKey, testServerSigningPrivKey = func() (ed25519.PublicKey, ed25519.PrivateKey) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return pub, priv
+}()
 
 // dataHubServicePaths are the service-to-service surfaces. They carry no
 // user-JWT interceptor and now live on their own binary behind mTLS.
@@ -71,14 +83,20 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 
 	cfg := &config.Config{}
 	cfg.WebPush.PublicKey = "a-vapid-public-key-value"
-	cfg.Auth.BackendTokenSecret = testBackendTokenSecret
+	cfg.Auth.BackendTokenPublicKey = testServerVerifyPubKey
 	cfg.Auth.BackendTokenIssuer = testBackendTokenIssuer
 	cfg.Auth.BackendTokenAudience = testBackendTokenAudience
+
+	limiter, err := middleware.NewUserQuotaLimiter(config.DefaultUserQuotaConfig(), time.Now, slog.New(slog.DiscardHandler))
+	if err != nil {
+		panic(err)
+	}
 
 	return &di.ApplicationComponents{
 			Infra:                 &di.InfraModule{PushSubscriptionGateway: pushGateway},
 			ResolveArticleUsecase: resolve_article_usecase.New(nil, nil), // satisfies the feeds handler fail-loud wiring check
 			Search:                &di.SearchModule{},
+			UserQuotaLimiter:      limiter,
 		},
 		cfg,
 		slog.New(slog.NewTextHandler(io_Discard{}, nil))
@@ -257,8 +275,8 @@ func issueTestBackendToken(t *testing.T) string {
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testBackendTokenSecret))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := token.SignedString(testServerSigningPrivKey)
 	if err != nil {
 		t.Fatalf("failed to sign test JWT: %v", err)
 	}
@@ -300,5 +318,91 @@ func TestSetupConnectHandlers_RequiresUserJWTOnAllPublicServices(t *testing.T) {
 				t.Errorf("%s authenticated: status = %d, want non-401 (auth interceptor should pass)", path, rec.Code)
 			}
 		})
+	}
+}
+
+type stubSearchFeedPort struct{}
+
+func (stubSearchFeedPort) SearchFeeds(context.Context, string) ([]domain.SearchArticleHit, error) {
+	return nil, nil
+}
+
+func (stubSearchFeedPort) SearchFeedsWithPagination(context.Context, string, int, int) ([]domain.SearchArticleHit, int, error) {
+	return nil, 0, nil
+}
+
+type stubFeedURLLinkPort struct{}
+
+func (stubFeedURLLinkPort) GetFeedURLsByArticleIDs(context.Context, []string) ([]domain.FeedAndArticle, error) {
+	return nil, nil
+}
+
+func TestCreateConnectServer_RejectsOversizedRequestMessage(t *testing.T) {
+	container, cfg, logger := testDeps()
+	container.FeedSearchUsecase = search_feed_usecase.NewSearchFeedMeilisearchUsecase(stubSearchFeedPort{}, stubFeedURLLinkPort{})
+	srv := CreateConnectServer(container, cfg, logger)
+	validToken := issueTestBackendToken(t)
+
+	oversized := `{"content":"` + strings.Repeat("a", 3*1024*1024) + `"}`
+
+	t.Run("streaming RPC rejects oversized message with resource_exhausted", func(t *testing.T) {
+		payload := []byte(oversized)
+		frame := make([]byte, 5+len(payload))
+		frame[1] = byte(len(payload) >> 24)
+		frame[2] = byte(len(payload) >> 16)
+		frame[3] = byte(len(payload) >> 8)
+		frame[4] = byte(len(payload))
+		copy(frame[5:], payload)
+
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/alt.feeds.v2.FeedService/StreamSummarize",
+			strings.NewReader(string(frame)),
+		)
+		req.Header.Set("Content-Type", "application/connect+json")
+		req.Header.Set("X-Alt-Backend-Token", validToken)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+
+		if !strings.Contains(rec.Body.String(), "resource_exhausted") {
+			t.Fatalf("expected resource_exhausted in streaming error response, got status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("unary RPC rejects oversized message with resource_exhausted", func(t *testing.T) {
+		body := `{"query":"` + strings.Repeat("q", 3*1024*1024) + `"}`
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/alt.feeds.v2.FeedService/SearchFeeds",
+			strings.NewReader(body),
+		)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Alt-Backend-Token", validToken)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+
+		if !strings.Contains(rec.Body.String(), "resource_exhausted") {
+			t.Fatalf("expected resource_exhausted in unary error response, got status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
+}
+
+func TestCreateOperatorConnectServer_RejectsOversizedRequestMessage(t *testing.T) {
+	container, cfg, logger := testDeps()
+	srv := CreateOperatorConnectServer(container, cfg, logger, "test-operator-token", true)
+
+	body := "{" + strings.Repeat(" ", 3*1024*1024) + "}"
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetFeatureFlags",
+		strings.NewReader(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-operator-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), "resource_exhausted") {
+		t.Fatalf("expected resource_exhausted from operator Connect server, got status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }

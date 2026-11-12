@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"strings"
 	"time"
@@ -29,7 +30,7 @@ type Config struct {
 	WebPush       WebPushConfig       `json:"web_push"`
 
 	// AppEnv drives the remaining environment-keyed checks (e.g. Knowledge
-	// Sovereign wiring, BACKEND_TOKEN_SECRET length). It must be one of
+	// Sovereign wiring, AUTH_HUB_URL scheme). It must be one of
 	// appEnvValues: an unrecognised value is rejected rather than degrading to
 	// the permissive development behaviour, because APP_ENV is optional and a
 	// "prod" typo would otherwise be indistinguishable from "unset".
@@ -191,21 +192,14 @@ type AdminMonitorConfig struct {
 type InternalAPIConfig struct{}
 
 type AuthConfig struct {
-	BackendTokenSecret     string `json:"backend_token_secret" env:"BACKEND_TOKEN_SECRET"`
-	BackendTokenSecretFile string `json:"-" env:"BACKEND_TOKEN_SECRET_FILE"`
-	BackendTokenIssuer     string `json:"backend_token_issuer" env:"BACKEND_TOKEN_ISSUER"`
-	BackendTokenAudience   string `json:"backend_token_audience" env:"BACKEND_TOKEN_AUDIENCE"`
+	BackendTokenPublicKey ed25519.PublicKey `json:"-"`
+	BackendTokenIssuer    string            `json:"backend_token_issuer" env:"BACKEND_TOKEN_ISSUER"`
+	BackendTokenAudience  string            `json:"backend_token_audience" env:"BACKEND_TOKEN_AUDIENCE"`
 
 	// InternalAuthSecret is the shared bearer cmd/datahub puts in the
 	// X-Internal-Auth header of every auth-hub /internal/system-user call.
-	// di/datahub's composition root is its only consumer: it hands this — not
-	// BackendTokenSecret — to kratos_client.NewKratosClient.
-	//
-	// The two are separate because that header crosses the network in
-	// plaintext and lands in nginx access logs and OTel span attributes, and
-	// the HS256 key that signs every browser token must never reach those
-	// places. NewConfig exits non-zero if they are set to the same value, and
-	// auth-hub refuses to start on the same condition.
+	// di/datahub's composition root is its only consumer: it hands this
+	// to kratos_client.NewKratosClient.
 	InternalAuthSecret     string `json:"-" env:"INTERNAL_AUTH_SECRET"`
 	InternalAuthSecretFile string `json:"-" env:"INTERNAL_AUTH_SECRET_FILE"`
 }

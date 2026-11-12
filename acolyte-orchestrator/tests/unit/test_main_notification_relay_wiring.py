@@ -16,8 +16,7 @@ import main as main_module
 
 
 def test_producer_and_relay_share_one_enabled_decision() -> None:
-    expected = None if main_module._relay_config is None else main_module._relay_config.user_id
-    assert main_module._job_queue._notification_user_id == expected
+    assert main_module._job_queue._notifications_enabled == (main_module._relay_config is not None)
     assert (main_module._relay is None) == (main_module._relay_config is None)
 
 

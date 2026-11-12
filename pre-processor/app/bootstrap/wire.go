@@ -61,16 +61,14 @@ func buildBackendHTTPClient(log *slog.Logger) (*http.Client, error) {
 	log.Info("backend API client: mTLS enforce enabled",
 		"server_name", tlsCfg.ServerName,
 	)
-	// This client is shared by the backend_api driver (article/feed/summary
-	// repos) and, since ADR-000954's DataHub client wiring fix, by
-	// repository.ExternalAPIRepository's GetSystemUserID too — which runs on
-	// a JobRunner ticker loop that reuses the same context.Context for every
-	// tick and so never carries a per-run deadline of its own (see
-	// orchestrator.JobRunner.run). Without Client.Timeout and the Transport
-	// phase timeouts below, a peer that accepts the TCP/TLS handshake but
-	// then stalls would hang this client's calls indefinitely and — because
-	// JobRunner invokes r.fn synchronously — permanently wedge that job's
-	// ticker loop. Values mirror utils.HTTPClientManager's defaultClient.
+	// This client is used by the backend_api driver (article/feed/summary
+	// repos), which runs on JobRunner ticker loops that reuse the same
+	// context.Context for every tick and so carry no per-run deadline of their
+	// own (see orchestrator.JobRunner.run). Without Client.Timeout and the
+	// Transport phase timeouts below, a peer that accepts the TCP/TLS handshake
+	// but then stalls would hang this client's calls indefinitely and
+	// permanently wedge that job's ticker loop. Values mirror
+	// utils.HTTPClientManager's defaultClient.
 	return &http.Client{
 		Timeout: 30 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -110,6 +108,9 @@ type Dependencies struct {
 	// are registered on it; without a scrape target the numbers exist but
 	// nobody can see a wedged relay.
 	MetricsCollector *metrics.Collector
+
+	// ArticleSyncEnabled controls whether the Inoreader article-sync and backfill loops start.
+	ArticleSyncEnabled bool
 }
 
 // buildMetricsCollector wires the dedicated metrics listener and registers the
@@ -277,6 +278,11 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	}
 	cfg.NewsCreator.Host = newsURL
 
+	syncMode, ownerUserID, err := config.ResolveArticleSyncConfig(log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("article sync config validation failed (fail-closed): %w", err)
+	}
+
 	// 2. Initialize pre-processor-db (ADR-000246) — required for job queue and inoreader tables
 	ppDBPool, err := driver.InitPreProcessorDB(ctx)
 	if err != nil {
@@ -307,13 +313,6 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	articleRepo := repository.NewArticleRepository(client, ppDBPool)
 	summaryRepo := repository.NewSummaryRepository(client)
 
-	// GetSystemUserID (repository.ExternalAPIRepository) must reach
-	// alt-data-hub over the same mTLS-configured client and resolved URL as
-	// the backend_api driver above — passing cfg here and letting the
-	// constructor rebuild its own client/URL from cfg.AltService.Host is
-	// exactly the wiring bug ADR-000954 left behind (that field targets
-	// alt-backend's plaintext operator listener, which does not serve
-	// DataHubService).
 	newsHTTPClient, err := buildNewsHTTPClient(cfg, log)
 	if err != nil {
 		ppDBPoolCleanup()
@@ -332,7 +331,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 			"summarize_queue_concurrency", cfg.SummarizeQueue.Concurrency,
 		)
 	}
-	apiRepo := repository.NewExternalAPIRepository(cfg, log, backendHTTPClient, backendAPIURL, newsHTTPClient)
+	apiRepo := repository.NewExternalAPIRepository(cfg, log, newsHTTPClient)
 	jobRepo := repository.NewSummarizeJobRepository(ppDBPool, log)
 
 	// Initialize services
@@ -342,7 +341,12 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	// the same TLS/CA that the summarizer uses; uncertified factory transport
 	// would accept wrong-CA responses.
 	healthCheckerService := service.NewHealthCheckerServiceWithClient(newsHTTPClient, cfg.NewsCreator.Host, log)
-	articleSyncService := service.NewArticleSyncService(articleRepo, apiRepo, log)
+	var articleSyncService service.ArticleSyncService
+	if syncMode == config.SyncEnabled {
+		articleSyncService = service.NewArticleSyncService(articleRepo, ownerUserID, log)
+	} else {
+		articleSyncService = service.NewDisabledArticleSyncService()
+	}
 	summarizeQueueWorker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
 	summarizeQueueWorker.SetConcurrency(cfg.SummarizeQueue.Concurrency)
 
@@ -391,16 +395,17 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	}
 
 	return &Dependencies{
-		JobHandler:       jobHandler,
-		HealthHandler:    healthHandler,
-		SummarizeHandler: summarizeHandler,
-		RedisConsumer:    redisConsumer,
-		Logger:           log,
-		APIRepo:          apiRepo,
-		SummaryRepo:      summaryRepo,
-		ArticleRepo:      articleRepo,
-		JobRepo:          jobRepo,
-		MetricsCollector: promCollector,
+		JobHandler:         jobHandler,
+		HealthHandler:      healthHandler,
+		SummarizeHandler:   summarizeHandler,
+		RedisConsumer:      redisConsumer,
+		Logger:             log,
+		APIRepo:            apiRepo,
+		SummaryRepo:        summaryRepo,
+		ArticleRepo:        articleRepo,
+		JobRepo:            jobRepo,
+		MetricsCollector:   promCollector,
+		ArticleSyncEnabled: syncMode == config.SyncEnabled,
 	}, cleanup, nil
 }
 

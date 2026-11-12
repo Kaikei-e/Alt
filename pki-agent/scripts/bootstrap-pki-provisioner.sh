@@ -26,6 +26,10 @@ CA_CONFIG=/home/step/config/ca.json
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SECRET_DIR="${PKI_PROVISIONER_SECRET_DIR:-$(cd "${SCRIPT_DIR}/../../secrets" && pwd)}"
 
+# Explicit leaf lifetime claims (equal to the step-ca global defaults).
+LEAF_DEFAULT_DUR=24h
+LEAF_MAX_DUR=24h
+
 SUBJECTS=(
   alt-backend
   # Split out of alt-backend: alt-harvester is an mTLS *client* (outbox-worker
@@ -206,6 +210,15 @@ copy_template_into_ca() {
   render_x509_template "$subject" | docker exec -i -u 0 "$STEP_CA" sh -c "umask 077 && cat > '$container_file'"
 }
 
+# Passive revocation (renewal of a revoked serial is refused) needs the
+# certificate database; without it `step ca revoke` has nothing to record into.
+check_certificate_database() {
+  if ! docker exec -u 0 "$STEP_CA" jq -e '.db.type' "$CA_CONFIG" >/dev/null 2>&1; then
+    echo "ERROR: ${CA_CONFIG} has no db section; revocation cannot be recorded." >&2
+    return 1
+  fi
+}
+
 if ! docker ps --format '{{.Names}}' | grep -q "^${STEP_CA}$"; then
   echo "ERROR: ${STEP_CA} is not running. Start with 'docker compose up -d step-ca' first." >&2
   exit 1
@@ -213,6 +226,8 @@ fi
 
 echo "==> ensuring jq is available inside ${STEP_CA}..."
 docker exec -u 0 "$STEP_CA" sh -c 'command -v jq >/dev/null || apk add --no-cache jq' >/dev/null
+
+check_certificate_database
 
 echo "==> adding per-subject JWK provisioners (offline, --ca-config)..."
 PROVISIONER_ADDED=0
@@ -232,13 +247,17 @@ for subject in "${SUBJECTS[@]}"; do
 
   if docker exec -u 0 "$STEP_CA" jq -e --arg n "$name" --rawfile desired "$container_tpl" '
     ([.authority.provisioners[]? | select(.name==$n and .type=="JWK")] as $p |
-     ($p|length)==1 and $p[0].options.x509.template==$desired and (($p[0].options.x509.templateFile//"")==""))
+     ($p|length)==1 and $p[0].options.x509.template==$desired and (($p[0].options.x509.templateFile//"")=="") and
+     ($p[0].claims.defaultTLSCertDuration|IN("'"$LEAF_DEFAULT_DUR"'","'"$LEAF_DEFAULT_DUR"'0m0s")) and
+     ($p[0].claims.maxTLSCertDuration|IN("'"$LEAF_MAX_DUR"'","'"$LEAF_MAX_DUR"'0m0s")))
   ' "$CA_CONFIG" >/dev/null 2>&1; then
     echo "    provisioner ${name} already up to date"
   elif docker exec -u 0 "$STEP_CA" jq -e --arg n "$name" '.authority.provisioners[]? | select(.name==$n and .type=="JWK")' "$CA_CONFIG" >/dev/null 2>&1; then
     echo "    updating provisioner ${name} with template"
     docker exec -u 0 "$STEP_CA" step ca provisioner update "$name" \
       --x509-template "$container_tpl" \
+      --x509-default-dur "$LEAF_DEFAULT_DUR" \
+      --x509-max-dur "$LEAF_MAX_DUR" \
       --ca-config "$CA_CONFIG"
     PROVISIONER_ADDED=1
   else
@@ -251,6 +270,8 @@ for subject in "${SUBJECTS[@]}"; do
       --ca-config "$CA_CONFIG"
     docker exec -u 0 "$STEP_CA" step ca provisioner update "$name" \
       --x509-template "$container_tpl" \
+      --x509-default-dur "$LEAF_DEFAULT_DUR" \
+      --x509-max-dur "$LEAF_MAX_DUR" \
       --ca-config "$CA_CONFIG"
     docker exec -u 0 "$STEP_CA" rm -f "$container_pw"
     PROVISIONER_ADDED=1

@@ -111,6 +111,9 @@ func TestReadStateGateway_AllReadFeedIDs_DriverError(t *testing.T) {
 }
 
 type mockTagReadDriver struct {
+	cloud        []*domain.TagCloudItem
+	gotCloudUser uuid.UUID
+	gotCloudLim  int
 	gotArticleID string
 	gotUser      *uuid.UUID
 	tagsByUser   map[uuid.UUID][]*domain.FeedTag
@@ -132,8 +135,13 @@ func (m *mockTagReadDriver) FetchTagCooccurrences(_ context.Context, _ []string)
 	return nil, nil
 }
 
-func (m *mockTagReadDriver) SearchTagsByPrefix(_ context.Context, _ string, _ int) ([]domain.GlobalTagHit, error) {
+func (m *mockTagReadDriver) SearchTagsByPrefix(_ context.Context, _ string, _ uuid.UUID, _ int) ([]domain.GlobalTagHit, error) {
 	return nil, nil
+}
+
+func (m *mockTagReadDriver) FetchTagCloudForUser(_ context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
+	m.gotCloudUser, m.gotCloudLim = userID, limit
+	return m.cloud, nil
 }
 
 func (m *mockTagReadDriver) FetchTagArticleCounts(_ context.Context, _ uuid.UUID, _ time.Time) ([]domain.TagArticleCount, error) {
@@ -165,4 +173,17 @@ func TestTagReadGateway_ArticleTags_ForwardsUserScope(t *testing.T) {
 	require.NotNil(t, mock.gotUser)
 	assert.Equal(t, userB, *mock.gotUser)
 	assert.Empty(t, tagsB)
+}
+
+func TestTagReadGateway_TagCloud_ForwardsUserScope(t *testing.T) {
+	user := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	mock := &mockTagReadDriver{cloud: []*domain.TagCloudItem{{TagName: "mine", ArticleCount: 2}}}
+	gw := &TagReadGateway{db: mock}
+
+	items, err := gw.TagCloud(context.Background(), user, 25)
+	require.NoError(t, err)
+	assert.Equal(t, user, mock.gotCloudUser)
+	assert.Equal(t, 25, mock.gotCloudLim)
+	require.Len(t, items, 1)
+	assert.Equal(t, "mine", items[0].TagName)
 }

@@ -1,6 +1,7 @@
 package alt_db
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -9,40 +10,101 @@ import (
 	"strings"
 )
 
-// SSL設定構造体完全削除
 type DatabaseConfig struct {
 	Host     string
 	Port     string
 	User     string
 	Password string
 	DBName   string
+	SSLMode  string
 	// 接続プール設定追加
 	MaxConns    int
 	MinConns    int
 	MaxConnLife string
 }
 
-func NewDatabaseConfigFromEnv() *DatabaseConfig {
+// LoadDatabaseConfigFromEnv loads database configuration from environment
+// variables, failing fast when password or TLS mode is missing or invalid.
+func LoadDatabaseConfigFromEnv() (*DatabaseConfig, error) {
+	password, err := loadRequiredPassword()
+	if err != nil {
+		return nil, err
+	}
+	sslMode, err := loadRequiredSSLMode()
+	if err != nil {
+		return nil, err
+	}
+	maxConns, err := parseEnvInt("DB_MAX_CONNS", 20)
+	if err != nil {
+		return nil, err
+	}
+	minConns, err := parseEnvInt("DB_MIN_CONNS", 5)
+	if err != nil {
+		return nil, err
+	}
+
 	return &DatabaseConfig{
 		Host:        getEnvOrDefault("DB_HOST", "localhost"),
 		Port:        getEnvOrDefault("DB_PORT", "5432"),
 		User:        getEnvOrDefault("DB_USER", "devuser"),
-		Password:    getEnvOrDefault("DB_PASSWORD", "devpassword"),
+		Password:    password,
 		DBName:      getEnvOrDefault("DB_NAME", "devdb"),
-		MaxConns:    getEnvIntOrDefault("DB_MAX_CONNS", 20),
-		MinConns:    getEnvIntOrDefault("DB_MIN_CONNS", 5),
+		SSLMode:     sslMode,
+		MaxConns:    maxConns,
+		MinConns:    minConns,
 		MaxConnLife: getEnvOrDefault("DB_MAX_CONN_LIFE", "30m"),
+	}, nil
+}
+
+func (dc *DatabaseConfig) BuildConnectionString() string {
+	connectTimeout := getEnvIntOrDefault("DB_CONNECT_TIMEOUT_SECONDS", 90)
+	return fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s search_path=public connect_timeout=%d",
+		dc.Host, dc.Port, dc.User, dc.Password, dc.DBName, dc.SSLMode, connectTimeout,
+	)
+}
+
+func loadRequiredPassword() (string, error) {
+	if fileValue := os.Getenv("DB_PASSWORD_FILE"); fileValue != "" {
+		content, err := os.ReadFile(filepath.Clean(fileValue)) //#nosec G304,G703 -- path from DB_PASSWORD_FILE env var (Docker Secrets)
+		if err != nil {
+			return "", fmt.Errorf("read DB_PASSWORD_FILE %q: %w", fileValue, err)
+		}
+		trimmed := strings.TrimSpace(string(content))
+		if trimmed == "" {
+			return "", fmt.Errorf("DB_PASSWORD_FILE %q is empty", fileValue)
+		}
+		return trimmed, nil
+	}
+	if value := os.Getenv("DB_PASSWORD"); value != "" {
+		return value, nil
+	}
+	return "", errors.New("database password is required: set DB_PASSWORD or DB_PASSWORD_FILE")
+}
+
+func loadRequiredSSLMode() (string, error) {
+	sslMode := strings.TrimSpace(os.Getenv("DB_SSL_MODE"))
+	if sslMode == "" {
+		return "", errors.New("DB_SSL_MODE is required: must be one of disable, require, verify-ca, verify-full")
+	}
+	switch sslMode {
+	case "disable", "require", "verify-ca", "verify-full":
+		return sslMode, nil
+	default:
+		return "", fmt.Errorf("invalid DB_SSL_MODE=%q: must be one of disable, require, verify-ca, verify-full", sslMode)
 	}
 }
 
-// Linkerd環境最適化接続文字列 - 不正パラメータ削除
-func (dc *DatabaseConfig) BuildConnectionString() string {
-	// sslmode=disable固定 + 基本PostgreSQL接続パラメータのみ
-	connectTimeout := getEnvIntOrDefault("DB_CONNECT_TIMEOUT_SECONDS", 90)
-	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable search_path=public connect_timeout=%d",
-		dc.Host, dc.Port, dc.User, dc.Password, dc.DBName, connectTimeout,
-	)
+func parseEnvInt(key string, defaultValue int) (int, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue, nil
+	}
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s=%q: must be an integer in [%d, %d]: %w", key, value, math.MinInt, math.MaxInt, err)
+	}
+	return intValue, nil
 }
 
 func (dc *DatabaseConfig) BuildDirectConnectionString(hostOverride string, portOverride string) string {

@@ -58,11 +58,15 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	interceptors := []connect.Interceptor{
 		cancelInterceptor.Interceptor(),
 		authInterceptor.Interceptor(),
+		middleware.NewUserQuotaInterceptor(container.UserQuotaLimiter).Interceptor(),
 	}
 	if otelInterceptor != nil {
 		interceptors = append(interceptors, otelInterceptor)
 	}
-	opts := connect.WithInterceptors(interceptors...)
+	opts := connect.WithOptions(
+		connect.WithInterceptors(interceptors...),
+		connect.WithReadMaxBytes(config.MaxRequestBodyBytes),
+	)
 
 	// Register Feed service
 	feedHandler := feeds.NewHandler(feeds.FeedHandlerDeps{
@@ -247,9 +251,12 @@ func SetupOperatorConnectHandlers(mux *http.ServeMux, container *di.ApplicationC
 	// boundary contracts (e.g. 72-admin-emit-article-url-backfill.hurl)
 	// assert that every field of the response envelope round-trips,
 	// which is impossible if the wire encoder strips zero values.
-	adminOpts := connect.WithInterceptors(
-		cancelInterceptor.Interceptor(),
-		operatorAuthInterceptor.Interceptor(),
+	adminOpts := connect.WithOptions(
+		connect.WithInterceptors(
+			cancelInterceptor.Interceptor(),
+			operatorAuthInterceptor.Interceptor(),
+		),
+		connect.WithReadMaxBytes(config.MaxRequestBodyBytes),
 	)
 	khAdminHandler := knowledge_home_admin.NewHandler(
 		container.KnowledgeBackfillUsecase,

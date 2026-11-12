@@ -25,7 +25,7 @@ func newMonitorProxy(t *testing.T, backendURL string) *AdminMonitorProxyHandler 
 	)
 	return NewAdminMonitorProxyHandler(
 		backendClient,
-		[]byte("test-secret"),
+		testPublicKey,
 		"auth-hub",
 		"alt-backend",
 		"service-secret",
@@ -42,7 +42,7 @@ func TestAdminMonitorProxy_RequiresAdminRole(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, []byte("test-secret"), "user"))
+	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, testPrivateKey, "user"))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -78,7 +78,7 @@ func TestAdminMonitorProxy_ForwardsUnary(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, []byte("test-secret"), "admin"))
+	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, testPrivateKey, "admin"))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -127,7 +127,7 @@ func TestAdminMonitorProxy_StreamingFlushesChunks(t *testing.T) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/alt.admin_monitor.v1.AdminMonitorService/Watch", body)
 	assert.NoError(t, err)
 	req.Header.Set("Content-Type", "application/connect+json")
-	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, []byte("test-secret"), "admin"))
+	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, testPrivateKey, "admin"))
 
 	resp, err := http.DefaultClient.Do(req)
 	assert.NoError(t, err)

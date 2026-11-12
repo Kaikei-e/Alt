@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"log/slog"
 	"os"
 	"testing"
@@ -18,35 +20,39 @@ import (
 
 func TestNewAuthInterceptor(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
 
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
 	assert.NotNil(t, interceptor)
 }
 
-func TestNewAuthInterceptor_EmptySecret_FailsClosed(t *testing.T) {
+func TestNewAuthInterceptor_EmptyKey_FailsClosed(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	assert.Panics(t, func() {
-		NewAuthInterceptor(logger, []byte{}, "auth-hub", "alt-backend")
-	}, "NewAuthInterceptor must fail closed (panic) when the JWT secret is empty")
+		NewAuthInterceptor(logger, ed25519.PublicKey{}, "auth-hub", "alt-backend")
+	}, "NewAuthInterceptor must fail closed (panic) when the verify key is empty")
 }
 
-func TestNewAuthInterceptor_NilSecret_FailsClosed(t *testing.T) {
+func TestNewAuthInterceptor_NilKey_FailsClosed(t *testing.T) {
 	assert.Panics(t, func() {
 		NewAuthInterceptor(nil, nil, "auth-hub", "alt-backend")
-	}, "NewAuthInterceptor must fail closed (panic) when the JWT secret is nil, even without a logger")
+	}, "NewAuthInterceptor must fail closed (panic) when the verify key is nil, even without a logger")
+}
+
+func TestNewAuthInterceptor_WrongSizeKey_FailsClosed(t *testing.T) {
+	assert.Panics(t, func() {
+		NewAuthInterceptor(nil, ed25519.PublicKey(make([]byte, 16)), "auth-hub", "alt-backend")
+	})
 }
 
 func TestAuthInterceptor_ValidateToken_Valid(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
 	// Create a valid token
 	userID := uuid.New()
-	token := createTestToken(t, secret, userID, "test@example.com", "user", "auth-hub", "alt-backend", time.Now().Add(time.Hour))
+	token := createTestToken(t, testPrivateKey, userID, "test@example.com", "user", "auth-hub", "alt-backend", time.Now().Add(time.Hour))
 
 	userCtx, err := interceptor.ValidateToken(token)
 
@@ -58,8 +64,7 @@ func TestAuthInterceptor_ValidateToken_Valid(t *testing.T) {
 
 func TestAuthInterceptor_ValidateToken_MissingToken(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
 	_, err := interceptor.ValidateToken("")
 
@@ -69,8 +74,7 @@ func TestAuthInterceptor_ValidateToken_MissingToken(t *testing.T) {
 
 func TestAuthInterceptor_ValidateToken_InvalidToken(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
 	_, err := interceptor.ValidateToken("invalid-token")
 
@@ -79,11 +83,10 @@ func TestAuthInterceptor_ValidateToken_InvalidToken(t *testing.T) {
 
 func TestAuthInterceptor_ValidateToken_ExpiredToken(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
 	userID := uuid.New()
-	token := createTestToken(t, secret, userID, "test@example.com", "user", "auth-hub", "alt-backend", time.Now().Add(-time.Hour))
+	token := createTestToken(t, testPrivateKey, userID, "test@example.com", "user", "auth-hub", "alt-backend", time.Now().Add(-time.Hour))
 
 	_, err := interceptor.ValidateToken(token)
 
@@ -92,11 +95,10 @@ func TestAuthInterceptor_ValidateToken_ExpiredToken(t *testing.T) {
 
 func TestAuthInterceptor_ValidateToken_WrongIssuer(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
 	userID := uuid.New()
-	token := createTestToken(t, secret, userID, "test@example.com", "user", "wrong-issuer", "alt-backend", time.Now().Add(time.Hour))
+	token := createTestToken(t, testPrivateKey, userID, "test@example.com", "user", "wrong-issuer", "alt-backend", time.Now().Add(time.Hour))
 
 	_, err := interceptor.ValidateToken(token)
 
@@ -106,11 +108,10 @@ func TestAuthInterceptor_ValidateToken_WrongIssuer(t *testing.T) {
 
 func TestAuthInterceptor_ValidateToken_WrongAudience(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
 	userID := uuid.New()
-	token := createTestToken(t, secret, userID, "test@example.com", "user", "auth-hub", "wrong-audience", time.Now().Add(time.Hour))
+	token := createTestToken(t, testPrivateKey, userID, "test@example.com", "user", "auth-hub", "wrong-audience", time.Now().Add(time.Hour))
 
 	_, err := interceptor.ValidateToken(token)
 
@@ -118,27 +119,64 @@ func TestAuthInterceptor_ValidateToken_WrongAudience(t *testing.T) {
 	assert.Contains(t, err.Error(), "audience")
 }
 
-func TestAuthInterceptor_ValidateToken_WrongSecret(t *testing.T) {
+func TestAuthInterceptor_ValidateToken_OtherEd25519Key(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
-	wrongSecret := []byte("wrong-secret")
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
-	userID := uuid.New()
-	token := createTestToken(t, wrongSecret, userID, "test@example.com", "user", "auth-hub", "alt-backend", time.Now().Add(time.Hour))
+	_, otherKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	token := createTestToken(t, otherKey, uuid.New(), "test@example.com", "user", "auth-hub", "alt-backend", time.Now().Add(time.Hour))
 
-	_, err := interceptor.ValidateToken(token)
+	_, err = interceptor.ValidateToken(token)
 
 	assert.Error(t, err)
 }
 
+func TestAuthInterceptor_ValidateToken_HS256WithPublicKeyBytesRejected(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, validClaims(time.Now().Add(time.Hour)))
+	signed, err := token.SignedString([]byte(testPublicKey))
+	require.NoError(t, err)
+
+	_, err = interceptor.ValidateToken(signed)
+
+	assert.Error(t, err)
+}
+
+func TestAuthInterceptor_ValidateToken_AlgNoneRejected(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
+
+	token := jwt.NewWithClaims(jwt.SigningMethodNone, validClaims(time.Now().Add(time.Hour)))
+	signed, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	require.NoError(t, err)
+
+	_, err = interceptor.ValidateToken(signed)
+
+	assert.Error(t, err)
+}
+
+func validClaims(exp time.Time) jwt.MapClaims {
+	return jwt.MapClaims{
+		"sub":   uuid.New().String(),
+		"email": "test@example.com",
+		"role":  "user",
+		"sid":   "session-123",
+		"iss":   "auth-hub",
+		"aud":   []string{"alt-backend"},
+		"exp":   exp.Unix(),
+		"iat":   time.Now().Unix(),
+	}
+}
+
 func TestAuthInterceptor_GetRawToken(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
 	userID := uuid.New()
-	token := createTestToken(t, secret, userID, "test@example.com", "user", "auth-hub", "alt-backend", time.Now().Add(time.Hour))
+	token := createTestToken(t, testPrivateKey, userID, "test@example.com", "user", "auth-hub", "alt-backend", time.Now().Add(time.Hour))
 
 	// Create a mock request header
 	header := make(map[string][]string)
@@ -151,8 +189,7 @@ func TestAuthInterceptor_GetRawToken(t *testing.T) {
 
 func TestAuthInterceptor_Interceptor(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	secret := []byte("test-secret")
-	interceptor := NewAuthInterceptor(logger, secret, "auth-hub", "alt-backend")
+	interceptor := NewAuthInterceptor(logger, testPublicKey, "auth-hub", "alt-backend")
 
 	i := interceptor.Interceptor()
 
@@ -162,7 +199,7 @@ func TestAuthInterceptor_Interceptor(t *testing.T) {
 }
 
 // Helper function to create test JWT tokens
-func createTestToken(t *testing.T, secret []byte, userID uuid.UUID, email, role, issuer, audience string, expiresAt time.Time) string {
+func createTestToken(t *testing.T, key ed25519.PrivateKey, userID uuid.UUID, email, role, issuer, audience string, expiresAt time.Time) string {
 	t.Helper()
 
 	claims := jwt.MapClaims{
@@ -176,8 +213,8 @@ func createTestToken(t *testing.T, secret []byte, userID uuid.UUID, email, role,
 		"iat":   time.Now().Unix(),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenStr, err := token.SignedString(secret)
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	tokenStr, err := token.SignedString(key)
 	require.NoError(t, err)
 
 	return tokenStr

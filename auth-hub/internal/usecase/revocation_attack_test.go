@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"log/slog"
 	"testing"
@@ -107,12 +109,13 @@ func TestRevocationAttack_RevokedSessionRejectedWithinCacheTTL(t *testing.T) {
 // TestBackendToken_MaxLifespanFiveMinutes verifies that issued backend JWTs
 // have an expiry bounded to <= 5 minutes using the actual JWTIssuer.
 func TestBackendToken_MaxLifespanFiveMinutes(t *testing.T) {
-	signingSecret := "test-backend-jwt-secret-at-least-32-chars-long"
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 	issuer := token.NewJWTIssuer(token.JWTConfig{
-		Secret:   signingSecret,
-		Issuer:   "auth-hub",
-		Audience: "alt-backend",
-		TTL:      5 * time.Minute,
+		PrivateKey: priv,
+		Issuer:     "auth-hub",
+		Audience:   "alt-backend",
+		TTL:        5 * time.Minute,
 	})
 
 	ident := &domain.Identity{
@@ -127,8 +130,8 @@ func TestBackendToken_MaxLifespanFiveMinutes(t *testing.T) {
 
 	// Parse and validate the actual signed token
 	parsedToken, err := jwt.Parse(tokString, func(t *jwt.Token) (interface{}, error) {
-		return []byte(signingSecret), nil
-	})
+		return pub, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}))
 	require.NoError(t, err)
 	require.True(t, parsedToken.Valid)
 

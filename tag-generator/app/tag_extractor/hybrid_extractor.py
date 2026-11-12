@@ -28,6 +28,7 @@ import structlog
 
 from tag_generator.exceptions import ModelLoadError
 
+from .config import EMBEDDING_MODEL_REVISION
 from .ginza_extractor import GinzaConfig, GinzaExtractor, get_ginza_extractor
 from .japanese_extractor import is_japanese_noun, is_topical_japanese_noun
 from .tag_validator import clean_noun_phrase, is_valid_japanese_tag
@@ -137,7 +138,7 @@ class HybridExtractor:
                 from sentence_transformers import SentenceTransformer
 
                 model_name = "paraphrase-multilingual-MiniLM-L12-v2"
-                self._embedder = SentenceTransformer(model_name, device="cpu")
+                self._embedder = SentenceTransformer(model_name, device="cpu", revision=EMBEDDING_MODEL_REVISION)
                 self._keybert = KeyBERT(self._embedder)
                 logger.info("KeyBERT loaded for semantic scoring", model_name=model_name)
             except ImportError:

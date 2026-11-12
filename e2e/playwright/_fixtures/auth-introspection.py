@@ -1,4 +1,4 @@
-"""Bounded mTLS AuthHub test provider. Only public staging JWTs are accepted."""
+"""Bounded mTLS AuthHub test provider. Only EdDSA staging JWTs are accepted."""
 
 import base64
 import hashlib
@@ -15,6 +15,80 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
+_P = 2**255 - 19
+_D = -121665 * pow(121666, _P - 2, _P) % _P
+_Q = 2**252 + 27742317777372353535851937790883648493
+_SQRT_M1 = pow(2, (_P - 1) // 4, _P)
+_SPKI_PREFIX = bytes.fromhex("302a300506032b6570032100")
+
+
+def _recover_x(y, sign):
+    if y >= _P:
+        return None
+    x2 = (y * y - 1) * pow(_D * y * y + 1, _P - 2, _P) % _P
+    if x2 == 0:
+        return None if sign else 0
+    x = pow(x2, (_P + 3) // 8, _P)
+    if (x * x - x2) % _P:
+        x = x * _SQRT_M1 % _P
+    if (x * x - x2) % _P:
+        return None
+    return _P - x if (x & 1) != sign else x
+
+
+def _add(a, b):
+    p1 = (a[1] - a[0]) * (b[1] - b[0]) % _P
+    p2 = (a[1] + a[0]) * (b[1] + b[0]) % _P
+    c = 2 * a[3] * b[3] * _D % _P
+    d = 2 * a[2] * b[2] % _P
+    e, f, g, h = p2 - p1, d - c, d + c, p2 + p1
+    return (e * f % _P, g * h % _P, f * g % _P, e * h % _P)
+
+
+def _mul(scalar, point):
+    result = (0, 1, 1, 0)
+    while scalar > 0:
+        if scalar & 1:
+            result = _add(result, point)
+        point = _add(point, point)
+        scalar >>= 1
+    return result
+
+
+def _decompress(raw):
+    y = int.from_bytes(raw, "little")
+    x = _recover_x(y & ((1 << 255) - 1), y >> 255)
+    if x is None:
+        return None
+    y &= (1 << 255) - 1
+    return (x, y, 1, x * y % _P)
+
+
+_BASE_Y = 4 * pow(5, _P - 2, _P) % _P
+_BASE = (_recover_x(_BASE_Y, 0), _BASE_Y, 1, _recover_x(_BASE_Y, 0) * _BASE_Y % _P)
+
+
+def ed25519_verify(public_key, message, signature):
+    """RFC 8032 section 6 verification; the stdlib has no Ed25519."""
+    if len(public_key) != 32 or len(signature) != 64:
+        return False
+    a, r = _decompress(public_key), _decompress(signature[:32])
+    s = int.from_bytes(signature[32:], "little")
+    if a is None or r is None or s >= _Q:
+        return False
+    h = int.from_bytes(hashlib.sha512(signature[:32] + public_key + message).digest(), "little") % _Q
+    left, right = _mul(s, _BASE), _add(r, _mul(h, a))
+    return (left[0] * right[2] - right[0] * left[2]) % _P == 0 and (left[1] * right[2] - right[1] * left[2]) % _P == 0
+
+
+def load_public_key(pem):
+    """Raw 32-byte key from an Ed25519 SPKI PEM."""
+    der = base64.b64decode("".join(line for line in pem.decode().splitlines() if not line.startswith("-----")))
+    if len(der) != len(_SPKI_PREFIX) + 32 or not der.startswith(_SPKI_PREFIX):
+        raise ValueError("not an Ed25519 SPKI public key")
+    return der[len(_SPKI_PREFIX):]
+
+
 def introspect(token, key, now, issuer="alt-staging-auth-hub"):
     try:
         header, payload, signature = token.split(".")
@@ -22,10 +96,9 @@ def introspect(token, key, now, issuer="alt-staging-auth-hub"):
             return {"active": False}
         decode = lambda value: base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
         protected = json.loads(decode(header))
-        if not isinstance(protected, dict) or protected.get("alg") != "HS256":
+        if not isinstance(protected, dict) or protected.get("alg") != "EdDSA":
             return {"active": False}
-        expected = hmac.new(key, f"{header}.{payload}".encode(), hashlib.sha256).digest()
-        if not hmac.compare_digest(expected, decode(signature)):
+        if not ed25519_verify(key, f"{header}.{payload}".encode(), decode(signature)):
             return {"active": False}
         claims = json.loads(decode(payload))
         if not isinstance(claims, dict):
@@ -128,9 +201,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(400, {})
         except (ValueError, KeyError, TypeError):
             return self.reply(400, {})
-        result = introspect(token, self.server.fixture_key, int(time.time()))
+        result = introspect(token, self.server.verify_key, int(time.time()))
         if not result["active"]:
-            result = introspect(token, self.server.acolyte_key, int(time.time()), "auth-hub")
+            result = introspect(token, self.server.verify_key, int(time.time()), "auth-hub")
         return self.reply(200, result)
 
     def do_GET(self):
@@ -153,10 +226,7 @@ def main():
     context.load_cert_chain("/certs/auth-hub.pem", "/certs/auth-hub-key.pem")
     context.load_verify_locations("/certs/ca-bundle.pem")
     server = ThreadingHTTPServer(("0.0.0.0", 9443), Handler)
-    server.fixture_key = Path(os.environ["STAGING_JWT_KEY_FILE"]).read_bytes().strip()
-    server.acolyte_key = Path("/run/secrets/backend_token_secret").read_bytes().strip()
-    if not server.fixture_key or not server.acolyte_key:
-        raise ValueError("staging JWT key is empty")
+    server.verify_key = load_public_key(Path(os.environ["BACKEND_TOKEN_VERIFY_KEY_FILE"]).read_bytes())
     server.socket = context.wrap_socket(server.socket, server_side=True)
     server.serve_forever()
 

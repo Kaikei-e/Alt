@@ -76,7 +76,7 @@ func BenchmarkDOSProtectionMiddleware(b *testing.B) {
 				ipIndex := 0
 				for pb.Next() {
 					req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-					req.Header.Set("X-Real-IP", fmt.Sprintf("192.168.1.%d", ipIndex%bm.numIPs+1))
+					req.RemoteAddr = fmt.Sprintf("192.168.1.%d:12345", ipIndex%bm.numIPs+1)
 					rec := httptest.NewRecorder()
 					e.ServeHTTP(rec, req)
 					ipIndex++
@@ -115,7 +115,7 @@ func TestDOSProtectionConcurrency(t *testing.T) {
 
 			for j := 0; j < requestsPerGoroutine; j++ {
 				req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-				req.Header.Set("X-Real-IP", fmt.Sprintf("192.168.%d.%d", goroutineID%10, j%10))
+				req.RemoteAddr = fmt.Sprintf("192.168.%d.%d:12345", goroutineID%10, j%10)
 				rec := httptest.NewRecorder()
 				e.ServeHTTP(rec, req)
 				results <- rec.Code
@@ -164,7 +164,7 @@ func TestDOSProtectionMemoryUsage(t *testing.T) {
 	start := time.Now()
 	for i := 0; i < numIPs; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-		req.Header.Set("X-Real-IP", fmt.Sprintf("192.168.%d.%d", i/255, i%255))
+		req.RemoteAddr = fmt.Sprintf("192.168.%d.%d:12345", i/255, i%255)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
@@ -210,7 +210,7 @@ func TestDOSProtectionCircuitBreakerPerformance(t *testing.T) {
 	// First 5 requests should fail, triggering circuit breaker
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-		req.Header.Set("X-Real-IP", "192.168.1.1")
+		req.RemoteAddr = "192.168.1.1:12345"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -222,7 +222,7 @@ func TestDOSProtectionCircuitBreakerPerformance(t *testing.T) {
 
 	for i := 0; i < numBlockedRequests; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-		req.Header.Set("X-Real-IP", "192.168.1.1")
+		req.RemoteAddr = "192.168.1.1:12345"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
@@ -290,7 +290,7 @@ func TestDOSProtectionScalability(t *testing.T) {
 
 				for j := 0; j < tt.requestsPerIP; j++ {
 					req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-					req.Header.Set("X-Real-IP", ip)
+					req.RemoteAddr = ip + ":12345"
 					rec := httptest.NewRecorder()
 					e.ServeHTTP(rec, req)
 
@@ -335,14 +335,14 @@ func TestDOSProtectionMemoryLeakPrevention(t *testing.T) {
 
 		// First request succeeds
 		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-		req.Header.Set("X-Real-IP", ip)
+		req.RemoteAddr = ip + ":12345"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
 		// Second request gets rate limited
 		req = httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-		req.Header.Set("X-Real-IP", ip)
+		req.RemoteAddr = ip + ":12345"
 		rec = httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusTooManyRequests, rec.Code)
@@ -353,7 +353,7 @@ func TestDOSProtectionMemoryLeakPrevention(t *testing.T) {
 
 	// Test that system still works after potential cleanup with a fresh IP
 	req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
-	req.Header.Set("X-Real-IP", "10.0.0.1") // Use a fresh IP not used in the loop
+	req.RemoteAddr = "10.0.0.1:12345"
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)

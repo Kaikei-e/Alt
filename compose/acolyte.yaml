@@ -13,6 +13,7 @@ include:
 x-pki-cert-volume-chown: &pki-cert-volume-chown
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c
@@ -56,6 +57,10 @@ services:
         max-file: "3"
 
   acolyte-db-migrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ../acolyte-migration-atlas
       dockerfile: docker/Dockerfile
@@ -101,6 +106,10 @@ services:
       - rask.group=acolyte-db-migrator
 
   acolyte-orchestrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     container_name: acolyte-orchestrator
     mem_limit: 256m
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-acolyte-orchestrator:${IMAGE_TAG:-main}
@@ -156,13 +165,8 @@ services:
       - ACOLYTE_LEGACY_REPORT_MAPPING_FILE=${ACOLYTE_LEGACY_REPORT_MAPPING_FILE:-}
 
       # --- notification outbox relay ---------------------------------------
-      # reports now carries a user_id column; NOTIFICATION_USER_ID serves as
-      # fallback recipient when deriving user from run is not available.
-      # Unset means the relay logs notification_outbox_relay_disabled and does
-      # not run; a malformed value is a startup failure rather than a relay that
-      # forwards to nobody.
+      # Notifications go to the report's owner (reports.user_id).
       - NOTIFICATIONS_ENABLED=${ACOLYTE_NOTIFICATIONS_ENABLED:-false}
-      - NOTIFICATION_USER_ID=${ALT_NOTIFICATION_USER_ID:-}
       - DATAHUB_URL=https://alt-data-hub:9443
 
       # Wave 4: inbound TLS is in-process. Identity comes from the verified
@@ -190,7 +194,7 @@ services:
       - RENEW_AT_FRACTION=0.66
       - OPS_LISTEN=:9110
       # User identity verification
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_VERIFICATION=enabled
@@ -202,7 +206,7 @@ services:
     secrets:
       - acolyte_db_password
       - pki-agent-acolyte-orchestrator-jwk
-      - backend_token_secret
+      - backend_token_verify_key
       - rask_ingest_token
     extra_hosts:
       - "llm-external:${ACOLYTE_LLM_HOST:-127.0.0.1}"

@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"pre-processor/domain"
 	"pre-processor/repository"
@@ -45,44 +48,19 @@ type SyncArticleRepository interface {
 
 // ArticleSyncService implementation.
 type articleSyncService struct {
-	articleRepo     SyncArticleRepository
-	externalAPIRepo repository.ExternalAPIRepository
-	sanitizer       *utils.Sanitizer
-	logger          *slog.Logger
+	articleRepo SyncArticleRepository
+	ownerUserID string
+	sanitizer   *utils.Sanitizer
+	logger      *slog.Logger
 
-	// mu guards userID, lastSyncedFetchedAt, acceptedWhileHeld and
+	// mu guards lastSyncedFetchedAt, acceptedWhileHeld and
 	// lastBackfillFetchedAt, which are read and written by SyncArticles and
 	// BackfillEmptyFeeds — two independent JobRunner goroutines (article-sync,
 	// article-backfill) sharing this instance.
 	mu                    sync.Mutex
-	userID                string               // Cached system UserID
 	lastSyncedFetchedAt   time.Time            // Watermark for sync progress (advances once a batch is upserted)
 	acceptedWhileHeld     map[string]time.Time // URL -> CreatedAt of articles already accepted above a held watermark
 	lastBackfillFetchedAt time.Time            // Cursor for backfill progress (advances with each batch)
-}
-
-// systemUserID returns the cached system UserID, fetching and caching it via
-// externalAPIRepo on first use. Concurrent callers may both miss the cache
-// and fetch once each — GetSystemUserID is idempotent, so the only guarantee
-// mu needs to provide is race-free access to the field itself.
-func (s *articleSyncService) systemUserID(ctx context.Context) (string, error) {
-	s.mu.Lock()
-	cached := s.userID
-	s.mu.Unlock()
-	if cached != "" {
-		return cached, nil
-	}
-
-	userID, err := s.externalAPIRepo.GetSystemUserID(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	s.mu.Lock()
-	s.userID = userID
-	s.mu.Unlock()
-
-	return userID, nil
 }
 
 // syncCursor returns the fetched_at watermark of the newest article-sync batch
@@ -183,17 +161,35 @@ func (s *articleSyncService) recordBackfillProgress(ctx context.Context, scanned
 	s.logger.InfoContext(ctx, "backfill cursor advanced", "cursor", s.backfillCursor())
 }
 
+type disabledArticleSyncService struct{}
+
+func NewDisabledArticleSyncService() ArticleSyncService {
+	return &disabledArticleSyncService{}
+}
+
+func (disabledArticleSyncService) SyncArticles(context.Context) error {
+	panic("disabledArticleSyncService.SyncArticles called while INOREADER_SYNC=disabled (lifecycle gating bypassed)")
+}
+
+func (disabledArticleSyncService) BackfillEmptyFeeds(context.Context) error {
+	panic("disabledArticleSyncService.BackfillEmptyFeeds called while INOREADER_SYNC=disabled (lifecycle gating bypassed)")
+}
+
 // NewArticleSyncService creates a new article sync service.
 func NewArticleSyncService(
 	articleRepo SyncArticleRepository,
-	externalAPIRepo repository.ExternalAPIRepository,
+	ownerUserID string,
 	logger *slog.Logger,
 ) ArticleSyncService {
+	parsedOwner, err := uuid.Parse(strings.TrimSpace(ownerUserID))
+	if err != nil || parsedOwner == uuid.Nil {
+		panic("NewArticleSyncService: ownerUserID must be a valid non-nil UUID")
+	}
 	return &articleSyncService{
-		articleRepo:     articleRepo,
-		externalAPIRepo: externalAPIRepo,
-		sanitizer:       utils.NewSanitizer(),
-		logger:          logger,
+		articleRepo: articleRepo,
+		ownerUserID: parsedOwner.String(),
+		sanitizer:   utils.NewSanitizer(),
+		logger:      logger,
 	}
 }
 
@@ -201,13 +197,7 @@ func NewArticleSyncService(
 func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 	s.logger.InfoContext(ctx, "starting article synchronization")
 
-	// Ensure system UserID is available
-	userID, err := s.systemUserID(ctx)
-	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to get system user id", "error", err)
-		return fmt.Errorf("failed to get system user id: %w", err)
-	}
-	s.logger.InfoContext(ctx, "retrieved system user id", "user_id", userID)
+	userID := s.ownerUserID
 
 	// Take only what the sidecar wrote after the last batch we synced. The
 	// query is fetched_at > since with no LIMIT, so a fixed 24h window would
@@ -363,12 +353,7 @@ func (s *articleSyncService) holdWatermarkBelow(ctx context.Context, scanned, re
 func (s *articleSyncService) BackfillEmptyFeeds(ctx context.Context) error {
 	s.logger.InfoContext(ctx, "starting backfill for empty feeds")
 
-	// Ensure system UserID is available
-	userID, err := s.systemUserID(ctx)
-	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to get system user id", "error", err)
-		return fmt.Errorf("failed to get system user id: %w", err)
-	}
+	userID := s.ownerUserID
 
 	// Fetch inoreader articles for feeds that have no articles
 	// Uses lastBackfillFetchedAt as cursor to avoid re-processing in API mode

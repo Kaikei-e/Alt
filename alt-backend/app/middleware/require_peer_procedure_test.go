@@ -7,7 +7,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
+
+	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 )
 
 func TestRequirePeerProcedure_DefaultAllowlist_FullInventory(t *testing.T) {
@@ -266,5 +270,297 @@ func TestRequirePeerProcedure_Denials(t *testing.T) {
 				t.Errorf("got status %d, want %d", rr.Code, tt.wantStatus)
 			}
 		})
+	}
+}
+
+func TestRequirePeerProcedure_ExactPeerAllowlist(t *testing.T) {
+	handler := RequirePeerProcedure(nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	expected := map[string]struct {
+		allowed []string
+		denied  []string
+	}{
+		"alt-backend": {
+			allowed: []string{
+				"AddFavoriteFeed",
+				"ArchiveArticle",
+				"BatchGetArticlesByIDs",
+				"BatchGetArticlesByURLs",
+				"BatchGetFeedTitlesByIDs",
+				"BatchGetOgImageURLs",
+				"BulkRegisterFeedLinks",
+				"CountBackfillArticles",
+				"CreateSummaryVersion",
+				"DeleteFeedLink",
+				"DeletePushSubscription",
+				"FetchTagCloud",
+				"GetAllReadFeedIDs",
+				"GetArticleByURL",
+				"GetArticleContentByID",
+				"GetArticleHead",
+				"GetArticleSummaryByArticleID",
+				"GetArticleTags",
+				"GetArticleTitleAndLink",
+				"GetFeedAmount",
+				"GetFeedID",
+				"GetFeedOgImageTargets",
+				"GetFeedSummary",
+				"GetFeedTags",
+				"GetFeedURLsByArticleIDs",
+				"GetImageProxyCache",
+				"GetInoreaderSummariesByURLs",
+				"GetLatestArticleByFeedID",
+				"GetPushSubscription",
+				"GetRandomFeed",
+				"GetReadFeedIDs",
+				"GetScrapingDomainByDomain",
+				"GetScrapingDomainByID",
+				"GetSingleFeed",
+				"GetSummarizedArticlesCount",
+				"GetTagArticleCounts",
+				"GetTagCooccurrences",
+				"GetTodayUnreadArticlesCount",
+				"GetTotalArticlesCount",
+				"GetTrendStats",
+				"GetUnsummarizedArticlesCount",
+				"GetUserSubscribedFeedLinkIDs",
+				"IsDomainDeclined",
+				"ListArticleIDsCursor",
+				"ListArticlesByTagID",
+				"ListArticlesByTagName",
+				"ListArticlesCursor",
+				"ListBackfillArticles",
+				"ListFeedLinkDomains",
+				"ListFeedLinks",
+				"ListFeedLinksForExport",
+				"ListFeedLinksWithHealth",
+				"ListFeedsByFeedLinkID",
+				"ListFeedsCursor",
+				"ListFeedsLimit",
+				"ListFeedsPage",
+				"ListRSSFeedURLs",
+				"ListScrapingDomains",
+				"ListSubscriptions",
+				"ListUserFeedIDs",
+				"LookupArticleURL",
+				"MarkArticleRead",
+				"MarkFeedRead",
+				"MarkSummaryVersionSuperseded",
+				"PutImageProxyCache",
+				"RegisterFeedLink",
+				"RegisterFeeds",
+				"RemoveFavoriteFeed",
+				"ResetFeedLinkFailures",
+				"ResolveFeedLinkIDByURL",
+				"SaveArticleHead",
+				"SaveArticleSummary",
+				"SaveDeclinedDomain",
+				"SaveFeedOgImage",
+				"SaveScrapingDomain",
+				"SearchFeedsByTitle",
+				"SearchTagsByPrefix",
+				"Subscribe",
+				"Unsubscribe",
+				"UpdatePushSubscriptionPreferences",
+				"UpdateScrapingDomainPolicy",
+				"UpsertArticleTags",
+				"UpsertPushSubscription",
+			},
+			denied: []string{
+				"ClaimNotificationBatch",
+				"ClaimOutboxBatch",
+				"PruneOutboxEvents",
+				"PurgeExpiredArticleHeads",
+				"PurgeExpiredFeedOgImages",
+				"PurgeImageProxyCacheOlderThan",
+				"EnqueueNotification",
+				"MarkOutboxProcessed",
+				"ReleaseOutboxEvent",
+				"CreateArticle",
+				"ListUntaggedArticles",
+				"ListArticlesWithTags",
+				"ListRecapArticles",
+			},
+		},
+		"alt-harvester": {
+			allowed: []string{
+				"ClaimOutboxBatch",
+				"EnqueueNotification",
+				"EvictExpiredImageProxyCache",
+				"GetImageProxyCache",
+				"GetScrapingDomainByDomain",
+				"GetScrapingDomainByID",
+				"ListFeedLinkDomains",
+				"ListRSSFeedURLs",
+				"ListScrapingDomains",
+				"ListUnwarmedOgImageURLs",
+				"MarkOutboxProcessed",
+				"PruneOutboxEvents",
+				"PurgeExpiredArticleHeads",
+				"PurgeExpiredFeedOgImages",
+				"PurgeImageProxyCacheOlderThan",
+				"PutImageProxyCache",
+				"RecordFeedLinkFailure",
+				"RegisterFeeds",
+				"ReleaseOutboxEvent",
+				"ResetFeedLinkFailures",
+				"SaveScrapingDomain",
+			},
+			denied: []string{"ClaimNotificationBatch", "ArchiveArticle"},
+		},
+		"alt-notifier": {
+			allowed: []string{
+				"ClaimNotificationBatch",
+				"DeletePushSubscription",
+				"GetNotificationBacklogAge",
+				"MarkNotificationDead",
+				"MarkNotificationSent",
+				"ReleaseNotification",
+			},
+			denied: []string{"ClaimOutboxBatch", "UpsertPushSubscription"},
+		},
+		"pre-processor": {
+			allowed: []string{
+				"CheckArticleExists",
+				"CheckArticleSummaryExists",
+				"CreateArticle",
+				"DeleteArticleSummary",
+				"EnqueueNotification",
+				"FindArticlesWithSummaries",
+				"GetArticleContent",
+				"GetEmptyFeedID",
+				"GetFeedID",
+				"GetSystemUser",
+				"HasUnsummarizedArticles",
+				"ListFeedURLs",
+				"ListUnsummarizedArticles",
+				"SaveArticleSummary",
+			},
+			denied: []string{"ClaimOutboxBatch", "PurgeExpiredArticleHeads"},
+		},
+		"search-indexer": {
+			allowed: []string{
+				"GetArticleByID",
+				"GetLatestArticleTimestamp",
+				"ListArticlesWithTags",
+				"ListArticlesWithTagsForward",
+				"ListDeletedArticles",
+			},
+			denied: []string{"CreateArticle", "ClaimNotificationBatch"},
+		},
+		"tag-generator": {
+			allowed: []string{
+				"BatchUpsertArticleTags",
+				"GetArticleContent",
+				"ListUntaggedArticles",
+				"UpsertArticleTags",
+			},
+			denied: []string{"DeleteArticleSummary", "ClaimOutboxBatch"},
+		},
+		"recap-worker": {
+			allowed: []string{
+				"BatchGetTagsByArticleIDs",
+				"EnqueueNotification",
+				"GetAllReadFeedIDs",
+				"ListFeedsInWindow",
+				"ListRecapArticles",
+			},
+			denied: []string{"CreateArticle", "DeletePushSubscription"},
+		},
+		"rag-orchestrator": {
+			allowed: []string{
+				"FetchArticlesByTag",
+				"FetchTagCloud",
+				"ListRecentArticles",
+			},
+			denied: []string{"SaveArticleSummary", "ClaimNotificationBatch"},
+		},
+		"acolyte-orchestrator": {
+			allowed: []string{
+				"EnqueueNotification",
+			},
+			denied: []string{"ClaimNotificationBatch", "GetArticleContentByID"},
+		},
+	}
+
+	if len(defaultPeerProcedures) != len(expected) {
+		t.Fatalf("peer count = %d, want %d", len(defaultPeerProcedures), len(expected))
+	}
+
+	for peer, tc := range expected {
+		t.Run(peer, func(t *testing.T) {
+			actualSet, ok := defaultPeerProcedures[peer]
+			if !ok {
+				t.Fatalf("missing peer %q in defaultPeerProcedures", peer)
+			}
+			actual := make([]string, 0, len(actualSet))
+			for proc := range actualSet {
+				actual = append(actual, proc)
+			}
+			slices.Sort(actual)
+			want := slices.Clone(tc.allowed)
+			slices.Sort(want)
+
+			if !slices.Equal(actual, want) {
+				t.Fatalf("peer %s allowlist mismatch:\ngot (%d):  %v\nwant (%d): %v", peer, len(actual), actual, len(want), want)
+			}
+
+			for _, proc := range want {
+				req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
+				req.TLS = &tls.ConnectionState{
+					VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: peer}}}},
+				}
+				rr := httptest.NewRecorder()
+				handler.ServeHTTP(rr, req)
+				if rr.Code != http.StatusOK {
+					t.Errorf("peer %s allowed proc %s: got %d, want %d", peer, proc, rr.Code, http.StatusOK)
+				}
+			}
+
+			for _, proc := range tc.denied {
+				req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
+				req.TLS = &tls.ConnectionState{
+					VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: peer}}}},
+				}
+				rr := httptest.NewRecorder()
+				handler.ServeHTTP(rr, req)
+				if rr.Code != http.StatusForbidden {
+					t.Errorf("peer %s denied proc %s: got %d, want %d", peer, proc, rr.Code, http.StatusForbidden)
+				}
+			}
+		})
+	}
+}
+
+func TestRequirePeerProcedure_AllowlistNamesExistInServiceDescriptor(t *testing.T) {
+	svc := datahubv1.File_services_datahub_v1_datahub_proto.Services().ByName("DataHubService")
+	if svc == nil {
+		t.Fatal("DataHubService descriptor not found in generated protobuf file")
+	}
+	if string(svc.FullName()) != datahubv1connect.DataHubServiceName {
+		t.Fatalf("service full name = %q, want %q", svc.FullName(), datahubv1connect.DataHubServiceName)
+	}
+
+	methods := svc.Methods()
+	if methods.Len() == 0 {
+		t.Fatal("DataHubService descriptor declares zero methods")
+	}
+
+	validProcedures := make(map[string]struct{}, methods.Len())
+	for i := 0; i < methods.Len(); i++ {
+		validProcedures[string(methods.Get(i).Name())] = struct{}{}
+	}
+
+	for peer, procs := range defaultPeerProcedures {
+		if len(procs) == 0 {
+			t.Errorf("peer %q allowlist is empty", peer)
+		}
+		for proc := range procs {
+			if _, ok := validProcedures[proc]; !ok {
+				t.Errorf("peer %q allowlist contains unknown DataHubService procedure %q", peer, proc)
+			}
+		}
 	}
 }

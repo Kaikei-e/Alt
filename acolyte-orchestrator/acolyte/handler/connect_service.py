@@ -303,15 +303,15 @@ class AcolyteConnectService:
                 f"Report {report_id} has no owner: run the owner backfill for this report before resuming",
             )
 
-        secret = self._settings.resolve_backend_token_secret()
-        if not secret:
-            raise ConnectError(Code.INTERNAL, "Backend token secret is not configured")
+        verify_key = self._settings.resolve_backend_token_verify_key()
+        if verify_key is None:
+            raise ConnectError(Code.INTERNAL, "Backend token verify key is not configured")
 
         try:
             payload = jwt.decode(
                 token,
-                secret,
-                algorithms=["HS256"],
+                verify_key,
+                algorithms=["EdDSA"],
                 issuer="auth-hub",
                 audience="alt-backend",
                 options={
@@ -520,7 +520,7 @@ class AcolyteConnectService:
         except ValueError as e:
             raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid report_id: {e}") from e
 
-        uc = RerunSectionUsecase(self._repo, self._llm)
+        uc = RerunSectionUsecase(self._repo, self._llm, generation_slot=self._run_semaphore)
         try:
             await uc.execute(rid, request.section_key, user_id=user_id)
         except ValueError as e:

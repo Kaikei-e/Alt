@@ -63,6 +63,7 @@ SentenceTransformer(
     "paraphrase-multilingual-MiniLM-L12-v2",
     device="cpu",
     cache_folder="/root/.cache/huggingface/hub",
+    revision="e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
 )
 PY
 

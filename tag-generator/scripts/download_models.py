@@ -106,7 +106,11 @@ class ModelDownloader:
             model_name = 'paraphrase-multilingual-MiniLM-L12-v2'
             
             # Download and cache model
-            model = SentenceTransformer(model_name, device='cpu')
+            model = SentenceTransformer(
+                model_name,
+                device='cpu',
+                revision='e8f8c211226b894fcb81acc59f3b34ba3efd5f42',
+            )
             
             # Verify model is cached
             model_path = st_dir / model_name

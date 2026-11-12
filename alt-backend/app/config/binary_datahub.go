@@ -101,7 +101,6 @@ func ValidateDataHubConfig(cfg *Config) error {
 		value string
 	}{
 		{"AUTH_HUB_URL", cfg.AuthHub.URL},
-		{"BACKEND_TOKEN_SECRET", cfg.Auth.BackendTokenSecret},
 		{"INTERNAL_AUTH_SECRET", cfg.Auth.InternalAuthSecret},
 		{"SOVEREIGN_URL", cfg.Sovereign.URL},
 		{"MQHUB_CONNECT_URL", cfg.MQHub.ConnectURL},

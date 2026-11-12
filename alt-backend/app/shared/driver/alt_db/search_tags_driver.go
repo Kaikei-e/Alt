@@ -5,12 +5,18 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+
+	"github.com/google/uuid"
 )
 
-// SearchTagsByPrefix searches for tags matching a prefix and returns them with article counts.
-func (r *TagRepository) SearchTagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.GlobalTagHit, error) {
+// SearchTagsByPrefix searches for tags matching a prefix on one user's articles
+// and returns them with article counts.
+func (r *TagRepository) SearchTagsByPrefix(ctx context.Context, prefix string, userID uuid.UUID, limit int) ([]domain.GlobalTagHit, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
+	}
+	if userID == uuid.Nil {
+		return nil, errors.New("user id is required")
 	}
 
 	// lower(ft.tag_name) LIKE lower($1) || '%' is the functional equivalent of
@@ -23,14 +29,17 @@ func (r *TagRepository) SearchTagsByPrefix(ctx context.Context, prefix string, l
 		SELECT ft.tag_name, COUNT(DISTINCT at.article_id) as article_count
 		FROM feed_tags ft
 		INNER JOIN article_tags at ON ft.id = at.feed_tag_id
+		INNER JOIN articles a ON at.article_id = a.id
 		WHERE lower(ft.tag_name) LIKE lower($1) || '%'
+		  AND a.user_id = $2
+		  AND a.deleted_at IS NULL
 		GROUP BY ft.tag_name
 		HAVING COUNT(DISTINCT at.article_id) > 0
 		ORDER BY article_count DESC
-		LIMIT $2
+		LIMIT $3
 	`
 
-	rows, err := r.pool.Query(ctx, query, prefix, limit)
+	rows, err := r.pool.Query(ctx, query, prefix, userID, limit)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "error searching tags by prefix", "error", err, "prefix", prefix)
 		return nil, errors.New("error searching tags by prefix")

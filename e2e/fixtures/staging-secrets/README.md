@@ -14,16 +14,23 @@ against it.
 | File | Used by | Role |
 |------|---------|------|
 | `meili_master_key.txt` | `search-indexer` profile | Meilisearch admin key |
-| `alt_backend_token_secret.txt` | `alt-backend`, `auth-hub` profiles | HS256 secret. In the `alt-backend` profile it validates the pre-minted JWT at `e2e/fixtures/alt-backend/test-jwt.txt`; in the `auth-hub` profile it is the signing key for the `X-Alt-Backend-Token` JWT that `/validate` issues, and only that — `/internal/system-user` keys on `INTERNAL_AUTH_SECRET` instead, and auth-hub refuses to start when the two are equal. |
-| `backend_token_secret.txt` | `acolyte-orchestrator` profile | HS256 secret for backend token (`X-Alt-Backend-Token`) user identity verification. |
 | `auth_hub_csrf_secret.txt` | `auth-hub` profile | HMAC-SHA256 secret used by auth-hub's CSRF token generator. Must be ≥ 32 bytes. |
 | `auth_hub_kratos_cookie_secret.txt` | `auth-hub` profile | Kratos `secrets.cookie[0]` — HMAC key over `ory_kratos_session` cookies in staging. |
 | `auth_hub_kratos_cipher_secret.txt` | `auth-hub` profile | Kratos `secrets.cipher[0]` — exactly 32 bytes (xchacha20-poly1305 requirement). |
 
-The Redis ACL passwords (`redis_streams_password.txt`, `redis_limiter_password.txt`)
-live in `e2e/playwright/_fixtures/test-credentials/`: staging `redis-streams` runs the
-production entrypoint (`docker/redis/entrypoint.sh`), which needs both, and its
-clients authenticate as the `streams` user.
+The backend token Ed25519 key pair is not stored here. Every suite whose profile
+mounts it calls `suite_token_keys` (`e2e/playwright/_lib/suite.sh`), which mints
+a throwaway pair into the gitignored `e2e/fixtures/<suite>/token-keys/` and
+exports `STAGING_TOKEN_KEY_DIR` for compose.
+
+The Redis ACL passwords (`redis_streams_producer_password.txt`,
+`redis_streams_consumer_password.txt`, `redis_streams_reset_password.txt`,
+`redis_limiter_password.txt`) live in
+`e2e/playwright/_fixtures/test-credentials/`: staging `redis-streams` runs the
+production entrypoint (`docker/redis/entrypoint.sh`), which needs all four (every
+value must differ), and its clients authenticate as
+`streams_producer` (mq-hub), `streams_consumer` (the consumers) or, for the
+mq-hub suite's stream reset only, `streams_reset`.
 
 The `/internal/system-user` shared bearer has no file here: `INTERNAL_AUTH_SECRET`
 is set inline on both the `auth-hub` and `alt-data-hub` services in

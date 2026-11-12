@@ -2,10 +2,12 @@ package rest
 
 import (
 	"alt/config"
+	connectmiddleware "alt/connect/v2/middleware"
 	"alt/di"
 	"alt/domain"
 	"alt/orchestrator/port/rag_integration_port"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -53,7 +55,7 @@ func TestRegisterAugurRoutes_RequiresAuth(t *testing.T) {
 			e := echo.New()
 			e.Use(echomiddleware.Recover())
 			v1 := e.Group("/v1")
-			RegisterAugurRoutes(e, v1, &di.ApplicationComponents{}, config.AuthConfig{})
+			RegisterAugurRoutes(e, v1, &di.ApplicationComponents{UserQuotaLimiter: newTestQuotaLimiter(t)}, testAuthCfg())
 
 			req := httptest.NewRequest(tt.method, tt.target, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -65,6 +67,13 @@ func TestRegisterAugurRoutes_RequiresAuth(t *testing.T) {
 				tt.method, tt.target, rec.Code, rec.Body.String())
 		})
 	}
+}
+
+func newTestQuotaLimiter(t *testing.T) *connectmiddleware.UserQuotaLimiter {
+	t.Helper()
+	limiter, err := connectmiddleware.NewUserQuotaLimiter(config.DefaultUserQuotaConfig(), time.Now, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	return limiter
 }
 
 type stubRetrieveContextUsecase struct {

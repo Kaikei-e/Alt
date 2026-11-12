@@ -3,7 +3,6 @@ package alt_db
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"alt/utils/logger"
@@ -13,15 +12,13 @@ import (
 )
 
 func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
-	// Fail-fast on pool sizes before DSN construction: NewDatabaseConfigFromEnv
-	// still uses platform Atoi for unused MaxConns/MinConns fields and would
-	// panic on non-integers, or accept values that fit int but not int32.
+	// Fail-fast on int32 pool bounds before DSN construction.
 	maxConns, minConns, err := poolConnsFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("invalid pool size config: %w", err)
 	}
 
-	connStr, err := getDBConnectionString()
+	dbConfig, connStr, err := loadDBConnectionConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build connection string: %w", err)
 	}
@@ -82,13 +79,12 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 		}
 		cancel()
 
-		// 成功ログ（SSL情報削除）
-		logger.Logger.InfoContext(ctx, "Database connection established via Linkerd mTLS",
-			"database", os.Getenv("DB_NAME"),
+		logger.Logger.InfoContext(ctx, "Database connection pool established",
+			"database", dbConfig.DBName,
+			"ssl_mode", dbConfig.SSLMode,
 			"attempt", i+1,
 			"max_conns", pool.Config().MaxConns,
-			"min_conns", pool.Config().MinConns,
-			"transport", "HTTP-over-mTLS")
+			"min_conns", pool.Config().MinConns)
 
 		return pool, nil
 	}
@@ -109,16 +105,23 @@ func waitOrCancel(ctx context.Context, delay time.Duration) error {
 }
 
 func getDBConnectionString() (string, error) {
-	config := NewDatabaseConfigFromEnv()
+	_, connStr, err := loadDBConnectionConfig(context.Background())
+	return connStr, err
+}
 
-	logger.Logger.InfoContext(context.Background(), "Database configuration for Linkerd",
+func loadDBConnectionConfig(ctx context.Context) (*DatabaseConfig, string, error) {
+	config, err := LoadDatabaseConfigFromEnv()
+	if err != nil {
+		return nil, "", err
+	}
+
+	logger.Logger.InfoContext(ctx, "Database configuration",
 		"host", config.Host,
 		"port", config.Port,
 		"database", config.DBName,
-		"ssl_mode", "disabled",
-		"mtls_provider", "linkerd-proxy")
+		"ssl_mode", config.SSLMode)
 
-	return config.BuildConnectionString(), nil
+	return config, config.BuildConnectionString(), nil
 }
 
 func envChecker(env string, variable string) (string, error) {

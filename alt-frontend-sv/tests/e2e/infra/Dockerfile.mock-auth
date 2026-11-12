@@ -16,9 +16,9 @@ COPY tests/e2e/infra/handlers/ ./handlers/
 COPY tests/e2e/infra/types/ ./types/
 
 # Environment variables for JWT generation
-# Prefer BACKEND_TOKEN_SECRET_FILE (Docker secrets pattern)
-ENV BACKEND_TOKEN_SECRET_FILE=""
-ENV BACKEND_TOKEN_SECRET=""
+# The backend verifies these tokens, so the key must come from a file
+# (BACKEND_TOKEN_SIGNING_KEY_FILE, an Ed25519 PKCS#8 PEM); startup fails without it.
+ENV MOCK_AUTH_REQUIRE_SIGNING_KEY_FILE=1
 ENV NODE_ENV=development
 
 # Expose mock service ports

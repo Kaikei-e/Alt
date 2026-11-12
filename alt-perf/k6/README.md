@@ -42,7 +42,8 @@ docker compose -f compose/compose.yaml -p alt run --rm k6 run \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `K6_BASE_URL` | `http://alt-backend:9000` | Backend URL (direct, bypassing edge proxy) |
-| `K6_BACKEND_TOKEN_SECRET` | (from Docker secret) | Backend JWT token secret for `X-Alt-Backend-Token` |
+| `K6_API_TOKEN` | (from `K6_API_TOKEN_FILE`) | Pre-minted `EdDSA` (Ed25519) backend JWT for `X-Alt-Backend-Token` (issued by `auth-hub`; k6 holds no signing key and fails fast at init when unset) |
+| `K6_API_TOKEN_FILE` | `/run/secrets/k6_api_token` | File path read into `K6_API_TOKEN` by `docker-entrypoint.sh` |
 | `K6_TEST_USER_ID` | — | Test user UUID |
 | `K6_TEST_TENANT_ID` | — | Test tenant UUID |
 | `K6_TEST_USER_EMAIL` | — | Test user email |

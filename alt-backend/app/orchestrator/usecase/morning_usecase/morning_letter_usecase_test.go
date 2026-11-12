@@ -344,3 +344,32 @@ func TestRegenerateLatest_FailureClearsCooldown(t *testing.T) {
 	assert.True(t, regenerated)
 	assert.Equal(t, "new-id", got.ID)
 }
+
+func TestRegenerateLatest_BoundsCooldownEntries(t *testing.T) {
+	now := time.Now()
+	entries := make(map[string]time.Time, maxRegenCooldownEntries)
+	for i := 0; i < maxRegenCooldownEntries; i++ {
+		entries[uuid.NewString()] = now.Add(-time.Duration(i) * time.Millisecond)
+	}
+	evictRegenCooldownLocked(entries, now)
+	assert.Less(t, len(entries), maxRegenCooldownEntries)
+}
+
+func TestRegenerateLatest_InFlightConflictDoesNotArmCooldown(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	repo := mocks.NewMockMorningLetterRepository(ctrl)
+	feedPort := mocks.NewMockUserFeedPort(ctrl)
+
+	doc := &domain.MorningLetterDocument{ID: "new-id"}
+	repo.EXPECT().RegenerateLatest(gomock.Any(), gomock.Any()).Return(nil, domain.ErrMorningRegenerationInFlight).Times(1)
+	repo.EXPECT().RegenerateLatest(gomock.Any(), gomock.Any()).Return(doc, nil).Times(1)
+
+	uc := NewMorningLetterUsecase(repo, feedPort)
+	_, _, _, err := uc.RegenerateLatest(context.Background(), "user-1", "Asia/Tokyo")
+	require.ErrorIs(t, err, domain.ErrMorningRegenerationInFlight)
+
+	got, regenerated, _, err := uc.RegenerateLatest(context.Background(), "user-1", "Asia/Tokyo")
+	require.NoError(t, err)
+	assert.True(t, regenerated)
+	assert.Equal(t, "new-id", got.ID)
+}

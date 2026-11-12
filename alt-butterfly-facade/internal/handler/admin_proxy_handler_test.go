@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/ed25519"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,7 +30,7 @@ func TestAdminProxyHandler_ServeHTTP_RequiresAdminRole(t *testing.T) {
 
 	handler := NewAdminProxyHandler(
 		backendClient,
-		[]byte("test-secret"),
+		testPublicKey,
 		"auth-hub",
 		"alt-backend",
 		"service-secret",
@@ -43,7 +44,7 @@ func TestAdminProxyHandler_ServeHTTP_RequiresAdminRole(t *testing.T) {
 		strings.NewReader("{}"),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, []byte("test-secret"), "user"))
+	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, testPrivateKey, "user"))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -72,7 +73,7 @@ func TestAdminProxyHandler_ServeHTTP_AdminForwardedWithoutServiceToken(t *testin
 
 	handler := NewAdminProxyHandler(
 		backendClient,
-		[]byte("test-secret"),
+		testPublicKey,
 		"auth-hub",
 		"alt-backend",
 		"service-secret",
@@ -86,7 +87,7 @@ func TestAdminProxyHandler_ServeHTTP_AdminForwardedWithoutServiceToken(t *testin
 		strings.NewReader("{}"),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, []byte("test-secret"), "admin"))
+	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, testPrivateKey, "admin"))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -95,10 +96,10 @@ func TestAdminProxyHandler_ServeHTTP_AdminForwardedWithoutServiceToken(t *testin
 	assert.JSONEq(t, `{"activeVersion":1}`, recorder.Body.String())
 }
 
-func createRoleToken(t *testing.T, secret []byte, role string) string {
+func createRoleToken(t *testing.T, key ed25519.PrivateKey, role string) string {
 	t.Helper()
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
 		"sub":   uuid.New().String(),
 		"email": "test@example.com",
 		"role":  role,
@@ -109,7 +110,7 @@ func createRoleToken(t *testing.T, secret []byte, role string) string {
 		"iat":   time.Now().Unix(),
 	})
 
-	tokenStr, err := token.SignedString(secret)
+	tokenStr, err := token.SignedString(key)
 	if err != nil {
 		t.Fatalf("failed to create token: %v", err)
 	}

@@ -9,54 +9,25 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
-
-	"connectrpc.com/connect"
 
 	"pre-processor/config"
 	"pre-processor/domain"
 	"pre-processor/driver"
-	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
-	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
 )
-
-// maxInternalResponseBytes bounds response bodies read from internal services
-// so a misbehaving peer cannot exhaust memory. Connect-RPC defaults to no
-// limit, so the bound has to be passed explicitly — it used to be applied by
-// wrapping the REST response body in an io.LimitReader.
-const maxInternalResponseBytes = 10 * 1024 * 1024
 
 // ExternalAPIRepository implementation.
 type externalAPIRepository struct {
-	logger        *slog.Logger
-	client        *http.Client
-	dataHub       datahubv1connect.DataHubServiceClient
-	dataHubClient *http.Client
-	config        *config.Config
+	logger *slog.Logger
+	client *http.Client
+	config *config.Config
 }
 
 // NewExternalAPIRepository creates a new external API repository.
-//
-// dataHubClient and dataHubBaseURL must be the exact same *http.Client and
-// base URL bootstrap/wire.go passes to backend_api.NewClient. alt-data-hub
-// only accepts mTLS connections from the pre-processor leaf cert
-// (compose/core.yaml DATAHUB_ALLOWED_PEERS); building an independently
-// configured client/URL here previously pointed GetSystemUser at
-// cfg.AltService.Host — alt-backend's plaintext operator listener, which
-// does not serve services.datahub.v1.DataHubService at all (ADR-000954
-// moved that RPC to alt-data-hub).
-//
-// r.client (used by CheckHealth) shares the same *http.Client, so the
-// transport substitution the tests rely on applies to both the REST health
-// check and the Connect-RPC calls.
-func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger, dataHubClient *http.Client, dataHubBaseURL string, newsClient *http.Client) ExternalAPIRepository {
+func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger, newsClient *http.Client) ExternalAPIRepository {
 	return &externalAPIRepository{
-		logger:        logger,
-		config:        cfg,
-		client:        newsClient,
-		dataHubClient: dataHubClient,
-		dataHub: datahubv1connect.NewDataHubServiceClient(dataHubClient, dataHubBaseURL,
-			connect.WithReadMaxBytes(maxInternalResponseBytes)),
+		logger: logger,
+		config: cfg,
+		client: newsClient,
 	}
 }
 
@@ -243,62 +214,4 @@ func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL stri
 	r.logger.InfoContext(ctx, "service is healthy")
 
 	return nil
-}
-
-// GetSystemUserID retrieves the system user ID from alt-data-hub with retry logic.
-func (r *externalAPIRepository) GetSystemUserID(ctx context.Context) (string, error) {
-	const maxRetries = 3
-	baseDelay := 2 * time.Second
-
-	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		userID, err := r.getSystemUserIDOnce(ctx)
-		if err == nil {
-			return userID, nil
-		}
-		lastErr = err
-
-		// Don't retry on context cancellation
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-
-		// Log retry attempt (except for last attempt)
-		if attempt < maxRetries-1 {
-			delay := baseDelay * time.Duration(1<<attempt) // 2s, 4s
-			r.logger.WarnContext(ctx, "GetSystemUserID failed, retrying",
-				"attempt", attempt+1,
-				"max_attempts", maxRetries,
-				"delay", delay,
-				"error", err)
-
-			select {
-			case <-ctx.Done():
-				return "", ctx.Err()
-			case <-time.After(delay):
-			}
-		}
-	}
-
-	return "", fmt.Errorf("GetSystemUserID failed after %d attempts: %w", maxRetries, lastErr)
-}
-
-// getSystemUserIDOnce performs a single attempt to retrieve the system user ID.
-//
-// This used to be GET /v1/internal/system-user on alt-backend. ADR-000954 D6
-// absorbed that REST route into alt-data-hub's Connect capability as the
-// GetSystemUser RPC, and D7 put it in the services.datahub.v1 namespace. The
-// host is unchanged — only the protocol and the path moved.
-func (r *externalAPIRepository) getSystemUserIDOnce(ctx context.Context) (string, error) {
-	// Authentication is established at the TLS transport layer (mTLS).
-	resp, err := r.dataHub.GetSystemUser(ctx, connect.NewRequest(&datahubv1.GetSystemUserRequest{}))
-	if err != nil {
-		return "", fmt.Errorf("GetSystemUser: %w", err)
-	}
-
-	if resp.Msg.UserId == "" {
-		return "", fmt.Errorf("received empty user_id")
-	}
-
-	return resp.Msg.UserId, nil
 }

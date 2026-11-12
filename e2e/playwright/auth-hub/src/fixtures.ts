@@ -27,15 +27,17 @@ import {
  * staging slice is destroyed with `docker compose down -v` per dispatch, and a
  * teardown would only buy a race with a sibling worker's `whoami`.
  *
- * The second change is the client address. All four of auth-hub's rate
- * limiters (`middleware/rate_limit.go`) key on `c.RealIP()`, and main.go sets
- * `e.IPExtractor = echo.ExtractIPFromXFFHeader()`. Four workers sharing the
- * test container's single source address would share one token bucket, and the
- * /session bucket is burst 5 refilling at 0.5/s — the suite would 429 into
- * itself within seconds. Every test therefore gets its own synthetic
- * `X-Forwarded-For`, which is also what production looks like behind nginx.
- * tests/rate-limit.spec.ts asserts that this isolation is real rather than
- * assumed.
+ * The second change is the client address. All of auth-hub's rate limiters
+ * (`middleware/rate_limit.go`) key on `c.RealIP()`, backed by
+ * `NewTrustedProxyIPExtractor(cfg.TrustedProxyCIDRs)`. Four workers sharing
+ * the test container's single source address would share one token bucket, and
+ * the /session bucket is burst 5 refilling at 0.5/s — the suite would 429 into
+ * itself within seconds. Every test therefore sends its own synthetic
+ * `X-Forwarded-For`, which auth-hub honours only because the staging stack
+ * lists the test runner's address range in `TRUSTED_PROXY_CIDRS` (production
+ * sets `TRUSTED_PROXY_CIDRS=none` unless a forwarding hop sits in front of
+ * auth-hub). tests/rate-limit.spec.ts asserts that this isolation is real
+ * rather than assumed.
  */
 
 export type SeededSession = {
@@ -82,12 +84,12 @@ function seedToken(workerIndex: number): string {
 /**
  * An address in RFC 6598 shared address space (100.64.0.0/10).
  *
- * Chosen because Echo's `ExtractIPFromXFFHeader` walks the forwarded chain
- * right-to-left and returns the first address it does *not* trust, where
- * "trusted" is loopback, link-local and RFC 1918 private space. 100.64/10 is
- * none of those, so it survives the walk — while being guaranteed never to be
- * a real client. Using a 10.x address here would be silently discarded and
- * every test would fall back to sharing the container's own bucket.
+ * Chosen because `NewTrustedProxyIPExtractor` honours `X-Forwarded-For` when
+ * the peer is in `TRUSTED_PROXY_CIDRS` (which in staging includes the runner's
+ * container subnet), walks the forwarded chain right-to-left, and returns the
+ * first address outside `TRUSTED_PROXY_CIDRS`. 100.64/10 is outside that
+ * staging proxy range while being guaranteed never to be a real public client,
+ * so it survives the walk without colliding with container subnets.
  */
 export function syntheticClientIP(workerIndex: number): string {
 	const second = 64 + (workerIndex % 64);

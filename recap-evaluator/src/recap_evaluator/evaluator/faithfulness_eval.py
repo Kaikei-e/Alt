@@ -113,6 +113,7 @@ class FaithfulnessEvaluator:
     """
 
     DEFAULT_MODEL = "tasksource/ModernBERT-base-nli"
+    DEFAULT_REVISION = "de4ab7e77845098b7fab7f6ab9d370ddff27b19c"
     _NLI_BATCH_SIZE = 16
 
     # Label mapping for different NLI models
@@ -133,14 +134,21 @@ class FaithfulnessEvaluator:
         self,
         model_name: str | None = None,
         device: str | None = None,
+        model_revision: str | None = None,
     ) -> None:
         """Initialize the faithfulness evaluator.
 
         Args:
             model_name: HuggingFace model name for NLI (default: ModernBERT-base-nli).
             device: Device to use ('cuda', 'cpu', or None for auto).
+            model_revision: Commit sha to load; defaults to the pinned sha for the default model and is required otherwise.
         """
         self._model_name = model_name or self.DEFAULT_MODEL
+        if model_revision is None and self._model_name != self.DEFAULT_MODEL:
+            raise ValueError(
+                f"model_revision is required for non-default model {self._model_name!r}"
+            )
+        self._model_revision = model_revision or self.DEFAULT_REVISION
         self.device = device
         self._nli: Any | None = None
         self._initialized = False
@@ -174,6 +182,7 @@ class FaithfulnessEvaluator:
             self._nli = pipeline(
                 "text-classification",
                 model=self._model_name,
+                revision=self._model_revision,
                 top_k=None,  # Return all labels with scores
                 device=self.device,
             )

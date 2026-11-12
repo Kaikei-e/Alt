@@ -2,6 +2,7 @@ package rest_feeds
 
 import (
 	"alt/config"
+	connectmiddleware "alt/connect/v2/middleware"
 	"alt/di"
 	middleware_custom "alt/middleware"
 	summarizationpkg "alt/orchestrator/rest/rest_feeds/summarization"
@@ -40,14 +41,18 @@ func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	feedsGroup.GET("/stats/trends", RestHandleTrendStats(container, cfg))
 	feedsGroup.POST("/tags", RestHandleFetchFeedTags(container))
 	feedsGroup.GET("/:id/tags", RestHandleFetchFeedTagsByID(container))
+	summarizeQuota := connectmiddleware.EchoUserQuotaMiddleware(container.UserQuotaLimiter, connectmiddleware.OpSummarize)
+
 	feedsGroup.POST("/fetch/summary/provided", RestHandleFetchInoreaderSummary(container))
-	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg))
+	// The batch route spends its summarize tokens per generated item inside the
+	// usecase, so only the in-flight cap applies at the route.
+	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg), connectmiddleware.EchoUserInFlightMiddleware(container.UserQuotaLimiter, connectmiddleware.OpSummarize))
 
 	// Article summarization endpoints
-	feedsGroup.POST("/summarize", summarizationpkg.RestHandleSummarizeFeed(container, cfg))                     // Legacy synchronous endpoint
-	feedsGroup.POST("/summarize/stream", summarizationpkg.RestHandleSummarizeFeedStream(container, cfg))        // Streaming endpoint (using fetch stream)
-	feedsGroup.POST("/summarize/queue", summarizationpkg.RestHandleSummarizeFeedQueue(container, cfg))          // New async queue endpoint
-	feedsGroup.GET("/summarize/status/:job_id", summarizationpkg.RestHandleSummarizeFeedStatus(container, cfg)) // Job status endpoint
+	feedsGroup.POST("/summarize", summarizationpkg.RestHandleSummarizeFeed(container, cfg), summarizeQuota)              // Legacy synchronous endpoint
+	feedsGroup.POST("/summarize/stream", summarizationpkg.RestHandleSummarizeFeedStream(container, cfg), summarizeQuota) // Streaming endpoint (using fetch stream)
+	feedsGroup.POST("/summarize/queue", summarizationpkg.RestHandleSummarizeFeedQueue(container, cfg), summarizeQuota)   // New async queue endpoint
+	feedsGroup.GET("/summarize/status/:job_id", summarizationpkg.RestHandleSummarizeFeedStatus(container, cfg))          // Job status endpoint
 
 	// RSS feed registration (require auth) - 認証ミドルウェア付きでグループ作成
 	rss := v1.Group("/rss-feed-link", authMiddleware.RequireAuth())

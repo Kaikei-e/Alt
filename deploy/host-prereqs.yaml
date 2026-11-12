@@ -339,6 +339,7 @@ required_env:
   - RECAP_DB_USER
   - TAG_LABEL_GRAPH_TTL_SECONDS
   - TAG_LABEL_GRAPH_WINDOW
+  - TRUSTED_PROXY_CIDRS
 
 # Repo-relative env_files that are gitignored, so a fresh deploy checkout lacks
 # them and the deploy has to stage them next to compose/.

@@ -14,6 +14,10 @@ from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 from connectrpc.method import IdempotencyLevel, MethodInfo
 from connectrpc.request import Headers, RequestContext
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
 
 from acolyte.config.settings import Settings
 from acolyte.infra.user_identity import (
@@ -21,27 +25,12 @@ from acolyte.infra.user_identity import (
     UserIdentityInterceptor,
     current_user_id,
     get_acting_user_id,
-    resolve_backend_token_secret,
 )
+from tests.backend_token import public_key_pem, sign_backend_token, write_public_key
 
 
-def _make_token(  # noqa: PLR0913 — each knob is the payload field one negative test tampers with
-    user_id: str,
-    secret: bytes,
-    issuer: str = "auth-hub",
-    audience: str = "alt-backend",
-    expires_in: int = 3600,
-    alg: str = "HS256",
-) -> str:
-    now = int(time.time())
-    payload = {
-        "sub": user_id,
-        "iss": issuer,
-        "aud": audience,
-        "iat": now,
-        "exp": now + expires_in,
-    }
-    return jwt.encode(payload, secret, algorithm=alg)
+def _interceptor(private_key: Ed25519PrivateKey) -> UserIdentityInterceptor:
+    return UserIdentityInterceptor(private_key.public_key(), issuer="auth-hub", audience="alt-backend")
 
 
 def _make_ctx(method_name: str = "CreateReport", token: str | None = None) -> RequestContext:
@@ -63,12 +52,23 @@ def _make_ctx(method_name: str = "CreateReport", token: str | None = None) -> Re
     )
 
 
+async def _ok(req: object, req_ctx: RequestContext) -> str:
+    return "ok"
+
+
+async def _assert_unauthenticated(interceptor: UserIdentityInterceptor, token: str | None) -> None:
+    ctx = _make_ctx("CreateReport", token)
+    with pytest.raises(ConnectError) as exc_info:
+        await interceptor.intercept_unary(_ok, MagicMock(), ctx)
+    assert exc_info.value.code == Code.UNAUTHENTICATED
+
+
 @pytest.mark.asyncio
 async def test_valid_token_sets_acting_user() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
+    key = Ed25519PrivateKey.generate()
     uid = uuid4()
-    token = _make_token(str(uid), secret)
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
+    token = sign_backend_token(key, uid)
+    interceptor = _interceptor(key)
 
     ctx = _make_ctx("CreateReport", token)
     captured_uid = None
@@ -87,108 +87,44 @@ async def test_valid_token_sets_acting_user() -> None:
 
 @pytest.mark.asyncio
 async def test_expired_token_raises_unauthenticated() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
-    uid = uuid4()
-    token = _make_token(str(uid), secret, expires_in=-100)
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
-    ctx = _make_ctx("CreateReport", token)
-
-    async def call_next(req: object, req_ctx: RequestContext) -> str:
-        return "ok"
-
-    with pytest.raises(ConnectError) as exc_info:
-        await interceptor.intercept_unary(call_next, MagicMock(), ctx)
-
-    assert exc_info.value.code == Code.UNAUTHENTICATED
+    key = Ed25519PrivateKey.generate()
+    await _assert_unauthenticated(_interceptor(key), sign_backend_token(key, uuid4(), expires_in=-100))
 
 
 @pytest.mark.asyncio
 async def test_wrong_audience_raises_unauthenticated() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
-    uid = uuid4()
-    token = _make_token(str(uid), secret, audience="wrong-service")
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
-    ctx = _make_ctx("CreateReport", token)
-
-    async def call_next(req: object, req_ctx: RequestContext) -> str:
-        return "ok"
-
-    with pytest.raises(ConnectError) as exc_info:
-        await interceptor.intercept_unary(call_next, MagicMock(), ctx)
-
-    assert exc_info.value.code == Code.UNAUTHENTICATED
+    key = Ed25519PrivateKey.generate()
+    await _assert_unauthenticated(_interceptor(key), sign_backend_token(key, uuid4(), audience="wrong-service"))
 
 
 @pytest.mark.asyncio
 async def test_wrong_issuer_raises_unauthenticated() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
-    uid = uuid4()
-    token = _make_token(str(uid), secret, issuer="evil-issuer")
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
-    ctx = _make_ctx("CreateReport", token)
-
-    async def call_next(req: object, req_ctx: RequestContext) -> str:
-        return "ok"
-
-    with pytest.raises(ConnectError) as exc_info:
-        await interceptor.intercept_unary(call_next, MagicMock(), ctx)
-
-    assert exc_info.value.code == Code.UNAUTHENTICATED
+    key = Ed25519PrivateKey.generate()
+    await _assert_unauthenticated(_interceptor(key), sign_backend_token(key, uuid4(), issuer="evil-issuer"))
 
 
 @pytest.mark.asyncio
 async def test_missing_token_raises_unauthenticated() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
-    ctx = _make_ctx("CreateReport", token=None)
-
-    async def call_next(req: object, req_ctx: RequestContext) -> str:
-        return "ok"
-
-    with pytest.raises(ConnectError) as exc_info:
-        await interceptor.intercept_unary(call_next, MagicMock(), ctx)
-
-    assert exc_info.value.code == Code.UNAUTHENTICATED
+    await _assert_unauthenticated(_interceptor(Ed25519PrivateKey.generate()), None)
 
 
 @pytest.mark.asyncio
-async def test_tampered_token_signature_raises_unauthenticated() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
-    other_secret = b"different-secret-key-67890"
-    uid = uuid4()
-    token = _make_token(str(uid), other_secret)
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
-    ctx = _make_ctx("CreateReport", token)
-
-    async def call_next(req: object, req_ctx: RequestContext) -> str:
-        return "ok"
-
-    with pytest.raises(ConnectError) as exc_info:
-        await interceptor.intercept_unary(call_next, MagicMock(), ctx)
-
-    assert exc_info.value.code == Code.UNAUTHENTICATED
+async def test_token_signed_by_a_different_key_raises_unauthenticated() -> None:
+    await _assert_unauthenticated(
+        _interceptor(Ed25519PrivateKey.generate()),
+        sign_backend_token(Ed25519PrivateKey.generate(), uuid4()),
+    )
 
 
 @pytest.mark.asyncio
 async def test_invalid_uuid_subject_raises_unauthenticated() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
-    token = _make_token("not-a-valid-uuid", secret)
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
-    ctx = _make_ctx("CreateReport", token)
-
-    async def call_next(req: object, req_ctx: RequestContext) -> str:
-        return "ok"
-
-    with pytest.raises(ConnectError) as exc_info:
-        await interceptor.intercept_unary(call_next, MagicMock(), ctx)
-
-    assert exc_info.value.code == Code.UNAUTHENTICATED
+    key = Ed25519PrivateKey.generate()
+    await _assert_unauthenticated(_interceptor(key), sign_backend_token(key, "not-a-valid-uuid"))
 
 
 @pytest.mark.asyncio
 async def test_health_check_bypasses_token_verification() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
+    interceptor = _interceptor(Ed25519PrivateKey.generate())
     ctx = _make_ctx("HealthCheck", token=None)
 
     async def call_next(req: object, req_ctx: RequestContext) -> str:
@@ -198,80 +134,25 @@ async def test_health_check_bypasses_token_verification() -> None:
     assert res == "health_ok"
 
 
-def test_missing_secret_file_raises_at_startup(tmp_path: Path) -> None:
-    non_existent = str(tmp_path / "does_not_exist_secret.txt")
-    settings = Settings(
-        backend_token_secret_file=non_existent,
-        backend_token_verification="enabled",
+@pytest.mark.asyncio
+async def test_hs256_token_signed_with_the_public_key_bytes_is_rejected() -> None:
+    key = Ed25519PrivateKey.generate()
+    now = int(time.time())
+    claims = {"sub": str(uuid4()), "iss": "auth-hub", "aud": "alt-backend", "iat": now, "exp": now + 3600}
+    token = jwt.encode(
+        claims,
+        key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw),
+        algorithm="HS256",
     )
-    with pytest.raises(RuntimeError) as exc_info:
-        resolve_backend_token_secret(settings)
-
-    assert "missing or unreadable" in str(exc_info.value).lower()
-
-
-def test_empty_secret_file_raises_at_startup(tmp_path: Path) -> None:
-    empty_file = tmp_path / "empty_secret.txt"
-    empty_file.write_text("")
-    settings = Settings(
-        backend_token_secret_file=str(empty_file),
-        backend_token_verification="enabled",
-    )
-    with pytest.raises(RuntimeError) as exc_info:
-        resolve_backend_token_secret(settings)
-
-    assert "empty" in str(exc_info.value).lower()
-
-
-def test_disabled_verification_returns_none() -> None:
-    settings = Settings(
-        backend_token_secret_file="",
-        backend_token_verification="disabled",
-    )
-    secret = resolve_backend_token_secret(settings)
-    assert secret is None
+    await _assert_unauthenticated(_interceptor(key), token)
 
 
 @pytest.mark.asyncio
 async def test_alg_none_token_raises_unauthenticated() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
-    uid = uuid4()
     now = int(time.time())
-    payload = {
-        "sub": str(uid),
-        "iss": "auth-hub",
-        "aud": "alt-backend",
-        "iat": now,
-        "exp": now + 3600,
-    }
-    token = jwt.encode(payload, key="", algorithm="none")
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
-    ctx = _make_ctx("CreateReport", token)
-
-    async def call_next(req: object, req_ctx: RequestContext) -> str:
-        return "ok"
-
-    with pytest.raises(ConnectError) as exc_info:
-        await interceptor.intercept_unary(call_next, MagicMock(), ctx)
-
-    assert exc_info.value.code == Code.UNAUTHENTICATED
-
-
-@pytest.mark.asyncio
-async def test_algorithm_confusion_raises_unauthenticated() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
-    uid = uuid4()
-    token = _make_token(str(uid), secret, alg="HS384")
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
-    ctx = _make_ctx("CreateReport", token)
-
-    async def call_next(req: object, req_ctx: RequestContext) -> str:
-        return "ok"
-
-    with pytest.raises(ConnectError) as exc_info:
-        await interceptor.intercept_unary(call_next, MagicMock(), ctx)
-
-    assert exc_info.value.code == Code.UNAUTHENTICATED
+    claims = {"sub": str(uuid4()), "iss": "auth-hub", "aud": "alt-backend", "iat": now, "exp": now + 3600}
+    token = jwt.encode(claims, key="", algorithm="none")
+    await _assert_unauthenticated(_interceptor(Ed25519PrivateKey.generate()), token)
 
 
 @pytest.mark.asyncio
@@ -288,18 +169,17 @@ async def test_dev_user_id_authenticates_without_token() -> None:
     assert res == "ok"
 
 
-def test_missing_secret_and_dev_user_id_raises_value_error() -> None:
-    with pytest.raises(ValueError, match="Either JWT secret or dev_user_id must be provided"):
+def test_missing_verify_key_and_dev_user_id_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="Either verify_key or dev_user_id must be provided"):
         UserIdentityInterceptor()
 
 
 @pytest.mark.asyncio
 async def test_server_stream_interceptor_sets_acting_user() -> None:
-    secret = b"test-secret-key-for-jwt-signing-12345"
+    key = Ed25519PrivateKey.generate()
     uid = uuid4()
-    token = _make_token(str(uid), secret)
-    interceptor = UserIdentityInterceptor(secret, issuer="auth-hub", audience="alt-backend")
-    ctx = _make_ctx("StreamRunProgress", token)
+    interceptor = _interceptor(key)
+    ctx = _make_ctx("StreamRunProgress", sign_backend_token(key, uid))
 
     async def call_next(req: object, req_ctx: RequestContext) -> AsyncIterator[str]:
         assert get_acting_user_id(req_ctx) == uid
@@ -308,3 +188,84 @@ async def test_server_stream_interceptor_sets_acting_user() -> None:
 
     events = [ev async for ev in interceptor.intercept_server_stream(call_next, MagicMock(), ctx)]
     assert events == ["event-1", "event-2"]
+
+
+def test_valid_verify_key_file_loads_an_ed25519_public_key(tmp_path: Path) -> None:
+    key = Ed25519PrivateKey.generate()
+    path = write_public_key(key, tmp_path / "verify.pem")
+    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+
+    loaded = settings.resolve_backend_token_verify_key()
+
+    assert isinstance(loaded, Ed25519PublicKey)
+    assert public_key_pem_of(loaded) == public_key_pem(key)
+
+
+def public_key_pem_of(public_key: Ed25519PublicKey) -> bytes:
+    return public_key.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+
+
+def test_missing_verify_key_file_raises_at_startup(tmp_path: Path) -> None:
+    settings = Settings(
+        backend_token_verify_key_file=str(tmp_path / "does_not_exist.pem"),
+        backend_token_verification="enabled",
+    )
+    with pytest.raises(RuntimeError, match="missing or unreadable"):
+        settings.resolve_backend_token_verify_key()
+
+
+def test_empty_verify_key_path_raises_at_startup() -> None:
+    settings = Settings(backend_token_verify_key_file="", backend_token_verification="enabled")
+    with pytest.raises(RuntimeError, match="BACKEND_TOKEN_VERIFY_KEY_FILE"):
+        settings.resolve_backend_token_verify_key()
+
+
+def test_garbage_verify_key_file_raises_at_startup(tmp_path: Path) -> None:
+    path = tmp_path / "garbage.pem"
+    path.write_text("not a pem")
+    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    with pytest.raises(RuntimeError, match="Ed25519"):
+        settings.resolve_backend_token_verify_key()
+
+
+def test_non_ed25519_verify_key_file_raises_at_startup(tmp_path: Path) -> None:
+    rsa_public = generate_private_key(public_exponent=65537, key_size=2048).public_key()
+    path = tmp_path / "rsa.pem"
+    path.write_bytes(
+        rsa_public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+    )
+    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    with pytest.raises(RuntimeError, match="Ed25519"):
+        settings.resolve_backend_token_verify_key()
+
+
+def test_private_key_file_is_not_accepted_as_a_verify_key(tmp_path: Path) -> None:
+    path = tmp_path / "private.pem"
+    path.write_bytes(
+        Ed25519PrivateKey.generate().private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+        )
+    )
+    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    with pytest.raises(RuntimeError, match="Ed25519"):
+        settings.resolve_backend_token_verify_key()
+
+
+def test_unsupported_key_type_in_verify_key_file_raises_a_startup_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = write_public_key(Ed25519PrivateKey.generate(), tmp_path / "verify.pem")
+
+    def _unsupported(_data: bytes) -> object:
+        msg = "unsupported key type"
+        raise UnsupportedAlgorithm(msg)
+
+    monkeypatch.setattr("acolyte.config.settings.serialization.load_pem_public_key", _unsupported)
+    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    with pytest.raises(RuntimeError, match="Ed25519"):
+        settings.resolve_backend_token_verify_key()
+
+
+def test_disabled_verification_returns_none() -> None:
+    settings = Settings(backend_token_verify_key_file="", backend_token_verification="disabled")
+    assert settings.resolve_backend_token_verify_key() is None

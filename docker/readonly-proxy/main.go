@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -54,9 +56,82 @@ func isAllowed(r *http.Request) bool {
 	return allowedPathRegex.MatchString(path)
 }
 
-func newProxyHandler(targetURL string, parsedURL *url.URL, transport http.RoundTripper) http.Handler {
+const (
+	projectLabelKey = "com.docker.compose.project"
+	optInLabelKey   = "rask.group"
+)
+
+var (
+	containerListRegex   = regexp.MustCompile(`^/(v[0-9]+\.[0-9]+/)?containers/json$`)
+	fullContainerIDRegex = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	containerLogsRegex   = regexp.MustCompile(`^/(v[0-9]+\.[0-9]+/)?containers/([a-zA-Z0-9_.-]+)/logs$`)
+)
+
+// scopedListQuery rewrites a container-list query so only containers of the
+// given compose project are returned; client-supplied project filters are dropped.
+func scopedListQuery(q url.Values, project string) url.Values {
+	filters := map[string][]string{}
+	if raw := q.Get("filters"); raw != "" {
+		_ = json.Unmarshal([]byte(raw), &filters)
+	}
+	labels := []string{projectLabelKey + "=" + project}
+	for _, l := range filters["label"] {
+		if l != projectLabelKey && !strings.HasPrefix(l, projectLabelKey+"=") {
+			labels = append(labels, l)
+		}
+	}
+	filters["label"] = labels
+	encoded, _ := json.Marshal(filters)
+	out := url.Values{}
+	for k, v := range q {
+		out[k] = v
+	}
+	out.Set("filters", string(encoded))
+	return out
+}
+
+// logsAllowed requires a full container id so the daemon cannot resolve the
+// segment to a different container by name or id prefix than the one checked.
+// It asks the daemon whether the container id belongs to the project
+// and carries the opt-in label.
+func logsAllowed(client *http.Client, base *url.URL, id, project string) bool {
+	if !fullContainerIDRegex.MatchString(id) {
+		return false
+	}
+	filters, _ := json.Marshal(map[string][]string{
+		"id":    {id},
+		"label": {projectLabelKey + "=" + project, optInLabelKey},
+	})
+	u := *base
+	u.Path = "/containers/json"
+	u.RawQuery = url.Values{"all": {"1"}, "filters": {string(filters)}}.Encode()
+	resp, err := client.Get(u.String())
+	if err != nil {
+		log.Printf("Scope lookup failed: %v", err)
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	var found []struct {
+		ID string `json:"Id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&found); err != nil {
+		return false
+	}
+	for _, c := range found {
+		if c.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func newProxyHandler(parsedURL *url.URL, transport http.RoundTripper, project string) http.Handler {
 	proxy := httputil.NewSingleHostReverseProxy(parsedURL)
 	proxy.Transport = transport
+	lookupClient := &http.Client{Transport: transport, Timeout: 5 * time.Second}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isAllowed(r) {
@@ -68,6 +143,16 @@ func newProxyHandler(targetURL string, parsedURL *url.URL, transport http.RoundT
 		// Normalize forwarded path: wipe RawPath to prevent rawpath bypasses upstream
 		r.URL.RawPath = ""
 		r.URL.Path = pathpkg.Clean(r.URL.Path)
+
+		if containerListRegex.MatchString(r.URL.Path) {
+			r.URL.RawQuery = scopedListQuery(r.URL.Query(), project).Encode()
+		} else if m := containerLogsRegex.FindStringSubmatch(r.URL.Path); m != nil {
+			if !logsAllowed(lookupClient, parsedURL, m[2], project) {
+				log.Printf("Denied out-of-scope logs request: %s", r.URL.Path)
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+		}
 
 		log.Printf("Allowed request: %s %s", r.Method, r.URL.Path)
 		proxy.ServeHTTP(w, r)
@@ -101,6 +186,19 @@ func runHealthcheck(addr string) int {
 	return 0
 }
 
+func projectFromEnv(getenv func(string) string) (string, error) {
+	project := strings.TrimSpace(getenv("ALLOWED_COMPOSE_PROJECT"))
+	if project == "" {
+		return "", errors.New("ALLOWED_COMPOSE_PROJECT is required")
+	}
+	return project, nil
+}
+
+// Only the header read is bounded: a write timeout would cut long-lived log follow streams.
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		os.Exit(runHealthcheck("127.0.0.1:2375"))
@@ -131,11 +229,16 @@ func main() {
 		transport = http.DefaultTransport
 	}
 
-	handler := newProxyHandler(targetURL, parsedURL, transport)
+	project, err := projectFromEnv(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	handler := newProxyHandler(parsedURL, transport, project)
 
 	addr := ":2375"
-	log.Printf("Starting read-only proxy on %s, forwarding to %s", addr, targetURL)
-	if err := http.ListenAndServe(addr, handler); err != nil {
+	log.Printf("Starting read-only proxy on %s, forwarding to %s (compose project %q)", addr, targetURL, project)
+	if err := newServer(addr, handler).ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

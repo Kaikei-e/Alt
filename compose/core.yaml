@@ -52,6 +52,7 @@ x-alt-go-common: &alt-go-common
 x-pki-cert-volume-chown: &pki-cert-volume-chown
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c
@@ -76,7 +77,7 @@ x-alt-db-env: &alt-db-env
   DB_USER: ${DB_USER}
   DB_PASSWORD_FILE: /run/secrets/postgres_password
   DB_NAME: ${POSTGRES_DB}
-  DB_SSL_MODE: prefer
+  DB_SSL_MODE: disable
 
 services:
   plecto-proxy:
@@ -157,6 +158,10 @@ services:
       retries: 3
 
   alt-frontend-sv:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-frontend-sv:${IMAGE_TAG:-main}
@@ -223,6 +228,10 @@ services:
   # scheduled jobs moved to alt-harvester and the mTLS-only data plane to
   # alt-data-hub; what stays here is REST / Connect / internal / mTLS.
   alt-backend:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend:${IMAGE_TAG:-main}
@@ -338,7 +347,8 @@ services:
       # no longer links the driver at all. Adding these variables back would
       # configure nothing: there is no code in this image that reads them.
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
+      - TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:?set TRUSTED_PROXY_CIDRS in .env (comma-separated CIDRs of the hops that forward to this service)}
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - AUTH_HUB_URL=https://auth-hub:9443
@@ -418,7 +428,7 @@ services:
       # postgres_password is gone with the DB_* block: a credential mounted
       # into a container that cannot open a connection is only an extra copy
       # of a secret to leak.
-      - backend_token_secret
+      - backend_token_verify_key
       - csrf_secret
       - image_proxy_secret
       # Public half only. This process serves the key to browsers and sends no
@@ -473,6 +483,10 @@ services:
   # listener at all: the only socket it opens is the operator :9110, and that
   # is not published to the host.
   alt-harvester:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *alt-go-common
     env_file:
       - ../.env
@@ -630,6 +644,10 @@ services:
   # No `ports:` and no listener but ops: it claims work over mTLS and posts to
   # push services. Nothing calls in.
   alt-notifier:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *alt-go-common
     env_file:
       - ../.env
@@ -733,6 +751,10 @@ services:
   # sidecar and no plaintext upstream. Dual-writing this cert volume with a
   # leftover sidecar is forbidden.
   alt-data-hub:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *alt-go-common
     env_file:
       - ../.env
@@ -812,17 +834,14 @@ services:
       # SERVER_PORT / CONNECT_PORT are deliberately absent too: this binary has
       # no user-facing listener and exits non-zero if handed one.
       # --- upstreams (all required by config.ValidateDataHubConfig) -------
-      BACKEND_TOKEN_SECRET_FILE: /run/secrets/backend_token_secret
       BACKEND_TOKEN_ISSUER: auth-hub
       # Same audience as alt-backend on purpose: changing it would invalidate
       # every token auth-hub has already minted.
       BACKEND_TOKEN_AUDIENCE: alt-backend
       AUTH_HUB_URL: https://auth-hub:9443
       # The bearer this binary puts in X-Internal-Auth when it asks auth-hub
-      # for the system user. Separate from backend_token_secret on purpose:
-      # that header is plaintext and is copied into nginx access logs and OTel
-      # span attributes, so the JWT signing key must not be what opens
-      # auth-hub's /internal group. auth-hub exits non-zero if the two match.
+      # for the system user. The header is plaintext and is copied into nginx
+      # access logs and OTel span attributes, so this value is not a token key.
       INTERNAL_AUTH_SECRET_FILE: /run/secrets/auth_hub_internal_secret
       # SOVEREIGN_URL has no default; unset means the sovereign client no-ops
       # every append while the caller still records success.
@@ -850,7 +869,6 @@ services:
       RASK_INGEST_TOKEN_FILE: /run/secrets/rask_ingest_token
     secrets:
       - postgres_password
-      - backend_token_secret
       - auth_hub_internal_secret
       - sovereign_datahub_token
       - pki-agent-alt-data-hub-jwk
@@ -883,6 +901,10 @@ services:
       - rask.group=alt-data-hub
 
   migrate:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     build:

@@ -40,6 +40,14 @@ func logEventAuthStatus(cfg *config.Config) {
 	}
 }
 
+func logUserTokenVerifierStatus(cfg *config.Config) {
+	mode := cfg.UserTokenVerifierMode
+	if mode == "" {
+		mode = config.UserTokenVerifierModeNone
+	}
+	slog.Info("user_token_verifier", "mode", mode)
+}
+
 func buildMetricsMux(repo *sovereign_db.Repository, cfg *config.Config) *http.ServeMux {
 	snapshotHandler := handler.NewSnapshotHandler(repo, cfg.SnapshotDir, cfg.BuildRef, cfg.SchemaVersion)
 	retentionHandler := handler.NewRetentionHandler(repo, cfg.ArchiveDir)
@@ -65,6 +73,11 @@ func buildMetricsMux(repo *sovereign_db.Repository, cfg *config.Config) *http.Se
 	return metricsMux
 }
 
+// maxRPCReadBytes bounds incoming Connect messages before decompression or
+// protobuf/JSON unmarshaling allocates a buffer; per-RPC payload checks run
+// only after decode.
+const maxRPCReadBytes = 1 << 20
+
 func buildRPCMux(sovereignHandler sovereignv1connect.KnowledgeSovereignServiceHandler, cfg *config.Config) *http.ServeMux {
 	mainMux := http.NewServeMux()
 	mainMux.HandleFunc("/health", handler.HealthHandler)
@@ -79,6 +92,7 @@ func buildRPCMux(sovereignHandler sovereignv1connect.KnowledgeSovereignServiceHa
 	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(
 		sovereignHandler,
 		connect.WithInterceptors(interceptor),
+		connect.WithReadMaxBytes(maxRPCReadBytes),
 	)
 	mainMux.Handle(path, rpcHandler)
 	return mainMux
@@ -103,6 +117,7 @@ func startServers(cfg *config.Config, repo *sovereign_db.Repository, sovereignHa
 	}()
 
 	logEventAuthStatus(cfg)
+	logUserTokenVerifierStatus(cfg)
 	mainMux := buildRPCMux(sovereignHandler, cfg)
 	// WriteTimeout is intentionally unset: WatchProjectorEvents is a
 	// long-lived server-streaming RPC on this mux, and a finite write

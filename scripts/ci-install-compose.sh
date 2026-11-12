@@ -3,17 +3,20 @@
 #
 # The stack carries `pre_start:` lifecycle hooks, which Compose refuses as an
 # unknown property before v5.4.0 ("additional properties 'pre_start' not
-# allowed"). The operator host runs v5.5.0 (measured in
-# scripts/compose-feature-gate.report.json); a hosted runner's stock plugin is
-# older, so every `docker compose config` audit fails on files that render
-# fine in production. Pinning the plugin keeps CI rendering what the operator
-# renders instead of auditing a downgraded parser.
+# allowed"). The hooks of services that drop every capability carry their own
+# `cap_add`, which the hook schema rejects on v5.5.0 and accepts on v5.6.1
+# (measured in scripts/compose-feature-gate.report.json); from v5.6 a hook
+# also inherits its service's `cap_drop`, so the same files cannot serve both.
+# A hosted runner's stock plugin is older, so every `docker compose config`
+# audit fails on files that render fine in production. Pinning the plugin
+# keeps CI rendering what the operator renders instead of auditing a
+# downgraded parser.
 #
 # Usage: ./scripts/ci-install-compose.sh
 set -euo pipefail
 
-COMPOSE_VERSION="${COMPOSE_VERSION:-v5.5.0}"
-COMPOSE_SHA256="${COMPOSE_SHA256:-c57ab918abd5b05ca7e7d0f275875dd1330a695074f309dc9eab1b49efafcd4b}"
+COMPOSE_VERSION="${COMPOSE_VERSION:-v5.6.1}"
+COMPOSE_SHA256="${COMPOSE_SHA256:-47737f4236e6d3ccea7291995203f8f018058783b4c3a9469119811a0b5db8c0}"
 PLUGIN_DIR="${HOME}/.docker/cli-plugins"
 
 arch="$(uname -m)"

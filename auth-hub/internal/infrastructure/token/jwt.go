@@ -1,6 +1,8 @@
 package token
 
 import (
+	"crypto/ed25519"
+	"fmt"
 	"time"
 
 	"auth-hub/internal/domain"
@@ -11,10 +13,10 @@ import (
 
 // JWTConfig holds JWT generation configuration.
 type JWTConfig struct {
-	Secret   string
-	Issuer   string
-	Audience string
-	TTL      time.Duration
+	PrivateKey ed25519.PrivateKey
+	Issuer     string
+	Audience   string
+	TTL        time.Duration
 }
 
 // backendClaims represents the JWT claims for backend authentication.
@@ -32,12 +34,19 @@ type backendClaims struct {
 // JWTIssuer generates JWT tokens for backend authentication.
 // Implements domain.TokenIssuer.
 type JWTIssuer struct {
-	cfg JWTConfig
+	cfg       JWTConfig
+	publicKey ed25519.PublicKey
 }
 
 // NewJWTIssuer creates a new JWT issuer.
 func NewJWTIssuer(cfg JWTConfig) *JWTIssuer {
-	return &JWTIssuer{cfg: cfg}
+	if len(cfg.PrivateKey) != ed25519.PrivateKeySize {
+		panic(fmt.Sprintf("token: invalid Ed25519 private key length %d", len(cfg.PrivateKey)))
+	}
+	return &JWTIssuer{
+		cfg:       cfg,
+		publicKey: cfg.PrivateKey.Public().(ed25519.PublicKey),
+	}
 }
 
 // IssueBackendToken generates a signed JWT token.
@@ -71,22 +80,21 @@ func (j *JWTIssuer) IssueBackendToken(identity *domain.Identity, sessionID strin
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(j.cfg.Secret))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	return token.SignedString(j.cfg.PrivateKey)
 }
 
 // IntrospectBackendToken validates a signed JWT token and returns its key claims.
 func (j *JWTIssuer) IntrospectBackendToken(tokenStr string) (*domain.IntrospectedToken, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &backendClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Strict HS256 enforcement
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if _, ok := token.Method.(*jwt.SigningMethodEd25519); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}
-		if token.Header["alg"] != "HS256" {
+		if token.Header["alg"] != jwt.SigningMethodEdDSA.Alg() {
 			return nil, jwt.ErrSignatureInvalid
 		}
-		return []byte(j.cfg.Secret), nil
-	}, jwt.WithIssuer(j.cfg.Issuer), jwt.WithAudience(j.cfg.Audience), jwt.WithExpirationRequired())
+		return j.publicKey, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}), jwt.WithIssuer(j.cfg.Issuer), jwt.WithAudience(j.cfg.Audience), jwt.WithExpirationRequired())
 
 	if err != nil {
 		return &domain.IntrospectedToken{Active: false}, err

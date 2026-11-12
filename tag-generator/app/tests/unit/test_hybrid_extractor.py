@@ -590,3 +590,22 @@ class TestHybridExtractorGinzaPostProcessing:
         assert not any(len(t) > 15 for t in texts)
         # But valid short terms should remain
         assert "セキュリティ" in texts
+
+
+class TestHybridEmbedderRevision:
+    def test_keybert_embedder_loaded_with_full_commit_sha(self):
+        import re
+        import sys
+        from unittest.mock import patch
+
+        fake_st = MagicMock()
+        extractor = HybridExtractor(HybridConfig(use_ginza=False, use_keybert_scoring=True))
+        with patch.dict(
+            sys.modules,
+            {
+                "sentence_transformers": MagicMock(SentenceTransformer=fake_st),
+                "keybert": MagicMock(),
+            },
+        ):
+            extractor._lazy_load_models()
+        assert re.fullmatch(r"[0-9a-f]{40}", fake_st.call_args.kwargs["revision"])

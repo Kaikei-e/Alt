@@ -9,6 +9,7 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	"pre-processor/domain"
 	preprocessorv2 "pre-processor/gen/proto/services/preprocessor/v2"
@@ -197,6 +198,11 @@ func (h *Handler) QueueSummarize(
 	if articleID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article_id is required"))
 	}
+	parsedArticleID, err := uuid.Parse(articleID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("article_id must be a valid UUID"))
+	}
+	articleID = parsedArticleID.String()
 
 	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", articleID)
 

@@ -116,6 +116,7 @@ type fakeTagReadPort struct {
 	cooccurrence []*domain.TagCooccurrence
 	hits         []domain.GlobalTagHit
 	counts       []domain.TagArticleCount
+	cloud        []*domain.TagCloudItem
 
 	gotArticleID string
 	gotUser      *uuid.UUID
@@ -153,10 +154,16 @@ func (f *fakeTagReadPort) Cooccurrences(context.Context, []string) ([]*domain.Ta
 	return f.cooccurrence, f.err
 }
 
-func (f *fakeTagReadPort) SearchByPrefix(_ context.Context, _ string, limit int) ([]domain.GlobalTagHit, error) {
+func (f *fakeTagReadPort) SearchByPrefix(_ context.Context, _ string, userID uuid.UUID, limit int) ([]domain.GlobalTagHit, error) {
 	f.calls++
-	f.gotLimit = limit
+	f.gotUserID, f.gotLimit = userID, limit
 	return f.hits, f.err
+}
+
+func (f *fakeTagReadPort) TagCloud(_ context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
+	f.calls++
+	f.gotUserID, f.gotLimit = userID, limit
+	return f.cloud, f.err
 }
 
 func (f *fakeTagReadPort) ArticleCounts(_ context.Context, userID uuid.UUID, since time.Time) ([]domain.TagArticleCount, error) {
@@ -322,6 +329,12 @@ func TestReadState_RequiresUserID(t *testing.T) {
 		{"GetTagArticleCounts", func(h *Handler, ctx context.Context) error {
 			_, err := h.GetTagArticleCounts(ctx, connect.NewRequest(&datahubv1.GetTagArticleCountsRequest{
 				Since: timestamppb.New(time.Now().Add(-24 * time.Hour)),
+			}))
+			return err
+		}},
+		{"SearchTagsByPrefix", func(h *Handler, ctx context.Context) error {
+			_, err := h.SearchTagsByPrefix(ctx, connect.NewRequest(&datahubv1.SearchTagsByPrefixRequest{
+				Prefix: "ai",
 			}))
 			return err
 		}},
@@ -726,6 +739,33 @@ func TestGetTagArticleCounts_ForwardsWindowAndTenant(t *testing.T) {
 	require.Len(t, resp.Msg.GetCounts(), 1)
 	assert.Equal(t, "AI", resp.Msg.GetCounts()[0].GetTagName())
 	assert.Equal(t, int32(10), resp.Msg.GetCounts()[0].GetArticleCount())
+}
+
+func TestSearchTagsByPrefix_ForwardsTenant(t *testing.T) {
+	h, _, tagRead := newReadStateHandler(nil, &fakeTagReadPort{
+		hits: []domain.GlobalTagHit{{TagName: "AI", ArticleCount: 3}},
+	})
+
+	resp, err := h.SearchTagsByPrefix(context.Background(),
+		connect.NewRequest(&datahubv1.SearchTagsByPrefixRequest{Prefix: "ai", UserId: testUserID, Limit: 5}))
+
+	require.NoError(t, err)
+	assert.Equal(t, uuid.MustParse(testUserID), tagRead.gotUserID)
+	assert.Equal(t, 5, tagRead.gotLimit)
+	require.Len(t, resp.Msg.GetHits(), 1)
+}
+
+func TestSearchTagsByPrefix_RejectsInvalidUserID(t *testing.T) {
+	for _, bad := range []string{"", "not-a-uuid", uuid.Nil.String()} {
+		h, _, tagRead := newReadStateHandler(nil, nil)
+
+		_, err := h.SearchTagsByPrefix(context.Background(),
+			connect.NewRequest(&datahubv1.SearchTagsByPrefixRequest{Prefix: "ai", UserId: bad}))
+
+		require.Error(t, err, "user_id %q", bad)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.Zero(t, tagRead.calls, "the query must not run without a tenant")
+	}
 }
 
 // TestWithReadStateAndTagCapabilities_PanicsOnNil is CLAUDE.md rule 8: an unwired

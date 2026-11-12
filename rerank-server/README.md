@@ -64,10 +64,16 @@ Changing `RERANK_MODEL` derives a new cache directory, so the previous model's
 export is never served by mistake. rag-orchestrator's own `RERANK_MODEL` must be
 changed to match, or its requests are rejected with 422.
 
+An ONNX export cached before models were pinned is keyed by model name only, so
+it keeps being served until its cache directory is cleared.
+
 ## Models
 
-`RERANK_MODEL` accepts any cross-encoder repo id. These five were checked
-against the pinned export toolchain:
+`RERANK_MODEL` accepts a cross-encoder repo id, but only these five have a
+pinned commit and were checked against the pinned export toolchain. Any other
+repo id makes startup fail unless `RERANK_MODEL_REVISION` is set to a full
+40-character commit sha; the variable also overrides the pinned commit of a
+listed model:
 
 | Model | Arch | License | JQaRA |
 | --- | --- | --- | --- |

@@ -49,7 +49,6 @@ type ExternalAPIRepository interface {
 	SummarizeArticle(ctx context.Context, article *domain.Article, priority string) (*domain.SummarizedContent, error)
 	StreamSummarizeArticle(ctx context.Context, article *domain.Article, priority string) (io.ReadCloser, error)
 	CheckHealth(ctx context.Context, serviceURL string) error
-	GetSystemUserID(ctx context.Context) (string, error)
 }
 
 // SummarizeJobRepository handles summarization job queue persistence.
@@ -91,4 +90,5 @@ type SummarizeJobRepository interface {
 	// for the given article, so HasRecentSuccessfulJob no longer blocks re-enqueue.
 	// This is the compensating transaction for quality-check deletion.
 	InvalidateCompletedJobSummary(ctx context.Context, articleID string) error
+	CountInvalidatedCompletedJobs(ctx context.Context, articleID string) (int, error)
 }

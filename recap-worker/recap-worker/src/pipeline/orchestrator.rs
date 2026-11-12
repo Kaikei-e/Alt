@@ -655,6 +655,7 @@ mod new_tests {
             ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
             ("RECAP_KNOWLEDGE_EMIT", Some("false")),
             ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("MTLS_ALLOWED_PEERS", Some("disabled")),
             ("RECAP_EVAL_LISTENER", Some("disabled")),
             ("RECAP_CARDS_JOB", Some("disabled")),
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
@@ -822,6 +823,7 @@ mod new_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn execute_resumes_from_evidence_at_dispatch_without_rerunning_fetch() {
         let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
@@ -836,6 +838,7 @@ mod new_tests {
                     ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
                     ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                     ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("MTLS_ALLOWED_PEERS", Some("disabled")),
                     ("RECAP_EVAL_LISTENER", Some("disabled")),
                     ("RECAP_CARDS_JOB", Some("disabled")),
                     ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
@@ -945,6 +948,7 @@ mod new_tests {
                     ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
                     ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                     ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("MTLS_ALLOWED_PEERS", Some("disabled")),
                     ("RECAP_EVAL_LISTENER", Some("disabled")),
                     ("RECAP_CARDS_JOB", Some("disabled")),
                     ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
@@ -1032,6 +1036,7 @@ mod new_tests {
                     ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
                     ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                     ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("MTLS_ALLOWED_PEERS", Some("disabled")),
                     ("RECAP_EVAL_LISTENER", Some("disabled")),
                     ("RECAP_CARDS_JOB", Some("disabled")),
                     ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),

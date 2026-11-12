@@ -11,8 +11,6 @@ import (
 var internalAuthEnvKeys = []string{
 	"APP_ENV",
 	"IMAGE_PROXY_ENABLED",
-	"BACKEND_TOKEN_SECRET",
-	"BACKEND_TOKEN_SECRET_FILE",
 	"INTERNAL_AUTH_SECRET",
 	"INTERNAL_AUTH_SECRET_FILE",
 }
@@ -39,18 +37,10 @@ func writeInternalAuthSecretFile(t *testing.T, content string) string {
 	return path
 }
 
-// TestNewConfig_InternalAuthSecret separates the /internal shared bearer from
-// the HS256 key that signs backend JWTs.
-//
-// cmd/datahub sends this value in a plaintext X-Internal-Auth header on every
-// auth-hub GetSystemUser call, so it reaches nginx access logs and OTel span
-// attributes. The signing key must never travel there, which makes the two
-// secrets two different values — and a config that sets them to the same
-// string exits non-zero rather than quietly restoring the old exposure.
-//
-// The _FILE guard follows BACKEND_TOKEN_SECRET_FILE's shape (CLAUDE.md rule 9):
-// a mounted-but-empty or unreadable secret is a misconfiguration, not a
-// disabled feature.
+// TestNewConfig_InternalAuthSecret pins CLAUDE.md rule 9 for the /internal
+// shared bearer cmd/datahub sends on auth-hub GetSystemUser calls: a
+// mounted-but-empty or unreadable secret is a misconfiguration, not a disabled
+// feature.
 func TestNewConfig_InternalAuthSecret(t *testing.T) {
 	emptySecretFile := writeInternalAuthSecretFile(t, "")
 	whitespaceSecretFile := writeInternalAuthSecretFile(t, "  \n\t ")
@@ -98,27 +88,8 @@ func TestNewConfig_InternalAuthSecret(t *testing.T) {
 			errMsg:  "resolved to an empty secret",
 		},
 		{
-			name: "reusing the JWT signing key is rejected",
-			envVars: map[string]string{
-				"BACKEND_TOKEN_SECRET": "one-secret-doing-two-jobs-is-the-bug",
-				"INTERNAL_AUTH_SECRET": "one-secret-doing-two-jobs-is-the-bug",
-			},
-			wantErr: true,
-			errMsg:  "INTERNAL_AUTH_SECRET must not equal BACKEND_TOKEN_SECRET",
-		},
-		{
-			name: "reusing the JWT signing key is rejected across env and mount",
-			envVars: map[string]string{
-				"BACKEND_TOKEN_SECRET":      "dev-internal-auth-secret-long-enough",
-				"INTERNAL_AUTH_SECRET_FILE": goodSecretFile,
-			},
-			wantErr: true,
-			errMsg:  "INTERNAL_AUTH_SECRET must not equal BACKEND_TOKEN_SECRET",
-		},
-		{
 			name: "non-empty secret file starts",
 			envVars: map[string]string{
-				"BACKEND_TOKEN_SECRET":      "env-supplied-backend-token-secret",
 				"INTERNAL_AUTH_SECRET_FILE": goodSecretFile,
 			},
 			wantSecret: "dev-internal-auth-secret-long-enough",
@@ -126,7 +97,6 @@ func TestNewConfig_InternalAuthSecret(t *testing.T) {
 		{
 			name: "INTERNAL_AUTH_SECRET env var starts",
 			envVars: map[string]string{
-				"BACKEND_TOKEN_SECRET": "env-supplied-backend-token-secret",
 				"INTERNAL_AUTH_SECRET": "env-supplied-internal-auth-secret",
 			},
 			wantSecret: "env-supplied-internal-auth-secret",
@@ -153,10 +123,6 @@ func TestNewConfig_InternalAuthSecret(t *testing.T) {
 			}
 			if cfg.Auth.InternalAuthSecret != tt.wantSecret {
 				t.Errorf("Auth.InternalAuthSecret = %q, want %q", cfg.Auth.InternalAuthSecret, tt.wantSecret)
-			}
-			if cfg.Auth.InternalAuthSecret == cfg.Auth.BackendTokenSecret {
-				t.Errorf("Auth.InternalAuthSecret must differ from Auth.BackendTokenSecret, both are %q",
-					cfg.Auth.InternalAuthSecret)
 			}
 		})
 	}

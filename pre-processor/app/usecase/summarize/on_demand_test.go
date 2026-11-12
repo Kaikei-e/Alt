@@ -84,9 +84,6 @@ func (s *stubAPIRepo) StreamSummarizeArticle(_ context.Context, _ *domain.Articl
 	return nil, nil
 }
 func (s *stubAPIRepo) CheckHealth(_ context.Context, _ string) error { return nil }
-func (s *stubAPIRepo) GetSystemUserID(_ context.Context) (string, error) {
-	return "system", nil
-}
 
 func TestOnDemandService_ResolveArticle(t *testing.T) {
 	t.Run("should resolve article from DB when content is empty", func(t *testing.T) {

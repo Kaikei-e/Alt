@@ -447,6 +447,43 @@ func TestSummarizeJobRepository_InvalidateCompletedJobSummary(t *testing.T) {
 	// - After invalidation, HasRecentSuccessfulJob returns false
 }
 
+func TestSummarizeJobRepository_CountInvalidatedCompletedJobs(t *testing.T) {
+	t.Run("should reject empty article ID", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		count, err := repo.CountInvalidatedCompletedJobs(context.Background(), "")
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "article ID cannot be empty")
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("should handle nil database gracefully", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		count, err := repo.CountInvalidatedCompletedJobs(context.Background(), "test-article-id")
+
+		assert.Error(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	const countInvalidatedQueryPattern = `SELECT COUNT\(\*\)\s+FROM summarize_job_queue\s+WHERE article_id = \$1\s+AND status = 'completed'\s+AND summary IS NULL`
+
+	t.Run("counts completed jobs whose summary was invalidated", func(t *testing.T) {
+		repo, mock := newMockJobRepo(t)
+
+		mock.ExpectQuery(countInvalidatedQueryPattern).
+			WithArgs("article-low-quality").
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(3))
+
+		count, err := repo.CountInvalidatedCompletedJobs(context.Background(), "article-low-quality")
+
+		require.NoError(t, err)
+		assert.Equal(t, 3, count)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestSummarizeJobRepository_CreateJob_Idempotent(t *testing.T) {
 	// Note: Integration tests should verify:
 	// - First insert for an article_id creates a new job

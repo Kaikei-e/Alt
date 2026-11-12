@@ -11,8 +11,15 @@ import (
 	"time"
 )
 
+const (
+	UserTokenVerifierModeIntrospection = "introspection"
+	UserTokenVerifierModeLocal         = "local"
+	UserTokenVerifierModeNone          = "none"
+)
+
 // Config holds the service configuration.
 type Config struct {
+	AppEnv      string
 	DatabaseURL string
 	ListenAddr  string
 	MetricsAddr string
@@ -41,6 +48,8 @@ type Config struct {
 	AuthPolicy *AuthPolicy
 	// UserJWTVerifier verifies caller delegation tokens (X-Alt-Backend-Token).
 	UserJWTVerifier TokenVerifier
+	// UserTokenVerifierMode records the active verifier selection (introspection, local, or none).
+	UserTokenVerifierMode string
 
 	// Snapshot / retention filesystem paths and build identity.
 	SnapshotDir   string
@@ -61,6 +70,11 @@ type Config struct {
 
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
+	appEnv, appEnvExplicit, err := loadAppEnv()
+	if err != nil {
+		return nil, err
+	}
+
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -93,7 +107,7 @@ func Load() (*Config, error) {
 		schemaVersion = "00032"
 	}
 
-	adminToken, adminAuthEnabled, err := loadAdminAuth()
+	adminToken, adminAuthEnabled, err := loadAdminAuth(appEnv, appEnvExplicit)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +129,10 @@ func Load() (*Config, error) {
 	var eventToken string
 	var eventAuthEnabled bool
 	if os.Getenv("EVENT_AUTH") == "disabled" {
+		if !allowDisabledAuth(appEnv, appEnvExplicit) {
+			return nil, fmt.Errorf("EVENT_AUTH=disabled requires APP_ENV to be explicitly set to development, test, or staging")
+		}
+		slog.Warn("EVENT_AUTH is disabled; event-log RPC listener is unauthenticated", "app_env", appEnv)
 		eventAuthEnabled = false
 	} else if authPolicy != nil {
 		// When policy is enabled, legacy shared-token escape is strictly disabled.
@@ -129,16 +147,36 @@ func Load() (*Config, error) {
 		eventAuthEnabled = enabled
 	}
 
+	verifyKeyFile := strings.TrimSpace(os.Getenv("BACKEND_TOKEN_VERIFY_KEY_FILE"))
+	introspectionURL := strings.TrimSpace(os.Getenv("USER_JWT_INTROSPECTION_URL"))
+
 	var userVerifier TokenVerifier
-	if authPolicy != nil || os.Getenv("USER_JWT_INTROSPECTION_URL") != "" || mTLSCertsConfigured() {
-		uv, err := LoadRemoteUserJWTVerifier("")
+	verifierMode := UserTokenVerifierModeNone
+	switch {
+	case verifyKeyFile != "" && introspectionURL != "":
+		return nil, fmt.Errorf("BACKEND_TOKEN_VERIFY_KEY_FILE and USER_JWT_INTROSPECTION_URL cannot both be set; configure only one")
+	case verifyKeyFile != "":
+		uv, err := LoadLocalUserJWTVerifier()
+		if err != nil {
+			return nil, fmt.Errorf("load local JWT verifier: %w", err)
+		}
+		userVerifier = uv
+		verifierMode = UserTokenVerifierModeLocal
+	case introspectionURL != "":
+		uv, err := LoadRemoteUserJWTVerifier(introspectionURL)
 		if err != nil {
 			return nil, fmt.Errorf("load remote JWT verifier: %w", err)
 		}
 		userVerifier = uv
+		verifierMode = UserTokenVerifierModeIntrospection
+	default:
+		if eventAuthEnabled && authPolicy.RequiresUserToken() {
+			return nil, fmt.Errorf("auth policy requires user-token verification: set BACKEND_TOKEN_VERIFY_KEY_FILE or USER_JWT_INTROSPECTION_URL")
+		}
 	}
 
 	return &Config{
+		AppEnv:                       appEnv,
 		DatabaseURL:                  dbURL,
 		ListenAddr:                   listenAddr,
 		MetricsAddr:                  metricsAddr,
@@ -148,6 +186,7 @@ func Load() (*Config, error) {
 		EventAuthEnabled:             eventAuthEnabled,
 		AuthPolicy:                   authPolicy,
 		UserJWTVerifier:              userVerifier,
+		UserTokenVerifierMode:        verifierMode,
 		SnapshotDir:                  snapshotDir,
 		ArchiveDir:                   archiveDir,
 		BuildRef:                     buildRef,
@@ -163,6 +202,24 @@ func Load() (*Config, error) {
 	}, nil
 }
 
+func loadAppEnv() (string, bool, error) {
+	raw := strings.TrimSpace(os.Getenv("APP_ENV"))
+	if raw == "" {
+		return "development", false, nil
+	}
+	normalized := strings.ToLower(raw)
+	switch normalized {
+	case "development", "test", "staging", "production":
+		return normalized, true, nil
+	default:
+		return "", false, fmt.Errorf("invalid APP_ENV %q: must be development, test, staging, or production", raw)
+	}
+}
+
+func allowDisabledAuth(appEnv string, appEnvExplicit bool) bool {
+	return appEnvExplicit && (appEnv == "development" || appEnv == "test" || appEnv == "staging")
+}
+
 // minAdminTokenLen keeps the Bearer token out of guessable range; the admin
 // surface exports partitions and writes snapshots to a host bind mount.
 const minAdminTokenLen = 24
@@ -174,8 +231,12 @@ const minEventTokenLen = 24
 // loadAdminAuth resolves the admin Bearer token from ADMIN_TOKEN_FILE (docker
 // secret) or ADMIN_TOKEN. Absence is a startup failure: the only way to run
 // without the gate is ADMIN_AUTH=disabled, spelled out by an operator.
-func loadAdminAuth() (string, bool, error) {
+func loadAdminAuth(appEnv string, appEnvExplicit bool) (string, bool, error) {
 	if os.Getenv("ADMIN_AUTH") == "disabled" {
+		if !allowDisabledAuth(appEnv, appEnvExplicit) {
+			return "", false, fmt.Errorf("ADMIN_AUTH=disabled requires APP_ENV to be explicitly set to development, test, or staging")
+		}
+		slog.Warn("ADMIN_AUTH is disabled; /admin/* endpoints are unauthenticated", "app_env", appEnv)
 		return "", false, nil
 	}
 
@@ -204,12 +265,8 @@ func loadAdminAuth() (string, bool, error) {
 
 // loadEventAuth resolves the event-log Bearer token from EVENT_TOKEN_FILE
 // (docker secret) or EVENT_TOKEN. Absence is a startup failure: the only way to run
-// without the gate is EVENT_AUTH=disabled, spelled out by an operator.
+// without the gate is EVENT_AUTH=disabled, spelled out by an operator in Load.
 func loadEventAuth() (string, bool, error) {
-	if os.Getenv("EVENT_AUTH") == "disabled" {
-		return "", false, nil
-	}
-
 	if path := os.Getenv("EVENT_TOKEN_FILE"); path != "" {
 		data, err := readSecretFile(path)
 		if err != nil {
@@ -260,21 +317,6 @@ func parseIntEnv(name string, fallback int) int {
 		return fallback
 	}
 	return i
-}
-
-func mTLSCertsConfigured() bool {
-	certPath := os.Getenv("MTLS_CERT_FILE")
-	if certPath == "" {
-		certPath = os.Getenv("CERT_PATH")
-	}
-	if certPath == "" {
-		certPath = os.Getenv("USER_JWT_CERT_FILE")
-	}
-	if certPath != "" {
-		return true
-	}
-	_, err := os.Stat("/certs/svc-cert.pem")
-	return err == nil
 }
 
 func readSecretFile(filePath string) (data []byte, err error) {

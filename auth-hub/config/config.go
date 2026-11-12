@@ -1,9 +1,14 @@
 package config
 
 import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"math"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -12,21 +17,23 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	KratosURL            string        // Kratos internal URL (Frontend API - port 4433)
-	KratosAdminURL       string        // Kratos Admin API URL (port 4434)
-	Port                 string        // Service port
-	CacheTTL             time.Duration // Session cache TTL
-	CSRFSecret           string        // CSRF secret for token generation
-	BackendTokenSecret   string        // Secret for signing backend JWT tokens
-	BackendTokenIssuer   string        // JWT issuer claim
-	BackendTokenAudience string        // JWT audience claim
-	BackendTokenTTL      time.Duration // JWT token TTL
-	InternalAuthSecret   string        // Shared bearer the /internal group compares X-Internal-Auth against
-	ValidateRateLimit    float64       // Validate endpoint: requests per second (default: 100/60 ≈ 1.67)
-	SessionRateLimit     float64       // Session endpoint: requests per second (default: 30/60 = 0.5)
-	CSRFRateLimit        float64       // CSRF endpoint: requests per second (default: 100)
-	IntrospectRateLimit  float64       // Introspect endpoint: requests per second (default: 1200/60 = 20.0)
-	IntrospectBurst      int           // Introspect endpoint: burst capacity (default: 100)
+	KratosURL              string             // Kratos internal URL (Frontend API - port 4433)
+	KratosAdminURL         string             // Kratos Admin API URL (port 4434)
+	Port                   string             // Service port
+	CacheTTL               time.Duration      // Session cache TTL
+	CSRFSecret             string             // CSRF secret for token generation
+	BackendTokenSigningKey ed25519.PrivateKey // Ed25519 private key for signing backend JWT tokens
+	BackendTokenIssuer     string             // JWT issuer claim
+	BackendTokenAudience   string             // JWT audience claim
+	BackendTokenTTL        time.Duration      // JWT token TTL
+	InternalAuthSecret     string             // Shared bearer the /internal group compares X-Internal-Auth against
+	ValidateRateLimit      float64            // Validate endpoint: requests per second (default: 100/60 ≈ 1.67)
+	SessionRateLimit       float64            // Session endpoint: requests per second (default: 30/60 = 0.5)
+	CSRFRateLimit          float64            // CSRF endpoint: requests per second (default: 100)
+	IntrospectRateLimit    float64            // Introspect endpoint: requests per second (default: 1200/60 = 20.0)
+	IntrospectBurst        int                // Introspect endpoint: burst capacity (default: 100)
+	TrustedProxyCIDRs      []netip.Prefix     // Explicit proxy CIDRs allowed to supply X-Forwarded-For
+	TrustedProxiesDisabled bool               // True when TRUSTED_PROXY_CIDRS is explicitly set to "none"
 }
 
 const (
@@ -44,7 +51,6 @@ func Load() (*Config, error) {
 		Port:                 getEnv("PORT", "8888"),
 		CacheTTL:             DefaultCacheTTL,
 		CSRFSecret:           getEnv("CSRF_SECRET", ""),
-		BackendTokenSecret:   getEnv("BACKEND_TOKEN_SECRET", ""),
 		BackendTokenIssuer:   getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
 		BackendTokenAudience: getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
 		BackendTokenTTL:      DefaultBackendTokenTTL,
@@ -142,12 +148,83 @@ func Load() (*Config, error) {
 		config.CacheTTL = config.BackendTokenTTL
 	}
 
+	if keyFile := strings.TrimSpace(os.Getenv("BACKEND_TOKEN_SIGNING_KEY_FILE")); keyFile != "" {
+		privKey, err := loadEd25519SigningKey(keyFile)
+		if err != nil {
+			return nil, err
+		}
+		config.BackendTokenSigningKey = privKey
+	}
+
+	if rawCIDRs := strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDRS")); rawCIDRs != "" {
+		cidrs, disabled, err := parseTrustedProxyCIDRs(rawCIDRs)
+		if err != nil {
+			return nil, err
+		}
+		config.TrustedProxyCIDRs = cidrs
+		config.TrustedProxiesDisabled = disabled
+	}
+
 	// Validate configuration
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
 
 	return config, nil
+}
+
+func loadEd25519SigningKey(path string) (ed25519.PrivateKey, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read BACKEND_TOKEN_SIGNING_KEY_FILE: %w", err)
+	}
+	trimmed := bytes.TrimSpace(raw)
+	block, rest := pem.Decode(trimmed)
+	if block == nil || len(bytes.TrimSpace(rest)) != 0 {
+		return nil, fmt.Errorf("BACKEND_TOKEN_SIGNING_KEY_FILE must contain a single PEM block")
+	}
+	header := "-----BEGIN " + block.Type + "-----"
+	if !bytes.HasPrefix(trimmed, []byte(header+"\n")) && !bytes.HasPrefix(trimmed, []byte(header+"\r\n")) {
+		return nil, fmt.Errorf("BACKEND_TOKEN_SIGNING_KEY_FILE must contain a single PEM block")
+	}
+	if block.Type != "PRIVATE KEY" {
+		return nil, fmt.Errorf("BACKEND_TOKEN_SIGNING_KEY_FILE must have PEM type PRIVATE KEY, got %q", block.Type)
+	}
+	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse BACKEND_TOKEN_SIGNING_KEY_FILE PKCS#8 key: %w", err)
+	}
+	edKey, ok := parsed.(ed25519.PrivateKey)
+	if !ok || len(edKey) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("BACKEND_TOKEN_SIGNING_KEY_FILE must contain an Ed25519 private key, got %T", parsed)
+	}
+	return edKey, nil
+}
+
+func parseTrustedProxyCIDRs(raw string) ([]netip.Prefix, bool, error) {
+	parts := strings.Split(raw, ",")
+	if len(parts) == 1 && strings.EqualFold(strings.TrimSpace(parts[0]), "none") {
+		return nil, true, nil
+	}
+	cidrs := make([]netip.Prefix, 0, len(parts))
+	for _, part := range parts {
+		s := strings.TrimSpace(part)
+		if s == "" {
+			return nil, false, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS: empty CIDR entry")
+		}
+		if strings.EqualFold(s, "none") {
+			return nil, false, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS: 'none' cannot be combined with CIDRs")
+		}
+		prefix, err := netip.ParsePrefix(s)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS entry %q: %w", s, err)
+		}
+		if prefix.Addr().Is4In6() {
+			return nil, false, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS entry %q: IPv4-mapped IPv6 prefixes are not supported; use IPv4 CIDR notation", s)
+		}
+		cidrs = append(cidrs, prefix.Masked())
+	}
+	return cidrs, false, nil
 }
 
 // Validate checks if the configuration is valid
@@ -182,29 +259,17 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("CSRF_SECRET must be at least 32 characters")
 	}
 
-	if c.BackendTokenSecret == "" {
-		return fmt.Errorf("BACKEND_TOKEN_SECRET is required")
-	}
-	if len(c.BackendTokenSecret) < 32 {
-		return fmt.Errorf("BACKEND_TOKEN_SECRET must be at least 32 characters")
+	if len(c.BackendTokenSigningKey) != ed25519.PrivateKeySize {
+		return fmt.Errorf("BACKEND_TOKEN_SIGNING_KEY_FILE is required and must contain a valid Ed25519 private key")
 	}
 
 	// INTERNAL_AUTH_SECRET is the shared bearer the /internal group compares
-	// X-Internal-Auth against. It is a separate secret from the HS256 signing
-	// key on purpose: alt-backend sends this value in a plaintext header on
-	// every GetSystemUser call, so it lands in nginx access logs and OTel span
-	// attributes. The signing key must never reach that wire, and reusing one
-	// value for both jobs is what put it there. No default and no fallback to
-	// BACKEND_TOKEN_SECRET — an unset value exits non-zero (CLAUDE.md rule 9).
+	// X-Internal-Auth against. No default — an unset value exits non-zero.
 	if c.InternalAuthSecret == "" {
 		return fmt.Errorf("INTERNAL_AUTH_SECRET is required")
 	}
 	if len(c.InternalAuthSecret) < 32 {
 		return fmt.Errorf("INTERNAL_AUTH_SECRET must be at least 32 characters")
-	}
-	if c.InternalAuthSecret == c.BackendTokenSecret {
-		return fmt.Errorf("INTERNAL_AUTH_SECRET must not equal BACKEND_TOKEN_SECRET: " +
-			"the JWT signing key would travel in plaintext X-Internal-Auth headers")
 	}
 
 	if c.IntrospectRateLimit < 0 {
@@ -212,6 +277,12 @@ func (c *Config) Validate() error {
 	}
 	if c.IntrospectBurst < 0 {
 		return fmt.Errorf("INTROSPECT_BURST cannot be negative")
+	}
+	if c.TrustedProxiesDisabled && len(c.TrustedProxyCIDRs) > 0 {
+		return fmt.Errorf("TRUSTED_PROXY_CIDRS cannot combine 'none' with CIDRs")
+	}
+	if !c.TrustedProxiesDisabled && len(c.TrustedProxyCIDRs) == 0 {
+		return fmt.Errorf("TRUSTED_PROXY_CIDRS is required")
 	}
 
 	return nil

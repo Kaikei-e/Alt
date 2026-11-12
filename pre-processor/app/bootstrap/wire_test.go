@@ -188,14 +188,10 @@ func writeThrowawayPEM(t *testing.T, path, blockType string, der []byte) {
 	require.NoError(t, pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}))
 }
 
-// TestBuildBackendHTTPClient_MTLSEnforced_HasTimeouts guards against the
-// minor finding from the DataHub client wiring fix: switching
-// repository.ExternalAPIRepository onto this shared client silently dropped
-// GetSystemUserID's client-side timeouts, and GetSystemUserID runs on a
-// JobRunner ticker loop with no per-run context deadline (see the doc
-// comment on the mTLS branch of buildBackendHTTPClient). A stalled peer
-// under the old zero-value Client/Transport would hang forever and
-// permanently wedge that job's ticker loop.
+// TestBuildBackendHTTPClient_MTLSEnforced_HasTimeouts guards against building
+// a zero-value Client/Transport for the mTLS backend client: JobRunner ticker
+// loops carry no per-run context deadline, so a stalled peer would hang
+// indefinitely without Client.Timeout and Transport phase timeouts.
 func TestBuildBackendHTTPClient_MTLSEnforced_HasTimeouts(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeThrowawayPKI(t, dir)
@@ -211,7 +207,7 @@ func TestBuildBackendHTTPClient_MTLSEnforced_HasTimeouts(t *testing.T) {
 	require.NotNil(t, client)
 
 	if client.Timeout <= 0 {
-		t.Error("mTLS-enforced backend client has no overall Client.Timeout: a stalled peer would hang GetSystemUserID's job-loop caller forever")
+		t.Error("mTLS-enforced backend client has no overall Client.Timeout: a stalled peer would hang job-loop callers forever")
 	}
 
 	transport, ok := client.Transport.(*http.Transport)
@@ -746,4 +742,108 @@ func TestBuildDependencies_FailsBeforeDBInitOnInvalidURLs(t *testing.T) {
 	assert.Nil(t, cleanup)
 	assert.Contains(t, err.Error(), "service URL validation failed (fail-closed)")
 	assert.Contains(t, err.Error(), "BACKEND_API_MTLS_URL is required and must be nonempty HTTPS")
+}
+
+func TestBuildDependencies_FailsBeforeDBInitOnInvalidArticleSyncConfig(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	for _, tc := range []struct {
+		name        string
+		syncSet     bool
+		syncVal     string
+		ownerSet    bool
+		ownerVal    string
+		errContains string
+	}{
+		{
+			name:        "INOREADER_SYNC unset",
+			syncSet:     false,
+			ownerSet:    true,
+			ownerVal:    "11111111-2222-4333-8444-555555555555",
+			errContains: "INOREADER_SYNC",
+		},
+		{
+			name:        "INOREADER_SYNC invalid",
+			syncSet:     true,
+			syncVal:     "auto",
+			ownerSet:    true,
+			ownerVal:    "11111111-2222-4333-8444-555555555555",
+			errContains: "INOREADER_SYNC",
+		},
+		{
+			name:        "enabled with unset owner",
+			syncSet:     true,
+			syncVal:     "enabled",
+			ownerSet:    false,
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "enabled with empty owner",
+			syncSet:     true,
+			syncVal:     "enabled",
+			ownerSet:    true,
+			ownerVal:    "",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "enabled with malformed UUID",
+			syncSet:     true,
+			syncVal:     "enabled",
+			ownerSet:    true,
+			ownerVal:    "not-a-uuid",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "enabled with nil UUID",
+			syncSet:     true,
+			syncVal:     "enabled",
+			ownerSet:    true,
+			ownerVal:    "00000000-0000-0000-0000-000000000000",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "disabled with malformed UUID",
+			syncSet:     true,
+			syncVal:     "disabled",
+			ownerSet:    true,
+			ownerVal:    "not-a-uuid",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "disabled with nil UUID",
+			syncSet:     true,
+			syncVal:     "disabled",
+			ownerSet:    true,
+			ownerVal:    "00000000-0000-0000-0000-000000000000",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("MTLS_ENFORCE", "false")
+			t.Setenv("BACKEND_API_URL", "http://alt-backend:9000")
+			t.Setenv("NEWS_CREATOR_HOST", "http://news-creator:11434")
+			t.Setenv("PP_DB_HOST", "203.0.113.1")
+			if tc.syncSet {
+				t.Setenv("INOREADER_SYNC", tc.syncVal)
+			} else {
+				t.Setenv("INOREADER_SYNC", "placeholder")
+				require.NoError(t, os.Unsetenv("INOREADER_SYNC"))
+			}
+			if tc.ownerSet {
+				t.Setenv("ARTICLE_SYNC_OWNER_USER_ID", tc.ownerVal)
+			} else {
+				t.Setenv("ARTICLE_SYNC_OWNER_USER_ID", "placeholder")
+				require.NoError(t, os.Unsetenv("ARTICLE_SYNC_OWNER_USER_ID"))
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			deps, cleanup, err := BuildDependencies(ctx, log, false)
+			require.Error(t, err)
+			assert.Nil(t, deps)
+			assert.Nil(t, cleanup)
+			assert.Contains(t, err.Error(), tc.errContains)
+		})
+	}
 }

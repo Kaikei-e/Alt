@@ -19,7 +19,7 @@
         "INBOUND_MTLS": "true",
         "MTLS_ALLOWED_PEERS": "recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator,pre-processor",
         "PEER_IDENTITY_STRICT": "true",
-        "BACKEND_TOKEN_SECRET": "SENTINEL_SECRET_JWT_KEY_995"
+        "INTERNAL_AUTH_SECRET": "SENTINEL_SECRET_JWT_KEY_995"
       }
     }
   }

@@ -9,6 +9,7 @@ include:
 x-pki-cert-volume-chown: &pki-cert-volume-chown
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c
@@ -66,6 +67,10 @@ services:
         max-file: "3"
 
   recap-db-migrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ../recap-migration-atlas
       dockerfile: docker/Dockerfile
@@ -94,6 +99,10 @@ services:
       - alt-network
 
   recap-worker:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     mem_limit: 2048m
@@ -114,6 +123,9 @@ services:
       - SUBWORKER_BASE_URL=https://recap-subworker:9443
       - ALT_BACKEND_BASE_URL=${ALT_BACKEND_BASE_URL}
       - MTLS_ENFORCE=${RECAP_WORKER_MTLS_ENFORCE:-true}
+      # `disabled` until every caller uses the mTLS listener: a peer list makes the
+      # plaintext listener answer 401 on all non-health routes, and callers still use it.
+      - MTLS_ALLOWED_PEERS=${RECAP_WORKER_MTLS_ALLOWED_PEERS:-disabled}
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
@@ -238,13 +250,13 @@ services:
         reservations:
           memory: 768M
     ports:
-      # Same router as the mTLS listener, minus the transport. /admin/jobs/retry
-      # and /admin/genre-learning require RECAP_ADMIN_TOKEN_FILE's bearer token;
-      # /v1/generate/* and /v1/morning/letters/regenerate still carry no auth
-      # extractor (their callers — alt-frontend-sv, alt-backend — are outside
-      # this change). Loopback bind.
+      # Same router as the mTLS listener, minus the transport. While
+      # MTLS_ALLOWED_PEERS=disabled every non-health route is open to any caller
+      # on the network; with a peer list they require an allow-listed client
+      # certificate on the mTLS listener. /admin/* also requires the admin bearer
+      # token (RECAP_ADMIN_TOKEN_FILE). Loopback bind.
       - "127.0.0.1:9005:9005"
-      # Dedicated evaluation listener: 127.0.0.1 limits the host only; the bearer token is the real gate.
+      # Dedicated evaluation listener (/v1/eval/*): 127.0.0.1 limits the host only; the admin bearer token is its only authentication.
       - "127.0.0.1:9006:9006"
     healthcheck:
       test: ["CMD", "/usr/local/bin/recap-worker", "healthcheck"]
@@ -469,6 +481,10 @@ services:
         max-file: "3"
 
   recap-evaluator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-evaluator:${IMAGE_TAG:-main}
     build:
       context: ../recap-evaluator
@@ -518,6 +534,7 @@ services:
       # Dockerfile user evaluator is 65533:65533.
       - image: alpine:3.21
         user: "0:0"
+        cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
         command:
           - sh
           - -c

@@ -11,6 +11,7 @@ import (
 
 	"alt/connect/v2/middleware"
 	"alt/domain"
+	"alt/orchestrator/port/article_tags_quota_port"
 )
 
 const (
@@ -120,6 +121,26 @@ func isUpstreamFetchWinner(err error) *domain.UpstreamFetchError {
 	var upstreamErr *domain.UpstreamFetchError
 	if errors.As(err, &upstreamErr) {
 		return upstreamErr
+	}
+	return nil
+}
+
+// mapTagGenerationQuotaError turns a refused tag generation into the same
+// resource_exhausted + Retry-After answer the other quota classes give, and a
+// missing user into unauthenticated. It returns nil for any other error.
+func mapTagGenerationQuotaError(err error) *connect.Error {
+	if errors.Is(err, domain.ErrInvalidUserContext) {
+		return connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	var budgetErr *article_tags_quota_port.BudgetExhaustedError
+	if errors.As(err, &budgetErr) {
+		cErr := connect.NewError(connect.CodeResourceExhausted, errors.New("rate limit exceeded"))
+		retry := int(math.Ceil(budgetErr.RetryAfter.Seconds()))
+		if retry < 1 {
+			retry = 1
+		}
+		cErr.Meta().Set("Retry-After", strconv.Itoa(retry))
+		return cErr
 	}
 	return nil
 }

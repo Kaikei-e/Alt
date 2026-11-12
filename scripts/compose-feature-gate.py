@@ -2,7 +2,10 @@
 """Measure whether this Compose build can host P2-13 (`pre_start`, create_host_path).
 
 `pre_start` shipped in Compose 5.4.0. This host's `docker compose version`
-is recorded, not guessed. `create_host_path: false` is probed with a
+is recorded, not guessed. The live `pre_start` probe is the shape the stack
+uses: a root hook that chowns a volume of a service that drops every
+capability, so the hook needs its own `cap_add` (rejected by the hook schema
+on 5.5.0). `create_host_path: false` is probed with a
 disposable project: missing file AND missing directory must be refused
 without creating an empty directory.
 
@@ -177,8 +180,15 @@ services:
   probe:
     image: alpine:3.21
     command: ["sleep", "4"]
+    cap_drop: [ALL]
+    volumes:
+      - probe_data:/data
     pre_start:
-      - command: ["echo", "pre_start-ran"]
+      - user: "0:0"
+        cap_add: [CHOWN]
+        command: ["chown", "65532:65532", "/data"]
+volumes:
+  probe_data: {}
 """,
         encoding="utf-8",
     )

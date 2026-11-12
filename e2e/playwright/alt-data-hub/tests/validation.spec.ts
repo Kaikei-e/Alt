@@ -1,4 +1,5 @@
 import { test, expect, probeArticleURL } from "../src/fixtures.js";
+import type { SuitePeer } from "../src/env.js";
 import { ConnectCode, callUnary, expectUnaryError } from "../../_shared/connect.js";
 import { expectJson } from "../../_shared/http.js";
 import { connectErrorSchema } from "../src/schemas.js";
@@ -39,47 +40,49 @@ const SVC = "/services.datahub.v1.DataHubService";
  * that runs *before* any database access, so the expected answer does not
  * depend on what is in the tables.
  */
-const REQUIRED_FIELD_CASES = [
+const REQUIRED_FIELD_CASES: ReadonlyArray<{
+	procedure: string;
+	peer: SuitePeer;
+	request: Record<string, unknown>;
+	field: string;
+}> = [
 	// handler.go
-	{ procedure: "GetArticleByID", request: {}, field: "article_id" },
-	{ procedure: "CheckArticleExists", request: { feedId: uuid() }, field: "url" },
-	{ procedure: "CheckArticleExists", request: { url: "https://stub.invalid/x" }, field: "feed_id" },
-	{ procedure: "CreateArticle", request: {}, field: "url" },
-	{ procedure: "SaveArticleSummary", request: {}, field: "article_id" },
-	{ procedure: "GetFeedID", request: {}, field: "feed_url" },
-	{ procedure: "GetEmptyFeedID", request: {}, field: "feed_url" },
-	{ procedure: "CheckArticleSummaryExists", request: {}, field: "article_id" },
-	{ procedure: "FetchArticlesByTag", request: {}, field: "tag_name" },
-	{ procedure: "ListRecapArticles", request: {}, field: "from" },
-	{ procedure: "ListRecapArticles", request: { from: "2026-01-01T00:00:00Z" }, field: "to" },
+	{ procedure: "GetArticleByID", peer: "search-indexer", request: {}, field: "article_id" },
+	{ procedure: "CheckArticleExists", peer: "pre-processor", request: { feedId: uuid() }, field: "url" },
+	{ procedure: "CheckArticleExists", peer: "pre-processor", request: { url: "https://stub.invalid/x" }, field: "feed_id" },
+	{ procedure: "CreateArticle", peer: "pre-processor", request: {}, field: "url" },
+	{ procedure: "SaveArticleSummary", peer: "alt-backend", request: {}, field: "article_id" },
+	{ procedure: "GetFeedID", peer: "alt-backend", request: {}, field: "feed_url" },
+	{ procedure: "GetEmptyFeedID", peer: "pre-processor", request: {}, field: "feed_url" },
+	{ procedure: "CheckArticleSummaryExists", peer: "pre-processor", request: {}, field: "article_id" },
+	{ procedure: "FetchArticlesByTag", peer: "rag-orchestrator", request: {}, field: "tag_name" },
+	{ procedure: "ListRecapArticles", peer: "recap-worker", request: {}, field: "from" },
+	{ procedure: "ListRecapArticles", peer: "recap-worker", request: { from: "2026-01-01T00:00:00Z" }, field: "to" },
 	// wave3_handler.go
-	{ procedure: "GetArticleHead", request: {}, field: "article_id" },
-	{ procedure: "GetImageProxyCache", request: {}, field: "url_hash" },
-	{ procedure: "IsDomainDeclined", request: {}, field: "user_id/domain" },
+	{ procedure: "GetArticleHead", peer: "alt-backend", request: {}, field: "article_id" },
+	{ procedure: "GetImageProxyCache", peer: "alt-backend", request: {}, field: "url_hash" },
+	{ procedure: "IsDomainDeclined", peer: "alt-backend", request: {}, field: "user_id/domain" },
 	// wave3_batch2_handler.go
-	{ procedure: "ArchiveArticle", request: {}, field: "url" },
-	{ procedure: "GetArticleByURL", request: {}, field: "url" },
-	{ procedure: "ListArticlesCursor", request: {}, field: "user_id" },
+	{ procedure: "ArchiveArticle", peer: "alt-backend", request: {}, field: "url" },
+	{ procedure: "GetArticleByURL", peer: "alt-backend", request: {}, field: "url" },
+	{ procedure: "ListArticlesCursor", peer: "alt-backend", request: {}, field: "user_id" },
 	// wave3_batch3_handler.go
-	{ procedure: "RecordFeedLinkFailure", request: {}, field: "feed_url" },
-	{ procedure: "ListFeedsCursor", request: { userId: uuid() }, field: "scope" },
+	{ procedure: "RecordFeedLinkFailure", peer: "alt-harvester", request: {}, field: "feed_url" },
+	{ procedure: "ListFeedsCursor", peer: "alt-backend", request: { userId: uuid() }, field: "scope" },
 	// wave3_batch4_handler.go
-	{ procedure: "GetReadFeedIDs", request: {}, field: "user_id" },
-	{ procedure: "GetArticleTags", request: {}, field: "article_id" },
-	{ procedure: "SearchTagsByPrefix", request: {}, field: "prefix" },
-	// wave3_batch5_handler.go
-	{ procedure: "GetLatestSummaryVersion", request: {}, field: "article_id" },
-	{ procedure: "GetTagSetVersionByID", request: {}, field: "tag_set_version_id" },
+	{ procedure: "GetReadFeedIDs", peer: "alt-backend", request: {}, field: "user_id" },
+	{ procedure: "GetArticleTags", peer: "alt-backend", request: {}, field: "article_id" },
+	{ procedure: "SearchTagsByPrefix", peer: "alt-backend", request: {}, field: "prefix" },
 	// wave3_batch6_handler.go
-	{ procedure: "ListArticlesByTagID", request: {}, field: "tag_id" },
-	{ procedure: "GetArticleTitleAndLink", request: {}, field: "article_id" },
-] as const;
+	{ procedure: "ListArticlesByTagID", peer: "alt-backend", request: {}, field: "tag_id" },
+	{ procedure: "GetArticleTitleAndLink", peer: "alt-backend", request: {}, field: "article_id" },
+];
 
 test.describe("required-field validation", () => {
-	for (const { procedure, request, field } of REQUIRED_FIELD_CASES) {
-		test(`${procedure} rejects a missing ${field}`, { tag: "@contract" }, async ({ dataHub }) => {
+	for (const { procedure, peer, request, field } of REQUIRED_FIELD_CASES) {
+		test(`${procedure} rejects a missing ${field}`, { tag: "@contract" }, async ({ peers }) => {
 			await expectUnaryError(
-				dataHub,
+				peers[peer],
 				`${SVC}/${procedure}`,
 				request,
 				ConnectCode.invalidArgument,
@@ -89,7 +92,9 @@ test.describe("required-field validation", () => {
 });
 
 test.describe("malformed-value validation", () => {
-	test("ListRecentArticles rejects a non-positive within_hours", { tag: "@contract" }, async ({ dataHub }) => {
+	test("ListRecentArticles rejects a non-positive within_hours", { tag: "@contract" }, async ({
+		peers,
+	}) => {
 		// The one negative the Hurl suite had. It is not redundant with the
 		// required-field cases above: `within_hours` is *optional*, and the
 		// handler reproduces the retired REST route's rejection rather than
@@ -97,30 +102,30 @@ test.describe("malformed-value validation", () => {
 		// (fetch_recent_articles_usecase.go). Without this assertion a caller
 		// asking for an impossible window would get a quietly different one.
 		await expectUnaryError(
-			dataHub,
+			peers["rag-orchestrator"],
 			`${SVC}/ListRecentArticles`,
 			{ withinHours: 0 },
 			ConnectCode.invalidArgument,
 		);
 	});
 
-	test("ListRecentArticles rejects a negative limit", { tag: "@contract" }, async ({ dataHub }) => {
+	test("ListRecentArticles rejects a negative limit", { tag: "@contract" }, async ({ peers }) => {
 		// Same guard, other field, same reason: the usecase would clamp a
 		// negative limit to 100 without saying so.
 		await expectUnaryError(
-			dataHub,
+			peers["rag-orchestrator"],
 			`${SVC}/ListRecentArticles`,
 			{ limit: -1 },
 			ConnectCode.invalidArgument,
 		);
 	});
 
-	test("ListRecapArticles rejects a non-RFC3339 range", { tag: "@contract" }, async ({ dataHub }) => {
+	test("ListRecapArticles rejects a non-RFC3339 range", { tag: "@contract" }, async ({ peers }) => {
 		// `from`/`to` are strings on the wire, parsed with `time.Parse(RFC3339)`.
 		// A parse failure that came back as `internal` would tell recap-worker
 		// "the provider is broken" when it means "your request is".
 		await expectUnaryError(
-			dataHub,
+			peers["recap-worker"],
 			`${SVC}/ListRecapArticles`,
 			{ from: "yesterday", to: "today" },
 			ConnectCode.invalidArgument,
@@ -128,7 +133,7 @@ test.describe("malformed-value validation", () => {
 	});
 
 	test("ListArticlesCursor rejects a user_id that is not a UUID", { tag: "@contract" }, async ({
-		dataHub,
+		peers,
 	}) => {
 		// `requiredUUID` (wave3_batch2_handler.go) separates "absent" from
 		// "present but unparseable" and answers invalid_argument for both. The
@@ -136,7 +141,7 @@ test.describe("malformed-value validation", () => {
 		// *email* instead of its id must not reach a query that would then fail
 		// as a 500 and look like a database fault.
 		await expectUnaryError(
-			dataHub,
+			peers["alt-backend"],
 			`${SVC}/ListArticlesCursor`,
 			{ userId: "not-a-uuid" },
 			ConnectCode.invalidArgument,
@@ -146,7 +151,7 @@ test.describe("malformed-value validation", () => {
 
 test.describe("not_found is a business answer, not a missing mount", () => {
 	test("GetFeedID answers a Connect not_found envelope for an unknown feed", { tag: "@contract" }, async ({
-		dataHub,
+		peers,
 		token,
 	}) => {
 		// This is the assertion that only exists because 404 is overloaded on
@@ -159,7 +164,7 @@ test.describe("not_found is a business answer, not a missing mount", () => {
 		// deleted from the proto" and "that feed does not exist" are the same
 		// observation. The URL carries this test's token, so no sibling worker
 		// can have registered it.
-		const response = await callUnary(dataHub, `${SVC}/GetFeedID`, {
+		const response = await callUnary(peers["alt-backend"], `${SVC}/GetFeedID`, {
 			feedUrl: probeArticleURL(token),
 		});
 		expect(response.status()).toBe(404);
@@ -172,11 +177,13 @@ test.describe("not_found is a business answer, not a missing mount", () => {
 	});
 
 	test("GetArticleByID answers a Connect not_found envelope for an unknown id", { tag: "@contract" }, async ({
-		dataHub,
+		peers,
 	}) => {
 		// Same discriminator on the read path search-indexer uses. A freshly
 		// minted v4 UUID cannot collide with a seeded row or a sibling worker's.
-		const response = await callUnary(dataHub, `${SVC}/GetArticleByID`, { articleId: uuid() });
+		const response = await callUnary(peers["search-indexer"], `${SVC}/GetArticleByID`, {
+			articleId: uuid(),
+		});
 		expect(response.status()).toBe(404);
 		const body = await expectJson(response, connectErrorSchema);
 		expect(body.code).toBe(ConnectCode.notFound);

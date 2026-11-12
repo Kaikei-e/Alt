@@ -142,7 +142,7 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 
 			for i, req := range tt.requests {
 				httpReq := httptest.NewRequest(req.method, req.path, nil)
-				httpReq.Header.Set("X-Real-IP", req.ip)
+				httpReq.RemoteAddr = req.ip + ":12345"
 				rec := httptest.NewRecorder()
 				c := e.NewContext(httpReq, rec)
 
@@ -198,7 +198,7 @@ func TestDOSProtectionMiddleware_CircuitBreaker(t *testing.T) {
 	// First 5 requests should return 500 (service errors)
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
-		req.Header.Set("X-Real-IP", "192.168.1.1")
+		req.RemoteAddr = "192.168.1.1:12345"
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -209,7 +209,7 @@ func TestDOSProtectionMiddleware_CircuitBreaker(t *testing.T) {
 
 	// Next request should trigger circuit breaker (503)
 	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
-	req.Header.Set("X-Real-IP", "192.168.1.1")
+	req.RemoteAddr = "192.168.1.1:12345"
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -260,7 +260,7 @@ func TestDOSProtectionMiddleware_CircuitBreaker_IgnoresClientErrors(t *testing.T
 	clientErrors := []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusBadRequest}
 	for i, expectedCode := range clientErrors {
 		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
-		req.Header.Set("X-Real-IP", "192.168.1.1")
+		req.RemoteAddr = "192.168.1.1:12345"
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -273,7 +273,7 @@ func TestDOSProtectionMiddleware_CircuitBreaker_IgnoresClientErrors(t *testing.T
 
 	// 5th request should succeed (circuit NOT tripped by 4xx errors)
 	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
-	req.Header.Set("X-Real-IP", "192.168.1.1")
+	req.RemoteAddr = "192.168.1.1:12345"
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -309,7 +309,7 @@ func TestDOSProtectionMiddleware_ConcurrentRequests(t *testing.T) {
 		go func() {
 			for j := 0; j < requestsPerGoroutine; j++ {
 				req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
-				req.Header.Set("X-Real-IP", "192.168.1.1")
+				req.RemoteAddr = "192.168.1.1:12345"
 				rec := httptest.NewRecorder()
 				c := e.NewContext(req, rec)
 
@@ -576,33 +576,87 @@ func TestCheckRateLimit_StampsLastSeen(t *testing.T) {
 	assert.False(t, limiter.lastSeen.Before(before), "lastSeen must be stamped on every request, not just on block")
 }
 
-// M-007: getClientIP must NOT trust X-Forwarded-For / X-Real-IP coming from
-// non-trusted hops. With trustProxies=false, the function falls back to the
-// connection RemoteAddr. With trustProxies=true (set by edge proxy config),
-// the leftmost non-trusted hop in XFF is used.
-func TestGetClientIPWithTrust_UntrustedHeadersIgnored(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.RemoteAddr = "10.0.0.1:12345"
-	req.Header.Set("X-Forwarded-For", "1.2.3.4")
-	req.Header.Set("X-Real-IP", "5.6.7.8")
-	res := httptest.NewRecorder()
-	c := e.NewContext(req, res)
+func TestDOSProtectionMiddleware_DirectPeerOutsideTrustedListIgnoresHeaders(t *testing.T) {
+	cfg := DOSProtectionConfig{
+		Enabled:       true,
+		RateLimit:     2,
+		BurstLimit:    2,
+		WindowSize:    time.Minute,
+		BlockDuration: 5 * time.Minute,
+	}
+	mw := DOSProtectionMiddleware(context.Background(), cfg)
+	handler := mw(func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
+	})
 
-	require.Equal(t, "10.0.0.1", getClientIPWithTrust(c, false),
-		"untrusted forwarders must be ignored — the connection peer is the source of truth")
+	e := echo.New()
+	spoofedHeaders := []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}
+	wantCodes := []int{http.StatusOK, http.StatusOK, http.StatusTooManyRequests}
+	for i, spoof := range spoofedHeaders {
+		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+		req.RemoteAddr = "198.51.100.25:40000"
+		req.Header.Set("X-Forwarded-For", spoof)
+		req.Header.Set("X-Real-IP", spoof)
+		rec := httptest.NewRecorder()
+		err := handler(e.NewContext(req, rec))
+		if wantCodes[i] == http.StatusTooManyRequests {
+			require.Error(t, err)
+			assert.Equal(t, http.StatusTooManyRequests, err.(*echo.HTTPError).Code)
+		} else {
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusOK, rec.Code)
+		}
+	}
 }
 
-func TestGetClientIPWithTrust_TrustedHeadersUsed(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.RemoteAddr = "10.0.0.1:12345" // edge proxy IP
-	req.Header.Set("X-Forwarded-For", "1.2.3.4, 10.0.0.1")
-	res := httptest.NewRecorder()
-	c := e.NewContext(req, res)
+func TestDOSProtectionMiddleware_CircuitBreakerDoesNotBlockOtherClients(t *testing.T) {
+	cfg := DOSProtectionConfig{
+		Enabled:       true,
+		RateLimit:     50,
+		BurstLimit:    50,
+		WindowSize:    time.Minute,
+		BlockDuration: 5 * time.Minute,
+		CircuitBreaker: CircuitBreakerConfig{
+			Enabled:          true,
+			FailureThreshold: 3,
+			TimeoutDuration:  time.Second,
+			RecoveryTimeout:  30 * time.Second,
+		},
+	}
 
-	require.Equal(t, "1.2.3.4", getClientIPWithTrust(c, true),
-		"when proxies are trusted, leftmost XFF entry identifies the original client")
+	mw := DOSProtectionMiddleware(context.Background(), cfg)
+	handler := mw(func(c echo.Context) error {
+		if c.Request().Header.Get("X-Fail") == "1" {
+			return echo.NewHTTPError(http.StatusInternalServerError, "upstream failed")
+		}
+		return c.String(http.StatusOK, "OK")
+	})
+
+	e := echo.New()
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+		req.RemoteAddr = "192.168.1.1:12345"
+		req.Header.Set("X-Fail", "1")
+		rec := httptest.NewRecorder()
+		err := handler(e.NewContext(req, rec))
+		require.Error(t, err)
+		assert.Equal(t, http.StatusInternalServerError, err.(*echo.HTTPError).Code)
+	}
+
+	blockedReq := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	blockedReq.RemoteAddr = "192.168.1.1:12345"
+	blockedRec := httptest.NewRecorder()
+	err := handler(e.NewContext(blockedReq, blockedRec))
+	require.Error(t, err)
+	assert.Equal(t, http.StatusServiceUnavailable, err.(*echo.HTTPError).Code)
+
+	otherClientReq := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	otherClientReq.RemoteAddr = "192.168.1.2:54321"
+	otherClientRec := httptest.NewRecorder()
+	err = handler(e.NewContext(otherClientReq, otherClientRec))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, otherClientRec.Code)
 }
 
 // H-004: Circuit breaker state transitions must be race-free under concurrent

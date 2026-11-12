@@ -9,7 +9,6 @@
  * - Ordered Lists (1. item)
  * - Code Blocks (```)
  * - Inline Code (`)
- * - Links ([text](url))
  * - Blockquotes (> text)
  * - Horizontal Rules (---, ***, ___)
  * - Paragraphs
@@ -230,14 +229,10 @@ export function parseMarkdown(text: string): string {
 			"hr",
 			"strong",
 			"em",
-			"a",
 			"br",
 		],
-		ALLOWED_ATTR: ["href", "title", "class", "target", "rel"],
-		ADD_ATTR: ["target", "rel", "class"],
+		ALLOWED_ATTR: ["class"],
 		ALLOW_DATA_ATTR: false,
-		ALLOWED_URI_REGEXP:
-			/^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
 	});
 }
 
@@ -253,16 +248,8 @@ function parseInline(text: string): string {
 		/`([^`]+)`/g,
 		'<code class="bg-muted px-1 rounded font-mono text-sm">$1</code>',
 	);
-	// Links — only allow http/https and mailto URLs to block javascript:/data: XSS vectors
-	// Links get rel="noopener noreferrer nofollow ugc", target="_blank", and class="external-link" on external URLs
-	text = text.replace(
-		/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^)]*)\)/g,
-		(_match, label, url) => {
-			const isExternal = /^https?:\/\//i.test(url);
-			const extClass = isExternal ? ' class="external-link"' : "";
-			return `<a href="${url}" target="_blank" rel="noopener noreferrer nofollow ugc"${extClass}>${label}</a>`;
-		},
-	);
+	// Model output is derived from third-party content: link syntax keeps only its label
+	text = text.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
 	return text;
 }
 

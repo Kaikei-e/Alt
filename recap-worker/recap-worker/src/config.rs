@@ -60,6 +60,23 @@ pub enum ClassificationEvalConfig {
     },
 }
 
+/// Configuration for inbound peer-identity allow-list enforcement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PeerIdentityConfig {
+    Disabled,
+    Enabled { allowed_peers: Vec<String> },
+}
+
+impl PeerIdentityConfig {
+    #[must_use]
+    pub fn allowed_peers(&self) -> Option<&[String]> {
+        match self {
+            PeerIdentityConfig::Disabled => None,
+            PeerIdentityConfig::Enabled { allowed_peers } => Some(allowed_peers.as_slice()),
+        }
+    }
+}
+
 /// Configuration for the evaluation HTTP listener.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvalListenerConfig {
@@ -198,6 +215,7 @@ pub struct Config {
     knowledge_emit: KnowledgeEmit,
     max_degraded_genre_ratio: f64,
     admin_auth: AdminAuth,
+    peer_identity: PeerIdentityConfig,
     eval_listener: EvalListenerConfig,
     cards_job: CardsJobConfig,
     cards_user_id: Option<uuid::Uuid>,
@@ -433,6 +451,8 @@ impl Config {
         // succeed with a handful of stored genres (CLAUDE.md rule 8).
         let max_degraded_genre_ratio = parse_f64("RECAP_MAX_DEGRADED_GENRE_RATIO", 0.5)?;
         let admin_auth = load_admin_auth()?;
+        let peer_identity = load_peer_identity_from_env()?;
+        validate_peer_identity_mtls_enforcement(&peer_identity)?;
         let eval_listener = load_eval_listener(&admin_auth)?;
         let cards_user_id = load_cards_user_id()?;
         let cards_job = load_cards_job(cards_user_id)?;
@@ -463,6 +483,7 @@ impl Config {
             knowledge_emit,
             max_degraded_genre_ratio,
             admin_auth,
+            peer_identity,
             eval_listener,
             cards_job,
             cards_user_id,
@@ -496,6 +517,7 @@ impl Config {
         knowledge_emit: KnowledgeEmit,
         max_degraded_genre_ratio: f64,
         admin_auth: AdminAuth,
+        peer_identity: PeerIdentityConfig,
         eval_listener: EvalListenerConfig,
         cards_job: CardsJobConfig,
         cards_user_id: Option<uuid::Uuid>,
@@ -570,6 +592,7 @@ impl Config {
             knowledge_emit,
             max_degraded_genre_ratio,
             admin_auth,
+            peer_identity,
             eval_listener,
             cards_job,
             cards_user_id,
@@ -992,6 +1015,11 @@ impl Config {
         self.admin_auth.token()
     }
 
+    #[must_use]
+    pub fn peer_identity(&self) -> &PeerIdentityConfig {
+        &self.peer_identity
+    }
+
     /// Evaluation HTTP listener configuration.
     #[must_use]
     pub fn eval_listener(&self) -> &EvalListenerConfig {
@@ -1080,7 +1108,7 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
 }
 
 fn validate_mtls_url_schemes(external: &ExternalServiceConfig) -> Result<(), ConfigError> {
-    if std::env::var("MTLS_ENFORCE").unwrap_or_default() != "true" {
+    if !crate::tls::enforced() {
         return Ok(());
     }
     for (name, url) in [
@@ -1096,6 +1124,18 @@ fn validate_mtls_url_schemes(external: &ExternalServiceConfig) -> Result<(), Con
                 format!("MTLS_ENFORCE=true requires https:// scheme, got: {url}"),
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_peer_identity_mtls_enforcement(
+    peer_identity: &PeerIdentityConfig,
+) -> Result<(), ConfigError> {
+    if matches!(peer_identity, PeerIdentityConfig::Enabled { .. }) && !crate::tls::enforced() {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "enabled peer allow-list requires MTLS_ENFORCE=true (or set MTLS_ALLOWED_PEERS=disabled)",
+        ));
     }
     Ok(())
 }
@@ -1455,6 +1495,53 @@ fn load_admin_auth() -> Result<AdminAuth, ConfigError> {
     let trimmed = read_admin_token()?;
     tracing::info!("recap_admin_auth_enabled");
     Ok(AdminAuth::Enabled { token: trimmed })
+}
+
+pub(crate) fn load_peer_identity_from_env() -> Result<PeerIdentityConfig, ConfigError> {
+    let raw =
+        env::var("MTLS_ALLOWED_PEERS").map_err(|_| ConfigError::Missing("MTLS_ALLOWED_PEERS"))?;
+    let trimmed = raw.trim();
+    if trimmed.eq_ignore_ascii_case("disabled") {
+        return Ok(PeerIdentityConfig::Disabled);
+    }
+
+    let allowed_peers: Vec<String> = trimmed
+        .split(',')
+        .map(|entry| entry.trim().to_string())
+        .filter(|entry| !entry.is_empty())
+        .collect();
+    if allowed_peers.is_empty() {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "must list at least one peer CN or be 'disabled'",
+        ));
+    }
+    if allowed_peers
+        .iter()
+        .any(|peer| peer.eq_ignore_ascii_case("disabled"))
+    {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "'disabled' cannot be combined with peer names",
+        ));
+    }
+    if allowed_peers
+        .iter()
+        .any(|peer| peer.eq_ignore_ascii_case("localhost"))
+    {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "'localhost' is not permitted in MTLS_ALLOWED_PEERS",
+        ));
+    }
+    if allowed_peers.iter().any(|peer| peer.contains('*')) {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "wildcards are not supported; list exact peer names",
+        ));
+    }
+
+    Ok(PeerIdentityConfig::Enabled { allowed_peers })
 }
 
 /// Resolve the eval HTTP listener config from env.
@@ -1895,6 +1982,7 @@ mod tests {
             // case override this entry.
             ("RECAP_ADMIN_AUTH", Some("disabled")),
             ("RECAP_ADMIN_TOKEN_FILE", None),
+            ("MTLS_ALLOWED_PEERS", Some("disabled")),
             // Explicit disabled, not a reset: RECAP_EVAL_LISTENER is required
             // to be strictly "enabled" or "disabled", so every fixture must state its intent.
             ("RECAP_EVAL_LISTENER", Some("disabled")),
@@ -3552,5 +3640,237 @@ mod tests {
                 }
             );
         });
+    }
+
+    #[test]
+    fn from_env_rejects_unset_mtls_allowed_peers() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut vars = required_base();
+        vars.push(("MTLS_ALLOWED_PEERS", None));
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                matches!(res, Err(ConfigError::Missing("MTLS_ALLOWED_PEERS"))),
+                "unset MTLS_ALLOWED_PEERS must fail startup, got: {res:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_rejects_empty_or_mixed_disabled_mtls_allowed_peers() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for bad in [
+            "",
+            "   ",
+            " , , ",
+            "disabled,alt-backend",
+            "alt-backend,disabled",
+        ] {
+            let mut vars = required_base();
+            vars.push(("MTLS_ALLOWED_PEERS", Some(bad)));
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(
+                        res,
+                        Err(ConfigError::Invalid {
+                            name: "MTLS_ALLOWED_PEERS",
+                            ..
+                        })
+                    ),
+                    "MTLS_ALLOWED_PEERS={bad:?} must fail startup, got: {res:?}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_accepts_explicit_disabled_and_csv_mtls_allowed_peers() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        for enforce in [None, Some("false")] {
+            let mut disabled_vars = required_base();
+            disabled_vars.extend([
+                ("MTLS_ENFORCE", enforce),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
+            ]);
+            temp_env::with_vars(disabled_vars, || {
+                let cfg =
+                    Config::from_env().expect("explicit MTLS_ALLOWED_PEERS=disabled must load");
+                assert_eq!(cfg.peer_identity(), &PeerIdentityConfig::Disabled);
+            });
+        }
+
+        let mut disabled_mtls_vars = required_base();
+        disabled_mtls_vars.extend([
+            ("MTLS_ENFORCE", Some("true")),
+            ("NEWS_CREATOR_BASE_URL", Some("https://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("https://localhost:8002/")),
+            ("MTLS_ALLOWED_PEERS", Some("Disabled")),
+        ]);
+        temp_env::with_vars(disabled_mtls_vars, || {
+            let cfg = Config::from_env().expect(
+                "case-insensitive MTLS_ALLOWED_PEERS=Disabled with MTLS_ENFORCE=true must load",
+            );
+            assert_eq!(cfg.peer_identity(), &PeerIdentityConfig::Disabled);
+        });
+
+        let mut enabled_vars = required_base();
+        enabled_vars.extend([
+            ("MTLS_ENFORCE", Some("true")),
+            ("NEWS_CREATOR_BASE_URL", Some("https://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("https://localhost:8002/")),
+            (
+                "MTLS_ALLOWED_PEERS",
+                Some(" alt-backend , alt-frontend-sv "),
+            ),
+        ]);
+        temp_env::with_vars(enabled_vars, || {
+            let cfg = Config::from_env().expect("non-empty MTLS_ALLOWED_PEERS CSV must load");
+            assert_eq!(
+                cfg.peer_identity(),
+                &PeerIdentityConfig::Enabled {
+                    allowed_peers: vec!["alt-backend".to_string(), "alt-frontend-sv".to_string()],
+                }
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_rejects_enabled_peer_list_when_mtls_not_enforced() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        for enforce in [None, Some("false"), Some("0")] {
+            let mut vars = required_base();
+            vars.extend([
+                ("MTLS_ENFORCE", enforce),
+                ("MTLS_ALLOWED_PEERS", Some("alt-backend,alt-frontend-sv")),
+            ]);
+            temp_env::with_vars(vars, || {
+                let err = Config::from_env()
+                    .expect_err("enabled MTLS_ALLOWED_PEERS without MTLS_ENFORCE=true must fail");
+                let msg = err.to_string();
+                assert!(
+                    msg.contains("MTLS_ALLOWED_PEERS") && msg.contains("MTLS_ENFORCE"),
+                    "error must name both MTLS_ALLOWED_PEERS and MTLS_ENFORCE, got: {msg}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_rejects_localhost_in_mtls_allowed_peers() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        for bad in [
+            "localhost",
+            "alt-backend,localhost",
+            "LOCALHOST , search-indexer",
+        ] {
+            let mut vars = required_base();
+            vars.extend([
+                ("MTLS_ENFORCE", Some("true")),
+                ("NEWS_CREATOR_BASE_URL", Some("https://localhost:8001/")),
+                ("SUBWORKER_BASE_URL", Some("https://localhost:8002/")),
+                ("MTLS_ALLOWED_PEERS", Some(bad)),
+            ]);
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(
+                        res,
+                        Err(ConfigError::Invalid {
+                            name: "MTLS_ALLOWED_PEERS",
+                            ..
+                        })
+                    ),
+                    "MTLS_ALLOWED_PEERS={bad:?} must be rejected at parse time, got: {res:?}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_rejects_wildcard_entries_in_mtls_allowed_peers() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        for bad in ["*", "alt-backend,*.internal", "alt-*"] {
+            let mut vars = required_base();
+            vars.extend([
+                ("MTLS_ENFORCE", Some("true")),
+                ("NEWS_CREATOR_BASE_URL", Some("https://localhost:8001/")),
+                ("SUBWORKER_BASE_URL", Some("https://localhost:8002/")),
+                ("MTLS_ALLOWED_PEERS", Some(bad)),
+            ]);
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(
+                        res,
+                        Err(ConfigError::Invalid {
+                            name: "MTLS_ALLOWED_PEERS",
+                            ..
+                        })
+                    ),
+                    "MTLS_ALLOWED_PEERS={bad:?} must be rejected at parse time, got: {res:?}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn load_peer_identity_does_not_log_during_config_parse() {
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let buf = BufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            temp_env::with_var("MTLS_ALLOWED_PEERS", Some("disabled"), || {
+                let _ = load_peer_identity_from_env().expect("disabled parses");
+            });
+            temp_env::with_var("MTLS_ALLOWED_PEERS", Some("alt-backend"), || {
+                let _ = load_peer_identity_from_env().expect("csv parses");
+            });
+        });
+
+        let captured = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+        assert!(
+            !captured.contains("peer_identity_disabled")
+                && !captured.contains("peer_identity_enabled"),
+            "load_peer_identity_from_env must not log (app.rs logs once after telemetry init), got: {captured}"
+        );
     }
 }

@@ -40,12 +40,8 @@ type systemUserResponse struct {
 // Production requires an HTTPS authHubURL and a non-nil httpClient (typically configured with mTLS via tlsutil).
 // Plaintext HTTP and nil HTTP client are rejected (fail-closed) to prevent credential leakage.
 //
-// internalAuthSecret must be config.Auth.InternalAuthSecret
-// (INTERNAL_AUTH_SECRET), never config.Auth.BackendTokenSecret. GetFirstIdentityID
-// puts this value verbatim into a plaintext X-Internal-Auth header on every
-// call, so it is copied into nginx access logs and OTel span attributes; the
-// HS256 key that signs every browser token must not be reachable from there.
-// auth-hub refuses to start when the two are the same value.
+// internalAuthSecret is config.Auth.InternalAuthSecret (INTERNAL_AUTH_SECRET), the dedicated
+// service-auth bearer for X-Internal-Auth (user tokens are verified separately with an Ed25519 public key).
 func NewKratosClient(authHubURL string, internalAuthSecret string, httpClient *http.Client) KratosClient {
 	if !strings.HasPrefix(authHubURL, "https://") {
 		panic(fmt.Sprintf("kratos_client: authHubURL must use HTTPS (got %q)", authHubURL))

@@ -9,6 +9,9 @@ reports/
 # to add a line here for its private keys to stay out of the tree.
 fixtures/*/pki/
 
+# Throwaway Ed25519 backend token keys minted per run by suite_token_keys.
+fixtures/*/token-keys/
+
 # Playwright dependencies are installed into the workspace by
 # e2e/playwright/_lib/install-suite-deps.sh (the staging network has no egress,
 # so the install happens in a separate container on the default bridge and
