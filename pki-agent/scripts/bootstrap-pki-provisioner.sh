@@ -224,10 +224,10 @@ if ! docker ps --format '{{.Names}}' | grep -q "^${STEP_CA}$"; then
   exit 1
 fi
 
-check_certificate_database
-
 echo "==> ensuring jq is available inside ${STEP_CA}..."
 docker exec -u 0 "$STEP_CA" sh -c 'command -v jq >/dev/null || apk add --no-cache jq' >/dev/null
+
+check_certificate_database
 
 echo "==> adding per-subject JWK provisioners (offline, --ca-config)..."
 PROVISIONER_ADDED=0
