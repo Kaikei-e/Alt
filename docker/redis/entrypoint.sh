@@ -114,12 +114,13 @@ case "$ROLE" in
             exit 1
         fi
 
+        # Reply-stream reads, expiry and deletion are scoped to the reply key pattern.
         # Consumers append only to dead-letter and reply streams, via selectors;
         # their root permissions carry no write command.
         cat <<EOF > "$TMP_ACL"
 user default off -@all
-user streams_producer on #${PRODUCER_HASH} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xadd +xread +xgroup|create +xinfo|stream +xinfo|groups +xtrim +expire +ttl +scan +del
-user streams_consumer on #${CONSUMER_HASH} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xreadgroup +xack +xautoclaim +xpending +xgroup|create +xinfo|stream +xinfo|groups (~alt:events:*:dlq +xadd) (~alt:replies:tags:* +xadd)
+user streams_producer on #${PRODUCER_HASH} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xadd +xgroup|create +xinfo|stream +xinfo|groups +xtrim +scan (~alt:replies:tags:* +xread +del +expire +ttl)
+user streams_consumer on #${CONSUMER_HASH} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xreadgroup +xack +xautoclaim +xpending +xgroup|create +xinfo|groups (~alt:events:*:dlq +xadd) (~alt:replies:tags:* +xadd)
 user limiter on #${LIMITER_HASH} resetkeys ~host_rate_limiter:v1:* -@all +hello +client|setinfo +client|setname +ping +set +pttl +select
 EOF
         ;;

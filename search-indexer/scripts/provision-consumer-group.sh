@@ -7,13 +7,13 @@
 # local/compose bootstrap fallback.
 #
 # redis-streams disables the default user, so this authenticates as the
-# `streams` ACL user (override with REDIS_USER). The password is read from a
+# `streams_consumer` ACL user (override with REDIS_USER). The password is read from a
 # file and handed to redis-cli through REDISCLI_AUTH, never argv or stdout.
 #
 # Usage:
 #   REDIS_URL=redis://localhost:6379 STREAM_KEY=alt:events:articles \
 #     GROUP_NAME=search-indexer-group \
-#     ./provision-consumer-group.sh --password-file /path/to/redis_streams_password
+#     ./provision-consumer-group.sh --password-file /path/to/redis_streams_consumer_password
 #
 #   REDIS_PASSWORD_FILE may stand in for --password-file.
 set -euo pipefail
@@ -47,7 +47,7 @@ if ! command -v redis-cli >/dev/null 2>&1; then
 fi
 
 if [[ -z "${password_file}" ]]; then
-  echo "REDIS_PASSWORD_FILE or --password-file is required: redis-streams accepts only the ${REDIS_USER:-streams} ACL user" >&2
+  echo "REDIS_PASSWORD_FILE or --password-file is required: redis-streams accepts only the ${REDIS_USER:-streams_consumer} ACL user" >&2
   exit 1
 fi
 if ! REDISCLI_AUTH="$(cat -- "${password_file}" 2>/dev/null)" || [[ -z "${REDISCLI_AUTH}" ]]; then
@@ -69,7 +69,7 @@ if [[ "${url_user}" == *:* ]]; then
   echo "REDIS_URL must not embed a password; use REDIS_PASSWORD_FILE or --password-file" >&2
   exit 1
 fi
-redis_user="${REDIS_USER:-${url_user:-streams}}"
+redis_user="${REDIS_USER:-${url_user:-streams_consumer}}"
 redis_host="${authority%%:*}"
 redis_port="6379"
 if [[ "${authority}" == *:* ]]; then
