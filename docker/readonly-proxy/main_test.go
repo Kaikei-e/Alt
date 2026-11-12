@@ -185,9 +185,9 @@ func TestWireProxyForwardHits(t *testing.T) {
 }
 
 const (
-	scopedID   = "aaaaaaaaaaaa"
-	foreignID  = "bbbbbbbbbbbb"
-	unlabelled = "cccccccccccc"
+	scopedID   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	foreignID  = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	unlabelled = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 )
 
 type recordedRequest struct {
@@ -257,6 +257,8 @@ func TestLogsAreScopedToProjectAndOptedInContainers(t *testing.T) {
 		{"ForeignContainer", "/containers/" + foreignID + "/logs", http.StatusForbidden, false},
 		{"UnlabelledContainer", "/v1.45/containers/" + unlabelled + "/logs", http.StatusForbidden, false},
 		{"ContainerNameInsteadOfID", "/containers/alt-backend/logs", http.StatusForbidden, false},
+		{"IDPrefix", "/containers/" + scopedID[:12] + "/logs", http.StatusForbidden, false},
+		{"UppercaseID", "/containers/" + strings.ToUpper(scopedID) + "/logs", http.StatusForbidden, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -337,5 +339,104 @@ func TestHealthcheck(t *testing.T) {
 	badCode := runHealthcheck("127.0.0.1:59999")
 	if badCode != 1 {
 		t.Errorf("runHealthcheck on unreachable server got %d, want 1", badCode)
+	}
+}
+
+func TestLogsAllowedFailsClosed(t *testing.T) {
+	base := func(h http.HandlerFunc) (*url.URL, *http.Client) {
+		srv := httptest.NewServer(h)
+		t.Cleanup(srv.Close)
+		u, _ := url.Parse(srv.URL)
+		return u, srv.Client()
+	}
+
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closedURL, _ := url.Parse(closed.URL)
+	closed.Close()
+
+	okURL, okClient := base(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintf(w, `[{"Id":%q}]`, scopedID)
+	})
+	errURL, errClient := base(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, `[{"Id":%q}]`, scopedID)
+	})
+	badURL, badClient := base(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, "not json")
+	})
+	otherURL, otherClient := base(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintf(w, `[{"Id":%q}]`, foreignID)
+	})
+
+	tests := []struct {
+		name   string
+		base   *url.URL
+		client *http.Client
+		want   bool
+	}{
+		{"Match", okURL, okClient, true},
+		{"DaemonUnreachable", closedURL, http.DefaultClient, false},
+		{"Non200", errURL, errClient, false},
+		{"UndecodableBody", badURL, badClient, false},
+		{"DifferentIDReturned", otherURL, otherClient, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := logsAllowed(tt.client, tt.base, scopedID, "alt"); got != tt.want {
+				t.Errorf("logsAllowed = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLogsRefusedWhenLookupFails(t *testing.T) {
+	var logHits int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/logs") {
+			atomic.AddInt64(&logHits, 1)
+			return
+		}
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer upstream.Close()
+	upstreamURL, _ := url.Parse(upstream.URL)
+	proxy := httptest.NewServer(newProxyHandler(upstreamURL, upstream.Client().Transport, "alt"))
+	defer proxy.Close()
+
+	resp, err := http.Get(proxy.URL + "/containers/" + scopedID + "/logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || atomic.LoadInt64(&logHits) != 0 {
+		t.Errorf("status %d, log hits %d; want 403 and 0", resp.StatusCode, logHits)
+	}
+}
+
+func TestProjectFromEnv(t *testing.T) {
+	tests := []struct {
+		value   string
+		want    string
+		wantErr bool
+	}{
+		{"alt", "alt", false},
+		{"", "", true},
+		{"   ", "", true},
+	}
+	for _, tt := range tests {
+		got, err := projectFromEnv(func(string) string { return tt.value })
+		if (err != nil) != tt.wantErr || got != tt.want {
+			t.Errorf("projectFromEnv(%q) = %q, %v", tt.value, got, err)
+		}
+	}
+}
+
+func TestNewServerSetsReadHeaderTimeoutOnly(t *testing.T) {
+	srv := newServer(":0", http.NotFoundHandler())
+	if srv.ReadHeaderTimeout <= 0 {
+		t.Error("ReadHeaderTimeout must be set")
+	}
+	if srv.WriteTimeout != 0 {
+		t.Error("WriteTimeout must stay unset so log follow streams survive")
 	}
 }
