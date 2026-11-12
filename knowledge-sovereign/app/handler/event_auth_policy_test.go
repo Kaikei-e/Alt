@@ -383,6 +383,8 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 				TenantId:   targetTenantID,
 				UserId:     targetUserID,
 				EventType:  "recap.topic_snapshotted.v1",
+				DedupeKey:  "recap.topic_snapshotted.v1:" + targetUserID + ":" + uuid.New().String(),
+				Payload:    []byte("{}"),
 				OccurredAt: timestamppb.New(time.Now()),
 			},
 		})
@@ -400,6 +402,8 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 				TenantId:   targetTenantID,
 				UserId:     targetUserID,
 				EventType:  "augur.conversation_linked.v1",
+				DedupeKey:  "augur.conversation_linked.v1:article:1:" + uuid.New().String(),
+				Payload:    []byte("{}"),
 				OccurredAt: timestamppb.New(time.Now()),
 			},
 		})

@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -386,4 +389,173 @@ func TestAppendKnowledgeUserEvent_AcceptsNonEmptyDedupeKey(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, "AppendKnowledgeUserEvent", repo.lastMethod)
+}
+
+func TestAppendKnowledgeEvent_RejectsEmptyOrWhitespaceDedupeKey(t *testing.T) {
+	fixedTime := timestamppb.New(time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC))
+
+	for _, key := range []string{"", "   ", "\t\n"} {
+		t.Run(fmt.Sprintf("key=%q", key), func(t *testing.T) {
+			repo := &mockRepo{}
+			h := NewSovereignHandler(repo)
+
+			_, err := h.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+				Event: &sovereignv1.KnowledgeEvent{
+					EventId:    uuid.New().String(),
+					TenantId:   uuid.New().String(),
+					EventType:  "ArticleCreated",
+					DedupeKey:  key,
+					Payload:    []byte(`{"title":"hello"}`),
+					OccurredAt: fixedTime,
+				},
+			}))
+			require.Error(t, err)
+			assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+			assert.Empty(t, repo.lastMethod)
+		})
+	}
+}
+
+func TestAppendKnowledgeEvent_ValidatesPayloadJSONObjectAndSizeBound(t *testing.T) {
+	assert.Equal(t, 64*1024, MaxKnowledgeEventPayloadBytes)
+	fixedTime := timestamppb.New(time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC))
+
+	invalidPayloads := []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "nil payload", payload: nil},
+		{name: "empty bytes", payload: []byte("")},
+		{name: "whitespace only", payload: []byte("   ")},
+		{name: "malformed JSON", payload: []byte(`{"summary":`)},
+		{name: "JSON array", payload: []byte(`["a","b"]`)},
+		{name: "JSON string", payload: []byte(`"hello"`)},
+		{name: "JSON number", payload: []byte(`42`)},
+		{name: "JSON null", payload: []byte(`null`)},
+		{name: "trailing JSON value", payload: []byte(`{"a":1}{"b":2}`)},
+		{name: "invalid UTF-8", payload: []byte{'{', '"', 'k', '"', ':', '"', 0xff, '"', '}'}},
+		{
+			name:    "exceeds MaxKnowledgeEventPayloadBytes",
+			payload: []byte(`{"s":"` + strings.Repeat("a", MaxKnowledgeEventPayloadBytes) + `"}`),
+		},
+	}
+
+	for _, tc := range invalidPayloads {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &mockRepo{}
+			h := NewSovereignHandler(repo)
+
+			_, err := h.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+				Event: &sovereignv1.KnowledgeEvent{
+					EventId:    uuid.New().String(),
+					TenantId:   uuid.New().String(),
+					EventType:  "SummaryVersionCreated",
+					DedupeKey:  "SummaryVersionCreated:" + uuid.New().String(),
+					Payload:    tc.payload,
+					OccurredAt: fixedTime,
+				},
+			}))
+			require.Error(t, err)
+			assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+			assert.Empty(t, repo.lastMethod)
+		})
+	}
+
+	t.Run("accepts JSON object at exact MaxKnowledgeEventPayloadBytes boundary", func(t *testing.T) {
+		prefix := []byte(`{"s":"`)
+		suffix := []byte(`"}`)
+		exact := bytes.Join([][]byte{prefix, bytes.Repeat([]byte("a"), MaxKnowledgeEventPayloadBytes-len(prefix)-len(suffix)), suffix}, nil)
+		require.Len(t, exact, MaxKnowledgeEventPayloadBytes)
+
+		repo := &mockRepo{}
+		h := NewSovereignHandler(repo)
+
+		_, err := h.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+			Event: &sovereignv1.KnowledgeEvent{
+				EventId:    uuid.New().String(),
+				TenantId:   uuid.New().String(),
+				EventType:  "SummaryVersionCreated",
+				DedupeKey:  "SummaryVersionCreated:" + uuid.New().String(),
+				Payload:    exact,
+				OccurredAt: fixedTime,
+			},
+		}))
+		require.NoError(t, err)
+	})
+}
+
+func TestAppendKnowledgeEvent_ValidatesTenantAndUserIdentifiers(t *testing.T) {
+	fixedTime := timestamppb.New(time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC))
+
+	invalidCases := []struct {
+		name     string
+		tenantID string
+		userID   string
+	}{
+		{name: "empty tenant_id", tenantID: "", userID: ""},
+		{name: "whitespace tenant_id", tenantID: "   ", userID: ""},
+		{name: "nil UUID tenant_id", tenantID: uuid.Nil.String(), userID: ""},
+		{name: "whitespace user_id", tenantID: uuid.New().String(), userID: "   "},
+		{name: "nil UUID user_id", tenantID: uuid.New().String(), userID: uuid.Nil.String()},
+	}
+
+	for _, tc := range invalidCases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &mockRepo{}
+			h := NewSovereignHandler(repo)
+
+			_, err := h.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+				Event: &sovereignv1.KnowledgeEvent{
+					EventId:    uuid.New().String(),
+					TenantId:   tc.tenantID,
+					UserId:     tc.userID,
+					EventType:  "ArticleCreated",
+					DedupeKey:  "article-created:" + uuid.New().String(),
+					Payload:    []byte(`{}`),
+					OccurredAt: fixedTime,
+				},
+			}))
+			require.Error(t, err)
+			assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		})
+	}
+
+	t.Run("accepts absent user_id for tenant-wide event", func(t *testing.T) {
+		repo := &mockRepo{}
+		h := NewSovereignHandler(repo)
+
+		_, err := h.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+			Event: &sovereignv1.KnowledgeEvent{
+				EventId:    uuid.New().String(),
+				TenantId:   uuid.New().String(),
+				UserId:     "",
+				EventType:  "ArticleCreated",
+				DedupeKey:  "article-created:" + uuid.New().String(),
+				Payload:    []byte(`{}`),
+				OccurredAt: fixedTime,
+			},
+		}))
+		require.NoError(t, err)
+	})
+}
+
+func TestAppendKnowledgeEvent_CrossTenantDedupeCollision_ReturnsPermissionDenied(t *testing.T) {
+	fixedTime := timestamppb.New(time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC))
+	repo := &mockRepo{
+		returnErr: fmt.Errorf("dedupe check: %w", sovereign_db.ErrDedupeKeyTenantMismatch),
+	}
+	h := NewSovereignHandler(repo)
+
+	_, err := h.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+		Event: &sovereignv1.KnowledgeEvent{
+			EventId:    uuid.New().String(),
+			TenantId:   uuid.New().String(),
+			EventType:  "ArticleCreated",
+			DedupeKey:  "article-created:shared-key",
+			Payload:    []byte(`{}`),
+			OccurredAt: fixedTime,
+		},
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 }
