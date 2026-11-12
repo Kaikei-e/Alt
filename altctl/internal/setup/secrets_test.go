@@ -968,3 +968,39 @@ func TestMetaFor_RedisStreamsCredentialsAreSplit(t *testing.T) {
 		t.Error("redis_streams_password.txt must no longer be known to altctl")
 	}
 }
+
+func TestEnsureEd25519KeyPair_FailedPublicWriteLeavesNeitherFile(t *testing.T) {
+	dir := t.TempDir()
+	priv := filepath.Join(dir, "signing.txt")
+	pub := filepath.Join(dir, "missing-subdir", "verify.txt")
+
+	if _, err := ensureEd25519KeyPair(priv, pub); err == nil {
+		t.Fatal("expected an error when the public key cannot be written")
+	}
+	if _, err := os.Lstat(priv); !os.IsNotExist(err) {
+		t.Errorf("private key file was left behind (lstat err = %v)", err)
+	}
+}
+
+func TestEnsureEd25519KeyPair_NeverFollowsAPreexistingSymlink(t *testing.T) {
+	for _, linkIsPrivate := range []bool{true, false} {
+		dir := t.TempDir()
+		priv := filepath.Join(dir, "signing.txt")
+		pub := filepath.Join(dir, "verify.txt")
+		target := filepath.Join(dir, "elsewhere.txt")
+		link := pub
+		if linkIsPrivate {
+			link = priv
+		}
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := ensureEd25519KeyPair(priv, pub); err == nil {
+			t.Fatalf("linkIsPrivate=%v: expected an error", linkIsPrivate)
+		}
+		if _, err := os.Lstat(target); !os.IsNotExist(err) {
+			t.Errorf("linkIsPrivate=%v: the symlink target was created (lstat err = %v)", linkIsPrivate, err)
+		}
+	}
+}
