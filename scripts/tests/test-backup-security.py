@@ -971,7 +971,7 @@ exit 1
 class TestBackupAllNoPlaintextNoArgvSecrets(unittest.TestCase):
     """Credentials stay off command lines and dumps never reach disk unencrypted."""
 
-    SECRETS = {
+    FIXTURE_FILES = {
         "postgres_password": "secret_alt_postgres_pass",
         "kratos_db_password": "secret_kratos_pass",
         "clickhouse_password": "secret_ch_pass",
@@ -991,7 +991,7 @@ class TestBackupAllNoPlaintextNoArgvSecrets(unittest.TestCase):
         backup_dir = Path(tmpdir) / "backups"
         backup_dir.mkdir()
         (backup_dir / "clickhouse").mkdir()
-        for name, value in self.SECRETS.items():
+        for name, value in self.FIXTURE_FILES.items():
             if drop_restic_password and name == "restic_password":
                 continue
             (secrets_dir / name).write_text(value)
@@ -1082,7 +1082,7 @@ fi
             for line in log.splitlines():
                 if line.startswith("curl cfg"):
                     continue
-                for value in self.SECRETS.values():
+                for value in self.FIXTURE_FILES.values():
                     self.assertNotIn(value, line, f"secret leaked on command line: {line}")
             self.assertNotIn("env_has_PGPASSWORD=yes", log)
 
