@@ -2,6 +2,7 @@ package rest_feeds
 
 import (
 	"alt/config"
+	connectmiddleware "alt/connect/v2/middleware"
 	"alt/di"
 	middleware_custom "alt/middleware"
 	summarizationpkg "alt/orchestrator/rest/rest_feeds/summarization"
@@ -44,8 +45,12 @@ func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg))
 
 	// Article summarization endpoints
-	feedsGroup.POST("/summarize", summarizationpkg.RestHandleSummarizeFeed(container, cfg))                     // Legacy synchronous endpoint
-	feedsGroup.POST("/summarize/stream", summarizationpkg.RestHandleSummarizeFeedStream(container, cfg))        // Streaming endpoint (using fetch stream)
+	feedsGroup.POST("/summarize", summarizationpkg.RestHandleSummarizeFeed(container, cfg)) // Legacy synchronous endpoint
+	feedsGroup.POST(
+		"/summarize/stream",
+		summarizationpkg.RestHandleSummarizeFeedStream(container, cfg),
+		connectmiddleware.EchoUserQuotaMiddleware(container.UserQuotaLimiter, connectmiddleware.OpSummarize),
+	) // Streaming endpoint (using fetch stream)
 	feedsGroup.POST("/summarize/queue", summarizationpkg.RestHandleSummarizeFeedQueue(container, cfg))          // New async queue endpoint
 	feedsGroup.GET("/summarize/status/:job_id", summarizationpkg.RestHandleSummarizeFeedStatus(container, cfg)) // Job status endpoint
 

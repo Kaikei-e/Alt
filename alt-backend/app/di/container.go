@@ -1,6 +1,7 @@
 package di
 
 import (
+	connectmiddleware "alt/connect/v2/middleware"
 	"alt/orchestrator/connect/v2/articles"
 	"alt/orchestrator/driver/preprocessor_connect"
 	"alt/orchestrator/gateway/feature_flag_gateway"
@@ -234,4 +235,6 @@ type ApplicationComponents struct {
 	// Admin observability (Prometheus-backed metrics UI). Facade may be nil
 	// when cfg.AdminMonitor.Enabled is false; server.go skips registration.
 	AdminMonitor *AdminMonitorModule
+
+	UserQuotaLimiter *connectmiddleware.UserQuotaLimiter
 }

@@ -2,6 +2,7 @@ package rest
 
 import (
 	"alt/config"
+	connectmiddleware "alt/connect/v2/middleware"
 	"alt/di"
 	"alt/domain"
 	middleware_custom "alt/middleware"
@@ -276,5 +277,5 @@ func RegisterAugurRoutes(e *echo.Echo, g *echo.Group, container *di.ApplicationC
 	// Gzip skippers in routes.go all key off `strings.Contains(c.Path(), "/sse/")`,
 	// so relocating it under /v1 would silently re-impose the 2MB body limit,
 	// the read timeout and gzip framing on an SSE response.
-	e.POST("/sse/v1/rag/answer", handler.Answer, authMiddleware.RequireAuth())
+	e.POST("/sse/v1/rag/answer", handler.Answer, authMiddleware.RequireAuth(), connectmiddleware.EchoUserQuotaMiddleware(container.UserQuotaLimiter, connectmiddleware.OpAugurChat))
 }

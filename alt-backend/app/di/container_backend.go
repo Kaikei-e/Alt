@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"alt/config"
+	connectmiddleware "alt/connect/v2/middleware"
 	"alt/orchestrator/driver/preprocessor_connect"
 
 	"github.com/google/uuid"
@@ -87,6 +88,16 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 
 	// 10. Admin observability (gated by AdminMonitor.Enabled)
 	adminMonitor := newAdminMonitorModule(infra.Config, slog.Default())
+
+	quotaCfg, err := config.LoadUserQuotaConfig()
+	if err != nil {
+		return nil, fmt.Errorf("user quota config: %w", err)
+	}
+	config.LogUserQuotaConfig(slog.Default(), quotaCfg)
+	userQuotaLimiter, err := connectmiddleware.NewUserQuotaLimiter(quotaCfg)
+	if err != nil {
+		return nil, fmt.Errorf("user quota limiter: %w", err)
+	}
 
 	preprocConnectClient, err := preprocessor_connect.NewConnectPreProcessorClient(infra.Config.PreProcessor.ConnectURL, "")
 	if err != nil {
@@ -229,5 +240,7 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 
 		// Admin observability
 		AdminMonitor: adminMonitor,
+
+		UserQuotaLimiter: userQuotaLimiter,
 	}, nil
 }

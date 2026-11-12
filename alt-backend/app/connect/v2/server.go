@@ -58,6 +58,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	interceptors := []connect.Interceptor{
 		cancelInterceptor.Interceptor(),
 		authInterceptor.Interceptor(),
+		middleware.NewUserQuotaInterceptor(container.UserQuotaLimiter).Interceptor(),
 	}
 	if otelInterceptor != nil {
 		interceptors = append(interceptors, otelInterceptor)
