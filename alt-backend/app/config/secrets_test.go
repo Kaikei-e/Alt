@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -52,26 +53,43 @@ func marshalTestEd25519PKCS8PrivatePEM(t *testing.T) []byte {
 }
 
 func TestLoadBackendTokenVerifyKey(t *testing.T) {
-	t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "")
 	validPub, validPEM := marshalTestEd25519SPKIPEM(t)
+	if !bytes.HasSuffix(validPEM, []byte("\n")) {
+		t.Fatalf("expected pem.EncodeToMemory output to end with newline")
+	}
+	crlfPEM := bytes.ReplaceAll(validPEM, []byte("\n"), []byte("\r\n"))
+	extraBlankLinesPEM := append(append([]byte{}, validPEM...), []byte("\n\n   \r\n\n")...)
+	trailingDataPEM := append(append([]byte{}, validPEM...), []byte("\nnon-whitespace-trailing\n")...)
 	ecdsaPEM := marshalTestECDSASPKIPEM(t)
 	privatePEM := marshalTestEd25519PKCS8PrivatePEM(t)
 
 	tests := []struct {
-		name       string
-		keyFile    string
-		readFile   FileReader
-		wantErr    bool
-		errContain string
-		wantKey    ed25519.PublicKey
+		name         string
+		keyFile      string
+		prePopulated ed25519.PublicKey
+		readFile     FileReader
+		wantErr      bool
+		errContain   string
+		wantKey      ed25519.PublicKey
 	}{
 		{
-			name:    "empty path is a no-op",
+			name:    "unset BACKEND_TOKEN_VERIFY_KEY_FILE fails fast",
 			keyFile: "",
 			readFile: func(string) ([]byte, error) {
 				return nil, errors.New("should not be called")
 			},
-			wantErr: false,
+			wantErr:    true,
+			errContain: "BACKEND_TOKEN_VERIFY_KEY_FILE",
+		},
+		{
+			name:         "unset BACKEND_TOKEN_VERIFY_KEY_FILE fails even when public key is pre-populated",
+			keyFile:      "",
+			prePopulated: validPub,
+			readFile: func(string) ([]byte, error) {
+				return nil, errors.New("should not be called")
+			},
+			wantErr:    true,
+			errContain: "BACKEND_TOKEN_VERIFY_KEY_FILE",
 		},
 		{
 			name:    "file read error fails fast",
@@ -110,7 +128,7 @@ func TestLoadBackendTokenVerifyKey(t *testing.T) {
 			errContain: "PUBLIC KEY",
 		},
 		{
-			name:    "valid SPKI Ed25519 public key is parsed and set",
+			name:    "valid PEM with trailing newline is parsed and set",
 			keyFile: "/run/secrets/backend_token_verify_key",
 			readFile: func(string) ([]byte, error) {
 				return validPEM, nil
@@ -118,11 +136,39 @@ func TestLoadBackendTokenVerifyKey(t *testing.T) {
 			wantErr: false,
 			wantKey: validPub,
 		},
+		{
+			name:    "valid PEM with CRLF line endings is parsed and set",
+			keyFile: "/run/secrets/backend_token_verify_key",
+			readFile: func(string) ([]byte, error) {
+				return crlfPEM, nil
+			},
+			wantErr: false,
+			wantKey: validPub,
+		},
+		{
+			name:    "valid PEM with extra blank lines after END line is parsed and set",
+			keyFile: "/run/secrets/backend_token_verify_key",
+			readFile: func(string) ([]byte, error) {
+				return extraBlankLinesPEM, nil
+			},
+			wantErr: false,
+			wantKey: validPub,
+		},
+		{
+			name:    "non-whitespace data after END line is rejected",
+			keyFile: "/run/secrets/backend_token_verify_key",
+			readFile: func(string) ([]byte, error) {
+				return trailingDataPEM, nil
+			},
+			wantErr:    true,
+			errContain: "trailing data",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &AuthConfig{BackendTokenVerifyKeyFile: tt.keyFile}
+			t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", tt.keyFile)
+			cfg := &AuthConfig{BackendTokenPublicKey: tt.prePopulated}
 			err := loadBackendTokenVerifyKey(cfg, tt.readFile)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("loadBackendTokenVerifyKey() error = %v, wantErr = %v", err, tt.wantErr)

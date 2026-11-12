@@ -47,11 +47,13 @@ func TestMQHubAuth_SecretFileValidation(t *testing.T) {
 }
 
 func TestMQHubAuth_EnabledRequiresToken(t *testing.T) {
+	_, verifyPEM := marshalTestEd25519SPKIPEM(t)
+	verifyKeyFile := writeBackendVerifyKeyFile(t, verifyPEM)
 	t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "")
 	t.Run("ValidateBackendConfig fails when MQHUB_ENABLED=true and token is empty", func(t *testing.T) {
+		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", verifyKeyFile)
 		cfg := &Config{
 			AppEnv:        "development",
-			Auth:          AuthConfig{BackendTokenPublicKey: testBinaryVerifyPublicKey},
 			Sovereign:     SovereignConfig{URL: "http://sovereign:9500"},
 			SearchIndexer: SearchIndexerConfig{ConnectURL: "https://search-indexer:9443"},
 			Rag: RAGConfig{

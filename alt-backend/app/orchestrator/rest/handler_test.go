@@ -25,7 +25,7 @@ func TestCSPReportEndpoint(t *testing.T) {
 
 	// Create minimal container and config for testing
 	container := &di.ApplicationComponents{}
-	cfg := &config.Config{}
+	cfg := &config.Config{Auth: testAuthCfg()}
 
 	// Register routes
 	RegisterRoutes(context.Background(), e, container, cfg)

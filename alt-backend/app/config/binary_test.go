@@ -1,22 +1,12 @@
 package config
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
-
-var testBinaryVerifyPublicKey = func() ed25519.PublicKey {
-	pub, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		panic(err)
-	}
-	return pub
-}()
 
 func baseConfig() *Config {
 	return &Config{
@@ -34,8 +24,7 @@ func baseConfig() *Config {
 		MQHub:         MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500", AuthToken: "test-mqhub-auth-token"},
 		AuthHub:       AuthHubConfig{URL: "http://auth-hub:8888"},
 		Auth: AuthConfig{
-			BackendTokenPublicKey: testBinaryVerifyPublicKey,
-			InternalAuthSecret:    "a-distinct-internal-auth-secret-value",
+			InternalAuthSecret: "a-distinct-internal-auth-secret-value",
 		},
 		Sovereign: SovereignConfig{URL: "http://knowledge-sovereign:9500"},
 		WebPush:   WebPushConfig{PublicKey: "a-vapid-public-key-value", PrivateKey: "a-vapid-private-key-value", Subject: "mailto:ops@alt.example"},
@@ -389,16 +378,20 @@ func TestLoadDataHubConfig(t *testing.T) {
 // they carry evaporate, which is why the check is not keyed on APP_ENV the way
 // the backend's is.
 func TestValidateBinaryConfig(t *testing.T) {
-	t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "")
+	verifyPub, verifyPEM := marshalTestEd25519SPKIPEM(t)
+	verifyKeyFile := writeBackendVerifyKeyFile(t, verifyPEM)
 	tests := []struct {
-		name     string
-		validate func(*Config) error
-		mutate   func(*Config)
-		wantErr  string
+		name           string
+		validate       func(*Config) error
+		verifyKeyValue *string
+		mutate         func(*Config)
+		wantErr        string
 	}{
 		{name: "backend accepts a complete config", validate: ValidateBackendConfig, mutate: func(*Config) {}},
 		{name: "backend needs the backend token verify key", validate: ValidateBackendConfig,
-			mutate: func(c *Config) { c.Auth.BackendTokenPublicKey = nil }, wantErr: "BACKEND_TOKEN_VERIFY_KEY_FILE"},
+			verifyKeyValue: new(string), mutate: func(*Config) {}, wantErr: "BACKEND_TOKEN_VERIFY_KEY_FILE"},
+		{name: "backend rejects unset verify key file even when key field is pre-populated", validate: ValidateBackendConfig,
+			verifyKeyValue: new(string), mutate: func(c *Config) { c.Auth.BackendTokenPublicKey = verifyPub }, wantErr: "BACKEND_TOKEN_VERIFY_KEY_FILE"},
 		{name: "backend needs sovereign", validate: ValidateBackendConfig,
 			mutate: func(c *Config) { c.Sovereign.URL = "" }, wantErr: "SOVEREIGN_URL"},
 		{name: "backend accepts disabled sovereign in dev", validate: ValidateBackendConfig,
@@ -424,7 +417,7 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.AppEnv = "production"; c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: "RAG_API_AUTH=disabled is not permitted in production"},
 
 		{name: "harvester accepts a complete config without backend token key", validate: ValidateHarvesterConfig,
-			mutate: func(c *Config) { c.Auth.BackendTokenPublicKey = nil }},
+			verifyKeyValue: new(string), mutate: func(*Config) {}},
 		{name: "harvester needs sovereign in every environment", validate: ValidateHarvesterConfig,
 			mutate: func(c *Config) { c.Sovereign.URL = "" }, wantErr: "SOVEREIGN_URL"},
 		{name: "harvester needs the rag orchestrator", validate: ValidateHarvesterConfig,
@@ -437,7 +430,7 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.AppEnv = "production"; c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: "RAG_API_AUTH=disabled is not permitted in production"},
 
 		{name: "datahub accepts a complete config without backend token key", validate: ValidateDataHubConfig,
-			mutate: func(c *Config) { c.Auth.BackendTokenPublicKey = nil }},
+			verifyKeyValue: new(string), mutate: func(*Config) {}},
 		{name: "datahub needs auth-hub", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.AuthHub.URL = "" }, wantErr: "AUTH_HUB_URL"},
 		{name: "datahub refuses plaintext auth-hub in prod", validate: ValidateDataHubConfig,
@@ -450,7 +443,7 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.MQHub.ConnectURL = "" }, wantErr: "MQHUB_CONNECT_URL"},
 
 		{name: "notifier accepts a complete mailto config without backend token key", validate: ValidateNotifierConfig,
-			mutate: func(c *Config) { c.Auth.BackendTokenPublicKey = nil }},
+			verifyKeyValue: new(string), mutate: func(*Config) {}},
 		{name: "notifier accepts an https subject", validate: ValidateNotifierConfig,
 			mutate: func(c *Config) { c.WebPush.Subject = "https://alt.example/contact" }, wantErr: ""},
 		{name: "notifier needs the vapid private key", validate: ValidateNotifierConfig,
@@ -465,6 +458,11 @@ func TestValidateBinaryConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.verifyKeyValue != nil {
+				t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", *tt.verifyKeyValue)
+			} else {
+				t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", verifyKeyFile)
+			}
 			cfg := baseConfig()
 			tt.mutate(cfg)
 			err := tt.validate(cfg)

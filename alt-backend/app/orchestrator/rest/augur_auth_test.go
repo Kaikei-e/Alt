@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"alt/config"
 	"alt/di"
 	"alt/domain"
 	"alt/orchestrator/port/rag_integration_port"
@@ -53,7 +52,7 @@ func TestRegisterAugurRoutes_RequiresAuth(t *testing.T) {
 			e := echo.New()
 			e.Use(echomiddleware.Recover())
 			v1 := e.Group("/v1")
-			RegisterAugurRoutes(e, v1, &di.ApplicationComponents{}, config.AuthConfig{})
+			RegisterAugurRoutes(e, v1, &di.ApplicationComponents{}, testAuthCfg())
 
 			req := httptest.NewRequest(tt.method, tt.target, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)

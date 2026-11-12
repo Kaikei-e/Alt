@@ -8,12 +8,30 @@ import (
 	"testing"
 	"time"
 
+	"alt/config"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNewJWTAuthMiddleware_PanicsOnInvalidPublicKey(t *testing.T) {
+	t.Run("nil key panics", func(t *testing.T) {
+		require.Panics(t, func() {
+			NewJWTAuthMiddleware(nil, config.AuthConfig{})
+		})
+	})
+
+	t.Run("short key panics", func(t *testing.T) {
+		require.Panics(t, func() {
+			NewJWTAuthMiddleware(nil, config.AuthConfig{
+				BackendTokenPublicKey: ed25519.PublicKey("short"),
+			})
+		})
+	})
+}
 
 func validRESTBackendClaims(userID string, now time.Time) BackendClaims {
 	return BackendClaims{

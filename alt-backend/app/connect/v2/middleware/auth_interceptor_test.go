@@ -40,6 +40,24 @@ func newTestInterceptor() *AuthInterceptor {
 	})
 }
 
+func TestNewAuthInterceptor_PanicsOnInvalidPublicKey(t *testing.T) {
+	t.Run("nil key panics", func(t *testing.T) {
+		require.Panics(t, func() {
+			NewAuthInterceptor(nil, &config.Config{})
+		})
+	})
+
+	t.Run("short key panics", func(t *testing.T) {
+		require.Panics(t, func() {
+			NewAuthInterceptor(nil, &config.Config{
+				Auth: config.AuthConfig{
+					BackendTokenPublicKey: ed25519.PublicKey("short"),
+				},
+			})
+		})
+	})
+}
+
 func signTestToken(t *testing.T, claims *BackendClaims) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)

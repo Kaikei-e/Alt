@@ -36,7 +36,7 @@ func routePaths(e *echo.Echo) map[string]bool {
 // route is unregistered, moved to another binary, or retired outright.
 func TestRegisterRoutes_DoesNotExposeInternalRoutes(t *testing.T) {
 	e := echo.New()
-	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{}, &config.Config{})
+	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{}, &config.Config{Auth: testAuthCfg()})
 
 	paths := routePaths(e)
 	for _, p := range []string{systemUserPath, recentArticlesPath} {
