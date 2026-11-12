@@ -49,7 +49,6 @@ type ExternalAPIRepository interface {
 	SummarizeArticle(ctx context.Context, article *domain.Article, priority string) (*domain.SummarizedContent, error)
 	StreamSummarizeArticle(ctx context.Context, article *domain.Article, priority string) (io.ReadCloser, error)
 	CheckHealth(ctx context.Context, serviceURL string) error
-	GetSystemUserID(ctx context.Context) (string, error)
 }
 
 // SummarizeJobRepository handles summarization job queue persistence.
