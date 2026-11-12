@@ -1602,7 +1602,7 @@ services:
       start_period: 3s
 
   auth-hub-db-migrator:
-    image: oryd/kratos:v1.3.0
+    image: oryd/kratos:v26.2.0
     container_name: alt-staging-auth-hub-db-migrator
     profiles: [auth-hub]
     # Reuse the prod Kratos entrypoint so ${KRATOS_COOKIE_SECRET} and
@@ -1642,7 +1642,7 @@ services:
     restart: "no"
 
   kratos:
-    image: oryd/kratos:v1.3.0
+    image: oryd/kratos:v26.2.0
     container_name: alt-staging-kratos
     profiles: [auth-hub]
     # `--dev` relaxes the HTTPS requirement on self-service flows so
