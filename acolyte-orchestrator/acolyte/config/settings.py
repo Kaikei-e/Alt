@@ -8,6 +8,8 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
@@ -157,8 +159,8 @@ class Settings(BaseSettings):
 
     # Backend token verification for user identity (X-Alt-Backend-Token).
     # Startup fails loudly when BACKEND_TOKEN_VERIFICATION is enabled and
-    # BACKEND_TOKEN_SECRET_FILE is missing/unreadable.
-    backend_token_secret_file: str = "/run/secrets/backend_token_secret"  # noqa: S105 — filesystem path to secret file
+    # BACKEND_TOKEN_VERIFY_KEY_FILE is missing, unreadable, or not an Ed25519 public key.
+    backend_token_verify_key_file: str = "/run/secrets/backend_token_verify_key"  # noqa: S105 — filesystem path to a public key file
     backend_token_issuer: str = "auth-hub"  # noqa: S105 — JWT issuer claim, not a secret
     backend_token_audience: str = "alt-backend"  # noqa: S105 — JWT audience claim, not a secret
     backend_token_verification: str = "enabled"  # noqa: S105 — verification mode flag, not a secret
@@ -184,34 +186,41 @@ class Settings(BaseSettings):
 
     model_config = {"env_prefix": "", "case_sensitive": False}
 
-    def resolve_backend_token_secret(self) -> bytes | None:
-        """Resolve the JWT signing secret for backend token verification.
+    def resolve_backend_token_verify_key(self) -> Ed25519PublicKey | None:
+        """Load the Ed25519 public key that verifies the backend token.
 
         Returns None only when backend_token_verification is explicitly
-        'disabled'. Otherwise requires a valid, readable, non-empty secret file.
+        'disabled'. Otherwise requires a readable SPKI PEM file holding an
+        Ed25519 public key.
         """
         if self.backend_token_verification.strip().lower() == "disabled":
             return None
 
-        if not self.backend_token_secret_file:
+        if not self.backend_token_verify_key_file:
             raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
-                "BACKEND_TOKEN_SECRET_FILE is not configured: "
-                "user identity verification requires a secret file unless BACKEND_TOKEN_VERIFICATION=disabled"
+                "BACKEND_TOKEN_VERIFY_KEY_FILE is not configured: "
+                "user identity verification requires a public key file unless BACKEND_TOKEN_VERIFICATION=disabled"
             )
 
-        secret_path = Path(self.backend_token_secret_file)
-        if not secret_path.is_file():
+        key_path = Path(self.backend_token_verify_key_file)
+        try:
+            pem = key_path.read_bytes()
+        except OSError as exc:
             raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
-                f"BACKEND_TOKEN_SECRET_FILE is missing or unreadable: {self.backend_token_secret_file}"
-            )
+                f"BACKEND_TOKEN_VERIFY_KEY_FILE is missing or unreadable: {self.backend_token_verify_key_file}"
+            ) from exc
 
-        secret = secret_path.read_bytes().strip()
-        if not secret:
+        try:
+            key = serialization.load_pem_public_key(pem)
+        except ValueError as exc:
             raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
-                f"BACKEND_TOKEN_SECRET_FILE is empty: {self.backend_token_secret_file}"
+                f"BACKEND_TOKEN_VERIFY_KEY_FILE is not an Ed25519 SPKI public key: {self.backend_token_verify_key_file}"
+            ) from exc
+        if not isinstance(key, Ed25519PublicKey):
+            raise RuntimeError(  # noqa: TRY003, TRY004 — startup config error, single call site
+                f"BACKEND_TOKEN_VERIFY_KEY_FILE is not an Ed25519 public key: {self.backend_token_verify_key_file}"
             )
-
-        return secret
+        return key
 
     def resolve_dev_user_id(self) -> UUID:
         """Resolve the dev user identity UUID when backend token verification is disabled.

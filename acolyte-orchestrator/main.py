@@ -106,10 +106,10 @@ _job_queue = PostgresJobGateway(
 )
 
 # User identity verification (X-Alt-Backend-Token).
-# Fails fast at startup if BACKEND_TOKEN_SECRET_FILE is missing/unreadable.
-_backend_token_secret = settings.resolve_backend_token_secret()
+# Fails fast at startup if BACKEND_TOKEN_VERIFY_KEY_FILE is missing, unreadable, or not Ed25519.
+_backend_token_verify_key = settings.resolve_backend_token_verify_key()
 _user_identity_interceptor: UserIdentityInterceptor
-if _backend_token_secret is None:
+if _backend_token_verify_key is None:
     _dev_user_id = settings.resolve_dev_user_id()
     _user_identity_interceptor = UserIdentityInterceptor(dev_user_id=_dev_user_id)
     logger.warning(
@@ -119,7 +119,7 @@ if _backend_token_secret is None:
     )
 else:
     _user_identity_interceptor = UserIdentityInterceptor(
-        secret=_backend_token_secret,
+        verify_key=_backend_token_verify_key,
         issuer=settings.backend_token_issuer,
         audience=settings.backend_token_audience,
     )
@@ -127,7 +127,7 @@ else:
         "user_identity_enabled",
         issuer=settings.backend_token_issuer,
         audience=settings.backend_token_audience,
-        secret_file=settings.backend_token_secret_file,
+        verify_key_file=settings.backend_token_verify_key_file,
     )
 
 

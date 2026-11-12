@@ -15,8 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
     from connectrpc.request import RequestContext
-
-    from acolyte.config.settings import Settings
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 BACKEND_TOKEN_HEADER = "x-alt-backend-token"  # noqa: S105 — HTTP header name, not a secret token value
 
@@ -46,25 +45,20 @@ def get_acting_user_jwt() -> str | None:
     return current_user_jwt.get()
 
 
-def resolve_backend_token_secret(settings: Settings) -> bytes | None:
-    """Resolve and validate the backend token signing secret from Settings."""
-    return settings.resolve_backend_token_secret()
-
-
 class UserIdentityInterceptor:
     """Connect-RPC interceptor validating X-Alt-Backend-Token JWT or applying dev user identity."""
 
     def __init__(
         self,
-        secret: bytes | None = None,
+        verify_key: Ed25519PublicKey | None = None,
         issuer: str = "auth-hub",
         audience: str = "alt-backend",
         dev_user_id: UUID | None = None,
     ) -> None:
-        if secret is None and dev_user_id is None:
-            msg = "Either JWT secret or dev_user_id must be provided"
+        if verify_key is None and dev_user_id is None:
+            msg = "Either verify_key or dev_user_id must be provided"
             raise ValueError(msg)
-        self._secret = secret
+        self._verify_key = verify_key
         self._issuer = issuer
         self._audience = audience
         self._dev_user_id = dev_user_id
@@ -75,9 +69,9 @@ class UserIdentityInterceptor:
         if self._dev_user_id is not None:
             return self._dev_user_id, token
 
-        secret = self._secret
-        if secret is None:
-            msg = "UserIdentityInterceptor has neither a JWT secret nor a dev user id"
+        verify_key = self._verify_key
+        if verify_key is None:
+            msg = "UserIdentityInterceptor has neither a verify key nor a dev user id"
             raise RuntimeError(msg)
 
         if not token:
@@ -86,8 +80,8 @@ class UserIdentityInterceptor:
         try:
             payload = jwt.decode(
                 token,
-                secret,
-                algorithms=["HS256"],
+                verify_key,
+                algorithms=["EdDSA"],
                 issuer=self._issuer,
                 audience=self._audience,
                 options={

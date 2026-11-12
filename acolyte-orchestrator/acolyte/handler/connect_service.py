@@ -303,15 +303,15 @@ class AcolyteConnectService:
                 f"Report {report_id} has no owner: run the owner backfill for this report before resuming",
             )
 
-        secret = self._settings.resolve_backend_token_secret()
-        if not secret:
-            raise ConnectError(Code.INTERNAL, "Backend token secret is not configured")
+        verify_key = self._settings.resolve_backend_token_verify_key()
+        if verify_key is None:
+            raise ConnectError(Code.INTERNAL, "Backend token verify key is not configured")
 
         try:
             payload = jwt.decode(
                 token,
-                secret,
-                algorithms=["HS256"],
+                verify_key,
+                algorithms=["EdDSA"],
                 issuer="auth-hub",
                 audience="alt-backend",
                 options={
