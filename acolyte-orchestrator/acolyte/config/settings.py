@@ -18,7 +18,6 @@ from pydantic_settings import BaseSettings
 class NotificationRelayConfig:
     """Everything the relay needs, validated once at startup."""
 
-    user_id: UUID
     datahub_url: str
     interval_seconds: float
     batch_size: int
@@ -140,9 +139,6 @@ class Settings(BaseSettings):
     # alt-data-hub are one switch: a producer without a relay only grows a
     # backlog, and a relay without a producer has nothing to forward.
     notifications_enabled: bool = False
-    # acolyte-db has no owner column — reports are not per-user here — so the
-    # recipient of a report-ready ping is configuration, not a row.
-    notification_user_id: str = ""
     datahub_url: str = ""
     notification_relay_interval_seconds: float = 5.0
     notification_relay_batch_size: int = 20
@@ -292,20 +288,12 @@ class Settings(BaseSettings):
         """Validate the relay configuration, or explain exactly what is missing.
 
         Returns None when notifications are switched off — an answer, not a
-        failure. Everything else raises: a relay that boots without a target,
-        without a recipient or without a client certificate cannot forward
+        failure. Everything else raises: a relay that boots without a target
+        or without a client certificate cannot forward
         anything, and the only symptom would be an outbox that quietly grows.
         """
         if not self.notifications_enabled:
             return None
-
-        try:
-            user_id = UUID(self.notification_user_id)
-        except ValueError as exc:
-            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
-                f"NOTIFICATIONS_ENABLED=true requires NOTIFICATION_USER_ID to be a UUID "
-                f"(got {self.notification_user_id!r})"
-            ) from exc
 
         if not self.datahub_url:
             raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
@@ -329,7 +317,6 @@ class Settings(BaseSettings):
                 )
 
         return NotificationRelayConfig(
-            user_id=user_id,
             datahub_url=self.datahub_url.rstrip("/"),
             interval_seconds=self.notification_relay_interval_seconds,
             batch_size=self.notification_relay_batch_size,

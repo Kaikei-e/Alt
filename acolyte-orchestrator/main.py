@@ -92,7 +92,6 @@ else:
     logger.info(
         "notification_outbox_relay_enabled",
         datahub_url=_relay_config.datahub_url,
-        notification_user_id=str(_relay_config.user_id),
         batch_size=_relay_config.batch_size,
         interval_seconds=_relay_config.interval_seconds,
     )
@@ -102,7 +101,7 @@ else:
 # after a restart. MemoryJobGateway is test-only (see tests/conftest.py).
 _job_queue = PostgresJobGateway(
     _pool,
-    notification_user_id=None if _relay_config is None else _relay_config.user_id,
+    notifications_enabled=_relay_config is not None,
 )
 
 # User identity verification (X-Alt-Backend-Token).

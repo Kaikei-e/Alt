@@ -522,7 +522,8 @@ class AcolyteConnectService:
 
         uc = RerunSectionUsecase(self._repo, self._llm)
         try:
-            await uc.execute(rid, request.section_key, user_id=user_id)
+            async with self._run_semaphore:
+                await uc.execute(rid, request.section_key, user_id=user_id)
         except ValueError as e:
             raise ConnectError(Code.NOT_FOUND, str(e)) from e
         except ConnectError:

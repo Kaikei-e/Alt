@@ -24,13 +24,13 @@ logger = structlog.get_logger(__name__)
 class PostgresJobGateway:
     """Job queue and run lifecycle backed by PostgreSQL."""
 
-    def __init__(self, pool: AsyncConnectionPool, *, notification_user_id: UUID | None) -> None:
-        """*notification_user_id* is keyword-required so no caller can leave the
-        outbox unwired by omission: ``None`` is the composition root saying
+    def __init__(self, pool: AsyncConnectionPool, *, notifications_enabled: bool) -> None:
+        """*notifications_enabled* is keyword-required so no caller can leave the
+        outbox unwired by omission: ``False`` is the composition root saying
         notifications are off (and logging it at startup), not a forgotten
-        argument."""
+        argument. The recipient is the owner of the completed report."""
         self._pool = pool
-        self._notification_user_id = notification_user_id
+        self._notifications_enabled = notifications_enabled
 
     async def create_run(self, report_id: UUID, target_version_no: int) -> ReportRun:
         async with self._pool.connection() as conn, conn.transaction():
@@ -300,18 +300,29 @@ class PostgresJobGateway:
                 )
                 return
             report_id, finished_at = row[0], row[1]
-            await conn.execute(
-                "UPDATE reports SET latest_successful_run_id = %s WHERE report_id = %s",
+            report_cur = await conn.execute(
+                "UPDATE reports SET latest_successful_run_id = %s WHERE report_id = %s RETURNING user_id",
                 [run_id, report_id],
             )
-            if self._notification_user_id is not None:
-                await self._enqueue_report_ready(conn, run_id, report_id, finished_at)
+            if not self._notifications_enabled:
+                return
+            owner_row = await report_cur.fetchone()
+            owner_id = None if owner_row is None else owner_row[0]
+            if owner_id is None:
+                logger.warning(
+                    "Skipped report-ready notification: report has no owner",
+                    run_id=str(run_id),
+                    report_id=str(report_id),
+                )
+                return
+            await self._enqueue_report_ready(conn, run_id, report_id, owner_id, finished_at)
 
     async def _enqueue_report_ready(
         self,
         conn: object,
         run_id: UUID,
         report_id: UUID,
+        owner_id: UUID,
         finished_at: object,
     ) -> None:
         """Write the outbox row inside the caller's transaction.
@@ -326,7 +337,7 @@ class PostgresJobGateway:
             "ON CONFLICT (dedupe_key) DO NOTHING",
             [
                 report_ready_dedupe_key(run_id),
-                self._notification_user_id,
+                owner_id,
                 REPORT_READY_KIND,
                 json.dumps(report_ready_payload(report_id), separators=(",", ":"), sort_keys=True),
                 finished_at,

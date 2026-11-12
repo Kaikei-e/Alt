@@ -123,10 +123,7 @@ async def _resume(run_id: str, token: str) -> None:
         # through the same gateway, so it must enqueue the same outbox row.
         # The service process's relay drains it.
         relay_config = settings.resolve_notification_relay_config()
-        job_gw = PostgresJobGateway(
-            pool,
-            notification_user_id=None if relay_config is None else relay_config.user_id,
-        )
+        job_gw = PostgresJobGateway(pool, notifications_enabled=relay_config is not None)
         report_id, brief_dict = await _resolve_run_brief(job_gw, repo, run_id)
 
         # Mirror main.py: mTLS context + LLM provider selection
