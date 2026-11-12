@@ -2,7 +2,10 @@ package morning_letter
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strconv"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -15,6 +18,10 @@ import (
 	"alt/orchestrator/port/morning_letter_port"
 	"alt/utils/safeconv"
 )
+
+// regenerationInFlightRetryAfter is the client hint when recap-worker is
+// already producing a letter; it is not a measured run time.
+const regenerationInFlightRetryAfter = time.Minute
 
 // Handler implements both MorningLetterServiceHandler (StreamChat) and
 // MorningLetterReadServiceHandler (GetLatestLetter, GetLetterByDate, GetLetterSources).
@@ -213,6 +220,11 @@ func (h *Handler) RegenerateLatest(
 	}
 
 	doc, regenerated, retryAfter, err := h.morningLetterUC.RegenerateLatest(ctx, user.UserID.String(), tz)
+	if errors.Is(err, domain.ErrMorningRegenerationInFlight) {
+		cErr := connect.NewError(connect.CodeResourceExhausted, errors.New("a morning letter regeneration is already running; try again shortly"))
+		cErr.Meta().Set("Retry-After", strconv.Itoa(int(regenerationInFlightRetryAfter.Seconds())))
+		return nil, cErr
+	}
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RegenerateLatest")
 	}
