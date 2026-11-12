@@ -116,11 +116,13 @@ fn spawn_shutdown_signal_task(token: CancellationToken) {
 /// listener stays up either way, so dev stacks without step-ca keep working.
 fn spawn_mtls_listener(
     router: axum::Router,
+    peer_identity: &recap_worker::config::PeerIdentityConfig,
     handle: axum_server::Handle<std::net::SocketAddr>,
 ) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
-    let Some(server_config) = recap_worker::tls::load_server_tls_config().inspect_err(|e| {
-        error!(error = %e, "failed to load mTLS config (fail-closed); refusing to start");
-    })?
+    let Some(server_config) =
+        recap_worker::tls::load_server_tls_config(peer_identity).inspect_err(|e| {
+            error!(error = %e, "failed to load mTLS config (fail-closed); refusing to start");
+        })?
     else {
         info!("MTLS_ENFORCE!=true — mTLS listener disabled");
         return Ok(None);
@@ -309,7 +311,8 @@ async fn main() -> anyhow::Result<()> {
     let router = build_router(registry);
 
     let mtls_handle = axum_server::Handle::new();
-    let mtls_listener_task = spawn_mtls_listener(router.clone(), mtls_handle.clone())?;
+    let mtls_listener_task =
+        spawn_mtls_listener(router.clone(), config.peer_identity(), mtls_handle.clone())?;
 
     let eval_listener_task =
         maybe_spawn_eval_listener(&config, pool, shutdown_token.clone()).await?;

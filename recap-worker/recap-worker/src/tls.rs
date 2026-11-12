@@ -166,7 +166,9 @@ fn load_pem_certs(path: &str) -> Result<Vec<CertificateDer<'static>>> {
 ///
 /// The leaf cert / key are served via a `ReloadingCertResolver` so the
 /// pki-agent sidecar can rotate them on disk without restarting the process.
-pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
+pub fn load_server_tls_config(
+    peer_identity: &crate::config::PeerIdentityConfig,
+) -> Result<Option<Arc<ServerConfig>>> {
     if !enforced() {
         return Ok(None);
     }
@@ -182,12 +184,22 @@ pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
 
     let webpki_verifier =
         rustls::server::WebPkiClientVerifier::builder(Arc::new(trust_store)).build()?;
-    let peer_identity = crate::config::load_peer_identity_from_env()
-        .context("resolving MTLS_ALLOWED_PEERS for server mTLS")?;
     let client_verifier: Arc<dyn ClientCertVerifier> = match peer_identity {
         crate::config::PeerIdentityConfig::Disabled => webpki_verifier,
         crate::config::PeerIdentityConfig::Enabled { allowed_peers } => {
-            Arc::new(AllowedNamesVerifier::new(webpki_verifier, allowed_peers))
+            if allowed_peers.is_empty() {
+                anyhow::bail!("MTLS_ALLOWED_PEERS allowlist is empty");
+            }
+            if allowed_peers
+                .iter()
+                .any(|peer| peer.eq_ignore_ascii_case("localhost"))
+            {
+                anyhow::bail!("'localhost' is not permitted in MTLS_ALLOWED_PEERS");
+            }
+            Arc::new(AllowedNamesVerifier::new(
+                webpki_verifier,
+                allowed_peers.clone(),
+            ))
         }
     };
 

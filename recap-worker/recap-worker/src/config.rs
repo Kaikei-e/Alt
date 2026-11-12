@@ -1498,12 +1498,10 @@ fn load_admin_auth() -> Result<AdminAuth, ConfigError> {
 }
 
 pub(crate) fn load_peer_identity_from_env() -> Result<PeerIdentityConfig, ConfigError> {
-    let raw = env_var("MTLS_ALLOWED_PEERS")?;
+    let raw = env::var("MTLS_ALLOWED_PEERS")
+        .map_err(|_| ConfigError::Missing("MTLS_ALLOWED_PEERS"))?;
     let trimmed = raw.trim();
     if trimmed.eq_ignore_ascii_case("disabled") {
-        tracing::warn!(
-            "peer_identity_disabled: MTLS_ALLOWED_PEERS=disabled was set explicitly; non-health HTTP routes accept unauthenticated requests"
-        );
         return Ok(PeerIdentityConfig::Disabled);
     }
 
@@ -1527,8 +1525,16 @@ pub(crate) fn load_peer_identity_from_env() -> Result<PeerIdentityConfig, Config
             "'disabled' cannot be combined with peer names",
         ));
     }
+    if allowed_peers
+        .iter()
+        .any(|peer| peer.eq_ignore_ascii_case("localhost"))
+    {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "'localhost' is not permitted in MTLS_ALLOWED_PEERS",
+        ));
+    }
 
-    tracing::info!(?allowed_peers, "peer_identity_enabled");
     Ok(PeerIdentityConfig::Enabled { allowed_peers })
 }
 
