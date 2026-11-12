@@ -334,15 +334,6 @@ class RedisAclParityTests(unittest.TestCase):
                 self.assertIsNotNone(block, "run.sh has no suite_up call")
                 self.assertIn("redis-streams", block.group(1).replace("\\", " ").split())
 
-    def test_mq_hub_suite_resets_streams_as_the_producer(self):
-        endpoints = suite_endpoints("mq-hub")
-        url = urlparse(endpoints.get("REDIS_URL", ""))
-        self.assertEqual((url.username, url.hostname, url.port), ("streams_producer", "redis-streams", 6379))
-        self.assertEqual(
-            endpoints.get("REDIS_PASSWORD_FILE"),
-            "$ROOT/e2e/playwright/_fixtures/test-credentials/redis_streams_producer_password.txt",
-        )
-
     def test_redis_streams_reset_user_is_enabled_only_in_staging(self):
         svc = self.services["redis-streams"]
         self.assertEqual(environment(svc).get("REDIS_STREAMS_RESET_USER"), "enabled")

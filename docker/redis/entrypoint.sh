@@ -104,6 +104,15 @@ case "$ROLE" in
         CONSUMER_PASS_FILE="${REDIS_STREAMS_CONSUMER_PASSWORD_FILE:-/run/secrets/redis_streams_consumer_password}"
         LIMITER_PASS_FILE="${REDIS_LIMITER_PASSWORD_FILE:-/run/secrets/redis_limiter_password}"
 
+        case "${REDIS_STREAMS_RESET_USER:-}" in
+            enabled|disabled) ;;
+            *)
+                rm -f "$TMP_ACL"
+                echo "Error: REDIS_STREAMS_RESET_USER must be exactly 'enabled' or 'disabled'" >&2
+                exit 1
+                ;;
+        esac
+
         PRODUCER_HASH=$(get_secret_hash "$PRODUCER_PASS_FILE" "streams producer")
         CONSUMER_HASH=$(get_secret_hash "$CONSUMER_PASS_FILE" "streams consumer")
         LIMITER_HASH=$(get_secret_hash "$LIMITER_PASS_FILE" "limiter")
@@ -123,6 +132,21 @@ user streams_producer on #${PRODUCER_HASH} resetkeys ~alt:events:* ~alt:replies:
 user streams_consumer on #${CONSUMER_HASH} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xreadgroup +xack +xautoclaim +xpending +xgroup|create +xinfo|groups (~alt:events:*:dlq +xadd) (~alt:replies:tags:* +xadd)
 user limiter on #${LIMITER_HASH} resetkeys ~host_rate_limiter:v1:* -@all +hello +client|setinfo +client|setname +ping +set +pttl +select
 EOF
+
+        # Test stacks need to empty stream keys between runs; no other user may DEL them.
+        if [ "$REDIS_STREAMS_RESET_USER" = "enabled" ]; then
+            RESET_PASS_FILE="${REDIS_STREAMS_RESET_PASSWORD_FILE:-/run/secrets/redis_streams_reset_password}"
+            RESET_HASH=$(get_secret_hash "$RESET_PASS_FILE" "streams reset")
+            if [ "$RESET_HASH" = "$PRODUCER_HASH" ] || [ "$RESET_HASH" = "$CONSUMER_HASH" ] || [ "$RESET_HASH" = "$LIMITER_HASH" ]; then
+                rm -f "$TMP_ACL"
+                echo "Error: streams reset secret must differ from the other Redis secrets" >&2
+                exit 1
+            fi
+            echo "user streams_reset on #${RESET_HASH} resetkeys ~alt:events:* -@all +hello +client|setinfo +client|setname +ping +del" >> "$TMP_ACL"
+            echo "Warning: streams reset user is enabled (test stacks only)" >&2
+        else
+            echo "streams reset user is disabled" >&2
+        fi
         ;;
 
     cache)

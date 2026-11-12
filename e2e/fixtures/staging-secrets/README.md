@@ -24,11 +24,13 @@ a throwaway pair into the gitignored `e2e/fixtures/<suite>/token-keys/` and
 exports `STAGING_TOKEN_KEY_DIR` for compose.
 
 The Redis ACL passwords (`redis_streams_producer_password.txt`,
-`redis_streams_consumer_password.txt`, `redis_limiter_password.txt`) live in
+`redis_streams_consumer_password.txt`, `redis_streams_reset_password.txt`,
+`redis_limiter_password.txt`) live in
 `e2e/playwright/_fixtures/test-credentials/`: staging `redis-streams` runs the
-production entrypoint (`docker/redis/entrypoint.sh`), which needs all three (the
-producer and consumer values must differ), and its clients authenticate as
-`streams_producer` (mq-hub) or `streams_consumer` (the consumers).
+production entrypoint (`docker/redis/entrypoint.sh`), which needs all four (every
+value must differ), and its clients authenticate as
+`streams_producer` (mq-hub), `streams_consumer` (the consumers) or, for the
+mq-hub suite's stream reset only, `streams_reset`.
 
 The `/internal/system-user` shared bearer has no file here: `INTERNAL_AUTH_SECRET`
 is set inline on both the `auth-hub` and `alt-data-hub` services in

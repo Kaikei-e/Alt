@@ -237,9 +237,13 @@ services:
     environment:
       REDIS_STREAMS_PRODUCER_PASSWORD_FILE: /run/secrets/redis_streams_producer_password
       REDIS_STREAMS_CONSUMER_PASSWORD_FILE: /run/secrets/redis_streams_consumer_password
+      # Lets the mq-hub suite empty stream keys between runs; production keeps it disabled.
+      REDIS_STREAMS_RESET_USER: enabled
+      REDIS_STREAMS_RESET_PASSWORD_FILE: /run/secrets/redis_streams_reset_password
     secrets:
       - redis_streams_producer_password
       - redis_streams_consumer_password
+      - redis_streams_reset_password
       - redis_limiter_password
     healthcheck:
       test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_streams_producer_password)\" redis-cli --user streams_producer ping | grep -q PONG"]
@@ -1782,6 +1786,8 @@ secrets:
     file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_producer_password.txt
   redis_streams_consumer_password:
     file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_consumer_password.txt
+  redis_streams_reset_password:
+    file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_reset_password.txt
   redis_limiter_password:
     file: ../e2e/playwright/_fixtures/test-credentials/redis_limiter_password.txt
   inference_service_token:
