@@ -522,6 +522,29 @@ mod tests {
             );
         }
 
+        for (method, path) in [
+            (Method::GET, "/v1/not-a-registered-route"),
+            (Method::GET, "/"),
+            (Method::DELETE, "/v1/topic-cards"),
+            (Method::POST, "/v1/recaps/7days"),
+        ] {
+            let request = Request::builder()
+                .method(method.clone())
+                .uri(path)
+                .body(Body::empty())
+                .expect("request builds");
+            let response = app
+                .clone()
+                .oneshot(request)
+                .await
+                .expect("request succeeds");
+            assert_eq!(
+                response.status(),
+                StatusCode::UNAUTHORIZED,
+                "{method} {path} without a client certificate must return 401, not 404/405"
+            );
+        }
+
         let mut allowed_generate = Request::builder()
             .method(Method::POST)
             .uri("/v1/generate/recaps/7days")
