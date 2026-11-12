@@ -41,6 +41,12 @@ pub(crate) enum RetryOutcome {
     AlreadyRunning,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MorningUpdateOutcome {
+    Completed { letter_id: Uuid },
+    SkippedInFlight,
+}
+
 /// `recap_jobs.trigger_source` values created by the multi-genre batch recap
 /// pipeline (`JobContext::new` / `new_with_window` -> `"system"`,
 /// `JobContext::new_manual` -> `"user"`).
@@ -578,14 +584,16 @@ impl Scheduler {
         ))
     }
 
-    pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<Uuid> {
-        let permit = self.try_acquire_morning_permit().ok_or_else(|| {
-            anyhow!(
-                "morning update {} rejected: another morning update is already in progress",
-                context.job_id
-            )
-        })?;
-        self.run_morning_update_locked(context, permit).await
+    pub(crate) async fn run_morning_update(
+        &self,
+        context: JobContext,
+    ) -> Result<MorningUpdateOutcome> {
+        let Some(permit) = self.try_acquire_morning_permit() else {
+            return Ok(MorningUpdateOutcome::SkippedInFlight);
+        };
+        self.run_morning_update_locked(context, permit)
+            .await
+            .map(|letter_id| MorningUpdateOutcome::Completed { letter_id })
     }
 
     pub(crate) async fn run_morning_update_locked(

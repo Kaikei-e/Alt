@@ -278,10 +278,24 @@ impl MorningUpdateDaemon {
             // trigger_source="morning" is written into recap_jobs so boot-time
             // find_resumable_job never picks this up as a batch Recap.
             let job = apply_knowledge_owner(JobContext::new_morning_update(job_id), self.owner);
-            match self.scheduler.run_morning_update(job).await {
-                Ok(letter_id) => info!(%job_id, %letter_id, "morning update job completed"),
-                Err(err) => error!(%job_id, error = %err, "morning update job failed"),
-            }
+            log_morning_update_outcome(job_id, self.scheduler.run_morning_update(job).await);
+        }
+    }
+}
+
+pub(crate) fn log_morning_update_outcome(
+    job_id: Uuid,
+    result: anyhow::Result<crate::scheduler::MorningUpdateOutcome>,
+) {
+    match result {
+        Ok(crate::scheduler::MorningUpdateOutcome::Completed { letter_id }) => {
+            info!(%job_id, %letter_id, "morning update job completed");
+        }
+        Ok(crate::scheduler::MorningUpdateOutcome::SkippedInFlight) => {
+            info!(%job_id, "morning_update_skipped_in_flight");
+        }
+        Err(err) => {
+            error!(%job_id, error = %err, "morning update job failed");
         }
     }
 }
