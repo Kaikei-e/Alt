@@ -55,16 +55,24 @@ func (s *stubArticleBatchFetcher) FetchMultiple(_ context.Context, _ []string) m
 
 type stubArticleSummarizer struct {
 	summaries map[string]string
+	cached    map[string]string
 }
 
 func (s *stubArticleSummarizer) GetCachedSummary(_ context.Context, articleID string) (string, bool) {
-	v, ok := s.summaries[articleID]
+	v, ok := s.cached[articleID]
 	return v, ok
 }
 
 type allowAllSummarizeQuota struct{}
 
 func (allowAllSummarizeQuota) ChargeSummarization(context.Context) error { return nil }
+
+type countingSummarizeQuota struct{ charges int }
+
+func (q *countingSummarizeQuota) ChargeSummarization(context.Context) error {
+	q.charges++
+	return nil
+}
 
 func (s *stubArticleSummarizer) EnsureSummary(_ context.Context, articleID, _, _ string) (string, bool, error) {
 	return s.summaries[articleID], true, nil
@@ -146,6 +154,30 @@ func TestRestHandleFetchInoreaderSummary(t *testing.T) {
 				assert.Contains(t, rec.Body.String(), "URL not allowed for security reasons")
 			})
 		}
+	})
+
+	t.Run("generation path charges once and returns the generated summary", func(t *testing.T) {
+		t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
+		repo := &stubArticleRepo{articles: map[string]*domain.ArticleContent{
+			"https://example.com/g1": {ID: "art-201", Title: "Article 201"},
+		}}
+		summarizer := &stubArticleSummarizer{summaries: map[string]string{"art-201": "Generated summary"}}
+		quota := &countingSummarizeQuota{}
+		uc := fetch_article_summaries_usecase.NewUsecase(repo, &stubArticleBatchFetcher{}, summarizer, quota)
+		container := &di.ApplicationComponents{FetchArticleSummariesUsecase: uc}
+
+		payload, err := json.Marshal(FeedSummaryRequest{FeedURLs: []string{"https://example.com/g1"}})
+		require.NoError(t, err)
+		e := echo.New()
+		req := withAuthenticatedUser(httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewReader(payload)))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+
+		require.NoError(t, RestHandleFetchArticleSummary(container, &config.Config{})(e.NewContext(req, rec)))
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, 1, quota.charges)
+		assert.Contains(t, rec.Body.String(), "Generated summary")
 	})
 
 	t.Run("valid request maps matched_articles and total_matched", func(t *testing.T) {
@@ -296,7 +328,7 @@ func TestRestHandleFetchArticleSummary(t *testing.T) {
 			},
 		}
 		summarizer := &stubArticleSummarizer{
-			summaries: map[string]string{
+			cached: map[string]string{
 				"art-101": "Concise AI summary of Article 101",
 			},
 		}

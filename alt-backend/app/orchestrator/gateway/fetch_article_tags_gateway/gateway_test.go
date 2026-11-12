@@ -2,6 +2,7 @@ package fetch_article_tags_gateway
 
 import (
 	"alt/domain"
+	"alt/orchestrator/port/article_tags_quota_port"
 	"alt/shared/driver/mqhub_connect"
 	"alt/utils/logger"
 	"context"
@@ -87,7 +88,7 @@ func TestFetchArticleTags_ExistingTags_ReturnsCached(t *testing.T) {
 
 	db := &stubDB{fetchTagsResult: existingTags}
 	tagger := &stubTagger{enabled: true}
-	gw := newGateway(db, db, tagger, DefaultConfig())
+	gw := NewFetchArticleTagsGateway(db, db, tagger, DefaultConfig(), allowAllQuota{})
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -136,7 +137,7 @@ func TestFetchArticleTags_NoTags_GeneratesAndPersists(t *testing.T) {
 		},
 	}
 
-	gw := newGateway(db, db, tagger, DefaultConfig())
+	gw := NewFetchArticleTagsGateway(db, db, tagger, DefaultConfig(), allowAllQuota{})
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -201,7 +202,7 @@ func TestFetchArticleTags_GenerateFails_RetriesOnce(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.RetryBackoff = time.Millisecond // fast for testing
-	gw := newGateway(db, db, tagger, cfg)
+	gw := NewFetchArticleTagsGateway(db, db, tagger, cfg, allowAllQuota{})
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -245,7 +246,7 @@ func TestFetchArticleTags_UpsertFails_StillReturnsTags(t *testing.T) {
 		},
 	}
 
-	gw := newGateway(db, db, tagger, DefaultConfig())
+	gw := NewFetchArticleTagsGateway(db, db, tagger, DefaultConfig(), allowAllQuota{})
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -288,7 +289,7 @@ func TestFetchArticleTags_EmptyFeedID_SkipsUpsert(t *testing.T) {
 		},
 	}
 
-	gw := newGateway(db, db, tagger, DefaultConfig())
+	gw := NewFetchArticleTagsGateway(db, db, tagger, DefaultConfig(), allowAllQuota{})
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -325,7 +326,7 @@ func TestFetchArticleTags_AllRetriesFail_ReturnsEmpty(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.RetryBackoff = time.Millisecond
-	gw := newGateway(db, db, tagger, cfg)
+	gw := NewFetchArticleTagsGateway(db, db, tagger, cfg, allowAllQuota{})
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -393,7 +394,7 @@ func TestFetchArticleTags_ConcurrentSameArticle_SingleGeneration(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.MaxRetries = 0 // no retries for this test
-	gw := newGateway(db, db, tagger, cfg)
+	gw := NewFetchArticleTagsGateway(db, db, tagger, cfg, allowAllQuota{})
 
 	const goroutines = 10
 	var wg sync.WaitGroup
@@ -505,7 +506,7 @@ func TestFetchArticleTags_ConcurrentCrossUser_DoesNotShareSingleflightResult(t *
 
 	cfg := DefaultConfig()
 	cfg.MaxRetries = 0
-	gw := newGateway(db, reader, tagger, cfg)
+	gw := NewFetchArticleTagsGateway(db, reader, tagger, cfg, allowAllQuota{})
 
 	var (
 		tagsA, tagsB []*domain.FeedTag
@@ -581,4 +582,143 @@ func TestBuildGenerateTagsRequest(t *testing.T) {
 	if req.ArticleID != "art-1" || req.Title != "Test Title" || req.Content != "Test Content" || req.FeedID != "feed-1" || req.TimeoutMs != 5000 {
 		t.Errorf("unexpected generated request: %+v", req)
 	}
+}
+
+type allowAllQuota struct{}
+
+func (allowAllQuota) AcquireGeneration(context.Context) (func(), error) { return func() {}, nil }
+
+type countingQuota struct {
+	budget   int
+	acquires int
+	released int
+}
+
+func (q *countingQuota) AcquireGeneration(context.Context) (func(), error) {
+	q.acquires++
+	if q.budget <= 0 {
+		return nil, &article_tags_quota_port.BudgetExhaustedError{RetryAfter: time.Second}
+	}
+	q.budget--
+	return func() { q.released++ }, nil
+}
+
+func successfulTagger() *stubTagger {
+	resp := &mqhub_connect.GenerateTagsResponse{
+		Success: true,
+		Tags:    []mqhub_connect.GeneratedTag{{ID: "t1", Name: "generated", Confidence: 0.9}},
+	}
+	return &stubTagger{enabled: true, responses: []*mqhub_connect.GenerateTagsResponse{resp, resp, resp, resp, resp}}
+}
+
+func TestFetchArticleTags_GenerationIsChargedAndBoundedByBudget(t *testing.T) {
+	db := &stubDB{fetchTagsResult: []*domain.FeedTag{}, fetchArticle: &domain.ArticleContent{ID: "a", FeedID: "f"}}
+	tagger := successfulTagger()
+	quota := &countingQuota{budget: 2}
+	gw := NewFetchArticleTagsGateway(db, db, tagger, DefaultConfig(), quota)
+
+	refused := 0
+	for i := 0; i < 5; i++ {
+		_, err := gw.FetchArticleTags(context.Background(), "article-"+string(rune('a'+i)))
+		if errors.Is(err, article_tags_quota_port.ErrBudgetExhausted) {
+			refused++
+		}
+	}
+
+	if tagger.callCount != 2 {
+		t.Errorf("expected exactly 2 generations, got %d", tagger.callCount)
+	}
+	if refused != 3 {
+		t.Errorf("expected 3 refusals, got %d", refused)
+	}
+	if quota.released != 2 {
+		t.Errorf("expected both slots released, got %d", quota.released)
+	}
+}
+
+func TestFetchArticleTags_StoredTagsAreNeverCharged(t *testing.T) {
+	db := &stubDB{fetchTagsResult: []*domain.FeedTag{{ID: "t", TagName: "stored"}}}
+	quota := &countingQuota{}
+	gw := NewFetchArticleTagsGateway(db, db, successfulTagger(), DefaultConfig(), quota)
+
+	for i := 0; i < 20; i++ {
+		tags, err := gw.FetchArticleTags(context.Background(), "article-1")
+		if err != nil || len(tags) != 1 {
+			t.Fatalf("stored read failed: %v %v", tags, err)
+		}
+	}
+	if quota.acquires != 0 {
+		t.Errorf("stored reads must not touch the quota, got %d acquires", quota.acquires)
+	}
+}
+
+func TestFetchArticleTags_DisabledGenerationIsNeverCharged(t *testing.T) {
+	db := &stubDB{fetchTagsResult: []*domain.FeedTag{}}
+	quota := &countingQuota{}
+	gw := NewFetchArticleTagsGateway(db, db, &stubTagger{enabled: false}, DefaultConfig(), quota)
+
+	if _, err := gw.FetchArticleTags(context.Background(), "article-1"); err != nil {
+		t.Fatal(err)
+	}
+	if quota.acquires != 0 {
+		t.Errorf("got %d acquires", quota.acquires)
+	}
+}
+
+func TestFetchArticleTags_SlotReleasedOnErrorCancelAndPanic(t *testing.T) {
+	db := &stubDB{fetchTagsResult: []*domain.FeedTag{}, fetchArticle: &domain.ArticleContent{ID: "a", FeedID: "f"}}
+	cfg := DefaultConfig()
+	cfg.RetryBackoff = time.Millisecond
+
+	t.Run("generator error", func(t *testing.T) {
+		quota := &countingQuota{budget: 1}
+		tagger := &stubTagger{enabled: true, errors: []error{errors.New("boom"), errors.New("boom")}}
+		gw := NewFetchArticleTagsGateway(db, db, tagger, cfg, quota)
+		_, _ = gw.FetchArticleTags(context.Background(), "a")
+		if quota.released != 1 {
+			t.Errorf("released=%d", quota.released)
+		}
+	})
+
+	t.Run("cancelled context", func(t *testing.T) {
+		quota := &countingQuota{budget: 1}
+		tagger := &stubTagger{enabled: true, errors: []error{context.Canceled, context.Canceled}}
+		gw := NewFetchArticleTagsGateway(db, db, tagger, cfg, quota)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, _ = gw.FetchArticleTags(ctx, "a")
+		if quota.released != 1 {
+			t.Errorf("released=%d", quota.released)
+		}
+	})
+
+	t.Run("panic", func(t *testing.T) {
+		quota := &countingQuota{budget: 1}
+		gw := NewFetchArticleTagsGateway(db, db, panicTagger{}, cfg, quota)
+		func() {
+			defer func() { _ = recover() }()
+			_, _ = gw.FetchArticleTags(context.Background(), "a")
+		}()
+		if quota.released != 1 {
+			t.Errorf("released=%d", quota.released)
+		}
+	})
+}
+
+type panicTagger struct{}
+
+func (panicTagger) IsEnabled() bool { return true }
+
+func (panicTagger) GenerateTagsForArticle(context.Context, mqhub_connect.GenerateTagsRequest) (*mqhub_connect.GenerateTagsResponse, error) {
+	panic("tagger exploded")
+}
+
+func TestNewFetchArticleTagsGateway_PanicsWithoutQuotaPort(t *testing.T) {
+	db := &stubDB{}
+	defer func() {
+		if recover() == nil {
+			t.Error("expected a panic for a nil quota port")
+		}
+	}()
+	NewFetchArticleTagsGateway(db, db, &stubTagger{}, DefaultConfig(), nil)
 }

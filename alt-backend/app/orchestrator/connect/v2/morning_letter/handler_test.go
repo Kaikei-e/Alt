@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +14,7 @@ import (
 
 	"alt/domain"
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
+	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/mocks"
 
 	"github.com/stretchr/testify/assert"
@@ -211,4 +215,28 @@ func TestRegenerateLatest_OtherFailuresStayInternal(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+}
+
+func TestRegenerateLatest_InFlightRunCarriesRetryAfterHeaderOverTheMux(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockUC := mocks.NewMockMorningLetterUsecase(ctrl)
+	mockChat := mocks.NewMockStreamChatPort(ctrl)
+	mockUC.EXPECT().RegenerateLatest(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, false, time.Duration(0), fmt.Errorf("regenerate failed: %w", domain.ErrMorningRegenerationInFlight))
+
+	h := NewHandler(mockChat, mockUC, slog.Default())
+	path, handler := morningletterv2connect.NewMorningLetterReadServiceHandler(h)
+	mux := http.NewServeMux()
+	mux.Handle(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(w, r.WithContext(testCtxWithUser()))
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, morningletterv2connect.MorningLetterReadServiceRegenerateLatestProcedure, strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+	assert.Equal(t, "60", rec.Header().Get("Retry-After"))
+	assert.Contains(t, rec.Body.String(), "resource_exhausted")
 }

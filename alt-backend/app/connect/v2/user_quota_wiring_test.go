@@ -13,7 +13,6 @@ import (
 
 	"alt/config"
 	"alt/connect/v2/middleware"
-	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 )
@@ -59,11 +58,10 @@ func withDefaultRetrieveAndTagClasses(c config.UserQuotaConfig) config.UserQuota
 	return c
 }
 
-func TestSetupConnectHandlers_GatesRetrieveContextAndArticleTags(t *testing.T) {
+func TestSetupConnectHandlers_GatesRetrieveContext(t *testing.T) {
 	container, cfg, logger := testDeps()
 	quota := config.DefaultUserQuotaConfig()
 	quota.AugurRetrieve = config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1}
-	quota.ArticleTags = config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1}
 	limiter, err := middleware.NewUserQuotaLimiter(quota, time.Now, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 	container.UserQuotaLimiter = limiter
@@ -90,19 +88,4 @@ func TestSetupConnectHandlers_GatesRetrieveContextAndArticleTags(t *testing.T) {
 		assert.NotEmpty(t, rec.Header().Get("Retry-After"))
 	})
 
-	t.Run("StreamArticleTags", func(t *testing.T) {
-		call := func() *httptest.ResponseRecorder {
-			req := httptest.NewRequest(http.MethodPost, articlesv2connect.ArticleServiceStreamArticleTagsProcedure,
-				strings.NewReader("\x00\x00\x00\x00\x34{\"articleId\":\"11111111-1111-4111-8111-111111111111\"}"))
-			req.Header.Set("Content-Type", "application/connect+json")
-			req.Header.Set("X-Alt-Backend-Token", token)
-			rec := httptest.NewRecorder()
-			mux.ServeHTTP(rec, req)
-			return rec
-		}
-		first := call()
-		assert.NotContains(t, first.Body.String(), "resource_exhausted")
-		second := call()
-		assert.Contains(t, second.Body.String(), "resource_exhausted")
-	})
 }

@@ -32,7 +32,7 @@ func TestLoadUserQuotaConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 1, cfg.MorningChat.MaxInFlight)
 
 	assert.Equal(t, OperationQuotaConfig{Rate: 30, Burst: 15, Window: time.Minute, MaxInFlight: 2}, cfg.AugurRetrieve)
-	assert.Equal(t, OperationQuotaConfig{Rate: 120, Burst: 60, Window: time.Minute, MaxInFlight: 40}, cfg.ArticleTags)
+	assert.Equal(t, OperationQuotaConfig{Rate: 60, Burst: 30, Window: time.Minute, MaxInFlight: 4}, cfg.ArticleTags)
 }
 
 func TestLoadUserQuotaConfig_OverridesAndRejectsInvalid(t *testing.T) {
@@ -102,7 +102,7 @@ func TestLogUserQuotaConfig_EmitsStructuredValues(t *testing.T) {
 	assert.Contains(t, out, `"augur_chat_max_in_flight":1`)
 	assert.Contains(t, out, `"morning_chat_max_in_flight":1`)
 	assert.Contains(t, out, `"augur_retrieve_max_in_flight":2`)
-	assert.Contains(t, out, `"article_tags_max_in_flight":40`)
+	assert.Contains(t, out, `"article_tags_max_in_flight":4`)
 	assert.NotContains(t, out, `morning_regenerate`)
 	assert.NotContains(t, out, `max_concurrent`)
 }
@@ -128,4 +128,20 @@ func TestLoadUserQuotaConfig_RejectsSetButEmptyValues(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestLoadUserQuotaConfig_EnforcesMinimumTrackedUsers(t *testing.T) {
+	t.Setenv(UserQuotaMaxTrackedUsersEnv, "999")
+	_, err := LoadUserQuotaConfig()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), UserQuotaMaxTrackedUsersEnv)
+
+	t.Setenv(UserQuotaMaxTrackedUsersEnv, "1000")
+	cfg, err := LoadUserQuotaConfig()
+	require.NoError(t, err)
+	assert.Equal(t, 1000, cfg.MaxTrackedUsers)
+}
+
+func TestLogUserQuotaConfig_PanicsOnNilLogger(t *testing.T) {
+	assert.Panics(t, func() { LogUserQuotaConfig(nil, DefaultUserQuotaConfig()) })
 }

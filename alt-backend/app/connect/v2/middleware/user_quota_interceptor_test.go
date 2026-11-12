@@ -873,7 +873,7 @@ func TestUserQuotaInterceptor_GatesRetrieveContextAndArticleTagsPerClass(t *test
 	assert.Equal(t, int32(5), articleSvc.fetchCall.Load())
 }
 
-func TestUserQuotaInterceptor_ArticleTagsStreamIsRateLimited(t *testing.T) {
+func TestUserQuotaInterceptor_ArticleTagStreamIsNotGatedPerRequest(t *testing.T) {
 	limiter, err := NewUserQuotaLimiter(testQuotaConfig(2, 4, 100), time.Now, discardLogger())
 	require.NoError(t, err)
 
@@ -890,20 +890,15 @@ func TestUserQuotaInterceptor_ArticleTagsStreamIsRateLimited(t *testing.T) {
 	defer srv.Close()
 
 	client := articlesv2connect.NewArticleServiceClient(srv.Client(), srv.URL)
-	var lastErr error
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 10; i++ {
 		st, sErr := client.StreamArticleTags(context.Background(), connect.NewRequest(&articlesv2.StreamArticleTagsRequest{}))
-		if sErr == nil {
-			for st.Receive() {
-			}
-			sErr = st.Err()
-			_ = st.Close()
+		require.NoError(t, sErr)
+		for st.Receive() {
 		}
-		lastErr = sErr
+		require.NoError(t, st.Err())
+		_ = st.Close()
 	}
-	require.Error(t, lastErr)
-	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(lastErr))
-	assert.Equal(t, int32(2), articleSvc.tagCalls.Load())
+	assert.Equal(t, int32(10), articleSvc.tagCalls.Load(), "tag charging happens where generation starts, not per request")
 }
 
 func TestUserQuotaLimiter_ChargeSummarizationSpendsTokensWithoutHoldingASlot(t *testing.T) {
