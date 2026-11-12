@@ -16,6 +16,7 @@ printf 'producer_secret\n' > "$TMP/producer"
 printf 'consumer_secret\n' > "$TMP/consumer"
 printf 'limiter_secret\n' > "$TMP/limiter"
 printf 'producer_secret\n' > "$TMP/same"
+printf 'reset_secret\n' > "$TMP/reset"
 
 fails=0
 check() {
@@ -25,14 +26,28 @@ check() {
     fi
 }
 
+# RESET_USER: value of REDIS_STREAMS_RESET_USER ("__unset__" leaves it unset).
+# RESET_FILE: path of the reset secret.
+RESET_USER=disabled
+RESET_FILE="$TMP/reset"
+
 run_streams() {
     rm -f "$TMP/users.acl"
-    PATH="$TMP/bin:$PATH" \
-    REDIS_ACL_FILE="$TMP/users.acl" \
-    REDIS_STREAMS_PRODUCER_PASSWORD_FILE="${1:-$TMP/producer}" \
-    REDIS_STREAMS_CONSUMER_PASSWORD_FILE="${2:-$TMP/consumer}" \
-    REDIS_LIMITER_PASSWORD_FILE="$TMP/limiter" \
-    sh "$ENTRYPOINT" streams >/dev/null 2>"$TMP/err"
+    (
+        if [ "$RESET_USER" = "__unset__" ]; then
+            unset REDIS_STREAMS_RESET_USER
+        else
+            REDIS_STREAMS_RESET_USER="$RESET_USER"
+            export REDIS_STREAMS_RESET_USER
+        fi
+        PATH="$TMP/bin:$PATH" \
+        REDIS_ACL_FILE="$TMP/users.acl" \
+        REDIS_STREAMS_PRODUCER_PASSWORD_FILE="${1:-$TMP/producer}" \
+        REDIS_STREAMS_CONSUMER_PASSWORD_FILE="${2:-$TMP/consumer}" \
+        REDIS_LIMITER_PASSWORD_FILE="$TMP/limiter" \
+        REDIS_STREAMS_RESET_PASSWORD_FILE="$RESET_FILE" \
+        sh "$ENTRYPOINT" streams >"$TMP/out" 2>"$TMP/err"
+    )
 }
 
 check "streams role boots with both stream secrets" 'run_streams'
@@ -71,6 +86,37 @@ check "secrets are hashed, not written" '! grep -q -e producer_secret -e consume
 check "identical producer and consumer secrets are rejected" '! run_streams "$TMP/same" "$TMP/same"'
 check "missing consumer secret fails startup" '! run_streams "$TMP/producer" "$TMP/absent"'
 check "missing producer secret fails startup" '! run_streams "$TMP/absent" "$TMP/consumer"'
+
+# --- opt-in reset user ------------------------------------------------------
+check "disabled mode emits no reset user" '! grep -q "streams_reset" "$TMP/users.acl"'
+
+RESET_USER=__unset__
+check "unset REDIS_STREAMS_RESET_USER fails startup" '! run_streams'
+check "unset REDIS_STREAMS_RESET_USER error names the variable" 'grep -q "REDIS_STREAMS_RESET_USER" "$TMP/err"'
+for bad in yes true ENABLED Enabled ""; do
+    RESET_USER=$bad
+    check "REDIS_STREAMS_RESET_USER='$bad' fails startup" '! run_streams'
+done
+
+RESET_USER=disabled
+check "disabled mode boots" 'run_streams'
+check "disabled mode says so" 'grep -qi "reset user.*disabled" "$TMP/out" "$TMP/err"'
+check "disabled mode keeps exactly the three users" '[ "$(grep -c "^user " "$TMP/users.acl")" -eq 4 ]'
+check "disabled mode does not read the reset secret" '(RESET_FILE="$TMP/absent"; run_streams)'
+
+RESET_USER=enabled
+check "enabled mode boots" 'run_streams'
+check "enabled mode warns" 'grep -qi "reset user.*enabled" "$TMP/out" "$TMP/err"'
+reset_hash=$(printf 'reset_secret' | sha256sum | awk '{print $1}')
+check "enabled mode writes the exact reset line" \
+    'grep -qxF "user streams_reset on #${reset_hash} resetkeys ~alt:events:* -@all +hello +client|setinfo +client|setname +ping +del" "$TMP/users.acl"'
+check "enabled mode leaves the other users in place" 'grep -q "^user streams_producer " "$TMP/users.acl" && grep -q "^user streams_consumer " "$TMP/users.acl" && grep -q "^user limiter " "$TMP/users.acl"'
+check "reset secret is hashed, not written" '! grep -q reset_secret "$TMP/users.acl"'
+check "enabled mode with a missing reset secret fails" '! (RESET_FILE="$TMP/absent"; run_streams)'
+for same in producer consumer limiter; do
+    check "reset secret equal to the $same secret fails" '! (RESET_FILE="$TMP/$same"; run_streams)'
+done
+RESET_USER=disabled
 
 if [ "$fails" -ne 0 ]; then
     echo "$fails check(s) failed" >&2

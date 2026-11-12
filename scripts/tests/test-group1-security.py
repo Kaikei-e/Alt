@@ -600,6 +600,7 @@ class TestGroup1Security(unittest.TestCase):
                 "PATH": f"{tmp}:" + os.environ.get("PATH", ""),
                 "REDIS_STREAMS_PRODUCER_PASSWORD_FILE": str(sec_dir / "producer_pass"),
                 "REDIS_STREAMS_CONSUMER_PASSWORD_FILE": str(sec_dir / "consumer_pass"),
+                "REDIS_STREAMS_RESET_USER": "disabled",
                 "REDIS_LIMITER_PASSWORD_FILE": str(sec_dir / "limiter_pass"),
                 "REDIS_CACHE_PASSWORD_FILE": str(sec_dir / "cache_pass"),
                 "REDIS_ACL_FILE": str(tmp / "test_users.acl"),
@@ -1131,6 +1132,17 @@ class TestGroup1Security(unittest.TestCase):
                 checked += 1
                 self.assertIn(env.get("APP_ENV"), ("development", "test", "staging"), f"{fname}:{name}")
         self.assertGreater(checked, 0)
+
+    def test_production_redis_streams_has_no_reset_user(self):
+        svc = self._load_yaml_lenient(REPO_ROOT / "compose" / "mq.yaml")["services"]["redis-streams"]
+        env = svc.get("environment") or {}
+        env = env if isinstance(env, dict) else dict(e.split("=", 1) for e in env if "=" in e)
+        self.assertEqual(env.get("REDIS_STREAMS_RESET_USER"), "disabled")
+        names = [x if isinstance(x, str) else x.get("source") for x in (svc.get("secrets") or [])]
+        self.assertNotIn("redis_streams_reset_password", names)
+        for fname, name, other in self._all_stack_services():
+            if fname != "compose.staging.yaml":
+                self.assertNotIn("redis_streams_reset_password", str(other.get("secrets", [])), f"{fname}:{name}")
 
     def test_registration_closed_by_default(self):
         import re
