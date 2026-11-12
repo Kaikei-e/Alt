@@ -3795,29 +3795,33 @@ mod tests {
     }
 
     #[test]
-    fn from_env_ignores_mtls_allowed_peers_file_indirection() {
+    fn from_env_rejects_wildcard_entries_in_mtls_allowed_peers() {
         let _lock = ENV_MUTEX
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let dir = tempfile::tempdir().expect("tempdir");
-        let peers_file = dir.path().join("peers");
-        std::fs::write(&peers_file, "disabled\n").expect("write peers file");
 
-        let mut vars = required_base();
-        vars.extend([
-            ("MTLS_ALLOWED_PEERS", None),
-            (
-                "MTLS_ALLOWED_PEERS_FILE",
-                Some(peers_file.to_str().expect("utf8")),
-            ),
-        ]);
-        temp_env::with_vars(vars, || {
-            let res = Config::from_env();
-            assert!(
-                matches!(res, Err(ConfigError::Missing("MTLS_ALLOWED_PEERS"))),
-                "MTLS_ALLOWED_PEERS_FILE indirection must not satisfy MTLS_ALLOWED_PEERS, got: {res:?}"
-            );
-        });
+        for bad in ["*", "alt-backend,*.internal", "alt-*"] {
+            let mut vars = required_base();
+            vars.extend([
+                ("MTLS_ENFORCE", Some("true")),
+                ("NEWS_CREATOR_BASE_URL", Some("https://localhost:8001/")),
+                ("SUBWORKER_BASE_URL", Some("https://localhost:8002/")),
+                ("MTLS_ALLOWED_PEERS", Some(bad)),
+            ]);
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(
+                        res,
+                        Err(ConfigError::Invalid {
+                            name: "MTLS_ALLOWED_PEERS",
+                            ..
+                        })
+                    ),
+                    "MTLS_ALLOWED_PEERS={bad:?} must be rejected at parse time, got: {res:?}"
+                );
+            });
+        }
     }
 
     #[test]

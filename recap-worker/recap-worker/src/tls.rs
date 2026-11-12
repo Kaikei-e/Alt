@@ -496,8 +496,19 @@ mod tests {
         let cn_key = rcgen::KeyPair::generate().unwrap();
         let cn_cert = cn_only_params.self_signed(&cn_key).unwrap();
         assert!(
-            verify_cert_peer_identity(cn_cert.der(), &["alt-backend".to_string()]).is_ok(),
-            "certificate whose Subject CN matches when no SAN matches must be accepted"
+            verify_cert_peer_identity(cn_cert.der(), &["alt-backend".to_string()]).is_err(),
+            "certificate with DNS SANs is matched on SANs only, so a matching CN must not be accepted"
+        );
+
+        let mut no_san_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+        let mut no_san_dn = rcgen::DistinguishedName::new();
+        no_san_dn.push(rcgen::DnType::CommonName, "alt-backend");
+        no_san_params.distinguished_name = no_san_dn;
+        let no_san_key = rcgen::KeyPair::generate().unwrap();
+        let no_san_cert = no_san_params.self_signed(&no_san_key).unwrap();
+        assert!(
+            verify_cert_peer_identity(no_san_cert.der(), &["alt-backend".to_string()]).is_ok(),
+            "certificate without DNS SANs is matched on its Subject CN"
         );
 
         let mut wrong_case_params =
