@@ -5,11 +5,9 @@
 //!
 //! Primitives:
 //!   - [`load_server_tls_config`]: loads the pair of PEM files into a
-//!     `rustls::ServerConfig` suitable for `axum_server::bind_rustls`. When
+//!     `rustls::ServerConfig` suitable for `PeerIdentityAcceptor`. When
 //!     `MTLS_ENFORCE` is not `true`, returns `None` so the caller can fall
 //!     back to the plaintext `tokio::net::TcpListener`.
-//!   - [`allowed_peers_from_env`]: parses `MTLS_ALLOWED_PEERS` for the
-//!     peer-identity middleware.
 //!
 //! Configuration is env-driven:
 //!   - `MTLS_ENFORCE=true` enables mTLS; any other value keeps plaintext.
@@ -40,6 +38,45 @@ pub struct AllowedNamesVerifier {
     allowed_peers: Vec<String>,
 }
 
+pub(crate) fn verify_cert_peer_identity(
+    end_entity: &CertificateDer<'_>,
+    allowed_peers: &[String],
+) -> std::result::Result<(), rustls::Error> {
+    if allowed_peers.is_empty() {
+        return Err(rustls::Error::General(
+            "MTLS_ALLOWED_PEERS allowlist is empty".into(),
+        ));
+    }
+
+    let (_, cert) = X509Certificate::from_der(end_entity.as_ref())
+        .map_err(|_| rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding))?;
+
+    let cn_matches = cert
+        .subject()
+        .iter_common_name()
+        .filter_map(|cn| cn.as_str().ok())
+        .any(|cn| allowed_peers.iter().any(|allowed| allowed == cn));
+
+    let san_matches = cert
+        .subject_alternative_name()
+        .ok()
+        .flatten()
+        .is_some_and(|ext| {
+            ext.value.general_names.iter().any(|name| match name {
+                GeneralName::DNSName(dns) => allowed_peers.iter().any(|allowed| allowed == dns),
+                _ => false,
+            })
+        });
+
+    if cn_matches || san_matches {
+        Ok(())
+    } else {
+        Err(rustls::Error::General(
+            "client certificate peer identity not in MTLS_ALLOWED_PEERS".into(),
+        ))
+    }
+}
+
 impl AllowedNamesVerifier {
     pub fn new(inner: Arc<dyn ClientCertVerifier>, allowed_peers: Vec<String>) -> Self {
         Self {
@@ -52,40 +89,7 @@ impl AllowedNamesVerifier {
         &self,
         end_entity: &CertificateDer<'_>,
     ) -> std::result::Result<(), rustls::Error> {
-        if self.allowed_peers.is_empty() {
-            return Ok(());
-        }
-
-        let (_, cert) = X509Certificate::from_der(end_entity.as_ref()).map_err(|_| {
-            rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding)
-        })?;
-
-        let cn_matches = cert
-            .subject()
-            .iter_common_name()
-            .filter_map(|cn| cn.as_str().ok())
-            .any(|cn| self.allowed_peers.iter().any(|allowed| allowed == cn));
-
-        let san_matches = cert
-            .subject_alternative_name()
-            .ok()
-            .flatten()
-            .is_some_and(|ext| {
-                ext.value.general_names.iter().any(|name| match name {
-                    GeneralName::DNSName(dns) => {
-                        self.allowed_peers.iter().any(|allowed| allowed == dns)
-                    }
-                    _ => false,
-                })
-            });
-
-        if cn_matches || san_matches {
-            Ok(())
-        } else {
-            Err(rustls::Error::General(
-                "client certificate peer identity not in MTLS_ALLOWED_PEERS".into(),
-            ))
-        }
+        verify_cert_peer_identity(end_entity, &self.allowed_peers)
     }
 }
 
@@ -178,11 +182,13 @@ pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
 
     let webpki_verifier =
         rustls::server::WebPkiClientVerifier::builder(Arc::new(trust_store)).build()?;
-    let allowed_peers = allowed_peers_from_env();
-    let client_verifier: Arc<dyn ClientCertVerifier> = if allowed_peers.is_empty() {
-        webpki_verifier
-    } else {
-        Arc::new(AllowedNamesVerifier::new(webpki_verifier, allowed_peers))
+    let peer_identity = crate::config::load_peer_identity_from_env()
+        .context("resolving MTLS_ALLOWED_PEERS for server mTLS")?;
+    let client_verifier: Arc<dyn ClientCertVerifier> = match peer_identity {
+        crate::config::PeerIdentityConfig::Disabled => webpki_verifier,
+        crate::config::PeerIdentityConfig::Enabled { allowed_peers } => {
+            Arc::new(AllowedNamesVerifier::new(webpki_verifier, allowed_peers))
+        }
     };
 
     let resolver = crate::clients::mtls::server_cert_resolver(&cert_file, &key_file)?;
@@ -194,14 +200,78 @@ pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
     Ok(Some(Arc::new(server_config)))
 }
 
-/// Parse `MTLS_ALLOWED_PEERS=csv` into a Vec of CNs. Trim + drop empties.
-pub fn allowed_peers_from_env() -> Vec<String> {
-    std::env::var("MTLS_ALLOWED_PEERS")
-        .unwrap_or_default()
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
+#[derive(Clone)]
+pub struct PeerIdentityAcceptor {
+    inner: axum_server::tls_rustls::RustlsAcceptor,
+}
+
+impl PeerIdentityAcceptor {
+    #[must_use]
+    pub fn new(config: axum_server::tls_rustls::RustlsConfig) -> Self {
+        Self {
+            inner: axum_server::tls_rustls::RustlsAcceptor::new(config),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct PeerCertExtensionService<S> {
+    inner: S,
+    leaf_cert: Option<CertificateDer<'static>>,
+}
+
+impl<S, B> tower::Service<axum::http::Request<B>> for PeerCertExtensionService<S>
+where
+    S: tower::Service<axum::http::Request<B>>,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::result::Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut req: axum::http::Request<B>) -> Self::Future {
+        req.headers_mut().remove("x-alt-peer-identity");
+        if let Some(cert) = self.leaf_cert.as_ref() {
+            req.extensions_mut().insert(cert.clone());
+        }
+        self.inner.call(req)
+    }
+}
+
+impl<I, S> axum_server::accept::Accept<I, S> for PeerIdentityAcceptor
+where
+    I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    S: Send + 'static,
+{
+    type Stream = tokio_rustls::server::TlsStream<I>;
+    type Service = PeerCertExtensionService<S>;
+    type Future = futures::future::BoxFuture<'static, io::Result<(Self::Stream, Self::Service)>>;
+
+    fn accept(&self, stream: I, service: S) -> Self::Future {
+        let inner = self.inner.clone();
+        Box::pin(async move {
+            let (tls_stream, service) = inner.accept(stream, service).await?;
+            let leaf_cert = tls_stream
+                .get_ref()
+                .1
+                .peer_certificates()
+                .and_then(|certs| certs.first())
+                .map(|cert| cert.clone().into_owned());
+            Ok((
+                tls_stream,
+                PeerCertExtensionService {
+                    inner: service,
+                    leaf_cert,
+                },
+            ))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -242,9 +312,17 @@ mod tests {
             "MTLS_ALLOWED_PEERS",
             Some(" alt-backend , search-indexer ,  , acolyte-orchestrator "),
             || {
+                let parsed = crate::config::load_peer_identity_from_env().unwrap();
                 assert_eq!(
-                    allowed_peers_from_env(),
-                    vec!["alt-backend", "search-indexer", "acolyte-orchestrator"]
+                    parsed.allowed_peers(),
+                    Some(
+                        [
+                            "alt-backend".to_string(),
+                            "search-indexer".to_string(),
+                            "acolyte-orchestrator".to_string()
+                        ]
+                        .as_slice()
+                    )
                 );
             },
         );

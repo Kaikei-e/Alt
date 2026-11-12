@@ -19,14 +19,8 @@ use axum::{
 use crate::app::AppState;
 
 pub(crate) fn router(state: AppState) -> Router {
-    // `/admin/jobs/retry` and `/admin/genre-learning` are the only
-    // admin/mutating routes on this surface. `/admin/jobs/retry`'s only
-    // caller is ops curl; `/admin/genre-learning`'s only caller is
-    // recap-subworker's `LearningClient`, which sends this same bearer via
-    // `load_admin_auth_config()` (recap-subworker's
-    // `app/infra/admin_auth.py`) — see `api/auth.rs` for why the
-    // generate/morning-regenerate routes stay open.
     let admin_guard = auth::AdminAuthGuard::new(state.config().admin_auth_token());
+    let peer_guard = auth::PeerIdentityGuard::new(state.config().peer_identity().allowed_peers());
     let protected = Router::new()
         .route("/admin/jobs/retry", post(admin::retry_jobs))
         .route(
@@ -36,10 +30,7 @@ pub(crate) fn router(state: AppState) -> Router {
         .route_layer(middleware::from_fn(auth::require_admin_token))
         .layer(Extension(admin_guard));
 
-    Router::new()
-        .route("/health/ready", get(health::ready))
-        .route("/health/live", get(health::live))
-        .route("/metrics", get(metrics::exporter))
+    let peer_authenticated = Router::new()
         .merge(protected)
         .route("/v1/generate/recaps/7days", post(generate::trigger_7days))
         .route("/v1/recaps/7days", get(fetch::get_7days_recap))
@@ -92,6 +83,14 @@ pub(crate) fn router(state: AppState) -> Router {
         )
         .route("/v1/dashboard/job-stats", get(dashboard::get_job_stats))
         .route("/v1/pulse/latest", get(pulse::get_latest))
+        .route_layer(middleware::from_fn(auth::require_peer_identity))
+        .layer(Extension(peer_guard));
+
+    Router::new()
+        .route("/health/ready", get(health::ready))
+        .route("/health/live", get(health::live))
+        .route("/metrics", get(metrics::exporter))
+        .merge(peer_authenticated)
         .with_state(state)
 }
 

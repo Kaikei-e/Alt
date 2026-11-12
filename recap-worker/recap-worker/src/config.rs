@@ -60,6 +60,23 @@ pub enum ClassificationEvalConfig {
     },
 }
 
+/// Configuration for inbound peer-identity allow-list enforcement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PeerIdentityConfig {
+    Disabled,
+    Enabled { allowed_peers: Vec<String> },
+}
+
+impl PeerIdentityConfig {
+    #[must_use]
+    pub fn allowed_peers(&self) -> Option<&[String]> {
+        match self {
+            PeerIdentityConfig::Disabled => None,
+            PeerIdentityConfig::Enabled { allowed_peers } => Some(allowed_peers.as_slice()),
+        }
+    }
+}
+
 /// Configuration for the evaluation HTTP listener.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvalListenerConfig {
@@ -198,6 +215,7 @@ pub struct Config {
     knowledge_emit: KnowledgeEmit,
     max_degraded_genre_ratio: f64,
     admin_auth: AdminAuth,
+    peer_identity: PeerIdentityConfig,
     eval_listener: EvalListenerConfig,
     cards_job: CardsJobConfig,
     cards_user_id: Option<uuid::Uuid>,
@@ -433,6 +451,7 @@ impl Config {
         // succeed with a handful of stored genres (CLAUDE.md rule 8).
         let max_degraded_genre_ratio = parse_f64("RECAP_MAX_DEGRADED_GENRE_RATIO", 0.5)?;
         let admin_auth = load_admin_auth()?;
+        let peer_identity = load_peer_identity_from_env()?;
         let eval_listener = load_eval_listener(&admin_auth)?;
         let cards_user_id = load_cards_user_id()?;
         let cards_job = load_cards_job(cards_user_id)?;
@@ -463,6 +482,7 @@ impl Config {
             knowledge_emit,
             max_degraded_genre_ratio,
             admin_auth,
+            peer_identity,
             eval_listener,
             cards_job,
             cards_user_id,
@@ -496,6 +516,7 @@ impl Config {
         knowledge_emit: KnowledgeEmit,
         max_degraded_genre_ratio: f64,
         admin_auth: AdminAuth,
+        peer_identity: PeerIdentityConfig,
         eval_listener: EvalListenerConfig,
         cards_job: CardsJobConfig,
         cards_user_id: Option<uuid::Uuid>,
@@ -570,6 +591,7 @@ impl Config {
             knowledge_emit,
             max_degraded_genre_ratio,
             admin_auth,
+            peer_identity,
             eval_listener,
             cards_job,
             cards_user_id,
@@ -990,6 +1012,11 @@ impl Config {
     #[must_use]
     pub fn admin_auth_token(&self) -> Option<&str> {
         self.admin_auth.token()
+    }
+
+    #[must_use]
+    pub fn peer_identity(&self) -> &PeerIdentityConfig {
+        &self.peer_identity
     }
 
     /// Evaluation HTTP listener configuration.
@@ -1455,6 +1482,41 @@ fn load_admin_auth() -> Result<AdminAuth, ConfigError> {
     let trimmed = read_admin_token()?;
     tracing::info!("recap_admin_auth_enabled");
     Ok(AdminAuth::Enabled { token: trimmed })
+}
+
+pub(crate) fn load_peer_identity_from_env() -> Result<PeerIdentityConfig, ConfigError> {
+    let raw = env_var("MTLS_ALLOWED_PEERS")?;
+    let trimmed = raw.trim();
+    if trimmed.eq_ignore_ascii_case("disabled") {
+        tracing::warn!(
+            "peer_identity_disabled: MTLS_ALLOWED_PEERS=disabled was set explicitly; non-health HTTP routes accept unauthenticated requests"
+        );
+        return Ok(PeerIdentityConfig::Disabled);
+    }
+
+    let allowed_peers: Vec<String> = trimmed
+        .split(',')
+        .map(|entry| entry.trim().to_string())
+        .filter(|entry| !entry.is_empty())
+        .collect();
+    if allowed_peers.is_empty() {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "must list at least one peer CN or be 'disabled'",
+        ));
+    }
+    if allowed_peers
+        .iter()
+        .any(|peer| peer.eq_ignore_ascii_case("disabled"))
+    {
+        return Err(invalid_config(
+            "MTLS_ALLOWED_PEERS",
+            "'disabled' cannot be combined with peer names",
+        ));
+    }
+
+    tracing::info!(?allowed_peers, "peer_identity_enabled");
+    Ok(PeerIdentityConfig::Enabled { allowed_peers })
 }
 
 /// Resolve the eval HTTP listener config from env.

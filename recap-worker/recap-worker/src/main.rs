@@ -134,7 +134,8 @@ fn spawn_mtls_listener(
 
     Ok(Some(tokio::spawn(async move {
         let tls_cfg = axum_server::tls_rustls::RustlsConfig::from_config(server_config);
-        if let Err(e) = axum_server::bind_rustls(mtls_addr, tls_cfg)
+        if let Err(e) = axum_server::bind(mtls_addr)
+            .acceptor(recap_worker::tls::PeerIdentityAcceptor::new(tls_cfg))
             .handle(handle)
             .serve(router.into_make_service())
             .await

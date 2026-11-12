@@ -1,16 +1,9 @@
-//! Bearer-token guard for recap-worker's own admin/mutating routes.
+//! Authentication guards for recap-worker's HTTP surface.
 //!
-//! Protects `/admin/jobs/retry` and `/admin/genre-learning` behind
-//! `RECAP_ADMIN_TOKEN_FILE` / `RECAP_ADMIN_AUTH=disabled` (see the
-//! `AdminAuth` config in `config.rs`). The guard token is carried as an
-//! `Extension`, not `AppState`, so this middleware — and its tests — never
-//! need the full `ComponentRegistry` (DB pool, mTLS, pki, LLM clients).
-//!
-//! `/v1/generate/recaps/{7,3}days` and `/v1/morning/letters/regenerate`
-//! stay unauthenticated in this slice: their callers (alt-frontend-sv,
-//! alt-backend) are outside this change's scope, and protecting the route
-//! without updating the caller would 401 real production traffic instead
-//! of closing a hole.
+//! Peer identity (`PeerIdentityGuard` / `require_peer_identity`) gates every
+//! non-health/metrics route using the verified client certificate attached by
+//! the mTLS acceptor (`MTLS_ALLOWED_PEERS`), while `AdminAuthGuard` adds the
+//! shared bearer check on `/admin/*`.
 
 use std::sync::Arc;
 
@@ -24,6 +17,37 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use rustls::pki_types::CertificateDer;
+
+#[derive(Clone)]
+pub(crate) struct PeerIdentityGuard(Option<Arc<[String]>>);
+
+impl PeerIdentityGuard {
+    pub(crate) fn new(allowed_peers: Option<&[String]>) -> Self {
+        Self(allowed_peers.map(Arc::from))
+    }
+}
+
+pub(crate) async fn require_peer_identity(
+    Extension(guard): Extension<PeerIdentityGuard>,
+    mut request: Request<Body>,
+    next: Next,
+) -> Response {
+    request.headers_mut().remove("x-alt-peer-identity");
+    let Some(allowed_peers) = guard.0.as_deref() else {
+        return next.run(request).await;
+    };
+
+    let Some(cert) = request.extensions().get::<CertificateDer<'static>>() else {
+        return (StatusCode::UNAUTHORIZED, "unauthenticated peer").into_response();
+    };
+
+    if crate::tls::verify_cert_peer_identity(cert, allowed_peers).is_ok() {
+        next.run(request).await
+    } else {
+        (StatusCode::FORBIDDEN, "peer not allowlisted").into_response()
+    }
+}
 
 /// Expected bearer token for this recap-worker instance's protected
 /// routes. `None` exactly when `RECAP_ADMIN_AUTH=disabled` was set

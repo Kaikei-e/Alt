@@ -95,6 +95,16 @@ impl ComponentRegistry {
     pub async fn build(config: Config) -> Result<Self> {
         let config = Arc::new(config);
         let telemetry = Telemetry::new()?;
+        match config.peer_identity() {
+            crate::config::PeerIdentityConfig::Disabled => {
+                tracing::warn!(
+                    "peer_identity_disabled: MTLS_ALLOWED_PEERS=disabled was set explicitly; non-health HTTP routes accept unauthenticated requests"
+                );
+            }
+            crate::config::PeerIdentityConfig::Enabled { allowed_peers } => {
+                tracing::info!(?allowed_peers, "peer_identity_enabled");
+            }
+        }
 
         // In-process cert lifecycle must run before any rustls client or
         // server loads the leaf: ReloadingCertResolver::new is fail-closed
