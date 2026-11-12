@@ -302,7 +302,11 @@ mod tests {
     #[test]
     fn load_server_config_returns_none_when_not_enforced() {
         temp_env::with_var("MTLS_ENFORCE", Some("false"), || {
-            assert!(load_server_tls_config().unwrap().is_none());
+            assert!(
+                load_server_tls_config(&crate::config::PeerIdentityConfig::Disabled)
+                    .unwrap()
+                    .is_none()
+            );
         });
     }
 
@@ -329,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn load_server_config_rejects_unset_or_empty_allowed_peers_when_enforced() {
+    fn load_server_config_uses_passed_peer_identity_without_re_reading_env_and_rejects_bad_peers() {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let temp_dir = tempfile::tempdir().unwrap();
         let ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).unwrap();
@@ -347,23 +351,35 @@ mod tests {
         std::fs::write(&key_path, leaf_key.serialize_pem()).unwrap();
         std::fs::write(&ca_path, ca_cert.pem()).unwrap();
 
-        for bad in [None, Some(""), Some(" , ")] {
-            temp_env::with_vars(
-                [
-                    ("MTLS_ENFORCE", Some("true")),
-                    ("MTLS_CERT_FILE", Some(cert_path.to_str().unwrap())),
-                    ("MTLS_KEY_FILE", Some(key_path.to_str().unwrap())),
-                    ("MTLS_CA_FILE", Some(ca_path.to_str().unwrap())),
-                    ("MTLS_ALLOWED_PEERS", bad),
-                ],
-                || {
+        temp_env::with_vars(
+            [
+                ("MTLS_ENFORCE", Some("true")),
+                ("MTLS_CERT_FILE", Some(cert_path.to_str().unwrap())),
+                ("MTLS_KEY_FILE", Some(key_path.to_str().unwrap())),
+                ("MTLS_CA_FILE", Some(ca_path.to_str().unwrap())),
+                ("MTLS_ALLOWED_PEERS", None::<&str>),
+            ],
+            || {
+                let valid = crate::config::PeerIdentityConfig::Enabled {
+                    allowed_peers: vec!["alt-backend".to_string()],
+                };
+                assert!(
+                    load_server_tls_config(&valid).unwrap().is_some(),
+                    "load_server_tls_config must use passed PeerIdentityConfig without reading MTLS_ALLOWED_PEERS from env"
+                );
+
+                for bad_peers in [Vec::new(), vec!["localhost".to_string()]] {
+                    let bad = crate::config::PeerIdentityConfig::Enabled {
+                        allowed_peers: bad_peers,
+                    };
+                    let err = load_server_tls_config(&bad).unwrap_err();
                     assert!(
-                        load_server_tls_config().is_err(),
-                        "MTLS_ALLOWED_PEERS={bad:?} must fail closed"
+                        format!("{err:#}").contains("MTLS_ALLOWED_PEERS"),
+                        "error must name MTLS_ALLOWED_PEERS, got: {err:#}"
                     );
-                },
-            );
-        }
+                }
+            },
+        );
     }
 
     #[test]
@@ -376,7 +392,9 @@ mod tests {
                 ("MTLS_CA_FILE", None),
             ],
             || {
-                assert!(load_server_tls_config().is_err());
+                assert!(
+                    load_server_tls_config(&crate::config::PeerIdentityConfig::Disabled).is_err()
+                );
             },
         );
     }

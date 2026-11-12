@@ -3755,4 +3755,104 @@ mod tests {
             });
         }
     }
+
+    #[test]
+    fn from_env_rejects_localhost_in_mtls_allowed_peers() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        for bad in ["localhost", "alt-backend,localhost", "LOCALHOST , search-indexer"] {
+            let mut vars = required_base();
+            vars.extend([
+                ("MTLS_ENFORCE", Some("true")),
+                ("NEWS_CREATOR_BASE_URL", Some("https://localhost:8001/")),
+                ("SUBWORKER_BASE_URL", Some("https://localhost:8002/")),
+                ("MTLS_ALLOWED_PEERS", Some(bad)),
+            ]);
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(
+                        res,
+                        Err(ConfigError::Invalid {
+                            name: "MTLS_ALLOWED_PEERS",
+                            ..
+                        })
+                    ),
+                    "MTLS_ALLOWED_PEERS={bad:?} must be rejected at parse time, got: {res:?}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_ignores_mtls_allowed_peers_file_indirection() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let peers_file = dir.path().join("peers");
+        std::fs::write(&peers_file, "disabled\n").expect("write peers file");
+
+        let mut vars = required_base();
+        vars.extend([
+            ("MTLS_ALLOWED_PEERS", None),
+            (
+                "MTLS_ALLOWED_PEERS_FILE",
+                Some(peers_file.to_str().expect("utf8")),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                matches!(res, Err(ConfigError::Missing("MTLS_ALLOWED_PEERS"))),
+                "MTLS_ALLOWED_PEERS_FILE indirection must not satisfy MTLS_ALLOWED_PEERS, got: {res:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn load_peer_identity_does_not_log_during_config_parse() {
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let buf = BufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            temp_env::with_var("MTLS_ALLOWED_PEERS", Some("disabled"), || {
+                let _ = load_peer_identity_from_env().expect("disabled parses");
+            });
+            temp_env::with_var("MTLS_ALLOWED_PEERS", Some("alt-backend"), || {
+                let _ = load_peer_identity_from_env().expect("csv parses");
+            });
+        });
+
+        let captured = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+        assert!(
+            !captured.contains("peer_identity_disabled")
+                && !captured.contains("peer_identity_enabled"),
+            "load_peer_identity_from_env must not log (app.rs logs once after telemetry init), got: {captured}"
+        );
+    }
 }
