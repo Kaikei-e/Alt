@@ -34,8 +34,16 @@ async function fetchToken(server: http.Server): Promise<string> {
 	}
 }
 
-function verifies(token: string, publicKey: KeyObject): boolean {
+function tokenParts(token: string): [string, string, string] {
 	const [header, payload, signature] = token.split(".");
+	if (!header || !payload || !signature) {
+		throw new Error("token is not a three-part JWS");
+	}
+	return [header, payload, signature];
+}
+
+function verifies(token: string, publicKey: KeyObject): boolean {
+	const [header, payload, signature] = tokenParts(token);
 	return verify(
 		null,
 		Buffer.from(`${header}.${payload}`),
@@ -50,7 +58,7 @@ describe("mock AuthHub token issuing", () => {
 		const token = await fetchToken(createAuthHubServer(generated));
 
 		const header = JSON.parse(
-			Buffer.from(token.split(".")[0], "base64url").toString(),
+			Buffer.from(tokenParts(token)[0], "base64url").toString(),
 		);
 		expect(header.alg).toBe("EdDSA");
 		expect(verifies(token, createPublicKey(generated))).toBe(true);
