@@ -7,6 +7,8 @@ import (
 	"alt/utils/logger"
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -38,7 +40,12 @@ func buildRegisteredEcho(t *testing.T, mutate func(*config.Config), trustedProxi
 		}
 		_ = c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal_error"})
 	}
+	verifyKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate verify key: %v", err)
+	}
 	cfg := &config.Config{}
+	cfg.Auth.BackendTokenPublicKey = verifyKey
 	cfg.Server.ReadTimeout = 5 * time.Second
 	if mutate != nil {
 		mutate(cfg)
