@@ -8,15 +8,28 @@ const REDACTED: &str = "[REDACTED]";
 static QUERY_PARAM: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"([?&;])([A-Za-z0-9_.\-]+)=([^&\s"'#]*)"#).unwrap());
 
-static HEADER_TEXT: LazyLock<Regex> = LazyLock::new(|| {
+static BARE_KEY_VALUE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(^|[\s,])([A-Za-z0-9_.\-]+)=([^\s,&;"'#]+)"#).unwrap());
+
+// Cookie headers hold `name=value; name=value` pairs, so the value runs to the
+// end of the line or the next unescaped quote.
+static COOKIE_HEADER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)\b(set-cookie|cookie)(\s*[:=]\s*)(?:[^\r\n"\\]|\\.)*"#).unwrap()
+});
+
+// Single-credential headers: an optional auth scheme plus one token.
+static TOKEN_HEADER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r#"(?i)\b((?:proxy-)?authorization|set-cookie|cookie|x-[a-z0-9-]*-(?:token|secret))(\s*[:=]\s*)[^\r\n"]*"#,
+        r#"(?i)\b((?:proxy-)?authorization\s*[:=]\s*(?:(?:bearer|basic|digest|token|negotiate)\s+)?|x-[a-z0-9-]*-(?:token|secret|key)\s*[:=]\s*)(?:[^\s,;"\\]|\\.)+"#,
     )
     .unwrap()
 });
 
+static JSON_CONTAINER_KEY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#""([A-Za-z0-9_.\-]+)"\s*:\s*[\[{]"#).unwrap());
+
 static JSON_STRING_PAIR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#""([A-Za-z0-9_.\-]+)"(\s*:\s*)"[^"]*""#).unwrap());
+    LazyLock::new(|| Regex::new(r#""([A-Za-z0-9_.\-]+)"(\s*:\s*)"(?:[^"\\]|\\.)*""#).unwrap());
 
 fn is_sensitive_name(name: &str) -> bool {
     let n = name.to_ascii_lowercase().replace('-', "_");
@@ -48,7 +61,8 @@ fn is_sensitive_name(name: &str) -> bool {
     ];
     EXACT.contains(&n.as_str())
         || SUFFIXES.iter().any(|s| n.ends_with(s))
-        || (n.starts_with("x_") && (n.contains("token") || n.contains("secret")))
+        || (n.starts_with("x_")
+            && (n.contains("token") || n.contains("secret") || n.ends_with("_key")))
 }
 
 fn is_sensitive_query_name(name: &str) -> bool {
@@ -58,6 +72,53 @@ fn is_sensitive_query_name(name: &str) -> bool {
             n.as_str(),
             "auth" | "key" | "sig" | "signature" | "code" | "sid"
         )
+}
+
+/// Index just past the bracket pair opened at `open`; the end of the text when unbalanced.
+fn container_end(text: &str, open: usize) -> usize {
+    let bytes = text.as_bytes();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut i = open;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if in_string => i += 1,
+            b'"' => in_string = !in_string,
+            b'[' | b'{' if !in_string => depth += 1,
+            b']' | b'}' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    bytes.len()
+}
+
+fn redact_json_containers(input: &str) -> Cow<'_, str> {
+    let mut out = String::new();
+    let mut copied = 0;
+    let mut pos = 0;
+    while let Some(c) = JSON_CONTAINER_KEY.captures_at(input, pos) {
+        let whole = c.get(0).unwrap();
+        if is_sensitive_name(&c[1]) {
+            let end = container_end(input, whole.end() - 1);
+            out.push_str(&input[copied..whole.start()]);
+            out.push_str(&format!("\"{}\":\"{REDACTED}\"", &c[1]));
+            copied = end;
+            pos = end;
+        } else {
+            pos = whole.end();
+        }
+    }
+    if copied == 0 {
+        return Cow::Borrowed(input);
+    }
+    out.push_str(&input[copied..]);
+    Cow::Owned(out)
 }
 
 fn redact_text(input: &str) -> Cow<'_, str> {
@@ -74,10 +135,28 @@ fn redact_text(input: &str) -> Cow<'_, str> {
             text = Cow::Owned(s);
         }
     }
-    if let Cow::Owned(s) = HEADER_TEXT.replace_all(&text, format!("${{1}}${{2}}{REDACTED}")) {
+    if let Cow::Owned(s) = COOKIE_HEADER.replace_all(&text, format!("${{1}}${{2}}{REDACTED}")) {
         text = Cow::Owned(s);
     }
+    if let Cow::Owned(s) = TOKEN_HEADER.replace_all(&text, format!("${{1}}{REDACTED}")) {
+        text = Cow::Owned(s);
+    }
+    if text.contains('=') {
+        let replaced = BARE_KEY_VALUE.replace_all(&text, |c: &Captures| {
+            if is_sensitive_name(&c[2]) {
+                format!("{}{}={REDACTED}", &c[1], &c[2])
+            } else {
+                c[0].to_string()
+            }
+        });
+        if let Cow::Owned(s) = replaced {
+            text = Cow::Owned(s);
+        }
+    }
     if text.contains('"') {
+        if let Cow::Owned(s) = redact_json_containers(&text) {
+            text = Cow::Owned(s);
+        }
         let replaced = JSON_STRING_PAIR.replace_all(&text, |c: &Captures| {
             if is_sensitive_name(&c[1]) {
                 format!("\"{}\"{}\"{REDACTED}\"", &c[1], &c[2])
