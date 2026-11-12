@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/x509"
@@ -51,8 +52,13 @@ func LoadLocalUserJWTVerifier() (*LocalUserJWTVerifier, error) {
 		return nil, fmt.Errorf("read BACKEND_TOKEN_VERIFY_KEY_FILE: %w", err)
 	}
 
-	block, rest := pem.Decode(data)
-	if block == nil || len(strings.TrimSpace(string(rest))) > 0 || block.Type != "PUBLIC KEY" {
+	trimmed := bytes.TrimSpace(data)
+	if !bytes.HasPrefix(trimmed, []byte("-----BEGIN ")) {
+		return nil, errors.New("BACKEND_TOKEN_VERIFY_KEY_FILE must contain a single SPKI PUBLIC KEY PEM block")
+	}
+
+	block, rest := pem.Decode(trimmed)
+	if block == nil || len(bytes.TrimSpace(rest)) > 0 || block.Type != "PUBLIC KEY" {
 		return nil, errors.New("BACKEND_TOKEN_VERIFY_KEY_FILE must contain a single SPKI PUBLIC KEY PEM block")
 	}
 
