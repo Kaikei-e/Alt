@@ -2,6 +2,8 @@ package handler
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -35,11 +37,13 @@ type testIntrospectedToken struct {
 }
 
 func TestHandleIntrospectToken(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 	jwtCfg := token.JWTConfig{
-		Secret:   "test-secret",
-		Issuer:   "auth-hub-test",
-		Audience: "alt-backend",
-		TTL:      5 * time.Minute,
+		PrivateKey: priv,
+		Issuer:     "auth-hub-test",
+		Audience:   "alt-backend",
+		TTL:        5 * time.Minute,
 	}
 	issuer := token.NewJWTIssuer(jwtCfg)
 	introspectUC := usecase.NewIntrospectToken(issuer)
