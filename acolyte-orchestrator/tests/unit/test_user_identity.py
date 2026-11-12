@@ -14,6 +14,7 @@ from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 from connectrpc.method import IdempotencyLevel, MethodInfo
 from connectrpc.request import Headers, RequestContext
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
@@ -245,6 +246,21 @@ def test_private_key_file_is_not_accepted_as_a_verify_key(tmp_path: Path) -> Non
             serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
         )
     )
+    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    with pytest.raises(RuntimeError, match="Ed25519"):
+        settings.resolve_backend_token_verify_key()
+
+
+def test_unsupported_key_type_in_verify_key_file_raises_a_startup_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = write_public_key(Ed25519PrivateKey.generate(), tmp_path / "verify.pem")
+
+    def _unsupported(_data: bytes) -> object:
+        msg = "unsupported key type"
+        raise UnsupportedAlgorithm(msg)
+
+    monkeypatch.setattr("acolyte.config.settings.serialization.load_pem_public_key", _unsupported)
     settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
     with pytest.raises(RuntimeError, match="Ed25519"):
         settings.resolve_backend_token_verify_key()

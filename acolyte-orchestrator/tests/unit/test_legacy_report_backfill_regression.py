@@ -7,7 +7,7 @@ Pins legacy report visibility regression and specifies the production contract f
 - Atomicity (no partial update on incomplete mapping)
 - Preserving existing report owners
 - Idempotence
-- Startup gate fail-fast when unmapped legacy rows exist (never guessing NOTIFICATION_USER_ID)
+- Startup gate fail-fast when unmapped legacy rows exist (never guessing an owner)
 - Environment variable aliases and type safety for mapping values
 """
 

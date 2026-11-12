@@ -104,15 +104,16 @@ async def test_completion_and_notification_commit_or_vanish_together() -> None:
                 assert enqueued == 1
 
                 payload_cur = await conn.execute(
-                    "SELECT payload, occurred_at, state, attempts FROM notification_outbox WHERE dedupe_key = %s",
+                    "SELECT payload, occurred_at, state, attempts, user_id FROM notification_outbox WHERE dedupe_key = %s",
                     [dedupe_key],
                 )
                 payload_row = await payload_cur.fetchone()
                 assert payload_row is not None
-                payload, occurred_at, state, attempts = payload_row
+                payload, occurred_at, state, attempts, recipient = payload_row
                 assert payload == {"kind": "acolyte_report_ready", "url": f"/acolyte/reports/{report_id}"}
                 assert state == "pending"
                 assert attempts == 0
+                assert recipient == _OWNER
 
                 finished_cur = await conn.execute(
                     "SELECT finished_at FROM report_runs WHERE run_id = %s",

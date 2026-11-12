@@ -35,8 +35,8 @@ _TEST_ENV_KEYS = (
     "OTEL_ENABLED",
 )
 _ORIGINAL_TEST_ENV = {key: os.environ.get(key) for key in _TEST_ENV_KEYS}
-_TEST_SECRET_DIRECTORY = tempfile.TemporaryDirectory(prefix="acolyte-test-secret-")
-_TEST_VERIFY_KEY_FILE = Path(_TEST_SECRET_DIRECTORY.name) / "backend-token-verify-key.pem"
+_TEST_KEY_DIRECTORY = tempfile.TemporaryDirectory(prefix="acolyte-test-key-")
+_TEST_VERIFY_KEY_FILE = Path(_TEST_KEY_DIRECTORY.name) / "backend-token-verify-key.pem"
 _TEST_VERIFY_KEY_FILE.write_bytes(public_key_pem(Ed25519PrivateKey.generate()))
 os.environ["BACKEND_TOKEN_VERIFY_KEY_FILE"] = str(_TEST_VERIFY_KEY_FILE)
 
@@ -67,7 +67,7 @@ def pytest_unconfigure() -> None:
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
-    _TEST_SECRET_DIRECTORY.cleanup()
+    _TEST_KEY_DIRECTORY.cleanup()
 
 
 def make_request_ctx(method_name: str, user_id: UUID | None = TEST_USER_ID) -> RequestContext:
