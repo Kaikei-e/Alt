@@ -106,6 +106,73 @@ protocols = ["websocket"]
 request_timeout_ms = 10000
 # Response compression disabled on /ory/ to mitigate BREACH secret leakage of CSRF tokens.
 
+# 2b. Identity flows (login, registration, recovery, verification). The longest
+# path_prefix wins, so these take precedence over "/ory/" and each gets its own
+# per-client bucket: 1 request/s sustained with a burst of 10. One interactive attempt
+# is a handful of requests (flow init, flow fetch, submit), so the burst covers a few
+# consecutive attempts and a typo; a script hammering credentials or recovery mail is
+# held to 60 requests/minute per client. 1/s is the smallest rate the manifest can
+# express (rate is an integer per second).
+[[route]]
+filters = ["stale-chunk-heal"]
+upstream = "kratos"
+strip_prefix = "/ory"
+[route.match]
+path_prefix = "/ory/self-service/login"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
+[route.rate_limit]
+rate = 1
+burst = 10
+key = "client-ip"
+[route.timeouts]
+request_timeout_ms = 10000
+
+[[route]]
+filters = ["stale-chunk-heal"]
+upstream = "kratos"
+strip_prefix = "/ory"
+[route.match]
+path_prefix = "/ory/self-service/registration"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
+[route.rate_limit]
+rate = 1
+burst = 10
+key = "client-ip"
+[route.timeouts]
+request_timeout_ms = 10000
+
+[[route]]
+filters = ["stale-chunk-heal"]
+upstream = "kratos"
+strip_prefix = "/ory"
+[route.match]
+path_prefix = "/ory/self-service/recovery"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
+[route.rate_limit]
+rate = 1
+burst = 10
+key = "client-ip"
+[route.timeouts]
+request_timeout_ms = 10000
+
+[[route]]
+filters = ["stale-chunk-heal"]
+upstream = "kratos"
+strip_prefix = "/ory"
+[route.match]
+path_prefix = "/ory/self-service/verification"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
+[route.rate_limit]
+rate = 1
+burst = 10
+key = "client-ip"
+[route.timeouts]
+request_timeout_ms = 10000
+
 
 # 3. `/auth-validate` is NOT ported — confirmed dead: no `auth_request` directive
 # anywhere in the repo references it; auth enforcement happens in-service.
