@@ -113,7 +113,8 @@ func ShouldQueueSummarizeJob(
 		return false, "recent_failure_cooldown", nil
 	}
 
-	// Count completed jobs whose summary was cleared after a low quality score; > maxLowQualityReattempts means initial attempt + N re-attempts all failed quality.
+	// Counts completed rows whose summary text was cleared (status='completed' AND summary IS NULL);
+	// the bound depends on completed rows of summarize_job_queue being retained rather than pruned.
 	invalidatedCount, err := jobRepo.CountInvalidatedCompletedJobs(ctx, articleID)
 	if err != nil {
 		return false, "", err

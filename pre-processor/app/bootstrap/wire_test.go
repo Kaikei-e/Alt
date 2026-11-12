@@ -822,7 +822,7 @@ func TestBuildDependencies_FailsBeforeDBInitOnInvalidArticleSyncConfig(t *testin
 			t.Setenv("MTLS_ENFORCE", "false")
 			t.Setenv("BACKEND_API_URL", "http://alt-backend:9000")
 			t.Setenv("NEWS_CREATOR_HOST", "http://news-creator:11434")
-			t.Setenv("PRE_PROCESSOR_DB_HOST", "invalid-host-should-never-be-reached")
+			t.Setenv("PP_DB_HOST", "203.0.113.1")
 			if tc.syncSet {
 				t.Setenv("INOREADER_SYNC", tc.syncVal)
 			} else {
