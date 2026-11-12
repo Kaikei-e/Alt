@@ -11,6 +11,9 @@ import (
 // プールはその値で作られなければならない - 既定の 20/5 に落ちても起動ログは
 // 実効値を出すので、黙って捨てられたことが誰にも見えない。
 func TestNewDatabaseConfigFromEnv_PoolSizesComeFromEnv(t *testing.T) {
+	t.Setenv("DB_PASSWORD", "testpass")
+	t.Setenv("DB_PASSWORD_FILE", "")
+	t.Setenv("DB_SSL_MODE", "disable")
 	t.Setenv("DB_MAX_CONNS", "40")
 	t.Setenv("DB_MIN_CONNS", "10")
 
@@ -29,6 +32,7 @@ func TestBuildConnectionString_ConnectTimeoutComesFromEnv(t *testing.T) {
 		User:     "testuser",
 		Password: "testpass",
 		DBName:   "testdb",
+		SSLMode:  "disable",
 	}
 
 	assert.Contains(t, config.BuildConnectionString(), "connect_timeout=5")
@@ -47,6 +51,9 @@ func TestNewDatabaseConfigFromEnv_RejectsUnusableValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DB_PASSWORD", "testpass")
+			t.Setenv("DB_PASSWORD_FILE", "")
+			t.Setenv("DB_SSL_MODE", "disable")
 			t.Setenv(tt.key, tt.value)
 
 			err := recoveredError(t, func() { NewDatabaseConfigFromEnv() })
