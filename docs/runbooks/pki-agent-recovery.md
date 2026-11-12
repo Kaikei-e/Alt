@@ -445,6 +445,43 @@ docker logs alt-alt-butterfly-facade-1 --since 1m 2>&1 | grep -c "certificate ha
 docker logs alt-alt-data-hub-1 --since 1m 2>&1 | grep -ci "tls\|certificate"
 ```
 
+## Revoking a service certificate
+
+leaf と key が複製された疑いがあるとき（バックアップ・ログ・ボリュームの流出など）に使う。
+leaf の更新は現行 leaf を提示する `/rekey` で行われるため、複製を持つ側も有効期限（24h）まで
+更新を繰り返せる。step-ca は失効済み serial の更新を拒否するので、serial を失効させれば
+複製側の更新は止まる。leaf 自体は期限（最大 24h）まで接続先で受理されうる点に注意する
+（CRL/OCSP を接続先で検査する仕組みは無い）。
+
+前提: step-ca の `ca.json` に `db` セクションがあること（無いと失効を記録できない）。
+`bash pki-agent/scripts/bootstrap-pki-provisioner.sh` は db が無いと失敗する。
+
+```bash
+# 1. 失効させる leaf の serial を控える（親の cert volume 内の svc-cert.pem から）
+openssl x509 -in <svc-cert.pem のコピー> -noout -serial -enddate
+# serial は 16 進。step ca revoke には 10 進を渡す
+printf '%d\n' 0x<SERIAL>
+
+# 2. step-ca コンテナ内で失効（bootstrap provisioner で token を取る）
+docker exec -u 0 alt-step-ca-1 step ca revoke <10進 serial> \
+  --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
+  --provisioner bootstrap \
+  --provisioner-password-file /run/secrets/step_ca_root_password \
+  --reason "key compromise" --reasonCode 1
+```
+
+更新が拒否されることの確認: 該当 leaf と key を使い、複製側から `/rekey` を呼ぶ（または
+`step ca renew --force <cert> <key>`）と `certificate has been revoked` で 401 になる。
+CA ログにも同じ文言が出る: `docker compose -f compose/compose.yaml -p alt logs step-ca --tail 50`。
+
+サービスの再 enroll: 正規の親プロセスは更新に失敗すると失効済み leaf のままになるので、
+cert volume 上の `svc-cert.pem` / `svc-key.pem` を再 enroll で置き換える。
+Step 4 の手順で該当親だけ `--force-recreate` し、expired 扱いではなく ENROLL 経路
+（新しい OTT と新しい key）で発行させる必要がある場合は、先に cert と key を退避して
+削除してから再作成する。復旧後は `pki_enrollment_healthy{subject="..."} 1` を確認する。
+複製された key で署名された旧 leaf は有効期限まで残るので、疑いが強い場合は
+provisioner の JWK password も再生成する（`secrets/pki-agent-<subject>-jwk.txt`）。
+
 ## よくある落とし穴
 
 - **`--force-recreate` an in-process parent does not require a pki-agent cascade.** Inbound TLS terminates in the parent. Its old sidecar must be absent, Sovereign and Evaluator included. `scripts/cascade-pki-sidecars.sh` is a retired tombstone — do not invoke it.
