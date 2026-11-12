@@ -169,6 +169,39 @@ suite_pki() {
   esac
 }
 
+# suite_token_keys
+#
+# Mints a throwaway Ed25519 key pair for the backend token and exports
+# STAGING_TOKEN_KEY_DIR for compose to bind-mount. Nothing is committed: the
+# directory is gitignored and recreated on every run. Like suite_pki it must
+# run before `suite_up`. The files are 0644 for the same reason the PKI leaves
+# are: the service containers run as a non-root user.
+suite_token_keys() {
+  SUITE_TOKEN_KEY_DIR="$ROOT/e2e/fixtures/$SUITE_NAME/token-keys"
+  export STAGING_TOKEN_KEY_DIR="$SUITE_TOKEN_KEY_DIR"
+  rm -rf "$SUITE_TOKEN_KEY_DIR"
+  mkdir -p "$SUITE_TOKEN_KEY_DIR"
+  openssl genpkey -algorithm ED25519 -out "$SUITE_TOKEN_KEY_DIR/backend_token_signing_key.txt"
+  openssl pkey -in "$SUITE_TOKEN_KEY_DIR/backend_token_signing_key.txt" -pubout \
+    -out "$SUITE_TOKEN_KEY_DIR/backend_token_verify_key.txt"
+  chmod 0644 "$SUITE_TOKEN_KEY_DIR"/*.txt
+}
+
+# suite_mint_jwt <signing-key-file> <claims-json> <out-file>
+#
+# Writes a compact EdDSA JWS over the claims. For suites that need a ready
+# token as a file rather than a signing helper in the test code.
+suite_mint_jwt() {
+  local key="$1" claims="$2" out="$3" unsigned tmp
+  unsigned="$(printf '%s' '{"alg":"EdDSA","typ":"JWT"}' | _b64url).$(printf '%s' "$claims" | _b64url)"
+  tmp="$(mktemp)"
+  printf '%s' "$unsigned" > "$tmp"
+  printf '%s.%s' "$unsigned" "$(openssl pkeyutl -sign -inkey "$key" -rawin -in "$tmp" | _b64url)" > "$out"
+  rm -f "$tmp"
+}
+
+_b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
 # suite_endpoint <NAME> <default>
 #
 # Declares a value the specs read from the environment — a URL, a token path, a

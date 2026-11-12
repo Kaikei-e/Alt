@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createPrivateKey, sign } from "node:crypto";
 import { env } from "./env.js";
 
 /** Default test user UUID: standard RFC 4122 nil-adjacent deterministic UUID. */
@@ -7,11 +7,11 @@ export const TEST_USER_ID = "00000000-0000-0000-0000-000000000001";
 export const SECONDARY_USER_ID = "00000000-0000-0000-0000-000000000002";
 
 /**
- * Resolves the HS256 signing secret for the test backend token.
- * Uses the requiredSecretFile-backed env.backendTokenSecret directly.
+ * Resolves the Ed25519 signing key (PKCS#8 PEM) for the test backend token.
+ * Uses the requiredSecretFile-backed env.backendTokenSigningKey directly.
  */
-export function resolveBackendTokenSecret(): string {
-	return env.backendTokenSecret;
+export function resolveBackendTokenSigningKey(): string {
+	return env.backendTokenSigningKey;
 }
 
 function base64UrlEncode(input: string | Buffer): string {
@@ -24,16 +24,16 @@ export interface MintTokenOptions {
 	issuer?: string;
 	audience?: string;
 	expiresInSeconds?: number;
-	secret?: string;
+	signingKey?: string;
 	iat?: number;
 	exp?: number;
 }
 
 /**
- * Mints a valid short-lived HS256 X-Alt-Backend-Token JWT for E2E testing.
+ * Mints a valid short-lived EdDSA X-Alt-Backend-Token JWT for E2E testing.
  */
 export function mintBackendToken(options: MintTokenOptions = {}): string {
-	const secret = options.secret ?? resolveBackendTokenSecret();
+	const signingKey = options.signingKey ?? resolveBackendTokenSigningKey();
 	const userId = options.userId ?? TEST_USER_ID;
 	const issuer = options.issuer ?? "auth-hub";
 	const audience = options.audience ?? "alt-backend";
@@ -41,7 +41,7 @@ export function mintBackendToken(options: MintTokenOptions = {}): string {
 	const exp = options.exp ?? now + (options.expiresInSeconds ?? 300);
 
 	const header = {
-		alg: "HS256",
+		alg: "EdDSA",
 		typ: "JWT",
 	};
 	const payload = {
@@ -57,7 +57,7 @@ export function mintBackendToken(options: MintTokenOptions = {}): string {
 	const encodedPayload = base64UrlEncode(JSON.stringify(payload));
 	const signingInput = `${encodedHeader}.${encodedPayload}`;
 
-	const signature = createHmac("sha256", secret).update(signingInput).digest("base64url");
+	const signature = sign(null, Buffer.from(signingInput), createPrivateKey(signingKey)).toString("base64url");
 
 	return `${signingInput}.${signature}`;
 }

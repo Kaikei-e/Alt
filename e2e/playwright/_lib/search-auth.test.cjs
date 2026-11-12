@@ -1,7 +1,9 @@
 // Exercise the actual TypeScript fixture helper offline with request spies.
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
+const { readFileSync, mkdtempSync, writeFileSync } = require("node:fs");
+const { tmpdir } = require("node:os");
+const { generateKeyPairSync, verify } = require("node:crypto");
 const { resolve, dirname } = require("node:path");
 const vm = require("node:vm");
 const ts = require("typescript");
@@ -13,7 +15,10 @@ function load(path) {
   vm.runInThisContext(`(function(exports, require, process, Buffer) {${code}\n})`, { filename: path })(exports, localRequire, process, Buffer);
   return exports;
 }
-process.env.STAGING_JWT_KEY_FILE = resolve(__dirname, "../../fixtures/staging-secrets/alt_backend_token_secret.txt");
+const keyPair = generateKeyPairSync("ed25519");
+const signingKeyFile = resolve(mkdtempSync(resolve(tmpdir(), "search-auth-")), "signing-key.pem");
+writeFileSync(signingKeyFile, keyPair.privateKey.export({ type: "pkcs8", format: "pem" }));
+process.env.BACKEND_TOKEN_SIGNING_KEY_FILE = signingKeyFile;
 const { fixtureUserId, withSearchFixtureAuth } = load(resolve(__dirname, "../search-indexer/src/auth.ts"));
 const owner = fixtureUserId("offline-owner");
 const origin = "http://search-indexer:9300";
@@ -31,7 +36,10 @@ test("canonical stable UUID and bounded owner claims", () => {
   client.get(url);
   assert.equal(calls[0].url, url);
   const token = calls[0].options.headers.Authorization.slice(7);
-  const claims = JSON.parse(Buffer.from(token.split(".")[1], "base64url"));
+  const [header, payload, signature] = token.split(".");
+  assert.equal(JSON.parse(Buffer.from(header, "base64url")).alg, "EdDSA");
+  assert.ok(verify(null, Buffer.from(`${header}.${payload}`), keyPair.publicKey, Buffer.from(signature, "base64url")));
+  const claims = JSON.parse(Buffer.from(payload, "base64url"));
   assert.equal(claims.sub, owner);
   assert.equal(claims.tenant_id, owner);
   assert.equal(claims.iss, "alt-staging-auth-hub");

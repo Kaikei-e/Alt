@@ -1,4 +1,4 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createPrivateKey, sign } from "node:crypto";
 import type { APIRequestContext } from "@playwright/test";
 import { requiredSecretFile } from "../../_shared/env.js";
 
@@ -9,11 +9,11 @@ export function fixtureUserId(label: string): string {
 
 export function fixtureToken(userId: string, expiresIn = 300): string {
 	const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-	const unsigned = `${encode({ alg: "HS256", typ: "JWT" })}.${encode({
+	const unsigned = `${encode({ alg: "EdDSA", typ: "JWT" })}.${encode({
 		sub: userId, tenant_id: userId, iss: "alt-staging-auth-hub", aud: "alt-backend",
 		exp: Math.floor(Date.now() / 1000) + expiresIn,
 	})}`;
-	const signature = createHmac("sha256", requiredSecretFile("STAGING_JWT_KEY_FILE")).update(unsigned).digest("base64url");
+	const signature = sign(null, Buffer.from(unsigned), createPrivateKey(requiredSecretFile("BACKEND_TOKEN_SIGNING_KEY_FILE"))).toString("base64url");
 	return `${unsigned}.${signature}`;
 }
 

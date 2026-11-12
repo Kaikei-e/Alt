@@ -14,20 +14,17 @@ import type {
 // Constants
 // =============================================================================
 
-function loadSecret(): string {
-	const file = process.env.BACKEND_TOKEN_SECRET_FILE;
-	if (file) {
-		try {
-			return readFileSync(file, "utf-8").trim();
-		} catch {
-			console.warn(`Failed to read secret from ${file}, falling back to env`);
-		}
+export function loadSigningKey(): string {
+	const file = process.env.BACKEND_TOKEN_SIGNING_KEY_FILE;
+	if (!file) {
+		throw new Error(
+			"BACKEND_TOKEN_SIGNING_KEY_FILE must point at an Ed25519 PKCS#8 PEM private key",
+		);
 	}
-	return process.env.BACKEND_TOKEN_SECRET || "dev-secret-for-local";
+	return readFileSync(file, "utf-8");
 }
 
 export const DEV_USER_ID = "00000000-0000-0000-0000-000000000001";
-export const DEV_JWT_SECRET = loadSecret();
 export const DEV_JWT_ISSUER = "auth-hub";
 export const DEV_JWT_AUDIENCE = "alt-backend";
 

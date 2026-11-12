@@ -2,10 +2,10 @@ import { test, expect } from "../src/fixtures.js";
 import type { APIRequestContext } from "@playwright/test";
 import { expectStatus } from "../../_shared/http.js";
 import { env } from "../src/env.js";
-import { audiences, decodeJwt, numberClaim, stringClaim, verifyHS256 } from "../src/jwt.js";
+import { audiences, decodeJwt, numberClaim, stringClaim, verifyEdDSA } from "../src/jwt.js";
 
 /**
- * The `X-Alt-Backend-Token` HS256 JWT — the port of `12-validate-jwt-shape.hurl`,
+ * The `X-Alt-Backend-Token` EdDSA JWT — the port of `12-validate-jwt-shape.hurl`,
  * substantially strengthened.
  *
  * This token is the entire authentication contract between auth-hub and
@@ -26,7 +26,7 @@ import { audiences, decodeJwt, numberClaim, stringClaim, verifyHS256 } from "../
  * Grounded in `internal/infrastructure/token/jwt.go` (claim set and signing
  * method) and `compose/compose.staging.yaml` (BACKEND_TOKEN_ISSUER,
  * BACKEND_TOKEN_AUDIENCE, BACKEND_TOKEN_TTL, and the
- * `alt_backend_token_secret` mount shared with alt-backend).
+ * Ed25519 key pair mounted into auth-hub and alt-backend).
  */
 
 async function backendTokenFromValidate(
@@ -41,14 +41,14 @@ async function backendTokenFromValidate(
 }
 
 test.describe("backend token", () => {
-	test("is signed HS256 and verifies against the shared secret @contract", async ({
+	test("is signed EdDSA and verifies against the public key @contract", async ({
 		hub,
 		session,
 	}) => {
-		// The assertion the Hurl suite could not make. `BACKEND_TOKEN_SECRET_FILE`
-		// and alt-backend's own secret are the same compose secret
-		// (`e2e/fixtures/staging-secrets/alt_backend_token_secret.txt`), so a
-		// token that fails here is a token alt-backend would reject — the failure
+		// The assertion the Hurl suite could not make. `BACKEND_TOKEN_VERIFY_KEY_FILE`
+		// is the public key alt-backend verifies with (the pair is minted per
+		// run by `suite_token_keys`), so a token that fails here is a token
+		// alt-backend would reject — the failure
 		// mode where auth-hub keeps answering 200 and every downstream request
 		// 401s.
 		const token = await backendTokenFromValidate(hub, session.cookieHeader);
@@ -57,13 +57,13 @@ test.describe("backend token", () => {
 		// `alg` is asserted explicitly because "the signature verifies" is
 		// vacuously true for `alg: none`, and a verifier that trusts the header's
 		// algorithm is the classic JWT confusion attack. auth-hub must only ever
-		// emit HS256 (jwt.NewWithClaims(jwt.SigningMethodHS256, …)).
-		expect(decoded.header["alg"], "JOSE header alg").toBe("HS256");
+		// emit EdDSA.
+		expect(decoded.header["alg"], "JOSE header alg").toBe("EdDSA");
 		expect(decoded.header["typ"], "JOSE header typ").toBe("JWT");
 
 		expect(
-			verifyHS256(token, env.backendTokenSecret),
-			"HMAC-SHA256 over the token's signing input did not match the shared secret",
+			verifyEdDSA(token, env.backendTokenVerifyKey),
+			"Ed25519 signature over the token's signing input did not match the public key",
 		).toBe(true);
 	});
 
@@ -153,7 +153,7 @@ test.describe("backend token", () => {
 		expect(token, "X-Alt-Backend-Token on /session").toBeTruthy();
 
 		const decoded = decodeJwt(token as string);
-		expect(verifyHS256(token as string, env.backendTokenSecret), "signature").toBe(true);
+		expect(verifyEdDSA(token as string, env.backendTokenVerifyKey), "signature").toBe(true);
 		expect(stringClaim(decoded, "iss"), "iss").toBe(env.jwtIssuer);
 		expect(audiences(decoded), "aud").toEqual([env.jwtAudience]);
 		expect(stringClaim(decoded, "sub"), "sub").toBe(session.userId);

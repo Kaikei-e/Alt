@@ -25,10 +25,10 @@ export const env = {
 	mtlsSidecarURL: requiredEnv("MTLS_SIDECAR_URL"),
 
 	/**
-	 * Secret for minting X-Alt-Backend-Token in E2E tests.
-	 * Anchored on e2e/fixtures/staging-secrets/backend_token_secret.txt.
+	 * Ed25519 private key (PKCS#8 PEM) for minting X-Alt-Backend-Token in E2E
+	 * tests. Minted per run by `suite_token_keys`; nothing is committed.
 	 */
-	backendTokenSecret: requiredSecretFile("BACKEND_TOKEN_SECRET_FILE"),
+	backendTokenSigningKey: requiredSecretFile("BACKEND_TOKEN_SIGNING_KEY_FILE"),
 
 	/** Unique per dispatch; keeps seeded report titles apart across reruns. */
 	runId: runId(),

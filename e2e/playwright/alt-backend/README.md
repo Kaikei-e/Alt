@@ -67,7 +67,7 @@ cd e2e/playwright/alt-backend
 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci
 BASE_URL=http://localhost:9000 CONNECT_URL=http://localhost:9101 \
 INTERNAL_URL=http://localhost:9102 OPS_URL=http://localhost:9110 \
-JWT_FILE=../../fixtures/alt-backend/test-jwt.txt \
+JWT_FILE=../../fixtures/alt-backend/token-keys/test-jwt.txt \
 npx playwright test --ui
 ```
 

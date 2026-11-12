@@ -26,7 +26,7 @@
 #     because the /internal limiter is 10 req/min burst 3. Nothing is shared
 #     between tests now, and each test carries its own synthetic client
 #     address, so the suite runs `fullyParallel`.
-#   * `--secret` redaction for the session cookie and the HS256 signing key.
+#   * `--secret` redaction for the session cookie and the backend token key.
 #     That key arrives here as a *path*, is read inside the test container, and
 #     never reaches a compose slice, `docker inspect`, or a CI env dump;
 #     `suite.sh`'s `redact_secrets` scrubs the log dump on failure.
@@ -59,6 +59,8 @@ suite_endpoint TLS_CLIENT_CERT_FILE "$SUITE_PKI_DIR/alt-data-hub.pem"
 suite_endpoint TLS_CLIENT_KEY_FILE "$SUITE_PKI_DIR/alt-data-hub-key.pem"
 suite_endpoint PLAINTEXT_URL "http://auth-hub:8888"
 
+suite_token_keys
+
 suite_endpoint BASE_URL          "https://auth-hub:8443"
 suite_endpoint KRATOS_PUBLIC_URL "http://kratos:4433"
 suite_endpoint KRATOS_ADMIN_URL  "http://kratos:4434"
@@ -67,12 +69,10 @@ suite_endpoint MTLS_URL          "https://auth-hub:9443"
 # Secrets and fixtures arrive as paths. The repo is bind-mounted into the test
 # container at the same absolute path, so these resolve unchanged inside it.
 #
-# alt_backend_token_secret is the HS256 signing key and only that; the suite
-# needs it to verify the JWT signature the way alt-backend will. It no longer
-# opens /internal — main.go keys that group on INTERNAL_AUTH_SECRET, and
-# auth-hub refuses to start when the two are the same value.
-suite_endpoint BACKEND_TOKEN_SECRET_FILE \
-  "$ROOT/e2e/fixtures/staging-secrets/alt_backend_token_secret.txt"
+# The suite gets only the public half of the per-run backend token key pair
+# (suite_token_keys); it verifies the JWT signature the way alt-backend will.
+# /internal is keyed on INTERNAL_AUTH_SECRET, an unrelated value.
+suite_endpoint BACKEND_TOKEN_VERIFY_KEY_FILE "$SUITE_TOKEN_KEY_DIR/backend_token_verify_key.txt"
 suite_endpoint IDENTITY_EMAIL_FILE    "$ROOT/e2e/fixtures/auth-hub/test-identity-email.txt"
 suite_endpoint IDENTITY_PASSWORD_FILE "$ROOT/e2e/fixtures/auth-hub/test-identity-password.txt"
 

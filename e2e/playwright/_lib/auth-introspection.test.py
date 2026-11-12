@@ -1,26 +1,43 @@
 """Offline tests of the actual bounded staging JWT verifier; no listener."""
 import base64
-import hashlib
-import hmac
 import importlib.util
 import io
 import json
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 import unittest.mock
 
 spec = importlib.util.spec_from_file_location("fixture_auth", Path(__file__).parents[1] / "_fixtures/auth-introspection.py")
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
-KEY = b"public-test-key"
+
+
+def generate_key(directory):
+    """Throwaway Ed25519 pair; returns (private key path, raw public key)."""
+    private = Path(directory) / "key.pem"
+    subprocess.run(["openssl", "genpkey", "-algorithm", "ED25519", "-out", private], check=True)
+    public = subprocess.run(["openssl", "pkey", "-in", private, "-pubout"], check=True, capture_output=True).stdout
+    return private, fixture.load_public_key(public)
+
+
+KEYDIR = tempfile.TemporaryDirectory()
+PRIVATE, KEY = generate_key(KEYDIR.name)
+OTHER_DIR = tempfile.TemporaryDirectory()
+OTHER_PRIVATE, _ = generate_key(OTHER_DIR.name)
 USER = "11111111-1111-4111-a111-111111111111"
 TENANT = "22222222-2222-4222-a222-222222222222"
 
 
-def sign(claims, header=None, key=KEY):
+def sign(claims, header=None, key=PRIVATE):
     encode = lambda value: base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip("=")
-    data = f"{encode(header if header is not None else {'alg': 'HS256'})}.{encode(claims)}"
-    return data + "." + base64.urlsafe_b64encode(hmac.new(key, data.encode(), hashlib.sha256).digest()).decode().rstrip("=")
+    data = f"{encode(header if header is not None else {'alg': 'EdDSA'})}.{encode(claims)}"
+    with tempfile.NamedTemporaryFile() as message:
+        message.write(data.encode())
+        message.flush()
+        raw = subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", key, "-rawin", "-in", message.name], check=True, capture_output=True).stdout
+    return data + "." + base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
 class FixtureAuthTest(unittest.TestCase):
@@ -45,7 +62,7 @@ class FixtureAuthTest(unittest.TestCase):
             self.assertFalse(fixture.introspect(sign(self.claims(), header=value if value is not None else []), KEY, 1000)["active"])
 
     def test_bad_alg_signature_encoding_and_compact_shape_fail_closed(self):
-        for token in ["", "a.b", "a.b.c.d", "!a.b.c", sign(self.claims(), header={"alg": "none"}), sign(self.claims(), key=b"other")]:
+        for token in ["", "a.b", "a.b.c.d", "!a.b.c", sign(self.claims(), header={"alg": "none"}), sign(self.claims(), header={"alg": "HS256"}), sign(self.claims(), key=OTHER_PRIVATE)]:
             self.assertFalse(fixture.introspect(token, KEY, 1000)["active"])
 
 

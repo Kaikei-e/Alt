@@ -1,7 +1,7 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createPublicKey, verify } from "node:crypto";
 
 /**
- * JWS compact-form decoding and HS256 verification.
+ * JWS compact-form decoding and EdDSA (Ed25519) verification.
  *
  * `12-validate-jwt-shape.hurl` could only reach the claims through Hurl's
  * filter chain — `header … split "." nth 1 base64UrlSafeDecode decode "utf-8"
@@ -12,12 +12,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * says nothing about the signature: a token signed with the wrong key, or with
  * `alg: none`, decodes identically and passes every one of those asserts.
  *
- * Verifying the MAC here is what makes this an assertion about the contract
- * that actually matters. alt-backend accepts the `X-Alt-Backend-Token` header
- * only if it verifies against the same shared HS256 secret
- * (`e2e/fixtures/staging-secrets/alt_backend_token_secret.txt`, mounted into
- * both services by compose.staging.yaml). If auth-hub ever signs with a
- * different key, every authenticated request into the platform 401s in
+ * Verifying the signature here is what makes this an assertion about the
+ * contract that actually matters. alt-backend accepts the `X-Alt-Backend-Token`
+ * header only if it verifies against the Ed25519 public key that matches
+ * auth-hub's signing key (minted per run by `suite_token_keys` and mounted by
+ * compose.staging.yaml). If auth-hub ever signs with a different key, every authenticated request into the platform 401s in
  * production while this suite would still have reported green.
  *
  * These live here rather than in `_shared/` because auth-hub is the only
@@ -27,7 +26,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export type DecodedJwt = {
 	readonly header: Record<string, unknown>;
 	readonly claims: Record<string, unknown>;
-	/** `<header>.<payload>` — the bytes HMAC-SHA256 is computed over. */
+	/** `<header>.<payload>` — the bytes the Ed25519 signature covers. */
 	readonly signingInput: string;
 	readonly signature: Buffer;
 };
@@ -72,23 +71,25 @@ export function decodeJwt(token: string): DecodedJwt {
 }
 
 /**
- * True when `token` carries a valid HS256 MAC over its own signing input.
- *
- * Constant-time on purpose. Not because a test harness has a timing-attack
- * surface, but because `timingSafeEqual` throws on a length mismatch, which
- * turns "the signature is 20 bytes because the service switched to a truncated
- * MAC" into a named failure rather than a quiet `false`.
+ * True when `token` carries a valid Ed25519 signature over its own signing
+ * input, checked against `publicKeyPem` (SPKI). A signature of the wrong
+ * length throws, which turns "the service switched algorithm" into a named
+ * failure rather than a quiet `false`.
  */
-export function verifyHS256(token: string, secret: string): boolean {
+export function verifyEdDSA(token: string, publicKeyPem: string): boolean {
 	const decoded = decodeJwt(token);
-	const expected = createHmac("sha256", secret).update(decoded.signingInput).digest();
-	if (decoded.signature.length !== expected.length) {
+	if (decoded.signature.length !== 64) {
 		throw new Error(
-			`JWT signature is ${decoded.signature.length} bytes; HMAC-SHA256 produces ` +
-				`${expected.length}. The token was not signed with HS256.`,
+			`JWT signature is ${decoded.signature.length} bytes; Ed25519 produces 64. ` +
+				"The token was not signed with EdDSA.",
 		);
 	}
-	return timingSafeEqual(decoded.signature, expected);
+	return verify(
+		null,
+		Buffer.from(decoded.signingInput),
+		createPublicKey(publicKeyPem),
+		decoded.signature,
+	);
 }
 
 /** Reads a claim that must be a string, naming the claim when it is not. */

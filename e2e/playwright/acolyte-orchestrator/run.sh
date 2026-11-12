@@ -31,6 +31,7 @@ suite_init acolyte-orchestrator
 # Search uses mTLS for its business listener and outbound introspection client.
 # Acolyte queries the business listener on :9443.
 suite_pki auth-hub search-indexer acolyte-orchestrator
+suite_token_keys
 mint_staging_leaf "$SUITE_PKI_DIR" search-indexer serverAuth,clientAuth
 chmod 0644 "$SUITE_PKI_DIR"/*.pem
 
@@ -55,7 +56,7 @@ suite_endpoint OLLAMA_STUB_URL      "http://news-creator-ollama-stub:11435"
 # changing one rotates both. A path, not a value: it must never land in
 # `docker inspect` output or a CI environment dump.
 suite_endpoint MEILI_MASTER_KEY_FILE "$ROOT/e2e/fixtures/staging-secrets/meili_master_key.txt"
-suite_endpoint BACKEND_TOKEN_SECRET_FILE "$ROOT/e2e/fixtures/staging-secrets/backend_token_secret.txt"
+suite_endpoint BACKEND_TOKEN_SIGNING_KEY_FILE "$SUITE_TOKEN_KEY_DIR/backend_token_signing_key.txt"
 # The canonical search-indexer corpus. The `AI infrastructure trends` documents
 # in it are what the gatherer node retrieves for the run-lifecycle scenarios;
 # without them the pipeline still completes but with empty evidence, which is a

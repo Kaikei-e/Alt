@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto";
 import { ConnectCode, callUnary, expectUnaryError } from "../../_shared/connect.js";
 import { expectStatus } from "../../_shared/http.js";
 import {
@@ -11,7 +12,7 @@ import {
 /**
  * Authentication and authorization enforcement for AcolyteService Connect-RPC surface.
  *
- * UserIdentityInterceptor requires a valid HS256-signed X-Alt-Backend-Token JWT
+ * UserIdentityInterceptor requires a valid EdDSA-signed X-Alt-Backend-Token JWT
  * with issuer "auth-hub", audience "alt-backend", and a valid UUID "sub" claim
  * on all business procedures.
  *
@@ -30,10 +31,13 @@ test.describe("backend token authentication @authz", () => {
 		expect(err.message).toContain("missing backend token");
 	});
 
-	test("Connect RPC with invalid signature / wrong secret is rejected with unauthenticated (401)", async ({
+	test("Connect RPC with invalid signature / wrong key is rejected with unauthenticated (401)", async ({
 		acolyteAnon,
 	}) => {
-		const badToken = mintBackendToken({ secret: "wrong-staging-secret-key-12345" });
+		const { privateKey } = generateKeyPairSync("ed25519");
+		const badToken = mintBackendToken({
+			signingKey: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+		});
 		const err = await expectUnaryError(
 			acolyteAnon,
 			P.listReports,
@@ -111,7 +115,7 @@ test.describe("backend token authentication @authz", () => {
 		await expectStatus(response, 200);
 	});
 
-	test("authenticated Connect RPC with valid HS256 token succeeds (200)", async ({
+	test("authenticated Connect RPC with valid EdDSA token succeeds (200)", async ({
 		acolyte,
 	}) => {
 		const response = await callUnary(acolyte, P.listReports, { limit: 1 });
