@@ -169,6 +169,7 @@ fails `altctl init` and `TestKnownSecretMeta_CoversEveryComposeSecret`.
 |-------|-------------|-----------|
 | random | writes 32 random bytes, URL-safe base64 | regenerates |
 | operator-provided | empty placeholder, warns until filled | never touches an existing file |
+| ed25519-signing-key / ed25519-verify-key | writes the PKCS#8 private and SPKI public PEM together; one file without the other is an error | never touches an existing pair |
 | pki-provisioner | never writes; tells the operator to start step-ca and run `pki-agent/scripts/bootstrap-pki-provisioner.sh` | never touches |
 
 Files are 0644 and a newly created `secrets/` is 0750: the canonical store is
