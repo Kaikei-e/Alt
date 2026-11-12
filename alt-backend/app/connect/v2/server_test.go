@@ -87,10 +87,16 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 	cfg.Auth.BackendTokenIssuer = testBackendTokenIssuer
 	cfg.Auth.BackendTokenAudience = testBackendTokenAudience
 
+	limiter, err := middleware.NewUserQuotaLimiter(config.DefaultUserQuotaConfig())
+	if err != nil {
+		panic(err)
+	}
+
 	return &di.ApplicationComponents{
 			Infra:                 &di.InfraModule{PushSubscriptionGateway: pushGateway},
 			ResolveArticleUsecase: resolve_article_usecase.New(nil, nil), // satisfies the feeds handler fail-loud wiring check
 			Search:                &di.SearchModule{},
+			UserQuotaLimiter:      limiter,
 		},
 		cfg,
 		slog.New(slog.NewTextHandler(io_Discard{}, nil))

@@ -2,6 +2,8 @@ package rest
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -39,7 +41,14 @@ func (s *stubQuotaAnswerUsecase) Execute(_ context.Context, _ rag_integration_po
 	return ch, nil
 }
 
-func signRESTTestJWT(t *testing.T, secret string, uid uuid.UUID) string {
+func newRESTTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	return pub, priv
+}
+
+func signRESTTestJWT(t *testing.T, priv ed25519.PrivateKey, uid uuid.UUID) string {
 	t.Helper()
 	claims := jwt.MapClaims{
 		"sub":       uid.String(),
@@ -52,15 +61,15 @@ func signRESTTestJWT(t *testing.T, secret string, uid uuid.UUID) string {
 		"exp":       time.Now().Add(time.Hour).Unix(),
 		"iat":       time.Now().Unix(),
 	}
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := tok.SignedString([]byte(secret))
+	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := tok.SignedString(priv)
 	require.NoError(t, err)
 	return signed
 }
 
 func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 	logger.InitLogger()
-	const secret = "rest-quota-test-secret-at-least-32-bytes"
+	pub, priv := newRESTTestKeyPair(t)
 	limiter, err := connectmiddleware.NewUserQuotaLimiter(config.UserQuotaConfig{
 		MaxTrackedUsers:   32,
 		Summarize:         config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxConcurrent: 1},
@@ -79,9 +88,9 @@ func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 	}
 	cfg := &config.Config{
 		Auth: config.AuthConfig{
-			BackendTokenSecret:   secret,
-			BackendTokenIssuer:   "auth-hub",
-			BackendTokenAudience: "alt-backend",
+			BackendTokenPublicKey: pub,
+			BackendTokenIssuer:    "auth-hub",
+			BackendTokenAudience:  "alt-backend",
 		},
 	}
 
@@ -91,7 +100,7 @@ func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 	rest_feeds.RegisterFeedRoutes(v1, container, cfg)
 
 	uid := uuid.New()
-	token := signRESTTestJWT(t, secret, uid)
+	token := signRESTTestJWT(t, priv, uid)
 	body := `{"messages":[{"role":"user","content":"hello"}],"stream":false}`
 
 	req1 := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader(body))
@@ -209,7 +218,7 @@ func (s *stubQuotaBatchSummarizer) EnsureSummary(_ context.Context, _, _, _ stri
 	return "batch summary", false, nil
 }
 
-func newSummarizeQuotaTestServer(t *testing.T, secret string, limiter *connectmiddleware.UserQuotaLimiter) (*echo.Echo, *stubQuotaPreProcessor, *stubQuotaBatchSummarizer) {
+func newSummarizeQuotaTestServer(t *testing.T, pub ed25519.PublicKey, limiter *connectmiddleware.UserQuotaLimiter) (*echo.Echo, *stubQuotaPreProcessor, *stubQuotaBatchSummarizer) {
 	t.Helper()
 	repo := &stubQuotaSummarizeRepo{}
 	preproc := &stubQuotaPreProcessor{}
@@ -224,9 +233,9 @@ func newSummarizeQuotaTestServer(t *testing.T, secret string, limiter *connectmi
 	}
 	cfg := &config.Config{
 		Auth: config.AuthConfig{
-			BackendTokenSecret:   secret,
-			BackendTokenIssuer:   "auth-hub",
-			BackendTokenAudience: "alt-backend",
+			BackendTokenPublicKey: pub,
+			BackendTokenIssuer:    "auth-hub",
+			BackendTokenAudience:  "alt-backend",
 		},
 	}
 
@@ -239,7 +248,7 @@ func newSummarizeQuotaTestServer(t *testing.T, secret string, limiter *connectmi
 func TestNonStreamingSummarizeRoutes_EnforcePerUserQuotaAndIsolateUsers(t *testing.T) {
 	logger.InitLogger()
 	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
-	const secret = "rest-quota-test-secret-at-least-32-bytes"
+	pub, priv := newRESTTestKeyPair(t)
 
 	cases := []struct {
 		name       string
@@ -288,9 +297,9 @@ func TestNonStreamingSummarizeRoutes_EnforcePerUserQuotaAndIsolateUsers(t *testi
 			})
 			require.NoError(t, err)
 
-			e, preproc, batchSummarizer := newSummarizeQuotaTestServer(t, secret, limiter)
-			userAToken := signRESTTestJWT(t, secret, uuid.New())
-			userBToken := signRESTTestJWT(t, secret, uuid.New())
+			e, preproc, batchSummarizer := newSummarizeQuotaTestServer(t, pub, limiter)
+			userAToken := signRESTTestJWT(t, priv, uuid.New())
+			userBToken := signRESTTestJWT(t, priv, uuid.New())
 
 			doCall := func(tok string) *httptest.ResponseRecorder {
 				req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
@@ -323,7 +332,7 @@ func TestNonStreamingSummarizeRoutes_EnforcePerUserQuotaAndIsolateUsers(t *testi
 func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(t *testing.T) {
 	logger.InitLogger()
 	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
-	const secret = "rest-quota-test-secret-at-least-32-bytes"
+	pub, priv := newRESTTestKeyPair(t)
 
 	limiter, err := connectmiddleware.NewUserQuotaLimiter(config.UserQuotaConfig{
 		MaxTrackedUsers:   32,
@@ -334,9 +343,9 @@ func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(
 	})
 	require.NoError(t, err)
 
-	e, preproc, batchSummarizer := newSummarizeQuotaTestServer(t, secret, limiter)
-	userAToken := signRESTTestJWT(t, secret, uuid.New())
-	userBToken := signRESTTestJWT(t, secret, uuid.New())
+	e, preproc, batchSummarizer := newSummarizeQuotaTestServer(t, pub, limiter)
+	userAToken := signRESTTestJWT(t, priv, uuid.New())
+	userBToken := signRESTTestJWT(t, priv, uuid.New())
 
 	doPost := func(path, body, tok string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
@@ -371,10 +380,10 @@ func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(
 func TestSummarizeRoutes_PanicWhenLimiterNil(t *testing.T) {
 	logger.InitLogger()
 	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
-	const secret = "rest-quota-test-secret-at-least-32-bytes"
+	pub, priv := newRESTTestKeyPair(t)
 
-	e, _, _ := newSummarizeQuotaTestServer(t, secret, nil)
-	tok := signRESTTestJWT(t, secret, uuid.New())
+	e, _, _ := newSummarizeQuotaTestServer(t, pub, nil)
+	tok := signRESTTestJWT(t, priv, uuid.New())
 
 	for _, path := range []string{
 		"/v1/feeds/summarize",
