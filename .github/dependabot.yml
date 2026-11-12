@@ -1,12 +1,216 @@
-# Keeps the SHA-pinned actions in .github/workflows current. Dependabot
-# rewrites the pinned SHA and its trailing version comment together.
+# Weekly version updates; minor and patch bumps arrive as one PR per ecosystem.
+# Security updates are not grouped, so each advisory gets its own PR.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns:
           - "*"
+  - package-ecosystem: "gomod"
+    directories:
+      - "/alt-backend/app"
+      - "/alt-backend/sidecar-proxy"
+      - "/alt-butterfly-facade"
+      - "/alt-perf/k6/mock-rss-server"
+      - "/altctl"
+      - "/auth-hub"
+      - "/docker/inference-proxy"
+      - "/docker/otel-relay"
+      - "/docker/readonly-proxy"
+      - "/knowledge-sovereign/app"
+      - "/mq-hub/app"
+      - "/pki-agent"
+      - "/pre-processor-sidecar/app"
+      - "/pre-processor-sidecar/cmd/credential-health-checker"
+      - "/pre-processor/app"
+      - "/proto/tools/protovis"
+      - "/rag-orchestrator"
+      - "/search-indexer/app"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      gomod:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "cargo"
+    directories:
+      - "/plecto"
+      - "/rask-log-aggregator/app"
+      - "/rask-log-forwarder/app"
+      - "/recap-worker/recap-worker"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      cargo:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "uv"
+    directories:
+      - "/acolyte-orchestrator"
+      - "/dashboard"
+      - "/metrics"
+      - "/monitors/utilizer"
+      - "/news-creator/app"
+      - "/recap-evaluator"
+      - "/recap-subworker"
+      - "/rerank-server"
+      - "/scripts"
+      - "/tag-generator/app"
+      - "/tts-speaker"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      uv:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "bun"
+    directory: "/alt-frontend-sv"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      bun:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "npm"
+    directory: "/e2e/playwright"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "deno"
+    directories:
+      - "/alt-perf"
+      - "/auth-token-manager"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      deno:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "docker"
+    directories:
+      - "/acolyte-migration-atlas/docker"
+      - "/acolyte-orchestrator"
+      - "/alt-backend"
+      - "/alt-backend/sidecar-proxy"
+      - "/alt-butterfly-facade"
+      - "/alt-frontend-sv"
+      - "/alt-frontend-sv/tests/e2e/infra"
+      - "/alt-perf"
+      - "/alt-perf/k6/mock-rss-server"
+      - "/auth-hub"
+      - "/auth-token-manager"
+      - "/compose/news-creator-ollama-stub"
+      - "/dashboard"
+      - "/db"
+      - "/docker/backup"
+      - "/docker/inference-proxy"
+      - "/docker/otel-relay"
+      - "/docker/postgres"
+      - "/docker/readonly-proxy"
+      - "/e2e/stubs/alt-backend-deps-stub"
+      - "/e2e/stubs/recap-pipeline-stub"
+      - "/irodori-tts"
+      - "/knowledge-augur"
+      - "/knowledge-embedder"
+      - "/knowledge-sovereign"
+      - "/knowledge-sovereign/docker"
+      - "/migrations-atlas/docker"
+      - "/mq-hub"
+      - "/news-creator"
+      - "/pki-agent"
+      - "/pre-processor"
+      - "/pre-processor-migration-atlas/docker"
+      - "/pre-processor-sidecar"
+      - "/rag-db"
+      - "/rag-migration-atlas/docker"
+      - "/rag-orchestrator"
+      - "/rask-log-aggregator"
+      - "/rask-log-forwarder"
+      - "/recap-evaluator"
+      - "/recap-migration-atlas/docker"
+      - "/recap-subworker"
+      - "/recap-worker"
+      - "/rerank-server"
+      - "/search-indexer"
+      - "/tag-generator"
+      - "/tts-speaker"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "docker-compose"
+    directory: "/compose"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      docker-compose:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
