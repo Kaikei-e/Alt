@@ -823,6 +823,7 @@ mod new_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn execute_resumes_from_evidence_at_dispatch_without_rerunning_fetch() {
         let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");

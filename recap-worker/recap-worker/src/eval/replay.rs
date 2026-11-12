@@ -370,6 +370,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_build_cards_embed_cluster_override_model() {
         let _lock = ENV_MUTEX
             .lock()

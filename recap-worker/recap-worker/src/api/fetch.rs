@@ -1527,7 +1527,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[allow(clippy::await_holding_lock)]
+    #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
     async fn regenerate_morning_letter_rejects_concurrent_run_and_releases_after_completion_or_failure()
      {
         use crate::{

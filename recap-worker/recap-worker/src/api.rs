@@ -326,7 +326,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[allow(clippy::await_holding_lock)]
+    #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
     async fn non_health_routes_require_verified_allowed_peer_while_health_and_metrics_stay_open() {
         let _lock = ENV_MUTEX
             .lock()
