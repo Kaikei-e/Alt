@@ -3,7 +3,6 @@ package alt_db
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -44,8 +43,6 @@ func LoadDatabaseConfigFromEnv() (*DatabaseConfig, error) {
 		return nil, err
 	}
 
-	slog.Info("database tls mode configured", "ssl_mode", sslMode)
-
 	return &DatabaseConfig{
 		Host:        getEnvOrDefault("DB_HOST", "localhost"),
 		Port:        getEnvOrDefault("DB_PORT", "5432"),
@@ -57,14 +54,6 @@ func LoadDatabaseConfigFromEnv() (*DatabaseConfig, error) {
 		MinConns:    minConns,
 		MaxConnLife: getEnvOrDefault("DB_MAX_CONN_LIFE", "30m"),
 	}, nil
-}
-
-func NewDatabaseConfigFromEnv() *DatabaseConfig {
-	cfg, err := LoadDatabaseConfigFromEnv()
-	if err != nil {
-		panic(err)
-	}
-	return cfg
 }
 
 func (dc *DatabaseConfig) BuildConnectionString() string {

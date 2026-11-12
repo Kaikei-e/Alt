@@ -3,6 +3,7 @@ package alt_db
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -13,9 +14,7 @@ import (
 )
 
 func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
-	// Fail-fast on pool sizes before DSN construction: NewDatabaseConfigFromEnv
-	// still uses platform Atoi for unused MaxConns/MinConns fields and would
-	// panic on non-integers, or accept values that fit int but not int32.
+	// Fail-fast on int32 pool bounds before DSN construction.
 	maxConns, minConns, err := poolConnsFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("invalid pool size config: %w", err)
@@ -109,14 +108,16 @@ func waitOrCancel(ctx context.Context, delay time.Duration) error {
 }
 
 func getDBConnectionString() (string, error) {
-	config := NewDatabaseConfigFromEnv()
+	config, err := LoadDatabaseConfigFromEnv()
+	if err != nil {
+		return "", err
+	}
 
-	logger.Logger.InfoContext(context.Background(), "Database configuration for Linkerd",
+	slog.InfoContext(context.Background(), "Database configuration",
 		"host", config.Host,
 		"port", config.Port,
 		"database", config.DBName,
-		"ssl_mode", "disabled",
-		"mtls_provider", "linkerd-proxy")
+		"ssl_mode", config.SSLMode)
 
 	return config.BuildConnectionString(), nil
 }
