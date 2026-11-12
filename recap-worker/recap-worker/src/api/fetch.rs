@@ -1526,6 +1526,179 @@ mod tests {
         assert_eq!(body["body"]["lead"], json!("Regenerated on-demand lead"));
     }
 
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn regenerate_morning_letter_rejects_concurrent_run_and_releases_after_completion_or_failure()
+     {
+        use crate::{
+            app::{AppState, ComponentRegistry},
+            config::{Config, ENV_MUTEX},
+            store::dao::mock::MockRecapDao,
+        };
+        use chrono::Utc;
+        use serde_json::json;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        };
+        use std::time::Duration;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, Request as WireRequest, Respond, ResponseTemplate};
+
+        struct CountingResponder {
+            calls: Arc<AtomicUsize>,
+            fail_next: Arc<AtomicBool>,
+        }
+
+        impl Respond for CountingResponder {
+            fn respond(&self, _request: &WireRequest) -> ResponseTemplate {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                if self.fail_next.swap(false, Ordering::SeqCst) {
+                    return ResponseTemplate::new(500).set_body_string("upstream error");
+                }
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_millis(250))
+                    .set_body_json(json!({
+                        "target_date": "2026-11-09",
+                        "edition_timezone": "Asia/Tokyo",
+                        "content": {
+                            "schema_version": 1,
+                            "lead": "Single-flight lead",
+                            "sections": [
+                                {
+                                    "key": "top3",
+                                    "title": "Top Stories",
+                                    "bullets": ["Single-flight bullet"]
+                                }
+                            ],
+                            "source_recap_window_days": 3
+                        },
+                        "metadata": {
+                            "model": "gemma4-e4b-12k",
+                            "is_degraded": false,
+                            "degradation_reason": null,
+                            "processing_time_ms": 100
+                        }
+                    }))
+            }
+        }
+
+        let mock_server = MockServer::start().await;
+        let generate_calls = Arc::new(AtomicUsize::new(0));
+        let fail_next = Arc::new(AtomicBool::new(false));
+
+        Mock::given(method("POST"))
+            .and(path(
+                "/services.datahub.v1.DataHubService/ListRecapArticles",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "articles": [],
+                "hasMore": false
+            })))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/morning-letter/generate"))
+            .respond_with(CountingResponder {
+                calls: Arc::clone(&generate_calls),
+                fail_next: Arc::clone(&fail_next),
+            })
+            .mount(&mock_server)
+            .await;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let server_uri = mock_server.uri();
+
+        let env_lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@127.0.0.1:15432/recap"),
+                ),
+                ("CLASSIFICATION_QUEUE_CONCURRENCY", Some("0")),
+                ("NEWS_CREATOR_BASE_URL", Some(server_uri.as_str())),
+                ("SUBWORKER_BASE_URL", Some(server_uri.as_str())),
+                ("ALT_BACKEND_BASE_URL", Some(server_uri.as_str())),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                ("RECAP_GENRES", Some("ai")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+                ("MTLS_ENFORCE", None),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+                    .with_recap_dao(dao.clone())
+            },
+        )
+        .await;
+        drop(env_lock);
+
+        let state = AppState::new(registry);
+        let budget = state.config().surface_freshness().morning_letter_budget();
+
+        let state1 = state.clone();
+        let dao1 = Arc::clone(&dao);
+        let state2 = state.clone();
+        let dao2 = Arc::clone(&dao);
+        let (resp1, resp2) = tokio::join!(
+            async move {
+                regenerate_morning_letter_impl(state1.scheduler(), dao1.as_ref(), budget, Utc::now())
+                    .await
+            },
+            async move {
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                regenerate_morning_letter_impl(state2.scheduler(), dao2.as_ref(), budget, Utc::now())
+                    .await
+            }
+        );
+
+        assert_eq!(resp1.status(), StatusCode::OK);
+        assert_eq!(
+            resp2.status(),
+            StatusCode::CONFLICT,
+            "in-flight morning regeneration must reject concurrent request with 409"
+        );
+        assert_eq!(
+            generate_calls.load(Ordering::SeqCst),
+            1,
+            "concurrent request must not start a second morning pipeline"
+        );
+
+        fail_next.store(true, Ordering::SeqCst);
+        let failed_resp =
+            regenerate_morning_letter_impl(state.scheduler(), dao.as_ref(), budget, Utc::now())
+                .await;
+        assert_eq!(failed_resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let recovered_resp =
+            regenerate_morning_letter_impl(state.scheduler(), dao.as_ref(), budget, Utc::now())
+                .await;
+        assert_eq!(
+            recovered_resp.status(),
+            StatusCode::OK,
+            "morning regeneration lock must be released after failure"
+        );
+        assert_eq!(generate_calls.load(Ordering::SeqCst), 3);
+    }
+
     #[allow(clippy::await_holding_lock)]
     async fn build_test_registry_with_dsn(dsn: &str) -> crate::app::ComponentRegistry {
         use crate::{
