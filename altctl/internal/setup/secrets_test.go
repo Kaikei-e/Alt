@@ -956,3 +956,15 @@ func TestFindPendingSecrets_IgnoresKeyPair(t *testing.T) {
 		t.Errorf("key pair reported as pending: %+v", pending)
 	}
 }
+
+func TestMetaFor_RedisStreamsCredentialsAreSplit(t *testing.T) {
+	for _, name := range []string{"redis_streams_producer_password.txt", "redis_streams_consumer_password.txt"} {
+		meta, ok := metaFor(name)
+		if !ok || meta.Class != SecretClassRandom || meta.Length != 32 {
+			t.Errorf("%s = %+v (known=%v), want random with 32 bytes", name, meta, ok)
+		}
+	}
+	if _, ok := metaFor("redis_streams_password.txt"); ok {
+		t.Error("redis_streams_password.txt must no longer be known to altctl")
+	}
+}
