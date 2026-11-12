@@ -26,7 +26,7 @@ func TestVerifyRAGOrchestratorDataHubContract(t *testing.T) {
 		filepath.Join(ragPactDir, ragOrchestratorPactFile),
 		noopStates(
 			"alt-data-hub has articles tagged ai",
-			"alt-data-hub has tagged articles",
+			"alt-data-hub has tagged articles for the user",
 			"alt-data-hub has articles published in the last 24 hours",
 		), true)
 }

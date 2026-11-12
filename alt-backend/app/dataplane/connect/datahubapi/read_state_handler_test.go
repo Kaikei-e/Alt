@@ -116,6 +116,7 @@ type fakeTagReadPort struct {
 	cooccurrence []*domain.TagCooccurrence
 	hits         []domain.GlobalTagHit
 	counts       []domain.TagArticleCount
+	cloud        []*domain.TagCloudItem
 
 	gotArticleID string
 	gotUser      *uuid.UUID
@@ -157,6 +158,12 @@ func (f *fakeTagReadPort) SearchByPrefix(_ context.Context, _ string, userID uui
 	f.calls++
 	f.gotUserID, f.gotLimit = userID, limit
 	return f.hits, f.err
+}
+
+func (f *fakeTagReadPort) TagCloud(_ context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
+	f.calls++
+	f.gotUserID, f.gotLimit = userID, limit
+	return f.cloud, f.err
 }
 
 func (f *fakeTagReadPort) ArticleCounts(_ context.Context, userID uuid.UUID, since time.Time) ([]domain.TagArticleCount, error) {

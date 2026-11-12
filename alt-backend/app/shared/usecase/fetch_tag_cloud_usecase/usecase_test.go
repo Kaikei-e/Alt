@@ -9,8 +9,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // mockFetchTagCloudPort implements fetch_tag_cloud_port.FetchTagCloudPort for testing.
@@ -21,46 +19,6 @@ type mockFetchTagCloudPort struct {
 	cooccErr      error
 	callCount     atomic.Int32
 	fetchFn       func(ctx context.Context, limit int) ([]*domain.TagCloudItem, error)
-	userItems     []*domain.TagCloudItem
-	gotUserID     uuid.UUID
-	gotUserLimit  int
-}
-
-func (m *mockFetchTagCloudPort) FetchTagCloudForUser(_ context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
-	m.gotUserID, m.gotUserLimit = userID, limit
-	return m.userItems, m.err
-}
-
-func TestFetchTagCloudUsecase_ExecuteCountsOnlyForUser(t *testing.T) {
-	logger.InitLogger()
-
-	userID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
-	port := &mockFetchTagCloudPort{
-		items:     []*domain.TagCloudItem{{TagName: "instance-wide", ArticleCount: 9}},
-		userItems: []*domain.TagCloudItem{{TagName: "mine", ArticleCount: 1}},
-	}
-	uc := NewFetchTagCloudUsecase(port, time.Minute)
-
-	items, err := uc.ExecuteCountsOnlyForUser(context.Background(), userID, 0)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(items) != 1 || items[0].TagName != "mine" {
-		t.Fatalf("expected the user's tags, got %+v", items)
-	}
-	if port.gotUserID != userID || port.gotUserLimit != 300 {
-		t.Errorf("expected user %s with default limit 300, got %s / %d", userID, port.gotUserID, port.gotUserLimit)
-	}
-	if port.callCount.Load() != 0 {
-		t.Error("a scoped call must not hit the instance-wide fetch")
-	}
-
-	if _, err := uc.ExecuteCountsOnlyForUser(context.Background(), uuid.Nil, 10); err == nil {
-		t.Error("expected error for nil user id")
-	}
-	if _, err := uc.ExecuteCountsOnlyForUser(context.Background(), userID, 501); err == nil {
-		t.Error("expected error for limit above 500")
-	}
 }
 
 func (m *mockFetchTagCloudPort) FetchTagCloud(ctx context.Context, limit int) ([]*domain.TagCloudItem, error) {

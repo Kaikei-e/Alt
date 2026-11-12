@@ -381,12 +381,6 @@ func startStubServer(t *testing.T) int {
 	// route ADR-000954 D6 absorbed. The ids here are real UUIDs because the
 	// consumer pins them with a UUID regex matcher — it parses them, so a
 	// placeholder like "art-001" would verify green and fail in production.
-	dataHubProcedure(mux, "FetchTagCloud", jsonPost(map[string]interface{}{
-		"tags": []map[string]interface{}{
-			{"tagName": "ai", "articleCount": 42},
-		},
-	}))
-
 	dataHubProcedure(mux, "FetchArticlesByTag", jsonPost(map[string]interface{}{
 		"articles": []map[string]interface{}{
 			{

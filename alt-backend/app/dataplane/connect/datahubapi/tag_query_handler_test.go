@@ -567,15 +567,7 @@ type fakeFetchTagCloudPort struct {
 	items       []*domain.TagCloudItem
 	err         error
 	sawLimit    int
-	sawUserID   uuid.UUID
 	instanceHit int
-	userHit     int
-}
-
-func (f *fakeFetchTagCloudPort) ExecuteCountsOnlyForUser(_ context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
-	f.userHit++
-	f.sawUserID, f.sawLimit = userID, limit
-	return f.items, f.err
 }
 
 func (f *fakeFetchTagCloudPort) ExecuteCountsOnly(_ context.Context, limit int) ([]*domain.TagCloudItem, error) {
@@ -584,10 +576,16 @@ func (f *fakeFetchTagCloudPort) ExecuteCountsOnly(_ context.Context, limit int) 
 	return f.items, f.err
 }
 
+func tagCloudHandler(instance *fakeFetchTagCloudPort, tagRead *fakeTagReadPort) *Handler {
+	return NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, slog.Default(),
+		WithRAGToolPorts(instance, nil),
+		WithReadStateAndTagCapabilities(&fakeReadStatePort{}, tagRead))
+}
+
 func TestFetchTagCloud_WithUserIDIsScopedToThatUser(t *testing.T) {
-	fake := &fakeFetchTagCloudPort{items: []*domain.TagCloudItem{{TagName: "golang", ArticleCount: 2}}}
-	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, slog.Default(),
-		WithRAGToolPorts(fake, nil))
+	instance := &fakeFetchTagCloudPort{}
+	tagRead := &fakeTagReadPort{cloud: []*domain.TagCloudItem{{TagName: "golang", ArticleCount: 2}}}
+	h := tagCloudHandler(instance, tagRead)
 	userID := testTrailUserID
 
 	resp, err := h.FetchTagCloud(context.Background(), connect.NewRequest(&datahubv1.FetchTagCloudRequest{
@@ -595,18 +593,18 @@ func TestFetchTagCloud_WithUserIDIsScopedToThatUser(t *testing.T) {
 		UserId: &userID,
 	}))
 	require.NoError(t, err)
-	assert.Equal(t, uuid.MustParse(testTrailUserID), fake.sawUserID)
-	assert.Equal(t, 50, fake.sawLimit)
-	assert.Equal(t, 1, fake.userHit)
-	assert.Zero(t, fake.instanceHit, "a scoped request must never fall through to the instance-wide query")
+	assert.Equal(t, uuid.MustParse(testTrailUserID), tagRead.gotUserID)
+	assert.Equal(t, 50, tagRead.gotLimit)
+	assert.Zero(t, instance.instanceHit, "a scoped request must never fall through to the instance-wide query")
 	require.Len(t, resp.Msg.GetTags(), 1)
+	assert.Equal(t, "golang", resp.Msg.GetTags()[0].GetTagName())
 }
 
 func TestFetchTagCloud_PresentButInvalidUserIDIsRejected(t *testing.T) {
 	for _, bad := range []string{"", "not-a-uuid", uuid.Nil.String()} {
-		fake := &fakeFetchTagCloudPort{}
-		h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, slog.Default(),
-			WithRAGToolPorts(fake, nil))
+		instance := &fakeFetchTagCloudPort{}
+		tagRead := &fakeTagReadPort{}
+		h := tagCloudHandler(instance, tagRead)
 		userID := bad
 
 		_, err := h.FetchTagCloud(context.Background(), connect.NewRequest(&datahubv1.FetchTagCloudRequest{
@@ -615,7 +613,7 @@ func TestFetchTagCloud_PresentButInvalidUserIDIsRejected(t *testing.T) {
 		}))
 		require.Error(t, err, "user_id %q", bad)
 		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-		assert.Zero(t, fake.userHit+fake.instanceHit, "an invalid scope must not widen to the instance-wide query")
+		assert.Zero(t, tagRead.calls+instance.instanceHit, "an invalid scope must not widen to the instance-wide query")
 	}
 }
 

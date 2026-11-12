@@ -59,17 +59,6 @@ func TestFetchTagCloud_StaysInstanceWide(t *testing.T) {
 	assert.Nil(t, client.gotFetchTagCloudReq.UserId, "the shared tag cloud must not carry a user scope")
 }
 
-func TestFetchTagCloudForUser_SendsUserID(t *testing.T) {
-	client := &fakeTagDataHubClient{}
-	gw := &TagGateway{client: client}
-	userID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
-
-	_, err := gw.FetchTagCloudForUser(context.Background(), userID, 50)
-	require.NoError(t, err)
-	require.NotNil(t, client.gotFetchTagCloudReq.UserId)
-	assert.Equal(t, userID.String(), client.gotFetchTagCloudReq.GetUserId())
-}
-
 func TestSearchTagsByPrefix_RejectsEmptyUserID(t *testing.T) {
 	client := &fakeTagDataHubClient{}
 	gw := &TagGateway{client: client}

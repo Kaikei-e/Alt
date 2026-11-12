@@ -151,14 +151,14 @@ func TestDataHubListRecentArticlesContract(t *testing.T) {
 }
 
 // TestDataHubFetchTagCloudContract pins the tag_cloud_explore tool's
-// dependency. Origin: services.backend.v1.BackendInternalService/FetchTagCloud
-// — wire-identical body, new package on the path.
+// dependency: the request carries the asking user's id, and the answer is the
+// tag counts over that user's articles.
 func TestDataHubFetchTagCloudContract(t *testing.T) {
 	mockProvider := newDataHubPact(t)
 
 	err := mockProvider.
 		AddInteraction().
-		Given("alt-data-hub has tagged articles").
+		Given("alt-data-hub has tagged articles for the user").
 		UponReceiving("a FetchTagCloud request from rag-orchestrator").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",

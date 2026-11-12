@@ -31,9 +31,12 @@ func TestTagCloudExploreTool_SendsAskingUserID(t *testing.T) {
 	client := &mockTagCloudClient{tags: []domain.TagCloudEntry{{TagName: "art", ArticleCount: 3}}}
 	tool := NewTagCloudExploreTool(client)
 
-	_, err := tool.Execute(domain.WithUserID(context.Background(), testTagCloudUserID), map[string]string{"topic": "art"})
+	result, err := tool.Execute(domain.WithUserID(context.Background(), testTagCloudUserID), map[string]string{"topic": "art"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ToolName != "tag_cloud_explore" {
+		t.Errorf("expected tool name on the result, got %q", result.ToolName)
 	}
 	if client.gotUserID != testTagCloudUserID {
 		t.Errorf("expected user id %q to be sent, got %q", testTagCloudUserID, client.gotUserID)
@@ -55,6 +58,8 @@ func TestTagCloudExploreTool_MissingUserIDIsError(t *testing.T) {
 			}
 			if result == nil || result.Success {
 				t.Errorf("expected unsuccessful result, got %+v", result)
+			} else if result.ToolName != "tag_cloud_explore" {
+				t.Errorf("expected tool name on the result, got %q", result.ToolName)
 			}
 			if client.calls != 0 {
 				t.Errorf("client must not be called without a user id, got %d calls", client.calls)

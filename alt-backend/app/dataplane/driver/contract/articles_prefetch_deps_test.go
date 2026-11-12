@@ -13,8 +13,6 @@ import (
 	"alt/orchestrator/connect/v2/articles"
 	"alt/orchestrator/usecase/fetch_article_usecase"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
-
-	"github.com/google/uuid"
 )
 
 // pactPrefetchUsecase is the third-class (prefetch) ArticleUsecase the handler
@@ -76,10 +74,6 @@ func (pactTagCloudPort) FetchTagCloud(_ context.Context, _ int) ([]*domain.TagCl
 		}
 	}
 	return items, nil
-}
-
-func (pactTagCloudPort) FetchTagCloudForUser(_ context.Context, _ uuid.UUID, _ int) ([]*domain.TagCloudItem, error) {
-	return nil, nil
 }
 
 func (pactTagCloudPort) FetchTagCooccurrences(_ context.Context, _ []string) ([]*domain.TagCooccurrence, error) {
