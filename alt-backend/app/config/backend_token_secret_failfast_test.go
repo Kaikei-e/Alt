@@ -121,6 +121,7 @@ func TestValidateBackendConfig_VerifyKeyFileFailsFast(t *testing.T) {
 			envVars := map[string]string{
 				"IMAGE_PROXY_ENABLED":           "false",
 				"SOVEREIGN_URL":                 "disabled",
+				"SOVEREIGN_EVENT_AUTH":          "disabled",
 				"RAG_API_AUTH":                  "disabled",
 				"VAPID_PUBLIC_KEY":              "a-vapid-public-key-value",
 				"BACKEND_TOKEN_VERIFY_KEY":      "",

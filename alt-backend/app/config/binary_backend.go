@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"log/slog"
 	"os"
@@ -73,11 +74,19 @@ func LoadOperatorListenAddr() (string, error) {
 // (CLAUDE.md rule 9); an intentional opt-out is a compose file that does not
 // start cmd/backend's push surface, not an unset variable.
 func ValidateBackendConfig(cfg *Config) error {
+	if err := loadBackendTokenVerifyKey(&cfg.Auth, os.ReadFile); err != nil {
+		return fmt.Errorf("backend config: %w", err)
+	}
+	verifyKeyReady := ""
+	if len(cfg.Auth.BackendTokenPublicKey) == ed25519.PublicKeySize {
+		verifyKeyReady = "present"
+	}
+
 	required := []struct {
 		env   string
 		value string
 	}{
-		{"BACKEND_TOKEN_SECRET", cfg.Auth.BackendTokenSecret},
+		{backendTokenVerifyKeyFileEnv, verifyKeyReady},
 		{"SOVEREIGN_URL", cfg.Sovereign.URL},
 		{"SEARCH_INDEXER_CONNECT_URL", cfg.SearchIndexer.ConnectURL},
 		{"MQHUB_CONNECT_URL", cfg.MQHub.ConnectURL},
