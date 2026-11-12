@@ -66,6 +66,37 @@ class FixtureAuthTest(unittest.TestCase):
             self.assertFalse(fixture.introspect(token, KEY, 1000)["active"])
 
 
+class MalleabilityAndEncodingTest(unittest.TestCase):
+    # y = 2**255 - 1 is >= p, so it is not a canonical point encoding.
+    BAD_POINT = b"\xff" * 31 + b"\x7f"
+
+    def parts(self):
+        claims = {"sub": USER, "tenant_id": TENANT, "exp": 1300, "iss": "alt-staging-auth-hub", "aud": "alt-backend"}
+        header, payload, signature = sign(claims).split(".")
+        decode = lambda value: base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        return header, payload, decode(signature)
+
+    def token(self, header, payload, signature):
+        return ".".join([header, payload, base64.urlsafe_b64encode(signature).decode().rstrip("=")])
+
+    def test_signature_with_group_order_added_to_s_is_rejected(self):
+        header, payload, signature = self.parts()
+        s = int.from_bytes(signature[32:], "little")
+        mauled = signature[:32] + (s + fixture._Q).to_bytes(32, "little")
+        self.assertTrue(fixture.introspect(self.token(header, payload, signature), KEY, 1000)["active"])
+        self.assertFalse(fixture.introspect(self.token(header, payload, mauled), KEY, 1000)["active"])
+
+    def test_undecodable_r_is_rejected(self):
+        header, payload, signature = self.parts()
+        broken = self.BAD_POINT + signature[32:]
+        self.assertFalse(fixture.introspect(self.token(header, payload, broken), KEY, 1000)["active"])
+
+    def test_undecodable_public_key_is_rejected(self):
+        header, payload, signature = self.parts()
+        self.assertFalse(fixture.introspect(self.token(header, payload, signature), self.BAD_POINT, 1000)["active"])
+        self.assertFalse(fixture.ed25519_verify(self.BAD_POINT, b"message", signature))
+
+
 class HandlerForwardingTest(unittest.TestCase):
     def make_handler(self, path, method="POST", headers=None, body=b"", peer_name="alt-backend"):
         h = fixture.Handler.__new__(fixture.Handler)
