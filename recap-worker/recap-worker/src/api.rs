@@ -18,71 +18,66 @@ use axum::{
 
 use crate::app::AppState;
 
+macro_rules! with_non_health_routes {
+    ($macro:ident) => {
+        $macro! {
+            admin: [
+                (POST, post, "/admin/jobs/retry", "/admin/jobs/retry", admin::retry_jobs),
+                (POST, post, "/admin/genre-learning", "/admin/genre-learning", learning::receive_genre_learning),
+            ],
+            v1: [
+                (POST, post, "/v1/generate/recaps/7days", "/v1/generate/recaps/7days", generate::trigger_7days),
+                (GET, get, "/v1/recaps/7days", "/v1/recaps/7days", fetch::get_7days_recap),
+                (POST, post, "/v1/generate/recaps/3days", "/v1/generate/recaps/3days", generate::trigger_3days),
+                (POST, post, "/v1/generate/topic-cards", "/v1/generate/topic-cards", generate::trigger_topic_cards),
+                (GET, get, "/v1/recaps/3days", "/v1/recaps/3days", fetch::get_3days_recap),
+                (GET, get, "/v1/topic-cards", "/v1/topic-cards", cards::get_topic_cards),
+                (GET, get, "/v1/recaps/search", "/v1/recaps/search?q=ai", fetch::search_recaps),
+                (GET, get, "/v1/recaps/genres/indexable", "/v1/recaps/genres/indexable", fetch::get_indexable_genres),
+                (GET, get, "/v1/morning/updates", "/v1/morning/updates?since=2026-01-26T00:00:00Z", fetch::get_morning_updates),
+                (GET, get, "/v1/morning/letters/latest", "/v1/morning/letters/latest", fetch::get_latest_morning_letter),
+                (POST, post, "/v1/morning/letters/regenerate", "/v1/morning/letters/regenerate", fetch::regenerate_morning_letter),
+                (GET, get, "/v1/morning/letters/{target_date}", "/v1/morning/letters/2026-01-26", fetch::get_morning_letter_by_date),
+                (GET, get, "/v1/morning/letters/{letter_id}/sources", "/v1/morning/letters/00000000-0000-0000-0000-000000000001/sources", fetch::get_morning_letter_sources),
+                (POST, post, "/v1/evaluation/genres", "/v1/evaluation/genres", evaluation::evaluate_genres),
+                (GET, get, "/v1/evaluation/genres/latest", "/v1/evaluation/genres/latest", evaluation::get_latest_evaluation_result),
+                (GET, get, "/v1/evaluation/genres/{run_id}", "/v1/evaluation/genres/00000000-0000-0000-0000-000000000001", evaluation::get_evaluation_result),
+                (GET, get, "/v1/dashboard/metrics", "/v1/dashboard/metrics", dashboard::get_metrics),
+                (GET, get, "/v1/dashboard/overview", "/v1/dashboard/overview", dashboard::get_overview),
+                (GET, get, "/v1/dashboard/logs", "/v1/dashboard/logs", dashboard::get_logs),
+                (GET, get, "/v1/dashboard/jobs", "/v1/dashboard/jobs", dashboard::get_jobs),
+                (GET, get, "/v1/dashboard/recap_jobs", "/v1/dashboard/recap_jobs", dashboard::get_recap_jobs),
+                (GET, get, "/v1/dashboard/job-progress", "/v1/dashboard/job-progress", dashboard::get_job_progress),
+                (GET, get, "/v1/dashboard/job-stats", "/v1/dashboard/job-stats", dashboard::get_job_stats),
+                (GET, get, "/v1/pulse/latest", "/v1/pulse/latest", pulse::get_latest),
+            ]
+        }
+    };
+}
+
+macro_rules! build_peer_authenticated_subrouters {
+    (
+        admin: [ $( ($a_method:ident, $a_verb:ident, $a_route:literal, $a_sample:literal, $a_handler:path) ),* $(,)? ],
+        v1: [ $( ($v_method:ident, $v_verb:ident, $v_route:literal, $v_sample:literal, $v_handler:path) ),* $(,)? ]
+    ) => {{
+        let admin_router = Router::new()
+            $( .route($a_route, $a_verb($a_handler)) )*;
+        let v1_router = Router::new()
+            $( .route($v_route, $v_verb($v_handler)) )*;
+        (admin_router, v1_router)
+    }};
+}
+
 pub(crate) fn router(state: AppState) -> Router {
     let admin_guard = auth::AdminAuthGuard::new(state.config().admin_auth_token());
     let peer_guard = auth::PeerIdentityGuard::new(state.config().peer_identity().allowed_peers());
-    let protected = Router::new()
-        .route("/admin/jobs/retry", post(admin::retry_jobs))
-        .route(
-            "/admin/genre-learning",
-            post(learning::receive_genre_learning),
-        )
+    let (admin_router, v1_router) = with_non_health_routes!(build_peer_authenticated_subrouters);
+    let protected = admin_router
         .route_layer(middleware::from_fn(auth::require_admin_token))
         .layer(Extension(admin_guard));
 
-    let peer_authenticated = Router::new()
+    let peer_authenticated = v1_router
         .merge(protected)
-        .route("/v1/generate/recaps/7days", post(generate::trigger_7days))
-        .route("/v1/recaps/7days", get(fetch::get_7days_recap))
-        .route("/v1/generate/recaps/3days", post(generate::trigger_3days))
-        .route(
-            "/v1/generate/topic-cards",
-            post(generate::trigger_topic_cards),
-        )
-        .route("/v1/recaps/3days", get(fetch::get_3days_recap))
-        .route("/v1/topic-cards", get(cards::get_topic_cards))
-        .route("/v1/recaps/search", get(fetch::search_recaps))
-        .route(
-            "/v1/recaps/genres/indexable",
-            get(fetch::get_indexable_genres),
-        )
-        .route("/v1/morning/updates", get(fetch::get_morning_updates))
-        .route(
-            "/v1/morning/letters/latest",
-            get(fetch::get_latest_morning_letter),
-        )
-        .route(
-            "/v1/morning/letters/regenerate",
-            post(fetch::regenerate_morning_letter),
-        )
-        .route(
-            "/v1/morning/letters/{target_date}",
-            get(fetch::get_morning_letter_by_date),
-        )
-        .route(
-            "/v1/morning/letters/{letter_id}/sources",
-            get(fetch::get_morning_letter_sources),
-        )
-        .route("/v1/evaluation/genres", post(evaluation::evaluate_genres))
-        .route(
-            "/v1/evaluation/genres/latest",
-            get(evaluation::get_latest_evaluation_result),
-        )
-        .route(
-            "/v1/evaluation/genres/{run_id}",
-            get(evaluation::get_evaluation_result),
-        )
-        .route("/v1/dashboard/metrics", get(dashboard::get_metrics))
-        .route("/v1/dashboard/overview", get(dashboard::get_overview))
-        .route("/v1/dashboard/logs", get(dashboard::get_logs))
-        .route("/v1/dashboard/jobs", get(dashboard::get_jobs))
-        .route("/v1/dashboard/recap_jobs", get(dashboard::get_recap_jobs))
-        .route(
-            "/v1/dashboard/job-progress",
-            get(dashboard::get_job_progress),
-        )
-        .route("/v1/dashboard/job-stats", get(dashboard::get_job_stats))
-        .route("/v1/pulse/latest", get(pulse::get_latest))
         .route_layer(middleware::from_fn(auth::require_peer_identity))
         .layer(Extension(peer_guard));
 
@@ -107,6 +102,20 @@ mod tests {
         app::{AppState, ComponentRegistry},
         config::{Config, ENV_MUTEX},
     };
+
+    macro_rules! non_health_route_samples {
+        (
+            admin: [ $( ($a_method:ident, $a_verb:ident, $a_route:literal, $a_sample:literal, $a_handler:path) ),* $(,)? ],
+            v1: [ $( ($v_method:ident, $v_verb:ident, $v_route:literal, $v_sample:literal, $v_handler:path) ),* $(,)? ]
+        ) => {
+            &[
+                $( (Method::$a_method, $a_sample), )*
+                $( (Method::$v_method, $v_sample), )*
+            ]
+        };
+    }
+
+    const NON_HEALTH_ROUTES: &[(Method, &str)] = with_non_health_routes!(non_health_route_samples);
 
     #[tokio::test]
     // Lock held across `ComponentRegistry::build` for the same reason as
@@ -223,7 +232,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[allow(clippy::await_holding_lock)]
+    #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
     async fn topic_cards_routes_registered_and_old_routes_return_404() {
         let _lock = ENV_MUTEX
             .lock()
@@ -316,6 +325,21 @@ mod tests {
             StatusCode::NOT_FOUND,
             "/v1/generate/topic-cards must be registered"
         );
+
+        assert_eq!(NON_HEALTH_ROUTES.len(), 26);
+        for (_method, uri) in NON_HEALTH_ROUTES {
+            let req = Request::builder()
+                .method(Method::DELETE)
+                .uri(*uri)
+                .body(Body::empty())
+                .expect("request builds");
+            let resp = app.clone().oneshot(req).await.expect("request succeeds");
+            assert_eq!(
+                resp.status(),
+                StatusCode::METHOD_NOT_ALLOWED,
+                "route {uri} must be registered on the router (405 on DELETE, never 404)"
+            );
+        }
     }
 
     fn test_peer_cert(name: &str) -> rustls::pki_types::CertificateDer<'static> {
@@ -401,25 +425,10 @@ mod tests {
 
         let app = router(AppState::new(registry));
 
-        for (method, path) in [
-            (Method::POST, "/v1/generate/recaps/7days"),
-            (Method::POST, "/v1/generate/recaps/3days"),
-            (Method::POST, "/v1/generate/topic-cards"),
-            (Method::POST, "/v1/morning/letters/regenerate"),
-            (Method::POST, "/v1/evaluation/genres"),
-            (Method::GET, "/v1/dashboard/metrics"),
-            (Method::GET, "/v1/dashboard/overview"),
-            (Method::GET, "/v1/dashboard/logs"),
-            (Method::GET, "/v1/dashboard/jobs"),
-            (Method::GET, "/v1/dashboard/recap_jobs"),
-            (Method::GET, "/v1/dashboard/job-progress"),
-            (Method::GET, "/v1/dashboard/job-stats"),
-            (Method::GET, "/v1/recaps/7days"),
-            (Method::POST, "/admin/jobs/retry"),
-        ] {
+        for (method, path) in NON_HEALTH_ROUTES {
             let unauthenticated = Request::builder()
                 .method(method.clone())
-                .uri(path)
+                .uri(*path)
                 .header("content-type", "application/json")
                 .header("x-alt-peer-identity", "alt-frontend-sv")
                 .body(Body::from("{}"))
@@ -436,8 +445,8 @@ mod tests {
             );
 
             let mut untrusted = Request::builder()
-                .method(method)
-                .uri(path)
+                .method(method.clone())
+                .uri(*path)
                 .header("content-type", "application/json")
                 .body(Body::from("{}"))
                 .expect("request builds");
