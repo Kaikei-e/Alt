@@ -73,7 +73,7 @@ func loadFromEnv(config *Config) error {
 }
 
 func loadArticleSyncConfig(cfg *ArticleSyncConfig) {
-	if ownerID := strings.TrimSpace(os.Getenv("ARTICLE_SYNC_OWNER_USER_ID")); ownerID != "" {
+	if ownerID := os.Getenv("ARTICLE_SYNC_OWNER_USER_ID"); ownerID != "" {
 		cfg.OwnerUserID = ownerID
 	}
 }

@@ -108,6 +108,9 @@ type Dependencies struct {
 	// are registered on it; without a scrape target the numbers exist but
 	// nobody can see a wedged relay.
 	MetricsCollector *metrics.Collector
+
+	// ArticleSyncEnabled controls whether the Inoreader article-sync and backfill loops start.
+	ArticleSyncEnabled bool
 }
 
 // buildMetricsCollector wires the dedicated metrics listener and registers the
@@ -275,7 +278,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	}
 	cfg.NewsCreator.Host = newsURL
 
-	ownerUserID, err := config.ResolveArticleSyncOwnerUserID()
+	syncMode, ownerUserID, err := config.ResolveArticleSyncConfig(log)
 	if err != nil {
 		return nil, nil, fmt.Errorf("article sync config validation failed (fail-closed): %w", err)
 	}
@@ -338,7 +341,12 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	// the same TLS/CA that the summarizer uses; uncertified factory transport
 	// would accept wrong-CA responses.
 	healthCheckerService := service.NewHealthCheckerServiceWithClient(newsHTTPClient, cfg.NewsCreator.Host, log)
-	articleSyncService := service.NewArticleSyncService(articleRepo, ownerUserID, log)
+	var articleSyncService service.ArticleSyncService
+	if syncMode == config.SyncEnabled {
+		articleSyncService = service.NewArticleSyncService(articleRepo, ownerUserID, log)
+	} else {
+		articleSyncService = service.NewDisabledArticleSyncService()
+	}
 	summarizeQueueWorker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
 	summarizeQueueWorker.SetConcurrency(cfg.SummarizeQueue.Concurrency)
 
@@ -387,16 +395,17 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	}
 
 	return &Dependencies{
-		JobHandler:       jobHandler,
-		HealthHandler:    healthHandler,
-		SummarizeHandler: summarizeHandler,
-		RedisConsumer:    redisConsumer,
-		Logger:           log,
-		APIRepo:          apiRepo,
-		SummaryRepo:      summaryRepo,
-		ArticleRepo:      articleRepo,
-		JobRepo:          jobRepo,
-		MetricsCollector: promCollector,
+		JobHandler:         jobHandler,
+		HealthHandler:      healthHandler,
+		SummarizeHandler:   summarizeHandler,
+		RedisConsumer:      redisConsumer,
+		Logger:             log,
+		APIRepo:            apiRepo,
+		SummaryRepo:        summaryRepo,
+		ArticleRepo:        articleRepo,
+		JobRepo:            jobRepo,
+		MetricsCollector:   promCollector,
+		ArticleSyncEnabled: syncMode == config.SyncEnabled,
 	}, cleanup, nil
 }
 

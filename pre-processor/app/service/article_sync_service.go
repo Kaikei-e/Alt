@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"pre-processor/domain"
 	"pre-processor/repository"
@@ -159,19 +162,35 @@ func (s *articleSyncService) recordBackfillProgress(ctx context.Context, scanned
 	s.logger.InfoContext(ctx, "backfill cursor advanced", "cursor", s.backfillCursor())
 }
 
+var ErrArticleSyncDisabled = errors.New("article sync is disabled by INOREADER_SYNC=disabled")
+
+type disabledArticleSyncService struct{}
+
+func NewDisabledArticleSyncService() ArticleSyncService {
+	return &disabledArticleSyncService{}
+}
+
+func (disabledArticleSyncService) SyncArticles(context.Context) error {
+	return ErrArticleSyncDisabled
+}
+
+func (disabledArticleSyncService) BackfillEmptyFeeds(context.Context) error {
+	return ErrArticleSyncDisabled
+}
+
 // NewArticleSyncService creates a new article sync service.
 func NewArticleSyncService(
 	articleRepo SyncArticleRepository,
 	ownerUserID string,
 	logger *slog.Logger,
 ) ArticleSyncService {
-	trimmedOwner := strings.TrimSpace(ownerUserID)
-	if trimmedOwner == "" {
-		panic("NewArticleSyncService: ownerUserID must not be empty")
+	parsedOwner, err := uuid.Parse(strings.TrimSpace(ownerUserID))
+	if err != nil || parsedOwner == uuid.Nil {
+		panic("NewArticleSyncService: ownerUserID must be a valid non-nil UUID")
 	}
 	return &articleSyncService{
 		articleRepo: articleRepo,
-		ownerUserID: trimmedOwner,
+		ownerUserID: parsedOwner.String(),
 		sanitizer:   utils.NewSanitizer(),
 		logger:      logger,
 	}
