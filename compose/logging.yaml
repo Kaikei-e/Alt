@@ -65,7 +65,7 @@ services:
       - no-new-privileges:true
     read_only: true
     environment:
-      ALLOWED_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}
+      ALLOWED_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-alt}
     volumes:
       - type: bind
         source: /var/run/docker.sock
