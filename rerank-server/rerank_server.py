@@ -61,8 +61,9 @@ DEFAULT_MODEL = "cl-nagoya/ruri-v3-reranker-310m"
 # ModernBertOnnxConfig for text-classification with MIN_TRANSFORMERS_VERSION
 # 4.48.0, which the pinned 4.57.6 satisfies.
 #
-# RERANK_MODEL is not restricted to this table -- an unlisted model only loses
-# the startup assurance, and the startup log says so.
+# RERANK_MODEL may name a model outside this table, but then it has no pinned
+# commit in MODEL_REVISIONS: RERANK_MODEL_REVISION (a full commit sha) must be
+# set or startup fails. The startup log notes that the export path is unverified.
 SUPPORTED_MODELS: dict[str, str] = {
     "BAAI/bge-reranker-v2-m3": "XLM-RoBERTa, Apache-2.0, JQaRA 0.673",
     "hotchpotch/japanese-bge-reranker-v2-m3-v1": "XLM-RoBERTa, MIT, JQaRA 0.6918",
