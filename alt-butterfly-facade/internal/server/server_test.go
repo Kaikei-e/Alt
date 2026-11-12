@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +20,7 @@ import (
 func TestNewServer(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -45,7 +46,7 @@ func TestEnableCleartextHTTP2(t *testing.T) {
 func TestServer_HealthEndpoint(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -72,7 +73,7 @@ func TestServer_HealthEndpoint(t *testing.T) {
 func TestServer_ProxyEndpoint_Unauthorized(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -94,7 +95,7 @@ func TestServer_ErrorResponsesDoNotReflectHTMLFromRequest(t *testing.T) {
 
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -105,7 +106,7 @@ func TestServer_ErrorResponsesDoNotReflectHTMLFromRequest(t *testing.T) {
 	t.Run("rejected connect path", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/alt.notreal.v1.NopeService/Do", strings.NewReader(`{}`))
 		req.URL.Path = "/alt.notreal.v1.NopeService/" + xss
-		req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+		req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 
@@ -129,7 +130,7 @@ func TestServer_ErrorResponsesDoNotReflectHTMLFromRequest(t *testing.T) {
 func TestServer_MetricsExposesUserJourneyCounter(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -166,7 +167,7 @@ func TestServer_ProxyEndpoint_Success(t *testing.T) {
 
 	cfg := Config{
 		BackendURL:       backend.URL,
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -182,7 +183,7 @@ func TestServer_ProxyEndpoint_Success(t *testing.T) {
 		strings.NewReader("request"),
 	)
 	req.Header.Set("Content-Type", "application/proto")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -203,7 +204,7 @@ func TestServer_RESTRoute_NonAllowlistedPathIsRejected(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",
 		BackendRESTURL:   restBackend.URL,
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -223,7 +224,7 @@ func TestServer_RESTRoute_NonAllowlistedPathIsRejected(t *testing.T) {
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
-			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req)
@@ -246,7 +247,7 @@ func TestServer_BFFOwnedV1Routes_OutrankRESTAllowlist(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",
 		BackendRESTURL:   restBackend.URL,
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -259,7 +260,7 @@ func TestServer_BFFOwnedV1Routes_OutrankRESTAllowlist(t *testing.T) {
 	assert.False(t, allowRESTPath("/v1/aggregate"), "guard: this test is only meaningful while the path is off the allowlist")
 
 	statsReq := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
-	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, []byte("test-secret")))
+	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 	statsRec := httptest.NewRecorder()
 	handler.ServeHTTP(statsRec, statsReq)
 	assert.Equal(t, http.StatusOK, statsRec.Code)
@@ -287,7 +288,7 @@ func TestServer_RESTRoute_AllowlistedPathsAreForwarded(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",
 		BackendRESTURL:   restBackend.URL,
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -321,9 +322,9 @@ func TestServer_RESTRoute_AllowlistedPathsAreForwarded(t *testing.T) {
 			seen = ""
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			if strings.HasPrefix(path, "/v1/dashboard/") || strings.HasPrefix(path, "/v1/admin/") {
-				req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, []byte("test-secret")))
+				req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 			} else {
-				req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+				req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 			}
 
 			recorder := httptest.NewRecorder()
@@ -339,7 +340,7 @@ func TestServer_AcolyteRoute_Unauthorized(t *testing.T) {
 	cfg := Config{
 		BackendURL:        "http://localhost:9101",
 		AcolyteConnectURL: "http://localhost:8090",
-		Secret:            []byte("test-secret"),
+		TokenVerifyKey:    testPublicKey,
 		Issuer:            "auth-hub",
 		Audience:          "alt-backend",
 		RequestTimeout:    30 * time.Second,
@@ -374,7 +375,7 @@ func TestServer_AcolyteRoute_Success(t *testing.T) {
 	cfg := Config{
 		BackendURL:        altBackend.URL,
 		AcolyteConnectURL: acolyteBackend.URL,
-		Secret:            []byte("test-secret"),
+		TokenVerifyKey:    testPublicKey,
 		Issuer:            "auth-hub",
 		Audience:          "alt-backend",
 		RequestTimeout:    30 * time.Second,
@@ -389,7 +390,7 @@ func TestServer_AcolyteRoute_Success(t *testing.T) {
 		strings.NewReader(`{}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -407,7 +408,7 @@ func TestServer_AcolyteRoute_NotRegistered_WhenURLEmpty(t *testing.T) {
 	cfg := Config{
 		BackendURL:        backend.URL,
 		AcolyteConnectURL: "",
-		Secret:            []byte("test-secret"),
+		TokenVerifyKey:    testPublicKey,
 		Issuer:            "auth-hub",
 		Audience:          "alt-backend",
 		RequestTimeout:    30 * time.Second,
@@ -422,7 +423,7 @@ func TestServer_AcolyteRoute_NotRegistered_WhenURLEmpty(t *testing.T) {
 		strings.NewReader(`{}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -432,7 +433,7 @@ func TestServer_AcolyteRoute_NotRegistered_WhenURLEmpty(t *testing.T) {
 }
 
 // createValidToken creates a valid JWT for testing
-func createValidToken(t *testing.T, secret []byte) string {
+func createValidToken(t *testing.T, key ed25519.PrivateKey) string {
 	t.Helper()
 
 	claims := jwt.MapClaims{
@@ -446,8 +447,8 @@ func createValidToken(t *testing.T, secret []byte) string {
 		"iat":   time.Now().Unix(),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenStr, err := token.SignedString(secret)
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	tokenStr, err := token.SignedString(key)
 	if err != nil {
 		t.Fatalf("failed to create test token: %v", err)
 	}
@@ -465,10 +466,9 @@ func TestServer_BFFStats_KeepsItsShapeAndReportsRejections(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	secret := []byte("test-secret")
 	cfg := Config{
 		BackendURL:       backend.URL,
-		Secret:           secret,
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -488,12 +488,12 @@ func TestServer_BFFStats_KeepsItsShapeAndReportsRejections(t *testing.T) {
 	const endpoint = "/alt.feeds.v2.FeedService/GetUnreadFeeds"
 	for i := 0; i < 4; i++ {
 		req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{}`))
-		req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, secret))
+		req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 		srv.ServeHTTP(httptest.NewRecorder(), req)
 	}
 
 	statsReq := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
-	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, secret))
+	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 	statsRec := httptest.NewRecorder()
 	srv.ServeHTTP(statsRec, statsReq)
 	require.Equal(t, http.StatusOK, statsRec.Code)
@@ -533,10 +533,9 @@ func TestServer_BFFStats_TelemetryOutcomesAreCountable(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	secret := []byte("test-secret")
 	cfg := Config{
 		BackendURL:       backend.URL,
-		Secret:           secret,
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -553,7 +552,7 @@ func TestServer_BFFStats_TelemetryOutcomesAreCountable(t *testing.T) {
 	const endpoint = "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction"
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{}`))
-		req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, secret))
+		req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 		rec := httptest.NewRecorder()
 		srv.ServeHTTP(rec, req)
 		require.Equal(t, http.StatusInternalServerError, rec.Code,
@@ -561,7 +560,7 @@ func TestServer_BFFStats_TelemetryOutcomesAreCountable(t *testing.T) {
 	}
 
 	statsReq := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
-	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, secret))
+	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 	statsRec := httptest.NewRecorder()
 	srv.ServeHTTP(statsRec, statsReq)
 	require.Equal(t, http.StatusOK, statsRec.Code)

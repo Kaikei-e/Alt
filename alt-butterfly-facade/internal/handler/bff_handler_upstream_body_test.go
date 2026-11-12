@@ -44,7 +44,6 @@ func TestBFFHandler_TruncatedBackendBody_IsNotServedAsSuccess(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCache:          true,
 		EnableCircuitBreaker: true,
@@ -56,8 +55,8 @@ func TestBFFHandler_TruncatedBackendBody_IsNotServedAsSuccess(t *testing.T) {
 		CBSuccessThreshold: 1,
 		CBOpenTimeout:      time.Minute,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	req := httptest.NewRequest("POST", endpoint, nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
@@ -112,7 +111,6 @@ func TestBFFHandler_TruncatedBackendBody_DedupPathAlsoFails(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCache:          true,
 		EnableDedup:          true,
@@ -123,8 +121,8 @@ func TestBFFHandler_TruncatedBackendBody_DedupPathAlsoFails(t *testing.T) {
 		CBOpenTimeout:        time.Minute,
 		DedupWindow:          100 * time.Millisecond,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	req := httptest.NewRequest("POST", endpoint, nil)
 	req.Header.Set("X-Alt-Backend-Token", token)

@@ -15,7 +15,7 @@ func TestNewTTSHandler_PanicsWhenEnabledWithNilClient(t *testing.T) {
 		NewTTSHandler(
 			true,
 			nil,
-			[]byte("test-secret-at-least-32-chars-long!"),
+			testPublicKey,
 			"auth-hub",
 			"alt-backend",
 			nil,
@@ -28,7 +28,7 @@ func TestDisabledTTSHandler_ExactFrame(t *testing.T) {
 	h := NewTTSHandler(
 		false,
 		nil,
-		[]byte("test-secret-at-least-32-chars-long!"),
+		testPublicKey,
 		"auth-hub",
 		"alt-backend",
 		nil,

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -25,9 +26,8 @@ import (
 // never reach server.NewServerWithTransports.
 func TestBuildServerConfig_WiresBFFConfigFromAppConfig(t *testing.T) {
 	cfg := config.NewConfig()
-	secret := []byte("this-is-a-valid-backend-token-secret-32-chars-long")
 
-	serverCfg := buildServerConfig(cfg, "http://alt-backend:9101", "http://alt-backend:9102", "", nil, secret, "")
+	serverCfg := buildServerConfig(cfg, "http://alt-backend:9101", "http://alt-backend:9102", "", nil, testPublicKey, "")
 
 	assert.True(t, serverCfg.BFFConfig.EnableCache, "cfg.EnableCache must reach serverCfg.BFFConfig")
 	assert.True(t, serverCfg.BFFConfig.EnableCircuitBreaker, "cfg.EnableCircuitBreaker must reach serverCfg.BFFConfig")
@@ -51,13 +51,12 @@ func TestBuildServerConfig_WiresBFFConfigFromAppConfig(t *testing.T) {
 // ProxyHandler branch, the current behavior with BFFConfig unset).
 func TestBuildServerConfig_ResultingServer_UsesBFFHandler(t *testing.T) {
 	cfg := config.NewConfig()
-	secret := []byte("this-is-a-valid-backend-token-secret-32-chars-long")
 
-	serverCfg := buildServerConfig(cfg, "http://127.0.0.1:1", "http://127.0.0.1:1", "", nil, secret, "")
+	serverCfg := buildServerConfig(cfg, "http://127.0.0.1:1", "http://127.0.0.1:1", "", nil, testPublicKey, "")
 	handler := server.NewServerWithTransport(serverCfg, nil, http.DefaultTransport)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
-	req.Header.Set("X-Alt-Backend-Token", adminToken(t, secret, cfg.BackendTokenIssuer, cfg.BackendTokenAudience))
+	req.Header.Set("X-Alt-Backend-Token", adminToken(t, testPrivateKey, cfg.BackendTokenIssuer, cfg.BackendTokenAudience))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -68,7 +67,7 @@ func TestBuildServerConfig_ResultingServer_UsesBFFHandler(t *testing.T) {
 }
 
 // adminToken creates a valid admin-role JWT for the /v1/bff/stats auth check.
-func adminToken(t *testing.T, secret []byte, issuer, audience string) string {
+func adminToken(t *testing.T, key ed25519.PrivateKey, issuer, audience string) string {
 	t.Helper()
 
 	claims := jwt.MapClaims{
@@ -80,8 +79,8 @@ func adminToken(t *testing.T, secret []byte, issuer, audience string) string {
 		"iat":  time.Now().Unix(),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString(secret)
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := token.SignedString(key)
 	require.NoError(t, err)
 	return signed
 }

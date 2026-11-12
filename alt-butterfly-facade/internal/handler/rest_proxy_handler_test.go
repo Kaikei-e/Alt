@@ -17,7 +17,6 @@ import (
 	"alt-butterfly-facade/internal/client"
 )
 
-const testRESTSecret = "test-rest-secret"
 const testRESTIssuer = "auth-hub"
 const testRESTAudience = "alt-backend"
 
@@ -38,8 +37,8 @@ func createTestJWTWithRole(t *testing.T, role string) string {
 		"role":  role,
 		"sid":   "test-session",
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testRESTSecret))
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signed, err := token.SignedString(testPrivateKey)
 	if err != nil {
 		t.Fatalf("failed to sign JWT: %v", err)
 	}
@@ -57,7 +56,7 @@ func newTestRESTProxyHandler(t *testing.T, backendURL string) *RESTProxyHandler 
 	)
 	return NewRESTProxyHandler(
 		backendClient,
-		[]byte(testRESTSecret),
+		testPublicKey,
 		testRESTIssuer,
 		testRESTAudience,
 		logger,

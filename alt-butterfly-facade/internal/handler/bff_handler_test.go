@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -24,7 +25,6 @@ import (
 )
 
 func TestNewBFFHandler(t *testing.T) {
-	secret := []byte("test-secret")
 	config := BFFConfig{
 		EnableCache:          true,
 		EnableCircuitBreaker: true,
@@ -45,7 +45,7 @@ func TestNewBFFHandler(t *testing.T) {
 
 	handler := NewBFFHandler(
 		backendClient,
-		secret,
+		testPublicKey,
 		"auth-hub",
 		"alt-backend",
 		nil,
@@ -63,7 +63,6 @@ func TestNewBFFHandler(t *testing.T) {
 }
 
 func TestNewBFFHandler_DisabledFeatures(t *testing.T) {
-	secret := []byte("test-secret")
 	config := BFFConfig{
 		EnableCache:          false,
 		EnableCircuitBreaker: false,
@@ -79,7 +78,7 @@ func TestNewBFFHandler_DisabledFeatures(t *testing.T) {
 
 	handler := NewBFFHandler(
 		backendClient,
-		secret,
+		testPublicKey,
 		"auth-hub",
 		"alt-backend",
 		nil,
@@ -128,11 +127,10 @@ func TestBFFHandler_ServeHTTP_Success(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, BFFConfig{})
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, BFFConfig{})
 
 	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
-	req.Header.Set("X-Alt-Backend-Token", createTestToken(t, secret))
+	req.Header.Set("X-Alt-Backend-Token", createTestToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -148,15 +146,14 @@ func TestBFFHandler_CircuitBreaker_OpensOnFailures(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   3,
 		CBSuccessThreshold:   1,
 		CBOpenTimeout:        1 * time.Hour, // Long timeout to ensure it stays open
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	// Make requests until circuit opens (GetFeedStats is non-critical)
 	for i := 0; i < 3; i++ {
@@ -191,15 +188,14 @@ func TestBFFHandler_CircuitBreaker_NonCriticalOpenDoesNotBlockMarkAsRead(t *test
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   3,
 		CBSuccessThreshold:   1,
 		CBOpenTimeout:        1 * time.Hour,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("POST", "/alt.article.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
@@ -233,15 +229,14 @@ func TestBFFHandler_CircuitBreaker_ProjectionOpenDoesNotBlockMarkAsRead(t *testi
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   3,
 		CBSuccessThreshold:   1,
 		CBOpenTimeout:        1 * time.Hour,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetAllFeeds", bytes.NewReader([]byte(`{}`)))
@@ -269,15 +264,14 @@ func TestBFFHandler_CircuitBreaker_CriticalOpenBlocksMarkAsRead(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   3,
 		CBSuccessThreshold:   1,
 		CBOpenTimeout:        1 * time.Hour,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/MarkAsRead", bytes.NewReader([]byte(`{}`)))
@@ -303,12 +297,11 @@ func TestBFFHandler_ErrorNormalization(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableErrorNormalization: true,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("X-Alt-Backend-Token", token)
@@ -330,14 +323,13 @@ func TestBFFHandler_Cache_HitAndMiss(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCache:     true,
 		CacheMaxSize:    100,
 		CacheDefaultTTL: 30 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	// First request - cache miss
 	req1 := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetDetailedFeedStats", bytes.NewReader([]byte(`{}`)))
@@ -459,7 +451,6 @@ func TestBFFHandler_ServeHTTP_StreamingDelegatesToProxyHandler(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCache:          true,
 		EnableCircuitBreaker: true,
@@ -470,8 +461,8 @@ func TestBFFHandler_ServeHTTP_StreamingDelegatesToProxyHandler(t *testing.T) {
 		CBOpenTimeout:        30 * time.Second,
 		DedupWindow:          100 * time.Millisecond,
 	}
-	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	req := httptest.NewRequest("POST", "/alt.augur.v2.AugurService/StreamChat", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("X-Alt-Backend-Token", token)
@@ -495,13 +486,12 @@ func TestBFFHandler_ServeHTTP_UnaryStillUsesBFFFeatures(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCache:  true,
 		CacheMaxSize: 100,
 	}
-	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("X-Alt-Backend-Token", token)
@@ -529,15 +519,14 @@ func TestBFFHandler_StreamingProcedure_CircuitBreaker_RecordsFailureOnConnection
 	deadBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	deadBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   5,
 		CBSuccessThreshold:   2,
 		CBOpenTimeout:        30 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, deadBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, deadBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	req := httptest.NewRequest("POST", "/alt.augur.v2.AugurService/StreamChat", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("X-Alt-Backend-Token", token)
@@ -566,15 +555,14 @@ func TestBFFHandler_StreamingProcedure_CircuitBreaker_RecordsSuccessOnHealthyStr
 	}))
 	defer backend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   5,
 		CBSuccessThreshold:   2,
 		CBOpenTimeout:        30 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	req := httptest.NewRequest("POST", "/alt.augur.v2.AugurService/StreamChat", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("X-Alt-Backend-Token", token)
@@ -596,14 +584,13 @@ func TestBFFHandler_MarkAsRead_InvalidatesUnreadProjectionCache(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCache:          true,
 		CacheMaxSize:         100,
 		EnableCircuitBreaker: false,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	unread := "/alt.feeds.v2.FeedService/GetUnreadFeeds"
 
@@ -654,7 +641,6 @@ func TestBFFHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
 // Helper functions
 
 func createTestBFFHandler(t *testing.T, config BFFConfig) *BFFHandler {
-	secret := []byte("test-secret-key")
 	backendClient := client.NewBackendClientWithTransport(
 		"http://localhost:9101",
 		30*time.Second,
@@ -664,7 +650,7 @@ func createTestBFFHandler(t *testing.T, config BFFConfig) *BFFHandler {
 
 	return NewBFFHandler(
 		backendClient,
-		secret,
+		testPublicKey,
 		"auth-hub",
 		"alt-backend",
 		nil,
@@ -672,7 +658,7 @@ func createTestBFFHandler(t *testing.T, config BFFConfig) *BFFHandler {
 	)
 }
 
-func createTestBFFHandlerWithBackend(t *testing.T, backendURL string, secret []byte, config BFFConfig) *BFFHandler {
+func createTestBFFHandlerWithBackend(t *testing.T, backendURL string, key ed25519.PublicKey, config BFFConfig) *BFFHandler {
 	backendClient := client.NewBackendClientWithTransport(
 		backendURL,
 		30*time.Second,
@@ -682,7 +668,7 @@ func createTestBFFHandlerWithBackend(t *testing.T, backendURL string, secret []b
 
 	return NewBFFHandler(
 		backendClient,
-		secret,
+		testPublicKey,
 		"auth-hub",
 		"alt-backend",
 		nil,
@@ -690,7 +676,7 @@ func createTestBFFHandlerWithBackend(t *testing.T, backendURL string, secret []b
 	)
 }
 
-func createTestToken(t *testing.T, secret []byte) string {
+func createTestToken(t *testing.T, key ed25519.PrivateKey) string {
 	claims := jwt.MapClaims{
 		"sub": "550e8400-e29b-41d4-a716-446655440000",
 		"iss": "auth-hub",
@@ -699,8 +685,8 @@ func createTestToken(t *testing.T, secret []byte) string {
 		"iat": time.Now().Unix(),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err := token.SignedString(secret)
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+	signedToken, err := token.SignedString(key)
 	require.NoError(t, err)
 	return signedToken
 }
@@ -725,7 +711,6 @@ func TestBFFHandler_CircuitBreaker_HalfOpenTrialServedFromCacheDoesNotWedge(t *t
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCache:          true,
 		EnableCircuitBreaker: true,
@@ -734,8 +719,8 @@ func TestBFFHandler_CircuitBreaker_HalfOpenTrialServedFromCacheDoesNotWedge(t *t
 		CBSuccessThreshold:   1,
 		CBOpenTimeout:        50 * time.Millisecond,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	// Two distinct request bodies so they land on distinct cache keys: one is
 	// warmed while the backend is healthy, the other always misses the cache
@@ -795,7 +780,6 @@ func TestBFFHandler_CircuitBreaker_HalfOpenParallelRequestsReleasePermits(t *tes
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCache:          true,
 		EnableCircuitBreaker: true,
@@ -806,8 +790,8 @@ func TestBFFHandler_CircuitBreaker_HalfOpenParallelRequestsReleasePermits(t *tes
 		CBSuccessThreshold: 1_000_000,
 		CBOpenTimeout:      300 * time.Millisecond,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	warmBody := []byte(`{"warm":true}`)
 	coldBody := []byte(`{"cold":true}`)
@@ -875,15 +859,14 @@ func TestBFFHandler_CircuitBreaker_ClientErrorIsNeutralForFailureBudget(t *testi
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   3,
 		CBSuccessThreshold:   1,
 		CBOpenTimeout:        1 * time.Hour,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 4; i++ {
 		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
@@ -916,15 +899,14 @@ func TestBFFHandler_CircuitBreaker_RateLimitedUpstreamNeverOpensBreaker(t *testi
 			}))
 			defer mockBackend.Close()
 
-			secret := []byte("test-secret-key")
 			config := BFFConfig{
 				EnableCircuitBreaker: true,
 				CBFailureThreshold:   3,
 				CBSuccessThreshold:   1,
 				CBOpenTimeout:        1 * time.Hour,
 			}
-			handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-			token := createTestToken(t, secret)
+			handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+			token := createTestToken(t, testPrivateKey)
 
 			for i := 0; i < 10; i++ {
 				req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
@@ -950,15 +932,14 @@ func TestBFFHandler_StreamingProcedure_ClientErrorIsNeutral(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   5,
 		CBSuccessThreshold:   2,
 		CBOpenTimeout:        30 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	req := httptest.NewRequest("POST", "/alt.augur.v2.AugurService/StreamChat", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("X-Alt-Backend-Token", token)
@@ -982,7 +963,6 @@ func TestBFFHandler_CircuitOpen_EmitsWireValidConnectError(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker:     true,
 		EnableErrorNormalization: true,
@@ -990,8 +970,8 @@ func TestBFFHandler_CircuitOpen_EmitsWireValidConnectError(t *testing.T) {
 		CBSuccessThreshold:       1,
 		CBOpenTimeout:            30 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
@@ -1034,7 +1014,6 @@ func TestBFFHandler_CircuitBreaker_ExternalContentOpenDoesNotBlockOtherRPCs(t *t
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker:              true,
 		CBFailureThreshold:                3,
@@ -1043,8 +1022,8 @@ func TestBFFHandler_CircuitBreaker_ExternalContentOpenDoesNotBlockOtherRPCs(t *t
 		CBExternalContentFailureThreshold: 3,
 		CBExternalContentOpenTimeout:      1 * time.Hour,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
@@ -1091,15 +1070,14 @@ func TestBFFHandler_CircuitBreaker_UnclassifiedEndpointDoesNotBlackoutOtherReads
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   5,
 		CBSuccessThreshold:   2,
 		CBOpenTimeout:        30 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest("POST", obscureEndpoint, bytes.NewReader([]byte(`{}`)))
@@ -1140,15 +1118,14 @@ func TestBFFHandler_CircuitBreaker_TelemetryFailuresDoNotOpenNonCriticalBreaker(
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   5,
 		CBSuccessThreshold:   2,
 		CBOpenTimeout:        1 * time.Hour,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest("POST", "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction", bytes.NewReader([]byte(`{}`)))
@@ -1184,15 +1161,14 @@ func TestBFFHandler_CircuitBreaker_NonCriticalOpenDoesNotBlockTelemetry(t *testi
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   3,
 		CBSuccessThreshold:   1,
 		CBOpenTimeout:        1 * time.Hour,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
@@ -1218,7 +1194,6 @@ func TestBFFHandler_ExternalContentBreaker_UsesItsOwnBudget(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker:              true,
 		CBFailureThreshold:                2,
@@ -1227,8 +1202,8 @@ func TestBFFHandler_ExternalContentBreaker_UsesItsOwnBudget(t *testing.T) {
 		CBExternalContentFailureThreshold: 4,
 		CBExternalContentOpenTimeout:      20 * time.Millisecond,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	fetch := func() {
 		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
@@ -1260,7 +1235,6 @@ func TestBFFHandler_CircuitOpen_RetryAfterUsesTheRejectingClassTimeout(t *testin
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker:              true,
 		EnableErrorNormalization:          true,
@@ -1270,8 +1244,8 @@ func TestBFFHandler_CircuitOpen_RetryAfterUsesTheRejectingClassTimeout(t *testin
 		CBExternalContentFailureThreshold: 2,
 		CBExternalContentOpenTimeout:      5 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
@@ -1352,11 +1326,10 @@ func TestBFFHandler_CircuitBreaker_LogsTransitionsAndAggregatesRejections(t *tes
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	secret := []byte("test-secret-key")
 	backendClient := client.NewBackendClientWithTransport(
 		mockBackend.URL, 30*time.Second, 5*time.Minute, http.DefaultTransport,
 	)
-	handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", logger, BFFConfig{
+	handler := NewBFFHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", logger, BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   3,
 		CBSuccessThreshold:   1,
@@ -1365,7 +1338,7 @@ func TestBFFHandler_CircuitBreaker_LogsTransitionsAndAggregatesRejections(t *tes
 		CBExternalContentFailureThreshold: 20,
 		CBExternalContentOpenTimeout:      5 * time.Second,
 	})
-	token := createTestToken(t, secret)
+	token := createTestToken(t, testPrivateKey)
 
 	const endpoint = "/alt.feeds.v2.FeedService/GetFeedStats"
 	call := func() int {
@@ -1438,17 +1411,16 @@ func TestBFFHandler_TelemetryFailures_AreLoggedAndCounted(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	secret := []byte("test-secret-key")
 	backendClient := client.NewBackendClientWithTransport(
 		mockBackend.URL, 30*time.Second, 5*time.Minute, http.DefaultTransport,
 	)
-	handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", logger, BFFConfig{
+	handler := NewBFFHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", logger, BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   3,
 		CBSuccessThreshold:   1,
 		CBOpenTimeout:        time.Hour,
 	})
-	token := createTestToken(t, secret)
+	token := createTestToken(t, testPrivateKey)
 
 	const endpoint = "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction"
 	call := func() int {
@@ -1520,7 +1492,6 @@ func TestBFFHandler_UpstreamAttributed5xx_DoesNotChargeTheBreaker(t *testing.T) 
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker:              true,
 		CBFailureThreshold:                2,
@@ -1529,8 +1500,8 @@ func TestBFFHandler_UpstreamAttributed5xx_DoesNotChargeTheBreaker(t *testing.T) 
 		CBExternalContentFailureThreshold: 2,
 		CBExternalContentOpenTimeout:      5 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
@@ -1559,7 +1530,6 @@ func TestBFFHandler_Unattributed5xx_StillChargesTheBreaker(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker:              true,
 		CBFailureThreshold:                2,
@@ -1568,8 +1538,8 @@ func TestBFFHandler_Unattributed5xx_StillChargesTheBreaker(t *testing.T) {
 		CBExternalContentFailureThreshold: 2,
 		CBExternalContentOpenTimeout:      5 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
@@ -1592,7 +1562,6 @@ func TestBFFHandler_CircuitOpen_DeclaresGlobalFailureScope(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker:              true,
 		EnableErrorNormalization:          true,
@@ -1602,8 +1571,8 @@ func TestBFFHandler_CircuitOpen_DeclaresGlobalFailureScope(t *testing.T) {
 		CBExternalContentFailureThreshold: 2,
 		CBExternalContentOpenTimeout:      5 * time.Second,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	var rec *httptest.ResponseRecorder
 	for i := 0; i < 3; i++ {
@@ -1627,8 +1596,7 @@ func TestBFFHandler_ServeHTTP_RejectsOversizedUnaryRequestBody(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	secret := []byte("test-secret-key")
-	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, BFFConfig{
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, testPublicKey, BFFConfig{
 		EnableCircuitBreaker:     true,
 		EnableDedup:              true,
 		EnableErrorNormalization: true,
@@ -1637,7 +1605,7 @@ func TestBFFHandler_ServeHTTP_RejectsOversizedUnaryRequestBody(t *testing.T) {
 		CBOpenTimeout:            30 * time.Second,
 		DedupWindow:              100 * time.Millisecond,
 	})
-	token := createTestToken(t, secret)
+	token := createTestToken(t, testPrivateKey)
 
 	t.Run("known Content-Length exceeding maxRequestBodyBytes", func(t *testing.T) {
 		backendHits.Store(0)
@@ -1678,8 +1646,7 @@ func TestBFFHandler_ServeHTTP_BoundsUnaryResponseBody(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	secret := []byte("test-secret-key")
-	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, BFFConfig{
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, testPublicKey, BFFConfig{
 		EnableCache:          true,
 		EnableCircuitBreaker: true,
 		CacheMaxSize:         100,
@@ -1687,7 +1654,7 @@ func TestBFFHandler_ServeHTTP_BoundsUnaryResponseBody(t *testing.T) {
 		CBSuccessThreshold:   2,
 		CBOpenTimeout:        time.Minute,
 	})
-	token := createTestToken(t, secret)
+	token := createTestToken(t, testPrivateKey)
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader("req"))
 	req.Header.Set("Content-Type", "application/proto")
@@ -1727,15 +1694,14 @@ func TestBFFHandler_StreamingProcedure_CircuitBreaker_CallerCancelDoesNotRecordF
 	defer backend.Close()
 	defer close(release)
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   5,
 		CBSuccessThreshold:   2,
 		CBOpenTimeout:        time.Hour,
 	}
-	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	const path = "/alt.augur.v2.AugurService/StreamChat"
 	for i := 0; i < 5; i++ {
@@ -1782,15 +1748,14 @@ func TestBFFHandler_Unary_CircuitBreaker_CallerCancelDoesNotRecordFailure(t *tes
 	defer backend.Close()
 	defer close(release)
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCircuitBreaker: true,
 		CBFailureThreshold:   5,
 		CBSuccessThreshold:   2,
 		CBOpenTimeout:        time.Hour,
 	}
-	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	const path = "/alt.feeds.v2.FeedService/GetFeedStats"
 	for i := 0; i < 5; i++ {
@@ -1824,8 +1789,7 @@ func TestBFFHandler_CircuitBreaker_BackendTimeoutRecordsFailure(t *testing.T) {
 	defer backend.Close()
 	defer close(release)
 
-	secret := []byte("test-secret-key")
-	token := createTestToken(t, secret)
+	token := createTestToken(t, testPrivateKey)
 
 	t.Run("non-dedup unary path", func(t *testing.T) {
 		backendClient := client.NewBackendClientWithTransport(
@@ -1834,7 +1798,7 @@ func TestBFFHandler_CircuitBreaker_BackendTimeoutRecordsFailure(t *testing.T) {
 			50*time.Millisecond,
 			http.DefaultTransport,
 		)
-		handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", nil, BFFConfig{
+		handler := NewBFFHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, BFFConfig{
 			EnableCircuitBreaker: true,
 			CBFailureThreshold:   5,
 			CBSuccessThreshold:   2,
@@ -1859,7 +1823,7 @@ func TestBFFHandler_CircuitBreaker_BackendTimeoutRecordsFailure(t *testing.T) {
 			50*time.Millisecond,
 			http.DefaultTransport,
 		)
-		handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", nil, BFFConfig{
+		handler := NewBFFHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, BFFConfig{
 			EnableCircuitBreaker: true,
 			CBFailureThreshold:   5,
 			CBSuccessThreshold:   2,
@@ -1884,7 +1848,7 @@ func TestBFFHandler_CircuitBreaker_BackendTimeoutRecordsFailure(t *testing.T) {
 			50*time.Millisecond,
 			http.DefaultTransport,
 		)
-		handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", nil, BFFConfig{
+		handler := NewBFFHandler(backendClient, testPublicKey, "auth-hub", "alt-backend", nil, BFFConfig{
 			EnableCircuitBreaker: true,
 			EnableDedup:          true,
 			CBFailureThreshold:   5,

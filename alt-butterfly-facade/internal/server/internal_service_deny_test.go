@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/ed25519"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createValidAdminToken(t *testing.T, secret []byte) string {
+func createValidAdminToken(t *testing.T, key ed25519.PrivateKey) string {
 	t.Helper()
 
 	claims := jwt.MapClaims{
@@ -26,7 +27,7 @@ func createValidAdminToken(t *testing.T, secret []byte) string {
 		"iat":   time.Now().Unix(),
 	}
 
-	tokenStr, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
+	tokenStr, err := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims).SignedString(key)
 	if err != nil {
 		t.Fatalf("failed to create admin test token: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestServer_RejectsServiceToServiceConnectPaths(t *testing.T) {
 
 	cfg := Config{
 		BackendURL:       backend.URL,
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -119,7 +120,7 @@ func TestServer_RejectsServiceToServiceConnectPaths(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
@@ -141,7 +142,7 @@ func TestServer_RejectsPathsOutsideGeneratedAllowlist(t *testing.T) {
 
 	cfg := Config{
 		BackendURL:       backend.URL,
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -161,7 +162,7 @@ func TestServer_RejectsPathsOutsideGeneratedAllowlist(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
@@ -184,7 +185,7 @@ func TestServer_ForwardsUserFacingConnectPaths(t *testing.T) {
 
 	cfg := Config{
 		BackendURL:       backend.URL,
-		Secret:           []byte("test-secret"),
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   30 * time.Second,
@@ -194,7 +195,7 @@ func TestServer_ForwardsUserFacingConnectPaths(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -224,7 +225,7 @@ func TestServer_AdminProxyTargetsInternalListener(t *testing.T) {
 	cfg := Config{
 		BackendURL:         public.URL,
 		BackendInternalURL: internal.URL,
-		Secret:             []byte("test-secret"),
+		TokenVerifyKey:     testPublicKey,
 		Issuer:             "auth-hub",
 		Audience:           "alt-backend",
 		RequestTimeout:     30 * time.Second,
@@ -236,7 +237,7 @@ func TestServer_AdminProxyTargetsInternalListener(t *testing.T) {
 		"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
 		strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, []byte("test-secret")))
+	req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

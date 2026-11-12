@@ -38,7 +38,7 @@ func TestRESTProxyHandler_AppliesRequestTimeout(t *testing.T) {
 	)
 	handler := NewRESTProxyHandler(
 		backendClient,
-		[]byte(testRESTSecret),
+		testPublicKey,
 		testRESTIssuer,
 		testRESTAudience,
 		nil,

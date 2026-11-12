@@ -31,10 +31,9 @@ func TestServer_Aggregate_FanOutHonoursRequestTimeout(t *testing.T) {
 	defer backend.Close()
 	defer close(release)
 
-	secret := []byte("test-secret")
 	cfg := Config{
 		BackendURL:       backend.URL,
-		Secret:           secret,
+		TokenVerifyKey:   testPublicKey,
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
 		RequestTimeout:   150 * time.Millisecond,
@@ -48,7 +47,7 @@ func TestServer_Aggregate_FanOutHonoursRequestTimeout(t *testing.T) {
 		strings.NewReader(`{"queries":["feed_stats","unread_count"]}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, secret))
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
 	done := make(chan struct{})

@@ -51,13 +51,12 @@ func TestBFFHandler_Dedup_LeaderCancel_WaiterStillGets200(t *testing.T) {
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableDedup: true,
 		DedupWindow: 500 * time.Millisecond,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	// Leader request carries a cancellable context; cancelling it models the
 	// leader's HTTP client hanging up mid-flight.
@@ -153,15 +152,14 @@ func TestBFFHandler_Dedup_PostMutationReadDoesNotJoinPreMutationFlight(t *testin
 	}))
 	defer mockBackend.Close()
 
-	secret := []byte("test-secret-key")
 	config := BFFConfig{
 		EnableCache:  true,
 		CacheMaxSize: 100,
 		EnableDedup:  true,
 		DedupWindow:  500 * time.Millisecond,
 	}
-	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
-	token := createTestToken(t, secret)
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
 
 	firstReq := httptest.NewRequest("POST", unreadEndpoint, strings.NewReader(reqBody))
 	firstReq.Header.Set("X-Alt-Backend-Token", token)

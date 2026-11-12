@@ -1,7 +1,13 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -54,62 +60,69 @@ func TestNewConfig_InvalidDuration_UsesDefault(t *testing.T) {
 	assert.Equal(t, 40*time.Minute, cfg.StreamingTimeout)
 }
 
-func TestConfig_LoadBackendTokenSecret_FromFile(t *testing.T) {
-	// Create temporary secret file
-	tmpFile, err := os.CreateTemp("", "backend_token_secret")
-	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-
-	_, err = tmpFile.WriteString("this-is-a-valid-backend-token-secret-32-chars-long")
-	require.NoError(t, err)
-	tmpFile.Close()
-
-	os.Setenv("BACKEND_TOKEN_SECRET_FILE", tmpFile.Name())
-	defer os.Clearenv()
-
-	cfg := NewConfig()
-	secret, err := cfg.LoadBackendTokenSecret()
-
-	require.NoError(t, err)
-	assert.Equal(t, []byte("this-is-a-valid-backend-token-secret-32-chars-long"), secret)
+func writeKeyFile(t *testing.T, blockType string, der []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "key.pem")
+	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der}), 0o600))
+	return path
 }
 
-func TestConfig_LoadBackendTokenSecret_FromEnv(t *testing.T) {
-	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+func TestConfig_LoadBackendTokenVerifyKey_Ed25519(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	require.NoError(t, err)
+	os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", writeKeyFile(t, "PUBLIC KEY", der))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
-	secret, err := cfg.LoadBackendTokenSecret()
+	key, err := cfg.LoadBackendTokenVerifyKey()
 
 	require.NoError(t, err)
-	assert.Equal(t, []byte("this-is-a-valid-backend-token-secret-32-chars-long"), secret)
+	assert.Equal(t, pub, key)
 }
 
-func TestConfig_LoadBackendTokenSecret_TooShort(t *testing.T) {
-	os.Setenv("BACKEND_TOKEN_SECRET", "too-short")
+func TestConfig_LoadBackendTokenVerifyKey_RSARejected(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	der, err := x509.MarshalPKIXPublicKey(&rsaKey.PublicKey)
+	require.NoError(t, err)
+	os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", writeKeyFile(t, "PUBLIC KEY", der))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
-	_, err := cfg.LoadBackendTokenSecret()
+	_, err = cfg.LoadBackendTokenVerifyKey()
 
 	assert.Error(t, err)
 }
 
-func TestConfig_LoadBackendTokenSecret_FileNotFound(t *testing.T) {
-	os.Setenv("BACKEND_TOKEN_SECRET_FILE", "/nonexistent/path")
+func TestConfig_LoadBackendTokenVerifyKey_NotPEM(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "key.pem")
+	require.NoError(t, os.WriteFile(path, []byte("not a pem file"), 0o600))
+	os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", path)
 	defer os.Clearenv()
 
 	cfg := NewConfig()
-	_, err := cfg.LoadBackendTokenSecret()
+	_, err := cfg.LoadBackendTokenVerifyKey()
 
 	assert.Error(t, err)
 }
 
-func TestConfig_LoadBackendTokenSecret_NoSecret(t *testing.T) {
+func TestConfig_LoadBackendTokenVerifyKey_FileNotFound(t *testing.T) {
+	os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "/nonexistent/path")
+	defer os.Clearenv()
+
+	cfg := NewConfig()
+	_, err := cfg.LoadBackendTokenVerifyKey()
+
+	assert.Error(t, err)
+}
+
+func TestConfig_LoadBackendTokenVerifyKey_NotConfigured(t *testing.T) {
 	os.Clearenv()
 
 	cfg := NewConfig()
-	_, err := cfg.LoadBackendTokenSecret()
+	_, err := cfg.LoadBackendTokenVerifyKey()
 
 	assert.Error(t, err)
 }
