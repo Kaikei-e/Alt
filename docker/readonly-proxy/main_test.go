@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
@@ -94,7 +96,7 @@ func TestWireProxyForwardHits(t *testing.T) {
 		t.Fatalf("failed to parse upstream url: %v", err)
 	}
 
-	proxyHandler := newProxyHandler(upstream.URL, upstreamURL, upstream.Client().Transport)
+	proxyHandler := newProxyHandler(upstreamURL, upstream.Client().Transport, "alt")
 	proxyServer := httptest.NewServer(proxyHandler)
 	defer proxyServer.Close()
 
@@ -114,8 +116,6 @@ func TestWireProxyForwardHits(t *testing.T) {
 		{"AllowedHeadVersionedPing", "HEAD", "/v1.44/_ping", http.StatusOK, true},
 		{"AllowedContainersList", "GET", "/containers/json", http.StatusOK, true},
 		{"AllowedVersionedContainersList", "GET", "/v1.45/containers/json", http.StatusOK, true},
-		{"AllowedContainerLogs", "GET", "/containers/test-container/logs", http.StatusOK, true},
-		{"AllowedVersionedContainerLogs", "GET", "/v1.45/containers/abc/logs", http.StatusOK, true},
 
 		// Denied secret-exposing inspect/events endpoints (must NOT forward, status 403)
 		{"DenyContainerInspect", "GET", "/v1.45/containers/abc/json", http.StatusForbidden, false},
@@ -181,6 +181,137 @@ func TestWireProxyForwardHits(t *testing.T) {
 				t.Errorf("%s %s expected 0 upstream forward hits (blocked), got %d (LEAKED TO UPSTREAM!)", tt.method, tt.path, diff)
 			}
 		})
+	}
+}
+
+const (
+	scopedID   = "aaaaaaaaaaaa"
+	foreignID  = "bbbbbbbbbbbb"
+	unlabelled = "cccccccccccc"
+)
+
+type recordedRequest struct {
+	path  string
+	query url.Values
+}
+
+func newScopedFixture(t *testing.T) (*httptest.Server, func() []recordedRequest) {
+	t.Helper()
+	var mu sync.Mutex
+	var seen []recordedRequest
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, recordedRequest{path: r.URL.Path, query: r.URL.Query()})
+		mu.Unlock()
+
+		if strings.HasSuffix(r.URL.Path, "/containers/json") {
+			var f map[string][]string
+			_ = json.Unmarshal([]byte(r.URL.Query().Get("filters")), &f)
+			hasProject := false
+			hasGroup := false
+			for _, l := range f["label"] {
+				if l == "com.docker.compose.project=alt" {
+					hasProject = true
+				}
+				if l == "rask.group" {
+					hasGroup = true
+				}
+			}
+			out := []map[string]string{}
+			if hasProject && hasGroup {
+				for _, id := range f["id"] {
+					if id == scopedID {
+						out = append(out, map[string]string{"Id": scopedID})
+					}
+				}
+			}
+			_ = json.NewEncoder(w).Encode(out)
+			return
+		}
+		_, _ = fmt.Fprint(w, "stream")
+	}))
+	t.Cleanup(upstream.Close)
+
+	return upstream, func() []recordedRequest {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]recordedRequest(nil), seen...)
+	}
+}
+
+func TestLogsAreScopedToProjectAndOptedInContainers(t *testing.T) {
+	upstream, seen := newScopedFixture(t)
+	upstreamURL, _ := url.Parse(upstream.URL)
+	proxy := httptest.NewServer(newProxyHandler(upstreamURL, upstream.Client().Transport, "alt"))
+	defer proxy.Close()
+
+	tests := []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantLogHit bool
+	}{
+		{"ScopedContainer", "/containers/" + scopedID + "/logs?stdout=1", http.StatusOK, true},
+		{"ScopedContainerVersioned", "/v1.45/containers/" + scopedID + "/logs", http.StatusOK, true},
+		{"ForeignContainer", "/containers/" + foreignID + "/logs", http.StatusForbidden, false},
+		{"UnlabelledContainer", "/v1.45/containers/" + unlabelled + "/logs", http.StatusForbidden, false},
+		{"ContainerNameInsteadOfID", "/containers/alt-backend/logs", http.StatusForbidden, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := len(seen())
+			resp, err := http.Get(proxy.URL + tt.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("status %d, want %d", resp.StatusCode, tt.wantStatus)
+			}
+			logHit := false
+			for _, r := range seen()[before:] {
+				if strings.HasSuffix(r.path, "/logs") {
+					logHit = true
+				}
+			}
+			if logHit != tt.wantLogHit {
+				t.Errorf("logs reached upstream = %v, want %v", logHit, tt.wantLogHit)
+			}
+		})
+	}
+}
+
+func TestContainerListIsForcedToProject(t *testing.T) {
+	upstream, seen := newScopedFixture(t)
+	upstreamURL, _ := url.Parse(upstream.URL)
+	proxy := httptest.NewServer(newProxyHandler(upstreamURL, upstream.Client().Transport, "alt"))
+	defer proxy.Close()
+
+	spoof := url.Values{"filters": {`{"label":["com.docker.compose.project=other"]}`}, "all": {"1"}}
+	resp, err := http.Get(proxy.URL + "/containers/json?" + spoof.Encode())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	reqs := seen()
+	if len(reqs) != 1 {
+		t.Fatalf("got %d upstream requests, want 1", len(reqs))
+	}
+	var f map[string][]string
+	if err := json.Unmarshal([]byte(reqs[0].query.Get("filters")), &f); err != nil {
+		t.Fatalf("filters not JSON: %v", err)
+	}
+	labels := strings.Join(f["label"], ",")
+	if !strings.Contains(labels, "com.docker.compose.project=alt") {
+		t.Errorf("project label filter missing: %v", f)
+	}
+	if strings.Contains(labels, "project=other") {
+		t.Errorf("client-supplied project filter survived: %v", f)
+	}
+	if reqs[0].query.Get("all") != "1" {
+		t.Errorf("other query params must be preserved")
 	}
 }
 
