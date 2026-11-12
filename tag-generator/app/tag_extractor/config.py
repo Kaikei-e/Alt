@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field, model_validator
 
 logger = structlog.get_logger(__name__)
 
+EMBEDDING_MODEL_REVISION = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
+
 
 class TagExtractionConfig(BaseModel):
     """Configuration for tag extraction behaviour.
@@ -103,6 +105,8 @@ class ModelConfig(BaseModel):
     use_onnx: bool = False
     onnx_model_path: str | None = None
     onnx_tokenizer_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    model_revision: str = EMBEDDING_MODEL_REVISION
+    onnx_tokenizer_revision: str = EMBEDDING_MODEL_REVISION
     onnx_pooling: str = "cls"
     onnx_batch_size: int = Field(default=16, gt=0)
     onnx_max_length: int = Field(default=256, gt=0)

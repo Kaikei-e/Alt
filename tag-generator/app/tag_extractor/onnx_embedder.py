@@ -43,6 +43,7 @@ class OnnxEmbeddingConfig:
 
     model_path: str
     tokenizer_name: str
+    tokenizer_revision: str | None = None
     pooling: str = "cls"
     batch_size: int = 16
     max_length: int = 256
@@ -71,7 +72,9 @@ class OnnxEmbeddingModel:
             sess_options=self._session_options,
             providers=self._providers,
         )
-        self._tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name, use_fast=True)  # nosec B615
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            config.tokenizer_name, revision=config.tokenizer_revision, use_fast=True
+        )  # nosec B615
         self._embedding_dimension = self._session.get_outputs()[0].shape[-1]
 
     def encode(

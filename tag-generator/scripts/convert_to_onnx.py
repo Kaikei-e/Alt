@@ -17,6 +17,7 @@ def convert_to_onnx(
     model_name: str = "paraphrase-multilingual-MiniLM-L12-v2",
     output_dir: str = "/models/onnx",
     max_length: int = 256,
+    revision: str = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
 ) -> Path:
     """
     Convert SentenceTransformer model to ONNX format.
@@ -70,10 +71,12 @@ def convert_to_onnx(
         model = ORTModelForFeatureExtraction.from_pretrained(
             model_name,
             export=True,  # Convert to ONNX
+            revision=revision,
             token=hf_token,
         )
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,
+            revision=revision,
             token=hf_token,
         )
 
@@ -142,6 +145,12 @@ def main():
         help="Maximum sequence length",
     )
 
+    parser.add_argument(
+        "--revision",
+        default="e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+        help="Full commit sha of the Hugging Face repo to convert",
+    )
+
     args = parser.parse_args()
 
     logger.info("Starting ONNX conversion...")
@@ -152,6 +161,7 @@ def main():
         model_name=args.model_name,
         output_dir=args.output_dir,
         max_length=args.max_length,
+        revision=args.revision,
     )
 
     logger.info(f"✅ Conversion complete! ONNX model available at: {onnx_path}")
