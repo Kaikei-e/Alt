@@ -98,6 +98,31 @@ pub fn log_cards_trigger_status(user_id: Option<uuid::Uuid>) -> CardsTriggerPost
     }
 }
 
+pub fn eval_listener_outside_peer_guard_addr(
+    peer_identity: &crate::config::PeerIdentityConfig,
+    eval_listener: &crate::config::EvalListenerConfig,
+) -> Option<std::net::SocketAddr> {
+    match (peer_identity, eval_listener) {
+        (
+            crate::config::PeerIdentityConfig::Enabled { .. },
+            crate::config::EvalListenerConfig::Enabled { listen_addr, .. },
+        ) => Some(*listen_addr),
+        _ => None,
+    }
+}
+
+pub fn log_eval_listener_outside_peer_guard(
+    peer_identity: &crate::config::PeerIdentityConfig,
+    eval_listener: &crate::config::EvalListenerConfig,
+) -> Option<std::net::SocketAddr> {
+    let addr = eval_listener_outside_peer_guard_addr(peer_identity, eval_listener)?;
+    tracing::warn!(
+        listen_addr = %addr,
+        "eval_listener_outside_peer_guard: /v1/eval/* is served outside the mTLS peer guard and is authenticated by the admin bearer token only"
+    );
+    Some(addr)
+}
+
 #[cfg(test)]
 mod tests {
     use super::watch_startup;

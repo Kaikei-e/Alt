@@ -229,6 +229,10 @@ async fn maybe_spawn_eval_listener(
     } = config.eval_listener()
     {
         info!(%listen_addr, "eval_listener_enabled");
+        recap_worker::startup::log_eval_listener_outside_peer_guard(
+            config.peer_identity(),
+            config.eval_listener(),
+        );
         let eval_router = recap_worker::eval::server::build_eval_router(pool, admin_token.as_str());
         let eval_listener = TcpListener::bind(*listen_addr)
             .await
