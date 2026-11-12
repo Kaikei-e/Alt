@@ -88,6 +88,10 @@ services:
       retries: 3
       start_period: 5s
   rask-log-aggregator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-aggregator:${IMAGE_TAG:-main}
     build:
       context: ../rask-log-aggregator
@@ -128,6 +132,10 @@ services:
       start_period: 10s
 
   nginx-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     mem_limit: 128m
     environment:
@@ -135,6 +143,10 @@ services:
       TARGET_SERVICE: "${NGINX_TARGET:-plecto-proxy}"
 
   alt-backend-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
@@ -143,24 +155,40 @@ services:
   # One forwarder per container of the alt-backend 3-binary split. A single
   # forwarder cannot cover them: TARGET_SERVICE selects one container.
   alt-harvester-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "alt-harvester"
 
   alt-data-hub-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "alt-data-hub"
 
   auth-hub-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "auth-hub"
 
   tag-generator-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     mem_limit: 128m
     environment:
@@ -168,18 +196,30 @@ services:
       TARGET_SERVICE: "tag-generator"
 
   pre-processor-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "pre-processor"
 
   search-indexer-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "search-indexer"
 
   news-creator-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
@@ -187,6 +227,10 @@ services:
 
   # ADR-091: news-creator-backend (Ollama) ログ収集
   news-creator-backend-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     mem_limit: 128m
     environment:
@@ -198,24 +242,40 @@ services:
   # Recap stack forwarders
   # NOTE: db-logs removed - SQL query fragments provide low observability value (74% of all logs)
   recap-worker-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "recap-worker"
 
   recap-subworker-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "recap-subworker"
 
   dashboard-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "dashboard"
 
   recap-evaluator-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
@@ -224,12 +284,20 @@ services:
   # RAG stack forwarders
   # NOTE: recap-db-logs removed - SQL query fragments provide low observability value
   rag-orchestrator-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "rag-orchestrator"
 
   mq-hub-logs:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *rask-forwarder
     environment:
       <<: *rask-forwarder-env

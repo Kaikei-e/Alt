@@ -56,6 +56,10 @@ services:
         max-file: "3"
 
   acolyte-db-migrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ../acolyte-migration-atlas
       dockerfile: docker/Dockerfile
@@ -101,6 +105,10 @@ services:
       - rask.group=acolyte-db-migrator
 
   acolyte-orchestrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     container_name: acolyte-orchestrator
     mem_limit: 256m
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-acolyte-orchestrator:${IMAGE_TAG:-main}

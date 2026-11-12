@@ -19,6 +19,10 @@ x-pki-cert-volume-chown: &pki-cert-volume-chown
 
 services:
   alt-butterfly-facade:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-butterfly-facade:${IMAGE_TAG:-main}
     build:
       context: ../alt-butterfly-facade

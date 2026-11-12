@@ -165,6 +165,10 @@ services:
           - kratos-admin
 
   auth-hub:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-auth-hub:${IMAGE_TAG:-main}
     build:
       context: ../auth-hub

@@ -207,6 +207,10 @@ services:
   # cold load (torch + HF fetch). 128m/512m/1g/2g all cgroup-OOM'd (die 137) on first
   # boot and broke on-the-fly summarize; steady-state settles ~0.9GiB after warmup.
   news-creator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     container_name: news-creator
     mem_limit: 3g
     env_file:
@@ -327,6 +331,10 @@ services:
         max-file: "3"
 
   pre-processor:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     mem_limit: 128m

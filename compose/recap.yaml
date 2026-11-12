@@ -66,6 +66,10 @@ services:
         max-file: "3"
 
   recap-db-migrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ../recap-migration-atlas
       dockerfile: docker/Dockerfile
@@ -94,6 +98,10 @@ services:
       - alt-network
 
   recap-worker:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     mem_limit: 2048m
@@ -469,6 +477,10 @@ services:
         max-file: "3"
 
   recap-evaluator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-evaluator:${IMAGE_TAG:-main}
     build:
       context: ../recap-evaluator

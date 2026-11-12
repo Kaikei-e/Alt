@@ -157,6 +157,10 @@ services:
       retries: 3
 
   alt-frontend-sv:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-frontend-sv:${IMAGE_TAG:-main}
@@ -223,6 +227,10 @@ services:
   # scheduled jobs moved to alt-harvester and the mTLS-only data plane to
   # alt-data-hub; what stays here is REST / Connect / internal / mTLS.
   alt-backend:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend:${IMAGE_TAG:-main}
@@ -473,6 +481,10 @@ services:
   # listener at all: the only socket it opens is the operator :9110, and that
   # is not published to the host.
   alt-harvester:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *alt-go-common
     env_file:
       - ../.env
@@ -630,6 +642,10 @@ services:
   # No `ports:` and no listener but ops: it claims work over mTLS and posts to
   # push services. Nothing calls in.
   alt-notifier:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *alt-go-common
     env_file:
       - ../.env
@@ -733,6 +749,10 @@ services:
   # sidecar and no plaintext upstream. Dual-writing this cert volume with a
   # leftover sidecar is forbidden.
   alt-data-hub:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     <<: *alt-go-common
     env_file:
       - ../.env
@@ -883,6 +903,10 @@ services:
       - rask.group=alt-data-hub
 
   migrate:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     build:

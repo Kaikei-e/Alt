@@ -248,6 +248,10 @@ services:
 
   # Atlas migrator for pre-processor-db
   pre-processor-db-migrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ../pre-processor-migration-atlas
       dockerfile: docker/Dockerfile

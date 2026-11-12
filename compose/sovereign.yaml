@@ -57,6 +57,10 @@ services:
 
   # Atlas migrator for knowledge-sovereign-db
   knowledge-sovereign-db-migrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ../knowledge-sovereign
       dockerfile: docker/Dockerfile.migrator
@@ -89,6 +93,10 @@ services:
     restart: "no"
 
   knowledge-sovereign:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-knowledge-sovereign:${IMAGE_TAG:-main}
     build:
       context: ../knowledge-sovereign

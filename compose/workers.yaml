@@ -24,6 +24,10 @@ x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
 
 services:
   pre-processor-sidecar:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     mem_limit: 128m
@@ -74,6 +78,10 @@ services:
         max-file: "3"
 
   search-indexer:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     # Meilisearch batch indexer + Connect-RPC; aligned with other Go workers.
@@ -190,6 +198,10 @@ services:
   # Enrollment is in-process (PKI_ENROLLMENT=enabled). No pki-agent sidecar.
 
   tag-generator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - ../.env
     mem_limit: 3g
@@ -306,6 +318,10 @@ services:
       - alt-network
 
   auth-token-manager:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-auth-token-manager:${IMAGE_TAG:-main}
     build:
       context: ../auth-token-manager

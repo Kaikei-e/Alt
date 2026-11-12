@@ -66,6 +66,10 @@ services:
         max-file: "3"
 
   rag-db-migrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ../rag-migration-atlas
       dockerfile: docker/Dockerfile
@@ -93,6 +97,10 @@ services:
       - alt-network
 
   rag-orchestrator:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rag-orchestrator:${IMAGE_TAG:-main}
     build:
       context: ../rag-orchestrator
@@ -366,6 +374,10 @@ services:
   # cl-nagoya/ruri-v3-reranker-310m and quantizes it into the mounted
   # volume; subsequent restarts load the cached quantized model.
   rerank-local:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ../rerank-server
       dockerfile: Dockerfile
