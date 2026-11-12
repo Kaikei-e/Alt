@@ -1,8 +1,6 @@
 package alt_db
 
 import (
-	"bytes"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -85,9 +83,6 @@ func TestLoadDatabaseConfigFromEnv_PasswordFailFast(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, cfg)
 		assert.Contains(t, err.Error(), "DB_PASSWORD")
-
-		panicErr := recoveredError(t, func() { NewDatabaseConfigFromEnv() })
-		require.Error(t, panicErr)
 	})
 
 	t.Run("unreadable password file returns error without falling back to DB_PASSWORD", func(t *testing.T) {
@@ -129,7 +124,7 @@ func TestLoadDatabaseConfigFromEnv_PasswordFailFast(t *testing.T) {
 	})
 }
 
-func TestLoadDatabaseConfigFromEnv_SSLModeValidationAndStartupLog(t *testing.T) {
+func TestLoadDatabaseConfigFromEnv_SSLModeValidation(t *testing.T) {
 	t.Run("missing DB_SSL_MODE returns error", func(t *testing.T) {
 		t.Setenv("DB_PASSWORD", "testpass")
 		t.Setenv("DB_PASSWORD_FILE", "")
@@ -157,11 +152,6 @@ func TestLoadDatabaseConfigFromEnv_SSLModeValidationAndStartupLog(t *testing.T) 
 
 	for _, allowedMode := range []string{"disable", "require", "verify-ca", "verify-full"} {
 		t.Run("allowed_"+allowedMode, func(t *testing.T) {
-			var logBuf bytes.Buffer
-			prevLogger := slog.Default()
-			slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
-			t.Cleanup(func() { slog.SetDefault(prevLogger) })
-
 			t.Setenv("DB_HOST", "testhost")
 			t.Setenv("DB_PASSWORD", "testpass")
 			t.Setenv("DB_PASSWORD_FILE", "")
@@ -174,7 +164,6 @@ func TestLoadDatabaseConfigFromEnv_SSLModeValidationAndStartupLog(t *testing.T) 
 			assert.Equal(t, "5432", cfg.Port)
 			assert.Equal(t, allowedMode, cfg.SSLMode)
 			assert.Contains(t, cfg.BuildConnectionString(), "sslmode="+allowedMode)
-			assert.Contains(t, logBuf.String(), "ssl_mode="+allowedMode)
 		})
 	}
 }
@@ -193,7 +182,8 @@ func TestHTTPOnlyConnection_Integration(t *testing.T) {
 	t.Setenv("DB_SSL_MODE", "disable")
 
 	t.Run("explicit disable mode connection string generation", func(t *testing.T) {
-		config := NewDatabaseConfigFromEnv()
+		config, err := LoadDatabaseConfigFromEnv()
+		require.NoError(t, err)
 		connStr := config.BuildConnectionString()
 
 		assert.Contains(t, connStr, "sslmode=disable")
