@@ -121,6 +121,22 @@ class TestFaithfulnessEvaluator:
 
         assert FaithfulnessEvaluator.DEFAULT_MODEL == "tasksource/ModernBERT-base-nli"
 
+    def test_default_model_loads_at_full_commit_sha(self, mock_nli_pipeline):
+        import re
+
+        evaluator = FaithfulnessEvaluator()
+        evaluator._ensure_initialized()
+
+        revision = mock_nli_pipeline.call_args.kwargs["revision"]
+        assert re.fullmatch(r"[0-9a-f]{40}", revision)
+
+    def test_explicit_revision_is_forwarded(self, mock_nli_pipeline):
+        revision = "0123456789abcdef0123456789abcdef01234567"
+        evaluator = FaithfulnessEvaluator(model_name="org/other-nli", model_revision=revision)
+        evaluator._ensure_initialized()
+
+        assert mock_nli_pipeline.call_args.kwargs["revision"] == revision
+
     def test_detect_returns_faithfulness_result(self, mock_nli_pipeline):
         """detect() should return a FaithfulnessResult whose scores are
         derived from the mocked NLI scores (entailment=0.85, contradiction=
