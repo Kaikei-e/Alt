@@ -68,7 +68,7 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 	}
 
 	// 5. Article module (depends on feed and the summarize quota)
-	article, err := newArticleModule(infra, feed, userQuotaLimiter)
+	article, err := newArticleModule(infra, feed, userQuotaLimiter, userQuotaLimiter)
 	if err != nil {
 		return nil, fmt.Errorf("article module: %w", err)
 	}

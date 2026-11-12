@@ -2,6 +2,7 @@ package fetch_article_tags_gateway
 
 import (
 	"alt/domain"
+	"alt/orchestrator/port/article_tags_quota_port"
 	"alt/shared/driver/mqhub_connect"
 	"alt/utils/logger"
 	"context"
@@ -62,6 +63,7 @@ type FetchArticleTagsGateway struct {
 	article articleReader
 	tagger  tagGenerator
 	config  Config
+	quota   article_tags_quota_port.ArticleTagsQuotaPort
 	sfGroup singleflight.Group // deduplicates concurrent on-the-fly generation for the same articleID
 }
 
@@ -75,6 +77,7 @@ func NewFetchArticleTagsGatewayWithMQHub(
 	article articleReader,
 	mqhubClient *mqhub_connect.Client,
 	config Config,
+	quota article_tags_quota_port.ArticleTagsQuotaPort,
 ) *FetchArticleTagsGateway {
 	switch {
 	case tags == nil:
@@ -82,22 +85,30 @@ func NewFetchArticleTagsGatewayWithMQHub(
 	case article == nil:
 		panic("fetch_article_tags_gateway: an article reader is required — the article body read moved to alt-data-hub in ADR-000954 Wave 3")
 	}
-	return newGateway(tags, article, mqhubClient, config)
+	return NewFetchArticleTagsGateway(tags, article, mqhubClient, config, quota)
 }
 
-// newGateway is an internal constructor for testing with interfaces.
-func newGateway(db tagStore, article articleReader, tagger tagGenerator, config Config) *FetchArticleTagsGateway {
+// NewFetchArticleTagsGateway builds the gateway over any tag generator. Every
+// on-the-fly generation is charged to quota, so a nil quota panics: it would
+// leave generation unbounded without saying so.
+func NewFetchArticleTagsGateway(db tagStore, article articleReader, tagger tagGenerator, config Config, quota article_tags_quota_port.ArticleTagsQuotaPort) *FetchArticleTagsGateway {
+	if quota == nil {
+		panic("fetch_article_tags_gateway: a tag generation quota port is required")
+	}
 	return &FetchArticleTagsGateway{
 		db:      db,
 		article: article,
 		tagger:  tagger,
 		config:  config,
+		quota:   quota,
 	}
 }
 
 // FetchArticleTags retrieves tags associated with a specific article.
 // If no tags exist and on-the-fly generation is enabled, generates tags via mq-hub
-// and persists them to the database.
+// and persists them to the database. Each generation costs one quota token and
+// holds one in-flight slot until it ends; a refused generation returns the
+// quota error. Stored tags are never charged.
 func (g *FetchArticleTagsGateway) FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error) {
 	// 1. Try to fetch existing tags from DB
 	tags, err := g.db.FetchArticleTags(ctx, articleID)
@@ -116,6 +127,12 @@ func (g *FetchArticleTagsGateway) FetchArticleTags(ctx context.Context, articleI
 			"articleID", articleID)
 		return []*domain.FeedTag{}, nil
 	}
+
+	release, err := g.quota.AcquireGeneration(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 
 	// 3-6. On-the-fly tag generation with singleflight deduplication.
 	// Concurrent requests for the same user and articleID share a single generation call.

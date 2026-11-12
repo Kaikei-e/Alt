@@ -38,6 +38,8 @@ const (
 	UserQuotaArticleTagsMaxInFlightEnv = "USER_QUOTA_ARTICLE_TAGS_MAX_IN_FLIGHT"
 
 	DefaultUserQuotaMaxTrackedUsers = 10000
+	// Below this a few accounts could alternate and evict each other's drained buckets.
+	MinUserQuotaMaxTrackedUsers = 1000
 
 	DefaultUserQuotaSummarizeRate        = 20
 	DefaultUserQuotaSummarizeBurst       = 10
@@ -59,12 +61,10 @@ const (
 	DefaultUserQuotaAugurRetrieveWindow      = time.Minute
 	DefaultUserQuotaAugurRetrieveMaxInFlight = 2
 
-	// One tag-trail page view opens a tag stream for each of its 20 articles at
-	// once, and loading a second page before the first settles doubles that.
-	DefaultUserQuotaArticleTagsRate        = 120
-	DefaultUserQuotaArticleTagsBurst       = 60
+	DefaultUserQuotaArticleTagsRate        = 60
+	DefaultUserQuotaArticleTagsBurst       = 30
 	DefaultUserQuotaArticleTagsWindow      = time.Minute
-	DefaultUserQuotaArticleTagsMaxInFlight = 40
+	DefaultUserQuotaArticleTagsMaxInFlight = 4
 )
 
 type OperationQuotaConfig struct {
@@ -125,6 +125,9 @@ func LoadUserQuotaConfig() (UserQuotaConfig, error) {
 	var err error
 	if cfg.MaxTrackedUsers, err = loadPositiveIntEnv(UserQuotaMaxTrackedUsersEnv, cfg.MaxTrackedUsers); err != nil {
 		return UserQuotaConfig{}, err
+	}
+	if cfg.MaxTrackedUsers < MinUserQuotaMaxTrackedUsers {
+		return UserQuotaConfig{}, fmt.Errorf("%s must be >= %d, got %d", UserQuotaMaxTrackedUsersEnv, MinUserQuotaMaxTrackedUsers, cfg.MaxTrackedUsers)
 	}
 	if cfg.Summarize, err = loadOperationQuotaEnv(
 		cfg.Summarize,
@@ -211,7 +214,7 @@ func ValidateUserQuotaConfig(cfg UserQuotaConfig) error {
 
 func LogUserQuotaConfig(logger *slog.Logger, cfg UserQuotaConfig) {
 	if logger == nil {
-		logger = slog.Default()
+		panic("config: LogUserQuotaConfig requires a logger")
 	}
 	logger.Info("user_quota_configured",
 		"enabled", true,

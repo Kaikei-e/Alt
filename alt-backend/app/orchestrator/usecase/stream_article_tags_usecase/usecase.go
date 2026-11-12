@@ -2,9 +2,11 @@ package stream_article_tags_usecase
 
 import (
 	"alt/domain"
+	"alt/orchestrator/port/article_tags_quota_port"
 	"alt/orchestrator/port/cached_article_tags_port"
 	"alt/orchestrator/port/fetch_article_tags_port"
 	"context"
+	"errors"
 )
 
 // TagsResult holds the result of tag fetching with source info.
@@ -47,6 +49,9 @@ func (u *StreamArticleTagsUsecase) Execute(ctx context.Context, articleID string
 	// 2. Trigger on-the-fly generation via full port (includes DB check + mq-hub)
 	if u.generatorPort != nil {
 		tags, err := u.generatorPort.FetchArticleTags(ctx, articleID)
+		if errors.Is(err, article_tags_quota_port.ErrBudgetExhausted) || errors.Is(err, domain.ErrInvalidUserContext) {
+			return nil, err
+		}
 		if err != nil {
 			return &TagsResult{Tags: []*domain.FeedTag{}, IsCached: false}, nil
 		}

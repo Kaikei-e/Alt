@@ -40,7 +40,7 @@ var (
 	ErrTimeout            = errors.New("request timeout")
 	ErrDatabaseError      = errors.New("database error")
 
-	// Morning Letter 関連エラー
+	// Morning Letter
 	ErrMorningRegenerationInFlight = errors.New("morning letter regeneration already in flight")
 
 	// 検索関連エラー

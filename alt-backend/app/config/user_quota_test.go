@@ -37,7 +37,7 @@ func TestLoadUserQuotaConfig_Defaults(t *testing.T) {
 
 func TestLoadUserQuotaConfig_OverridesAndRejectsInvalid(t *testing.T) {
 	t.Run("overrides from environment", func(t *testing.T) {
-		t.Setenv(UserQuotaMaxTrackedUsersEnv, "512")
+		t.Setenv(UserQuotaMaxTrackedUsersEnv, "2048")
 		t.Setenv(UserQuotaSummarizeRateEnv, "5")
 		t.Setenv(UserQuotaSummarizeBurstEnv, "3")
 		t.Setenv(UserQuotaSummarizeWindowEnv, "30s")
@@ -45,7 +45,7 @@ func TestLoadUserQuotaConfig_OverridesAndRejectsInvalid(t *testing.T) {
 
 		cfg, err := LoadUserQuotaConfig()
 		require.NoError(t, err)
-		assert.Equal(t, 512, cfg.MaxTrackedUsers)
+		assert.Equal(t, 2048, cfg.MaxTrackedUsers)
 		assert.Equal(t, OperationQuotaConfig{
 			Rate:        5,
 			Burst:       3,

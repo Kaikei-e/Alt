@@ -5,9 +5,12 @@ import (
 	"alt/di"
 	"alt/domain"
 	middleware_custom "alt/middleware"
+	"alt/orchestrator/port/article_tags_quota_port"
 	"alt/orchestrator/rest/resterr"
 	"alt/utils/logger"
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -251,6 +254,14 @@ func handleFetchArticleTags(container *di.ApplicationComponents) echo.HandlerFun
 		articleID = parsedArticleID.String()
 
 		tags, err := container.FetchArticleTagsUsecase.Execute(ctx, articleID)
+		if errors.Is(err, domain.ErrInvalidUserContext) {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		}
+		var budgetErr *article_tags_quota_port.BudgetExhaustedError
+		if errors.As(err, &budgetErr) {
+			c.Response().Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(budgetErr.RetryAfter.Seconds())))))
+			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+		}
 		if err != nil {
 			return resterr.HandleError(c, err, "fetch_article_tags")
 		}

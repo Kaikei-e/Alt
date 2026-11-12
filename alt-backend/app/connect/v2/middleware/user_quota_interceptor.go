@@ -18,10 +18,10 @@ import (
 
 	"alt/config"
 	"alt/domain"
-	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
+	"alt/orchestrator/port/article_tags_quota_port"
 	"alt/orchestrator/port/summarize_quota_port"
 )
 
@@ -221,6 +221,20 @@ func (l *UserQuotaLimiter) ChargeSummarization(ctx context.Context) error {
 	return err
 }
 
+// AcquireGeneration charges one article_tags token and holds one in-flight
+// slot for a tag generation that is about to start.
+func (l *UserQuotaLimiter) AcquireGeneration(ctx context.Context) (func(), error) {
+	release, err := l.admit(ctx, OpArticleTags, admitTokenAndSlot)
+	if errors.Is(err, ErrQuotaUnauthenticated) {
+		return nil, fmt.Errorf("tag generation: %w", domain.ErrInvalidUserContext)
+	}
+	var qErr *QuotaExceededError
+	if errors.As(err, &qErr) {
+		return nil, &article_tags_quota_port.BudgetExhaustedError{RetryAfter: qErr.RetryAfter}
+	}
+	return release, err
+}
+
 func (l *UserQuotaLimiter) admit(ctx context.Context, op OperationClass, adm admission) (func(), error) {
 	if l == nil {
 		panic("user quota limiter is not wired")
@@ -245,19 +259,10 @@ func (l *UserQuotaLimiter) admit(ctx context.Context, op OperationClass, adm adm
 	return release, err
 }
 
-func (l *UserQuotaLimiter) TrackedUsers(op OperationClass) int {
-	opLimiter, ok := l.ops[op]
-	if !ok {
-		return 0
-	}
-	return opLimiter.trackedUsers()
-}
-
 var connectProcedureClasses = map[string]OperationClass{
 	feedsv2connect.FeedServiceStreamSummarizeProcedure:             OpSummarize,
 	augurv2connect.AugurServiceStreamChatProcedure:                 OpAugurChat,
 	augurv2connect.AugurServiceRetrieveContextProcedure:            OpAugurRetrieve,
-	articlesv2connect.ArticleServiceStreamArticleTagsProcedure:     OpArticleTags,
 	morningletterv2connect.MorningLetterServiceStreamChatProcedure: OpMorningChat,
 }
 

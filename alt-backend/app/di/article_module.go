@@ -14,6 +14,7 @@ import (
 	"alt/orchestrator/gateway/latest_article_gateway"
 	"alt/orchestrator/gateway/preprocessor_summarize_gateway"
 	"alt/orchestrator/gateway/scraping_policy_gateway"
+	"alt/orchestrator/port/article_tags_quota_port"
 	"alt/orchestrator/port/summarize_quota_port"
 	"alt/orchestrator/usecase/archive_article_usecase"
 	"alt/orchestrator/usecase/fetch_article_summaries_usecase"
@@ -133,7 +134,7 @@ func logArticlePrefetchWiring(wiring articles.ArticlePrefetchWiring) {
 		"note", "warms take a host's turn from the same limiter and namespace as interactive fetches, and give it up after slot_wait rather than queueing for it")
 }
 
-func newArticleModule(infra *InfraModule, feed *FeedModule, summarizeQuota summarize_quota_port.SummarizeQuotaPort) (*ArticleModule, error) {
+func newArticleModule(infra *InfraModule, feed *FeedModule, summarizeQuota summarize_quota_port.SummarizeQuotaPort, tagQuota article_tags_quota_port.ArticleTagsQuotaPort) (*ArticleModule, error) {
 	// No alt_db handle. The two that were left here through batch 5 — the Tag
 	// Trail's paged read and RecallRailUsecase's article fallback — became
 	// procedures of their own in ADR-000954 Wave 3 batch 6, which is what let
@@ -234,7 +235,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, summarizeQuota summa
 	// article body all arrive over the same connection (catalog §2.J / W2-13).
 	fetchArticleTagsConfig := fetch_article_tags_gateway.DefaultConfig()
 	fetchArticleTagsGw := fetch_article_tags_gateway.NewFetchArticleTagsGatewayWithMQHub(
-		infra.TagGateway, infra.ArticleStoreGateway, infra.MQHubClient, fetchArticleTagsConfig,
+		infra.TagGateway, infra.ArticleStoreGateway, infra.MQHubClient, fetchArticleTagsConfig, tagQuota,
 	)
 	fetchArticleTagsUC := fetch_article_tags_usecase.NewFetchArticleTagsUsecase(fetchArticleTagsGw)
 
