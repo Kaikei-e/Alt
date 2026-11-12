@@ -8,7 +8,7 @@ _Last reviewed: September 5, 2026_
 - Kratos セッション cookie (`ory_kratos_session`) を検証し、Ory Kratos `/sessions/whoami` の結果を Alt 内部の backend JWT (`X-Alt-Backend-Token`) に変換する唯一の翻訳点
 - セッション検証、アイデンティティキャッシュ、`X-Alt-*` ヘッダー発行
 - バックエンドトークン (JWT) 発行による BFF / alt-backend 認証サポート (`/session` レスポンスに含む)。alt-frontend-sv がサーバサイドで `/session` を直接呼び出し、取得した JWT を下流リクエストに付与する
-- 下流サービスの認証非依存化 (alt-backend / alt-butterfly-facade は `backend_token_secret` で JWT を自前検証する)
+- 下流サービスの認証非依存化 (検証サービス群は Ed25519 公開鍵 `backend_token_verify_key` で JWT を自前検証し、署名秘密鍵 `backend_token_signing_key` は auth-hub のみが保持する)
 - 内部サービス向けシステムユーザー ID 提供 (`/internal/system-user`、呼び出し元は alt-data-hub)
 - `/validate` は元々 nginx `auth_request` 向けに実装されたが、edge proxy が PlectoProxy (`plecto-proxy`, `plecto/manifest.toml`) に切り替わった際に `/auth-validate` route は意図的に移植されておらず (manifest.toml のコメント参照)、ライブの認証経路ではない。`nginx/conf.d/default.conf` は本番 compose のどのサービスからも読み込まれない未使用のプロトタイプ設定として repo に残るのみ
 
@@ -35,7 +35,7 @@ Clean Architecture with domain-driven layers (`cmd/auth-hub/main.go` がエン�
 | Handler | `internal/adapter/handler/error_mapper.go` | ドメインエラー -> HTTP ステータスマッピング |
 | Gateway | `internal/adapter/gateway/kratos.go` | Kratos API クライアント (`SessionValidator`, `IdentityProvider` 実装) |
 | Infra | `internal/infrastructure/cache/session_cache.go` | セッションキャッシュ (TTL 付きインメモリ, RWMutex, 自動クリーンアップ) |
-| Infra | `internal/infrastructure/token/jwt.go` | JWT 発行 (HS256, `domain.TokenIssuer` 実装) |
+| Infra | `internal/infrastructure/token/jwt.go` | JWT 発行 (EdDSA / Ed25519, `domain.TokenIssuer` 実装) |
 | Infra | `internal/infrastructure/token/csrf.go` | CSRF トークン生成 (HMAC-SHA256, `domain.CSRFTokenGenerator` 実装) |
 | Infra | `internal/pki/` | east-west mTLS leaf の in-process enrollment/renewal (`pki.Start`)、`tlsutil/` は mTLS リスナー (`:9443`) の TLS 設定 |
 
@@ -66,8 +66,8 @@ flowchart LR
 
 edge proxy (`plecto-proxy`, `plecto/manifest.toml`) には auth-hub 向けの upstream/route が
 そもそも存在せず、`/validate` はどの経路からも呼ばれない (上記 Role 参照)。BFF
-(`alt-butterfly-facade`) と `alt-backend` は受け取った `X-Alt-Backend-Token` を
-`backend_token_secret` で自前検証する (edge proxy 経由の header injection には依存しない)。
+(`alt-butterfly-facade`) と `alt-backend` などの検証サービスは受け取った `X-Alt-Backend-Token` を
+Ed25519 公開鍵 (`BACKEND_TOKEN_VERIFY_KEY_FILE`, Docker secret `backend_token_verify_key`) で自前検証する (edge proxy 経由の header injection には依存しない)。
 
 ## Endpoints & Behavior
 
@@ -108,9 +108,10 @@ edge proxy (`plecto-proxy`, `plecto/manifest.toml`) には auth-hub 向けの up
 
 ## JWT Token Generation
 
-- 署名アルゴリズム: HS256 (`golang-jwt/jwt/v5`)
+- 署名アルゴリズム: EdDSA / Ed25519 (`golang-jwt/jwt/v5`、`alg: EdDSA` のみ許可し他の `alg` 値はすべて拒否)
 - Claims: `sub` (UserID), `email`, `role` (Kratos identity trait, 未設定なら "user"), `sid` (SessionID), `tenant_id` (未設定なら UserID と同値), `iss`, `aud`, `iat`, `exp`
-- `BACKEND_TOKEN_SECRET` で署名 (最低 32 文字必須)
+- `BACKEND_TOKEN_SIGNING_KEY_FILE` (PKCS#8 `PRIVATE KEY` PEM、Docker secret `backend_token_signing_key`、auth-hub 専用) で署名。イントロスペクション用の公開鍵は秘密鍵から導出するため検証鍵ファイルは読まない。欠落・読込不可・非 Ed25519 鍵は起動エラー (非ゼロ終了)
+- 検証側は `BACKEND_TOKEN_VERIFY_KEY_FILE` (SPKI `PUBLIC KEY` PEM、Docker secret `backend_token_verify_key`) で検証し、共有シークレットは使用しない
 - issuer: `BACKEND_TOKEN_ISSUER` (デフォルト: `auth-hub`)
 - audience: `BACKEND_TOKEN_AUDIENCE` (デフォルト: `alt-backend`)
 - TTL: `BACKEND_TOKEN_TTL` (デフォルト: 5m)
@@ -124,8 +125,8 @@ edge proxy (`plecto-proxy`, `plecto/manifest.toml`) には auth-hub 向けの up
 | `PORT` | 8888 | サービスポート |
 | `CACHE_TTL` | 5m | セッションキャッシュ TTL |
 | `CSRF_SECRET` | (required) | CSRF シークレット (最低 32 文字, `_FILE` サフィックス対応) |
-| `BACKEND_TOKEN_SECRET` | (required) | JWT 署名シークレット (最低 32 文字, `_FILE` サフィックス対応) |
-| `INTERNAL_AUTH_SECRET` | (required) | `/internal` 共有ベアラ (最低 32 文字, `BACKEND_TOKEN_SECRET` と別値必須, `_FILE` サフィックス対応) |
+| `BACKEND_TOKEN_SIGNING_KEY_FILE` | (required) | JWT 署名用 Ed25519 PKCS#8 `PRIVATE KEY` PEM ファイルパス (Docker secret `backend_token_signing_key`、インライン環境変数形式なし) |
+| `INTERNAL_AUTH_SECRET` | (required) | `/internal` 共有ベアラ (最低 32 文字, `_FILE` サフィックス対応) |
 | `BACKEND_TOKEN_ISSUER` | auth-hub | JWT issuer claim |
 | `BACKEND_TOKEN_AUDIENCE` | alt-backend | JWT audience claim |
 | `BACKEND_TOKEN_TTL` | 5m | JWT 有効期限 |
@@ -148,13 +149,12 @@ edge proxy (`plecto-proxy`, `plecto/manifest.toml`) には auth-hub 向けの up
 | `RENEW_AT_FRACTION` | 0.66 | 証明書有効期間のこの割合を過ぎたら renew |
 | `OPS_LISTEN` | 127.0.0.1:9110 (コード既定) / :9110 (compose/auth.yaml で上書き) | PKI enrollment の Prometheus メトリクス (`pki_enrollment_*`)。ホストに publish しない内部リスナー |
 
-> **Note:** すべてのシークレット変数は `_FILE` サフィックスでファイルパス指定が可能 (Docker secrets 対応)。例: `CSRF_SECRET_FILE=/run/secrets/csrf_secret`
+> **Note:** 共有シークレット変数 (`CSRF_SECRET`, `INTERNAL_AUTH_SECRET`) は `_FILE` サフィックスでファイルパス指定が可能 (Docker secrets 対応)。例: `CSRF_SECRET_FILE=/run/secrets/csrf_secret`。バックエンドトークン署名鍵は `BACKEND_TOKEN_SIGNING_KEY_FILE` でファイルパスのみを受け付け、インライン環境変数形式は存在しない。
 >
 > `INTERNAL_AUTH_SECRET` には専用の docker secret `auth_hub_internal_secret` を用意してある
-> (`INTERNAL_AUTH_SECRET_FILE=/run/secrets/auth_hub_internal_secret`)。
-> `BACKEND_TOKEN_SECRET` と同じ値を入れると起動時に exit 1 する — `/internal` ベアラは
+> (`INTERNAL_AUTH_SECRET_FILE=/run/secrets/auth_hub_internal_secret`)。`/internal` ベアラは
 > 平文の `X-Internal-Auth` ヘッダで流れ、アクセスログと OTel span attribute に残るため、
-> JWT 署名鍵をそこに出さないことが分離の目的。呼び出し側 (alt-data-hub) にも同じ値を渡す。
+> Ed25519 署名秘密鍵 (`backend_token_signing_key`、auth-hub 専用) とは独立した秘密として扱う。呼び出し側 (alt-data-hub) にも同じ値を渡す。
 >
 > auth-hub は east-west mTLS leaf を in-process で enroll/renew する 14 parents の1つ
 > ([[000978]])。`pki-agent` イメージ自体はもう compose workload としては動かず、CA 側の
@@ -261,7 +261,7 @@ curl -i http://localhost:8888/health
 - Missing secret warn-and-limp → required secrets must abort startup (min 32 chars, no defaults), internal endpoints need app-layer auth with constant-time compare even when "protected by network policy", and an empty secret must fail closed (all requests 500), never silently succeed. → [[000197]] [[000200]] [[000719]] [[000720]]
 - Auth bolted onto SSE → browser `EventSource` cannot send custom headers; use Connect-RPC streaming where interceptors apply auth transparently instead of retrofitting SSE. → [[000718]]
 - CSRF mismatch → auth-hub の HMAC トークンは呼び出しごとに新しい timestamp を埋め込むため、guard 時に `/csrf` を再取得すると必ず不一致になる。alt-frontend-sv は `issueCsrfCookie` で発行直後の値を httpOnly cookie に固定し、`verifyCsrfToken` はその cookie とダブルサブミット値を比較するだけで auth-hub を再呼び出ししない。
-- Token resign 失敗 → `backend_token_secret` のローテーション後、古い秘密で署名されたトークンを新サービスが拒否する。`backend_token_secret` を共有する全サービス (`auth-hub`, `alt-backend`, `alt-data-hub`, `alt-butterfly-facade`, `acolyte-orchestrator`) を同時に再起動しないと一時的に 401 が発生する。
+- Token 鍵ペアローテーション時の不一致 → Ed25519 鍵ペア (`backend_token_signing_key` / `backend_token_verify_key`) のローテーション後、旧秘密鍵で署名されたトークンを新公開鍵の検証側が拒否する。署名側の `auth-hub` と検証側 (`alt-backend`, `alt-butterfly-facade`, `acolyte-orchestrator`, `knowledge-sovereign`) の鍵ペア更新・再起動を揃えないと一時的に 401 が発生する (`alt-data-hub` / `alt-harvester` / `alt-notifier` はユーザートークンを検証しないため鍵を持たない)。
 - Kratos backplane unreachable → fail-closed 設計のため「ログインできるが全 API が 401」状態になる。障害時は `auth-hub → kratos:4434` の導通・health を確認する。
 - 生の X-Alt-* header injection 試行 → edge proxy (`plecto-proxy`) は auth-hub への route を持たず、これらのヘッダーを中継しない。identity は必ず JWT (`X-Alt-Backend-Token`) 経由でのみ信頼し、外部から直接持ち込まれた生の `X-Alt-User-Id` 等は alt-backend 側で injection 試行として検知される (V-005, `hasAuthHeaders`)。
 
@@ -272,5 +272,5 @@ curl -i http://localhost:8888/health
 - 401 = 認証失敗、429 = レート制限、502 = Kratos 到達不可、500 = インフラエラー
 - バックエンドトークン (JWT) は `/session` レスポンスで発行 (`/token` エンドポイントは廃止)
 - `X-Alt-*` ヘッダーを追加/変更する際は `internal/adapter/handler/validate.go` と `internal/adapter/handler/session.go` の両方を確認する (edge proxy にこれらのヘッダーを中継する仕組みは無く、`/validate` 自体もライブ経路から呼ばれない — 上記 Role/`/validate` 参照)
-- シークレットは `_FILE` サフィックスによるファイル読み込みに対応 (Docker secrets)
+- 共有シークレットは `_FILE` サフィックスによるファイル読み込みに対応し、JWT 署名秘密鍵は `BACKEND_TOKEN_SIGNING_KEY_FILE` のみを受け付ける (Docker secrets)
 - `internal/domain/errors.go` のセンチネルエラーと `errors.Is()` を使用 (文字列マッチング禁止)

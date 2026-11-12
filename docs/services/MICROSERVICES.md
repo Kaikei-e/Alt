@@ -714,7 +714,9 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 | meili_master_key | meilisearch, search-indexer |
 | meili_search_key | search-indexer |
 | clickhouse_password | clickhouse, clickhouse-migrator, rask-log-aggregator, grafana |
-| backend_token_secret | auth-hub, alt-backend, alt-butterfly-facade, alt-data-hub, k6 |
+| backend_token_signing_key | auth-hub |
+| backend_token_verify_key | alt-backend, alt-butterfly-facade, acolyte-orchestrator, knowledge-sovereign |
+| k6_api_token | k6 |
 | auth_hub_internal_secret | auth-hub, alt-data-hub |
 | csrf_secret | auth-hub, alt-backend |
 | image_proxy_secret | alt-backend, alt-harvester |
@@ -790,7 +792,7 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 ## LLM Notes
 
 - Inter-service communication via HTTP/REST or Connect-RPC (Protocol Buffers)
-- Authentication via auth-hub X-Alt-* headers or JWT tokens
+- User authentication via Ed25519-signed `X-Alt-Backend-Token` JWTs (signed only by `auth-hub` via `BACKEND_TOKEN_SIGNING_KEY_FILE`, verified by downstream services via `BACKEND_TOKEN_VERIFY_KEY_FILE`)
 - Service-to-service auth: mTLS のみ。`X-Service-Token` / `SERVICE_SECRET` は [[000743]] で全サービスから撤去済み
 - Event-driven via Redis Streams + mq-hub
 - **alt-data-hub is the sole data owner for alt-db** ([[000241]] の原則を [[000954]] がプロセス境界として物理化)。alt-backend / alt-harvester / alt-notifier を含む全 consumer は `services.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ alt-db に触れる。`DATAHUB_ALLOWED_PEERS` の既定値が許す peer は alt-backend / alt-harvester / alt-notifier / pre-processor / search-indexer / tag-generator / recap-worker / rag-orchestrator / acolyte-orchestrator の 9 主体で、peer CN を fail-closed に検証する

@@ -5,7 +5,7 @@ Connect-RPC (v2) の読み取り系 API に対して 3000VU の同時閲覧負�
 ## 前提
 
 - Alt スタックが起動済み (`docker compose -f compose/compose.yaml -p alt up -d`)
-- Docker secret `k6_api_token` (`/run/secrets/k6_api_token`) として発行者 (`auth-hub`) が発行した短期かつ有効期間制限付き JWT ファイルがマウント済みであること（所有者フィクスチャ合致、残存有効期間が最低180秒以上あること。自己署名・署名鍵 `backend_token_secret` マウントは禁止・廃止）
+- Docker secret `k6_api_token` (`/run/secrets/k6_api_token`) として発行者 (`auth-hub`) が Ed25519 秘密鍵 (`BACKEND_TOKEN_SIGNING_KEY_FILE`) で署名・発行した短期かつ有効期間制限付き `EdDSA` JWT ファイルがマウント済みであること（所有者フィクスチャ合致、残存有効期間が最低180秒以上あること。k6 への署名鍵マウント・自己署名および共有シークレットは廃止）
 - PostgreSQL にフィード・記事データが存在すること
 
 ## API 仕様の想定
@@ -30,13 +30,13 @@ k6 内部での自己署名は行わず、発行者 (`auth-hub`) が発行した
 | 項目 | 値 | 備考 |
 |------|-----|------|
 | ヘッダー | `X-Alt-Backend-Token` | JWT トークン |
-| 署名方式 | 発行者署名済み JWT | 自己署名・署名鍵マウントは禁止・廃止 |
+| 署名方式 | `EdDSA` (Ed25519) | `auth-hub` の `BACKEND_TOKEN_SIGNING_KEY_FILE` のみで署名し、検証側は `BACKEND_TOKEN_VERIFY_KEY_FILE` (公開鍵) で検証。共有シークレットおよび k6 の自己署名は廃止 |
 | Issuer | `auth-hub` | 必須検証 |
 | Audience | `alt-backend` | 必須検証 |
 | Subject | `users.sample.json` の `user_id` | **有効な UUID** (`uuid.Parse()` 必須) かつ所有者合致 |
 | Claims | `email`, `role`, `sid`, `tenant_id` | 有効期間最大300秒、残存有効期間最低180秒以上 |
 
-JWT は k6 内部で自己署名しない。コンテナ起動時に `docker-entrypoint.sh` がトークンファイル (`$K6_API_TOKEN_FILE`) を読み取って環境変数 `K6_API_TOKEN` に設定し、`k6/helpers/auth.js` がそのトークン文字列 (string) のフォーマットおよびクレーム・残存有効期間ガード（最低180秒）を検証する（auth.js が直接ファイルを読み取るのではない）。
+JWT は k6 内部で自己署名しない。コンテナ起動時に `docker-entrypoint.sh` がトークンファイル (`$K6_API_TOKEN_FILE`) を読み取って環境変数 `K6_API_TOKEN` に設定し、init フェーズで未設定時は即座に失敗させた上で、`k6/helpers/auth.js` がそのトークン文字列 (string) のフォーマット・`alg: "EdDSA"` ヘッダー・クレーム・残存有効期間ガード（最低180秒）を検証する（auth.js が直接ファイルを読み取るのではない）。
 
 ## 環境変数
 
@@ -177,7 +177,7 @@ GROUP BY fl.id;
 
 ### `auth_errors` が大量に出る
 
-- `k6_api_token` が Docker secret として `/run/secrets/k6_api_token` にマウントされているか確認（発行者発行の短期JWTファイル、残存有効期間が最低180秒以上あること。自己署名・`backend_token_secret` 署名鍵マウントは禁止・廃止）
+- `k6_api_token` が Docker secret として `/run/secrets/k6_api_token` にマウントされているか確認（`auth-hub` 発行の短期 `EdDSA` JWT ファイル、残存有効期間が最低180秒以上、かつ `alt-backend` の `BACKEND_TOKEN_VERIFY_KEY_FILE` 公開鍵と対になっていること。自己署名・署名鍵マウントおよび共有シークレットは廃止）
 - `users.sample.json` の `user_id` が有効な UUID かつ JWT の subject / 所有者フィクスチャと合致しているか確認
 - JWT の issuer (`auth-hub`)、audience (`alt-backend`)、有効期限 (`exp`) が正常か確認
 - **注意**: Connect-RPC (port 9101) は REST (port 9000) とは異なる認証方式を使用する
