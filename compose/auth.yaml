@@ -127,6 +127,7 @@ services:
       - KRATOS_ALLOWED_RETURN_URL_3=${KRATOS_ALLOWED_RETURN_URL_3:-http://localhost:4173/sv/auth/login}
       - KRATOS_LOGIN_UI_URL=${KRATOS_LOGIN_UI_URL:-http://localhost:4173/sv/auth/login}
       - KRATOS_REGISTRATION_UI_URL=${KRATOS_REGISTRATION_UI_URL:-http://localhost:4173/sv/register}
+      - SELFSERVICE_FLOWS_REGISTRATION_ENABLED=${KRATOS_REGISTRATION_ENABLED:-false}
       - KRATOS_ERROR_UI_URL=${KRATOS_ERROR_UI_URL:-http://localhost:4173/sv/error}
       - KRATOS_SETTINGS_UI_URL=${KRATOS_SETTINGS_UI_URL:-http://localhost:4173/sv/settings}
       - KRATOS_RECOVERY_UI_URL=${KRATOS_RECOVERY_UI_URL:-http://localhost:4173/sv/recovery}

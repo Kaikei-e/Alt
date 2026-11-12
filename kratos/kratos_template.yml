@@ -100,7 +100,7 @@ selfservice:
         default_browser_return_url: ${KRATOS_DEFAULT_BROWSER_RETURN_URL}
 
     registration:
-      enabled: true
+      enabled: false
       lifespan: 30m
       ui_url: ${KRATOS_REGISTRATION_UI_URL}
       after:
