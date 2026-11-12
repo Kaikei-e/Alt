@@ -38,7 +38,7 @@ RUN --mount=type=cache,id=recap-worker-registry,target=/usr/local/cargo/registry
 # 1_Pooling/config.json lives in a subdirectory: copy the directory, never a
 # flat glob, or rust-bert panics inside Config::from_file with no named cause.
 FROM debian:bookworm-slim AS model
-ARG ST_REPO=https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve/main
+ARG ST_REPO=https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve/a50ef00143b4d5391434df20ae11632588ac25be
 ARG MODEL_DIR=/opt/rustbert-models/all-MiniLM-L12-v2
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl && \
