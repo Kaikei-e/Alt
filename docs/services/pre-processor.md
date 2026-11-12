@@ -22,9 +22,9 @@ _Last reviewed: September 5, 2026_
 | HTTP API layer | `handler/summarize_handler.go`, `handler/health_handler.go`, Echo middleware and request logging. |
 | Connect-RPC layer | `connect/v2/server.go`, `connect/v2/preprocessor/handler.go`, HTTP/2 h2c on `CONNECT_PORT` (default `9202`) plus an optional mTLS HTTPS listener on `MTLS_PORT` (default `9443`, `bootstrap/server.go`). |
 | Redis Streams consumer | `consumer/redis_consumer.go`, `consumer/dlq.go`, `consumer/event_handler.go`, consumer group pattern with auto-claiming and DLQ routing after `CONSUMER_MAX_DELIVERIES`. |
-| Repository + driver | `driver/backend_api/` — despite the package name, this is a Connect-RPC client for **alt-data-hub**'s `services.datahub.v1.DataHubService` (articles, feeds, summaries, system user; the move off `alt-backend` is ADR-000954, though the shipped namespace `services.datahub.v1` differs from D7's decided `alt.datahub.v1` — the docs here follow the code, not the ADR text); `driver/*` (pgx pool for `pre-processor-db`: job queue, Inoreader staging tables, notification outbox); `repository/*` (news-creator HTTP calls, `summarize_job_queue` access, `ArticleSummarizerAPIClient`/`StreamArticleSummarizerAPIClient`). |
+| Repository + driver | `driver/backend_api/` — despite the package name, this is a Connect-RPC client for **alt-data-hub**'s `services.datahub.v1.DataHubService` (articles, feeds, summaries; the move off `alt-backend` is ADR-000954, though the shipped namespace `services.datahub.v1` differs from D7's decided `alt.datahub.v1` — the docs here follow the code, not the ADR text); `driver/*` (pgx pool for `pre-processor-db`: job queue, Inoreader staging tables, notification outbox); `repository/*` (news-creator HTTP calls, `summarize_job_queue` access, `ArticleSummarizerAPIClient`/`StreamArticleSummarizerAPIClient`). |
 | Background orchestration | `handler/job_handler.go` launches article sync, backfill, the summarize-queue enqueue sweep, quality check, the queue worker, and the notification relay; `service/*` implements the business logic. |
-| External clients | `repository/external_api_repository.go` wraps `news-creator`, **alt-data-hub**, and `qualitychecker`, while `service/http_client_factory.go` + `utils/http_client_manager.go` centralize HTTP configuration and optional Envoy routing. |
+| External clients | `repository/external_api_repository.go` wraps `news-creator`, outbound article HTTP fetches, and `qualitychecker`, while `service/http_client_factory.go` + `utils/http_client_manager.go` centralize HTTP configuration and optional Envoy routing. |
 | Health & metrics | `service/health_checker.go` vets `news-creator` before jobs run; `service/health_metrics.go` keeps SLA/error rate counters; `metrics/collector.go` runs a dedicated Prometheus listener (`METRICS_PORT`, default `9201`) that startup fails without. |
 | PKI / mTLS | `internal/pki/` handles step-ca enrollment (`bootstrap/lifecycle.go` calls `startEnrollment` before building dependencies) and the shared ops listener (`/health`, `/metrics`) used by all three split alt-backend binaries' peers. |
 
@@ -114,9 +114,9 @@ flowchart TB
     QualityChecker -->|fetch/delete| DataHubAPI
     QualityChecker -->|score| NewsCreator
     ArticleSync -->|inoreader tables| Postgres
-    ArticleSync -->|articles/summaries + system user| DataHubAPI
+    ArticleSync -->|articles/summaries| DataHubAPI
     Backfill -->|inoreader tables| Postgres
-    Backfill -->|articles + system user| DataHubAPI
+    Backfill -->|articles| DataHubAPI
     NotificationRelay -->|claim/mark| Postgres
     NotificationRelay -->|forward notification| DataHubAPI
 
@@ -236,8 +236,8 @@ The Redis Streams consumer enables event-driven article processing, listening fo
 
 | Job | Purpose | Schedule | Notes |
 | --- | --- | --- | --- |
-| Article synchronization (`service/article_sync_service.go`, `StartArticleSyncJob`) | Pulls Inoreader rows newer than an in-process `fetched_at` watermark (`articleSyncService.lastSyncedFetchedAt`, memory only), sanitizes with `utils.Sanitizer`, requires a non-empty title, tags them with the system user, and upserts via alt-data-hub. | Runs immediately on startup, then hourly. | The watermark is not persisted, so every process restart starts the watermark back at zero and re-scans the last 24h (`syncStartupLookback`) once before resuming hourly; later ticks within the same process never re-scan the same window. |
-| Backfill empty feeds (`service/article_sync_service.go`, `StartBackfillJob`) | Calls `BackfillEmptyFeeds`: fetches Inoreader rows for feeds that currently have zero articles, using its own `lastBackfillFetchedAt` cursor, and upserts the valid ones. | Runs immediately on startup, then hourly. | Separate cursor from article sync so backfill progress and steady-state sync never fight over the same watermark. |
+| Article synchronization (`service/article_sync_service.go`, `StartArticleSyncJob`) | Pulls Inoreader rows newer than an in-process `fetched_at` watermark (`articleSyncService.lastSyncedFetchedAt`, memory only), sanitizes with `utils.Sanitizer`, requires a non-empty title, stamps `ARTICLE_SYNC_OWNER_USER_ID`, and upserts via alt-data-hub. | Runs immediately on startup, then hourly when `INOREADER_SYNC=enabled` (does not start when `INOREADER_SYNC=disabled`). | The watermark is not persisted, so every process restart starts the watermark back at zero and re-scans the last 24h (`syncStartupLookback`) once before resuming hourly; later ticks within the same process never re-scan the same window. |
+| Backfill empty feeds (`service/article_sync_service.go`, `StartBackfillJob`) | Calls `BackfillEmptyFeeds`: fetches Inoreader rows for feeds that currently have zero articles, using its own `lastBackfillFetchedAt` cursor, stamps `ARTICLE_SYNC_OWNER_USER_ID`, and upserts the valid ones. | Runs immediately on startup, then hourly when `INOREADER_SYNC=enabled` (does not start when `INOREADER_SYNC=disabled`). | Separate cursor from article sync so backfill progress and steady-state sync never fight over the same watermark. |
 | Enqueue sweep (`handler/job_handler.go`, `StartSummarizationJob`) | Enqueues unsummarized articles into `summarize_job_queue` via `queueWorker.EnqueueUnsummarizedBatch`; defers when the queue worker already has pending jobs, with a forced sweep at least every 30 minutes so a backlog can't be deferred forever. Direct LLM summarization only runs as a fallback if the queue worker were ever nil (it is not, in the wired binary). | Ticker every 5 minutes; primary summarization path is event-driven via `ArticleCreated`/Redis Streams. | Waits for `HealthChecker.WaitForHealthy` before starting. |
 | Quality checker (`service/quality_checker.go`, `StartQualityCheckJob`) | Streams summaries plus source through `qualitychecker.JudgeArticleQuality`, deletes summaries scoring < 7, and optionally re-fetches the article URL for reprocessing. Skips a cycle when the summarize queue has pending jobs ([[000265]] follow-up: both compete for the same news-creator semaphore slot). | Ticker every 5 minutes. | Tracks `RemovedCount` / `RetainedCount` and waits for `news-creator` to be healthy first. |
 | Summarize queue worker (`service/summarize_queue_worker.go`, `StartSummarizeQueueWorker`) | Dequeues pending UUID jobs in batches of 10 (`SUMMARIZE_QUEUE_CONCURRENCY=3` concurrent jobs), sanitizes again, calls `news-creator`, stores each summary via alt-data-hub, and flips job statuses to `running` → `completed`/`failed`. | Ticker every 10 seconds, with a 15s initial / 5m max exponential backoff when `news-creator` reports overload (`ErrServiceOverloaded`/`ErrUpstreamBusy`). | Job loop also waits for `news-creator` health and keeps logging durations. |
@@ -295,6 +295,7 @@ Short articles trigger a Japanese placeholder summary inside `ArticleSummarizerS
 - Parse the `<score>X</score>` response, falling back to regex extraction and an "emergency" parser. `scoreSummaryWithRetry` retries up to three times with 500ms backoff; connection errors are skipped to avoid false deletions.
 - Consider scores < 7 as failures, delete the summary via `summaryRepo.Delete` (alt-data-hub's Connect-RPC, not a local SQL transaction — `article_summaries` is owned by alt-data-hub since ADR-000954), and re-fetch the original article via an HTTP GET with `User-Agent: Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)`.
 - Track `RemovedCount` vs `RetainedCount` to see how often low scores hit production.
+- Once an article accumulates more than `maxLowQualityReattempts` (`2`) completed `summarize_job_queue` rows whose `summary` text was cleared, `ShouldQueueSummarizeJob` permanently skips further enqueue attempts (`low_quality_retries_exhausted`), bounding total attempts to one initial run plus two re-attempts as long as completed queue rows are retained.
 
 ## Article synchronization
 
@@ -302,14 +303,14 @@ Short articles trigger a Japanese placeholder summary inside `ArticleSummarizerS
 
 - Fetches Inoreader rows with `fetched_at` past an in-process `fetched_at` watermark (`lastSyncedFetchedAt`, a plain struct field guarded by `mu` — not written to pre-processor-db), not a fixed rolling window. The 24-hour lookback (`syncStartupLookback`) applies once per process start, before the first run in that process has set a watermark; because the watermark lives only in memory, every restart re-triggers this 24h re-scan. A fixed `since := now - 24h` on every tick would instead re-upsert every Inoreader article once per hourly tick, which is what this design avoids between restarts.
 - Sanitizes with `utils.Sanitizer` and skips articles that lose their title or content.
-- Adds the `system` user (`externalAPIRepo.GetSystemUserID`, a Connect-RPC call to alt-data-hub — no REST endpoint is involved) before calling `articleRepo.UpsertArticles`.
+- Stamps each article with the configured `ARTICLE_SYNC_OWNER_USER_ID` (required as a non-nil UUID when `INOREADER_SYNC=enabled`; when `INOREADER_SYNC=disabled`, neither the article-sync loop nor the empty-feed backfill loop starts) before calling `articleRepo`.
 - Logs every decision so operators can trace why an article was skipped.
 
 ## Data Access Mode (ADR-000241 / ADR-000954)
 
 `bootstrap/wire.go` requires `BACKEND_API_URL` at startup — legacy direct-DB mode for articles/feeds/summaries has been removed entirely; an unset `BACKEND_API_URL` is a fatal startup error.
 
-- `driver/backend_api/` の Connect-RPC クライアントが articles, feeds, article_summaries, system user を操作する。パッケージ名は `backend_api` のままだが、実際の宛先は **alt-data-hub** の `services.datahub.v1.DataHubService`。ADR-000954 で alt-backend の internal API からプロトコル・RPC 名前空間ごと移設された（待受けプロセスもホスト名も alt-data-hub に変わった。ポートは 9443 のまま）。ただし実装済みの名前空間は `services.datahub.v1` であり、D7 が決定した `alt.datahub.v1` ではない — ここではコードに合わせて記述している。
+- `driver/backend_api/` の Connect-RPC クライアントが articles, feeds, article_summaries を操作する。パッケージ名は `backend_api` のままだが、実際の宛先は **alt-data-hub** の `services.datahub.v1.DataHubService`。ADR-000954 で alt-backend の internal API からプロトコル・RPC 名前空間ごと移設された（待受けプロセスもホスト名も alt-data-hub に変わった。ポートは 9443 のまま）。ただし実装済みの名前空間は `services.datahub.v1` であり、D7 が決定した `alt.datahub.v1` ではない — ここではコードに合わせて記述している。
 - 認証は Docker Secrets のトークンではなく **mTLS（トランスポート層）**。`MTLS_ENFORCE=true` のとき `MTLS_CERT_FILE` / `MTLS_KEY_FILE` / `MTLS_CA_FILE` の leaf 証明書でハンドシェイクし、`BACKEND_API_MTLS_URL` / `BACKEND_MTLS_SERVER_NAME` が実際に接続する alt-data-hub の URL を上書きする。`readSecret()` ヘルパーはコードに残っているが、どこからも呼ばれていない（デッドコード）。
 
 **注意**: `summarize_job_queue`・Inoreader テーブル（`inoreader_articles` 等）・`notification_outbox` への DB 直接アクセス（`pre-processor-db`）は維持。これらは pre-processor 固有のテーブルであり alt-data-hub の管轄外。
@@ -318,7 +319,7 @@ Short articles trigger a Japanese placeholder summary inside `ArticleSummarizerS
 
 - **pre-processor-db** (Postgres) hosts `summarize_job_queue`、Inoreader テーブル (`inoreader_articles` 等)、`notification_outbox`。articles, feeds, article_summaries は alt-data-hub 経由でアクセス。Repositories live under `repository/` and rely on `driver/db_*` helpers.
 - **news-creator** (`NEWS_CREATOR_HOST`, default `http://news-creator:11434`): summarization (`/api/v1/summarize`), streaming, and quality scoring (`/api/generate`). `HealthChecker` polls `/health`, requires `models` array, and gates job startup.
-- **alt-data-hub** (via `BACKEND_API_URL`/`BACKEND_API_MTLS_URL`, mTLS on `:9443`) is the destination for every article/feed/summary/system-user call, including `externalAPIRepo.GetSystemUserID`. `ALT_BACKEND_HOST` (default `http://alt-backend:9000`) still exists in config but is not used on this path — it names alt-backend's plaintext operator listener, which carries no data-plane RPCs.
+- **alt-data-hub** (via `BACKEND_API_URL`/`BACKEND_API_MTLS_URL`, mTLS on `:9443`) is the destination for every article/feed/summary call. `ALT_BACKEND_HOST` (default `http://alt-backend:9000`) still exists in config but is not used on this path — it names alt-backend's plaintext operator listener, which carries no data-plane RPCs.
 - **Redis Streams** (`REDIS_STREAMS_URL`, default `redis://redis-streams:6379`): event-driven article processing when `CONSUMER_ENABLED=true`.
 - **Envoy** (optional when `USE_ENVOY_PROXY=true`): handled by `service/http_client_factory.go`, which switches between direct and proxy clients for job loops and health checks.
 - **Rate limiting & retries**: `utils.HostRateLimiter` (`utils.DefaultHostRateLimiter`) enforces at least 5s between hits to the same host; `utils/errors.RetryPolicy` + `RetryExecutor.Execute` wrap HTTP calls with exponential backoff.
@@ -340,7 +341,9 @@ Short articles trigger a Japanese placeholder summary inside `ArticleSummarizerS
 | `BACKEND_API_URL` | alt-data-hub's Connect-RPC address (required — legacy direct-DB mode has been removed; startup fails if unset) | - |
 | `BACKEND_API_MTLS_URL`, `BACKEND_MTLS_SERVER_NAME` | Override URL/SNI used when `MTLS_ENFORCE=true` (compose points these at `https://alt-data-hub:9443`) | - |
 | `MTLS_ENFORCE` | Present the pre-processor leaf cert (via `MTLS_CERT_FILE`/`MTLS_KEY_FILE`/`MTLS_CA_FILE`) on outbound calls to alt-data-hub | `false` in code; compose sets it to `true`. |
-| `ALT_BACKEND_HOST`, `ALT_BACKEND_TIMEOUT` | Legacy config field; not used by `GetSystemUserID` or any other call today (that path goes over the `BACKEND_API_URL`/mTLS client to alt-data-hub) | `http://alt-backend:9000`, `10s`. |
+| `INOREADER_SYNC` | Required explicit gate (`enabled` or `disabled`) for the Inoreader article-sync and empty-feed backfill loops; startup fails when unset or unrecognized | - |
+| `ARTICLE_SYNC_OWNER_USER_ID` | Non-nil user UUID stamped onto synced and backfilled Inoreader articles (required when `INOREADER_SYNC=enabled`; optional when `INOREADER_SYNC=disabled`, validated if non-empty) | - |
+| `ALT_BACKEND_HOST`, `ALT_BACKEND_TIMEOUT` | Legacy config field; not read by any request path today | `http://alt-backend:9000`, `10s`. |
 | `REDIS_STREAMS_URL` | Redis connection URL for event consumer | `redis://redis-streams:6379` |
 | `CONSUMER_GROUP` | Consumer group name for Redis Streams | `pre-processor-group` |
 | `CONSUMER_NAME` | Consumer instance name within the group | `pre-processor-1` |
@@ -397,7 +400,7 @@ Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowle
 ## Known constraints / TODOs
 
 - Feed processing: the `feedProcessorService` stub (`service/feed_processor.go`, "disabled for ethical compliance") still compiles but is no longer constructed or wired into any job in `bootstrap/wire.go` — it is unreachable dead code today, not an actively-gated loop.
-- `ALT_BACKEND_HOST`/`ALT_BACKEND_TIMEOUT` remain in `config/types.go` but are not read on the path that used to need them (`GetSystemUserID` now goes over the `BACKEND_API_URL`/mTLS client to alt-data-hub); removing the field or wiring it up is unresolved.
+- `ALT_BACKEND_HOST`/`ALT_BACKEND_TIMEOUT` remain in `config/types.go` but are not read by any path today (synced article ownership is configured via `ARTICLE_SYNC_OWNER_USER_ID`); removing the field or wiring it up is unresolved.
 - `readSecret()` (`bootstrap/wire.go`) is defined but has no callers — a leftover from the token-based auth this service used before mTLS became the transport-layer control.
 - `HTTP_MIN_CONTENT_LENGTH` is declared and validated in config but nothing reads `cfg.HTTP.MinContentLength` on a request path.
 - `DLQConfig` (`DLQ_QUEUE_NAME`, `DLQ_TIMEOUT`, `DLQ_RETRY_ENABLED`, `config/types.go`) is parsed by `config/load.go` on every startup but `cfg.DLQ` has no reader anywhere else in the module — a fourth orphaned config struct alongside the three above (the Redis-consumer DLQ actually used by `consumer/dlq.go` is the separate `CONSUMER_DLQ_STREAM`/`CONSUMER_MAX_DELIVERIES` pair, already documented above).
