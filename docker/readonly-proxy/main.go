@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -61,8 +62,9 @@ const (
 )
 
 var (
-	containerListRegex = regexp.MustCompile(`^/(v[0-9]+\.[0-9]+/)?containers/json$`)
-	containerLogsRegex = regexp.MustCompile(`^/(v[0-9]+\.[0-9]+/)?containers/([a-zA-Z0-9_.-]+)/logs$`)
+	containerListRegex   = regexp.MustCompile(`^/(v[0-9]+\.[0-9]+/)?containers/json$`)
+	fullContainerIDRegex = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	containerLogsRegex   = regexp.MustCompile(`^/(v[0-9]+\.[0-9]+/)?containers/([a-zA-Z0-9_.-]+)/logs$`)
 )
 
 // scopedListQuery rewrites a container-list query so only containers of the
@@ -88,9 +90,14 @@ func scopedListQuery(q url.Values, project string) url.Values {
 	return out
 }
 
-// logsAllowed asks the daemon whether the container id belongs to the project
+// logsAllowed requires a full container id so the daemon cannot resolve the
+// segment to a different container by name or id prefix than the one checked.
+// It asks the daemon whether the container id belongs to the project
 // and carries the opt-in label.
 func logsAllowed(client *http.Client, base *url.URL, id, project string) bool {
+	if !fullContainerIDRegex.MatchString(id) {
+		return false
+	}
 	filters, _ := json.Marshal(map[string][]string{
 		"id":    {id},
 		"label": {projectLabelKey + "=" + project, optInLabelKey},
@@ -114,7 +121,7 @@ func logsAllowed(client *http.Client, base *url.URL, id, project string) bool {
 		return false
 	}
 	for _, c := range found {
-		if strings.HasPrefix(c.ID, id) {
+		if c.ID == id {
 			return true
 		}
 	}
@@ -179,6 +186,19 @@ func runHealthcheck(addr string) int {
 	return 0
 }
 
+func projectFromEnv(getenv func(string) string) (string, error) {
+	project := strings.TrimSpace(getenv("ALLOWED_COMPOSE_PROJECT"))
+	if project == "" {
+		return "", errors.New("ALLOWED_COMPOSE_PROJECT is required")
+	}
+	return project, nil
+}
+
+// Only the header read is bounded: a write timeout would cut long-lived log follow streams.
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		os.Exit(runHealthcheck("127.0.0.1:2375"))
@@ -209,16 +229,16 @@ func main() {
 		transport = http.DefaultTransport
 	}
 
-	project := os.Getenv("ALLOWED_COMPOSE_PROJECT")
-	if project == "" {
-		log.Fatal("ALLOWED_COMPOSE_PROJECT is required")
+	project, err := projectFromEnv(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	handler := newProxyHandler(parsedURL, transport, project)
 
 	addr := ":2375"
 	log.Printf("Starting read-only proxy on %s, forwarding to %s (compose project %q)", addr, targetURL, project)
-	if err := http.ListenAndServe(addr, handler); err != nil {
+	if err := newServer(addr, handler).ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
