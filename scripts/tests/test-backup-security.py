@@ -25,6 +25,127 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
+DOCKER_MOCK_TEMPLATE = r"""#!/bin/bash
+echo "docker $*" >> "@LOG@"
+args="$*"
+if [[ "$args" =~ exec\ alt-backup\ restic ]]; then
+    if [[ "$args" =~ \ snapshots\  ]]; then
+        if [[ "$args" =~ --json ]]; then
+            if [[ "$args" =~ --tag\ scheduled ]]; then
+                if [[ -n "@VOLUME_ID@" ]]; then
+                    echo '[{"short_id":"@VOLUME_ID@","id":"@VOLUME_ID@full","time":"2026-10-02T12:00:00Z"}]'
+                else
+                    echo '[]'
+                fi
+            else
+                echo '[{"short_id":"pgsnap1","time":"2026-10-03T12:00:00Z"}]'
+            fi
+        fi
+        exit 0
+    fi
+    if [[ "$args" =~ \ dump\  ]]; then
+        if [[ "$args" =~ /postgres/([a-z-]+)\.dump ]]; then
+            db="${BASH_REMATCH[1]}"
+            for d in @DUMP_DBS@; do
+                if [[ "$d" == "$db" ]]; then
+                    echo "pgdump:$db"
+                    exit 0
+                fi
+            done
+        fi
+        echo "Fatal: no matching snapshot" >&2
+        exit 1
+    fi
+    if [[ "$args" =~ \ restore\  ]]; then
+        target=""
+        a=("$@")
+        for ((i=0; i<${#a[@]}; i++)); do
+            if [[ "${a[i]}" == "--target" ]]; then target="${a[i+1]}"; fi
+        done
+        if [[ -n "$target" ]]; then
+            rel="${target#/}"
+            mkdir -p "@CONTAINER_ROOT@/$rel/data"
+            touch "@CONTAINER_ROOT@/$rel/data/vol1"
+        fi
+        exit @RESTORE_RC@
+    fi
+    exit 0
+fi
+if [[ "$args" =~ mktemp ]]; then
+    echo "/tmp/alt-restore-verify-ctr-test$RANDOM"
+    exit 0
+fi
+if [[ "$1" == "cp" ]]; then
+    if [[ @CP_RC@ -ne 0 ]]; then echo "docker cp: error" >&2; exit @CP_RC@; fi
+    if [[ "$2" =~ ^[^:]+:(.*) ]]; then
+        p="${BASH_REMATCH[1]}"; p="${p%/}"; p="${p%/.}"
+        mkdir -p "$3"
+        cp -r "@CONTAINER_ROOT@/${p#/}/." "$3/"
+        exit 0
+    fi
+    exit 1
+fi
+if [[ "$args" =~ pg_isready ]]; then exit 0; fi
+if [[ "$args" =~ pg_restore ]]; then
+    echo "pg_restore stdin: $(cat)" >> "@LOG@"
+    exit @PG_RESTORE_RC@
+fi
+if [[ "$args" =~ information_schema.tables ]]; then
+    echo "@TABLE_COUNT@"
+    exit 0
+fi
+exit 0
+"""
+
+
+def run_restore_verify(
+    script_path,
+    tmpdir,
+    extra_args,
+    dump_dbs="alt-db kratos-db recap-db rag-db pact-db",
+    volume_id="volsnap1",
+    restore_rc=0,
+    cp_rc=0,
+    pg_restore_rc=0,
+    table_count=10,
+):
+    mock_bin = Path(tmpdir) / "bin"
+    mock_bin.mkdir()
+    mock_log = Path(tmpdir) / "mock_docker.log"
+    backup_root = Path(tmpdir) / "backups"
+    backup_root.mkdir()
+    container_root = Path(tmpdir) / "container_fs"
+    container_root.mkdir()
+    body = DOCKER_MOCK_TEMPLATE
+    for key, value in {
+        "@LOG@": str(mock_log),
+        "@VOLUME_ID@": volume_id,
+        "@DUMP_DBS@": dump_dbs,
+        "@CONTAINER_ROOT@": str(container_root),
+        "@RESTORE_RC@": str(restore_rc),
+        "@CP_RC@": str(cp_rc),
+        "@PG_RESTORE_RC@": str(pg_restore_rc),
+        "@TABLE_COUNT@": str(table_count),
+    }.items():
+        body = body.replace(key, value)
+    docker = mock_bin / "docker"
+    docker.write_text(body)
+    docker.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{mock_bin}:{env['PATH']}"
+    env["BACKUP_ROOT"] = str(backup_root)
+    env["LOG_FILE"] = str(backup_root / "restore.log")
+    env["METRICS_DIR"] = str(backup_root / "metrics")
+    env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
+    env.pop("IN_CONTAINER", None)
+    res = subprocess.run(
+        ["bash", str(script_path), *extra_args], env=env, capture_output=True, text=True, timeout=30
+    )
+    return res, mock_log.read_text() if mock_log.exists() else ""
+
+
+
 class TestBackupDockerfile(unittest.TestCase):
     """Verify docker/backup/Dockerfile specifications."""
 
@@ -135,928 +256,124 @@ class TestRestoreVerifyScript(unittest.TestCase):
         self.assertIn("must be run on the host", res.stderr)
 
     def test_host_flow_mock_docker(self):
-        """restore-verify.sh runs on host using Docker CLI to spin up temp verification containers."""
+        """Dry-run on the host plans the volume check and per-database dump fetches without restoring anything."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_bin = Path(tmpdir) / "bin"
-            mock_bin.mkdir()
-            mock_log = Path(tmpdir) / "mock_docker.log"
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            log_file = backup_root / "restore.log"
-            metrics_dir = backup_root / "metrics"
-
-            docker_script = mock_bin / "docker"
-            docker_script.write_text(f"""#!/bin/bash
-echo "docker $*" >> "{mock_log}"
-if [[ "$*" =~ "snapshots" ]]; then
-    echo '[{{"short_id":"testsnap123","time":"2026-10-02T12:00:00Z"}}]'
-    exit 0
-fi
-if [[ "$*" =~ "pg_isready" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "information_schema.tables" ]]; then
-    echo "12"
-    exit 0
-fi
-exit 0
-""")
-            docker_script.chmod(0o755)
-
-            jq_script = mock_bin / "jq"
-            jq_script.write_text("""#!/bin/bash
-if [[ "$1" == "length" ]]; then
-    echo "1"
-elif [[ "$1" =~ "short_id" ]]; then
-    echo "testsnap123"
-else
-    echo "1"
-fi
-""")
-            jq_script.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{mock_bin}:{env['PATH']}"
-            env["BACKUP_ROOT"] = str(backup_root)
-            env["LOG_FILE"] = str(log_file)
-            env["METRICS_DIR"] = str(metrics_dir)
-            env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
-            env.pop("IN_CONTAINER", None)
-
-            # Dry-run execution
-            res = subprocess.run(
-                ["bash", str(self.script_path), "--dry-run", "--skip-cleanup"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            self.assertEqual(res.returncode, 0, f"Host restore verification dry-run failed: {res.stderr}\n{res.stdout}")
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--dry-run", "--skip-cleanup"])
+            self.assertEqual(res.returncode, 0, f"{res.stderr}\n{res.stdout}")
             self.assertIn("Restore verification PASSED", res.stdout)
+            self.assertNotIn("pg_restore", log)
 
-    def test_pg_restore_failure_with_valid_archive_fails_closed(self):
-        """pg_restore execution failure MUST NOT falsely succeed even if archive header is parseable (--list)."""
+    def test_volume_snapshot_selected_by_scheduled_tag(self):
+        """The /data check uses the latest snapshot carrying the volume backup tag, not the newest snapshot of any kind."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_bin = Path(tmpdir) / "bin"
-            mock_bin.mkdir()
-            mock_log = Path(tmpdir) / "mock_docker.log"
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            log_file = backup_root / "restore.log"
-            metrics_dir = backup_root / "metrics"
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"])
+            self.assertEqual(res.returncode, 0, f"{res.stdout}\n{res.stderr}")
+            self.assertIn("snapshots --tag scheduled --json", log)
+            self.assertIn("Using snapshot: volsnap1", res.stdout)
+            self.assertIn("restore volsnap1", log)
 
-            container_root = Path(tmpdir) / "container_fs"
-            container_root.mkdir()
+    def test_dumps_come_from_latest_good_pg_snapshot_per_database(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"])
+            self.assertEqual(res.returncode, 0, f"{res.stdout}\n{res.stderr}")
+            for db in ["alt-db", "kratos-db", "recap-db", "rag-db", "pact-db"]:
+                self.assertIn(f"dump latest /postgres/{db}.dump --tag pg-{db}", log)
+                self.assertIn(f"pg_restore stdin: pgdump:{db}", log)
+                self.assertIn(f"PostgreSQL restore verification passed for {db}", res.stdout)
 
-            docker_script = mock_bin / "docker"
-            docker_script.write_text(f"""#!/bin/bash
-echo "docker $*" >> "{mock_log}"
-if [[ "$*" =~ "snapshots" ]]; then
-    echo '[{{"short_id":"testsnap123","time":"2026-10-02T12:00:00Z"}}]'
-    exit 0
-fi
-if [[ "$*" =~ "mktemp" ]]; then
-    dir="/tmp/alt-restore-verify-ctr-test$RANDOM"
-    echo "$dir"
-    exit 0
-fi
-if [[ "$*" =~ "restore" && "$*" =~ "--target" ]]; then
-    target=""
-    args=("$@")
-    for ((i=0; i<${{#args[@]}}; i++)); do
-        if [[ "${{args[i]}}" == "--target" && $((i+1)) -lt ${{#args[@]}} ]]; then
-            target="${{args[i+1]}}"
-        fi
-    done
-    if [[ -n "$target" ]]; then
-        rel="${{target#/}}"
-        ctr_target="{container_root}/$rel"
-        mkdir -p "$ctr_target/data"
-        touch "$ctr_target/data/vol1"
-        # Create dump file inside restored snapshot in container namespace
-        mkdir -p "$ctr_target/backups/postgres"
-        echo "fake dump content" > "$ctr_target/backups/postgres/alt-db-20261002.dump"
-        echo "fake kratos dump" > "$ctr_target/backups/postgres/kratos-db-20261002.dump"
-    fi
-    exit 0
-fi
-if [[ "$1" == "cp" ]]; then
-    src="$2"
-    dest="$3"
-    if [[ "$src" =~ ^[^:]+:(.*) ]]; then
-        ctr_path="${{BASH_REMATCH[1]}}"
-        ctr_path="${{ctr_path%/}}"
-        ctr_path="${{ctr_path%/.}}"
-        rel="${{ctr_path#/}}"
-        real_src="{container_root}/$rel"
-        mkdir -p "$dest"
-        cp -r "$real_src/." "$dest/"
-        exit 0
-    fi
-    exit 1
-fi
-if [[ "$*" =~ "pg_isready" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "pg_restore" ]]; then
-    if [[ "$*" =~ "--list" ]]; then
-        # Archive header parse succeeds!
-        echo "; Archive created by pg_dump"
-        exit 0
-    fi
-    # BUT actual data restore execution fails!
-    echo "pg_restore: error: could not execute query: table corrupted" >&2
-    exit 1
-fi
-if [[ "$*" =~ "information_schema.tables" ]]; then
-    echo "0"
-    exit 0
-fi
-exit 0
-""")
-            docker_script.chmod(0o755)
+    def test_optional_database_without_dump_snapshot_is_skipped(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"], dump_dbs="alt-db kratos-db")
+            self.assertEqual(res.returncode, 0, f"{res.stdout}\n{res.stderr}")
+            self.assertIn("PostgreSQL restore verification passed for alt-db", res.stdout)
+            self.assertNotIn("pg_restore stdin: pgdump:rag-db", log)
 
-            jq_script = mock_bin / "jq"
-            jq_script.write_text("""#!/bin/bash
-if [[ "$1" == "length" ]]; then
-    echo "1"
-elif [[ "$1" =~ "short_id" ]]; then
-    echo "testsnap123"
-else
-    echo "1"
-fi
-""")
-            jq_script.chmod(0o755)
+    def test_required_database_without_dump_snapshot_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"], dump_dbs="alt-db")
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Restore verification FAILED", res.stdout + res.stderr)
 
-            env = os.environ.copy()
-            env["PATH"] = f"{mock_bin}:{env['PATH']}"
-            env["BACKUP_ROOT"] = str(backup_root)
-            env["LOG_FILE"] = str(log_file)
-            env["METRICS_DIR"] = str(metrics_dir)
-            env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
-            env.pop("IN_CONTAINER", None)
-
-            res = subprocess.run(
-                ["bash", str(self.script_path), "--skip-cleanup"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=15,
+    def test_explicit_snapshot_id_selects_the_volume_snapshot_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log = run_restore_verify(
+                self.script_path, tmpdir, ["--snapshot", "customsnap99", "--skip-cleanup"], volume_id="customsnap99"
             )
-            self.assertNotEqual(res.returncode, 0, "Restore must FAIL when pg_restore fails, even if --list passes")
+            self.assertEqual(res.returncode, 0, f"{res.stdout}\n{res.stderr}")
+            self.assertIn("Using snapshot: customsnap99", res.stdout)
+            self.assertIn("restore customsnap99", log)
+            self.assertIn("dump latest /postgres/alt-db.dump --tag pg-alt-db", log)
+
+    def test_explicit_snapshot_id_outside_volume_snapshots_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--snapshot", "pgsnap1", "--skip-cleanup"])
+            self.assertNotEqual(res.returncode, 0)
+            self.assertNotIn("restore pgsnap1", log)
+
+    def test_no_volume_snapshot_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"], volume_id="")
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Restore verification FAILED", res.stdout + res.stderr)
+
+    def test_pg_restore_failure_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"], pg_restore_rc=1)
+            self.assertNotEqual(res.returncode, 0, "Restore must FAIL when pg_restore fails")
             self.assertIn("Restore verification FAILED", res.stdout + res.stderr)
             self.assertNotIn("PostgreSQL dump format valid", res.stdout)
 
-    def test_restore_uses_matching_pg18_images(self):
-        """restore-verify.sh must use PG18 images matching Compose: pgvector for rag-db, alt-recap-db with pg_cron flags for recap-db, alpine for others, and --no-owner --no-privileges."""
+    def test_restore_requires_table_count_greater_than_zero(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_bin = Path(tmpdir) / "bin"
-            mock_bin.mkdir()
-            mock_log = Path(tmpdir) / "mock_docker.log"
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            log_file = backup_root / "restore.log"
-            metrics_dir = backup_root / "metrics"
-            container_root = Path(tmpdir) / "container_fs"
-            container_root.mkdir()
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"], table_count=0)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("zero public tables restored", res.stdout + res.stderr)
 
-            docker_script = mock_bin / "docker"
-            docker_script.write_text(f"""#!/bin/bash
-echo "docker $*" >> "{mock_log}"
-if [[ "$*" =~ "snapshots" ]]; then
-    echo '[{{"short_id":"testsnap123","time":"2026-10-02T12:00:00Z"}}]'
-    exit 0
-fi
-if [[ "$*" =~ "mktemp" ]]; then
-    dir="/tmp/alt-restore-verify-ctr-test$RANDOM"
-    echo "$dir"
-    exit 0
-fi
-if [[ "$*" =~ "restore" && "$*" =~ "--target" ]]; then
-    target=""
-    args=("$@")
-    for ((i=0; i<${{#args[@]}}; i++)); do
-        if [[ "${{args[i]}}" == "--target" && $((i+1)) -lt ${{#args[@]}} ]]; then
-            target="${{args[i+1]}}"
-        fi
-    done
-    if [[ -n "$target" ]]; then
-        rel="${{target#/}}"
-        ctr_target="{container_root}/$rel"
-        mkdir -p "$ctr_target/data"
-        touch "$ctr_target/data/vol1"
-        mkdir -p "$ctr_target/backups/postgres"
-        for db in alt-db kratos-db recap-db rag-db pact-db; do
-            echo "dump $db" > "$ctr_target/backups/postgres/${{db}}-20261002.dump"
-        done
-    fi
-    exit 0
-fi
-if [[ "$1" == "cp" ]]; then
-    src="$2"
-    dest="$3"
-    if [[ "$src" =~ ^[^:]+:(.*) ]]; then
-        ctr_path="${{BASH_REMATCH[1]}}"
-        ctr_path="${{ctr_path%/}}"
-        ctr_path="${{ctr_path%/.}}"
-        rel="${{ctr_path#/}}"
-        real_src="{container_root}/$rel"
-        mkdir -p "$dest"
-        cp -r "$real_src/." "$dest/"
-        exit 0
-    fi
-    exit 1
-fi
-if [[ "$*" =~ "pg_isready" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "pg_restore" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "information_schema.tables" ]]; then
-    echo "15"
-    exit 0
-fi
-exit 0
-""")
-            docker_script.chmod(0o755)
+    def test_failed_volume_restore_skips_pg_verify(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"], restore_rc=1)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Restore verification FAILED", res.stdout + res.stderr)
+            self.assertNotIn("pg_restore", log)
 
-            jq_script = mock_bin / "jq"
-            jq_script.write_text("""#!/bin/bash
-if [[ "$1" == "length" ]]; then
-    echo "1"
-elif [[ "$1" =~ "short_id" ]]; then
-    echo "testsnap123"
-else
-    echo "1"
-fi
-""")
-            jq_script.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{mock_bin}:{env['PATH']}"
-            env["BACKUP_ROOT"] = str(backup_root)
-            env["LOG_FILE"] = str(log_file)
-            env["METRICS_DIR"] = str(metrics_dir)
-            env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
-            env.pop("IN_CONTAINER", None)
-
-            res = subprocess.run(
-                ["bash", str(self.script_path), "--skip-cleanup"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            self.assertEqual(res.returncode, 0, f"Restore verification should pass: {res.stdout}\n{res.stderr}")
-
-            log_content = mock_log.read_text()
-            # Must NOT use postgres:17-alpine
-            self.assertNotIn("postgres:17-alpine", log_content, "Must not use postgres:17-alpine")
-            # Must use PG18 alpine for standard dbs
-            self.assertIn("postgres:18.6-alpine", log_content)
-            # Must use actual built Compose image alt-recap-db (NOT plain bookworm missing pg_cron)
-            self.assertNotIn("postgres:18.6-bookworm", log_content, "Must NOT use plain bookworm lacking pg_cron")
-            self.assertIn("alt-recap-db", log_content, "Must use actual built Compose image alt-recap-db")
-            # Must configure pg_cron flags to preload and disable active restored jobs
-            self.assertIn("shared_preload_libraries=pg_cron", log_content)
-            self.assertIn("cron.database_name=verify_db", log_content)
-            self.assertIn("cron.launch_active_jobs=off", log_content)
-            # Must use PG18 volume mount /var/lib/postgresql (not legacy /var/lib/postgresql/data)
-            self.assertNotIn("/var/lib/postgresql/data", log_content, "Must not use legacy /var/lib/postgresql/data mount")
-            self.assertIn(":/var/lib/postgresql", log_content, "Must use PG18 /var/lib/postgresql mount")
-            # Must include --no-owner and --no-privileges in pg_restore
-            self.assertIn("--no-owner", log_content, "pg_restore must include --no-owner")
-            self.assertIn("--no-privileges", log_content, "pg_restore must include --no-privileges")
+    def test_failed_docker_cp_skips_pg_verify(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"], cp_rc=1)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Restore verification FAILED", res.stdout + res.stderr)
+            self.assertNotIn("pg_restore", log)
 
     def test_container_namespace_docker_cp(self):
-        """restore-verify.sh must docker cp restored data from container namespace to host temp dir."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_bin = Path(tmpdir) / "bin"
-            mock_bin.mkdir()
-            mock_log = Path(tmpdir) / "mock_docker.log"
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            log_file = backup_root / "restore.log"
-            metrics_dir = backup_root / "metrics"
-            container_root = Path(tmpdir) / "container_fs"
-            container_root.mkdir()
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"])
+            self.assertEqual(res.returncode, 0, f"{res.stdout}\n{res.stderr}")
+            self.assertIn("docker cp alt-backup:", log)
 
-            docker_script = mock_bin / "docker"
-            docker_script.write_text(f"""#!/bin/bash
-echo "docker $*" >> "{mock_log}"
-if [[ "$*" =~ "snapshots" ]]; then
-    echo '[{{"short_id":"testsnap123","time":"2026-10-02T12:00:00Z"}}]'
-    exit 0
-fi
-if [[ "$*" =~ "mktemp" ]]; then
-    dir="/tmp/alt-restore-verify-ctr-test$RANDOM"
-    echo "$dir"
-    exit 0
-fi
-if [[ "$*" =~ "restore" && "$*" =~ "--target" ]]; then
-    target=""
-    args=("$@")
-    for ((i=0; i<${{#args[@]}}; i++)); do
-        if [[ "${{args[i]}}" == "--target" && $((i+1)) -lt ${{#args[@]}} ]]; then
-            target="${{args[i+1]}}"
-        fi
-    done
-    if [[ -n "$target" ]]; then
-        rel="${{target#/}}"
-        ctr_target="{container_root}/$rel"
-        mkdir -p "$ctr_target/data"
-        touch "$ctr_target/data/vol1"
-        mkdir -p "$ctr_target/backups/postgres"
-        echo "dump alt" > "$ctr_target/backups/postgres/alt-db-20261002.dump"
-        echo "dump kratos" > "$ctr_target/backups/postgres/kratos-db-20261002.dump"
-    fi
-    exit 0
-fi
-if [[ "$1" == "cp" ]]; then
-    src="$2"
-    dest="$3"
-    if [[ "$src" =~ ^[^:]+:(.*) ]]; then
-        ctr_path="${{BASH_REMATCH[1]}}"
-        ctr_path="${{ctr_path%/}}"
-        ctr_path="${{ctr_path%/.}}"
-        rel="${{ctr_path#/}}"
-        real_src="{container_root}/$rel"
-        mkdir -p "$dest"
-        cp -r "$real_src/." "$dest/"
-        exit 0
-    fi
-    exit 1
-fi
-if [[ "$*" =~ "pg_isready" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "pg_restore" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "information_schema.tables" ]]; then
-    echo "10"
-    exit 0
-fi
-exit 0
-""")
-            docker_script.chmod(0o755)
-
-            jq_script = mock_bin / "jq"
-            jq_script.write_text("""#!/bin/bash
-if [[ "$1" == "length" ]]; then
-    echo "1"
-elif [[ "$1" =~ "short_id" ]]; then
-    echo "testsnap123"
-else
-    echo "1"
-fi
-""")
-            jq_script.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{mock_bin}:{env['PATH']}"
-            env["BACKUP_ROOT"] = str(backup_root)
-            env["LOG_FILE"] = str(log_file)
-            env["METRICS_DIR"] = str(metrics_dir)
-            env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
-            env.pop("IN_CONTAINER", None)
-
-            res = subprocess.run(
-                ["bash", str(self.script_path), "--skip-cleanup"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            self.assertEqual(res.returncode, 0, f"Restore must succeed when docker cp copies container output: {res.stdout}\n{res.stderr}")
-            log_content = mock_log.read_text()
-            self.assertIn("docker cp alt-backup:", log_content, "Must invoke docker cp from alt-backup container")
-
-    def test_restore_reads_snapshot_target_not_live_dir(self):
-        """restore-verify.sh must inspect dumps extracted into RESTORE_DIR, not live POSTGRES_BACKUP_DIR."""
+    def test_restore_uses_matching_pg18_images(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_bin = Path(tmpdir) / "bin"
-            mock_bin.mkdir()
-            mock_log = Path(tmpdir) / "mock_docker.log"
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            log_file = backup_root / "restore.log"
-            metrics_dir = backup_root / "metrics"
-            live_pg_dir = backup_root / "postgres"
-            live_pg_dir.mkdir()
-            # Leave live_pg_dir completely empty!
-
-            container_root = Path(tmpdir) / "container_fs"
-            container_root.mkdir()
-
-            docker_script = mock_bin / "docker"
-            docker_script.write_text(f"""#!/bin/bash
-echo "docker $*" >> "{mock_log}"
-if [[ "$*" =~ "snapshots" ]]; then
-    echo '[{{"short_id":"testsnap123","time":"2026-10-02T12:00:00Z"}}]'
-    exit 0
-fi
-if [[ "$*" =~ "mktemp" ]]; then
-    dir="/tmp/alt-restore-verify-ctr-test$RANDOM"
-    echo "$dir"
-    exit 0
-fi
-if [[ "$*" =~ "restore" && "$*" =~ "--target" ]]; then
-    target=""
-    args=("$@")
-    for ((i=0; i<${{#args[@]}}; i++)); do
-        if [[ "${{args[i]}}" == "--target" && $((i+1)) -lt ${{#args[@]}} ]]; then
-            target="${{args[i+1]}}"
-        fi
-    done
-    if [[ -n "$target" ]]; then
-        rel="${{target#/}}"
-        ctr_target="{container_root}/$rel"
-        mkdir -p "$ctr_target/data"
-        touch "$ctr_target/data/vol1"
-        mkdir -p "$ctr_target/backups/postgres"
-        # Write dumps ONLY into restored target directory!
-        echo "alt dump" > "$ctr_target/backups/postgres/alt-db-20261002.dump"
-        echo "kratos dump" > "$ctr_target/backups/postgres/kratos-db-20261002.dump"
-    fi
-    exit 0
-fi
-if [[ "$1" == "cp" ]]; then
-    src="$2"
-    dest="$3"
-    if [[ "$src" =~ ^[^:]+:(.*) ]]; then
-        ctr_path="${{BASH_REMATCH[1]}}"
-        ctr_path="${{ctr_path%/}}"
-        ctr_path="${{ctr_path%/.}}"
-        rel="${{ctr_path#/}}"
-        real_src="{container_root}/$rel"
-        mkdir -p "$dest"
-        cp -r "$real_src/." "$dest/"
-        exit 0
-    fi
-    exit 1
-fi
-if [[ "$*" =~ "pg_isready" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "pg_restore" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "information_schema.tables" ]]; then
-    echo "10"
-    exit 0
-fi
-exit 0
-""")
-            docker_script.chmod(0o755)
-
-            jq_script = mock_bin / "jq"
-            jq_script.write_text("""#!/bin/bash
-if [[ "$1" == "length" ]]; then
-    echo "1"
-elif [[ "$1" =~ "short_id" ]]; then
-    echo "testsnap123"
-else
-    echo "1"
-fi
-""")
-            jq_script.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{mock_bin}:{env['PATH']}"
-            env["BACKUP_ROOT"] = str(backup_root)
-            env["LOG_FILE"] = str(log_file)
-            env["METRICS_DIR"] = str(metrics_dir)
-            env["POSTGRES_BACKUP_DIR"] = str(live_pg_dir)
-            env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
-            env.pop("IN_CONTAINER", None)
-
-            res = subprocess.run(
-                ["bash", str(self.script_path), "--skip-cleanup"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            self.assertEqual(res.returncode, 0, f"Restore must succeed reading dumps extracted from snapshot: {res.stdout}\n{res.stderr}")
-            self.assertIn("PostgreSQL restore verification passed for alt-db", res.stdout)
-            self.assertIn("PostgreSQL restore verification passed for kratos-db", res.stdout)
+            res, log = run_restore_verify(self.script_path, tmpdir, ["--skip-cleanup"])
+            self.assertEqual(res.returncode, 0, f"{res.stdout}\n{res.stderr}")
+            self.assertNotIn("postgres:17-alpine", log)
+            self.assertIn("postgres:18.6-alpine", log)
+            self.assertNotIn("postgres:18.6-bookworm", log)
+            self.assertIn("alt-recap-db", log)
+            self.assertIn("shared_preload_libraries=pg_cron", log)
+            self.assertIn("cron.database_name=verify_db", log)
+            self.assertIn("cron.launch_active_jobs=off", log)
+            self.assertNotIn("/var/lib/postgresql/data", log)
+            self.assertIn(":/var/lib/postgresql", log)
+            self.assertIn("--no-owner", log)
+            self.assertIn("--no-privileges", log)
 
     def test_restore_includes_pact_db(self):
-        """restore-verify.sh must include pact-db in verified databases."""
         content = self.script_path.read_text()
-        self.assertIn("pact-db", content, "pact-db must be included in restore databases list")
+        self.assertIn("pact-db", content)
 
-    def test_restore_requires_table_count_greater_than_zero(self):
-        """pg_restore with 0 restored tables must fail verification."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            mock_bin = Path(tmpdir) / "bin"
-            mock_bin.mkdir()
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            container_root = Path(tmpdir) / "container_fs"
-            container_root.mkdir()
-
-            docker_script = mock_bin / "docker"
-            docker_script.write_text(f"""#!/bin/bash
-if [[ "$*" =~ "snapshots" ]]; then
-    echo '[{{"short_id":"testsnap123","time":"2026-10-02T12:00:00Z"}}]'
-    exit 0
-fi
-if [[ "$*" =~ "mktemp" ]]; then
-    dir="/tmp/alt-restore-verify-ctr-test$RANDOM"
-    echo "$dir"
-    exit 0
-fi
-if [[ "$*" =~ "restore" && "$*" =~ "--target" ]]; then
-    target=""
-    args=("$@")
-    for ((i=0; i<${{#args[@]}}; i++)); do
-        if [[ "${{args[i]}}" == "--target" && $((i+1)) -lt ${{#args[@]}} ]]; then
-            target="${{args[i+1]}}"
-        fi
-    done
-    if [[ -n "$target" ]]; then
-        rel="${{target#/}}"
-        ctr_target="{container_root}/$rel"
-        mkdir -p "$ctr_target/data"
-        touch "$ctr_target/data/vol1"
-        mkdir -p "$ctr_target/backups/postgres"
-        echo "alt dump" > "$ctr_target/backups/postgres/alt-db-20261002.dump"
-        echo "kratos dump" > "$ctr_target/backups/postgres/kratos-db-20261002.dump"
-    fi
-    exit 0
-fi
-if [[ "$1" == "cp" ]]; then
-    src="$2"
-    dest="$3"
-    if [[ "$src" =~ ^[^:]+:(.*) ]]; then
-        ctr_path="${{BASH_REMATCH[1]}}"
-        ctr_path="${{ctr_path%/}}"
-        ctr_path="${{ctr_path%/.}}"
-        rel="${{ctr_path#/}}"
-        real_src="{container_root}/$rel"
-        mkdir -p "$dest"
-        cp -r "$real_src/." "$dest/"
-        exit 0
-    fi
-    exit 1
-fi
-if [[ "$*" =~ "pg_isready" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "pg_restore" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "information_schema.tables" ]]; then
-    # Return 0 tables restored!
-    echo "0"
-    exit 0
-fi
-exit 0
-""")
-            docker_script.chmod(0o755)
-
-            jq_script = mock_bin / "jq"
-            jq_script.write_text("""#!/bin/bash
-if [[ "$1" == "length" ]]; then
-    echo "1"
-elif [[ "$1" =~ "short_id" ]]; then
-    echo "testsnap123"
-else
-    echo "1"
-fi
-""")
-            jq_script.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{mock_bin}:{env['PATH']}"
-            env["BACKUP_ROOT"] = str(backup_root)
-            env["LOG_FILE"] = str(backup_root / "restore.log")
-            env["METRICS_DIR"] = str(backup_root / "metrics")
-            env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
-            env.pop("IN_CONTAINER", None)
-
-            res = subprocess.run(
-                ["bash", str(self.script_path), "--skip-cleanup"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            self.assertNotEqual(res.returncode, 0, "Restore must FAIL when table count is 0")
-            self.assertIn("zero public tables restored", res.stdout + res.stderr)
-            self.assertIn("Restore verification FAILED", res.stdout + res.stderr)
-
-    def test_failed_restic_writes_partial_dump_must_fail_overall_no_pg_verify(self):
-        """When restic fails non-zero despite writing a partial dump, restore verification MUST fail non-zero with no PG verify."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            mock_bin = Path(tmpdir) / "bin"
-            mock_bin.mkdir()
-            mock_log = Path(tmpdir) / "mock_docker.log"
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            container_root = Path(tmpdir) / "container_fs"
-            container_root.mkdir()
-
-            docker_script = mock_bin / "docker"
-            docker_script.write_text(f"""#!/bin/bash
-echo "docker $*" >> "{mock_log}"
-if [[ "$*" =~ "snapshots" ]]; then
-    echo '[{{"short_id":"testsnap123","time":"2026-10-02T12:00:00Z"}}]'
-    exit 0
-fi
-if [[ "$*" =~ "mktemp" ]]; then
-    dir="/tmp/alt-restore-verify-ctr-mktemp-$RANDOM"
-    echo "$dir"
-    exit 0
-fi
-if [[ "$*" =~ "restore" && "$*" =~ "--target" ]]; then
-    target=""
-    args=("$@")
-    for ((i=0; i<${{#args[@]}}; i++)); do
-        if [[ "${{args[i]}}" == "--target" && $((i+1)) -lt ${{#args[@]}} ]]; then
-            target="${{args[i+1]}}"
-        fi
-    done
-    if [[ -n "$target" ]]; then
-        rel="${{target#/}}"
-        ctr_target="{container_root}/$rel"
-        mkdir -p "$ctr_target/data"
-        touch "$ctr_target/data/vol1"
-        mkdir -p "$ctr_target/backups/postgres"
-        # Partial valid dump written before restic failed!
-        echo "partial dump content" > "$ctr_target/backups/postgres/alt-db-20261002.dump"
-        echo "partial dump content" > "$ctr_target/backups/postgres/kratos-db-20261002.dump"
-    fi
-    echo "restic fatal: network timeout during snapshot restore" >&2
-    exit 1
-fi
-if [[ "$1" == "cp" ]]; then
-    src="$2"
-    dest="$3"
-    if [[ "$src" =~ ^[^:]+:(.*) ]]; then
-        ctr_path="${{BASH_REMATCH[1]}}"
-        ctr_path="${{ctr_path%/}}"
-        ctr_path="${{ctr_path%/.}}"
-        rel="${{ctr_path#/}}"
-        real_src="{container_root}/$rel"
-        mkdir -p "$dest"
-        cp -r "$real_src/." "$dest/"
-        exit 0
-    fi
-    exit 1
-fi
-if [[ "$*" =~ "pg_isready" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "pg_restore" ]]; then
-    echo "pg_restore executed!" >> "{mock_log}"
-    exit 0
-fi
-if [[ "$*" =~ "information_schema.tables" ]]; then
-    echo "10"
-    exit 0
-fi
-exit 0
-""")
-            docker_script.chmod(0o755)
-
-            jq_script = mock_bin / "jq"
-            jq_script.write_text("""#!/bin/bash
-if [[ "$1" == "length" ]]; then
-    echo "1"
-elif [[ "$1" =~ "short_id" ]]; then
-    echo "testsnap123"
-else
-    echo "1"
-fi
-""")
-            jq_script.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{mock_bin}:{env['PATH']}"
-            env["BACKUP_ROOT"] = str(backup_root)
-            env["LOG_FILE"] = str(backup_root / "restore.log")
-            env["METRICS_DIR"] = str(backup_root / "metrics")
-            env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
-            env.pop("IN_CONTAINER", None)
-
-            res = subprocess.run(
-                ["bash", str(self.script_path), "--skip-cleanup"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            self.assertNotEqual(res.returncode, 0, "Restore must FAIL when restic restore exits non-zero")
-            self.assertIn("Restore verification FAILED", res.stdout + res.stderr)
-            log_content = mock_log.read_text()
-            self.assertNotIn("pg_restore", log_content, "pg_restore must NOT be executed after restic failure")
-
-    def test_failed_docker_cp_must_fail_overall_no_pg_verify(self):
-        """When docker cp fails, restore verification MUST fail non-zero with no PG verify."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            mock_bin = Path(tmpdir) / "bin"
-            mock_bin.mkdir()
-            mock_log = Path(tmpdir) / "mock_docker.log"
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            container_root = Path(tmpdir) / "container_fs"
-            container_root.mkdir()
-
-            docker_script = mock_bin / "docker"
-            docker_script.write_text(f"""#!/bin/bash
-echo "docker $*" >> "{mock_log}"
-if [[ "$*" =~ "snapshots" ]]; then
-    echo '[{{"short_id":"testsnap123","time":"2026-10-02T12:00:00Z"}}]'
-    exit 0
-fi
-if [[ "$*" =~ "mktemp" ]]; then
-    dir="/tmp/alt-restore-verify-ctr-mktemp-$RANDOM"
-    echo "$dir"
-    exit 0
-fi
-if [[ "$*" =~ "restore" && "$*" =~ "--target" ]]; then
-    exit 0
-fi
-if [[ "$1" == "cp" ]]; then
-    echo "docker cp: error copying from container" >&2
-    exit 1
-fi
-if [[ "$*" =~ "pg_isready" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "pg_restore" ]]; then
-    echo "pg_restore executed!" >> "{mock_log}"
-    exit 0
-fi
-exit 0
-""")
-            docker_script.chmod(0o755)
-
-            jq_script = mock_bin / "jq"
-            jq_script.write_text("""#!/bin/bash
-if [[ "$1" == "length" ]]; then
-    echo "1"
-elif [[ "$1" =~ "short_id" ]]; then
-    echo "testsnap123"
-else
-    echo "1"
-fi
-""")
-            jq_script.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{mock_bin}:{env['PATH']}"
-            env["BACKUP_ROOT"] = str(backup_root)
-            env["LOG_FILE"] = str(backup_root / "restore.log")
-            env["METRICS_DIR"] = str(backup_root / "metrics")
-            env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
-            env.pop("IN_CONTAINER", None)
-
-            res = subprocess.run(
-                ["bash", str(self.script_path), "--skip-cleanup"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            self.assertNotEqual(res.returncode, 0, "Restore must FAIL when docker cp fails")
-            self.assertIn("Restore verification FAILED", res.stdout + res.stderr)
-            log_content = mock_log.read_text()
-            self.assertNotIn("pg_restore", log_content, "pg_restore must NOT be executed after docker cp failure")
-
-    def test_successful_selected_snapshot_copyback(self):
-        """Successful selected snapshot copyback from container namespace to separate host temp namespace."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            mock_bin = Path(tmpdir) / "bin"
-            mock_bin.mkdir()
-            mock_log = Path(tmpdir) / "mock_docker.log"
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            container_root = Path(tmpdir) / "container_fs"
-            container_root.mkdir()
-
-            docker_script = mock_bin / "docker"
-            docker_script.write_text(f"""#!/bin/bash
-echo "docker $*" >> "{mock_log}"
-if [[ "$*" =~ "snapshots" ]]; then
-    echo '[{{"short_id":"customsnap99","time":"2026-10-02T12:00:00Z"}}]'
-    exit 0
-fi
-if [[ "$*" =~ "mktemp" ]]; then
-    dir="/tmp/alt-restore-verify-ctr-custom-$RANDOM"
-    echo "$dir"
-    exit 0
-fi
-if [[ "$*" =~ "restore" && "$*" =~ "--target" ]]; then
-    target=""
-    args=("$@")
-    for ((i=0; i<${{#args[@]}}; i++)); do
-        if [[ "${{args[i]}}" == "--target" && $((i+1)) -lt ${{#args[@]}} ]]; then
-            target="${{args[i+1]}}"
-        fi
-    done
-    if [[ -n "$target" ]]; then
-        rel="${{target#/}}"
-        ctr_target="{container_root}/$rel"
-        mkdir -p "$ctr_target/data"
-        touch "$ctr_target/data/vol1"
-        mkdir -p "$ctr_target/backups/postgres"
-        echo "valid alt dump" > "$ctr_target/backups/postgres/alt-db-20261002.dump"
-        echo "valid kratos dump" > "$ctr_target/backups/postgres/kratos-db-20261002.dump"
-    fi
-    exit 0
-fi
-if [[ "$1" == "cp" ]]; then
-    src="$2"
-    dest="$3"
-    if [[ "$src" =~ ^[^:]+:(.*) ]]; then
-        ctr_path="${{BASH_REMATCH[1]}}"
-        ctr_path="${{ctr_path%/}}"
-        ctr_path="${{ctr_path%/.}}"
-        rel="${{ctr_path#/}}"
-        real_src="{container_root}/$rel"
-        mkdir -p "$dest"
-        cp -r "$real_src/." "$dest/"
-        exit 0
-    fi
-    exit 1
-fi
-if [[ "$*" =~ "pg_isready" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "pg_restore" ]]; then
-    exit 0
-fi
-if [[ "$*" =~ "information_schema.tables" ]]; then
-    echo "10"
-    exit 0
-fi
-exit 0
-""")
-            docker_script.chmod(0o755)
-
-            jq_script = mock_bin / "jq"
-            jq_script.write_text("""#!/bin/bash
-if [[ "$1" == "length" ]]; then
-    echo "1"
-elif [[ "$1" =~ "short_id" ]]; then
-    echo "customsnap99"
-else
-    echo "1"
-fi
-""")
-            jq_script.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{mock_bin}:{env['PATH']}"
-            env["BACKUP_ROOT"] = str(backup_root)
-            env["LOG_FILE"] = str(backup_root / "restore.log")
-            env["METRICS_DIR"] = str(backup_root / "metrics")
-            env["RESTIC_REPOSITORY"] = str(backup_root / "restic-repo")
-            env.pop("IN_CONTAINER", None)
-
-            res = subprocess.run(
-                ["bash", str(self.script_path), "--snapshot", "customsnap99", "--skip-cleanup"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            self.assertEqual(res.returncode, 0, f"Restore verification should pass: {res.stdout}\n{res.stderr}")
-            self.assertIn("Using snapshot: customsnap99", res.stdout)
-            self.assertIn("Restore verification PASSED", res.stdout)
-
-    def test_real_verification_invalid_restore_dir_fails_closed_no_live_fallback(self):
-        """During real verification (not dry-run), an invalid or missing RESTORE_DIR must fail closed and never fall back to live dumps."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            backup_root = Path(tmpdir) / "backups"
-            backup_root.mkdir()
-            live_pg = backup_root / "postgres"
-            live_pg.mkdir()
-            # Live directory has valid dumps
-            (live_pg / "alt-db-20261002.dump").write_text("live alt dump")
-            (live_pg / "kratos-db-20261002.dump").write_text("live kratos dump")
-
-            # Source functions from script without executing main
-            bash_cmd = f"""
-source <(grep -v '^main ' "{self.script_path}")
-DRY_RUN=false
-RESTORE_DIR="/nonexistent/restore/dir"
-POSTGRES_BACKUP_DIR="{live_pg}"
-verify_pg_restore
-"""
-            res = subprocess.run(
-                ["bash", "-c", bash_cmd],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            self.assertNotEqual(res.returncode, 0, "verify_pg_restore must fail closed when RESTORE_DIR is invalid in real mode")
-            self.assertIn("RESTORE_DIR missing or invalid during real PostgreSQL verification", res.stdout + res.stderr)
+    def test_fetched_dumps_live_in_private_temp_dir(self):
+        content = self.script_path.read_text()
+        self.assertIn("umask 077", content)
+        self.assertIn('mktemp -d "/tmp/${VERIFY_PREFIX}-dumps', content)
+        self.assertIn('dump latest "/postgres/${db}.dump" --tag "pg-${db}"', content)
 
 
 
@@ -1124,7 +441,6 @@ exit 1
                 "METRICS_DIR": str(custom_metrics),
                 "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
                 "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
-                "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
                 "ALT_DB_PASSWORD_FILE": str(secrets_dir / "postgres_password"),
                 "KRATOS_DB_PASSWORD_FILE": str(secrets_dir / "kratos_db_password"),
             }
@@ -1258,7 +574,6 @@ fi
                 "METRICS_DIR": str(backup_dir / "metrics"),
                 "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
                 "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
-                "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
                 "ALT_DB_PASSWORD_FILE": str(secrets_dir / "postgres_password"),
                 "KRATOS_DB_PASSWORD_FILE": str(secrets_dir / "kratos_db_password"),
                 "RECAP_DB_PASSWORD_FILE": str(secrets_dir / "recap_db_password"),
@@ -1331,7 +646,6 @@ fi
                 "METRICS_DIR": str(backup_dir / "metrics"),
                 "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
                 "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
-                "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
                 "ALT_DB_PASSWORD_FILE": str(secrets_dir / "non_existent_pwd_file"),
             }
 
@@ -1377,7 +691,6 @@ fi
                 "METRICS_DIR": str(backup_dir / "metrics"),
                 "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
                 "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
-                "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
                 "ALT_DB_PASSWORD_FILE": str(secrets_dir / "postgres_password"),
             }
 
@@ -1445,7 +758,6 @@ exit 1
                 "METRICS_DIR": str(backup_dir / "metrics"),
                 "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
                 "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
-                "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
                 "ALT_DB_PASSWORD_FILE": str(secrets_dir / "postgres_password"),
                 "KRATOS_DB_PASSWORD_FILE": str(secrets_dir / "kratos_db_password"),
             }
@@ -1499,7 +811,6 @@ exit 1
                 "METRICS_DIR": str(backup_dir / "metrics"),
                 "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
                 "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
-                "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
                 "ALT_DB_PASSWORD_FILE": str(secrets_dir / "postgres_password"),
                 "KRATOS_DB_PASSWORD_FILE": str(secrets_dir / "kratos_db_password"),
                 "CLICKHOUSE_PASSWORD_FILE": str(secrets_dir / "clickhouse_password"),
@@ -1585,7 +896,6 @@ fi
                 "METRICS_DIR": str(backup_dir / "metrics"),
                 "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
                 "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
-                "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
                 "ALT_DB_PASSWORD_FILE": str(secrets_dir / "postgres_password"),
                 "KRATOS_DB_PASSWORD_FILE": str(secrets_dir / "kratos_db_password"),
                 "MEILI_MASTER_KEY_FILE": str(secrets_dir / "meili_master_key"),
@@ -1645,7 +955,6 @@ exit 1
                 "METRICS_DIR": str(backup_dir / "metrics"),
                 "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
                 "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
-                "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
                 "ALT_DB_PASSWORD_FILE": str(secrets_dir / "postgres_password"),
                 "KRATOS_DB_PASSWORD_FILE": str(secrets_dir / "kratos_db_password"),
             }
@@ -1670,7 +979,7 @@ class TestBackupAllNoPlaintextNoArgvSecrets(unittest.TestCase):
     def setUp(self):
         self.script_path = REPO_ROOT / "scripts/backup/backup-all.sh"
 
-    def _run(self, tmpdir, extra_args=(), restic_script=None, drop_restic_password=False):
+    def _run(self, tmpdir, extra_args=(), restic_script=None, drop_restic_password=False, pg_dump_rc=0):
         mock_bin = Path(tmpdir) / "bin"
         mock_bin.mkdir()
         mock_log = Path(tmpdir) / "commands.log"
@@ -1699,6 +1008,7 @@ exit 0
             "pg_dump": f"""#!/bin/bash
 echo "pg_dump env_has_PGPASSWORD=${{PGPASSWORD:+yes}} file=$PGPASSFILE mode=$(stat -c %a "$PGPASSFILE") args=$*" >> "{mock_log}"
 echo "fake dump payload"
+exit {pg_dump_rc}
 """,
             "psql": f"""#!/bin/bash
 echo "psql env_has_PGPASSWORD=${{PGPASSWORD:+yes}} args=$*" >> "{mock_log}"
@@ -1727,12 +1037,14 @@ else
     echo -n 200
 fi
 """,
-            "jq": """#!/bin/bash
-if [[ "$*" =~ "taskUid" ]]; then echo 42
-elif [[ "$*" =~ "status" ]]; then echo succeeded
-else echo 0; fi
-""",
         }
+        scripts["jq"] = (
+            "#!/bin/bash\n"
+            'if [[ "$*" =~ "taskUid" ]]; then echo 42\n'
+            'elif [[ "$*" =~ "status" ]]; then echo succeeded\n'
+            'elif [[ "$*" == *".id"* ]]; then exec /usr/bin/jq "$@"\n'
+            "else echo 0; fi\n"
+        )
         for name, body in scripts.items():
             f = mock_bin / name
             f.write_text(body)
@@ -1746,7 +1058,6 @@ else echo 0; fi
             "METRICS_DIR": str(backup_dir / "metrics"),
             "RESTIC_REPOSITORY": str(backup_dir / "restic-repo"),
             "RESTIC_PASSWORD_FILE": str(secrets_dir / "restic_password"),
-            "POSTGRES_BACKUP_DIR": str(backup_dir / "postgres"),
             "ALT_DB_PASSWORD_FILE": str(secrets_dir / "postgres_password"),
             "KRATOS_DB_PASSWORD_FILE": str(secrets_dir / "kratos_db_password"),
             "CLICKHOUSE_PASSWORD_FILE": str(secrets_dir / "clickhouse_password"),
@@ -1798,7 +1109,11 @@ else echo 0; fi
             self.assertEqual(list(backup_dir.rglob("*.dump")), [])
             stdin_lines = [l for l in log.splitlines() if l.startswith("restic") and "--stdin" in l]
             self.assertEqual(len(stdin_lines), 2)
+            for l in stdin_lines:
+                self.assertNotIn("--tag pg-", l, "selectable tags must not be present at backup time")
             self.assertTrue(any("--stdin-filename postgres/alt-db.dump" in l for l in stdin_lines))
+            tag_lines = [l for l in log.splitlines() if l.startswith("restic") and " tag " in l]
+            self.assertTrue(any("--add pg-dump" in l and "--add pg-alt-db" in l for l in tag_lines))
             self.assertTrue(any("--stdin-filename postgres/kratos-db.dump" in l for l in stdin_lines))
 
     def test_dry_run_creates_no_dump_paths(self):
@@ -1827,6 +1142,43 @@ exit 0
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("Backup FAILED", res.stdout)
 
+    def test_pg_dump_failure_forgets_snapshot_by_id_and_leaves_no_selectable_tag(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "commands.log"
+            restic = f"""#!/bin/bash
+echo "restic $*" >> "{log_path}"
+if [[ "$*" =~ "--stdin" ]]; then cat > /dev/null; exit 0; fi
+if [[ "$*" =~ "snapshots" && "$*" =~ "--tag pgdump-" ]]; then
+    echo '[{{"id":"deadbeef01"}}]'
+    exit 0
+fi
+if [[ "$*" =~ "snapshots" ]]; then echo '[]'; fi
+exit 0
+"""
+            res, log, _ = self._run(tmpdir, ("--pg-only",), restic_script=restic, pg_dump_rc=1)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Backup FAILED", res.stdout)
+            self.assertIn("forget deadbeef01", log)
+            self.assertFalse([l for l in log.splitlines() if l.startswith("restic") and " tag " in l and "--add" in l])
+            for l in log.splitlines():
+                if l.startswith("restic") and "--stdin" in l:
+                    self.assertNotIn("pg-alt-db", l)
+
+    def test_failed_snapshot_cleanup_is_reported_as_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "commands.log"
+            restic = f"""#!/bin/bash
+echo "restic $*" >> "{log_path}"
+if [[ "$*" =~ "--stdin" ]]; then cat > /dev/null; exit 0; fi
+if [[ "$*" =~ "snapshots" && "$*" =~ "--tag pgdump-" ]]; then echo '[{{"id":"deadbeef01"}}]'; exit 0; fi
+if [[ "$*" =~ "forget" && ! "$*" =~ "--prune" ]]; then echo "Fatal: locked" >&2; exit 1; fi
+if [[ "$*" =~ "snapshots" ]]; then echo '[]'; fi
+exit 0
+"""
+            res, log, _ = self._run(tmpdir, ("--pg-only",), restic_script=restic, pg_dump_rc=1)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Failed to remove incomplete dump snapshot deadbeef01", res.stdout)
+
     def test_scripts_have_no_inline_credentials(self):
         for name in ("backup-all.sh", "sync-offsite.sh", "restore-verify.sh", "backup-metrics.sh"):
             content = (REPO_ROOT / "scripts/backup" / name).read_text()
@@ -1836,10 +1188,9 @@ exit 0
 
 
 class TestRestoreVerifyStreamedDumps(unittest.TestCase):
-    def test_restore_verify_finds_undated_streamed_dump_names(self):
+    def test_restore_verify_does_not_search_restored_tree_for_dumps(self):
         content = (REPO_ROOT / "scripts/backup/restore-verify.sh").read_text()
-        self.assertIn('-name "${db}*.dump"', content)
-        self.assertNotIn('-name "${db}-*.dump"', content)
+        self.assertNotIn("-name \"${db}", content)
 
     def test_metrics_read_dump_status_from_snapshots_not_plaintext_dir(self):
         content = (REPO_ROOT / "scripts/backup/backup-metrics.sh").read_text()
