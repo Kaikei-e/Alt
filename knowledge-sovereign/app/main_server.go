@@ -40,6 +40,14 @@ func logEventAuthStatus(cfg *config.Config) {
 	}
 }
 
+func logUserTokenVerifierStatus(cfg *config.Config) {
+	mode := cfg.UserTokenVerifierMode
+	if mode == "" {
+		mode = config.UserTokenVerifierModeNone
+	}
+	slog.Info("user_token_verifier", "mode", mode)
+}
+
 func buildMetricsMux(repo *sovereign_db.Repository, cfg *config.Config) *http.ServeMux {
 	snapshotHandler := handler.NewSnapshotHandler(repo, cfg.SnapshotDir, cfg.BuildRef, cfg.SchemaVersion)
 	retentionHandler := handler.NewRetentionHandler(repo, cfg.ArchiveDir)
@@ -103,6 +111,7 @@ func startServers(cfg *config.Config, repo *sovereign_db.Repository, sovereignHa
 	}()
 
 	logEventAuthStatus(cfg)
+	logUserTokenVerifierStatus(cfg)
 	mainMux := buildRPCMux(sovereignHandler, cfg)
 	// WriteTimeout is intentionally unset: WatchProjectorEvents is a
 	// long-lived server-streaming RPC on this mux, and a finite write

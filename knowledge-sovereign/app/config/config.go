@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+const (
+	UserTokenVerifierModeIntrospection = "introspection"
+	UserTokenVerifierModeLocal         = "local"
+	UserTokenVerifierModeNone          = "none"
+)
+
 // Config holds the service configuration.
 type Config struct {
 	AppEnv      string
@@ -42,6 +48,8 @@ type Config struct {
 	AuthPolicy *AuthPolicy
 	// UserJWTVerifier verifies caller delegation tokens (X-Alt-Backend-Token).
 	UserJWTVerifier TokenVerifier
+	// UserTokenVerifierMode records the active verifier selection (introspection, local, or none).
+	UserTokenVerifierMode string
 
 	// Snapshot / retention filesystem paths and build identity.
 	SnapshotDir   string
@@ -139,25 +147,32 @@ func Load() (*Config, error) {
 		eventAuthEnabled = enabled
 	}
 
+	verifyKeyFile := strings.TrimSpace(os.Getenv("BACKEND_TOKEN_VERIFY_KEY_FILE"))
+	introspectionURL := strings.TrimSpace(os.Getenv("USER_JWT_INTROSPECTION_URL"))
+
 	var userVerifier TokenVerifier
-	if strings.TrimSpace(os.Getenv("BACKEND_TOKEN_VERIFY_KEY_FILE")) != "" {
+	verifierMode := UserTokenVerifierModeNone
+	switch {
+	case verifyKeyFile != "" && introspectionURL != "":
+		return nil, fmt.Errorf("BACKEND_TOKEN_VERIFY_KEY_FILE and USER_JWT_INTROSPECTION_URL cannot both be set; configure only one")
+	case verifyKeyFile != "":
 		uv, err := LoadLocalUserJWTVerifier()
 		if err != nil {
 			return nil, fmt.Errorf("load local JWT verifier: %w", err)
 		}
 		userVerifier = uv
-	} else if os.Getenv("USER_JWT_INTROSPECTION_URL") != "" || mTLSCertsConfigured() {
-		uv, err := LoadRemoteUserJWTVerifier("")
+		verifierMode = UserTokenVerifierModeLocal
+	case introspectionURL != "":
+		uv, err := LoadRemoteUserJWTVerifier(introspectionURL)
 		if err != nil {
 			return nil, fmt.Errorf("load remote JWT verifier: %w", err)
 		}
 		userVerifier = uv
-	} else if authPolicy != nil && eventAuthEnabled {
-		uv, err := LoadLocalUserJWTVerifier()
-		if err != nil {
-			return nil, fmt.Errorf("load local JWT verifier: %w", err)
+		verifierMode = UserTokenVerifierModeIntrospection
+	default:
+		if eventAuthEnabled && authPolicy.RequiresUserToken() {
+			return nil, fmt.Errorf("auth policy requires user-token verification: set BACKEND_TOKEN_VERIFY_KEY_FILE or USER_JWT_INTROSPECTION_URL")
 		}
-		userVerifier = uv
 	}
 
 	return &Config{
@@ -171,6 +186,7 @@ func Load() (*Config, error) {
 		EventAuthEnabled:             eventAuthEnabled,
 		AuthPolicy:                   authPolicy,
 		UserJWTVerifier:              userVerifier,
+		UserTokenVerifierMode:        verifierMode,
 		SnapshotDir:                  snapshotDir,
 		ArchiveDir:                   archiveDir,
 		BuildRef:                     buildRef,
@@ -305,21 +321,6 @@ func parseIntEnv(name string, fallback int) int {
 		return fallback
 	}
 	return i
-}
-
-func mTLSCertsConfigured() bool {
-	certPath := os.Getenv("MTLS_CERT_FILE")
-	if certPath == "" {
-		certPath = os.Getenv("CERT_PATH")
-	}
-	if certPath == "" {
-		certPath = os.Getenv("USER_JWT_CERT_FILE")
-	}
-	if certPath != "" {
-		return true
-	}
-	_, err := os.Stat("/certs/svc-cert.pem")
-	return err == nil
 }
 
 func readSecretFile(filePath string) (data []byte, err error) {

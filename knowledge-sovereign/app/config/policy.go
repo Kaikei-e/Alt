@@ -40,6 +40,19 @@ func (p *AuthPolicy) FindServiceByName(name string) *ServicePolicy {
 	return nil
 }
 
+// RequiresUserToken reports whether any configured service principal requires user-token delegation.
+func (p *AuthPolicy) RequiresUserToken() bool {
+	if p == nil {
+		return false
+	}
+	for i := range p.Services {
+		if p.Services[i].RequireUserToken {
+			return true
+		}
+	}
+	return false
+}
+
 // LoadPolicyFile reads and validates a JSON capability policy file.
 // It detects duplicate tokens, empty tokens, and tokens with insufficient entropy (< 24 chars),
 // returning sanitized errors that never leak secret token material.
