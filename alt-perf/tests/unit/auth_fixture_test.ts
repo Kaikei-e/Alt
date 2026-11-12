@@ -26,7 +26,8 @@ const authRaw = fs
   .replace(/import\s*\{[^}]*getConfig[^}]*\}\s*from\s*["\x27][^"\x27]+["\x27];?/g, "")
   .replace(/import\s*\{[^}]*decodeJWT[^}]*\}\s*from\s*["\x27][^"\x27]+["\x27];?/g, "")
   .replace(/export\s+function\s+(\w+)/g, "function $1");
-const authSource = `${authRaw}\nObject.assign(exports, { validateAuthHubToken, validateCohortTokenAtInit, validateFixtureTokenAtInit, getAuthHeaders, getPublicHeaders });`;
+const authSource =
+  `${authRaw}\nObject.assign(exports, { validateAuthHubToken, validateCohortTokenAtInit, validateFixtureTokenAtInit, getAuthHeaders, getPublicHeaders });`;
 
 interface AuthModule {
   validateAuthHubToken: (
@@ -87,8 +88,11 @@ const { validateFixtureTokenAtInit } = createAuthModule();
 // ---------------------------------------------------------------------------
 
 /** Build a minimal unsigned JWT with the given claims. */
-function makeJWT(claims: Record<string, unknown>): string {
-  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
+function makeJWT(
+  claims: Record<string, unknown>,
+  headerObj: Record<string, unknown> = { alg: "EdDSA", typ: "JWT" },
+): string {
+  const header = btoa(JSON.stringify(headerObj))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
@@ -177,6 +181,22 @@ describe("validateFixtureTokenAtInit (via actual auth.js VM module loader)", () 
       () => validateFixtureTokenAtInit(token),
       Error,
       "exceeds maximum allowed 5 minutes",
+    );
+  });
+
+  it("rejects tokens whose header alg is not EdDSA", () => {
+    const hs256Token = makeJWT(validClaims(-10, 200), { alg: "HS256", typ: "JWT" });
+    assertThrows(
+      () => validateFixtureTokenAtInit(hs256Token),
+      Error,
+      "alg must be EdDSA",
+    );
+
+    const noneToken = makeJWT(validClaims(-10, 200), { alg: "none", typ: "JWT" });
+    assertThrows(
+      () => validateFixtureTokenAtInit(noneToken),
+      Error,
+      "alg must be EdDSA",
     );
   });
 });
