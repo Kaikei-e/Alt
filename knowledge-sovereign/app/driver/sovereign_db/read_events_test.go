@@ -200,8 +200,9 @@ func TestAppendKnowledgeEventIfNew_CrossTenantDedupeCollisionRejected(t *testing
 		assert.False(t, mock.lastTx.committed)
 	})
 
-	t.Run("fails closed when dedupe key has no visible backing event row", func(t *testing.T) {
+	t.Run("returns ErrDedupeOwnerUnresolved when dedupe key has no visible backing event row", func(t *testing.T) {
 		ev := newTestEvent()
+		eventInserted := false
 		mock := &mockPgx{}
 		mock.execFunc = func(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
 			if containsSQL(sql, "knowledge_event_dedupes") {
@@ -209,7 +210,11 @@ func TestAppendKnowledgeEventIfNew_CrossTenantDedupeCollisionRejected(t *testing
 			}
 			return pgconn.NewCommandTag("INSERT 0 1"), nil
 		}
-		mock.queryRowFunc = func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		mock.queryRowFunc = func(_ context.Context, sql string, _ ...interface{}) pgx.Row {
+			if containsSQL(sql, "INSERT INTO knowledge_events") {
+				eventInserted = true
+				return &mockRow{}
+			}
 			return &mockRow{scanFunc: func(_ ...interface{}) error {
 				return pgx.ErrNoRows
 			}}
@@ -217,9 +222,13 @@ func TestAppendKnowledgeEventIfNew_CrossTenantDedupeCollisionRejected(t *testing
 
 		repo := NewRepository(mock)
 		seq, appended, err := repo.AppendKnowledgeEventIfNew(context.Background(), ev)
-		require.ErrorIs(t, err, ErrDedupeKeyTenantMismatch)
+		require.ErrorIs(t, err, ErrDedupeOwnerUnresolved)
+		assert.NotErrorIs(t, err, ErrDedupeKeyTenantMismatch)
 		assert.False(t, appended)
 		assert.Zero(t, seq)
+		assert.False(t, eventInserted)
+		require.NotNil(t, mock.lastTx)
+		assert.False(t, mock.lastTx.committed)
 	})
 }
 

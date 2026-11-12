@@ -3,8 +3,11 @@ package handler
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -540,6 +543,15 @@ func TestAppendKnowledgeEvent_ValidatesTenantAndUserIdentifiers(t *testing.T) {
 }
 
 func TestAppendKnowledgeEvent_CrossTenantDedupeCollision_ReturnsPermissionDenied(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	const rawKey = "article-created:shared-sensitive-key"
+	sum := sha256.Sum256([]byte(rawKey))
+	wantPrefix := hex.EncodeToString(sum[:8])
+
 	fixedTime := timestamppb.New(time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC))
 	repo := &mockRepo{
 		returnErr: fmt.Errorf("dedupe check: %w", sovereign_db.ErrDedupeKeyTenantMismatch),
@@ -551,11 +563,57 @@ func TestAppendKnowledgeEvent_CrossTenantDedupeCollision_ReturnsPermissionDenied
 			EventId:    uuid.New().String(),
 			TenantId:   uuid.New().String(),
 			EventType:  "ArticleCreated",
-			DedupeKey:  "article-created:shared-key",
+			DedupeKey:  rawKey,
 			Payload:    []byte(`{}`),
 			OccurredAt: fixedTime,
 		},
 	}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	assert.NotContains(t, err.Error(), rawKey)
+	assert.NotContains(t, buf.String(), rawKey)
+
+	var rec map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &rec))
+	assert.Equal(t, "WARN", rec["level"])
+	assert.Equal(t, "ArticleCreated", rec["event_type"])
+	assert.Equal(t, wantPrefix, rec["dedupe_key_sha256"])
+}
+
+func TestAppendKnowledgeEvent_UnresolvedDedupeOwner_ReturnsUnavailable(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	const rawKey = "article-created:detached-partition-key"
+	sum := sha256.Sum256([]byte(rawKey))
+	wantPrefix := hex.EncodeToString(sum[:8])
+
+	fixedTime := timestamppb.New(time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC))
+	repo := &mockRepo{
+		returnErr: fmt.Errorf("dedupe ownership unresolved: %w", sovereign_db.ErrDedupeOwnerUnresolved),
+	}
+	h := NewSovereignHandler(repo)
+
+	_, err := h.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+		Event: &sovereignv1.KnowledgeEvent{
+			EventId:    uuid.New().String(),
+			TenantId:   uuid.New().String(),
+			EventType:  "ArticleCreated",
+			DedupeKey:  rawKey,
+			Payload:    []byte(`{}`),
+			OccurredAt: fixedTime,
+		},
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
+	assert.NotContains(t, err.Error(), rawKey)
+	assert.NotContains(t, buf.String(), rawKey)
+
+	var rec map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &rec))
+	assert.Equal(t, "ERROR", rec["level"])
+	assert.Equal(t, "ArticleCreated", rec["event_type"])
+	assert.Equal(t, wantPrefix, rec["dedupe_key_sha256"])
 }
