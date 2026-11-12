@@ -338,6 +338,9 @@ services:
       - INOREADER_CLIENT_ID_FILE=/run/secrets/inoreader_client_id
       - INOREADER_CLIENT_SECRET_FILE=/run/secrets/inoreader_client_secret
       - INOREADER_REDIRECT_URI=http://127.0.0.1:9201/callback
+      # The listener defaults to loopback, which a published port cannot
+      # reach inside a container. The host side stays loopback-only below.
+      - OAUTH_BIND_HOST=0.0.0.0
       - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
       - LOG_LEVEL=info
       - INTERNAL_AUTH_TOKEN_FILE=/run/secrets/internal_auth_token
