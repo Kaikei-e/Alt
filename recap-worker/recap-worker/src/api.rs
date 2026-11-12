@@ -374,6 +374,63 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn disabled_peer_list_lets_guarded_route_reach_handler_without_certificate() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18021/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18022/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ENFORCE", None),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let app = router(AppState::new(registry));
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/v1/generate/recaps/7days")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .expect("request builds");
+        let response = app.oneshot(request).await.expect("request succeeds");
+        assert_eq!(
+            response.status(),
+            StatusCode::ACCEPTED,
+            "MTLS_ALLOWED_PEERS=disabled must let a certificate-less request reach the handler"
+        );
+    }
+
+    #[tokio::test]
     #[allow(clippy::await_holding_lock, clippy::too_many_lines)]
     async fn non_health_routes_require_verified_allowed_peer_while_health_and_metrics_stay_open() {
         let _lock = ENV_MUTEX

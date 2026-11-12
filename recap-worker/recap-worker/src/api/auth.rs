@@ -254,6 +254,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn disabled_peer_guard_passes_request_without_client_certificate() {
+        let app = Router::new()
+            .route("/v1/recaps/7days", get(|| async { StatusCode::OK }))
+            .route_layer(middleware::from_fn(require_peer_identity))
+            .layer(Extension(PeerIdentityGuard::new(None)));
+        let req = Request::builder()
+            .method(Method::GET)
+            .uri("/v1/recaps/7days")
+            .body(Body::empty())
+            .expect("request builds");
+        let resp = app.oneshot(req).await.expect("request succeeds");
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
     async fn peer_guard_logs_warn_with_path_and_reason_on_missing_client_certificate() {
         use std::sync::{Arc, Mutex};
         use tracing::instrument::WithSubscriber;
