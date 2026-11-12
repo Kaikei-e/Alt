@@ -24,7 +24,7 @@
     "@opentelemetry/exporter-logs-otlp-proto": "npm:@opentelemetry/exporter-logs-otlp-proto@0.221.0",
     "@opentelemetry/exporter-trace-otlp-proto": "npm:@opentelemetry/exporter-trace-otlp-proto@0.221.0",
     "@opentelemetry/sdk-trace-base": "npm:@opentelemetry/sdk-trace-base@^2.10.0",
-    "@opentelemetry/resources": "npm:@opentelemetry/resources@2.10.0",
+    "@opentelemetry/resources": "npm:@opentelemetry/resources@3.0.0",
     "@opentelemetry/semantic-conventions": "npm:@opentelemetry/semantic-conventions@1.39.0"
   }
 }
