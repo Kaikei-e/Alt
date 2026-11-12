@@ -91,7 +91,7 @@ name: alt-staging
 
 services:
   meilisearch:
-    image: getmeili/meilisearch:v1.11
+    image: getmeili/meilisearch:v1.55
     container_name: alt-staging-meilisearch
     profiles: [search-indexer, acolyte-orchestrator]
     environment:
@@ -119,7 +119,7 @@ services:
     # tag-generator also uses it as a BACKEND_API_URL stub; the Phase-1
     # scenarios never actually invoke the article-fetch path that would
     # need real Connect-RPC responses.
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine
     container_name: alt-staging-stub-backend
     profiles: [search-indexer, tag-generator, acolyte-orchestrator]
     networks:
@@ -200,7 +200,7 @@ services:
     # Same patch pin as compose/mq.yaml: 8.4.0–8.4.3 silently trim nothing when
     # `MAXLEN ~` is combined with ACKED, so staging would not reproduce the
     # production trimming behaviour it is supposed to validate.
-    image: redis:8.4.5-alpine
+    image: redis:8.10.2-alpine
     container_name: alt-staging-redis-streams
     profiles: [mq-hub, tag-generator, alt-backend, alt-harvester]
     # The production entrypoint and ACL users (compose/mq.yaml): `default` is
