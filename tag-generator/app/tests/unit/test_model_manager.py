@@ -3,6 +3,7 @@ Unit tests for ModelManager class.
 Tests model loading, shared instance management, and error handling.
 """
 
+import re
 import threading
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -294,3 +295,29 @@ class TestModelConfig:
 
         assert config1 == config2
         assert config1 != config3
+
+
+class TestModelRevisionPinning:
+    """Embedding model and tokenizer downloads must name a full commit sha."""
+
+    def test_default_revisions_are_full_commit_shas(self):
+        config = ModelConfig()
+        assert re.fullmatch(r"[0-9a-f]{40}", config.model_revision)
+        assert re.fullmatch(r"[0-9a-f]{40}", config.onnx_tokenizer_revision)
+
+    @patch("tag_extractor.model_manager.SentenceTransformer")
+    @patch("tag_extractor.model_manager.KeyBERT")
+    @patch("tag_extractor.model_manager.Tagger")
+    def test_sentence_transformer_loaded_with_pinned_revision(self, mock_tagger, mock_keybert, mock_st):
+        config = ModelConfig(device="cpu", use_onnx=False)
+        ModelManager().get_models(config)
+        assert mock_st.call_args.kwargs["revision"] == config.model_revision
+
+    @patch("tag_extractor.model_manager.OnnxEmbeddingModel")
+    @patch("tag_extractor.model_manager.KeyBERT")
+    @patch("tag_extractor.model_manager.Tagger")
+    def test_onnx_tokenizer_uses_pinned_revision(self, mock_tagger, mock_keybert, mock_onnx):
+        config = ModelConfig(use_onnx=True, onnx_model_path="/models/onnx/model.onnx")
+        ModelManager().get_models(config)
+        onnx_config = mock_onnx.call_args.args[0]
+        assert onnx_config.tokenizer_revision == config.onnx_tokenizer_revision

@@ -469,3 +469,22 @@ class TestFallbackJapanese:
 
         with pytest.raises(RuntimeError, match="MeCab dictionary corrupted"):
             extractor._run_extraction("日本語のテスト記事本文です", "ja")  # noqa: SLF001
+
+
+class TestOnnxTokenizerRevision:
+    def test_tokenizer_loaded_with_configured_revision(self) -> None:
+        hidden = _FakeArray([[[0.0] * 4] * 3], shape=(1, 3, 4))
+        fake_np, mock_ort, _, mock_tokenizer_cls = _build_mock_ort_and_tokenizer(hidden)
+        revision = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
+        config = OnnxEmbeddingConfig(
+            model_path="/models/onnx/model.onnx",
+            tokenizer_name="dummy-tokenizer",
+            tokenizer_revision=revision,
+        )
+        with (
+            patch("tag_extractor.onnx_embedder.np", fake_np),
+            patch("tag_extractor.onnx_embedder.ort", mock_ort),
+            patch("tag_extractor.onnx_embedder.AutoTokenizer", mock_tokenizer_cls),
+        ):
+            OnnxEmbeddingModel(config)
+        assert mock_tokenizer_cls.from_pretrained.call_args.kwargs["revision"] == revision
