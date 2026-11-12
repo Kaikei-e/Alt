@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ type Config struct {
 	CSRFRateLimit          float64            // CSRF endpoint: requests per second (default: 100)
 	IntrospectRateLimit    float64            // Introspect endpoint: requests per second (default: 1200/60 = 20.0)
 	IntrospectBurst        int                // Introspect endpoint: burst capacity (default: 100)
+	TrustedProxyCIDRs      []netip.Prefix     // Explicit proxy CIDRs allowed to supply X-Forwarded-For
 }
 
 const (
@@ -153,6 +155,14 @@ func Load() (*Config, error) {
 		config.BackendTokenSigningKey = privKey
 	}
 
+	if rawCIDRs := strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDRS")); rawCIDRs != "" {
+		cidrs, err := parseTrustedProxyCIDRs(rawCIDRs)
+		if err != nil {
+			return nil, err
+		}
+		config.TrustedProxyCIDRs = cidrs
+	}
+
 	// Validate configuration
 	if err := config.Validate(); err != nil {
 		return nil, err
@@ -182,6 +192,23 @@ func loadEd25519SigningKey(path string) (ed25519.PrivateKey, error) {
 		return nil, fmt.Errorf("BACKEND_TOKEN_SIGNING_KEY_FILE must contain an Ed25519 private key, got %T", parsed)
 	}
 	return edKey, nil
+}
+
+func parseTrustedProxyCIDRs(raw string) ([]netip.Prefix, error) {
+	parts := strings.Split(raw, ",")
+	cidrs := make([]netip.Prefix, 0, len(parts))
+	for _, part := range parts {
+		s := strings.TrimSpace(part)
+		if s == "" {
+			return nil, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS: empty CIDR entry")
+		}
+		prefix, err := netip.ParsePrefix(s)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS entry %q: %w", s, err)
+		}
+		cidrs = append(cidrs, prefix.Masked())
+	}
+	return cidrs, nil
 }
 
 // Validate checks if the configuration is valid
@@ -234,6 +261,9 @@ func (c *Config) Validate() error {
 	}
 	if c.IntrospectBurst < 0 {
 		return fmt.Errorf("INTROSPECT_BURST cannot be negative")
+	}
+	if len(c.TrustedProxyCIDRs) == 0 {
+		return fmt.Errorf("TRUSTED_PROXY_CIDRS is required")
 	}
 
 	return nil

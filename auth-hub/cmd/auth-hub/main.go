@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"syscall"
@@ -51,6 +52,18 @@ func buildPlaintextHandler(e *echo.Echo, devPlaintextAllowed bool) http.Handler 
 		return e
 	}
 	return appmiddleware.PlaintextHealthOnly(e)
+}
+
+func configureTrustedProxies(ctx context.Context, e *echo.Echo, cidrs []netip.Prefix, log *slog.Logger) {
+	if len(cidrs) == 0 {
+		panic("main: TRUSTED_PROXY_CIDRS must be set before configuring IP extractor")
+	}
+	formatted := make([]string, len(cidrs))
+	for i, p := range cidrs {
+		formatted[i] = p.String()
+	}
+	e.IPExtractor = appmiddleware.NewTrustedProxyIPExtractor(cidrs)
+	log.InfoContext(ctx, "trusted_proxy_cidrs_configured", "trusted_proxy_cidrs", formatted)
 }
 
 func main() {
@@ -143,10 +156,7 @@ func main() {
 	e.HideBanner = true
 	e.HidePort = true
 
-	// Only trust X-Forwarded-For from the internal nginx reverse proxy (private/
-	// link-local ranges); RateLimiter keys on c.RealIP(), so an untrusted XFF
-	// would let a client spoof its own rate-limit bucket.
-	e.IPExtractor = echo.ExtractIPFromXFFHeader()
+	configureTrustedProxies(ctx, e, cfg.TrustedProxyCIDRs, slog.Default())
 
 	// Security middleware
 	e.Use(appmiddleware.SecurityHeaders())
