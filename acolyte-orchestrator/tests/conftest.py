@@ -12,10 +12,13 @@ from uuid import UUID
 import pytest
 from connectrpc.method import IdempotencyLevel, MethodInfo
 from connectrpc.request import Headers, RequestContext
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 from starlette.testclient import TestClient
+
+from tests.backend_token import public_key_pem
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -25,7 +28,7 @@ if TYPE_CHECKING:
 _TEST_DB_DSN = "postgresql://test:test@localhost:5439/test"
 _TEST_DEV_USER_ID = "00000000-0000-0000-0000-000000000001"
 _TEST_ENV_KEYS = (
-    "BACKEND_TOKEN_SECRET_FILE",
+    "BACKEND_TOKEN_VERIFY_KEY_FILE",
     "ACOLYTE_DB_DSN",
     "BACKEND_TOKEN_VERIFICATION",
     "USER_IDENTITY_DEV_USER_ID",
@@ -33,9 +36,9 @@ _TEST_ENV_KEYS = (
 )
 _ORIGINAL_TEST_ENV = {key: os.environ.get(key) for key in _TEST_ENV_KEYS}
 _TEST_SECRET_DIRECTORY = tempfile.TemporaryDirectory(prefix="acolyte-test-secret-")
-_TEST_SECRET_FILE = Path(_TEST_SECRET_DIRECTORY.name) / "backend-token-secret"
-_TEST_SECRET_FILE.write_bytes(b"test-secret")
-os.environ["BACKEND_TOKEN_SECRET_FILE"] = str(_TEST_SECRET_FILE)
+_TEST_VERIFY_KEY_FILE = Path(_TEST_SECRET_DIRECTORY.name) / "backend-token-verify-key.pem"
+_TEST_VERIFY_KEY_FILE.write_bytes(public_key_pem(Ed25519PrivateKey.generate()))
+os.environ["BACKEND_TOKEN_VERIFY_KEY_FILE"] = str(_TEST_VERIFY_KEY_FILE)
 
 # Force (not setdefault) before any Settings()/main imports during collection,
 # so a CI-provided ACOLYTE_DB_DSN cannot leak into unit tests that import main.

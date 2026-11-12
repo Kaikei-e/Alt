@@ -20,13 +20,12 @@ Two defects that only surface when a run is resumed rather than started:
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
-import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from langgraph.checkpoint.memory import MemorySaver
 from structlog.testing import capture_logs
 
@@ -41,8 +40,10 @@ from acolyte.port.evidence_provider import ArticleHit, EvidenceProviderError, Re
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.report_graph import build_report_graph
 from scripts.resume_run import _build_pipeline_deps
+from tests.backend_token import sign_backend_token
 
 _TOPIC = "AI trends 2026"
+_SIGNING_KEY = Ed25519PrivateKey.generate()
 
 
 class FakeLLM:
@@ -122,7 +123,9 @@ class RecapOnlyEvidence:
 
 def _service(graph: object, repo: MemoryReportGateway, jobs: MemoryJobGateway) -> AcolyteConnectService:
     settings = SimpleNamespace(
-        checkpoint_enabled=True, default_model="fake-model", resolve_backend_token_secret=lambda: b"test-secret"
+        checkpoint_enabled=True,
+        default_model="fake-model",
+        resolve_backend_token_verify_key=_SIGNING_KEY.public_key,
     )
     return AcolyteConnectService(settings, repo, job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
 
@@ -130,12 +133,8 @@ def _service(graph: object, repo: MemoryReportGateway, jobs: MemoryJobGateway) -
 # --- Finding 038: the checkpoint's stale error must not abort the re-run ---
 
 
-def _generate_test_token(user_id: UUID, secret: str) -> str:
-    return jwt.encode(
-        {"sub": str(user_id), "iss": "auth-hub", "aud": "alt-backend", "exp": datetime.now(UTC).timestamp() + 300},
-        secret,
-        algorithm="HS256",
-    )
+def _generate_test_token(user_id: UUID) -> str:
+    return sign_backend_token(_SIGNING_KEY, user_id)
 
 
 @pytest.mark.asyncio
@@ -160,7 +159,7 @@ async def test_resume_after_upstream_recovery_clears_the_previous_attempts_error
         str(report.report_id),
         str(run.run_id),
         {"topic": _TOPIC},
-        token=_generate_test_token(report.user_id, "test-secret"),
+        token=_generate_test_token(report.user_id),
     )
     failed = await jobs.get_run(run.run_id)
     assert failed is not None
@@ -175,7 +174,7 @@ async def test_resume_after_upstream_recovery_clears_the_previous_attempts_error
         str(report.report_id),
         str(run.run_id),
         {"topic": _TOPIC},
-        token=_generate_test_token(report.user_id, "test-secret"),
+        token=_generate_test_token(report.user_id),
     )
 
     resumed = await jobs.get_run(run.run_id)
@@ -213,7 +212,7 @@ async def test_resume_with_empty_content_store_fails_with_content_store_miss() -
         str(report.report_id),
         str(run.run_id),
         {"topic": _TOPIC},
-        token=_generate_test_token(report.user_id, "test-secret"),
+        token=_generate_test_token(report.user_id),
     )
 
     failed = await jobs.get_run(run.run_id)
@@ -316,7 +315,7 @@ async def test_resume_pipeline_accepts_a_brief_dict_from_the_repository() -> Non
         str(report.report_id),
         str(run.run_id),
         brief.to_dict(),
-        token=_generate_test_token(report.user_id, "test-secret"),
+        token=_generate_test_token(report.user_id),
     )
 
     completed = await jobs.get_run(run.run_id)
