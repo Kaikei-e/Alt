@@ -178,8 +178,13 @@ func loadEd25519SigningKey(path string) (ed25519.PrivateKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read BACKEND_TOKEN_SIGNING_KEY_FILE: %w", err)
 	}
-	block, rest := pem.Decode(raw)
+	trimmed := bytes.TrimSpace(raw)
+	block, rest := pem.Decode(trimmed)
 	if block == nil || len(bytes.TrimSpace(rest)) != 0 {
+		return nil, fmt.Errorf("BACKEND_TOKEN_SIGNING_KEY_FILE must contain a single PEM block")
+	}
+	header := "-----BEGIN " + block.Type + "-----"
+	if !bytes.HasPrefix(trimmed, []byte(header+"\n")) && !bytes.HasPrefix(trimmed, []byte(header+"\r\n")) {
 		return nil, fmt.Errorf("BACKEND_TOKEN_SIGNING_KEY_FILE must contain a single PEM block")
 	}
 	if block.Type != "PRIVATE KEY" {
