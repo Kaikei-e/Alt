@@ -10,6 +10,7 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 source "$ROOT/e2e/playwright/_lib/suite.sh"
 
 suite_init tts-speaker
+suite_token_keys
 
 suite_endpoint BASE_URL "http://tts-speaker:9700"
 

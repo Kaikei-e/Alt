@@ -68,6 +68,34 @@ COMPOSE_BUILD = re.compile(
 )
 
 
+TOKEN_KEY_SECRET = re.compile(r"^backend_token_(signing|verify)_key$")
+TOKEN_KEYS_CALL = re.compile(r"^[ \t]*suite_token_keys\b", re.MULTILINE)
+
+
+def token_key_services(services: dict) -> set[str]:
+    """Compose services that mount a backend token key secret."""
+    found: set[str] = set()
+    for name, svc in services.items():
+        for entry in svc.get("secrets") or []:
+            source = entry.get("source") if isinstance(entry, dict) else entry
+            if source and TOKEN_KEY_SECRET.match(str(source)):
+                found.add(name)
+    return found
+
+
+def token_key_problems(
+    name: str, profile_services: list[str], token_services: set[str], run_code: str
+) -> list[str]:
+    """A profile that starts a token-key service needs run.sh to mint the keys."""
+    mounting = sorted(set(profile_services) & token_services)
+    if mounting and not TOKEN_KEYS_CALL.search(run_code):
+        return [
+            f"{name}: profile starts {mounting}, which mount a backend token key, but run.sh "
+            f"never calls suite_token_keys — STAGING_TOKEN_KEY_DIR would be unset"
+        ]
+    return []
+
+
 def main() -> int:
     with SUITES_YAML.open() as handle:
         manifest = yaml.safe_load(handle) or {}
@@ -212,6 +240,10 @@ def main() -> int:
                     "rag-orchestrator: run.sh must build exactly ['rag-db', 'rag-db-migrator'] "
                     f"via docker compose build before suite_up (got {sorted(built_services)})"
                 )
+
+        problems.extend(
+            token_key_problems(name, profiles.get(name, []), token_key_services(services), run_code)
+        )
 
         # (2) every taggable image in the profile is either forwarded or
         #     recorded as deliberately left on `:main`.

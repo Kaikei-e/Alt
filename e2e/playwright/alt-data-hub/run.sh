@@ -63,6 +63,7 @@ export ALLOWED_PEER DENIED_PEER
 # is the whole point — it proves the boundary rejects a *valid chain* with the
 # wrong identity, which is the failure a shared internal CA makes possible.
 suite_pki alt-data-hub "$ALLOWED_PEER" "$DENIED_PEER" pre-processor
+suite_token_keys
 
 suite_endpoint DATA_HUB_URL "https://alt-data-hub:9443"
 suite_endpoint OPS_URL      "http://alt-data-hub:9110"

@@ -41,6 +41,7 @@ suite_image_tags ALT_HARVESTER_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG ALT_DAT
 # without it, so certificates minted after the stack is up are certificates the
 # harvester never saw.
 suite_pki alt-data-hub alt-harvester
+suite_token_keys
 
 suite_endpoint OPS_URL        "http://alt-harvester:9110"
 suite_endpoint HARVESTER_HOST "alt-harvester"
