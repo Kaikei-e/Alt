@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -32,8 +33,14 @@ const (
 
 var ErrQuotaUnauthenticated = errors.New("authentication required")
 
+const (
+	QuotaReasonRate     = "rate"
+	QuotaReasonInFlight = "in_flight"
+)
+
 type QuotaExceededError struct {
 	RetryAfter time.Duration
+	Reason     string
 }
 
 func (e *QuotaExceededError) Error() string {
@@ -79,7 +86,7 @@ func (o *operationLimiter) acquire(userID uuid.UUID, now time.Time) (func(), err
 	}
 
 	if b.inFlight >= o.maxInFlight {
-		return nil, &QuotaExceededError{RetryAfter: time.Second}
+		return nil, &QuotaExceededError{RetryAfter: time.Second, Reason: QuotaReasonInFlight}
 	}
 
 	if b.tokens < 1.0 {
@@ -88,7 +95,7 @@ func (o *operationLimiter) acquire(userID uuid.UUID, now time.Time) (func(), err
 		if wait < time.Second {
 			wait = time.Second
 		}
-		return nil, &QuotaExceededError{RetryAfter: wait}
+		return nil, &QuotaExceededError{RetryAfter: wait, Reason: QuotaReasonRate}
 	}
 
 	b.tokens -= 1.0
@@ -142,13 +149,20 @@ func (o *operationLimiter) trackedUsers() int {
 }
 
 type UserQuotaLimiter struct {
-	ops map[OperationClass]*operationLimiter
-	now func() time.Time
+	ops    map[OperationClass]*operationLimiter
+	now    func() time.Time
+	logger *slog.Logger
 }
 
-func NewUserQuotaLimiter(cfg config.UserQuotaConfig) (*UserQuotaLimiter, error) {
+func NewUserQuotaLimiter(cfg config.UserQuotaConfig, now func() time.Time, logger *slog.Logger) (*UserQuotaLimiter, error) {
 	if err := config.ValidateUserQuotaConfig(cfg); err != nil {
 		return nil, err
+	}
+	if now == nil {
+		return nil, errors.New("user quota limiter requires a clock")
+	}
+	if logger == nil {
+		return nil, errors.New("user quota limiter requires a logger")
 	}
 	return &UserQuotaLimiter{
 		ops: map[OperationClass]*operationLimiter{
@@ -156,7 +170,8 @@ func NewUserQuotaLimiter(cfg config.UserQuotaConfig) (*UserQuotaLimiter, error) 
 			OpAugurChat:   newOperationLimiter(cfg.AugurChat, cfg.MaxTrackedUsers),
 			OpMorningChat: newOperationLimiter(cfg.MorningChat, cfg.MaxTrackedUsers),
 		},
-		now: time.Now,
+		now:    now,
+		logger: logger,
 	}, nil
 }
 
@@ -172,7 +187,16 @@ func (l *UserQuotaLimiter) Acquire(ctx context.Context, op OperationClass) (func
 	if err != nil || user == nil || user.UserID == uuid.Nil {
 		return nil, ErrQuotaUnauthenticated
 	}
-	return opLimiter.acquire(user.UserID, l.now())
+	release, err := opLimiter.acquire(user.UserID, l.now())
+	var qErr *QuotaExceededError
+	if errors.As(err, &qErr) {
+		l.logger.Warn("user_quota_rejected",
+			"user_id", user.UserID.String(),
+			"class", string(op),
+			"reason", qErr.Reason,
+		)
+	}
+	return release, err
 }
 
 func (l *UserQuotaLimiter) TrackedUsers(op OperationClass) int {
@@ -194,6 +218,9 @@ type UserQuotaInterceptor struct {
 }
 
 func NewUserQuotaInterceptor(limiter *UserQuotaLimiter) *UserQuotaInterceptor {
+	if limiter == nil {
+		panic("user quota interceptor requires a limiter")
+	}
 	return &UserQuotaInterceptor{limiter: limiter}
 }
 
@@ -253,6 +280,9 @@ func toConnectQuotaError(err error) *connect.Error {
 }
 
 func EchoUserQuotaMiddleware(limiter *UserQuotaLimiter, op OperationClass) echo.MiddlewareFunc {
+	if limiter == nil {
+		panic("user quota middleware requires a limiter")
+	}
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			release, err := limiter.Acquire(c.Request().Context(), op)

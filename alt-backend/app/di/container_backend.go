@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"alt/config"
 	connectmiddleware "alt/connect/v2/middleware"
@@ -94,7 +95,7 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 		return nil, fmt.Errorf("user quota config: %w", err)
 	}
 	config.LogUserQuotaConfig(slog.Default(), quotaCfg)
-	userQuotaLimiter, err := connectmiddleware.NewUserQuotaLimiter(quotaCfg)
+	userQuotaLimiter, err := connectmiddleware.NewUserQuotaLimiter(quotaCfg, time.Now, slog.Default())
 	if err != nil {
 		return nil, fmt.Errorf("user quota limiter: %w", err)
 	}
