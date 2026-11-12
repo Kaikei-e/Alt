@@ -75,9 +75,7 @@ func TestSyncArticles_RedeliversArticlesTheWritePathRefused(t *testing.T) {
 			},
 			knownFeeds: map[string]bool{},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		// Run 1: the feed is not registered in alt-db yet, so the write path
 		// refuses the article while reporting success to the caller.
@@ -129,9 +127,7 @@ func TestSyncArticles_WatermarkStopsBelowTheOldestRefusedRow(t *testing.T) {
 			},
 			knownFeeds: map[string]bool{"https://example.com/known-feed": true},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.NoError(t, svc.SyncArticles(context.Background()))
 
@@ -231,9 +227,7 @@ func TestSyncArticles_UpsertsRepairedRowAboveHeldWatermark(t *testing.T) {
 			},
 			knownFeeds: map[string]bool{"https://example.com/known-feed": true},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.NoError(t, svc.SyncArticles(context.Background()))
 		assert.Equal(t, []string{
@@ -293,9 +287,7 @@ func TestSyncArticles_UpsertsRepairedRowAboveHeldWatermark(t *testing.T) {
 			},
 			knownFeeds: map[string]bool{"https://example.com/known-feed": true},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.NoError(t, svc.SyncArticles(context.Background()))
 		assert.NoError(t, svc.SyncArticles(context.Background()))

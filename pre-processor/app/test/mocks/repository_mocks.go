@@ -354,21 +354,6 @@ func (mr *MockExternalAPIRepositoryMockRecorder) CheckHealth(ctx, serviceURL any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckHealth", reflect.TypeOf((*MockExternalAPIRepository)(nil).CheckHealth), ctx, serviceURL)
 }
 
-// GetSystemUserID mocks base method.
-func (m *MockExternalAPIRepository) GetSystemUserID(ctx context.Context) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSystemUserID", ctx)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetSystemUserID indicates an expected call of GetSystemUserID.
-func (mr *MockExternalAPIRepositoryMockRecorder) GetSystemUserID(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSystemUserID", reflect.TypeOf((*MockExternalAPIRepository)(nil).GetSystemUserID), ctx)
-}
-
 // StreamSummarizeArticle mocks base method.
 func (m *MockExternalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *domain.Article, priority string) (io.ReadCloser, error) {
 	m.ctrl.T.Helper()

@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"pre-processor/domain"
-	"pre-processor/repository"
 
 	"github.com/stretchr/testify/assert"
 )
+
+const testSyncOwnerUserID = "11111111-2222-4333-8444-555555555555"
 
 func testLoggerBackfill() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -42,20 +43,10 @@ func (s *stubBackfillArticleRepo) UpsertArticlesWithFeedID(_ context.Context, ar
 	return s.upsertErr
 }
 
-type stubBackfillExternalAPI struct {
-	repository.ExternalAPIRepository
-	userID string
-	err    error
-}
-
-func (s *stubBackfillExternalAPI) GetSystemUserID(_ context.Context) (string, error) {
-	return s.userID, s.err
-}
-
 // --- Tests ---
 
 func TestBackfillEmptyFeeds_Success(t *testing.T) {
-	t.Run("should backfill articles for empty feeds", func(t *testing.T) {
+	t.Run("should backfill articles for empty feeds using configured owner user ID", func(t *testing.T) {
 		articleRepo := &stubBackfillArticleRepo{
 			emptyFeedArticles: []*domain.Article{
 				{
@@ -76,16 +67,15 @@ func TestBackfillEmptyFeeds_Success(t *testing.T) {
 				},
 			},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
 		assert.NoError(t, err)
 		assert.Len(t, articleRepo.upsertedArticles, 2)
-		assert.Equal(t, "system-user-id", articleRepo.upsertedArticles[0].UserID)
-		assert.Equal(t, "system-user-id", articleRepo.upsertedArticles[1].UserID)
+		assert.Equal(t, testSyncOwnerUserID, articleRepo.upsertedArticles[0].UserID)
+		assert.Equal(t, testSyncOwnerUserID, articleRepo.upsertedArticles[1].UserID)
 	})
 }
 
@@ -94,9 +84,8 @@ func TestBackfillEmptyFeeds_NoArticles(t *testing.T) {
 		articleRepo := &stubBackfillArticleRepo{
 			emptyFeedArticles: nil,
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
@@ -125,9 +114,8 @@ func TestBackfillEmptyFeeds_SkipsEmptyContent(t *testing.T) {
 				},
 			},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
@@ -150,9 +138,8 @@ func TestBackfillEmptyFeeds_SkipsEmptyTitle(t *testing.T) {
 				},
 			},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
@@ -166,28 +153,13 @@ func TestBackfillEmptyFeeds_FetchError(t *testing.T) {
 		articleRepo := &stubBackfillArticleRepo{
 			fetchErr: fmt.Errorf("database connection error"),
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to fetch inoreader articles for empty feeds")
-	})
-}
-
-func TestBackfillEmptyFeeds_SystemUserError(t *testing.T) {
-	t.Run("should return error when system user ID unavailable", func(t *testing.T) {
-		articleRepo := &stubBackfillArticleRepo{}
-		externalAPI := &stubBackfillExternalAPI{err: fmt.Errorf("auth service down")}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
-
-		err := svc.BackfillEmptyFeeds(context.Background())
-
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to get system user id")
 	})
 }
 
@@ -204,9 +176,8 @@ func TestBackfillEmptyFeeds_PreservesFeedID(t *testing.T) {
 				},
 			},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
@@ -223,9 +194,8 @@ func TestBackfillEmptyFeeds_AdvancesCursorPastFilteredRows(t *testing.T) {
 			emptyFeedArticles: nil,
 			scannedThrough:    scannedThrough,
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.NoError(t, svc.BackfillEmptyFeeds(context.Background()))
 		assert.NoError(t, svc.BackfillEmptyFeeds(context.Background()))
@@ -252,9 +222,8 @@ func TestBackfillEmptyFeeds_CursorUsesScanWatermark(t *testing.T) {
 			},
 			scannedThrough: scannedThrough,
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.NoError(t, svc.BackfillEmptyFeeds(context.Background()))
 		assert.NoError(t, svc.BackfillEmptyFeeds(context.Background()))
@@ -281,9 +250,8 @@ func TestBackfillEmptyFeeds_KeepsCursorWhenUpsertFails(t *testing.T) {
 			scannedThrough: scannedThrough,
 			upsertErr:      fmt.Errorf("datahub unavailable"),
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
 
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.Error(t, svc.BackfillEmptyFeeds(context.Background()))
 		assert.Error(t, svc.BackfillEmptyFeeds(context.Background()))

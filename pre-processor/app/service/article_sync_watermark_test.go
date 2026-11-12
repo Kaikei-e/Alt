@@ -82,9 +82,7 @@ func TestSyncArticles_DoesNotResyncAlreadySyncedArticles(t *testing.T) {
 				},
 			},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.NoError(t, svc.SyncArticles(context.Background()))
 		assert.NoError(t, svc.SyncArticles(context.Background()))
@@ -112,9 +110,7 @@ func TestSyncArticles_PicksUpArticlesArrivingAfterTheWatermark(t *testing.T) {
 				},
 			},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.NoError(t, svc.SyncArticles(context.Background()))
 
@@ -138,9 +134,7 @@ func TestSyncArticles_PicksUpArticlesArrivingAfterTheWatermark(t *testing.T) {
 func TestSyncArticles_FirstRunLooksBack24Hours(t *testing.T) {
 	t.Run("should rescan the last 24 hours on the first run of the process", func(t *testing.T) {
 		articleRepo := &stubSyncArticleRepo{}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.NoError(t, svc.SyncArticles(context.Background()))
 
@@ -172,9 +166,7 @@ func TestSyncArticles_WatermarkPassesSkippedArticles(t *testing.T) {
 				},
 			},
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.NoError(t, svc.SyncArticles(context.Background()))
 		assert.NoError(t, svc.SyncArticles(context.Background()))
@@ -200,14 +192,46 @@ func TestSyncArticles_KeepsWatermarkWhenUpsertFails(t *testing.T) {
 			},
 			upsertErr: fmt.Errorf("datahub unavailable"),
 		}
-		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
-
-		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
 		assert.Error(t, svc.SyncArticles(context.Background()))
 		assert.Error(t, svc.SyncArticles(context.Background()))
 
 		assert.Len(t, articleRepo.sinceValues, 2)
 		assert.True(t, articleRepo.sinceValues[1].Before(now.Add(-2*time.Hour)), "a failed batch must stay inside the next run's window")
+	})
+}
+
+func TestSyncArticles_StampsConfiguredOwnerUserID(t *testing.T) {
+	now := time.Now()
+	configuredOwner := "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	articleRepo := &stubSyncArticleRepo{
+		available: []*domain.Article{
+			{
+				ID:        "inoreader-owner-1",
+				URL:       "https://example.com/owner-1",
+				Title:     "Owner Article 1",
+				Content:   "<p>Valid content long enough to survive sanitization.</p>",
+				FeedURL:   "https://example.com/feed",
+				CreatedAt: now.Add(-1 * time.Hour),
+			},
+		},
+	}
+
+	svc := NewArticleSyncService(articleRepo, configuredOwner, testLoggerBackfill())
+
+	assert.NoError(t, svc.SyncArticles(context.Background()))
+	if assert.Len(t, articleRepo.upsertBatches, 1) && assert.Len(t, articleRepo.upsertBatches[0], 1) {
+		assert.Equal(t, configuredOwner, articleRepo.upsertBatches[0][0].UserID)
+	}
+}
+
+func TestNewArticleSyncService_PanicsOnEmptyOwnerUserID(t *testing.T) {
+	articleRepo := &stubSyncArticleRepo{}
+	assert.Panics(t, func() {
+		_ = NewArticleSyncService(articleRepo, "", testLoggerBackfill())
+	})
+	assert.Panics(t, func() {
+		_ = NewArticleSyncService(articleRepo, "   ", testLoggerBackfill())
 	})
 }
