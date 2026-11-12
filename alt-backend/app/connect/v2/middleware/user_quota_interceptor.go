@@ -22,6 +22,7 @@ import (
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
+	"alt/orchestrator/port/summarize_quota_port"
 )
 
 type OperationClass string
@@ -78,7 +79,20 @@ func newOperationLimiter(cfg config.OperationQuotaConfig, maxTrackedUsers int) *
 	}
 }
 
-func (o *operationLimiter) acquire(userID uuid.UUID, now time.Time) (func(), error) {
+// admission selects which limits a call is subject to. A call may spend a rate
+// token, hold an in-flight slot, or both.
+type admission struct {
+	token bool
+	slot  bool
+}
+
+var (
+	admitTokenAndSlot = admission{token: true, slot: true}
+	admitSlotOnly     = admission{slot: true}
+	admitTokenOnly    = admission{token: true}
+)
+
+func (o *operationLimiter) acquire(userID uuid.UUID, now time.Time, adm admission) (func(), error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
@@ -88,11 +102,11 @@ func (o *operationLimiter) acquire(userID uuid.UUID, now time.Time) (func(), err
 		b.lastUpdate = now
 	}
 
-	if b.inFlight >= o.maxInFlight {
+	if adm.slot && b.inFlight >= o.maxInFlight {
 		return nil, &QuotaExceededError{RetryAfter: time.Second, Reason: QuotaReasonInFlight}
 	}
 
-	if b.tokens < 1.0 {
+	if adm.token && b.tokens < 1.0 {
 		waitSec := (1.0 - b.tokens) / o.refillPerSec
 		wait := time.Duration(math.Ceil(waitSec * float64(time.Second)))
 		if wait < time.Second {
@@ -101,7 +115,13 @@ func (o *operationLimiter) acquire(userID uuid.UUID, now time.Time) (func(), err
 		return nil, &QuotaExceededError{RetryAfter: wait, Reason: QuotaReasonRate}
 	}
 
-	b.tokens -= 1.0
+	if adm.token {
+		b.tokens -= 1.0
+	}
+	if !adm.slot {
+		o.evictIdleAboveLocked(o.maxTrackedUsers)
+		return func() {}, nil
+	}
 	b.inFlight++
 
 	var once sync.Once
@@ -181,6 +201,27 @@ func NewUserQuotaLimiter(cfg config.UserQuotaConfig, now func() time.Time, logge
 }
 
 func (l *UserQuotaLimiter) Acquire(ctx context.Context, op OperationClass) (func(), error) {
+	return l.admit(ctx, op, admitTokenAndSlot)
+}
+
+// AcquireSlot takes only a per-user in-flight slot. Routes that charge their
+// rate budget per unit of work inside the usecase use it so a request is not
+// charged twice.
+func (l *UserQuotaLimiter) AcquireSlot(ctx context.Context, op OperationClass) (func(), error) {
+	return l.admit(ctx, op, admitSlotOnly)
+}
+
+// ChargeSummarization spends one summarize token for the authenticated user.
+func (l *UserQuotaLimiter) ChargeSummarization(ctx context.Context) error {
+	_, err := l.admit(ctx, OpSummarize, admitTokenOnly)
+	var qErr *QuotaExceededError
+	if errors.As(err, &qErr) {
+		return fmt.Errorf("%w: %w", summarize_quota_port.ErrBudgetExhausted, err)
+	}
+	return err
+}
+
+func (l *UserQuotaLimiter) admit(ctx context.Context, op OperationClass, adm admission) (func(), error) {
 	if l == nil {
 		panic("user quota limiter is not wired")
 	}
@@ -192,7 +233,7 @@ func (l *UserQuotaLimiter) Acquire(ctx context.Context, op OperationClass) (func
 	if err != nil || user == nil || user.UserID == uuid.Nil {
 		return nil, ErrQuotaUnauthenticated
 	}
-	release, err := opLimiter.acquire(user.UserID, l.now())
+	release, err := opLimiter.acquire(user.UserID, l.now(), adm)
 	var qErr *QuotaExceededError
 	if errors.As(err, &qErr) {
 		l.logger.Warn("user_quota_rejected",
@@ -290,9 +331,23 @@ func EchoUserQuotaMiddleware(limiter *UserQuotaLimiter, op OperationClass) echo.
 	if limiter == nil {
 		panic("user quota middleware requires a limiter")
 	}
+	return echoQuotaMiddleware(limiter.Acquire, op)
+}
+
+// EchoUserInFlightMiddleware authenticates the caller and caps their
+// concurrent requests for op, but leaves the rate budget to the handler's
+// usecase.
+func EchoUserInFlightMiddleware(limiter *UserQuotaLimiter, op OperationClass) echo.MiddlewareFunc {
+	if limiter == nil {
+		panic("user quota middleware requires a limiter")
+	}
+	return echoQuotaMiddleware(limiter.AcquireSlot, op)
+}
+
+func echoQuotaMiddleware(acquire func(context.Context, OperationClass) (func(), error), op OperationClass) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			release, err := limiter.Acquire(c.Request().Context(), op)
+			release, err := acquire(c.Request().Context(), op)
 			if err != nil {
 				if errors.Is(err, ErrQuotaUnauthenticated) {
 					return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")

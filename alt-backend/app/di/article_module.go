@@ -14,6 +14,7 @@ import (
 	"alt/orchestrator/gateway/latest_article_gateway"
 	"alt/orchestrator/gateway/preprocessor_summarize_gateway"
 	"alt/orchestrator/gateway/scraping_policy_gateway"
+	"alt/orchestrator/port/summarize_quota_port"
 	"alt/orchestrator/usecase/archive_article_usecase"
 	"alt/orchestrator/usecase/fetch_article_summaries_usecase"
 	"alt/orchestrator/usecase/fetch_article_summary_usecase"
@@ -132,7 +133,7 @@ func logArticlePrefetchWiring(wiring articles.ArticlePrefetchWiring) {
 		"note", "warms take a host's turn from the same limiter and namespace as interactive fetches, and give it up after slot_wait rather than queueing for it")
 }
 
-func newArticleModule(infra *InfraModule, feed *FeedModule) (*ArticleModule, error) {
+func newArticleModule(infra *InfraModule, feed *FeedModule, summarizeQuota summarize_quota_port.SummarizeQuotaPort) (*ArticleModule, error) {
 	// No alt_db handle. The two that were left here through batch 5 — the Tag
 	// Trail's paged read and RecallRailUsecase's article fallback — became
 	// procedures of their own in ADR-000954 Wave 3 batch 6, which is what let
@@ -276,7 +277,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule) (*ArticleModule, err
 		FeedGateway:         infra.FeedGateway,
 	}
 	summarizeArticleUC := summarize_article_usecase.NewUsecase(summarizeRepo, preprocessorSummarizeGw, fetchArticleGw)
-	fetchArticleSummariesUC := fetch_article_summaries_usecase.NewUsecase(summarizeRepo, batchFetcher, summarizeArticleUC)
+	fetchArticleSummariesUC := fetch_article_summaries_usecase.NewUsecase(summarizeRepo, batchFetcher, summarizeArticleUC, summarizeQuota)
 
 	return &ArticleModule{
 		ArticleUsecase:             fetchArticleUC,

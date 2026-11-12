@@ -44,7 +44,9 @@ func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	summarizeQuota := connectmiddleware.EchoUserQuotaMiddleware(container.UserQuotaLimiter, connectmiddleware.OpSummarize)
 
 	feedsGroup.POST("/fetch/summary/provided", RestHandleFetchInoreaderSummary(container))
-	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg), summarizeQuota)
+	// The batch route spends its summarize tokens per generated item inside the
+	// usecase, so only the in-flight cap applies at the route.
+	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg), connectmiddleware.EchoUserInFlightMiddleware(container.UserQuotaLimiter, connectmiddleware.OpSummarize))
 
 	// Article summarization endpoints
 	feedsGroup.POST("/summarize", summarizationpkg.RestHandleSummarizeFeed(container, cfg), summarizeQuota)              // Legacy synchronous endpoint
