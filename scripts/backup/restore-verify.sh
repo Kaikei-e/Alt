@@ -7,7 +7,8 @@
 #   ./restore-verify.sh [options]
 #
 # Options:
-#   --snapshot ID    Verify specific Restic snapshot (default: latest)
+#   --snapshot ID    Verify a specific volume snapshot (tag "scheduled"); default: latest.
+#                    Database dumps always come from the latest good pg-<db> snapshot.
 #   --skip-pg        Skip PostgreSQL restore verification
 #   --skip-cleanup   Don't remove temporary resources after verification
 #   --dry-run        Show what would be done without executing
@@ -204,18 +205,24 @@ get_snapshot_info() {
     log_info "Fetching snapshot information (ID: $SNAPSHOT_ID)..."
 
     local snapshots_json
-    snapshots_json=$(run_restic -r "$RESTIC_REPOSITORY" snapshots --json 2>/dev/null)
+    snapshots_json=$(run_restic -r "$RESTIC_REPOSITORY" snapshots --tag scheduled --json 2>/dev/null) || {
+        log_error "Failed to list volume snapshots"
+        return 1
+    }
 
     local count
     count=$(echo "$snapshots_json" | jq 'length')
 
     if [[ "$count" -eq 0 ]]; then
-        log_error "No snapshots found in repository"
+        log_error "No volume snapshots (tag scheduled) found in repository"
         return 1
     fi
 
     if [[ "$SNAPSHOT_ID" == "latest" ]]; then
         SNAPSHOT_ID=$(echo "$snapshots_json" | jq -r 'sort_by(.time) | last | .short_id')
+    elif ! echo "$snapshots_json" | jq -e --arg id "$SNAPSHOT_ID" 'any(.[]; .short_id == $id or .id == $id)' >/dev/null; then
+        log_error "Snapshot $SNAPSHOT_ID is not a volume snapshot (tag scheduled)"
+        return 1
     fi
 
     log_info "Using snapshot: $SNAPSHOT_ID"
@@ -279,12 +286,14 @@ verify_pg_restore() {
         return 0
     fi
 
-    # Real verification requires RESTORE_DIR to exist and be a valid directory.
+    # Dumps are separate per-database snapshots; fetch each into a private temp dir (umask 077).
+    local dump_dir=""
     if [[ "$DRY_RUN" != true ]]; then
-        if [[ -z "$RESTORE_DIR" || ! -d "$RESTORE_DIR" ]]; then
-            log_error "RESTORE_DIR missing or invalid during real PostgreSQL verification: '${RESTORE_DIR:-}'"
+        dump_dir="$(mktemp -d "/tmp/${VERIFY_PREFIX}-dumps-${TIMESTAMP}-XXXXXX")" || {
+            log_error "Failed to allocate private directory for dump files"
             return 1
-        fi
+        }
+        TEMP_DIRS+=("$dump_dir")
     fi
 
     log_info "Verifying PostgreSQL backup restorability..."
@@ -295,32 +304,20 @@ verify_pg_restore() {
     local pg_failed=0
 
     for db in "${databases[@]}"; do
-        local dump_file=""
-        # In dry-run mode, simulate verification cleanly
+        local dump_file="${dump_dir}/${db}.dump"
         if [[ "$DRY_RUN" == true ]]; then
-            if [[ -n "$RESTORE_DIR" && -d "$RESTORE_DIR" ]]; then
-                dump_file=$(find "$RESTORE_DIR" -name "${db}*.dump" -type f 2>/dev/null | sort -r | head -1)
-            fi
-            if [[ -n "$dump_file" && -f "$dump_file" ]]; then
-                local dump_size
-                dump_size=$(stat -c %s "$dump_file" 2>/dev/null || echo 0)
-                log_info "[DRY-RUN] Would verify $db dump ($dump_file, $(numfmt --to=iec "$dump_size" 2>/dev/null || echo "${dump_size}B"))"
-            else
-                log_info "[DRY-RUN] Would verify $db dump (simulated from snapshot $SNAPSHOT_ID)"
-            fi
+            log_info "[DRY-RUN] Would fetch /postgres/${db}.dump from the latest pg-${db} snapshot and verify it"
             pg_verified=$((pg_verified + 1))
             continue
         fi
 
-        # Real verification: dump_file MUST be found strictly inside restored snapshot directory
-        dump_file=$(find "$RESTORE_DIR" -name "${db}*.dump" -type f 2>/dev/null | sort -r | head -1)
-
-        if [[ -z "$dump_file" || ! -f "$dump_file" ]]; then
+        if ! run_restic -r "$RESTIC_REPOSITORY" dump latest "/postgres/${db}.dump" --tag "pg-${db}" > "$dump_file" 2>> "$LOG_FILE"; then
+            rm -f "$dump_file"
             if [[ "$db" == "alt-db" || "$db" == "kratos-db" ]]; then
-                log_error "Required database dump file not found in snapshot $SNAPSHOT_ID for $db"
+                log_error "Required database dump snapshot (pg-${db}) not found or unreadable for $db"
                 pg_failed=$((pg_failed + 1))
             else
-                log_warn "No dump file found in snapshot $SNAPSHOT_ID for optional database $db (skipping)"
+                log_warn "No dump snapshot (pg-${db}) found for optional database $db (skipping)"
             fi
             continue
         fi

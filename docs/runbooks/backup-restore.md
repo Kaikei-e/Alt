@@ -25,7 +25,7 @@ The Alt platform uses a 3-2-1 backup strategy:
 | Warm | `/backups/restic-repo/` | 24 hourly, 7 daily, 4 weekly, 3 monthly | Local disaster recovery, including the PostgreSQL dumps |
 | Cold | Remote server (via `REMOTE_REPO`) | Configurable (default: 30 daily, 12 weekly, 6 monthly) | Offsite disaster recovery |
 
-PostgreSQL dumps are piped from `pg_dump` into `restic backup --stdin` (snapshot path `postgres/<name>.dump`, tags `pg-dump` and `pg-<name>`), so no plaintext dump file exists on the host. Dump files left in `/backups/postgres/` by earlier runs are plaintext; once a streamed snapshot has been verified with `restore-verify.sh`, remove that directory. The backup run requires a non-empty Restic password file and fails otherwise.
+PostgreSQL dumps are piped from `pg_dump` into `restic backup --stdin` (snapshot path `postgres/<name>.dump`; each run is first tagged `pgdump-<name>-<timestamp>`, and the selectable tags `pg-dump` and `pg-<name>` are added only after both `pg_dump` and restic succeeded, so restore and metrics never see a failed dump), so no plaintext dump file exists on the host. Dump files left in `/backups/postgres/` by earlier runs are plaintext; once a streamed snapshot has been verified with `restore-verify.sh`, remove that directory. The backup run requires a non-empty Restic password file and fails otherwise.
 
 ### Data Priority
 
@@ -278,8 +278,8 @@ The platform includes automated restore verification that runs weekly (Sunday at
 
 ### What It Verifies
 
-1. **Restic Snapshot**: Restores the latest snapshot to a temporary directory
-2. **PostgreSQL Dumps**: Takes the `postgres/<name>.dump` files from the restored snapshot, spins up temporary PostgreSQL containers and attempts `pg_restore`
+1. **Restic Snapshot**: Restores the latest volume snapshot (tag `scheduled`, or the one given with `--snapshot`) to a temporary directory
+2. **PostgreSQL Dumps**: Fetches `postgres/<name>.dump` from the latest `pg-<name>` snapshot of each database into a private temporary directory, spins up temporary PostgreSQL containers and attempts `pg_restore`
 3. **Volume Data**: Checks that restored volume directories contain data
 4. **Metrics**: Writes Prometheus metrics for monitoring
 

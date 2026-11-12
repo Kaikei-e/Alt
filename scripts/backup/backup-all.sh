@@ -176,6 +176,21 @@ init_repo() {
     fi
 }
 
+# Snapshots only gain the pg-dump / pg-<name> tags that restore and metrics select on
+# after the dump succeeded, so a snapshot left behind here is never picked up as good.
+discard_dump_snapshot() {
+    local tag="$1" ids id
+    if ! ids=$(run_restic -r "$RESTIC_REPOSITORY" snapshots --tag "$tag" --json 2>> "$LOG_FILE" | jq -r '.[].id'); then
+        log_error "Failed to look up incomplete dump snapshot (tag $tag); it carries no selectable tag but needs manual removal"
+        return 1
+    fi
+    for id in $ids; do
+        if ! run_restic -r "$RESTIC_REPOSITORY" forget "$id" >> "$LOG_FILE" 2>&1; then
+            log_error "Failed to remove incomplete dump snapshot $id; it carries no selectable tag but needs manual removal"
+        fi
+    done
+}
+
 backup_postgres() {
     log_info "Starting PostgreSQL backups..."
 
@@ -243,14 +258,17 @@ backup_postgres() {
 
         write_pgpass "$host" "$dbname" "$user" "$pwd_file"
         local stream_tag="pgdump-${name}-${TIMESTAMP}"
-        if PGPASSFILE="$PGPASS_PATH" pg_dump -h "$host" -U "$user" -d "$dbname" --format=custom --compress=6 --verbose 2>> "$LOG_FILE" \
+        PGPASSFILE="$PGPASS_PATH" pg_dump -h "$host" -U "$user" -d "$dbname" --format=custom --compress=6 --verbose 2>> "$LOG_FILE" \
             | run_restic -r "$RESTIC_REPOSITORY" backup --stdin --stdin-filename "$stream_name" \
-                --tag pg-dump --tag "pg-${name}" --tag "$stream_tag" >> "$LOG_FILE" 2>&1; then
+                --tag "$stream_tag" >> "$LOG_FILE" 2>&1
+        local dump_rc=("${PIPESTATUS[@]}")
+        if [[ ${dump_rc[0]} -eq 0 && ${dump_rc[1]} -eq 0 ]] \
+            && run_restic -r "$RESTIC_REPOSITORY" tag --tag "$stream_tag" --add pg-dump --add "pg-${name}" >> "$LOG_FILE" 2>&1; then
             log_success "Streamed $name into the Restic repository as $stream_name"
             pg_verified=$((pg_verified + 1))
         else
             log_error "Failed to backup $name"
-            run_restic -r "$RESTIC_REPOSITORY" forget --tag "$stream_tag" >> "$LOG_FILE" 2>&1 || true
+            discard_dump_snapshot "$stream_tag"
             pg_failed=$((pg_failed + 1))
         fi
         rm -f "$PGPASS_PATH"

@@ -942,6 +942,9 @@ if [[ "$*" =~ "--stdin" ]]; then
     cat > /dev/null
     exit 0
 fi
+if [[ "$*" =~ " tag " ]]; then
+    exit 0
+fi
 echo "Fatal: repository locked" >&2
 exit 1
 """)
