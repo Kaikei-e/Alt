@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -199,5 +201,109 @@ func TestReadSecretFile_RejectsEmptyAndRootPaths(t *testing.T) {
 	for _, invalid := range []string{"", ".", "/"} {
 		_, err := readSecretFile(invalid)
 		require.Error(t, err, "path %q should be rejected", invalid)
+	}
+}
+
+func TestLoad_RejectsDisabledAdminAuthInProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("ADMIN_AUTH", "disabled")
+	t.Setenv("EVENT_TOKEN", "s3cret-event-token-value-long")
+	t.Setenv("EVENT_AUTH", "")
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ADMIN_AUTH")
+	assert.Contains(t, err.Error(), "production")
+}
+
+func TestLoad_RejectsDisabledEventAuthInProduction(t *testing.T) {
+	t.Run("without policy file", func(t *testing.T) {
+		t.Setenv("APP_ENV", "production")
+		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+		t.Setenv("ADMIN_TOKEN", "s3cret-admin-token-value-long")
+		t.Setenv("ADMIN_AUTH", "")
+		t.Setenv("EVENT_AUTH", "disabled")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "EVENT_AUTH")
+		assert.Contains(t, err.Error(), "production")
+	})
+
+	t.Run("with policy file", func(t *testing.T) {
+		tok := writeTempTokenFile(t, "tok", "service-token-that-is-long-enough-12345")
+		policyJSON := `{
+			"version": 1,
+			"services": [{
+				"name": "alt-backend",
+				"token_file": "` + tok + `",
+				"allowed_methods": ["/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"]
+			}]
+		}`
+		policyFile := writeTempTokenFile(t, "policy.json", policyJSON)
+
+		t.Setenv("APP_ENV", "production")
+		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+		t.Setenv("ADMIN_TOKEN", "s3cret-admin-token-value-long")
+		t.Setenv("ADMIN_AUTH", "")
+		t.Setenv("EVENT_AUTH_POLICY_FILE", policyFile)
+		t.Setenv("EVENT_AUTH", "disabled")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "EVENT_AUTH")
+		assert.Contains(t, err.Error(), "production")
+	})
+}
+
+func TestLoad_AcceptsProductionWhenBothAuthModesEnabled(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("ADMIN_TOKEN", "s3cret-admin-token-value-long")
+	t.Setenv("ADMIN_AUTH", "")
+	t.Setenv("EVENT_TOKEN", "s3cret-event-token-value-long")
+	t.Setenv("EVENT_AUTH", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "production", cfg.AppEnv)
+	assert.True(t, cfg.AdminAuthEnabled)
+	assert.True(t, cfg.EventAuthEnabled)
+}
+
+func TestLoad_RejectsUnknownAppEnv(t *testing.T) {
+	t.Setenv("APP_ENV", "prod")
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("ADMIN_TOKEN", "s3cret-admin-token-value-long")
+	t.Setenv("EVENT_TOKEN", "s3cret-event-token-value-long")
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "APP_ENV")
+}
+
+func TestLoad_LogsWarningWhenAuthDisabledOutsideProduction(t *testing.T) {
+	for _, env := range []string{"", "development", "test", "staging"} {
+		t.Run("APP_ENV="+env, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			t.Setenv("APP_ENV", env)
+			t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+			t.Setenv("ADMIN_AUTH", "disabled")
+			t.Setenv("EVENT_AUTH", "disabled")
+
+			cfg, err := Load()
+			require.NoError(t, err)
+			assert.False(t, cfg.AdminAuthEnabled)
+			assert.False(t, cfg.EventAuthEnabled)
+
+			logged := buf.String()
+			assert.Contains(t, logged, "ADMIN_AUTH")
+			assert.Contains(t, logged, "EVENT_AUTH")
+		})
 	}
 }
