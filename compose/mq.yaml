@@ -19,10 +19,11 @@ services:
     image: redis:8.4.5-alpine
     container_name: redis-streams
     # docker/redis/entrypoint.sh (the redis_entrypoint config) hashes the
-    # redis_streams_password and redis_limiter_password secrets into an ACL
-    # file under /tmp and execs `redis-server --aclfile`: `default` is off and
-    # the `streams` and `limiter` users are each held to their own keys and
-    # commands. It replaces the official docker-entrypoint.sh, so nothing
+    # redis_streams_producer_password, redis_streams_consumer_password and
+    # redis_limiter_password secrets into an ACL file under /tmp and execs
+    # `redis-server --aclfile`: `default` is off and the `streams_producer`,
+    # `streams_consumer` and `limiter` users are each held to their own keys
+    # and commands. It replaces the official docker-entrypoint.sh, so nothing
     # chowns /data or drops root via gosu — the user is stated here, and /data
     # on the existing named volume must already belong to redis.
     user: redis
@@ -52,11 +53,15 @@ services:
         mode: 0555
     networks:
       - alt-network
+    environment:
+      REDIS_STREAMS_PRODUCER_PASSWORD_FILE: /run/secrets/redis_streams_producer_password
+      REDIS_STREAMS_CONSUMER_PASSWORD_FILE: /run/secrets/redis_streams_consumer_password
     secrets:
-      - redis_streams_password
+      - redis_streams_producer_password
+      - redis_streams_consumer_password
       - redis_limiter_password
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_streams_password)\" redis-cli --user streams ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_streams_producer_password)\" redis-cli --user streams_producer ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -84,8 +89,8 @@ services:
     container_name: mq-hub
     mem_limit: 128m
     environment:
-      - REDIS_URL=redis://streams@redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
+      - REDIS_URL=redis://streams_producer@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_producer_password
       - CONNECT_PORT=9500
       - MQHUB_AUTH_TOKEN_FILE=/run/secrets/mqhub_auth_token
       - LOG_LEVEL=info
@@ -118,7 +123,7 @@ services:
       retries: 5
       start_period: 10s
     secrets:
-      - redis_streams_password
+      - redis_streams_producer_password
       - mqhub_auth_token
     restart: unless-stopped
     labels:

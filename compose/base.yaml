@@ -178,8 +178,10 @@ secrets:
     file: ../secrets/pushover_token.txt
   redis_password:
     file: ../secrets/redis_password.txt
-  redis_streams_password:
-    file: ../secrets/redis_streams_password.txt
+  redis_streams_producer_password:
+    file: ../secrets/redis_streams_producer_password.txt
+  redis_streams_consumer_password:
+    file: ../secrets/redis_streams_consumer_password.txt
   redis_cache_password:
     file: ../secrets/redis_cache_password.txt
   redis_limiter_password:

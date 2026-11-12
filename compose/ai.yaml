@@ -396,8 +396,8 @@ services:
       - PP_DB_PASSWORD_FILE=/run/secrets/pp_db_password
       - LOG_LEVEL=info
       - SERVICE_NAME=pre-processor
-      - REDIS_STREAMS_URL=redis://streams@redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
+      - REDIS_STREAMS_URL=redis://streams_consumer@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_consumer_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=pre-processor-group
       - CONSUMER_NAME=pre-processor-1
@@ -414,7 +414,7 @@ services:
     secrets:
       - pp_db_password
       - pki-agent-pre-processor-jwk
-      - redis_streams_password
+      - redis_streams_consumer_password
       - rask_ingest_token
     restart: always
     ports:

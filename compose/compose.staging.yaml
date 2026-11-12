@@ -233,11 +233,15 @@ services:
         mode: 0555
     networks:
       - alt-staging
+    environment:
+      REDIS_STREAMS_PRODUCER_PASSWORD_FILE: /run/secrets/redis_streams_producer_password
+      REDIS_STREAMS_CONSUMER_PASSWORD_FILE: /run/secrets/redis_streams_consumer_password
     secrets:
-      - redis_streams_password
+      - redis_streams_producer_password
+      - redis_streams_consumer_password
       - redis_limiter_password
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_streams_password)\" redis-cli --user streams ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_streams_producer_password)\" redis-cli --user streams_producer ping | grep -q PONG"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -254,8 +258,8 @@ services:
       redis-streams:
         condition: service_healthy
     environment:
-      - REDIS_URL=redis://streams@redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
+      - REDIS_URL=redis://streams_producer@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_producer_password
       - CONNECT_PORT=9500
       - LOG_LEVEL=info
       - REDIS_POOL_SIZE=20
@@ -269,7 +273,7 @@ services:
     networks:
       - alt-staging
     secrets:
-      - redis_streams_password
+      - redis_streams_producer_password
       - mqhub_auth_token
       - rask_ingest_token
     healthcheck:
@@ -536,8 +540,8 @@ services:
     environment:
       - PORT=9400
       - BACKEND_API_URL=http://stub-backend
-      - REDIS_STREAMS_URL=redis://streams@redis-streams:6379
-      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_password
+      - REDIS_STREAMS_URL=redis://streams_consumer@redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_streams_consumer_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=tag-generator-group
       - CONSUMER_NAME=tag-generator-staging
@@ -566,7 +570,7 @@ services:
       - HF_HUB_OFFLINE=1
       - TRANSFORMERS_OFFLINE=1
     secrets:
-      - redis_streams_password
+      - redis_streams_consumer_password
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/tag-generator/pki}:/trust:ro
@@ -1764,8 +1768,10 @@ secrets:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cookie_secret.txt
   kratos_cipher_secret:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cipher_secret.txt
-  redis_streams_password:
-    file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_password.txt
+  redis_streams_producer_password:
+    file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_producer_password.txt
+  redis_streams_consumer_password:
+    file: ../e2e/playwright/_fixtures/test-credentials/redis_streams_consumer_password.txt
   redis_limiter_password:
     file: ../e2e/playwright/_fixtures/test-credentials/redis_limiter_password.txt
   inference_service_token:
