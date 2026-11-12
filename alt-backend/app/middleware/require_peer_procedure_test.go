@@ -9,6 +9,9 @@ import (
 	"net/http/httptest"
 	"slices"
 	"testing"
+
+	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 )
 
 func TestRequirePeerProcedure_DefaultAllowlist_FullInventory(t *testing.T) {
@@ -531,43 +534,33 @@ func TestRequirePeerProcedure_ExactPeerAllowlist(t *testing.T) {
 	}
 }
 
-func TestRequirePeerProcedure_BackendLeastPrivilegeAndBackgroundClaims(t *testing.T) {
-	handler := RequirePeerProcedure(nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	tests := []struct {
-		name       string
-		peer       string
-		procedure  string
-		wantStatus int
-	}{
-		{name: "backend_denied_ClaimNotificationBatch", peer: "alt-backend", procedure: "ClaimNotificationBatch", wantStatus: http.StatusForbidden},
-		{name: "backend_denied_ClaimOutboxBatch", peer: "alt-backend", procedure: "ClaimOutboxBatch", wantStatus: http.StatusForbidden},
-		{name: "backend_denied_PruneOutboxEvents", peer: "alt-backend", procedure: "PruneOutboxEvents", wantStatus: http.StatusForbidden},
-		{name: "backend_denied_PurgeExpiredArticleHeads", peer: "alt-backend", procedure: "PurgeExpiredArticleHeads", wantStatus: http.StatusForbidden},
-		{name: "backend_denied_PurgeExpiredFeedOgImages", peer: "alt-backend", procedure: "PurgeExpiredFeedOgImages", wantStatus: http.StatusForbidden},
-		{name: "backend_denied_PurgeImageProxyCacheOlderThan", peer: "alt-backend", procedure: "PurgeImageProxyCacheOlderThan", wantStatus: http.StatusForbidden},
-		{name: "backend_allowed_ArchiveArticle", peer: "alt-backend", procedure: "ArchiveArticle", wantStatus: http.StatusOK},
-		{name: "backend_allowed_GetArticleContentByID", peer: "alt-backend", procedure: "GetArticleContentByID", wantStatus: http.StatusOK},
-		{name: "backend_allowed_ListFeedsCursor", peer: "alt-backend", procedure: "ListFeedsCursor", wantStatus: http.StatusOK},
-		{name: "backend_allowed_MarkFeedRead", peer: "alt-backend", procedure: "MarkFeedRead", wantStatus: http.StatusOK},
-		{name: "backend_allowed_UpsertPushSubscription", peer: "alt-backend", procedure: "UpsertPushSubscription", wantStatus: http.StatusOK},
-		{name: "harvester_allowed_ClaimOutboxBatch", peer: "alt-harvester", procedure: "ClaimOutboxBatch", wantStatus: http.StatusOK},
-		{name: "notifier_allowed_ClaimNotificationBatch", peer: "alt-notifier", procedure: "ClaimNotificationBatch", wantStatus: http.StatusOK},
+func TestRequirePeerProcedure_AllowlistNamesExistInServiceDescriptor(t *testing.T) {
+	svc := datahubv1.File_services_datahub_v1_datahub_proto.Services().ByName("DataHubService")
+	if svc == nil {
+		t.Fatal("DataHubService descriptor not found in generated protobuf file")
+	}
+	if string(svc.FullName()) != datahubv1connect.DataHubServiceName {
+		t.Fatalf("service full name = %q, want %q", svc.FullName(), datahubv1connect.DataHubServiceName)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+tt.procedure, nil)
-			req.TLS = &tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: tt.peer}}}},
+	methods := svc.Methods()
+	if methods.Len() == 0 {
+		t.Fatal("DataHubService descriptor declares zero methods")
+	}
+
+	validProcedures := make(map[string]struct{}, methods.Len())
+	for i := 0; i < methods.Len(); i++ {
+		validProcedures[string(methods.Get(i).Name())] = struct{}{}
+	}
+
+	for peer, procs := range defaultPeerProcedures {
+		if len(procs) == 0 {
+			t.Errorf("peer %q allowlist is empty", peer)
+		}
+		for proc := range procs {
+			if _, ok := validProcedures[proc]; !ok {
+				t.Errorf("peer %q allowlist contains unknown DataHubService procedure %q", peer, proc)
 			}
-			rr := httptest.NewRecorder()
-			handler.ServeHTTP(rr, req)
-			if rr.Code != tt.wantStatus {
-				t.Fatalf("peer %s calling %s: got %d, want %d", tt.peer, tt.procedure, rr.Code, tt.wantStatus)
-			}
-		})
+		}
 	}
 }
