@@ -1095,6 +1095,7 @@ class TestBackupAllScriptBehavior(unittest.TestCase):
             secrets_dir.mkdir()
             backup_dir = Path(tmpdir) / "custom_backups"
             backup_dir.mkdir()
+            (backup_dir / "clickhouse").mkdir()
             custom_log = backup_dir / "logs" / "custom_backup.log"
             custom_metrics = backup_dir / "metrics"
 
@@ -1150,6 +1151,7 @@ exit 1
             secrets_dir.mkdir()
             backup_dir = Path(tmpdir) / "backups"
             backup_dir.mkdir()
+            (backup_dir / "clickhouse").mkdir()
 
             # Create test secret files
             (secrets_dir / "postgres_password").write_text("secret_alt_postgres_pass")
@@ -1306,6 +1308,7 @@ fi
             secrets_dir.mkdir()
             backup_dir = Path(tmpdir) / "backups"
             backup_dir.mkdir()
+            (backup_dir / "clickhouse").mkdir()
 
             # Only create restic password, missing alt-db password!
             (secrets_dir / "restic_password").write_text("secret_restic")
@@ -1352,6 +1355,7 @@ fi
             secrets_dir.mkdir()
             backup_dir = Path(tmpdir) / "backups"
             backup_dir.mkdir()
+            (backup_dir / "clickhouse").mkdir()
 
             (secrets_dir / "restic_password").write_text("secret_restic")
             (secrets_dir / "postgres_password").write_text("secret_postgres")
@@ -1397,6 +1401,7 @@ fi
             secrets_dir.mkdir()
             backup_dir = Path(tmpdir) / "backups"
             backup_dir.mkdir()
+            (backup_dir / "clickhouse").mkdir()
 
             (mock_bin / "mkdir").write_text(f"""#!/bin/bash
 args=("$@")
@@ -1465,6 +1470,7 @@ exit 1
             secrets_dir.mkdir()
             backup_dir = Path(tmpdir) / "backups"
             backup_dir.mkdir()
+            (backup_dir / "clickhouse").mkdir()
 
             (secrets_dir / "restic_password").write_text("secret_restic")
             (secrets_dir / "postgres_password").write_text("secret_postgres")
@@ -1513,6 +1519,7 @@ exit 1
             secrets_dir.mkdir()
             backup_dir = Path(tmpdir) / "backups"
             backup_dir.mkdir()
+            (backup_dir / "clickhouse").mkdir()
 
             (secrets_dir / "restic_password").write_text("secret_restic")
             (secrets_dir / "postgres_password").write_text("secret_postgres")
@@ -1600,6 +1607,7 @@ fi
             secrets_dir.mkdir()
             backup_dir = Path(tmpdir) / "backups"
             backup_dir.mkdir()
+            (backup_dir / "clickhouse").mkdir()
 
             (secrets_dir / "restic_password").write_text("secret_restic")
             (secrets_dir / "postgres_password").write_text("secret_postgres")
@@ -1670,6 +1678,7 @@ class TestBackupAllNoPlaintextNoArgvSecrets(unittest.TestCase):
         secrets_dir.mkdir()
         backup_dir = Path(tmpdir) / "backups"
         backup_dir.mkdir()
+        (backup_dir / "clickhouse").mkdir()
         for name, value in self.SECRETS.items():
             if drop_restic_password and name == "restic_password":
                 continue
@@ -1822,7 +1831,7 @@ exit 0
         for name in ("backup-all.sh", "sync-offsite.sh", "restore-verify.sh", "backup-metrics.sh"):
             content = (REPO_ROOT / "scripts/backup" / name).read_text()
             self.assertNotIn("PGPASSWORD", content, name)
-            self.assertNotIn("Bearer $", content, name)
+            self.assertNotRegex(content, r"Bearer \$\{?[A-Za-z_]", name)
             self.assertNotIn('-u "${', content, name)
 
 

@@ -11,7 +11,7 @@ Comprehensive backup system implementing 3-2-1 backup strategy for the Alt platf
 openssl rand -base64 32 > secrets/restic_password.txt
 
 # Create backup directory
-sudo mkdir -p /backups/{postgres,restic-repo,logs,metrics}
+sudo mkdir -p /backups/{restic-repo,logs,metrics}
 sudo chown -R $USER:$USER /backups
 
 # Initialize repository
@@ -208,8 +208,7 @@ Import alert rules from `observability/alerts/backup-rules.yaml` via Grafana UI:
 
 | Tier | Location | Retention |
 |------|----------|-----------|
-| Hot (PostgreSQL) | `/backups/postgres/` | 7 days |
-| Warm (Restic) | `/backups/restic-repo/` | 24 hourly, 7 daily, 4 weekly, 3 monthly |
+| Warm (Restic, includes PostgreSQL dumps streamed as `postgres/<name>.dump`) | `/backups/restic-repo/` | 24 hourly, 7 daily, 4 weekly, 3 monthly |
 | Cold (Offsite) | Remote server | 30 daily, 12 weekly, 6 monthly |
 
 ## Troubleshooting
@@ -227,7 +226,6 @@ restic -r /backups/restic-repo unlock
 ```bash
 # Emergency prune
 restic -r /backups/restic-repo forget --keep-last 3 --prune
-find /backups/postgres -mtime +3 -delete
 ```
 
 **Offsite unreachable**:

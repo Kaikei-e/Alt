@@ -21,6 +21,7 @@
 #
 
 set -euo pipefail
+umask 077
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,7 +34,6 @@ RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE:-/run/secrets/restic_password}"
 HEALTHCHECK_VERIFY_URL="${HEALTHCHECK_VERIFY_URL:-}"
 METRICS_DIR="${METRICS_DIR:-${BACKUP_ROOT}/metrics}"
 BACKUP_CONTAINER="${BACKUP_CONTAINER:-alt-backup}"
-POSTGRES_BACKUP_DIR="${POSTGRES_BACKUP_DIR:-${BACKUP_ROOT}/postgres}"
 
 # Fail-fast: restore verification requires host Docker access and cannot run inside container
 IN_CONTAINER="${IN_CONTAINER:-}"
@@ -280,7 +280,6 @@ verify_pg_restore() {
     fi
 
     # Real verification requires RESTORE_DIR to exist and be a valid directory.
-    # Fallback to POSTGRES_BACKUP_DIR is STRICTLY for dry-run only.
     if [[ "$DRY_RUN" != true ]]; then
         if [[ -z "$RESTORE_DIR" || ! -d "$RESTORE_DIR" ]]; then
             log_error "RESTORE_DIR missing or invalid during real PostgreSQL verification: '${RESTORE_DIR:-}'"
@@ -297,13 +296,10 @@ verify_pg_restore() {
 
     for db in "${databases[@]}"; do
         local dump_file=""
-        # In dry-run mode, simulate verification cleanly with fallback to POSTGRES_BACKUP_DIR
+        # In dry-run mode, simulate verification cleanly
         if [[ "$DRY_RUN" == true ]]; then
             if [[ -n "$RESTORE_DIR" && -d "$RESTORE_DIR" ]]; then
-                dump_file=$(find "$RESTORE_DIR" -name "${db}-*.dump" -type f 2>/dev/null | sort -r | head -1)
-            fi
-            if [[ -z "$dump_file" || ! -f "$dump_file" ]]; then
-                dump_file=$(find "$POSTGRES_BACKUP_DIR" -name "${db}-*.dump" -type f 2>/dev/null | sort -r | head -1)
+                dump_file=$(find "$RESTORE_DIR" -name "${db}*.dump" -type f 2>/dev/null | sort -r | head -1)
             fi
             if [[ -n "$dump_file" && -f "$dump_file" ]]; then
                 local dump_size
@@ -317,7 +313,7 @@ verify_pg_restore() {
         fi
 
         # Real verification: dump_file MUST be found strictly inside restored snapshot directory
-        dump_file=$(find "$RESTORE_DIR" -name "${db}-*.dump" -type f 2>/dev/null | sort -r | head -1)
+        dump_file=$(find "$RESTORE_DIR" -name "${db}*.dump" -type f 2>/dev/null | sort -r | head -1)
 
         if [[ -z "$dump_file" || ! -f "$dump_file" ]]; then
             if [[ "$db" == "alt-db" || "$db" == "kratos-db" ]]; then
