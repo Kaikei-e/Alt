@@ -228,10 +228,19 @@ func TestSyncArticles_StampsConfiguredOwnerUserID(t *testing.T) {
 
 func TestNewArticleSyncService_PanicsOnEmptyOwnerUserID(t *testing.T) {
 	articleRepo := &stubSyncArticleRepo{}
-	assert.Panics(t, func() {
-		_ = NewArticleSyncService(articleRepo, "", testLoggerBackfill())
-	})
-	assert.Panics(t, func() {
-		_ = NewArticleSyncService(articleRepo, "   ", testLoggerBackfill())
-	})
+	for _, invalidOwner := range []string{"", "   ", "not-a-uuid", "00000000-0000-0000-0000-000000000000"} {
+		assert.Panics(t, func() {
+			_ = NewArticleSyncService(articleRepo, invalidOwner, testLoggerBackfill())
+		})
+	}
+}
+
+func TestDisabledArticleSyncService_FailsLoudly(t *testing.T) {
+	svc := NewDisabledArticleSyncService()
+
+	err := svc.SyncArticles(context.Background())
+	assert.ErrorIs(t, err, ErrArticleSyncDisabled)
+
+	err = svc.BackfillEmptyFeeds(context.Background())
+	assert.ErrorIs(t, err, ErrArticleSyncDisabled)
 }

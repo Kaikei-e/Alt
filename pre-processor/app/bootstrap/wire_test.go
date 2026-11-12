@@ -744,26 +744,93 @@ func TestBuildDependencies_FailsBeforeDBInitOnInvalidURLs(t *testing.T) {
 	assert.Contains(t, err.Error(), "BACKEND_API_MTLS_URL is required and must be nonempty HTTPS")
 }
 
-func TestBuildDependencies_FailsBeforeDBInitOnInvalidArticleSyncOwner(t *testing.T) {
+func TestBuildDependencies_FailsBeforeDBInitOnInvalidArticleSyncConfig(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	for _, tc := range []struct {
-		name  string
-		set   bool
-		value string
+		name        string
+		syncSet     bool
+		syncVal     string
+		ownerSet    bool
+		ownerVal    string
+		errContains string
 	}{
-		{name: "unset", set: false},
-		{name: "empty", set: true, value: ""},
-		{name: "malformed UUID", set: true, value: "not-a-uuid"},
-		{name: "nil UUID", set: true, value: "00000000-0000-0000-0000-000000000000"},
+		{
+			name:        "INOREADER_SYNC unset",
+			syncSet:     false,
+			ownerSet:    true,
+			ownerVal:    "11111111-2222-4333-8444-555555555555",
+			errContains: "INOREADER_SYNC",
+		},
+		{
+			name:        "INOREADER_SYNC invalid",
+			syncSet:     true,
+			syncVal:     "auto",
+			ownerSet:    true,
+			ownerVal:    "11111111-2222-4333-8444-555555555555",
+			errContains: "INOREADER_SYNC",
+		},
+		{
+			name:        "enabled with unset owner",
+			syncSet:     true,
+			syncVal:     "enabled",
+			ownerSet:    false,
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "enabled with empty owner",
+			syncSet:     true,
+			syncVal:     "enabled",
+			ownerSet:    true,
+			ownerVal:    "",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "enabled with malformed UUID",
+			syncSet:     true,
+			syncVal:     "enabled",
+			ownerSet:    true,
+			ownerVal:    "not-a-uuid",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "enabled with nil UUID",
+			syncSet:     true,
+			syncVal:     "enabled",
+			ownerSet:    true,
+			ownerVal:    "00000000-0000-0000-0000-000000000000",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "disabled with malformed UUID",
+			syncSet:     true,
+			syncVal:     "disabled",
+			ownerSet:    true,
+			ownerVal:    "not-a-uuid",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
+		{
+			name:        "disabled with nil UUID",
+			syncSet:     true,
+			syncVal:     "disabled",
+			ownerSet:    true,
+			ownerVal:    "00000000-0000-0000-0000-000000000000",
+			errContains: "ARTICLE_SYNC_OWNER_USER_ID",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("MTLS_ENFORCE", "false")
 			t.Setenv("BACKEND_API_URL", "http://alt-backend:9000")
 			t.Setenv("NEWS_CREATOR_HOST", "http://news-creator:11434")
 			t.Setenv("PRE_PROCESSOR_DB_HOST", "invalid-host-should-never-be-reached")
-			if tc.set {
-				t.Setenv("ARTICLE_SYNC_OWNER_USER_ID", tc.value)
+			if tc.syncSet {
+				t.Setenv("INOREADER_SYNC", tc.syncVal)
+			} else {
+				t.Setenv("INOREADER_SYNC", "placeholder")
+				require.NoError(t, os.Unsetenv("INOREADER_SYNC"))
+			}
+			if tc.ownerSet {
+				t.Setenv("ARTICLE_SYNC_OWNER_USER_ID", tc.ownerVal)
 			} else {
 				t.Setenv("ARTICLE_SYNC_OWNER_USER_ID", "placeholder")
 				require.NoError(t, os.Unsetenv("ARTICLE_SYNC_OWNER_USER_ID"))
@@ -776,7 +843,7 @@ func TestBuildDependencies_FailsBeforeDBInitOnInvalidArticleSyncOwner(t *testing
 			require.Error(t, err)
 			assert.Nil(t, deps)
 			assert.Nil(t, cleanup)
-			assert.Contains(t, err.Error(), "ARTICLE_SYNC_OWNER_USER_ID")
+			assert.Contains(t, err.Error(), tc.errContains)
 		})
 	}
 }
