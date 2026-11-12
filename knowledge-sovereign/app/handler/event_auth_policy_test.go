@@ -266,6 +266,8 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 				TenantId:   targetTenantID,
 				UserId:     targetUserID,
 				EventType:  "ArticleCreated",
+				DedupeKey:  "article-created:" + uuid.New().String(),
+				Payload:    []byte("{}"),
 				OccurredAt: timestamppb.New(time.Now()),
 			},
 		})
