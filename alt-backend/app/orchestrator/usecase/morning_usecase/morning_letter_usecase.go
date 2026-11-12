@@ -2,7 +2,6 @@ package morning_usecase
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -21,8 +20,6 @@ const regenerateCooldown = time.Hour
 
 const maxRegenCooldownEntries = 10000
 
-var ErrRegenerationInFlight = errors.New("morning letter regeneration already in flight")
-
 type morningLetterUsecase struct {
 	repo         morning_letter_port.MorningLetterRepository
 	userFeedPort user_feed_port.UserFeedPort
@@ -35,9 +32,8 @@ type morningLetterUsecase struct {
 	feedTitleBatch morning_letter_port.FeedTitleBatchPort
 	searchRelated  morning_letter_port.SearchRelatedArticlesPort
 
-	regenMu       sync.Mutex
-	regenInFlight bool
-	regenLast     map[string]time.Time
+	regenMu   sync.Mutex
+	regenLast map[string]time.Time
 }
 
 func NewMorningLetterUsecase(
@@ -82,10 +78,6 @@ func (u *morningLetterUsecase) RegenerateLatest(
 	}
 
 	u.regenMu.Lock()
-	if u.regenInFlight {
-		u.regenMu.Unlock()
-		return nil, false, 0, ErrRegenerationInFlight
-	}
 	last := u.regenLast[userID]
 	now := time.Now()
 	if inCooldown, remaining := checkCooldown(last, now, regenerateCooldown); inCooldown {
@@ -99,17 +91,15 @@ func (u *morningLetterUsecase) RegenerateLatest(
 	if _, exists := u.regenLast[userID]; !exists && len(u.regenLast) >= maxRegenCooldownEntries {
 		evictRegenCooldownLocked(u.regenLast, now)
 	}
-	u.regenInFlight = true
 	u.regenLast[userID] = now
 	u.regenMu.Unlock()
-	defer func() {
-		u.regenMu.Lock()
-		u.regenInFlight = false
-		u.regenMu.Unlock()
-	}()
 
 	doc, err := u.repo.RegenerateLatest(ctx, editionTimezone)
 	if err != nil {
+		// Roll back the timestamp so the user isn't penalised for a failed run.
+		u.regenMu.Lock()
+		delete(u.regenLast, userID)
+		u.regenMu.Unlock()
 		return nil, false, 0, fmt.Errorf("regenerate failed: %w", err)
 	}
 	return doc, true, 0, nil

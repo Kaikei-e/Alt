@@ -25,10 +25,9 @@ import (
 type OperationClass string
 
 const (
-	OpSummarize         OperationClass = "summarize"
-	OpAugurChat         OperationClass = "augur_chat"
-	OpMorningChat       OperationClass = "morning_chat"
-	OpMorningRegenerate OperationClass = "morning_regenerate"
+	OpSummarize   OperationClass = "summarize"
+	OpAugurChat   OperationClass = "augur_chat"
+	OpMorningChat OperationClass = "morning_chat"
 )
 
 var ErrQuotaUnauthenticated = errors.New("authentication required")
@@ -153,10 +152,9 @@ func NewUserQuotaLimiter(cfg config.UserQuotaConfig) (*UserQuotaLimiter, error) 
 	}
 	return &UserQuotaLimiter{
 		ops: map[OperationClass]*operationLimiter{
-			OpSummarize:         newOperationLimiter(cfg.Summarize, cfg.MaxTrackedUsers),
-			OpAugurChat:         newOperationLimiter(cfg.AugurChat, cfg.MaxTrackedUsers),
-			OpMorningChat:       newOperationLimiter(cfg.MorningChat, cfg.MaxTrackedUsers),
-			OpMorningRegenerate: newOperationLimiter(cfg.MorningRegenerate, cfg.MaxTrackedUsers),
+			OpSummarize:   newOperationLimiter(cfg.Summarize, cfg.MaxTrackedUsers),
+			OpAugurChat:   newOperationLimiter(cfg.AugurChat, cfg.MaxTrackedUsers),
+			OpMorningChat: newOperationLimiter(cfg.MorningChat, cfg.MaxTrackedUsers),
 		},
 		now: time.Now,
 	}, nil
@@ -186,10 +184,9 @@ func (l *UserQuotaLimiter) TrackedUsers(op OperationClass) int {
 }
 
 var connectProcedureClasses = map[string]OperationClass{
-	feedsv2connect.FeedServiceStreamSummarizeProcedure:                       OpSummarize,
-	augurv2connect.AugurServiceStreamChatProcedure:                           OpAugurChat,
-	morningletterv2connect.MorningLetterServiceStreamChatProcedure:           OpMorningChat,
-	morningletterv2connect.MorningLetterReadServiceRegenerateLatestProcedure: OpMorningRegenerate,
+	feedsv2connect.FeedServiceStreamSummarizeProcedure:             OpSummarize,
+	augurv2connect.AugurServiceStreamChatProcedure:                 OpAugurChat,
+	morningletterv2connect.MorningLetterServiceStreamChatProcedure: OpMorningChat,
 }
 
 type UserQuotaInterceptor struct {
