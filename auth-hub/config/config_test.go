@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"net/netip"
@@ -258,7 +259,8 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 
 	t.Run("fails when BACKEND_TOKEN_SIGNING_KEY_FILE is unset", func(t *testing.T) {
 		setBaseEnv(t)
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", "")
+		require.NoError(t, os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE"))
 
 		_, err := Load()
 		require.Error(t, err)
@@ -267,7 +269,8 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 
 	t.Run("ignores legacy BACKEND_TOKEN_SECRET and BACKEND_TOKEN_SECRET_FILE", func(t *testing.T) {
 		setBaseEnv(t)
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", "")
+		require.NoError(t, os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE"))
 		legacyFile := filepath.Join(t.TempDir(), "legacy.txt")
 		require.NoError(t, os.WriteFile(legacyFile, []byte("this-is-a-valid-backend-token-secret-32-chars-long"), 0o600))
 		t.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
@@ -326,6 +329,70 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 		_, err = Load()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "BACKEND_TOKEN_SIGNING_KEY_FILE")
+	})
+
+	t.Run("fails when PEM contains a trailing second block", func(t *testing.T) {
+		setBaseEnv(t)
+		der1, err := x509.MarshalPKCS8PrivateKey(generateTestEd25519Key(t))
+		require.NoError(t, err)
+		der2, err := x509.MarshalPKCS8PrivateKey(generateTestEd25519Key(t))
+		require.NoError(t, err)
+		twoBlocks := append(
+			pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der1}),
+			pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der2})...,
+		)
+		keyPath := filepath.Join(t.TempDir(), "two-blocks.pem")
+		require.NoError(t, os.WriteFile(keyPath, twoBlocks, 0o600))
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyPath)
+
+		_, err = Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "BACKEND_TOKEN_SIGNING_KEY_FILE")
+	})
+
+	t.Run("fails when PEM block type is ENCRYPTED PRIVATE KEY", func(t *testing.T) {
+		setBaseEnv(t)
+		der, err := x509.MarshalPKCS8PrivateKey(generateTestEd25519Key(t))
+		require.NoError(t, err)
+		encFile := filepath.Join(t.TempDir(), "encrypted.pem")
+		require.NoError(t, os.WriteFile(encFile, pem.EncodeToMemory(&pem.Block{Type: "ENCRYPTED PRIVATE KEY", Bytes: der}), 0o600))
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", encFile)
+
+		_, err = Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "BACKEND_TOKEN_SIGNING_KEY_FILE")
+	})
+
+	t.Run("fails when PKCS8 private key is RSA instead of Ed25519", func(t *testing.T) {
+		setBaseEnv(t)
+		rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		require.NoError(t, err)
+		der, err := x509.MarshalPKCS8PrivateKey(rsaKey)
+		require.NoError(t, err)
+		rsaFile := filepath.Join(t.TempDir(), "rsa.pem")
+		require.NoError(t, os.WriteFile(rsaFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600))
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", rsaFile)
+
+		_, err = Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "BACKEND_TOKEN_SIGNING_KEY_FILE")
+	})
+
+	t.Run("fails when key file has junk bytes before PEM block", func(t *testing.T) {
+		der, err := x509.MarshalPKCS8PrivateKey(generateTestEd25519Key(t))
+		require.NoError(t, err)
+		validPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+
+		for _, prefix := range []string{"junk-before-pem\n", "-----BEGIN malformed\n"} {
+			setBaseEnv(t)
+			junkFile := filepath.Join(t.TempDir(), "junk-prefix.pem")
+			require.NoError(t, os.WriteFile(junkFile, append([]byte(prefix), validPEM...), 0o600))
+			t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", junkFile)
+
+			_, err = Load()
+			require.Error(t, err, "prefix %q", prefix)
+			assert.Contains(t, err.Error(), "BACKEND_TOKEN_SIGNING_KEY_FILE")
+		}
 	})
 }
 

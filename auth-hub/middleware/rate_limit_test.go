@@ -230,3 +230,47 @@ func TestTrustedProxyIPExtractor_NoneModeIgnoresXFFFromAnyPeer(t *testing.T) {
 		assert.Equal(t, tc.wantIP, extractor(req), "peer %s", tc.remoteAddr)
 	}
 }
+
+func TestTrustedProxyIPExtractor_EdgeCases(t *testing.T) {
+	extractor := NewTrustedProxyIPExtractor([]netip.Prefix{
+		netip.MustParsePrefix("172.18.0.0/16"),
+		netip.MustParsePrefix("fd00::/8"),
+	})
+
+	t.Run("IPv4-mapped IPv6 peer is matched by IPv4 CIDR", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = "[::ffff:172.18.0.5]:43210"
+		req.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.42")
+		assert.Equal(t, "198.51.100.42", extractor(req))
+	})
+
+	t.Run("multiple X-Forwarded-For header lines are walked right to left", func(t *testing.T) {
+		req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req1.RemoteAddr = "172.18.0.5:43210"
+		req1.Header.Add("X-Forwarded-For", "203.0.113.10, 198.51.100.20")
+		req1.Header.Add("X-Forwarded-For", "198.51.100.30, 172.18.0.9")
+		assert.Equal(t, "198.51.100.30", extractor(req1))
+
+		req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req2.RemoteAddr = "172.18.0.5:43210"
+		req2.Header.Add("X-Forwarded-For", "203.0.113.10, 198.51.100.20")
+		req2.Header.Add("X-Forwarded-For", "172.18.0.8, 172.18.0.9")
+		assert.Equal(t, "198.51.100.20", extractor(req2))
+	})
+
+	t.Run("extracts IPv6 client entry", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = "172.18.0.5:43210"
+		req.Header.Set("X-Forwarded-For", "2001:db8::1, 2001:db8::cafe, fd00::10")
+		assert.Equal(t, "2001:db8::cafe", extractor(req))
+	})
+
+	t.Run("entry with port falls back to proxy socket peer address", func(t *testing.T) {
+		for _, xff := range []string{"198.51.100.42:8080", "[2001:db8::cafe]:8443"} {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			req.RemoteAddr = "172.18.0.5:43210"
+			req.Header.Set("X-Forwarded-For", xff)
+			assert.Equal(t, "172.18.0.5", extractor(req), "xff %s", xff)
+		}
+	})
+}
