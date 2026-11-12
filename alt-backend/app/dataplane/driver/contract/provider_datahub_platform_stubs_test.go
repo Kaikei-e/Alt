@@ -459,7 +459,7 @@ func (pactTagReadPort) FeedTags(context.Context, string, *time.Time, int) ([]*do
 func (pactTagReadPort) Cooccurrences(context.Context, []string) ([]*domain.TagCooccurrence, error) {
 	return nil, nil
 }
-func (pactTagReadPort) SearchByPrefix(context.Context, string, int) ([]domain.GlobalTagHit, error) {
+func (pactTagReadPort) SearchByPrefix(context.Context, string, uuid.UUID, int) ([]domain.GlobalTagHit, error) {
 	return nil, nil
 }
 func (pactTagReadPort) ArticleCounts(context.Context, uuid.UUID, time.Time) ([]domain.TagArticleCount, error) {

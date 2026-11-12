@@ -11,15 +11,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testUserID = "11111111-1111-4111-8111-111111111111"
+
 type stubTagSearcher struct {
 	hits      []domain.GlobalTagHit
 	err       error
 	gotPrefix string
+	gotUser   string
 	gotLimit  int
+	calls     int
 }
 
-func (s *stubTagSearcher) SearchTagsByPrefix(_ context.Context, prefix string, limit int) ([]domain.GlobalTagHit, error) {
-	s.gotPrefix, s.gotLimit = prefix, limit
+func (s *stubTagSearcher) SearchTagsByPrefix(_ context.Context, prefix string, userID string, limit int) ([]domain.GlobalTagHit, error) {
+	s.calls++
+	s.gotPrefix, s.gotUser, s.gotLimit = prefix, userID, limit
 	return s.hits, s.err
 }
 
@@ -41,9 +46,10 @@ func TestTagSearchGateway_SearchTagsByPrefix(t *testing.T) {
 	}}
 	gw := NewTagSearchGateway(searcher)
 
-	section, err := gw.SearchTagsByPrefix(context.Background(), "A", 10)
+	section, err := gw.SearchTagsByPrefix(context.Background(), "A", testUserID, 10)
 	require.NoError(t, err)
 	assert.Equal(t, "A", searcher.gotPrefix)
+	assert.Equal(t, testUserID, searcher.gotUser)
 	assert.Equal(t, 10, searcher.gotLimit)
 	assert.Len(t, section.Hits, 2)
 	assert.Equal(t, int64(2), section.Total)
@@ -58,8 +64,20 @@ func TestTagSearchGateway_WrapsTheSourceError(t *testing.T) {
 	cause := errors.New("connection refused")
 	gw := NewTagSearchGateway(&stubTagSearcher{err: cause})
 
-	section, err := gw.SearchTagsByPrefix(context.Background(), "ai", 10)
+	section, err := gw.SearchTagsByPrefix(context.Background(), "ai", testUserID, 10)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, cause)
 	assert.Nil(t, section)
+}
+
+func TestTagSearchGateway_RejectsEmptyUserID(t *testing.T) {
+	logger.InitLogger()
+
+	searcher := &stubTagSearcher{}
+	gw := NewTagSearchGateway(searcher)
+
+	section, err := gw.SearchTagsByPrefix(context.Background(), "ai", "", 10)
+	require.Error(t, err)
+	assert.Nil(t, section)
+	assert.Zero(t, searcher.calls, "an empty user id must never reach the data hub")
 }

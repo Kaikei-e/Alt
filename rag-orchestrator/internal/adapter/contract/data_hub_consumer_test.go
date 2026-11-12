@@ -167,7 +167,8 @@ func TestDataHubFetchTagCloudContract(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: map[string]interface{}{
-				"limit": 300,
+				"limit":  300,
+				"userId": "11111111-1111-4111-8111-111111111111",
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -185,7 +186,7 @@ func TestDataHubFetchTagCloudContract(t *testing.T) {
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			client := altdb.NewDataHubTagCloudClient(newDataHubServiceClient(config), testContractLogger())
 
-			tags, err := client.FetchTagCloud(context.Background(), 300)
+			tags, err := client.FetchTagCloud(context.Background(), "11111111-1111-4111-8111-111111111111", 300)
 			if err != nil {
 				return fmt.Errorf("FetchTagCloud failed: %w", err)
 			}

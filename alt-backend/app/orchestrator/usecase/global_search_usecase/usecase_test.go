@@ -35,12 +35,35 @@ func (m *mockRecapSearch) SearchRecapsForGlobal(_ context.Context, _ string, _ i
 }
 
 type mockTagSearch struct {
-	result *domain.TagSearchSection
-	err    error
+	result    *domain.TagSearchSection
+	err       error
+	gotUserID string
+	gotPrefix string
 }
 
-func (m *mockTagSearch) SearchTagsByPrefix(_ context.Context, _ string, _ int) (*domain.TagSearchSection, error) {
+func (m *mockTagSearch) SearchTagsByPrefix(_ context.Context, prefix string, userID string, _ int) (*domain.TagSearchSection, error) {
+	m.gotPrefix, m.gotUserID = prefix, userID
 	return m.result, m.err
+}
+
+func TestGlobalSearchUsecase_TagSearchReceivesCallerUserID(t *testing.T) {
+	logger.InitLogger()
+
+	tags := &mockTagSearch{result: &domain.TagSearchSection{}}
+	uc := NewGlobalSearchUsecase(
+		&mockArticleSearch{result: &domain.ArticleSearchSection{}},
+		&mockRecapSearch{result: &domain.RecapSearchSection{}},
+		tags,
+		testTracer,
+	)
+
+	_, err := uc.Execute(userCtx(), "AI", 5, 3, 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tags.gotUserID != "01020304-0506-0708-090a-0b0c0d0e0f10" {
+		t.Errorf("tag search must receive the authenticated user id, got %q", tags.gotUserID)
+	}
 }
 
 func userCtx() context.Context {
@@ -327,7 +350,7 @@ type slowTagSearch struct {
 	delay time.Duration
 }
 
-func (m *slowTagSearch) SearchTagsByPrefix(ctx context.Context, _ string, _ int) (*domain.TagSearchSection, error) {
+func (m *slowTagSearch) SearchTagsByPrefix(ctx context.Context, _ string, _ string, _ int) (*domain.TagSearchSection, error) {
 	select {
 	case <-time.After(m.delay):
 		return &domain.TagSearchSection{Hits: []domain.GlobalTagHit{{TagName: "x"}}}, nil

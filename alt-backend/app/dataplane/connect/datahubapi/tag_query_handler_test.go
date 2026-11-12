@@ -564,14 +564,59 @@ func TestGetArticleTitleAndLinkPortFailure(t *testing.T) {
 }
 
 type fakeFetchTagCloudPort struct {
-	items    []*domain.TagCloudItem
-	err      error
-	sawLimit int
+	items       []*domain.TagCloudItem
+	err         error
+	sawLimit    int
+	sawUserID   uuid.UUID
+	instanceHit int
+	userHit     int
+}
+
+func (f *fakeFetchTagCloudPort) ExecuteCountsOnlyForUser(_ context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
+	f.userHit++
+	f.sawUserID, f.sawLimit = userID, limit
+	return f.items, f.err
 }
 
 func (f *fakeFetchTagCloudPort) ExecuteCountsOnly(_ context.Context, limit int) ([]*domain.TagCloudItem, error) {
+	f.instanceHit++
 	f.sawLimit = limit
 	return f.items, f.err
+}
+
+func TestFetchTagCloud_WithUserIDIsScopedToThatUser(t *testing.T) {
+	fake := &fakeFetchTagCloudPort{items: []*domain.TagCloudItem{{TagName: "golang", ArticleCount: 2}}}
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, slog.Default(),
+		WithRAGToolPorts(fake, nil))
+	userID := testTrailUserID
+
+	resp, err := h.FetchTagCloud(context.Background(), connect.NewRequest(&datahubv1.FetchTagCloudRequest{
+		Limit:  50,
+		UserId: &userID,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, uuid.MustParse(testTrailUserID), fake.sawUserID)
+	assert.Equal(t, 50, fake.sawLimit)
+	assert.Equal(t, 1, fake.userHit)
+	assert.Zero(t, fake.instanceHit, "a scoped request must never fall through to the instance-wide query")
+	require.Len(t, resp.Msg.GetTags(), 1)
+}
+
+func TestFetchTagCloud_PresentButInvalidUserIDIsRejected(t *testing.T) {
+	for _, bad := range []string{"", "not-a-uuid", uuid.Nil.String()} {
+		fake := &fakeFetchTagCloudPort{}
+		h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, slog.Default(),
+			WithRAGToolPorts(fake, nil))
+		userID := bad
+
+		_, err := h.FetchTagCloud(context.Background(), connect.NewRequest(&datahubv1.FetchTagCloudRequest{
+			Limit:  50,
+			UserId: &userID,
+		}))
+		require.Error(t, err, "user_id %q", bad)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.Zero(t, fake.userHit+fake.instanceHit, "an invalid scope must not widen to the instance-wide query")
+	}
 }
 
 func TestFetchTagCloud_UsesExecuteCountsOnly(t *testing.T) {

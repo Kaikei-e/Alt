@@ -9,15 +9,58 @@ import (
 
 // mockArticleServiceClient implements the subset of ArticleServiceClient needed for TagCloudExploreTool.
 type mockTagCloudClient struct {
-	tags []domain.TagCloudEntry
-	err  error
+	tags      []domain.TagCloudEntry
+	err       error
+	calls     int
+	gotUserID string
+	gotLimit  int
 }
 
-func (m *mockTagCloudClient) FetchTagCloud(ctx context.Context, limit int) ([]domain.TagCloudEntry, error) {
+func (m *mockTagCloudClient) FetchTagCloud(ctx context.Context, userID string, limit int) ([]domain.TagCloudEntry, error) {
+	m.calls++
+	m.gotUserID, m.gotLimit = userID, limit
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.tags, nil
+}
+
+const testTagCloudUserID = "11111111-1111-4111-8111-111111111111"
+
+func TestTagCloudExploreTool_SendsAskingUserID(t *testing.T) {
+	client := &mockTagCloudClient{tags: []domain.TagCloudEntry{{TagName: "art", ArticleCount: 3}}}
+	tool := NewTagCloudExploreTool(client)
+
+	_, err := tool.Execute(domain.WithUserID(context.Background(), testTagCloudUserID), map[string]string{"topic": "art"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client.gotUserID != testTagCloudUserID {
+		t.Errorf("expected user id %q to be sent, got %q", testTagCloudUserID, client.gotUserID)
+	}
+}
+
+func TestTagCloudExploreTool_MissingUserIDIsError(t *testing.T) {
+	for name, ctx := range map[string]context.Context{
+		"absent":     context.Background(),
+		"whitespace": domain.WithUserID(context.Background(), "  "),
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := &mockTagCloudClient{}
+			tool := NewTagCloudExploreTool(client)
+
+			result, err := tool.Execute(ctx, map[string]string{"topic": "art"})
+			if err == nil {
+				t.Fatal("expected error when user id is missing")
+			}
+			if result == nil || result.Success {
+				t.Errorf("expected unsuccessful result, got %+v", result)
+			}
+			if client.calls != 0 {
+				t.Errorf("client must not be called without a user id, got %d calls", client.calls)
+			}
+		})
+	}
 }
 
 func TestTagCloudExploreTool_Name(t *testing.T) {
@@ -41,7 +84,7 @@ func TestTagCloudExploreTool_FiltersByTopic(t *testing.T) {
 	}
 	tool := NewTagCloudExploreTool(client)
 
-	result, err := tool.Execute(context.Background(), map[string]string{
+	result, err := tool.Execute(domain.WithUserID(context.Background(), testTagCloudUserID), map[string]string{
 		"topic": "ニューヨーク 芸術 art",
 	})
 	if err != nil {
@@ -82,7 +125,7 @@ func TestTagCloudExploreTool_NoMatchingTags(t *testing.T) {
 	}
 	tool := NewTagCloudExploreTool(client)
 
-	result, err := tool.Execute(context.Background(), map[string]string{
+	result, err := tool.Execute(domain.WithUserID(context.Background(), testTagCloudUserID), map[string]string{
 		"topic": "ニューヨーク 芸術",
 	})
 	if err != nil {
@@ -102,7 +145,7 @@ func TestTagCloudExploreTool_ClientError(t *testing.T) {
 	}
 	tool := NewTagCloudExploreTool(client)
 
-	_, err := tool.Execute(context.Background(), map[string]string{
+	_, err := tool.Execute(domain.WithUserID(context.Background(), testTagCloudUserID), map[string]string{
 		"topic": "art",
 	})
 	if err == nil {

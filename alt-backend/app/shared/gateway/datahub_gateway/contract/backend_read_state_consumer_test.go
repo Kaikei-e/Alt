@@ -714,6 +714,7 @@ func TestSearchTagsByPrefixContract(t *testing.T) {
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"prefix": "AI",
+				"userId": "11111111-1111-4111-8111-111111111111",
 				"limit":  10,
 			},
 		}).
@@ -729,7 +730,7 @@ func TestSearchTagsByPrefixContract(t *testing.T) {
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewTagGateway(newDataHubServiceClient(config))
-			hits, err := gw.SearchTagsByPrefix(context.Background(), "AI", 10)
+			hits, err := gw.SearchTagsByPrefix(context.Background(), "AI", "11111111-1111-4111-8111-111111111111", 10)
 			if err != nil {
 				return fmt.Errorf("SearchTagsByPrefix failed: %w", err)
 			}

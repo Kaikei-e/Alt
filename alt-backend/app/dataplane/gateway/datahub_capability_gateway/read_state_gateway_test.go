@@ -132,7 +132,7 @@ func (m *mockTagReadDriver) FetchTagCooccurrences(_ context.Context, _ []string)
 	return nil, nil
 }
 
-func (m *mockTagReadDriver) SearchTagsByPrefix(_ context.Context, _ string, _ int) ([]domain.GlobalTagHit, error) {
+func (m *mockTagReadDriver) SearchTagsByPrefix(_ context.Context, _ string, _ uuid.UUID, _ int) ([]domain.GlobalTagHit, error) {
 	return nil, nil
 }
 

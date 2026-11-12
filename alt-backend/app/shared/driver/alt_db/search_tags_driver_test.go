@@ -5,10 +5,41 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var testTagUserID = uuid.MustParse("11111111-1111-4111-8111-111111111111")
+
+func TestTagRepository_SearchTagsByPrefix_ScopesToUsersArticles(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := NewTagRepository(mock)
+
+	mock.ExpectQuery(`JOIN articles a ON at\.article_id = a\.id[\s\S]*a\.user_id = \$2[\s\S]*a\.deleted_at IS NULL`).
+		WithArgs("A", testTagUserID, 10).
+		WillReturnRows(pgxmock.NewRows([]string{"tag_name", "article_count"}))
+
+	_, err = repo.SearchTagsByPrefix(context.Background(), "A", testTagUserID, 10)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTagRepository_SearchTagsByPrefix_RejectsNilUserID(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := NewTagRepository(mock)
+
+	_, err = repo.SearchTagsByPrefix(context.Background(), "A", uuid.Nil, 10)
+	require.Error(t, err)
+	require.NoError(t, mock.ExpectationsWereMet(), "no query may be issued without a user id")
+}
 
 // TestTagRepository_SearchTagsByPrefix_UsesFunctionalLowerLikeQuery anchors
 // the case-insensitive prefix predicate to the functional-index-friendly
@@ -31,10 +62,10 @@ func TestTagRepository_SearchTagsByPrefix_UsesFunctionalLowerLikeQuery(t *testin
 	// Must match the rewritten predicate: lower(...) LIKE lower($1) || '%'
 	// Reject any ExpectQuery that still uses ILIKE.
 	mock.ExpectQuery(regexp.QuoteMeta("lower(ft.tag_name) LIKE lower($1) || '%'")).
-		WithArgs("A", 10).
+		WithArgs("A", testTagUserID, 10).
 		WillReturnRows(rows)
 
-	hits, err := repo.SearchTagsByPrefix(context.Background(), "A", 10)
+	hits, err := repo.SearchTagsByPrefix(context.Background(), "A", testTagUserID, 10)
 	require.NoError(t, err)
 	assert.Len(t, hits, 2)
 	assert.Equal(t, "AI", hits[0].TagName)
@@ -58,10 +89,10 @@ func TestTagRepository_SearchTagsByPrefix_NoBareILIKE(t *testing.T) {
 	// only appear in the old (ILIKE) form ensures the test fails loudly if a
 	// regression reintroduces it.
 	mock.ExpectQuery(`tag_name ILIKE`).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"tag_name", "article_count"}))
 
-	_, _ = repo.SearchTagsByPrefix(context.Background(), "A", 10)
+	_, _ = repo.SearchTagsByPrefix(context.Background(), "A", testTagUserID, 10)
 
 	// If the driver still emits "tag_name ILIKE ...", ExpectationsWereMet
 	// returns nil (the expectation was satisfied). If the driver has been
