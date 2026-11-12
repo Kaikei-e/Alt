@@ -37,7 +37,7 @@ production filenames `svc-cert.pem` / `svc-key.pem` that compose mounts at
 
 | Leaf | Role |
 |---|---|
-| `${ALLOWED_PEER}.pem` (default `pre-processor`) | In `DATAHUB_ALLOWED_PEERS`. Every positive assertion uses it. |
+| `${ALLOWED_PEER}.pem` (default `alt-backend`) | In `DATAHUB_ALLOWED_PEERS`. Every positive assertion uses it. |
 | `${DENIED_PEER}.pem` (default `rogue-peer`) | Deliberately **not** on the allowlist: a valid chain with the wrong subject. |
 
 `ALLOWED_PEER` is exported before `suite_up` because `compose.staging.yaml`

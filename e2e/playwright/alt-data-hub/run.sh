@@ -48,7 +48,7 @@ suite_image_tags ALT_DATA_HUB_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG
 # The two peer identities, resolved *before* suite_pki and suite_up.
 #
 # compose.staging.yaml interpolates ALLOWED_PEER into
-# `DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-pre-processor},alt-backend,alt-harvester`,
+# the head of `DATAHUB_ALLOWED_PEERS` (`${ALLOWED_PEER:-alt-backend},...`),
 # and `docker compose config` bakes that in when the slice is rendered. If the
 # name the allowlist gets and the name the leaf is minted under ever drifted,
 # every positive scenario would die in the TLS handshake with no assertion to
