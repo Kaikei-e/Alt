@@ -17,10 +17,12 @@ import { expectStatus } from "../../_shared/http.js";
  *   BlockDuration 5m                   → an IP that empties the bucket is
  *                                        blocked for five minutes
  *
- * Every request in this file carries a `X-Real-IP` that no other test uses, so
- * draining a bucket here cannot block anything else. That isolation is the
- * same mechanism the whole suite relies on (see src/fixtures.ts `clientIP`) —
- * this file is where it is proved rather than assumed.
+ * Every request in this file carries an `X-Forwarded-For` address that no other
+ * test uses, so draining a bucket here cannot block anything else when the
+ * staging stack trusts the runner's private address range via
+ * `TRUSTED_PROXY_CIDRS`. That isolation is the same mechanism the whole suite
+ * relies on (see src/fixtures.ts `clientIP`) — this file is where it is proved
+ * rather than assumed.
  *
  * Serial mode: the two tests below drain and then observe the *same* limiter
  * bucket, so they are the one place in this suite where order matters.
@@ -41,7 +43,7 @@ test.describe("per-IP rate limiting", () => {
 
 		const victim = await playwright.request.newContext({
 			baseURL: env.baseURL,
-			extraHTTPHeaders: { "X-Real-IP": VICTIM_IP },
+			extraHTTPHeaders: { "X-Forwarded-For": VICTIM_IP },
 		});
 
 		try {
@@ -61,7 +63,7 @@ test.describe("per-IP rate limiting", () => {
 				statuses.filter((status) => status === 429).length,
 				`sent ${statuses.length} requests from one address without ever being ` +
 					`rate limited — DOS_PROTECTION_ENABLED may have been turned off, or ` +
-					`X-Real-IP stopped being honoured (trustForwardedHeaders)`,
+					`X-Forwarded-For stopped being honoured (check TRUSTED_PROXY_CIDRS)`,
 			).toBeGreaterThan(0);
 
 			// The first requests must have succeeded: a limiter that rejects from
@@ -77,11 +79,11 @@ test.describe("per-IP rate limiting", () => {
 	}) => {
 		const victim = await playwright.request.newContext({
 			baseURL: env.baseURL,
-			extraHTTPHeaders: { "X-Real-IP": VICTIM_IP },
+			extraHTTPHeaders: { "X-Forwarded-For": VICTIM_IP },
 		});
 		const bystander = await playwright.request.newContext({
 			baseURL: env.baseURL,
-			extraHTTPHeaders: { "X-Real-IP": BYSTANDER_IP },
+			extraHTTPHeaders: { "X-Forwarded-For": BYSTANDER_IP },
 		});
 
 		try {

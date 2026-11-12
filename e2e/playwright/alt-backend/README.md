@@ -108,19 +108,21 @@ registers its own row first. Assertions are containment ("my three URLs are in
 the list"), never cardinality ("there are at least three rows"), so a sibling
 worker's data is invisible rather than interfering.
 
-### The `X-Real-IP` fixture
+### The `X-Forwarded-For` fixture
 
-alt-backend's DoS middleware runs with `trustForwardedHeaders=true` (it is
-always deployed behind an nginx that rewrites the header), keys its token
-bucket on the client IP, and **blocks an IP for five minutes** once the bucket
-empties — 100 req/min sustained, burst 200. Six workers sharing the runner
-container's single source address would drain one shared bucket partway through
-the run and 429 into a five-minute hole.
+alt-backend's DoS middleware honours `X-Forwarded-For` when the immediate peer
+matches `TRUSTED_PROXY_CIDRS` (set to the runner network ranges in the staging
+compose stack), keys its token bucket and circuit breaker on the client IP, and
+**blocks an IP for five minutes** once the bucket empties — 100 req/min
+sustained, burst 200. Six workers sharing the runner container's single source
+address would drain one shared bucket partway through the run and 429 into a
+five-minute hole.
 
-So each worker sends a distinct `X-Real-IP` in RFC 6598 space. This is not a
-workaround for the limiter — it is what production looks like, where every
-browser is a distinct address. The limiter itself is asserted deliberately, on
-a dedicated address, in `tests/rate-limit.spec.ts`.
+So each worker sends a distinct `X-Forwarded-For` in RFC 6598 space. This is not
+a workaround for the limiter — it is what production looks like, where every
+browser arrives as a distinct forwarded address behind the edge proxy. The
+limiter itself is asserted deliberately, on a dedicated address, in
+`tests/rate-limit.spec.ts`.
 
 ## Coverage
 
