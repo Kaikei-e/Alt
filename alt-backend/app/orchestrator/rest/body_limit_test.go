@@ -3,6 +3,7 @@ package rest
 import (
 	"alt/config"
 	"alt/di"
+	"alt/orchestrator/usecase/csrf_token_usecase"
 	"alt/utils/logger"
 	"bytes"
 	"context"
@@ -15,6 +16,12 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 )
+
+type stubCSRFGateway struct{}
+
+func (stubCSRFGateway) GenerateToken(context.Context) (string, error)       { return "test-token", nil }
+func (stubCSRFGateway) ValidateToken(context.Context, string) (bool, error) { return true, nil }
+func (stubCSRFGateway) InvalidateToken(context.Context, string) error       { return nil }
 
 func buildRegisteredEcho(t *testing.T, mutate func(*config.Config)) *echo.Echo {
 	t.Helper()
@@ -35,7 +42,9 @@ func buildRegisteredEcho(t *testing.T, mutate func(*config.Config)) *echo.Echo {
 	if mutate != nil {
 		mutate(cfg)
 	}
-	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{}, cfg)
+	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{
+		CSRFTokenUsecase: csrf_token_usecase.NewCSRFTokenUsecase(stubCSRFGateway{}),
+	}, cfg)
 	return e
 }
 
@@ -53,11 +62,19 @@ func TestBodyLimit_RejectsBodyOverTwoMegabytes(t *testing.T) {
 func TestBodyLimit_AllowsBodyUnderTwoMegabytes(t *testing.T) {
 	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
 	e := buildRegisteredEcho(t, nil)
+	e.POST("/v1/test-body-ok", func(c echo.Context) error {
+		_, err := io.ReadAll(c.Request().Body)
+		if err != nil {
+			return err
+		}
+		return c.NoContent(http.StatusNoContent)
+	})
 	body := bytes.Repeat([]byte("{"), 1)
 	body = append(body, bytes.Repeat([]byte(" "), 512*1024)...)
 	body = append(body, '}')
-	req := httptest.NewRequest(http.MethodPost, "/security/csp-report", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/test-body-ok", bytes.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("X-CSRF-Token", "test-token")
 	res := httptest.NewRecorder()
 	e.ServeHTTP(res, req)
 	require.Equal(t, http.StatusNoContent, res.Code)
@@ -90,6 +107,7 @@ func TestBodyLimit_RejectsOversizedBodyOnStreamingRoutes(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/sse/test-chunked", chunked)
 		req.ContentLength = -1
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		req.Header.Set("X-CSRF-Token", "test-token")
 		res := httptest.NewRecorder()
 		e.ServeHTTP(res, req)
 		require.Equal(t, http.StatusRequestEntityTooLarge, res.Code)
@@ -125,6 +143,7 @@ func TestStreamingRoute_BoundsBodyReadAndAllowsLongStreamResponse(t *testing.T) 
 
 	t.Run("slow request body on streaming route is cut off", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/sse/test-body-timeout", slowReader{delay: 120 * time.Millisecond})
+		req.Header.Set("X-CSRF-Token", "test-token")
 		res := httptest.NewRecorder()
 		e.ServeHTTP(res, req)
 		require.Equal(t, http.StatusRequestTimeout, res.Code)
@@ -132,6 +151,7 @@ func TestStreamingRoute_BoundsBodyReadAndAllowsLongStreamResponse(t *testing.T) 
 
 	t.Run("fast request body with long streaming response succeeds", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/sse/test-body-timeout", bytes.NewReader([]byte("{}")))
+		req.Header.Set("X-CSRF-Token", "test-token")
 		res := httptest.NewRecorder()
 		e.ServeHTTP(res, req)
 		require.Equal(t, http.StatusOK, res.Code)

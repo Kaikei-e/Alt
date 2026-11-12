@@ -40,6 +40,9 @@ import (
 	"alt/orchestrator/connect/v2/rss"
 )
 
+// ConnectReadMaxBytes bounds per-message Connect reads to fit StreamSummarizeRequest article bodies plus framing.
+const ConnectReadMaxBytes = 2 * 1024 * 1024
+
 // SetupConnectHandlers registers the browser-facing Connect-RPC handlers with
 // the HTTP mux. Every service registered here runs behind the JWT auth
 // interceptor. Service-to-service and admin surfaces belong on the internal
@@ -62,7 +65,10 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	if otelInterceptor != nil {
 		interceptors = append(interceptors, otelInterceptor)
 	}
-	opts := connect.WithInterceptors(interceptors...)
+	opts := connect.WithOptions(
+		connect.WithInterceptors(interceptors...),
+		connect.WithReadMaxBytes(ConnectReadMaxBytes),
+	)
 
 	// Register Feed service
 	feedHandler := feeds.NewHandler(feeds.FeedHandlerDeps{

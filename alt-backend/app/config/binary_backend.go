@@ -20,7 +20,7 @@ func ValidateBackendListeners(cfg *Config) error {
 	if cfg.Server.Port == cfg.Server.ConnectPort {
 		return fmt.Errorf("SERVER_PORT and CONNECT_PORT must differ, both are %d", cfg.Server.Port)
 	}
-	return nil
+	return ValidateEdgeTrust()
 }
 
 // operatorListenAddrEnv names the backend's operator listener bind address.

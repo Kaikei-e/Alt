@@ -7,7 +7,11 @@ import (
 	"alt/orchestrator/rest/rest_feeds"
 	"alt/utils/logger"
 	"context"
+	"io"
+	"net/http"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -17,21 +21,16 @@ import (
 // starts (e.g. the DoS-protection limiter-cleanup ticker); pass the server's
 // process lifetime context here, not a per-request one.
 func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.ApplicationComponents, cfg *config.Config) {
+	trustedProxies := config.TrustedProxyCIDRsFromEnv()
+	e.IPExtractor = middleware_custom.NewTrustedProxyIPExtractor(trustedProxies)
+
 	// 1. Request ID middleware first - すべてのリクエストにIDを付与
 	e.Use(middleware_custom.RequestIDMiddleware())
 
 	// 2. Recovery middleware early - パニックを早期に捕捉
 	e.Use(middleware.Recover())
 
-	// 2.5. Body size limit - メモリ枯渇 DoS 対策 (H-005)。2MB は OPML import
-	// の 1MB per-file 上限 + multipart オーバーヘッドを許容する値。streaming
-	// 系は stream 読み込みに干渉する懸念があるため Skipper で除外する。
-	e.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{
-		Skipper: func(c echo.Context) bool {
-			return strings.Contains(c.Path(), "/sse/") || strings.Contains(c.Path(), "/stream")
-		},
-		Limit: "2M",
-	}))
+	e.Use(middleware.BodyLimit("2M"))
 
 	// 3. Security headers - セキュリティ設定を早期に適用 (M-008)
 	// alt-backend は HTML を返さない API なので CSP は最小許可。frame-ancestors,
@@ -75,22 +74,18 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	// X-Real-IP / X-Forwarded-For をエッジ層で設定し直すデプロイ前提 (M-007)。
 	dosConfig := cfg.RateLimit.DOSProtection
 	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/feeds/summarize/stream", "/security/csp-report", "/v1/images/proxy/"}
-	e.Use(middleware_custom.DOSProtectionMiddlewareWithTrust(
-		ctx,
-		middleware_custom.ConvertConfigDOSProtection(dosConfig),
-		true,
-	))
+	dosMiddlewareCfg := middleware_custom.ConvertConfigDOSProtection(dosConfig)
+	dosMiddlewareCfg.TrustedProxies = trustedProxies
+	e.Use(middleware_custom.DOSProtectionMiddleware(ctx, dosMiddlewareCfg))
 
 	// 6. CSRF protection for state-changing operations
 	e.Use(middleware_custom.CSRFMiddleware(container.CSRFTokenUsecase))
 
 	// 7. Request timeout - リクエスト処理時間の制限
+	e.Use(streamingBodyReadTimeoutMiddleware(cfg.Server.ReadTimeout))
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
 		Timeout: cfg.Server.ReadTimeout,
-		Skipper: func(c echo.Context) bool {
-			// Skip timeout for SSE and streaming endpoints
-			return strings.Contains(c.Path(), "/sse/") || strings.Contains(c.Path(), "/stream")
-		},
+		Skipper: isStreamingRoute,
 	}))
 
 	// 8. Validation middleware - リクエスト内容の検証
@@ -139,4 +134,90 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	// two routes into services.datahub.v1.DataHubService, so there is no handler
 	// left for the browser-facing router to regain by someone adding one
 	// call.
+}
+
+func isStreamingRoute(c echo.Context) bool {
+	path := c.Path()
+	if path == "" {
+		path = c.Request().URL.Path
+	}
+	return path == "/v1/feeds/summarize/stream" || strings.HasPrefix(path, "/sse/")
+}
+
+func streamingBodyReadTimeoutMiddleware(readTimeout time.Duration) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if readTimeout <= 0 || !isStreamingRoute(c) {
+				return next(c)
+			}
+			req := c.Request()
+			if req.Body == nil || req.Body == http.NoBody {
+				return next(c)
+			}
+
+			deadline := time.Now().Add(readTimeout)
+			ctrl := http.NewResponseController(c.Response().Writer)
+			_ = ctrl.SetReadDeadline(deadline)
+
+			wrapped := &deadlineBodyReader{
+				rc:       req.Body,
+				ctrl:     ctrl,
+				deadline: deadline,
+			}
+			req.Body = wrapped
+
+			err := next(c)
+			if wrapped.timedOut.Load() && !c.Response().Committed {
+				return echo.NewHTTPError(http.StatusRequestTimeout, "request body read timed out")
+			}
+			return err
+		}
+	}
+}
+
+type deadlineBodyReader struct {
+	rc       io.ReadCloser
+	ctrl     *http.ResponseController
+	deadline time.Time
+	timedOut atomic.Bool
+}
+
+type bodyReadResult struct {
+	data []byte
+	err  error
+}
+
+func (r *deadlineBodyReader) Read(p []byte) (int, error) {
+	rem := time.Until(r.deadline)
+	if rem <= 0 {
+		r.timedOut.Store(true)
+		return 0, context.DeadlineExceeded
+	}
+
+	ch := make(chan bodyReadResult, 1)
+	buf := make([]byte, len(p))
+	go func() {
+		n, err := r.rc.Read(buf)
+		ch <- bodyReadResult{data: buf[:n], err: err}
+	}()
+
+	timer := time.NewTimer(rem)
+	defer timer.Stop()
+
+	select {
+	case res := <-ch:
+		n := copy(p, res.data)
+		if res.err == io.EOF {
+			_ = r.ctrl.SetReadDeadline(time.Time{})
+		}
+		return n, res.err
+	case <-timer.C:
+		r.timedOut.Store(true)
+		return 0, context.DeadlineExceeded
+	}
+}
+
+func (r *deadlineBodyReader) Close() error {
+	_ = r.ctrl.SetReadDeadline(time.Time{})
+	return r.rc.Close()
 }

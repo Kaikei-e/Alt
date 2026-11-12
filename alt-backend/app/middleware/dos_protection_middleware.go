@@ -8,7 +8,9 @@ import (
 	"alt/utils/logger"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +27,7 @@ type DOSProtectionConfig struct {
 	BlockDuration    time.Duration        `json:"block_duration"`    // How long to block after rate limit
 	WhitelistedPaths []string             `json:"whitelisted_paths"` // Paths to skip rate limiting
 	CircuitBreaker   CircuitBreakerConfig `json:"circuit_breaker"`   // Circuit breaker configuration
+	TrustedProxies   []netip.Prefix       `json:"-"`
 }
 
 // CircuitBreakerConfig defines circuit breaker configuration
@@ -87,19 +90,7 @@ const (
 )
 
 // DOSProtectionMiddleware returns a middleware that provides DoS protection.
-// Backward-compatible default: trusts X-Real-IP / X-Forwarded-For. New call
-// sites should prefer DOSProtectionMiddlewareWithTrust(ctx, config, false) when
-// not behind a controlled reverse proxy (M-007).
 func DOSProtectionMiddleware(ctx context.Context, config DOSProtectionConfig) echo.MiddlewareFunc {
-	return DOSProtectionMiddlewareWithTrust(ctx, config, true)
-}
-
-// DOSProtectionMiddlewareWithTrust is the trust-aware variant. Use this from
-// route registration when the deployment terminates TLS / sanitises XFF on a
-// trusted hop. ctx bounds the lifetime of the background limiter-cleanup
-// goroutine: it must be the process/server lifetime context, not a per-request
-// one, or the goroutine stops as soon as the first request context is done.
-func DOSProtectionMiddlewareWithTrust(ctx context.Context, config DOSProtectionConfig, trustForwardedHeaders bool) echo.MiddlewareFunc {
 	if err := config.Validate(); err != nil {
 		panic(fmt.Sprintf("invalid DoS protection config: %v", err))
 	}
@@ -112,6 +103,11 @@ func DOSProtectionMiddlewareWithTrust(ctx context.Context, config DOSProtectionC
 
 	limiters := make(map[string]*rateLimiter)
 	limiterMu := sync.RWMutex{}
+
+	var breakers *clientCircuitBreakers
+	if config.CircuitBreaker.Enabled {
+		breakers = newClientCircuitBreakers(config.CircuitBreaker, maxClientCircuitBreakers)
+	}
 
 	// M-006: evict stale rate-limiter entries periodically. Without this the
 	// map grows without bound under attack from many spoofed source addresses.
@@ -126,17 +122,12 @@ func DOSProtectionMiddlewareWithTrust(ctx context.Context, config DOSProtectionC
 				return
 			case <-ticker.C:
 				CleanupExpiredLimiters(limiters, &limiterMu, 30*time.Minute)
+				if breakers != nil {
+					breakers.cleanupExpired(30 * time.Minute)
+				}
 			}
 		}
 	}()
-
-	var cb *circuitBreaker
-	if config.CircuitBreaker.Enabled {
-		cb = &circuitBreaker{
-			config: config.CircuitBreaker,
-			state:  circuitClosed,
-		}
-	}
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -152,15 +143,15 @@ func DOSProtectionMiddlewareWithTrust(ctx context.Context, config DOSProtectionC
 				return next(c)
 			}
 
-			// Check circuit breaker first
-			if cb != nil && cb.shouldBlock() {
-				return echo.NewHTTPError(http.StatusServiceUnavailable, "Service temporarily unavailable")
-			}
-
 			// Get client IP
-			clientIP := getClientIPWithTrust(c, trustForwardedHeaders)
+			clientIP := ExtractClientIP(c.Request(), config.TrustedProxies)
 			if clientIP == "" {
 				clientIP = "unknown"
+			}
+
+			// Check circuit breaker scoped to client IP
+			if breakers != nil && breakers.shouldBlock(clientIP) {
+				return echo.NewHTTPError(http.StatusServiceUnavailable, "Service temporarily unavailable")
 			}
 
 			// Check rate limiting
@@ -173,17 +164,17 @@ func DOSProtectionMiddlewareWithTrust(ctx context.Context, config DOSProtectionC
 
 			// Update circuit breaker - only count server errors (5xx) as failures
 			// Client errors (4xx) are not server-side issues and should not trip the circuit
-			if cb != nil {
+			if breakers != nil {
 				if err != nil {
 					// Check if it's a server error (5xx)
 					if he, ok := err.(*echo.HTTPError); ok && he.Code >= 500 {
-						cb.recordFailure()
+						breakers.recordFailure(clientIP)
 					} else {
 						// Client errors (4xx) should not affect circuit breaker
-						cb.recordSuccess()
+						breakers.recordSuccess(clientIP)
 					}
 				} else {
-					cb.recordSuccess()
+					breakers.recordSuccess(clientIP)
 				}
 			}
 
@@ -262,6 +253,114 @@ func (cb *circuitBreaker) recordSuccess() {
 	}
 }
 
+const maxClientCircuitBreakers = 4096
+
+type clientBreakerEntry struct {
+	cb       *circuitBreaker
+	lastSeen time.Time
+}
+
+type clientCircuitBreakers struct {
+	config   CircuitBreakerConfig
+	mu       sync.Mutex
+	entries  map[string]*clientBreakerEntry
+	maxItems int
+}
+
+func newClientCircuitBreakers(cfg CircuitBreakerConfig, maxItems int) *clientCircuitBreakers {
+	return &clientCircuitBreakers{
+		config:   cfg,
+		entries:  make(map[string]*clientBreakerEntry),
+		maxItems: maxItems,
+	}
+}
+
+func (s *clientCircuitBreakers) shouldBlock(clientKey string) bool {
+	s.mu.Lock()
+	entry, ok := s.entries[clientKey]
+	if !ok {
+		s.mu.Unlock()
+		return false
+	}
+	entry.lastSeen = time.Now()
+	cb := entry.cb
+	s.mu.Unlock()
+	return cb.shouldBlock()
+}
+
+func (s *clientCircuitBreakers) recordFailure(clientKey string) {
+	now := time.Now()
+	s.mu.Lock()
+	entry, ok := s.entries[clientKey]
+	if !ok {
+		if len(s.entries) >= s.maxItems {
+			s.evictLocked(now)
+		}
+		entry = &clientBreakerEntry{
+			cb: &circuitBreaker{
+				config: s.config,
+				state:  circuitClosed,
+			},
+			lastSeen: now,
+		}
+		s.entries[clientKey] = entry
+	} else {
+		entry.lastSeen = now
+	}
+	cb := entry.cb
+	s.mu.Unlock()
+	cb.recordFailure()
+}
+
+func (s *clientCircuitBreakers) recordSuccess(clientKey string) {
+	s.mu.Lock()
+	entry, ok := s.entries[clientKey]
+	if !ok {
+		s.mu.Unlock()
+		return
+	}
+	entry.lastSeen = time.Now()
+	cb := entry.cb
+	s.mu.Unlock()
+	cb.recordSuccess()
+}
+
+func (s *clientCircuitBreakers) cleanupExpired(maxIdle time.Duration) {
+	cutoff := time.Now().Add(-maxIdle)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, entry := range s.entries {
+		if entry.lastSeen.Before(cutoff) {
+			delete(s.entries, key)
+		}
+	}
+}
+
+func (s *clientCircuitBreakers) evictLocked(now time.Time) {
+	cutoff := now.Add(-30 * time.Minute)
+	for key, entry := range s.entries {
+		if entry.lastSeen.Before(cutoff) {
+			delete(s.entries, key)
+		}
+	}
+	if len(s.entries) < s.maxItems {
+		return
+	}
+	var oldestKey string
+	var oldestTime time.Time
+	first := true
+	for key, entry := range s.entries {
+		if first || entry.lastSeen.Before(oldestTime) {
+			oldestKey = key
+			oldestTime = entry.lastSeen
+			first = false
+		}
+	}
+	if !first {
+		delete(s.entries, oldestKey)
+	}
+}
+
 // DefaultDOSProtectionConfig returns a default configuration
 func DefaultDOSProtectionConfig() DOSProtectionConfig {
 	return DOSProtectionConfig{
@@ -299,4 +398,64 @@ func ConvertConfigDOSProtection(configDOS config.DOSProtectionConfig) DOSProtect
 			RecoveryTimeout:  configDOS.CircuitBreaker.RecoveryTimeout,
 		},
 	}
+}
+
+func NewTrustedProxyIPExtractor(trustedProxies []netip.Prefix) echo.IPExtractor {
+	return func(req *http.Request) string {
+		return ExtractClientIP(req, trustedProxies)
+	}
+}
+
+func ExtractClientIP(req *http.Request, trustedProxies []netip.Prefix) string {
+	if req == nil {
+		return ""
+	}
+	rawPeer := strings.TrimSpace(req.RemoteAddr)
+	host, _, err := net.SplitHostPort(rawPeer)
+	if err != nil {
+		host = rawPeer
+	}
+	peerAddr, err := netip.ParseAddr(host)
+	if err != nil {
+		return ""
+	}
+	peerAddr = peerAddr.Unmap()
+
+	if !isTrustedAddr(peerAddr, trustedProxies) {
+		return peerAddr.String()
+	}
+
+	xffValues := req.Header.Values("X-Forwarded-For")
+	if len(xffValues) == 0 {
+		return peerAddr.String()
+	}
+
+	var entries []string
+	for _, raw := range xffValues {
+		for _, part := range strings.Split(raw, ",") {
+			entries = append(entries, part)
+		}
+	}
+
+	for i := len(entries) - 1; i >= 0; i-- {
+		candidate, err := netip.ParseAddr(strings.TrimSpace(entries[i]))
+		if err != nil {
+			return peerAddr.String()
+		}
+		candidate = candidate.Unmap()
+		if !isTrustedAddr(candidate, trustedProxies) {
+			return candidate.String()
+		}
+	}
+
+	return peerAddr.String()
+}
+
+func isTrustedAddr(addr netip.Addr, trustedProxies []netip.Prefix) bool {
+	for _, prefix := range trustedProxies {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
