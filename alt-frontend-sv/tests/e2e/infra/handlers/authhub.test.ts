@@ -1,8 +1,8 @@
 import {
 	createPublicKey,
 	generateKeyPairSync,
-	verify,
 	type KeyObject,
+	verify,
 } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import type http from "node:http";

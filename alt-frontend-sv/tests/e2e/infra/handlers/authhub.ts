@@ -10,7 +10,7 @@ import {
 	DEV_JWT_AUDIENCE,
 	DEV_JWT_ISSUER,
 	DEV_USER_ID,
-	loadSigningKey,
+	resolveSigningKey,
 } from "../data/session";
 
 export const AUTH_HUB_PORT = 4002;
@@ -56,8 +56,9 @@ function generateBackendToken(signingKey: string): string {
 /**
  * Create the AuthHub mock server
  */
-export function createAuthHubServer(): http.Server {
-	const signingKey = loadSigningKey();
+export function createAuthHubServer(
+	signingKey: string = resolveSigningKey(),
+): http.Server {
 	return http.createServer((req, res) => {
 		const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
 		const path = url.pathname;
