@@ -344,12 +344,37 @@ func TestLoad_TrustedProxyCIDRs(t *testing.T) {
 
 		cfg, err := Load()
 		require.NoError(t, err)
+		assert.False(t, cfg.TrustedProxiesDisabled)
 		assert.Equal(t, mustTrustedCIDRs(t, "172.18.0.0/16", "10.10.0.5/32", "fd00::/8"), cfg.TrustedProxyCIDRs)
+	})
+
+	t.Run("accepts explicit none value case-insensitively", func(t *testing.T) {
+		for _, val := range []string{"none", "NONE", "  None  "} {
+			setBaseEnv(t)
+			t.Setenv("TRUSTED_PROXY_CIDRS", val)
+
+			cfg, err := Load()
+			require.NoError(t, err, "value %q", val)
+			assert.True(t, cfg.TrustedProxiesDisabled, "value %q", val)
+			assert.Empty(t, cfg.TrustedProxyCIDRs, "value %q", val)
+		}
+	})
+
+	t.Run("fails when none is combined with CIDRs", func(t *testing.T) {
+		for _, val := range []string{"none,10.0.0.0/8", "10.0.0.0/8,none", "NONE, 172.18.0.0/16"} {
+			setBaseEnv(t)
+			t.Setenv("TRUSTED_PROXY_CIDRS", val)
+
+			_, err := Load()
+			require.Error(t, err, "value %q", val)
+			assert.Contains(t, err.Error(), "TRUSTED_PROXY_CIDRS")
+		}
 	})
 
 	t.Run("fails when TRUSTED_PROXY_CIDRS is unset", func(t *testing.T) {
 		setBaseEnv(t)
-		os.Unsetenv("TRUSTED_PROXY_CIDRS")
+		t.Setenv("TRUSTED_PROXY_CIDRS", "")
+		require.NoError(t, os.Unsetenv("TRUSTED_PROXY_CIDRS"))
 
 		_, err := Load()
 		require.Error(t, err)
@@ -390,6 +415,16 @@ func TestLoad_TrustedProxyCIDRs(t *testing.T) {
 		_, err := Load()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "TRUSTED_PROXY_CIDRS")
+	})
+
+	t.Run("fails when TRUSTED_PROXY_CIDRS contains IPv4-mapped IPv6 prefix", func(t *testing.T) {
+		setBaseEnv(t)
+		t.Setenv("TRUSTED_PROXY_CIDRS", "::ffff:172.18.0.0/112")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "TRUSTED_PROXY_CIDRS")
+		assert.Contains(t, err.Error(), "IPv4")
 	})
 }
 
@@ -711,6 +746,36 @@ func TestConfig_Validate(t *testing.T) {
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
 				TrustedProxyCIDRs:      nil,
+			},
+			wantErr:     true,
+			errContains: "TRUSTED_PROXY_CIDRS",
+		},
+		{
+			name: "valid configuration with trusted proxies explicitly disabled",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxiesDisabled: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid configuration combining disabled trusted proxies with CIDRs",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
+				TrustedProxiesDisabled: true,
 			},
 			wantErr:     true,
 			errContains: "TRUSTED_PROXY_CIDRS",

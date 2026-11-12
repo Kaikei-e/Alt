@@ -124,7 +124,13 @@ func TestBuildPlaintextHandler_ExplicitDevPermitsRoutes(t *testing.T) {
 
 func TestConfigureTrustedProxies_WiresExtractorAndLogsAtStartup(t *testing.T) {
 	assert.Panics(t, func() {
-		configureTrustedProxies(context.Background(), echo.New(), nil, slog.Default())
+		configureTrustedProxies(context.Background(), echo.New(), &config.Config{}, slog.Default())
+	})
+	assert.Panics(t, func() {
+		configureTrustedProxies(context.Background(), echo.New(), &config.Config{
+			TrustedProxiesDisabled: true,
+			TrustedProxyCIDRs:      []netip.Prefix{netip.MustParsePrefix("172.18.0.5/32")},
+		}, slog.Default())
 	})
 
 	var logBuf bytes.Buffer
@@ -134,10 +140,11 @@ func TestConfigureTrustedProxies_WiresExtractorAndLogsAtStartup(t *testing.T) {
 		netip.MustParsePrefix("172.18.0.5/32"),
 	}
 
-	configureTrustedProxies(context.Background(), e, cidrs, log)
+	configureTrustedProxies(context.Background(), e, &config.Config{TrustedProxyCIDRs: cidrs}, log)
 
-	assert.Contains(t, logBuf.String(), "trusted_proxy_cidrs")
+	assert.Contains(t, logBuf.String(), "trusted_proxy_cidrs_configured")
 	assert.Contains(t, logBuf.String(), "172.18.0.5/32")
+	assert.NotContains(t, logBuf.String(), "trusted_proxy_cidrs_disabled")
 
 	e.GET("/ip", func(c echo.Context) error {
 		return c.String(http.StatusOK, c.RealIP())
@@ -156,4 +163,35 @@ func TestConfigureTrustedProxies_WiresExtractorAndLogsAtStartup(t *testing.T) {
 	untrustedRec := httptest.NewRecorder()
 	e.ServeHTTP(untrustedRec, untrustedReq)
 	assert.Equal(t, "172.18.0.99", untrustedRec.Body.String())
+}
+
+func TestConfigureTrustedProxies_NoneLogsDisabledAndIgnoresXFF(t *testing.T) {
+	var logBuf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&logBuf, nil))
+	e := echo.New()
+
+	configureTrustedProxies(context.Background(), e, &config.Config{TrustedProxiesDisabled: true}, log)
+
+	assert.Contains(t, logBuf.String(), "trusted_proxy_cidrs_disabled")
+	assert.NotContains(t, logBuf.String(), "trusted_proxy_cidrs_configured")
+
+	e.GET("/ip", func(c echo.Context) error {
+		return c.String(http.StatusOK, c.RealIP())
+	})
+
+	for _, peer := range []struct {
+		remoteAddr string
+		wantIP     string
+	}{
+		{remoteAddr: "127.0.0.1:44444", wantIP: "127.0.0.1"},
+		{remoteAddr: "172.18.0.5:44444", wantIP: "172.18.0.5"},
+		{remoteAddr: "198.51.100.7:44444", wantIP: "198.51.100.7"},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/ip", nil)
+		req.RemoteAddr = peer.remoteAddr
+		req.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.77")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		assert.Equal(t, peer.wantIP, rec.Body.String())
+	}
 }

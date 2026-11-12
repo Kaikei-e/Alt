@@ -208,3 +208,25 @@ func TestTrustedProxyIPExtractor_FallbacksToSocketPeer(t *testing.T) {
 		assert.Equal(t, http.StatusTooManyRequests, rec2.Code)
 	})
 }
+
+func TestTrustedProxyIPExtractor_NoneModeIgnoresXFFFromAnyPeer(t *testing.T) {
+	extractor := NewTrustedProxyIPExtractor(nil)
+
+	peers := []struct {
+		remoteAddr string
+		wantIP     string
+	}{
+		{remoteAddr: "127.0.0.1:12345", wantIP: "127.0.0.1"},
+		{remoteAddr: "172.18.0.5:43210", wantIP: "172.18.0.5"},
+		{remoteAddr: "10.0.0.5:8080", wantIP: "10.0.0.5"},
+		{remoteAddr: "198.51.100.7:9000", wantIP: "198.51.100.7"},
+		{remoteAddr: "[::1]:43210", wantIP: "::1"},
+	}
+
+	for _, tc := range peers {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = tc.remoteAddr
+		req.Header.Set("X-Forwarded-For", "203.0.113.55, 198.51.100.42")
+		assert.Equal(t, tc.wantIP, extractor(req), "peer %s", tc.remoteAddr)
+	}
+}
