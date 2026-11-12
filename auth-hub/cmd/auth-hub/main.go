@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/netip"
 	"os"
 	"os/signal"
 	"syscall"
@@ -54,15 +53,20 @@ func buildPlaintextHandler(e *echo.Echo, devPlaintextAllowed bool) http.Handler 
 	return appmiddleware.PlaintextHealthOnly(e)
 }
 
-func configureTrustedProxies(ctx context.Context, e *echo.Echo, cidrs []netip.Prefix, log *slog.Logger) {
-	if len(cidrs) == 0 {
-		panic("main: TRUSTED_PROXY_CIDRS must be set before configuring IP extractor")
+func configureTrustedProxies(ctx context.Context, e *echo.Echo, cfg *config.Config, log *slog.Logger) {
+	if cfg == nil || (cfg.TrustedProxiesDisabled && len(cfg.TrustedProxyCIDRs) > 0) || (!cfg.TrustedProxiesDisabled && len(cfg.TrustedProxyCIDRs) == 0) {
+		panic("main: TRUSTED_PROXY_CIDRS must be configured or explicitly set to none before configuring IP extractor")
 	}
-	formatted := make([]string, len(cidrs))
-	for i, p := range cidrs {
+	if cfg.TrustedProxiesDisabled {
+		e.IPExtractor = appmiddleware.NewTrustedProxyIPExtractor(nil)
+		log.InfoContext(ctx, "trusted_proxy_cidrs_disabled")
+		return
+	}
+	formatted := make([]string, len(cfg.TrustedProxyCIDRs))
+	for i, p := range cfg.TrustedProxyCIDRs {
 		formatted[i] = p.String()
 	}
-	e.IPExtractor = appmiddleware.NewTrustedProxyIPExtractor(cidrs)
+	e.IPExtractor = appmiddleware.NewTrustedProxyIPExtractor(cfg.TrustedProxyCIDRs)
 	log.InfoContext(ctx, "trusted_proxy_cidrs_configured", "trusted_proxy_cidrs", formatted)
 }
 
@@ -156,7 +160,7 @@ func main() {
 	e.HideBanner = true
 	e.HidePort = true
 
-	configureTrustedProxies(ctx, e, cfg.TrustedProxyCIDRs, slog.Default())
+	configureTrustedProxies(ctx, e, cfg, slog.Default())
 
 	// Security middleware
 	e.Use(appmiddleware.SecurityHeaders())

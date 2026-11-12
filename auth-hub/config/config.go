@@ -33,6 +33,7 @@ type Config struct {
 	IntrospectRateLimit    float64            // Introspect endpoint: requests per second (default: 1200/60 = 20.0)
 	IntrospectBurst        int                // Introspect endpoint: burst capacity (default: 100)
 	TrustedProxyCIDRs      []netip.Prefix     // Explicit proxy CIDRs allowed to supply X-Forwarded-For
+	TrustedProxiesDisabled bool               // True when TRUSTED_PROXY_CIDRS is explicitly set to "none"
 }
 
 const (
@@ -156,11 +157,12 @@ func Load() (*Config, error) {
 	}
 
 	if rawCIDRs := strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDRS")); rawCIDRs != "" {
-		cidrs, err := parseTrustedProxyCIDRs(rawCIDRs)
+		cidrs, disabled, err := parseTrustedProxyCIDRs(rawCIDRs)
 		if err != nil {
 			return nil, err
 		}
 		config.TrustedProxyCIDRs = cidrs
+		config.TrustedProxiesDisabled = disabled
 	}
 
 	// Validate configuration
@@ -194,21 +196,30 @@ func loadEd25519SigningKey(path string) (ed25519.PrivateKey, error) {
 	return edKey, nil
 }
 
-func parseTrustedProxyCIDRs(raw string) ([]netip.Prefix, error) {
+func parseTrustedProxyCIDRs(raw string) ([]netip.Prefix, bool, error) {
 	parts := strings.Split(raw, ",")
+	if len(parts) == 1 && strings.EqualFold(strings.TrimSpace(parts[0]), "none") {
+		return nil, true, nil
+	}
 	cidrs := make([]netip.Prefix, 0, len(parts))
 	for _, part := range parts {
 		s := strings.TrimSpace(part)
 		if s == "" {
-			return nil, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS: empty CIDR entry")
+			return nil, false, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS: empty CIDR entry")
+		}
+		if strings.EqualFold(s, "none") {
+			return nil, false, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS: 'none' cannot be combined with CIDRs")
 		}
 		prefix, err := netip.ParsePrefix(s)
 		if err != nil {
-			return nil, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS entry %q: %w", s, err)
+			return nil, false, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS entry %q: %w", s, err)
+		}
+		if prefix.Addr().Is4In6() {
+			return nil, false, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS entry %q: IPv4-mapped IPv6 prefixes are not supported; use IPv4 CIDR notation", s)
 		}
 		cidrs = append(cidrs, prefix.Masked())
 	}
-	return cidrs, nil
+	return cidrs, false, nil
 }
 
 // Validate checks if the configuration is valid
@@ -262,7 +273,10 @@ func (c *Config) Validate() error {
 	if c.IntrospectBurst < 0 {
 		return fmt.Errorf("INTROSPECT_BURST cannot be negative")
 	}
-	if len(c.TrustedProxyCIDRs) == 0 {
+	if c.TrustedProxiesDisabled && len(c.TrustedProxyCIDRs) > 0 {
+		return fmt.Errorf("TRUSTED_PROXY_CIDRS cannot combine 'none' with CIDRs")
+	}
+	if !c.TrustedProxiesDisabled && len(c.TrustedProxyCIDRs) == 0 {
 		return fmt.Errorf("TRUSTED_PROXY_CIDRS is required")
 	}
 
