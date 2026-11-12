@@ -1815,4 +1815,83 @@ mod tests {
             "surface_consecutive_failures must increment when update_job_status_with_history(Completed) fails"
         );
     }
+
+    #[tokio::test]
+    async fn run_morning_update_returns_skipped_in_flight_without_failure_or_surface_health_mutation()
+     {
+        use crate::{
+            observability::{
+                metrics::Metrics,
+                surface_health::{SurfaceHealthTarget, record_success},
+            },
+            store::dao::mock::MockRecapDao,
+        };
+        use chrono::{DateTime, Utc};
+        use prometheus::Registry;
+        use std::sync::Mutex;
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let dao = Arc::new(MockRecapDao::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-26T01:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        record_success(&metrics, SurfaceHealthTarget::MorningLetter, seeded_ts);
+
+        let scheduler = build_three_day_test_scheduler(Arc::clone(&dao), Arc::clone(&metrics));
+        let _held = scheduler
+            .try_acquire_morning_permit()
+            .expect("initial morning permit should be available");
+
+        let job_id = Uuid::new_v4();
+        let outcome = scheduler
+            .run_morning_update(JobContext::new_morning_update(job_id))
+            .await
+            .expect("in-flight morning tick must return SkippedInFlight, not Err");
+        assert_eq!(outcome, MorningUpdateOutcome::SkippedInFlight);
+        assert_eq!(metrics.jobs_failed.get(), 0.0);
+        assert_eq!(
+            metrics
+                .surface_consecutive_failures
+                .with_label_values(&[SurfaceHealthTarget::MorningLetter.as_str()])
+                .get(),
+            0.0
+        );
+        assert_eq!(
+            metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&[SurfaceHealthTarget::MorningLetter.as_str()])
+                .get(),
+            seeded_ts.timestamp() as f64
+        );
+        assert!(dao.status_transitions().is_empty());
+
+        let buf = BufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            crate::scheduler::daemon::log_morning_update_outcome(job_id, Ok(outcome));
+        });
+
+        let captured = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+        assert_eq!(captured.lines().count(), 1, "got: {captured}");
+        assert!(captured.contains("INFO"));
+        assert!(!captured.contains("ERROR"));
+        assert!(captured.contains("morning_update_skipped_in_flight"));
+    }
 }
