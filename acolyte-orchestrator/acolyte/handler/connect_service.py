@@ -520,10 +520,9 @@ class AcolyteConnectService:
         except ValueError as e:
             raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid report_id: {e}") from e
 
-        uc = RerunSectionUsecase(self._repo, self._llm)
+        uc = RerunSectionUsecase(self._repo, self._llm, generation_slot=self._run_semaphore)
         try:
-            async with self._run_semaphore:
-                await uc.execute(rid, request.section_key, user_id=user_id)
+            await uc.execute(rid, request.section_key, user_id=user_id)
         except ValueError as e:
             raise ConnectError(Code.NOT_FOUND, str(e)) from e
         except ConnectError:

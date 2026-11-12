@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from pydantic import AliasChoices, Field
@@ -208,7 +209,7 @@ class Settings(BaseSettings):
 
         try:
             key = serialization.load_pem_public_key(pem)
-        except ValueError as exc:
+        except (ValueError, UnsupportedAlgorithm) as exc:
             raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
                 f"BACKEND_TOKEN_VERIFY_KEY_FILE is not an Ed25519 SPKI public key: {self.backend_token_verify_key_file}"
             ) from exc
