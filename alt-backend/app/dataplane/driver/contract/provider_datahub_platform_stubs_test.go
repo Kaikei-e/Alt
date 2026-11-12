@@ -481,6 +481,14 @@ func (pactTagReadPort) ArticleCounts(context.Context, uuid.UUID, time.Time) ([]d
 	return nil, nil
 }
 
+// pactUnscopedTagCloud is the counts-only read cmd/datahub wires for callers
+// that send no user id.
+type pactUnscopedTagCloud struct{}
+
+func (pactUnscopedTagCloud) ExecuteCountsOnly(context.Context, int) ([]*domain.TagCloudItem, error) {
+	return []*domain.TagCloudItem{{TagName: "ai", ArticleCount: 42}}, nil
+}
+
 type pactSystemUser struct{}
 
 func (pactSystemUser) GetFirstIdentityID(context.Context) (string, error) { return "", nil }

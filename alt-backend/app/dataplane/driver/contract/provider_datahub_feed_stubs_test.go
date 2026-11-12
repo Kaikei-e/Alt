@@ -282,6 +282,7 @@ func mountReadStateAndTagProcedures(mux *http.ServeMux) {
 		pactSystemUser{}, pactRecentArticles{},
 		slog.Default(),
 		datahubapi.WithReadStateAndTagCapabilities(pactReadState, pactTagReadPort{}),
+		datahubapi.WithRAGToolPorts(pactUnscopedTagCloud{}, nil),
 	)
 	dataHubProcedure(mux, "GetAllReadFeedIDs", connect.NewUnaryHandler(
 		"/services.datahub.v1.DataHubService/GetAllReadFeedIDs",

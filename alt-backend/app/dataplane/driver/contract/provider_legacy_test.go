@@ -81,10 +81,7 @@ func TestVerifyRecapWorkerContract(t *testing.T) {
 		verifyRequest.BrokerURL = brokerURL
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
-		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "recap-worker", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "recap-worker", DeployedOrReleased: true},
-		}
+		verifyRequest.ConsumerVersionSelectors = brokerSelectors(t, "recap-worker")
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
 		}
@@ -158,10 +155,7 @@ func TestVerifyAltButterflyFacadeContract(t *testing.T) {
 		verifyRequest.BrokerURL = brokerURL
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
-		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "alt-butterfly-facade", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "alt-butterfly-facade", DeployedOrReleased: true},
-		}
+		verifyRequest.ConsumerVersionSelectors = brokerSelectors(t, "alt-butterfly-facade")
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
 		}
@@ -224,10 +218,7 @@ func TestVerifySearchIndexerContract(t *testing.T) {
 		verifyRequest.BrokerURL = brokerURL
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
-		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "search-indexer", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "search-indexer", DeployedOrReleased: true},
-		}
+		verifyRequest.ConsumerVersionSelectors = brokerSelectors(t, "search-indexer")
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
 		}
