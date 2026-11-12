@@ -100,15 +100,26 @@ chmod 0600 "$TMP_ACL"
 
 case "$ROLE" in
     streams)
-        STREAMS_PASS_FILE="${REDIS_STREAMS_PASSWORD_FILE:-/run/secrets/redis_streams_password}"
+        PRODUCER_PASS_FILE="${REDIS_STREAMS_PRODUCER_PASSWORD_FILE:-/run/secrets/redis_streams_producer_password}"
+        CONSUMER_PASS_FILE="${REDIS_STREAMS_CONSUMER_PASSWORD_FILE:-/run/secrets/redis_streams_consumer_password}"
         LIMITER_PASS_FILE="${REDIS_LIMITER_PASSWORD_FILE:-/run/secrets/redis_limiter_password}"
 
-        STREAMS_HASH=$(get_secret_hash "$STREAMS_PASS_FILE" "streams")
+        PRODUCER_HASH=$(get_secret_hash "$PRODUCER_PASS_FILE" "streams producer")
+        CONSUMER_HASH=$(get_secret_hash "$CONSUMER_PASS_FILE" "streams consumer")
         LIMITER_HASH=$(get_secret_hash "$LIMITER_PASS_FILE" "limiter")
 
+        if [ "$PRODUCER_HASH" = "$CONSUMER_HASH" ]; then
+            rm -f "$TMP_ACL"
+            echo "Error: streams producer and consumer secrets must differ" >&2
+            exit 1
+        fi
+
+        # Consumers append only to dead-letter and reply streams, via selectors;
+        # their root permissions carry no write command.
         cat <<EOF > "$TMP_ACL"
 user default off -@all
-user streams on #${STREAMS_HASH} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xadd +xread +xreadgroup +xack +xautoclaim +xpending +xgroup|create +xinfo|stream +xinfo|groups +xtrim +expire +ttl +scan +del
+user streams_producer on #${PRODUCER_HASH} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xadd +xread +xgroup|create +xinfo|stream +xinfo|groups +xtrim +expire +ttl +scan +del
+user streams_consumer on #${CONSUMER_HASH} resetkeys ~alt:events:* ~alt:replies:tags:* -@all +hello +client|setinfo +client|setname +ping +xreadgroup +xack +xautoclaim +xpending +xgroup|create +xinfo|stream +xinfo|groups (~alt:events:*:dlq +xadd) (~alt:replies:tags:* +xadd)
 user limiter on #${LIMITER_HASH} resetkeys ~host_rate_limiter:v1:* -@all +hello +client|setinfo +client|setname +ping +set +pttl +select
 EOF
         ;;
