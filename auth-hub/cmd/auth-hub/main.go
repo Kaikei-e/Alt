@@ -240,8 +240,7 @@ func main() {
 	e.POST("/csrf", csrfHandler.Handle, csrfRL.Middleware())
 	e.GET("/health", healthHandler.Handle)
 
-	// Internal routes (protected by a shared bearer that is deliberately not
-	// the JWT signing key — see wireInternalAuth, and by mTLS).
+	// Internal routes (protected by INTERNAL_AUTH_SECRET — see wireInternalAuth — and by mTLS).
 	internalGroup := e.Group("/internal",
 		internalRL.Middleware(),
 		appmiddleware.RequireMTLS(),
@@ -253,9 +252,7 @@ func main() {
 	// Introspect route: dedicated high-capacity limiter for Search/Sov RPCs, mTLS ONLY (no shared bearer), narrow CN check
 	introspectGroup := e.Group("/internal", introspectRL.Middleware())
 	introspectGroup.POST("/token/introspect", internalHandler.HandleIntrospectToken, appmiddleware.RequireMTLSPeer([]string{"search-indexer", "knowledge-sovereign"}))
-	// Names the secret this group is keyed on, never its value: an operator
-	// reading the log can tell the two secrets apart without a way to learn
-	// either (auth-hub Rule 3).
+	// Names the env source for /internal bearer auth without logging its secret value (auth-hub Rule 2).
 	slog.InfoContext(ctx, "internal_auth_enabled", "secret_source", "INTERNAL_AUTH_SECRET")
 
 	// Start server with errgroup for graceful shutdown

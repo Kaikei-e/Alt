@@ -14,8 +14,10 @@ when the edge proxy moved to PlectoProxy (`plecto-proxy`,
 the manifest's own comment on that route). `nginx/conf.d/default.conf`
 survives in the repo only as an unloaded prototype config — no compose
 service reads it. The live path today is alt-frontend-sv calling `/session`
-directly and forwarding the returned JWT; alt-backend / alt-butterfly-facade
-verify it in-process against `backend_token_secret`.
+directly and forwarding the returned EdDSA (`Ed25519`) JWT signed with
+`backend_token_signing_key` (`BACKEND_TOKEN_SIGNING_KEY_FILE`); alt-backend /
+alt-butterfly-facade verify it in-process against `backend_token_verify_key`
+(`BACKEND_TOKEN_VERIFY_KEY_FILE`).
 
 ## Architecture
 
