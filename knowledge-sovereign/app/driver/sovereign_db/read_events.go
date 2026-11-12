@@ -14,6 +14,10 @@ import (
 // ErrDedupeKeyTenantMismatch indicates that a dedupe_key already exists for a different tenant.
 var ErrDedupeKeyTenantMismatch = errors.New("dedupe_key belongs to another tenant")
 
+// ErrDedupeOwnerUnresolved indicates that a dedupe_key exists in knowledge_event_dedupes
+// but its backing knowledge_events row could not be read.
+var ErrDedupeOwnerUnresolved = errors.New("dedupe_key owner unresolved")
+
 // KnowledgeEvent represents a single event in the knowledge event store.
 type KnowledgeEvent struct {
 	EventID       uuid.UUID
@@ -218,7 +222,7 @@ func (r *Repository) AppendKnowledgeEventIfNew(ctx context.Context, event Knowle
 		var existingTenantID uuid.UUID
 		if err := tx.QueryRow(ctx, ownerQuery, event.DedupeKey).Scan(&existingTenantID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return 0, false, fmt.Errorf("AppendKnowledgeEvent dedupe ownership unverified: %w", ErrDedupeKeyTenantMismatch)
+				return 0, false, fmt.Errorf("AppendKnowledgeEvent dedupe ownership unresolved: %w", ErrDedupeOwnerUnresolved)
 			}
 			return 0, false, fmt.Errorf("AppendKnowledgeEvent dedupe tenant lookup: %w", err)
 		}

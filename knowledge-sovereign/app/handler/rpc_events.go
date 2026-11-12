@@ -3,10 +3,13 @@ package handler
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"unicode/utf8"
 
@@ -97,12 +100,28 @@ func (h *SovereignHandler) AppendKnowledgeEvent(
 
 	seq, err := h.readDB.AppendKnowledgeEvent(ctx, event)
 	if err != nil {
+		if errors.Is(err, sovereign_db.ErrDedupeOwnerUnresolved) {
+			slog.ErrorContext(ctx, "append knowledge event dedupe owner unresolved",
+				"event_type", event.EventType,
+				"dedupe_key_sha256", dedupeKeySHA256Prefix(event.DedupeKey),
+			)
+			return nil, connect.NewError(connect.CodeUnavailable, sovereign_db.ErrDedupeOwnerUnresolved)
+		}
 		if errors.Is(err, sovereign_db.ErrDedupeKeyTenantMismatch) {
-			return nil, connect.NewError(connect.CodePermissionDenied, err)
+			slog.WarnContext(ctx, "append knowledge event dedupe tenant mismatch",
+				"event_type", event.EventType,
+				"dedupe_key_sha256", dedupeKeySHA256Prefix(event.DedupeKey),
+			)
+			return nil, connect.NewError(connect.CodePermissionDenied, sovereign_db.ErrDedupeKeyTenantMismatch)
 		}
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("AppendKnowledgeEvent: %w", err))
 	}
 	return connect.NewResponse(&sovereignv1.AppendKnowledgeEventResponse{EventSeq: seq}), nil
+}
+
+func dedupeKeySHA256Prefix(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:8])
 }
 
 func (h *SovereignHandler) AppendKnowledgeUserEvent(
