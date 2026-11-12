@@ -13,6 +13,8 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+
+	"github.com/google/uuid"
 )
 
 // FetchTagCloudGateway implements fetch_tag_cloud_port.FetchTagCloudPort.
@@ -42,6 +44,21 @@ func (g *FetchTagCloudGateway) FetchTagCloud(ctx context.Context, limit int) ([]
 	}
 
 	logger.Logger.InfoContext(ctx, "successfully fetched tag cloud", "count", len(items))
+	return items, nil
+}
+
+// FetchTagCloudForUser fetches tag cloud data over one user's articles.
+func (g *FetchTagCloudGateway) FetchTagCloudForUser(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
+	if g.alt_db == nil {
+		return nil, errors.New("database connection not available")
+	}
+
+	items, err := g.alt_db.FetchTagCloudForUser(ctx, userID, limit)
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "failed to fetch user tag cloud", "error", err)
+		return nil, errors.New("error fetching tag cloud")
+	}
+
 	return items, nil
 }
 

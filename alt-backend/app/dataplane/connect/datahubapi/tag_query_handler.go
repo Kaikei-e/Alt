@@ -136,9 +136,13 @@ func (h *Handler) SearchTagsByPrefix(ctx context.Context, req *connect.Request[d
 	if req.Msg.GetPrefix() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("prefix is required"))
 	}
+	userID, err := requiredUserID(req.Msg.GetUserId())
+	if err != nil {
+		return nil, err
+	}
 	limit := clampTagLimit(req.Msg.GetLimit())
 
-	hits, err := h.tagRead.SearchByPrefix(ctx, req.Msg.GetPrefix(), limit)
+	hits, err := h.tagRead.SearchByPrefix(ctx, req.Msg.GetPrefix(), userID, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "SearchTagsByPrefix failed", "error", err, "prefix", req.Msg.GetPrefix())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to search tags by prefix"))
@@ -291,7 +295,17 @@ func (h *Handler) FetchTagCloud(ctx context.Context, req *connect.Request[datahu
 		limit = maxLimit
 	}
 
-	items, err := h.fetchTagCloudPort.ExecuteCountsOnly(ctx, limit)
+	var items []*domain.TagCloudItem
+	var err error
+	if req.Msg.UserId != nil {
+		userID, idErr := requiredUserID(req.Msg.GetUserId())
+		if idErr != nil {
+			return nil, idErr
+		}
+		items, err = h.fetchTagCloudPort.ExecuteCountsOnlyForUser(ctx, userID, limit)
+	} else {
+		items, err = h.fetchTagCloudPort.ExecuteCountsOnly(ctx, limit)
+	}
 	if err != nil {
 		h.logger.Error("FetchTagCloud failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("fetch tag cloud: %w", err))

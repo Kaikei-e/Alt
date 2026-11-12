@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -229,6 +230,10 @@ type stubTagCloudPort struct {
 }
 
 func (s *stubTagCloudPort) FetchTagCloud(_ context.Context, _ int) ([]*domain.TagCloudItem, error) {
+	return s.items, nil
+}
+
+func (s *stubTagCloudPort) FetchTagCloudForUser(_ context.Context, _ uuid.UUID, _ int) ([]*domain.TagCloudItem, error) {
 	return s.items, nil
 }
 

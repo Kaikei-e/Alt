@@ -8,7 +8,7 @@ type TagCloudEntry struct {
 	ArticleCount int32
 }
 
-// TagCloudClient fetches tag cloud data from alt-backend.
+// TagCloudClient fetches the tag cloud over one user's articles.
 type TagCloudClient interface {
-	FetchTagCloud(ctx context.Context, limit int) ([]TagCloudEntry, error)
+	FetchTagCloud(ctx context.Context, userID string, limit int) ([]TagCloudEntry, error)
 }

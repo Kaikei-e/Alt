@@ -3,13 +3,14 @@ package global_search_gateway
 import (
 	"alt/domain"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 )
 
 // tagPrefixSearcher is the alt-data-hub read (capability catalog §2.J W3-J4).
 type tagPrefixSearcher interface {
-	SearchTagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.GlobalTagHit, error)
+	SearchTagsByPrefix(ctx context.Context, prefix string, userID string, limit int) ([]domain.GlobalTagHit, error)
 }
 
 // TagSearchGateway implements global_search_port.SearchTagsPort.
@@ -26,9 +27,12 @@ func NewTagSearchGateway(tags tagPrefixSearcher) *TagSearchGateway {
 	return &TagSearchGateway{tags: tags, logger: slog.Default()}
 }
 
-// SearchTagsByPrefix searches for tags matching a prefix.
-func (g *TagSearchGateway) SearchTagsByPrefix(ctx context.Context, prefix string, limit int) (*domain.TagSearchSection, error) {
-	hits, err := g.tags.SearchTagsByPrefix(ctx, prefix, limit)
+// SearchTagsByPrefix searches for tags matching a prefix on one user's articles.
+func (g *TagSearchGateway) SearchTagsByPrefix(ctx context.Context, prefix string, userID string, limit int) (*domain.TagSearchSection, error) {
+	if userID == "" {
+		return nil, errors.New("search tags by prefix: user id is required")
+	}
+	hits, err := g.tags.SearchTagsByPrefix(ctx, prefix, userID, limit)
 	if err != nil {
 		g.logger.ErrorContext(ctx, "failed to search tags by prefix", "error", err, "prefix", prefix)
 		return nil, fmt.Errorf("search tags by prefix %q: %w", prefix, err)
