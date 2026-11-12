@@ -65,7 +65,7 @@ func (f *tagFixture) GenerateTagsForArticle(context.Context, mqhub_connect.Gener
 	}, nil
 }
 
-type randomFeedFixture struct{ n atomic.Int32 }
+type randomFeedFixture struct{}
 
 func (r *randomFeedFixture) FetchRandomSubscription(context.Context) (*domain.Feed, error) {
 	return &domain.Feed{ID: uuid.New(), Title: "feed", WebsiteURL: "https://example.com"}, nil

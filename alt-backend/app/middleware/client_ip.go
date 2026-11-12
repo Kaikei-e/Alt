@@ -41,9 +41,7 @@ func ExtractClientIP(req *http.Request, trustedProxies []netip.Prefix) string {
 
 	var entries []string
 	for _, raw := range xffValues {
-		for _, part := range strings.Split(raw, ",") {
-			entries = append(entries, part)
-		}
+		entries = append(entries, strings.Split(raw, ",")...)
 	}
 
 	for i := len(entries) - 1; i >= 0; i-- {
