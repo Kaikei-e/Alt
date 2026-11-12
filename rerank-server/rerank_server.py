@@ -74,6 +74,18 @@ SUPPORTED_MODELS: dict[str, str] = {
     "cl-nagoya/ruri-v3-reranker-310m": "ModernBERT, Apache-2.0, JQaRA 0.8688, 8192 ctx",
 }
 
+# Commit sha each supported repo is loaded at. Hugging Face resolves a bare repo
+# id to the moving default branch, so the first-boot download is pinned here.
+MODEL_REVISIONS: dict[str, str] = {
+    "BAAI/bge-reranker-v2-m3": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+    "hotchpotch/japanese-bge-reranker-v2-m3-v1": "0315faacebd49293225cd417e26358218f51b6f9",
+    "hotchpotch/japanese-reranker-base-v2": "f21b54987ac864d7a355f3384bf05d0939e31cb1",
+    "hotchpotch/japanese-reranker-xsmall-v2": "de99fd2f16c7b5df1df1bcc1d9ad2c16d88ce93a",
+    "cl-nagoya/ruri-v3-reranker-310m": "bb46934ee9ed09f850b9fcff17501b3ef7ddb2b3",
+}
+
+_COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+
 # The character class keeps a repo id from escaping RERANK_MODEL_CACHE_ROOT
 # when the cache dir is derived from it below.
 _HF_REPO_ID_PATTERN = re.compile(
@@ -89,6 +101,22 @@ def _resolve_model() -> str:
             f"RERANK_MODEL={model!r} is not a Hugging Face repo id of the form 'org/name'"
         )
     return model
+
+
+def _resolve_model_revision(model: str) -> str:
+    """Commit sha to load `model` at: RERANK_MODEL_REVISION, else the pinned default."""
+    revision = os.environ.get("RERANK_MODEL_REVISION", "").strip()
+    if not revision:
+        revision = MODEL_REVISIONS.get(model, "")
+        if not revision:
+            raise ValueError(
+                f"RERANK_MODEL_REVISION is required for unlisted model {model!r}"
+            )
+    if not _COMMIT_SHA_PATTERN.match(revision):
+        raise ValueError(
+            f"RERANK_MODEL_REVISION={revision!r} is not a full 40-character commit sha"
+        )
+    return revision
 
 
 def _resolve_model_dir(model: str) -> str:
@@ -108,6 +136,7 @@ def _resolve_model_dir(model: str) -> str:
 # experiments; "onnx" is the CPU int8 path used by the Docker container.
 RERANK_BACKEND = os.environ.get("RERANK_BACKEND", "torch")
 RERANK_MODEL = _resolve_model()
+RERANK_MODEL_REVISION = _resolve_model_revision(RERANK_MODEL)
 RERANK_MODEL_DIR = _resolve_model_dir(RERANK_MODEL)
 RERANK_BATCH_SIZE = int(os.environ.get("RERANK_BATCH_SIZE", "16"))
 RERANK_MAX_LENGTH = int(os.environ.get("RERANK_MAX_LENGTH", "512"))
@@ -314,6 +343,7 @@ def _load_torch_model() -> CrossEncoder:
     """
     model = CrossEncoder(
         RERANK_MODEL,
+        revision=RERANK_MODEL_REVISION,
         device=DEVICE,
         model_kwargs={"dtype": "float16"},
     )
@@ -382,7 +412,9 @@ def _export_quantized_onnx_model(model_dir: str) -> None:
         model_dir,
     )
     with _onnx_export_tmpdir():
-        export_model = CrossEncoder(RERANK_MODEL, backend="onnx")
+        export_model = CrossEncoder(
+            RERANK_MODEL, revision=RERANK_MODEL_REVISION, backend="onnx"
+        )
         export_model.save_pretrained(model_dir)
         export_dynamic_quantized_onnx_model(export_model, "avx2", model_dir)
     logger.info("Quantized ONNX export complete")
