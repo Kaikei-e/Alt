@@ -1,9 +1,10 @@
 //! Authentication guards for recap-worker's HTTP surface.
 //!
 //! Peer identity (`PeerIdentityGuard` / `require_peer_identity`) gates every
-//! non-health/metrics route using the verified client certificate attached by
-//! the mTLS acceptor (`MTLS_ALLOWED_PEERS`), while `AdminAuthGuard` adds the
-//! shared bearer check on `/admin/*`.
+//! request except the three probe paths (`PEER_EXEMPT_PATHS`) using the
+//! verified client certificate attached by the mTLS acceptor
+//! (`MTLS_ALLOWED_PEERS`), while `AdminAuthGuard` adds the shared bearer check
+//! on `/admin/*`.
 
 use std::sync::Arc;
 
@@ -28,6 +29,8 @@ impl PeerIdentityGuard {
     }
 }
 
+const PEER_EXEMPT_PATHS: [&str; 3] = ["/health/ready", "/health/live", "/metrics"];
+
 pub(crate) async fn require_peer_identity(
     Extension(guard): Extension<PeerIdentityGuard>,
     mut request: Request<Body>,
@@ -37,6 +40,10 @@ pub(crate) async fn require_peer_identity(
     let Some(allowed_peers) = guard.0.as_deref() else {
         return next.run(request).await;
     };
+
+    if PEER_EXEMPT_PATHS.contains(&request.uri().path()) {
+        return next.run(request).await;
+    }
 
     let Some(cert) = request.extensions().get::<CertificateDer<'static>>() else {
         tracing::warn!(

@@ -76,16 +76,14 @@ pub(crate) fn router(state: AppState) -> Router {
         .route_layer(middleware::from_fn(auth::require_admin_token))
         .layer(Extension(admin_guard));
 
-    let peer_authenticated = v1_router
-        .merge(protected)
-        .route_layer(middleware::from_fn(auth::require_peer_identity))
-        .layer(Extension(peer_guard));
-
     Router::new()
         .route("/health/ready", get(health::ready))
         .route("/health/live", get(health::live))
         .route("/metrics", get(metrics::exporter))
-        .merge(peer_authenticated)
+        .merge(v1_router)
+        .merge(protected)
+        .layer(middleware::from_fn(auth::require_peer_identity))
+        .layer(Extension(peer_guard))
         .with_state(state)
 }
 
