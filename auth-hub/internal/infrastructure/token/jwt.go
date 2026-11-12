@@ -2,6 +2,7 @@ package token
 
 import (
 	"crypto/ed25519"
+	"fmt"
 	"time"
 
 	"auth-hub/internal/domain"
@@ -39,22 +40,17 @@ type JWTIssuer struct {
 
 // NewJWTIssuer creates a new JWT issuer.
 func NewJWTIssuer(cfg JWTConfig) *JWTIssuer {
-	var pub ed25519.PublicKey
-	if len(cfg.PrivateKey) == ed25519.PrivateKeySize {
-		pub = cfg.PrivateKey.Public().(ed25519.PublicKey)
+	if len(cfg.PrivateKey) != ed25519.PrivateKeySize {
+		panic(fmt.Sprintf("token: invalid Ed25519 private key length %d", len(cfg.PrivateKey)))
 	}
 	return &JWTIssuer{
 		cfg:       cfg,
-		publicKey: pub,
+		publicKey: cfg.PrivateKey.Public().(ed25519.PublicKey),
 	}
 }
 
 // IssueBackendToken generates a signed JWT token.
 func (j *JWTIssuer) IssueBackendToken(identity *domain.Identity, sessionID string) (string, error) {
-	if len(j.cfg.PrivateKey) != ed25519.PrivateKeySize {
-		return "", jwt.ErrInvalidKey
-	}
-
 	role := identity.Role
 	if role == "" {
 		role = "user"
@@ -91,9 +87,6 @@ func (j *JWTIssuer) IssueBackendToken(identity *domain.Identity, sessionID strin
 // IntrospectBackendToken validates a signed JWT token and returns its key claims.
 func (j *JWTIssuer) IntrospectBackendToken(tokenStr string) (*domain.IntrospectedToken, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &backendClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if len(j.publicKey) != ed25519.PublicKeySize {
-			return nil, jwt.ErrInvalidKey
-		}
 		if _, ok := token.Method.(*jwt.SigningMethodEd25519); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}
