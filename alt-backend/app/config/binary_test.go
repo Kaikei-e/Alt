@@ -48,6 +48,7 @@ func TestValidateBackendListeners(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("TRUSTED_PROXY_CIDRS", "127.0.0.1/32")
 			cfg := baseConfig()
 			tt.mutate(cfg)
 			err := ValidateBackendListeners(cfg)

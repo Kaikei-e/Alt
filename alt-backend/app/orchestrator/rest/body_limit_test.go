@@ -1,42 +1,48 @@
 package rest
 
 import (
+	"alt/config"
+	"alt/di"
+	"alt/utils/logger"
 	"bytes"
+	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/stretchr/testify/require"
 )
 
-// H-005: The backend must enforce a global body size limit so that large
-// POSTs cannot exhaust memory. 2 MiB is chosen to accommodate the 1 MB
-// per-file OPML limit plus multipart boundaries.
-
-// helper that mirrors the production body limit application.
-func buildBodyLimitEcho() *echo.Echo {
+func buildRegisteredEcho(t *testing.T, mutate func(*config.Config)) *echo.Echo {
+	t.Helper()
+	logger.InitLogger()
 	e := echo.New()
-	e.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{
-		Skipper: func(c echo.Context) bool {
-			return strings.Contains(c.Path(), "/sse/") || strings.Contains(c.Path(), "/stream")
-		},
-		Limit: "2M",
-	}))
-	e.POST("/v1/feeds/search", func(c echo.Context) error {
-		return c.NoContent(http.StatusOK)
-	})
-	e.POST("/v1/feeds/summarize/stream", func(c echo.Context) error {
-		return c.NoContent(http.StatusOK)
-	})
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		if c.Response().Committed {
+			return
+		}
+		if he, ok := err.(*echo.HTTPError); ok {
+			_ = c.JSON(he.Code, map[string]any{"error": http.StatusText(he.Code)})
+			return
+		}
+		_ = c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal_error"})
+	}
+	cfg := &config.Config{}
+	cfg.Server.ReadTimeout = 5 * time.Second
+	if mutate != nil {
+		mutate(cfg)
+	}
+	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{}, cfg)
 	return e
 }
 
 func TestBodyLimit_RejectsBodyOverTwoMegabytes(t *testing.T) {
-	e := buildBodyLimitEcho()
-	body := bytes.Repeat([]byte("x"), 3*1024*1024) // 3 MiB
+	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+	e := buildRegisteredEcho(t, nil)
+	body := bytes.Repeat([]byte("x"), 3*1024*1024)
 	req := httptest.NewRequest(http.MethodPost, "/v1/feeds/search", bytes.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	res := httptest.NewRecorder()
@@ -45,22 +51,140 @@ func TestBodyLimit_RejectsBodyOverTwoMegabytes(t *testing.T) {
 }
 
 func TestBodyLimit_AllowsBodyUnderTwoMegabytes(t *testing.T) {
-	e := buildBodyLimitEcho()
-	body := bytes.Repeat([]byte("x"), 512*1024) // 512 KiB
-	req := httptest.NewRequest(http.MethodPost, "/v1/feeds/search", bytes.NewReader(body))
+	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+	e := buildRegisteredEcho(t, nil)
+	body := bytes.Repeat([]byte("{"), 1)
+	body = append(body, bytes.Repeat([]byte(" "), 512*1024)...)
+	body = append(body, '}')
+	req := httptest.NewRequest(http.MethodPost, "/security/csp-report", bytes.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	res := httptest.NewRecorder()
 	e.ServeHTTP(res, req)
-	require.Equal(t, http.StatusOK, res.Code)
+	require.Equal(t, http.StatusNoContent, res.Code)
 }
 
-func TestBodyLimit_SkipsStreamingPaths(t *testing.T) {
-	e := buildBodyLimitEcho()
-	body := bytes.Repeat([]byte("x"), 3*1024*1024) // 3 MiB
-	req := httptest.NewRequest(http.MethodPost, "/v1/feeds/summarize/stream", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	res := httptest.NewRecorder()
-	e.ServeHTTP(res, req)
-	require.Equal(t, http.StatusOK, res.Code,
-		"streaming endpoints must not be affected by the global body limit")
+func TestBodyLimit_RejectsOversizedBodyOnStreamingRoutes(t *testing.T) {
+	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+	e := buildRegisteredEcho(t, nil)
+	e.POST("/sse/test-chunked", func(c echo.Context) error {
+		_, err := io.ReadAll(c.Request().Body)
+		if err != nil {
+			return err
+		}
+		return c.NoContent(http.StatusOK)
+	})
+
+	for _, path := range []string{"/v1/feeds/summarize/stream", "/sse/v1/rag/answer"} {
+		t.Run(path, func(t *testing.T) {
+			body := bytes.Repeat([]byte("x"), 3*1024*1024)
+			req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			res := httptest.NewRecorder()
+			e.ServeHTTP(res, req)
+			require.Equal(t, http.StatusRequestEntityTooLarge, res.Code)
+		})
+	}
+
+	t.Run("chunked oversized body on streaming route", func(t *testing.T) {
+		chunked := io.MultiReader(bytes.NewReader(bytes.Repeat([]byte("x"), 3*1024*1024)))
+		req := httptest.NewRequest(http.MethodPost, "/sse/test-chunked", chunked)
+		req.ContentLength = -1
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+		require.Equal(t, http.StatusRequestEntityTooLarge, res.Code)
+	})
+}
+
+type slowReader struct {
+	delay time.Duration
+}
+
+func (s slowReader) Read(p []byte) (int, error) {
+	time.Sleep(s.delay)
+	return 0, io.EOF
+}
+
+func TestStreamingRoute_BoundsBodyReadAndAllowsLongStreamResponse(t *testing.T) {
+	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+	e := buildRegisteredEcho(t, func(cfg *config.Config) {
+		cfg.Server.ReadTimeout = 40 * time.Millisecond
+	})
+
+	e.POST("/sse/test-body-timeout", func(c echo.Context) error {
+		if _, err := io.ReadAll(c.Request().Body); err != nil {
+			return echo.NewHTTPError(http.StatusRequestTimeout, "request body read timed out")
+		}
+		c.Response().Header().Set(echo.HeaderContentType, "text/event-stream")
+		c.Response().WriteHeader(http.StatusOK)
+		time.Sleep(90 * time.Millisecond)
+		_, _ = c.Response().Write([]byte("data: ok\n\n"))
+		c.Response().Flush()
+		return nil
+	})
+
+	t.Run("slow request body on streaming route is cut off", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/sse/test-body-timeout", slowReader{delay: 120 * time.Millisecond})
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+		require.Equal(t, http.StatusRequestTimeout, res.Code)
+	})
+
+	t.Run("fast request body with long streaming response succeeds", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/sse/test-body-timeout", bytes.NewReader([]byte("{}")))
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+		require.Equal(t, http.StatusOK, res.Code)
+		require.Contains(t, res.Body.String(), "data: ok")
+	})
+}
+
+func TestRegisterRoutes_TrustedProxyCIDRs(t *testing.T) {
+	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8, 172.16.0.0/12")
+	e := buildRegisteredEcho(t, func(cfg *config.Config) {
+		cfg.RateLimit.DOSProtection = config.DOSProtectionConfig{
+			Enabled:       true,
+			RateLimit:     2,
+			BurstLimit:    2,
+			WindowSize:    time.Minute,
+			BlockDuration: time.Minute,
+		}
+	})
+	e.GET("/v1/echo-ip", func(c echo.Context) error {
+		return c.String(http.StatusOK, c.RealIP())
+	})
+
+	t.Run("spoofed leftmost XFF entry is ignored when peer is trusted", func(t *testing.T) {
+		spoofedLeft := []string{"198.51.100.1", "198.51.100.2", "198.51.100.3"}
+		wantStatus := []int{http.StatusOK, http.StatusOK, http.StatusTooManyRequests}
+		for i, spoof := range spoofedLeft {
+			req := httptest.NewRequest(http.MethodGet, "/v1/echo-ip", nil)
+			req.RemoteAddr = "10.0.0.2:4321"
+			req.Header.Set("X-Forwarded-For", spoof+", 203.0.113.42, 172.16.0.9")
+			req.Header.Set("X-Real-IP", spoof)
+			res := httptest.NewRecorder()
+			e.ServeHTTP(res, req)
+			require.Equal(t, wantStatus[i], res.Code)
+			if res.Code == http.StatusOK {
+				require.Equal(t, "203.0.113.42", res.Body.String())
+			}
+		}
+	})
+
+	t.Run("direct peer outside trusted CIDRs has forwarded headers ignored", func(t *testing.T) {
+		spoofed := []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}
+		wantStatus := []int{http.StatusOK, http.StatusOK, http.StatusTooManyRequests}
+		for i, spoof := range spoofed {
+			req := httptest.NewRequest(http.MethodGet, "/v1/echo-ip", nil)
+			req.RemoteAddr = "198.51.100.77:5555"
+			req.Header.Set("X-Forwarded-For", spoof)
+			req.Header.Set("X-Real-IP", spoof)
+			res := httptest.NewRecorder()
+			e.ServeHTTP(res, req)
+			require.Equal(t, wantStatus[i], res.Code)
+			if res.Code == http.StatusOK {
+				require.Equal(t, "198.51.100.77", res.Body.String())
+			}
+		}
+	})
 }

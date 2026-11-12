@@ -311,3 +311,58 @@ func TestSetupConnectHandlers_RequiresUserJWTOnAllPublicServices(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateConnectServer_RejectsOversizedRequestMessage(t *testing.T) {
+	container, cfg, logger := testDeps()
+	srv := CreateConnectServer(container, cfg, logger)
+	validToken := issueTestBackendToken(t)
+
+	oversized := `{"content":"` + strings.Repeat("a", 3*1024*1024) + `"}`
+
+	t.Run("streaming RPC rejects oversized message with resource_exhausted", func(t *testing.T) {
+		// Connect streaming protocol frames each message with 1-byte flags + 4-byte big-endian length.
+		payload := []byte(oversized)
+		frame := make([]byte, 5+len(payload))
+		frame[1] = byte(len(payload) >> 24)
+		frame[2] = byte(len(payload) >> 16)
+		frame[3] = byte(len(payload) >> 8)
+		frame[4] = byte(len(payload))
+		copy(frame[5:], payload)
+
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/alt.feeds.v2.FeedService/StreamSummarize",
+			strings.NewReader(string(frame)),
+		)
+		req.Header.Set("Content-Type", "application/connect+json")
+		req.Header.Set("X-Alt-Backend-Token", validToken)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+
+		if !strings.Contains(rec.Body.String(), "resource_exhausted") {
+			t.Fatalf("expected resource_exhausted in streaming error response, got status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("unary RPC rejects oversized message with resource_exhausted", func(t *testing.T) {
+		body := `{"query":"` + strings.Repeat("q", 3*1024*1024) + `"}`
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/alt.feeds.v2.FeedService/SearchFeeds",
+			strings.NewReader(body),
+		)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Alt-Backend-Token", validToken)
+		rec := httptest.NewRecorder()
+		func() {
+			defer func() {
+				_ = recover()
+			}()
+			srv.ServeHTTP(rec, req)
+		}()
+
+		if !strings.Contains(rec.Body.String(), "resource_exhausted") {
+			t.Fatalf("expected resource_exhausted in unary error response, got status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
+}
