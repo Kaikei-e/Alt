@@ -251,10 +251,41 @@ mod tests {
     }
 
     #[test]
-    fn allowed_peers_empty_when_unset() {
-        temp_env::with_var("MTLS_ALLOWED_PEERS", None::<&str>, || {
-            assert!(allowed_peers_from_env().is_empty());
-        });
+    fn load_server_config_rejects_unset_or_empty_allowed_peers_when_enforced() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).unwrap();
+        let ca_key = rcgen::KeyPair::generate().unwrap();
+        let ca_cert = ca_params.self_signed(&ca_key).unwrap();
+
+        let leaf_params = rcgen::CertificateParams::new(vec!["recap-worker".to_string()]).unwrap();
+        let leaf_key = rcgen::KeyPair::generate().unwrap();
+        let leaf_cert = leaf_params.self_signed(&leaf_key).unwrap();
+
+        let cert_path = temp_dir.path().join("cert.pem");
+        let key_path = temp_dir.path().join("key.pem");
+        let ca_path = temp_dir.path().join("ca.pem");
+        std::fs::write(&cert_path, leaf_cert.pem()).unwrap();
+        std::fs::write(&key_path, leaf_key.serialize_pem()).unwrap();
+        std::fs::write(&ca_path, ca_cert.pem()).unwrap();
+
+        for bad in [None, Some(""), Some(" , ")] {
+            temp_env::with_vars(
+                [
+                    ("MTLS_ENFORCE", Some("true")),
+                    ("MTLS_CERT_FILE", Some(cert_path.to_str().unwrap())),
+                    ("MTLS_KEY_FILE", Some(key_path.to_str().unwrap())),
+                    ("MTLS_CA_FILE", Some(ca_path.to_str().unwrap())),
+                    ("MTLS_ALLOWED_PEERS", bad),
+                ],
+                || {
+                    assert!(
+                        load_server_tls_config().is_err(),
+                        "MTLS_ALLOWED_PEERS={bad:?} must fail closed"
+                    );
+                },
+            );
+        }
     }
 
     #[test]

@@ -1895,6 +1895,7 @@ mod tests {
             // case override this entry.
             ("RECAP_ADMIN_AUTH", Some("disabled")),
             ("RECAP_ADMIN_TOKEN_FILE", None),
+            ("MTLS_ALLOWED_PEERS", Some("disabled")),
             // Explicit disabled, not a reset: RECAP_EVAL_LISTENER is required
             // to be strictly "enabled" or "disabled", so every fixture must state its intent.
             ("RECAP_EVAL_LISTENER", Some("disabled")),
@@ -3551,6 +3552,74 @@ mod tests {
                     morning_letter_hours: 3,
                 }
             );
+        });
+    }
+
+    #[test]
+    fn from_env_rejects_unset_mtls_allowed_peers() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut vars = required_base();
+        vars.push(("MTLS_ALLOWED_PEERS", None));
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                matches!(res, Err(ConfigError::Missing("MTLS_ALLOWED_PEERS"))),
+                "unset MTLS_ALLOWED_PEERS must fail startup, got: {res:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_rejects_empty_or_mixed_disabled_mtls_allowed_peers() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for bad in [
+            "",
+            "   ",
+            " , , ",
+            "disabled,alt-backend",
+            "alt-backend,disabled",
+        ] {
+            let mut vars = required_base();
+            vars.push(("MTLS_ALLOWED_PEERS", Some(bad)));
+            temp_env::with_vars(vars, || {
+                let res = Config::from_env();
+                assert!(
+                    matches!(
+                        res,
+                        Err(ConfigError::Invalid {
+                            name: "MTLS_ALLOWED_PEERS",
+                            ..
+                        })
+                    ),
+                    "MTLS_ALLOWED_PEERS={bad:?} must fail startup, got: {res:?}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn from_env_accepts_explicit_disabled_and_csv_mtls_allowed_peers() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let mut disabled_vars = required_base();
+        disabled_vars.push(("MTLS_ALLOWED_PEERS", Some("disabled")));
+        temp_env::with_vars(disabled_vars, || {
+            Config::from_env().expect("explicit MTLS_ALLOWED_PEERS=disabled must load");
+        });
+
+        let mut enabled_vars = required_base();
+        enabled_vars.push((
+            "MTLS_ALLOWED_PEERS",
+            Some(" alt-backend , alt-frontend-sv "),
+        ));
+        temp_env::with_vars(enabled_vars, || {
+            Config::from_env().expect("non-empty MTLS_ALLOWED_PEERS CSV must load");
         });
     }
 }

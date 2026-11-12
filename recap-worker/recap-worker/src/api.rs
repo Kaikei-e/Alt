@@ -138,6 +138,7 @@ mod tests {
                     "RECAP_ADMIN_TOKEN_FILE",
                     Some(token_path.to_str().expect("utf8 path")),
                 ),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
@@ -239,6 +240,7 @@ mod tests {
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
                 ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
@@ -315,5 +317,153 @@ mod tests {
             StatusCode::NOT_FOUND,
             "/v1/generate/topic-cards must be registered"
         );
+    }
+
+    fn test_peer_cert(name: &str) -> rustls::pki_types::CertificateDer<'static> {
+        let params = rcgen::CertificateParams::new(vec![name.to_string()]).expect("cert params");
+        let key = rcgen::KeyPair::generate().expect("keypair");
+        let cert = params.self_signed(&key).expect("self-signed cert");
+        cert.der().clone()
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn non_health_routes_require_verified_allowed_peer_while_health_and_metrics_stay_open() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18021/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18022/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                (
+                    "MTLS_ALLOWED_PEERS",
+                    Some("alt-backend,alt-frontend-sv,recap-evaluator,recap-subworker"),
+                ),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_GENRES", Some("ai,space")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let app = router(AppState::new(registry));
+
+        for (method, path) in [
+            (Method::POST, "/v1/generate/recaps/7days"),
+            (Method::POST, "/v1/generate/recaps/3days"),
+            (Method::POST, "/v1/generate/topic-cards"),
+            (Method::POST, "/v1/morning/letters/regenerate"),
+            (Method::POST, "/v1/evaluation/genres"),
+            (Method::GET, "/v1/dashboard/metrics"),
+            (Method::GET, "/v1/dashboard/overview"),
+            (Method::GET, "/v1/dashboard/logs"),
+            (Method::GET, "/v1/dashboard/jobs"),
+            (Method::GET, "/v1/dashboard/recap_jobs"),
+            (Method::GET, "/v1/dashboard/job-progress"),
+            (Method::GET, "/v1/dashboard/job-stats"),
+            (Method::GET, "/v1/recaps/7days"),
+            (Method::POST, "/admin/jobs/retry"),
+        ] {
+            let unauthenticated = Request::builder()
+                .method(method.clone())
+                .uri(path)
+                .header("content-type", "application/json")
+                .header("x-alt-peer-identity", "alt-frontend-sv")
+                .body(Body::from("{}"))
+                .expect("request builds");
+            let response = app
+                .clone()
+                .oneshot(unauthenticated)
+                .await
+                .expect("request succeeds");
+            assert_eq!(
+                response.status(),
+                StatusCode::UNAUTHORIZED,
+                "{path} without verified peer certificate must return 401"
+            );
+
+            let mut untrusted = Request::builder()
+                .method(method)
+                .uri(path)
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .expect("request builds");
+            untrusted
+                .extensions_mut()
+                .insert(test_peer_cert("untrusted-peer"));
+            let forbidden = app
+                .clone()
+                .oneshot(untrusted)
+                .await
+                .expect("request succeeds");
+            assert_eq!(
+                forbidden.status(),
+                StatusCode::FORBIDDEN,
+                "{path} with non-allowlisted peer certificate must return 403"
+            );
+        }
+
+        let mut allowed_generate = Request::builder()
+            .method(Method::POST)
+            .uri("/v1/generate/recaps/7days")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .expect("request builds");
+        allowed_generate
+            .extensions_mut()
+            .insert(test_peer_cert("alt-frontend-sv"));
+        let allowed_resp = app
+            .clone()
+            .oneshot(allowed_generate)
+            .await
+            .expect("request succeeds");
+        assert_eq!(
+            allowed_resp.status(),
+            StatusCode::ACCEPTED,
+            "allowlisted peer must reach /v1/generate/recaps/7days"
+        );
+
+        for path in ["/health/live", "/health/ready", "/metrics"] {
+            let req = Request::builder()
+                .method(Method::GET)
+                .uri(path)
+                .body(Body::empty())
+                .expect("request builds");
+            let resp = app.clone().oneshot(req).await.expect("request succeeds");
+            assert_ne!(
+                resp.status(),
+                StatusCode::UNAUTHORIZED,
+                "{path} must stay open without peer identity"
+            );
+            assert_ne!(
+                resp.status(),
+                StatusCode::FORBIDDEN,
+                "{path} must stay open without peer identity"
+            );
+        }
     }
 }
