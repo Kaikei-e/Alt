@@ -130,6 +130,10 @@ class TestFaithfulnessEvaluator:
         revision = mock_nli_pipeline.call_args.kwargs["revision"]
         assert re.fullmatch(r"[0-9a-f]{40}", revision)
 
+    def test_custom_model_without_revision_is_rejected(self):
+        with pytest.raises(ValueError, match="model_revision"):
+            FaithfulnessEvaluator(model_name="org/other-nli")
+
     def test_explicit_revision_is_forwarded(self, mock_nli_pipeline):
         revision = "0123456789abcdef0123456789abcdef01234567"
         evaluator = FaithfulnessEvaluator(model_name="org/other-nli", model_revision=revision)
