@@ -375,27 +375,11 @@ func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(
 	assert.Equal(t, 1, preproc.queueCalls)
 }
 
-func TestSummarizeRoutes_PanicWhenLimiterNil(t *testing.T) {
+func TestSummarizeRoutes_PanicAtRegistrationWhenLimiterNil(t *testing.T) {
 	logger.InitLogger()
-	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
-	pub, priv := newRESTTestKeyPair(t)
+	pub, _ := newRESTTestKeyPair(t)
 
-	e, _, _ := newSummarizeQuotaTestServer(t, pub, nil)
-	tok := signRESTTestJWT(t, priv, uuid.New())
-
-	for _, path := range []string{
-		"/v1/feeds/summarize",
-		"/v1/feeds/summarize/queue",
-		"/v1/feeds/fetch/summary",
-	} {
-		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"feed_url":"https://example.com/a","feed_urls":["https://example.com/a"]}`))
-			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-			req.Header.Set("X-Alt-Backend-Token", tok)
-			rec := httptest.NewRecorder()
-			assert.Panics(t, func() {
-				e.ServeHTTP(rec, req)
-			})
-		})
-	}
+	assert.Panics(t, func() {
+		newSummarizeQuotaTestServer(t, pub, nil)
+	})
 }

@@ -52,6 +52,7 @@ func buildRegisteredEcho(t *testing.T, mutate func(*config.Config), trustedProxi
 	}
 	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{
 		CSRFTokenUsecase: csrf_token_usecase.NewCSRFTokenUsecase(stubCSRFGateway{}),
+		UserQuotaLimiter: newTestQuotaLimiter(t),
 	}, cfg, trustedProxies...)
 	return e
 }
