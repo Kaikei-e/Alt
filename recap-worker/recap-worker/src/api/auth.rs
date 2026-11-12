@@ -39,12 +39,25 @@ pub(crate) async fn require_peer_identity(
     };
 
     let Some(cert) = request.extensions().get::<CertificateDer<'static>>() else {
+        tracing::warn!(
+            path = request.uri().path(),
+            reason = "no_client_certificate",
+            "peer_identity_rejected"
+        );
         return (StatusCode::UNAUTHORIZED, "unauthenticated peer").into_response();
     };
 
     if crate::tls::verify_cert_peer_identity(cert, allowed_peers).is_ok() {
         next.run(request).await
     } else {
+        let names = crate::tls::extract_cert_peer_names(cert).unwrap_or_default();
+        tracing::warn!(
+            path = request.uri().path(),
+            reason = "peer_not_allow_listed",
+            cn = ?names.common_names,
+            dns_sans = ?names.dns_sans,
+            "peer_identity_rejected"
+        );
         (StatusCode::FORBIDDEN, "peer not allowlisted").into_response()
     }
 }

@@ -38,6 +38,46 @@ pub struct AllowedNamesVerifier {
     allowed_peers: Vec<String>,
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct CertPeerNames {
+    pub(crate) common_names: Vec<String>,
+    pub(crate) dns_sans: Vec<String>,
+}
+
+pub(crate) fn extract_cert_peer_names(
+    end_entity: &CertificateDer<'_>,
+) -> std::result::Result<CertPeerNames, rustls::Error> {
+    let (_, cert) = X509Certificate::from_der(end_entity.as_ref())
+        .map_err(|_| rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding))?;
+
+    let common_names = cert
+        .subject()
+        .iter_common_name()
+        .filter_map(|cn| cn.as_str().ok().map(str::to_string))
+        .collect();
+
+    let dns_sans = cert
+        .subject_alternative_name()
+        .ok()
+        .flatten()
+        .map(|ext| {
+            ext.value
+                .general_names
+                .iter()
+                .filter_map(|name| match name {
+                    GeneralName::DNSName(dns) => Some((*dns).to_string()),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(CertPeerNames {
+        common_names,
+        dns_sans,
+    })
+}
+
 pub(crate) fn verify_cert_peer_identity(
     end_entity: &CertificateDer<'_>,
     allowed_peers: &[String],
@@ -48,25 +88,15 @@ pub(crate) fn verify_cert_peer_identity(
         ));
     }
 
-    let (_, cert) = X509Certificate::from_der(end_entity.as_ref())
-        .map_err(|_| rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding))?;
-
-    let cn_matches = cert
-        .subject()
-        .iter_common_name()
-        .filter_map(|cn| cn.as_str().ok())
+    let names = extract_cert_peer_names(end_entity)?;
+    let cn_matches = names
+        .common_names
+        .iter()
         .any(|cn| allowed_peers.iter().any(|allowed| allowed == cn));
-
-    let san_matches = cert
-        .subject_alternative_name()
-        .ok()
-        .flatten()
-        .is_some_and(|ext| {
-            ext.value.general_names.iter().any(|name| match name {
-                GeneralName::DNSName(dns) => allowed_peers.iter().any(|allowed| allowed == dns),
-                _ => false,
-            })
-        });
+    let san_matches = names
+        .dns_sans
+        .iter()
+        .any(|dns| allowed_peers.iter().any(|allowed| allowed == dns));
 
     if cn_matches || san_matches {
         Ok(())
