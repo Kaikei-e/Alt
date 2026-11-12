@@ -8,7 +8,7 @@
 import http from "k6/http";
 import { group, sleep } from "k6";
 import { getConfig } from "../helpers/config.js";
-import { getAuthHeaders, getPublicHeaders } from "../helpers/auth.js";
+import { getAuthHeaders, getPublicHeaders, validateAuthHubToken } from "../helpers/auth.js";
 import { PUBLIC_ENDPOINTS, AUTH_ENDPOINTS } from "../helpers/endpoints.js";
 import { checkResponse, checkHealth, checkAuthResponse } from "../helpers/checks.js";
 import { recordResponseTime, recordError } from "../helpers/metrics.js";
@@ -25,6 +25,8 @@ export const options = {
   },
   thresholds: smokeThresholds,
 };
+
+validateAuthHubToken(getConfig().apiToken);
 
 export default function () {
   const cfg = getConfig();

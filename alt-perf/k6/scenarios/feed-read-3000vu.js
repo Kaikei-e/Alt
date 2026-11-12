@@ -59,8 +59,10 @@ const users = new SharedArray("users", function () {
   );
   // Wire every fixture at init: validate remaining >= 180s, exp <= 5min,
   // fixture ID matching JWT sub owner; fail init if short or expired.
+  let hasFixtureToken = false;
   for (const user of data) {
     if (user && user.token) {
+      hasFixtureToken = true;
       const fixtureUserId = user.user_id || user.id;
       const claims = validateFixtureTokenAtInit(user.token, {
         ...initCfg,
@@ -72,6 +74,9 @@ const users = new SharedArray("users", function () {
         );
       }
     }
+  }
+  if (!initCfg.apiToken && !hasFixtureToken) {
+    throw new Error("Missing K6_API_TOKEN / auth token");
   }
   return data;
 });

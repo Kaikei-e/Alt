@@ -4,7 +4,7 @@
 // (see alt-backend/app/middleware/auth_middleware.go).
 
 import { getConfig } from "./config.js";
-import { decodeJWT } from "./jwt.js";
+import { decodeJWT, decodeJWTHeader } from "./jwt.js";
 
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const MAX_JWT_LENGTH = 4096;
@@ -47,9 +47,13 @@ export function validateAuthHubToken(token, cfg = getConfig(), options = {}) {
     throw new Error(`Token exceeds maximum allowed size (${MAX_JWT_LENGTH} bytes)`);
   }
 
+  const header = decodeJWTHeader(token);
   const claims = decodeJWT(token);
-  if (!claims || typeof claims !== "object") {
+  if (!header || typeof header !== "object" || !claims || typeof claims !== "object") {
     throw new Error("Invalid JWT token format");
+  }
+  if (header.alg !== "EdDSA") {
+    throw new Error(`Token alg must be EdDSA, got ${header.alg}`);
   }
 
   const now = Math.floor(Date.now() / 1000);

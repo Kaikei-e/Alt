@@ -251,20 +251,24 @@ describe("feed-read-3000vu.js scenario init fixture validation", () => {
 
   it("fails scenario init when neither K6_API_TOKEN nor fixture tokens are provided", () => {
     const fixtures = [{ user_id: user1 }];
-    assertThrows(
-      () => runScenarioInit(fixtures),
-      Error,
-      "Missing K6_API_TOKEN",
-    );
+    let caught = "";
+    try {
+      runScenarioInit(fixtures);
+    } catch (e: unknown) {
+      caught = (e as { message?: string }).message ?? "";
+    }
+    assertEquals(caught.includes("Missing K6_API_TOKEN"), true);
   });
 
   it("fails scenario init when a fixture token header alg is not EdDSA", () => {
     const hs256Token = makeJWT(validClaims(user1, -10, 200), "HS256");
     const fixtures = [{ user_id: user1, token: hs256Token }];
-    assertThrows(
-      () => runScenarioInit(fixtures),
-      Error,
-      "alg must be EdDSA",
-    );
+    let caught = "";
+    try {
+      runScenarioInit(fixtures);
+    } catch (e: unknown) {
+      caught = (e as { message?: string }).message ?? "";
+    }
+    assertEquals(caught.includes("alg must be EdDSA"), true);
   });
 });
