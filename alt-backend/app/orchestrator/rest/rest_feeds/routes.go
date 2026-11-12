@@ -41,18 +41,16 @@ func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	feedsGroup.GET("/stats/trends", RestHandleTrendStats(container, cfg))
 	feedsGroup.POST("/tags", RestHandleFetchFeedTags(container))
 	feedsGroup.GET("/:id/tags", RestHandleFetchFeedTagsByID(container))
+	summarizeQuota := connectmiddleware.EchoUserQuotaMiddleware(container.UserQuotaLimiter, connectmiddleware.OpSummarize)
+
 	feedsGroup.POST("/fetch/summary/provided", RestHandleFetchInoreaderSummary(container))
-	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg))
+	feedsGroup.POST("/fetch/summary", RestHandleFetchArticleSummary(container, cfg), summarizeQuota)
 
 	// Article summarization endpoints
-	feedsGroup.POST("/summarize", summarizationpkg.RestHandleSummarizeFeed(container, cfg)) // Legacy synchronous endpoint
-	feedsGroup.POST(
-		"/summarize/stream",
-		summarizationpkg.RestHandleSummarizeFeedStream(container, cfg),
-		connectmiddleware.EchoUserQuotaMiddleware(container.UserQuotaLimiter, connectmiddleware.OpSummarize),
-	) // Streaming endpoint (using fetch stream)
-	feedsGroup.POST("/summarize/queue", summarizationpkg.RestHandleSummarizeFeedQueue(container, cfg))          // New async queue endpoint
-	feedsGroup.GET("/summarize/status/:job_id", summarizationpkg.RestHandleSummarizeFeedStatus(container, cfg)) // Job status endpoint
+	feedsGroup.POST("/summarize", summarizationpkg.RestHandleSummarizeFeed(container, cfg), summarizeQuota)              // Legacy synchronous endpoint
+	feedsGroup.POST("/summarize/stream", summarizationpkg.RestHandleSummarizeFeedStream(container, cfg), summarizeQuota) // Streaming endpoint (using fetch stream)
+	feedsGroup.POST("/summarize/queue", summarizationpkg.RestHandleSummarizeFeedQueue(container, cfg), summarizeQuota)   // New async queue endpoint
+	feedsGroup.GET("/summarize/status/:job_id", summarizationpkg.RestHandleSummarizeFeedStatus(container, cfg))          // Job status endpoint
 
 	// RSS feed registration (require auth) - 認証ミドルウェア付きでグループ作成
 	rss := v1.Group("/rss-feed-link", authMiddleware.RequireAuth())
