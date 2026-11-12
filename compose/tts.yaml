@@ -8,6 +8,7 @@ include:
 x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c

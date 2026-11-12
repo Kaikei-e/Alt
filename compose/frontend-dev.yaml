@@ -6,7 +6,7 @@
 #   altctl up frontend-dev
 #
 # Services:
-#   - dev-secret-init: Generates random JWT secret if not configured
+#   - dev-secret-init: Generates a throwaway Ed25519 token key pair if not configured
 #   - mock-auth: Mock Kratos + AuthHub + Backend with real JWT generation
 #   - alt-frontend-sv: SvelteKit frontend with HMR
 #

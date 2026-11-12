@@ -9,6 +9,7 @@
 x-pki-cert-volume-chown: &pki-cert-volume-chown
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c
@@ -133,7 +134,6 @@ services:
       - EVENT_AUTH=${SOVEREIGN_EVENT_AUTH_MODE:-}
       - EVENT_AUTH_POLICY_FILE=/config/event-auth-policy.json
       - USER_JWT_INTROSPECTION_URL=https://auth-hub:9443/internal/token/introspect
-      - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
@@ -198,7 +198,6 @@ services:
       - sovereign_event_token
       - sovereign_backend_token
       - sovereign_operator_token
-      - backend_token_verify_key
       - sovereign_datahub_token
       - sovereign_harvester_token
       - sovereign_rag_token

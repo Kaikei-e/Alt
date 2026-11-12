@@ -204,8 +204,9 @@ services:
     container_name: alt-staging-redis-streams
     profiles: [mq-hub, tag-generator, alt-backend, alt-harvester]
     # The production entrypoint and ACL users (compose/mq.yaml): `default` is
-    # off and every client is a `streams` user limited to the alt:events:* /
-    # alt:replies:tags:* keys and an explicit command list. With the old
+    # off and every client is either `streams_producer` (mq-hub) or
+    # `streams_consumer` (the pipeline consumers), each limited to the
+    # alt:events:* / alt:replies:tags:* keys and its own command list. With the old
     # `--requirepass`, staging accepted single-argument AUTH and any command,
     # so a client production rejects still passed E2E. No named volume here
     # (--save "" below), so unlike production there is no pre-existing /data
@@ -1059,7 +1060,7 @@ services:
         condition: service_healthy
     environment:
       - IRODORI_BASE_URL=http://irodori-stub:8088
-      - IRODORI_API_KEY_FILE=/run/secrets/backend_token_verify_key # Dummy key for stub (stub ignores credentials)
+      - IRODORI_API_KEY_FILE=/run/secrets/irodori_api_key # Dummy key for stub (stub ignores credentials)
       - TTS_VOICE_ID=alt-narrator
       - PEER_IDENTITY_STRICT=false
       - PEER_IDENTITY_TRUSTED=off
@@ -1067,7 +1068,7 @@ services:
       - INBOUND_MTLS=false
       - LOG_LEVEL=info
     secrets:
-      - backend_token_verify_key # Reused as dummy key for the stub
+      - irodori_api_key
     ports:
       - "127.0.0.1:19700:9700"
     networks:
@@ -1229,9 +1230,9 @@ services:
       # tests/health.spec.ts — and the address the `healthcheck` subcommand
       # self-probes.
       - OPS_LISTEN=:9110
-      # EdDSA JWT validation. The public key is read from a file mounted
-      # from STAGING_TOKEN_KEY_DIR (throwaway pair, generated per suite run) so the fixture is the single source of truth for both
-      # compose and the pre-minted test JWT under e2e/fixtures/alt-backend/.
+      # EdDSA JWT validation. The public key is mounted from
+      # STAGING_TOKEN_KEY_DIR, the throwaway pair the suite generates for each
+      # run; the suite signs its test tokens with the matching private key.
       - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
       - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
@@ -1755,6 +1756,8 @@ secrets:
     file: ../e2e/playwright/_fixtures/test-credentials/kratos_db_password.txt
   meili_master_key:
     file: ../e2e/fixtures/staging-secrets/meili_master_key.txt
+  irodori_api_key:
+    file: ../e2e/playwright/_fixtures/test-credentials/irodori_api_key.txt
   backend_token_signing_key:
     file: ${STAGING_TOKEN_KEY_DIR:?set STAGING_TOKEN_KEY_DIR to the suite's minted key directory}/backend_token_signing_key.txt
   backend_token_verify_key:

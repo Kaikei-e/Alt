@@ -13,6 +13,7 @@ include:
 x-pki-cert-volume-chown: &pki-cert-volume-chown
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c
@@ -166,9 +167,6 @@ services:
       # --- notification outbox relay ---------------------------------------
       # reports now carries a user_id column; NOTIFICATION_USER_ID serves as
       # fallback recipient when deriving user from run is not available.
-      # Unset means the relay logs notification_outbox_relay_disabled and does
-      # not run; a malformed value is a startup failure rather than a relay that
-      # forwards to nobody.
       - NOTIFICATIONS_ENABLED=${ACOLYTE_NOTIFICATIONS_ENABLED:-false}
       - NOTIFICATION_USER_ID=${ALT_NOTIFICATION_USER_ID:-}
       - DATAHUB_URL=https://alt-data-hub:9443

@@ -663,11 +663,24 @@ class TestGroup1Security(unittest.TestCase):
             self.assertIn("is missing", res_err.stderr)
 
             # 3b. Identical producer and consumer secrets must be denied
+            (sec_dir / "consumer_same").write_text("producer_secret_pass\n")
             env_same = env.copy()
-            env_same["REDIS_STREAMS_CONSUMER_PASSWORD_FILE"] = str(sec_dir / "producer_pass")
+            env_same["REDIS_STREAMS_CONSUMER_PASSWORD_FILE"] = str(sec_dir / "consumer_same")
             res_same = subprocess.run(cmd_streams, env=env_same, capture_output=True, text=True)
             self.assertNotEqual(res_same.returncode, 0)
             self.assertIn("must differ", res_same.stderr)
+
+            # 3c. The consumer secret goes through the same validation as the producer's
+            (sec_dir / "consumer_nopass").write_text("fixture nopass\n")
+            (sec_dir / "consumer_tab").write_text("tab\tinjection\n")
+            (sec_dir / "consumer_ctrl").write_bytes(b"ctrl\x01pass\n")
+            (sec_dir / "consumer_blank").write_text("   \t  \n")
+            for bad in ("nonexistent", "consumer_nopass", "consumer_tab", "consumer_ctrl", "consumer_blank"):
+                env_bad = env.copy()
+                env_bad["REDIS_STREAMS_CONSUMER_PASSWORD_FILE"] = str(sec_dir / bad)
+                res_bad = subprocess.run(cmd_streams, env=env_bad, capture_output=True, text=True)
+                self.assertNotEqual(res_bad.returncode, 0, f"consumer secret {bad} must be rejected")
+                self.assertNotIn("fixture nopass", res_bad.stderr)
 
             # 4. Malicious space fixture 'fixture nopass' must be denied (exit non-zero, no nopass directive in ACL)
             (sec_dir / "malicious_nopass").write_text("fixture nopass\n")
@@ -980,6 +993,86 @@ class TestGroup1Security(unittest.TestCase):
                             env.split("=", 1)[-1].startswith("/secrets/dev_"),
                             f"{name}:{svc_name} token key must come from the dev secrets volume: {env}",
                         )
+
+    def _load_yaml_lenient(self, path: Path):
+        """Compose-only tags (!override, !reset) load as their plain node value."""
+        class Loader(yaml.SafeLoader):
+            pass
+
+        Loader.add_multi_constructor("!", lambda loader, suffix, node: (
+            loader.construct_sequence(node) if isinstance(node, yaml.SequenceNode)
+            else loader.construct_mapping(node) if isinstance(node, yaml.MappingNode)
+            else loader.construct_scalar(node)))
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.load(f, Loader=Loader)
+
+    def _all_stack_services(self):
+        out = []
+        for path in sorted((REPO_ROOT / "compose").glob("*.yaml")):
+            data = self._load_yaml_lenient(path)
+            for name, svc in (data.get("services") or {}).items():
+                out.append((path.name, name, svc))
+        return out
+
+    def test_cap_dropped_services_have_capable_root_hooks(self):
+        """A pre_start hook inherits the service's cap_drop, so a root chown hook must re-add its capabilities."""
+        needed = {"CHOWN", "DAC_OVERRIDE", "FOWNER"}
+        checked = 0
+        for fname, name, svc in self._all_stack_services():
+            if "ALL" not in (svc.get("cap_drop") or []):
+                continue
+            for key in ("pre_start", "post_start", "pre_stop", "post_stop"):
+                for hook in svc.get(key) or []:
+                    if str(hook.get("user", "")).split(":")[0] not in ("0", "root"):
+                        continue
+                    checked += 1
+                    self.assertTrue(
+                        needed <= set(hook.get("cap_add") or []),
+                        f"{fname}:{name} {key} runs as root under cap_drop ALL without {sorted(needed)}",
+                    )
+        self.assertGreater(checked, 0)
+
+    def test_backend_token_key_distribution(self):
+        """Signing key: identity gateway only. Verify key: user-facing backend, BFF, acolyte; never knowledge-sovereign."""
+        def secret_names(svc):
+            return [x if isinstance(x, str) else x.get("source") for x in (svc.get("secrets") or [])]
+
+        def env_map(svc):
+            env = svc.get("environment") or []
+            if isinstance(env, dict):
+                return {k: str(v) for k, v in env.items()}
+            return dict(e.split("=", 1) for e in env if "=" in e)
+
+        skip = ("dev.yaml", "frontend-dev.yaml", "compose.dev.yaml")
+        prod = [p for p in sorted((REPO_ROOT / "compose").glob("*.yaml")) if "staging" not in p.name and p.name not in skip]
+        signers, verifiers = [], []
+        for path in prod:
+            for name, svc in (self._load_yaml_lenient(path).get("services") or {}).items():
+                names = secret_names(svc)
+                if "backend_token_signing_key" in names:
+                    signers.append(name)
+                    self.assertEqual(env_map(svc).get("BACKEND_TOKEN_SIGNING_KEY_FILE"), "/run/secrets/backend_token_signing_key")
+                if "backend_token_verify_key" in names:
+                    verifiers.append(name)
+                    self.assertEqual(env_map(svc).get("BACKEND_TOKEN_VERIFY_KEY_FILE"), "/run/secrets/backend_token_verify_key")
+        self.assertEqual(signers, ["auth-hub"])
+        self.assertEqual(sorted(verifiers), ["acolyte-orchestrator", "alt-backend", "alt-butterfly-facade"])
+        for name in ("dev.yaml", "frontend-dev.yaml"):
+            for svc in (self._load_yaml_lenient(REPO_ROOT / "compose" / name).get("services") or {}).values():
+                self.assertNotIn("backend_token_signing_key", secret_names(svc))
+        sov = self._load_yaml(REPO_ROOT / "compose" / "sovereign.yaml")["services"]["knowledge-sovereign"]
+        self.assertNotIn("backend_token_verify_key", secret_names(sov))
+        self.assertNotIn("BACKEND_TOKEN_VERIFY_KEY_FILE", env_map(sov))
+        self.assertIn("USER_JWT_INTROSPECTION_URL", env_map(sov))
+
+    def test_registration_closed_by_default(self):
+        import re
+        text = (REPO_ROOT / "kratos" / "kratos_template.yml").read_text()
+        m = re.search(r"^    registration:\n      enabled: (\w+)", text, re.M)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(1), "false")
+        kratos = self.compose_auth["services"]["kratos"]["environment"]
+        self.assertIn("SELFSERVICE_FLOWS_REGISTRATION_ENABLED=${KRATOS_REGISTRATION_ENABLED:-false}", kratos)
 
     def test_base_yaml_secrets_declarations(self):
         """compose/base.yaml declares new named role passwords and tokens."""

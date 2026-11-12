@@ -9,6 +9,7 @@ include:
 x-pki-cert-volume-chown: &pki-cert-volume-chown
   image: alpine:3.21
   user: "0:0"
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
   command:
     - sh
     - -c
@@ -318,6 +319,7 @@ services:
     pre_start:
       - image: alpine:3.21
         user: "0:0"
+        cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
         command:
           - sh
           - -c
