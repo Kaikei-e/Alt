@@ -238,9 +238,11 @@ func TestNewArticleSyncService_PanicsOnEmptyOwnerUserID(t *testing.T) {
 func TestDisabledArticleSyncService_FailsLoudly(t *testing.T) {
 	svc := NewDisabledArticleSyncService()
 
-	err := svc.SyncArticles(context.Background())
-	assert.ErrorIs(t, err, ErrArticleSyncDisabled)
+	assert.Panics(t, func() {
+		_ = svc.SyncArticles(context.Background())
+	})
 
-	err = svc.BackfillEmptyFeeds(context.Background())
-	assert.ErrorIs(t, err, ErrArticleSyncDisabled)
+	assert.Panics(t, func() {
+		_ = svc.BackfillEmptyFeeds(context.Background())
+	})
 }
