@@ -76,7 +76,7 @@ x-alt-db-env: &alt-db-env
   DB_USER: ${DB_USER}
   DB_PASSWORD_FILE: /run/secrets/postgres_password
   DB_NAME: ${POSTGRES_DB}
-  DB_SSL_MODE: prefer
+  DB_SSL_MODE: disable
 
 services:
   plecto-proxy:

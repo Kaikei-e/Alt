@@ -130,7 +130,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
-      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource 4.14.0
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
       # ClickHouse connection settings (passed to datasource)
       CLICKHOUSE_HOST: clickhouse
