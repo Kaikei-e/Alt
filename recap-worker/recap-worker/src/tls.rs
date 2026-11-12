@@ -146,7 +146,16 @@ impl ClientCertVerifier for AllowedNamesVerifier {
         let verified = self
             .inner
             .verify_client_cert(end_entity, intermediates, now)?;
-        self.verify_peer_identity(end_entity)?;
+        if let Err(err) = self.verify_peer_identity(end_entity) {
+            let names = extract_cert_peer_names(end_entity).unwrap_or_default();
+            tracing::warn!(
+                reason = "peer_not_allow_listed",
+                cn = ?names.common_names,
+                dns_sans = ?names.dns_sans,
+                "tls_client_certificate_rejected"
+            );
+            return Err(err);
+        }
         Ok(verified)
     }
 
