@@ -32,24 +32,12 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// wireInternalAuth is the sole choke point for /internal auth wiring. It takes
-// the whole config rather than a bare string so the caller cannot hand it the
-// wrong secret: the group is keyed on InternalAuthSecret, never on the HS256
-// key that signs backend JWTs. alt-backend puts whatever this group accepts
-// into a plaintext X-Internal-Auth header on every GetSystemUser call, which
-// spreads it to nginx access logs and OTel span attributes — a place the
-// signing key must never reach.
-//
-// Both guards panic instead of degrading. config.Validate() already requires a
-// non-empty InternalAuthSecret distinct from BackendTokenSecret, so reaching
-// either branch means that invariant broke, not that internal auth should be
-// silently disabled or silently keyed on the signing key (CLAUDE.md Rule 8).
+// wireInternalAuth is the sole choke point for /internal auth wiring.
+// config.Validate() already requires a non-empty InternalAuthSecret, so an
+// empty secret here panics instead of degrading.
 func wireInternalAuth(cfg *config.Config) echo.MiddlewareFunc {
 	if cfg.InternalAuthSecret == "" {
 		panic("main: INTERNAL_AUTH_SECRET must be set before wiring internal auth")
-	}
-	if cfg.InternalAuthSecret == cfg.BackendTokenSecret {
-		panic("main: INTERNAL_AUTH_SECRET must not equal BACKEND_TOKEN_SECRET")
 	}
 	return appmiddleware.InternalAuth(cfg.InternalAuthSecret)
 }
@@ -128,10 +116,10 @@ func main() {
 	sessionCache := infracache.NewSessionCache(cfg.CacheTTL)
 	kratosGateway := gateway.NewKratosGateway(cfg.KratosURL, cfg.KratosAdminURL, 5*time.Second)
 	jwtIssuer := infratoken.NewJWTIssuer(infratoken.JWTConfig{
-		Secret:   cfg.BackendTokenSecret,
-		Issuer:   cfg.BackendTokenIssuer,
-		Audience: cfg.BackendTokenAudience,
-		TTL:      cfg.BackendTokenTTL,
+		PrivateKey: cfg.BackendTokenSigningKey,
+		Issuer:     cfg.BackendTokenIssuer,
+		Audience:   cfg.BackendTokenAudience,
+		TTL:        cfg.BackendTokenTTL,
 	})
 	csrfGenerator := infratoken.NewHMACCSRFGenerator(cfg.CSRFSecret)
 
