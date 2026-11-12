@@ -73,6 +73,11 @@ func buildMetricsMux(repo *sovereign_db.Repository, cfg *config.Config) *http.Se
 	return metricsMux
 }
 
+// maxRPCReadBytes bounds incoming Connect messages before decompression or
+// protobuf/JSON unmarshaling allocates a buffer; per-RPC payload checks run
+// only after decode.
+const maxRPCReadBytes = 1 << 20
+
 func buildRPCMux(sovereignHandler sovereignv1connect.KnowledgeSovereignServiceHandler, cfg *config.Config) *http.ServeMux {
 	mainMux := http.NewServeMux()
 	mainMux.HandleFunc("/health", handler.HealthHandler)
@@ -87,6 +92,7 @@ func buildRPCMux(sovereignHandler sovereignv1connect.KnowledgeSovereignServiceHa
 	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(
 		sovereignHandler,
 		connect.WithInterceptors(interceptor),
+		connect.WithReadMaxBytes(maxRPCReadBytes),
 	)
 	mainMux.Handle(path, rpcHandler)
 	return mainMux
