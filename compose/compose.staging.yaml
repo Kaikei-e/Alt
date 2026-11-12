@@ -999,13 +999,13 @@ services:
       - MTLS_KEY_FILE=/certs/acolyte-orchestrator-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - PEER_IDENTITY_TRUSTED=off
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_VERIFICATION=enabled
       - OTEL_ENABLED=false
     secrets:
-      - backend_token_secret
+      - backend_token_verify_key
     volumes:
       - ${STAGING_PKI_DIR:-../e2e/fixtures/acolyte-orchestrator/pki}:/certs:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/acolyte-orchestrator/pki}:/trust:ro
@@ -1055,7 +1055,7 @@ services:
         condition: service_healthy
     environment:
       - IRODORI_BASE_URL=http://irodori-stub:8088
-      - IRODORI_API_KEY_FILE=/run/secrets/backend_token_secret # Dummy key for stub (stub ignores credentials)
+      - IRODORI_API_KEY_FILE=/run/secrets/backend_token_verify_key # Dummy key for stub (stub ignores credentials)
       - TTS_VOICE_ID=alt-narrator
       - PEER_IDENTITY_STRICT=false
       - PEER_IDENTITY_TRUSTED=off
@@ -1063,7 +1063,7 @@ services:
       - INBOUND_MTLS=false
       - LOG_LEVEL=info
     secrets:
-      - backend_token_secret # Reused as dummy key for the stub
+      - backend_token_verify_key # Reused as dummy key for the stub
     ports:
       - "127.0.0.1:19700:9700"
     networks:
@@ -1225,11 +1225,10 @@ services:
       # tests/health.spec.ts — and the address the `healthcheck` subcommand
       # self-probes.
       - OPS_LISTEN=:9110
-      # HS256 JWT validation. The secret is read from a file mounted
-      # from e2e/fixtures/staging-secrets/ so the fixture is the single
-      # source of truth for both compose and the pre-minted test JWT
-      # under e2e/fixtures/alt-backend/test-jwt.txt.
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
+      # EdDSA JWT validation. The public key is read from a file mounted
+      # from STAGING_TOKEN_KEY_DIR (throwaway pair, generated per suite run) so the fixture is the single source of truth for both
+      # compose and the pre-minted test JWT under e2e/fixtures/alt-backend/.
+      - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
       - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       # ValidateBackendConfig requires this, so its absence stops the process
@@ -1317,7 +1316,7 @@ services:
       - DB_MAX_CONNS=10
       - DB_MIN_CONNS=2
     secrets:
-      - alt_backend_token_secret
+      - backend_token_verify_key
       - rask_ingest_token
       - sovereign_operator_token
       - backend_operator_token
@@ -1517,13 +1516,11 @@ services:
       # absent: the admin Connect services stayed on alt-backend, and run.sh
       # asserts :9000 / :9101 / :9102 are refused from another container.
       # --- upstreams (all required by config.ValidateDataHubConfig) -------
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
       - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - AUTH_HUB_URL=https://auth-hub:9443
       - AUTH_HUB_MTLS_SERVER_NAME=auth-hub
-      # Must match auth-hub's INTERNAL_AUTH_SECRET below, and must differ from
-      # alt_backend_token_secret — see the comment on the auth-hub service.
+      # Must match auth-hub's INTERNAL_AUTH_SECRET below.
       - INTERNAL_AUTH_SECRET=staging-fixture-internal-auth-secret-not-a-real-key
       - SOVEREIGN_URL=http://knowledge-sovereign
       - SOVEREIGN_EVENT_AUTH=disabled
@@ -1539,7 +1536,6 @@ services:
       - DB_MAX_CONNS=10
       - DB_MIN_CONNS=2
     secrets:
-      - alt_backend_token_secret
       - rask_ingest_token
       - mqhub_auth_token
     networks:
@@ -1676,15 +1672,10 @@ services:
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_TTL=5m
-      # config.getEnv() resolves *_FILE -> file content. The HS256 secret
-      # is shared with alt-backend so the JWT auth-hub issues is
-      # verifiable by anyone already trusting alt_backend_token_secret.
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
-      # The /internal group's shared bearer, and deliberately NOT the HS256
-      # secret above: alt-data-hub sends this value in a plaintext
-      # X-Internal-Auth header, so a signing key doing both jobs ends up in
-      # access logs and OTel span attributes. auth-hub exits non-zero when the
-      # two match. Inline rather than a fixture file for the same reason
+      # Throwaway Ed25519 private key; verifiers get the matching public key.
+      - BACKEND_TOKEN_SIGNING_KEY_FILE=/run/secrets/backend_token_signing_key
+      # The /internal group's shared bearer. alt-data-hub sends this value in
+      # a plaintext X-Internal-Auth header, so it is never a token key. Inline rather than a fixture file for the same reason
       # VAPID_PUBLIC_KEY is: this is a throwaway staging value that the suite
       # also needs to send, and one literal keeps the two in step.
       - INTERNAL_AUTH_SECRET=staging-fixture-internal-auth-secret-not-a-real-key
@@ -1704,7 +1695,7 @@ services:
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     secrets:
-      - alt_backend_token_secret
+      - backend_token_signing_key
       - auth_hub_csrf_secret
       - rask_ingest_token
     volumes:
@@ -1726,12 +1717,11 @@ services:
     profiles: [search-indexer, acolyte-orchestrator, alt-backend, alt-harvester, alt-data-hub]
     command: ["python", "/fixtures/auth-introspection.py"]
     environment:
-      STAGING_JWT_KEY_FILE: /run/secrets/alt_backend_token_secret
+      BACKEND_TOKEN_VERIFY_KEY_FILE: /run/secrets/backend_token_verify_key
       STAGING_INTERNAL_AUTH: staging-fixture-internal-auth-secret-not-a-real-key
       STAGING_FORWARD_PREPROCESSOR: "true"
     secrets:
-      - alt_backend_token_secret
-      - backend_token_secret
+      - backend_token_verify_key
     volumes:
       - ../e2e/playwright/_fixtures/auth-introspection.py:/fixtures/auth-introspection.py:ro
       - ${STAGING_PKI_DIR:-../e2e/fixtures/search-indexer/pki}:/certs:ro
@@ -1761,10 +1751,10 @@ secrets:
     file: ../e2e/playwright/_fixtures/test-credentials/kratos_db_password.txt
   meili_master_key:
     file: ../e2e/fixtures/staging-secrets/meili_master_key.txt
-  alt_backend_token_secret:
-    file: ../e2e/fixtures/staging-secrets/alt_backend_token_secret.txt
-  backend_token_secret:
-    file: ../e2e/fixtures/staging-secrets/backend_token_secret.txt
+  backend_token_signing_key:
+    file: ${STAGING_TOKEN_KEY_DIR:-../e2e/fixtures/auth-hub/token-keys}/backend_token_signing_key.txt
+  backend_token_verify_key:
+    file: ${STAGING_TOKEN_KEY_DIR:-../e2e/fixtures/auth-hub/token-keys}/backend_token_verify_key.txt
   auth_hub_csrf_secret:
     file: ../e2e/fixtures/staging-secrets/auth_hub_csrf_secret.txt
   # Mounted as /run/secrets/kratos_cookie_secret so the reused

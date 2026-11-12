@@ -15,24 +15,27 @@
 name: alt-frontend-dev
 
 services:
-  # Init container: generates a random JWT secret for dev environment
+  # Init container: generates a throwaway Ed25519 token key pair for dev environment
   dev-secret-init:
     image: alpine:3.20
     command: >
-      sh -c 'if [ ! -f /secrets/dev_jwt_secret.txt ]; then
-        head -c 32 /dev/urandom | base64 > /secrets/dev_jwt_secret.txt;
-        echo "Generated dev JWT secret"; fi'
+      sh -c 'if [ ! -f /secrets/dev_backend_token_signing_key.pem ]; then
+        apk add --no-cache openssl >/dev/null;
+        openssl genpkey -algorithm ed25519 -out /secrets/dev_backend_token_signing_key.pem;
+        openssl pkey -in /secrets/dev_backend_token_signing_key.pem -pubout -out /secrets/dev_backend_token_verify_key.pem;
+        chmod 0644 /secrets/dev_backend_token_signing_key.pem /secrets/dev_backend_token_verify_key.pem;
+        echo "Generated dev backend token key pair"; fi'
     volumes:
       - dev_secrets:/secrets
 
   # Mock servers (Kratos + AuthHub + Backend)
-  # Generates real JWT tokens signed with random secret
+  # Generates real JWT tokens signed with the throwaway Ed25519 key
   mock-auth:
     build:
       context: ../alt-frontend-sv
       dockerfile: tests/e2e/infra/Dockerfile.mock-auth
     environment:
-      - BACKEND_TOKEN_SECRET_FILE=/secrets/dev_jwt_secret.txt
+      - BACKEND_TOKEN_SIGNING_KEY_FILE=/secrets/dev_backend_token_signing_key.pem
     volumes:
       - dev_secrets:/secrets:ro
     ports:

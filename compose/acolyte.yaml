@@ -198,7 +198,7 @@ services:
       - RENEW_AT_FRACTION=0.66
       - OPS_LISTEN=:9110
       # User identity verification
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_VERIFICATION=enabled
@@ -210,7 +210,7 @@ services:
     secrets:
       - acolyte_db_password
       - pki-agent-acolyte-orchestrator-jwk
-      - backend_token_secret
+      - backend_token_verify_key
       - rask_ingest_token
     extra_hosts:
       - "llm-external:${ACOLYTE_LLM_HOST:-127.0.0.1}"

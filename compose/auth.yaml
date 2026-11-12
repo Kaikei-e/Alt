@@ -179,16 +179,15 @@ services:
       - PORT=8888
       - CACHE_TTL=5m
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
-      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_SIGNING_KEY_FILE=/run/secrets/backend_token_signing_key
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_TTL=5m
       - JWT_ISSUER_TTL=5m
-      # The /internal group's shared bearer. Required, no default, and rejected
-      # at startup when it equals BACKEND_TOKEN_SECRET: alt-data-hub sends this
-      # value in a plaintext X-Internal-Auth header on every GetSystemUser call,
-      # so it reaches access logs and OTel span attributes — which is why the
-      # HS256 signing key above no longer doubles as it.
+      # The /internal group's shared bearer. Required, no default:
+      # alt-data-hub sends this value in a plaintext X-Internal-Auth header on
+      # every GetSystemUser call, so it reaches access logs and OTel span
+      # attributes.
       - INTERNAL_AUTH_SECRET_FILE=/run/secrets/auth_hub_internal_secret
       - FRONTEND_TLS_LISTEN=true
       - FRONTEND_TLS_PORT=8443
@@ -218,7 +217,7 @@ services:
       - RASK_INGEST_TOKEN_FILE=/run/secrets/rask_ingest_token
     secrets:
       - csrf_secret
-      - backend_token_secret
+      - backend_token_signing_key
       - auth_hub_internal_secret
       - pki-agent-auth-hub-jwk
       - rask_ingest_token
